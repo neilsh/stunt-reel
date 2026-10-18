@@ -1,0 +1,16 @@
+[package]
+name = "stunt-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+serde = ["dep:serde"]
+bytemuck = ["dep:bytemuck"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"], optional = true }
+bytemuck = { version = "1.14", optional = true }

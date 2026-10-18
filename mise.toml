@@ -1,0 +1,101 @@
+[tools]
+# Rust toolchain (provides rustc and cargo)
+rust = "latest"
+
+# Python & modern packaging toolchain
+python = "3.11"
+uv = "latest"
+
+
+# DOSBox-X MCP Server: prebuilt release binary downloaded via mise's GitHub backend.
+# Automatically resolves architecture across Windows, macOS, and Linux.
+"github:caiiiycuk/dosbox-x-mcp-server" = "0.1.2"
+
+# Windows 64-bit DOSBox-X tool definition.
+# Only activated on Windows; on macOS/Linux, dosbox-x is installed via system package manager or Homebrew.
+[tools."github:joncampbell123/dosbox-x"]
+version = "dosbox-x-v2026.10.01"
+os = ["windows"]
+# Pin explicitly to portable 64-bit zip to avoid 32-bit archives or setup installers (.exe)
+asset_pattern = "dosbox-x-vsbuild-win64-*.zip"
+# Why SDL2: SDL2 build is required on Windows for stability with OpenGL output
+bin_path = "bin/x64/Release SDL2"
+
+[tasks.play]
+description = "Launch Stunt Island film reel playback"
+run = "dosbox-x -conf dosbox-playone.conf"
+
+[tasks.ensure-dosbox]
+description = "Ensure DOSBox-X is running in the background with MCP enabled"
+# Unix (macOS / Linux): uses pgrep and backgrounding (&)
+run = """
+if ! pgrep -x "dosbox-x" > /dev/null 2>&1; then
+    dosbox-x -conf dosbox-mcp.conf &
+    sleep 1
+fi
+"""
+# Windows: checks Get-Process to prevent duplicate instances and starts detached
+run_windows = "powershell -NoProfile -Command \"if (-not (Get-Process dosbox-x -ErrorAction SilentlyContinue)) { Start-Process (mise which dosbox-x) -ArgumentList @('-conf', 'dosbox-mcp.conf') -WorkingDirectory (Get-Location) }\""
+
+[tasks.mcp]
+description = "Launch DOSBox-X MCP server (ensuring DOSBox-X is running)"
+depends = ["ensure-dosbox"]
+run = "dosbox-x-mcp-server"
+
+# Development & Quality Assurance Tasks
+[tasks.lint-rust]
+description = "Run Rust Clippy lints across all crates"
+run = "cargo clippy --workspace --all-targets --all-features"
+
+[tasks.lint-py]
+description = "Run Ruff linter on Python codebase"
+run = "uv run ruff check ."
+
+[tasks.lint]
+description = "Run all Rust and Python linters"
+depends = ["lint-rust", "lint-py"]
+
+[tasks.fmt-rust]
+description = "Format Rust source files"
+run = "cargo fmt"
+
+[tasks.fmt-py]
+description = "Format Python source files"
+run = "uv run ruff format"
+
+[tasks.fmt]
+description = "Format all Rust and Python code"
+depends = ["fmt-rust", "fmt-py"]
+
+[tasks.fmt-check-rust]
+description = "Check Rust formatting"
+run = "cargo fmt --check"
+
+[tasks.fmt-check-py]
+description = "Check Python formatting"
+run = "uv run ruff format --check ."
+
+[tasks.fmt-check]
+description = "Verify all code formatting"
+depends = ["fmt-check-rust", "fmt-check-py"]
+
+[tasks.typecheck]
+description = "Run Python static type checking (mypy)"
+run = "uv run mypy"
+
+[tasks.test-rust]
+description = "Run Rust unit and integration tests"
+run = "cargo test --workspace"
+
+[tasks.test-py]
+description = "Run Python pytest suite"
+run = "uv run pytest"
+
+[tasks.test]
+description = "Run all test suites (Rust & Python)"
+depends = ["test-rust", "test-py"]
+
+[tasks.check]
+description = "Run all CI verification steps (format check, lint, typecheck, test)"
+depends = ["fmt-check", "lint", "typecheck", "test"]
+

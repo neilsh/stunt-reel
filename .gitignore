@@ -1,0 +1,34 @@
+# Rust
+target/
+**/*.rs.bk
+*.pdb
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.installed.cfg
+*.egg
+build/
+dist/
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+*.log
+
+# Corpus archives & extracted data
+corpus/*.zip
+corpus/stisldem/*
+!corpus/stisldem/.gitkeep
+corpus/si_archive/*
+!corpus/si_archive/.gitkeep
+
+# Target binaries & proprietary game data
+target_bin/

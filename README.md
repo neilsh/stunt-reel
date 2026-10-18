@@ -6,30 +6,29 @@ Tooling, automation, and analysis environment for *Stunt Island* (1992) film ree
 
 ## Requirements
 
-- **[DOSBox-X](https://dosbox-x.com/) `2026.10.01`** (recommended build with debugger support enabled)
-- **[`dosbox-x-mcp-server`](https://github.com/caiiiycuk/dosbox-x-mcp-server)** (MCP server for controlling the DOSBox-X debugger via AI agents)
+- **[mise](https://mise.jdx.dev/)** (recommended environment & tool manager)
+- **[DOSBox-X](https://dosbox-x.com/) `2026.10.01`** (managed automatically via `mise`)
+- **[`dosbox-x-mcp-server`](https://github.com/caiiiycuk/dosbox-x-mcp-server)** (managed automatically via `mise`)
 
 ---
 
 ## Setup
 
-### 1. DOSBox-X Installation
-1. Install **DOSBox-X `2026.10.01`** on your system and make `dosbox-x.exe` available on `PATH`.
-2. Ensure configuration batch scripts (e.g., `play_ctry.bat`) can resolve `dosbox-x.exe` from `PATH`.
+### 1. Automatic Setup with mise (Recommended)
 
-### 2. DOSBox-X MCP Server Installation
-Download the server binary or build from source:
+Run:
 
-- **Pre-built binary**: Download `dosbox-x-mcp-server-v0.1.2-x86_64-pc-windows-msvc.exe` from the [GitHub Releases](https://github.com/caiiiycuk/dosbox-x-mcp-server/releases), install it, and make it available on `PATH`.
-- **Build with Cargo**:
-  ```powershell
-  git clone https://github.com/caiiiycuk/dosbox-x-mcp-server.git
-  cd dosbox-x-mcp-server
-  cargo build --release
-  ```
+```powershell
+mise install
+```
 
-### 3. Antigravity MCP Configuration
-To allow Antigravity agents to control and inspect DOSBox-X during sessions, register the MCP server in your global configuration file (`~/.gemini/config/mcp_config.json`):
+This automatically downloads and configures:
+- **DOSBox-X `2026.10.01`** (64-bit portable build)
+- **`dosbox-x-mcp-server` `v0.1.2`** (Windows x86_64 binary)
+
+### 2. Antigravity MCP Configuration
+
+Register the MCP server in your global configuration file (`~/.gemini/config/mcp_config.json`) using `dosbox-x-mcp-server`, which must be available on `PATH`:
 
 ```json
 {
@@ -45,6 +44,12 @@ To allow Antigravity agents to control and inspect DOSBox-X during sessions, reg
 > [!NOTE]
 > When Antigravity starts the MCP server over stdio, the server listens locally on TCP port `58991` (or WebSocket `58992`). DOSBox-X can connect to this control port to enable remote debugger execution (`debug_exec`), memory queries, and breakpoint hooks.
 
+### 3. Alternative / Manual Installation
+
+If not using `mise`:
+- **DOSBox-X**: Install **DOSBox-X `2026.10.01`** and make its binaries, including `dosbox-x.exe`, available on `PATH`.
+- **`dosbox-x-mcp-server`**: Download `dosbox-x-mcp-server-v0.1.2-x86_64-pc-windows-msvc.exe` from [GitHub Releases](https://github.com/caiiiycuk/dosbox-x-mcp-server/releases), install it, and make it available on `PATH`.
+
 ---
 
 ## Project Structure
@@ -54,13 +59,20 @@ To allow Antigravity agents to control and inspect DOSBox-X during sessions, reg
 - `target_bin/` — Full target game binaries, sound drivers, and resource files.
 - `capture/` — Output captures, logs, and traces.
 - `dosbox-playone.conf` — DOSBox-X configuration file tailored for running `PLAYONE.EXE` film playback with auto-type sequences.
-- `play_ctry.bat` — Convenience runner launching DOSBox-X with `dosbox-playone.conf`.
+- `play_ctry.bat` — Convenience runner launching DOSBox-X via `mise`.
+- `mise.toml` — Tool versions and task definitions.
 
 ---
 
 ## Quick Start
 
 Launch a film reel playback test:
+
+```powershell
+mise run play
+```
+
+Or via the batch runner:
 
 ```powershell
 .\play_ctry.bat
