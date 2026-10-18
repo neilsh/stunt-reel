@@ -36,4 +36,3 @@ target_bin/
 # Environment / local tool overrides
 .mise.local.toml
 mise.local.toml
-

@@ -98,4 +98,3 @@ depends = ["test-rust", "test-py"]
 [tasks.check]
 description = "Run all CI verification steps (format check, lint, typecheck, test)"
 depends = ["fmt-check", "lint", "typecheck", "test"]
-
