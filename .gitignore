@@ -32,3 +32,8 @@ corpus/si_archive/*
 
 # Target binaries & proprietary game data
 target_bin/
+
+# Environment / local tool overrides
+.mise.local.toml
+mise.local.toml
+
