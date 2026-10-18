@@ -85,7 +85,7 @@ run = "uv run mypy"
 
 [tasks.test-rust]
 description = "Run Rust unit and integration tests"
-run = "cargo test --workspace"
+run = "cargo test --workspace --all-features"
 
 [tasks.test-py]
 description = "Run Python pytest suite"
