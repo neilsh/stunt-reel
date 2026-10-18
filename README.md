@@ -49,6 +49,7 @@ To allow Antigravity agents to control and inspect DOSBox-X during sessions, reg
 
 ## Project Structure
 
+- `research/` — Reverse engineering documentation and binary analysis (e.g., `research/playone-exe/`).
 - `corpus/` — Reference data, demo files, and film vaults (e.g., `corpus/stisldem/VAULT/`).
 - `target_bin/` — Full target game binaries, sound drivers, and resource files.
 - `capture/` — Output captures, logs, and traces.
