@@ -64,10 +64,11 @@ If not using `mise`:
 
 ## Project Structure
 
+- `docs/` — Living specification (`SPEC.md`), 1-hop architecture (`ARCHITECTURE.md`), Antigravity Teamwork blueprint (`TEAM_SHEET.md`), and runtime memory maps (`MEMORY_MAP.md`).
 - `crates/` — Rust workspace crates (`stunt-core`, `stunt-render`).
 - `python/` — Python tooling and automation modules (`stunt_reel`).
 - `tests/` — Test suites for Rust and Python components.
-- `research/` — Reverse engineering documentation and binary analysis (e.g., `research/playone-exe/`).
+- `research/` — Reverse engineering documentation and binary analysis lab notebook (e.g., `research/playone-exe/`).
 - `corpus/` — Reference data, demo files, and film vaults (e.g., `corpus/stisldem/VAULT/`).
 - `target_bin/` — Full target game binaries, sound drivers, and resource files.
 - `capture/` — Output captures, logs, and traces.

@@ -25,12 +25,16 @@ Refer directly to authoritative documents rather than duplicating definitions:
 
 | Domain | Source of Truth | Summary |
 |---|---|---|
+| **System Specification** | [`docs/SPEC.md`](docs/SPEC.md) | Authoritative master specification, mathematical invariants (`[I1]`–`[I8]`), reverse engineering findings, and master verification matrix. |
+| **Architecture & 1-Hop Routing** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Routing table connecting code modules to specifications, format anchors (`# [FMT-*]`), and research notes. |
+| **Teamwork Blueprint & Milestones** | [`docs/TEAM_SHEET.md`](docs/TEAM_SHEET.md) | Multi-agent team roles (`sentinel`, `re-harness-worker`, `gltf-exporter-worker`, `rust-engine-worker`, `parity-auditor`), file blast radii, and milestone gates. |
+| **Runtime Memory Map** | [`docs/MEMORY_MAP.md`](docs/MEMORY_MAP.md) | `DGROUP` (`0x0D51`) offset reference tables, real-mode linear translation, and memory anchors (`# [MEM-*]`). |
 | **Seam Contracts** | [`contracts/mod.rs`](crates/stunt-core/src/contracts/mod.rs) | Contract boundaries: [`vfs`](crates/stunt-core/src/contracts/vfs.rs) (Seam 1), [`trajectory`](crates/stunt-core/src/contracts/trajectory.rs) (Seam 2), [`scene`](crates/stunt-core/src/contracts/scene.rs) (Seam 3), and [`parity`](crates/stunt-core/src/contracts/parity.rs) (Seam 4). |
 | **Project Setup & Tasks** | [`README.md`](README.md) & [`mise.toml`](mise.toml) | Environment prerequisites, task runner definitions (`check`, `lint`, `fmt`, `typecheck`, `test`, `play`, `mcp`), and manual command fallbacks. |
 | **Repository Layout** | [`README.md#project-structure`](README.md#project-structure) | Workspace crate locations, tooling directories, and asset storage rules. |
 | **Synthetic Fixtures** | [`tests/fixtures/README.md`](tests/fixtures/README.md) | Cleanroom synthetic mock files (`.res`, `.flm`, `.json`) and binary specifications. |
 | **Reference Corpus** | [`corpus/README.md`](corpus/README.md) | Upstream demo archive and community developer package structure (`stisldem/`, `si_archive/`). |
-| **Binary Disassembly** | [`research/playone-exe/`](research/playone-exe/) | Reverse engineering notes for `PLAYONE.EXE`: [`startup.md`](research/playone-exe/startup.md), [`navigation.md`](research/playone-exe/navigation.md), and [`memory.md`](research/playone-exe/memory.md). |
+| **Binary Disassembly (Lab Notebook)** | [`research/playone-exe/`](research/playone-exe/) | Reverse engineering notes for `PLAYONE.EXE`: [`startup.md`](research/playone-exe/startup.md), [`navigation.md`](research/playone-exe/navigation.md), and [`memory.md`](research/playone-exe/memory.md). |
 | **Coding & Format Rules** | [`Cargo.toml`](Cargo.toml), [`pyproject.toml`](pyproject.toml), [`.editorconfig`](.editorconfig) | Clippy workspace lints, Ruff & Mypy configurations, LF line endings, and 4-space indentation. |
 
 ---
@@ -51,3 +55,12 @@ Refer directly to authoritative documents rather than duplicating definitions:
 1. Run `git status` to ensure no files from `corpus/` or `target_bin/` are staged.
 2. Run `mise run check` to ensure all checks pass with zero warnings or errors.
 3. Link modified code symbols and files using markdown links.
+
+### SOP 4: Living Specification Updates & Evidentiary Promotion
+1. When reverse engineering uncovers new runtime offsets, opcodes, or binary realities:
+   - Update [`docs/SPEC.md`](docs/SPEC.md) or [`docs/MEMORY_MAP.md`](docs/MEMORY_MAP.md) immediately with verified discoveries.
+   - Promote evidentiary tiers (`[Unknown]` $\rightarrow$ `[Bounded Observation]` $\rightarrow$ `[Supported Inference]` $\rightarrow$ `[Established]`) and cite the linear address or research note.
+2. If extending Seam contracts in [`crates/stunt-core/src/contracts/`](crates/stunt-core/src/contracts/):
+   - Add fields using backward-compatible defaults (`#[cfg_attr(feature = "serde", serde(default))]`).
+   - Update synthetic test fixtures in [`tests/fixtures/`](tests/fixtures/) and contract unit tests.
+   - Verify `mise run check` exits code `0` before marking any ticket complete.
