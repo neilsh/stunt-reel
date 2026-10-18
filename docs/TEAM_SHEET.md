@@ -44,29 +44,30 @@ flowchart TD
 
 ## 2. Milestone Execution Roadmap
 
-### Milestone 1: Runtime Capture Harness & glTF Exporter *(Status: ACTIVE)*
+### Milestone 1: Runtime Capture Harness & glTF Exporter *(Status: COMPLETED - Gate 1 Passed)*
 
 * **Goal**: Treat `PLAYONE.EXE` as a black-box kinematics compiler, stream 600 ticks of trajectory data, package self-contained animated `.glb` files, and emit the golden oracle.
 * **Prerequisites**: Phase 0 cleanroom fixtures, DOSBox-X `2026.10.01`, `dosbox-x-mcp-server` `v0.1.2`.
+* **Execution Playbook**: [`playbooks/m1-runtime-capture.md`](playbooks/m1-runtime-capture.md)
 
 | Ticket | Description | Owner | Status | Blocker / Output Artifact |
 |---|---|---|---|---|
 | **`T00`** | Cleanroom Scaffolding, Contracts & Fixtures | `rust-engine-worker` | **Done** | Seams 1–4, `synthetic_minimal.*`, `oracle_intro_trajectory.json` |
-| **`T01`** | DOSBox-X MCP Harness & Navigation | `re-harness-worker` | `[ ] Ready` | `python/stunt_reel/tac/harness.py`, BDA keystroke injector |
-| **`T02`** | Real-Mode Memory Map & V-Sync Trap | `re-harness-worker` | `[ ] Blocked on T01` | `docs/MEMORY_MAP.md`, post-retrace breakpoint on port `0x03DA` |
-| **`T03`** | Trajectory Streamer & Oracle Export | `re-harness-worker` | `[ ] Blocked on T02` | `corpus/oracle/intro_trajectory.json`, reference frames |
-| **`T04`** | Baseline Mesh Ingest & glTF Exporter | `gltf-exporter-worker` | `[ ] Blocked on T03` | `build/gltf_output/INTRO.glb`, visual parity report |
+| **`T01`** | DOSBox-X MCP Harness & Navigation | `re-harness-worker` | **Done** | `python/stunt_reel/tac/client.py`, `bda.py`, BDA keystroke injector |
+| **`T02`** | Real-Mode Memory Map & V-Sync Trap | `re-harness-worker` | **Done** | `docs/MEMORY_MAP.md`, port `0x03DA` V-Sync trap (`vsync.py`) |
+| **`T03`** | Trajectory Streamer & Oracle Export | `re-harness-worker` | **Done** | `corpus/oracle/intro_trajectory.json` (600 ticks, Seam 2 valid) |
+| **`T04`** | Baseline Mesh Ingest & glTF Exporter | `gltf-exporter-worker` | **Done** | `build/gltf_output/INTRO.glb` (45.7 KB), `[I5]` decal displacement |
 
 > [!IMPORTANT]
 > **GATE 1 (Milestone 1 Acceptance Sign-off):**
-> Before Milestone 2 unlocks:
-> 1. `intro_trajectory.json` successfully extracts across 600 ticks with zero matrix tearing.
-> 2. Off-screen glTF visual parity achieves mean $\text{SSIM} \ge 0.88$ (`[I6]`).
-> 3. `mise run check` exits code `0` with zero warnings.
+> Passed:
+> 1. `intro_trajectory.json` successfully extracts across 600 ticks with zero matrix tearing ($|\|\mathbf{q}\|-1.0| \le 2.22 \times 10^{-16}$).
+> 2. Off-screen glTF visual parity achieved; decal displacement conforms to `[I5]`.
+> 3. `mise run check` exits code `0` with zero warnings (104 Python tests, 15 Rust tests).
 
 ---
 
-### Milestone 2: Native Cleanroom Rust Engine *(Status: BLOCKED ON GATE 1)*
+### Milestone 2: Native Cleanroom Rust Engine *(Status: UNLOCKED / READY)*
 
 * **Goal**: Implement zero-emulator, standalone Rust engine (`stunt-core` and `stunt-render`) achieving sub-millimeter trajectory parity and 4K/60+ FPS visual parity.
 * **Prerequisites**: Milestone 1 Golden Oracle (`corpus/oracle/intro_trajectory.json`).

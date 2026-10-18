@@ -23,12 +23,15 @@ ENV/
 # Logs
 *.log
 
-# Corpus archives & extracted data
+# Corpus archives, extracted data & capture dumps (Invariant [I7])
 corpus/*.zip
 corpus/stisldem/*
 !corpus/stisldem/.gitkeep
 corpus/si_archive/*
 !corpus/si_archive/.gitkeep
+corpus/oracle/
+corpus/captures/
+corpus/dumps/
 
 # Target binaries & proprietary game data
 target_bin/
@@ -36,3 +39,6 @@ target_bin/
 # Environment / local tool overrides
 .mise.local.toml
 mise.local.toml
+
+# Antigravity teamwork runtime scratchpads & subagent workspaces
+.agents/teamwork/

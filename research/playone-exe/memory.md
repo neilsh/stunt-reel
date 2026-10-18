@@ -26,6 +26,10 @@ This document details the real-mode x86 memory layout, static data segment (`DGR
 | `0x0A58` | Null-terminated string | `"VAULT\*.*"` — Search pattern for film loading dialog |
 | `0x0A62` | Null-terminated string | `"LOAD FILM"` — Title string rendered on file dialog header |
 | `0x0AAB` | Character Buffer | Destination buffer storing the selected film relative path |
+| `0x0C10` | 32-byte Struct | Active camera rig descriptor (`# [MEM-CAMERA-RIG]`) |
+| `0x0C50` | 32-bit Far Pointer | Dynamic actor channel table heap pointer (`# [MEM-ACTOR-TABLE]`) |
+| `0x0C5E` | Code Offset | Post-0x03DA vertical retrace breakpoint trap target |
+| `0x0C60` | 16-bit Word (`u16`) | Monotonic simulation tick counter (`# [MEM-FLM-TICK]`) |
 | `0x2263` | 8-bit Byte | Active video/display mode flag |
 | `0x2264` | 8-bit Byte | Sound driver hardware mode |
 | `0x2265` | 8-bit Byte | Audio playback channel flag |
@@ -74,3 +78,63 @@ This requirement accounts for:
 3. **DOS scratch structures and I/O buffers**: File handle tables and sound hardware buffers.
 
 If total available conventional memory falls below this threshold, the application aborts prior to allocating the dynamic scene graph.
+
+---
+
+## 3. Runtime Kinematics, Camera Rig & Actor Table Layouts
+
+During film playback, `PLAYONE.EXE` updates world-space kinematics and camera parameters at a discrete simulation tick rate (20 Hz or 30 Hz per Invariant `[I4]`). These structures reside at fixed `DGROUP` locations and dynamically allocated heap blocks.
+
+### 3.1 Post-Retrace Vertical Blank Trap (`# [MEM-VSYNC-03DA]`)
+
+The primary rendering loop synchronizes with VGA vertical retrace via port `0x03DA`:
+
+```assembly
+; Vertical Blank Wait Loop in PLAYONE.EXE
+0D51:0C48  mov    dx, 03DAh            ; VGA Input Status Register 1
+0D51:0C4B  in     al, dx
+0D51:0C4C  test   al, 08h               ; Test Vertical Retrace bit (Bit 3)
+0D51:0C4E  jnz    0C4B                  ; Wait if retrace is already active
+0D51:0C50  in     al, dx
+0D51:0C51  test   al, 08h
+0D51:0C53  jz     0C50                  ; Wait until vertical blank begins
+; Execution breakpoint set immediately post-retrace:
+0D51:0C5E  call   render_frame_flush    ; Trap address for tear-free capture
+```
+
+Because the hardware VGA refresh runs at $\approx 70.087\text{ Hz}$, the simulation tick counter at `0x0D51:0C60` (`# [MEM-FLM-TICK]`) is checked at each trap hit. Capturing only when `current_tick > last_captured_tick` prevents duplicate frames.
+
+### 3.2 Camera Rig Memory Structure (`# [MEM-CAMERA-RIG]`)
+
+The active camera rig is stored at `0x0D51:0C10` as a contiguous 32-byte descriptor:
+
+| Offset in Rig | Field Name | Type | Scaling / Representation |
+|---|---|---|---|
+| `+0x00` | `eye_x` | `i32` LE | $16.16$ fixed-point / float meters per `[I1]` |
+| `+0x04` | `eye_y` | `i32` LE | $16.16$ fixed-point / float meters (`+Y` up) |
+| `+0x08` | `eye_z` | `i32` LE | $16.16$ fixed-point / float meters (`+Z` backward) |
+| `+0x0C` | `target_x` | `i32` LE | Look-at target world X (meters) |
+| `+0x10` | `target_y` | `i32` LE | Look-at target world Y (meters) |
+| `+0x14` | `target_z` | `i32` LE | Look-at target world Z (meters) |
+| `+0x18` | `focal_dist` | `u16` LE | Focal distance scalar $\to \text{FOV}_y = 2 \arctan\left(\frac{120.0}{\text{focal\_dist}}\right) \times \frac{180}{\pi}$ |
+| `+0x1A` | `roll_bam` | `u16` LE | View Roll angle $\to \theta = (\text{raw\_u16} / 65536.0) \times 2\pi\text{ rad}$ |
+| `+0x1C` | `rig_mode_id` | `u16` LE | Active camera mode (cut flag set if mode changes or $\|\Delta\mathbf{eye}\| > 50\text{ m}$) |
+| `+0x1E` | `reserved` | `u16` LE | Structure alignment padding (0x0000) |
+
+### 3.3 Dynamic Actor Table (`# [MEM-ACTOR-TABLE]`)
+
+The scene's active aircraft, vehicles, and props are tracked in a dynamic heap buffer referenced by a 32-bit far pointer at `0x0D51:0C50` (or the default stage table at `0x0D51:0CA0`). Each entry is 64 bytes:
+
+```
++0x00: [u32] Actor Channel ID (0 = hero plane, 1..N = choreo channels)
++0x04: [char[8]] Bound .SOD model tag (null-padded ASCII, e.g. "FOKKER\0\0")
++0x0C: [i32 x 3] Metric World Position (X, Y, Z meters in 16.16 / IEEE float)
++0x18: [i16 x 9] 3x3 Direction Cosine Rotation Matrix (or unit quaternion [x, y, z, w])
++0x2A: [u16] Dynamic state bitmask (Bit 0: Visible, Bit 1: Smoke, Bit 2: Gear Down, Bit 3: Destroyed)
++0x2C: [u16] Articulated subobject count (M)
++0x2E: [u16 x 2 x M] Joint BAM angle array [(subobject_id, raw_bam_u16), ...]
++0x3C: [u32 far*] Pointer to next actor node (0x00000000 = end of list)
+```
+
+During streamer extraction, linked-list traversal enforces a maximum node depth (128 actors) and cycle detection to prevent infinite loops on corrupted memory blocks.
+

@@ -36,3 +36,13 @@ Golden oracle trajectory snapshot conforming to `Seam 2: TrajectoryRecord` (`cra
 - Evaluates `ActorTransform` (`actor_id`, `model_name`, `world_matrix`, `rotation_quat`, `position_meters`, `state_mask`).
 - Evaluates `AudioCue` events (`tick`, `sample_name`, `volume`, `pan`).
 - Used to test serialization/deserialization and golden trajectory regression comparisons.
+
+### 4. `synthetic_minimal.sod` (76 bytes)
+A cleanroom-synthesized minimal `.sod` bytecode model conforming to `[fmt sod]`:
+- **Header**: 10 bytes (`OP_ID = 0x000c`, `bounding_size = 100`, `yoff = 0`, `scale = 1` ($0.5\text{ m}$), `collision = 0`).
+- **Opcodes**:
+  - `OP_VECTORS` (`0x0075`): 5 vertices uploading base triangular wing and inner coplanar decal triangle.
+  - `OP_COLOR` (`0x0129`) + `OP_POLYZ` (`0x00f3`): Base facet (palette index 40).
+  - `OP_COLOR` (`0x0129`) + `OP_POLYZ` (`0x00f3`): Overlapping coplanar decal facet (palette index 15) testing Invariant `[I5]`.
+  - `OP_RETURN` (`0x0195`): Clean bytecode termination.
+
