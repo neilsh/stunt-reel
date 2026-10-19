@@ -22,9 +22,9 @@ Cross-corpus analysis of all 20 authentic retail `.RES` archives in `corpus/si_a
 
 ### 2.1 On-Disk Physical Header & Offset Table Layout (`# [FMT-RES-HEADER]`)
 
-The executable byte layout for this section is [`res.ksy`](res.ksy). It declares the `b"RS"` (`0x52, 0x53`) magic, the raw 16-bit header word at bytes `0x0002`–`0x0003`, the little-endian `ofs[0]` at `0x0004`, and the remaining offset table entries. The schema is the single source for field widths, offsets, byte order, and the offset-count calculation; the profile, evidence, and parser-policy discussion remains below.
+The executable byte layout for this section is [`res.ksy`](res.ksy). It declares the `b"RS"` (`0x52, 0x53`) magic, the archive slot index `res_index` at byte `0x0002`, the directory entry count `item_count` at byte `0x0003`, the little-endian `ofs[0]` at `0x0004`, the remaining offset table entries, and one raw `segments` region per directory entry. The schema is the single source for field widths, offsets, byte order, and the offset-count calculation; the profile, evidence, and parser-policy discussion remains below.
 
-Bytes `0x0002`–`0x0003` are read by `parse_res` as a single little-endian 16-bit word and ignored. Historical sources also describe the same bytes as `res_index: u8` followed by `item_count: u8`. The Kaitai schema keeps the field as raw `header_word`; neither interpretation is treated as settled by the schema.
+Byte `0x0002` is `res_index` and byte `0x0003` is `item_count`; the 20 corpus archives satisfy `item_count == (ofs_data / 4) - 2`, and every retail archive's `res_index` matches its slot in §3.3. Bytes `0x0002`–`0x0003` are still read by `parse_res` as a single little-endian 16-bit word and ignored, because the Rust parser derives its counts from the offset table.
 
 #### Payload Slicing Rules
 1. In archives with an ASCII Name Table (Prop archives):
@@ -43,7 +43,7 @@ Bytes `0x0002`–`0x0003` are read by `parse_res` as a single little-endian 16-b
 
 A long-standing debate in the Stunt Island developer community concerned whether `.RES` containers feature an 8-byte or a 16-byte header:
 
-- **On-Disk Reality (`[Established]`):** Every physical file on the retail floppy and CD-ROM distributions begins with the 8-byte structure (`b"RS"`, a raw 16-bit header word at bytes 2–3, `ofs[0]: u32` at byte 4). Historical sources describe the header word as `res_index: u8` followed by `item_count: u8`; `parse_res` reads one ignored 16-bit word. There is no 16-byte file header on disk.
+- **On-Disk Reality (`[Established]`):** Every physical file on the retail floppy and CD-ROM distributions begins with the 8-byte structure (`b"RS"`, `res_index: u8` at byte `0x0002` and `item_count: u8` at byte `0x0003`, `ofs[0]: u32` at byte 4). Corpus measurement confirms the historical reading on both bytes; `parse_res` still ignores them because the parser derives its counts from the offset table. There is no 16-byte file header on disk.
 - **In-Memory DOS Descriptor (`[Hypothesis]` / `[Supported Inference]`):**
   In MS-DOS 16-bit real-mode conventional memory (`DGROUP`), `PLAYONE.EXE` maintains an internal table of loaded resource containers. Each active `.RES` handle is managed by a 16-byte Memory Control Block (MCB) descriptor structure:
   ```c
@@ -253,7 +253,7 @@ pub struct VfsArchive {
 
 Located at `tests/fixtures/synthetic_minimal.res` (72 bytes total):
 - **Bytes 0..1**: Magic signature `b"RS"` (`0x52, 0x53`)
-- **Bytes 2..3**: Raw header word `0x0001`
+- **Bytes 2..3**: `res_index` `0x01`, `item_count` `0x03` (regions after the 20-byte directory: name table plus two payloads)
 - **Offset Table** ($N = (20/4) - 1 = 4$ offsets):
   - `ofs[0] = 20` (`0x14`): Name Table start
   - `ofs[1] = 40` (`0x28`): Payload 0 (`PLANE.SOD`, 16 bytes)

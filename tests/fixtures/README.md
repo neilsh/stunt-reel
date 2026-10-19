@@ -8,7 +8,7 @@ This directory contains committed, cleanroom-synthesized minimal fixtures used b
 
 ### 1. `synthetic_minimal.res` (72 bytes)
 A synthetically constructed resource container conforming to `[fmt res]` and the binary offset layout discovered in `RIPRES.C`:
-- **Header**: `RS` magic signature (2 bytes: `0x52, 0x53`) followed by a raw 16-bit header word (`0x0001`).
+- **Header**: `RS` magic signature (2 bytes: `0x52, 0x53`) followed by `res_index` (`0x01`) and `item_count` (`0x03`); `item_count` equals `ofs_data / 4 - 2`.
 - **Offset Table**:
   - `ofs[0] = 20` (`0x14`): Offset to the name table.
   - `ofs[1] = 40` (`0x28`): Offset to `PLANE.SOD` payload (16 bytes).
@@ -17,17 +17,11 @@ A synthetically constructed resource container conforming to `[fmt res]` and the
 - **Name Table**: Null-separated ASCII string list (`"PLANE.SOD\0PROP.SOD\0\0"`).
 - **Payloads**: Deterministic test bytes verifying container offsets and payload slicing.
 
-### 2. `synthetic_minimal.flm` (15 bytes)
+### 2. `synthetic_minimal.flm` (17 bytes)
 A minimal film stream conforming to `[fmt flm]`:
 - **Header**: ASCII `FILM` magic signature (4 bytes).
-- **Slice 0**:
-  - `inctime`: `0x01` (1 tick).
-  - `declared_len`: `0x0004` (4 bytes).
-  - Opcodes: `0x80` (`var_set 0`), `0x90` (`view_obj 0`), `0x98` (`clear_credits`), `0xFF` (`end_slice`).
-- **Slice 1**:
-  - `inctime`: `0x01` (1 tick).
-  - `declared_len`: `0x0001` (1 byte).
-  - Opcodes: `0xFF` (`end_slice`).
+- **Slice 0** (header at 0x0004): `prev_slice_len` `0x0000`, `tick_duration` `0x01`, opcodes `0x80` (`var_set 0 = 0x9890`), `0x90` (`view_obj 0`), `0x98` (`clear_credits`), `0xFF` (`end_slice`).
+- **Slice 1** (header at 0x000D): `prev_slice_len` `0x0009`, `tick_duration` `0x01`, opcode `0xFF` (`end_slice`).
 
 ### 3. `oracle_intro_trajectory.json`
 Golden oracle trajectory snapshot conforming to `Seam 2: TrajectoryRecord` (`crates/stunt-core/src/contracts.rs`):

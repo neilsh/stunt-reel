@@ -102,7 +102,7 @@ fn test_flm_invalid_signature_and_short_headers() {
 fn test_flm_truncated_slice_and_missing_terminator() {
     // Valid header followed by incomplete slice header (1 byte instead of 3)
     let mut data = Vec::from(&b"FILM"[..]);
-    data.push(0x01); // inctime only, missing declared_len
+    data.push(0x01); // first byte of the 3-byte slice header only
     let mut player = FlmPlayer::new(&data).unwrap();
     assert!(player.step_tick().is_none());
     assert!(matches!(
@@ -112,8 +112,8 @@ fn test_flm_truncated_slice_and_missing_terminator() {
 
     // Valid header and slice header, but no 0xFF terminator before EOF
     let mut data = Vec::from(&b"FILM"[..]);
-    data.push(0x01); // inctime
-    data.extend_from_slice(&2u16.to_le_bytes()); // len
+    data.push(0x01); // prev_slice_len low byte
+    data.extend_from_slice(&2u16.to_le_bytes()); // prev_slice_len high byte, tick_duration
     data.push(0x98); // clear credits
     // No 0xFF
     let mut player = FlmPlayer::new(&data).unwrap();
@@ -134,11 +134,11 @@ fn test_flm_synthetic_minimal_fixture() {
     assert!(flm_path.exists(), "synthetic_minimal.flm must exist");
 
     let data = fs::read(&flm_path).expect("read synthetic_minimal.flm");
-    assert_eq!(data.len(), 15);
+    assert_eq!(data.len(), 17);
 
     let mut player = FlmPlayer::new(&data).expect("player initialization succeeds");
 
-    // Slice 0: inctime 1, op 0x80 (var_set 0 = 0x9890), 0xFF
+    // Slice 0: tick_duration 1, var_set 0 = 0x9890, view_obj 0, clear credits, 0xFF
     let tick0 = player.step_tick().expect("tick 0 succeeds");
     assert_eq!(tick0.tick, 0);
     assert_eq!(tick0.camera.eye, [0.0, 10.0, 50.0]);
@@ -149,7 +149,7 @@ fn test_flm_synthetic_minimal_fixture() {
     assert!(tick0.audio_cues.is_empty());
     assert_eq!(player.variables()[0], 0x9890);
 
-    // Slice 1: inctime 1, op 0xFF
+    // Slice 1: tick_duration 1, op 0xFF
     let tick1 = player.step_tick().expect("tick 1 succeeds");
     assert_eq!(tick1.tick, 1);
     assert_eq!(tick1.camera.eye, [0.0, 10.0, 50.0]);

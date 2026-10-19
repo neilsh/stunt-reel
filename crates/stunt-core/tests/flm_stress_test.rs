@@ -6,7 +6,7 @@
 //! - Truncated opcode payloads across Group 0 (CREATE), Group 1 (INTERP), and Group 2 (MISC)
 //! - Out-of-bounds slot IDs (all 64 slots, > 63 slot boundaries, view_obj overflows)
 //! - Timeline variable boundary conditions (0..15 and out-of-range opcodes)
-//! - Zero and extreme time increments (`inctime = 0`, `inctime = 255`, declared_len mismatches)
+//! - Zero and extreme time increments (`tick_duration = 0`, `tick_duration = 255`, header values the parser never validates)
 //! - Kinematic extremes: 16.16 fixed-point wrapping, extreme BAM angles, antipodal/NaN quaternion Slerp
 //! - Error latching and evaluation idempotency under fault conditions
 //! - 5,000 randomized pure-byte fuzz iterations
@@ -149,8 +149,10 @@ fn test_stress_truncated_headers_and_invalid_magic() {
 fn test_stress_unclosed_slices_and_missing_terminators() {
     // Slices that end abruptly without 0xFF terminator
     let mut base = Vec::from(&b"FILM"[..]);
-    base.push(1); // inctime = 1
-    base.extend_from_slice(&10u16.to_le_bytes()); // declared_len = 10
+    // 3-byte slice header: the two `prev_slice_len` bytes then `tick_duration`,
+    // none of which `FlmParser` reads or validates.
+    base.push(1);
+    base.extend_from_slice(&10u16.to_le_bytes());
 
     // Add various valid opcodes but omit 0xFF terminator
     let test_bodies: Vec<Vec<u8>> = vec![
@@ -202,28 +204,28 @@ fn test_stress_unclosed_slices_and_missing_terminators() {
 fn test_stress_zero_and_extreme_time_increments() {
     let mut film = Vec::from(&b"FILM"[..]);
 
-    // Slice 0: inctime = 0 (zero time advancement)
+    // Slice 0: `prev_slice_len` low byte 0, `tick_duration` 0
     let s0 = vec![0x98, 0xFF];
-    film.push(0); // inctime = 0
+    film.push(0);
     film.extend_from_slice(&(s0.len() as u16).to_le_bytes());
     film.extend_from_slice(&s0);
 
-    // Slice 1: inctime = 255 (maximum u8 value / -1 i8)
+    // Slice 1: `prev_slice_len` low byte 255 (`tick_duration` again 0)
     let s1 = vec![0x98, 0xFF];
-    film.push(255); // inctime = 255
+    film.push(255);
     film.extend_from_slice(&(s1.len() as u16).to_le_bytes());
     film.extend_from_slice(&s1);
 
-    // Slice 2: declared_len = 0, but payload has valid opcodes + 0xFF
+    // Slice 2: `prev_slice_len` = 1, `tick_duration` = 0, valid opcodes + 0xFF
     let s2 = vec![0x98, 0xFF];
     film.push(1);
-    film.extend_from_slice(&0u16.to_le_bytes()); // declared_len = 0
+    film.extend_from_slice(&0u16.to_le_bytes());
     film.extend_from_slice(&s2);
 
-    // Slice 3: declared_len = 0xFFFF (huge declared len), but terminated by 0xFF early
+    // Slice 3: `prev_slice_len` = 0xFFFF, `tick_duration` = 0
     let s3 = vec![0x98, 0xFF];
     film.push(1);
-    film.extend_from_slice(&0xFFFFu16.to_le_bytes()); // declared_len = 65535
+    film.extend_from_slice(&0xFFFFu16.to_le_bytes());
     film.extend_from_slice(&s3);
 
     let res = catch_unwind(AssertUnwindSafe(|| {
@@ -233,7 +235,7 @@ fn test_stress_zero_and_extreme_time_increments() {
 
     assert!(
         res.is_ok(),
-        "FlmPlayer panicked on extreme inctime / declared_len mismatches"
+        "FlmPlayer panicked on extreme slice-header values"
     );
     let records = res.unwrap().expect("evaluation must succeed cleanly");
     assert_eq!(records.len(), 4);
@@ -266,8 +268,8 @@ fn test_stress_group0_create_truncation_matrix() {
 
         for trunc_len in 1..full_payload.len() - 1 {
             let mut film = Vec::from(&b"FILM"[..]);
-            film.push(1); // inctime
-            film.extend_from_slice(&100u16.to_le_bytes()); // declared_len
+            film.push(1); // prev_slice_len low byte
+            film.extend_from_slice(&100u16.to_le_bytes()); // prev_slice_len high byte, tick_duration
             film.extend_from_slice(&full_payload[..trunc_len]);
 
             let res = catch_unwind(AssertUnwindSafe(|| {

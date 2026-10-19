@@ -12,6 +12,7 @@ In the retail game, `.FLM` files reside in the `vault\` directory (e.g., `ACT1.F
 | :--- | :--- | :---: | :--- |
 | **File Extension** | `.FLM` (typically uppercase DOS 8.3, e.g., `INTRO.FLM`, `ACT1.FLM`, `FOKKER.FLM`) | `[Established]` | `research/playone-exe/startup.md` |
 | **Magic Signature** | 4-byte ASCII: `b"FILM"` (`0x46, 0x49, 0x4C, 0x4D`) at byte offset `0x0000` | `[Established]` | `sifilm.cpp:72`, `flm_extract.py:76`, `synthetic_minimal.flm` |
+| **Extension Variants** | 132 corpus files under `corpus/si_archive/Misc/` use the `.TKE` extension but are byte-identical `FILM` streams: all 132 parse as films (17,585 slices) | `[Established]` | corpus census, `verify-corpus` |
 | **Byte Endianness** | Mixed: 16-bit integers and 32-bit fixed-point scalars are Little-Endian; composite time-slice headers feature a 16-bit back-pointer | `[Established]` | `sifilm.cpp:43-58`, cross-corpus verification |
 | **Container Pairing** | Paired 1:1 with `<NAME>.ALL` full-scene container in `VAULT\` directory | `[Established]` | `PLAYONE.EXE:0x0787`, `docs/SPEC.md § 3.5` |
 | **Engine Role** | Deterministic playback stream driving camera channels, 6-DOF actor trajectories, subobject joints, and sound triggers | `[Established]` | `docs/SPEC.md § 1.1`, `crates/stunt-core/src/contracts/trajectory.rs` |
@@ -244,16 +245,12 @@ pub struct TrajectoryRecord {
 
 ### 7.3 Cleanroom Synthetic Fixture: `synthetic_minimal.flm`
 
-Located at `tests/fixtures/synthetic_minimal.flm` (15 bytes total):
+Located at `tests/fixtures/synthetic_minimal.flm` (17 bytes total):
 - **Magic**: `b"FILM"` (`0x46, 0x49, 0x4C, 0x4D`)
-- **Slice 0**:
-  - `prev_slice_len`: `0x0000` (2 bytes)
-  - `tick_duration`: `0x01` (1 tick)
-  - Bytecode: `0x80, 0x00, 0x00` (`var_set 0 = 0`), `0x90` (`view_obj 0`), `0x98` (`credits_clear`), `0xFF` (`slice_end`)
-- **Slice 1**:
-  - `prev_slice_len`: `0x0007` (7 bytes back-pointer)
-  - `tick_duration`: `0x01` (1 tick)
-  - Bytecode: `0xFF` (`slice_end`)
+- **Slice 0** (9 bytes, header at 0x0004): `prev_slice_len` `0x0000`, `tick_duration` `0x01`, bytecode `0x80, 0x90, 0x98` (`var_set 0 = 0x9890`), `0x90` (`view_obj 0`), `0x98` (`credits_clear`), `0xFF` (`slice_end`)
+- **Slice 1** (4 bytes, header at 0x000D): `prev_slice_len` `0x0009` (9-byte back-pointer to slice 0), `tick_duration` `0x01`, bytecode `0xFF`
+
+Both slices parse under [`flm_slice.ksy`](flm_slice.ksy) with the masks from [`python/stunt_reel/flm_walk.py`](../../python/stunt_reel/flm_walk.py); `verify_formats_docs.py` executes that pair on every run, so the schema is exercised without the corpus.
 
 ### 7.4 Golden Oracle Trajectory: `oracle_intro_trajectory.json`
 

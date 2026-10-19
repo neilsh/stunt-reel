@@ -73,6 +73,10 @@ def walk_film(data: bytes) -> list[SliceView]:
     previous_start: int | None = None
     views: list[SliceView] = []
     while True:
+        if pos == size:
+            # The stream ended on a 0xFF terminator, so every slice is complete;
+            # `FlmParser::parse_slice` stops here too (`has_more()` is false).
+            return views
         header_start = pos
         if size - pos < SLICE_HEADER_SIZE:
             raise FlmWalkError(f"truncated slice header at {pos}")

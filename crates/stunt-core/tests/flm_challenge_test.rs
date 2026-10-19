@@ -876,10 +876,10 @@ fn test_challenge_actor_lifecycle_spawn_despawn_in_sub_tick() {
 
 #[test]
 fn test_challenge_adversarial_malformed_slices() {
-    // 1. Slice header declared_len is zero or corrupt
+    // 1. Slice header with no readable fields and no payload
     let mut film = Vec::from(&b"FILM"[..]);
-    film.push(1); // inctime
-    film.extend_from_slice(&0u16.to_le_bytes()); // declared_len = 0
+    film.push(1); // prev_slice_len low byte
+    film.extend_from_slice(&0u16.to_le_bytes()); // prev_slice_len high byte, tick_duration
     // no terminator
     let mut player = FlmPlayer::new(&film).unwrap();
     assert!(player.step_tick().is_none());

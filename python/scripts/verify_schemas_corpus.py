@@ -4,8 +4,9 @@ Compiles every ``research/formats/**/*.ksy`` schema and parses the matching
 files under ``corpus/``. Corpus membership comes from one of three rules: a
 dotted schema filename selects the fixed-name asset it names
 (``anchorpt.dat.ksy`` matches only ``ANCHORPT.DAT``), ``CORPUS_SELECTORS``
-resolves formats whose extension is shared with unrelated payloads (compiled
-``.BIN`` SOD models next to ``MAP.BIN``), and everything else falls back to
+resolves formats whose extension does not match their content (compiled
+``.BIN`` SOD models next to ``MAP.BIN``, and the ``.TKE`` copies of the ``FILM``
+stream next to the ``.FLM`` films), and everything else falls back to
 ``meta/file-extension``.
 
 Local-only by design: ``corpus/`` is gitignored and absent in CI, so this
@@ -109,8 +110,14 @@ def _is_compiled_sod(path: Path) -> bool:
         return handle.read(2) == b"\x0c\x00"
 
 
+def _is_flm_stream(path: Path) -> bool:
+    """Select `.FLM` films plus the `.TKE` files that carry the same FILM stream."""
+    return path.suffix.lower() in {".flm", ".tke"}
+
+
 CORPUS_SELECTORS: dict[str, Callable[[Path], bool]] = {
     "sod": _is_compiled_sod,
+    "flm_slice": _is_flm_stream,
 }
 
 
@@ -142,6 +149,11 @@ def _probe_res(root: Any, size: int) -> list[str]:
         problems.append("offset beyond end of file")
     if offsets[-1] != size:
         problems.append(f"last offset {offsets[-1]} != file size {size}")
+    expected_items = int(root.ofs_data) // 4 - 2
+    if int(root.item_count) != expected_items:
+        problems.append(
+            f"item_count {int(root.item_count)} != (ofs_data / 4) - 2 = {expected_items}"
+        )
     return problems
 
 

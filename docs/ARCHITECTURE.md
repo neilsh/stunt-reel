@@ -86,7 +86,7 @@ The reverse-engineering technical catalog documents binary containers, bytecode 
 
 ### # [FMT-FLM-OPCODES]
 * **Target Container**: `.FLM` choreography timeline stream.
-* **Format Specification**: `FILM` magic signature, time-slice header (`inctime`, `declared_len`), opcode stream (`0x80` var set, `0x90` view obj, `0x98` credits, `0xFF` end slice), camera channel updates, and audio cues. Detailed in [`research/formats/flm.md`](../research/formats/flm.md).
+* **Format Specification**: `FILM` magic signature, time-slice header (`prev_slice_len`: u16, `tick_duration`: u8), opcode stream (`0x80` var set, `0x90` view obj, `0x98` credits, `0xFF` end slice), camera channel updates, and audio cues. Detailed in [`research/formats/flm.md`](../research/formats/flm.md).
 * **Evidentiary Tier**: `[Established]` (Verified in `tests/fixtures/synthetic_minimal.flm`).
 
 ---

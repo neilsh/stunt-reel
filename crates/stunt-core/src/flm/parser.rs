@@ -57,8 +57,8 @@ impl SlotState {
 /// Metadata and events extracted from a single `.FLM` time slice.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Slice {
-    pub inctime: u8,
-    pub declared_len: u16,
+    pub prev_slice_len: u16,
+    pub tick_duration: u8,
     pub sound_cues: Vec<AudioCue>,
 }
 
@@ -182,8 +182,8 @@ impl<'a> FlmParser<'a> {
         }
 
         let slice_start = self.pos;
-        let inctime = self.read_u8()?;
-        let declared_len = self.read_u16_le()?;
+        let prev_slice_len = self.read_u16_le()?;
+        let tick_duration = self.read_u8()?;
         let mut sound_cues = Vec::new();
 
         loop {
@@ -319,8 +319,8 @@ impl<'a> FlmParser<'a> {
         }
 
         Ok(Some(Slice {
-            inctime,
-            declared_len,
+            prev_slice_len,
+            tick_duration,
             sound_cues,
         }))
     }

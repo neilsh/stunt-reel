@@ -207,7 +207,8 @@ pub fn build_synthetic_intro_flm(ticks: usize) -> Vec<u8> {
         // Slice terminator
         slice_body.push(0xFF);
 
-        // Slice header: inctime = 1, declared_len
+        // Slice header (3 bytes): `FlmParser` advances past it without reading
+        // `prev_slice_len` or `tick_duration`, so only the width matters here.
         film.push(1);
         film.extend_from_slice(&(slice_body.len() as u16).to_le_bytes());
         film.extend_from_slice(&slice_body);
