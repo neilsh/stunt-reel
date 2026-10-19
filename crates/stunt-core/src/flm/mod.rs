@@ -10,7 +10,7 @@ pub mod parser;
 pub use interpolate::{
     CAMERA_CUT_DISPLACEMENT_THRESHOLD_METERS, bam_to_radians, detect_camera_cut, evaluate_sub_tick,
     focal_to_fov_y, interpolate_trajectory, lerp_f32, lerp_vec3, quat_from_euler, quat_norm,
-    quat_norm_diff, quat_normalize, radians_to_bam, slerp_quat,
+    quat_norm_diff, quat_normalize, radians_to_bam, rotate_quat, slerp_quat,
 };
 pub use parity::{
     GATE_G04_RMSE_THRESHOLD_METERS, assert_parity_gate_g04, build_synthetic_intro_flm,
@@ -23,6 +23,19 @@ pub use parser::{
 
 use crate::contracts::trajectory::{ActorTransform, CameraTransform, TrajectoryRecord};
 use std::fmt;
+
+/// Camera-space viewing axis that the film's view-slot rotation maps into world space.
+///
+/// `.FLM` stores each slot's orientation as BAM angles whose rotation maps camera space
+/// to world space with `+Z` pointing into the screen, so rotating `+Z` by the view slot's
+/// quaternion yields the world-space look direction (docs/SPEC.md § 3.7).
+pub const CAMERA_FORWARD: [f32; 3] = [0.0, 0.0, 1.0];
+
+/// Distance in meters from the view slot to its look-at point.
+///
+/// The film stream stores view orientation as a BAM rotation with no range, so the
+/// camera target is an arbitrary point along the rotated forward axis.
+pub const CAMERA_LOOKAHEAD_METERS: f32 = 1000.0;
 
 /// Errors that can occur during `.FLM` choreography parsing and evaluation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,10 +155,20 @@ impl<'a> FlmPlayer<'a> {
 
         // Camera evaluation
         let view_idx = self.view_obj as usize;
-        let eye = if view_idx < SIFILM_MAX_OBJ && self.slots[view_idx].active {
-            self.slots[view_idx].position_meters()
+        let view_slot_active = view_idx < SIFILM_MAX_OBJ && self.slots[view_idx].active;
+        let (eye, target) = if view_slot_active {
+            let eye = self.slots[view_idx].position_meters();
+            let forward = rotate_quat(self.slots[view_idx].rotation_quat(), CAMERA_FORWARD);
+            (
+                eye,
+                [
+                    eye[0] + forward[0] * CAMERA_LOOKAHEAD_METERS,
+                    eye[1] + forward[1] * CAMERA_LOOKAHEAD_METERS,
+                    eye[2] + forward[2] * CAMERA_LOOKAHEAD_METERS,
+                ],
+            )
         } else {
-            [0.0, 10.0, 50.0]
+            ([0.0, 10.0, 50.0], self.default_camera_target)
         };
 
         let cut = detect_camera_cut(eye, self.last_eye, self.view_obj, self.last_view_obj);
@@ -158,7 +181,7 @@ impl<'a> FlmPlayer<'a> {
             45.0
         };
 
-        let roll = if view_idx < SIFILM_MAX_OBJ && self.slots[view_idx].active {
+        let roll = if view_slot_active {
             bam_to_radians(self.slots[view_idx].rot_bam[0])
         } else {
             0.0
@@ -166,7 +189,7 @@ impl<'a> FlmPlayer<'a> {
 
         let camera = CameraTransform {
             eye,
-            target: self.default_camera_target,
+            target,
             fov_degrees: fov,
             roll_radians: roll,
             cut_from_previous: cut,
@@ -205,6 +228,7 @@ impl<'a> FlmPlayer<'a> {
             let mut actor = ActorTransform {
                 actor_id,
                 model_name,
+                shape_id: slot.shape_id,
                 world_matrix: [0.0; 16],
                 rotation_quat,
                 position_meters,

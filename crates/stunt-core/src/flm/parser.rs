@@ -42,6 +42,10 @@ impl SlotState {
     }
 
     /// Convert BAM rotation angles `[rz, rx, ry]` into a normalized unit quaternion `[I1]`.
+    ///
+    /// The stored pitch `rx` uses the opposite handedness from [`quat_from_euler`]'s
+    /// `pitch` argument: negating it is what makes a view slot look at the drawn actor
+    /// (`CTRY.FLM` tick 1 lands 1.4° off the actor bearing; docs/SPEC.md § 3.7).
     pub fn rotation_quat(&self) -> [f32; 4] {
         if self.rot_bam == [0, 0, 0] {
             [0.0, 0.0, 0.0, 1.0]
@@ -49,7 +53,7 @@ impl SlotState {
             let rz_rad = bam_to_radians(self.rot_bam[0]);
             let rx_rad = bam_to_radians(self.rot_bam[1]);
             let ry_rad = bam_to_radians(self.rot_bam[2]);
-            quat_from_euler(ry_rad, rx_rad, rz_rad)
+            quat_from_euler(ry_rad, -rx_rad, rz_rad)
         }
     }
 }

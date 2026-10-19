@@ -12,11 +12,15 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use glam::Mat4;
+mod parity;
+mod scene;
+
+use glam::{Mat4, Vec3};
+use scene::SceneBundle;
 use stunt_core::contracts::{
     CameraTransform, NodeKind, SodModelIr, SodVertex, TrajectoryRecord, VisibilityCondition,
 };
-use stunt_core::flm::FlmPlayer;
+use stunt_core::flm::{CAMERA_FORWARD, FlmPlayer};
 use stunt_core::sod::transpile_sod;
 use stunt_render::{
     ASPECT_4_3, CameraController, CameraGpuResources, CameraMode, GpuMeshSlice, GpuModel,
@@ -35,6 +39,13 @@ use winit::window::{Window, WindowId};
 pub struct CliConfig {
     pub flm_path: Option<PathBuf>,
     pub sod_path: Option<PathBuf>,
+    pub all_path: Option<PathBuf>,
+    pub out_dir: Option<PathBuf>,
+    /// Half-open `[start, end)` trajectory ordinals to render; `None` renders all.
+    pub frame_range: Option<(usize, usize)>,
+    pub width: u32,
+    pub height: u32,
+    pub clear_index: u8,
     pub headless: bool,
     pub output_png: Option<PathBuf>,
     pub max_ticks: Option<usize>,
@@ -45,6 +56,12 @@ impl CliConfig {
         let mut args = env::args().skip(1);
         let mut flm_path = None;
         let mut sod_path = None;
+        let mut all_path = None;
+        let mut out_dir = None;
+        let mut frame_range = None;
+        let mut width = 320u32;
+        let mut height = 240u32;
+        let mut clear_index = 180u8;
         let mut headless = false;
         let mut output_png = None;
         let mut max_ticks = None;
@@ -61,6 +78,36 @@ impl CliConfig {
                 "--sod" => {
                     let val = args.next().ok_or("Expected path after --sod")?;
                     sod_path = Some(PathBuf::from(val));
+                }
+                "--all" => {
+                    let val = args.next().ok_or("Expected path after --all")?;
+                    all_path = Some(PathBuf::from(val));
+                }
+                "--out-dir" => {
+                    let val = args.next().ok_or("Expected directory after --out-dir")?;
+                    out_dir = Some(PathBuf::from(val));
+                }
+                "--frames" => {
+                    let val = args.next().ok_or("Expected A..B after --frames")?;
+                    frame_range = Some(Self::parse_frame_range(&val)?);
+                }
+                "--width" => {
+                    let val = args.next().ok_or("Expected number after --width")?;
+                    width = val
+                        .parse::<u32>()
+                        .map_err(|e| format!("Invalid width: {e}"))?;
+                }
+                "--height" => {
+                    let val = args.next().ok_or("Expected number after --height")?;
+                    height = val
+                        .parse::<u32>()
+                        .map_err(|e| format!("Invalid height: {e}"))?;
+                }
+                "--clear-index" => {
+                    let val = args.next().ok_or("Expected number after --clear-index")?;
+                    clear_index = val
+                        .parse::<u8>()
+                        .map_err(|e| format!("Invalid palette index: {e}"))?;
                 }
                 "--output" | "-o" => {
                     let val = args.next().ok_or("Expected path after --output")?;
@@ -82,13 +129,47 @@ impl CliConfig {
             }
         }
 
+        if width == 0 || height == 0 {
+            return Err("Framebuffer dimensions must be non-zero".to_string());
+        }
+        if !(width * 4).is_multiple_of(256) {
+            return Err("row pitch must be 256-byte aligned".to_string());
+        }
+
         Ok(Self {
             flm_path,
             sod_path,
+            all_path,
+            out_dir,
+            frame_range,
+            width,
+            height,
+            clear_index,
             headless,
             output_png,
             max_ticks,
         })
+    }
+
+    /// Parses a half-open `A..B` frame range.
+    fn parse_frame_range(spec: &str) -> Result<(usize, usize), String> {
+        let (start, end) = spec
+            .split_once("..")
+            .ok_or_else(|| format!("Invalid frame range {spec:?}, expected A..B"))?;
+        let start = start
+            .trim()
+            .parse::<usize>()
+            .map_err(|e| format!("Invalid frame range start: {e}"))?;
+        let end = end
+            .trim()
+            .parse::<usize>()
+            .map_err(|e| format!("Invalid frame range end: {e}"))?;
+        if end <= start {
+            return Err(format!(
+                "Invalid frame range {spec:?}: end must be greater than start"
+            ));
+        }
+        Ok((start, end))
     }
 
     pub fn print_usage() {
@@ -100,10 +181,25 @@ impl CliConfig {
         println!();
         println!("Options:");
         println!("  --sod <model.sod>    Path to procedural .SOD model to bind to actor 1");
+        println!(
+            "  --all <movie.all>    Bind every actor shape_id to its .SOD chunk in the archive"
+        );
+        println!("  --out-dir <dir>      Render every trajectory tick to <dir>/frame_NNNN.png");
+        println!(
+            "  --frames <A..B>      Half-open ordinals to render with --out-dir (default: all)"
+        );
+        println!(
+            "  --width <px>         Offscreen framebuffer width (default 320, 256-byte pitch)"
+        );
+        println!("  --height <px>        Offscreen framebuffer height (default 240)");
+        println!("  --clear-index <i>    Mode 13h palette index used to clear the framebuffer");
         println!("  --headless           Run in offscreen headless mode without opening a window");
         println!("  --output, -o <file>  Save offscreen rendered frame to PNG file");
         println!("  --ticks <count>      Maximum simulation ticks to evaluate");
         println!("  -h, --help           Print this help information");
+        println!();
+        println!("Subcommands:");
+        println!("  parity --reference <dir> --test <dir> --output <dir> [--clear-index N]");
         println!();
         println!("Interactive Keyboard Controls:");
         println!("  Space                Pause / Resume timeline playback");
@@ -215,12 +311,26 @@ pub fn create_default_aircraft_ir() -> SodModelIr {
 
 /// Loads a model from disk if provided, otherwise returns cleanroom synthetic model.
 pub fn load_or_create_model(path: Option<&Path>) -> SodModelIr {
-    let model = path.and_then(|p| {
-        let bytes = fs::read(p).ok()?;
-        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("MODEL");
-        transpile_sod(&bytes, stem).ok()
-    });
-    model.unwrap_or_else(create_default_aircraft_ir)
+    let Some(path) = path else {
+        return create_default_aircraft_ir();
+    };
+
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            eprintln!("[stuntreel] .SOD read failed for {}: {e}", path.display());
+            return create_default_aircraft_ir();
+        }
+    };
+
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("MODEL");
+    match transpile_sod(&bytes, stem) {
+        Ok(ir) => ir,
+        Err(e) => {
+            eprintln!("[stuntreel] .SOD load failed for {}: {e}", path.display());
+            create_default_aircraft_ir()
+        }
+    }
 }
 
 /// Evaluates trajectory records from an authored .FLM file, or synthesizes a circular orbit.
@@ -238,6 +348,9 @@ pub fn load_or_synthesize_trajectory(
             if records.len() >= limit {
                 break;
             }
+        }
+        if let Some(err) = player.take_last_error() {
+            eprintln!("[stuntreel] trajectory ended early: {err}");
         }
         (!records.is_empty()).then_some(records)
     });
@@ -276,42 +389,153 @@ pub fn load_or_synthesize_trajectory(
 /// Executes headless rendering without window creation.
 pub fn run_headless(config: &CliConfig) -> Result<(), String> {
     println!("[stuntreel] Starting headless offscreen presentation...");
-    let mut renderer =
-        HeadlessRenderer::new().map_err(|e| format!("Headless renderer failed: {e}"))?;
 
-    let model_ir = load_or_create_model(config.sod_path.as_deref());
-    let gpu_model = GpuModel::from_ir(
-        &renderer.device,
-        &renderer.queue,
-        &renderer.pipelines.model_bind_group_layout,
-        &model_ir,
+    if let Some(out_dir) = &config.out_dir {
+        if config.all_path.is_none() {
+            return Err("--out-dir requires --all".to_string());
+        }
+        fs::create_dir_all(out_dir)
+            .map_err(|e| format!("create output directory {}: {e}", out_dir.display()))?;
+    }
+
+    let mut renderer = HeadlessRenderer::with_dimensions(config.width, config.height)
+        .map_err(|e| format!("Headless renderer failed: {e}"))?;
+    println!(
+        "[stuntreel] camera forward: {}",
+        if CAMERA_FORWARD[2] < 0.0 { "-Z" } else { "+Z" }
     );
+
+    // `--all` binds every actor to its archive chunk, so `--sod` and the synthetic
+    // fallback model do not participate in parity frames.
+    let bundle = match &config.all_path {
+        Some(all_path) => {
+            let bundle = SceneBundle::from_all(
+                &renderer.device,
+                &renderer.queue,
+                &renderer.pipelines.model_bind_group_layout,
+                all_path,
+            )?;
+            println!(
+                "[stuntreel] scene: {} models loaded, {} skipped, {} partial",
+                bundle.models.len(),
+                bundle.skipped,
+                bundle.partial.len()
+            );
+            for (shape_id, stop) in &bundle.partial {
+                println!(
+                    "[stuntreel] partial SOD 0x{shape_id:04X} stopped at 0x{:04X} opcode 0x{:04X}",
+                    stop.offset, stop.opcode
+                );
+            }
+            Some(bundle)
+        }
+        None => None,
+    };
+    let single_model = if bundle.is_some() {
+        None
+    } else {
+        let model_ir = load_or_create_model(config.sod_path.as_deref());
+        Some(GpuModel::from_ir(
+            &renderer.device,
+            &renderer.queue,
+            &renderer.pipelines.model_bind_group_layout,
+            &model_ir,
+        ))
+    };
 
     let trajectory = load_or_synthesize_trajectory(config.flm_path.as_deref(), config.max_ticks);
     println!("[stuntreel] Loaded {} trajectory ticks", trajectory.len());
 
     let mut camera = CameraController::default();
-    let (base_meshes, decal_meshes) = gpu_model.collect_visible_meshes(1, 30.0);
+    let Some(out_dir) = &config.out_dir else {
+        let Some(gpu_model) = &single_model else {
+            return Err("--all requires --out-dir".to_string());
+        };
+        let (base_meshes, decal_meshes) = gpu_model.collect_visible_meshes(1, 30.0);
 
-    let output_path = config
-        .output_png
-        .clone()
-        .unwrap_or_else(|| PathBuf::from("stuntreel_capture.png"));
+        let output_path = config
+            .output_png
+            .clone()
+            .unwrap_or_else(|| PathBuf::from("stuntreel_capture.png"));
 
-    if let Some(first_tick) = trajectory.first() {
-        camera.set_authored_transform(first_tick.camera);
+        if let Some(first_tick) = trajectory.first() {
+            camera.set_authored_transform(first_tick.camera);
+        }
+
+        let models_slice: [(&GpuModel, &[GpuMeshSlice], &[GpuMeshSlice]); 1] =
+            [(gpu_model, &base_meshes, &decal_meshes)];
+
+        renderer
+            .render_to_png(
+                &camera,
+                &models_slice,
+                Some(config.clear_index),
+                &output_path,
+            )
+            .map_err(|e| format!("Offscreen render to PNG failed: {e}"))?;
+
+        println!(
+            "[stuntreel] Headless frame successfully saved to {}",
+            output_path.display()
+        );
+        return Ok(());
+    };
+
+    let Some(bundle) = &bundle else {
+        return Err("--out-dir requires --all".to_string());
+    };
+
+    let (start, end) = config.frame_range.unwrap_or((1, trajectory.len() + 1));
+    let mut written = 0usize;
+
+    for (idx, record) in trajectory.iter().enumerate() {
+        let ordinal = idx + 1;
+        if ordinal < start || ordinal >= end {
+            continue;
+        }
+
+        camera.set_authored_transform(record.camera);
+        let eye = Vec3::from_array(record.camera.eye);
+
+        // One draw per distinct shape: a shared model uniform cannot hold two poses.
+        let mut drawn_shapes: Vec<u16> = Vec::new();
+        let mut draws: Vec<(&GpuModel, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>)> = Vec::new();
+        for actor in &record.actors {
+            if drawn_shapes.contains(&actor.shape_id) {
+                continue;
+            }
+            let Some(model) = bundle.get(actor.shape_id) else {
+                continue;
+            };
+            drawn_shapes.push(actor.shape_id);
+
+            model.update_world_matrix(&renderer.queue, &actor.world_matrix);
+            let distance = eye.distance(Vec3::from_array(actor.position_meters));
+            let (base_meshes, decal_meshes) =
+                model.collect_visible_meshes(actor.state_mask, distance);
+            draws.push((model, base_meshes, decal_meshes));
+        }
+
+        let models_slice: Vec<(&GpuModel, &[GpuMeshSlice], &[GpuMeshSlice])> = draws
+            .iter()
+            .map(|(model, base, decals)| (*model, base.as_slice(), decals.as_slice()))
+            .collect();
+
+        let frame_path = out_dir.join(format!("frame_{ordinal:04}.png"));
+        renderer
+            .render_to_png(
+                &camera,
+                &models_slice,
+                Some(config.clear_index),
+                &frame_path,
+            )
+            .map_err(|e| format!("render frame {ordinal}: {e}"))?;
+        written += 1;
     }
 
-    let models_slice: [(&GpuModel, &[GpuMeshSlice], &[GpuMeshSlice]); 1] =
-        [(&gpu_model, &base_meshes, &decal_meshes)];
-
-    renderer
-        .render_to_png(&camera, &models_slice, Some(180), &output_path)
-        .map_err(|e| format!("Offscreen render to PNG failed: {e}"))?;
-
     println!(
-        "[stuntreel] Headless frame successfully saved to {}",
-        output_path.display()
+        "[stuntreel] Wrote {written} parity frames to {}",
+        out_dir.display()
     );
     Ok(())
 }
@@ -333,6 +557,7 @@ struct WindowApp {
     current_tick_idx: usize,
     paused: bool,
     last_frame_time: Instant,
+    max_texture_dimension_2d: u32,
     // Free-Cam input keys
     key_w: bool,
     key_s: bool,
@@ -362,6 +587,7 @@ impl WindowApp {
             current_tick_idx: 0,
             paused: false,
             last_frame_time: Instant::now(),
+            max_texture_dimension_2d: 2048,
             key_w: false,
             key_s: false,
             key_a: false,
@@ -421,7 +647,10 @@ impl WindowApp {
             return;
         };
 
-        // Advance trajectory if not paused and in authored camera mode
+        // Advance trajectory if not paused and in authored camera mode. When the
+        // trajectory is paused or empty the model sits at the origin, so the nearest
+        // LOD tier applies rather than hiding every LOD-gated mesh.
+        let mut actor_distance = 0.0;
         if !self.paused && !self.trajectory.is_empty() {
             if let Some(record) = self
                 .trajectory
@@ -429,6 +658,12 @@ impl WindowApp {
                 .filter(|_| self.camera.mode == CameraMode::Authored)
             {
                 self.camera.set_authored_transform(record.camera);
+                let eye = Vec3::from_array(record.camera.eye);
+                actor_distance = record
+                    .actors
+                    .iter()
+                    .map(|actor| eye.distance(Vec3::from_array(actor.position_meters)))
+                    .fold(f32::INFINITY, f32::min);
             }
             self.current_tick_idx = (self.current_tick_idx + 1) % self.trajectory.len();
         }
@@ -527,7 +762,7 @@ impl WindowApp {
                 vp_h.max(1.0) as u32,
             );
 
-            let (base_meshes, decal_meshes) = model.collect_visible_meshes(1, 30.0);
+            let (base_meshes, decal_meshes) = model.collect_visible_meshes(1, actor_distance);
 
             // Pass 1: Base solid geometry
             rpass.set_pipeline(&pipelines.base_pipeline);
@@ -612,11 +847,16 @@ impl ApplicationHandler for WindowApp {
                 }
             };
 
+        let adapter_limits = adapter.limits();
+        let max_dim = adapter_limits.max_texture_dimension_2d;
+        self.max_texture_dimension_2d = max_dim;
+
         let (device, queue) = match pollster::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
                 label: Some("stunt_window_device"),
                 required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::downlevel_defaults(),
+                required_limits:
+                    wgpu::Limits::downlevel_defaults().using_resolution(adapter_limits),
                 memory_hints: wgpu::MemoryHints::Performance,
             },
             None,
@@ -641,8 +881,8 @@ impl ApplicationHandler for WindowApp {
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
-            width: size.width.max(1),
-            height: size.height.max(1),
+            width: size.width.clamp(1, max_dim),
+            height: size.height.clamp(1, max_dim),
             present_mode: wgpu::PresentMode::AutoVsync,
             desired_maximum_frame_latency: 2,
             alpha_mode: surface_caps.alpha_modes[0],
@@ -689,8 +929,8 @@ impl ApplicationHandler for WindowApp {
                 if let (Some(device), Some(surface), Some(config)) =
                     (&self.device, &self.surface, &mut self.surface_config)
                 {
-                    config.width = new_size.width.max(1);
-                    config.height = new_size.height.max(1);
+                    config.width = new_size.width.clamp(1, self.max_texture_dimension_2d);
+                    config.height = new_size.height.clamp(1, self.max_texture_dimension_2d);
                     surface.configure(device, config);
                 }
             }
@@ -767,6 +1007,15 @@ impl ApplicationHandler for WindowApp {
 }
 
 fn main() {
+    let mut subcommand_args = env::args().skip(1);
+    if subcommand_args.next().as_deref() == Some("parity") {
+        if let Err(e) = parity::run(subcommand_args) {
+            eprintln!("[stuntreel error] {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     let config = match CliConfig::parse() {
         Ok(c) => c,
         Err(err) => {

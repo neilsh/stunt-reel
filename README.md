@@ -104,6 +104,25 @@ Or individual tasks via `mise`:
 | `mise run typecheck` | Strict Python type checking, including unreachable-code and extra checks | `uv run mypy`
 | `mise run test` | Run Rust & Python test suites | `cargo test` & `uv run pytest` |
 | `mise run verify-corpus` | Compile the `.ksy` layouts and check them against local `corpus/` files | Kaitai Struct Compiler (`mise`) & `kaitaistruct` |
+| `mise run capture-ref` | Capture `PLAYONE.EXE` Mode 13h reference pages for visual parity | DOSBox-X debugger control socket (`python/scripts/capture_playone_reference.py`) |
+
+### Visual Parity Loop
+
+`stuntreel` renders each film tick from the paired `.ALL` archive and scores it against captured
+`PLAYONE.EXE` frames (all evidence lands under `build/`, which is gitignored):
+
+```bash
+mise run capture-ref
+cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
+    --all corpus/stisldem/VAULT/CTRY.ALL --frames 1..141 \
+    --out-dir build/parity/ours/ctry --width 320 --height 200
+cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry \
+    --test build/parity/ours/ctry --output build/parity/report/ctry
+```
+
+`capture-ref` needs a local `corpus/stisldem` and the pinned DOSBox-X; `docs/SPEC.md § 3.6` records how the
+page dump, palette, and stepping work, and `docs/SPEC.md § 3.7` records the camera conventions the
+rendered frames rely on.
 
 `verify-corpus` is a local-only sweep: `corpus/` is gitignored and absent in CI, so it is not part of `mise run check`. Pass `-- --strict` to fail on corpus anomalies instead of only reporting them.
 

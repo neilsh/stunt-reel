@@ -80,10 +80,11 @@ fn test_oracle_intro_trajectory_fixture() {
     // Tick 0 assertions
     assert_eq!(records[0].tick, 0);
     assert_eq!(records[0].camera.eye, [0.0, 10.0, 50.0]);
-    assert_eq!(records[0].camera.target, [0.0, 0.0, 0.0]);
+    assert_eq!(records[0].camera.target, [0.0, 10.0, 1050.0]);
     assert_eq!(records[0].camera.fov_degrees, 45.0);
     assert_eq!(records[0].actors.len(), 1);
     assert_eq!(records[0].actors[0].model_name, "FOKKER");
+    assert_eq!(records[0].actors[0].shape_id, 1);
     assert_eq!(records[0].actors[0].position_meters, [0.0, 10.0, 0.0]);
     assert_eq!(records[0].audio_cues.len(), 1);
     assert_eq!(records[0].audio_cues[0].sample_name, "ENGINE.VOC");

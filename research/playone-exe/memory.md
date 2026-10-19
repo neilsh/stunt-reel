@@ -104,6 +104,10 @@ The primary rendering loop synchronizes with VGA vertical retrace via port `0x03
 
 Because the hardware VGA refresh runs at $\approx 70.087\text{ Hz}$, the simulation tick counter at `0x0D51:0C60` (`# [MEM-FLM-TICK]`) is checked at each trap hit. Capturing only when `current_tick > last_captured_tick` prevents duplicate frames.
 
+**Runtime confirmation (`[Established]`).** Against the pinned DOSBox-X build, `BP 0D51:0C5E` followed by `RUN` returns in $\approx 50\text{ ms}$ during `CTRY.FLM` playback and stops the guest at the loop boundary; each hit yields a whole Mode 13h page, and consecutive distinct pages advance the film's on-screen timecode by $\approx 65\text{ ms}$. This trap is the capture primitive used by [`capture.md`](capture.md); `VRT` cannot substitute for it (the emulator exits with `0xC0000409` once playback starts).
+
+**Tick gating is unusable (`[Bounded Observation]`).** Reads of `0x0D51:0C60` through the debugger returned `0` for an entire stepped session, so the capture keys frames by ordinal rather than by `[MEM-FLM-TICK]`. The same reads also sit next to the unpack lockout described in § 3.4.
+
 ### 3.2 Camera Rig Memory Structure (`# [MEM-CAMERA-RIG]`)
 
 The active camera rig is stored at `0x0D51:0C10` as a contiguous 32-byte descriptor:
@@ -138,3 +142,15 @@ The scene's active aircraft, vehicles, and props are tracked in a dynamic heap b
 
 During streamer extraction, linked-list traversal enforces a maximum node depth (128 actors) and cycle detection to prevent infinite loops on corrupted memory blocks.
 
+### 3.4 LZEXE Unpack Lockout (`# [MEM-UNPACK-LOCKOUT]`)
+
+`PLAYONE.EXE` is LZEXE-packed (see [`startup.md`](startup.md)); until the decompressor has finished, `DGROUP` is not yet a stable image and **no debugger command may touch the guest**:
+
+| Probe | Observed result |
+|---|---|
+| `MEMDUMPBIN 0D51:0C60 0002` at $\approx 2\text{ s}$ | guest spins on `Illegal Unhandled Interrupt Called 6` (19,893 log lines in 50 retraces), never recovers |
+| `MEMDUMPBIN 0000:0000 1000` at $\approx 2\text{ s}$ | same exception storm |
+| Read of `0040:001A` at $\approx 12\text{ s}$ after a `VRT` | emulator exits with `0xC0000409` (`STATUS_STACK_BUFFER_OVERRUN`) |
+| Framebuffer `MEMDUMPBIN A000:0000 FA00` from boot | safe; the only access the driver performs before the load finishes |
+
+Practical rule for the harness: wait for the `LOAD FILM` dialog page to stop changing using framebuffer dumps only, then issue memory reads and breakpoints.

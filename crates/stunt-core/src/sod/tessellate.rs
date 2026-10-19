@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use crate::contracts::scene::{NodeId, NodeKind, SodModelIr, SodVertex, VisibilityCondition};
 use crate::sod::SodError;
 use crate::sod::decal::identify_coplanar_decals;
-use crate::sod::vm::{RawPolygon, SodHeader, execute_sod_vm};
+use crate::sod::vm::{RawPolygon, SodHeader, SodStop, execute_sod_vm, execute_sod_vm_impl};
 
 // Compile-time assertion of Gate G03 requirements
 const _: () = assert!(std::mem::size_of::<SodVertex>() == 28);
@@ -194,4 +194,21 @@ pub fn transpile_sod(data: &[u8], name: &str) -> Result<SodModelIr, SodError> {
     let (header, raw_polygons) = execute_sod_vm(data)?;
     let processed_polygons = identify_coplanar_decals(&raw_polygons, 0.001, 1e-4, 1e-4);
     build_sod_model_ir(name, &header, &processed_polygons)
+}
+
+/// Transpiles `.SOD` bytecode leniently, keeping the geometry decoded before a stop.
+///
+/// Returns the model built from every polygon parsed up to an unrecognized opcode,
+/// plus that [`SodStop`] when one was hit. Used for parity scene assembly, where the
+/// geometry already decoded is what the original engine draws for that tick.
+pub fn transpile_sod_lenient(
+    data: &[u8],
+    name: &str,
+) -> Result<(SodModelIr, Option<SodStop>), SodError> {
+    let (header, raw_polygons, stop) = execute_sod_vm_impl(data, true)?;
+    let processed_polygons = identify_coplanar_decals(&raw_polygons, 0.001, 1e-4, 1e-4);
+    Ok((
+        build_sod_model_ir(name, &header, &processed_polygons)?,
+        stop,
+    ))
 }

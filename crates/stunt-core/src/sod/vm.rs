@@ -190,10 +190,37 @@ fn parse_visibility_condition(code: u16) -> VisibilityCondition {
     }
 }
 
+/// Location and opcode of a bytecode stream that stopped at an unknown opcode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SodStop {
+    /// Byte offset of the unrecognized opcode within the model payload.
+    pub offset: usize,
+    /// The unrecognized opcode word.
+    pub opcode: u16,
+}
+
 /// Executes the `.SOD` bytecode virtual machine against input bytes.
 ///
-/// Returns the parsed header and raw polygon stream.
+/// Returns the parsed header and raw polygon stream, and fails on any opcode outside
+/// the decoded table.
 pub fn execute_sod_vm(data: &[u8]) -> Result<(SodHeader, Vec<RawPolygon>), SodError> {
+    let (header, polygons, stop) = execute_sod_vm_impl(data, false)?;
+    match stop {
+        None => Ok((header, polygons)),
+        Some(SodStop { offset, opcode }) => Err(SodError::InvalidOpcode { opcode, offset }),
+    }
+}
+
+/// Executes the `.SOD` bytecode virtual machine, optionally tolerating unknown opcodes.
+///
+/// When `lenient` is set, an opcode outside the decoded table ends execution and is
+/// reported as [`SodStop`] alongside the polygons decoded up to that offset, so a
+/// partially decoded model stays renderable. Strict mode returns the same polygons
+/// only for streams that decode to completion.
+pub fn execute_sod_vm_impl(
+    data: &[u8],
+    lenient: bool,
+) -> Result<(SodHeader, Vec<RawPolygon>, Option<SodStop>), SodError> {
     if data.len() < 10 {
         return Err(SodError::UnexpectedEof {
             expected: 10,
@@ -512,6 +539,16 @@ pub fn execute_sod_vm(data: &[u8]) -> Result<(SodHeader, Vec<RawPolygon>), SodEr
                 break;
             }
             _ => {
+                if lenient {
+                    return Ok((
+                        header,
+                        polygons,
+                        Some(SodStop {
+                            offset: op_offset,
+                            opcode,
+                        }),
+                    ));
+                }
                 return Err(SodError::InvalidOpcode {
                     opcode,
                     offset: op_offset,
@@ -520,5 +557,5 @@ pub fn execute_sod_vm(data: &[u8]) -> Result<(SodHeader, Vec<RawPolygon>), SodEr
         }
     }
 
-    Ok((header, polygons))
+    Ok((header, polygons, None))
 }

@@ -1694,7 +1694,9 @@ name = "stunt-cli"
 version = "0.1.0"
 dependencies = [
  "glam",
+ "image",
  "pollster",
+ "serde_json",
  "stunt-core",
  "stunt-render",
  "wgpu",

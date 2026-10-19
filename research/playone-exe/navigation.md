@@ -6,7 +6,7 @@ This document details the graphical interface navigation, file selection dialog 
 
 ## 1. File Selection Dialog Architecture
 
-The film loading interface is a modal dialog invoked when the user initiates film playback from the main menu. Rather than offering a freeform text input box, the dialog presents a scrollable listbox populated from the `VAULT\` directory.
+The film loading interface is a modal dialog. Rather than offering a freeform text input box, it presents a scrollable listbox populated from the `VAULT\` directory. `PLAYONE.EXE` runs the dialog as its **first screen at startup**: launching the executable with no command tail lands directly in `LOAD FILM`, with the listbox cursor on `[..]`.
 
 ### Dialog Invocation (`0x49C6` – `0x49D2`)
 
@@ -30,6 +30,8 @@ The modal event loop polls the keyboard and evaluates incoming keystrokes:
   Branches to `0x0A14` to dismiss the dialog without taking action, returning to the main menu.
 * **All Other Keystrokes**:
   Dispatched to the listbox navigation routine at `0x5EC6`.
+
+When the dialog opens it discards keystrokes that were already queued in the BIOS ring buffer, so a harness must inject its keys only after the dialog has been painted (see §4).
 
 ---
 
@@ -116,12 +118,23 @@ Each keystroke in the BIOS buffer is stored as a 16-bit word (`[Scan Code : ASCI
 
 ### Automated Navigation Sequences
 
-Because navigation is deterministic, automated test harnesses can queue keystrokes directly into the BIOS ring buffer:
+Navigation is deterministic, and DOSBox-X's guest `INT 16h` does consume words written straight into the BIOS ring buffer. The ring buffer carries the keys the guest polls; the emulator must be **free-running** for that poll to happen, because a debugger that single-steps the CPU never lets the modal loop reach its `INT 16h` call.
+
+Observed sequence for `CTRY.FLM` (listbox order `[..]`, `CTRY.ALL`, `CTRY.FLM`, …):
 
 ```
-[Enter] (Open Load Dialog)  --->  ['c'] (Select CTRY.FLM)  --->  [Enter] (Confirm & Play)
+['c'] (prefix jump -> CTRY.ALL)  --->  [Down] (CTRY.FLM)  --->  [Enter] (Confirm & Play)
 ```
 
-1. **Populate Buffer**: Write the key words into `0040:001E`.
-2. **Advance Tail**: Set `0040:001C` to `0x001E + (2 * number_of_keys)`.
-3. When the application runs its input polling loop (`INT 16h`), it drains the buffer in FIFO order.
+1. **Wait for the dialog**: the listbox must be on screen before the keys are queued, otherwise the dialog discards them on entry.
+2. **Populate Buffer**: Write the key words into `0040:001E`.
+3. **Advance Tail**: Set `0040:001C` to `0x001E + (2 * number_of_keys)`.
+4. When the application runs its input polling loop (`INT 16h`), it drains the buffer in FIFO order.
+
+Entering on `[..]` does not confirm or cancel: it re-lists the parent directory (`C:\`, showing `[VAULT]`, `driver1.bin`, …). Sequencing a `Down` before the confirming `Enter` is therefore required — an `Enter` alone lands on `[..]` and walks out of `VAULT`.
+
+### Harness Constraints (`[Established]`)
+
+* Keystroke injection into `0040:001E` works against the live emulator: the head pointer at `0040:001A` advances as the guest consumes the words.
+* Injection fails while the controller steps the guest; the modal loop never reaches `INT 16h`. This is why the dialog appeared frozen in earlier harness runs.
+* Patching the dialog call site (`0x49CF`) to force the confirm branch is not a viable shortcut: the patch requires reading and writing `DGROUP`, and any debugger command issued while `PLAYONE.EXE` is still unpacking kills the guest (see [`capture.md`](capture.md)). By the time such accesses are safe the four-instruction setup (`0x49C6`–`0x49D2`) has already executed, so the pre-written path buffer would never be read anyway.

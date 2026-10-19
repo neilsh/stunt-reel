@@ -208,6 +208,10 @@ fn test_gate_g04_oracle_intro_parity_and_sub_millimeter_rmse() {
     assert_eq!(evaluated[0].actors[0].actor_id, 1);
     assert_eq!(evaluated[0].actors[0].model_name, "FOKKER");
     assert_eq!(
+        evaluated[0].actors[0].shape_id,
+        oracle_records[0].actors[0].shape_id
+    );
+    assert_eq!(
         evaluated[0].actors[0].position_meters,
         oracle_records[0].actors[0].position_meters
     );
@@ -301,6 +305,7 @@ fn test_sub_tick_interpolation_suppression_on_cut() {
         actors: vec![ActorTransform {
             actor_id: 1,
             model_name: "FOKKER".to_string(),
+            shape_id: 0,
             world_matrix: [0.0; 16],
             rotation_quat: [0.0, 0.0, 0.0, 1.0],
             position_meters: [0.0, 10.0, 100.0],
@@ -323,6 +328,7 @@ fn test_sub_tick_interpolation_suppression_on_cut() {
         actors: vec![ActorTransform {
             actor_id: 1,
             model_name: "FOKKER".to_string(),
+            shape_id: 0,
             world_matrix: [0.0; 16],
             rotation_quat: [0.0, 0.0, 0.0, 1.0],
             position_meters: [0.0, 10.0, 101.2],
@@ -361,6 +367,7 @@ fn test_sub_tick_continuous_lerp_when_not_cut() {
         actors: vec![ActorTransform {
             actor_id: 1,
             model_name: "FOKKER".to_string(),
+            shape_id: 0,
             world_matrix: [0.0; 16],
             rotation_quat: [0.0, 0.0, 0.0, 1.0],
             position_meters: [0.0, 10.0, 0.0],
@@ -382,6 +389,7 @@ fn test_sub_tick_continuous_lerp_when_not_cut() {
         actors: vec![ActorTransform {
             actor_id: 1,
             model_name: "FOKKER".to_string(),
+            shape_id: 0,
             world_matrix: [0.0; 16],
             rotation_quat: [0.0, 0.0, 0.0, 1.0],
             position_meters: [0.0, 10.0, 2.0],
@@ -474,6 +482,7 @@ fn test_flm_static_actor_placement_in_create() {
     let tick0 = player.step_tick().unwrap();
     assert_eq!(tick0.actors.len(), 1);
     assert_eq!(tick0.actors[0].actor_id, 2);
+    assert_eq!(tick0.actors[0].shape_id, 42);
     assert_eq!(tick0.actors[0].position_meters, [10.0, 20.0, 30.0]);
 
     let tick1 = player.step_tick().unwrap();

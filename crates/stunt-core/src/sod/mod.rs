@@ -12,8 +12,12 @@ pub use decal::{
 };
 pub use tessellate::{
     IDENTITY_MATRIX, WeldKey, build_sod_model_ir, quantize_weld_key, transpile_sod,
+    transpile_sod_lenient,
 };
-pub use vm::{RawPolygon, SOD_SCALE_TABLE, SodHeader, compute_scale_factor, execute_sod_vm};
+pub use vm::{
+    RawPolygon, SOD_SCALE_TABLE, SodHeader, SodStop, compute_scale_factor, execute_sod_vm,
+    execute_sod_vm_impl,
+};
 
 use std::fmt;
 

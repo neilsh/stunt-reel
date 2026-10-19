@@ -9,8 +9,8 @@
       ],
       "target": [
         0.0,
-        0.0,
-        0.0
+        10.0,
+        1050.0
       ],
       "fov_degrees": 45.0,
       "roll_radians": 0.0
@@ -19,6 +19,7 @@
       {
         "actor_id": 1,
         "model_name": "FOKKER",
+        "shape_id": 1,
         "world_matrix": [
           1.0,
           0.0,
@@ -70,8 +71,8 @@
       ],
       "target": [
         0.0,
-        0.0,
-        0.0
+        10.0,
+        1049.5
       ],
       "fov_degrees": 45.0,
       "roll_radians": 0.0
@@ -80,6 +81,7 @@
       {
         "actor_id": 1,
         "model_name": "FOKKER",
+        "shape_id": 1,
         "world_matrix": [
           1.0,
           0.0,

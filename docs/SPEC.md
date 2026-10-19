@@ -167,14 +167,34 @@ See `research/playone-exe/navigation.md`.
 
 `PLAYONE.EXE` requires **both** `<NAME>.FLM` and `<NAME>.ALL` in `VAULT\`. If `<NAME>.ALL` is absent, execution halts with `"That film does not have a matching .ALL file"`.
 
+### 3.6 Visual Parity Capture Loop (`PLAYONE.EXE` vs `stuntreel`)
+
+The parity loop compares what the original player scans out against what the native engine rasterizes for the same film. All evidence lands under `build/parity/` (gitignored); `mise run capture-ref` drives the capture.
+
+* **Control socket direction (`[Established]`):** DOSBox-X configured with `[dosbox] mcp_server = …` is a TCP *client*; the controller must **listen** on that port (`ListenTransport`). Only `PING` is a bare verb — every debugger command must be framed as `REQ <id> EXEC <cmd>`. The live `D` command only relocates the debugger's data view, so memory reads are translated into `MEMDUMPBIN` against a host file and read back.
+* **Frame gating (`[Established]`):** sampling rides the post-retrace trap: `BP 0D51:0C5E` followed by `RUN` stops the guest once per render-loop iteration (`# [MEM-VSYNC-03DA]`), so each `MEMDUMPBIN` is a whole frame. `VRT` is unusable on this build — single-stepping a Mode 13h guest makes DOSBox-X exit with `0xC0000409`, and `[cpu] core = dynamic` aborts with `run out of cacheblocks`; `core = normal` with `output = surface` is required. The loop records a page when it differs from the previous page and carries at least 20 distinct palette indices, which skips the six-index modal dialog, the load screen, and palette fades. Frames are numbered from one so `tick_NNNN.idx` lines up with trajectory record ordinals.
+* **Dialog automation (`[Established]`):** `PLAYONE.EXE` opens its modal `LOAD FILM` dialog at startup. Keystroke words written into the BIOS ring buffer (`0040:001E` payload, `0040:001C` tail) are consumed by the guest's `INT 16h` poll while the emulator free-runs: `c` jumps the listbox to `CTRY.ALL`, `Down` selects `CTRY.FLM`, `Enter` confirms. Keystrokes do not reach the guest while the controller is stepping it, so the controller must free-run until playback starts.
+* **Load safety (`[Established]`):** no debugger command may touch the guest while `PLAYONE.EXE` unpacks (roughly the first two seconds). A `MEMDUMPBIN` issued there leaves the guest spinning on `Illegal Unhandled Interrupt Called 6`, and a read issued a little later can kill the emulator outright. Framebuffer dumps are safe from boot, so the driver waits for the dialog page to settle before issuing any other command.
+* **Page extraction (`[Established]`):** `PLAYONE.EXE` scans out the Mode 13h page at `A000:0000` during playback (`VGA MODE` reports `disp-start=0h`). `MEMDUMPBIN A000:0000 FA00 <path>` writes the 64000-byte page; the debugger parses both addresses and lengths in hex, and resolves host paths only when given forward-slash absolute paths without quotes. DOS 8.3 normalization uppercases the written filename.
+* **Palette (`[Established]`):** `VGA DACPAL` prints 8 entries per line as 6-hex-digit RGB triples in 6-bit DAC units, so channels are scaled to `0..=255` (`(v * 255 + 31) / 63`) before luminance comparison.
+* **Comparator (`[Established]`):** `stuntreel parity` reduces both sides to Rec. 601 luminance, stretches $320 \times 200 \rightarrow 320 \times 240$ per `[I6]`, scores `compute_frame_ssim` (window 11, stride 8), and reports the IoU of each side's non-sky mask plus `contact_NNNN.png` sheets (`reference | rendered | |difference|`).
+* **Tick counter (`[Bounded Observation]`):** reading `[MEM-FLM-TICK]` (`0D51:0C60`) during a stepped session returned `0` for the whole run, so the reference set is keyed by capture ordinal rather than by that counter.
+* **Stepped capture limits (`[Established]`):** the `VRT` route documented earlier produced no frames and is withdrawn — it either crashed the emulator or left the guest in an exception loop, and its 24 identical 150 ms samples were the static dialog, not the film. The trap-plus-`RUN` loop above captures 140 consecutive `CTRY.FLM` frames (`tick_*.idx`, 64 000 bytes each) in one unattended run.
+
+### 3.7 Camera Look Direction & Partial Model Fidelity (`CTRY.FLM`) (`[Bounded Observation]`)
+
+* On `CTRY.FLM` tick 1 the view slot sits at `(-3306.62, -14.0, 2614.11)` m, 7.0 m from the drawn actor at `(-3313.4, -12.3, 2614.53)` m. A camera target at the world origin is 4215 m away and behind the scene, so the view slot's BAM rotation — not an origin default — defines the look direction: `target = eye + rotate_quat(rotation_quat, [0, 0, 1]) * 1000 m`.
+* The stored slot rotation maps camera space to world space with `+Z` pointing into the screen, and its pitch angle `rx` (`rot_bam[1]`) is the negative of `quat_from_euler`'s `pitch`. With both conventions applied, the tick 1 look direction lands **1.4°** off the bearing to the drawn actor; every other combination of axis sign and pitch/yaw sign tested lands 8°–178° off. Without the pitch negation the camera misses the actor entirely and every rendered frame is sky.
+* `CTRY.ALL` holds 127 `MODEL_*.SOD` chunks. 114 decode to `RETURN`/EOF with the current opcode table; 13 stop early. The drawn actor's chunk (`shape_id 0x7F37`, 7604 bytes) decodes `0x11C8` bytes before opcode `0x02B5`, which is outside the decoded table. The parity renderer keeps the geometry decoded up to that offset (`transpile_sod_lenient`) and reports the stop, rather than discarding the model; opcode semantics for `0x02B5` remain `[Unknown]`.
+
 ---
 
 ## 4. Seam Contracts & Format Anchors
 
 The system integrates strictly across four immutable seams in `crates/stunt-core/src/contracts/`:
 * **Seam 1 (`VfsArchive`)**: Unpacks `.RES` (`# [FMT-RES-HEADER]`) and `.ALL` (`# [FMT-ALL-CHUNKS]`) containers.
-* **Seam 2 (`TrajectoryRecord` & `FilmCapture`)**: Discrete timeline ticks with cut-awareness (`cut_from_previous`), static stage header, and audio cues (`# [FMT-FLM-OPCODES]`).
-* **Seam 3 (`SodModelIr`)**: Flat arena vector of `SodNode` indexed by `NodeId(u32)` (`# [FMT-SOD-OPCODES]`, `# [FMT-SOD-IFVIS]`).
+* **Seam 2 (`TrajectoryRecord` & `FilmCapture`)**: Discrete timeline ticks with cut-awareness (`cut_from_previous`), static stage header, audio cues (`# [FMT-FLM-OPCODES]`), and `ActorTransform::shape_id` — the resource ID binding an actor to its `MODEL_%04X.SOD` chunk in the paired `.ALL` (`0` when the slot draws nothing).
+* **Seam 3 (`SodModelIr`)**: Flat arena vector of `SodNode` indexed by `NodeId(u32)` (`# [FMT-SOD-OPCODES]`, `# [FMT-SOD-IFVIS]`). `transpile_sod` is strict; `transpile_sod_lenient` keeps geometry decoded before an unknown opcode and reports it as `SodStop`.
 * **Seam 4 (`VisualParityGate`)**: Quantitative SSIM evaluation against aspect-corrected $4:3$ frames (`[I6]`).
 
 ---
@@ -189,3 +209,4 @@ The system integrates strictly across four immutable seams in `crates/stunt-core
 | **`G04`** | Synthetic `.FLM`, Cut-Aware `[I4]` & Oracle Parity | Seam 2 (`TrajectoryRecord`), `[I1]`, `[I4]` | `cargo test -p stunt-core trajectory` | $\text{RMSE}_{\text{pos}} \le 0.01\text{ m}$ vs. `oracle_intro_trajectory.json`; $\alpha = 0$ on cuts | **Yes** |
 | **`G05`** | Phase 1 glTF 2.0 Visual Parity | Seam 4 (`VisualParityReport`), `[I5]`, `[I6]` | `uv run pytest -m phase1_oracle` | `VisualParityReport::is_passing() == true` ($\text{Mean SSIM} \ge 0.88$) | Local Corpus |
 | **`G06`** | Phase 2 Native `wgpu` Visual Parity | Seam 4 (`VisualParityReport`), `[I3]`, `[I5]`, `[I6]` | `cargo test --workspace -- --ignored oracle_parity` | $\text{RMSE}_{\text{pos}} \le 0.01\text{ m}$ and $\text{Mean SSIM} \ge 0.90$ across 600 ticks | Local Corpus |
+| **`G07`** | Captured-vs-rendered parity loop | Seam 2 + Seam 4, `[I6]` | `mise run capture-ref`, then `cargo run -p stunt-cli -- --headless <film.flm> --all <film.all> --frames 1..N --out-dir build/parity/ours`, then `cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry --test build/parity/ours/ctry --output build/parity/report/ctry` | `report.json` carries `mean_ssim`, `min_ssim`, `mean_iou`, `sky_index` for every captured tick | Local Corpus |

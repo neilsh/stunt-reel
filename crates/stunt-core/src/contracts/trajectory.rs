@@ -44,6 +44,10 @@ pub struct ActorTransform {
     pub actor_id: u32,
     /// Reference name of the `.SOD` model bound to this actor (e.g. `"FOKKER"`).
     pub model_name: String,
+    /// Resource ID of the `.SOD` chunk in the paired `.ALL` archive; `0` when the
+    /// slot carries no drawn model.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub shape_id: u16,
     /// 4x4 column-major affine model-to-world transform matrix.
     pub world_matrix: [f32; 16],
     /// Unit quaternion rotation `[x, y, z, w]` converted from direction cosines.
@@ -188,6 +192,7 @@ mod tests {
         let actor = ActorTransform {
             actor_id: 0,
             model_name: "TEST".to_string(),
+            shape_id: 0,
             world_matrix: [0.0; 16],
             rotation_quat: [0.0, 0.0, 0.0, 1.0], // Identity quaternion
             position_meters: [10.0, 20.0, 30.0],
@@ -217,6 +222,7 @@ mod tests {
             actors: vec![ActorTransform {
                 actor_id: 1,
                 model_name: "FOKKER".to_string(),
+                shape_id: 0x0107,
                 world_matrix: [
                     1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 10.0, 20.0, 30.0,
                     1.0,

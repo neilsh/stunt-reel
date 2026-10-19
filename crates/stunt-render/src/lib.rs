@@ -25,6 +25,6 @@ pub use palette::{PALETTE_LUT_HEIGHT, PALETTE_LUT_WIDTH, PaletteLut, build_palet
 pub use parity::{
     ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH, PHASE1_SSIM_THRESHOLD,
     PHASE2_SSIM_THRESHOLD, compute_frame_ssim, compute_luminance, compute_window_ssim,
-    evaluate_visual_parity, rescale_mode13h_frame, rgba_to_luminance,
+    evaluate_visual_parity, rescale_mode13h_frame, rgb_to_luminance, rgba_to_luminance,
 };
 pub use pipeline::{ModelUniform, RenderPipelines};

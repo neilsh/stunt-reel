@@ -126,6 +126,35 @@ pub fn slerp_quat(q1: [f32; 4], mut q2: [f32; 4], t: f32) -> [f32; 4] {
     quat_normalize(res)
 }
 
+/// Rotates a 3D vector by unit quaternion `q` (`[x, y, z, w]`) as an active rotation.
+///
+/// Uses the quaternion sandwich `v + 2w(q_xyz × v) + 2(q_xyz × (q_xyz × v))`, cheaper
+/// than materializing a rotation matrix when only one direction vector is needed.
+#[must_use]
+pub fn rotate_quat(q: [f32; 4], v: [f32; 3]) -> [f32; 3] {
+    let u = [q[0], q[1], q[2]];
+    let w = q[3];
+
+    // t = u × v
+    let t = [
+        u[1] * v[2] - u[2] * v[1],
+        u[2] * v[0] - u[0] * v[2],
+        u[0] * v[1] - u[1] * v[0],
+    ];
+    // t2 = u × t
+    let t2 = [
+        u[1] * t[2] - u[2] * t[1],
+        u[2] * t[0] - u[0] * t[2],
+        u[0] * t[1] - u[1] * t[0],
+    ];
+
+    [
+        v[0] + 2.0 * (w * t[0] + t2[0]),
+        v[1] + 2.0 * (w * t[1] + t2[1]),
+        v[2] + 2.0 * (w * t[2] + t2[2]),
+    ]
+}
+
 /// Linear interpolation between two 3D vectors.
 #[inline]
 pub fn lerp_vec3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
@@ -219,6 +248,11 @@ pub fn interpolate_trajectory(
             let mut actor = ActorTransform {
                 actor_id: act_a.actor_id,
                 model_name: act_a.model_name.clone(),
+                shape_id: if eff_alpha < 0.5 {
+                    act_a.shape_id
+                } else {
+                    act_b.shape_id
+                },
                 world_matrix: [0.0; 16],
                 rotation_quat: rot,
                 position_meters: pos,

@@ -45,6 +45,9 @@ __all__ = [
 
 DEFAULT_ORACLE_PATH = Path("corpus/oracle/intro_trajectory.json")
 
+#: Distance in meters from the view slot to its look-at point (docs/SPEC.md § 3.7).
+LOOKAHEAD_METERS = 1000.0
+
 
 def generate_intro_trajectory(num_ticks: int = 600) -> list[TrajectoryRecord]:
     """Generate authentic 600-tick kinematics for Stunt Island INTRO sequence.
@@ -125,12 +128,14 @@ def generate_intro_trajectory(num_ticks: int = 600) -> list[TrajectoryRecord]:
         cut_flag = False
         if t == 0:
             eye = [0.0, 10.0, 50.0]
-            target = [0.0, 0.0, 0.0]
+            # View slot drives the look direction: zero BAM rotation looks down -Z, so
+            # the target sits LOOKAHEAD_METERS along it (docs/SPEC.md § 3.7).
+            target = [eye[0], eye[1], eye[2] + LOOKAHEAD_METERS]
             fov = 45.0
             roll = 0.0
         elif t == 1:
             eye = [0.0, 10.0, 49.5]
-            target = [0.0, 0.0, 0.0]
+            target = [eye[0], eye[1], eye[2] + LOOKAHEAD_METERS]
             fov = 45.0
             roll = 0.0
         elif t < 200:

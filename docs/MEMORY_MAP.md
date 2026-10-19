@@ -37,7 +37,7 @@
 ### # [MEM-VSYNC-03DA]
 * **I/O Port**: `0x03DA` (VGA Input Status Register 1)
 * **Routine**: Vertical retrace polling loop (`in al, dx; test al, 08h`).
-* **Protocol**: A one-time breakpoint `BPIO 03DA` isolates the polling loop address; execution breakpoint `BP <CS:IP>` is then set immediately *after* the vertical blank loop completes (`0D51:0C5E`) to capture fully rendered frame state without mid-frame tearing.
+* **Protocol**: A one-time breakpoint `BPIO 03DA` isolates the polling loop address; execution breakpoint `BP <CS:IP>` is then set immediately *after* the vertical blank loop completes (`0D51:0C5E`) to capture fully rendered frame state without mid-frame tearing. Verified with the fixed address: `BP 0D51:0C5E` plus `RUN` returns at the loop boundary once per rendered frame during `CTRY.FLM` playback, so one `MEMDUMPBIN A000:0000` per hit is a whole frame. `VRT` cannot substitute — stepping a Mode 13h guest exits the emulator with `0xC0000409`; see [`research/playone-exe/capture.md`](../research/playone-exe/capture.md).
 * **Evidentiary Tier**: `[Established]`.
 
 ### # [MEM-FLM-TICK]

@@ -109,7 +109,8 @@ impl HeadlessRenderer {
             &wgpu::DeviceDescriptor {
                 label: Some("stunt_headless_device"),
                 required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::downlevel_defaults(),
+                required_limits:
+                    wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()),
                 memory_hints: wgpu::MemoryHints::Performance,
             },
             None,

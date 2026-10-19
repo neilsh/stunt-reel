@@ -3,6 +3,8 @@
 Supports:
 - Transport Protocol: Abstract interface for commands and queries.
 - LiveSocketTransport: Line-framed socket client connecting to dosbox-x-mcp-server (TCP 58991).
+- ListenTransport: Socket listener accepting DOSBox-X's outbound debugger connection,
+  which is how ``[dosbox] mcp_server`` actually connects.
 - MockTransport: In-memory virtual 8086 machine for 100% offline CI verification [I7].
 """
 
@@ -12,13 +14,17 @@ import contextlib
 import math
 import socket
 import struct
+import tempfile
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 __all__ = [
+    "ListenTransport",
     "LiveSocketTransport",
     "MockTransport",
     "Transport",
+    "format_hex_dump",
 ]
 
 
@@ -145,6 +151,169 @@ class LiveSocketTransport:
         except Exception:
             self._buffer = ""
             raise
+
+
+def format_hex_dump(seg: int, off: int, data: bytes) -> list[str]:
+    """Render a memory slice as DOSBox-X ``D`` hex-dump lines (16 bytes per row)."""
+    lines: list[str] = []
+    for offset_step in range(0, len(data), 16):
+        chunk = data[offset_step : offset_step + 16]
+        curr_off = (off + offset_step) & 0xFFFF
+        hex_tokens = [f"{b:02X}" for b in chunk]
+        if len(hex_tokens) > 8:
+            hex_str = " ".join(hex_tokens[:8]) + " - " + " ".join(hex_tokens[8:])
+        else:
+            hex_str = " ".join(hex_tokens)
+        ascii_chars = "".join(chr(b) if 32 <= b <= 126 else "." for b in chunk)
+        lines.append(f"{seg:04X}:{curr_off:04X}  {hex_str:<49}  {ascii_chars}")
+    return lines
+
+
+class ListenTransport:
+    """Debugger transport that listens for DOSBox-X's outbound debugger connection.
+
+    DOSBox-X configured with ``[dosbox] mcp_server = <port>`` is a TCP *client*: it
+    dials the controller that listens on that port. This transport owns the listener,
+    accepts the single emulator connection, and speaks the ``REQ <id> <command>`` /
+    ``BEGIN <id> OK`` / ``END <id>`` framing.
+
+    Two live-debugger quirks are normalized here so [`TacClient`] reads the same as
+    against [`MockTransport`]:
+    - Only ``PING`` and ``BREAK`` are bare verbs; every debugger command must be
+      sent as ``EXEC <command>``.
+    - The live ``D <seg>:<off> <len>`` command only moves the debugger's data view,
+      so reads are translated into ``MEMDUMPBIN`` against a host file that this
+      transport reads back.
+    """
+
+    BARE_VERBS: frozenset[str] = frozenset({"PING", "BREAK"})
+
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 58991,
+        timeout: float = 120.0,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.timeout = timeout
+        self._listener: socket.socket | None = None
+        self._socket: socket.socket | None = None
+        self._buffer: str = ""
+        self._req_id: int = 1
+        self._read_path: Path = Path(tempfile.gettempdir()) / "stunt_tac_read.bin"
+
+    def listen(self) -> None:
+        """Bind the control port and wait for one emulator connection."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((self.host, self.port))
+        sock.listen(1)
+        self._listener = sock
+
+    def accept(self, timeout: float | None = None) -> None:
+        """Block until DOSBox-X connects, or raise ``TimeoutError``."""
+        if self._listener is None:
+            raise RuntimeError("listen() must be called before accept()")
+        self._listener.settimeout(self.timeout if timeout is None else timeout)
+        conn, _addr = self._listener.accept()
+        conn.settimeout(self.timeout)
+        self._socket = conn
+        self._buffer = ""
+
+    def is_connected(self) -> bool:
+        """Return True once the emulator connection has been accepted and is open."""
+        return self._socket is not None
+
+    def close(self) -> None:
+        """Close the emulator connection and the control port listener."""
+        if self._socket is not None:
+            with contextlib.suppress(OSError):
+                self._socket.shutdown(socket.SHUT_RDWR)
+            with contextlib.suppress(OSError):
+                self._socket.close()
+            self._socket = None
+        if self._listener is not None:
+            with contextlib.suppress(OSError):
+                self._listener.close()
+            self._listener = None
+        self._buffer = ""
+
+    def _read_line(self) -> str:
+        """Read a single newline-delimited line from the emulator socket."""
+        if self._socket is None:
+            raise ConnectionError("DOSBox-X has not connected yet")
+
+        while "\n" not in self._buffer:
+            chunk = self._socket.recv(65536)
+            if not chunk:
+                raise ConnectionResetError("DOSBox-X closed the debugger socket")
+            self._buffer += chunk.decode("utf-8", errors="replace")
+
+        line, self._buffer = self._buffer.split("\n", 1)
+        return line.strip("\r")
+
+    def _request(self, wire: str) -> list[str]:
+        """Send one framed request and return its response body lines."""
+        if self._socket is None:
+            raise ConnectionError("DOSBox-X has not connected yet")
+
+        req_id = self._req_id
+        self._req_id += 1
+        self._socket.sendall(f"REQ {req_id} {wire}\n".encode())
+
+        begin_line = self._read_line()
+        tokens = begin_line.strip().split()
+        if len(tokens) < 3 or tokens[0] != "BEGIN" or tokens[1] != str(req_id):
+            raise RuntimeError(
+                f"Unexpected response header: {begin_line!r}, expected BEGIN {req_id} <status>"
+            )
+        is_ok = tokens[2] == "OK"
+
+        lines: list[str] = []
+        end_marker = f"END {req_id}"
+        while True:
+            line = self._read_line()
+            if line == end_marker:
+                break
+            lines.append(line)
+
+        if not is_ok:
+            error_msg = "\n".join(lines) if lines else "Unknown debugger error"
+            raise RuntimeError(f"DOSBox-X command error for request {req_id} ({wire}): {error_msg}")
+        return lines
+
+    def _dump_memory(self, args: Sequence[str]) -> list[str]:
+        """Translate ``D <seg>:<off> <len>`` into a ``MEMDUMPBIN`` round trip."""
+        if not args:
+            raise ValueError("D requires a <segment>:<offset> target")
+        target = args[0]
+        length = int(args[1]) if len(args) > 1 else 16
+        if length <= 0:
+            return []
+
+        body = self._request(f"EXEC MEMDUMPBIN {target} {length:04X} {self._read_path.as_posix()}")
+        try:
+            data = self._read_path.read_bytes()
+        except OSError as exc:
+            raise RuntimeError(f"MEMDUMPBIN {target} produced no file: {body}") from exc
+        if len(data) != length:
+            raise RuntimeError(
+                f"MEMDUMPBIN {target} wrote {len(data)} bytes, expected {length}: {body}"
+            )
+
+        seg_s, off_s = target.split(":", 1)
+        return format_hex_dump(int(seg_s, 16), int(off_s, 16), data)
+
+    def send_command(self, cmd: str) -> list[str]:
+        """Execute one debugger command against the live emulator."""
+        tokens = cmd.strip().split()
+        if not tokens:
+            return []
+        if tokens[0].upper() == "D":
+            return self._dump_memory(tokens[1:])
+        wire = cmd.strip() if tokens[0].upper() in self.BARE_VERBS else f"EXEC {cmd.strip()}"
+        return self._request(wire)
 
 
 class MockTransport:
@@ -382,22 +551,5 @@ class MockTransport:
 
     def _format_dump(self, seg: int, off: int, length: int) -> list[str]:
         """Format memory slice matching standard DOSBox-X D command hex dump."""
-        lines: list[str] = []
         start_addr = self.linear_address(seg, off)
-
-        for offset_step in range(0, length, 16):
-            chunk_len = min(16, length - offset_step)
-            curr_addr = start_addr + offset_step
-            curr_off = (off + offset_step) & 0xFFFF
-            row_bytes = self.memory[curr_addr : curr_addr + chunk_len]
-
-            hex_tokens = [f"{b:02X}" for b in row_bytes]
-            if len(hex_tokens) > 8:
-                hex_str = " ".join(hex_tokens[:8]) + " - " + " ".join(hex_tokens[8:])
-            else:
-                hex_str = " ".join(hex_tokens)
-
-            ascii_chars = "".join(chr(b) if 32 <= b <= 126 else "." for b in row_bytes)
-            lines.append(f"{seg:04X}:{curr_off:04X}  {hex_str:<49}  {ascii_chars}")
-
-        return lines
+        return format_hex_dump(seg, off, bytes(self.memory[start_addr : start_addr + length]))

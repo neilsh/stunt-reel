@@ -272,6 +272,7 @@ fn test_challenge_sub_tick_interpolation_across_alpha_lattice() {
         actors: vec![ActorTransform {
             actor_id: 1,
             model_name: "FOKKER".to_string(),
+            shape_id: 0,
             world_matrix: [0.0; 16],
             rotation_quat: [0.0, 0.0, 0.0, 1.0],
             position_meters: [0.0, 10.0, 0.0],
@@ -298,6 +299,7 @@ fn test_challenge_sub_tick_interpolation_across_alpha_lattice() {
         actors: vec![ActorTransform {
             actor_id: 1,
             model_name: "FOKKER".to_string(),
+            shape_id: 0,
             world_matrix: [0.0; 16],
             rotation_quat: [0.0, 0.0, 0.0, 1.0],
             position_meters: [4.0, 12.0, 8.0],
@@ -430,6 +432,7 @@ fn test_challenge_sub_tick_out_of_bounds_and_clamping() {
         actors: vec![ActorTransform {
             actor_id: 1,
             model_name: "ACTOR".to_string(),
+            shape_id: 0,
             world_matrix: [0.0; 16],
             rotation_quat: [0.0, 0.0, 0.0, 1.0],
             position_meters: [0.0, 0.0, 0.0],
@@ -451,6 +454,7 @@ fn test_challenge_sub_tick_out_of_bounds_and_clamping() {
         actors: vec![ActorTransform {
             actor_id: 1,
             model_name: "ACTOR".to_string(),
+            shape_id: 0,
             world_matrix: [0.0; 16],
             rotation_quat: [0.0, 0.0, 0.0, 1.0],
             position_meters: [10.0, 0.0, 0.0],
@@ -506,6 +510,7 @@ fn test_challenge_camera_cut_suppression_holds_prior_pose_adversarial() {
         actors: vec![ActorTransform {
             actor_id: 1,
             model_name: "FOKKER".to_string(),
+            shape_id: 0,
             world_matrix: [0.0; 16],
             rotation_quat: [0.0, 0.0, 0.0, 1.0],
             position_meters: [10.0, 5.0, -50.0],
@@ -528,6 +533,7 @@ fn test_challenge_camera_cut_suppression_holds_prior_pose_adversarial() {
         actors: vec![ActorTransform {
             actor_id: 1,
             model_name: "FOKKER".to_string(),
+            shape_id: 0,
             world_matrix: [0.0; 16],
             rotation_quat: [0.0, 0.0, 0.0, 1.0],
             position_meters: [10.0, 5.0, -48.0],
@@ -725,6 +731,7 @@ fn test_challenge_actor_world_matrix_orthonormality_and_determinant() {
         let mut actor = ActorTransform {
             actor_id: 1,
             model_name: "TEST".to_string(),
+            shape_id: 0,
             world_matrix: [0.0; 16],
             rotation_quat: quat,
             position_meters: pos,
@@ -834,6 +841,7 @@ fn test_challenge_actor_lifecycle_spawn_despawn_in_sub_tick() {
         actors: vec![ActorTransform {
             actor_id: 1,
             model_name: "ACTOR_1".to_string(),
+            shape_id: 0,
             world_matrix: [0.0; 16],
             rotation_quat: [0.0, 0.0, 0.0, 1.0],
             position_meters: [0.0, 0.0, 0.0],
@@ -850,6 +858,7 @@ fn test_challenge_actor_lifecycle_spawn_despawn_in_sub_tick() {
         actors: vec![ActorTransform {
             actor_id: 2,
             model_name: "ACTOR_2".to_string(),
+            shape_id: 0,
             world_matrix: [0.0; 16],
             rotation_quat: [0.0, 0.0, 0.0, 1.0],
             position_meters: [10.0, 10.0, 10.0],

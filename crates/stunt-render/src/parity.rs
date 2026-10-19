@@ -47,6 +47,19 @@ pub fn rgba_to_luminance(rgba: &[u8]) -> Vec<f32> {
     lum
 }
 
+/// Converts a contiguous RGB8 buffer to a flat luminance float slice.
+pub fn rgb_to_luminance(rgb: &[u8]) -> Vec<f32> {
+    let mut lum = Vec::with_capacity(rgb.len() / 3);
+    for chunk in rgb.as_chunks::<3>().0 {
+        lum.push(compute_luminance(
+            chunk[0] as f32,
+            chunk[1] as f32,
+            chunk[2] as f32,
+        ));
+    }
+    lum
+}
+
 /// Rescales 320x200 Mode 13h raster to 320x240 physical 4:3 CRT aspect (1.2x stretch) via nearest-neighbor.
 pub fn rescale_mode13h_frame(
     src: &[f32],
