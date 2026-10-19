@@ -18,13 +18,24 @@ Programmatically validates:
 from __future__ import annotations
 
 import argparse
+import importlib
+import io
 import json
 import math
 import re
 import struct
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+from stunt_reel.kaitai import (
+    REQUIRED_KSC_VERSION,
+    compile_schemas,
+    compiler_version,
+    load_generated_module,
+)
 
 # -----------------------------------------------------------------------------
 # Catalog Specification Constants
@@ -110,6 +121,8 @@ KEY_COMMUNITY_AUTHORS: list[str] = [
     "Neil Halelamien",
     "Dave Palmowski",
 ]
+
+ALLOWED_TEXT_SUFFIXES: frozenset[str] = frozenset({".md", ".ksy"})
 
 LINK_SCAN_FILES: list[str] = [
     "docs/ARCHITECTURE.md",
@@ -390,9 +403,9 @@ def verify_cleanroom_isolation(repo_root: Path) -> VerificationResult:
 
         rel_item = item.relative_to(repo_root)
 
-        # Invariant [I7]: Must only be Markdown text files
-        if item.suffix != ".md":
-            errors.append(f"Prohibited non-markdown file in research/formats/: {rel_item}")
+        # Invariant [I7]: Markdown prose and Kaitai YAML text only; no binaries
+        if item.suffix not in ALLOWED_TEXT_SUFFIXES:
+            errors.append(f"Prohibited non-text file in research/formats/: {rel_item}")
             continue
 
         # Check UTF-8 decoding
@@ -410,7 +423,7 @@ def verify_cleanroom_isolation(repo_root: Path) -> VerificationResult:
             )
             continue
 
-        details.append(f"Clean UTF-8 markdown ({len(raw_bytes):,} bytes): {rel_item}")
+        details.append(f"Clean UTF-8 text ({len(raw_bytes):,} bytes): {rel_item}")
 
     return VerificationResult(
         category="Cleanroom Isolation",
@@ -509,6 +522,81 @@ def verify_link_integrity(repo_root: Path) -> VerificationResult:
 # -----------------------------------------------------------------------------
 
 
+def _validate_res_with_kaitai(repo_root: Path, res_bytes: bytes) -> tuple[list[str], list[str]]:
+    """Validate the synthetic fixture with the parser generated from research/formats/res.ksy."""
+    errors: list[str] = []
+    details: list[str] = []
+
+    version = compiler_version()
+    if version is None:
+        details.append(
+            "Kaitai Struct Compiler not found on PATH; res.ksy fixture cross-check skipped"
+        )
+        return errors, details
+    if REQUIRED_KSC_VERSION not in version:
+        errors.append(
+            "Kaitai Struct Compiler version mismatch: expected "
+            f"{REQUIRED_KSC_VERSION}, got '{version}'"
+        )
+        return errors, details
+
+    schema_path = repo_root / "research" / "formats" / "res.ksy"
+    try:
+        with tempfile.TemporaryDirectory(prefix="stunt-kaitai-") as tmp:
+            compile_schemas([schema_path], tmp)
+            res_module = load_generated_module(Path(tmp) / "res.py", "stunt_kaitai_res")
+            res_cls: Any = res_module.Res
+
+            kaitaistruct_mod: Any = importlib.import_module("kaitaistruct")
+            kaitai_stream_cls: Any = kaitaistruct_mod.KaitaiStream
+
+            parsed = res_cls(kaitai_stream_cls(io.BytesIO(res_bytes)))
+
+            if parsed.magic != b"RS":
+                errors.append(
+                    f"Kaitai res.ksy magic mismatch: expected b'RS', got {bytes(parsed.magic)!r}"
+                )
+            if parsed.header_word != 1:
+                errors.append(
+                    f"Kaitai res.ksy header_word mismatch: expected 1, got {parsed.header_word}"
+                )
+            if parsed.ofs_data != 20:
+                errors.append(f"Kaitai res.ksy ofs[0] mismatch: expected 20, got {parsed.ofs_data}")
+            if list(parsed.offsets) != [20, 40, 56, 72]:
+                errors.append(
+                    "Kaitai res.ksy offset table mismatch: expected [20, 40, 56, 72], "
+                    f"got {list(parsed.offsets)}"
+                )
+            if parsed.name_region != b"PLANE.SOD\x00PROP.SOD\x00\x00":
+                errors.append(
+                    "Kaitai res.ksy name_region mismatch: expected "
+                    f"b'PLANE.SOD\\x00PROP.SOD\\x00\\x00', got {bytes(parsed.name_region)!r}"
+                )
+            if parsed.payload_0 != res_bytes[40:56]:
+                errors.append("Kaitai res.ksy payload_0 does not match fixture bytes 40..56")
+            if parsed.payload_1 != res_bytes[56:72]:
+                errors.append("Kaitai res.ksy payload_1 does not match fixture bytes 56..72")
+
+            bad_magic = bytearray(res_bytes)
+            bad_magic[0] = 0x58
+            bad_align = bytearray(res_bytes)
+            struct.pack_into("<I", bad_align, 4, 21)
+            for label, mutated in (("bad magic", bad_magic), ("unaligned ofs[0]", bad_align)):
+                try:
+                    res_cls(kaitai_stream_cls(io.BytesIO(bytes(mutated))))
+                except Exception:
+                    continue
+                errors.append(f"Kaitai res.ksy accepted malformed fixture copy: {label}")
+
+            details.append(
+                f"synthetic_minimal.res parsed by Kaitai res.ksy "
+                f"({len(res_bytes)} bytes, offsets {list(parsed.offsets)})"
+            )
+    except Exception as exc:
+        errors.append(f"Kaitai RES fixture validation failed: {exc}")
+    return errors, details
+
+
 def verify_synthetic_fixtures_consistency(repo_root: Path) -> VerificationResult:
     """Validate documented offsets, signatures, and opcodes against synthetic fixtures in tests/fixtures/."""
     errors: list[str] = []
@@ -525,33 +613,6 @@ def verify_synthetic_fixtures_consistency(repo_root: Path) -> VerificationResult
             errors.append(
                 f"synthetic_minimal.res size mismatch: expected 72 bytes, got {len(res_bytes)}"
             )
-        if res_bytes[:2] != b"RS":
-            errors.append(
-                f"synthetic_minimal.res magic signature mismatch: expected b'RS', got {res_bytes[:2]!r}"
-            )
-
-        ofs_0 = struct.unpack_from("<I", res_bytes, 4)[0]
-        if ofs_0 != 20:
-            errors.append(f"synthetic_minimal.res ofs[0] mismatch: expected 20, got {ofs_0}")
-
-        num_offsets = (ofs_0 // 4) - 1
-        if num_offsets != 4:
-            errors.append(
-                f"synthetic_minimal.res offset count calculation error: expected 4, got {num_offsets}"
-            )
-
-        expected_offsets = [20, 40, 56, 72]
-        actual_offsets = [
-            struct.unpack_from("<I", res_bytes, 4 + i * 4)[0] for i in range(num_offsets)
-        ]
-        if actual_offsets != expected_offsets:
-            errors.append(
-                f"synthetic_minimal.res offset array mismatch: expected {expected_offsets}, got {actual_offsets}"
-            )
-
-        name_table_slice = res_bytes[20:40]
-        if b"PLANE.SOD\x00PROP.SOD\x00\x00" not in name_table_slice:
-            errors.append("synthetic_minimal.res name table string content mismatch")
 
         # Verify documentation in research/formats/res.md
         res_doc = (repo_root / "research" / "formats" / "res.md").read_text(encoding="utf-8")
@@ -560,9 +621,9 @@ def verify_synthetic_fixtures_consistency(repo_root: Path) -> VerificationResult
         if "synthetic_minimal.res" not in res_doc:
             errors.append("res.md does not cite tests/fixtures/synthetic_minimal.res in Section 7")
 
-        details.append(
-            f"synthetic_minimal.res validated against res.md ({len(res_bytes)} bytes, 4 offsets)"
-        )
+        res_errors, res_details = _validate_res_with_kaitai(repo_root, res_bytes)
+        errors.extend(res_errors)
+        details.extend(res_details)
 
     # 2. synthetic_minimal.flm
     flm_path = fixtures_dir / "synthetic_minimal.flm"

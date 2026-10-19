@@ -8,7 +8,7 @@ This directory contains committed, cleanroom-synthesized minimal fixtures used b
 
 ### 1. `synthetic_minimal.res` (72 bytes)
 A synthetically constructed resource container conforming to `[fmt res]` and the binary offset layout discovered in `RIPRES.C`:
-- **Header**: `RS` magic signature (2 bytes: `0x52, 0x53`) followed by a 16-bit version word (`0x0001`).
+- **Header**: `RS` magic signature (2 bytes: `0x52, 0x53`) followed by a raw 16-bit header word (`0x0001`).
 - **Offset Table**:
   - `ofs[0] = 20` (`0x14`): Offset to the name table.
   - `ofs[1] = 40` (`0x28`): Offset to `PLANE.SOD` payload (16 bytes).

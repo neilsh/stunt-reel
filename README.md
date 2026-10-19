@@ -11,6 +11,8 @@ Tooling, automation, and analysis environment for *Stunt Island* (1992) film ree
 - **[uv](https://docs.astral.sh/uv/)** & **Python 3.11+** (managed via `mise` or standalone)
 - **[DOSBox-X](https://dosbox-x.com/) `2026.10.01`** (managed automatically via `mise`)
 - **[`dosbox-x-mcp-server`](https://github.com/caiiiycuk/dosbox-x-mcp-server)** (managed automatically via `mise`)
+- **Java 21 (Temurin)** (managed automatically via `mise`)
+- **[Kaitai Struct Compiler](https://kaitai.io/) `0.11`** (managed automatically via `mise`)
 
 ---
 
@@ -29,12 +31,17 @@ This automatically downloads and configures:
 - **Python 3.11** & **uv**
 - **DOSBox-X `2026.10.01`** (64-bit portable build)
 - **`dosbox-x-mcp-server` `v0.1.2`** (Windows x86_64 binary)
+- **Java 21 (Temurin)**
+- **Kaitai Struct Compiler `0.11`**
 
 Initialize the Python virtual environment and developer tools:
 
 ```powershell
 uv sync --all-groups
 ```
+
+This also installs the pinned `kaitaistruct==0.11` runtime used by the catalog
+schema checks that execute [`research/formats/res.ksy`](research/formats/res.ksy).
 
 ### 2. Antigravity MCP Configuration
 
@@ -68,7 +75,7 @@ If not using `mise`:
 - `crates/` — Rust workspace crates (`stunt-core`, `stunt-render`).
 - `python/` — Python tooling and automation modules (`stunt_reel`).
 - `tests/` — Test suites for Rust and Python components.
-- `research/` — Reverse engineering documentation and binary analysis lab notebook (e.g., `research/playone-exe/`).
+- `research/` — Reverse engineering documentation and binary analysis lab notebook (e.g., `research/playone-exe/`). `research/formats/` keeps each format document next to its executable Kaitai layout (`res.md` + `res.ksy`, `all.ksy`, `auxiliary/spr.ksy`).
 - `corpus/` — Reference data, demo files, and film vaults (e.g., `corpus/stisldem/VAULT/`).
 - `target_bin/` — Full target game binaries, sound drivers, and resource files.
 - `capture/` — Output captures, logs, and traces.
@@ -96,6 +103,9 @@ Or individual tasks via `mise`:
 | `mise run fmt-check` | Check code formatting | `cargo fmt --check` & `uv run ruff format --check` |
 | `mise run typecheck` | Strict Python type checking, including unreachable-code and extra checks | `uv run mypy`
 | `mise run test` | Run Rust & Python test suites | `cargo test` & `uv run pytest` |
+| `mise run verify-corpus` | Compile the `.ksy` layouts and check them against local `corpus/` files | Kaitai Struct Compiler (`mise`) & `kaitaistruct` |
+
+`verify-corpus` is a local-only sweep: `corpus/` is gitignored and absent in CI, so it is not part of `mise run check`. Pass `-- --strict` to fail on corpus anomalies instead of only reporting them.
 
 You can also run tool commands directly:
 

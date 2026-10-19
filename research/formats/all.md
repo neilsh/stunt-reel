@@ -21,9 +21,11 @@ A `.ALL` archive bundles 3D models (`.SOD`), choreography timeline scripts (`.FL
 
 ## 2. Header & Memory Layout
 
-A `.ALL` archive employs a flat directory header consisting of an item count followed by two parallel contiguous lookup arrays: an array of 16-bit Resource Identifiers (`ids`), followed immediately by an array of 32-bit file byte offsets (`offsets`).
+A `.ALL` archive employs a flat directory header consisting of an item count followed by two parallel contiguous lookup arrays: an array of 16-bit Resource Identifiers (`ids`), followed immediately by an array of 32-bit file byte offsets (`offsets`). The offset table carries one more entry than there are chunks: the final entry is a sentinel equal to the file size in intact archives.
 
 ### 2.1 On-Disk Directory Layout (`# [FMT-ALL-CHUNKS]`)
+
+The executable layout for this section is [`all.ksy`](all.ksy).
 
 ```
 +---------------------------------------------------------------------------------+
@@ -33,32 +35,33 @@ A `.ALL` archive employs a flat directory header consisting of an item count fol
 +-------------------+-------------------+-----------------------------------------+
 | 0x0000 - 0x0001   | uint16 (LE)       | num: Number of resource chunks (0..65535)|
 | 0x0002 .. H_id    | uint16[num] (LE)  | ids: Contiguous array of Resource IDs   |
-| H_id .. H_total   | uint32[num] (LE)  | offsets: Contiguous array of Byte Offsets|
+| H_id .. H_total   | uint32[num+1] (LE)| offsets: Chunk offsets + EOF sentinel    |
 | offsets[0] .. EOF | uint8[]           | Resource Payloads 0 .. num-1            |
 +-------------------+-------------------+-----------------------------------------+
 ```
 
 #### Header Size Calculation
 The total header size is directly computed from the number of items:
-$$\text{HeaderSize} = 2 + (2 \times \text{num}) + (4 \times \text{num}) = 2 + 6 \times \text{num}\text{ bytes}$$
+$$\text{HeaderSize} = 2 + (2 \times \text{num}) + (4 \times (\text{num} + 1)) = 6 \times \text{num} + 6\text{ bytes}$$
 Where:
 - $H_{\text{id}} = 2 + 2 \times \text{num}$: Starting byte offset of the 32-bit offset array.
-- $H_{\text{total}} = 2 + 6 \times \text{num}$: Byte offset marking the end of the header directory.
+- $H_{\text{total}} = 6 \times \text{num} + 6$: Byte offset marking the end of the header directory.
 - `ids[i]` is stored at byte offset $2 + (i \times 2)$.
-- `offsets[i]` is stored at byte offset $H_{\text{id}} + (i \times 4) = 2 + (2 \times \text{num}) + (i \times 4)$.
+- `offsets[i]` is stored at byte offset $H_{\text{id}} + (i \times 4)$, for $i \in [0, \text{num}]$.
+
+Corpus verification (`[Bounded Observation]`): across the 289 `.ALL` files in `corpus/si_archive/`, $\text{offsets}[0]$ equals $H_{\text{total}}$ in every file, and the sentinel equals the file size in 288 of 289. `Films/MultiFLM/UFOAct2/BRIEFING.ALL` points past EOF, consistent with a truncated archive rather than a different layout.
 
 #### Chunk Bounds & Slicing
 Payload data immediately follows the directory header in contiguous, non-overlapping slices:
-- For chunk $i \in [0, \text{num}-2]$:
+- For chunk $i \in [0, \text{num}-1]$:
   $$\text{Payload } i = \text{data}[\text{offsets}[i] \dots \text{offsets}[i+1]]$$
-- For the final chunk $i = \text{num}-1$:
-  $$\text{Payload } (\text{num}-1) = \text{data}[\text{offsets}[\text{num}-1] \dots \text{file\_len}]$$
-- Note that unlike `.RES`, `.ALL` does not include an explicit EOF sentinel offset in the table; the final payload extends to the end of the physical file.
+- The final chunk ends at the sentinel $\text{offsets}[\text{num}]$, which equals $\text{file\_len}$ in intact archives.
+- The on-disk table does include an EOF sentinel entry, mirroring `.RES`. `parse_all` reads the first `num` offsets and extends the final payload to EOF, which is equivalent whenever the sentinel matches the file size.
 
 #### Directory Integrity Guardrails
 1. **Header Boundary**: $\text{offsets}[0] \ge \text{HeaderSize}$. If $\text{offsets}[0] < \text{HeaderSize}$, the offset points inside the header table, raising `VfsError::InvalidOffsetTable`.
 2. **Buffer Bounds**: $\text{offsets}[i] \le \text{file\_len}$ for all $i$. An offset exceeding file length raises `VfsError::UnexpectedEof`.
-3. **Monotonicity**: $\text{offsets}[i+1] \ge \text{offsets}[i]$ for all $i \in [0, \text{num}-2]$. Inverted offsets raise `VfsError::InvalidOffsetTable`.
+3. **Monotonicity**: $\text{offsets}[i+1] \ge \text{offsets}[i]$ for all $i \in [0, \text{num}-1]$, including the sentinel. Inverted offsets raise `VfsError::InvalidOffsetTable`.
 
 ---
 

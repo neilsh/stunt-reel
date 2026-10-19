@@ -17,7 +17,7 @@ The `.SPR` format represents uncompressed 8-bit indexed raster billboard images 
 
 ## 2. Header & Memory Layout
 
-A `.SPR` file has an extremely compact binary structure consisting of a 4-byte resolution header, an uncompressed raster pixel array, and a 2-byte end-of-file trailer word.
+A `.SPR` file has an extremely compact binary structure consisting of a 4-byte resolution header, an uncompressed raster pixel array, and a 2-byte end-of-file trailer word. The executable layout is [`spr.ksy`](spr.ksy).
 
 ### 2.1 File Structure Diagram
 

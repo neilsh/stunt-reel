@@ -22,31 +22,9 @@ Cross-corpus analysis of all 20 authentic retail `.RES` archives in `corpus/si_a
 
 ### 2.1 On-Disk Physical Header & Offset Table Layout (`# [FMT-RES-HEADER]`)
 
-```
-+---------------------------------------------------------------------------------+
-|                        .RES FILE ON-DISK BINARY LAYOUT                          |
-+-------------------+-------------------+-----------------------------------------+
-| Byte Range        | Type              | Field Name / Semantic Description       |
-+-------------------+-------------------+-----------------------------------------+
-| 0x0000 - 0x0001   | ASCII char[2]     | Magic signature: "RS" (0x52, 0x53)      |
-| 0x0002            | uint8             | res_index: Resource Category ID (0..255)|
-| 0x0003            | uint8             | item_count: Declared entry count        |
-| 0x0004 - 0x0007   | uint32 (LE)       | ofs[0]: Offset to Name Table / End ofs  |
-| 0x0008 - ofs[0]-1 | uint32[N-1] (LE)  | ofs[1] .. ofs[N-1] Contiguous Offsets   |
-| ofs[0] - ofs[1]-1 | char[] (ASCIIZ)   | Name Table (Props) OR Payload 0 (Scene) |
-| ofs[1] - EOF      | uint8[]           | Resource Payloads 1 .. N_items          |
-+-------------------+-------------------+-----------------------------------------+
-```
+The executable byte layout for this section is [`res.ksy`](res.ksy). It declares the `b"RS"` (`0x52, 0x53`) magic, the raw 16-bit header word at bytes `0x0002`–`0x0003`, the little-endian `ofs[0]` at `0x0004`, and the remaining offset table entries. The schema is the single source for field widths, offsets, byte order, and the offset-count calculation; the profile, evidence, and parser-policy discussion remains below.
 
-#### Offset Count Calculation
-The total number of 32-bit file offsets contained in the table is determined by the value of $\text{ofs}[0]$:
-$$N = \left(\frac{\text{ofs}[0]}{4}\right) - 1$$
-Where:
-- $\text{ofs}[0]$: Byte offset of the first data block (which also marks the exact byte boundary where the offset array ends).
-- $N$: The number of elements in the `offsets` array ($\text{offsets}[0] \dots \text{offsets}[N-1]$).
-- $\text{offsets}[0]$ is stored at byte offset `0x0004` on disk.
-- $\text{offsets}[i]$ is stored at byte offset $4 + (i \times 4)$.
-- For valid files, $\text{ofs}[0] \ge 8$ and must be 4-byte aligned ($\text{ofs}[0] \pmod 4 = 0$).
+Bytes `0x0002`–`0x0003` are read by `parse_res` as a single little-endian 16-bit word and ignored. Historical sources also describe the same bytes as `res_index: u8` followed by `item_count: u8`. The Kaitai schema keeps the field as raw `header_word`; neither interpretation is treated as settled by the schema.
 
 #### Payload Slicing Rules
 1. In archives with an ASCII Name Table (Prop archives):
@@ -65,8 +43,7 @@ Where:
 
 A long-standing debate in the Stunt Island developer community concerned whether `.RES` containers feature an 8-byte or a 16-byte header:
 
-- **On-Disk Reality (`[Established]`):**
-  Every physical file on the retail floppy and CD-ROM distributions begins with the 8-byte structure (`b"RS"`, `res_index: u8`, `item_count: u8`, `ofs[0]: u32`). There is no 16-byte file header on disk.
+- **On-Disk Reality (`[Established]`):** Every physical file on the retail floppy and CD-ROM distributions begins with the 8-byte structure (`b"RS"`, a raw 16-bit header word at bytes 2–3, `ofs[0]: u32` at byte 4). Historical sources describe the header word as `res_index: u8` followed by `item_count: u8`; `parse_res` reads one ignored 16-bit word. There is no 16-byte file header on disk.
 - **In-Memory DOS Descriptor (`[Hypothesis]` / `[Supported Inference]`):**
   In MS-DOS 16-bit real-mode conventional memory (`DGROUP`), `PLAYONE.EXE` maintains an internal table of loaded resource containers. Each active `.RES` handle is managed by a 16-byte Memory Control Block (MCB) descriptor structure:
   ```c
@@ -276,7 +253,7 @@ pub struct VfsArchive {
 
 Located at `tests/fixtures/synthetic_minimal.res` (72 bytes total):
 - **Bytes 0..1**: Magic signature `b"RS"` (`0x52, 0x53`)
-- **Bytes 2..3**: Version word `0x0001`
+- **Bytes 2..3**: Raw header word `0x0001`
 - **Offset Table** ($N = (20/4) - 1 = 4$ offsets):
   - `ofs[0] = 20` (`0x14`): Name Table start
   - `ofs[1] = 40` (`0x28`): Payload 0 (`PLANE.SOD`, 16 bytes)

@@ -6,6 +6,11 @@ rust = "latest"
 python = "3.11"
 uv = "latest"
 
+# JVM + Kaitai Struct Compiler for executing research/formats/**/*.ksy during verification.
+# Java is required only to compile .ksy schemas; generated parsers run on the
+# pure-Python kaitaistruct runtime.
+java = "temurin-21"
+"github:kaitai-io/kaitai_struct_compiler" = { version = "0.11", asset_pattern = "kaitai-struct-compiler-0.11.zip", strip_components = 1, bin_path = "bin", checksum = "sha256:ff89389d9dc9e770d78a24af328763cb1f8e7b31ce7766c9edf10669a060f2a2" }
 
 # DOSBox-X MCP Server: prebuilt release binary downloaded via mise's GitHub backend.
 # Automatically resolves architecture across Windows, macOS, and Linux.
@@ -98,3 +103,7 @@ depends = ["test-rust", "test-py"]
 [tasks.check]
 description = "Run all CI verification steps (format check, lint, typecheck, test)"
 depends = ["fmt-check", "lint", "typecheck", "test"]
+
+[tasks.verify-corpus]
+description = "Compile research/formats/**/*.ksy and check them against local corpus/ files (opt-in; corpus is gitignored)"
+run = "uv run python python/scripts/verify_schemas_corpus.py"
