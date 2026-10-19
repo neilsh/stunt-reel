@@ -1,6 +1,9 @@
 use std::fs;
 use std::path::PathBuf;
-use stunt_core::contracts::{ArchiveFormat, TrajectoryRecord, VfsArchive, VfsEntry};
+use stunt_core::contracts::ArchiveFormat;
+#[cfg(feature = "serde")]
+use stunt_core::contracts::TrajectoryRecord;
+use stunt_core::vfs::detect_and_parse;
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -23,28 +26,31 @@ fn test_synthetic_minimal_res_fixture() {
     // Verify 'RS' magic header per [fmt res]
     assert_eq!(&data[0..2], b"RS");
 
-    // Manually parse the synthetic container into a VfsArchive
-    let mut archive = VfsArchive::new(ArchiveFormat::Res);
-
-    // Extract entries from the known synthetic offsets
-    archive.insert(VfsEntry {
-        name: "PLANE.SOD".to_string(),
-        data: data[40..56].to_vec(),
-        source_offset: 40,
-        was_compressed: false,
-    });
-    archive.insert(VfsEntry {
-        name: "PROP.SOD".to_string(),
-        data: data[56..72].to_vec(),
-        source_offset: 56,
-        was_compressed: false,
-    });
+    // Parse the synthetic container via VFS parser
+    let archive = detect_and_parse(&data).expect("parse synthetic_minimal.res");
 
     assert_eq!(archive.format, ArchiveFormat::Res);
     assert_eq!(archive.entries.len(), 2);
+
+    // Verify exact 16-byte payloads
+    let plane_entry = archive.get("PLANE.SOD").expect("PLANE.SOD must exist");
+    assert_eq!(plane_entry.data.len(), 16);
+    assert_eq!(plane_entry.data, &data[40..56]);
+    assert_eq!(plane_entry.source_offset, 40);
+    assert!(!plane_entry.was_compressed);
+
+    let prop_entry = archive.get("PROP.SOD").expect("PROP.SOD must exist");
+    assert_eq!(prop_entry.data.len(), 16);
+    assert_eq!(prop_entry.data, &data[56..72]);
+    assert_eq!(prop_entry.source_offset, 56);
+    assert!(!prop_entry.was_compressed);
+
+    // Invariant [I8]: Case-insensitive lookups
     assert!(archive.get("plane.sod").is_some());
-    assert_eq!(archive.get_bytes("PLANE.SOD").unwrap().len(), 16);
-    assert_eq!(archive.get_bytes("PROP.SOD").unwrap().len(), 16);
+    assert!(archive.get("Plane.Sod").is_some());
+    assert!(archive.get("pLaNe.SoD").is_some());
+    assert!(archive.get("prop.sod").is_some());
+    assert!(archive.get("Prop.Sod").is_some());
 }
 
 #[test]
