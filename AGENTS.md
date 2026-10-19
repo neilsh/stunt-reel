@@ -55,6 +55,7 @@ Refer directly to authoritative documents rather than duplicating definitions:
 1. Run `git status` to ensure no files from `corpus/` or `target_bin/` are staged.
 2. Run `mise run check` to ensure all checks pass with zero warnings or errors.
 3. Link modified code symbols and files using markdown links.
+4. Use Conventional Commit subjects, e.g. `feat(core): add a parser`.
 
 ### SOP 4: Living Specification Updates & Evidentiary Promotion
 1. When reverse engineering uncovers new runtime offsets, opcodes, or binary realities:
