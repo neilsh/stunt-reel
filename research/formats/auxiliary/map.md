@@ -49,6 +49,8 @@ Each file within the scenery subsystem employs a deterministic byte-level layout
 | `+0x04` | 2 | `i16` (LE) | `z` | Signed 16-bit integer $Z$ coordinate in island terrain space | `[Established]` |
 | `+0x06`–`+0x1B` | 22 | `i16[11]` (LE) | `f[11]` | Surface normal vector components, elevation tap displacement slopes, and ground clamping scalars | `[Established]` |
 
+Executable layout: [`anchorpt.dat.ksy`](anchorpt.dat.ksy).
+
 ---
 
 ### 2.3 `MAP.BIN` Memory Layout
@@ -63,13 +65,15 @@ Each file within the scenery subsystem employs a deterministic byte-level layout
 
 | Relative Offset | Size (Bytes) | Type | Field Name | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `+0x00` | 2 | `i16` (LE) | `num` | Sequential patch index ($0..178$) | `[Established]` |
+| `+0x00` | 2 | `i16` (LE) | `num` | Patch index word. Corpus values are not sequential (the first record is 540), so the field is retained raw pending `[BK-MAP-03]` | `[Bounded Observation]` |
 | `+0x02` | 2 | `i16` (LE) | `pos` | Sector activity flag: `(pos & 0xFF) != 0` indicates active land polygon | `[Established]` |
 | `+0x04`–`+0x0B` | 8 | `i16[4]` (LE) | `a, b, c, d` | Spatial bounding box limits or neighboring patch graph linkages | `[Bounded Observation]` |
 | `+0x0C` | 2 | `i16` (LE) | `color` | Authentic 8-bit VGA Mode 13h palette index (`0..=255`) | `[Established]` |
-| `+0x0E` | 2 | `i16` (LE) | `num_verts` | Number of active vertices forming this terrain polygon ($3 \le N \le 7$) | `[Established]` |
-| `+0x10`–`+0x1D` | 14 | `u16[7]` (LE) | `v[7]` | Array of 0-based indices into `ANCHORPT.DAT` | `[Established]` |
+| `+0x0E` | 2 | `i16` (LE) | `num_verts` | Number of active vertices forming this terrain polygon ($3 \le N \le 7$ in 178 of 179 records; patch 131 reads $8$ in every corpus copy, so the range is not constrained by the schema) (`[BK-MAP-05]`) | `[Bounded Observation]` |
+| `+0x10`–`+0x1D` | 14 | `u16[7]` (LE) | `v[7]` | Index words for this polygon. Corpus values exceed the 1023 range of `ANCHORPT.DAT` records, so the indexing rule is unresolved (`[BK-MAP-03]`) | `[Bounded Observation]` |
 | End of File | 2 | `u16` (LE) | `terminator` | Terminal null word `0x0000` | `[Established]` |
+
+Executable layout: [`map.bin.ksy`](map.bin.ksy).
 
 ---
 
@@ -104,6 +108,8 @@ In the node structures, child pointers and continuation indices (`ptr`, `next`) 
 | `SP_VSLOPE` | `18` | `VSLOPE_TYPE` | `ptr: u32`, `next: u32`, `slope: i32`, `coord: i32` | Sloped terrain cutting plane (vertical slope gradient). | `[Established]` |
 | `SP_LIST` | `20` | `LIST_TYPE` | `child_nodes[]: u32` | Array of child node indices terminated by `0`. Iteratively evaluates each child `node_idx / 2` with accumulated $\mathbf{cp}$. | `[Established]` |
 | `SP_POSXZ` | `22` | `POSXZ_TYPE` | `x, z: i16`, `next: u32` | 2D horizontal relative translation ($Y$ unchanged). Accumulates $x, z$ into $\mathbf{cp}$ and advances to `next/2`. | `[Established]` |
+
+Executable layout: [`scenery.scn.ksy`](scenery.scn.ksy); the schema encodes the 32-bit word array only, because nodes are addressed by word index instead of stored sequentially.
 
 ---
 
@@ -155,6 +161,7 @@ All references to `ANCHORPT.DAT`, `MAP.BIN`, and `SCENERY.SCN` in virtual filesy
 | `[BK-MAP-02]` | `SP_HSLOPE` / `SP_VSLOPE` Normal Planes | Complete verification of plane equation parameters $(A, B, C, D)$ extracted from `slope` and `coord` words in slope nodes. | `[Supported Inference]` |
 | `[BK-MAP-03]` | `MAP_AREA` Linkage Fields `a, b, c, d` | Disambiguating whether fields `a, b, c, d` represent spatial bounding box limits or adjacency pointers to neighboring polygon patches. | `[Bounded Observation]` |
 | `[BK-MAP-04]` | High-Detail Scenery Patching (`si-8x`) | Formalizing Alberto Marnetto's 8x detail memory patches that expand LOD distance multipliers beyond `splitdist * 48`. | `[Supported Inference]` |
+| `[BK-MAP-05]` | `MAP_AREA::num_verts` Outliers | Settled against the original interpreter: `Developer/FreeFlight/src/sisland.cpp` declares `short num_verts; short v[7];` and emits vertices with `for (j = 0; j < num_verts; j++)`, so the word is a vertex count capped at seven slots. Corpus patch 131 reads `8` in all six copies, which makes the engine read past `v[7]` into the next record's `num` word (value `0`); patch 22 of `SITools/OBJECTS/Dean/MAP.BIN` reads `2`, a degenerate polygon. Both are malformed geometry data, not a layout difference, so the schema leaves the field unconstrained and `mise run verify-corpus` pins the ten known corpus defects in its baseline. | `[Established]` |
 
 ---
 

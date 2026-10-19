@@ -17,7 +17,7 @@ The `.SET` format encapsulates complete world scenes, stage configurations, prop
 
 ## 2. Header & Memory Layout
 
-A `.SET` file begins with a 96-byte (`0x60`) global environment header containing mission metadata, vehicle configuration, and table count indicators.
+A `.SET` file begins with a 96-byte (`0x60`) global environment header containing mission metadata, vehicle configuration, and table count indicators. The executable header layout is [`set.ksy`](set.ksy).
 
 ### 2.1 Global Environment Header (`0x0000`–`0x005F`)
 
@@ -75,7 +75,7 @@ The viewpoint mode selects the initial camera tracking perspective:
 
 ### 3.1 Prop Record Table (Exact 64-Byte Stride `0x40`)
 
-The prop record table begins at offset `0x0060` (or `0x0160` depending on the presence of extended mission briefing headers) and contains contiguous 64-byte (`0x40`) records.
+The prop record table is documented as beginning at offset `0x0060` (or `0x0160` with extended mission briefing headers). Corpus evidence is not decisive: for 139 of 626 records read at `0x0060`, `prop_slot_id` is at least `prop_count`, so either the table start or the field layout differs in those files (`[BK-SET-04]`). `set.ksy` therefore encodes only the 96-byte header and leaves the remainder raw.
 
 > **Historical Stride Correction:** Early community reverse engineering notes (Neil Halelamien, 2004) asserted that "Every prop takes (16*5=80 bytes)". Empirical analysis of record deltas ($0xD6 - 0x97 + 1 = 0x40 = 64\text{ bytes}$) disproves this typo: each record is strictly **64 bytes (0x40)**, perfectly aligning with four 16-byte paragraph blocks in real-mode x86 memory.
 
@@ -144,6 +144,8 @@ Following the prop table (or located at an offset indexed by `0x55`), scripted e
 | `+0x04` | 2 | `u16` (LE) | `target_prop_slot` | Prop slot index ($0..N-1$) affected by this event | `[Established]` |
 | `+0x06` | 2 | `u16` (LE) | `action_param` | Auxiliary parameter (camera ID, audio sample ID, intensity) | `[Established]` |
 | `+0x08` | 4 | `u32` (LE) | `payload_data` | Additional parameter data, bitflags, or vector payload | `[Bounded Observation]` |
+
+The 12-byte event stride is documented, but the table location is unresolved for the same reason; no schema decodes events yet.
 
 ### 3.6 Event Action Codes (`action_code`)
 

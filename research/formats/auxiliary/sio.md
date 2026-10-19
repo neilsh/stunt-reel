@@ -17,7 +17,7 @@ The `.SIO` format is an intermediate 3D mesh and point-cloud authoring format cr
 
 ## 2. Header & Memory Layout
 
-A `.SIO` file starts with an 8-byte magic header, followed by a 1-byte editor magnification scalar, a variable-length stream of tagged geometry records, and a 4-byte EOF sentinel marker.
+A `.SIO` file starts with an 8-byte magic header, followed by a 1-byte editor magnification scalar, a variable-length stream of tagged geometry records, and a 4-byte EOF sentinel marker. The executable layout is [`sio.ksy`](sio.ksy).
 
 ### 2.1 File Layout Diagram
 
@@ -98,7 +98,7 @@ Offset:    +0x00          +0x01..02       +0x03..04       +0x05..06
 
 #### 3. Stream Termination Sentinel (`FF FF 00 00`)
 
-The stream concludes when the parser encounters a 2-byte sequence `0xFFFF` followed by `0x0000`, signaling the clean completion of geometric parsing.
+The stream concludes when the parser encounters the terminator tag `0xFF` followed by the filler bytes `FF 00 00`, together the four-byte sentinel `FF FF 00 00`. Match this against the vertex and midpoint layouts above: every opcode tag is a single byte, so the `0xFFFF` word reported by earlier notes is the terminator tag plus the first filler byte. [`sio.ksy`](sio.ksy) validates the filler bytes and rejects any other tag value.
 
 ---
 
@@ -108,14 +108,16 @@ Validating against test models bundled in `corpus/si_archive/SITools/Slice/`:
 
 | File Name | File Size | Header Check | Vertex Count (`0x12`) | Midpoint Count (`0x06`) | Terminator Check |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `SantaHat.SIO` | 328 bytes | `Sds\x01\0\0\0\0` | 28 vertices | 10 midpoints | `FF FF 00 00` Verified |
-| `JabbaEyes.SIO` | 589 bytes | `Sds\x01\0\0\0\0` | 44 vertices | 26 midpoints | `FF FF 00 00` Verified |
-| `JabbaHead.SIO` | 949 bytes | `Sds\x01\0\0\0\0` | 82 vertices | 27 midpoints | `FF FF 00 00` Verified |
-| `GTXtire.SIO` | 1,165 bytes | `Sds\x01\0\0\0\0` | 108 vertices | 24 midpoints | `FF FF 00 00` Verified |
-| `Derby2.SIO` | 1,318 bytes | `Sds\x01\0\0\0\0` | 120 vertices | 31 midpoints | `FF FF 00 00` Verified |
-| `LUKSABER.SIO` | 1,479 bytes | `Sds\x01\0\0\0\0` | 134 vertices | 35 midpoints | `FF FF 00 00` Verified |
-| `HEAD-S.SIO` | 1,476 bytes | `Sds\x01\0\0\0\0` | 132 vertices | 37 midpoints | `FF FF 00 00` Verified |
-| `Tube.SIO` | 4,333 bytes | `Sds\x01\0\0\0\0` | 384 vertices | 112 midpoints | `FF FF 00 00` Verified |
+| `SantaHat.SIO` | 328 bytes | `Sds\x01\0\0\0\0` | 35 | 0 | `FF FF 00 00` Verified |
+| `JabbaEyes.SIO` | 589 bytes | `Sds\x01\0\0\0\0` | 64 | 0 | `FF FF 00 00` Verified |
+| `JabbaHead.SIO` | 949 bytes | `Sds\x01\0\0\0\0` | 104 | 0 | `FF FF 00 00` Verified |
+| `GTXtire.SIO` | 1,165 bytes | `Sds\x01\0\0\0\0` | 128 | 0 | `FF FF 00 00` Verified |
+| `Derby2.SIO` | 1,318 bytes | `Sds\x01\0\0\0\0` | 145 | 0 | `FF FF 00 00` Verified |
+| `LUKSABER.SIO` | 1,479 bytes | `Sds\x01\0\0\0\0` | 152 | 14 | `FF FF 00 00` Verified |
+| `HEAD-S.SIO` | 1,476 bytes | `Sds\x01\0\0\0\0` | 70 | 119 | `FF FF 00 00` Verified |
+| `Tube.SIO` | 4,333 bytes | `Sds\x01\0\0\0\0` | 480 | 0 | `FF FF 00 00` Verified |
+
+These counts are produced by [`sio.ksy`](sio.ksy) over the eight corpus models; the earlier table mixed vertex and midpoint totals. Sizes reconcile exactly: `9 + 9·vertices + 7·midpoints + 4 = file size`.
 
 ---
 

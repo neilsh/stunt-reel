@@ -41,6 +41,8 @@ A `.FLM` file consists of a 4-byte ASCII signature followed immediately by a con
 +---------------------------------------------------------------------------------+
 ```
 
+No Kaitai schema describes this stream: `interp` operand width depends on `SIF_MOVES`, `SIF_ROTATES`, and `SIF_ANIMATES` flags set by an earlier `create`, and Kaitai Struct has no mutable state across records. The slice envelope is statically describable, but the opcode stream is not, so the layout remains documented here.
+
 ### 2.1 The Solved 3-Byte Slice Header (Reverse-Engineering Breakthrough)
 
 Historically, community source code (`sifilm.cpp`, `flm_extract.py`) parsed slice headers as `inctime: u8` followed by `declared_len: u16`, observing with confusion that `declared_len` was mysteriously an exact multiple of 256 in ~99% of all slices.
@@ -164,6 +166,7 @@ The following backlog documents open questions and investigations regarding `.FL
 | **Q-FLM-04** | Interpolation on Non-Existent Slots | Observed in `CORSAIR.FLM` (slot #56 updated before `create`). | `[Bounded Observation]` | Engine ignores update or creates stub slot without throwing fatal error. |
 | **Q-FLM-05** | Slerp Antipodal Quaternions | When $\mathbf{q}_t \cdot \mathbf{q}_{t+1} < 0.0$, slerp traverses the long path on $S^3$. | `[Established]` | Negate target quaternion prior to spherical interpolation. |
 | **Q-FLM-06** | Real-Mode Dynamic Buffer Allocation for Variable Slice Rates | In low-memory real-mode conditions, `PLAYONE.EXE` may have dynamically throttled slice ingestion buffers when `tick_duration` dropped to 1 tick. | `[Hypothesis]` | Modern stream parser processes variable slice durations with zero buffer reallocation. |
+| **Q-FLM-07** | Kaitai encodability | `interp` operand widths depend on slot flags from a prior `create`; no stateless schema can size the stream. | `[Bounded Observation]` | Keep the prose specification; no `.ksy`. |
 
 ---
 

@@ -40,6 +40,8 @@ Every `.SOD` bytecode stream begins with an immutable **10-byte header**, follow
 +-------------------+-------------------+-----------------------------------------+
 ```
 
+The executable header layout is [`sod.ksy`](sod.ksy). It stops at byte `0x000A`; operand widths for several opcodes remain undecoded.
+
 ### 2.2 Power-of-2 Scale Table Multiplier Constants
 
 The scale factor converts 16-bit integer model units into metric meters per Invariant `[I1]`. The scale table constants from `SOD.H` and `siobj.cpp` are:
@@ -316,8 +318,8 @@ The `.SOD` virtual machine specification represents extensive reverse engineerin
 - `Developer/SODParse/DECODE.C` (Chris Phillips' 107-opcode disassembler)
 - `Developer/SODParse/SOD.H` (Opcode constants, scale table, data structures)
 - `Developer/FreeFlight/src/siobj.cpp` (C++ OpenGL `.SOD` interpreter and transform stack)
-- `SITools/OBJECTS/Planes/CURTISS.SOD` (Authentic Curtiss Jenny 3D model)
-- `SITools/OBJECTS/Planes/SABRE.SOD` (Authentic F-86 Sabre 3D model with articulated landing gear)
+- `SITools/OBJECTS/Planes/CURTISS.SOD` (ASCII `.objdef` assembler source; compiled models are `.BIN` files beginning with `0x000C`)
+- `SITools/OBJECTS/Planes/SABRE.SOD` (ASCII `.objdef` assembler source; compiled models are `.BIN` files beginning with `0x000C`)
 - `Developer/SI-8x/si-8x-notes.txt` (Alberto Marnetto's LOD bytecode analysis)
 
 ---
@@ -378,6 +380,8 @@ Located at `tests/fixtures/synthetic_minimal.sod` (76 bytes total):
 - **Base Facet (`OP_COLOR` 40 + `OP_POLYZ`)**: Emits flat base triangle.
 - **Decal Facet (`OP_COLOR` 15 + `OP_POLYZ`)**: Emits overlapping coplanar decal triangle testing Invariant `[I5]`.
 - **Termination (`OP_RETURN`, 0x0195)**: Clean display list termination.
+
+The 393 compiled corpus models live in `.BIN` files beginning with `0x000C`; the corpus `.SOD` files are assembler sources. `sod.ksy` runs over those `.BIN` files in `mise run verify-corpus`.
 
 ### 7.4 Verification Test Suite
 
