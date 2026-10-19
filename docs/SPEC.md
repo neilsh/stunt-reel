@@ -52,8 +52,10 @@ To eliminate exploratory stalls and blind binary guesswork, project delivery is 
 ### 2.1 Explicit Scope Boundaries & Non-Goals
 
 * **No Interactive Aerodynamics:** Real-time 6-DOF flight integration (Runge-Kutta/Euler), lift/drag polar lookup tables, stall physics, and joystick control loops (`STUNT.EXE`) are strictly excluded. The engine evaluates pre-recorded keyframe trajectories and discrete timeline events only.
-* **No Authoring GUI Systems:** The Set Designer, Prop Placement, Sound Stage, and Editing Room 16-bit DOS user interfaces are excluded.
+* **No Authoring GUI Systems & Timeline Scrubbing:** The Set Designer, Prop Placement, Sound Stage, and Editing Room 16-bit DOS user interfaces are excluded. In Milestone 2, immediate-mode GUI chrome and timeline scrubbing sliders are deferred; playback is launched via CLI argument with basic keyboard controls (Space=Pause/Resume, Esc=Quit).
 * **No CPU Software Rasterizer:** Software Mode 13h ($320 \times 200$) horizontal span filling, Sutherland-Hodgman CPU frustum clipping, and CPU-side Painter's Algorithm / BSP polygon sorting are superseded by modern GPU hardware rasterization and floating-point depth buffering.
+* **No Direct Audio Hardware Output (Milestone 2 Deferral):** Sound output via hardware audio devices (WASAPI/CPAL/rodio) is deferred; `AudioCue` events are parsed and evaluated as data-only metadata in `TrajectoryRecord` (Seam 2).
+* **No Analog CRT Post-Processing Shaders (Milestone 2 Deferral):** Scanline emulation, phosphor bloom, CRT barrel curvature, and temporal dithering passes are deferred; authentic visual reproduction is accomplished via the $256 \times 32$ palette LUT and `@interpolate(flat)`.
 
 ### 2.2 Mathematical & Spatial Invariants
 
