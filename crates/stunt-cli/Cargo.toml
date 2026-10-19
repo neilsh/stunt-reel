@@ -1,0 +1,21 @@
+[package]
+name = "stunt-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "stuntreel"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+stunt-core = { path = "../stunt-core", features = ["bytemuck", "serde"] }
+stunt-render = { path = "../stunt-render" }
+wgpu = "24.0"
+winit = "0.30"
+pollster = "0.4"
+glam = "0.29"
+
