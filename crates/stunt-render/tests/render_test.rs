@@ -13,10 +13,8 @@ use stunt_core::contracts::{
 };
 use stunt_render::{
     ASPECT_4_3, ASPECT_CORRECTED_HEIGHT, CameraController, CameraGpuResources, CameraMode,
-    FreeCamState, GpuModel, HeadlessRenderer, MODE13H_HEIGHT, MODE13H_WIDTH, PHASE1_SSIM_THRESHOLD,
-    PHASE2_SSIM_THRESHOLD, PaletteLut, RenderPipelines, build_palette_lut_bytes,
-    compute_frame_ssim, compute_luminance, compute_window_ssim, evaluate_visual_parity,
-    rescale_mode13h_frame, rgba_to_luminance,
+    GpuModel, HeadlessRenderer, MODE13H_WIDTH, PHASE2_SSIM_THRESHOLD, PaletteLut, RenderPipelines,
+    build_palette_lut_bytes, compute_frame_ssim, evaluate_visual_parity, rgba_to_luminance,
 };
 
 #[test]
