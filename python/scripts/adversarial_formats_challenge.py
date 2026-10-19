@@ -243,7 +243,7 @@ def test_area3_flm_timeline_and_cuts() -> dict[str, Any]:
                             f"{os.path.basename(path)} slice {i}: back_ptr={back_ptr}, prev_len={prev_len}"
                         )
                 total_slices += 1
-        except Exception:
+        except Exception:  # noqa: S112
             continue
 
     findings["total_slices_verified"] = total_slices
@@ -295,7 +295,7 @@ def test_area4_palette_and_lighting() -> dict[str, Any]:
                     prefix_verified += 1
                     if chunk[2:722] == sipal[:720]:
                         bit_exact_matches += 1
-        except Exception:
+        except Exception:  # noqa: S112
             continue
 
     findings["all_files_checked"] = len(all_files)

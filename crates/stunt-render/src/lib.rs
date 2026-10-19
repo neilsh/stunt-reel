@@ -8,6 +8,8 @@
 //! - `[I4]` Discrete simulation ticks (20/30 Hz) with sub-tick interpolation.
 //! - `[I5]` Dual-pipeline hardware depth bias pass for coplanar decals.
 //! - `[I6]` 4:3 physical aspect ratio ($320 \times 240$) and SSIM parity evaluation.
+#![deny(unsafe_code)]
+#![warn(missing_docs)]
 
 pub mod camera;
 pub mod headless;

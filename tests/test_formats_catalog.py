@@ -66,7 +66,7 @@ def test_formats_catalog_cli_execution() -> None:
     """Verify CLI execution of verify_formats_docs.py returns exit code 0."""
     script_path = SCRIPTS_DIR / "verify_formats_docs.py"
     cmd = [sys.executable, str(script_path), "--root", str(REPO_ROOT)]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)  # noqa: S603
     assert proc.returncode == 0, (
         f"CLI execution failed with code {proc.returncode}:\n{proc.stdout}\n{proc.stderr}"
     )

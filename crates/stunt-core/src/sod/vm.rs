@@ -2,7 +2,7 @@
 //!
 //! Governed by architectural invariants:
 //! - `[I1]` Metric right-handed coordinates (+X right, +Y up, +Z toward viewer, -Z forward)
-//! - `[I2]` Flat arena layout compatibility with [`SodModelIr`]
+//! - `[I2]` Flat arena layout compatibility with [`crate::contracts::scene::SodModelIr`]
 //! - `[I3]` VGA Mode 13h palette index mapping (0..=255)
 //!
 //! Reference specs: `# [FMT-SOD-OPCODES]`, `# [FMT-SOD-IFVIS]`, historical `DECODE.C`/`SOD.H`.
@@ -11,36 +11,67 @@ use crate::contracts::scene::VisibilityCondition;
 use crate::sod::SodError;
 
 // Standard .SOD Opcodes per historical SOD.H and specification
+/// Clear the accumulator vertex to `[0.0, 0.0, 0.0]` (no operands).
 pub const OP_CLRV: u16 = 0x0000;
+/// Load `regs[reg_off / 12]` into the accumulator vertex (`reg_off: u16`).
 pub const OP_GETV: u16 = 0x0009;
+/// Identity/header sentinel (`0x000C`); encountered mid-stream it is ignored.
 pub const OP_ID: u16 = 0x000C;
+/// Store the accumulator vertex into `regs[reg_off / 12]` (`reg_off: u16`).
 pub const OP_PUTV: u16 = 0x0012;
+/// Interpolate the accumulator halfway toward `regs[reg_off / 12]` (`reg_off: u16`).
 pub const OP_INTV: u16 = 0x001B;
+/// Add `regs[reg_off / 12]` to the accumulator vertex (`reg_off: u16`).
 pub const OP_ADDV: u16 = 0x0024;
+/// Subtract `regs[reg_off / 12]` from the accumulator vertex (`reg_off: u16`).
 pub const OP_SUBV: u16 = 0x002D;
+/// Negate the accumulator vertex component-wise (no operands).
 pub const OP_NEGV: u16 = 0x0036;
+/// Multiply the accumulator vertex by `2^shift` (`shift: u16`).
 pub const OP_SHLV: u16 = 0x003F;
+/// Divide the accumulator vertex by `2^shift`, rounding toward negative infinity (`shift: u16`).
 pub const OP_SHRV: u16 = 0x0048;
+/// Reserved opcode: consumes three operand words without producing geometry in this VM.
 pub const OP_VEC: u16 = 0x004B;
+/// Procedural primitive generator: cube, ground plane, or quad (`type, dims, reg`).
 pub const OP_IPG: u16 = 0x0063;
+/// Batch-upload vectors into consecutive registers (`count, reg, count*3 words`).
 pub const OP_VECTORS: u16 = 0x0075;
+/// Perspective-divide a register range into screen space (`start_reg, count`).
 pub const OP_PERS: u16 = 0x0099;
+/// Move the pen to vertex `regs[reg_off / 12]` without drawing (`reg_off: u16`).
 pub const OP_MOVETO: u16 = 0x00A2;
+/// Set the active line color palette index (`color: u16`, `0..=255`).
 pub const OP_LINECOL: u16 = 0x00B4;
+/// Depth-tested line from the pen to `regs[reg_off / 12]` (`reg_off: u16`).
 pub const OP_ZLINETO: u16 = 0x00BD;
+/// Emit a depth-sorted flat polygon (`count, regs...`).
 pub const OP_POLYZ: u16 = 0x00F3;
+/// Emit a procedural sphere centered at `regs[center_reg]` with `radius`.
 pub const OP_SPHERE: u16 = 0x00FC;
+/// Emit a perforated disc ring (`center_reg, r_in, r_out`).
 pub const OP_PERFDISK: u16 = 0x010E;
+/// Set the active polygon fill palette index (`color: u16`, `0..=255`).
 pub const OP_COLOR: u16 = 0x0129;
+/// Batch-upload shading normal vectors (`count, ...triplets`).
 pub const OP_SHADES: u16 = 0x0156;
+/// Emit a normal-lit shaded polygon (`count, regs..., normal, shades...`).
 pub const OP_GVPOLY: u16 = 0x0168;
+/// Conditionally skip the enclosed section based on a visibility code (`cond, size`).
 pub const OP_IFVIS: u16 = 0x017A;
+/// Reserved BSP branch (`plane, left_off, right_off`); operands are skipped and stream order is kept.
 pub const OP_SORT: u16 = 0x018C;
+/// End the display list or return from a bytecode subroutine (no operands).
 pub const OP_RETURN: u16 = 0x0195;
+/// Alias for [`OP_RETURN`]: ends the display list (no operands).
 pub const OP_END: u16 = 0x0195;
+/// 3D bounding-box culling test (`box_reg, count, ...faces`).
 pub const OP_REJ: u16 = 0x01B9;
+/// Emit a 16-level shaded polygon (`count, regs..., normal, shades...`).
 pub const OP_GVPOLY16: u16 = 0x02BE;
+/// Draw a single point at `regs[reg_off / 12]` (`reg_off: u16`).
 pub const OP_DOT: u16 = 0x02D0;
+/// Draw a solid rectangular block (`reg_off, size`).
 pub const OP_BLOCK: u16 = 0x02D9;
 
 /// Power-of-2 scaling multiplier table (`sod_scale_table` in historical C implementation).
@@ -81,11 +112,17 @@ pub fn compute_scale_factor(scale_index: usize) -> f32 {
 /// Parsed 10-byte header of a `.SOD` procedural model.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SodHeader {
+    /// Bounding volume diameter in model units (`u16`), used for coarse culling.
     pub bounding_size: u16,
+    /// Signed vertical offset of the model origin above its ground plane, in model units.
     pub ground_y_offset: i16,
+    /// Index into [`SOD_SCALE_TABLE`] selecting the integer-to-meter multiplier.
     pub scale_index: u8,
+    /// High byte of the header's flags/scale word, preserved verbatim for consumers.
     pub header_flags: u8,
+    /// Metric multiplier (meters per integer unit) derived from `scale_index`.
     pub scale_factor: f32,
+    /// Engine collision metadata word copied verbatim from the header.
     pub collision_meta: u16,
 }
 

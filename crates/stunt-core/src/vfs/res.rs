@@ -13,7 +13,7 @@ use crate::vfs::VfsError;
 /// - Bytes 0..2: 2-byte magic signature `b"RS"` (`0x52, 0x53`)
 /// - Bytes 2..4: 16-bit version word (little-endian)
 /// - Bytes 4..8: 32-bit `ofs[0]` (little-endian), pointing to Name Table / end of offset table
-/// - Offset table: $N = (ofs[0] / 4) - 1$ entries of 32-bit offsets `ofs[0] .. ofs[N-1]`
+/// - Offset table: $N = (ofs\[0\] / 4) - 1$ entries of 32-bit offsets `ofs[0] .. ofs[N-1]`
 /// - Name table: null-separated ASCII strings between `ofs[0]` and `ofs[1]`
 /// - Entry $i$ payload: `data[ofs[i+1]..ofs[i+2]]`
 /// - If Name Table is omitted or empty, names default to `format!("{:04X}.BIN", i)`

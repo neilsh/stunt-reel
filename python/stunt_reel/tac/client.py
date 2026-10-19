@@ -100,7 +100,7 @@ class TacClient:
 
             # First token is the offset within the line (e.g. "0C60")
             for token in tokens[1:]:
-                if token == "-":
+                if token == "-":  # noqa: S105
                     continue
                 if len(token) == 2:
                     try:

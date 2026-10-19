@@ -11,21 +11,32 @@ use stunt_core::contracts::{NodeId, NodeKind, SodModelIr, SodVertex, VisibilityC
 /// Cached node data inside GPU model representation.
 #[derive(Debug, Clone)]
 pub struct GpuNode {
+    /// Arena identifier matching the source `SodNode`.
     pub id: NodeId,
+    /// Authoring or procedural node name.
     pub name: String,
+    /// Parent node, or `None` for a scene root.
     pub parent: Option<NodeId>,
+    /// Child nodes in draw order.
     pub children: Vec<NodeId>,
+    /// Local transform relative to the parent node.
     pub local_matrix: Mat4,
+    /// Dynamic visibility gate evaluated at presentation time.
     pub visibility: VisibilityCondition,
+    /// Geometry slice, absent for pure transform groups.
     pub mesh: Option<GpuMeshSlice>,
 }
 
 /// Polygonal geometry slice pointing into consolidated GPU vertex and index buffers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GpuMeshSlice {
+    /// First vertex of the slice within the consolidated vertex buffer.
     pub vertex_offset: i32,
+    /// First index of the slice within the consolidated index buffer.
     pub index_offset: u32,
+    /// Number of indices in the slice (three per triangle).
     pub index_count: u32,
+    /// Whether the slice is a coplanar decal drawn through the depth-bias pipeline `[I5]`.
     pub is_decal: bool,
 }
 

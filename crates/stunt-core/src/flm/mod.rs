@@ -41,13 +41,31 @@ pub const CAMERA_LOOKAHEAD_METERS: f32 = 1000.0;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FlmError {
     /// Magic signature mismatch (expected `b"FILM"`).
-    InvalidSignature { expected: [u8; 4], actual: [u8; 4] },
+    InvalidSignature {
+        /// Signature the parser expected (`b"FILM"`).
+        expected: [u8; 4],
+        /// Signature bytes found in the stream.
+        actual: [u8; 4],
+    },
     /// The input buffer was smaller than expected.
-    UnexpectedEof { expected: usize, actual: usize },
+    UnexpectedEof {
+        /// Buffer length the parse required at the failure point.
+        expected: usize,
+        /// Buffer length actually available.
+        actual: usize,
+    },
     /// Malformed time slice or unexpected termination.
-    InvalidSlice { reason: String },
+    InvalidSlice {
+        /// Human-readable description of the malformed slice.
+        reason: String,
+    },
     /// Unrecognized or invalid opcode in the slice stream.
-    InvalidOpcode { opcode: u8, offset: usize },
+    InvalidOpcode {
+        /// Opcode byte outside the decoded table.
+        opcode: u8,
+        /// Byte offset of the opcode within the file.
+        offset: usize,
+    },
 }
 
 impl fmt::Display for FlmError {

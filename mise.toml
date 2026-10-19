@@ -6,6 +6,9 @@ rust = "latest"
 python = "3.11"
 uv = "latest"
 
+# Supply-chain auditing for Cargo manifests (advisories, licenses, sources)
+"cargo:cargo-deny" = "latest"
+
 # JVM + Kaitai Struct Compiler for executing research/formats/**/*.ksy during verification.
 # Java is required only to compile .ksy schemas; generated parsers run on the
 # pure-Python kaitaistruct runtime.
@@ -54,7 +57,7 @@ run = "uv run python python/scripts/capture_playone_reference.py --out build/par
 # Development & Quality Assurance Tasks
 [tasks.lint-rust]
 description = "Run Rust Clippy lints across all crates"
-run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
+run = "cargo clippy --locked --workspace --all-targets --all-features -- -D warnings"
 
 [tasks.lint-py]
 description = "Run Ruff linter on Python codebase"
@@ -94,7 +97,7 @@ run = "uv run mypy"
 
 [tasks.test-rust]
 description = "Run Rust unit and integration tests"
-run = "cargo test --workspace --all-features"
+run = "cargo test --locked --workspace --all-features"
 
 [tasks.test-py]
 description = "Run Python pytest suite"
@@ -104,9 +107,26 @@ run = "uv run pytest"
 description = "Run all test suites (Rust & Python)"
 depends = ["test-rust", "test-py"]
 
+[tasks.deny]
+description = "Check dependency advisories, licenses, and sources"
+run = "cargo deny check"
+
+[tasks.doc]
+description = "Build rustdoc with warnings denied"
+run = "cargo doc --workspace --no-deps --all-features"
+env = { RUSTDOCFLAGS = "-D warnings" }
+
+[tasks.check-rust-matrix]
+description = "Build and test stunt-core without optional features"
+run = "cargo check -p stunt-core --no-default-features && cargo test -p stunt-core --no-default-features"
+
+[tasks.cov-py]
+description = "Run Python test suite with coverage reporting"
+run = "uv run pytest --cov=stunt_reel --cov-report=term-missing"
+
 [tasks.check]
 description = "Run all CI verification steps (format check, lint, typecheck, test)"
-depends = ["fmt-check", "lint", "typecheck", "test"]
+depends = ["fmt-check", "lint", "typecheck", "test", "doc", "check-rust-matrix"]
 
 [tasks.verify-corpus]
 description = "Compile research/formats/**/*.ksy and check them against local corpus/ files (opt-in; corpus is gitignored)"

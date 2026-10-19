@@ -126,7 +126,15 @@ KEY_COMMUNITY_AUTHORS: list[str] = [
 ALLOWED_TEXT_SUFFIXES: frozenset[str] = frozenset({".md", ".ksy"})
 
 LINK_SCAN_FILES: list[str] = [
+    "README.md",
+    "AGENTS.md",
     "docs/ARCHITECTURE.md",
+    "docs/SPEC.md",
+    "docs/MEMORY_MAP.md",
+    "docs/TEAM_SHEET.md",
+    "docs/playbooks/m1-runtime-capture.md",
+    "tests/fixtures/README.md",
+    "corpus/README.md",
     *REQUIRED_DOCS,
 ]
 
@@ -440,7 +448,7 @@ def verify_cleanroom_isolation(repo_root: Path) -> VerificationResult:
 
 
 def verify_link_integrity(repo_root: Path) -> VerificationResult:
-    """Validate that all markdown links within catalog specs and docs/ARCHITECTURE.md resolve on disk."""
+    """Validate that every markdown link in the scanned document set resolves on disk."""
     errors: list[str] = []
     details: list[str] = []
     link_regex = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
@@ -469,6 +477,10 @@ def verify_link_integrity(repo_root: Path) -> VerificationResult:
 
                 # Ignore external URLs
                 if url.startswith(("http://", "https://", "mailto:")):
+                    continue
+
+                # Gitignored data trees exist only on developer machines
+                if url.startswith(("corpus/", "target_bin/")):
                     continue
 
                 links_checked += 1
@@ -593,7 +605,7 @@ def _validate_res_with_kaitai(repo_root: Path, res_bytes: bytes) -> tuple[list[s
             for label, mutated in (("bad magic", bad_magic), ("unaligned ofs[0]", bad_align)):
                 try:
                     res_cls(kaitai_stream_cls(io.BytesIO(bytes(mutated))))
-                except Exception:
+                except Exception:  # noqa: S112
                     continue
                 errors.append(f"Kaitai res.ksy accepted malformed fixture copy: {label}")
 
@@ -861,7 +873,7 @@ def verify_synthetic_fixtures_consistency(repo_root: Path) -> VerificationResult
 
 
 def run_all_verifications(
-    repo_root: Path | None = None, verbose: bool = False
+    repo_root: Path | None = None,
 ) -> tuple[bool, list[VerificationResult]]:
     """Execute all catalog verifications and return overall pass/fail status and results."""
     if repo_root is None:
@@ -909,7 +921,7 @@ def main() -> int:
     print(f"Repository Root: {repo_root.resolve()}")
     print("=" * 80)
 
-    all_passed, results = run_all_verifications(repo_root=repo_root, verbose=args.verbose)
+    all_passed, results = run_all_verifications(repo_root=repo_root)
 
     for result in results:
         status_tag = "[PASS]" if result.passed else "[FAIL]"

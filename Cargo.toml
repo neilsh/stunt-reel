@@ -7,8 +7,9 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
+publish = false
 
 [workspace.lints.rust]
 rust_2018_idioms = { level = "warn", priority = -1 }

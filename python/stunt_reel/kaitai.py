@@ -40,7 +40,9 @@ def compiler_version() -> str | None:
     ksc = ksc_command()
     if ksc is None:
         return None
-    proc = subprocess.run([*ksc, "--version"], capture_output=True, text=True, check=False)
+    proc = subprocess.run(  # noqa: S603
+        [*ksc, "--version"], capture_output=True, text=True, check=False
+    )
     banner = f"{proc.stdout}{proc.stderr}".strip()
     return banner or None
 
@@ -54,7 +56,7 @@ def compile_schemas(schema_paths: Sequence[Path], outdir: str | Path) -> None:
     ksc = ksc_command()
     if ksc is None:
         raise RuntimeError("Kaitai Struct Compiler not found on PATH; run 'mise install'")
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603
         [*ksc, "-t", "python", "--outdir", str(outdir), *[str(p) for p in schema_paths]],
         capture_output=True,
         text=True,

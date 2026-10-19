@@ -1,3 +1,5 @@
+#![deny(unsafe_code)]
+
 //! StuntReel Modern CLI & Presentation Engine (`stuntreel`).
 //!
 //! Complies with Architectural Invariants:

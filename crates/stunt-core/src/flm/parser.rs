@@ -8,11 +8,17 @@ use super::interpolate::{bam_to_radians, quat_from_euler};
 use crate::contracts::trajectory::AudioCue;
 
 /// Object slot flags from `sifilm.h`.
+/// Slot flag: the object slot is allocated and participates in the scene.
 pub const SIF_EXISTS: u8 = 0x01;
+/// Slot flag: the object is rendered this tick.
 pub const SIF_DRAW: u8 = 0x02;
+/// Slot flag: the object casts a ground shadow.
 pub const SIF_SHADOW: u8 = 0x04;
+/// Slot flag: the slot's position is animated.
 pub const SIF_MOVES: u8 = 0x08;
+/// Slot flag: the slot's orientation is animated.
 pub const SIF_ROTATES: u8 = 0x10;
+/// Slot flag: the slot plays a keyframed model animation.
 pub const SIF_ANIMATES: u8 = 0x20;
 
 /// Maximum number of object slots addressable in `.FLM` opcodes (6-bit index).
@@ -21,12 +27,19 @@ pub const SIFILM_MAX_OBJ: usize = 64;
 /// Internal simulation state for an entity slot in the `.FLM` timeline.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SlotState {
+    /// Whether the slot currently holds a live object.
     pub active: bool,
+    /// `SIF_*` flag byte describing what the slot draws and animates.
     pub type_flags: u8,
+    /// Shape/model table index the slot instantiates.
     pub shape_id: u16,
+    /// Resolved model name, once the shape table maps `shape_id`.
     pub model_name: Option<String>,
+    /// Position as 16.16 fixed-point `[x, y, z]` in engine units.
     pub pos_fixed: [i32; 3],
-    pub rot_bam: [u16; 3], // [rz, rx, ry]
+    /// Orientation as binary-angle units in BAM order `[rz, rx, ry]`.
+    pub rot_bam: [u16; 3],
+    /// Model animation frame counter.
     pub animate: u16,
 }
 
@@ -61,8 +74,11 @@ impl SlotState {
 /// Metadata and events extracted from a single `.FLM` time slice.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Slice {
+    /// Back-pointer length of the preceding slice, used to walk the stream backwards.
     pub prev_slice_len: u16,
+    /// Slice duration in simulation ticks.
     pub tick_duration: u8,
+    /// Sound events triggered while this slice runs.
     pub sound_cues: Vec<AudioCue>,
 }
 

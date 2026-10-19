@@ -9,7 +9,7 @@ The living specification is [`docs/SPEC.md`](docs/SPEC.md) — goals, invariants
 ## Requirements
 
 - **[mise](https://mise.jdx.dev/)** (recommended environment and tool manager)
-- **[Rust](https://www.rust-lang.org/)** 2024 edition (rustc ≥ 1.85), managed via `mise` or `rustup`
+- **[Rust](https://www.rust-lang.org/)** 2024 edition (rustc ≥ 1.88), managed via `mise` or `rustup`
 - **[uv](https://docs.astral.sh/uv/)** and **Python ≥ 3.11**, managed via `mise` or standalone
 - **[DOSBox-X](https://dosbox-x.com/) `2026.10.01`** (Windows x64 portable SDL2 build, installed by `mise`)
 - **[`dosbox-x-mcp-server`](https://github.com/caiiiycuk/dosbox-x-mcp-server) `0.1.2`** (managed via `mise`)
@@ -124,18 +124,22 @@ The gate is `mise run check`, which chains formatting, linting, strict typing, a
 
 | Task | Runs |
 | --- | --- |
-| `check` | `fmt-check` + `lint` + `typecheck` + `test` |
+| `check` | `fmt-check` + `lint` + `typecheck` + `test` + `doc` + `check-rust-matrix` |
 | `fmt-check` / `fmt` | `cargo fmt` and `ruff format` check/apply |
 | `lint` | `cargo clippy -- -D warnings` and `ruff check .` |
 | `typecheck` | `uv run mypy` (strict) |
+| `doc` | rustdoc with `RUSTDOCFLAGS=-D warnings` |
+| `check-rust-matrix` | `stunt-core` without the `serde`/`bytemuck` features |
 | `test` | `cargo test --workspace --all-features` and `uv run pytest` |
 | `fmt-rust`, `fmt-py`, `fmt-check-rust`, `fmt-check-py`, `lint-rust`, `lint-py`, `test-rust`, `test-py` | single-language halves of the tasks above |
+| `cov-py` | `pytest` with `--cov=stunt_reel` term-missing report (no fail-under) |
+| `deny` | `cargo deny check` — advisories, license allow-list, wildcard bans, and registry sources |
 | `capture-ref` | reference capture into `build/parity/reference/ctry` (`--max-frames` defaults to 140) |
 | `verify-corpus` | `.ksy` catalog check against `corpus/` |
 | `play` | launch `dosbox-playone.conf` |
 | `ensure-dosbox`, `mcp` | agent debugger plumbing |
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on Ubuntu: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `cargo test --workspace --all-targets --all-features`, `ruff check`, `ruff format --check`, `mypy`, and `pytest`. Corpus- and DOSBox-X-dependent tasks stay local. Optional git hooks mirror the gate; see [`.pre-commit-config.yaml`](.pre-commit-config.yaml).
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) invokes the mise tasks instead of restating them: Ubuntu runs the full `mise run check` gate, Windows runs the non-GPU subset (`fmt-check lint typecheck test-py`), a separate job checks the declared MSRV (`1.88`), and a `cargo deny` job enforces the dependency policy. Corpus- and DOSBox-X-dependent tasks stay local. Optional git hooks mirror the gate; see [`.pre-commit-config.yaml`](.pre-commit-config.yaml).
 
 Equivalent direct commands:
 

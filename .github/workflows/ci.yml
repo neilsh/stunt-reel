@@ -10,52 +10,51 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
-  rust:
-    name: Rust (Format, Lint, Test)
-    runs-on: ubuntu-latest
+  quality:
+    name: Quality gate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            tasks: check
+          - os: windows-latest
+            tasks: fmt-check lint typecheck test-py
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: jdx/mise-action@v3
         with:
-          components: rustfmt, clippy
+          install_args: rust python uv
+      - name: Install Python environment
+        run: uv sync --locked --all-groups
+      - name: Run quality tasks
+        run: mise run ${{ matrix.tasks }}
 
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Check code formatting
-        run: cargo fmt --all -- --check
-
-      - name: Run Clippy lints
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-
-      - name: Run unit & integration tests
-        run: cargo test --workspace --all-targets --all-features
-
-  python:
-    name: Python (Ruff, Mypy, Pytest)
+  msrv:
+    name: MSRV check
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          enable-cache: true
+          toolchain: "1.88"
+      - run: cargo check --workspace --all-features --locked
 
-      - name: Install dependencies
-        run: uv sync --all-groups
-
-      - name: Run Ruff linter
-        run: uv run ruff check .
-
-      - name: Check Ruff formatting
-        run: uv run ruff format --check .
-
-      - name: Run Mypy static type checking
-        run: uv run mypy
-
-      - name: Run Pytest test suite
-        run: uv run pytest
+  deny:
+    name: Dependency policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v3
+        with:
+          install_args: rust
+      - uses: taiki-e/install-action@cargo-deny
+      - run: mise run deny

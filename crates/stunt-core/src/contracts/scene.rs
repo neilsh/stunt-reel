@@ -33,8 +33,10 @@ pub struct SodVertex {
 // Manual bytemuck trait implementations to eliminate mandatory crate dependencies
 // while preserving compile-time safety and GPU buffer alignment.
 #[cfg(feature = "bytemuck")]
+#[allow(unsafe_code)] // SodVertex is #[repr(C)] with u8 padding making field padding impossible.
 unsafe impl bytemuck::Pod for SodVertex {}
 #[cfg(feature = "bytemuck")]
+#[allow(unsafe_code)] // Same layout argument as the Pod impl above: all-zero is a valid value.
 unsafe impl bytemuck::Zeroable for SodVertex {}
 
 /// Lightweight, typed handle indexing into a flat arena vector per `[I2]`.
@@ -62,9 +64,19 @@ pub enum VisibilityCondition {
     /// Level-of-Detail threshold: visible only if squared distance to camera <= `max_distance_sq`.
     LodDistanceSq(f32),
     /// Actor state bitmask gate: visible if `(state_mask & mask) == expected`.
-    ActorState { mask: u16, expected: u16 },
+    ActorState {
+        /// Bitmask selecting the actor state bits this gate observes.
+        mask: u16,
+        /// Value those masked bits must equal for the node to be visible.
+        expected: u16,
+    },
     /// Viewing angle cone threshold (used for prop disc blurs or landing lights).
-    AngleCone { normal: [f32; 3], max_dot: f32 },
+    AngleCone {
+        /// Cone axis in world space; must be a unit vector.
+        normal: [f32; 3],
+        /// Visibility threshold on the dot product between `normal` and the view direction.
+        max_dot: f32,
+    },
 }
 
 /// Functional classification of an intermediate scene graph node.
@@ -75,16 +87,22 @@ pub enum NodeKind {
     TransformGroup,
     /// Renderable polygonal geometry slice referencing parent vertex/index buffers.
     Mesh {
+        /// First vertex of this slice within the parent model's consolidated vertex buffer.
         vertex_offset: u32,
+        /// Number of vertices owned by this slice.
         vertex_count: u32,
+        /// First index of this slice within the parent model's consolidated index buffer.
         index_offset: u32,
+        /// Number of indices owned by this slice (three per triangle).
         index_count: u32,
         /// Set to true if polygons are coplanar decals requiring depth-bias per `[I5]`.
         is_decal: bool,
     },
     /// Articulated joint or dynamic component (propeller, rudder, landing gear).
     ArticulatedJoint {
+        /// Authoring tag naming the animatable joint (e.g. `"PROPELLER"`).
         joint_tag: String,
+        /// Column-major 4x4 rest-pose transform applied before animation.
         rest_matrix: [f32; 16],
     },
 }

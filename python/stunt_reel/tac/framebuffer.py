@@ -16,6 +16,7 @@ Reference rasters are evidence only: the caller writes them under ``build/``.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,8 @@ __all__ = [
     "dump_frame",
     "read_palette",
 ]
+
+_LOGGER = logging.getLogger(__name__)
 
 #: Real-mode segment of the VGA linear framebuffer window.
 VGA_SEG: str = "A000"
@@ -176,7 +179,7 @@ def capture(out_dir: Path, max_frames: int, client: TacClient) -> dict[str, Any]
     scratch = out_dir / "_scratch.idx"
 
     dialog = _wait_until_static(client, scratch)
-    print(f"[capture] dialog settled: {len(set(dialog))} distinct indices", flush=True)
+    _LOGGER.info("[capture] dialog settled: %s distinct indices", len(set(dialog)))
     playone.confirm_film(client)
     playone.arm_frame_trap(client)
 
@@ -220,7 +223,7 @@ def capture(out_dir: Path, max_frames: int, client: TacClient) -> dict[str, Any]
                 "distinct_indices": distinct,
             }
         )
-        print(f"[capture] frame {ordinal:04d}: {distinct} distinct indices", flush=True)
+        _LOGGER.info("[capture] frame %04d: %s distinct indices", ordinal, distinct)
 
     scratch.unlink(missing_ok=True)
     meta = {

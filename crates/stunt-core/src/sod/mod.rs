@@ -25,13 +25,31 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SodError {
     /// The input buffer was smaller than expected for reading a header or opcode payload.
-    UnexpectedEof { expected: usize, actual: usize },
+    UnexpectedEof {
+        /// Buffer length the decode required at the failure point.
+        expected: usize,
+        /// Buffer length actually available.
+        actual: usize,
+    },
     /// Magic signature mismatch (expected `0x000C`).
-    InvalidMagic { expected: u16, actual: u16 },
+    InvalidMagic {
+        /// Opcode word the parser expected as the header sentinel.
+        expected: u16,
+        /// Opcode word found instead.
+        actual: u16,
+    },
     /// Unrecognized or invalid opcode in the bytecode stream.
-    InvalidOpcode { opcode: u16, offset: usize },
+    InvalidOpcode {
+        /// Opcode word outside the decoded table.
+        opcode: u16,
+        /// Byte offset of the opcode within the model payload.
+        offset: usize,
+    },
     /// A polygon was malformed (e.g. fewer than 3 vertices or corrupted structure).
-    MalformedPolygon { reason: String },
+    MalformedPolygon {
+        /// Human-readable description of the malformed polygon.
+        reason: String,
+    },
 }
 
 impl fmt::Display for SodError {

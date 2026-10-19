@@ -110,7 +110,8 @@ class LiveSocketTransport:
         """Send framed REQ command and parse BEGIN ... END response block."""
         if self._socket is None:
             self.connect()
-        assert self._socket is not None
+        if self._socket is None:
+            raise RuntimeError("TAC transport is not connected")
 
         req_id = self._req_id
         self._req_id += 1

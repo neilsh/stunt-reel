@@ -16,20 +16,36 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VfsError {
     /// The input buffer was smaller than expected for reading a header or table.
-    UnexpectedEof { expected: usize, actual: usize },
+    UnexpectedEof {
+        /// Buffer length the parse required at the failure point.
+        expected: usize,
+        /// Buffer length actually available.
+        actual: usize,
+    },
     /// Magic signature mismatch (e.g. not `b"RS"` for `.RES` files).
     InvalidMagic {
+        /// Signature the parser expected (e.g. `"RS"`).
         expected: &'static str,
+        /// First two bytes found in the stream.
         actual: [u8; 2],
     },
     /// The offset table contains out-of-bounds, unaligned, or non-monotonic values.
-    InvalidOffsetTable { reason: String },
+    InvalidOffsetTable {
+        /// Human-readable description of the offending table entry.
+        reason: String,
+    },
     /// The requested entry was not found in the archive.
-    EntryNotFound { name: String },
+    EntryNotFound {
+        /// Requested DOS 8.3 entry name, normalized per `[I8]`.
+        name: String,
+    },
     /// The payload could not be extracted due to size or offset corruption.
     CorruptedPayload {
+        /// Entry name whose payload could not be extracted.
         name: String,
+        /// Byte offset of the payload within the archive.
         offset: usize,
+        /// Payload length in bytes.
         len: usize,
     },
 }

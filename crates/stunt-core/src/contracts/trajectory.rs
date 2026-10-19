@@ -16,10 +16,15 @@
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CameraTransform {
+    /// Camera world position in meters `[x, y, z]` per `[I1]`.
     pub eye: [f32; 3],
+    /// Look-at point in meters `[x, y, z]`; `eye - target` is the view direction.
     pub target: [f32; 3],
+    /// Vertical field of view in degrees.
     pub fov_degrees: f32,
+    /// View roll about the forward axis in radians.
     pub roll_radians: f32,
+    /// True when the film cuts here, suppressing sub-tick interpolation `[I4]`.
     #[cfg_attr(feature = "serde", serde(default))]
     pub cut_from_previous: bool,
 }
@@ -137,8 +142,11 @@ pub struct TrajectoryRecord {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StaticPropPlacement {
+    /// Name of the `.SOD` model placed on the stage.
     pub model_name: String,
+    /// World-space placement in meters `[x, y, z]` per `[I1]`.
     pub position_meters: [f32; 3],
+    /// Unit quaternion `[x, y, z, w]` giving the prop's orientation.
     pub rotation_quat: [f32; 4],
 }
 
@@ -146,10 +154,15 @@ pub struct StaticPropPlacement {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SceneHeader {
+    /// Eight-character film name from the `.FLM` container header.
     pub film_name: String,
+    /// Simulation tick rate in Hz (`20` or `30`, invariant `[I4]`).
     pub tick_rate_hz: u32,
+    /// VGA palette indices `(zenith, horizon)` used for the sky gradient `[I3]`.
     pub horizon_sky_palette: (u8, u8),
+    /// Terrain palette set name, when the film declares one.
     pub terrain_set_name: Option<String>,
+    /// Props that never move, placed at film start.
     pub static_props: Vec<StaticPropPlacement>,
 }
 
@@ -169,7 +182,9 @@ impl Default for SceneHeader {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FilmCapture {
+    /// Stage setup and environment metadata shared by every tick.
     pub header: SceneHeader,
+    /// Evaluated records in ascending tick order, one per simulation tick.
     pub ticks: Vec<TrajectoryRecord>,
 }
 

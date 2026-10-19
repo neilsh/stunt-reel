@@ -4,10 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "stunt-reel"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Tooling, automation, and analysis environment for Stunt Island film reels and game executables"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
 authors = [
     { name = "Stunt Reel Contributors" }
 ]
@@ -18,8 +20,12 @@ dev = [
     "kaitaistruct==0.11",
     "mypy>=1.14.0",
     "pytest>=8.3.0",
+    "pytest-cov>=6.0.0",
     "ruff>=0.9.0",
 ]
+
+[tool.hatch.version]
+path = "python/stunt_reel/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["python/stunt_reel"]
@@ -54,10 +60,19 @@ select = [
     "PIE",    # flake8-pie bug-pattern checks
     "T10",    # flake8-debugger: forbid leftover debugger calls
     "RUF",    # Ruff-specific rules
+    "N",      # pep8-naming
+    "PT",     # flake8-pytest-style
+    "ARG",    # flake8-unused-arguments
+    "S",      # flake8-bandit
+    "T20",    # flake8-print
 ]
 ignore = [
     "E501",   # line length violations handled by ruff format
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]        # asserts are the assertion mechanism in tests
+"python/scripts/**" = ["T20"]  # CLI scripts write human-readable progress to stdout
 
 [tool.ruff.lint.isort]
 known-first-party = ["stunt_reel"]
@@ -81,6 +96,7 @@ exclude = ["corpus"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q"
+addopts = "-ra -q --strict-markers --strict-config"
+filterwarnings = ["error"]
 testpaths = ["tests"]
 pythonpath = ["python"]

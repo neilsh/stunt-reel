@@ -105,7 +105,7 @@ def test_wire_req_id_prefix_collision_sweeps() -> None:
     for expected_id, rogue_id in collision_pairs:
         srv, port = make_loopback_server()
 
-        def server_task(server_sock: socket.socket, exp_id: int, rog_id: int) -> None:
+        def server_task(server_sock: socket.socket, _exp_id: int, rog_id: int) -> None:
             try:
                 conn, _ = server_sock.accept()
                 _req = conn.recv(1024)
@@ -510,10 +510,10 @@ def test_bda_char_to_key_comprehensive() -> None:
     assert char_to_key("_") == (ord("_"), 0x0C)
     assert char_to_key("A")[1] == char_to_key("a")[1]
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="char_to_key expects single character"):
         char_to_key("")
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="char_to_key expects single character"):
         char_to_key("two")
 
 
@@ -840,7 +840,7 @@ def test_euler_roll_banks_x_toward_pos_y() -> None:
 
 def test_euler_matrix_orthogonality_and_determinant_1000_samples() -> None:
     """Stress test 1,000 random Euler angles: verify orthogonality (M^T M = I) and det(M) = +1.0."""
-    rng = random.Random(42)
+    rng = random.Random(42)  # noqa: S311
 
     for _ in range(1000):
         yaw = rng.uniform(-math.pi, math.pi)
@@ -920,7 +920,7 @@ def test_trajectory_streamer_600_ticks_complete() -> None:
 def test_cleanroom_isolation_corpus_oracle() -> None:
     """Verify that corpus/oracle/ files are gitignored per Cleanroom Directive 1."""
     res = subprocess.run(
-        ["git", "check-ignore", "corpus/oracle/intro_trajectory.json"],
+        ["git", "check-ignore", "corpus/oracle/intro_trajectory.json"],  # noqa: S607
         capture_output=True,
         text=True,
         check=False,

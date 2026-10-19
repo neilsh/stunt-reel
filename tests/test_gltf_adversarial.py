@@ -41,13 +41,26 @@ from stunt_reel.gltf import (
     SodModel,
     SodPolygon,
     displace_decal_polygon,
+    export_trajectory_to_glb,
     identify_coplanar_decals,
     is_coplanar_facet,
     parse_glb_bytes,
     parse_sod_bytes,
 )
 
-INTRO_GLB_PATH = Path("build/gltf_output/INTRO.glb")
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+SYNTHETIC_TRAJ_PATH = FIXTURES_DIR / "oracle_intro_trajectory.json"
+
+
+def export_synthetic_glb(tmp_path: Path) -> bytes:
+    """Export the synthetic intro trajectory to a temporary GLB and return its bytes."""
+    out_file = tmp_path / "INTRO.glb"
+    export_trajectory_to_glb(
+        trajectory_path=SYNTHETIC_TRAJ_PATH,
+        output_path=out_file,
+        tick_rate=20.0,
+    )
+    return out_file.read_bytes()
 
 
 def _make_sod_header(scale: int = 0) -> bytes:
@@ -416,8 +429,10 @@ def test_identify_coplanar_decals_sequential_draw_order() -> None:
     result = identify_coplanar_decals([base, decal1, decal2, separate])
     assert len(result) == 4
     assert not result[0].is_decal
-    assert result[1].is_decal and abs(result[1].vertices[0][2] - 0.001) < 1e-6
-    assert result[2].is_decal and abs(result[2].vertices[0][2] - 0.001) < 1e-6
+    assert result[1].is_decal
+    assert abs(result[1].vertices[0][2] - 0.001) < 1e-6
+    assert result[2].is_decal
+    assert abs(result[2].vertices[0][2] - 0.001) < 1e-6
     assert not result[3].is_decal
 
 
@@ -465,10 +480,9 @@ def test_glb_container_header_and_chunk_alignment() -> None:
     assert len(bin_data) == c1_len
 
 
-def test_production_intro_glb_binary_integrity() -> None:
-    """Inspect production artifact build/gltf_output/INTRO.glb against glTF 2.0 binary specifications."""
-    assert INTRO_GLB_PATH.exists(), f"Artifact {INTRO_GLB_PATH} not found"
-    raw = INTRO_GLB_PATH.read_bytes()
+def test_exported_glb_binary_integrity(tmp_path: Path) -> None:
+    """Validate an exported GLB container against glTF 2.0 binary specifications."""
+    raw = export_synthetic_glb(tmp_path)
     file_size = len(raw)
 
     # 1. Header integrity
@@ -523,9 +537,9 @@ def test_production_intro_glb_binary_integrity() -> None:
 # =============================================================================
 
 
-def test_animation_samplers_strictly_monotonic_timestamps() -> None:
-    """Verify animation input timestamps in INTRO.glb are non-negative and strictly monotonically increasing."""
-    raw = INTRO_GLB_PATH.read_bytes()
+def test_animation_samplers_strictly_monotonic_timestamps(tmp_path: Path) -> None:
+    """Verify animation input timestamps in the exported GLB are non-negative and strictly monotonically increasing."""
+    raw = export_synthetic_glb(tmp_path)
     gltf, bin_bytes = parse_glb_bytes(raw)
     animations = gltf.get("animations", [])
     assert len(animations) > 0
@@ -549,9 +563,9 @@ def test_animation_samplers_strictly_monotonic_timestamps() -> None:
                 )
 
 
-def test_animation_samplers_matching_input_output_counts() -> None:
+def test_animation_samplers_matching_input_output_counts(tmp_path: Path) -> None:
     """Verify sampler input and output accessor counts match for LINEAR interpolation."""
-    raw = INTRO_GLB_PATH.read_bytes()
+    raw = export_synthetic_glb(tmp_path)
     gltf, _ = parse_glb_bytes(raw)
     animations = gltf.get("animations", [])
 

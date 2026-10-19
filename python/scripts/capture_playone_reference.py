@@ -12,6 +12,7 @@ nothing here is committed evidence.
 from __future__ import annotations
 
 import argparse
+import logging
 import shutil
 import subprocess
 import sys
@@ -97,7 +98,9 @@ def run_session(args: argparse.Namespace) -> int:
                 f"[capture] launching {exe} -conf {conf} (cwd {REPO_ROOT})",
                 flush=True,
             )
-            emulator = subprocess.Popen([exe, "-conf", str(conf)], cwd=str(REPO_ROOT))
+            emulator = subprocess.Popen(  # noqa: S603
+                [exe, "-conf", str(conf)], cwd=str(REPO_ROOT)
+            )
 
         print(f"[capture] waiting for DOSBox-X on 127.0.0.1:{CONTROL_PORT}", flush=True)
         transport.accept(timeout=LAUNCH_TIMEOUT_SECONDS)
@@ -137,6 +140,7 @@ def run_session(args: argparse.Namespace) -> int:
 
 def main() -> int:
     """Run the capture and terminate the emulator."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
     return run_session(parse_args())
 
 

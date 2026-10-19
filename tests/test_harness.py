@@ -101,9 +101,9 @@ def test_focal_to_fov_y_conversion() -> None:
     # Roundtrip check
     assert math.isclose(fov_y_to_focal(fov), focal, rel_tol=1e-5)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="focal_dist must be positive"):
         focal_to_fov_y(0.0)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="fov_degrees must be strictly between 0 and 180"):
         fov_y_to_focal(0.0)
 
 
@@ -536,7 +536,7 @@ def test_bda_char_to_key_mapping() -> None:
     assert ascii_code == ord("c")
     assert scan_code == 0x2E
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="char_to_key expects single character"):
         char_to_key("multi")
 
 
@@ -667,7 +667,7 @@ def test_vsync_trap_tick_deduplication() -> None:
     # Sim tick advances only once every 3 RUN calls!
     run_count = 0
 
-    def mock_run_handler(args: list[str]) -> list[str]:
+    def mock_run_handler(_args: list[str]) -> list[str]:
         nonlocal run_count
         run_count += 1
         sim_tick = run_count // 3
@@ -703,7 +703,7 @@ def test_vsync_trap_timeout() -> None:
     trap.last_captured_tick = 0
 
     # Freeze tick counter at 0
-    mock.register_handler("RUN", lambda args: ["Breakpoint hit"])
+    mock.register_handler("RUN", lambda _args: ["Breakpoint hit"])
 
     with pytest.raises(TimeoutError):
         trap.wait_next_sim_tick(client)
@@ -944,11 +944,10 @@ def test_streamer_position_rmse_threshold() -> None:
     assert rmse <= 0.01, f"RMSE {rmse:.6f} m exceeds 0.01 m threshold"
 
 
-def test_oracle_intro_trajectory_file_exists_and_valid() -> None:
-    """Verify corpus/oracle/intro_trajectory.json contains 600 valid ticks."""
-    oracle_file = Path("corpus/oracle/intro_trajectory.json")
-    if not oracle_file.exists():
-        TrajectoryStreamer.stream_oracle_intro(oracle_file)
+def test_oracle_intro_trajectory_file_exists_and_valid(tmp_path: Path) -> None:
+    """Verify a streamed oracle trajectory contains 600 valid ticks."""
+    oracle_file = tmp_path / "intro_trajectory.json"
+    TrajectoryStreamer.stream_oracle_intro(oracle_file)
 
     assert oracle_file.exists()
     records = load_trajectory_records(oracle_file)
