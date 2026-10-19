@@ -75,7 +75,7 @@ If not using `mise`:
 - `crates/` — Rust workspace crates (`stunt-core`, `stunt-render`).
 - `python/` — Python tooling and automation modules (`stunt_reel`).
 - `tests/` — Test suites for Rust and Python components.
-- `research/` — Reverse engineering documentation and binary analysis lab notebook (e.g., `research/playone-exe/`). `research/formats/` keeps each format document next to its executable Kaitai layout (`res.md` + `res.ksy`, `all.ksy`, `sod.ksy`, `auxiliary/spr.ksy`, `auxiliary/set.ksy`, `auxiliary/sio.ksy`, `auxiliary/anchorpt.dat.ksy`, `auxiliary/map.bin.ksy`, `auxiliary/scenery.scn.ksy`).
+- `research/` — Reverse engineering documentation and binary analysis lab notebook (e.g., `research/playone-exe/`). `research/formats/` keeps each format document next to its executable Kaitai layout (`res.md` + `res.ksy`, `all.ksy`, `sod.ksy`, `flm_slice.ksy`, `auxiliary/spr.ksy`, `auxiliary/set.ksy`, `auxiliary/sio.ksy`, `auxiliary/anchorpt.dat.ksy`, `auxiliary/map.bin.ksy`, `auxiliary/scenery.scn.ksy`).
 - `corpus/` — Reference data, demo files, and film vaults (e.g., `corpus/stisldem/VAULT/`).
 - `target_bin/` — Full target game binaries, sound drivers, and resource files.
 - `capture/` — Output captures, logs, and traces.

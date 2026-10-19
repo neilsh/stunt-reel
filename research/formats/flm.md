@@ -41,7 +41,7 @@ A `.FLM` file consists of a 4-byte ASCII signature followed immediately by a con
 +---------------------------------------------------------------------------------+
 ```
 
-No Kaitai schema describes this stream: `interp` operand width depends on `SIF_MOVES`, `SIF_ROTATES`, and `SIF_ANIMATES` flags set by an earlier `create`, and Kaitai Struct has no mutable state across records. The slice envelope is statically describable, but the opcode stream is not, so the layout remains documented here.
+A Kaitai schema covers one slice, not the stream: [`flm_slice.ksy`](flm_slice.ksy) parses a single slice given the three slot masks, threading `create`-driven flag changes through a recursive opcode chain. Slice-to-slice state cannot cross a Kaitai `repeat`, so [`python/stunt_reel/flm_walk.py`](../../python/stunt_reel/flm_walk.py) walks the slice chain and supplies those masks. Corpus measurements: 627,696 slices across 561 of 568 films, 2,278,626 `interp` opcodes that depend on a `create` earlier in the same slice, and 109,185 `create` opcodes that flip a slot's `SIF_MOVES`/`SIF_ROTATES`/`SIF_ANIMATES` bit.
 
 ### 2.1 The Solved 3-Byte Slice Header (Reverse-Engineering Breakthrough)
 
@@ -166,7 +166,7 @@ The following backlog documents open questions and investigations regarding `.FL
 | **Q-FLM-04** | Interpolation on Non-Existent Slots | Observed in `CORSAIR.FLM` (slot #56 updated before `create`). | `[Bounded Observation]` | Engine ignores update or creates stub slot without throwing fatal error. |
 | **Q-FLM-05** | Slerp Antipodal Quaternions | When $\mathbf{q}_t \cdot \mathbf{q}_{t+1} < 0.0$, slerp traverses the long path on $S^3$. | `[Established]` | Negate target quaternion prior to spherical interpolation. |
 | **Q-FLM-06** | Real-Mode Dynamic Buffer Allocation for Variable Slice Rates | In low-memory real-mode conditions, `PLAYONE.EXE` may have dynamically throttled slice ingestion buffers when `tick_duration` dropped to 1 tick. | `[Hypothesis]` | Modern stream parser processes variable slice durations with zero buffer reallocation. |
-| **Q-FLM-07** | Kaitai encodability | `interp` operand widths depend on slot flags from a prior `create`; no stateless schema can size the stream. | `[Bounded Observation]` | Keep the prose specification; no `.ksy`. |
+| **Q-FLM-07** | Kaitai encodability | `interp` widths depend on slot flags mutated by `create`, with 2,278,626 intra-slice dependencies and 109,185 slot flag changes across the 561 walkable films; the state cannot cross a Kaitai `repeat`. | `[Established]` | [`flm_slice.ksy`](flm_slice.ksy) plus `stunt_reel.flm_walk` masks; seven films outside the grammar are pinned as corpus anomalies. |
 
 ---
 

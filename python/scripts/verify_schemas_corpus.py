@@ -12,6 +12,10 @@ Local-only by design: ``corpus/`` is gitignored and absent in CI, so this
 sweep is never part of ``mise run check``; run it with
 ``mise run verify-corpus``.
 
+``flm_slice`` is driven by ``CASE_PROVIDERS``, which turns one film into one
+parser invocation per slice and supplies the inter-slice slot masks as
+constructor arguments, because those masks cannot cross a Kaitai ``repeat``.
+
 ``KNOWN_ANOMALIES`` pins the reviewed corpus defects, keyed by schema id,
 corpus-relative path, and exact problem text. ``--strict`` therefore fails
 only on anomalies missing from that table (a new defect) or on table entries
@@ -33,11 +37,12 @@ import itertools
 import re
 import sys
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from stunt_reel import flm_walk
 from stunt_reel.kaitai import (
     REQUIRED_KSC_VERSION,
     compile_schemas,
@@ -75,6 +80,8 @@ class SweepResult:
     spec: SchemaSpec
     total: int = 0
     parsed: int = 0
+    files_total: int = 0
+    files_parsed: int = 0
     errors: list[str] = field(default_factory=list)
     anomalies: list[tuple[str, str]] = field(default_factory=list)
 
@@ -192,6 +199,7 @@ PROBES: dict[str, Callable[[Any, int], list[str]]] = {
     "map_area": _probe_map_area,
     "sod": _probe_consumed,
     "scenery": _probe_scenery,
+    "flm_slice": _probe_consumed,
 }
 
 
@@ -211,6 +219,11 @@ PROBES: dict[str, Callable[[Any, int], list[str]]] = {
 # - ``all``: ``BRIEFING.ALL`` declares a final chunk at 367223 in a 364544-byte
 #   file; the trailing chunks are audio IDs 0xCA91..0xCA93, so the copy is
 #   truncated by 2679 bytes.
+# - ``flm_slice``: the walker reproduces ``FlmParser::parse_slice``, so a
+#   rejection means the film breaks the opcode grammar that 561 other films
+#   satisfy. ``CORSAIR``, ``JASON``, and ``PITTS`` carry class-3 tags (``0xF0``,
+#   ``0xCC``, ``0xFD``) that no documented opcode defines; ``MOVIE``, ``ROD``,
+#   ``SR71FLM``, and ``TUTORIAL`` run out of bytes inside an opcode payload.
 KNOWN_ANOMALIES: dict[tuple[str, str, str], str] = {
     (
         "res",
@@ -262,46 +275,121 @@ KNOWN_ANOMALIES: dict[tuple[str, str, str], str] = {
         "si_archive/SITools/OBJECTS/Dean/MAP.BIN",
         "vertex count outside 3..7 at patch 22 num_verts 2, patch 131 num_verts 8",
     ): "patch 22 underruns the 3-vertex minimum; patch 131 overruns v[7]",
+    (
+        "flm_slice",
+        "si_archive/Films/FLMOnly/CORSAIR.FLM",
+        "slice walk failed: unsupported opcode 0xf0 at 17119",
+    ): "class-3 opcode outside the documented grammar",
+    (
+        "flm_slice",
+        "si_archive/Films/FLMOnly/JASON.FLM",
+        "slice walk failed: unsupported opcode 0xcc at 91738",
+    ): "class-3 opcode outside the documented grammar",
+    (
+        "flm_slice",
+        "si_archive/Films/FLMOnly/MOVIE.FLM",
+        "slice walk failed: truncated opcode 0x1a at 15743",
+    ): "stream truncated mid-opcode",
+    (
+        "flm_slice",
+        "si_archive/Films/FLMOnly/PITTS.FLM",
+        "slice walk failed: unsupported opcode 0xfd at 37540",
+    ): "class-3 opcode outside the documented grammar",
+    (
+        "flm_slice",
+        "si_archive/Films/FLMOnly/ROD.FLM",
+        "slice walk failed: truncated opcode 0x1a at 12287",
+    ): "stream truncated mid-opcode",
+    (
+        "flm_slice",
+        "si_archive/Films/FLMOnly/SR71FLM.FLM",
+        "slice walk failed: truncated opcode 0x41 at 79100",
+    ): "stream truncated mid-opcode",
+    (
+        "flm_slice",
+        "si_archive/Films/FLMOnly/TUTORIAL.FLM",
+        "slice walk failed: truncated opcode 0x1a at 24063",
+    ): "stream truncated mid-opcode",
 }
+
+
+@dataclass(frozen=True)
+class ParseCase:
+    """One parser invocation: constructor args plus the exact bytes to parse."""
+
+    label: str
+    args: tuple[Any, ...]
+    data: bytes
+
+
+def _flm_cases(data: bytes) -> Iterator[ParseCase]:
+    """Turn one film into one case per slice, carrying the slot masks."""
+    views = flm_walk.walk_film(data)
+    return (
+        ParseCase(
+            f"slice {view.index} @ 0x{view.start:04X}",
+            (view.moves, view.rotates, view.animates),
+            data[view.start : view.end],
+        )
+        for view in views
+    )
+
+
+CASE_PROVIDERS: dict[str, Callable[[bytes], Iterator[ParseCase]]] = {
+    "flm_slice": _flm_cases,
+}
+
+
+def _corpus_files(spec: SchemaSpec, corpus_dir: Path) -> list[Path]:
+    """Return the corpus files one schema describes, sorted by path."""
+    suffix = f".{spec.extension.lower()}"
+    selector = CORPUS_SELECTORS.get(spec.schema_id)
+    if spec.filename is not None:
+        return sorted(
+            path
+            for path in corpus_dir.rglob("*")
+            if path.is_file() and path.name.upper() == spec.filename
+        )
+    if selector is not None:
+        return sorted(path for path in corpus_dir.rglob("*") if path.is_file() and selector(path))
+    return sorted(
+        path for path in corpus_dir.rglob("*") if path.is_file() and path.suffix.lower() == suffix
+    )
 
 
 def sweep(spec: SchemaSpec, parser: Any, corpus_dir: Path, verbose: bool = False) -> SweepResult:
     """Parse every corpus file matching one schema and collect errors/anomalies."""
     result = SweepResult(spec)
-    suffix = f".{spec.extension.lower()}"
-    selector = CORPUS_SELECTORS.get(spec.schema_id)
-    if spec.filename is not None:
-        files = sorted(
-            path
-            for path in corpus_dir.rglob("*")
-            if path.is_file() and path.name.upper() == spec.filename
-        )
-    elif selector is not None:
-        files = sorted(path for path in corpus_dir.rglob("*") if path.is_file() and selector(path))
-    else:
-        files = sorted(
-            path
-            for path in corpus_dir.rglob("*")
-            if path.is_file() and path.suffix.lower() == suffix
-        )
-    result.total = len(files)
+    files = _corpus_files(spec, corpus_dir)
+    result.files_total = len(files)
     probe = PROBES.get(spec.schema_id)
+    provider = CASE_PROVIDERS.get(spec.schema_id)
     for path in files:
-        data = path.read_bytes()
-        try:
-            root = parser(_KAITAISTRUCT.KaitaiStream(io.BytesIO(data)))
-            _touch_public_fields(root)
-            if probe is not None:
-                problems = probe(root, len(data))
-                if problems:
-                    result.anomalies.append(
-                        (path.relative_to(corpus_dir).as_posix(), "; ".join(problems))
-                    )
-            result.parsed += 1
-            if verbose:
-                print(f"  ok {path}")
-        except Exception as exc:
-            result.errors.append(f"{path}: {type(exc).__name__}: {exc}")
+        rel = path.relative_to(corpus_dir).as_posix()
+        cases: Iterable[ParseCase]
+        if provider is None:
+            cases = (ParseCase(path.name, (), path.read_bytes()),)
+        else:
+            try:
+                cases = provider(path.read_bytes())
+            except flm_walk.FlmWalkError as exc:
+                result.anomalies.append((rel, f"slice walk failed: {exc}"))
+                continue
+        result.files_parsed += 1
+        for case in cases:
+            result.total += 1
+            try:
+                root = parser(*case.args, _KAITAISTRUCT.KaitaiStream(io.BytesIO(case.data)))
+                _touch_public_fields(root)
+                if probe is not None:
+                    problems = probe(root, len(case.data))
+                    if problems:
+                        result.anomalies.append((rel, "; ".join(problems)))
+                result.parsed += 1
+                if verbose:
+                    print(f"  ok {rel} {case.label}")
+            except Exception as exc:
+                result.errors.append(f"{path}: {type(exc).__name__}: {exc}")
     return result
 
 
@@ -328,7 +416,11 @@ def _run(args: argparse.Namespace, specs: Sequence[SchemaSpec]) -> int:
         schema_id = result.spec.schema_id
         unknown = [item for item in result.anomalies if (schema_id, *item) not in KNOWN_ANOMALIES]
         pinned = len(result.anomalies) - len(unknown)
-        suffix = f", {len(result.anomalies)} anomalies" if result.anomalies else ""
+        suffix = ""
+        if schema_id in CASE_PROVIDERS:
+            suffix = f" in {result.files_parsed}/{result.files_total} files"
+        if result.anomalies:
+            suffix += f", {len(result.anomalies)} anomalies"
         suffix += f" ({pinned} known)" if pinned else ""
         print(f"[{schema_id}] {result.parsed}/{result.total} parsed{suffix}")
         for path, problem in result.anomalies:
