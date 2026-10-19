@@ -16,11 +16,13 @@
 //! - `[I6]` Visual parity acceptance thresholds (SSIM >= 0.88 / 0.90)
 //! - `[I8]` Uppercase DOS 8.3 filename normalization
 
+pub mod palette;
 pub mod parity;
 pub mod scene;
 pub mod trajectory;
 pub mod vfs;
 
+pub use palette::*;
 pub use parity::*;
 pub use scene::*;
 pub use trajectory::*;

@@ -8,3 +8,12 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+stunt-core = { path = "../stunt-core", features = ["bytemuck", "serde"] }
+wgpu = "24.0"
+bytemuck = { version = "1.14", features = ["derive"] }
+glam = "0.29"
+pollster = "0.4"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[dev-dependencies]
+serde_json = "1.0"
