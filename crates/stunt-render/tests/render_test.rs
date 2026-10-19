@@ -107,23 +107,23 @@ fn test_palette_lut_data_integrity() {
 
     // Verify row 31 (full brightness)
     // Palette 0: Black (0, 0, 0)
-    let idx_0 = ((31 * 256 + 0) * 4) as usize;
+    let idx_0 = 31 * 256 * 4;
     assert_eq!(&bytes[idx_0..idx_0 + 4], &[0, 0, 0, 255]);
 
     // Palette 255: White (252, 252, 252)
-    let idx_255 = ((31 * 256 + 255) * 4) as usize;
+    let idx_255 = (31 * 256 + 255) * 4;
     assert_eq!(&bytes[idx_255..idx_255 + 4], &[252, 252, 252, 255]);
 
     // Palette 40: Light Grey (120, 108, 108)
     let (r40, g40, b40) = stunt_core::contracts::get_palette_rgb(40);
-    let idx_40 = ((31 * 256 + 40) * 4) as usize;
+    let idx_40 = (31 * 256 + 40) * 4;
     assert_eq!(bytes[idx_40], r40);
     assert_eq!(bytes[idx_40 + 1], g40);
     assert_eq!(bytes[idx_40 + 2], b40);
     assert_eq!(bytes[idx_40 + 3], 255);
 
     // Verify row 0 (ambient floor factor 0.2)
-    let idx_40_amb = ((0 * 256 + 40) * 4) as usize;
+    let idx_40_amb = 40 * 4;
     let expected_r = (r40 as f32 * 0.2).round() as u8;
     assert_eq!(bytes[idx_40_amb], expected_r);
 }
@@ -336,7 +336,12 @@ fn test_headless_offscreen_render_execution() {
     assert_eq!(pixels.len(), 320 * 240 * 4);
 
     // Verify non-zero alpha and rendered pixels
-    let non_zero_pixels = pixels.chunks_exact(4).filter(|p| p[3] == 255).count();
+    let non_zero_pixels = pixels
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .filter(|p| p[3] == 255)
+        .count();
     assert_eq!(non_zero_pixels, 320 * 240, "All pixels must have alpha 255");
 
     // Convert to luminance and verify SSIM against itself

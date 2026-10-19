@@ -144,7 +144,7 @@ mod tests {
 
         // Row 31 (full brightness, level = 31, factor = 1.0)
         // Color 0: (0, 0, 0, 255)
-        let row31_c0 = ((31 * 256 + 0) * 4) as usize;
+        let row31_c0 = 31 * 256 * 4;
         assert_eq!(&bytes[row31_c0..row31_c0 + 4], &[0, 0, 0, 255]);
 
         // Color 255: (252, 252, 252, 255)
@@ -153,7 +153,7 @@ mod tests {
 
         // Row 0 (ambient floor, level = 0, factor = 0.2)
         // Color 255: 252 * 0.2 = 50.4 -> 50
-        let row0_c255 = ((0 * 256 + 255) * 4) as usize;
+        let row0_c255 = 255 * 4;
         assert_eq!(&bytes[row0_c255..row0_c255 + 4], &[50, 50, 50, 255]);
     }
 }

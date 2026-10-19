@@ -320,9 +320,11 @@ mod tests {
 
     #[test]
     fn test_free_cam_navigation_vectors() {
-        let mut cam = FreeCamState::default();
-        cam.yaw = 0.0;
-        cam.pitch = 0.0;
+        let cam = FreeCamState {
+            yaw: 0.0,
+            pitch: 0.0,
+            ..Default::default()
+        };
 
         let fwd = cam.forward();
         assert!((fwd.x).abs() < 1e-4);

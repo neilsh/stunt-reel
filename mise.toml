@@ -45,7 +45,7 @@ run = "dosbox-x-mcp-server"
 # Development & Quality Assurance Tasks
 [tasks.lint-rust]
 description = "Run Rust Clippy lints across all crates"
-run = "cargo clippy --workspace --all-targets --all-features"
+run = "cargo clippy --workspace --all-targets --all-features -- -D warnings"
 
 [tasks.lint-py]
 description = "Run Ruff linter on Python codebase"

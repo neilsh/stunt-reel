@@ -215,15 +215,12 @@ pub fn create_default_aircraft_ir() -> SodModelIr {
 
 /// Loads a model from disk if provided, otherwise returns cleanroom synthetic model.
 pub fn load_or_create_model(path: Option<&Path>) -> SodModelIr {
-    if let Some(p) = path {
-        if let Ok(bytes) = fs::read(p) {
-            let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("MODEL");
-            if let Ok(ir) = transpile_sod(&bytes, stem) {
-                return ir;
-            }
-        }
-    }
-    create_default_aircraft_ir()
+    let model = path.and_then(|p| {
+        let bytes = fs::read(p).ok()?;
+        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("MODEL");
+        transpile_sod(&bytes, stem).ok()
+    });
+    model.unwrap_or_else(create_default_aircraft_ir)
 }
 
 /// Evaluates trajectory records from an authored .FLM file, or synthesizes a circular orbit.
@@ -231,22 +228,21 @@ pub fn load_or_synthesize_trajectory(
     path: Option<&Path>,
     max_ticks: Option<usize>,
 ) -> Vec<TrajectoryRecord> {
-    if let Some(p) = path {
-        if let Ok(bytes) = fs::read(p) {
-            if let Ok(mut player) = FlmPlayer::new(&bytes) {
-                let limit = max_ticks.unwrap_or(600);
-                let mut records = Vec::new();
-                while let Some(rec) = player.step_tick() {
-                    records.push(rec);
-                    if records.len() >= limit {
-                        break;
-                    }
-                }
-                if !records.is_empty() {
-                    return records;
-                }
+    let authored = path.and_then(|p| {
+        let bytes = fs::read(p).ok()?;
+        let mut player = FlmPlayer::new(&bytes).ok()?;
+        let limit = max_ticks.unwrap_or(600);
+        let mut records = Vec::new();
+        while let Some(rec) = player.step_tick() {
+            records.push(rec);
+            if records.len() >= limit {
+                break;
             }
         }
+        (!records.is_empty()).then_some(records)
+    });
+    if let Some(records) = authored {
+        return records;
     }
 
     // Synthesize 60-tick circular fly-by trajectory
@@ -427,10 +423,12 @@ impl WindowApp {
 
         // Advance trajectory if not paused and in authored camera mode
         if !self.paused && !self.trajectory.is_empty() {
-            if let Some(record) = self.trajectory.get(self.current_tick_idx) {
-                if self.camera.mode == CameraMode::Authored {
-                    self.camera.set_authored_transform(record.camera);
-                }
+            if let Some(record) = self
+                .trajectory
+                .get(self.current_tick_idx)
+                .filter(|_| self.camera.mode == CameraMode::Authored)
+            {
+                self.camera.set_authored_transform(record.camera);
             }
             self.current_tick_idx = (self.current_tick_idx + 1) % self.trajectory.len();
         }
@@ -591,7 +589,7 @@ impl ApplicationHandler for WindowApp {
             ..Default::default()
         });
 
-        let surface = match instance.create_surface(window.clone()) {
+        let surface = match instance.create_surface(Arc::clone(&window)) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("[stuntreel] Failed to create surface: {e}");

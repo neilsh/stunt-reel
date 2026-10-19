@@ -91,10 +91,10 @@ Or individual tasks via `mise`:
 | Command | Description | Underlying Tooling |
 |---|---|---|
 | `mise run check` | Run entire CI verification suite | All linters, formatters, tests |
-| `mise run lint` | Lint both Rust and Python | `cargo clippy` & `uv run ruff check` |
+| `mise run lint` | Lint Rust and Python; Rust warnings fail the task | `cargo clippy -- -D warnings` & Ruff (`A`, `DTZ`, `G`, `PIE`, `T10`, and existing core rules) |
 | `mise run fmt` | Format all code | `cargo fmt` & `uv run ruff format` |
 | `mise run fmt-check` | Check code formatting | `cargo fmt --check` & `uv run ruff format --check` |
-| `mise run typecheck` | Static type checking | `uv run mypy` |
+| `mise run typecheck` | Strict Python type checking, including unreachable-code and extra checks | `uv run mypy`
 | `mise run test` | Run Rust & Python test suites | `cargo test` & `uv run pytest` |
 
 You can also run tool commands directly:
