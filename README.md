@@ -1,51 +1,41 @@
 # stunt-reel
 
-Tooling, automation, and analysis environment for *Stunt Island* (1992) film reels (`.FLM`), demos, and game executables using DOSBox-X and agentic debugging workflows.
+Reverse-engineering, analysis, and reconstruction workspace for *Stunt Island* (1992, Walt Disney Computer Software / The Assembly Line): a DOSBox-X harness for the original `PLAYONE.EXE`, cleanroom Rust and Python parsers, a native `wgpu` renderer (`stuntreel`), and a parity loop that scores rendered frames against frames captured from the original player.
+
+The living specification is [`docs/SPEC.md`](docs/SPEC.md) — goals, invariants `[I1]`–`[I8]`, evidentiary tiers, and the verification matrix. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) routes each module to its specification anchor and research note; [`AGENTS.md`](AGENTS.md) holds the contributor and agent rules.
 
 ---
 
 ## Requirements
 
-- **[mise](https://mise.jdx.dev/)** (recommended environment & tool manager)
-- **[Rust](https://www.rust-lang.org/)** (managed via `mise` or `rustup`, 2024 edition)
-- **[uv](https://docs.astral.sh/uv/)** & **Python 3.11+** (managed via `mise` or standalone)
-- **[DOSBox-X](https://dosbox-x.com/) `2026.10.01`** (managed automatically via `mise`)
-- **[`dosbox-x-mcp-server`](https://github.com/caiiiycuk/dosbox-x-mcp-server)** (managed automatically via `mise`)
-- **Java 21 (Temurin)** (managed automatically via `mise`)
-- **[Kaitai Struct Compiler](https://kaitai.io/) `0.11`** (managed automatically via `mise`)
+- **[mise](https://mise.jdx.dev/)** (recommended environment and tool manager)
+- **[Rust](https://www.rust-lang.org/)** 2024 edition (rustc ≥ 1.85), managed via `mise` or `rustup`
+- **[uv](https://docs.astral.sh/uv/)** and **Python ≥ 3.11**, managed via `mise` or standalone
+- **[DOSBox-X](https://dosbox-x.com/) `2026.10.01`** (Windows x64 portable SDL2 build, installed by `mise`)
+- **[`dosbox-x-mcp-server`](https://github.com/caiiiycuk/dosbox-x-mcp-server) `0.1.2`** (managed via `mise`)
+- **Java 21 (Temurin)** and **Kaitai Struct Compiler `0.11`** (managed via `mise`; needed only for the `.ksy` corpus checks)
 
 ---
 
 ## Setup
 
-### 1. Automatic Setup with mise (Recommended)
-
-Run:
+### 1. mise
 
 ```powershell
-mise install
+mise install          # pinned toolchains, DOSBox-X, Kaitai compiler
+uv sync --all-groups  # Python virtualenv plus dev tools (ruff, mypy, pytest, kaitaistruct)
 ```
 
-This automatically downloads and configures:
-- **Rust Toolchain** (`rustc`, `cargo`, `rustfmt`, `clippy`)
-- **Python 3.11** & **uv**
-- **DOSBox-X `2026.10.01`** (64-bit portable build)
-- **`dosbox-x-mcp-server` `v0.1.2`** (Windows x86_64 binary)
-- **Java 21 (Temurin)**
-- **Kaitai Struct Compiler `0.11`**
+Pinned versions live in [`mise.toml`](mise.toml); the `kaitaistruct==0.11` runtime is installed by `uv sync` for the schema checks.
 
-Initialize the Python virtual environment and developer tools:
+### 2. Agent / MCP integration
 
 ```powershell
-uv sync --all-groups
+mise run ensure-dosbox   # start DOSBox-X with the MCP debugger enabled (no-op if already running)
+mise run mcp             # launch dosbox-x-mcp-server over stdio
 ```
 
-This also installs the pinned `kaitaistruct==0.11` runtime used by the catalog
-schema checks that execute [`research/formats/res.ksy`](research/formats/res.ksy).
-
-### 2. Antigravity MCP Configuration
-
-Register the MCP server in your global configuration file (`~/.gemini/config/mcp_config.json`) using `dosbox-x-mcp-server`, which must be available on `PATH`:
+Register the server in the agent's MCP configuration file (`~/.gemini/config/mcp_config.json`) and make sure `dosbox-x-mcp-server` is on `PATH`:
 
 ```json
 {
@@ -59,57 +49,42 @@ Register the MCP server in your global configuration file (`~/.gemini/config/mcp
 ```
 
 > [!NOTE]
-> When Antigravity starts the MCP server over stdio, the server listens locally on TCP port `58991` (or WebSocket `58992`). DOSBox-X can connect to this control port to enable remote debugger execution (`debug_exec`), memory queries, and breakpoint hooks.
-
-### 3. Alternative / Manual Installation
-
-If not using `mise`:
-- **DOSBox-X**: Install **DOSBox-X `2026.10.01`** and make its binaries, including `dosbox-x.exe`, available on `PATH`.
-- **`dosbox-x-mcp-server`**: Download `dosbox-x-mcp-server-v0.1.2-x86_64-pc-windows-msvc.exe` from [GitHub Releases](https://github.com/caiiiycuk/dosbox-x-mcp-server/releases), install it, and make it available on `PATH`.
+> DOSBox-X profiles connect *out* to the control port via `[dosbox] mcp_server = 58991`. `mise run capture-ref` binds that port itself, so stop the MCP server and any other DOSBox-X instance before capturing.
 
 ---
 
 ## Project Structure
 
-- `docs/` — Living specification (`SPEC.md`), 1-hop architecture (`ARCHITECTURE.md`), Antigravity Teamwork blueprint (`TEAM_SHEET.md`), and runtime memory maps (`MEMORY_MAP.md`).
-- `crates/` — Rust workspace crates (`stunt-core`, `stunt-render`).
-- `python/` — Python tooling and automation modules (`stunt_reel`).
-- `tests/` — Test suites for Rust and Python components.
-- `research/` — Reverse engineering documentation and binary analysis lab notebook (e.g., `research/playone-exe/`). `research/formats/` keeps each format document next to its executable Kaitai layout (`res.md` + `res.ksy`, `all.ksy`, `sod.ksy`, `flm_slice.ksy`, `auxiliary/spr.ksy`, `auxiliary/set.ksy`, `auxiliary/sio.ksy`, `auxiliary/anchorpt.dat.ksy`, `auxiliary/map.bin.ksy`, `auxiliary/scenery.scn.ksy`).
-- `corpus/` — Reference data, demo files, and film vaults (e.g., `corpus/stisldem/VAULT/`).
-- `target_bin/` — Full target game binaries, sound drivers, and resource files.
-- `capture/` — Output captures, logs, and traces.
-- `dosbox-playone.conf` — DOSBox-X configuration file tailored for running `PLAYONE.EXE` film playback with auto-type sequences.
-- `play_ctry.bat` — Convenience runner launching DOSBox-X via `mise`.
-- `mise.toml` — Tool versions and task definitions.
+| Path | Contents |
+| --- | --- |
+| `crates/stunt-core/` | Seam contracts, `.RES`/`.ALL`/`.SOD`/`.FLM` parsers, and the `.SOD` bytecode VM |
+| `crates/stunt-render/` | `wgpu` pipelines, Mode 13h palette LUT, headless renderer, SSIM/IoU comparator |
+| `crates/stunt-cli/` | `stuntreel` binary: interactive/headless presentation plus the `parity` subcommand |
+| `python/stunt_reel/tac/` | DOSBox-X TAC harness: control transport, BIOS Data Area input, frame capture — [`research/playone-exe/capture.md`](research/playone-exe/capture.md) |
+| `python/stunt_reel/gltf/` | `.SOD`/`.FLM` glTF 2.0 exporter |
+| `python/scripts/` | Entry points: `capture_playone_reference.py`, `verify_schemas_corpus.py`, `verify_formats_docs.py`, `adversarial_formats_challenge.py` |
+| `tests/` | Python suite and cleanroom fixtures — [`tests/fixtures/README.md`](tests/fixtures/README.md); Rust integration tests live in `crates/*/tests/` |
+| `docs/` | Living spec, architecture routing, memory map, team blueprint, and milestone playbooks |
+| `research/` | Format specifications beside their `.ksy` layouts plus `PLAYONE.EXE` analysis notes — [`research/formats/INDEX.md`](research/formats/INDEX.md) |
+| `corpus/` | Gitignored demo and archive data — [`corpus/README.md`](corpus/README.md) |
+| `target_bin/` | Gitignored original game binaries |
+| `build/` | Gitignored outputs: `build/parity/{reference,ours,report}/` and `build/gltf_output/` |
+| `dosbox-*.conf` | `dosbox-playone.conf` (interactive play), `dosbox-parity.conf` (capture), `dosbox-mcp.conf` (agent debugger), `test_mcp.conf` |
+| `play_ctry.bat` | Convenience launcher for `mise run play` |
 
 ---
 
-## Development & Quality Assurance
+## Workflows
 
-Run the complete verification pipeline (formatting, linting, typechecking, tests):
+### Play a film in the original player
 
 ```powershell
-mise run check
+mise run play        # or: .\play_ctry.bat
 ```
 
-Or individual tasks via `mise`:
+`dosbox-playone.conf` mounts `corpus/stisldem`, launches `PLAYONE.EXE`, and queues the autotype sequence that selects `CTRY.FLM`.
 
-| Command | Description | Underlying Tooling |
-|---|---|---|
-| `mise run check` | Run entire CI verification suite | All linters, formatters, tests |
-| `mise run lint` | Lint Rust and Python; Rust warnings fail the task | `cargo clippy -- -D warnings` & Ruff (`A`, `DTZ`, `G`, `PIE`, `T10`, and existing core rules) |
-| `mise run fmt` | Format all code | `cargo fmt` & `uv run ruff format` |
-| `mise run fmt-check` | Check code formatting | `cargo fmt --check` & `uv run ruff format --check` |
-| `mise run typecheck` | Strict Python type checking, including unreachable-code and extra checks | `uv run mypy`
-| `mise run test` | Run Rust & Python test suites | `cargo test` & `uv run pytest` |
-| `mise run verify-corpus` | Compile the `.ksy` layouts and check them against local `corpus/` files | Kaitai Struct Compiler (`mise`) & `kaitaistruct` |
-| `mise run capture-ref` | Capture `PLAYONE.EXE` Mode 13h reference pages for visual parity | DOSBox-X debugger control socket (`python/scripts/capture_playone_reference.py`) |
-
-### Visual Parity Loop
-
-`stuntreel` renders each film tick from the paired `.ALL` archive and scores it against captured
-`PLAYONE.EXE` frames (all evidence lands under `build/`, which is gitignored):
+### Capture reference frames and score a render
 
 ```bash
 mise run capture-ref
@@ -120,22 +95,55 @@ cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry \
     --test build/parity/ours/ctry --output build/parity/report/ctry
 ```
 
-`capture-ref` needs a local `corpus/stisldem` and the pinned DOSBox-X; `docs/SPEC.md § 3.6` records how the
-page dump, palette, and stepping work, and `docs/SPEC.md § 3.7` records the camera conventions the
-rendered frames rely on.
+`--frames` is half-open, so `1..141` renders ordinals 1–140, matching the 140 ticks `capture-ref` captures by default. The comparator writes `report.json` (per-frame `ssim`/`iou`, `mean_ssim`, `min_ssim`, `mean_iou`, `sky_index`, `unmatched`) and `contact_NNNN.png` sheets under `build/parity/report/ctry/`.
 
-`verify-corpus` is a local-only sweep: `corpus/` is gitignored and absent in CI, so it is not part of `mise run check`. Pass `-- --strict` to fail on corpus anomalies instead of only reporting them.
+Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`, and a free port `58991`. How the dialog is driven (BIOS Data Area keystrokes) and how frames are sampled (post-retrace breakpoint at `0D51:0C5E`) is recorded in [`docs/SPEC.md § 3.6`](docs/SPEC.md#36-visual-parity-capture-loop-playoneexe-vs-stuntreel) and [`research/playone-exe/capture.md`](research/playone-exe/capture.md).
 
-You can also run tool commands directly:
+### Render in the native engine
 
 ```powershell
-# Rust
+cargo run -p stunt-cli -- corpus/stisldem/VAULT/CTRY.FLM --all corpus/stisldem/VAULT/CTRY.ALL
+```
+
+Opens the interactive presentation (Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits). `--help` lists the headless flags, `--frames <A..B>`, `--ticks`, and the `parity` subcommand.
+
+### Validate the format catalog against a local corpus
+
+```powershell
+mise run verify-corpus              # report anomalies
+mise run verify-corpus -- --strict  # fail on them
+```
+
+Compiles `research/formats/**/*.ksy` and checks documented headers, offsets, and opcodes against `corpus/`. Local-only: `corpus/` is gitignored and absent in CI.
+
+---
+
+## Development & Quality Assurance
+
+The gate is `mise run check`, which chains formatting, linting, strict typing, and both test suites. Individual tasks:
+
+| Task | Runs |
+| --- | --- |
+| `check` | `fmt-check` + `lint` + `typecheck` + `test` |
+| `fmt-check` / `fmt` | `cargo fmt` and `ruff format` check/apply |
+| `lint` | `cargo clippy -- -D warnings` and `ruff check .` |
+| `typecheck` | `uv run mypy` (strict) |
+| `test` | `cargo test --workspace --all-features` and `uv run pytest` |
+| `fmt-rust`, `fmt-py`, `fmt-check-rust`, `fmt-check-py`, `lint-rust`, `lint-py`, `test-rust`, `test-py` | single-language halves of the tasks above |
+| `capture-ref` | reference capture into `build/parity/reference/ctry` (`--max-frames` defaults to 140) |
+| `verify-corpus` | `.ksy` catalog check against `corpus/` |
+| `play` | launch `dosbox-playone.conf` |
+| `ensure-dosbox`, `mcp` | agent debugger plumbing |
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on Ubuntu: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `cargo test --workspace --all-targets --all-features`, `ruff check`, `ruff format --check`, `mypy`, and `pytest`. Corpus- and DOSBox-X-dependent tasks stay local. Optional git hooks mirror the gate; see [`.pre-commit-config.yaml`](.pre-commit-config.yaml).
+
+Equivalent direct commands:
+
+```powershell
 cargo check --workspace
 cargo clippy --workspace --all-targets --all-features
 cargo fmt --check
-cargo test --workspace
-
-# Python (uv)
+cargo test --workspace --all-features
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy
@@ -144,16 +152,17 @@ uv run pytest
 
 ---
 
-## Quick Start
+## Documentation Map
 
-Launch a film reel playback test:
-
-```powershell
-mise run play
-```
-
-Or via the batch runner:
-
-```powershell
-.\play_ctry.bat
-```
+| Document | Covers |
+| --- | --- |
+| [`docs/SPEC.md`](docs/SPEC.md) | Master specification, invariants `[I1]`–`[I8]`, evidentiary tiers, verification matrix |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 1-hop module routing to specification anchors and research notes |
+| [`docs/MEMORY_MAP.md`](docs/MEMORY_MAP.md) | `DGROUP` map and runtime anchors (`# [MEM-*]`) |
+| [`docs/TEAM_SHEET.md`](docs/TEAM_SHEET.md) | Multi-agent roles and file blast radii |
+| [`docs/playbooks/`](docs/playbooks/) | Milestone playbooks |
+| [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog and Kaitai layouts |
+| [`research/playone-exe/`](research/playone-exe/) | Startup, navigation, memory map, and capture harness notes |
+| [`corpus/README.md`](corpus/README.md) | How to populate the demo and archive data |
+| [`tests/fixtures/README.md`](tests/fixtures/README.md) | Cleanroom fixture specifications |
+| [`AGENTS.md`](AGENTS.md) | Contributor directives and standard operating procedures |
