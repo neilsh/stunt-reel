@@ -21,6 +21,7 @@ use glam::{Mat4, Vec3};
 use scene::SceneBundle;
 use stunt_core::contracts::{
     CameraTransform, NodeKind, SodModelIr, SodVertex, TrajectoryRecord, VisibilityCondition,
+    get_palette_rgb_float,
 };
 use stunt_core::flm::{CAMERA_FORWARD, FlmPlayer};
 use stunt_core::sod::transpile_sod;
@@ -542,6 +543,38 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
     Ok(())
 }
 
+/// Simulation ticks advance at one of two authored rates; interactive playback uses the
+/// 30 Hz default while the headless path renders one record per ordinal.
+const INTERACTIVE_TICK_HZ: f32 = 30.0;
+
+/// Renderable scene bound for interactive presentation.
+enum InteractiveScene {
+    /// Single cleanroom or `--sod` model anchored at the world origin.
+    Single(GpuModel),
+    /// Every `MODEL_*.SOD` chunk of the film's paired `.ALL` archive.
+    Archive(SceneBundle),
+}
+
+/// Creates the depth attachment used by the interactive surface pass.
+fn create_depth_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
+    device
+        .create_texture(&wgpu::TextureDescriptor {
+            label: Some("stunt_window_depth_texture"),
+            size: wgpu::Extent3d {
+                width: width.max(1),
+                height: height.max(1),
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth24Plus,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        })
+        .create_view(&wgpu::TextureViewDescriptor::default())
+}
+
 /// Interactive window application state.
 struct WindowApp {
     config: CliConfig,
@@ -553,10 +586,12 @@ struct WindowApp {
     pipelines: Option<RenderPipelines>,
     palette_lut: Option<PaletteLut>,
     camera_resources: Option<CameraGpuResources>,
+    depth_view: Option<wgpu::TextureView>,
     camera: CameraController,
-    gpu_model: Option<GpuModel>,
+    scene: Option<InteractiveScene>,
     trajectory: Vec<TrajectoryRecord>,
     current_tick_idx: usize,
+    tick_accumulator: f32,
     paused: bool,
     last_frame_time: Instant,
     max_texture_dimension_2d: u32,
@@ -583,10 +618,12 @@ impl WindowApp {
             pipelines: None,
             palette_lut: None,
             camera_resources: None,
+            depth_view: None,
             camera: CameraController::default(),
-            gpu_model: None,
+            scene: None,
             trajectory,
             current_tick_idx: 0,
+            tick_accumulator: 0.0,
             paused: false,
             last_frame_time: Instant::now(),
             max_texture_dimension_2d: 2048,
@@ -625,16 +662,31 @@ impl WindowApp {
         }
     }
 
-    fn render(&mut self) {
+    /// Advances the authored timeline at the fixed simulation rate `[I4]`.
+    fn advance_timeline(&mut self, dt: f32) {
+        if self.paused || self.trajectory.is_empty() {
+            return;
+        }
+        let tick_duration = 1.0 / INTERACTIVE_TICK_HZ;
+        self.tick_accumulator += dt;
+        while self.tick_accumulator >= tick_duration {
+            self.tick_accumulator -= tick_duration;
+            self.current_tick_idx = (self.current_tick_idx + 1) % self.trajectory.len();
+        }
+    }
+
+    fn render(&mut self, dt: f32) {
+        self.advance_timeline(dt);
+
         let (
             Some(device),
             Some(queue),
             Some(surface),
-            Some(config),
+            Some(surface_config),
             Some(pipelines),
             Some(cam_res),
             Some(lut),
-            Some(model),
+            Some(depth_view),
         ) = (
             &self.device,
             &self.queue,
@@ -643,31 +695,48 @@ impl WindowApp {
             &self.pipelines,
             &self.camera_resources,
             &self.palette_lut,
-            &self.gpu_model,
+            &self.depth_view,
         )
         else {
             return;
         };
 
-        // Advance trajectory if not paused and in authored camera mode. When the
-        // trajectory is paused or empty the model sits at the origin, so the nearest
-        // LOD tier applies rather than hiding every LOD-gated mesh.
-        let mut actor_distance = 0.0;
-        if !self.paused && !self.trajectory.is_empty() {
-            if let Some(record) = self
-                .trajectory
-                .get(self.current_tick_idx)
-                .filter(|_| self.camera.mode == CameraMode::Authored)
-            {
-                self.camera.set_authored_transform(record.camera);
-                let eye = Vec3::from_array(record.camera.eye);
-                actor_distance = record
-                    .actors
-                    .iter()
-                    .map(|actor| eye.distance(Vec3::from_array(actor.position_meters)))
-                    .fold(f32::INFINITY, f32::min);
+        let record = self.trajectory.get(self.current_tick_idx);
+        if self.camera.mode == CameraMode::Authored
+            && let Some(record) = record
+        {
+            self.camera.set_authored_transform(record.camera);
+        }
+        let eye = self.camera.eye_position();
+
+        // One draw per distinct shape: a shared model uniform cannot hold two poses.
+        let mut draws: Vec<(&GpuModel, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>)> = Vec::new();
+        match self.scene.as_ref() {
+            Some(InteractiveScene::Single(model)) => {
+                let (base, decals) = model.collect_visible_meshes(1, eye.length());
+                draws.push((model, base, decals));
             }
-            self.current_tick_idx = (self.current_tick_idx + 1) % self.trajectory.len();
+            Some(InteractiveScene::Archive(bundle)) => {
+                if let Some(record) = record {
+                    let mut drawn_shapes: Vec<u16> = Vec::new();
+                    for actor in &record.actors {
+                        if drawn_shapes.contains(&actor.shape_id) {
+                            continue;
+                        }
+                        let Some(model) = bundle.get(actor.shape_id) else {
+                            continue;
+                        };
+                        drawn_shapes.push(actor.shape_id);
+
+                        model.update_world_matrix(queue, &actor.world_matrix);
+                        let distance = eye.distance(Vec3::from_array(actor.position_meters));
+                        let (base, decals) =
+                            model.collect_visible_meshes(actor.state_mask, distance);
+                        draws.push((model, base, decals));
+                    }
+                }
+            }
+            None => return,
         }
 
         let cam_uniform = self.camera.build_uniform();
@@ -676,7 +745,7 @@ impl WindowApp {
         let surface_texture = match surface.get_current_texture() {
             Ok(tex) => tex,
             Err(wgpu::SurfaceError::Lost) => {
-                surface.configure(device, config);
+                surface.configure(device, surface_config);
                 return;
             }
             Err(wgpu::SurfaceError::OutOfMemory) => {
@@ -695,8 +764,8 @@ impl WindowApp {
         });
 
         // Compute 4:3 letterbox viewport per Invariant [I6]
-        let win_w = config.width as f32;
-        let win_h = config.height as f32;
+        let win_w = surface_config.width as f32;
+        let win_h = surface_config.height as f32;
         let target_aspect = ASPECT_4_3;
         let cur_aspect = win_w / win_h.max(1.0);
 
@@ -714,22 +783,35 @@ impl WindowApp {
             (0.0, vp_y, vp_w, vp_h)
         };
 
-        // Temporary depth texture matching window size
-        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("stunt_window_depth_texture"),
-            size: wgpu::Extent3d {
-                width: config.width.max(1),
-                height: config.height.max(1),
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Depth24Plus,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
-        let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let width = surface_config.width;
+        let height = surface_config.height;
+        let sc_x = vp_x.max(0.0) as u32;
+        let sc_y = vp_y.max(0.0) as u32;
+        let sc_w = (vp_w as u32).clamp(1, width.saturating_sub(sc_x).max(1));
+        let sc_h = (vp_h as u32).clamp(1, height.saturating_sub(sc_y).max(1));
+
+        let right_edge = (vp_x + vp_w).min(win_w) as u32;
+        let bottom_edge = (vp_y + vp_h).min(win_h) as u32;
+        let bars: [(u32, u32, u32, u32); 2] = if cur_aspect > target_aspect {
+            [
+                (0, 0, sc_x, height),
+                (right_edge, 0, width.saturating_sub(right_edge), height),
+            ]
+        } else {
+            [
+                (0, 0, width, sc_y),
+                (0, bottom_edge, width, height.saturating_sub(bottom_edge)),
+            ]
+        };
+
+        // Palette-index clear color matches the headless capture (default sky index 180).
+        let (cr, cg, cb) = get_palette_rgb_float(self.config.clear_index);
+        let clear_color = wgpu::Color {
+            r: cr as f64,
+            g: cg as f64,
+            b: cb as f64,
+            a: 1.0,
+        };
 
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -738,13 +820,12 @@ impl WindowApp {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        // Clear outer borders to black
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load: wgpu::LoadOp::Clear(clear_color),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &depth_view,
+                    view: depth_view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: wgpu::StoreOp::Store,
@@ -757,43 +838,57 @@ impl WindowApp {
 
             // Set 4:3 letterbox viewport and scissor rect
             rpass.set_viewport(vp_x, vp_y, vp_w, vp_h, 0.0, 1.0);
-            rpass.set_scissor_rect(
-                vp_x.max(0.0) as u32,
-                vp_y.max(0.0) as u32,
-                vp_w.max(1.0) as u32,
-                vp_h.max(1.0) as u32,
-            );
-
-            let (base_meshes, decal_meshes) = model.collect_visible_meshes(1, actor_distance);
+            rpass.set_scissor_rect(sc_x, sc_y, sc_w, sc_h);
 
             // Pass 1: Base solid geometry
             rpass.set_pipeline(&pipelines.base_pipeline);
             rpass.set_bind_group(0, &cam_res.bind_group, &[]);
             rpass.set_bind_group(1, &lut.bind_group, &[]);
-            rpass.set_bind_group(2, &model.model_bind_group, &[]);
-            rpass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
-            rpass.set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            for (model, base_meshes, _) in &draws {
+                if base_meshes.is_empty() {
+                    continue;
+                }
+                rpass.set_bind_group(2, &model.model_bind_group, &[]);
+                rpass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
+                rpass.set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
 
-            for mesh in &base_meshes {
-                rpass.draw_indexed(
-                    mesh.index_offset..(mesh.index_offset + mesh.index_count),
-                    mesh.vertex_offset,
-                    0..1,
-                );
+                for mesh in base_meshes {
+                    rpass.draw_indexed(
+                        mesh.index_offset..(mesh.index_offset + mesh.index_count),
+                        mesh.vertex_offset,
+                        0..1,
+                    );
+                }
             }
 
             // Pass 2: Decal pass with Invariant [I5] hardware depth bias
             rpass.set_pipeline(&pipelines.decal_pipeline);
-            rpass.set_bind_group(0, &cam_res.bind_group, &[]);
-            rpass.set_bind_group(1, &lut.bind_group, &[]);
-            rpass.set_bind_group(2, &model.model_bind_group, &[]);
+            for (model, _, decal_meshes) in &draws {
+                if decal_meshes.is_empty() {
+                    continue;
+                }
+                rpass.set_bind_group(2, &model.model_bind_group, &[]);
+                rpass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
+                rpass.set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
 
-            for mesh in &decal_meshes {
-                rpass.draw_indexed(
-                    mesh.index_offset..(mesh.index_offset + mesh.index_count),
-                    mesh.vertex_offset,
-                    0..1,
-                );
+                for mesh in decal_meshes {
+                    rpass.draw_indexed(
+                        mesh.index_offset..(mesh.index_offset + mesh.index_count),
+                        mesh.vertex_offset,
+                        0..1,
+                    );
+                }
+            }
+
+            // Pass 3: Paint the `[I6]` pillarbox/letterbox bars black
+            rpass.set_viewport(0.0, 0.0, win_w, win_h, 0.0, 1.0);
+            rpass.set_pipeline(&pipelines.bar_pipeline);
+            for (bar_x, bar_y, bar_w, bar_h) in bars {
+                if bar_w == 0 || bar_h == 0 {
+                    continue;
+                }
+                rpass.set_scissor_rect(bar_x, bar_y, bar_w, bar_h);
+                rpass.draw(0..3, 0..1);
             }
         }
 
@@ -903,15 +998,42 @@ impl ApplicationHandler for WindowApp {
             &palette_lut.bind_group_layout,
         );
 
-        let model_ir = load_or_create_model(self.config.sod_path.as_deref());
-        let gpu_model = GpuModel::from_ir(
-            &device,
-            &queue,
-            &pipelines.model_bind_group_layout,
-            &model_ir,
-        );
+        let scene = match &self.config.all_path {
+            Some(all_path) => match SceneBundle::from_all(
+                &device,
+                &queue,
+                &pipelines.model_bind_group_layout,
+                all_path,
+            ) {
+                Ok(bundle) => {
+                    println!(
+                        "[stuntreel] scene: {} models loaded, {} skipped, {} partial",
+                        bundle.models.len(),
+                        bundle.skipped,
+                        bundle.partial.len()
+                    );
+                    InteractiveScene::Archive(bundle)
+                }
+                Err(e) => {
+                    eprintln!("[stuntreel] {e}");
+                    event_loop.exit();
+                    return;
+                }
+            },
+            None => {
+                let model_ir = load_or_create_model(self.config.sod_path.as_deref());
+                InteractiveScene::Single(GpuModel::from_ir(
+                    &device,
+                    &queue,
+                    &pipelines.model_bind_group_layout,
+                    &model_ir,
+                ))
+            }
+        };
 
-        self.window = Some(window);
+        let depth_view = create_depth_view(&device, surface_config.width, surface_config.height);
+
+        self.window = Some(Arc::clone(&window));
         self.device = Some(device);
         self.queue = Some(queue);
         self.surface = Some(surface);
@@ -919,7 +1041,10 @@ impl ApplicationHandler for WindowApp {
         self.pipelines = Some(pipelines);
         self.palette_lut = Some(palette_lut);
         self.camera_resources = Some(camera_resources);
-        self.gpu_model = Some(gpu_model);
+        self.depth_view = Some(depth_view);
+        self.scene = Some(scene);
+
+        window.request_redraw();
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -934,6 +1059,7 @@ impl ApplicationHandler for WindowApp {
                     config.width = new_size.width.clamp(1, self.max_texture_dimension_2d);
                     config.height = new_size.height.clamp(1, self.max_texture_dimension_2d);
                     surface.configure(device, config);
+                    self.depth_view = Some(create_depth_view(device, config.width, config.height));
                 }
             }
             WindowEvent::KeyboardInput {
@@ -979,7 +1105,7 @@ impl ApplicationHandler for WindowApp {
                 self.last_frame_time = now;
 
                 self.update_freecam(dt);
-                self.render();
+                self.render(dt);
 
                 if let Some(win) = &self.window {
                     win.request_redraw();

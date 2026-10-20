@@ -29,6 +29,8 @@ pub struct RenderPipelines {
     pub base_pipeline: wgpu::RenderPipeline,
     /// Decal mesh pipeline conforming to `[I5]` with hardware depth bias and `LessEqual` compare.
     pub decal_pipeline: wgpu::RenderPipeline,
+    /// Solid-black fullscreen pipeline used to paint `[I6]` letterbox bars.
+    pub bar_pipeline: wgpu::RenderPipeline,
     /// Common pipeline layout shared across base and decal passes.
     pub pipeline_layout: wgpu::PipelineLayout,
     /// Bind group layout for `@group(2) @binding(0)` (ModelUniform).
@@ -195,9 +197,41 @@ impl RenderPipelines {
             cache: None,
         });
 
+        // Letterbox bars: no vertex data, no bind groups, constant black output.
+        let bar_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/bars.wgsl"));
+        let bar_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("stunt_letterbox_bar_pipeline"),
+            layout: None,
+            vertex: wgpu::VertexState {
+                module: &bar_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &bar_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &targets,
+            }),
+            primitive,
+            // Must match the render pass attachment format; bars ignore depth entirely.
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: depth_format,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
         Self {
             base_pipeline,
             decal_pipeline,
+            bar_pipeline,
             pipeline_layout,
             model_bind_group_layout,
             shader_module,
