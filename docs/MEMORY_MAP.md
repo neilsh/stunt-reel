@@ -78,3 +78,34 @@
   * `+0x2A` (`u16` LE, 2B): Articulated joint count $N$.
   * `+0x2C` (`N x (u16, u16)`, up to 16B): Articulated subobject BAM rotation angle pairs `(subobject_id, raw_bam_u16)`.
   * `+0x3C` (`u32` LE, 4B): Next actor chain link pointer (or null `0x00000000`).
+
+---
+
+## 3. SOD Display-List VM Work Segment (`# [MEM-SOD-VM]`)
+
+The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the captured `CTRY.FLM` session). Offsets are stable; the segment base is runtime-selected. `ES:SI` addresses the bytecode, `DS` the work segment.
+
+| Offset in work segment | Evidentiary Tier | Data Type | Purpose / Value | Anchor |
+|---|---|---|---|---|
+| `0x0000` | `[Established]` | 4-byte header | Anchor-table header (record 0 starts at `+0x04`) | `# [MEM-SOD-ANCHOR-TABLE]` |
+| `0x0004 + n*0x1C` | `[Established]` | 28-byte record | Anchor point `n`: `x/y/z` at `+0x00/+0x02/+0x04`; cache at `+0x06..+0x10`; fields `+0x12/+0x16/+0x1A`; frame stamp `+0x1B` | `# [MEM-SOD-ANCHOR-TABLE]` |
+| `0x19A8` | `[Established]` | `u8` | Per-frame transform cache counter; incremented by `CS:0x492D` | |
+| `0x41B8` | `[Established]` | `u16` | `OP_TAP` remaining-count scratch | |
+| `0x41C8`, `0x41CA` | `[Established]` | `u16` | Screen-projection center offsets | |
+| `0x41D4..0x41DA` | `[Established]` | `i32[3]` | Model→view translation | |
+| `0x4450 + n*12` | `[Established]` | 12-byte vertex | Vertex register arena (1024 entries): `x/y/z` and projection/flag fields | `# [MEM-SOD-VM]` |
+| `0x806E` | `[Established]` | `u8` | Fixed-point arithmetic shift applied by `OP_TAP` | |
+| `0x8082` | `[Established]` | `u16` | Special model selector (`0x1AB1` enables TAP screen projection) | |
+| `0x8084`, `0x8086`, `0x8088` | `[Established]` | `i16` | View-origin subtraction terms applied by `OP_TAP` | |
+| `0x80C0..0x80CA` | `[Established]` | `i16[9]` | 3×3 model→view rotation matrix | |
+
+Code anchors (segment-relative; `CS = 0x0F17` in the captured session):
+
+| Code offset | Purpose | Anchor |
+|---|---|---|
+| `0x1316 + opcode` | Opcode dispatch table, 9-byte pitch | `# [MEM-SOD-VM]` |
+| `0x3E58` | `OP_TAP` (`0x022E`) handler | `# [MEM-SOD-VM]` |
+| `0x3F36` | `OP_HUGETAP` (`0x0237`) entry: `int3` (unimplemented) | `# [MEM-SOD-VM]` |
+| `0x492D` | Per-frame anchor cache invalidation (`DS=0x1DF8`, 231 records) | `# [MEM-SOD-ANCHOR-TABLE]` |
+
+See [`research/playone-exe/sod-vm.md`](../research/playone-exe/sod-vm.md) for the handler disassembly and operand encoding.

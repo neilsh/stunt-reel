@@ -54,8 +54,12 @@ An evaluated slot presented to the renderer, excluding the slot driving the came
 _Avoid_: object, entity
 
 **Partial SOD**:
-A shape whose bytecode stopped at an opcode the evaluator does not implement; geometry decoded before the stop is retained.
+A shape whose bytecode stopped at an opcode the evaluator does not implement, or at `OP_TAP` without an anchor table; geometry decoded before the stop is retained.
 _Avoid_: corrupt model, truncated SOD
+
+**Anchor point** (also **tap point**):
+A 28-byte terrain record shared by `MAP.BIN` patches and `OP_TAP`; it carries raw island coordinates and scratch fields for the display-list VM. `OP_TAP` copies the referenced records into the vertex register bank.
+_Avoid_: debug marker, scratchpad touch
 
 ## Evidence
 

@@ -15,8 +15,8 @@ pub use tessellate::{
     transpile_sod_lenient,
 };
 pub use vm::{
-    RawPolygon, SOD_SCALE_TABLE, SodHeader, SodStop, compute_scale_factor, execute_sod_vm,
-    execute_sod_vm_impl,
+    OP_TAP, RawPolygon, SOD_SCALE_TABLE, SodAnchorPoint, SodHeader, SodStop, SodStopReason,
+    compute_scale_factor, execute_sod_vm, execute_sod_vm_impl,
 };
 
 use std::fmt;
@@ -50,6 +50,22 @@ pub enum SodError {
         /// Human-readable description of the malformed polygon.
         reason: String,
     },
+    /// An opcode carried operands that violate the established encoding.
+    MalformedOpcode {
+        /// Opcode whose operands failed validation.
+        opcode: u16,
+        /// Byte offset of the opcode within the model payload.
+        offset: usize,
+        /// Human-readable description of the invalid operand.
+        reason: String,
+    },
+    /// `OP_TAP` was reached without a usable anchor table.
+    MissingAnchors {
+        /// Opcode that requires the anchor table.
+        opcode: u16,
+        /// Byte offset of the opcode within the model payload.
+        offset: usize,
+    },
 }
 
 impl fmt::Display for SodError {
@@ -76,6 +92,18 @@ impl fmt::Display for SodError {
             Self::MalformedPolygon { reason } => {
                 write!(f, "malformed polygon: {reason}")
             }
+            Self::MalformedOpcode {
+                opcode,
+                offset,
+                reason,
+            } => write!(
+                f,
+                "malformed SOD opcode 0x{opcode:04X} at byte offset 0x{offset:04X}: {reason}"
+            ),
+            Self::MissingAnchors { opcode, offset } => write!(
+                f,
+                "SOD opcode 0x{opcode:04X} at byte offset 0x{offset:04X} requires an anchor table"
+            ),
         }
     }
 }

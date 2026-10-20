@@ -38,6 +38,7 @@ def test_format_anchors_documented() -> None:
         "# [FMT-ALL-CHUNKS]",
         "# [FMT-SOD-OPCODES]",
         "# [FMT-SOD-IFVIS]",
+        "# [FMT-SOD-TAP]",
         "# [FMT-FLM-OPCODES]",
     ]
     for anchor in expected_anchors:
@@ -54,6 +55,8 @@ def test_memory_anchors_documented() -> None:
         "# [MEM-FLM-TICK]",
         "# [MEM-CAMERA-RIG]",
         "# [MEM-ACTOR-TABLE]",
+        "# [MEM-SOD-VM]",
+        "# [MEM-SOD-ANCHOR-TABLE]",
     ]
     for anchor in expected_anchors:
         assert anchor in content, f"Memory anchor {anchor} missing from docs/MEMORY_MAP.md"

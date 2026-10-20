@@ -394,7 +394,7 @@ fn test_challenge_i1_coordinate_transformation_and_ground_offset() {
 
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let ir = transpile_sod(&bytes, "COORD_TEST").expect("transpile succeeds");
+    let ir = transpile_sod(&bytes, "COORD_TEST", None).expect("transpile succeeds");
 
     assert_eq!(ir.vertices.len(), 3);
 
@@ -525,7 +525,7 @@ fn test_challenge_i3_all_256_palette_indices_preserved() {
 
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let ir = transpile_sod(&bytes, "PALETTE_256").expect("transpile succeeds");
+    let ir = transpile_sod(&bytes, "PALETTE_256", None).expect("transpile succeeds");
 
     // Because vertices have different palette indices, they do not weld across colors
     // 256 colors * 3 vertices = 768 vertices
@@ -582,7 +582,7 @@ fn test_challenge_i2_flat_arena_node_allocation_and_buffer_slices() {
 
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let ir = transpile_sod(&bytes, "ARENA_CUBE").expect("transpile succeeds");
+    let ir = transpile_sod(&bytes, "ARENA_CUBE", None).expect("transpile succeeds");
 
     // Arena checks:
     // Root node at NodeId(0)
@@ -637,7 +637,7 @@ fn test_challenge_empty_sod_model() {
     let mut bytes = make_sod_header(50, 0, 0, 0);
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let ir = transpile_sod(&bytes, "EMPTY_MODEL").expect("empty model transpiles");
+    let ir = transpile_sod(&bytes, "EMPTY_MODEL", None).expect("empty model transpiles");
     assert_eq!(ir.name, "EMPTY_MODEL");
     assert_eq!(ir.root_nodes, vec![NodeId(0)]);
     assert_eq!(ir.nodes.len(), 1); // Only root node
@@ -655,10 +655,10 @@ fn test_challenge_synthetic_minimal_fixture_precision() {
     assert!(path.exists(), "fixture exists");
 
     let data = fs::read(&path).expect("read fixture");
-    let ir = transpile_sod(&data, "SYNTHETIC_MINIMAL").expect("transpile fixture");
+    let ir = transpile_sod(&data, "SYNTHETIC_MINIMAL", None).expect("transpile fixture");
 
     // Header validation
-    let (header, _) = execute_sod_vm(&data).expect("execute VM");
+    let (header, _) = execute_sod_vm(&data, None).expect("execute VM");
     assert_eq!(header.bounding_size, 100);
     assert_eq!(header.ground_y_offset, 0);
     assert_eq!(header.scale_index, 1); // 0.5 factor

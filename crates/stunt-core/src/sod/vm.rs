@@ -67,6 +67,9 @@ pub const OP_RETURN: u16 = 0x0195;
 pub const OP_END: u16 = 0x0195;
 /// 3D bounding-box culling test (`box_reg, count, ...faces`).
 pub const OP_REJ: u16 = 0x01B9;
+/// Copy `count` anchor-table points into consecutive vertex registers
+/// (`reg_off, count, count * anchor_byte_offsets`).
+pub const OP_TAP: u16 = 0x022E;
 /// Sample a 16-level directional lighting ramp (`normal_reg, ramp`); no geometry.
 pub const OP_SHADE16: u16 = 0x02B5;
 /// Emit a 16-level shaded polygon (`count, regs..., normal, shades...`).
@@ -229,36 +232,106 @@ fn parse_visibility_condition(code: u16) -> VisibilityCondition {
     }
 }
 
-/// Location and opcode of a bytecode stream that stopped at an unknown opcode.
+/// One 28-byte `ANCHORPT.DAT` record referenced by [`OP_TAP`].
+///
+/// The stored coordinates are raw island units (the same records consumed by
+/// `MAP.BIN` terrain patches). `OP_TAP` maps them into the `[I1]` register basis
+/// via [`Self::register_position`]; callers only need to supply the raw table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SodAnchorPoint {
+    /// Raw table X coordinate.
+    pub x: i16,
+    /// Raw table Y coordinate (non-positive altitude; `|y| >= 32000` is a sentinel).
+    pub y: i16,
+    /// Raw table Z coordinate.
+    pub z: i16,
+}
+
+impl SodAnchorPoint {
+    /// Returns whether the record is a real terrain point rather than a boundary sentinel.
+    #[must_use]
+    pub fn is_valid(&self) -> bool {
+        self.y > -32000 && self.y < 32000
+    }
+
+    /// Converts the raw record into the `[I1]` register basis (`+X` right, `+Y` up, `+Z` back).
+    ///
+    /// Raw terrain records store easting and elevation negated; sentinel elevations
+    /// decode as zero, matching the original engine's runtime table.
+    #[must_use]
+    pub fn register_position(&self) -> [f32; 3] {
+        let y = if self.is_valid() { self.y } else { 0 };
+        [-(self.x as f32), -(y as f32), self.z as f32]
+    }
+}
+
+/// Why a lenient decode stopped before the end of the bytecode stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SodStopReason {
+    /// The opcode is outside the decoded table.
+    UnknownOpcode,
+    /// [`OP_TAP`] was reached without a usable anchor table.
+    MissingAnchors,
+}
+
+impl std::fmt::Display for SodStopReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnknownOpcode => f.write_str("unknown opcode"),
+            Self::MissingAnchors => f.write_str("missing anchor table"),
+        }
+    }
+}
+
+/// Location, opcode, and reason of a bytecode stream that stopped early.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SodStop {
-    /// Byte offset of the unrecognized opcode within the model payload.
+    /// Byte offset of the stopping opcode within the model payload.
     pub offset: usize,
-    /// The unrecognized opcode word.
+    /// The stopping opcode word.
     pub opcode: u16,
+    /// Why decoding stopped.
+    pub reason: SodStopReason,
 }
 
 /// Executes the `.SOD` bytecode virtual machine against input bytes.
 ///
-/// Returns the parsed header and raw polygon stream, and fails on any opcode outside
-/// the decoded table.
-pub fn execute_sod_vm(data: &[u8]) -> Result<(SodHeader, Vec<RawPolygon>), SodError> {
-    let (header, polygons, stop) = execute_sod_vm_impl(data, false)?;
+/// `anchors` supplies the global 28-byte anchor table referenced by [`OP_TAP`];
+/// pass `None` for models that do not use TAP. Returns the parsed header and raw
+/// polygon stream, and fails on any opcode outside the decoded table.
+pub fn execute_sod_vm(
+    data: &[u8],
+    anchors: Option<&[SodAnchorPoint]>,
+) -> Result<(SodHeader, Vec<RawPolygon>), SodError> {
+    let (header, polygons, stop) = execute_sod_vm_impl(data, false, anchors)?;
     match stop {
         None => Ok((header, polygons)),
-        Some(SodStop { offset, opcode }) => Err(SodError::InvalidOpcode { opcode, offset }),
+        Some(SodStop {
+            offset,
+            opcode,
+            reason: SodStopReason::UnknownOpcode,
+        }) => Err(SodError::InvalidOpcode { opcode, offset }),
+        Some(SodStop {
+            offset,
+            reason: SodStopReason::MissingAnchors,
+            ..
+        }) => Err(SodError::MissingAnchors {
+            opcode: OP_TAP,
+            offset,
+        }),
     }
 }
 
 /// Executes the `.SOD` bytecode virtual machine, optionally tolerating unknown opcodes.
 ///
-/// When `lenient` is set, an opcode outside the decoded table ends execution and is
-/// reported as [`SodStop`] alongside the polygons decoded up to that offset, so a
-/// partially decoded model stays renderable. Strict mode returns the same polygons
-/// only for streams that decode to completion.
+/// When `lenient` is set, an unknown opcode or an unavailable TAP anchor table ends
+/// execution and is reported as [`SodStop`] alongside the polygons decoded up to that
+/// offset, so a partially decoded model stays renderable. Strict mode returns the same
+/// polygons only for streams that decode to completion.
 pub fn execute_sod_vm_impl(
     data: &[u8],
     lenient: bool,
+    anchors: Option<&[SodAnchorPoint]>,
 ) -> Result<(SodHeader, Vec<RawPolygon>, Option<SodStop>), SodError> {
     if data.len() < 10 {
         return Err(SodError::UnexpectedEof {
@@ -572,6 +645,80 @@ pub fn execute_sod_vm_impl(
                     read_u16(data, &mut pos)?;
                 }
             }
+            OP_TAP => {
+                let reg_off = read_u16(data, &mut pos)? as usize;
+                let count = read_u16(data, &mut pos)? as usize;
+
+                if !reg_off.is_multiple_of(12) {
+                    return Err(SodError::MalformedOpcode {
+                        opcode,
+                        offset: op_offset,
+                        reason: format!("TAP register offset {reg_off} is not a multiple of 12"),
+                    });
+                }
+                if count == 0 || count > 64 {
+                    return Err(SodError::MalformedOpcode {
+                        opcode,
+                        offset: op_offset,
+                        reason: format!("TAP point count {count} is outside 1..=64"),
+                    });
+                }
+
+                let table = match anchors {
+                    Some(points) if !points.is_empty() => points,
+                    _ => {
+                        if lenient {
+                            return Ok((
+                                header,
+                                polygons,
+                                Some(SodStop {
+                                    offset: op_offset,
+                                    opcode,
+                                    reason: SodStopReason::MissingAnchors,
+                                }),
+                            ));
+                        }
+                        return Err(SodError::MissingAnchors {
+                            opcode,
+                            offset: op_offset,
+                        });
+                    }
+                };
+
+                let start_reg = (reg_off / 12) & 1023;
+                for i in 0..count {
+                    let anchor_off = read_u16(data, &mut pos)? as usize;
+                    if !anchor_off.is_multiple_of(28) {
+                        return Err(SodError::MalformedOpcode {
+                            opcode,
+                            offset: op_offset,
+                            reason: format!(
+                                "TAP anchor offset 0x{anchor_off:04X} is not a multiple of 28"
+                            ),
+                        });
+                    }
+
+                    let Some(anchor) = table.get(anchor_off / 28) else {
+                        if lenient {
+                            return Ok((
+                                header,
+                                polygons,
+                                Some(SodStop {
+                                    offset: op_offset,
+                                    opcode,
+                                    reason: SodStopReason::MissingAnchors,
+                                }),
+                            ));
+                        }
+                        return Err(SodError::MissingAnchors {
+                            opcode,
+                            offset: op_offset,
+                        });
+                    };
+
+                    regs[(start_reg + i) & 1023] = anchor.register_position();
+                }
+            }
             OP_SHADES => {
                 read_u16(data, &mut pos)?;
                 let count = read_u16(data, &mut pos)?;
@@ -597,6 +744,7 @@ pub fn execute_sod_vm_impl(
                         Some(SodStop {
                             offset: op_offset,
                             opcode,
+                            reason: SodStopReason::UnknownOpcode,
                         }),
                     ));
                 }

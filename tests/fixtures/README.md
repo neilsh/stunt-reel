@@ -46,3 +46,18 @@ A cleanroom-synthesized full-movie archive container conforming to `# [FMT-ALL-C
 - **Payload**: Bundles `synthetic_minimal.sod` (76 bytes) as chunk `0x0001` (`MODEL_0001.SOD`).
 - Used to verify end-to-end `.ALL` archive parsing, scene bundle assembly, and headless trajectory evaluation offline without requiring proprietary assets.
 
+### 6. `synthetic_anchors.bin` (84 bytes)
+A cleanroom-synthesized 28-byte anchor-point table matching the `ANCHORPT.DAT` record layout consumed by `OP_TAP` (`0x022E`):
+- **Record 0**: `x = 100`, `y = 0`, `z = 200`.
+- **Record 1**: `x = 300`, `y = -500`, `z = 400`.
+- **Record 2**: `x = 500`, `y = -32500` (boundary sentinel), `z = 600`.
+- Remaining 22 bytes of each record are zero; the VM maps coordinates through `[-x, -y, z]` and decodes sentinel elevations as zero.
+
+### 7. `synthetic_tap.sod` (38 bytes)
+A minimal TAP display list referencing `synthetic_anchors.bin` by byte offset:
+- **Header**: 10 bytes (`OP_ID = 0x000c`, `bounding_size = 100`, `yoff = 0`, `scale_index = 1`, `collision = 0`).
+- **Opcodes**:
+  - `OP_TAP` (`0x022e`): `reg_off = 0`, `count = 3`, anchor offsets `0, 28, 56` (variable-width operand form).
+  - `OP_COLOR` (`0x0129`, palette index 40) then `OP_POLYZ` (`0x00f3`, 3 registers) and `OP_RETURN` (`0x0195`).
+- Used by `sod_tap_test.rs` to prove variable operand width, anchor resolution, and non-degenerate polygon emission.
+

@@ -90,7 +90,7 @@ fn make_sod_header(
 fn test_stress_sub_header_truncations() {
     // Zero length
     assert_eq!(
-        transpile_sod(&[], "ZERO").unwrap_err(),
+        transpile_sod(&[], "ZERO", None).unwrap_err(),
         SodError::UnexpectedEof {
             expected: 10,
             actual: 0
@@ -102,7 +102,7 @@ fn test_stress_sub_header_truncations() {
         let zeros = vec![0u8; len];
         let ones = vec![0xFFu8; len];
 
-        let res_zeros = catch_unwind(AssertUnwindSafe(|| transpile_sod(&zeros, "ZEROS")));
+        let res_zeros = catch_unwind(AssertUnwindSafe(|| transpile_sod(&zeros, "ZEROS", None)));
         assert!(res_zeros.is_ok(), "Panic on zeros length {len}");
         assert_eq!(
             res_zeros.unwrap().unwrap_err(),
@@ -112,7 +112,7 @@ fn test_stress_sub_header_truncations() {
             }
         );
 
-        let res_ones = catch_unwind(AssertUnwindSafe(|| transpile_sod(&ones, "ONES")));
+        let res_ones = catch_unwind(AssertUnwindSafe(|| transpile_sod(&ones, "ONES", None)));
         assert!(res_ones.is_ok(), "Panic on ones length {len}");
         assert_eq!(
             res_ones.unwrap().unwrap_err(),
@@ -133,7 +133,7 @@ fn test_stress_magic_variations() {
         let mut buf = make_sod_header(100, 0, 0, 0);
         buf[0..2].copy_from_slice(&invalid_magic.to_le_bytes());
 
-        let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "BAD_MAGIC")));
+        let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "BAD_MAGIC", None)));
         assert!(res.is_ok(), "Panic on invalid magic 0x{invalid_magic:04X}");
         assert_eq!(
             res.unwrap().unwrap_err(),
@@ -193,7 +193,7 @@ fn test_stress_truncated_opcode_payloads_all_opcodes() {
                 buf.extend_from_slice(&vec![0xAAu8; partial_len]);
             }
 
-            let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "PARTIAL_OP")));
+            let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "PARTIAL_OP", None)));
             assert!(
                 res.is_ok(),
                 "Panic on opcode 0x{op:04X} with partial payload len {partial_len}"
@@ -246,7 +246,7 @@ fn test_stress_register_offset_wrapping_and_unaligned() {
         buf.extend_from_slice(&off.to_le_bytes());
         buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "REG_TEST")));
+        let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "REG_TEST", None)));
         assert!(res.is_ok(), "Panic on register offset {off}");
         assert!(res.unwrap().is_ok());
     }
@@ -283,7 +283,7 @@ fn test_stress_ipg_primitive_boundary_offsets() {
             }
             buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-            let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "IPG_BOUND")));
+            let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "IPG_BOUND", None)));
             assert!(
                 res.is_ok(),
                 "Panic on IPG type {ipg_type} at start_reg {start_reg}"
@@ -310,7 +310,7 @@ fn test_stress_vectors_boundary_wrapping() {
         }
         buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "VEC_WRAP")));
+        let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "VEC_WRAP", None)));
         assert!(res.is_ok(), "Panic on OP_VECTORS wrapping from {start_reg}");
         assert!(res.unwrap().is_ok());
     }
@@ -336,7 +336,7 @@ fn test_stress_scale_factor_extreme_indices() {
         let mut buf = make_sod_header(100, 0, idx as u8, 0);
         buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "SCALE_TEST")));
+        let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "SCALE_TEST", None)));
         assert!(res.is_ok(), "Panic on scale_index {idx}");
         let ir = res.unwrap().expect("valid IR");
         assert_eq!(ir.nodes.len(), 1); // root node
@@ -358,7 +358,9 @@ fn test_stress_degenerate_polygons_count_under_3() {
         }
         buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "COUNT_UNDER_3")));
+        let res = catch_unwind(AssertUnwindSafe(|| {
+            transpile_sod(&buf, "COUNT_UNDER_3", None)
+        }));
         assert!(res.is_ok(), "Panic on OP_POLYZ count {count}");
         assert!(matches!(
             res.unwrap().unwrap_err(),
@@ -379,7 +381,7 @@ fn test_stress_degenerate_polygons_count_under_3() {
         buf_gv.extend_from_slice(&OP_RETURN.to_le_bytes());
 
         let res_gv = catch_unwind(AssertUnwindSafe(|| {
-            transpile_sod(&buf_gv, "GV_COUNT_UNDER_3")
+            transpile_sod(&buf_gv, "GV_COUNT_UNDER_3", None)
         }));
         assert!(res_gv.is_ok(), "Panic on OP_GVPOLY count {count}");
         assert!(matches!(
@@ -427,7 +429,7 @@ fn test_stress_degenerate_polygons_collinear_and_zero_area() {
 
     buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "COLLINEAR")));
+    let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "COLLINEAR", None)));
     assert!(res.is_ok(), "Panic on collinear / zero-area polygon");
     let ir = res.unwrap().expect("transpile succeeds");
     assert_eq!(ir.name, "COLLINEAR");
@@ -461,7 +463,9 @@ fn test_stress_degenerate_polygon_extreme_coordinates() {
     buf.extend_from_slice(&24u16.to_le_bytes());
     buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "EXTREME_COORDS")));
+    let res = catch_unwind(AssertUnwindSafe(|| {
+        transpile_sod(&buf, "EXTREME_COORDS", None)
+    }));
     assert!(res.is_ok(), "Panic on extreme coordinates");
     let ir = res.unwrap().expect("transpile succeeds");
     assert_eq!(ir.vertices.len(), 3);
@@ -497,7 +501,9 @@ fn test_stress_large_polygon_count() {
     }
     buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "LARGE_MODEL")));
+    let res = catch_unwind(AssertUnwindSafe(|| {
+        transpile_sod(&buf, "LARGE_MODEL", None)
+    }));
     assert!(res.is_ok(), "Panic on 500 polygons");
     let ir = res.unwrap().expect("transpile 500 polygons");
     assert_eq!(ir.name, "LARGE_MODEL");
@@ -517,7 +523,7 @@ fn test_verify_shift_operations_safe_vs_overflow() {
         buf_shl.extend_from_slice(&shift.to_le_bytes());
         buf_shl.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res_shl = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf_shl, "SHL_OK")));
+        let res_shl = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf_shl, "SHL_OK", None)));
         assert!(res_shl.is_ok(), "Panic on OP_SHLV with valid shift {shift}");
 
         let mut buf_shr = make_sod_header(50, 0, 0, 0);
@@ -525,7 +531,7 @@ fn test_verify_shift_operations_safe_vs_overflow() {
         buf_shr.extend_from_slice(&shift.to_le_bytes());
         buf_shr.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res_shr = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf_shr, "SHR_OK")));
+        let res_shr = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf_shr, "SHR_OK", None)));
         assert!(res_shr.is_ok(), "Panic on OP_SHRV with valid shift {shift}");
     }
 
@@ -538,7 +544,9 @@ fn test_verify_shift_operations_safe_vs_overflow() {
         buf_shl.extend_from_slice(&overflow_shift.to_le_bytes());
         buf_shl.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res_shl = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf_shl, "SHL_PANIC")));
+        let res_shl = catch_unwind(AssertUnwindSafe(|| {
+            transpile_sod(&buf_shl, "SHL_PANIC", None)
+        }));
         let shl_panicked = res_shl.is_err();
 
         let mut buf_shr = make_sod_header(50, 0, 0, 0);
@@ -546,7 +554,9 @@ fn test_verify_shift_operations_safe_vs_overflow() {
         buf_shr.extend_from_slice(&overflow_shift.to_le_bytes());
         buf_shr.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res_shr = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf_shr, "SHR_PANIC")));
+        let res_shr = catch_unwind(AssertUnwindSafe(|| {
+            transpile_sod(&buf_shr, "SHR_PANIC", None)
+        }));
         let shr_panicked = res_shr.is_err();
 
         // The architectural contract mandates: transpile_sod must NEVER panic on untrusted input!
@@ -578,7 +588,7 @@ fn test_fuzz_random_bytecode_with_valid_header() {
         buf.extend_from_slice(&payload);
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            let _ = transpile_sod(&buf, "FUZZ_PAYLOAD");
+            let _ = transpile_sod(&buf, "FUZZ_PAYLOAD", None);
         }));
 
         assert!(
@@ -611,7 +621,7 @@ fn test_fuzz_valid_opcode_sequence_never_panic() {
         buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            let _ = transpile_sod(&buf, "FUZZ_OPCODES");
+            let _ = transpile_sod(&buf, "FUZZ_OPCODES", None);
         }));
 
         assert!(
@@ -650,7 +660,7 @@ fn test_fuzz_mutated_valid_sod_never_panic() {
     // OP_RETURN
     baseline.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    assert!(transpile_sod(&baseline, "BASELINE").is_ok());
+    assert!(transpile_sod(&baseline, "BASELINE", None).is_ok());
 
     let mut rng = XorShift64::new(0xABCD_EF01_2345_6789);
 
@@ -693,7 +703,7 @@ fn test_fuzz_mutated_valid_sod_never_panic() {
         }
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            let _ = transpile_sod(&mutated, "MUTATED");
+            let _ = transpile_sod(&mutated, "MUTATED", None);
         }));
 
         assert!(

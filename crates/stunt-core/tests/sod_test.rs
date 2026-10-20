@@ -80,7 +80,8 @@ fn test_transpile_synthetic_minimal_sod_fixture() {
     let data = fs::read(&path).expect("read synthetic_minimal.sod");
     assert_eq!(data.len(), 76, "fixture size must be 76 bytes");
 
-    let ir: SodModelIr = transpile_sod(&data, "SYNTHETIC_MINIMAL").expect("transpilation succeeds");
+    let ir: SodModelIr =
+        transpile_sod(&data, "SYNTHETIC_MINIMAL", None).expect("transpilation succeeds");
 
     assert_eq!(ir.name, "SYNTHETIC_MINIMAL");
 
@@ -240,7 +241,7 @@ fn test_sod_vm_register_boundary_0_and_1023() {
     bytes.extend_from_slice(&(1023u16 * 12).to_le_bytes());
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let (header, polys) = execute_sod_vm(&bytes).expect("execute VM");
+    let (header, polys) = execute_sod_vm(&bytes, None).expect("execute VM");
     assert_eq!(header.bounding_size, 100);
     assert_eq!(polys.len(), 1);
     assert_eq!(polys[0].palette_index, 45);
@@ -268,7 +269,7 @@ fn test_sod_vm_out_of_bounds_and_unaligned_register_masking() {
     bytes.extend_from_slice(&65535u16.to_le_bytes());
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let (_header, _polys) = execute_sod_vm(&bytes).expect("safely masked registers");
+    let (_header, _polys) = execute_sod_vm(&bytes, None).expect("safely masked registers");
 }
 
 // =============================================================================
@@ -331,7 +332,7 @@ fn test_sod_vm_vector_arithmetic_operations() {
     bytes.extend_from_slice(&24u16.to_le_bytes());
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let (_header, polys) = execute_sod_vm(&bytes).expect("execute VM");
+    let (_header, polys) = execute_sod_vm(&bytes, None).expect("execute VM");
     assert_eq!(polys.len(), 1);
     assert_eq!(polys[0].vertices[0], [10.0, 20.0, 30.0]);
     assert_eq!(polys[0].vertices[1], [4.0, 6.0, 8.0]);
@@ -397,7 +398,7 @@ fn test_sod_vm_ipg_cube_and_quads() {
 
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let ir = transpile_sod(&bytes, "IPG_MODEL").expect("transpile succeeds");
+    let ir = transpile_sod(&bytes, "IPG_MODEL", None).expect("transpile succeeds");
     assert_eq!(ir.name, "IPG_MODEL");
     // 3 quads triangulated into 2 triangles each = 6 triangles = 18 indices
     assert_eq!(ir.indices.len(), 18);
@@ -635,7 +636,7 @@ fn test_sod_vm_gvpoly_explicit_normals() {
 
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let ir = transpile_sod(&bytes, "GVPOLY_MODEL").expect("transpilation succeeds");
+    let ir = transpile_sod(&bytes, "GVPOLY_MODEL", None).expect("transpilation succeeds");
     assert_eq!(ir.vertices.len(), 3);
     assert_eq!(ir.vertices[0].normal, [0.0, 0.0, 1.0]);
     assert_eq!(ir.vertices[0].palette_index, 55);
@@ -686,7 +687,7 @@ fn test_sod_vm_ifvis_conditional_sections() {
 
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let (header, polys) = execute_sod_vm(&bytes).expect("execute VM");
+    let (header, polys) = execute_sod_vm(&bytes, None).expect("execute VM");
     assert_eq!(polys.len(), 2);
     assert_eq!(polys[0].visibility, VisibilityCondition::Always);
     assert_eq!(
@@ -714,7 +715,7 @@ fn test_sod_vm_ifvis_extending_beyond_eof_clamps_safely() {
     bytes.extend_from_slice(&1u16.to_le_bytes());
     bytes.extend_from_slice(&5000u16.to_le_bytes());
 
-    let ir = transpile_sod(&bytes, "CLAMP_MODEL").expect("graceful clamping");
+    let ir = transpile_sod(&bytes, "CLAMP_MODEL", None).expect("graceful clamping");
     assert_eq!(ir.name, "CLAMP_MODEL");
 }
 
@@ -725,7 +726,7 @@ fn test_sod_vm_ifvis_extending_beyond_eof_clamps_safely() {
 #[test]
 fn test_sod_error_truncated_header() {
     let short_data = [0x0Cu8, 0x00, 0x64, 0x00, 0x00];
-    let err = transpile_sod(&short_data, "SHORT").unwrap_err();
+    let err = transpile_sod(&short_data, "SHORT", None).unwrap_err();
     assert_eq!(
         err,
         SodError::UnexpectedEof {
@@ -742,7 +743,7 @@ fn test_sod_error_invalid_magic() {
     // Overwrite magic with 0x9999
     data[0] = 0x99;
     data[1] = 0x99;
-    let err = transpile_sod(&data, "BAD_MAGIC").unwrap_err();
+    let err = transpile_sod(&data, "BAD_MAGIC", None).unwrap_err();
     assert_eq!(
         err,
         SodError::InvalidMagic {
@@ -758,7 +759,7 @@ fn test_sod_error_truncated_opcode_payload() {
     let mut bytes = make_sod_header(50, 0, 0, 0);
     // Append OP_GETV without its required offset word
     bytes.extend_from_slice(&OP_GETV.to_le_bytes());
-    let err = transpile_sod(&bytes, "TRUNC_OP").unwrap_err();
+    let err = transpile_sod(&bytes, "TRUNC_OP", None).unwrap_err();
     assert!(matches!(err, SodError::UnexpectedEof { .. }));
 }
 
@@ -773,7 +774,7 @@ fn test_sod_error_truncated_vector_stream() {
     bytes.extend_from_slice(&2i16.to_le_bytes());
     bytes.extend_from_slice(&3i16.to_le_bytes());
 
-    let err = transpile_sod(&bytes, "TRUNC_VEC").unwrap_err();
+    let err = transpile_sod(&bytes, "TRUNC_VEC", None).unwrap_err();
     assert!(matches!(err, SodError::UnexpectedEof { .. }));
 }
 
@@ -782,7 +783,7 @@ fn test_sod_error_invalid_opcode() {
     let mut bytes = make_sod_header(50, 0, 0, 0);
     // Append completely invalid opcode 0x7777
     bytes.extend_from_slice(&0x7777u16.to_le_bytes());
-    let err = transpile_sod(&bytes, "BAD_OP").unwrap_err();
+    let err = transpile_sod(&bytes, "BAD_OP", None).unwrap_err();
     assert_eq!(
         err,
         SodError::InvalidOpcode {
@@ -805,7 +806,7 @@ fn test_sod_error_malformed_polygon_under_3_vertices() {
     bytes.extend_from_slice(&0u16.to_le_bytes());
     bytes.extend_from_slice(&12u16.to_le_bytes());
 
-    let err = transpile_sod(&bytes, "DEGEN_POLY").unwrap_err();
+    let err = transpile_sod(&bytes, "DEGEN_POLY", None).unwrap_err();
     assert!(matches!(err, SodError::MalformedPolygon { .. }));
     assert!(err.to_string().contains("malformed polygon"));
 }

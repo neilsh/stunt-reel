@@ -18,7 +18,7 @@ mod parity;
 mod scene;
 
 use glam::{Mat4, Vec3};
-use scene::SceneBundle;
+use scene::{SceneBundle, load_anchor_table};
 use stunt_core::contracts::{
     CameraTransform, NodeKind, SodModelIr, SodVertex, TrajectoryRecord, VisibilityCondition,
     get_palette_rgb_float,
@@ -424,7 +424,9 @@ pub fn load_or_create_model(path: Option<&Path>) -> SodModelIr {
     };
 
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("MODEL");
-    match transpile_sod(&bytes, stem) {
+    let anchors = load_anchor_table(path);
+    let anchor_slice = (!anchors.is_empty()).then_some(anchors.as_slice());
+    match transpile_sod(&bytes, stem, anchor_slice) {
         Ok(ir) => ir,
         Err(e) => {
             eprintln!("[stuntreel] .SOD load failed for {}: {e}", path.display());
@@ -587,8 +589,8 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
             );
             for (shape_id, stop) in &bundle.partial {
                 println!(
-                    "[stuntreel] partial SOD 0x{shape_id:04X} stopped at 0x{:04X} opcode 0x{:04X}",
-                    stop.offset, stop.opcode
+                    "[stuntreel] partial SOD 0x{shape_id:04X} stopped at 0x{:04X} opcode 0x{:04X} ({})",
+                    stop.offset, stop.opcode, stop.reason
                 );
             }
             Some(bundle)

@@ -110,6 +110,28 @@ Generates canonical geometric wireframe vertices centered at the local origin:
 #### 3.1.4 Raw Vertex Array Upload (`OP_VECTORS`, 0x0075)
 Loads a batch of $N \times (x, y, z)$ 16-bit integer triplets from the bytecode stream into contiguous registers starting at `start_reg`. Each triplet is multiplied by `scale_factor` and offset by `ground_y_offset`.
 
+#### 3.1.4a Terrain Anchor Load (`OP_TAP`, `0x022E`) (`# [FMT-SOD-TAP]`)
+
+`OP_TAP` resolves terrain points rather than emitting geometry directly:
+
+```text
+OP_TAP (0x022E)
+  reg_off : u16        ; byte offset into the 12-byte vertex arena
+  count   : u16        ; number of anchor records (1..=64 in practice 2 or 3)
+  anchors : u16[count] ; byte offsets into the 28-byte anchor table
+```
+
+- The operand width is **variable**: `2 + count` words.
+- Each `anchor_offset` is a multiple of 28 and points four bytes before the 28-byte record (`record = table + offset + 4`); the table has a four-byte header.
+- Record layout: `x: i16` at `+0`, `y: i16` at `+2`, `z: i16` at `+4`, then runtime transform cache and projection fields through `+0x1B`.
+- `PLAYONE.EXE` transforms the record through the current 3×3 matrix, caches the 32-bit result per frame, shifts by `[0x806E]`, subtracts the view origin, and writes `x/y/z` into `regs[reg_off/12 + i]`.
+- The reconstruction applies the `[I1]` basis mapping `(-x, -y, z)` and treats sentinel elevations `|y| >= 32000` as zero; see [`research/playone-exe/sod-vm.md`](../playone-exe/sod-vm.md).
+- The anchor table is **external** to `.ALL`: it is the same 28-byte record array indexed by `ANCHORPT.DAT` / `MAP.BIN` terrain patches. A model that uses TAP cannot decode without it.
+
+Corpus: 2,413 stop sites across 14 unique model payloads; every operand is a multiple of 28. CTRY chunks `0x0402`–`0x0408` reference anchors 141–193.
+
+`[Established]` — handler at `CS:0x3E58`, dispatch entry at `CS:0x1544`.
+
 #### 3.1.5 Hierarchical Transform Stack & Subobject Articulation
 To animate moving parts (rotating propellers, retracting landing gear, rudder deflection) without detaching subobjects from the body, the SOD VM implements a hierarchical matrix stack:
 1. `pushcentre` (0x007E): Pushes current rotation origin vector onto the center stack.
@@ -197,8 +219,8 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **59** | `0x0213` | 531 | `OP_HUGEPOLY` | `...` | Large-scale scenery polygon |
 | **60** | `0x021C` | 540 | `OP_REJHUGEPOLY`| `...`| Large-scale scenery rejection |
 | **61** | `0x0225` | 549 | `OP_GNDHUGEPOLY`| `...`| Ground terrain mesh polygon |
-| **62** | `0x022E` | 558 | `OP_TAP` | `...` | Vertex scratchpad touch / debug marker |
-| **63** | `0x0237` | 567 | `OP_HUGETAP` | `...` | Large-scale scratchpad touch |
+| **62** | `0x022E` | 558 | `OP_TAP` | `reg_off: u16, count: u16, count × anchor_offset: u16` | Load anchor points into the vertex register bank (`# [FMT-SOD-TAP]`) |
+| **63** | `0x0237` | 567 | `OP_HUGETAP` | *unimplemented* | Dispatches to `int3` in `PLAYONE.EXE`; no encoding established |
 | **64** | `0x0240` | 576 | `OP_POLYSL` | `...` | Sliced polygon geometry |
 | **65** | `0x0249` | 585 | `OP_POLYZSL` | `...` | Depth-sorted sliced polygon |
 | **66** | `0x0252` | 594 | `OP_SPHERESL` | `...` | Sliced sphere primitive |
@@ -296,6 +318,7 @@ The following backlog documents open questions regarding `.SOD` virtual machine 
 | **Q-SOD-04** | Animation Variable Mappings (`undercarriage1`, etc.) | Macro assembler source files name specific registers/variables. Engine maps these to discrete `.FLM` actor state bits. | `[Supported Inference]` | Evaluated via `joint_angles_bam` in `ActorTransform`. |
 | **Q-SOD-05** | Level-of-Detail Detail Gates (`complex1..3`) | Flags in model bytecode controlling polygon complexity based on global detail setting. `SI-8x` proved forcing high detail uncovers hidden rivets and struts. | `[Established]` | Transpiler exposes all detail branches; modern rendering renders maximum detail. |
 | **Q-SOD-06** | Real-Mode Dynamic Memory Paging of 1024 Register Bank | In 640 KB conventional DOS memory, whether `PLAYONE.EXE` dynamically paged the 1024-vertex register bank (12 KB) into EMS/XMS or reserved a static `DGROUP` scratchpad buffer. | `[Hypothesis]` | Modern engine allocates contiguous flat arena vectors; memory constraints are eliminated. |
+| **Q-SOD-07** | `OP_TAP` (`0x022E`) | Resolved: variable-width anchor-table load; handler at `CS:0x3E58`. | `[Established]` | Requires `ANCHORPT.DAT`; missing table returns a distinct stop reason. |
 
 ---
 

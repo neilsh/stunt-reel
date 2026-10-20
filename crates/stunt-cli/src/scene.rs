@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use glam::Mat4;
 use stunt_core::contracts::{NodeKind, SodModelIr, SodVertex, VisibilityCondition};
-use stunt_core::sod::{SodStop, transpile_sod_lenient};
+use stunt_core::sod::{SodAnchorPoint, SodStop, transpile_sod_lenient};
 use stunt_render::GpuModel;
 
 /// Every renderable model decoded from one `.ALL` archive, keyed by resource ID,
@@ -49,6 +49,9 @@ impl SceneBundle {
         let archive = stunt_core::vfs::parse_all(&bytes)
             .map_err(|e| format!("parse {}: {e}", path.display()))?;
 
+        let anchors = load_anchor_table(path);
+        let anchor_slice = (!anchors.is_empty()).then_some(anchors.as_slice());
+
         let mut models = HashMap::new();
         let mut ir_models = HashMap::new();
         let mut skipped = 0usize;
@@ -58,7 +61,7 @@ impl SceneBundle {
             let Some(shape_id) = model_shape_id(&entry.name) else {
                 continue;
             };
-            match transpile_sod_lenient(&entry.data, &entry.name) {
+            match transpile_sod_lenient(&entry.data, &entry.name, anchor_slice) {
                 Ok((ir, stop)) => {
                     if let Some(stop) = stop {
                         partial.push((shape_id, stop));
@@ -77,8 +80,14 @@ impl SceneBundle {
         }
 
         // Search for static scenery and terrain tables
-        let world_model =
-            load_world_model(device, queue, model_bind_group_layout, path, &ir_models);
+        let world_model = load_world_model(
+            device,
+            queue,
+            model_bind_group_layout,
+            path,
+            &anchors,
+            &ir_models,
+        );
 
         Ok(Self {
             models,
@@ -118,7 +127,7 @@ struct MapArea {
 }
 
 /// Locates a scenery data file across standard candidate directories.
-fn find_scenery_file(all_path: &Path, filename: &str) -> Option<PathBuf> {
+pub(crate) fn find_scenery_file(all_path: &Path, filename: &str) -> Option<PathBuf> {
     let mut candidates = Vec::new();
     if let Some(parent) = all_path.parent() {
         candidates.push(parent.to_path_buf());
@@ -180,23 +189,42 @@ fn find_scenery_file(all_path: &Path, filename: &str) -> Option<PathBuf> {
 }
 
 /// Parses 28-byte anchor point records from `ANCHORPT.DAT`.
-fn parse_anchorpt(data: &[u8]) -> Vec<AnchorPoint> {
+pub(crate) fn parse_sod_anchors(data: &[u8]) -> Vec<SodAnchorPoint> {
     let count = data.len() / 28;
     let mut pts = Vec::with_capacity(count);
     for i in 0..count {
         let offset = i * 28;
-        let x = i16::from_le_bytes([data[offset], data[offset + 1]]);
-        let y = i16::from_le_bytes([data[offset + 2], data[offset + 3]]);
-        let z = i16::from_le_bytes([data[offset + 4], data[offset + 5]]);
-        let valid = y > -32000 && y < 32000;
-        pts.push(AnchorPoint {
-            x: -(x as f32),
-            y: -(y as f32), // invert raw negative elevation
-            z: z as f32,
-            valid,
+        pts.push(SodAnchorPoint {
+            x: i16::from_le_bytes([data[offset], data[offset + 1]]),
+            y: i16::from_le_bytes([data[offset + 2], data[offset + 3]]),
+            z: i16::from_le_bytes([data[offset + 4], data[offset + 5]]),
         });
     }
     pts
+}
+
+/// Loads the global anchor table referenced by `OP_TAP`, searching beside the archive.
+pub(crate) fn load_anchor_table(all_path: &Path) -> Vec<SodAnchorPoint> {
+    find_scenery_file(all_path, "ANCHORPT.DAT")
+        .and_then(|p| fs::read(p).ok())
+        .map(|b| parse_sod_anchors(&b))
+        .unwrap_or_default()
+}
+
+/// Converts raw anchor records into the `[I1]` world-terrain representation.
+fn anchor_points(anchors: &[SodAnchorPoint]) -> Vec<AnchorPoint> {
+    anchors
+        .iter()
+        .map(|a| {
+            let [x, y, z] = a.register_position();
+            AnchorPoint {
+                x,
+                y,
+                z,
+                valid: a.is_valid(),
+            }
+        })
+        .collect()
 }
 
 /// Parses 30-byte polygon patch records from `MAP.BIN`.
@@ -654,14 +682,12 @@ fn load_world_model(
     queue: &wgpu::Queue,
     model_bind_group_layout: &wgpu::BindGroupLayout,
     all_path: &Path,
+    anchors: &[SodAnchorPoint],
     ir_models: &HashMap<u16, SodModelIr>,
 ) -> Option<GpuModel> {
     let scn_bytes = find_scenery_file(all_path, "SCENERY.scn").and_then(|p| fs::read(p).ok());
 
-    let pts = find_scenery_file(all_path, "ANCHORPT.DAT")
-        .and_then(|p| fs::read(p).ok())
-        .map(|b| parse_anchorpt(&b))
-        .unwrap_or_default();
+    let pts = anchor_points(anchors);
 
     let map_areas = find_scenery_file(all_path, "MAP.BIN")
         .and_then(|p| fs::read(p).ok())
@@ -759,14 +785,14 @@ mod tests {
         data[30..32].copy_from_slice(&(-32500i16).to_le_bytes());
         data[32..34].copy_from_slice(&0i16.to_le_bytes());
 
-        let pts = parse_anchorpt(&data);
+        let pts = anchor_points(&parse_sod_anchors(&data));
         assert_eq!(pts.len(), 2);
         assert_eq!(pts[0].x, -100.0);
         assert_eq!(pts[0].y, 500.0); // inverted elevation
         assert_eq!(pts[0].z, 200.0);
         assert!(pts[0].valid);
 
-        assert_eq!(pts[1].y, 32500.0);
+        assert_eq!(pts[1].y, 0.0); // sentinel elevation decodes as sea level
         assert!(!pts[1].valid);
     }
 

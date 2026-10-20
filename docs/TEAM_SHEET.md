@@ -95,7 +95,7 @@ flowchart TD
 
 | Ticket | Description | Owner | Status | Blocker / Output Artifact |
 |---|---|---|---|---|
-| **`T09`** | `OP_TAP` (`0x022E`) semantics | `rust-engine-worker` | **Open** | 2,413 corpus stop sites. Operand width is 4 words, but the register 0–2 side effects are required before the following `POLYZ`; width-only skipping leaves degenerate polygons. `CTRY.ALL` chunks `0x0402`–`0x0408` (seven hill models) currently render empty. Accept: models reach `RETURN` with non-degenerate geometry. |
+| **`T09`** | `OP_TAP` (`0x022E`) semantics | `rust-engine-worker` | **Done** | Handler `CS:0x3E58`; operand form `reg_off, count, count × anchor_byte_offset` (variable width, not fixed 4 words). Copies 28-byte `ANCHORPT` records into the vertex register bank. `CTRY.ALL` `0x0402`–`0x0408` reach `RETURN` with non-degenerate polygons (max areas 135–1040 units²). Evidence: [`research/playone-exe/sod-vm.md`](../research/playone-exe/sod-vm.md), `# [FMT-SOD-TAP]`. |
 | **`T10`** | `OP_ANIMATE` (`0x01F8`) semantics | `rust-engine-worker` | **Open** | 847 corpus stop sites, 705 identical 58-byte templates. `CTRY` chunk `0x0107` emits no geometry either way, so currently cosmetic. Requires keyframed animation state, not just operand skipping. |
 | **`T11`** | Consume `tick_duration` in playback/export | `rust-engine-worker` | **Open** | `tick_duration` is decoded but unused; `CTRY.FLM` has 140 slices spanning 1,342 ticks (≈ 67.1 s at 20 Hz) but exports 140 frames at `--fps`. First step: establish how a film's authored rate (20 vs 30 Hz) is determined; then expand slices with sub-tick interpolation (`[I4]`). Docs already state the limitation. |
 
