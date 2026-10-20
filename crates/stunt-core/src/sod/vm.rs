@@ -67,6 +67,8 @@ pub const OP_RETURN: u16 = 0x0195;
 pub const OP_END: u16 = 0x0195;
 /// 3D bounding-box culling test (`box_reg, count, ...faces`).
 pub const OP_REJ: u16 = 0x01B9;
+/// Sample a 16-level directional lighting ramp (`normal_reg, ramp`); no geometry.
+pub const OP_SHADE16: u16 = 0x02B5;
 /// Emit a 16-level shaded polygon (`count, regs..., normal, shades...`).
 pub const OP_GVPOLY16: u16 = 0x02BE;
 /// Draw a single point at `regs[reg_off / 12]` (`reg_off: u16`).
@@ -429,6 +431,12 @@ pub fn execute_sod_vm_impl(
                         regs[(start_reg + 2) & 1023] = [dx, dy, 0.0];
                         regs[(start_reg + 3) & 1023] = [dx, -dy, 0.0];
                     }
+                    4 => {
+                        // Subobject template (`subobjs`): a single operand word.
+                        // Skipping two words swallowed the following `RETURN` and
+                        // exposed that return word as a bogus opcode (`0x0002`).
+                        read_u16(data, &mut pos)?;
+                    }
                     _ => {
                         // Unrecognized IPG type arguments skipped safely
                         read_u16(data, &mut pos)?;
@@ -570,6 +578,12 @@ pub fn execute_sod_vm_impl(
                 for _ in 0..(count as usize) * 3 {
                     read_u16(data, &mut pos)?;
                 }
+            }
+            OP_SHADE16 => {
+                // Normal register and ramp index. The lighting state is not modelled
+                // yet, but the established two-word width keeps the stream aligned.
+                read_u16(data, &mut pos)?;
+                read_u16(data, &mut pos)?;
             }
             OP_RETURN => {
                 // Bytecode termination

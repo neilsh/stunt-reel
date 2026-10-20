@@ -25,7 +25,8 @@ Refer directly to authoritative documents rather than duplicating definitions:
 
 | Domain | Source of Truth | Summary |
 |---|---|---|
-| **System Specification** | [`docs/SPEC.md`](docs/SPEC.md) | Authoritative master specification, mathematical invariants (`[I1]`–`[I8]`), reverse engineering findings, and master verification matrix. |
+|**Domain Glossary**|[`GLOSSARY.md`](GLOSSARY.md)|Canonical project vocabulary: film, slice, tick, trajectory record, epilogue, shape, slot, partial SOD.|
+|**System Specification**|[`docs/SPEC.md`](docs/SPEC.md)|Authoritative master specification, mathematical invariants (`[I1]`–`[I8]`), reverse engineering findings, and master verification matrix.|
 | **Architecture & 1-Hop Routing** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Routing table connecting code modules to specifications, format anchors (`# [FMT-*]`), and research notes. |
 | **Teamwork Blueprint & Milestones** | [`docs/TEAM_SHEET.md`](docs/TEAM_SHEET.md) | Multi-agent team roles (`sentinel`, `re-harness-worker`, `gltf-exporter-worker`, `rust-engine-worker`, `parity-auditor`), file blast radii, and milestone gates. |
 | **Runtime Memory Map** | [`docs/MEMORY_MAP.md`](docs/MEMORY_MAP.md) | `DGROUP` (`0x0D51`) offset reference tables, real-mode linear translation, and memory anchors (`# [MEM-*]`). |

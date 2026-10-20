@@ -154,9 +154,14 @@ fn test_stress_unclosed_slices_and_missing_terminators() {
     base.push(1);
     base.extend_from_slice(&10u16.to_le_bytes());
 
+    // A header-only trailer is the canonical end-of-film epilogue, not an unclosed slice.
+    let trailer = base.clone();
+    let mut player = FlmPlayer::new(&trailer).unwrap();
+    assert!(player.step_tick().is_none());
+    assert!(player.last_error().is_none());
+
     // Add various valid opcodes but omit 0xFF terminator
     let test_bodies: Vec<Vec<u8>> = vec![
-        vec![],                             // totally empty payload
         vec![0x98],                         // clear credits opcode only
         vec![0x80, 0x12, 0x34],             // var_set 0 = 0x3412
         vec![0x90],                         // set view_obj = 0
@@ -222,10 +227,10 @@ fn test_stress_zero_and_extreme_time_increments() {
     film.extend_from_slice(&0u16.to_le_bytes());
     film.extend_from_slice(&s2);
 
-    // Slice 3: `prev_slice_len` = 0xFFFF, `tick_duration` = 0
+    // Slice 3: `prev_slice_len` = 0xFFFF (broken chain), `tick_duration` = 0
     let s3 = vec![0x98, 0xFF];
-    film.push(1);
     film.extend_from_slice(&0xFFFFu16.to_le_bytes());
+    film.push(0);
     film.extend_from_slice(&s3);
 
     let res = catch_unwind(AssertUnwindSafe(|| {

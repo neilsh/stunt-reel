@@ -286,7 +286,7 @@ impl CliConfig {
         );
         println!("  --frame-step <N>     Capture interval step when rendering frames (default: 1)");
         println!(
-            "  --fps <HZ>           Video container framerate (default: 30, matching simulation tick frequency)"
+            "  --fps <HZ>           Video container framerate; one frame per authored slice (default: 30)"
         );
         println!(
             "  --width <px>         Offscreen framebuffer width (default 320, 256-byte pitch)"
@@ -449,6 +449,9 @@ pub fn load_or_synthesize_trajectory(
                 break;
             }
         }
+        for warning in player.warnings() {
+            eprintln!("[stuntreel] {warning}");
+        }
         if let Some(err) = player.take_last_error() {
             eprintln!("[stuntreel] trajectory ended early: {err}");
         }
@@ -563,7 +566,7 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
     );
 
     let trajectory = load_or_synthesize_trajectory(config.flm_path.as_deref(), config.max_ticks);
-    println!("[stuntreel] Loaded {} trajectory ticks", trajectory.len());
+    println!("[stuntreel] Loaded {} trajectory records", trajectory.len());
     let is_legacy = is_legacy_trajectory(&trajectory);
 
     // `--all` binds every actor to its archive chunk, so `--sod` and the synthetic

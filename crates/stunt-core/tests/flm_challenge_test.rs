@@ -885,14 +885,14 @@ fn test_challenge_actor_lifecycle_spawn_despawn_in_sub_tick() {
 
 #[test]
 fn test_challenge_adversarial_malformed_slices() {
-    // 1. Slice header with no readable fields and no payload
+    // 1. Header-only trailer: a valid end-of-film epilogue, not a malformed slice
     let mut film = Vec::from(&b"FILM"[..]);
     film.push(1); // prev_slice_len low byte
     film.extend_from_slice(&0u16.to_le_bytes()); // prev_slice_len high byte, tick_duration
     // no terminator
     let mut player = FlmPlayer::new(&film).unwrap();
     assert!(player.step_tick().is_none());
-    assert!(player.last_error().is_some());
+    assert!(player.last_error().is_none());
 
     // 2. Unclosed string in credits opcode 0x99
     let mut film = Vec::from(&b"FILM"[..]);

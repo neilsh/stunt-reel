@@ -115,7 +115,7 @@ cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
     --all corpus/stisldem/VAULT/CTRY.ALL --video build/ctry.mp4
 ```
 
-Headless video export renders the full film choreography and encodes it directly into a standard video container (`.mp4`, `.webm`, `.mkv`, or `.avi`) via `ffmpeg`. Output timing respects authentic film simulation tick rates (`[I4]`, 20 Hz or 30 Hz) and physical $4:3$ aspect ratio correction ($320 \times 240$, `[I6]`). Requires `ffmpeg` on `PATH`.
+Headless video export renders one frame per authored slice and encodes it directly into a standard video container (`.mp4`, `.webm`, `.mkv`, or `.avi`) via `ffmpeg`, using `--fps` (default 30) and physical $4:3$ aspect ratio correction ($320 \times 240$, `[I6]`). `tick_duration` is decoded but not yet consumed, so container duration is `slice_count / fps`, not the authored tick span; `CTRY.FLM` has 140 slices but spans 1,342 ticks (about 67.1 s at 20 Hz). Requires `ffmpeg` on `PATH`.
 
 ### Interval-based frame capture for rapid audits
 

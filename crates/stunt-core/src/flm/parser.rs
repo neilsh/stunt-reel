@@ -87,6 +87,10 @@ pub struct Slice {
 pub struct FlmParser<'a> {
     data: &'a [u8],
     pos: usize,
+    /// Length of the most recently decoded slice, used to validate the back-pointer chain.
+    last_slice_len: Option<usize>,
+    /// Non-fatal stream inconsistencies, such as a broken `prev_slice_len` chain.
+    warnings: Vec<String>,
 }
 
 impl<'a> FlmParser<'a> {
@@ -108,7 +112,18 @@ impl<'a> FlmParser<'a> {
                 actual: sig,
             });
         }
-        Ok(Self { data, pos: 4 })
+        Ok(Self {
+            data,
+            pos: 4,
+            last_slice_len: None,
+            warnings: Vec::new(),
+        })
+    }
+
+    /// Non-fatal inconsistencies observed while decoding the stream.
+    #[inline]
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
     }
 
     /// Current read cursor offset in bytes.
@@ -204,6 +219,31 @@ impl<'a> FlmParser<'a> {
         let slice_start = self.pos;
         let prev_slice_len = self.read_u16_le()?;
         let tick_duration = self.read_u8()?;
+
+        // A film ends with a header-only epilogue: the final slice's length followed by
+        // the `0xFF` end-of-stream marker (`0x00` in a few corpus films). Some films
+        // append filler after the marker, so `0xFF` - never an authored duration in the
+        // 627,696-slice corpus, whose maximum is `0x7F` - also ends the stream.
+        if self.pos == self.data.len() || tick_duration == 0xFF {
+            if let Some(last_len) = self.last_slice_len
+                && prev_slice_len as usize != last_len
+            {
+                self.warnings.push(format!(
+                    "end-of-film epilogue at 0x{slice_start:04X} has prev_slice_len {prev_slice_len} (expected {last_len})"
+                ));
+            }
+            self.pos = self.data.len();
+            return Ok(None);
+        }
+
+        if let Some(last_len) = self.last_slice_len
+            && prev_slice_len as usize != last_len
+        {
+            self.warnings.push(format!(
+                "slice at 0x{slice_start:04X} has prev_slice_len {prev_slice_len} (expected {last_len})"
+            ));
+        }
+
         let mut sound_cues = Vec::new();
 
         loop {
@@ -337,6 +377,8 @@ impl<'a> FlmParser<'a> {
                 }
             }
         }
+
+        self.last_slice_len = Some(self.pos - slice_start);
 
         Ok(Some(Slice {
             prev_slice_len,

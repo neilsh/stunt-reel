@@ -22,7 +22,7 @@ In the retail game, `.FLM` files reside in the `vault\` directory (e.g., `ACT1.F
 
 ## 2. Header & Memory Layout
 
-A `.FLM` file consists of a 4-byte ASCII signature followed immediately by a contiguous sequence of variable-length time slices extending to the end of the file:
+A `.FLM` file consists of a 4-byte ASCII signature followed by a contiguous sequence of variable-length time slices and a 3-byte end-of-film epilogue:
 
 ```
 +---------------------------------------------------------------------------------+
@@ -64,6 +64,18 @@ $$\text{prev\_slice\_len} = \text{prev\_slice\_len\_lo} \mid (\text{prev\_slice\
 - **Slice $i \ge 1$:** $\text{prev\_slice\_len}$ equals the exact byte distance from the start of slice $i-1$ to the start of slice $i$.
 - **VCR Reverse Scrubbing:** This field is the **reverse-scrubbing back-pointer** used by the Stunt Island Editing Room VCR engine to execute frame-by-frame rewinding (`REVERSE STEP`) without requiring random-access disk index tables!
 - **Resolution of Historical Anomaly:** Because $98.5\%$ of slices are $< 256$ bytes in length, `prev_slice_len_hi` is $0$. When previous tools read Byte 0 (`prev_slice_len_lo`) and then read a 16-bit word at Bytes 1..2 (`prev_slice_len_hi | (tick_duration << 8)`), the word naturally evaluated to `tick_duration * 256`!
+
+### 2.2 End-of-Film Epilogue (`[Established]`)
+
+The final slice is followed by a 3-byte epilogue: the last slice's `prev_slice_len` plus an end-of-stream marker. In 554 of 561 walkable corpus films the marker is `0xFF`; `MAMMOTH.FLM` and `MAMMOTH2.FLM` use `0x00`, and five films append filler after the marker. The `prev_slice_len` field equals the preceding slice's length in all 556 epilogue-bearing films.
+
+The epilogue is not a slice: it has no opcode payload and no terminator of its own. Detection rule:
+
+1. A slice header immediately followed by end-of-file is a header-only trailer and terminates the stream.
+2. A header whose `tick_duration` byte is `0xFF` terminates the stream; any trailing bytes are filler. No authored slice in the 627,696-slice corpus exceeds `tick_duration = 0x7F`, so the marker is unambiguous.
+3. The back-pointer chain should be validated, but a mismatch is a warning rather than a fatal error.
+
+`python/stunt_reel/flm_walk.py` has implemented (1) and (2) since inception; `FlmParser::parse_slice` gained the same rule after it misread `CTRY.FLM`'s epilogue as a 141st slice.
 
 ---
 

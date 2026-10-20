@@ -283,6 +283,12 @@ impl<'a> FlmPlayer<'a> {
         self.current_tick
     }
 
+    /// Non-fatal inconsistencies encountered while decoding the film stream.
+    #[inline]
+    pub fn warnings(&self) -> &[String] {
+        self.parser.warnings()
+    }
+
     /// Active view object slot index driving camera view.
     #[inline]
     pub fn view_obj(&self) -> u8 {
