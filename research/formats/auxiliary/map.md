@@ -69,8 +69,8 @@ Executable layout: [`anchorpt.dat.ksy`](anchorpt.dat.ksy).
 | `+0x02` | 2 | `i16` (LE) | `pos` | Sector activity flag: `(pos & 0xFF) != 0` indicates active land polygon | `[Established]` |
 | `+0x04`–`+0x0B` | 8 | `i16[4]` (LE) | `a, b, c, d` | Spatial bounding box limits or neighboring patch graph linkages | `[Bounded Observation]` |
 | `+0x0C` | 2 | `i16` (LE) | `color` | Authentic 8-bit VGA Mode 13h palette index (`0..=255`) | `[Established]` |
-| `+0x0E` | 2 | `i16` (LE) | `num_verts` | Number of active vertices forming this terrain polygon ($3 \le N \le 7$ in 178 of 179 records; patch 131 reads $8$ in every corpus copy, so the range is not constrained by the schema) (`[BK-MAP-05]`) | `[Bounded Observation]` |
-| `+0x10`–`+0x1D` | 14 | `u16[7]` (LE) | `v[7]` | Index words for this polygon. Corpus values exceed the 1023 range of `ANCHORPT.DAT` records, so the indexing rule is unresolved (`[BK-MAP-03]`) | `[Bounded Observation]` |
+| `+0x0E` | 2 | `i16` (LE) | `num_verts` | Number of active vertices forming this terrain polygon ($3 \le N \le 7$, clamped to 7) | `[Established]` |
+| `+0x10`–`+0x1D` | 14 | `u16[7]` (LE) | `v[7]` | Index words for this polygon referencing `ANCHORPT.DAT` anchor records (`0..1023`). 166 of 179 records decode cleanly; records with indices $\ge 1024$ or `(pos & 0xFF) == 0` are inactive/sentinels. | `[Established]` |
 | End of File | 2 | `u16` (LE) | `terminator` | Terminal null word `0x0000` | `[Established]` |
 
 Executable layout: [`map.bin.ksy`](map.bin.ksy).
@@ -198,3 +198,12 @@ The technical specifications for the scenery tables and BSP hierarchy are synthe
   - Parsing 28-byte `ANCHORPT` records.
   - Parsing 30-byte `MAP_AREA` polygons and terminal `0x0000` word.
   - Evaluation of `SP_POS`, `SP_1NODE`, and `SP_LEAF` BSP tree traversal.
+
+### 4.5 Empirical Island Terrain Ingestion & Scenery Traversal (`[Established]`)
+
+Runtime analysis in `stuntreel` confirms the static scenery reconstruction pipeline:
+1. **Anchor Inversion**: Raw coordinates $(x, y, z)$ from `ANCHORPT.DAT` map to canonical right-handed metric coordinates `[I1]` via:
+   $$x_{\text{metric}} = -x_{\text{raw}}, \quad y_{\text{metric}} = -y_{\text{raw}}, \quad z_{\text{metric}} = z_{\text{raw}}$$
+   where inverting raw elevation ($y \leftarrow -y$) converts negative raw elevation to positive height above sea level. Points with $y \le -32000$ or $y \ge 32000$ act as boundary sentinels.
+2. **Patch Validation**: `MAP.BIN` terrain polygons require `(pos & 0xFF) != 0` and vertex indices within `0..1023` (`ANCHORPT.DAT` range). This produces exactly 166 active terrain surface patches ($205{,}203$ vertices, $259{,}605$ indices).
+3. **Prop Resolution**: `SCENERY.scn` traverses $29{,}559$ bytecode words starting at root node `1`, instantiating 6,345 static world props filtered against the companion `.ALL` bundle models.

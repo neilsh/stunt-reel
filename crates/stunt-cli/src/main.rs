@@ -59,7 +59,10 @@ pub struct CliConfig {
 
 impl CliConfig {
     pub fn parse() -> Result<Self, String> {
-        let mut args = env::args().skip(1);
+        Self::parse_from(env::args().skip(1))
+    }
+
+    pub fn parse_from(mut args: impl Iterator<Item = String>) -> Result<Self, String> {
         let mut flm_path = None;
         let mut sod_path = None;
         let mut all_path = None;
@@ -68,6 +71,7 @@ impl CliConfig {
         let mut width = 320u32;
         let mut height = 240u32;
         let mut clear_index = 180u8;
+        let mut explicit_clear_index = false;
         let mut headless = false;
         let mut output_png = None;
         let mut max_ticks = None;
@@ -141,6 +145,7 @@ impl CliConfig {
                     clear_index = val
                         .parse::<u8>()
                         .map_err(|e| format!("Invalid palette index: {e}"))?;
+                    explicit_clear_index = true;
                 }
                 "--output" | "-o" => {
                     let val = args.next().ok_or("Expected path after --output")?;
@@ -153,11 +158,23 @@ impl CliConfig {
                         .map_err(|e| format!("Invalid tick count: {e}"))?;
                     max_ticks = Some(n);
                 }
-                other if !other.starts_with('-') && flm_path.is_none() => {
-                    flm_path = Some(PathBuf::from(other));
-                }
                 other => {
-                    return Err(format!("Unrecognized argument: {other}"));
+                    if other.starts_with('-') {
+                        return Err(format!("Unrecognized argument: {other}"));
+                    }
+                    let path = PathBuf::from(other);
+                    let is_all = path
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("all"));
+                    if is_all && all_path.is_none() {
+                        all_path = Some(path);
+                    } else if flm_path.is_none() {
+                        flm_path = Some(path);
+                    } else if all_path.is_none() {
+                        all_path = Some(path);
+                    } else {
+                        return Err(format!("Unrecognized argument: {other}"));
+                    }
                 }
             }
         }
@@ -169,9 +186,45 @@ impl CliConfig {
             return Err("row pitch must be 256-byte aligned".to_string());
         }
 
-        if out_dir.is_some() || video_path.is_some() {
+        if out_dir.is_some() || video_path.is_some() || output_png.is_some() {
             headless = true;
         }
+
+        if sod_path.is_none() {
+            if let Some(flm) = &flm_path
+                && all_path.is_none()
+            {
+                let candidate_upper = flm.with_extension("ALL");
+                if candidate_upper.is_file() {
+                    all_path = Some(candidate_upper);
+                } else {
+                    let candidate_lower = flm.with_extension("all");
+                    if candidate_lower.is_file() {
+                        all_path = Some(candidate_lower);
+                    }
+                }
+            } else if let Some(all) = &all_path
+                && flm_path.is_none()
+            {
+                let candidate_upper = all.with_extension("FLM");
+                if candidate_upper.is_file() {
+                    flm_path = Some(candidate_upper);
+                } else {
+                    let candidate_lower = all.with_extension("flm");
+                    if candidate_lower.is_file() {
+                        flm_path = Some(candidate_lower);
+                    }
+                }
+            }
+        }
+
+        let clear_index = if explicit_clear_index {
+            clear_index
+        } else if all_path.is_some() {
+            233
+        } else {
+            180
+        };
 
         Ok(Self {
             flm_path,
@@ -433,6 +486,55 @@ pub fn load_or_synthesize_trajectory(
     records
 }
 
+/// Determines whether an input trajectory uses legacy DOS fixed-point coordinates
+/// (where altitude above sea level and east coordinates are negative).
+fn is_legacy_trajectory(trajectory: &[TrajectoryRecord]) -> bool {
+    let has_positive_altitude = trajectory.iter().any(|rec| {
+        rec.camera.eye[1] > 0.5 || rec.actors.iter().any(|act| act.position_meters[1] > 0.5)
+    });
+    if has_positive_altitude {
+        return false;
+    }
+
+    trajectory.iter().any(|rec| {
+        rec.camera.eye[1] < 0.0
+            || rec.camera.target[1] < 0.0
+            || rec.camera.eye[0] < -500.0
+            || rec
+                .actors
+                .iter()
+                .any(|act| act.position_meters[1] < 0.0 || act.position_meters[0] < -500.0)
+    })
+}
+
+/// Adapts legacy raw negative elevation (.FLM coordinates where -X and -Y are flipped)
+/// into the canonical right-handed metric space `[I1]` (+X is Right, +Y is Up).
+fn adapt_camera_transform(mut cam: CameraTransform, is_legacy: bool) -> CameraTransform {
+    if is_legacy {
+        cam.eye[0] = -cam.eye[0];
+        cam.eye[1] = -cam.eye[1];
+        cam.target[0] = -cam.target[0];
+        cam.target[1] = -cam.target[1];
+    }
+    cam
+}
+
+fn adapt_actor_matrix(mut mat: [f32; 16], is_legacy: bool) -> [f32; 16] {
+    if is_legacy {
+        mat[12] = -mat[12];
+        mat[13] = -mat[13];
+    }
+    mat
+}
+
+fn adapt_actor_position(mut pos: [f32; 3], is_legacy: bool) -> [f32; 3] {
+    if is_legacy {
+        pos[0] = -pos[0];
+        pos[1] = -pos[1];
+    }
+    pos
+}
+
 /// Executes headless rendering without window creation.
 pub fn run_headless(config: &CliConfig) -> Result<(), String> {
     println!("[stuntreel] Starting headless offscreen presentation...");
@@ -459,6 +561,10 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
         "[stuntreel] camera forward: {}",
         if CAMERA_FORWARD[2] < 0.0 { "-Z" } else { "+Z" }
     );
+
+    let trajectory = load_or_synthesize_trajectory(config.flm_path.as_deref(), config.max_ticks);
+    println!("[stuntreel] Loaded {} trajectory ticks", trajectory.len());
+    let is_legacy = is_legacy_trajectory(&trajectory);
 
     // `--all` binds every actor to its archive chunk, so `--sod` and the synthetic
     // fallback model do not participate in parity frames.
@@ -498,9 +604,6 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
         ))
     };
 
-    let trajectory = load_or_synthesize_trajectory(config.flm_path.as_deref(), config.max_ticks);
-    println!("[stuntreel] Loaded {} trajectory ticks", trajectory.len());
-
     let mut camera = CameraController::default();
 
     if config.out_dir.is_none() && video_writer.is_none() {
@@ -510,15 +613,37 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
             .unwrap_or_else(|| PathBuf::from("stuntreel_capture.png"));
 
         if let Some(first_tick) = trajectory.first() {
-            camera.set_authored_transform(first_tick.camera);
+            let cam = adapt_camera_transform(first_tick.camera, is_legacy);
+            camera.set_authored_transform(cam);
+            println!(
+                "[stuntreel] first_tick.camera: eye={:?}, target={:?}, fov={}",
+                cam.eye, cam.target, cam.fov_degrees
+            );
+            for actor in &first_tick.actors {
+                let pos = adapt_actor_position(actor.position_meters, is_legacy);
+                println!(
+                    "[stuntreel] first_tick actor: shape_id=0x{:04X}, pos={:?}",
+                    actor.shape_id, pos
+                );
+            }
         }
 
         let mut drawn_shapes: Vec<u16> = Vec::new();
         let mut draws: Vec<(&GpuModel, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>)> = Vec::new();
 
         if let Some(bundle) = &bundle {
+            if let Some(world_model) = &bundle.world_model {
+                let (base_meshes, decal_meshes) = world_model.collect_visible_meshes(1, 0.0);
+                println!(
+                    "[stuntreel] world_model draws: {} base meshes, {} decal meshes",
+                    base_meshes.len(),
+                    decal_meshes.len()
+                );
+                draws.push((world_model, base_meshes, decal_meshes));
+            }
             if let Some(first_tick) = trajectory.first() {
-                let eye = Vec3::from_array(first_tick.camera.eye);
+                let cam = adapt_camera_transform(first_tick.camera, is_legacy);
+                let eye = Vec3::from_array(cam.eye);
                 for actor in &first_tick.actors {
                     if drawn_shapes.contains(&actor.shape_id) {
                         continue;
@@ -528,16 +653,36 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
                     };
                     drawn_shapes.push(actor.shape_id);
 
-                    model.update_world_matrix(&renderer.queue, &actor.world_matrix);
-                    let distance = eye.distance(Vec3::from_array(actor.position_meters));
+                    let world_mat = adapt_actor_matrix(actor.world_matrix, is_legacy);
+                    let actor_pos = adapt_actor_position(actor.position_meters, is_legacy);
+                    model.update_world_matrix(&renderer.queue, &world_mat);
+                    let distance = eye.distance(Vec3::from_array(actor_pos));
                     let (base_meshes, decal_meshes) =
                         model.collect_visible_meshes(actor.state_mask, distance);
                     draws.push((model, base_meshes, decal_meshes));
                 }
             }
         } else if let Some(gpu_model) = &single_model {
-            let (base_meshes, decal_meshes) = gpu_model.collect_visible_meshes(1, 30.0);
-            draws.push((gpu_model, base_meshes, decal_meshes));
+            if let Some(first_tick) = trajectory.first()
+                && let Some(actor) = first_tick
+                    .actors
+                    .iter()
+                    .find(|a| a.shape_id != 0)
+                    .or_else(|| first_tick.actors.first())
+            {
+                let world_mat = adapt_actor_matrix(actor.world_matrix, is_legacy);
+                let actor_pos = adapt_actor_position(actor.position_meters, is_legacy);
+                gpu_model.update_world_matrix(&renderer.queue, &world_mat);
+                let cam = adapt_camera_transform(first_tick.camera, is_legacy);
+                let eye = Vec3::from_array(cam.eye);
+                let distance = eye.distance(Vec3::from_array(actor_pos));
+                let (base_meshes, decal_meshes) =
+                    gpu_model.collect_visible_meshes(actor.state_mask, distance);
+                draws.push((gpu_model, base_meshes, decal_meshes));
+            } else {
+                let (base_meshes, decal_meshes) = gpu_model.collect_visible_meshes(1, 30.0);
+                draws.push((gpu_model, base_meshes, decal_meshes));
+            }
         }
 
         let models_slice: Vec<(&GpuModel, &[GpuMeshSlice], &[GpuMeshSlice])> = draws
@@ -576,13 +721,27 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
             continue;
         }
 
-        camera.set_authored_transform(record.camera);
-        let eye = Vec3::from_array(record.camera.eye);
+        let cam = adapt_camera_transform(record.camera, is_legacy);
+        camera.set_authored_transform(cam);
+        let eye = Vec3::from_array(cam.eye);
 
         let mut drawn_shapes: Vec<u16> = Vec::new();
         let mut draws: Vec<(&GpuModel, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>)> = Vec::new();
 
         if let Some(bundle) = &bundle {
+            if let Some(world_model) = &bundle.world_model {
+                let (base_meshes, decal_meshes) = world_model.collect_visible_meshes(1, 0.0);
+                if ordinal == start {
+                    println!(
+                        "[stuntreel] loop frame {ordinal} world_model draws: {} base meshes ({:?}), {} decal meshes ({:?})",
+                        base_meshes.len(),
+                        base_meshes.first(),
+                        decal_meshes.len(),
+                        decal_meshes.first()
+                    );
+                }
+                draws.push((world_model, base_meshes, decal_meshes));
+            }
             for actor in &record.actors {
                 if drawn_shapes.contains(&actor.shape_id) {
                     continue;
@@ -592,16 +751,25 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
                 };
                 drawn_shapes.push(actor.shape_id);
 
-                model.update_world_matrix(&renderer.queue, &actor.world_matrix);
-                let distance = eye.distance(Vec3::from_array(actor.position_meters));
+                let world_mat = adapt_actor_matrix(actor.world_matrix, is_legacy);
+                let actor_pos = adapt_actor_position(actor.position_meters, is_legacy);
+                model.update_world_matrix(&renderer.queue, &world_mat);
+                let distance = eye.distance(Vec3::from_array(actor_pos));
                 let (base_meshes, decal_meshes) =
                     model.collect_visible_meshes(actor.state_mask, distance);
                 draws.push((model, base_meshes, decal_meshes));
             }
         } else if let Some(model) = &single_model {
-            if let Some(actor) = record.actors.first() {
-                model.update_world_matrix(&renderer.queue, &actor.world_matrix);
-                let distance = eye.distance(Vec3::from_array(actor.position_meters));
+            if let Some(actor) = record
+                .actors
+                .iter()
+                .find(|a| a.shape_id != 0)
+                .or_else(|| record.actors.first())
+            {
+                let world_mat = adapt_actor_matrix(actor.world_matrix, is_legacy);
+                let actor_pos = adapt_actor_position(actor.position_meters, is_legacy);
+                model.update_world_matrix(&renderer.queue, &world_mat);
+                let distance = eye.distance(Vec3::from_array(actor_pos));
                 let (base_meshes, decal_meshes) =
                     model.collect_visible_meshes(actor.state_mask, distance);
                 draws.push((model, base_meshes, decal_meshes));
@@ -728,6 +896,7 @@ struct WindowApp {
     camera: CameraController,
     scene: Option<InteractiveScene>,
     trajectory: Vec<TrajectoryRecord>,
+    is_legacy: bool,
     current_tick_idx: usize,
     tick_accumulator: f32,
     paused: bool,
@@ -746,6 +915,7 @@ impl WindowApp {
     fn new(config: CliConfig) -> Self {
         let trajectory =
             load_or_synthesize_trajectory(config.flm_path.as_deref(), config.max_ticks);
+        let is_legacy = is_legacy_trajectory(&trajectory);
         Self {
             config,
             window: None,
@@ -760,6 +930,7 @@ impl WindowApp {
             camera: CameraController::default(),
             scene: None,
             trajectory,
+            is_legacy,
             current_tick_idx: 0,
             tick_accumulator: 0.0,
             paused: false,
@@ -843,7 +1014,8 @@ impl WindowApp {
         if self.camera.mode == CameraMode::Authored
             && let Some(record) = record
         {
-            self.camera.set_authored_transform(record.camera);
+            let cam = adapt_camera_transform(record.camera, self.is_legacy);
+            self.camera.set_authored_transform(cam);
         }
         let eye = self.camera.eye_position();
 
@@ -851,10 +1023,29 @@ impl WindowApp {
         let mut draws: Vec<(&GpuModel, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>)> = Vec::new();
         match self.scene.as_ref() {
             Some(InteractiveScene::Single(model)) => {
-                let (base, decals) = model.collect_visible_meshes(1, eye.length());
-                draws.push((model, base, decals));
+                if let Some(record) = record
+                    && let Some(actor) = record
+                        .actors
+                        .iter()
+                        .find(|a| a.shape_id != 0)
+                        .or_else(|| record.actors.first())
+                {
+                    let world_mat = adapt_actor_matrix(actor.world_matrix, self.is_legacy);
+                    let actor_pos = adapt_actor_position(actor.position_meters, self.is_legacy);
+                    model.update_world_matrix(queue, &world_mat);
+                    let distance = eye.distance(Vec3::from_array(actor_pos));
+                    let (base, decals) = model.collect_visible_meshes(actor.state_mask, distance);
+                    draws.push((model, base, decals));
+                } else {
+                    let (base, decals) = model.collect_visible_meshes(1, eye.length());
+                    draws.push((model, base, decals));
+                }
             }
             Some(InteractiveScene::Archive(bundle)) => {
+                if let Some(world_model) = &bundle.world_model {
+                    let (base, decals) = world_model.collect_visible_meshes(1, 0.0);
+                    draws.push((world_model, base, decals));
+                }
                 if let Some(record) = record {
                     let mut drawn_shapes: Vec<u16> = Vec::new();
                     for actor in &record.actors {
@@ -866,8 +1057,10 @@ impl WindowApp {
                         };
                         drawn_shapes.push(actor.shape_id);
 
-                        model.update_world_matrix(queue, &actor.world_matrix);
-                        let distance = eye.distance(Vec3::from_array(actor.position_meters));
+                        let world_mat = adapt_actor_matrix(actor.world_matrix, self.is_legacy);
+                        let actor_pos = adapt_actor_position(actor.position_meters, self.is_legacy);
+                        model.update_world_matrix(queue, &world_mat);
+                        let distance = eye.distance(Vec3::from_array(actor_pos));
                         let (base, decals) =
                             model.collect_visible_meshes(actor.state_mask, distance);
                         draws.push((model, base, decals));
@@ -1312,5 +1505,147 @@ fn main() {
     if let Err(e) = event_loop.run_app(&mut app) {
         eprintln!("[stuntreel] Application error: {e}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_legacy_trajectory_detection() {
+        let rec_legacy = TrajectoryRecord {
+            tick: 0,
+            camera: CameraTransform {
+                eye: [3306.0, -14.0, 2614.0],
+                target: [0.0, 0.0, 0.0],
+                fov_degrees: 45.0,
+                roll_radians: 0.0,
+                cut_from_previous: false,
+            },
+            actors: Vec::new(),
+            audio_cues: Vec::new(),
+        };
+        assert!(is_legacy_trajectory(&[rec_legacy]));
+
+        let rec_legacy_x_at_sea_level = TrajectoryRecord {
+            tick: 0,
+            camera: CameraTransform {
+                eye: [-3306.0, 0.0, 2614.0],
+                target: [0.0, 0.0, 0.0],
+                fov_degrees: 45.0,
+                roll_radians: 0.0,
+                cut_from_previous: false,
+            },
+            actors: Vec::new(),
+            audio_cues: Vec::new(),
+        };
+        assert!(is_legacy_trajectory(&[rec_legacy_x_at_sea_level]));
+
+        let rec_metric = TrajectoryRecord {
+            tick: 0,
+            camera: CameraTransform {
+                eye: [0.0, 10.0, 50.0],
+                target: [0.0, 0.0, 0.0],
+                fov_degrees: 45.0,
+                roll_radians: 0.0,
+                cut_from_previous: false,
+            },
+            actors: Vec::new(),
+            audio_cues: Vec::new(),
+        };
+        assert!(!is_legacy_trajectory(&[rec_metric]));
+
+        let rec_metric_west = TrajectoryRecord {
+            tick: 0,
+            camera: CameraTransform {
+                eye: [-1200.0, 50.0, 0.0],
+                target: [0.0, 50.0, 0.0],
+                fov_degrees: 45.0,
+                roll_radians: 0.0,
+                cut_from_previous: false,
+            },
+            actors: Vec::new(),
+            audio_cues: Vec::new(),
+        };
+        assert!(!is_legacy_trajectory(&[rec_metric_west]));
+    }
+
+    #[test]
+    fn test_all_companion_autodiscovery() {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
+        let fixture_flm = workspace_root.join("tests/fixtures/synthetic_minimal.flm");
+        let expected_all = workspace_root.join("tests/fixtures/synthetic_minimal.all");
+        let config = CliConfig::parse_from(
+            vec![
+                fixture_flm.to_string_lossy().to_string(),
+                "--headless".to_string(),
+            ]
+            .into_iter(),
+        );
+        let cfg = config.expect("parse succeeds");
+        assert!(cfg.all_path.is_some());
+        assert_eq!(
+            cfg.all_path.unwrap().to_string_lossy().to_ascii_lowercase(),
+            expected_all.to_string_lossy().to_ascii_lowercase()
+        );
+        assert_eq!(cfg.clear_index, 233);
+    }
+
+    #[test]
+    fn test_flm_companion_autodiscovery_from_all() {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
+        let fixture_flm = workspace_root.join("tests/fixtures/synthetic_minimal.flm");
+        let fixture_all = workspace_root.join("tests/fixtures/synthetic_minimal.all");
+        let config = CliConfig::parse_from(
+            vec![
+                fixture_all.to_string_lossy().to_string(),
+                "-o".to_string(),
+                "out.png".to_string(),
+            ]
+            .into_iter(),
+        );
+        let cfg = config.expect("parse succeeds");
+        assert!(cfg.headless, "output_png implies headless");
+        assert!(cfg.all_path.is_some());
+        assert!(cfg.flm_path.is_some());
+        assert_eq!(
+            cfg.flm_path.unwrap().to_string_lossy().to_ascii_lowercase(),
+            fixture_flm.to_string_lossy().to_ascii_lowercase()
+        );
+        assert_eq!(cfg.clear_index, 233);
+    }
+
+    #[test]
+    fn test_adapt_coordinate_transforms() {
+        let cam = CameraTransform {
+            eye: [-100.0, -20.0, 300.0],
+            target: [-50.0, -10.0, 200.0],
+            fov_degrees: 45.0,
+            roll_radians: 0.0,
+            cut_from_previous: false,
+        };
+        let adapted = adapt_camera_transform(cam, true);
+        assert_eq!(adapted.eye, [100.0, 20.0, 300.0]);
+        assert_eq!(adapted.target, [50.0, 10.0, 200.0]);
+
+        let not_adapted = adapt_camera_transform(cam, false);
+        assert_eq!(not_adapted.eye, [-100.0, -20.0, 300.0]);
+
+        let mut mat = [0.0; 16];
+        mat[12] = -123.0;
+        mat[13] = -456.0;
+        mat[14] = 789.0;
+        let adapted_mat = adapt_actor_matrix(mat, true);
+        assert_eq!(adapted_mat[12], 123.0);
+        assert_eq!(adapted_mat[13], 456.0);
+        assert_eq!(adapted_mat[14], 789.0);
+
+        let not_adapted_mat = adapt_actor_matrix(mat, false);
+        assert_eq!(not_adapted_mat[12], -123.0);
+        assert_eq!(not_adapted_mat[13], -456.0);
+        assert_eq!(not_adapted_mat[14], 789.0);
     }
 }

@@ -73,7 +73,7 @@ The 16-bit unsigned resource identifier (`id: u16`) partitions into distinct fun
 
 | ID Range (Hex) | ID Range (Dec) | Asset Type / Engine Role | Internal Header Signature | Description |
 | :---: | :---: | :--- | :---: | :--- |
-| `0x0001`–`0x7FFF` | $1..32767$ | **3D Model Geometry (`.SOD`)** | `0x000C` (`b"\x0c\x00"`) | Procedural bytecode display-list geometry. This ID matches `shape_id` referenced in `.FLM` and `.SET`! |
+| `0x0001`–`0x7FFF` | $1..32767$ | **3D Model Geometry (`.SOD`)** | `0x000C` (`b"\x0c\x00"`) | Procedural bytecode display-list geometry. This ID matches `shape_id` referenced in `.FLM`, `.SET`, and static scenery leaf nodes (`SP_LEAF`, opcode 10 in `SCENERY.scn`)! |
 | `0x8000`–`0x803F` | $32768..32831$ | **16-Color Palette Ramps** | `0x0030` (`48` bytes) | 16-color RGB sub-palette or UI highlight ramp. Example: `0x801E` in `COLORS.ALL`. |
 | `0x8040`–`0x80FF` | $32832..33023$ | **240-Color Master Palette** | `0x02D0` (`720` bytes) | Complete 240-color Mode 13h VGA master color table. Example: `0x8042` in `COLORS.ALL`. |
 | `0x8100`–`0xBFFF` | $33024..49151$ | **Scenery / Map Data** | Variable | Scenery quadtree nodes (`.MAP`), terrain elevation grids, and collision tables. |
@@ -208,3 +208,10 @@ pub struct VfsArchive {
 - `crates/stunt-core/tests/vfs_test.rs`: Empty containers (`num == 0`), mixed payload parsing, corrupted header bounds.
 - `crates/stunt-core/tests/vfs_challenge_test.rs`: Case insensitivity, zero-byte payloads, multi-entry roundtrips.
 - `crates/stunt-core/tests/vfs_stress_test.rs`: Offset table wrapping, fuzzing mutations, payload classification edge cases.
+
+### 3.4 Runtime Scene Reconstruction & Model Binding (`[Established]`)
+
+During standalone playback in `PLAYONE.EXE` (and modern reconstruction in `stuntreel`), `.ALL` archives provide both the dynamic actor models and the static prop definitions for the island environment:
+1. **Model Catalog**: Chunks with IDs in `0x0001`–`0x7FFF` (`MODEL_%04X.SOD`) form a local scene catalog.
+2. **Dynamic Binding**: Actors evaluated in `.FLM` trajectory ticks bind to these models via `ActorTransform::shape_id`.
+3. **Static Scenery Instantiation**: Simultaneously, the static scene graph (`SCENERY.scn`) resolves its `SP_LEAF` object IDs against this same catalog, allowing standalone films to reconstruct complete sets (hangars, towers, buildings, flora) alongside moving aircraft.

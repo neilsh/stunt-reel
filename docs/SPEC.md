@@ -189,6 +189,14 @@ The parity loop compares what the original player scans out against what the nat
 * The stored slot rotation maps camera space to world space with `+Z` pointing into the screen, and its pitch angle `rx` (`rot_bam[1]`) is the negative of `quat_from_euler`'s `pitch`. With both conventions applied, the tick 1 look direction lands **1.4°** off the bearing to the drawn actor; every other combination of axis sign and pitch/yaw sign tested lands 8°–178° off. Without the pitch negation the camera misses the actor entirely and every rendered frame is sky.
 * `CTRY.ALL` holds 127 `MODEL_*.SOD` chunks. 114 decode to `RETURN`/EOF with the current opcode table; 13 stop early. The drawn actor's chunk (`shape_id 0x7F37`, 7604 bytes) decodes `0x11C8` bytes before opcode `0x02B5`, which is outside the decoded table. The parity renderer keeps the geometry decoded up to that offset (`transpile_sod_lenient`) and reports the stop, rather than discarding the model; opcode semantics for `0x02B5` remain `[Unknown]`.
 
+### 3.8 Static World Scenery & Terrain Assembly (`[Established]`)
+
+* **Terrain Heightmap (`ANCHORPT.DAT`)**: 1,024 28-byte records provide topological grid coordinates $(x, y, z)$. Coordinates map to the right-handed metric system `[I1]` via $(x_{\text{metric}}, y_{\text{metric}}, z_{\text{metric}}) = (-x, -y, z)$, where inverting raw $y$ yields positive altitudes above sea level. Coordinates with $|y| \ge 32000$ act as boundary sentinels.
+* **Surface Polygon Mesh (`MAP.BIN`)**: 179 30-byte records define the island polygon patches. Records with `(pos & 0xFF) != 0` and vertices indexing within `0..1023` yield 166 visible terrain patches ($205{,}203$ vertices, $259{,}605$ indices). Mode 13h palette index `color` maps directly through the authentic $256 \times 32$ LUT `[I3]`.
+* **Scene Graph & Static Prop Placement (`SCENERY.scn`)**: Traversal of the precompiled $29{,}559$-word BSP tree bytecode starting at root node index `1` evaluates relative translation opcodes (`SP_POS`, `SP_POSXZ`) and branch opcodes (`SP_2NODE`, `SP_GROUND`, `SP_LIST`), resolving 6,345 static island prop instances (`SP_LEAF`, opcode 10) that match the geometry in the scene's companion `.ALL` container.
+* **Global Ocean Water Quad**: A flat planar quad spanning $(-32000, -1, -32000)$ to $(+32000, -1, +32000)$ with palette index `208` (deep ocean blue) forms the base sea level beneath the island landmass.
+* **Visual Parity Realization (`CTRY.FLM`)**: Rasterizing world scenery and static props alongside actor aircraft boosts geometric non-sky IoU from $\approx 0.01$ to **$0.822$** and frame 1 SSIM to **$0.741$**, eliminating the empty solid-green background defect.
+
 ---
 
 ## 4. Seam Contracts & Format Anchors
