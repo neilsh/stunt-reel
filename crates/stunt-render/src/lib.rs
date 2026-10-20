@@ -17,6 +17,7 @@ pub mod mesh;
 pub mod palette;
 pub mod parity;
 pub mod pipeline;
+pub mod video;
 
 pub use camera::{
     ASPECT_4_3, CameraController, CameraGpuResources, CameraMode, CameraUniform, FreeCamState,
@@ -30,3 +31,4 @@ pub use parity::{
     evaluate_visual_parity, rescale_mode13h_frame, rgb_to_luminance, rgba_to_luminance,
 };
 pub use pipeline::{ModelUniform, RenderPipelines};
+pub use video::{FfmpegVideoWriter, VideoExportError, VideoExporter};

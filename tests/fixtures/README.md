@@ -40,3 +40,9 @@ A cleanroom-synthesized minimal `.sod` bytecode model conforming to `[fmt sod]`:
   - `OP_COLOR` (`0x0129`) + `OP_POLYZ` (`0x00f3`): Overlapping coplanar decal facet (palette index 15) testing Invariant `[I5]`.
   - `OP_RETURN` (`0x0195`): Clean bytecode termination.
 
+### 5. `synthetic_minimal.all` (84 bytes)
+A cleanroom-synthesized full-movie archive container conforming to `# [FMT-ALL-CHUNKS]` and `[fmt all]`:
+- **Header**: 8 bytes (`num = 1`, `ids = [0x0001]`, `offsets = [0x00000008]`).
+- **Payload**: Bundles `synthetic_minimal.sod` (76 bytes) as chunk `0x0001` (`MODEL_0001.SOD`).
+- Used to verify end-to-end `.ALL` archive parsing, scene bundle assembly, and headless trajectory evaluation offline without requiring proprietary assets.
+

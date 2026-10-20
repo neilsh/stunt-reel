@@ -26,8 +26,8 @@ use stunt_core::contracts::{
 use stunt_core::flm::{CAMERA_FORWARD, FlmPlayer};
 use stunt_core::sod::transpile_sod;
 use stunt_render::{
-    ASPECT_4_3, CameraController, CameraGpuResources, CameraMode, GpuMeshSlice, GpuModel,
-    HeadlessRenderer, PaletteLut, RenderPipelines,
+    ASPECT_4_3, CameraController, CameraGpuResources, CameraMode, FfmpegVideoWriter, GpuMeshSlice,
+    GpuModel, HeadlessRenderer, PaletteLut, RenderPipelines,
 };
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -52,6 +52,9 @@ pub struct CliConfig {
     pub headless: bool,
     pub output_png: Option<PathBuf>,
     pub max_ticks: Option<usize>,
+    pub video_path: Option<PathBuf>,
+    pub frame_step: usize,
+    pub fps: f32,
 }
 
 impl CliConfig {
@@ -68,6 +71,9 @@ impl CliConfig {
         let mut headless = false;
         let mut output_png = None;
         let mut max_ticks = None;
+        let mut video_path = None;
+        let mut frame_step = 1usize;
+        let mut fps = 30.0f32;
 
         while let Some(arg) = args.next() {
             match arg.as_str() {
@@ -93,6 +99,30 @@ impl CliConfig {
                 "--frames" => {
                     let val = args.next().ok_or("Expected A..B after --frames")?;
                     frame_range = Some(Self::parse_frame_range(&val)?);
+                }
+                "--video" => {
+                    let val = args.next().ok_or("Expected path after --video")?;
+                    video_path = Some(PathBuf::from(val));
+                }
+                "--frame-step" => {
+                    let val = args.next().ok_or("Expected number after --frame-step")?;
+                    let step = val
+                        .parse::<usize>()
+                        .map_err(|e| format!("Invalid frame step: {e}"))?;
+                    if step == 0 {
+                        return Err("Frame step must be greater than zero".to_string());
+                    }
+                    frame_step = step;
+                }
+                "--fps" => {
+                    let val = args.next().ok_or("Expected number after --fps")?;
+                    let rate = val
+                        .parse::<f32>()
+                        .map_err(|e| format!("Invalid fps: {e}"))?;
+                    if rate <= 0.0 || !rate.is_finite() {
+                        return Err("FPS must be a positive finite number".to_string());
+                    }
+                    fps = rate;
                 }
                 "--width" => {
                     let val = args.next().ok_or("Expected number after --width")?;
@@ -139,6 +169,10 @@ impl CliConfig {
             return Err("row pitch must be 256-byte aligned".to_string());
         }
 
+        if out_dir.is_some() || video_path.is_some() {
+            headless = true;
+        }
+
         Ok(Self {
             flm_path,
             sod_path,
@@ -151,6 +185,9 @@ impl CliConfig {
             headless,
             output_png,
             max_ticks,
+            video_path,
+            frame_step,
+            fps,
         })
     }
 
@@ -190,6 +227,13 @@ impl CliConfig {
         println!("  --out-dir <dir>      Render every trajectory tick to <dir>/frame_NNNN.png");
         println!(
             "  --frames <A..B>      Half-open ordinals to render with --out-dir (default: all)"
+        );
+        println!(
+            "  --video <file>       Render film to video container (.mp4, .webm, .mkv, .avi) via ffmpeg"
+        );
+        println!("  --frame-step <N>     Capture interval step when rendering frames (default: 1)");
+        println!(
+            "  --fps <HZ>           Video container framerate (default: 30, matching simulation tick frequency)"
         );
         println!(
             "  --width <px>         Offscreen framebuffer width (default 320, 256-byte pitch)"
@@ -394,12 +438,20 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
     println!("[stuntreel] Starting headless offscreen presentation...");
 
     if let Some(out_dir) = &config.out_dir {
-        if config.all_path.is_none() {
-            return Err("--out-dir requires --all".to_string());
-        }
         fs::create_dir_all(out_dir)
             .map_err(|e| format!("create output directory {}: {e}", out_dir.display()))?;
     }
+
+    let mut video_writer = if let Some(video_path) = &config.video_path {
+        if !FfmpegVideoWriter::is_available() {
+            return Err("ffmpeg executable not found on PATH. Video export requires ffmpeg (https://ffmpeg.org). Please install ffmpeg or add it to PATH.".to_string());
+        }
+        let writer = FfmpegVideoWriter::open(video_path, config.width, config.height, config.fps)
+            .map_err(|e| format!("Failed to open video writer: {e}"))?;
+        Some(writer)
+    } else {
+        None
+    };
 
     let mut renderer = HeadlessRenderer::with_dimensions(config.width, config.height)
         .map_err(|e| format!("Headless renderer failed: {e}"))?;
@@ -450,12 +502,8 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
     println!("[stuntreel] Loaded {} trajectory ticks", trajectory.len());
 
     let mut camera = CameraController::default();
-    let Some(out_dir) = &config.out_dir else {
-        let Some(gpu_model) = &single_model else {
-            return Err("--all requires --out-dir".to_string());
-        };
-        let (base_meshes, decal_meshes) = gpu_model.collect_visible_meshes(1, 30.0);
 
+    if config.out_dir.is_none() && video_writer.is_none() {
         let output_path = config
             .output_png
             .clone()
@@ -465,8 +513,37 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
             camera.set_authored_transform(first_tick.camera);
         }
 
-        let models_slice: [(&GpuModel, &[GpuMeshSlice], &[GpuMeshSlice]); 1] =
-            [(gpu_model, &base_meshes, &decal_meshes)];
+        let mut drawn_shapes: Vec<u16> = Vec::new();
+        let mut draws: Vec<(&GpuModel, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>)> = Vec::new();
+
+        if let Some(bundle) = &bundle {
+            if let Some(first_tick) = trajectory.first() {
+                let eye = Vec3::from_array(first_tick.camera.eye);
+                for actor in &first_tick.actors {
+                    if drawn_shapes.contains(&actor.shape_id) {
+                        continue;
+                    }
+                    let Some(model) = bundle.get(actor.shape_id) else {
+                        continue;
+                    };
+                    drawn_shapes.push(actor.shape_id);
+
+                    model.update_world_matrix(&renderer.queue, &actor.world_matrix);
+                    let distance = eye.distance(Vec3::from_array(actor.position_meters));
+                    let (base_meshes, decal_meshes) =
+                        model.collect_visible_meshes(actor.state_mask, distance);
+                    draws.push((model, base_meshes, decal_meshes));
+                }
+            }
+        } else if let Some(gpu_model) = &single_model {
+            let (base_meshes, decal_meshes) = gpu_model.collect_visible_meshes(1, 30.0);
+            draws.push((gpu_model, base_meshes, decal_meshes));
+        }
+
+        let models_slice: Vec<(&GpuModel, &[GpuMeshSlice], &[GpuMeshSlice])> = draws
+            .iter()
+            .map(|(model, base, decals)| (*model, base.as_slice(), decals.as_slice()))
+            .collect();
 
         renderer
             .render_to_png(
@@ -482,14 +559,12 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
             output_path.display()
         );
         return Ok(());
-    };
-
-    let Some(bundle) = &bundle else {
-        return Err("--out-dir requires --all".to_string());
-    };
+    }
 
     let (start, end) = config.frame_range.unwrap_or((1, trajectory.len() + 1));
-    let mut written = 0usize;
+    let frame_step = config.frame_step.max(1);
+    let mut written_pngs = 0usize;
+    let mut written_video_frames = 0usize;
 
     for (idx, record) in trajectory.iter().enumerate() {
         let ordinal = idx + 1;
@@ -497,26 +572,43 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
             continue;
         }
 
+        if (ordinal - start) % frame_step != 0 {
+            continue;
+        }
+
         camera.set_authored_transform(record.camera);
         let eye = Vec3::from_array(record.camera.eye);
 
-        // One draw per distinct shape: a shared model uniform cannot hold two poses.
         let mut drawn_shapes: Vec<u16> = Vec::new();
         let mut draws: Vec<(&GpuModel, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>)> = Vec::new();
-        for actor in &record.actors {
-            if drawn_shapes.contains(&actor.shape_id) {
-                continue;
-            }
-            let Some(model) = bundle.get(actor.shape_id) else {
-                continue;
-            };
-            drawn_shapes.push(actor.shape_id);
 
-            model.update_world_matrix(&renderer.queue, &actor.world_matrix);
-            let distance = eye.distance(Vec3::from_array(actor.position_meters));
-            let (base_meshes, decal_meshes) =
-                model.collect_visible_meshes(actor.state_mask, distance);
-            draws.push((model, base_meshes, decal_meshes));
+        if let Some(bundle) = &bundle {
+            for actor in &record.actors {
+                if drawn_shapes.contains(&actor.shape_id) {
+                    continue;
+                }
+                let Some(model) = bundle.get(actor.shape_id) else {
+                    continue;
+                };
+                drawn_shapes.push(actor.shape_id);
+
+                model.update_world_matrix(&renderer.queue, &actor.world_matrix);
+                let distance = eye.distance(Vec3::from_array(actor.position_meters));
+                let (base_meshes, decal_meshes) =
+                    model.collect_visible_meshes(actor.state_mask, distance);
+                draws.push((model, base_meshes, decal_meshes));
+            }
+        } else if let Some(model) = &single_model {
+            if let Some(actor) = record.actors.first() {
+                model.update_world_matrix(&renderer.queue, &actor.world_matrix);
+                let distance = eye.distance(Vec3::from_array(actor.position_meters));
+                let (base_meshes, decal_meshes) =
+                    model.collect_visible_meshes(actor.state_mask, distance);
+                draws.push((model, base_meshes, decal_meshes));
+            } else {
+                let (base_meshes, decal_meshes) = model.collect_visible_meshes(1, 30.0);
+                draws.push((model, base_meshes, decal_meshes));
+            }
         }
 
         let models_slice: Vec<(&GpuModel, &[GpuMeshSlice], &[GpuMeshSlice])> = draws
@@ -524,22 +616,68 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
             .map(|(model, base, decals)| (*model, base.as_slice(), decals.as_slice()))
             .collect();
 
-        let frame_path = out_dir.join(format!("frame_{ordinal:04}.png"));
-        renderer
-            .render_to_png(
-                &camera,
-                &models_slice,
-                Some(config.clear_index),
-                &frame_path,
-            )
-            .map_err(|e| format!("render frame {ordinal}: {e}"))?;
-        written += 1;
+        if config.out_dir.is_some() && video_writer.is_some() {
+            let rgba_bytes = renderer
+                .render_frame(&camera, &models_slice, Some(config.clear_index))
+                .map_err(|e| format!("render frame {ordinal}: {e}"))?;
+
+            if let Some(writer) = &mut video_writer {
+                writer
+                    .write_frame(&rgba_bytes)
+                    .map_err(|e| format!("write video frame {ordinal}: {e}"))?;
+                written_video_frames += 1;
+            }
+
+            if let Some(out_dir) = &config.out_dir {
+                let frame_path = out_dir.join(format!("frame_{ordinal:04}.png"));
+                let img = image::RgbaImage::from_raw(config.width, config.height, rgba_bytes)
+                    .ok_or_else(|| format!("failed to create image buffer for frame {ordinal}"))?;
+                img.save(&frame_path).map_err(|e| {
+                    format!("save frame {ordinal} to {}: {e}", frame_path.display())
+                })?;
+                written_pngs += 1;
+            }
+        } else if let Some(out_dir) = &config.out_dir {
+            let frame_path = out_dir.join(format!("frame_{ordinal:04}.png"));
+            renderer
+                .render_to_png(
+                    &camera,
+                    &models_slice,
+                    Some(config.clear_index),
+                    &frame_path,
+                )
+                .map_err(|e| format!("render frame {ordinal}: {e}"))?;
+            written_pngs += 1;
+        } else if let Some(writer) = &mut video_writer {
+            let rgba_bytes = renderer
+                .render_frame(&camera, &models_slice, Some(config.clear_index))
+                .map_err(|e| format!("render frame {ordinal}: {e}"))?;
+            writer
+                .write_frame(&rgba_bytes)
+                .map_err(|e| format!("write video frame {ordinal}: {e}"))?;
+            written_video_frames += 1;
+        }
     }
 
-    println!(
-        "[stuntreel] Wrote {written} parity frames to {}",
-        out_dir.display()
-    );
+    if let Some(out_dir) = &config.out_dir {
+        println!(
+            "[stuntreel] Wrote {written_pngs} parity frames to {}",
+            out_dir.display()
+        );
+    }
+
+    if let Some(writer) = video_writer {
+        writer
+            .finish()
+            .map_err(|e| format!("finish video export: {e}"))?;
+        if let Some(video_path) = &config.video_path {
+            println!(
+                "[stuntreel] Wrote {written_video_frames} frames to video {}",
+                video_path.display()
+            );
+        }
+    }
+
     Ok(())
 }
 

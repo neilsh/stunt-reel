@@ -107,6 +107,27 @@ cargo run -p stunt-cli -- corpus/stisldem/VAULT/CTRY.FLM --all corpus/stisldem/V
 
 Opens the interactive presentation (Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits). `--help` lists the headless flags, `--frames <A..B>`, `--ticks`, and the `parity` subcommand.
 
+### Export a film to video container
+
+```powershell
+# Export film sequence to an MP4 video at authentic simulation tick rate (30 Hz)
+cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
+    --all corpus/stisldem/VAULT/CTRY.ALL --video build/ctry.mp4
+```
+
+Headless video export renders the full film choreography and encodes it directly into a standard video container (`.mp4`, `.webm`, `.mkv`, or `.avi`) via `ffmpeg`. Output timing respects authentic film simulation tick rates (`[I4]`, 20 Hz or 30 Hz) and physical $4:3$ aspect ratio correction ($320 \times 240$, `[I6]`). Requires `ffmpeg` on `PATH`.
+
+### Interval-based frame capture for rapid audits
+
+```powershell
+# Capture every 5th frame to accelerate visual regression audits and reduce disk usage
+cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
+    --all corpus/stisldem/VAULT/CTRY.ALL --frames 1..141 --frame-step 5 \
+    --out-dir build/parity/ours/ctry_sparse
+```
+
+`--frame-step <N>` extracts frames at regular interval steps, saving sequentially indexed zero-padded frames (`frame_0001.png`, `frame_0006.png`, etc.) without redundant disk consumption.
+
 ### Validate the format catalog against a local corpus
 
 ```powershell

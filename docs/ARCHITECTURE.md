@@ -24,6 +24,8 @@ This document serves as the primary routing table connecting every source module
 | `python/stunt_reel/tac/framebuffer.py` | Seam 4 (`VisualParityGate`) | `docs/SPEC.md#36-visual-parity-capture-loop-playoneexe-vs-stuntreel` | [`research/playone-exe/capture.md`](../research/playone-exe/capture.md), [`research/playone-exe/memory.md`](../research/playone-exe/memory.md) | `re-harness-worker` |
 | `python/scripts/capture_playone_reference.py` | Seam 4 (`VisualParityGate`) | `docs/SPEC.md#36-visual-parity-capture-loop-playoneexe-vs-stuntreel` | [`research/playone-exe/capture.md`](../research/playone-exe/capture.md), [`research/playone-exe/navigation.md`](../research/playone-exe/navigation.md) | `re-harness-worker` |
 | `crates/stunt-render/` | Seam 3 (`SodModelIr`), Seam 4 | `docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing` | [`research/formats/concepts/palette-and-shading.md`](../research/formats/concepts/palette-and-shading.md) | `rust-engine-worker` |
+| `crates/stunt-render/src/video.rs` | Seam 2, Seam 4 | `docs/SPEC.md#36-visual-parity-capture-loop-playoneexe-vs-stuntreel` | [`research/formats/concepts/timeline-and-ticks.md`](../research/formats/concepts/timeline-and-ticks.md) | `rust-engine-worker` |
+| `crates/stunt-cli/src/main.rs` (Export) | Seam 2, Seam 4 | `docs/SPEC.md#36-visual-parity-capture-loop-playoneexe-vs-stuntreel` | [`research/formats/flm.md`](../research/formats/flm.md) | `rust-engine-worker` |
 | `research/formats/` | All Seams | `docs/SPEC.md § 3` | [`research/formats/INDEX.md`](../research/formats/INDEX.md) (Master Catalog) | `worker_fmt_m4_index` |
 
 ---
