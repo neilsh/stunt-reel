@@ -132,6 +132,25 @@ Corpus: 2,413 stop sites across 14 unique model payloads; every operand is a mul
 
 `[Established]` — handler at `CS:0x3E58`, dispatch entry at `CS:0x1544`.
 
+#### 3.1.4b Animation Resource Draw (`OP_ANIMATE`, `0x01F8`) (`# [FMT-SOD-ANIMATE]`)
+
+The saved `PLAYONE.EXE` runtime disassembly establishes this variable-width record:
+
+```text
+OP_ANIMATE (0x01F8)
+  vertex_reg_off : u16
+  parameter      : u16
+  selector       : u16
+  resource_count : u16
+  resource_ids   : u16[resource_count]
+```
+
+`vertex_reg_off` addresses the 12-byte vertex arena at `DS:0x4450`; the handler reads depth, projected coordinates, and the register flag. It combines the register depth with the view-origin/projection terms, uses `selector` to access a work-segment lookup value, and selects a resource ID from the variable-length table. `parameter` and `selector` are neutral field names; their complete domain meaning is not established. A nonzero mode gate skips the same record using three fixed words, `resource_count`, and `2 * resource_count` bytes.
+
+The selected ID is resolved through the resource cache and passed to a screen-space pixel blitter. The blitter clips the image and writes nonzero source bytes; zero bytes are skipped. This opcode emits a raster draw, not a polygon or BAM joint rotation. Corpus chunks `Ac.ALL:0x0105` and `0x0108` contain the 58-byte form; `0x0105` references `0x1F01`–`0x1F0C`, matching 64×50 image resources in that archive. See [`research/playone-exe/sod-animate.md`](../playone-exe/sod-animate.md) for the disassembly and evidence limits.
+
+`[Established]` for the operand span and pixel-blit side effect in the saved runtime image. `[Bounded Observation]` for the `Ac.FLM`/`Ac.ALL` resource cross-reference. The direct mapping from `.FLM` `animate: u16` to this selector remains `[Unknown]`.
+
 #### 3.1.5 Hierarchical Transform Stack & Subobject Articulation
 To animate moving parts (rotating propellers, retracting landing gear, rudder deflection) without detaching subobjects from the body, the SOD VM implements a hierarchical matrix stack:
 1. `pushcentre` (0x007E): Pushes current rotation origin vector onto the center stack.
@@ -213,7 +232,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **53** | `0x01DD` | 477 | `OP_ROTY` | `angle_bam: u16` | Rotate around Y axis by 16-bit BAM angle |
 | **54** | `0x01E6` | 486 | `OP_PUSHRELMAT`| *none* | Push relative orientation matrix onto stack |
 | **55** | `0x01EF` | 495 | `OP_POPRELMAT` | *none* | Pop relative orientation matrix from stack |
-| **56** | `0x01F8` | 504 | `OP_ANIMATE` | `var_id: u16, limit: u16, ...frames` | Keyframed animation state machine evaluation |
+| **56** | `0x01F8` | 504 | `OP_ANIMATE` | `reg_off: u16, parameter: u16, selector: u16, resource_count: u16, resource_ids: u16[resource_count]` | Selects an image resource and emits a projected pixel draw (`# [FMT-SOD-ANIMATE]`); selector semantics and `.FLM` input mapping remain open. |
 | **57** | `0x0201` | 513 | `OP_HUGEVECS` | `...` | Large-coordinate vector ingest |
 | **58** | `0x020A` | 522 | `OP_HUGEPERSPEC`| `...`| Large-coordinate perspective divide |
 | **59** | `0x0213` | 531 | `OP_HUGEPOLY` | `...` | Large-scale scenery polygon |

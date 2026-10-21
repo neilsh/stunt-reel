@@ -35,18 +35,26 @@ _Avoid_: trailer, final slice
 **Camera cut**:
 An instantaneous camera reposition between consecutive trajectory records, exempt from interpolation.
 
+**Animation input**:
+The raw 16-bit value carried by a `.FLM` slot with `SIF_ANIMATES`. Its mapping to SOD resource selection is not established.
+_Avoid_: joint angle, frame counter
+
 ## Assets and models
 
 **Archive**:
-A `.ALL` container of numbered model chunks addressed by `shape_id`, paired with a film.
+A `.ALL` container of numbered model and auxiliary resource chunks, paired with a film. SOD model chunks are addressed by `shape_id`.
 _Avoid_: bundle, resource file
 
 **Shape**:
-A model chunk in an archive, identified by `shape_id`. One shape may be bound to several slots.
+A 3D `.SOD` model chunk in an archive, identified by `shape_id`. One shape may be bound to several slots.
 _Avoid_: sprite, object
 
+**Animation image resource**:
+A numbered `.ALL` image resource referenced by an `OP_ANIMATE` table and drawn at a projected screen position. It is distinct from a 3D shape.
+_Avoid_: shape, joint
+
 **Slot**:
-One of the 64 timeline entity channels in a film. A slot binds a shape and carries position, orientation, and animation state.
+One of the 64 timeline entity channels in a film. A slot binds a shape and carries position, orientation, and an optional animation input.
 _Avoid_: actor
 
 **Actor**:

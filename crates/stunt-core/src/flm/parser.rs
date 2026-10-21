@@ -18,7 +18,7 @@ pub const SIF_SHADOW: u8 = 0x04;
 pub const SIF_MOVES: u8 = 0x08;
 /// Slot flag: the slot's orientation is animated.
 pub const SIF_ROTATES: u8 = 0x10;
-/// Slot flag: the slot plays a keyframed model animation.
+/// Slot flag: the slot carries a raw per-slice animation input.
 pub const SIF_ANIMATES: u8 = 0x20;
 
 /// Maximum number of object slots addressable in `.FLM` opcodes (6-bit index).
@@ -39,7 +39,7 @@ pub struct SlotState {
     pub pos_fixed: [i32; 3],
     /// Orientation as binary-angle units in BAM order `[rz, rx, ry]`.
     pub rot_bam: [u16; 3],
-    /// Model animation frame counter.
+    /// Raw 16-bit animation input; mapping to SOD resource selection is unresolved.
     pub animate: u16,
 }
 

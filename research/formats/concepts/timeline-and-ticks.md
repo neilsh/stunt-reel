@@ -82,7 +82,7 @@ Bit:   7     6     5          4          3          2          1          0
 | **Bit 2** | `0x04` | `SIF_SHADOW` | Casts Shadow | Projects a flat-shaded ground shadow polygon beneath the actor. |
 | **Bit 3** | `0x08` | `SIF_MOVES` | Dynamic Translation | Position updates per slice via `interp` stream. If cleared, position is a static keyframe. |
 | **Bit 4** | `0x10` | `SIF_ROTATES` | Dynamic Orientation | Rotation updates per slice via `interp` stream. If cleared, rotation is a static keyframe. |
-| **Bit 5** | `0x20` | `SIF_ANIMATES` | Articulated Subobject | Streams dynamic joint rotation angle scalar (`animate: u16`) for propellers or flaps. |
+| **Bit 5** | `0x20` | `SIF_ANIMATES` | Animation Input | Carries a per-slice `animate: u16` value. Its mapping to `.SOD` resource selection is unresolved; it is not established as a BAM joint angle. |
 | **Bits 6..7**| `0xC0` | `RESERVED` | Unassigned | Reserved bits (must be zero). |
 
 ### 2.3 Opcode Classification Architecture
@@ -94,7 +94,7 @@ Opcode bytes are partitioned into four functional classes by their upper two bit
 | Opcode Range  | Class Name          | Functional Scope                                        |
 +---------------+---------------------+---------------------------------------------------------+
 | `0x00`–`0x3F` | Object Lifecycle    | Allocates slots 0..63 (`create`, `shape_id`, flags)    |
-| `0x40`–`0x7F` | Channel Updates     | Dynamic translation, BAM rotation, joint angles (`interp`) |
+| `0x40`–`0x7F` | Channel Updates    | Dynamic translation, BAM rotation, raw animation input (`interp`) |
 | `0x80`–`0xBF` | Event & Control     | Variable sets (`var_set`), camera switches (`view_obj`), audio (`sound`) |
 | `0xC0`–`0xFF` | Extended / Control  | Extended events, slice terminator (`0xFF`)              |
 +---------------+---------------------+---------------------------------------------------------+

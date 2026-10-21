@@ -94,18 +94,24 @@ The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the
 | `0x41C8`, `0x41CA` | `[Established]` | `u16` | Screen-projection center offsets | |
 | `0x41D4..0x41DA` | `[Established]` | `i32[3]` | Model→view translation | |
 | `0x4450 + n*12` | `[Established]` | 12-byte vertex | Vertex register arena (1024 entries): `x/y/z` and projection/flag fields | `# [MEM-SOD-VM]` |
+| `0x806C` | `[Bounded Observation]` | `u8` | `OP_ANIMATE` mode gate; nonzero takes the variable-width skip path | `# [FMT-SOD-ANIMATE]` |
 | `0x806E` | `[Established]` | `u8` | Fixed-point arithmetic shift applied by `OP_TAP` | |
+| `0x806F` | `[Bounded Observation]` | `u8` | High-byte shift count used to derive the `OP_ANIMATE` projection-scale term | `# [FMT-SOD-ANIMATE]` |
+| `0x8070` | `[Bounded Observation]` | `u16` | Projection-scale term consumed by `OP_ANIMATE`; derived from `0x8108` shifted by `0x806F` | `# [FMT-SOD-ANIMATE]` |
 | `0x8082` | `[Established]` | `u16` | Special model selector (`0x1AB1` enables TAP screen projection) | |
 | `0x8084`, `0x8086`, `0x8088` | `[Established]` | `i16` | View-origin subtraction terms applied by `OP_TAP` | |
 | `0x80C0..0x80CA` | `[Established]` | `i16[9]` | 3×3 model→view rotation matrix | |
+| `0x8108` | `[Bounded Observation]` | `u16` | Base scale input read by the observed projection setup; its wider role is unknown | `# [FMT-SOD-ANIMATE]` |
 
 Code anchors (segment-relative; `CS = 0x0F17` in the captured session):
 
 | Code offset | Purpose | Anchor |
 |---|---|---|
 | `0x1316 + opcode` | Opcode dispatch table, 9-byte pitch | `# [MEM-SOD-VM]` |
+| `0x150E` | `[Established]` `OP_ANIMATE` dispatch entry; jumps to `CS:0x3AAC` | `# [FMT-SOD-ANIMATE]` |
+| `0x3AAC` | `[Established]` `OP_ANIMATE` handler for variable-width resource selection and raster draw | `# [FMT-SOD-ANIMATE]` |
 | `0x3E58` | `OP_TAP` (`0x022E`) handler | `# [MEM-SOD-VM]` |
 | `0x3F36` | `OP_HUGETAP` (`0x0237`) entry: `int3` (unimplemented) | `# [MEM-SOD-VM]` |
 | `0x492D` | Per-frame anchor cache invalidation (`DS=0x1DF8`, 231 records) | `# [MEM-SOD-ANCHOR-TABLE]` |
 
-See [`research/playone-exe/sod-vm.md`](../research/playone-exe/sod-vm.md) for the handler disassembly and operand encoding.
+See [`research/playone-exe/sod-vm.md`](../research/playone-exe/sod-vm.md) for `OP_TAP` and [`research/playone-exe/sod-animate.md`](../research/playone-exe/sod-animate.md) for `OP_ANIMATE` disassembly and operand evidence.
