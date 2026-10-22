@@ -25,7 +25,7 @@ A film's slices placed on the 50 Hz clock by cumulative tick duration. Playback 
 _Avoid_: track, sequence
 
 **Trajectory record**:
-The evaluated snapshot of camera, actors, and audio cues at a slice timestamp or at an interpolated tick sampled from the timeline. This is what the renderer consumes. Its timestamp is always a 50 Hz tick, never a slice ordinal; a slice's ordinal is only its position in the timeline.
+The evaluated snapshot of camera, actors, audio cues, and palette controls at a slice timestamp or at an interpolated tick sampled from the timeline. This is what the renderer consumes. Its timestamp is always a 50 Hz tick, never a slice ordinal; a slice's ordinal is only its position in the timeline.
 _Avoid_: trajectory tick, frame
 
 **Trajectory**:
@@ -38,6 +38,10 @@ _Avoid_: trailer, final slice
 
 **Camera cut**:
 An instantaneous camera reposition between consecutive trajectory records, exempt from interpolation.
+
+**Palette controls**:
+Film variables 13 (night term), 14 (brightness) and 15 (saturation), from which `PLAYONE.EXE` rebuilds palette entries 0–239 every frame. Fades, desaturation and dusk are authored through them.
+_Avoid_: tone, palette fade (for the variables themselves)
 
 **Animation input**:
 The raw 16-bit value carried by a `.FLM` slot with `SIF_ANIMATES`. Its mapping to SOD resource selection is not established.
@@ -115,5 +119,5 @@ _Avoid_: tick (for the capture ordinal)
 _Avoid_: frame counter, global tick
 
 **Fade level**:
-The brightness of a captured frame relative to the static palette: the median, over the indices present in the first captured frame whose static R+G+B exceeds 60, of (captured entry R+G+B) / (static Mode 13h entry R+G+B). About 1.0 when `PLAYONE` is not fading; it falls to 0 over the end-of-film fade. Parity scales the render by it (`ssim_compensated`).
+The brightness of a captured frame relative to the static palette: the median, over the indices present in the first captured frame whose static R+G+B exceeds 60, of (captured entry R+G+B) / (static Mode 13h entry R+G+B). About 1.0 when `PLAYONE` is not fading; it falls to 0 over the end-of-film fade. Parity measures the same ratio for the palette the render used and scales the render by the quotient (`ssim_compensated`).
 _Avoid_: brightness, exposure

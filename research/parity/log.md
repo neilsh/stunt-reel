@@ -11,6 +11,7 @@ Dated results of `stuntreel parity` for `CTRY.FLM` against captured `PLAYONE.EXE
 | 2026-10-21 | `1f673d9` / `935834a` / `ced1d06` | 122 | 0.567 | 0.830 | Refactors; renders byte-identical to `82ea965`. |
 | 2026-10-21 | `5799a53` | 140 | 0.495 overall; 0.567 over the 122 animated ticks | 0.812 | Default range now renders tick 1342. The 18 end-hold captures are `PLAYONE`'s blank screen (reference black + cursor + button bar) against our final camera view: SSIM about 0.005. The scoring policy for the end hold is undecided. |
 | 2026-10-22 | `36a7305` | 140 | 0.617 compensated over 114 scored (raw 0.495) | 0.840 over 114 scored (raw 0.812) | Fade-compensated scoring (`ssim_compensated`, `mean_ssim_compensated`); renders identical to `5799a53` (a raw `--compare` moved 0 frames); 26 frames below fade level 0.25 (ticks 1260 onward) excluded. |
+| 2026-10-22 | `5bf6afe` | 140 | 0.617 compensated over 114 scored (raw 0.667) | 0.840 over 114 scored (raw 0.719) | Renderer applies film vars 13–15 (brightness, saturation, night term); compensation now divides by the render's own fade level. Compensated `--compare` against `36a7305`: 0 frames improved and 4 regressed by more than 0.005 (worst tick 1194, −0.016, inside the fade). Raw SSIM rises because the faded tail now matches; raw IoU falls because the near-black tail has no shapes to mask. |
 
 ## Notes
 

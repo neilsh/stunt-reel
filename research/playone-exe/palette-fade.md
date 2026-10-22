@@ -46,7 +46,7 @@ The film player keeps its state in a structure at `DS:0x474A`. Its sibling at `D
 
 | Register | Source | Use in `0x0FD2` |
 |---|---|---|
-| `DX` | var 13 (`+0x98`) | Sky-gradient term: `|DX| - 0x2000`, clamped to `0..0x4000`; its high byte blends the colour pairs at `DS:0x09DE` into base-palette entries 224–238 and picks one of two colour pairs for entries 213–214 (`[Supported Inference]`) |
+| `DX` | var 13 (`+0x98`) | Night term: `|DX| - 0x2000`, clamped to `0..0x4000`; its high byte `N` (`0..64`) darkens the scene entries, moves the sky gradient toward its night colours, and from `N >= 0x20` switches entries 213–214 to their night colours (section 3.1) |
 | `CH` | high byte of var 14 (`+0x9A`) | Brightness `BL = round(CH / 2)`, `0..64` |
 | `AH` | high byte of var 15 (`+0x9C`) | Saturation `BH = round(AH / 2)`, `0..64` |
 
@@ -54,9 +54,22 @@ The routine caches the three inputs at `DS:0x227B..0x227D` and returns early whe
 
 $$g = \left\lfloor \frac{\lfloor (3R + B) / 4 \rfloor + G}{2} \right\rfloor,\qquad c' = \left\lfloor \frac{\left(g + \lfloor (c - g)\,BH / 64 \rfloor\right) BL}{64} \right\rfloor$$
 
-This applies to each channel `c` of entries 0–239: `0xD7 + 0x19` entries, or `0xD1 + 0x1F` when the sky term is at least `0x20`. Entries 240–255, the cursor and button-bar colours loaded by `0x7DB2` from a 48-byte palette resource, are never touched. That is why they do not fade. The new palette reaches the DAC through the driver's `set_palette` vector, unless the screen-faded flag `DS:0x227A` is set.
+This applies to each channel `c` of entries 0–239, in two blocks. The first block (entries 0–214, or 0–208 when `N >= 0x20`) uses the darkened brightness `BL' = ((0x80 - (N + N/2)) * BL * 2) >> 8`; the second (to entry 239) uses `BL`. Both divisions by 64 are `imul; shl ax, 2; mov al, ah`, so they floor toward negative infinity. Entries 240–255, the cursor and button-bar colours loaded by `0x7DB2` from a 48-byte palette resource, are never touched. That is why they do not fade. The new palette reaches the DAC through the driver's `set_palette` vector, unless the screen-faded flag `DS:0x227A` is set.
 
-At full values (`var14 = var15 = 32768`, so `CH = AH = 0x80` and `BL = BH = 64`) the transform is the identity.
+At full values (`var14 = var15 = 32768`, so `CH = AH = 0x80` and `BL = BH = 64`) and `N = 0` the transform is the identity.
+
+### 3.1 Night Term (Var 13)
+
+Before the transform, `0x0FD2` rewrites parts of the base palette from constants in `DGROUP`, in 6-bit DAC units:
+
+| Source | Content | Written to |
+|---|---|---|
+| `DS:0x09DE` | Six `(day, night)` byte pairs: zenith `R, G, B` = `(0, 0)`, `(40, 0)`, `(63, 0)`; horizon `R, G, B` = `(52, 26)`, `(52, 0)`, `(52, 26)` | Each channel becomes `day + floor((night - day) * N / 64)`, stored at `DS:0x09EA` |
+| `DS:0x09EA` | Zenith and horizon colours for this `N` | Entries 224–238: step `k = 1..15` is `zenith + trunc((horizon - zenith) * k / 15)` (`idiv`) |
+| `DS:0x09F0` | Day lights `(40, 38, 38)`, `(29, 26, 26)` | Entries 213–214 when `N < 0x20` |
+| `DS:0x09F6` | Night lights `(63, 46, 0)`, `(56, 55, 55)` | Entries 213–214 when `N >= 0x20` |
+
+The sky gradient is therefore never the static `pal.h` table: at `N = 0` entries 224–238 run from `(3, 40, 63)` to `(52, 52, 52)`. The `CTRY` captures, where var 13 is 45 (so `N = 0`), match this exactly at entries 224, 233 and 238 (`(12, 162, 255)`, `(138, 194, 227)`, `(210, 210, 210)` after the DAC's 6-to-8-bit expansion). The night path (`N > 0`) is decoded but not yet checked against a capture.
 
 ## 4. Driver Vector Table
 
@@ -88,8 +101,11 @@ Predicting each capture's brightness from var 14 (`BL / 64`) and comparing it wi
 
 The lag is consistent with the palette being built from film state a few ticks before the capture trap reads the clock (`# [MEM-FLM-TICK]` notes the film clock running 5 ticks ahead of the global tick). The lag is `[Bounded Observation]`.
 
+The variables are common across the corpus. Of 561 films that decode, 407 lower var 14 below 32768 at some point (fade-ins as well as fade-outs), 108 lower var 15, and 224 drive var 13 past `0x2000`. No film sets var 14 or 15 above 32768. Three films never set var 14 (`EXIT.FLM` and `EXIT2.FLM` in `MultiFLM/Collage4`, `CPU_CRED.FLM`).
+
 ## 6. Open Points
 
-* The meaning of variables 0–3, 10, 11 and 13 is not established. Var 13 feeds the sky term, and var 10's steady climb suggests a time or progress value (`[Hypothesis]`).
-* Other films may author var 14/15 differently, for example fade-ins or desaturation. No corpus sweep has been run.
-* The renderer does not yet apply var 14/15. Parity compensates by measuring the fade instead (`research/parity/method.md` § 2.1).
+* The meaning of variables 0–3, 10 and 11 is not established. Var 10's steady climb suggests a time or progress value (`[Hypothesis]`).
+* `PLAYONE` zeroes all live variables at `0x3723`, so a film that never sets var 14 would play black. The renderer starts vars 14 and 15 at 32768 instead, keeping those three films visible; what `PLAYONE` shows for them is unchecked.
+* The 6-tick lag (section 5) is not modelled: the renderer applies the variables at the authored tick.
+* The renderer applies vars 13–15 through `PaletteControls::film_palette` in `stunt-core` ([`contracts/palette.rs`](../../crates/stunt-core/src/contracts/palette.rs)). It clamps brightness and saturation above 32768 to full, which no corpus film reaches.
