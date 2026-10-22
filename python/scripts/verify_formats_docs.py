@@ -3,8 +3,8 @@
 Programmatically validates:
 1. File Presence: All 13 core, concept, and auxiliary format documents exist.
 2. Schema Conformance: 7-section uniform structure across specs and concepts,
-   sequential header ordering, evidentiary tier tagging ([Hypothesis],
-   [Bounded Observation], [Supported Inference], [Established]), and Mermaid asset graphs.
+   sequential header ordering, evidentiary tier tagging (see EVIDENTIARY_TIERS),
+   and Mermaid asset graphs.
 3. Provenance & Attribution: Direct citations to corpus/si_archive/, .agents/teamwork/,
    and explicit credit to community reverse-engineers.
 4. Cleanroom Isolation: ZERO binary files in research/formats/, valid UTF-8 encoding,
@@ -108,12 +108,21 @@ INDEX_SECTIONS: list[str] = [
     "## 7. Cleanroom Codebase Contracts & Synthetic Fixtures",
 ]
 
+# Single owner of the evidentiary tier vocabulary. Prose definitions live in
+# docs/SPEC.md section 2.4, which must mention every tier below; every other
+# document may only use these tags (verify_tier_vocabulary).
 EVIDENTIARY_TIERS: list[str] = [
-    "[Hypothesis]",
-    "[Bounded Observation]",
-    "[Supported Inference]",
-    "[Established]",
+    "[Unknown]",  # unmapped or unencountered; parsers must fail loudly
+    "[Hypothesis]",  # proposed, not observed in the binary or a corpus file
+    "[Bounded Observation]",  # observed in one film or fixture
+    "[Supported Inference]",  # cross-file alignment and passing parity gates
+    "[Established]",  # disassembled or bit-exact runtime trap
+    "[Superseded]",  # retired claim kept for history; not a confidence level
 ]
+
+# Tags every format document set must collectively exercise. [Superseded] is a
+# lifecycle marker, so the catalog does not need to contain one.
+CATALOG_REQUIRED_TIERS: frozenset[str] = frozenset(EVIDENTIARY_TIERS) - {"[Superseded]"}
 
 KEY_COMMUNITY_AUTHORS: list[str] = [
     "Adrian Stephens",
@@ -133,10 +142,42 @@ LINK_SCAN_FILES: list[str] = [
     "docs/MEMORY_MAP.md",
     "docs/TEAM_SHEET.md",
     "docs/playbooks/m1-runtime-capture.md",
+    "GLOSSARY.md",
     "tests/fixtures/README.md",
     "corpus/README.md",
     *REQUIRED_DOCS,
 ]
+
+
+# Directories whose Markdown is also link-checked (non-recursive globs).
+LINK_SCAN_GLOBS: list[str] = [
+    "research/playone-exe/*.md",
+]
+
+# Markdown scanned for evidentiary tier tags (recursive globs plus single files).
+TIER_SCAN_GLOBS: list[str] = [
+    "AGENTS.md",
+    "README.md",
+    "GLOSSARY.md",
+    "docs/**/*.md",
+    "research/**/*.md",
+]
+
+# A bracketed Title Case phrase that is not a link, footnote or checkbox looks
+# like a tier tag; anything that looks like one but is not in EVIDENTIARY_TIERS
+# is a vocabulary error.
+TIER_LIKE_REGEX = re.compile(r"\[([A-Z][a-z]+(?: [A-Z][a-z]+)*)\](?![(\[:])")
+
+
+def link_scan_files(repo_root: Path) -> list[str]:
+    """Return the fixed link-scan list plus files matched by LINK_SCAN_GLOBS."""
+    files = list(LINK_SCAN_FILES)
+    for pattern in LINK_SCAN_GLOBS:
+        for match in sorted(repo_root.glob(pattern)):
+            rel = match.relative_to(repo_root).as_posix()
+            if rel not in files:
+                files.append(rel)
+    return files
 
 
 @dataclass
@@ -230,7 +271,7 @@ def verify_schema_conformance(repo_root: Path) -> VerificationResult:
             catalog_tiers_found.update(found_in_doc)
             if not found_in_doc:
                 errors.append(
-                    f"Section 5 in {rel_path} lacks evidentiary tier tags ([Hypothesis], [Bounded Observation], etc.)"
+                    f"Section 5 in {rel_path} lacks evidentiary tier tags ({', '.join(EVIDENTIARY_TIERS)})"
                 )
         else:
             errors.append(f"Could not isolate Section 5 in {rel_path}")
@@ -301,18 +342,72 @@ def verify_schema_conformance(repo_root: Path) -> VerificationResult:
                 catalog_tiers_found.add(tier)
 
     # 4. Global Evidentiary Tier Completeness across catalog
-    missing_tiers = set(EVIDENTIARY_TIERS) - catalog_tiers_found
+    missing_tiers = CATALOG_REQUIRED_TIERS - catalog_tiers_found
     if missing_tiers:
         errors.append(
             f"Catalog as a whole is missing evidentiary confidence tiers: {sorted(missing_tiers)}"
         )
     else:
         details.append(
-            f"All 4 evidentiary confidence tiers represented across catalog: {sorted(catalog_tiers_found)}"
+            f"All {len(CATALOG_REQUIRED_TIERS)} catalog evidentiary tiers represented: {sorted(catalog_tiers_found)}"
         )
 
     return VerificationResult(
         category="Schema Conformance",
+        passed=(len(errors) == 0),
+        errors=errors,
+        details=details,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Verification Category 2b: Evidentiary Tier Vocabulary
+# -----------------------------------------------------------------------------
+
+
+def verify_tier_vocabulary(repo_root: Path) -> VerificationResult:
+    """Validate that tier tags are drawn from EVIDENTIARY_TIERS and SPEC defines each one."""
+    errors: list[str] = []
+    details: list[str] = []
+
+    spec_path = repo_root / "docs" / "SPEC.md"
+    spec_text = spec_path.read_text(encoding="utf-8") if spec_path.exists() else ""
+    sec_match = re.search(r"### 2\.4 .*?(?=\n### |\n## |\Z)", spec_text, re.DOTALL)
+    if not sec_match:
+        errors.append("docs/SPEC.md has no section 2.4 defining the evidentiary tiers")
+    else:
+        for tier in EVIDENTIARY_TIERS:
+            if tier not in sec_match.group(0):
+                errors.append(f"docs/SPEC.md section 2.4 does not define tier {tier}")
+
+    allowed = {tier.strip("[]") for tier in EVIDENTIARY_TIERS}
+    files: set[Path] = set()
+    for pattern in TIER_SCAN_GLOBS:
+        files.update(path for path in repo_root.glob(pattern) if path.is_file())
+
+    tags_seen = 0
+    for path in sorted(files):
+        in_code_block = False
+        rel = path.relative_to(repo_root).as_posix()
+        for line_num, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if line.strip().startswith("```"):
+                in_code_block = not in_code_block
+                continue
+            if in_code_block:
+                continue
+            for match in TIER_LIKE_REGEX.finditer(line):
+                name = match.group(1)
+                if name in allowed:
+                    tags_seen += 1
+                else:
+                    errors.append(
+                        f"Unknown evidentiary tier [{name}] at {rel}:{line_num}; "
+                        f"allowed: {', '.join(EVIDENTIARY_TIERS)}"
+                    )
+
+    details.append(f"{tags_seen} tier tags across {len(files)} Markdown files use the shared enum")
+    return VerificationResult(
+        category="Evidentiary Tier Vocabulary",
         passed=(len(errors) == 0),
         errors=errors,
         details=details,
@@ -456,7 +551,8 @@ def verify_link_integrity(repo_root: Path) -> VerificationResult:
 
     links_checked = 0
 
-    for rel_path in LINK_SCAN_FILES:
+    scan_files = link_scan_files(repo_root)
+    for rel_path in scan_files:
         source_file = repo_root / rel_path
         if not source_file.exists():
             continue
@@ -519,7 +615,7 @@ def verify_link_integrity(repo_root: Path) -> VerificationResult:
                         )
 
     details.append(
-        f"Successfully validated {links_checked} local markdown links across {len(LINK_SCAN_FILES)} files"
+        f"Successfully validated {links_checked} local markdown links across {len(scan_files)} files"
     )
 
     return VerificationResult(
@@ -883,6 +979,7 @@ def run_all_verifications(
     results: list[VerificationResult] = [
         verify_file_presence(repo_root),
         verify_schema_conformance(repo_root),
+        verify_tier_vocabulary(repo_root),
         verify_provenance_and_attribution(repo_root),
         verify_cleanroom_isolation(repo_root),
         verify_link_integrity(repo_root),
@@ -937,7 +1034,7 @@ def main() -> int:
 
     print("\n" + "=" * 80)
     if all_passed:
-        print("RESULT: ALL 6 VERIFICATION SUITES PASSED (100% SPEC & CLEANROOM COMPLIANT)")
+        print("RESULT: ALL 7 VERIFICATION SUITES PASSED (100% SPEC & CLEANROOM COMPLIANT)")
         print("=" * 80)
         return 0
 

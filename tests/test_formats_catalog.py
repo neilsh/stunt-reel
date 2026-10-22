@@ -29,6 +29,12 @@ def test_formats_catalog_schema_conformance() -> None:
     assert result.passed, f"Schema conformance check failed: {result.errors}"
 
 
+def test_evidentiary_tier_vocabulary() -> None:
+    """Verify every tier tag in the docs belongs to the verifier-owned enum."""
+    result = verify_formats_docs.verify_tier_vocabulary(REPO_ROOT)
+    assert result.passed, f"Tier vocabulary check failed: {result.errors}"
+
+
 def test_formats_catalog_provenance_attribution() -> None:
     """Verify that all documents cite reverse engineering provenance and credit researchers."""
     result = verify_formats_docs.verify_provenance_and_attribution(REPO_ROOT)
@@ -57,7 +63,7 @@ def test_formats_catalog_full_run() -> None:
     """Verify that run_all_verifications returns all_passed=True."""
     all_passed, results = verify_formats_docs.run_all_verifications(REPO_ROOT)
     assert all_passed, "Not all verification suites passed"
-    assert len(results) == 6
+    assert len(results) == 7
     for r in results:
         assert r.passed, f"Suite {r.category} failed: {r.errors}"
 
@@ -70,4 +76,4 @@ def test_formats_catalog_cli_execution() -> None:
     assert proc.returncode == 0, (
         f"CLI execution failed with code {proc.returncode}:\n{proc.stdout}\n{proc.stderr}"
     )
-    assert "ALL 6 VERIFICATION SUITES PASSED" in proc.stdout
+    assert "ALL 7 VERIFICATION SUITES PASSED" in proc.stdout

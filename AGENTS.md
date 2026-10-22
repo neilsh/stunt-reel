@@ -61,7 +61,7 @@ Refer directly to authoritative documents rather than duplicating definitions:
 ### SOP 4: Living Specification Updates & Evidentiary Promotion
 1. When reverse engineering uncovers new runtime offsets, opcodes, or binary realities:
    - Update [`docs/SPEC.md`](docs/SPEC.md) or [`docs/MEMORY_MAP.md`](docs/MEMORY_MAP.md) immediately with verified discoveries.
-   - Promote evidentiary tiers (`[Unknown]` $\rightarrow$ `[Bounded Observation]` $\rightarrow$ `[Supported Inference]` $\rightarrow$ `[Established]`) and cite the linear address or research note.
+   - Promote evidentiary tiers (`[Unknown]` $\rightarrow$ `[Hypothesis]` $\rightarrow$ `[Bounded Observation]` $\rightarrow$ `[Supported Inference]` $\rightarrow$ `[Established]`; the enum is owned by `EVIDENTIARY_TIERS` in [`python/scripts/verify_formats_docs.py`](python/scripts/verify_formats_docs.py)) and cite the linear address or research note.
 2. If extending Seam contracts in [`crates/stunt-core/src/contracts/`](crates/stunt-core/src/contracts/):
    - Add fields using backward-compatible defaults (`#[cfg_attr(feature = "serde", serde(default))]`).
    - Update synthetic test fixtures in [`tests/fixtures/`](tests/fixtures/) and contract unit tests.
