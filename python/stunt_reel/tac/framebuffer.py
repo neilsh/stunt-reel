@@ -8,7 +8,10 @@ DOSBox-X build dies with ``0xC0000409`` when it single-steps a Mode 13h guest.
 
 The loop records a page only when it differs from the previous page and carries
 enough palette indices to be film content, which skips the modal dialog, palette
-fades, and the DOS text screen that surround playback, per Invariant [I4].
+fades, and the DOS text screen that surround playback, per Invariant [I4]. Every
+recorded page is tagged with the film clock (``DS:0x4896``, ``# [MEM-FLM-TICK]``) read
+while the guest is halted at the trap, so parity compares it against the render of the
+same 50 Hz tick instead of relying on capture order.
 
 Reference rasters are evidence only: the caller writes them under ``build/``.
 """
@@ -41,6 +44,7 @@ __all__ = [
     "capture",
     "dump_frame",
     "read_palette",
+    "read_ticks",
 ]
 
 _LOGGER = logging.getLogger(__name__)
@@ -165,7 +169,24 @@ def _wait_until_static(client: TacClient, scratch: Path) -> bytes:
     )
 
 
-def capture(out_dir: Path, max_frames: int, client: TacClient) -> dict[str, Any]:
+def read_ticks(client: TacClient, dgroup_segment: int) -> tuple[int, int]:
+    """Read ``(film_tick, global_tick)`` from DGROUP at ``dgroup_segment``.
+
+    ``film_tick`` is the active film clock at ``DS:0x4896`` (``# [MEM-FLM-TICK]``), the
+    tick the page on screen shows. ``global_tick`` is the 50 Hz counter at ``DS:0x22B8``,
+    which trails the film clock by about 5; it is kept only to diagnose that lead.
+    """
+    film_tick = client.read_u16(f"{dgroup_segment:04X}:{playone.FILM_CLOCK_OFFSET:04X}")
+    global_tick = client.read_u16(f"{dgroup_segment:04X}:{playone.GLOBAL_TICK_OFFSET:04X}")
+    return film_tick, global_tick
+
+
+def capture(
+    out_dir: Path,
+    max_frames: int,
+    client: TacClient,
+    dgroup_segment: int = playone.DGROUP_RUNTIME_SEG,
+) -> dict[str, Any]:
     """Drive the LOAD FILM dialog and record up to ``max_frames`` film frames.
 
     ``PLAYONE.EXE`` opens its modal dialog at startup, so the capture waits for it to
@@ -173,7 +194,11 @@ def capture(out_dir: Path, max_frames: int, client: TacClient) -> dict[str, Any]
     free-runs, then samples one dump per post-retrace trap hit. Pages are recorded
     when they differ from the previous page and carry film-content color counts,
     which skips the dialog, the load screen, and palette fades. Frames are numbered
-    from one so ``frame_{ordinal:04d}`` lines up with trajectory record ordinals.
+    from one in capture order (``tick_{ordinal:04d}.idx``); that ordinal is only a
+    file name. Each frame's meta entry also carries ``film_tick`` (the film clock,
+    which is what parity matches on) and ``global_tick`` (diagnostic), read from
+    DGROUP at ``dgroup_segment``. The debugger has no register read, so the segment
+    is a parameter defaulting to the ``DS = 0x1575`` observed live in the T11 check.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     scratch = out_dir / "_scratch.idx"
@@ -207,6 +232,7 @@ def capture(out_dir: Path, max_frames: int, client: TacClient) -> dict[str, Any]
         idle = 0
         previous_raster = raster
 
+        film_tick, global_tick = read_ticks(client, dgroup_segment)
         ordinal = len(frames) + 1
         frame_path = out_dir / f"tick_{ordinal:04d}.idx"
         frame_path.write_bytes(raster)
@@ -217,18 +243,27 @@ def capture(out_dir: Path, max_frames: int, client: TacClient) -> dict[str, Any]
         frames.append(
             {
                 "ordinal": ordinal,
+                "film_tick": film_tick,
+                "global_tick": global_tick,
                 "vga_start": PAGE_OFFSET,
                 "frame_file": frame_path.name,
                 "palette_file": palette_path.name,
                 "distinct_indices": distinct,
             }
         )
-        _LOGGER.info("[capture] frame %04d: %s distinct indices", ordinal, distinct)
+        _LOGGER.info(
+            "[capture] frame %04d: film tick %d (global %d), %s distinct indices",
+            ordinal,
+            film_tick,
+            global_tick,
+            distinct,
+        )
 
     scratch.unlink(missing_ok=True)
     meta = {
         "frames": frames,
         "palette_source": palette_source,
+        "dgroup_segment": f"{dgroup_segment:04X}",
         "frame_bytes": FRAME_BYTES,
         "width": FRAME_WIDTH,
         "height": FRAME_HEIGHT,

@@ -109,7 +109,7 @@ Because the hardware VGA refresh runs at $\approx 70.087\text{ Hz}$, the active 
 
 **Runtime confirmation (`[Established]`).** Against the pinned DOSBox-X build, `BP 0D51:0C5E` followed by `RUN` returns in $\approx 50\text{ ms}$ during `CTRY.FLM` playback and stops the guest at the loop boundary; each hit yields a whole Mode 13h page, and consecutive distinct pages advance the film's on-screen timecode by $\approx 65\text{ ms}$. This trap is the capture primitive used by [`capture.md`](capture.md); `VRT` cannot substitute for it (the emulator exits with `0xC0000409` once playback starts).
 
-**Tick gating (`[Superseded]`).** The capture still keys frames by ordinal because the legacy `0x0D51:0C60` reads returned `0`; the live counters are now located at `DS:0x22B8` and `DS:0x4896` and can gate future captures.
+**Tick gating (`[Established]`).** The legacy `0x0D51:0C60` reads returned `0`, so early captures were keyed by capture order alone. The capture now reads `DS:0x4896` (and `DS:0x22B8` for diagnosis) while the guest is halted at the trap and stores them as `film_tick` / `global_tick` in each `meta.json` frame; `stuntreel parity` matches on `film_tick`. `DS` is taken as `0x1575` (the T11 live observation) because the debugger has no register read; `--dgroup-segment` overrides it.
 
 **Runtime tick counters (`[Established]`).** In the captured session the executable runs with `CS = 0x0F17` and `DS = 0x1575`; the image dump starts at segment `0x0D51`, which is a snapshot base, not `DS`. Live sampling during `CTRY.FLM` playback gives:
 - `DS:0x22B8` — monotonic global 50 Hz timer tick, incremented by `inc word ptr [0x22B8]` at `0x43B0` while the playback flag `DS:0x2272` is set.

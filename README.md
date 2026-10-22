@@ -89,13 +89,13 @@ mise run play        # or: .\play_ctry.bat
 ```bash
 mise run capture-ref
 cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
-    --all corpus/stisldem/VAULT/CTRY.ALL --frames 1..1343 --sample-count 140 \
+    --all corpus/stisldem/VAULT/CTRY.ALL --frames 1..1343 \
     --out-dir build/parity/ours/ctry --width 320 --height 200
 cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry \
     --test build/parity/ours/ctry --output build/parity/report/ctry --clear-index 233
 ```
 
-`capture-ref` stores 140 rendered reference frames. `--frames 1..1343` selects the full authored 1,342-tick span and `--sample-count 140` renders 140 evenly spaced samples over it, numbered `frame_0001.png`–`frame_0140.png` for the comparator. The comparator writes `report.json` (per-frame `ssim`/`iou`, `mean_ssim`, `min_ssim`, `mean_iou`, `sky_index`, `unmatched`) and `contact_NNNN.png` sheets under `build/parity/report/ctry/`.
+`capture-ref` stores 140 reference frames, each tagged in `meta.json` with the film clock (`film_tick`) it was captured at. `--frames 1..1343` renders the full authored 1,342-tick span as `tick_00000.png`–`tick_01341.png`, named by 0-based 50 Hz tick, and the comparator pairs each capture with the render at its `film_tick` (captures made before film-clock tagging must be recaptured). The comparator writes `report.json` (per-frame `ssim`/`iou`, `mean_ssim`, `min_ssim`, `mean_iou`, `sky_index`, `unmatched`) and `contact_NNNN.png` sheets under `build/parity/report/ctry/`.
 
 Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`, and a free port `58991`. How the dialog is driven (BIOS Data Area keystrokes) and how frames are sampled (post-retrace breakpoint at `0D51:0C5E`) is recorded in [`docs/SPEC.md § 3.6`](docs/SPEC.md#36-visual-parity-capture-loop-playoneexe-vs-stuntreel) and [`research/playone-exe/capture.md`](research/playone-exe/capture.md).
 
@@ -126,7 +126,7 @@ cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
     --out-dir build/parity/ours/ctry_sparse
 ```
 
-`--frames` uses 1-based 50 Hz tick ordinals; `--frame-step <N>` extracts every Nth tick, saving zero-padded frames (`frame_0001.png`, `frame_0026.png`, etc.) without redundant disk consumption.
+`--frames` uses 1-based 50 Hz tick ordinals; `--frame-step <N>` extracts every Nth tick, saving frames named by 0-based tick (`tick_00000.png`, `tick_00025.png`, etc.) without redundant disk consumption. `--sample-count <N>` writes `sample_0001.png`… (1-based sample index) instead; those are not parity inputs.
 
 ### Validate the format catalog against a local corpus
 

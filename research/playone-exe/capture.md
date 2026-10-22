@@ -44,10 +44,11 @@ Implemented in [`python/stunt_reel/tac/playone.py`](../../python/stunt_reel/tac/
 1. **Wait for the dialog with framebuffer dumps only.** The page sequence at boot is DOSBox-X splash (41 indices) → blank (1) → two graphics pages (5, 6) → the `LOAD FILM` dialog (6 indices, static). Return once at least three distinct pages have been seen and the page has been identical for five consecutive dumps; up to 600 dumps. No debugger command that touches guest memory is issued before this point.
 2. **Drive the dialog through the BIOS ring buffer** ([`navigation.md` § 4](../../research/playone-exe/navigation.md#4-keyboard-architecture--input-injection)): `c` (prefix jump to `CTRY.ALL`), `Down` (`CTRY.FLM`), `Enter` (confirm). The keys are written to `0040:001E`/`0040:001C` while the emulator free-runs; stepping would stop the modal loop from reaching `INT 16h`.
 3. **Arm the frame trap:** `BP 0D51:0C5E`, the post-retrace loop boundary (`# [MEM-VSYNC-03DA]`). Every `RUN` then stops at the next rendered frame.
-4. **Sample one frame per trap hit:** `RUN`, then `MEMDUMPBIN A000:0000 FA00 <scratch>`. A page is recorded when it differs from the previous page and carries at least 20 distinct palette indices — the dialog and load screens use six. Frames are named `tick_NNNN.idx`.
+4. **Sample one frame per trap hit:** `RUN`, then `MEMDUMPBIN A000:0000 FA00 <scratch>`. A page is recorded when it differs from the previous page and carries at least 20 distinct palette indices — the dialog and load screens use six. Frames are named `tick_NNNN.idx` by capture order (a file name only, not a tick).
 5. **Record the live DAC palette** per frame with `VGA DACPAL` (6-bit channels scaled to `0..=255`), writing `palettes_NNNN.json` alongside.
+6. **Tag each recorded frame with the film clock:** while the guest is still halted at the trap, read the two words `DS:0x4896` (`film_tick`, `# [MEM-FLM-TICK]`) and `DS:0x22B8` (`global_tick`, which trails it by about 5) and store them in the frame's `meta.json` entry. The debugger has no register read, so `DS` is the T11-observed `0x1575` (`--dgroup-segment` overrides it). `stuntreel parity` compares each capture against the render at its `film_tick`.
 
-The camera rig, actor table, and tick counter are deliberately **not** read during the loop: they are not needed for the reference rasters, and each extra guest-memory access is another chance to trip the emulator.
+The camera rig and actor table are deliberately **not** read during the loop: they are not needed for the reference rasters, and each extra guest-memory access is another chance to trip the emulator. The two tick words are the exception, read once per recorded frame because parity cannot align a capture without them.
 
 ---
 

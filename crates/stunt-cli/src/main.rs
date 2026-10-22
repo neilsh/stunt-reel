@@ -299,7 +299,10 @@ impl CliConfig {
         println!(
             "  --all <movie.all>    Bind every actor shape_id to its .SOD chunk in the archive"
         );
-        println!("  --out-dir <dir>      Render sampled 50 Hz ticks to <dir>/frame_NNNN.png");
+        println!("  --out-dir <dir>      Write <dir>/tick_NNNNN.png (NNNNN = 0-based 50 Hz tick);");
+        println!(
+            "                       with --sample-count or --video, <dir>/sample_NNNN.png instead"
+        );
         println!("  --frames <A..B>      Half-open 1-based tick ordinals to render (default: all)");
         println!(
             "  --video <file>       Render film to video container (.mp4, .webm, .mkv, .avi) via ffmpeg"
@@ -608,6 +611,38 @@ fn even_sample_ticks(start_tick: usize, end_tick: usize, count: usize) -> Vec<f3
         .collect()
 }
 
+/// Identifies one rendered sample in `--out-dir` output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SampleKey {
+    /// A whole 0-based 50 Hz tick, as in `PLAYONE.EXE`'s film clock.
+    Tick(usize),
+    /// 1-based position among evenly spaced or video-rate samples, which need not
+    /// fall on a whole tick.
+    Index(usize),
+}
+
+impl std::fmt::Display for SampleKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Tick(tick) => write!(f, "tick {tick}"),
+            Self::Index(index) => write!(f, "sample {index}"),
+        }
+    }
+}
+
+/// File name `parity` looks up for the render of 0-based 50 Hz `tick`.
+pub(crate) fn tick_png_name(tick: usize) -> String {
+    format!("tick_{tick:05}.png")
+}
+
+/// File name written under `--out-dir` for a rendered sample.
+fn sample_png_name(key: SampleKey) -> String {
+    match key {
+        SampleKey::Tick(tick) => tick_png_name(tick),
+        SampleKey::Index(index) => format!("sample_{index:04}.png"),
+    }
+}
+
 /// Executes headless rendering without window creation.
 pub fn run_headless(config: &CliConfig) -> Result<(), String> {
     println!("[stuntreel] Starting headless offscreen presentation...");
@@ -813,7 +848,7 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
         return Err("--sample-count cannot be combined with --video".to_string());
     }
 
-    let mut samples: Vec<(usize, TrajectoryRecord)> = Vec::new();
+    let mut samples: Vec<(SampleKey, TrajectoryRecord)> = Vec::new();
     if video_writer.is_some() {
         let count = (span_seconds * config.fps).ceil() as usize;
         let tick_step = TIMELINE_HZ / config.fps;
@@ -823,7 +858,7 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
                 break;
             }
             if let Some(record) = timeline.sample(tick) {
-                samples.push((index + 1, record));
+                samples.push((SampleKey::Index(index + 1), record));
             }
         }
     } else if let Some(count) = config.sample_count {
@@ -832,7 +867,7 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
             .enumerate()
         {
             if let Some(record) = timeline.sample(tick) {
-                samples.push((index + 1, record));
+                samples.push((SampleKey::Index(index + 1), record));
             }
         }
     } else {
@@ -842,7 +877,7 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
                 break;
             }
             if let Some(record) = timeline.sample(tick as f32) {
-                samples.push((ordinal, record));
+                samples.push((SampleKey::Tick(tick), record));
             }
         }
     }
@@ -850,7 +885,7 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
     let mut written_pngs = 0usize;
     let mut written_video_frames = 0usize;
 
-    for (ordinal, record) in samples {
+    for (position, (key, record)) in samples.into_iter().enumerate() {
         let cam = adapt_camera_transform(record.camera, is_legacy);
         camera.set_authored_transform(cam);
         let eye = Vec3::from_array(cam.eye);
@@ -861,9 +896,9 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
         if let Some(bundle) = &bundle {
             if let Some(world_model) = &bundle.world_model {
                 let (base_meshes, decal_meshes) = world_model.collect_visible_meshes(1, 0.0);
-                if ordinal == start_ord {
+                if position == 0 {
                     println!(
-                        "[stuntreel] loop frame {ordinal} world_model draws: {} base meshes ({:?}), {} decal meshes ({:?})",
+                        "[stuntreel] first sample ({key}) world_model draws: {} base meshes ({:?}), {} decal meshes ({:?})",
                         base_meshes.len(),
                         base_meshes.first(),
                         decal_meshes.len(),
@@ -917,26 +952,25 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
         if config.out_dir.is_some() && video_writer.is_some() {
             let rgba_bytes = renderer
                 .render_frame(&camera, &models_slice, Some(config.clear_index))
-                .map_err(|e| format!("render frame {ordinal}: {e}"))?;
+                .map_err(|e| format!("render {key}: {e}"))?;
 
             if let Some(writer) = &mut video_writer {
                 writer
                     .write_frame(&rgba_bytes)
-                    .map_err(|e| format!("write video frame {ordinal}: {e}"))?;
+                    .map_err(|e| format!("write video frame for {key}: {e}"))?;
                 written_video_frames += 1;
             }
 
             if let Some(out_dir) = &config.out_dir {
-                let frame_path = out_dir.join(format!("frame_{ordinal:04}.png"));
+                let frame_path = out_dir.join(sample_png_name(key));
                 let img = image::RgbaImage::from_raw(config.width, config.height, rgba_bytes)
-                    .ok_or_else(|| format!("failed to create image buffer for frame {ordinal}"))?;
-                img.save(&frame_path).map_err(|e| {
-                    format!("save frame {ordinal} to {}: {e}", frame_path.display())
-                })?;
+                    .ok_or_else(|| format!("failed to create image buffer for {key}"))?;
+                img.save(&frame_path)
+                    .map_err(|e| format!("save {key} to {}: {e}", frame_path.display()))?;
                 written_pngs += 1;
             }
         } else if let Some(out_dir) = &config.out_dir {
-            let frame_path = out_dir.join(format!("frame_{ordinal:04}.png"));
+            let frame_path = out_dir.join(sample_png_name(key));
             renderer
                 .render_to_png(
                     &camera,
@@ -944,15 +978,15 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
                     Some(config.clear_index),
                     &frame_path,
                 )
-                .map_err(|e| format!("render frame {ordinal}: {e}"))?;
+                .map_err(|e| format!("render {key}: {e}"))?;
             written_pngs += 1;
         } else if let Some(writer) = &mut video_writer {
             let rgba_bytes = renderer
                 .render_frame(&camera, &models_slice, Some(config.clear_index))
-                .map_err(|e| format!("render frame {ordinal}: {e}"))?;
+                .map_err(|e| format!("render {key}: {e}"))?;
             writer
                 .write_frame(&rgba_bytes)
-                .map_err(|e| format!("write video frame {ordinal}: {e}"))?;
+                .map_err(|e| format!("write video frame for {key}: {e}"))?;
             written_video_frames += 1;
         }
     }
@@ -1633,6 +1667,16 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_out_dir_file_names_follow_tick_or_sample_index() {
+        assert_eq!(sample_png_name(SampleKey::Tick(0)), "tick_00000.png");
+        assert_eq!(sample_png_name(SampleKey::Tick(1341)), "tick_01341.png");
+        assert_eq!(sample_png_name(SampleKey::Tick(12345)), "tick_12345.png");
+        assert_eq!(sample_png_name(SampleKey::Index(1)), "sample_0001.png");
+        assert_eq!(sample_png_name(SampleKey::Index(140)), "sample_0140.png");
+        assert_eq!(tick_png_name(7), sample_png_name(SampleKey::Tick(7)));
+    }
 
     #[test]
     fn test_even_sample_ticks_include_endpoints() {

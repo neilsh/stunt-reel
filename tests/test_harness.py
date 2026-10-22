@@ -13,6 +13,7 @@ Verifies:
 
 from __future__ import annotations
 
+import json
 import math
 import socket
 import struct
@@ -66,6 +67,9 @@ from stunt_reel.tac import (
     load_trajectory_records,
     save_trajectory_records,
 )
+from stunt_reel.tac.framebuffer import FRAME_BYTES, capture
+from stunt_reel.tac.playone import DGROUP_RUNTIME_SEG, FILM_CLOCK_OFFSET, GLOBAL_TICK_OFFSET
+from stunt_reel.tac.vsync import DEFAULT_TICK_ADDR
 
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "oracle_intro_trajectory.json"
 
@@ -368,7 +372,7 @@ def test_mock_transport_operations() -> None:
     assert mock.current_tick == 0
     mock.send_command("RUN")
     assert mock.current_tick == 1
-    assert mock.read_u16(0x0D51, 0x0C60) == 1
+    assert mock.read_u16(*mock.tick_address) == 1
 
     mock.close()
     assert not mock.is_connected()
@@ -678,7 +682,7 @@ def test_vsync_trap_tick_deduplication() -> None:
 
     mock = MockTransport()
     client = TacClient(mock)
-    trap = VsyncTrap(post_retrace_bp="0D51:0C5E", tick_addr="0D51:0C60")
+    trap = VsyncTrap(post_retrace_bp="0D51:0C5E", tick_addr=DEFAULT_TICK_ADDR)
 
     # Custom handler simulating 70 Hz VGA retrace:
     # Sim tick advances only once every 3 RUN calls!
@@ -974,3 +978,81 @@ def test_oracle_intro_trajectory_file_exists_and_valid(tmp_path: Path) -> None:
 
     rmse = compute_position_rmse(records, FIXTURE_PATH)
     assert rmse <= 0.01
+
+
+# ==============================================================================
+# 7. Capture Film-Clock Tagging
+# ==============================================================================
+
+
+def _make_capture_mock(dgroup_segment: int) -> MockTransport:
+    """Build a mock emulator that serves a settling dialog, then one new page per RUN.
+
+    Each RUN advances the film clock (``100 + 3 * run``) and the global tick (5 behind it)
+    at ``dgroup_segment``; decoys at the historic ``0D51`` image segment must never be read.
+    The first RUN shows a 5-index load screen that the capture has to skip.
+    """
+    mock = MockTransport()
+    state = {"dumps": 0, "runs": 0}
+
+    def memdumpbin(args: list[str]) -> list[str]:
+        path = Path(" ".join(args[2:]))
+        if state["runs"] == 0:
+            shift = min(state["dumps"], 3)
+            raster = bytes((i + shift) % 6 for i in range(FRAME_BYTES))
+        elif state["runs"] == 1:
+            raster = bytes(i % 5 for i in range(FRAME_BYTES))
+        else:
+            raster = bytes((i * 7 + state["runs"]) % 40 for i in range(FRAME_BYTES))
+        state["dumps"] += 1
+        path.write_bytes(raster)
+        return ["OK"]
+
+    def run(_args: list[str]) -> list[str]:
+        state["runs"] += 1
+        film_tick = 100 + 3 * state["runs"]
+        mock.write_u16(dgroup_segment, FILM_CLOCK_OFFSET, film_tick)
+        mock.write_u16(dgroup_segment, GLOBAL_TICK_OFFSET, film_tick - 5)
+        return ["Breakpoint hit"]
+
+    def vga(args: list[str]) -> list[str]:
+        assert args == ["DACPAL"]
+        return [f"{row * 8:02X}: " + " ".join(["3F0000"] * 8) for row in range(32)]
+
+    mock.write_u16(0x0D51, FILM_CLOCK_OFFSET, 0xBEEF)
+    mock.write_u16(0x0D51, GLOBAL_TICK_OFFSET, 0xBEEF)
+    mock.register_handler("MEMDUMPBIN", memdumpbin)
+    mock.register_handler("RUN", run)
+    mock.register_handler("VGA", vga)
+    return mock
+
+
+@pytest.mark.parametrize("dgroup_segment", [DGROUP_RUNTIME_SEG, 0x2000])
+def test_capture_tags_frames_with_film_and_global_ticks(
+    tmp_path: Path, dgroup_segment: int
+) -> None:
+    """Every captured frame carries the film clock and global tick read at the trap."""
+    mock = _make_capture_mock(dgroup_segment)
+    client = TacClient(mock)
+
+    if dgroup_segment == DGROUP_RUNTIME_SEG:
+        meta = capture(tmp_path, 3, client)
+    else:
+        meta = capture(tmp_path, 3, client, dgroup_segment=dgroup_segment)
+
+    frames = meta["frames"]
+    assert [f["ordinal"] for f in frames] == [1, 2, 3]
+    # RUN 1 was the load screen; frames come from RUN 2..4.
+    assert [f["film_tick"] for f in frames] == [106, 109, 112]
+    assert [f["global_tick"] for f in frames] == [101, 104, 107]
+    assert [f["frame_file"] for f in frames] == [
+        "tick_0001.idx",
+        "tick_0002.idx",
+        "tick_0003.idx",
+    ]
+    assert meta["palette_source"] == "dacpal"
+    assert meta["dgroup_segment"] == f"{dgroup_segment:04X}"
+
+    on_disk = json.loads((tmp_path / "meta.json").read_text(encoding="utf-8"))
+    assert on_disk["frames"] == frames
+    assert DEFAULT_TICK_ADDR == "1575:4896"

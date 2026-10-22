@@ -18,6 +18,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from stunt_reel.tac import playone
 from stunt_reel.tac.client import TacClient
 from stunt_reel.tac.framebuffer import capture
 from stunt_reel.tac.transport import ListenTransport
@@ -36,6 +37,15 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("build/parity/reference/ctry"),
         help="directory receiving tick_*.idx, palettes_*.json, and meta.json",
+    )
+    parser.add_argument(
+        "--dgroup-segment",
+        type=lambda text: int(text, 16),
+        default=playone.DGROUP_RUNTIME_SEG,
+        help=(
+            "hex DS segment of PLAYONE.EXE's DGROUP at runtime, used to read the film clock "
+            f"(default {playone.DGROUP_RUNTIME_SEG:04X}, the DS observed in the T11 live check)"
+        ),
     )
     parser.add_argument(
         "--max-frames",
@@ -108,7 +118,7 @@ def run_session(args: argparse.Namespace) -> int:
             print("[capture] debugger did not answer PING", file=sys.stderr)
             return 1
 
-        meta = capture(out_dir, args.max_frames, client)
+        meta = capture(out_dir, args.max_frames, client, dgroup_segment=args.dgroup_segment)
     except (RuntimeError, TimeoutError, ConnectionError) as exc:
         if emulator is not None:
             print(

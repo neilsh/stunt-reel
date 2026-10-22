@@ -7,6 +7,7 @@ presentation frames to the 50 Hz simulation clock per Invariant [I4].
 from __future__ import annotations
 
 from stunt_reel.tac.client import TacClient
+from stunt_reel.tac.playone import DGROUP_RUNTIME_SEG, FILM_CLOCK_OFFSET
 
 __all__ = [
     "DEFAULT_POST_RETRACE_BP",
@@ -19,7 +20,9 @@ __all__ = [
 PORT_VGA_STATUS: int = 0x03DA
 VGA_REFRESH_HZ: float = 70.087
 DEFAULT_POST_RETRACE_BP: str = "0D51:0C5E"
-DEFAULT_TICK_ADDR: str = "0D51:0C60"
+#: Active film clock (``# [MEM-FLM-TICK]``) at the runtime DGROUP segment. The historic
+#: ``0D51:0C60`` label is retired: no code references it and it always read 0.
+DEFAULT_TICK_ADDR: str = f"{DGROUP_RUNTIME_SEG:04X}:{FILM_CLOCK_OFFSET:04X}"
 
 
 class VsyncTrap:

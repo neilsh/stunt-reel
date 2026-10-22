@@ -1,10 +1,11 @@
 //! Visual parity comparator: `PLAYONE.EXE` Mode 13h captures against rendered frames.
 //!
-//! Reference frames are palette-index planes (`tick_NNNN.idx` + `palettes_NNNN.json`)
-//! dumped from the emulator's scanned-out page; rendered frames are `frame_NNNN.png`
-//! written by `stuntreel --out-dir`. Reference tick `T` corresponds to trajectory
-//! record ordinal `T + 1`, because the capture names frames by film tick while records
-//! are numbered from one.
+//! Reference frames are palette-index planes (`tick_NNNN.idx` + `palettes_NNNN.json`,
+//! numbered by capture order) dumped from the emulator's scanned-out page. Each frame's
+//! `meta.json` entry carries `film_tick`, the film clock read when it was captured.
+//! Rendered frames are `tick_NNNNN.png` written by `stuntreel --out-dir`, named by the
+//! 0-based 50 Hz tick they show, so a capture is compared against the render at the
+//! same `film_tick`. Captures that predate film-clock tagging are rejected.
 //!
 //! Scores follow Invariant `[I6]`: both sides are reduced to Rec. 601 luminance,
 //! stretched from 320x200 to the 320x240 physical 4:3 raster, and compared with the
@@ -22,9 +23,6 @@ use stunt_render::{
     rescale_mode13h_frame, rgb_to_luminance, rgba_to_luminance,
 };
 
-/// Trajectory records are numbered from one while captures are named by film tick.
-const TICK_TO_FRAME_OFFSET: usize = 1;
-
 /// Horizontal gap between contact-sheet panels, in pixels.
 const CONTACT_SHEET_GAP: usize = 8;
 
@@ -37,8 +35,10 @@ const CONTACT_SHEET_WORST: usize = 3;
 /// Per-frame parity measurements.
 #[derive(Debug, Clone, Copy)]
 struct FrameScore {
+    /// 1-based capture order.
     ordinal: usize,
-    tick: usize,
+    /// Film clock the frame was captured at; selects the rendered `tick_NNNNN.png`.
+    film_tick: usize,
     ssim: f32,
     iou: f32,
 }
@@ -118,24 +118,13 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         .and_then(Value::as_array)
         .ok_or_else(|| format!("{} has no frames array", meta_path.display()))?;
 
-    let mut ordinals: Vec<usize> = Vec::with_capacity(frames.len());
-    for (position, frame) in frames.iter().enumerate() {
-        // Captures keyed by ordinal (no film tick counter available) fall back to it.
-        let tick = match frame.get("tick").and_then(Value::as_u64) {
-            Some(tick) => tick as usize,
-            None => frame
-                .get("ordinal")
-                .and_then(Value::as_u64)
-                .map_or(position, |ordinal| ordinal as usize - 1),
-        };
-        ordinals.push(tick);
-    }
+    let film_ticks = read_film_ticks(frames, &meta_path)?;
     let sky_index = sky_index(frames.first(), &args.reference)?;
     let (clear_r, clear_g, clear_b) = get_palette_rgb(args.clear_index);
     let clear_luminance = compute_luminance(clear_r as f32, clear_g as f32, clear_b as f32);
 
     let mut sheet_ordinals: BTreeSet<usize> = CONTACT_SHEET_ORDINALS.iter().copied().collect();
-    sheet_ordinals.insert(ordinals.len());
+    sheet_ordinals.insert(film_ticks.len());
 
     let mut scores: Vec<FrameScore> = Vec::with_capacity(frames.len());
     let mut unmatched = 0usize;
@@ -144,22 +133,20 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
 
     for (index, frame) in frames.iter().enumerate() {
         let ordinal = index + 1;
-        let tick = ordinals[index];
+        let film_tick = film_ticks[index];
         let reference_file = args.reference.join(
             frame
                 .get("frame_file")
                 .and_then(Value::as_str)
-                .map_or_else(|| format!("tick_{tick:04}.idx"), str::to_string),
+                .map_or_else(|| format!("tick_{ordinal:04}.idx"), str::to_string),
         );
         let palette_file = args.reference.join(
             frame
                 .get("palette_file")
                 .and_then(Value::as_str)
-                .map_or_else(|| format!("palettes_{tick:04}.json"), str::to_string),
+                .map_or_else(|| format!("palettes_{ordinal:04}.json"), str::to_string),
         );
-        let test_file = args
-            .test
-            .join(format!("frame_{:04}.png", tick + TICK_TO_FRAME_OFFSET));
+        let test_file = args.test.join(crate::tick_png_name(film_tick));
 
         if !reference_file.is_file() || !palette_file.is_file() || !test_file.is_file() {
             unmatched += 1;
@@ -200,7 +187,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
 
         scores.push(FrameScore {
             ordinal,
-            tick,
+            film_tick,
             ssim,
             iou,
         });
@@ -241,7 +228,6 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         "unmatched": unmatched,
         "sky_index": sky_index,
         "clear_index": args.clear_index,
-        "tick_to_frame_offset": TICK_TO_FRAME_OFFSET,
         "mean_ssim": mean_ssim,
         "min_ssim": min_ssim,
         "mean_iou": mean_iou,
@@ -249,7 +235,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             .iter()
             .map(|s| json!({
                 "ordinal": s.ordinal,
-                "tick": s.tick,
+                "film_tick": s.film_tick,
                 "ssim": s.ssim,
                 "iou": s.iou,
             }))
@@ -270,6 +256,30 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         println!("[parity] {unmatched} frame(s) missing on one side and skipped");
     }
     Ok(())
+}
+
+/// Reads the film clock of every captured frame.
+///
+/// A frame without an integer `film_tick` means the capture predates film-clock tagging;
+/// there is no safe way to align it with a render, so the whole run is rejected.
+fn read_film_ticks(frames: &[Value], meta_path: &Path) -> Result<Vec<usize>, String> {
+    frames
+        .iter()
+        .enumerate()
+        .map(|(position, frame)| {
+            frame
+                .get("film_tick")
+                .and_then(Value::as_u64)
+                .and_then(|tick| usize::try_from(tick).ok())
+                .ok_or_else(|| {
+                    format!(
+                        "{} frame {} has no film_tick: the capture predates film-clock tagging                          and must be recaptured (mise run capture-ref)",
+                        meta_path.display(),
+                        position + 1
+                    )
+                })
+        })
+        .collect()
 }
 
 /// Reads a 64000-byte Mode 13h palette-index raster.
@@ -399,4 +409,181 @@ fn write_contact_sheet(
     image
         .save(&path)
         .map_err(|e| format!("write {}: {e}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Scratch directory removed on drop.
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let path =
+                std::env::temp_dir().join(format!("stunt_parity_{name}_{}", std::process::id()));
+            let _ = fs::remove_dir_all(&path);
+            fs::create_dir_all(&path).expect("create temp dir");
+            Self(path)
+        }
+
+        fn join(&self, name: &str) -> PathBuf {
+            self.0.join(name)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// Writes a synthetic reference set with one capture per `film_ticks` entry, or no
+    /// `film_tick` fields at all when `tag` is false.
+    fn write_reference(dir: &Path, film_ticks: &[u64], tag: bool) {
+        fs::create_dir_all(dir).unwrap();
+        let palette: Vec<[u8; 3]> = (0..=255u8).map(|i| [i, i, i]).collect();
+        let palette_json = serde_json::to_string(&palette).unwrap();
+        let mut frames = Vec::new();
+        for (position, film_tick) in film_ticks.iter().enumerate() {
+            let ordinal = position + 1;
+            let plane: Vec<u8> = (0..MODE13H_WIDTH * MODE13H_HEIGHT)
+                .map(|i| {
+                    if i < MODE13H_WIDTH * 4 {
+                        0
+                    } else {
+                        (i % 7) as u8 + 1
+                    }
+                })
+                .collect();
+            fs::write(dir.join(format!("tick_{ordinal:04}.idx")), plane).unwrap();
+            fs::write(
+                dir.join(format!("palettes_{ordinal:04}.json")),
+                &palette_json,
+            )
+            .unwrap();
+            let mut frame = json!({
+                "ordinal": ordinal,
+                "frame_file": format!("tick_{ordinal:04}.idx"),
+                "palette_file": format!("palettes_{ordinal:04}.json"),
+            });
+            if tag {
+                frame["film_tick"] = json!(film_tick);
+                frame["global_tick"] = json!(film_tick - 5);
+            }
+            frames.push(frame);
+        }
+        fs::write(
+            dir.join("meta.json"),
+            json!({ "frames": frames }).to_string(),
+        )
+        .unwrap();
+    }
+
+    fn write_render(path: &Path) {
+        let image =
+            image::RgbaImage::from_fn(MODE13H_WIDTH as u32, MODE13H_HEIGHT as u32, |x, y| {
+                let v = ((x + y) % 251) as u8;
+                image::Rgba([v, v, v, 255])
+            });
+        image.save(path).unwrap();
+    }
+
+    fn run_parity(reference: &Path, test: &Path, output: &Path) -> Result<(), String> {
+        run(vec![
+            "--reference".to_string(),
+            reference.display().to_string(),
+            "--test".to_string(),
+            test.display().to_string(),
+            "--output".to_string(),
+            output.display().to_string(),
+        ]
+        .into_iter())
+    }
+
+    fn read_report(output: &Path) -> Value {
+        let text = fs::read_to_string(output.join("report.json")).unwrap();
+        serde_json::from_str(&text).unwrap()
+    }
+
+    #[test]
+    fn meta_without_film_tick_is_rejected() {
+        let tmp = TempDir::new("untagged");
+        write_reference(&tmp.join("ref"), &[7, 12], false);
+        fs::create_dir_all(tmp.join("test")).unwrap();
+        write_render(&tmp.join("test").join("tick_00007.png"));
+
+        let error = run_parity(&tmp.join("ref"), &tmp.join("test"), &tmp.join("out"))
+            .expect_err("untagged capture must be rejected");
+        assert!(error.contains("film_tick"), "{error}");
+        assert!(error.contains("predates film-clock tagging"), "{error}");
+        assert!(error.contains("recaptured"), "{error}");
+    }
+
+    #[test]
+    fn one_untagged_frame_rejects_the_whole_capture() {
+        let tmp = TempDir::new("partial");
+        write_reference(&tmp.join("ref"), &[7, 12], true);
+        let meta_path = tmp.join("ref").join("meta.json");
+        let mut meta: Value =
+            serde_json::from_str(&fs::read_to_string(&meta_path).unwrap()).unwrap();
+        meta["frames"][1]
+            .as_object_mut()
+            .unwrap()
+            .remove("film_tick");
+        fs::write(&meta_path, meta.to_string()).unwrap();
+
+        let frames = meta["frames"].as_array().unwrap();
+        let error = read_film_ticks(frames, &meta_path).expect_err("second frame is untagged");
+        assert!(error.contains("frame 2"), "{error}");
+    }
+
+    #[test]
+    fn frames_match_renders_by_film_tick() {
+        let tmp = TempDir::new("matched");
+        write_reference(&tmp.join("ref"), &[7, 12], true);
+        let test = tmp.join("test");
+        fs::create_dir_all(&test).unwrap();
+        write_render(&test.join(crate::tick_png_name(7)));
+        write_render(&test.join(crate::tick_png_name(12)));
+        // Neighbouring ticks and the old ordinal names must never be picked up.
+        write_render(&test.join("tick_00001.png"));
+        write_render(&test.join("frame_0001.png"));
+
+        run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
+        let report = read_report(&tmp.join("out"));
+        assert_eq!(report["frames"], 2);
+        assert_eq!(report["unmatched"], 0);
+        assert!(report.get("tick_to_frame_offset").is_none());
+        let per_frame = report["per_frame"].as_array().unwrap();
+        let ticks: Vec<u64> = per_frame
+            .iter()
+            .map(|f| f["film_tick"].as_u64().unwrap())
+            .collect();
+        let ordinals: Vec<u64> = per_frame
+            .iter()
+            .map(|f| f["ordinal"].as_u64().unwrap())
+            .collect();
+        assert_eq!(ticks, vec![7, 12]);
+        assert_eq!(ordinals, vec![1, 2]);
+    }
+
+    #[test]
+    fn missing_render_for_a_film_tick_is_unmatched() {
+        let tmp = TempDir::new("unmatched");
+        write_reference(&tmp.join("ref"), &[7, 12], true);
+        let test = tmp.join("test");
+        fs::create_dir_all(&test).unwrap();
+        // Only the render for the first capture's film tick exists; the old ordinal
+        // names (`frame_0002.png`, `tick_00002.png`) must not satisfy the second.
+        write_render(&test.join("tick_00007.png"));
+        write_render(&test.join("tick_00002.png"));
+        write_render(&test.join("frame_0002.png"));
+
+        run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
+        let report = read_report(&tmp.join("out"));
+        assert_eq!(report["frames"], 1);
+        assert_eq!(report["unmatched"], 1);
+        assert_eq!(report["per_frame"][0]["film_tick"], 7);
+    }
 }

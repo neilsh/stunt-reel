@@ -326,7 +326,7 @@ class MockTransport:
         self.io_breakpoints: set[str] = set()
         self.current_tick: int = 0
         self.max_ticks: int = 600
-        self.tick_address: tuple[int, int] = (0x0D51, 0x0C60)
+        self.tick_address: tuple[int, int] = (0x1575, 0x4896)
         self.custom_handlers: dict[str, Callable[[list[str]], list[str]]] = {}
         self._closed: bool = False
         self._scenario: list[Any] | None = None
@@ -465,7 +465,7 @@ class MockTransport:
         self._closed = True
 
     def _parse_seg_off(self, target: str) -> tuple[int, int]:
-        """Parse segment:offset string e.g. '0D51:0C60' or '0040:001A'."""
+        """Parse segment:offset string e.g. '1575:4896' or '0040:001A'."""
         if ":" not in target:
             raise ValueError(f"Invalid segment:offset specification: {target}")
         seg_s, off_s = target.split(":", 1)
