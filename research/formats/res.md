@@ -11,7 +11,7 @@ The `.RES` file format is the foundational static resource container for *Stunt 
 | **File Extension** | `.RES` (DOS 8.3 uppercase, e.g., `ACTORS.RES`, `PLANES.RES`, `SCENERY1.RES`) | `[Established]` | `research/playone-exe/startup.md` |
 | **Magic Signature** | 2-byte ASCII: `b"RS"` (`0x52, 0x53`) at byte offset `0x0000` | `[Established]` | `RIPRES.C:74`, `SIResFile.cpp:44`, `crates/stunt-core/src/vfs/res.rs:28` |
 | **Byte Endianness** | Little-Endian (all 16-bit word and 32-bit dword integers) | `[Established]` | `RIPRES.C:78-82`, `sires.cpp:52` |
-| **Engine Role** | Static archive container providing $O(1)$ direct indexed access to geometry, sprites, and dialogue assets without runtime disk seeks or string hashing | `[Established]` | `docs/SPEC.md § 3.1`, `indices.txt` |
+| **Engine Role** | Static archive container providing $O(1)$ direct indexed access to geometry, sprites, and dialogue assets without runtime disk seeks or string hashing | `[Established]` | `research/playone-exe/startup.md`, `indices.txt` |
 | **Paired Contract** | `Seam 1: VfsArchive` (`crates/stunt-core/src/contracts/vfs.rs`) | `[Established]` | `# [FMT-RES-HEADER]`, `docs/ARCHITECTURE.md` |
 
 **Governing invariants:** [`[I7]`](../../docs/SPEC.md#i7-cleanroom-asset-isolation--zero-dependency-core), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/res.rs`](../../crates/stunt-core/src/vfs/res.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** `synthetic_minimal.res` (72 bytes), laid out in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).

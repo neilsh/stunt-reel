@@ -167,6 +167,8 @@ LINK_SCAN_FILES: list[str] = [
 # Directories whose Markdown is also link-checked (non-recursive globs).
 LINK_SCAN_GLOBS: list[str] = [
     "research/playone-exe/*.md",
+    "research/*.md",
+    "docs/adr/*.md",
 ]
 
 # Markdown scanned for evidentiary tier tags (recursive globs plus single files).

@@ -88,6 +88,7 @@ flowchart TD
   ```text
   "Not enough memory.  Stunt Island requires 570,000 bytes free."
   ```
+* **Operational note:** the gate reads the free-memory size from `PSP:0002h`, so a DOS-box launch wrapper such as `loadfix -64` that lowers free conventional RAM below 570,000 bytes trips it. (Carried over from the former `SPEC.md` § 3.4.)
 
 ### 3. Disk Space Check (`0x0D0D` – `0x0D34`)
 * Queries available storage using DOS function `INT 21h, AH=36h` (Get Disk Free Space).

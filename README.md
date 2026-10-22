@@ -97,7 +97,7 @@ cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry \
 
 `capture-ref` stores 140 reference frames, each tagged in `meta.json` with the film clock (`film_tick`) it was captured at. `--frames 1..1343` renders the full authored 1,342-tick span as `tick_00000.png`–`tick_01341.png`, named by 0-based 50 Hz tick, and the comparator pairs each capture with the render at its `film_tick` (captures made before film-clock tagging must be recaptured). The comparator writes `report.json` (per-frame `ssim`/`iou`, `mean_ssim`, `min_ssim`, `mean_iou`, `sky_index`, `unmatched`) and `contact_NNNN.png` sheets under `build/parity/report/ctry/`.
 
-Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`, and a free port `58991`. How the dialog is driven (BIOS Data Area keystrokes) and how frames are sampled (post-retrace breakpoint at `0D51:0C5E`) is recorded in [`docs/SPEC.md § 3.6`](docs/SPEC.md#36-visual-parity-capture-loop-playoneexe-vs-stuntreel) and [`research/playone-exe/capture.md`](research/playone-exe/capture.md).
+Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`, and a free port `58991`. How the dialog is driven (BIOS Data Area keystrokes) and how frames are sampled (post-retrace breakpoint at `0D51:0C5E`) is recorded in [`research/parity-findings.md`](research/parity-findings.md#1-parity-loop-capture-vs-render) and [`research/playone-exe/capture.md`](research/playone-exe/capture.md).
 
 ### Render in the native engine
 

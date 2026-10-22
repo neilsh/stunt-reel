@@ -58,7 +58,7 @@ impl SlotState {
     ///
     /// The stored pitch `rx` uses the opposite handedness from `quat_from_euler`'s
     /// `pitch` argument: negating it is what makes a view slot look at the drawn actor
-    /// (`CTRY.FLM` tick 1 lands 1.4° off the actor bearing; docs/SPEC.md § 3.7).
+    /// (`CTRY.FLM` tick 1 lands 1.4° off the actor bearing; research/parity-findings.md § 2).
     pub fn rotation_quat(&self) -> [f32; 4] {
         if self.rot_bam == [0, 0, 0] {
             [0.0, 0.0, 0.0, 1.0]

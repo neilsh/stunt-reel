@@ -65,7 +65,7 @@ Rows `0x22C4`, `0x22CE` and `0x22D0` were untiered in the former `memory.md` tab
 * **Contract**: the INT 8 path increments `0x22B8` once per 20 ms tick while `0x2272` is set; the film clock `0x4896` advances in lockstep and leads `0x22B8` by ≈5 ticks. A rendered frame may advance several ticks (Mode 13h refreshes at 70 Hz and rendering can drop frames), so the streamer gates snapshot capture on:
   $$\text{current\_tick} > \text{last\_captured\_tick}$$
   preventing duplicate frame capture.
-* **Evidence**: the only copy of the static-handler and live-sampling evidence is [`memory.md` § 3.1](../research/playone-exe/memory.md#32-tick-counter-evidence). Other documents link there instead of restating it.
+* **Evidence**: the only copy of the static-handler and live-sampling evidence is [`memory.md` § 3.2](../research/playone-exe/memory.md#32-tick-counter-evidence). Other documents link there instead of restating it.
 * **Evidentiary Tier**: `[Established]` (static disassembly plus live DOSBox-X sampling).
 
 ### # [MEM-CAMERA-RIG]

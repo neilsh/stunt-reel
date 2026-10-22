@@ -1,5 +1,7 @@
 # Playbook: Milestone 1 — Runtime Capture Harness & glTF Exporter
 
+> **Historical.** Milestone 1 shipped; this plan is kept for context and is not a source of truth. Current status: [`TEAM_SHEET.md`](../TEAM_SHEET.md); specification: [`SPEC.md`](../SPEC.md).
+
 * **Milestone**: Milestone 1 (`T01`–`T04`)
 * **Integrity Mode**: `development`
 * **Assigned Team**:

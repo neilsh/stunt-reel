@@ -24,7 +24,7 @@ use std::fmt;
 ///
 /// `.FLM` stores each slot's orientation as BAM angles whose rotation maps camera space
 /// to world space with `+Z` pointing into the screen, so rotating `+Z` by the view slot's
-/// quaternion yields the world-space look direction (docs/SPEC.md § 3.7).
+/// quaternion yields the world-space look direction (research/parity-findings.md § 2).
 pub const CAMERA_FORWARD: [f32; 3] = [0.0, 0.0, 1.0];
 
 /// Distance in meters from the view slot to its look-at point.

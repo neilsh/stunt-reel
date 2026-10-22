@@ -14,7 +14,7 @@ In the retail game, `.FLM` files reside in the `vault\` directory (e.g., `ACT1.F
 | **Magic Signature** | 4-byte ASCII: `b"FILM"` (`0x46, 0x49, 0x4C, 0x4D`) at byte offset `0x0000` | `[Established]` | `sifilm.cpp:72`, `flm_extract.py:76`, `synthetic_minimal.flm` |
 | **Extension Variants** | 132 corpus files under `corpus/si_archive/Misc/` use the `.TKE` extension but are byte-identical `FILM` streams: all 132 parse as films (17,585 slices) | `[Established]` | corpus census, `verify-corpus` |
 | **Byte Endianness** | Mixed: 16-bit integers and 32-bit fixed-point scalars are Little-Endian; composite time-slice headers feature a 16-bit back-pointer | `[Established]` | `sifilm.cpp:43-58`, cross-corpus verification |
-| **Container Pairing** | Paired 1:1 with `<NAME>.ALL` full-scene container in `VAULT\` directory | `[Established]` | `PLAYONE.EXE:0x0787`, `docs/SPEC.md § 3.5` |
+| **Container Pairing** | Paired 1:1 with `<NAME>.ALL` full-scene container in `VAULT\` directory | `[Established]` | `PLAYONE.EXE:0x0787`, `research/playone-exe/navigation.md` |
 | **Engine Role** | Deterministic playback stream driving camera channels, 6-DOF actor trajectories, subobject joints, and sound triggers | `[Established]` | `docs/SPEC.md § 1.1`, `crates/stunt-core/src/contracts/trajectory.rs` |
 | **Paired Contract** | `Seam 2: TrajectoryRecord` (`crates/stunt-core/src/contracts/trajectory.rs`) | `[Established]` | `# [FMT-FLM-OPCODES]`, `# [MEM-FLM-TICK]`, `docs/ARCHITECTURE.md` |
 
