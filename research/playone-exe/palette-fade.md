@@ -83,6 +83,8 @@ A search of the unpacked image for operands at `DS:0x47C8 + 2n` and `[ptr + 0x7E
 | 10 | `0x1DA9` | Compared with its previous value in `DS:0x22BC`; the sign of the change goes to `0x15D4:0x8120` and `(var 10 & 0xFF) << 8` to `0x15D4:0x8122`, beside a slot field (`[bx + 0x0E] << 12`) at `0x811E`. No reader of those words was found, so the meaning is not decoded. | `[Bounded Observation]` |
 | 0-3 | none | No instruction in the image addresses these variables directly. The only code that touches them is generic over all 16: the checkpoint copy at `0x39D0`, the film recorder's change loop at `0x42F9`, the interpolation at `0x136F` and the start-of-film reset. `0x11FC` indexes a different structure at `+0x7E`. | `[Bounded Observation]` |
 
+The palette and sun readers above run on the snapshot struct at `DS:0x4888`, not on `0x474A` directly. The caller at `0x4A35` enters the frame routine at `0x0EE9` with `BX = 0x4888`, and `0x39B0` has copied the 16 live variables from `0x47C8` to `0x4906` (`0x4888 + 0x7E`) beforehand. No static caller of the `0x0EE6` entry (`BX = 0x474A`) was found, so the offsets in the table are the same either way but the live path reads the snapshot.
+
 `0x39D0` and `0x42F9` are bookkeeping: the first snapshots the 16 live variables to `DS:0x4906` with the rest of the film state, the second emits `var_set` bytes (`0x90 - n`) into the film being recorded when a variable changes.
 
 ## 4. Driver Vector Table
