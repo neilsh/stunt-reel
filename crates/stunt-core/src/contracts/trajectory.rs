@@ -121,14 +121,14 @@ pub struct AudioCue {
     pub pan: f32,
 }
 
-/// Complete snapshot of the cinematic world state at simulation tick `t`.
+/// Complete snapshot of the cinematic world state at 50 Hz tick `t`.
 ///
 /// Implements `Seam 2: TrajectoryRecord` per `docs/ARCHITECTURE.md`.
 /// Used as the golden oracle format for `corpus/oracle/intro_trajectory.json`.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrajectoryRecord {
-    /// Simulation tick index (advancing at 50 Hz per `[I4]`).
+    /// Cumulative authored 50 Hz tick (`[I4]`, `TIMELINE_HZ`), never a list index or slice ordinal.
     pub tick: u32,
     /// Active camera orientation and projection parameters.
     pub camera: CameraTransform,
@@ -151,13 +151,11 @@ pub struct StaticPropPlacement {
 }
 
 /// Static stage setup and environment metadata for a film sequence.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SceneHeader {
     /// Eight-character film name from the `.FLM` container header.
     pub film_name: String,
-    /// Simulation tick rate in Hz (`20` or `30`, invariant `[I4]`).
-    pub tick_rate_hz: u32,
     /// VGA palette indices `(zenith, horizon)` used for the sky gradient `[I3]`.
     pub horizon_sky_palette: (u8, u8),
     /// Terrain palette set name, when the film declares one.
@@ -166,25 +164,13 @@ pub struct SceneHeader {
     pub static_props: Vec<StaticPropPlacement>,
 }
 
-impl Default for SceneHeader {
-    fn default() -> Self {
-        Self {
-            film_name: String::new(),
-            tick_rate_hz: 20,
-            horizon_sky_palette: (0, 0),
-            terrain_set_name: None,
-            static_props: Vec::new(),
-        }
-    }
-}
-
 /// Self-contained kinematic capture of a film containing static stage metadata and all timeline ticks.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FilmCapture {
     /// Stage setup and environment metadata shared by every tick.
     pub header: SceneHeader,
-    /// Evaluated records in ascending tick order, one per simulation tick.
+    /// Evaluated records in ascending tick order; each record's `tick` is its cumulative 50 Hz tick.
     pub ticks: Vec<TrajectoryRecord>,
 }
 
@@ -220,6 +206,21 @@ mod tests {
             1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 10.0, 20.0, 30.0, 1.0,
         ];
         assert_eq!(matrix, expected);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_scene_header_ignores_legacy_tick_rate_hz() {
+        let json = r#"{
+            "film_name": "INTRO",
+            "tick_rate_hz": 20,
+            "horizon_sky_palette": [12, 45],
+            "terrain_set_name": null,
+            "static_props": []
+        }"#;
+        let header: SceneHeader = serde_json::from_str(json).expect("legacy header still loads");
+        assert_eq!(header.film_name, "INTRO");
+        assert_eq!(header.horizon_sky_palette, (12, 45));
     }
 
     #[cfg(feature = "serde")]
@@ -264,7 +265,6 @@ mod tests {
         let capture = FilmCapture {
             header: SceneHeader {
                 film_name: "INTRO".to_string(),
-                tick_rate_hz: 30,
                 horizon_sky_palette: (12, 45),
                 terrain_set_name: Some("ISLAND".to_string()),
                 static_props: vec![StaticPropPlacement {

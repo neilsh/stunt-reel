@@ -216,16 +216,20 @@ def compute_position_rmse(
 ) -> float:
     """Compute position Root-Mean-Square Error (RMSE) against baseline fixture.
 
+    Records are matched by ``TrajectoryRecord.tick`` value, which is the cumulative 50 Hz
+    tick (never a list index). Oracle ticks with no evaluated record are skipped. Returns
+    ``inf`` when no oracle tick matches, mirroring the Rust ``compute_position_rmse``.
+
     Acceptance criteria requires RMSE_pos <= 0.01 m.
     """
     baseline_records = load_trajectory_records(baseline_fixture_path)
+    records_by_tick = {rec.tick: rec for rec in records}
     sq_errors: list[float] = []
 
     for base_rec in baseline_records:
-        tick = base_rec.tick
-        if tick >= len(records):
+        test_rec = records_by_tick.get(base_rec.tick)
+        if test_rec is None:
             continue
-        test_rec = records[tick]
 
         # Camera eye error
         cam_diff = vec3_sub(test_rec.camera.eye, base_rec.camera.eye)
@@ -239,7 +243,7 @@ def compute_position_rmse(
                 sq_errors.append(act_diff[0] ** 2 + act_diff[1] ** 2 + act_diff[2] ** 2)
 
     if not sq_errors:
-        return 0.0
+        return math.inf
 
     mean_sq = sum(sq_errors) / len(sq_errors)
     return math.sqrt(mean_sq)

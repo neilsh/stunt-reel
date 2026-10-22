@@ -287,7 +287,6 @@ def test_models_dataclass_serde_roundtrip() -> None:
 
     header = SceneHeader(
         film_name="INTRO",
-        tick_rate_hz=20,
         horizon_sky_palette=(1, 2),
         terrain_set_name="ISLAND",
         static_props=[
@@ -301,6 +300,24 @@ def test_models_dataclass_serde_roundtrip() -> None:
     capture = FilmCapture(header=header, ticks=[record])
     cap_dict = capture.to_dict()
     assert FilmCapture.from_dict(cap_dict) == capture
+
+
+def test_scene_header_ignores_legacy_tick_rate_hz() -> None:
+    """Old captures carrying tick_rate_hz still load; the key is not re-emitted."""
+    header = SceneHeader.from_dict({"film_name": "INTRO", "tick_rate_hz": 20})
+    assert header.film_name == "INTRO"
+    assert "tick_rate_hz" not in header.to_dict()
+
+
+def test_compute_position_rmse_matches_by_tick_value() -> None:
+    """RMSE pairs records by tick value, not list position; unmatched oracle ticks are skipped."""
+    oracle = load_trajectory_records(FIXTURE_PATH)
+    shifted = [TrajectoryRecord.from_dict(r.to_dict()) for r in oracle]
+    for rec in shifted:
+        rec.tick += 1000
+    assert compute_position_rmse(shifted, FIXTURE_PATH) == float("inf")
+    assert compute_position_rmse(list(reversed(oracle)), FIXTURE_PATH) == 0.0
+    assert compute_position_rmse(oracle[1:], FIXTURE_PATH) == 0.0
 
 
 def test_models_file_save_and_load(tmp_path: Path) -> None:

@@ -31,7 +31,7 @@ __all__ = [
 
 @dataclass
 class CameraTransform:
-    """Evaluated camera transform at a discrete simulation tick."""
+    """Evaluated camera transform at a 50 Hz tick."""
 
     eye: list[float] = field(default_factory=lambda: [0.0, 10.0, 50.0])
     target: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
@@ -140,7 +140,10 @@ class AudioCue:
 
 @dataclass
 class TrajectoryRecord:
-    """Complete snapshot of the cinematic world state at simulation tick t."""
+    """Complete snapshot of the cinematic world state at 50 Hz tick ``tick``.
+
+    ``tick`` is the cumulative authored 50 Hz tick, never a list index or slice ordinal.
+    """
 
     tick: int
     camera: CameraTransform
@@ -195,10 +198,13 @@ class StaticPropPlacement:
 
 @dataclass
 class SceneHeader:
-    """Static stage setup and environment metadata for a film sequence."""
+    """Static stage setup and environment metadata for a film sequence.
+
+    The playback rate is the constant 50 Hz timeline clock, so it is not stored. A legacy
+    ``tick_rate_hz`` key in input dictionaries is ignored.
+    """
 
     film_name: str = ""
-    tick_rate_hz: int = 20
     horizon_sky_palette: tuple[int, int] = (0, 0)
     terrain_set_name: str | None = None
     static_props: list[StaticPropPlacement] = field(default_factory=list)
@@ -207,7 +213,6 @@ class SceneHeader:
         """Convert to dictionary."""
         return {
             "film_name": str(self.film_name),
-            "tick_rate_hz": int(self.tick_rate_hz),
             "horizon_sky_palette": [
                 int(self.horizon_sky_palette[0]),
                 int(self.horizon_sky_palette[1]),
@@ -222,7 +227,6 @@ class SceneHeader:
         raw_pal = data.get("horizon_sky_palette", [0, 0])
         return cls(
             film_name=str(data.get("film_name", "")),
-            tick_rate_hz=int(data.get("tick_rate_hz", 20)),
             horizon_sky_palette=(int(raw_pal[0]), int(raw_pal[1])),
             terrain_set_name=data.get("terrain_set_name"),
             static_props=[StaticPropPlacement.from_dict(p) for p in data.get("static_props", [])],
@@ -231,7 +235,7 @@ class SceneHeader:
 
 @dataclass
 class FilmCapture:
-    """Self-contained kinematic capture of a film containing static stage metadata and timeline ticks."""
+    """Self-contained kinematic capture of a film containing static stage metadata and 50 Hz tick records."""
 
     header: SceneHeader
     ticks: list[TrajectoryRecord] = field(default_factory=list)
