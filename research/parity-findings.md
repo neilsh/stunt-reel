@@ -34,3 +34,17 @@ The capture side (control socket direction, frame gating on the post-retrace tra
 The terrain heightmap (`ANCHORPT.DAT`), surface mesh (`MAP.BIN`), scene graph (`SCENERY.scn`) and ocean quad are specified and evidenced in [`research/formats/auxiliary/map.md` § 3.5](formats/auxiliary/map.md#35-empirical-island-terrain-ingestion--scenery-traversal-established) and [§ 3.1](formats/auxiliary/map.md#31-global-ocean-water-quad); they are not repeated here. Parity result:
 
 * **Visual Parity Realization (`CTRY.FLM`)**: Rasterizing world scenery and static props alongside actor aircraft boosts geometric non-sky IoU from $\approx 0.01$ to **$0.822$** and frame 1 SSIM to **$0.741$**, eliminating the empty solid-green background defect.
+
+---
+
+## 4. Night Film Parity (`COL3-2.FLM`) (`[Bounded Observation]`)
+
+Scored with the procedure below against the 30 frames of [`palette-fade.md` § 5.1](playone-exe/palette-fade.md#51-night-capture-col3-2flm), where the modelled palette is already exact.
+
+* **Result:** mean SSIM 0.666, minimum 0.479, mean IoU 0.651. The four black frames (ticks 168–201) score 0.925–0.931. Every frame from tick 458 on scores 0.62–0.66 with a constant IoU of 0.751. This is far below the `[I6]` gate, and the cause is not colour.
+* **What the reference shows:** from tick 458 the original draws a studio interior (an anchorman at a desk, a window with an outdoor scene in it, caption text from the `0x99` credits opcode, and the UI bar). `stuntreel` draws only the empty outdoor view toward the horizon. The film's `CNN Headline News` credits at tick 198 and its 26 created slots are consistent with a news-studio set.
+* **Evaluator state at tick 458:** the active camera is slot 7 (`0x97` at tick 448) at `(6239.6, 0.30, -3247.3)` m, with look target `eye + (17, -87, 996)` m, so it points almost straight along `+Z`. Slots with drawable, present shapes sit at 0.55 m (`15135`), 1.14 m (`16495`), 34 m (`16393`, `16423`) and 372 m (`16421`) from the eye, so the set and character are in the scene but do not appear in the render. Five other shapes (`261`, `262`, `266`, `268`, `14976`) stop early at opcode `504` (`UnknownOpcode`), none of them among the nearby actors.
+* **Ruled out:** the near-clip plane. Lowering `DEFAULT_NEAR_CLIP` from 0.5 m to 0.05 m left the frame unchanged. Still open: whether the studio shapes draw at all, whether the camera looks the wrong way for this film (the `CTRY.FLM` convention in § 2 may not carry over), or whether the studio is outside the camera's cull range.
+* **The scorer misfires at night:** the fade level in `report.json` is a brightness heuristic built for the `CTRY.FLM` day sky. At night it reads about 0.24 for most frames, so 29 of 30 are excluded and the scored headline rests on one frame (tick 705, fade 1.012, SSIM 0.479). Read the unscored mean for this film.
+
+**Procedure for scoring another captured film.** `--frames a..b` is 1-based, so `--frames 459..460` writes `tick_00458.png`; render the whole captured span (`--frames 160..730` for this capture), because frames outside the range count as "missing on one side". Render at `--width 320 --height 200`, since the parity command rejects 320x240 input. Then run `parity --reference build/parity/reference/<film> --test build/parity/ours/<film> --output build/parity/report/<film> --clear-index 233`. For a side-by-side look, decode a reference `.idx` page (64000 bytes, 320x200) with its `palettes_NNNN.json` and paste it beside our PNG; the `contact_*.png` sheet only shows the first frame.
