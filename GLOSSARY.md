@@ -119,5 +119,5 @@ _Avoid_: tick (for the capture ordinal)
 _Avoid_: frame counter, global tick
 
 **Fade level**:
-The brightness of a captured frame relative to the static palette: the median, over the indices present in the first captured frame whose static R+G+B exceeds 60, of (captured entry R+G+B) / (static Mode 13h entry R+G+B). About 1.0 when `PLAYONE` is not fading; it falls to 0 over the end-of-film fade. Parity measures the same ratio for the palette the render used and scales the render by the quotient (`ssim_compensated`).
+The brightness of a captured frame relative to the static palette: the median, over the indices present in the first captured frame whose static R+G+B exceeds 60, of (captured entry R+G+B) / (static Mode 13h entry R+G+B). About 1.0 when `PLAYONE` is not fading; it falls to 0 over the end-of-film fade. Parity scores only frames whose fade level reaches `--min-fade-level`.
 _Avoid_: brightness, exposure
