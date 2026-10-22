@@ -242,4 +242,4 @@ pub fn decode_pcx_rle(encoded_bytes: &[u8], expected_pixel_count: usize) -> Vec<
 
 ### 7.2 Cleanroom Synthetic Fixtures
 - **`tests/fixtures/synthetic_minimal.res`**: 72-byte uncompressed resource container fixture verifying offset tables and DOS 8.3 entry names (`"PLANE.SOD"`, `"PROP.SOD"`).
-- **`crates/stunt-core/tests/vfs_test.rs`**: Unit test suite asserting case-insensitive retrieval (`"fokker.sod"`, `"FOKKER.SOD"`, `"Fokker.Sod"`).
+- **`crates/stunt-core/tests/vfs_spec.rs`**: Unit test suite asserting case-insensitive retrieval (`"fokker.sod"`, `"FOKKER.SOD"`, `"Fokker.Sod"`).

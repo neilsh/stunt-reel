@@ -205,9 +205,8 @@ pub struct VfsArchive {
 
 ### 7.3 Verification Test Suite
 
-- `crates/stunt-core/tests/vfs_test.rs`: Empty containers (`num == 0`), mixed payload parsing, corrupted header bounds.
-- `crates/stunt-core/tests/vfs_challenge_test.rs`: Case insensitivity, zero-byte payloads, multi-entry roundtrips.
-- `crates/stunt-core/tests/vfs_stress_test.rs`: Offset table wrapping, fuzzing mutations, payload classification edge cases.
+- `crates/stunt-core/tests/vfs_spec.rs`: Empty containers (`num == 0`), mixed payload parsing, corrupted header bounds, case insensitivity, zero-byte payloads, multi-entry roundtrips, payload classification.
+- `crates/stunt-core/tests/vfs_fuzz.rs`: Seeded random and mutation fuzzing and sub-header buffer sweeps; every input must parse or return a structured `VfsError`, never panic.
 
 ### 3.4 Runtime Scene Reconstruction & Model Binding (`[Established]`)
 

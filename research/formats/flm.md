@@ -296,5 +296,7 @@ Located at `tests/fixtures/oracle_intro_trajectory.json`:
 
 ### 7.5 Verification Test Suite
 
-- `crates/stunt-core/tests/flm_test.rs`: 16 integration tests verifying camera cut detection, focal-to-FOV conversions, unit quaternion invariants, slerp antipodal paths, and synthetic fixture evaluation.
+- `crates/stunt-core/tests/flm_spec.rs`: header and slice error handling, unknown-opcode stops, camera cut suppression, sub-tick interpolation, synthetic intro trajectories, and the G04 oracle gate (`serde` feature).
+- `crates/stunt-core/tests/flm_fuzz.rs`: seeded random and mutation fuzzing plus truncation and boundary matrices; `FilmTimeline::from_bytes` must never panic.
+- `crates/stunt-core/tests/flm_{timeline,axes,camera}_test.rs`: timeline sampling, DOS-to-`[I1]` axes, and camera look direction.
 - `tests/test_harness.py`: Python TAC offline replay harness tests.

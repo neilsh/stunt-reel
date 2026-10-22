@@ -427,6 +427,6 @@ The 393 compiled corpus models live in `.BIN` files beginning with `0x000C`; the
 
 ### 7.4 Verification Test Suite
 
-- `crates/stunt-core/tests/sod_test.rs`: 20 unit/integration tests verifying opcode execution, scale table lookups, normal computation fallbacks, and `synthetic_minimal.sod` transpilation.
-- `crates/stunt-core/tests/sod_challenge_test.rs`: 12 challenge tests verifying Gate G03 memory size (`size_of::<SodVertex>() == 28`), attribute welding tolerances, coplanar decal displacement across multiple arbitrary planes, and all 256 palette indices.
-- `crates/stunt-core/tests/sod_stress_test.rs`: 15 fuzzing and stress tests verifying safe error handling across truncated opcodes, unaligned register byte offsets, and extreme scale factors.
+- `crates/stunt-core/tests/sod_spec.rs`: error handling for truncated and malformed streams, Gate G03 vertex layout (`size_of::<SodVertex>() == 28`), `synthetic_minimal.sod` transpilation, coordinate and ground-offset transforms, all 256 palette indices, arena node allocation, and IPG/GVPOLY/IFVIS decoding.
+- `crates/stunt-core/tests/sod_fuzz.rs`: seeded random-bytecode, opcode-sequence and mutation fuzzing plus truncation, register-offset, scale-index and shift matrices; `transpile_sod` must never panic.
+- `crates/stunt-core/tests/sod_tap_test.rs` and `crates/stunt-core/src/sod/{vm,tessellate,decal}_tests.rs`: `OP_TAP`, VM state, vertex welding and decal predicates, tested beside the crate-private code they exercise.

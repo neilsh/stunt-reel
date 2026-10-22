@@ -264,6 +264,5 @@ Located at `tests/fixtures/synthetic_minimal.res` (72 bytes total):
 
 ### 7.4 Verification Test Suite
 
-- `crates/stunt-core/tests/vfs_test.rs`: Basic extraction, empty containers, corrupted headers, synthetic fixture ingest.
-- `crates/stunt-core/tests/vfs_challenge_test.rs`: Case insensitivity stress test (100 permutations), zero-byte entries, large containers.
-- `crates/stunt-core/tests/vfs_stress_test.rs`: Fuzzing mutations, offset table out-of-bounds wrapping, adversarial malformed buffers.
+- `crates/stunt-core/tests/vfs_spec.rs`: Basic extraction, empty containers, corrupted headers and offset tables, name-table edge cases, case insensitivity (100 permutations), zero-byte entries, large containers, synthetic fixture ingest.
+- `crates/stunt-core/tests/vfs_fuzz.rs`: Seeded random and mutation fuzzing and sub-header buffer sweeps (never panic).
