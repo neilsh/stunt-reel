@@ -37,7 +37,7 @@
 | `0x22CE` | `[Supported Inference]` | `u16` | Preserved `SS` register during `INSTALL.EXE` child execution | |
 | `0x22D0` | `[Supported Inference]` | `u16` | Preserved `SP` register during `INSTALL.EXE` child execution | |
 | `0x4758` | `[Established]` | `u16` | Field `+0x0E` of the sibling `0x474A` struct; reads 0 during playback — **not** the film clock | `# [MEM-FLM-TICK]` |
-| `0x4896` | `[Established]` | `u16` | Active film clock in 50 Hz ticks (struct base `0x4888` + `0x0E`); leads `0x22B8` by ≈5 ticks | `# [MEM-FLM-TICK]` |
+| `0x4896` | `[Established]` | `u16` | Active film clock in 50 Hz ticks (struct base `0x4888` + `0x0E`); ends at the film's authored total and holds there; offset from `0x22B8` varies, see below | `# [MEM-FLM-TICK]` |
 
 Rows `0x22C4`, `0x22CE` and `0x22D0` were untiered in the former `memory.md` table; `[Supported Inference]` was assigned when the tables were merged, pending a pointer to the disassembly that sets them.
 
@@ -62,7 +62,7 @@ Rows `0x22C4`, `0x22CE` and `0x22D0` were untiered in the former `memory.md` tab
 ### # [MEM-FLM-TICK]
 * **Scope**: Runtime `DS` offsets `0x22B8` (global 50 Hz tick), `0x4896` (active film clock, struct base `0x4888` + `0x0E`) and `0x2272` (playback flag); rows in § 1. `0x4758` and the retired `0x0C60` label are not the film clock.
 * **Data Type**: 16-bit unsigned integer (`u16`).
-* **Contract**: the INT 8 path increments `0x22B8` once per 20 ms tick while `0x2272` is set; the film clock `0x4896` advances in lockstep and leads `0x22B8` by ≈5 ticks. A rendered frame may advance several ticks (Mode 13h refreshes at 70 Hz and rendering can drop frames), so the streamer gates snapshot capture on:
+* **Contract**: the INT 8 path increments `0x22B8` once per 20 ms tick while `0x2272` is set; the film clock `0x4896` advances with it during the film, stops at the authored total (`1342` for `CTRY.FLM`) and holds, while `0x22B8` keeps counting. The film clock's offset from `0x22B8` is `[Bounded Observation]` and its sign differs between two samples (2–3 behind, or 5 ahead), so it is not a constant. A rendered frame may advance several ticks (Mode 13h refreshes at 70 Hz and rendering can drop frames), so the streamer gates snapshot capture on:
   $$\text{current\_tick} > \text{last\_captured\_tick}$$
   preventing duplicate frame capture.
 * **Evidence**: the only copy of the static-handler and live-sampling evidence is [`memory.md` § 3.2](../research/playone-exe/memory.md#32-tick-counter-evidence). Other documents link there instead of restating it.

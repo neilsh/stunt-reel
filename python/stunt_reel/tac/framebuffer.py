@@ -174,7 +174,7 @@ def read_ticks(client: TacClient, dgroup_segment: int) -> tuple[int, int]:
 
     ``film_tick`` is the active film clock at ``DS:0x4896`` (``# [MEM-FLM-TICK]``), the
     tick the page on screen shows. ``global_tick`` is the 50 Hz counter at ``DS:0x22B8``,
-    which trails the film clock by about 5; it is kept only to diagnose that lead.
+    whose offset from the film clock is not constant (see ``memory.md`` 3.2); it is kept only for diagnosis.
     """
     film_tick = client.read_u16(f"{dgroup_segment:04X}:{playone.FILM_CLOCK_OFFSET:04X}")
     global_tick = client.read_u16(f"{dgroup_segment:04X}:{playone.GLOBAL_TICK_OFFSET:04X}")
