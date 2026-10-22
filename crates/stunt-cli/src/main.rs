@@ -527,70 +527,6 @@ pub fn load_or_synthesize_timeline(path: Option<&Path>, max_ticks: Option<usize>
     FilmTimeline::new(slices, Vec::new())
 }
 
-fn is_legacy_refs(trajectory: &[&TrajectoryRecord]) -> bool {
-    let has_positive_altitude = trajectory.iter().any(|rec| {
-        rec.camera.eye[1] > 0.5 || rec.actors.iter().any(|act| act.position_meters[1] > 0.5)
-    });
-    if has_positive_altitude {
-        return false;
-    }
-
-    trajectory.iter().any(|rec| {
-        rec.camera.eye[1] < 0.0
-            || rec.camera.target[1] < 0.0
-            || rec.camera.eye[0] < -500.0
-            || rec
-                .actors
-                .iter()
-                .any(|act| act.position_meters[1] < 0.0 || act.position_meters[0] < -500.0)
-    })
-}
-
-/// Determines whether an input trajectory uses legacy DOS fixed-point coordinates
-/// (where altitude above sea level and east coordinates are negative).
-#[cfg(test)]
-fn is_legacy_trajectory(trajectory: &[TrajectoryRecord]) -> bool {
-    let records: Vec<&TrajectoryRecord> = trajectory.iter().collect();
-    is_legacy_refs(&records)
-}
-
-fn is_legacy_timeline(timeline: &FilmTimeline) -> bool {
-    let records: Vec<&TrajectoryRecord> = timeline
-        .slices()
-        .iter()
-        .map(|slice| &slice.record)
-        .collect();
-    is_legacy_refs(&records)
-}
-
-/// Adapts legacy raw negative elevation (.FLM coordinates where -X and -Y are flipped)
-/// into the canonical right-handed metric space `[I1]` (+X is Right, +Y is Up).
-fn adapt_camera_transform(mut cam: CameraTransform, is_legacy: bool) -> CameraTransform {
-    if is_legacy {
-        cam.eye[0] = -cam.eye[0];
-        cam.eye[1] = -cam.eye[1];
-        cam.target[0] = -cam.target[0];
-        cam.target[1] = -cam.target[1];
-    }
-    cam
-}
-
-fn adapt_actor_matrix(mut mat: [f32; 16], is_legacy: bool) -> [f32; 16] {
-    if is_legacy {
-        mat[12] = -mat[12];
-        mat[13] = -mat[13];
-    }
-    mat
-}
-
-fn adapt_actor_position(mut pos: [f32; 3], is_legacy: bool) -> [f32; 3] {
-    if is_legacy {
-        pos[0] = -pos[0];
-        pos[1] = -pos[1];
-    }
-    pos
-}
-
 /// Evenly spaced ticks covering the half-open range `[start_tick, end_tick)`,
 /// including the first tick and the final tick in the range.
 ///
@@ -661,8 +597,6 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
         timeline.duration_seconds(),
         TIMELINE_HZ
     );
-    let is_legacy = is_legacy_timeline(&timeline);
-
     let cap_ticks = config
         .max_ticks
         .map_or(timeline.total_ticks(), |limit| {
@@ -749,14 +683,14 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
             .unwrap_or_else(|| PathBuf::from("stuntreel_capture.png"));
 
         if let Some(first_tick) = first_record.as_ref() {
-            let cam = adapt_camera_transform(first_tick.camera, is_legacy);
+            let cam = first_tick.camera;
             camera.set_authored_transform(cam);
             println!(
                 "[stuntreel] first_tick.camera: eye={:?}, target={:?}, fov={}",
                 cam.eye, cam.target, cam.fov_degrees
             );
             for actor in &first_tick.actors {
-                let pos = adapt_actor_position(actor.position_meters, is_legacy);
+                let pos = actor.position_meters;
                 println!(
                     "[stuntreel] first_tick actor: shape_id=0x{:04X}, pos={:?}",
                     actor.shape_id, pos
@@ -778,7 +712,7 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
                 draws.push((world_model, base_meshes, decal_meshes));
             }
             if let Some(first_tick) = first_record.as_ref() {
-                let cam = adapt_camera_transform(first_tick.camera, is_legacy);
+                let cam = first_tick.camera;
                 let eye = Vec3::from_array(cam.eye);
                 for actor in &first_tick.actors {
                     if drawn_shapes.contains(&actor.shape_id) {
@@ -789,8 +723,8 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
                     };
                     drawn_shapes.push(actor.shape_id);
 
-                    let world_mat = adapt_actor_matrix(actor.world_matrix, is_legacy);
-                    let actor_pos = adapt_actor_position(actor.position_meters, is_legacy);
+                    let world_mat = actor.world_matrix;
+                    let actor_pos = actor.position_meters;
                     model.update_world_matrix(&renderer.queue, &world_mat);
                     let distance = eye.distance(Vec3::from_array(actor_pos));
                     let (base_meshes, decal_meshes) =
@@ -806,10 +740,10 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
                     .find(|a| a.shape_id != 0)
                     .or_else(|| first_tick.actors.first())
             {
-                let world_mat = adapt_actor_matrix(actor.world_matrix, is_legacy);
-                let actor_pos = adapt_actor_position(actor.position_meters, is_legacy);
+                let world_mat = actor.world_matrix;
+                let actor_pos = actor.position_meters;
                 gpu_model.update_world_matrix(&renderer.queue, &world_mat);
-                let cam = adapt_camera_transform(first_tick.camera, is_legacy);
+                let cam = first_tick.camera;
                 let eye = Vec3::from_array(cam.eye);
                 let distance = eye.distance(Vec3::from_array(actor_pos));
                 let (base_meshes, decal_meshes) =
@@ -886,7 +820,7 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
     let mut written_video_frames = 0usize;
 
     for (position, (key, record)) in samples.into_iter().enumerate() {
-        let cam = adapt_camera_transform(record.camera, is_legacy);
+        let cam = record.camera;
         camera.set_authored_transform(cam);
         let eye = Vec3::from_array(cam.eye);
 
@@ -916,8 +850,8 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
                 };
                 drawn_shapes.push(actor.shape_id);
 
-                let world_mat = adapt_actor_matrix(actor.world_matrix, is_legacy);
-                let actor_pos = adapt_actor_position(actor.position_meters, is_legacy);
+                let world_mat = actor.world_matrix;
+                let actor_pos = actor.position_meters;
                 model.update_world_matrix(&renderer.queue, &world_mat);
                 let distance = eye.distance(Vec3::from_array(actor_pos));
                 let (base_meshes, decal_meshes) =
@@ -931,8 +865,8 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
                 .find(|a| a.shape_id != 0)
                 .or_else(|| record.actors.first())
             {
-                let world_mat = adapt_actor_matrix(actor.world_matrix, is_legacy);
-                let actor_pos = adapt_actor_position(actor.position_meters, is_legacy);
+                let world_mat = actor.world_matrix;
+                let actor_pos = actor.position_meters;
                 model.update_world_matrix(&renderer.queue, &world_mat);
                 let distance = eye.distance(Vec3::from_array(actor_pos));
                 let (base_meshes, decal_meshes) =
@@ -1056,7 +990,6 @@ struct WindowApp {
     camera: CameraController,
     scene: Option<InteractiveScene>,
     timeline: FilmTimeline,
-    is_legacy: bool,
     current_tick: f32,
     paused: bool,
     last_frame_time: Instant,
@@ -1073,7 +1006,6 @@ struct WindowApp {
 impl WindowApp {
     fn new(config: CliConfig) -> Self {
         let timeline = load_or_synthesize_timeline(config.flm_path.as_deref(), config.max_ticks);
-        let is_legacy = is_legacy_timeline(&timeline);
         Self {
             config,
             window: None,
@@ -1088,7 +1020,6 @@ impl WindowApp {
             camera: CameraController::default(),
             scene: None,
             timeline,
-            is_legacy,
             current_tick: 0.0,
             paused: false,
             last_frame_time: Instant::now(),
@@ -1170,8 +1101,7 @@ impl WindowApp {
         if self.camera.mode == CameraMode::Authored
             && let Some(record) = record.as_ref()
         {
-            let cam = adapt_camera_transform(record.camera, self.is_legacy);
-            self.camera.set_authored_transform(cam);
+            self.camera.set_authored_transform(record.camera);
         }
         let eye = self.camera.eye_position();
 
@@ -1186,8 +1116,8 @@ impl WindowApp {
                         .find(|a| a.shape_id != 0)
                         .or_else(|| record.actors.first())
                 {
-                    let world_mat = adapt_actor_matrix(actor.world_matrix, self.is_legacy);
-                    let actor_pos = adapt_actor_position(actor.position_meters, self.is_legacy);
+                    let world_mat = actor.world_matrix;
+                    let actor_pos = actor.position_meters;
                     model.update_world_matrix(queue, &world_mat);
                     let distance = eye.distance(Vec3::from_array(actor_pos));
                     let (base, decals) = model.collect_visible_meshes(actor.state_mask, distance);
@@ -1213,8 +1143,8 @@ impl WindowApp {
                         };
                         drawn_shapes.push(actor.shape_id);
 
-                        let world_mat = adapt_actor_matrix(actor.world_matrix, self.is_legacy);
-                        let actor_pos = adapt_actor_position(actor.position_meters, self.is_legacy);
+                        let world_mat = actor.world_matrix;
+                        let actor_pos = actor.position_meters;
                         model.update_world_matrix(queue, &world_mat);
                         let distance = eye.distance(Vec3::from_array(actor_pos));
                         let (base, decals) =
@@ -1724,65 +1654,6 @@ mod tests {
     }
 
     #[test]
-    fn test_is_legacy_trajectory_detection() {
-        let rec_legacy = TrajectoryRecord {
-            tick: 0,
-            camera: CameraTransform {
-                eye: [3306.0, -14.0, 2614.0],
-                target: [0.0, 0.0, 0.0],
-                fov_degrees: 45.0,
-                roll_radians: 0.0,
-                cut_from_previous: false,
-            },
-            actors: Vec::new(),
-            audio_cues: Vec::new(),
-        };
-        assert!(is_legacy_trajectory(&[rec_legacy]));
-
-        let rec_legacy_x_at_sea_level = TrajectoryRecord {
-            tick: 0,
-            camera: CameraTransform {
-                eye: [-3306.0, 0.0, 2614.0],
-                target: [0.0, 0.0, 0.0],
-                fov_degrees: 45.0,
-                roll_radians: 0.0,
-                cut_from_previous: false,
-            },
-            actors: Vec::new(),
-            audio_cues: Vec::new(),
-        };
-        assert!(is_legacy_trajectory(&[rec_legacy_x_at_sea_level]));
-
-        let rec_metric = TrajectoryRecord {
-            tick: 0,
-            camera: CameraTransform {
-                eye: [0.0, 10.0, 50.0],
-                target: [0.0, 0.0, 0.0],
-                fov_degrees: 45.0,
-                roll_radians: 0.0,
-                cut_from_previous: false,
-            },
-            actors: Vec::new(),
-            audio_cues: Vec::new(),
-        };
-        assert!(!is_legacy_trajectory(&[rec_metric]));
-
-        let rec_metric_west = TrajectoryRecord {
-            tick: 0,
-            camera: CameraTransform {
-                eye: [-1200.0, 50.0, 0.0],
-                target: [0.0, 50.0, 0.0],
-                fov_degrees: 45.0,
-                roll_radians: 0.0,
-                cut_from_previous: false,
-            },
-            actors: Vec::new(),
-            audio_cues: Vec::new(),
-        };
-        assert!(!is_legacy_trajectory(&[rec_metric_west]));
-    }
-
-    #[test]
     fn test_all_companion_autodiscovery() {
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
         let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
@@ -1827,36 +1698,5 @@ mod tests {
             fixture_flm.to_string_lossy().to_ascii_lowercase()
         );
         assert_eq!(cfg.clear_index, 233);
-    }
-
-    #[test]
-    fn test_adapt_coordinate_transforms() {
-        let cam = CameraTransform {
-            eye: [-100.0, -20.0, 300.0],
-            target: [-50.0, -10.0, 200.0],
-            fov_degrees: 45.0,
-            roll_radians: 0.0,
-            cut_from_previous: false,
-        };
-        let adapted = adapt_camera_transform(cam, true);
-        assert_eq!(adapted.eye, [100.0, 20.0, 300.0]);
-        assert_eq!(adapted.target, [50.0, 10.0, 200.0]);
-
-        let not_adapted = adapt_camera_transform(cam, false);
-        assert_eq!(not_adapted.eye, [-100.0, -20.0, 300.0]);
-
-        let mut mat = [0.0; 16];
-        mat[12] = -123.0;
-        mat[13] = -456.0;
-        mat[14] = 789.0;
-        let adapted_mat = adapt_actor_matrix(mat, true);
-        assert_eq!(adapted_mat[12], 123.0);
-        assert_eq!(adapted_mat[13], 456.0);
-        assert_eq!(adapted_mat[14], 789.0);
-
-        let not_adapted_mat = adapt_actor_matrix(mat, false);
-        assert_eq!(not_adapted_mat[12], -123.0);
-        assert_eq!(not_adapted_mat[13], -456.0);
-        assert_eq!(not_adapted_mat[14], 789.0);
     }
 }

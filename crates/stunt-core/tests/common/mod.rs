@@ -9,8 +9,51 @@ pub(crate) fn quat_norm_diff(q: [f32; 4]) -> f32 {
     ((q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]).sqrt() - 1.0).abs()
 }
 
+/// Raw `rz` BAM of a half turn (180 degrees) about Z.
+///
+/// Slots are authored in DOS axes (GLOSSARY.md), where a zero rotation evaluates to `q_z180`
+/// in `[I1]`. Authoring the actor with a half-turn `rz` makes the evaluated `[I1]`
+/// orientation the identity, `[0, 0, 0, 1]`, as the oracle trajectory records it. Cameras
+/// keep `rz = 0` (it is also their roll) and their look direction is unaffected, because
+/// `q_z180` fixes the `+Z` camera axis.
+pub(crate) const ACTOR_RZ_BAM: u16 = 0x8000;
+
+/// Append a full-form `INTERP` opcode for a slot, authoring an `[I1]` position in DOS axes.
+///
+/// `opcode` is `0x40 | slot`. The `[I1]` x and y are negated on the way in (the DOS-to-`[I1]`
+/// map is `(x, y, z) -> (-x, -y, z)`), so the evaluated record carries `pos_i1` unchanged.
+pub(crate) fn push_interp(body: &mut Vec<u8>, opcode: u8, pos_i1: [f32; 3], rz_bam: u16) {
+    push_interp_dos(
+        body,
+        opcode,
+        [-pos_i1[0], -pos_i1[1], pos_i1[2]],
+        [rz_bam, 0, 0],
+    );
+}
+
+/// Append a full-form `INTERP` opcode holding raw DOS-axes meters and BAM `[rz, rx, ry]`.
+///
+/// Meters are converted to 16.16 fixed point by truncation toward zero.
+pub(crate) fn push_interp_dos(
+    body: &mut Vec<u8>,
+    opcode: u8,
+    pos_dos: [f32; 3],
+    rot_bam: [u16; 3],
+) {
+    body.push(opcode);
+    for meters in pos_dos {
+        body.extend_from_slice(&((meters * 65536.0) as i32).to_le_bytes());
+    }
+    for bam in rot_bam {
+        body.extend_from_slice(&bam.to_le_bytes());
+    }
+}
+
 /// Construct a cleanroom synthetic `.FLM` binary byte buffer matching the Intro
 /// choreography sequence (for `ticks >= 2`), adhering strictly to format specifications.
+///
+/// Positions are authored in DOS axes (x and y negated) so the evaluated `[I1]` records
+/// keep the documented numbers; see [`push_interp`] and [`ACTOR_RZ_BAM`].
 ///
 /// Slice `t` is authored with `tick_duration` 0 for the first slice and 1 afterwards, so
 /// it is reached at cumulative 50 Hz tick `t` and `prev_slice_len` chains correctly.
@@ -47,40 +90,16 @@ pub(crate) fn build_synthetic_intro_flm(ticks: usize) -> Vec<u8> {
             slice_body.extend_from_slice(&0u16.to_le_bytes());
 
             // Initial INTERP slot 0 (Camera at [0.0, 10.0, 50.0])
-            slice_body.push(0x40);
-            slice_body.extend_from_slice(&0i32.to_le_bytes()); // x
-            slice_body.extend_from_slice(&655_360i32.to_le_bytes()); // y = 10.0 * 65536
-            slice_body.extend_from_slice(&3_276_800i32.to_le_bytes()); // z = 50.0 * 65536
-            slice_body.extend_from_slice(&0u16.to_le_bytes()); // rz
-            slice_body.extend_from_slice(&0u16.to_le_bytes()); // rx
-            slice_body.extend_from_slice(&0u16.to_le_bytes()); // ry
+            push_interp(&mut slice_body, 0x40, [0.0, 10.0, 50.0], 0);
 
             // Initial INTERP slot 1 (FOKKER at [0.0, 10.0, 0.0])
-            slice_body.push(0x41);
-            slice_body.extend_from_slice(&0i32.to_le_bytes());
-            slice_body.extend_from_slice(&655_360i32.to_le_bytes());
-            slice_body.extend_from_slice(&0i32.to_le_bytes());
-            slice_body.extend_from_slice(&0u16.to_le_bytes());
-            slice_body.extend_from_slice(&0u16.to_le_bytes());
-            slice_body.extend_from_slice(&0u16.to_le_bytes());
+            push_interp(&mut slice_body, 0x41, [0.0, 10.0, 0.0], ACTOR_RZ_BAM);
         } else if t == 1 {
             // INTERP slot 0 (Camera at [0.0, 10.0, 49.5])
-            slice_body.push(0x40);
-            slice_body.extend_from_slice(&0i32.to_le_bytes());
-            slice_body.extend_from_slice(&655_360i32.to_le_bytes());
-            slice_body.extend_from_slice(&3_244_032i32.to_le_bytes()); // 49.5 * 65536
-            slice_body.extend_from_slice(&0u16.to_le_bytes());
-            slice_body.extend_from_slice(&0u16.to_le_bytes());
-            slice_body.extend_from_slice(&0u16.to_le_bytes());
+            push_interp(&mut slice_body, 0x40, [0.0, 10.0, 49.5], 0);
 
             // INTERP slot 1 (FOKKER at [0.0, 10.0, 0.5])
-            slice_body.push(0x41);
-            slice_body.extend_from_slice(&0i32.to_le_bytes());
-            slice_body.extend_from_slice(&655_360i32.to_le_bytes());
-            slice_body.extend_from_slice(&32_768i32.to_le_bytes()); // 0.5 * 65536
-            slice_body.extend_from_slice(&0u16.to_le_bytes());
-            slice_body.extend_from_slice(&0u16.to_le_bytes());
-            slice_body.extend_from_slice(&0u16.to_le_bytes());
+            push_interp(&mut slice_body, 0x41, [0.0, 10.0, 0.5], ACTOR_RZ_BAM);
         } else {
             // General tick advancement matching streamer.py kinematics
             let (act_x, act_y, act_z) = if t < 60 {
@@ -138,22 +157,10 @@ pub(crate) fn build_synthetic_intro_flm(ticks: usize) -> Vec<u8> {
             }
 
             // Camera INTERP slot 0
-            slice_body.push(0x40);
-            slice_body.extend_from_slice(&((cam_x * 65536.0) as i32).to_le_bytes());
-            slice_body.extend_from_slice(&((cam_y * 65536.0) as i32).to_le_bytes());
-            slice_body.extend_from_slice(&((cam_z * 65536.0) as i32).to_le_bytes());
-            slice_body.extend_from_slice(&0u16.to_le_bytes());
-            slice_body.extend_from_slice(&0u16.to_le_bytes());
-            slice_body.extend_from_slice(&0u16.to_le_bytes());
+            push_interp(&mut slice_body, 0x40, [cam_x, cam_y, cam_z], 0);
 
             // Actor INTERP slot 1
-            slice_body.push(0x41);
-            slice_body.extend_from_slice(&((act_x * 65536.0) as i32).to_le_bytes());
-            slice_body.extend_from_slice(&((act_y * 65536.0) as i32).to_le_bytes());
-            slice_body.extend_from_slice(&((act_z * 65536.0) as i32).to_le_bytes());
-            slice_body.extend_from_slice(&0u16.to_le_bytes());
-            slice_body.extend_from_slice(&0u16.to_le_bytes());
-            slice_body.extend_from_slice(&0u16.to_le_bytes());
+            push_interp(&mut slice_body, 0x41, [act_x, act_y, act_z], ACTOR_RZ_BAM);
         }
 
         // Slice terminator

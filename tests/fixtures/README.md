@@ -25,6 +25,7 @@ A minimal film stream conforming to `[fmt flm]`:
 
 ### 3. `oracle_intro_trajectory.json`
 Golden oracle trajectory snapshot conforming to `Seam 2: TrajectoryRecord` (`crates/stunt-core/src/contracts/trajectory.rs`):
+- Holds evaluated `[I1]` records, not raw DOS axes. `build_synthetic_intro_flm` authors its slots in DOS axes to match: every `INTERP` stores the negated `x` and `y` of the position listed here, and the actor slot (slot 1) stores `rz = 0x8000` (a half turn about Z) so that `q_z180 * q` evaluates to the identity `rotation_quat` `[0, 0, 0, 1]` recorded below. The camera slot keeps `rz = 0`; its look direction is unaffected because `q_z180` fixes `+Z`.
 - Contains a sequence of discrete simulation ticks (ticks 0 and 1). The ticks are 50 Hz cumulative ticks (slice $i$ at the sum of `tick_duration` over slices `0..=i`), not slice ordinals, of the film produced by `build_synthetic_intro_flm(2)` in `crates/stunt-core/tests/common/mod.rs` (test-only, not part of the library). Its slices are authored with `tick_duration` 0 and then 1, so slice $t$ lands on tick $t$. `compute_position_rmse` samples `FilmTimeline` at each oracle tick.
 - Evaluates `CameraTransform` (`eye`, `target`, `fov_degrees`, `roll_radians`).
 - Evaluates `ActorTransform` (`actor_id`, `model_name`, `world_matrix`, `rotation_quat`, `position_meters`, `state_mask`).
@@ -66,5 +67,5 @@ A three-slice film exercising authored `tick_duration` and timeline sampling:
 - **Slice 0** at tick 0 (`tick_duration = 0`): `max_obj = 2`, camera slot 0 (`view_obj 0`), actor slot 1 (`shape_id 1`), `ENGINE.VOC` cue, camera at `(0, 10, 50)` and actor at `(0, 10, 0)`.
 - **Slice 1** at tick 2 (`tick_duration = 2`): camera to `(0, 10, 48)`, actor to `(0, 10, 2)`.
 - **Slice 2** at tick 12 (`tick_duration = 10`): `view_obj 1` (camera cut), `WIND.VOC` cue, camera slot to `(0, 10, 40)`, actor remains at `(0, 10, 2)`.
-- Used by `crates/stunt-core/tests/flm_timeline_test.rs` to verify cumulative timestamps, interpolation, cut suppression, and audio-cue intervals.
+- **Axes**: the coordinates above are the evaluated `[I1]` positions. The bytes are authored in DOS axes, so each `INTERP` opcode stores the negated `x` and `y` (`y = -10.0` is `0xFFF60000`, `x = 0` is unchanged) and the unchanged `z`. All rotations are zero; a zero DOS rotation evaluates to `q_z180 = [0, 0, 1, 0]`, which the timeline tests do not inspect and which fixes the `+Z` camera look axis.- Used by `crates/stunt-core/tests/flm_timeline_test.rs` to verify cumulative timestamps, interpolation, cut suppression, and audio-cue intervals.
 

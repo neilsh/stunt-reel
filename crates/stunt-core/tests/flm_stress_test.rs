@@ -513,8 +513,8 @@ fn test_stress_slot_and_variable_boundaries() {
         slice_body.push(slot_idx as u8); // Group 0
         slice_body.push(SIF_EXISTS | SIF_DRAW);
         slice_body.extend_from_slice(&(slot_idx as u16).to_le_bytes()); // shape_id
-        // static pos
-        slice_body.extend_from_slice(&(slot_idx as i32 * 65536).to_le_bytes());
+        // static pos, authored in DOS axes: raw x is the negated [I1] x
+        slice_body.extend_from_slice(&(-(slot_idx as i32) * 65536).to_le_bytes());
         slice_body.extend_from_slice(&0i32.to_le_bytes());
         slice_body.extend_from_slice(&0i32.to_le_bytes());
         // static rot

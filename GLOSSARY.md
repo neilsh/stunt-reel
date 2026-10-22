@@ -65,6 +65,22 @@ _Avoid_: actor
 An evaluated slot presented to the renderer, excluding the slot driving the camera.
 _Avoid_: object, entity
 
+**DOS axes**:
+The raw coordinate frame of `.FLM` slots and anchor points in `PLAYONE.EXE`. It maps to `[I1]` by a 180° rotation about Z: `(x, y, z) → (−x, −y, z)`, applied to positions and orientations alike. Evaluated trajectory records are always `[I1]`.
+_Avoid_: legacy coordinates
+
+**World**:
+The static scenery of an island: ocean, terrain patches built from `MAP.BIN` over anchor points, and props placed by `SCENERY.scn`. It is drawn with an identity transform.
+_Avoid_: level, map (for the whole)
+
+**Film scene**:
+A film's timeline bound to its archive's shapes and the world. Sampling it at a tick yields a scene frame.
+_Avoid_: scene bundle
+
+**Scene frame**:
+What to draw at one tick: the camera, the world, and one draw per visible actor carrying its shape, world matrix, state mask, and distance to the camera. Two actors sharing a shape are two draws.
+_Avoid_: frame (alone), draw list
+
 **Partial SOD**:
 A shape whose bytecode stopped at an opcode the evaluator does not implement, or at `OP_TAP` without an anchor table; geometry decoded before the stop is retained.
 _Avoid_: corrupt model, truncated SOD

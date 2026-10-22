@@ -62,6 +62,16 @@ pub(crate) fn quat_norm_diff(q: [f32; 4]) -> f32 {
     (quat_norm(q) - 1.0).abs()
 }
 
+/// `(sin, cos)` of half of `angle`, with float noise below `1e-7` snapped to zero.
+///
+/// `cos(PI / 2)` in `f32` is `-4.4e-8`, not `0`; without the snap a half-turn authored as
+/// BAM `0x8000` would not produce an exact quaternion.
+fn half_angle_sin_cos(angle: f32) -> (f32, f32) {
+    let (s, c) = (angle * 0.5).sin_cos();
+    let snap = |v: f32| if v.abs() < 1e-7 { 0.0 } else { v };
+    (snap(s), snap(c))
+}
+
 /// Compute unit quaternion `[x, y, z, w]` from Euler angles under Invariant `[I1]`.
 ///
 /// Rotations conform to Invariant `[I1]` metric right-handed basis:
@@ -72,12 +82,9 @@ pub(crate) fn quat_norm_diff(q: [f32; 4]) -> f32 {
 /// Intrinsic rotation sequence matching Python reference: `q = q_yaw(Y) * q_pitch(X) * q_roll(Z)`.
 /// Guarantees unit quaternion invariant: `| ||q|| - 1.0 | < 1e-4`.
 pub(crate) fn quat_from_euler(yaw: f32, pitch: f32, roll: f32) -> [f32; 4] {
-    let cy = (yaw * 0.5).cos();
-    let sy = (yaw * 0.5).sin();
-    let cp = (pitch * 0.5).cos();
-    let sp = (pitch * 0.5).sin();
-    let cr = (roll * 0.5).cos();
-    let sr = (roll * 0.5).sin();
+    let (sy, cy) = half_angle_sin_cos(yaw);
+    let (sp, cp) = half_angle_sin_cos(pitch);
+    let (sr, cr) = half_angle_sin_cos(roll);
 
     let qx = -(sp * cy * cr + cp * sy * sr);
     let qy = -(cp * sy * cr - sp * cy * sr);

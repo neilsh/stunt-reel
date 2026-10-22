@@ -67,6 +67,10 @@ Under invariant **`[I1]`**, world and model coordinates adhere strictly to the s
        [-Z is Forward / North / Into Screen]
 ```
 
+**DOS axes `[Bounded Observation]`:** The raw frame of `.FLM` slots and anchor points (`GLOSSARY.md`) maps to `[I1]` by a $180^\circ$ rotation about $Z$. Positions: $(x, y, z) \rightarrow (-x, -y, z)$. Orientations: $\mathbf{q}' = \mathbf{q}_{z180} \cdot \mathbf{q}$ with $\mathbf{q}_{z180} = [0, 0, 1, 0]$ in $[x, y, z, w]$ order, so a zero raw rotation evaluates to $\mathbf{q}_{z180}$, not the identity. Camera-local `roll_radians` is unchanged. The `.FLM` evaluator applies this to every slot, so evaluated `TrajectoryRecord`s are always `[I1]`. Evidence: the `CTRY.FLM` tick 1 view slot has raw $y = -14.0$ (negative altitude), terrain applies $(-x, -y, z)$ to `ANCHORPT.DAT` anchor points, and `docs/SPEC.md` § 3.8; the orientation rule is the same rigid rotation and has not been checked independently.
+
+**Open question:** the evaluator negates the stored pitch `rx` before building the quaternion (`docs/SPEC.md` § 3.7), which hints that the raw rotation convention may differ in handedness from `[I1]`, beyond the $180^\circ$ Z rotation above. Not resolved here; see `Q-FLM-08` in [`flm.md`](../flm.md).
+
 ---
 
 ## 2. Memory Layout & Bitfield Representations
@@ -187,7 +191,9 @@ Given editor units $[X_{\text{ed}}, Y_{\text{ed}}, Z_{\text{ed}}]$:
 $$X_{\text{meters}} = \frac{X_{\text{ed}} - 100000.0}{10.0}, \quad Y_{\text{meters}} = \frac{Y_{\text{ed}}}{10.0}, \quad Z_{\text{meters}} = \frac{Z_{\text{ed}} - 100000.0}{10.0}$$
 
 In `.FLM` binary streams, positions are already serialized as raw 32-bit $16.16$ fixed-point integers:
-$$X_{\text{meters}} = \frac{X_{\text{fixed32}}}{65536.0}, \quad Y_{\text{meters}} = \frac{Y_{\text{fixed32}}}{65536.0}, \quad Z_{\text{meters}} = \frac{Z_{\text{fixed32}}}{65536.0}$$
+$$X_{\text{dos}} = \frac{X_{\text{fixed32}}}{65536.0}, \quad Y_{\text{dos}} = \frac{Y_{\text{fixed32}}}{65536.0}, \quad Z_{\text{dos}} = \frac{Z_{\text{fixed32}}}{65536.0}$$
+
+These are meters in DOS axes; the evaluator then applies $(x, y, z) \rightarrow (-x, -y, z)$ to reach `[I1]` (see § 1.2).
 
 ### 3.3 Angular Conversions & Natural Modular Arithmetic
 

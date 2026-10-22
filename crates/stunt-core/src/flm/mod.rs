@@ -2,6 +2,10 @@
 //!
 //! Evaluates binary `.FLM` film streams into [`crate::contracts::trajectory::TrajectoryRecord`]
 //! time-series streams adhering to Seam 2 and Invariants `[I1]`, `[I4]`.
+//!
+//! Slots are authored in DOS axes (GLOSSARY.md); [`SlotState::position_meters`] and
+//! [`SlotState::rotation_quat`] convert them to `[I1]`, so every evaluated record, camera
+//! included, is already `[I1]` and consumers apply no further axis heuristic.
 
 mod interpolate;
 pub mod parity;
@@ -11,7 +15,7 @@ pub mod timeline;
 pub use parity::{GATE_G04_RMSE_THRESHOLD_METERS, assert_parity_gate_g04, compute_position_rmse};
 pub use parser::{
     FlmParser, SIF_ANIMATES, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW,
-    SIFILM_MAX_OBJ, Slice, SlotState,
+    SIFILM_MAX_OBJ, Slice, SlotState, dos_to_i1_position, dos_to_i1_quat,
 };
 pub use timeline::{FilmTimeline, SliceKeyframe, TIMELINE_HZ, TIMELINE_TICK_SECONDS};
 
@@ -24,7 +28,9 @@ use std::fmt;
 ///
 /// `.FLM` stores each slot's orientation as BAM angles whose rotation maps camera space
 /// to world space with `+Z` pointing into the screen, so rotating `+Z` by the view slot's
-/// quaternion yields the world-space look direction (docs/SPEC.md § 3.7).
+/// `[I1]` quaternion yields the `[I1]` look direction (docs/SPEC.md § 3.7). That equals
+/// the DOS-axes look direction with the (-x, -y, z) map applied, because the quaternion
+/// already carries `q_z180` ([`SlotState::rotation_quat`]).
 pub const CAMERA_FORWARD: [f32; 3] = [0.0, 0.0, 1.0];
 
 /// Distance in meters from the view slot to its look-at point.

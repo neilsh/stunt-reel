@@ -372,9 +372,9 @@ fn test_flm_static_actor_placement_in_create() {
     slice0.push(0x02);
     slice0.push(SIF_EXISTS | SIF_DRAW);
     slice0.extend_from_slice(&42u16.to_le_bytes()); // shape_id 42
-    // Static pos [10.0, 20.0, 30.0]
-    slice0.extend_from_slice(&(10 * 65536i32).to_le_bytes());
-    slice0.extend_from_slice(&(20 * 65536i32).to_le_bytes());
+    // Static pos [10.0, 20.0, 30.0] in [I1], authored in DOS axes as [-10.0, -20.0, 30.0]
+    slice0.extend_from_slice(&(-10 * 65536i32).to_le_bytes());
+    slice0.extend_from_slice(&(-20 * 65536i32).to_le_bytes());
     slice0.extend_from_slice(&(30 * 65536i32).to_le_bytes());
     // Static rot [0, 0, 0]
     slice0.extend_from_slice(&0u16.to_le_bytes());
@@ -433,7 +433,10 @@ fn test_flm_invalid_opcode_detection() {
 fn test_flm_slot_state_methods() {
     let mut slot = SlotState::default();
     assert_eq!(slot.position_meters(), [0.0, 0.0, 0.0]);
-    assert_eq!(slot.rotation_quat(), [0.0, 0.0, 0.0, 1.0]);
+    assert_eq!(slot.position_dos_meters(), [0.0, 0.0, 0.0]);
+    // A zero DOS rotation is the identity in DOS axes and q_z180 in [I1].
+    assert_eq!(slot.rotation_quat_dos(), [0.0, 0.0, 0.0, 1.0]);
+    assert_eq!(slot.rotation_quat(), [0.0, 0.0, 1.0, 0.0]);
 
     slot.type_flags = SIF_EXISTS | SIF_MOVES | SIF_ROTATES | SIF_ANIMATES;
     assert_ne!(slot.type_flags & SIF_MOVES, 0);
@@ -441,7 +444,8 @@ fn test_flm_slot_state_methods() {
     assert_ne!(slot.type_flags & SIF_ANIMATES, 0);
 
     slot.pos_fixed = [65536, 131072, -65536];
-    assert_eq!(slot.position_meters(), [1.0, 2.0, -1.0]);
+    assert_eq!(slot.position_dos_meters(), [1.0, 2.0, -1.0]);
+    assert_eq!(slot.position_meters(), [-1.0, -2.0, -1.0]);
 }
 
 #[test]

@@ -43,10 +43,37 @@ pub struct SlotState {
     pub animate: u16,
 }
 
+/// Map a position from DOS axes to `[I1]`: a 180° rotation about Z, `(x, y, z) -> (-x, -y, z)`.
+///
+/// DOS axes are the raw frame of `.FLM` slots and anchor points (GLOSSARY.md "DOS axes").
+/// The same rule terrain applies to anchor points (docs/SPEC.md § 3.8).
+#[inline]
+pub fn dos_to_i1_position(p: [f32; 3]) -> [f32; 3] {
+    // `+ 0.0` turns the `-0.0` produced by negating zero back into `0.0`.
+    [-p[0] + 0.0, -p[1] + 0.0, p[2]]
+}
+
+/// Map an orientation `[x, y, z, w]` from DOS axes to `[I1]`: `q' = q_z180 * q`.
+///
+/// `q_z180 = [0, 0, 1, 0]` is the 180° rotation about Z that maps DOS positions to `[I1]`
+/// (see [`dos_to_i1_position`]), so `rotate(q', v) == rz180(rotate(q, v))` for every `v`.
+/// The product expands to `(-y, x, w, -z)`; since `q` and `-q` are the same rotation, the
+/// result is returned with `w >= 0` so a DOS yaw of 180° about Z evaluates to the identity
+/// `[0, 0, 0, 1]` rather than `[0, 0, 0, -1]`.
+#[inline]
+pub fn dos_to_i1_quat(q: [f32; 4]) -> [f32; 4] {
+    let [x, y, z, w] = q;
+    let mut out = [-y + 0.0, x + 0.0, w + 0.0, -z + 0.0];
+    if out[3] < 0.0 {
+        out = [-out[0] + 0.0, -out[1] + 0.0, -out[2] + 0.0, -out[3] + 0.0];
+    }
+    out
+}
+
 impl SlotState {
-    /// Convert 16.16 fixed-point position into right-handed metric meters `[I1]`.
+    /// Slot position as 16.16 fixed-point converted to meters, still in DOS axes.
     #[inline]
-    pub fn position_meters(&self) -> [f32; 3] {
+    pub fn position_dos_meters(&self) -> [f32; 3] {
         [
             self.pos_fixed[0] as f32 / 65536.0,
             self.pos_fixed[1] as f32 / 65536.0,
@@ -54,12 +81,14 @@ impl SlotState {
         ]
     }
 
-    /// Convert BAM rotation angles `[rz, rx, ry]` into a normalized unit quaternion `[I1]`.
+    /// Slot BAM rotation `[rz, rx, ry]` as a unit quaternion, still in DOS axes.
     ///
     /// The stored pitch `rx` uses the opposite handedness from `quat_from_euler`'s
     /// `pitch` argument: negating it is what makes a view slot look at the drawn actor
-    /// (`CTRY.FLM` tick 1 lands 1.4° off the actor bearing; docs/SPEC.md § 3.7).
-    pub fn rotation_quat(&self) -> [f32; 4] {
+    /// (`CTRY.FLM` tick 1 lands 1.4° off the actor bearing; docs/SPEC.md § 3.7). Whether
+    /// the raw convention differs in handedness more broadly is an open question
+    /// (research/formats/concepts/coordinates-and-units.md § 1.2).
+    pub fn rotation_quat_dos(&self) -> [f32; 4] {
         if self.rot_bam == [0, 0, 0] {
             [0.0, 0.0, 0.0, 1.0]
         } else {
@@ -68,6 +97,21 @@ impl SlotState {
             let ry_rad = bam_to_radians(self.rot_bam[2]);
             quat_from_euler(ry_rad, -rx_rad, rz_rad)
         }
+    }
+
+    /// Slot position in right-handed metric meters `[I1]`: the DOS-axes position through
+    /// [`dos_to_i1_position`]. This is the single place the evaluator converts positions.
+    #[inline]
+    pub fn position_meters(&self) -> [f32; 3] {
+        dos_to_i1_position(self.position_dos_meters())
+    }
+
+    /// Slot orientation as a unit quaternion in `[I1]`: the DOS-axes rotation through
+    /// [`dos_to_i1_quat`]. This is the single place the evaluator converts orientations.
+    ///
+    /// A zero rotation evaluates to `q_z180 = [0, 0, 1, 0]`, not the identity.
+    pub fn rotation_quat(&self) -> [f32; 4] {
+        dos_to_i1_quat(self.rotation_quat_dos())
     }
 }
 

@@ -152,8 +152,11 @@ Encountered in Object Lifecycle opcodes (`0x00..0x3F`):
 - **Spatial Positions ($16.16$ Fixed-Point):**
   Original positions are signed 32-bit integers in $16.16$ fixed-point format:
   $$\mathbf{P}_{\text{raw}} = [x_{\text{raw}}, y_{\text{raw}}, z_{\text{raw}}]$$
-  Converted to metric right-handed basis ($+X$ Right, $+Y$ Up, $+Z$ Backward toward viewer, $-Z$ Forward):
-  $$x_{\text{meters}} = \frac{x_{\text{raw}}}{65536.0}, \quad y_{\text{meters}} = \frac{y_{\text{raw}}}{65536.0}, \quad z_{\text{meters}} = \frac{z_{\text{raw}}}{65536.0}$$
+  Dividing by $65536$ gives meters in **DOS axes** (the raw frame of slots and anchor points, see `GLOSSARY.md`), not yet `[I1]`:
+  $$x_{\text{dos}} = \frac{x_{\text{raw}}}{65536.0}, \quad y_{\text{dos}} = \frac{y_{\text{raw}}}{65536.0}, \quad z_{\text{dos}} = \frac{z_{\text{raw}}}{65536.0}$$
+  `[Bounded Observation]` DOS axes map to the metric right-handed basis ($+X$ Right, $+Y$ Up, $+Z$ Backward toward viewer, $-Z$ Forward) by a $180^\circ$ rotation about $Z$, applied by the evaluator to every slot, camera included:
+  $$(x, y, z)_{\text{I1}} = (-x_{\text{dos}}, -y_{\text{dos}}, z_{\text{dos}}), \qquad \mathbf{q}_{\text{I1}} = \mathbf{q}_{z180} \cdot \mathbf{q}_{\text{dos}}, \quad \mathbf{q}_{z180} = [0, 0, 1, 0]$$
+  Evidence: the `CTRY.FLM` tick 1 view slot has raw $y = -14.0$ (a negative altitude), the same flip terrain applies to `ANCHORPT.DAT` anchor points, and `docs/SPEC.md` § 3.8. The orientation half of the rule follows from treating the map as one rigid rotation; no orientation has been checked against `PLAYONE.EXE` output beyond the `CTRY.FLM` look direction. `roll_radians` is camera-local and is not remapped.
 - **Binary Angular Measurement (BAM):**
   Rotation angles are unsigned 16-bit integers ($0..65535$):
   $$\theta_{\text{rad}} = \left(\frac{\text{raw\_u16}}{65536.0}\right) \times 2\pi, \quad \theta_{\text{deg}} = \left(\frac{\text{raw\_u16}}{65536.0}\right) \times 360.0$$
@@ -198,6 +201,7 @@ The following backlog documents open questions and investigations regarding `.FL
 | **Q-FLM-05** | Slerp Antipodal Quaternions | When $\mathbf{q}_t \cdot \mathbf{q}_{t+1} < 0.0$, slerp traverses the long path on $S^3$. | `[Established]` | Negate target quaternion prior to spherical interpolation. |
 | **Q-FLM-06** | Real-Mode Dynamic Buffer Allocation for Variable Slice Rates | In low-memory real-mode conditions, `PLAYONE.EXE` may have dynamically throttled slice ingestion buffers when `tick_duration` dropped to 1 tick. | `[Hypothesis]` | Modern stream parser processes variable slice durations with zero buffer reallocation. |
 | **Q-FLM-07** | Kaitai encodability | `interp` widths depend on slot flags mutated by `create`, with 2,278,626 intra-slice dependencies and 109,185 slot flag changes across the 561 walkable films; the state cannot cross a Kaitai `repeat`. | `[Established]` | [`flm_slice.ksy`](flm_slice.ksy) plus `stunt_reel.flm_walk` masks; seven films outside the grammar are pinned as corpus anomalies. |
+| **Q-FLM-08** | Raw rotation handedness | The evaluator negates the stored pitch `rx` before `quat_from_euler` so a view slot looks at the drawn actor (`CTRY.FLM` tick 1, 1.4° off the bearing). That hints the raw rotation convention may differ in handedness from `[I1]`, not only by the $180^\circ$ Z rotation of § 4.1. Not resolved; `q_z180 * q` is applied on top of the negated-pitch quaternion. | `[Bounded Observation]` | Keep the pitch negation and the `q_z180` map; re-check both against non-zero-pitch, non-zero-roll actor orientations. |
 
 ---
 
