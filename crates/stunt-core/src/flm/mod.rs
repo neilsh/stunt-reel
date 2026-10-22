@@ -8,14 +8,17 @@
 //! included, is already `[I1]` and consumers apply no further axis heuristic.
 
 mod interpolate;
-pub mod parity;
-pub mod parser;
-pub mod timeline;
+mod parity;
+mod parser;
+#[cfg(test)]
+mod parser_tests;
+mod timeline;
 
 pub use parity::{GATE_G04_RMSE_THRESHOLD_METERS, assert_parity_gate_g04, compute_position_rmse};
+use parser::FlmParser;
 pub use parser::{
-    FlmParser, SIF_ANIMATES, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW,
-    SIFILM_MAX_OBJ, Slice, SlotState, dos_to_i1_position, dos_to_i1_quat,
+    SIF_ANIMATES, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW, SIFILM_MAX_OBJ,
+    SlotState,
 };
 pub use timeline::{FilmTimeline, SliceKeyframe, TIMELINE_HZ, TIMELINE_TICK_SECONDS};
 

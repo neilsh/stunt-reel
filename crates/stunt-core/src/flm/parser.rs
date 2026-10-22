@@ -48,7 +48,7 @@ pub struct SlotState {
 /// DOS axes are the raw frame of `.FLM` slots and anchor points (GLOSSARY.md "DOS axes").
 /// The same rule terrain applies to anchor points (docs/SPEC.md § 3.8).
 #[inline]
-pub fn dos_to_i1_position(p: [f32; 3]) -> [f32; 3] {
+pub(crate) fn dos_to_i1_position(p: [f32; 3]) -> [f32; 3] {
     // `+ 0.0` turns the `-0.0` produced by negating zero back into `0.0`.
     [-p[0] + 0.0, -p[1] + 0.0, p[2]]
 }
@@ -56,12 +56,12 @@ pub fn dos_to_i1_position(p: [f32; 3]) -> [f32; 3] {
 /// Map an orientation `[x, y, z, w]` from DOS axes to `[I1]`: `q' = q_z180 * q`.
 ///
 /// `q_z180 = [0, 0, 1, 0]` is the 180° rotation about Z that maps DOS positions to `[I1]`
-/// (see [`dos_to_i1_position`]), so `rotate(q', v) == rz180(rotate(q, v))` for every `v`.
+/// (see `dos_to_i1_position`), so `rotate(q', v) == rz180(rotate(q, v))` for every `v`.
 /// The product expands to `(-y, x, w, -z)`; since `q` and `-q` are the same rotation, the
 /// result is returned with `w >= 0` so a DOS yaw of 180° about Z evaluates to the identity
 /// `[0, 0, 0, 1]` rather than `[0, 0, 0, -1]`.
 #[inline]
-pub fn dos_to_i1_quat(q: [f32; 4]) -> [f32; 4] {
+pub(crate) fn dos_to_i1_quat(q: [f32; 4]) -> [f32; 4] {
     let [x, y, z, w] = q;
     let mut out = [-y + 0.0, x + 0.0, w + 0.0, -z + 0.0];
     if out[3] < 0.0 {
@@ -100,14 +100,14 @@ impl SlotState {
     }
 
     /// Slot position in right-handed metric meters `[I1]`: the DOS-axes position through
-    /// [`dos_to_i1_position`]. This is the single place the evaluator converts positions.
+    /// `dos_to_i1_position`. This is the single place the evaluator converts positions.
     #[inline]
     pub fn position_meters(&self) -> [f32; 3] {
         dos_to_i1_position(self.position_dos_meters())
     }
 
     /// Slot orientation as a unit quaternion in `[I1]`: the DOS-axes rotation through
-    /// [`dos_to_i1_quat`]. This is the single place the evaluator converts orientations.
+    /// `dos_to_i1_quat`. This is the single place the evaluator converts orientations.
     ///
     /// A zero rotation evaluates to `q_z180 = [0, 0, 1, 0]`, not the identity.
     pub fn rotation_quat(&self) -> [f32; 4] {
@@ -117,18 +117,18 @@ impl SlotState {
 
 /// Metadata and events extracted from a single `.FLM` time slice.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Slice {
+pub(crate) struct Slice {
     /// Back-pointer length of the preceding slice, used to walk the stream backwards.
-    pub prev_slice_len: u16,
+    pub(crate) prev_slice_len: u16,
     /// Slice duration in simulation ticks.
-    pub tick_duration: u8,
+    pub(crate) tick_duration: u8,
     /// Sound events triggered while this slice runs.
-    pub sound_cues: Vec<AudioCue>,
+    pub(crate) sound_cues: Vec<AudioCue>,
 }
 
 /// Binary stream decoder for `.FLM` choreography files.
 #[derive(Debug, Clone)]
-pub struct FlmParser<'a> {
+pub(crate) struct FlmParser<'a> {
     data: &'a [u8],
     pos: usize,
     /// Length of the most recently decoded slice, used to validate the back-pointer chain.
@@ -139,7 +139,7 @@ pub struct FlmParser<'a> {
 
 impl<'a> FlmParser<'a> {
     /// Create a new parser, validating the 4-byte ASCII signature `b"FILM"`.
-    pub fn new(data: &'a [u8]) -> Result<Self, FlmError> {
+    pub(crate) fn new(data: &'a [u8]) -> Result<Self, FlmError> {
         if data.len() < 4 {
             return Err(FlmError::UnexpectedEof {
                 expected: 4,
@@ -166,24 +166,18 @@ impl<'a> FlmParser<'a> {
 
     /// Non-fatal inconsistencies observed while decoding the stream.
     #[inline]
-    pub fn warnings(&self) -> &[String] {
+    pub(crate) fn warnings(&self) -> &[String] {
         &self.warnings
-    }
-
-    /// Current read cursor offset in bytes.
-    #[inline]
-    pub fn position(&self) -> usize {
-        self.pos
     }
 
     /// True if there are remaining bytes to decode.
     #[inline]
-    pub fn has_more(&self) -> bool {
+    pub(crate) fn has_more(&self) -> bool {
         self.pos < self.data.len()
     }
 
     /// Read a single byte.
-    pub fn read_u8(&mut self) -> Result<u8, FlmError> {
+    pub(crate) fn read_u8(&mut self) -> Result<u8, FlmError> {
         if self.pos >= self.data.len() {
             return Err(FlmError::UnexpectedEof {
                 expected: self.pos + 1,
@@ -196,7 +190,7 @@ impl<'a> FlmParser<'a> {
     }
 
     /// Read an unsigned 16-bit little-endian integer.
-    pub fn read_u16_le(&mut self) -> Result<u16, FlmError> {
+    pub(crate) fn read_u16_le(&mut self) -> Result<u16, FlmError> {
         if self.pos + 2 > self.data.len() {
             return Err(FlmError::UnexpectedEof {
                 expected: self.pos + 2,
@@ -209,7 +203,7 @@ impl<'a> FlmParser<'a> {
     }
 
     /// Read a signed 32-bit little-endian integer (16.16 fixed-point).
-    pub fn read_i32_le(&mut self) -> Result<i32, FlmError> {
+    pub(crate) fn read_i32_le(&mut self) -> Result<i32, FlmError> {
         if self.pos + 4 > self.data.len() {
             return Err(FlmError::UnexpectedEof {
                 expected: self.pos + 4,
@@ -227,7 +221,7 @@ impl<'a> FlmParser<'a> {
     }
 
     /// Read a null-terminated ASCII C-string.
-    pub fn read_cstring(&mut self) -> Result<String, FlmError> {
+    pub(crate) fn read_cstring(&mut self) -> Result<String, FlmError> {
         let start = self.pos;
         while self.pos < self.data.len() {
             let b = self.data[self.pos];
@@ -247,7 +241,7 @@ impl<'a> FlmParser<'a> {
     ///
     /// Applies state mutations to object slots, variables, active camera, credits,
     /// and returns the decoded [`Slice`] metadata.
-    pub fn parse_slice(
+    pub(crate) fn parse_slice(
         &mut self,
         current_tick: u32,
         slots: &mut [SlotState; SIFILM_MAX_OBJ],
