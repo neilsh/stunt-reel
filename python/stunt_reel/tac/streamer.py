@@ -16,7 +16,8 @@ import struct
 from collections.abc import Sequence
 from pathlib import Path
 
-from stunt_reel.math import (
+from stunt_reel.tac.client import TacClient
+from stunt_reel.tac.dos_math import (
     bam_to_radians,
     focal_to_fov_y,
     quat_from_euler,
@@ -25,7 +26,6 @@ from stunt_reel.math import (
     quat_normalize,
     vec3_sub,
 )
-from stunt_reel.tac.client import TacClient
 from stunt_reel.tac.models import (
     ActorTransform,
     AudioCue,

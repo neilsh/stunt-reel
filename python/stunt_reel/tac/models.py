@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from stunt_reel.math import compute_world_matrix as math_compute_world_matrix
+from stunt_reel.tac.dos_math import compute_world_matrix as math_compute_world_matrix
 
 __all__ = [
     "ActorTransform",

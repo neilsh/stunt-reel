@@ -24,9 +24,9 @@ import re
 from pathlib import Path
 from typing import Any
 
-from stunt_reel.gltf.palette import MODE_13H_PALETTE
 from stunt_reel.tac import playone
 from stunt_reel.tac.client import TacClient
+from stunt_reel.tac.palette import MODE_13H_PALETTE
 
 __all__ = [
     "BOOT_PAGES",

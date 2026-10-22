@@ -24,16 +24,9 @@ import pytest
 
 from stunt_reel.math import (
     bam_to_degrees,
-    bam_to_radians,
-    compute_world_matrix,
     degrees_to_bam,
-    focal_to_fov_y,
     fov_y_to_focal,
     quat_from_direction_cosines,
-    quat_from_euler,
-    quat_norm,
-    quat_norm_diff,
-    quat_normalize,
     radians_to_bam,
     vec3_add,
     vec3_cross,
@@ -42,7 +35,6 @@ from stunt_reel.math import (
     vec3_length,
     vec3_normalize,
     vec3_scale,
-    vec3_sub,
 )
 from stunt_reel.tac import (
     KEY_ENTER,
@@ -66,6 +58,16 @@ from stunt_reel.tac import (
     generate_intro_trajectory,
     load_trajectory_records,
     save_trajectory_records,
+)
+from stunt_reel.tac.dos_math import (
+    bam_to_radians,
+    compute_world_matrix,
+    focal_to_fov_y,
+    quat_from_euler,
+    quat_norm,
+    quat_norm_diff,
+    quat_normalize,
+    vec3_sub,
 )
 from stunt_reel.tac.framebuffer import FRAME_BYTES, capture
 from stunt_reel.tac.playone import DGROUP_RUNTIME_SEG, FILM_CLOCK_OFFSET, GLOBAL_TICK_OFFSET

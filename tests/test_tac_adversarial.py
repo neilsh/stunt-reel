@@ -55,13 +55,6 @@ from pathlib import Path
 
 import pytest
 
-from stunt_reel.math import (
-    compute_world_matrix,
-    focal_to_fov_y,
-    quat_from_euler,
-    quat_norm,
-    quat_norm_diff,
-)
 from stunt_reel.tac import (
     KEY_ENTER,
     BdaInjector,
@@ -72,6 +65,13 @@ from stunt_reel.tac import (
     char_to_key,
     compute_position_rmse,
     generate_intro_trajectory,
+)
+from stunt_reel.tac.dos_math import (
+    compute_world_matrix,
+    focal_to_fov_y,
+    quat_from_euler,
+    quat_norm,
+    quat_norm_diff,
 )
 
 FIXTURE_PATH = Path("tests/fixtures/oracle_intro_trajectory.json")
