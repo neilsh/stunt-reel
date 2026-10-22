@@ -113,3 +113,14 @@ During initialization, `PLAYONE.EXE` references several key data assets located 
 | `pilots\` | `DS:05D4` | Pilot profile directory |
 | `res\*.res` | `DS:05DB` | Core resource package files |
 | `VAULT\*.*` | `DS:0A58` | Directory pattern scanned for film playback |
+
+## 5. Reproducing the Static Analysis
+
+The disassembly in this directory comes from the unpacked load image, not from a runtime dump, so anyone with a local `PLAYONE.EXE` can check an address.
+
+1. Unpack: `python python/scripts/unlzexe.py target_bin/PLAYONE.EXE build/re/playone.img`. The image has no MZ header and the entry `CS` is 0, so a code address `CS:off` is the image offset `off`, a far address `seg:off` is `seg * 16 + off`, and `DS:off` is `0xD510 + off` (the `0xD910` above counts the 1,024-byte header).
+2. Disassemble 16-bit code with Capstone (`capstone.Cs(CS_ARCH_X86, CS_MODE_16)`) over a slice of the image, with `skipdata` enabled when scanning across data. Scan the whole image, not only the first segment: far calls (`lcall 0x1DEA, 0x05B1`) land at higher offsets, and a search limited to `0x0000..0xD510` misses them.
+3. Find readers of a film variable by operand, not by name. Variable `n` is `DS:0x47C8 + 2n` or `[ptr + 0x7E + 2n]`, so var 10 is `+0x92`, var 11 `+0x94`, var 13 `+0x98` and var 14 `+0x9A`; an index-driven reader (`[bx + si + 0x7E]`) matches only the base offset. A near `call` has no byte pattern, so find callers by decoding every `E8`/`E9` target.
+4. Treat zeros in the image as runtime-initialised data (the head of segment `0x1DEA` is a zeroed state block) and a `cs:`-prefixed word store as possibly self-modifying or interrupt-side state before assuming it has a reader.
+
+The helpers used for this work were throwaway scripts and are not committed; the steps above are enough to rebuild them.

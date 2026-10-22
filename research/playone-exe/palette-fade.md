@@ -85,7 +85,7 @@ A search of the unpacked image for operands at `DS:0x47C8 + 2n` and `[ptr + 0x7E
 
 The palette and sun readers above run on the snapshot struct at `DS:0x4888`, not on `0x474A` directly. The caller at `0x4A35` enters the frame routine at `0x0EE9` with `BX = 0x4888`, and `0x39B0` has copied the 16 live variables from `0x47C8` to `0x4906` (`0x4888 + 0x7E`) beforehand. No static caller of the `0x0EE6` entry (`BX = 0x474A`) was found, so the offsets in the table are the same either way but the live path reads the snapshot.
 
-`0x39D0` and `0x42F9` are bookkeeping: the first snapshots the 16 live variables to `DS:0x4906` with the rest of the film state, the second emits `var_set` bytes (`0x90 - n`) into the film being recorded when a variable changes.
+`0x39D0` and `0x42F9` are bookkeeping: the first snapshots the 16 live variables to `DS:0x4906` with the rest of the film state, the second emits `var_set` bytes (`0x80 + n`, from `0x90 - CL` with `CL` counting 16 to 1) into the film being recorded when a variable changes.
 
 ## 4. Driver Vector Table
 

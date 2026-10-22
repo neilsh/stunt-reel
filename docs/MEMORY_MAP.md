@@ -166,3 +166,13 @@ See [`research/playone-exe/sod-vm.md`](../research/playone-exe/sod-vm.md) for `O
 | `CS:0x136F` | `[Established]` | Per-frame film-variable interpolation |
 | `CS:0x3D54` | `[Established]` | `var_set` handler |
 | `CS:0x7B70` | `[Established]` | VGA DAC upload (`0x3C8`/`0x3C9`), two retrace-gated halves |
+| `DS:0x4888` | `[Supported Inference]` | Snapshot of the `0x474A` film state taken at `CS:0x39B0` and read by the frame routine `CS:0x0EE9`; `+0x7E` (`DS:0x4906`) holds the 16 variable copies, `+0x1A` (`DS:0x48A2`) a copy of `0x474A + 0x1A` |
+| `DS:0x4778 -> DS:0x48B6` | `[Supported Inference]` | Per-slot record pointers of the live and snapshot structs; `CS:0x39B0` copies 12 words per slot |
+| `CS:0x0EE9` | `[Supported Inference]` | Per-frame film render step (entered from `CS:0x4A35` with `BX = 0x4888`): sun vector, view matrix, one scene draw, credits string. `CS:0x0EE6` is the same step with `BX = 0x474A`; no static caller found |
+| `CS:0x196C` | `[Supported Inference]` | Sun or moon direction from var 13: `angle = var 13 - 0x4000`, stored at `DS:0x49EC..0x49F0` and negated at `[DS:0x542]:0x8078..0x807C`; `CS:0x908E` projects it through the camera matrix at `0x80C0` |
+| `CS:0x11FC` | `[Bounded Observation]` | View setup indexed by `AX` (`[BX + SI + 0x7E]`, `[BX + SI + 0x2E]`), scaled by `DS:0x22B6` (set by `CS:0x11F8`, `0x7FFF` at `CS:0x4A29`) |
+| `CS:0x1D96` | `[Bounded Observation]` | Stores var 12 and its negation at `0x15D4:0x8126`/`0x8128`, var 10 (with change sign and low byte) at `0x15D4:0x8120`/`0x8122`; `DS:0x22BC` keeps the previous var 10 |
+| `DS:0x2275` | `[Supported Inference]` | Video-mode flag: `0` after `int 10h` mode `0x13` (`CS:0x737B`), `0xFF` on the alternate path (`CS:0x6E1B`); selects `0x824:0x07DC` over `0x824:0x0A05` in the frame routine |
+| `CS:0x39D0` | `[Established]` | Copies the 16 live variables from `DS:0x47C8` to `DS:0x4906` (the checkpoint inside `0x39B0`) |
+| `CS:0x42F5` | `[Supported Inference]` | Film recorder: compares the 16 live variables with `DS:0x49C6` and emits `var_set` bytes (`0x80 + n`, from `0x90 - CL` with `CL` counting 16 to 1) when they change |
+| `0x1DEA:0x05B1` | `[Supported Inference]` | Resident PCM mixer setter: `AX = 1` stores `DX` in `cs:[0x49]`, otherwise `cs:[0xD7]` (var 11); channel blocks are 0x8E bytes apart and no reader of that field was found |
