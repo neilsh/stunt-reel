@@ -25,7 +25,7 @@ A film's slices placed on the 50 Hz clock by cumulative tick duration. Playback 
 _Avoid_: track, sequence
 
 **Trajectory record**:
-The evaluated snapshot of camera, actors, and audio cues at a slice timestamp or at an interpolated tick sampled from the timeline. This is what the renderer consumes.
+The evaluated snapshot of camera, actors, and audio cues at a slice timestamp or at an interpolated tick sampled from the timeline. This is what the renderer consumes. Its timestamp is always a 50 Hz tick, never a slice ordinal; a slice's ordinal is only its position in the timeline.
 _Avoid_: trajectory tick, frame
 
 **Trajectory**:
@@ -84,4 +84,12 @@ Synthetic input built from format knowledge, containing no proprietary game data
 _Avoid_: test asset
 
 **Parity**:
-Comparison of a reconstructed render against a frame captured from `PLAYONE.EXE`, scored by SSIM and mask IoU.
+Comparison of a reconstructed render against a captured frame, scored by SSIM and mask IoU. The render is sampled from the timeline at the captured frame's film clock.
+
+**Captured frame**:
+One distinct rendered frame grabbed from `PLAYONE.EXE` at the vertical-retrace trap, numbered by capture order and tagged with its film clock.
+_Avoid_: tick (for the capture ordinal)
+
+**Film clock**:
+`PLAYONE.EXE`'s runtime count of 50 Hz ticks into the active film, read from DGROUP. It is the tick a captured frame shows.
+_Avoid_: frame counter, global tick

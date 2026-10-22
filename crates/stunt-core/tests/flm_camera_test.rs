@@ -10,7 +10,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use stunt_core::flm::{CAMERA_LOOKAHEAD_METERS, FlmPlayer};
+use stunt_core::flm::{CAMERA_LOOKAHEAD_METERS, FilmTimeline};
 
 /// Resource ID of the `.SOD` chunk `CTRY.FLM` draws on its opening ticks.
 const CTRY_ACTOR_SHAPE: u16 = 0x7F37;
@@ -39,19 +39,17 @@ fn test_ctry_view_slot_directs_camera_at_drawn_actor() {
     let path = corpus_film();
     let bytes = fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
 
-    let mut player = FlmPlayer::new(&bytes).expect("CTRY.FLM parses");
-    let mut records = Vec::new();
-    while let Some(record) = player.step_tick() {
-        records.push(record);
-    }
+    let timeline = FilmTimeline::from_bytes(&bytes).expect("CTRY.FLM parses");
 
-    let record = records
-        .iter()
-        .find(|record| record.tick == 1)
+    // The second authored slice (slice index 1).
+    let record = timeline
+        .slices()
+        .get(1)
+        .map(|slice| &slice.record)
         .unwrap_or_else(|| {
             panic!(
-                "CTRY.FLM produced no tick 1 record ({} total)",
-                records.len()
+                "CTRY.FLM produced no second slice ({} total)",
+                timeline.slices().len()
             )
         });
 
@@ -63,7 +61,7 @@ fn test_ctry_view_slot_directs_camera_at_drawn_actor() {
     assert_eq!(
         drawn.len(),
         1,
-        "tick 1 must carry exactly one drawn actor with shape_id 0x{CTRY_ACTOR_SHAPE:04X}, got {:?}",
+        "slice 1 must carry exactly one drawn actor with shape_id 0x{CTRY_ACTOR_SHAPE:04X}, got {:?}",
         record
             .actors
             .iter()

@@ -1,29 +1,31 @@
 //! Adversarial Stress and Fuzz Test Suite for Ticket T07 (.FLM Choreography Evaluator & Player).
 //!
-//! Stress-tests `.FLM` binary parser, timeline state machine, cut detection, and interpolation against:
+//! Stress-tests the `.FLM` binary parser and `FilmTimeline` evaluation against:
 //! - Malformed / truncated headers (0..4 bytes) and corrupted magic signatures
 //! - Unclosed time slices without `0xFF` terminators
 //! - Truncated opcode payloads across Group 0 (CREATE), Group 1 (INTERP), and Group 2 (MISC)
 //! - Out-of-bounds slot IDs (all 64 slots, > 63 slot boundaries, view_obj overflows)
 //! - Timeline variable boundary conditions (0..15 and out-of-range opcodes)
 //! - Zero and extreme time increments (`tick_duration = 0`, `tick_duration = 255`, header values the parser never validates)
-//! - Kinematic extremes: 16.16 fixed-point wrapping, extreme BAM angles, antipodal/NaN quaternion Slerp
-//! - Error latching and evaluation idempotency under fault conditions
+//! - Kinematic extremes: 16.16 fixed-point wrapping and extreme sample ticks
+//! - Partial films keeping decoded slices under fault conditions
 //! - 5,000 randomized pure-byte fuzz iterations
 //! - 5,000 mutational fuzz iterations on valid `.FLM` byte streams
 //!
-//! Asserts that `FlmPlayer`, `FlmEvaluator`, and `evaluate_film` NEVER panic and cleanly
-//! return structured `FlmError` variants or terminate safely.
+//! Asserts that `FilmTimeline::from_bytes` NEVER panics and cleanly returns structured
+//! `FlmError` variants (header errors) or reports them as the timeline's stop reason.
+
+mod common;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use stunt_core::contracts::trajectory::{CameraTransform, TrajectoryRecord};
 use stunt_core::flm::{
-    FlmError, FlmPlayer, SIF_ANIMATES, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES,
-    SIFILM_MAX_OBJ, bam_to_radians, build_synthetic_intro_flm, detect_camera_cut, evaluate_film,
-    evaluate_sub_tick, focal_to_fov_y, interpolate_trajectory, quat_from_euler, quat_norm_diff,
-    radians_to_bam, slerp_quat,
+    FilmTimeline, FlmError, SIF_ANIMATES, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES,
+    SIFILM_MAX_OBJ, SliceKeyframe,
 };
+
+use common::build_synthetic_intro_flm;
 
 /// Simple deterministic PRNG (Xorshift64) to ensure reproducible fuzz tests with zero external dependencies.
 struct XorShift64 {
@@ -78,25 +80,14 @@ fn test_stress_truncated_headers_and_invalid_magic() {
     // 0 to 3 bytes must return UnexpectedEof without panicking
     for len in 0..4 {
         let buf = vec![b'F'; len];
-        let res = catch_unwind(AssertUnwindSafe(|| FlmPlayer::new(&buf)));
-        assert!(res.is_ok(), "FlmPlayer::new panicked on {len}-byte input");
+        let res = catch_unwind(AssertUnwindSafe(|| FilmTimeline::from_bytes(&buf)));
+        assert!(
+            res.is_ok(),
+            "FilmTimeline::from_bytes panicked on {len}-byte input"
+        );
         let err = res.unwrap().unwrap_err();
         assert_eq!(
             err,
-            FlmError::UnexpectedEof {
-                expected: 4,
-                actual: len,
-            }
-        );
-
-        // evaluate_film convenience entry point
-        let eval_res = catch_unwind(AssertUnwindSafe(|| evaluate_film(&buf)));
-        assert!(
-            eval_res.is_ok(),
-            "evaluate_film panicked on {len}-byte input"
-        );
-        assert_eq!(
-            eval_res.unwrap().unwrap_err(),
             FlmError::UnexpectedEof {
                 expected: 4,
                 actual: len,
@@ -117,10 +108,10 @@ fn test_stress_truncated_headers_and_invalid_magic() {
     ];
 
     for &magic in &invalid_magics {
-        let res = catch_unwind(AssertUnwindSafe(|| FlmPlayer::new(magic)));
+        let res = catch_unwind(AssertUnwindSafe(|| FilmTimeline::from_bytes(magic)));
         assert!(
             res.is_ok(),
-            "FlmPlayer::new panicked on invalid magic {magic:?}"
+            "FilmTimeline::from_bytes panicked on invalid magic {magic:?}"
         );
         let err = res.unwrap().unwrap_err();
         assert_eq!(
@@ -134,11 +125,11 @@ fn test_stress_truncated_headers_and_invalid_magic() {
 
     // Exact 4-byte header b"FILM" with 0 slice bytes: valid empty film
     let empty_film = b"FILM";
-    let mut player = FlmPlayer::new(empty_film).expect("valid 4-byte FILM creates player");
-    assert_eq!(player.step_tick(), None);
-    assert!(player.last_error().is_none());
-    assert_eq!(player.evaluate_all().unwrap(), vec![]);
-    assert_eq!(evaluate_film(empty_film).unwrap(), vec![]);
+    let timeline = FilmTimeline::from_bytes(empty_film).expect("valid 4-byte FILM evaluates");
+    assert!(timeline.slices().is_empty());
+    assert!(timeline.stop_reason().is_none());
+    assert_eq!(timeline.total_ticks(), 0);
+    assert!(timeline.sample(0.0).is_none());
 }
 
 // ---------------------------------------------------------------------------
@@ -156,9 +147,9 @@ fn test_stress_unclosed_slices_and_missing_terminators() {
 
     // A header-only trailer is the canonical end-of-film epilogue, not an unclosed slice.
     let trailer = base.clone();
-    let mut player = FlmPlayer::new(&trailer).unwrap();
-    assert!(player.step_tick().is_none());
-    assert!(player.last_error().is_none());
+    let timeline = FilmTimeline::from_bytes(&trailer).unwrap();
+    assert!(timeline.slices().is_empty());
+    assert!(timeline.stop_reason().is_none());
 
     // Add various valid opcodes but omit 0xFF terminator
     let test_bodies: Vec<Vec<u8>> = vec![
@@ -176,20 +167,19 @@ fn test_stress_unclosed_slices_and_missing_terminators() {
         film.extend_from_slice(&body);
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            let mut player = FlmPlayer::new(&film).unwrap();
-            let tick = player.step_tick();
-            (tick, player.take_last_error())
+            let timeline = FilmTimeline::from_bytes(&film).unwrap();
+            (timeline.slices().len(), timeline.stop_reason().cloned())
         }));
 
         assert!(
             res.is_ok(),
-            "FlmPlayer panicked on unclosed slice with body len {}",
+            "FilmTimeline panicked on unclosed slice with body len {}",
             body.len()
         );
-        let (tick, last_err) = res.unwrap();
-        assert!(
-            tick.is_none(),
-            "Unclosed slice must not produce a valid tick"
+        let (slice_count, last_err) = res.unwrap();
+        assert_eq!(
+            slice_count, 0,
+            "Unclosed slice must not produce a valid keyframe"
         );
         assert!(
             matches!(
@@ -233,21 +223,24 @@ fn test_stress_zero_and_extreme_time_increments() {
     film.push(0);
     film.extend_from_slice(&s3);
 
-    let res = catch_unwind(AssertUnwindSafe(|| {
-        let mut player = FlmPlayer::new(&film).unwrap();
-        player.evaluate_all()
-    }));
+    let res = catch_unwind(AssertUnwindSafe(|| FilmTimeline::from_bytes(&film)));
 
     assert!(
         res.is_ok(),
-        "FlmPlayer panicked on extreme slice-header values"
+        "FilmTimeline panicked on extreme slice-header values"
     );
-    let records = res.unwrap().expect("evaluation must succeed cleanly");
-    assert_eq!(records.len(), 4);
-    assert_eq!(records[0].tick, 0);
-    assert_eq!(records[1].tick, 1);
-    assert_eq!(records[2].tick, 2);
-    assert_eq!(records[3].tick, 3);
+    let timeline = res.unwrap().expect("evaluation must succeed cleanly");
+    assert!(timeline.stop_reason().is_none());
+    assert_eq!(timeline.slices().len(), 4);
+
+    // Every slice header carries `tick_duration` 0, so all four slices are reached at
+    // cumulative tick 0 and the film has zero authored length.
+    for slice in timeline.slices() {
+        assert_eq!(slice.tick, 0);
+        assert_eq!(slice.tick_duration, 0);
+        assert_eq!(slice.record.tick, 0);
+    }
+    assert_eq!(timeline.total_ticks(), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -278,9 +271,8 @@ fn test_stress_group0_create_truncation_matrix() {
             film.extend_from_slice(&full_payload[..trunc_len]);
 
             let res = catch_unwind(AssertUnwindSafe(|| {
-                let mut player = FlmPlayer::new(&film).unwrap();
-                let _ = player.step_tick();
-                player.take_last_error()
+                let timeline = FilmTimeline::from_bytes(&film).unwrap();
+                timeline.stop_reason().cloned()
             }));
 
             assert!(
@@ -317,9 +309,8 @@ fn test_stress_group0_create_truncation_matrix() {
             film.extend_from_slice(&full_draw[..trunc_len]);
 
             let res = catch_unwind(AssertUnwindSafe(|| {
-                let mut player = FlmPlayer::new(&film).unwrap();
-                let _ = player.step_tick();
-                player.take_last_error()
+                let timeline = FilmTimeline::from_bytes(&film).unwrap();
+                timeline.stop_reason().cloned()
             }));
 
             assert!(
@@ -370,18 +361,17 @@ fn test_stress_group1_interp_truncation_matrix() {
             film.extend_from_slice(&full_interp[..trunc_len]);
 
             let res = catch_unwind(AssertUnwindSafe(|| {
-                let mut player = FlmPlayer::new(&film).unwrap();
-                let _t0 = player.step_tick(); // Slice 0 succeeds
-                let t1 = player.step_tick(); // Slice 1 fails cleanly
-                (t1, player.take_last_error())
+                let timeline = FilmTimeline::from_bytes(&film).unwrap();
+                // Slice 0 succeeds, slice 1 fails cleanly and is reported as the stop reason
+                (timeline.slices().len(), timeline.stop_reason().cloned())
             }));
 
             assert!(
                 res.is_ok(),
                 "Panicked on Group 1 truncation: slot={slot_id}, trunc_len={trunc_len}"
             );
-            let (t1, err) = res.unwrap();
-            assert!(t1.is_none());
+            let (decoded_slices, err) = res.unwrap();
+            assert_eq!(decoded_slices, 1, "only slice 0 must survive");
             assert!(
                 matches!(
                     err,
@@ -411,9 +401,8 @@ fn test_stress_group2_misc_truncations_and_unhandled_opcodes() {
             }
 
             let res = catch_unwind(AssertUnwindSafe(|| {
-                let mut player = FlmPlayer::new(&film).unwrap();
-                let _ = player.step_tick();
-                player.take_last_error()
+                let timeline = FilmTimeline::from_bytes(&film).unwrap();
+                timeline.stop_reason().cloned()
             }));
             assert!(
                 res.is_ok(),
@@ -432,9 +421,8 @@ fn test_stress_group2_misc_truncations_and_unhandled_opcodes() {
     // No null terminator!
 
     let res = catch_unwind(AssertUnwindSafe(|| {
-        let mut player = FlmPlayer::new(&film_cr).unwrap();
-        let _ = player.step_tick();
-        player.take_last_error()
+        let timeline = FilmTimeline::from_bytes(&film_cr).unwrap();
+        timeline.stop_reason().cloned()
     }));
     assert!(res.is_ok(), "Panicked on unterminated cstring");
     assert!(matches!(res.unwrap(), Some(FlmError::UnexpectedEof { .. })));
@@ -450,9 +438,8 @@ fn test_stress_group2_misc_truncations_and_unhandled_opcodes() {
         }
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            let mut player = FlmPlayer::new(&film).unwrap();
-            let _ = player.step_tick();
-            player.take_last_error()
+            let timeline = FilmTimeline::from_bytes(&film).unwrap();
+            timeline.stop_reason().cloned()
         }));
         assert!(res.is_ok(), "Panicked on truncated sound cue");
         assert!(matches!(res.unwrap(), Some(FlmError::UnexpectedEof { .. })));
@@ -467,9 +454,8 @@ fn test_stress_group2_misc_truncations_and_unhandled_opcodes() {
         film.push(0xFF);
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            let mut player = FlmPlayer::new(&film).unwrap();
-            let _ = player.step_tick();
-            player.take_last_error()
+            let timeline = FilmTimeline::from_bytes(&film).unwrap();
+            timeline.stop_reason().cloned()
         }));
         assert!(
             res.is_ok(),
@@ -494,9 +480,8 @@ fn test_stress_group2_misc_truncations_and_unhandled_opcodes() {
         film.push(0xFF);
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            let mut player = FlmPlayer::new(&film).unwrap();
-            let _ = player.step_tick();
-            player.take_last_error()
+            let timeline = FilmTimeline::from_bytes(&film).unwrap();
+            timeline.stop_reason().cloned()
         }));
         assert!(res.is_ok(), "Panicked on invalid opcode 0x{invalid_op:02X}");
         assert_eq!(
@@ -546,51 +531,18 @@ fn test_stress_slot_and_variable_boundaries() {
     film.extend_from_slice(&(slice_body.len() as u16).to_le_bytes());
     film.extend_from_slice(&slice_body);
 
-    let res = catch_unwind(AssertUnwindSafe(|| {
-        let mut player = FlmPlayer::new(&film).unwrap();
-        player.step_tick()
-    }));
+    let res = catch_unwind(AssertUnwindSafe(|| FilmTimeline::from_bytes(&film)));
 
     assert!(res.is_ok(), "Panicked when activating all 64 slots");
-    let tick0 = res.unwrap().expect("tick 0 succeeds with 64 slots");
+    let timeline = res.unwrap().expect("timeline evaluates with 64 slots");
+    assert!(timeline.stop_reason().is_none());
+    let tick0 = &timeline.slices()[0].record;
     assert_eq!(tick0.camera.eye, [0.0, 0.0, 0.0]); // slot 0 was view_obj
     // Remaining 63 active slots become actors
     assert_eq!(tick0.actors.len(), 63);
     for (i, act) in tick0.actors.iter().enumerate() {
         assert_eq!(act.actor_id, (i + 1) as u32);
         assert_eq!(act.position_meters[0], (i + 1) as f32);
-    }
-
-    // 7.2 Boundary testing on set_slot_model_name: slot 63 (valid), slot 64 (OOB), slot 9999 (OOB)
-    let mut player = FlmPlayer::new(&film).unwrap();
-    player.set_slot_model_name(63, "SLOT_63_MODEL");
-    player.set_slot_model_name(64, "OOB_SLOT_64");
-    player.set_slot_model_name(9999, "OOB_SLOT_9999");
-    assert_eq!(
-        player.slots()[63].model_name.as_deref(),
-        Some("SLOT_63_MODEL")
-    );
-
-    // 7.3 Update all 16 variables (0..16) and assert no out-of-bounds indexing
-    let mut film_vars = Vec::from(&b"FILM"[..]);
-    let mut var_body = Vec::new();
-    for var_idx in 0..16u8 {
-        var_body.push(0x80 | var_idx);
-        var_body.extend_from_slice(&((var_idx as u16 + 1) * 100).to_le_bytes());
-    }
-    var_body.push(0xFF);
-
-    film_vars.push(1);
-    film_vars.extend_from_slice(&(var_body.len() as u16).to_le_bytes());
-    film_vars.extend_from_slice(&var_body);
-
-    let mut player_vars = FlmPlayer::new(&film_vars).unwrap();
-    let _t = player_vars.step_tick().unwrap();
-    for var_idx in 0..16 {
-        assert_eq!(
-            player_vars.variables()[var_idx],
-            ((var_idx as u16 + 1) * 100)
-        );
     }
 }
 
@@ -610,102 +562,38 @@ fn test_stress_kinematic_extremes_and_numerical_stability() {
     assert!(!pos[1].is_nan());
     assert!(!pos[2].is_nan());
 
-    // 8.2 BAM rotation angle extremes: 0, 1, 65535, 32768
-    for bam in [0u16, 1, 32767, 32768, 65535] {
-        let rad = bam_to_radians(bam);
-        assert!(!rad.is_nan() && (0.0..=std::f32::consts::TAU).contains(&rad));
-        let roundtrip_bam = radians_to_bam(rad);
-        let diff = (roundtrip_bam as i32 - bam as i32).abs();
-        assert!(diff <= 1, "BAM conversion inaccuracy: {bam} -> {diff}");
-    }
-
-    // 8.3 radians_to_bam on negative, huge, NaN, and Infinity inputs
-    assert_eq!(radians_to_bam(0.0), 0);
-    assert_eq!(radians_to_bam(-std::f32::consts::PI), 32768);
-    let _ = radians_to_bam(1e9);
-    let _ = radians_to_bam(f32::NAN);
-    let _ = radians_to_bam(f32::INFINITY);
-    let _ = radians_to_bam(f32::NEG_INFINITY);
-
-    // 8.4 Quaternions: Euler conversion with extreme angles
-    let q_ext = quat_from_euler(1e6, -1e6, 1e6);
-    assert!(quat_norm_diff(q_ext) < 1e-3);
-
-    // 8.5 Slerp stability: degenerate quaternions, zero, antipodal, NaN
-    let q_ident = [0.0, 0.0, 0.0, 1.0];
-    let q_anti = [0.0, 0.0, 0.0, -1.0];
-    let q_zero = [0.0, 0.0, 0.0, 0.0];
-    let q_nan = [f32::NAN, 0.0, 0.0, 1.0];
-
-    let s_anti = slerp_quat(q_ident, q_anti, 0.5);
-    assert!(quat_norm_diff(s_anti) < 1e-4);
-
-    let s_zero = slerp_quat(q_ident, q_zero, 0.5);
-    assert!(!s_zero[3].is_nan());
-
-    let _s_nan = slerp_quat(q_ident, q_nan, 0.5);
-
-    // 8.6 focal_to_fov_y on extreme values
-    assert_eq!(focal_to_fov_y(0.0), 45.0);
-    assert_eq!(focal_to_fov_y(-100.0), 45.0);
-    assert!(!focal_to_fov_y(1e-12).is_nan());
-    assert!(!focal_to_fov_y(1e12).is_nan());
-
-    // 8.7 Camera cut threshold exact boundary tests
-    let eye0 = [0.0, 10.0, 0.0];
-    // Exactly 49.99m (no cut)
-    assert!(!detect_camera_cut(
-        [0.0, 10.0, 49.99],
-        Some(eye0),
-        0,
-        Some(0)
-    ));
-    // Exactly 50.01m (cut)
-    assert!(detect_camera_cut(
-        [0.0, 10.0, 50.01],
-        Some(eye0),
-        0,
-        Some(0)
-    ));
-    // View object change regardless of distance (cut)
-    assert!(detect_camera_cut(eye0, Some(eye0), 1, Some(0)));
-
-    // 8.8 evaluate_sub_tick with extreme continuous_tick values
+    // 8.2 FilmTimeline::sample with extreme continuous tick values
     let dummy_rec = TrajectoryRecord {
         tick: 0,
         camera: CameraTransform::default(),
         actors: vec![],
         audio_cues: vec![],
     };
-    assert!(evaluate_sub_tick(&[], 0.5).is_none());
-    assert!(evaluate_sub_tick(std::slice::from_ref(&dummy_rec), -100.0).is_some());
-    assert!(evaluate_sub_tick(std::slice::from_ref(&dummy_rec), 100.0).is_some());
-    assert!(evaluate_sub_tick(std::slice::from_ref(&dummy_rec), f32::NAN).is_some());
-    // 8.9 interpolate_trajectory with extreme alpha values (-10.0, 10.0, NaN, INFINITY)
-    let dummy_rec_b = TrajectoryRecord {
-        tick: 1,
-        camera: CameraTransform {
-            eye: [10.0, 20.0, 30.0],
-            target: [0.0, 0.0, 0.0],
-            fov_degrees: 50.0,
-            roll_radians: 0.1,
-            cut_from_previous: true,
-        },
-        actors: vec![],
-        audio_cues: vec![],
-    };
-    let _ = interpolate_trajectory(&dummy_rec, &dummy_rec_b, -10.0);
-    let _ = interpolate_trajectory(&dummy_rec, &dummy_rec_b, 10.0);
-    let _ = interpolate_trajectory(&dummy_rec, &dummy_rec_b, f32::NAN);
-    let _ = interpolate_trajectory(&dummy_rec, &dummy_rec_b, f32::INFINITY);
+    let single = FilmTimeline::new(
+        vec![SliceKeyframe {
+            record: dummy_rec,
+            tick: 0,
+            tick_duration: 0,
+        }],
+        Vec::new(),
+    );
+    assert!(
+        FilmTimeline::new(Vec::new(), Vec::new())
+            .sample(0.5)
+            .is_none()
+    );
+    assert!(single.sample(-100.0).is_some());
+    assert!(single.sample(100.0).is_some());
+    assert!(single.sample(f32::NAN).is_some());
+    assert!(single.sample(f32::INFINITY).is_some());
 }
 
 // ---------------------------------------------------------------------------
-// 9. Error Latching and Idempotency
+// 9. Partial Films Keep Decoded Slices
 // ---------------------------------------------------------------------------
 
 #[test]
-fn test_stress_error_latching_and_idempotency() {
+fn test_stress_partial_film_keeps_decoded_slices() {
     let mut film = Vec::from(&b"FILM"[..]);
     // Valid slice 0
     let s0 = vec![0x98, 0xFF];
@@ -719,38 +607,16 @@ fn test_stress_error_latching_and_idempotency() {
     film.extend_from_slice(&(s1.len() as u16).to_le_bytes());
     film.extend_from_slice(&s1);
 
-    let mut player = FlmPlayer::new(&film).unwrap();
-
-    // Tick 0 succeeds
-    let t0 = player.step_tick();
-    assert!(t0.is_some());
-    assert!(player.last_error().is_none());
-
-    // Tick 1 fails with InvalidOpcode
-    let t1 = player.step_tick();
-    assert!(t1.is_none());
-    assert!(matches!(
-        player.last_error(),
-        Some(FlmError::InvalidOpcode { opcode: 0xFE, .. })
-    ));
-
-    // Subsequent calls to step_tick() must immediately return None without crashing
-    for _ in 0..10 {
-        assert!(player.step_tick().is_none());
-        assert!(player.last_error().is_some());
+    // The corrupted stream is not an error: slice 0 is kept and the failure is reported
+    // as the timeline's stop reason, identically on every evaluation.
+    for _ in 0..3 {
+        let timeline = FilmTimeline::from_bytes(&film).expect("header is valid");
+        assert_eq!(timeline.slices().len(), 1);
+        assert!(matches!(
+            timeline.stop_reason(),
+            Some(FlmError::InvalidOpcode { opcode: 0xFE, .. })
+        ));
     }
-
-    // take_last_error clears it
-    let err = player.take_last_error();
-    assert!(err.is_some());
-    assert!(player.last_error().is_none());
-
-    // evaluate_film on corrupted stream returns the exact error
-    let eval_err = evaluate_film(&film).unwrap_err();
-    assert!(matches!(
-        eval_err,
-        FlmError::InvalidOpcode { opcode: 0xFE, .. }
-    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -774,15 +640,7 @@ fn test_fuzz_random_streams() {
         }
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            if let Ok(mut player) = FlmPlayer::new(&buf) {
-                // Step up to 10 ticks
-                for _ in 0..10 {
-                    if player.step_tick().is_none() {
-                        break;
-                    }
-                }
-            }
-            let _ = evaluate_film(&buf);
+            let _ = FilmTimeline::from_bytes(&buf);
         }));
 
         assert!(
@@ -866,10 +724,7 @@ fn test_fuzz_mutated_flm_streams() {
         }
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            if let Ok(mut player) = FlmPlayer::new(&mutated) {
-                let _ = player.evaluate_all();
-            }
-            let _ = evaluate_film(&mutated);
+            let _ = FilmTimeline::from_bytes(&mutated);
         }));
 
         assert!(

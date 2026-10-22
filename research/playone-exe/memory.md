@@ -33,12 +33,12 @@ This document details the real-mode x86 memory layout, static data segment (`DGR
 | `0x2263` | 8-bit Byte | Active video/display mode flag |
 | `0x2264` | 8-bit Byte | Sound driver hardware mode |
 | `0x2265` | 8-bit Byte | Audio playback channel flag |
-| `0x22B8` | 16-bit Word (`u16`) | Monotonic 50 Hz global timer tick (`# [MEM-FLM-TICK]`) |
+| `0x22B8` | 16-bit Word (`u16`) | Monotonic 50 Hz global timer tick |
 | `0x22C4` | 16-bit Word | Stored PSP segment address |
 | `0x22CE` | 16-bit Word | Preserved `SS` register during `INSTALL.EXE` child execution |
 | `0x22D0` | 16-bit Word | Preserved `SP` register during `INSTALL.EXE` child execution |
 | `0x4758` | 16-bit Word (`u16`) | Sibling `0x474A` struct field; reads 0 during live playback, not the active clock |
-| `0x4896` | 16-bit Word (`u16`) | Active film playback clock (struct base `0x4888` + `0x0E`), in 50 Hz ticks |
+| `0x4896` | 16-bit Word (`u16`) | Active film playback clock (struct base `0x4888` + `0x0E`), in 50 Hz ticks (`# [MEM-FLM-TICK]`) |
 
 ---
 

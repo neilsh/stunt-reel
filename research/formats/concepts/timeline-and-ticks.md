@@ -129,6 +129,14 @@ Because quaternions represent rotations double-covered ($\mathbf{q} \equiv -\mat
 $$\mathbf{q}'_{t+1} = -\mathbf{q}_{t+1}$$
 This guarantees interpolation takes the shortest geodesic path on $S^3$, preventing unnatural $360^\circ$ spins across tick boundaries.
 
+#### Sampling Interface & Record Tick Semantics
+`FilmTimeline` (`crates/stunt-core/src/flm/timeline.rs`) is the single public interface for turning a `.FLM` film into `TrajectoryRecord`s: `from_bytes`, `sample(tick)`, `sample_at_seconds`, `cues_between`, `total_ticks`, `duration_seconds`, `slices()`, `truncated_to_ticks`, `warnings`, and `stop_reason`. It places slice $i$ at the cumulative tick $\sum_{k \le i}\text{tick\_duration}_k$ and applies the lerp/slerp and cut suppression described here. The earlier ordinal-based path (`FlmPlayer::step_tick`, `evaluate_all`, `evaluate_film`, `evaluate_sub_tick`) is removed, and `FlmPlayer` and the interpolation helpers are crate-private.
+
+`TrajectoryRecord.tick` (and `AudioCue.tick`) is always the cumulative 50 Hz authored tick, never a slice ordinal; a slice's ordinal is only its index in the timeline. Zero-duration slices share a tick with their predecessor, so ordinals and ticks diverge for real films.
+
+#### Partial Films
+A slice that fails to decode does not discard the film. The slices decoded before the failure are kept, and `stop_reason()` reports why decoding stopped, mirroring the Partial SOD convention (`GLOSSARY.md`). Only an invalid header is an error. Sampling operates over the decoded slices only.
+
 ### 3.2 Director Cut Suppression
 
 In cinematic replays, instantaneous cuts between cameras must never be smoothly interpolated; doing so would produce a disorienting swoop across the island terrain.
@@ -151,7 +159,7 @@ Audio cue events (`AudioCue`) are dispatched synchronously with simulation ticks
 
 ```rust
 pub struct AudioCue {
-    pub tick: u32,             // Authored tick timestamp
+    pub tick: u32,             // Cumulative 50 Hz authored tick (never a slice ordinal)
     pub sample_name: String,   // E.g. "SND_C52C.VOC"
     pub volume: f32,           // Factor in [0.0, 1.0]
     pub pan: f32,              // Stereo pan in [-1.0, 1.0]
@@ -173,7 +181,7 @@ Opcode `0x9C` payload consists of 3 bytes: `[arg1: u8, arg2_lo: u8, arg2_hi: u8]
 
 | Invariant | System Rule | Concrete Implementation |
 | :--- | :--- | :--- |
-| **`[I4]`** | Discrete Simulation Ticks | Ticks evaluate at a fixed $50\text{ Hz}$ clock ($20.0\text{ ms}$). Unlocked rendering uses sub-tick $\alpha$ across each slice's `tick_duration`. |
+| **`[I4]`** | Discrete Simulation Ticks | Ticks evaluate at a fixed $50\text{ Hz}$ clock ($20.0\text{ ms}$). Unlocked rendering uses sub-tick $\alpha$ across each slice's `tick_duration`; `FilmTimeline` is the single sampling interface. |
 | **`[I4]`** | Instantaneous Cut Suppression | $\alpha_{\text{eff}} = 0.0$ when `cut_from_previous == true` or $\|\Delta\mathbf{P}\| > 50.0\text{ m}$. |
 | **`[I1]`** | Metric Coordinates & Unit Quaternions | Trajectory positions in meters; rotations converted to normalized unit quaternions ($\pm 10^{-4}$). |
 | **`[I7]`** | Cleanroom Asset Isolation | All choreography evaluation tests run 100% offline using `oracle_intro_trajectory.json`. |
@@ -208,9 +216,9 @@ Opcode `0x9C` payload consists of 3 bytes: `[arg1: u8, arg2_lo: u8, arg2_hi: u8]
   - `CameraTransform`: `cut_from_previous: bool` gating sub-tick lerp.
   - `ActorTransform`: Evaluated 6-DOF entity state at tick $t$.
   - `AudioCue`: Discrete sound trigger event.
-  - `TrajectoryRecord`: Simulation snapshot at tick $t$.
+  - `TrajectoryRecord`: Simulation snapshot at cumulative 50 Hz tick $t$, produced by `FilmTimeline::sample`.
   - `FilmCapture`: Full multi-tick film container.
 
 ### 7.2 Cleanroom Synthetic Fixtures
 - **`tests/fixtures/synthetic_minimal.flm`**: 15-byte minimal film fixture demonstrating slice headers, `var_set` (`0x80`), `view_obj` (`0x90`), and `slice_end` (`0xFF`).
-- **`tests/fixtures/oracle_intro_trajectory.json`**: Golden oracle recording 600 continuous ticks validating zero matrix tearing and quaternion normalization.
+- **`tests/fixtures/oracle_intro_trajectory.json`**: Golden oracle recording 600 continuous 50 Hz ticks (sampled from `FilmTimeline`) validating zero matrix tearing and quaternion normalization.

@@ -12,7 +12,7 @@
    - `[I1]` Right-handed metric coordinates (`+X` Right, `+Y` Up, `+Z` Backward, `-Z` Forward).
    - `[I2]` Flat arena allocation (`Vec<SodNode>` indexed by `NodeId(u32)`; no `Rc<RefCell<T>>`).
    - `[I3]` Authentic 8-bit VGA Mode 13h palette index color mapping (`0..=255`).
-   - `[I4]` Discrete simulation ticks (20/30 Hz) with sub-tick interpolation.
+   - `[I4]` Discrete 50 Hz authored simulation ticks with sub-tick interpolation.
    - `[I5]` Coplanar decal identification and normal displacement nudging.
    - `[I6]` Visual parity thresholds (SSIM $\ge 0.88$ initial / $\ge 0.90$ sign-off).
    - `[I8]` DOS 8.3 uppercase path normalization in virtual filesystems.

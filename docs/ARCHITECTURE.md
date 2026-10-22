@@ -101,6 +101,6 @@ The reverse-engineering technical catalog documents binary containers, bytecode 
 
 See [`docs/MEMORY_MAP.md`](MEMORY_MAP.md) for full physical linear translation and segment:offset tables:
 * **`# [MEM-VSYNC-03DA]`**: VGA status register 1 vertical retrace loop (`in al, 0x03DA`, `test al, 08h`).
-* **`# [MEM-FLM-TICK]`**: Internal 16-bit simulation tick counter in `DGROUP`.
+* **`# [MEM-FLM-TICK]`**: Active film clock (`u16`, 50 Hz ticks) at `DGROUP:0x4896`; the global 50 Hz counter is `0x22B8` and the film clock runs about 5 ticks ahead of it.
 * **`# [MEM-CAMERA-RIG]`**: Active camera position, target, vertical FOV zoom scalar, and roll.
 * **`# [MEM-ACTOR-TABLE]`**: Active actor transforms, model pointers, bitmasks, and subobject joint angles.

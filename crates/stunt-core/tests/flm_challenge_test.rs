@@ -9,6 +9,8 @@
 //! - 600-tick continuous cinematic simulation stream parity and cut detection
 //! - Adversarial malformed byte stream rejection (truncated slices, unknown opcodes, non-terminated strings)
 
+mod common;
+
 #[cfg(feature = "serde")]
 use std::fs;
 #[cfg(feature = "serde")]
@@ -17,13 +19,11 @@ use std::path::{Path, PathBuf};
 use stunt_core::contracts::trajectory::{
     ActorTransform, AudioCue, CameraTransform, TrajectoryRecord,
 };
-use stunt_core::flm::{
-    CAMERA_CUT_DISPLACEMENT_THRESHOLD_METERS, FlmError, FlmEvaluator, FlmPlayer, bam_to_radians,
-    build_synthetic_intro_flm, compute_position_rmse, detect_camera_cut, evaluate_sub_tick,
-    interpolate_trajectory, quat_from_euler, quat_norm_diff, slerp_quat,
-};
+use stunt_core::flm::{FilmTimeline, FlmError, SliceKeyframe, compute_position_rmse};
 #[cfg(feature = "serde")]
-use stunt_core::flm::{GATE_G04_RMSE_THRESHOLD_METERS, assert_parity_gate_g04, evaluate_film};
+use stunt_core::flm::{GATE_G04_RMSE_THRESHOLD_METERS, assert_parity_gate_g04};
+
+use common::{build_synthetic_intro_flm, quat_norm_diff};
 
 #[cfg(feature = "serde")]
 fn fixtures_dir() -> PathBuf {
@@ -40,15 +40,13 @@ fn fixtures_dir() -> PathBuf {
 
 /// Independent high-precision f64 oracle for Euclidean position RMSE.
 #[cfg(feature = "serde")]
-fn independent_oracle_rmse(
-    evaluated: &[TrajectoryRecord],
-    oracle: &[TrajectoryRecord],
-) -> (f64, usize) {
+fn independent_oracle_rmse(evaluated: &FilmTimeline, oracle: &[TrajectoryRecord]) -> (f64, usize) {
     let mut sq_errors = Vec::new();
 
     for base_rec in oracle {
-        let tick = base_rec.tick as usize;
-        let eval_rec = &evaluated[tick];
+        let eval_rec = evaluated
+            .sample(base_rec.tick as f32)
+            .expect("timeline must not be empty");
 
         // Camera eye error
         let dx = (eval_rec.camera.eye[0] - base_rec.camera.eye[0]) as f64;
@@ -180,19 +178,19 @@ fn test_challenge_gate_g04_oracle_independent_verification() {
         "Oracle must contain exactly 2 golden ticks"
     );
 
-    // Evaluate native .FLM bytecode using FlmPlayer
+    // Evaluate native .FLM bytecode into a 50 Hz timeline
     let bytecode = build_synthetic_intro_flm(2);
-    let mut player = FlmPlayer::new(&bytecode).expect("FlmPlayer creation succeeds");
-    let evaluated = player.evaluate_all().expect("evaluate_all succeeds");
+    let timeline = FilmTimeline::from_bytes(&bytecode).expect("timeline evaluates");
+    assert!(timeline.stop_reason().is_none());
 
     assert_eq!(
-        evaluated.len(),
+        timeline.slices().len(),
         oracle_records.len(),
-        "Evaluated ticks must match oracle count"
+        "Evaluated slices must match oracle count"
     );
 
     // Independent high-precision verification
-    let (indep_rmse, sample_count) = independent_oracle_rmse(&evaluated, &oracle_records);
+    let (indep_rmse, sample_count) = independent_oracle_rmse(&timeline, &oracle_records);
     assert_eq!(
         sample_count, 4,
         "Must compare 2 camera eyes + 2 actor positions"
@@ -207,13 +205,13 @@ fn test_challenge_gate_g04_oracle_independent_verification() {
     );
 
     // Verify engine parity helper
-    let helper_rmse = compute_position_rmse(&evaluated, &oracle_records);
+    let helper_rmse = compute_position_rmse(&timeline, &oracle_records);
     assert!(
         (helper_rmse as f64 - indep_rmse).abs() < 1e-6,
         "Engine compute_position_rmse ({helper_rmse}) disagrees with independent oracle ({indep_rmse})"
     );
 
-    let gate_assert_res = assert_parity_gate_g04(&evaluated, &oracle_records);
+    let gate_assert_res = assert_parity_gate_g04(&timeline, &oracle_records);
     assert_eq!(helper_rmse, gate_assert_res);
 }
 
@@ -226,19 +224,26 @@ fn test_challenge_gate_g04_tamper_rejection() {
         serde_json::from_str(&content).expect("parse oracle json");
 
     let bytecode = build_synthetic_intro_flm(2);
-    let mut evaluated = evaluate_film(&bytecode).expect("evaluate_film succeeds");
+    let genuine = FilmTimeline::from_bytes(&bytecode).expect("timeline evaluates");
+
+    // Rebuild the timeline with the first slice's camera eye nudged along X.
+    let tampered = |dx: f32| {
+        let mut slices = genuine.slices().to_vec();
+        slices[0].record.camera.eye[0] += dx;
+        FilmTimeline::new(slices, Vec::new())
+    };
 
     // Case 1: Tamper with 0.005m perturbation (below 0.01m threshold, should pass Gate G04)
-    evaluated[0].camera.eye[0] += 0.005;
-    let rmse_small = compute_position_rmse(&evaluated, &oracle_records);
+    let small = tampered(0.005);
+    let rmse_small = compute_position_rmse(&small, &oracle_records);
     assert!(
         rmse_small <= GATE_G04_RMSE_THRESHOLD_METERS,
         "Perturbation of 0.005m should be within Gate G04 limit (got {rmse_small:.6})"
     );
 
     // Case 2: Tamper with 0.05m perturbation (above 0.01m threshold, must fail Gate G04)
-    evaluated[0].camera.eye[0] += 0.045; // total 0.05m deviation
-    let rmse_large = compute_position_rmse(&evaluated, &oracle_records);
+    let large = tampered(0.05);
+    let rmse_large = compute_position_rmse(&large, &oracle_records);
     assert!(
         rmse_large > GATE_G04_RMSE_THRESHOLD_METERS,
         "Perturbation of 0.05m must exceed Gate G04 threshold (got {rmse_large:.6})"
@@ -246,12 +251,32 @@ fn test_challenge_gate_g04_tamper_rejection() {
 
     // Verify assert_parity_gate_g04 panics on violation
     let panic_res = std::panic::catch_unwind(|| {
-        assert_parity_gate_g04(&evaluated, &oracle_records);
+        assert_parity_gate_g04(&large, &oracle_records);
     });
     assert!(
         panic_res.is_err(),
         "assert_parity_gate_g04 must panic when RMSE > 0.01m"
     );
+}
+
+/// Wrap evaluated records into a timeline keyed by each record's own `tick`.
+///
+/// Actor world matrices are filled in, as the evaluator does for real films.
+fn timeline_of(records: Vec<TrajectoryRecord>) -> FilmTimeline {
+    let slices = records
+        .into_iter()
+        .map(|mut record| {
+            for actor in &mut record.actors {
+                actor.world_matrix = actor.compute_world_matrix();
+            }
+            SliceKeyframe {
+                tick: record.tick,
+                tick_duration: 1,
+                record,
+            }
+        })
+        .collect();
+    FilmTimeline::new(slices, Vec::new())
 }
 
 // =============================================================================
@@ -314,10 +339,11 @@ fn test_challenge_sub_tick_interpolation_across_alpha_lattice() {
         }],
     };
 
+    let timeline = timeline_of(vec![frame_0, frame_1]);
     let test_alphas = [0.0f32, 0.25f32, 0.5f32, 0.75f32, 1.0f32];
 
     for &alpha in &test_alphas {
-        let sub = interpolate_trajectory(&frame_0, &frame_1, alpha);
+        let sub = timeline.sample(alpha).expect("sample");
 
         // 1. Verify Camera Eye position linearity
         let expected_eye = [
@@ -398,9 +424,9 @@ fn test_challenge_sub_tick_interpolation_across_alpha_lattice() {
     }
 
     // Midpoint linearity check: pos(0.5) must equal average of pos(0.25) and pos(0.75)
-    let sub_25 = interpolate_trajectory(&frame_0, &frame_1, 0.25);
-    let sub_50 = interpolate_trajectory(&frame_0, &frame_1, 0.50);
-    let sub_75 = interpolate_trajectory(&frame_0, &frame_1, 0.75);
+    let sub_25 = timeline.sample(0.25).expect("sample");
+    let sub_50 = timeline.sample(0.50).expect("sample");
+    let sub_75 = timeline.sample(0.75).expect("sample");
 
     for i in 0..3 {
         let avg_eye = 0.5 * (sub_25.camera.eye[i] + sub_75.camera.eye[i]);
@@ -464,32 +490,23 @@ fn test_challenge_sub_tick_out_of_bounds_and_clamping() {
         audio_cues: Vec::new(),
     };
 
-    // 1. Negative alpha clamped to 0.0
-    let sub_neg = interpolate_trajectory(&frame_0, &frame_1, -0.5);
-    assert_eq!(sub_neg.camera.eye, frame_0.camera.eye);
-    assert_eq!(
-        sub_neg.actors[0].position_meters,
-        frame_0.actors[0].position_meters
-    );
-
-    // 2. Alpha > 1.0 clamped to 1.0
-    let sub_pos = interpolate_trajectory(&frame_0, &frame_1, 2.5);
-    assert_eq!(sub_pos.camera.eye, frame_1.camera.eye);
-    assert_eq!(
-        sub_pos.actors[0].position_meters,
-        frame_1.actors[0].position_meters
-    );
-
-    // 3. evaluate_sub_tick clamping on sequence
-    let records = vec![frame_0.clone(), frame_1.clone()];
-    let eval_pre = evaluate_sub_tick(&records, 5.0).unwrap();
+    // Ticks before the first keyframe clamp to the first slice, ticks after the last
+    // keyframe clamp to the last slice.
+    let timeline = timeline_of(vec![frame_0.clone(), frame_1.clone()]);
+    let eval_pre = timeline.sample(5.0).unwrap();
     assert_eq!(eval_pre.camera.eye, frame_0.camera.eye);
+    assert_eq!(eval_pre.tick, 10);
 
-    let eval_post = evaluate_sub_tick(&records, 20.0).unwrap();
+    let eval_post = timeline.sample(20.0).unwrap();
     assert_eq!(eval_post.camera.eye, frame_1.camera.eye);
+    assert_eq!(eval_post.tick, 11);
 
-    // Empty records sequence
-    assert!(evaluate_sub_tick(&[], 0.0).is_none());
+    // Empty timeline
+    assert!(
+        FilmTimeline::new(Vec::new(), Vec::new())
+            .sample(0.0)
+            .is_none()
+    );
 }
 
 // =============================================================================
@@ -543,11 +560,13 @@ fn test_challenge_camera_cut_suppression_holds_prior_pose_adversarial() {
         audio_cues: Vec::new(),
     };
 
+    let timeline = timeline_of(vec![frame_a.clone(), frame_b.clone()]);
+
     // Test a fine sub-tick sweep: 0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99
-    let test_alphas = [0.01, 0.10, 0.25, 0.50, 0.75, 0.90, 0.99];
+    let test_alphas = [0.01f32, 0.10, 0.25, 0.50, 0.75, 0.90, 0.99];
 
     for &alpha in &test_alphas {
-        let sub = interpolate_trajectory(&frame_a, &frame_b, alpha);
+        let sub = timeline.sample(50.0 + alpha).expect("sample");
 
         // Under Invariant [I4], ALL intermediate alphas must suppress lerp and hold frame_a
         assert_eq!(
@@ -579,7 +598,7 @@ fn test_challenge_camera_cut_suppression_holds_prior_pose_adversarial() {
     }
 
     // Invariant [I4]: At exact tick boundary alpha == 1.0, pose must arrive at frame B
-    let sub_one = interpolate_trajectory(&frame_a, &frame_b, 1.0);
+    let sub_one = timeline.sample(51.0).expect("sample");
     assert_eq!(
         sub_one.camera.eye, frame_b.camera.eye,
         "Invariant [I4] Failure: at alpha=1.0, camera eye must transition to frame_b cut pose {:?}, but held frame_a pose {:?}",
@@ -602,146 +621,19 @@ fn test_challenge_camera_cut_suppression_holds_prior_pose_adversarial() {
         actors: frame_b.actors.clone(),
         audio_cues: Vec::new(),
     };
-    let records = vec![frame_a.clone(), frame_b.clone(), frame_c.clone()];
+    let timeline = timeline_of(vec![frame_a.clone(), frame_b.clone(), frame_c.clone()]);
 
     // At continuous tick 50.5 (midpoint between 50 and 51 cut), pose must hold frame_a
-    let eval_50_5 = evaluate_sub_tick(&records, 50.5).unwrap();
+    let eval_50_5 = timeline.sample(50.5).unwrap();
     assert_eq!(eval_50_5.camera.eye, frame_a.camera.eye);
 
     // At continuous tick 51.0 (exact integer tick of cut), camera must arrive at frame_b
-    let eval_51_0 = evaluate_sub_tick(&records, 51.0).unwrap();
+    let eval_51_0 = timeline.sample(51.0).unwrap();
     assert_eq!(
         eval_51_0.camera.eye, frame_b.camera.eye,
-        "Invariant [I4] Failure: evaluate_sub_tick at cut tick 51.0 must return frame_b camera pose {:?}, but held frame_a pose {:?}",
+        "Invariant [I4] Failure: sample at cut tick 51.0 must return frame_b camera pose {:?}, but held frame_a pose {:?}",
         frame_b.camera.eye, eval_51_0.camera.eye
     );
-}
-
-#[test]
-fn test_challenge_camera_cut_displacement_boundary_precision() {
-    let eye_base = [0.0, 10.0, 50.0];
-
-    // Case 1: 49.99m displacement along Z axis (below 50.0m threshold -> NO CUT)
-    let eye_sub_50 = [0.0, 10.0, 50.0 + 49.99];
-    assert!(
-        !detect_camera_cut(eye_sub_50, Some(eye_base), 0, Some(0)),
-        "49.99m displacement must NOT trigger camera cut"
-    );
-
-    // Case 2: 50.01m displacement along Z axis (above 50.0m threshold -> CUT)
-    let eye_over_50 = [0.0, 10.0, 50.0 + 50.01];
-    assert!(
-        detect_camera_cut(eye_over_50, Some(eye_base), 0, Some(0)),
-        "50.01m displacement MUST trigger camera cut"
-    );
-
-    // Case 3: 3D diagonal displacement of 50.01m
-    // dx = 28.87, dy = 28.87, dz = 28.87 -> sqrt(3 * 28.87^2) = 50.004m
-    let eye_diag = [28.87, 10.0 + 28.87, 50.0 + 28.87];
-    assert!(
-        detect_camera_cut(eye_diag, Some(eye_base), 0, Some(0)),
-        "Diagonal displacement of 50.004m must trigger camera cut"
-    );
-
-    // Case 4: Zero distance but view_obj slot changed -> CUT
-    assert!(
-        detect_camera_cut(eye_base, Some(eye_base), 1, Some(0)),
-        "view_obj slot change from 0 to 1 MUST trigger camera cut"
-    );
-
-    // Case 5: Threshold constant adherence
-    assert_eq!(CAMERA_CUT_DISPLACEMENT_THRESHOLD_METERS, 50.0);
-}
-
-// =============================================================================
-// Category 4: Invariant [I1] Unit Quaternions, Slerp, and Orthonormal Matrix Challenge
-// =============================================================================
-
-#[test]
-fn test_challenge_quaternion_normalization_across_all_angles() {
-    // Sweep full BAM circle for yaw, pitch, roll
-    let test_bams: [u16; 16] = [
-        0, 1024, 4096, 8192, 16384, 24576, 32768, 40960, 49152, 57344, 60000, 65000, 65535, 1,
-        32767, 32769,
-    ];
-
-    for &rz_bam in &test_bams {
-        for &rx_bam in &test_bams[0..8] {
-            for &ry_bam in &test_bams[0..4] {
-                let rz_rad = bam_to_radians(rz_bam);
-                let rx_rad = bam_to_radians(rx_bam);
-                let ry_rad = bam_to_radians(ry_bam);
-
-                let q = quat_from_euler(ry_rad, rx_rad, rz_rad);
-                let diff = quat_norm_diff(q);
-
-                assert!(
-                    diff < 1e-4,
-                    "Unit quaternion invariant violated for BAM ({rz_bam}, {rx_bam}, {ry_bam}): | ||q|| - 1.0 | = {diff}"
-                );
-            }
-        }
-    }
-}
-
-#[test]
-fn test_challenge_slerp_shortest_path_and_normalization_adversarial() {
-    // 1. Orthogonal rotations (90 degrees around Y)
-    let q_id = [0.0, 0.0, 0.0, 1.0];
-    let q_90 = quat_from_euler(std::f32::consts::FRAC_PI_2, 0.0, 0.0);
-
-    for &t in &[0.0f32, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0] {
-        let q_interp = slerp_quat(q_id, q_90, t);
-        let diff = quat_norm_diff(q_interp);
-        assert!(
-            diff < 1e-4,
-            "Slerp produced unnormalized quaternion at t={t}: diff={diff}"
-        );
-    }
-
-    // 2. Near-antipodal (179.9 degrees rotation)
-    let q_179 = quat_from_euler(std::f32::consts::PI - 0.001, 0.0, 0.0);
-    let slerped_179 = slerp_quat(q_id, q_179, 0.5);
-    assert!(quat_norm_diff(slerped_179) < 1e-4);
-
-    // 3. Exact antipodal: q and -q represent the exact same SO(3) orientation
-    let q_neg = [-q_id[0], -q_id[1], -q_id[2], -q_id[3]];
-    let slerped_neg = slerp_quat(q_id, q_neg, 0.5);
-    assert!(quat_norm_diff(slerped_neg) < 1e-4);
-    assert!(
-        (slerped_neg[3].abs() - 1.0).abs() < 1e-4,
-        "Antipodal slerp must stay at identity pose"
-    );
-}
-
-#[test]
-fn test_challenge_actor_world_matrix_orthonormality_and_determinant() {
-    let test_cases = [
-        ([0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]),
-        ([100.0, -50.0, 25.0], [0.0, 0.0, 0.0, 1.0]),
-        ([0.0, 10.0, 0.0], quat_from_euler(0.5, -0.2, 0.8)),
-        ([-34.5, 120.0, -89.2], quat_from_euler(1.5, 0.3, -0.4)),
-        (
-            [1000.0, 200.0, -500.0],
-            quat_from_euler(std::f32::consts::PI, 0.0, 0.0),
-        ),
-    ];
-
-    for (pos, quat) in test_cases {
-        let mut actor = ActorTransform {
-            actor_id: 1,
-            model_name: "TEST".to_string(),
-            shape_id: 0,
-            world_matrix: [0.0; 16],
-            rotation_quat: quat,
-            position_meters: pos,
-            state_mask: 1,
-            joint_angles_bam: Vec::new(),
-        };
-
-        actor.world_matrix = actor.compute_world_matrix();
-        assert_valid_euclidean_transform(&actor.world_matrix, pos);
-    }
 }
 
 // =============================================================================
@@ -757,10 +649,14 @@ fn test_challenge_600_tick_intro_trajectory_kinematic_stream() {
         "600 ticks bytecode must be substantial in size"
     );
 
-    let mut player = FlmEvaluator::new(&flm_bytes).expect("FlmEvaluator creates for 600 ticks");
-    let records = player
-        .evaluate_all()
-        .expect("600 ticks film evaluation succeeds");
+    let timeline = FilmTimeline::from_bytes(&flm_bytes).expect("600 ticks film evaluates");
+    assert!(timeline.stop_reason().is_none());
+    assert!(timeline.warnings().is_empty());
+    let records: Vec<TrajectoryRecord> = timeline
+        .slices()
+        .iter()
+        .map(|slice| slice.record.clone())
+        .collect();
 
     assert_eq!(
         records.len(),
@@ -770,10 +666,13 @@ fn test_challenge_600_tick_intro_trajectory_kinematic_stream() {
 
     // Verify properties for every single tick
     for (i, rec) in records.iter().enumerate() {
+        // One slice per 50 Hz tick: slice i is reached at cumulative tick i.
         assert_eq!(
-            rec.tick as usize, i,
+            timeline.slices()[i].tick as usize,
+            i,
             "Tick index must be strictly monotonic"
         );
+        assert_eq!(rec.tick as usize, i, "Record tick is the cumulative tick");
 
         // Camera must have finite real coordinates
         for c in 0..3 {
@@ -824,7 +723,7 @@ fn test_challenge_600_tick_intro_trajectory_kinematic_stream() {
     }
 
     // Gate G04 self-parity check
-    let rmse = compute_position_rmse(&records, &records);
+    let rmse = compute_position_rmse(&timeline, &records);
     assert_eq!(rmse, 0.0);
 }
 
@@ -868,13 +767,15 @@ fn test_challenge_actor_lifecycle_spawn_despawn_in_sub_tick() {
         audio_cues: Vec::new(),
     };
 
+    let timeline = timeline_of(vec![frame_0, frame_1]);
+
     // Sub-tick at alpha = 0.25 (< 0.5): actor 1 persists, actor 2 not yet spawned
-    let sub_25 = interpolate_trajectory(&frame_0, &frame_1, 0.25);
+    let sub_25 = timeline.sample(0.25).expect("sample");
     assert_eq!(sub_25.actors.len(), 1);
     assert_eq!(sub_25.actors[0].actor_id, 1);
 
     // Sub-tick at alpha = 0.75 (>= 0.5): actor 1 removed, actor 2 spawned
-    let sub_75 = interpolate_trajectory(&frame_0, &frame_1, 0.75);
+    let sub_75 = timeline.sample(0.75).expect("sample");
     assert_eq!(sub_75.actors.len(), 1);
     assert_eq!(sub_75.actors[0].actor_id, 2);
 }
@@ -890,9 +791,9 @@ fn test_challenge_adversarial_malformed_slices() {
     film.push(1); // prev_slice_len low byte
     film.extend_from_slice(&0u16.to_le_bytes()); // prev_slice_len high byte, tick_duration
     // no terminator
-    let mut player = FlmPlayer::new(&film).unwrap();
-    assert!(player.step_tick().is_none());
-    assert!(player.last_error().is_none());
+    let timeline = FilmTimeline::from_bytes(&film).unwrap();
+    assert!(timeline.slices().is_empty());
+    assert!(timeline.stop_reason().is_none());
 
     // 2. Unclosed string in credits opcode 0x99
     let mut film = Vec::from(&b"FILM"[..]);
@@ -901,10 +802,10 @@ fn test_challenge_adversarial_malformed_slices() {
     film.push(1);
     film.extend_from_slice(&(slice.len() as u16).to_le_bytes());
     film.extend_from_slice(&slice);
-    let mut player = FlmPlayer::new(&film).unwrap();
-    assert!(player.step_tick().is_none());
+    let timeline = FilmTimeline::from_bytes(&film).unwrap();
+    assert!(timeline.slices().is_empty());
     assert!(matches!(
-        player.last_error(),
+        timeline.stop_reason(),
         Some(FlmError::UnexpectedEof { .. })
     ));
 
@@ -914,10 +815,10 @@ fn test_challenge_adversarial_malformed_slices() {
     film.push(1);
     film.extend_from_slice(&(slice.len() as u16).to_le_bytes());
     film.extend_from_slice(&slice);
-    let mut player = FlmPlayer::new(&film).unwrap();
-    assert!(player.step_tick().is_none());
+    let timeline = FilmTimeline::from_bytes(&film).unwrap();
+    assert!(timeline.slices().is_empty());
     assert!(matches!(
-        player.last_error(),
+        timeline.stop_reason(),
         Some(FlmError::InvalidOpcode { opcode: 0xEF, .. })
     ));
 }

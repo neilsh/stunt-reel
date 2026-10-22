@@ -24,8 +24,8 @@ A minimal film stream conforming to `[fmt flm]`:
 - **Slice 1** (header at 0x000D): `prev_slice_len` `0x0009`, `tick_duration` `0x01`, opcode `0xFF` (`end_slice`).
 
 ### 3. `oracle_intro_trajectory.json`
-Golden oracle trajectory snapshot conforming to `Seam 2: TrajectoryRecord` (`crates/stunt-core/src/contracts.rs`):
-- Contains a sequence of discrete simulation ticks (ticks 0 and 1).
+Golden oracle trajectory snapshot conforming to `Seam 2: TrajectoryRecord` (`crates/stunt-core/src/contracts/trajectory.rs`):
+- Contains a sequence of discrete simulation ticks (ticks 0 and 1). The ticks are 50 Hz cumulative ticks (slice $i$ at the sum of `tick_duration` over slices `0..=i`), not slice ordinals, of the film produced by `build_synthetic_intro_flm(2)` in `crates/stunt-core/tests/common/mod.rs` (test-only, not part of the library). Its slices are authored with `tick_duration` 0 and then 1, so slice $t$ lands on tick $t$. `compute_position_rmse` samples `FilmTimeline` at each oracle tick.
 - Evaluates `CameraTransform` (`eye`, `target`, `fov_degrees`, `roll_radians`).
 - Evaluates `ActorTransform` (`actor_id`, `model_name`, `world_matrix`, `rotation_quat`, `position_meters`, `state_mask`).
 - Evaluates `AudioCue` events (`tick`, `sample_name`, `volume`, `pan`).

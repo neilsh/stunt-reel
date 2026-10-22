@@ -6,6 +6,7 @@
 //! wall-clock times and interpolate between adjacent keyframes per `[I4]`.
 
 use crate::contracts::trajectory::{AudioCue, TrajectoryRecord};
+use crate::flm::FlmError;
 use crate::flm::interpolate::interpolate_trajectory;
 
 /// Authored simulation clock: 50 Hz (`PLAYONE.EXE` PIT divisor `0x5D38`).
@@ -31,6 +32,7 @@ pub struct FilmTimeline {
     slices: Vec<SliceKeyframe>,
     total_ticks: u32,
     warnings: Vec<String>,
+    stop_reason: Option<FlmError>,
 }
 
 impl FilmTimeline {
@@ -45,11 +47,23 @@ impl FilmTimeline {
             slices,
             total_ticks,
             warnings,
+            stop_reason: None,
         }
     }
 
-    /// Parse and evaluate a complete `.FLM` buffer into a sampled timeline.
-    pub fn from_bytes(data: &[u8]) -> Result<Self, crate::flm::FlmError> {
+    /// Record why slice decoding stopped before the film's epilogue.
+    #[must_use]
+    pub(crate) fn with_stop_reason(mut self, reason: FlmError) -> Self {
+        self.stop_reason = Some(reason);
+        self
+    }
+
+    /// Parse and evaluate a `.FLM` buffer into a sampled timeline.
+    ///
+    /// Only an unreadable film header is an error. A slice that fails to decode stops
+    /// the walk: the slices decoded before it are kept and [`Self::stop_reason`] reports
+    /// why, so callers decide whether a partial film is acceptable.
+    pub fn from_bytes(data: &[u8]) -> Result<Self, FlmError> {
         let mut player = crate::flm::FlmPlayer::new(data)?;
         player.evaluate_timeline()
     }
@@ -90,6 +104,7 @@ impl FilmTimeline {
             slices,
             total_ticks,
             warnings: self.warnings.clone(),
+            stop_reason: self.stop_reason.clone(),
         }
     }
 
@@ -105,6 +120,13 @@ impl FilmTimeline {
     #[must_use]
     pub fn warnings(&self) -> &[String] {
         &self.warnings
+    }
+
+    /// Why decoding stopped before the epilogue, or `None` for a complete film.
+    #[inline]
+    #[must_use]
+    pub fn stop_reason(&self) -> Option<&FlmError> {
+        self.stop_reason.as_ref()
     }
 
     /// Sample the interpolated state at an authored tick.
@@ -132,6 +154,11 @@ impl FilmTimeline {
             .slices
             .partition_point(|slice| slice.tick as f32 <= tick);
         let previous = &self.slices[index - 1];
+        if tick == previous.tick as f32 {
+            // An exact keyframe hit is that slice's own state, keeping its camera cut
+            // flag and audio cues rather than blending toward the next slice.
+            return Some(previous.record.clone());
+        }
         let next = &self.slices[index];
 
         let span = (next.tick - previous.tick) as f32;

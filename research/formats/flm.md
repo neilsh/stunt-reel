@@ -81,7 +81,7 @@ Measured over all 561 walkable retail films (627,696 slices, 4,843,398 ticks):
 | `CTRY.FLM` | 140 slices, 1,342 ticks, $26.84\text{ s}$ |
 | `INTRO.FLM` | 538 slices, 3,822 ticks, $76.44\text{ s}$ |
 
-The dominant 10–11 tick modes are 200–220 ms keyframe intervals. Zero-duration slices carry event bursts (credits, sound cues, camera switches) that must be processed in file order without advancing time. A consumer that emits one record per slice (rather than expanding by `tick_duration`) compresses `CTRY.FLM` to 140 ticks ($2.8\text{ s}$ at 50 Hz) and loses all sub-tick motion.
+The dominant 10–11 tick modes are 200–220 ms keyframe intervals. Zero-duration slices carry event bursts (credits, sound cues, camera switches) that must be processed in file order without advancing time. A consumer that emits one record per slice (rather than expanding by `tick_duration`) compresses `CTRY.FLM` to 140 ticks ($2.8\text{ s}$ at 50 Hz) and loses all sub-tick motion. `FilmTimeline` avoids this by placing each slice at its cumulative tick; `TrajectoryRecord.tick` is therefore always a cumulative 50 Hz tick, never a slice ordinal.
 
 ### 2.2 End-of-Film Epilogue (`[Established]`)
 
@@ -178,7 +178,7 @@ Encountered in Object Lifecycle opcodes (`0x00..0x3F`):
 ### 4.3 Audio Cue Event Dispatch
 
 Opcode `0x9C` emits an `AudioCue`:
-- `tick`: Simulation tick index.
+- `tick`: Cumulative 50 Hz authored tick (never a slice ordinal).
 - `sample_name`: Resolved from resource ID `arg2` in `0xC000`–`0xCFFF` (e.g., `0xC52C` $\to$ `"SND_C52C.VOC"`).
 - `volume`: Derived from `(arg1 & 0x7F) / 127.0`.
 - `pan`: Stereo position derived from bit 7 or channel nibble ($[-1.0, 1.0]$).
@@ -269,7 +269,8 @@ pub struct TrajectoryRecord {
 
 ### 7.2 Native Rust Implementation & PythonTAC
 
-- **Rust Evaluation Pipeline**: `crates/stunt-core/src/flm/`
+- **Rust Evaluation Pipeline**: `crates/stunt-core/src/flm/`. `FilmTimeline` (`timeline.rs`) is the single public sampling interface (`from_bytes`, `sample(tick)`, `sample_at_seconds`, `cues_between`, `total_ticks`, `duration_seconds`, `slices()`, `truncated_to_ticks`, `warnings`, `stop_reason`); `FlmPlayer` and the interpolation helpers are crate-private.
+- **Partial Films**: a slice decode error does not discard the film. Decoded slices are kept and `stop_reason()` reports why decoding stopped (the Partial SOD convention); only an invalid header is an error.
 - **Python TAC Capture Streamer**: `python/stunt_reel/tac/streamer.py`
 - **Memory Map Anchor**: `# [MEM-FLM-TICK]`, `# [MEM-CAMERA-RIG]`, `# [MEM-ACTOR-TABLE]` in `docs/MEMORY_MAP.md`
 
@@ -285,7 +286,7 @@ Both slices parse under [`flm_slice.ksy`](flm_slice.ksy) with the masks from [`p
 ### 7.4 Golden Oracle Trajectory: `oracle_intro_trajectory.json`
 
 Located at `tests/fixtures/oracle_intro_trajectory.json`:
-- Full 600-tick golden trajectory stream validated against `TrajectoryRecord`.
+- Full 600-tick golden trajectory stream validated against `TrajectoryRecord`; ticks are cumulative 50 Hz ticks sampled from `FilmTimeline`.
 - Zero matrix tearing and zero quaternion normalization error ($|\|\mathbf{q}\| - 1.0| < 10^{-4}$).
 - Positional parity threshold $\text{RMSE}_{\text{pos}} \le 0.01\text{ m}$.
 

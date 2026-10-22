@@ -6,7 +6,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use stunt_core::flm::{FilmTimeline, FlmPlayer, SliceKeyframe, TIMELINE_HZ};
+use stunt_core::flm::{FilmTimeline, SliceKeyframe, TIMELINE_HZ};
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -131,11 +131,56 @@ fn test_truncate_to_tick_limit() {
 }
 
 #[test]
-fn test_step_tick_remains_slice_ordinal() {
+fn test_record_tick_is_cumulative_tick() {
+    let timeline = timeline();
+    for slice in timeline.slices() {
+        assert_eq!(slice.record.tick, slice.tick);
+        for cue in &slice.record.audio_cues {
+            assert_eq!(cue.tick, slice.tick);
+        }
+    }
+}
+
+#[test]
+fn test_partial_film_keeps_decoded_slices() {
     let bytes = fixture_bytes();
-    let mut player = FlmPlayer::new(&bytes).expect("film parses");
-    assert_eq!(player.step_tick().expect("slice 0").tick, 0);
-    assert_eq!(player.step_tick().expect("slice 1").tick, 1);
-    assert_eq!(player.step_tick().expect("slice 2").tick, 2);
-    assert!(player.step_tick().is_none());
+    let complete = timeline();
+    assert!(complete.stop_reason().is_none());
+
+    // Cutting the stream inside the final slice keeps the earlier keyframes and reports
+    // why decoding stopped instead of discarding the film.
+    let partial = (1..bytes.len())
+        .rev()
+        .map(|len| FilmTimeline::from_bytes(&bytes[..len]))
+        .find_map(|result| result.ok().filter(|t| t.stop_reason().is_some()))
+        .expect("some truncation stops mid-slice");
+    assert!(!partial.slices().is_empty());
+    assert!(partial.slices().len() < complete.slices().len());
+    assert_eq!(
+        partial.slices()[0].record.camera.eye,
+        complete.slices()[0].record.camera.eye
+    );
+}
+
+#[test]
+fn test_interior_cut_keyframe_keeps_flag_and_cues() {
+    let base = timeline();
+    let mut slices = base.slices().to_vec();
+    let mut held = slices.last().expect("cut slice").clone();
+    held.tick = 20;
+    held.tick_duration = 8;
+    held.record.tick = 20;
+    held.record.camera.cut_from_previous = false;
+    held.record.audio_cues.clear();
+    slices.push(held);
+    let timeline = FilmTimeline::new(slices, Vec::new());
+
+    let at_cut = timeline.sample(12.0).expect("sample");
+    assert!(at_cut.camera.cut_from_previous);
+    assert_eq!(at_cut.audio_cues.len(), 1);
+    assert_eq!(at_cut.audio_cues[0].sample_name, "WIND.VOC");
+
+    let after_cut = timeline.sample(13.0).expect("sample");
+    assert!(!after_cut.camera.cut_from_previous);
+    assert!(after_cut.audio_cues.is_empty());
 }

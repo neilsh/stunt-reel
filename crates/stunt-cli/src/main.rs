@@ -468,6 +468,12 @@ pub fn load_or_synthesize_timeline(path: Option<&Path>, max_ticks: Option<usize>
                 for warning in timeline.warnings() {
                     eprintln!("[stuntreel] {warning}");
                 }
+                if let Some(reason) = timeline.stop_reason() {
+                    eprintln!(
+                        "[stuntreel] film stopped early after {} slices: {reason}",
+                        timeline.slices().len()
+                    );
+                }
                 return match max_ticks {
                     Some(limit) => {
                         timeline.truncated_to_ticks(u32::try_from(limit).unwrap_or(u32::MAX))
@@ -516,18 +522,6 @@ pub fn load_or_synthesize_timeline(path: Option<&Path>, max_ticks: Option<usize>
     }
 
     FilmTimeline::new(slices, Vec::new())
-}
-
-/// Backwards-compatible slice-level loader used by callers that do not sample time.
-pub fn load_or_synthesize_trajectory(
-    path: Option<&Path>,
-    max_ticks: Option<usize>,
-) -> Vec<TrajectoryRecord> {
-    load_or_synthesize_timeline(path, max_ticks)
-        .slices()
-        .iter()
-        .map(|slice| slice.record.clone())
-        .collect()
 }
 
 fn is_legacy_refs(trajectory: &[&TrajectoryRecord]) -> bool {

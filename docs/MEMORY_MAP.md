@@ -25,7 +25,8 @@
 | `0x0C10` | `[Established]` | Struct (32B) | Active camera rig descriptor | `# [MEM-CAMERA-RIG]` |
 | `0x0C50` | `[Established]` | Far Pointer (32b) | Heap pointer to dynamic actor channel table | `# [MEM-ACTOR-TABLE]` |
 | `0x0C5E` | `[Established]` | Code Offset | Post-0x03DA vertical retrace breakpoint trap target | |
-| `0x0C60` | `[Established]` | `u16` | Monotonic simulation tick counter | `# [MEM-FLM-TICK]` |
+| `0x0C60` | `[Superseded]` | — | Retired historic tick-counter label; no code references `DGROUP:0x0C60` (see `0x4896`) | |
+| `0x4896` | `[Established]` | `u16` | Active film clock (50 Hz ticks; struct base `0x4888` + `0x0E`); global 50 Hz tick is `0x22B8` | `# [MEM-FLM-TICK]` |
 | `0x2263` | `[Established]` | `u8` | Active display mode flag | |
 | `0x2264` | `[Established]` | `u8` | Sound hardware driver mode | |
 | `0x2265` | `[Established]` | `u8` | Audio playback channel flag | |

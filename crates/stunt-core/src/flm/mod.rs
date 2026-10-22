@@ -3,25 +3,19 @@
 //! Evaluates binary `.FLM` film streams into [`crate::contracts::trajectory::TrajectoryRecord`]
 //! time-series streams adhering to Seam 2 and Invariants `[I1]`, `[I4]`.
 
-pub mod interpolate;
+mod interpolate;
 pub mod parity;
 pub mod parser;
 pub mod timeline;
 
-pub use interpolate::{
-    CAMERA_CUT_DISPLACEMENT_THRESHOLD_METERS, bam_to_radians, detect_camera_cut, evaluate_sub_tick,
-    focal_to_fov_y, interpolate_trajectory, lerp_f32, lerp_vec3, quat_from_euler, quat_norm,
-    quat_norm_diff, quat_normalize, radians_to_bam, rotate_quat, slerp_quat,
-};
-pub use parity::{
-    GATE_G04_RMSE_THRESHOLD_METERS, assert_parity_gate_g04, build_synthetic_intro_flm,
-    compute_position_rmse,
-};
+pub use parity::{GATE_G04_RMSE_THRESHOLD_METERS, assert_parity_gate_g04, compute_position_rmse};
 pub use parser::{
     FlmParser, SIF_ANIMATES, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW,
     SIFILM_MAX_OBJ, Slice, SlotState,
 };
 pub use timeline::{FilmTimeline, SliceKeyframe, TIMELINE_HZ, TIMELINE_TICK_SECONDS};
+
+use interpolate::{bam_to_radians, detect_camera_cut, focal_to_fov_y, rotate_quat};
 
 use crate::contracts::trajectory::{ActorTransform, CameraTransform, TrajectoryRecord};
 use std::fmt;
@@ -102,11 +96,11 @@ impl fmt::Display for FlmError {
 
 impl std::error::Error for FlmError {}
 
-/// State machine evaluator for playing `.FLM` choreography streams.
+/// State machine that decodes `.FLM` slices into per-slice [`TrajectoryRecord`] snapshots.
 ///
-/// Steps through slices and emits continuous [`TrajectoryRecord`] kinematic snapshots.
+/// Internal feeder for [`FilmTimeline::from_bytes`], the only public way to evaluate a film.
 #[derive(Debug, Clone)]
-pub struct FlmPlayer<'a> {
+pub(crate) struct FlmPlayer<'a> {
     parser: FlmParser<'a>,
     current_tick: u32,
     slots: [SlotState; SIFILM_MAX_OBJ],
@@ -121,12 +115,9 @@ pub struct FlmPlayer<'a> {
     default_camera_target: [f32; 3],
 }
 
-/// Type alias for `FlmPlayer` matching alternate naming in specification.
-pub type FlmEvaluator<'a> = FlmPlayer<'a>;
-
 impl<'a> FlmPlayer<'a> {
     /// Initialize a new film player from a byte buffer, verifying the `FILM` signature.
-    pub fn new(data: &'a [u8]) -> Result<Self, FlmError> {
+    pub(crate) fn new(data: &'a [u8]) -> Result<Self, FlmError> {
         let parser = FlmParser::new(data)?;
         Ok(Self {
             parser,
@@ -147,7 +138,10 @@ impl<'a> FlmPlayer<'a> {
     /// Advance to the next authored slice and return its evaluated state plus duration.
     ///
     /// Returns `None` when the film stream terminates or if an unrecoverable error occurs.
-    pub fn step_slice(&mut self) -> Option<(TrajectoryRecord, u8)> {
+    ///
+    /// The returned record's `tick` is only the slice ordinal; [`Self::evaluate_timeline`]
+    /// rewrites it to the cumulative 50 Hz tick.
+    pub(crate) fn step_slice(&mut self) -> Option<(TrajectoryRecord, u8)> {
         if self.last_error.is_some() {
             return None;
         }
@@ -270,20 +264,14 @@ impl<'a> FlmPlayer<'a> {
         ))
     }
 
-    /// Advance simulation by one slice and return the evaluated [`TrajectoryRecord`].
-    ///
-    /// The record's `tick` field remains the slice ordinal for backward compatibility;
-    /// use [`Self::evaluate_timeline`] for authored 50 Hz timestamps and sampling.
-    pub fn step_tick(&mut self) -> Option<TrajectoryRecord> {
-        self.step_slice().map(|(record, _duration)| record)
-    }
-
     /// Evaluate all remaining slices into a 50 Hz timeline with authored timestamps.
     ///
-    /// Conversely to [`Self::evaluate_all`], each record's `tick` is the cumulative
-    /// `tick_duration` at which that slice is reached, and audio cues carry the same
-    /// authored tick.
-    pub fn evaluate_timeline(&mut self) -> Result<FilmTimeline, FlmError> {
+    /// A slice decode error ends the walk without failing: the error is kept as the
+    /// timeline's [`FilmTimeline::stop_reason`].
+    ///
+    /// Each record's `tick` is the cumulative `tick_duration` at which that slice is
+    /// reached, and its audio cues carry the same authored tick.
+    pub(crate) fn evaluate_timeline(&mut self) -> Result<FilmTimeline, FlmError> {
         let mut slices = Vec::new();
         let mut total_ticks = 0u32;
 
@@ -300,99 +288,141 @@ impl<'a> FlmPlayer<'a> {
             });
         }
 
-        if let Some(err) = self.take_last_error() {
-            return Err(err);
-        }
-
-        Ok(FilmTimeline::new(slices, self.warnings().to_vec()))
-    }
-
-    /// Evaluate all remaining slices in the film stream into a continuous sequence of records.
-    pub fn evaluate_all(&mut self) -> Result<Vec<TrajectoryRecord>, FlmError> {
-        let mut records = Vec::new();
-        while let Some(record) = self.step_tick() {
-            records.push(record);
-        }
-        if let Some(err) = self.take_last_error() {
-            return Err(err);
-        }
-        Ok(records)
-    }
-
-    /// Current simulation tick count.
-    #[inline]
-    pub fn current_tick(&self) -> u32 {
-        self.current_tick
+        let timeline = FilmTimeline::new(slices, self.warnings().to_vec());
+        Ok(match self.take_last_error() {
+            Some(err) => timeline.with_stop_reason(err),
+            None => timeline,
+        })
     }
 
     /// Non-fatal inconsistencies encountered while decoding the film stream.
     #[inline]
-    pub fn warnings(&self) -> &[String] {
+    pub(crate) fn warnings(&self) -> &[String] {
         self.parser.warnings()
-    }
-
-    /// Active view object slot index driving camera view.
-    #[inline]
-    pub fn view_obj(&self) -> u8 {
-        self.view_obj
-    }
-
-    /// Highest active object slot index.
-    #[inline]
-    pub fn max_obj(&self) -> usize {
-        self.max_obj
-    }
-
-    /// Internal 16-element timeline variable table.
-    #[inline]
-    pub fn variables(&self) -> &[u16; 16] {
-        &self.variables
-    }
-
-    /// Current credits strings `[line1, line2]`.
-    #[inline]
-    pub fn credits(&self) -> &[String; 2] {
-        &self.credits
-    }
-
-    /// Access the object slot table.
-    #[inline]
-    pub fn slots(&self) -> &[SlotState; SIFILM_MAX_OBJ] {
-        &self.slots
-    }
-
-    /// Override the focal distance scalar (default 0.0 -> 45.0 degrees).
-    pub fn set_focal_distance(&mut self, focal: f32) {
-        self.focal_distance = focal;
-    }
-
-    /// Set camera look-at target coordinate.
-    pub fn set_default_camera_target(&mut self, target: [f32; 3]) {
-        self.default_camera_target = target;
-    }
-
-    /// Assign an explicit `.SOD` model name to an object slot.
-    pub fn set_slot_model_name(&mut self, slot_idx: usize, name: impl Into<String>) {
-        if slot_idx < SIFILM_MAX_OBJ {
-            self.slots[slot_idx].model_name = Some(name.into());
-        }
-    }
-
-    /// Last recorded parsing error, if any.
-    #[inline]
-    pub fn last_error(&self) -> Option<&FlmError> {
-        self.last_error.as_ref()
     }
 
     /// Take and clear any recorded parsing error.
     #[inline]
-    pub fn take_last_error(&mut self) -> Option<FlmError> {
+    pub(crate) fn take_last_error(&mut self) -> Option<FlmError> {
         self.last_error.take()
     }
 }
 
-/// Convenience high-level function: parse and evaluate a full `.FLM` binary buffer.
-pub fn evaluate_film(data: &[u8]) -> Result<Vec<TrajectoryRecord>, FlmError> {
-    let mut player = FlmPlayer::new(data)?;
-    player.evaluate_all()
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Minimal two-slice cleanroom film (`tests/fixtures/synthetic_minimal.flm`).
+    const SYNTHETIC_MINIMAL_FLM: &[u8] =
+        include_bytes!("../../../../tests/fixtures/synthetic_minimal.flm");
+
+    /// Append one slice with a 3-byte header whose width is all `FlmParser` needs here.
+    fn push_slice(film: &mut Vec<u8>, body: &[u8]) {
+        film.push(1);
+        film.extend_from_slice(&(body.len() as u16).to_le_bytes());
+        film.extend_from_slice(body);
+    }
+
+    #[test]
+    fn synthetic_minimal_fixture_sets_timeline_variable() {
+        let mut player = FlmPlayer::new(SYNTHETIC_MINIMAL_FLM).expect("player initialization");
+
+        // Slice 0: var_set 0 = 0x9890, view_obj 0, clear credits, 0xFF
+        assert!(player.step_slice().is_some());
+        assert_eq!(player.variables[0], 0x9890);
+
+        assert!(player.step_slice().is_some());
+        assert!(player.step_slice().is_none());
+        assert!(player.last_error.is_none());
+    }
+
+    #[test]
+    fn credits_max_obj_and_variables_follow_control_opcodes() {
+        let mut film = Vec::from(&b"FILM"[..]);
+        let mut slice0 = Vec::new();
+
+        // 0x9B: max_obj = 5
+        slice0.push(0x9B);
+        slice0.push(5);
+
+        // 0x99: set credits ("Directed by", "Stunt Island")
+        slice0.push(0x99);
+        slice0.extend_from_slice(b"Directed by\0");
+        slice0.extend_from_slice(b"Stunt Island\0");
+
+        // 0x82: variable 2 = 1234
+        slice0.push(0x82);
+        slice0.extend_from_slice(&1234u16.to_le_bytes());
+
+        // 0xA2: before word
+        slice0.push(0xA2);
+        slice0.extend_from_slice(&5678u16.to_le_bytes());
+
+        slice0.push(0xFF);
+        push_slice(&mut film, &slice0);
+
+        // Slice 1: 0x98: clear credits
+        push_slice(&mut film, &[0x98, 0xFF]);
+
+        let mut player = FlmPlayer::new(&film).unwrap();
+        let _t0 = player.step_slice().unwrap();
+        assert_eq!(player.max_obj, 5);
+        assert_eq!(player.credits[0], "Directed by");
+        assert_eq!(player.credits[1], "Stunt Island");
+        assert_eq!(player.variables[2], 1234);
+
+        let _t1 = player.step_slice().unwrap();
+        assert_eq!(player.credits[0], "");
+        assert_eq!(player.credits[1], "");
+    }
+
+    #[test]
+    fn all_sixteen_timeline_variables_are_addressable() {
+        let mut film = Vec::from(&b"FILM"[..]);
+        let mut var_body = Vec::new();
+        for var_idx in 0..16u8 {
+            var_body.push(0x80 | var_idx);
+            var_body.extend_from_slice(&((u16::from(var_idx) + 1) * 100).to_le_bytes());
+        }
+        var_body.push(0xFF);
+        push_slice(&mut film, &var_body);
+
+        let mut player = FlmPlayer::new(&film).unwrap();
+        let _t = player.step_slice().unwrap();
+        for (var_idx, value) in player.variables.iter().enumerate() {
+            assert_eq!(*value, (var_idx as u16 + 1) * 100);
+        }
+    }
+
+    #[test]
+    fn decode_error_latches_and_take_clears_it() {
+        let mut film = Vec::from(&b"FILM"[..]);
+        // Valid slice 0
+        push_slice(&mut film, &[0x98, 0xFF]);
+        // Corrupted slice 1 (invalid opcode 0xFE)
+        push_slice(&mut film, &[0xFE, 0xFF]);
+
+        let mut player = FlmPlayer::new(&film).unwrap();
+
+        // Slice 0 succeeds
+        assert!(player.step_slice().is_some());
+        assert!(player.last_error.is_none());
+
+        // Slice 1 fails with InvalidOpcode
+        assert!(player.step_slice().is_none());
+        assert!(matches!(
+            player.last_error,
+            Some(FlmError::InvalidOpcode { opcode: 0xFE, .. })
+        ));
+
+        // Subsequent calls must immediately return None without crashing
+        for _ in 0..10 {
+            assert!(player.step_slice().is_none());
+            assert!(player.last_error.is_some());
+        }
+
+        // take_last_error clears it
+        assert!(player.take_last_error().is_some());
+        assert!(player.last_error.is_none());
+    }
 }
