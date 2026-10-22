@@ -8,13 +8,14 @@
 
 1. **Cleanroom Asset Isolation**: **NEVER** commit proprietary assets, executables, or original binary disks into Git (`corpus/` and `target_bin/` are strictly gitignored). All tests must run 100% offline using synthetic cleanroom fixtures in [`tests/fixtures/`](tests/fixtures/README.md).
 2. **Quality Gate Requirement**: Before concluding any task or presenting code, **always verify that `mise run check` passes** (format check, lint, typecheck, test across both Rust and Python). See [`README.md`](README.md#development--quality-assurance) and [`mise.toml`](mise.toml).
-3. **Architectural Invariants**: All code must conform to system invariants `[I1]`–`[I8]` documented in [`crates/stunt-core/src/contracts/mod.rs`](crates/stunt-core/src/contracts/mod.rs):
+3. **Architectural Invariants**: All code must conform to system invariants `[I1]`–`[I8]` defined in [`docs/SPEC.md` § 2](docs/SPEC.md#2-system-architectural-invariants--guardrails) (summarized in [`contracts/mod.rs`](crates/stunt-core/src/contracts/mod.rs)):
    - `[I1]` Right-handed metric coordinates (`+X` Right, `+Y` Up, `+Z` Backward, `-Z` Forward).
    - `[I2]` Flat arena allocation (`Vec<SodNode>` indexed by `NodeId(u32)`; no `Rc<RefCell<T>>`).
    - `[I3]` Authentic 8-bit VGA Mode 13h palette index color mapping (`0..=255`).
    - `[I4]` Discrete 50 Hz authored simulation ticks with sub-tick interpolation.
    - `[I5]` Coplanar decal identification and normal displacement nudging.
    - `[I6]` Visual parity thresholds (SSIM $\ge 0.88$ initial / $\ge 0.90$ sign-off).
+   - `[I7]` Cleanroom asset isolation and a zero-dependency `stunt-core` (no windowing, GPU, audio, or emulator).
    - `[I8]` DOS 8.3 uppercase path normalization in virtual filesystems.
 
 ---
@@ -27,7 +28,8 @@ Refer directly to authoritative documents rather than duplicating definitions:
 |---|---|---|
 |**Domain Glossary**|[`GLOSSARY.md`](GLOSSARY.md)|Canonical project vocabulary: film, slice, tick, trajectory record, epilogue, shape, slot, partial SOD.|
 |**System Specification**|[`docs/SPEC.md`](docs/SPEC.md)|Authoritative master specification, mathematical invariants (`[I1]`–`[I8]`), reverse engineering findings, and master verification matrix.|
-| **Architecture & 1-Hop Routing** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Routing table connecting code modules to specifications, format anchors (`# [FMT-*]`), and research notes. |
+| **Architecture & 1-Hop Routing** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Code path → governing anchors and research notes, with real links. |
+| **Anchor Registry** | [`python/stunt_reel/doc_anchors.py`](python/stunt_reel/doc_anchors.py) | Every `[I*]`, `# [FMT-*]` and `# [MEM-*]` token and the one heading that defines it; `tests/test_doc_invariants.py` checks both directions. |
 | **Teamwork Blueprint & Milestones** | [`docs/TEAM_SHEET.md`](docs/TEAM_SHEET.md) | Multi-agent team roles (`sentinel`, `re-harness-worker`, `gltf-exporter-worker`, `rust-engine-worker`, `parity-auditor`), file blast radii, and milestone gates. |
 | **Runtime Memory Map** | [`docs/MEMORY_MAP.md`](docs/MEMORY_MAP.md) | `DGROUP` (`0x0D51`) offset reference tables, real-mode linear translation, and memory anchors (`# [MEM-*]`). |
 | **Seam Contracts** | [`contracts/mod.rs`](crates/stunt-core/src/contracts/mod.rs) | Contract boundaries: [`vfs`](crates/stunt-core/src/contracts/vfs.rs) (Seam 1), [`trajectory`](crates/stunt-core/src/contracts/trajectory.rs) (Seam 2), [`scene`](crates/stunt-core/src/contracts/scene.rs) (Seam 3), and [`parity`](crates/stunt-core/src/contracts/parity.rs) (Seam 4). |

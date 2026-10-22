@@ -22,7 +22,7 @@ The bytecode calculates parametric vertices, evaluates hierarchical transformati
 
 Every `.SOD` bytecode stream begins with an immutable **10-byte header**, followed immediately by the stream of bytecode instructions:
 
-### 2.1 10-Byte Header Binary Layout
+### 2.1 10-Byte Header Binary Layout (`# [FMT-SOD-HEADER]`)
 
 ```
 +---------------------------------------------------------------------------------+
@@ -161,7 +161,7 @@ To animate moving parts (rotating propellers, retracting landing gear, rudder de
 6. `poprelmat` (0x01EF): Restores parent orientation matrix.
 7. `popcentre` (0x0087): Restores parent rotation center.
 
-#### 3.1.6 BSP Sorting & Two-Sided Visibility Logic
+#### 3.1.6 BSP Sorting & Two-Sided Visibility Logic (`# [FMT-SOD-IFVIS]`)
 Because 1992 DOS real-mode software lacked hardware depth buffers:
 - `sorton <face>` (0x018C): Evaluates whether camera eye is in front of or behind separating plane `<face>`. Traverses front and back geometry subtrees in back-to-front order (Binary Space Partitioning for Painter's algorithm).
 - `ifvis <face>` (0x017A) / `ifhid <face>`: Evaluates whether `<face>` is front-facing (dot product $\mathbf{n} \cdot \mathbf{v}_{\text{cam}} > 0$).
@@ -170,7 +170,7 @@ Because 1992 DOS real-mode software lacked hardware depth buffers:
 
 ---
 
-### 3.2 The Authoritative 107-Opcode Reference Table
+### 3.2 The Authoritative 107-Opcode Reference Table (`# [FMT-SOD-OPCODES]`)
 
 In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machine dispatched bytecode instructions through an internal jump table where every handler entry was spaced by **9 bytes**. Consequently, **every valid `.SOD` opcode is an exact multiple of 9** ($\text{Opcode} = \text{Index} \times 9$):
 

@@ -28,7 +28,7 @@ A `.SPR` file has an extremely compact binary structure consisting of a 4-byte r
 +-------------------+-------------------+-----------------------------------------------+-------------------+
 ```
 
-### 2.2 Field Definitions
+### 2.2 Field Definitions (`# [FMT-SPR-HEADER]`)
 
 | Offset (Hex) | Size (Bytes) | Type | Field Name | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- | :--- | :--- |

@@ -19,7 +19,7 @@ The `.SET` format encapsulates complete world scenes, stage configurations, prop
 
 A `.SET` file begins with a 96-byte (`0x60`) global environment header containing mission metadata, vehicle configuration, and table count indicators. The executable header layout is [`set.ksy`](set.ksy).
 
-### 2.1 Global Environment Header (`0x0000`–`0x005F`)
+### 2.1 Global Environment Header (`0x0000`–`0x005F`) (`# [FMT-SET-HEADER]`)
 
 | Offset (Hex) | Size (Bytes) | Type | Field Name | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- | :--- | :--- |

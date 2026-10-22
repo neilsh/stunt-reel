@@ -59,7 +59,8 @@ To eliminate exploratory stalls and blind binary guesswork, project delivery is 
 
 ### 2.2 Mathematical & Spatial Invariants
 
-* **`[I1]` Metric Right-Handed Coordinates, Attribute-Preserving Vertex Welding & Angle/FOV Normalization:**
+#### [I1] Metric Right-Handed Coordinates, Attribute-Preserving Vertex Welding & Angle/FOV Normalization
+
   * Spatial coordinates use the standard glTF 2.0 right-handed metric basis: $+X$ right, $+Y$ up, $+Z$ backward (toward viewer), and $-Z$ forward.
   * Signed 16-bit fixed-point coordinates ($12.4$ and $8.8$ formats) are converted at ingest into IEEE 754 32-bit floating-point meters ($1.0 = 1.0\text{ m}$).
   * **Attribute-Preserving Vertex Welding:** Near-coincident vertex positions within $\epsilon_{\text{weld}} = 10^{-4}\text{ m}$ are snapped to identical floating-point coordinates to eliminate fixed-point T-junction cracks. However, to preserve *Stunt Island*'s flat-shaded facet boundaries and prevent normal/color bleeding across hard edges, index deduplication in `SodModelIr` keys on the full vertex attribute tuple rather than position alone:
@@ -69,11 +70,13 @@ To eliminate exploratory stalls and blind binary guesswork, project delivery is 
   * **Vertical Field of View ($\text{FOV}_y$) Convention:** `CameraTransform::fov_degrees` is strictly defined as **vertical field of view ($\text{FOV}_y$)** in degrees. The DOS engine's integer focal-length zoom scalar (`focal_dist`) converts to vertical $\text{FOV}_y$ against the aspect-corrected half-height ($H_{\text{half}} = 120.0$) via:
     $$\text{FOV}_y = 2 \arctan\left(\frac{H_{\text{half}}}{\text{focal\_dist}}\right) \times \frac{180}{\pi}$$
 
-* **Real-Mode Physical Address Translation:**
+#### Real-Mode Physical Address Translation
+
   * All 16-bit MS-DOS `Segment:Offset` pointers inspected via `dosbox-x-mcp-server`, GDB, or static disassembly must be normalized to 20-bit linear physical addresses within the $1\text{ MB}$ conventional memory space (`0x00000`–`0xFFFFF`):
     $$\text{Address}_{\text{linear}} = (\text{Segment} \ll 4) + \text{Offset} = (\text{Segment} \times 16) + \text{Offset}$$
 
-* **`[I4]` Discrete Simulation Ticks & Cut-Aware Sub-Tick Interpolation:**
+#### [I4] Discrete Simulation Ticks & Cut-Aware Sub-Tick Interpolation
+
   * `.FLM` choreography logic advances at the runtime's fixed $50\text{ Hz}$ tick rate ($20.0\text{ ms}$ per tick; `PLAYONE.EXE` PIT divisor `0x5D38`). Each slice's `tick_duration` is the number of ticks elapsed since the previous slice, so slice $i$'s timestamp is $\sum_{k \le i}\text{tick\_duration}_k$.
   * **Record tick semantics:** `TrajectoryRecord.tick` is always this cumulative 50 Hz authored tick, never a slice ordinal; a slice's ordinal is only its index in the timeline. Oracle ticks, `AudioCue.tick`, and parity sample points all use the same clock.
   * **Single sampling interface:** `FilmTimeline` (`crates/stunt-core/src/flm/timeline.rs`) is the only public path from a `.FLM` film to trajectory records (`from_bytes`, `sample(tick)`, `sample_at_seconds`, `cues_between`, `total_ticks`, `duration_seconds`, `slices()`, `truncated_to_ticks`, `warnings`, `stop_reason`). The per-slice-ordinal evaluators (`FlmPlayer::step_tick`, `evaluate_all`, `evaluate_film`, `evaluate_sub_tick`) are removed; `FlmPlayer` and the interpolation helpers are crate-private.
@@ -84,12 +87,14 @@ To eliminate exploratory stalls and blind binary guesswork, project delivery is 
       $$\mathbf{q}_{\text{render}}(\alpha) = \text{slerp}(\mathbf{q}_t, \mathbf{q}_{t+1}, \alpha)$$
     * **Camera Cuts & Instantaneous Teleports (`cut_from_previous == true` at tick $t+1$):** When `.FLM` switches camera rigs or when inter-tick camera displacement exceeds the continuity threshold ($\left\|\mathbf{P}_{t+1} - \mathbf{P}_t\right\|_2 > 50.0\text{ m}$), sub-tick interpolation is suppressed ($\alpha_{\text{eff}} = 0.0$, holding $\mathbf{P}_t$ and $\mathbf{q}_t$ until tick $t+1$ arrives) so the camera cuts instantaneously without swooping across the island.
 
-* **`[I5]` Coplanar Decal Resolution:**
+#### [I5] Coplanar Decal Resolution
+
   * *Phase 1 (glTF 2.0 Export):* Because core glTF 2.0 lacks pipeline depth-bias states, coplanar decal polygons (runway markings, aircraft insignias, wing roundels) are geometrically displaced along their outward surface normal $\hat{\mathbf{n}}$ by $\epsilon = 0.001\text{ m}$ at export:
     $$\mathbf{v}' = \mathbf{v} + 0.001\hat{\mathbf{n}}$$
   * *Phase 2 (`wgpu` Engine):* Coplanar decal batches are rendered in a dedicated pipeline pass using hardware depth biasing (`DepthBiasState { constant: 2, slope_scale: 2.0, clamp: 0.0 }`).
 
-* **`[I6]` Visual Parity Acceptance Thresholds & VGA $1:1.2$ Aspect Ratio Correction:**
+#### [I6] Visual Parity Acceptance Thresholds & VGA 1:1.2 Aspect Ratio Correction
+
   * Original VGA Mode 13h framebuffers render at $320 \times 200$ pixels displayed on a physical $4:3$ CRT, resulting in non-square pixels stretched vertically by $1.2$:
     $$\text{Aspect}_{\text{physical}} = \frac{320}{200 \times 1.2} = \frac{320}{240} = \frac{4}{3} \approx 1.3333$$
   * All visual parity gates normalize reference DOSBox-X captures to $4:3$ ($320 \times 240$) prior to Structural Similarity (SSIM) evaluation.
@@ -97,19 +102,23 @@ To eliminate exploratory stalls and blind binary guesswork, project delivery is 
 
 ### 2.3 Software Architecture Guardrails
 
-* **`[I2]` Flat Arena Allocation (No Recursive Pointers):**
+#### [I2] Flat Arena Allocation (No Recursive Pointers)
+
   * Scene graphs and `.SOD` subobject hierarchies must be stored in flat contiguous vectors (`Vec<SodNode>`) indexed via lightweight integer handles (`NodeId(pub u32)`).
   * Reference-counted pointers (`Rc<RefCell<T>>`, `Arc<Mutex<T>>`), raw pointers, and self-referential lifetimes (`&'a SodNode`) are strictly prohibited in `stunt-core`.
 
-* **`[I3]` Authentic VGA Mode 13h Palette Indexing & Flat Shading:**
+#### [I3] Authentic VGA Mode 13h Palette Indexing & Flat Shading
+
   * Geometry preserves original 8-bit VGA palette indices (`0..=255`) inside `SodVertex::palette_index`.
   * In Phase 2, the WGSL vertex-to-fragment stage passes palette and facet lighting indices using `@interpolate(flat)` (disabling bilinear attribute interpolation across triangle interiors) and samples an uncompressed $256 \times 32$ RGBA lookup texture (LUT) representing 256 base colors across 32 discrete directional lighting and atmospheric haze levels.
 
-* **`[I7]` Cleanroom Asset Isolation & Zero-Dependency Core:**
+#### [I7] Cleanroom Asset Isolation & Zero-Dependency Core
+
   * Proprietary game binaries and retail data files (`corpus/`, `target_bin/`) are strictly gitignored and never checked into Git or downloaded during CI.
   * `crates/stunt-core` maintains zero OS windowing, GPU, audio, or emulator dependencies so unit and contract tests compile and run 100% offline in $< 2\text{ seconds}$.
 
-* **`[I8]` DOS 8.3 Uppercase Path Normalization:**
+#### [I8] DOS 8.3 Uppercase Path Normalization
+
   * Because POSIX filesystems are case-sensitive while MS-DOS is case-insensitive, all virtual filesystem (`VfsArchive`) insertions, lookups, and corpus extraction tools normalize filenames to uppercase ASCII (`to_ascii_uppercase()`).
 
 ### 2.4 Evidentiary Tiers & Contract Anchor System
@@ -123,11 +132,8 @@ To eliminate exploratory stalls and blind binary guesswork, project delivery is 
   * **`[Superseded]`**: Not a confidence level: a retired claim or label kept so old references still resolve, with a pointer to its replacement.
 
 * **Immutable Contract Anchors:**
-  * Permanent bracketed anchor tokens remain invariant:
-    * **System Invariants:** `[I1]` through `[I8]`
-    * **Format Anchors:** `# [FMT-RES-HEADER]`, `# [FMT-ALL-CHUNKS]`, `# [FMT-SOD-OPCODES]`, `# [FMT-SOD-IFVIS]`, `# [FMT-SOD-TAP]`, `# [FMT-FLM-OPCODES]`
-    * **Runtime Memory Anchors:** `# [MEM-VSYNC-03DA]`, `# [MEM-FLM-TICK]`, `# [MEM-CAMERA-RIG]`, `# [MEM-ACTOR-TABLE]`, `# [MEM-SOD-VM]`, `# [MEM-SOD-ANCHOR-TABLE]`
-  * Verified automatically via `tests/test_doc_invariants.py` inside `mise run check`.
+  * Permanent bracketed tokens (`[I1]`–`[I8]`, `# [FMT-*]`, `# [MEM-*]`) are cited from code, tests and documents. The list of tokens and the one heading that defines each is the registry in [`python/stunt_reel/doc_anchors.py`](../python/stunt_reel/doc_anchors.py); this document does not duplicate it.
+  * `tests/test_doc_invariants.py` (inside `mise run check`) fails if a registered anchor has no heading in its home file or if any cited anchor is unregistered.
 
 ---
 
@@ -181,7 +187,7 @@ The parity loop compares what the original player scans out against what the nat
 * **Dialog automation (`[Established]`):** `PLAYONE.EXE` opens its modal `LOAD FILM` dialog at startup. Keystroke words written into the BIOS ring buffer (`0040:001E` payload, `0040:001C` tail) are consumed by the guest's `INT 16h` poll while the emulator free-runs: `c` jumps the listbox to `CTRY.ALL`, `Down` selects `CTRY.FLM`, `Enter` confirms. Keystrokes do not reach the guest while the controller is stepping it, so the controller must free-run until playback starts.
 * **Load safety (`[Established]`):** no debugger command may touch the guest while `PLAYONE.EXE` unpacks (roughly the first two seconds). A `MEMDUMPBIN` issued there leaves the guest spinning on `Illegal Unhandled Interrupt Called 6`, and a read issued a little later can kill the emulator outright. Framebuffer dumps are safe from boot, so the driver waits for the dialog page to settle before issuing any other command.
 * **Page extraction (`[Established]`):** `PLAYONE.EXE` scans out the Mode 13h page at `A000:0000` during playback (`VGA MODE` reports `disp-start=0h`). `MEMDUMPBIN A000:0000 FA00 <path>` writes the 64000-byte page; the debugger parses both addresses and lengths in hex, and resolves host paths only when given forward-slash absolute paths without quotes. DOS 8.3 normalization uppercases the written filename.
-* **Palette (`[Established]`):** `VGA DACPAL` prints 8 entries per line as 6-hex-digit RGB triples in 6-bit DAC units, so channels are scaled to `0..=255` (`(v * 255 + 31) / 63`) before luminance comparison.
+* **Palette (`[Established]`):** `VGA DACPAL` prints 8 entries per line as 6-hex-digit RGB triples in 6-bit DAC units, scaled to `0..=255` before luminance comparison with the capture scaling defined in [`palette-and-shading.md` § 1.1](../research/formats/concepts/palette-and-shading.md#11-vga-hardware-dac-principles), which also records how it differs from the renderer's authored palette.
 * **Comparator (`[Established]`):** `stuntreel parity` reduces both sides to Rec. 601 luminance, stretches $320 \times 200 \rightarrow 320 \times 240$ per `[I6]`, scores `compute_frame_ssim` (window 11, stride 8), and reports the IoU of each side's non-sky mask plus `contact_NNNN.png` sheets (`reference | rendered | |difference|`).
 * **Tick counter (`[Established]`):** `parity` matches each capture to the render at the same `film_tick` (`DS:0x4896`, with `global_tick` from `DS:0x22B8`). Offsets, the 5-tick lead and the live-sampling evidence: [`MEMORY_MAP.md` `# [MEM-FLM-TICK]`](MEMORY_MAP.md#-mem-flm-tick) and [`memory.md` § 3.2](../research/playone-exe/memory.md#32-tick-counter-evidence).
 * **Stepped capture limits (`[Established]`):** the `VRT` route documented earlier produced no frames and is withdrawn — it either crashed the emulator or left the guest in an exception loop, and its 24 identical 150 ms samples were the static dialog, not the film. The trap-plus-`RUN` loop above captures 140 consecutive `CTRY.FLM` frames (`tick_*.idx`, 64 000 bytes each) in one unattended run.

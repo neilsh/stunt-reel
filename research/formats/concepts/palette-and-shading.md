@@ -43,8 +43,15 @@ The VGA Digital-to-Analog Converter (DAC, typically an Inmos INMOS G171 or compa
 - **I/O Ports:**
   - `0x03C8` (PEL Address Write Mode Register): Sets starting palette index ($0..255$).
   - `0x03C9` (PEL Data Register): Three consecutive byte writes stream Red, Green, and Blue intensities (auto-incrementing to next palette index).
-- **Modern 8-Bit Normalization:** When migrating 6-bit VGA DAC values to modern 8-bit channels ($[0, 255]$), bit-exact scaling applies a 2-bit left shift with bit replication or normalized division:
-  $$C_{\text{8bit}} = (C_{\text{6bit}} \ll 2) \mid (C_{\text{6bit}} \gg 4) \quad \text{or} \quad C_{\text{norm}} = \frac{C_{\text{6bit}}}{63.0}$$
+- **Modern 8-Bit Normalization (the single definition; other documents link here):** three 6-bit to 8-bit scalings appear in this project. They agree at `0` and `63` only by construction, so the code that uses each is named:
+
+  | Name | Formula ($c \in [0, 63]$) | White ($c = 63$) | Used by |
+  | :--- | :--- | :--- | :--- |
+  | **Capture scaling** (canonical for DAC reads) | $\lfloor (255c + 31) / 63 \rfloor$ | `255` | `_scale_6bit` in `python/stunt_reel/tac/framebuffer.py`, applied to every `VGA DACPAL` read of the reference capture ([`capture.md`](../../playone-exe/capture.md)) |
+  | Bit replication | $(c \ll 2) \mid (c \gg 4)$ | `255` | none; an approximation of the capture scaling that differs by 1 at $c \in \{11..15, 48..52\}$ |
+  | **Authored table** | $c \ll 2$ | `252` | `MODE_13H_PALETTE` in `crates/stunt-core/src/contracts/palette.rs` (every stored channel is a multiple of 4; the test pins index 255 to `(252, 252, 252)`) and, through it, the `stunt-render` LUT |
+
+  Normalized division $c / 63.0$ is the same quantity as the capture scaling before rounding. Consequence: the native renderer's palette tops out at `252` while the captured reference reaches `255`, a $\le 3/255$ channel offset. Its effect on the `[I6]` SSIM scores has not been measured; treat it as a known discrepancy, not an equivalence. Whether the authored table should store capture-scaled values is an open decision `[Hypothesis]`; the table's literals came from `pal.h` and were not re-derived from a DAC read.
 
 ---
 

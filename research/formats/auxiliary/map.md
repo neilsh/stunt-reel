@@ -31,7 +31,7 @@ Each file within the scenery subsystem employs a deterministic byte-level layout
 
 ---
 
-### 2.2 `ANCHORPT.DAT` Memory Layout
+### 2.2 `ANCHORPT.DAT` Memory Layout (`# [FMT-MAP-ANCHORPT]`)
 
 `ANCHORPT.DAT` comprises exactly 1,024 contiguous 28-byte records ($1024 \times 28 = 28{,}672\text{ bytes}$), representing the primary topological grid of Stunt Island.
 
@@ -53,7 +53,7 @@ Executable layout: [`anchorpt.dat.ksy`](anchorpt.dat.ksy).
 
 ---
 
-### 2.3 `MAP.BIN` Memory Layout
+### 2.3 `MAP.BIN` Memory Layout (`# [FMT-MAP-AREA]`)
 
 `MAP.BIN` defines the polygon surface mesh connecting the anchor points. It contains 179 contiguous 30-byte `MAP_AREA` records followed by a 2-byte null word terminator ($179 \times 30 + 2 = 5{,}372\text{ bytes}$).
 
@@ -88,7 +88,7 @@ The surrounding ocean is not stored as discrete patches in `MAP.BIN`. Instead, t
 
 ---
 
-### 3.2 `SCENERY.scn` Node Opcode Table
+### 3.2 `SCENERY.scn` Node Opcode Table (`# [FMT-MAP-SCENERY]`)
 
 `SCENERY.scn` is a precompiled spatial evaluation bytecode stream of $29{,}559$ 32-bit integer words ($118{,}236\text{ bytes}$). The tree is evaluated recursively starting at root node index `1` (`simap_render_node(1, &center_pt, &eye_pt)`).
 

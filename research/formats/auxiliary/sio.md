@@ -54,7 +54,7 @@ The geometry payload from offset `0x0009` to $\text{EOF}-4$ consists of a sequen
 
 ---
 
-### 3.2 Opcode Definitions
+### 3.2 Opcode Definitions (`# [FMT-SIO-RECORDS]`)
 
 #### 1. `TAG_VERTEX` (`0x12`) — Explicit 3D Vertex Definition (9 Bytes)
 
