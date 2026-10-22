@@ -43,8 +43,17 @@ The VGA Digital-to-Analog Converter (DAC, typically an Inmos INMOS G171 or compa
 - **I/O Ports:**
   - `0x03C8` (PEL Address Write Mode Register): Sets starting palette index ($0..255$).
   - `0x03C9` (PEL Data Register): Three consecutive byte writes stream Red, Green, and Blue intensities (auto-incrementing to next palette index).
-- **Modern 8-Bit Normalization:** When migrating 6-bit VGA DAC values to modern 8-bit channels ($[0, 255]$), bit-exact scaling applies a 2-bit left shift with bit replication or normalized division:
-  $$C_{\text{8bit}} = (C_{\text{6bit}} \ll 2) \mid (C_{\text{6bit}} \gg 4) \quad \text{or} \quad C_{\text{norm}} = \frac{C_{\text{6bit}}}{63.0}$$
+- **Modern 8-Bit Normalization (the single definition; other documents link here):** three 6-bit to 8-bit scalings appear in this project. They agree at `0` and `63` only by construction, so the code that uses each is named:
+
+  | Name | Formula ($c \in [0, 63]$) | White ($c = 63$) | Used by |
+  | :--- | :--- | :--- | :--- |
+  | **Capture scaling** (canonical for DAC reads) | $\lfloor (255c + 31) / 63 \rfloor$ | `255` | `_scale_6bit` in `python/stunt_reel/tac/framebuffer.py`, applied to every `VGA DACPAL` read of the reference capture ([`capture.md`](../../playone-exe/capture.md)) |
+  | Bit replication | $(c \ll 2) \mid (c \gg 4)$ | `255` | none; an approximation of the capture scaling that differs by 1 at $c \in \{11..15, 48..52\}$ |
+  | **Authored table** | $c \ll 2$ | `252` | `MODE_13H_PALETTE` in `crates/stunt-core/src/contracts/palette.rs` (every stored channel is a multiple of 4; the test pins index 255 to `(252, 252, 252)`) and, through it, the `stunt-render` LUT |
+
+  Normalized division $c / 63.0$ is the same quantity as the capture scaling before rounding. Consequence: the native renderer's palette tops out at `252` while the captured reference reaches `255`, a $\le 3/255$ channel offset. Its effect on the `[I6]` SSIM scores has not been measured; treat it as a known discrepancy, not an equivalence. Whether the authored table should store capture-scaled values is an open decision `[Hypothesis]`; the table's literals came from `pal.h` and were not re-derived from a DAC read.
+
+**Governing invariants:** [`[I3]`](../../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I5]`](../../../docs/SPEC.md#i5-coplanar-decal-resolution), [`[I6]`](../../../docs/SPEC.md#i6-visual-parity-acceptance-thresholds--vga-112-aspect-ratio-correction). **Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs). Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
 
 ---
 
@@ -186,18 +195,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ---
 
-## 4. Architectural Invariants & Coordinate Mapping
-
-| Invariant | System Rule | Concrete Implementation |
-| :--- | :--- | :--- |
-| **`[I3]`** | Mode 13h Palette Indexing | Vertices preserve 8-bit palette indices in `SodVertex::palette_index`. Rendered via $256 \times 32$ LUT. |
-| **`[I3]`** | Flat Facet Attribute Interpolation | Shader uses `@interpolate(flat)` to guarantee hard polygon edges without color bleeding. |
-| **`[I5]`** | Coplanar Decal Resolution | Runway markings and insignias carry `flags |= 0x01`. Rendered with hardware depth bias (`slope_scale: 2.0`). |
-| **`[I6]`** | 4:3 Aspect Ratio Normalization | $320 \times 200$ framebuffer normalized to $320 \times 240$ ($1:1.2$ pixel stretch) prior to SSIM parity checks. |
-
----
-
-## 5. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Reverse Engineering Backlog
 
 1. **`[BK-PAL-01]` Dynamic Palette Rotation in Night Scenes** (`[Bounded Observation]`): Disassembly of `PLAYONE.EXE` indicates timer-driven palette cycling for runway approach lights and lightning flashes. Precise register cycling ranges remain to be verified.
 2. **`[BK-PAL-02]` CRT Phosphor Gamma vs sRGB Transfer** (`[Supported Inference]`): Vintage 1990s cathode-ray tube (CRT) monitors exhibited a native gamma curve of $\gamma \approx 2.4$. The current $256 \times 32$ LUT outputs linear sRGB values; an optional post-processing toggle is reserved for future milestones.
@@ -206,7 +204,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ---
 
-## 6. Attribution & Provenance
+## 5. Attribution & Provenance
 
 - **Dave Palmowski & Dean Newbury:** Comprehensive documentation of Stunt Island color groups, 16/32-level lighting ramps, and preservation of `si.pal`, `si.act`, and `shading.doc` in `corpus/si_archive/SITools/SpriteMaker/` and `corpus/si_archive/SITools/Docs/`.
 - **Adrian Stephens (1997):** Analysis of subobject palette index mapping, conditional color substitution, and translucent propeller disc rendering (`corpus/si_archive/SITools/Docs/Adrian_Subobjects.txt`).
@@ -217,17 +215,3 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 - **StuntReel Teamwork Team (2026):** Milestone 1 & 2 $256 \times 32$ GPU LUT architecture, `@interpolate(flat)` pipeline design, and visual parity specification (`explorer_fmt_aux_concepts/analysis.md`, `crates/stunt-render/`).
 
 ---
-
-## 7. Codebase Seam Contracts & Fixtures
-
-### 7.1 Seam Contracts
-- **`crates/stunt-core/src/contracts/mod.rs`**: Invariant `[I3]` (Fixed VGA Mode 13h palette index color correspondence).
-- **`crates/stunt-core/src/contracts/scene.rs`**:
-  - `SodVertex`: Contains `palette_index: u8` and `flags: u8` (decal and emissive bits).
-  - `NodeKind::Mesh { is_decal: bool }`: Direct mapping of coplanar decal batches.
-- **`crates/stunt-core/src/contracts/parity.rs`**:
-  - `VisualParityReport`: Validates frame parity against Mode 13h references normalized to $4:3$ ($\text{SSIM} \ge 0.88 / 0.90$).
-
-### 7.2 Cleanroom Synthetic Fixtures
-- **`tests/fixtures/synthetic_minimal.sod`**: Bytecode fixture containing two overlapping facets (palette indices 40 and 15) validating decal flags and palette index retention.
-- **`tests/fixtures/oracle_intro_trajectory.json`**: Oracle trajectory verifying camera tracking and scene palette parameters (`horizon_sky_palette: (u8, u8)`).

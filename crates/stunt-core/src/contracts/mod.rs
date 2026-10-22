@@ -14,7 +14,11 @@
 //! - `[I4]` Decoupled fixed simulation ticks (50 Hz) with sub-tick interpolation
 //! - `[I5]` Coplanar decal identification and normal displacement rules
 //! - `[I6]` Visual parity acceptance thresholds (SSIM >= 0.88 / 0.90)
+//! - `[I7]` Cleanroom asset isolation and a zero-dependency core (no windowing, GPU, audio or emulator)
 //! - `[I8]` Uppercase DOS 8.3 filename normalization
+//!
+//! Definitions: `docs/SPEC.md`; the heading for each token is registered in
+//! `python/stunt_reel/doc_anchors.py`.
 
 pub mod palette;
 pub mod parity;

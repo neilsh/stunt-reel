@@ -11,8 +11,10 @@ The `.RES` file format is the foundational static resource container for *Stunt 
 | **File Extension** | `.RES` (DOS 8.3 uppercase, e.g., `ACTORS.RES`, `PLANES.RES`, `SCENERY1.RES`) | `[Established]` | `research/playone-exe/startup.md` |
 | **Magic Signature** | 2-byte ASCII: `b"RS"` (`0x52, 0x53`) at byte offset `0x0000` | `[Established]` | `RIPRES.C:74`, `SIResFile.cpp:44`, `crates/stunt-core/src/vfs/res.rs:28` |
 | **Byte Endianness** | Little-Endian (all 16-bit word and 32-bit dword integers) | `[Established]` | `RIPRES.C:78-82`, `sires.cpp:52` |
-| **Engine Role** | Static archive container providing $O(1)$ direct indexed access to geometry, sprites, and dialogue assets without runtime disk seeks or string hashing | `[Established]` | `docs/SPEC.md § 3.1`, `indices.txt` |
+| **Engine Role** | Static archive container providing $O(1)$ direct indexed access to geometry, sprites, and dialogue assets without runtime disk seeks or string hashing | `[Established]` | `research/playone-exe/startup.md`, `indices.txt` |
 | **Paired Contract** | `Seam 1: VfsArchive` (`crates/stunt-core/src/contracts/vfs.rs`) | `[Established]` | `# [FMT-RES-HEADER]`, `docs/ARCHITECTURE.md` |
+
+**Governing invariants:** [`[I7]`](../../docs/SPEC.md#i7-cleanroom-asset-isolation--zero-dependency-core), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/res.rs`](../../crates/stunt-core/src/vfs/res.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** `synthetic_minimal.res` (72 bytes), laid out in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
 
 ---
 
@@ -156,11 +158,7 @@ The authoritative catalog of `.RES` indices, recovered from `SITools/ResMaker/in
   - `.SPR`: Run-Length Encoded (RLE) 8-bit paletted scanlines with transparency keying (`0x00`).
   - `.VOC`: 8-bit unsigned PCM audio blocks with Creative Voice File headers.
 
----
-
-## 4. Architectural Invariants & Coordinate Mapping
-
-### 4.1 Invariant `[I8]` — Uppercase DOS 8.3 Filename Normalization
+### 3.5 Name Normalization Policy (`[I8]`)
 
 System invariant `[I8]` mandates that all virtual filesystem keys are normalized to uppercase ASCII 8.3 filenames:
 - When extracting names from the internal Name Table, leading and trailing whitespace is stripped.
@@ -168,15 +166,9 @@ System invariant `[I8]` mandates that all virtual filesystem keys are normalized
 - If an entry name is empty or contains non-ASCII characters, the parser deterministically generates an uppercase 4-digit hexadecimal identifier: `format!("{:04X}.BIN", entry_index)`.
 - Lookups in `VfsArchive` are strictly case-insensitive: querying `"fokker.sod"`, `"FOKKER.SOD"`, or `"Fokker.Sod"` accesses the exact same underlying byte payload.
 
-### 4.2 Invariant `[I7]` — Cleanroom Asset Isolation
-
-Under Invariant `[I7]`, no proprietary binary data from original disks or archives may ever be checked into Git:
-- All CI test runs and unit test suites execute against offline cleanroom synthetic fixtures (`tests/fixtures/synthetic_minimal.res`).
-- The parser implementation in `crates/stunt-core/src/vfs/res.rs` is 100% cleanroom: it was written exclusively against public structural specifications (`RIPRES.C`, `indices.txt`) without copying assembly or proprietary runtime routines.
-
 ---
 
-## 5. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Reverse Engineering Backlog
 
 The following backlog documents unresolved questions and their empirical status:
 
@@ -190,11 +182,11 @@ The following backlog documents unresolved questions and their empirical status:
 
 ---
 
-## 6. Attribution & Provenance
+## 5. Attribution & Provenance
 
 The reverse engineering of the `.RES` archive container format represents decades of dedicated community research:
 
-### 6.1 Community Researchers & Tool Authors
+### 5.1 Community Researchers & Tool Authors
 
 - **Adrian Stephens**: Original Assembly Line Engine Developer; designed the memory clump layout and 16-bit resource ID addressing architecture for the 8086/80286 DOS engine.
 - **Chris Phillips** (`bigbang@seanet.com`): Author of `SODParse` (`ripres.c`, `DECODE.C`, `SOD.H`), `SIRes` (`SIResFile.cpp`, `Sod.h`), and `FreeFlight` (`sires.cpp`). Decoded the 8-byte header, offset table slicing, and string table extraction logic.
@@ -204,7 +196,7 @@ The reverse engineering of the `.RES` archive container format represents decade
 - **Ángel Eduardo** (`arcnorj@yahoo.es`): Author of Stunt Island Extractor (2004–2005); analyzed binary models, prop clumps, and subobject hierarchies.
 - **Alberto Marnetto**: Author of `SI-8x` high-detail engine patch (2024); explored resource streaming limits and LOD bytecode execution.
 
-### 6.2 Primary Reference Paths in `corpus/si_archive/`
+### 5.2 Primary Reference Paths in `corpus/si_archive/`
 
 - `Developer/SODParse/ripres.c` (Chris Phillips' original C extraction tool)
 - `Developer/SIRes/SIResFile.cpp` (C++ resource archive reader)
@@ -214,55 +206,3 @@ The reverse engineering of the `.RES` archive container format represents decade
 - `Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt` (Neil Halelamien's 16-bit key analysis)
 
 ---
-
-## 7. Codebase Seam Contracts & Fixtures
-
-### 7.1 Seam 1: `VfsArchive` Contract
-
-The `.RES` container parser implements `Seam 1: VfsArchive` defined in `crates/stunt-core/src/contracts/vfs.rs`:
-
-```rust
-// contracts/vfs.rs
-pub enum ArchiveFormat {
-    Res,
-    All,
-}
-
-pub struct VfsEntry {
-    pub name: String,
-    pub data: Vec<u8>,
-    pub source_offset: u32,
-    pub was_compressed: bool,
-}
-
-pub struct VfsArchive {
-    pub format: ArchiveFormat,
-    pub entries: BTreeMap<String, VfsEntry>,
-}
-```
-
-### 7.2 Native Rust Implementation
-
-- **Parser Function**: `crates/stunt-core/src/vfs/res.rs::parse_res(data: &[u8]) -> Result<VfsArchive, VfsError>`
-- **Error Handling**: `crates/stunt-core/src/vfs/mod.rs::VfsError`
-  - `UnexpectedEof { expected, actual }`: File smaller than 8 bytes or offset exceeds length.
-  - `InvalidMagic { expected: "RS", actual }`: First 2 bytes do not match `b"RS"`.
-  - `InvalidOffsetTable { reason }`: `ofs[0] < 8`, non-4-byte aligned, or non-monotonic offsets.
-
-### 7.3 Cleanroom Synthetic Fixture: `synthetic_minimal.res`
-
-Located at `tests/fixtures/synthetic_minimal.res` (72 bytes total):
-- **Bytes 0..1**: Magic signature `b"RS"` (`0x52, 0x53`)
-- **Bytes 2..3**: `res_index` `0x01`, `item_count` `0x03` (regions after the 20-byte directory: name table plus two payloads)
-- **Offset Table** ($N = (20/4) - 1 = 4$ offsets):
-  - `ofs[0] = 20` (`0x14`): Name Table start
-  - `ofs[1] = 40` (`0x28`): Payload 0 (`PLANE.SOD`, 16 bytes)
-  - `ofs[2] = 56` (`0x38`): Payload 1 (`PROP.SOD`, 16 bytes)
-  - `ofs[3] = 72` (`0x48`): EOF sentinel offset
-- **Name Table (`20..40`)**: `"PLANE.SOD\0PROP.SOD\0\0"`
-- **Payloads**: Deterministic test bytes verifying 100% byte-accurate extraction without data corruption.
-
-### 7.4 Verification Test Suite
-
-- `crates/stunt-core/tests/vfs_spec.rs`: Basic extraction, empty containers, corrupted headers and offset tables, name-table edge cases, case insensitivity (100 permutations), zero-byte entries, large containers, synthetic fixture ingest.
-- `crates/stunt-core/tests/vfs_fuzz.rs`: Seeded random and mutation fuzzing and sub-header buffer sweeps (never panic).

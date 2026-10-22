@@ -17,6 +17,8 @@ A `.ALL` archive bundles 3D models (`.SOD`), choreography timeline scripts (`.FL
 | **Engine Role** | Scene-level runtime asset bundle providing direct ID lookups for geometry, palettes, sounds, and choreography | `[Established]` | `# [FMT-ALL-CHUNKS]`, `crates/stunt-core/src/contracts/vfs.rs` |
 | **Paired Contract** | `Seam 1: VfsArchive` (`crates/stunt-core/src/contracts/vfs.rs`) | `[Established]` | `# [FMT-ALL-CHUNKS]`, `docs/ARCHITECTURE.md` |
 
+**Governing invariants:** [`[I3]`](../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I7]`](../../docs/SPEC.md#i7-cleanroom-asset-isolation--zero-dependency-core), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/all.rs`](../../crates/stunt-core/src/vfs/all.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** synthetic archives described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
+
 ---
 
 ## 2. Header & Memory Layout
@@ -25,31 +27,9 @@ A `.ALL` archive employs a flat directory header consisting of an item count fol
 
 ### 2.1 On-Disk Directory Layout (`# [FMT-ALL-CHUNKS]`)
 
-The executable layout for this section is [`all.ksy`](all.ksy).
+The executable byte layout is [`all.ksy`](all.ksy): `num_chunk_ids: u2`, `chunk_ids: u2[num]`, then `num + 1` `u4` offsets, giving a `len_header` of `6 * num + 6` bytes with the final offset acting as an EOF sentinel. The schema is the single source for field widths, offsets and byte order; this section keeps only the corpus evidence and parser policy.
 
-```
-+---------------------------------------------------------------------------------+
-|                        .ALL FILE ON-DISK BINARY LAYOUT                          |
-+-------------------+-------------------+-----------------------------------------+
-| Byte Range        | Type              | Field Name / Semantic Description       |
-+-------------------+-------------------+-----------------------------------------+
-| 0x0000 - 0x0001   | uint16 (LE)       | num: Number of resource chunks (0..65535)|
-| 0x0002 .. H_id    | uint16[num] (LE)  | ids: Contiguous array of Resource IDs   |
-| H_id .. H_total   | uint32[num+1] (LE)| offsets: Chunk offsets + EOF sentinel    |
-| offsets[0] .. EOF | uint8[]           | Resource Payloads 0 .. num-1            |
-+-------------------+-------------------+-----------------------------------------+
-```
-
-#### Header Size Calculation
-The total header size is directly computed from the number of items:
-$$\text{HeaderSize} = 2 + (2 \times \text{num}) + (4 \times (\text{num} + 1)) = 6 \times \text{num} + 6\text{ bytes}$$
-Where:
-- $H_{\text{id}} = 2 + 2 \times \text{num}$: Starting byte offset of the 32-bit offset array.
-- $H_{\text{total}} = 6 \times \text{num} + 6$: Byte offset marking the end of the header directory.
-- `ids[i]` is stored at byte offset $2 + (i \times 2)$.
-- `offsets[i]` is stored at byte offset $H_{\text{id}} + (i \times 4)$, for $i \in [0, \text{num}]$.
-
-Corpus verification (`[Bounded Observation]`): across the 289 `.ALL` files in `corpus/si_archive/`, $\text{offsets}[0]$ equals $H_{\text{total}}$ in every file, and the sentinel equals the file size in 288 of 289. `Films/MultiFLM/UFOAct2/BRIEFING.ALL` points past EOF, consistent with a truncated archive rather than a different layout.
+Corpus verification (`[Bounded Observation]`): across the 289 `.ALL` files in `corpus/si_archive/`, `offsets[0]` equals `len_header` in every file, and the sentinel equals the file size in 288 of 289. `Films/MultiFLM/UFOAct2/BRIEFING.ALL` points past EOF, consistent with a truncated archive rather than a different layout.
 
 #### Chunk Bounds & Slicing
 Payload data immediately follows the directory header in contiguous, non-overlapping slices:
@@ -59,7 +39,7 @@ Payload data immediately follows the directory header in contiguous, non-overlap
 - The on-disk table does include an EOF sentinel entry, mirroring `.RES`. `parse_all` reads the first `num` offsets and extends the final payload to EOF, which is equivalent whenever the sentinel matches the file size.
 
 #### Directory Integrity Guardrails
-1. **Header Boundary**: $\text{offsets}[0] \ge \text{HeaderSize}$. If $\text{offsets}[0] < \text{HeaderSize}$, the offset points inside the header table, raising `VfsError::InvalidOffsetTable`.
+1. **Header Boundary**: `offsets[0] >= len_header`. If `offsets[0] < len_header`, the offset points inside the header table, raising `VfsError::InvalidOffsetTable`.
 2. **Buffer Bounds**: $\text{offsets}[i] \le \text{file\_len}$ for all $i$. An offset exceeding file length raises `VfsError::UnexpectedEof`.
 3. **Monotonicity**: $\text{offsets}[i+1] \ge \text{offsets}[i]$ for all $i \in [0, \text{num}-1]$, including the sentinel. Inverted offsets raise `VfsError::InvalidOffsetTable`.
 
@@ -109,21 +89,14 @@ Sound sample chunks contain raw 8-bit unsigned mono PCM audio clips digitized at
 - **Resource ID Resolution:** When a `.FLM` choreography stream encounters opcode `0x9C` (`sound`), operand `arg2` specifies a 16-bit resource ID in the range `0xC000`–`0xCFFF`.
 - **Runtime Binding:** The engine queries the loaded `.ALL` container for chunk `arg2`, obtaining the raw waveform bytes for playback through the Sound Blaster DSP without disk seeks.
 
----
+### 3.4 Runtime Scene Reconstruction & Model Binding (`[Established]`)
 
-## 4. Architectural Invariants & Coordinate Mapping
+During standalone playback in `PLAYONE.EXE` (and modern reconstruction in `stuntreel`), `.ALL` archives provide both the dynamic actor models and the static prop definitions for the island environment:
+1. **Model Catalog**: Chunks with IDs in `0x0001`–`0x7FFF` (`MODEL_%04X.SOD`) form a local scene catalog.
+2. **Dynamic Binding**: Actors evaluated in `.FLM` trajectory ticks bind to these models via `ActorTransform::shape_id`.
+3. **Static Scenery Instantiation**: Simultaneously, the static scene graph (`SCENERY.scn`) resolves its `SP_LEAF` object IDs against this same catalog, allowing standalone films to reconstruct complete sets (hangars, towers, buildings, flora) alongside moving aircraft.
 
-### 4.1 Invariant `[I3]` — Authentic Mode 13h Palette & $256 \times 32$ GPU LUT
-
-Under Invariant `[I3]`, modern hardware rendering backends (`crates/stunt-render/`) cannot emulate real-mode VGA DAC registers directly. Instead:
-- The 256 Mode 13h palette colors and their 32 directional lighting levels are synthesized into a $256 \times 32$ RGBA Lookup Texture (LUT):
-  - **Texture Format**: `wgpu::TextureFormat::Rgba8Unorm` ($256 \times 32 \times 4 = 32{,}768\text{ bytes}$).
-  - **Rows 0..15**: Progressively shaded shadow levels.
-  - **Row 16**: Nominal unshaded diffuse color.
-  - **Rows 17..31**: Directional sun highlight levels.
-- **Flat Shading Attribute Guarantee:** Vertex shaders output `@interpolate(flat) palette_index: u32` to prevent bilinear bleeding across triangle facets.
-
-### 4.2 Invariant `[I8]` — Uppercase DOS 8.3 Filename Normalization
+### 3.5 Entry Naming Policy (`[I8]`)
 
 When `.ALL` chunks are unpacked into `VfsArchive`, entry filenames are normalized to uppercase 8.3 keys per Invariant `[I8]`:
 - Payloads starting with `b"FILM"` are mapped to `"CHOREO.FLM"`.
@@ -132,7 +105,7 @@ When `.ALL` chunks are unpacked into `VfsArchive`, entry filenames are normalize
 
 ---
 
-## 5. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Reverse Engineering Backlog
 
 The following backlog documents open questions and investigations regarding the `.ALL` bundle format:
 
@@ -146,11 +119,11 @@ The following backlog documents open questions and investigations regarding the 
 
 ---
 
-## 6. Attribution & Provenance
+## 5. Attribution & Provenance
 
 The documentation and reverse engineering of the `.ALL` bundle format builds upon the work of several community developers:
 
-### 6.1 Community Researchers & Tool Authors
+### 5.1 Community Researchers & Tool Authors
 
 - **FreeFlight Team**: Authors of `Developer/FreeFlight/src/sires.cpp`, who implemented `sires_load_all_file` and decoded the parallel `num`, `ids`, and `offsets` directory layout.
 - **Dave Palmowski & Dean Newbury**: Authors of `shading.doc`, `si.pal`, and `si.act` in `corpus/si_archive/SITools/SpriteMaker/` and `SITools/Docs/`, establishing the 16-color group organization and 32-level composite shading ramps.
@@ -161,7 +134,7 @@ The documentation and reverse engineering of the `.ALL` bundle format builds upo
 - **Ángel Eduardo**: Analyzed `.ALL` container chunk headers and subobjects.
 - **Alberto Marnetto**: Explored `.ALL` high-resolution replacement and texture patching in `SI-8x`.
 
-### 6.2 Primary Reference Paths in `corpus/si_archive/`
+### 5.2 Primary Reference Paths in `corpus/si_archive/`
 
 - `Developer/FreeFlight/src/sires.cpp` (C++ `.ALL` container unpacker)
 - `SITools/SpriteMaker/si.pal` (Raw Mode 13h 256-color palette data)
@@ -169,48 +142,3 @@ The documentation and reverse engineering of the `.ALL` bundle format builds upo
 - `SITools/SpriteMaker/SIPAL.H` (C header defining palette indices)
 
 ---
-
-## 7. Codebase Seam Contracts & Fixtures
-
-### 7.1 Seam 1: `VfsArchive` Contract
-
-The `.ALL` bundle parser implements `Seam 1: VfsArchive` defined in `crates/stunt-core/src/contracts/vfs.rs`:
-
-```rust
-// contracts/vfs.rs
-pub enum ArchiveFormat {
-    Res,
-    All,
-}
-
-pub struct VfsEntry {
-    pub name: String,
-    pub data: Vec<u8>,
-    pub source_offset: u32,
-    pub was_compressed: bool,
-}
-
-pub struct VfsArchive {
-    pub format: ArchiveFormat,
-    pub entries: BTreeMap<String, VfsEntry>,
-}
-```
-
-### 7.2 Native Rust Implementation
-
-- **Parser Function**: `crates/stunt-core/src/vfs/all.rs::parse_all(data: &[u8]) -> Result<VfsArchive, VfsError>`
-- **Error Handling**: `crates/stunt-core/src/vfs/mod.rs::VfsError`
-  - `UnexpectedEof { expected, actual }`: Buffer smaller than 2 bytes or smaller than header table.
-  - `InvalidOffsetTable { reason }`: `offsets[0] < header_size` or non-monotonic offsets.
-
-### 7.3 Verification Test Suite
-
-- `crates/stunt-core/tests/vfs_spec.rs`: Empty containers (`num == 0`), mixed payload parsing, corrupted header bounds, case insensitivity, zero-byte payloads, multi-entry roundtrips, payload classification.
-- `crates/stunt-core/tests/vfs_fuzz.rs`: Seeded random and mutation fuzzing and sub-header buffer sweeps; every input must parse or return a structured `VfsError`, never panic.
-
-### 3.4 Runtime Scene Reconstruction & Model Binding (`[Established]`)
-
-During standalone playback in `PLAYONE.EXE` (and modern reconstruction in `stuntreel`), `.ALL` archives provide both the dynamic actor models and the static prop definitions for the island environment:
-1. **Model Catalog**: Chunks with IDs in `0x0001`–`0x7FFF` (`MODEL_%04X.SOD`) form a local scene catalog.
-2. **Dynamic Binding**: Actors evaluated in `.FLM` trajectory ticks bind to these models via `ActorTransform::shape_id`.
-3. **Static Scenery Instantiation**: Simultaneously, the static scene graph (`SCENERY.scn`) resolves its `SP_LEAF` object IDs against this same catalog, allowing standalone films to reconstruct complete sets (hangars, towers, buildings, flora) alongside moving aircraft.

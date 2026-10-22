@@ -13,6 +13,8 @@ The `.SPR` format represents uncompressed 8-bit indexed raster billboard images 
   2. *Procedural Billboard Binding:* Bound to procedural `.SOD` (display list) models compiled by `MAKESPR.EXE`. The `.SOD` model defines the spatial transform, billboard orientation vector, animation frame count, and resource indices, while the `.SPR` payload supplies the raw texel colors.
   3. *Dynamic Visual Effects:* Rendered as camera-facing billboards centered at the entity's 3D origin, with index `0` acting as a strict transparency key.
 
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I3]`](../../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I5]`](../../../docs/SPEC.md#i5-coplanar-decal-resolution). **Contract and code:** [`contracts/scene.rs`](../../../crates/stunt-core/src/contracts/scene.rs); palette scaling is defined once in [`palette-and-shading.md`](../concepts/palette-and-shading.md#11-vga-hardware-dac-principles). No synthetic `.SPR` fixture exists yet.
+
 ---
 
 ## 2. Header & Memory Layout
@@ -28,7 +30,7 @@ A `.SPR` file has an extremely compact binary structure consisting of a 4-byte r
 +-------------------+-------------------+-----------------------------------------------+-------------------+
 ```
 
-### 2.2 Field Definitions
+### 2.2 Field Definitions (`# [FMT-SPR-HEADER]`)
 
 | Offset (Hex) | Size (Bytes) | Type | Field Name | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -99,19 +101,7 @@ When multiple `.SPR` frames are bound to a dynamic billboard object, `MAKESPR.EX
 - The playback engine indexes frames cyclically:
   $$\text{current\_frame}(t) = \left\lfloor \frac{t}{\Delta t_{\text{frame}}} \right\rfloor \pmod{N_{\text{frames}}}$$
 
----
-
-## 4. Architectural Invariants & Coordinate Mapping
-
-### 4.1 VGA Mode 13h Palette Indexing (`[I3]`)
-
-In conformance with Invariant `[I3]`, `.SPR` pixels store raw 8-bit palette indices (`0..=255`) rather than pre-baked RGB values.
-- **Hardware Mapping:** Mode 13h DAC registers provide 6 bits per channel ($[0, 63]$), normalized to modern floating-point color via:
-  $$C_{\text{linear}} = \left(\frac{C_{\text{6bit}}}{63.0}\right)^{2.2}$$
-- **Time-of-Day Lighting:** Under non-noon lighting (dusk, sunset, night), pixel indices are passed through `.ALL` lighting lookup tables (`LIGHT.TAB`, $256 \times 32$ LUT), smoothly darkening the sprite in harmony with 3D polygon shading.
-- **Preservation:** The Rust core transpiler and `stunt-render` pipeline preserve exact palette indices in GPU vertex and texture structures, executing palette lookup via a 1D/2D texture sampler.
-
-### 4.2 Metric Coordinates & Billboard Centering (`[I1]`)
+### 3.5 Billboard Quad Geometry (`[I1]`)
 
 Per Invariant `[I1]`:
 - Sprites are authored as symmetric planar rectangles centered at local coordinate $(0.0, 0.0, 0.0)$.
@@ -122,13 +112,13 @@ Per Invariant `[I1]`:
 - In camera-facing billboarding, the quad's normal vector $\mathbf{n}$ is dynamically aligned with the inverted camera view direction:
   $$\mathbf{n}_{\text{quad}} = \frac{\mathbf{P}_{\text{cam}} - \mathbf{P}_{\text{sprite}}}{\|\mathbf{P}_{\text{cam}} - \mathbf{P}_{\text{sprite}}\|}$$
 
-### 4.3 Cleanroom Decal & Billboard Separation (`[I5]`)
+### 3.6 Billboards vs. Coplanar Decals (`[I5]`)
 
 Unlike coplanar decals which require normal displacement ($\epsilon = 0.001\text{ m}$) against underlying mesh faces (`[I5]`), `.SPR` billboards exist as standalone 3D volumetric proxies with distinct depth buffer writes and alpha testing.
 
 ---
 
-## 5. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Reverse Engineering Backlog
 
 | Item ID | Topic | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- |
@@ -138,7 +128,7 @@ Unlike coplanar decals which require normal displacement ($\epsilon = 0.001\text
 
 ---
 
-## 6. Attribution & Provenance
+## 5. Attribution & Provenance
 
 The technical specifications and byte layouts for the `.SPR` format are synthesized from the following primary community research and tooling archives:
 
@@ -148,23 +138,3 @@ The technical specifications and byte layouts for the `.SPR` format are synthesi
 - **StuntReel Teamwork Team (2026):** Mathematical validation of the $(W \times H) + 6$ byte formula across the corpus, integration with `Seam 3: SodModelIr`, and documentation of Mode 13h palette index preservation `[I3]`.
 
 ---
-
-## 7. Codebase Seam Contracts & Fixtures
-
-### 7.1 Seam Contracts (`crates/stunt-core/src/contracts/`)
-
-- **`crates/stunt-core/src/contracts/vfs.rs` (`Seam 1: VfsArchive`):**
-  - Unpacks `.SPR` assets stored within `.RES` archives into memory buffers via case-insensitive uppercase DOS 8.3 lookups `[I8]`.
-- **`crates/stunt-core/src/contracts/scene.rs` (`Seam 3: SodModelIr`):**
-  - Defines the billboard quad vertices and texture coordinate mapping for sprite presentation.
-  - Preserves 8-bit palette indices in vertex records (`SodVertex::palette_index`) for flat shading and LUT evaluation per `[I3]`.
-- **`crates/stunt-core/src/contracts/trajectory.rs` (`Seam 2: TrajectoryRecord`):**
-  - Evaluates camera-relative billboarding orientations at discrete $50\text{ Hz}$ simulation ticks `[I4]`.
-
-### 7.2 Synthetic Test Fixtures (`tests/fixtures/`)
-
-- Future auxiliary fixture `tests/fixtures/synthetic_minimal.spr` will provide a deterministic $4 \times 4$ pixel test sprite verifying:
-  - Exact 22-byte file size ($(4 \times 4) + 6 = 22\text{ bytes}$).
-  - Header resolution decoding (`width = 4`, `height = 4`).
-  - Index 0 transparency key rejection.
-  - Trailer `0x0000` EOF validation.

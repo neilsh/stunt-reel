@@ -10,13 +10,16 @@ use crate::vfs::VfsError;
 /// Unpacks a `.RES` container archive into an in-memory [`VfsArchive`].
 ///
 /// # Layout (`# [FMT-RES-HEADER]`)
-/// - Bytes 0..2: 2-byte magic signature `b"RS"` (`0x52, 0x53`)
-/// - Bytes 2..4: 16-bit version word (little-endian)
-/// - Bytes 4..8: 32-bit `ofs[0]` (little-endian), pointing to Name Table / end of offset table
-/// - Offset table: $N = (ofs\[0\] / 4) - 1$ entries of 32-bit offsets `ofs[0] .. ofs[N-1]`
-/// - Name table: null-separated ASCII strings between `ofs[0]` and `ofs[1]`
+/// The byte layout is defined by `research/formats/res.ksy` (magic `b"RS"`, `res_index: u8`,
+/// `item_count: u8`, `ofs[0]: u32`, offset table); this comment does not restate it.
+///
+/// # Parser policy
+/// - Only `ofs[0]` and the offset table are trusted: it must be at least 8, 4-byte aligned,
+///   and the table holds $N = (ofs\[0\] / 4) - 1$ non-decreasing offsets. The header bytes at
+///   `0x0002..0x0004` (`res_index`, `item_count`) are not read.
+/// - Region 0 (`data[ofs[0]..ofs[1]]`) is treated as the null-separated ASCII name table.
 /// - Entry $i$ payload: `data[ofs[i+1]..ofs[i+2]]`
-/// - If Name Table is omitted or empty, names default to `format!("{:04X}.BIN", i)`
+/// - If the name table is omitted or not ASCII, names default to `format!("{:04X}.BIN", i)`
 pub fn parse_res(data: &[u8]) -> Result<VfsArchive, VfsError> {
     if data.len() < 8 {
         return Err(VfsError::UnexpectedEof {

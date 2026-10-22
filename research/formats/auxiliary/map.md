@@ -15,6 +15,8 @@ The static world environment of *Stunt Island* (1992, Walt Disney Computer Softw
   2. *Ground Collision & Shadow Clamping:* The normal vectors and tap displacement scalars in `ANCHORPT.DAT` provide real-time surface elevation lookups for aircraft ground collision (`SETGND`) and terrain-conforming shadow projection.
   3. *Hierarchical Scene Graph & LOD Culling:* `SCENERY.scn` executes a spatial partition tree that dynamically culls distant objects, calculates camera-relative positions, and swaps LOD model representations based on distance thresholds (`splitdist * 48`).
 
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I3]`](../../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/scene.rs`](../../../crates/stunt-core/src/contracts/scene.rs) and [`contracts/vfs.rs`](../../../crates/stunt-core/src/contracts/vfs.rs). No synthetic terrain fixture exists yet.
+
 ---
 
 ## 2. Header & Memory Layout
@@ -31,7 +33,7 @@ Each file within the scenery subsystem employs a deterministic byte-level layout
 
 ---
 
-### 2.2 `ANCHORPT.DAT` Memory Layout
+### 2.2 `ANCHORPT.DAT` Memory Layout (`# [FMT-MAP-ANCHORPT]`)
 
 `ANCHORPT.DAT` comprises exactly 1,024 contiguous 28-byte records ($1024 \times 28 = 28{,}672\text{ bytes}$), representing the primary topological grid of Stunt Island.
 
@@ -53,7 +55,7 @@ Executable layout: [`anchorpt.dat.ksy`](anchorpt.dat.ksy).
 
 ---
 
-### 2.3 `MAP.BIN` Memory Layout
+### 2.3 `MAP.BIN` Memory Layout (`# [FMT-MAP-AREA]`)
 
 `MAP.BIN` defines the polygon surface mesh connecting the anchor points. It contains 179 contiguous 30-byte `MAP_AREA` records followed by a 2-byte null word terminator ($179 \times 30 + 2 = 5{,}372\text{ bytes}$).
 
@@ -88,7 +90,7 @@ The surrounding ocean is not stored as discrete patches in `MAP.BIN`. Instead, t
 
 ---
 
-### 3.2 `SCENERY.scn` Node Opcode Table
+### 3.2 `SCENERY.scn` Node Opcode Table (`# [FMT-MAP-SCENERY]`)
 
 `SCENERY.scn` is a precompiled spatial evaluation bytecode stream of $29{,}559$ 32-bit integer words ($118{,}236\text{ bytes}$). The tree is evaluated recursively starting at root node index `1` (`simap_render_node(1, &center_pt, &eye_pt)`).
 
@@ -127,11 +129,7 @@ $$\text{approx\_dist}(\mathbf{cp}_x, -\mathbf{cp}_z, \mathbf{eye}_x, \mathbf{eye
 
 If true, geometry exceeding the threshold is culled.
 
----
-
-## 4. Architectural Invariants & Coordinate Mapping
-
-### 4.1 Right-Handed Metric Basis (`[I1]`)
+### 3.4 Coordinate Handedness (`[I1]`)
 
 Per Invariant `[I1]`:
 - `ANCHORPT.DAT` vertices $(x, y, z)$ define local coordinates where $+X$ is East, $+Y$ is Elevation, $+Z$ is South, and $-Z$ is North.
@@ -139,21 +137,18 @@ Per Invariant `[I1]`:
   $$x_{\text{gl}} = -x_{\text{raw}} \cdot s, \quad y_{\text{gl}} = -y_{\text{raw}} \cdot s, \quad z_{\text{gl}} = z_{\text{raw}} \cdot s$$
 - StuntReel normalizes all coordinates to the canonical right-handed metric system ($+X$ Right, $+Y$ Up, $+Z$ Backward, $-Z$ Forward), preserving elevations with positive $Y$.
 
-### 4.2 Flat Arena Allocation (`[I2]`)
+### 3.5 Empirical Island Terrain Ingestion & Scenery Traversal (`[Established]`)
 
-In accordance with Invariant `[I2]`, terrain polygons and static scene graph nodes are allocated in flat, contiguous memory vectors (`Vec<SodVertex>`, `Vec<SodNode>`) indexed by numeric handles (`NodeId(u32)`). Self-referential pointers (`Rc<RefCell<T>>`) are prohibited.
-
-### 4.3 VGA Mode 13h Palette Indexing (`[I3]`)
-
-Terrain colors in `MAP_AREA::color` are preserved as authentic 8-bit palette indices (`0..=255`) and shaded via the $256 \times 32$ LUT texture in `stunt-render`, matching aircraft models and scenery props.
-
-### 4.4 Uppercase DOS 8.3 Path Normalization (`[I8]`)
-
-All references to `ANCHORPT.DAT`, `MAP.BIN`, and `SCENERY.SCN` in virtual filesystem archives are resolved using uppercase ASCII normalization.
+Runtime analysis in `stuntreel` confirms the static scenery reconstruction pipeline:
+1. **Anchor Inversion**: Raw coordinates $(x, y, z)$ from `ANCHORPT.DAT` map to canonical right-handed metric coordinates `[I1]` via:
+   $$x_{\text{metric}} = -x_{\text{raw}}, \quad y_{\text{metric}} = -y_{\text{raw}}, \quad z_{\text{metric}} = z_{\text{raw}}$$
+   where inverting raw elevation ($y \leftarrow -y$) converts negative raw elevation to positive height above sea level. Points with $y \le -32000$ or $y \ge 32000$ act as boundary sentinels.
+2. **Patch Validation**: `MAP.BIN` terrain polygons require `(pos & 0xFF) != 0` and vertex indices within `0..1023` (`ANCHORPT.DAT` range). This produces exactly 166 active terrain surface patches ($205{,}203$ vertices, $259{,}605$ indices).
+3. **Prop Resolution**: `SCENERY.scn` traverses $29{,}559$ bytecode words starting at root node `1`, instantiating 6,345 static world props filtered against the companion `.ALL` bundle models.
 
 ---
 
-## 5. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Reverse Engineering Backlog
 
 | Item ID | Topic | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- |
@@ -165,7 +160,7 @@ All references to `ANCHORPT.DAT`, `MAP.BIN`, and `SCENERY.SCN` in virtual filesy
 
 ---
 
-## 6. Attribution & Provenance
+## 5. Attribution & Provenance
 
 The technical specifications for the scenery tables and BSP hierarchy are synthesized from the following primary community research and reverse engineering artifacts:
 
@@ -178,32 +173,3 @@ The technical specifications for the scenery tables and BSP hierarchy are synthe
 - **StuntReel Teamwork Team (2026):** Byte-level layout validation of `ANCHORPT.DAT` (28 bytes), `MAP.BIN` (30 bytes + 2), and `SCENERY.scn` ($29{,}559$ words).
 
 ---
-
-## 7. Codebase Seam Contracts & Fixtures
-
-### 7.1 Seam Contracts (`crates/stunt-core/src/contracts/`)
-
-- **`crates/stunt-core/src/contracts/scene.rs` (`Seam 3: SodModelIr`):**
-  - Terrain polygons from `MAP.BIN` and objects instantiated by `SP_LEAF` nodes in `SCENERY.scn` are unpacked into `SodModelIr`.
-  - Palette indices from `MAP_AREA::color` are mapped directly to `SodVertex::palette_index` per `[I3]`.
-  - Arena allocation of BSP nodes complies with `[I2]`.
-- **`crates/stunt-core/src/contracts/vfs.rs` (`Seam 1: VfsArchive`):**
-  - Locates and extracts `ANCHORPT.DAT`, `MAP.BIN`, `SCENERY.scn`, and `SCENERY1..6.RES` archives with DOS 8.3 normalization `[I8]`.
-- **`crates/stunt-core/src/contracts/trajectory.rs` (`Seam 2: TrajectoryRecord`):**
-  - Ground clamping (`SETGND`) uses `ANCHORPT.DAT` heightmap evaluations to compute ground-relative altitude for actors and cameras.
-
-### 7.2 Synthetic Test Fixtures (`tests/fixtures/`)
-
-- Future auxiliary fixture `tests/fixtures/synthetic_minimal.map` will provide a minimal 4-point terrain patch verifying:
-  - Parsing 28-byte `ANCHORPT` records.
-  - Parsing 30-byte `MAP_AREA` polygons and terminal `0x0000` word.
-  - Evaluation of `SP_POS`, `SP_1NODE`, and `SP_LEAF` BSP tree traversal.
-
-### 4.5 Empirical Island Terrain Ingestion & Scenery Traversal (`[Established]`)
-
-Runtime analysis in `stuntreel` confirms the static scenery reconstruction pipeline:
-1. **Anchor Inversion**: Raw coordinates $(x, y, z)$ from `ANCHORPT.DAT` map to canonical right-handed metric coordinates `[I1]` via:
-   $$x_{\text{metric}} = -x_{\text{raw}}, \quad y_{\text{metric}} = -y_{\text{raw}}, \quad z_{\text{metric}} = z_{\text{raw}}$$
-   where inverting raw elevation ($y \leftarrow -y$) converts negative raw elevation to positive height above sea level. Points with $y \le -32000$ or $y \ge 32000$ act as boundary sentinels.
-2. **Patch Validation**: `MAP.BIN` terrain polygons require `(pos & 0xFF) != 0` and vertex indices within `0..1023` (`ANCHORPT.DAT` range). This produces exactly 166 active terrain surface patches ($205{,}203$ vertices, $259{,}605$ indices).
-3. **Prop Resolution**: `SCENERY.scn` traverses $29{,}559$ bytecode words starting at root node `1`, instantiating 6,345 static world props filtered against the companion `.ALL` bundle models.

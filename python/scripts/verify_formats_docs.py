@@ -2,9 +2,11 @@
 
 Programmatically validates:
 1. File Presence: All 13 core, concept, and auxiliary format documents exist.
-2. Schema Conformance: 7-section uniform structure across specs and concepts,
-   sequential header ordering, evidentiary tier tagging ([Hypothesis],
-   [Bounded Observation], [Supported Inference], [Established]), and Mermaid asset graphs.
+2. Schema Conformance: 5-section uniform structure across specs and concepts (invariants,
+   Seam contracts and fixtures are linked from section 1, not restated), links to the .ksy
+   schema that owns each byte layout,
+   sequential header ordering, evidentiary tier tagging (see EVIDENTIARY_TIERS),
+   and Mermaid asset graphs.
 3. Provenance & Attribution: Direct citations to corpus/si_archive/, .agents/teamwork/,
    and explicit credit to community reverse-engineers.
 4. Cleanroom Isolation: ZERO binary files in research/formats/, valid UTF-8 encoding,
@@ -82,38 +84,60 @@ FORMAT_SPEC_SECTIONS: list[str] = [
     "## 1. Overview & File Identification",
     "## 2. Header & Memory Layout",
     "## 3. Data Structures & Opcode Table",
-    "## 4. Architectural Invariants & Coordinate Mapping",
-    "## 5. Open Questions & Reverse Engineering Backlog",
-    "## 6. Attribution & Provenance",
-    "## 7. Codebase Seam Contracts & Fixtures",
+    "## 4. Open Questions & Reverse Engineering Backlog",
+    "## 5. Attribution & Provenance",
 ]
 
 CONCEPT_DOC_SECTIONS: list[str] = [
     "## 1. Overview & Mathematical / Hardware Principles",
     "## 2. Memory Layout & Bitfield Representations",
     "## 3. Data Structures, Tables & Conversion Algorithms",
-    "## 4. Architectural Invariants & Coordinate Mapping",
-    "## 5. Open Questions & Reverse Engineering Backlog",
-    "## 6. Attribution & Provenance",
-    "## 7. Codebase Seam Contracts & Fixtures",
+    "## 4. Open Questions & Reverse Engineering Backlog",
+    "## 5. Attribution & Provenance",
 ]
 
 INDEX_SECTIONS: list[str] = [
     "## 1. Master Format Catalog",
     "## 2. Runtime Asset Dependency Graph & Data Flow Architecture",
     "## 3. Shared Architectural Concepts Directory",
-    "## 4. Seam Contracts & Invariants Mapping",
-    "## 5. Reverse Engineering Backlog & Open Questions",
-    "## 6. Provenance & Community Attribution",
-    "## 7. Cleanroom Codebase Contracts & Synthetic Fixtures",
+    "## 4. Reverse Engineering Backlog & Open Questions",
+    "## 5. Provenance & Community Attribution",
 ]
 
+# Invariants, Seam contracts and fixtures are NOT template sections: each document links to
+# docs/SPEC.md (invariants), crates/stunt-core/src/contracts/ and tests/fixtures/README.md
+# from section 1 instead of restating them. Byte layouts live in the .ksy schemas, so a
+# specification must link every schema listed here.
+KSY_SOURCES: dict[str, list[str]] = {
+    "research/formats/res.md": ["res.ksy"],
+    "research/formats/all.md": ["all.ksy"],
+    "research/formats/sod.md": ["sod.ksy"],
+    "research/formats/flm.md": ["flm_slice.ksy"],
+    "research/formats/auxiliary/set.md": ["set.ksy"],
+    "research/formats/auxiliary/spr.md": ["spr.ksy"],
+    "research/formats/auxiliary/sio.md": ["sio.ksy"],
+    "research/formats/auxiliary/map.md": [
+        "anchorpt.dat.ksy",
+        "map.bin.ksy",
+        "scenery.scn.ksy",
+    ],
+}
+
+# Single owner of the evidentiary tier vocabulary. Prose definitions live in
+# docs/SPEC.md section 2.4, which must mention every tier below; every other
+# document may only use these tags (verify_tier_vocabulary).
 EVIDENTIARY_TIERS: list[str] = [
-    "[Hypothesis]",
-    "[Bounded Observation]",
-    "[Supported Inference]",
-    "[Established]",
+    "[Unknown]",  # unmapped or unencountered; parsers must fail loudly
+    "[Hypothesis]",  # proposed, not observed in the binary or a corpus file
+    "[Bounded Observation]",  # observed in one film or fixture
+    "[Supported Inference]",  # cross-file alignment and passing parity gates
+    "[Established]",  # disassembled or bit-exact runtime trap
+    "[Superseded]",  # retired claim kept for history; not a confidence level
 ]
+
+# Tags every format document set must collectively exercise. [Superseded] is a
+# lifecycle marker, so the catalog does not need to contain one.
+CATALOG_REQUIRED_TIERS: frozenset[str] = frozenset(EVIDENTIARY_TIERS) - {"[Superseded]"}
 
 KEY_COMMUNITY_AUTHORS: list[str] = [
     "Adrian Stephens",
@@ -133,10 +157,44 @@ LINK_SCAN_FILES: list[str] = [
     "docs/MEMORY_MAP.md",
     "docs/TEAM_SHEET.md",
     "docs/playbooks/m1-runtime-capture.md",
+    "GLOSSARY.md",
     "tests/fixtures/README.md",
     "corpus/README.md",
     *REQUIRED_DOCS,
 ]
+
+
+# Directories whose Markdown is also link-checked (non-recursive globs).
+LINK_SCAN_GLOBS: list[str] = [
+    "research/playone-exe/*.md",
+    "research/*.md",
+    "docs/adr/*.md",
+]
+
+# Markdown scanned for evidentiary tier tags (recursive globs plus single files).
+TIER_SCAN_GLOBS: list[str] = [
+    "AGENTS.md",
+    "README.md",
+    "GLOSSARY.md",
+    "docs/**/*.md",
+    "research/**/*.md",
+]
+
+# A bracketed Title Case phrase that is not a link, footnote or checkbox looks
+# like a tier tag; anything that looks like one but is not in EVIDENTIARY_TIERS
+# is a vocabulary error.
+TIER_LIKE_REGEX = re.compile(r"\[([A-Z][a-z]+(?: [A-Z][a-z]+)*)\](?![(\[:])")
+
+
+def link_scan_files(repo_root: Path) -> list[str]:
+    """Return the fixed link-scan list plus files matched by LINK_SCAN_GLOBS."""
+    files = list(LINK_SCAN_FILES)
+    for pattern in LINK_SCAN_GLOBS:
+        for match in sorted(repo_root.glob(pattern)):
+            rel = match.relative_to(repo_root).as_posix()
+            if rel not in files:
+                files.append(rel)
+    return files
 
 
 @dataclass
@@ -193,7 +251,7 @@ def verify_file_presence(repo_root: Path) -> VerificationResult:
 
 
 def verify_schema_conformance(repo_root: Path) -> VerificationResult:
-    """Validate that specs and concept docs conform to uniform 7-section schemas."""
+    """Validate that specs and concept docs conform to uniform 5-section schemas."""
     errors: list[str] = []
     details: list[str] = []
     catalog_tiers_found: set[str] = set()
@@ -218,24 +276,31 @@ def verify_schema_conformance(repo_root: Path) -> VerificationResult:
             else:
                 last_pos = pos
 
-        # Verify evidentiary tiers in Section 5
-        sec5_match = re.search(
-            r"## 5\. Open Questions & Reverse Engineering Backlog(.*?)(?:## 6\.|\Z)",
+        # Verify evidentiary tiers in Section 4
+        sec4_match = re.search(
+            r"## 4\. Open Questions & Reverse Engineering Backlog(.*?)(?:## 5\.|\Z)",
             content,
             re.DOTALL,
         )
-        if sec5_match:
-            sec5_content = sec5_match.group(1)
-            found_in_doc = {tier for tier in EVIDENTIARY_TIERS if tier in sec5_content}
+        if sec4_match:
+            sec4_content = sec4_match.group(1)
+            found_in_doc = {tier for tier in EVIDENTIARY_TIERS if tier in sec4_content}
             catalog_tiers_found.update(found_in_doc)
             if not found_in_doc:
                 errors.append(
-                    f"Section 5 in {rel_path} lacks evidentiary tier tags ([Hypothesis], [Bounded Observation], etc.)"
+                    f"Section 4 in {rel_path} lacks evidentiary tier tags ({', '.join(EVIDENTIARY_TIERS)})"
                 )
         else:
-            errors.append(f"Could not isolate Section 5 in {rel_path}")
+            errors.append(f"Could not isolate Section 4 in {rel_path}")
 
-        details.append(f"Conforms to 7-section format schema: {rel_path}")
+        for ksy_name in KSY_SOURCES.get(rel_path, []):
+            if not re.search(rf"\]\((?:[^)]*/)?{re.escape(ksy_name)}\)", content):
+                errors.append(
+                    f"{rel_path} must link its byte-layout schema {ksy_name} (.ksy is the source "
+                    "of truth for layouts)"
+                )
+
+        details.append(f"Conforms to 5-section format schema: {rel_path}")
 
     # 2. Concept Guides
     for rel_path in CONCEPT_DOCS:
@@ -257,21 +322,21 @@ def verify_schema_conformance(repo_root: Path) -> VerificationResult:
             else:
                 last_pos = pos
 
-        sec5_match = re.search(
-            r"## 5\. Open Questions & Reverse Engineering Backlog(.*?)(?:## 6\.|\Z)",
+        sec4_match = re.search(
+            r"## 4\. Open Questions & Reverse Engineering Backlog(.*?)(?:## 5\.|\Z)",
             content,
             re.DOTALL,
         )
-        if sec5_match:
-            sec5_content = sec5_match.group(1)
-            found_in_doc = {tier for tier in EVIDENTIARY_TIERS if tier in sec5_content}
+        if sec4_match:
+            sec4_content = sec4_match.group(1)
+            found_in_doc = {tier for tier in EVIDENTIARY_TIERS if tier in sec4_content}
             catalog_tiers_found.update(found_in_doc)
             if not found_in_doc:
-                errors.append(f"Section 5 in {rel_path} lacks evidentiary tier tags")
+                errors.append(f"Section 4 in {rel_path} lacks evidentiary tier tags")
         else:
-            errors.append(f"Could not isolate Section 5 in {rel_path}")
+            errors.append(f"Could not isolate Section 4 in {rel_path}")
 
-        details.append(f"Conforms to 7-section concept schema: {rel_path}")
+        details.append(f"Conforms to 5-section concept schema: {rel_path}")
 
     # 3. Master Index
     index_path = repo_root / INDEX_DOC
@@ -301,18 +366,72 @@ def verify_schema_conformance(repo_root: Path) -> VerificationResult:
                 catalog_tiers_found.add(tier)
 
     # 4. Global Evidentiary Tier Completeness across catalog
-    missing_tiers = set(EVIDENTIARY_TIERS) - catalog_tiers_found
+    missing_tiers = CATALOG_REQUIRED_TIERS - catalog_tiers_found
     if missing_tiers:
         errors.append(
             f"Catalog as a whole is missing evidentiary confidence tiers: {sorted(missing_tiers)}"
         )
     else:
         details.append(
-            f"All 4 evidentiary confidence tiers represented across catalog: {sorted(catalog_tiers_found)}"
+            f"All {len(CATALOG_REQUIRED_TIERS)} catalog evidentiary tiers represented: {sorted(catalog_tiers_found)}"
         )
 
     return VerificationResult(
         category="Schema Conformance",
+        passed=(len(errors) == 0),
+        errors=errors,
+        details=details,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Verification Category 2b: Evidentiary Tier Vocabulary
+# -----------------------------------------------------------------------------
+
+
+def verify_tier_vocabulary(repo_root: Path) -> VerificationResult:
+    """Validate that tier tags are drawn from EVIDENTIARY_TIERS and SPEC defines each one."""
+    errors: list[str] = []
+    details: list[str] = []
+
+    spec_path = repo_root / "docs" / "SPEC.md"
+    spec_text = spec_path.read_text(encoding="utf-8") if spec_path.exists() else ""
+    sec_match = re.search(r"### 2\.4 .*?(?=\n### |\n## |\Z)", spec_text, re.DOTALL)
+    if not sec_match:
+        errors.append("docs/SPEC.md has no section 2.4 defining the evidentiary tiers")
+    else:
+        for tier in EVIDENTIARY_TIERS:
+            if tier not in sec_match.group(0):
+                errors.append(f"docs/SPEC.md section 2.4 does not define tier {tier}")
+
+    allowed = {tier.strip("[]") for tier in EVIDENTIARY_TIERS}
+    files: set[Path] = set()
+    for pattern in TIER_SCAN_GLOBS:
+        files.update(path for path in repo_root.glob(pattern) if path.is_file())
+
+    tags_seen = 0
+    for path in sorted(files):
+        in_code_block = False
+        rel = path.relative_to(repo_root).as_posix()
+        for line_num, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if line.strip().startswith("```"):
+                in_code_block = not in_code_block
+                continue
+            if in_code_block:
+                continue
+            for match in TIER_LIKE_REGEX.finditer(line):
+                name = match.group(1)
+                if name in allowed:
+                    tags_seen += 1
+                else:
+                    errors.append(
+                        f"Unknown evidentiary tier [{name}] at {rel}:{line_num}; "
+                        f"allowed: {', '.join(EVIDENTIARY_TIERS)}"
+                    )
+
+    details.append(f"{tags_seen} tier tags across {len(files)} Markdown files use the shared enum")
+    return VerificationResult(
+        category="Evidentiary Tier Vocabulary",
         passed=(len(errors) == 0),
         errors=errors,
         details=details,
@@ -329,40 +448,40 @@ def verify_provenance_and_attribution(repo_root: Path) -> VerificationResult:
     errors: list[str] = []
     details: list[str] = []
 
-    # Check each documentation file for Section 6 attribution
+    # Check each documentation file for Section 5 attribution
     for rel_path in REQUIRED_DOCS:
         file_path = repo_root / rel_path
         if not file_path.exists():
             continue
 
         content = file_path.read_text(encoding="utf-8")
-        sec6_match = re.search(
-            r"## 6\. (?:Attribution & Provenance|Provenance & Community Attribution)(.*?)(?:## 7\.|\Z)",
+        sec5_match = re.search(
+            r"## 5\. (?:Attribution & Provenance|Provenance & Community Attribution)(.*?)(?:\n## \d+\.|\Z)",
             content,
             re.DOTALL,
         )
-        if not sec6_match:
-            errors.append(f"Missing Section 6 in {rel_path}")
+        if not sec5_match:
+            errors.append(f"Missing Section 5 in {rel_path}")
             continue
 
-        sec6_content = sec6_match.group(1)
+        sec5_content = sec5_match.group(1)
 
         # Check for citation to corpus archive or teamwork lineage
         has_citation = (
-            "corpus/si_archive" in sec6_content
-            or ".agents/teamwork/" in sec6_content
-            or "teamwork" in sec6_content.lower()
+            "corpus/si_archive" in sec5_content
+            or ".agents/teamwork/" in sec5_content
+            or "teamwork" in sec5_content.lower()
         )
         if not has_citation:
             errors.append(
                 f"Missing citation to corpus/si_archive/ or .agents/teamwork/ in {rel_path}"
             )
 
-        # Check that community authors are cited in Section 6
-        authors_in_sec = [a for a in KEY_COMMUNITY_AUTHORS if a in sec6_content]
+        # Check that community authors are cited in Section 5
+        authors_in_sec = [a for a in KEY_COMMUNITY_AUTHORS if a in sec5_content]
         if not authors_in_sec:
             errors.append(
-                f"No recognized community researchers credited in Section 6 of {rel_path}"
+                f"No recognized community researchers credited in Section 5 of {rel_path}"
             )
         else:
             details.append(
@@ -456,7 +575,8 @@ def verify_link_integrity(repo_root: Path) -> VerificationResult:
 
     links_checked = 0
 
-    for rel_path in LINK_SCAN_FILES:
+    scan_files = link_scan_files(repo_root)
+    for rel_path in scan_files:
         source_file = repo_root / rel_path
         if not source_file.exists():
             continue
@@ -519,7 +639,7 @@ def verify_link_integrity(repo_root: Path) -> VerificationResult:
                         )
 
     details.append(
-        f"Successfully validated {links_checked} local markdown links across {len(LINK_SCAN_FILES)} files"
+        f"Successfully validated {links_checked} local markdown links across {len(scan_files)} files"
     )
 
     return VerificationResult(
@@ -700,7 +820,7 @@ def verify_synthetic_fixtures_consistency(repo_root: Path) -> VerificationResult
         if 'b"RS"' not in res_doc and "0x52, 0x53" not in res_doc:
             errors.append("res.md does not document RS magic signature (0x52, 0x53)")
         if "synthetic_minimal.res" not in res_doc:
-            errors.append("res.md does not cite tests/fixtures/synthetic_minimal.res in Section 7")
+            errors.append("res.md does not cite tests/fixtures/synthetic_minimal.res in section 1")
 
         res_errors, res_details = _validate_res_with_kaitai(repo_root, res_bytes)
         errors.extend(res_errors)
@@ -750,7 +870,7 @@ def verify_synthetic_fixtures_consistency(repo_root: Path) -> VerificationResult
         if 'b"FILM"' not in flm_doc and "FILM" not in flm_doc:
             errors.append("flm.md does not document FILM magic signature")
         if "synthetic_minimal.flm" not in flm_doc:
-            errors.append("flm.md does not cite tests/fixtures/synthetic_minimal.flm in Section 7")
+            errors.append("flm.md does not cite tests/fixtures/synthetic_minimal.flm in section 1")
 
         details.append(
             f"synthetic_minimal.flm validated against flm.md ({len(flm_bytes)} bytes, 2 slices)"
@@ -794,7 +914,7 @@ def verify_synthetic_fixtures_consistency(repo_root: Path) -> VerificationResult
         if "0x000C" not in sod_doc and "0x000c" not in sod_doc:
             errors.append("sod.md does not document OP_ID 0x000C header")
         if "synthetic_minimal.sod" not in sod_doc:
-            errors.append("sod.md does not cite tests/fixtures/synthetic_minimal.sod in Section 7")
+            errors.append("sod.md does not cite tests/fixtures/synthetic_minimal.sod in section 1")
 
         details.append(
             f"synthetic_minimal.sod validated against sod.md ({len(sod_bytes)} bytes, OP_ID 0x000C)"
@@ -883,6 +1003,7 @@ def run_all_verifications(
     results: list[VerificationResult] = [
         verify_file_presence(repo_root),
         verify_schema_conformance(repo_root),
+        verify_tier_vocabulary(repo_root),
         verify_provenance_and_attribution(repo_root),
         verify_cleanroom_isolation(repo_root),
         verify_link_integrity(repo_root),
@@ -937,7 +1058,7 @@ def main() -> int:
 
     print("\n" + "=" * 80)
     if all_passed:
-        print("RESULT: ALL 6 VERIFICATION SUITES PASSED (100% SPEC & CLEANROOM COMPLIANT)")
+        print("RESULT: ALL 7 VERIFICATION SUITES PASSED (100% SPEC & CLEANROOM COMPLIANT)")
         print("=" * 80)
         return 0
 

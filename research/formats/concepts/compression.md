@@ -39,6 +39,8 @@ To reconcile these competing demands, *Stunt Island* implemented a tiered storag
 +-------------------------------------------------------------------------------+
 ```
 
+**Governing invariants:** [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I7]`](../../../docs/SPEC.md#i7-cleanroom-asset-isolation--zero-dependency-core), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs). Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
+
 ---
 
 ## 2. Memory Layout & Bitfield Representations
@@ -201,17 +203,7 @@ pub fn decode_pcx_rle(encoded_bytes: &[u8], expected_pixel_count: usize) -> Vec<
 
 ---
 
-## 4. Architectural Invariants & Coordinate Mapping
-
-| Invariant | System Rule | Concrete Implementation |
-| :--- | :--- | :--- |
-| **`[I8]`** | DOS 8.3 Path Normalization | All filenames stored and queried via `to_ascii_uppercase()`. Case-insensitive lookups guaranteed across platforms. |
-| **`[I7]`** | Cleanroom Asset Isolation | Zero proprietary compressed executables or binary corpus packages committed to Git. CI tests run 100% offline. |
-| **`[I2]`** | Flat Arena Allocation | Memory layouts favor contiguous vectors over pointer graphs, matching DOS flat-memory streaming paradigms. |
-
----
-
-## 5. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Reverse Engineering Backlog
 
 1. **`[BK-COMP-01]` European Multilingual Release Sub-Chunk Compression** (`[Bounded Observation]`): Certain non-English release disks feature non-zero flags in `.ALL` chunk tables. Verification is needed to determine if an LZSS variant was used to fit multiple language subtitles onto floppy disks.
 2. **`[BK-COMP-02]` Trailing Space Padding in Authoring Tool Filenames** (`[Supported Inference]`): In `MAKERES.EXE`, filenames with fewer than 8 characters are occasionally padded with spaces (`0x20`) rather than null terminators (`0x00`). The VFS normalization pipeline cleanly strips these spaces.
@@ -220,7 +212,7 @@ pub fn decode_pcx_rle(encoded_bytes: &[u8], expected_pixel_count: usize) -> Vec<
 
 ---
 
-## 6. Attribution & Provenance
+## 5. Attribution & Provenance
 
 - **Fabrice Bellard (1990):** Creator of the LZEXE 0.91 MS-DOS executable compressor.
 - **Dave Palmowski (1999–2001):** Author of SpriteMaker and PCX2SPR, documenting PCX RLE decoding and `.SPR` uncompressed raster layouts in `corpus/si_archive/SITools/SpriteMaker/`.
@@ -230,16 +222,3 @@ pub fn decode_pcx_rle(encoded_bytes: &[u8], expected_pixel_count: usize) -> Vec<
 - **StuntReel Teamwork Team (2026):** Invariant `[I8]` specification, `VfsArchive` case-normalization contract, and cleanroom test fixtures (`crates/stunt-core/src/contracts/vfs.rs`, `tests/fixtures/synthetic_minimal.res`).
 
 ---
-
-## 7. Codebase Seam Contracts & Fixtures
-
-### 7.1 Seam Contracts
-- **`crates/stunt-core/src/contracts/mod.rs`**: System Invariant `[I8]` (Uppercase DOS 8.3 filename normalization).
-- **`crates/stunt-core/src/contracts/vfs.rs`**:
-  - `ArchiveFormat`: `Res` vs `All` container enumeration.
-  - `VfsEntry`: Holds normalized uppercase `name: String`, `data: Vec<u8>`, and `was_compressed: bool`.
-  - `VfsArchive`: BTreeMap-based in-memory archive container with automatic `to_ascii_uppercase()` normalization.
-
-### 7.2 Cleanroom Synthetic Fixtures
-- **`tests/fixtures/synthetic_minimal.res`**: 72-byte uncompressed resource container fixture verifying offset tables and DOS 8.3 entry names (`"PLANE.SOD"`, `"PROP.SOD"`).
-- **`crates/stunt-core/tests/vfs_spec.rs`**: Unit test suite asserting case-insensitive retrieval (`"fokker.sod"`, `"FOKKER.SOD"`, `"Fokker.Sod"`).

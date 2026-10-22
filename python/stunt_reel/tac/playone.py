@@ -39,7 +39,7 @@ DGROUP_SEG: str = "0D51"
 DGROUP_RUNTIME_SEG: int = 0x1575
 #: ``DS`` offset of the active film clock, 50 Hz ticks into the film (``# [MEM-FLM-TICK]``).
 FILM_CLOCK_OFFSET: int = 0x4896
-#: ``DS`` offset of the global 50 Hz timer tick, which trails the film clock by about 5.
+#: ``DS`` offset of the global 50 Hz timer tick, whose offset from the film clock is not constant (``memory.md`` 3.2).
 GLOBAL_TICK_OFFSET: int = 0x22B8
 #: Code offset immediately after the vertical retrace wait loop (``# [MEM-VSYNC-03DA]``).
 VBLANK_TRAP: str = f"{DGROUP_SEG}:0C5E"

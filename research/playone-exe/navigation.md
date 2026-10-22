@@ -135,6 +135,8 @@ Entering on `[..]` does not confirm or cancel: it re-lists the parent directory 
 
 ### Harness Constraints (`[Established]`)
 
+* **Superseded recipe:** the former `SPEC.md` § 3.3 offered DOSBox-X `autotype -w 2 -p 0.5 enter c enter` as a selection protocol. It is contradicted by [`capture.md` § 2](capture.md#2-emulator-constraints) (`[Bounded Observation]`: with several keys queued at boot, only the earliest survives, and the dialog discards keys queued before it opens), so the harness uses BIOS Data Area injection instead.
+
 * Keystroke injection into `0040:001E` works against the live emulator: the head pointer at `0040:001A` advances as the guest consumes the words.
 * Injection fails while the controller steps the guest; the modal loop never reaches `INT 16h`. This is why the dialog appeared frozen in earlier harness runs.
 * Patching the dialog call site (`0x49CF`) to force the confirm branch is not a viable shortcut: the patch requires reading and writing `DGROUP`, and any debugger command issued while `PLAYONE.EXE` is still unpacking kills the guest (see [`capture.md`](capture.md)). By the time such accesses are safe the four-instruction setup (`0x49C6`–`0x49D2`) has already executed, so the pre-written path buffer would never be read anyway.
