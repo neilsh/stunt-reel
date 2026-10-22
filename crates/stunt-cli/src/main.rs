@@ -347,7 +347,7 @@ impl CliConfig {
         println!("  -h, --help           Print this help information");
         println!();
         println!("Subcommands:");
-        println!("  parity --reference <dir> --test <dir> --output <dir> [--clear-index N]");
+        println!("  {}", parity::USAGE.replace('\n', "\n  "));
         println!();
         println!("Interactive Keyboard Controls:");
         println!("  Space                Pause / Resume timeline playback");

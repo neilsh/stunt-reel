@@ -11,8 +11,12 @@
 //! stretched from 320x200 to the 320x240 physical 4:3 raster, and compared with the
 //! shared `compute_frame_ssim` window evaluator. IoU compares each side's non-sky mask,
 //! which measures framing agreement independently of shading.
+//!
+//! `--compare <report.json>` additionally matches the fresh scores against a previous
+//! run by `film_tick` (see [`compare_reports`]), so a change is judged frame by frame
+//! rather than only by the means.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -50,7 +54,23 @@ struct Args {
     test: PathBuf,
     output: PathBuf,
     clear_index: u8,
+    /// Previous `report.json` to compare the fresh scores against.
+    compare: Option<PathBuf>,
+    /// Render directory of the previous run, used for before/after contact sheets.
+    compare_test: Option<PathBuf>,
 }
+
+/// Usage text printed by `--help`.
+pub(crate) const USAGE: &str =
+    "Usage: stuntreel parity --reference <dir> --test <dir> --output <dir> \
+[--clear-index N] [--compare <report.json> [--compare-test <dir>]]
+
+  --compare <report.json>  Match frames by film_tick against a previous report and print
+                           mean SSIM/IoU deltas, the 5 most improved/regressed frames and
+                           the counts changed by more than 0.005; writes compare.json
+  --compare-test <dir>     The previous run's render directory; with --compare, writes
+                           before/after contact sheets for the most regressed and most
+                           improved frame (skipped, with a note, when absent)";
 
 impl Args {
     fn parse(mut args: impl Iterator<Item = String>) -> Result<Self, String> {
@@ -58,6 +78,8 @@ impl Args {
         let mut test = None;
         let mut output = None;
         let mut clear_index = 180u8;
+        let mut compare = None;
+        let mut compare_test = None;
 
         while let Some(arg) = args.next() {
             match arg.as_str() {
@@ -82,15 +104,27 @@ impl Args {
                         .parse::<u8>()
                         .map_err(|e| format!("Invalid clear index: {e}"))?;
                 }
+                "--compare" => {
+                    compare = Some(PathBuf::from(
+                        args.next().ok_or("Expected report.json after --compare")?,
+                    ));
+                }
+                "--compare-test" => {
+                    compare_test = Some(PathBuf::from(
+                        args.next()
+                            .ok_or("Expected directory after --compare-test")?,
+                    ));
+                }
                 "--help" | "-h" => {
-                    println!(
-                        "Usage: stuntreel parity --reference <dir> --test <dir> --output <dir> \
-                         [--clear-index N]"
-                    );
+                    println!("{USAGE}");
                     std::process::exit(0);
                 }
                 other => return Err(format!("Unrecognized parity argument: {other}")),
             }
+        }
+
+        if compare_test.is_some() && compare.is_none() {
+            return Err("--compare-test requires --compare <report.json>".to_string());
         }
 
         Ok(Self {
@@ -98,6 +132,8 @@ impl Args {
             test: test.ok_or("parity requires --test <dir>")?,
             output: output.ok_or("parity requires --output <dir>")?,
             clear_index,
+            compare,
+            compare_test,
         })
     }
 }
@@ -134,18 +170,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     for (index, frame) in frames.iter().enumerate() {
         let ordinal = index + 1;
         let film_tick = film_ticks[index];
-        let reference_file = args.reference.join(
-            frame
-                .get("frame_file")
-                .and_then(Value::as_str)
-                .map_or_else(|| format!("tick_{ordinal:04}.idx"), str::to_string),
-        );
-        let palette_file = args.reference.join(
-            frame
-                .get("palette_file")
-                .and_then(Value::as_str)
-                .map_or_else(|| format!("palettes_{ordinal:04}.json"), str::to_string),
-        );
+        let (reference_file, palette_file) = reference_paths(&args.reference, frame, ordinal);
         let test_file = args.test.join(crate::tick_png_name(film_tick));
 
         if !reference_file.is_file() || !palette_file.is_file() || !test_file.is_file() {
@@ -153,22 +178,9 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             continue;
         }
 
-        let indices = read_index_plane(&reference_file)?;
-        let palette = read_palette(&palette_file)?;
-        let mut reference_rgb = Vec::with_capacity(MODE13H_WIDTH * MODE13H_HEIGHT * 3);
-        for &index in &indices {
-            let (r, g, b) = palette[index as usize];
-            reference_rgb.extend_from_slice(&[r, g, b]);
-        }
-        let reference_luminance = rgb_to_luminance(&reference_rgb);
+        let (indices, reference_rescaled) = load_reference(&reference_file, &palette_file)?;
         let test_luminance = read_png_luminance(&test_file)?;
 
-        let reference_rescaled = rescale_mode13h_frame(
-            &reference_luminance,
-            MODE13H_WIDTH,
-            MODE13H_HEIGHT,
-            ASPECT_CORRECTED_HEIGHT,
-        );
         let test_rescaled = rescale_mode13h_frame(
             &test_luminance,
             MODE13H_WIDTH,
@@ -255,7 +267,373 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     if unmatched > 0 {
         println!("[parity] {unmatched} frame(s) missing on one side and skipped");
     }
+
+    if let Some(previous_path) = &args.compare {
+        run_compare(&args, previous_path, &report, frames)?;
+    }
     Ok(())
+}
+
+/// Index-plane and palette paths of one captured frame (`ordinal` is 1-based).
+fn reference_paths(reference_dir: &Path, frame: &Value, ordinal: usize) -> (PathBuf, PathBuf) {
+    let name = |key: &str, fallback: String| {
+        reference_dir.join(
+            frame
+                .get(key)
+                .and_then(Value::as_str)
+                .map_or(fallback, str::to_string),
+        )
+    };
+    (
+        name("frame_file", format!("tick_{ordinal:04}.idx")),
+        name("palette_file", format!("palettes_{ordinal:04}.json")),
+    )
+}
+
+/// Loads a captured frame: its palette-index plane and its aspect-corrected luminance.
+fn load_reference(
+    reference_file: &Path,
+    palette_file: &Path,
+) -> Result<(Vec<u8>, Vec<f32>), String> {
+    let indices = read_index_plane(reference_file)?;
+    let palette = read_palette(palette_file)?;
+    let mut reference_rgb = Vec::with_capacity(MODE13H_WIDTH * MODE13H_HEIGHT * 3);
+    for &index in &indices {
+        let (r, g, b) = palette[index as usize];
+        reference_rgb.extend_from_slice(&[r, g, b]);
+    }
+    let rescaled = rescale_mode13h_frame(
+        &rgb_to_luminance(&reference_rgb),
+        MODE13H_WIDTH,
+        MODE13H_HEIGHT,
+        ASPECT_CORRECTED_HEIGHT,
+    );
+    Ok((indices, rescaled))
+}
+
+/// Loads a rendered PNG as aspect-corrected luminance.
+fn load_render_rescaled(path: &Path) -> Result<Vec<f32>, String> {
+    Ok(rescale_mode13h_frame(
+        &read_png_luminance(path)?,
+        MODE13H_WIDTH,
+        MODE13H_HEIGHT,
+        ASPECT_CORRECTED_HEIGHT,
+    ))
+}
+
+/// Compares the fresh `report` with the previous report at `previous_path`: prints the
+/// summary, writes `compare.json`, and renders before/after sheets when the previous
+/// render directory was given.
+fn run_compare(
+    args: &Args,
+    previous_path: &Path,
+    report: &Value,
+    frames: &[Value],
+) -> Result<(), String> {
+    let text = fs::read_to_string(previous_path)
+        .map_err(|e| format!("read {}: {e}", previous_path.display()))?;
+    let previous: Value = serde_json::from_str(&text)
+        .map_err(|e| format!("parse {}: {e}", previous_path.display()))?;
+    let comparison = compare_reports(&previous, report)
+        .map_err(|e| format!("compare with {}: {e}", previous_path.display()))?;
+
+    let compare_path = args.output.join("compare.json");
+    fs::write(
+        &compare_path,
+        serde_json::to_string_pretty(&comparison.to_json())
+            .map_err(|e| format!("serialize comparison: {e}"))?,
+    )
+    .map_err(|e| format!("write {}: {e}", compare_path.display()))?;
+    println!("{}", comparison.summary());
+
+    let Some(previous_render) = &args.compare_test else {
+        println!("[compare] no --compare-test <dir>: before/after contact sheets skipped");
+        return Ok(());
+    };
+    let ordinals: BTreeMap<u64, usize> = report["per_frame"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|f| {
+            Some((
+                f["film_tick"].as_u64()?,
+                usize::try_from(f["ordinal"].as_u64()?).ok()?,
+            ))
+        })
+        .collect();
+    let picks = [
+        ("regressed", comparison.regressed.first()),
+        ("improved", comparison.improved.first()),
+    ];
+    for (label, pick) in picks {
+        let Some(delta) = pick else {
+            println!("[compare] no {label} frame: sheet skipped");
+            continue;
+        };
+        let ordinal = ordinals.get(&delta.film_tick).copied().ok_or_else(|| {
+            format!(
+                "film_tick {} missing from the fresh report",
+                delta.film_tick
+            )
+        })?;
+        let tick = usize::try_from(delta.film_tick).map_err(|e| e.to_string())?;
+        let before_png = previous_render.join(crate::tick_png_name(tick));
+        if !before_png.is_file() {
+            println!(
+                "[compare] {} not found: {label} sheet skipped",
+                before_png.display()
+            );
+            continue;
+        }
+        let (reference_file, palette_file) =
+            reference_paths(&args.reference, &frames[ordinal - 1], ordinal);
+        let (_indices, reference) = load_reference(&reference_file, &palette_file)?;
+        let before = load_render_rescaled(&before_png)?;
+        let after = load_render_rescaled(&args.test.join(crate::tick_png_name(tick)))?;
+        let path = args
+            .output
+            .join(format!("compare_{label}_tick_{tick:05}.png"));
+        write_panel_sheet(
+            &path,
+            &[
+                &reference,
+                &before,
+                &after,
+                &abs_difference(&reference, &before),
+                &abs_difference(&reference, &after),
+            ],
+        )?;
+        println!("[compare] wrote {}", path.display());
+    }
+    Ok(())
+}
+
+/// Per-frame SSIM change between two reports, matched by `film_tick`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct FrameDelta {
+    film_tick: u64,
+    before: f64,
+    after: f64,
+}
+
+impl FrameDelta {
+    fn delta(&self) -> f64 {
+        self.after - self.before
+    }
+}
+
+/// A mean before and after, over the frames present in both reports.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct MeanChange {
+    before: f64,
+    after: f64,
+}
+
+/// SSIM changes beyond this magnitude count as a changed frame.
+const CHANGED_THRESHOLD: f64 = 0.005;
+
+/// Number of most improved / most regressed frames listed.
+const COMPARE_TOP: usize = 5;
+
+/// Result of [`compare_reports`].
+#[derive(Debug, Clone, PartialEq)]
+struct Comparison {
+    /// Frames (by `film_tick`) present in both reports.
+    common: usize,
+    before_only: usize,
+    after_only: usize,
+    ssim: MeanChange,
+    iou: MeanChange,
+    /// Up to [`COMPARE_TOP`] frames with the largest SSIM gain, best first.
+    improved: Vec<FrameDelta>,
+    /// Up to [`COMPARE_TOP`] frames with the largest SSIM loss, worst first.
+    regressed: Vec<FrameDelta>,
+    /// Common frames whose SSIM rose by more than [`CHANGED_THRESHOLD`].
+    improved_count: usize,
+    /// Common frames whose SSIM fell by more than [`CHANGED_THRESHOLD`].
+    regressed_count: usize,
+}
+
+/// `(ssim, iou)` per `film_tick` of a parsed report; the first entry wins when a
+/// `film_tick` repeats.
+fn report_scores(report: &Value) -> Result<BTreeMap<u64, (f64, f64)>, String> {
+    let per_frame = report
+        .get("per_frame")
+        .and_then(Value::as_array)
+        .ok_or("report has no per_frame array")?;
+    let mut scores = BTreeMap::new();
+    for (position, frame) in per_frame.iter().enumerate() {
+        let field = |key: &str| {
+            frame
+                .get(key)
+                .and_then(Value::as_f64)
+                .ok_or_else(|| format!("per_frame[{position}] has no numeric {key}"))
+        };
+        let film_tick = frame
+            .get("film_tick")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| format!("per_frame[{position}] has no film_tick"))?;
+        scores
+            .entry(film_tick)
+            .or_insert((field("ssim")?, field("iou")?));
+    }
+    Ok(scores)
+}
+
+/// Compares two parsed `report.json` values frame by frame, matching on `film_tick`.
+///
+/// Means cover only the frames present in both reports, so a different matched-frame
+/// count (for example an extended render range) cannot masquerade as a change.
+fn compare_reports(before: &Value, after: &Value) -> Result<Comparison, String> {
+    let before_scores = report_scores(before)?;
+    let after_scores = report_scores(after)?;
+
+    let mut deltas = Vec::new();
+    let (mut ssim_before, mut ssim_after) = (0.0, 0.0);
+    let (mut iou_before, mut iou_after) = (0.0, 0.0);
+    for (film_tick, (b_ssim, b_iou)) in &before_scores {
+        let Some((a_ssim, a_iou)) = after_scores.get(film_tick) else {
+            continue;
+        };
+        deltas.push(FrameDelta {
+            film_tick: *film_tick,
+            before: *b_ssim,
+            after: *a_ssim,
+        });
+        ssim_before += b_ssim;
+        ssim_after += a_ssim;
+        iou_before += b_iou;
+        iou_after += a_iou;
+    }
+    if deltas.is_empty() {
+        return Err("the reports share no film_tick".to_string());
+    }
+    let common = deltas.len();
+    let n = common as f64;
+
+    let mut improved: Vec<FrameDelta> =
+        deltas.iter().copied().filter(|d| d.delta() > 0.0).collect();
+    improved.sort_by(|a, b| {
+        b.delta()
+            .total_cmp(&a.delta())
+            .then(a.film_tick.cmp(&b.film_tick))
+    });
+    let mut regressed: Vec<FrameDelta> =
+        deltas.iter().copied().filter(|d| d.delta() < 0.0).collect();
+    regressed.sort_by(|a, b| {
+        a.delta()
+            .total_cmp(&b.delta())
+            .then(a.film_tick.cmp(&b.film_tick))
+    });
+    let improved_count = deltas
+        .iter()
+        .filter(|d| d.delta() > CHANGED_THRESHOLD)
+        .count();
+    let regressed_count = deltas
+        .iter()
+        .filter(|d| d.delta() < -CHANGED_THRESHOLD)
+        .count();
+    improved.truncate(COMPARE_TOP);
+    regressed.truncate(COMPARE_TOP);
+
+    Ok(Comparison {
+        common,
+        before_only: before_scores.len() - common,
+        after_only: after_scores.len() - common,
+        ssim: MeanChange {
+            before: ssim_before / n,
+            after: ssim_after / n,
+        },
+        iou: MeanChange {
+            before: iou_before / n,
+            after: iou_after / n,
+        },
+        improved,
+        regressed,
+        improved_count,
+        regressed_count,
+    })
+}
+
+impl Comparison {
+    /// Human-readable summary printed to stdout.
+    fn summary(&self) -> String {
+        use std::fmt::Write as _;
+
+        let mut out = String::new();
+        let _ = writeln!(
+            out,
+            "[compare] {} frame(s) in both reports ({} only in the previous, {} only in this run)",
+            self.common, self.before_only, self.after_only
+        );
+        for (name, mean) in [("SSIM", self.ssim), ("IoU", self.iou)] {
+            let _ = writeln!(
+                out,
+                "[compare] mean {name} {:.3} -> {:.3} ({:+.3})",
+                mean.before,
+                mean.after,
+                mean.after - mean.before
+            );
+        }
+        for (title, list) in [
+            ("most improved", &self.improved),
+            ("most regressed", &self.regressed),
+        ] {
+            let _ = writeln!(
+                out,
+                "[compare] {title} frames (film_tick before -> after, delta):"
+            );
+            if list.is_empty() {
+                let _ = writeln!(out, "[compare]   none");
+            }
+            for d in list {
+                let _ = writeln!(
+                    out,
+                    "[compare]   tick {:>5}  {:.3} -> {:.3}  {:+.3}",
+                    d.film_tick,
+                    d.before,
+                    d.after,
+                    d.delta()
+                );
+            }
+        }
+        let unchanged = self.common - self.improved_count - self.regressed_count;
+        let _ = write!(
+            out,
+            "[compare] SSIM changed by more than {CHANGED_THRESHOLD}: {} improved, {} regressed, {unchanged} within +/-{CHANGED_THRESHOLD}",
+            self.improved_count, self.regressed_count
+        );
+        out
+    }
+
+    /// The `compare.json` document.
+    fn to_json(&self) -> Value {
+        let deltas = |list: &[FrameDelta]| {
+            list.iter()
+                .map(|d| {
+                    json!({
+                        "film_tick": d.film_tick,
+                        "before": d.before,
+                        "after": d.after,
+                        "delta": d.delta(),
+                    })
+                })
+                .collect::<Vec<Value>>()
+        };
+        let mean = |m: MeanChange| json!({ "before": m.before, "after": m.after, "delta": m.after - m.before });
+        json!({
+            "common_frames": self.common,
+            "before_only_frames": self.before_only,
+            "after_only_frames": self.after_only,
+            "changed_threshold": CHANGED_THRESHOLD,
+            "mean_ssim": mean(self.ssim),
+            "mean_iou": mean(self.iou),
+            "improved_count": self.improved_count,
+            "regressed_count": self.regressed_count,
+            "most_improved": deltas(&self.improved),
+            "most_regressed": deltas(&self.regressed),
+        })
+    }
 }
 
 /// Reads the film clock of every captured frame.
@@ -379,6 +757,11 @@ fn mask_iou(
     }
 }
 
+/// Absolute per-pixel difference of two equally sized luminance planes.
+fn abs_difference(a: &[f32], b: &[f32]) -> Vec<f32> {
+    a.iter().zip(b).map(|(x, y)| (x - y).abs()).collect()
+}
+
 /// Writes a `reference | test | |difference|` contact sheet for one frame.
 fn write_contact_sheet(
     out_dir: &Path,
@@ -386,28 +769,32 @@ fn write_contact_sheet(
     reference: &[f32],
     test: &[f32],
 ) -> Result<(), String> {
+    let path = out_dir.join(format!("contact_{ordinal:04}.png"));
+    write_panel_sheet(&path, &[reference, test, &abs_difference(reference, test)])
+}
+
+/// Writes aspect-corrected luminance panels side by side, separated by
+/// [`CONTACT_SHEET_GAP`] pixels, as one grayscale PNG.
+fn write_panel_sheet(path: &Path, panels: &[&[f32]]) -> Result<(), String> {
     let width = MODE13H_WIDTH;
     let height = ASPECT_CORRECTED_HEIGHT;
     let panel_stride = width + CONTACT_SHEET_GAP;
-    let sheet_width = panel_stride * 2 + width;
+    let sheet_width = panel_stride * panels.len() - CONTACT_SHEET_GAP;
     let mut buffer = vec![0u8; sheet_width * height];
 
-    for y in 0..height {
-        let row = y * sheet_width;
-        for x in 0..width {
-            let pixel = y * width + x;
-            buffer[row + x] = reference[pixel].clamp(0.0, 255.0) as u8;
-            buffer[row + panel_stride + x] = test[pixel].clamp(0.0, 255.0) as u8;
-            buffer[row + panel_stride * 2 + x] =
-                (reference[pixel] - test[pixel]).abs().clamp(0.0, 255.0) as u8;
+    for (panel_index, panel) in panels.iter().enumerate() {
+        for y in 0..height {
+            let row = y * sheet_width + panel_index * panel_stride;
+            for x in 0..width {
+                buffer[row + x] = panel[y * width + x].clamp(0.0, 255.0) as u8;
+            }
         }
     }
 
     let image = image::GrayImage::from_raw(sheet_width as u32, height as u32, buffer)
         .ok_or("failed to build contact sheet buffer")?;
-    let path = out_dir.join(format!("contact_{ordinal:04}.png"));
     image
-        .save(&path)
+        .save(path)
         .map_err(|e| format!("write {}: {e}", path.display()))
 }
 
@@ -504,6 +891,205 @@ mod tests {
     fn read_report(output: &Path) -> Value {
         let text = fs::read_to_string(output.join("report.json")).unwrap();
         serde_json::from_str(&text).unwrap()
+    }
+
+    fn report(frames: &[(u64, f64, f64)]) -> Value {
+        json!({
+            "per_frame": frames
+                .iter()
+                .enumerate()
+                .map(|(i, (tick, ssim, iou))| json!({
+                    "ordinal": i + 1, "film_tick": tick, "ssim": ssim, "iou": iou,
+                }))
+                .collect::<Vec<Value>>(),
+        })
+    }
+
+    #[test]
+    fn compare_matches_by_film_tick_and_averages_the_common_frames() {
+        // Ticks 10..=40 are common; 5 exists only before, 50 only after. The ordinals
+        // differ between the reports, so only film_tick may be used to pair frames.
+        let before = report(&[
+            (5, 0.9, 0.9),
+            (10, 0.50, 0.80),
+            (20, 0.60, 0.80),
+            (30, 0.70, 0.80),
+            (40, 0.40, 0.80),
+        ]);
+        let after = report(&[
+            (10, 0.50, 0.90),
+            (20, 0.70, 0.90),
+            (30, 0.62, 0.90),
+            (40, 0.404, 0.90),
+            (50, 0.1, 0.1),
+        ]);
+        let c = compare_reports(&before, &after).expect("comparable");
+        assert_eq!((c.common, c.before_only, c.after_only), (4, 1, 1));
+        assert!((c.ssim.before - 0.55).abs() < 1e-9);
+        assert!((c.ssim.after - 0.556).abs() < 1e-9);
+        assert!((c.iou.before - 0.80).abs() < 1e-9);
+        assert!((c.iou.after - 0.90).abs() < 1e-9);
+        // Tick 40 moved by only +0.004: listed as improved, but under the 0.005 count.
+        let ticks = |list: &[FrameDelta]| list.iter().map(|d| d.film_tick).collect::<Vec<_>>();
+        assert_eq!(ticks(&c.improved), vec![20, 40]);
+        assert_eq!(ticks(&c.regressed), vec![30]);
+        assert_eq!((c.improved_count, c.regressed_count), (1, 1));
+        assert!((c.regressed[0].delta() + 0.08).abs() < 1e-9);
+    }
+
+    #[test]
+    fn compare_lists_at_most_five_frames_worst_and_best_first() {
+        let before: Vec<(u64, f64, f64)> = (0..12).map(|t| (t, 0.5, 0.5)).collect();
+        // Even ticks regress by t/100, odd ticks improve by t/100.
+        let after: Vec<(u64, f64, f64)> = (0..12)
+            .map(|t| {
+                let step = t as f64 / 100.0;
+                (t, if t % 2 == 0 { 0.5 - step } else { 0.5 + step }, 0.5)
+            })
+            .collect();
+        let c = compare_reports(&report(&before), &report(&after)).expect("comparable");
+        let ticks = |list: &[FrameDelta]| list.iter().map(|d| d.film_tick).collect::<Vec<_>>();
+        assert_eq!(ticks(&c.improved), vec![11, 9, 7, 5, 3]);
+        assert_eq!(ticks(&c.regressed), vec![10, 8, 6, 4, 2]);
+        // Odd ticks 1..=11 and even ticks 2..=10 all move by more than 0.005.
+        assert_eq!(c.improved_count, 6);
+        assert_eq!(c.regressed_count, 5);
+    }
+
+    #[test]
+    fn compare_of_identical_reports_has_no_movers() {
+        let r = report(&[(1, 0.5, 0.7), (2, 0.6, 0.8)]);
+        let c = compare_reports(&r, &r).expect("comparable");
+        assert!(c.improved.is_empty() && c.regressed.is_empty());
+        assert_eq!((c.improved_count, c.regressed_count), (0, 0));
+        assert_eq!(c.ssim.before, c.ssim.after);
+        let text = c.summary();
+        assert!(text.contains("2 frame(s) in both reports"), "{text}");
+        assert!(text.contains("mean SSIM 0.550 -> 0.550 (+0.000)"), "{text}");
+        assert!(text.contains("none"), "{text}");
+    }
+
+    #[test]
+    fn compare_rejects_disjoint_or_malformed_reports() {
+        let a = report(&[(1, 0.5, 0.5)]);
+        let b = report(&[(2, 0.5, 0.5)]);
+        assert!(
+            compare_reports(&a, &b)
+                .unwrap_err()
+                .contains("share no film_tick")
+        );
+        let legacy = json!({ "per_frame": [{ "ordinal": 1, "ssim": 0.5, "iou": 0.5 }] });
+        assert!(
+            compare_reports(&legacy, &a)
+                .unwrap_err()
+                .contains("film_tick")
+        );
+        assert!(
+            compare_reports(&json!({}), &a)
+                .unwrap_err()
+                .contains("per_frame")
+        );
+    }
+
+    #[test]
+    fn compare_json_and_summary_carry_the_same_figures() {
+        let before = report(&[(7, 0.5, 0.8), (9, 0.6, 0.8)]);
+        let after = report(&[(7, 0.4, 0.8), (9, 0.7, 0.8)]);
+        let c = compare_reports(&before, &after).expect("comparable");
+        let doc = c.to_json();
+        assert_eq!(doc["common_frames"], 2);
+        assert_eq!(doc["regressed_count"], 1);
+        assert_eq!(doc["most_regressed"][0]["film_tick"], 7);
+        assert!((doc["most_improved"][0]["delta"].as_f64().unwrap() - 0.1).abs() < 1e-9);
+        let text = c.summary();
+        assert!(
+            text.contains("tick     7  0.500 -> 0.400  -0.100"),
+            "{text}"
+        );
+        assert!(text.contains("1 improved, 1 regressed, 0 within"), "{text}");
+    }
+
+    #[test]
+    fn compare_flags_parse_and_compare_test_needs_compare() {
+        let parse = |extra: &[&str]| {
+            let mut v: Vec<String> = ["--reference", "r", "--test", "t", "--output", "o"]
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect();
+            v.extend(extra.iter().map(|s| (*s).to_string()));
+            Args::parse(v.into_iter())
+        };
+        let args = parse(&["--compare", "p/report.json", "--compare-test", "p/ours"]).unwrap();
+        assert_eq!(args.compare.as_deref(), Some(Path::new("p/report.json")));
+        assert_eq!(args.compare_test.as_deref(), Some(Path::new("p/ours")));
+        assert!(parse(&[]).unwrap().compare.is_none());
+        assert!(
+            parse(&["--compare-test", "p"])
+                .unwrap_err()
+                .contains("--compare")
+        );
+    }
+
+    #[test]
+    fn compare_run_writes_compare_json_and_before_after_sheets() {
+        let tmp = TempDir::new("compare_run");
+        write_reference(&tmp.join("ref"), &[7, 12], true);
+        let previous = tmp.join("prev");
+        let current = tmp.join("cur");
+        fs::create_dir_all(&previous).unwrap();
+        fs::create_dir_all(&current).unwrap();
+        for tick in [7, 12] {
+            write_render(&previous.join(crate::tick_png_name(tick)));
+            write_render(&current.join(crate::tick_png_name(tick)));
+        }
+        // Make the fresh render of tick 12 a flat gray, which happens to score higher.
+        image::RgbaImage::from_pixel(
+            MODE13H_WIDTH as u32,
+            MODE13H_HEIGHT as u32,
+            image::Rgba([9, 9, 9, 255]),
+        )
+        .save(current.join(crate::tick_png_name(12)))
+        .unwrap();
+
+        run_parity(&tmp.join("ref"), &previous, &tmp.join("base")).expect("baseline");
+        let argv = |compare_test: bool| {
+            let mut v = vec![
+                "--reference".to_string(),
+                tmp.join("ref").display().to_string(),
+                "--test".to_string(),
+                current.display().to_string(),
+                "--output".to_string(),
+                tmp.join("out").display().to_string(),
+                "--compare".to_string(),
+                tmp.join("base").join("report.json").display().to_string(),
+            ];
+            if compare_test {
+                v.push("--compare-test".to_string());
+                v.push(previous.display().to_string());
+            }
+            v
+        };
+
+        run(argv(false).into_iter()).expect("compare without sheets");
+        assert!(tmp.join("out").join("compare.json").is_file());
+        assert!(
+            !tmp.join("out")
+                .join("compare_improved_tick_00012.png")
+                .exists()
+        );
+
+        run(argv(true).into_iter()).expect("compare with sheets");
+        let doc: Value = serde_json::from_str(
+            &fs::read_to_string(tmp.join("out").join("compare.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(doc["common_frames"], 2);
+        assert_eq!(doc["most_improved"][0]["film_tick"], 12);
+        let sheet = image::open(tmp.join("out").join("compare_improved_tick_00012.png")).unwrap();
+        assert_eq!(
+            sheet.width() as usize,
+            (MODE13H_WIDTH + CONTACT_SHEET_GAP) * 5 - CONTACT_SHEET_GAP
+        );
     }
 
     #[test]
