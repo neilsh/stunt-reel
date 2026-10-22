@@ -227,6 +227,17 @@ impl FilmScene {
     /// built from the decoded shapes and whichever of anchors, map and scenery were given.
     pub fn load(inputs: &SceneInputs<'_>) -> Result<(Self, SceneReport), SceneError> {
         let timeline = FilmTimeline::from_bytes(inputs.film).map_err(SceneError::Film)?;
+        Self::load_with_timeline(timeline, inputs)
+    }
+
+    /// Like [`Self::load`], but plays an already-built `timeline`; `inputs.film` is ignored.
+    ///
+    /// For callers that supply their own timeline (e.g. a synthetic one) yet still want the
+    /// archive shapes and world.
+    pub fn load_with_timeline(
+        timeline: FilmTimeline,
+        inputs: &SceneInputs<'_>,
+    ) -> Result<(Self, SceneReport), SceneError> {
         let anchors = inputs.anchors.map(parse_anchor_table).unwrap_or_default();
 
         let decoded = match inputs.archive {

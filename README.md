@@ -89,13 +89,14 @@ mise run play        # or: .\play_ctry.bat
 ```bash
 mise run capture-ref
 cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
-    --all corpus/stisldem/VAULT/CTRY.ALL --frames 1..1343 \
+    --all corpus/stisldem/VAULT/CTRY.ALL --frames 1..1344 \
+    --sidata corpus/si_archive/Developer/FreeFlight/SIDATA \
     --out-dir build/parity/ours/ctry --width 320 --height 200
 cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry \
     --test build/parity/ours/ctry --output build/parity/report/ctry --clear-index 233
 ```
 
-`capture-ref` stores 140 reference frames, each tagged in `meta.json` with the film clock (`film_tick`) it was captured at. `--frames 1..1343` renders the full authored 1,342-tick span as `tick_00000.png`–`tick_01341.png`, named by 0-based 50 Hz tick, and the comparator pairs each capture with the render at its `film_tick` (captures made before film-clock tagging must be recaptured). The comparator writes `report.json` (per-frame `ssim`/`iou`, `mean_ssim`, `min_ssim`, `mean_iou`, `sky_index`, `unmatched`) and `contact_NNNN.png` sheets under `build/parity/report/ctry/`.
+`capture-ref` stores 140 reference frames, each tagged in `meta.json` with the film clock (`film_tick`) it was captured at. `--frames 1..1344` (also the default range) renders ticks 0 through 1,342, the film's last tick included, as `tick_00000.png`–`tick_01342.png`, named by 0-based 50 Hz tick (the end-hold captures sit at tick 1,342), and the comparator pairs each capture with the render at its `film_tick` (captures made before film-clock tagging must be recaptured). The comparator writes `report.json` (per-frame `ssim`/`iou`, `mean_ssim`, `min_ssim`, `mean_iou`, `sky_index`, `unmatched`) and `contact_NNNN.png` sheets under `build/parity/report/ctry/`.
 
 Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`, and a free port `58991`. How the dialog is driven (BIOS Data Area keystrokes) and how frames are sampled (post-retrace breakpoint at `0D51:0C5E`) is recorded in [`docs/SPEC.md § 3.6`](docs/SPEC.md#36-visual-parity-capture-loop-playoneexe-vs-stuntreel) and [`research/playone-exe/capture.md`](research/playone-exe/capture.md).
 
@@ -105,7 +106,7 @@ Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`, and a free port 
 cargo run -p stunt-cli -- corpus/stisldem/VAULT/CTRY.FLM --all corpus/stisldem/VAULT/CTRY.ALL
 ```
 
-Opens the interactive presentation (Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits). Interactive playback follows the authored 50 Hz timeline and interpolates between slices. `--help` lists the headless flags, `--frames <A..B>` (1-based 50 Hz tick ordinals), `--ticks`, and the `parity` subcommand.
+Opens the interactive presentation (Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits). Interactive playback follows the authored 50 Hz timeline and interpolates between slices. `--help` lists the headless flags, `--frames <A..B>` (half-open, 1-based 50 Hz tick ordinals), `--ticks`, and the `parity` subcommand. `ANCHORPT.DAT`, `MAP.BIN`, and `SCENERY.scn` are searched for in `--sidata <dir>` first, then the archive's directory, its parent and grandparent, then `sidata/` or `SIDATA/` inside the parent (filename case ignored); the demo's `corpus/si_archive/Developer/FreeFlight/SIDATA` needs an explicit `--sidata`.
 
 ### Export a film to video container
 

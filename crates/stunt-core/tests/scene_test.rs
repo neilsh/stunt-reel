@@ -304,3 +304,19 @@ fn empty_timeline_yields_an_empty_frame() {
     assert!(frame.actors.is_empty());
     assert!(!frame.world);
 }
+
+#[test]
+fn caller_supplied_timeline_keeps_archive_shapes() {
+    let film = film([0.0, 0.0, 10.0], &[(7, [3.0, 0.0, 0.0])]);
+    let all = archive(&[(7, &fixture("synthetic_minimal.sod"))]);
+    let inputs = SceneInputs {
+        archive: Some(&all),
+        ..scene_inputs(&[])
+    };
+    let timeline = FilmTimeline::from_bytes(&film).expect("film");
+    let (scene, report) = FilmScene::load_with_timeline(timeline, &inputs).expect("load");
+
+    assert!(report.skipped.is_empty());
+    assert!(scene.shape(7).is_some());
+    assert_eq!(scene.frame(0.0).actors.len(), 1);
+}

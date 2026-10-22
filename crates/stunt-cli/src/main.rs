@@ -2,6 +2,11 @@
 
 //! StuntReel Modern CLI & Presentation Engine (`stuntreel`).
 //!
+//! The CLI parses arguments, locates input files ([`scene`]), owns the winit window, and
+//! writes outputs (PNG, ffmpeg video, the `parity` subcommand). Every film-to-frame
+//! decision goes through [`stunt_core::scene::FilmScene`] and
+//! [`stunt_render::SceneRenderer`], the same path for headless and windowed playback.
+//!
 //! Complies with Architectural Invariants:
 //! - `[I1]` Right-handed metric coordinate basis (+X Right, +Y Up, -Z Forward).
 //! - `[I3]` VGA Mode 13h flat-shaded presentation via 256x32 palette LUT.
@@ -10,26 +15,20 @@
 
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
 mod parity;
 mod scene;
 
-use glam::{Mat4, Vec3};
-use scene::{SceneBundle, load_anchor_table};
-use stunt_core::contracts::{
-    CameraTransform, NodeKind, SodModelIr, SodVertex, TrajectoryRecord, VisibilityCondition,
-    get_palette_rgb_float,
-};
-use stunt_core::flm::{
-    CAMERA_FORWARD, FilmTimeline, SliceKeyframe, TIMELINE_HZ, TIMELINE_TICK_SECONDS,
-};
-use stunt_core::sod::transpile_sod;
+use scene::{SceneSources, build_scene};
+use stunt_core::contracts::get_palette_rgb_float;
+use stunt_core::flm::{CAMERA_FORWARD, TIMELINE_HZ, TIMELINE_TICK_SECONDS};
+use stunt_core::scene::FilmScene;
 use stunt_render::{
-    ASPECT_4_3, CameraController, CameraGpuResources, CameraMode, FfmpegVideoWriter, GpuMeshSlice,
-    GpuModel, HeadlessRenderer, PaletteLut, RenderPipelines,
+    ASPECT_4_3, CameraController, CameraGpuResources, CameraMode, FfmpegVideoWriter,
+    HeadlessRenderer, PaletteLut, RenderPipelines, SceneRenderer,
 };
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -46,8 +45,11 @@ pub struct CliConfig {
     pub sod_path: Option<PathBuf>,
     pub all_path: Option<PathBuf>,
     pub out_dir: Option<PathBuf>,
-    /// Half-open `[start, end)` 1-based tick ordinals to render; `None` renders all.
+    /// Half-open `[start, end)` 1-based tick ordinals to render; `None` renders ticks
+    /// `0..=total_ticks`.
     pub frame_range: Option<(usize, usize)>,
+    /// Directory searched first for `ANCHORPT.DAT`, `MAP.BIN` and `SCENERY.scn`.
+    pub sidata_dir: Option<PathBuf>,
     pub width: u32,
     pub height: u32,
     pub clear_index: u8,
@@ -71,6 +73,7 @@ impl CliConfig {
         let mut all_path = None;
         let mut out_dir = None;
         let mut frame_range = None;
+        let mut sidata_dir = None;
         let mut width = 320u32;
         let mut height = 240u32;
         let mut clear_index = 180u8;
@@ -107,6 +110,10 @@ impl CliConfig {
                 "--frames" => {
                     let val = args.next().ok_or("Expected A..B after --frames")?;
                     frame_range = Some(Self::parse_frame_range(&val)?);
+                }
+                "--sidata" => {
+                    let val = args.next().ok_or("Expected directory after --sidata")?;
+                    sidata_dir = Some(PathBuf::from(val));
                 }
                 "--video" => {
                     let val = args.next().ok_or("Expected path after --video")?;
@@ -253,6 +260,7 @@ impl CliConfig {
             all_path,
             out_dir,
             frame_range,
+            sidata_dir,
             width,
             height,
             clear_index,
@@ -303,7 +311,21 @@ impl CliConfig {
         println!(
             "                       with --sample-count or --video, <dir>/sample_NNNN.png instead"
         );
-        println!("  --frames <A..B>      Half-open 1-based tick ordinals to render (default: all)");
+        println!(
+            "  --frames <A..B>      Half-open 1-based tick ordinals to render; 1..N+2 covers ticks 0..=N"
+        );
+        println!(
+            "                       (default: ticks 0..=total, the film's last tick included)"
+        );
+        println!(
+            "  --sidata <dir>       Directory searched first for ANCHORPT.DAT, MAP.BIN and SCENERY.scn;"
+        );
+        println!(
+            "                       then the archive's directory, its parent and grandparent,"
+        );
+        println!(
+            "                       then sidata/ or SIDATA/ inside the parent (names match any case)"
+        );
         println!(
             "  --video <file>       Render film to video container (.mp4, .webm, .mkv, .avi) via ffmpeg"
         );
@@ -335,196 +357,6 @@ impl CliConfig {
         println!("  Q / E                Free-Cam: Move Down / Up");
         println!("  Esc                  Exit presentation");
     }
-}
-
-/// Synthesizes a cleanroom aircraft model IR if no external .SOD file was specified.
-pub fn create_default_aircraft_ir() -> SodModelIr {
-    let mut ir = SodModelIr::new("FOKKER");
-
-    // Fuselage / wings vertices
-    // Fuselage top: palette 40 (light grey)
-    // Fuselage side: palette 36
-    // Wing roundel decal: palette 220 (red/white/blue roundel), flag = 1 (coplanar decal)
-    let v0 = SodVertex {
-        position: [0.0, 0.5, 4.0], // nose
-        normal: [0.0, 1.0, 0.0],
-        palette_index: 40,
-        flags: 0,
-        _padding: [0, 0],
-    };
-    let v1 = SodVertex {
-        position: [-4.0, 0.5, 0.0], // left wing tip
-        normal: [0.0, 1.0, 0.0],
-        palette_index: 40,
-        flags: 0,
-        _padding: [0, 0],
-    };
-    let v2 = SodVertex {
-        position: [4.0, 0.5, 0.0], // right wing tip
-        normal: [0.0, 1.0, 0.0],
-        palette_index: 40,
-        flags: 0,
-        _padding: [0, 0],
-    };
-    let v3 = SodVertex {
-        position: [0.0, 0.5, -4.0], // tail
-        normal: [0.0, 1.0, 0.0],
-        palette_index: 36,
-        flags: 0,
-        _padding: [0, 0],
-    };
-
-    // Coplanar decal roundel on left wing (Invariant [I5])
-    let d0 = SodVertex {
-        position: [-2.0, 0.5, 0.2],
-        normal: [0.0, 1.0, 0.0],
-        palette_index: 232, // roundel red
-        flags: 1,           // coplanar decal
-        _padding: [0, 0],
-    };
-    let d1 = SodVertex {
-        position: [-2.5, 0.5, -0.2],
-        normal: [0.0, 1.0, 0.0],
-        palette_index: 232,
-        flags: 1,
-        _padding: [0, 0],
-    };
-    let d2 = SodVertex {
-        position: [-1.5, 0.5, -0.2],
-        normal: [0.0, 1.0, 0.0],
-        palette_index: 232,
-        flags: 1,
-        _padding: [0, 0],
-    };
-
-    ir.vertices = vec![v0, v1, v2, v3, d0, d1, d2];
-    ir.indices = vec![
-        0, 1, 2, // main wing triangle
-        1, 3, 2, // fuselage tail triangle
-        4, 5, 6, // decal roundel triangle
-    ];
-
-    let root = ir.allocate_node(
-        "FUSELAGE",
-        None,
-        Mat4::IDENTITY.to_cols_array(),
-        VisibilityCondition::Always,
-        NodeKind::Mesh {
-            vertex_offset: 0,
-            vertex_count: 4,
-            index_offset: 0,
-            index_count: 6,
-            is_decal: false,
-        },
-    );
-
-    ir.allocate_node(
-        "ROUNDEL_LEFT",
-        Some(root),
-        Mat4::IDENTITY.to_cols_array(),
-        VisibilityCondition::Always,
-        NodeKind::Mesh {
-            vertex_offset: 4,
-            vertex_count: 3,
-            index_offset: 6,
-            index_count: 3,
-            is_decal: true,
-        },
-    );
-
-    ir
-}
-
-/// Loads a model from disk if provided, otherwise returns cleanroom synthetic model.
-pub fn load_or_create_model(path: Option<&Path>) -> SodModelIr {
-    let Some(path) = path else {
-        return create_default_aircraft_ir();
-    };
-
-    let bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            eprintln!("[stuntreel] .SOD read failed for {}: {e}", path.display());
-            return create_default_aircraft_ir();
-        }
-    };
-
-    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("MODEL");
-    let anchors = load_anchor_table(path);
-    let anchor_slice = (!anchors.is_empty()).then_some(anchors.as_slice());
-    match transpile_sod(&bytes, stem, anchor_slice) {
-        Ok(ir) => ir,
-        Err(e) => {
-            eprintln!("[stuntreel] .SOD load failed for {}: {e}", path.display());
-            create_default_aircraft_ir()
-        }
-    }
-}
-
-/// Evaluates a 50 Hz timeline from an authored `.FLM` file, or synthesizes a circular orbit.
-pub fn load_or_synthesize_timeline(path: Option<&Path>, max_ticks: Option<usize>) -> FilmTimeline {
-    if let Some(path) = path
-        && let Ok(bytes) = fs::read(path)
-    {
-        match FilmTimeline::from_bytes(&bytes) {
-            Ok(timeline) if !timeline.slices().is_empty() => {
-                for warning in timeline.warnings() {
-                    eprintln!("[stuntreel] {warning}");
-                }
-                if let Some(reason) = timeline.stop_reason() {
-                    eprintln!(
-                        "[stuntreel] film stopped early after {} slices: {reason}",
-                        timeline.slices().len()
-                    );
-                }
-                return match max_ticks {
-                    Some(limit) => {
-                        timeline.truncated_to_ticks(u32::try_from(limit).unwrap_or(u32::MAX))
-                    }
-                    None => timeline,
-                };
-            }
-            Ok(_) => eprintln!(
-                "[stuntreel] {} contained no slices; using synthetic trajectory",
-                path.display()
-            ),
-            Err(err) => eprintln!(
-                "[stuntreel] failed to evaluate {}: {err}; using synthetic trajectory",
-                path.display()
-            ),
-        }
-    }
-
-    // Synthesize a one-second circular fly-by: 60 keyframes, one per 20 ms tick.
-    let count = max_ticks.unwrap_or(60).max(1);
-    let mut slices = Vec::with_capacity(count);
-
-    for tick in 0..count {
-        let t = tick as f32 * TIMELINE_TICK_SECONDS;
-        let eye_x = 40.0 * t.cos();
-        let eye_z = 40.0 * t.sin();
-
-        let camera = CameraTransform {
-            eye: [eye_x, 15.0, eye_z],
-            target: [0.0, 0.0, 0.0],
-            fov_degrees: 45.0,
-            roll_radians: 0.0,
-            cut_from_previous: tick == 0,
-        };
-
-        slices.push(SliceKeyframe {
-            record: TrajectoryRecord {
-                tick: tick as u32,
-                camera,
-                actors: Vec::new(),
-                audio_cues: Vec::new(),
-            },
-            tick: tick as u32,
-            tick_duration: if tick == 0 { 0 } else { 1 },
-        });
-    }
-
-    FilmTimeline::new(slices, Vec::new())
 }
 
 /// Evenly spaced ticks covering the half-open range `[start_tick, end_tick)`,
@@ -579,8 +411,45 @@ fn sample_png_name(key: SampleKey) -> String {
     }
 }
 
+/// The authored tick count, capped by `--ticks`.
+fn playback_ticks(config: &CliConfig, scene: &FilmScene) -> u32 {
+    let total = scene.timeline().total_ticks();
+    config
+        .max_ticks
+        .map_or(total, |limit| u32::try_from(limit).unwrap_or(u32::MAX))
+        .min(total)
+}
+
+/// Resolves `--frames` against a film of `total_ticks` into 0-based tick bounds.
+///
+/// Returns `(start_tick, tick_end, span_end)`. Tick-per-PNG output renders
+/// `start_tick..tick_end`, and with no `--frames` that is `0..=total_ticks`: the film clock
+/// reaches `total_ticks` itself, so the end-hold captures need that render. Video and
+/// `--sample-count` sample `start_tick..span_end`, which stops at the authored length.
+fn tick_window(frame_range: Option<(usize, usize)>, total_ticks: usize) -> (usize, usize, usize) {
+    let (start_ord, end_ord) = frame_range.unwrap_or((1, total_ticks + 2));
+    let start_tick = start_ord.max(1) - 1;
+    let tick_end = end_ord
+        .saturating_sub(1)
+        .min(total_ticks + 1)
+        .max(start_tick + 1);
+    let span_end = tick_end.min(total_ticks).max(start_tick + 1);
+    (start_tick, tick_end, span_end)
+}
+
+/// Saves tightly packed RGBA8 bytes as a PNG.
+fn save_rgba_png(
+    path: &std::path::Path,
+    width: u32,
+    height: u32,
+    rgba: &[u8],
+) -> Result<(), String> {
+    image::save_buffer(path, rgba, width, height, image::ColorType::Rgba8)
+        .map_err(|e| format!("save {}: {e}", path.display()))
+}
+
 /// Executes headless rendering without window creation.
-pub fn run_headless(config: &CliConfig) -> Result<(), String> {
+pub fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), String> {
     println!("[stuntreel] Starting headless offscreen presentation...");
 
     if let Some(out_dir) = &config.out_dir {
@@ -588,29 +457,9 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
             .map_err(|e| format!("create output directory {}: {e}", out_dir.display()))?;
     }
 
-    let timeline = load_or_synthesize_timeline(config.flm_path.as_deref(), config.max_ticks);
-    let first_record = timeline.sample(0.0);
-    println!(
-        "[stuntreel] Loaded {} slices, {} ticks ({:.3} s at {} Hz)",
-        timeline.slices().len(),
-        timeline.total_ticks(),
-        timeline.duration_seconds(),
-        TIMELINE_HZ
-    );
-    let cap_ticks = config
-        .max_ticks
-        .map_or(timeline.total_ticks(), |limit| {
-            u32::try_from(limit).unwrap_or(u32::MAX)
-        })
-        .min(timeline.total_ticks());
-    let (start_ord, end_ord) = config
-        .frame_range
-        .unwrap_or((1, usize::try_from(cap_ticks).unwrap_or(usize::MAX) + 1));
-    let start_ord = start_ord.max(1);
-    let end_ord = end_ord.min(usize::try_from(cap_ticks).unwrap_or(usize::MAX) + 1);
-    let start_tick = start_ord - 1;
-    let end_tick = end_ord.saturating_sub(1).max(start_tick + 1);
-    let span_seconds = (end_tick - start_tick) as f32 * TIMELINE_TICK_SECONDS;
+    let total_ticks = playback_ticks(config, scene) as usize;
+    let (start_tick, tick_end, span_end) = tick_window(config.frame_range, total_ticks);
+    let span_seconds = (span_end - start_tick) as f32 * TIMELINE_TICK_SECONDS;
 
     let mut video_writer = if let Some(video_path) = &config.video_path {
         if !FfmpegVideoWriter::is_available() {
@@ -631,50 +480,16 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
 
     let mut renderer = HeadlessRenderer::with_dimensions(config.width, config.height)
         .map_err(|e| format!("Headless renderer failed: {e}"))?;
+    let mut scene_renderer = SceneRenderer::new(
+        &renderer.device,
+        &renderer.queue,
+        &renderer.pipelines,
+        scene,
+    );
     println!(
         "[stuntreel] camera forward: {}",
         if CAMERA_FORWARD[2] < 0.0 { "-Z" } else { "+Z" }
     );
-
-    // `--all` binds every actor to its archive chunk, so `--sod` and the synthetic
-    // fallback model do not participate in parity frames.
-    let bundle = match &config.all_path {
-        Some(all_path) => {
-            let bundle = SceneBundle::from_all(
-                &renderer.device,
-                &renderer.queue,
-                &renderer.pipelines.model_bind_group_layout,
-                all_path,
-            )?;
-            println!(
-                "[stuntreel] scene: {} models loaded, {} skipped, {} partial",
-                bundle.models.len(),
-                bundle.skipped,
-                bundle.partial.len()
-            );
-            for (shape_id, stop) in &bundle.partial {
-                println!(
-                    "[stuntreel] partial SOD 0x{shape_id:04X} stopped at 0x{:04X} opcode 0x{:04X} ({})",
-                    stop.offset, stop.opcode, stop.reason
-                );
-            }
-            Some(bundle)
-        }
-        None => None,
-    };
-    let single_model = if bundle.is_some() {
-        None
-    } else {
-        let model_ir = load_or_create_model(config.sod_path.as_deref());
-        Some(GpuModel::from_ir(
-            &renderer.device,
-            &renderer.queue,
-            &renderer.pipelines.model_bind_group_layout,
-            &model_ir,
-        ))
-    };
-
-    let mut camera = CameraController::default();
 
     if config.out_dir.is_none() && video_writer.is_none() {
         let output_path = config
@@ -682,92 +497,19 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
             .clone()
             .unwrap_or_else(|| PathBuf::from("stuntreel_capture.png"));
 
-        if let Some(first_tick) = first_record.as_ref() {
-            let cam = first_tick.camera;
-            camera.set_authored_transform(cam);
-            println!(
-                "[stuntreel] first_tick.camera: eye={:?}, target={:?}, fov={}",
-                cam.eye, cam.target, cam.fov_degrees
-            );
-            for actor in &first_tick.actors {
-                let pos = actor.position_meters;
-                println!(
-                    "[stuntreel] first_tick actor: shape_id=0x{:04X}, pos={:?}",
-                    actor.shape_id, pos
-                );
-            }
-        }
-
-        let mut drawn_shapes: Vec<u16> = Vec::new();
-        let mut draws: Vec<(&GpuModel, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>)> = Vec::new();
-
-        if let Some(bundle) = &bundle {
-            if let Some(world_model) = &bundle.world_model {
-                let (base_meshes, decal_meshes) = world_model.collect_visible_meshes(1, 0.0);
-                println!(
-                    "[stuntreel] world_model draws: {} base meshes, {} decal meshes",
-                    base_meshes.len(),
-                    decal_meshes.len()
-                );
-                draws.push((world_model, base_meshes, decal_meshes));
-            }
-            if let Some(first_tick) = first_record.as_ref() {
-                let cam = first_tick.camera;
-                let eye = Vec3::from_array(cam.eye);
-                for actor in &first_tick.actors {
-                    if drawn_shapes.contains(&actor.shape_id) {
-                        continue;
-                    }
-                    let Some(model) = bundle.get(actor.shape_id) else {
-                        continue;
-                    };
-                    drawn_shapes.push(actor.shape_id);
-
-                    let world_mat = actor.world_matrix;
-                    let actor_pos = actor.position_meters;
-                    model.update_world_matrix(&renderer.queue, &world_mat);
-                    let distance = eye.distance(Vec3::from_array(actor_pos));
-                    let (base_meshes, decal_meshes) =
-                        model.collect_visible_meshes(actor.state_mask, distance);
-                    draws.push((model, base_meshes, decal_meshes));
-                }
-            }
-        } else if let Some(gpu_model) = &single_model {
-            if let Some(first_tick) = first_record.as_ref()
-                && let Some(actor) = first_tick
-                    .actors
-                    .iter()
-                    .find(|a| a.shape_id != 0)
-                    .or_else(|| first_tick.actors.first())
-            {
-                let world_mat = actor.world_matrix;
-                let actor_pos = actor.position_meters;
-                gpu_model.update_world_matrix(&renderer.queue, &world_mat);
-                let cam = first_tick.camera;
-                let eye = Vec3::from_array(cam.eye);
-                let distance = eye.distance(Vec3::from_array(actor_pos));
-                let (base_meshes, decal_meshes) =
-                    gpu_model.collect_visible_meshes(actor.state_mask, distance);
-                draws.push((gpu_model, base_meshes, decal_meshes));
-            } else {
-                let (base_meshes, decal_meshes) = gpu_model.collect_visible_meshes(1, 30.0);
-                draws.push((gpu_model, base_meshes, decal_meshes));
-            }
-        }
-
-        let models_slice: Vec<(&GpuModel, &[GpuMeshSlice], &[GpuMeshSlice])> = draws
-            .iter()
-            .map(|(model, base, decals)| (*model, base.as_slice(), decals.as_slice()))
-            .collect();
-
-        renderer
-            .render_to_png(
-                &camera,
-                &models_slice,
-                Some(config.clear_index),
-                &output_path,
-            )
+        let frame = scene.frame(start_tick as f32);
+        let cam = frame.camera;
+        println!(
+            "[stuntreel] tick {start_tick} camera: eye={:?}, target={:?}, fov={}; {} actor draws",
+            cam.eye,
+            cam.target,
+            cam.fov_degrees,
+            frame.actors.len()
+        );
+        let rgba = renderer
+            .render_scene(&mut scene_renderer, &frame, None, Some(config.clear_index))
             .map_err(|e| format!("Offscreen render to PNG failed: {e}"))?;
+        save_rgba_png(&output_path, config.width, config.height, &rgba)?;
 
         println!(
             "[stuntreel] Headless frame successfully saved to {}",
@@ -778,146 +520,46 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
 
     let frame_step = config.frame_step.max(1);
 
-    if video_writer.is_some() && config.sample_count.is_some() {
-        return Err("--sample-count cannot be combined with --video".to_string());
-    }
-
-    let mut samples: Vec<(SampleKey, TrajectoryRecord)> = Vec::new();
+    let mut samples: Vec<(SampleKey, f32)> = Vec::new();
     if video_writer.is_some() {
         let count = (span_seconds * config.fps).ceil() as usize;
         let tick_step = TIMELINE_HZ / config.fps;
         for index in 0..count {
             let tick = start_tick as f32 + index as f32 * tick_step;
-            if tick >= end_tick as f32 {
+            if tick >= span_end as f32 {
                 break;
             }
-            if let Some(record) = timeline.sample(tick) {
-                samples.push((SampleKey::Index(index + 1), record));
-            }
+            samples.push((SampleKey::Index(index + 1), tick));
         }
     } else if let Some(count) = config.sample_count {
-        for (index, tick) in even_sample_ticks(start_tick, end_tick, count)
+        for (index, tick) in even_sample_ticks(start_tick, span_end, count)
             .into_iter()
             .enumerate()
         {
-            if let Some(record) = timeline.sample(tick) {
-                samples.push((SampleKey::Index(index + 1), record));
-            }
+            samples.push((SampleKey::Index(index + 1), tick));
         }
     } else {
-        for ordinal in (start_ord..end_ord).step_by(frame_step) {
-            let tick = ordinal - 1;
-            if tick >= end_tick {
-                break;
-            }
-            if let Some(record) = timeline.sample(tick as f32) {
-                samples.push((SampleKey::Tick(tick), record));
-            }
+        for tick in (start_tick..tick_end).step_by(frame_step) {
+            samples.push((SampleKey::Tick(tick), tick as f32));
         }
     }
 
     let mut written_pngs = 0usize;
     let mut written_video_frames = 0usize;
 
-    for (position, (key, record)) in samples.into_iter().enumerate() {
-        let cam = record.camera;
-        camera.set_authored_transform(cam);
-        let eye = Vec3::from_array(cam.eye);
+    for (key, tick) in samples {
+        let frame = scene.frame(tick);
+        let rgba_bytes = renderer
+            .render_scene(&mut scene_renderer, &frame, None, Some(config.clear_index))
+            .map_err(|e| format!("render {key}: {e}"))?;
 
-        let mut drawn_shapes: Vec<u16> = Vec::new();
-        let mut draws: Vec<(&GpuModel, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>)> = Vec::new();
-
-        if let Some(bundle) = &bundle {
-            if let Some(world_model) = &bundle.world_model {
-                let (base_meshes, decal_meshes) = world_model.collect_visible_meshes(1, 0.0);
-                if position == 0 {
-                    println!(
-                        "[stuntreel] first sample ({key}) world_model draws: {} base meshes ({:?}), {} decal meshes ({:?})",
-                        base_meshes.len(),
-                        base_meshes.first(),
-                        decal_meshes.len(),
-                        decal_meshes.first()
-                    );
-                }
-                draws.push((world_model, base_meshes, decal_meshes));
-            }
-            for actor in &record.actors {
-                if drawn_shapes.contains(&actor.shape_id) {
-                    continue;
-                }
-                let Some(model) = bundle.get(actor.shape_id) else {
-                    continue;
-                };
-                drawn_shapes.push(actor.shape_id);
-
-                let world_mat = actor.world_matrix;
-                let actor_pos = actor.position_meters;
-                model.update_world_matrix(&renderer.queue, &world_mat);
-                let distance = eye.distance(Vec3::from_array(actor_pos));
-                let (base_meshes, decal_meshes) =
-                    model.collect_visible_meshes(actor.state_mask, distance);
-                draws.push((model, base_meshes, decal_meshes));
-            }
-        } else if let Some(model) = &single_model {
-            if let Some(actor) = record
-                .actors
-                .iter()
-                .find(|a| a.shape_id != 0)
-                .or_else(|| record.actors.first())
-            {
-                let world_mat = actor.world_matrix;
-                let actor_pos = actor.position_meters;
-                model.update_world_matrix(&renderer.queue, &world_mat);
-                let distance = eye.distance(Vec3::from_array(actor_pos));
-                let (base_meshes, decal_meshes) =
-                    model.collect_visible_meshes(actor.state_mask, distance);
-                draws.push((model, base_meshes, decal_meshes));
-            } else {
-                let (base_meshes, decal_meshes) = model.collect_visible_meshes(1, 30.0);
-                draws.push((model, base_meshes, decal_meshes));
-            }
-        }
-
-        let models_slice: Vec<(&GpuModel, &[GpuMeshSlice], &[GpuMeshSlice])> = draws
-            .iter()
-            .map(|(model, base, decals)| (*model, base.as_slice(), decals.as_slice()))
-            .collect();
-
-        if config.out_dir.is_some() && video_writer.is_some() {
-            let rgba_bytes = renderer
-                .render_frame(&camera, &models_slice, Some(config.clear_index))
-                .map_err(|e| format!("render {key}: {e}"))?;
-
-            if let Some(writer) = &mut video_writer {
-                writer
-                    .write_frame(&rgba_bytes)
-                    .map_err(|e| format!("write video frame for {key}: {e}"))?;
-                written_video_frames += 1;
-            }
-
-            if let Some(out_dir) = &config.out_dir {
-                let frame_path = out_dir.join(sample_png_name(key));
-                let img = image::RgbaImage::from_raw(config.width, config.height, rgba_bytes)
-                    .ok_or_else(|| format!("failed to create image buffer for {key}"))?;
-                img.save(&frame_path)
-                    .map_err(|e| format!("save {key} to {}: {e}", frame_path.display()))?;
-                written_pngs += 1;
-            }
-        } else if let Some(out_dir) = &config.out_dir {
+        if let Some(out_dir) = &config.out_dir {
             let frame_path = out_dir.join(sample_png_name(key));
-            renderer
-                .render_to_png(
-                    &camera,
-                    &models_slice,
-                    Some(config.clear_index),
-                    &frame_path,
-                )
-                .map_err(|e| format!("render {key}: {e}"))?;
+            save_rgba_png(&frame_path, config.width, config.height, &rgba_bytes)
+                .map_err(|e| format!("{key}: {e}"))?;
             written_pngs += 1;
-        } else if let Some(writer) = &mut video_writer {
-            let rgba_bytes = renderer
-                .render_frame(&camera, &models_slice, Some(config.clear_index))
-                .map_err(|e| format!("render {key}: {e}"))?;
+        }
+        if let Some(writer) = &mut video_writer {
             writer
                 .write_frame(&rgba_bytes)
                 .map_err(|e| format!("write video frame for {key}: {e}"))?;
@@ -947,14 +589,6 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// Renderable scene bound for interactive presentation.
-enum InteractiveScene {
-    /// Single cleanroom or `--sod` model anchored at the world origin.
-    Single(GpuModel),
-    /// Every `MODEL_*.SOD` chunk of the film's paired `.ALL` archive.
-    Archive(SceneBundle),
-}
-
 /// Creates the depth attachment used by the interactive surface pass.
 fn create_depth_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
     device
@@ -978,6 +612,9 @@ fn create_depth_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Te
 /// Interactive window application state.
 struct WindowApp {
     config: CliConfig,
+    /// The film scene, built once before the event loop and reused across resumes.
+    scene: FilmScene,
+    playback_ticks: u32,
     window: Option<Arc<Window>>,
     device: Option<wgpu::Device>,
     queue: Option<wgpu::Queue>,
@@ -987,9 +624,8 @@ struct WindowApp {
     palette_lut: Option<PaletteLut>,
     camera_resources: Option<CameraGpuResources>,
     depth_view: Option<wgpu::TextureView>,
+    scene_renderer: Option<SceneRenderer>,
     camera: CameraController,
-    scene: Option<InteractiveScene>,
-    timeline: FilmTimeline,
     current_tick: f32,
     paused: bool,
     last_frame_time: Instant,
@@ -1004,10 +640,12 @@ struct WindowApp {
 }
 
 impl WindowApp {
-    fn new(config: CliConfig) -> Self {
-        let timeline = load_or_synthesize_timeline(config.flm_path.as_deref(), config.max_ticks);
+    fn new(config: CliConfig, scene: FilmScene) -> Self {
+        let playback_ticks = playback_ticks(&config, &scene);
         Self {
             config,
+            scene,
+            playback_ticks,
             window: None,
             device: None,
             queue: None,
@@ -1017,9 +655,8 @@ impl WindowApp {
             palette_lut: None,
             camera_resources: None,
             depth_view: None,
+            scene_renderer: None,
             camera: CameraController::default(),
-            scene: None,
-            timeline,
             current_tick: 0.0,
             paused: false,
             last_frame_time: Instant::now(),
@@ -1061,14 +698,10 @@ impl WindowApp {
 
     /// Advances the authored timeline in wall-clock time `[I4]`.
     fn advance_timeline(&mut self, dt: f32) {
-        if self.paused {
+        if self.paused || self.playback_ticks == 0 {
             return;
         }
-        let total_ticks = self.timeline.total_ticks();
-        if total_ticks == 0 {
-            return;
-        }
-        self.current_tick = (self.current_tick + dt * TIMELINE_HZ) % total_ticks as f32;
+        self.current_tick = (self.current_tick + dt * TIMELINE_HZ) % self.playback_ticks as f32;
     }
 
     fn render(&mut self, dt: f32) {
@@ -1083,6 +716,7 @@ impl WindowApp {
             Some(cam_res),
             Some(lut),
             Some(depth_view),
+            Some(scene_renderer),
         ) = (
             &self.device,
             &self.queue,
@@ -1092,72 +726,17 @@ impl WindowApp {
             &self.camera_resources,
             &self.palette_lut,
             &self.depth_view,
+            &mut self.scene_renderer,
         )
         else {
             return;
         };
 
-        let record = self.timeline.sample(self.current_tick);
-        if self.camera.mode == CameraMode::Authored
-            && let Some(record) = record.as_ref()
-        {
-            self.camera.set_authored_transform(record.camera);
+        let frame = self.scene.frame(self.current_tick);
+        if self.camera.mode == CameraMode::Authored {
+            self.camera.set_authored_transform(frame.camera);
         }
-        let eye = self.camera.eye_position();
-
-        // One draw per distinct shape: a shared model uniform cannot hold two poses.
-        let mut draws: Vec<(&GpuModel, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>)> = Vec::new();
-        match self.scene.as_ref() {
-            Some(InteractiveScene::Single(model)) => {
-                if let Some(record) = record
-                    && let Some(actor) = record
-                        .actors
-                        .iter()
-                        .find(|a| a.shape_id != 0)
-                        .or_else(|| record.actors.first())
-                {
-                    let world_mat = actor.world_matrix;
-                    let actor_pos = actor.position_meters;
-                    model.update_world_matrix(queue, &world_mat);
-                    let distance = eye.distance(Vec3::from_array(actor_pos));
-                    let (base, decals) = model.collect_visible_meshes(actor.state_mask, distance);
-                    draws.push((model, base, decals));
-                } else {
-                    let (base, decals) = model.collect_visible_meshes(1, eye.length());
-                    draws.push((model, base, decals));
-                }
-            }
-            Some(InteractiveScene::Archive(bundle)) => {
-                if let Some(world_model) = &bundle.world_model {
-                    let (base, decals) = world_model.collect_visible_meshes(1, 0.0);
-                    draws.push((world_model, base, decals));
-                }
-                if let Some(record) = record {
-                    let mut drawn_shapes: Vec<u16> = Vec::new();
-                    for actor in &record.actors {
-                        if drawn_shapes.contains(&actor.shape_id) {
-                            continue;
-                        }
-                        let Some(model) = bundle.get(actor.shape_id) else {
-                            continue;
-                        };
-                        drawn_shapes.push(actor.shape_id);
-
-                        let world_mat = actor.world_matrix;
-                        let actor_pos = actor.position_meters;
-                        model.update_world_matrix(queue, &world_mat);
-                        let distance = eye.distance(Vec3::from_array(actor_pos));
-                        let (base, decals) =
-                            model.collect_visible_meshes(actor.state_mask, distance);
-                        draws.push((model, base, decals));
-                    }
-                }
-            }
-            None => return,
-        }
-
-        let cam_uniform = self.camera.build_uniform();
-        cam_res.upload(queue, &cam_uniform);
+        scene_renderer.prepare(device, queue, cam_res, &frame, Some(&self.camera));
 
         let surface_texture = match surface.get_current_texture() {
             Ok(tex) => tex,
@@ -1257,45 +836,8 @@ impl WindowApp {
             rpass.set_viewport(vp_x, vp_y, vp_w, vp_h, 0.0, 1.0);
             rpass.set_scissor_rect(sc_x, sc_y, sc_w, sc_h);
 
-            // Pass 1: Base solid geometry
-            rpass.set_pipeline(&pipelines.base_pipeline);
-            rpass.set_bind_group(0, &cam_res.bind_group, &[]);
-            rpass.set_bind_group(1, &lut.bind_group, &[]);
-            for (model, base_meshes, _) in &draws {
-                if base_meshes.is_empty() {
-                    continue;
-                }
-                rpass.set_bind_group(2, &model.model_bind_group, &[]);
-                rpass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
-                rpass.set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-
-                for mesh in base_meshes {
-                    rpass.draw_indexed(
-                        mesh.index_offset..(mesh.index_offset + mesh.index_count),
-                        mesh.vertex_offset,
-                        0..1,
-                    );
-                }
-            }
-
-            // Pass 2: Decal pass with Invariant [I5] hardware depth bias
-            rpass.set_pipeline(&pipelines.decal_pipeline);
-            for (model, _, decal_meshes) in &draws {
-                if decal_meshes.is_empty() {
-                    continue;
-                }
-                rpass.set_bind_group(2, &model.model_bind_group, &[]);
-                rpass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
-                rpass.set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-
-                for mesh in decal_meshes {
-                    rpass.draw_indexed(
-                        mesh.index_offset..(mesh.index_offset + mesh.index_count),
-                        mesh.vertex_offset,
-                        0..1,
-                    );
-                }
-            }
+            // Passes 1-2: world and actors, base geometry then the `[I5]` decal pass
+            scene_renderer.draw(&mut rpass, pipelines, cam_res, lut);
 
             // Pass 3: Paint the `[I6]` pillarbox/letterbox bars black
             rpass.set_viewport(0.0, 0.0, win_w, win_h, 0.0, 1.0);
@@ -1415,38 +957,7 @@ impl ApplicationHandler for WindowApp {
             &palette_lut.bind_group_layout,
         );
 
-        let scene = match &self.config.all_path {
-            Some(all_path) => match SceneBundle::from_all(
-                &device,
-                &queue,
-                &pipelines.model_bind_group_layout,
-                all_path,
-            ) {
-                Ok(bundle) => {
-                    println!(
-                        "[stuntreel] scene: {} models loaded, {} skipped, {} partial",
-                        bundle.models.len(),
-                        bundle.skipped,
-                        bundle.partial.len()
-                    );
-                    InteractiveScene::Archive(bundle)
-                }
-                Err(e) => {
-                    eprintln!("[stuntreel] {e}");
-                    event_loop.exit();
-                    return;
-                }
-            },
-            None => {
-                let model_ir = load_or_create_model(self.config.sod_path.as_deref());
-                InteractiveScene::Single(GpuModel::from_ir(
-                    &device,
-                    &queue,
-                    &pipelines.model_bind_group_layout,
-                    &model_ir,
-                ))
-            }
-        };
+        let scene_renderer = SceneRenderer::new(&device, &queue, &pipelines, &self.scene);
 
         let depth_view = create_depth_view(&device, surface_config.width, surface_config.height);
 
@@ -1459,7 +970,7 @@ impl ApplicationHandler for WindowApp {
         self.palette_lut = Some(palette_lut);
         self.camera_resources = Some(camera_resources);
         self.depth_view = Some(depth_view);
-        self.scene = Some(scene);
+        self.scene_renderer = Some(scene_renderer);
 
         window.request_redraw();
     }
@@ -1570,8 +1081,22 @@ fn main() {
         }
     };
 
+    let scene = match build_scene(&SceneSources {
+        flm: config.flm_path.as_deref(),
+        all: config.all_path.as_deref(),
+        sod: config.sod_path.as_deref(),
+        sidata: config.sidata_dir.as_deref(),
+        max_ticks: config.max_ticks,
+    }) {
+        Ok(scene) => scene,
+        Err(e) => {
+            eprintln!("[stuntreel error] {e}");
+            std::process::exit(1);
+        }
+    };
+
     if config.headless {
-        if let Err(e) = run_headless(&config) {
+        if let Err(e) = run_headless(&config, &scene) {
             eprintln!("[stuntreel error] {e}");
             std::process::exit(1);
         }
@@ -1587,7 +1112,7 @@ fn main() {
     };
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut app = WindowApp::new(config);
+    let mut app = WindowApp::new(config, scene);
     if let Err(e) = event_loop.run_app(&mut app) {
         eprintln!("[stuntreel] Application error: {e}");
         std::process::exit(1);
@@ -1597,11 +1122,13 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn test_out_dir_file_names_follow_tick_or_sample_index() {
         assert_eq!(sample_png_name(SampleKey::Tick(0)), "tick_00000.png");
         assert_eq!(sample_png_name(SampleKey::Tick(1341)), "tick_01341.png");
+        assert_eq!(sample_png_name(SampleKey::Tick(1342)), "tick_01342.png");
         assert_eq!(sample_png_name(SampleKey::Tick(12345)), "tick_12345.png");
         assert_eq!(sample_png_name(SampleKey::Index(1)), "sample_0001.png");
         assert_eq!(sample_png_name(SampleKey::Index(140)), "sample_0140.png");
@@ -1613,6 +1140,19 @@ mod tests {
         assert_eq!(even_sample_ticks(0, 3, 3), vec![0.0, 1.0, 2.0]);
         assert_eq!(even_sample_ticks(0, 1342, 3), vec![0.0, 670.5, 1341.0]);
         assert_eq!(even_sample_ticks(5, 6, 1), vec![5.0]);
+    }
+
+    #[test]
+    fn test_default_range_includes_the_final_tick() {
+        // CTRY.FLM: 1,342 ticks, and the film clock reaches tick 1342 itself.
+        assert_eq!(tick_window(None, 1342), (0, 1343, 1342));
+        // The documented parity command.
+        assert_eq!(tick_window(Some((1, 1344)), 1342), (0, 1343, 1342));
+        // Half-open 1-based ordinals as before: 1..1343 stops at tick 1341.
+        assert_eq!(tick_window(Some((1, 1343)), 1342), (0, 1342, 1342));
+        assert_eq!(tick_window(Some((3, 6)), 1342), (2, 5, 5));
+        // Past-the-end ranges clamp.
+        assert_eq!(tick_window(Some((1, 99999)), 1342), (0, 1343, 1342));
     }
 
     #[test]
@@ -1630,6 +1170,8 @@ mod tests {
                 "out".to_string(),
                 "--fps".to_string(),
                 "50".to_string(),
+                "--sidata".to_string(),
+                "data/SIDATA".to_string(),
             ]
             .into_iter(),
         )
@@ -1639,6 +1181,7 @@ mod tests {
         assert_eq!(config.frame_step, 3);
         assert_eq!(config.sample_count, Some(5));
         assert_eq!(config.fps, 50.0);
+        assert_eq!(config.sidata_dir, Some(PathBuf::from("data/SIDATA")));
 
         assert!(
             CliConfig::parse_from(
