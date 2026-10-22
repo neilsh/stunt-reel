@@ -116,3 +116,21 @@ Code anchors (segment-relative; `CS = 0x0F17` in the captured session):
 | `0x492D` | Per-frame anchor cache invalidation (`DS=0x1DF8`, 231 records) | `# [MEM-SOD-ANCHOR-TABLE]` |
 
 See [`research/playone-exe/sod-vm.md`](../research/playone-exe/sod-vm.md) for `OP_TAP` and [`research/playone-exe/sod-animate.md`](../research/playone-exe/sod-animate.md) for `OP_ANIMATE` disassembly and operand evidence.
+
+### Film variables and palette (`# [MEM-FLM-VARS]`, `# [MEM-PALETTE]`)
+
+`DS`-relative data and code in the segment that runs at `CS = 0x0824` (load-image segment `0x0000`). Evidence: [`research/playone-exe/palette-fade.md`](../research/playone-exe/palette-fade.md).
+
+| Offset | Evidentiary Tier | Purpose |
+|---|---|---|
+| `DS:0x474A + 0x7E + 2n` | `[Established]` | Live film variable `n` (`u16[16]`), interpolated per frame between `+0xBE + 2n` and `+0xDE + 2n` |
+| `DS:0x474A + 0x9A`, `+ 0x9C` | `[Established]` | Var 14 (palette brightness) and var 15 (palette saturation); 32768 = full |
+| `DS:0x2240` | `[Established]` | 17-entry graphics driver vector table, copied from `DS:0x10A4` (`set_palette` at `+0x12`, palette-resource load at `+0x1E`) |
+| `DS:0x2468` | `[Established]` | Base palette, 6-bit DAC units |
+| `DS:0x2768` | `[Established]` | Working palette sent to the DAC (256 x 3 bytes) |
+| `DS:0x227A` | `[Supported Inference]` | Screen-faded flag; suppresses DAC writes while set |
+| `DS:0x227B..0x227D` | `[Established]` | Cached brightness/saturation/sky inputs of the palette build |
+| `CS:0x0FD2` | `[Established]` | Palette build from vars 13–15 (entries 0–239) |
+| `CS:0x136F` | `[Established]` | Per-frame film-variable interpolation |
+| `CS:0x3D54` | `[Established]` | `var_set` handler |
+| `CS:0x7B70` | `[Established]` | VGA DAC upload (`0x3C8`/`0x3C9`), two retrace-gated halves |
