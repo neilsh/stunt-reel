@@ -64,9 +64,6 @@ pub struct FfmpegVideoWriter {
     fps: f32,
 }
 
-/// Type alias for [`FfmpegVideoWriter`].
-pub type VideoExporter = FfmpegVideoWriter;
-
 impl FfmpegVideoWriter {
     /// Checks whether the `ffmpeg` executable is installed and accessible on `PATH`.
     #[must_use]
@@ -78,12 +75,6 @@ impl FfmpegVideoWriter {
             .status()
             .map(|s| s.success())
             .unwrap_or(false)
-    }
-
-    /// Alias for [`is_available`][Self::is_available].
-    #[must_use]
-    pub fn is_ffmpeg_available() -> bool {
-        Self::is_available()
     }
 
     /// Spawns an `ffmpeg` process ready to receive raw RGBA frames over standard input.

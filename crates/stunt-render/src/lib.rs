@@ -33,4 +33,4 @@ pub use parity::{
 };
 pub use pipeline::{ModelUniform, RenderPipelines};
 pub use scene_renderer::SceneRenderer;
-pub use video::{FfmpegVideoWriter, VideoExportError, VideoExporter};
+pub use video::{FfmpegVideoWriter, VideoExportError};
