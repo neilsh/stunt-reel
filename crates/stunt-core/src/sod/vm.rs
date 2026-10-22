@@ -133,7 +133,7 @@ pub struct SodHeader {
 
 /// Intermediate polygonal facet emitted by the bytecode VM before decal resolution and welding.
 #[derive(Debug, Clone, PartialEq)]
-pub struct RawPolygon {
+pub(crate) struct RawPolygon {
     /// Polygon vertex coordinates in metric units `[x, y, z]` per `[I1]`.
     pub vertices: Vec<[f32; 3]>,
     /// VGA Mode 13h palette index `0..=255` per `[I3]`.
@@ -152,7 +152,7 @@ pub struct RawPolygon {
 ///
 /// Attempts edge cross product from first three vertices, falling back to Newell's method.
 #[must_use]
-pub fn compute_polygon_normal(vertices: &[[f32; 3]]) -> [f32; 3] {
+pub(crate) fn compute_polygon_normal(vertices: &[[f32; 3]]) -> [f32; 3] {
     if vertices.len() < 3 {
         return [0.0, 1.0, 0.0];
     }
@@ -299,7 +299,7 @@ pub struct SodStop {
 /// `anchors` supplies the global 28-byte anchor table referenced by [`OP_TAP`];
 /// pass `None` for models that do not use TAP. Returns the parsed header and raw
 /// polygon stream, and fails on any opcode outside the decoded table.
-pub fn execute_sod_vm(
+pub(crate) fn execute_sod_vm(
     data: &[u8],
     anchors: Option<&[SodAnchorPoint]>,
 ) -> Result<(SodHeader, Vec<RawPolygon>), SodError> {
@@ -328,7 +328,7 @@ pub fn execute_sod_vm(
 /// execution and is reported as [`SodStop`] alongside the polygons decoded up to that
 /// offset, so a partially decoded model stays renderable. Strict mode returns the same
 /// polygons only for streams that decode to completion.
-pub fn execute_sod_vm_impl(
+pub(crate) fn execute_sod_vm_impl(
     data: &[u8],
     lenient: bool,
     anchors: Option<&[SodAnchorPoint]>,

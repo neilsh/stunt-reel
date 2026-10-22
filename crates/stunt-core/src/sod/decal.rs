@@ -15,7 +15,7 @@ pub const EPSILON_DISPLACEMENT: f32 = 0.001;
 
 /// Computes the axis-aligned bounding box `(min_xyz, max_xyz)` for a polygon.
 #[must_use]
-pub fn polygon_bounds(poly: &RawPolygon) -> ([f32; 3], [f32; 3]) {
+pub(crate) fn polygon_bounds(poly: &RawPolygon) -> ([f32; 3], [f32; 3]) {
     if poly.vertices.is_empty() {
         return ([0.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
     }
@@ -53,7 +53,7 @@ pub fn polygon_bounds(poly: &RawPolygon) -> ([f32; 3], [f32; 3]) {
 
 /// Tests whether two 3D bounding boxes overlap within a spatial tolerance.
 #[must_use]
-pub fn bounds_overlap(
+pub(crate) fn bounds_overlap(
     min_a: &[f32; 3],
     max_a: &[f32; 3],
     min_b: &[f32; 3],
@@ -72,7 +72,7 @@ pub fn bounds_overlap(
 /// 2. Identical plane distance: `|dot(n_a, v_a0) - dot(n_b, v_b0)| < plane_tol`
 /// 3. Spatial bounding box overlap within `plane_tol`.
 #[must_use]
-pub fn is_coplanar_facet(
+pub(crate) fn is_coplanar_facet(
     poly_a: &RawPolygon,
     poly_b: &RawPolygon,
     normal_tol: f32,
@@ -109,7 +109,7 @@ pub fn is_coplanar_facet(
 
 /// Displaces all vertices of a coplanar decal polygon outward along its surface normal.
 #[must_use]
-pub fn displace_decal_polygon(poly: &RawPolygon, eps: f32) -> RawPolygon {
+pub(crate) fn displace_decal_polygon(poly: &RawPolygon, eps: f32) -> RawPolygon {
     let displaced_vertices: Vec<[f32; 3]> = poly
         .vertices
         .iter()
@@ -137,7 +137,7 @@ pub fn displace_decal_polygon(poly: &RawPolygon, eps: f32) -> RawPolygon {
 /// A polygon evaluated at index `i > j` is classified as a decal if it is coplanar
 /// with an earlier polygon `j` in the draw order and spatially overlaps it.
 #[must_use]
-pub fn identify_coplanar_decals(
+pub(crate) fn identify_coplanar_decals(
     polygons: &[RawPolygon],
     eps_displacement: f32,
     normal_tol: f32,
@@ -162,10 +162,4 @@ pub fn identify_coplanar_decals(
     }
 
     result
-}
-
-/// Applies default Invariant `[I5]` decal identification and displacement with 1.0 mm displacement.
-#[must_use]
-pub fn apply_decal_displacement(polygons: &[RawPolygon]) -> Vec<RawPolygon> {
-    identify_coplanar_decals(polygons, EPSILON_DISPLACEMENT, 1e-4, 1e-4)
 }

@@ -27,14 +27,14 @@ pub const IDENTITY_MATRIX: [f32; 16] = [
 ];
 
 /// Attribute tuple key used for vertex deduplication per Invariant `[I1]`.
-pub type WeldKey = (i64, i64, i64, i32, i32, i32, u8, u8);
+pub(crate) type WeldKey = (i64, i64, i64, i32, i32, i32, u8, u8);
 
 /// Quantizes vertex attributes into a deduplication key per Invariant `[I1]`.
 ///
 /// Snaps positions within `1e-4 m` and normals within `1e-3` while strictly preserving
 /// distinct palette indices and decal flags to prevent normal/color bleeding.
 #[must_use]
-pub fn quantize_weld_key(
+pub(crate) fn quantize_weld_key(
     pos: &[f32; 3],
     normal: &[f32; 3],
     palette_index: u8,
@@ -50,7 +50,7 @@ pub fn quantize_weld_key(
 }
 
 /// Builds a [`SodModelIr`] from a parsed header and processed polygon list.
-pub fn build_sod_model_ir(
+pub(crate) fn build_sod_model_ir(
     name: &str,
     _header: &SodHeader,
     polygons: &[RawPolygon],
