@@ -69,7 +69,7 @@ Before the transform, `0x0FD2` rewrites parts of the base palette from constants
 | `DS:0x09F0` | Day lights `(40, 38, 38)`, `(29, 26, 26)` | Entries 213–214 when `N < 0x20` |
 | `DS:0x09F6` | Night lights `(63, 46, 0)`, `(56, 55, 55)` | Entries 213–214 when `N >= 0x20` |
 
-The sky gradient is therefore never the static `pal.h` table: at `N = 0` entries 224–238 run from `(3, 40, 63)` to `(52, 52, 52)`. The `CTRY` captures, where var 13 is 45 (so `N = 0`), match this exactly at entries 224, 233 and 238 (`(12, 162, 255)`, `(138, 194, 227)`, `(210, 210, 210)` after the DAC's 6-to-8-bit expansion). The night path (`N > 0`) is decoded but not yet checked against a capture.
+The sky gradient is therefore never the static `pal.h` table: at `N = 0` entries 224–238 run from `(3, 40, 63)` to `(52, 52, 52)`. The `CTRY` captures, where var 13 is 45 (so `N = 0`), match this exactly at entries 224, 233 and 238 (`(12, 162, 255)`, `(138, 194, 227)`, `(210, 210, 210)` after the DAC's 6-to-8-bit expansion). The night path is checked against a capture (section 5.1).
 
 ## 4. Driver Vector Table
 
@@ -99,13 +99,19 @@ Predicting each capture's brightness from var 14 (`BL / 64`) and comparing it wi
 | 1326 | 0.034 | 0.016 | 0.031 |
 | 1337 | 0.000 | 0.000 | 0.000 |
 
-The lag is consistent with the palette being built from film state a few ticks before the capture trap reads the clock (`# [MEM-FLM-TICK]` notes the film clock running 5 ticks ahead of the global tick). The lag is `[Bounded Observation]`.
+The lag is consistent with the palette being built from film state a few ticks before the capture trap reads the clock (`# [MEM-FLM-TICK]` notes the film clock running 5 ticks ahead of the global tick). The lag is `[Bounded Observation]`. A stepped variable shows no such lag (section 5.1), so it is not a uniform delay.
 
 The variables are common across the corpus. Of 561 films that decode, 407 lower var 14 below 32768 at some point (fade-ins as well as fade-outs), 108 lower var 15, and 224 drive var 13 past `0x2000`. No film sets var 14 or 15 above 32768. Three films never set var 14 (`EXIT.FLM` and `EXIT2.FLM` in `MultiFLM/Collage4`, `CPU_CRED.FLM`).
+
+### 5.1 Night Capture (`COL3-2.FLM`)
+
+`[Established]` for the modelled palette at the captured ticks. `corpus/si_archive/Films/MultiFLM/Collage3/COL3-2.FLM` sets var 13 to 32813 (`N = 64`, full night) at tick 0, to 0 at tick 100, back to 32813 at tick 198 and 713, and to 45 at tick 698. It was captured with the harness of [`capture.md`](capture.md), mounting a directory that holds only that film's `.FLM` and `.ALL` beside the demo's engine files, so the dialog's `c`, `Down`, `Enter` keys select it. The 30 captured frames cover ticks 168–201 (var 14 is 0) and 458–726 (var 14 is 32768).
+
+`PaletteControls::film_palette` fed the variables sampled at the capture's `film_tick` reproduces all 240 live DAC entries of every frame, comparing 6-bit levels, so the night path in section 3.1 is exact: the night sky gradient, the night lights at entries 213–214, the darkened scene entries, and the all-black palette while var 14 is 0. Sampling at `film_tick - 6` instead breaks the frame at tick 715, where the var 13 step to night has already shown in the capture but the lagged sample is still day (224 entries differ by up to 62 levels). The step is therefore applied without delay, and the 6-tick offset seen on the `CTRY.FLM` ramp is not explained by a uniform lag of the palette build. Which ticks a ramp's interpolation fraction covers (`0x136F`, `DS:0x22E0`) is the open alternative.
 
 ## 6. Open Points
 
 * The meaning of variables 0–3, 10 and 11 is not established. Var 10's steady climb suggests a time or progress value (`[Hypothesis]`).
-* `PLAYONE` zeroes all live variables at `0x3723`, so a film that never sets var 14 would play black. The renderer starts vars 14 and 15 at 32768 instead, keeping those three films visible; what `PLAYONE` shows for them is unchecked.
-* The 6-tick lag (section 5) is not modelled: the renderer applies the variables at the authored tick.
+* `[Supported Inference]` A film that never sets var 14 plays with its scene colours black in `PLAYONE`. Every film start (`0x3F24` → `0x3A11` → `0x37AA`) zeroes the 64 words at `+0x7E` of the `0x474A` structure: the live values and the `before`, start and end buffers of all 16 variables. `0x3723` zeroes the live values only once, at program start (`0x0E27`). With `+0x24` set to `0xFFFF` (`0x37F3`), `0x136F` interpolates every variable from start 0 to end 0, so var 14 stays 0, `CH = 0` and `BL = 0` in the transform of section 3, and entries 0–239 become `(0, 0, 0)`. Only the cursor and button-bar entries 240–255 stay lit. This is static analysis, not a capture. The three films (`EXIT.FLM`, `EXIT2.FLM`, `CPU_CRED.FLM`) all set var 15 to 32768 but not var 14, so they look like authoring omissions. The renderer starts vars 14 and 15 at 32768 instead, keeping them visible, which deliberately differs from `PLAYONE`.
+* The 6-tick lag on the `CTRY.FLM` ramp (section 5) is not modelled, and section 5.1 shows it is not a uniform delay. Locating its cause needs a capture across a ramp with a long, slow key interval; the renderer applies the variables at the authored tick.
 * The renderer applies vars 13–15 through `PaletteControls::film_palette` in `stunt-core` ([`contracts/palette.rs`](../../crates/stunt-core/src/contracts/palette.rs)). It clamps brightness and saturation above 32768 to full, which no corpus film reaches.

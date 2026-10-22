@@ -58,6 +58,7 @@ The camera rig and actor table are deliberately **not** read during the loop: th
 * The dialog page carries 6 distinct palette indices; film frames carry 33–84.
 * `stuntreel parity` over those 140 frames reports finite per-frame scores and `unmatched: 0`; the first contact sheet's reference panel shows the film's opening shot (airfield, hero aircraft, player HUD), not the dialog.
 * **First-frame offset (`[Bounded Observation]`):** the first recorded frame carries the player's HUD timecode `00:00.08`, i.e. one render-loop iteration into the film, so reference ordinal 1 sits ≈ 65 ms after film time zero.
+* **Another film:** the harness has no film argument; it presses `c`, `Down`, `Enter`. Stage a directory with the demo's engine files (`DRIVER*.BIN`, `GAME.CFG`, `INSTALL.CFG`, `PFONT.BIN`, `PLAYONE.EXE`, `VDATA.BIN`) and a `VAULT/` holding only the target film's `.ALL` and `.FLM` (names starting with `C`, or the dialog's first `C` entry will not be the pair), copy `dosbox-parity.conf` with the `mount c` line pointed at it, and pass that file as `--conf`. `COL3-2.FLM` was captured this way (30 frames, [`palette-fade.md` § 5.1](palette-fade.md)). The first recorded frame of that capture was at tick 168 and ticks 202–457 produced none; the cause is not established (step 4 skips repeated pages and pages with fewer than 20 distinct indices).
 
 ---
 

@@ -115,9 +115,9 @@ const VAR_SATURATION: usize = 15;
 
 /// Film variables before the first slice.
 ///
-/// `PLAYONE` zeroes all 16 (`CS:0x3723`), which would leave a film that never sets
-/// brightness or saturation black or grey. All but three corpus films set var 14;
-/// starting both at full keeps those three visible.
+/// `PLAYONE` zeroes all 16 at every film start (`CS:0x37AA`), which leaves a film that
+/// never sets brightness black (see `research/playone-exe/palette-fade.md`). All but
+/// three corpus films set var 14; starting both at full keeps those three visible.
 fn initial_variables() -> [u16; 16] {
     let mut variables = [0; 16];
     variables[VAR_BRIGHTNESS] = PALETTE_CONTROL_FULL;
