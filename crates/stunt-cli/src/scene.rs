@@ -15,7 +15,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use stunt_core::contracts::SodModelIr;
-use stunt_core::sod::{SodAnchorPoint, SodStop, transpile_sod_lenient};
+use stunt_core::scene::decode_archive_shapes;
+use stunt_core::sod::{SodAnchorPoint, SodStop};
 use stunt_core::world::{WorldInputs, build_world, parse_anchor_table};
 use stunt_render::GpuModel;
 
@@ -43,38 +44,29 @@ impl SceneBundle {
         path: &Path,
     ) -> Result<Self, String> {
         let bytes = fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-        let archive = stunt_core::vfs::parse_all(&bytes)
-            .map_err(|e| format!("parse {}: {e}", path.display()))?;
 
         let anchors = load_anchor_table(path);
-        let anchor_slice = (!anchors.is_empty()).then_some(anchors.as_slice());
 
-        let mut models = HashMap::new();
-        let mut ir_models = HashMap::new();
-        let mut skipped = 0usize;
-        let mut partial = Vec::new();
-
-        for entry in archive.entries.values() {
-            let Some(shape_id) = model_shape_id(&entry.name) else {
-                continue;
-            };
-            match transpile_sod_lenient(&entry.data, &entry.name, anchor_slice) {
-                Ok((ir, stop)) => {
-                    if let Some(stop) = stop {
-                        partial.push((shape_id, stop));
-                    }
-                    models.insert(
-                        shape_id,
-                        GpuModel::from_ir(device, queue, model_bind_group_layout, &ir),
-                    );
-                    ir_models.insert(shape_id, ir);
-                }
-                Err(e) => {
-                    eprintln!("[stuntreel] scene: {} failed to decode: {e}", entry.name);
-                    skipped += 1;
-                }
-            }
+        let decoded = decode_archive_shapes(&bytes, &anchors)
+            .map_err(|e| format!("parse {}: {e}", path.display()))?;
+        for chunk in &decoded.skipped {
+            eprintln!(
+                "[stuntreel] scene: {} failed to decode: {}",
+                chunk.name, chunk.error
+            );
         }
+        let skipped = decoded.skipped.len();
+        let partial = decoded.partial;
+        let ir_models = decoded.shapes;
+        let models: HashMap<u16, GpuModel> = ir_models
+            .iter()
+            .map(|(&shape_id, ir)| {
+                (
+                    shape_id,
+                    GpuModel::from_ir(device, queue, model_bind_group_layout, ir),
+                )
+            })
+            .collect();
 
         // Search for static scenery and terrain tables
         let world_model = load_world_model(
@@ -99,12 +91,6 @@ impl SceneBundle {
     pub(crate) fn get(&self, shape_id: u16) -> Option<&GpuModel> {
         self.models.get(&shape_id)
     }
-}
-
-/// Extracts the resource ID from a `MODEL_%04X.SOD` archive entry name.
-fn model_shape_id(name: &str) -> Option<u16> {
-    let hex = name.strip_prefix("MODEL_")?.strip_suffix(".SOD")?;
-    u16::from_str_radix(hex, 16).ok()
 }
 
 /// Locates a scenery data file across standard candidate directories.
