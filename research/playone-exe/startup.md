@@ -11,7 +11,7 @@ This document details the executable structure, command-line argument evaluation
 | **Binary Name** | `PLAYONE.EXE` | Standalone playback engine |
 | **Origin** | Walt Disney Computer Software / The Assembly Line (1992) | Stunt Island Demo |
 | **Executable Format** | 16-bit x86 MS-DOS MZ Executable | Standard real-mode DOS application |
-| **Compression** | Packed with **LZEXE 0.91** | `LZ91` signature at file offset `0x1C` |
+| **Compression** | Packed with **LZEXE 0.91** | `LZ91` signature at file offset `0x1C`; [`python/scripts/unlzexe.py`](../../python/scripts/unlzexe.py) unpacks it |
 | **Packed File Size** | 102,703 bytes | Disk footprint |
 | **Unpacked File Size** | 201,548 bytes | In-memory uncompressed image size |
 | **Unpacked Entry Point** | `CS:IP = 0000:0C5Eh` | Execution start after LZEXE decompression stub |
