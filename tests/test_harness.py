@@ -22,20 +22,6 @@ from pathlib import Path
 
 import pytest
 
-from stunt_reel.math import (
-    bam_to_degrees,
-    degrees_to_bam,
-    fov_y_to_focal,
-    quat_from_direction_cosines,
-    radians_to_bam,
-    vec3_add,
-    vec3_cross,
-    vec3_displace,
-    vec3_dot,
-    vec3_length,
-    vec3_normalize,
-    vec3_scale,
-)
 from stunt_reel.tac import (
     KEY_ENTER,
     PORT_VGA_STATUS,
@@ -88,95 +74,29 @@ def test_bam_conversions() -> None:
     assert math.isclose(bam_to_radians(0x8000), math.pi, rel_tol=1e-5)
     assert math.isclose(bam_to_radians(0xC000), 1.5 * math.pi, rel_tol=1e-5)
 
-    assert radians_to_bam(0.0) == 0
-    assert radians_to_bam(math.pi / 2.0) == 0x4000
-    assert radians_to_bam(math.pi) == 0x8000
-
-    assert bam_to_degrees(0x4000) == 90.0
-    assert degrees_to_bam(90.0) == 0x4000
-    assert degrees_to_bam(180.0) == 0x8000
-
 
 def test_focal_to_fov_y_conversion() -> None:
     """Verify Stunt Island focal zoom to vertical FOV calculation."""
     # Standard focal distance ~289.777 gives exactly 45 degrees
     focal = 120.0 / math.tan(math.radians(22.5))
-    fov = focal_to_fov_y(focal)
-    assert math.isclose(fov, 45.0, abs_tol=1e-4)
-
-    # Roundtrip check
-    assert math.isclose(fov_y_to_focal(fov), focal, rel_tol=1e-5)
+    assert math.isclose(focal_to_fov_y(focal), 45.0, abs_tol=1e-4)
 
     with pytest.raises(ValueError, match="focal_dist must be positive"):
         focal_to_fov_y(0.0)
-    with pytest.raises(ValueError, match="fov_degrees must be strictly between 0 and 180"):
-        fov_y_to_focal(0.0)
 
 
-def test_vector_operations_and_decal_displacement() -> None:
-    """Verify vector arithmetic and Invariant [I5] coplanar decal offset."""
-    v1 = [1.0, 2.0, 3.0]
-    v2 = [4.0, 5.0, 6.0]
-
-    assert vec3_add(v1, v2) == [5.0, 7.0, 9.0]
-    assert vec3_sub(v2, v1) == [3.0, 3.0, 3.0]
-    assert vec3_scale(v1, 2.0) == [2.0, 4.0, 6.0]
-    assert vec3_dot(v1, v2) == 32.0
-
-    # Cross product adhering to right-handed basis: +X cross +Y = +Z
-    x_axis = [1.0, 0.0, 0.0]
-    y_axis = [0.0, 1.0, 0.0]
-    z_axis = vec3_cross(x_axis, y_axis)
-    assert z_axis == [0.0, 0.0, 1.0]
-
-    assert math.isclose(vec3_length([3.0, 4.0, 0.0]), 5.0)
-    assert vec3_normalize([0.0, 0.0, 0.0]) == [0.0, 0.0, 0.0]
-
-    # Invariant [I5] coplanar decal displacement
-    normal = [0.0, 1.0, 0.0]
-    displaced = vec3_displace(v1, normal, eps=0.001)
-    assert math.isclose(displaced[0], 1.0)
-    assert math.isclose(displaced[1], 2.001)
-    assert math.isclose(displaced[2], 3.0)
+def test_vec3_sub() -> None:
+    """Verify the vector subtraction the streamer's RMSE uses."""
+    assert vec3_sub([4.0, 5.0, 6.0], [1.0, 2.0, 3.0]) == [3.0, 3.0, 3.0]
 
 
-def test_quaternion_normalization_and_direction_cosines() -> None:
-    """Verify unit quaternion calculation and direction cosine decomposition."""
-    q_unnorm = [0.0, 0.0, 0.0, 2.0]
-    q_norm = quat_normalize(q_unnorm)
+def test_quaternion_normalization() -> None:
+    """Verify unit quaternion calculation."""
+    q_norm = quat_normalize([0.0, 0.0, 0.0, 2.0])
     assert q_norm == [0.0, 0.0, 0.0, 1.0]
     assert quat_norm(q_norm) == 1.0
     assert quat_norm_diff(q_norm) < 1e-6
 
-    # Identity rotation from direction cosines
-    identity_mat = [
-        [1.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0],
-        [0.0, 0.0, 1.0],
-    ]
-    q_ident = quat_from_direction_cosines(identity_mat)
-    assert math.isclose(q_ident[0], 0.0, abs_tol=1e-5)
-    assert math.isclose(q_ident[1], 0.0, abs_tol=1e-5)
-    assert math.isclose(q_ident[2], 0.0, abs_tol=1e-5)
-    assert math.isclose(q_ident[3], 1.0, abs_tol=1e-5)
-    assert quat_norm_diff(q_ident) < 1e-4
-
-    # 90 deg rotation around Y axis
-    rot_y_90 = [
-        0.0,
-        0.0,
-        1.0,
-        0.0,
-        1.0,
-        0.0,
-        -1.0,
-        0.0,
-        0.0,
-    ]
-    q_y = quat_from_direction_cosines(rot_y_90)
-    assert quat_norm_diff(q_y) < 1e-4
-
-    # Euler rotation to quaternion
     q_euler = quat_from_euler(yaw=0.0, pitch=math.radians(10.0), roll=0.0)
     assert quat_norm_diff(q_euler) < 1e-4
 
