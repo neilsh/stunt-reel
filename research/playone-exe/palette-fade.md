@@ -71,6 +71,20 @@ Before the transform, `0x0FD2` rewrites parts of the base palette from constants
 
 The sky gradient is therefore never the static `pal.h` table: at `N = 0` entries 224–238 run from `(3, 40, 63)` to `(52, 52, 52)`. The `CTRY` captures, where var 13 is 45 (so `N = 0`), match this exactly at entries 224, 233 and 238 (`(12, 162, 255)`, `(138, 194, 227)`, `(210, 210, 210)` after the DAC's 6-to-8-bit expansion). The night path is checked against a capture (section 5.1).
 
+### 3.2 Other Readers of the Live Variables
+
+A search of the unpacked image for operands at `DS:0x47C8 + 2n` and `[ptr + 0x7E + 2n]` finds these readers. All of it is static analysis, not a capture; offsets are linear into the unpacked load image.
+
+| Var | Reader | What it does | Tier |
+|---|---|---|---|
+| 11 | `0x0F33` | `DX = var 11`, `AX = 1`, far call `0x1DEA:0x05B1`. That routine stores `DX` in `cs:[0x49]` when `AX = 1` and in `cs:[0xD7]` otherwise, inside the resident segment `0x1DEA` (interrupts masked, `CS` as `DS`, the pattern of a driver). Var 11 is therefore a parameter handed to a driver-resident word; which driver and what it controls is not decoded. | `[Supported Inference]` |
+| 13 | `0x0F4C` → `0x196C` | `angle = var 13 - 0x4000`, run through a far trig routine (`0x824:0x05D2`, `BX = 0x71C`) into a 3-vector stored at `DS:0x49EC..0x49F0` and, negated, at `[0x542]:0x8078..0x807C`. `0x908E` reads that vector, transforms it with the camera matrix at `0x80C0`, divides by depth and adds the screen centre (`DS:0x41C8/0x41CA`), with a radius of `0x600` scaled by the focal term at `0x8108`. Var 13 is therefore also the position of a sky body (sun or moon) as an angle, in the same units that drive the night term of section 3.1. | `[Supported Inference]` |
+| 12 | `0x1D9B` | `0x1D96` stores `var 12` and `-var 12` at `0x15D4:0x8126` and `0x15D4:0x8128`. No reader of those words was found, so the meaning is not decoded. | `[Bounded Observation]` |
+| 10 | `0x1DA9` | Compared with its previous value in `DS:0x22BC`; the sign of the change goes to `0x15D4:0x8120` and `(var 10 & 0xFF) << 8` to `0x15D4:0x8122`, beside a slot field (`[bx + 0x0E] << 12`) at `0x811E`. No reader of those words was found, so the meaning is not decoded. | `[Bounded Observation]` |
+| 0-3 | none | No instruction in the image addresses these variables directly. The only code that touches them is generic over all 16: the checkpoint copy at `0x39D0`, the film recorder's change loop at `0x42F9`, the interpolation at `0x136F` and the start-of-film reset. `0x11FC` indexes a different structure at `+0x7E`. | `[Bounded Observation]` |
+
+`0x39D0` and `0x42F9` are bookkeeping: the first snapshots the 16 live variables to `DS:0x4906` with the rest of the film state, the second emits `var_set` bytes (`0x90 - n`) into the film being recorded when a variable changes.
+
 ## 4. Driver Vector Table
 
 The 17-entry vector table at `DS:0x10A4` is copied to `DS:0x2240` at `0x47E9`. Then `[DS:0x2240]` is jumped to. The palette slots are:
@@ -104,7 +118,7 @@ The variables are common across the corpus. Of 561 films that decode, 407 lower 
 
 ## 6. Open Points
 
-* The meaning of variables 0–3, 10 and 11 is not established. Var 10's steady climb suggests a time or progress value (`[Hypothesis]`).
+* Variables 0–3 have no reader and the consumers of vars 10, 11 and 12 are not decoded (section 3.2). Var 10's steady climb in `CTRY.FLM` suggests a time or progress value (`[Hypothesis]`). `COL3-2.FLM` moves vars 2–7, 10 and 11 at tick 198 (`COL3-2` studio, see [`parity-findings.md`](../parity-findings.md) § 4); that is the only film lead, and no reader ties any of them to the studio.
 * `[Supported Inference]` A film that never sets var 14 plays with its scene colours black in `PLAYONE`. Every film start (`0x3F24` → `0x3A11` → `0x37AA`) zeroes the 64 words at `+0x7E` of the `0x474A` structure: the live values and the `before`, start and end buffers of all 16 variables. `0x3723` zeroes the live values only once, at program start (`0x0E27`). With `+0x24` set to `0xFFFF` (`0x37F3`), `0x136F` interpolates every variable from start 0 to end 0, so var 14 stays 0, `CH = 0` and `BL = 0` in the transform of section 3, and entries 0–239 become `(0, 0, 0)`. Only the cursor and button-bar entries 240–255 stay lit. This is static analysis, not a capture. The three films (`EXIT.FLM`, `EXIT2.FLM`, `CPU_CRED.FLM`) all set var 15 to 32768 but not var 14, so they look like authoring omissions. The renderer starts vars 14 and 15 at 32768 instead, keeping them visible, which deliberately differs from `PLAYONE`.
 * The one-level residual in 12 of the 140 `CTRY.FLM` captures (section 5) is unexplained. Matching `0x136F`'s integer interpolation (`live = start + ((end - start) * frac) >> 15`) instead of the evaluator's `f32` blend is the candidate; the effect is below one DAC level and has no visible parity cost.
 * The renderer applies vars 13–15 through `PaletteControls::film_palette` in `stunt-core` ([`contracts/palette.rs`](../../crates/stunt-core/src/contracts/palette.rs)). It clamps brightness and saturation above 32768 to full, which no corpus film reaches.
