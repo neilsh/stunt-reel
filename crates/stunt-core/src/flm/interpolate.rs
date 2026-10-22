@@ -622,4 +622,56 @@ mod tests {
         let _ = radians_to_bam(f32::INFINITY);
         let _ = radians_to_bam(f32::NEG_INFINITY);
     }
+
+    fn golden_f32s(value: &serde_json::Value) -> Vec<f32> {
+        match value {
+            serde_json::Value::Array(items) => items
+                .iter()
+                .map(|v| v.as_f64().expect("number") as f32)
+                .collect(),
+            other => vec![other.as_f64().expect("number") as f32],
+        }
+    }
+
+    fn assert_close(actual: &[f32], expected: &[f32], context: &str) {
+        assert_eq!(actual.len(), expected.len(), "{context}: length");
+        for (i, (a, e)) in actual.iter().zip(expected).enumerate() {
+            assert!(
+                (a - e).abs() <= 1e-5,
+                "{context}[{i}]: rust {a} vs golden {e}"
+            );
+        }
+    }
+
+    #[test]
+    fn dos_math_matches_shared_goldens() {
+        let text = include_str!("../../../../tests/fixtures/dos_math_goldens.json");
+        let goldens: serde_json::Value = serde_json::from_str(text).expect("valid golden json");
+
+        for case in goldens["bam_to_radians"].as_array().expect("section") {
+            let raw = case["input"].as_u64().expect("u16 input") as u16;
+            let expected = golden_f32s(&case["expected"]);
+            assert_close(&[bam_to_radians(raw)], &expected, &format!("bam {raw}"));
+        }
+
+        for case in goldens["focal_to_fov_y"].as_array().expect("section") {
+            let focal = golden_f32s(&case["input"])[0];
+            let expected = golden_f32s(&case["expected"]);
+            assert_close(
+                &[focal_to_fov_y(focal)],
+                &expected,
+                &format!("focal {focal}"),
+            );
+        }
+
+        for case in goldens["quat_from_euler"].as_array().expect("section") {
+            let e = golden_f32s(&case["input"]);
+            let expected = golden_f32s(&case["expected"]);
+            assert_close(
+                &quat_from_euler(e[0], e[1], e[2]),
+                &expected,
+                &format!("euler {e:?}"),
+            );
+        }
+    }
 }

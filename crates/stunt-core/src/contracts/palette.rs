@@ -296,4 +296,14 @@ mod tests {
         assert!((g255 - 252.0 / 255.0).abs() < 1e-6);
         assert!((b255 - 252.0 / 255.0).abs() < 1e-6);
     }
+
+    #[test]
+    fn palette_matches_shared_golden() {
+        let text = include_str!("../../../../tests/fixtures/mode13h_palette.json");
+        let golden: Vec<[u8; 3]> = serde_json::from_str(text).expect("valid palette json");
+        assert_eq!(golden.len(), 256);
+        for (i, rgb) in golden.iter().enumerate() {
+            assert_eq!(MODE_13H_PALETTE[i], (rgb[0], rgb[1], rgb[2]), "index {i}");
+        }
+    }
 }

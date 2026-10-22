@@ -69,3 +69,8 @@ A three-slice film exercising authored `tick_duration` and timeline sampling:
 - **Slice 2** at tick 12 (`tick_duration = 10`): `view_obj 1` (camera cut), `WIND.VOC` cue, camera slot to `(0, 10, 40)`, actor remains at `(0, 10, 2)`.
 - **Axes**: the coordinates above are the evaluated `[I1]` positions. The bytes are authored in DOS axes, so each `INTERP` opcode stores the negated `x` and `y` (`y = -10.0` is `0xFFF60000`, `x = 0` is unchanged) and the unchanged `z`. All rotations are zero; a zero DOS rotation evaluates to `q_z180 = [0, 0, 1, 0]`, which the timeline tests do not inspect and which fixes the `+Z` camera look axis.- Used by `crates/stunt-core/tests/flm_timeline_test.rs` to verify cumulative timestamps, interpolation, cut suppression, and audio-cue intervals.
 
+### 9. `mode13h_palette.json`
+A JSON array of 256 `[r, g, b]` triples: the VGA Mode 13h palette (`[I3]`) exported from the Python table. `crates/stunt-core/src/contracts/palette.rs` asserts `MODE_13H_PALETTE` equals it exactly and `tests/test_goldens.py` asserts `stunt_reel.tac.palette` equals it, so the Rust and Python copies cannot drift.
+
+### 10. `dos_math_goldens.json`
+Golden vectors for the shared DOS math helpers, generated from the Python implementations at full float precision: `bam_to_radians`, `focal_to_fov_y`, `quat_from_euler` (`[yaw, pitch, roll]` -> `[x, y, z, w]`) and `world_matrix` (`position` + `quat` -> 16 column-major floats). Rust (`flm/interpolate.rs`, `contracts/trajectory.rs` tests) and Python (`tests/test_goldens.py`) both assert agreement within `1e-5`.

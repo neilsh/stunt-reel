@@ -280,4 +280,47 @@ mod tests {
             serde_json::from_str(&cap_json).expect("capture deserialization succeeds");
         assert_eq!(capture, cap_deserialized);
     }
+
+    #[test]
+    fn compute_world_matrix_matches_shared_goldens() {
+        let text = include_str!("../../../../tests/fixtures/dos_math_goldens.json");
+        let goldens: serde_json::Value = serde_json::from_str(text).expect("valid golden json");
+        let floats = |v: &serde_json::Value| -> Vec<f32> {
+            v.as_array()
+                .expect("array")
+                .iter()
+                .map(|x| x.as_f64().expect("number") as f32)
+                .collect()
+        };
+
+        for (case_index, case) in goldens["world_matrix"]
+            .as_array()
+            .expect("section")
+            .iter()
+            .enumerate()
+        {
+            let pos = floats(&case["position"]);
+            let quat = floats(&case["quat"]);
+            let expected = floats(&case["expected"]);
+            let actor = ActorTransform {
+                actor_id: 0,
+                model_name: "GOLDEN".to_string(),
+                shape_id: 0,
+                world_matrix: [0.0; 16],
+                rotation_quat: [quat[0], quat[1], quat[2], quat[3]],
+                position_meters: [pos[0], pos[1], pos[2]],
+                state_mask: 0,
+                joint_angles_bam: Vec::new(),
+            };
+            let actual = actor.compute_world_matrix();
+            for i in 0..16 {
+                assert!(
+                    (actual[i] - expected[i]).abs() <= 1e-5,
+                    "case {case_index} element {i}: rust {} vs golden {}",
+                    actual[i],
+                    expected[i]
+                );
+            }
+        }
+    }
 }
