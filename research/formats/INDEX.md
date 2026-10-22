@@ -19,6 +19,21 @@ The table below indexes all primary engine containers, procedural geometry forma
 | **`.SIO`** | 8-byte ASCII: `53 64 73 01 00 00 00 00` (`b"Sds\x01\x00\x00\x00\x00"`) | Loose 3D modeling project file (SLICE tool, 1999–2001) | Little-Endian | High-level 3D point cloud and wireframe authoring format. Ingests geometric primitives and parametric midpoint generators, feeding the official Stunt Island object compiler (`SD.EXE`) to compile procedural `.SOD` display lists. Concludes with `FF FF 00 00` trailer. | [`auxiliary/sio.md`](auxiliary/sio.md), [`auxiliary/sio.ksy`](auxiliary/sio.ksy) |
 | **`.MAP` / `.BIN` / `.SCN`** | Fixed table structures (`ANCHORPT.DAT`, `MAP.BIN`, `SCENERY.scn`) | Loose scenery tables in `SIDATA\` or compiled into executables | Little-Endian | Static island world terrain subsystem: `ANCHORPT.DAT` (heightmap and ground-normal anchor points, $28{,}672$ bytes), `MAP.BIN` (continuous polygonal terrain patches, $5{,}372$ bytes), and `SCENERY.scn` (hierarchical BSP spatial partition tree for LOD culling, $118{,}236$ bytes). | [`auxiliary/map.md`](auxiliary/map.md), [`auxiliary/anchorpt.dat.ksy`](auxiliary/anchorpt.dat.ksy), [`auxiliary/map.bin.ksy`](auxiliary/map.bin.ksy), [`auxiliary/scenery.scn.ksy`](auxiliary/scenery.scn.ksy) |
 
+### 1.1 Byte-Layout Source of Truth
+
+**Byte layouts live in the `.ksy` schemas.** Field widths, offsets, byte order and counts are defined once, in the Kaitai Struct schema beside each specification. The Markdown documents describe meaning, evidence and parser policy and link to the schema; they do not re-tabulate it. `python/scripts/verify_formats_docs.py` compiles the schemas and runs them against the synthetic fixtures, and `mise run verify-corpus` runs them over the retail corpus.
+
+| Format | Schema | Layout kept in Markdown because no schema covers it |
+| :--- | :--- | :--- |
+| `.RES` | [`res.ksy`](res.ksy) | none |
+| `.ALL` | [`all.ksy`](all.ksy) | none |
+| `.SOD` | [`sod.ksy`](sod.ksy) | opcode operand tables ([`sod.md` § 3.2](sod.md#32-the-authoritative-107-opcode-reference-table--fmt-sod-opcodes)) |
+| `.FLM` | [`flm_slice.ksy`](flm_slice.ksy) (one slice, given the slot masks) | the 3-byte slice header and epilogue ([`flm.md` § 2.1](flm.md#21-the-solved-3-byte-slice-header-reverse-engineering-breakthrough)); no schema exists |
+| `.SET` | [`auxiliary/set.ksy`](auxiliary/set.ksy) | none |
+| `.SPR` | [`auxiliary/spr.ksy`](auxiliary/spr.ksy) | none |
+| `.SIO` | [`auxiliary/sio.ksy`](auxiliary/sio.ksy) | none |
+| `ANCHORPT.DAT`, `MAP.BIN`, `SCENERY.scn` | [`anchorpt.dat.ksy`](auxiliary/anchorpt.dat.ksy), [`map.bin.ksy`](auxiliary/map.bin.ksy), [`scenery.scn.ksy`](auxiliary/scenery.scn.ksy) | none |
+
 ---
 
 ## 2. Runtime Asset Dependency Graph & Data Flow Architecture
@@ -109,21 +124,11 @@ The asset architecture of *Stunt Island* is governed by a strict division of res
 
 #### 1. The Multi-Tier Asset Resolution Model
 Asset management in *Stunt Island* avoids runtime filesystem traversal and string searching during active 3D rendering. Assets are divided into two distinct tiers:
-- **Global Static Archives (`.RES`):** Located in the `res\` directory (`ACTORS.RES`, `PLANES.RES`, `SCENERY1.RES`–`SCENERY6.RES`, `GAME.RES`, `DIALOG.RES`). These packages contain assets shared across multiple scenes and world areas. They feature an 8-byte header (`b"RS"`, `res_index: u8`, `item_count: u8`, `ofs[0]: u32`) and an offset array providing $O(1)$ random seek to raw, uncompressed byte payloads.
+- **Global Static Archives (`.RES`):** Located in the `res\` directory (`ACTORS.RES`, `PLANES.RES`, `SCENERY1.RES`–`SCENERY6.RES`, `GAME.RES`, `DIALOG.RES`). These packages contain assets shared across multiple scenes and world areas. Their header and offset array ([`res.ksy`](res.ksy)) give $O(1)$ random seek to raw, uncompressed byte payloads.
 - **Scene-Specific Packages (`.ALL`):** Produced by the standalone linker utility `MAKEONE.EXE`. When a user stages or records a movie in the Set Designer or plays back a cinematic in `PLAYONE.EXE`, all models, choreography timelines, sound effects, and color palettes required by that specific film are bundled into a single `.ALL` archive. This eliminates disk thrashing on low-end floppy or early hard disk drives.
 
 #### 2. The Compound 16-Bit Resource Keying Architecture
-The engine references geometry, props, and textures through a unified 16-bit unsigned integer key:
-$$\text{resource\_key} = (\text{res\_index} \ll 8) \mid \text{item\_index}$$
-- **`res_index` (bits 8..15):** The high byte specifies the resource library category or `.RES` archive index. Scenery categories occupy `0x00`..`0x0F` (mapped to `SCENERY1.RES` through `SCENERY6.RES`), vehicle and actor libraries occupy `0x10`..`0x1F` (mapped to `PLANES.RES`, `ACTORS.RES`), and UI/stage definitions occupy `0x20` and above.
-- **`item_index` (bits 0..7):** The low byte indicates the $0$-indexed entry within the resolved container's directory table.
-
-In `.ALL` full-scene bundles, the header maintains a contiguous array of 16-bit IDs (`ids: u16[num]`) that mirror this keying scheme:
-- `0x0001`–`0x7FFF`: Procedural 3D model geometry (`.SOD` bytecode streams).
-- `0x8042`: 240-color master palette chunk ($720\text{ bytes}$, 80 RGB triplets for dark, medium, and light tones).
-- `0x801E`: 16-color highlight and UI sub-palette chunk ($48\text{ bytes}$).
-- `0xC000`–`0xCFFF`: Digital audio PCM waveform clips (`.VOC` format) triggered by choreography cues.
-- `b"FILM"`: Scene choreography timeline stream (`.FLM`).
+The engine references geometry, props, and textures through a unified 16-bit unsigned integer key, `(res_index << 8) | item_index`. The per-archive `res_index` values are tabulated in [`res.md` § 3.2](res.md#32-direct-16-bit-compound-key-resource-addressing) and [`res.md` § 3.3](res.md#33-master-resource-index-enumeration-table) (`res_index` is a header byte, [`res.ksy`](res.ksy)). In `.ALL` full-scene bundles the directory's 16-bit IDs mirror this scheme; the ID ranges (models, palettes, sound clips, `FILM`) are partitioned in [`all.md` § 3.1](all.md#31-resource-id-partitioning).
 
 When an entity or prop is loaded from a `.SET` file or spawned by a `.FLM` timeline, the virtual filesystem (`Seam 1: VfsArchive`) checks the active scene's `.ALL` container first. If the requested key is present in the `.ALL` chunk table, it is extracted immediately from the scene bundle; if not, the VFS falls back to the corresponding global `.RES` archive indexed by `res_index`.
 
@@ -161,33 +166,11 @@ To avoid duplicating mathematical, hardware, and filesystem rules across individ
 | [`concepts/timeline-and-ticks.md`](concepts/timeline-and-ticks.md) | `[I4]`, `[I1]` | Discrete simulation clock (50 Hz), solved 3-byte slice header (`prev_slice_len: u16`, `tick_duration: u8`), 16-slot entity state machine, continuous sub-tick lerp and slerp with antipodal quaternion handling, instantaneous director cut suppression, and synchronized digital audio cue dispatch (`0x9C`). | $\Delta t = 20.0\text{ ms}$<br/>$\alpha = (t_{\text{render}} - t_{\text{slice}}) / (20\text{ ms} \times \text{tick\_duration})$<br/>$\mathbf{P}(t) = (1 - \alpha)\mathbf{P}_0 + \alpha\mathbf{P}_1$ (if $\alpha_{\text{eff}} > 0$) |
 | [`concepts/compression.md`](concepts/compression.md) | `[I8]`, `[I7]` | MS-DOS conventional memory limits (640 KB) and 64 KB `DGROUP` constraints, tiered storage strategy (offline LZEXE 0.91 floppy compression, zero-CPU runtime raw streaming in `.RES`/`.ALL`, PCX RLE in sprite creation), uppercase DOS 8.3 filename normalization, and cleanroom asset isolation rules. | $N_{\text{offsets}} = (\text{ofs}[0] / 4) - 1$<br/>$\text{DOS 8.3 Uppercase: } \texttt{NAME.EXT}$<br/>$\text{Cleanroom: 0 proprietary bytes in Git CI}$ |
 
----
-
-## 4. Seam Contracts & Invariants Mapping
-
-The StuntReel native engine architecture enforces clean architectural boundaries across four formal Seam Contracts (`crates/stunt-core/src/contracts/mod.rs`), bound to mathematical invariants `[I1]` through `[I8]` and verified with synthetic offline fixtures:
-
-| Seam Contract | Code Path | Target Formats | Governing Invariants | Core Responsibilities & Validation Gates |
-| :--- | :--- | :--- | :--- | :--- |
-| **Seam 1 (`VfsArchive`)** | `crates/stunt-core/src/contracts/vfs.rs` | `.RES`, `.ALL` | `[I7]`, `[I8]` | Container extraction, 8.3 uppercase path normalization, direct offset directory seeks, 16-bit compound key resolution `(res_index << 8) | item_index`. Gate G02: 100% byte-accurate extraction from `tests/fixtures/synthetic_minimal.res`. |
-| **Seam 2 (`TrajectoryRecord`)** | `crates/stunt-core/src/contracts/trajectory.rs` | `.FLM`, `.SET` | `[I1]`, `[I4]` | 6-DOF actor trajectories, unit orientation quaternions ($\|\|\mathbf{q}\|\| = 1.0$), camera rig tracking (eye, target, focal distance / $\text{FOV}_y$), director cuts (`cut_from_previous`), and audio cue event logging. Gate G04: Positional parity $\text{RMSE} \le 0.01\text{ m}$ against `tests/fixtures/oracle_intro_trajectory.json`. |
-| **Seam 3 (`SodModelIr`)** | `crates/stunt-core/src/contracts/scene.rs` | `.SOD`, `.SIO`, `.SPR`, `.ALL` | `[I1]`, `[I2]`, `[I3]`, `[I5]` | Flat arena node allocation (`Vec<SodNode>` indexed by `NodeId(u32)`, zero `Rc`/`RefCell`), vertex registers with 12-byte stride (`size_of::<SodVertex>() == 28`), hard-edged facet normals, Mode 13h color indices, coplanar decal normal nudging ($\epsilon = 0.001\text{ m}$), and dynamic visibility gates (`IFVIS`). Gate G03. |
-| **Seam 4 (`VisualParityGate`)** | `crates/stunt-core/src/contracts/parity.rs` | Mode 13h presentation | `[I3]`, `[I5]`, `[I6]` | Hardware-accelerated Mode 13h rendering via $256 \times 32$ palette LUT with `@interpolate(flat)`, dedicated depth-bias pass for decals, aspect-corrected 4:3 presentation ($320 \times 240$), off-screen frame capture, and structural similarity parity validation (mean $\text{SSIM} \ge 0.88$ glTF / $\ge 0.90$ `wgpu`). Gate G06. |
-
-### System Invariant Directory (`[I1]` – `[I8]`)
-
-- **`[I1]` Right-Handed Metric Coordinates:** All coordinates are converted to standard right-handed Cartesian meters ($+X$ Right, $+Y$ Up, $+Z$ Backward, $-Z$ Forward). BAM angles are normalized to $[0, 360^\circ)$. Vertices are welded using attribute-preserving `WeldKey`.
-- **`[I2]` Flat Arena Allocation:** Hierarchy nodes are stored in contiguous `Vec<SodNode>` structures indexed via lightweight `NodeId(u32)` tokens, prohibiting recursive pointers (`Rc<RefCell<T>>` or `Box<T>`).
-- **`[I3]` Authentic Mode 13h Palette Indexing:** Mesh vertices preserve raw 8-bit palette indices (`0..=255`). Lighting evaluation indexes the $256 \times 32$ palette lookup texture with flat interpolation (`@interpolate(flat)`).
-- **`[I4]` Discrete Simulation Ticks & Cut-Aware Sub-Tick Interpolation:** Simulation updates execute at discrete 50 Hz steps ($20.0\text{ ms}$). Presentation sub-tick interpolation uses lerp/slerp across each slice's `tick_duration`, but is immediately suppressed ($\alpha_{\text{eff}} = 0.0$) when a camera director cut is flagged.
-- **`[I5]` Coplanar Decal Resolution:** Decals sharing a geometric plane with base facets are resolved by normal displacement ($\epsilon = 0.001\text{ m}$) in glTF and hardware depth biasing in `wgpu`.
-- **`[I6]` Visual Parity Acceptance Thresholds:** Off-screen renders targeting aspect-corrected 4:3 ($320 \times 240$) Mode 13h reference frames must achieve mean $\text{SSIM} \ge 0.88$ for Milestone 1 glTF and $\ge 0.90$ for Milestone 2 `wgpu`.
-- **`[I7]` Cleanroom Asset Isolation:** Zero proprietary binary assets, disks, or capture dumps from `corpus/` or `target_bin/` are committed to version control. All test suites run 100% offline using synthetic cleanroom fixtures.
-- **`[I8]` Uppercase DOS 8.3 Path Normalization:** All virtual filesystem lookups, container tables, and asset references normalize paths to uppercase 8.3 format without path separators.
+**Governing invariants, contracts and fixtures:** the invariants `[I1]`–`[I8]` are defined once in [`docs/SPEC.md`](../../docs/SPEC.md#2-system-architectural-invariants--guardrails); the Seam contracts are the Rust sources under [`crates/stunt-core/src/contracts/`](../../crates/stunt-core/src/contracts/mod.rs); [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) routes each code path to its documents; the cleanroom fixtures are described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md). This catalog restates none of them.
 
 ---
 
-## 5. Reverse Engineering Backlog & Open Questions
+## 4. Reverse Engineering Backlog & Open Questions
 
 The following table summarizes open questions, bounded observations, and hypotheses across the Stunt Island format suite, categorized by evidentiary tiers:
 
@@ -207,7 +190,7 @@ The following table summarizes open questions, bounded observations, and hypothe
 
 ---
 
-## 6. Provenance & Community Attribution
+## 5. Provenance & Community Attribution
 
 The technical specifications in this catalog synthesize twenty-five years of reverse engineering by community pioneers and modern cleanroom reconstruction teams:
 
@@ -219,22 +202,3 @@ The technical specifications in this catalog synthesize twenty-five years of rev
 - **Ángel Eduardo:** Author of `Notes_SIExtractor`, documenting resource archive packaging structures and decompression routines.
 - **Alberto Marnetto:** Author of `SI-8x` research documentation and custom mission creation utilities.
 - **StuntReel Teamwork Agents (2026):** Cleanroom analysis and formal specification by `explorer_survey_1`, `explorer_survey_2`, `spec_miner_survey_1`, `worker_t05_vfs_1`, `worker_t06_sod_1`, `worker_fmt_core`, `worker_fmt_concepts`, and `worker_fmt_aux`.
-
----
-
-## 7. Cleanroom Codebase Contracts & Synthetic Fixtures
-
-Every format and concept documented in this catalog is bound directly to cleanroom Rust contracts in `crates/stunt-core/` and validated by 100% offline synthetic test fixtures:
-
-### Seam Contract Source Implementations
-- **Seam 1 (VFS Archive):** [`crates/stunt-core/src/contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), implemented in [`crates/stunt-core/src/vfs/res.rs`](../../crates/stunt-core/src/vfs/res.rs) and [`crates/stunt-core/src/vfs/all.rs`](../../crates/stunt-core/src/vfs/all.rs).
-- **Seam 2 (Trajectory Stream):** [`crates/stunt-core/src/contracts/trajectory.rs`](../../crates/stunt-core/src/contracts/trajectory.rs), evaluated in [`crates/stunt-core/src/flm/mod.rs`](../../crates/stunt-core/src/flm/mod.rs).
-- **Seam 3 (Scene IR):** [`crates/stunt-core/src/contracts/scene.rs`](../../crates/stunt-core/src/contracts/scene.rs), transpiled in [`crates/stunt-core/src/sod/vm.rs`](../../crates/stunt-core/src/sod/vm.rs).
-- **Seam 4 (Visual Parity):** [`crates/stunt-core/src/contracts/parity.rs`](../../crates/stunt-core/src/contracts/parity.rs), rendered in `crates/stunt-render/`.
-
-### Offline Synthetic Cleanroom Fixtures (`tests/fixtures/`)
-- [`tests/fixtures/synthetic_minimal.res`](../../tests/fixtures/synthetic_minimal.res): Minimal valid `.RES` container testing `RS` magic, directory offset table parsing, and payload extraction.
-- [`tests/fixtures/README.md`](../../tests/fixtures/README.md): Detailed specification of cleanroom fixtures, binary offsets, and synthetic test vectors.
-- [`tests/fixtures/synthetic_minimal.sod`](../../tests/fixtures/synthetic_minimal.sod): Procedural `.SOD` display list testing 10-byte header, transform hierarchy, vertex registers, flat facet normals, and decal normal displacement.
-- [`tests/fixtures/synthetic_minimal.flm`](../../tests/fixtures/synthetic_minimal.flm): Choreography stream testing `FILM` signature, solved 3-byte slice headers, 16-slot state machine, camera channels, and director cut flags.
-- [`tests/fixtures/oracle_intro_trajectory.json`](../../tests/fixtures/oracle_intro_trajectory.json): Golden oracle trajectory verifying 600 continuous simulation ticks with sub-millimeter positional parity ($\text{RMSE}_{\text{pos}} \le 0.01\text{ m}$).

@@ -24,7 +24,7 @@ def test_formats_catalog_file_presence() -> None:
 
 
 def test_formats_catalog_schema_conformance() -> None:
-    """Verify that all format specs, concept guides, and index conform to 7-section schemas."""
+    """Verify that all format specs, concept guides, and index conform to 5-section schemas."""
     result = verify_formats_docs.verify_schema_conformance(REPO_ROOT)
     assert result.passed, f"Schema conformance check failed: {result.errors}"
 

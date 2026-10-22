@@ -67,6 +67,8 @@ Under invariant **`[I1]`**, world and model coordinates adhere strictly to the s
        [-Z is Forward / North / Into Screen]
 ```
 
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I5]`](../../../docs/SPEC.md#i5-coplanar-decal-resolution). **Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs). Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
+
 ---
 
 ## 2. Memory Layout & Bitfield Representations
@@ -246,20 +248,7 @@ $$\text{WeldKey} = \left(\text{quantize}(\mathbf{position}, 10^{-4}\text{ m}),\;
 
 ---
 
-## 4. Architectural Invariants & Coordinate Mapping
-
-| Invariant | System Rule | Mathematical Implementation |
-| :--- | :--- | :--- |
-| **`[I1]`** | Right-Handed Metric Basis | $+X$ Right, $+Y$ Up, $+Z$ Backward, $-Z$ Forward. Model vertices scaled by `sod_scale_table`. |
-| **`[I1]`** | 16-bit BAM Angles | $\theta = (\text{BAM} / 65536.0) \times 2\pi$. Automatic modulo $2\pi$ wrap-around. |
-| **`[I1]`** | Vertical Field of View | $\text{FOV}_y = 2 \arctan(120.0 / \text{focal\_dist}) \times (180/\pi)$. |
-| **`[I1]`** | Attribute Welding | Position snapped at $10^{-4}\text{ m}$; hard facet normals and palette indices preserved. |
-| **`[I2]`** | Arena Node Hierarchy | All transform matrices stored column-major in flat `Vec<SodNode>` indexed by `NodeId(u32)`. |
-| **`[I5]`** | Decal Normal Nudging | Decal vertices displaced outward along surface normal: $\mathbf{v}' = \mathbf{v} + 0.001\hat{\mathbf{n}}$. |
-
----
-
-## 5. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Reverse Engineering Backlog
 
 1. **`[BK-COORD-01]` Collision Bounding Box Rounding** (`[Bounded Observation]`): In `STUNT.EXE`, spatial collision checks round prop coordinates to nearest 8-unit boundaries. Verification is required to determine whether `.FLM` choreography playback honors these bounding boxes or operates entirely unconstrained.
 2. **`[BK-COORD-02]` Spotter Plane Camera Offset** (`[Supported Inference]`): In `.SET` files, the spotter plane camera (View Mode 6) stores view pitch at offset `0xFF..0x100`. Evidence suggests the camera target is locked to the player aircraft with a trailing displacement of $150\text{ m}$.
@@ -268,7 +257,7 @@ $$\text{WeldKey} = \left(\text{quantize}(\mathbf{position}, 10^{-4}\text{ m}),\;
 
 ---
 
-## 6. Attribution & Provenance
+## 5. Attribution & Provenance
 
 - **Neil Halelamien (2004):** Reverse engineering of `.SET` file structures, 16.16 fixed-point coordinate discovery, editor-to-world origin shift (`100000, 0, 100000`), and BAM facing angles in `corpus/si_archive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt` and `SET_File_Email_Thread.txt`.
 - **Adrian Stephens (1997):** First documented analysis of subobject rotational joints, propeller animation parameters, and landing gear angular indices during SIFA IRC discussions in `corpus/si_archive/SITools/Docs/Adrian_Subobjects.txt`.
@@ -277,20 +266,3 @@ $$\text{WeldKey} = \left(\text{quantize}(\mathbf{position}, 10^{-4}\text{ m}),\;
 - **StuntReel Teamwork Team (2026):** Milestone 1 & 2 mathematical synthesis, glTF 2.0 basis alignment, attribute-preserving vertex welding, and Seam 1–4 contracts (`explorer_fmt_aux_concepts/analysis.md`, `crates/stunt-core/src/contracts/trajectory.rs`).
 
 ---
-
-## 7. Codebase Seam Contracts & Fixtures
-
-### 7.1 Seam Contracts
-- **`crates/stunt-core/src/contracts/mod.rs`**: System invariant declarations (`[I1]` Metric right-handed coordinate basis).
-- **`crates/stunt-core/src/contracts/trajectory.rs`**:
-  - `CameraTransform`: `eye: [f32; 3]`, `target: [f32; 3]`, `fov_degrees: f32`, `roll_radians: f32`, `cut_from_previous: bool`.
-  - `ActorTransform`: `position_meters: [f32; 3]`, `rotation_quat: [f32; 4]`, `world_matrix: [f32; 16]`, `compute_world_matrix()`, `joint_angles_bam: Vec<(u16, u16)>`.
-  - `TrajectoryRecord`: Master simulation snapshot at tick $t$.
-- **`crates/stunt-core/src/contracts/scene.rs`**:
-  - `SodVertex`: 28-byte GPU vertex layout (`position: [f32; 3]`, `normal: [f32; 3]`, `palette_index: u8`, `flags: u8`).
-  - `SodModelIr`: Flat arena model container.
-
-### 7.2 Cleanroom Synthetic Fixtures
-- **`tests/fixtures/oracle_intro_trajectory.json`**: Golden oracle recording 600 continuous ticks adhering to metric right-handed basis and unit quaternion normalization.
-- **`tests/fixtures/synthetic_minimal.flm`**: 15-byte choreography stream validating BAM angles and 16.16 fixed-point coordinate decoding.
-- **`tests/fixtures/synthetic_minimal.sod`**: 76-byte procedural bytecode model exercising `sod_scale_table` scale 1 ($5.0 / 2^0 = 5.0$).

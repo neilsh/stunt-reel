@@ -16,6 +16,8 @@ The bytecode calculates parametric vertices, evaluates hierarchical transformati
 | **Engine Role** | Procedural geometry generation, articulated subobject hierarchies, and real-time BSP depth sorting | `[Established]` | `docs/SPEC.md § 3.2`, `siobj.cpp:498` |
 | **Paired Contract** | `Seam 3: SodModelIr` (`crates/stunt-core/src/contracts/scene.rs`) | `[Established]` | `# [FMT-SOD-OPCODES]`, `# [FMT-SOD-IFVIS]`, `docs/ARCHITECTURE.md` |
 
+**Governing invariants:** [`[I1]`](../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I2]`](../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I3]`](../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I5]`](../../docs/SPEC.md#i5-coplanar-decal-resolution). **Contract and code:** [`contracts/scene.rs`](../../crates/stunt-core/src/contracts/scene.rs), VM in [`sod/`](../../crates/stunt-core/src/sod/), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** `synthetic_minimal.sod` (76 bytes), described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md). The 393 compiled corpus models are `.BIN` files beginning with `0x000C` (the corpus `.SOD` files are assembler sources); [`sod.ksy`](sod.ksy) runs over those `.BIN` files in `mise run verify-corpus`.
+
 ---
 
 ## 2. Header & Memory Layout
@@ -284,35 +286,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **105** | `0x03B1` | 945 | `OP_CIRCLE` | `center: u16, r: u16` | 2D circle outline |
 | **106** | `0x03BA` | 954 | `OP_CIRCLESL` | `...` | Sliced circle outline |
 
----
-
-## 4. Architectural Invariants & Coordinate Mapping
-
-### 4.1 Invariant `[I1]` — Right-Handed Metric Basis & Attribute Welding
-
-Under Invariant `[I1]`:
-- **Coordinate Basis:** $+X$ points Right, $+Y$ points Up, $+Z$ points Backward (toward the viewer / out of the screen), and $-Z$ points Forward into the scene.
-- **Scale Factor Application:** The scale index in the header is mapped via `compute_scale_factor(scale_index)`, scaling raw integer units into real-world meters ($1.0 = 1.0\text{ m}$).
-- **Attribute-Preserving Vertex Welding:**
-  Vertices within spatial tolerance $10^{-4}\text{ m}$ are deduplicated into index buffers, keyed strictly on the composite attribute tuple:
-  $$\text{Key} = (\text{position}, \text{normal}, \text{palette\_index}, \text{flags})$$
-  This guarantees that hard facet edges, flat shading, and distinct palette colors never bleed across boundaries.
-
-### 4.2 Invariant `[I2]` — Flat Arena Allocation
-
-Under Invariant `[I2]`:
-- Scene graphs cannot use self-referential or heap-allocated pointer trees (`Rc<RefCell<T>>`, `Box<Node>`).
-- All nodes reside in a single contiguous `Vec<SodNode>` owned by `SodModelIr` and addressed strictly via lightweight handle `NodeId(u32)`.
-- Vertex buffer struct `SodVertex` has a fixed memory layout with zero padding gaps:
-  $$\text{size\_of::<SodVertex>()} == 28 \text{ bytes}, \quad \text{align\_of::<SodVertex>()} == 4 \text{ bytes}$$
-
-### 4.3 Invariant `[I3]` — Authentic Mode 13h Palette Indexing
-
-Under Invariant `[I3]`:
-- Color indices emitted by `OP_COLOR` (`0x0129`) are preserved directly in `SodVertex.palette_index: u8` (`0..=255`).
-- No arbitrary RGB tinting or sRGB conversion is applied during geometry transpilation; the exact palette index is carried into GPU vertex buffers for lookup against the $256 \times 32$ palette LUT.
-
-### 4.4 Invariant `[I5]` — Coplanar Decal Identification & Normal Nudging
+### 3.3 Coplanar Decal Detection (`[I5]`)
 
 In original DOS software rendering, decals (wing insignia, national roundels, lettering) were drawn over base facets via sequential framebuffer overwrites. In modern depth-buffered rendering, coplanar facets produce severe Z-fighting.
 - **Coplanar Detection Criteria:** Two facets $A$ and $B$ are coplanar decals if:
@@ -325,7 +299,7 @@ In original DOS software rendering, decals (wing insignia, national roundels, le
 
 ---
 
-## 5. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Reverse Engineering Backlog
 
 The following backlog documents open questions regarding `.SOD` virtual machine opcodes:
 
@@ -341,11 +315,11 @@ The following backlog documents open questions regarding `.SOD` virtual machine 
 
 ---
 
-## 6. Attribution & Provenance
+## 5. Attribution & Provenance
 
 The `.SOD` virtual machine specification represents extensive reverse engineering across multiple decades:
 
-### 6.1 Community Researchers & Tool Authors
+### 5.1 Community Researchers & Tool Authors
 
 - **Adrian Stephens**: Original Assembly Line Engine Developer; authored the original 8086/80286 macro-assembler display-list source files for Stunt Island aircraft (`objdef`, `ipg`, `sorton`, `pushcentre`, `pushrelmat`).
 - **Chris Phillips** (`bigbang@seanet.com`): Author of `SODParse` (`ripres.c`, `DECODE.C`, `SOD.H`), `SIRes` (`SIResFile.cpp`, `Sod.h`), and `FreeFlight` (`siobj.cpp`). Decoded the 107 opcode jump table (multiples of 9), scale table constants, and OpenGL reconstruction.
@@ -355,7 +329,7 @@ The `.SOD` virtual machine specification represents extensive reverse engineerin
 - **Ángel Eduardo**: Analyzed subobject joint hierarchies, spheres, discs, and Set Designer models in `Developer/Notes_SIExtractor/`.
 - **Alberto Marnetto**: Demonstrated how `complex1`/`complex2`/`complex3` LOD bytecode branches can be forced to render maximum scenery detail in `Developer/SI-8x/`.
 
-### 6.2 Primary Reference Paths in `corpus/si_archive/`
+### 5.2 Primary Reference Paths in `corpus/si_archive/`
 
 - `Developer/SODParse/DECODE.C` (Chris Phillips' 107-opcode disassembler)
 - `Developer/SODParse/SOD.H` (Opcode constants, scale table, data structures)
@@ -365,68 +339,3 @@ The `.SOD` virtual machine specification represents extensive reverse engineerin
 - `Developer/SI-8x/si-8x-notes.txt` (Alberto Marnetto's LOD bytecode analysis)
 
 ---
-
-## 7. Codebase Seam Contracts & Fixtures
-
-### 7.1 Seam 3: `SodModelIr` Contract
-
-The procedural `.SOD` transpiler implements `Seam 3: SodModelIr` defined in `crates/stunt-core/src/contracts/scene.rs`:
-
-```rust
-// contracts/scene.rs
-pub struct SodVertex {
-    pub position: [f32; 3],
-    pub normal: [f32; 3],
-    pub palette_index: u8,
-    pub flags: u8,
-    pub _padding: [u8; 2],
-}
-
-pub struct NodeId(pub u32);
-
-pub struct SodNode {
-    pub id: NodeId,
-    pub name: String,
-    pub parent: Option<NodeId>,
-    pub children: Vec<NodeId>,
-    pub local_matrix: [f32; 16],
-    pub visibility: VisibilityCondition,
-    pub kind: NodeKind,
-}
-
-pub struct SodModelIr {
-    pub name: String,
-    pub nodes: Vec<SodNode>,
-    pub root_nodes: Vec<NodeId>,
-    pub vertices: Vec<SodVertex>,
-    pub indices: Vec<u32>,
-}
-```
-
-### 7.2 Native Rust Implementation
-
-- **Virtual Machine Executor**: `crates/stunt-core/src/sod/vm.rs::execute_sod_vm(data: &[u8]) -> Result<(SodHeader, Vec<RawPolygon>), SodError>`
-- **Coplanar Decal Resolution**: `crates/stunt-core/src/sod/decal.rs::resolve_coplanar_decals(polygons: &mut [RawPolygon])`
-- **Attribute-Preserving Tessellation**: `crates/stunt-core/src/sod/tessellate.rs::tessellate_model(header, polygons) -> SodModelIr`
-- **Error Handling**: `crates/stunt-core/src/sod/error.rs::SodError`
-  - `UnexpectedEof { expected, actual }`: Bytecode truncated.
-  - `InvalidMagic { expected: 0x000C, actual }`: Header magic word mismatch.
-  - `InvalidOpcode { opcode, offset }`: Unknown opcode encountered.
-  - `MalformedPolygon { vertex_count }`: Polygon with $< 3$ vertices.
-
-### 7.3 Cleanroom Synthetic Fixture: `synthetic_minimal.sod`
-
-Located at `tests/fixtures/synthetic_minimal.sod` (76 bytes total):
-- **Header (10 bytes)**: `OP_ID = 0x000C`, `bounding_size = 100`, `ground_y_offset = 0`, `scale = 1` ($0.5\text{ m/unit}$), `collision = 0`.
-- **Vertex Upload (`OP_VECTORS`, 0x0075)**: 5 vertices defining a base triangle and an overlapping coplanar decal triangle.
-- **Base Facet (`OP_COLOR` 40 + `OP_POLYZ`)**: Emits flat base triangle.
-- **Decal Facet (`OP_COLOR` 15 + `OP_POLYZ`)**: Emits overlapping coplanar decal triangle testing Invariant `[I5]`.
-- **Termination (`OP_RETURN`, 0x0195)**: Clean display list termination.
-
-The 393 compiled corpus models live in `.BIN` files beginning with `0x000C`; the corpus `.SOD` files are assembler sources. `sod.ksy` runs over those `.BIN` files in `mise run verify-corpus`.
-
-### 7.4 Verification Test Suite
-
-- `crates/stunt-core/tests/sod_test.rs`: 20 unit/integration tests verifying opcode execution, scale table lookups, normal computation fallbacks, and `synthetic_minimal.sod` transpilation.
-- `crates/stunt-core/tests/sod_challenge_test.rs`: 12 challenge tests verifying Gate G03 memory size (`size_of::<SodVertex>() == 28`), attribute welding tolerances, coplanar decal displacement across multiple arbitrary planes, and all 256 palette indices.
-- `crates/stunt-core/tests/sod_stress_test.rs`: 15 fuzzing and stress tests verifying safe error handling across truncated opcodes, unaligned register byte offsets, and extreme scale factors.

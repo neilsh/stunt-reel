@@ -13,6 +13,8 @@ The `.SET` format encapsulates complete world scenes, stage configurations, prop
   2. *Prop Entity Instantiation:* Allocates and positions both static scenery props (buildings, trees, runway lights) and dynamic actor entities (aircraft, ground vehicles, cameras) in world space.
   3. *Scripted Event Triggering:* Drives deterministic gameplay and cinematic triggers (timed explosions, dynamic camera cuts, audio cue playback, and vehicle autopilot takeover).
 
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization). **Contract and code:** [`contracts/scene.rs`](../../../crates/stunt-core/src/contracts/scene.rs) and [`contracts/vfs.rs`](../../../crates/stunt-core/src/contracts/vfs.rs). No synthetic `.SET` fixture exists yet.
+
 ---
 
 ## 2. Header & Memory Layout
@@ -156,11 +158,7 @@ The 12-byte event stride is documented, but the table location is unresolved for
 | `0x0003` | `EVT_AUDIO_CUE` | Audio sample index in `.RES` | Triggers playback of `.VOC` / `.WAV` sound effect |
 | `0x0004` | `EVT_TAKEOVER` | Control mode flags | Activates autopilot or script-driven vehicle path traversal |
 
----
-
-## 4. Architectural Invariants & Coordinate Mapping
-
-### 4.1 Alignment with Coordinate System Invariant `[I1]`
+### 3.7 Editor-to-World Coordinate Conversion (`[I1]`)
 
 All positions within `.SET` are authored in Set Designer editor coordinates ranging from $0$ to $200{,}000$ integer units, with the island center located at $(100000, 0, 100000)$. StuntReel transforms these coordinates into the metric right-handed basis ($+X$ Right/East, $+Y$ Up/Altitude, $+Z$ Backward/South, $-Z$ Forward/North) via:
 
@@ -174,27 +172,9 @@ $$Z_{\text{world}} = \frac{Z_{\text{editor}} - 100000}{10.0} \quad (\text{meters
   $$\text{pos}_{\text{meters}} = \frac{\text{raw\_i32}}{65536.0}$$
 - **Scale Factor:** Exactly 10 Set Designer editor units equal 1.0 meter in world coordinates. An island width of 200,000 units spans 20,000 meters (20 kilometers).
 
-### 4.2 Binary Angular Measurement (BAM)
-
-Angular rotations for Roll, Pitch, and Yaw are stored as 16-bit signed or unsigned integers ($0..65535 \equiv 0..2\pi\text{ rad} \equiv 0..360^\circ$):
-
-$$\theta_{\text{rad}} = \left(\frac{\text{raw\_bam\_u16}}{65536.0}\right) \times 2\pi$$
-
-Integer overflow naturally enforces $2\pi$ modular arithmetic without precision loss or gimbal degradation.
-
-### 4.3 Prop Model ID Decomposition
-
-The 16-bit `object_model_id` encodes both the container archive and the item index:
-
-$$\text{res\_index} = \frac{\text{object\_model\_id}}{256} = \text{object\_model\_id} \gg 8$$
-
-$$\text{item\_index} = \text{object\_model\_id} \pmod{256} = \text{object\_model\_id} \& 0xFF$$
-
-This maps directly to resource entry lookup in the VFS layer (`Seam 1`).
-
 ---
 
-## 5. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Reverse Engineering Backlog
 
 | Item ID | Topic | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- |
@@ -205,7 +185,7 @@ This maps directly to resource entry lookup in the VFS layer (`Seam 1`).
 
 ---
 
-## 6. Attribution & Provenance
+## 5. Attribution & Provenance
 
 The technical specifications for the `.SET` format are synthesized from the following primary community research and reverse engineering artifacts:
 
@@ -216,24 +196,3 @@ The technical specifications for the `.SET` format are synthesized from the foll
 - **StuntReel Teamwork Team (2026):** Resolution of the 80-byte stride historical error to exact 64-byte (`0x40`) stride, validation of 16.16 fixed-point math, and contract alignment.
 
 ---
-
-## 7. Codebase Seam Contracts & Fixtures
-
-### 7.1 Seam Contracts (`crates/stunt-core/src/contracts/`)
-
-- **`crates/stunt-core/src/contracts/vfs.rs` (`Seam 1: VfsArchive`):**
-  - Resolves prop geometry from `object_model_id` via `(res_index << 8) | item_index` into individual `.SOD` models.
-  - Normalizes `.SET` file lookups using uppercase DOS 8.3 convention `[I8]`.
-- **`crates/stunt-core/src/contracts/trajectory.rs` (`Seam 2: TrajectoryRecord`):**
-  - Consumes `.SET` prop initial transforms (`coord_x_fixed`, `coord_y_fixed`, `coord_z_fixed`, `roll_bam`, `pitch_bam`, `yaw_bam`) to construct simulation tick 0 actor entities (`ActorTransform`).
-  - Converts BAM angles into unit quaternions `rotation_quat` and $4 \times 4$ affine `world_matrix` in metric coordinates `[I1]`.
-- **`crates/stunt-core/src/contracts/scene.rs` (`Seam 3: SodModelIr`):**
-  - Instantiates static scenery props placed by `.SET` records into flat arena vectors indexed by `NodeId(u32)` per `[I2]`.
-
-### 7.2 Synthetic Test Fixtures (`tests/fixtures/`)
-
-- Future auxiliary fixture `tests/fixtures/synthetic_minimal.set` will provide a deterministic 2-prop scene verifying:
-  - 96-byte environment header parsing.
-  - Exact 64-byte prop record stride reading and offset calculation.
-  - Fixed-point 16.16 coordinate normalization and 16-bit BAM to radian conversions.
-  - 12-byte event trigger action decoding.

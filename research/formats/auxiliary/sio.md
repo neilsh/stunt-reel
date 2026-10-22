@@ -13,6 +13,8 @@ The `.SIO` format is an intermediate 3D mesh and point-cloud authoring format cr
   2. *Upstream Feed to Official Compiler (`SD.EXE`):* Generates point-cloud structures that are ingested into the official Stunt Island object compiler (`SD.EXE`) to assemble final procedural display-list `.SOD` / `.BIN` models.
   3. *Parametric Vertex Construction:* Implements explicit coordinates alongside parametric midpoint generator opcodes, reducing file size and enforcing geometric symmetry.
 
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization). **Contract and code:** [`contracts/scene.rs`](../../../crates/stunt-core/src/contracts/scene.rs). No synthetic `.SIO` fixture exists yet.
+
 ---
 
 ## 2. Header & Memory Layout
@@ -119,21 +121,7 @@ Validating against test models bundled in `corpus/si_archive/SITools/Slice/`:
 
 These counts are produced by [`sio.ksy`](sio.ksy) over the eight corpus models; the earlier table mixed vertex and midpoint totals. Sizes reconcile exactly: `9 + 9·vertices + 7·midpoints + 4 = file size`.
 
----
-
-## 4. Architectural Invariants & Coordinate Mapping
-
-### 4.1 Right-Handed Coordinate Basis (`[I1]`)
-
-SLICE operates in a right-handed model-space coordinate system:
-- $+X$: Model Right
-- $+Y$: Model Up
-- $+Z$: Model Backward (toward viewer)
-- $-Z$: Model Forward
-
-This directly matches StuntReel's system invariant `[I1]`, eliminating the need for axis swaps during ingestion.
-
-### 4.2 Integer Model Space Scaling
+### 3.4 Integer Model Space Scaling
 
 Coordinates in `TAG_VERTEX` records are signed 16-bit integers ($[-32768, 32767]$). When converting `.SIO` models into modern intermediate representation (`Seam 3: SodModelIr`), coordinates are converted to metric floating-point coordinates using a model scale factor $s$:
 
@@ -141,15 +129,9 @@ $$\mathbf{p}_{\text{metric}} = \mathbf{p}_{\text{raw}} \times s$$
 
 Where $s = 0.005\text{ m}$ (standard $1:200$ editor scaling) or derived from the target `.SOD` model header.
 
-### 4.3 Vertex Welding & Tolerance (`[I1]`)
-
-Because SLICE generates dense point clouds along curves and circle subdivisions, adjacent vertices frequently coincide. When transpiling to mesh topology, vertex welding snaps co-located vertices within threshold distance $\epsilon = 10^{-4}\text{ m}$ (`[I1]`):
-
-$$\text{WeldKey} = \left(\text{round}\left(\frac{x}{10^{-4}}\right), \text{round}\left(\frac{y}{10^{-4}}\right), \text{round}\left(\frac{z}{10^{-4}}\right)\right)$$
-
 ---
 
-## 5. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Reverse Engineering Backlog
 
 | Item ID | Topic | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- |
@@ -159,7 +141,7 @@ $$\text{WeldKey} = \left(\text{round}\left(\frac{x}{10^{-4}}\right), \text{round
 
 ---
 
-## 6. Attribution & Provenance
+## 5. Attribution & Provenance
 
 The technical specifications for the `.SIO` format are synthesized from the following primary community research and development artifacts:
 
@@ -168,21 +150,3 @@ The technical specifications for the `.SIO` format are synthesized from the foll
 - **StuntReel Teamwork Team (2026):** Reverse engineering of binary opcode tags (`0x12` `TAG_VERTEX`, `0x06` `TAG_MIDPOINT`), verification of the 8-byte magic signature and trailer sentinels across all 8 corpus test models.
 
 ---
-
-## 7. Codebase Seam Contracts & Fixtures
-
-### 7.1 Seam Contracts (`crates/stunt-core/src/contracts/`)
-
-- **`crates/stunt-core/src/contracts/scene.rs` (`Seam 3: SodModelIr`):**
-  - Vertices parsed from `.SIO` streams are ingested into the flat arena allocator `Vec<SodVertex>` indexed by `NodeId(u32)` per `[I2]`.
-  - Vertex welding verifies that point-cloud duplicates are merged within $\epsilon = 10^{-4}\text{ m}$ tolerance `[I1]`.
-- **`crates/stunt-core/src/contracts/vfs.rs` (`Seam 1: VfsArchive`):**
-  - Manages ingestion of loose `.SIO` files from tool workspaces using uppercase DOS 8.3 normalization `[I8]`.
-
-### 7.2 Synthetic Test Fixtures (`tests/fixtures/`)
-
-- Future auxiliary fixture `tests/fixtures/synthetic_minimal.sio` will provide a deterministic 3-vertex test mesh verifying:
-  - 8-byte magic header validation (`53 64 73 01 00 00 00 00`).
-  - Parsing of two `0x12` `TAG_VERTEX` records.
-  - Evaluation of one `0x06` `TAG_MIDPOINT` record verifying correct arithmetic mean.
-  - Termination upon encountering `FF FF 00 00`.

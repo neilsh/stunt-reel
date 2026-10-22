@@ -46,61 +46,17 @@ In 1992 IBM PC-compatibles, fixed simulation timing was governed by the Intel 82
 - **Film Advancement (`[Supported Inference]`):** when the film clock passes the current slice's interval, the next slice's `tick_duration` byte is read and added to the start tick; elapsed ticks divided by `tick_duration` give the sub-tick interpolation factor. Addresses: [`memory.md` § 3.2](../../playone-exe/memory.md#32-tick-counter-evidence).
 - **Display Retrace Decoupling:** The VGA cathode-ray tube raster beam refreshed at $70\text{ Hz}$ (vertical retrace every $14.28\text{ ms}$, monitored on I/O port `0x03DA`). Presentation and simulation are decoupled: the rendering loop polls `0x03DA` for vertical blanking, while simulation time advances in the 50 Hz PIT interrupt (`[MEM-VSYNC-03DA]`). When rendering cannot keep up, a frame advances several simulation ticks at once; this is why capture timing alone overestimates the tick interval.
 
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I4]`](../../../docs/SPEC.md#i4-discrete-simulation-ticks--cut-aware-sub-tick-interpolation), [`[I7]`](../../../docs/SPEC.md#i7-cleanroom-asset-isolation--zero-dependency-core). **Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs). Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
+
 ---
 
 ## 2. Memory Layout & Bitfield Representations
 
-### 2.1 The 3-Byte Time Slice Header (`.FLM`)
+The `.FLM` byte-level structures are specified once, in [`flm.md`](../flm.md) and [`flm_slice.ksy`](../flm_slice.ksy); this concept document covers only how their fields drive playback timing (§ 3). It does not re-tabulate them:
 
-Each discrete time slice in a `.FLM` choreography stream begins with a compact 3-byte header:
-
-```
-Byte:    +0x00                 +0x01                 +0x02
-Field:  [ prev_slice_len_lo ] [ prev_slice_len_hi ] [ tick_duration ]
-Type:    u8                    u8                    u8
-        <-------- prev_slice_len (u16 LE) --------->
-```
-
-#### Field Semantics
-1. **`prev_slice_len` (`u16`, Little-Endian):** The exact physical byte distance from the start of the previous slice to the start of the current slice.
-   - For Slice 0: `prev_slice_len == 0x0000`.
-   - For Slice $i \ge 1$: `prev_slice_len == &slice[i] - &slice[i-1]`.
-   - **Editing Room Back-Pointer:** Enables the Stunt Island VCR editor to execute instantaneous reverse stepping (`REVERSE STEP`) without maintaining random-access index tables in conventional memory.
-2. **`tick_duration` (`u8`):** The number of 50 Hz simulation ticks ($20.0\text{ ms}$ each) elapsed since the previous slice; it is the transition interval that ends at this slice's authored pose. Slice $i$'s timestamp is the cumulative sum $\sum_{k \le i} \text{tick\_duration}_k$ (slice 0 at tick 0, normally with duration 0). A value of $10$ is a $200\text{ ms}$ transition; $0$ applies the slice at the same tick as its predecessor (event bursts, instantaneous cuts). Authored values range $0$–$127$ across all 627,696 corpus slices. See [`../flm.md` § 2.1.1](../flm.md#211-tick_duration-semantics--corpus-distribution) for the distribution and the engine anchors.
-
-### 2.2 Object Lifecycle Bitfield (`type_flags: u8`)
-
-Encountered in Object Lifecycle opcodes (`0x00`–`0x3F`):
-
-```
-Bit:   7     6     5          4          3          2          1          0
-      [  Reserved ] [ANIMATES] [ROTATES ] [ MOVES  ] [ SHADOW ] [  DRAW  ] [ EXISTS ]
-```
-
-| Bit | Mask | Flag Name | Description | Engine Behavior |
-| :--- | :--- | :--- | :--- | :--- |
-| **Bit 0** | `0x01` | `SIF_EXISTS` | Active Slot | Slot is allocated in the scene. If cleared, actor is destroyed/culled. |
-| **Bit 1** | `0x02` | `SIF_DRAW` | 3D Renderable Mesh | Binds a 3D `.SOD` mesh (`shape_id: u16`). If cleared, designates an **invisible tracking camera rig**! |
-| **Bit 2** | `0x04` | `SIF_SHADOW` | Casts Shadow | Projects a flat-shaded ground shadow polygon beneath the actor. |
-| **Bit 3** | `0x08` | `SIF_MOVES` | Dynamic Translation | Position updates per slice via `interp` stream. If cleared, position is a static keyframe. |
-| **Bit 4** | `0x10` | `SIF_ROTATES` | Dynamic Orientation | Rotation updates per slice via `interp` stream. If cleared, rotation is a static keyframe. |
-| **Bit 5** | `0x20` | `SIF_ANIMATES` | Animation Input | Carries a per-slice `animate: u16` value. Its mapping to `.SOD` resource selection is unresolved; it is not established as a BAM joint angle. |
-| **Bits 6..7**| `0xC0` | `RESERVED` | Unassigned | Reserved bits (must be zero). |
-
-### 2.3 Opcode Classification Architecture
-
-Opcode bytes are partitioned into four functional classes by their upper two bits (`opcode >> 6`):
-
-```
-+---------------+---------------------+---------------------------------------------------------+
-| Opcode Range  | Class Name          | Functional Scope                                        |
-+---------------+---------------------+---------------------------------------------------------+
-| `0x00`–`0x3F` | Object Lifecycle    | Allocates slots 0..63 (`create`, `shape_id`, flags)    |
-| `0x40`–`0x7F` | Channel Updates    | Dynamic translation, BAM rotation, raw animation input (`interp`) |
-| `0x80`–`0xBF` | Event & Control     | Variable sets (`var_set`), camera switches (`view_obj`), audio (`sound`) |
-| `0xC0`–`0xFF` | Extended / Control  | Extended events, slice terminator (`0xFF`)              |
-+---------------+---------------------+---------------------------------------------------------+
-```
+* **3-byte slice header** (`prev_slice_len: u16`, `tick_duration: u8`): [`flm.md` § 2.1](../flm.md#21-the-solved-3-byte-slice-header-reverse-engineering-breakthrough). `tick_duration` counts 50 Hz ticks since the previous slice, so slice $i$'s timestamp is the cumulative sum $\sum_{k \le i} \text{tick\_duration}_k$ (slice 0 at tick 0). Its semantics and corpus distribution: [`flm.md` § 2.1.1](../flm.md#211-tick_duration-semantics--corpus-distribution).
+* **Object `type_flags` bitfield** (`SIF_*`): [`flm.md` § 3.2](../flm.md#32-object-type-flags-type_flags-u8).
+* **Opcode classes and dispatch** (`opcode >> 6`): [`flm.md` § 3.3](../flm.md#33-master-opcode-dispatch-table--fmt-flm-opcodes).
 
 ---
 
@@ -177,18 +133,7 @@ Opcode `0x9C` payload consists of 3 bytes: `[arg1: u8, arg2_lo: u8, arg2_hi: u8]
 
 ---
 
-## 4. Architectural Invariants & Coordinate Mapping
-
-| Invariant | System Rule | Concrete Implementation |
-| :--- | :--- | :--- |
-| **`[I4]`** | Discrete Simulation Ticks | Ticks evaluate at a fixed $50\text{ Hz}$ clock ($20.0\text{ ms}$). Unlocked rendering uses sub-tick $\alpha$ across each slice's `tick_duration`; `FilmTimeline` is the single sampling interface. |
-| **`[I4]`** | Instantaneous Cut Suppression | $\alpha_{\text{eff}} = 0.0$ when `cut_from_previous == true` or $\|\Delta\mathbf{P}\| > 50.0\text{ m}$. |
-| **`[I1]`** | Metric Coordinates & Unit Quaternions | Trajectory positions in meters; rotations converted to normalized unit quaternions ($\pm 10^{-4}$). |
-| **`[I7]`** | Cleanroom Asset Isolation | All choreography evaluation tests run 100% offline using `oracle_intro_trajectory.json`. |
-
----
-
-## 5. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Reverse Engineering Backlog
 
 1. **`[BK-TIME-01]` Opcode Class `0xF0` in Film File Tails** (`[Bounded Observation]`): Observed in corrupted trailing bytes of `CORSAIR.FLM`. Unclear whether this represents an unmapped extended opcode or an uninitialized write buffer artifact.
 2. **`[BK-TIME-02]` Variable Table Register Depth** (`[Supported Inference]`): Slices update `nextvar[0..15]` registers via opcodes `0x80`–`0x8F`. Whether more than 16 registers exist in `PLAYONE.EXE`'s runtime state table remains under investigation.
@@ -197,7 +142,7 @@ Opcode `0x9C` payload consists of 3 bytes: `[arg1: u8, arg2_lo: u8, arg2_hi: u8]
 
 ---
 
-## 6. Attribution & Provenance
+## 5. Attribution & Provenance
 
 - **Doug Armknecht (2002):** Reverse engineering of `.FLM` timeline structure, opcode classifications, and extraction scripts in `corpus/si_archive/Developer/SI_FLM_Format/` (`FLM_FORMAT_DOUG_NOTES.txt`, `FLM_NOTES.md`, `flm_extract.py`).
 - **FreeFlight Development Team:** Reverse engineering of `.FLM` playback state machines in `corpus/si_archive/Developer/FreeFlight/src/sifilm.cpp` and `sifilm.h`.
@@ -207,18 +152,3 @@ Opcode `0x9C` payload consists of 3 bytes: `[arg1: u8, arg2_lo: u8, arg2_hi: u8]
 - **StuntReel Teamwork Team (2026):** Discovery of the 3-byte slice header back-pointer resolution, director cut suppression rules, and Seam 2 contracts (`spec_miner_fmt_flm_all/analysis.md`, `crates/stunt-core/src/contracts/trajectory.rs`).
 
 ---
-
-## 7. Codebase Seam Contracts & Fixtures
-
-### 7.1 Seam Contracts
-- **`crates/stunt-core/src/contracts/mod.rs`**: Invariant `[I4]` declaration (Discrete simulation ticks with sub-tick interpolation).
-- **`crates/stunt-core/src/contracts/trajectory.rs`**:
-  - `CameraTransform`: `cut_from_previous: bool` gating sub-tick lerp.
-  - `ActorTransform`: Evaluated 6-DOF entity state at tick $t$.
-  - `AudioCue`: Discrete sound trigger event.
-  - `TrajectoryRecord`: Simulation snapshot at cumulative 50 Hz tick $t$, produced by `FilmTimeline::sample`.
-  - `FilmCapture`: Full multi-tick film container.
-
-### 7.2 Cleanroom Synthetic Fixtures
-- **`tests/fixtures/synthetic_minimal.flm`**: 15-byte minimal film fixture demonstrating slice headers, `var_set` (`0x80`), `view_obj` (`0x90`), and `slice_end` (`0xFF`).
-- **`tests/fixtures/oracle_intro_trajectory.json`**: Golden oracle recording 600 continuous 50 Hz ticks (sampled from `FilmTimeline`) validating zero matrix tearing and quaternion normalization.

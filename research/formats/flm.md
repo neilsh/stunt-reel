@@ -18,6 +18,8 @@ In the retail game, `.FLM` files reside in the `vault\` directory (e.g., `ACT1.F
 | **Engine Role** | Deterministic playback stream driving camera channels, 6-DOF actor trajectories, subobject joints, and sound triggers | `[Established]` | `docs/SPEC.md § 1.1`, `crates/stunt-core/src/contracts/trajectory.rs` |
 | **Paired Contract** | `Seam 2: TrajectoryRecord` (`crates/stunt-core/src/contracts/trajectory.rs`) | `[Established]` | `# [FMT-FLM-OPCODES]`, `# [MEM-FLM-TICK]`, `docs/ARCHITECTURE.md` |
 
+**Governing invariants:** [`[I1]`](../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I4]`](../../docs/SPEC.md#i4-discrete-simulation-ticks--cut-aware-sub-tick-interpolation). **Contract and code:** [`contracts/trajectory.rs`](../../crates/stunt-core/src/contracts/trajectory.rs), evaluator in [`flm/`](../../crates/stunt-core/src/flm/) (`FilmTimeline` is the single sampling interface, see `[I4]`), capture in [`streamer.py`](../../python/stunt_reel/tac/streamer.py). **Fixtures:** `synthetic_minimal.flm` (17 bytes) and the 600-tick `oracle_intro_trajectory.json`, described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md); both fixture slices parse under [`flm_slice.ksy`](flm_slice.ksy) with the masks from [`flm_walk.py`](../../python/stunt_reel/flm_walk.py), which `verify_formats_docs.py` executes on every run. Memory-side structures: [`MEMORY_MAP.md`](../../docs/MEMORY_MAP.md).
+
 ---
 
 ## 2. Header & Memory Layout
@@ -143,11 +145,7 @@ Encountered in Object Lifecycle opcodes (`0x00..0x3F`):
 | `0xA0`–`0xBF` | Control | `before` | `before_value: u16` | Records previous value of `nextvar[c & 0x1F]`. Used during backward scrubbing in film editor. | `[Established]` |
 | `0xFF` | Control | `slice_end` | None | Terminates current time slice and advances timeline state. | `[Established]` |
 
----
-
-## 4. Architectural Invariants & Coordinate Mapping
-
-### 4.1 Coordinate Space Normalization (`[I1]`)
+### 3.4 Coordinate, Angle & Rotation-Order Conversion (`[I1]`)
 
 - **Spatial Positions ($16.16$ Fixed-Point):**
   Original positions are signed 32-bit integers in $16.16$ fixed-point format:
@@ -166,7 +164,7 @@ Encountered in Object Lifecycle opcodes (`0x00..0x3F`):
   $$\left|\|\mathbf{q}\| - 1.0\right| < 10^{-4}$$
   Affine model-to-world transform matrices are emitted column-major without shear tearing.
 
-### 4.2 Camera Channel Architecture & Director Cuts (`[I4]`)
+### 3.5 Camera Channel Architecture & Director Cuts (`[I4]`)
 
 - **Camera Slot Allocation:** Slots 0 through 7 ($8$ slots) are reserved for recording-capable camera rigs and tracked vehicles.
 - **Invisible Camera Rigs:** Pure camera rigs are characterized by `type_flags` having `SIF_EXISTS`, `SIF_MOVES`, `SIF_ROTATES`, but **`SIF_DRAW == 0`**. These slots represent virtual cameras (Pan, Tilt, Crane, Tracking, Dolly) placed in the world.
@@ -175,7 +173,7 @@ Encountered in Object Lifecycle opcodes (`0x00..0x3F`):
   $$\text{cut\_from\_previous} = \text{true}$$
   Sub-tick interpolation is suppressed ($\alpha_{\text{eff}} = 0.0$), holding position and rotation at tick $t$ until tick $t+1$ arrives, preventing unnatural camera swooping across the terrain.
 
-### 4.3 Audio Cue Event Dispatch
+### 3.6 Audio Cue Event Dispatch
 
 Opcode `0x9C` emits an `AudioCue`:
 - `tick`: Cumulative 50 Hz authored tick (never a slice ordinal).
@@ -185,7 +183,7 @@ Opcode `0x9C` emits an `AudioCue`:
 
 ---
 
-## 5. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Reverse Engineering Backlog
 
 The following backlog documents open questions and investigations regarding `.FLM` choreography streams:
 
@@ -201,11 +199,11 @@ The following backlog documents open questions and investigations regarding `.FL
 
 ---
 
-## 6. Attribution & Provenance
+## 5. Attribution & Provenance
 
 The reverse engineering of the `.FLM` format represents the culmination of deep community analysis:
 
-### 6.1 Community Researchers & Tool Authors
+### 5.1 Community Researchers & Tool Authors
 
 - **Doug Armknecht**: Primary researcher of the `.FLM` binary stream. Authored `flm_extract.py`, `flm_compare.py`, `flm_corpus_analyze.py`, and `flm_trace_flags.py` in `corpus/si_archive/Developer/SI_FLM_Format/`. Decoded the 3-byte slice header and solved the reverse-scrubbing back-pointer across all 15,544 corpus slices.
 - **FreeFlight Development Team**: Authors of `sifilm.h` and `sifilm.cpp` in `corpus/si_archive/Developer/FreeFlight/src/`, establishing initial opcode classifications (`create`, `interp`, `view_obj`, `sound`).
@@ -216,7 +214,7 @@ The reverse engineering of the `.FLM` format represents the culmination of deep 
 - **Ángel Eduardo**: Documented actor slot allocation in Stunt Island Set Designer.
 - **Alberto Marnetto**: Explored high-framerate `.FLM` trajectory interpolation in `SI-8x`.
 
-### 6.2 Primary Reference Paths in `corpus/si_archive/`
+### 5.2 Primary Reference Paths in `corpus/si_archive/`
 
 - `Developer/SI_FLM_Format/FLM_NOTES.md` (Doug Armknecht's format specification)
 - `Developer/SI_FLM_Format/CORPUS_FINDINGS.md` (Statistical analysis across 50 corpus films)
@@ -225,72 +223,3 @@ The reverse engineering of the `.FLM` format represents the culmination of deep 
 - `Developer/FreeFlight/src/sifilm.h` (C++ opcode and struct definitions)
 
 ---
-
-## 7. Codebase Seam Contracts & Fixtures
-
-### 7.1 Seam 2: `TrajectoryRecord` Contract
-
-The `.FLM` choreography evaluator implements `Seam 2: TrajectoryRecord` defined in `crates/stunt-core/src/contracts/trajectory.rs`:
-
-```rust
-// contracts/trajectory.rs
-pub struct CameraTransform {
-    pub eye: [f32; 3],
-    pub target: [f32; 3],
-    pub fov_degrees: f32,
-    pub roll_radians: f32,
-    pub cut_from_previous: bool,
-}
-
-pub struct ActorTransform {
-    pub actor_id: u32,
-    pub model_name: String,
-    pub world_matrix: [f32; 16],
-    pub rotation_quat: [f32; 4],
-    pub position_meters: [f32; 3],
-    pub state_mask: u16,
-    pub joint_angles_bam: Vec<(u16, u16)>,
-}
-
-pub struct AudioCue {
-    pub tick: u32,
-    pub sample_name: String,
-    pub volume: f32,
-    pub pan: f32,
-}
-
-pub struct TrajectoryRecord {
-    pub tick: u32,
-    pub camera: CameraTransform,
-    pub actors: Vec<ActorTransform>,
-    pub audio_cues: Vec<AudioCue>,
-}
-```
-
-### 7.2 Native Rust Implementation & PythonTAC
-
-- **Rust Evaluation Pipeline**: `crates/stunt-core/src/flm/`. `FilmTimeline` (`timeline.rs`) is the single public sampling interface (`from_bytes`, `sample(tick)`, `sample_at_seconds`, `cues_between`, `total_ticks`, `duration_seconds`, `slices()`, `truncated_to_ticks`, `warnings`, `stop_reason`); `FlmPlayer` and the interpolation helpers are crate-private.
-- **Partial Films**: a slice decode error does not discard the film. Decoded slices are kept and `stop_reason()` reports why decoding stopped (the Partial SOD convention); only an invalid header is an error.
-- **Python TAC Capture Streamer**: `python/stunt_reel/tac/streamer.py`
-- **Memory Map Anchor**: `# [MEM-FLM-TICK]`, `# [MEM-CAMERA-RIG]`, `# [MEM-ACTOR-TABLE]` in `docs/MEMORY_MAP.md`
-
-### 7.3 Cleanroom Synthetic Fixture: `synthetic_minimal.flm`
-
-Located at `tests/fixtures/synthetic_minimal.flm` (17 bytes total):
-- **Magic**: `b"FILM"` (`0x46, 0x49, 0x4C, 0x4D`)
-- **Slice 0** (9 bytes, header at 0x0004): `prev_slice_len` `0x0000`, `tick_duration` `0x01`, bytecode `0x80, 0x90, 0x98` (`var_set 0 = 0x9890`), `0x90` (`view_obj 0`), `0x98` (`credits_clear`), `0xFF` (`slice_end`)
-- **Slice 1** (4 bytes, header at 0x000D): `prev_slice_len` `0x0009` (9-byte back-pointer to slice 0), `tick_duration` `0x01`, bytecode `0xFF`
-
-Both slices parse under [`flm_slice.ksy`](flm_slice.ksy) with the masks from [`python/stunt_reel/flm_walk.py`](../../python/stunt_reel/flm_walk.py); `verify_formats_docs.py` executes that pair on every run, so the schema is exercised without the corpus.
-
-### 7.4 Golden Oracle Trajectory: `oracle_intro_trajectory.json`
-
-Located at `tests/fixtures/oracle_intro_trajectory.json`:
-- Full 600-tick golden trajectory stream validated against `TrajectoryRecord`; ticks are cumulative 50 Hz ticks sampled from `FilmTimeline`.
-- Zero matrix tearing and zero quaternion normalization error ($|\|\mathbf{q}\| - 1.0| < 10^{-4}$).
-- Positional parity threshold $\text{RMSE}_{\text{pos}} \le 0.01\text{ m}$.
-
-### 7.5 Verification Test Suite
-
-- `crates/stunt-core/tests/flm_test.rs`: 16 integration tests verifying camera cut detection, focal-to-FOV conversions, unit quaternion invariants, slerp antipodal paths, and synthetic fixture evaluation.
-- `tests/test_harness.py`: Python TAC offline replay harness tests.
