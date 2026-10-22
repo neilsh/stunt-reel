@@ -12,12 +12,13 @@
 //! shared `compute_frame_ssim` window evaluator. IoU compares each side's non-sky mask,
 //! which measures framing agreement independently of shading.
 //!
-//! The original fades its palette with the film's brightness variable. Each capture's
-//! fade level (see [`fade_level`]) is measured from its captured palette, the render's
-//! from the film palette recorded in its `palette_controls.json`, and the render's
-//! luminance is scaled by their ratio before the compensated SSIM. A render directory
-//! without that file is taken as unfaded (render level 1.0) with the static clear
-//! colour. Frames whose level falls below `--min-fade-level` are reported but not scored.
+//! The original fades its palette with the film's brightness variable, and so does the
+//! render. Each capture's fade level (see [`fade_level`]) is measured from its captured
+//! palette; frames whose level falls below `--min-fade-level` are reported but not
+//! scored, because SSIM of near-black frames says little. The headline is raw SSIM over
+//! the scored frames. The render's clear colour, needed for the IoU sky mask, comes from
+//! the film palette recorded in its `palette_controls.json` (the static colour when a
+//! render directory has none).
 //!
 //! `--compare <report.json>` additionally matches the fresh scores against a previous
 //! run by `film_tick` (see [`compare_reports`]), so a change is judged frame by frame
@@ -50,14 +51,10 @@ struct FrameScore {
     ordinal: usize,
     /// Film clock the frame was captured at; selects the rendered `tick_NNNNN.png`.
     film_tick: usize,
-    /// SSIM of the unmodified render.
+    /// SSIM of the render against the capture.
     ssim: f32,
-    /// SSIM of the render scaled by `fade_level / render_fade_level`.
-    ssim_compensated: f32,
     /// Median ratio of the captured palette's brightness to the static palette's.
     fade_level: f32,
-    /// The same ratio for the palette the render used.
-    render_fade_level: f32,
     /// Whether `fade_level` reaches the `--min-fade-level` floor.
     scored: bool,
     iou: f32,
@@ -84,7 +81,7 @@ pub(crate) const USAGE: &str =
 [--clear-index N] [--min-fade-level F] [--compare <report.json> [--compare-test <dir>]]
 
   --min-fade-level F       Frames whose measured palette fade level is below F (default
-                           0.25) are reported but left out of the compensated means
+                           0.25) are reported but left out of the scored means
   --compare <report.json>  Match frames by film_tick against a previous report and print
                            mean SSIM/IoU deltas, the 5 most improved/regressed frames and
                            the counts changed by more than 0.005; writes compare.json
@@ -217,15 +214,9 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         let (indices, palette) = load_reference(&reference_file, &palette_file)?;
         let reference_rescaled = reference_luminance(&indices, &palette);
         let fade = fade_level(&fade_set, &palette);
-        let render_palette = render_palettes
-            .get(&film_tick)
-            .map(PaletteControls::film_palette);
-        let (render_fade, (clear_r, clear_g, clear_b)) = match &render_palette {
-            Some(rendered) => (
-                fade_level(&fade_set, rendered),
-                rendered[usize::from(args.clear_index)],
-            ),
-            None => (1.0, get_palette_rgb(args.clear_index)),
+        let (clear_r, clear_g, clear_b) = match render_palettes.get(&film_tick) {
+            Some(controls) => controls.film_palette()[usize::from(args.clear_index)],
+            None => get_palette_rgb(args.clear_index),
         };
         let clear_luminance = compute_luminance(clear_r as f32, clear_g as f32, clear_b as f32);
         let test_luminance = read_png_luminance(&test_file)?;
@@ -244,24 +235,6 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             11,
             8,
         );
-        // A black render cannot be brightened back; leave it unscaled.
-        let scale = if render_fade > 0.0 {
-            fade / render_fade
-        } else {
-            1.0
-        };
-        let compensated: Vec<f32> = test_rescaled
-            .iter()
-            .map(|v| (v * scale).min(255.0))
-            .collect();
-        let ssim_compensated = compute_frame_ssim(
-            &reference_rescaled,
-            &compensated,
-            MODE13H_WIDTH,
-            ASPECT_CORRECTED_HEIGHT,
-            11,
-            8,
-        );
         let iou = mask_iou(&indices, sky_index, &test_luminance, clear_luminance);
         let scored = fade >= args.min_fade_level;
 
@@ -269,31 +242,28 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             ordinal,
             film_tick,
             ssim,
-            ssim_compensated,
             fade_level: fade,
-            render_fade_level: render_fade,
             scored,
             iou,
         });
 
-        // Sheets show the compensated render, which is what was scored.
         if sheet_ordinals.contains(&ordinal) {
-            write_contact_sheet(&args.output, ordinal, &reference_rescaled, &compensated)?;
+            write_contact_sheet(&args.output, ordinal, &reference_rescaled, &test_rescaled)?;
             written_sheets.insert(ordinal);
         }
 
         if scored {
-            worst.push((ssim_compensated, ordinal, reference_rescaled, compensated));
+            worst.push((ssim, ordinal, reference_rescaled, test_rescaled));
             worst.sort_by(|a, b| a.0.total_cmp(&b.0));
             worst.truncate(CONTACT_SHEET_WORST);
         }
     }
 
-    for (_ssim, ordinal, reference_rescaled, compensated) in &worst {
+    for (_ssim, ordinal, reference_rescaled, test_rescaled) in &worst {
         if written_sheets.contains(ordinal) {
             continue;
         }
-        write_contact_sheet(&args.output, *ordinal, reference_rescaled, compensated)?;
+        write_contact_sheet(&args.output, *ordinal, reference_rescaled, test_rescaled)?;
         written_sheets.insert(*ordinal);
     }
 
@@ -315,7 +285,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             scored_frames.iter().map(|s| value(s)).sum::<f32>() / scored_frames.len() as f32
         })
     };
-    let mean_ssim_compensated = scored_mean(|s| s.ssim_compensated);
+    let mean_ssim_scored = scored_mean(|s| s.ssim);
     let mean_iou_scored = scored_mean(|s| s.iou);
 
     let report = json!({
@@ -328,7 +298,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         "min_ssim": min_ssim,
         "mean_iou": mean_iou,
         "min_fade_level": args.min_fade_level,
-        "mean_ssim_compensated": mean_ssim_compensated,
+        "mean_ssim_scored": mean_ssim_scored,
         "mean_iou_scored": mean_iou_scored,
         "scored_frames": scored_frames.len(),
         "excluded_frames": excluded_frames,
@@ -339,9 +309,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
                 "film_tick": s.film_tick,
                 "ssim": s.ssim,
                 "iou": s.iou,
-                "ssim_compensated": s.ssim_compensated,
                 "fade_level": s.fade_level,
-                "render_fade_level": s.render_fade_level,
                 "scored": s.scored,
             }))
             .collect::<Vec<Value>>(),
@@ -357,9 +325,9 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         "[parity] {} frames, mean SSIM {mean_ssim:.3}, mean IoU {mean_iou:.3}, sky index {sky_index}",
         scores.len()
     );
-    match (mean_ssim_compensated, mean_iou_scored) {
+    match (mean_ssim_scored, mean_iou_scored) {
         (Some(ssim), Some(iou)) => println!(
-            "[parity] {} scored frame(s) (fade level >= {:.2}), mean compensated SSIM {ssim:.3}, mean IoU {iou:.3}; {excluded_frames} excluded",
+            "[parity] {} scored frame(s) (fade level >= {:.2}), mean SSIM {ssim:.3}, mean IoU {iou:.3}; {excluded_frames} excluded",
             scored_frames.len(),
             args.min_fade_level
         ),
@@ -501,17 +469,14 @@ fn run_compare(
         println!("[compare] no --compare-test <dir>: before/after contact sheets skipped");
         return Ok(());
     };
-    let ordinals: BTreeMap<u64, (usize, f32)> = report["per_frame"]
+    let ordinals: BTreeMap<u64, usize> = report["per_frame"]
         .as_array()
         .into_iter()
         .flatten()
         .filter_map(|f| {
             Some((
                 f["film_tick"].as_u64()?,
-                (
-                    usize::try_from(f["ordinal"].as_u64()?).ok()?,
-                    f["fade_level"].as_f64()? as f32,
-                ),
+                usize::try_from(f["ordinal"].as_u64()?).ok()?,
             ))
         })
         .collect();
@@ -524,7 +489,7 @@ fn run_compare(
             println!("[compare] no {label} frame: sheet skipped");
             continue;
         };
-        let (ordinal, fade) = ordinals.get(&delta.film_tick).copied().ok_or_else(|| {
+        let ordinal = ordinals.get(&delta.film_tick).copied().ok_or_else(|| {
             format!(
                 "film_tick {} missing from the fresh report",
                 delta.film_tick
@@ -543,20 +508,8 @@ fn run_compare(
             reference_paths(&args.reference, &frames[ordinal - 1], ordinal);
         let (indices, palette) = load_reference(&reference_file, &palette_file)?;
         let reference = reference_luminance(&indices, &palette);
-        // Compensated comparisons show both renders as scored, at the fresh frame's fade.
-        let scale = if comparison.basis == CompareBasis::Compensated {
-            fade
-        } else {
-            1.0
-        };
-        let scaled = |mut plane: Vec<f32>| {
-            plane.iter_mut().for_each(|v| *v *= scale);
-            plane
-        };
-        let before = scaled(load_render_rescaled(&before_png)?);
-        let after = scaled(load_render_rescaled(
-            &args.test.join(crate::tick_png_name(tick)),
-        )?);
+        let before = load_render_rescaled(&before_png)?;
+        let after = load_render_rescaled(&args.test.join(crate::tick_png_name(tick)))?;
         let path = args
             .output
             .join(format!("compare_{label}_tick_{tick:05}.png"));
@@ -605,10 +558,10 @@ const COMPARE_TOP: usize = 5;
 /// Which SSIM a comparison used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CompareBasis {
-    /// `ssim_compensated` over frames scored in both reports.
-    Compensated,
-    /// Raw `ssim` over every common frame (a report predates fade scoring).
-    Raw,
+    /// `ssim` over frames scored in both reports.
+    Scored,
+    /// `ssim` over every common frame (a report predates fade scoring).
+    All,
 }
 
 /// Result of [`compare_reports`].
@@ -636,14 +589,15 @@ struct Comparison {
 struct ReportFrame {
     ssim: f64,
     iou: f64,
-    /// `(ssim_compensated, scored)`, absent in reports that predate fade scoring.
-    compensated: Option<(f64, bool)>,
+    /// Whether the frame reached the fade floor; absent in reports that predate fade
+    /// scoring.
+    scored: Option<bool>,
 }
 
 /// Per-`film_tick` frames of a parsed report.
 struct ReportScores {
     frames: BTreeMap<u64, ReportFrame>,
-    /// Whether every entry carries the fade-scoring fields.
+    /// Whether every entry carries `scored`.
     fade_aware: bool,
 }
 
@@ -667,15 +621,12 @@ fn report_scores(report: &Value) -> Result<ReportScores, String> {
             .get("film_tick")
             .and_then(Value::as_u64)
             .ok_or_else(|| format!("per_frame[{position}] has no film_tick"))?;
-        let compensated = frame
-            .get("ssim_compensated")
-            .and_then(Value::as_f64)
-            .zip(frame.get("scored").and_then(Value::as_bool));
-        fade_aware &= compensated.is_some();
+        let scored = frame.get("scored").and_then(Value::as_bool);
+        fade_aware &= scored.is_some();
         scores.entry(film_tick).or_insert(ReportFrame {
             ssim: field("ssim")?,
             iou: field("iou")?,
-            compensated,
+            scored,
         });
     }
     Ok(ReportScores {
@@ -688,25 +639,23 @@ fn report_scores(report: &Value) -> Result<ReportScores, String> {
 ///
 /// Means cover only the frames present in both reports, so a different matched-frame
 /// count (for example an extended render range) cannot masquerade as a change. When both
-/// reports carry fade scoring, the compensated SSIM of frames scored in both is compared;
-/// otherwise the raw SSIM of every common frame.
+/// reports carry fade scoring, only frames scored in both are compared; otherwise every
+/// common frame. Reports that also carry the retired `ssim_compensated` are read for
+/// their raw `ssim`.
 fn compare_reports(before: &Value, after: &Value) -> Result<Comparison, String> {
     let (before_report, after_report) = (report_scores(before)?, report_scores(after)?);
     let basis = if before_report.fade_aware && after_report.fade_aware {
-        CompareBasis::Compensated
+        CompareBasis::Scored
     } else {
-        CompareBasis::Raw
+        CompareBasis::All
     };
     // `(ssim, iou)` of the frames the basis counts.
     let counted = |report: &ReportScores| -> BTreeMap<u64, (f64, f64)> {
         report
             .frames
             .iter()
-            .filter_map(|(tick, f)| match (basis, f.compensated) {
-                (CompareBasis::Raw, _) => Some((*tick, (f.ssim, f.iou))),
-                (CompareBasis::Compensated, Some((ssim, true))) => Some((*tick, (ssim, f.iou))),
-                (CompareBasis::Compensated, _) => None,
-            })
+            .filter(|(_, f)| basis == CompareBasis::All || f.scored == Some(true))
+            .map(|(tick, f)| (*tick, (f.ssim, f.iou)))
             .collect()
     };
     let before_scores = counted(&before_report);
@@ -731,10 +680,8 @@ fn compare_reports(before: &Value, after: &Value) -> Result<Comparison, String> 
     }
     if deltas.is_empty() {
         return Err(match basis {
-            CompareBasis::Raw => "the reports share no film_tick".to_string(),
-            CompareBasis::Compensated => {
-                "the reports share no film_tick scored in both".to_string()
-            }
+            CompareBasis::All => "the reports share no film_tick".to_string(),
+            CompareBasis::Scored => "the reports share no film_tick scored in both".to_string(),
         });
     }
     let common = deltas.len();
@@ -792,12 +739,12 @@ impl Comparison {
 
         let mut out = String::new();
         let (basis, both) = match self.basis {
-            CompareBasis::Compensated => (
-                "compensated SSIM over frames scored in both runs",
+            CompareBasis::Scored => (
+                "SSIM over frames scored in both runs",
                 "scored in both reports",
             ),
-            CompareBasis::Raw => (
-                "raw SSIM (a report predates fade scoring)",
+            CompareBasis::All => (
+                "SSIM over all common frames (a report predates fade scoring)",
                 "in both reports",
             ),
         };
@@ -864,8 +811,8 @@ impl Comparison {
         let mean = |m: MeanChange| json!({ "before": m.before, "after": m.after, "delta": m.after - m.before });
         json!({
             "basis": match self.basis {
-                CompareBasis::Compensated => "compensated",
-                CompareBasis::Raw => "raw",
+                CompareBasis::Scored => "scored",
+                CompareBasis::All => "all",
             },
             "common_frames": self.common,
             "before_only_frames": self.before_only,
@@ -1226,15 +1173,15 @@ mod tests {
     }
 
     /// A report whose entries carry the fade-scoring fields:
-    /// `(film_tick, ssim, ssim_compensated, iou, scored)`.
-    fn fade_report(frames: &[(u64, f64, f64, f64, bool)]) -> Value {
+    /// `(film_tick, ssim, iou, scored)`.
+    fn fade_report(frames: &[(u64, f64, f64, bool)]) -> Value {
         json!({
             "per_frame": frames
                 .iter()
                 .enumerate()
-                .map(|(i, (tick, ssim, compensated, iou, scored))| json!({
+                .map(|(i, (tick, ssim, iou, scored))| json!({
                     "ordinal": i + 1, "film_tick": tick, "ssim": ssim, "iou": iou,
-                    "ssim_compensated": compensated, "fade_level": 1.0, "scored": scored,
+                    "fade_level": 1.0, "scored": scored,
                 }))
                 .collect::<Vec<Value>>(),
         })
@@ -1307,8 +1254,8 @@ mod tests {
     }
 
     #[test]
-    fn a_render_faded_by_its_film_palette_is_compensated_by_the_level_ratio() {
-        let tmp = TempDir::new("render_fade");
+    fn the_sky_mask_uses_the_render_palette_clear_colour() {
+        let tmp = TempDir::new("render_sky");
         write_reference_faded(&tmp.join("ref"), &[12], true, &[0.5]);
         let test = tmp.join("test");
         fs::create_dir_all(&test).unwrap();
@@ -1334,16 +1281,9 @@ mod tests {
 
         run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
         let frame = &read_report(&tmp.join("out"))["per_frame"][0];
-        let render_level = frame["render_fade_level"].as_f64().unwrap();
-        assert!((render_level - 0.5).abs() < 0.03, "{render_level}");
-        // Both sides are at half level, so compensation barely moves the score.
-        let (raw, compensated) = (
-            frame["ssim"].as_f64().unwrap(),
-            frame["ssim_compensated"].as_f64().unwrap(),
-        );
-        assert!((raw - compensated).abs() < 0.02, "{raw} vs {compensated}");
         // The faded clear colour is recognised as sky, so the masks agree exactly.
         assert_eq!(frame["iou"].as_f64().unwrap(), 1.0);
+        assert!(frame.get("ssim_compensated").is_none());
     }
 
     #[test]
@@ -1371,14 +1311,11 @@ mod tests {
         assert!((level(0) - 1.0).abs() < 0.02);
         assert!((level(1) - 0.5).abs() < 0.02);
         assert!((level(2) - 0.1).abs() < 0.02);
-        // The render matches the unfaded reference, so scaling it by the fade helps.
-        let half = &per_frame[1];
-        assert!(half["ssim_compensated"].as_f64() > half["ssim"].as_f64());
-        // Raw means span all matched frames; the scored means only the first two.
-        let mean_scored = (per_frame[0]["ssim_compensated"].as_f64().unwrap()
-            + half["ssim_compensated"].as_f64().unwrap())
-            / 2.0;
-        assert!((report["mean_ssim_compensated"].as_f64().unwrap() - mean_scored).abs() < 1e-5);
+        // `mean_ssim` spans all matched frames; `mean_ssim_scored` only the first two.
+        let mean_scored =
+            (per_frame[0]["ssim"].as_f64().unwrap() + per_frame[1]["ssim"].as_f64().unwrap()) / 2.0;
+        assert!((report["mean_ssim_scored"].as_f64().unwrap() - mean_scored).abs() < 1e-5);
+        assert!(report.get("mean_ssim_compensated").is_none());
         let mean_raw = per_frame
             .iter()
             .map(|f| f["ssim"].as_f64().unwrap())
@@ -1400,62 +1337,75 @@ mod tests {
         let report = read_report(&tmp.join("out"));
         assert_eq!(report["scored_frames"], 0);
         assert_eq!(report["excluded_frames"], 1);
-        assert!(report["mean_ssim_compensated"].is_null());
+        assert!(report["mean_ssim_scored"].is_null());
         assert!(report["mean_iou_scored"].is_null());
         assert_eq!(report["per_frame"][0]["scored"], false);
     }
 
     #[test]
-    fn compare_uses_compensated_ssim_over_frames_scored_in_both() {
+    fn compare_uses_ssim_over_frames_scored_in_both() {
         let before = fade_report(&[
-            (10, 0.2, 0.5, 0.8, true),
-            (20, 0.2, 0.6, 0.8, true),
-            (30, 0.9, 0.9, 0.8, false),
+            (10, 0.5, 0.8, true),
+            (20, 0.6, 0.8, true),
+            (30, 0.9, 0.8, false),
         ]);
         let after = fade_report(&[
-            (10, 0.2, 0.7, 0.9, true),
-            (20, 0.2, 0.1, 0.9, false),
-            (30, 0.9, 0.9, 0.9, true),
-            (40, 0.5, 0.5, 0.9, true),
+            (10, 0.7, 0.9, true),
+            (20, 0.1, 0.9, false),
+            (30, 0.9, 0.9, true),
+            (40, 0.5, 0.9, true),
         ]);
         let c = compare_reports(&before, &after).expect("comparable");
-        assert_eq!(c.basis, CompareBasis::Compensated);
+        assert_eq!(c.basis, CompareBasis::Scored);
         // Only tick 10 is scored in both; 20 and 30 are scored on one side only.
         assert_eq!((c.common, c.before_only, c.after_only), (1, 1, 2));
         assert!((c.ssim.before - 0.5).abs() < 1e-9);
         assert!((c.ssim.after - 0.7).abs() < 1e-9);
         assert!((c.iou.before - 0.8).abs() < 1e-9);
         assert!((c.iou.after - 0.9).abs() < 1e-9);
-        assert_eq!(c.to_json()["basis"], "compensated");
+        assert_eq!(c.to_json()["basis"], "scored");
         let text = c.summary();
-        assert!(text.starts_with("[compare] basis: compensated"), "{text}");
+        assert!(
+            text.starts_with("[compare] basis: SSIM over frames scored"),
+            "{text}"
+        );
+        // A report from the compensation era is compared on its raw `ssim`.
+        let legacy = json!({ "per_frame": [
+            { "film_tick": 10, "ssim": 0.4, "iou": 0.8, "ssim_compensated": 0.9, "scored": true },
+        ]});
+        let c = compare_reports(&legacy, &after).expect("comparable");
+        assert_eq!(c.basis, CompareBasis::Scored);
+        assert!((c.ssim.before - 0.4).abs() < 1e-9);
         assert!(text.contains("1 frame(s) scored in both reports"), "{text}");
     }
 
     #[test]
-    fn compare_falls_back_to_raw_when_a_report_predates_fade_scoring() {
+    fn compare_falls_back_to_all_frames_when_a_report_predates_fade_scoring() {
         let old = report(&[(10, 0.5, 0.8), (20, 0.6, 0.8)]);
-        let new = fade_report(&[(10, 0.7, 0.99, 0.9, true), (20, 0.8, 0.1, 0.9, false)]);
+        let new = fade_report(&[(10, 0.7, 0.9, true), (20, 0.8, 0.9, false)]);
         for (before, after) in [(&old, &new), (&new, &old)] {
             let c = compare_reports(before, after).expect("comparable");
-            assert_eq!(c.basis, CompareBasis::Raw);
+            assert_eq!(c.basis, CompareBasis::All);
             assert_eq!(c.common, 2);
-            assert_eq!(c.to_json()["basis"], "raw");
+            assert_eq!(c.to_json()["basis"], "all");
             let text = c.summary();
-            assert!(text.starts_with("[compare] basis: raw SSIM"), "{text}");
+            assert!(
+                text.starts_with("[compare] basis: SSIM over all common"),
+                "{text}"
+            );
             assert!(text.contains("2 frame(s) in both reports"), "{text}");
         }
         let c = compare_reports(&old, &new).unwrap();
         assert!((c.ssim.before - 0.55).abs() < 1e-9);
         assert!((c.ssim.after - 0.75).abs() < 1e-9);
-        // A report with a partial set of the new fields is old-style too.
+        // A report with `scored` on only some entries is old-style too.
         let partial = json!({ "per_frame": [
-            { "film_tick": 10, "ssim": 0.5, "iou": 0.5, "ssim_compensated": 0.5, "scored": true },
+            { "film_tick": 10, "ssim": 0.5, "iou": 0.5, "scored": true },
             { "film_tick": 20, "ssim": 0.5, "iou": 0.5 },
         ]});
         assert_eq!(
             compare_reports(&partial, &new).unwrap().basis,
-            CompareBasis::Raw
+            CompareBasis::All
         );
     }
 
