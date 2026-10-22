@@ -14,6 +14,7 @@ workspace = true
 
 [dependencies]
 stunt-core = { path = "../stunt-core", features = ["bytemuck", "serde"] }
+stunt-gltf = { path = "../stunt-gltf" }
 stunt-render = { path = "../stunt-render" }
 wgpu = "24.0"
 winit = "0.30"

@@ -1,0 +1,14 @@
+[package]
+name = "stunt-gltf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+stunt-core = { path = "../stunt-core" }
+serde_json = "1.0"
+glam = "0.29"

@@ -19,6 +19,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+mod export;
 mod parity;
 mod scene;
 
@@ -348,6 +349,8 @@ impl CliConfig {
         println!();
         println!("Subcommands:");
         println!("  {}", parity::USAGE.replace('\n', "\n  "));
+        println!();
+        println!("  {}", export::USAGE.replace('\n', "\n  "));
         println!();
         println!("Interactive Keyboard Controls:");
         println!("  Space                Pause / Resume timeline playback");
@@ -1064,12 +1067,22 @@ impl ApplicationHandler for WindowApp {
 
 fn main() {
     let mut subcommand_args = env::args().skip(1);
-    if subcommand_args.next().as_deref() == Some("parity") {
-        if let Err(e) = parity::run(subcommand_args) {
-            eprintln!("[stuntreel error] {e}");
-            std::process::exit(1);
+    match subcommand_args.next().as_deref() {
+        Some("parity") => {
+            if let Err(e) = parity::run(subcommand_args) {
+                eprintln!("[stuntreel error] {e}");
+                std::process::exit(1);
+            }
+            return;
         }
-        return;
+        Some("export-gltf") => {
+            if let Err(e) = export::run(subcommand_args) {
+                eprintln!("[stuntreel error] {e}");
+                std::process::exit(1);
+            }
+            return;
+        }
+        _ => {}
     }
 
     let config = match CliConfig::parse() {

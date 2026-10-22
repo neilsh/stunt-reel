@@ -1698,6 +1698,7 @@ dependencies = [
  "pollster",
  "serde_json",
  "stunt-core",
+ "stunt-gltf",
  "stunt-render",
  "wgpu",
  "winit",
@@ -1710,6 +1711,15 @@ dependencies = [
  "bytemuck",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "stunt-gltf"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "serde_json",
+ "stunt-core",
 ]
 
 [[package]]
