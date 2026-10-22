@@ -9,8 +9,10 @@ use crate::camera::{CameraController, CameraGpuResources};
 use crate::mesh::{GpuMeshSlice, GpuModel};
 use crate::palette::PaletteLut;
 use crate::pipeline::RenderPipelines;
+use crate::scene_renderer::SceneRenderer;
 use std::fmt;
 use stunt_core::contracts::get_palette_rgb_float;
+use stunt_core::scene::SceneFrame;
 
 /// Headless rendering error types.
 #[derive(Debug)]
@@ -198,6 +200,86 @@ impl HeadlessRenderer {
         let camera_uniform = camera.build_uniform();
         self.camera_resources.upload(&self.queue, &camera_uniform);
 
+        self.capture(clear_palette_index, |this, rpass| {
+            // Pass 1: Solid base geometry with zero depth bias
+            rpass.set_pipeline(&this.pipelines.base_pipeline);
+            rpass.set_bind_group(0, &this.camera_resources.bind_group, &[]);
+            rpass.set_bind_group(1, &this.palette_lut.bind_group, &[]);
+            for (model, base_meshes, _) in models {
+                if base_meshes.is_empty() {
+                    continue;
+                }
+                rpass.set_bind_group(2, &model.model_bind_group, &[]);
+                rpass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
+                rpass.set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+
+                for mesh in *base_meshes {
+                    rpass.draw_indexed(
+                        mesh.index_offset..(mesh.index_offset + mesh.index_count),
+                        mesh.vertex_offset,
+                        0..1,
+                    );
+                }
+            }
+
+            // Pass 2: Invariant [I5] coplanar decals with hardware depth bias
+            rpass.set_pipeline(&this.pipelines.decal_pipeline);
+            rpass.set_bind_group(0, &this.camera_resources.bind_group, &[]);
+            rpass.set_bind_group(1, &this.palette_lut.bind_group, &[]);
+
+            for (model, _, decal_meshes) in models {
+                if decal_meshes.is_empty() {
+                    continue;
+                }
+                rpass.set_bind_group(2, &model.model_bind_group, &[]);
+                rpass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
+                rpass.set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+
+                for mesh in *decal_meshes {
+                    rpass.draw_indexed(
+                        mesh.index_offset..(mesh.index_offset + mesh.index_count),
+                        mesh.vertex_offset,
+                        0..1,
+                    );
+                }
+            }
+        })
+    }
+
+    /// Renders one scene frame through `scene` and captures the RGBA8 framebuffer.
+    ///
+    /// `camera` overrides `frame.camera` when given (e.g. a free camera).
+    pub fn render_scene(
+        &mut self,
+        scene: &mut SceneRenderer,
+        frame: &SceneFrame,
+        camera: Option<&CameraController>,
+        clear_palette_index: Option<u8>,
+    ) -> Result<Vec<u8>, HeadlessError> {
+        scene.prepare(
+            &self.device,
+            &self.queue,
+            &self.camera_resources,
+            frame,
+            camera,
+        );
+        let scene = &*scene;
+        self.capture(clear_palette_index, |this, rpass| {
+            scene.draw(
+                rpass,
+                &this.pipelines,
+                &this.camera_resources,
+                &this.palette_lut,
+            );
+        })
+    }
+
+    /// Clears the offscreen targets, runs `draw` inside the render pass, and reads back RGBA8.
+    fn capture(
+        &self,
+        clear_palette_index: Option<u8>,
+        draw: impl FnOnce(&Self, &mut wgpu::RenderPass<'_>),
+    ) -> Result<Vec<u8>, HeadlessError> {
         // Clear color determined by palette or default sky blue
         let clear_color = if let Some(pal_idx) = clear_palette_index {
             let (r, g, b) = get_palette_rgb_float(pal_idx);
@@ -247,49 +329,7 @@ impl HeadlessRenderer {
                 occlusion_query_set: None,
             });
 
-            // Pass 1: Solid base geometry with zero depth bias
-            rpass.set_pipeline(&self.pipelines.base_pipeline);
-            rpass.set_bind_group(0, &self.camera_resources.bind_group, &[]);
-            rpass.set_bind_group(1, &self.palette_lut.bind_group, &[]);
-
-            for (model, base_meshes, _) in models {
-                if base_meshes.is_empty() {
-                    continue;
-                }
-                rpass.set_bind_group(2, &model.model_bind_group, &[]);
-                rpass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
-                rpass.set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-
-                for mesh in *base_meshes {
-                    rpass.draw_indexed(
-                        mesh.index_offset..(mesh.index_offset + mesh.index_count),
-                        mesh.vertex_offset,
-                        0..1,
-                    );
-                }
-            }
-
-            // Pass 2: Invariant [I5] coplanar decals with hardware depth bias
-            rpass.set_pipeline(&self.pipelines.decal_pipeline);
-            rpass.set_bind_group(0, &self.camera_resources.bind_group, &[]);
-            rpass.set_bind_group(1, &self.palette_lut.bind_group, &[]);
-
-            for (model, _, decal_meshes) in models {
-                if decal_meshes.is_empty() {
-                    continue;
-                }
-                rpass.set_bind_group(2, &model.model_bind_group, &[]);
-                rpass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
-                rpass.set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-
-                for mesh in *decal_meshes {
-                    rpass.draw_indexed(
-                        mesh.index_offset..(mesh.index_offset + mesh.index_count),
-                        mesh.vertex_offset,
-                        0..1,
-                    );
-                }
-            }
+            draw(self, &mut rpass);
         }
 
         // Copy rendered color target to CPU readback buffer
