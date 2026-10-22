@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use stunt_core::contracts::palette::PaletteControls;
 use stunt_core::contracts::{
     ActorTransform, CameraTransform, NodeKind, SodModelIr, SodVertex, TrajectoryRecord,
     VisibilityCondition,
@@ -60,6 +61,10 @@ fn actor_at(x: f32, state_mask: u16) -> ActorTransform {
 }
 
 fn timeline(actors: Vec<ActorTransform>) -> FilmTimeline {
+    timeline_with_palette(actors, PaletteControls::default())
+}
+
+fn timeline_with_palette(actors: Vec<ActorTransform>, palette: PaletteControls) -> FilmTimeline {
     let record = TrajectoryRecord {
         tick: 0,
         camera: CameraTransform {
@@ -71,6 +76,7 @@ fn timeline(actors: Vec<ActorTransform>) -> FilmTimeline {
         },
         actors,
         audio_cues: Vec::new(),
+        palette,
     };
     FilmTimeline::new(
         vec![SliceKeyframe {
@@ -174,4 +180,40 @@ fn world_is_drawn_when_present() {
         return;
     };
     assert!(drawn_in_columns(&drawn, w, h, w / 3..w * 2 / 3) > 100);
+}
+
+#[test]
+fn zero_brightness_frame_renders_black_including_the_clear_colour() {
+    let faded = PaletteControls {
+        brightness: 0,
+        ..PaletteControls::default()
+    };
+    let shapes = HashMap::from([(SHAPE_ID, triangle("TRI", VisibilityCondition::Always))]);
+    let scene = FilmScene::new(
+        timeline_with_palette(vec![actor_at(0.0, 0)], faded),
+        shapes,
+        None,
+    );
+    let Ok(mut renderer) = HeadlessRenderer::new() else {
+        eprintln!("[test] Skipping scene renderer test: no GPU adapter available");
+        return;
+    };
+    let mut scene_renderer = SceneRenderer::new(
+        &renderer.device,
+        &renderer.queue,
+        &renderer.pipelines,
+        &scene,
+    );
+    let frame = scene.frame(0.0);
+    assert_eq!(frame.palette, faded);
+    let pixels = renderer
+        .render_scene(&mut scene_renderer, &frame, None, Some(CLEAR_INDEX))
+        .expect("render succeeds");
+    assert!(
+        pixels
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|p| p[..3] == [0, 0, 0])
+    );
 }

@@ -2,7 +2,7 @@
 //!
 //! Complies with Architectural Invariant `[I3]` (Authentic 8-bit VGA Mode 13h palette index color mapping).
 
-use stunt_core::contracts::get_palette_rgb;
+use stunt_core::contracts::{MODE_13H_PALETTE, PaletteControls};
 
 /// Width of the palette lookup texture in texels (256 distinct palette indices).
 pub const PALETTE_LUT_WIDTH: u32 = 256;
@@ -13,12 +13,18 @@ pub const PALETTE_LUT_HEIGHT: u32 = 32;
 /// Total byte size of the uncompressed 256x32 RGBA8 lookup texture (32,768 bytes).
 pub const PALETTE_LUT_BYTE_SIZE: usize = (PALETTE_LUT_WIDTH * PALETTE_LUT_HEIGHT * 4) as usize;
 
-/// Generates the uncompressed 256x32 RGBA8 lookup table texture bytes.
+/// Generates the 256x32 RGBA8 lookup table texture bytes for the static Mode 13h table.
 ///
 /// - X coordinate (`0..=255`): Authentic VGA Mode 13h palette index.
 /// - Y coordinate (`0..=31`): Discrete directional lighting / ambient level,
 ///   where row 0 is ambient floor (0.2) and row 31 is full direct sunlight (1.0).
 pub fn build_palette_lut_bytes() -> [u8; PALETTE_LUT_BYTE_SIZE] {
+    build_palette_lut_bytes_from(&MODE_13H_PALETTE)
+}
+
+/// Generates the 256x32 RGBA8 lookup table texture bytes for `palette`, laid out as in
+/// [`build_palette_lut_bytes`].
+pub fn build_palette_lut_bytes_from(palette: &[(u8, u8, u8); 256]) -> [u8; PALETTE_LUT_BYTE_SIZE] {
     let mut lut_bytes = [0u8; PALETTE_LUT_BYTE_SIZE];
 
     for level in 0..PALETTE_LUT_HEIGHT {
@@ -26,7 +32,7 @@ pub fn build_palette_lut_bytes() -> [u8; PALETTE_LUT_BYTE_SIZE] {
         let factor = 0.2 + 0.8 * (level as f32 / 31.0);
 
         for color_idx in 0..PALETTE_LUT_WIDTH {
-            let (r0, g0, b0) = get_palette_rgb(color_idx as u8);
+            let (r0, g0, b0) = palette[color_idx as usize];
             let r = (r0 as f32 * factor).round().clamp(0.0, 255.0) as u8;
             let g = (g0 as f32 * factor).round().clamp(0.0, 255.0) as u8;
             let b = (b0 as f32 * factor).round().clamp(0.0, 255.0) as u8;
@@ -43,6 +49,9 @@ pub fn build_palette_lut_bytes() -> [u8; PALETTE_LUT_BYTE_SIZE] {
 }
 
 /// GPU-resident representation of the Mode 13h 256x32 palette LUT.
+///
+/// Starts with the static table; [`Self::set_controls`] switches it to the film palette
+/// for a frame's [`PaletteControls`].
 #[derive(Debug)]
 pub struct PaletteLut {
     /// Texture handle on the device.
@@ -53,6 +62,10 @@ pub struct PaletteLut {
     pub bind_group: wgpu::BindGroup,
     /// Shared bind group layout.
     pub bind_group_layout: wgpu::BindGroupLayout,
+    /// Palette currently in the texture.
+    palette: [(u8, u8, u8); 256],
+    /// Controls the texture was built from; `None` for the static table.
+    controls: Option<PaletteControls>,
 }
 
 impl PaletteLut {
@@ -93,25 +106,7 @@ impl PaletteLut {
             view_formats: &[],
         });
 
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &lut_bytes,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(PALETTE_LUT_WIDTH * 4),
-                rows_per_image: Some(PALETTE_LUT_HEIGHT),
-            },
-            wgpu::Extent3d {
-                width: PALETTE_LUT_WIDTH,
-                height: PALETTE_LUT_HEIGHT,
-                depth_or_array_layers: 1,
-            },
-        );
+        Self::write_texture(queue, &texture, &lut_bytes);
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -129,7 +124,71 @@ impl PaletteLut {
             view,
             bind_group,
             bind_group_layout,
+            palette: MODE_13H_PALETTE,
+            controls: None,
         }
+    }
+
+    /// Rebuilds the texture from the film palette for `controls`, if they changed.
+    pub fn set_controls(&mut self, queue: &wgpu::Queue, controls: PaletteControls) {
+        if self.controls != Some(controls) {
+            self.upload(queue, controls.film_palette(), Some(controls));
+        }
+    }
+
+    /// Restores the static Mode 13h table, if a film palette is loaded.
+    pub fn reset(&mut self, queue: &wgpu::Queue) {
+        if self.controls.is_some() {
+            self.upload(queue, MODE_13H_PALETTE, None);
+        }
+    }
+
+    /// Normalized `(R, G, B)` of `index` in the palette currently loaded.
+    #[must_use]
+    pub fn rgb_float(&self, index: u8) -> (f32, f32, f32) {
+        let (r, g, b) = self.palette[usize::from(index)];
+        (
+            f32::from(r) / 255.0,
+            f32::from(g) / 255.0,
+            f32::from(b) / 255.0,
+        )
+    }
+
+    fn upload(
+        &mut self,
+        queue: &wgpu::Queue,
+        palette: [(u8, u8, u8); 256],
+        controls: Option<PaletteControls>,
+    ) {
+        Self::write_texture(
+            queue,
+            &self.texture,
+            &build_palette_lut_bytes_from(&palette),
+        );
+        self.palette = palette;
+        self.controls = controls;
+    }
+
+    fn write_texture(queue: &wgpu::Queue, texture: &wgpu::Texture, lut_bytes: &[u8]) {
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            lut_bytes,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(PALETTE_LUT_WIDTH * 4),
+                rows_per_image: Some(PALETTE_LUT_HEIGHT),
+            },
+            wgpu::Extent3d {
+                width: PALETTE_LUT_WIDTH,
+                height: PALETTE_LUT_HEIGHT,
+                depth_or_array_layers: 1,
+            },
+        );
     }
 }
 
@@ -155,5 +214,18 @@ mod tests {
         // Color 255: 252 * 0.2 = 50.4 -> 50
         let row0_c255 = 255 * 4;
         assert_eq!(&bytes[row0_c255..row0_c255 + 4], &[50, 50, 50, 255]);
+    }
+
+    #[test]
+    fn film_palette_lut_uses_the_given_palette() {
+        let faded = PaletteControls {
+            brightness: 0,
+            ..PaletteControls::default()
+        };
+        let bytes = build_palette_lut_bytes_from(&faded.film_palette());
+        // Row 31, entry 63 (a scene grey) is black; entry 255 (UI white) is untouched.
+        let row31 = 31 * 256 * 4;
+        assert_eq!(&bytes[row31 + 63 * 4..row31 + 64 * 4], &[0, 0, 0, 255]);
+        assert_eq!(&bytes[row31 + 255 * 4..], &[252, 252, 252, 255]);
     }
 }

@@ -5,6 +5,8 @@
 //! - `[I1]` Metric right-handed coordinate basis (+Y up, +Z toward viewer, -Z forward)
 //! - `[I4]` Decoupled fixed simulation ticks (50 Hz) with sub-tick interpolation
 
+use crate::contracts::palette::PaletteControls;
+
 /// Evaluated camera transform at a discrete simulation tick.
 ///
 /// Coordinates adhere to metric right-handed basis `[I1]`:
@@ -136,6 +138,9 @@ pub struct TrajectoryRecord {
     pub actors: Vec<ActorTransform>,
     /// Sound triggers initiated on this exact tick.
     pub audio_cues: Vec<AudioCue>,
+    /// Film variables 13-15 that drive the palette at this tick.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub palette: PaletteControls,
 }
 
 /// Static prop placed once in the stage at film start.
@@ -254,6 +259,11 @@ mod tests {
                 volume: 0.8,
                 pan: 0.0,
             }],
+            palette: PaletteControls {
+                sky: 0x2000,
+                brightness: 0x4000,
+                saturation: 0x8000,
+            },
         };
 
         let json = serde_json::to_string_pretty(&record).expect("serialization succeeds");

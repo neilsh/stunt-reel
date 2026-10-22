@@ -19,6 +19,7 @@ mod common;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
+use stunt_core::contracts::palette::PaletteControls;
 use stunt_core::contracts::trajectory::{CameraTransform, TrajectoryRecord};
 use stunt_core::flm::{
     FilmTimeline, FlmError, SIF_ANIMATES, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES,
@@ -499,6 +500,7 @@ fn matrix_kinematic_extremes_and_extreme_sample_ticks() {
         camera: CameraTransform::default(),
         actors: vec![],
         audio_cues: vec![],
+        palette: PaletteControls::default(),
     };
     let single = FilmTimeline::new(
         vec![SliceKeyframe {

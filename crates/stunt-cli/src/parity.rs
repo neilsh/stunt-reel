@@ -12,10 +12,12 @@
 //! shared `compute_frame_ssim` window evaluator. IoU compares each side's non-sky mask,
 //! which measures framing agreement independently of shading.
 //!
-//! The original fades its palette to black over the film's last ticks and our render has
-//! no fade, so each capture's fade level (see [`fade_level`]) is measured from its
-//! captured palette and the render's luminance is scaled by it before the compensated
-//! SSIM. Frames whose level falls below `--min-fade-level` are reported but not scored.
+//! The original fades its palette with the film's brightness variable. Each capture's
+//! fade level (see [`fade_level`]) is measured from its captured palette, the render's
+//! from the film palette recorded in its `palette_controls.json`, and the render's
+//! luminance is scaled by their ratio before the compensated SSIM. A render directory
+//! without that file is taken as unfaded (render level 1.0) with the static clear
+//! colour. Frames whose level falls below `--min-fade-level` are reported but not scored.
 //!
 //! `--compare <report.json>` additionally matches the fresh scores against a previous
 //! run by `film_tick` (see [`compare_reports`]), so a change is judged frame by frame
@@ -26,7 +28,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
-use stunt_core::contracts::get_palette_rgb;
+use stunt_core::contracts::{PaletteControls, get_palette_rgb};
 use stunt_render::{
     ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH, compute_frame_ssim, compute_luminance,
     rescale_mode13h_frame, rgb_to_luminance, rgba_to_luminance,
@@ -50,10 +52,12 @@ struct FrameScore {
     film_tick: usize,
     /// SSIM of the unmodified render.
     ssim: f32,
-    /// SSIM of the render scaled by `fade_level`.
+    /// SSIM of the render scaled by `fade_level / render_fade_level`.
     ssim_compensated: f32,
     /// Median ratio of the captured palette's brightness to the static palette's.
     fade_level: f32,
+    /// The same ratio for the palette the render used.
+    render_fade_level: f32,
     /// Whether `fade_level` reaches the `--min-fade-level` floor.
     scored: bool,
     iou: f32,
@@ -187,8 +191,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
 
     let film_ticks = read_film_ticks(frames, &meta_path)?;
     let sky_index = sky_index(frames.first(), &args.reference)?;
-    let (clear_r, clear_g, clear_b) = get_palette_rgb(args.clear_index);
-    let clear_luminance = compute_luminance(clear_r as f32, clear_g as f32, clear_b as f32);
+    let render_palettes = read_render_palettes(&args.test)?;
     let first_plane = read_index_plane(&reference_paths(&args.reference, &frames[0], 1).0)?;
     let fade_set = fade_reference_set(&first_plane);
 
@@ -214,6 +217,17 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         let (indices, palette) = load_reference(&reference_file, &palette_file)?;
         let reference_rescaled = reference_luminance(&indices, &palette);
         let fade = fade_level(&fade_set, &palette);
+        let render_palette = render_palettes
+            .get(&film_tick)
+            .map(PaletteControls::film_palette);
+        let (render_fade, (clear_r, clear_g, clear_b)) = match &render_palette {
+            Some(rendered) => (
+                fade_level(&fade_set, rendered),
+                rendered[usize::from(args.clear_index)],
+            ),
+            None => (1.0, get_palette_rgb(args.clear_index)),
+        };
+        let clear_luminance = compute_luminance(clear_r as f32, clear_g as f32, clear_b as f32);
         let test_luminance = read_png_luminance(&test_file)?;
 
         let test_rescaled = rescale_mode13h_frame(
@@ -230,7 +244,16 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             11,
             8,
         );
-        let compensated: Vec<f32> = test_rescaled.iter().map(|v| v * fade).collect();
+        // A black render cannot be brightened back; leave it unscaled.
+        let scale = if render_fade > 0.0 {
+            fade / render_fade
+        } else {
+            1.0
+        };
+        let compensated: Vec<f32> = test_rescaled
+            .iter()
+            .map(|v| (v * scale).min(255.0))
+            .collect();
         let ssim_compensated = compute_frame_ssim(
             &reference_rescaled,
             &compensated,
@@ -248,6 +271,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             ssim,
             ssim_compensated,
             fade_level: fade,
+            render_fade_level: render_fade,
             scored,
             iou,
         });
@@ -317,6 +341,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
                 "iou": s.iou,
                 "ssim_compensated": s.ssim_compensated,
                 "fade_level": s.fade_level,
+                "render_fade_level": s.render_fade_level,
                 "scored": s.scored,
             }))
             .collect::<Vec<Value>>(),
@@ -912,6 +937,48 @@ fn read_palette(path: &Path) -> Result<Palette, String> {
         .collect())
 }
 
+/// Reads the per-tick palette controls the renders in `test_dir` were drawn with.
+///
+/// Returns an empty map when the directory has no `palette_controls.json` (renders made
+/// before the film palette was modelled).
+fn read_render_palettes(test_dir: &Path) -> Result<BTreeMap<usize, PaletteControls>, String> {
+    let path = test_dir.join(crate::PALETTE_SIDECAR_NAME);
+    if !path.is_file() {
+        return Ok(BTreeMap::new());
+    }
+    let text = fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let value: Value =
+        serde_json::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
+    let ticks = value
+        .get("ticks")
+        .and_then(Value::as_array)
+        .ok_or_else(|| format!("{} has no ticks array", path.display()))?;
+    ticks
+        .iter()
+        .map(|entry| {
+            let field = |name: &str| {
+                entry
+                    .get(name)
+                    .and_then(Value::as_u64)
+                    .ok_or_else(|| format!("{}: tick entry without {name}", path.display()))
+            };
+            let word = |name: &str| {
+                field(name).and_then(|v| {
+                    u16::try_from(v).map_err(|_| format!("{}: {name} {v} > 65535", path.display()))
+                })
+            };
+            Ok((
+                field("tick")? as usize,
+                PaletteControls {
+                    sky: word("sky")?,
+                    brightness: word("brightness")?,
+                    saturation: word("saturation")?,
+                },
+            ))
+        })
+        .collect()
+}
+
 /// Reads a rendered PNG and reduces it to a 320x200 luminance plane.
 fn read_png_luminance(path: &Path) -> Result<Vec<f32>, String> {
     let image = image::open(path).map_err(|e| format!("read {}: {e}", path.display()))?;
@@ -1237,6 +1304,46 @@ mod tests {
             assert!(error.contains("min fade level"), "{bad}: {error}");
         }
         assert!(parse(&["--min-fade-level"]).is_err());
+    }
+
+    #[test]
+    fn a_render_faded_by_its_film_palette_is_compensated_by_the_level_ratio() {
+        let tmp = TempDir::new("render_fade");
+        write_reference_faded(&tmp.join("ref"), &[12], true, &[0.5]);
+        let test = tmp.join("test");
+        fs::create_dir_all(&test).unwrap();
+        // The render faded itself to half brightness; its sky is the faded clear colour.
+        let half = PaletteControls {
+            brightness: 0x4000,
+            ..PaletteControls::default()
+        };
+        let palette = half.film_palette();
+        let image =
+            image::RgbaImage::from_fn(MODE13H_WIDTH as u32, MODE13H_HEIGHT as u32, |x, y| {
+                let index = plane_index(y as usize * MODE13H_WIDTH + x as usize);
+                let (r, g, b) = palette[usize::from(if index == 0 { 180 } else { index })];
+                image::Rgba([r, g, b, 255])
+            });
+        image.save(test.join(crate::tick_png_name(12))).unwrap();
+        fs::write(
+            test.join(crate::PALETTE_SIDECAR_NAME),
+            json!({ "ticks": [{ "tick": 12, "sky": 0, "brightness": 0x4000, "saturation": 0x8000 }] })
+                .to_string(),
+        )
+        .unwrap();
+
+        run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
+        let frame = &read_report(&tmp.join("out"))["per_frame"][0];
+        let render_level = frame["render_fade_level"].as_f64().unwrap();
+        assert!((render_level - 0.5).abs() < 0.03, "{render_level}");
+        // Both sides are at half level, so compensation barely moves the score.
+        let (raw, compensated) = (
+            frame["ssim"].as_f64().unwrap(),
+            frame["ssim_compensated"].as_f64().unwrap(),
+        );
+        assert!((raw - compensated).abs() < 0.02, "{raw} vs {compensated}");
+        // The faded clear colour is recognised as sky, so the masks agree exactly.
+        assert_eq!(frame["iou"].as_f64().unwrap(), 1.0);
     }
 
     #[test]

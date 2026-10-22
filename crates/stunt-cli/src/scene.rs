@@ -19,6 +19,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use glam::Mat4;
+use stunt_core::contracts::palette::PaletteControls;
 use stunt_core::contracts::{
     CameraTransform, NodeKind, SodModelIr, SodVertex, TrajectoryRecord, VisibilityCondition,
 };
@@ -288,6 +289,7 @@ fn synthetic_orbit(max_ticks: Option<usize>) -> FilmTimeline {
                     },
                     actors: Vec::new(),
                     audio_cues: Vec::new(),
+                    palette: PaletteControls::default(),
                 },
                 tick: tick as u32,
                 tick_duration: u8::from(tick != 0),

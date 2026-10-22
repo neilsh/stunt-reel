@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::contracts::{CameraTransform, SodModelIr};
+use crate::contracts::{CameraTransform, PaletteControls, SodModelIr};
 use crate::flm::{FilmTimeline, FlmError};
 use crate::sod::{SodAnchorPoint, SodError, SodStop, transpile_sod_lenient};
 use crate::vfs::VfsError;
@@ -168,6 +168,8 @@ pub struct SceneFrame {
     /// One draw per actor whose shape is in the table. Actors sharing a shape each get
     /// their own draw; there is no de-duplication.
     pub actors: Vec<ActorDraw>,
+    /// Film variables the palette is built from at this tick.
+    pub palette: PaletteControls,
 }
 
 /// A film with the shapes and static world it plays against.
@@ -302,6 +304,7 @@ impl FilmScene {
                 camera: CameraTransform::default(),
                 world,
                 actors: Vec::new(),
+                palette: PaletteControls::default(),
             };
         };
         let eye = record.camera.eye;
@@ -329,6 +332,7 @@ impl FilmScene {
             camera: record.camera,
             world,
             actors,
+            palette: record.palette,
         }
     }
 }

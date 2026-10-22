@@ -24,6 +24,7 @@ pub use timeline::{FilmTimeline, SliceKeyframe, TIMELINE_HZ, TIMELINE_TICK_SECON
 
 use interpolate::{bam_to_radians, detect_camera_cut, focal_to_fov_y, rotate_quat};
 
+use crate::contracts::palette::{PALETTE_CONTROL_FULL, PaletteControls};
 use crate::contracts::trajectory::{ActorTransform, CameraTransform, TrajectoryRecord};
 use std::fmt;
 
@@ -105,6 +106,25 @@ impl fmt::Display for FlmError {
 
 impl std::error::Error for FlmError {}
 
+/// Film variable 13: the palette's night term (`research/playone-exe/palette-fade.md`).
+const VAR_SKY: usize = 13;
+/// Film variable 14: palette brightness.
+const VAR_BRIGHTNESS: usize = 14;
+/// Film variable 15: palette saturation.
+const VAR_SATURATION: usize = 15;
+
+/// Film variables before the first slice.
+///
+/// `PLAYONE` zeroes all 16 (`CS:0x3723`), which would leave a film that never sets
+/// brightness or saturation black or grey. All but three corpus films set var 14;
+/// starting both at full keeps those three visible.
+fn initial_variables() -> [u16; 16] {
+    let mut variables = [0; 16];
+    variables[VAR_BRIGHTNESS] = PALETTE_CONTROL_FULL;
+    variables[VAR_SATURATION] = PALETTE_CONTROL_FULL;
+    variables
+}
+
 /// State machine that decodes `.FLM` slices into per-slice [`TrajectoryRecord`] snapshots.
 ///
 /// Internal feeder for [`FilmTimeline::from_bytes`], the only public way to evaluate a film.
@@ -132,7 +152,7 @@ impl<'a> FlmPlayer<'a> {
             parser,
             current_tick: 0,
             slots: std::array::from_fn(|_| SlotState::default()),
-            variables: [0; 16],
+            variables: initial_variables(),
             view_obj: 0,
             max_obj: 0,
             credits: [String::new(), String::new()],
@@ -268,6 +288,11 @@ impl<'a> FlmPlayer<'a> {
                 camera,
                 actors,
                 audio_cues: slice.sound_cues,
+                palette: PaletteControls {
+                    sky: self.variables[VAR_SKY],
+                    brightness: self.variables[VAR_BRIGHTNESS],
+                    saturation: self.variables[VAR_SATURATION],
+                },
             },
             slice.tick_duration,
         ))
@@ -401,6 +426,38 @@ mod tests {
         for (var_idx, value) in player.variables.iter().enumerate() {
             assert_eq!(*value, (var_idx as u16 + 1) * 100);
         }
+    }
+
+    #[test]
+    fn palette_variables_reach_records_and_interpolate_between_slices() {
+        let mut film = Vec::from(&b"FILM"[..]);
+        // Slice 0 sets var 13 = 0x3000 and leaves 14/15 at their full start values.
+        push_slice(&mut film, &[0x8D, 0x00, 0x30, 0xFF]);
+        // Slice 1, 10 ticks after slice 0 (tick 0), ramps brightness (var 14) to 0 and
+        // saturation (var 15) to 0x100.
+        film.extend_from_slice(&[7, 0, 10]);
+        film.extend_from_slice(&[0x8E, 0x00, 0x00, 0x8F, 0x00, 0x01, 0xFF]);
+
+        let timeline = FilmTimeline::from_bytes(&film).expect("timeline");
+        let first = timeline.sample(0.0).expect("sample").palette;
+        assert_eq!(
+            first,
+            PaletteControls {
+                sky: 0x3000,
+                brightness: PALETTE_CONTROL_FULL,
+                saturation: PALETTE_CONTROL_FULL,
+            }
+        );
+
+        // 2.5 ticks into the 10-tick span: 0x8000 * 0.75 = 0x6000 exactly, and
+        // 0x8000 - 0x7F00 * 0.25 = 0x6040.
+        let mid = timeline.sample(2.5).expect("sample").palette;
+        assert_eq!(mid.sky, 0x3000);
+        assert_eq!(mid.brightness, 0x6000);
+        assert_eq!(mid.saturation, 0x6040);
+
+        let last = timeline.sample(10.0).expect("sample").palette;
+        assert_eq!((last.brightness, last.saturation), (0, 0x100));
     }
 
     #[test]

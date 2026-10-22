@@ -11,7 +11,6 @@ use crate::palette::PaletteLut;
 use crate::pipeline::RenderPipelines;
 use crate::scene_renderer::SceneRenderer;
 use std::fmt;
-use stunt_core::contracts::get_palette_rgb_float;
 use stunt_core::scene::SceneFrame;
 
 /// Headless rendering error types.
@@ -190,6 +189,8 @@ impl HeadlessRenderer {
     }
 
     /// Renders a scene containing one or more models and captures the resulting RGBA8 framebuffer.
+    ///
+    /// Draws with the static Mode 13h table.
     pub fn render_frame(
         &mut self,
         camera: &CameraController,
@@ -199,6 +200,7 @@ impl HeadlessRenderer {
         // Upload camera uniform
         let camera_uniform = camera.build_uniform();
         self.camera_resources.upload(&self.queue, &camera_uniform);
+        self.palette_lut.reset(&self.queue);
 
         self.capture(clear_palette_index, |this, rpass| {
             // Pass 1: Solid base geometry with zero depth bias
@@ -248,7 +250,8 @@ impl HeadlessRenderer {
 
     /// Renders one scene frame through `scene` and captures the RGBA8 framebuffer.
     ///
-    /// `camera` overrides `frame.camera` when given (e.g. a free camera).
+    /// `camera` overrides `frame.camera` when given (e.g. a free camera). The palette,
+    /// clear colour included, is the film palette for `frame.palette`.
     pub fn render_scene(
         &mut self,
         scene: &mut SceneRenderer,
@@ -256,6 +259,7 @@ impl HeadlessRenderer {
         camera: Option<&CameraController>,
         clear_palette_index: Option<u8>,
     ) -> Result<Vec<u8>, HeadlessError> {
+        self.palette_lut.set_controls(&self.queue, frame.palette);
         scene.prepare(
             &self.device,
             &self.queue,
@@ -280,24 +284,16 @@ impl HeadlessRenderer {
         clear_palette_index: Option<u8>,
         draw: impl FnOnce(&Self, &mut wgpu::RenderPass<'_>),
     ) -> Result<Vec<u8>, HeadlessError> {
-        // Clear color determined by palette or default sky blue
-        let clear_color = if let Some(pal_idx) = clear_palette_index {
-            let (r, g, b) = get_palette_rgb_float(pal_idx);
-            wgpu::Color {
-                r: r as f64,
-                g: g as f64,
-                b: b as f64,
-                a: 1.0,
-            }
-        } else {
-            // Authentic Mode 13h daytime horizon sky blue (Palette index 180)
-            let (r, g, b) = get_palette_rgb_float(180);
-            wgpu::Color {
-                r: r as f64,
-                g: g as f64,
-                b: b as f64,
-                a: 1.0,
-            }
+        // Clear color from the loaded palette: the given index, or daytime horizon sky
+        // blue (palette index 180).
+        let (r, g, b) = self
+            .palette_lut
+            .rgb_float(clear_palette_index.unwrap_or(180));
+        let clear_color = wgpu::Color {
+            r: r as f64,
+            g: g as f64,
+            b: b as f64,
+            a: 1.0,
         };
 
         let mut encoder = self

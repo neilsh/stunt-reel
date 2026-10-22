@@ -25,7 +25,10 @@ pub use camera::{
 };
 pub use headless::{HeadlessError, HeadlessRenderer};
 pub use mesh::{GpuMeshSlice, GpuModel, GpuNode};
-pub use palette::{PALETTE_LUT_HEIGHT, PALETTE_LUT_WIDTH, PaletteLut, build_palette_lut_bytes};
+pub use palette::{
+    PALETTE_LUT_HEIGHT, PALETTE_LUT_WIDTH, PaletteLut, build_palette_lut_bytes,
+    build_palette_lut_bytes_from,
+};
 pub use parity::{
     ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH, PHASE1_SSIM_THRESHOLD,
     PHASE2_SSIM_THRESHOLD, compute_frame_ssim, compute_luminance, compute_window_ssim,

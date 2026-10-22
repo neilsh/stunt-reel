@@ -24,7 +24,7 @@ mod parity;
 mod scene;
 
 use scene::{SceneSources, build_scene};
-use stunt_core::contracts::get_palette_rgb_float;
+use serde_json::json;
 use stunt_core::flm::{CAMERA_FORWARD, TIMELINE_HZ, TIMELINE_TICK_SECONDS};
 use stunt_core::scene::FilmScene;
 use stunt_render::{
@@ -401,6 +401,10 @@ impl std::fmt::Display for SampleKey {
     }
 }
 
+/// Per-tick film palette controls written beside the `tick_NNNNN.png` renders, so
+/// `parity` can rebuild the palette each render used.
+pub(crate) const PALETTE_SIDECAR_NAME: &str = "palette_controls.json";
+
 /// File name `parity` looks up for the render of 0-based 50 Hz `tick`.
 pub(crate) fn tick_png_name(tick: usize) -> String {
     format!("tick_{tick:05}.png")
@@ -549,9 +553,18 @@ pub fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), String>
 
     let mut written_pngs = 0usize;
     let mut written_video_frames = 0usize;
+    let mut tick_palettes = Vec::new();
 
     for (key, tick) in samples {
         let frame = scene.frame(tick);
+        if let SampleKey::Tick(tick) = key {
+            tick_palettes.push(json!({
+                "tick": tick,
+                "sky": frame.palette.sky,
+                "brightness": frame.palette.brightness,
+                "saturation": frame.palette.saturation,
+            }));
+        }
         let rgba_bytes = renderer
             .render_scene(&mut scene_renderer, &frame, None, Some(config.clear_index))
             .map_err(|e| format!("render {key}: {e}"))?;
@@ -571,6 +584,12 @@ pub fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), String>
     }
 
     if let Some(out_dir) = &config.out_dir {
+        if !tick_palettes.is_empty() {
+            let path = out_dir.join(PALETTE_SIDECAR_NAME);
+            let text = serde_json::to_string(&json!({ "ticks": tick_palettes }))
+                .map_err(|e| format!("serialize {}: {e}", path.display()))?;
+            fs::write(&path, text).map_err(|e| format!("write {}: {e}", path.display()))?;
+        }
         println!(
             "[stuntreel] Wrote {written_pngs} parity frames to {}",
             out_dir.display()
@@ -727,7 +746,7 @@ impl WindowApp {
             &self.surface_config,
             &self.pipelines,
             &self.camera_resources,
-            &self.palette_lut,
+            &mut self.palette_lut,
             &self.depth_view,
             &mut self.scene_renderer,
         )
@@ -736,6 +755,7 @@ impl WindowApp {
         };
 
         let frame = self.scene.frame(self.current_tick);
+        lut.set_controls(queue, frame.palette);
         if self.camera.mode == CameraMode::Authored {
             self.camera.set_authored_transform(frame.camera);
         }
@@ -804,7 +824,7 @@ impl WindowApp {
         };
 
         // Palette-index clear color matches the headless capture (default sky index 180).
-        let (cr, cg, cb) = get_palette_rgb_float(self.config.clear_index);
+        let (cr, cg, cb) = lut.rgb_float(self.config.clear_index);
         let clear_color = wgpu::Color {
             r: cr as f64,
             g: cg as f64,

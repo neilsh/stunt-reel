@@ -20,6 +20,7 @@ mod common;
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use stunt_core::contracts::palette::PaletteControls;
 use stunt_core::contracts::trajectory::{
     ActorTransform, AudioCue, CameraTransform, TrajectoryRecord,
 };
@@ -634,12 +635,14 @@ fn sub_tick_interpolation_is_linear_when_not_a_cut() {
                 camera: camera([0.0, 10.0, 50.0], [0.0, 0.0, 0.0], 45.0, 0.0, false),
                 actors: vec![actor(1, "FOKKER", [0.0, 10.0, 0.0])],
                 audio_cues: Vec::new(),
+                palette: PaletteControls::default(),
             }),
             keyframe(TrajectoryRecord {
                 tick: 1,
                 camera: camera([0.0, 10.0, 40.0], [0.0, 0.0, 0.0], 45.0, 0.0, false),
                 actors: vec![actor(1, "FOKKER", [0.0, 10.0, 2.0])],
                 audio_cues: Vec::new(),
+                palette: PaletteControls::default(),
             }),
         ],
         Vec::new(),
@@ -659,6 +662,7 @@ fn sub_tick_interpolation_is_linear_when_not_a_cut() {
             volume: 0.8,
             pan: 0.0,
         }],
+        palette: PaletteControls::default(),
     };
     let frame_1 = TrajectoryRecord {
         tick: 1,
@@ -670,6 +674,7 @@ fn sub_tick_interpolation_is_linear_when_not_a_cut() {
             volume: 0.5,
             pan: 0.0,
         }],
+        palette: PaletteControls::default(),
     };
 
     let timeline = timeline_of(vec![frame_0, frame_1]);
@@ -784,12 +789,14 @@ fn sample_clamps_to_the_keyframe_range() {
         camera: camera([0.0, 10.0, 50.0], [0.0, 0.0, 0.0], 45.0, 0.0, false),
         actors: vec![actor(1, "ACTOR", [0.0, 0.0, 0.0])],
         audio_cues: Vec::new(),
+        palette: PaletteControls::default(),
     };
     let frame_1 = TrajectoryRecord {
         tick: 11,
         camera: camera([10.0, 10.0, 50.0], [0.0, 0.0, 0.0], 50.0, 0.1, false),
         actors: vec![actor(1, "ACTOR", [10.0, 0.0, 0.0])],
         audio_cues: Vec::new(),
+        palette: PaletteControls::default(),
     };
 
     // Ticks before the first keyframe clamp to the first slice, ticks after the last
@@ -819,6 +826,7 @@ fn camera_cut_holds_prior_pose_until_the_cut_tick() {
         camera: camera([0.0, 10.0, 20.0], [0.0, 0.0, 0.0], 45.0, 0.0, false),
         actors: vec![actor(1, "FOKKER", [0.0, 10.0, 100.0])],
         audio_cues: Vec::new(),
+        palette: PaletteControls::default(),
     };
     // Frame B has cut_from_previous = true (camera jump to tower)
     let frame_b = TrajectoryRecord {
@@ -826,6 +834,7 @@ fn camera_cut_holds_prior_pose_until_the_cut_tick() {
         camera: camera([45.0, 25.0, 120.0], [0.0, 10.0, 100.0], 48.0, 0.0, true),
         actors: vec![actor(1, "FOKKER", [0.0, 10.0, 101.2])],
         audio_cues: Vec::new(),
+        palette: PaletteControls::default(),
     };
     let timeline = FilmTimeline::new(
         vec![keyframe(frame_a.clone()), keyframe(frame_b)],
@@ -847,6 +856,7 @@ fn camera_cut_holds_prior_pose_until_the_cut_tick() {
         camera: camera([10.0, 5.0, -100.0], [0.0, 0.0, 0.0], 35.0, 0.05, false),
         actors: vec![actor(1, "FOKKER", [10.0, 5.0, -50.0])],
         audio_cues: Vec::new(),
+        palette: PaletteControls::default(),
     };
     // Frame B is a cut: camera moved 500 meters away to a hilltop tower
     let frame_b = TrajectoryRecord {
@@ -854,6 +864,7 @@ fn camera_cut_holds_prior_pose_until_the_cut_tick() {
         camera: camera([500.0, 250.0, 300.0], [10.0, 5.0, -50.0], 55.0, -0.1, true),
         actors: vec![actor(1, "FOKKER", [10.0, 5.0, -48.0])],
         audio_cues: Vec::new(),
+        palette: PaletteControls::default(),
     };
 
     let timeline = timeline_of(vec![frame_a.clone(), frame_b.clone()]);
@@ -910,6 +921,7 @@ fn camera_cut_holds_prior_pose_until_the_cut_tick() {
         camera: camera([510.0, 250.0, 300.0], [10.0, 5.0, -50.0], 55.0, -0.1, false),
         actors: frame_b.actors.clone(),
         audio_cues: Vec::new(),
+        palette: PaletteControls::default(),
     };
     let timeline = timeline_of(vec![frame_a.clone(), frame_b.clone(), frame_c.clone()]);
 
@@ -934,6 +946,7 @@ fn actor_spawn_and_despawn_switch_at_the_sub_tick_midpoint() {
         camera: CameraTransform::default(),
         actors: vec![actor(1, "ACTOR_1", [0.0, 0.0, 0.0])],
         audio_cues: Vec::new(),
+        palette: PaletteControls::default(),
     };
 
     // Frame 1 has actor 2 only (actor 1 despawned, actor 2 spawned)
@@ -942,6 +955,7 @@ fn actor_spawn_and_despawn_switch_at_the_sub_tick_midpoint() {
         camera: CameraTransform::default(),
         actors: vec![actor(2, "ACTOR_2", [10.0, 10.0, 10.0])],
         audio_cues: Vec::new(),
+        palette: PaletteControls::default(),
     };
 
     let timeline = timeline_of(vec![frame_0, frame_1]);

@@ -276,6 +276,119 @@ pub fn get_palette_rgb_float(index: u8) -> (f32, f32, f32) {
     (r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
 }
 
+/// Film variable value at which brightness and saturation are unchanged (`0x8000`).
+pub const PALETTE_CONTROL_FULL: u16 = 0x8000;
+
+/// Palette entries rebuilt from the film variables (`0..240`); the 16 cursor and
+/// button-bar entries above them never change.
+pub const FILM_PALETTE_ENTRIES: usize = 240;
+
+/// Sky colour pairs at `DS:0x09DE`, 6-bit DAC units: `(day, night)` for the R, G, B of
+/// the zenith colour, then of the horizon colour (`research/playone-exe/palette-fade.md`).
+const SKY_COLOUR_PAIRS: [[u8; 2]; 6] = [[0, 0], [40, 0], [63, 0], [52, 26], [52, 0], [52, 26]];
+
+/// Entries 213-214 for day (`DS:0x09F0`) and night (`DS:0x09F6`), 6-bit DAC units.
+const LIGHT_ENTRIES: [[[u8; 3]; 2]; 2] =
+    [[[40, 38, 38], [29, 26, 26]], [[63, 46, 0], [56, 55, 55]]];
+
+/// First palette entry of the 15-step sky gradient written from [`SKY_COLOUR_PAIRS`].
+const SKY_GRADIENT_FIRST: usize = 224;
+
+/// First of the two entries replaced from [`LIGHT_ENTRIES`].
+const LIGHT_ENTRY_FIRST: usize = 213;
+
+/// The film variables `PLAYONE.EXE` builds the palette from (`CS:0x0EE6` → `CS:0x0FD2`).
+///
+/// Raw `u16` values of film variables 13, 14 and 15, sampled per frame with the same
+/// linear interpolation as `PLAYONE` (`CS:0x136F`). [`Self::default`] is the unfaded day
+/// palette, also used for films that never set the variables.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct PaletteControls {
+    /// Var 13: night term. `|value| - 0x2000`, clamped to `0..=0x4000`, darkens the
+    /// scene entries, moves the sky gradient toward its night colours and, from
+    /// `0x2000` on, switches entries 213-214 to their night colours.
+    pub sky: u16,
+    /// Var 14: brightness; [`PALETTE_CONTROL_FULL`] is unchanged, `0` is black.
+    pub brightness: u16,
+    /// Var 15: saturation; [`PALETTE_CONTROL_FULL`] is unchanged, `0` is grey.
+    pub saturation: u16,
+}
+
+impl Default for PaletteControls {
+    fn default() -> Self {
+        Self {
+            sky: 0,
+            brightness: PALETTE_CONTROL_FULL,
+            saturation: PALETTE_CONTROL_FULL,
+        }
+    }
+}
+
+impl PaletteControls {
+    /// Builds the 8-bit palette these controls produce, as `CS:0x0FD2` does.
+    ///
+    /// Entries `0..240` are rebuilt from [`MODE_13H_PALETTE`] in 6-bit DAC units, with
+    /// the sky gradient (224-238) and entries 213-214 replaced first; entries 240-255
+    /// are returned unchanged. Output keeps the table's `level * 4` expansion.
+    #[must_use]
+    pub fn film_palette(&self) -> [(u8, u8, u8); 256] {
+        let mut base: [[i32; 3]; 256] = std::array::from_fn(|i| {
+            let (r, g, b) = MODE_13H_PALETTE[i];
+            [i32::from(r >> 2), i32::from(g >> 2), i32::from(b >> 2)]
+        });
+
+        // Night term: |var13| - 0x2000 clamped to 0..=0x4000; its high byte is 0..=64.
+        let night_term = (i32::from(self.sky as i16).abs() - 0x2000).clamp(0, 0x4000);
+        let night = night_term >> 8;
+
+        // Zenith and horizon colours, then the 15-step gradient between them. `/` on
+        // `i32` truncates toward zero like `idiv`; `>> 6` floors like `imul; shl; ah`.
+        let sky: Vec<i32> = SKY_COLOUR_PAIRS
+            .iter()
+            .map(|&[day, night_colour]| {
+                let day = i32::from(day);
+                day + (((i32::from(night_colour) - day) * night) >> 6)
+            })
+            .collect();
+        for step in 1..=15 {
+            for channel in 0..3 {
+                let (zenith, horizon) = (sky[channel], sky[3 + channel]);
+                base[SKY_GRADIENT_FIRST + step - 1][channel] =
+                    zenith + (horizon - zenith) * step as i32 / 15;
+            }
+        }
+        let lights = &LIGHT_ENTRIES[usize::from(night >= 0x20)];
+        for (offset, colour) in lights.iter().enumerate() {
+            base[LIGHT_ENTRY_FIRST + offset] = colour.map(i32::from);
+        }
+
+        // Brightness and saturation: high byte halved, rounding up, so 0x8000 is 64.
+        let half_high = |value: u16| i32::from(((value >> 8) as u8).div_ceil(2)).min(64);
+        let brightness = half_high(self.brightness);
+        let saturation = half_high(self.saturation);
+        // The scene entries below the split are also darkened by the night term.
+        let scene_brightness = ((0x80 - (night + (night >> 1))) * brightness * 2) >> 8;
+        let split = if night >= 0x20 { 209 } else { 215 };
+
+        let mut out = MODE_13H_PALETTE;
+        for (index, [r, g, b]) in base.iter().copied().enumerate().take(FILM_PALETTE_ENTRIES) {
+            let bright = if index < split {
+                scene_brightness
+            } else {
+                brightness
+            };
+            let grey = (((3 * r + b) >> 2) + g) >> 1;
+            let tone = |c: i32| {
+                let level = ((grey + (((c - grey) * saturation) >> 6)) * bright) >> 6;
+                (level.clamp(0, 63) << 2) as u8
+            };
+            out[index] = (tone(r), tone(g), tone(b));
+        }
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,6 +408,85 @@ mod tests {
         assert!((r255 - 252.0 / 255.0).abs() < 1e-6);
         assert!((g255 - 252.0 / 255.0).abs() < 1e-6);
         assert!((b255 - 252.0 / 255.0).abs() < 1e-6);
+    }
+
+    /// `level * 4` expansion of a 6-bit DAC colour.
+    fn dac(r: u8, g: u8, b: u8) -> (u8, u8, u8) {
+        (r * 4, g * 4, b * 4)
+    }
+
+    #[test]
+    fn default_controls_keep_the_table_except_the_day_sky_gradient() {
+        let palette = PaletteControls::default().film_palette();
+        for (index, rgb) in palette.iter().enumerate() {
+            if !(SKY_GRADIENT_FIRST..SKY_GRADIENT_FIRST + 15).contains(&index) {
+                assert_eq!(*rgb, MODE_13H_PALETTE[index], "index {index}");
+            }
+        }
+        // Day gradient from (0, 40, 63) to (52, 52, 52), as in the CTRY captures.
+        assert_eq!(palette[224], dac(3, 40, 63));
+        assert_eq!(palette[233], dac(34, 48, 56));
+        assert_eq!(palette[238], dac(52, 52, 52));
+    }
+
+    #[test]
+    fn zero_brightness_blacks_out_scene_entries_but_not_the_ui() {
+        let controls = PaletteControls {
+            brightness: 0,
+            ..PaletteControls::default()
+        };
+        let palette = controls.film_palette();
+        assert!(
+            palette[..FILM_PALETTE_ENTRIES]
+                .iter()
+                .all(|&rgb| rgb == (0, 0, 0))
+        );
+        assert_eq!(
+            palette[FILM_PALETTE_ENTRIES..],
+            MODE_13H_PALETTE[FILM_PALETTE_ENTRIES..]
+        );
+    }
+
+    #[test]
+    fn half_brightness_halves_6_bit_levels_rounding_down() {
+        let controls = PaletteControls {
+            brightness: 0x4000,
+            ..PaletteControls::default()
+        };
+        // Entry 63 is (244, 244, 244) = 61 per channel; 61 * 32 / 64 = 30.
+        assert_eq!(controls.film_palette()[63], dac(30, 30, 30));
+    }
+
+    #[test]
+    fn zero_saturation_gives_the_weighted_grey() {
+        let controls = PaletteControls {
+            saturation: 0,
+            ..PaletteControls::default()
+        };
+        // Entry 16 is (15, 3, 6) in DAC units: ((3 * 15 + 6) / 4 + 3) / 2 = 7.
+        assert_eq!(controls.film_palette()[16], dac(7, 7, 7));
+    }
+
+    #[test]
+    fn full_night_darkens_the_scene_and_switches_the_lights() {
+        let night = PaletteControls {
+            sky: 0x6000,
+            ..PaletteControls::default()
+        };
+        let palette = night.film_palette();
+        // Scene brightness (0x80 - 0x60) * 64 * 2 >> 8 = 16: 61 * 16 / 64 = 15.
+        assert_eq!(palette[63], dac(15, 15, 15));
+        // Entries 209 and up keep full brightness; 213-214 take the night colours.
+        assert_eq!(palette[213], dac(63, 46, 0));
+        assert_eq!(palette[214], dac(56, 55, 55));
+        assert_eq!(palette[224], dac(1, 0, 1));
+        assert_eq!(palette[238], dac(26, 0, 26));
+        // The term is |var 13|, so a negative value acts the same.
+        let negative = PaletteControls {
+            sky: 0xA000,
+            ..PaletteControls::default()
+        };
+        assert_eq!(negative.film_palette(), palette);
     }
 
     #[test]

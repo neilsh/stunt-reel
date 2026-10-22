@@ -4,6 +4,7 @@
 //! - `[I1]` Right-handed metric coordinate basis (+X Right, +Y Up, +Z Backward, -Z Forward)
 //! - `[I4]` Discrete simulation ticks (50 Hz) with sub-tick interpolation and cut suppression
 
+use crate::contracts::palette::PaletteControls;
 use crate::contracts::trajectory::{ActorTransform, CameraTransform, TrajectoryRecord};
 use std::f32::consts::TAU;
 
@@ -296,6 +297,22 @@ pub(crate) fn interpolate_trajectory(
         } else {
             Vec::new() // Audio cues are discrete triggers at exact tick boundaries
         },
+        // Film variables keep interpolating across camera cuts, so they use the raw alpha.
+        palette: lerp_palette(record_a.palette, record_b.palette, alpha_clamped),
+    }
+}
+
+/// Interpolates film palette variables as `PLAYONE` does (`CS:0x136F`): an unsigned
+/// `u16` lerp whose step is rounded toward negative infinity.
+fn lerp_palette(a: PaletteControls, b: PaletteControls, alpha: f32) -> PaletteControls {
+    let lerp = |from: u16, to: u16| {
+        let from = f32::from(from);
+        (from + (f32::from(to) - from) * alpha).floor() as u16
+    };
+    PaletteControls {
+        sky: lerp(a.sky, b.sky),
+        brightness: lerp(a.brightness, b.brightness),
+        saturation: lerp(a.saturation, b.saturation),
     }
 }
 
@@ -334,6 +351,7 @@ mod tests {
             },
             actors,
             audio_cues: Vec::new(),
+            palette: PaletteControls::default(),
         }
     }
 
