@@ -61,7 +61,7 @@ flowchart TD
         PALETTE["VGA Mode 13h 256-Color Palette<br/>- Chunk 0x8042: 240-Color Master Palette<br/>- Chunk 0x801E: 16-Color UI Sub-Palette<br/>- 32-Level Composite Shading Ramps"]
         LUT["256 x 32 Palette Lookup Texture (LUT)<br/>@interpolate(flat) Fragment Shading"]
         WGPU["Modern wgpu Render Engine<br/>Aspect-Corrected 4:3 Frame (320 x 240)<br/>Off-Screen Framebuffer & Window Presentation"]
-        PARITY["Visual Parity Verification Gate<br/>SSIM &gt;= 0.88 (glTF) / &gt;= 0.90 (wgpu)"]
+        PARITY["Visual Parity Verification Gate<br/>SSIM &gt;= 0.88 initial / &gt;= 0.90 sign-off (wgpu)"]
     end
 
     %% Storage to VFS
@@ -146,7 +146,7 @@ Unlike static triangle meshes, `.SOD` models are dynamic display lists executed 
 Rendering faithfully reproduces the 1992 8-bit VGA hardware output:
 - Vertices store raw Mode 13h color indices (`0..=255`) and hard-edged facet normals.
 - Fragment lighting calculates surface illumination by quantizing the light-normal dot product into 32 discrete shading levels, sampling authentic shading ramps from the $256 \times 32$ palette lookup texture (LUT) with `@interpolate(flat)`.
-- The presentation pipeline displays aspect-corrected 4:3 images ($320 \times 240$) and achieves strict visual parity thresholds ($\text{SSIM} \ge 0.88$ for glTF baselines, $\ge 0.90$ for native `wgpu` rendering per `[I6]`).
+- The presentation pipeline displays aspect-corrected 4:3 images ($320 \times 240$) and achieves strict visual parity thresholds ($\text{SSIM} \ge 0.88$ initial and $\ge 0.90$ sign-off for native `wgpu` rendering per `[I6]`).
 
 ---
 
@@ -180,8 +180,8 @@ The StuntReel native engine architecture enforces clean architectural boundaries
 - **`[I2]` Flat Arena Allocation:** Hierarchy nodes are stored in contiguous `Vec<SodNode>` structures indexed via lightweight `NodeId(u32)` tokens, prohibiting recursive pointers (`Rc<RefCell<T>>` or `Box<T>`).
 - **`[I3]` Authentic Mode 13h Palette Indexing:** Mesh vertices preserve raw 8-bit palette indices (`0..=255`). Lighting evaluation indexes the $256 \times 32$ palette lookup texture with flat interpolation (`@interpolate(flat)`).
 - **`[I4]` Discrete Simulation Ticks & Cut-Aware Sub-Tick Interpolation:** Simulation updates execute at discrete 50 Hz steps ($20.0\text{ ms}$). Presentation sub-tick interpolation uses lerp/slerp across each slice's `tick_duration`, but is immediately suppressed ($\alpha_{\text{eff}} = 0.0$) when a camera director cut is flagged.
-- **`[I5]` Coplanar Decal Resolution:** Decals sharing a geometric plane with base facets are resolved by normal displacement ($\epsilon = 0.001\text{ m}$) in glTF and hardware depth biasing in `wgpu`.
-- **`[I6]` Visual Parity Acceptance Thresholds:** Off-screen renders targeting aspect-corrected 4:3 ($320 \times 240$) Mode 13h reference frames must achieve mean $\text{SSIM} \ge 0.88$ for Milestone 1 glTF and $\ge 0.90$ for Milestone 2 `wgpu`.
+- **`[I5]` Coplanar Decal Resolution:** Decals sharing a geometric plane with base facets are resolved by normal displacement ($\epsilon = 0.001\text{ m}$) in the decoded geometry (exported unchanged to glTF) and hardware depth biasing in `wgpu`.
+- **`[I6]` Visual Parity Acceptance Thresholds:** Off-screen renders targeting aspect-corrected 4:3 ($320 \times 240$) Mode 13h reference frames must achieve mean $\text{SSIM} \ge 0.88$ initial and $\ge 0.90$ sign-off on the `wgpu` renderer.
 - **`[I7]` Cleanroom Asset Isolation:** Zero proprietary binary assets, disks, or capture dumps from `corpus/` or `target_bin/` are committed to version control. All test suites run 100% offline using synthetic cleanroom fixtures.
 - **`[I8]` Uppercase DOS 8.3 Path Normalization:** All virtual filesystem lookups, container tables, and asset references normalize paths to uppercase 8.3 format without path separators.
 

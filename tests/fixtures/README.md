@@ -74,3 +74,5 @@ A JSON array of 256 `[r, g, b]` triples: the VGA Mode 13h palette (`[I3]`) expor
 
 ### 10. `dos_math_goldens.json`
 Golden vectors for the shared DOS math helpers, generated from the Python implementations at full float precision: `bam_to_radians`, `focal_to_fov_y`, `quat_from_euler` (`[yaw, pitch, roll]` -> `[x, y, z, w]`) and `world_matrix` (`position` + `quat` -> 16 column-major floats). Rust (`flm/interpolate.rs`, `contracts/trajectory.rs` tests) and Python (`tests/test_goldens.py`) both assert agreement within `1e-5`.
+
+`crates/stunt-gltf/tests/export_test.rs` reuses `synthetic_minimal.all`, `synthetic_minimal.sod`, `synthetic_tap.sod` with `synthetic_anchors.bin`, and `synthetic_timeline.flm` to check exported `.glb` structure; it adds no fixtures of its own.

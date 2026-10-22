@@ -81,6 +81,10 @@ _Avoid_: scene bundle
 What to draw at one tick: the camera, the world, and one draw per visible actor carrying its shape, world matrix, state mask, and distance to the camera. Two actors sharing a shape are two draws.
 _Avoid_: frame (alone), draw list
 
+**glTF export**:
+A `.glb` written by `stunt-gltf` for viewing a shape, or one scene frame, in standard tools. It carries `[I1]` geometry unchanged, palette colours as vertex colours, and the decoder's decal-displaced positions. It is a convenience format with no parity gate of its own.
+_Avoid_: glTF parity, Phase 1 export
+
 **Partial SOD**:
 A shape whose bytecode stopped at an opcode the evaluator does not implement, or at `OP_TAP` without an anchor table; geometry decoded before the stop is retained.
 _Avoid_: corrupt model, truncated SOD

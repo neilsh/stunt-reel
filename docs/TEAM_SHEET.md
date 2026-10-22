@@ -36,7 +36,7 @@ flowchart TD
 |---|---|---|---|
 | **`sentinel`** | Project Orchestration | `docs/TEAM_SHEET.md`, PR reviews | Milestones sequencing, dispatching subagents, reviewing ticket completion artifacts. |
 | **`re-harness-worker`** | DOSBox-X MCP & Memory Reverse Engineering | `python/stunt_reel/tac/`, `docs/MEMORY_MAP.md`, `tests/test_harness.py`, `tests/test_memory_map.py` | Headless DOSBox-X harness (`T01`), port `0x03DA` V-Sync breakpoint trap (`T02`), high-throughput streamer (`T03`). |
-| **`gltf-exporter-worker`** | 3D Exporter & Asset Pipeline | `python/stunt_reel/gltf/`, `tests/test_gltf.py` | Baseline `.SOD` mesh ingest (`RIPRES.C`), decal normal displacement `[I5]`, animation samplers, glTF packaging (`T04`). |
+| **`gltf-exporter-worker`** *(retired; the exporter is now `crates/stunt-gltf/`, owned by `rust-engine-worker`)* | 3D Exporter & Asset Pipeline | `crates/stunt-gltf/` (formerly `python/stunt_reel/gltf/`, `tests/test_gltf.py`) | Baseline `.SOD` mesh ingest (`RIPRES.C`), decal normal displacement `[I5]`, animation samplers, glTF packaging (`T04`). |
 | **`rust-engine-worker`** | Cleanroom Rust Systems Engine | `crates/stunt-core/`, `crates/stunt-render/`, `crates/stunt-cli/` | Native archive parsers (`T05`), procedural `.SOD` transpiler (`T06`), native `.FLM` evaluator (`T07`), `wgpu` renderer (`T08`). |
 | **`parity-auditor`** | Quality Gate & Cleanroom Verification | Read-only across all code, executes verification commands | Enforces cleanroom asset isolation `[I7]`, runs `mise run check`, validates quantitative gates (`G01`–`G06`). |
 
