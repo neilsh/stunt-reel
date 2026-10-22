@@ -1,16 +1,22 @@
-//! Adversarial Stress and Fuzz Test Suite for Ticket T06 (.SOD Geometry Transpiler).
+//! Never-panics and structured-error coverage for the `.SOD` transpiler (Seam 3).
 //!
-//! Stress-tests `.SOD` VM, decal resolution, attribute-preserving vertex welding,
-//! and scene graph IR construction against:
-//! - Malformed / truncated headers (0..10 bytes)
-//! - Truncated opcode payloads for all supported opcodes
-//! - Register VM offset wrapping (unaligned, >= 1024, max u16)
-//! - Extreme scale factor indices (0..=255)
-//! - Degenerate polygons (< 3 vertices, collinear, zero area, identical vertices)
-//! - Arithmetic operations and bit-shift boundary conditions (OP_SHLV / OP_SHRV)
-//! - Pure randomized fuzz streams and mutated valid .SOD streams
+//! `transpile_sod` consumes untrusted bytes, so these tests assert that it never panics and
+//! that malformed input comes back as a `SodError`. Inputs are generated, mutated or swept
+//! across a matrix; the pass condition is "no panic" (plus the expected `SodError` variant or
+//! a coarse success invariant where noted). Named single-input behaviour with exact expected
+//! results lives in `sod_spec.rs`.
 //!
-//! Asserts that `transpile_sod` NEVER panics and cleanly returns appropriate `SodError` variants.
+//! Matrices:
+//! - header truncations (0..10 bytes) and invalid magic words
+//! - truncated operand payloads for every known opcode
+//! - register offset wrapping (unaligned, >= 1024 registers, `u16::MAX`), `OP_IPG` start registers
+//!   near register 1023 and `OP_VECTORS` runs that wrap past register 1023
+//! - scale indices 0..=255 and `OP_SHLV` / `OP_SHRV` shift amounts, including >= 32
+//! - polygons with fewer than 3 vertices and a 500-polygon model
+//!
+//! Fuzz (fixed-seed `XorShift64`, 10,000 iterations each): random bytecode behind a valid
+//! header, random sequences of valid opcodes with random operands, and bit-flipped /
+//! overwritten / truncated / extended copies of a valid model.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -82,12 +88,13 @@ fn make_sod_header(
     header
 }
 
-// ---------------------------------------------------------------------------
-// 1. Boundary & Truncation Stress Tests
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Header and opcode truncation, invalid magic
+// =============================================================================
 
+/// Files of 0..=9 bytes (zeros and 0xFF) fail with `UnexpectedEof { expected: 10 }` and never panic.
 #[test]
-fn test_stress_sub_header_truncations() {
+fn matrix_sub_header_truncations() {
     // Zero length
     assert_eq!(
         transpile_sod(&[], "ZERO", None).unwrap_err(),
@@ -124,8 +131,9 @@ fn test_stress_sub_header_truncations() {
     }
 }
 
+/// Wrong magic words fail with `InvalidMagic` and never panic.
 #[test]
-fn test_stress_magic_variations() {
+fn matrix_invalid_magic_words() {
     // 0x000C is valid magic. Test all other 16-bit values around it.
     for invalid_magic in [
         0x0000u16, 0x0001, 0x000B, 0x000D, 0x0010, 0x7FFF, 0x8000, 0xFFFF,
@@ -145,8 +153,9 @@ fn test_stress_magic_variations() {
     }
 }
 
+/// Every known opcode followed by 0..6 operand bytes never panics.
 #[test]
-fn test_stress_truncated_opcode_payloads_all_opcodes() {
+fn matrix_truncated_opcode_payloads_for_all_opcodes() {
     // List all known opcodes and their minimal expected payloads
     let opcodes = [
         OP_CLRV,
@@ -202,12 +211,13 @@ fn test_stress_truncated_opcode_payloads_all_opcodes() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// 2. Register Wrapping & Alignment Stress Tests
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Register, IPG, vector and scale matrices
+// =============================================================================
 
+/// `OP_GETV/PUTV/ADDV/SUBV/INTV` with extreme and unaligned offsets still transpile cleanly.
 #[test]
-fn test_stress_register_offset_wrapping_and_unaligned() {
+fn matrix_register_offsets_wrap_and_unaligned() {
     let offsets: [u16; 16] = [
         0,
         1,
@@ -252,8 +262,9 @@ fn test_stress_register_offset_wrapping_and_unaligned() {
     }
 }
 
+/// `OP_IPG` types 0, 2 and 8 starting at registers 0 and 1020..=1023 transpile cleanly.
 #[test]
-fn test_stress_ipg_primitive_boundary_offsets() {
+fn matrix_ipg_start_registers_near_1023() {
     // Types 0 (cube), 2 (ground quad), 8 (vertical quad) with start offsets near register 1023
     for &start_reg in &[0u16, 1020, 1021, 1022, 1023] {
         let start_off = start_reg * 12;
@@ -293,8 +304,9 @@ fn test_stress_ipg_primitive_boundary_offsets() {
     }
 }
 
+/// 50-vector `OP_VECTORS` runs starting at registers 0, 1000 and 1023 transpile cleanly.
 #[test]
-fn test_stress_vectors_boundary_wrapping() {
+fn matrix_vectors_wrap_past_register_1023() {
     for &start_reg in &[0u16, 1000, 1023] {
         let start_off = start_reg * 12;
         let count = 50u16; // will wrap around register 1023 -> 0
@@ -316,12 +328,9 @@ fn test_stress_vectors_boundary_wrapping() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// 3. Scale Factor Table & Extreme Indices Stress Tests
-// ---------------------------------------------------------------------------
-
+/// Every scale index has a non-NaN, non-negative scale factor and transpiles to a one-node model.
 #[test]
-fn test_stress_scale_factor_extreme_indices() {
+fn matrix_scale_indices_0_to_255() {
     for idx in 0..=255usize {
         let factor = compute_scale_factor(idx);
         assert!(
@@ -343,12 +352,9 @@ fn test_stress_scale_factor_extreme_indices() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// 4. Degenerate Polygon Stress Tests
-// ---------------------------------------------------------------------------
-
+/// `OP_POLYZ` and `OP_GVPOLY` with 0..=2 vertices fail with `MalformedPolygon`.
 #[test]
-fn test_stress_degenerate_polygons_count_under_3() {
+fn matrix_polygon_counts_under_3() {
     for count in 0..3u16 {
         let mut buf = make_sod_header(50, 0, 0, 0);
         buf.extend_from_slice(&OP_POLYZ.to_le_bytes());
@@ -391,88 +397,9 @@ fn test_stress_degenerate_polygons_count_under_3() {
     }
 }
 
+/// A 500-triangle model transpiles to 1500 indices.
 #[test]
-fn test_stress_degenerate_polygons_collinear_and_zero_area() {
-    let mut buf = make_sod_header(50, 0, 0, 0);
-
-    // Load 3 collinear vertices into reg 0, 1, 2
-    buf.extend_from_slice(&OP_VECTORS.to_le_bytes());
-    buf.extend_from_slice(&3u16.to_le_bytes());
-    buf.extend_from_slice(&0u16.to_le_bytes());
-    buf.extend_from_slice(&0i16.to_le_bytes());
-    buf.extend_from_slice(&0i16.to_le_bytes());
-    buf.extend_from_slice(&0i16.to_le_bytes());
-    buf.extend_from_slice(&10i16.to_le_bytes());
-    buf.extend_from_slice(&0i16.to_le_bytes());
-    buf.extend_from_slice(&0i16.to_le_bytes());
-    buf.extend_from_slice(&20i16.to_le_bytes());
-    buf.extend_from_slice(&0i16.to_le_bytes());
-    buf.extend_from_slice(&0i16.to_le_bytes());
-
-    // Polygon 1: collinear
-    buf.extend_from_slice(&OP_COLOR.to_le_bytes());
-    buf.extend_from_slice(&1u16.to_le_bytes());
-    buf.extend_from_slice(&OP_POLYZ.to_le_bytes());
-    buf.extend_from_slice(&3u16.to_le_bytes());
-    buf.extend_from_slice(&0u16.to_le_bytes());
-    buf.extend_from_slice(&12u16.to_le_bytes());
-    buf.extend_from_slice(&24u16.to_le_bytes());
-
-    // Polygon 2: zero area (3 identical vertices at reg 0)
-    buf.extend_from_slice(&OP_COLOR.to_le_bytes());
-    buf.extend_from_slice(&2u16.to_le_bytes());
-    buf.extend_from_slice(&OP_POLYZ.to_le_bytes());
-    buf.extend_from_slice(&3u16.to_le_bytes());
-    buf.extend_from_slice(&0u16.to_le_bytes());
-    buf.extend_from_slice(&0u16.to_le_bytes());
-    buf.extend_from_slice(&0u16.to_le_bytes());
-
-    buf.extend_from_slice(&OP_RETURN.to_le_bytes());
-
-    let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "COLLINEAR", None)));
-    assert!(res.is_ok(), "Panic on collinear / zero-area polygon");
-    let ir = res.unwrap().expect("transpile succeeds");
-    assert_eq!(ir.name, "COLLINEAR");
-    assert!(!ir.vertices.is_empty());
-}
-
-#[test]
-fn test_stress_degenerate_polygon_extreme_coordinates() {
-    let mut buf = make_sod_header(50, 0, 0, 0);
-
-    // Load i16::MIN (-32768) and i16::MAX (32767)
-    buf.extend_from_slice(&OP_VECTORS.to_le_bytes());
-    buf.extend_from_slice(&3u16.to_le_bytes());
-    buf.extend_from_slice(&0u16.to_le_bytes());
-    buf.extend_from_slice(&(-32768i16).to_le_bytes());
-    buf.extend_from_slice(&(-32768i16).to_le_bytes());
-    buf.extend_from_slice(&(-32768i16).to_le_bytes());
-    buf.extend_from_slice(&(32767i16).to_le_bytes());
-    buf.extend_from_slice(&(32767i16).to_le_bytes());
-    buf.extend_from_slice(&(32767i16).to_le_bytes());
-    buf.extend_from_slice(&(0i16).to_le_bytes());
-    buf.extend_from_slice(&(0i16).to_le_bytes());
-    buf.extend_from_slice(&(0i16).to_le_bytes());
-
-    buf.extend_from_slice(&OP_COLOR.to_le_bytes());
-    buf.extend_from_slice(&5u16.to_le_bytes());
-    buf.extend_from_slice(&OP_POLYZ.to_le_bytes());
-    buf.extend_from_slice(&3u16.to_le_bytes());
-    buf.extend_from_slice(&0u16.to_le_bytes());
-    buf.extend_from_slice(&12u16.to_le_bytes());
-    buf.extend_from_slice(&24u16.to_le_bytes());
-    buf.extend_from_slice(&OP_RETURN.to_le_bytes());
-
-    let res = catch_unwind(AssertUnwindSafe(|| {
-        transpile_sod(&buf, "EXTREME_COORDS", None)
-    }));
-    assert!(res.is_ok(), "Panic on extreme coordinates");
-    let ir = res.unwrap().expect("transpile succeeds");
-    assert_eq!(ir.vertices.len(), 3);
-}
-
-#[test]
-fn test_stress_large_polygon_count() {
+fn fuzz_large_polygon_count() {
     let mut buf = make_sod_header(500, 0, 0, 0);
 
     // Create 500 triangles
@@ -510,13 +437,14 @@ fn test_stress_large_polygon_count() {
     assert_eq!(ir.indices.len(), 500 * 3);
 }
 
-// ---------------------------------------------------------------------------
-// 5. Shift Overflow Vulnerability Verification (OP_SHLV / OP_SHRV)
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Shift amounts (OP_SHLV / OP_SHRV)
+// =============================================================================
 
+/// `OP_SHLV` / `OP_SHRV` accept every shift amount, including >= 32, without panicking.
 #[test]
-fn test_verify_shift_operations_safe_vs_overflow() {
-    // Shifts 0..=31 should not overflow in 32-bit integer arithmetic
+fn matrix_shift_amounts_never_panic() {
+    // Shifts 0..=31 are within the width of the 32-bit accumulator.
     for shift in 0..32u16 {
         let mut buf_shl = make_sod_header(50, 0, 0, 0);
         buf_shl.extend_from_slice(&OP_SHLV.to_le_bytes());
@@ -535,9 +463,8 @@ fn test_verify_shift_operations_safe_vs_overflow() {
         assert!(res_shr.is_ok(), "Panic on OP_SHRV with valid shift {shift}");
     }
 
-    // Shifts >= 32: In Rust, primitive `<< shift` and `>> shift` for i32 panic
-    // when shift >= 32 unless wrapping/checked methods are used.
-    // We document and empirically verify whether these cause thread panics.
+    // Shifts >= 32 are masked to 5 bits by the VM (`wrapping_shl` / `wrapping_shr`), so they
+    // cannot panic; a bare `<<` / `>>` on `i32` would. Pin that for amounts around and above 32.
     for overflow_shift in [32u16, 33, 64, 100, 65535] {
         let mut buf_shl = make_sod_header(50, 0, 0, 0);
         buf_shl.extend_from_slice(&OP_SHLV.to_le_bytes());
@@ -559,8 +486,7 @@ fn test_verify_shift_operations_safe_vs_overflow() {
         }));
         let shr_panicked = res_shr.is_err();
 
-        // The architectural contract mandates: transpile_sod must NEVER panic on untrusted input!
-        // We assert this condition to enforce the contract:
+        // `transpile_sod` must never panic on untrusted input.
         assert!(
             !shl_panicked,
             "VULNERABILITY: OP_SHLV panicked on shift amount {overflow_shift} (attempt to shift left with overflow)"
@@ -572,12 +498,13 @@ fn test_verify_shift_operations_safe_vs_overflow() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// 6. Randomized Fuzzing Harness (20,000 Iterations)
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Randomized fuzzing (fixed seeds, 10,000 iterations each)
+// =============================================================================
 
+/// Random bytes (0..1024) behind a valid header never panic.
 #[test]
-fn test_fuzz_random_bytecode_with_valid_header() {
+fn fuzz_random_bytecode_with_valid_header() {
     let mut rng = XorShift64::new(0xDEAD_BEEF_CAFE_0001);
 
     for i in 0..10_000 {
@@ -598,8 +525,9 @@ fn test_fuzz_random_bytecode_with_valid_header() {
     }
 }
 
+/// Random sequences of valid opcodes with random operand words never panic.
 #[test]
-fn test_fuzz_valid_opcode_sequence_never_panic() {
+fn fuzz_valid_opcode_sequences_with_random_operands() {
     let valid_opcodes = [
         OP_CLRV, OP_GETV, OP_PUTV, OP_INTV, OP_ADDV, OP_SUBV, OP_NEGV, OP_COLOR, OP_POLYZ, OP_IPG,
         OP_VECTORS, OP_RETURN,
@@ -631,8 +559,9 @@ fn test_fuzz_valid_opcode_sequence_never_panic() {
     }
 }
 
+/// Bit flips, overwrites, truncations and insertions of a valid model never panic.
 #[test]
-fn test_fuzz_mutated_valid_sod_never_panic() {
+fn fuzz_mutated_valid_sod() {
     // Generate valid baseline .SOD fixture with header, vectors, color, polyz, return
     let mut baseline = make_sod_header(100, 0, 1, 0); // 10 bytes
     // OP_VECTORS (3 vectors)
