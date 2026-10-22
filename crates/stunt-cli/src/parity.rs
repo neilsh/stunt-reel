@@ -12,6 +12,11 @@
 //! shared `compute_frame_ssim` window evaluator. IoU compares each side's non-sky mask,
 //! which measures framing agreement independently of shading.
 //!
+//! The original fades its palette to black over the film's last ticks and our render has
+//! no fade, so each capture's fade level (see [`fade_level`]) is measured from its
+//! captured palette and the render's luminance is scaled by it before the compensated
+//! SSIM. Frames whose level falls below `--min-fade-level` are reported but not scored.
+//!
 //! `--compare <report.json>` additionally matches the fresh scores against a previous
 //! run by `film_tick` (see [`compare_reports`]), so a change is judged frame by frame
 //! rather than only by the means.
@@ -43,7 +48,14 @@ struct FrameScore {
     ordinal: usize,
     /// Film clock the frame was captured at; selects the rendered `tick_NNNNN.png`.
     film_tick: usize,
+    /// SSIM of the unmodified render.
     ssim: f32,
+    /// SSIM of the render scaled by `fade_level`.
+    ssim_compensated: f32,
+    /// Median ratio of the captured palette's brightness to the static palette's.
+    fade_level: f32,
+    /// Whether `fade_level` reaches the `--min-fade-level` floor.
+    scored: bool,
     iou: f32,
 }
 
@@ -54,6 +66,8 @@ struct Args {
     test: PathBuf,
     output: PathBuf,
     clear_index: u8,
+    /// Frames fading below this level are reported but excluded from the scored means.
+    min_fade_level: f32,
     /// Previous `report.json` to compare the fresh scores against.
     compare: Option<PathBuf>,
     /// Render directory of the previous run, used for before/after contact sheets.
@@ -63,8 +77,10 @@ struct Args {
 /// Usage text printed by `--help`.
 pub(crate) const USAGE: &str =
     "Usage: stuntreel parity --reference <dir> --test <dir> --output <dir> \
-[--clear-index N] [--compare <report.json> [--compare-test <dir>]]
+[--clear-index N] [--min-fade-level F] [--compare <report.json> [--compare-test <dir>]]
 
+  --min-fade-level F       Frames whose measured palette fade level is below F (default
+                           0.25) are reported but left out of the compensated means
   --compare <report.json>  Match frames by film_tick against a previous report and print
                            mean SSIM/IoU deltas, the 5 most improved/regressed frames and
                            the counts changed by more than 0.005; writes compare.json
@@ -78,6 +94,7 @@ impl Args {
         let mut test = None;
         let mut output = None;
         let mut clear_index = 180u8;
+        let mut min_fade_level = 0.25f32;
         let mut compare = None;
         let mut compare_test = None;
 
@@ -103,6 +120,19 @@ impl Args {
                     clear_index = value
                         .parse::<u8>()
                         .map_err(|e| format!("Invalid clear index: {e}"))?;
+                }
+                "--min-fade-level" => {
+                    let value = args
+                        .next()
+                        .ok_or("Expected number after --min-fade-level")?;
+                    min_fade_level = value
+                        .parse::<f32>()
+                        .map_err(|e| format!("Invalid min fade level: {e}"))?;
+                    if !min_fade_level.is_finite() || min_fade_level < 0.0 {
+                        return Err(format!(
+                            "Invalid min fade level: {value} (expected a finite number >= 0)"
+                        ));
+                    }
                 }
                 "--compare" => {
                     compare = Some(PathBuf::from(
@@ -132,6 +162,7 @@ impl Args {
             test: test.ok_or("parity requires --test <dir>")?,
             output: output.ok_or("parity requires --output <dir>")?,
             clear_index,
+            min_fade_level,
             compare,
             compare_test,
         })
@@ -158,6 +189,8 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     let sky_index = sky_index(frames.first(), &args.reference)?;
     let (clear_r, clear_g, clear_b) = get_palette_rgb(args.clear_index);
     let clear_luminance = compute_luminance(clear_r as f32, clear_g as f32, clear_b as f32);
+    let first_plane = read_index_plane(&reference_paths(&args.reference, &frames[0], 1).0)?;
+    let fade_set = fade_reference_set(&first_plane);
 
     let mut sheet_ordinals: BTreeSet<usize> = CONTACT_SHEET_ORDINALS.iter().copied().collect();
     sheet_ordinals.insert(film_ticks.len());
@@ -178,7 +211,9 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             continue;
         }
 
-        let (indices, reference_rescaled) = load_reference(&reference_file, &palette_file)?;
+        let (indices, palette) = load_reference(&reference_file, &palette_file)?;
+        let reference_rescaled = reference_luminance(&indices, &palette);
+        let fade = fade_level(&fade_set, &palette);
         let test_luminance = read_png_luminance(&test_file)?;
 
         let test_rescaled = rescale_mode13h_frame(
@@ -195,30 +230,46 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             11,
             8,
         );
+        let compensated: Vec<f32> = test_rescaled.iter().map(|v| v * fade).collect();
+        let ssim_compensated = compute_frame_ssim(
+            &reference_rescaled,
+            &compensated,
+            MODE13H_WIDTH,
+            ASPECT_CORRECTED_HEIGHT,
+            11,
+            8,
+        );
         let iou = mask_iou(&indices, sky_index, &test_luminance, clear_luminance);
+        let scored = fade >= args.min_fade_level;
 
         scores.push(FrameScore {
             ordinal,
             film_tick,
             ssim,
+            ssim_compensated,
+            fade_level: fade,
+            scored,
             iou,
         });
 
+        // Sheets show the compensated render, which is what was scored.
         if sheet_ordinals.contains(&ordinal) {
-            write_contact_sheet(&args.output, ordinal, &reference_rescaled, &test_rescaled)?;
+            write_contact_sheet(&args.output, ordinal, &reference_rescaled, &compensated)?;
             written_sheets.insert(ordinal);
         }
 
-        worst.push((ssim, ordinal, reference_rescaled, test_rescaled));
-        worst.sort_by(|a, b| a.0.total_cmp(&b.0));
-        worst.truncate(CONTACT_SHEET_WORST);
+        if scored {
+            worst.push((ssim_compensated, ordinal, reference_rescaled, compensated));
+            worst.sort_by(|a, b| a.0.total_cmp(&b.0));
+            worst.truncate(CONTACT_SHEET_WORST);
+        }
     }
 
-    for (_ssim, ordinal, reference_rescaled, test_rescaled) in &worst {
+    for (_ssim, ordinal, reference_rescaled, compensated) in &worst {
         if written_sheets.contains(ordinal) {
             continue;
         }
-        write_contact_sheet(&args.output, *ordinal, reference_rescaled, test_rescaled)?;
+        write_contact_sheet(&args.output, *ordinal, reference_rescaled, compensated)?;
         written_sheets.insert(*ordinal);
     }
 
@@ -233,6 +284,15 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     let mean_ssim = scores.iter().map(|s| s.ssim).sum::<f32>() / matched;
     let min_ssim = scores.iter().map(|s| s.ssim).fold(f32::INFINITY, f32::min);
     let mean_iou = scores.iter().map(|s| s.iou).sum::<f32>() / matched;
+    let scored_frames: Vec<&FrameScore> = scores.iter().filter(|s| s.scored).collect();
+    let excluded_frames = scores.len() - scored_frames.len();
+    let scored_mean = |value: fn(&FrameScore) -> f32| {
+        (!scored_frames.is_empty()).then(|| {
+            scored_frames.iter().map(|s| value(s)).sum::<f32>() / scored_frames.len() as f32
+        })
+    };
+    let mean_ssim_compensated = scored_mean(|s| s.ssim_compensated);
+    let mean_iou_scored = scored_mean(|s| s.iou);
 
     let report = json!({
         "reference_frames": frames.len(),
@@ -243,6 +303,11 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         "mean_ssim": mean_ssim,
         "min_ssim": min_ssim,
         "mean_iou": mean_iou,
+        "min_fade_level": args.min_fade_level,
+        "mean_ssim_compensated": mean_ssim_compensated,
+        "mean_iou_scored": mean_iou_scored,
+        "scored_frames": scored_frames.len(),
+        "excluded_frames": excluded_frames,
         "per_frame": scores
             .iter()
             .map(|s| json!({
@@ -250,6 +315,9 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
                 "film_tick": s.film_tick,
                 "ssim": s.ssim,
                 "iou": s.iou,
+                "ssim_compensated": s.ssim_compensated,
+                "fade_level": s.fade_level,
+                "scored": s.scored,
             }))
             .collect::<Vec<Value>>(),
     });
@@ -264,6 +332,17 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         "[parity] {} frames, mean SSIM {mean_ssim:.3}, mean IoU {mean_iou:.3}, sky index {sky_index}",
         scores.len()
     );
+    match (mean_ssim_compensated, mean_iou_scored) {
+        (Some(ssim), Some(iou)) => println!(
+            "[parity] {} scored frame(s) (fade level >= {:.2}), mean compensated SSIM {ssim:.3}, mean IoU {iou:.3}; {excluded_frames} excluded",
+            scored_frames.len(),
+            args.min_fade_level
+        ),
+        _ => println!(
+            "[parity] no frame reaches the fade floor (fade level >= {:.2}); {excluded_frames} excluded",
+            args.min_fade_level
+        ),
+    }
     if unmatched > 0 {
         println!("[parity] {unmatched} frame(s) missing on one side and skipped");
     }
@@ -290,25 +369,72 @@ fn reference_paths(reference_dir: &Path, frame: &Value, ordinal: usize) -> (Path
     )
 }
 
-/// Loads a captured frame: its palette-index plane and its aspect-corrected luminance.
+/// A 256-entry RGB palette.
+type Palette = Vec<(u8, u8, u8)>;
+
+/// Loads a captured frame: its palette-index plane and its captured palette.
 fn load_reference(
     reference_file: &Path,
     palette_file: &Path,
-) -> Result<(Vec<u8>, Vec<f32>), String> {
-    let indices = read_index_plane(reference_file)?;
-    let palette = read_palette(palette_file)?;
+) -> Result<(Vec<u8>, Palette), String> {
+    Ok((
+        read_index_plane(reference_file)?,
+        read_palette(palette_file)?,
+    ))
+}
+
+/// Aspect-corrected luminance of an index plane seen through `palette`.
+fn reference_luminance(indices: &[u8], palette: &[(u8, u8, u8)]) -> Vec<f32> {
     let mut reference_rgb = Vec::with_capacity(MODE13H_WIDTH * MODE13H_HEIGHT * 3);
-    for &index in &indices {
+    for &index in indices {
         let (r, g, b) = palette[index as usize];
         reference_rgb.extend_from_slice(&[r, g, b]);
     }
-    let rescaled = rescale_mode13h_frame(
+    rescale_mode13h_frame(
         &rgb_to_luminance(&reference_rgb),
         MODE13H_WIDTH,
         MODE13H_HEIGHT,
         ASPECT_CORRECTED_HEIGHT,
-    );
-    Ok((indices, rescaled))
+    )
+}
+
+/// Static palette entries at or below this R+G+B sum are too dark to measure a fade by.
+const FADE_MIN_STATIC_SUM: u32 = 60;
+
+fn rgb_sum((r, g, b): (u8, u8, u8)) -> u32 {
+    u32::from(r) + u32::from(g) + u32::from(b)
+}
+
+/// Palette indices present in `indices` that are bright enough in the static palette to
+/// measure a fade by.
+fn fade_reference_set(indices: &[u8]) -> Vec<u8> {
+    let mut present = [false; 256];
+    for &index in indices {
+        present[index as usize] = true;
+    }
+    (0..=255u8)
+        .filter(|&i| present[i as usize] && rgb_sum(get_palette_rgb(i)) > FADE_MIN_STATIC_SUM)
+        .collect()
+}
+
+/// Fade level of a captured `palette`: the median, over the `set` indices, of the
+/// captured R+G+B sum relative to the static palette's. 1.0 for an empty set; the raw
+/// median is returned (a capture without fade reads about 1.0, slightly off either way).
+fn fade_level(set: &[u8], palette: &[(u8, u8, u8)]) -> f32 {
+    let mut ratios: Vec<f32> = set
+        .iter()
+        .map(|&i| rgb_sum(palette[i as usize]) as f32 / rgb_sum(get_palette_rgb(i)) as f32)
+        .collect();
+    if ratios.is_empty() {
+        return 1.0;
+    }
+    ratios.sort_by(f32::total_cmp);
+    let mid = ratios.len() / 2;
+    if ratios.len().is_multiple_of(2) {
+        (ratios[mid - 1] + ratios[mid]) / 2.0
+    } else {
+        ratios[mid]
+    }
 }
 
 /// Loads a rendered PNG as aspect-corrected luminance.
@@ -350,14 +476,17 @@ fn run_compare(
         println!("[compare] no --compare-test <dir>: before/after contact sheets skipped");
         return Ok(());
     };
-    let ordinals: BTreeMap<u64, usize> = report["per_frame"]
+    let ordinals: BTreeMap<u64, (usize, f32)> = report["per_frame"]
         .as_array()
         .into_iter()
         .flatten()
         .filter_map(|f| {
             Some((
                 f["film_tick"].as_u64()?,
-                usize::try_from(f["ordinal"].as_u64()?).ok()?,
+                (
+                    usize::try_from(f["ordinal"].as_u64()?).ok()?,
+                    f["fade_level"].as_f64()? as f32,
+                ),
             ))
         })
         .collect();
@@ -370,7 +499,7 @@ fn run_compare(
             println!("[compare] no {label} frame: sheet skipped");
             continue;
         };
-        let ordinal = ordinals.get(&delta.film_tick).copied().ok_or_else(|| {
+        let (ordinal, fade) = ordinals.get(&delta.film_tick).copied().ok_or_else(|| {
             format!(
                 "film_tick {} missing from the fresh report",
                 delta.film_tick
@@ -387,9 +516,22 @@ fn run_compare(
         }
         let (reference_file, palette_file) =
             reference_paths(&args.reference, &frames[ordinal - 1], ordinal);
-        let (_indices, reference) = load_reference(&reference_file, &palette_file)?;
-        let before = load_render_rescaled(&before_png)?;
-        let after = load_render_rescaled(&args.test.join(crate::tick_png_name(tick)))?;
+        let (indices, palette) = load_reference(&reference_file, &palette_file)?;
+        let reference = reference_luminance(&indices, &palette);
+        // Compensated comparisons show both renders as scored, at the fresh frame's fade.
+        let scale = if comparison.basis == CompareBasis::Compensated {
+            fade
+        } else {
+            1.0
+        };
+        let scaled = |mut plane: Vec<f32>| {
+            plane.iter_mut().for_each(|v| *v *= scale);
+            plane
+        };
+        let before = scaled(load_render_rescaled(&before_png)?);
+        let after = scaled(load_render_rescaled(
+            &args.test.join(crate::tick_png_name(tick)),
+        )?);
         let path = args
             .output
             .join(format!("compare_{label}_tick_{tick:05}.png"));
@@ -435,9 +577,19 @@ const CHANGED_THRESHOLD: f64 = 0.005;
 /// Number of most improved / most regressed frames listed.
 const COMPARE_TOP: usize = 5;
 
+/// Which SSIM a comparison used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CompareBasis {
+    /// `ssim_compensated` over frames scored in both reports.
+    Compensated,
+    /// Raw `ssim` over every common frame (a report predates fade scoring).
+    Raw,
+}
+
 /// Result of [`compare_reports`].
 #[derive(Debug, Clone, PartialEq)]
 struct Comparison {
+    basis: CompareBasis,
     /// Frames (by `film_tick`) present in both reports.
     common: usize,
     before_only: usize,
@@ -454,14 +606,31 @@ struct Comparison {
     regressed_count: usize,
 }
 
-/// `(ssim, iou)` per `film_tick` of a parsed report; the first entry wins when a
+/// Measurements of one report frame.
+#[derive(Debug, Clone, Copy)]
+struct ReportFrame {
+    ssim: f64,
+    iou: f64,
+    /// `(ssim_compensated, scored)`, absent in reports that predate fade scoring.
+    compensated: Option<(f64, bool)>,
+}
+
+/// Per-`film_tick` frames of a parsed report.
+struct ReportScores {
+    frames: BTreeMap<u64, ReportFrame>,
+    /// Whether every entry carries the fade-scoring fields.
+    fade_aware: bool,
+}
+
+/// Frames of a parsed report keyed by `film_tick`; the first entry wins when a
 /// `film_tick` repeats.
-fn report_scores(report: &Value) -> Result<BTreeMap<u64, (f64, f64)>, String> {
+fn report_scores(report: &Value) -> Result<ReportScores, String> {
     let per_frame = report
         .get("per_frame")
         .and_then(Value::as_array)
         .ok_or("report has no per_frame array")?;
     let mut scores = BTreeMap::new();
+    let mut fade_aware = true;
     for (position, frame) in per_frame.iter().enumerate() {
         let field = |key: &str| {
             frame
@@ -473,20 +642,50 @@ fn report_scores(report: &Value) -> Result<BTreeMap<u64, (f64, f64)>, String> {
             .get("film_tick")
             .and_then(Value::as_u64)
             .ok_or_else(|| format!("per_frame[{position}] has no film_tick"))?;
-        scores
-            .entry(film_tick)
-            .or_insert((field("ssim")?, field("iou")?));
+        let compensated = frame
+            .get("ssim_compensated")
+            .and_then(Value::as_f64)
+            .zip(frame.get("scored").and_then(Value::as_bool));
+        fade_aware &= compensated.is_some();
+        scores.entry(film_tick).or_insert(ReportFrame {
+            ssim: field("ssim")?,
+            iou: field("iou")?,
+            compensated,
+        });
     }
-    Ok(scores)
+    Ok(ReportScores {
+        frames: scores,
+        fade_aware,
+    })
 }
 
 /// Compares two parsed `report.json` values frame by frame, matching on `film_tick`.
 ///
 /// Means cover only the frames present in both reports, so a different matched-frame
-/// count (for example an extended render range) cannot masquerade as a change.
+/// count (for example an extended render range) cannot masquerade as a change. When both
+/// reports carry fade scoring, the compensated SSIM of frames scored in both is compared;
+/// otherwise the raw SSIM of every common frame.
 fn compare_reports(before: &Value, after: &Value) -> Result<Comparison, String> {
-    let before_scores = report_scores(before)?;
-    let after_scores = report_scores(after)?;
+    let (before_report, after_report) = (report_scores(before)?, report_scores(after)?);
+    let basis = if before_report.fade_aware && after_report.fade_aware {
+        CompareBasis::Compensated
+    } else {
+        CompareBasis::Raw
+    };
+    // `(ssim, iou)` of the frames the basis counts.
+    let counted = |report: &ReportScores| -> BTreeMap<u64, (f64, f64)> {
+        report
+            .frames
+            .iter()
+            .filter_map(|(tick, f)| match (basis, f.compensated) {
+                (CompareBasis::Raw, _) => Some((*tick, (f.ssim, f.iou))),
+                (CompareBasis::Compensated, Some((ssim, true))) => Some((*tick, (ssim, f.iou))),
+                (CompareBasis::Compensated, _) => None,
+            })
+            .collect()
+    };
+    let before_scores = counted(&before_report);
+    let after_scores = counted(&after_report);
 
     let mut deltas = Vec::new();
     let (mut ssim_before, mut ssim_after) = (0.0, 0.0);
@@ -506,7 +705,12 @@ fn compare_reports(before: &Value, after: &Value) -> Result<Comparison, String> 
         iou_after += a_iou;
     }
     if deltas.is_empty() {
-        return Err("the reports share no film_tick".to_string());
+        return Err(match basis {
+            CompareBasis::Raw => "the reports share no film_tick".to_string(),
+            CompareBasis::Compensated => {
+                "the reports share no film_tick scored in both".to_string()
+            }
+        });
     }
     let common = deltas.len();
     let n = common as f64;
@@ -537,6 +741,7 @@ fn compare_reports(before: &Value, after: &Value) -> Result<Comparison, String> 
     regressed.truncate(COMPARE_TOP);
 
     Ok(Comparison {
+        basis,
         common,
         before_only: before_scores.len() - common,
         after_only: after_scores.len() - common,
@@ -561,9 +766,20 @@ impl Comparison {
         use std::fmt::Write as _;
 
         let mut out = String::new();
+        let (basis, both) = match self.basis {
+            CompareBasis::Compensated => (
+                "compensated SSIM over frames scored in both runs",
+                "scored in both reports",
+            ),
+            CompareBasis::Raw => (
+                "raw SSIM (a report predates fade scoring)",
+                "in both reports",
+            ),
+        };
+        let _ = writeln!(out, "[compare] basis: {basis}");
         let _ = writeln!(
             out,
-            "[compare] {} frame(s) in both reports ({} only in the previous, {} only in this run)",
+            "[compare] {} frame(s) {both} ({} only in the previous, {} only in this run)",
             self.common, self.before_only, self.after_only
         );
         for (name, mean) in [("SSIM", self.ssim), ("IoU", self.iou)] {
@@ -622,6 +838,10 @@ impl Comparison {
         };
         let mean = |m: MeanChange| json!({ "before": m.before, "after": m.after, "delta": m.after - m.before });
         json!({
+            "basis": match self.basis {
+                CompareBasis::Compensated => "compensated",
+                CompareBasis::Raw => "raw",
+            },
             "common_frames": self.common,
             "before_only_frames": self.before_only,
             "after_only_frames": self.after_only,
@@ -675,7 +895,7 @@ fn read_index_plane(path: &Path) -> Result<Vec<u8>, String> {
 }
 
 /// Reads a 256-entry RGB palette written by the capture harness.
-fn read_palette(path: &Path) -> Result<Vec<(u8, u8, u8)>, String> {
+fn read_palette(path: &Path) -> Result<Palette, String> {
     let text = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let raw: Vec<[i64; 3]> =
         serde_json::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
@@ -828,20 +1048,42 @@ mod tests {
     /// Writes a synthetic reference set with one capture per `film_ticks` entry, or no
     /// `film_tick` fields at all when `tag` is false.
     fn write_reference(dir: &Path, film_ticks: &[u64], tag: bool) {
+        write_reference_faded(dir, film_ticks, tag, &vec![1.0; film_ticks.len()]);
+    }
+
+    /// Index plane of the synthetic captures: a black sky over bright static entries.
+    fn plane_index(i: usize) -> u8 {
+        if i < MODE13H_WIDTH * 4 {
+            0
+        } else {
+            (i % 7) as u8 + 200
+        }
+    }
+
+    /// The static palette with every channel scaled by `scale`.
+    fn scaled_palette(scale: f32) -> Vec<(u8, u8, u8)> {
+        let channel = |v: u8| (f32::from(v) * scale).round() as u8;
+        (0..=255u8)
+            .map(|i| {
+                let (r, g, b) = get_palette_rgb(i);
+                (channel(r), channel(g), channel(b))
+            })
+            .collect()
+    }
+
+    /// Like [`write_reference`], with capture `n`'s palette faded to `scales[n]`.
+    fn write_reference_faded(dir: &Path, film_ticks: &[u64], tag: bool, scales: &[f32]) {
         fs::create_dir_all(dir).unwrap();
-        let palette: Vec<[u8; 3]> = (0..=255u8).map(|i| [i, i, i]).collect();
-        let palette_json = serde_json::to_string(&palette).unwrap();
         let mut frames = Vec::new();
         for (position, film_tick) in film_ticks.iter().enumerate() {
             let ordinal = position + 1;
+            let palette: Vec<[u8; 3]> = scaled_palette(scales[position])
+                .into_iter()
+                .map(|(r, g, b)| [r, g, b])
+                .collect();
+            let palette_json = serde_json::to_string(&palette).unwrap();
             let plane: Vec<u8> = (0..MODE13H_WIDTH * MODE13H_HEIGHT)
-                .map(|i| {
-                    if i < MODE13H_WIDTH * 4 {
-                        0
-                    } else {
-                        (i % 7) as u8 + 1
-                    }
-                })
+                .map(plane_index)
                 .collect();
             fs::write(dir.join(format!("tick_{ordinal:04}.idx")), plane).unwrap();
             fs::write(
@@ -876,6 +1118,17 @@ mod tests {
         image.save(path).unwrap();
     }
 
+    /// Writes the unfaded view of the synthetic capture planes as a render.
+    fn write_matching_render(path: &Path) {
+        let image =
+            image::RgbaImage::from_fn(MODE13H_WIDTH as u32, MODE13H_HEIGHT as u32, |x, y| {
+                let (r, g, b) =
+                    get_palette_rgb(plane_index(y as usize * MODE13H_WIDTH + x as usize));
+                image::Rgba([r, g, b, 255])
+            });
+        image.save(path).unwrap();
+    }
+
     fn run_parity(reference: &Path, test: &Path, output: &Path) -> Result<(), String> {
         run(vec![
             "--reference".to_string(),
@@ -903,6 +1156,200 @@ mod tests {
                 }))
                 .collect::<Vec<Value>>(),
         })
+    }
+
+    /// A report whose entries carry the fade-scoring fields:
+    /// `(film_tick, ssim, ssim_compensated, iou, scored)`.
+    fn fade_report(frames: &[(u64, f64, f64, f64, bool)]) -> Value {
+        json!({
+            "per_frame": frames
+                .iter()
+                .enumerate()
+                .map(|(i, (tick, ssim, compensated, iou, scored))| json!({
+                    "ordinal": i + 1, "film_tick": tick, "ssim": ssim, "iou": iou,
+                    "ssim_compensated": compensated, "fade_level": 1.0, "scored": scored,
+                }))
+                .collect::<Vec<Value>>(),
+        })
+    }
+
+    #[test]
+    fn fade_level_is_one_for_the_static_palette_and_tracks_the_scale() {
+        let all: Vec<u8> = (0..=255).collect();
+        let set = fade_reference_set(&all);
+        assert!(!set.is_empty());
+        assert!((fade_level(&set, &scaled_palette(1.0)) - 1.0).abs() < 1e-6);
+        assert!((fade_level(&set, &scaled_palette(0.5)) - 0.5).abs() < 0.02);
+        assert_eq!(fade_level(&[], &scaled_palette(0.5)), 1.0);
+    }
+
+    #[test]
+    fn fade_level_median_ignores_outlier_entries() {
+        let set = [200u8, 201, 202, 203, 204];
+        let mut palette = scaled_palette(0.5);
+        // Two unfading (UI-like) entries and one blacked out: the median stays put.
+        palette[200] = get_palette_rgb(200);
+        palette[201] = get_palette_rgb(201);
+        palette[204] = (0, 0, 0);
+        assert!((fade_level(&set, &palette) - 0.5).abs() < 0.02);
+        // An even count averages the two middle values.
+        let even = [200u8, 201, 202, 203];
+        let mut palette = scaled_palette(0.2);
+        palette[202] = scaled_palette(0.4)[202];
+        palette[203] = scaled_palette(0.4)[203];
+        assert!((fade_level(&even, &palette) - 0.3).abs() < 0.02);
+    }
+
+    #[test]
+    fn fade_reference_set_keeps_only_present_bright_static_entries() {
+        let indices = [0u8, 0, 1, 200, 200, 201];
+        let set = fade_reference_set(&indices);
+        assert!(set.iter().all(|&i| indices.contains(&i)));
+        assert!(set.iter().all(|&i| rgb_sum(get_palette_rgb(i)) > 60));
+        assert!(set.contains(&200) && set.contains(&201));
+        let dark = (0..=255u8)
+            .find(|&i| rgb_sum(get_palette_rgb(i)) <= 60)
+            .unwrap();
+        assert!(fade_reference_set(&[dark]).is_empty());
+    }
+
+    #[test]
+    fn min_fade_level_flag_parses_defaults_and_rejects_bad_values() {
+        let parse = |extra: &[&str]| {
+            let mut v: Vec<String> = ["--reference", "r", "--test", "t", "--output", "o"]
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect();
+            v.extend(extra.iter().map(|s| (*s).to_string()));
+            Args::parse(v.into_iter())
+        };
+        assert_eq!(parse(&[]).unwrap().min_fade_level, 0.25);
+        assert_eq!(
+            parse(&["--min-fade-level", "0.5"]).unwrap().min_fade_level,
+            0.5
+        );
+        assert_eq!(
+            parse(&["--min-fade-level", "0"]).unwrap().min_fade_level,
+            0.0
+        );
+        for bad in ["-0.1", "NaN", "inf", "abc"] {
+            let error = parse(&["--min-fade-level", bad]).unwrap_err();
+            assert!(error.contains("min fade level"), "{bad}: {error}");
+        }
+        assert!(parse(&["--min-fade-level"]).is_err());
+    }
+
+    #[test]
+    fn faded_frames_below_the_floor_are_reported_but_not_scored() {
+        let tmp = TempDir::new("faded");
+        write_reference_faded(&tmp.join("ref"), &[7, 12, 20], true, &[1.0, 0.5, 0.1]);
+        let test = tmp.join("test");
+        fs::create_dir_all(&test).unwrap();
+        for tick in [7, 12, 20] {
+            write_matching_render(&test.join(crate::tick_png_name(tick)));
+        }
+
+        run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
+        let report = read_report(&tmp.join("out"));
+        assert_eq!(report["scored_frames"], 2);
+        assert_eq!(report["excluded_frames"], 1);
+        assert_eq!(report["min_fade_level"], 0.25);
+        let per_frame = report["per_frame"].as_array().unwrap();
+        let scored: Vec<bool> = per_frame
+            .iter()
+            .map(|f| f["scored"].as_bool().unwrap())
+            .collect();
+        assert_eq!(scored, vec![true, true, false]);
+        let level = |n: usize| per_frame[n]["fade_level"].as_f64().unwrap();
+        assert!((level(0) - 1.0).abs() < 0.02);
+        assert!((level(1) - 0.5).abs() < 0.02);
+        assert!((level(2) - 0.1).abs() < 0.02);
+        // The render matches the unfaded reference, so scaling it by the fade helps.
+        let half = &per_frame[1];
+        assert!(half["ssim_compensated"].as_f64() > half["ssim"].as_f64());
+        // Raw means span all matched frames; the scored means only the first two.
+        let mean_scored = (per_frame[0]["ssim_compensated"].as_f64().unwrap()
+            + half["ssim_compensated"].as_f64().unwrap())
+            / 2.0;
+        assert!((report["mean_ssim_compensated"].as_f64().unwrap() - mean_scored).abs() < 1e-5);
+        let mean_raw = per_frame
+            .iter()
+            .map(|f| f["ssim"].as_f64().unwrap())
+            .sum::<f64>()
+            / 3.0;
+        assert!((report["mean_ssim"].as_f64().unwrap() - mean_raw).abs() < 1e-5);
+        assert!(tmp.join("out").join("contact_0001.png").is_file());
+    }
+
+    #[test]
+    fn no_scored_frame_reports_null_scored_means() {
+        let tmp = TempDir::new("none_scored");
+        write_reference_faded(&tmp.join("ref"), &[7], true, &[0.1]);
+        let test = tmp.join("test");
+        fs::create_dir_all(&test).unwrap();
+        write_matching_render(&test.join(crate::tick_png_name(7)));
+
+        run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
+        let report = read_report(&tmp.join("out"));
+        assert_eq!(report["scored_frames"], 0);
+        assert_eq!(report["excluded_frames"], 1);
+        assert!(report["mean_ssim_compensated"].is_null());
+        assert!(report["mean_iou_scored"].is_null());
+        assert_eq!(report["per_frame"][0]["scored"], false);
+    }
+
+    #[test]
+    fn compare_uses_compensated_ssim_over_frames_scored_in_both() {
+        let before = fade_report(&[
+            (10, 0.2, 0.5, 0.8, true),
+            (20, 0.2, 0.6, 0.8, true),
+            (30, 0.9, 0.9, 0.8, false),
+        ]);
+        let after = fade_report(&[
+            (10, 0.2, 0.7, 0.9, true),
+            (20, 0.2, 0.1, 0.9, false),
+            (30, 0.9, 0.9, 0.9, true),
+            (40, 0.5, 0.5, 0.9, true),
+        ]);
+        let c = compare_reports(&before, &after).expect("comparable");
+        assert_eq!(c.basis, CompareBasis::Compensated);
+        // Only tick 10 is scored in both; 20 and 30 are scored on one side only.
+        assert_eq!((c.common, c.before_only, c.after_only), (1, 1, 2));
+        assert!((c.ssim.before - 0.5).abs() < 1e-9);
+        assert!((c.ssim.after - 0.7).abs() < 1e-9);
+        assert!((c.iou.before - 0.8).abs() < 1e-9);
+        assert!((c.iou.after - 0.9).abs() < 1e-9);
+        assert_eq!(c.to_json()["basis"], "compensated");
+        let text = c.summary();
+        assert!(text.starts_with("[compare] basis: compensated"), "{text}");
+        assert!(text.contains("1 frame(s) scored in both reports"), "{text}");
+    }
+
+    #[test]
+    fn compare_falls_back_to_raw_when_a_report_predates_fade_scoring() {
+        let old = report(&[(10, 0.5, 0.8), (20, 0.6, 0.8)]);
+        let new = fade_report(&[(10, 0.7, 0.99, 0.9, true), (20, 0.8, 0.1, 0.9, false)]);
+        for (before, after) in [(&old, &new), (&new, &old)] {
+            let c = compare_reports(before, after).expect("comparable");
+            assert_eq!(c.basis, CompareBasis::Raw);
+            assert_eq!(c.common, 2);
+            assert_eq!(c.to_json()["basis"], "raw");
+            let text = c.summary();
+            assert!(text.starts_with("[compare] basis: raw SSIM"), "{text}");
+            assert!(text.contains("2 frame(s) in both reports"), "{text}");
+        }
+        let c = compare_reports(&old, &new).unwrap();
+        assert!((c.ssim.before - 0.55).abs() < 1e-9);
+        assert!((c.ssim.after - 0.75).abs() < 1e-9);
+        // A report with a partial set of the new fields is old-style too.
+        let partial = json!({ "per_frame": [
+            { "film_tick": 10, "ssim": 0.5, "iou": 0.5, "ssim_compensated": 0.5, "scored": true },
+            { "film_tick": 20, "ssim": 0.5, "iou": 0.5 },
+        ]});
+        assert_eq!(
+            compare_reports(&partial, &new).unwrap().basis,
+            CompareBasis::Raw
+        );
     }
 
     #[test]
@@ -1042,14 +1489,8 @@ mod tests {
             write_render(&previous.join(crate::tick_png_name(tick)));
             write_render(&current.join(crate::tick_png_name(tick)));
         }
-        // Make the fresh render of tick 12 a flat gray, which happens to score higher.
-        image::RgbaImage::from_pixel(
-            MODE13H_WIDTH as u32,
-            MODE13H_HEIGHT as u32,
-            image::Rgba([9, 9, 9, 255]),
-        )
-        .save(current.join(crate::tick_png_name(12)))
-        .unwrap();
+        // Make the fresh render of tick 12 match the capture, which scores higher.
+        write_matching_render(&current.join(crate::tick_png_name(12)));
 
         run_parity(&tmp.join("ref"), &previous, &tmp.join("base")).expect("baseline");
         let argv = |compare_test: bool| {
