@@ -165,6 +165,7 @@ The gate is `mise run check`, which chains formatting, linting, strict typing, a
 | `check-rust-matrix` | `stunt-core` without the `serde`/`bytemuck` features |
 | `test` | `cargo test --workspace --all-features` and `uv run pytest` |
 | `fmt-rust`, `fmt-py`, `fmt-check-rust`, `fmt-check-py`, `lint-rust`, `lint-py`, `test-rust`, `test-py` | single-language halves of the tasks above |
+| `cov-rust` | `cargo llvm-cov` line-coverage summary for `stunt-core` and `stunt-gltf` (not part of `check`) |
 | `cov-py` | `pytest` with `--cov=stunt_reel` term-missing report (no fail-under) |
 | `deny` | `cargo deny check` — advisories, license allow-list, wildcard bans, and registry sources |
 | `capture-ref` | reference capture into `build/parity/reference/ctry` (`--max-frames` defaults to 140) |

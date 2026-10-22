@@ -1,6 +1,6 @@
 [tools]
 # Rust toolchain (provides rustc and cargo)
-rust = "latest"
+rust = { version = "latest", components = "llvm-tools-preview" }
 
 # Python & modern packaging toolchain
 python = "3.11"
@@ -8,6 +8,9 @@ uv = "latest"
 
 # Supply-chain auditing for Cargo manifests (advisories, licenses, sources)
 "cargo:cargo-deny" = "latest"
+
+# Line coverage for the Rust crates (`mise run cov-rust`); not part of `check`.
+"cargo:cargo-llvm-cov" = "latest"
 
 # JVM + Kaitai Struct Compiler for executing research/formats/**/*.ksy during verification.
 # Java is required only to compile .ksy schemas; generated parsers run on the
@@ -98,6 +101,10 @@ run = "uv run mypy"
 [tasks.test-rust]
 description = "Run Rust unit and integration tests"
 run = "cargo test --locked --workspace --all-features"
+
+[tasks.cov-rust]
+description = "Line coverage for the Rust format crates (stunt-core, stunt-gltf)"
+run = "cargo llvm-cov --locked -p stunt-core -p stunt-gltf --all-features --summary-only"
 
 [tasks.test-py]
 description = "Run Python pytest suite"
