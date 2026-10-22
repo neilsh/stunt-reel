@@ -13,15 +13,19 @@ One authored timeline record: a duration plus the state changes applied over it.
 _Avoid_: frame, keyframe, tick
 
 **Tick**:
-One discrete simulation step at the film's authored rate (20 or 30 Hz). A slice spans zero or more ticks.
+One discrete simulation step on the film's 50 Hz playback clock (20 ms). A slice spans zero or more ticks.
 _Avoid_: frame, slice
 
 **Tick duration**:
-The number of ticks a slice spans; zero denotes a slice that changes state without advancing time.
+The number of ticks elapsed since the previous slice; zero denotes a slice that changes state without advancing time. Cumulative tick duration gives a slice's timestamp.
 _Avoid_: slice duration, frame count
 
+**Timeline**:
+A film's slices placed on the 50 Hz clock by cumulative tick duration. Playback and export sample the timeline at arbitrary ticks or wall-clock times, interpolating between slice keyframes.
+_Avoid_: track, sequence
+
 **Trajectory record**:
-The evaluated snapshot of camera, actors, and audio cues for one slice. This is what the renderer consumes.
+The evaluated snapshot of camera, actors, and audio cues at a slice timestamp or at an interpolated tick sampled from the timeline. This is what the renderer consumes.
 _Avoid_: trajectory tick, frame
 
 **Trajectory**:

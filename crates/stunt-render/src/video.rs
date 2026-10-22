@@ -1,7 +1,7 @@
 //! Streaming video container exporter piping raw RGBA frames to `ffmpeg`.
 //!
 //! Complies with Architectural Invariants:
-//! - `[I4]` Discrete simulation ticks (20/30 Hz) temporal authoring.
+//! - `[I4]` Discrete simulation ticks (50 Hz) temporal authoring.
 //! - `[I6]` 4:3 physical display aspect ratio presentation.
 
 use std::io::Write;
@@ -94,6 +94,22 @@ impl FfmpegVideoWriter {
     /// - `height`: Frame height in pixels (e.g. 240).
     /// - `fps`: Container framerate matching simulation tick frequency (Invariant `[I4]`, e.g. 30.0).
     pub fn open(path: &Path, width: u32, height: u32, fps: f32) -> Result<Self, VideoExportError> {
+        Self::open_with_duration(path, width, height, fps, None)
+    }
+
+    /// Spawns an `ffmpeg` process and trims the container to an authored duration.
+    ///
+    /// A constant frame rate cannot represent an arbitrary authored span exactly
+    /// (`frame_count / fps` rounds to whole frames). Passing the authored duration
+    /// adds ffmpeg's `-t` cut so the container length matches the film clock rather
+    /// than the last encoded frame boundary.
+    pub fn open_with_duration(
+        path: &Path,
+        width: u32,
+        height: u32,
+        fps: f32,
+        duration_seconds: Option<f32>,
+    ) -> Result<Self, VideoExportError> {
         let mut cmd = Command::new("ffmpeg");
         cmd.arg("-y")
             .arg("-f")
@@ -125,8 +141,16 @@ impl FfmpegVideoWriter {
             .arg("yuv420p")
             .arg("-aspect")
             .arg("4:3")
-            .arg("-an")
-            .arg(path);
+            .arg("-an");
+
+        if let Some(duration) = duration_seconds
+            && duration.is_finite()
+            && duration > 0.0
+        {
+            cmd.arg("-t").arg(format!("{duration:.6}"));
+        }
+
+        cmd.arg(path);
 
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::null())

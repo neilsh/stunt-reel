@@ -3,7 +3,7 @@
 Directly mirrors Rust contracts in crates/stunt-core/src/contracts/trajectory.rs.
 Governed by architectural invariants:
 - [I1] Metric right-handed coordinate basis (+X right, +Y up, +Z toward viewer, -Z forward)
-- [I4] Decoupled fixed simulation ticks (20/30 Hz) with sub-tick interpolation
+- [I4] Decoupled fixed simulation ticks (50 Hz) with sub-tick interpolation
 """
 
 from __future__ import annotations

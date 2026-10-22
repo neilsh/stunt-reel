@@ -1,7 +1,7 @@
 """VGA Port 0x03DA vertical retrace trap and simulation tick deduplication.
 
 Synchronizes capture with VGA vertical blanking while downsampling 70 Hz CRT
-presentation frames to discrete 20/30 Hz simulation ticks per Invariant [I4].
+presentation frames to the 50 Hz simulation clock per Invariant [I4].
 """
 
 from __future__ import annotations

@@ -3,7 +3,7 @@
 //! Reference specs: `[fmt flm]`, `[R-FLM-CAM-01]`, `[R-MEM-ACTOR-01]`, `[I4]`
 //! Governed by architectural invariants:
 //! - `[I1]` Metric right-handed coordinate basis (+Y up, +Z toward viewer, -Z forward)
-//! - `[I4]` Decoupled fixed simulation ticks (20/30 Hz) with sub-tick interpolation
+//! - `[I4]` Decoupled fixed simulation ticks (50 Hz) with sub-tick interpolation
 
 /// Evaluated camera transform at a discrete simulation tick.
 ///
@@ -128,7 +128,7 @@ pub struct AudioCue {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrajectoryRecord {
-    /// Simulation tick index (advancing at 20 Hz or 30 Hz per `[I4]`).
+    /// Simulation tick index (advancing at 50 Hz per `[I4]`).
     pub tick: u32,
     /// Active camera orientation and projection parameters.
     pub camera: CameraTransform,

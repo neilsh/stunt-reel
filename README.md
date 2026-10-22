@@ -89,13 +89,13 @@ mise run play        # or: .\play_ctry.bat
 ```bash
 mise run capture-ref
 cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
-    --all corpus/stisldem/VAULT/CTRY.ALL --frames 1..141 \
+    --all corpus/stisldem/VAULT/CTRY.ALL --frames 1..1343 --sample-count 140 \
     --out-dir build/parity/ours/ctry --width 320 --height 200
 cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry \
-    --test build/parity/ours/ctry --output build/parity/report/ctry
+    --test build/parity/ours/ctry --output build/parity/report/ctry --clear-index 233
 ```
 
-`--frames` is half-open, so `1..141` renders ordinals 1–140, matching the 140 ticks `capture-ref` captures by default. The comparator writes `report.json` (per-frame `ssim`/`iou`, `mean_ssim`, `min_ssim`, `mean_iou`, `sky_index`, `unmatched`) and `contact_NNNN.png` sheets under `build/parity/report/ctry/`.
+`capture-ref` stores 140 rendered reference frames. `--frames 1..1343` selects the full authored 1,342-tick span and `--sample-count 140` renders 140 evenly spaced samples over it, numbered `frame_0001.png`–`frame_0140.png` for the comparator. The comparator writes `report.json` (per-frame `ssim`/`iou`, `mean_ssim`, `min_ssim`, `mean_iou`, `sky_index`, `unmatched`) and `contact_NNNN.png` sheets under `build/parity/report/ctry/`.
 
 Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`, and a free port `58991`. How the dialog is driven (BIOS Data Area keystrokes) and how frames are sampled (post-retrace breakpoint at `0D51:0C5E`) is recorded in [`docs/SPEC.md § 3.6`](docs/SPEC.md#36-visual-parity-capture-loop-playoneexe-vs-stuntreel) and [`research/playone-exe/capture.md`](research/playone-exe/capture.md).
 
@@ -105,28 +105,28 @@ Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`, and a free port 
 cargo run -p stunt-cli -- corpus/stisldem/VAULT/CTRY.FLM --all corpus/stisldem/VAULT/CTRY.ALL
 ```
 
-Opens the interactive presentation (Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits). `--help` lists the headless flags, `--frames <A..B>`, `--ticks`, and the `parity` subcommand.
+Opens the interactive presentation (Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits). Interactive playback follows the authored 50 Hz timeline and interpolates between slices. `--help` lists the headless flags, `--frames <A..B>` (1-based 50 Hz tick ordinals), `--ticks`, and the `parity` subcommand.
 
 ### Export a film to video container
 
 ```powershell
-# Export film sequence to an MP4 video at authentic simulation tick rate (30 Hz)
+# Export film sequence to an MP4 video sampled at 30 fps
 cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
     --all corpus/stisldem/VAULT/CTRY.ALL --video build/ctry.mp4
 ```
 
-Headless video export renders one frame per authored slice and encodes it directly into a standard video container (`.mp4`, `.webm`, `.mkv`, or `.avi`) via `ffmpeg`, using `--fps` (default 30) and physical $4:3$ aspect ratio correction ($320 \times 240$, `[I6]`). `tick_duration` is decoded but not yet consumed, so container duration is `slice_count / fps`, not the authored tick span; `CTRY.FLM` has 140 slices but spans 1,342 ticks (about 67.1 s at 20 Hz). Requires `ffmpeg` on `PATH`.
+Headless video export samples the authored 50 Hz timeline at `--fps` (default 30), interpolates between slices, and encodes directly into a standard video container (`.mp4`, `.webm`, `.mkv`, or `.avi`) via `ffmpeg`, with physical $4:3$ aspect ratio correction ($320 \times 240$, `[I6]`). `--frames <A..B>` limits the export to a half-open range of 1-based tick ordinals. `CTRY.FLM` spans 1,342 ticks (26.84 s), producing 806 sampled frames at 30 fps; the container is trimmed to the authored span, so ffmpeg encodes 805 frames and ffprobe reports 26.833 s (nearest whole frame; 26.84 s exactly at `--fps 50`). Requires `ffmpeg` on `PATH`.
 
 ### Interval-based frame capture for rapid audits
 
 ```powershell
-# Capture every 5th frame to accelerate visual regression audits and reduce disk usage
+# Capture one frame every 25 ticks (0.5 s) across the full 1,342-tick film
 cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
-    --all corpus/stisldem/VAULT/CTRY.ALL --frames 1..141 --frame-step 5 \
+    --all corpus/stisldem/VAULT/CTRY.ALL --frames 1..1343 --frame-step 25 \
     --out-dir build/parity/ours/ctry_sparse
 ```
 
-`--frame-step <N>` extracts frames at regular interval steps, saving sequentially indexed zero-padded frames (`frame_0001.png`, `frame_0006.png`, etc.) without redundant disk consumption.
+`--frames` uses 1-based 50 Hz tick ordinals; `--frame-step <N>` extracts every Nth tick, saving zero-padded frames (`frame_0001.png`, `frame_0026.png`, etc.) without redundant disk consumption.
 
 ### Validate the format catalog against a local corpus
 

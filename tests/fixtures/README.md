@@ -61,3 +61,10 @@ A minimal TAP display list referencing `synthetic_anchors.bin` by byte offset:
   - `OP_COLOR` (`0x0129`, palette index 40) then `OP_POLYZ` (`0x00f3`, 3 registers) and `OP_RETURN` (`0x0195`).
 - Used by `sod_tap_test.rs` to prove variable operand width, anchor resolution, and non-degenerate polygon emission.
 
+### 8. `synthetic_timeline.flm` (148 bytes)
+A three-slice film exercising authored `tick_duration` and timeline sampling:
+- **Slice 0** at tick 0 (`tick_duration = 0`): `max_obj = 2`, camera slot 0 (`view_obj 0`), actor slot 1 (`shape_id 1`), `ENGINE.VOC` cue, camera at `(0, 10, 50)` and actor at `(0, 10, 0)`.
+- **Slice 1** at tick 2 (`tick_duration = 2`): camera to `(0, 10, 48)`, actor to `(0, 10, 2)`.
+- **Slice 2** at tick 12 (`tick_duration = 10`): `view_obj 1` (camera cut), `WIND.VOC` cue, camera slot to `(0, 10, 40)`, actor remains at `(0, 10, 2)`.
+- Used by `crates/stunt-core/tests/flm_timeline_test.rs` to verify cumulative timestamps, interpolation, cut suppression, and audio-cue intervals.
+

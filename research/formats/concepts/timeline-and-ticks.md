@@ -9,19 +9,19 @@
 
 ## 1. Overview & Mathematical / Hardware Principles
 
-*Stunt Island*'s cinematic replay engine (`PLAYONE.EXE`, `MAKEONE.EXE`) executes deterministic choreography streams recorded in `.FLM` files. Unlike interactive game engines that integrate physics dynamically per frame with variable time deltas ($\Delta t$), Stunt Island films operate as discrete, pre-recorded animation timelines running at fixed simulation clock frequencies.
+*Stunt Island*'s cinematic replay engine (`PLAYONE.EXE`, `MAKEONE.EXE`) executes deterministic choreography streams recorded in `.FLM` files. Unlike interactive game engines that integrate physics dynamically per frame with variable time deltas ($\Delta t$), Stunt Island films operate as discrete, pre-recorded animation timelines running at a fixed simulation clock frequency. **`PLAYONE.EXE` programs the 8254 PIT at 50 Hz for playback (`[Established]`); the earlier 20/30 Hz figures in this document were inferred from render-loop timing and are superseded by the disassembly evidence in § 1.1.**
 
 ```
 +-------------------------------------------------------------------------------+
-| Discrete Simulation Clock (20 Hz / 30 Hz) [I4]                                |
-| - Fixed step: delta_t = 50.0 ms (20 Hz) or 33.33 ms (30 Hz)                   |
+| Discrete Simulation Clock (50 Hz) [I4]                                        |
+| - Fixed step: delta_t = 20.0 ms                                               |
 | - Keyframe state: CameraTransform, ActorTransform[], AudioCue[]               |
 +-------------------------------------------------------------------------------+
                                       │
                                       ▼
 +-------------------------------------------------------------------------------+
 | Presentation Loop (Unlocked Framerate >= 60 FPS)                              |
-| - Fractional sub-tick parameter: alpha = (t_render - t_cur) / delta_t in [0..1)|
+| - Fractional sub-tick parameter: alpha = (t_render - t_slice) / (20 ms * tick_duration)|
 | - Continuity evaluation: cut_from_previous flag or ||P_{t+1} - P_t|| > 50 m   |
 +-------------------------------------------------------------------------------+
                   │                                           │
@@ -38,11 +38,13 @@
 ### 1.1 Hardware Timer Principles in MS-DOS
 In 1992 IBM PC-compatibles, fixed simulation timing was governed by the Intel 8253/8254 Programmable Interval Timer (PIT) driving hardware Interrupt Request 0 (`IRQ0` / `INT 08h`):
 - **Base Oscillator Frequency:** $1.193182\text{ MHz}$ ($1{,}193{,}182\text{ ticks/second}$).
-- **Standard DOS Tick:** Pit divisor `0x0000` (65,536) yields the default $\approx 18.2065\text{ Hz}$ timer tick.
-- **Stunt Island Reprogrammed Divisors:**
-  - **$20\text{ Hz}$ Mode ($\Delta t = 50.0\text{ ms}$):** Divisor $1193182 / 20 = 59659$ (`0xE90B`).
-  - **$30\text{ Hz}$ Mode ($\Delta t = 33.33\text{ ms}$):** Divisor $1193182 / 30 = 39773$ (`0x9B5D`).
-- **Display Retrace Decoupling:** The VGA cathode-ray tube raster beam refreshed at $70\text{ Hz}$ (vertical retrace every $14.28\text{ ms}$, monitored on I/O port `0x03DA`). Because $70\text{ Hz}$ is not an integer multiple of $20\text{ Hz}$ or $30\text{ Hz}$, the engine updated simulation state inside the PIT timer interrupt while the rendering loop polled port `0x03DA` for vertical blanking (`[MEM-VSYNC-03DA]`).
+- **Standard DOS Tick:** Pit divisor `0x0000` (65,536) yields the default $\approx 18.2065\text{ Hz}$ timer tick. `PLAYONE.EXE` restores this divisor on exit (`0x0EB6`, `0x0EC5`).
+- **Stunt Island Playback Divisor:** The installed INT 8 handler is programmed with divisor `0x5D38` = $23{,}864$ (`0x5189`, `0x51CC` load `cx = 0x5D38` and jump to the PIT setter at `0x36F7`):
+  $$\frac{1{,}193{,}182}{23{,}864} = 49.9992\text{ Hz} \approx 50\text{ Hz} \qquad \Delta t = 20.0\text{ ms}$$
+  No `0xE90B` (20 Hz) or `0x9B5D` (30 Hz) divisor exists in the unpacked image. The earlier 20/30 Hz figures were inferred from the render loop's observed frame cadence, not from the programmed timer.
+- **Interrupt Path (`[Established]`):** The 50 Hz handler at `0x53AF` calls the engine tick routine at `0x43A5` on every interrupt. `0x43A5` increments the global 16-bit tick counter at `DGROUP:0x22B8` (`inc word ptr [0x22B8]`) whenever the playback-active flag `DGROUP:0x2272` is non-zero. Live DOSBox-X sampling confirms both `DGROUP:0x22B8` and the active film clock at `DGROUP:0x4896` advance together at 50 Hz during `CTRY.FLM` playback.
+- **Film Advancement (`[Supported Inference]`):** The film reader at `0x3A88` compares the active film clock (`[bx+0x0E]`, struct base `0x4888` -> `DGROUP:0x4896`) against the current slice's start tick; when the slice's interval expires, the next slice's `tick_duration` byte (offset `+0x02`) is read at `0x3B8D`, added to the start tick at `0x3B19`, and its pose is loaded. Division of elapsed ticks by `tick_duration` (`0x3AE9`–`0x3AF7`) produces the sub-tick interpolation factor used by the renderer. The sibling `0x474A` struct's `+0x0E` field (`0x4758`) reads 0 during live playback and is not the active clock.
+- **Display Retrace Decoupling:** The VGA cathode-ray tube raster beam refreshed at $70\text{ Hz}$ (vertical retrace every $14.28\text{ ms}$, monitored on I/O port `0x03DA`). Presentation and simulation are decoupled: the rendering loop polls `0x03DA` for vertical blanking, while simulation time advances in the 50 Hz PIT interrupt (`[MEM-VSYNC-03DA]`). When rendering cannot keep up, a frame advances several simulation ticks at once; this is why capture timing alone overestimates the tick interval.
 
 ---
 
@@ -64,7 +66,7 @@ Type:    u8                    u8                    u8
    - For Slice 0: `prev_slice_len == 0x0000`.
    - For Slice $i \ge 1$: `prev_slice_len == &slice[i] - &slice[i-1]`.
    - **Editing Room Back-Pointer:** Enables the Stunt Island VCR editor to execute instantaneous reverse stepping (`REVERSE STEP`) without maintaining random-access index tables in conventional memory.
-2. **`tick_duration` (`u8`):** The number of simulation ticks that elapse during this slice. A value of $10$ indicates $10$ ticks (e.g. $10 \times 50\text{ ms} = 0.5\text{ s}$ at $20\text{ Hz}$).
+2. **`tick_duration` (`u8`):** The number of 50 Hz simulation ticks ($20.0\text{ ms}$ each) elapsed since the previous slice; it is the transition interval that ends at this slice's authored pose. Slice $i$'s timestamp is the cumulative sum $\sum_{k \le i} \text{tick\_duration}_k$ (slice 0 at tick 0, normally with duration 0). A value of $10$ is a $200\text{ ms}$ transition; $0$ applies the slice at the same tick as its predecessor (event bursts, instantaneous cuts). Authored values range $0$–$127$ across all 627,696 corpus slices. See [`../flm.md` § 2.1.1](../flm.md#211-tick_duration-semantics--corpus-distribution) for the distribution and the engine anchors.
 
 ### 2.2 Object Lifecycle Bitfield (`type_flags: u8`)
 
@@ -109,7 +111,9 @@ Opcode bytes are partitioned into four functional classes by their upper two bit
 To render smooth 60+ FPS motion without stepping or jitter, the presentation engine computes continuous actor and camera transforms between discrete simulation ticks $t$ and $t+1$.
 
 Given continuous wall-clock presentation time $T_{\text{render}}$:
-$$\alpha = \frac{T_{\text{render}} - T_t}{T_{t+1} - T_t} \in [0.0, 1.0)$$
+$$\alpha = \frac{T_{\text{render}} - T_{\text{slice}}}{20\text{ ms} \times \text{tick\_duration}} \in [0.0, 1.0)$$
+
+`tick_duration` varies per slice, so the interval $T_{t+1} - T_t$ is not a constant; it is the slice's authored duration in 50 Hz ticks. A zero-duration slice has no interval to interpolate and must be applied at the same timestamp as its successor.
 
 #### 1. Position Linear Interpolation (Lerp)
 $$\mathbf{P}_{\text{render}}(\alpha) = (1.0 - \alpha)\mathbf{P}_t + \alpha \mathbf{P}_{t+1}$$
@@ -169,7 +173,7 @@ Opcode `0x9C` payload consists of 3 bytes: `[arg1: u8, arg2_lo: u8, arg2_hi: u8]
 
 | Invariant | System Rule | Concrete Implementation |
 | :--- | :--- | :--- |
-| **`[I4]`** | Discrete Simulation Ticks | Ticks evaluate at fixed $20\text{ Hz}$ / $30\text{ Hz}$ clock. Unlocked rendering uses sub-tick $\alpha$. |
+| **`[I4]`** | Discrete Simulation Ticks | Ticks evaluate at a fixed $50\text{ Hz}$ clock ($20.0\text{ ms}$). Unlocked rendering uses sub-tick $\alpha$ across each slice's `tick_duration`. |
 | **`[I4]`** | Instantaneous Cut Suppression | $\alpha_{\text{eff}} = 0.0$ when `cut_from_previous == true` or $\|\Delta\mathbf{P}\| > 50.0\text{ m}$. |
 | **`[I1]`** | Metric Coordinates & Unit Quaternions | Trajectory positions in meters; rotations converted to normalized unit quaternions ($\pm 10^{-4}$). |
 | **`[I7]`** | Cleanroom Asset Isolation | All choreography evaluation tests run 100% offline using `oracle_intro_trajectory.json`. |
@@ -181,7 +185,7 @@ Opcode `0x9C` payload consists of 3 bytes: `[arg1: u8, arg2_lo: u8, arg2_hi: u8]
 1. **`[BK-TIME-01]` Opcode Class `0xF0` in Film File Tails** (`[Bounded Observation]`): Observed in corrupted trailing bytes of `CORSAIR.FLM`. Unclear whether this represents an unmapped extended opcode or an uninitialized write buffer artifact.
 2. **`[BK-TIME-02]` Variable Table Register Depth** (`[Supported Inference]`): Slices update `nextvar[0..15]` registers via opcodes `0x80`–`0x8F`. Whether more than 16 registers exist in `PLAYONE.EXE`'s runtime state table remains under investigation.
 3. **`[BK-TIME-03]` Propeller Subobject Blur Transition Threshold** (`[Established]`): Confirmed from Adrian Stephens' 1997 notes that parameter `9` controls propeller angular velocity, triggering visual substitution of 3D blades with a semi-transparent disc when speed exceeds threshold.
-4. **`[BK-TIME-04]` Variable Frame Rate Throttle Under Heavy Polygon Loads** (`[Hypothesis]`): Hypothesis that original real-mode `PLAYONE.EXE` dropped internal tick evaluation below $20\text{ Hz}$ when scene rendering exceeded a threshold count of 8254 PIT timer ticks.
+4. **`[BK-TIME-04]` Render Frame Drops Do Not Slow Simulation** (`[Supported Inference]`): The 50 Hz PIT interrupt continues to advance the tick counters while the VGA-synchronized render loop draws; a slow renderer therefore advances several simulation ticks between frames rather than reducing the tick rate. Direct measurement of ticks-per-rendered-frame under emulated load remains open.
 
 ---
 

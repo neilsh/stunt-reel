@@ -6,6 +6,7 @@
 pub mod interpolate;
 pub mod parity;
 pub mod parser;
+pub mod timeline;
 
 pub use interpolate::{
     CAMERA_CUT_DISPLACEMENT_THRESHOLD_METERS, bam_to_radians, detect_camera_cut, evaluate_sub_tick,
@@ -20,6 +21,7 @@ pub use parser::{
     FlmParser, SIF_ANIMATES, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW,
     SIFILM_MAX_OBJ, Slice, SlotState,
 };
+pub use timeline::{FilmTimeline, SliceKeyframe, TIMELINE_HZ, TIMELINE_TICK_SECONDS};
 
 use crate::contracts::trajectory::{ActorTransform, CameraTransform, TrajectoryRecord};
 use std::fmt;
@@ -142,10 +144,10 @@ impl<'a> FlmPlayer<'a> {
         })
     }
 
-    /// Advance simulation by one discrete tick and return the evaluated [`TrajectoryRecord`].
+    /// Advance to the next authored slice and return its evaluated state plus duration.
     ///
     /// Returns `None` when the film stream terminates or if an unrecoverable error occurs.
-    pub fn step_tick(&mut self) -> Option<TrajectoryRecord> {
+    pub fn step_slice(&mut self) -> Option<(TrajectoryRecord, u8)> {
         if self.last_error.is_some() {
             return None;
         }
@@ -257,12 +259,52 @@ impl<'a> FlmPlayer<'a> {
             actors.push(actor);
         }
 
-        Some(TrajectoryRecord {
-            tick,
-            camera,
-            actors,
-            audio_cues: slice.sound_cues,
-        })
+        Some((
+            TrajectoryRecord {
+                tick,
+                camera,
+                actors,
+                audio_cues: slice.sound_cues,
+            },
+            slice.tick_duration,
+        ))
+    }
+
+    /// Advance simulation by one slice and return the evaluated [`TrajectoryRecord`].
+    ///
+    /// The record's `tick` field remains the slice ordinal for backward compatibility;
+    /// use [`Self::evaluate_timeline`] for authored 50 Hz timestamps and sampling.
+    pub fn step_tick(&mut self) -> Option<TrajectoryRecord> {
+        self.step_slice().map(|(record, _duration)| record)
+    }
+
+    /// Evaluate all remaining slices into a 50 Hz timeline with authored timestamps.
+    ///
+    /// Conversely to [`Self::evaluate_all`], each record's `tick` is the cumulative
+    /// `tick_duration` at which that slice is reached, and audio cues carry the same
+    /// authored tick.
+    pub fn evaluate_timeline(&mut self) -> Result<FilmTimeline, FlmError> {
+        let mut slices = Vec::new();
+        let mut total_ticks = 0u32;
+
+        while let Some((mut record, tick_duration)) = self.step_slice() {
+            total_ticks = total_ticks.saturating_add(u32::from(tick_duration));
+            record.tick = total_ticks;
+            for cue in &mut record.audio_cues {
+                cue.tick = total_ticks;
+            }
+            slices.push(SliceKeyframe {
+                record,
+                tick: total_ticks,
+                tick_duration,
+            });
+        }
+
+        if let Some(err) = self.take_last_error() {
+            return Err(err);
+        }
+
+        Ok(FilmTimeline::new(slices, self.warnings().to_vec()))
     }
 
     /// Evaluate all remaining slices in the film stream into a continuous sequence of records.

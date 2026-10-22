@@ -11,7 +11,7 @@
 //! - `[I1]` Metric right-handed coordinate basis (+Y up, +Z toward viewer, -Z forward)
 //! - `[I2]` Flat contiguous arena allocation (`Vec<SodNode>` indexed by `NodeId(u32)`)
 //! - `[I3]` Fixed VGA Mode 13h palette index color correspondence
-//! - `[I4]` Decoupled fixed simulation ticks (20/30 Hz) with sub-tick interpolation
+//! - `[I4]` Decoupled fixed simulation ticks (50 Hz) with sub-tick interpolation
 //! - `[I5]` Coplanar decal identification and normal displacement rules
 //! - `[I6]` Visual parity acceptance thresholds (SSIM >= 0.88 / 0.90)
 //! - `[I8]` Uppercase DOS 8.3 filename normalization

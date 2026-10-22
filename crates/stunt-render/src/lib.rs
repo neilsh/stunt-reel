@@ -5,7 +5,7 @@
 //! - `[I1]` Right-handed metric coordinate basis (+X Right, +Y Up, -Z Forward).
 //! - `[I2]` Flat arena allocation without self-referential pointers.
 //! - `[I3]` VGA Mode 13h 256-color palette lookup texture with `@interpolate(flat)`.
-//! - `[I4]` Discrete simulation ticks (20/30 Hz) with sub-tick interpolation.
+//! - `[I4]` Discrete simulation ticks (50 Hz) with sub-tick interpolation.
 //! - `[I5]` Dual-pipeline hardware depth bias pass for coplanar decals.
 //! - `[I6]` 4:3 physical aspect ratio ($320 \times 240$) and SSIM parity evaluation.
 #![deny(unsafe_code)]

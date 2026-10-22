@@ -1,7 +1,7 @@
 # Runtime Memory Map & Real-Mode Offsets
 
 * **Target Binary**: `PLAYONE.EXE` (Unpacked LZEXE 0.91 image)
-* **Base Load Data Segment (`DGROUP`)**: Segment `0x0D51` (file offset `0xD910` in unpacked image)
+* **Image Dump Base**: paragraph `0x0D51` (file offset `0xD910` in the unpacked image). This is the snapshot base used by earlier dumps, **not** the runtime `DS`. In the captured session `CS = 0x0F17` and `DS = 0x1575`; table offsets are `DS`-relative. See [`research/playone-exe/memory.md`](../research/playone-exe/memory.md) § 3.1.
 * **Linear Address Formula**:
   $$\text{Address}_{\text{linear}} = (\text{Segment} \ll 4) + \text{Offset} = (\text{Segment} \times 16) + \text{Offset}$$
 
@@ -41,15 +41,15 @@
 * **Evidentiary Tier**: `[Established]`.
 
 ### # [MEM-FLM-TICK]
-* **Segment / Scope**: `DGROUP` (Segment `0x0D51`, Offset `0x0C60`, Linear `0x0E170`)
+* **Segment / Scope**: Runtime `DS` offset `0x22B8` (global 50 Hz tick) and `0x4896` (active film clock, struct base `0x4888` + `0x0E`). In the captured session `DS = 0x1575`; the image dump starts at segment `0x0D51`, which is a snapshot base, not `DS`. The historic `0x0C60` label is retired: in the unpacked image that offset is the entry instruction `mov bx, ss`, and no code references `DGROUP:0x0C60`. `0x4758` is a sibling `0x474A` struct field and reads 0 during playback.
 * **Data Type**: 16-bit unsigned integer (`u16`)
-* **Behavior**: Advances strictly once per unique simulation time slice (20 Hz or 30 Hz). Because Mode 13h refreshes at 70 Hz, the streamer gates snapshot capture on:
+* **Behavior**: The INT 8 handler increments `0x22B8` once per 20 ms tick while the playback flag `0x2272` is set; the active film clock at `0x4896` advances in lockstep. Live sampling on `CTRY.FLM` shows the film clock running 5 ticks ahead of the global counter: ≈31 when the first film frame is captured (global 26) and ≈1355 at the last animated frame (global 1350), consistent with the film's 1,342 authored ticks plus a short static hold. Because Mode 13h refreshes at 70 Hz and rendering can drop frames, a single rendered frame may advance several ticks; the streamer gates snapshot capture on:
   $$\text{current\_tick} > \text{last\_captured\_tick}$$
   preventing duplicate frame capture.
-* **Evidentiary Tier**: `[Established]`.
+* **Evidentiary Tier**: `[Established]` (static disassembly plus live DOSBox-X sampling).
 
 ### # [MEM-CAMERA-RIG]
-* **Segment / Scope**: `DGROUP` (Segment `0x0D51`, Offset `0x0C10`, Linear `0x0E120`)
+* **Segment / Scope**: Runtime `DS` offset `0x0C10` (the concrete `DS` value depends on the load base; in the captured session `DS = 0x1575`).
 * **Evidentiary Tier**: `[Established]`.
 * **Byte Layout Specification (32 bytes)**:
   * `+0x00` (`f32` / `16.16 i32` LE, 4B): Camera Eye World X coordinate in meters `[I1]`.
@@ -65,7 +65,7 @@
   * `+0x1E` (`u16` LE, 2B): Reserved / structure alignment padding.
 
 ### # [MEM-ACTOR-TABLE]
-* **Segment / Scope**: Dynamic Heap Buffer addressed by Far Pointer at `0x0D51:0C50` (or local stage block `0x0D51:0CA0`)
+* **Segment / Scope**: Dynamic heap buffer addressed by the far pointer at `DS:0x0C50` (or the local stage block at `DS:0x0CA0`)
 * **Evidentiary Tier**: `[Established]`.
 * **Byte Layout Specification (64 bytes per actor entry)**:
   * `+0x00` (`u32` LE, 4B): Actor Channel ID (unique index within `.FLM` choreography).

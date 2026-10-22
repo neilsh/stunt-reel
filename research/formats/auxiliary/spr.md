@@ -159,7 +159,7 @@ The technical specifications and byte layouts for the `.SPR` format are synthesi
   - Defines the billboard quad vertices and texture coordinate mapping for sprite presentation.
   - Preserves 8-bit palette indices in vertex records (`SodVertex::palette_index`) for flat shading and LUT evaluation per `[I3]`.
 - **`crates/stunt-core/src/contracts/trajectory.rs` (`Seam 2: TrajectoryRecord`):**
-  - Evaluates camera-relative billboarding orientations at discrete $20/30\text{ Hz}$ simulation ticks `[I4]`.
+  - Evaluates camera-relative billboarding orientations at discrete $50\text{ Hz}$ simulation ticks `[I4]`.
 
 ### 7.2 Synthetic Test Fixtures (`tests/fixtures/`)
 

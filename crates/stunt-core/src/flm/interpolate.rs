@@ -2,7 +2,7 @@
 //!
 //! Adheres strictly to:
 //! - `[I1]` Right-handed metric coordinate basis (+X Right, +Y Up, +Z Backward, -Z Forward)
-//! - `[I4]` Discrete simulation ticks (20/30 Hz) with sub-tick interpolation and cut suppression
+//! - `[I4]` Discrete simulation ticks (50 Hz) with sub-tick interpolation and cut suppression
 
 use crate::contracts::trajectory::{ActorTransform, CameraTransform, TrajectoryRecord};
 use std::f32::consts::TAU;

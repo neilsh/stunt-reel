@@ -54,7 +54,7 @@ Rigorous byte-level disassembly and cross-corpus mathematical analysis across **
 | :---: | :--- | :---: | :--- | :---: |
 | `+0x00` | `prev_slice_len_lo` | `u8` | Low 8 bits of previous slice byte length | `[Established]` |
 | `+0x01` | `prev_slice_len_hi` | `u8` | High 8 bits of previous slice byte length | `[Established]` |
-| `+0x02` | `tick_duration` | `u8` | Elapsed simulation ticks for this slice | `[Established]` |
+| `+0x02` | `tick_duration` | `u8` | Ticks elapsed since the previous slice, in 50 Hz ticks ($20.0\text{ ms}$ each); cumulative sum gives this slice's timestamp; $0$ = same tick as previous slice | `[Established]` |
 
 Together:
 $$\text{prev\_slice\_len} = \text{prev\_slice\_len\_lo} \mid (\text{prev\_slice\_len\_hi} \ll 8)$$
@@ -64,6 +64,24 @@ $$\text{prev\_slice\_len} = \text{prev\_slice\_len\_lo} \mid (\text{prev\_slice\
 - **Slice $i \ge 1$:** $\text{prev\_slice\_len}$ equals the exact byte distance from the start of slice $i-1$ to the start of slice $i$.
 - **VCR Reverse Scrubbing:** This field is the **reverse-scrubbing back-pointer** used by the Stunt Island Editing Room VCR engine to execute frame-by-frame rewinding (`REVERSE STEP`) without requiring random-access disk index tables!
 - **Resolution of Historical Anomaly:** Because $98.5\%$ of slices are $< 256$ bytes in length, `prev_slice_len_hi` is $0$. When previous tools read Byte 0 (`prev_slice_len_lo`) and then read a 16-bit word at Bytes 1..2 (`prev_slice_len_hi | (tick_duration << 8)`), the word naturally evaluated to `tick_duration * 256`!
+
+### 2.1.1 `tick_duration` Semantics & Corpus Distribution
+
+`tick_duration` is the wall-clock interval elapsed since the previous slice, not a count of keyframes or a per-slice constant. `PLAYONE.EXE` advances its 50 Hz PIT tick counter (see [`concepts/timeline-and-ticks.md` § 1.1](concepts/timeline-and-ticks.md#11-hardware-timer-principles-in-ms-dos)); while loading a slice, it reads this byte and adds it to the running start tick (`0x3B8D` → `0x3B19`) before the slice pose is applied. The timestamp of slice $i$ is therefore $\sum_{k \le i}\text{tick\_duration}_k$, and the renderer interpolates from the previous pose to the current one across that interval. Slice 0 carries duration 0 and establishes the initial pose at tick 0.
+
+Measured over all 561 walkable retail films (627,696 slices, 4,843,398 ticks):
+
+| Property | Value |
+| :--- | :--- |
+| Tick clock | $50\text{ Hz}$ ($20.0\text{ ms}$/tick) |
+| Distinct authored durations | $0$–$127$ (all 128 values occur) |
+| Zero-duration slices | 142,171 ($22.65\%$); applied at the same tick as the next slice |
+| Most common durations | $10$ (194,761), $0$ (142,171), $11$ (64,302), $1$ (35,144), $12$ (34,697) |
+| Total corpus duration | $4{,}843{,}398 / 50 = 96{,}868\text{ s} \approx 26.9\text{ h}$ |
+| `CTRY.FLM` | 140 slices, 1,342 ticks, $26.84\text{ s}$ |
+| `INTRO.FLM` | 538 slices, 3,822 ticks, $76.44\text{ s}$ |
+
+The dominant 10–11 tick modes are 200–220 ms keyframe intervals. Zero-duration slices carry event bursts (credits, sound cues, camera switches) that must be processed in file order without advancing time. A consumer that emits one record per slice (rather than expanding by `tick_duration`) compresses `CTRY.FLM` to 140 ticks ($2.8\text{ s}$ at 50 Hz) and loses all sub-tick motion.
 
 ### 2.2 End-of-Film Epilogue (`[Established]`)
 

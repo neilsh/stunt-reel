@@ -6,7 +6,7 @@ Verifies:
 - MockTransport in-memory emulation and LiveSocketTransport framing
 - TacClient memory reading, writing, and debugger commands
 - BDA keystroke buffer ring arithmetic, wrapping, overflow, and modal dialog navigation
-- Hardware V-Sync trap arming and 70 Hz -> 20/30 Hz tick deduplication
+- Hardware V-Sync trap arming and 70 Hz -> 50 Hz tick deduplication
 - TrajectoryStreamer 600-tick kinematics, unit quaternion invariant, zero matrix tearing,
   and position RMSE <= 0.01 m against baseline fixture
 """
@@ -655,7 +655,7 @@ def test_bda_punctuation_scan_codes() -> None:
 
 
 def test_vsync_trap_tick_deduplication() -> None:
-    """Verify V-Sync trap deduplication downsampling 70 Hz frames to 20/30 Hz ticks."""
+    """Verify V-Sync trap deduplication downsampling 70 Hz frames to 50 Hz ticks."""
     assert PORT_VGA_STATUS == 0x03DA
     assert math.isclose(VGA_REFRESH_HZ, 70.087, rel_tol=1e-3)
 

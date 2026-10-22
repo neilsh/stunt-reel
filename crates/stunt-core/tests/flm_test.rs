@@ -3,7 +3,7 @@
 //! Verifies:
 //! - Seam 2 [`TrajectoryRecord`] generation
 //! - Invariant `[I1]`: Metric right-handed coordinates (+X Right, +Y Up, +Z Back, -Z Forward), unit quaternions
-//! - Invariant `[I4]`: Discrete simulation ticks (20/30 Hz), cut detection and suppression
+//! - Invariant `[I4]`: Discrete simulation ticks (50 Hz), cut detection and suppression
 //! - Gate G04: Positional RMSE <= 0.01 m against `tests/fixtures/oracle_intro_trajectory.json`
 //! - Complete opcode decoding, lifecycle slots, and error handling
 

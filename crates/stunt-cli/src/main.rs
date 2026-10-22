@@ -23,7 +23,9 @@ use stunt_core::contracts::{
     CameraTransform, NodeKind, SodModelIr, SodVertex, TrajectoryRecord, VisibilityCondition,
     get_palette_rgb_float,
 };
-use stunt_core::flm::{CAMERA_FORWARD, FlmPlayer};
+use stunt_core::flm::{
+    CAMERA_FORWARD, FilmTimeline, SliceKeyframe, TIMELINE_HZ, TIMELINE_TICK_SECONDS,
+};
 use stunt_core::sod::transpile_sod;
 use stunt_render::{
     ASPECT_4_3, CameraController, CameraGpuResources, CameraMode, FfmpegVideoWriter, GpuMeshSlice,
@@ -44,7 +46,7 @@ pub struct CliConfig {
     pub sod_path: Option<PathBuf>,
     pub all_path: Option<PathBuf>,
     pub out_dir: Option<PathBuf>,
-    /// Half-open `[start, end)` trajectory ordinals to render; `None` renders all.
+    /// Half-open `[start, end)` 1-based tick ordinals to render; `None` renders all.
     pub frame_range: Option<(usize, usize)>,
     pub width: u32,
     pub height: u32,
@@ -54,6 +56,7 @@ pub struct CliConfig {
     pub max_ticks: Option<usize>,
     pub video_path: Option<PathBuf>,
     pub frame_step: usize,
+    pub sample_count: Option<usize>,
     pub fps: f32,
 }
 
@@ -77,6 +80,7 @@ impl CliConfig {
         let mut max_ticks = None;
         let mut video_path = None;
         let mut frame_step = 1usize;
+        let mut sample_count = None;
         let mut fps = 30.0f32;
 
         while let Some(arg) = args.next() {
@@ -117,6 +121,16 @@ impl CliConfig {
                         return Err("Frame step must be greater than zero".to_string());
                     }
                     frame_step = step;
+                }
+                "--sample-count" => {
+                    let val = args.next().ok_or("Expected number after --sample-count")?;
+                    let count = val
+                        .parse::<usize>()
+                        .map_err(|e| format!("Invalid sample count: {e}"))?;
+                    if count == 0 {
+                        return Err("Sample count must be greater than zero".to_string());
+                    }
+                    sample_count = Some(count);
                 }
                 "--fps" => {
                     let val = args.next().ok_or("Expected number after --fps")?;
@@ -190,6 +204,13 @@ impl CliConfig {
             headless = true;
         }
 
+        if video_path.is_some() && sample_count.is_some() {
+            return Err("--sample-count cannot be combined with --video".to_string());
+        }
+        if sample_count.is_some() && out_dir.is_none() {
+            return Err("--sample-count requires --out-dir".to_string());
+        }
+
         if sod_path.is_none() {
             if let Some(flm) = &flm_path
                 && all_path.is_none()
@@ -240,6 +261,7 @@ impl CliConfig {
             max_ticks,
             video_path,
             frame_step,
+            sample_count,
             fps,
         })
     }
@@ -277,16 +299,17 @@ impl CliConfig {
         println!(
             "  --all <movie.all>    Bind every actor shape_id to its .SOD chunk in the archive"
         );
-        println!("  --out-dir <dir>      Render every trajectory tick to <dir>/frame_NNNN.png");
-        println!(
-            "  --frames <A..B>      Half-open ordinals to render with --out-dir (default: all)"
-        );
+        println!("  --out-dir <dir>      Render sampled 50 Hz ticks to <dir>/frame_NNNN.png");
+        println!("  --frames <A..B>      Half-open 1-based tick ordinals to render (default: all)");
         println!(
             "  --video <file>       Render film to video container (.mp4, .webm, .mkv, .avi) via ffmpeg"
         );
-        println!("  --frame-step <N>     Capture interval step when rendering frames (default: 1)");
+        println!("  --frame-step <N>     Tick stride for --out-dir frame extraction (default: 1)");
         println!(
-            "  --fps <HZ>           Video container framerate; one frame per authored slice (default: 30)"
+            "  --sample-count <N>   Render N evenly spaced frames across the selected tick range"
+        );
+        println!(
+            "  --fps <HZ>           Video sampling rate; container duration follows authored ticks (default: 30)"
         );
         println!(
             "  --width <px>         Offscreen framebuffer width (default 320, 256-byte pitch)"
@@ -295,7 +318,7 @@ impl CliConfig {
         println!("  --clear-index <i>    Mode 13h palette index used to clear the framebuffer");
         println!("  --headless           Run in offscreen headless mode without opening a window");
         println!("  --output, -o <file>  Save offscreen rendered frame to PNG file");
-        println!("  --ticks <count>      Maximum simulation ticks to evaluate");
+        println!("  --ticks <count>      Maximum authored 50 Hz ticks to evaluate/render");
         println!("  -h, --help           Print this help information");
         println!();
         println!("Subcommands:");
@@ -435,40 +458,40 @@ pub fn load_or_create_model(path: Option<&Path>) -> SodModelIr {
     }
 }
 
-/// Evaluates trajectory records from an authored .FLM file, or synthesizes a circular orbit.
-pub fn load_or_synthesize_trajectory(
-    path: Option<&Path>,
-    max_ticks: Option<usize>,
-) -> Vec<TrajectoryRecord> {
-    let authored = path.and_then(|p| {
-        let bytes = fs::read(p).ok()?;
-        let mut player = FlmPlayer::new(&bytes).ok()?;
-        let limit = max_ticks.unwrap_or(600);
-        let mut records = Vec::new();
-        while let Some(rec) = player.step_tick() {
-            records.push(rec);
-            if records.len() >= limit {
-                break;
+/// Evaluates a 50 Hz timeline from an authored `.FLM` file, or synthesizes a circular orbit.
+pub fn load_or_synthesize_timeline(path: Option<&Path>, max_ticks: Option<usize>) -> FilmTimeline {
+    if let Some(path) = path
+        && let Ok(bytes) = fs::read(path)
+    {
+        match FilmTimeline::from_bytes(&bytes) {
+            Ok(timeline) if !timeline.slices().is_empty() => {
+                for warning in timeline.warnings() {
+                    eprintln!("[stuntreel] {warning}");
+                }
+                return match max_ticks {
+                    Some(limit) => {
+                        timeline.truncated_to_ticks(u32::try_from(limit).unwrap_or(u32::MAX))
+                    }
+                    None => timeline,
+                };
             }
+            Ok(_) => eprintln!(
+                "[stuntreel] {} contained no slices; using synthetic trajectory",
+                path.display()
+            ),
+            Err(err) => eprintln!(
+                "[stuntreel] failed to evaluate {}: {err}; using synthetic trajectory",
+                path.display()
+            ),
         }
-        for warning in player.warnings() {
-            eprintln!("[stuntreel] {warning}");
-        }
-        if let Some(err) = player.take_last_error() {
-            eprintln!("[stuntreel] trajectory ended early: {err}");
-        }
-        (!records.is_empty()).then_some(records)
-    });
-    if let Some(records) = authored {
-        return records;
     }
 
-    // Synthesize 60-tick circular fly-by trajectory
-    let count = max_ticks.unwrap_or(60);
-    let mut records = Vec::with_capacity(count);
+    // Synthesize a one-second circular fly-by: 60 keyframes, one per 20 ms tick.
+    let count = max_ticks.unwrap_or(60).max(1);
+    let mut slices = Vec::with_capacity(count);
 
     for tick in 0..count {
-        let t = tick as f32 * 0.1;
+        let t = tick as f32 * TIMELINE_TICK_SECONDS;
         let eye_x = 40.0 * t.cos();
         let eye_z = 40.0 * t.sin();
 
@@ -480,20 +503,34 @@ pub fn load_or_synthesize_trajectory(
             cut_from_previous: tick == 0,
         };
 
-        records.push(TrajectoryRecord {
+        slices.push(SliceKeyframe {
+            record: TrajectoryRecord {
+                tick: tick as u32,
+                camera,
+                actors: Vec::new(),
+                audio_cues: Vec::new(),
+            },
             tick: tick as u32,
-            camera,
-            actors: Vec::new(),
-            audio_cues: Vec::new(),
+            tick_duration: if tick == 0 { 0 } else { 1 },
         });
     }
 
-    records
+    FilmTimeline::new(slices, Vec::new())
 }
 
-/// Determines whether an input trajectory uses legacy DOS fixed-point coordinates
-/// (where altitude above sea level and east coordinates are negative).
-fn is_legacy_trajectory(trajectory: &[TrajectoryRecord]) -> bool {
+/// Backwards-compatible slice-level loader used by callers that do not sample time.
+pub fn load_or_synthesize_trajectory(
+    path: Option<&Path>,
+    max_ticks: Option<usize>,
+) -> Vec<TrajectoryRecord> {
+    load_or_synthesize_timeline(path, max_ticks)
+        .slices()
+        .iter()
+        .map(|slice| slice.record.clone())
+        .collect()
+}
+
+fn is_legacy_refs(trajectory: &[&TrajectoryRecord]) -> bool {
     let has_positive_altitude = trajectory.iter().any(|rec| {
         rec.camera.eye[1] > 0.5 || rec.actors.iter().any(|act| act.position_meters[1] > 0.5)
     });
@@ -510,6 +547,23 @@ fn is_legacy_trajectory(trajectory: &[TrajectoryRecord]) -> bool {
                 .iter()
                 .any(|act| act.position_meters[1] < 0.0 || act.position_meters[0] < -500.0)
     })
+}
+
+/// Determines whether an input trajectory uses legacy DOS fixed-point coordinates
+/// (where altitude above sea level and east coordinates are negative).
+#[cfg(test)]
+fn is_legacy_trajectory(trajectory: &[TrajectoryRecord]) -> bool {
+    let records: Vec<&TrajectoryRecord> = trajectory.iter().collect();
+    is_legacy_refs(&records)
+}
+
+fn is_legacy_timeline(timeline: &FilmTimeline) -> bool {
+    let records: Vec<&TrajectoryRecord> = timeline
+        .slices()
+        .iter()
+        .map(|slice| &slice.record)
+        .collect();
+    is_legacy_refs(&records)
 }
 
 /// Adapts legacy raw negative elevation (.FLM coordinates where -X and -Y are flipped)
@@ -540,6 +594,26 @@ fn adapt_actor_position(mut pos: [f32; 3], is_legacy: bool) -> [f32; 3] {
     pos
 }
 
+/// Evenly spaced ticks covering the half-open range `[start_tick, end_tick)`,
+/// including the first tick and the final tick in the range.
+///
+/// Used by `--sample-count` so the final authored tick is represented.
+fn even_sample_ticks(start_tick: usize, end_tick: usize, count: usize) -> Vec<f32> {
+    let span = end_tick.saturating_sub(start_tick).max(1);
+    let last_offset = span.saturating_sub(1) as f32;
+    let divisor = count.saturating_sub(1).max(1) as f32;
+    (0..count)
+        .map(|index| {
+            let offset = if count > 1 {
+                index as f32 * last_offset / divisor
+            } else {
+                0.0
+            };
+            start_tick as f32 + offset
+        })
+        .collect()
+}
+
 /// Executes headless rendering without window creation.
 pub fn run_headless(config: &CliConfig) -> Result<(), String> {
     println!("[stuntreel] Starting headless offscreen presentation...");
@@ -549,12 +623,44 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
             .map_err(|e| format!("create output directory {}: {e}", out_dir.display()))?;
     }
 
+    let timeline = load_or_synthesize_timeline(config.flm_path.as_deref(), config.max_ticks);
+    let first_record = timeline.sample(0.0);
+    println!(
+        "[stuntreel] Loaded {} slices, {} ticks ({:.3} s at {} Hz)",
+        timeline.slices().len(),
+        timeline.total_ticks(),
+        timeline.duration_seconds(),
+        TIMELINE_HZ
+    );
+    let is_legacy = is_legacy_timeline(&timeline);
+
+    let cap_ticks = config
+        .max_ticks
+        .map_or(timeline.total_ticks(), |limit| {
+            u32::try_from(limit).unwrap_or(u32::MAX)
+        })
+        .min(timeline.total_ticks());
+    let (start_ord, end_ord) = config
+        .frame_range
+        .unwrap_or((1, usize::try_from(cap_ticks).unwrap_or(usize::MAX) + 1));
+    let start_ord = start_ord.max(1);
+    let end_ord = end_ord.min(usize::try_from(cap_ticks).unwrap_or(usize::MAX) + 1);
+    let start_tick = start_ord - 1;
+    let end_tick = end_ord.saturating_sub(1).max(start_tick + 1);
+    let span_seconds = (end_tick - start_tick) as f32 * TIMELINE_TICK_SECONDS;
+
     let mut video_writer = if let Some(video_path) = &config.video_path {
         if !FfmpegVideoWriter::is_available() {
             return Err("ffmpeg executable not found on PATH. Video export requires ffmpeg (https://ffmpeg.org). Please install ffmpeg or add it to PATH.".to_string());
         }
-        let writer = FfmpegVideoWriter::open(video_path, config.width, config.height, config.fps)
-            .map_err(|e| format!("Failed to open video writer: {e}"))?;
+        let writer = FfmpegVideoWriter::open_with_duration(
+            video_path,
+            config.width,
+            config.height,
+            config.fps,
+            Some(span_seconds),
+        )
+        .map_err(|e| format!("Failed to open video writer: {e}"))?;
         Some(writer)
     } else {
         None
@@ -566,10 +672,6 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
         "[stuntreel] camera forward: {}",
         if CAMERA_FORWARD[2] < 0.0 { "-Z" } else { "+Z" }
     );
-
-    let trajectory = load_or_synthesize_trajectory(config.flm_path.as_deref(), config.max_ticks);
-    println!("[stuntreel] Loaded {} trajectory records", trajectory.len());
-    let is_legacy = is_legacy_trajectory(&trajectory);
 
     // `--all` binds every actor to its archive chunk, so `--sod` and the synthetic
     // fallback model do not participate in parity frames.
@@ -617,7 +719,7 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
             .clone()
             .unwrap_or_else(|| PathBuf::from("stuntreel_capture.png"));
 
-        if let Some(first_tick) = trajectory.first() {
+        if let Some(first_tick) = first_record.as_ref() {
             let cam = adapt_camera_transform(first_tick.camera, is_legacy);
             camera.set_authored_transform(cam);
             println!(
@@ -646,7 +748,7 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
                 );
                 draws.push((world_model, base_meshes, decal_meshes));
             }
-            if let Some(first_tick) = trajectory.first() {
+            if let Some(first_tick) = first_record.as_ref() {
                 let cam = adapt_camera_transform(first_tick.camera, is_legacy);
                 let eye = Vec3::from_array(cam.eye);
                 for actor in &first_tick.actors {
@@ -668,7 +770,7 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
                 }
             }
         } else if let Some(gpu_model) = &single_model {
-            if let Some(first_tick) = trajectory.first()
+            if let Some(first_tick) = first_record.as_ref()
                 && let Some(actor) = first_tick
                     .actors
                     .iter()
@@ -711,21 +813,50 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
         return Ok(());
     }
 
-    let (start, end) = config.frame_range.unwrap_or((1, trajectory.len() + 1));
     let frame_step = config.frame_step.max(1);
+
+    if video_writer.is_some() && config.sample_count.is_some() {
+        return Err("--sample-count cannot be combined with --video".to_string());
+    }
+
+    let mut samples: Vec<(usize, TrajectoryRecord)> = Vec::new();
+    if video_writer.is_some() {
+        let count = (span_seconds * config.fps).ceil() as usize;
+        let tick_step = TIMELINE_HZ / config.fps;
+        for index in 0..count {
+            let tick = start_tick as f32 + index as f32 * tick_step;
+            if tick >= end_tick as f32 {
+                break;
+            }
+            if let Some(record) = timeline.sample(tick) {
+                samples.push((index + 1, record));
+            }
+        }
+    } else if let Some(count) = config.sample_count {
+        for (index, tick) in even_sample_ticks(start_tick, end_tick, count)
+            .into_iter()
+            .enumerate()
+        {
+            if let Some(record) = timeline.sample(tick) {
+                samples.push((index + 1, record));
+            }
+        }
+    } else {
+        for ordinal in (start_ord..end_ord).step_by(frame_step) {
+            let tick = ordinal - 1;
+            if tick >= end_tick {
+                break;
+            }
+            if let Some(record) = timeline.sample(tick as f32) {
+                samples.push((ordinal, record));
+            }
+        }
+    }
+
     let mut written_pngs = 0usize;
     let mut written_video_frames = 0usize;
 
-    for (idx, record) in trajectory.iter().enumerate() {
-        let ordinal = idx + 1;
-        if ordinal < start || ordinal >= end {
-            continue;
-        }
-
-        if (ordinal - start) % frame_step != 0 {
-            continue;
-        }
-
+    for (ordinal, record) in samples {
         let cam = adapt_camera_transform(record.camera, is_legacy);
         camera.set_authored_transform(cam);
         let eye = Vec3::from_array(cam.eye);
@@ -736,7 +867,7 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
         if let Some(bundle) = &bundle {
             if let Some(world_model) = &bundle.world_model {
                 let (base_meshes, decal_meshes) = world_model.collect_visible_meshes(1, 0.0);
-                if ordinal == start {
+                if ordinal == start_ord {
                     println!(
                         "[stuntreel] loop frame {ordinal} world_model draws: {} base meshes ({:?}), {} decal meshes ({:?})",
                         base_meshes.len(),
@@ -854,10 +985,6 @@ pub fn run_headless(config: &CliConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// Simulation ticks advance at one of two authored rates; interactive playback uses the
-/// 30 Hz default while the headless path renders one record per ordinal.
-const INTERACTIVE_TICK_HZ: f32 = 30.0;
-
 /// Renderable scene bound for interactive presentation.
 enum InteractiveScene {
     /// Single cleanroom or `--sod` model anchored at the world origin.
@@ -900,10 +1027,9 @@ struct WindowApp {
     depth_view: Option<wgpu::TextureView>,
     camera: CameraController,
     scene: Option<InteractiveScene>,
-    trajectory: Vec<TrajectoryRecord>,
+    timeline: FilmTimeline,
     is_legacy: bool,
-    current_tick_idx: usize,
-    tick_accumulator: f32,
+    current_tick: f32,
     paused: bool,
     last_frame_time: Instant,
     max_texture_dimension_2d: u32,
@@ -918,9 +1044,8 @@ struct WindowApp {
 
 impl WindowApp {
     fn new(config: CliConfig) -> Self {
-        let trajectory =
-            load_or_synthesize_trajectory(config.flm_path.as_deref(), config.max_ticks);
-        let is_legacy = is_legacy_trajectory(&trajectory);
+        let timeline = load_or_synthesize_timeline(config.flm_path.as_deref(), config.max_ticks);
+        let is_legacy = is_legacy_timeline(&timeline);
         Self {
             config,
             window: None,
@@ -934,10 +1059,9 @@ impl WindowApp {
             depth_view: None,
             camera: CameraController::default(),
             scene: None,
-            trajectory,
+            timeline,
             is_legacy,
-            current_tick_idx: 0,
-            tick_accumulator: 0.0,
+            current_tick: 0.0,
             paused: false,
             last_frame_time: Instant::now(),
             max_texture_dimension_2d: 2048,
@@ -976,17 +1100,16 @@ impl WindowApp {
         }
     }
 
-    /// Advances the authored timeline at the fixed simulation rate `[I4]`.
+    /// Advances the authored timeline in wall-clock time `[I4]`.
     fn advance_timeline(&mut self, dt: f32) {
-        if self.paused || self.trajectory.is_empty() {
+        if self.paused {
             return;
         }
-        let tick_duration = 1.0 / INTERACTIVE_TICK_HZ;
-        self.tick_accumulator += dt;
-        while self.tick_accumulator >= tick_duration {
-            self.tick_accumulator -= tick_duration;
-            self.current_tick_idx = (self.current_tick_idx + 1) % self.trajectory.len();
+        let total_ticks = self.timeline.total_ticks();
+        if total_ticks == 0 {
+            return;
         }
+        self.current_tick = (self.current_tick + dt * TIMELINE_HZ) % total_ticks as f32;
     }
 
     fn render(&mut self, dt: f32) {
@@ -1015,9 +1138,9 @@ impl WindowApp {
             return;
         };
 
-        let record = self.trajectory.get(self.current_tick_idx);
+        let record = self.timeline.sample(self.current_tick);
         if self.camera.mode == CameraMode::Authored
-            && let Some(record) = record
+            && let Some(record) = record.as_ref()
         {
             let cam = adapt_camera_transform(record.camera, self.is_legacy);
             self.camera.set_authored_transform(cam);
@@ -1516,6 +1639,51 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_even_sample_ticks_include_endpoints() {
+        assert_eq!(even_sample_ticks(0, 3, 3), vec![0.0, 1.0, 2.0]);
+        assert_eq!(even_sample_ticks(0, 1342, 3), vec![0.0, 670.5, 1341.0]);
+        assert_eq!(even_sample_ticks(5, 6, 1), vec![5.0]);
+    }
+
+    #[test]
+    fn test_tick_range_and_sample_options_parse() {
+        let config = CliConfig::parse_from(
+            vec![
+                "film.flm".to_string(),
+                "--frames".to_string(),
+                "2..10".to_string(),
+                "--frame-step".to_string(),
+                "3".to_string(),
+                "--sample-count".to_string(),
+                "5".to_string(),
+                "--out-dir".to_string(),
+                "out".to_string(),
+                "--fps".to_string(),
+                "50".to_string(),
+            ]
+            .into_iter(),
+        )
+        .expect("parse succeeds");
+
+        assert_eq!(config.frame_range, Some((2, 10)));
+        assert_eq!(config.frame_step, 3);
+        assert_eq!(config.sample_count, Some(5));
+        assert_eq!(config.fps, 50.0);
+
+        assert!(
+            CliConfig::parse_from(
+                vec![
+                    "film.flm".to_string(),
+                    "--sample-count".to_string(),
+                    "5".to_string()
+                ]
+                .into_iter()
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn test_is_legacy_trajectory_detection() {

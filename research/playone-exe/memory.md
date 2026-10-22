@@ -8,8 +8,8 @@ This document details the real-mode x86 memory layout, static data segment (`DGR
 
 `PLAYONE.EXE` executes as a 16-bit MS-DOS real-mode application. Static variables, string literals, and system buffers reside within the primary data segment `DGROUP`.
 
-* **DGROUP Segment**: `0x0D51` (unpacked file offset `0xD910`)
-* **Register Context**: `DS` points to `DGROUP` throughout core execution.
+* **Image Dump Base**: paragraph `0x0D51` (unpacked file offset `0xD910`). This is the snapshot base used by earlier dumps, not the runtime segment.
+* **Runtime Register Context**: in the captured session `CS = 0x0F17` and `DS = 0x1575`; table offsets below are `DS`-relative.
 
 ### DGROUP Offset Reference Table
 
@@ -29,13 +29,16 @@ This document details the real-mode x86 memory layout, static data segment (`DGR
 | `0x0C10` | 32-byte Struct | Active camera rig descriptor (`# [MEM-CAMERA-RIG]`) |
 | `0x0C50` | 32-bit Far Pointer | Dynamic actor channel table heap pointer (`# [MEM-ACTOR-TABLE]`) |
 | `0x0C5E` | Code Offset | Post-0x03DA vertical retrace breakpoint trap target |
-| `0x0C60` | 16-bit Word (`u16`) | Monotonic simulation tick counter (`# [MEM-FLM-TICK]`) |
+| `0x0C60` | — | Historic tick-counter label; no code reference exists in the unpacked image (see § 3.1) |
 | `0x2263` | 8-bit Byte | Active video/display mode flag |
 | `0x2264` | 8-bit Byte | Sound driver hardware mode |
 | `0x2265` | 8-bit Byte | Audio playback channel flag |
+| `0x22B8` | 16-bit Word (`u16`) | Monotonic 50 Hz global timer tick (`# [MEM-FLM-TICK]`) |
 | `0x22C4` | 16-bit Word | Stored PSP segment address |
 | `0x22CE` | 16-bit Word | Preserved `SS` register during `INSTALL.EXE` child execution |
 | `0x22D0` | 16-bit Word | Preserved `SP` register during `INSTALL.EXE` child execution |
+| `0x4758` | 16-bit Word (`u16`) | Sibling `0x474A` struct field; reads 0 during live playback, not the active clock |
+| `0x4896` | 16-bit Word (`u16`) | Active film playback clock (struct base `0x4888` + `0x0E`), in 50 Hz ticks |
 
 ---
 
@@ -83,7 +86,7 @@ If total available conventional memory falls below this threshold, the applicati
 
 ## 3. Runtime Kinematics, Camera Rig & Actor Table Layouts
 
-During film playback, `PLAYONE.EXE` updates world-space kinematics and camera parameters at a discrete simulation tick rate (20 Hz or 30 Hz per Invariant `[I4]`). These structures reside at fixed `DGROUP` locations and dynamically allocated heap blocks.
+During film playback, `PLAYONE.EXE` updates world-space kinematics and camera parameters on a discrete simulation clock. The installed INT 8 handler runs at **50 Hz** (PIT divisor `0x5D38` = 23,864), not the 20/30 Hz previously assumed; see [`../formats/concepts/timeline-and-ticks.md` § 1.1](../formats/concepts/timeline-and-ticks.md#11-hardware-timer-principles-in-ms-dos). These structures reside at fixed `DGROUP` locations and dynamically allocated heap blocks.
 
 ### 3.1 Post-Retrace Vertical Blank Trap (`# [MEM-VSYNC-03DA]`)
 
@@ -102,15 +105,21 @@ The primary rendering loop synchronizes with VGA vertical retrace via port `0x03
 0D51:0C5E  call   render_frame_flush    ; Trap address for tear-free capture
 ```
 
-Because the hardware VGA refresh runs at $\approx 70.087\text{ Hz}$, the simulation tick counter at `0x0D51:0C60` (`# [MEM-FLM-TICK]`) is checked at each trap hit. Capturing only when `current_tick > last_captured_tick` prevents duplicate frames.
+Because the hardware VGA refresh runs at $\approx 70.087\text{ Hz}$, the active film clock at `DS:0x4896` (`# [MEM-FLM-TICK]`) can be checked at each trap hit. Capturing only when `current_tick > last_captured_tick` prevents duplicate frames.
 
 **Runtime confirmation (`[Established]`).** Against the pinned DOSBox-X build, `BP 0D51:0C5E` followed by `RUN` returns in $\approx 50\text{ ms}$ during `CTRY.FLM` playback and stops the guest at the loop boundary; each hit yields a whole Mode 13h page, and consecutive distinct pages advance the film's on-screen timecode by $\approx 65\text{ ms}$. This trap is the capture primitive used by [`capture.md`](capture.md); `VRT` cannot substitute for it (the emulator exits with `0xC0000409` once playback starts).
 
-**Tick gating is unusable (`[Bounded Observation]`).** Reads of `0x0D51:0C60` through the debugger returned `0` for an entire stepped session, so the capture keys frames by ordinal rather than by `[MEM-FLM-TICK]`. The same reads also sit next to the unpack lockout described in § 3.4.
+**Tick gating (`[Superseded]`).** The capture still keys frames by ordinal because the legacy `0x0D51:0C60` reads returned `0`; the live counters are now located at `DS:0x22B8` and `DS:0x4896` and can gate future captures.
+
+**Runtime tick counters (`[Established]`).** In the captured session the executable runs with `CS = 0x0F17` and `DS = 0x1575`; the image dump starts at segment `0x0D51`, which is a snapshot base, not `DS`. Live sampling during `CTRY.FLM` playback gives:
+- `DS:0x22B8` — monotonic global 50 Hz timer tick, incremented by `inc word ptr [0x22B8]` at `0x43B0` while the playback flag `DS:0x2272` is set.
+- `DS:0x4896` — active film clock (struct base `0x4888` + `0x0E`), advancing in lockstep with `0x22B8` while running 5 ticks ahead: ≈31 on the first captured film frame (global 26) and ≈1355 at the last animated frame (global 1350), consistent with the 1,342-tick authored span plus a short static hold.
+
+`DS:0x4758` (sibling `0x474A` struct, `+0x0E`) reads 0 throughout live playback and is not the active clock. No instruction references `DGROUP:0x0C60` as a word; that label is retired.
 
 ### 3.2 Camera Rig Memory Structure (`# [MEM-CAMERA-RIG]`)
 
-The active camera rig is stored at `0x0D51:0C10` as a contiguous 32-byte descriptor:
+The active camera rig is stored at `DS:0x0C10` as a contiguous 32-byte descriptor:
 
 | Offset in Rig | Field Name | Type | Scaling / Representation |
 |---|---|---|---|
@@ -127,7 +136,7 @@ The active camera rig is stored at `0x0D51:0C10` as a contiguous 32-byte descrip
 
 ### 3.3 Dynamic Actor Table (`# [MEM-ACTOR-TABLE]`)
 
-The scene's active aircraft, vehicles, and props are tracked in a dynamic heap buffer referenced by a 32-bit far pointer at `0x0D51:0C50` (or the default stage table at `0x0D51:0CA0`). Each entry is 64 bytes:
+The scene's active aircraft, vehicles, and props are tracked in a dynamic heap buffer referenced by a 32-bit far pointer at `DS:0x0C50` (or the default stage table at `DS:0x0CA0`). Each entry is 64 bytes:
 
 ```
 +0x00: [u32] Actor Channel ID (0 = hero plane, 1..N = choreo channels)

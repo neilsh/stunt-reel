@@ -52,7 +52,7 @@ Enforce cleanroom asset isolation `[I7]`: all proprietary files and capture dump
 - [ ] Harness connects to live `dosbox-x-mcp-server` over TCP port 58991 when active.
 - [ ] Offline synthetic mock/replay runner executes in pytest without external process requirements.
 - [ ] Modal file picker navigation successfully injects filename keystrokes into the BIOS keyboard buffer.
-- [ ] Breakpoint triggers post-VGA retrace on port `0x03DA` with tick deduplication ($70\text{ Hz} \to 20/30\text{ Hz}$).
+- [ ] Breakpoint triggers post-VGA retrace on port `0x03DA` with tick deduplication ($70\text{ Hz}$ presentation → $50\text{ Hz}$ simulation).
 - [ ] `docs/MEMORY_MAP.md` updated with verified offsets and promoted to `[Established]` where confirmed.
 
 ### Trajectory Streamer & Golden Oracle (T03)
