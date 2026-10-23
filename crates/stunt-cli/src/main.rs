@@ -46,14 +46,7 @@ fn main() {
         _ => {}
     }
 
-    let config = match CliConfig::parse() {
-        Ok(c) => c,
-        Err(err) => {
-            eprintln!("[stuntreel error] {err}");
-            CliConfig::print_usage();
-            std::process::exit(1);
-        }
-    };
+    let config = CliConfig::parse().unwrap_or_else(|e| e.exit());
 
     let scene = match build_scene(&SceneSources {
         flm: config.flm_path.as_deref(),

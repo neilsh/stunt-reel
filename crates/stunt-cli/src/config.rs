@@ -1,9 +1,83 @@
 //! Command-line options for the playback modes (`stuntreel [options] [<film>]`).
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use clap::error::ErrorKind;
+use clap::{CommandFactory, FromArgMatches, Parser};
 
 use crate::{export, parity};
+
+/// Options as clap parses them, before cross-option rules and companion discovery.
+#[derive(Debug, Parser)]
+#[command(
+    name = "stuntreel",
+    about = "StuntReel Presentation Engine (stuntreel)"
+)]
+struct Options {
+    /// A .FLM film and/or its .ALL archive; a missing companion is looked up beside the other
+    #[arg(value_name = "FILM", num_args = 0..=2)]
+    inputs: Vec<PathBuf>,
+    /// Procedural .SOD model to bind to actor 1
+    #[arg(long, value_name = "MODEL.SOD")]
+    sod: Option<PathBuf>,
+    /// Bind every actor shape_id to its .SOD chunk in the archive
+    #[arg(long, value_name = "MOVIE.ALL")]
+    all: Option<PathBuf>,
+    /// Write DIR/tick_NNNNN.png (NNNNN = 0-based 50 Hz tick); with --sample-count or
+    /// --video, DIR/sample_NNNN.png instead
+    #[arg(long, value_name = "DIR")]
+    out_dir: Option<PathBuf>,
+    /// Half-open 1-based tick ordinals to render; 1..N+2 covers ticks 0..=N
+    /// (default: ticks 0..=total, the film's last tick included)
+    #[arg(long, value_name = "A..B", value_parser = parse_frame_range)]
+    frames: Option<(usize, usize)>,
+    /// Directory searched first for ANCHORPT.DAT, MAP.BIN and SCENERY.scn; then the archive's
+    /// directory, its parent and grandparent, then sidata/ or SIDATA/ inside the parent
+    /// (names match any case)
+    #[arg(long, value_name = "DIR")]
+    sidata: Option<PathBuf>,
+    /// Render the film to a video container (.mp4, .webm, .mkv, .avi) via ffmpeg
+    #[arg(long, value_name = "FILE")]
+    video: Option<PathBuf>,
+    /// Tick stride for --out-dir frame extraction
+    #[arg(long, value_name = "N", default_value_t = 1, value_parser = parse_positive_usize)]
+    frame_step: usize,
+    /// Render N evenly spaced frames across the selected tick range
+    #[arg(
+        long,
+        value_name = "N",
+        value_parser = parse_positive_usize,
+        requires = "out_dir",
+        conflicts_with = "video"
+    )]
+    sample_count: Option<usize>,
+    /// Video sampling rate; container duration follows authored ticks
+    #[arg(long, value_name = "HZ", default_value_t = 30.0, value_parser = parse_fps)]
+    fps: f32,
+    /// Offscreen framebuffer width
+    #[arg(long, value_name = "PX", default_value_t = 320, value_parser = clap::value_parser!(u32).range(1..))]
+    width: u32,
+    /// Offscreen framebuffer height
+    #[arg(long, value_name = "PX", default_value_t = 240, value_parser = clap::value_parser!(u32).range(1..))]
+    height: u32,
+    /// Offscreen only: draw the scene into the top N rows (PLAYONE uses 185 of 200)
+    #[arg(long, value_name = "N")]
+    viewport_rows: Option<u32>,
+    /// Mode 13h palette index used to clear the framebuffer (default: 233 with an archive,
+    /// else 180)
+    #[arg(long, value_name = "I")]
+    clear_index: Option<u8>,
+    /// Run offscreen without opening a window
+    #[arg(long)]
+    headless: bool,
+    /// Save the offscreen rendered frame to a PNG file
+    #[arg(short = 'o', long = "output", value_name = "FILE")]
+    output: Option<PathBuf>,
+    /// Maximum authored 50 Hz ticks to evaluate/render
+    #[arg(long = "ticks", value_name = "COUNT")]
+    max_ticks: Option<usize>,
+}
 
 /// CLI configuration parsed from command-line arguments.
 #[derive(Debug, Clone)]
@@ -32,157 +106,57 @@ pub(crate) struct CliConfig {
 }
 
 impl CliConfig {
-    pub(crate) fn parse() -> Result<Self, String> {
+    pub(crate) fn parse() -> Result<Self, clap::Error> {
         Self::parse_from(env::args().skip(1))
     }
 
-    pub(crate) fn parse_from(mut args: impl Iterator<Item = String>) -> Result<Self, String> {
-        let mut flm_path = None;
-        let mut sod_path = None;
-        let mut all_path = None;
-        let mut out_dir = None;
-        let mut frame_range = None;
-        let mut sidata_dir = None;
-        let mut width = 320u32;
-        let mut height = 240u32;
-        let mut viewport_rows: Option<u32> = None;
-        let mut clear_index = 180u8;
-        let mut explicit_clear_index = false;
-        let mut headless = false;
-        let mut output_png = None;
-        let mut max_ticks = None;
-        let mut video_path = None;
-        let mut frame_step = 1usize;
-        let mut sample_count = None;
-        let mut fps = 30.0f32;
+    /// Parses `args` (without the program name).
+    pub(crate) fn parse_from(args: impl IntoIterator<Item = String>) -> Result<Self, clap::Error> {
+        let mut command = Options::command().after_help(after_help());
+        let argv = std::iter::once("stuntreel".to_string()).chain(args);
+        let options = Options::from_arg_matches(&command.try_get_matches_from_mut(argv)?)?;
+        Self::from_options(options).map_err(|msg| command.error(ErrorKind::ArgumentConflict, msg))
+    }
 
-        while let Some(arg) = args.next() {
-            match arg.as_str() {
-                "--help" | "-h" => {
-                    Self::print_usage();
-                    std::process::exit(0);
-                }
-                "--headless" => {
-                    headless = true;
-                }
-                "--sod" => {
-                    let val = args.next().ok_or("Expected path after --sod")?;
-                    sod_path = Some(PathBuf::from(val));
-                }
-                "--all" => {
-                    let val = args.next().ok_or("Expected path after --all")?;
-                    all_path = Some(PathBuf::from(val));
-                }
-                "--out-dir" => {
-                    let val = args.next().ok_or("Expected directory after --out-dir")?;
-                    out_dir = Some(PathBuf::from(val));
-                }
-                "--frames" => {
-                    let val = args.next().ok_or("Expected A..B after --frames")?;
-                    frame_range = Some(Self::parse_frame_range(&val)?);
-                }
-                "--sidata" => {
-                    let val = args.next().ok_or("Expected directory after --sidata")?;
-                    sidata_dir = Some(PathBuf::from(val));
-                }
-                "--video" => {
-                    let val = args.next().ok_or("Expected path after --video")?;
-                    video_path = Some(PathBuf::from(val));
-                }
-                "--frame-step" => {
-                    let val = args.next().ok_or("Expected number after --frame-step")?;
-                    let step = val
-                        .parse::<usize>()
-                        .map_err(|e| format!("Invalid frame step: {e}"))?;
-                    if step == 0 {
-                        return Err("Frame step must be greater than zero".to_string());
-                    }
-                    frame_step = step;
-                }
-                "--sample-count" => {
-                    let val = args.next().ok_or("Expected number after --sample-count")?;
-                    let count = val
-                        .parse::<usize>()
-                        .map_err(|e| format!("Invalid sample count: {e}"))?;
-                    if count == 0 {
-                        return Err("Sample count must be greater than zero".to_string());
-                    }
-                    sample_count = Some(count);
-                }
-                "--fps" => {
-                    let val = args.next().ok_or("Expected number after --fps")?;
-                    let rate = val
-                        .parse::<f32>()
-                        .map_err(|e| format!("Invalid fps: {e}"))?;
-                    if rate <= 0.0 || !rate.is_finite() {
-                        return Err("FPS must be a positive finite number".to_string());
-                    }
-                    fps = rate;
-                }
-                "--width" => {
-                    let val = args.next().ok_or("Expected number after --width")?;
-                    width = val
-                        .parse::<u32>()
-                        .map_err(|e| format!("Invalid width: {e}"))?;
-                }
-                "--height" => {
-                    let val = args.next().ok_or("Expected number after --height")?;
-                    height = val
-                        .parse::<u32>()
-                        .map_err(|e| format!("Invalid height: {e}"))?;
-                }
-                "--viewport-rows" => {
-                    let val = args.next().ok_or("Expected number after --viewport-rows")?;
-                    viewport_rows = Some(
-                        val.parse::<u32>()
-                            .map_err(|e| format!("Invalid viewport rows: {e}"))?,
-                    );
-                }
-                "--clear-index" => {
-                    let val = args.next().ok_or("Expected number after --clear-index")?;
-                    clear_index = val
-                        .parse::<u8>()
-                        .map_err(|e| format!("Invalid palette index: {e}"))?;
-                    explicit_clear_index = true;
-                }
-                "--output" | "-o" => {
-                    let val = args.next().ok_or("Expected path after --output")?;
-                    output_png = Some(PathBuf::from(val));
-                }
-                "--ticks" => {
-                    let val = args.next().ok_or("Expected number after --ticks")?;
-                    let n = val
-                        .parse::<usize>()
-                        .map_err(|e| format!("Invalid tick count: {e}"))?;
-                    max_ticks = Some(n);
-                }
-                other => {
-                    if other.starts_with('-') {
-                        return Err(format!("Unrecognized argument: {other}"));
-                    }
-                    let path = PathBuf::from(other);
-                    let is_all = path
-                        .extension()
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case("all"));
-                    if is_all && all_path.is_none() {
-                        all_path = Some(path);
-                    } else if flm_path.is_none() {
-                        flm_path = Some(path);
-                    } else if all_path.is_none() {
-                        all_path = Some(path);
-                    } else {
-                        return Err(format!("Unrecognized argument: {other}"));
-                    }
-                }
+    fn from_options(options: Options) -> Result<Self, String> {
+        let Options {
+            inputs,
+            sod: sod_path,
+            all: mut all_path,
+            out_dir,
+            frames: frame_range,
+            sidata: sidata_dir,
+            video: video_path,
+            frame_step,
+            sample_count,
+            fps,
+            width,
+            height,
+            viewport_rows,
+            clear_index,
+            headless,
+            output: output_png,
+            max_ticks,
+        } = options;
+
+        let mut flm_path = None;
+        for path in inputs {
+            let is_all = path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("all"));
+            if is_all && all_path.is_none() {
+                all_path = Some(path);
+            } else if flm_path.is_none() {
+                flm_path = Some(path);
+            } else if all_path.is_none() {
+                all_path = Some(path);
+            } else {
+                return Err(format!("Unrecognized argument: {}", path.display()));
             }
         }
 
-        if width == 0 || height == 0 {
-            return Err("Framebuffer dimensions must be non-zero".to_string());
-        }
-        if out_dir.is_some() || video_path.is_some() || output_png.is_some() {
-            headless = true;
-        }
+        let headless =
+            headless || out_dir.is_some() || video_path.is_some() || output_png.is_some();
         if viewport_rows.is_some() && !headless {
             return Err(
                 "--viewport-rows applies to offscreen renders only; add --headless, -o, --out-dir or --video"
@@ -190,48 +164,19 @@ impl CliConfig {
             );
         }
 
-        if video_path.is_some() && sample_count.is_some() {
-            return Err("--sample-count cannot be combined with --video".to_string());
-        }
-        if sample_count.is_some() && out_dir.is_none() {
-            return Err("--sample-count requires --out-dir".to_string());
-        }
-
         if sod_path.is_none() {
             if let Some(flm) = &flm_path
                 && all_path.is_none()
             {
-                let candidate_upper = flm.with_extension("ALL");
-                if candidate_upper.is_file() {
-                    all_path = Some(candidate_upper);
-                } else {
-                    let candidate_lower = flm.with_extension("all");
-                    if candidate_lower.is_file() {
-                        all_path = Some(candidate_lower);
-                    }
-                }
+                all_path = companion(flm, "ALL");
             } else if let Some(all) = &all_path
                 && flm_path.is_none()
             {
-                let candidate_upper = all.with_extension("FLM");
-                if candidate_upper.is_file() {
-                    flm_path = Some(candidate_upper);
-                } else {
-                    let candidate_lower = all.with_extension("flm");
-                    if candidate_lower.is_file() {
-                        flm_path = Some(candidate_lower);
-                    }
-                }
+                flm_path = companion(all, "FLM");
             }
         }
 
-        let clear_index = if explicit_clear_index {
-            clear_index
-        } else if all_path.is_some() {
-            233
-        } else {
-            180
-        };
+        let clear_index = clear_index.unwrap_or(if all_path.is_some() { 233 } else { 180 });
 
         Ok(Self {
             flm_path,
@@ -253,93 +198,66 @@ impl CliConfig {
             fps,
         })
     }
+}
 
-    /// Parses a half-open `A..B` frame range.
-    fn parse_frame_range(spec: &str) -> Result<(usize, usize), String> {
-        let (start, end) = spec
-            .split_once("..")
-            .ok_or_else(|| format!("Invalid frame range {spec:?}, expected A..B"))?;
-        let start = start
-            .trim()
-            .parse::<usize>()
-            .map_err(|e| format!("Invalid frame range start: {e}"))?;
-        let end = end
-            .trim()
-            .parse::<usize>()
-            .map_err(|e| format!("Invalid frame range end: {e}"))?;
-        if end <= start {
-            return Err(format!(
-                "Invalid frame range {spec:?}: end must be greater than start"
-            ));
-        }
-        Ok((start, end))
-    }
+/// The file beside `path` with extension `ext` in upper or lower case, if it exists.
+fn companion(path: &Path, ext: &str) -> Option<PathBuf> {
+    [ext.to_ascii_uppercase(), ext.to_ascii_lowercase()]
+        .into_iter()
+        .map(|e| path.with_extension(e))
+        .find(|p| p.is_file())
+}
 
-    pub(crate) fn print_usage() {
-        println!("StuntReel Presentation Engine (stuntreel)");
-        println!("Usage: stuntreel [options] [<flight.flm>]");
-        println!();
-        println!("Arguments:");
-        println!("  <flight.flm>         Path to authored .FLM choreography file (optional)");
-        println!();
-        println!("Options:");
-        println!("  --sod <model.sod>    Path to procedural .SOD model to bind to actor 1");
-        println!(
-            "  --all <movie.all>    Bind every actor shape_id to its .SOD chunk in the archive"
-        );
-        println!("  --out-dir <dir>      Write <dir>/tick_NNNNN.png (NNNNN = 0-based 50 Hz tick);");
-        println!(
-            "                       with --sample-count or --video, <dir>/sample_NNNN.png instead"
-        );
-        println!(
-            "  --frames <A..B>      Half-open 1-based tick ordinals to render; 1..N+2 covers ticks 0..=N"
-        );
-        println!(
-            "                       (default: ticks 0..=total, the film's last tick included)"
-        );
-        println!(
-            "  --sidata <dir>       Directory searched first for ANCHORPT.DAT, MAP.BIN and SCENERY.scn;"
-        );
-        println!(
-            "                       then the archive's directory, its parent and grandparent,"
-        );
-        println!(
-            "                       then sidata/ or SIDATA/ inside the parent (names match any case)"
-        );
-        println!(
-            "  --video <file>       Render film to video container (.mp4, .webm, .mkv, .avi) via ffmpeg"
-        );
-        println!("  --frame-step <N>     Tick stride for --out-dir frame extraction (default: 1)");
-        println!(
-            "  --sample-count <N>   Render N evenly spaced frames across the selected tick range"
-        );
-        println!(
-            "  --fps <HZ>           Video sampling rate; container duration follows authored ticks (default: 30)"
-        );
-        println!("  --width <px>         Offscreen framebuffer width (default 320)");
-        println!("  --height <px>        Offscreen framebuffer height (default 240)");
-        println!(
-            "  --viewport-rows <n>  Offscreen only: draw the scene into the top n rows (PLAYONE uses 185 of 200)"
-        );
-        println!("  --clear-index <i>    Mode 13h palette index used to clear the framebuffer");
-        println!("  --headless           Run in offscreen headless mode without opening a window");
-        println!("  --output, -o <file>  Save offscreen rendered frame to PNG file");
-        println!("  --ticks <count>      Maximum authored 50 Hz ticks to evaluate/render");
-        println!("  -h, --help           Print this help information");
-        println!();
-        println!("Subcommands:");
-        println!("  {}", parity::USAGE.replace('\n', "\n  "));
-        println!();
-        println!("  {}", export::USAGE.replace('\n', "\n  "));
-        println!();
-        println!("Interactive Keyboard Controls:");
-        println!("  Space                Pause / Resume timeline playback");
-        println!("  C                    Toggle between Authored Camera and Free-Cam");
-        println!("  W / S                Free-Cam: Move Forward / Backward");
-        println!("  A / D                Free-Cam: Strafe Left / Right");
-        println!("  Q / E                Free-Cam: Move Down / Up");
-        println!("  Esc                  Exit presentation");
+/// Parses a half-open `A..B` frame range.
+fn parse_frame_range(spec: &str) -> Result<(usize, usize), String> {
+    let (start, end) = spec
+        .split_once("..")
+        .ok_or_else(|| format!("expected A..B, got {spec:?}"))?;
+    let start = start
+        .trim()
+        .parse::<usize>()
+        .map_err(|e| format!("invalid range start: {e}"))?;
+    let end = end
+        .trim()
+        .parse::<usize>()
+        .map_err(|e| format!("invalid range end: {e}"))?;
+    if end <= start {
+        return Err(format!("{spec:?}: end must be greater than start"));
     }
+    Ok((start, end))
+}
+
+fn parse_positive_usize(text: &str) -> Result<usize, String> {
+    match text.parse::<usize>() {
+        Ok(0) => Err("must be greater than zero".to_string()),
+        Ok(n) => Ok(n),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+fn parse_fps(text: &str) -> Result<f32, String> {
+    let rate = text.parse::<f32>().map_err(|e| e.to_string())?;
+    if rate <= 0.0 || !rate.is_finite() {
+        return Err("must be a positive finite number".to_string());
+    }
+    Ok(rate)
+}
+
+/// Help text after the options: the subcommands and the window's key bindings.
+fn after_help() -> String {
+    let indent = |usage: &str| format!("  {}", usage.replace('\n', "\n  "));
+    format!(
+        "Subcommands:\n{}\n\n{}\n\n\
+         Interactive Keyboard Controls:\n  \
+         Space   Pause / Resume timeline playback\n  \
+         C       Toggle between Authored Camera and Free-Cam\n  \
+         W / S   Free-Cam: Move Forward / Backward\n  \
+         A / D   Free-Cam: Strafe Left / Right\n  \
+         Q / E   Free-Cam: Move Down / Up\n  \
+         Esc     Exit presentation",
+        indent(parity::USAGE),
+        indent(export::USAGE),
+    )
 }
 
 #[cfg(test)]
@@ -347,7 +265,7 @@ mod tests {
     use super::*;
     use std::path::Path;
 
-    fn parse(args: &[&str]) -> Result<CliConfig, String> {
+    fn parse(args: &[&str]) -> Result<CliConfig, clap::Error> {
         CliConfig::parse_from(args.iter().map(|a| (*a).to_string()))
     }
 
@@ -356,10 +274,31 @@ mod tests {
         let Err(err) = parse(&["--viewport-rows", "185"]) else {
             panic!("a window run must reject --viewport-rows");
         };
-        assert!(err.contains("--viewport-rows"), "{err}");
+        assert!(err.to_string().contains("--viewport-rows"), "{err}");
         let config = parse(&["--viewport-rows", "185", "--headless"]).expect("headless takes it");
         assert_eq!(config.viewport_rows, Some(185));
         assert!(parse(&["--viewport-rows", "185", "-o", "f.png"]).is_ok());
+    }
+
+    #[test]
+    fn test_sample_count_needs_out_dir_and_no_video() {
+        assert!(parse(&["--sample-count", "5"]).is_err());
+        assert!(parse(&["--sample-count", "5", "--out-dir", "o", "--video", "v.mp4"]).is_err());
+        assert!(parse(&["--sample-count", "0", "--out-dir", "o"]).is_err());
+        assert!(parse(&["--fps", "0"]).is_err());
+        assert!(parse(&["--frames", "5..5"]).is_err());
+    }
+
+    #[test]
+    fn test_help_lists_subcommands_and_keys() {
+        let err = parse(&["--help"]).expect_err("help exits early");
+        assert_eq!(err.kind(), ErrorKind::DisplayHelp);
+        let text = err.to_string();
+        assert!(
+            text.contains("--viewport-rows") && text.contains("export-gltf"),
+            "{text}"
+        );
+        assert!(text.contains("Free-Cam"), "{text}");
     }
 
     #[test]
@@ -371,24 +310,21 @@ mod tests {
 
     #[test]
     fn test_tick_range_and_sample_options_parse() {
-        let config = CliConfig::parse_from(
-            vec![
-                "film.flm".to_string(),
-                "--frames".to_string(),
-                "2..10".to_string(),
-                "--frame-step".to_string(),
-                "3".to_string(),
-                "--sample-count".to_string(),
-                "5".to_string(),
-                "--out-dir".to_string(),
-                "out".to_string(),
-                "--fps".to_string(),
-                "50".to_string(),
-                "--sidata".to_string(),
-                "data/SIDATA".to_string(),
-            ]
-            .into_iter(),
-        )
+        let config = CliConfig::parse_from(vec![
+            "film.flm".to_string(),
+            "--frames".to_string(),
+            "2..10".to_string(),
+            "--frame-step".to_string(),
+            "3".to_string(),
+            "--sample-count".to_string(),
+            "5".to_string(),
+            "--out-dir".to_string(),
+            "out".to_string(),
+            "--fps".to_string(),
+            "50".to_string(),
+            "--sidata".to_string(),
+            "data/SIDATA".to_string(),
+        ])
         .expect("parse succeeds");
 
         assert_eq!(config.frame_range, Some((2, 10)));
@@ -398,14 +334,11 @@ mod tests {
         assert_eq!(config.sidata_dir, Some(PathBuf::from("data/SIDATA")));
 
         assert!(
-            CliConfig::parse_from(
-                vec![
-                    "film.flm".to_string(),
-                    "--sample-count".to_string(),
-                    "5".to_string()
-                ]
-                .into_iter()
-            )
+            CliConfig::parse_from(vec![
+                "film.flm".to_string(),
+                "--sample-count".to_string(),
+                "5".to_string()
+            ])
             .is_err()
         );
     }
@@ -416,13 +349,10 @@ mod tests {
         let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
         let fixture_flm = workspace_root.join("tests/fixtures/synthetic_minimal.flm");
         let expected_all = workspace_root.join("tests/fixtures/synthetic_minimal.all");
-        let config = CliConfig::parse_from(
-            vec![
-                fixture_flm.to_string_lossy().to_string(),
-                "--headless".to_string(),
-            ]
-            .into_iter(),
-        );
+        let config = CliConfig::parse_from(vec![
+            fixture_flm.to_string_lossy().to_string(),
+            "--headless".to_string(),
+        ]);
         let cfg = config.expect("parse succeeds");
         assert!(cfg.all_path.is_some());
         assert_eq!(
@@ -438,14 +368,11 @@ mod tests {
         let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
         let fixture_flm = workspace_root.join("tests/fixtures/synthetic_minimal.flm");
         let fixture_all = workspace_root.join("tests/fixtures/synthetic_minimal.all");
-        let config = CliConfig::parse_from(
-            vec![
-                fixture_all.to_string_lossy().to_string(),
-                "-o".to_string(),
-                "out.png".to_string(),
-            ]
-            .into_iter(),
-        );
+        let config = CliConfig::parse_from(vec![
+            fixture_all.to_string_lossy().to_string(),
+            "-o".to_string(),
+            "out.png".to_string(),
+        ]);
         let cfg = config.expect("parse succeeds");
         assert!(cfg.headless, "output_png implies headless");
         assert!(cfg.all_path.is_some());
