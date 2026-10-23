@@ -7,13 +7,13 @@ use std::path::PathBuf;
 
 use glam::{Quat, Vec3};
 use serde_json::Value;
+use stunt_core::anchor::parse_anchor_table;
 use stunt_core::contracts::{
     CameraTransform, NodeKind, SodModelIr, SodVertex, VisibilityCondition, get_palette_rgb_float,
 };
 use stunt_core::flm::{SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES};
 use stunt_core::scene::{FilmScene, SceneInputs};
 use stunt_core::sod::{EPSILON_DISPLACEMENT, transpile_sod};
-use stunt_core::world::parse_anchor_table;
 use stunt_gltf::{GltfError, camera_rotation, export_scene_frame, export_shape, summarize};
 
 fn fixture(name: &str) -> Vec<u8> {

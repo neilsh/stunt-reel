@@ -7,9 +7,10 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use stunt_core::anchor::{AnchorPoint, parse_anchor_table};
 use stunt_core::contracts::{NodeKind, SodModelIr};
-use stunt_core::sod::{SodAnchorPoint, transpile_sod};
-use stunt_core::world::{WorldInputs, build_world, parse_anchor_table};
+use stunt_core::sod::transpile_sod;
+use stunt_core::world::{WorldInputs, build_world};
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -21,7 +22,7 @@ fn fixtures_dir() -> PathBuf {
         .join("fixtures")
 }
 
-fn fixture_anchors() -> Vec<SodAnchorPoint> {
+fn fixture_anchors() -> Vec<AnchorPoint> {
     let data =
         std::fs::read(fixtures_dir().join("synthetic_anchors.bin")).expect("read anchor fixture");
     parse_anchor_table(&data)
@@ -48,8 +49,8 @@ fn map_patch(color: u8, verts: &[u16]) -> Vec<u8> {
     rec
 }
 
-fn anchor(x: i16, y: i16, z: i16) -> SodAnchorPoint {
-    SodAnchorPoint { x, y, z }
+fn anchor(x: i16, y: i16, z: i16) -> AnchorPoint {
+    AnchorPoint { x, y, z }
 }
 
 fn words_to_bytes(words: &[i32]) -> Vec<u8> {

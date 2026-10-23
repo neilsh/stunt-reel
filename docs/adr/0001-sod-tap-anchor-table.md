@@ -10,7 +10,7 @@ accepted
 
 ## Decision
 
-The SOD VM takes an optional `&[SodAnchorPoint]` anchor table at execution/transpile time and resolves `OP_TAP` from it. The CLI locates `ANCHORPT.DAT` beside the archive (with the existing scenery search path) and passes the parsed records. Without a table, strict decoding returns `SodError::MissingAnchors`; lenient decoding reports `SodStopReason::MissingAnchors` and retains geometry decoded so far.
+The SOD VM takes an optional `&[AnchorPoint]` anchor table (`SodAnchorPoint` when this was accepted; now `stunt_core::anchor`) at execution/transpile time and resolves `OP_TAP` from it. The CLI locates `ANCHORPT.DAT` beside the archive (with the existing scenery search path) and passes the parsed records. Without a table, strict decoding returns `SodError::MissingAnchors`; lenient decoding reports `SodStopReason::MissingAnchors` and retains geometry decoded so far.
 
 ## Considered Options
 

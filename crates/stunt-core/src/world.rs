@@ -3,7 +3,7 @@
 //! The world is the part of a film scene that never moves (GLOSSARY.md: **World**). It is
 //! assembled from three byte inputs that the caller locates and reads:
 //!
-//! - the anchor table (`ANCHORPT.DAT`, parsed by [`parse_anchor_table`]), the same
+//! - the anchor table (`ANCHORPT.DAT`, parsed by [`crate::anchor::parse_anchor_table`]), the same
 //!   records `OP_TAP` resolves against (ADR-0001);
 //! - `MAP.BIN`, whose 30-byte patches index that table to form terrain polygons;
 //! - `SCENERY.scn`, a BSP tree of prop placements referencing shapes by resource ID.
@@ -13,17 +13,17 @@
 //! filesystem: where those files live is the caller's concern.
 //!
 //! Anchor records are raw island coordinates mapped to `[I1]` by
-//! [`SodAnchorPoint::register_position`]; scenery placements apply the same `(-x, -y, z)`
+//! [`AnchorPoint::register_position`]; scenery placements apply the same `(-x, -y, z)`
 //! mapping. Mesh output follows `[I2]` (flat arena), `[I3]` (palette indices), and `[I5]`
 //! (props' coplanar decals go into a separate batch so renderers can depth-bias them).
 
 use std::collections::{HashMap, HashSet};
 
+use crate::anchor::AnchorPoint;
 use crate::contracts::{
     NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, SodModelIr, SodVertex,
     VisibilityCondition,
 };
-use crate::sod::SodAnchorPoint;
 
 /// Column-major identity `local_matrix` for every world node (the world is drawn untransformed).
 const IDENTITY_MATRIX: [f32; 16] = [
@@ -33,8 +33,8 @@ const IDENTITY_MATRIX: [f32; 16] = [
 /// Byte inputs for [`build_world`]; the caller supplies whatever it found on disk.
 #[derive(Clone, Copy, Debug)]
 pub struct WorldInputs<'a> {
-    /// Anchor table from [`parse_anchor_table`]; empty if `ANCHORPT.DAT` was not found.
-    pub anchors: &'a [SodAnchorPoint],
+    /// Anchor table from [`crate::anchor::parse_anchor_table`]; empty if `ANCHORPT.DAT` was not found.
+    pub anchors: &'a [AnchorPoint],
     /// Raw `MAP.BIN` bytes (30-byte terrain patch records), if found.
     pub map: Option<&'a [u8]>,
     /// Raw `SCENERY.scn` bytes (little-endian 32-bit BSP words), if found.
@@ -84,7 +84,7 @@ pub struct World {
 /// usable terrain patches.
 #[must_use]
 pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) -> Option<World> {
-    let pts = anchor_points(inputs.anchors);
+    let pts = inputs.anchors;
     let map_areas = inputs
         .map
         .map(|bytes| parse_map_bin(bytes, pts.len()))
@@ -105,7 +105,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         cull_subpixel_instances(dedup_instances(instances), shapes, inputs.view_eyes);
 
     let base_y = 0.0;
-    let ir = build_world_ir(&pts, &map_areas, &unique_instances, shapes, base_y);
+    let ir = build_world_ir(pts, &map_areas, &unique_instances, shapes, base_y);
     let bounds = vertex_bounds(&ir);
     Some(World {
         ir,
@@ -202,56 +202,11 @@ fn vertex_bounds(ir: &SodModelIr) -> WorldBounds {
     WorldBounds { min, max }
 }
 
-/// Anchor point converted to the `[I1]` terrain representation.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct AnchorPoint {
-    x: f32,
-    y: f32,
-    z: f32,
-    valid: bool,
-}
-
 /// Polygonal terrain patch from `MAP.BIN`.
 #[derive(Clone, Debug)]
 pub(crate) struct MapArea {
     color: u8,
     verts: Vec<usize>,
-}
-
-/// Parses 28-byte anchor point records from the bytes of `ANCHORPT.DAT`.
-///
-/// Only the leading `x`, `y`, `z` words of each record are kept; a trailing partial
-/// record is ignored. The result is the table [`crate::sod::transpile_sod`] resolves
-/// `OP_TAP` against and that [`build_world`] places terrain patches over.
-#[must_use]
-pub fn parse_anchor_table(data: &[u8]) -> Vec<SodAnchorPoint> {
-    let count = data.len() / 28;
-    let mut pts = Vec::with_capacity(count);
-    for i in 0..count {
-        let offset = i * 28;
-        pts.push(SodAnchorPoint {
-            x: i16::from_le_bytes([data[offset], data[offset + 1]]),
-            y: i16::from_le_bytes([data[offset + 2], data[offset + 3]]),
-            z: i16::from_le_bytes([data[offset + 4], data[offset + 5]]),
-        });
-    }
-    pts
-}
-
-/// Converts raw anchor records into the `[I1]` world-terrain representation.
-pub(crate) fn anchor_points(anchors: &[SodAnchorPoint]) -> Vec<AnchorPoint> {
-    anchors
-        .iter()
-        .map(|a| {
-            let [x, y, z] = a.register_position();
-            AnchorPoint {
-                x,
-                y,
-                z,
-                valid: a.is_valid(),
-            }
-        })
-        .collect()
 }
 
 /// Parses 30-byte polygon patch records from `MAP.BIN`.
@@ -433,12 +388,13 @@ pub(crate) fn traverse_scn(
 
 /// Builds the consolidated static world scenery and terrain intermediate representation.
 pub(crate) fn build_world_ir(
-    pts: &[AnchorPoint],
+    anchors: &[AnchorPoint],
     map_areas: &[MapArea],
     instances: &[(u16, [f32; 3])],
     ir_models: &HashMap<u16, SodModelIr>,
     base_y: f32,
 ) -> SodModelIr {
+    let pts: Vec<[f32; 3]> = anchors.iter().map(AnchorPoint::register_position).collect();
     let mut ir = SodModelIr::new("WORLD_SCENERY");
     let up = [0.0, 1.0, 0.0];
     let flags_unshaded = 0x04;
@@ -542,7 +498,7 @@ pub(crate) fn build_world_ir(
             if !area
                 .verts
                 .iter()
-                .all(|&idx| pts.get(idx).is_some_and(|p| p.valid))
+                .all(|&idx| anchors.get(idx).is_some_and(AnchorPoint::is_valid))
             {
                 continue;
             }
@@ -550,8 +506,8 @@ pub(crate) fn build_world_ir(
             let p0 = pts[area.verts[0]];
             let p1 = pts[area.verts[1]];
             let p2 = pts[area.verts[2]];
-            let v01 = [p1.x - p0.x, p1.y - p0.y, p1.z - p0.z];
-            let v02 = [p2.x - p0.x, p2.y - p0.y, p2.z - p0.z];
+            let v01 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+            let v02 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
             let norm = [
                 v01[1] * v02[2] - v01[2] * v02[1],
                 v01[2] * v02[0] - v01[0] * v02[2],
@@ -568,7 +524,7 @@ pub(crate) fn build_world_ir(
             for &v_idx in &area.verts {
                 let p = pts[v_idx];
                 ir.vertices.push(SodVertex {
-                    position: [p.x, p.y + base_y, p.z],
+                    position: [p[0], p[1] + base_y, p[2]],
                     normal,
                     palette_index: area.color,
                     flags: flags_unshaded,
@@ -734,6 +690,7 @@ pub(crate) fn build_world_ir(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::anchor::parse_anchor_table;
 
     #[test]
     fn test_parse_anchorpt_valid_and_invalid() {
@@ -748,15 +705,13 @@ mod tests {
         data[30..32].copy_from_slice(&(-32500i16).to_le_bytes());
         data[32..34].copy_from_slice(&0i16.to_le_bytes());
 
-        let pts = anchor_points(&parse_anchor_table(&data));
-        assert_eq!(pts.len(), 2);
-        assert_eq!(pts[0].x, -100.0);
-        assert_eq!(pts[0].y, 500.0); // inverted elevation
-        assert_eq!(pts[0].z, 200.0);
-        assert!(pts[0].valid);
+        let anchors = parse_anchor_table(&data);
+        assert_eq!(anchors.len(), 2);
+        assert_eq!(anchors[0].register_position(), [-100.0, 500.0, 200.0]); // inverted elevation
+        assert!(anchors[0].is_valid());
 
-        assert_eq!(pts[1].y, 0.0); // sentinel elevation decodes as sea level
-        assert!(!pts[1].valid);
+        assert_eq!(anchors[1].register_position()[1], 0.0); // sentinel elevation decodes as sea level
+        assert!(!anchors[1].is_valid());
     }
 
     #[test]
@@ -817,24 +772,18 @@ mod tests {
 
     #[test]
     fn test_build_world_ir_structure() {
+        // Raw records whose `[I1]` positions are (0, 10, 0), (10, 10, 0) and (10, 10, 10).
         let pts = vec![
+            AnchorPoint { x: 0, y: -10, z: 0 },
             AnchorPoint {
-                x: 0.0,
-                y: 10.0,
-                z: 0.0,
-                valid: true,
+                x: -10,
+                y: -10,
+                z: 0,
             },
             AnchorPoint {
-                x: 10.0,
-                y: 10.0,
-                z: 0.0,
-                valid: true,
-            },
-            AnchorPoint {
-                x: 10.0,
-                y: 10.0,
-                z: 10.0,
-                valid: true,
+                x: -10,
+                y: -10,
+                z: 10,
             },
         ];
         let map_areas = vec![MapArea {

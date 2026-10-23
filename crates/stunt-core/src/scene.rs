@@ -14,11 +14,12 @@
 use std::collections::HashMap;
 use std::fmt;
 
+use crate::anchor::{AnchorPoint, parse_anchor_table};
 use crate::contracts::{CameraTransform, PaletteControls, SodModelIr};
 use crate::flm::{FilmTimeline, FlmError};
-use crate::sod::{SodAnchorPoint, SodError, SodStop, transpile_sod_lenient};
+use crate::sod::{SodError, SodStop, transpile_sod_lenient};
 use crate::vfs::VfsError;
-use crate::world::{World, WorldBounds, WorldInputs, build_world, parse_anchor_table};
+use crate::world::{World, WorldBounds, WorldInputs, build_world};
 
 /// Column-major identity matrix.
 const IDENTITY_MATRIX: [f32; 16] = [
@@ -111,7 +112,7 @@ pub struct ArchiveShapes {
 /// Other chunks are ignored. An empty `anchors` table is treated as absent.
 pub fn decode_archive_shapes(
     archive: &[u8],
-    anchors: &[SodAnchorPoint],
+    anchors: &[AnchorPoint],
 ) -> Result<ArchiveShapes, VfsError> {
     let archive = crate::vfs::parse_all(archive)?;
     let anchor_slice = (!anchors.is_empty()).then_some(anchors);

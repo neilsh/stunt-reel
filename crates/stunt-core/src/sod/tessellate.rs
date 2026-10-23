@@ -8,14 +8,13 @@
 //!
 //! Reference verification: Gate G03 (`std::mem::size_of::<SodVertex>() == 28`).
 
+use crate::anchor::AnchorPoint;
 use std::collections::HashMap;
 
 use crate::contracts::shape::{NodeId, NodeKind, SodModelIr, SodVertex, VisibilityCondition};
 use crate::sod::SodError;
 use crate::sod::decal::identify_coplanar_decals;
-use crate::sod::vm::{
-    RawPolygon, SodAnchorPoint, SodHeader, SodStop, execute_sod_vm, execute_sod_vm_impl,
-};
+use crate::sod::vm::{RawPolygon, SodHeader, SodStop, execute_sod_vm, execute_sod_vm_impl};
 
 // Compile-time assertion of Gate G03 requirements
 const _: () = assert!(std::mem::size_of::<SodVertex>() == 28);
@@ -196,7 +195,7 @@ fn process_polygon_batch(
 pub fn transpile_sod(
     data: &[u8],
     name: &str,
-    anchors: Option<&[SodAnchorPoint]>,
+    anchors: Option<&[AnchorPoint]>,
 ) -> Result<SodModelIr, SodError> {
     let (header, raw_polygons) = execute_sod_vm(data, anchors)?;
     let processed_polygons = identify_coplanar_decals(&raw_polygons, 0.001, 1e-4, 1e-4);
@@ -211,7 +210,7 @@ pub fn transpile_sod(
 pub fn transpile_sod_lenient(
     data: &[u8],
     name: &str,
-    anchors: Option<&[SodAnchorPoint]>,
+    anchors: Option<&[AnchorPoint]>,
 ) -> Result<(SodModelIr, Option<SodStop>), SodError> {
     let (header, raw_polygons, stop) = execute_sod_vm_impl(data, true, anchors)?;
     let processed_polygons = identify_coplanar_decals(&raw_polygons, 0.001, 1e-4, 1e-4);

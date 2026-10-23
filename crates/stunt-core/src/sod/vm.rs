@@ -7,6 +7,7 @@
 //!
 //! Reference specs: `# [FMT-SOD-OPCODES]`, `# [FMT-SOD-IFVIS]`, historical `DECODE.C`/`SOD.H`.
 
+use crate::anchor::AnchorPoint;
 use crate::contracts::shape::VisibilityCondition;
 use crate::sod::SodError;
 
@@ -414,39 +415,6 @@ fn parse_visibility_condition(code: u16) -> VisibilityCondition {
     }
 }
 
-/// One 28-byte `ANCHORPT.DAT` record referenced by [`OP_TAP`].
-///
-/// The stored coordinates are raw island units (the same records consumed by
-/// `MAP.BIN` terrain patches). `OP_TAP` maps them into the `[I1]` register basis
-/// via [`Self::register_position`]; callers only need to supply the raw table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SodAnchorPoint {
-    /// Raw table X coordinate.
-    pub x: i16,
-    /// Raw table Y coordinate (non-positive altitude; `|y| >= 32000` is a sentinel).
-    pub y: i16,
-    /// Raw table Z coordinate.
-    pub z: i16,
-}
-
-impl SodAnchorPoint {
-    /// Returns whether the record is a real terrain point rather than a boundary sentinel.
-    #[must_use]
-    pub fn is_valid(&self) -> bool {
-        self.y > -32000 && self.y < 32000
-    }
-
-    /// Converts the raw record into the `[I1]` register basis (`+X` right, `+Y` up, `+Z` back).
-    ///
-    /// Raw terrain records store easting and elevation negated; sentinel elevations
-    /// decode as zero, matching the original engine's runtime table.
-    #[must_use]
-    pub fn register_position(&self) -> [f32; 3] {
-        let y = if self.is_valid() { self.y } else { 0 };
-        [-(self.x as f32), -(y as f32), self.z as f32]
-    }
-}
-
 /// Why a lenient decode stopped before the end of the bytecode stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SodStopReason {
@@ -483,7 +451,7 @@ pub struct SodStop {
 /// polygon stream, and fails on any opcode outside the decoded table.
 pub(crate) fn execute_sod_vm(
     data: &[u8],
-    anchors: Option<&[SodAnchorPoint]>,
+    anchors: Option<&[AnchorPoint]>,
 ) -> Result<(SodHeader, Vec<RawPolygon>), SodError> {
     let (header, polygons, stop) = execute_sod_vm_impl(data, false, anchors)?;
     match stop {
@@ -513,7 +481,7 @@ pub(crate) fn execute_sod_vm(
 pub(crate) fn execute_sod_vm_impl(
     data: &[u8],
     lenient: bool,
-    anchors: Option<&[SodAnchorPoint]>,
+    anchors: Option<&[AnchorPoint]>,
 ) -> Result<(SodHeader, Vec<RawPolygon>, Option<SodStop>), SodError> {
     if data.len() < 10 {
         return Err(SodError::UnexpectedEof {

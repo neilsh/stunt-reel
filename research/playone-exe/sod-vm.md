@@ -159,7 +159,7 @@ Verdict: TAP is **not** a debug marker and **not** a no-op. It is the terrain-an
 
 | Original | Reconstruction |
 |---|---|
-| 28-byte anchor table | `stunt_core::sod::SodAnchorPoint` slice |
+| 28-byte anchor table | `stunt_core::anchor::AnchorPoint` slice |
 | TAP operand loop | `OP_TAP` arm in [`crates/stunt-core/src/sod/vm.rs`](../../crates/stunt-core/src/sod/vm.rs) |
 | Work-segment transform/cache | Not modelled; TAP writes `[-x, -y, z]` raw units directly (identity model transform) |
 | Vertex arena write | `regs[(reg_off/12 + i) & 1023]` |

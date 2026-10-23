@@ -7,8 +7,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use stunt_core::anchor::parse_anchor_table;
 use stunt_core::scene::decode_archive_shapes;
-use stunt_core::world::parse_anchor_table;
 use stunt_gltf::{export_scene_frame, export_shape, summarize};
 
 use crate::scene::{SceneSources, build_scene, find_scenery_file};

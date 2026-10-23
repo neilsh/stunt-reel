@@ -19,6 +19,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use glam::Mat4;
+use stunt_core::anchor::parse_anchor_table;
 use stunt_core::contracts::palette::PaletteControls;
 use stunt_core::contracts::{
     CameraTransform, NodeKind, SodModelIr, SodVertex, TrajectoryRecord, VisibilityCondition,
@@ -26,7 +27,6 @@ use stunt_core::contracts::{
 use stunt_core::flm::{FilmTimeline, SliceKeyframe, TIMELINE_HZ, TIMELINE_TICK_SECONDS};
 use stunt_core::scene::{FilmScene, SceneInputs, SceneReport};
 use stunt_core::sod::transpile_sod;
-use stunt_core::world::parse_anchor_table;
 
 /// Locates the scenery data file `filename` (see the module docs for the search order).
 ///
