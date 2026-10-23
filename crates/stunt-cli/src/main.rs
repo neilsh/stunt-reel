@@ -214,12 +214,14 @@ impl CliConfig {
         if width == 0 || height == 0 {
             return Err("Framebuffer dimensions must be non-zero".to_string());
         }
-        if !(width * 4).is_multiple_of(256) {
-            return Err("row pitch must be 256-byte aligned".to_string());
-        }
-
         if out_dir.is_some() || video_path.is_some() || output_png.is_some() {
             headless = true;
+        }
+        if viewport_rows.is_some() && !headless {
+            return Err(
+                "--viewport-rows applies to offscreen renders only; add --headless, -o, --out-dir or --video"
+                    .to_string(),
+            );
         }
 
         if video_path.is_some() && sample_count.is_some() {
@@ -348,12 +350,10 @@ impl CliConfig {
         println!(
             "  --fps <HZ>           Video sampling rate; container duration follows authored ticks (default: 30)"
         );
-        println!(
-            "  --width <px>         Offscreen framebuffer width (default 320, 256-byte pitch)"
-        );
+        println!("  --width <px>         Offscreen framebuffer width (default 320)");
         println!("  --height <px>        Offscreen framebuffer height (default 240)");
         println!(
-            "  --viewport-rows <n>  Draw the scene into the top n rows only (PLAYONE uses 185 of 200)"
+            "  --viewport-rows <n>  Offscreen only: draw the scene into the top n rows (PLAYONE uses 185 of 200)"
         );
         println!("  --clear-index <i>    Mode 13h palette index used to clear the framebuffer");
         println!("  --headless           Run in offscreen headless mode without opening a window");
@@ -929,6 +929,23 @@ impl WindowApp {
     }
 }
 
+/// The window surface format: plain `Rgba8Unorm`/`Bgra8Unorm` when offered, else the first.
+///
+/// The palette LUT holds display-ready Mode 13h colours, as the headless `Rgba8Unorm` target
+/// stores them; an sRGB surface would encode them a second time and wash the window out.
+fn pick_surface_format(formats: &[wgpu::TextureFormat]) -> wgpu::TextureFormat {
+    formats
+        .iter()
+        .copied()
+        .find(|f| {
+            matches!(
+                f,
+                wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8Unorm
+            )
+        })
+        .unwrap_or(formats[0])
+}
+
 impl ApplicationHandler for WindowApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
@@ -1000,12 +1017,7 @@ impl ApplicationHandler for WindowApp {
 
         let size = window.inner_size();
         let surface_caps = surface.get_capabilities(&adapter);
-        let surface_format = surface_caps
-            .formats
-            .iter()
-            .copied()
-            .find(|f| f.is_srgb())
-            .unwrap_or(surface_caps.formats[0]);
+        let surface_format = pick_surface_format(&surface_caps.formats);
 
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -1206,6 +1218,50 @@ fn main() {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    fn parse(args: &[&str]) -> Result<CliConfig, String> {
+        CliConfig::parse_from(args.iter().map(|a| (*a).to_string()))
+    }
+
+    #[test]
+    fn test_surface_format_prefers_non_srgb() {
+        use wgpu::TextureFormat::{Bgra8Unorm, Bgra8UnormSrgb, Rgb10a2Unorm, Rgba8UnormSrgb};
+        assert_eq!(
+            pick_surface_format(&[Bgra8UnormSrgb, Bgra8Unorm]),
+            Bgra8Unorm
+        );
+        assert_eq!(
+            pick_surface_format(&[
+                Rgb10a2Unorm,
+                Rgba8UnormSrgb,
+                wgpu::TextureFormat::Rgba8Unorm
+            ]),
+            wgpu::TextureFormat::Rgba8Unorm
+        );
+        // Nothing plain on offer: the surface's first format.
+        assert_eq!(
+            pick_surface_format(&[Bgra8UnormSrgb, Rgb10a2Unorm]),
+            Bgra8UnormSrgb
+        );
+    }
+
+    #[test]
+    fn test_viewport_rows_needs_an_offscreen_render() {
+        let Err(err) = parse(&["--viewport-rows", "185"]) else {
+            panic!("a window run must reject --viewport-rows");
+        };
+        assert!(err.contains("--viewport-rows"), "{err}");
+        let config = parse(&["--viewport-rows", "185", "--headless"]).expect("headless takes it");
+        assert_eq!(config.viewport_rows, Some(185));
+        assert!(parse(&["--viewport-rows", "185", "-o", "f.png"]).is_ok());
+    }
+
+    #[test]
+    fn test_any_nonzero_width_parses() {
+        let config = parse(&["--width", "100", "--headless"]).expect("unaligned width is fine");
+        assert_eq!(config.width, 100);
+        assert!(parse(&["--width", "0", "--headless"]).is_err());
+    }
 
     #[test]
     fn test_out_dir_file_names_follow_tick_or_sample_index() {

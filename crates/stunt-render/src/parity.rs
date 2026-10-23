@@ -4,8 +4,6 @@
 //! - `[I6]` Visual parity acceptance thresholds (SSIM >= 0.88 Phase 1, >= 0.90 Phase 2).
 //! - `[I3]` VGA Mode 13h aspect ratio correction ($320 \times 200 \to 320 \times 240$, 1.2x vertical stretch).
 
-use stunt_core::contracts::VisualParityReport;
-
 /// SSIM stability constant C1 for dynamic range [0, 255]: (0.01 * 255)^2 = 6.5025.
 pub const C1_CONSTANT: f32 = 6.5025;
 
@@ -233,78 +231,6 @@ pub fn compute_frame_ssim_masked(
         }
     } else {
         scores.iter().map(|w| w.score).sum::<f32>() / scores.len() as f32
-    }
-}
-
-/// Executes visual parity verification suite across multi-frame sequences.
-pub fn evaluate_visual_parity(
-    reference_frames: &[Vec<f32>],
-    test_frames: &[Vec<f32>],
-    film_name: impl Into<String>,
-    threshold: f32,
-    apply_aspect_stretch: bool,
-) -> VisualParityReport {
-    let film_name = film_name.into();
-    let num_frames = reference_frames.len().min(test_frames.len());
-
-    if num_frames == 0 {
-        return VisualParityReport {
-            film_name,
-            frames_evaluated: 0,
-            mean_ssim: 0.0,
-            min_ssim: 0.0,
-            threshold,
-            passed: false,
-        };
-    }
-
-    let mut ssim_scores = Vec::with_capacity(num_frames);
-
-    for i in 0..num_frames {
-        let ref_f = &reference_frames[i];
-        let test_f = &test_frames[i];
-
-        let (norm_ref, norm_test) = if apply_aspect_stretch {
-            (
-                rescale_mode13h_frame(
-                    ref_f,
-                    MODE13H_WIDTH,
-                    MODE13H_HEIGHT,
-                    ASPECT_CORRECTED_HEIGHT,
-                ),
-                rescale_mode13h_frame(
-                    test_f,
-                    MODE13H_WIDTH,
-                    MODE13H_HEIGHT,
-                    ASPECT_CORRECTED_HEIGHT,
-                ),
-            )
-        } else {
-            (ref_f.clone(), test_f.clone())
-        };
-
-        let score = compute_frame_ssim(
-            &norm_ref,
-            &norm_test,
-            MODE13H_WIDTH,
-            ASPECT_CORRECTED_HEIGHT,
-            11,
-            8,
-        );
-        ssim_scores.push(score);
-    }
-
-    let mean_score = ssim_scores.iter().sum::<f32>() / ssim_scores.len() as f32;
-    let min_score = ssim_scores.iter().copied().fold(f32::INFINITY, f32::min);
-    let passed = mean_score >= threshold;
-
-    VisualParityReport {
-        film_name,
-        frames_evaluated: num_frames,
-        mean_ssim: mean_score,
-        min_ssim: min_score,
-        threshold,
-        passed,
     }
 }
 

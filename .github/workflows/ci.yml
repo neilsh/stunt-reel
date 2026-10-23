@@ -22,18 +22,27 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # The ubuntu job runs the GPU tests on lavapipe (Mesa's software Vulkan driver);
+          # STUNT_REQUIRE_GPU=1 makes a missing adapter fail them instead of skipping.
           - os: ubuntu-latest
             tasks: check
+            require_gpu: "1"
           - os: windows-latest
             tasks: fmt-check lint typecheck test-py
+            require_gpu: ""
     steps:
       - uses: actions/checkout@v7
+      - name: Install lavapipe (software Vulkan)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
       - uses: jdx/mise-action@v3
         with:
           install_args: rust python uv
       - name: Install Python environment
         run: uv sync --locked --all-groups
       - name: Run quality tasks
+        env:
+          STUNT_REQUIRE_GPU: ${{ matrix.require_gpu }}
         run: mise run ${{ matrix.tasks }}
 
   msrv:

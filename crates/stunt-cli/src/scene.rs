@@ -94,20 +94,19 @@ pub(crate) struct SceneSources<'a> {
 ///
 /// With an archive, every actor binds to its `MODEL_*.SOD` chunk and the world is built
 /// from the located scenery files. Without one, a single loose model (`--sod` or the
-/// synthetic aircraft) is bound to the film's first actor. A missing, unreadable or empty
-/// film falls back to a synthetic orbit.
+/// synthetic aircraft) is bound to the film's first actor.
+///
+/// Every input that is named must load: an unreadable or unparseable film, archive or
+/// `--sod` model, or a film with no slices, is an error. The synthetic orbit stands in
+/// only when no film is named, and the synthetic aircraft only when no model is.
 pub(crate) fn build_scene(src: &SceneSources<'_>) -> Result<FilmScene, String> {
-    let film_bytes = src.flm.and_then(|path| match fs::read(path) {
-        Ok(bytes) => Some(bytes),
-        Err(e) => {
-            eprintln!("[stuntreel] failed to read {}: {e}", path.display());
-            None
-        }
-    });
+    let timeline = match src.flm {
+        Some(path) => load_film(path)?,
+        None => synthetic_orbit(src.max_ticks),
+    };
 
     let Some(all_path) = src.all else {
-        let timeline = film_timeline(src, film_bytes.as_deref());
-        let model = load_or_create_model(src.sod, src.sidata);
+        let model = load_or_create_model(src.sod, src.sidata)?;
         println!("[stuntreel] scene: single model {}", model.name);
         print_film(&timeline);
         return Ok(FilmScene::with_single_model(timeline, model));
@@ -118,52 +117,28 @@ pub(crate) fn build_scene(src: &SceneSources<'_>) -> Result<FilmScene, String> {
     let map = read_scenery_file(src.sidata, all_path, "MAP.BIN");
     let scenery = read_scenery_file(src.sidata, all_path, "SCENERY.scn");
     let inputs = SceneInputs {
-        film: film_bytes.as_deref().unwrap_or_default(),
+        film: &[],
         archive: Some(&archive),
         anchors: anchors.as_deref(),
         map: map.as_deref(),
         scenery: scenery.as_deref(),
     };
 
-    let film_scene = match &film_bytes {
-        Some(_) => match FilmScene::load(&inputs) {
-            Ok((scene, _)) if scene.timeline().slices().is_empty() => {
-                eprintln!("[stuntreel] film contained no slices; using synthetic trajectory");
-                None
-            }
-            Ok(loaded) => Some(loaded),
-            Err(e) => {
-                eprintln!("[stuntreel] failed to evaluate film: {e}; using synthetic trajectory");
-                None
-            }
-        },
-        None => None,
-    };
-    let (scene, report) = match film_scene {
-        Some(loaded) => loaded,
-        None => FilmScene::load_with_timeline(synthetic_orbit(src.max_ticks), &inputs)
-            .map_err(|e| format!("parse {}: {e}", all_path.display()))?,
-    };
+    let (scene, report) = FilmScene::load_with_timeline(timeline, &inputs)
+        .map_err(|e| format!("parse {}: {e}", all_path.display()))?;
     print_report(&scene, &report, anchors.is_some());
     Ok(scene)
 }
 
-/// The film's timeline, or the synthetic orbit when it is absent, broken, or empty.
-fn film_timeline(src: &SceneSources<'_>, bytes: Option<&[u8]>) -> FilmTimeline {
-    let Some(bytes) = bytes else {
-        return synthetic_orbit(src.max_ticks);
-    };
-    match FilmTimeline::from_bytes(bytes) {
-        Ok(timeline) if !timeline.slices().is_empty() => timeline,
-        Ok(_) => {
-            eprintln!("[stuntreel] film contained no slices; using synthetic trajectory");
-            synthetic_orbit(src.max_ticks)
-        }
-        Err(err) => {
-            eprintln!("[stuntreel] failed to evaluate film: {err}; using synthetic trajectory");
-            synthetic_orbit(src.max_ticks)
-        }
+/// Reads and parses the film at `path`; a film with no slices is an error too.
+fn load_film(path: &Path) -> Result<FilmTimeline, String> {
+    let bytes = fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let timeline =
+        FilmTimeline::from_bytes(&bytes).map_err(|e| format!("parse {}: {e}", path.display()))?;
+    if timeline.slices().is_empty() {
+        return Err(format!("{}: film contains no slices", path.display()));
     }
+    Ok(timeline)
 }
 
 /// Prints what loaded: models, partial SODs, anchors, world, and the film's extent.
@@ -243,32 +218,20 @@ fn print_film(timeline: &FilmTimeline) {
     }
 }
 
-/// Loads a model from disk if provided, otherwise returns the cleanroom synthetic aircraft.
-fn load_or_create_model(path: Option<&Path>, sidata: Option<&Path>) -> SodModelIr {
+/// Loads the named model, or returns the cleanroom synthetic aircraft when none is named.
+fn load_or_create_model(path: Option<&Path>, sidata: Option<&Path>) -> Result<SodModelIr, String> {
     let Some(path) = path else {
-        return create_default_aircraft_ir();
+        return Ok(create_default_aircraft_ir());
     };
 
-    let bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            eprintln!("[stuntreel] .SOD read failed for {}: {e}", path.display());
-            return create_default_aircraft_ir();
-        }
-    };
+    let bytes = fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
 
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("MODEL");
     let anchors = read_scenery_file(sidata, path, "ANCHORPT.DAT")
         .map(|b| parse_anchor_table(&b))
         .unwrap_or_default();
     let anchor_slice = (!anchors.is_empty()).then_some(anchors.as_slice());
-    match transpile_sod(&bytes, stem, anchor_slice) {
-        Ok(ir) => ir,
-        Err(e) => {
-            eprintln!("[stuntreel] .SOD load failed for {}: {e}", path.display());
-            create_default_aircraft_ir()
-        }
-    }
+    transpile_sod(&bytes, stem, anchor_slice).map_err(|e| format!("parse {}: {e}", path.display()))
 }
 
 /// A circular fly-by around the origin: one keyframe per 20 ms tick, 60 by default.
@@ -456,5 +419,82 @@ mod tests {
         assert_eq!(timeline.slices().len(), 10);
         assert_eq!(timeline.total_ticks(), 9);
         assert_eq!(synthetic_orbit(None).slices().len(), 60);
+    }
+
+    fn fixture(name: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures")
+            .join(name)
+    }
+
+    fn sources<'a>(
+        flm: Option<&'a Path>,
+        all: Option<&'a Path>,
+        sod: Option<&'a Path>,
+    ) -> SceneSources<'a> {
+        SceneSources {
+            flm,
+            all,
+            sod,
+            sidata: None,
+            max_ticks: None,
+        }
+    }
+
+    fn scene_err(src: &SceneSources<'_>) -> String {
+        let Err(err) = build_scene(src) else {
+            panic!("expected build_scene to fail");
+        };
+        err
+    }
+
+    #[test]
+    fn no_named_input_plays_the_synthetic_orbit() {
+        let scene = build_scene(&sources(None, None, None)).expect("orbit scene");
+        assert_eq!(scene.timeline().slices().len(), 60);
+    }
+
+    #[test]
+    fn a_named_film_that_does_not_load_is_an_error() {
+        let t = TempTree::new();
+        let missing = t.0.join("NOFILM.FLM");
+        let wrong_magic = fixture("synthetic_minimal.sod");
+        let archive = fixture("synthetic_minimal.all");
+        for all in [None, Some(archive.as_path())] {
+            let err = scene_err(&sources(Some(&missing), all, None));
+            assert!(err.contains("NOFILM.FLM"), "{err}");
+            let err = scene_err(&sources(Some(&wrong_magic), all, None));
+            assert!(err.contains("synthetic_minimal.sod"), "{err}");
+        }
+    }
+
+    #[test]
+    fn a_film_with_no_slices_is_an_error() {
+        let empty = fixture("synthetic_empty.flm");
+        let archive = fixture("synthetic_minimal.all");
+        for all in [None, Some(archive.as_path())] {
+            let err = scene_err(&sources(Some(&empty), all, None));
+            assert!(err.contains("no slices"), "{err}");
+        }
+    }
+
+    #[test]
+    fn a_named_model_that_does_not_load_is_an_error() {
+        let t = TempTree::new();
+        let missing = t.0.join("NOMODEL.SOD");
+        let err = scene_err(&sources(None, None, Some(&missing)));
+        assert!(err.contains("NOMODEL.SOD"), "{err}");
+
+        let not_a_model = t.file("JUNK.SOD", "not a display list");
+        let err = scene_err(&sources(None, None, Some(&not_a_model)));
+        assert!(err.contains("JUNK.SOD"), "{err}");
+    }
+
+    #[test]
+    fn a_named_archive_that_does_not_load_is_an_error() {
+        let t = TempTree::new();
+        let missing = t.0.join("NOMOVIE.ALL");
+        let err = scene_err(&sources(None, Some(&missing), None));
+        assert!(err.contains("NOMOVIE.ALL"), "{err}");
     }
 }

@@ -6,7 +6,6 @@
 //! - `[I5]` Hardware depth bias pass for coplanar decals.
 
 use crate::camera::{CameraController, CameraGpuResources};
-use crate::mesh::{GpuMeshSlice, GpuModel};
 use crate::palette::PaletteLut;
 use crate::pipeline::{PLANE_FORMAT, RenderPipelines};
 use crate::scene_renderer::SceneRenderer;
@@ -22,8 +21,6 @@ pub enum HeadlessError {
     DeviceRequestFailed(String),
     /// Buffer readback mapping failed.
     BufferReadbackFailed(String),
-    /// Image encoding failed.
-    ImageSaveFailed(String),
 }
 
 impl fmt::Display for HeadlessError {
@@ -32,7 +29,6 @@ impl fmt::Display for HeadlessError {
             Self::NoAdapterAvailable => write!(f, "No compatible GPU adapter found on this system"),
             Self::DeviceRequestFailed(err) => write!(f, "Failed to initialize wgpu device: {err}"),
             Self::BufferReadbackFailed(err) => write!(f, "Failed to map readback buffer: {err}"),
-            Self::ImageSaveFailed(err) => write!(f, "Failed to save frame image: {err}"),
         }
     }
 }
@@ -60,7 +56,8 @@ pub struct HeadlessRenderer {
     pub depth_texture: wgpu::Texture,
     /// Offscreen depth texture view.
     pub depth_view: wgpu::TextureView,
-    /// Staging buffer for reading rendered pixels back to CPU memory.
+    /// Staging buffer for reading rendered pixels back to CPU memory; each row is
+    /// padded to a multiple of [`wgpu::COPY_BYTES_PER_ROW_ALIGNMENT`] bytes.
     pub readback_buffer: wgpu::Buffer,
     /// Offscreen plane target (`layer << 8 | palette index`, `R32Uint`).
     pub plane_texture: wgpu::Texture,
@@ -72,6 +69,10 @@ pub struct HeadlessRenderer {
     pub width: u32,
     /// Framebuffer height (240).
     pub height: u32,
+    /// Bytes per row in the readback buffers: `width * 4` rounded up to
+    /// `wgpu::COPY_BYTES_PER_ROW_ALIGNMENT`. The padding is stripped on readback, so any
+    /// width works.
+    padded_row_bytes: u32,
     /// When set, the 3D scene is drawn into the top this-many rows only, with the vertical
     /// focal scale kept, as `PLAYONE.EXE` does above its button bar. `None` fills the target.
     pub viewport_rows: Option<u32>,
@@ -186,9 +187,9 @@ impl HeadlessRenderer {
         });
         let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Readback buffer (320 * 4 = 1280 bytes/row, cleanly aligned to 256)
-        let bytes_per_row = width * 4;
-        let buffer_size = (bytes_per_row * height) as u64;
+        // Texture-to-buffer copies need a 256-byte row pitch; 320 * 4 = 1280 already is one.
+        let padded_row_bytes = (width * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let buffer_size = u64::from(padded_row_bytes) * u64::from(height);
 
         let readback_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("stunt_offscreen_readback_buffer"),
@@ -220,69 +221,9 @@ impl HeadlessRenderer {
             plane_readback_buffer,
             width,
             height,
+            padded_row_bytes,
             viewport_rows: None,
         })
-    }
-
-    /// Renders a scene containing one or more models and captures the resulting RGBA8 framebuffer.
-    ///
-    /// Draws with the static Mode 13h table.
-    pub fn render_frame(
-        &mut self,
-        camera: &CameraController,
-        models: &[(&GpuModel, &[GpuMeshSlice], &[GpuMeshSlice])],
-        clear_palette_index: Option<u8>,
-    ) -> Result<Vec<u8>, HeadlessError> {
-        // Upload camera uniform
-        let camera_uniform = camera.build_uniform();
-        self.camera_resources.upload(&self.queue, &camera_uniform);
-        self.palette_lut.reset(&self.queue);
-
-        self.capture(clear_palette_index, |this, rpass| {
-            // Pass 1: Solid base geometry with zero depth bias
-            rpass.set_pipeline(&this.pipelines.base_pipeline);
-            rpass.set_bind_group(0, &this.camera_resources.bind_group, &[]);
-            rpass.set_bind_group(1, &this.palette_lut.bind_group, &[]);
-            for (model, base_meshes, _) in models {
-                if base_meshes.is_empty() {
-                    continue;
-                }
-                rpass.set_bind_group(2, &model.model_bind_group, &[]);
-                rpass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
-                rpass.set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-
-                for mesh in *base_meshes {
-                    rpass.draw_indexed(
-                        mesh.index_offset..(mesh.index_offset + mesh.index_count),
-                        mesh.vertex_offset,
-                        0..1,
-                    );
-                }
-            }
-
-            // Pass 2: Invariant [I5] coplanar decals with hardware depth bias
-            rpass.set_pipeline(&this.pipelines.decal_pipeline);
-            rpass.set_bind_group(0, &this.camera_resources.bind_group, &[]);
-            rpass.set_bind_group(1, &this.palette_lut.bind_group, &[]);
-
-            for (model, _, decal_meshes) in models {
-                if decal_meshes.is_empty() {
-                    continue;
-                }
-                rpass.set_bind_group(2, &model.model_bind_group, &[]);
-                rpass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
-                rpass.set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-
-                for mesh in *decal_meshes {
-                    rpass.draw_indexed(
-                        mesh.index_offset..(mesh.index_offset + mesh.index_count),
-                        mesh.vertex_offset,
-                        0..1,
-                    );
-                }
-            }
-        })
-        .map(|(rgba, _plane)| rgba)
     }
 
     /// Renders one scene frame through `scene` and captures the RGBA8 framebuffer.
@@ -415,7 +356,7 @@ impl HeadlessRenderer {
                 buffer: &self.readback_buffer,
                 layout: wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(self.width * 4),
+                    bytes_per_row: Some(self.padded_row_bytes),
                     rows_per_image: Some(self.height),
                 },
             },
@@ -437,7 +378,7 @@ impl HeadlessRenderer {
                 buffer: &self.plane_readback_buffer,
                 layout: wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(self.width * 4),
+                    bytes_per_row: Some(self.padded_row_bytes),
                     rows_per_image: Some(self.height),
                 },
             },
@@ -462,7 +403,7 @@ impl HeadlessRenderer {
         Ok((pixel_bytes, plane))
     }
 
-    /// Maps `buffer`, copies its bytes out, and unmaps it.
+    /// Maps `buffer`, copies its rows out without the pitch padding, and unmaps it.
     fn read_back(&self, buffer: &wgpu::Buffer) -> Result<Vec<u8>, HeadlessError> {
         let buffer_slice = buffer.slice(..);
         let (sender, receiver) = std::sync::mpsc::channel();
@@ -478,28 +419,14 @@ impl HeadlessRenderer {
             .map_err(|e| HeadlessError::BufferReadbackFailed(e.to_string()))?;
 
         let mapped = buffer_slice.get_mapped_range();
-        let bytes = mapped.to_vec();
+        let row_bytes = self.width as usize * 4;
+        let bytes = mapped
+            .chunks_exact(self.padded_row_bytes as usize)
+            .flat_map(|row| &row[..row_bytes])
+            .copied()
+            .collect();
         drop(mapped);
         buffer.unmap();
         Ok(bytes)
-    }
-
-    /// Renders and saves a captured frame as a PNG file.
-    pub fn render_to_png(
-        &mut self,
-        camera: &CameraController,
-        models: &[(&GpuModel, &[GpuMeshSlice], &[GpuMeshSlice])],
-        clear_palette_index: Option<u8>,
-        path: impl AsRef<std::path::Path>,
-    ) -> Result<(), HeadlessError> {
-        let bytes = self.render_frame(camera, models, clear_palette_index)?;
-        let img = image::RgbaImage::from_raw(self.width, self.height, bytes).ok_or_else(|| {
-            HeadlessError::ImageSaveFailed(
-                "Failed to construct RgbaImage from raw bytes".to_string(),
-            )
-        })?;
-        img.save(path.as_ref())
-            .map_err(|e| HeadlessError::ImageSaveFailed(e.to_string()))?;
-        Ok(())
     }
 }

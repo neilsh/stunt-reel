@@ -324,4 +324,28 @@ mod tests {
         assert!(err.contains("0x0063"), "{err}");
         assert!(!out.exists());
     }
+
+    #[test]
+    fn a_film_that_does_not_load_is_an_error() {
+        let out = temp_out("badfilm.glb");
+        let missing = temp_out("NOFILM.FLM");
+        for (film, expected) in [
+            (fixture("synthetic_empty.flm"), "no slices"),
+            (missing, "NOFILM.FLM"),
+        ] {
+            let err = run(strings(&[
+                "--archive",
+                fixture("synthetic_minimal.all").to_str().unwrap(),
+                "--film",
+                film.to_str().unwrap(),
+                "--tick",
+                "0",
+                "--out",
+                out.to_str().unwrap(),
+            ]))
+            .expect_err("film must load");
+            assert!(err.contains(expected), "{err}");
+            assert!(!out.exists());
+        }
+    }
 }
