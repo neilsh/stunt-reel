@@ -17,7 +17,7 @@ Every turn re-sends the whole conversation, so the loop's cost is turns times co
 
 1. **Build once, call the binary.** `cargo build --release -p stunt-cli`, then `target/release/stuntreel.exe`, never `cargo run` per render.
 2. **One command per batch.** Put a render plus score loop over every candidate in one shell command that prints one line per candidate (the `[parity]` summary line, or the probe's single number). Run it in the background when it will take more than about 2 minutes.
-3. **Use the sweep tool when it exists.** If `python/scripts/parity_sweep.py` is present, it replaces probes.md section 4 steps 2 and 3.
+3. **Use the sweep tool.** `mise run sweep -- --var DBG_X=a,b [--films ctry,intro] [--probe iou] [--keep-best]` builds once, renders and scores the whole product on both films and prints one table plus the winner (probes.md section 4). Do not hand-roll render-and-score loops.
 4. **Score both films before adopting a change.** CTRY-only gains have regressed INTRO three times (`parity-findings.md` section 11).
 5. **Never print a whole `report.json`.** Extract the fields you need with `python -c "import json; ..."`.
 6. **Look at pixels sparingly.** Use `parity_probe.py crop` on one region instead of Reading full contact sheets. Read at most the winner's crop and the worst mover, and only after the numbers point somewhere.

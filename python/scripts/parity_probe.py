@@ -79,18 +79,29 @@ def render_region(
     return rows
 
 
-def cmd_crop(args: argparse.Namespace) -> None:
-    palette = json.loads(
-        (args.reference / f"palettes_{args.ordinal:04d}.json").read_text(encoding="utf-8")
-    )
-    capture = (args.reference / f"tick_{args.ordinal:04d}.idx").read_bytes()
-    ours = (args.ours / f"tick_{args.tick:05d}.idx").read_bytes()
-    box = (args.x0, args.y0, args.x1, args.y1)
-    top = render_region(capture, palette, box, args.scale)
-    bottom = render_region(ours, palette, box, args.scale)
-    width = (args.x1 - args.x0) * args.scale
+def make_crop(
+    reference: Path,
+    ours: Path,
+    ordinal: int,
+    tick: int,
+    box: tuple[int, int, int, int],
+    scale: int,
+    out: Path,
+) -> None:
+    """Writes capture ordinal ``ordinal`` over our film tick ``tick`` for ``box`` as a PNG."""
+    palette = json.loads((reference / f"palettes_{ordinal:04d}.json").read_text(encoding="utf-8"))
+    capture = (reference / f"tick_{ordinal:04d}.idx").read_bytes()
+    render = (ours / f"tick_{tick:05d}.idx").read_bytes()
+    top = render_region(capture, palette, box, scale)
+    bottom = render_region(render, palette, box, scale)
+    width = (box[2] - box[0]) * scale
     divider = [[255, 0, 255] * width] * 2
-    write_png(args.out, width, top + divider + bottom)
+    write_png(out, width, top + divider + bottom)
+
+
+def cmd_crop(args: argparse.Namespace) -> None:
+    box = (args.x0, args.y0, args.x1, args.y1)
+    make_crop(args.reference, args.ours, args.ordinal, args.tick, box, args.scale, args.out)
 
 
 def cmd_shift(args: argparse.Namespace) -> None:
@@ -118,27 +129,41 @@ def cmd_shift(args: argparse.Namespace) -> None:
         print(frame["film_tick"], len(pixels), best[1], best[2], round(best[0] / len(sample), 2))
 
 
-def cmd_iou(args: argparse.Namespace) -> None:
+def actor_iou(
+    report: Path,
+    reference: Path,
+    ours: Path,
+    every: int = 2,
+    pad: int = 25,
+    min_pixels: int = 100,
+) -> tuple[float, int]:
+    """Mean actor-window IoU over every ``every``-th scored frame, and the frames used."""
     total = 0.0
     count = 0
-    for frame in scored_frames(args.report)[:: args.every]:
-        layer = (args.ours / f"tick_{frame['film_tick']:05d}.layer").read_bytes()
-        ours = set(actor_pixels(layer))
-        if len(ours) < args.min_pixels:
+    for frame in scored_frames(report)[::every]:
+        layer = (ours / f"tick_{frame['film_tick']:05d}.layer").read_bytes()
+        pixels = set(actor_pixels(layer))
+        if len(pixels) < min_pixels:
             continue
-        xs = [i % WIDTH for i in ours]
-        ys = [i // WIDTH for i in ours]
-        pad = args.pad
-        capture = (args.reference / f"tick_{frame['ordinal']:04d}.idx").read_bytes()
+        xs = [i % WIDTH for i in pixels]
+        ys = [i // WIDTH for i in pixels]
+        capture = (reference / f"tick_{frame['ordinal']:04d}.idx").read_bytes()
         seen = {
             y * WIDTH + x
             for y in range(max(0, min(ys) - pad), min(ROWS, max(ys) + pad))
             for x in range(max(0, min(xs) - pad), min(WIDTH, max(xs) + pad))
             if is_object(capture[y * WIDTH + x], CTRY_BACKGROUND)
         }
-        total += len(ours & seen) / len(ours | seen)
+        total += len(pixels & seen) / len(pixels | seen)
         count += 1
-    print(f"{total / max(count, 1):.4f} {count}")
+    return total / max(count, 1), count
+
+
+def cmd_iou(args: argparse.Namespace) -> None:
+    value, count = actor_iou(
+        args.report, args.reference, args.ours, args.every, args.pad, args.min_pixels
+    )
+    print(f"{value:.4f} {count}")
 
 
 def main() -> None:
