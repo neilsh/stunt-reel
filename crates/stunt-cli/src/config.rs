@@ -255,7 +255,7 @@ fn after_help() -> String {
          A / D   Free-Cam: Strafe Left / Right\n  \
          Q / E   Free-Cam: Move Down / Up\n  \
          Esc     Exit presentation",
-        indent(parity::USAGE),
+        indent(&parity::usage()),
         indent(export::USAGE),
     )
 }

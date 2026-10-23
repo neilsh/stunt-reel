@@ -60,7 +60,7 @@ use mask::CAPTURE_SKY_INDICES;
 use score::{FrameMetrics, ReferenceFrame, RenderFrame, ScorePolicy, score_frame};
 use sheets::write_contact_sheet;
 
-pub(crate) use args::USAGE;
+pub(crate) use args::usage;
 
 /// `[I6]` initial acceptance threshold on the scored mean SSIM.
 const I6_INITIAL_SSIM: f32 = 0.88;
@@ -92,7 +92,7 @@ struct FrameRow {
 
 /// Runs the comparator and writes `report.json` plus contact sheets.
 pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
-    let args = Args::parse(args)?;
+    let args = Args::try_parse_args(args).unwrap_or_else(|e| e.exit());
     fs::create_dir_all(&args.output)
         .map_err(|e| format!("create output directory {}: {e}", args.output.display()))?;
 
