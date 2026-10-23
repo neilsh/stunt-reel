@@ -27,7 +27,6 @@ pub mod trajectory;
 pub mod vfs;
 
 pub use palette::*;
-pub use parity::*;
 pub use scene::*;
 pub use trajectory::*;
 pub use vfs::*;

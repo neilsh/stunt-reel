@@ -2,6 +2,8 @@
 
 #![allow(dead_code)]
 
+use stunt_core::contracts::{CameraTransform, TrajectoryRecord};
+use stunt_core::flm::{FilmTimeline, SliceKeyframe};
 use stunt_render::HeadlessRenderer;
 
 /// Environment variable that turns a missing GPU from a skip into a test failure.
@@ -32,4 +34,23 @@ pub(crate) fn gpu_or_skip_with(width: u32, height: u32) -> Option<HeadlessRender
             None
         }
     }
+}
+
+/// A one-slice film with no actors, seen from `camera`.
+pub(crate) fn still_timeline(camera: CameraTransform) -> FilmTimeline {
+    let record = TrajectoryRecord {
+        tick: 0,
+        camera,
+        actors: Vec::new(),
+        audio_cues: Vec::new(),
+        palette: Default::default(),
+    };
+    FilmTimeline::new(
+        vec![SliceKeyframe {
+            record,
+            tick: 0,
+            tick_duration: 1,
+        }],
+        Vec::new(),
+    )
 }

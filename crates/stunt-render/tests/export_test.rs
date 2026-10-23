@@ -10,7 +10,8 @@ mod common;
 use std::fs;
 use std::path::PathBuf;
 use stunt_core::contracts::CameraTransform;
-use stunt_render::{CameraController, FfmpegVideoWriter, VideoExportError};
+use stunt_core::scene::FilmScene;
+use stunt_render::{CameraController, FfmpegVideoWriter, SceneRenderer, VideoExportError};
 
 fn get_temp_test_dir(name: &str) -> PathBuf {
     let nonce = std::time::SystemTime::now()
@@ -29,6 +30,25 @@ fn test_interval_frame_capture_exact_count_magic_and_dimensions() {
     };
 
     let out_dir = get_temp_test_dir("interval_test");
+
+    // An empty scene: each frame is the camera override over the clear colour.
+    let scene = FilmScene::new(
+        common::still_timeline(CameraTransform {
+            eye: [0.0, 10.0, 50.0],
+            target: [0.0, 0.0, 0.0],
+            fov_degrees: 45.0,
+            roll_radians: 0.0,
+            cut_from_previous: true,
+        }),
+        Default::default(),
+        None,
+    );
+    let mut scene_renderer = SceneRenderer::new(
+        &renderer.device,
+        &renderer.queue,
+        &renderer.pipelines,
+        &scene,
+    );
 
     // 10 simulation ticks, interval step = 2 (should produce exactly 5 frames: 1, 3, 5, 7, 9)
     let total_ticks = 10;
@@ -52,9 +72,22 @@ fn test_interval_frame_capture_exact_count_magic_and_dimensions() {
         });
 
         let frame_path = out_dir.join(format!("frame_{ordinal:04}.png"));
-        renderer
-            .render_to_png(&camera, &[], Some(180), &frame_path)
-            .expect("render frame to png");
+        let rgba = renderer
+            .render_scene(
+                &mut scene_renderer,
+                &scene.frame(tick as f32),
+                Some(&camera),
+                Some(180),
+            )
+            .expect("render frame");
+        image::save_buffer(
+            &frame_path,
+            &rgba,
+            renderer.width,
+            renderer.height,
+            image::ColorType::Rgba8,
+        )
+        .expect("save frame png");
     }
 
     // (a) Verify exact count

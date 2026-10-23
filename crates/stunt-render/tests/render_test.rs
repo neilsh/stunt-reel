@@ -6,17 +6,18 @@
 //! - Mode 13h 256x32 palette LUT generation (`[I3]`)
 //! - 4:3 aspect camera matrices and 6-DOF Free-Cam controls (`[I1]`, `[I6]`)
 //! - Headless offscreen framebuffer capture (`[I6]`)
-//! - Windowed SSIM parity evaluation and Seam 4 reporting (`[I6]`)
+//! - Windowed SSIM evaluation (`[I6]`)
 
 mod common;
 
 use stunt_core::contracts::{
-    CameraTransform, NodeKind, SodModelIr, SodVertex, VisibilityCondition, VisualParityReport,
+    CameraTransform, NodeKind, SodModelIr, SodVertex, VisibilityCondition,
 };
+use stunt_core::scene::FilmScene;
 use stunt_render::{
     ASPECT_4_3, ASPECT_CORRECTED_HEIGHT, CameraController, CameraGpuResources, CameraMode,
-    GpuModel, MODE13H_WIDTH, PHASE2_SSIM_THRESHOLD, PaletteLut, RenderPipelines,
-    build_palette_lut_bytes, compute_frame_ssim, evaluate_visual_parity, rgba_to_luminance,
+    GpuModel, LAYER_FIRST_ACTOR, MODE13H_WIDTH, PHASE2_SSIM_THRESHOLD, PaletteLut, RenderPipelines,
+    SceneRenderer, build_palette_lut_bytes, compute_frame_ssim, rgba_to_luminance,
 };
 
 #[test]
@@ -125,7 +126,7 @@ fn test_camera_controller_and_aspect_ratio() {
 }
 
 #[test]
-fn test_ssim_parity_evaluator_and_reporting() {
+fn test_ssim_evaluator() {
     let size = MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT;
     let mut frame_ref = vec![100.0f32; size];
     // Add patterned details
@@ -161,23 +162,6 @@ fn test_ssim_parity_evaluator_and_reporting() {
         ssim_test >= PHASE2_SSIM_THRESHOLD,
         "SSIM {ssim_test} must be >= {PHASE2_SSIM_THRESHOLD}"
     );
-
-    // Multi-frame evaluation
-    let ref_frames = vec![frame_ref.clone(), frame_ref.clone()];
-    let test_frames = vec![frame_test.clone(), frame_test.clone()];
-
-    let report: VisualParityReport = evaluate_visual_parity(
-        &ref_frames,
-        &test_frames,
-        "TEST_FILM",
-        PHASE2_SSIM_THRESHOLD,
-        false,
-    );
-
-    assert_eq!(report.film_name, "TEST_FILM");
-    assert_eq!(report.frames_evaluated, 2);
-    assert!(report.is_passing());
-    assert!(report.mean_ssim >= PHASE2_SSIM_THRESHOLD);
 }
 
 #[test]
@@ -237,7 +221,8 @@ fn test_headless_offscreen_render_execution() {
     };
 
     ir.vertices = vec![v0, v1, v2, d0, d1, d2];
-    ir.indices = vec![0, 1, 2, 3, 4, 5];
+    // Indices are relative to each mesh's `vertex_offset`.
+    ir.indices = vec![0, 1, 2, 0, 1, 2];
 
     let root = ir.allocate_node(
         "BASE",
@@ -273,24 +258,36 @@ fn test_headless_offscreen_render_execution() {
         &renderer.pipelines.model_bind_group_layout,
         &ir,
     );
-
-    let mut camera = CameraController::default();
-    camera.set_authored_transform(CameraTransform {
-        eye: [0.0, 0.0, 5.0],
-        target: [0.0, 0.0, 0.0],
-        fov_degrees: 45.0,
-        roll_radians: 0.0,
-        cut_from_previous: false,
-    });
-
     let (base_meshes, decal_meshes) = gpu_model.collect_visible_meshes(1, 5.0);
     assert_eq!(base_meshes.len(), 1);
     assert_eq!(decal_meshes.len(), 1);
 
-    let models = [(&gpu_model, base_meshes.as_slice(), decal_meshes.as_slice())];
-    let pixels = renderer
-        .render_frame(&camera, &models, Some(180))
+    // No actors in the film, so the loose model is drawn once at the origin.
+    let scene = FilmScene::with_single_model(
+        common::still_timeline(CameraTransform {
+            eye: [0.0, 0.0, 5.0],
+            target: [0.0, 0.0, 0.0],
+            fov_degrees: 45.0,
+            roll_radians: 0.0,
+            cut_from_previous: false,
+        }),
+        ir,
+    );
+    let mut scene_renderer = SceneRenderer::new(
+        &renderer.device,
+        &renderer.queue,
+        &renderer.pipelines,
+        &scene,
+    );
+    let (pixels, plane) = renderer
+        .render_scene_with_plane(&mut scene_renderer, &scene.frame(0.0), None, Some(180))
         .expect("Render frame succeeds");
+
+    let base_pixels = plane
+        .iter()
+        .filter(|&&p| p == (LAYER_FIRST_ACTOR << 8 | 40))
+        .count();
+    assert!(base_pixels > 100, "base triangle missing: {base_pixels}");
 
     assert_eq!(pixels.len(), 320 * 240 * 4);
 
@@ -308,4 +305,74 @@ fn test_headless_offscreen_render_execution() {
     assert_eq!(lum.len(), 320 * 240);
     let ssim = compute_frame_ssim(&lum, &lum, 320, 240, 11, 8);
     assert!((ssim - 1.0).abs() < 1e-4);
+}
+
+#[test]
+fn test_unaligned_width_reads_back_unpadded_rows() {
+    // 100 * 4 = 400 bytes per row, not a multiple of the 256-byte copy pitch.
+    let (w, h) = (100usize, 75usize);
+    let Some(mut renderer) = common::gpu_or_skip_with(w as u32, h as u32) else {
+        return;
+    };
+    let vertex = |x: f32, y: f32| SodVertex {
+        position: [x, y, 0.0],
+        normal: [0.0, 0.0, 1.0],
+        palette_index: 40,
+        flags: 0,
+        _padding: [0, 0],
+    };
+    let mut ir = SodModelIr::new("TRI");
+    ir.vertices = vec![vertex(-1.0, -1.0), vertex(1.0, -1.0), vertex(0.0, 1.0)];
+    ir.indices = vec![0, 1, 2];
+    ir.allocate_node(
+        "TRI",
+        None,
+        glam::Mat4::IDENTITY.to_cols_array(),
+        VisibilityCondition::Always,
+        NodeKind::Mesh {
+            vertex_offset: 0,
+            vertex_count: 3,
+            index_offset: 0,
+            index_count: 3,
+            is_decal: false,
+        },
+    );
+    let scene = FilmScene::with_single_model(
+        common::still_timeline(CameraTransform {
+            eye: [0.0, 0.0, 5.0],
+            target: [0.0, 0.0, 0.0],
+            fov_degrees: 45.0,
+            roll_radians: 0.0,
+            cut_from_previous: false,
+        }),
+        ir,
+    );
+    let mut scene_renderer = SceneRenderer::new(
+        &renderer.device,
+        &renderer.queue,
+        &renderer.pipelines,
+        &scene,
+    );
+    let (pixels, plane) = renderer
+        .render_scene_with_plane(&mut scene_renderer, &scene.frame(0.0), None, Some(180))
+        .expect("render succeeds");
+
+    assert_eq!(pixels.len(), w * h * 4);
+    assert_eq!(plane.len(), w * h);
+    // The centred triangle is left-right symmetric in every row; a wrong row pitch on
+    // readback would shear it sideways.
+    let mut rows_drawn = 0;
+    for row in plane.chunks_exact(w) {
+        let cols: Vec<usize> = (0..w).filter(|&x| row[x] >> 8 != 0).collect();
+        if cols.is_empty() {
+            continue;
+        }
+        rows_drawn += 1;
+        let centre = (cols[0] + cols[cols.len() - 1]) as f32 / 2.0;
+        assert!(
+            (centre - (w - 1) as f32 / 2.0).abs() <= 1.0,
+            "row centred at {centre}"
+        );
+    }
+    assert!(rows_drawn > h / 4, "triangle covers only {rows_drawn} rows");
 }
