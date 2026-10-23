@@ -1,5 +1,7 @@
 //! Overlay and sky masks, IoU and index agreement.
 
+use std::ops::RangeInclusive;
+
 use stunt_render::{
     ASPECT_CORRECTED_HEIGHT, LAYER_NONE, MODE13H_HEIGHT, MODE13H_WIDTH, rescale_mode13h_frame,
 };
@@ -9,6 +11,17 @@ const UI_BAR_FIRST_ROW: usize = 185;
 
 /// Palette index of the mouse cursor in captured frames.
 const CURSOR_INDEX: u8 = 255;
+
+/// Palette indices `PLAYONE.EXE` paints the sky with: elevation bands from 227 at the top
+/// of the view to 238 at the horizon (`research/parity-findings.md` §7). This describes
+/// captures only; the renderer's band table in `mode13h.wgsl` is a separate model and is
+/// deliberately not shared.
+pub(super) const CAPTURE_SKY_INDICES: RangeInclusive<u8> = 227..=238;
+
+/// Whether a captured pixel shows sky rather than geometry.
+pub(super) fn is_capture_sky(index: u8) -> bool {
+    CAPTURE_SKY_INDICES.contains(&index)
+}
 
 /// Pixels of a captured frame covered by the UI overlay: the button bar rows and the
 /// cursor. Scoring leaves them out because the renderer does not draw them.
@@ -57,7 +70,6 @@ pub(super) fn index_agreement(reference: &[u8], render: &[u8], overlay: &[bool])
 /// [`stunt_render::LAYER_NONE`].
 pub(super) fn mask_iou_planes(
     reference_indices: &[u8],
-    sky_index: u8,
     render_layers: &[u16],
     overlay: &[bool],
 ) -> f32 {
@@ -66,7 +78,7 @@ pub(super) fn mask_iou_planes(
         if masked {
             continue;
         }
-        let reference_filled = *index != sky_index;
+        let reference_filled = !is_capture_sky(*index);
         let test_filled = u32::from(*layer) != LAYER_NONE;
         intersection += usize::from(reference_filled && test_filled);
         union += usize::from(reference_filled || test_filled);
@@ -79,10 +91,9 @@ pub(super) fn mask_iou_planes(
 }
 
 /// Intersection-over-union of the non-sky masks of both 320x200 frames, skipping `overlay`
-/// pixels.
+/// pixels. The capture's sky is [`CAPTURE_SKY_INDICES`].
 pub(super) fn mask_iou(
     reference_indices: &[u8],
-    sky_index: u8,
     test_luminance: &[f32],
     clear_luminance: f32,
     overlay: &[bool],
@@ -97,7 +108,7 @@ pub(super) fn mask_iou(
         if overlay[position] {
             continue;
         }
-        let reference_filled = *index != sky_index;
+        let reference_filled = !is_capture_sky(*index);
         let test_filled = (*luminance - clear_luminance).abs() > 0.5;
         if reference_filled && test_filled {
             intersection += 1;
@@ -145,11 +156,38 @@ mod tests {
     }
 
     #[test]
+    fn every_sky_band_counts_as_sky_and_nothing_else_does() {
+        for index in 0..=255u8 {
+            assert_eq!(
+                is_capture_sky(index),
+                (227..=238).contains(&index),
+                "{index}"
+            );
+        }
+        // The rare 224-226 shades sit below the horizon, never in the top rows.
+        assert!(!is_capture_sky(224) && !is_capture_sky(226));
+    }
+
+    #[test]
     fn layer_mask_iou_fills_the_render_side_where_a_layer_covers() {
-        let reference = [5u8, 5, 7, 7];
+        let reference = [227u8, 238, 7, 7];
         let layers = [0u16, 1, 1, 0];
-        // Reference fills pixels 2 and 3 (sky is 5); the render fills pixels 1 and 2.
-        let iou = mask_iou_planes(&reference, 5, &layers, &[false; 4]);
+        // Reference fills pixels 2 and 3 (227 and 238 are sky bands); the render fills
+        // pixels 1 and 2.
+        let iou = mask_iou_planes(&reference, &layers, &[false; 4]);
         assert!((iou - 1.0 / 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn every_sky_band_of_one_capture_is_masked_out() {
+        // A capture whose sky spans several bands, with no render geometry: before the
+        // band rule only the modal band counted as sky and the rest scored as misses.
+        let reference = [227u8, 230, 233, 238, 40];
+        let layers = [0u16; 5];
+        let iou = mask_iou_planes(&reference, &layers, &[false; 5]);
+        // Only pixel 4 is filled (reference only), so the union is 1 and IoU is 0.
+        assert_eq!(iou, 0.0);
+        let layers = [0u16, 0, 0, 0, 1];
+        assert_eq!(mask_iou_planes(&reference, &layers, &[false; 5]), 1.0);
     }
 }

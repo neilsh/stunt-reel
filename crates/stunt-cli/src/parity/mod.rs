@@ -10,7 +10,8 @@
 //! Scores follow Invariant `[I6]`: both sides are reduced to Rec. 601 luminance,
 //! stretched from 320x200 to the 320x240 physical 4:3 raster, and compared with the
 //! shared `compute_frame_ssim` window evaluator. IoU compares each side's non-sky mask,
-//! which measures framing agreement independently of shading.
+//! which measures framing agreement independently of shading. A capture's sky is every
+//! pixel in the sky bands ([`mask::CAPTURE_SKY_INDICES`]), not one modal index.
 //!
 //! The original fades its palette with the film's brightness variable, and so does the
 //! render. Each capture's fade level (see [`fade::fade_level`]) is measured from its captured
@@ -57,7 +58,9 @@ use frames::{
     read_render_planes, reference_luminance, reference_paths, sky_index, warn_on_film_mismatch,
 };
 use loss::{LOSS_CLASSES, attribute_loss, loss_class};
-use mask::{index_agreement, mask_iou, mask_iou_planes, rescale_mask, ui_overlay_mask};
+use mask::{
+    index_agreement, is_capture_sky, mask_iou, mask_iou_planes, rescale_mask, ui_overlay_mask,
+};
 use sheets::write_contact_sheet;
 
 pub(crate) use args::USAGE;
@@ -179,7 +182,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             let codes: Vec<f32> = indices
                 .iter()
                 .zip(render_layers)
-                .map(|(&index, &layer)| f32::from(loss_class(layer, index != sky_index)))
+                .map(|(&index, &layer)| f32::from(loss_class(layer, !is_capture_sky(index))))
                 .collect();
             let classes: Vec<u8> = rescale_mode13h_frame(
                 &codes,
@@ -194,17 +197,11 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         });
         let (iou, index_agreement) = match &planes {
             Some((render_indices, render_layers)) => (
-                mask_iou_planes(&indices, sky_index, render_layers, &overlay),
+                mask_iou_planes(&indices, render_layers, &overlay),
                 Some(index_agreement(&indices, render_indices, &overlay)),
             ),
             None => (
-                mask_iou(
-                    &indices,
-                    sky_index,
-                    &test_luminance,
-                    clear_luminance,
-                    &overlay,
-                ),
+                mask_iou(&indices, &test_luminance, clear_luminance, &overlay),
                 None,
             ),
         };

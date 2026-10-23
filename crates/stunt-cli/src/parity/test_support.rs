@@ -37,10 +37,12 @@ pub(super) fn write_reference(dir: &Path, film_ticks: &[u64], tag: bool) {
     write_reference_faded(dir, film_ticks, tag, &vec![1.0; film_ticks.len()]);
 }
 
-/// Index plane of the synthetic captures: a black sky over bright static entries.
+/// Index plane of the synthetic captures: two sky bands over bright static entries.
 pub(super) fn plane_index(i: usize) -> u8 {
-    if i < MODE13H_WIDTH * 4 {
-        0
+    if i < MODE13H_WIDTH * 2 {
+        227
+    } else if i < MODE13H_WIDTH * 4 {
+        233
     } else {
         (i % 7) as u8 + 200
     }

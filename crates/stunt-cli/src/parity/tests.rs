@@ -6,6 +6,7 @@ use serde_json::json;
 use stunt_core::contracts::PaletteControls;
 use stunt_render::{MODE13H_HEIGHT, MODE13H_WIDTH};
 
+use super::mask::is_capture_sky;
 use super::test_support::{
     TempDir, plane_index, read_report, run_parity, write_matching_render, write_reference,
     write_reference_faded, write_render,
@@ -62,7 +63,7 @@ fn the_sky_mask_uses_the_render_palette_clear_colour() {
     let palette = half.film_palette();
     let image = image::RgbaImage::from_fn(MODE13H_WIDTH as u32, MODE13H_HEIGHT as u32, |x, y| {
         let index = plane_index(y as usize * MODE13H_WIDTH + x as usize);
-        let (r, g, b) = palette[usize::from(if index == 0 { 180 } else { index })];
+        let (r, g, b) = palette[usize::from(if is_capture_sky(index) { 180 } else { index })];
         image::Rgba([r, g, b, 255])
     });
     image.save(test.join(crate::tick_png_name(12))).unwrap();
