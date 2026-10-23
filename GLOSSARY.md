@@ -109,6 +109,11 @@ _Avoid_: test asset
 
 **Parity**:
 Comparison of a reconstructed render against a captured frame, scored by SSIM and mask IoU. The render is sampled from the timeline at the captured frame's film clock.
+_Avoid_: parity (for checking a trajectory against an oracle trajectory)
+
+**Oracle trajectory**:
+A trusted reference trajectory that an evaluated timeline is checked against for position error. It concerns trajectory records only, never rendered pixels.
+_Avoid_: parity oracle, golden frames
 
 **Captured frame**:
 One distinct rendered frame grabbed from `PLAYONE.EXE` at the vertical-retrace trap, numbered by capture order and tagged with its film clock.
@@ -127,9 +132,9 @@ _Avoid_: pixel accuracy, exact match
 _Avoid_: frame counter, global tick
 
 **Fade level**:
-The brightness of a captured frame relative to the static palette: the median, over the indices present in the first captured frame whose static R+G+B exceeds 60, of (captured entry R+G+B) / (static Mode 13h entry R+G+B). About 1.0 when `PLAYONE` is not fading; it falls to 0 over the end-of-film fade. The **authored fade level** is the film's own brightness palette control at that tick over its full value, read from the render's sidecar. Parity scores only frames whose authored fade level reaches `--min-fade-level`; the measured fade level is reported beside it as a cross-check, and decides scoring only for renders without a sidecar.
+The brightness of a captured frame relative to the static palette: about 1.0 when `PLAYONE` is not fading, falling to 0 over the end-of-film fade. The **authored fade level** is the same ratio taken from the film's own brightness palette control at that tick. Parity leaves out frames too faded to compare.
 _Avoid_: brightness, exposure
 
 **Sky band**:
-One of the palette indices 227 to 238 that `PLAYONE.EXE` paints the sky with, in straight bands by view-ray elevation (238 at the horizon). Parity treats every captured pixel in a sky band as sky; the render's sky is where its layer plane is empty.
-_Avoid_: sky index, clear colour (the render's framebuffer clear, which parity no longer reads)
+One of the palette indices 227 to 238 that `PLAYONE.EXE` paints the sky with, in straight bands by view-ray elevation (238 at the horizon). Every captured pixel in a sky band is sky.
+_Avoid_: sky index, clear colour (the render's framebuffer clear)
