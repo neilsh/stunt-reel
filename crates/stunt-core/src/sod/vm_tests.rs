@@ -9,7 +9,7 @@ use crate::sod::tessellate::transpile_sod;
 use crate::sod::vm::{compute_polygon_normal, execute_sod_vm, execute_sod_vm_impl};
 use crate::sod::{
     OP_ADDV, OP_CLRV, OP_COLOR, OP_GETV, OP_ID, OP_INTV, OP_NEGV, OP_POLYZ, OP_PUTV, OP_RETURN,
-    OP_SHLV, OP_SHRV, OP_SUBV, OP_TAP, OP_VECTORS, SodAnchorPoint, SodError, SodStop,
+    OP_SHLV, OP_SHRV, OP_SPHERE, OP_SUBV, OP_TAP, OP_VECTORS, SodAnchorPoint, SodError, SodStop,
     SodStopReason, transpile_sod_lenient,
 };
 
@@ -146,6 +146,35 @@ fn test_challenge_synthetic_minimal_fixture_precision() {
     // Decal flags
     assert_eq!(ir.vertices[0].flags & DECAL_FLAG_BIT, 0);
     assert_eq!(ir.vertices[3].flags & DECAL_FLAG_BIT, DECAL_FLAG_BIT);
+}
+
+#[test]
+fn test_sphere_emits_icosahedron_around_register_center() {
+    let mut bytes = make_sod_header(100, 0, 0, 0); // scale 1.0
+    bytes.extend_from_slice(&OP_VECTORS.to_le_bytes());
+    bytes.extend_from_slice(&1u16.to_le_bytes()); // count 1
+    bytes.extend_from_slice(&12u16.to_le_bytes()); // register 1
+    for coordinate in [100i16, 200, 300] {
+        bytes.extend_from_slice(&coordinate.to_le_bytes());
+    }
+    bytes.extend_from_slice(&OP_COLOR.to_le_bytes());
+    bytes.extend_from_slice(&45u16.to_le_bytes());
+    bytes.extend_from_slice(&OP_SPHERE.to_le_bytes());
+    bytes.extend_from_slice(&12u16.to_le_bytes()); // center register offset
+    bytes.extend_from_slice(&50u16.to_le_bytes()); // radius
+    bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+
+    let (_, polys) = execute_sod_vm(&bytes, None).expect("execute VM");
+    assert_eq!(polys.len(), 20);
+    for poly in &polys {
+        assert_eq!(poly.palette_index, 45);
+        assert_eq!(poly.vertices.len(), 3);
+        for v in &poly.vertices {
+            let d =
+                ((v[0] - 100.0).powi(2) + (v[1] - 200.0).powi(2) + (v[2] - 300.0).powi(2)).sqrt();
+            assert!((d - 46.0).abs() < 1e-3, "vertex {d} from center");
+        }
+    }
 }
 
 #[test]

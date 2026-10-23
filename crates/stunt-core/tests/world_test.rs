@@ -80,6 +80,7 @@ fn nothing_to_build_yields_none() {
         anchors: &[],
         map: None,
         scenery: None,
+        view_eyes: &[],
     };
     assert!(build_world(&inputs, &HashMap::new()).is_none());
 
@@ -89,6 +90,7 @@ fn nothing_to_build_yields_none() {
         anchors: &[],
         map: Some(&map),
         scenery: None,
+        view_eyes: &[],
     };
     assert!(build_world(&inputs, &HashMap::new()).is_none());
 }
@@ -100,6 +102,7 @@ fn anchors_without_map_get_a_fallback_ground_plane() {
         anchors: &anchors,
         map: None,
         scenery: None,
+        view_eyes: &[],
     };
     let world = build_world(&inputs, &HashMap::new()).expect("world");
     assert_eq!(world.terrain_patches, 0);
@@ -131,6 +134,7 @@ fn terrain_patch_maps_anchors_into_i1() {
         anchors: &anchors,
         map: Some(&map),
         scenery: None,
+        view_eyes: &[],
     };
     let world = build_world(&inputs, &HashMap::new()).expect("world");
     assert_eq!(world.terrain_patches, 1);
@@ -153,6 +157,7 @@ fn patch_indexing_beyond_the_anchor_table_is_rejected() {
         anchors: &anchors,
         map: Some(&map),
         scenery: None,
+        view_eyes: &[],
     };
     let world = build_world(&inputs, &HashMap::new()).expect("world");
     assert_eq!(world.terrain_patches, 0);
@@ -168,10 +173,39 @@ fn patch_touching_a_sentinel_anchor_is_counted_but_not_drawn() {
         anchors: &anchors,
         map: Some(&map),
         scenery: None,
+        view_eyes: &[],
     };
     let world = build_world(&inputs, &HashMap::new()).expect("world");
     assert_eq!(world.terrain_patches, 1);
     assert_eq!(world.ir.vertices.len(), 4); // ocean only; map was present so no ground plane
+}
+
+#[test]
+fn scenery_drops_props_that_stay_subpixel_along_the_camera_path() {
+    let shapes = fixture_shapes(0x0105);
+    // Word 1: SP_POS x=10 y=20 z=30, next -> word 6. Word 6: SP_LEAF obj=0x0105.
+    let mut words = vec![0i32; 8];
+    words[2] = 10;
+    words[3] = 20;
+    words[4] = 30;
+    words[5] = 12;
+    words[6] = 10;
+    words[7] = 0x0105;
+    let scenery = words_to_bytes(&words);
+    let place = |eyes: &[[f32; 3]]| {
+        let inputs = WorldInputs {
+            anchors: &[],
+            map: None,
+            scenery: Some(&scenery),
+            view_eyes: eyes,
+        };
+        build_world(&inputs, &shapes).expect("world").props_placed
+    };
+
+    // The prop sits at (-10, -20, 30) in [I1].
+    assert_eq!(place(&[]), 1, "no camera path keeps every prop");
+    assert_eq!(place(&[[-10.0, -20.0, 40.0], [0.0, 0.0, 0.0]]), 1);
+    assert_eq!(place(&[[1.0e7, 0.0, 0.0], [1.0e7, 0.0, 10.0]]), 0);
 }
 
 #[test]
@@ -214,6 +248,7 @@ fn scenery_places_deduplicated_props_offset_into_i1() {
         anchors: &[],
         map: None,
         scenery: Some(&scenery),
+        view_eyes: &[],
     };
     let world = build_world(&inputs, &shapes).expect("world");
     assert_eq!(world.terrain_patches, 0);
@@ -240,6 +275,7 @@ fn scenery_only_world_is_still_built() {
         anchors: &[],
         map: None,
         scenery: Some(&scenery),
+        view_eyes: &[],
     };
     let world = build_world(&inputs, &HashMap::new()).expect("world");
     assert_eq!(world.props_placed, 0);
@@ -263,6 +299,7 @@ fn decal_meshes_of_props_go_to_a_child_batch() {
         anchors: &[],
         map: None,
         scenery: Some(&scenery),
+        view_eyes: &[],
     };
     let world = build_world(&inputs, &shapes).expect("world");
     assert_eq!(world.props_placed, 1);
@@ -316,6 +353,7 @@ fn bounds_cover_every_vertex() {
         anchors: &anchors,
         map: Some(&map),
         scenery: None,
+        view_eyes: &[],
     };
     let world = build_world(&inputs, &HashMap::new()).expect("world");
     for v in &world.ir.vertices {

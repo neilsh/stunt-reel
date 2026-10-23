@@ -247,11 +247,17 @@ impl FilmScene {
             None => ArchiveShapes::default(),
         };
 
+        let eyes: Vec<[f32; 3]> = timeline
+            .slices()
+            .iter()
+            .map(|slice| slice.record.camera.eye)
+            .collect();
         let world = build_world(
             &WorldInputs {
                 anchors: &anchors,
                 map: inputs.map,
                 scenery: inputs.scenery,
+                view_eyes: &eyes,
             },
             &decoded.shapes,
         );

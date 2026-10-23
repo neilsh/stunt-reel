@@ -208,7 +208,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **25** | `0x00E1` | 225 | `OP_VOTEHID` | `face: u16` | Vote facet hidden in culling accumulator |
 | **26** | `0x00EA` | 234 | `OP_POLY` | `count: u16, ...regs` | Unsorted flat polygon emission |
 | **27** | `0x00F3` | 243 | `OP_POLYZ` | `count: u16, ...regs` | Depth-sorted flat polygon emission |
-| **28** | `0x00FC` | 252 | `OP_SPHERE` | `center_reg: u16, radius: u16` | Procedural sphere primitive |
+| **28** | `0x00FC` | 252 | `OP_SPHERE` | `center_reg: u16, radius: u16` | Procedural sphere primitive; `radius` is in register (vertex) units. Tree crowns use it (19 per tree in `CTRY.ALL` `0x0504`/`0x0507`); the Rust VM approximates it with a 20-triangle icosahedron (`[Bounded Observation]`, [`parity-findings.md` § 10](../parity-findings.md#10-tree-crowns-are-op_sphere-ground-shade-is-world-fixed-ctryflm-bounded-observation)) |
 | **29** | `0x0105` | 261 | `OP_DISC` | `center_reg: u16, radius: u16` | Flat circular disc primitive |
 | **30** | `0x010E` | 270 | `OP_PERFDISK` | `center_reg: u16, r_in: u16, r_out: u16` | Perforated disc (ring with center shaft) |
 | **31** | `0x0117` | 279 | `OP_SIDE` | `...` | Cylindrical side primitive |

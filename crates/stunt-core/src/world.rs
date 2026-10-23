@@ -39,7 +39,20 @@ pub struct WorldInputs<'a> {
     pub map: Option<&'a [u8]>,
     /// Raw `SCENERY.scn` bytes (little-endian 32-bit BSP words), if found.
     pub scenery: Option<&'a [u8]>,
+    /// Camera eye positions in time order, in `[I1]` metres. Props that stay sub-pixel along
+    /// the polyline through them are not built (see `MIN_PROP_PIXELS`); empty keeps every
+    /// prop.
+    pub view_eyes: &'a [[f32; 3]],
 }
+
+/// Horizontal focal length in pixels of the 320-wide 4:3 presentation at a 45 degree vertical
+/// field of view: `160 / (tan(22.5 deg) * 4 / 3)`.
+const FOCAL_PIXELS: f32 = 290.0;
+
+/// A prop whose bounding radius never covers more than this many pixels along the camera
+/// path is dropped from the world. Without the cut `INTRO.FLM` carries 11 million vertices,
+/// past wgpu's 256 MiB buffer limit, and the dropped props cannot reach a pixel.
+const MIN_PROP_PIXELS: f32 = 0.5;
 
 /// Axis-aligned bounds of the world mesh in `[I1]` metres.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -88,7 +101,8 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         let available_models: HashSet<u16> = shapes.keys().copied().collect();
         traverse_scn(&words, 1, 0, 0, 0, &mut instances, &available_models, 0);
     }
-    let unique_instances = dedup_instances(instances);
+    let unique_instances =
+        cull_subpixel_instances(dedup_instances(instances), shapes, inputs.view_eyes);
 
     let base_y = 0.0;
     let ir = build_world_ir(&pts, &map_areas, &unique_instances, shapes, base_y);
@@ -120,6 +134,59 @@ pub(crate) fn dedup_instances(instances: Vec<(u16, [f32; 3])>) -> Vec<(u16, [f32
         }
     }
     unique
+}
+
+/// Distance from `point` to the segment `a`-`b`.
+fn point_segment_distance(point: [f32; 3], a: [f32; 3], b: [f32; 3]) -> f32 {
+    let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let ap = [point[0] - a[0], point[1] - a[1], point[2] - a[2]];
+    let len_sq = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
+    let t = if len_sq > 1e-12 {
+        ((ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) / len_sq).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let d = [ap[0] - ab[0] * t, ap[1] - ab[1] * t, ap[2] - ab[2] * t];
+    (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+}
+
+/// Drops placements whose bounding sphere stays under [`MIN_PROP_PIXELS`] along `eyes`.
+///
+/// Consecutive eyes are joined by segments, so a camera cut only makes the cull more
+/// conservative. With fewer than one eye every instance is kept.
+pub(crate) fn cull_subpixel_instances(
+    instances: Vec<(u16, [f32; 3])>,
+    shapes: &HashMap<u16, SodModelIr>,
+    eyes: &[[f32; 3]],
+) -> Vec<(u16, [f32; 3])> {
+    if eyes.is_empty() {
+        return instances;
+    }
+    let mut radii: HashMap<u16, f32> = HashMap::new();
+    instances
+        .into_iter()
+        .filter(|&(shape_id, pos)| {
+            let radius = *radii.entry(shape_id).or_insert_with(|| {
+                shapes.get(&shape_id).map_or(0.0, |ir| {
+                    ir.vertices
+                        .iter()
+                        .map(|v| {
+                            let [x, y, z] = v.position;
+                            (x * x + y * y + z * z).sqrt()
+                        })
+                        .fold(0.0, f32::max)
+                })
+            });
+            let nearest = if eyes.len() == 1 {
+                point_segment_distance(pos, eyes[0], eyes[0])
+            } else {
+                eyes.windows(2)
+                    .map(|pair| point_segment_distance(pos, pair[0], pair[1]))
+                    .fold(f32::INFINITY, f32::min)
+            };
+            radius * FOCAL_PIXELS >= MIN_PROP_PIXELS * nearest.max(1.0)
+        })
+        .collect()
 }
 
 /// Computes the axis-aligned bounds of all vertices of `ir`.

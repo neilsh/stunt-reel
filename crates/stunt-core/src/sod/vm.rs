@@ -148,6 +148,86 @@ pub(crate) struct RawPolygon {
     pub visibility: VisibilityCondition,
 }
 
+/// Approximates an `OP_SPHERE` primitive with an icosahedron (20 triangles).
+///
+/// `center` and `radius` are in raw register units like polygon vertices; the result is in
+/// metres. The vertices sit at 0.92 of the radius so the faces straddle the true sphere.
+/// Splitting the faces once makes the world's vertex buffer exceed wgpu's 256 MiB limit on
+/// `CTRY.FLM` (its 2,300 trees carry 19 spheres each).
+fn sphere_polygons(
+    center: [f32; 3],
+    radius: f32,
+    ground_y_offset: f32,
+    scale_factor: f32,
+    palette_index: u8,
+    visibility: VisibilityCondition,
+) -> Vec<RawPolygon> {
+    const PHI: f32 = std::f32::consts::GOLDEN_RATIO;
+    const FACES: [[usize; 3]; 20] = [
+        [0, 11, 5],
+        [0, 5, 1],
+        [0, 1, 7],
+        [0, 7, 10],
+        [0, 10, 11],
+        [1, 5, 9],
+        [5, 11, 4],
+        [11, 10, 2],
+        [10, 7, 6],
+        [7, 1, 8],
+        [3, 9, 4],
+        [3, 4, 2],
+        [3, 2, 6],
+        [3, 6, 8],
+        [3, 8, 9],
+        [4, 9, 5],
+        [2, 4, 11],
+        [6, 2, 10],
+        [8, 6, 7],
+        [9, 8, 1],
+    ];
+    let unit = |v: [f32; 3]| {
+        let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+        [v[0] / len, v[1] / len, v[2] / len]
+    };
+    let corners: [[f32; 3]; 12] = [
+        unit([-1.0, PHI, 0.0]),
+        unit([1.0, PHI, 0.0]),
+        unit([-1.0, -PHI, 0.0]),
+        unit([1.0, -PHI, 0.0]),
+        unit([0.0, -1.0, PHI]),
+        unit([0.0, 1.0, PHI]),
+        unit([0.0, -1.0, -PHI]),
+        unit([0.0, 1.0, -PHI]),
+        unit([PHI, 0.0, -1.0]),
+        unit([PHI, 0.0, 1.0]),
+        unit([-PHI, 0.0, -1.0]),
+        unit([-PHI, 0.0, 1.0]),
+    ];
+    let reach = radius * 0.92;
+    let metric = |c: [f32; 3]| {
+        [
+            (center[0] + c[0] * reach) * scale_factor,
+            (center[1] + c[1] * reach + ground_y_offset) * scale_factor,
+            (center[2] + c[2] * reach) * scale_factor,
+        ]
+    };
+    FACES
+        .iter()
+        .map(|face| {
+            let vertices: Vec<[f32; 3]> = face.iter().map(|&i| metric(corners[i])).collect();
+            let normal = compute_polygon_normal(&vertices);
+            RawPolygon {
+                vertices,
+                palette_index,
+                normal,
+                flags: 0,
+                is_decal: false,
+                visibility,
+            }
+        })
+        .collect()
+}
+
 /// Computes the unit outward surface normal from a polygon vertex loop.
 ///
 /// Attempts edge cross product from first three vertices, falling back to Newell's method.
@@ -634,7 +714,20 @@ pub(crate) fn execute_sod_vm_impl(
                 read_u16(data, &mut pos)?;
                 read_u16(data, &mut pos)?;
             }
-            OP_SPHERE | OP_BLOCK | OP_PERS => {
+            OP_SPHERE => {
+                let center_off = read_u16(data, &mut pos)?;
+                let radius = f32::from(read_u16(data, &mut pos)?);
+                let center = regs[((center_off / 12) & 1023) as usize];
+                polygons.extend(sphere_polygons(
+                    center,
+                    radius,
+                    f32::from(ground_y_offset),
+                    scale_factor,
+                    cur_color,
+                    current_visibility,
+                ));
+            }
+            OP_BLOCK | OP_PERS => {
                 read_u16(data, &mut pos)?;
                 read_u16(data, &mut pos)?;
             }
