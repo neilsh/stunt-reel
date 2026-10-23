@@ -17,4 +17,5 @@ pollster = "0.4"
 
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["png"] }
+image-compare = { version = "0.5.0", default-features = false }
 serde_json = "1.0"
