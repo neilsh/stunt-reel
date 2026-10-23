@@ -21,7 +21,7 @@ use std::fs;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 
-use stunt_core::contracts::scene::{NodeId, NodeKind, SodModelIr, SodVertex};
+use stunt_core::contracts::shape::{NodeId, NodeKind, SodModelIr, SodVertex};
 use stunt_core::sod::{
     DECAL_FLAG_BIT, EPSILON_DISPLACEMENT, OP_COLOR, OP_GETV, OP_GVPOLY, OP_ID, OP_IFVIS, OP_IPG,
     OP_POLYZ, OP_RETURN, OP_VECTORS, SOD_SCALE_TABLE, compute_scale_factor,

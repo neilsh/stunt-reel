@@ -1,6 +1,6 @@
 //! Procedural `.SOD` display-list geometry transpiler.
 //!
-//! Provides transpilation from raw `.SOD` bytecode into arena-allocated [`crate::contracts::scene::SodModelIr`]
+//! Provides transpilation from raw `.SOD` bytecode into arena-allocated [`crate::contracts::shape::SodModelIr`]
 //! instances adhering to Seam 3 and Invariants `[I1]`, `[I2]`, `[I3]`, `[I5]`.
 
 mod decal;

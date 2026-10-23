@@ -13,7 +13,7 @@ The `.SIO` format is an intermediate 3D mesh and point-cloud authoring format cr
   2. *Upstream Feed to Official Compiler (`SD.EXE`):* Generates point-cloud structures that are ingested into the official Stunt Island object compiler (`SD.EXE`) to assemble final procedural display-list `.SOD` / `.BIN` models.
   3. *Parametric Vertex Construction:* Implements explicit coordinates alongside parametric midpoint generator opcodes, reducing file size and enforcing geometric symmetry.
 
-**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization). **Contract and code:** [`contracts/scene.rs`](../../../crates/stunt-core/src/contracts/scene.rs). No synthetic `.SIO` fixture exists yet.
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization). **Contract and code:** [`contracts/shape.rs`](../../../crates/stunt-core/src/contracts/shape.rs). No synthetic `.SIO` fixture exists yet.
 
 ---
 

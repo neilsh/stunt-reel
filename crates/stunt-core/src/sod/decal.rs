@@ -7,7 +7,7 @@
 
 use crate::sod::vm::RawPolygon;
 
-/// Bit 0 in [`crate::contracts::scene::SodVertex::flags`] indicates a coplanar decal face.
+/// Bit 0 in [`crate::contracts::shape::SodVertex::flags`] indicates a coplanar decal face.
 pub const DECAL_FLAG_BIT: u8 = 0x01;
 
 /// Default displacement along outward surface normal (1.0 mm) per Invariant `[I5]`.

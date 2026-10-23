@@ -2,12 +2,12 @@
 //!
 //! Governed by architectural invariants:
 //! - `[I1]` Metric right-handed coordinates (+X right, +Y up, +Z toward viewer, -Z forward)
-//! - `[I2]` Flat arena layout compatibility with [`crate::contracts::scene::SodModelIr`]
+//! - `[I2]` Flat arena layout compatibility with [`crate::contracts::shape::SodModelIr`]
 //! - `[I3]` VGA Mode 13h palette index mapping (0..=255)
 //!
 //! Reference specs: `# [FMT-SOD-OPCODES]`, `# [FMT-SOD-IFVIS]`, historical `DECODE.C`/`SOD.H`.
 
-use crate::contracts::scene::VisibilityCondition;
+use crate::contracts::shape::VisibilityCondition;
 use crate::sod::SodError;
 
 // Standard .SOD Opcodes per historical SOD.H and specification

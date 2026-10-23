@@ -1,4 +1,4 @@
-//! Seam 3: Procedural 3D Scene Graph Intermediate Representation (IR)
+//! Seam 3: Shape IR, the intermediate representation of one decoded shape (GLOSSARY.md: **Shape**)
 //!
 //! Reference specs: `[fmt sod]`, `[R-SOD-IFVIS-01]`, `[I1]`, `[I2]`, `[I5]`
 //! Governed by architectural invariants:

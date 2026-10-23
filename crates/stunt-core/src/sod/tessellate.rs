@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use crate::contracts::scene::{NodeId, NodeKind, SodModelIr, SodVertex, VisibilityCondition};
+use crate::contracts::shape::{NodeId, NodeKind, SodModelIr, SodVertex, VisibilityCondition};
 use crate::sod::SodError;
 use crate::sod::decal::identify_coplanar_decals;
 use crate::sod::vm::{

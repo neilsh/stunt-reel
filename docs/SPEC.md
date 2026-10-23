@@ -156,7 +156,7 @@ The system integrates across four seams, defined by the types in `crates/stunt-c
 
 * **Seam 1 (`VfsArchive`)**: `.RES` and `.ALL` extraction ([`vfs.rs`](../crates/stunt-core/src/contracts/vfs.rs)); layouts in [`res.md`](../research/formats/res.md) and [`all.md`](../research/formats/all.md).
 * **Seam 2 (`TrajectoryRecord`, `FilmCapture`)**: per-tick film state on the cumulative 50 Hz clock, sampled through `FilmTimeline` ([`trajectory.rs`](../crates/stunt-core/src/contracts/trajectory.rs)); see `[I4]`.
-* **Seam 3 (`SodModelIr`)**: the flat-arena scene graph built by `transpile_sod` (strict) or `transpile_sod_lenient` ([`scene.rs`](../crates/stunt-core/src/contracts/scene.rs)); see `[I2]`.
+* **Seam 3 (`SodModelIr`)**: the Shape IR, a flat-arena node graph of one shape, built by `transpile_sod` (strict) or `transpile_sod_lenient` ([`shape.rs`](../crates/stunt-core/src/contracts/shape.rs)); see `[I2]`.
 * **Seam 4 (`VisualParityGate`)**: capture-vs-render SSIM and the `[I6]` gate, reported by `stuntreel parity` ([`parity/`](../crates/stunt-cli/src/parity/)); the seam has no core types ([`contracts/mod.rs`](../crates/stunt-core/src/contracts/mod.rs)); see `[I6]`.
 
 Which code path is governed by which seam, anchor and note: [`ARCHITECTURE.md`](ARCHITECTURE.md).

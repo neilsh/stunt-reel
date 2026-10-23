@@ -83,7 +83,7 @@ In *Stunt Island* scene packages (`.ALL`), color tables are packaged as raw bina
 
 ### 2.2 Vertex Palette Index & Decal Flags (`SodVertex`)
 
-In `crates/stunt-core/src/contracts/scene.rs`, vertices emitted by `.SOD` display lists store their authentic Mode 13h palette correspondence in an aligned 28-byte GPU vertex layout:
+In `crates/stunt-core/src/contracts/shape.rs`, vertices emitted by `.SOD` display lists store their authentic Mode 13h palette correspondence in an aligned 28-byte GPU vertex layout:
 
 ```rust
 #[repr(C)]

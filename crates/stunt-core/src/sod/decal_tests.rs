@@ -1,6 +1,6 @@
 //! Unit tests for the SOD `decal` stage, relocated from integration tests so the stage can stay crate-private.
 
-use crate::contracts::scene::VisibilityCondition;
+use crate::contracts::shape::VisibilityCondition;
 use crate::sod::DECAL_FLAG_BIT;
 use crate::sod::decal::{bounds_overlap, is_coplanar_facet, polygon_bounds};
 use crate::sod::vm::RawPolygon;

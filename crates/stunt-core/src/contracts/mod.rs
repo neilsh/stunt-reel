@@ -4,7 +4,7 @@
 //! establishing the boundary between:
 //! - Container extraction (`Seam 1: VfsArchive`)
 //! - Flight choreography & trajectory playback (`Seam 2: TrajectoryRecord`)
-//! - Procedural display-list scene graph IR (`Seam 3: SodModelIr`)
+//! - Shape IR: one decoded `.SOD` shape as a flat node arena (`Seam 3: SodModelIr`)
 //! - Visual presentation & parity evaluation (`Seam 4: VisualParityGate`); it has no core
 //!   types: the palette side is [`palette`], frames are rendered by `stunt-render`, and the
 //!   capture-vs-render report is the `stuntreel parity` subcommand
@@ -23,11 +23,11 @@
 //! `python/stunt_reel/doc_anchors.py`.
 
 pub mod palette;
-pub mod scene;
+pub mod shape;
 pub mod trajectory;
 pub mod vfs;
 
 pub use palette::*;
-pub use scene::*;
+pub use shape::*;
 pub use trajectory::*;
 pub use vfs::*;

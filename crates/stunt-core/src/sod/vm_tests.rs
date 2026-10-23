@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::contracts::scene::{NodeId, NodeKind, SodModelIr};
+use crate::contracts::shape::{NodeId, NodeKind, SodModelIr};
 use crate::sod::DECAL_FLAG_BIT;
 use crate::sod::tessellate::transpile_sod;
 use crate::sod::vm::{compute_polygon_normal, execute_sod_vm, execute_sod_vm_impl};
