@@ -90,17 +90,7 @@ Rows `0x22C4`, `0x22CE` and `0x22D0` were untiered in the former `memory.md` tab
   * *Layout A* (this file's former table, implemented by `TrajectoryStreamer.decode_actor_from_memory` and written by `MockTransport._write_tick_state`): unit quaternion (`4 × f32`) at `+0x18`, state mask at `+0x28`, joint count at `+0x2A`, joint pairs from `+0x2C`, next-link at `+0x3C`.
   * *Layout B* (the former table in `memory.md`, no code): `3×3` `i16` direction-cosine matrix (or quaternion) at `+0x18`, state mask at `+0x2A`, joint count at `+0x2C`, joint pairs from `+0x2E`, next-link at `+0x3C`.
   * Layout A is retained below because it is the one executable code and tests assume, but its only source is the offline mock (`tests/test_harness.py`, `tests/test_tac_adversarial.py` build their fixtures from the same layout). Nothing in `research/playone-exe/` records a read of the real table (`capture.md` § 3 states the capture loop deliberately never reads it), and the stored film rotation is BAM-valued (`SPEC.md` § 3.7), so a quaternion field is itself doubtful. Promote only after a live `MEMDUMPBIN` of a populated entry.
-* **Byte Layout Specification, Layout A (64 bytes per actor entry)**:
-  * `+0x00` (`u32` LE, 4B): Actor Channel ID (unique index within `.FLM` choreography).
-  * `+0x04` (`char[8]`, 8B): Bound `.SOD` asset name (null-terminated ASCII, e.g. `"FOKKER\0"`).
-  * `+0x0C` (`f32` / `16.16 i32` LE, 4B): World Position X in meters `[I1]`.
-  * `+0x10` (`f32` / `16.16 i32` LE, 4B): World Position Y in meters.
-  * `+0x14` (`f32` / `16.16 i32` LE, 4B): World Position Z in meters.
-  * `+0x18` (`4 x f32` LE, 16B): Normalized rotation quaternion $[q_x, q_y, q_z, q_w]$ ($|\|\mathbf{q}\| - 1.0| < 10^{-4}$).
-  * `+0x28` (`u16` LE, 2B): Dynamic state bitmask (visibility, damage, gear state, smoke).
-  * `+0x2A` (`u16` LE, 2B): Articulated joint count $N$.
-  * `+0x2C` (`N x (u16, u16)`, up to 16B): Articulated subobject BAM rotation angle pairs `(subobject_id, raw_bam_u16)`.
-  * `+0x3C` (`u32` LE, 4B): Next actor chain link pointer (or null `0x00000000`).
+* **Byte layout, Layout A (64 bytes per actor entry)**: defined only by [`actor_record.ksy`](../research/formats/memory/actor_record.ksy) (spike; see [`kaitai-memory-spike.md`](../research/formats/memory/kaitai-memory-spike.md)). Meaning of the fields: `+0x00` channel id; `+0x04` bound `.SOD` name (NUL-padded); position in signed 16.16 metres `[I1]`; rotation quaternion (normalised, `|‖q‖ - 1| < 1e-4`); state bitmask (visibility, damage, gear, smoke); joint count `N` and `(subobject_id, raw_bam_u16)` pairs; next-actor far pointer as `off:u16, seg:u16`, both zero ends the chain.
 * **Traversal guard**: the streamer enforces a bounded node count and cycle detection when following `+0x3C`.
 
 ---
