@@ -1811,6 +1811,7 @@ dependencies = [
  "glam",
  "image",
  "pollster",
+ "serde",
  "serde_json",
  "stunt-core",
  "stunt-gltf",
