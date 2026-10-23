@@ -24,7 +24,7 @@ pub use camera::{
     ASPECT_4_3, CameraController, CameraGpuResources, CameraMode, CameraUniform, FreeCamState,
 };
 pub use headless::{HeadlessError, HeadlessRenderer};
-pub use mesh::{GpuMeshSlice, GpuModel, GpuNode};
+pub use mesh::{GpuChunk, GpuMeshSlice, GpuModel, GpuNode};
 pub use palette::{
     PALETTE_LUT_HEIGHT, PALETTE_LUT_WIDTH, PaletteLut, build_palette_lut_bytes,
     build_palette_lut_bytes_from,

@@ -186,15 +186,7 @@ impl SceneRenderer {
                     },
                 };
                 rpass.set_bind_group(2, bind_group, &[]);
-                rpass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
-                rpass.set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                for mesh in meshes {
-                    rpass.draw_indexed(
-                        mesh.index_offset..(mesh.index_offset + mesh.index_count),
-                        mesh.vertex_offset,
-                        0..1,
-                    );
-                }
+                model.draw_slices(rpass, meshes);
             }
         }
     }
