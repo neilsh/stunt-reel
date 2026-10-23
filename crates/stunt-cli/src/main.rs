@@ -624,8 +624,20 @@ pub fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), String>
     if let Some(out_dir) = &config.out_dir {
         if !tick_palettes.is_empty() {
             let path = out_dir.join(PALETTE_SIDECAR_NAME);
-            let text = serde_json::to_string(&json!({ "ticks": tick_palettes }))
-                .map_err(|e| format!("serialize {}: {e}", path.display()))?;
+            let text = serde_json::to_string(&json!({
+                "film": config
+                    .flm_path
+                    .as_ref()
+                    .and_then(|p| p.file_name())
+                    .map(|n| n.to_string_lossy().into_owned()),
+                "flm_bytes": config
+                    .flm_path
+                    .as_ref()
+                    .and_then(|p| fs::metadata(p).ok())
+                    .map(|m| m.len()),
+                "ticks": tick_palettes,
+            }))
+            .map_err(|e| format!("serialize {}: {e}", path.display()))?;
             fs::write(&path, text).map_err(|e| format!("write {}: {e}", path.display()))?;
         }
         println!(

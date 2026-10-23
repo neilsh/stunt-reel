@@ -110,3 +110,13 @@ Next probes, ranked by attributed loss: (1) why the hero aircraft renders thin a
 2026-10-22. The camera roll between two timeline records was interpolated as a plain scalar. `CTRY.FLM` moves the view slot's roll across the 0 / 2π wrap (about 0 degrees at tick 20, about 359.5 degrees at tick 43), so ticks in between were rendered with a roll of up to 294.5 degrees (tick 32) instead of about 0. The capture shows a near-level horizon there. Roll now interpolates along the shorter arc (`lerp_angle` in `crates/stunt-core/src/flm/interpolate.rs`); roll reads 0, then 360, then 359 degrees across ticks 20 to 44. Capture ordinal 3 (tick 32) moved from SSIM 0.66 to 0.78; `mean_ssim_scored` over 114 frames 0.769 to 0.770.
 
 * **Shadow experiment (not adopted).** A black copy of each actor's geometry flattened onto a horizontal plane (swept at -1, 0, 0.5, 1, 1.5, 2, 3, 6 and 10 m, layer and forced palette index 0) lowered `mean_ssim_scored` from 0.769 to 0.762 to 0.766 at every height, so the capture's ground shadow is not a flat copy of the aircraft at a guessed constant ground height. The capture's shadow is a silhouette roughly 60 rows below the aircraft in ordinal 41 and its outline is monoplane-like. Its construction is still `[Unknown]`.
+
+---
+
+## 9. Second Film: `INTRO.FLM` Baseline (`[Bounded Observation]`)
+
+2026-10-22, capture `build/parity/reference/intro` (213 frames, ticks 769 to 3,640), render with the CTRY-derived changes (§ 6 to 8: unlit colours, sky bands, roll arc, 185-row viewport) and no INTRO-specific tuning: `mean_ssim_scored` **0.676** over 209 scored frames (4 below the fade floor), mean IoU 0.802, mean index agreement 0.482. Loss by class: terrain 0.175, props 0.071, reference-only 0.051, actors 0.013, ocean 0.012, sky 0.002 (sum 0.324).
+
+* The CTRY fixes transfer: index agreement is 0.482 here against 0.472 on CTRY, so the unlit colours and the viewport are not CTRY artefacts. The sky edges were measured on CTRY only; INTRO's sky index is 229 at the top of its first frame, which the band table covers.
+* INTRO is worse than CTRY (0.676 against 0.770), with terrain the largest class (0.175). The capture starts at tick 769 and ends before tick 3,822; both ends are uncaptured, so the figure is not a full-film score.
+* `INTRO.FLM` uses the partial SOD `0x7F09` (opcode `0x02FD`, `[Unknown]`); its cost is not isolated by this split.

@@ -54,8 +54,8 @@ depends = ["ensure-dosbox"]
 run = "dosbox-x-mcp-server"
 
 [tasks.capture-ref]
-description = "Capture PLAYONE.EXE Mode 13h frames for visual parity"
-run = "uv run python python/scripts/capture_playone_reference.py --out build/parity/reference/ctry"
+description = "Capture PLAYONE.EXE Mode 13h frames for visual parity (default CTRY; mise run capture-ref -- --film corpus/stisldem/VAULT/INTRO.FLM)"
+run = "uv run python python/scripts/capture_playone_reference.py"
 
 # Development & Quality Assurance Tasks
 [tasks.lint-rust]

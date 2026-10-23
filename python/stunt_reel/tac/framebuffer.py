@@ -30,6 +30,8 @@ from stunt_reel.tac.palette import MODE_13H_PALETTE
 
 __all__ = [
     "BOOT_PAGES",
+    "END_HOLD_FRAMES",
+    "END_IDLE_HITS",
     "FILM_MIN_COLORS",
     "FRAME_BYTES",
     "FRAME_HEIGHT",
@@ -65,6 +67,11 @@ FILM_MIN_COLORS: int = 20
 PAGE_OFFSET: int = 0
 #: Trap hits allowed without a new frame before the capture gives up.
 MAX_IDLE_HITS: int = 2000
+#: Consecutive captured frames at one film clock that mean the film has ended.
+END_HOLD_FRAMES: int = 3
+#: Trap hits without a new film frame, once frames exist, that mean the film has ended
+#: (faded to black or back to the dialog).
+END_IDLE_HITS: int = 300
 #: Dumps allowed while waiting for the modal dialog to finish drawing.
 MAX_DIALOG_DUMPS: int = 600
 #: Consecutive identical dumps that count as a settled page.
@@ -186,6 +193,9 @@ def capture(
     max_frames: int,
     client: TacClient,
     dgroup_segment: int = playone.DGROUP_RUNTIME_SEG,
+    film_prefix: str = playone.FILM_PREFIX_LETTER,
+    stop_after_repeats: int = END_HOLD_FRAMES,
+    extra_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Drive the LOAD FILM dialog and record up to ``max_frames`` film frames.
 
@@ -199,19 +209,25 @@ def capture(
     which is what parity matches on) and ``global_tick`` (diagnostic), read from
     DGROUP at ``dgroup_segment``. The debugger has no register read, so the segment
     is a parameter defaulting to the ``DS = 0x1575`` observed live in the T11 check.
+
+    ``film_prefix`` is the first letter of the film to confirm. Capture stops early once
+    ``stop_after_repeats`` consecutive frames share one film clock (the film has ended and
+    is holding its last picture; running on risks the emulator dropping the connection),
+    and ``max_frames`` is only a cap. ``extra_meta`` is merged into ``meta.json``.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     scratch = out_dir / "_scratch.idx"
 
     dialog = _wait_until_static(client, scratch)
     _LOGGER.info("[capture] dialog settled: %s distinct indices", len(set(dialog)))
-    playone.confirm_film(client)
+    playone.confirm_film(client, film_prefix)
     playone.arm_frame_trap(client)
 
     frames: list[dict[str, Any]] = []
     previous_raster: bytes | None = None
     palette_source = "dacpal"
     idle = 0
+    repeats = 0
 
     while len(frames) < max_frames:
         playone.next_frame(client)
@@ -221,6 +237,15 @@ def capture(
 
         if raster == previous_raster or distinct < FILM_MIN_COLORS:
             idle += 1
+            if frames and idle > END_IDLE_HITS:
+                _LOGGER.info(
+                    "[capture] no new film frame for %d trap hits after %d frames: "
+                    "end of film (%d indices on the page)",
+                    idle,
+                    len(frames),
+                    distinct,
+                )
+                break
             if idle > MAX_IDLE_HITS:
                 dominant = max(set(raster), key=raster.count)
                 raise RuntimeError(
@@ -233,6 +258,10 @@ def capture(
         previous_raster = raster
 
         film_tick, global_tick = read_ticks(client, dgroup_segment)
+        if frames and film_tick == frames[-1]["film_tick"]:
+            repeats += 1
+        else:
+            repeats = 0
         ordinal = len(frames) + 1
         frame_path = out_dir / f"tick_{ordinal:04d}.idx"
         frame_path.write_bytes(raster)
@@ -258,9 +287,13 @@ def capture(
             global_tick,
             distinct,
         )
+        if stop_after_repeats > 0 and repeats + 1 >= stop_after_repeats:
+            _LOGGER.info("[capture] film clock holding at %d: end of film", film_tick)
+            break
 
     scratch.unlink(missing_ok=True)
     meta = {
+        **(extra_meta or {}),
         "frames": frames,
         "palette_source": palette_source,
         "dgroup_segment": f"{dgroup_segment:04X}",

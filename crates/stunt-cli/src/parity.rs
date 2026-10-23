@@ -274,6 +274,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         .and_then(Value::as_array)
         .ok_or_else(|| format!("{} has no frames array", meta_path.display()))?;
 
+    warn_on_film_mismatch(&meta, &args.test);
     let film_ticks = read_film_ticks(frames, &meta_path)?;
     let sky_index = sky_index(frames.first(), &args.reference)?;
     let render_palettes = read_render_palettes(&args.test)?;
@@ -1165,6 +1166,36 @@ fn rescale_mask(mask: &[bool]) -> Vec<bool> {
 
 /// A render's palette-index plane and layer-id plane.
 type RenderPlanes = (Vec<u8>, Vec<u16>);
+
+/// Prints a warning when the capture and the render name different films or `.FLM` sizes.
+/// Either side may lack the tags (older captures and renders), which is not a mismatch.
+fn warn_on_film_mismatch(meta: &Value, test_dir: &Path) {
+    let Ok(text) = fs::read_to_string(test_dir.join(crate::PALETTE_SIDECAR_NAME)) else {
+        return;
+    };
+    let Ok(sidecar) = serde_json::from_str::<Value>(&text) else {
+        return;
+    };
+    let name = |value: &Value| {
+        value
+            .get("film")
+            .and_then(Value::as_str)
+            .map(str::to_uppercase)
+    };
+    let bytes = |value: &Value| value.get("flm_bytes").and_then(Value::as_u64);
+    if let (Some(reference), Some(render)) = (name(meta), name(&sidecar))
+        && reference != render
+    {
+        println!("[parity] warning: the capture is of {reference} but the render is of {render}");
+    }
+    if let (Some(reference), Some(render)) = (bytes(meta), bytes(&sidecar))
+        && reference != render
+    {
+        println!(
+            "[parity] warning: the capture's .FLM is {reference} bytes but the render's is {render}"
+        );
+    }
+}
 
 /// Reads the render's index and layer planes for `tick`, if both files exist.
 fn read_render_planes(test_dir: &Path, tick: usize) -> Result<Option<RenderPlanes>, String> {

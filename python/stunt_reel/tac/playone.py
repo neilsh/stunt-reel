@@ -47,15 +47,16 @@ VBLANK_TRAP: str = f"{DGROUP_SEG}:0C5E"
 FILM_PREFIX_LETTER: str = "c"
 
 
-def confirm_film(client: TacClient) -> None:
-    """Select ``CTRY.FLM`` in the open dialog and confirm it.
+def confirm_film(client: TacClient, prefix: str = FILM_PREFIX_LETTER) -> None:
+    """Select the film whose name starts with ``prefix`` in the open dialog and confirm it.
 
-    The listbox starts on ``[..]``; the prefix jump lands on ``CTRY.ALL`` (the first
-    entry starting with ``C``), one Down selects ``CTRY.FLM``, and Enter confirms.
+    The listbox starts on ``[..]``; the prefix jump lands on the first entry starting with
+    ``prefix`` (the film's ``.ALL``, when VAULT holds only that film's pair), one Down
+    selects its ``.FLM``, and Enter confirms.
     Each keystroke is queued in the BIOS Data Area and consumed by the guest's
     ``INT 16h`` poll while the emulator free-runs.
     """
-    BdaInjector.inject_keys(client, [char_to_key(FILM_PREFIX_LETTER)])
+    BdaInjector.inject_keys(client, [char_to_key(prefix)])
     BdaInjector.inject_keys(client, [KEY_DOWN])
     BdaInjector.inject_keys(client, [KEY_ENTER])
 
