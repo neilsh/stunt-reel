@@ -133,7 +133,7 @@ fn read_palette(path: &Path) -> Result<Palette, String> {
 pub(super) fn read_render_palettes(
     test_dir: &Path,
 ) -> Result<BTreeMap<usize, PaletteControls>, String> {
-    let path = test_dir.join(crate::PALETTE_SIDECAR_NAME);
+    let path = test_dir.join(crate::headless::PALETTE_SIDECAR_NAME);
     if !path.is_file() {
         return Ok(BTreeMap::new());
     }
@@ -191,7 +191,7 @@ pub(super) type RenderPlanes = (Vec<u8>, Vec<u16>);
 /// Prints a warning when the capture and the render name different films or `.FLM` sizes.
 /// Either side may lack the tags (older captures and renders), which is not a mismatch.
 pub(super) fn warn_on_film_mismatch(meta: &Value, test_dir: &Path) {
-    let Ok(text) = fs::read_to_string(test_dir.join(crate::PALETTE_SIDECAR_NAME)) else {
+    let Ok(text) = fs::read_to_string(test_dir.join(crate::headless::PALETTE_SIDECAR_NAME)) else {
         return;
     };
     let Ok(sidecar) = serde_json::from_str::<Value>(&text) else {
@@ -220,7 +220,7 @@ pub(super) fn warn_on_film_mismatch(meta: &Value, test_dir: &Path) {
 
 /// Reads the render's index and layer planes for `tick`; a missing plane is an error.
 pub(super) fn read_render_planes(test_dir: &Path, tick: usize) -> Result<RenderPlanes, String> {
-    let png = test_dir.join(crate::tick_png_name(tick));
+    let png = test_dir.join(crate::headless::tick_png_name(tick));
     let (idx_path, layer_path) = (png.with_extension("idx"), png.with_extension("layer"));
     if !idx_path.is_file() || !layer_path.is_file() {
         return Err(format!(

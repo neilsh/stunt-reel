@@ -67,7 +67,7 @@ pub(super) fn run_compare(
             )
         })?;
         let tick = usize::try_from(delta.film_tick).map_err(|e| e.to_string())?;
-        let before_png = previous_render.join(crate::tick_png_name(tick));
+        let before_png = previous_render.join(crate::headless::tick_png_name(tick));
         if !before_png.is_file() {
             println!(
                 "[compare] {} not found: {label} sheet skipped",
@@ -80,7 +80,7 @@ pub(super) fn run_compare(
         let (indices, palette) = load_reference(&reference_file, &palette_file)?;
         let reference = reference_luminance(&indices, &palette);
         let before = load_render_rescaled(&before_png)?;
-        let after = load_render_rescaled(&args.test.join(crate::tick_png_name(tick)))?;
+        let after = load_render_rescaled(&args.test.join(crate::headless::tick_png_name(tick)))?;
         let path = args
             .output
             .join(format!("compare_{label}_tick_{tick:05}.png"));
@@ -118,11 +118,11 @@ mod tests {
         fs::create_dir_all(&previous).unwrap();
         fs::create_dir_all(&current).unwrap();
         for tick in [7, 12] {
-            write_render(&previous.join(crate::tick_png_name(tick)));
-            write_render(&current.join(crate::tick_png_name(tick)));
+            write_render(&previous.join(crate::headless::tick_png_name(tick)));
+            write_render(&current.join(crate::headless::tick_png_name(tick)));
         }
         // Make the fresh render of tick 12 match the capture, which scores higher.
-        write_matching_render(&current.join(crate::tick_png_name(12)));
+        write_matching_render(&current.join(crate::headless::tick_png_name(12)));
 
         run_parity(&tmp.join("ref"), &previous, &tmp.join("base")).expect("baseline");
         let argv = |compare_test: bool| {

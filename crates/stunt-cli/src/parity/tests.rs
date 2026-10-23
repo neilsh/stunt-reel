@@ -15,7 +15,7 @@ fn a_render_without_planes_is_an_error_that_says_to_re_render() {
     write_reference(&tmp.join("ref"), &[12], true);
     let test = tmp.join("test");
     fs::create_dir_all(&test).unwrap();
-    let png = test.join(crate::tick_png_name(12));
+    let png = test.join(crate::headless::tick_png_name(12));
     write_render(&png);
     fs::remove_file(png.with_extension("layer")).unwrap();
     let error = run_parity(&tmp.join("ref"), &test, &tmp.join("out")).unwrap_err();
@@ -29,7 +29,7 @@ fn faded_frames_below_the_floor_are_reported_but_not_scored() {
     let test = tmp.join("test");
     fs::create_dir_all(&test).unwrap();
     for tick in [7, 12, 20] {
-        write_matching_render(&test.join(crate::tick_png_name(tick)));
+        write_matching_render(&test.join(crate::headless::tick_png_name(tick)));
     }
 
     run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
@@ -72,7 +72,7 @@ fn no_scored_frame_reports_null_scored_means() {
     write_reference_faded(&tmp.join("ref"), &[7], true, &[0.1]);
     let test = tmp.join("test");
     fs::create_dir_all(&test).unwrap();
-    write_matching_render(&test.join(crate::tick_png_name(7)));
+    write_matching_render(&test.join(crate::headless::tick_png_name(7)));
 
     run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
     let report = read_report(&tmp.join("out"));
@@ -107,8 +107,8 @@ fn frames_match_renders_by_film_tick() {
     write_reference(&tmp.join("ref"), &[7, 12], true);
     let test = tmp.join("test");
     fs::create_dir_all(&test).unwrap();
-    write_render(&test.join(crate::tick_png_name(7)));
-    write_render(&test.join(crate::tick_png_name(12)));
+    write_render(&test.join(crate::headless::tick_png_name(7)));
+    write_render(&test.join(crate::headless::tick_png_name(12)));
     // Neighbouring ticks and the old ordinal names must never be picked up.
     write_render(&test.join("tick_00001.png"));
     write_render(&test.join("frame_0001.png"));

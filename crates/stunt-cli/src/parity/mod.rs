@@ -128,7 +128,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         let ordinal = index + 1;
         let film_tick = film_ticks[index];
         let (reference_file, palette_file) = reference_paths(&args.reference, frame, ordinal);
-        let test_file = args.test.join(crate::tick_png_name(film_tick));
+        let test_file = args.test.join(crate::headless::tick_png_name(film_tick));
 
         if !reference_file.is_file() || !palette_file.is_file() || !test_file.is_file() {
             unmatched += 1;
