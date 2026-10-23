@@ -7,9 +7,9 @@
 //! 0-based 50 Hz tick they show, so a capture is compared against the render at the
 //! same `film_tick`. Captures that predate film-clock tagging are rejected.
 //!
-//! Scores follow Invariant `[I6]`: both sides are reduced to Rec. 601 luminance,
-//! stretched from 320x200 to the 320x240 physical 4:3 raster, and compared with the
-//! shared `compute_frame_ssim` window evaluator. IoU compares each side's non-sky mask,
+//! Each matched pair is scored by [`score::score_frame`]. Scores follow Invariant `[I6]`:
+//! both sides are reduced to Rec. 601 luminance, stretched from 320x200 to the 320x240
+//! physical 4:3 raster, and compared with the shared `compute_frame_ssim` window evaluator. IoU compares each side's non-sky mask,
 //! which measures framing agreement independently of shading. A capture's sky is every
 //! pixel in the sky bands ([`mask::CAPTURE_SKY_INDICES`]), not one modal index.
 //!
@@ -36,6 +36,7 @@ mod frames;
 mod loss;
 mod mask;
 mod report_diff;
+mod score;
 mod sheets;
 #[cfg(test)]
 mod test_support;
@@ -46,24 +47,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
 use serde_json::{Value, json};
-use stunt_core::contracts::PALETTE_CONTROL_FULL;
-use stunt_render::{
-    ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH, compute_window_scores,
-    rescale_mode13h_frame,
-};
 
 use args::Args;
 use compare::run_compare;
-use fade::{fade_level, fade_reference_set};
+use fade::fade_reference_set;
 use frames::{
     load_reference, read_film_ticks, read_index_plane, read_png_luminance, read_render_palettes,
-    read_render_planes, reference_luminance, reference_paths, warn_on_film_mismatch,
+    read_render_planes, reference_paths, warn_on_film_mismatch,
 };
-use loss::{LOSS_CLASSES, attribute_loss, loss_class};
-use mask::{
-    CAPTURE_SKY_INDICES, index_agreement, is_capture_sky, mask_iou_planes, rescale_mask,
-    ui_overlay_mask,
-};
+use loss::LOSS_CLASSES;
+use mask::CAPTURE_SKY_INDICES;
+use score::{FrameMetrics, ReferenceFrame, RenderFrame, ScorePolicy, score_frame};
 use sheets::write_contact_sheet;
 
 pub(crate) use args::USAGE;
@@ -71,38 +65,17 @@ pub(crate) use args::USAGE;
 /// Frame ordinals always rendered as contact sheets, plus the last captured frame.
 const CONTACT_SHEET_ORDINALS: [usize; 5] = [1, 20, 40, 70, 100];
 
-/// SSIM window edge, in pixels.
-const SSIM_WINDOW: usize = 11;
-
-/// SSIM window stride, in pixels.
-const SSIM_STRIDE: usize = 8;
-
 /// Number of additionally worst-scoring frames rendered as contact sheets.
 const CONTACT_SHEET_WORST: usize = 3;
 
-/// Per-frame parity measurements.
+/// One matched frame's place in the capture and its measurements.
 #[derive(Debug, Clone, Copy)]
-struct FrameScore {
+struct FrameRow {
     /// 1-based capture order.
     ordinal: usize,
     /// Film clock the frame was captured at; selects the rendered `tick_NNNNN.png`.
     film_tick: usize,
-    /// SSIM of the render against the capture.
-    ssim: f32,
-    /// Median ratio of the captured palette's brightness to the static palette's.
-    fade_level: f32,
-    /// Brightness the film authors at this tick (var 14 over [`PALETTE_CONTROL_FULL`]); `None`
-    /// when the render directory carries no palette sidecar.
-    authored_fade_level: Option<f32>,
-    /// Whether the fade reaches the `--min-fade-level` floor: the authored level when
-    /// known, else the measured `fade_level`.
-    scored: bool,
-    iou: f32,
-    /// Fraction of non-overlay pixels whose palette index equals the capture's.
-    index_agreement: f32,
-    /// This frame's SSIM loss (`1 - ssim`) split by what the window covers. The entries sum
-    /// to `1 - ssim`.
-    loss_by_class: [f32; LOSS_CLASSES.len()],
+    metrics: FrameMetrics,
 }
 
 /// Runs the comparator and writes `report.json` plus contact sheets.
@@ -126,11 +99,15 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     let render_palettes = read_render_palettes(&args.test)?;
     let first_plane = read_index_plane(&reference_paths(&args.reference, &frames[0], 1).0)?;
     let fade_set = fade_reference_set(&first_plane);
+    let policy = ScorePolicy {
+        fade_set: &fade_set,
+        min_fade_level: args.min_fade_level,
+    };
 
     let mut sheet_ordinals: BTreeSet<usize> = CONTACT_SHEET_ORDINALS.iter().copied().collect();
     sheet_ordinals.insert(film_ticks.len());
 
-    let mut scores: Vec<FrameScore> = Vec::with_capacity(frames.len());
+    let mut scores: Vec<FrameRow> = Vec::with_capacity(frames.len());
     let mut unmatched = 0usize;
     let mut written_sheets: BTreeSet<usize> = BTreeSet::new();
     let mut worst: Vec<(f32, usize, Vec<f32>, Vec<f32>)> = Vec::new();
@@ -147,67 +124,26 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         }
 
         let (indices, palette) = load_reference(&reference_file, &palette_file)?;
-        let reference_rescaled = reference_luminance(&indices, &palette);
-        let fade = fade_level(&fade_set, &palette);
-        let test_luminance = read_png_luminance(&test_file)?;
-
-        let test_rescaled = rescale_mode13h_frame(
-            &test_luminance,
-            MODE13H_WIDTH,
-            MODE13H_HEIGHT,
-            ASPECT_CORRECTED_HEIGHT,
-        );
-        let overlay = ui_overlay_mask(&indices);
-        let overlay_rescaled = rescale_mask(&overlay);
-        let windows = compute_window_scores(
-            &reference_rescaled,
-            &test_rescaled,
-            MODE13H_WIDTH,
-            ASPECT_CORRECTED_HEIGHT,
-            SSIM_WINDOW,
-            SSIM_STRIDE,
-            Some(&overlay_rescaled),
-        );
-        let ssim = if windows.is_empty() {
-            1.0
-        } else {
-            windows.iter().map(|w| w.score).sum::<f32>() / windows.len() as f32
-        };
         let (render_indices, render_layers) = read_render_planes(&args.test, film_tick)?;
-        let loss_by_class = {
-            let codes: Vec<f32> = indices
-                .iter()
-                .zip(&render_layers)
-                .map(|(&index, &layer)| f32::from(loss_class(layer, !is_capture_sky(index))))
-                .collect();
-            let classes: Vec<u8> = rescale_mode13h_frame(
-                &codes,
-                MODE13H_WIDTH,
-                MODE13H_HEIGHT,
-                ASPECT_CORRECTED_HEIGHT,
-            )
-            .into_iter()
-            .map(|code| code as u8)
-            .collect();
-            attribute_loss(&windows, &classes, SSIM_WINDOW)
-        };
-        let iou = mask_iou_planes(&indices, &render_layers, &overlay);
-        let index_agreement = index_agreement(&indices, &render_indices, &overlay);
-        let authored_fade = render_palettes
-            .get(&film_tick)
-            .map(|controls| f32::from(controls.brightness) / f32::from(PALETTE_CONTROL_FULL));
-        let scored = authored_fade.unwrap_or(fade) >= args.min_fade_level;
-
-        scores.push(FrameScore {
+        let score = score_frame(
+            &ReferenceFrame { indices, palette },
+            &RenderFrame {
+                luminance: read_png_luminance(&test_file)?,
+                indices: render_indices,
+                layers: render_layers,
+                controls: render_palettes.get(&film_tick).copied(),
+            },
+            &policy,
+        );
+        let (metrics, reference_rescaled, test_rescaled) = (
+            score.metrics,
+            score.reference_luminance,
+            score.render_luminance,
+        );
+        scores.push(FrameRow {
             ordinal,
             film_tick,
-            ssim,
-            fade_level: fade,
-            authored_fade_level: authored_fade,
-            scored,
-            iou,
-            index_agreement,
-            loss_by_class,
+            metrics,
         });
 
         if sheet_ordinals.contains(&ordinal) {
@@ -215,8 +151,8 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             written_sheets.insert(ordinal);
         }
 
-        if scored {
-            worst.push((ssim, ordinal, reference_rescaled, test_rescaled));
+        if metrics.scored {
+            worst.push((metrics.ssim, ordinal, reference_rescaled, test_rescaled));
             worst.sort_by(|a, b| a.0.total_cmp(&b.0));
             worst.truncate(CONTACT_SHEET_WORST);
         }
@@ -238,20 +174,25 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     }
 
     let matched = scores.len() as f32;
-    let mean_ssim = scores.iter().map(|s| s.ssim).sum::<f32>() / matched;
-    let min_ssim = scores.iter().map(|s| s.ssim).fold(f32::INFINITY, f32::min);
-    let mean_iou = scores.iter().map(|s| s.iou).sum::<f32>() / matched;
-    let scored_frames: Vec<&FrameScore> = scores.iter().filter(|s| s.scored).collect();
+    let mean_ssim = scores.iter().map(|s| s.metrics.ssim).sum::<f32>() / matched;
+    let min_ssim = scores
+        .iter()
+        .map(|s| s.metrics.ssim)
+        .fold(f32::INFINITY, f32::min);
+    let mean_iou = scores.iter().map(|s| s.metrics.iou).sum::<f32>() / matched;
+    let scored_frames: Vec<&FrameRow> = scores.iter().filter(|s| s.metrics.scored).collect();
     let excluded_frames = scores.len() - scored_frames.len();
-    let scored_mean = |value: fn(&FrameScore) -> f32| {
+    let scored_mean = |value: fn(&FrameRow) -> f32| {
         (!scored_frames.is_empty()).then(|| {
             scored_frames.iter().map(|s| value(s)).sum::<f32>() / scored_frames.len() as f32
         })
     };
-    let mean_ssim_scored = scored_mean(|s| s.ssim);
-    let mean_iou_scored = scored_mean(|s| s.iou);
-    let attributed: Vec<[f32; LOSS_CLASSES.len()]> =
-        scored_frames.iter().map(|s| s.loss_by_class).collect();
+    let mean_ssim_scored = scored_mean(|s| s.metrics.ssim);
+    let mean_iou_scored = scored_mean(|s| s.metrics.iou);
+    let attributed: Vec<[f32; LOSS_CLASSES.len()]> = scored_frames
+        .iter()
+        .map(|s| s.metrics.loss_by_class)
+        .collect();
     let mean_loss_by_class = (!attributed.is_empty()).then(|| {
         let mut mean = [0.0f32; LOSS_CLASSES.len()];
         for loss in &attributed {
@@ -261,7 +202,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         }
         json!(LOSS_CLASSES.iter().zip(mean).collect::<BTreeMap<_, _>>())
     });
-    let mean_index_agreement_scored = scored_mean(|s| s.index_agreement);
+    let mean_index_agreement_scored = scored_mean(|s| s.metrics.index_agreement);
 
     let report = json!({
         "reference_frames": frames.len(),
@@ -283,16 +224,16 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             .map(|s| json!({
                 "ordinal": s.ordinal,
                 "film_tick": s.film_tick,
-                "ssim": s.ssim,
-                "iou": s.iou,
-                "index_agreement": s.index_agreement,
+                "ssim": s.metrics.ssim,
+                "iou": s.metrics.iou,
+                "index_agreement": s.metrics.index_agreement,
                 "loss_by_class": LOSS_CLASSES
                     .iter()
-                    .zip(s.loss_by_class)
+                    .zip(s.metrics.loss_by_class)
                     .collect::<BTreeMap<_, _>>(),
-                "fade_level": s.fade_level,
-                "authored_fade_level": s.authored_fade_level,
-                "scored": s.scored,
+                "fade_level": s.metrics.fade_level,
+                "authored_fade_level": s.metrics.authored_fade_level,
+                "scored": s.metrics.scored,
             }))
             .collect::<Vec<Value>>(),
     });

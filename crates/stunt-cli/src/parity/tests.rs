@@ -10,44 +10,6 @@ use super::test_support::{
 };
 
 #[test]
-fn the_fade_floor_uses_authored_brightness_when_the_render_has_a_sidecar() {
-    let tmp = TempDir::new("authored_floor");
-    // The capture looks fully bright; the film authors a fade to a quarter below the floor.
-    write_reference_faded(&tmp.join("ref"), &[12], true, &[1.0]);
-    let test = tmp.join("test");
-    fs::create_dir_all(&test).unwrap();
-    write_render(&test.join(crate::tick_png_name(12)));
-    fs::write(
-        test.join(crate::PALETTE_SIDECAR_NAME),
-        json!({ "ticks": [{ "tick": 12, "sky": 0, "brightness": 0x1000, "saturation": 0x8000 }] })
-            .to_string(),
-    )
-    .unwrap();
-    run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
-    let frame = &read_report(&tmp.join("out"))["per_frame"][0];
-    assert_eq!(frame["authored_fade_level"], 0.125);
-    assert_eq!(frame["scored"], false);
-    assert!(frame["fade_level"].as_f64().unwrap() > 0.9);
-}
-
-#[test]
-fn render_planes_feed_iou_and_index_agreement_into_the_report() {
-    let tmp = TempDir::new("render_planes");
-    write_reference(&tmp.join("ref"), &[12], true);
-    let test = tmp.join("test");
-    fs::create_dir_all(&test).unwrap();
-    // The render's colours differ from the capture, but its planes match it exactly.
-    write_render(&test.join(crate::tick_png_name(12)));
-    run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
-    let report = read_report(&tmp.join("out"));
-    let frame = &report["per_frame"][0];
-    assert_eq!(frame["index_agreement"], 1.0);
-    assert_eq!(frame["iou"], 1.0);
-    assert_eq!(report["sky_indices"], json!([227, 238]));
-    assert!(report.get("sky_index").is_none() && report.get("clear_index").is_none());
-}
-
-#[test]
 fn a_render_without_planes_is_an_error_that_says_to_re_render() {
     let tmp = TempDir::new("no_planes");
     write_reference(&tmp.join("ref"), &[12], true);
@@ -147,6 +109,8 @@ fn frames_match_renders_by_film_tick() {
     assert_eq!(report["frames"], 2);
     assert_eq!(report["unmatched"], 0);
     assert!(report.get("tick_to_frame_offset").is_none());
+    assert_eq!(report["sky_indices"], json!([227, 238]));
+    assert!(report.get("sky_index").is_none() && report.get("clear_index").is_none());
     let per_frame = report["per_frame"].as_array().unwrap();
     let ticks: Vec<u64> = per_frame
         .iter()
