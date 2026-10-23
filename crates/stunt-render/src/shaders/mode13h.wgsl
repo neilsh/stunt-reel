@@ -44,24 +44,11 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.palette_index = in.attr.x & 255u;
     out.layer = model.layer.x + in.attr.z;
 
-    // Check emissive / unshaded flag (bit 2 = 0x04)
-    if ((in.attr.y & 4u) != 0u) {
-        out.light_level = 31u; // Full unshaded brightness
-    } else {
-        // Transform normal vector to world space using upper 3x3 of model matrix
-        let norm_mat = mat3x3<f32>(
-            model.model_matrix[0].xyz,
-            model.model_matrix[1].xyz,
-            model.model_matrix[2].xyz
-        );
-        let world_norm = normalize(norm_mat * in.normal);
-
-        // Discrete directional lighting ramp
-        let sun_dir = normalize(camera.sun_direction);
-        let ndotl = max(dot(world_norm, sun_dir), 0.0);
-        let intensity = clamp(camera.ambient_intensity + (1.0 - camera.ambient_intensity) * ndotl, 0.0, 1.0);
-        out.light_level = u32(clamp(intensity * 31.0 + 0.5, 0.0, 31.0));
-    }
+    // Polygons are drawn at their palette index with no directional lighting: against
+    // PLAYONE captures of CTRY.FLM the unlit colour scores higher than any sun/ambient ramp
+    // (research/parity-findings.md section 6), and the original picks shades with explicit
+    // palette offsets (OP_SHADES, OP_SHADE16), not a sun vector. Row 31 is full brightness.
+    out.light_level = 31u;
 
     return out;
 }
