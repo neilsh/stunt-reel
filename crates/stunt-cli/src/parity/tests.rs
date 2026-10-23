@@ -154,18 +154,12 @@ fn missing_render_for_a_film_tick_is_unmatched() {
 
 #[test]
 fn the_i6_gate_passes_each_threshold_independently() {
-    let gate = |ssim| super::i6_gate(ssim);
-    assert_eq!(
-        gate(Some(0.95)),
-        json!({ "initial": true, "sign_off": true })
-    );
-    assert_eq!(
-        gate(Some(0.89)),
-        json!({ "initial": true, "sign_off": false })
-    );
-    assert_eq!(
-        gate(Some(0.5)),
-        json!({ "initial": false, "sign_off": false })
-    );
-    assert_eq!(gate(None), json!({ "initial": false, "sign_off": false }));
+    let gate = |ssim| {
+        let g = super::i6_gate(ssim);
+        (g.initial, g.sign_off)
+    };
+    assert_eq!(gate(Some(0.95)), (true, true));
+    assert_eq!(gate(Some(0.89)), (true, false));
+    assert_eq!(gate(Some(0.5)), (false, false));
+    assert_eq!(gate(None), (false, false));
 }

@@ -8,6 +8,7 @@ use serde_json::Value;
 
 use super::args::Args;
 use super::frames::{load_reference, load_render_rescaled, reference_luminance, reference_paths};
+use super::report::Report;
 use super::report_diff::compare_reports;
 use super::sheets::{abs_difference, write_panel_sheet};
 
@@ -17,12 +18,12 @@ use super::sheets::{abs_difference, write_panel_sheet};
 pub(super) fn run_compare(
     args: &Args,
     previous_path: &Path,
-    report: &Value,
+    report: &Report,
     frames: &[Value],
 ) -> Result<(), String> {
     let text = fs::read_to_string(previous_path)
         .map_err(|e| format!("read {}: {e}", previous_path.display()))?;
-    let previous: Value = serde_json::from_str(&text)
+    let previous: Report = serde_json::from_str(&text)
         .map_err(|e| format!("parse {}: {e}", previous_path.display()))?;
     let comparison = compare_reports(&previous, report)
         .map_err(|e| format!("compare with {}: {e}", previous_path.display()))?;
@@ -40,16 +41,10 @@ pub(super) fn run_compare(
         println!("[compare] no --compare-test <dir>: before/after contact sheets skipped");
         return Ok(());
     };
-    let ordinals: BTreeMap<u64, usize> = report["per_frame"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|f| {
-            Some((
-                f["film_tick"].as_u64()?,
-                usize::try_from(f["ordinal"].as_u64()?).ok()?,
-            ))
-        })
+    let ordinals: BTreeMap<u64, usize> = report
+        .per_frame
+        .iter()
+        .map(|f| (f.film_tick, f.ordinal))
         .collect();
     let picks = [
         ("regressed", comparison.regressed.first()),
