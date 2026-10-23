@@ -8,10 +8,14 @@ use stunt_core::contracts::SodVertex;
 
 /// Layer id of pixels no geometry covers (the clear colour).
 pub const LAYER_NONE: u32 = 0;
-/// Layer id of the static world.
-pub const LAYER_WORLD: u32 = 1;
+/// Layer id of the world's ocean.
+pub const LAYER_OCEAN: u32 = 1;
+/// Layer id of the world's terrain.
+pub const LAYER_TERRAIN: u32 = 2;
+/// Layer id of the world's props.
+pub const LAYER_PROP: u32 = 3;
 /// Layer id of the first actor draw; actor draw `n` of a frame is `LAYER_FIRST_ACTOR + n`.
-pub const LAYER_FIRST_ACTOR: u32 = 2;
+pub const LAYER_FIRST_ACTOR: u32 = 16;
 
 /// Format of the optional plane target: `layer << 8 | unlit palette index` per pixel.
 pub const PLANE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Uint;
@@ -22,7 +26,8 @@ pub const PLANE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Uint;
 pub struct ModelUniform {
     /// 4x4 column-major affine model-to-world transform matrix.
     pub model_matrix: [f32; 16],
-    /// Layer id (first word) written to the plane target; the rest is padding.
+    /// Base layer id (first word) written to the plane target, added to the vertex's scenery
+    /// class (zero except for world vertices); the rest is padding.
     pub layer: [u32; 4],
 }
 
@@ -39,7 +44,7 @@ impl ModelUniform {
 
 impl Default for ModelUniform {
     fn default() -> Self {
-        Self::new(glam::Mat4::IDENTITY.to_cols_array(), LAYER_WORLD)
+        Self::new(glam::Mat4::IDENTITY.to_cols_array(), 0)
     }
 }
 

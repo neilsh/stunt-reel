@@ -54,3 +54,26 @@ Scored with the procedure below against the 30 frames of [`palette-fade.md` § 5
 * **The scorer misfires at night:** the fade level in `report.json` is a brightness heuristic built for the `CTRY.FLM` day sky. At night it reads about 0.24 for most frames, so 29 of 30 are excluded and the scored headline rests on one frame (tick 705, fade 1.012, SSIM 0.479). Read the unscored mean for this film.
 
 **Procedure for scoring another captured film.** `--frames a..b` is 1-based, so `--frames 459..460` writes `tick_00458.png`; render the whole captured span (`--frames 160..730` for this capture), because frames outside the range count as "missing on one side". Render at `--width 320 --height 200`, since the parity command rejects 320x240 input. Then run `parity --reference build/parity/reference/<film> --test build/parity/ours/<film> --output build/parity/report/<film> --clear-index 233`. For a side-by-side look, decode a reference `.idx` page (64000 bytes, 320x200) with its `palettes_NNNN.json` and paste it beside our PNG; the `contact_*.png` sheet only shows the first frame.
+
+---
+
+## 5. Loss Attribution (`CTRY.FLM`) (`[Bounded Observation]`)
+
+2026-10-22, one render (viewport 185 rows), one capture set (`ctry`), 114 scored frames, `mean_ssim_scored` 0.689. `stuntreel parity` splits each SSIM window's loss (`1 - ssim`) among the render layers of its pixels in proportion to pixel count (`mean_loss_by_class_scored` in `report.json`); the classes sum to `1 - mean_ssim_scored` = 0.311.
+
+| Class (what **our render** draws there) | Loss | Share |
+|---|---|---|
+| props (`SCENERY.scn` placements) | 0.145 | 47% |
+| terrain (`MAP.BIN` patches) | 0.121 | 39% |
+| reference-only (capture non-sky, render sky) | 0.035 | 11% |
+| actors | 0.008 | 3% |
+| sky, ocean | 0.003 | 1% |
+| render-only (render draws where the capture is sky) | 0.000 | 0% |
+
+* **Both layers have geometry where the capture does, but the shading is wrong.** Render-only loss is 0 and reference-only is 11%, so coverage is largely right (consistent with mask IoU 0.853); the bulk of the loss is how the covered ground and props are shaded and textured. Median per-frame loss is 0.114 for props and 0.114 for terrain.
+* **Attribution is by what our render draws, not what is missing.** In the worst props frame (ordinal 41, tick 448, SSIM 0.515) the capture shows the hero biplane (checkered wings) and its ground shadow, while our render shows the aircraft as faint struts and no shadow over a flat dark ground. The loss lands on the ground class (props 0.35) because the render draws ground, not an actor, there. The actors class (0.008) therefore **understates** the aircraft's cost. The drawn actor's shape `0x7F37` decodes to `RETURN`, so the thin render is not an unimplemented opcode; cause not identified (candidates: state mask or LOD selecting too little geometry, winding or palette indices). Ground shadow: not drawn at all; no code or finding yet.
+* **Terrain is worst on `ordinal 52`/`55`/`35` (ticks 568, 601, 382), 0.22 to 0.25 each**; not yet inspected.
+* The remaining partial model is `0x0107` (`OP_ANIMATE`, `0x01F8`, T10); it is the only chunk that stops early, and its cost is not isolated by this split.
+* **Method limits.** Layer ids: 1 ocean, 2 terrain, 3 props, 16+n actor draw n of the frame (draw order, not film slot). The index plane is unlit, so the split says where loss is, not that the palette index is wrong. Windows touching the UI overlay are excluded.
+
+Next probes, ranked by attributed loss: (1) why the hero aircraft renders thin and why it has no shadow; (2) terrain shading versus the capture on ticks 382, 568, 601; (3) prop shading and detail.

@@ -426,7 +426,7 @@ pub(crate) fn tick_png_name(tick: usize) -> String {
 
 /// Writes the index and layer planes beside `png_path` as `<stem>.idx` (one palette-index
 /// byte per pixel, before lighting) and `<stem>.layer` (one little-endian `u16` layer id per
-/// pixel; see `stunt_render::LAYER_WORLD`).
+/// pixel; see `stunt_render::LAYER_OCEAN`).
 fn write_planes(png_path: &Path, plane: &[u32]) -> Result<(), String> {
     let indices: Vec<u8> = plane.iter().map(|&p| (p & 0xFF) as u8).collect();
     let layers: Vec<u8> = plane

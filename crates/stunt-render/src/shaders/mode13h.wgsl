@@ -42,7 +42,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     let world_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
     out.clip_position = camera.view_proj * world_pos;
     out.palette_index = in.attr.x & 255u;
-    out.layer = model.layer.x;
+    out.layer = model.layer.x + in.attr.z;
 
     // Check emissive / unshaded flag (bit 2 = 0x04)
     if ((in.attr.y & 4u) != 0u) {

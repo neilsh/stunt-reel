@@ -8,6 +8,13 @@
 
 use std::fmt;
 
+/// Scenery class of an ocean vertex, stored in `SodVertex::_padding[0]`.
+pub const SCENERY_OCEAN: u8 = 1;
+/// Scenery class of a terrain vertex, stored in `SodVertex::_padding[0]`.
+pub const SCENERY_TERRAIN: u8 = 2;
+/// Scenery class of a prop vertex, stored in `SodVertex::_padding[0]`.
+pub const SCENERY_PROP: u8 = 3;
+
 /// Single vertex structure packed for direct upload to GPU vertex buffers.
 ///
 /// Formatted to guarantee standard 4-byte struct alignment and compatibility
@@ -26,7 +33,9 @@ pub struct SodVertex {
     /// - Bit 1: Two-sided polygon
     /// - Bit 2: Emissive / unshaded indicator
     pub flags: u8,
-    /// Reserved alignment padding bytes (must be zero).
+    /// Alignment padding. Byte 0 is the scenery class of a world vertex
+    /// (`SCENERY_OCEAN`, `SCENERY_TERRAIN`, `SCENERY_PROP`) and zero for every other
+    /// vertex; byte 1 must be zero. Rendering ignores both.
     pub _padding: [u8; 2],
 }
 

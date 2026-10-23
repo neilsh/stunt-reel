@@ -19,7 +19,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::contracts::{NodeKind, SodModelIr, SodVertex, VisibilityCondition};
+use crate::contracts::{
+    NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, SodModelIr, SodVertex,
+    VisibilityCondition,
+};
 use crate::sod::SodAnchorPoint;
 
 /// Column-major identity `local_matrix` for every world node (the world is drawn untransformed).
@@ -413,6 +416,8 @@ pub(crate) fn build_world_ir(
         o_start + 3,
     ]);
 
+    let terrain_start = ir.vertices.len();
+
     // 2. Island terrain polygons from MAP.BIN and ANCHORPT.DAT
     if map_areas.is_empty() {
         // Fallback ground plane at base_y if MAP.BIN is absent
@@ -502,6 +507,8 @@ pub(crate) fn build_world_ir(
             }
         }
     }
+
+    let prop_start = ir.vertices.len();
 
     // 3. Static Props: Base Geometry Batch
     for &(shape_id, pos) in instances {
@@ -595,6 +602,19 @@ pub(crate) fn build_world_ir(
                 }
             }
         }
+    }
+
+    // Tag each vertex with its scenery class (`SCENERY_OCEAN`..`SCENERY_PROP`); `parity`
+    // attribution reads it. Prop decals follow the base props, so everything from
+    // `prop_start` on is a prop.
+    for (position, vertex) in ir.vertices.iter_mut().enumerate() {
+        vertex._padding[0] = if position < terrain_start {
+            SCENERY_OCEAN
+        } else if position < prop_start {
+            SCENERY_TERRAIN
+        } else {
+            SCENERY_PROP
+        };
     }
 
     let total_decal_indices = ir.indices.len() as u32 - decal_index_start;

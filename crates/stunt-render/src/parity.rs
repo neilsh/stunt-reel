@@ -133,10 +133,19 @@ pub fn compute_frame_ssim(
     compute_frame_ssim_masked(frame_a, frame_b, width, height, window_size, stride, None)
 }
 
-/// Like [`compute_frame_ssim`], but a window that touches any `true` pixel of `excluded`
-/// (row-major, `width * height`) contributes nothing to the mean. When every window is
-/// excluded the result is `1.0`, since nothing disagrees.
-pub fn compute_frame_ssim_masked(
+/// SSIM of one window of a frame pair, with the window's top-left corner.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WindowScore {
+    /// Window column.
+    pub x: usize,
+    /// Window row.
+    pub y: usize,
+    /// SSIM of the window.
+    pub score: f32,
+}
+
+/// SSIM of every window not touching `excluded` (row-major, `width * height`), in scan order.
+pub fn compute_window_scores(
     frame_a: &[f32],
     frame_b: &[f32],
     width: usize,
@@ -144,7 +153,7 @@ pub fn compute_frame_ssim_masked(
     window_size: usize,
     stride: usize,
     excluded: Option<&[bool]>,
-) -> f32 {
+) -> Vec<WindowScore> {
     assert_eq!(
         frame_a.len(),
         frame_b.len(),
@@ -156,7 +165,7 @@ pub fn compute_frame_ssim_masked(
         assert_eq!(mask.len(), frame_a.len(), "Mask length mismatch");
     }
 
-    let mut ssim_values = Vec::new();
+    let mut scores = Vec::new();
     let mut win_a = Vec::with_capacity(window_size * window_size);
     let mut win_b = Vec::with_capacity(window_size * window_size);
 
@@ -181,27 +190,49 @@ pub fn compute_frame_ssim_masked(
             }
 
             if !touches_mask {
-                ssim_values.push(compute_window_ssim(
-                    &win_a,
-                    &win_b,
-                    C1_CONSTANT,
-                    C2_CONSTANT,
-                ));
+                scores.push(WindowScore {
+                    x,
+                    y,
+                    score: compute_window_ssim(&win_a, &win_b, C1_CONSTANT, C2_CONSTANT),
+                });
             }
 
             x += stride;
         }
         y += stride;
     }
+    scores
+}
 
-    if ssim_values.is_empty() {
+/// Like [`compute_frame_ssim`], but a window that touches any `true` pixel of `excluded`
+/// (row-major, `width * height`) contributes nothing to the mean. When every window is
+/// excluded the result is `1.0`, since nothing disagrees.
+pub fn compute_frame_ssim_masked(
+    frame_a: &[f32],
+    frame_b: &[f32],
+    width: usize,
+    height: usize,
+    window_size: usize,
+    stride: usize,
+    excluded: Option<&[bool]>,
+) -> f32 {
+    let scores = compute_window_scores(
+        frame_a,
+        frame_b,
+        width,
+        height,
+        window_size,
+        stride,
+        excluded,
+    );
+    if scores.is_empty() {
         if excluded.is_some() {
             1.0
         } else {
             compute_window_ssim(frame_a, frame_b, C1_CONSTANT, C2_CONSTANT)
         }
     } else {
-        ssim_values.iter().sum::<f32>() / ssim_values.len() as f32
+        scores.iter().map(|w| w.score).sum::<f32>() / scores.len() as f32
     }
 }
 

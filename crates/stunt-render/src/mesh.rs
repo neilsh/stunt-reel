@@ -4,7 +4,7 @@
 //! - `[I2]` Flat contiguous arena allocation (`Vec<SodNode>` indexed by `NodeId(u32)`).
 //! - `[I5]` Separation of base meshes from coplanar decal batches.
 
-use crate::pipeline::{LAYER_WORLD, ModelUniform};
+use crate::pipeline::ModelUniform;
 use glam::Mat4;
 use stunt_core::contracts::{NodeId, NodeKind, SodModelIr, SodVertex, VisibilityCondition};
 
@@ -161,7 +161,7 @@ impl GpuModel {
 
     /// Updates the model-to-world transformation matrix in the GPU uniform buffer.
     pub fn update_world_matrix(&self, queue: &wgpu::Queue, matrix: &[f32; 16]) {
-        let uniform = ModelUniform::new(*matrix, LAYER_WORLD);
+        let uniform = ModelUniform::new(*matrix, 0);
         queue.write_buffer(&self.model_uniform_buffer, 0, bytemuck::bytes_of(&uniform));
     }
 
