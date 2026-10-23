@@ -5,7 +5,9 @@
 //! - Container extraction (`Seam 1: VfsArchive`)
 //! - Flight choreography & trajectory playback (`Seam 2: TrajectoryRecord`)
 //! - Procedural display-list scene graph IR (`Seam 3: SodModelIr`)
-//! - Visual presentation & parity evaluation (`Seam 4: VisualParityGate`)
+//! - Visual presentation & parity evaluation (`Seam 4: VisualParityGate`); it has no core
+//!   types: the palette side is [`palette`], frames are rendered by `stunt-render`, and the
+//!   capture-vs-render report is the `stuntreel parity` subcommand
 //!
 //! Governed by architectural invariants:
 //! - `[I1]` Metric right-handed coordinate basis (+Y up, +Z toward viewer, -Z forward)
@@ -21,7 +23,6 @@
 //! `python/stunt_reel/doc_anchors.py`.
 
 pub mod palette;
-pub mod parity;
 pub mod scene;
 pub mod trajectory;
 pub mod vfs;
