@@ -17,7 +17,7 @@ A `.ALL` archive bundles 3D models (`.SOD`), choreography timeline scripts (`.FL
 | **Engine Role** | Scene-level runtime asset bundle providing direct ID lookups for geometry, palettes, sounds, and choreography | `[Established]` | `# [FMT-ALL-CHUNKS]`, `crates/stunt-core/src/contracts/vfs.rs` |
 | **Paired Contract** | `Seam 1: VfsArchive` (`crates/stunt-core/src/contracts/vfs.rs`) | `[Established]` | `# [FMT-ALL-CHUNKS]`, `docs/ARCHITECTURE.md` |
 
-**Governing invariants:** [`[I3]`](../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I7]`](../../docs/SPEC.md#i7-cleanroom-asset-isolation--zero-dependency-core), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/all.rs`](../../crates/stunt-core/src/vfs/all.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** synthetic archives described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
+**Governing invariants:** [`[I3]`](../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I7]`](../../docs/SPEC.md#i7-cleanroom-asset-isolation--small-pure-rust-core-dependencies), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/all.rs`](../../crates/stunt-core/src/vfs/all.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** synthetic archives described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
 
 ---
 

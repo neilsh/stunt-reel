@@ -9,31 +9,21 @@ use crate::camera::{CameraController, CameraGpuResources};
 use crate::palette::PaletteLut;
 use crate::pipeline::{PLANE_FORMAT, RenderPipelines};
 use crate::scene_renderer::SceneRenderer;
-use std::fmt;
 use stunt_core::scene::SceneFrame;
 
 /// Headless rendering error types.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum HeadlessError {
     /// No compatible GPU adapter found.
+    #[error("No compatible GPU adapter found on this system")]
     NoAdapterAvailable,
     /// Failed to request logical device.
+    #[error("Failed to initialize wgpu device: {0}")]
     DeviceRequestFailed(String),
     /// Buffer readback mapping failed.
+    #[error("Failed to map readback buffer: {0}")]
     BufferReadbackFailed(String),
 }
-
-impl fmt::Display for HeadlessError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NoAdapterAvailable => write!(f, "No compatible GPU adapter found on this system"),
-            Self::DeviceRequestFailed(err) => write!(f, "Failed to initialize wgpu device: {err}"),
-            Self::BufferReadbackFailed(err) => write!(f, "Failed to map readback buffer: {err}"),
-        }
-    }
-}
-
-impl std::error::Error for HeadlessError {}
 
 /// Headless offscreen renderer configured for 320x240 4:3 presentation.
 #[derive(Debug)]

@@ -9,6 +9,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+thiserror = "2.0"
 stunt-core = { path = "../stunt-core", features = ["bytemuck", "serde"] }
 wgpu = "24.0"
 bytemuck = { version = "1.14", features = ["derive"] }

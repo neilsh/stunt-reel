@@ -39,7 +39,7 @@ To reconcile these competing demands, *Stunt Island* implemented a tiered storag
 +-------------------------------------------------------------------------------+
 ```
 
-**Governing invariants:** [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I7]`](../../../docs/SPEC.md#i7-cleanroom-asset-isolation--zero-dependency-core), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs). Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
+**Governing invariants:** [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I7]`](../../../docs/SPEC.md#i7-cleanroom-asset-isolation--small-pure-rust-core-dependencies), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs). Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
 
 ---
 

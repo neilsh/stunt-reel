@@ -109,10 +109,10 @@ Delivery is sequential. This section records what each phase is for and whether 
   * Geometry preserves original 8-bit VGA palette indices (`0..=255`) inside `SodVertex::palette_index`.
   * In Phase 2, the WGSL vertex-to-fragment stage passes palette and facet lighting indices using `@interpolate(flat)` (disabling bilinear attribute interpolation across triangle interiors) and samples an uncompressed $256 \times 32$ RGBA lookup texture (LUT) representing 256 base colors across 32 discrete directional lighting and atmospheric haze levels.
 
-#### [I7] Cleanroom Asset Isolation & Zero-Dependency Core
+#### [I7] Cleanroom Asset Isolation & Small Pure-Rust Core Dependencies
 
   * Proprietary game binaries and retail data files (`corpus/`, `target_bin/`) are strictly gitignored and never checked into Git or downloaded during CI.
-  * `crates/stunt-core` maintains zero OS windowing, GPU, audio, or emulator dependencies so unit and contract tests compile and run 100% offline in $< 2\text{ seconds}$.
+  * `crates/stunt-core` may depend on small, pure-Rust crates that do no I/O and touch no windowing, GPU, audio, or emulator code, so unit and contract tests compile and run 100% offline in $< 2\text{ seconds}$. Each added crate is justified in the PR that adds it ([ADR 0002](adr/0002-stunt-core-may-take-small-dependencies.md)).
 
 #### [I8] DOS 8.3 Uppercase Path Normalization
 

@@ -9,49 +9,27 @@ use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 
 /// Errors occurring during video container export via ffmpeg.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum VideoExportError {
     /// The `ffmpeg` executable was not found on `PATH`.
+    #[error(
+        "ffmpeg executable was not found on PATH. Video export requires ffmpeg (https://ffmpeg.org). Please install ffmpeg or add it to PATH."
+    )]
     FfmpegNotFound,
     /// Failed to spawn the `ffmpeg` subprocess.
-    SpawnFailed(std::io::Error),
+    #[error("Failed to spawn ffmpeg: {0}")]
+    SpawnFailed(#[source] std::io::Error),
     /// An I/O error occurred communicating with `ffmpeg`.
-    IoError(std::io::Error),
+    #[error("I/O error communicating with ffmpeg: {0}")]
+    IoError(#[source] std::io::Error),
     /// The `ffmpeg` process exited with a non-zero exit code.
+    #[error("ffmpeg exited with status {exit_code:?}: {}", .stderr.trim())]
     EncoderFailed {
         /// Process exit code, if available.
         exit_code: Option<i32>,
         /// Captured standard error output.
         stderr: String,
     },
-}
-
-impl std::fmt::Display for VideoExportError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::FfmpegNotFound => write!(
-                f,
-                "ffmpeg executable was not found on PATH. Video export requires ffmpeg (https://ffmpeg.org). Please install ffmpeg or add it to PATH."
-            ),
-            Self::SpawnFailed(err) => write!(f, "Failed to spawn ffmpeg: {err}"),
-            Self::IoError(err) => write!(f, "I/O error communicating with ffmpeg: {err}"),
-            Self::EncoderFailed { exit_code, stderr } => write!(
-                f,
-                "ffmpeg exited with status {:?}: {}",
-                exit_code,
-                stderr.trim()
-            ),
-        }
-    }
-}
-
-impl std::error::Error for VideoExportError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::SpawnFailed(err) | Self::IoError(err) => Some(err),
-            _ => None,
-        }
-    }
 }
 
 /// Streaming video container exporter piping raw RGBA frames over a subprocess pipe to `ffmpeg`.
