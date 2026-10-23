@@ -2,7 +2,7 @@
 
 Dated results of `stuntreel parity` for `CTRY.FLM` against captured `PLAYONE.EXE` frames, newest last. From 2026-10-22 the headline figure covers only frames above the fade floor (see notes); rows above that are over all frames. The loop that produces each row is in [`method.md`](method.md); reports and renders live under `build/parity/` (gitignored), so only the figures are recorded here.
 
-**Capture set:** 140 frames, film clock 10 -> 1342, `DS = 0x1575`, captured 2026-10-21 on `main` at `a5e9897`. Frames are matched to renders by `film_tick` (SSIM and IoU as defined by `[I6]` and `crates/stunt-cli/src/parity.rs`; clear index 233).
+**Capture set:** 140 frames, film clock 10 -> 1342, `DS = 0x1575`, captured 2026-10-21 on `main` at `a5e9897`. Frames are matched to renders by `film_tick` (SSIM and IoU as defined by `[I6]` and `crates/stunt-cli/src/parity/`; clear index 233).
 
 | Date | Commit | Matched frames | Mean SSIM | Mean IoU | Notes |
 |---|---|---|---|---|---|
