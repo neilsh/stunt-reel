@@ -181,6 +181,15 @@ pub(crate) fn lerp_f32(a: f32, b: f32, t: f32) -> f32 {
     a + t * (b - a)
 }
 
+/// Interpolates two angles in radians along the shorter arc, so a roll that crosses
+/// the 0/2π wrap does not sweep the long way round.
+#[inline]
+pub(crate) fn lerp_angle(a: f32, b: f32, t: f32) -> f32 {
+    let delta =
+        (b - a + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+    a + t * delta
+}
+
 /// Detect camera cut between successive frames based on view object change or large eye displacement.
 pub(crate) fn detect_camera_cut(
     current_eye: [f32; 3],
@@ -230,7 +239,7 @@ pub(crate) fn interpolate_trajectory(
             record_b.camera.fov_degrees,
             eff_alpha,
         ),
-        roll_radians: lerp_f32(
+        roll_radians: lerp_angle(
             record_a.camera.roll_radians,
             record_b.camera.roll_radians,
             eff_alpha,
@@ -607,6 +616,18 @@ mod tests {
             actor.world_matrix = actor.compute_world_matrix();
             assert_rigid_transform(&actor.world_matrix, pos);
         }
+    }
+
+    #[test]
+    fn lerp_angle_takes_the_shorter_arc_across_the_wrap() {
+        let tau = std::f32::consts::TAU;
+        // 359 degrees to 1 degree is a 2 degree arc, not 358.
+        let a = 359f32.to_radians();
+        let b = 1f32.to_radians();
+        let mid = lerp_angle(a, b, 0.5);
+        let wrapped = mid.rem_euclid(tau);
+        assert!(wrapped < 1e-4 || (tau - wrapped) < 1e-4, "{wrapped}");
+        assert!((lerp_angle(0.5, 1.5, 0.5) - 1.0).abs() < 1e-6);
     }
 
     #[test]

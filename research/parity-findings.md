@@ -102,3 +102,11 @@ Next probes, ranked by attributed loss: (1) why the hero aircraft renders thin a
 * **Camera accuracy limits the fit.** A pixel-exact classifier with a fixed geometric law reaches only about 65 to 75% per frame, and a per-frame pitch shift of up to 1.4 degrees (mean 0.05, standard deviation 0.95) improves it little, so the residual comes from our camera's per-tick error, not from the band law. The edge medians are therefore the empirical table, not an exact rule.
 * **Change.** The renderer paints the sky first in each pass (`vs_sky`, `fs_sky`, `fs_sky_plane` in `mode13h.wgsl`): a fullscreen triangle that turns each pixel into a world ray through `CameraUniform::inv_view_proj`, takes the sine of its elevation and picks the band index from the table above, with layer 0 (none) in the plane target. `CameraUniform` grows to 160 bytes.
 * **Effect** (capture set `ctry`): `mean_ssim_scored` 0.766 to 0.769; mean index agreement 0.390 to 0.470 (the sky now carries the right indices); mask IoU unchanged at 0.853.
+
+---
+
+## 8. Camera Roll Wrapped the Long Way (`CTRY.FLM`) (`[Established]` as a defect, `[Bounded Observation]` for the effect)
+
+2026-10-22. The camera roll between two timeline records was interpolated as a plain scalar. `CTRY.FLM` moves the view slot's roll across the 0 / 2π wrap (about 0 degrees at tick 20, about 359.5 degrees at tick 43), so ticks in between were rendered with a roll of up to 294.5 degrees (tick 32) instead of about 0. The capture shows a near-level horizon there. Roll now interpolates along the shorter arc (`lerp_angle` in `crates/stunt-core/src/flm/interpolate.rs`); roll reads 0, then 360, then 359 degrees across ticks 20 to 44. Capture ordinal 3 (tick 32) moved from SSIM 0.66 to 0.78; `mean_ssim_scored` over 114 frames 0.769 to 0.770.
+
+* **Shadow experiment (not adopted).** A black copy of each actor's geometry flattened onto a horizontal plane (swept at -1, 0, 0.5, 1, 1.5, 2, 3, 6 and 10 m, layer and forced palette index 0) lowered `mean_ssim_scored` from 0.769 to 0.762 to 0.766 at every height, so the capture's ground shadow is not a flat copy of the aircraft at a guessed constant ground height. The capture's shadow is a silhouette roughly 60 rows below the aircraft in ordinal 41 and its outline is monoplane-like. Its construction is still `[Unknown]`.
