@@ -6,19 +6,40 @@
 
 use stunt_core::contracts::SodVertex;
 
+/// Layer id of pixels no geometry covers (the clear colour).
+pub const LAYER_NONE: u32 = 0;
+/// Layer id of the static world.
+pub const LAYER_WORLD: u32 = 1;
+/// Layer id of the first actor draw; actor draw `n` of a frame is `LAYER_FIRST_ACTOR + n`.
+pub const LAYER_FIRST_ACTOR: u32 = 2;
+
+/// Format of the optional plane target: `layer << 8 | unlit palette index` per pixel.
+pub const PLANE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Uint;
+
 /// GPU uniform buffer structure for per-model transformation matrix matching WGSL `@group(2) @binding(0)`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ModelUniform {
     /// 4x4 column-major affine model-to-world transform matrix.
     pub model_matrix: [f32; 16],
+    /// Layer id (first word) written to the plane target; the rest is padding.
+    pub layer: [u32; 4],
+}
+
+impl ModelUniform {
+    /// A uniform drawing with `model_matrix` into `layer`.
+    #[must_use]
+    pub fn new(model_matrix: [f32; 16], layer: u32) -> Self {
+        Self {
+            model_matrix,
+            layer: [layer, 0, 0, 0],
+        }
+    }
 }
 
 impl Default for ModelUniform {
     fn default() -> Self {
-        Self {
-            model_matrix: glam::Mat4::IDENTITY.to_cols_array(),
-        }
+        Self::new(glam::Mat4::IDENTITY.to_cols_array(), LAYER_WORLD)
     }
 }
 
@@ -99,6 +120,48 @@ impl RenderPipelines {
         camera_layout: &wgpu::BindGroupLayout,
         palette_layout: &wgpu::BindGroupLayout,
     ) -> Self {
+        Self::build(
+            device,
+            color_format,
+            None,
+            depth_format,
+            camera_layout,
+            palette_layout,
+        )
+    }
+
+    /// Like [`Self::new`], but every pass using these pipelines must carry a second colour
+    /// attachment of `PLANE_FORMAT` that receives `layer << 8 | palette index` per pixel.
+    pub fn new_with_plane(
+        device: &wgpu::Device,
+        color_format: wgpu::TextureFormat,
+        depth_format: wgpu::TextureFormat,
+        camera_layout: &wgpu::BindGroupLayout,
+        palette_layout: &wgpu::BindGroupLayout,
+    ) -> Self {
+        Self::build(
+            device,
+            color_format,
+            Some(PLANE_FORMAT),
+            depth_format,
+            camera_layout,
+            palette_layout,
+        )
+    }
+
+    fn build(
+        device: &wgpu::Device,
+        color_format: wgpu::TextureFormat,
+        plane_format: Option<wgpu::TextureFormat>,
+        depth_format: wgpu::TextureFormat,
+        camera_layout: &wgpu::BindGroupLayout,
+        palette_layout: &wgpu::BindGroupLayout,
+    ) -> Self {
+        let fragment_entry = if plane_format.is_some() {
+            "fs_main_plane"
+        } else {
+            "fs_main"
+        };
         let model_bind_group_layout = Self::create_model_bind_group_layout(device);
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -147,11 +210,18 @@ impl RenderPipelines {
             conservative: false,
         };
 
-        let targets = [Some(wgpu::ColorTargetState {
+        let mut targets = vec![Some(wgpu::ColorTargetState {
             format: color_format,
             blend: None, // Mode 13h opaque flat rendering
             write_mask: wgpu::ColorWrites::ALL,
         })];
+        if let Some(format) = plane_format {
+            targets.push(Some(wgpu::ColorTargetState {
+                format,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            }));
+        }
 
         let base_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("stunt_mode13h_base_pipeline"),
@@ -164,7 +234,7 @@ impl RenderPipelines {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader_module,
-                entry_point: Some("fs_main"),
+                entry_point: Some(fragment_entry),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &targets,
             }),
@@ -186,7 +256,7 @@ impl RenderPipelines {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader_module,
-                entry_point: Some("fs_main"),
+                entry_point: Some(fragment_entry),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &targets,
             }),
@@ -210,7 +280,7 @@ impl RenderPipelines {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &bar_shader,
-                entry_point: Some("fs_main"),
+                entry_point: Some(fragment_entry),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &targets,
             }),
@@ -245,7 +315,7 @@ mod tests {
 
     #[test]
     fn test_model_uniform_size() {
-        assert_eq!(std::mem::size_of::<ModelUniform>(), 64);
+        assert_eq!(std::mem::size_of::<ModelUniform>(), 80);
     }
 
     #[test]

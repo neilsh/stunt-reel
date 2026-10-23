@@ -15,7 +15,7 @@
 
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -424,6 +424,22 @@ pub(crate) fn tick_png_name(tick: usize) -> String {
     format!("tick_{tick:05}.png")
 }
 
+/// Writes the index and layer planes beside `png_path` as `<stem>.idx` (one palette-index
+/// byte per pixel, before lighting) and `<stem>.layer` (one little-endian `u16` layer id per
+/// pixel; see `stunt_render::LAYER_WORLD`).
+fn write_planes(png_path: &Path, plane: &[u32]) -> Result<(), String> {
+    let indices: Vec<u8> = plane.iter().map(|&p| (p & 0xFF) as u8).collect();
+    let layers: Vec<u8> = plane
+        .iter()
+        .flat_map(|&p| ((p >> 8) as u16).to_le_bytes())
+        .collect();
+    for (extension, bytes) in [("idx", indices), ("layer", layers)] {
+        let path = png_path.with_extension(extension);
+        std::fs::write(&path, bytes).map_err(|e| format!("write {}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
 /// File name written under `--out-dir` for a rendered sample.
 fn sample_png_name(key: SampleKey) -> String {
     match key {
@@ -580,14 +596,15 @@ pub fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), String>
                 "saturation": frame.palette.saturation,
             }));
         }
-        let rgba_bytes = renderer
-            .render_scene(&mut scene_renderer, &frame, None, Some(config.clear_index))
+        let (rgba_bytes, plane) = renderer
+            .render_scene_with_plane(&mut scene_renderer, &frame, None, Some(config.clear_index))
             .map_err(|e| format!("render {key}: {e}"))?;
 
         if let Some(out_dir) = &config.out_dir {
             let frame_path = out_dir.join(sample_png_name(key));
             save_rgba_png(&frame_path, config.width, config.height, &rgba_bytes)
                 .map_err(|e| format!("{key}: {e}"))?;
+            write_planes(&frame_path, &plane).map_err(|e| format!("{key}: {e}"))?;
             written_pngs += 1;
         }
         if let Some(writer) = &mut video_writer {

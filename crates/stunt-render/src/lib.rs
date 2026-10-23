@@ -35,6 +35,8 @@ pub use parity::{
     compute_window_ssim, evaluate_visual_parity, rescale_mode13h_frame, rgb_to_luminance,
     rgba_to_luminance,
 };
-pub use pipeline::{ModelUniform, RenderPipelines};
+pub use pipeline::{
+    LAYER_FIRST_ACTOR, LAYER_NONE, LAYER_WORLD, ModelUniform, PLANE_FORMAT, RenderPipelines,
+};
 pub use scene_renderer::SceneRenderer;
 pub use video::{FfmpegVideoWriter, VideoExportError};

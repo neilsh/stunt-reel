@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use stunt_core::contracts::{PALETTE_CONTROL_FULL, PaletteControls, get_palette_rgb};
 use stunt_render::{
-    ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH, compute_frame_ssim_masked,
+    ASPECT_CORRECTED_HEIGHT, LAYER_NONE, MODE13H_HEIGHT, MODE13H_WIDTH, compute_frame_ssim_masked,
     compute_luminance, rescale_mode13h_frame, rgb_to_luminance, rgba_to_luminance,
 };
 
@@ -70,6 +70,9 @@ struct FrameScore {
     /// known, else the measured `fade_level`.
     scored: bool,
     iou: f32,
+    /// Fraction of non-overlay pixels whose palette index equals the capture's; `None`
+    /// when the render directory carries no index plane for this tick.
+    index_agreement: Option<f32>,
 }
 
 /// Parsed `stuntreel parity` arguments.
@@ -250,13 +253,23 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             8,
             Some(&overlay_rescaled),
         );
-        let iou = mask_iou(
-            &indices,
-            sky_index,
-            &test_luminance,
-            clear_luminance,
-            &overlay,
-        );
+        let planes = read_render_planes(&args.test, film_tick)?;
+        let (iou, index_agreement) = match &planes {
+            Some((render_indices, render_layers)) => (
+                mask_iou_planes(&indices, sky_index, render_layers, &overlay),
+                Some(index_agreement(&indices, render_indices, &overlay)),
+            ),
+            None => (
+                mask_iou(
+                    &indices,
+                    sky_index,
+                    &test_luminance,
+                    clear_luminance,
+                    &overlay,
+                ),
+                None,
+            ),
+        };
         let authored_fade = render_palettes
             .get(&film_tick)
             .map(|controls| f32::from(controls.brightness) / f32::from(PALETTE_CONTROL_FULL));
@@ -270,6 +283,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             authored_fade_level: authored_fade,
             scored,
             iou,
+            index_agreement,
         });
 
         if sheet_ordinals.contains(&ordinal) {
@@ -312,6 +326,12 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     };
     let mean_ssim_scored = scored_mean(|s| s.ssim);
     let mean_iou_scored = scored_mean(|s| s.iou);
+    let agreement: Vec<f32> = scored_frames
+        .iter()
+        .filter_map(|s| s.index_agreement)
+        .collect();
+    let mean_index_agreement_scored =
+        (!agreement.is_empty()).then(|| agreement.iter().sum::<f32>() / agreement.len() as f32);
 
     let report = json!({
         "reference_frames": frames.len(),
@@ -325,6 +345,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         "min_fade_level": args.min_fade_level,
         "mean_ssim_scored": mean_ssim_scored,
         "mean_iou_scored": mean_iou_scored,
+        "mean_index_agreement_scored": mean_index_agreement_scored,
         "scored_frames": scored_frames.len(),
         "excluded_frames": excluded_frames,
         "per_frame": scores
@@ -334,6 +355,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
                 "film_tick": s.film_tick,
                 "ssim": s.ssim,
                 "iou": s.iou,
+                "index_agreement": s.index_agreement,
                 "fade_level": s.fade_level,
                 "authored_fade_level": s.authored_fade_level,
                 "scored": s.scored,
@@ -361,6 +383,9 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             "[parity] no frame reaches the fade floor (fade level >= {:.2}); {excluded_frames} excluded",
             args.min_fade_level
         ),
+    }
+    if let Some(agreement) = mean_index_agreement_scored {
+        println!("[parity] mean index agreement {agreement:.3} over the scored frames with planes");
     }
     if unmatched > 0 {
         println!("[parity] {unmatched} frame(s) missing on one side and skipped");
@@ -1017,6 +1042,77 @@ fn rescale_mask(mask: &[bool]) -> Vec<bool> {
     .collect()
 }
 
+/// A render's palette-index plane and layer-id plane.
+type RenderPlanes = (Vec<u8>, Vec<u16>);
+
+/// Reads the render's index and layer planes for `tick`, if both files exist.
+fn read_render_planes(test_dir: &Path, tick: usize) -> Result<Option<RenderPlanes>, String> {
+    let png = test_dir.join(crate::tick_png_name(tick));
+    let (idx_path, layer_path) = (png.with_extension("idx"), png.with_extension("layer"));
+    if !idx_path.is_file() || !layer_path.is_file() {
+        return Ok(None);
+    }
+    let indices = read_index_plane(&idx_path)?;
+    let bytes = fs::read(&layer_path).map_err(|e| format!("read {}: {e}", layer_path.display()))?;
+    if bytes.len() != MODE13H_WIDTH * MODE13H_HEIGHT * 2 {
+        return Err(format!(
+            "{} is {} bytes, expected {}",
+            layer_path.display(),
+            bytes.len(),
+            MODE13H_WIDTH * MODE13H_HEIGHT * 2
+        ));
+    }
+    let layers = bytes
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| u16::from_le_bytes(*pair))
+        .collect();
+    Ok(Some((indices, layers)))
+}
+
+/// Fraction of non-`overlay` pixels where both index planes agree.
+fn index_agreement(reference: &[u8], render: &[u8], overlay: &[bool]) -> f32 {
+    let (mut equal, mut total) = (0usize, 0usize);
+    for ((a, b), &masked) in reference.iter().zip(render).zip(overlay) {
+        if masked {
+            continue;
+        }
+        total += 1;
+        equal += usize::from(a == b);
+    }
+    if total == 0 {
+        1.0
+    } else {
+        equal as f32 / total as f32
+    }
+}
+
+/// Like [`mask_iou`], but the render side is filled where its layer plane is not
+/// [`stunt_render::LAYER_NONE`].
+fn mask_iou_planes(
+    reference_indices: &[u8],
+    sky_index: u8,
+    render_layers: &[u16],
+    overlay: &[bool],
+) -> f32 {
+    let (mut intersection, mut union) = (0usize, 0usize);
+    for ((index, layer), &masked) in reference_indices.iter().zip(render_layers).zip(overlay) {
+        if masked {
+            continue;
+        }
+        let reference_filled = *index != sky_index;
+        let test_filled = u32::from(*layer) != LAYER_NONE;
+        intersection += usize::from(reference_filled && test_filled);
+        union += usize::from(reference_filled || test_filled);
+    }
+    if union == 0 {
+        1.0
+    } else {
+        intersection as f32 / union as f32
+    }
+}
+
 /// Intersection-over-union of the non-sky masks of both 320x200 frames, skipping `overlay`
 /// pixels.
 fn mask_iou(
@@ -1350,6 +1446,41 @@ mod tests {
         assert_eq!(frame["authored_fade_level"], 0.125);
         assert_eq!(frame["scored"], false);
         assert!(frame["fade_level"].as_f64().unwrap() > 0.9);
+    }
+
+    #[test]
+    fn index_agreement_counts_equal_indices_outside_the_overlay() {
+        let reference = [1u8, 2, 3, 4];
+        let render = [1u8, 9, 3, 9];
+        let overlay = [false, false, false, true];
+        // Three counted pixels, two equal.
+        assert!((index_agreement(&reference, &render, &overlay) - 2.0 / 3.0).abs() < 1e-6);
+        assert_eq!(index_agreement(&reference, &render, &[true; 4]), 1.0);
+    }
+
+    #[test]
+    fn layer_mask_iou_fills_the_render_side_where_a_layer_covers() {
+        let reference = [5u8, 5, 7, 7];
+        let layers = [0u16, 1, 1, 0];
+        // Reference fills pixels 2 and 3 (sky is 5); the render fills pixels 1 and 2.
+        let iou = mask_iou_planes(&reference, 5, &layers, &[false; 4]);
+        assert!((iou - 1.0 / 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn render_planes_feed_index_agreement_into_the_report() {
+        let tmp = TempDir::new("render_planes");
+        write_reference(&tmp.join("ref"), &[12], true);
+        let test = tmp.join("test");
+        fs::create_dir_all(&test).unwrap();
+        write_render(&test.join(crate::tick_png_name(12)));
+        let pixels = MODE13H_WIDTH * MODE13H_HEIGHT;
+        let reference: Vec<u8> = (0..pixels).map(plane_index).collect();
+        fs::write(test.join("tick_00012.idx"), &reference).unwrap();
+        fs::write(test.join("tick_00012.layer"), vec![1u8; pixels * 2]).unwrap();
+        run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
+        let frame = &read_report(&tmp.join("out"))["per_frame"][0];
+        assert_eq!(frame["index_agreement"], 1.0);
     }
 
     #[test]

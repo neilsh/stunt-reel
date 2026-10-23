@@ -19,7 +19,7 @@ use stunt_core::scene::{FilmScene, SceneFrame};
 use crate::camera::{CameraController, CameraGpuResources};
 use crate::mesh::{GpuMeshSlice, GpuModel};
 use crate::palette::PaletteLut;
-use crate::pipeline::{ModelUniform, RenderPipelines};
+use crate::pipeline::{LAYER_FIRST_ACTOR, ModelUniform, RenderPipelines};
 
 /// Which uploaded model a prepared draw uses.
 #[derive(Clone, Copy, Debug)]
@@ -116,7 +116,7 @@ impl SceneRenderer {
         }
 
         let mut slot = 0;
-        for actor in &frame.actors {
+        for (actor_index, actor) in frame.actors.iter().enumerate() {
             let Some(model) = self.shapes.get(&actor.shape_id) else {
                 continue;
             };
@@ -130,9 +130,10 @@ impl SceneRenderer {
             queue.write_buffer(
                 &self.slots[slot].buffer,
                 0,
-                bytemuck::bytes_of(&ModelUniform {
-                    model_matrix: actor.world_matrix,
-                }),
+                bytemuck::bytes_of(&ModelUniform::new(
+                    actor.world_matrix,
+                    LAYER_FIRST_ACTOR + actor_index as u32,
+                )),
             );
             self.prepared.push(PreparedDraw {
                 target: Target::Shape {

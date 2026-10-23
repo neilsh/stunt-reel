@@ -8,7 +8,7 @@
 use crate::camera::{CameraController, CameraGpuResources};
 use crate::mesh::{GpuMeshSlice, GpuModel};
 use crate::palette::PaletteLut;
-use crate::pipeline::RenderPipelines;
+use crate::pipeline::{PLANE_FORMAT, RenderPipelines};
 use crate::scene_renderer::SceneRenderer;
 use std::fmt;
 use stunt_core::scene::SceneFrame;
@@ -62,6 +62,12 @@ pub struct HeadlessRenderer {
     pub depth_view: wgpu::TextureView,
     /// Staging buffer for reading rendered pixels back to CPU memory.
     pub readback_buffer: wgpu::Buffer,
+    /// Offscreen plane target (`layer << 8 | palette index`, `R32Uint`).
+    pub plane_texture: wgpu::Texture,
+    /// Offscreen plane texture view.
+    pub plane_view: wgpu::TextureView,
+    /// Staging buffer for reading the plane target back.
+    pub plane_readback_buffer: wgpu::Buffer,
     /// Framebuffer width (320).
     pub width: u32,
     /// Framebuffer height (240).
@@ -124,7 +130,7 @@ impl HeadlessRenderer {
         let camera_resources = CameraGpuResources::new(&device);
         let palette_lut = PaletteLut::new(&device, &queue);
 
-        let pipelines = RenderPipelines::new(
+        let pipelines = RenderPipelines::new_with_plane(
             &device,
             Self::COLOR_FORMAT,
             Self::DEPTH_FORMAT,
@@ -147,6 +153,22 @@ impl HeadlessRenderer {
             view_formats: &[],
         });
         let color_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let plane_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("stunt_offscreen_plane_target"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: PLANE_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let plane_view = plane_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("stunt_offscreen_depth_target"),
@@ -175,6 +197,13 @@ impl HeadlessRenderer {
             mapped_at_creation: false,
         });
 
+        let plane_readback_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("stunt_offscreen_plane_readback_buffer"),
+            size: buffer_size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
         Ok(Self {
             device,
             queue,
@@ -186,6 +215,9 @@ impl HeadlessRenderer {
             depth_texture,
             depth_view,
             readback_buffer,
+            plane_texture,
+            plane_view,
+            plane_readback_buffer,
             width,
             height,
             viewport_rows: None,
@@ -250,6 +282,7 @@ impl HeadlessRenderer {
                 }
             }
         })
+        .map(|(rgba, _plane)| rgba)
     }
 
     /// Renders one scene frame through `scene` and captures the RGBA8 framebuffer.
@@ -263,6 +296,20 @@ impl HeadlessRenderer {
         camera: Option<&CameraController>,
         clear_palette_index: Option<u8>,
     ) -> Result<Vec<u8>, HeadlessError> {
+        self.render_scene_with_plane(scene, frame, camera, clear_palette_index)
+            .map(|(rgba, _plane)| rgba)
+    }
+
+    /// Like [`Self::render_scene`], and also returns the plane: one `u32` per pixel,
+    /// `layer << 8 | unlit palette index`, where uncovered pixels are the clear index on
+    /// [`crate::pipeline::LAYER_NONE`].
+    pub fn render_scene_with_plane(
+        &mut self,
+        scene: &mut SceneRenderer,
+        frame: &SceneFrame,
+        camera: Option<&CameraController>,
+        clear_palette_index: Option<u8>,
+    ) -> Result<(Vec<u8>, Vec<u32>), HeadlessError> {
         self.palette_lut.set_controls(&self.queue, frame.palette);
         let squeezed = self.viewport_rows.map(|rows| {
             let mut controller = CameraController::default();
@@ -293,7 +340,7 @@ impl HeadlessRenderer {
         &self,
         clear_palette_index: Option<u8>,
         draw: impl FnOnce(&Self, &mut wgpu::RenderPass<'_>),
-    ) -> Result<Vec<u8>, HeadlessError> {
+    ) -> Result<(Vec<u8>, Vec<u32>), HeadlessError> {
         // Clear color from the loaded palette: the given index, or daytime horizon sky
         // blue (palette index 180).
         let (r, g, b) = self
@@ -315,14 +362,29 @@ impl HeadlessRenderer {
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("stunt_headless_render_pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.color_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(clear_color),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
+                color_attachments: &[
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &self.color_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(clear_color),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    }),
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &self.plane_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: f64::from(clear_palette_index.unwrap_or(180)),
+                                g: 0.0,
+                                b: 0.0,
+                                a: 0.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    }),
+                ],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth_view,
                     depth_ops: Some(wgpu::Operations {
@@ -364,10 +426,45 @@ impl HeadlessRenderer {
             },
         );
 
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.plane_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &self.plane_readback_buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(self.width * 4),
+                    rows_per_image: Some(self.height),
+                },
+            },
+            wgpu::Extent3d {
+                width: self.width,
+                height: self.height,
+                depth_or_array_layers: 1,
+            },
+        );
+
         self.queue.submit(Some(encoder.finish()));
 
-        // Map buffer and read bytes
-        let buffer_slice = self.readback_buffer.slice(..);
+        let pixel_bytes = self.read_back(&self.readback_buffer)?;
+        let plane = self
+            .read_back(&self.plane_readback_buffer)?
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|word| u32::from_le_bytes(*word))
+            .collect();
+
+        Ok((pixel_bytes, plane))
+    }
+
+    /// Maps `buffer`, copies its bytes out, and unmaps it.
+    fn read_back(&self, buffer: &wgpu::Buffer) -> Result<Vec<u8>, HeadlessError> {
+        let buffer_slice = buffer.slice(..);
         let (sender, receiver) = std::sync::mpsc::channel();
         buffer_slice.map_async(wgpu::MapMode::Read, move |res| {
             let _ = sender.send(res);
@@ -381,11 +478,10 @@ impl HeadlessRenderer {
             .map_err(|e| HeadlessError::BufferReadbackFailed(e.to_string()))?;
 
         let mapped = buffer_slice.get_mapped_range();
-        let pixel_bytes = mapped.to_vec();
+        let bytes = mapped.to_vec();
         drop(mapped);
-        self.readback_buffer.unmap();
-
-        Ok(pixel_bytes)
+        buffer.unmap();
+        Ok(bytes)
     }
 
     /// Renders and saves a captured frame as a PNG file.

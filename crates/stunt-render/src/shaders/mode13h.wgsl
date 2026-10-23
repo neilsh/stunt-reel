@@ -8,6 +8,7 @@ struct CameraUniform {
 
 struct ModelUniform {
     model_matrix: mat4x4<f32>,
+    layer: vec4<u32>, // x: layer id written to the plane target
 };
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
@@ -24,6 +25,13 @@ struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) @interpolate(flat) palette_index: u32,
     @location(1) @interpolate(flat) light_level: u32,
+    @location(2) @interpolate(flat) layer: u32,
+};
+
+struct PlaneOutput {
+    @location(0) color: vec4<f32>,
+    // Layer id in bits 8.., unlit palette index in bits 0..8.
+    @location(1) plane: u32,
 };
 
 @vertex
@@ -34,6 +42,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     let world_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
     out.clip_position = camera.view_proj * world_pos;
     out.palette_index = in.attr.x & 255u;
+    out.layer = model.layer.x;
 
     // Check emissive / unshaded flag (bit 2 = 0x04)
     if ((in.attr.y & 4u) != 0u) {
@@ -62,4 +71,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Mode 13h flat-shaded pixel lookup with zero bilinear bleed [I3]
     let coords = vec2<i32>(i32(in.palette_index & 255u), i32(in.light_level & 31u));
     return textureLoad(palette_lut, coords, 0);
+}
+
+@fragment
+fn fs_main_plane(in: VertexOutput) -> PlaneOutput {
+    var out: PlaneOutput;
+    let coords = vec2<i32>(i32(in.palette_index & 255u), i32(in.light_level & 31u));
+    out.color = textureLoad(palette_lut, coords, 0);
+    out.plane = (in.layer << 8u) | (in.palette_index & 255u);
+    return out;
 }
