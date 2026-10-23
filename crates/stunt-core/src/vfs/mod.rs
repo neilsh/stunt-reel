@@ -71,3 +71,12 @@ pub fn detect_and_parse(data: &[u8]) -> Result<VfsArchive, VfsError> {
         parse_all(data)
     }
 }
+
+impl From<crate::reader::Eof> for VfsError {
+    fn from(e: crate::reader::Eof) -> Self {
+        Self::UnexpectedEof {
+            expected: e.expected,
+            actual: e.actual,
+        }
+    }
+}

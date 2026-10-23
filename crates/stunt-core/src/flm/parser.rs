@@ -6,6 +6,7 @@
 use super::FlmError;
 use super::interpolate::{bam_to_radians, quat_from_euler};
 use crate::contracts::trajectory::AudioCue;
+use crate::reader::ByteReader;
 
 /// Object slot flags from `sifilm.h`.
 /// Slot flag: the object slot is allocated and participates in the scene.
@@ -129,8 +130,7 @@ pub(crate) struct Slice {
 /// Binary stream decoder for `.FLM` choreography files.
 #[derive(Debug, Clone)]
 pub(crate) struct FlmParser<'a> {
-    data: &'a [u8],
-    pos: usize,
+    reader: ByteReader<'a>,
     /// Length of the most recently decoded slice, used to validate the back-pointer chain.
     last_slice_len: Option<usize>,
     /// Non-fatal stream inconsistencies, such as a broken `prev_slice_len` chain.
@@ -157,8 +157,7 @@ impl<'a> FlmParser<'a> {
             });
         }
         Ok(Self {
-            data,
-            pos: 4,
+            reader: ByteReader::at(data, 4),
             last_slice_len: None,
             warnings: Vec::new(),
         })
@@ -173,68 +172,27 @@ impl<'a> FlmParser<'a> {
     /// True if there are remaining bytes to decode.
     #[inline]
     pub(crate) fn has_more(&self) -> bool {
-        self.pos < self.data.len()
+        self.reader.has_more()
     }
 
     /// Read a single byte.
     pub(crate) fn read_u8(&mut self) -> Result<u8, FlmError> {
-        if self.pos >= self.data.len() {
-            return Err(FlmError::UnexpectedEof {
-                expected: self.pos + 1,
-                actual: self.data.len(),
-            });
-        }
-        let b = self.data[self.pos];
-        self.pos += 1;
-        Ok(b)
+        Ok(self.reader.read_u8()?)
     }
 
     /// Read an unsigned 16-bit little-endian integer.
     pub(crate) fn read_u16_le(&mut self) -> Result<u16, FlmError> {
-        if self.pos + 2 > self.data.len() {
-            return Err(FlmError::UnexpectedEof {
-                expected: self.pos + 2,
-                actual: self.data.len(),
-            });
-        }
-        let bytes = [self.data[self.pos], self.data[self.pos + 1]];
-        self.pos += 2;
-        Ok(u16::from_le_bytes(bytes))
+        Ok(self.reader.read_u16_le()?)
     }
 
     /// Read a signed 32-bit little-endian integer (16.16 fixed-point).
     pub(crate) fn read_i32_le(&mut self) -> Result<i32, FlmError> {
-        if self.pos + 4 > self.data.len() {
-            return Err(FlmError::UnexpectedEof {
-                expected: self.pos + 4,
-                actual: self.data.len(),
-            });
-        }
-        let bytes = [
-            self.data[self.pos],
-            self.data[self.pos + 1],
-            self.data[self.pos + 2],
-            self.data[self.pos + 3],
-        ];
-        self.pos += 4;
-        Ok(i32::from_le_bytes(bytes))
+        Ok(self.reader.read_i32_le()?)
     }
 
     /// Read a null-terminated ASCII C-string.
     pub(crate) fn read_cstring(&mut self) -> Result<String, FlmError> {
-        let start = self.pos;
-        while self.pos < self.data.len() {
-            let b = self.data[self.pos];
-            self.pos += 1;
-            if b == 0 {
-                let slice = &self.data[start..self.pos - 1];
-                return Ok(String::from_utf8_lossy(slice).into_owned());
-            }
-        }
-        Err(FlmError::UnexpectedEof {
-            expected: self.pos + 1,
-            actual: self.data.len(),
-        })
+        Ok(self.reader.read_cstring()?)
     }
 
     /// Parse the next time slice from the binary stream.
@@ -254,7 +212,7 @@ impl<'a> FlmParser<'a> {
             return Ok(None);
         }
 
-        let slice_start = self.pos;
+        let slice_start = self.reader.pos();
         let prev_slice_len = self.read_u16_le()?;
         let tick_duration = self.read_u8()?;
 
@@ -262,7 +220,7 @@ impl<'a> FlmParser<'a> {
         // the `0xFF` end-of-stream marker (`0x00` in a few corpus films). Some films
         // append filler after the marker, so `0xFF` - never an authored duration in the
         // 627,696-slice corpus, whose maximum is `0x7F` - also ends the stream.
-        if self.pos == self.data.len() || tick_duration == 0xFF {
+        if self.reader.pos() == self.reader.len() || tick_duration == 0xFF {
             if let Some(last_len) = self.last_slice_len
                 && prev_slice_len as usize != last_len
             {
@@ -270,7 +228,7 @@ impl<'a> FlmParser<'a> {
                     "end-of-film epilogue at 0x{slice_start:04X} has prev_slice_len {prev_slice_len} (expected {last_len})"
                 ));
             }
-            self.pos = self.data.len();
+            self.reader.set_pos(self.reader.len());
             return Ok(None);
         }
 
@@ -285,7 +243,7 @@ impl<'a> FlmParser<'a> {
         let mut sound_cues = Vec::new();
 
         loop {
-            if self.pos >= self.data.len() {
+            if self.reader.pos() >= self.reader.len() {
                 return Err(FlmError::InvalidSlice {
                     reason: format!(
                         "slice starting at offset 0x{slice_start:04X} ended abruptly without 0xFF terminator"
@@ -293,7 +251,7 @@ impl<'a> FlmParser<'a> {
                 });
             }
 
-            let op_offset = self.pos;
+            let op_offset = self.reader.pos();
             let c = self.read_u8()?;
 
             if c == 0xFF {
@@ -416,7 +374,7 @@ impl<'a> FlmParser<'a> {
             }
         }
 
-        self.last_slice_len = Some(self.pos - slice_start);
+        self.last_slice_len = Some(self.reader.pos() - slice_start);
 
         Ok(Some(Slice {
             prev_slice_len,

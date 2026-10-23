@@ -76,3 +76,12 @@ pub enum SodError {
         offset: usize,
     },
 }
+
+impl From<crate::reader::Eof> for SodError {
+    fn from(e: crate::reader::Eof) -> Self {
+        Self::UnexpectedEof {
+            expected: e.expected,
+            actual: e.actual,
+        }
+    }
+}

@@ -313,6 +313,15 @@ impl<'a> FlmPlayer<'a> {
     }
 }
 
+impl From<crate::reader::Eof> for FlmError {
+    fn from(e: crate::reader::Eof) -> Self {
+        Self::UnexpectedEof {
+            expected: e.expected,
+            actual: e.actual,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

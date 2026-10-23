@@ -9,6 +9,7 @@
 
 use crate::anchor::AnchorPoint;
 use crate::contracts::shape::VisibilityCondition;
+use crate::reader::ByteReader;
 use crate::sod::SodError;
 
 // Standard .SOD Opcodes per historical SOD.H and specification
@@ -380,32 +381,6 @@ pub(crate) fn compute_polygon_normal(vertices: &[[f32; 3]]) -> [f32; 3] {
     }
 }
 
-/// Helper function to read a 16-bit unsigned little-endian word from a byte slice.
-fn read_u16(data: &[u8], pos: &mut usize) -> Result<u16, SodError> {
-    if *pos + 2 > data.len() {
-        return Err(SodError::UnexpectedEof {
-            expected: *pos + 2,
-            actual: data.len(),
-        });
-    }
-    let val = u16::from_le_bytes([data[*pos], data[*pos + 1]]);
-    *pos += 2;
-    Ok(val)
-}
-
-/// Helper function to read a 16-bit signed little-endian word from a byte slice.
-fn read_i16(data: &[u8], pos: &mut usize) -> Result<i16, SodError> {
-    if *pos + 2 > data.len() {
-        return Err(SodError::UnexpectedEof {
-            expected: *pos + 2,
-            actual: data.len(),
-        });
-    }
-    let val = i16::from_le_bytes([data[*pos], data[*pos + 1]]);
-    *pos += 2;
-    Ok(val)
-}
-
 /// Evaluates dynamic `OP_IFVIS` condition code to [`VisibilityCondition`].
 fn parse_visibility_condition(code: u16) -> VisibilityCondition {
     match code {
@@ -490,8 +465,8 @@ pub(crate) fn execute_sod_vm_impl(
         });
     }
 
-    let mut pos = 0;
-    let op_id = read_u16(data, &mut pos)?;
+    let mut r = ByteReader::new(data);
+    let op_id = r.read_u16_le()?;
     if op_id != OP_ID {
         return Err(SodError::InvalidMagic {
             expected: OP_ID,
@@ -499,10 +474,10 @@ pub(crate) fn execute_sod_vm_impl(
         });
     }
 
-    let bounding_size = read_u16(data, &mut pos)?;
-    let ground_y_offset = read_i16(data, &mut pos)?;
-    let flags_scale = read_u16(data, &mut pos)?;
-    let collision_meta = read_u16(data, &mut pos)?;
+    let bounding_size = r.read_u16_le()?;
+    let ground_y_offset = r.read_i16_le()?;
+    let flags_scale = r.read_u16_le()?;
+    let collision_meta = r.read_u16_le()?;
 
     let scale_index = (flags_scale & 0xFF) as u8;
     let header_flags = (flags_scale >> 8) as u8;
@@ -531,27 +506,27 @@ pub(crate) fn execute_sod_vm_impl(
 
     let total_len = data.len();
 
-    while pos < total_len {
-        if pos >= visibility_scope_end && current_visibility != VisibilityCondition::Always {
+    while r.pos() < total_len {
+        if r.pos() >= visibility_scope_end && current_visibility != VisibilityCondition::Always {
             current_visibility = VisibilityCondition::Always;
         }
 
-        if pos + 2 > total_len {
+        if r.pos() + 2 > total_len {
             return Err(SodError::UnexpectedEof {
-                expected: pos + 2,
+                expected: r.pos() + 2,
                 actual: total_len,
             });
         }
 
-        let op_offset = pos;
-        let opcode = read_u16(data, &mut pos)?;
+        let op_offset = r.pos();
+        let opcode = r.read_u16_le()?;
 
         match opcode {
             OP_CLRV => {
                 cur_vert = [0.0, 0.0, 0.0];
             }
             OP_GETV => {
-                let reg_off = read_u16(data, &mut pos)?;
+                let reg_off = r.read_u16_le()?;
                 let reg_idx = ((reg_off / 12) & 1023) as usize;
                 cur_vert = regs[reg_idx];
             }
@@ -559,12 +534,12 @@ pub(crate) fn execute_sod_vm_impl(
                 // Secondary ID sentinel in stream; safely ignored
             }
             OP_PUTV => {
-                let reg_off = read_u16(data, &mut pos)?;
+                let reg_off = r.read_u16_le()?;
                 let reg_idx = ((reg_off / 12) & 1023) as usize;
                 regs[reg_idx] = cur_vert;
             }
             OP_INTV => {
-                let reg_off = read_u16(data, &mut pos)?;
+                let reg_off = r.read_u16_le()?;
                 let reg_idx = ((reg_off / 12) & 1023) as usize;
                 let target = regs[reg_idx];
                 cur_vert = [
@@ -574,7 +549,7 @@ pub(crate) fn execute_sod_vm_impl(
                 ];
             }
             OP_ADDV => {
-                let reg_off = read_u16(data, &mut pos)?;
+                let reg_off = r.read_u16_le()?;
                 let reg_idx = ((reg_off / 12) & 1023) as usize;
                 let target = regs[reg_idx];
                 cur_vert = [
@@ -584,7 +559,7 @@ pub(crate) fn execute_sod_vm_impl(
                 ];
             }
             OP_SUBV => {
-                let reg_off = read_u16(data, &mut pos)?;
+                let reg_off = r.read_u16_le()?;
                 let reg_idx = ((reg_off / 12) & 1023) as usize;
                 let target = regs[reg_idx];
                 cur_vert = [
@@ -597,7 +572,7 @@ pub(crate) fn execute_sod_vm_impl(
                 cur_vert = [-cur_vert[0], -cur_vert[1], -cur_vert[2]];
             }
             OP_SHLV => {
-                let shift = read_u16(data, &mut pos)?;
+                let shift = r.read_u16_le()?;
                 let s = (shift as u32) & 31;
                 cur_vert = [
                     ((cur_vert[0] as i32).wrapping_shl(s)) as f32,
@@ -606,7 +581,7 @@ pub(crate) fn execute_sod_vm_impl(
                 ];
             }
             OP_SHRV => {
-                let shift = read_u16(data, &mut pos)?;
+                let shift = r.read_u16_le()?;
                 let s = (shift as u32) & 31;
                 cur_vert = [
                     ((cur_vert[0] as i32).wrapping_shr(s)) as f32,
@@ -615,14 +590,14 @@ pub(crate) fn execute_sod_vm_impl(
                 ];
             }
             OP_IPG => {
-                let ipg_type = read_u16(data, &mut pos)?;
+                let ipg_type = r.read_u16_le()?;
                 match ipg_type {
                     0 => {
                         // Cube
-                        let dx = read_i16(data, &mut pos)? as f32;
-                        let dy = read_i16(data, &mut pos)? as f32;
-                        let dz = read_i16(data, &mut pos)? as f32;
-                        let start_off = read_u16(data, &mut pos)?;
+                        let dx = r.read_i16_le()? as f32;
+                        let dy = r.read_i16_le()? as f32;
+                        let dz = r.read_i16_le()? as f32;
+                        let start_off = r.read_u16_le()?;
                         let start_reg = ((start_off / 12) & 1023) as usize;
 
                         regs[(start_reg) & 1023] = [-dx, -dy, -dz];
@@ -636,9 +611,9 @@ pub(crate) fn execute_sod_vm_impl(
                     }
                     2 => {
                         // Ground Quad
-                        let dx = read_i16(data, &mut pos)? as f32;
-                        let dz = read_i16(data, &mut pos)? as f32;
-                        let start_off = read_u16(data, &mut pos)?;
+                        let dx = r.read_i16_le()? as f32;
+                        let dz = r.read_i16_le()? as f32;
+                        let start_off = r.read_u16_le()?;
                         let start_reg = ((start_off / 12) & 1023) as usize;
 
                         regs[(start_reg) & 1023] = [-dx, 0.0, -dz];
@@ -648,9 +623,9 @@ pub(crate) fn execute_sod_vm_impl(
                     }
                     8 => {
                         // Flat Vertical Quad
-                        let dx = read_i16(data, &mut pos)? as f32;
-                        let dy = read_i16(data, &mut pos)? as f32;
-                        let start_off = read_u16(data, &mut pos)?;
+                        let dx = r.read_i16_le()? as f32;
+                        let dy = r.read_i16_le()? as f32;
+                        let start_off = r.read_u16_le()?;
                         let start_reg = ((start_off / 12) & 1023) as usize;
 
                         regs[(start_reg) & 1023] = [-dx, -dy, 0.0];
@@ -662,37 +637,37 @@ pub(crate) fn execute_sod_vm_impl(
                         // Subobject template (`subobjs`): a single operand word.
                         // Skipping two words swallowed the following `RETURN` and
                         // exposed that return word as a bogus opcode (`0x0002`).
-                        read_u16(data, &mut pos)?;
+                        r.read_u16_le()?;
                     }
                     _ => {
                         // Unrecognized IPG type arguments skipped safely
-                        read_u16(data, &mut pos)?;
-                        read_u16(data, &mut pos)?;
+                        r.read_u16_le()?;
+                        r.read_u16_le()?;
                     }
                 }
             }
             OP_VECTORS => {
-                let count = read_u16(data, &mut pos)?;
-                let start_off = read_u16(data, &mut pos)?;
+                let count = r.read_u16_le()?;
+                let start_off = r.read_u16_le()?;
                 let start_reg = ((start_off / 12) & 1023) as usize;
 
                 for i in 0..count {
-                    let vx = read_i16(data, &mut pos)? as f32;
-                    let vy = read_i16(data, &mut pos)? as f32;
-                    let vz = read_i16(data, &mut pos)? as f32;
+                    let vx = r.read_i16_le()? as f32;
+                    let vy = r.read_i16_le()? as f32;
+                    let vz = r.read_i16_le()? as f32;
                     regs[(start_reg + (i as usize)) & 1023] = [vx, vy, vz];
                 }
             }
             OP_COLOR => {
-                cur_color = (read_u16(data, &mut pos)? & 0xFF) as u8;
+                cur_color = (r.read_u16_le()? & 0xFF) as u8;
             }
             OP_LINECOL => {
                 // [Hypothesis] one word: line colour index, as OP_COLOR is for fills.
-                line_color = Some((read_u16(data, &mut pos)? & 0xFF) as u8);
+                line_color = Some((r.read_u16_le()? & 0xFF) as u8);
             }
             OP_MOVETO | OP_ZLINETO | OP_DOT => {
                 // [Hypothesis] one word: register byte offset (`/12` = register).
-                let reg_off = read_u16(data, &mut pos)?;
+                let reg_off = r.read_u16_le()?;
                 let raw_v = regs[((reg_off / 12) & 1023) as usize];
                 let p = [
                     raw_v[0] * scale_factor,
@@ -710,7 +685,7 @@ pub(crate) fn execute_sod_vm_impl(
                 }
             }
             OP_POLYZ => {
-                let count = read_u16(data, &mut pos)?;
+                let count = r.read_u16_le()?;
                 if count < 3 {
                     return Err(SodError::MalformedPolygon {
                         reason: format!(
@@ -721,7 +696,7 @@ pub(crate) fn execute_sod_vm_impl(
 
                 let mut poly_verts = Vec::with_capacity(count as usize);
                 for _ in 0..count {
-                    let reg_off = read_u16(data, &mut pos)?;
+                    let reg_off = r.read_u16_le()?;
                     let reg_idx = ((reg_off / 12) & 1023) as usize;
                     let raw_v = regs[reg_idx];
 
@@ -743,7 +718,7 @@ pub(crate) fn execute_sod_vm_impl(
                 });
             }
             OP_GVPOLY | OP_GVPOLY16 => {
-                let count = read_u16(data, &mut pos)?;
+                let count = r.read_u16_le()?;
                 if count < 3 {
                     return Err(SodError::MalformedPolygon {
                         reason: format!(
@@ -754,16 +729,16 @@ pub(crate) fn execute_sod_vm_impl(
 
                 let mut reg_indices = Vec::with_capacity(count as usize);
                 for _ in 0..count {
-                    let reg_off = read_u16(data, &mut pos)?;
+                    let reg_off = r.read_u16_le()?;
                     reg_indices.push(((reg_off / 12) & 1023) as usize);
                 }
 
-                let norm_off = read_u16(data, &mut pos)?;
+                let norm_off = r.read_u16_le()?;
                 let norm_reg = ((norm_off / 12) & 1023) as usize;
 
                 // Skip per-vertex shade offsets
                 for _ in 0..count {
-                    read_u16(data, &mut pos)?;
+                    r.read_u16_le()?;
                 }
 
                 let mut poly_verts = Vec::with_capacity(count as usize);
@@ -794,23 +769,23 @@ pub(crate) fn execute_sod_vm_impl(
                 });
             }
             OP_IFVIS => {
-                let cond_code = read_u16(data, &mut pos)?;
-                let sec_len = read_u16(data, &mut pos)? as usize;
-                if pos + sec_len > total_len {
+                let cond_code = r.read_u16_le()?;
+                let sec_len = r.read_u16_le()? as usize;
+                if r.pos() + sec_len > total_len {
                     // Clamped beyond EOF
                     break;
                 }
                 current_visibility = parse_visibility_condition(cond_code);
-                visibility_scope_end = pos + sec_len;
+                visibility_scope_end = r.pos() + sec_len;
             }
             OP_SORT | OP_PERFDISK | OP_VEC => {
-                read_u16(data, &mut pos)?;
-                read_u16(data, &mut pos)?;
-                read_u16(data, &mut pos)?;
+                r.read_u16_le()?;
+                r.read_u16_le()?;
+                r.read_u16_le()?;
             }
             OP_SPHERE => {
-                let center_off = read_u16(data, &mut pos)?;
-                let radius = f32::from(read_u16(data, &mut pos)?);
+                let center_off = r.read_u16_le()?;
+                let radius = f32::from(r.read_u16_le()?);
                 let center = regs[((center_off / 12) & 1023) as usize];
                 polygons.extend(sphere_polygons(
                     center,
@@ -822,19 +797,19 @@ pub(crate) fn execute_sod_vm_impl(
                 ));
             }
             OP_BLOCK | OP_PERS => {
-                read_u16(data, &mut pos)?;
-                read_u16(data, &mut pos)?;
+                r.read_u16_le()?;
+                r.read_u16_le()?;
             }
             OP_REJ => {
-                read_u16(data, &mut pos)?;
-                let num_faces = read_u16(data, &mut pos)?;
+                r.read_u16_le()?;
+                let num_faces = r.read_u16_le()?;
                 for _ in 0..(num_faces as usize) * 3 {
-                    read_u16(data, &mut pos)?;
+                    r.read_u16_le()?;
                 }
             }
             OP_TAP => {
-                let reg_off = read_u16(data, &mut pos)? as usize;
-                let count = read_u16(data, &mut pos)? as usize;
+                let reg_off = r.read_u16_le()? as usize;
+                let count = r.read_u16_le()? as usize;
 
                 if !reg_off.is_multiple_of(12) {
                     return Err(SodError::MalformedOpcode {
@@ -874,7 +849,7 @@ pub(crate) fn execute_sod_vm_impl(
 
                 let start_reg = (reg_off / 12) & 1023;
                 for i in 0..count {
-                    let anchor_off = read_u16(data, &mut pos)? as usize;
+                    let anchor_off = r.read_u16_le()? as usize;
                     if !anchor_off.is_multiple_of(28) {
                         return Err(SodError::MalformedOpcode {
                             opcode,
@@ -907,17 +882,17 @@ pub(crate) fn execute_sod_vm_impl(
                 }
             }
             OP_SHADES => {
-                read_u16(data, &mut pos)?;
-                let count = read_u16(data, &mut pos)?;
+                r.read_u16_le()?;
+                let count = r.read_u16_le()?;
                 for _ in 0..(count as usize) * 3 {
-                    read_u16(data, &mut pos)?;
+                    r.read_u16_le()?;
                 }
             }
             OP_SHADE16 => {
                 // Normal register and ramp index. The lighting state is not modelled
                 // yet, but the established two-word width keeps the stream aligned.
-                read_u16(data, &mut pos)?;
-                read_u16(data, &mut pos)?;
+                r.read_u16_le()?;
+                r.read_u16_le()?;
             }
             OP_RETURN => {
                 // Bytecode termination
