@@ -32,6 +32,10 @@ asset_pattern = "dosbox-x-vsbuild-win64-*.zip"
 # Why SDL2: SDL2 build is required on Windows for stability with OpenGL output
 bin_path = "bin/x64/Release SDL2"
 
+[env]
+# Python on Windows defaults text I/O to cp1252; scripts and docs here are UTF-8.
+PYTHONUTF8 = "1"
+
 [tasks.play]
 description = "Launch Stunt Island film reel playback"
 run = "dosbox-x -conf dosbox-playone.conf"
@@ -130,6 +134,14 @@ run = "cargo check -p stunt-core --no-default-features && cargo test -p stunt-co
 [tasks.cov-py]
 description = "Run Python test suite with coverage reporting"
 run = "uv run pytest --cov=stunt_reel --cov-report=term-missing"
+
+[tasks.check-rust]
+description = "Quiet Rust half of the gate (fmt, clippy, test) for iterating; one line per step"
+run = "python python/scripts/quiet_check.py rust"
+
+[tasks.check-py]
+description = "Quiet Python half of the gate (fmt, lint, mypy, pytest) for iterating; one line per step"
+run = "python python/scripts/quiet_check.py py"
 
 [tasks.check]
 description = "Run all CI verification steps (format check, lint, typecheck, test)"
