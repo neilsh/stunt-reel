@@ -256,7 +256,7 @@ fn after_help() -> String {
          Q / E   Free-Cam: Move Down / Up\n  \
          Esc     Exit presentation",
         indent(&parity::usage()),
-        indent(export::USAGE),
+        indent(&export::usage()),
     )
 }
 
