@@ -9,7 +9,10 @@
 pub mod anchor;
 pub mod contracts;
 pub mod flm;
+pub mod reader;
 pub mod scene;
 pub mod sod;
 pub mod vfs;
 pub mod world;
+
+pub use reader::{ByteReader, Eof};

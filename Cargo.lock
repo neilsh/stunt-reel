@@ -1947,6 +1947,7 @@ dependencies = [
  "bytemuck",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1957,6 +1958,7 @@ dependencies = [
  "gltf",
  "serde_json",
  "stunt-core",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1970,6 +1972,7 @@ dependencies = [
  "pollster",
  "serde_json",
  "stunt-core",
+ "thiserror 2.0.21",
  "wgpu",
 ]
 

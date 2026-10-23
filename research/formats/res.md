@@ -14,7 +14,7 @@ The `.RES` file format is the foundational static resource container for *Stunt 
 | **Engine Role** | Static archive container providing $O(1)$ direct indexed access to geometry, sprites, and dialogue assets without runtime disk seeks or string hashing | `[Established]` | `research/playone-exe/startup.md`, `indices.txt` |
 | **Paired Contract** | `Seam 1: VfsArchive` (`crates/stunt-core/src/contracts/vfs.rs`) | `[Established]` | `# [FMT-RES-HEADER]`, `docs/ARCHITECTURE.md` |
 
-**Governing invariants:** [`[I7]`](../../docs/SPEC.md#i7-cleanroom-asset-isolation--zero-dependency-core), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/res.rs`](../../crates/stunt-core/src/vfs/res.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** `synthetic_minimal.res` (72 bytes), laid out in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
+**Governing invariants:** [`[I7]`](../../docs/SPEC.md#i7-cleanroom-asset-isolation--small-pure-rust-core-dependencies), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/res.rs`](../../crates/stunt-core/src/vfs/res.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** `synthetic_minimal.res` (72 bytes), laid out in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
 
 ---
 

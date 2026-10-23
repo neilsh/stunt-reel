@@ -15,7 +15,7 @@
    - `[I4]` Discrete 50 Hz authored simulation ticks with sub-tick interpolation.
    - `[I5]` Coplanar decal identification and normal displacement nudging.
    - `[I6]` Visual parity thresholds (SSIM $\ge 0.88$ initial / $\ge 0.90$ sign-off).
-   - `[I7]` Cleanroom asset isolation and a zero-dependency `stunt-core` (no windowing, GPU, audio, or emulator).
+   - `[I7]` Cleanroom asset isolation and a `stunt-core` limited to small, pure-Rust dependencies (no I/O, windowing, GPU, audio, or emulator).
    - `[I8]` DOS 8.3 uppercase path normalization in virtual filesystems.
 
 ---

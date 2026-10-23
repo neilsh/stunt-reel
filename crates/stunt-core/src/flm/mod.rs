@@ -26,7 +26,6 @@ use interpolate::{bam_to_radians, detect_camera_cut, focal_to_fov_y, rotate_quat
 
 use crate::contracts::palette::{PALETTE_CONTROL_FULL, PaletteControls};
 use crate::contracts::trajectory::{ActorTransform, CameraTransform, TrajectoryRecord};
-use std::fmt;
 
 /// Camera-space viewing axis that the film's view-slot rotation maps into world space.
 ///
@@ -44,9 +43,10 @@ pub const CAMERA_FORWARD: [f32; 3] = [0.0, 0.0, 1.0];
 pub const CAMERA_LOOKAHEAD_METERS: f32 = 1000.0;
 
 /// Errors that can occur during `.FLM` choreography parsing and evaluation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum FlmError {
     /// Magic signature mismatch (expected `b"FILM"`).
+    #[error("invalid FILM signature: expected {:?}, found {:?}", .expected.map(|b| b as char), .actual.map(|b| b as char))]
     InvalidSignature {
         /// Signature the parser expected (`b"FILM"`).
         expected: [u8; 4],
@@ -54,6 +54,7 @@ pub enum FlmError {
         actual: [u8; 4],
     },
     /// The input buffer was smaller than expected.
+    #[error("unexpected EOF: expected at least {expected} bytes, found {actual}")]
     UnexpectedEof {
         /// Buffer length the parse required at the failure point.
         expected: usize,
@@ -61,11 +62,13 @@ pub enum FlmError {
         actual: usize,
     },
     /// Malformed time slice or unexpected termination.
+    #[error("invalid slice: {reason}")]
     InvalidSlice {
         /// Human-readable description of the malformed slice.
         reason: String,
     },
     /// Unrecognized or invalid opcode in the slice stream.
+    #[error("invalid FLM opcode 0x{opcode:02X} at byte offset 0x{offset:04X}")]
     InvalidOpcode {
         /// Opcode byte outside the decoded table.
         opcode: u8,
@@ -73,38 +76,6 @@ pub enum FlmError {
         offset: usize,
     },
 }
-
-impl fmt::Display for FlmError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidSignature { expected, actual } => {
-                write!(
-                    f,
-                    "invalid FILM signature: expected {:?}, found {:?}",
-                    expected.map(|b| b as char),
-                    actual.map(|b| b as char)
-                )
-            }
-            Self::UnexpectedEof { expected, actual } => {
-                write!(
-                    f,
-                    "unexpected EOF: expected at least {expected} bytes, found {actual}"
-                )
-            }
-            Self::InvalidSlice { reason } => {
-                write!(f, "invalid slice: {reason}")
-            }
-            Self::InvalidOpcode { opcode, offset } => {
-                write!(
-                    f,
-                    "invalid FLM opcode 0x{opcode:02X} at byte offset 0x{offset:04X}"
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for FlmError {}
 
 /// Film variable 13: the palette's night term (`research/playone-exe/palette-fade.md`).
 const VAR_SKY: usize = 13;
@@ -339,6 +310,15 @@ impl<'a> FlmPlayer<'a> {
     #[inline]
     pub(crate) fn take_last_error(&mut self) -> Option<FlmError> {
         self.last_error.take()
+    }
+}
+
+impl From<crate::reader::Eof> for FlmError {
+    fn from(e: crate::reader::Eof) -> Self {
+        Self::UnexpectedEof {
+            expected: e.expected,
+            actual: e.actual,
+        }
     }
 }
 

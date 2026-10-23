@@ -12,7 +12,6 @@
 //! partial in [`SceneReport`]. The anchor table follows ADR-0001.
 
 use std::collections::HashMap;
-use std::fmt;
 
 use crate::anchor::{AnchorPoint, parse_anchor_table};
 use crate::contracts::{CameraTransform, PaletteControls, SodModelIr};
@@ -42,24 +41,15 @@ pub struct SceneInputs<'a> {
 }
 
 /// Why a film scene could not be built.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SceneError {
     /// The film header was unreadable.
+    #[error("film: {0}")]
     Film(FlmError),
     /// The `.ALL` archive container was malformed.
+    #[error("archive: {0}")]
     Archive(VfsError),
 }
-
-impl fmt::Display for SceneError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Film(e) => write!(f, "film: {e}"),
-            Self::Archive(e) => write!(f, "archive: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for SceneError {}
 
 /// An archive `MODEL_*.SOD` chunk that could not be decoded at all.
 #[derive(Debug, Clone, PartialEq)]
