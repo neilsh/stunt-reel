@@ -1,6 +1,6 @@
 # `PLAYONE.EXE`: SOD Display-List VM & `OP_TAP` Semantics
 
-* **Binary**: `PLAYONE.EXE` (LZEXE 0.91, unpacked 201,548 bytes)
+* **Binary**: `PLAYONE.EXE` (LZEXE 0.91; unpacked EXE 201,548 bytes, i.e. the 200,524-byte load image plus its 1,024-byte MZ header)
 * **Method**: DOSBox-X `MEMDUMPBIN` of the unpacked image after the LOAD FILM dialog settles; Capstone 16-bit disassembly
 * **Scope**: `OP_TAP` (`0x022E`) operand encoding and register side effects
 * **Anchor**: `# [FMT-SOD-TAP]`, `# [MEM-SOD-VM]`

@@ -34,6 +34,14 @@ The table below indexes all primary engine containers, procedural geometry forma
 | `.SIO` | [`auxiliary/sio.ksy`](auxiliary/sio.ksy) | none |
 | `ANCHORPT.DAT`, `MAP.BIN`, `SCENERY.scn` | [`anchorpt.dat.ksy`](auxiliary/anchorpt.dat.ksy), [`map.bin.ksy`](auxiliary/map.bin.ksy), [`scenery.scn.ksy`](auxiliary/scenery.scn.ksy) | none |
 
+#### Kaitai dead ends (KSC 0.11)
+
+Recorded so the schemas are not rewritten into forms that were already tried (`[Bounded Observation]`, from compile and run attempts):
+
+* **`_index` in a `pos:` or `size:` expression.** Slicing regions with `repeat: expr` and `offsets[_index + 1]` in the expression compiles, but the generated Python raises `UnboundLocalError` for the loop variable on every corpus `.RES`. [`res.ksy`](res.ksy) passes `_index` into a parameterised `segment(i)` type instead.
+* **Rust backend.** The generated Rust uses `Rc<RefCell<…>>` object graphs, which conflicts with `[I2]`; the schemas are verification tools, not a source for `stunt-core` parsers.
+* **A whole-file `.FLM` schema.** Not expressible: `interp` widths depend on slot flags that `create` changes, and that state cannot cross a `repeat` (Q-FLM-07 in [`flm.md`](flm.md)).
+
 ---
 
 ## 2. Runtime Asset Dependency Graph & Data Flow Architecture

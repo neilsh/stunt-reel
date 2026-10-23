@@ -185,7 +185,7 @@ Editor Coordinate -> Hexadecimal 16.16 Bytes (LE) -> Metric Meters
   100005 (+5 EU)  -> 00 80 00 00 (0x00008000)    -> 0.50 m  (32768 / 65536)
   100010 (+10 EU) -> 00 00 01 00 (0x00010000)    -> 1.00 m  (65536 / 65536)
   100100 (+100 EU)-> 00 00 0A 00 (0x000A0000)    -> 10.00 m (655360 / 65536)
-  099990 (-10 EU) -> 00 00 FF FF (0xFFFFFFFF)    -> -1.00 m
+  099990 (-10 EU) -> 00 00 FF FF (0xFFFF0000)    -> -1.00 m (-65536 / 65536)
 ```
 
 #### Analytical Conversion Formula

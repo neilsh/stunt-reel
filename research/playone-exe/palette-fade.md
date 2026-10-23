@@ -47,8 +47,8 @@ The film player keeps its state in a structure at `DS:0x474A`. Its sibling at `D
 | Register | Source | Use in `0x0FD2` |
 |---|---|---|
 | `DX` | var 13 (`+0x98`) | Night term: `|DX| - 0x2000`, clamped to `0..0x4000`; its high byte `N` (`0..64`) darkens the scene entries, moves the sky gradient toward its night colours, and from `N >= 0x20` switches entries 213–214 to their night colours (section 3.1) |
-| `CH` | high byte of var 14 (`+0x9A`) | Brightness `BL = round(CH / 2)`, `0..64` |
-| `AH` | high byte of var 15 (`+0x9C`) | Saturation `BH = round(AH / 2)`, `0..64` |
+| `CH` | high byte of var 14 (`+0x9A`) | Brightness `BL = ceil(CH / 2)` (round half up: `shr ch, 1; adc ch, 0` at `0x1018`), `0..64` |
+| `AH` | high byte of var 15 (`+0x9C`) | Saturation `BH = ceil(AH / 2)` (`shr ah, 1; adc ah, 0` at `0x1013`), `0..64` |
 
 The routine caches the three inputs at `DS:0x227B..0x227D` and returns early when they are unchanged. Otherwise it rebuilds the working palette `DS:0x2768` from the base palette `DS:0x2468`. The per-entry transform at `0x10C4` works in 6-bit DAC units:
 
@@ -108,7 +108,7 @@ Keys are quoted by the tick at which their slice starts. A slice's tick duration
 
 `[Established]` With that convention the modelled brightness needs no lag. `PaletteControls::film_palette` fed by `FilmTimeline::sample(film_tick)` reproduces all 240 live DAC entries, comparing 6-bit levels, in 128 of the 140 `CTRY.FLM` captures; the other 12 differ by one level (`worst = 1`) at some entries. An earlier version of this note read the keys at their slice starts, which made the ramp look 6–11 ticks late (a "6-tick lag" fitted at `film_tick - 6`); that was the timestamp convention, not a delay in `PLAYONE`.
 
-`[Bounded Observation]` The residual is jitter and rounding, not a lag. Scanning the sampling offset `s` in `film_tick - s` from -4 to 16 ticks in 0.1 steps, the offsets that reproduce a frame exactly form a window of about 5 to 7 ticks per frame (the brightness byte steps every 512 raw units, about 5 ticks on this ramp). No single offset fits all frames: frame 997 needs `s >= 2` while frames 1216 and 1238 need `s <= -0.6`, so the capture trap's clock read is off the palette build by at least a couple of ticks either way. Six frames (clock 1041, 1095, 1172, 1194, 1249, 1260) are not reproduced at any offset and miss by one level throughout, which points at the evaluator's floating-point interpolation differing from `PLAYONE`'s integer `0x136F` by a unit at a rounding boundary (`BL = round(CH / 2)`); that is not isolated.
+`[Bounded Observation]` The residual is jitter and rounding, not a lag. Scanning the sampling offset `s` in `film_tick - s` from -4 to 16 ticks in 0.1 steps, the offsets that reproduce a frame exactly form a window of about 5 to 7 ticks per frame (the brightness byte steps every 512 raw units, about 5 ticks on this ramp). No single offset fits all frames: frame 997 needs `s >= 2` while frames 1216 and 1238 need `s <= -0.6`, so the capture trap's clock read is off the palette build by at least a couple of ticks either way. Six frames (clock 1041, 1095, 1172, 1194, 1249, 1260) are not reproduced at any offset and miss by one level throughout, which points at the evaluator's floating-point interpolation differing from `PLAYONE`'s integer `0x136F` by a unit at a rounding boundary (`BL = ceil(CH / 2)`); that is not isolated.
 
 The variables are common across the corpus. Of 561 films that decode, 407 lower var 14 below 32768 at some point (fade-ins as well as fade-outs), 108 lower var 15, and 224 drive var 13 past `0x2000`. No film sets var 14 or 15 above 32768. Three films never set var 14 (`EXIT.FLM` and `EXIT2.FLM` in `MultiFLM/Collage4`, `CPU_CRED.FLM`).
 

@@ -133,7 +133,7 @@ Index: [000..015][016..031][032..063][064..095][096..127][128..159][160..191][19
 | **Group 4+5**| `64`–`95` | Desert Tan & Sandstone | `64` (`#3F3723`) | `95` (`#FFDB8B`) | **32-level composite ramp**: Sand dunes, rocks, canyons |
 | **Group 6+7**| `96`–`127`| Dark Olive & Camouflage Drab | `96` (`#2B271B`) | `127` (`#A79F63`) | **32-level composite ramp**: Military armor, olive drab |
 | **Group 8** | `128`–`143`| Night Sky / Deep Twilight Violet | `128` (`#000000`)| `143` (`#7387DB`)| 16-level atmospheric dusk/night sky dome |
-| **Group 9** | `144`–`159`| Slate Gray / Cold Steel | `144` (`#73574F`)| `159` (`#BBBFC7`)| 16-level gunmetal and prop blades |
+| **Group 9** | `144`–`159`| Slate Gray / Cold Steel | `144` (`#73574F`)| `159` (`#BBBFCB`)| 16-level gunmetal and prop blades |
 | **Group 10+11**|`160`–`191`| Island Grassland & Forest Green | `160` (`#536353`)| `191` (`#BBBB67`)| **32-level composite ramp**: Island vegetation, trees |
 | **Group 12**| `192`–`207`| Earth Brown & Terracotta Brick | `192` (`#274717`)| `207` (`#97006F`)| 16-level building roofs and plowed soil |
 | **Group 13+14**|`208`–`239`| Sky Blue & Ocean Water | `208` (`#134B7B`)| `239` (`#FFFB97`)| **32-level composite ramp**: Sea surface, horizon haze |

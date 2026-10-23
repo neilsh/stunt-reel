@@ -62,7 +62,7 @@ Together:
 $$\text{prev\_slice\_len} = \text{prev\_slice\_len\_lo} \mid (\text{prev\_slice\_len\_hi} \ll 8)$$
 
 #### Why the Back-Pointer Exists:
-- **Slice 0:** $\text{prev\_slice\_len} == 0\text{x}0000$ (no preceding slice exists).
+- **Slice 0:** no preceding slice exists, and $\text{prev\_slice\_len}$ is usually $0\text{x}0000$, but not always (`[Bounded Observation]`): 565 of 568 corpus films have `0x0000`, while `ROD.FLM`, `TUTORIAL.FLM` and `UFO.FLM` (all in `Films/FLMOnly/`) have `0x8000` (bytes 4–6 `00 80 00`). Whether `0x8000` is a sentinel or authoring residue is `[Unknown]`; a reader must ignore slice 0's back-pointer rather than validate it.
 - **Slice $i \ge 1$:** $\text{prev\_slice\_len}$ equals the exact byte distance from the start of slice $i-1$ to the start of slice $i$.
 - **VCR Reverse Scrubbing:** This field is the **reverse-scrubbing back-pointer** used by the Stunt Island Editing Room VCR engine to execute frame-by-frame rewinding (`REVERSE STEP`) without requiring random-access disk index tables!
 - **Resolution of Historical Anomaly:** Because $98.5\%$ of slices are $< 256$ bytes in length, `prev_slice_len_hi` is $0$. When previous tools read Byte 0 (`prev_slice_len_lo`) and then read a 16-bit word at Bytes 1..2 (`prev_slice_len_hi | (tick_duration << 8)`), the word naturally evaluated to `tick_duration * 256`!

@@ -25,6 +25,16 @@ Reference rasters are evidence only and land under `build/parity/` (gitignored);
 | `MEMDUMPBIN` of `DGROUP` or low memory while LZEXE unpacks (≈ first 2 s) | guest spins on `Illegal Unhandled Interrupt Called 6`; a later read can kill the emulator |
 | `autotype` queueing several keys at boot | only the earliest key survives; the dialog discards keys queued before it opens |
 | BIOS Data Area writes (`0040:001E` + tail `0040:001C`) while the emulator free-runs | works: the guest's `INT 16h` consumes them, advancing the head pointer at `0040:001A` |
+| `EXEC PING` | rejected; `PING` is a bare verb only (§ 1) |
+| `BPIO 3DA` | error; the port must be written as four hex digits, `BPIO 03DA` |
+| `MEMDUMPBIN A000:0000 64000` | dumps 409,600 bytes: lengths are hex, so `64000` is `0x64000`; use `FA00` for one Mode 13h page |
+| `R`, `REGS`, or `SR` to read a register | `R`/`REGS` are not recognized and `SR` only sets one; there is no register read (`DS` comes from `--dgroup-segment`, § 3 step 6) |
+| An address with an expression, e.g. `0C10+00` | rejected; pass a literal `seg:off` |
+| `MEMDUMPBIN` to a quoted, backslashed, or not-yet-existing path | fails; use an unquoted forward-slash path whose parent directory already exists |
+
+Response matching compares the id token exactly (`transport.py`): a prefix test would take `BEGIN 10 OK` as the reply to request 1.
+
+**Code addresses are seg:off views of one linear address.** The unpacked image has `CS = 0`, the captured session loads it at paragraph `0x0824` ([`palette-fade.md`](palette-fade.md)), and the saved memory dumps use other segment bases, so the same instruction can appear as different `seg:off` pairs. For example the SOD dispatch table is image offset `0x8246` and `0F17:1316` in [`sod-vm.md`](sod-vm.md); with the image at `0x0824` both are linear `0x10486`, which a debugger whose `CS` is `0x1048` shows as `1048:0006`. A breakpoint copied from a dump without this conversion lands on the wrong bytes. Convert to linear before comparing a dump address with a live one (`[Supported Inference]`, arithmetic from the load segment).
 
 Consequences for the parity profile (`dosbox-parity.conf`):
 

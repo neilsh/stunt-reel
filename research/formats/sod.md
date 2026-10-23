@@ -35,7 +35,7 @@ Every `.SOD` bytecode stream begins with an immutable **10-byte header**, follow
 | 0x0000 - 0x0001   | uint16 (LE)       | op_id: Magic identifier (must be 0x000C)|
 | 0x0002 - 0x0003   | uint16 (LE)       | bounding_size: Bounding sphere radius   |
 | 0x0004 - 0x0005   | int16 (LE)        | ground_y_offset: Vertical placement adj |
-| 0x0006            | uint8             | scale_index: Power-of-2 scale (0..17)   |
+| 0x0006            | uint8             | scale_index: Power-of-2 scale (0..19 in corpus) |
 | 0x0007            | uint8             | header_flags: Bit 0 = Flat shading flag |
 | 0x0008 - 0x0009   | uint16 (LE)       | collision_meta: Collision & type flags  |
 | 0x000A - EOF      | uint8[]           | Bytecode Instruction Stream             |
@@ -67,7 +67,9 @@ The scale factor converts 16-bit integer model units into metric meters per Inva
 | **14** | $5/8192$ | $1/16384\text{ m/unit}$ | 16384 units = 1 meter | Sub-millimeter parts |
 | **15** | $5/16384$ | $1/32768\text{ m/unit}$ | 32768 units = 1 meter | Micro-geometry |
 | **16** | $5/32768$ | $1/65536\text{ m/unit}$ | 65536 units = 1 meter | Extended precision |
-| **17** | $5/65536$ | $1/131072\text{ m/unit}$ | 131072 units = 1 meter | Boundary maximum |
+| **17** | $5/65536$ | $1/131072\text{ m/unit}$ | 131072 units = 1 meter | Last entry in `SOD.H` |
+
+The table above ends at 17, but the corpus goes past it (`[Bounded Observation]`): of 102,633 `.SOD` chunks across every `.ALL` in `corpus/si_archive/`, 7 have `scale_index` 18 and 6 have 19 (for example shape `0x7E09` in `COL3-1`, `COL3-2`, `COL5-1`, `COL5-7` and `CREDITS.ALL`, and `0x7E1A` in `eGALLOC7.ALL`). `compute_scale_factor` in [`vm.rs`](../../crates/stunt-core/src/sod/vm.rs) extends the pattern past the table as $5 / 2^{k-1}$. Whether `PLAYONE`'s own table covers 18 and 19, or reads past its end, is `[Unknown]`.
 
 #### Mathematical Scaling Formula:
 $$S_k = \begin{cases} 1.0 & \text{if } k = 0 \\ \dfrac{1.0}{2^k} & \text{if } k \ge 1 \end{cases}$$
@@ -174,7 +176,7 @@ Because 1992 DOS real-mode software lacked hardware depth buffers:
 
 ### 3.2 The Authoritative 107-Opcode Reference Table (`# [FMT-SOD-OPCODES]`)
 
-In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machine dispatched bytecode instructions through an internal jump table where every handler entry was spaced by **9 bytes**. Consequently, **every valid `.SOD` opcode is an exact multiple of 9** ($\text{Opcode} = \text{Index} \times 9$):
+In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machine dispatched bytecode instructions through an internal jump table where every handler entry was spaced by **9 bytes**. Consequently, **every opcode `PLAYONE` dispatches is an exact multiple of 9** ($\text{Opcode} = \text{Index} \times 9$). Two constants in `SOD.H` and `vm.rs` are not: `0x000C` (`OP_ID`) is the header magic, which `vm.rs` also skips when it meets it mid-stream, and `0x004B` (`OP_VEC`, `SOD.H:35`) has no handler slot: in the unpacked image the table sits at `0x8246` (runtime `CS:0x1316`), and the bytes at `+0x0C` and `+0x4B` are gap filler (`26 C7 44`), not `E9` jumps (`[Bounded Observation]`, static). Neither is a dispatched opcode, so neither appears below:
 
 | Index | Opcode (Hex) | Opcode (Dec) | Mnemonic | Operands & Memory Signature | Semantic Description |
 | :---: | :---: | :---: | :--- | :--- | :--- |

@@ -77,7 +77,7 @@ The 256 colors are organized into **16 functional groups of 16 contiguous colors
 | **Group 4+5** | `64`–`95` | Desert Tan & Sandstone | `64` (`#3f3723`) | `95` (`#ffdb8b`) | **32-level composite ramp**: Sand dunes, canyons, desert terrain |
 | **Group 6+7** | `96`–`127` | Dark Olive & Camouflage | `96` (`#2b271b`) | `127` (`#a79f63`) | **32-level composite ramp**: Military vehicles, olive drab camouflage |
 | **Group 8** | `128`–`143` | Night Sky / Deep Violet | `128` (`#000000`) | `143` (`#7387db`) | 16-level twilight and night atmosphere |
-| **Group 9** | `144`–`159` | Slate Gray / Steel | `144` (`#73574f`) | `159` (`#bbbfc7`) | 16-level metallic reflection |
+| **Group 9** | `144`–`159` | Slate Gray / Steel | `144` (`#73574f`) | `159` (`#bbbfcb`) | 16-level metallic reflection |
 | **Group 10+11**| `160`–`191` | Grassland & Meadow Green | `160` (`#536353`) | `191` (`#bbbb67`) | **32-level composite ramp**: Island grasslands, trees, farm fields |
 | **Group 12** | `192`–`207` | Earth Brown & Brick | `192` (`#274717`) | `207` (`#97006f`) | 16-level terrain dirt and buildings |
 | **Group 13+14**| `208`–`239` | Sky Blue & Ocean Water | `208` (`#134b7b`) | `239` (`#fffb97`) | **32-level composite ramp**: Atmospheric haze, sea surface, horizon |
