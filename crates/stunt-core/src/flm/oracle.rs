@@ -1,6 +1,7 @@
-//! Parity verification and Root-Mean-Square Error (RMSE) computation for `.FLM` evaluation.
+//! Position error of an evaluated timeline against an oracle trajectory (GLOSSARY.md:
+//! **Oracle trajectory**).
 //!
-//! Provides Gate G04 verification: `RMSE_pos <= 0.01 m` against `tests/fixtures/oracle_intro_trajectory.json`.
+//! Gate G04 bounds it: `RMSE_pos <= 0.01 m` against `tests/fixtures/oracle_intro_trajectory.json`.
 
 use super::timeline::FilmTimeline;
 use crate::contracts::trajectory::TrajectoryRecord;
@@ -9,7 +10,7 @@ use crate::contracts::trajectory::TrajectoryRecord;
 pub const GATE_G04_RMSE_THRESHOLD_METERS: f32 = 0.01;
 
 /// Compute position Root-Mean-Square Error (RMSE) in meters comparing an evaluated
-/// timeline against baseline golden oracle records.
+/// timeline against an oracle trajectory.
 ///
 /// Each oracle record's `tick` is a cumulative 50 Hz tick; the timeline is sampled at
 /// that tick with [`FilmTimeline::sample`] (an empty timeline contributes no samples).
@@ -51,14 +52,4 @@ pub fn compute_position_rmse(timeline: &FilmTimeline, oracle: &[TrajectoryRecord
 
     let mean_sq: f64 = sq_errors.iter().map(|&e| e as f64).sum::<f64>() / (sq_errors.len() as f64);
     mean_sq.sqrt() as f32
-}
-
-/// Asserts compliance with Gate G04 (`RMSE_pos <= 0.01 m`). Returns the exact RMSE.
-pub fn assert_parity_gate_g04(timeline: &FilmTimeline, oracle: &[TrajectoryRecord]) -> f32 {
-    let rmse = compute_position_rmse(timeline, oracle);
-    assert!(
-        rmse <= GATE_G04_RMSE_THRESHOLD_METERS,
-        "Gate G04 Parity Failure: evaluated trajectory position RMSE {rmse:.6} m exceeds threshold {GATE_G04_RMSE_THRESHOLD_METERS:.6} m"
-    );
-    rmse
 }

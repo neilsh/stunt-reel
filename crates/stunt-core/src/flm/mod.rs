@@ -1,4 +1,4 @@
-//! Native `.FLM` choreography evaluator and parity suite.
+//! Native `.FLM` choreography evaluator and its oracle-trajectory check.
 //!
 //! Evaluates binary `.FLM` film streams into [`crate::contracts::trajectory::TrajectoryRecord`]
 //! time-series streams adhering to Seam 2 and Invariants `[I1]`, `[I4]`.
@@ -8,13 +8,13 @@
 //! included, is already `[I1]` and consumers apply no further axis heuristic.
 
 mod interpolate;
-mod parity;
+mod oracle;
 mod parser;
 #[cfg(test)]
 mod parser_tests;
 mod timeline;
 
-pub use parity::{GATE_G04_RMSE_THRESHOLD_METERS, assert_parity_gate_g04, compute_position_rmse};
+pub use oracle::{GATE_G04_RMSE_THRESHOLD_METERS, compute_position_rmse};
 use parser::FlmParser;
 pub use parser::{
     SIF_ANIMATES, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW, SIFILM_MAX_OBJ,
