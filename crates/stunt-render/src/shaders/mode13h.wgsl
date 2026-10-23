@@ -19,7 +19,7 @@ struct ModelUniform {
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
-    @location(2) attr: vec4<u32>, // x: palette_index, y: flags, z/w: padding
+    @location(2) attr: vec4<u32>, // x: palette_index, y: flags, z: scenery_class, w: padding
 };
 
 struct VertexOutput {

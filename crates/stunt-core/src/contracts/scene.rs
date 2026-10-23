@@ -8,11 +8,11 @@
 
 use std::fmt;
 
-/// Scenery class of an ocean vertex, stored in `SodVertex::_padding[0]`.
+/// Scenery class of an ocean vertex, stored in `SodVertex::scenery_class`.
 pub const SCENERY_OCEAN: u8 = 1;
-/// Scenery class of a terrain vertex, stored in `SodVertex::_padding[0]`.
+/// Scenery class of a terrain vertex, stored in `SodVertex::scenery_class`.
 pub const SCENERY_TERRAIN: u8 = 2;
-/// Scenery class of a prop vertex, stored in `SodVertex::_padding[0]`.
+/// Scenery class of a prop vertex, stored in `SodVertex::scenery_class`.
 pub const SCENERY_PROP: u8 = 3;
 
 /// Single vertex structure packed for direct upload to GPU vertex buffers.
@@ -33,10 +33,11 @@ pub struct SodVertex {
     /// - Bit 1: Two-sided polygon
     /// - Bit 2: Emissive / unshaded indicator
     pub flags: u8,
-    /// Alignment padding. Byte 0 is the scenery class of a world vertex
-    /// (`SCENERY_OCEAN`, `SCENERY_TERRAIN`, `SCENERY_PROP`) and zero for every other
-    /// vertex; byte 1 must be zero. Rendering ignores both.
-    pub _padding: [u8; 2],
+    /// Scenery class of a world vertex (`SCENERY_OCEAN`, `SCENERY_TERRAIN`, `SCENERY_PROP`),
+    /// zero for every other vertex. The renderer adds it to the draw's base layer id.
+    pub scenery_class: u8,
+    /// Alignment padding; must be zero.
+    pub _padding: u8,
 }
 
 // Manual bytemuck trait implementations to eliminate mandatory crate dependencies
@@ -293,7 +294,8 @@ mod tests {
             normal: [0.0, 1.0, 0.0],
             palette_index: 42,
             flags: 1,
-            _padding: [0, 0],
+            scenery_class: 0,
+            _padding: 0,
         };
         let bytes = bytemuck::bytes_of(&vertex);
         assert_eq!(bytes.len(), 28);

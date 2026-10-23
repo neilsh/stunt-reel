@@ -153,7 +153,8 @@ fn process_polygon_batch(
                     normal: poly.normal,
                     palette_index: poly.palette_index,
                     flags: poly.flags,
-                    _padding: [0, 0],
+                    scenery_class: 0,
+                    _padding: 0,
                 });
                 weld_map.insert(weld_key, new_idx);
                 poly_indices.push(new_idx);

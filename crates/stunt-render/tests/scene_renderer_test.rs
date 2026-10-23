@@ -26,7 +26,8 @@ fn triangle(name: &str, visibility: VisibilityCondition) -> SodModelIr {
         normal: [0.0, 0.0, 1.0],
         palette_index: 40,
         flags: 4,
-        _padding: [0, 0],
+        scenery_class: 0,
+        _padding: 0,
     };
     let mut ir = SodModelIr::new(name);
     ir.vertices = vec![vertex(-1.0, -1.0), vertex(1.0, -1.0), vertex(0.0, 1.0)];
@@ -162,7 +163,7 @@ fn world_is_drawn_when_present() {
     let mut ir = triangle("WORLD_BASE", VisibilityCondition::Always);
     // World vertices carry their scenery class; the layer plane reads it.
     for vertex in &mut ir.vertices {
-        vertex._padding[0] = stunt_core::contracts::SCENERY_TERRAIN;
+        vertex.scenery_class = stunt_core::contracts::SCENERY_TERRAIN;
     }
     let world = World {
         ir,

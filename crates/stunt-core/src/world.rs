@@ -451,28 +451,32 @@ pub(crate) fn build_world_ir(
         normal: up,
         palette_index: ocean_color,
         flags: flags_unshaded,
-        _padding: [0, 0],
+        scenery_class: 0,
+        _padding: 0,
     });
     ir.vertices.push(SodVertex {
         position: [32000.0, base_y - 1.0, -32000.0],
         normal: up,
         palette_index: ocean_color,
         flags: flags_unshaded,
-        _padding: [0, 0],
+        scenery_class: 0,
+        _padding: 0,
     });
     ir.vertices.push(SodVertex {
         position: [32000.0, base_y - 1.0, 32000.0],
         normal: up,
         palette_index: ocean_color,
         flags: flags_unshaded,
-        _padding: [0, 0],
+        scenery_class: 0,
+        _padding: 0,
     });
     ir.vertices.push(SodVertex {
         position: [-32000.0, base_y - 1.0, 32000.0],
         normal: up,
         palette_index: ocean_color,
         flags: flags_unshaded,
-        _padding: [0, 0],
+        scenery_class: 0,
+        _padding: 0,
     });
     ir.indices.extend_from_slice(&[
         o_start,
@@ -495,28 +499,32 @@ pub(crate) fn build_world_ir(
             normal: up,
             palette_index: ground_color,
             flags: flags_unshaded,
-            _padding: [0, 0],
+            scenery_class: 0,
+            _padding: 0,
         });
         ir.vertices.push(SodVertex {
             position: [32000.0, base_y, -32000.0],
             normal: up,
             palette_index: ground_color,
             flags: flags_unshaded,
-            _padding: [0, 0],
+            scenery_class: 0,
+            _padding: 0,
         });
         ir.vertices.push(SodVertex {
             position: [32000.0, base_y, 32000.0],
             normal: up,
             palette_index: ground_color,
             flags: flags_unshaded,
-            _padding: [0, 0],
+            scenery_class: 0,
+            _padding: 0,
         });
         ir.vertices.push(SodVertex {
             position: [-32000.0, base_y, 32000.0],
             normal: up,
             palette_index: ground_color,
             flags: flags_unshaded,
-            _padding: [0, 0],
+            scenery_class: 0,
+            _padding: 0,
         });
         ir.indices.extend_from_slice(&[
             g_start,
@@ -564,7 +572,8 @@ pub(crate) fn build_world_ir(
                     normal,
                     palette_index: area.color,
                     flags: flags_unshaded,
-                    _padding: [0, 0],
+                    scenery_class: 0,
+                    _padding: 0,
                 });
             }
             for k in 1..(area.verts.len() as u32 - 1) {
@@ -607,7 +616,8 @@ pub(crate) fn build_world_ir(
                         normal: v.normal,
                         palette_index: v.palette_index,
                         flags: v.flags,
-                        _padding: [0, 0],
+                        scenery_class: 0,
+                        _padding: 0,
                     });
                 }
                 let i_start = index_offset as usize;
@@ -656,7 +666,8 @@ pub(crate) fn build_world_ir(
                         normal: v.normal,
                         palette_index: v.palette_index,
                         flags: v.flags,
-                        _padding: [0, 0],
+                        scenery_class: 0,
+                        _padding: 0,
                     });
                 }
                 let i_start = index_offset as usize;
@@ -675,7 +686,7 @@ pub(crate) fn build_world_ir(
     // attribution reads it. Prop decals follow the base props, so everything from
     // `prop_start` on is a prop.
     for (position, vertex) in ir.vertices.iter_mut().enumerate() {
-        vertex._padding[0] = if position < terrain_start {
+        vertex.scenery_class = if position < terrain_start {
             SCENERY_OCEAN
         } else if position < prop_start {
             SCENERY_TERRAIN
@@ -866,7 +877,8 @@ mod tests {
                 normal: [0.0, 1.0, 0.0],
                 palette_index: 10,
                 flags: 0,
-                _padding: [0, 0],
+                scenery_class: 0,
+                _padding: 0,
             },
         );
         prop_ir.indices = vec![0, 1, 2, 0, 1, 2];
@@ -933,7 +945,8 @@ mod tests {
                 normal: [0.0, 1.0, 0.0],
                 palette_index: 1,
                 flags: 0,
-                _padding: [0, 0],
+                scenery_class: 0,
+                _padding: 0,
             },
         );
         // Indices intentionally include:
