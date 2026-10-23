@@ -228,6 +228,108 @@ fn sphere_polygons(
         .collect()
 }
 
+/// World-space thickness in metres of the ribbons that stand in for 1-pixel lines and dots.
+const LINE_WIDTH_M: f32 = 0.03;
+
+/// Builds a thin geometry for a `MOVETO`/`ZLINETO` segment: two perpendicular ribbons, each
+/// emitted with both windings so back-face culling cannot hide it. Endpoints are metres.
+fn line_polygons(
+    a: [f32; 3],
+    b: [f32; 3],
+    palette_index: u8,
+    visibility: VisibilityCondition,
+) -> Vec<RawPolygon> {
+    let d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+    if len < 1e-6 {
+        return Vec::new();
+    }
+    let dir = [d[0] / len, d[1] / len, d[2] / len];
+    // Any axis not parallel to the segment seeds the perpendicular basis.
+    let seed = if dir[1].abs() < 0.9 {
+        [0.0, 1.0, 0.0]
+    } else {
+        [1.0, 0.0, 0.0]
+    };
+    let cross = |u: [f32; 3], v: [f32; 3]| {
+        [
+            u[1] * v[2] - u[2] * v[1],
+            u[2] * v[0] - u[0] * v[2],
+            u[0] * v[1] - u[1] * v[0],
+        ]
+    };
+    let norm = |v: [f32; 3]| {
+        let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+        [v[0] / l, v[1] / l, v[2] / l]
+    };
+    let p1 = norm(cross(dir, seed));
+    let p2 = norm(cross(dir, p1));
+    let h = LINE_WIDTH_M * 0.5;
+    let mut out = Vec::with_capacity(4);
+    for p in [p1, p2] {
+        let quad = [
+            [a[0] - p[0] * h, a[1] - p[1] * h, a[2] - p[2] * h],
+            [a[0] + p[0] * h, a[1] + p[1] * h, a[2] + p[2] * h],
+            [b[0] + p[0] * h, b[1] + p[1] * h, b[2] + p[2] * h],
+            [b[0] - p[0] * h, b[1] - p[1] * h, b[2] - p[2] * h],
+        ];
+        let n = compute_polygon_normal(&quad);
+        out.push(RawPolygon {
+            vertices: quad.to_vec(),
+            palette_index,
+            normal: n,
+            flags: 0,
+            is_decal: false,
+            visibility,
+        });
+        let rev: Vec<[f32; 3]> = quad.iter().rev().copied().collect();
+        out.push(RawPolygon {
+            vertices: rev,
+            palette_index,
+            normal: [-n[0], -n[1], -n[2]],
+            flags: 0,
+            is_decal: false,
+            visibility,
+        });
+    }
+    out
+}
+
+/// Builds a tiny octahedron (8 triangles) for an `OP_DOT` at metric position `c`.
+fn dot_polygons(
+    c: [f32; 3],
+    palette_index: u8,
+    visibility: VisibilityCondition,
+) -> Vec<RawPolygon> {
+    let r = LINE_WIDTH_M;
+    let v = |x: f32, y: f32, z: f32| [c[0] + x * r, c[1] + y * r, c[2] + z * r];
+    let top = v(0.0, 1.0, 0.0);
+    let bot = v(0.0, -1.0, 0.0);
+    let ring = [
+        v(1.0, 0.0, 0.0),
+        v(0.0, 0.0, 1.0),
+        v(-1.0, 0.0, 0.0),
+        v(0.0, 0.0, -1.0),
+    ];
+    let mut out = Vec::with_capacity(8);
+    for i in 0..4 {
+        let (p, q) = (ring[i], ring[(i + 1) % 4]);
+        for tri in [[top, q, p], [bot, p, q]] {
+            let verts = tri.to_vec();
+            let normal = compute_polygon_normal(&verts);
+            out.push(RawPolygon {
+                vertices: verts,
+                palette_index,
+                normal,
+                flags: 0,
+                is_decal: false,
+                visibility,
+            });
+        }
+    }
+    out
+}
+
 /// Computes the unit outward surface normal from a polygon vertex loop.
 ///
 /// Attempts edge cross product from first three vertices, falling back to Newell's method.
@@ -451,6 +553,10 @@ pub(crate) fn execute_sod_vm_impl(
     let mut regs = [[0.0f32; 3]; 1024];
     let mut cur_vert = [0.0f32; 3];
     let mut cur_color = 0u8;
+    // Line colour (`OP_LINECOL`); falls back to the fill colour until first set.
+    let mut line_color: Option<u8> = None;
+    // Pen position in metres for `OP_MOVETO` / `OP_ZLINETO`.
+    let mut pen = [0.0f32; 3];
     let mut polygons = Vec::new();
     let mut current_visibility = VisibilityCondition::Always;
     let mut visibility_scope_end = 0usize;
@@ -612,8 +718,28 @@ pub(crate) fn execute_sod_vm_impl(
             OP_COLOR => {
                 cur_color = (read_u16(data, &mut pos)? & 0xFF) as u8;
             }
-            OP_LINECOL | OP_MOVETO | OP_ZLINETO | OP_DOT => {
-                read_u16(data, &mut pos)?;
+            OP_LINECOL => {
+                // [Hypothesis] one word: line colour index, as OP_COLOR is for fills.
+                line_color = Some((read_u16(data, &mut pos)? & 0xFF) as u8);
+            }
+            OP_MOVETO | OP_ZLINETO | OP_DOT => {
+                // [Hypothesis] one word: register byte offset (`/12` = register).
+                let reg_off = read_u16(data, &mut pos)?;
+                let raw_v = regs[((reg_off / 12) & 1023) as usize];
+                let p = [
+                    raw_v[0] * scale_factor,
+                    (raw_v[1] + f32::from(ground_y_offset)) * scale_factor,
+                    raw_v[2] * scale_factor,
+                ];
+                let color = line_color.unwrap_or(cur_color);
+                match opcode {
+                    OP_ZLINETO => {
+                        polygons.extend(line_polygons(pen, p, color, current_visibility));
+                        pen = p;
+                    }
+                    OP_DOT => polygons.extend(dot_polygons(p, color, current_visibility)),
+                    _ => pen = p,
+                }
             }
             OP_POLYZ => {
                 let count = read_u16(data, &mut pos)?;

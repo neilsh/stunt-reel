@@ -341,3 +341,7 @@ The `.SOD` virtual machine specification represents extensive reverse engineerin
 - `Developer/SI-8x/si-8x-notes.txt` (Alberto Marnetto's LOD bytecode analysis)
 
 ---
+
+### `OP_MOVETO` / `OP_ZLINETO` / `OP_LINECOL` / `OP_DOT` in the reconstruction (`[Hypothesis]`)
+
+Each takes a single operand word (confirmed by `FreeFlight/src/siobj.cpp`, which only consumes one word and draws nothing, and by the VM walking whole chunks without desync). The semantics are inferred from the opcode names: `MOVETO reg_off` sets the pen to `regs[reg_off / 12]`, `ZLINETO reg_off` draws pen to that register and moves the pen, `LINECOL color` sets a line colour separate from the fill colour of `OP_COLOR`, and `DOT reg_off` plots one point. The VM draws a segment as two perpendicular ribbons (both windings) 0.03 m wide and a dot as a 0.03 m octahedron, in the line colour (fill colour until `LINECOL` is seen). The original draws 1-pixel lines; the width is a stand-in. Whether the pen persists across `RETURN`/subobjects and whether `LINECOL` is reset per chunk is `[Unknown]`.

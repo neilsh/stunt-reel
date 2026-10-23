@@ -8,9 +8,9 @@ use crate::sod::DECAL_FLAG_BIT;
 use crate::sod::tessellate::transpile_sod;
 use crate::sod::vm::{compute_polygon_normal, execute_sod_vm, execute_sod_vm_impl};
 use crate::sod::{
-    OP_ADDV, OP_CLRV, OP_COLOR, OP_GETV, OP_ID, OP_INTV, OP_NEGV, OP_POLYZ, OP_PUTV, OP_RETURN,
-    OP_SHLV, OP_SHRV, OP_SPHERE, OP_SUBV, OP_TAP, OP_VECTORS, SodAnchorPoint, SodError, SodStop,
-    SodStopReason, transpile_sod_lenient,
+    OP_ADDV, OP_CLRV, OP_COLOR, OP_DOT, OP_GETV, OP_ID, OP_INTV, OP_LINECOL, OP_MOVETO, OP_NEGV,
+    OP_POLYZ, OP_PUTV, OP_RETURN, OP_SHLV, OP_SHRV, OP_SPHERE, OP_SUBV, OP_TAP, OP_VECTORS,
+    OP_ZLINETO, SodAnchorPoint, SodError, SodStop, SodStopReason, transpile_sod_lenient,
 };
 
 fn fixtures_dir() -> PathBuf {
@@ -413,4 +413,48 @@ fn test_lenient_decode_reports_stop_and_keeps_geometry() {
             reason: SodStopReason::UnknownOpcode,
         })
     );
+}
+
+fn line_dot_bytes(ops: &[(u16, u16)]) -> Vec<u8> {
+    let mut bytes = make_sod_header(100, 0, 0, 0); // scale 1.0
+    bytes.extend_from_slice(&OP_VECTORS.to_le_bytes());
+    bytes.extend_from_slice(&2u16.to_le_bytes());
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    for coordinate in [0i16, 0, 0, 100, 0, 0] {
+        bytes.extend_from_slice(&coordinate.to_le_bytes());
+    }
+    for (op, operand) in ops {
+        bytes.extend_from_slice(&op.to_le_bytes());
+        bytes.extend_from_slice(&operand.to_le_bytes());
+    }
+    bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+    bytes
+}
+
+#[test]
+fn test_moveto_zlineto_emits_thin_ribbons_in_line_colour() {
+    let bytes = line_dot_bytes(&[
+        (OP_COLOR, 7),
+        (OP_LINECOL, 33),
+        (OP_MOVETO, 0),
+        (OP_ZLINETO, 12),
+    ]);
+    let (_, polys) = execute_sod_vm(&bytes, None).expect("execute VM");
+    assert_eq!(polys.len(), 4);
+    for poly in &polys {
+        assert_eq!(poly.palette_index, 33);
+        assert_eq!(poly.vertices.len(), 4);
+        for v in &poly.vertices {
+            assert!(v[0] >= -1e-3 && v[0] <= 100.001);
+            assert!(v[1].abs() <= 0.03 && v[2].abs() <= 0.03);
+        }
+    }
+}
+
+#[test]
+fn test_zero_length_line_emits_nothing_and_dot_emits_octahedron() {
+    let bytes = line_dot_bytes(&[(OP_MOVETO, 12), (OP_ZLINETO, 12), (OP_DOT, 12)]);
+    let (_, polys) = execute_sod_vm(&bytes, None).expect("execute VM");
+    assert_eq!(polys.len(), 8);
+    assert!(polys.iter().all(|p| p.vertices.len() == 3));
 }
