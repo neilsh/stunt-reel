@@ -30,10 +30,9 @@ pub use palette::{
     build_palette_lut_bytes_from,
 };
 pub use parity::{
-    ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH, PHASE1_SSIM_THRESHOLD,
-    PHASE2_SSIM_THRESHOLD, WindowScore, compute_frame_ssim, compute_frame_ssim_masked,
-    compute_luminance, compute_window_scores, compute_window_ssim, rescale_mode13h_frame,
-    rgb_to_luminance, rgba_to_luminance,
+    ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH, WindowScore, compute_frame_ssim,
+    compute_frame_ssim_masked, compute_luminance, compute_window_scores, compute_window_ssim,
+    rescale_mode13h_frame, rgb_to_luminance, rgba_to_luminance,
 };
 pub use pipeline::{
     LAYER_FIRST_ACTOR, LAYER_NONE, LAYER_OCEAN, LAYER_PROP, LAYER_TERRAIN, ModelUniform,

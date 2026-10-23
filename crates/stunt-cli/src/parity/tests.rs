@@ -37,6 +37,11 @@ fn faded_frames_below_the_floor_are_reported_but_not_scored() {
     assert_eq!(report["scored_frames"], 2);
     assert_eq!(report["excluded_frames"], 1);
     assert_eq!(report["min_fade_level"], 0.25);
+    // The 0.5 frame is scored against an unfaded render, so the scored mean misses 0.88.
+    assert_eq!(
+        report["i6_gate"],
+        json!({ "initial": false, "sign_off": false })
+    );
     let per_frame = report["per_frame"].as_array().unwrap();
     let scored: Vec<bool> = per_frame
         .iter()
@@ -75,6 +80,10 @@ fn no_scored_frame_reports_null_scored_means() {
     assert_eq!(report["excluded_frames"], 1);
     assert!(report["mean_ssim_scored"].is_null());
     assert!(report["mean_iou_scored"].is_null());
+    assert_eq!(
+        report["i6_gate"],
+        json!({ "initial": false, "sign_off": false })
+    );
     assert_eq!(report["per_frame"][0]["scored"], false);
 }
 
@@ -141,4 +150,22 @@ fn missing_render_for_a_film_tick_is_unmatched() {
     assert_eq!(report["frames"], 1);
     assert_eq!(report["unmatched"], 1);
     assert_eq!(report["per_frame"][0]["film_tick"], 7);
+}
+
+#[test]
+fn the_i6_gate_passes_each_threshold_independently() {
+    let gate = |ssim| super::i6_gate(ssim);
+    assert_eq!(
+        gate(Some(0.95)),
+        json!({ "initial": true, "sign_off": true })
+    );
+    assert_eq!(
+        gate(Some(0.89)),
+        json!({ "initial": true, "sign_off": false })
+    );
+    assert_eq!(
+        gate(Some(0.5)),
+        json!({ "initial": false, "sign_off": false })
+    );
+    assert_eq!(gate(None), json!({ "initial": false, "sign_off": false }));
 }

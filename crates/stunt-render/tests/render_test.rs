@@ -1,4 +1,4 @@
-//! Integration and Gate G06 verification test suite for `stunt-render`.
+//! Integration and verification test suite for `stunt-render`.
 //!
 //! Validates:
 //! - Shader module compilation (`mode13h.wgsl`)
@@ -16,8 +16,8 @@ use stunt_core::contracts::{
 use stunt_core::scene::FilmScene;
 use stunt_render::{
     ASPECT_4_3, ASPECT_CORRECTED_HEIGHT, CameraController, CameraGpuResources, CameraMode,
-    GpuModel, LAYER_FIRST_ACTOR, MODE13H_WIDTH, PHASE2_SSIM_THRESHOLD, PaletteLut, RenderPipelines,
-    SceneRenderer, build_palette_lut_bytes, compute_frame_ssim, rgba_to_luminance,
+    GpuModel, LAYER_FIRST_ACTOR, MODE13H_WIDTH, PaletteLut, RenderPipelines, SceneRenderer,
+    build_palette_lut_bytes, compute_frame_ssim, rgba_to_luminance,
 };
 
 #[test]
@@ -148,7 +148,7 @@ fn test_ssim_evaluator() {
         "Expected 1.0, got {ssim_ident}"
     );
 
-    // Slightly perturbed frame (0.5 LSB average) -> SSIM should easily exceed Gate G06 (>= 0.90)
+    // Slightly perturbed frame (0.5 LSB average) -> SSIM should easily exceed the sign-off threshold (>= 0.90)
     let frame_test: Vec<f32> = frame_ref.iter().map(|&v| (v + 0.5).min(255.0)).collect();
     let ssim_test = compute_frame_ssim(
         &frame_ref,
@@ -158,10 +158,7 @@ fn test_ssim_evaluator() {
         11,
         8,
     );
-    assert!(
-        ssim_test >= PHASE2_SSIM_THRESHOLD,
-        "SSIM {ssim_test} must be >= {PHASE2_SSIM_THRESHOLD}"
-    );
+    assert!(ssim_test >= 0.90, "SSIM {ssim_test} must be >= 0.90");
 }
 
 #[test]

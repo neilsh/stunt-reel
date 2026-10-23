@@ -1,7 +1,7 @@
 //! Invariant `[I6]` Visual Parity and Structural Similarity (SSIM) Evaluator.
 //!
 //! Complies with Architectural Invariants:
-//! - `[I6]` Visual parity acceptance thresholds (SSIM >= 0.88 Phase 1, >= 0.90 Phase 2).
+//! - `[I6]` Visual parity acceptance thresholds (the gate itself lives in `stunt-cli`'s parity report).
 //! - `[I3]` VGA Mode 13h aspect ratio correction ($320 \times 200 \to 320 \times 240$, 1.2x vertical stretch).
 
 /// SSIM stability constant C1 for dynamic range [0, 255]: (0.01 * 255)^2 = 6.5025.
@@ -9,12 +9,6 @@ pub const C1_CONSTANT: f32 = 6.5025;
 
 /// SSIM stability constant C2 for dynamic range [0, 255]: (0.03 * 255)^2 = 58.5225.
 pub const C2_CONSTANT: f32 = 58.5225;
-
-/// Phase 1 glTF export threshold (Gate G05).
-pub const PHASE1_SSIM_THRESHOLD: f32 = 0.88;
-
-/// Phase 2 Native wgpu engine threshold (Gate G06).
-pub const PHASE2_SSIM_THRESHOLD: f32 = 0.90;
 
 /// Base Mode 13h framebuffer width in pixels.
 pub const MODE13H_WIDTH: usize = 320;

@@ -62,6 +62,18 @@ use sheets::write_contact_sheet;
 
 pub(crate) use args::USAGE;
 
+/// `[I6]` initial acceptance threshold on the scored mean SSIM.
+const I6_INITIAL_SSIM: f32 = 0.88;
+
+/// `[I6]` sign-off threshold on the scored mean SSIM.
+const I6_SIGN_OFF_SSIM: f32 = 0.90;
+
+/// Whether the scored mean SSIM reaches each `[I6]` threshold; both fail when no frame is scored.
+fn i6_gate(mean_ssim_scored: Option<f32>) -> Value {
+    let reaches = |threshold: f32| mean_ssim_scored.is_some_and(|ssim| ssim >= threshold);
+    json!({ "initial": reaches(I6_INITIAL_SSIM), "sign_off": reaches(I6_SIGN_OFF_SSIM) })
+}
+
 /// Frame ordinals always rendered as contact sheets, plus the last captured frame.
 const CONTACT_SHEET_ORDINALS: [usize; 5] = [1, 20, 40, 70, 100];
 
@@ -214,6 +226,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         "mean_iou": mean_iou,
         "min_fade_level": args.min_fade_level,
         "mean_ssim_scored": mean_ssim_scored,
+        "i6_gate": i6_gate(mean_ssim_scored),
         "mean_iou_scored": mean_iou_scored,
         "mean_index_agreement_scored": mean_index_agreement_scored,
         "mean_loss_by_class_scored": mean_loss_by_class,
