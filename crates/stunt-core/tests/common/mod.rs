@@ -1,4 +1,4 @@
-//! Shared test-support code for the `.FLM` integration tests.
+//! Shared test-support code for the `stunt-core` integration tests (`.FLM` helpers, fuzz RNG).
 
 #![allow(dead_code)]
 
@@ -189,3 +189,5 @@ pub(crate) fn build_synthetic_intro_flm(ticks: usize) -> Vec<u8> {
 
     film
 }
+
+pub(crate) mod rng;

@@ -18,6 +18,8 @@
 //! header, random sequences of valid opcodes with random operands, and bit-flipped /
 //! overwritten / truncated / extended copies of a valid model.
 
+mod common;
+
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use stunt_core::sod::{
@@ -28,49 +30,7 @@ use stunt_core::sod::{
 };
 use stunt_core::sod::{SodError, transpile_sod};
 
-/// Simple deterministic PRNG (Xorshift64) to avoid external crate dependencies.
-struct XorShift64 {
-    state: u64,
-}
-
-impl XorShift64 {
-    fn new(seed: u64) -> Self {
-        Self {
-            state: if seed == 0 {
-                0x8543_5897_4EC5_D643
-            } else {
-                seed
-            },
-        }
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        let mut x = self.state;
-        x ^= x << 13;
-        x ^= x >> 7;
-        x ^= x << 17;
-        self.state = x;
-        x
-    }
-
-    fn next_u8(&mut self) -> u8 {
-        self.next_u64() as u8
-    }
-
-    fn next_range(&mut self, min: usize, max: usize) -> usize {
-        if min >= max {
-            return min;
-        }
-        let span = (max - min) as u64;
-        min + (self.next_u64() % span) as usize
-    }
-
-    fn fill_bytes(&mut self, buf: &mut [u8]) {
-        for b in buf.iter_mut() {
-            *b = self.next_u8();
-        }
-    }
-}
+use common::rng::{XorShift64, mutate};
 
 fn make_sod_header(
     bounding_size: u16,
@@ -595,41 +555,7 @@ fn fuzz_mutated_valid_sod() {
 
     for i in 0..10_000 {
         let mut mutated = baseline.clone();
-        let mutation_count = rng.next_range(1, 8);
-
-        for _ in 0..mutation_count {
-            let op = rng.next_range(0, 4);
-            match op {
-                0 => {
-                    // Bit flip
-                    if !mutated.is_empty() {
-                        let idx = rng.next_range(0, mutated.len());
-                        let bit = 1 << rng.next_range(0, 8);
-                        mutated[idx] ^= bit;
-                    }
-                }
-                1 => {
-                    // Byte overwrite
-                    if !mutated.is_empty() {
-                        let idx = rng.next_range(0, mutated.len());
-                        mutated[idx] = rng.next_u8();
-                    }
-                }
-                2 => {
-                    // Truncation
-                    if !mutated.is_empty() {
-                        let new_len = rng.next_range(0, mutated.len());
-                        mutated.truncate(new_len);
-                    }
-                }
-                3 => {
-                    // Byte insertion
-                    let idx = rng.next_range(0, mutated.len() + 1);
-                    mutated.insert(idx, rng.next_u8());
-                }
-                _ => unreachable!(),
-            }
-        }
+        mutate(&mut rng, &mut mutated, 8);
 
         let res = catch_unwind(AssertUnwindSafe(|| {
             let _ = transpile_sod(&mutated, "MUTATED", None);

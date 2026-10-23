@@ -27,50 +27,7 @@ use stunt_core::flm::{
 };
 
 use common::build_synthetic_intro_flm;
-
-/// Simple deterministic PRNG (Xorshift64) to ensure reproducible fuzz tests with zero external dependencies.
-struct XorShift64 {
-    state: u64,
-}
-
-impl XorShift64 {
-    fn new(seed: u64) -> Self {
-        Self {
-            state: if seed == 0 {
-                0x8543_5897_4EC5_D643
-            } else {
-                seed
-            },
-        }
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        let mut x = self.state;
-        x ^= x << 13;
-        x ^= x >> 7;
-        x ^= x << 17;
-        self.state = x;
-        x
-    }
-
-    fn next_u8(&mut self) -> u8 {
-        self.next_u64() as u8
-    }
-
-    fn next_range(&mut self, min: usize, max: usize) -> usize {
-        if min >= max {
-            return min;
-        }
-        let span = (max - min) as u64;
-        min + (self.next_u64() % span) as usize
-    }
-
-    fn fill_bytes(&mut self, buf: &mut [u8]) {
-        for b in buf.iter_mut() {
-            *b = self.next_u8();
-        }
-    }
-}
+use common::rng::XorShift64;
 
 // ---------------------------------------------------------------------------
 // Randomized and mutational fuzzing
