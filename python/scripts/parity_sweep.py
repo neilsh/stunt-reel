@@ -216,13 +216,46 @@ def capture_ticks(reference: Path) -> list[int]:
     return [int(f["film_tick"]) for f in meta["frames"]]
 
 
+#: Sidecar ``stunt-cli --headless`` writes beside its frames (``PALETTE_SIDECAR_NAME``).
+RENDER_SIDECAR = "palette_controls.json"
+
+
+def check_render(reference: Path, render: Path, ticks: list[int]) -> None:
+    """Refuses a render that cannot be scored against ``reference``.
+
+    Raises ``ValueError`` when the render's sidecar names a different film or ``.FLM`` size than
+    the capture's ``meta.json`` (either side may lack the tags), or when a captured tick has no
+    ``.idx``/``.layer`` planes beside its frame.
+    """
+    meta = json.loads((reference / "meta.json").read_text(encoding="utf-8"))
+    sidecar_path = render / RENDER_SIDECAR
+    if sidecar_path.is_file():
+        sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        ours, theirs = sidecar.get("film"), meta.get("film")
+        if ours and theirs and str(ours).upper() != str(theirs).upper():
+            raise ValueError(f"the capture is of {theirs} but the render is of {ours}")
+        ours, theirs = sidecar.get("flm_bytes"), meta.get("flm_bytes")
+        if ours is not None and theirs is not None and ours != theirs:
+            raise ValueError(f"the capture's .FLM is {theirs} bytes but the render's is {ours}")
+    missing = [
+        tick
+        for tick in ticks
+        if not all((render / f"tick_{tick:05d}.{ext}").is_file() for ext in ("idx", "layer"))
+    ]
+    if missing:
+        raise ValueError(
+            f"{render} has no render planes for {len(missing)} captured tick(s), first {missing[0]}"
+        )
+
+
 def score_film(
     name: str, film: Film, root: Path, workdir: Path, env: dict[str, str], probe: str
 ) -> Score:
     """Renders ``film`` into ``workdir`` with ``env`` and scores it against its capture."""
     reference = root / film.reference
     render, report = workdir / name, workdir / f"{name}_report"
-    frames = render_range(capture_ticks(reference))
+    ticks = capture_ticks(reference)
+    frames = render_range(ticks)
     exe = str(binary_path())
     run(
         [
@@ -232,6 +265,7 @@ def score_film(
         ],
         env,
     )
+    check_render(reference, render, ticks)
     run(
         [
             *(exe, "parity", "--reference", str(reference), "--test", str(render)),

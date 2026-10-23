@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -132,3 +133,43 @@ def test_actor_iou_on_synthetic_planes(tmp_path: Path) -> None:
     value, count = parity_probe.actor_iou(report, tmp_path, tmp_path, every=1)
     assert count == 1
     assert value == pytest.approx(0.5)
+
+
+def _render_tree(tmp_path: Path, film: str, flm_bytes: int, ticks: list[int]) -> tuple[Path, Path]:
+    """A capture of CTRY.FLM (100 bytes) at ticks 7 and 9, and a render with planes at ``ticks``."""
+    reference, render = tmp_path / "ref", tmp_path / "ours"
+    reference.mkdir()
+    render.mkdir()
+    frames = [{"film_tick": 7}, {"film_tick": 9}]
+    meta = {"film": "CTRY.FLM", "flm_bytes": 100, "frames": frames}
+    (reference / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    sidecar = {"film": film, "flm_bytes": flm_bytes, "ticks": []}
+    (render / parity_sweep.RENDER_SIDECAR).write_text(json.dumps(sidecar), encoding="utf-8")
+    for tick in ticks:
+        (render / f"tick_{tick:05d}.idx").write_bytes(b"")
+        (render / f"tick_{tick:05d}.layer").write_bytes(b"")
+    return reference, render
+
+
+def test_check_render_accepts_a_matching_render_with_planes(tmp_path: Path) -> None:
+    reference, render = _render_tree(tmp_path, "ctry.flm", 100, [7, 9])
+    parity_sweep.check_render(reference, render, [7, 9])
+
+
+@pytest.mark.parametrize(
+    ("film", "flm_bytes", "message"),
+    [("INTRO.FLM", 100, "render is of INTRO.FLM"), ("CTRY.FLM", 101, "render's is 101$")],
+)
+def test_check_render_refuses_another_film(
+    tmp_path: Path, film: str, flm_bytes: int, message: str
+) -> None:
+    reference, render = _render_tree(tmp_path, film, flm_bytes, [7, 9])
+    with pytest.raises(ValueError, match=message):
+        parity_sweep.check_render(reference, render, [7, 9])
+
+
+def test_check_render_refuses_a_render_without_planes(tmp_path: Path) -> None:
+    reference, render = _render_tree(tmp_path, "CTRY.FLM", 100, [7])
+    (render / "tick_00007.layer").unlink()
+    with pytest.raises(ValueError, match="no render planes for 2 captured tick"):
+        parity_sweep.check_render(reference, render, [7, 9])
