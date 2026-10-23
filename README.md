@@ -91,7 +91,7 @@ mise run capture-ref
 cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
     --all corpus/stisldem/VAULT/CTRY.ALL --frames 1..1344 \
     --sidata corpus/si_archive/Developer/FreeFlight/SIDATA \
-    --out-dir build/parity/ours/ctry --width 320 --height 200
+    --out-dir build/parity/ours/ctry --width 320 --height 200 --viewport-rows 185
 cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry \
     --test build/parity/ours/ctry --output build/parity/report/ctry --clear-index 233
 # after a change: re-render, then score against the previous report (before/after sheets need its render dir)

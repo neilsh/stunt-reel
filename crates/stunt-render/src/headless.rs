@@ -66,6 +66,9 @@ pub struct HeadlessRenderer {
     pub width: u32,
     /// Framebuffer height (240).
     pub height: u32,
+    /// When set, the 3D scene is drawn into the top this-many rows only, with the vertical
+    /// focal scale kept, as `PLAYONE.EXE` does above its button bar. `None` fills the target.
+    pub viewport_rows: Option<u32>,
 }
 
 impl HeadlessRenderer {
@@ -185,6 +188,7 @@ impl HeadlessRenderer {
             readback_buffer,
             width,
             height,
+            viewport_rows: None,
         })
     }
 
@@ -260,12 +264,18 @@ impl HeadlessRenderer {
         clear_palette_index: Option<u8>,
     ) -> Result<Vec<u8>, HeadlessError> {
         self.palette_lut.set_controls(&self.queue, frame.palette);
+        let squeezed = self.viewport_rows.map(|rows| {
+            let mut controller = CameraController::default();
+            controller.set_authored_transform(frame.camera);
+            controller.projection_y_scale = self.height as f32 / rows.max(1) as f32;
+            controller
+        });
         scene.prepare(
             &self.device,
             &self.queue,
             &self.camera_resources,
             frame,
-            camera,
+            camera.or(squeezed.as_ref()),
         );
         let scene = &*scene;
         self.capture(clear_palette_index, |this, rpass| {
@@ -325,6 +335,9 @@ impl HeadlessRenderer {
                 occlusion_query_set: None,
             });
 
+            if let Some(rows) = self.viewport_rows {
+                rpass.set_viewport(0.0, 0.0, self.width as f32, rows as f32, 0.0, 1.0);
+            }
             draw(self, &mut rpass);
         }
 

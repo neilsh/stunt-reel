@@ -133,6 +133,9 @@ pub struct CameraController {
     pub free_cam: FreeCamState,
     /// Physical viewport aspect ratio (defaults to 4:3 = 1.3333333 per `[I6]`).
     pub aspect_ratio: f32,
+    /// Factor applied to the projection's vertical focal scale; above 1.0 squeezes the same
+    /// view into a shorter viewport (see `HeadlessRenderer::viewport_rows`).
+    pub projection_y_scale: f32,
     /// Near clip plane in meters.
     pub near_clip: f32,
     /// Far clip plane in meters.
@@ -150,6 +153,7 @@ impl Default for CameraController {
             authored: CameraTransform::default(),
             free_cam: FreeCamState::default(),
             aspect_ratio: ASPECT_4_3,
+            projection_y_scale: 1.0,
             near_clip: DEFAULT_NEAR_CLIP,
             far_clip: DEFAULT_FAR_CLIP,
             sun_direction: Vec3::new(0.3, 0.9, 0.3).normalize(),
@@ -213,7 +217,10 @@ impl CameraController {
         };
         let fov_rad = fov_deg.to_radians();
 
-        Mat4::perspective_rh(fov_rad, self.aspect_ratio, self.near_clip, self.far_clip)
+        let mut proj =
+            Mat4::perspective_rh(fov_rad, self.aspect_ratio, self.near_clip, self.far_clip);
+        proj.y_axis.y *= self.projection_y_scale;
+        proj
     }
 
     /// Returns the active eye position in world meters.
@@ -311,6 +318,18 @@ impl CameraGpuResources {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn projection_y_scale_multiplies_only_the_vertical_focal_scale() {
+        let base = CameraController::default().compute_proj_matrix();
+        let squeezed = CameraController {
+            projection_y_scale: 200.0 / 185.0,
+            ..CameraController::default()
+        }
+        .compute_proj_matrix();
+        assert_eq!(squeezed.x_axis.x, base.x_axis.x);
+        assert!((squeezed.y_axis.y / base.y_axis.y - 200.0 / 185.0).abs() < 1e-6);
+    }
 
     #[test]
     fn test_camera_uniform_size_and_alignment() {

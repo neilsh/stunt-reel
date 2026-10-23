@@ -115,7 +115,7 @@ The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the
 | `0x0004 + n*0x1C` | `[Established]` | 28-byte record | Anchor point `n`: `x/y/z` at `+0x00/+0x02/+0x04`; cache at `+0x06..+0x10`; fields `+0x12/+0x16/+0x1A`; frame stamp `+0x1B` | `# [MEM-SOD-ANCHOR-TABLE]` |
 | `0x19A8` | `[Established]` | `u8` | Per-frame transform cache counter; incremented by `CS:0x492D` | |
 | `0x41B8` | `[Established]` | `u16` | `OP_TAP` remaining-count scratch | |
-| `0x41C8`, `0x41CA` | `[Established]` | `u16` | Screen-projection center offsets | |
+| `0x41C8`, `0x41CA` | `[Established]` | `u16` | Screen-projection center offsets; live `CTRY` session reads 160 and 92 (3D viewport is 185 rows; see `capture.md` § 4) | |
 | `0x41D4..0x41DA` | `[Established]` | `i32[3]` | Model→view translation | |
 | `0x4450 + n*12` | `[Established]` | 12-byte vertex | Vertex register arena (1024 entries): `x/y/z` and projection/flag fields | `# [MEM-SOD-VM]` |
 | `0x806C` | `[Bounded Observation]` | `u8` | `OP_ANIMATE` mode gate; nonzero takes the variable-width skip path | `# [FMT-SOD-ANIMATE]` |

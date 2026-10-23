@@ -53,6 +53,8 @@ pub struct CliConfig {
     pub sidata_dir: Option<PathBuf>,
     pub width: u32,
     pub height: u32,
+    /// Draw the scene into the top this-many rows of the target only (`--viewport-rows`).
+    pub viewport_rows: Option<u32>,
     pub clear_index: u8,
     pub headless: bool,
     pub output_png: Option<PathBuf>,
@@ -77,6 +79,7 @@ impl CliConfig {
         let mut sidata_dir = None;
         let mut width = 320u32;
         let mut height = 240u32;
+        let mut viewport_rows: Option<u32> = None;
         let mut clear_index = 180u8;
         let mut explicit_clear_index = false;
         let mut headless = false;
@@ -161,6 +164,13 @@ impl CliConfig {
                     height = val
                         .parse::<u32>()
                         .map_err(|e| format!("Invalid height: {e}"))?;
+                }
+                "--viewport-rows" => {
+                    let val = args.next().ok_or("Expected number after --viewport-rows")?;
+                    viewport_rows = Some(
+                        val.parse::<u32>()
+                            .map_err(|e| format!("Invalid viewport rows: {e}"))?,
+                    );
                 }
                 "--clear-index" => {
                     let val = args.next().ok_or("Expected number after --clear-index")?;
@@ -264,6 +274,7 @@ impl CliConfig {
             sidata_dir,
             width,
             height,
+            viewport_rows,
             clear_index,
             headless,
             output_png,
@@ -341,6 +352,9 @@ impl CliConfig {
             "  --width <px>         Offscreen framebuffer width (default 320, 256-byte pitch)"
         );
         println!("  --height <px>        Offscreen framebuffer height (default 240)");
+        println!(
+            "  --viewport-rows <n>  Draw the scene into the top n rows only (PLAYONE uses 185 of 200)"
+        );
         println!("  --clear-index <i>    Mode 13h palette index used to clear the framebuffer");
         println!("  --headless           Run in offscreen headless mode without opening a window");
         println!("  --output, -o <file>  Save offscreen rendered frame to PNG file");
@@ -487,6 +501,7 @@ pub fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), String>
 
     let mut renderer = HeadlessRenderer::with_dimensions(config.width, config.height)
         .map_err(|e| format!("Headless renderer failed: {e}"))?;
+    renderer.viewport_rows = config.viewport_rows;
     let mut scene_renderer = SceneRenderer::new(
         &renderer.device,
         &renderer.queue,
