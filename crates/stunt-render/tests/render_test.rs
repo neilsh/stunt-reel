@@ -8,41 +8,23 @@
 //! - Headless offscreen framebuffer capture (`[I6]`)
 //! - Windowed SSIM parity evaluation and Seam 4 reporting (`[I6]`)
 
+mod common;
+
 use stunt_core::contracts::{
     CameraTransform, NodeKind, SodModelIr, SodVertex, VisibilityCondition, VisualParityReport,
 };
 use stunt_render::{
     ASPECT_4_3, ASPECT_CORRECTED_HEIGHT, CameraController, CameraGpuResources, CameraMode,
-    GpuModel, HeadlessRenderer, MODE13H_WIDTH, PHASE2_SSIM_THRESHOLD, PaletteLut, RenderPipelines,
+    GpuModel, MODE13H_WIDTH, PHASE2_SSIM_THRESHOLD, PaletteLut, RenderPipelines,
     build_palette_lut_bytes, compute_frame_ssim, evaluate_visual_parity, rgba_to_luminance,
 };
 
 #[test]
 fn test_shader_module_compilation_and_validation() {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::LowPower,
-        compatible_surface: None,
-        force_fallback_adapter: true,
-    }));
-
-    let Some(adapter) = adapter else {
-        eprintln!("[test] Skipping hardware shader compile: no adapter available");
+    let Some(renderer) = common::gpu_or_skip() else {
         return;
     };
-
-    let Ok((device, _queue)) = pollster::block_on(adapter.request_device(
-        &wgpu::DeviceDescriptor {
-            label: Some("test_shader_device"),
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::downlevel_defaults(),
-            memory_hints: wgpu::MemoryHints::Performance,
-        },
-        None,
-    )) else {
-        eprintln!("[test] Skipping hardware shader compile: device creation failed");
-        return;
-    };
+    let device = &renderer.device;
 
     let shader = device.create_shader_module(wgpu::include_wgsl!("../src/shaders/mode13h.wgsl"));
     assert!(
@@ -53,36 +35,16 @@ fn test_shader_module_compilation_and_validation() {
 
 #[test]
 fn test_dual_pipeline_depth_bias_configuration() {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::LowPower,
-        compatible_surface: None,
-        force_fallback_adapter: true,
-    }));
-
-    let Some(adapter) = adapter else {
-        eprintln!("[test] Skipping pipeline creation: no adapter available");
+    let Some(renderer) = common::gpu_or_skip() else {
         return;
     };
+    let (device, queue) = (&renderer.device, &renderer.queue);
 
-    let Ok((device, queue)) = pollster::block_on(adapter.request_device(
-        &wgpu::DeviceDescriptor {
-            label: Some("test_pipeline_device"),
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::downlevel_defaults(),
-            memory_hints: wgpu::MemoryHints::Performance,
-        },
-        None,
-    )) else {
-        eprintln!("[test] Skipping pipeline creation: device request failed");
-        return;
-    };
-
-    let camera_res = CameraGpuResources::new(&device);
-    let palette_lut = PaletteLut::new(&device, &queue);
+    let camera_res = CameraGpuResources::new(device);
+    let palette_lut = PaletteLut::new(device, queue);
 
     let pipelines = RenderPipelines::new(
-        &device,
+        device,
         wgpu::TextureFormat::Rgba8Unorm,
         wgpu::TextureFormat::Depth24Plus,
         &camera_res.bind_group_layout,
@@ -220,10 +182,7 @@ fn test_ssim_parity_evaluator_and_reporting() {
 
 #[test]
 fn test_headless_offscreen_render_execution() {
-    let Ok(mut renderer) = HeadlessRenderer::new() else {
-        eprintln!(
-            "[test] Skipping headless render execution: no GPU adapter available in this environment"
-        );
+    let Some(mut renderer) = common::gpu_or_skip() else {
         return;
     };
 

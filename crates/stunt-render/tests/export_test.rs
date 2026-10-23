@@ -5,10 +5,12 @@
 //! - `[I6]` 4:3 physical display aspect ratio presentation.
 //! - `[I7]` Cleanroom synthetic fixture execution.
 
+mod common;
+
 use std::fs;
 use std::path::PathBuf;
 use stunt_core::contracts::CameraTransform;
-use stunt_render::{CameraController, FfmpegVideoWriter, HeadlessRenderer, VideoExportError};
+use stunt_render::{CameraController, FfmpegVideoWriter, VideoExportError};
 
 fn get_temp_test_dir(name: &str) -> PathBuf {
     let nonce = std::time::SystemTime::now()
@@ -22,8 +24,7 @@ fn get_temp_test_dir(name: &str) -> PathBuf {
 
 #[test]
 fn test_interval_frame_capture_exact_count_magic_and_dimensions() {
-    let Ok(mut renderer) = HeadlessRenderer::new() else {
-        eprintln!("[test] Skipping test: no GPU adapter available in this environment");
+    let Some(mut renderer) = common::gpu_or_skip() else {
         return;
     };
 

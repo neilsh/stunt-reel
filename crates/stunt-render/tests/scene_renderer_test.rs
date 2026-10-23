@@ -1,6 +1,8 @@
 //! Verifies `SceneRenderer`: per-draw matrices, state-mask visibility, and the world draw.
 //!
-//! Skips when no GPU adapter is available, like the other render tests.
+//! Skips when no GPU adapter is available, like the other render tests (see `common`).
+
+mod common;
 
 use std::collections::HashMap;
 
@@ -12,7 +14,7 @@ use stunt_core::contracts::{
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
 use stunt_core::scene::FilmScene;
 use stunt_core::world::{World, WorldBounds};
-use stunt_render::{HeadlessRenderer, SceneRenderer};
+use stunt_render::SceneRenderer;
 
 const SHAPE_ID: u16 = 7;
 const CLEAR_INDEX: u8 = 180;
@@ -95,10 +97,7 @@ fn scene(actors: Vec<ActorTransform>, visibility: VisibilityCondition) -> FilmSc
 
 /// Renders tick 0 and returns (width, height, per-pixel "covered by geometry" flags).
 fn render(scene: &FilmScene) -> Option<(usize, usize, Vec<bool>)> {
-    let Ok(mut renderer) = HeadlessRenderer::new() else {
-        eprintln!("[test] Skipping scene renderer test: no GPU adapter available");
-        return None;
-    };
+    let mut renderer = common::gpu_or_skip()?;
     let mut scene_renderer = SceneRenderer::new(
         &renderer.device,
         &renderer.queue,
@@ -193,8 +192,7 @@ fn zero_brightness_frame_renders_black_including_the_clear_colour() {
         shapes,
         None,
     );
-    let Ok(mut renderer) = HeadlessRenderer::new() else {
-        eprintln!("[test] Skipping scene renderer test: no GPU adapter available");
+    let Some(mut renderer) = common::gpu_or_skip() else {
         return;
     };
     let mut scene_renderer = SceneRenderer::new(
