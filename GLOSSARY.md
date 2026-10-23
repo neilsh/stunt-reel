@@ -127,5 +127,9 @@ _Avoid_: pixel accuracy, exact match
 _Avoid_: frame counter, global tick
 
 **Fade level**:
-The brightness of a captured frame relative to the static palette: the median, over the indices present in the first captured frame whose static R+G+B exceeds 60, of (captured entry R+G+B) / (static Mode 13h entry R+G+B). About 1.0 when `PLAYONE` is not fading; it falls to 0 over the end-of-film fade. Parity scores only frames whose fade level reaches `--min-fade-level`.
+The brightness of a captured frame relative to the static palette: the median, over the indices present in the first captured frame whose static R+G+B exceeds 60, of (captured entry R+G+B) / (static Mode 13h entry R+G+B). About 1.0 when `PLAYONE` is not fading; it falls to 0 over the end-of-film fade. The **authored fade level** is the film's own brightness palette control at that tick over its full value, read from the render's sidecar. Parity scores only frames whose authored fade level reaches `--min-fade-level`; the measured fade level is reported beside it as a cross-check, and decides scoring only for renders without a sidecar.
 _Avoid_: brightness, exposure
+
+**Sky band**:
+One of the palette indices 227 to 238 that `PLAYONE.EXE` paints the sky with, in straight bands by view-ray elevation (238 at the horizon). Parity treats every captured pixel in a sky band as sky; the render's sky is where its layer plane is empty.
+_Avoid_: sky index, clear colour (the render's framebuffer clear, which parity no longer reads)
