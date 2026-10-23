@@ -55,6 +55,8 @@ pub struct RenderPipelines {
     pub base_pipeline: wgpu::RenderPipeline,
     /// Decal mesh pipeline conforming to `[I5]` with hardware depth bias and `LessEqual` compare.
     pub decal_pipeline: wgpu::RenderPipeline,
+    /// Fullscreen pipeline that paints the sky bands behind all geometry.
+    pub sky_pipeline: wgpu::RenderPipeline,
     /// Solid-black fullscreen pipeline used to paint `[I6]` letterbox bars.
     pub bar_pipeline: wgpu::RenderPipeline,
     /// Common pipeline layout shared across base and decal passes.
@@ -303,9 +305,48 @@ impl RenderPipelines {
             cache: None,
         });
 
+        // Sky: first draw of the pass, ignores and never writes depth. It needs no model matrix.
+        let sky_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("stunt_sky_pipeline_layout"),
+            bind_group_layouts: &[camera_layout, palette_layout],
+            push_constant_ranges: &[],
+        });
+        let sky_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("stunt_sky_pipeline"),
+            layout: Some(&sky_layout),
+            vertex: wgpu::VertexState {
+                module: &shader_module,
+                entry_point: Some("vs_sky"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader_module,
+                entry_point: Some(if plane_format.is_some() {
+                    "fs_sky_plane"
+                } else {
+                    "fs_sky"
+                }),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &targets,
+            }),
+            primitive,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: depth_format,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
         Self {
             base_pipeline,
             decal_pipeline,
+            sky_pipeline,
             bar_pipeline,
             pipeline_layout,
             model_bind_group_layout,

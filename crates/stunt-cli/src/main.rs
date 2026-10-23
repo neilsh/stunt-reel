@@ -594,6 +594,12 @@ pub fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), String>
                 "sky": frame.palette.sky,
                 "brightness": frame.palette.brightness,
                 "saturation": frame.palette.saturation,
+                "camera": {
+                    "eye": frame.camera.eye,
+                    "target": frame.camera.target,
+                    "fov_degrees": frame.camera.fov_degrees,
+                    "roll_radians": frame.camera.roll_radians,
+                },
             }));
         }
         let (rgba_bytes, plane) = renderer

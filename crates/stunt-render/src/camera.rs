@@ -33,6 +33,8 @@ pub struct CameraUniform {
     pub sun_direction: [f32; 3],
     /// Ambient floor light intensity [0.0..1.0].
     pub ambient_intensity: f32,
+    /// Inverse of `view_proj`, used by the sky pass to turn a pixel into a world ray.
+    pub inv_view_proj: [f32; 16],
 }
 
 impl Default for CameraUniform {
@@ -43,6 +45,7 @@ impl Default for CameraUniform {
             _pad0: 0.0,
             sun_direction: [0.3, 0.9, 0.3], // Sun shining from above and slightly to side
             ambient_intensity: 0.25,
+            inv_view_proj: Mat4::IDENTITY.to_cols_array(),
         }
     }
 }
@@ -245,6 +248,7 @@ impl CameraController {
             _pad0: 0.0,
             sun_direction: [sun.x, sun.y, sun.z],
             ambient_intensity: self.ambient_intensity,
+            inv_view_proj: view_proj.inverse().to_cols_array(),
         }
     }
 }
@@ -333,7 +337,7 @@ mod tests {
 
     #[test]
     fn test_camera_uniform_size_and_alignment() {
-        assert_eq!(std::mem::size_of::<CameraUniform>(), 96);
+        assert_eq!(std::mem::size_of::<CameraUniform>(), 160);
         assert_eq!(std::mem::size_of::<CameraUniform>() % 16, 0);
     }
 

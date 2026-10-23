@@ -93,7 +93,7 @@ fn scene(actors: Vec<ActorTransform>, visibility: VisibilityCondition) -> FilmSc
     FilmScene::new(timeline(actors), shapes, None)
 }
 
-/// Renders tick 0 and returns (width, height, per-pixel "differs from clear" flags).
+/// Renders tick 0 and returns (width, height, per-pixel "covered by geometry" flags).
 fn render(scene: &FilmScene) -> Option<(usize, usize, Vec<bool>)> {
     let Ok(mut renderer) = HeadlessRenderer::new() else {
         eprintln!("[test] Skipping scene renderer test: no GPU adapter available");
@@ -106,17 +106,12 @@ fn render(scene: &FilmScene) -> Option<(usize, usize, Vec<bool>)> {
         scene,
     );
     let frame = scene.frame(0.0);
-    let pixels = renderer
-        .render_scene(&mut scene_renderer, &frame, None, Some(CLEAR_INDEX))
+    let (_pixels, plane) = renderer
+        .render_scene_with_plane(&mut scene_renderer, &frame, None, Some(CLEAR_INDEX))
         .expect("render succeeds");
     let (w, h) = (renderer.width as usize, renderer.height as usize);
-    let clear = [pixels[0], pixels[1], pixels[2]];
-    let drawn = pixels
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|p| [p[0], p[1], p[2]] != clear)
-        .collect();
+    // The sky paints every uncovered pixel, so geometry is told apart by its layer.
+    let drawn = plane.iter().map(|&p| p >> 8 != 0).collect();
     Some((w, h, drawn))
 }
 
@@ -165,7 +160,11 @@ fn state_mask_that_hides_geometry_draws_nothing() {
 
 #[test]
 fn world_is_drawn_when_present() {
-    let ir = triangle("WORLD_BASE", VisibilityCondition::Always);
+    let mut ir = triangle("WORLD_BASE", VisibilityCondition::Always);
+    // World vertices carry their scenery class; the layer plane reads it.
+    for vertex in &mut ir.vertices {
+        vertex._padding[0] = stunt_core::contracts::SCENERY_TERRAIN;
+    }
     let world = World {
         ir,
         terrain_patches: 0,

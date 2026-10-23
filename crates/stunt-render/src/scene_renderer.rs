@@ -157,6 +157,11 @@ impl SceneRenderer {
         camera_resources: &CameraGpuResources,
         palette: &PaletteLut,
     ) {
+        rpass.set_pipeline(&pipelines.sky_pipeline);
+        rpass.set_bind_group(0, &camera_resources.bind_group, &[]);
+        rpass.set_bind_group(1, &palette.bind_group, &[]);
+        rpass.draw(0..3, 0..1);
+
         for decal_pass in [false, true] {
             rpass.set_pipeline(if decal_pass {
                 &pipelines.decal_pipeline

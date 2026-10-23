@@ -4,6 +4,7 @@ struct CameraUniform {
     _pad0: f32,
     sun_direction: vec3<f32>,
     ambient_intensity: f32,
+    inv_view_proj: mat4x4<f32>,
 };
 
 struct ModelUniform {
@@ -66,5 +67,58 @@ fn fs_main_plane(in: VertexOutput) -> PlaneOutput {
     let coords = vec2<i32>(i32(in.palette_index & 255u), i32(in.light_level & 31u));
     out.color = textureLoad(palette_lut, coords, 0);
     out.plane = (in.layer << 8u) | (in.palette_index & 255u);
+    return out;
+}
+
+// Sky: PLAYONE paints the sky as bands of palette indices 238 (at the horizon) down to
+// 228 (high), selected by the sine of the view ray's elevation. The edges are the medians of
+// the band transitions measured in CTRY.FLM captures: 2.14, 2.77, 3.59, 4.61, 5.82, 7.27,
+// 9.23, 11.79, 15.75 and 20.23 degrees (research/parity-findings.md section 7).
+const SKY_EDGE_SIN = array<f32, 10>(
+    0.03734, 0.04833, 0.06262, 0.08037, 0.1014, 0.12655, 0.1604, 0.20433, 0.27144, 0.34579,
+);
+
+struct SkyVertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) ndc: vec2<f32>,
+};
+
+@vertex
+fn vs_sky(@builtin(vertex_index) vertex_index: u32) -> SkyVertexOutput {
+    var positions = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(3.0, -1.0),
+        vec2<f32>(-1.0, 3.0),
+    );
+    var out: SkyVertexOutput;
+    out.clip_position = vec4<f32>(positions[vertex_index], 1.0, 1.0);
+    out.ndc = positions[vertex_index];
+    return out;
+}
+
+fn sky_index(ndc: vec2<f32>) -> u32 {
+    let far = camera.inv_view_proj * vec4<f32>(ndc, 1.0, 1.0);
+    let ray = far.xyz / far.w - camera.camera_pos;
+    let sin_elevation = ray.y / length(ray);
+    var index = 238u;
+    for (var k = 0u; k < 10u; k = k + 1u) {
+        if (sin_elevation > SKY_EDGE_SIN[k]) {
+            index = 237u - k;
+        }
+    }
+    return index;
+}
+
+@fragment
+fn fs_sky(in: SkyVertexOutput) -> @location(0) vec4<f32> {
+    return textureLoad(palette_lut, vec2<i32>(i32(sky_index(in.ndc)), 31), 0);
+}
+
+@fragment
+fn fs_sky_plane(in: SkyVertexOutput) -> PlaneOutput {
+    var out: PlaneOutput;
+    let index = sky_index(in.ndc);
+    out.color = textureLoad(palette_lut, vec2<i32>(i32(index), 31), 0);
+    out.plane = index;
     return out;
 }
