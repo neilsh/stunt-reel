@@ -130,6 +130,21 @@ pub fn compute_frame_ssim(
     window_size: usize,
     stride: usize,
 ) -> f32 {
+    compute_frame_ssim_masked(frame_a, frame_b, width, height, window_size, stride, None)
+}
+
+/// Like [`compute_frame_ssim`], but a window that touches any `true` pixel of `excluded`
+/// (row-major, `width * height`) contributes nothing to the mean. When every window is
+/// excluded the result is `1.0`, since nothing disagrees.
+pub fn compute_frame_ssim_masked(
+    frame_a: &[f32],
+    frame_b: &[f32],
+    width: usize,
+    height: usize,
+    window_size: usize,
+    stride: usize,
+    excluded: Option<&[bool]>,
+) -> f32 {
     assert_eq!(
         frame_a.len(),
         frame_b.len(),
@@ -137,6 +152,9 @@ pub fn compute_frame_ssim(
         frame_a.len(),
         frame_b.len()
     );
+    if let Some(mask) = excluded {
+        assert_eq!(mask.len(), frame_a.len(), "Mask length mismatch");
+    }
 
     let mut ssim_values = Vec::new();
     let mut win_a = Vec::with_capacity(window_size * window_size);
@@ -151,15 +169,25 @@ pub fn compute_frame_ssim(
         while x <= max_x {
             win_a.clear();
             win_b.clear();
+            let mut touches_mask = false;
 
             for wy in 0..window_size {
                 let row_idx = (y + wy) * width + x;
                 win_a.extend_from_slice(&frame_a[row_idx..row_idx + window_size]);
                 win_b.extend_from_slice(&frame_b[row_idx..row_idx + window_size]);
+                if let Some(mask) = excluded {
+                    touches_mask |= mask[row_idx..row_idx + window_size].iter().any(|&m| m);
+                }
             }
 
-            let score = compute_window_ssim(&win_a, &win_b, C1_CONSTANT, C2_CONSTANT);
-            ssim_values.push(score);
+            if !touches_mask {
+                ssim_values.push(compute_window_ssim(
+                    &win_a,
+                    &win_b,
+                    C1_CONSTANT,
+                    C2_CONSTANT,
+                ));
+            }
 
             x += stride;
         }
@@ -167,7 +195,11 @@ pub fn compute_frame_ssim(
     }
 
     if ssim_values.is_empty() {
-        compute_window_ssim(frame_a, frame_b, C1_CONSTANT, C2_CONSTANT)
+        if excluded.is_some() {
+            1.0
+        } else {
+            compute_window_ssim(frame_a, frame_b, C1_CONSTANT, C2_CONSTANT)
+        }
     } else {
         ssim_values.iter().sum::<f32>() / ssim_values.len() as f32
     }
@@ -248,6 +280,28 @@ pub fn evaluate_visual_parity(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn masked_ssim_ignores_windows_touching_the_mask() {
+        let (w, h) = (32, 32);
+        let a: Vec<f32> = (0..w * h).map(|i| (i % 7) as f32 * 20.0).collect();
+        let mut b = a.clone();
+        let mut excluded = vec![false; w * h];
+        // Corrupt the bottom rows and mask them; the unmasked windows are untouched.
+        for i in (24 * w)..(h * w) {
+            b[i] = 255.0 - b[i];
+            excluded[i] = true;
+        }
+        let unmasked = compute_frame_ssim(&a, &b, w, h, 8, 8);
+        let masked = compute_frame_ssim_masked(&a, &b, w, h, 8, 8, Some(&excluded));
+        assert!(unmasked < 0.9, "corruption must hurt the unmasked score");
+        assert!((masked - 1.0).abs() < 1e-6, "masked score {masked}");
+        let all = vec![true; w * h];
+        assert_eq!(
+            compute_frame_ssim_masked(&a, &b, w, h, 8, 8, Some(&all)),
+            1.0
+        );
+    }
 
     #[test]
     fn test_identity_frame_ssim() {

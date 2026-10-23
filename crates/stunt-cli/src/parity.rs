@@ -15,7 +15,9 @@
 //! The original fades its palette with the film's brightness variable, and so does the
 //! render. Each capture's fade level (see [`fade_level`]) is measured from its captured
 //! palette; frames whose level falls below `--min-fade-level` are reported but not
-//! scored, because SSIM of near-black frames says little. The headline is raw SSIM over
+//! scored, because SSIM of near-black frames says little. When the render directory has a
+//! palette sidecar the floor is applied to the film's authored brightness (var 14) instead,
+//! with the measured level kept in the report as a cross-check. The headline is raw SSIM over
 //! the scored frames. The render's clear colour, needed for the IoU sky mask, comes from
 //! the film palette recorded in its `palette_controls.json` (the static colour when a
 //! render directory has none).
@@ -29,10 +31,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
-use stunt_core::contracts::{PaletteControls, get_palette_rgb};
+use stunt_core::contracts::{PALETTE_CONTROL_FULL, PaletteControls, get_palette_rgb};
 use stunt_render::{
-    ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH, compute_frame_ssim, compute_luminance,
-    rescale_mode13h_frame, rgb_to_luminance, rgba_to_luminance,
+    ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH, compute_frame_ssim_masked,
+    compute_luminance, rescale_mode13h_frame, rgb_to_luminance, rgba_to_luminance,
 };
 
 /// Horizontal gap between contact-sheet panels, in pixels.
@@ -40,6 +42,12 @@ const CONTACT_SHEET_GAP: usize = 8;
 
 /// Frame ordinals always rendered as contact sheets, plus the last captured frame.
 const CONTACT_SHEET_ORDINALS: [usize; 5] = [1, 20, 40, 70, 100];
+
+/// First row of the button bar `PLAYONE.EXE` draws over the 3D viewport (rows 185-199).
+const UI_BAR_FIRST_ROW: usize = 185;
+
+/// Palette index of the mouse cursor in captured frames.
+const CURSOR_INDEX: u8 = 255;
 
 /// Number of additionally worst-scoring frames rendered as contact sheets.
 const CONTACT_SHEET_WORST: usize = 3;
@@ -55,7 +63,11 @@ struct FrameScore {
     ssim: f32,
     /// Median ratio of the captured palette's brightness to the static palette's.
     fade_level: f32,
-    /// Whether `fade_level` reaches the `--min-fade-level` floor.
+    /// Brightness the film authors at this tick (var 14 over [`PALETTE_CONTROL_FULL`]); `None`
+    /// when the render directory carries no palette sidecar.
+    authored_fade_level: Option<f32>,
+    /// Whether the fade reaches the `--min-fade-level` floor: the authored level when
+    /// known, else the measured `fade_level`.
     scored: bool,
     iou: f32,
 }
@@ -227,22 +239,35 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             MODE13H_HEIGHT,
             ASPECT_CORRECTED_HEIGHT,
         );
-        let ssim = compute_frame_ssim(
+        let overlay = ui_overlay_mask(&indices);
+        let overlay_rescaled = rescale_mask(&overlay);
+        let ssim = compute_frame_ssim_masked(
             &reference_rescaled,
             &test_rescaled,
             MODE13H_WIDTH,
             ASPECT_CORRECTED_HEIGHT,
             11,
             8,
+            Some(&overlay_rescaled),
         );
-        let iou = mask_iou(&indices, sky_index, &test_luminance, clear_luminance);
-        let scored = fade >= args.min_fade_level;
+        let iou = mask_iou(
+            &indices,
+            sky_index,
+            &test_luminance,
+            clear_luminance,
+            &overlay,
+        );
+        let authored_fade = render_palettes
+            .get(&film_tick)
+            .map(|controls| f32::from(controls.brightness) / f32::from(PALETTE_CONTROL_FULL));
+        let scored = authored_fade.unwrap_or(fade) >= args.min_fade_level;
 
         scores.push(FrameScore {
             ordinal,
             film_tick,
             ssim,
             fade_level: fade,
+            authored_fade_level: authored_fade,
             scored,
             iou,
         });
@@ -310,6 +335,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
                 "ssim": s.ssim,
                 "iou": s.iou,
                 "fade_level": s.fade_level,
+                "authored_fade_level": s.authored_fade_level,
                 "scored": s.scored,
             }))
             .collect::<Vec<Value>>(),
@@ -965,16 +991,51 @@ fn sky_index(first_frame: Option<&Value>, reference_dir: &Path) -> Result<u8, St
     Ok(index as u8)
 }
 
-/// Intersection-over-union of the non-sky masks of both frames.
+/// Pixels of a captured frame covered by the UI overlay: the button bar rows and the
+/// cursor. Scoring leaves them out because the renderer does not draw them.
+fn ui_overlay_mask(indices: &[u8]) -> Vec<bool> {
+    indices
+        .iter()
+        .enumerate()
+        .map(|(position, &index)| {
+            position / MODE13H_WIDTH >= UI_BAR_FIRST_ROW || index == CURSOR_INDEX
+        })
+        .collect()
+}
+
+/// Stretches a 320x200 mask to the 320x240 raster with the same row mapping as the frames.
+fn rescale_mask(mask: &[bool]) -> Vec<bool> {
+    let plane: Vec<f32> = mask.iter().map(|&m| f32::from(u8::from(m))).collect();
+    rescale_mode13h_frame(
+        &plane,
+        MODE13H_WIDTH,
+        MODE13H_HEIGHT,
+        ASPECT_CORRECTED_HEIGHT,
+    )
+    .into_iter()
+    .map(|v| v > 0.5)
+    .collect()
+}
+
+/// Intersection-over-union of the non-sky masks of both 320x200 frames, skipping `overlay`
+/// pixels.
 fn mask_iou(
     reference_indices: &[u8],
     sky_index: u8,
     test_luminance: &[f32],
     clear_luminance: f32,
+    overlay: &[bool],
 ) -> f32 {
     let mut intersection = 0usize;
     let mut union = 0usize;
-    for (index, luminance) in reference_indices.iter().zip(test_luminance.iter()) {
+    for (position, (index, luminance)) in reference_indices
+        .iter()
+        .zip(test_luminance.iter())
+        .enumerate()
+    {
+        if overlay[position] {
+            continue;
+        }
         let reference_filled = *index != sky_index;
         let test_filled = (*luminance - clear_luminance).abs() > 0.5;
         if reference_filled && test_filled {
@@ -1251,6 +1312,44 @@ mod tests {
             assert!(error.contains("min fade level"), "{bad}: {error}");
         }
         assert!(parse(&["--min-fade-level"]).is_err());
+    }
+
+    #[test]
+    fn overlay_mask_covers_the_button_bar_rows_and_cursor_pixels() {
+        let mut indices = vec![7u8; MODE13H_WIDTH * MODE13H_HEIGHT];
+        indices[100 * MODE13H_WIDTH + 160] = CURSOR_INDEX;
+        let mask = ui_overlay_mask(&indices);
+        assert!(mask[100 * MODE13H_WIDTH + 160]);
+        assert!(!mask[100 * MODE13H_WIDTH + 161]);
+        assert!(!mask[(UI_BAR_FIRST_ROW - 1) * MODE13H_WIDTH]);
+        assert!(mask[UI_BAR_FIRST_ROW * MODE13H_WIDTH]);
+        assert!(mask[MODE13H_WIDTH * MODE13H_HEIGHT - 1]);
+        let rescaled = rescale_mask(&mask);
+        assert_eq!(rescaled.len(), MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT);
+        // Row 185 of 200 stretches to row 222 of 240.
+        assert!(rescaled[222 * MODE13H_WIDTH]);
+        assert!(!rescaled[221 * MODE13H_WIDTH]);
+    }
+
+    #[test]
+    fn the_fade_floor_uses_authored_brightness_when_the_render_has_a_sidecar() {
+        let tmp = TempDir::new("authored_floor");
+        // The capture looks fully bright; the film authors a fade to a quarter below the floor.
+        write_reference_faded(&tmp.join("ref"), &[12], true, &[1.0]);
+        let test = tmp.join("test");
+        fs::create_dir_all(&test).unwrap();
+        write_render(&test.join(crate::tick_png_name(12)));
+        fs::write(
+            test.join(crate::PALETTE_SIDECAR_NAME),
+            json!({ "ticks": [{ "tick": 12, "sky": 0, "brightness": 0x1000, "saturation": 0x8000 }] })
+                .to_string(),
+        )
+        .unwrap();
+        run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
+        let frame = &read_report(&tmp.join("out"))["per_frame"][0];
+        assert_eq!(frame["authored_fade_level"], 0.125);
+        assert_eq!(frame["scored"], false);
+        assert!(frame["fade_level"].as_f64().unwrap() > 0.9);
     }
 
     #[test]

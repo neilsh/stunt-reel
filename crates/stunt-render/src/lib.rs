@@ -31,8 +31,9 @@ pub use palette::{
 };
 pub use parity::{
     ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH, PHASE1_SSIM_THRESHOLD,
-    PHASE2_SSIM_THRESHOLD, compute_frame_ssim, compute_luminance, compute_window_ssim,
-    evaluate_visual_parity, rescale_mode13h_frame, rgb_to_luminance, rgba_to_luminance,
+    PHASE2_SSIM_THRESHOLD, compute_frame_ssim, compute_frame_ssim_masked, compute_luminance,
+    compute_window_ssim, evaluate_visual_parity, rescale_mode13h_frame, rgb_to_luminance,
+    rgba_to_luminance,
 };
 pub use pipeline::{ModelUniform, RenderPipelines};
 pub use scene_renderer::SceneRenderer;
