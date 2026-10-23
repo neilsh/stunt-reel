@@ -114,6 +114,14 @@ Comparison of a reconstructed render against a captured frame, scored by SSIM an
 One distinct rendered frame grabbed from `PLAYONE.EXE` at the vertical-retrace trap, numbered by capture order and tagged with its film clock.
 _Avoid_: tick (for the capture ordinal)
 
+**UI overlay**:
+What `PLAYONE.EXE` draws over the 3D scene in a captured frame: the button bar, the mouse cursor, and credits text. The renderer does not draw it, and parity leaves it out of scoring.
+_Avoid_: HUD, status bar
+
+**Index agreement**:
+The fraction of scored pixels whose palette index in the render equals the one in the captured frame. A diagnostic beside SSIM and mask IoU, not a gate.
+_Avoid_: pixel accuracy, exact match
+
 **Film clock**:
 `PLAYONE.EXE`'s runtime count of 50 Hz ticks into the active film, read from DGROUP. It is the tick a captured frame shows.
 _Avoid_: frame counter, global tick
