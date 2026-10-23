@@ -8,7 +8,6 @@ pub(super) struct Args {
     pub(super) reference: PathBuf,
     pub(super) test: PathBuf,
     pub(super) output: PathBuf,
-    pub(super) clear_index: u8,
     /// Frames fading below this level are reported but excluded from the scored means.
     pub(super) min_fade_level: f32,
     /// Previous `report.json` to compare the fresh scores against.
@@ -20,7 +19,7 @@ pub(super) struct Args {
 /// Usage text printed by `--help`.
 pub(crate) const USAGE: &str =
     "Usage: stuntreel parity --reference <dir> --test <dir> --output <dir> \
-[--clear-index N] [--min-fade-level F] [--compare <report.json> [--compare-test <dir>]]
+[--min-fade-level F] [--compare <report.json> [--compare-test <dir>]]
 
   --min-fade-level F       Frames whose measured palette fade level is below F (default
                            0.25) are reported but left out of the scored means
@@ -36,7 +35,6 @@ impl Args {
         let mut reference = None;
         let mut test = None;
         let mut output = None;
-        let mut clear_index = 180u8;
         let mut min_fade_level = 0.25f32;
         let mut compare = None;
         let mut compare_test = None;
@@ -57,12 +55,6 @@ impl Args {
                     output = Some(PathBuf::from(
                         args.next().ok_or("Expected directory after --output")?,
                     ));
-                }
-                "--clear-index" => {
-                    let value = args.next().ok_or("Expected number after --clear-index")?;
-                    clear_index = value
-                        .parse::<u8>()
-                        .map_err(|e| format!("Invalid clear index: {e}"))?;
                 }
                 "--min-fade-level" => {
                     let value = args
@@ -104,7 +96,6 @@ impl Args {
             reference: reference.ok_or("parity requires --reference <dir>")?,
             test: test.ok_or("parity requires --test <dir>")?,
             output: output.ok_or("parity requires --output <dir>")?,
-            clear_index,
             min_fade_level,
             compare,
             compare_test,
@@ -141,6 +132,22 @@ mod tests {
             assert!(error.contains("min fade level"), "{bad}: {error}");
         }
         assert!(parse(&["--min-fade-level"]).is_err());
+    }
+
+    #[test]
+    fn the_retired_clear_index_flag_is_rejected() {
+        let v = [
+            "--reference",
+            "r",
+            "--test",
+            "t",
+            "--output",
+            "o",
+            "--clear-index",
+            "233",
+        ];
+        let error = Args::parse(v.iter().map(|s| (*s).to_string())).unwrap_err();
+        assert!(error.contains("--clear-index"), "{error}");
     }
 
     #[test]

@@ -50,20 +50,17 @@ class Film:
     all: str
     sidata: str
     reference: str
-    clear_index: int
 
 
 _VAULT = "corpus/stisldem/VAULT"
 _SIDATA = "corpus/si_archive/Developer/FreeFlight/SIDATA"
 #: Per-film inputs (research/parity/method.md section 1, parity-findings.md sections 9 and 11).
-#: ``parity`` defaults to clear index 180, so it is always passed; 233 is what ``render`` picks
-#: for an ``.ALL``. INTRO's own sky index (229) is measured from its capture by ``parity``.
 FILMS: dict[str, Film] = {
     "ctry": Film(
-        f"{_VAULT}/CTRY.FLM", f"{_VAULT}/CTRY.ALL", _SIDATA, "build/parity/reference/ctry", 233
+        f"{_VAULT}/CTRY.FLM", f"{_VAULT}/CTRY.ALL", _SIDATA, "build/parity/reference/ctry"
     ),
     "intro": Film(
-        f"{_VAULT}/INTRO.FLM", f"{_VAULT}/INTRO.ALL", _SIDATA, "build/parity/reference/intro", 233
+        f"{_VAULT}/INTRO.FLM", f"{_VAULT}/INTRO.ALL", _SIDATA, "build/parity/reference/intro"
     ),
 }
 RENDER_FLAGS = ("--width", "320", "--height", "200", "--viewport-rows", "185")
@@ -238,7 +235,7 @@ def score_film(
     run(
         [
             *(exe, "parity", "--reference", str(reference), "--test", str(render)),
-            *("--output", str(report), "--clear-index", str(film.clear_index)),
+            *("--output", str(report)),
         ]
     )
     report_json = report / "report.json"

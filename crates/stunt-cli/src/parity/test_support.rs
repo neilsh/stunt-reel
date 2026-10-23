@@ -5,8 +5,9 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use stunt_core::contracts::get_palette_rgb;
-use stunt_render::{MODE13H_HEIGHT, MODE13H_WIDTH};
+use stunt_render::{LAYER_NONE, LAYER_TERRAIN, MODE13H_HEIGHT, MODE13H_WIDTH};
 
+use super::mask::is_capture_sky;
 use super::run;
 
 /// Scratch directory removed on drop.
@@ -97,12 +98,14 @@ pub(super) fn write_reference_faded(dir: &Path, film_ticks: &[u64], tag: bool, s
     .unwrap();
 }
 
+/// Writes a grey-ramp render at `path`, with planes that match the synthetic capture.
 pub(super) fn write_render(path: &Path) {
     let image = image::RgbaImage::from_fn(MODE13H_WIDTH as u32, MODE13H_HEIGHT as u32, |x, y| {
         let v = ((x + y) % 251) as u8;
         image::Rgba([v, v, v, 255])
     });
     image.save(path).unwrap();
+    write_planes(path);
 }
 
 /// Writes the unfaded view of the synthetic capture planes as a render.
@@ -112,6 +115,28 @@ pub(super) fn write_matching_render(path: &Path) {
         image::Rgba([r, g, b, 255])
     });
     image.save(path).unwrap();
+    write_planes(path);
+}
+
+/// Writes the index and layer planes beside the render PNG at `path`: the capture's own
+/// indices, with a layer wherever the capture is not sky.
+fn write_planes(path: &Path) {
+    let indices: Vec<u8> = (0..MODE13H_WIDTH * MODE13H_HEIGHT)
+        .map(plane_index)
+        .collect();
+    let layers: Vec<u8> = indices
+        .iter()
+        .flat_map(|&index| {
+            let layer = if is_capture_sky(index) {
+                LAYER_NONE
+            } else {
+                LAYER_TERRAIN
+            };
+            (layer as u16).to_le_bytes()
+        })
+        .collect();
+    fs::write(path.with_extension("idx"), indices).unwrap();
+    fs::write(path.with_extension("layer"), layers).unwrap();
 }
 
 pub(super) fn run_parity(reference: &Path, test: &Path, output: &Path) -> Result<(), String> {

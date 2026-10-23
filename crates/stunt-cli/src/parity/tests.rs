@@ -3,12 +3,9 @@
 use std::fs;
 
 use serde_json::json;
-use stunt_core::contracts::PaletteControls;
-use stunt_render::{MODE13H_HEIGHT, MODE13H_WIDTH};
 
-use super::mask::is_capture_sky;
 use super::test_support::{
-    TempDir, plane_index, read_report, run_parity, write_matching_render, write_reference,
+    TempDir, read_report, run_parity, write_matching_render, write_reference,
     write_reference_faded, write_render,
 };
 
@@ -34,51 +31,33 @@ fn the_fade_floor_uses_authored_brightness_when_the_render_has_a_sidecar() {
 }
 
 #[test]
-fn render_planes_feed_index_agreement_into_the_report() {
+fn render_planes_feed_iou_and_index_agreement_into_the_report() {
     let tmp = TempDir::new("render_planes");
     write_reference(&tmp.join("ref"), &[12], true);
     let test = tmp.join("test");
     fs::create_dir_all(&test).unwrap();
+    // The render's colours differ from the capture, but its planes match it exactly.
     write_render(&test.join(crate::tick_png_name(12)));
-    let pixels = MODE13H_WIDTH * MODE13H_HEIGHT;
-    let reference: Vec<u8> = (0..pixels).map(plane_index).collect();
-    fs::write(test.join("tick_00012.idx"), &reference).unwrap();
-    fs::write(test.join("tick_00012.layer"), vec![1u8; pixels * 2]).unwrap();
     run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
-    let frame = &read_report(&tmp.join("out"))["per_frame"][0];
+    let report = read_report(&tmp.join("out"));
+    let frame = &report["per_frame"][0];
     assert_eq!(frame["index_agreement"], 1.0);
+    assert_eq!(frame["iou"], 1.0);
+    assert_eq!(report["sky_indices"], json!([227, 238]));
+    assert!(report.get("sky_index").is_none() && report.get("clear_index").is_none());
 }
 
 #[test]
-fn the_sky_mask_uses_the_render_palette_clear_colour() {
-    let tmp = TempDir::new("render_sky");
-    write_reference_faded(&tmp.join("ref"), &[12], true, &[0.5]);
+fn a_render_without_planes_is_an_error_that_says_to_re_render() {
+    let tmp = TempDir::new("no_planes");
+    write_reference(&tmp.join("ref"), &[12], true);
     let test = tmp.join("test");
     fs::create_dir_all(&test).unwrap();
-    // The render faded itself to half brightness; its sky is the faded clear colour.
-    let half = PaletteControls {
-        brightness: 0x4000,
-        ..PaletteControls::default()
-    };
-    let palette = half.film_palette();
-    let image = image::RgbaImage::from_fn(MODE13H_WIDTH as u32, MODE13H_HEIGHT as u32, |x, y| {
-        let index = plane_index(y as usize * MODE13H_WIDTH + x as usize);
-        let (r, g, b) = palette[usize::from(if is_capture_sky(index) { 180 } else { index })];
-        image::Rgba([r, g, b, 255])
-    });
-    image.save(test.join(crate::tick_png_name(12))).unwrap();
-    fs::write(
-        test.join(crate::PALETTE_SIDECAR_NAME),
-        json!({ "ticks": [{ "tick": 12, "sky": 0, "brightness": 0x4000, "saturation": 0x8000 }] })
-            .to_string(),
-    )
-    .unwrap();
-
-    run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
-    let frame = &read_report(&tmp.join("out"))["per_frame"][0];
-    // The faded clear colour is recognised as sky, so the masks agree exactly.
-    assert_eq!(frame["iou"].as_f64().unwrap(), 1.0);
-    assert!(frame.get("ssim_compensated").is_none());
+    let png = test.join(crate::tick_png_name(12));
+    write_render(&png);
+    fs::remove_file(png.with_extension("layer")).unwrap();
+    let error = run_parity(&tmp.join("ref"), &test, &tmp.join("out")).unwrap_err();
+    assert!(error.contains("re-render"), "{error}");
 }
 
 #[test]

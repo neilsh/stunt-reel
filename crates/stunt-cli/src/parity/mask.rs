@@ -66,8 +66,9 @@ pub(super) fn index_agreement(reference: &[u8], render: &[u8], overlay: &[bool])
     }
 }
 
-/// Like [`mask_iou`], but the render side is filled where its layer plane is not
-/// [`stunt_render::LAYER_NONE`].
+/// Intersection-over-union of the non-sky masks of a capture and a render, skipping
+/// `overlay` pixels. The capture's sky is [`CAPTURE_SKY_INDICES`]; the render is filled
+/// where its layer plane is not [`stunt_render::LAYER_NONE`].
 pub(super) fn mask_iou_planes(
     reference_indices: &[u8],
     render_layers: &[u16],
@@ -82,40 +83,6 @@ pub(super) fn mask_iou_planes(
         let test_filled = u32::from(*layer) != LAYER_NONE;
         intersection += usize::from(reference_filled && test_filled);
         union += usize::from(reference_filled || test_filled);
-    }
-    if union == 0 {
-        1.0
-    } else {
-        intersection as f32 / union as f32
-    }
-}
-
-/// Intersection-over-union of the non-sky masks of both 320x200 frames, skipping `overlay`
-/// pixels. The capture's sky is [`CAPTURE_SKY_INDICES`].
-pub(super) fn mask_iou(
-    reference_indices: &[u8],
-    test_luminance: &[f32],
-    clear_luminance: f32,
-    overlay: &[bool],
-) -> f32 {
-    let mut intersection = 0usize;
-    let mut union = 0usize;
-    for (position, (index, luminance)) in reference_indices
-        .iter()
-        .zip(test_luminance.iter())
-        .enumerate()
-    {
-        if overlay[position] {
-            continue;
-        }
-        let reference_filled = !is_capture_sky(*index);
-        let test_filled = (*luminance - clear_luminance).abs() > 0.5;
-        if reference_filled && test_filled {
-            intersection += 1;
-        }
-        if reference_filled || test_filled {
-            union += 1;
-        }
     }
     if union == 0 {
         1.0

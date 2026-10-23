@@ -19,9 +19,11 @@
 //! scored, because SSIM of near-black frames says little. When the render directory has a
 //! palette sidecar the floor is applied to the film's authored brightness (var 14) instead,
 //! with the measured level kept in the report as a cross-check. The headline is raw SSIM over
-//! the scored frames. The render's clear colour, needed for the IoU sky mask, comes from
-//! the film palette recorded in its `palette_controls.json` (the static colour when a
-//! render directory has none).
+//! the scored frames.
+//!
+//! Every render needs its palette-index and layer planes (`tick_NNNNN.idx`/`.layer`, written
+//! by `--headless`): IoU and loss attribution read the render's coverage from the layer
+//! plane, never from its colours, so a render directory without planes is an error.
 //!
 //! `--compare <report.json>` additionally matches the fresh scores against a previous
 //! run by `film_tick` (see [`report_diff::compare_reports`]), so a change is judged frame by frame
@@ -44,10 +46,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
 use serde_json::{Value, json};
-use stunt_core::contracts::{PALETTE_CONTROL_FULL, get_palette_rgb};
+use stunt_core::contracts::PALETTE_CONTROL_FULL;
 use stunt_render::{
-    ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH, compute_luminance,
-    compute_window_scores, rescale_mode13h_frame,
+    ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH, compute_window_scores,
+    rescale_mode13h_frame,
 };
 
 use args::Args;
@@ -55,11 +57,12 @@ use compare::run_compare;
 use fade::{fade_level, fade_reference_set};
 use frames::{
     load_reference, read_film_ticks, read_index_plane, read_png_luminance, read_render_palettes,
-    read_render_planes, reference_luminance, reference_paths, sky_index, warn_on_film_mismatch,
+    read_render_planes, reference_luminance, reference_paths, warn_on_film_mismatch,
 };
 use loss::{LOSS_CLASSES, attribute_loss, loss_class};
 use mask::{
-    index_agreement, is_capture_sky, mask_iou, mask_iou_planes, rescale_mask, ui_overlay_mask,
+    CAPTURE_SKY_INDICES, index_agreement, is_capture_sky, mask_iou_planes, rescale_mask,
+    ui_overlay_mask,
 };
 use sheets::write_contact_sheet;
 
@@ -95,12 +98,11 @@ struct FrameScore {
     /// known, else the measured `fade_level`.
     scored: bool,
     iou: f32,
-    /// Fraction of non-overlay pixels whose palette index equals the capture's; `None`
-    /// when the render directory carries no index plane for this tick.
-    index_agreement: Option<f32>,
-    /// This frame's SSIM loss (`1 - ssim`) split by what the window covers; `None` without
-    /// render planes. The entries sum to `1 - ssim`.
-    loss_by_class: Option<[f32; LOSS_CLASSES.len()]>,
+    /// Fraction of non-overlay pixels whose palette index equals the capture's.
+    index_agreement: f32,
+    /// This frame's SSIM loss (`1 - ssim`) split by what the window covers. The entries sum
+    /// to `1 - ssim`.
+    loss_by_class: [f32; LOSS_CLASSES.len()],
 }
 
 /// Runs the comparator and writes `report.json` plus contact sheets.
@@ -121,7 +123,6 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
 
     warn_on_film_mismatch(&meta, &args.test);
     let film_ticks = read_film_ticks(frames, &meta_path)?;
-    let sky_index = sky_index(frames.first(), &args.reference)?;
     let render_palettes = read_render_palettes(&args.test)?;
     let first_plane = read_index_plane(&reference_paths(&args.reference, &frames[0], 1).0)?;
     let fade_set = fade_reference_set(&first_plane);
@@ -148,11 +149,6 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         let (indices, palette) = load_reference(&reference_file, &palette_file)?;
         let reference_rescaled = reference_luminance(&indices, &palette);
         let fade = fade_level(&fade_set, &palette);
-        let (clear_r, clear_g, clear_b) = match render_palettes.get(&film_tick) {
-            Some(controls) => controls.film_palette()[usize::from(args.clear_index)],
-            None => get_palette_rgb(args.clear_index),
-        };
-        let clear_luminance = compute_luminance(clear_r as f32, clear_g as f32, clear_b as f32);
         let test_luminance = read_png_luminance(&test_file)?;
 
         let test_rescaled = rescale_mode13h_frame(
@@ -177,11 +173,11 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         } else {
             windows.iter().map(|w| w.score).sum::<f32>() / windows.len() as f32
         };
-        let planes = read_render_planes(&args.test, film_tick)?;
-        let loss_by_class = planes.as_ref().map(|(_, render_layers)| {
+        let (render_indices, render_layers) = read_render_planes(&args.test, film_tick)?;
+        let loss_by_class = {
             let codes: Vec<f32> = indices
                 .iter()
-                .zip(render_layers)
+                .zip(&render_layers)
                 .map(|(&index, &layer)| f32::from(loss_class(layer, !is_capture_sky(index))))
                 .collect();
             let classes: Vec<u8> = rescale_mode13h_frame(
@@ -194,17 +190,9 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             .map(|code| code as u8)
             .collect();
             attribute_loss(&windows, &classes, SSIM_WINDOW)
-        });
-        let (iou, index_agreement) = match &planes {
-            Some((render_indices, render_layers)) => (
-                mask_iou_planes(&indices, render_layers, &overlay),
-                Some(index_agreement(&indices, render_indices, &overlay)),
-            ),
-            None => (
-                mask_iou(&indices, &test_luminance, clear_luminance, &overlay),
-                None,
-            ),
         };
+        let iou = mask_iou_planes(&indices, &render_layers, &overlay);
+        let index_agreement = index_agreement(&indices, &render_indices, &overlay);
         let authored_fade = render_palettes
             .get(&film_tick)
             .map(|controls| f32::from(controls.brightness) / f32::from(PALETTE_CONTROL_FULL));
@@ -262,10 +250,8 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     };
     let mean_ssim_scored = scored_mean(|s| s.ssim);
     let mean_iou_scored = scored_mean(|s| s.iou);
-    let attributed: Vec<[f32; LOSS_CLASSES.len()]> = scored_frames
-        .iter()
-        .filter_map(|s| s.loss_by_class)
-        .collect();
+    let attributed: Vec<[f32; LOSS_CLASSES.len()]> =
+        scored_frames.iter().map(|s| s.loss_by_class).collect();
     let mean_loss_by_class = (!attributed.is_empty()).then(|| {
         let mut mean = [0.0f32; LOSS_CLASSES.len()];
         for loss in &attributed {
@@ -275,19 +261,13 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         }
         json!(LOSS_CLASSES.iter().zip(mean).collect::<BTreeMap<_, _>>())
     });
-    let agreement: Vec<f32> = scored_frames
-        .iter()
-        .filter_map(|s| s.index_agreement)
-        .collect();
-    let mean_index_agreement_scored =
-        (!agreement.is_empty()).then(|| agreement.iter().sum::<f32>() / agreement.len() as f32);
+    let mean_index_agreement_scored = scored_mean(|s| s.index_agreement);
 
     let report = json!({
         "reference_frames": frames.len(),
         "frames": scores.len(),
         "unmatched": unmatched,
-        "sky_index": sky_index,
-        "clear_index": args.clear_index,
+        "sky_indices": [CAPTURE_SKY_INDICES.start(), CAPTURE_SKY_INDICES.end()],
         "mean_ssim": mean_ssim,
         "min_ssim": min_ssim,
         "mean_iou": mean_iou,
@@ -306,9 +286,10 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
                 "ssim": s.ssim,
                 "iou": s.iou,
                 "index_agreement": s.index_agreement,
-                "loss_by_class": s.loss_by_class.map(|loss| {
-                    LOSS_CLASSES.iter().zip(loss).collect::<BTreeMap<_, _>>()
-                }),
+                "loss_by_class": LOSS_CLASSES
+                    .iter()
+                    .zip(s.loss_by_class)
+                    .collect::<BTreeMap<_, _>>(),
                 "fade_level": s.fade_level,
                 "authored_fade_level": s.authored_fade_level,
                 "scored": s.scored,
@@ -323,7 +304,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     .map_err(|e| format!("write {}: {e}", report_path.display()))?;
 
     println!(
-        "[parity] {} frames, mean SSIM {mean_ssim:.3}, mean IoU {mean_iou:.3}, sky index {sky_index}",
+        "[parity] {} frames, mean SSIM {mean_ssim:.3}, mean IoU {mean_iou:.3}",
         scores.len()
     );
     match (mean_ssim_scored, mean_iou_scored) {

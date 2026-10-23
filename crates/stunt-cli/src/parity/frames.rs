@@ -185,30 +185,6 @@ pub(super) fn read_png_luminance(path: &Path) -> Result<Vec<f32>, String> {
     Ok(rgba_to_luminance(rgba.as_raw()))
 }
 
-/// Modal palette index across the top four rows of the first reference frame.
-pub(super) fn sky_index(first_frame: Option<&Value>, reference_dir: &Path) -> Result<u8, String> {
-    let frame = first_frame.ok_or("reference meta.json carries no frames")?;
-    let name = frame
-        .get("frame_file")
-        .and_then(Value::as_str)
-        .ok_or("first reference frame has no frame_file")?;
-    let indices = read_index_plane(&reference_dir.join(name))?;
-
-    let mut counts = [0usize; 256];
-    for row in 0..4 {
-        let start = row * MODE13H_WIDTH;
-        for &index in &indices[start..start + MODE13H_WIDTH] {
-            counts[index as usize] += 1;
-        }
-    }
-    let (index, _count) = counts
-        .iter()
-        .enumerate()
-        .max_by_key(|&(position, count)| (*count, std::cmp::Reverse(position)))
-        .ok_or("empty sky histogram")?;
-    Ok(index as u8)
-}
-
 /// A render's palette-index plane and layer-id plane.
 pub(super) type RenderPlanes = (Vec<u8>, Vec<u16>);
 
@@ -242,15 +218,18 @@ pub(super) fn warn_on_film_mismatch(meta: &Value, test_dir: &Path) {
     }
 }
 
-/// Reads the render's index and layer planes for `tick`, if both files exist.
-pub(super) fn read_render_planes(
-    test_dir: &Path,
-    tick: usize,
-) -> Result<Option<RenderPlanes>, String> {
+/// Reads the render's index and layer planes for `tick`; a missing plane is an error.
+pub(super) fn read_render_planes(test_dir: &Path, tick: usize) -> Result<RenderPlanes, String> {
     let png = test_dir.join(crate::tick_png_name(tick));
     let (idx_path, layer_path) = (png.with_extension("idx"), png.with_extension("layer"));
     if !idx_path.is_file() || !layer_path.is_file() {
-        return Ok(None);
+        return Err(format!(
+            "{} has no render planes ({} and {}); re-render it with the current \
+             `stunt-cli --headless`, which writes them beside every frame",
+            test_dir.display(),
+            idx_path.display(),
+            layer_path.display()
+        ));
     }
     let indices = read_index_plane(&idx_path)?;
     let bytes = fs::read(&layer_path).map_err(|e| format!("read {}: {e}", layer_path.display()))?;
@@ -268,7 +247,7 @@ pub(super) fn read_render_planes(
         .iter()
         .map(|pair| u16::from_le_bytes(*pair))
         .collect();
-    Ok(Some((indices, layers)))
+    Ok((indices, layers))
 }
 
 #[cfg(test)]
