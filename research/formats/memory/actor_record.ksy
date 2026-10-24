@@ -1,5 +1,5 @@
 # Executable layout of one 64-byte actor entry in the runtime actor chain (Layout A).
-# Memory anchor: [MEM-ACTOR-TABLE] in docs/MEMORY_MAP.md.
+# Memory anchor: [MEM-ACTOR-TABLE] in research/playone-exe/memory-map.md.
 #
 # Evidentiary tier [Hypothesis]: this layout comes from the offline mock, not from a
 # live read of PLAYONE.EXE. Scalars stay raw; derived values (16.16 metres, BAM) are

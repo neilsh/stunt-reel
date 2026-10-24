@@ -6,7 +6,7 @@
 * **Integrity Mode**: `development`
 * **Assigned Team**:
   - `Sentinel` (Coordinator / PR Gatekeeper)
-  - `re-harness-worker` (DOSBox-X MCP & Memory Reverse Engineering: `python/stunt_reel/tac/`, `docs/MEMORY_MAP.md`)
+  - `re-harness-worker` (DOSBox-X MCP & Memory Reverse Engineering: `python/stunt_reel/tac/`, `research/playone-exe/memory-map.md`)
   - `gltf-exporter-worker` (3D Exporter & Asset Pipeline: `python/stunt_reel/gltf/`)
   - `parity-auditor` (Quality Gate & Cleanroom Verification)
 * **Working Directory**: `repository root`
@@ -20,7 +20,7 @@ Treat `PLAYONE.EXE` as an authoritative black-box kinematics compiler running in
 ### Reference Specifications
 - System Specification: [`docs/SPEC.md`](../SPEC.md)
 - Team Blueprint: [`docs/TEAM_SHEET.md`](../TEAM_SHEET.md)
-- Runtime Memory Map: [`docs/MEMORY_MAP.md`](../MEMORY_MAP.md)
+- Runtime Memory Map: [`research/playone-exe/memory-map.md`](../../research/playone-exe/memory-map.md)
 - Seam Contracts: [`crates/stunt-core/src/contracts/`](../../crates/stunt-core/src/contracts/mod.rs)
 - Synthetic Fixtures: [`tests/fixtures/`](../../tests/fixtures/README.md)
 
@@ -32,7 +32,7 @@ Treat `PLAYONE.EXE` as an authoritative black-box kinematics compiler running in
 Implement a capture harness under `python/stunt_reel/tac/` supporting dual operation: a live TCP socket client connecting to `dosbox-x-mcp-server` (default `localhost:58991`) and an offline synthetic mock/replay interface for automated offline test suites. Automate navigation through `PLAYONE.EXE`'s modal film selection dialog (`0x0787`) via BIOS Data Area (BDA) keystroke buffer injection or autotype, navigating directly to the target film without CLI parameters.
 
 ### R2. Post-Retrace Port 0x03DA V-Sync Trap & Memory Map Promotion (T02)
-Isolate vertical blank polling on VGA I/O port `0x03DA` (`BPIO 03DA`) and set an execution breakpoint immediately after the vertical retrace loop completes. Gate frame snapshots on increments of `PLAYONE.EXE`'s internal `.FLM` simulation tick counter (`[MEM-FLM-TICK]`) to eliminate mid-frame tearing and discard duplicate 70 Hz display frames. As memory layouts for camera rigs (`[MEM-CAMERA-RIG]`) and actor tables (`[MEM-ACTOR-TABLE]`) are verified, update `docs/MEMORY_MAP.md` promoting evidentiary tags to `[Established]` per SOP 4.
+Isolate vertical blank polling on VGA I/O port `0x03DA` (`BPIO 03DA`) and set an execution breakpoint immediately after the vertical retrace loop completes. Gate frame snapshots on increments of `PLAYONE.EXE`'s internal `.FLM` simulation tick counter (`[MEM-FLM-TICK]`) to eliminate mid-frame tearing and discard duplicate 70 Hz display frames. As memory layouts for camera rigs (`[MEM-CAMERA-RIG]`) and actor tables (`[MEM-ACTOR-TABLE]`) are verified, update `research/playone-exe/memory-map.md` promoting evidentiary tags to `[Established]` per SOP 4.
 
 ### R3. Trajectory Streamer & Golden Oracle Export (T03)
 Stream 600 continuous simulation ticks into `corpus/oracle/intro_trajectory.json` conforming strictly to Seam 2 (`TrajectoryRecord`) contracts, unit quaternions, and right-handed metric coordinates `[I1]`. Extract camera eye, target, focal distance / FOV, and actor world transforms with zero matrix tearing.
@@ -55,7 +55,7 @@ Enforce cleanroom asset isolation `[I7]`: all proprietary files and capture dump
 - [ ] Offline synthetic mock/replay runner executes in pytest without external process requirements.
 - [ ] Modal file picker navigation successfully injects filename keystrokes into the BIOS keyboard buffer.
 - [ ] Breakpoint triggers post-VGA retrace on port `0x03DA` with tick deduplication ($70\text{ Hz}$ presentation → $50\text{ Hz}$ simulation).
-- [ ] `docs/MEMORY_MAP.md` updated with verified offsets and promoted to `[Established]` where confirmed.
+- [ ] `research/playone-exe/memory-map.md` updated with verified offsets and promoted to `[Established]` where confirmed.
 
 ### Trajectory Streamer & Golden Oracle (T03)
 - [ ] `corpus/oracle/intro_trajectory.json` records 600 simulation ticks validated against `TrajectoryRecord` schema (`crates/stunt-core/src/contracts/trajectory.rs`).

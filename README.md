@@ -196,7 +196,7 @@ uv run pytest
 | --- | --- |
 | [`docs/SPEC.md`](docs/SPEC.md) | Master specification, invariants `[I1]`–`[I8]`, evidentiary tiers, verification matrix |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 1-hop module routing to specification anchors and research notes |
-| [`docs/MEMORY_MAP.md`](docs/MEMORY_MAP.md) | `DGROUP` map and runtime anchors (`# [MEM-*]`) |
+| [`research/playone-exe/memory-map.md`](research/playone-exe/memory-map.md) | `DGROUP` map and runtime anchors (`# [MEM-*]`) |
 | [`docs/TEAM_SHEET.md`](docs/TEAM_SHEET.md) | Multi-agent roles and file blast radii |
 | [`docs/playbooks/`](docs/playbooks/) | Milestone playbooks |
 | [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog and Kaitai layouts |

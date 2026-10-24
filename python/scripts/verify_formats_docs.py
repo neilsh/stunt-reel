@@ -154,7 +154,7 @@ LINK_SCAN_FILES: list[str] = [
     "AGENTS.md",
     "docs/ARCHITECTURE.md",
     "docs/SPEC.md",
-    "docs/MEMORY_MAP.md",
+    "research/playone-exe/memory-map.md",
     "docs/TEAM_SHEET.md",
     "docs/playbooks/m1-runtime-capture.md",
     "GLOSSARY.md",

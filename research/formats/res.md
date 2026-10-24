@@ -174,7 +174,7 @@ The following backlog documents unresolved questions and their empirical status:
 
 | ID | Topic / Investigation Area | Current Evidence & Finding | Evidentiary Tier | Recommended Handling in Engine |
 | :--- | :--- | :--- | :---: | :--- |
-| **Q-RES-01** | 16-byte header vs. 8-byte header discrepancy | All 20 corpus archives have 8-byte headers on disk. A 16-byte descriptor existed in real-mode `DGROUP` memory. | `[Established]` (disk) / `[Hypothesis]` (memory) | On-disk parsers mandate 8-byte header; memory descriptor documented in `docs/MEMORY_MAP.md`. |
+| **Q-RES-01** | 16-byte header vs. 8-byte header discrepancy | All 20 corpus archives have 8-byte headers on disk. A 16-byte descriptor existed in real-mode `DGROUP` memory. | `[Established]` (disk) / `[Hypothesis]` (memory) | On-disk parsers mandate 8-byte header; memory descriptor documented in `research/playone-exe/memory-map.md`. |
 | **Q-RES-02** | Scenery `.RES` name table omission | Scenery packages (`res_index <= 0x0F`) omit the string table; `ofs[0]` points directly to `.SOD` bytecode. | `[Established]` | Implement automatic heuristic: if string slice begins with `0x000C`, synthesize names `0000.BIN..`. |
 | **Q-RES-03** | Third-party compression flags | Retail floppy/CD-ROM archives contain zero compressed entries. Community tools occasionally hinted at LZSS compression flags. | `[Bounded Observation]` | Flag `was_compressed` remains `false`. Hook LZSS decoder if modded compressed archives are encountered. |
 | **Q-RES-04** | Dynamic memory caching & LRU eviction | Real-mode `PLAYONE.EXE` cached `.RES` offset tables in conventional RAM while streaming payloads on demand. | `[Supported Inference]` | Modern engine loads archive tables fully into memory; zero disk thrashing. |

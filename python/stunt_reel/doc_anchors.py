@@ -36,7 +36,7 @@ class Anchor:
 
 
 SPEC = "docs/SPEC.md"
-MEMORY_MAP = "docs/MEMORY_MAP.md"
+MEMORY_MAP = "research/playone-exe/memory-map.md"
 MEMORY_NOTES = "research/playone-exe/memory.md"
 
 ANCHORS: tuple[Anchor, ...] = (

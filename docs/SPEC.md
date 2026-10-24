@@ -32,7 +32,7 @@ Delivery is sequential. This section records what each phase is for and whether 
    * `PLAYONE.EXE` unpacked and disassembled for startup, memory, navigation and the display-list VM ([`research/playone-exe/`](../research/playone-exe/)).
 
 2. **Phase 1: Capture Harness & AOT glTF 2.0 Exporter *(Status: Complete; Milestone 1 gate passed)***
-   * Treats `PLAYONE.EXE` as an authoritative black-box kinematics compiler running inside headless DOSBox-X, driven over its debugger socket, and gates snapshots on the film clock ([`capture.md`](../research/playone-exe/capture.md), [`MEMORY_MAP.md`](MEMORY_MAP.md)).
+   * Treats `PLAYONE.EXE` as an authoritative black-box kinematics compiler running inside headless DOSBox-X, driven over its debugger socket, and gates snapshots on the film clock ([`capture.md`](../research/playone-exe/capture.md), [`MEMORY_MAP.md`](../research/playone-exe/memory-map.md)).
    * Emits the golden trajectory oracle and self-contained animated glTF 2.0 files (`python/stunt_reel/tac/`; glTF export is `crates/stunt-gltf/`).
 
 3. **Phase 2: Native Cleanroom Rust Engine *(Status: Complete; Milestone 2 gate passed)***
@@ -142,7 +142,7 @@ The specification does not carry binary-analysis findings. They live in `researc
 |---|---|
 | `PLAYONE.EXE` image, entry point, LZEXE packing, command tail (only a leading `?` is read, everything else is ignored), memory and disk gates | [`research/playone-exe/startup.md`](../research/playone-exe/startup.md) |
 | Modal `LOAD FILM` dialog, prefix search, BIOS Data Area keystroke injection, `.FLM` + `.ALL` pairing rule | [`research/playone-exe/navigation.md`](../research/playone-exe/navigation.md) |
-| `DGROUP` offsets, work-segment offsets, `# [MEM-*]` anchors | [`docs/MEMORY_MAP.md`](MEMORY_MAP.md) (evidence: [`memory.md`](../research/playone-exe/memory.md)) |
+| `DGROUP` offsets, work-segment offsets, `# [MEM-*]` anchors | [`research/playone-exe/memory-map.md`](../research/playone-exe/memory-map.md) (evidence: [`memory.md`](../research/playone-exe/memory.md)) |
 | DOSBox-X capture harness and protocol | [`research/playone-exe/capture.md`](../research/playone-exe/capture.md) |
 | Display-list VM, `OP_TAP`, `OP_ANIMATE` | [`sod-vm.md`](../research/playone-exe/sod-vm.md), [`sod-animate.md`](../research/playone-exe/sod-animate.md) |
 | File formats and byte layouts | [`research/formats/INDEX.md`](../research/formats/INDEX.md) and the `.ksy` schemas |

@@ -1,7 +1,7 @@
 # `PLAYONE.EXE`: Static-Analysis Tooling (Capstone, Ghidra, rea)
 
 * **Binary**: `PLAYONE.EXE` (LZEXE 0.91), unpacked with [`unlzexe.py`](../../python/scripts/unlzexe.py) to the load image `build/re/playone.img`, or with `--mz` to the full MZ file `build/re/playone_unpacked.exe` (201,548 bytes, SHA-256 `4e68d100…ef83f`)
-* **Method**: Ghidra 12.1.4 headless and `rea-agents` 6.7.0 trials on 2026-10-23, checked against the facts in [`startup.md`](startup.md), [`sod-vm.md`](sod-vm.md) and [`docs/MEMORY_MAP.md`](../../docs/MEMORY_MAP.md)
+* **Method**: Ghidra 12.1.4 headless and `rea-agents` 6.7.0 trials on 2026-10-23, checked against the facts in [`startup.md`](startup.md), [`sod-vm.md`](sod-vm.md) and [`research/playone-exe/memory-map.md`](memory-map.md)
 * **Scope**: which tool answers which question, what Ghidra cannot see in this binary, the address coordinate systems, setup, and the next tooling step
 * **Evidence tier**: `[Established]` for the address arithmetic and the slot table; `[Bounded Observation]` for the tool behaviour, which was measured on one binary and one version of each tool
 

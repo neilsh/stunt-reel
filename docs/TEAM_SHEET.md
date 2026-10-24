@@ -9,7 +9,7 @@ Process only: who owns which files, and where each ticket stands. It is **not** 
 | Role | Domain | Allowed file blast radius |
 |---|---|---|
 | **`sentinel`** | Orchestration: dispatches tickets, enforces branch isolation, reviews handoffs | `docs/TEAM_SHEET.md`, PR reviews |
-| **`re-harness-worker`** | DOSBox-X harness and memory reverse engineering | `python/stunt_reel/tac/`, `docs/MEMORY_MAP.md`, `research/playone-exe/`, `tests/test_harness.py` |
+| **`re-harness-worker`** | DOSBox-X harness and memory reverse engineering | `python/stunt_reel/tac/`, `research/playone-exe/memory-map.md`, `research/playone-exe/`, `tests/test_harness.py` |
 | **`gltf-exporter-worker`** *(retired; the exporter is now `crates/stunt-gltf/`, owned by `rust-engine-worker`)* | Baseline `.SOD` mesh ingest and glTF export | `crates/stunt-gltf/` (formerly `python/stunt_reel/gltf/`, `tests/test_gltf.py`) |
 | **`rust-engine-worker`** | Cleanroom Rust engine | `crates/stunt-core/`, `crates/stunt-render/`, `crates/stunt-cli/` |
 | **`parity-auditor`** | Quality gate and cleanroom verification | Read-only across all code; runs `mise run check` and the gates in [`SPEC.md` § 5](SPEC.md#5-master-verification-matrix) |
@@ -26,8 +26,8 @@ Playbook (historical): [`playbooks/m1-runtime-capture.md`](playbooks/m1-runtime-
 |---|---|---|---|---|
 | `T00` | Cleanroom scaffolding, contracts and fixtures | `rust-engine-worker` | Done | [`contracts/`](../crates/stunt-core/src/contracts/mod.rs), [`tests/fixtures/README.md`](../tests/fixtures/README.md) |
 | `T01` | DOSBox-X harness and navigation | `re-harness-worker` | Done | [`client.py`](../python/stunt_reel/tac/client.py), [`bda.py`](../python/stunt_reel/tac/bda.py), [`navigation.md`](../research/playone-exe/navigation.md) |
-| `T02` | Real-mode memory map and V-Sync trap | `re-harness-worker` | Done (address conflict open) | [`MEMORY_MAP.md`](MEMORY_MAP.md), [`vsync.py`](../python/stunt_reel/tac/vsync.py) |
-| `T03` | Trajectory streamer and oracle export | `re-harness-worker` | Done (camera/actor layouts unverified live) | [`streamer.py`](../python/stunt_reel/tac/streamer.py), [`MEMORY_MAP.md`](MEMORY_MAP.md) |
+| `T02` | Real-mode memory map and V-Sync trap | `re-harness-worker` | Done (address conflict open) | [`MEMORY_MAP.md`](../research/playone-exe/memory-map.md), [`vsync.py`](../python/stunt_reel/tac/vsync.py) |
+| `T03` | Trajectory streamer and oracle export | `re-harness-worker` | Done (camera/actor layouts unverified live) | [`streamer.py`](../python/stunt_reel/tac/streamer.py), [`MEMORY_MAP.md`](../research/playone-exe/memory-map.md) |
 | `T04` | Baseline mesh ingest and glTF exporter | `gltf-exporter-worker` | Done | [`stunt-gltf/`](../crates/stunt-gltf/), [`sod.md`](../research/formats/sod.md) |
 
 ### Milestone 2: Native Cleanroom Rust Engine *(Gate 2 passed)*
@@ -53,6 +53,6 @@ Origin: the `CTRY.FLM` + `CTRY.ALL` export audit. Each ticket is independent. Fi
 
 ## 3. Documentation Revision Protocol
 
-1. **Findings** (any worker): record new offsets, opcodes and observations in the document that owns them ([`MEMORY_MAP.md`](MEMORY_MAP.md) for offsets, `research/` for evidence and formats), with a tier from [`SPEC.md` § 2.4](SPEC.md#24-evidentiary-tiers--contract-anchor-system). Promote a tier only with a cited address, disassembly or live read.
+1. **Findings** (any worker): record new offsets, opcodes and observations in the document that owns them ([`MEMORY_MAP.md`](../research/playone-exe/memory-map.md) for offsets, `research/` for evidence and formats), with a tier from [`SPEC.md` § 2.4](SPEC.md#24-evidentiary-tiers--contract-anchor-system). Promote a tier only with a cited address, disassembly or live read.
 2. **Ticket status** (`sentinel`): edit the status column above.
 3. **Contracts and invariants** (`parity-auditor`-gated): changes under `crates/stunt-core/src/contracts/` stay backward compatible (`serde(default)`), update `tests/fixtures/` and tests in the same change, and must leave `mise run check` green.
