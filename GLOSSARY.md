@@ -93,6 +93,14 @@ _Avoid_: glTF parity, Phase 1 export
 A shape whose bytecode stopped at an opcode the evaluator does not implement, or at `OP_TAP` without an anchor table; geometry decoded before the stop is retained.
 _Avoid_: corrupt model, truncated SOD
 
+**Blocking opcode**:
+The first opcode in a shape's bytecode that the evaluator does not implement; the point where a Partial SOD stops.
+_Avoid_: bad opcode, invalid opcode
+
+**Masked opcode**:
+An unimplemented opcode that sits after a shape's blocking opcode, so a lenient decode never reports it. Implementing the blocking opcode can expose it as the next one.
+_Avoid_: hidden opcode (collides with face visibility, `OP_VOTEHID`)
+
 **Anchor point** (also **tap point**):
 A 28-byte terrain record shared by `MAP.BIN` patches and `OP_TAP`; it carries raw island coordinates and scratch fields for the display-list VM. `OP_TAP` copies the referenced records into the vertex register bank.
 _Avoid_: debug marker, scratchpad touch
