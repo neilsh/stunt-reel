@@ -117,3 +117,29 @@ walker over `table + op + 5` or `slot + 3`, and for writes of `0x2551`-style IPs
 segment; no literal `0x1316`, so look for the `call $+3`/`pop si` self-relative base at `0x7B76`,
 `0x15D45`, `0x163A1`, `0x163BD`, `0x17148`, `0x17329`). Cheap cross-check: dump `work:0x1DF8` and
 grep for words in `0x1F00-0x3000` or `0x1400-0x1A00`.
+
+---
+
+## Round 13 update: the slots patch the stream; still not resident
+
+The dispatch slots patch the stream themselves, so there is no first-pass dispatcher to find (`parity-findings.md` section 24). Each slot writes its handler IP into the stream at `es:[si-2]`, in VM-segment coordinates: ground `0x171C`, not `0x995C` or `0x2A2C`. A rescan of all dumps in those coordinates still finds no ground record.
+
+Next: one harness run with a breakpoint on the ground slot `0x83A8` (VM `CS:0x0168`, runtime `0x1048:0x0168` in the CTRY session). Its first hit gives `ES:SI` of a live ground record, or else dump the EMS page frame.
+
+---
+
+## Round 13 update: the ground scene is in `CTRY.ALL`
+
+Delegated trace (`parity-findings.md` section 24): the ground opcodes and operands are in the
+`.ALL` archive - op `0x168` records at `0x13FC`, op `0x2BE` records at `0xEFE4` - not in the image or
+the film. Colour reaches the driver only through `work:0x41E8 = colour << 8` (`0x999C`) and
+`lcall 0,0x8010`; `work:0x806C` is the only mode switch (`0x1CE7` sets it `0xFF`, calls `0x1D5F`,
+clears it at `0x1CF4`). No static dispatcher was found (no `0x1316`/`0x8246` literal, no table
+call, the six `E8 00 00` sites are dead ends). `OP_FRACTAL` uses a constant `0x50` colour and
+`OP_IPG`'s type table is zero BSS, so the colour is stored, not computed.
+
+**New priority (no emulator needed):** decode `CTRY.ALL` offline with the section-22 record layout
+from `0x13FC` and `0xEFE4` - enumerate ground polygons, `w0 = (colour << 8) | count` headers, shade
+words and any per-vertex data, and compare against the captures' 193/194/196. If the `.ALL` records
+have no usable colour, break at `0x995C` (with `work:0x806C != 0`) and `0x8010` and dump `es:si` and
+`DS:0x1952`, then chase the writers of `DS:0x1952`.
