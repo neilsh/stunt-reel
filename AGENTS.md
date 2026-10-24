@@ -43,7 +43,7 @@ Refer directly to authoritative documents rather than duplicating definitions:
 | **Decisions (ADRs)** | [`docs/adr/`](docs/adr/) | One file per accepted design decision, e.g. [`0001-sod-tap-anchor-table.md`](docs/adr/0001-sod-tap-anchor-table.md). |
 | **Coding & Format Rules** | [`Cargo.toml`](Cargo.toml), [`pyproject.toml`](pyproject.toml), [`.editorconfig`](.editorconfig) | Clippy workspace lints, Ruff & Mypy configurations, LF line endings, and 4-space indentation. |
 
-Process documents, **not** sources of truth: [`docs/TEAM_SHEET.md`](docs/TEAM_SHEET.md) (roles, file blast radii, ticket status) and [`docs/playbooks/`](docs/playbooks/) (historical milestone plans). Never cite them for a fact about the system.
+Process documents, **not** sources of truth: [`docs/process/TEAM_SHEET.md`](docs/process/TEAM_SHEET.md) (roles, file blast radii, ticket status), under [`docs/process/`](docs/process/). Never cite them for a fact about the system.
 
 ---
 
@@ -56,8 +56,9 @@ Process documents, **not** sources of truth: [`docs/TEAM_SHEET.md`](docs/TEAM_SH
 4. Run `mise run check` to verify formatting, linter, typechecker, and test pass.
 
 ### SOP 2: Documenting Binary Analysis
-1. Place research notes under [`research/<binary-name>/`](research/) following the structure of [`research/playone-exe/startup.md`](research/playone-exe/startup.md).
+1. Put each finding in the note for its subject, by the routing rule in [`research/README.md`](research/README.md); follow the structure of [`research/playone-exe/startup.md`](research/playone-exe/startup.md).
 2. Document segment:offset addresses, register states, Mermaid flowcharts, and DGROUP tables.
+3. End the note with **Ruled out** and **Next probes**; keep evidentiary tiers out of headings.
 
 ### SOP 3: Verification & Handoff
 1. Run `git status` to ensure no files from `corpus/` or `target_bin/` are staged.

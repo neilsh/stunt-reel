@@ -64,7 +64,7 @@ Register the server in the agent's MCP configuration file (`~/.gemini/config/mcp
 | `crates/stunt-gltf/` | glTF 2.0 (`.glb`) exporter for shapes and single scene frames, driven by `stunt-cli export-gltf` |
 | `python/scripts/` | Entry points: `capture_playone_reference.py`, `verify_schemas_corpus.py`, `verify_formats_docs.py`, `adversarial_formats_challenge.py` |
 | `tests/` | Python suite and cleanroom fixtures — [`tests/fixtures/README.md`](tests/fixtures/README.md); Rust integration tests live in `crates/*/tests/` |
-| `docs/` | Living spec, architecture routing, memory map, team blueprint, and milestone playbooks |
+| `docs/` | Living spec, architecture routing, ADRs, and process documents (`process/`) |
 | `research/` | Format specifications beside their `.ksy` layouts plus `PLAYONE.EXE` analysis notes — [`research/formats/INDEX.md`](research/formats/INDEX.md) |
 | `corpus/` | Gitignored demo and archive data — [`corpus/README.md`](corpus/README.md) |
 | `target_bin/` | Gitignored original game binaries |
@@ -197,8 +197,7 @@ uv run pytest
 | [`docs/SPEC.md`](docs/SPEC.md) | Master specification, invariants `[I1]`–`[I8]`, evidentiary tiers, verification matrix |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 1-hop module routing to specification anchors and research notes |
 | [`research/playone-exe/memory-map.md`](research/playone-exe/memory-map.md) | `DGROUP` map and runtime anchors (`# [MEM-*]`) |
-| [`docs/TEAM_SHEET.md`](docs/TEAM_SHEET.md) | Multi-agent roles and file blast radii |
-| [`docs/playbooks/`](docs/playbooks/) | Milestone playbooks |
+| [`docs/process/TEAM_SHEET.md`](docs/process/TEAM_SHEET.md) | Multi-agent roles and file blast radii |
 | [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog and Kaitai layouts |
 | [`research/playone-exe/`](research/playone-exe/) | Startup, navigation, memory map, and capture harness notes |
 | [`corpus/README.md`](corpus/README.md) | How to populate the demo and archive data |

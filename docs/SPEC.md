@@ -3,7 +3,7 @@
 * **Project Name:** StuntReel
 * **Repository Identifier:** `stunt-reel`
 * **Binary CLI:** `stuntreel`
-* **Status:** Phases 0–2 delivered (Milestone 1 and 2 gates passed); Milestone 3 fidelity backlog open. Ticket-level status: [`TEAM_SHEET.md`](TEAM_SHEET.md)
+* **Status:** Phases 0–2 delivered (Milestone 1 and 2 gates passed); Milestone 3 fidelity backlog open. Ticket-level status: [`TEAM_SHEET.md`](process/TEAM_SHEET.md)
 * **Strategy:** Two-Phase Delivery (Phase 1: Runtime Memory Capture to glTF 2.0; Phase 2: Native Cleanroom Rust Engine)
 * **Methodology:** Cleanroom Reverse Engineering (Nanolathe), AI Hero Specification Architecture, & Offline Test-Driven Verification
 
@@ -24,7 +24,7 @@ Our engineering methodology is directly inspired by cleanroom reverse engineerin
 
 ### 1.2 Phased Delivery Architecture
 
-Delivery is sequential. This section records what each phase is for and whether it has shipped; per-ticket status, owners and milestone sign-offs live in [`TEAM_SHEET.md`](TEAM_SHEET.md).
+Delivery is sequential. This section records what each phase is for and whether it has shipped; per-ticket status, owners and milestone sign-offs live in [`TEAM_SHEET.md`](process/TEAM_SHEET.md).
 
 1. **Phase 0: Foundation, Cleanroom Scaffolding & Static Reverse Engineering *(Status: Complete)***
    * Cargo workspace (`stunt-core`, `stunt-render`, `stunt-cli`) and Python package (`stunt_reel`), managed reproducibly via `mise`.
@@ -40,7 +40,7 @@ Delivery is sequential. This section records what each phase is for and whether 
    * Asserts position error ($\text{RMSE} \le 0.01\text{ m}$) against the Phase 1 oracle trajectory and visual parity against captured frames (gates `G04` and `G07`).
 
 4. **Ongoing: Fidelity Backlog *(Status: Open; Milestone 3)***
-   * Decode and timing gaps found by the `CTRY.FLM` export audit, such as `OP_ANIMATE` semantics. Findings: [`research/parity-findings.md`](../research/parity-findings.md); tickets: [`TEAM_SHEET.md`](TEAM_SHEET.md).
+   * Decode and timing gaps found by the `CTRY.FLM` export audit, such as `OP_ANIMATE` semantics. Findings: [`research/parity-findings.md`](../research/parity-findings.md); tickets: [`TEAM_SHEET.md`](process/TEAM_SHEET.md).
 
 ---
 

@@ -46,7 +46,7 @@ def _citation_files() -> list[Path]:
 
 def test_core_docs_exist() -> None:
     """Verify that all core documentation files exist."""
-    for name in ("SPEC.md", "ARCHITECTURE.md", "TEAM_SHEET.md"):
+    for name in ("SPEC.md", "ARCHITECTURE.md", "process/TEAM_SHEET.md", "../research/README.md"):
         assert (REPO_ROOT / "docs" / name).exists(), f"Required documentation file missing: {name}"
 
 
