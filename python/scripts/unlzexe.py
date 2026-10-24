@@ -5,6 +5,10 @@ registers, image size and relocation linear offsets. Reads a proprietary executa
 local, gitignored ``target_bin/``; nothing it produces is committed (see ``AGENTS.md``).
 
 Usage: ``python python/scripts/unlzexe.py target_bin/PLAYONE.EXE build/re/playone.img``
+
+With ``--mz`` the output is instead a complete unpacked MZ executable (header plus image), for
+tools such as Ghidra that load MZ files:
+``python python/scripts/unlzexe.py --mz target_bin/PLAYONE.EXE build/re/playone_unpacked.exe``
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ import json
 import struct
 import sys
 from pathlib import Path
+from typing import cast
 
 
 def _relocations(d: bytes, loader: int) -> list[int]:
@@ -102,13 +107,52 @@ def unpack(d: bytes) -> tuple[bytearray, dict[str, object]]:
     return image, meta
 
 
+def to_mz(image: bytes | bytearray, meta: dict[str, object]) -> bytes:
+    """Wrap the image in an MZ header with a plain relocation table, for Ghidra's ``MzLoader``.
+
+    The header is padded to 512 bytes, which for `PLAYONE.EXE` gives the 1,024-byte header and
+    201,548-byte file recorded in ``research/playone-exe/startup.md``.
+    """
+    entry = cast("dict[str, int]", meta["entry"])
+    relocs = cast("list[int]", meta["relocs"])
+    hdr_len = -(-(0x1C + 4 * len(relocs)) // 512) * 512
+    total = hdr_len + len(image)
+    stack_top = entry["ss"] * 16 + entry["sp"]
+    min_alloc = max(0, -(-(stack_top - len(image)) // 16))
+    hdr = bytearray(hdr_len)
+    struct.pack_into(
+        "<2s13H",
+        hdr,
+        0,
+        b"MZ",
+        total % 512,
+        -(-total // 512),
+        len(relocs),
+        hdr_len // 16,
+        min_alloc,
+        0xFFFF,
+        entry["ss"],
+        entry["sp"],
+        0,
+        entry["ip"],
+        entry["cs"],
+        0x1C,
+        0,
+    )
+    for i, lin in enumerate(relocs):
+        struct.pack_into("<2H", hdr, 0x1C + 4 * i, lin & 0x0F, lin >> 4)
+    return bytes(hdr) + bytes(image)
+
+
 def main(argv: list[str]) -> int:
+    mz = "--mz" in argv
+    argv = [a for a in argv if a != "--mz"]
     if len(argv) != 3:
         print(__doc__)
         return 2
     image, meta = unpack(Path(argv[1]).read_bytes())
     out = Path(argv[2])
-    out.write_bytes(image)
+    out.write_bytes(to_mz(image, meta) if mz else image)
     Path(f"{out}.json").write_text(json.dumps(meta), encoding="utf-8")
     print(len(image), meta["entry"])
     return 0
