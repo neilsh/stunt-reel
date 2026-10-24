@@ -8,36 +8,50 @@ description: Runs stunt-reel's render-vs-PLAYONE parity loop (capture, render, s
 The research notes own the procedure. This skill says which note to read and how to run the loop cheaply. Read only the section you need:
 
 - **Where the loss is** (capture, render, score, compare): [`research/parity/method.md`](../../../research/parity/method.md) section 1.
-- **What is wrong** (crop, shift, actor IoU, candidate sweeps, environment pitfalls): [`research/parity/probes.md`](../../../research/parity/probes.md).
+- **What is wrong** (crop, shift, actor IoU, candidate sweeps, timing retime, environment pitfalls): [`research/parity/probes.md`](../../../research/parity/probes.md).
 - **What was already tried**, dead ends included: run `grep -n '^## ' research/parity-findings.md`, then read the one section. Do this before starting a hypothesis.
+
+## Goal contract
+
+One goal, four rounds at most:
+
+> Raise `CTRY.FLM` and `INTRO.FLM` `mean_ssim_scored` with changes observable in the renderer. Adopt a change only when it improves both films by more than 0.002 SSIM, or one film by more than 0.004 with the other within noise. Record every attempt, including negatives, in `research/parity-findings.md` and every adopted render change in `research/parity/log.md`. Scope: `CTRY` and `INTRO` only (`COL3-2` excluded). Stop after 4 rounds, after two consecutive rounds with no adoption, or when the next hypothesis needs `PLAYONE.EXE` disassembly, and write the handoff.
+
+One hypothesis class per round; all variants batched in one command; the round ends at the sweep result.
+
+## Adoption rule
+
+Adopt when **both** films gain more than 0.002 SSIM, or **one** gains more than 0.004 while the other moves less than 0.002 either way. Anything else is recorded as a negative and the change is reverted.
+
+0.002 is a policy bound, not a statistical model: separately built binaries of the same code scored 0.7706, 0.7708 and 0.7718 on CTRY while identical builds rendered byte-identically ([`method.md`](../../../research/parity/method.md) section 3). A margin under 0.002 is unattributable; the sweep marks it on the winner line.
 
 ## Workflow
 
 Copy this checklist into your task list and tick items off:
 
 ```
-- [ ] 1. Check parity-findings.md headings for prior attempts at this hypothesis
-- [ ] 2. Build once: cargo build --release -p stunt-cli
-- [ ] 3. Sweep all candidates in one command: mise run sweep -- --var DBG_X=a,b
-- [ ] 4. Score the winner on both CTRY and INTRO
+- [ ] 1. Baseline: mise run parity (two lines, both films)
+- [ ] 2. Check parity-findings.md headings for prior attempts at this hypothesis
+- [ ] 3. One hypothesis class: all variants in one sweep, or retime for timing
+- [ ] 4. Apply the adoption rule to the result
 - [ ] 5. Crop the winner and the worst mover; inspect only those
-- [ ] 6. Record the outcome, run mise run check, commit, write the handoff
+- [ ] 6. Record outcomes, run mise run check, commit, write the handoff
 ```
 
-If step 4 regresses either film, return to step 3 with a narrower hypothesis rather than adopting the change.
+If step 4 rejects the change, record the negative and end the round; do not chain a second hypothesis class onto a failed sweep.
 
 ## Cost rules
 
 Every turn re-sends the whole conversation, so the loop costs turns times context.
 
-1. **Build once, call the binary.** Run `target/release/stuntreel.exe`, never `cargo run` per render.
+1. **Build once, call the binary.** Run `target/release/stuntreel.exe`, never `cargo run` per render. `--no-build` on every tool reuses it.
 2. **One command per batch.** Loop render plus score over every candidate in one shell command that prints one line per candidate: the `[parity]` summary line, or the probe's single number. Run it in the background when it will take more than about 2 minutes.
-3. **Use the sweep tool.** `mise run sweep -- --var DBG_X=a,b [--films ctry,intro] [--probe iou] [--keep-best]` builds once, renders and scores the whole product on both films and prints one table plus the winner (probes.md section 4). Do not hand-roll render-and-score loops.
+3. **Use the tools.** `mise run parity` is the baseline; `mise run sweep -- --var DBG_X=a,b [--films ctry,intro] [--probe iou] [--keep-best]` builds once, renders and scores the whole product on both films and prints one table plus the winner (probes.md section 4); `parity_probe.py retime` (or `--reuse`/`--retime`) answers a timing question with no build (probes.md section 6). Do not hand-roll render-and-score loops.
 4. **Score both films.** CTRY-only gains have regressed INTRO three times (`parity-findings.md` section 11).
 5. **Never print a whole `report.json`.** Extract the fields you need with `python -c "import json; ..."`.
 6. **Look at pixels sparingly.** Use `parity_probe.py crop` on one region instead of reading full contact sheets, and only after the numbers point somewhere.
 7. **Scratch goes in `build/scratch/`** (gitignored), never `$TEMP`, whose Windows path breaks shell globs. Delete candidate render directories once scored. `PYTHONUTF8=1` is set for Python text I/O; committed scripts still pass `encoding="utf-8"`.
-8. **Never commit `DBG_*` switches.** `git checkout crates` removes them.
+8. **Never commit `DBG_*` switches.** `git checkout crates` removes them. Parse a switch's value with `std::env::var(...).ok().and_then(|v| v.parse().ok())`: `is_ok()` treats `"0"` as set, which silently scored the same build twice and cost two sweeps. The sweep's identical-variant warning exists to catch that.
 
 ## Finishing an item
 

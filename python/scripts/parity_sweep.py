@@ -9,13 +9,18 @@ and prints one table sorted best first, then the winner. Render directories live
 Usage::
 
     mise run sweep -- --var DBG_PITCH=0,-0.5 --var DBG_DY=-0.2,-0.3 [--films ctry,intro]
-        [--probe film|iou] [--keep-best] [--data-root DIR]
+        [--probe film|iou] [--keep-best] [--data-root DIR] [--no-build] [--retime N]
+    mise run sweep -- --reuse build/scratch/retime [--films ctry,intro] [--retime N]
 
 stdout carries only the table and the winner line; progress goes to stderr. Variants are ranked
 by mean SSIM over the films (then mean mask IoU), so a CTRY-only gain that costs INTRO shows up.
 ``--probe iou`` adds the actor-window IoU of ``parity_probe.py`` (its CTRY background ranges are
 used for every film). ``--data-root`` points at a checkout holding ``corpus/`` and
-``build/parity/reference/`` when this one (a worktree) has none.
+``build/parity/reference/`` when this one (a worktree) has none. ``--no-build`` reuses the
+existing release binary, ``--reuse DIR`` scores an existing ``DIR/<film>`` tree without
+rendering, and ``--retime N`` relabels each film directory by N ticks before scoring (see
+``parity_probe.py retime``). Two variants that score identically to four decimals produce a
+warning, and a winner within the 0.002 adoption floor says so.
 """
 
 from __future__ import annotations
@@ -29,11 +34,13 @@ import shutil
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import parity_probe
+from parity_probe import capture_ticks
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SCRATCH = Path("build/scratch/sweep")
@@ -80,6 +87,7 @@ class Variant:
     index: int
     values: tuple[str, ...]
     scores: dict[str, Score | None]
+    renders: dict[str, Path] = field(default_factory=dict)
 
     def mean_ssim(self) -> float | None:
         return self._mean([s.ssim if s else None for s in self.scores.values()])
@@ -204,16 +212,18 @@ def binary_path() -> Path:
 def run(cmd: list[str], env: dict[str, str] | None = None) -> None:
     """Runs a command with its output captured; raises with the output's tail on failure."""
     done = subprocess.run(  # noqa: S603 - fixed argument vectors, no shell
-        cmd, cwd=REPO_ROOT, env=env, capture_output=True, text=True, errors="replace", check=False
+        cmd,
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
     )
     if done.returncode != 0:
         tail = "\n".join((done.stdout + done.stderr).strip().splitlines()[-8:])
         raise RuntimeError(f"{Path(cmd[0]).name} exited {done.returncode}: {tail}")
-
-
-def capture_ticks(reference: Path) -> list[int]:
-    meta = json.loads((reference / "meta.json").read_text(encoding="utf-8"))
-    return [int(f["film_tick"]) for f in meta["frames"]]
 
 
 #: Sidecar ``stunt-cli --headless`` writes beside its frames (``PALETTE_SIDECAR_NAME``).
@@ -248,24 +258,36 @@ def check_render(reference: Path, render: Path, ticks: list[int]) -> None:
         )
 
 
-def score_film(
-    name: str, film: Film, root: Path, workdir: Path, env: dict[str, str], probe: str
-) -> Score:
-    """Renders ``film`` into ``workdir`` with ``env`` and scores it against its capture."""
-    reference = root / film.reference
-    render, report = workdir / name, workdir / f"{name}_report"
-    ticks = capture_ticks(reference)
-    frames = render_range(ticks)
+def render_film(film: Film, root: Path, render: Path, env: dict[str, str] | None) -> None:
+    """Renders ``film`` into ``render`` with ``env`` in the environment."""
     exe = str(binary_path())
     run(
         [
             *(exe, "--headless", str(root / film.flm), "--all", str(root / film.all)),
-            *("--frames", frames, "--sidata", str(root / film.sidata), "--out-dir", str(render)),
+            *(
+                "--frames",
+                render_range(capture_ticks(root / film.reference)),
+                "--sidata",
+                str(root / film.sidata),
+                "--out-dir",
+                str(render),
+            ),
             *RENDER_FLAGS,
         ],
         env,
     )
-    check_render(reference, render, ticks)
+
+
+def check_film(film: Film, root: Path, render: Path) -> None:
+    """Refuses a render of ``film`` that cannot be scored against its capture."""
+    reference = root / film.reference
+    check_render(reference, render, capture_ticks(reference))
+
+
+def score_dir(film: Film, root: Path, render: Path, report: Path, probe: str) -> Score:
+    """Scores the render directory ``render`` of ``film`` against its capture."""
+    reference = root / film.reference
+    exe = str(binary_path())
     run(
         [
             *(exe, "parity", "--reference", str(reference), "--test", str(render)),
@@ -280,12 +302,24 @@ def score_film(
     return Score(ssim, iou, actor)
 
 
-def write_crops(films: list[str], root: Path, workdir: Path) -> list[Path]:
+def score_film(
+    name: str, film: Film, root: Path, workdir: Path, env: dict[str, str], probe: str
+) -> Score:
+    """Renders ``film`` into ``workdir`` with ``env`` and scores it against its capture."""
+    render, report = workdir / name, workdir / f"{name}_report"
+    render_film(film, root, render, env)
+    check_film(film, root, render)
+    return score_dir(film, root, render, report, probe)
+
+
+def write_crops(
+    films: list[str], root: Path, workdir: Path, renders: dict[str, Path]
+) -> list[Path]:
     """Writes ``parity_probe.py crop`` PNGs of the frame with the largest actor, per film."""
     written: list[Path] = []
     for name in films:
         report_json = workdir / f"{name}_report" / "report.json"
-        reference, render = root / FILMS[name].reference, workdir / name
+        reference, render = root / FILMS[name].reference, renders[name]
         best: tuple[int, dict[str, int], list[int]] | None = None
         for frame in parity_probe.scored_frames(report_json):
             layer = (render / f"tick_{frame['film_tick']:05d}.layer").read_bytes()
@@ -302,22 +336,174 @@ def write_crops(films: list[str], root: Path, workdir: Path) -> list[Path]:
     return written
 
 
+#: Adoption floor: a margin under this is not attributable to a change (probes.md section 6).
+NOISE_FLOOR = 0.002
+
+
+def build_release() -> None:
+    """Builds the release binary once, since every render and score runs it."""
+    run(["cargo", "build", "--release", "-p", "stunt-cli"])
+
+
+def binary_locked(path: Path) -> bool:
+    """Whether a process holds ``path`` open for writing (Windows refuses that on a running exe)."""
+    if os.name != "nt" or not path.is_file():
+        return False
+    try:
+        with path.open("r+b"):
+            return False
+    except PermissionError:
+        return True
+
+
+def preflight(
+    root: Path,
+    films: list[str],
+    *,
+    build_required: bool,
+    locked: Callable[[Path], bool] = binary_locked,
+) -> list[str]:
+    """Problems that stop a sweep or baseline before any build or render starts."""
+    problems: list[str] = []
+    for name in films:
+        film = FILMS[name]
+        for path in (film.flm, film.all, film.sidata):
+            if not (root / path).exists():
+                problems.append(f"missing input {root / path} (try --data-root)")
+        reference = root / film.reference
+        if not (reference / "meta.json").is_file():
+            problems.append(f"missing capture {reference} (run `mise run capture-ref`)")
+    if build_required and locked(binary_path()):
+        problems.append("release binary is in use; rerun with --no-build or wait")
+    return problems
+
+
+def format_summary(name: str, report: Path) -> str:
+    """One line naming a scored film: ``ctry  ssim ... iou ... idx ... scored n/m``."""
+    data = json.loads((report / "report.json").read_text(encoding="utf-8"))
+    ssim, iou = parse_report(data)
+    index = data.get("mean_index_agreement_scored")
+    scored = data.get("scored_frames", 0)
+    frames = data.get("frames", len(data.get("per_frame", [])))
+    index_text = "-" if index is None else f"{float(index):.3f}"
+    return f"{name:<5} ssim {ssim:.4f}  iou {iou:.4f}  idx {index_text}  scored {scored}/{frames}"
+
+
+def _same_scores(left: Score | None, right: Score | None) -> bool:
+    if left is None or right is None:
+        return False
+    return round(left.ssim, 4) == round(right.ssim, 4) and round(left.iou, 4) == round(right.iou, 4)
+
+
+def identical_variant_pairs(variants: list[Variant]) -> list[tuple[Variant, Variant]]:
+    """Pairs whose per-film SSIM and IoU both agree to four decimals."""
+    pairs: list[tuple[Variant, Variant]] = []
+    for left, right in itertools.combinations(variants, 2):
+        films = left.scores.keys() & right.scores.keys()
+        if films and all(_same_scores(left.scores[f], right.scores[f]) for f in films):
+            pairs.append((left, right))
+    return pairs
+
+
+def noise_note(margin: float) -> str:
+    """Appended to a winner line when the lead over the runner-up is inside the noise floor."""
+    if margin < NOISE_FLOOR:
+        return " (noise floor +/-0.002; winner is ~within noise)"
+    return ""
+
+
+def validate_selector(reuse: Path | None, specs: list[str]) -> None:
+    """``--var`` is required for a sweep and forbidden with ``--reuse``."""
+    if reuse is not None and specs:
+        raise ValueError("--var cannot be combined with --reuse")
+    if reuse is None and not specs:
+        raise ValueError("--var is required unless --reuse is given")
+
+
+def prepare_render(
+    name: str, film: Film, root: Path, workdir: Path, env: dict[str, str], by: int | None
+) -> Path:
+    """Renders ``film`` into ``workdir/<name>``, checks it, and returns its retimed copy."""
+    render = workdir / name
+    render_film(film, root, render, env)
+    check_film(film, root, render)
+    if by is None:
+        return render
+    retimed = workdir / f"{name}_retime"
+    shutil.rmtree(retimed, ignore_errors=True)
+    parity_probe.retime_render(
+        render, root / film.reference, retimed, by, force=True, allow_missing=True
+    )
+    return retimed
+
+
+def run_reuse(args: argparse.Namespace, films: list[str], root: Path) -> int:
+    """Scores ``--reuse DIR``'s per-film render trees without rendering."""
+    reuse: Path = args.reuse
+    if not reuse.is_dir():
+        print(f"parity_sweep: --reuse directory not found: {reuse}", file=sys.stderr)
+        return 2
+    failures = 0
+    for name in films:
+        film = FILMS[name]
+        try:
+            render = reuse / name
+            if not render.is_dir():
+                raise ValueError(f"{render} is not a render directory")
+            check_film(film, root, render)
+            if args.retime is not None:
+                retimed = reuse / f"{name}_retime"
+                shutil.rmtree(retimed, ignore_errors=True)
+                parity_probe.retime_render(
+                    render,
+                    root / film.reference,
+                    retimed,
+                    args.retime,
+                    force=True,
+                    allow_missing=True,
+                )
+                render = retimed
+            if not (render / RENDER_SIDECAR).is_file():
+                print(
+                    f"warning: {render} has no {RENDER_SIDECAR}; the measured fade decides",
+                    file=sys.stderr,
+                )
+            report = reuse / f"{name}_report"
+            score_dir(film, root, render, report, args.probe)
+            print(format_summary(name, report))
+        except (RuntimeError, ValueError, OSError, KeyError) as err:
+            failures += 1
+            print(
+                f"parity_sweep: {name} FAILED ({str(err).splitlines()[0][:120]})",
+                file=sys.stderr,
+            )
+    return 0 if failures == 0 else 1
+
+
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
-        "--var", action="append", required=True, metavar="DBG_NAME=v1,v2", help="repeatable"
+        "--var", action="append", default=None, metavar="DBG_NAME=v1,v2", help="repeatable"
     )
     parser.add_argument("--films", default=",".join(FILMS), help="comma list; default: all")
     parser.add_argument("--probe", choices=("film", "iou"), default="film")
     parser.add_argument("--keep-best", action="store_true", help="keep the winner's render dirs")
     parser.add_argument("--data-root", type=Path, default=REPO_ROOT, help="holds corpus/, captures")
+    parser.add_argument("--no-build", action="store_true", help="reuse the release binary")
+    parser.add_argument(
+        "--reuse", type=Path, default=None, help="score DIR/<film> without rendering"
+    )
+    parser.add_argument(
+        "--retime", type=int, default=None, metavar="N", help="relabel each film by N ticks"
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        parsed = [parse_var(spec) for spec in args.var]
+        validate_selector(args.reuse, args.var or [])
+        parsed = [parse_var(spec) for spec in args.var or []]
         names = [n for n, _ in parsed]
         combos = expand_variants(names, [v for _, v in parsed])
         films = [f.strip() for f in args.films.split(",") if f.strip()]
@@ -328,26 +514,23 @@ def main(argv: list[str] | None = None) -> int:
         print(f"parity_sweep: {err}", file=sys.stderr)
         return 2
     root: Path = args.data_root.resolve()
-    missing = [
-        str(root / p)
-        for f in films
-        for p in (FILMS[f].flm, FILMS[f].all, FILMS[f].sidata, FILMS[f].reference)
-        if not (root / p).exists()
-    ]
-    if missing:
-        print(
-            "parity_sweep: missing inputs (try --data-root):\n  " + "\n  ".join(missing),
-            file=sys.stderr,
-        )
+    problems = preflight(root, films, build_required=not args.no_build)
+    if problems:
+        print("parity_sweep: " + "\n  ".join(problems), file=sys.stderr)
         return 2
 
-    print(f"[sweep] cargo build --release -p stunt-cli; {len(combos)} variant(s)", file=sys.stderr)
-    try:
-        run(["cargo", "build", "--release", "-p", "stunt-cli"])
-    except RuntimeError as err:
-        print(f"parity_sweep: build failed: {err}", file=sys.stderr)
-        return 1
+    if not args.no_build:
+        print("[sweep] cargo build --release -p stunt-cli", file=sys.stderr)
+        try:
+            build_release()
+        except RuntimeError as err:
+            print(f"parity_sweep: build failed: {err}", file=sys.stderr)
+            return 1
 
+    if args.reuse is not None:
+        return run_reuse(args, films, root)
+
+    print(f"[sweep] {len(combos)} variant(s)", file=sys.stderr)
     scratch = REPO_ROOT / SCRATCH
     variants: list[Variant] = []
     best: Variant | None = None
@@ -361,7 +544,16 @@ def main(argv: list[str] | None = None) -> int:
             notes = []
             for film in films:
                 try:
-                    score = score_film(film, FILMS[film], root, workdir, env, args.probe)
+                    variant.renders[film] = prepare_render(
+                        film, FILMS[film], root, workdir, env, args.retime
+                    )
+                    score = score_dir(
+                        FILMS[film],
+                        root,
+                        variant.renders[film],
+                        workdir / f"{film}_report",
+                        args.probe,
+                    )
                     variant.scores[film] = score
                     notes.append(f"{film} {score.ssim:.4f}")
                 except (RuntimeError, ValueError, OSError, KeyError) as err:
@@ -391,10 +583,20 @@ def main(argv: list[str] | None = None) -> int:
 
     ordered = rank(variants)
     print(format_table(names, films, ordered, args.probe))
+    for left, right in identical_variant_pairs(ordered)[:3]:
+        print(
+            f"warning: variants {label(names, left.values)} and {label(names, right.values)}"
+            " scored identically; the switch may not be wired",
+            file=sys.stderr,
+        )
     line = winner_line(names, ordered)
+    if len(ordered) > 1:
+        first, second = ordered[0].mean_ssim(), ordered[1].mean_ssim()
+        if first is not None and second is not None:
+            line += noise_note(first - second)
     if best is not None:
         workdir = scratch / f"v{best.index:03d}"
-        crops = write_crops(films, root, workdir)
+        crops = write_crops(films, root, workdir, best.renders)
         line += f"; kept {SCRATCH / workdir.name}" + (f", crops {len(crops)}" if crops else "")
     print(line)
     return 0

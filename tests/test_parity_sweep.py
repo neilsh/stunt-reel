@@ -173,3 +173,97 @@ def test_check_render_refuses_a_render_without_planes(tmp_path: Path) -> None:
     (render / "tick_00007.layer").unlink()
     with pytest.raises(ValueError, match="no render planes for 2 captured tick"):
         parity_sweep.check_render(reference, render, [7, 9])
+
+
+def _report(tmp_path: Path, **fields: float | int | None) -> Path:
+    report = tmp_path / "report"
+    report.mkdir()
+    (report / "report.json").write_text(json.dumps(fields), encoding="utf-8")
+    return report
+
+
+def test_format_summary_names_the_scored_means(tmp_path: Path) -> None:
+    report = _report(
+        tmp_path,
+        mean_ssim_scored=0.77322346,
+        mean_iou_scored=0.97829825,
+        mean_index_agreement_scored=0.5046078,
+        scored_frames=114,
+        frames=140,
+    )
+    assert (
+        parity_sweep.format_summary("ctry", report)
+        == "ctry  ssim 0.7732  iou 0.9783  idx 0.505  scored 114/140"
+    )
+
+
+def test_format_summary_marks_a_missing_index_agreement(tmp_path: Path) -> None:
+    report = _report(tmp_path, mean_ssim=0.7, mean_iou=0.9, mean_index_agreement_scored=None)
+    assert parity_sweep.format_summary("intro", report).startswith("intro ssim 0.7000")
+    assert " idx - " in parity_sweep.format_summary("intro", report)
+
+
+def test_identical_variants_are_flagged_to_four_decimals() -> None:
+    first = _variant(1, "0", 0.771234, 0.676234)
+    second = _variant(2, "1", 0.771236, 0.676236)
+    third = _variant(3, "-1", 0.7723, 0.6773)
+    pairs = parity_sweep.identical_variant_pairs([first, third, second])
+    assert [(left.index, right.index) for left, right in pairs] == [(1, 2)]
+
+
+def test_identical_variants_accepts_a_legitimate_tie() -> None:
+    pairs = parity_sweep.identical_variant_pairs([_variant(1, "0", 0.77, 0.67)] * 2)
+    assert len(pairs) == 1  # a warning, never a failure
+    assert parity_sweep.identical_variant_pairs([_variant(1, "0", 0.77, 0.67)]) == []
+
+
+def test_noise_note_appears_only_inside_the_adoption_floor() -> None:
+    assert "within noise" in parity_sweep.noise_note(0.0019)
+    assert parity_sweep.noise_note(0.002) == ""
+    assert parity_sweep.noise_note(0.01) == ""
+
+
+def _input_tree(tmp_path: Path) -> Path:
+    """A data root holding every corpus input and reference capture of both films."""
+    for film in ("ctry", "intro"):
+        inputs = parity_sweep.FILMS[film]
+        for path in (inputs.flm, inputs.all):
+            target = tmp_path / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"")
+        (tmp_path / inputs.sidata).mkdir(parents=True, exist_ok=True)
+        reference = tmp_path / inputs.reference
+        reference.mkdir(parents=True, exist_ok=True)
+        (reference / "meta.json").write_text('{"frames": []}', encoding="utf-8")
+    return tmp_path
+
+
+def test_preflight_names_a_missing_capture(tmp_path: Path) -> None:
+    root = _input_tree(tmp_path)
+    (root / parity_sweep.FILMS["intro"].reference / "meta.json").unlink()
+    problems = parity_sweep.preflight(
+        root, ["ctry", "intro"], build_required=False, locked=lambda _path: False
+    )
+    assert len(problems) == 1
+    assert "capture-ref" in problems[0]
+
+
+def test_preflight_names_a_locked_release_binary(tmp_path: Path) -> None:
+    root = _input_tree(tmp_path)
+    problems = parity_sweep.preflight(
+        root, ["ctry"], build_required=True, locked=lambda _path: True
+    )
+    assert problems == ["release binary is in use; rerun with --no-build or wait"]
+    assert (
+        parity_sweep.preflight(root, ["ctry"], build_required=False, locked=lambda _path: True)
+        == []
+    )
+
+
+def test_validate_selector_requires_var_or_reuse() -> None:
+    parity_sweep.validate_selector(None, ["DBG_X=0,1"])
+    parity_sweep.validate_selector(Path("dir"), [])
+    with pytest.raises(ValueError, match="--var cannot be combined"):
+        parity_sweep.validate_selector(Path("dir"), ["DBG_X=0,1"])
+    with pytest.raises(ValueError, match="--var is required"):
+        parity_sweep.validate_selector(None, [])
