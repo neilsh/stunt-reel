@@ -63,6 +63,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--stage", type=Path, default=Path("dosbox-parity.conf"), help="DOSBox-X config"
     )
+    parser.add_argument(
+        "--dump-all-segments",
+        action="store_true",
+        help="also dump all 16 real-mode segments at each sample (60 KiB each)",
+    )
     return parser.parse_args()
 
 
@@ -80,7 +85,7 @@ def magnitude(values: list[int]) -> float:
     return float(round(total**0.5, 1))
 
 
-def sample(client: TacClient, tick: int, work: int, out: Path) -> None:
+def sample(client: TacClient, tick: int, work: int, out: Path, *, dump_all: bool = False) -> None:
     """Prints and dumps one sample of the lighting state."""
     light = signed_words(client, work, LIGHT_OFFSET, 3)
     billboard = signed_words(client, work, SUN_BILLBOARD_OFFSET, 3)
@@ -95,6 +100,11 @@ def sample(client: TacClient, tick: int, work: int, out: Path) -> None:
     (out / f"ds_t{tick}.bin").write_bytes(
         client.read_memory(f"{playone.DGROUP_RUNTIME_SEG:04X}:0000", SEGMENT_BYTES)
     )
+    if dump_all:
+        for segment in range(0x10):
+            (out / f"seg_{segment:04X}.bin").write_bytes(
+                client.read_memory(f"{segment:04X}:0000", SEGMENT_BYTES)
+            )
 
 
 def run(args: argparse.Namespace) -> int:
@@ -132,7 +142,7 @@ def run(args: argparse.Namespace) -> int:
                 continue
             pending.pop(0)
             work = client.read_u16(f"{playone.DGROUP_RUNTIME_SEG:04X}:{WORK_SEGMENT_POINTER:04X}")
-            sample(client, tick, work, out)
+            sample(client, tick, work, out, dump_all=args.dump_all_segments)
         return 0
     finally:
         client.close()

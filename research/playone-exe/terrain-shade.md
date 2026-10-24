@@ -124,3 +124,14 @@ Because the index composition adds a non-negative offset to a per-polygon base b
 
 1. **Decode the ground display list** from the dumped work/DGROUP segments (or a fresh LOAD FILM-dialog dump): polygon records with their colour byte, vertex registers and `SHADES` normal blocks. Compare its per-polygon colours with `MAP.BIN`'s patch colours; that decides between re-baking our terrain colours and rendering the player's display list directly.
 2. **The per-shot light source.** `L` is mostly straight up and tilts on some shots; the caller of `0x9100` is still unknown, but with the harness above we can now sample `L` per frame and correlate it with `DS:0x49EC` and the film vars instead of guessing.
+
+## 11. Where the world list is not (round 6)
+
+All 16 conventional segments of a live frame (film clock 276) were dumped with
+`probe_playone_light.py --dump-all-segments` and searched for the display-list opcode words
+`0x0156`/`0x0168`/`0x02BE` and for ground-record structure (colour byte 192-199, shade-array
+offset below `0x800`, vertex count 3-8). Nothing found: every opcode-word hit is inside code, and
+the structural scan has zero candidates. The display list is therefore outside conventional memory
+(EMS/XMS are plausible: the image carries the `EMMXXXX0` EMS check string) or in a segment tail the
+`0xF000`-byte dump skips. Also note the opcode handlers above are shared with props, so the terrain
+path should be confirmed by breaking at the handler rather than assumed.
