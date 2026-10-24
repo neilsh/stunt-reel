@@ -3,7 +3,7 @@
 * **Binary**: `PLAYONE.EXE` (LZEXE 0.91), unpacked with [`unlzexe.py`](../../python/scripts/unlzexe.py) to the load image `build/re/playone.img`
 * **Method**: Capstone 16-bit disassembly of the load image, located from the patch signature in Alberto Marnetto's article [*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island) (2024-11-20). The article analyses `STUNT.EXE` and states that `MAKEONE` and `PLAYONE` share the rendering code.
 * **Scope**: where the detail setting enters the renderer, the distance comparison it scales, and what that means for parity captures
-* **Evidence tier**: `[Established]` for the instruction sequences, the data flow and the walker being the `SP_1NODE` handler (section 1.1); `[Supported Inference]` for `0x229C` being the projection scale and for the distance in `CX` being view-space depth; `[Unknown]` for the walker's outer caller
+* **Evidence tier**: `[Established]` for the instruction sequences, the data flow and the walker being the `SP_1NODE` handler (section 1.1); `[Established]` for `0x229C` coming from film variable `view_obj` (section 2.1); `[Supported Inference]` for that variable being the camera's zoom and for the distance in `CX` being view-space depth; `[Unknown]` for the walker's outer caller
 
 Offsets are load-image offsets, and `DS:` offsets are DGROUP-relative (image `0xD510 + off`; see [`static-tooling.md`](static-tooling.md) section 3).
 
@@ -66,13 +66,21 @@ Alberto Marnetto's MIT-licensed `si-free-flight-2` (`scenegraph_loader.cpp`, [`s
 | Step | Address | Instruction | Meaning |
 |---|---|---|---|
 | Load `game.var` | `0x0DB8` | `mov dx, 0x5B5; mov cx, 0x710; call 0x4790` | Reads the file named at `DS:0x05B5` (`"game.var"`) into `DS:0x0710`. The first word is the detail setting. |
-| Per-shot scale | `0x120A..0x1223` | `mul [0x22B6]`, normalise, `mov [0x229C], ax` | Builds `0x229C` from a film variable (`[bx+si+0x7E]`) times `0x22B6`. It is also copied to `work:0x8108`, which the sun-disc drawer `0x908E` reads. |
+| Per-shot scale | `0x11FC..0x1223` | `mov ax, [bx+si+0x7E]`, `mul [0x22B6]`, normalise, `mov [0x229C], ax` | Builds `0x229C` from film variable `view_obj` (section 2.1) times `0x22B6`. It is also copied to `work:0x8108`, which the sun-disc drawer `0x908E` reads. |
 | Detail word | `0x1242..0x124D` | `mov ax, [0x229C]; mul [0x0710]; shl ax,1; rcl dx,1; mov [0x22A4], dx` | `0x22A4 = (0x229C × detail × 2) >> 16` |
 | Use | `0x212D` | `mul [0x22A4]` | The only reader |
 
 `0x22A4` has exactly one writer (`0x124D`) and one reader (`0x212D`) in a whole-image decode. The threshold therefore scales with **both** the detail setting and the per-shot scale `0x229C`. A zoomed shot keeps fine detail further out than a wide one at the same distance. `[Established]` for the data flow; `[Supported Inference]` that `0x229C` is the projection (zoom) scale, from its copy at `work:0x8108`, which the sun-disc drawer uses as a size scale.
 
 The detail scale matches the article: `0xFFFF` is 100%, and the in-game slider writes values such as `0xFD70` (99%) and `0x028F` (1%).
+
+### 2.1 The Film Variable Is The View Camera's Lens
+
+* **Index.** The frame step's caller (`0x4A2F`) loads `BX = 0x4888` and `AX = [0x4888 + 0x1A]`, then calls `0x0EE9`. That routine pushes `AX` (`0x0F4A`) and passes it to `0x11FC`, where `SI = 2 × AX` and the variable is `[BX + SI + 0x7E]`. The only film-opcode writer of `+0x1A` is the `view_obj` handler: `0x3D0D` subtracts `0x98` from opcodes `0x90..0x97` and `0x3D7B` adds 8 back before `mov [bx+0x1A], ax` (`0x3D7F`). So `+0x1A` is `view_obj`, 0 to 7, and the variable is **film variable `n` while camera `n` is the view**. `[BX + SI + 0x2E]` in the same routine is that camera's object pointer, from the object table the create and interp handlers index (`0x3CE7`, `0x3CF8`). `[Established]` for the data flow; `[Supported Inference]` that the variable is the camera's zoom.
+* **Multiplier.** `0x22B6` is written only by `0x11F8`. Its caller at `0x4A29` passes `0x7FFF`.
+* **Normalisation.** `0x120E..0x121F` shifts `DX:AX = var × 0x7FFF` left until bit 14 of `DX` is set, at most three times. `0x229C` is then `DX` and `0x229E` the unused shift count. With the full detail word, `[0x22A4] / 0x10000` is therefore a mantissa in about `[0.5, 1)` for any lens of 4096 or more.
+* **Film values.** Both parity films set variables 0 to 3 to 8192 at tick 0. That gives three shifts, `0x229C = 0x7FFF` and `[0x22A4] = 0xFFFD`, a scale of 0.99995. `INTRO.FLM` also uses 20480 (scale 0.625, camera 4), 44236 (0.675, camera 1 from tick 1216) and 10649 (0.65, camera 7), listed with [`flm_events.py`](../../python/scripts/flm_events.py). Variables 0 to 7 have no fixed-offset reader ([`palette-fade.md`](palette-fade.md) section 3.2) because this index-driven read is their reader.
+* **Renderer.** The film evaluator has no lens: `fov_degrees` stays 45 for every camera, so `INTRO.FLM`'s zoomed shots are drawn wide. A per-frame level-of-detail patch carried `var[view_obj]` and reproduced `0x120A..0x124D`, but it was not adopted ([`parity-findings.md` § 28](../parity-findings.md)).
 
 ## 3. Capture Invariant: No `GAME.VAR`, So Full Detail
 
@@ -86,9 +94,10 @@ The detail scale matches the article: `0xFFFF` is 100%, and the in-game slider w
 * This gate is separate from the model bytecode's own `iftrue complex1..3` branches and from `OP_IFVIS` condition 1, whose `D^2 >= 1000 m^2` reading is still a `[Supported Inference]` ([`sod.md`](../formats/sod.md) section 4, Q-SOD-01 and Q-SOD-05).
 
 * `world.rs` builds the world once per film, so it cannot switch level of detail per frame. It keeps an `SP_1NODE`'s subtree when the camera path ever comes within the threshold and draws the stand-in otherwise. It also uses Euclidean distance to the camera path for `CX` and a fixed scale of 0.5 for `[0x22A4] / 0x10000` (section 2's normalised range is `[0.5, 1)`). Scored in [`parity-findings.md` § 26](../parity-findings.md).
+* Selecting the branch per frame, from view-space depth and the lens scale of section 2.1 (about 1.0 for the parity films' default lens), scored within noise of the static rule and was not adopted ([`parity-findings.md` § 28](../parity-findings.md)).
 
 ## 5. Open Items
 
 * **The walker's outer caller.** The pending-node stack popped at `0x1B8C` and its feeder `0x1B75` (`xchg di, [bx+0x2346]`) are known; the routine that seeds the root hasn't been traced. It is also a static route to the code that hands ground objects to the display-list VM ([`parity/handoff-ground-shade.md`](../parity/handoff-ground-shade.md)).
 * **The exponent `0x229E`.** `0x1200..0x1226` normalises `0x229C` with at most three shifts and stores the count at `0x229E`. The frustum test shifts `ext` by it (`0x20E2`), but the threshold at `0x2121` does not, so the units of `CX` against `splitdist` at other zoom levels are open.
-* **The film variable** read at `0x1200` (`[bx+si+0x7E]`, see [`startup.md`](startup.md) section 5 for the variable addressing) that drives `0x229C`.
+* **The lens's projection.** Section 2.1 identifies the variable. How `0x229C` and `0x229E` scale the projection, and so the field of view per lens, hasn't been read.
