@@ -458,6 +458,19 @@ pub(crate) fn execute_sod_vm_impl(
     lenient: bool,
     anchors: Option<&[AnchorPoint]>,
 ) -> Result<(SodHeader, Vec<RawPolygon>, Option<SodStop>), SodError> {
+    run_vm(data, lenient, anchors, None)
+}
+
+/// Shared VM loop. With `census` set the run is lenient, and opcodes listed in
+/// [`CENSUS_SKIPS`] (plus `OP_TAP` without anchors) are logged and stepped over
+/// instead of ending the run.
+fn run_vm(
+    data: &[u8],
+    lenient: bool,
+    anchors: Option<&[AnchorPoint]>,
+    mut census: Option<&mut CensusLog>,
+) -> Result<(SodHeader, Vec<RawPolygon>, Option<SodStop>), SodError> {
+    let lenient = lenient || census.is_some();
     if data.len() < 10 {
         return Err(SodError::UnexpectedEof {
             expected: 10,
@@ -829,6 +842,17 @@ pub(crate) fn execute_sod_vm_impl(
                 let table = match anchors {
                     Some(points) if !points.is_empty() => points,
                     _ => {
+                        if let Some(log) = census.as_deref_mut() {
+                            for _ in 0..count {
+                                r.read_u16_le()?;
+                            }
+                            log.skipped.push(SodSkip {
+                                offset: op_offset,
+                                opcode,
+                                reason: SodStopReason::MissingAnchors,
+                            });
+                            continue;
+                        }
                         if lenient {
                             return Ok((
                                 header,
@@ -896,9 +920,32 @@ pub(crate) fn execute_sod_vm_impl(
             }
             OP_RETURN => {
                 // Bytecode termination
+                if let Some(log) = census.as_deref_mut() {
+                    log.return_offset = Some(op_offset);
+                }
                 break;
             }
             _ => {
+                if let Some(log) = census.as_deref_mut()
+                    && let Some(skip) = census_skip(opcode)
+                {
+                    let mut words = usize::from(skip.fixed_words);
+                    for i in 0..skip.fixed_words {
+                        let word = r.read_u16_le()?;
+                        if skip.count_word == Some(i) {
+                            words += usize::from(word);
+                        }
+                    }
+                    for _ in usize::from(skip.fixed_words)..words {
+                        r.read_u16_le()?;
+                    }
+                    log.skipped.push(SodSkip {
+                        offset: op_offset,
+                        opcode,
+                        reason: SodStopReason::UnknownOpcode,
+                    });
+                    continue;
+                }
                 if lenient {
                     return Ok((
                         header,
@@ -919,4 +966,161 @@ pub(crate) fn execute_sod_vm_impl(
     }
 
     Ok((header, polygons, None))
+}
+
+/// Operand layout the census walk assumes when stepping over an unimplemented opcode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CensusSkip {
+    /// The opcode word.
+    pub opcode: u16,
+    /// Mnemonic from `formats/sod.md` § 3.2, without the `OP_` prefix.
+    pub mnemonic: &'static str,
+    /// Operand words that always follow the opcode.
+    pub fixed_words: u16,
+    /// Index, among the fixed words, of a count of further words that follow them.
+    pub count_word: Option<u16>,
+}
+
+const fn skip(opcode: u16, mnemonic: &'static str, fixed_words: u16) -> CensusSkip {
+    CensusSkip {
+        opcode,
+        mnemonic,
+        fixed_words,
+        count_word: None,
+    }
+}
+
+/// Operand widths for opcodes the VM does not implement, used only by [`walk_sod`].
+///
+/// Widths come from the operand column of `research/formats/sod.md` § 3.2, which follows the
+/// community `SOD.H` rather than the binary (`OP_ANIMATE` excepted), so a wrong entry
+/// desynchronises the walk. Opcodes whose operands § 3.2 gives as `...` or unknown are left
+/// out, and the walk ends on them.
+///
+/// The table holds only unimplemented opcodes: implementing an opcode in the VM loop means
+/// deleting its entry here. `vm_tests` fails while an entry shadows a real handler.
+pub const CENSUS_SKIPS: &[CensusSkip] = &[
+    skip(0x0051, "BLOKADD", 3),
+    skip(0x005A, "BLOKNEG", 3),
+    skip(0x007E, "PUSHCENTRE", 0),
+    skip(0x0087, "POPCENTRE", 0),
+    skip(0x0090, "MOVECENTRE", 1),
+    skip(0x00AB, "LINETO", 1),
+    skip(0x00C6, "HUGELINETO", 1),
+    skip(0x00CF, "VLINETO", 1),
+    skip(0x00D8, "VOTEVIS", 1),
+    skip(0x00E1, "VOTEHID", 1),
+    CensusSkip {
+        opcode: 0x00EA,
+        mnemonic: "POLY",
+        fixed_words: 1,
+        count_word: Some(0),
+    },
+    skip(0x0105, "DISC", 2),
+    skip(0x0144, "SHADE1", 2),
+    skip(0x014D, "SHADE2", 2),
+    skip(0x0183, "BVIS", 2),
+    skip(0x019E, "GOTO", 1),
+    skip(0x01A7, "GOSUB", 1),
+    skip(0x01DD, "ROTY", 1),
+    skip(0x01E6, "PUSHRELMAT", 0),
+    skip(0x01EF, "POPRELMAT", 0),
+    CensusSkip {
+        opcode: 0x01F8,
+        mnemonic: "ANIMATE",
+        fixed_words: 4,
+        count_word: Some(3),
+    },
+    skip(0x02C7, "SHADE216", 2),
+    skip(0x02E2, "ROTX", 1),
+    skip(0x02EB, "ROTZ", 1),
+    skip(0x02F4, "BVLT", 3),
+    skip(0x02FD, "BVGT", 3),
+    skip(0x0306, "WIDELINE", 3),
+    skip(0x0318, "BZLT", 2),
+    skip(0x0321, "SCALEIT", 1),
+    skip(0x032A, "SPRITE", 2),
+    skip(0x034E, "LETTER", 2),
+    skip(0x0360, "CLR2D", 0),
+    skip(0x0369, "GET2D", 1),
+    skip(0x0372, "PUT2D", 1),
+    skip(0x037B, "INT2D", 1),
+    skip(0x0384, "ADD2D", 1),
+    skip(0x038D, "SUB2D", 1),
+    skip(0x0396, "SHL2D", 1),
+    skip(0x039F, "SHR2D", 1),
+    skip(0x03B1, "CIRCLE", 2),
+];
+
+/// The [`CENSUS_SKIPS`] entry for `opcode`, if any.
+#[must_use]
+pub fn census_skip(opcode: u16) -> Option<CensusSkip> {
+    CENSUS_SKIPS.iter().copied().find(|s| s.opcode == opcode)
+}
+
+/// What the census walk recorded while running.
+#[derive(Debug, Default)]
+struct CensusLog {
+    skipped: Vec<SodSkip>,
+    return_offset: Option<usize>,
+}
+
+/// An opcode the census walk stepped over instead of executing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SodSkip {
+    /// Byte offset of the opcode within the model payload.
+    pub offset: usize,
+    /// The opcode word.
+    pub opcode: u16,
+    /// [`SodStopReason::MissingAnchors`] for `OP_TAP` without an anchor table, otherwise
+    /// [`SodStopReason::UnknownOpcode`].
+    pub reason: SodStopReason,
+}
+
+/// Where a census walk ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SodWalkEnd {
+    /// The first `OP_RETURN`, at this byte offset.
+    Return(usize),
+    /// The bytecode ran out, or an `OP_IFVIS` section ran past it, before any `OP_RETURN`.
+    EndOfData,
+    /// An unimplemented opcode with no [`CENSUS_SKIPS`] entry, so its width is unknown.
+    Unskippable(SodStop),
+}
+
+/// Result of [`walk_sod`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct SodWalk {
+    /// The model header.
+    pub header: SodHeader,
+    /// Opcodes stepped over, in stream order. The first is the blocking opcode; the rest
+    /// are masked behind it.
+    pub skipped: Vec<SodSkip>,
+    /// Where the walk ended.
+    pub end: SodWalkEnd,
+}
+
+/// Walks a model for the opcode census, without anchors.
+///
+/// Runs the same handlers as a lenient decode but steps over each opcode in [`CENSUS_SKIPS`]
+/// and each `OP_TAP` (by its `count` anchor words), logging it, so opcodes masked behind
+/// the blocking one are found too. The walk is linear: branches, `GOTO` and `GOSUB` are
+/// stepped over rather than followed, and it ends at the first `OP_RETURN`.
+///
+/// # Errors
+///
+/// The same header and operand errors as a lenient decode.
+pub fn walk_sod(data: &[u8]) -> Result<SodWalk, SodError> {
+    let mut log = CensusLog::default();
+    let (header, _, stop) = run_vm(data, true, None, Some(&mut log))?;
+    let end = match (stop, log.return_offset) {
+        (Some(stop), _) => SodWalkEnd::Unskippable(stop),
+        (None, Some(offset)) => SodWalkEnd::Return(offset),
+        (None, None) => SodWalkEnd::EndOfData,
+    };
+    Ok(SodWalk {
+        header,
+        skipped: log.skipped,
+        end,
+    })
 }

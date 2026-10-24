@@ -459,3 +459,30 @@ fn test_zero_length_line_emits_nothing_and_dot_emits_octahedron() {
     assert_eq!(polys.len(), 8);
     assert!(polys.iter().all(|p| p.vertices.len() == 3));
 }
+
+#[test]
+fn test_census_skip_table_never_shadows_a_real_handler() {
+    // Implementing an opcode means deleting its CENSUS_SKIPS entry: a strict decode must
+    // still reject every opcode the table lists.
+    for skip in crate::sod::CENSUS_SKIPS {
+        assert_eq!(
+            skip.opcode % 9,
+            0,
+            "{} is not a dispatched opcode",
+            skip.mnemonic
+        );
+        let mut bytes = make_sod_header(0, 0, 0, 0);
+        bytes.extend_from_slice(&skip.opcode.to_le_bytes());
+        bytes.extend_from_slice(&[0u8; 16]);
+        bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+        assert_eq!(
+            execute_sod_vm(&bytes, None).map(|_| ()),
+            Err(SodError::InvalidOpcode {
+                opcode: skip.opcode,
+                offset: 10,
+            }),
+            "OP_{} has a handler; delete its CENSUS_SKIPS entry",
+            skip.mnemonic
+        );
+    }
+}

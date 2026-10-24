@@ -3,7 +3,8 @@
 //! StuntReel Modern CLI & Presentation Engine (`stuntreel`).
 //!
 //! The CLI parses arguments, locates input files ([`scene`]), owns the winit window, and
-//! writes outputs (PNG, ffmpeg video, the `parity` subcommand). Every film-to-frame
+//! writes outputs (PNG, ffmpeg video, the `parity` subcommand). `sod-census` reports the corpus
+//! models that stop on an unimplemented `.SOD` opcode. Every film-to-frame
 //! decision goes through [`stunt_core::scene::FilmScene`] and
 //! [`stunt_render::SceneRenderer`], the same path for headless and windowed playback.
 //!
@@ -18,6 +19,7 @@ mod export;
 mod headless;
 mod parity;
 mod scene;
+mod sod_census;
 mod window;
 
 use std::env;
@@ -31,6 +33,13 @@ fn main() {
     match subcommand_args.next().as_deref() {
         Some("parity") => {
             if let Err(e) = parity::run(subcommand_args) {
+                eprintln!("[stuntreel error] {e}");
+                std::process::exit(1);
+            }
+            return;
+        }
+        Some("sod-census") => {
+            if let Err(e) = sod_census::run(subcommand_args) {
                 eprintln!("[stuntreel error] {e}");
                 std::process::exit(1);
             }

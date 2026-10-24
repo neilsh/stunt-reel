@@ -17,11 +17,12 @@ mod vm_tests;
 pub use decal::{DECAL_FLAG_BIT, EPSILON_DISPLACEMENT};
 pub use tessellate::{IDENTITY_MATRIX, transpile_sod, transpile_sod_lenient};
 pub use vm::{
-    OP_ADDV, OP_BLOCK, OP_CLRV, OP_COLOR, OP_DOT, OP_END, OP_GETV, OP_GVPOLY, OP_GVPOLY16, OP_ID,
-    OP_IFVIS, OP_INTV, OP_IPG, OP_LINECOL, OP_MOVETO, OP_NEGV, OP_PERFDISK, OP_PERS, OP_POLYZ,
-    OP_PUTV, OP_REJ, OP_RETURN, OP_SHADE16, OP_SHADES, OP_SHLV, OP_SHRV, OP_SORT, OP_SPHERE,
-    OP_SUBV, OP_TAP, OP_VEC, OP_VECTORS, OP_ZLINETO, SOD_SCALE_TABLE, SodHeader, SodStop,
-    SodStopReason, compute_scale_factor,
+    CENSUS_SKIPS, CensusSkip, OP_ADDV, OP_BLOCK, OP_CLRV, OP_COLOR, OP_DOT, OP_END, OP_GETV,
+    OP_GVPOLY, OP_GVPOLY16, OP_ID, OP_IFVIS, OP_INTV, OP_IPG, OP_LINECOL, OP_MOVETO, OP_NEGV,
+    OP_PERFDISK, OP_PERS, OP_POLYZ, OP_PUTV, OP_REJ, OP_RETURN, OP_SHADE16, OP_SHADES, OP_SHLV,
+    OP_SHRV, OP_SORT, OP_SPHERE, OP_SUBV, OP_TAP, OP_VEC, OP_VECTORS, OP_ZLINETO, SOD_SCALE_TABLE,
+    SodHeader, SodSkip, SodStop, SodStopReason, SodWalk, SodWalkEnd, census_skip,
+    compute_scale_factor, walk_sod,
 };
 
 /// Errors that can occur during .SOD display-list parsing or transpilation.

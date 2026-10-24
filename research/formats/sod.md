@@ -314,7 +314,7 @@ The following backlog documents open questions regarding `.SOD` virtual machine 
 | **Q-SOD-05** | Level-of-Detail Detail Gates (`complex1..3`) | Flags in model bytecode controlling polygon complexity based on global detail setting. `SI-8x` proved forcing high detail uncovers hidden rivets and struts. | `[Established]` | Transpiler exposes all detail branches; modern rendering renders maximum detail. |
 | **Q-SOD-06** | Real-Mode Dynamic Memory Paging of 1024 Register Bank | In 640 KB conventional DOS memory, whether `PLAYONE.EXE` dynamically paged the 1024-vertex register bank (12 KB) into EMS/XMS or reserved a static `DGROUP` scratchpad buffer. | `[Hypothesis]` | Modern engine allocates contiguous flat arena vectors; memory constraints are eliminated. |
 | **Q-SOD-07** | `OP_TAP` (`0x022E`) | Resolved: variable-width anchor-table load; handler at `CS:0x3E58`. | `[Established]` | Requires `ANCHORPT.DAT`; missing table returns a distinct stop reason. |
-| **Q-SOD-08** | Unimplemented opcodes in the corpus | Corpus census: 49 unique models stop on `ANIMATE`, `PUSHCENTRE`/`MOVECENTRE`, `BVGT`, `SHADE1` or `GOSUB`; queue and model IDs in [`../sod-opcode-coverage.md`](../sod-opcode-coverage.md). | `[Bounded Observation]` | Lenient decode keeps geometry before the blocking opcode (Partial SOD). |
+| **Q-SOD-08** | Unimplemented opcodes in the corpus | Corpus census (`mise run sod-census`): 49 shape IDs block on `ANIMATE`, `PUSHCENTRE`, `BVGT`, `SHADE1` or `GOSUB`, with centre-stack, matrix-stack, rotation and `GOTO` opcodes masked behind them; queue, model IDs and film use in [`../sod-opcode-coverage.md`](../sod-opcode-coverage.md). | `[Bounded Observation]` | Lenient decode keeps geometry before the blocking opcode (Partial SOD). |
 
 ---
 
