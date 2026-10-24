@@ -41,7 +41,7 @@ pub struct WorldInputs<'a> {
     pub scenery: Option<&'a [u8]>,
     /// Camera eye positions in time order, in `[I1]` metres. Props that stay sub-pixel along
     /// the polyline through them are not built (see `MIN_PROP_PIXELS`); empty keeps every
-    /// prop.
+    /// prop. They also choose each `SP_1NODE`'s level of detail (see `lod_threshold`).
     pub view_eyes: &'a [[f32; 3]],
 }
 
@@ -99,7 +99,24 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         let (chunks, _) = scn_bytes.as_chunks::<4>();
         let words: Vec<i32> = chunks.iter().map(|c| i32::from_le_bytes(*c)).collect();
         let available_models: HashSet<u16> = shapes.keys().copied().collect();
-        traverse_scn(&words, 1, 0, 0, 0, &mut instances, &available_models, 0);
+        // The world is built once per film, so an `SP_1NODE` keeps its subtree when the
+        // camera path ever comes within the node's threshold and draws its far stand-in
+        // otherwise. PLAYONE compares view-space depth per frame; this uses path distance.
+        let near = |pos: [f32; 3], ext: i32, splitdist: i32| {
+            inputs.view_eyes.is_empty()
+                || path_distance(pos, inputs.view_eyes) <= lod_threshold(ext, splitdist, LOD_SCALE)
+        };
+        traverse_scn(
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut instances,
+            &available_models,
+            &near,
+            0,
+        );
     }
     let unique_instances =
         cull_subpixel_instances(dedup_instances(instances), shapes, inputs.view_eyes);
@@ -150,6 +167,38 @@ fn point_segment_distance(point: [f32; 3], a: [f32; 3], b: [f32; 3]) -> f32 {
     (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
 }
 
+/// Nearest distance from `point` to the polyline through `eyes`; infinite when `eyes` is empty.
+fn path_distance(point: [f32; 3], eyes: &[[f32; 3]]) -> f32 {
+    if eyes.len() == 1 {
+        point_segment_distance(point, eyes[0], eyes[0])
+    } else {
+        eyes.windows(2)
+            .map(|pair| point_segment_distance(point, pair[0], pair[1]))
+            .fold(f32::INFINITY, f32::min)
+    }
+}
+
+/// Fraction of an `SP_1NODE`'s split distance beyond half its extent that counts as near.
+///
+/// PLAYONE scales that span by `DS:0x22A4 / 0x10000`, the full-detail word times the
+/// per-shot projection mantissa, which lies in `[0.5, 1)` when normalised (research/playone-exe/lod.md
+/// section 2). The value is per shot, so this is a fixed stand-in: 0.5 scored best of
+/// 0.5, 0.75 and 1.0 on both parity films (research/parity-findings.md section 26).
+const LOD_SCALE: f32 = 0.5;
+
+/// Camera distance in metres up to which PLAYONE draws an `SP_1NODE`'s subtree.
+///
+/// Mirrors image `0x2121..0x2147`: with `half = ext / 2`, the threshold is `splitdist` when
+/// `splitdist < half`, else `half + (splitdist - half) * scale`.
+pub(crate) fn lod_threshold(ext: i32, splitdist: i32, scale: f32) -> f32 {
+    let half = ext >> 1;
+    if splitdist < half {
+        splitdist as f32
+    } else {
+        half as f32 + (splitdist - half) as f32 * scale
+    }
+}
+
 /// Drops placements whose bounding sphere stays under [`MIN_PROP_PIXELS`] along `eyes`.
 ///
 /// Consecutive eyes are joined by segments, so a camera cut only makes the cull more
@@ -177,14 +226,7 @@ pub(crate) fn cull_subpixel_instances(
                         .fold(0.0, f32::max)
                 })
             });
-            let nearest = if eyes.len() == 1 {
-                point_segment_distance(pos, eyes[0], eyes[0])
-            } else {
-                eyes.windows(2)
-                    .map(|pair| point_segment_distance(pos, pair[0], pair[1]))
-                    .fold(f32::INFINITY, f32::min)
-            };
-            radius * FOCAL_PIXELS >= MIN_PROP_PIXELS * nearest.max(1.0)
+            radius * FOCAL_PIXELS >= MIN_PROP_PIXELS * path_distance(pos, eyes).max(1.0)
         })
         .collect()
 }
@@ -264,6 +306,7 @@ pub(crate) fn traverse_scn(
     mut cz: i32,
     instances: &mut Vec<(u16, [f32; 3])>,
     available_models: &HashSet<u16>,
+    near: &dyn Fn([f32; 3], i32, i32) -> bool,
     depth: usize,
 ) {
     if depth > 128 {
@@ -299,12 +342,23 @@ pub(crate) fn traverse_scn(
                 ni = next;
             }
             2 => {
-                // SP_1NODE: obj, ext, splitdist, next
+                // SP_1NODE: obj, ext, splitdist, next. PLAYONE descends `next` when the node
+                // is near and otherwise draws `obj` as a stand-in for the whole subtree
+                // (image `0x2121`, research/playone-exe/lod.md section 1).
                 if ni + 4 >= words.len() {
                     break;
                 }
-                let next = (words[ni + 4] as u32 as usize) / 2;
-                ni = next;
+                let ext = words[ni + 2] as u16 as i32;
+                let splitdist = words[ni + 3] as u16 as i16 as i32;
+                if near([-(cx as f32), -(cy as f32), cz as f32], ext, splitdist) {
+                    ni = (words[ni + 4] as u32 as usize) / 2;
+                } else {
+                    let obj = words[ni + 1] as u16;
+                    if obj != 0 && available_models.contains(&obj) {
+                        instances.push((obj, [-(cx as f32), -(cy as f32), cz as f32]));
+                    }
+                    break;
+                }
             }
             4 | 6 | 8 | 16 | 18 => {
                 // SP_2NODE, SP_XPLANE, SP_ZPLANE, SP_HSLOPE, SP_VSLOPE
@@ -321,6 +375,7 @@ pub(crate) fn traverse_scn(
                     cz,
                     instances,
                     available_models,
+                    near,
                     depth + 1,
                 );
                 ni = next;
@@ -350,6 +405,7 @@ pub(crate) fn traverse_scn(
                     cz,
                     instances,
                     available_models,
+                    near,
                     depth + 1,
                 );
                 ni = next;
@@ -375,6 +431,7 @@ pub(crate) fn traverse_scn(
                         cz,
                         instances,
                         available_models,
+                        near,
                         depth + 1,
                     );
                     curr += 1;
@@ -652,12 +709,87 @@ mod tests {
         available.insert(0x0105);
 
         let mut instances = Vec::new();
-        traverse_scn(&words, 1, 0, 0, 0, &mut instances, &available, 0);
+        traverse_scn(
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut instances,
+            &available,
+            &|_, _, _| true,
+            0,
+        );
 
         assert_eq!(instances.len(), 1);
         assert_eq!(instances[0].0, 0x0105);
         // x=-10, y=-20, z=30
         assert_eq!(instances[0].1, [-10.0, -20.0, 30.0]);
+    }
+
+    #[test]
+    fn test_traverse_scn_1node_draws_stand_in_when_far() {
+        // Node 1: SP_1NODE (op 2) -> obj=0x0200, ext=10, splitdist=100, next=6 (word index 6)
+        // Node 6: SP_LEAF (op 10) -> obj=0x0105
+        let mut words = vec![0i32; 8];
+        words[1] = 2;
+        words[2] = 0x0200;
+        words[3] = 10;
+        words[4] = 100;
+        words[5] = 12;
+        words[6] = 10;
+        words[7] = 0x0105;
+        let available: HashSet<u16> = [0x0105, 0x0200].into_iter().collect();
+
+        let mut near = Vec::new();
+        traverse_scn(
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut near,
+            &available,
+            &|_, _, _| true,
+            0,
+        );
+        assert_eq!(near, vec![(0x0105, [0.0, 0.0, 0.0])]);
+
+        let mut far = Vec::new();
+        let mut seen = Vec::new();
+        let record = std::cell::RefCell::new(&mut seen);
+        let gate = |pos: [f32; 3], ext: i32, splitdist: i32| {
+            record.borrow_mut().push((pos, ext, splitdist));
+            false
+        };
+        traverse_scn(&words, 1, 0, 0, 0, &mut far, &available, &gate, 0);
+        assert_eq!(far, vec![(0x0200, [0.0, 0.0, 0.0])]);
+        assert_eq!(seen, vec![([0.0, 0.0, 0.0], 10, 100)]);
+
+        // A far node with no stand-in draws nothing.
+        words[2] = 0;
+        let mut empty = Vec::new();
+        traverse_scn(
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut empty,
+            &available,
+            &|_, _, _| false,
+            0,
+        );
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn test_lod_threshold_matches_playone_branches() {
+        // splitdist >= ext / 2: half + (splitdist - half) * scale
+        assert_eq!(lod_threshold(10, 100, 1.0), 100.0);
+        assert_eq!(lod_threshold(10, 105, 0.5), 55.0);
+        // splitdist < ext / 2: splitdist alone
+        assert_eq!(lod_threshold(400, 50, 0.5), 50.0);
     }
 
     #[test]

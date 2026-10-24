@@ -53,4 +53,4 @@ The extracted `si_archive/` directory includes a `Developer/` folder containing 
 
 ## External References (not in the corpus)
 
-- [`AlbertoMarnetto/si-tools`](https://github.com/AlbertoMarnetto/si-tools) (MIT, 2026): `si-8x` detail patch, `sod-decoder` (`.SOD` to `.obj`) and `si-free-flight-2` (raylib island viewer that reads the scene tree from the executable's stack segment). Consulted, not vendored.
+- [`AlbertoMarnetto/si-tools`](https://github.com/AlbertoMarnetto/si-tools) (MIT, 2026): `si-8x` detail patch, `sod-decoder` (`.SOD` to `.obj`) and `si-free-flight-2` (raylib island viewer that reads the scene tree from the executable's stack segment; its `terrain_mapbin.cpp` embeds a `MAP.BIN` byte-identical to `Developer/FreeFlight/SIDATA/MAP.BIN`). Consulted, not vendored.
