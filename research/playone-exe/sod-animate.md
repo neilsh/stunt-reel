@@ -65,7 +65,7 @@ T10 remains open. Remaining work: establish whether and how the `.FLM` `animate:
 
 ---
 
-## 5. Next Probes
+## 5. Open questions
 
 * Establish whether `.FLM` `animate: u16` (co-occurring with SOD resource tables in `Ac`: shapes `0x0105`, `0x0108`) reaches the selector at `selector - 0x7EF2`; the dataflow is unresolved.
 * A live breakpoint on the handler (`CS:0F17`) did not stop in the first session; retry before implementing the draw.

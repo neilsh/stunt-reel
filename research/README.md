@@ -16,7 +16,7 @@
 2. **A fact about our render's residual goes to `parity/`,** in the note for that residual (where the loss sits, framing and actors, mismatched film segments).
 3. **Every experiment leaves one row in [`parity/log.md`](parity/log.md):** date, commit, score, adopted or not, and a link to where its finding now lives. The finding carries a provenance line pointing back at the row.
 4. **Tooling lives with what it studies.** A tool or tool evaluation for `PLAYONE.EXE` goes in `playone-exe/static-tooling.md`.
-5. **A handoff is not a file.** Open questions and next steps go under "Next probes" in the note that owns the work.
+5. **A handoff is not a file.** Open questions and next steps go under "Open questions" in the note that owns the work.
 6. **Superseded content is replaced, not kept beside the new result.** Its history is the log row and git.
 
 New offsets also update the tables in [`memory-map.md`](playone-exe/memory-map.md) (`# [MEM-*]` anchors); new format facts follow [`formats/INDEX.md`](formats/INDEX.md). Evidentiary tiers are defined in [`docs/SPEC.md` § 2.4](../docs/SPEC.md#24-evidentiary-tiers--contract-anchor-system).
@@ -26,7 +26,7 @@ New offsets also update the tables in [`memory-map.md`](playone-exe/memory-map.m
 Follow [`playone-exe/startup.md`](playone-exe/startup.md) for structure (addresses, register states, flowcharts, tables), and end each subject note with:
 
 - **Ruled out:** hypotheses tested and rejected, one or two lines each: what was tried, the score or observation, the verdict.
-- **Next probes:** open work in priority order.
+- **Open questions:** open work in priority order.
 
 Headings carry no evidentiary tier tag, so links survive a tier promotion; state the tier in the section's first line. Anchor tokens (`# [FMT-*]`, `# [MEM-*]`) stay in headings.
 

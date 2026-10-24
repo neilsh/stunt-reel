@@ -77,9 +77,9 @@ _Found 2026-10-23 at `f61e792`, `48b955a`, `39a3868`, `728b9ab`, `6ae7b31`; see 
 * **Colour computed at load by `OP_FRACTAL` or `OP_IPG`** (section 3): constant `0x50` and a zero type table.
 * **Searching in notebook `CS = 0x0F17` coordinates and with a separate colour/count layout:** both made earlier scans unable to match; superseded by sections 2 and 4.
 
-## Next probes
+## Open questions
 
 1. **Decode `CTRY.ALL` offline** (no emulator): with the section 2 layout from `0x13FC` and `0xEFE4`, enumerate the ground polygons, their `w0` headers, shade words and any per-vertex geometry, and compare their colours with the captures' 193/194/196 and the light offsets.
 2. **Breakpoint the ground slot** `0x83A8` (VM `CS:0x0168`, runtime `0x1048:0x0168` in the `CTRY` session): it fires once per new ground record and gives `ES:SI` directly. If the handler is never reached for ground pixels, the terrain is a dedicated routine. Also break at `0x995C` with `work:0x806C != 0` and at `0x8010`, dumping `es:si` and `DS:0x1952`, then chase the writers of `DS:0x1952`.
 3. **Dump the EMS page frame** during playback and grep it for `(colour << 8) | count` headers with colours 192-199, or for handler IPs `0x1F00-0x3000` / slot aliases `0x1400-0x1A00` in `work:0x1DF8`.
-4. **Find the producer** of the stream (the code that reads the world data), then compare its colours with `MAP.BIN`'s; this decides between re-baking our terrain colours and rendering the player's records directly. Only then is a renderer round meaningful (adoption rule 0.002 both films / 0.004 one).
+4. **Find the producer** of the stream (the code that reads the world data), then compare its colours with `MAP.BIN`'s; this decides between re-baking our terrain colours and rendering the player's records directly. Only then is a renderer round meaningful, under the [parity skill](../../.agents/skills/improving-render-parity/SKILL.md)'s adoption rule.

@@ -156,8 +156,8 @@ The data-side and renderer-side explanations for the ground shade, all negative 
 * **Geometry:** all 12 colour-195 patches are flat and convex; fan triangulation area equals polygon area for all 166 active patches.
 * **"The ground shade is world-fixed, not Gouraud."** An earlier reading was wrong: the player interpolates the index per vertex in screen space (sections 3-6).
 
-## Next probes
+## Open questions
 
 1. Recover the per-shot light's caller: breakpoint `0x9106` at the post-retrace trap in DOSBox-X, dump `AX/BX/DX` and the return address across film ticks 10 and 448 of `CTRY.FLM`, compare with `DS:0x49EC` and the variable-13 value. With the harness, `L` can already be sampled per frame.
 2. Decode the ground polygons (colour byte, vertex registers, `SHADES` normal blocks) and compare their colours with `MAP.BIN`'s: [`world-scene.md`](world-scene.md) section 6 holds the route.
-3. Only then a renderer round (re-bake terrain colours or build terrain from the player's records), under the 0.002 both-films / 0.004 one-film adoption rule.
+3. Only then a renderer round (re-bake terrain colours or build terrain from the player's records), under the [parity skill](../../.agents/skills/improving-render-parity/SKILL.md)'s adoption rule.

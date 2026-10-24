@@ -59,13 +59,35 @@ Process documents, **not** sources of truth: [`docs/process/TEAM_SHEET.md`](docs
 ### SOP 2: Documenting Binary Analysis
 1. Put each finding in the note for its subject, by the routing rule in [`research/README.md`](research/README.md); follow the structure of [`research/playone-exe/startup.md`](research/playone-exe/startup.md).
 2. Document segment:offset addresses, register states, Mermaid flowcharts, and DGROUP tables.
-3. End the note with **Ruled out** and **Next probes**; keep evidentiary tiers out of headings.
+3. End the note with **Ruled out** and **Open questions**; keep evidentiary tiers out of headings.
 
 ### SOP 3: Verification & Handoff
 1. Run `git status` to ensure no files from `corpus/` or `target_bin/` are staged.
 2. Run `mise run check` to ensure all checks pass with zero warnings or errors.
 3. Link modified code symbols and files using markdown links.
-4. Use Conventional Commit subjects, e.g. `feat(core): add a parser`.
+4. Commit with a Conventional Commit subject and a body that carries the reasoning, per [Commit Messages](#commit-messages).
+
+### Commit Messages
+The diff records *what* changed; only the message can record *why*, and whoever picks this up next inherits the message rather than this session. Whenever the change encodes a judgment — a rule discovered, a bug traced, a format decoded, a default chosen — spend a paragraph on the reasoning.
+1. **Subject**: `<type>(<scope>): <imperative summary>`, at most 72 characters, lowercase after the colon, no trailing period. `type` is one of `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`; `scope` names the crate or area touched (`core`, `render`, `parity`, `sod`, `research`, `formats`, `docs`).
+2. **Body whenever the change is not self-evident.** State the observation that forced it, the cause (with the offset, measurement or log row that proves it), and what you rejected and why. A mechanical commit whose subject already says everything does not need one.
+3. **What goes in bullets, one per file**, naming each file's specific change when several move together; never enumerate files in the subject.
+4. **Record the constraint, not the activity.** "The loader moved to `stunt-cli` because [I7] forbids I/O in `stunt-core`" earns its lines; "ran checks and updated docs" does not.
+5. **Trailers last**: keep `Co-Authored-By:`, and close with `mise run check passes.` when it did.
+
+For shape (illustrative, not a real commit):
+
+```text
+fix(parity): stop the ground plane sliding after frame 240
+
+The ground row drifts 6 px once the fade loop runs, because the shade ramp
+reads the camera-relative Y where the framing table expects world Y. Read
+the world height from the framing table instead of re-deriving it, and
+keep the existing depth cue untouched.
+
+Rejected: clamping the drift per frame. It hides the sign error and needs
+a constant that INTRO.FLM would then have to match shot for shot.
+```
 
 ### SOP 4: Living Specification Updates & Evidentiary Promotion
 1. When reverse engineering uncovers new runtime offsets, opcodes, or binary realities:

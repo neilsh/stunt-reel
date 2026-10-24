@@ -45,7 +45,7 @@ All scores `mean_ssim_scored`, CTRY / INTRO unless a single film is named. Basel
 
 _Found 2026-10-22 and 2026-10-23 at `d90a047`; see the [parity log](log.md)._
 
-## Next probes
+## Open questions
 
 1. The hero's +10 px horizontal and -10 px vertical residual is actor-specific and none of the above explains it. Read `PLAYONE.EXE`'s actor placement and model-origin rule (a note under [`../playone-exe/`](../playone-exe/)) rather than running another renderer sweep. Also count the faces of `0x7F37` that the VM emits against the shape's faces, and render it with culling off (fuselage hypothesis).
 2. `INTRO.FLM` montage segments need the player's tick-skipping rule: their captures best-match our state at a lag that grows about 0.9 ticks per clock tick, the captures are all distinct, and no fixed page offset matches.

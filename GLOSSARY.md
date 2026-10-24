@@ -150,3 +150,23 @@ _Avoid_: brightness, exposure
 **Sky band**:
 One of the palette indices 227 to 238 that `PLAYONE.EXE` paints the sky with, in straight bands by view-ray elevation (238 at the horizon). Every captured pixel in a sky band is sky.
 _Avoid_: sky index, clear colour (the render's framebuffer clear)
+
+**Scored frame**:
+A captured frame that enters a mean: matched to a render at its film clock, not excluded by the fade floor or the UI overlay. `mean_ssim_scored` averages scored frames only, so a score is always quoted with its count.
+_Avoid_: valid frame, sampled frame
+
+**Probe**:
+A measurement of one frame or region through `parity_probe.py` — crop, shift, actor IoU, retime. An investigation that is still open is an open question, not a probe.
+_Avoid_: probe (for a hypothesis still to be settled)
+
+**Round**:
+One hypothesis class closed by one batched sweep, its adoption decision and its log row. A round may begin by reading one `PLAYONE.EXE` rule when no renderer-only lever fits.
+_Avoid_: iteration, pass
+
+**Sweep**:
+One run of `mise run sweep` over the product of one hypothesis class's candidate values, scoring every variant on both films. The round ends at its result.
+_Avoid_: batch run, grid search
+
+**Adoption**:
+Keeping a round's best candidate. An evidence-backed change (a rule read from `PLAYONE.EXE`, cited at an image offset) adopts when neither film regresses by more than 0.002 SSIM and one improves; a heuristic change needs both films above +0.002, or one above +0.004 with the other within 0.002.
+_Avoid_: acceptance, merge (for the parity decision)

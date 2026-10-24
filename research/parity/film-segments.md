@@ -95,7 +95,7 @@ _Found 2026-10-22; see the [parity log](log.md)._
 - Dropped geometry in the display-list decode (section 1.4).
 - A single global tick offset for the INTRO montage (section 2.3).
 
-## Next probes
+## Open questions
 
 1. Read `PLAYONE`'s own slot and shape tables at runtime around tick 458 (the `0x4778` / `0x48B6` arrays and the shape each active slot resolves to) with the capture harness's debugger, and compare with our 18 actors. This separates "the evaluator drops or misplaces slots" from "the engine draws something the film does not list".
 2. Inspect `COL3-2.FLM` pixels with `--sidata` to split the 0.127 index agreement into studio gap versus night palette.
