@@ -227,3 +227,31 @@ Next probes, ranked by attributed loss: (1) why the hero aircraft renders thin a
 * **Baseline render and score** used ad-hoc directory names (`ctry_page`, `ctry_decal`) compared by eye; it is now `mise run parity`, which writes `build/parity/ours/<film>_current` and `build/parity/report/<film>_current` and prints both films in two lines.
 * **Identical variants** (`std::env::var(...).is_ok()` treating `"0"` as set, which cost two sweeps) now produce `warning: variants ... scored identically; the switch may not be wired`.
 * **Still hand-rolled (P2).** The 11x11 loss-window ranking, the per-layer index histogram and the sand-coverage count have no subcommand yet; they are designed in the handoff as `windows`, `index-diff` and `coverage`.
+
+---
+
+## 15. The Flat Ground's Shade Is the Player's: per Frame, and Cued by Depth (`CTRY.FLM`) (`[Bounded Observation]`)
+
+2026-10-23, `integration/library-adoption`, after the page-timing adoption. Baseline re-verified on the current renderer with `mise run parity`: CTRY **0.7732** over 114 scored frames (IoU 0.9783, index agreement 0.505), INTRO **0.6799** over 209 (0.9205, 0.534). Loss by class on the same reports: CTRY terrain 0.1026, props 0.0816, sky 0.0183, reference-only 0.0141, actors 0.0083; INTRO terrain 0.1434, props 0.0912, reference-only 0.0289, sky 0.0243, ocean 0.0117, actors 0.0125. Terrain is the largest single class on both films, so the ground's colour was traced pixel by pixel before any sweep.
+
+* **Method (hand-rolled, no rebuild).** Over the 114 scored CTRY frames, our render's `.idx` and `.layer` planes were joined to the capture's `.idx` plane at the same `film_tick` (the page-timing fix makes render file `tick_t` the page captured at clock `t`). Pixels where our layer is terrain and our index is 195 are the flat airfield patches. View depth `w` and screen position for those pixels were reconstructed from the authored camera in `palette_controls.json` (eye, target, 45 degree FOV, 4:3 aspect, the 200/185 vertical squeeze, roll applied about the view axis) by intersecting the pixel ray with the `y = 0` plane, which is exact because every colour-195 patch is flat at raw y 0.
+* **The capture almost never draws the airfield at its data colour.** All 12 colour-195 patches are flat, `MAP.BIN` gives them palette index 195, and we draw 195; the capture draws 195 on fewer than 1% of those pixels. Instead the whole patch is drawn at one neighbouring ramp entry for long stretches and switches between them:
+
+  | `film_tick` | eye height (m) | pitch (deg) | capture index on our flat terrain | share |
+  |---|---|---|---|---|
+  | 10 | 14.00 | -13.8 | 194 | 90% |
+  | 97 | 13.40 | -13.7 | 195 | 45% |
+  | 185 | 10.29 | -13.6 | 193 | 41% |
+  | 273 | 7.02 | -13.2 | 196 | 50% |
+  | 360 | 4.32 | -13.2 | 194 | 44% |
+  | 404 | 3.59 | -13.2 | 196 | 92% |
+  | 448 | 3.26 | -13.1 | 196 | 92% |
+  | 667 | 3.14 | -12.2 | 196 | 93% |
+  | 1063 | 2.89 | -0.7 | 193 | 79% |
+  | 1194 | 2.89 | -0.5 | 193 | 92% |
+
+* **It is not the palette, the map data, or the fade.** Palette entries 192-199 are byte-identical at ticks 10, 273, 448 and 667 (`[36,69,20]` to `[101,162,69]`), so index 194 and 196 are genuinely two different framebuffer values, not one colour under an animated palette; only the fade (from about tick 990) dims them, and the index shifts happen before it. The pixels are one flat patch: `MAP.BIN` record 4 alone covers the airfield and all 12 colour-195 patches carry raw y 0.
+* **Inside one frame the shade is cued by view depth.** At tick 273 the capture splits 194 (far) from 196 (near) *within* the flat patch, and no other terrain colour appears within 3 px of the boundary (328 boundary nodes, 0 with a data-colour edge nearby), so the edge is not a patch seam. The boundary follows the iso-view-depth contour of that camera (roll 340 degrees): observed slope about 0.23 rows per pixel against 0.30 for a constant-`w` line and 0 for a scanline, and it lands on the reconstructed `w` of about 18 to 20 m.
+* **The level itself changes per shot, and not with the camera.** Ticks 273 (eye 7.0 m) and 448 (eye 3.3 m) share pitch -13.2 degrees and view direction but differ: 273 has the far ground at 194 while 448 has all of it at 196 with no split, so neither eye height nor pitch sets the level. The sky moves on the same timescale (top-of-sky mode 234 at tick 10 to 228 at tick 1194) but not monotonically with the ground (194 at sky 233-234, 196 at 230-232, 193 at 228), so no single light scalar ties the two together.
+* **Reading.** The airfield's colour is a player-side shade: a per-shot level times a depth rule, both applied inside the flat polygon. That is why the fixed global offsets of section 13 (0.7643 / 0.7683 / 0.7548 on CTRY) and the fixed one-sided depth cue of section 13 (0.757 to 0.763) both lose, and why the "one polygon carries three shades" observation of section 13 could not be reproduced from any `MAP.BIN` field. The level is the biggest known single delta on the ground: one ramp step shifts about 40% of the terrain pixels by one palette index, and terrain carries 45% of CTRY's loss and 45% of INTRO's.
+* **Negative, and the goal's stop condition.** No renderer change was adopted this round: every model reachable from the data (fixed offset, fixed depth threshold, palette) is already known to lose, and the remaining model is the player's own terrain shading path - the light source, its per-shot level, and the depth rule that turns it into a ramp entry. That is `PLAYONE.EXE` disassembly, so the goal stopped here and wrote the handoff. The analyses above were hand-rolled again; they are the `index-diff` and `coverage` subcommands designed in section 14 and still unbuilt.
