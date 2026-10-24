@@ -4,6 +4,8 @@ use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
+use super::report::Report;
+
 /// Per-frame SSIM change between two reports, matched by `film_tick`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct FrameDelta {
@@ -70,56 +72,39 @@ struct ReportFrame {
     scored: Option<bool>,
 }
 
-/// Per-`film_tick` frames of a parsed report.
+/// Per-`film_tick` frames of a report.
 struct ReportScores {
     frames: BTreeMap<u64, ReportFrame>,
     /// Whether every entry carries `scored`.
     fade_aware: bool,
 }
 
-/// Frames of a parsed report keyed by `film_tick`; the first entry wins when a
-/// `film_tick` repeats.
-fn report_scores(report: &Value) -> Result<ReportScores, String> {
-    let per_frame = report
-        .get("per_frame")
-        .and_then(Value::as_array)
-        .ok_or("report has no per_frame array")?;
+/// Frames of a report keyed by `film_tick`; the first entry wins when a `film_tick`
+/// repeats.
+fn report_scores(report: &Report) -> ReportScores {
     let mut scores = BTreeMap::new();
-    let mut fade_aware = true;
-    for (position, frame) in per_frame.iter().enumerate() {
-        let field = |key: &str| {
-            frame
-                .get(key)
-                .and_then(Value::as_f64)
-                .ok_or_else(|| format!("per_frame[{position}] has no numeric {key}"))
-        };
-        let film_tick = frame
-            .get("film_tick")
-            .and_then(Value::as_u64)
-            .ok_or_else(|| format!("per_frame[{position}] has no film_tick"))?;
-        let scored = frame.get("scored").and_then(Value::as_bool);
-        fade_aware &= scored.is_some();
-        scores.entry(film_tick).or_insert(ReportFrame {
-            ssim: field("ssim")?,
-            iou: field("iou")?,
-            scored,
+    for frame in &report.per_frame {
+        scores.entry(frame.film_tick).or_insert(ReportFrame {
+            ssim: f64::from(frame.ssim),
+            iou: f64::from(frame.iou),
+            scored: frame.scored,
         });
     }
-    Ok(ReportScores {
+    ReportScores {
         frames: scores,
-        fade_aware,
-    })
+        fade_aware: report.per_frame.iter().all(|f| f.scored.is_some()),
+    }
 }
 
-/// Compares two parsed `report.json` values frame by frame, matching on `film_tick`.
+/// Compares two `report.json` documents frame by frame, matching on `film_tick`.
 ///
 /// Means cover only the frames present in both reports, so a different matched-frame
 /// count (for example an extended render range) cannot masquerade as a change. When both
 /// reports carry fade scoring, only frames scored in both are compared; otherwise every
 /// common frame. Reports that also carry the retired `ssim_compensated` are read for
 /// their raw `ssim`.
-pub(super) fn compare_reports(before: &Value, after: &Value) -> Result<Comparison, String> {
-    let (before_report, after_report) = (report_scores(before)?, report_scores(after)?);
+pub(super) fn compare_reports(before: &Report, after: &Report) -> Result<Comparison, String> {
+    let (before_report, after_report) = (report_scores(before), report_scores(after));
     let basis = if before_report.fade_aware && after_report.fade_aware {
         CompareBasis::Scored
     } else {
@@ -308,8 +293,13 @@ impl Comparison {
 mod tests {
     use super::*;
 
-    fn report(frames: &[(u64, f64, f64)]) -> Value {
-        json!({
+    /// Parses a report document, as `--compare` does.
+    fn parse(doc: Value) -> Result<Report, serde_json::Error> {
+        serde_json::from_value(doc)
+    }
+
+    fn report(frames: &[(u64, f64, f64)]) -> Report {
+        parse(json!({
             "per_frame": frames
                 .iter()
                 .enumerate()
@@ -317,13 +307,14 @@ mod tests {
                     "ordinal": i + 1, "film_tick": tick, "ssim": ssim, "iou": iou,
                 }))
                 .collect::<Vec<Value>>(),
-        })
+        }))
+        .unwrap()
     }
 
     /// A report whose entries carry the fade-scoring fields:
     /// `(film_tick, ssim, iou, scored)`.
-    fn fade_report(frames: &[(u64, f64, f64, bool)]) -> Value {
-        json!({
+    fn fade_report(frames: &[(u64, f64, f64, bool)]) -> Report {
+        parse(json!({
             "per_frame": frames
                 .iter()
                 .enumerate()
@@ -332,7 +323,8 @@ mod tests {
                     "fade_level": 1.0, "scored": scored,
                 }))
                 .collect::<Vec<Value>>(),
-        })
+        }))
+        .unwrap()
     }
 
     #[test]
@@ -352,10 +344,10 @@ mod tests {
         assert_eq!(c.basis, CompareBasis::Scored);
         // Only tick 10 is scored in both; 20 and 30 are scored on one side only.
         assert_eq!((c.common, c.before_only, c.after_only), (1, 1, 2));
-        assert!((c.ssim.before - 0.5).abs() < 1e-9);
-        assert!((c.ssim.after - 0.7).abs() < 1e-9);
-        assert!((c.iou.before - 0.8).abs() < 1e-9);
-        assert!((c.iou.after - 0.9).abs() < 1e-9);
+        assert!((c.ssim.before - 0.5).abs() < 1e-6);
+        assert!((c.ssim.after - 0.7).abs() < 1e-6);
+        assert!((c.iou.before - 0.8).abs() < 1e-6);
+        assert!((c.iou.after - 0.9).abs() < 1e-6);
         assert_eq!(c.to_json()["basis"], "scored");
         let text = c.summary();
         assert!(
@@ -363,12 +355,13 @@ mod tests {
             "{text}"
         );
         // A report from the compensation era is compared on its raw `ssim`.
-        let legacy = json!({ "per_frame": [
+        let legacy = parse(json!({ "per_frame": [
             { "film_tick": 10, "ssim": 0.4, "iou": 0.8, "ssim_compensated": 0.9, "scored": true },
-        ]});
+        ]}))
+        .unwrap();
         let c = compare_reports(&legacy, &after).expect("comparable");
         assert_eq!(c.basis, CompareBasis::Scored);
-        assert!((c.ssim.before - 0.4).abs() < 1e-9);
+        assert!((c.ssim.before - 0.4).abs() < 1e-6);
         assert!(text.contains("1 frame(s) scored in both reports"), "{text}");
     }
 
@@ -389,13 +382,14 @@ mod tests {
             assert!(text.contains("2 frame(s) in both reports"), "{text}");
         }
         let c = compare_reports(&old, &new).unwrap();
-        assert!((c.ssim.before - 0.55).abs() < 1e-9);
-        assert!((c.ssim.after - 0.75).abs() < 1e-9);
+        assert!((c.ssim.before - 0.55).abs() < 1e-6);
+        assert!((c.ssim.after - 0.75).abs() < 1e-6);
         // A report with `scored` on only some entries is old-style too.
-        let partial = json!({ "per_frame": [
+        let partial = parse(json!({ "per_frame": [
             { "film_tick": 10, "ssim": 0.5, "iou": 0.5, "scored": true },
             { "film_tick": 20, "ssim": 0.5, "iou": 0.5 },
-        ]});
+        ]}))
+        .unwrap();
         assert_eq!(
             compare_reports(&partial, &new).unwrap().basis,
             CompareBasis::All
@@ -422,16 +416,16 @@ mod tests {
         ]);
         let c = compare_reports(&before, &after).expect("comparable");
         assert_eq!((c.common, c.before_only, c.after_only), (4, 1, 1));
-        assert!((c.ssim.before - 0.55).abs() < 1e-9);
-        assert!((c.ssim.after - 0.556).abs() < 1e-9);
-        assert!((c.iou.before - 0.80).abs() < 1e-9);
-        assert!((c.iou.after - 0.90).abs() < 1e-9);
+        assert!((c.ssim.before - 0.55).abs() < 1e-6);
+        assert!((c.ssim.after - 0.556).abs() < 1e-6);
+        assert!((c.iou.before - 0.80).abs() < 1e-6);
+        assert!((c.iou.after - 0.90).abs() < 1e-6);
         // Tick 40 moved by only +0.004: listed as improved, but under the 0.005 count.
         let ticks = |list: &[FrameDelta]| list.iter().map(|d| d.film_tick).collect::<Vec<_>>();
         assert_eq!(ticks(&c.improved), vec![20, 40]);
         assert_eq!(ticks(&c.regressed), vec![30]);
         assert_eq!((c.improved_count, c.regressed_count), (1, 1));
-        assert!((c.regressed[0].delta() + 0.08).abs() < 1e-9);
+        assert!((c.regressed[0].delta() + 0.08).abs() < 1e-6);
     }
 
     #[test]
@@ -475,15 +469,15 @@ mod tests {
                 .unwrap_err()
                 .contains("share no film_tick")
         );
-        let legacy = json!({ "per_frame": [{ "ordinal": 1, "ssim": 0.5, "iou": 0.5 }] });
+        // Malformed reports are rejected when parsed, naming the missing field.
+        let missing_tick =
+            parse(json!({ "per_frame": [{ "ordinal": 1, "ssim": 0.5, "iou": 0.5 }] }));
+        assert!(missing_tick.unwrap_err().to_string().contains("film_tick"));
+        let missing_frames = parse(json!({}));
         assert!(
-            compare_reports(&legacy, &a)
+            missing_frames
                 .unwrap_err()
-                .contains("film_tick")
-        );
-        assert!(
-            compare_reports(&json!({}), &a)
-                .unwrap_err()
+                .to_string()
                 .contains("per_frame")
         );
     }
@@ -497,7 +491,7 @@ mod tests {
         assert_eq!(doc["common_frames"], 2);
         assert_eq!(doc["regressed_count"], 1);
         assert_eq!(doc["most_regressed"][0]["film_tick"], 7);
-        assert!((doc["most_improved"][0]["delta"].as_f64().unwrap() - 0.1).abs() < 1e-9);
+        assert!((doc["most_improved"][0]["delta"].as_f64().unwrap() - 0.1).abs() < 1e-6);
         let text = c.summary();
         assert!(
             text.contains("tick     7  0.500 -> 0.400  -0.100"),

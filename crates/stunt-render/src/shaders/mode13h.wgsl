@@ -19,7 +19,7 @@ struct ModelUniform {
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
-    @location(2) attr: vec4<u32>, // x: palette_index, y: flags, z/w: padding
+    @location(2) attr: vec4<u32>, // x: palette_index, y: flags, z: scenery_class, w: padding
 };
 
 struct VertexOutput {
@@ -47,7 +47,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 
     // Polygons are drawn at their palette index with no directional lighting: against
     // PLAYONE captures of CTRY.FLM the unlit colour scores higher than any sun/ambient ramp
-    // (research/parity-findings.md section 6), and the original picks shades with explicit
+    // (research/formats/concepts/palette-and-shading.md), and the original picks shades with explicit
     // palette offsets (OP_SHADES, OP_SHADE16), not a sun vector. Row 31 is full brightness.
     out.light_level = 31u;
 
@@ -73,7 +73,7 @@ fn fs_main_plane(in: VertexOutput) -> PlaneOutput {
 // Sky: PLAYONE paints the sky as bands of palette indices 238 (at the horizon) down to
 // 228 (high), selected by the sine of the view ray's elevation. The edges are the medians of
 // the band transitions measured in CTRY.FLM captures: 2.14, 2.77, 3.59, 4.61, 5.82, 7.27,
-// 9.23, 11.79, 15.75 and 20.23 degrees (research/parity-findings.md section 7).
+// 9.23, 11.79, 15.75 and 20.23 degrees (research/formats/concepts/palette-and-shading.md).
 const SKY_EDGE_SIN = array<f32, 10>(
     0.03734, 0.04833, 0.06262, 0.08037, 0.1014, 0.12655, 0.1604, 0.20433, 0.27144, 0.34579,
 );

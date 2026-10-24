@@ -1,6 +1,6 @@
 //! Unit tests for the SOD `tessellate` stage, relocated from integration tests so the stage can stay crate-private.
 
-use crate::contracts::scene::VisibilityCondition;
+use crate::contracts::shape::VisibilityCondition;
 use crate::sod::tessellate::quantize_weld_key;
 use crate::sod::vm::{RawPolygon, execute_sod_vm};
 use crate::sod::{DECAL_FLAG_BIT, OP_COLOR, OP_ID, OP_IFVIS, OP_POLYZ, OP_RETURN, OP_VECTORS};

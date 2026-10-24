@@ -35,6 +35,7 @@ mod fade;
 mod frames;
 mod loss;
 mod mask;
+mod report;
 mod report_diff;
 mod score;
 mod sheets;
@@ -46,7 +47,7 @@ mod tests;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use args::Args;
 use compare::run_compare;
@@ -57,10 +58,11 @@ use frames::{
 };
 use loss::LOSS_CLASSES;
 use mask::CAPTURE_SKY_INDICES;
+use report::{FrameReport, I6Gate, Report};
 use score::{FrameMetrics, ReferenceFrame, RenderFrame, ScorePolicy, score_frame};
 use sheets::write_contact_sheet;
 
-pub(crate) use args::USAGE;
+pub(crate) use args::usage;
 
 /// `[I6]` initial acceptance threshold on the scored mean SSIM.
 const I6_INITIAL_SSIM: f32 = 0.88;
@@ -69,9 +71,21 @@ const I6_INITIAL_SSIM: f32 = 0.88;
 const I6_SIGN_OFF_SSIM: f32 = 0.90;
 
 /// Whether the scored mean SSIM reaches each `[I6]` threshold; both fail when no frame is scored.
-fn i6_gate(mean_ssim_scored: Option<f32>) -> Value {
+fn i6_gate(mean_ssim_scored: Option<f32>) -> I6Gate {
     let reaches = |threshold: f32| mean_ssim_scored.is_some_and(|ssim| ssim >= threshold);
-    json!({ "initial": reaches(I6_INITIAL_SSIM), "sign_off": reaches(I6_SIGN_OFF_SSIM) })
+    I6Gate {
+        initial: reaches(I6_INITIAL_SSIM),
+        sign_off: reaches(I6_SIGN_OFF_SSIM),
+    }
+}
+
+/// A per-class loss array as the report's name-to-value map.
+fn loss_by_class(values: [f32; LOSS_CLASSES.len()]) -> BTreeMap<String, f32> {
+    LOSS_CLASSES
+        .iter()
+        .zip(values)
+        .map(|(name, value)| ((*name).to_string(), value))
+        .collect()
 }
 
 /// Frame ordinals always rendered as contact sheets, plus the last captured frame.
@@ -92,7 +106,7 @@ struct FrameRow {
 
 /// Runs the comparator and writes `report.json` plus contact sheets.
 pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
-    let args = Args::parse(args)?;
+    let args = Args::try_parse_args(args).unwrap_or_else(|e| e.exit());
     fs::create_dir_all(&args.output)
         .map_err(|e| format!("create output directory {}: {e}", args.output.display()))?;
 
@@ -128,7 +142,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         let ordinal = index + 1;
         let film_tick = film_ticks[index];
         let (reference_file, palette_file) = reference_paths(&args.reference, frame, ordinal);
-        let test_file = args.test.join(crate::tick_png_name(film_tick));
+        let test_file = args.test.join(crate::headless::tick_png_name(film_tick));
 
         if !reference_file.is_file() || !palette_file.is_file() || !test_file.is_file() {
             unmatched += 1;
@@ -212,44 +226,41 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
                 *total += value / attributed.len() as f32;
             }
         }
-        json!(LOSS_CLASSES.iter().zip(mean).collect::<BTreeMap<_, _>>())
+        loss_by_class(mean)
     });
     let mean_index_agreement_scored = scored_mean(|s| s.metrics.index_agreement);
 
-    let report = json!({
-        "reference_frames": frames.len(),
-        "frames": scores.len(),
-        "unmatched": unmatched,
-        "sky_indices": [CAPTURE_SKY_INDICES.start(), CAPTURE_SKY_INDICES.end()],
-        "mean_ssim": mean_ssim,
-        "min_ssim": min_ssim,
-        "mean_iou": mean_iou,
-        "min_fade_level": args.min_fade_level,
-        "mean_ssim_scored": mean_ssim_scored,
-        "i6_gate": i6_gate(mean_ssim_scored),
-        "mean_iou_scored": mean_iou_scored,
-        "mean_index_agreement_scored": mean_index_agreement_scored,
-        "mean_loss_by_class_scored": mean_loss_by_class,
-        "scored_frames": scored_frames.len(),
-        "excluded_frames": excluded_frames,
-        "per_frame": scores
+    let report = Report {
+        reference_frames: frames.len(),
+        frames: scores.len(),
+        unmatched,
+        sky_indices: [*CAPTURE_SKY_INDICES.start(), *CAPTURE_SKY_INDICES.end()],
+        mean_ssim,
+        min_ssim,
+        mean_iou,
+        min_fade_level: args.min_fade_level,
+        mean_ssim_scored,
+        i6_gate: i6_gate(mean_ssim_scored),
+        mean_iou_scored,
+        mean_index_agreement_scored,
+        mean_loss_by_class_scored: mean_loss_by_class,
+        scored_frames: scored_frames.len(),
+        excluded_frames,
+        per_frame: scores
             .iter()
-            .map(|s| json!({
-                "ordinal": s.ordinal,
-                "film_tick": s.film_tick,
-                "ssim": s.metrics.ssim,
-                "iou": s.metrics.iou,
-                "index_agreement": s.metrics.index_agreement,
-                "loss_by_class": LOSS_CLASSES
-                    .iter()
-                    .zip(s.metrics.loss_by_class)
-                    .collect::<BTreeMap<_, _>>(),
-                "fade_level": s.metrics.fade_level,
-                "authored_fade_level": s.metrics.authored_fade_level,
-                "scored": s.metrics.scored,
-            }))
-            .collect::<Vec<Value>>(),
-    });
+            .map(|s| FrameReport {
+                ordinal: s.ordinal,
+                film_tick: s.film_tick as u64,
+                ssim: s.metrics.ssim,
+                iou: s.metrics.iou,
+                index_agreement: Some(s.metrics.index_agreement),
+                loss_by_class: Some(loss_by_class(s.metrics.loss_by_class)),
+                fade_level: Some(s.metrics.fade_level),
+                authored_fade_level: s.metrics.authored_fade_level,
+                scored: Some(s.metrics.scored),
+            })
+            .collect(),
+    };
     let report_path = args.output.join("report.json");
     fs::write(
         &report_path,
@@ -272,10 +283,10 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             args.min_fade_level
         ),
     }
-    if let Some(loss) = &mean_loss_by_class {
+    if let Some(loss) = &report.mean_loss_by_class_scored {
         let line = LOSS_CLASSES
             .iter()
-            .filter_map(|name| Some(format!("{name} {:.3}", loss[name].as_f64()?)))
+            .filter_map(|name| Some(format!("{name} {:.3}", loss.get(*name)?)))
             .collect::<Vec<_>>()
             .join(", ");
         println!("[parity] SSIM loss by class (sums to 1 - mean SSIM over scored frames): {line}");

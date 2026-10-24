@@ -1,4 +1,4 @@
-//! Native `.FLM` choreography evaluator and parity suite.
+//! Native `.FLM` choreography evaluator and its oracle-trajectory check.
 //!
 //! Evaluates binary `.FLM` film streams into [`crate::contracts::trajectory::TrajectoryRecord`]
 //! time-series streams adhering to Seam 2 and Invariants `[I1]`, `[I4]`.
@@ -8,13 +8,13 @@
 //! included, is already `[I1]` and consumers apply no further axis heuristic.
 
 mod interpolate;
-mod parity;
+mod oracle;
 mod parser;
 #[cfg(test)]
 mod parser_tests;
 mod timeline;
 
-pub use parity::{GATE_G04_RMSE_THRESHOLD_METERS, assert_parity_gate_g04, compute_position_rmse};
+pub use oracle::{GATE_G04_RMSE_THRESHOLD_METERS, compute_position_rmse};
 use parser::FlmParser;
 pub use parser::{
     SIF_ANIMATES, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW, SIFILM_MAX_OBJ,
@@ -26,13 +26,12 @@ use interpolate::{bam_to_radians, detect_camera_cut, focal_to_fov_y, rotate_quat
 
 use crate::contracts::palette::{PALETTE_CONTROL_FULL, PaletteControls};
 use crate::contracts::trajectory::{ActorTransform, CameraTransform, TrajectoryRecord};
-use std::fmt;
 
 /// Camera-space viewing axis that the film's view-slot rotation maps into world space.
 ///
 /// `.FLM` stores each slot's orientation as BAM angles whose rotation maps camera space
 /// to world space with `+Z` pointing into the screen, so rotating `+Z` by the view slot's
-/// `[I1]` quaternion yields the `[I1]` look direction (research/parity-findings.md § 2). That equals
+/// `[I1]` quaternion yields the `[I1]` look direction (research/formats/concepts/coordinates-and-units.md). That equals
 /// the DOS-axes look direction with the (-x, -y, z) map applied, because the quaternion
 /// already carries `q_z180` ([`SlotState::rotation_quat`]).
 pub const CAMERA_FORWARD: [f32; 3] = [0.0, 0.0, 1.0];
@@ -44,9 +43,10 @@ pub const CAMERA_FORWARD: [f32; 3] = [0.0, 0.0, 1.0];
 pub const CAMERA_LOOKAHEAD_METERS: f32 = 1000.0;
 
 /// Errors that can occur during `.FLM` choreography parsing and evaluation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum FlmError {
     /// Magic signature mismatch (expected `b"FILM"`).
+    #[error("invalid FILM signature: expected {:?}, found {:?}", .expected.map(|b| b as char), .actual.map(|b| b as char))]
     InvalidSignature {
         /// Signature the parser expected (`b"FILM"`).
         expected: [u8; 4],
@@ -54,6 +54,7 @@ pub enum FlmError {
         actual: [u8; 4],
     },
     /// The input buffer was smaller than expected.
+    #[error("unexpected EOF: expected at least {expected} bytes, found {actual}")]
     UnexpectedEof {
         /// Buffer length the parse required at the failure point.
         expected: usize,
@@ -61,11 +62,13 @@ pub enum FlmError {
         actual: usize,
     },
     /// Malformed time slice or unexpected termination.
+    #[error("invalid slice: {reason}")]
     InvalidSlice {
         /// Human-readable description of the malformed slice.
         reason: String,
     },
     /// Unrecognized or invalid opcode in the slice stream.
+    #[error("invalid FLM opcode 0x{opcode:02X} at byte offset 0x{offset:04X}")]
     InvalidOpcode {
         /// Opcode byte outside the decoded table.
         opcode: u8,
@@ -73,38 +76,6 @@ pub enum FlmError {
         offset: usize,
     },
 }
-
-impl fmt::Display for FlmError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidSignature { expected, actual } => {
-                write!(
-                    f,
-                    "invalid FILM signature: expected {:?}, found {:?}",
-                    expected.map(|b| b as char),
-                    actual.map(|b| b as char)
-                )
-            }
-            Self::UnexpectedEof { expected, actual } => {
-                write!(
-                    f,
-                    "unexpected EOF: expected at least {expected} bytes, found {actual}"
-                )
-            }
-            Self::InvalidSlice { reason } => {
-                write!(f, "invalid slice: {reason}")
-            }
-            Self::InvalidOpcode { opcode, offset } => {
-                write!(
-                    f,
-                    "invalid FLM opcode 0x{opcode:02X} at byte offset 0x{offset:04X}"
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for FlmError {}
 
 /// Film variable 13: the palette's night term (`research/playone-exe/palette-fade.md`).
 const VAR_SKY: usize = 13;
@@ -224,6 +195,10 @@ impl<'a> FlmPlayer<'a> {
             45.0
         };
 
+        // Each camera's zoom word is the film variable of its view index (image `0x11FC`
+        // reads `[0x4888 + 0x7E + 2 * view_obj]`; research/playone-exe/lod.md section 2).
+        let lens = self.variables.get(view_idx).copied().unwrap_or(0);
+
         let roll = if view_slot_active {
             bam_to_radians(self.slots[view_idx].rot_bam[0])
         } else {
@@ -236,6 +211,7 @@ impl<'a> FlmPlayer<'a> {
             fov_degrees: fov,
             roll_radians: roll,
             cut_from_previous: cut,
+            lens,
         };
 
         // Active actors evaluation (all active slots except the view_obj camera slot)
@@ -342,6 +318,15 @@ impl<'a> FlmPlayer<'a> {
     }
 }
 
+impl From<crate::reader::Eof> for FlmError {
+    fn from(e: crate::reader::Eof) -> Self {
+        Self::UnexpectedEof {
+            expected: e.expected,
+            actual: e.actual,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -362,8 +347,10 @@ mod tests {
         let mut player = FlmPlayer::new(SYNTHETIC_MINIMAL_FLM).expect("player initialization");
 
         // Slice 0: var_set 0 = 0x9890, view_obj 0, clear credits, 0xFF
-        assert!(player.step_slice().is_some());
+        let (record, _) = player.step_slice().expect("slice 0");
         assert_eq!(player.variables[0], 0x9890);
+        // Camera 0's lens is variable 0.
+        assert_eq!(record.camera.lens, 0x9890);
 
         assert!(player.step_slice().is_some());
         assert!(player.step_slice().is_none());

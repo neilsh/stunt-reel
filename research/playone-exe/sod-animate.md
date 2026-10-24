@@ -62,3 +62,12 @@ The Rust SOD VM currently has no `OP_ANIMATE` arm; it stops/errors through the u
 T10 remains open. Remaining work: establish whether and how the `.FLM` `animate: u16` value affects resource selection, then implement the selected resource draw in the native renderer. Do not treat the opcode as a 3D joint-angle instruction or silently rename the unknown operand fields as `var_id`/`limit`.
 
 `[Established]` for the dispatch target, operand widths, resource lookup, and pixel-blit side effect in the saved runtime disassembly. `[Bounded Observation]` for the `Ac.ALL` resource cross-reference. `[Unknown]` for the `.FLM.animate`-to-SOD selection mapping and the complete semantics of `parameter` and `selector`.
+
+---
+
+## 5. Next Probes
+
+* Establish whether `.FLM` `animate: u16` (co-occurring with SOD resource tables in `Ac`: shapes `0x0105`, `0x0108`) reaches the selector at `selector - 0x7EF2`; the dataflow is unresolved.
+* A live breakpoint on the handler (`CS:0F17`) did not stop in the first session; retry before implementing the draw.
+
+_Found 2026-10-20 at `f9f0cfd`. No parity measurement was taken; T10 stays open._

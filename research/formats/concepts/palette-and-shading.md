@@ -83,7 +83,7 @@ In *Stunt Island* scene packages (`.ALL`), color tables are packaged as raw bina
 
 ### 2.2 Vertex Palette Index & Decal Flags (`SodVertex`)
 
-In `crates/stunt-core/src/contracts/scene.rs`, vertices emitted by `.SOD` display lists store their authentic Mode 13h palette correspondence in an aligned 28-byte GPU vertex layout:
+In `crates/stunt-core/src/contracts/shape.rs`, vertices emitted by `.SOD` display lists store their authentic Mode 13h palette correspondence in an aligned 28-byte GPU vertex layout:
 
 ```rust
 #[repr(C)]
@@ -153,6 +153,16 @@ Color: [  Deep Shadow  ] -------- [ Diffuse Base ] -------- [ High Glare ]
        <-- Low 16 Group ->        <-- High 16 Group ->
 ```
 
+#### What the Capture Shows About Lighting
+`[Bounded Observation]` Unlit palette colours match the original. In `CTRY.FLM` capture ordinal 41 (tick 448) the airfield ground is index 196, $(69, 121, 45)$, over 43k of the 59k viewport pixels. A sun-vector shader (`ambient + (1 - ambient) * max(n . sun, 0)`, ambient 0.25) drew it at 41% brightness. `mean_ssim_scored` on `CTRY` (114 frames): lit 0.689, two-sided lit 0.764, constant lighting row 31 (palette colour as is) **0.766**, row 26 0.760, row 22 0.745, row 16 0.700; across four capture sets row 31 scores 0.766, 0.767, 0.767, 0.766. Full brightness is best and dimming is worse, so the original's shading is not a sun-derived level: it is explicit per polygon (`OP_SHADES`, `OP_SHADE16`, per-vertex shade offsets in `GVPOLY`), and the capture's neighbouring ramp indices (162 and 163 beside 196) are evidence for it. `mode13h.wgsl` draws every fragment at row 31; the `sun_direction` and `ambient_intensity` uniforms are uploaded but unused. The ground shading model is in [`terrain-shade.md`](../../playone-exe/terrain-shade.md). _Found 2026-10-22; see the [parity log](../../parity/log.md)._
+
+#### Sky Bands
+`[Bounded Observation]` The sky is not one colour: it is straight, parallel bands of palette indices, tilted with the camera roll, 238 at the horizon through 228 high up (11 bands), each at a stable view-ray elevation. Median elevation of the band transitions (1,200 to 1,600 per edge, interquartile range about 0.5 to 1.3 degrees): 2.14, 2.77, 3.59, 4.61, 5.82, 7.27, 9.23, 11.79, 15.75, 20.23 degrees. Successive edges grow by about 1.28 (1.25 to 1.34), so the bands are roughly geometric in elevation. Index 228 holds to the highest elevation seen (23.4 degrees); below the first edge, including below the horizon, index 238.
+
+**Index 227 is a band too.** `CTRY.FLM` never uses 227, but 27 of 213 `INTRO.FLM` frames (32,194 pixels) and 4 of 30 `COL3-2.FLM` frames (1,284 pixels) do, above 228. Parity treats 227 to 238 as sky (`CAPTURE_SKY_INDICES` in `crates/stunt-cli/src/parity/mask.rs`). Whether 227 is the top band of the same law is `[Unknown]`, as is behaviour above 23.4 degrees and for 224 to 226. The horizon sky index is film-specific (first-frame sky is 229 in `INTRO.FLM`, 233 in `CTRY.FLM`).
+
+A pixel-exact classifier with a fixed geometric law reaches only 65 to 75% per frame, and per-frame pitch shifts of up to 1.4 degrees (mean 0.05, sd 0.95) help little, so the residual is our camera's per-tick error and the transition medians are an empirical table, not an exact rule. The renderer paints the sky first in each pass (`vs_sky`, `fs_sky`, `fs_sky_plane` in `mode13h.wgsl`): a fullscreen triangle turns each pixel into a world ray through `CameraUniform::inv_view_proj`, takes the sine of its elevation and picks the band index. Effect: `mean_ssim_scored` 0.766 to 0.769, index agreement 0.390 to 0.470, mask IoU unchanged at 0.853. _Found 2026-10-22 (227 on 2026-10-23); see the [parity log](../../parity/log.md)._
+
 ### 3.3 The Modern GPU Palette Lookup Texture (LUT)
 
 Modern GPU pipelines (`crates/stunt-render/`) cannot emulate VGA DAC registers directly. Under invariant **`[I3]`**, authentic visual reproduction is achieved via an uncompressed **$256 \times 32$ 2D Palette Lookup Texture (LUT)**:
@@ -211,7 +221,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 - **Doug Armknecht (2002):** Reverse engineering of `.FLM` timeline horizon and sky palette indices (`horizon_sky_palette`) and color state tracking in `corpus/si_archive/Developer/SI_FLM_Format/` (`FLM_NOTES.md`, `FLM_FORMAT_DOUG_NOTES.txt`).
 - **Neil Halelamien (2004):** Reverse engineering of `.SET` time-of-day simulation scalars modulating palette lighting levels in `corpus/si_archive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
 - **FreeFlight Development Team:** Reverse engineering of `.ALL` palette container chunks (`0x8042` and `0x801E`) in `corpus/si_archive/Developer/FreeFlight/src/sires.cpp` and `SIPAL.H`.
-- **Alberto Marnetto (2024):** Color palette and memory patching research in `corpus/si_archive/Developer/SI-8x/si-8x-notes.txt`.
 - **StuntReel Teamwork Team (2026):** Milestone 1 & 2 $256 \times 32$ GPU LUT architecture, `@interpolate(flat)` pipeline design, and visual parity specification (`explorer_fmt_aux_concepts/analysis.md`, `crates/stunt-render/`).
 
 ---

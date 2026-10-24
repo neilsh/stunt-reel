@@ -13,7 +13,7 @@ const UI_BAR_FIRST_ROW: usize = 185;
 const CURSOR_INDEX: u8 = 255;
 
 /// Palette indices `PLAYONE.EXE` paints the sky with: elevation bands from 227 at the top
-/// of the view to 238 at the horizon (`research/parity-findings.md` §7). This describes
+/// of the view to 238 at the horizon (research/formats/concepts/palette-and-shading.md). This describes
 /// captures only; the renderer's band table in `mode13h.wgsl` is a separate model and is
 /// deliberately not shared.
 pub(super) const CAPTURE_SKY_INDICES: RangeInclusive<u8> = 227..=238;

@@ -3,7 +3,7 @@
 //! The world is the part of a film scene that never moves (GLOSSARY.md: **World**). It is
 //! assembled from three byte inputs that the caller locates and reads:
 //!
-//! - the anchor table (`ANCHORPT.DAT`, parsed by [`parse_anchor_table`]), the same
+//! - the anchor table (`ANCHORPT.DAT`, parsed by [`crate::anchor::parse_anchor_table`]), the same
 //!   records `OP_TAP` resolves against (ADR-0001);
 //! - `MAP.BIN`, whose 30-byte patches index that table to form terrain polygons;
 //! - `SCENERY.scn`, a BSP tree of prop placements referencing shapes by resource ID.
@@ -13,17 +13,17 @@
 //! filesystem: where those files live is the caller's concern.
 //!
 //! Anchor records are raw island coordinates mapped to `[I1]` by
-//! [`SodAnchorPoint::register_position`]; scenery placements apply the same `(-x, -y, z)`
+//! [`AnchorPoint::register_position`]; scenery placements apply the same `(-x, -y, z)`
 //! mapping. Mesh output follows `[I2]` (flat arena), `[I3]` (palette indices), and `[I5]`
 //! (props' coplanar decals go into a separate batch so renderers can depth-bias them).
 
 use std::collections::{HashMap, HashSet};
 
+use crate::anchor::AnchorPoint;
 use crate::contracts::{
     NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, SodModelIr, SodVertex,
     VisibilityCondition,
 };
-use crate::sod::SodAnchorPoint;
 
 /// Column-major identity `local_matrix` for every world node (the world is drawn untransformed).
 const IDENTITY_MATRIX: [f32; 16] = [
@@ -33,15 +33,15 @@ const IDENTITY_MATRIX: [f32; 16] = [
 /// Byte inputs for [`build_world`]; the caller supplies whatever it found on disk.
 #[derive(Clone, Copy, Debug)]
 pub struct WorldInputs<'a> {
-    /// Anchor table from [`parse_anchor_table`]; empty if `ANCHORPT.DAT` was not found.
-    pub anchors: &'a [SodAnchorPoint],
+    /// Anchor table from [`crate::anchor::parse_anchor_table`]; empty if `ANCHORPT.DAT` was not found.
+    pub anchors: &'a [AnchorPoint],
     /// Raw `MAP.BIN` bytes (30-byte terrain patch records), if found.
     pub map: Option<&'a [u8]>,
     /// Raw `SCENERY.scn` bytes (little-endian 32-bit BSP words), if found.
     pub scenery: Option<&'a [u8]>,
     /// Camera eye positions in time order, in `[I1]` metres. Props that stay sub-pixel along
     /// the polyline through them are not built (see `MIN_PROP_PIXELS`); empty keeps every
-    /// prop.
+    /// prop. They also choose each `SP_1NODE`'s level of detail (see `lod_threshold`).
     pub view_eyes: &'a [[f32; 3]],
 }
 
@@ -84,7 +84,7 @@ pub struct World {
 /// usable terrain patches.
 #[must_use]
 pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) -> Option<World> {
-    let pts = anchor_points(inputs.anchors);
+    let pts = inputs.anchors;
     let map_areas = inputs
         .map
         .map(|bytes| parse_map_bin(bytes, pts.len()))
@@ -99,13 +99,30 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         let (chunks, _) = scn_bytes.as_chunks::<4>();
         let words: Vec<i32> = chunks.iter().map(|c| i32::from_le_bytes(*c)).collect();
         let available_models: HashSet<u16> = shapes.keys().copied().collect();
-        traverse_scn(&words, 1, 0, 0, 0, &mut instances, &available_models, 0);
+        // The world is built once per film, so an `SP_1NODE` keeps its subtree when the
+        // camera path ever comes within the node's threshold and draws its far stand-in
+        // otherwise. PLAYONE compares view-space depth per frame; this uses path distance.
+        let near = |pos: [f32; 3], ext: i32, splitdist: i32| {
+            inputs.view_eyes.is_empty()
+                || path_distance(pos, inputs.view_eyes) <= lod_threshold(ext, splitdist, LOD_SCALE)
+        };
+        traverse_scn(
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut instances,
+            &available_models,
+            &near,
+            0,
+        );
     }
     let unique_instances =
         cull_subpixel_instances(dedup_instances(instances), shapes, inputs.view_eyes);
 
     let base_y = 0.0;
-    let ir = build_world_ir(&pts, &map_areas, &unique_instances, shapes, base_y);
+    let ir = build_world_ir(pts, &map_areas, &unique_instances, shapes, base_y);
     let bounds = vertex_bounds(&ir);
     Some(World {
         ir,
@@ -150,6 +167,38 @@ fn point_segment_distance(point: [f32; 3], a: [f32; 3], b: [f32; 3]) -> f32 {
     (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
 }
 
+/// Nearest distance from `point` to the polyline through `eyes`; infinite when `eyes` is empty.
+fn path_distance(point: [f32; 3], eyes: &[[f32; 3]]) -> f32 {
+    if eyes.len() == 1 {
+        point_segment_distance(point, eyes[0], eyes[0])
+    } else {
+        eyes.windows(2)
+            .map(|pair| point_segment_distance(point, pair[0], pair[1]))
+            .fold(f32::INFINITY, f32::min)
+    }
+}
+
+/// Fraction of an `SP_1NODE`'s split distance beyond half its extent that counts as near.
+///
+/// PLAYONE scales that span by `DS:0x22A4 / 0x10000`, the full-detail word times the
+/// per-shot projection mantissa, which lies in `[0.5, 1)` when normalised (research/playone-exe/lod.md
+/// section 2). The value is per shot, so this is a fixed stand-in: 0.5 scored best of
+/// 0.5, 0.75 and 1.0 on both parity films (research/playone-exe/lod.md).
+const LOD_SCALE: f32 = 0.5;
+
+/// Camera distance in metres up to which PLAYONE draws an `SP_1NODE`'s subtree.
+///
+/// Mirrors image `0x2121..0x2147`: with `half = ext / 2`, the threshold is `splitdist` when
+/// `splitdist < half`, else `half + (splitdist - half) * scale`.
+pub(crate) fn lod_threshold(ext: i32, splitdist: i32, scale: f32) -> f32 {
+    let half = ext >> 1;
+    if splitdist < half {
+        splitdist as f32
+    } else {
+        half as f32 + (splitdist - half) as f32 * scale
+    }
+}
+
 /// Drops placements whose bounding sphere stays under [`MIN_PROP_PIXELS`] along `eyes`.
 ///
 /// Consecutive eyes are joined by segments, so a camera cut only makes the cull more
@@ -177,14 +226,7 @@ pub(crate) fn cull_subpixel_instances(
                         .fold(0.0, f32::max)
                 })
             });
-            let nearest = if eyes.len() == 1 {
-                point_segment_distance(pos, eyes[0], eyes[0])
-            } else {
-                eyes.windows(2)
-                    .map(|pair| point_segment_distance(pos, pair[0], pair[1]))
-                    .fold(f32::INFINITY, f32::min)
-            };
-            radius * FOCAL_PIXELS >= MIN_PROP_PIXELS * nearest.max(1.0)
+            radius * FOCAL_PIXELS >= MIN_PROP_PIXELS * path_distance(pos, eyes).max(1.0)
         })
         .collect()
 }
@@ -202,56 +244,11 @@ fn vertex_bounds(ir: &SodModelIr) -> WorldBounds {
     WorldBounds { min, max }
 }
 
-/// Anchor point converted to the `[I1]` terrain representation.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct AnchorPoint {
-    x: f32,
-    y: f32,
-    z: f32,
-    valid: bool,
-}
-
 /// Polygonal terrain patch from `MAP.BIN`.
 #[derive(Clone, Debug)]
 pub(crate) struct MapArea {
     color: u8,
     verts: Vec<usize>,
-}
-
-/// Parses 28-byte anchor point records from the bytes of `ANCHORPT.DAT`.
-///
-/// Only the leading `x`, `y`, `z` words of each record are kept; a trailing partial
-/// record is ignored. The result is the table [`crate::sod::transpile_sod`] resolves
-/// `OP_TAP` against and that [`build_world`] places terrain patches over.
-#[must_use]
-pub fn parse_anchor_table(data: &[u8]) -> Vec<SodAnchorPoint> {
-    let count = data.len() / 28;
-    let mut pts = Vec::with_capacity(count);
-    for i in 0..count {
-        let offset = i * 28;
-        pts.push(SodAnchorPoint {
-            x: i16::from_le_bytes([data[offset], data[offset + 1]]),
-            y: i16::from_le_bytes([data[offset + 2], data[offset + 3]]),
-            z: i16::from_le_bytes([data[offset + 4], data[offset + 5]]),
-        });
-    }
-    pts
-}
-
-/// Converts raw anchor records into the `[I1]` world-terrain representation.
-pub(crate) fn anchor_points(anchors: &[SodAnchorPoint]) -> Vec<AnchorPoint> {
-    anchors
-        .iter()
-        .map(|a| {
-            let [x, y, z] = a.register_position();
-            AnchorPoint {
-                x,
-                y,
-                z,
-                valid: a.is_valid(),
-            }
-        })
-        .collect()
 }
 
 /// Parses 30-byte polygon patch records from `MAP.BIN`.
@@ -293,7 +290,7 @@ pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
 
 /// Fast approximate distance metric matching original engine and `simap.cpp`.
 #[cfg(test)]
-pub(crate) fn aprox_dist(x1: i32, y1: i32, x2: i32, y2: i32) -> i32 {
+pub(crate) fn approx_dist(x1: i32, y1: i32, x2: i32, y2: i32) -> i32 {
     let dx = (x2 - x1).abs();
     let dy = (y2 - y1).abs();
     dx + dy - (dx.min(dy) / 2)
@@ -309,6 +306,7 @@ pub(crate) fn traverse_scn(
     mut cz: i32,
     instances: &mut Vec<(u16, [f32; 3])>,
     available_models: &HashSet<u16>,
+    near: &dyn Fn([f32; 3], i32, i32) -> bool,
     depth: usize,
 ) {
     if depth > 128 {
@@ -344,12 +342,23 @@ pub(crate) fn traverse_scn(
                 ni = next;
             }
             2 => {
-                // SP_1NODE: obj, ext, splitdist, next
+                // SP_1NODE: obj, ext, splitdist, next. PLAYONE descends `next` when the node
+                // is near and otherwise draws `obj` as a stand-in for the whole subtree
+                // (image `0x2121`, research/playone-exe/lod.md section 1).
                 if ni + 4 >= words.len() {
                     break;
                 }
-                let next = (words[ni + 4] as u32 as usize) / 2;
-                ni = next;
+                let ext = words[ni + 2] as u16 as i32;
+                let splitdist = words[ni + 3] as u16 as i16 as i32;
+                if near([-(cx as f32), -(cy as f32), cz as f32], ext, splitdist) {
+                    ni = (words[ni + 4] as u32 as usize) / 2;
+                } else {
+                    let obj = words[ni + 1] as u16;
+                    if obj != 0 && available_models.contains(&obj) {
+                        instances.push((obj, [-(cx as f32), -(cy as f32), cz as f32]));
+                    }
+                    break;
+                }
             }
             4 | 6 | 8 | 16 | 18 => {
                 // SP_2NODE, SP_XPLANE, SP_ZPLANE, SP_HSLOPE, SP_VSLOPE
@@ -366,6 +375,7 @@ pub(crate) fn traverse_scn(
                     cz,
                     instances,
                     available_models,
+                    near,
                     depth + 1,
                 );
                 ni = next;
@@ -395,6 +405,7 @@ pub(crate) fn traverse_scn(
                     cz,
                     instances,
                     available_models,
+                    near,
                     depth + 1,
                 );
                 ni = next;
@@ -420,6 +431,7 @@ pub(crate) fn traverse_scn(
                         cz,
                         instances,
                         available_models,
+                        near,
                         depth + 1,
                     );
                     curr += 1;
@@ -431,261 +443,44 @@ pub(crate) fn traverse_scn(
     }
 }
 
+/// Half-width of the ocean and fallback ground quads, in metres.
+const WORLD_EXTENT: f32 = 32000.0;
+/// `SodVertex::flags` bit for unshaded faces.
+const FLAGS_UNSHADED: u8 = 0x04;
+/// Palette index of the ocean quad.
+const OCEAN_COLOR: u8 = 208;
+/// Palette index of the fallback ground plane drawn when `MAP.BIN` is absent.
+const GROUND_COLOR: u8 = 194;
+const UP: [f32; 3] = [0.0, 1.0, 0.0];
+
 /// Builds the consolidated static world scenery and terrain intermediate representation.
+///
+/// Vertices are laid out ocean, then terrain, then props (base batch, then decal batch),
+/// each tagged with its scenery class. The props' coplanar decals get their own node so
+/// renderers can depth-bias them (`[I5]`).
 pub(crate) fn build_world_ir(
-    pts: &[AnchorPoint],
+    anchors: &[AnchorPoint],
     map_areas: &[MapArea],
     instances: &[(u16, [f32; 3])],
     ir_models: &HashMap<u16, SodModelIr>,
     base_y: f32,
 ) -> SodModelIr {
     let mut ir = SodModelIr::new("WORLD_SCENERY");
-    let up = [0.0, 1.0, 0.0];
-    let flags_unshaded = 0x04;
 
-    // 1. Global ocean water quad at base_y - 1.0 per research/formats/auxiliary/map.md § 3.1
-    let o_start = ir.vertices.len() as u32;
-    let ocean_color = 208u8;
-    ir.vertices.push(SodVertex {
-        position: [-32000.0, base_y - 1.0, -32000.0],
-        normal: up,
-        palette_index: ocean_color,
-        flags: flags_unshaded,
-        _padding: [0, 0],
-    });
-    ir.vertices.push(SodVertex {
-        position: [32000.0, base_y - 1.0, -32000.0],
-        normal: up,
-        palette_index: ocean_color,
-        flags: flags_unshaded,
-        _padding: [0, 0],
-    });
-    ir.vertices.push(SodVertex {
-        position: [32000.0, base_y - 1.0, 32000.0],
-        normal: up,
-        palette_index: ocean_color,
-        flags: flags_unshaded,
-        _padding: [0, 0],
-    });
-    ir.vertices.push(SodVertex {
-        position: [-32000.0, base_y - 1.0, 32000.0],
-        normal: up,
-        palette_index: ocean_color,
-        flags: flags_unshaded,
-        _padding: [0, 0],
-    });
-    ir.indices.extend_from_slice(&[
-        o_start,
-        o_start + 1,
-        o_start + 2,
-        o_start,
-        o_start + 2,
-        o_start + 3,
-    ]);
-
-    let terrain_start = ir.vertices.len();
-
-    // 2. Island terrain polygons from MAP.BIN and ANCHORPT.DAT
+    // Ocean water quad at base_y - 1.0 per research/formats/auxiliary/map.md § 3.1.
+    push_flat_quad(&mut ir, base_y - 1.0, OCEAN_COLOR, SCENERY_OCEAN);
     if map_areas.is_empty() {
-        // Fallback ground plane at base_y if MAP.BIN is absent
-        let g_start = ir.vertices.len() as u32;
-        let ground_color = 194u8;
-        ir.vertices.push(SodVertex {
-            position: [-32000.0, base_y, -32000.0],
-            normal: up,
-            palette_index: ground_color,
-            flags: flags_unshaded,
-            _padding: [0, 0],
-        });
-        ir.vertices.push(SodVertex {
-            position: [32000.0, base_y, -32000.0],
-            normal: up,
-            palette_index: ground_color,
-            flags: flags_unshaded,
-            _padding: [0, 0],
-        });
-        ir.vertices.push(SodVertex {
-            position: [32000.0, base_y, 32000.0],
-            normal: up,
-            palette_index: ground_color,
-            flags: flags_unshaded,
-            _padding: [0, 0],
-        });
-        ir.vertices.push(SodVertex {
-            position: [-32000.0, base_y, 32000.0],
-            normal: up,
-            palette_index: ground_color,
-            flags: flags_unshaded,
-            _padding: [0, 0],
-        });
-        ir.indices.extend_from_slice(&[
-            g_start,
-            g_start + 1,
-            g_start + 2,
-            g_start,
-            g_start + 2,
-            g_start + 3,
-        ]);
+        push_flat_quad(&mut ir, base_y, GROUND_COLOR, SCENERY_TERRAIN);
     } else {
-        for area in map_areas {
-            if area.verts.len() < 3 {
-                continue;
-            }
-            if !area
-                .verts
-                .iter()
-                .all(|&idx| pts.get(idx).is_some_and(|p| p.valid))
-            {
-                continue;
-            }
-
-            let p0 = pts[area.verts[0]];
-            let p1 = pts[area.verts[1]];
-            let p2 = pts[area.verts[2]];
-            let v01 = [p1.x - p0.x, p1.y - p0.y, p1.z - p0.z];
-            let v02 = [p2.x - p0.x, p2.y - p0.y, p2.z - p0.z];
-            let norm = [
-                v01[1] * v02[2] - v01[2] * v02[1],
-                v01[2] * v02[0] - v01[0] * v02[2],
-                v01[0] * v02[1] - v01[1] * v02[0],
-            ];
-            let len = (norm[0] * norm[0] + norm[1] * norm[1] + norm[2] * norm[2]).sqrt();
-            let normal = if len > 1e-6 {
-                [norm[0] / len, norm[1] / len, norm[2] / len]
-            } else {
-                up
-            };
-
-            let start_idx = ir.vertices.len() as u32;
-            for &v_idx in &area.verts {
-                let p = pts[v_idx];
-                ir.vertices.push(SodVertex {
-                    position: [p.x, p.y + base_y, p.z],
-                    normal,
-                    palette_index: area.color,
-                    flags: flags_unshaded,
-                    _padding: [0, 0],
-                });
-            }
-            for k in 1..(area.verts.len() as u32 - 1) {
-                ir.indices.push(start_idx);
-                ir.indices.push(start_idx + k);
-                ir.indices.push(start_idx + k + 1);
-            }
-        }
+        push_terrain(&mut ir, anchors, map_areas, base_y);
     }
+    push_props(&mut ir, instances, ir_models, base_y, false);
 
-    let prop_start = ir.vertices.len();
-
-    // 3. Static Props: Base Geometry Batch
-    for &(shape_id, pos) in instances {
-        let Some(model_ir) = ir_models.get(&shape_id) else {
-            continue;
-        };
-        for node in &model_ir.nodes {
-            if let NodeKind::Mesh {
-                vertex_offset,
-                vertex_count,
-                index_offset,
-                index_count,
-                is_decal: false,
-            } = node.kind
-            {
-                if index_count == 0 {
-                    continue;
-                }
-                let base_start = ir.vertices.len() as u32;
-                let v_start = vertex_offset as usize;
-                let v_end = (vertex_offset + vertex_count) as usize;
-                for v in &model_ir.vertices[v_start..v_end] {
-                    ir.vertices.push(SodVertex {
-                        position: [
-                            v.position[0] + pos[0],
-                            v.position[1] + pos[1] + base_y,
-                            v.position[2] + pos[2],
-                        ],
-                        normal: v.normal,
-                        palette_index: v.palette_index,
-                        flags: v.flags,
-                        _padding: [0, 0],
-                    });
-                }
-                let i_start = index_offset as usize;
-                let i_end = (index_offset + index_count) as usize;
-                for &idx in &model_ir.indices[i_start..i_end] {
-                    if idx >= vertex_offset && idx < vertex_offset + vertex_count {
-                        let local = idx - vertex_offset;
-                        ir.indices.push(base_start + local);
-                    }
-                }
-            }
-        }
-    }
-
-    let total_base_indices = ir.indices.len() as u32;
-    let total_base_vertices = ir.vertices.len() as u32;
-
-    // 4. Static Props: Decal Geometry Batch (hardware depth-bias pass per [I5])
-    let decal_index_start = total_base_indices;
-    for &(shape_id, pos) in instances {
-        let Some(model_ir) = ir_models.get(&shape_id) else {
-            continue;
-        };
-        for node in &model_ir.nodes {
-            if let NodeKind::Mesh {
-                vertex_offset,
-                vertex_count,
-                index_offset,
-                index_count,
-                is_decal: true,
-            } = node.kind
-            {
-                if index_count == 0 {
-                    continue;
-                }
-                let decal_start = ir.vertices.len() as u32;
-                let v_start = vertex_offset as usize;
-                let v_end = (vertex_offset + vertex_count) as usize;
-                for v in &model_ir.vertices[v_start..v_end] {
-                    ir.vertices.push(SodVertex {
-                        position: [
-                            v.position[0] + pos[0],
-                            v.position[1] + pos[1] + base_y,
-                            v.position[2] + pos[2],
-                        ],
-                        normal: v.normal,
-                        palette_index: v.palette_index,
-                        flags: v.flags,
-                        _padding: [0, 0],
-                    });
-                }
-                let i_start = index_offset as usize;
-                let i_end = (index_offset + index_count) as usize;
-                for &idx in &model_ir.indices[i_start..i_end] {
-                    if idx >= vertex_offset && idx < vertex_offset + vertex_count {
-                        let local = idx - vertex_offset;
-                        ir.indices.push(decal_start + local);
-                    }
-                }
-            }
-        }
-    }
-
-    // Tag each vertex with its scenery class (`SCENERY_OCEAN`..`SCENERY_PROP`); `parity`
-    // attribution reads it. Prop decals follow the base props, so everything from
-    // `prop_start` on is a prop.
-    for (position, vertex) in ir.vertices.iter_mut().enumerate() {
-        vertex._padding[0] = if position < terrain_start {
-            SCENERY_OCEAN
-        } else if position < prop_start {
-            SCENERY_TERRAIN
-        } else {
-            SCENERY_PROP
-        };
-    }
-
-    let total_decal_indices = ir.indices.len() as u32 - decal_index_start;
-    let total_decal_vertices = ir.vertices.len() as u32 - total_base_vertices;
+    let base_indices = ir.indices.len() as u32;
+    let base_vertices = ir.vertices.len() as u32;
+    push_props(&mut ir, instances, ir_models, base_y, true);
+    let decal_indices = ir.indices.len() as u32 - base_indices;
+    let decal_vertices = ir.vertices.len() as u32 - base_vertices;
 
     let root_base = ir.allocate_node(
         "WORLD_BASE",
@@ -694,14 +489,13 @@ pub(crate) fn build_world_ir(
         VisibilityCondition::Always,
         NodeKind::Mesh {
             vertex_offset: 0,
-            vertex_count: total_base_vertices,
+            vertex_count: base_vertices,
             index_offset: 0,
-            index_count: total_base_indices,
+            index_count: base_indices,
             is_decal: false,
         },
     );
-
-    if total_decal_indices > 0 {
+    if decal_indices > 0 {
         ir.allocate_node(
             "WORLD_DECAL",
             Some(root_base),
@@ -709,20 +503,141 @@ pub(crate) fn build_world_ir(
             VisibilityCondition::Always,
             NodeKind::Mesh {
                 vertex_offset: 0,
-                vertex_count: total_decal_vertices,
-                index_offset: decal_index_start,
-                index_count: total_decal_indices,
+                vertex_count: decal_vertices,
+                index_offset: base_indices,
+                index_count: decal_indices,
                 is_decal: true,
             },
         );
     }
-
     ir
+}
+
+/// Appends an unshaded, upward-facing quad spanning the world at height `y`.
+fn push_flat_quad(ir: &mut SodModelIr, y: f32, color: u8, scenery_class: u8) {
+    let start = ir.vertices.len() as u32;
+    let e = WORLD_EXTENT;
+    for [x, z] in [[-e, -e], [e, -e], [e, e], [-e, e]] {
+        ir.vertices.push(SodVertex {
+            position: [x, y, z],
+            normal: UP,
+            palette_index: color,
+            flags: FLAGS_UNSHADED,
+            scenery_class,
+            _padding: 0,
+        });
+    }
+    ir.indices
+        .extend_from_slice(&[start, start + 1, start + 2, start, start + 2, start + 3]);
+}
+
+/// Appends one fan-triangulated polygon per `MAP.BIN` patch whose corners are all valid
+/// anchor points, lifted by `base_y`.
+fn push_terrain(ir: &mut SodModelIr, anchors: &[AnchorPoint], map_areas: &[MapArea], base_y: f32) {
+    let pts: Vec<[f32; 3]> = anchors.iter().map(AnchorPoint::register_position).collect();
+    for area in map_areas {
+        if area.verts.len() < 3
+            || !area
+                .verts
+                .iter()
+                .all(|&idx| anchors.get(idx).is_some_and(AnchorPoint::is_valid))
+        {
+            continue;
+        }
+
+        let p0 = pts[area.verts[0]];
+        let p1 = pts[area.verts[1]];
+        let p2 = pts[area.verts[2]];
+        let v01 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+        let v02 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+        let norm = [
+            v01[1] * v02[2] - v01[2] * v02[1],
+            v01[2] * v02[0] - v01[0] * v02[2],
+            v01[0] * v02[1] - v01[1] * v02[0],
+        ];
+        let len = (norm[0] * norm[0] + norm[1] * norm[1] + norm[2] * norm[2]).sqrt();
+        let normal = if len > 1e-6 {
+            [norm[0] / len, norm[1] / len, norm[2] / len]
+        } else {
+            UP
+        };
+
+        let start = ir.vertices.len() as u32;
+        for &v_idx in &area.verts {
+            let p = pts[v_idx];
+            ir.vertices.push(SodVertex {
+                position: [p[0], p[1] + base_y, p[2]],
+                normal,
+                palette_index: area.color,
+                flags: FLAGS_UNSHADED,
+                scenery_class: SCENERY_TERRAIN,
+                _padding: 0,
+            });
+        }
+        for k in 1..(area.verts.len() as u32 - 1) {
+            ir.indices
+                .extend_from_slice(&[start, start + k, start + k + 1]);
+        }
+    }
+}
+
+/// Appends every placed prop's mesh nodes whose `is_decal` equals `decals`, translated to
+/// its placement and lifted by `base_y`. Indices outside a node's own vertex range are dropped.
+fn push_props(
+    ir: &mut SodModelIr,
+    instances: &[(u16, [f32; 3])],
+    ir_models: &HashMap<u16, SodModelIr>,
+    base_y: f32,
+    decals: bool,
+) {
+    for &(shape_id, pos) in instances {
+        let Some(model_ir) = ir_models.get(&shape_id) else {
+            continue;
+        };
+        for node in &model_ir.nodes {
+            let NodeKind::Mesh {
+                vertex_offset,
+                vertex_count,
+                index_offset,
+                index_count,
+                is_decal,
+            } = node.kind
+            else {
+                continue;
+            };
+            if is_decal != decals || index_count == 0 {
+                continue;
+            }
+            let start = ir.vertices.len() as u32;
+            let v_range = vertex_offset as usize..(vertex_offset + vertex_count) as usize;
+            for v in &model_ir.vertices[v_range] {
+                ir.vertices.push(SodVertex {
+                    position: [
+                        v.position[0] + pos[0],
+                        v.position[1] + pos[1] + base_y,
+                        v.position[2] + pos[2],
+                    ],
+                    normal: v.normal,
+                    palette_index: v.palette_index,
+                    flags: v.flags,
+                    scenery_class: SCENERY_PROP,
+                    _padding: 0,
+                });
+            }
+            let i_range = index_offset as usize..(index_offset + index_count) as usize;
+            for &idx in &model_ir.indices[i_range] {
+                if (vertex_offset..vertex_offset + vertex_count).contains(&idx) {
+                    ir.indices.push(start + idx - vertex_offset);
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::anchor::parse_anchor_table;
 
     #[test]
     fn test_parse_anchorpt_valid_and_invalid() {
@@ -737,15 +652,13 @@ mod tests {
         data[30..32].copy_from_slice(&(-32500i16).to_le_bytes());
         data[32..34].copy_from_slice(&0i16.to_le_bytes());
 
-        let pts = anchor_points(&parse_anchor_table(&data));
-        assert_eq!(pts.len(), 2);
-        assert_eq!(pts[0].x, -100.0);
-        assert_eq!(pts[0].y, 500.0); // inverted elevation
-        assert_eq!(pts[0].z, 200.0);
-        assert!(pts[0].valid);
+        let anchors = parse_anchor_table(&data);
+        assert_eq!(anchors.len(), 2);
+        assert_eq!(anchors[0].register_position(), [-100.0, 500.0, 200.0]); // inverted elevation
+        assert!(anchors[0].is_valid());
 
-        assert_eq!(pts[1].y, 0.0); // sentinel elevation decodes as sea level
-        assert!(!pts[1].valid);
+        assert_eq!(anchors[1].register_position()[1], 0.0); // sentinel elevation decodes as sea level
+        assert!(!anchors[1].is_valid());
     }
 
     #[test]
@@ -796,7 +709,17 @@ mod tests {
         available.insert(0x0105);
 
         let mut instances = Vec::new();
-        traverse_scn(&words, 1, 0, 0, 0, &mut instances, &available, 0);
+        traverse_scn(
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut instances,
+            &available,
+            &|_, _, _| true,
+            0,
+        );
 
         assert_eq!(instances.len(), 1);
         assert_eq!(instances[0].0, 0x0105);
@@ -805,25 +728,84 @@ mod tests {
     }
 
     #[test]
+    fn test_traverse_scn_1node_draws_stand_in_when_far() {
+        // Node 1: SP_1NODE (op 2) -> obj=0x0200, ext=10, splitdist=100, next=6 (word index 6)
+        // Node 6: SP_LEAF (op 10) -> obj=0x0105
+        let mut words = vec![0i32; 8];
+        words[1] = 2;
+        words[2] = 0x0200;
+        words[3] = 10;
+        words[4] = 100;
+        words[5] = 12;
+        words[6] = 10;
+        words[7] = 0x0105;
+        let available: HashSet<u16> = [0x0105, 0x0200].into_iter().collect();
+
+        let mut near = Vec::new();
+        traverse_scn(
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut near,
+            &available,
+            &|_, _, _| true,
+            0,
+        );
+        assert_eq!(near, vec![(0x0105, [0.0, 0.0, 0.0])]);
+
+        let mut far = Vec::new();
+        let mut seen = Vec::new();
+        let record = std::cell::RefCell::new(&mut seen);
+        let gate = |pos: [f32; 3], ext: i32, splitdist: i32| {
+            record.borrow_mut().push((pos, ext, splitdist));
+            false
+        };
+        traverse_scn(&words, 1, 0, 0, 0, &mut far, &available, &gate, 0);
+        assert_eq!(far, vec![(0x0200, [0.0, 0.0, 0.0])]);
+        assert_eq!(seen, vec![([0.0, 0.0, 0.0], 10, 100)]);
+
+        // A far node with no stand-in draws nothing.
+        words[2] = 0;
+        let mut empty = Vec::new();
+        traverse_scn(
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut empty,
+            &available,
+            &|_, _, _| false,
+            0,
+        );
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn test_lod_threshold_matches_playone_branches() {
+        // splitdist >= ext / 2: half + (splitdist - half) * scale
+        assert_eq!(lod_threshold(10, 100, 1.0), 100.0);
+        assert_eq!(lod_threshold(10, 105, 0.5), 55.0);
+        // splitdist < ext / 2: splitdist alone
+        assert_eq!(lod_threshold(400, 50, 0.5), 50.0);
+    }
+
+    #[test]
     fn test_build_world_ir_structure() {
+        // Raw records whose `[I1]` positions are (0, 10, 0), (10, 10, 0) and (10, 10, 10).
         let pts = vec![
+            AnchorPoint { x: 0, y: -10, z: 0 },
             AnchorPoint {
-                x: 0.0,
-                y: 10.0,
-                z: 0.0,
-                valid: true,
+                x: -10,
+                y: -10,
+                z: 0,
             },
             AnchorPoint {
-                x: 10.0,
-                y: 10.0,
-                z: 0.0,
-                valid: true,
-            },
-            AnchorPoint {
-                x: 10.0,
-                y: 10.0,
-                z: 10.0,
-                valid: true,
+                x: -10,
+                y: -10,
+                z: 10,
             },
         ];
         let map_areas = vec![MapArea {
@@ -866,7 +848,8 @@ mod tests {
                 normal: [0.0, 1.0, 0.0],
                 palette_index: 10,
                 flags: 0,
-                _padding: [0, 0],
+                scenery_class: 0,
+                _padding: 0,
             },
         );
         prop_ir.indices = vec![0, 1, 2, 0, 1, 2];
@@ -887,9 +870,70 @@ mod tests {
     }
 
     #[test]
-    fn test_aprox_dist() {
-        assert_eq!(aprox_dist(0, 0, 3, 4), 3 + 4 - 3 / 2);
-        assert_eq!(aprox_dist(10, 20, 10, 20), 0);
+    fn test_build_world_ir_without_map_lays_ocean_then_ground() {
+        let world_ir = build_world_ir(&[], &[], &[], &HashMap::new(), 5.0);
+        assert_eq!(world_ir.vertices.len(), 8);
+        assert_eq!(world_ir.indices, [0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
+        let (ocean, ground) = world_ir.vertices.split_at(4);
+        assert!(ocean.iter().all(|v| v.palette_index == OCEAN_COLOR
+            && v.scenery_class == SCENERY_OCEAN
+            && v.position[1] == 4.0));
+        assert!(ground.iter().all(|v| v.palette_index == GROUND_COLOR
+            && v.scenery_class == SCENERY_TERRAIN
+            && v.position[1] == 5.0));
+        assert!(world_ir.nodes.iter().all(|n| n.name != "WORLD_DECAL"));
+    }
+
+    #[test]
+    fn test_push_terrain_fans_valid_patches_and_skips_the_rest() {
+        let anchors = [
+            AnchorPoint { x: 0, y: 0, z: 0 },
+            AnchorPoint { x: -10, y: 0, z: 0 },
+            AnchorPoint {
+                x: -10,
+                y: 0,
+                z: 10,
+            },
+            AnchorPoint { x: 0, y: 0, z: 10 },
+            AnchorPoint {
+                x: 0,
+                y: 32000,
+                z: 0,
+            },
+        ];
+        let areas = [
+            MapArea {
+                color: 7,
+                verts: vec![0, 1, 2, 3],
+            },
+            MapArea {
+                color: 8,
+                verts: vec![0, 1],
+            },
+            MapArea {
+                color: 9,
+                verts: vec![0, 1, 4],
+            },
+            MapArea {
+                color: 9,
+                verts: vec![0, 1, 99],
+            },
+        ];
+        let mut ir = SodModelIr::new("T");
+        push_terrain(&mut ir, &anchors, &areas, 2.0);
+        assert_eq!(ir.vertices.len(), 4);
+        assert_eq!(ir.indices, [0, 1, 2, 0, 2, 3]);
+        assert!(ir.vertices.iter().all(|v| v.palette_index == 7
+            && v.scenery_class == SCENERY_TERRAIN
+            && v.flags == FLAGS_UNSHADED
+            && v.position[1] == 2.0));
+        assert_eq!(ir.vertices[1].position, [10.0, 2.0, 0.0]);
+    }
+
+    #[test]
+    fn test_approx_dist() {
+        assert_eq!(approx_dist(0, 0, 3, 4), 3 + 4 - 3 / 2);
+        assert_eq!(approx_dist(10, 20, 10, 20), 0);
     }
 
     #[test]
@@ -933,7 +977,8 @@ mod tests {
                 normal: [0.0, 1.0, 0.0],
                 palette_index: 1,
                 flags: 0,
-                _padding: [0, 0],
+                scenery_class: 0,
+                _padding: 0,
             },
         );
         // Indices intentionally include:

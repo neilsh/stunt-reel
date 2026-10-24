@@ -3,7 +3,7 @@
 * **Project Name:** StuntReel
 * **Repository Identifier:** `stunt-reel`
 * **Binary CLI:** `stuntreel`
-* **Status:** Phases 0–2 delivered (Milestone 1 and 2 gates passed); Milestone 3 fidelity backlog open. Ticket-level status: [`TEAM_SHEET.md`](TEAM_SHEET.md)
+* **Status:** Phases 0–2 delivered (Milestone 1 and 2 gates passed); Milestone 3 fidelity backlog open. Ticket-level status: [`TEAM_SHEET.md`](process/TEAM_SHEET.md)
 * **Strategy:** Two-Phase Delivery (Phase 1: Runtime Memory Capture to glTF 2.0; Phase 2: Native Cleanroom Rust Engine)
 * **Methodology:** Cleanroom Reverse Engineering (Nanolathe), AI Hero Specification Architecture, & Offline Test-Driven Verification
 
@@ -24,7 +24,7 @@ Our engineering methodology is directly inspired by cleanroom reverse engineerin
 
 ### 1.2 Phased Delivery Architecture
 
-Delivery is sequential. This section records what each phase is for and whether it has shipped; per-ticket status, owners and milestone sign-offs live in [`TEAM_SHEET.md`](TEAM_SHEET.md).
+Delivery is sequential. This section records what each phase is for and whether it has shipped; per-ticket status, owners and milestone sign-offs live in [`TEAM_SHEET.md`](process/TEAM_SHEET.md).
 
 1. **Phase 0: Foundation, Cleanroom Scaffolding & Static Reverse Engineering *(Status: Complete)***
    * Cargo workspace (`stunt-core`, `stunt-render`, `stunt-cli`) and Python package (`stunt_reel`), managed reproducibly via `mise`.
@@ -32,15 +32,15 @@ Delivery is sequential. This section records what each phase is for and whether 
    * `PLAYONE.EXE` unpacked and disassembled for startup, memory, navigation and the display-list VM ([`research/playone-exe/`](../research/playone-exe/)).
 
 2. **Phase 1: Capture Harness & AOT glTF 2.0 Exporter *(Status: Complete; Milestone 1 gate passed)***
-   * Treats `PLAYONE.EXE` as an authoritative black-box kinematics compiler running inside headless DOSBox-X, driven over its debugger socket, and gates snapshots on the film clock ([`capture.md`](../research/playone-exe/capture.md), [`MEMORY_MAP.md`](MEMORY_MAP.md)).
+   * Treats `PLAYONE.EXE` as an authoritative black-box kinematics compiler running inside headless DOSBox-X, driven over its debugger socket, and gates snapshots on the film clock ([`capture.md`](../research/playone-exe/capture.md), [`MEMORY_MAP.md`](../research/playone-exe/memory-map.md)).
    * Emits the golden trajectory oracle and self-contained animated glTF 2.0 files (`python/stunt_reel/tac/`; glTF export is `crates/stunt-gltf/`).
 
 3. **Phase 2: Native Cleanroom Rust Engine *(Status: Complete; Milestone 2 gate passed)***
    * A standalone, zero-emulator Rust runtime (`stunt-core`, `stunt-render`, `stunt-cli`) on `wgpu`: native `.ALL`/`.RES` parsing, `.SOD` display-list transpilation into a flat arena IR, `.FLM` evaluation through `FilmTimeline`, and authentic Mode 13h flat-shaded rendering.
-   * Asserts position parity ($\text{RMSE} \le 0.01\text{ m}$) against the Phase 1 oracle and visual parity against captured frames (gates `G04` and `G07`).
+   * Asserts position error ($\text{RMSE} \le 0.01\text{ m}$) against the Phase 1 oracle trajectory and visual parity against captured frames (gates `G04` and `G07`).
 
 4. **Ongoing: Fidelity Backlog *(Status: Open; Milestone 3)***
-   * Decode and timing gaps found by the `CTRY.FLM` export audit, such as `OP_ANIMATE` semantics. Findings: [`research/parity-findings.md`](../research/parity-findings.md); tickets: [`TEAM_SHEET.md`](TEAM_SHEET.md).
+   * Decode and timing gaps found by the `CTRY.FLM` export audit, such as `OP_ANIMATE` semantics. Findings: [`research/parity/`](../research/parity/); tickets: [`TEAM_SHEET.md`](process/TEAM_SHEET.md).
 
 ---
 
@@ -95,7 +95,7 @@ Delivery is sequential. This section records what each phase is for and whether 
   * Original VGA Mode 13h framebuffers render at $320 \times 200$ pixels displayed on a physical $4:3$ CRT, resulting in non-square pixels stretched vertically by $1.2$:
     $$\text{Aspect}_{\text{physical}} = \frac{320}{200 \times 1.2} = \frac{320}{240} = \frac{4}{3} \approx 1.3333$$
   * All visual parity gates normalize reference DOSBox-X captures to $4:3$ ($320 \times 240$) prior to Structural Similarity (SSIM) evaluation.
-  * Off-screen renders (including background sky/horizon palette fills and static stage terrain) must achieve mean $\text{SSIM} \ge 0.88$ initially and mean $\text{SSIM} \ge 0.90$ at sign-off, both measured on the native `wgpu` engine. For the `stuntreel parity` comparator the thresholds apply to `mean_ssim_scored` (SSIM over scored frames) (see [§ 3.6](../research/parity-findings.md#1-parity-loop-capture-vs-render)). glTF export is a convenience format and has no parity gate of its own; the former Phase 1 glTF tier (G05) is retired.
+  * Off-screen renders (including background sky/horizon palette fills and static stage terrain) must achieve mean $\text{SSIM} \ge 0.88$ initially and mean $\text{SSIM} \ge 0.90$ at sign-off, both measured on the native `wgpu` engine. For the `stuntreel parity` comparator the thresholds apply to `mean_ssim_scored` (SSIM over scored frames) (see [`method.md`](../research/parity/method.md#1-the-loop)). glTF export is a convenience format and has no parity gate of its own; the former Phase 1 glTF tier (G05) is retired.
 
 ### 2.3 Software Architecture Guardrails
 
@@ -109,10 +109,10 @@ Delivery is sequential. This section records what each phase is for and whether 
   * Geometry preserves original 8-bit VGA palette indices (`0..=255`) inside `SodVertex::palette_index`.
   * In Phase 2, the WGSL vertex-to-fragment stage passes palette and facet lighting indices using `@interpolate(flat)` (disabling bilinear attribute interpolation across triangle interiors) and samples an uncompressed $256 \times 32$ RGBA lookup texture (LUT) representing 256 base colors across 32 discrete directional lighting and atmospheric haze levels.
 
-#### [I7] Cleanroom Asset Isolation & Zero-Dependency Core
+#### [I7] Cleanroom Asset Isolation & Small Pure-Rust Core Dependencies
 
   * Proprietary game binaries and retail data files (`corpus/`, `target_bin/`) are strictly gitignored and never checked into Git or downloaded during CI.
-  * `crates/stunt-core` maintains zero OS windowing, GPU, audio, or emulator dependencies so unit and contract tests compile and run 100% offline in $< 2\text{ seconds}$.
+  * `crates/stunt-core` may depend on small, pure-Rust crates that do no I/O and touch no windowing, GPU, audio, or emulator code, so unit and contract tests compile and run 100% offline in $< 2\text{ seconds}$. Each added crate is justified in the PR that adds it ([ADR 0002](adr/0002-stunt-core-may-take-small-dependencies.md)).
 
 #### [I8] DOS 8.3 Uppercase Path Normalization
 
@@ -142,11 +142,11 @@ The specification does not carry binary-analysis findings. They live in `researc
 |---|---|
 | `PLAYONE.EXE` image, entry point, LZEXE packing, command tail (only a leading `?` is read, everything else is ignored), memory and disk gates | [`research/playone-exe/startup.md`](../research/playone-exe/startup.md) |
 | Modal `LOAD FILM` dialog, prefix search, BIOS Data Area keystroke injection, `.FLM` + `.ALL` pairing rule | [`research/playone-exe/navigation.md`](../research/playone-exe/navigation.md) |
-| `DGROUP` offsets, work-segment offsets, `# [MEM-*]` anchors | [`docs/MEMORY_MAP.md`](MEMORY_MAP.md) (evidence: [`memory.md`](../research/playone-exe/memory.md)) |
+| `DGROUP` offsets, work-segment offsets, `# [MEM-*]` anchors | [`research/playone-exe/memory-map.md`](../research/playone-exe/memory-map.md) (evidence: [`memory.md`](../research/playone-exe/memory.md)) |
 | DOSBox-X capture harness and protocol | [`research/playone-exe/capture.md`](../research/playone-exe/capture.md) |
 | Display-list VM, `OP_TAP`, `OP_ANIMATE` | [`sod-vm.md`](../research/playone-exe/sod-vm.md), [`sod-animate.md`](../research/playone-exe/sod-animate.md) |
 | File formats and byte layouts | [`research/formats/INDEX.md`](../research/formats/INDEX.md) and the `.ksy` schemas |
-| `CTRY.FLM` parity findings: comparator, camera look direction, partial model fidelity, scenery | [`research/parity-findings.md`](../research/parity-findings.md) |
+| Parity: method, results log, where the loss sits | [`research/parity/`](../research/parity/) |
 
 ---
 
@@ -156,8 +156,8 @@ The system integrates across four seams, defined by the types in `crates/stunt-c
 
 * **Seam 1 (`VfsArchive`)**: `.RES` and `.ALL` extraction ([`vfs.rs`](../crates/stunt-core/src/contracts/vfs.rs)); layouts in [`res.md`](../research/formats/res.md) and [`all.md`](../research/formats/all.md).
 * **Seam 2 (`TrajectoryRecord`, `FilmCapture`)**: per-tick film state on the cumulative 50 Hz clock, sampled through `FilmTimeline` ([`trajectory.rs`](../crates/stunt-core/src/contracts/trajectory.rs)); see `[I4]`.
-* **Seam 3 (`SodModelIr`)**: the flat-arena scene graph built by `transpile_sod` (strict) or `transpile_sod_lenient` ([`scene.rs`](../crates/stunt-core/src/contracts/scene.rs)); see `[I2]`.
-* **Seam 4 (`VisualParityGate`)**: capture-vs-render SSIM and the `[I6]` gate, reported by `stuntreel parity` ([`parity/`](../crates/stunt-cli/src/parity/)); [`parity.rs`](../crates/stunt-core/src/contracts/parity.rs) records why the seam has no core types; see `[I6]`.
+* **Seam 3 (`SodModelIr`)**: the Shape IR, a flat-arena node graph of one shape, built by `transpile_sod` (strict) or `transpile_sod_lenient` ([`shape.rs`](../crates/stunt-core/src/contracts/shape.rs)); see `[I2]`.
+* **Seam 4 (`VisualParityGate`)**: capture-vs-render SSIM and the `[I6]` gate, reported by `stuntreel parity` ([`parity/`](../crates/stunt-cli/src/parity/)); the seam has no core types ([`contracts/mod.rs`](../crates/stunt-core/src/contracts/mod.rs)); see `[I6]`.
 
 Which code path is governed by which seam, anchor and note: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
@@ -170,7 +170,7 @@ Which code path is governed by which seam, anchor and note: [`ARCHITECTURE.md`](
 | **`G01`** | Formatting, Lints, Types & Doc Anchors | All Crates, `python/stunt_reel`, `docs/` | `mise run check` | Exit code `0`; $0$ warnings; every registered anchor has its heading and every cited anchor is registered (`stunt_reel.doc_anchors`); doc tiers and links validate | **Yes** |
 | **`G02`** | Cleanroom VFS Extraction | Seam 1 (`VfsArchive`), `[I7]`, `[I8]` | `cargo test -p stunt-core --test vfs_spec --test vfs_fuzz` | 100% byte match on `synthetic_minimal.res`; uppercase 8.3 lookup | **Yes** |
 | **`G03`** | Arena Scene Graph & Attribute Welding | Seam 3 (`SodModelIr`), `[I1]`, `[I2]`, `[I3]` | `cargo test -p stunt-core --test sod_spec --test sod_fuzz` | `size_of::<SodVertex>() == 28`; flat `NodeId(u32)` arena; sharp facet normals preserved | **Yes** |
-| **`G04`** | Synthetic `.FLM`, Cut-Aware `[I4]` & Oracle Parity | Seam 2 (`TrajectoryRecord`), `[I1]`, `[I4]` | `cargo test -p stunt-core --all-features --test flm_spec --test flm_fuzz` | $\text{RMSE}_{\text{pos}} \le 0.01\text{ m}$ vs. `oracle_intro_trajectory.json`, with `compute_position_rmse` sampling `FilmTimeline` at each oracle tick (50 Hz ticks) of `build_synthetic_intro_flm` (test support); $\alpha = 0$ on cuts | **Yes** |
+| **`G04`** | Synthetic `.FLM`, Cut-Aware `[I4]` & Oracle Trajectory | Seam 2 (`TrajectoryRecord`), `[I1]`, `[I4]` | `cargo test -p stunt-core --all-features --test flm_spec --test flm_fuzz` | $\text{RMSE}_{\text{pos}} \le 0.01\text{ m}$ vs. `oracle_intro_trajectory.json`, with `compute_position_rmse` sampling `FilmTimeline` at each oracle tick (50 Hz ticks) of `build_synthetic_intro_flm` (test support); $\alpha = 0$ on cuts | **Yes** |
 | **`G05`** | *(Retired)* Phase 1 glTF 2.0 Visual Parity; the Python exporter and its SSIM gate were replaced by `crates/stunt-gltf` (structural tests on cleanroom fixtures), and parity is gated on `wgpu` only (`G07`) | Seam 3 (`SodModelIr`), `[I5]` | `cargo test -p stunt-gltf` | Exported `.glb` parses back with matching accessor bounds, decal offset, and camera orientation | **Yes** |
 | **`G07`** | Captured-vs-rendered parity loop | Seam 2 + Seam 4, `[I3]`, `[I5]`, `[I6]` | `mise run capture-ref`, then `cargo run -p stunt-cli -- --headless <film.flm> --all <film.all> --frames 1..<total_ticks+2> --sidata <SIDATA dir> --out-dir build/parity/ours/ctry`, then `cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry --test build/parity/ours/ctry --output build/parity/report/ctry` | `report.json` carries `mean_ssim`, `min_ssim`, `mean_iou`, `sky_indices` for every sampled frame, and `i6_gate` (`initial` at $	ext{mean\_ssim\_scored} \ge 0.88$, `sign_off` at $\ge 0.90$; the exit code is unchanged) | Local Corpus |
 | **`G08`** | Headless Interval Capture & Video Export | Seam 2, Seam 4, `[I4]`, `[I6]`, `[I7]` | `cargo test -p stunt-render export` | Headless render of cleanroom synthetic fixtures produces exact interval frame count with valid PNG magic/dimensions; video export produces valid container when ffmpeg is present, or fails gracefully with informative error when absent | **Yes** |

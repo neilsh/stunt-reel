@@ -62,8 +62,12 @@ description = "Capture PLAYONE.EXE Mode 13h frames for visual parity (default CT
 run = "uv run python python/scripts/capture_playone_reference.py"
 
 [tasks.sweep]
-description = "Candidate sweep: render and score DBG_* variants on CTRY and INTRO (mise run sweep -- --var DBG_X=0,1 [--films ctry] [--probe iou] [--keep-best])"
+description = "Candidate sweep: render and score DBG_* variants on CTRY and INTRO (mise run sweep -- --var DBG_X=0,1 [--films ctry] [--probe iou] [--keep-best] [--no-build] [--reuse DIR] [--retime N])"
 run = "uv run python python/scripts/parity_sweep.py"
+
+[tasks.parity]
+description = "Parity baseline: render both films with the current binary and print the headline scores (mise run parity -- [--films ctry,intro] [--no-build] [--no-render] [--reuse DIR] [--retime N])"
+run = "uv run python python/scripts/parity_run.py"
 
 # Development & Quality Assurance Tasks
 [tasks.lint-rust]
@@ -154,3 +158,7 @@ depends = ["fmt-check", "lint", "typecheck", "test", "doc", "check-rust-matrix"]
 [tasks.verify-corpus]
 description = "Compile research/formats/**/*.ksy and check them against local corpus/ files (opt-in; corpus is gitignored)"
 run = "uv run python python/scripts/verify_schemas_corpus.py"
+
+[tasks.sod-census]
+description = "Census of corpus .SOD models that stop on unimplemented opcodes, joined to the films placing them (opt-in; corpus is gitignored; mise run sod-census -- [--format markdown])"
+run = "cargo run --release --locked -p stunt-cli --bin stuntreel -- sod-census"

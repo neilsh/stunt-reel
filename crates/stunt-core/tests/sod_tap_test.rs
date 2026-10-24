@@ -5,9 +5,10 @@
 //! following `OP_COLOR`.
 
 use std::path::PathBuf;
+use stunt_core::anchor::AnchorPoint;
 
 use stunt_core::sod::{
-    OP_TAP, SodAnchorPoint, SodError, SodStop, SodStopReason, transpile_sod, transpile_sod_lenient,
+    OP_TAP, SodError, SodStop, SodStopReason, transpile_sod, transpile_sod_lenient,
 };
 
 fn fixtures_dir() -> PathBuf {
@@ -20,13 +21,13 @@ fn fixtures_dir() -> PathBuf {
         .join("fixtures")
 }
 
-fn anchors() -> Vec<SodAnchorPoint> {
+fn anchors() -> Vec<AnchorPoint> {
     let data =
         std::fs::read(fixtures_dir().join("synthetic_anchors.bin")).expect("read anchor fixture");
     data.as_chunks::<28>()
         .0
         .iter()
-        .map(|record| SodAnchorPoint {
+        .map(|record| AnchorPoint {
             x: i16::from_le_bytes([record[0], record[1]]),
             y: i16::from_le_bytes([record[2], record[3]]),
             z: i16::from_le_bytes([record[4], record[5]]),
@@ -87,7 +88,7 @@ fn test_tap_rejects_empty_and_oversized_counts() {
 
 #[test]
 fn test_tap_anchor_index_out_of_range_is_a_missing_anchor_stop() {
-    let single = [SodAnchorPoint { x: 1, y: 0, z: 2 }];
+    let single = [AnchorPoint { x: 1, y: 0, z: 2 }];
     let bytes = tap(0, 1, &[28]);
 
     assert_eq!(

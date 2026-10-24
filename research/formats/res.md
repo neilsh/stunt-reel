@@ -14,7 +14,7 @@ The `.RES` file format is the foundational static resource container for *Stunt 
 | **Engine Role** | Static archive container providing $O(1)$ direct indexed access to geometry, sprites, and dialogue assets without runtime disk seeks or string hashing | `[Established]` | `research/playone-exe/startup.md`, `indices.txt` |
 | **Paired Contract** | `Seam 1: VfsArchive` (`crates/stunt-core/src/contracts/vfs.rs`) | `[Established]` | `# [FMT-RES-HEADER]`, `docs/ARCHITECTURE.md` |
 
-**Governing invariants:** [`[I7]`](../../docs/SPEC.md#i7-cleanroom-asset-isolation--zero-dependency-core), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/res.rs`](../../crates/stunt-core/src/vfs/res.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** `synthetic_minimal.res` (72 bytes), laid out in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
+**Governing invariants:** [`[I7]`](../../docs/SPEC.md#i7-cleanroom-asset-isolation--small-pure-rust-core-dependencies), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/res.rs`](../../crates/stunt-core/src/vfs/res.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** `synthetic_minimal.res` (72 bytes), laid out in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
 
 ---
 
@@ -174,11 +174,13 @@ The following backlog documents unresolved questions and their empirical status:
 
 | ID | Topic / Investigation Area | Current Evidence & Finding | Evidentiary Tier | Recommended Handling in Engine |
 | :--- | :--- | :--- | :---: | :--- |
-| **Q-RES-01** | 16-byte header vs. 8-byte header discrepancy | All 20 corpus archives have 8-byte headers on disk. A 16-byte descriptor existed in real-mode `DGROUP` memory. | `[Established]` (disk) / `[Hypothesis]` (memory) | On-disk parsers mandate 8-byte header; memory descriptor documented in `docs/MEMORY_MAP.md`. |
+| **Q-RES-01** | 16-byte header vs. 8-byte header discrepancy | All 20 corpus archives have 8-byte headers on disk. A 16-byte descriptor existed in real-mode `DGROUP` memory. | `[Established]` (disk) / `[Hypothesis]` (memory) | On-disk parsers mandate 8-byte header; memory descriptor documented in `research/playone-exe/memory-map.md`. |
 | **Q-RES-02** | Scenery `.RES` name table omission | Scenery packages (`res_index <= 0x0F`) omit the string table; `ofs[0]` points directly to `.SOD` bytecode. | `[Established]` | Implement automatic heuristic: if string slice begins with `0x000C`, synthesize names `0000.BIN..`. |
 | **Q-RES-03** | Third-party compression flags | Retail floppy/CD-ROM archives contain zero compressed entries. Community tools occasionally hinted at LZSS compression flags. | `[Bounded Observation]` | Flag `was_compressed` remains `false`. Hook LZSS decoder if modded compressed archives are encountered. |
 | **Q-RES-04** | Dynamic memory caching & LRU eviction | Real-mode `PLAYONE.EXE` cached `.RES` offset tables in conventional RAM while streaming payloads on demand. | `[Supported Inference]` | Modern engine loads archive tables fully into memory; zero disk thrashing. |
 | **Q-RES-05** | European CD-ROM multilingual string tables | French/German releases may include localized prop display strings in `GAME.RES` or `ACTORS.RES`. | `[Bounded Observation]` | Ensure UTF-8 / CP437 decoding handles extended Latin characters gracefully without panic. |
+| **Q-RES-06** | Kaitai `_index` in `pos:`/`size:` | Slicing regions with `repeat: expr` and `offsets[_index + 1]` compiles under KSC 0.11, but the generated Python raises `UnboundLocalError` for the loop variable on every corpus `.RES`. | `[Bounded Observation]` | [`res.ksy`](res.ksy) passes `_index` into a parameterised `segment(i)` type; do not rewrite it into the failed form. |
+| **Q-RES-07** | Dynamic scenery swapping | Whether `SCENERY1.RES`-`SCENERY6.RES` load during flight by player position or are staged from the `.SET` scene configuration. | `[Hypothesis]` | Load the set's scenery archives up front. |
 
 ---
 
@@ -194,7 +196,7 @@ The reverse engineering of the `.RES` archive container format represents decade
 - **Doug Armknecht**: Curator of the Stunt Island Community Developer Archive (`corpus/si_archive/`, February 2026). Preserved original source files, utilities, and documentation.
 - **Neil Halelamien**: Author of `.SET` scenery format research (2004); documented 16-bit compound keys `(res_index << 8) | item_index` in `Stunt_Island_SET_fileformat_notes.txt`.
 - **Ángel Eduardo** (`arcnorj@yahoo.es`): Author of Stunt Island Extractor (2004–2005); analyzed binary models, prop clumps, and subobject hierarchies.
-- **Alberto Marnetto**: Author of `SI-8x` high-detail engine patch (2024); explored resource streaming limits and LOD bytecode execution.
+- **Alberto Marnetto**: Author of the `SI-8x` patch (2024), which raises the renderer's level-of-detail distance threshold eightfold by replacing the `mul` by the detail word with `mov dx, ax; shl dx, 3`, described in [*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island). It doesn't involve `.RES` resources; the same check in `PLAYONE.EXE` is traced in [`lod.md`](../playone-exe/lod.md).
 
 ### 5.2 Primary Reference Paths in `corpus/si_archive/`
 

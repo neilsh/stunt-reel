@@ -1,16 +1,17 @@
 //! Unit tests for the SOD `vm` stage, relocated from integration tests so the stage can stay crate-private.
 
+use crate::anchor::AnchorPoint;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::contracts::scene::{NodeId, NodeKind, SodModelIr};
+use crate::contracts::shape::{NodeId, NodeKind, SodModelIr};
 use crate::sod::DECAL_FLAG_BIT;
 use crate::sod::tessellate::transpile_sod;
 use crate::sod::vm::{compute_polygon_normal, execute_sod_vm, execute_sod_vm_impl};
 use crate::sod::{
     OP_ADDV, OP_CLRV, OP_COLOR, OP_DOT, OP_GETV, OP_ID, OP_INTV, OP_LINECOL, OP_MOVETO, OP_NEGV,
     OP_POLYZ, OP_PUTV, OP_RETURN, OP_SHLV, OP_SHRV, OP_SPHERE, OP_SUBV, OP_TAP, OP_VECTORS,
-    OP_ZLINETO, SodAnchorPoint, SodError, SodStop, SodStopReason, transpile_sod_lenient,
+    OP_ZLINETO, SodError, SodStop, SodStopReason, transpile_sod_lenient,
 };
 
 fn fixtures_dir() -> PathBuf {
@@ -43,13 +44,13 @@ fn tap_bytes() -> Vec<u8> {
     std::fs::read(fixtures_dir().join("synthetic_tap.sod")).expect("read TAP fixture")
 }
 
-fn anchors() -> Vec<SodAnchorPoint> {
+fn anchors() -> Vec<AnchorPoint> {
     let data =
         std::fs::read(fixtures_dir().join("synthetic_anchors.bin")).expect("read anchor fixture");
     data.as_chunks::<28>()
         .0
         .iter()
-        .map(|record| SodAnchorPoint {
+        .map(|record| AnchorPoint {
             x: i16::from_le_bytes([record[0], record[1]]),
             y: i16::from_le_bytes([record[2], record[3]]),
             z: i16::from_le_bytes([record[4], record[5]]),
@@ -457,4 +458,31 @@ fn test_zero_length_line_emits_nothing_and_dot_emits_octahedron() {
     let (_, polys) = execute_sod_vm(&bytes, None).expect("execute VM");
     assert_eq!(polys.len(), 8);
     assert!(polys.iter().all(|p| p.vertices.len() == 3));
+}
+
+#[test]
+fn test_census_skip_table_never_shadows_a_real_handler() {
+    // Implementing an opcode means deleting its CENSUS_SKIPS entry: a strict decode must
+    // still reject every opcode the table lists.
+    for skip in crate::sod::CENSUS_SKIPS {
+        assert_eq!(
+            skip.opcode % 9,
+            0,
+            "{} is not a dispatched opcode",
+            skip.mnemonic
+        );
+        let mut bytes = make_sod_header(0, 0, 0, 0);
+        bytes.extend_from_slice(&skip.opcode.to_le_bytes());
+        bytes.extend_from_slice(&[0u8; 16]);
+        bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+        assert_eq!(
+            execute_sod_vm(&bytes, None).map(|_| ()),
+            Err(SodError::InvalidOpcode {
+                opcode: skip.opcode,
+                offset: 10,
+            }),
+            "OP_{} has a handler; delete its CENSUS_SKIPS entry",
+            skip.mnemonic
+        );
+    }
 }

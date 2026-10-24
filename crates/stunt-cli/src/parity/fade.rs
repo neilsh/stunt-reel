@@ -1,4 +1,10 @@
-//! Palette fade measurement.
+//! Palette fade measurement (GLOSSARY.md: **Fade level**).
+//!
+//! A capture's measured fade level is the median, over the reference set, of its captured
+//! entry's R+G+B over the static Mode 13h entry's R+G+B. The reference set is the indices
+//! present in the first captured frame whose static R+G+B exceeds [`FADE_MIN_STATIC_SUM`].
+//! The authored fade level is the film's brightness palette control (var 14) at that tick
+//! over its full value, read from the render's palette sidecar.
 
 use stunt_core::contracts::get_palette_rgb;
 

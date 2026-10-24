@@ -17,7 +17,7 @@ A `.ALL` archive bundles 3D models (`.SOD`), choreography timeline scripts (`.FL
 | **Engine Role** | Scene-level runtime asset bundle providing direct ID lookups for geometry, palettes, sounds, and choreography | `[Established]` | `# [FMT-ALL-CHUNKS]`, `crates/stunt-core/src/contracts/vfs.rs` |
 | **Paired Contract** | `Seam 1: VfsArchive` (`crates/stunt-core/src/contracts/vfs.rs`) | `[Established]` | `# [FMT-ALL-CHUNKS]`, `docs/ARCHITECTURE.md` |
 
-**Governing invariants:** [`[I3]`](../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I7]`](../../docs/SPEC.md#i7-cleanroom-asset-isolation--zero-dependency-core), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/all.rs`](../../crates/stunt-core/src/vfs/all.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** synthetic archives described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
+**Governing invariants:** [`[I3]`](../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I7]`](../../docs/SPEC.md#i7-cleanroom-asset-isolation--small-pure-rust-core-dependencies), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/all.rs`](../../crates/stunt-core/src/vfs/all.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** synthetic archives described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
 
 ---
 
@@ -96,6 +96,12 @@ During standalone playback in `PLAYONE.EXE` (and modern reconstruction in `stunt
 2. **Dynamic Binding**: Actors evaluated in `.FLM` trajectory ticks bind to these models via `ActorTransform::shape_id`.
 3. **Static Scenery Instantiation**: Simultaneously, the static scene graph (`SCENERY.scn`) resolves its `SP_LEAF` object IDs against this same catalog, allowing standalone films to reconstruct complete sets (hangars, towers, buildings, flora) alongside moving aircraft.
 
+### 3.6 Ground Scene Records (`[Bounded Observation]`)
+
+The ground scene that `PLAYONE.EXE` draws is stored in the `.ALL` archive, not in the `.FLM` film or the player image. In `CTRY.ALL` the SOD-VM ground opcode `0x0168` has records starting at offset `0x13FC` (`68 01 ...`) and opcode `0x02BE` at `0xEFE4` (`BE 02 ...`); `CTRY.FLM` contains none. A ground record is `w0 = (colour << 8) | (vertex_count & 0x0F)`, then `count` indices into the per-vertex shade array, then the next code address (layout and handlers: [`world-scene.md`](../playone-exe/world-scene.md)). The archive also carries packed `(byte << 8) | count` words (`0x2BE` records end `03 E0`) and a 110-word scene colour table at `0x79`/`0x7B`/`0x7D` and `0xEF`-`0x9A0`. No ground colour in `0xC0`-`0xCD` has been found by byte scan, and the records are not yet decoded, so whether these are the per-polygon colours the player draws (the captures draw 193, 194 and 196 where `MAP.BIN` says 195) is open; decoding them needs no emulator. Because the retail player never opens `MAP.BIN`, this archive, not the map file, is the ground's source for standalone playback ([`terrain-shade.md`](../playone-exe/terrain-shade.md)).
+
+_Found 2026-10-23 at `6ae7b31`; see the [parity log](../parity/log.md)._
+
 ### 3.5 Entry Naming Policy (`[I8]`)
 
 When `.ALL` chunks are unpacked into `VfsArchive`, entry filenames are normalized to uppercase 8.3 keys per Invariant `[I8]`:
@@ -116,6 +122,8 @@ The following backlog documents open questions and investigations regarding the 
 | **Q-ALL-03** | Dynamic Sound Pre-Caching | Original engine loaded audio chunks directly into Sound Blaster DMA buffers at scene initialization. | `[Supported Inference]` | Store PCM audio buffers in memory; log playback events during Milestone 2. |
 | **Q-ALL-04** | Duplicate Resource IDs in Container | If a malformed `.ALL` contains duplicate IDs, later entries overwrite earlier entries in `BTreeMap`. | `[Established]` | Safe behavior; duplicate IDs log a warning and overwrite deterministically. |
 | **Q-ALL-05** | Standalone Movie Linker Internal Symbol Table | `MAKEONE.EXE` may have compiled an internal symbol hash map during film linking before stripping string names and writing raw numeric 16-bit IDs to the `.ALL` directory header. | `[Hypothesis]` | Modern engine indexes chunks directly by 16-bit numeric ID without requiring external symbol maps. |
+| **Q-ALL-06** | Audio chunk headers | Chunks `0xC000`-`0xCFFF` are 8-bit mono PCM; whether each carries a 26-byte Creative Voice header or is headerless depends on the `MAKEONE.EXE` packaging version. | `[Supported Inference]` | Sniff the `Creative Voice File` magic and strip it if present. |
+| **Q-ALL-07** | Resource lookup order | `Seam 1` resolves a key in the active scene's `.ALL` first and falls back to the global `.RES` archive selected by `res_index`. | `[Supported Inference]` | Keep that order in the VFS. |
 
 ---
 
@@ -132,7 +140,6 @@ The documentation and reverse engineering of the `.ALL` bundle format builds upo
 - **Chris Phillips**: Documented palette indexing and `.SOD` geometry loading from `.ALL` containers in `Developer/SODParse/`.
 - **Neil Halelamien**: Author of `.SET` scenery format research (2004); documented prop type 16-bit IDs, scenery quadtree placement, and coordinate linking to `.ALL` bundle chunks in `Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
 - **Ángel Eduardo**: Analyzed `.ALL` container chunk headers and subobjects.
-- **Alberto Marnetto**: Explored `.ALL` high-resolution replacement and texture patching in `SI-8x`.
 
 ### 5.2 Primary Reference Paths in `corpus/si_archive/`
 

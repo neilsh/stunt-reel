@@ -36,7 +36,7 @@ class Anchor:
 
 
 SPEC = "docs/SPEC.md"
-MEMORY_MAP = "docs/MEMORY_MAP.md"
+MEMORY_MAP = "research/playone-exe/memory-map.md"
 MEMORY_NOTES = "research/playone-exe/memory.md"
 
 ANCHORS: tuple[Anchor, ...] = (
@@ -54,7 +54,7 @@ ANCHORS: tuple[Anchor, ...] = (
     Anchor(
         "I6", SPEC, "[I6] Visual Parity Acceptance Thresholds & VGA 1:1.2 Aspect Ratio Correction"
     ),
-    Anchor("I7", SPEC, "[I7] Cleanroom Asset Isolation & Zero-Dependency Core"),
+    Anchor("I7", SPEC, "[I7] Cleanroom Asset Isolation & Small Pure-Rust Core Dependencies"),
     Anchor("I8", SPEC, "[I8] DOS 8.3 Uppercase Path Normalization"),
     # --- Format anchors: defined in the format document that owns the layout ---
     Anchor(
@@ -74,23 +74,23 @@ ANCHORS: tuple[Anchor, ...] = (
     ),
     Anchor(
         "FMT-SOD-OPCODES",
-        "research/formats/sod.md",
-        "3.2 The Authoritative 107-Opcode Reference Table (`# [FMT-SOD-OPCODES]`)",
+        "research/formats/sod-opcodes.md",
+        "1. The Authoritative 107-Opcode Reference Table (`# [FMT-SOD-OPCODES]`)",
     ),
     Anchor(
         "FMT-SOD-IFVIS",
-        "research/formats/sod.md",
-        "3.1.6 BSP Sorting & Two-Sided Visibility Logic (`# [FMT-SOD-IFVIS]`)",
+        "research/formats/sod-opcodes.md",
+        "2.5 BSP Sorting & Two-Sided Visibility Logic (`# [FMT-SOD-IFVIS]`)",
     ),
     Anchor(
         "FMT-SOD-TAP",
-        "research/formats/sod.md",
-        "3.1.4a Terrain Anchor Load (`OP_TAP`, `0x022E`) (`# [FMT-SOD-TAP]`)",
+        "research/formats/sod-opcodes.md",
+        "2.3 Terrain Anchor Load (`OP_TAP`, `0x022E`) (`# [FMT-SOD-TAP]`)",
     ),
     Anchor(
         "FMT-SOD-ANIMATE",
-        "research/formats/sod.md",
-        "3.1.4b Animation Resource Draw (`OP_ANIMATE`, `0x01F8`) (`# [FMT-SOD-ANIMATE]`)",
+        "research/formats/sod-opcodes.md",
+        "2.4 Animation Resource Draw (`OP_ANIMATE`, `0x01F8`) (`# [FMT-SOD-ANIMATE]`)",
     ),
     Anchor(
         "FMT-FLM-OPCODES",

@@ -17,7 +17,7 @@ import struct
 import tempfile
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, TextIO, runtime_checkable
 
 __all__ = [
     "ListenTransport",
@@ -45,7 +45,129 @@ class Transport(Protocol):
         ...
 
 
-class LiveSocketTransport:
+class _LineChannel:
+    """Line-framed request/response channel over a connected socket.
+
+    Owns a text ``makefile`` view of the socket (UTF-8, undecodable bytes replaced,
+    ``\\n`` as the only line terminator) and speaks the dosbox-x-mcp-server framing
+    shared by every live transport:
+
+    - request: ``REQ <id> <command>\\n``
+    - response: ``BEGIN <id> OK|ERR\\n``, body lines, ``END <id>\\n``
+
+    A ``TimeoutError`` leaves the socket's buffered reader unusable (the stdlib refuses
+    further reads after one), so callers must drop the connection when it is raised.
+    """
+
+    def __init__(self, sock: socket.socket, closed_message: str) -> None:
+        self._sock = sock
+        self._closed_message = closed_message
+        self._file = self._open()
+
+    def _open(self) -> TextIO:
+        return self._sock.makefile("rw", encoding="utf-8", errors="replace", newline="\n")
+
+    def discard_pending(self) -> None:
+        """Drop any bytes already buffered, e.g. stale lines after a framing error."""
+        with contextlib.suppress(OSError):
+            self._file.close()
+        self._file = self._open()
+
+    def close(self) -> None:
+        """Close the stream and the socket."""
+        with contextlib.suppress(OSError):
+            self._file.close()
+        with contextlib.suppress(OSError):
+            self._sock.shutdown(socket.SHUT_RDWR)
+        with contextlib.suppress(OSError):
+            self._sock.close()
+
+    def read_line(self) -> str:
+        """Read one newline-terminated line, without its terminator (CR tolerated)."""
+        line = self._file.readline()
+        if not line.endswith("\n"):
+            raise ConnectionResetError(self._closed_message)
+        return line[:-1].strip("\r")
+
+    def request(self, req_id: int, wire: str, label: str) -> list[str]:
+        """Send one framed request and return its response body lines.
+
+        Raises ``RuntimeError`` for a malformed or mismatched header and for an ``ERR``
+        response; ``ConnectionResetError`` if the peer closes mid-response.
+        """
+        self._file.write(f"REQ {req_id} {wire}\n")
+        self._file.flush()
+
+        begin_line = self.read_line()
+        tokens = begin_line.strip().split()
+        if len(tokens) < 3 or tokens[0] != "BEGIN" or tokens[1] != str(req_id):
+            raise RuntimeError(
+                f"Unexpected response header: {begin_line!r}, expected BEGIN {req_id} <status>"
+            )
+        is_ok = tokens[2] == "OK"
+
+        lines: list[str] = []
+        end_marker = f"END {req_id}"
+        while True:
+            line = self.read_line()
+            if line == end_marker:
+                break
+            lines.append(line)
+
+        if not is_ok:
+            error_msg = "\n".join(lines) if lines else "Unknown debugger error"
+            raise RuntimeError(
+                f"DOSBox-X command error for request {req_id} ({label}): {error_msg}"
+            )
+        return lines
+
+
+class _FramedTransport:
+    """Shared request bookkeeping and error policy for the socket transports."""
+
+    _NOT_CONNECTED = "Socket is not connected"
+    _CLOSED = "Socket closed prematurely by remote host"
+
+    def __init__(self) -> None:
+        self._channel: _LineChannel | None = None
+        self._req_id: int = 1
+
+    def _attach(self, sock: socket.socket) -> None:
+        self._channel = _LineChannel(sock, self._CLOSED)
+
+    def _drop_connection(self) -> None:
+        """Forget the current connection after it failed."""
+        self.close()
+
+    def close(self) -> None:
+        """Close the active connection."""
+        if self._channel is not None:
+            self._channel.close()
+            self._channel = None
+
+    def is_connected(self) -> bool:
+        """Return True while a connection is open."""
+        return self._channel is not None
+
+    def _exchange(self, wire: str, label: str) -> list[str]:
+        """Run one framed request, dropping or resyncing the stream on failure."""
+        channel = self._channel
+        if channel is None:
+            raise ConnectionError(self._NOT_CONNECTED)
+
+        req_id = self._req_id
+        self._req_id += 1
+        try:
+            return channel.request(req_id, wire, label)
+        except (ConnectionError, TimeoutError):
+            self._drop_connection()
+            raise
+        except Exception:
+            channel.discard_pending()
+            raise
+
+
+class LiveSocketTransport(_FramedTransport):
     """Live TCP socket transport connecting to dosbox-x-mcp-server wire protocol.
 
     Wire framing:
@@ -62,96 +184,29 @@ class LiveSocketTransport:
         port: int = 58991,
         timeout: float = 5.0,
     ) -> None:
+        super().__init__()
         self.host = host
         self.port = port
         self.timeout = timeout
-        self._socket: socket.socket | None = None
-        self._req_id: int = 1
-        self._buffer: str = ""
+
+    @property
+    def _buffer(self) -> str:
+        """Unread text carried between requests; always empty (see ``discard_pending``)."""
+        return ""
 
     def connect(self) -> None:
         """Establish TCP connection to the debugger server."""
-        if self._socket is not None:
+        if self._channel is not None:
             self.close()
         sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
         sock.settimeout(self.timeout)
-        self._socket = sock
-        self._buffer = ""
-
-    def is_connected(self) -> bool:
-        """Return True if socket is open."""
-        return self._socket is not None
-
-    def close(self) -> None:
-        """Close active TCP socket."""
-        if self._socket is not None:
-            with contextlib.suppress(OSError):
-                self._socket.shutdown(socket.SHUT_RDWR)
-            with contextlib.suppress(OSError):
-                self._socket.close()
-            self._socket = None
-        self._buffer = ""
-
-    def _read_line(self) -> str:
-        """Read a single newline-delimited line from socket."""
-        if self._socket is None:
-            raise ConnectionError("Socket is not connected")
-
-        while "\n" not in self._buffer:
-            chunk = self._socket.recv(4096)
-            if not chunk:
-                raise ConnectionResetError("Socket closed prematurely by remote host")
-            self._buffer += chunk.decode("utf-8", errors="replace")
-
-        line, self._buffer = self._buffer.split("\n", 1)
-        return line.strip("\r")
+        self._attach(sock)
 
     def send_command(self, cmd: str) -> list[str]:
         """Send framed REQ command and parse BEGIN ... END response block."""
-        if self._socket is None:
+        if self._channel is None:
             self.connect()
-        if self._socket is None:
-            raise RuntimeError("TAC transport is not connected")
-
-        req_id = self._req_id
-        self._req_id += 1
-
-        try:
-            wire_payload = f"REQ {req_id} {cmd.strip()}\n"
-            self._socket.sendall(wire_payload.encode("utf-8"))
-
-            # Expect BEGIN <id> OK or BEGIN <id> ERR
-            begin_line = self._read_line()
-            tokens = begin_line.strip().split()
-            if len(tokens) < 3 or tokens[0] != "BEGIN" or tokens[1] != str(req_id):
-                raise RuntimeError(
-                    f"Unexpected response header: {begin_line!r}, expected BEGIN {req_id} <status>"
-                )
-
-            status = tokens[2]
-            is_ok = status == "OK"
-
-            lines: list[str] = []
-            end_marker = f"END {req_id}"
-            while True:
-                line = self._read_line()
-                if line == end_marker:
-                    break
-                lines.append(line)
-
-            if not is_ok:
-                error_msg = "\n".join(lines) if lines else "Unknown debugger error"
-                raise RuntimeError(
-                    f"DOSBox-X command error for request {req_id} ({cmd}): {error_msg}"
-                )
-
-            return lines
-        except (ConnectionError, ConnectionResetError, BrokenPipeError):
-            self.close()
-            raise
-        except Exception:
-            self._buffer = ""
-            raise
+        return self._exchange(cmd.strip(), cmd)
 
 
 def format_hex_dump(seg: int, off: int, data: bytes) -> list[str]:
@@ -170,7 +225,7 @@ def format_hex_dump(seg: int, off: int, data: bytes) -> list[str]:
     return lines
 
 
-class ListenTransport:
+class ListenTransport(_FramedTransport):
     """Debugger transport that listens for DOSBox-X's outbound debugger connection.
 
     DOSBox-X configured with ``[dosbox] mcp_server = <port>`` is a TCP *client*: it
@@ -195,13 +250,11 @@ class ListenTransport:
         port: int = 58991,
         timeout: float = 120.0,
     ) -> None:
+        super().__init__()
         self.host = host
         self.port = port
         self.timeout = timeout
         self._listener: socket.socket | None = None
-        self._socket: socket.socket | None = None
-        self._buffer: str = ""
-        self._req_id: int = 1
         self._read_path: Path = Path(tempfile.gettempdir()) / "stunt_tac_read.bin"
 
     def listen(self) -> None:
@@ -219,70 +272,26 @@ class ListenTransport:
         self._listener.settimeout(self.timeout if timeout is None else timeout)
         conn, _addr = self._listener.accept()
         conn.settimeout(self.timeout)
-        self._socket = conn
-        self._buffer = ""
+        self._attach(conn)
 
-    def is_connected(self) -> bool:
-        """Return True once the emulator connection has been accepted and is open."""
-        return self._socket is not None
+    _NOT_CONNECTED = "DOSBox-X has not connected yet"
+    _CLOSED = "DOSBox-X closed the debugger socket"
+
+    def _drop_connection(self) -> None:
+        """Forget the emulator connection but keep listening for a reconnect."""
+        super().close()
 
     def close(self) -> None:
         """Close the emulator connection and the control port listener."""
-        if self._socket is not None:
-            with contextlib.suppress(OSError):
-                self._socket.shutdown(socket.SHUT_RDWR)
-            with contextlib.suppress(OSError):
-                self._socket.close()
-            self._socket = None
+        super().close()
         if self._listener is not None:
             with contextlib.suppress(OSError):
                 self._listener.close()
             self._listener = None
-        self._buffer = ""
-
-    def _read_line(self) -> str:
-        """Read a single newline-delimited line from the emulator socket."""
-        if self._socket is None:
-            raise ConnectionError("DOSBox-X has not connected yet")
-
-        while "\n" not in self._buffer:
-            chunk = self._socket.recv(65536)
-            if not chunk:
-                raise ConnectionResetError("DOSBox-X closed the debugger socket")
-            self._buffer += chunk.decode("utf-8", errors="replace")
-
-        line, self._buffer = self._buffer.split("\n", 1)
-        return line.strip("\r")
 
     def _request(self, wire: str) -> list[str]:
         """Send one framed request and return its response body lines."""
-        if self._socket is None:
-            raise ConnectionError("DOSBox-X has not connected yet")
-
-        req_id = self._req_id
-        self._req_id += 1
-        self._socket.sendall(f"REQ {req_id} {wire}\n".encode())
-
-        begin_line = self._read_line()
-        tokens = begin_line.strip().split()
-        if len(tokens) < 3 or tokens[0] != "BEGIN" or tokens[1] != str(req_id):
-            raise RuntimeError(
-                f"Unexpected response header: {begin_line!r}, expected BEGIN {req_id} <status>"
-            )
-        is_ok = tokens[2] == "OK"
-
-        lines: list[str] = []
-        end_marker = f"END {req_id}"
-        while True:
-            line = self._read_line()
-            if line == end_marker:
-                break
-            lines.append(line)
-
-        if not is_ok:
-            error_msg = "\n".join(lines) if lines else "Unknown debugger error"
-            raise RuntimeError(f"DOSBox-X command error for request {req_id} ({wire}): {error_msg}")
-        return lines
+        return self._exchange(wire, wire)
 
     def _dump_memory(self, args: Sequence[str]) -> list[str]:
         """Translate ``D <seg>:<off> <len>`` into a ``MEMDUMPBIN`` round trip."""

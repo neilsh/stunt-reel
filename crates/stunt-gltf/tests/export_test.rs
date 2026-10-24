@@ -7,13 +7,13 @@ use std::path::PathBuf;
 
 use glam::{Quat, Vec3};
 use serde_json::Value;
+use stunt_core::anchor::parse_anchor_table;
 use stunt_core::contracts::{
     CameraTransform, NodeKind, SodModelIr, SodVertex, VisibilityCondition, get_palette_rgb_float,
 };
 use stunt_core::flm::{SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES};
 use stunt_core::scene::{FilmScene, SceneInputs};
 use stunt_core::sod::{EPSILON_DISPLACEMENT, transpile_sod};
-use stunt_core::world::parse_anchor_table;
 use stunt_gltf::{GltfError, camera_rotation, export_scene_frame, export_shape, summarize};
 
 fn fixture(name: &str) -> Vec<u8> {
@@ -378,7 +378,8 @@ fn hierarchy_visibility_and_joints_are_preserved() {
             normal: [0.0, 0.0, 1.0],
             palette_index: 4,
             flags: 0,
-            _padding: [0, 0],
+            scenery_class: 0,
+            _padding: 0,
         });
     }
     ir.indices = vec![0, 1, 2];
@@ -661,6 +662,7 @@ fn camera_rotation_maps_minus_z_to_the_view_direction() {
             fov_degrees: 45.0,
             roll_radians: roll,
             cut_from_previous: false,
+            ..Default::default()
         };
         let q = camera_rotation(&camera);
         let rotation = Quat::from_xyzw(q[0], q[1], q[2], q[3]);
@@ -685,6 +687,7 @@ fn camera_roll_rotates_up_about_the_view_axis() {
         fov_degrees: 45.0,
         roll_radians: 0.0,
         cut_from_previous: false,
+        ..Default::default()
     };
     let q = camera_rotation(&level);
     assert!(Quat::from_xyzw(q[0], q[1], q[2], q[3]).angle_between(Quat::IDENTITY) < 1e-5);

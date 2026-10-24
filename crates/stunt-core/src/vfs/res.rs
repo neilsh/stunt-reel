@@ -5,6 +5,7 @@
 //! - `[I8]` Uppercase DOS 8.3 filename normalization
 
 use crate::contracts::vfs::{ArchiveFormat, VfsArchive, VfsEntry};
+use crate::reader::ByteReader;
 use crate::vfs::VfsError;
 
 /// Unpacks a `.RES` container archive into an in-memory [`VfsArchive`].
@@ -35,8 +36,9 @@ pub fn parse_res(data: &[u8]) -> Result<VfsArchive, VfsError> {
         });
     }
 
-    let _version = u16::from_le_bytes([data[2], data[3]]);
-    let ofs0 = u32::from_le_bytes([data[4], data[5], data[6], data[7]]) as usize;
+    let mut head = ByteReader::at(data, 2);
+    let _version = head.read_u16_le()?;
+    let ofs0 = head.read_u32_le()? as usize;
 
     if ofs0 < 8 {
         return Err(VfsError::InvalidOffsetTable {
@@ -64,11 +66,9 @@ pub fn parse_res(data: &[u8]) -> Result<VfsArchive, VfsError> {
     }
 
     let mut offsets = Vec::with_capacity(n);
-    for i in 0..n {
-        let pos = 4 + i * 4;
-        let off =
-            u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
-        offsets.push(off);
+    let mut table = ByteReader::at(data, 4);
+    for _ in 0..n {
+        offsets.push(table.read_u32_le()? as usize);
     }
 
     // Offset table integrity checks

@@ -19,6 +19,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use glam::Mat4;
+use stunt_core::anchor::parse_anchor_table;
 use stunt_core::contracts::palette::PaletteControls;
 use stunt_core::contracts::{
     CameraTransform, NodeKind, SodModelIr, SodVertex, TrajectoryRecord, VisibilityCondition,
@@ -26,7 +27,6 @@ use stunt_core::contracts::{
 use stunt_core::flm::{FilmTimeline, SliceKeyframe, TIMELINE_HZ, TIMELINE_TICK_SECONDS};
 use stunt_core::scene::{FilmScene, SceneInputs, SceneReport};
 use stunt_core::sod::transpile_sod;
-use stunt_core::world::parse_anchor_table;
 
 /// Locates the scenery data file `filename` (see the module docs for the search order).
 ///
@@ -249,6 +249,7 @@ fn synthetic_orbit(max_ticks: Option<usize>) -> FilmTimeline {
                         fov_degrees: 45.0,
                         roll_radians: 0.0,
                         cut_from_previous: tick == 0,
+                        ..Default::default()
                     },
                     actors: Vec::new(),
                     audio_cues: Vec::new(),
@@ -273,7 +274,8 @@ fn create_default_aircraft_ir() -> SodModelIr {
         normal: [0.0, 1.0, 0.0],
         palette_index,
         flags,
-        _padding: [0, 0],
+        scenery_class: 0,
+        _padding: 0,
     };
     ir.vertices = vec![
         vertex([0.0, 0.5, 4.0], 40, 0),   // nose

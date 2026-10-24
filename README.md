@@ -64,7 +64,7 @@ Register the server in the agent's MCP configuration file (`~/.gemini/config/mcp
 | `crates/stunt-gltf/` | glTF 2.0 (`.glb`) exporter for shapes and single scene frames, driven by `stunt-cli export-gltf` |
 | `python/scripts/` | Entry points: `capture_playone_reference.py`, `verify_schemas_corpus.py`, `verify_formats_docs.py`, `adversarial_formats_challenge.py` |
 | `tests/` | Python suite and cleanroom fixtures — [`tests/fixtures/README.md`](tests/fixtures/README.md); Rust integration tests live in `crates/*/tests/` |
-| `docs/` | Living spec, architecture routing, memory map, team blueprint, and milestone playbooks |
+| `docs/` | Living spec, architecture routing, ADRs, and process documents (`process/`) |
 | `research/` | Format specifications beside their `.ksy` layouts plus `PLAYONE.EXE` analysis notes — [`research/formats/INDEX.md`](research/formats/INDEX.md) |
 | `corpus/` | Gitignored demo and archive data — [`corpus/README.md`](corpus/README.md) |
 | `target_bin/` | Gitignored original game binaries |
@@ -102,7 +102,7 @@ cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry     --t
 
 `--compare <report.json>` pairs the fresh scores with a previous report by `film_tick` and prints mean SSIM/IoU before → after over the frames present in both, the 5 most improved and 5 most regressed frames, and how many frames moved by more than 0.005; it also writes `compare.json`. The basis is `scored` (SSIM over frames scored in both runs) when both reports carry `scored`, and `all` (SSIM over all common frames) for older reports; the first `[compare]` line states which. With `--compare-test <dir>` (the previous run's render directory) it writes `compare_regressed_tick_NNNNN.png` and `compare_improved_tick_NNNNN.png` (`reference | before | after | |ref−before| | |ref−after|`) for the single biggest mover each way. The method and a dated results table are in [`research/parity/method.md`](research/parity/method.md) and [`research/parity/log.md`](research/parity/log.md).
 
-Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`, and a free port `58991`. How the dialog is driven (BIOS Data Area keystrokes) and how frames are sampled (post-retrace breakpoint at `0D51:0C5E`) is recorded in [`research/parity-findings.md`](research/parity-findings.md#1-parity-loop-capture-vs-render) and [`research/playone-exe/capture.md`](research/playone-exe/capture.md).
+Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`, and a free port `58991`. How the dialog is driven (BIOS Data Area keystrokes) and how frames are sampled (post-retrace breakpoint at `0D51:0C5E`) is recorded in [`method.md`](research/parity/method.md#1-the-loop) and [`research/playone-exe/capture.md`](research/playone-exe/capture.md).
 
 ### Render in the native engine
 
@@ -196,9 +196,8 @@ uv run pytest
 | --- | --- |
 | [`docs/SPEC.md`](docs/SPEC.md) | Master specification, invariants `[I1]`–`[I8]`, evidentiary tiers, verification matrix |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 1-hop module routing to specification anchors and research notes |
-| [`docs/MEMORY_MAP.md`](docs/MEMORY_MAP.md) | `DGROUP` map and runtime anchors (`# [MEM-*]`) |
-| [`docs/TEAM_SHEET.md`](docs/TEAM_SHEET.md) | Multi-agent roles and file blast radii |
-| [`docs/playbooks/`](docs/playbooks/) | Milestone playbooks |
+| [`research/playone-exe/memory-map.md`](research/playone-exe/memory-map.md) | `DGROUP` map and runtime anchors (`# [MEM-*]`) |
+| [`docs/process/TEAM_SHEET.md`](docs/process/TEAM_SHEET.md) | Multi-agent roles and file blast radii |
 | [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog and Kaitai layouts |
 | [`research/playone-exe/`](research/playone-exe/) | Startup, navigation, memory map, and capture harness notes |
 | [`corpus/README.md`](corpus/README.md) | How to populate the demo and archive data |

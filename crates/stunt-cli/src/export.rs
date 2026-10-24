@@ -7,22 +7,49 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use clap::{ArgGroup, CommandFactory, Parser};
+use stunt_core::anchor::parse_anchor_table;
 use stunt_core::scene::decode_archive_shapes;
-use stunt_core::world::parse_anchor_table;
 use stunt_gltf::{export_scene_frame, export_shape, summarize};
 
 use crate::scene::{SceneSources, build_scene, find_scenery_file};
 
-/// Usage text printed by `--help`.
-pub(crate) const USAGE: &str = "Usage: stuntreel export-gltf --archive <X.ALL> \
-(--shape <N> | --film <F.FLM> [--tick <T>]) [--sidata <dir>] --out <file.glb>
+/// `export-gltf` options as clap parses them.
+#[derive(Debug, Parser)]
+#[command(
+    bin_name = "stuntreel export-gltf",
+    about = "Write a shape or a film scene frame as binary glTF (.glb)",
+    group(ArgGroup::new("target").required(true).args(["shape", "film"]))
+)]
+struct Options {
+    /// Archive holding the MODEL_%04X.SOD shapes
+    #[arg(long, value_name = "X.ALL")]
+    archive: PathBuf,
+    /// Export one shape by resource id (hex with 0x prefix, or decimal)
+    #[arg(
+        long,
+        value_name = "N",
+        value_parser = parse_shape_id
+    )]
+    shape: Option<u16>,
+    /// Export the scene frame of this film at --tick (actors, camera, world)
+    #[arg(long, value_name = "F.FLM")]
+    film: Option<PathBuf>,
+    /// 50 Hz film tick, fractional ticks interpolate [default: 0]
+    #[arg(long, value_name = "T", value_parser = parse_tick, conflicts_with = "shape")]
+    tick: Option<f32>,
+    /// Directory searched first for ANCHORPT.DAT, MAP.BIN and SCENERY.scn
+    #[arg(long, value_name = "DIR")]
+    sidata: Option<PathBuf>,
+    /// Output file
+    #[arg(long, value_name = "FILE.GLB")]
+    out: PathBuf,
+}
 
-  --archive <X.ALL>   Archive holding the MODEL_%04X.SOD shapes (required)
-  --shape <N>         Export one shape by resource id (hex with 0x prefix, or decimal)
-  --film <F.FLM>      Export the scene frame of this film at --tick (actors, camera, world)
-  --tick <T>          50 Hz film tick, fractional ticks interpolate (default: 0)
-  --sidata <dir>      Directory searched first for ANCHORPT.DAT, MAP.BIN and SCENERY.scn
-  --out <file.glb>    Output file (required)";
+/// Help text for `stuntreel export-gltf`, also listed under the main `--help`.
+pub(crate) fn usage() -> String {
+    Options::command().render_help().to_string()
+}
 
 /// What to export.
 #[derive(Debug, PartialEq)]
@@ -49,79 +76,39 @@ fn parse_shape_id(text: &str) -> Result<u16, String> {
     parsed.map_err(|e| format!("Invalid shape id {text:?}: {e}"))
 }
 
+fn parse_tick(text: &str) -> Result<f32, String> {
+    let tick = text.parse::<f32>().map_err(|e| e.to_string())?;
+    if !tick.is_finite() || tick < 0.0 {
+        return Err("expected a finite number >= 0".to_string());
+    }
+    Ok(tick)
+}
+
 impl Args {
-    fn parse(mut args: impl Iterator<Item = String>) -> Result<Self, String> {
-        let mut archive = None;
-        let mut shape = None;
-        let mut film = None;
-        let mut tick = None;
-        let mut sidata = None;
-        let mut out = None;
-
-        while let Some(arg) = args.next() {
-            match arg.as_str() {
-                "--archive" => {
-                    archive = Some(PathBuf::from(
-                        args.next().ok_or("Expected path after --archive")?,
-                    ));
-                }
-                "--shape" => {
-                    let value = args.next().ok_or("Expected shape id after --shape")?;
-                    shape = Some(parse_shape_id(&value)?);
-                }
-                "--film" => {
-                    film = Some(PathBuf::from(
-                        args.next().ok_or("Expected path after --film")?,
-                    ));
-                }
-                "--tick" => {
-                    let value = args.next().ok_or("Expected number after --tick")?;
-                    let parsed = value
-                        .parse::<f32>()
-                        .map_err(|e| format!("Invalid tick: {e}"))?;
-                    if !parsed.is_finite() || parsed < 0.0 {
-                        return Err(format!("Invalid tick: {value}"));
-                    }
-                    tick = Some(parsed);
-                }
-                "--sidata" => {
-                    sidata = Some(PathBuf::from(
-                        args.next().ok_or("Expected directory after --sidata")?,
-                    ));
-                }
-                "--out" => {
-                    out = Some(PathBuf::from(
-                        args.next().ok_or("Expected file after --out")?,
-                    ));
-                }
-                "--help" | "-h" => {
-                    println!("{USAGE}");
-                    std::process::exit(0);
-                }
-                other => return Err(format!("Unrecognized export-gltf argument: {other}")),
-            }
-        }
-
+    /// Parses `args` (without `stuntreel export-gltf`).
+    fn try_parse_args(args: impl IntoIterator<Item = String>) -> Result<Self, clap::Error> {
+        let argv = std::iter::once("stuntreel export-gltf".to_string()).chain(args);
+        let Options {
+            archive,
+            shape,
+            film,
+            tick,
+            sidata,
+            out,
+        } = Options::try_parse_from(argv)?;
+        // clap guarantees exactly one of --shape and --film.
         let target = match (shape, film) {
-            (Some(_), Some(_)) => return Err("--shape and --film are mutually exclusive".into()),
-            (Some(id), None) => {
-                if tick.is_some() {
-                    return Err("--tick requires --film".into());
-                }
-                Target::Shape(id)
-            }
-            (None, Some(film)) => Target::Film {
-                film,
+            (Some(id), _) => Target::Shape(id),
+            (None, film) => Target::Film {
+                film: film.unwrap_or_default(),
                 tick: tick.unwrap_or(0.0),
             },
-            (None, None) => return Err("export-gltf requires --shape <N> or --film <F.FLM>".into()),
         };
-
         Ok(Self {
-            archive: archive.ok_or("export-gltf requires --archive <X.ALL>")?,
+            archive,
             target,
             sidata,
-            out: out.ok_or("export-gltf requires --out <file.glb>")?,
+            out,
         })
     }
 }
@@ -175,7 +162,7 @@ fn glb_for_frame(
 
 /// Runs the exporter and writes the output file.
 pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
-    let args = Args::parse(args)?;
+    let args = Args::try_parse_args(args).unwrap_or_else(|e| e.exit());
     let glb = match &args.target {
         Target::Shape(id) => glb_for_shape(&args.archive, args.sidata.as_deref(), *id)?,
         Target::Film { film, tick } => {
@@ -225,9 +212,9 @@ mod tests {
 
     #[test]
     fn arguments_are_validated() {
-        assert!(Args::parse(strings(&["--archive", "a.all", "--out", "o.glb"])).is_err());
+        assert!(Args::try_parse_args(strings(&["--archive", "a.all", "--out", "o.glb"])).is_err());
         assert!(
-            Args::parse(strings(&[
+            Args::try_parse_args(strings(&[
                 "--archive",
                 "a.all",
                 "--shape",
@@ -240,7 +227,7 @@ mod tests {
             .is_err()
         );
         assert!(
-            Args::parse(strings(&[
+            Args::try_parse_args(strings(&[
                 "--archive",
                 "a.all",
                 "--shape",
@@ -252,7 +239,7 @@ mod tests {
             ]))
             .is_err()
         );
-        let args = Args::parse(strings(&[
+        let args = Args::try_parse_args(strings(&[
             "--archive",
             "a.all",
             "--film",

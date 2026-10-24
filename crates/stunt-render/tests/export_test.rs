@@ -39,6 +39,7 @@ fn test_interval_frame_capture_exact_count_magic_and_dimensions() {
             fov_degrees: 45.0,
             roll_radians: 0.0,
             cut_from_previous: true,
+            ..Default::default()
         }),
         Default::default(),
         None,
@@ -69,6 +70,7 @@ fn test_interval_frame_capture_exact_count_magic_and_dimensions() {
             fov_degrees: 45.0,
             roll_radians: 0.0,
             cut_from_previous: tick == 0,
+            ..Default::default()
         });
 
         let frame_path = out_dir.join(format!("frame_{ordinal:04}.png"));

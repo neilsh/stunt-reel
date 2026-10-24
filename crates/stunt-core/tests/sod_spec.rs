@@ -21,7 +21,7 @@ use std::fs;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 
-use stunt_core::contracts::scene::{NodeId, NodeKind, SodModelIr, SodVertex};
+use stunt_core::contracts::shape::{NodeId, NodeKind, SodModelIr, SodVertex};
 use stunt_core::sod::{
     DECAL_FLAG_BIT, EPSILON_DISPLACEMENT, OP_COLOR, OP_GETV, OP_GVPOLY, OP_ID, OP_IFVIS, OP_IPG,
     OP_POLYZ, OP_RETURN, OP_VECTORS, SOD_SCALE_TABLE, compute_scale_factor,
@@ -78,7 +78,8 @@ fn sod_vertex_size_alignment_and_field_offsets() {
         normal: [0.0, 1.0, 0.0],
         palette_index: 42,
         flags: 1,
-        _padding: [0, 0],
+        scenery_class: 0,
+        _padding: 0,
     };
 
     let base_ptr = &dummy as *const SodVertex as usize;
@@ -86,16 +87,15 @@ fn sod_vertex_size_alignment_and_field_offsets() {
     let norm_ptr = &dummy.normal as *const [f32; 3] as usize;
     let pal_ptr = &dummy.palette_index as *const u8 as usize;
     let flags_ptr = &dummy.flags as *const u8 as usize;
-    let pad_ptr = &dummy._padding as *const [u8; 2] as usize;
+    let class_ptr = &dummy.scenery_class as *const u8 as usize;
+    let pad_ptr = &dummy._padding as *const u8 as usize;
 
     assert_eq!(pos_ptr - base_ptr, 0, "position offset must be 0");
     assert_eq!(norm_ptr - base_ptr, 12, "normal offset must be 12");
     assert_eq!(pal_ptr - base_ptr, 24, "palette_index offset must be 24");
     assert_eq!(flags_ptr - base_ptr, 25, "flags offset must be 25");
-    assert_eq!(pad_ptr - base_ptr, 26, "padding offset must be 26");
-
-    // Padding must be exactly 2 zero bytes
-    assert_eq!(dummy._padding, [0, 0]);
+    assert_eq!(class_ptr - base_ptr, 26, "scenery_class offset must be 26");
+    assert_eq!(pad_ptr - base_ptr, 27, "padding offset must be 27");
 }
 
 /// Gate G03: `SodVertex` roundtrips through its raw 28 bytes.
@@ -106,7 +106,8 @@ fn sod_vertex_pod_roundtrip() {
         normal: [0.57735, -0.57735, 0.57735],
         palette_index: 215,
         flags: 0x03,
-        _padding: [0, 0],
+        scenery_class: 0,
+        _padding: 0,
     };
 
     // Treat as raw 28 bytes
@@ -119,7 +120,8 @@ fn sod_vertex_pod_roundtrip() {
     assert_eq!(recovered.normal, original.normal);
     assert_eq!(recovered.palette_index, original.palette_index);
     assert_eq!(recovered.flags, original.flags);
-    assert_eq!(recovered._padding, [0, 0]);
+    assert_eq!(recovered.scenery_class, original.scenery_class);
+    assert_eq!(recovered._padding, 0);
 }
 
 // =============================================================================

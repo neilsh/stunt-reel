@@ -12,13 +12,13 @@
 //! partial in [`SceneReport`]. The anchor table follows ADR-0001.
 
 use std::collections::HashMap;
-use std::fmt;
 
+use crate::anchor::{AnchorPoint, parse_anchor_table};
 use crate::contracts::{CameraTransform, PaletteControls, SodModelIr};
 use crate::flm::{FilmTimeline, FlmError};
-use crate::sod::{SodAnchorPoint, SodError, SodStop, transpile_sod_lenient};
+use crate::sod::{SodError, SodStop, transpile_sod_lenient};
 use crate::vfs::VfsError;
-use crate::world::{World, WorldBounds, WorldInputs, build_world, parse_anchor_table};
+use crate::world::{World, WorldBounds, WorldInputs, build_world};
 
 /// Column-major identity matrix.
 const IDENTITY_MATRIX: [f32; 16] = [
@@ -41,24 +41,15 @@ pub struct SceneInputs<'a> {
 }
 
 /// Why a film scene could not be built.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SceneError {
     /// The film header was unreadable.
+    #[error("film: {0}")]
     Film(FlmError),
     /// The `.ALL` archive container was malformed.
+    #[error("archive: {0}")]
     Archive(VfsError),
 }
-
-impl fmt::Display for SceneError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Film(e) => write!(f, "film: {e}"),
-            Self::Archive(e) => write!(f, "archive: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for SceneError {}
 
 /// An archive `MODEL_*.SOD` chunk that could not be decoded at all.
 #[derive(Debug, Clone, PartialEq)]
@@ -111,7 +102,7 @@ pub struct ArchiveShapes {
 /// Other chunks are ignored. An empty `anchors` table is treated as absent.
 pub fn decode_archive_shapes(
     archive: &[u8],
-    anchors: &[SodAnchorPoint],
+    anchors: &[AnchorPoint],
 ) -> Result<ArchiveShapes, VfsError> {
     let archive = crate::vfs::parse_all(archive)?;
     let anchor_slice = (!anchors.is_empty()).then_some(anchors);
@@ -333,9 +324,13 @@ impl FilmScene {
                 distance: distance(eye, [0.0; 3]),
             });
         }
+        // The record's field of view is the default lens's; zoom it by the interpolated
+        // lens (research/playone-exe/lod.md section 2.2).
+        let mut camera = record.camera;
+        camera.fov_degrees = camera.lens_fov_degrees(camera.fov_degrees);
         SceneFrame {
             tick,
-            camera: record.camera,
+            camera,
             world,
             actors,
             palette: record.palette,

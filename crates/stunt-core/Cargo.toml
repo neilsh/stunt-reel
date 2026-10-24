@@ -13,6 +13,7 @@ serde = ["dep:serde"]
 bytemuck = ["dep:bytemuck"]
 
 [dependencies]
+thiserror = "2.0"
 serde = { version = "1.0", features = ["derive"], optional = true }
 bytemuck = { version = "1.14", optional = true }
 

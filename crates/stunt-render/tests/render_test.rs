@@ -102,6 +102,7 @@ fn test_camera_controller_and_aspect_ratio() {
         fov_degrees: 60.0,
         roll_radians: 0.0,
         cut_from_previous: false,
+        ..Default::default()
     };
     cam.set_authored_transform(authored);
 
@@ -177,21 +178,24 @@ fn test_headless_offscreen_render_execution() {
         normal: [0.0, 0.0, 1.0],
         palette_index: 40,
         flags: 0,
-        _padding: [0, 0],
+        scenery_class: 0,
+        _padding: 0,
     };
     let v1 = SodVertex {
         position: [1.0, -1.0, 0.0],
         normal: [0.0, 0.0, 1.0],
         palette_index: 40,
         flags: 0,
-        _padding: [0, 0],
+        scenery_class: 0,
+        _padding: 0,
     };
     let v2 = SodVertex {
         position: [0.0, 1.0, 0.0],
         normal: [0.0, 0.0, 1.0],
         palette_index: 40,
         flags: 0,
-        _padding: [0, 0],
+        scenery_class: 0,
+        _padding: 0,
     };
 
     // Coplanar decal
@@ -200,21 +204,24 @@ fn test_headless_offscreen_render_execution() {
         normal: [0.0, 0.0, 1.0],
         palette_index: 220,
         flags: 1, // decal
-        _padding: [0, 0],
+        scenery_class: 0,
+        _padding: 0,
     };
     let d1 = SodVertex {
         position: [0.5, -0.5, 0.0],
         normal: [0.0, 0.0, 1.0],
         palette_index: 220,
         flags: 1,
-        _padding: [0, 0],
+        scenery_class: 0,
+        _padding: 0,
     };
     let d2 = SodVertex {
         position: [0.0, 0.5, 0.0],
         normal: [0.0, 0.0, 1.0],
         palette_index: 220,
         flags: 1,
-        _padding: [0, 0],
+        scenery_class: 0,
+        _padding: 0,
     };
 
     ir.vertices = vec![v0, v1, v2, d0, d1, d2];
@@ -267,6 +274,7 @@ fn test_headless_offscreen_render_execution() {
             fov_degrees: 45.0,
             roll_radians: 0.0,
             cut_from_previous: false,
+            ..Default::default()
         }),
         ir,
     );
@@ -316,7 +324,8 @@ fn test_unaligned_width_reads_back_unpadded_rows() {
         normal: [0.0, 0.0, 1.0],
         palette_index: 40,
         flags: 0,
-        _padding: [0, 0],
+        scenery_class: 0,
+        _padding: 0,
     };
     let mut ir = SodModelIr::new("TRI");
     ir.vertices = vec![vertex(-1.0, -1.0), vertex(1.0, -1.0), vertex(0.0, 1.0)];
@@ -341,6 +350,7 @@ fn test_unaligned_width_reads_back_unpadded_rows() {
             fov_degrees: 45.0,
             roll_radians: 0.0,
             cut_from_previous: false,
+            ..Default::default()
         }),
         ir,
     );

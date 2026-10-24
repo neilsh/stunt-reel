@@ -1,8 +1,22 @@
-//! Shared test-support code for the `.FLM` integration tests.
+//! Shared test-support code for the `stunt-core` integration tests (`.FLM` helpers, fuzz RNG).
 
 #![allow(dead_code)]
 
-use stunt_core::flm::{SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES};
+use stunt_core::contracts::trajectory::TrajectoryRecord;
+use stunt_core::flm::{
+    FilmTimeline, GATE_G04_RMSE_THRESHOLD_METERS, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES,
+    compute_position_rmse,
+};
+
+/// Asserts Gate G04 (`RMSE_pos <= 0.01 m` against an oracle trajectory). Returns the RMSE.
+pub(crate) fn assert_gate_g04(timeline: &FilmTimeline, oracle: &[TrajectoryRecord]) -> f32 {
+    let rmse = compute_position_rmse(timeline, oracle);
+    assert!(
+        rmse <= GATE_G04_RMSE_THRESHOLD_METERS,
+        "Gate G04 failure: oracle trajectory position RMSE {rmse:.6} m exceeds threshold {GATE_G04_RMSE_THRESHOLD_METERS:.6} m"
+    );
+    rmse
+}
 
 /// Deviation of a quaternion `[x, y, z, w]` from unit length: `| ||q|| - 1.0 |`.
 pub(crate) fn quat_norm_diff(q: [f32; 4]) -> f32 {
@@ -175,3 +189,5 @@ pub(crate) fn build_synthetic_intro_flm(ticks: usize) -> Vec<u8> {
 
     film
 }
+
+pub(crate) mod rng;

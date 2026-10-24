@@ -26,11 +26,10 @@ use stunt_core::contracts::trajectory::{
 };
 use stunt_core::flm::{
     FilmTimeline, FlmError, GATE_G04_RMSE_THRESHOLD_METERS, SIF_ANIMATES, SIF_DRAW, SIF_EXISTS,
-    SIF_MOVES, SIF_ROTATES, SliceKeyframe, SlotState, assert_parity_gate_g04,
-    compute_position_rmse,
+    SIF_MOVES, SIF_ROTATES, SliceKeyframe, SlotState, compute_position_rmse,
 };
 
-use common::{build_synthetic_intro_flm, quat_norm_diff};
+use common::{assert_gate_g04, build_synthetic_intro_flm, quat_norm_diff};
 
 fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -71,6 +70,7 @@ fn camera(
         fov_degrees,
         roll_radians,
         cut_from_previous,
+        ..Default::default()
     }
 }
 
@@ -1068,7 +1068,7 @@ fn intro_film_streams_keep_invariants_and_self_parity() {
         // Gate G04 self-parity check
         let rmse = compute_position_rmse(&timeline, &records);
         assert_eq!(rmse, 0.0);
-        let verified = assert_parity_gate_g04(&timeline, &records);
+        let verified = assert_gate_g04(&timeline, &records);
         assert!(verified <= GATE_G04_RMSE_THRESHOLD_METERS);
     }
 }
@@ -1081,7 +1081,7 @@ fn position_rmse_of_an_empty_set_is_infinite_and_fails_the_gate() {
     assert_eq!(rmse, f32::INFINITY);
 
     let panic_res = std::panic::catch_unwind(|| {
-        assert_parity_gate_g04(&empty, &[]);
+        assert_gate_g04(&empty, &[]);
     });
     assert!(
         panic_res.is_err(),
@@ -1175,14 +1175,14 @@ fn intro_film_matches_oracle_trajectory_within_gate_tolerance() {
     let rmse = compute_position_rmse(&timeline, &oracle_records);
     assert!(
         rmse <= GATE_G04_RMSE_THRESHOLD_METERS,
-        "Gate G04 Parity Failed: RMSE {rmse:.6} m > {GATE_G04_RMSE_THRESHOLD_METERS:.6} m"
+        "Gate G04 failed: RMSE {rmse:.6} m > {GATE_G04_RMSE_THRESHOLD_METERS:.6} m"
     );
     assert!(
         rmse < 1e-4,
         "Sub-millimeter precision violated: RMSE = {rmse}"
     );
 
-    let verified_rmse = assert_parity_gate_g04(&timeline, &oracle_records);
+    let verified_rmse = assert_gate_g04(&timeline, &oracle_records);
     assert_eq!(rmse, verified_rmse);
 
     // Independent high-precision verification
@@ -1193,7 +1193,7 @@ fn intro_film_matches_oracle_trajectory_within_gate_tolerance() {
     );
     assert!(
         indep_rmse <= (GATE_G04_RMSE_THRESHOLD_METERS as f64),
-        "Gate G04 Parity Failed: independent RMSE {indep_rmse:.6} m > {GATE_G04_RMSE_THRESHOLD_METERS:.6} m"
+        "Gate G04 failed: independent RMSE {indep_rmse:.6} m > {GATE_G04_RMSE_THRESHOLD_METERS:.6} m"
     );
     assert!(
         indep_rmse < 1e-5,
@@ -1242,12 +1242,12 @@ fn oracle_comparison_rejects_a_tampered_timeline() {
         "Perturbation of 0.05m must exceed Gate G04 threshold (got {rmse_large:.6})"
     );
 
-    // Verify assert_parity_gate_g04 panics on violation
+    // Verify assert_gate_g04 panics on violation
     let panic_res = std::panic::catch_unwind(|| {
-        assert_parity_gate_g04(&large, &oracle_records);
+        assert_gate_g04(&large, &oracle_records);
     });
     assert!(
         panic_res.is_err(),
-        "assert_parity_gate_g04 must panic when RMSE > 0.01m"
+        "assert_gate_g04 must panic when RMSE > 0.01m"
     );
 }

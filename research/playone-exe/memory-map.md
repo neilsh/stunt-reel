@@ -1,9 +1,9 @@
 # Runtime Memory Map & Real-Mode Offsets
 
-**This file owns every `DGROUP` / work-segment offset table and every `# [MEM-*]` anchor.** The evidence behind a row (disassembly, live samples, provenance) lives in [`research/playone-exe/`](../research/playone-exe/) and is linked from the row; it is not restated here. Tier names come from the enum owned by [`python/scripts/verify_formats_docs.py`](../python/scripts/verify_formats_docs.py) (`EVIDENTIARY_TIERS`) and defined in [`SPEC.md` § 2.4](SPEC.md#24-evidentiary-tiers--contract-anchor-system).
+**This file owns every `DGROUP` / work-segment offset table and every `# [MEM-*]` anchor.** The evidence behind a row (disassembly, live samples, provenance) lives in [`research/playone-exe/`](./) and is linked from the row; it is not restated here. Tier names come from the enum owned by [`python/scripts/verify_formats_docs.py`](../../python/scripts/verify_formats_docs.py) (`EVIDENTIARY_TIERS`) and defined in [`SPEC.md` § 2.4](../../docs/SPEC.md#24-evidentiary-tiers--contract-anchor-system).
 
 * **Target Binary**: `PLAYONE.EXE` (Unpacked LZEXE 0.91 image)
-* **Image Dump Base**: paragraph `0x0D51` (file offset `0xD910` in the unpacked image). This is the snapshot base used by earlier dumps, **not** the runtime `DS`. In the captured session `CS = 0x0F17` and `DS = 0x1575`; table offsets are `DS`-relative. See [`memory.md` § 1](../research/playone-exe/memory.md#1-segment-architecture--dgroup-map).
+* **Image Dump Base**: paragraph `0x0D51` (file offset `0xD910` in the unpacked image). This is the snapshot base used by earlier dumps, **not** the runtime `DS`. In the captured session `CS = 0x0F17` and `DS = 0x1575`; table offsets are `DS`-relative. See [`memory.md` § 1](memory.md#1-segment-architecture--dgroup-map).
 * **Linear Address Formula**:
   $$\text{Address}_{\text{linear}} = (\text{Segment} \ll 4) + \text{Offset} = (\text{Segment} \times 16) + \text{Offset}$$
 
@@ -33,13 +33,14 @@
 | `0x2265` | `[Established]` | `u8` | Audio playback channel flag | |
 | `0x2272` | `[Established]` | `u8` | Playback-active flag gating the `0x22B8` increment | `# [MEM-FLM-TICK]` |
 | `0x22B8` | `[Established]` | `u16` | Global 50 Hz timer tick (incremented by the INT 8 path while `0x2272` is set) | `# [MEM-FLM-TICK]` |
-| `0x22C4` | `[Supported Inference]` | `u16` | Stored PSP segment address | |
-| `0x22CE` | `[Supported Inference]` | `u16` | Preserved `SS` register during `INSTALL.EXE` child execution | |
-| `0x22D0` | `[Supported Inference]` | `u16` | Preserved `SP` register during `INSTALL.EXE` child execution | |
+| `0x22C4` | `[Established]` | `u16` | Stored PSP segment address: written at image `0x0C78` (`mov [0x22C4], es`, right after `DS` is set to `0x0D51`); read at `0x0CF2`/`0x0CFA` for the free-memory check against `PSP:[2]` | |
+| `0x22CE` | `[Established]` | `u16` | Preserved `SS` register during `INSTALL.EXE` child execution: written at image `0x0C94`, restored at `0x0CC4` around the `int 21h AX=4B00h` EXEC of `DS:0x05BE` (`install.exe`) at `0x0CBD` | |
+| `0x22D0` | `[Established]` | `u16` | Preserved `SP` register during `INSTALL.EXE` child execution: written at image `0x0C98`, restored at `0x0CC8` around the same EXEC | |
 | `0x4758` | `[Established]` | `u16` | Field `+0x0E` of the sibling `0x474A` struct; reads 0 during playback — **not** the film clock | `# [MEM-FLM-TICK]` |
 | `0x4896` | `[Established]` | `u16` | Active film clock in 50 Hz ticks (struct base `0x4888` + `0x0E`); ends at the film's authored total and holds there; offset from `0x22B8` varies, see below | `# [MEM-FLM-TICK]` |
+| image offset + `0x8240` | `[Bounded Observation]` | Rule | Relocation: `runtime_linear = image_offset + 0x8240` (`DGROUP` image `0xD510` -> segment `0x1575`); VM `CS:IP` = image - `0x8240`; see [`memory.md` § 4](memory.md#4-image-to-memory-relocation-and-a-candidate-embedded-data-region) | |
 
-Rows `0x22C4`, `0x22CE` and `0x22D0` were untiered in the former `memory.md` table; `[Supported Inference]` was assigned when the tables were merged, pending a pointer to the disassembly that sets them.
+Rows `0x22C4`, `0x22CE` and `0x22D0` were promoted from `[Supported Inference]` to `[Established]` on 2026-10-23. A Capstone 16-bit decode of the whole unpacked image found exactly those instructions referencing them, all inside the entry routine `0x0C5E`, and raw word matches elsewhere are not instruction operands. Offsets are load-image offsets (see [`startup.md` § 5](startup.md#5-reproducing-the-static-analysis)). The EXEC runs when the command line starts with `?` (`0x0C90`) or when opening `game.cfg` (`DS:0x05AC`, call at `0x0CD2`) fails. The `entry` listing in rea/Ghidra matches the same instructions at analysis address `0x10000 +` image offset.
 
 ---
 
@@ -48,14 +49,14 @@ Rows `0x22C4`, `0x22CE` and `0x22D0` were untiered in the former `memory.md` tab
 ### # [MEM-VSYNC-03DA]
 * **I/O Port**: `0x03DA` (VGA Input Status Register 1)
 * **Routine**: Vertical retrace polling loop (`in al, dx; test al, 08h`).
-* **Protocol** (`[Bounded Observation]`, one film, `CTRY.FLM`): a one-time breakpoint `BPIO 03DA` isolates the polling loop address; execution breakpoint `BP <CS:IP>` is set immediately *after* the loop. The harness uses `BP 0D51:0C5E` plus `RUN`, which returns once per rendered frame, so one `MEMDUMPBIN A000:0000` per hit is a whole frame. `VRT` cannot substitute for it (stepping a Mode 13h guest exits the emulator with `0xC0000409`). Run-by-run evidence: [`capture.md`](../research/playone-exe/capture.md) and [`memory.md` § 3.1](../research/playone-exe/memory.md#31-post-retrace-vertical-blank-trap).
+* **Protocol** (`[Bounded Observation]`, one film, `CTRY.FLM`): a one-time breakpoint `BPIO 03DA` isolates the polling loop address; execution breakpoint `BP <CS:IP>` is set immediately *after* the loop. The harness uses `BP 0D51:0C5E` plus `RUN`, which returns once per rendered frame, so one `MEMDUMPBIN A000:0000` per hit is a whole frame. `VRT` cannot substitute for it (stepping a Mode 13h guest exits the emulator with `0xC0000409`). Run-by-run evidence: [`capture.md`](capture.md) and [`memory.md` § 3.1](memory.md#31-post-retrace-vertical-blank-trap).
 * **Evidentiary Tier**: runtime behaviour `[Bounded Observation]`; static identification of the trap address `[Hypothesis]` (conflict below).
 
 > [!WARNING]
 > **Unresolved conflict — needs live re-verification.** The address `0C5E` is described three incompatible ways:
-> 1. [`startup.md`](../research/playone-exe/startup.md) § 1 gives the unpacked **entry point** as `CS:IP = 0000:0C5E` (executed once, followed by the command-tail parser at `0x0C7C`).
+> 1. [`startup.md`](startup.md) § 1 gives the unpacked **entry point** as `CS:IP = 0000:0C5E` (executed once, followed by the command-tail parser at `0x0C7C`).
 > 2. The capture harness uses `BP 0D51:0C5E` as a **per-frame** loop boundary, and 140 consecutive `CTRY.FLM` frames were captured that way.
-> 3. [`memory.md` § 3.1](../research/playone-exe/memory.md#31-post-retrace-vertical-blank-trap) lists a polling loop at `0D51:0C48..0C5E` ending in `call render_frame_flush`, which cannot also be the entry point.
+> 3. [`memory.md` § 3.1](memory.md#31-post-retrace-vertical-blank-trap) lists a polling loop at `0D51:0C48..0C5E` ending in `call render_frame_flush`, which cannot also be the entry point.
 >
 > The segment is also suspect: `0x0D51` is the image-dump base, while the captured session ran at `CS = 0x0F17`, so `0D51:0C5E` (linear `0xE16E`) is not `CS:0C5E` (linear `0xFDCE`). The breakpoint demonstrably stops once per frame, but the static meaning of that address is unproven. To resolve: with the guest running film playback, run `BPIO 03DA`, record the `CS:IP` it reports, disassemble around it, and compare its linear address to `0D51:0C5E`. Until then, cite the harness behaviour, not the address's meaning.
 
@@ -65,12 +66,12 @@ Rows `0x22C4`, `0x22CE` and `0x22D0` were untiered in the former `memory.md` tab
 * **Contract**: the INT 8 path increments `0x22B8` once per 20 ms tick while `0x2272` is set; the film clock `0x4896` advances with it during the film, stops at the authored total (`1342` for `CTRY.FLM`) and holds, while `0x22B8` keeps counting. The film clock's offset from `0x22B8` is `[Bounded Observation]` and its sign differs between two samples (2–3 behind, or 5 ahead), so it is not a constant. A rendered frame may advance several ticks (Mode 13h refreshes at 70 Hz and rendering can drop frames), so the streamer gates snapshot capture on:
   $$\text{current\_tick} > \text{last\_captured\_tick}$$
   preventing duplicate frame capture.
-* **Evidence**: the only copy of the static-handler and live-sampling evidence is [`memory.md` § 3.2](../research/playone-exe/memory.md#32-tick-counter-evidence). Other documents link there instead of restating it.
+* **Evidence**: the only copy of the static-handler and live-sampling evidence is [`memory.md` § 3.2](memory.md#32-tick-counter-evidence). Other documents link there instead of restating it.
 * **Evidentiary Tier**: `[Established]` (static disassembly plus live DOSBox-X sampling).
 
 ### # [MEM-CAMERA-RIG]
 * **Segment / Scope**: Runtime `DS` offset `0x0C10` (the concrete `DS` value depends on the load base; in the captured session `DS = 0x1575`).
-* **Evidentiary Tier**: `[Hypothesis]`. The layout below is what `MockTransport._write_tick_state` writes and `TrajectoryStreamer.decode_camera_from_memory` reads ([`transport.py`](../python/stunt_reel/tac/transport.py), [`streamer.py`](../python/stunt_reel/tac/streamer.py)); it has been decoded only against that offline mock. The capture loop never reads the camera rig from a live `PLAYONE.EXE` ([`capture.md` § 3](../research/playone-exe/capture.md#3-working-protocol)), and no disassembly of a consumer exists. The harness also addresses it as `0D51:0C10` although `0x0D51` is not the runtime `DS`. Treat offsets, field types (`f32` vs `16.16 i32`) and the `+0x1C` cut rule as unverified.
+* **Evidentiary Tier**: `[Hypothesis]`. The layout below is what `MockTransport._write_tick_state` writes and `TrajectoryStreamer.decode_camera_from_memory` reads ([`transport.py`](../../python/stunt_reel/tac/transport.py), [`streamer.py`](../../python/stunt_reel/tac/streamer.py)); it has been decoded only against that offline mock. The capture loop never reads the camera rig from a live `PLAYONE.EXE` ([`capture.md` § 3](capture.md#3-working-protocol)), and no disassembly of a consumer exists. The harness also addresses it as `0D51:0C10` although `0x0D51` is not the runtime `DS`. Treat offsets, field types (`f32` vs `16.16 i32`) and the `+0x1C` cut rule as unverified.
 * **Byte Layout Specification (32 bytes)**:
   * `+0x00` (`f32` / `16.16 i32` LE, 4B): Camera Eye World X coordinate in meters `[I1]`.
   * `+0x04` (`f32` / `16.16 i32` LE, 4B): Camera Eye World Y coordinate in meters.
@@ -90,17 +91,7 @@ Rows `0x22C4`, `0x22CE` and `0x22D0` were untiered in the former `memory.md` tab
   * *Layout A* (this file's former table, implemented by `TrajectoryStreamer.decode_actor_from_memory` and written by `MockTransport._write_tick_state`): unit quaternion (`4 × f32`) at `+0x18`, state mask at `+0x28`, joint count at `+0x2A`, joint pairs from `+0x2C`, next-link at `+0x3C`.
   * *Layout B* (the former table in `memory.md`, no code): `3×3` `i16` direction-cosine matrix (or quaternion) at `+0x18`, state mask at `+0x2A`, joint count at `+0x2C`, joint pairs from `+0x2E`, next-link at `+0x3C`.
   * Layout A is retained below because it is the one executable code and tests assume, but its only source is the offline mock (`tests/test_harness.py`, `tests/test_tac_adversarial.py` build their fixtures from the same layout). Nothing in `research/playone-exe/` records a read of the real table (`capture.md` § 3 states the capture loop deliberately never reads it), and the stored film rotation is BAM-valued (`SPEC.md` § 3.7), so a quaternion field is itself doubtful. Promote only after a live `MEMDUMPBIN` of a populated entry.
-* **Byte Layout Specification, Layout A (64 bytes per actor entry)**:
-  * `+0x00` (`u32` LE, 4B): Actor Channel ID (unique index within `.FLM` choreography).
-  * `+0x04` (`char[8]`, 8B): Bound `.SOD` asset name (null-terminated ASCII, e.g. `"FOKKER\0"`).
-  * `+0x0C` (`f32` / `16.16 i32` LE, 4B): World Position X in meters `[I1]`.
-  * `+0x10` (`f32` / `16.16 i32` LE, 4B): World Position Y in meters.
-  * `+0x14` (`f32` / `16.16 i32` LE, 4B): World Position Z in meters.
-  * `+0x18` (`4 x f32` LE, 16B): Normalized rotation quaternion $[q_x, q_y, q_z, q_w]$ ($|\|\mathbf{q}\| - 1.0| < 10^{-4}$).
-  * `+0x28` (`u16` LE, 2B): Dynamic state bitmask (visibility, damage, gear state, smoke).
-  * `+0x2A` (`u16` LE, 2B): Articulated joint count $N$.
-  * `+0x2C` (`N x (u16, u16)`, up to 16B): Articulated subobject BAM rotation angle pairs `(subobject_id, raw_bam_u16)`.
-  * `+0x3C` (`u32` LE, 4B): Next actor chain link pointer (or null `0x00000000`).
+* **Byte layout, Layout A (64 bytes per actor entry)**: defined only by [`actor_record.ksy`](../formats/memory/actor_record.ksy) (spike; see [`kaitai-memory-spike.md`](../formats/memory/kaitai-memory-spike.md)). Meaning of the fields: `+0x00` channel id; `+0x04` bound `.SOD` name (NUL-padded); position in signed 16.16 metres `[I1]`; rotation quaternion (normalised, `|‖q‖ - 1| < 1e-4`); state bitmask (visibility, damage, gear, smoke); joint count `N` and `(subobject_id, raw_bam_u16)` pairs; next-actor far pointer as `off:u16, seg:u16`, both zero ends the chain.
 * **Traversal guard**: the streamer enforces a bounded node count and cycle detection when following `+0x3C`.
 
 ---
@@ -125,7 +116,9 @@ The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the
 | `0x8082` | `[Established]` | `u16` | Special model selector (`0x1AB1` enables TAP screen projection) | |
 | `0x8084`, `0x8086`, `0x8088` | `[Established]` | `i16` | View-origin subtraction terms applied by `OP_TAP` | |
 | `0x80C0..0x80CA` | `[Established]` | `i16[9]` | 3×3 model→view rotation matrix | |
-| `0x8108` | `[Bounded Observation]` | `u16` | Base scale input read by the observed projection setup; its wider role is unknown | `# [FMT-SOD-ANIMATE]` |
+| `0x8108` | `[Established]` | `u16` | Lens mantissa, a copy of `DS:0x229C` (image `0x122E`); Q15 factor on the view matrix's two screen rows (image `0x12E3`), also read by the sun-disc drawer and `OP_ANIMATE` ([`lod.md`](lod.md) section 2.2) | `# [FMT-SOD-ANIMATE]` |
+| `0x810A` | `[Established]` | `u16` | `0x229C² × 2 >> 16` (image `0x1238`); reader not traced | |
+| `0x810C` | `[Established]` | `u16` | Lens shift count, a copy of `DS:0x229E` (image `0x123D`); arithmetic right shift on the view matrix's depth row (image `0x12F8`). Zoom is `0x8108 / 0x8000 × 2^0x810C`, about `lens / 8192` | |
 
 Code anchors (segment-relative; `CS = 0x0F17` in the captured session):
 
@@ -140,15 +133,15 @@ Code anchors (segment-relative; `CS = 0x0F17` in the captured session):
 
 ### 3.1 Anchor Table Cache (`# [MEM-SOD-ANCHOR-TABLE]`)
 
-The anchor table is the `0x0000` header and `0x0004 + n*0x1C` records in the work-segment table above, invalidated per frame by `CS:0x492D` over 231 records; `OP_TAP` copies records from it into the vertex register arena. The fields are not restated here: see that table and the cache walk-through in [`sod-vm.md`](../research/playone-exe/sod-vm.md).
+The anchor table is the `0x0000` header and `0x0004 + n*0x1C` records in the work-segment table above, invalidated per frame by `CS:0x492D` over 231 records; `OP_TAP` copies records from it into the vertex register arena. The fields are not restated here: see that table and the cache walk-through in [`sod-vm.md`](sod-vm.md).
 
-See [`research/playone-exe/sod-vm.md`](../research/playone-exe/sod-vm.md) for `OP_TAP` and [`research/playone-exe/sod-animate.md`](../research/playone-exe/sod-animate.md) for `OP_ANIMATE` disassembly and operand evidence.
+See [`research/playone-exe/sod-vm.md`](sod-vm.md) for `OP_TAP` and [`research/playone-exe/sod-animate.md`](sod-animate.md) for `OP_ANIMATE` disassembly and operand evidence.
 
 ### # [MEM-FLM-VARS]
 
 ### # [MEM-PALETTE]
 
-`DS`-relative data and code in the segment that runs at `CS = 0x0824` (load-image segment `0x0000`). Evidence: [`research/playone-exe/palette-fade.md`](../research/playone-exe/palette-fade.md).
+`DS`-relative data and code in the segment that runs at `CS = 0x0824` (load-image segment `0x0000`). Evidence: [`research/playone-exe/palette-fade.md`](palette-fade.md).
 
 | Offset | Evidentiary Tier | Purpose |
 |---|---|---|
@@ -166,11 +159,12 @@ See [`research/playone-exe/sod-vm.md`](../research/playone-exe/sod-vm.md) for `O
 | `CS:0x136F` | `[Established]` | Per-frame film-variable interpolation |
 | `CS:0x3D54` | `[Established]` | `var_set` handler |
 | `CS:0x7B70` | `[Established]` | VGA DAC upload (`0x3C8`/`0x3C9`), two retrace-gated halves |
-| `DS:0x4888` | `[Supported Inference]` | Snapshot of the `0x474A` film state taken at `CS:0x39B0` and read by the frame routine `CS:0x0EE9`; `+0x7E` (`DS:0x4906`) holds the 16 variable copies, `+0x1A` (`DS:0x48A2`) a copy of `0x474A + 0x1A` |
+| `DS:0x4888` | `[Supported Inference]` | Snapshot of the `0x474A` film state taken at `CS:0x39B0` and read by the frame routine `CS:0x0EE9`; `+0x7E` (`DS:0x4906`) holds the 16 variable copies, `+0x1A` (`DS:0x48A2`) a copy of `0x474A + 0x1A`, the current `view_obj` (written by the `0x90..0x97` handler at `CS:0x3D7F`) |
 | `DS:0x4778 -> DS:0x48B6` | `[Supported Inference]` | Per-slot record pointers of the live and snapshot structs; `CS:0x39B0` copies 12 words per slot |
 | `CS:0x0EE9` | `[Supported Inference]` | Per-frame film render step (entered from `CS:0x4A35` with `BX = 0x4888`): sun vector, view matrix, one scene draw, credits string. `CS:0x0EE6` is the same step with `BX = 0x474A`; no static caller found |
 | `CS:0x196C` | `[Supported Inference]` | Sun or moon direction from var 13: `angle = var 13 - 0x4000`, stored at `DS:0x49EC..0x49F0` and negated at `[DS:0x542]:0x8078..0x807C`; `CS:0x908E` projects it through the camera matrix at `0x80C0` |
-| `CS:0x11FC` | `[Bounded Observation]` | View setup indexed by `AX` (`[BX + SI + 0x7E]`, `[BX + SI + 0x2E]`), scaled by `DS:0x22B6` (set by `CS:0x11F8`, `0x7FFF` at `CS:0x4A29`) |
+| `CS:0x11FC` | `[Established]` | View setup indexed by `AX = view_obj` (`[0x4888 + 0x1A]`, loaded at `CS:0x4A32`): film variable `view_obj` (`[BX + SI + 0x7E]`) times `DS:0x22B6` (set by `CS:0x11F8`, `0x7FFF` at `CS:0x4A29`), normalised into the mantissa `DS:0x229C`, the shift count `DS:0x229E` and `DS:0x22A4`; `[BX + SI + 0x2E]` is the camera's object pointer ([`lod.md`](lod.md) section 2.1) |
+| `CS:0x12DC` | `[Established]` | Lens zoom of the view matrix: rows 0-1 (screen X, Y) times `0x229C / 0x8000`, row 2 (depth) `sar` by `0x229E`, so focal length scales by about `lens / 8192` ([`lod.md`](lod.md) section 2.2) |
 | `CS:0x1D96` | `[Bounded Observation]` | Stores var 12 and its negation at `0x15D4:0x8126`/`0x8128`, var 10 (with change sign and low byte) at `0x15D4:0x8120`/`0x8122`; `DS:0x22BC` keeps the previous var 10 |
 | `DS:0x2275` | `[Supported Inference]` | Video-mode flag: `0` after `int 10h` mode `0x13` (`CS:0x737B`), `0xFF` on the alternate path (`CS:0x6E1B`); selects `0x824:0x07DC` over `0x824:0x0A05` in the frame routine |
 | `CS:0x39D0` | `[Established]` | Copies the 16 live variables from `DS:0x47C8` to `DS:0x4906` (the checkpoint inside `0x39B0`) |

@@ -10,12 +10,12 @@ pub use all::parse_all;
 pub use res::parse_res;
 
 use crate::contracts::vfs::VfsArchive;
-use std::fmt;
 
 /// Errors that can occur during VFS container archive extraction.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum VfsError {
     /// The input buffer was smaller than expected for reading a header or table.
+    #[error("unexpected EOF: expected at least {expected} bytes, found {actual}")]
     UnexpectedEof {
         /// Buffer length the parse required at the failure point.
         expected: usize,
@@ -23,6 +23,7 @@ pub enum VfsError {
         actual: usize,
     },
     /// Magic signature mismatch (e.g. not `b"RS"` for `.RES` files).
+    #[error("invalid container magic: expected {expected:?}, found [0x{:02X}, 0x{:02X}]", .actual[0], .actual[1])]
     InvalidMagic {
         /// Signature the parser expected (e.g. `"RS"`).
         expected: &'static str,
@@ -30,16 +31,19 @@ pub enum VfsError {
         actual: [u8; 2],
     },
     /// The offset table contains out-of-bounds, unaligned, or non-monotonic values.
+    #[error("invalid offset table: {reason}")]
     InvalidOffsetTable {
         /// Human-readable description of the offending table entry.
         reason: String,
     },
     /// The requested entry was not found in the archive.
+    #[error("entry not found: {name}")]
     EntryNotFound {
         /// Requested DOS 8.3 entry name, normalized per `[I8]`.
         name: String,
     },
     /// The payload could not be extracted due to size or offset corruption.
+    #[error("corrupted payload for entry '{name}' at offset {offset} (len {len})")]
     CorruptedPayload {
         /// Entry name whose payload could not be extracted.
         name: String,
@@ -49,40 +53,6 @@ pub enum VfsError {
         len: usize,
     },
 }
-
-impl fmt::Display for VfsError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            VfsError::UnexpectedEof { expected, actual } => {
-                write!(
-                    f,
-                    "unexpected EOF: expected at least {expected} bytes, found {actual}"
-                )
-            }
-            VfsError::InvalidMagic { expected, actual } => {
-                write!(
-                    f,
-                    "invalid container magic: expected {expected:?}, found [0x{:02X}, 0x{:02X}]",
-                    actual[0], actual[1]
-                )
-            }
-            VfsError::InvalidOffsetTable { reason } => {
-                write!(f, "invalid offset table: {reason}")
-            }
-            VfsError::EntryNotFound { name } => {
-                write!(f, "entry not found: {name}")
-            }
-            VfsError::CorruptedPayload { name, offset, len } => {
-                write!(
-                    f,
-                    "corrupted payload for entry '{name}' at offset {offset} (len {len})"
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for VfsError {}
 
 /// Automatically detects container type and parses the input buffer.
 ///
@@ -99,5 +69,14 @@ pub fn detect_and_parse(data: &[u8]) -> Result<VfsArchive, VfsError> {
         parse_res(data)
     } else {
         parse_all(data)
+    }
+}
+
+impl From<crate::reader::Eof> for VfsError {
+    fn from(e: crate::reader::Eof) -> Self {
+        Self::UnexpectedEof {
+            expected: e.expected,
+            actual: e.actual,
+        }
     }
 }

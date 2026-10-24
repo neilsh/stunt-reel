@@ -50,3 +50,7 @@ The extracted `si_archive/` directory includes a `Developer/` folder containing 
     - `scenery.c`
     - OpenGL 3D island exploration utility (`Play.exe`, `SIDATA/`, and source fragments).
   - Additional reverse engineering folders: `Notes_SETFile/`, `Notes_SIExtractor/`, `SI-8x/`, `SIDG/`, `SIRes/`, `SI_FLM_Format/`.
+
+## External References (not in the corpus)
+
+- [`AlbertoMarnetto/si-tools`](https://github.com/AlbertoMarnetto/si-tools) (MIT, 2026): `si-8x` detail patch, `sod-decoder` (`.SOD` to `.obj`) and `si-free-flight-2` (raylib island viewer that reads the scene tree from the executable's stack segment; its `terrain_mapbin.cpp` embeds a `MAP.BIN` byte-identical to `Developer/FreeFlight/SIDATA/MAP.BIN`). Consulted, not vendored.

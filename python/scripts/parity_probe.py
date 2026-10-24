@@ -1,6 +1,6 @@
 """Diagnostic probes for parity work (see research/parity/probes.md).
 
-Three subcommands read a capture directory (``tick_%04d.idx`` by ordinal plus
+Four subcommands read a capture directory (``tick_%04d.idx`` by ordinal plus
 ``palettes_%04d.json``) and a render directory (``tick_%05d.idx`` and
 ``.layer`` by film tick), both written by the parity loop:
 
@@ -9,6 +9,8 @@ Three subcommands read a capture directory (``tick_%04d.idx`` by ordinal plus
   capture's object pixels, per scored frame.
 * ``iou``    - mean IoU of our actor pixels against the capture's object
   pixels inside the actor's padded bounding box.
+* ``retime`` - relabel an existing render by N ticks (negative allowed) and
+  rebuild its palette sidecar, so a timing hypothesis costs no rebuild.
 
 Object pixels are capture pixels that are not sky, ground ramp, button bar or
 cursor; the index ranges default to ``CTRY.FLM`` and are per film.
@@ -18,9 +20,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import struct
+import sys
 import zlib
+from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 WIDTH = 320
 ROWS = 185
@@ -64,6 +71,122 @@ def scored_frames(report: Path) -> list[dict[str, int]]:
     """``film_tick`` and ``ordinal`` of every scored frame in ``report.json``."""
     data = json.loads(report.read_text(encoding="utf-8"))
     return [f for f in data["per_frame"] if f["scored"]]
+
+
+#: Files `--headless` writes per rendered tick, beside the frame PNG.
+RENDER_SUFFIXES = (".png", ".idx", ".layer")
+#: Sidecar `stunt-cli --headless` writes beside its frames (`PALETTE_SIDECAR_NAME`).
+RENDER_SIDECAR = "palette_controls.json"
+
+
+class RetimeError(RuntimeError):
+    """A retime request that cannot be served: a busy output directory or missing ticks."""
+
+
+@dataclass(frozen=True)
+class RetimeResult:
+    """What a retime wrote: target frames copied, targets with no source, a rebuilt sidecar."""
+
+    copied: int
+    missing: list[int]
+    palette_written: bool
+
+
+def capture_ticks(reference: Path) -> list[int]:
+    """Film clock of every captured frame in `reference/meta.json`."""
+    meta = json.loads((reference / "meta.json").read_text(encoding="utf-8"))
+    return [int(frame["film_tick"]) for frame in meta["frames"]]
+
+
+def plan_retime(ticks: Iterable[int], by: int) -> list[tuple[int, int]]:
+    """`(target, source)` per distinct captured tick: target `t` shows source `t + by`."""
+    return [(tick, tick + by) for tick in sorted(set(ticks))]
+
+
+def rebuild_palette(sidecar: dict[str, Any], pairs: Iterable[tuple[int, int]]) -> dict[str, Any]:
+    """Copies each source tick's palette entry onto its target tick; invents no entry."""
+    by_tick = {int(entry["tick"]): entry for entry in sidecar.get("ticks", [])}
+    ticks: list[dict[str, Any]] = []
+    for target, source in pairs:
+        entry = by_tick.get(source)
+        if entry is None:
+            continue
+        shifted = dict(entry)
+        shifted["tick"] = target
+        ticks.append(shifted)
+    rebuilt = {key: value for key, value in sidecar.items() if key != "ticks"}
+    rebuilt["ticks"] = ticks
+    return rebuilt
+
+
+def retime_render(
+    ours: Path,
+    reference: Path,
+    out: Path,
+    by: int,
+    *,
+    force: bool = False,
+    allow_missing: bool = False,
+) -> RetimeResult:
+    """Writes `out` as the render in `ours` re-labelled by `by` ticks.
+
+    Target `t` gets the frame, index and layer planes of source `t + by`, and the
+    sidecar's palette entry is copied from the source tick and relabelled. Ticks whose
+    source is absent are reported and, with `allow_missing`, skipped; otherwise they
+    are an error. A non-empty `out` is refused unless `force`.
+    """
+    pairs = plan_retime(capture_ticks(reference), by)
+    if out.exists() and any(out.iterdir()) and not force:
+        raise RetimeError(f"{out} is not empty; pass --force to replace its frames")
+    missing = [
+        target
+        for target, source in pairs
+        if not all((ours / f"tick_{source:05d}{ext}").is_file() for ext in RENDER_SUFFIXES)
+    ]
+    if missing and not allow_missing:
+        raise RetimeError(
+            f"missing render for {len(missing)} tick(s), first {missing[0]}; "
+            "pass --allow-missing to skip them"
+        )
+    skipped = set(missing)
+    out.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for target, source in pairs:
+        if target in skipped:
+            continue
+        for ext in RENDER_SUFFIXES:
+            shutil.copyfile(ours / f"tick_{source:05d}{ext}", out / f"tick_{target:05d}{ext}")
+        copied += 1
+    palette_written = False
+    sidecar_path = ours / RENDER_SIDECAR
+    if sidecar_path.is_file():
+        sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        rebuilt = rebuild_palette(sidecar, [p for p in pairs if p[0] not in skipped])
+        (out / RENDER_SIDECAR).write_text(json.dumps(rebuilt, indent=2) + "\n", encoding="utf-8")
+        palette_written = True
+    return RetimeResult(copied, missing, palette_written)
+
+
+def cmd_retime(args: argparse.Namespace) -> int:
+    try:
+        result = retime_render(
+            args.ours,
+            args.reference,
+            args.out,
+            args.by,
+            force=args.force,
+            allow_missing=args.allow_missing,
+        )
+    except RetimeError as err:
+        print(f"retime: {err}", file=sys.stderr)
+        return 2
+    if not result.palette_written:
+        print(
+            f"retime: {args.ours} has no {RENDER_SIDECAR}; {args.out} has none",
+            file=sys.stderr,
+        )
+    print(f"copied {result.copied} frames; missing {len(result.missing)} ticks")
+    return 0
 
 
 def render_region(
@@ -166,10 +289,11 @@ def cmd_iou(args: argparse.Namespace) -> None:
     print(f"{value:.4f} {count}")
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(required=True)
-    for name, fn in (("crop", cmd_crop), ("shift", cmd_shift), ("iou", cmd_iou)):
+    commands = (("crop", cmd_crop), ("shift", cmd_shift), ("iou", cmd_iou), ("retime", cmd_retime))
+    for name, fn in commands:
         p = sub.add_parser(name)
         p.set_defaults(func=fn)
         p.add_argument("--reference", type=Path, default=Path("build/parity/reference/ctry"))
@@ -181,6 +305,11 @@ def main() -> None:
                 p.add_argument(edge, type=int)
             p.add_argument("--scale", type=int, default=3)
             p.add_argument("--out", type=Path, required=True)
+        elif name == "retime":
+            p.add_argument("--out", type=Path, required=True, help="output render directory")
+            p.add_argument("--by", type=int, required=True, help="ticks to shift; may be negative")
+            p.add_argument("--force", action="store_true", help="replace a non-empty --out")
+            p.add_argument("--allow-missing", action="store_true", help="skip absent sources")
         else:
             p.add_argument(
                 "--report", type=Path, default=Path("build/parity/report/ctry/report.json")
@@ -192,8 +321,9 @@ def main() -> None:
             p.add_argument("--every", type=int, default=2, help="use every Nth scored frame")
             p.add_argument("--pad", type=int, default=25)
     args = parser.parse_args()
-    args.func(args)
+    result = args.func(args)
+    return 0 if result is None else int(result)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

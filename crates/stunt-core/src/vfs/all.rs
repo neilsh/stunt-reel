@@ -5,6 +5,7 @@
 //! - `[I8]` Uppercase DOS 8.3 filename normalization
 
 use crate::contracts::vfs::{ArchiveFormat, VfsArchive, VfsEntry};
+use crate::reader::ByteReader;
 use crate::vfs::VfsError;
 
 /// Unpacks a `.ALL` container archive into an in-memory [`VfsArchive`].
@@ -26,7 +27,8 @@ pub fn parse_all(data: &[u8]) -> Result<VfsArchive, VfsError> {
         });
     }
 
-    let num = u16::from_le_bytes([data[0], data[1]]) as usize;
+    let mut head = ByteReader::new(data);
+    let num = head.read_u16_le()? as usize;
     if num == 0 {
         return Ok(VfsArchive::new(ArchiveFormat::All));
     }
@@ -40,19 +42,13 @@ pub fn parse_all(data: &[u8]) -> Result<VfsArchive, VfsError> {
     }
 
     let mut ids = Vec::with_capacity(num);
-    for i in 0..num {
-        let pos = 2 + i * 2;
-        let id = u16::from_le_bytes([data[pos], data[pos + 1]]);
-        ids.push(id);
+    for _ in 0..num {
+        ids.push(head.read_u16_le()?);
     }
 
-    let offsets_start = 2 + num * 2;
     let mut offsets = Vec::with_capacity(num);
-    for i in 0..num {
-        let pos = offsets_start + i * 4;
-        let off =
-            u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
-        offsets.push(off);
+    for _ in 0..num {
+        offsets.push(head.read_u32_le()? as usize);
     }
 
     // Offset table integrity checks

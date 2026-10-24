@@ -13,7 +13,7 @@ The `.SPR` format represents uncompressed 8-bit indexed raster billboard images 
   2. *Procedural Billboard Binding:* Bound to procedural `.SOD` (display list) models compiled by `MAKESPR.EXE`. The `.SOD` model defines the spatial transform, billboard orientation vector, animation frame count, and resource indices, while the `.SPR` payload supplies the raw texel colors.
   3. *Dynamic Visual Effects:* Rendered as camera-facing billboards centered at the entity's 3D origin, with index `0` acting as a strict transparency key.
 
-**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I3]`](../../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I5]`](../../../docs/SPEC.md#i5-coplanar-decal-resolution). **Contract and code:** [`contracts/scene.rs`](../../../crates/stunt-core/src/contracts/scene.rs); palette scaling is defined once in [`palette-and-shading.md`](../concepts/palette-and-shading.md#11-vga-hardware-dac-principles). No synthetic `.SPR` fixture exists yet.
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I3]`](../../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I5]`](../../../docs/SPEC.md#i5-coplanar-decal-resolution). **Contract and code:** [`contracts/shape.rs`](../../../crates/stunt-core/src/contracts/shape.rs); palette scaling is defined once in [`palette-and-shading.md`](../concepts/palette-and-shading.md#11-vga-hardware-dac-principles). No synthetic `.SPR` fixture exists yet.
 
 ---
 

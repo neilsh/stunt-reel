@@ -77,6 +77,10 @@ _Avoid_: legacy coordinates
 The static scenery of an island: ocean, terrain patches built from `MAP.BIN` over anchor points, and props placed by `SCENERY.scn`. It is drawn with an identity transform.
 _Avoid_: level, map (for the whole)
 
+**Prop**:
+A shape placed in the world by a `SCENERY.scn` leaf. A prop has a position and no orientation; a rotated variant is a separate shape.
+_Avoid_: asset, scenegraph node
+
 **Film scene**:
 A film's timeline bound to its archive's shapes and the world. Sampling it at a tick yields a scene frame.
 _Avoid_: scene bundle
@@ -92,6 +96,14 @@ _Avoid_: glTF parity, Phase 1 export
 **Partial SOD**:
 A shape whose bytecode stopped at an opcode the evaluator does not implement, or at `OP_TAP` without an anchor table; geometry decoded before the stop is retained.
 _Avoid_: corrupt model, truncated SOD
+
+**Blocking opcode**:
+The first opcode in a shape's bytecode that the evaluator does not implement; the point where a Partial SOD stops.
+_Avoid_: bad opcode, invalid opcode
+
+**Masked opcode**:
+An unimplemented opcode that sits after a shape's blocking opcode, so a lenient decode never reports it. Implementing the blocking opcode can expose it as the next one.
+_Avoid_: hidden opcode (collides with face visibility, `OP_VOTEHID`)
 
 **Anchor point** (also **tap point**):
 A 28-byte terrain record shared by `MAP.BIN` patches and `OP_TAP`; it carries raw island coordinates and scratch fields for the display-list VM. `OP_TAP` copies the referenced records into the vertex register bank.
@@ -109,6 +121,11 @@ _Avoid_: test asset
 
 **Parity**:
 Comparison of a reconstructed render against a captured frame, scored by SSIM and mask IoU. The render is sampled from the timeline at the captured frame's film clock.
+_Avoid_: parity (for checking a trajectory against an oracle trajectory)
+
+**Oracle trajectory**:
+A trusted reference trajectory that an evaluated timeline is checked against for position error. It concerns trajectory records only, never rendered pixels.
+_Avoid_: parity oracle, golden frames
 
 **Captured frame**:
 One distinct rendered frame grabbed from `PLAYONE.EXE` at the vertical-retrace trap, numbered by capture order and tagged with its film clock.
@@ -127,9 +144,9 @@ _Avoid_: pixel accuracy, exact match
 _Avoid_: frame counter, global tick
 
 **Fade level**:
-The brightness of a captured frame relative to the static palette: the median, over the indices present in the first captured frame whose static R+G+B exceeds 60, of (captured entry R+G+B) / (static Mode 13h entry R+G+B). About 1.0 when `PLAYONE` is not fading; it falls to 0 over the end-of-film fade. The **authored fade level** is the film's own brightness palette control at that tick over its full value, read from the render's sidecar. Parity scores only frames whose authored fade level reaches `--min-fade-level`; the measured fade level is reported beside it as a cross-check, and decides scoring only for renders without a sidecar.
+The brightness of a captured frame relative to the static palette: about 1.0 when `PLAYONE` is not fading, falling to 0 over the end-of-film fade. The **authored fade level** is the same ratio taken from the film's own brightness palette control at that tick. Parity leaves out frames too faded to compare.
 _Avoid_: brightness, exposure
 
 **Sky band**:
-One of the palette indices 227 to 238 that `PLAYONE.EXE` paints the sky with, in straight bands by view-ray elevation (238 at the horizon). Parity treats every captured pixel in a sky band as sky; the render's sky is where its layer plane is empty.
-_Avoid_: sky index, clear colour (the render's framebuffer clear, which parity no longer reads)
+One of the palette indices 227 to 238 that `PLAYONE.EXE` paints the sky with, in straight bands by view-ray elevation (238 at the horizon). Every captured pixel in a sky band is sky.
+_Avoid_: sky index, clear colour (the render's framebuffer clear)

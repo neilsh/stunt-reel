@@ -45,7 +45,7 @@ __all__ = [
 
 DEFAULT_ORACLE_PATH = Path("corpus/oracle/intro_trajectory.json")
 
-#: Distance in meters from the view slot to its look-at point (research/parity-findings.md § 2).
+#: Distance in meters from the view slot to its look-at point (research/formats/concepts/coordinates-and-units.md).
 LOOKAHEAD_METERS = 1000.0
 
 
@@ -129,7 +129,7 @@ def generate_intro_trajectory(num_ticks: int = 600) -> list[TrajectoryRecord]:
         if t == 0:
             eye = [0.0, 10.0, 50.0]
             # View slot drives the look direction: zero BAM rotation looks down -Z, so
-            # the target sits LOOKAHEAD_METERS along it (research/parity-findings.md § 2).
+            # the target sits LOOKAHEAD_METERS along it (research/formats/concepts/coordinates-and-units.md).
             target = [eye[0], eye[1], eye[2] + LOOKAHEAD_METERS]
             fov = 45.0
             roll = 0.0
