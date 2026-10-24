@@ -52,6 +52,8 @@ Dated results of `stuntreel parity` for `CTRY.FLM` against captured `PLAYONE.EXE
 | 2026-10-23 | `911211a` | 114 scored (CTRY); 209 scored (INTRO) | 0.7732 (CTRY); 0.6822 (INTRO) | — | Five sentinel anchors drawn at sea level (`DBG_SENT`): INTRO -0.0034, past the 0.003 bound; rejected, patches still dropped. See [map.md](../formats/auxiliary/map.md) `[BK-MAP-08]`. |
 | 2026-10-23 | `9db36aa` | 114 scored (CTRY); 209 scored (INTRO) | 0.7737 (CTRY); 0.6838 (INTRO) | — | Per-frame `SP_1NODE` selection from view-space depth and lens scale: CTRY +0.0005 at most, INTRO -0.0015 to -0.0018 against the static rule; reverted. See [lod.md](../playone-exe/lod.md#5-ruled-out). |
 
+| 2026-10-24 | `3c50db5` | 114 scored (CTRY); 209 scored (INTRO) | 0.7808 (CTRY, was 0.7733); 0.7224 (INTRO, was 0.7175) | 0.9780 (CTRY); 0.9501 (INTRO) | Back-face culling: the models wind clockwise for their outward faces, so the pipeline's `Ccw` default kept every interior wall. A cull-mode sweep (`DBG_CULL` 0/1/2) scored 0.7733/0.7175, 0.6112/0.5799 and **0.7808/0.7224**; `FrontFace::Cw` with `Face::Back` was adopted. Actor class loss falls 0.0083 -> 0.0035 (CTRY) and 0.0140 -> 0.0081 (INTRO); CTRY tick 832 regressed 0.710 -> 0.681 where the removed interior exposes an actor surface. The two-sided flag is not decoded yet. See [attribution.md](attribution.md#6-back-faces). |
+
 ## Notes
 
 * **Superseded captures.** Reports made from `ctry_pre_filmclock` captures were keyed by capture ordinal, not film clock, and are superseded: they are not comparable to any row above, and the comparator now rejects a `meta.json` without `film_tick`. Recapture instead of converting.

@@ -14,7 +14,7 @@ _Found 2026-10-22; see the [loss attribution row](log.md)._
 
 ## 2. Current breakdown
 
-Loss by class, most recent run per film (`integration/library-adoption`, 2026-10-23, after the page-timing adoption, no DBG switches): CTRY 0.7732 over 114 scored frames (index agreement 0.505, IoU 0.9783): terrain 0.1026, props 0.0816, sky 0.0183, reference-only 0.0141, actors 0.0083. INTRO 0.6799 over 209 (0.534, 0.9205): terrain 0.1434, props 0.0912, reference-only 0.0289, sky 0.0243, actors 0.0125, ocean 0.0117. Terrain is about 45% of the loss on both films (CTRY 0.1026 of 0.227, INTRO 0.1434 of 0.320).
+Loss by class, most recent run per film (`main`, 2026-10-24, after back-face culling): CTRY 0.7808 over 114 scored frames (index agreement 0.507, IoU 0.9780): terrain 0.1032, props 0.0779, sky 0.0183, reference-only 0.0144, actors 0.0035. INTRO 0.7224 over 209 (0.637, 0.9501): terrain 0.1382, props 0.0727, reference-only 0.0189, sky 0.0227, ocean 0.0120, actors 0.0081, terrain_render_only 0.0042. Terrain is about 47% of the loss on CTRY and 50% on INTRO.
 
 Earlier breakdowns, superseded: CTRY after the lighting change (2026-10-22) terrain 0.116, props 0.072, reference-only 0.035, actors 0.008, sky and ocean 0.003 (total 0.234). The INTRO baseline of 2026-10-22 (0.676, IoU 0.802, index agreement 0.482) had terrain 0.175, props 0.071, reference-only 0.051, actors 0.013, ocean 0.012, sky 0.002.
 
@@ -55,6 +55,10 @@ _Found 2026-10-23; see the [parity log](log.md)._
 * **The land/sea boundary is nearly right.** The capture draws ocean where we draw land on 3,699 CTRY pixels (0.05%) and 41,233 INTRO pixels (0.33%); we draw airfield green where the capture is ocean on 1,997 and 8,388. A distance cull of terrain patches would move very few pixels and was not attempted.
 
 _Found 2026-10-23 at `d90a047`; see the [parity log](log.md)._
+
+## 6. Back faces
+
+`[Bounded Observation]`. The player culls back faces; `stuntreel` did not until 2026-10-24. Our models wind clockwise for their outward faces, so the pipeline's `FrontFace::Ccw` default classified every interior wall as front-facing, and flying through a prop or the hero aircraft drew its inside. A sweep over the culling mode (`DBG_CULL` 0, 1, 2) scored 0.7733 / 0.7175, 0.6112 / 0.5799 and **0.7808 / 0.7224** (CTRY / INTRO); `FrontFace::Cw` with `Face::Back` reproduces the third. IoU is unchanged (0.9780 / 0.9501); index agreement rises 0.504 -> 0.507 and 0.636 -> 0.637. The gain is almost all actors, whose class loss falls 0.0083 -> 0.0035 on CTRY and 0.0140 -> 0.0081 on INTRO. One frame regresses: CTRY tick 832, 0.710 -> 0.681, where removing the interior exposes an actor surface the capture does not show; the actor placement residual explains that. The two-sided flag (`SodVertex::flags` bit 1) is not decoded, so the culling cannot yet exempt a two-sided polygon.
 
 ## Ruled out
 

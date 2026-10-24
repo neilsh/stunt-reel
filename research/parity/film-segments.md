@@ -89,7 +89,7 @@ _Found 2026-10-22; see the [parity log](log.md)._
 
 - Near-clip plane 0.5 m to 0.05 m on `COL3-2.FLM`: frame unchanged.
 - Terrain occlusion: rendering without `--sidata` still shows no studio.
-- Back-face culling: the pipeline has none. Mirrored model: the model-to-world matrices are proper rotations.
+- Back-face culling: the pipeline had none when this was measured; the 2026-10-24 change is recorded in [attribution.md](attribution.md#6-back-faces). Mirrored model: the model-to-world matrices are proper rotations.
 - Visibility gates: every near mesh passes, and all 70 vertices of `15135` are in front of the camera.
 - Pulling the camera back 3 m or 10 m draws some dark furniture-scale blocks, so the near actors render, but not the walls, window or anchorman.
 - Dropped geometry in the display-list decode (section 1.4).
