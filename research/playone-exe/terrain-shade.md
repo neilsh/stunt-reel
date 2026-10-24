@@ -103,3 +103,24 @@ Edge entries are prepared at `0xC65A` and clipped by the Cohen-Sutherland clippe
 1. **The per-shot light.** Breakpoint `0x9106` at the post-retrace trap in DOSBox-X, dump `AX/BX/DX` and the return address across two shots with different ground shade (e.g. film ticks 10 and 448 of `CTRY.FLM`), and compare with `DS:0x49EC` and the var-13 value.
 2. **The ground display list.** Locate the embedded ground geometry (colour byte, vertex registers, `SHADES` normal blocks) in the image, or in the memory dumps taken at the LOAD FILM dialog, and decode it into polygons + per-vertex normals.
 3. Only then is an exact renderer implementation possible: per-vertex `s`, `idx = base + (s >> 9)`, 8.8 interpolation with `@interpolate(linear)` on the shade varying, quantise per fragment.
+
+## 9. Measured inputs, and why the base colour is baked
+
+The light vector was measured live with [`probe_playone_light.py`](../../python/scripts/probe_playone_light.py) (DOSBox-X TAC harness, film `CTRY.FLM`). At the post-retrace trap the display-list work segment is `0x1DF8` (far pointer at `DS:0x0542`); `work:0x8072` holds `L`, `work:0x8078` holds `-L`, and `DS:0x49EC` holds `L` in its first three words. `L` is a unit vector at 1.0 = 32767:
+
+| Film clock | `L` at `work:0x8072` |
+|---|---|
+| 14, 65, 448, 702, 900, 1100, 1251 | `(99, 32766, -17)` (straight up) |
+| 155 | `(-19344, 26134, -4016)` |
+| 276 | `(-15780, 25000, -14120)` |
+| 345 | `(-9156, 28402, -13524)` |
+| 564 | `(-570, 31498, -8998)` |
+
+Magnitudes are 32761-32766, i.e. 1.0 = `0x7FFF`, and `N` is scaled the same way: `(N . L) >> 16` then peaks at `0x4000`, which is exactly the clamp constant. The shade array (`work:0x7468`) changes with the tilt (negative entries at clock 564), so the harness observes a real per-frame lighting state.
+
+Because the index composition adds a non-negative offset to a per-polygon base byte, a polygon can never be drawn darker than its own base colour. The captures draw the airfield at 193, 194, 195 and 196 (193 on about 90% of flat pixels late in the film): values both above and below 195, which one base cannot produce. **So the player's ground display list bakes its own per-polygon colours**, and `MAP.BIN`'s 195 is not the byte it uses (see `0x9988` reading `es:[si+1]`). The apparent "per-shot shade level" is that baked colour, and the light only brightens it.
+
+## 10. Next probes (superseding section 8)
+
+1. **Decode the ground display list** from the dumped work/DGROUP segments (or a fresh LOAD FILM-dialog dump): polygon records with their colour byte, vertex registers and `SHADES` normal blocks. Compare its per-polygon colours with `MAP.BIN`'s patch colours; that decides between re-baking our terrain colours and rendering the player's display list directly.
+2. **The per-shot light source.** `L` is mostly straight up and tilts on some shots; the caller of `0x9100` is still unknown, but with the harness above we can now sample `L` per frame and correlate it with `DS:0x49EC` and the film vars instead of guessing.
