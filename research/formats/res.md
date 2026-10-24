@@ -194,7 +194,7 @@ The reverse engineering of the `.RES` archive container format represents decade
 - **Doug Armknecht**: Curator of the Stunt Island Community Developer Archive (`corpus/si_archive/`, February 2026). Preserved original source files, utilities, and documentation.
 - **Neil Halelamien**: Author of `.SET` scenery format research (2004); documented 16-bit compound keys `(res_index << 8) | item_index` in `Stunt_Island_SET_fileformat_notes.txt`.
 - **Ángel Eduardo** (`arcnorj@yahoo.es`): Author of Stunt Island Extractor (2004–2005); analyzed binary models, prop clumps, and subobject hierarchies.
-- **Alberto Marnetto**: Author of `SI-8x` high-detail engine patch (2024); explored resource streaming limits and LOD bytecode execution.
+- **Alberto Marnetto**: Author of the `SI-8x` patch (2024), which raises the renderer's level-of-detail distance threshold eightfold by replacing the `mul` by the detail word with `mov dx, ax; shl dx, 3`, described in [*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island). It doesn't involve `.RES` resources; the same check in `PLAYONE.EXE` is traced in [`lod.md`](../playone-exe/lod.md).
 
 ### 5.2 Primary Reference Paths in `corpus/si_archive/`
 
