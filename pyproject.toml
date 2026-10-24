@@ -36,6 +36,7 @@ target-version = "py311"
 src = ["python", "tests"]
 exclude = [
     ".agents",
+    ".claude",
     ".git",
     ".venv",
     "build",

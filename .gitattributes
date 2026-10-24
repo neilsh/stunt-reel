@@ -5,3 +5,5 @@
 *.jpg binary
 *.zip binary
 *.glb binary
+# Append-only results table: keep the rows both branches added.
+research/parity/log.md merge=union

@@ -8,10 +8,10 @@ python = "3.11"
 uv = "0.13.1"
 
 # Supply-chain auditing for Cargo manifests (advisories, licenses, sources)
-"cargo:cargo-deny" = "latest"
+"cargo:cargo-deny" = "0.20.2"
 
 # Line coverage for the Rust crates (`mise run cov-rust`); not part of `check`.
-"cargo:cargo-llvm-cov" = "latest"
+"cargo:cargo-llvm-cov" = "0.9.1"
 
 # JVM + Kaitai Struct Compiler for executing research/formats/**/*.ksy during verification.
 # Java is required only to compile .ksy schemas; generated parsers run on the

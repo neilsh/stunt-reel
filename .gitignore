@@ -43,6 +43,7 @@ mise.local.toml
 
 # Antigravity teamwork runtime scratchpads & subagent workspaces
 .agents/teamwork/
+.agents/worktrees/
 
 # Claude Code per-machine state (worktrees, personal settings)
 .claude/worktrees/
