@@ -67,7 +67,11 @@ _Found 2026-10-23 at `d90a047`; see the [parity log](log.md)._
 
 ## Next probes
 
-1. Find the prop (or terrain surface) that draws the CTRY sand band at rows 40 to 64 and why its placement is low; check `SCENERY.scn` instances dropped by de-duplication and the sub-pixel cull.
-2. Reproduce the per-shot depth-cued ground shade ([`terrain-shade.md`](../playone-exe/terrain-shade.md)); the ceiling is +0.0105 CTRY / +0.0029 INTRO.
-3. Prop shading and detail (props are the second-largest class on both films).
-4. INTRO's sand flats under the ocean and terrain classes (montage view; see [`framing-and-actors.md`](framing-and-actors.md) next probes).
+After back-face culling (2026-10-24) the remaining renderer-only levers need PLAYONE evidence before another round:
+
+1. **Actor placement and model origin** — the CTRY hero is 10 px low and left, and the exposed actor surface at tick 832 is in the wrong place. Read the slot and placement arrays (`0x4778` / `0x48B6`) and the model-origin rule; see [`framing-and-actors.md`](framing-and-actors.md#1-the-hero-aircraft-residual-open).
+2. **The player's ground polygons** — the sand band, the airfield's 193/194/196 base colours and the per-shot light caller. `MAP.BIN`'s patches are not the player's records ([world-scene.md](../playone-exe/world-scene.md) section 6; [terrain-shade.md](../playone-exe/terrain-shade.md) next probe 1).
+3. **The two-sided flag** — `SodVertex::flags` bit 1 is documented but the VM never sets it and no SOD field is known to carry it. Find the state that sets it so culling can exempt those facets (the tick-832 regression).
+4. **INTRO montage tick-skipping** — the scene clock falls behind the film clock ([timeline-and-ticks.md](../formats/concepts/timeline-and-ticks.md) section 3.4).
+
+Prop shading and detail (props are still 0.078 / 0.073) is the next renderer-only candidate once the flag question is settled.
