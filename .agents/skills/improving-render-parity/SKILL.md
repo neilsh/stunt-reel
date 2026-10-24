@@ -41,7 +41,7 @@ Copy this checklist into your task list and tick items off:
 - [ ] 4. One hypothesis class: all variants in one sweep, or retime for timing
 - [ ] 5. Apply the adoption rule to the result
 - [ ] 6. Crop the winner and the worst mover; inspect only those
-- [ ] 7. Record outcomes, run mise run check, commit, write the handoff
+- [ ] 7. Record outcomes, run mise run check, commit (body says why: [AGENTS.md § Commit Messages](../../../AGENTS.md#commit-messages)), write the handoff
 ```
 
 If step 5 rejects the change, record the negative and end the round; do not chain a second hypothesis class onto a failed sweep.
