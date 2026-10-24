@@ -216,3 +216,16 @@ def test_listen_send_before_accept_raises_connection_error() -> None:
     with pytest.raises(ConnectionError, match="has not connected yet"):
         t.send_command("PING")
     t.close()
+
+
+def test_second_listener_on_the_same_port_is_refused() -> None:
+    first = ListenTransport(host="127.0.0.1", port=0)
+    first.listen()
+    assert first._listener is not None
+    port: int = first._listener.getsockname()[1]
+    second = ListenTransport(host="127.0.0.1", port=port)
+    try:
+        with pytest.raises(RuntimeError, match=f"port {port} is taken"):
+            second.listen()
+    finally:
+        first.close()

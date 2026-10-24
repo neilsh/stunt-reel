@@ -262,8 +262,20 @@ class ListenTransport(_FramedTransport):
     def listen(self) -> None:
         """Bind the control port and wait for one emulator connection."""
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind((self.host, self.port))
+        # The port is the machine-wide capture lock. On Windows SO_REUSEADDR lets a
+        # second process bind it too, so ask for exclusive use there instead.
+        exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+        if exclusive is not None:
+            sock.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+        else:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((self.host, self.port))
+        except OSError as exc:
+            sock.close()
+            raise RuntimeError(
+                f"port {self.port} is taken: another capture or the MCP server holds it"
+            ) from exc
         sock.listen(1)
         self._listener = sock
 
