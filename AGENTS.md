@@ -89,7 +89,8 @@ Each turn re-sends the whole conversation, so cost is roughly turns times contex
 
 ### SOP 6: Working in a Worktree
 
-1. One agent per worktree, one branch per worktree, both outside the checkout (`<repo>.wt/<slug>`). Never run a second agent in your worktree, and never work on a branch another worktree holds.
+1. One agent per worktree, one branch per worktree. Where it lives is the tool's choice (`<repo>.wt/<slug>`, `.claude/worktrees/`, `.agents/worktrees/`), but one inside the checkout must sit under a directory that `.gitignore` and ruff's `exclude` both cover. Never run a second agent in your worktree, and never work on a branch another worktree holds.
 2. `mise run init` once per worktree links the shared data root and creates the virtualenv. Nothing else is needed: `mise run check` is corpus-free.
-3. The shared data root (`<parent-of-primary>/<repo-name>.data`, or `STUNT_DATA_ROOT`) is **read-only**. `mise run capture-ref` and oracle generation refuse without `STUNT_DATA_WRITE=1`, and only one session may capture at a time: DOSBox-X and port `58991` are machine-wide, not per worktree.
-4. `mise run clean -- --yes` removes this worktree's `target/`, `build/` and caches before you reap it; the shared data root is untouched. See [ADR 0008](docs/adr/0008-worktrees-share-one-read-only-data-root.md).
+3. The shared data root (`<parent-of-primary>/<repo-name>.data`, or `STUNT_DATA_ROOT`) is **read-only**. `mise run capture-ref` and oracle generation refuse without `STUNT_DATA_WRITE=1`, and only one session may capture at a time: DOSBox-X and port `58991` are machine-wide, not per worktree, and a second capture fails at the bind. Set `STUNT_DATA_WRITE=1` only after the user agrees in chat; a capture whose `--out` is inside the worktree needs no opt-in.
+4. Plans and handoffs go in the repo note, plan or ADR that owns them, never only in agent memory: memory is keyed by checkout path, so a session in another worktree never sees it. Shared append-only files such as [`research/parity/log.md`](research/parity/log.md) take rows at the end only; `.gitattributes` union-merges them.
+5. `mise run clean -- --yes` removes this worktree's `target/`, `build/` and caches before you reap it; the shared data root is untouched. See [ADR 0008](docs/adr/0008-worktrees-share-one-read-only-data-root.md).

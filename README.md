@@ -53,7 +53,7 @@ Register the server in the agent's MCP configuration file (`~/.gemini/config/mcp
 
 ### 3. Worktrees and the shared data root
 
-Several agents can work at once, each in its own `git worktree` outside the checkout (`D:\git\stunt-reel.wt\<slug>`). The corpus, the reference captures and `target_bin/` are gitignored, so they live once per machine instead of once per checkout:
+Several agents can work at once, each in its own `git worktree`: beside the checkout (`D:\git\stunt-reel.wt\<slug>`) or under a gitignored directory inside it (`.claude/worktrees/`, `.agents/worktrees/`). The corpus, the reference captures and `target_bin/` are gitignored, so they live once per machine instead of once per checkout:
 
 ```text
 D:\git\stunt-reel.data\   corpus\{stisldem,si_archive,oracle}, reference\, target_bin\
@@ -61,7 +61,7 @@ D:\git\stunt-reel.data\   corpus\{stisldem,si_archive,oracle}, reference\, targe
 
 `mise run init` links those into a worktree with junctions, so the relative `corpus/` and `build/parity/reference/` paths work unchanged; build outputs, caches and `.venv` stay per worktree. `STUNT_DATA_ROOT` names a different data root, and `mise run init -- --migrate` moves an existing in-checkout `corpus/` into it.
 
-The data root is **read-only**: `mise run capture-ref` and oracle generation refuse unless `STUNT_DATA_WRITE=1` is set, and only one session may capture at a time, because DOSBox-X and port `58991` are machine-wide. `mise run clean -- --yes` reports and removes this worktree's outputs before you reap it. See [ADR 0008](docs/adr/0008-worktrees-share-one-read-only-data-root.md).
+The data root is **read-only**: `mise run capture-ref` into the shared captures and oracle generation refuse unless `STUNT_DATA_WRITE=1` is set, and only one session may capture at a time, because DOSBox-X and port `58991` are machine-wide. `mise run clean -- --yes` reports and removes this worktree's outputs before you reap it. See [ADR 0008](docs/adr/0008-worktrees-share-one-read-only-data-root.md).
 
 ---
 

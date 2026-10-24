@@ -95,3 +95,13 @@ Approaches that were tried and dropped. Each is recorded so it is not tried agai
 ### 4.3 Masks
 
 * **Sky IoU from one modal index.** Counting only the capture's most common sky index as sky inflated the filled area and understated IoU by about 0.12 on both `CTRY` and `INTRO`; replaced by the 227 to 238 band mask (section 2.0).
+
+## 5. Reading the results log
+
+How to read the rows of [`log.md`](log.md), which holds only dated figures.
+
+* **Superseded captures.** Reports made from `ctry_pre_filmclock` captures were keyed by capture ordinal, not film clock, and are superseded: they are not comparable to any row in [`log.md`](log.md), and the comparator now rejects a `meta.json` without `film_tick`. Recapture instead of converting.
+* **Reading the `5799a53` row.** The overall mean fell only because 18 end-hold captures entered the average; over the 122 animated ticks the score equals the earlier rows. Compare rows over the same frame set (`--compare` reports the delta over the frames present in both).
+* **Frames per `film_tick`.** All 18 end-hold captures share tick 1342; `--compare` keeps the first per tick, so a comparison covers 123 distinct ticks for this capture set (122 animated plus 1342).
+* **Fade scoring (from 2026-10-22).** The 18 end-hold captures are the faded tail of `CTRY.FLM`, not a blank scene: `PLAYONE` fades its palette to black from about tick 990 and reaches zero at tick 1337, so frames below fade level 0.25 are not scored. Until the renderer modelled the fade (`5bf6afe`), renders were also scaled by the measured fade level (`mean_ssim_compensated`); from the retire-compensation row the headline is `mean_ssim_scored`, raw SSIM over scored frames, always quoted with its scored-frame count. Rows before 2026-10-22 are over all frames.
+* Evidentiary status of these figures: `[Bounded Observation]` (one film, one capture set, one machine); see [`method.md` section 3](method.md#3-what-is-not-yet-evidence).

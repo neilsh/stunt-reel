@@ -1,6 +1,8 @@
 # Worktrees share one read-only data root
 
-Each agent works in its own git worktree outside the checkout. The corpus, the
+Each agent works in its own git worktree, wherever its tool creates it: beside
+the checkout, or under a gitignored directory inside it such as
+``.claude/worktrees/`` or ``.agents/worktrees/``. The corpus, the
 reference captures and ``target_bin/`` are gitignored, so they live once per
 machine in ``<parent-of-primary>/<repo-name>.data`` (``STUNT_DATA_ROOT`` overrides),
 and ``mise run init`` links them into every worktree: ``corpus/stisldem``,
@@ -11,7 +13,8 @@ Two consequences are deliberate. The data root is read-only to agents: the two
 writers, ``mise run capture-ref`` and oracle generation, refuse unless
 ``STUNT_DATA_WRITE=1``, because a stray write into the shared corpus damages every
 other worktree silently. And capture stays serialised machine-wide: ``58991`` is
-bound by ``ListenTransport`` with ``listen(1)``, the four ``dosbox-*.conf`` profiles
+bound by ``ListenTransport`` with ``listen(1)`` (``SO_EXCLUSIVEADDRUSE`` on Windows,
+so a second capture fails at the bind), the four ``dosbox-*.conf`` profiles
 hardcode it, and one DOSBox-X instance serves the whole machine.
 
 ## Considered Options
