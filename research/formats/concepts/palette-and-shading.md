@@ -211,7 +211,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 - **Doug Armknecht (2002):** Reverse engineering of `.FLM` timeline horizon and sky palette indices (`horizon_sky_palette`) and color state tracking in `corpus/si_archive/Developer/SI_FLM_Format/` (`FLM_NOTES.md`, `FLM_FORMAT_DOUG_NOTES.txt`).
 - **Neil Halelamien (2004):** Reverse engineering of `.SET` time-of-day simulation scalars modulating palette lighting levels in `corpus/si_archive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
 - **FreeFlight Development Team:** Reverse engineering of `.ALL` palette container chunks (`0x8042` and `0x801E`) in `corpus/si_archive/Developer/FreeFlight/src/sires.cpp` and `SIPAL.H`.
-- **Alberto Marnetto (2024):** Color palette and memory patching research in `corpus/si_archive/Developer/SI-8x/si-8x-notes.txt`.
 - **StuntReel Teamwork Team (2026):** Milestone 1 & 2 $256 \times 32$ GPU LUT architecture, `@interpolate(flat)` pipeline design, and visual parity specification (`explorer_fmt_aux_concepts/analysis.md`, `crates/stunt-render/`).
 
 ---

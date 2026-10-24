@@ -132,7 +132,6 @@ The documentation and reverse engineering of the `.ALL` bundle format builds upo
 - **Chris Phillips**: Documented palette indexing and `.SOD` geometry loading from `.ALL` containers in `Developer/SODParse/`.
 - **Neil Halelamien**: Author of `.SET` scenery format research (2004); documented prop type 16-bit IDs, scenery quadtree placement, and coordinate linking to `.ALL` bundle chunks in `Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
 - **Ángel Eduardo**: Analyzed `.ALL` container chunk headers and subobjects.
-- **Alberto Marnetto**: Explored `.ALL` high-resolution replacement and texture patching in `SI-8x`.
 
 ### 5.2 Primary Reference Paths in `corpus/si_archive/`
 

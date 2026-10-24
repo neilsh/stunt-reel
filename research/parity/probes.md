@@ -72,3 +72,7 @@ Measured `mean_ssim_scored` (CTRY / INTRO, 2026-10-23, post-page-timing build):
 | -1 | 0.7723 | 0.6773 | 113/139, 208/212 |
 
 Offset 0 is the peak on both films and fractional phases around it are worse (§ 13), so the page phase is a whole tick and the renderer's `tick - 1` stays hardcoded. Use this path for timing hypotheses only: it says nothing about geometry, and it changes no committed render.
+
+## 7. Origin markers (proposed, not built)
+
+Draw a small solid marker at each actor and prop origin in our render. A marker in the right place under a wrong shape is a decode error; a marker that is itself misplaced is a placement error. Alberto Marnetto used orange cubes above each scenery asset for this split ([*Vibe-exploring Stunt Island*](https://marnetto.net/2026/04/26/vibe-exploring-si)). Build it when `shift` and `iou` cannot tell the two apart.

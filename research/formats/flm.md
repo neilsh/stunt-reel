@@ -217,7 +217,6 @@ The reverse engineering of the `.FLM` format represents the culmination of deep 
 - **Chris Phillips**: Decoded `.SOD` subobject bindings driven by `.FLM` joint angles.
 - **Neil Halelamien**: Author of `.SET` scenery format research (2004); documented world object coordinates, prop placements, and scene initialization referenced by `.FLM` choreography streams in `Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
 - **Ángel Eduardo**: Documented actor slot allocation in Stunt Island Set Designer.
-- **Alberto Marnetto**: Explored high-framerate `.FLM` trajectory interpolation in `SI-8x`.
 
 ### 5.2 Primary Reference Paths in `corpus/si_archive/`
 

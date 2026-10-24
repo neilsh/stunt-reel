@@ -77,6 +77,10 @@ _Avoid_: legacy coordinates
 The static scenery of an island: ocean, terrain patches built from `MAP.BIN` over anchor points, and props placed by `SCENERY.scn`. It is drawn with an identity transform.
 _Avoid_: level, map (for the whole)
 
+**Prop**:
+A shape placed in the world by a `SCENERY.scn` leaf. A prop has a position and no orientation; a rotated variant is a separate shape.
+_Avoid_: asset, scenegraph node
+
 **Film scene**:
 A film's timeline bound to its archive's shapes and the world. Sampling it at a tick yields a scene frame.
 _Avoid_: scene bundle

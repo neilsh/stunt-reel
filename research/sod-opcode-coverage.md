@@ -46,8 +46,8 @@ Ordered by shape IDs unblocked per opcode implemented. A shape decodes fully onl
 | 1 | `OP_ANIMATE` | 20 (group A) | 191 paired films; `0105`–`010C` and `3A80` each in 39–130, including `INTRO.FLM` and `CTRY.FLM` (`0107`) | none | `[Established]` dispatch and blit, [`sod-animate.md`](playone-exe/sod-animate.md); selector and `.FLM` mapping open |
 | 2 | `OP_SHADE1` | 5 (group D) | 38 films; `7F0A` in 31 | none | community table; `OP_SHADE2` is `[Hypothesis]` in [`formats/INDEX.md`](formats/INDEX.md) |
 | 3 | `OP_GOSUB` | 2 (group F) | `7F03` in 6 films, `7E3B` in 1 | none | community table; subroutine bodies are not walked (§ 4) |
-| 4 | Centre stack: `PUSHCENTRE`, `MOVECENTRE`, `POPCENTRE` | 11 (group B) | `CRISMAS.FLM` only | item 3 | community table only |
-| 5 | Matrix stack and rotations: `PUSHRELMAT`, `POPRELMAT`, `ROTX`, `ROTZ`, then `OP_BVGT` (and `OP_GOTO` for group E) | 12 (groups C, E, H, J) | 77 films for group C alone; `7F09` in 40, including `INTRO.FLM` | items 3, 4 | community table only |
+| 4 | Centre stack: `PUSHCENTRE`, `MOVECENTRE`, `POPCENTRE` | 11 (group B) | `CRISMAS.FLM` only | item 3 | community table; si-tools (§ 6) |
+| 5 | Matrix stack and rotations: `PUSHRELMAT`, `POPRELMAT`, `ROTX`, `ROTZ`, then `OP_BVGT` (and `OP_GOTO` for group E) | 12 (groups C, E, H, J) | 77 films for group C alone; `7F09` in 40, including `INTRO.FLM` | items 3, 4 | community table; si-tools (§ 6) |
 
 For `INTRO.FLM` parity, `7F09` needs items 3–5 together: it blocks on `BVGT` and masks the centre stack, the matrix stack, `ROTX` and `GOSUB` behind it. Item 1 is the larger win by film count.
 
@@ -164,3 +164,22 @@ mise run sod-census -- --format markdown
 runs `stuntreel sod-census` over `corpus/` (corpus-only, like `verify-corpus`, and never part of `mise run check`; `--corpus DIR` points elsewhere). Without `--format markdown` it prints each model variant with its films, plus any model that failed to walk and any file that failed to parse. Paste the markdown output over § 3 above § 3.1, then update §§ 1–2 and § 3.1 if the groups move.
 
 When an opcode gets a real handler in `vm.rs`, delete its `CENSUS_SKIPS` entry (a unit test fails until you do) and re-run the census: its models drop out of § 3, and any opcode it was masking becomes the new blocking one.
+
+## 6. Community Semantics from si-tools (`[Hypothesis]`)
+
+Alberto Marnetto's MIT-licensed [`si-tools/sod-decoder`](https://github.com/AlbertoMarnetto/si-tools/tree/master/sod-decoder) (2026, a C++ rewrite of FreeFlight's `siobj.cpp`) implements every opcode in § 2. Its readings are leads only: confirm each one against the opcode's `PLAYONE.EXE` handler (reached through the dispatch slots in [`sod-vm.md`](playone-exe/sod-vm.md) section 1) before `vm.rs` implements it. Where it disagrees with § 1, the disagreement is marked.
+
+| Opcode | si-tools reading | Against § 1 |
+| :--- | :--- | :--- |
+| `PUSHCENTRE` / `POPCENTRE` | Push and pop the relative origin `relpos`, which is added to every emitted vertex | agrees |
+| `MOVECENTRE` | `relpos += register[reg_off / 12]` | agrees |
+| `PUSHRELMAT` / `POPRELMAT` | Push and pop a 3×3 matrix that `VECTORS` applies to raw input points | agrees |
+| `ROTX` / `ROTY` / `ROTZ` | The operand is a **variable byte offset** (`variable[w / 2]`), not an immediate; the variable is an angle with 4096 units per turn, post-multiplied into the matrix | **differs**: § 1 assumes an immediate `angle_bam` |
+| `BVLT` / `BVGT` | `reg` is a **variable byte offset**; branch when `variable <= val` (`BVLT`) or `variable >= val` (`BVGT`), unsigned | **differs**: § 1 reads `reg` as a register |
+| `BZLT` | Branch when the register's local Z `<= val - relpos.z`; the handler's `shift` scaling is not modelled | not in § 1 |
+| `GOTO` / `GOSUB` | Target = address of the operand word + `rel_offset` bytes; `GOSUB` runs the target until `RETURN` | agrees; § 1 leaves the base unstated |
+| `SHADE1` | Two operand words, no geometry | agrees |
+| `ANIMATE` | `point_reg`, `radius / 2`, `variable offset`, `count`, then `count` words | agrees with [`sod-animate.md`](playone-exe/sod-animate.md) |
+| `REJ` | `face_base`, `count`, then `count` register triples; backface test truncates the cross-product components to 16 bits before the dot product (`getnorm` / `reject3d`) | not in § 1 |
+| `GVPOLY` | Colour in the high byte of the trailing word, then one shade word per vertex | not in § 1 |
+| `IPG` types 0, 2, 8 | Cube, ground quad and XY quad; fill registers only, draw no faces | not in § 1 |

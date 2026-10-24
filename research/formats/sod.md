@@ -307,7 +307,7 @@ The following backlog documents open questions regarding `.SOD` virtual machine 
 
 | ID | Topic / Investigation Area | Current Evidence & Finding | Evidentiary Tier | Recommended Handling in Engine |
 | :--- | :--- | :--- | :---: | :--- |
-| **Q-SOD-01** | `OP_IFVIS` Condition Codes | Condition code 1 is evaluated as LOD distance squared ($D^2 \ge 1000.0\text{ m}^2$) or view angle culling. | `[Supported Inference]` | Evaluated as `VisibilityCondition::LodDistanceSq(1000.0)` in `vm.rs`. |
+| **Q-SOD-01** | `OP_IFVIS` Condition Codes | Condition code 1 is evaluated as LOD distance squared ($D^2 \ge 1000.0\text{ m}^2$) or view angle culling. Community corroboration without binary evidence: dropping either branch of an `IFVIS` pair loses aircraft parts, and drawing both z-fights ([*Vibe-exploring Stunt Island*](https://marnetto.net/2026/04/26/vibe-exploring-si)), which fits alternative LOD representations. | `[Supported Inference]` | Evaluated as `VisibilityCondition::LodDistanceSq(1000.0)` in `vm.rs`. |
 | **Q-SOD-02** | Slicing Opcodes (`0x0240`..`0x02AC`) | Opcodes 64 through 76 were used by the historical `Slice` tool (`.SIO`) for terrain chunk sectioning. Not used in retail prop models. | `[Bounded Observation]` | Handled as bounded no-ops or skip operands during transpilation. |
 | **Q-SOD-03** | Texture & Sprite Billboard Opcodes (`0x032A`, `0x0333`) | Found in billboard props and runway signs; references `.SPR` sprite sheets in `SPRITES.RES`. | `[Bounded Observation]` | Emits placeholder quad; binds to sprite texture atlas when `.SPR` pipeline is active. |
 | **Q-SOD-04** | Animation Variable Mappings (`undercarriage1`, etc.) | Macro assembler source files name specific registers/variables. Engine maps these to discrete `.FLM` actor state bits. | `[Supported Inference]` | Evaluated via `joint_angles_bam` in `ActorTransform`. |
@@ -331,6 +331,7 @@ The `.SOD` virtual machine specification represents extensive reverse engineerin
 - **Neil Halelamien**: Documented 16-bit object type IDs referencing `.SOD` models in `Developer/Notes_SETFile/`.
 - **Ángel Eduardo**: Analyzed subobject joint hierarchies, spheres, discs, and Set Designer models in `Developer/Notes_SIExtractor/`.
 - **Alberto Marnetto**: Author of the `SI-8x` patch (2024), which raises the renderer's level-of-detail distance threshold eightfold by replacing the `mul` by the detail word with `mov dx, ax; shl dx, 3`, described in [*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island). The same site in `PLAYONE.EXE` is traced in [`lod.md`](../playone-exe/lod.md).
+- **Alberto Marnetto (2026)**: Author of [`si-tools/sod-decoder`](https://github.com/AlbertoMarnetto/si-tools/tree/master/sod-decoder), an MIT-licensed C++ `.SOD` to Wavefront exporter derived from FreeFlight's `siobj.cpp`; it walks more aircraft parts than `SODParse`. Consulted for operand readings, not ported ([`sod-opcode-coverage.md`](../sod-opcode-coverage.md) § 6).
 
 ### 5.2 Primary Reference Paths in `corpus/si_archive/`
 
