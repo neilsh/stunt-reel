@@ -6,6 +6,7 @@ Two directions, driven by the registry in ``stunt_reel.doc_anchors``:
 * every anchor cited anywhere in code, tests or documents is registered.
 """
 
+import re
 from pathlib import Path
 
 from stunt_reel.doc_anchors import ANCHORS, BY_ID, CITATION_REGEX
@@ -81,3 +82,83 @@ def test_cited_anchors_are_registered() -> None:
     assert not unresolved, "Cited anchors missing from stunt_reel.doc_anchors:\n" + "\n".join(
         sorted(set(unresolved))
     )
+
+
+LINK_SKIPPED_DIRS = SKIPPED_DIRS | {".git", "corpus", "target_bin", "worktrees"}
+MARKDOWN_LINK_REGEX = re.compile(r"!?\[[^\]\n]*\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)")
+HTML_ID_REGEX = re.compile(r"<a\s+(?:name|id)=\"([^\"]+)\"")
+CODE_DOC_PATH_REGEX = re.compile(r"(?<![\w./-])((?:research|docs)/[\w./-]+?\.md)\b")
+CODE_SUFFIXES = frozenset({".rs", ".py", ".wgsl", ".toml"})
+
+
+def _repo_files(suffixes: frozenset[str]) -> list[Path]:
+    return [
+        path
+        for path in REPO_ROOT.rglob("*")
+        if path.is_file()
+        and path.suffix in suffixes
+        and not LINK_SKIPPED_DIRS.intersection(path.relative_to(REPO_ROOT).parts)
+    ]
+
+
+def _slug(heading: str) -> str:
+    """GitHub's heading anchor: lower case, punctuation dropped, spaces to hyphens."""
+    return re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
+
+
+def _anchors(path: Path) -> set[str]:
+    """Every fragment a link may target in a Markdown file, duplicates numbered like GitHub."""
+    anchors: set[str] = set()
+    seen: dict[str, int] = {}
+    text = path.read_text(encoding="utf-8")
+    for heading in _heading_texts(path):
+        slug = _slug(heading)
+        count = seen.get(slug, 0)
+        anchors.add(slug if count == 0 else f"{slug}-{count}")
+        seen[slug] = count + 1
+    anchors.update(HTML_ID_REGEX.findall(text))
+    return anchors
+
+
+def _prose(path: Path) -> str:
+    """Markdown text with fenced blocks and inline code removed."""
+    lines: list[str] = []
+    in_code_block = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith("```"):
+            in_code_block = not in_code_block
+        elif not in_code_block:
+            lines.append(re.sub(r"`[^`\n]*`", "", line))
+    return "\n".join(lines)
+
+
+def test_markdown_links_resolve() -> None:
+    """Every relative Markdown link points at an existing file and, for .md targets, heading."""
+    anchors_by_file: dict[Path, set[str]] = {}
+    broken: list[str] = []
+    for path in _repo_files(frozenset({".md"})):
+        for match in MARKDOWN_LINK_REGEX.finditer(_prose(path)):
+            target = match.group(1)
+            if re.match(r"[a-z][a-z0-9+.-]*:", target):
+                continue
+            file_part, _, fragment = target.partition("#")
+            resolved = (path.parent / file_part).resolve() if file_part else path.resolve()
+            rel = path.relative_to(REPO_ROOT).as_posix()
+            if not resolved.exists():
+                broken.append(f"{rel}: {target} (no such file)")
+            elif fragment and resolved.suffix == ".md":
+                anchors = anchors_by_file.setdefault(resolved, _anchors(resolved))
+                if fragment not in anchors:
+                    broken.append(f"{rel}: {target} (no such heading)")
+    assert not broken, "Broken Markdown links:\n" + "\n".join(sorted(broken))
+
+
+def test_code_cited_docs_exist() -> None:
+    """Every docs/ or research/ Markdown path named in code exists."""
+    missing: list[str] = []
+    for path in _repo_files(CODE_SUFFIXES):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in CODE_DOC_PATH_REGEX.finditer(text):
+            if not (REPO_ROOT / match.group(1)).exists():
+                missing.append(f"{path.relative_to(REPO_ROOT).as_posix()}: {match.group(1)}")
+    assert not missing, "Code cites missing documents:\n" + "\n".join(sorted(set(missing)))
