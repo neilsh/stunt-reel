@@ -52,6 +52,10 @@ _Found 2026-10-23 at `6ae7b31`; see the [parity log](../parity/log.md)._
 
 *[Bounded Observation].* Op `0x168` records start at `CTRY.ALL` offset `0x13FC` (`68 01 ...`) and op `0x2BE` records at `0xEFE4` (`BE 02 ...`); `CTRY.FLM` contains none ([`all.md`](../formats/all.md) section 3.6). `CTRY.ALL` also carries packed `(byte << 8) | count` words (`0x2BE` records end `03 E0`) and a 110-word scene colour table at `0x79`/`0x7B`/`0x7D` and `0xEF-0x9A0`, but a byte scan found no ground colour in `0xC0-0xCD`; decoding the records is still to do.
 
+*[Bounded Observation], 2026-10-24.* Neither record start decodes as a threaded stream. Under the handler layout of section 2, the record at `0x13FC` is `w0 = 0x002D` (colour `0x00`, count 13) and the word after its thirteen shade words is `0x0009`; at `0xEFE4` the record is `w0 = 0x0004` (colour `0x00`, count 4) and its terminator is `0x3004`. Neither terminator is a file offset holding another op word, so the terminator is a VM-space address the loader relocates, and an offline walk needs that relocation rule ([memory.md](memory.md) section 4) before it can run. The byte census does not settle it either way: palette indices 193, 194 and 196 occur 25, 11 and 194 times respectively across the 71,216-byte archive.
+
+The scene colour table at `0x79` does read, and it is a ramp directory rather than a polygon colour list: the first 67 entries are `(palette index << 8) | ramp length`, with lengths 3 to 7, after which the word shape changes. Its first five are `193`/3, `194`/3, `195`/3, `221`/3 and `222`/3, so 193, 194 and 195 are three shades of one contiguous ramp, and 196 is not among them. A capture drawing 196 on the airfield therefore draws a base outside that ramp or a different polygon, not the top of the 193 ramp.
+
 ## 6. Where the list is not
 
 Everything below is searched negative. A scan for the ground stream means a word in `{0x0168, 0x171C, 0x02BE, 0x17E4}`, then `w0` (colour `0xB0..0xDF`, count 3-8), `count` shade words, then a next word that is a slot offset or slot `imm16`, at both alignments.
@@ -74,12 +78,13 @@ _Found 2026-10-23 at `f61e792`, `48b955a`, `39a3868`, `728b9ab`, `6ae7b31`; see 
 
 * **A baked ground display list resident in conventional memory** (rounds 5-6 and 14 scans above): none at clocks 276/277 in either coordinate system.
 * **A first-pass dispatcher translating opcodes** (searched for a walker over `table + op + 5`, `slot + 3`): the slots are the translation (section 4).
+* **The archived stream threaded by file offset** (2026-10-24): walking from `0x13FC` or `0xEFE4` with `[w0][count shades][next]` stops at the first record, because its terminator (`0x0009`, `0x3004`) is not an offset into the file that holds an op word.
 * **Colour computed at load by `OP_FRACTAL` or `OP_IPG`** (section 3): constant `0x50` and a zero type table.
 * **Searching in notebook `CS = 0x0F17` coordinates and with a separate colour/count layout:** both made earlier scans unable to match; superseded by sections 2 and 4.
 
 ## Open questions
 
-1. **Decode `CTRY.ALL` offline** (no emulator): with the section 2 layout from `0x13FC` and `0xEFE4`, enumerate the ground polygons, their `w0` headers, shade words and any per-vertex geometry, and compare their colours with the captures' 193/194/196 and the light offsets.
+1. **Decode `CTRY.ALL` offline** (no emulator), now with the relocation rule: the section 5 attempt shows the record terminators are VM-space, so relocate them the way the loader does ([memory.md](memory.md) section 4) before walking, then enumerate the ground polygons and compare their colours with the captures' 193/194/196.
 2. **Breakpoint the ground slot** `0x83A8` (VM `CS:0x0168`, runtime `0x1048:0x0168` in the `CTRY` session): it fires once per new ground record and gives `ES:SI` directly. If the handler is never reached for ground pixels, the terrain is a dedicated routine. Also break at `0x995C` with `work:0x806C != 0` and at `0x8010`, dumping `es:si` and `DS:0x1952`, then chase the writers of `DS:0x1952`.
 3. **Dump the EMS page frame** during playback and grep it for `(colour << 8) | count` headers with colours 192-199, or for handler IPs `0x1F00-0x3000` / slot aliases `0x1400-0x1A00` in `work:0x1DF8`.
 4. **Find the producer** of the stream (the code that reads the world data), then compare its colours with `MAP.BIN`'s; this decides between re-baking our terrain colours and rendering the player's records directly. Only then is a renderer round meaningful, under the [parity skill](../../.agents/skills/improving-render-parity/SKILL.md)'s adoption rule.
