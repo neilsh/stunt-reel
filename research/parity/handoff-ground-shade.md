@@ -61,3 +61,26 @@ Reproduce with `mise run parity`; rescore existing renders with `mise run parity
 * `mise run check` must exit 0 before any commit; it does at `097bfd2`.
 * Scratch goes in `build/scratch/`, never `$TEMP`; use `--no-build` when the parallel session holds
   the release binary.
+
+
+---
+
+## Goal outcome (round 10 of 10)
+
+The goal reached its round limit with **no adoption**: rounds 1-4 were negative diagnostics that
+closed the data-side explanations, round 4's delegation disassembled the mechanism, rounds 5-6
+measured the live inputs and eliminated conventional memory as the display list's location, round 7
+mapped image offsets to runtime memory and flagged the candidate embedded data, and rounds 8-10 are
+checkpoints. Every attempt is recorded in `parity-findings.md` sections 15-21, with no rows added
+to `log.md` because no renderer change was adopted.
+
+Baseline at the close, re-verified: `ctry ssim 0.7732 iou 0.9783 idx 0.505 scored 114/140`;
+`intro ssim 0.6799 iou 0.9205 idx 0.534 scored 209/213`.
+
+Commits for this work item: `213cb23`, `42cb36f`, `48a7576`, `b44c6bc`, `f61e792`, `48b955a`,
+`097bfd2`, `ca691fb`.
+
+Next session: start from this note. The one blocking unknown is the player's baked ground display
+list; recovering it (builder routine or EMS page frame), decoding it, and re-baking or rebuilding
+the terrain from it is the whole remaining path. Then resume normal renderer rounds with the
+adoption rule.
