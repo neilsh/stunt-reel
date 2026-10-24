@@ -311,7 +311,7 @@ The following backlog documents open questions regarding `.SOD` virtual machine 
 | **Q-SOD-02** | Slicing Opcodes (`0x0240`..`0x02AC`) | Opcodes 64 through 76 were used by the historical `Slice` tool (`.SIO`) for terrain chunk sectioning. Not used in retail prop models. | `[Bounded Observation]` | Handled as bounded no-ops or skip operands during transpilation. |
 | **Q-SOD-03** | Texture & Sprite Billboard Opcodes (`0x032A`, `0x0333`) | Found in billboard props and runway signs; references `.SPR` sprite sheets in `SPRITES.RES`. | `[Bounded Observation]` | Emits placeholder quad; binds to sprite texture atlas when `.SPR` pipeline is active. |
 | **Q-SOD-04** | Animation Variable Mappings (`undercarriage1`, etc.) | Macro assembler source files name specific registers/variables. Engine maps these to discrete `.FLM` actor state bits. | `[Supported Inference]` | Evaluated via `joint_angles_bam` in `ActorTransform`. |
-| **Q-SOD-05** | Level-of-Detail Detail Gates (`complex1..3`) | Flags in model bytecode controlling polygon complexity based on global detail setting. `SI-8x` proved forcing high detail uncovers hidden rivets and struts. | `[Established]` | Transpiler exposes all detail branches; modern rendering renders maximum detail. |
+| **Q-SOD-05** | Level-of-Detail Detail Gates (`complex1..3`) | Model source branches on `complex1..3` flags (e.g. `iftrue complex2 ;if max complexity do surface detail` in `SITools/OBJECTS/Planes/SABRE.SOD`). What sets the flags at runtime is unknown. `SI-8x` does not touch them: it patches the separate distance gate at image `0x212D`, whose threshold scales with `GAME.VAR`'s detail word and the per-shot scale ([`lod.md`](../playone-exe/lod.md)). | `[Bounded Observation]` | Transpiler exposes all detail branches; modern rendering renders maximum detail, which over-draws distant objects compared with PLAYONE's distance gate. |
 | **Q-SOD-06** | Real-Mode Dynamic Memory Paging of 1024 Register Bank | In 640 KB conventional DOS memory, whether `PLAYONE.EXE` dynamically paged the 1024-vertex register bank (12 KB) into EMS/XMS or reserved a static `DGROUP` scratchpad buffer. | `[Hypothesis]` | Modern engine allocates contiguous flat arena vectors; memory constraints are eliminated. |
 | **Q-SOD-07** | `OP_TAP` (`0x022E`) | Resolved: variable-width anchor-table load; handler at `CS:0x3E58`. | `[Established]` | Requires `ANCHORPT.DAT`; missing table returns a distinct stop reason. |
 | **Q-SOD-08** | Unimplemented opcodes in the corpus | Corpus census (`mise run sod-census`): 49 shape IDs block on `ANIMATE`, `PUSHCENTRE`, `BVGT`, `SHADE1` or `GOSUB`, with centre-stack, matrix-stack, rotation and `GOTO` opcodes masked behind them; queue, model IDs and film use in [`../sod-opcode-coverage.md`](../sod-opcode-coverage.md). | `[Bounded Observation]` | Lenient decode keeps geometry before the blocking opcode (Partial SOD). |
@@ -330,7 +330,7 @@ The `.SOD` virtual machine specification represents extensive reverse engineerin
 - **Doug Armknecht**: Curator of `corpus/si_archive/`, preserving developer notes and aircraft source models.
 - **Neil Halelamien**: Documented 16-bit object type IDs referencing `.SOD` models in `Developer/Notes_SETFile/`.
 - **Ángel Eduardo**: Analyzed subobject joint hierarchies, spheres, discs, and Set Designer models in `Developer/Notes_SIExtractor/`.
-- **Alberto Marnetto**: Demonstrated how `complex1`/`complex2`/`complex3` LOD bytecode branches can be forced to render maximum scenery detail in `Developer/SI-8x/`.
+- **Alberto Marnetto**: Author of the `SI-8x` patch (2024), which raises the renderer's level-of-detail distance threshold eightfold by replacing the `mul` by the detail word with `mov dx, ax; shl dx, 3`, described in [*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island). The same site in `PLAYONE.EXE` is traced in [`lod.md`](../playone-exe/lod.md).
 
 ### 5.2 Primary Reference Paths in `corpus/si_archive/`
 
@@ -339,7 +339,7 @@ The `.SOD` virtual machine specification represents extensive reverse engineerin
 - `Developer/FreeFlight/src/siobj.cpp` (C++ OpenGL `.SOD` interpreter and transform stack)
 - `SITools/OBJECTS/Planes/CURTISS.SOD` (ASCII `.objdef` assembler source; compiled models are `.BIN` files beginning with `0x000C`)
 - `SITools/OBJECTS/Planes/SABRE.SOD` (ASCII `.objdef` assembler source; compiled models are `.BIN` files beginning with `0x000C`)
-- `Developer/SI-8x/si-8x-notes.txt` (Alberto Marnetto's LOD bytecode analysis)
+- `Developer/SI-8x/si-8x-notes.txt` (two-line pointer to Alberto Marnetto's article; the patch itself is the diff in `si-8x.7z`)
 
 ---
 
