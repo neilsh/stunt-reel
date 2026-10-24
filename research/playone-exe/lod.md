@@ -61,6 +61,23 @@ So `obj` is a coarse stand-in drawn **instead of** the subtree beyond the thresh
 
 Alberto Marnetto's MIT-licensed `si-free-flight-2` (`scenegraph_loader.cpp`, [`si-tools`](https://github.com/AlbertoMarnetto/si-tools), consulted 2026-10-23) has no level-of-detail gate. It places `obj` at the accumulated position **and** walks `next`, so a viewer built that way draws both representations at once. `world.rs` follows the PLAYONE control flow above.
 
+### 1.2 The Patch Is One Six-Byte Site Per Engine
+
+`[Established]` — reproduced 2026-10-24 from the released `si-8x` 1.1 diffs in the local `si-tools` checkout with [`unlzexe.py`](../../python/scripts/unlzexe.py), on our own corpus copies.
+
+The three engines carry the same forty bytes of renderer code. The patch replaces six bytes, `F7 26 xx xx 03 D3`, with `89 C2 C1 E2 03 90` (`mov dx, ax; shl dx, 3; nop`), at exactly one site per executable:
+
+| Executable | Release | Packed | Load image | Site | `mul` word | Dispatch | `obj` store |
+| :--- | :--- | ---: | ---: | ---: | :--- | :--- | :--- |
+| `STUNT.EXE` | vanilla | 137,240 | 248,460 | `0x76F4` | `DS:0x91F2` | `[bx+0x2E46]` | `DS:0x923A` |
+| `MAKEONE.EXE` | vanilla | 103,247 | 201,884 | `0x216C` | `DS:0x2276` | `[bx+0x056C]` | `DS:0x22BE` |
+| `PLAYONE.EXE` | vanilla | 102,703 | 200,524 | `0x212D` | `DS:0x22A4` | `[bx+0x056C]` | `DS:0x22EC` |
+| `PLAYONE.EXE` | P3 | 97,790 | 192,028 | `0x2240` | `DS:0x22A4` | `[bx+0x056C]` | `DS:0x22EC` |
+
+This is the article's "MAKEONE and PLAYONE share the rendering code" made concrete: one code sequence, three detail words, and a per-engine store. The `PLAYONE` vanilla site is the one traced in section 1; the other three addresses come from the patch bytes, not from a disassembly of their handlers, so the table is `[Established]` for the bytes and `[Hypothesis]` for the `STUNT.EXE` and `MAKEONE.EXE` control flow matching `PLAYONE`'s.
+
+The shipped diff files are not in-place patches. Each is a whole-file XOR against a re-packed binary: 84% of the packed bytes differ in the vanilla `PLAYONE` diff (85,948 of 102,703) while the unpacked images differ by five of the six patched bytes. `si-8x-main.cpp:110` selects a patchset by file size alone, so a build that shares a size but not the bytes would be silently corrupted. The supported vanilla copies are `corpus/si_archive/Films/OldPLAY/STUNT.EXE` (137,240), `target_bin/StuntIsl/MAKEONE.EXE` (103,247) and `corpus/stisldem/PLAYONE.EXE` (102,703); `corpus/si_archive/Films/NewPLAY/PLAYONE.EXE` (97,790) is the P3 build.
+
 ## 2. Where `DS:0x22A4` Comes From
 
 | Step | Address | Instruction | Meaning |
@@ -127,4 +144,5 @@ _Found 2026-10-23 at `63bc0d5`; see the [parity log](../parity/log.md)._
 * **Rescore the per-frame gate with the `2^0x229E` factor.** In true depth the threshold also scales by `2^0x229E` (section 2.2), which the ruled-out patch omitted. Now that the lens is drawn, rescore the zoomed INTRO shots with it.
 * **Absolute field of view.** Section 2.2 gives the zoom relative to the default lens. The fixed pixel scale it multiplies, and so the absolute field of view at lens 8192, hasn't been traced to the divide; the renderer's 45° is an assumption.
 * **`INTRO.FLM` camera 1** (lens word 44236, 5.4 times the default, ticks 1216 to 1290 and 2511 to 2624) is the largest zoom; check its frames once the base scale is known.
+* **An 8x reference stage.** `PLAYONE1.EXE` can be produced from the corpus copy by XOR with the `si-8x` v0 diff (section 1.2) and staged for DOSBox-X. One film captured at 800% detail would isolate the distance gate's pixel effect; not run, because section 4.1 already brackets it with `DBG_LOD_SCALE`.
 * **The walker's outer caller.** The pending-node stack popped at `0x1B8C` and its feeder `0x1B75` (`xchg di, [bx+0x2346]`) are known; the routine that seeds the root hasn't been traced. It is also a static route to the code that hands ground objects to the display-list VM ([`world-scene.md` § Next probes](world-scene.md#next-probes)).

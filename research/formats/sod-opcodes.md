@@ -19,8 +19,8 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **6** | `0x0036` | 54 | `OP_NEGV` | *none* | Vector negate: `cur_vert = -cur_vert` |
 | **7** | `0x003F` | 63 | `OP_SHLV` | `shift: u16` | Vector left shift: `cur_vert <<= shift` |
 | **8** | `0x0048` | 72 | `OP_SHRV` | `shift: u16` | Vector arithmetic right shift: `cur_vert >>= shift` |
-| **9** | `0x0051` | 81 | `OP_BLOKADD` | `src: u16, dst: u16, count: u16` | Block add: `regs[dst+i] = regs[src+i] + cur_vert` |
-| **10** | `0x005A` | 90 | `OP_BLOKNEG` | `src: u16, dst: u16, count: u16` | Block negate: `regs[dst+i] = -regs[src+i]` |
+| **9** | `0x0051` | 81 | `OP_BLOKADD` | `src: u16, dst: u16, count: u16` † | Block add: `regs[dst+i] = regs[src+i] + cur_vert` |
+| **10** | `0x005A` | 90 | `OP_BLOKNEG` | `src: u16, dst: u16, count: u16` † | Block negate: `regs[dst+i] = -regs[src+i]` |
 | **11** | `0x0063` | 99 | `OP_IPG` | `type: u16, ...dims, reg: u16` | Procedural primitive generator (Cube, Ground, Quad) |
 | **12** | `0x006C` | 108 | `OP_CHECKPOINT`| *unknown* | Debug / synchronization checkpoint |
 | **13** | `0x0075` | 117 | `OP_VECTORS` | `count: u16, reg: u16, count*3 words` | Batch upload 3D vectors into registers |
@@ -40,7 +40,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **27** | `0x00F3` | 243 | `OP_POLYZ` | `count: u16, ...regs` | Depth-sorted flat polygon emission |
 | **28** | `0x00FC` | 252 | `OP_SPHERE` | `center_reg: u16, radius: u16` | Procedural sphere primitive; `radius` is in register (vertex) units. Tree crowns use it: 19 per tree in `CTRY.ALL` `0x0504`/`0x0507` (1,399 and 933 placements), radius 600 to 1,100 at scale index 10 (crowns of about 1.2 to 2.1 m). `FreeFlight/src/siobj.cpp` leaves it unimplemented. The Rust VM draws a 20-triangle icosahedron at 0.92 of the radius (80 triangles would give a 700 MB vertex buffer on `CTRY.FLM`, over wgpu's 256 MiB); crowns match the capture's position and colour but are faceted (`[Bounded Observation]`; found 2026-10-22 at `16a3170`, [parity log](../parity/log.md)) |
 | **29** | `0x0105` | 261 | `OP_DISC` | `center_reg: u16, radius: u16` | Flat circular disc primitive |
-| **30** | `0x010E` | 270 | `OP_PERFDISK` | `center_reg: u16, r_in: u16, r_out: u16` | Perforated disc (ring with center shaft) |
+| **30** | `0x010E` | 270 | `OP_PERFDISK` | `center_reg: u16, r_in: u16, r_out: u16` † | Perforated disc (ring with center shaft) |
 | **31** | `0x0117` | 279 | `OP_SIDE` | `...` | Cylindrical side primitive |
 | **32** | `0x0120` | 288 | `OP_INITDISC` | `...` | Disc rasterizer initialization |
 | **33** | `0x0129` | 297 | `OP_FILLCOL` | `color: u16` | Set active polygon fill color index (`OP_COLOR`) |
@@ -54,7 +54,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **41** | `0x0171` | 369 | `OP_AIRBRUSH` | `...` | Dithered / airbrushed soft shadow polygon |
 | **42** | `0x017A` | 378 | `OP_BHID` | `cond: u16, size: u16` | Branch / hide section if condition met (`OP_IFVIS`) |
 | **43** | `0x0183` | 387 | `OP_BVIS` | `cond: u16, size: u16` | Branch if facet is visible |
-| **44** | `0x018C` | 396 | `OP_SORTON` | `plane: u16, left_off: i16, right_off: i16` | BSP binary space partitioning branch |
+| **44** | `0x018C` | 396 | `OP_SORTON` | `plane: u16, left_off: i16, right_off: i16` † | BSP binary space partitioning branch |
 | **45** | `0x0195` | 405 | `OP_RETURN` | *none* | Return from subroutine / end display list (`OP_END`) |
 | **46** | `0x019E` | 414 | `OP_GOTO` | `rel_offset: i16` | Unconditional relative jump: $PC += \text{offset}/2 - 1$ |
 | **47** | `0x01A7` | 423 | `OP_GOSUB` | `rel_offset: i16` | Call subroutine: push return PC, jump to target |
@@ -117,6 +117,8 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **104** | `0x03A8` | 936 | `OP_BLOKADD2D`| `...` | 2D block vector addition |
 | **105** | `0x03B1` | 945 | `OP_CIRCLE` | `center: u16, r: u16` | 2D circle outline |
 | **106** | `0x03BA` | 954 | `OP_CIRCLESL` | `...` | Sliced circle outline |
+
+† Operand reading is disputed by si-tools; see [§ 3.1](#31-operand-order-disagreements).
 
 ---
 
@@ -200,7 +202,9 @@ Each takes a single operand word (confirmed by `FreeFlight/src/siobj.cpp`, which
 
 `[Hypothesis]`
 
-Alberto Marnetto's MIT-licensed [`si-tools/sod-decoder`](https://github.com/AlbertoMarnetto/si-tools/tree/master/sod-decoder) (2026, a C++ rewrite of FreeFlight's `siobj.cpp`) implements every opcode in the table above. Its readings are leads only: confirm each one against the opcode's `PLAYONE.EXE` handler (reached through the dispatch slots in [`sod-vm.md`](../playone-exe/sod-vm.md) section 1) before `vm.rs` implements it. Where it disagrees with the operand reading assumed for the census skips ([`sod-opcode-coverage.md` § 1](sod-opcode-coverage.md#1-summary)), the disagreement is marked.
+Alberto Marnetto's MIT-licensed [`si-tools/sod-decoder`](https://github.com/AlbertoMarnetto/si-tools/tree/master/sod-decoder) (2026, a C++ rewrite of FreeFlight's `siobj.cpp`) decodes the opcodes whose geometry it exports and skips the rest by a one-word default. Its readings are leads only: confirm each one against the opcode's `PLAYONE.EXE` handler (reached through the dispatch slots in [`sod-vm.md`](../playone-exe/sod-vm.md) section 1) before `vm.rs` implements it. Where it disagrees with the operand reading assumed for the census skips ([`sod-opcode-coverage.md` § 1](sod-opcode-coverage.md#1-summary)), the disagreement is marked.
+
+Only **stream constraints** are recorded here — readings that must match the byte stream for any parse to succeed. A decoder that omits shading, culling or projection says nothing about the engine, and none of those omissions are kept (section 3.3).
 
 | Opcode | si-tools reading | Against coverage § 1 |
 | :--- | :--- | :--- |
@@ -216,3 +220,29 @@ Alberto Marnetto's MIT-licensed [`si-tools/sod-decoder`](https://github.com/Albe
 | `REJ` | `face_base`, `count`, then `count` register triples; backface test truncates the cross-product components to 16 bits before the dot product (`getnorm` / `reject3d`) | not in coverage § 1 |
 | `GVPOLY` | Colour in the high byte of the trailing word, then one shade word per vertex | not in coverage § 1 |
 | `IPG` types 0, 2, 8 | Cube, ground quad and XY quad; fill registers only, draw no faces | not in coverage § 1 |
+
+### 3.1 Operand-Order Disagreements
+
+`[Hypothesis]` — four readings that contradict § 1 or § 2.5. None of the opcodes is reached by any of the corpus models in [`sod-opcode-coverage.md` § 3](sod-opcode-coverage.md#3-census), so no render depends on them: this is a note for whoever implements a handler, not a work item.
+
+| Opcode | § 1 / § 2.5 says | si-tools reads | Source |
+| :--- | :--- | :--- | :--- |
+| `BLOKADD` (`0x0051`), `BLOKNEG` (`0x005A`) | `src, dst, count` | `count, dest/12, src/12` | `siobj_lib.cpp:900-939` |
+| `SORTON` (`0x018C`) | `plane, left_off, right_off`; § 2.5 reads it as a BSP plane test | First word is the **block size in bytes**, next two are skipped; block end = opcode index + `size/2` | `siobj_lib.cpp:1246-1260` |
+| `PERFDISK` (`0x010E`) | `center_reg, r_in, r_out` | `center_reg, radius`; the second operand is a normal/orientation register (`/12`), one radius only | `siobj_lib.cpp:1098-1126` |
+| `SHADES` (`0x0156`) | `count, ...triplets` | Two leading words (the first discarded, the second is the count), then 3 words per entry | `siobj_lib.cpp:1235-1244` |
+
+`SHADE2` (`0x014D`) and `SHADE216` (`0x02C7`) have no case at all and take the one-word default, so their silence is not evidence of a one-word operand.
+
+### 3.2 Primitive Recipes
+
+`[Hypothesis]` — geometry si-tools generates, not observed in `PLAYONE`:
+
+* `SPHERE` is a 12-vertex, 20-triangle icosahedron at exactly `1.0 × radius`, radius used raw (not multiplied by the shape scale), vertices `centre + trunc(v · radius)`. `vm.rs` uses the same icosahedron at `0.92 ×` (`vm.rs:208`), tuned against `CTRY`; that factor is ours, not the format's.
+* `DISC` is a 16-segment fan at parse-time `radius × scale`, and `PERFDISK` reuses the builder. Orientation snaps to the dominant axis of the normal register (`|nz| > 0.9` → XY plane, else `|ny| > 0.9` → XZ, else YZ) with the sign ignored, so the winding is a stand-in rather than a decode.
+* The disc radius is multiplied by scale at parse and again at export, so exported radii come out `scale²`; that is an exporter bug, not a format fact.
+
+### 3.3 What A Decoder's Silences Are Worth
+
+si-tools is an OBJ exporter, not an emulator. It never shades, never culls, never projects, never writes the animation variables, and skips a dozen opcodes of known width with a single word. None of that is evidence about `PLAYONE.EXE`, and this note records none of it. What survives is the byte layout: the five-word shape header (magic `0x000C`, size, `y_offset`, scale/flags, collision), `GVPOLY`'s high-byte colour, `SHADES`' leading word, `IPG`'s per-type operand counts, `ANIMATE`'s field order, and the `0x000C` first word that identifies a `.SOD` chunk inside a `.RES`, which [`res.md`](res.md) already derives from the archive structure.
+
