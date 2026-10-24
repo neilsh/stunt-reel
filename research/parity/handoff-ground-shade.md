@@ -120,14 +120,6 @@ grep for words in `0x1F00-0x3000` or `0x1400-0x1A00`.
 
 ---
 
-## Round 13 update: the slots patch the stream; still not resident
-
-The dispatch slots patch the stream themselves, so there is no first-pass dispatcher to find (`parity-findings.md` section 24). Each slot writes its handler IP into the stream at `es:[si-2]`, in VM-segment coordinates: ground `0x171C`, not `0x995C` or `0x2A2C`. A rescan of all dumps in those coordinates still finds no ground record.
-
-Next: one harness run with a breakpoint on the ground slot `0x83A8` (VM `CS:0x0168`, runtime `0x1048:0x0168` in the CTRY session). Its first hit gives `ES:SI` of a live ground record, or else dump the EMS page frame.
-
----
-
 ## Round 13 update: the ground scene is in `CTRY.ALL`
 
 Delegated trace (`parity-findings.md` section 24): the ground opcodes and operands are in the
@@ -143,3 +135,11 @@ from `0x13FC` and `0xEFE4` - enumerate ground polygons, `w0 = (colour << 8) | co
 words and any per-vertex data, and compare against the captures' 193/194/196. If the `.ALL` records
 have no usable colour, break at `0x995C` (with `work:0x806C != 0`) and `0x8010` and dump `es:si` and
 `DS:0x1952`, then chase the writers of `DS:0x1952`.
+
+---
+
+## Round 14 update: the slots patch the stream; still not resident
+
+The dispatch slots patch the stream themselves, so there is no first-pass dispatcher to find (`parity-findings.md` section 25). Each slot writes its handler IP into the stream at `es:[si-2]`, in VM-segment coordinates: ground `0x171C`, not `0x995C` or `0x2A2C`. A rescan of all dumps in those coordinates still finds no ground record.
+
+Next: one harness run with a breakpoint on the ground slot `0x83A8` (VM `CS:0x0168`, runtime `0x1048:0x0168` in the CTRY session). Its first hit gives `ES:SI` of a live ground record, or else dump the EMS page frame.
