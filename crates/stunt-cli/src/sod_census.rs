@@ -10,7 +10,7 @@
 //! Shape IDs are per archive, so film use is joined through each film's own archive: a
 //! `.FLM`/`.TKE` film pairs with the `<NAME>.ALL` beside it, and every shape ID its `create`
 //! opcodes place is looked up there and credited to that model variant. `--format markdown`
-//! prints the tables kept in `research/sod-opcode-coverage.md` § 3.
+//! prints the tables kept in `research/formats/sod-opcode-coverage.md` § 3.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;

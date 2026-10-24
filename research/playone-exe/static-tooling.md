@@ -65,7 +65,7 @@ The slot table at image `0x8240` gives the address of every one of the 108 handl
 2. name it from the opcode table in [`research/formats/sod.md`](../formats/sod.md),
 3. save the project under `build/re/ghidra/`.
 
-That would make the VM handlers decompilable and give them callers, callees and data references. That's what the open static questions need: the 14 unimplemented opcodes in [`sod-opcode-coverage.md`](../sod-opcode-coverage.md), the viewport setter for `0x41C8/0x41CA`, and who sets `0x9100`'s inputs. rea can't do this itself, because it only edits existing functions and keeps nothing between sessions, so this is plain Ghidra work. If the script proves useful, keep it under `python/scripts/` or a `tools/ghidra/` directory with a note on how to run it.
+That would make the VM handlers decompilable and give them callers, callees and data references. That's what the open static questions need: the 14 unimplemented opcodes in [`sod-opcode-coverage.md`](../formats/sod-opcode-coverage.md), the viewport setter for `0x41C8/0x41CA`, and who sets `0x9100`'s inputs. rea can't do this itself, because it only edits existing functions and keeps nothing between sessions, so this is plain Ghidra work. If the script proves useful, keep it under `python/scripts/` or a `tools/ghidra/` directory with a note on how to run it.
 
 ## 6. Evidence Rules For Tool Output
 
