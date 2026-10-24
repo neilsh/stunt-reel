@@ -216,10 +216,21 @@ impl RenderPipelines {
             topology: wgpu::PrimitiveTopology::TriangleList,
             strip_index_format: None,
             front_face: wgpu::FrontFace::Ccw,
-            cull_mode: None, // No backface culling to support authentic two-sided facets
+            cull_mode: None,
             unclipped_depth: false,
             polygon_mode: wgpu::PolygonMode::Fill,
             conservative: false,
+        };
+
+        // PLAYONE culls back faces. The models wind clockwise for their outward faces, so the
+        // `Ccw` default treated every interior wall as front-facing; culling the true back faces
+        // raised CTRY 0.7733 -> 0.7808 and INTRO 0.7175 -> 0.7224 (research/parity/log.md,
+        // 2026-10-24). The two-sided flag (`SodVertex::flags` bit 1) is not decoded yet, so it
+        // cannot exempt a polygon here.
+        let model_primitive = wgpu::PrimitiveState {
+            front_face: wgpu::FrontFace::Cw,
+            cull_mode: Some(wgpu::Face::Back),
+            ..primitive
         };
 
         let mut targets = vec![Some(wgpu::ColorTargetState {
@@ -250,7 +261,7 @@ impl RenderPipelines {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &targets,
             }),
-            primitive,
+            primitive: model_primitive,
             depth_stencil: Some(base_depth_stencil),
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
@@ -272,7 +283,7 @@ impl RenderPipelines {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &targets,
             }),
-            primitive,
+            primitive: model_primitive,
             depth_stencil: Some(decal_depth_stencil),
             multisample: wgpu::MultisampleState::default(),
             multiview: None,

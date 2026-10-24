@@ -31,7 +31,8 @@ fn triangle(name: &str, visibility: VisibilityCondition) -> SodModelIr {
     };
     let mut ir = SodModelIr::new(name);
     ir.vertices = vec![vertex(-1.0, -1.0), vertex(1.0, -1.0), vertex(0.0, 1.0)];
-    ir.indices = vec![0, 1, 2];
+    // Clockwise, like the SOD models: the pipeline culls back faces with `FrontFace::Cw`.
+    ir.indices = vec![0, 2, 1];
     ir.allocate_node(
         "TRI",
         None,

@@ -225,8 +225,9 @@ fn test_headless_offscreen_render_execution() {
     };
 
     ir.vertices = vec![v0, v1, v2, d0, d1, d2];
-    // Indices are relative to each mesh's `vertex_offset`.
-    ir.indices = vec![0, 1, 2, 0, 1, 2];
+    // Indices are relative to each mesh's `vertex_offset`. The winding is clockwise, like the
+    // SOD models: the pipeline culls back faces with `FrontFace::Cw`.
+    ir.indices = vec![0, 2, 1, 0, 2, 1];
 
     let root = ir.allocate_node(
         "BASE",
@@ -329,7 +330,8 @@ fn test_unaligned_width_reads_back_unpadded_rows() {
     };
     let mut ir = SodModelIr::new("TRI");
     ir.vertices = vec![vertex(-1.0, -1.0), vertex(1.0, -1.0), vertex(0.0, 1.0)];
-    ir.indices = vec![0, 1, 2];
+    // Clockwise, like the SOD models: the pipeline culls back faces with `FrontFace::Cw`.
+    ir.indices = vec![0, 2, 1];
     ir.allocate_node(
         "TRI",
         None,
