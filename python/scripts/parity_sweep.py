@@ -61,7 +61,7 @@ class Film:
 
 _VAULT = "corpus/stisldem/VAULT"
 _SIDATA = "corpus/si_archive/Developer/FreeFlight/SIDATA"
-#: Per-film inputs (research/parity/method.md section 1, parity-findings.md sections 9 and 11).
+#: Per-film inputs (research/parity/method.md section 1, research/parity/attribution.md and 11).
 FILMS: dict[str, Film] = {
     "ctry": Film(
         f"{_VAULT}/CTRY.FLM", f"{_VAULT}/CTRY.ALL", _SIDATA, "build/parity/reference/ctry"

@@ -9,21 +9,51 @@ How a rendering change is judged against `PLAYONE.EXE`. Terms are those of [`GLO
 2. **Snapshot a baseline before the change.** Keep the current render directory and `report.json` (for example `build/parity/ours/ctry_base`, `build/parity/report/ctry_base`). A report without its render directory cannot produce the before panels.
 3. **Render every tick including the final one:** `--frames 1..1344 --sidata <SIDATA> --width 320 --height 200 --viewport-rows 185` (the 3D view fills 185 rows; see `playone-exe/capture.md` § 4) writes `tick_00000.png`-`tick_01342.png`.
 3a. **Planes:** each render also writes `tick_NNNNN.idx` and `tick_NNNNN.layer` beside the PNG (unlit palette index; layer ids 0 none, 1 ocean, 2 terrain, 3 props, 16+n for actor draw n of the frame). `report.json` carries `mean_loss_by_class_scored`, the SSIM loss split by layer (read it as 'where the loss is', not 'what is wrong'). `parity` uses them for mask IoU and reports `mean_index_agreement_scored`.
-4. **Score:** `stuntreel parity --reference ... --test ... --output ...`. The masks come from index planes, not colours: a capture pixel is sky when its index is in the sky bands 227..=238 (`sky_indices` in `report.json`; [`parity-findings.md`](../parity-findings.md) section 7), and a render pixel is sky where its `.layer` plane is empty. `--headless` writes the `.idx`/`.layer` planes beside every frame; a render directory without them is an error, so re-render rather than score old PNGs. `render` still clears to 233 (`CTRY`'s sky) when given an `.ALL`, but that no longer affects the score.
+4. **Score:** `stuntreel parity --reference ... --test ... --output ...`. The masks come from index planes, not colours: a capture pixel is sky when its index is in the sky bands 227..=238 (`sky_indices` in `report.json`; [`palette-and-shading.md`](../formats/concepts/palette-and-shading.md)), and a render pixel is sky where its `.layer` plane is empty. `--headless` writes the `.idx`/`.layer` planes beside every frame; a render directory without them is an error, so re-render rather than score old PNGs. `render` still clears to 233 (`CTRY`'s sky) when given an `.ALL`, but that no longer affects the score. Output is `report.json` plus `contact_NNNN.png` sheets (`reference | rendered | |difference|`).
 5. **Compare:** add `--compare <previous report.json> --compare-test <previous render dir>`. It prints means over the frames present in both reports, the 5 most improved/regressed frames, and the count moved by more than 0.005, and writes `compare.json`. The basis is `scored` when both reports carry `scored` (SSIM over frames scored in both runs) and `all` otherwise (SSIM over all common frames), recorded on the first `[compare]` line and as `"basis"` in `compare.json`.
 6. **Look at the worst movers before trusting the mean.** Open `compare_regressed_*.png` and `compare_improved_*.png` (`reference | before | after | |ref-before| | |ref-after|`). A mean can hide a regression or an improvement: the axis fix (`82ea965`) made the biplane upright like `PLAYONE` yet lowered mean SSIM 0.571 -> 0.567, because size and position error remain (`[Bounded Observation]`: worst frames about ticks 426-492, -0.02).
 6a. **Diagnose one discrepancy** with the probes in [`probes.md`](probes.md) (crop, silhouette offset, actor-window IoU, candidate sweeps).
 7. **Record a row in [`log.md`](log.md):** commit hash, matched frames, means, and the reason for any movement.
 
+### 1.1 Extracting frames and video
+
+Tier `[Established]`. `stuntreel --out-dir <dir> --frame-step <N>` samples the 50 Hz timeline every N ticks, which keeps long films from filling the disk. `--frames A..B` is a half-open range of 1-based tick ordinals; files are `tick_%05d.png`, named by the 0-based tick rendered, which is the film clock `stuntreel parity` looks up (`--frames 459..460` writes `tick_00458.png`). With `--sample-count` or `--video` the samples need not fall on whole ticks, so they are written as `sample_%04d.png` (1-based sample index) and are not parity inputs. When `--video` is present, sampling at `--fps` drives the loop and `--frame-step` is ignored.
+
+`stuntreel --video <path>` (`.mp4`, `.webm`, `.mkv`, `.avi`) pipes frames asynchronously to `ffmpeg`, sampled at `--fps` (default 30) from the authored 50 Hz timeline with 4:3 correction (320x240, `[I6]`), interpolating between slice keyframes. The container is trimmed to the authored span with `-t`: `CTRY.FLM` (140 slices, 1,342 ticks, 26.84 s) samples 806 frames at 30 fps, ffmpeg encodes 805 and reports 26.833 s (26.84 s exactly at `--fps 50`). Without `ffmpeg` on `PATH` the command exits with a diagnostic. Ticket: `T11` in [`TEAM_SHEET.md`](../../docs/process/TEAM_SHEET.md).
+
+### 1.2 Scoring another captured film
+
+`--frames a..b` is 1-based, so render the whole captured span (`--frames 160..730` for the `COL3-2.FLM` capture): frames outside the range count as missing on one side. Render at `--width 320 --height 200` (the parity command rejects 320x240 input) with `--headless`, so the directory holds the `.idx`/`.layer` planes. Then:
+
+```bash
+stuntreel parity --reference build/parity/reference/<film> --test build/parity/ours/<film> --output build/parity/report/<film>
+```
+
+For a side-by-side look, decode a reference `.idx` page (64000 bytes, 320x200) with its `palettes_NNNN.json` and paste it beside our PNG; `contact_*.png` shows only the first frame.
+
 ## 2. Scoring in one paragraph
 
-Both sides become Rec. 601 luminance, are stretched 320x200 -> 320x240, and are scored with the shared 11x11-window SSIM (`[I6]`: >= 0.88 initial, >= 0.90 sign-off). IoU compares each side's non-sky mask and measures framing independent of shading. Neither is a perceptual judgement.
+Both sides become Rec. 601 luminance, are stretched 320x200 -> 320x240, and are scored with the shared 11x11-window SSIM (`compute_frame_ssim`, window 11, stride 8; `[I6]`: >= 0.88 initial, >= 0.90 sign-off; `[Established]`). IoU compares each side's non-sky mask and measures framing independent of shading. Neither is a perceptual judgement.
+
+### 2.0 Sky mask and IoU scale
+
+Tier `[Bounded Observation]`. Since 2026-10-23 (commits `b9a2b93`, `2fc0ca2`) the mask counts every index 227 to 238 as sky and reads the render's sky from its layer plane. Before, only the capture's single most common sky index (`sky_index`, 233 for `CTRY`) was sky, so the other bands counted as filled. SSIM and index agreement do not depend on the masks and did not move. Same renders (`main` at `19c0365`) scored at `f64b64b` (before, `--clear-index 233`) and `19c0365` (after):
+
+| Film | Scored / matched | `mean_ssim_scored` | `mean_index_agreement_scored` | `mean_iou_scored` before / after | `mean_iou` (all) before / after |
+|---|---|---|---|---|---|
+| `CTRY.FLM` (sky index 233) | 114 / 140 | 0.771 | 0.475 | 0.856 / **0.978** | 0.826 / 0.978 |
+| `INTRO.FLM` (229) | 209 / 213 | 0.676 | 0.481 | 0.802 / **0.919** | 0.803 / 0.921 |
+| `COL3-2.FLM` (228) | 26 / 30 | 0.636 | 0.061 | 0.022 / 0.021 | 0.019 / 0.018 |
+
+The old IoU mostly measured how much of the capture's sky lay outside its one modal band. The new value says the non-sky silhouette is close on `CTRY.FLM` and less so on `INTRO.FLM`, in line with SSIM. IoU figures recorded before this change are on the old scale and are not comparable with it. Golden reports for the scoring-call extraction are the `after_<film>/report.json` files under `build/scratch/rebase/` (not committed).
 
 ### 2.1 Fade floor
 
 `PLAYONE.EXE` fades its palette linearly to black near the end of `CTRY.FLM`. For each captured frame, the **fade level** is the median, over a fixed index set, of (captured palette entry R+G+B) / (static Mode 13h palette entry R+G+B). The index set is the indices present in the first captured frame whose static R+G+B is above 60. A frame with no fade reads about 1.0 (1.011 for `CTRY`, from DAC 6->8-bit expansion). Cursor and button-bar entries do not fade; they are a minority of the set, so the median ignores them.
 
 The renderer applies the same fade from the film's palette variables, so renders are scored as drawn. Frames below `--min-fade-level` (default 0.25) are computed and reported but not scored, because SSIM of near-black frames says little. `report.json` per frame adds `fade_level` and `scored`; the run level adds `min_fade_level`, `mean_ssim_scored`, `mean_iou_scored` (both null if no frame is scored), `scored_frames`, and `excluded_frames`. The headline is `mean_ssim_scored` with its scored-frame count; `mean_ssim`, `min_ssim` and `mean_iou` cover all matched frames.
+
+The fade level is a brightness heuristic built for `CTRY.FLM`'s day sky. On a night film (`COL3-2.FLM`) it reads about 0.24 for most frames, so 29 of 30 are excluded and the scored headline rests on one frame (tick 705, fade 1.012, SSIM 0.479); for that film read the unscored `mean_ssim`. `PLAYONE` fades `CTRY.FLM` from about tick 990 to 1337.
 
 Headless renders write the palette controls of every rendered tick to `palette_controls.json` beside the PNGs. The comparator rebuilds that palette to get the render's clear colour per tick, so the IoU sky mask follows the fade; a render directory without the file uses the static clear colour.
 
@@ -53,10 +83,14 @@ Approaches that were tried and dropped. Each is recorded so it is not tried agai
 * **Compensating a render that already models the fade.** Once the renderer applied var 14, scaling its luminance by the fade level counted the fade twice: compensated SSIM stayed at 0.617 while raw SSIM rose from 0.495 to 0.667. Compensation was retired in `8cabb2a` (section 2.1) (`[Bounded Observation]`).
 * **Scoring the black tail.** Without a floor, near-black frames score high against each other (about 0.92), which inflates the mean without saying anything about the scene. The `CTRY.FLM` tail at ticks 1337–1342 has 6 distinct RGB values (59,929 black pixels plus 2,480 of (130,105,101)) and mean luminance 7.1. Hence `--min-fade-level` (`[Bounded Observation]`).
 * **Fitting the fade ramp to the captures.** Fitting brightness to the same frames that are then scored is circular; the ramp comes from the film's `var_set` keys instead ([`palette-fade.md` § 5](../playone-exe/palette-fade.md)).
-* **The fade floor at night.** The brightness heuristic misreads a night film as faded and excluded 29 of 30 `COL3-2.FLM` frames ([`parity-findings.md` § 4](../parity-findings.md)).
+* **The fade floor at night.** The brightness heuristic misreads a night film as faded and excluded 29 of 30 `COL3-2.FLM` frames (section 2.1). No replacement; read the unscored mean.
 
 ### 4.2 Clock matching
 
 * **Capture order or a fixed offset.** Matching captures to renders by capture ordinal, or by ordinal plus a constant (`TICK_TO_FRAME_OFFSET = 1`, since removed), does not work, because ordinals are distinct pages, not ticks (section 1, step 1). Matching uses `film_tick`.
 * **The three clocks.** A capture carries the global clock (`DS:0x22B8`), the film clock (`DS:0x4896`) and its capture ordinal. `global_tick - film_tick` is 2 or 3 in every frame of both capture sets (122 of 140 `CTRY.FLM` frames, 30 of 30 `COL3-2.FLM`), except the 18 `CTRY.FLM` end-hold frames, where the film clock stops at 1342 and the global clock runs on to 7140 (`[Bounded Observation]`). Neither offset can stand in for the film clock.
 * **The "6-tick lag".** A ramp that looked 6–11 ticks late was the slice-start reading of `var_set` keys, not a delay in `PLAYONE` (section 3, *Fade mechanism*).
+
+### 4.3 Masks
+
+* **Sky IoU from one modal index.** Counting only the capture's most common sky index as sky inflated the filled area and understated IoU by about 0.12 on both `CTRY` and `INTRO`; replaced by the 227 to 238 band mask (section 2.0).

@@ -225,7 +225,7 @@ pub(crate) fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), 
         // clock and the displayed page at the same post-retrace trap, so the page captured for
         // film clock `t` is the state at `t - 1`. Rendering the page one tick early matches the
         // capture on both films (CTRY 0.7713 -> 0.7732, INTRO 0.6775 -> 0.6793 when the renders
-        // are shifted, research/parity-findings.md section 13).
+        // are shifted, research/playone-exe/capture.md).
         let frame = scene.frame((tick - 1.0).max(0.0));
         if let SampleKey::Tick(tick) = key {
             tick_palettes.push(json!({

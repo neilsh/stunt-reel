@@ -40,7 +40,7 @@ Delivery is sequential. This section records what each phase is for and whether 
    * Asserts position error ($\text{RMSE} \le 0.01\text{ m}$) against the Phase 1 oracle trajectory and visual parity against captured frames (gates `G04` and `G07`).
 
 4. **Ongoing: Fidelity Backlog *(Status: Open; Milestone 3)***
-   * Decode and timing gaps found by the `CTRY.FLM` export audit, such as `OP_ANIMATE` semantics. Findings: [`research/parity-findings.md`](../research/parity-findings.md); tickets: [`TEAM_SHEET.md`](process/TEAM_SHEET.md).
+   * Decode and timing gaps found by the `CTRY.FLM` export audit, such as `OP_ANIMATE` semantics. Findings: [`research/parity/`](../research/parity/); tickets: [`TEAM_SHEET.md`](process/TEAM_SHEET.md).
 
 ---
 
@@ -95,7 +95,7 @@ Delivery is sequential. This section records what each phase is for and whether 
   * Original VGA Mode 13h framebuffers render at $320 \times 200$ pixels displayed on a physical $4:3$ CRT, resulting in non-square pixels stretched vertically by $1.2$:
     $$\text{Aspect}_{\text{physical}} = \frac{320}{200 \times 1.2} = \frac{320}{240} = \frac{4}{3} \approx 1.3333$$
   * All visual parity gates normalize reference DOSBox-X captures to $4:3$ ($320 \times 240$) prior to Structural Similarity (SSIM) evaluation.
-  * Off-screen renders (including background sky/horizon palette fills and static stage terrain) must achieve mean $\text{SSIM} \ge 0.88$ initially and mean $\text{SSIM} \ge 0.90$ at sign-off, both measured on the native `wgpu` engine. For the `stuntreel parity` comparator the thresholds apply to `mean_ssim_scored` (SSIM over scored frames) (see [§ 3.6](../research/parity-findings.md#1-parity-loop-capture-vs-render)). glTF export is a convenience format and has no parity gate of its own; the former Phase 1 glTF tier (G05) is retired.
+  * Off-screen renders (including background sky/horizon palette fills and static stage terrain) must achieve mean $\text{SSIM} \ge 0.88$ initially and mean $\text{SSIM} \ge 0.90$ at sign-off, both measured on the native `wgpu` engine. For the `stuntreel parity` comparator the thresholds apply to `mean_ssim_scored` (SSIM over scored frames) (see [`method.md`](../research/parity/method.md#1-the-loop)). glTF export is a convenience format and has no parity gate of its own; the former Phase 1 glTF tier (G05) is retired.
 
 ### 2.3 Software Architecture Guardrails
 
@@ -146,7 +146,7 @@ The specification does not carry binary-analysis findings. They live in `researc
 | DOSBox-X capture harness and protocol | [`research/playone-exe/capture.md`](../research/playone-exe/capture.md) |
 | Display-list VM, `OP_TAP`, `OP_ANIMATE` | [`sod-vm.md`](../research/playone-exe/sod-vm.md), [`sod-animate.md`](../research/playone-exe/sod-animate.md) |
 | File formats and byte layouts | [`research/formats/INDEX.md`](../research/formats/INDEX.md) and the `.ksy` schemas |
-| `CTRY.FLM` parity findings: comparator, camera look direction, partial model fidelity, scenery | [`research/parity-findings.md`](../research/parity-findings.md) |
+| Parity: method, results log, where the loss sits | [`research/parity/`](../research/parity/) |
 
 ---
 

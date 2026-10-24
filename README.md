@@ -102,7 +102,7 @@ cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry     --t
 
 `--compare <report.json>` pairs the fresh scores with a previous report by `film_tick` and prints mean SSIM/IoU before → after over the frames present in both, the 5 most improved and 5 most regressed frames, and how many frames moved by more than 0.005; it also writes `compare.json`. The basis is `scored` (SSIM over frames scored in both runs) when both reports carry `scored`, and `all` (SSIM over all common frames) for older reports; the first `[compare]` line states which. With `--compare-test <dir>` (the previous run's render directory) it writes `compare_regressed_tick_NNNNN.png` and `compare_improved_tick_NNNNN.png` (`reference | before | after | |ref−before| | |ref−after|`) for the single biggest mover each way. The method and a dated results table are in [`research/parity/method.md`](research/parity/method.md) and [`research/parity/log.md`](research/parity/log.md).
 
-Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`, and a free port `58991`. How the dialog is driven (BIOS Data Area keystrokes) and how frames are sampled (post-retrace breakpoint at `0D51:0C5E`) is recorded in [`research/parity-findings.md`](research/parity-findings.md#1-parity-loop-capture-vs-render) and [`research/playone-exe/capture.md`](research/playone-exe/capture.md).
+Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`, and a free port `58991`. How the dialog is driven (BIOS Data Area keystrokes) and how frames are sampled (post-retrace breakpoint at `0D51:0C5E`) is recorded in [`method.md`](research/parity/method.md#1-the-loop) and [`research/playone-exe/capture.md`](research/playone-exe/capture.md).
 
 ### Render in the native engine
 

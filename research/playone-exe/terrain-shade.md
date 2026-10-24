@@ -3,8 +3,8 @@
 * **Binary**: `PLAYONE.EXE` (LZEXE 0.91), unpacked with [`unlzexe.py`](../../python/scripts/unlzexe.py) to the 200,524-byte load image (`build/re/playone.img`)
 * **Method**: Capstone 16-bit disassembly of the unpacked image, cross-checked against the notebook addresses in [`sod-vm.md`](sod-vm.md) (`image_offset = notebook_address + 0x6F30`)
 * **Scope**: the ground/terrain polygon path: where the base colour comes from, how a per-vertex shade is computed, and how the filler writes the framebuffer
-* **Anchors**: none new; the parity consequences are recorded in [`parity-findings.md`](../parity-findings.md) sections 15-17
-* **Evidence tier**: `[Established]` for the instruction sequences, addresses and formulas below; `[Supported Inference]` for the light vector being the sun; `[Unknown]` for the caller that sets the light vector per shot
+* **Anchors**: none new; where the ground records come from is in [`world-scene.md`](world-scene.md)
+* **Evidence tier**: `[Established]` for the instruction sequences, addresses and formulas below; `[Supported Inference]` for the light vector being the sun; `[Unknown]` for the caller that sets the light vector per shot (see [`world-scene.md`](world-scene.md))
 
 ---
 
@@ -94,19 +94,14 @@ Edge entries are prepared at `0xC65A` and clipped by the Cohen-Sutherland clippe
 
 ## 7. Consequences for parity
 
-* Inside one polygon the written index is `base + floor(k)` for a continuously varying `k`, so pixels fall into two to four adjacent ramp entries with **hard boundaries along straight lines**: the level sets of a linear function of screen position. For ground seen by a pitched camera a constant-screen-`y` iso-line is approximately a constant-world-`z` line (the "18-20 m boundary" measured from the captures), but it is not a plane in world `(x, z)` - which is why a world-space plane fit and a per-patch lookup both fail ([`parity-findings.md`](../parity-findings.md) sections 15-17).
-* Per-shot movement can only come from `L` or from a different ground polygon with different vertex normals. The scale is `idx = base + (s >> 9)`, so **one ramp step is 512 units of `s`** - a small change of `N . L`; a faithful reconstruction needs `L` exactly, not merely "a sun".
-* A flat polygon whose vertex normals are all equal produces no ramp. The three shades seen inside `MAP.BIN` patch 4 therefore mean PLAYONE's ground geometry is not `MAP.BIN`'s 179 records: it is the demo build's own display list, whose polygons and per-vertex normals are still to be located and decoded.
+* Inside one polygon the written index is `base + floor(k)` for a continuously varying `k`, so pixels fall into two to four adjacent ramp entries with **hard boundaries along straight lines**: the level sets of a linear function of screen position. For ground seen by a pitched camera a constant-screen-`y` iso-line is approximately a constant-world-`z` line (the 18-20 m boundary measured from the captures), but it is not a plane in world `(x, z)`, which is why a world-space plane fit and a per-patch lookup both fail (section 9, [Ruled out](#ruled-out)).
+* Per-shot movement can only come from `L` or from a different ground polygon with different vertex normals. The scale is `idx = base + (s >> 9)`, so **one ramp step is 512 units of `s`**: a small change of `N . L`. A faithful reconstruction needs `L` exactly, not merely "a sun".
+* A flat polygon whose vertex normals are all equal produces no ramp. The three shades seen inside `MAP.BIN` patch 4 therefore mean PLAYONE's ground polygons are not `MAP.BIN`'s 179 records: the player draws a different set, with its own per-vertex normals and colour bytes (where that set comes from: [`world-scene.md`](world-scene.md)).
+* An exact implementation needs per-vertex `s`, `idx = base + (s >> 9)`, 8.8 interpolation with `@interpolate(linear)` on the shade varying, quantised per fragment.
 
-## 8. Next probes
+## 8. Measured inputs: the light and the additive-only rule
 
-1. **The per-shot light.** Breakpoint `0x9106` at the post-retrace trap in DOSBox-X, dump `AX/BX/DX` and the return address across two shots with different ground shade (e.g. film ticks 10 and 448 of `CTRY.FLM`), and compare with `DS:0x49EC` and the var-13 value.
-2. **The ground display list.** Locate the embedded ground geometry (colour byte, vertex registers, `SHADES` normal blocks) in the image, or in the memory dumps taken at the LOAD FILM dialog, and decode it into polygons + per-vertex normals.
-3. Only then is an exact renderer implementation possible: per-vertex `s`, `idx = base + (s >> 9)`, 8.8 interpolation with `@interpolate(linear)` on the shade varying, quantise per fragment.
-
-## 9. Measured inputs, and why the base colour is baked
-
-The light vector was measured live with [`probe_playone_light.py`](../../python/scripts/probe_playone_light.py) (DOSBox-X TAC harness, film `CTRY.FLM`). At the post-retrace trap the display-list work segment is `0x1DF8` (far pointer at `DS:0x0542`); `work:0x8072` holds `L`, `work:0x8078` holds `-L`, and `DS:0x49EC` holds `L` in its first three words. `L` is a unit vector at 1.0 = 32767:
+*[Bounded Observation] for the samples, [Supported Inference] for the consequence.* The light vector was measured live with [`probe_playone_light.py`](../../python/scripts/probe_playone_light.py) (DOSBox-X TAC harness, film `CTRY.FLM`). At the post-retrace trap the display-list work segment is `0x1DF8` (far pointer at `DS:0x0542`); `work:0x8072` holds `L`, `work:0x8078` holds `-L`, and `DS:0x49EC` holds `L` in its first three words. `L` is a unit vector at 1.0 = 32767 (magnitudes 32761-32766):
 
 | Film clock | `L` at `work:0x8072` |
 |---|---|
@@ -116,22 +111,53 @@ The light vector was measured live with [`probe_playone_light.py`](../../python/
 | 345 | `(-9156, 28402, -13524)` |
 | 564 | `(-570, 31498, -8998)` |
 
-Magnitudes are 32761-32766, i.e. 1.0 = `0x7FFF`, and `N` is scaled the same way: `(N . L) >> 16` then peaks at `0x4000`, which is exactly the clamp constant. The shade array (`work:0x7468`) changes with the tilt (negative entries at clock 564), so the harness observes a real per-frame lighting state.
+`N` is scaled the same way, so `(N . L) >> 16` peaks at `0x4000`, exactly the clamp constant. The shade array (`work:0x7468`) changes with the tilt (negative entries at clock 564), so the harness observes a real per-frame lighting state.
 
-Because the index composition adds a non-negative offset to a per-polygon base byte, a polygon can never be drawn darker than its own base colour. The captures draw the airfield at 193, 194, 195 and 196 (193 on about 90% of flat pixels late in the film): values both above and below 195, which one base cannot produce. **So the player's ground display list bakes its own per-polygon colours**, and `MAP.BIN`'s 195 is not the byte it uses (see `0x9988` reading `es:[si+1]`). The apparent "per-shot shade level" is that baked colour, and the light only brightens it.
+The index composition adds a non-negative offset (`G = 0`) to a per-polygon base byte, so **a polygon can never be drawn darker than its own base colour**. The captures draw the airfield at 193, 194, 195 and 196, values on both sides of `MAP.BIN`'s 195, which one base cannot produce. So the player's ground polygons carry their own base colours (read from `es:[si+1]` at `0x9988`), and the apparent per-shot shade level is mostly that base, with the light adding a small brightening on top. This is why no per-frame light fit ever worked. That the colour is stored per polygon is confirmed in [`world-scene.md`](world-scene.md) section 3.
 
-## 10. Next probes (superseding section 8)
+_Found 2026-10-23 at `b44c6bc`; see the [parity log](../parity/log.md)._
 
-1. **Decode the ground display list** from the dumped work/DGROUP segments (or a fresh LOAD FILM-dialog dump): polygon records with their colour byte, vertex registers and `SHADES` normal blocks. Compare its per-polygon colours with `MAP.BIN`'s patch colours; that decides between re-baking our terrain colours and rendering the player's display list directly.
-2. **The per-shot light source.** `L` is mostly straight up and tilts on some shots; the caller of `0x9100` is still unknown, but with the harness above we can now sample `L` per frame and correlate it with `DS:0x49EC` and the film vars instead of guessing.
+## 9. What the captures show on the flat airfield
 
-## 11. Where the world list is not (round 6)
+*[Bounded Observation], `CTRY.FLM`, 114 scored frames.* Our render's index and layer planes were joined to the capture at the same `film_tick`; view depth `w` and screen position were reconstructed for the colour-195 flat patches by intersecting each pixel ray (authored camera from `palette_controls.json`, 45 degree FOV, 4:3, the 200/185 vertical squeeze, roll about the view axis) with the plane `y = 0`. That is exact because all 12 colour-195 patches carry raw y 0.
 
-All 16 conventional segments of a live frame (film clock 276) were dumped with
-`probe_playone_light.py --dump-all-segments` and searched for the display-list opcode words
-`0x0156`/`0x0168`/`0x02BE` and for ground-record structure (colour byte 192-199, shade-array
-offset below `0x800`, vertex count 3-8). Nothing found: every opcode-word hit is inside code, and
-the structural scan has zero candidates. The display list is therefore outside conventional memory
-(EMS/XMS are plausible: the image carries the `EMMXXXX0` EMS check string) or in a segment tail the
-`0xF000`-byte dump skips. Also note the opcode handlers above are shared with props, so the terrain
-path should be confirmed by breaking at the handler rather than assumed.
+* **The data colour is almost never drawn.** The capture draws 195 on under 1% of those pixels. The whole patch sits at one neighbouring ramp entry for long stretches and switches between them:
+
+  | `film_tick` | eye height (m) | pitch (deg) | capture index on our flat terrain | share |
+  |---|---|---|---|---|
+  | 10 | 14.00 | -13.8 | 194 | 90% |
+  | 97 | 13.40 | -13.7 | 195 | 45% |
+  | 185 | 10.29 | -13.6 | 193 | 41% |
+  | 273 | 7.02 | -13.2 | 196 | 50% |
+  | 360 | 4.32 | -13.2 | 194 | 44% |
+  | 404 | 3.59 | -13.2 | 196 | 92% |
+  | 448 | 3.26 | -13.1 | 196 | 92% |
+  | 667 | 3.14 | -12.2 | 196 | 93% |
+  | 1063 | 2.89 | -0.7 | 193 | 79% |
+  | 1194 | 2.89 | -0.5 | 193 | 92% |
+
+* **Not the palette, the map or the fade.** Palette entries 192-199 are byte-identical at ticks 10, 273, 448 and 667 (`[36,69,20]` to `[101,162,69]`), so 194 and 196 are genuinely different framebuffer values. Only the fade (from about tick 990) dims them, and the shifts happen before it.
+* **One polygon, up to three shades.** 61,205 flat-terrain samples (every second frame, every fourth pixel; pixel ray to `y = 0`, first `MAP.BIN` patch in loader order containing the point) land on record 4, the airfield, where the capture draws 196 on 50%, 194 on 27% and 193 on 13% (rest edge and prop pixels). A pixel-ID render over all 114 frames agrees: record 4 holds 2,438,973 of 3.35 million terrain pixels and is drawn 196 on 58.3%, 194 on 24.3%, 193 on 15.4%, 195 on 0.3%. All five of its anchors carry `f[10] = 31`, so no per-patch or per-anchor field is the driver.
+* **The split follows screen position.** At tick 273 the capture splits 194 (far) from 196 (near) inside the patch, with no data-colour edge within 3 px of the boundary (328 boundary nodes). The boundary slope is about 0.23 rows per pixel against 0.30 for a constant-`w` line and 0 for a scanline, at reconstructed `w` of 18-20 m with camera roll 340 degrees. That matches the straight screen-space iso-index line of section 1, not a world plane.
+* **The level changes per shot, not with the camera.** Ticks 273 (eye 7.0 m) and 448 (eye 3.3 m) share pitch -13.2 degrees and view direction yet differ (far ground 194 against a uniform 196). The sky moves on the same timescale (top-of-sky mode 234 at tick 10 to 228 at tick 1194) but not monotonically with the ground.
+* **Pooled by depth** (all frames): below 10 m the capture draws 196 on 89% of flat pixels, 20-30 m 194 on 81%, 30-40 m 194 on 77%, 60-400 m mostly 196 (61-73%). No fixed depth law reconciles near and far bins across frames.
+* **Size of the lever.** One ramp step shifts about 40% of terrain pixels by one palette index, and terrain carries about 45% of the loss on both films.
+
+_Found 2026-10-23 at `42cb36f`; see the [parity log](../parity/log.md)._
+
+## Ruled out
+
+The data-side and renderer-side explanations for the ground shade, all negative (scores are `mean_ssim_scored`, CTRY / INTRO; baseline 0.7708 / 0.6762 at the time):
+
+* **Per-patch or per-anchor shade from `MAP.BIN`.** `f[10]` is 31 on patches 1, 4, 7, 25, 28 and the airfield; it is 0 on 826 of 1,024 anchors and 27-29 or 2-13 on far and coastal patches (10, 17, 18, 22, 29, 33, 39). An interpolated `f[10]` would be uniform on patch 4. The `num`/`bounds` words and `f[8]` (the only field that varies on patch 4: 1, 8, 102, 115, 116; meaning `[Unknown]`) do not explain it either. The community reimplementation (`FreeFlight/src/sisland.cpp`) draws each `MAP_AREA` as one flat colour and reads no `f[]` scalar.
+* **Uniform terrain offset** (`DBG_TERRAIN_SHADE`): -1 gives 0.7643 / 0.6725, +1 gives 0.7683 / 0.6675, +2 gives 0.7548 / 0.6506. Worse than 0 on both films.
+* **Fixed-distance depth cue** (`DBG_TERRAIN_CUE`, +1 inside / -1 outside a threshold): 15 m 0.7574 / 0.6667, 25 m 0.7572 / 0.6677, 40 m 0.7586 / 0.6689, 80 m 0.7625 / 0.6689; restricted to ramp 192-199 at 15 m 0.7601 / 0.6727. The single-frame fit (tick 273: +1 at 10-19 m, -1 beyond 40 m) averaged +0.36 in the 0-19 m bin over 114 frames. There is no per-pixel depth term in the player.
+* **Coplanar draw order** (`DBG_DEPTH_LE`, `LessEqual` instead of `Less`): both films identical to four decimals, so no tie at equal depth.
+* **Geometry:** all 12 colour-195 patches are flat and convex; fan triangulation area equals polygon area for all 166 active patches.
+* **"The ground shade is world-fixed, not Gouraud."** An earlier reading was wrong: the player interpolates the index per vertex in screen space (sections 3-6).
+
+## Next probes
+
+1. Recover the per-shot light's caller: breakpoint `0x9106` at the post-retrace trap in DOSBox-X, dump `AX/BX/DX` and the return address across film ticks 10 and 448 of `CTRY.FLM`, compare with `DS:0x49EC` and the variable-13 value. With the harness, `L` can already be sampled per frame.
+2. Decode the ground polygons (colour byte, vertex registers, `SHADES` normal blocks) and compare their colours with `MAP.BIN`'s: [`world-scene.md`](world-scene.md) section 6 holds the route.
+3. Only then a renderer round (re-bake terrain colours or build terrain from the player's records), under the 0.002 both-films / 0.004 one-film adoption rule.

@@ -31,7 +31,7 @@ use crate::contracts::trajectory::{ActorTransform, CameraTransform, TrajectoryRe
 ///
 /// `.FLM` stores each slot's orientation as BAM angles whose rotation maps camera space
 /// to world space with `+Z` pointing into the screen, so rotating `+Z` by the view slot's
-/// `[I1]` quaternion yields the `[I1]` look direction (research/parity-findings.md § 2). That equals
+/// `[I1]` quaternion yields the `[I1]` look direction (research/formats/concepts/coordinates-and-units.md). That equals
 /// the DOS-axes look direction with the (-x, -y, z) map applied, because the quaternion
 /// already carries `q_z180` ([`SlotState::rotation_quat`]).
 pub const CAMERA_FORWARD: [f32; 3] = [0.0, 0.0, 1.0];

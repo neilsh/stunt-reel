@@ -96,6 +96,12 @@ During standalone playback in `PLAYONE.EXE` (and modern reconstruction in `stunt
 2. **Dynamic Binding**: Actors evaluated in `.FLM` trajectory ticks bind to these models via `ActorTransform::shape_id`.
 3. **Static Scenery Instantiation**: Simultaneously, the static scene graph (`SCENERY.scn`) resolves its `SP_LEAF` object IDs against this same catalog, allowing standalone films to reconstruct complete sets (hangars, towers, buildings, flora) alongside moving aircraft.
 
+### 3.6 Ground Scene Records (`[Bounded Observation]`)
+
+The ground scene that `PLAYONE.EXE` draws is stored in the `.ALL` archive, not in the `.FLM` film or the player image. In `CTRY.ALL` the SOD-VM ground opcode `0x0168` has records starting at offset `0x13FC` (`68 01 ...`) and opcode `0x02BE` at `0xEFE4` (`BE 02 ...`); `CTRY.FLM` contains none. A ground record is `w0 = (colour << 8) | (vertex_count & 0x0F)`, then `count` indices into the per-vertex shade array, then the next code address (layout and handlers: [`world-scene.md`](../playone-exe/world-scene.md)). The archive also carries packed `(byte << 8) | count` words (`0x2BE` records end `03 E0`) and a 110-word scene colour table at `0x79`/`0x7B`/`0x7D` and `0xEF`-`0x9A0`. No ground colour in `0xC0`-`0xCD` has been found by byte scan, and the records are not yet decoded, so whether these are the per-polygon colours the player draws (the captures draw 193, 194 and 196 where `MAP.BIN` says 195) is open; decoding them needs no emulator. Because the retail player never opens `MAP.BIN`, this archive, not the map file, is the ground's source for standalone playback ([`terrain-shade.md`](../playone-exe/terrain-shade.md)).
+
+_Found 2026-10-23 at `6ae7b31`; see the [parity log](../parity/log.md)._
+
 ### 3.5 Entry Naming Policy (`[I8]`)
 
 When `.ALL` chunks are unpacked into `VfsArchive`, entry filenames are normalized to uppercase 8.3 keys per Invariant `[I8]`:

@@ -1,0 +1,53 @@
+# Parity: Framing, Camera and the Hero Aircraft Residual
+
+`[Bounded Observation]`: `CTRY.FLM` (114 scored frames) and `INTRO.FLM` (209), `mean_ssim_scored`. Covers every camera, placement and actor-tick correction tried against the capture, and the one open residual they point at: the `CTRY.FLM` hero aircraft (shape `0x7F37`) and its ground shadow. Method: [`method.md`](method.md); score history: [`log.md`](log.md); where the rest of the loss sits: [`attribution.md`](attribution.md).
+
+## 1. The hero aircraft residual (open)
+
+* **Position.** Over all 114 scored CTRY frames the silhouette probe gives a best shift of dy -6 to -14 (mostly -10) and dx 0 to +16 (mostly +8 to +14), hit fractions 0.56 to 0.91. The world's own optimum is about -4 rows, so the residual is actor-specific: the hero sits left and low relative to the terrain. Earlier measurement (ticks 10 to 800): best vertical shift -10 to -14 rows while the aircraft stays about 100 px wide; the model is 2.8 m across, so 10 rows is about 0.3 m, close to its `ground_y_offset` of 0.32 m. At tick 448 the wingspan matches (113 px against 101 px) but ours sits about 13 rows lower (rows 90 to 121 against 76 to 106). INTRO shows -10 rows in several frames and -30 to -40 in close-ups, so it is not one rule.
+* **Body.** Shape `0x7F37` decodes to 388 vertices and 195 triangles in four nodes (base mesh plus three decal meshes, one gated at `LodDistanceSq(1000)`); the opcode stream is 36 polygons (20 `POLYZ`, 16 `GVPOLY`), `ground_y_offset` 2624 at scale index 13 (0.32 m). Triangles by palette index: 0 -> 17, 47 -> 10, 56 -> 104, 74 -> 24, 136 -> 40. Index 47 (162,154,154) has 0.28 m2 total; index 56 (210,206,206) lies inside a 0.22 x 0.06 x 0.50 m box around the cockpit, which is detail, not a body; index 136 (28,40,97) holds 3.37 m2 and spans the wings. The capture shows a thick white and blue tapered fuselage about 25 px deep with striped wings (blue 136 alternating with white 63 and neighbours); ours is a 4 to 6 px grey sliver, wings 136 and 47 only. At tick 273 the capture has 2,603 object pixels there, our layer plane 1,287, overlap 410. `CTRY.ALL` holds a single `7Fxx` chunk, so there is no other aircraft LOD to bind. `[Hypothesis]`: a decode path we do not model (the actor matrix, or a polygon path in `PLAYONE.EXE`, for example one-sided or dropped fuselage faces or a `GVPOLY16` path) supplies the body.
+* **Ground shadow.** The capture draws a black monoplane-shaped silhouette on the ground below the aircraft (the aircraft is a biplane; only one actor draw exists at tick 448). 65,982 black pixels over the 114 scored frames (up to 1,588 in one, present in 83), offset from the actor centroid by median dx -29, dy +41 px. Nothing in our renderer draws it; its source (flattened projection, an `OP_ANIMATE` image resource, other) is `[Unknown]`. A flattened copy does not reproduce it (see Ruled out).
+* The rotation composition is plausible: at tick 426 the capture shows the biplane from the side with wings edge-on and our unrotated render has the same layout (wing span, tail, strut side).
+
+_Found 2026-10-22 and 2026-10-23 at `d90a047`; see the [parity log](log.md)._
+
+## Ruled out
+
+All scores `mean_ssim_scored`, CTRY / INTRO unless a single film is named. Baselines moved between rounds (0.771 / 0.676 on 2026-10-22, 0.7708 / 0.6762 at `d90a047`, 0.7732 / 0.6799 after page timing); each sweep is read against its own baseline. Nothing below was adopted.
+
+**Vertical placement, CTRY-only gains** (2026-10-22, [log row](log.md)). Each helps CTRY and costs INTRO, so no global rule:
+* Camera eye height `dy` (CTRY): -0.2 m 0.778, **-0.3 m 0.784**, -0.4 m 0.781, -0.6 m 0.777, -0.8 m 0.772, -2 m 0.767, +0.4 m 0.760. INTRO (baseline 0.676): -0.3 m 0.668, +0.3 m 0.667, -0.6 m 0.654.
+* Camera pitch (CTRY): -2 degrees 0.760 (IoU 0.883 from 0.856), +2 degrees 0.727. Finer `DBG_CAM_PITCH` (2026-10-23): -2 0.7598 / 0.6542, -1.5 0.7696 / 0.6601, -1 0.7746 / 0.6620, -0.5 0.7784 / 0.6672, 0 0.7718 / 0.6754, +0.5 0.7566 / 0.6682, +1 0.7475 / 0.6618. CTRY peaks at -0.5 degrees (+0.007), INTRO at 0. Pitch -0.5 to -4 degrees with a hero ground-offset multiplier of -2 to 4 gave no consistent gain (offset 0 +0.005, pitch -2 +0.002).
+* Terrain `base_y` (CTRY): +0.3 m 0.774, +0.6 m 0.773, -0.3 m 0.767. `DBG_TERRAIN_BASE` lifting terrain and props together: 0 0.7713 / 0.6775, +0.3 m 0.7733 / 0.6673, +0.6 m 0.7728 / 0.6446, +1.0 m 0.7731 / 0.6575.
+* Hero lift (CTRY): +0.3 m **0.780**, +0.6 m 0.775, +1.0 m 0.768, -0.3 m 0.766; by `k * ground_y_offset` k = 1 0.780, k = 2 0.774. INTRO, every actor lifted one extra `ground_y_offset` 0.668, two 0.656.
+* Second `ground_y_offset` per shape, `DBG_GROUND_LIFT` k times (2026-10-23): 1 **0.7732 / 0.6799**, 1.5 0.7652 / 0.6799, 2 0.7623 / 0.6789, 2.5 0.7576 / 0.6775. Only k = 1 is near the peak; the CTRY hero's ~0.3 m is per-actor, not a shape-wide convention.
+
+**Field of view** (`DBG_FOV_SCALE`, 2026-10-23): 0.9 0.7638 / 0.6641, 0.95 0.7716 / 0.6708, 1.0 0.7713 / **0.6775**, 1.05 0.7627 / 0.6748, 1.1 0.7541 / 0.6689. Flat between 0.95 and 1.0 on CTRY, peak at 1.0 on INTRO: not the residual. (The per-frame lens zoom adopted later is in the log.)
+
+**Single framing offset.** Normalised cross-correlation over 23 sample frames peaks at median dy -4 px, dx 0, but spread -10 to +5 px and peak correlation only 0.28 to 0.83: geometry error that varies with the camera, not a rigid shift. Capture-shift scores are in [`attribution.md`](attribution.md#ruled-out).
+
+**Tick phase** (not a lag):
+* Camera, capture at `film_tick` t against render at t+d, d -20..+4: 0.762 to 0.774 (baseline 0.771, best d = -4 at 0.774); no consistent lag.
+* Actors only, `DBG_ACTOR_TICKS` (camera fixed): -6 0.7645 / 0.6777, -4 0.7677 / 0.6750, -2 0.7705 / 0.6751, 0 **0.7708 / 0.6762**, +2 0.7685 / 0.6753, +4 0.7652 / 0.6747, +6 0.7617 / 0.6744. The 0 to 18 px horizontal shift is not a wrong sample tick.
+* Actors only on the page-timed baseline: -1 0.7732 / 0.6791, -0.5 0.7733 / 0.6795, 0 **0.7732 / 0.6799**, +0.5 0.7728 / 0.6798. The +10 px horizontal residual is not a tick offset.
+
+**Aircraft orientation sweeps** (CTRY, 37 frames from tick 10 to 800 for the window scores):
+* All 48 signed axis permutations of the model-to-world matrix: whole-film SSIM 0.770 to 0.777 (best two Y-flip variants, 0.777), IoU unchanged 0.856. Whole-film SSIM cannot pick an orientation.
+* Aircraft-window IoU (layer 16+ against capture non-sky, non-ground) over the same 48: identity 0.109, best 0.247 (swap model Y and Z, negate new Z), then 0.245, 0.215, 0.214, rest 0.19 or lower. At tick 97 the best is a plan view of a monoplane while the capture is a biplane seen from above and behind at about 45 degrees: the gain is silhouette coverage, not a match.
+* Euler angles permuted inside the shared rotation routine broke the camera slots too (0 to 10 scorable frames); invalid. Pre-multiplying actor matrices by the 48 world-axis permutations: best 0.187 (all three signs negated, a reflection), then 0.177, 0.172, 0.171, 0.166; no winner. Axis remaps in either space are exhausted.
+* FreeFlight order `T(-x,-y,z) * Rx(rx) * Ry(rz) * Rz(ry)` (`corpus/.../FreeFlight/src/sifilm.cpp`, stored words in file order `rz, rx, ry`), 8 sign variants: 0.100 to 0.124 against 0.109. A fixed +90 degree pitch gives 0.2465 at tick 97 (plan view) but is wrong at tick 426 (side view, wings edge-on, matched by the unrotated render). The rotation composition is not the main error; the body is (section 1).
+
+**Ground shadow at a constant height** (2026-10-22). A black copy of each actor flattened onto a horizontal plane (swept at -1, 0, 0.5, 1, 1.5, 2, 3, 6 and 10 m, layer and palette index 0) lowered CTRY `mean_ssim_scored` from 0.769 to between 0.762 and 0.766 at every height: the capture's shadow is not a flat copy at a guessed ground height.
+
+**Ground shadow as a flattened copy** (decal bias correct, 2026-10-23). The actor geometry sheared onto the ground along five sun directions (0.3,0.9,0.3 and sign variants, plus straight down), forced to index 0 and lifted 0.1 m: off 0.7713 / 0.6775; presets 0.7648 / 0.6727, 0.7663 / 0.6712, 0.7677 / 0.6715, 0.7665 / 0.6691, 0.7677 / 0.6716. Every direction loses on both films. An earlier flat black shadow at several ground heights also lost 0.003 ([log](log.md)).
+
+**Moving props between passes**, `DBG_PROP_DECAL` putting every world prop in the biased decal group: apparent gain (CTRY 0.7768, INTRO 0.6766) was an artifact. 28.8% of pixels changed, all prop (layer 3) to terrain (layer 2), because the then-positive bias hid props behind coplanar ground; index agreement fell 0.475 -> 0.215, the signature of drawing less of the capture. Reverted; the bias-sign fix gave the intended effect.
+
+_Found 2026-10-22 and 2026-10-23 at `d90a047`; see the [parity log](log.md)._
+
+## Next probes
+
+1. The hero's +10 px horizontal and -10 px vertical residual is actor-specific and none of the above explains it. Read `PLAYONE.EXE`'s actor placement and model-origin rule (a note under [`../playone-exe/`](../playone-exe/)) rather than running another renderer sweep. Also count the faces of `0x7F37` that the VM emits against the shape's faces, and render it with culling off (fuselage hypothesis).
+2. `INTRO.FLM` montage segments need the player's tick-skipping rule: their captures best-match our state at a lag that grows about 0.9 ticks per clock tick, the captures are all distinct, and no fixed page offset matches.
+3. The montage's parked aircraft (four large airframes on a sand flat in the capture) are not where our slot data puts the actors; the placement rule in (1) may explain both.
+4. The coastline band (capture sand where we draw airfield green) remains; see [`attribution.md`](attribution.md#5-coastline-and-sea).

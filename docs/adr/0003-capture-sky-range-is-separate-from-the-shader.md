@@ -6,7 +6,7 @@ accepted; implemented
 
 ## Context
 
-`PLAYONE.EXE` paints the sky as elevation bands of palette indices. The captured reference frames of `CTRY.FLM` show those bands at `227..=238` ([`research/parity-findings.md`](../../research/parity-findings.md) section 7). The native renderer draws its own sky with a band table in [`mode13h.wgsl`](../../crates/stunt-render/src/shaders/mode13h.wgsl), a model of the original that is still being fitted. The two ranges overlap but are not the same thing: the shader's table is a hypothesis about geometry, while the capture range is what the original actually scanned out.
+`PLAYONE.EXE` paints the sky as elevation bands of palette indices. The captured reference frames of `CTRY.FLM` show those bands at `227..=238` ([`palette-and-shading.md`](../../research/formats/concepts/palette-and-shading.md#sky-bands)). The native renderer draws its own sky with a band table in [`mode13h.wgsl`](../../crates/stunt-render/src/shaders/mode13h.wgsl), a model of the original that is still being fitted. The two ranges overlap but are not the same thing: the shader's table is a hypothesis about geometry, while the capture range is what the original actually scanned out.
 
 Parity scoring masks the sky out of both frames, so the range it uses decides which pixels count as sky.
 

@@ -183,7 +183,7 @@ fn path_distance(point: [f32; 3], eyes: &[[f32; 3]]) -> f32 {
 /// PLAYONE scales that span by `DS:0x22A4 / 0x10000`, the full-detail word times the
 /// per-shot projection mantissa, which lies in `[0.5, 1)` when normalised (research/playone-exe/lod.md
 /// section 2). The value is per shot, so this is a fixed stand-in: 0.5 scored best of
-/// 0.5, 0.75 and 1.0 on both parity films (research/parity-findings.md section 26).
+/// 0.5, 0.75 and 1.0 on both parity films (research/playone-exe/lod.md).
 const LOD_SCALE: f32 = 0.5;
 
 /// Camera distance in metres up to which PLAYONE draws an `SP_1NODE`'s subtree.

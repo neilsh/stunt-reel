@@ -80,7 +80,7 @@ The detail scale matches the article: `0xFFFF` is 100%, and the in-game slider w
 * **Multiplier.** `0x22B6` is written only by `0x11F8`. Its caller at `0x4A29` passes `0x7FFF`.
 * **Normalisation.** `0x120E..0x121F` shifts `DX:AX = var × 0x7FFF` left until bit 14 of `DX` is set, at most three times. `0x229C` is then `DX` and `0x229E` the unused shift count. With the full detail word, `[0x22A4] / 0x10000` is therefore a mantissa in about `[0.5, 1)` for any lens of 4096 or more.
 * **Film values.** Both parity films set variables 0 to 3 to 8192 at tick 0. That gives three shifts, `0x229C = 0x7FFF` and `[0x22A4] = 0xFFFD`, a scale of 0.99995. `INTRO.FLM` also uses 20480 (scale 0.625, camera 4), 44236 (0.675, camera 1 from tick 1216) and 10649 (0.65, camera 7), listed with [`flm_events.py`](../../python/scripts/flm_events.py). Variables 0 to 7 have no fixed-offset reader ([`palette-fade.md`](palette-fade.md) section 3.2) because this index-driven read is their reader.
-* **Renderer.** The film evaluator carries the lens per frame and narrows `fov_degrees` by it (section 2.2, [`parity-findings.md` § 29](../parity-findings.md)). A per-frame level-of-detail patch carried `var[view_obj]` and reproduced `0x120A..0x124D`, but it was not adopted ([`parity-findings.md` § 28](../parity-findings.md)).
+* **Renderer.** The film evaluator carries the lens per frame and narrows `fov_degrees` by it (section 2.2, section 4). A per-frame level-of-detail patch carried `var[view_obj]` and reproduced `0x120A..0x124D`, but it was not adopted (section 5).
 
 ### 2.2 How The Lens Scales The Projection
 
@@ -89,7 +89,7 @@ The detail scale matches the article: `0xFFFF` is 100%, and the in-game slider w
 * **Focal length.** Screen position is `x / depth` times a fixed pixel scale, so with screen rows scaled by `m / 0x8000` and depth by `2^-c` the focal length is multiplied by `zoom = (0x229C / 0x8000) × 2^0x229E`. The normalisation always does `s` shifts with `s + c = 3`, so `0x229C ≈ lens × 0x7FFF × 2^s / 0x10000` and **`zoom ≈ lens / 8192`** to Q15 rounding. The default lens 8192 gives `0x7FFF / 0x8000`, i.e. 1.0. INTRO's 20480 gives 2.50, 10649 gives 1.30 and 44236 gives 5.40, so camera 1's shots from tick 1216 are a 5.4× telephoto. `[Established]` for the arithmetic; `[Supported Inference]` that the fixed pixel scale is the same for every lens, since no other reader of the lens was found.
 * **Field of view.** The renderer's 45° vertical field of view stands for the default lens, so a lens `L` draws at `2 × atan(tan(22.5°) / zoom(L))`: 8.8° at 44236, 18.8° at 20480, 35.3° at 10649. [`CameraTransform::lens_fov_degrees`](../../crates/stunt-core/src/contracts/trajectory.rs) computes it.
 * **Other readers.** `0x810A = 0x229C² × 2 >> 16` (`0x1232..0x1238`) is written for the work segment. The sun-disc drawer `0x908E` multiplies by `0x8108` (`0x90DE`, `0x911A`), as do `0x9E94` and `0xA0DB`. The frustum tests at `0x1B23..0x1B67` and `0x20E2..0x211C` scale the bounding extent the same way the matrix scales a point: by `0x229C` against the two screen slopes `0x22A0`/`0x22A2` (the larger half-width and half-height of the viewport around `0x41C8/0x41CA`, times 256, written at `0x11A4` and `0x11B9`), and by `>> (0x229E + 1)` along depth.
-* **Consequence for the distance gate.** `CX` at `0x211E` is the depth from the zoomed matrix, so it is in units of `2^-0x229E` of true depth, while the threshold at `0x212D` scales by `0x22A4` (mantissa only). In true depth the threshold is therefore about the size term times `zoom(L)`: about 1.0 for the default lens, about 5.4 for 44236. The per-frame patch scored in [`parity-findings.md` § 28](../parity-findings.md) used the mantissa alone, which is right for CTRY's lens but under-counts INTRO's zoomed shots. `[Supported Inference]`.
+* **Consequence for the distance gate.** `CX` at `0x211E` is the depth from the zoomed matrix, so it is in units of `2^-0x229E` of true depth, while the threshold at `0x212D` scales by `0x22A4` (mantissa only). In true depth the threshold is therefore about the size term times `zoom(L)`: about 1.0 for the default lens, about 5.4 for 44236. The per-frame patch of section 5 used the mantissa alone, which is right for CTRY's lens but under-counts INTRO's zoomed shots. `[Supported Inference]`.
 
 ## 3. Capture Invariant: No `GAME.VAR`, So Full Detail
 
@@ -102,10 +102,29 @@ The detail scale matches the article: `0xFFFF` is 100%, and the in-game slider w
 * PLAYONE at 100% detail still switches to coarser nodes with distance. Its threshold is the node's size term scaled by `0x22A4`, not a fixed distance. A renderer that always draws the finest representation will over-draw distant objects compared with the captures.
 * This gate is separate from the model bytecode's own `iftrue complex1..3` branches and from `OP_IFVIS` condition 1, whose `D^2 >= 1000 m^2` reading is still a `[Supported Inference]` ([`sod.md`](../formats/sod.md) section 4, Q-SOD-01 and Q-SOD-05).
 
-* `world.rs` builds the world once per film, so it cannot switch level of detail per frame. It keeps an `SP_1NODE`'s subtree when the camera path ever comes within the threshold and draws the stand-in otherwise. It also uses Euclidean distance to the camera path for `CX` and a fixed scale of 0.5 for `[0x22A4] / 0x10000` (section 2's normalised range is `[0.5, 1)`). Scored in [`parity-findings.md` § 26](../parity-findings.md).
-* Selecting the branch per frame, from view-space depth and the lens scale of section 2.1 (about 1.0 for the parity films' default lens), scored within noise of the static rule and was not adopted ([`parity-findings.md` § 28](../parity-findings.md)).
+### 4.1 Static `SP_1NODE` Stand-Ins (adopted)
 
-## 5. Open Items
+* `world.rs` builds the world once per film, so it cannot switch level of detail per frame. It keeps an `SP_1NODE`'s subtree when the camera path ever comes within `half + (splitdist - half) × scale` (`half = ext / 2`) and draws the stand-in otherwise. It uses Euclidean distance to the camera polyline for `CX`, where PLAYONE uses per-frame view-space depth, and a fixed `scale` of 0.5, the low end of the `[0.5, 1)` range of section 2.
+* Before this, `world.rs` skipped `obj` and always descended, so every prop was drawn at its finest level of detail.
+* **Parity effect (`CTRY` / `INTRO` mean SSIM, `DBG_LOD_SCALE`, one build):** always near 0.7732 / 0.6799; scale 1.0 0.7730 / 0.6834; 0.75 0.7730 / 0.6842; 0.5 0.7733 / 0.6856. Monotonic, so 0.5 is adopted: INTRO +0.0057, CTRY +0.0001. No value below 0.5 was tried and the winner's pixels were not inspected.
 
-* **The walker's outer caller.** The pending-node stack popped at `0x1B8C` and its feeder `0x1B75` (`xchg di, [bx+0x2346]`) are known; the routine that seeds the root hasn't been traced. It is also a static route to the code that hands ground objects to the display-list VM ([`parity/handoff-ground-shade.md`](../parity/handoff-ground-shade.md)).
-* **The fixed pixel scale.** Section 2.2 gives the zoom relative to the default lens. The pixel scale it multiplies, and so the absolute field of view at lens 8192, hasn't been traced to the divide; the renderer's 45° is an assumption.
+_Found 2026-10-23 at `c62365a`; see the [parity log](../parity/log.md)._
+
+### 4.2 The Lens Sets The Field Of View (adopted)
+
+* `CameraTransform` carries `lens = var[view_obj]`, interpolated like the palette variables (`CS:0x136F`). `Scene::frame` sets `fov_degrees = 2 × atan(tan(22.5°) / zoom)`, with the zoom normalised so the default lens keeps exactly 45° (section 2.2).
+* **Parity effect (`DBG_LENS_FOV`, one build):** CTRY 0.7733 unchanged; INTRO 0.6856 to 0.7175 (+0.0319), IoU 0.9203 to 0.9501. Adopted under the one-film rule.
+* **Scorer sensitivity.** A first version used the raw zoom `0x7FFF / 0x8000` at the default lens, which draws CTRY at 45.0012° on every frame. That 0.003% scale change alone moved CTRY by -0.0028, past the 0.002 bound. Any later change to the base projection needs both films rescored.
+
+_Found 2026-10-23 at `63bc0d5`; see the [parity log](../parity/log.md)._
+
+## 5. Ruled Out
+
+* **Per-frame `SP_1NODE` selection from view-space depth.** `world.rs` kept both branches of every node whose camera path came within `(threshold at scale 1 + half) / 0.82 + half` (0.82 is the depth-to-distance floor of the 45 degree 4:3 frustum), each branch a transform group gated by `VisibilityCondition::ViewDepth`; `stunt-render` evaluated the gates per frame from the drawn camera's view matrix, with `detail_scale()` reproducing `0x120A..0x124D` at detail `0xFFFF`. `DBG_LOD_SCALE` sweep (CTRY / INTRO): lens scale 0.7737 / 0.6838; fixed 0.5 0.7738 / 0.6841; fixed 1.0 0.7737 / 0.6838. Against the static rule (0.7733 / 0.6856) CTRY gains at most 0.0005 and INTRO loses 0.0015 to 0.0018, under the 0.002 bound, so the patch was reverted. The zoomed INTRO shots moved neither score at four decimals. Per frame, more nodes show their stand-in than under the static rule, so either the stand-ins render worse than PLAYONE's or `CX` is not metres at these lenses (the `0x229E` exponent, section 2.2); neither was probed and no pixels were inspected. _Found 2026-10-23 at `9db36aa`._
+
+## 6. Next Probes
+
+* **Rescore the per-frame gate with the `2^0x229E` factor.** In true depth the threshold also scales by `2^0x229E` (section 2.2), which the ruled-out patch omitted. Now that the lens is drawn, rescore the zoomed INTRO shots with it.
+* **Absolute field of view.** Section 2.2 gives the zoom relative to the default lens. The fixed pixel scale it multiplies, and so the absolute field of view at lens 8192, hasn't been traced to the divide; the renderer's 45° is an assumption.
+* **`INTRO.FLM` camera 1** (lens word 44236, 5.4 times the default, ticks 1216 to 1290 and 2511 to 2624) is the largest zoom; check its frames once the base scale is known.
+* **The walker's outer caller.** The pending-node stack popped at `0x1B8C` and its feeder `0x1B75` (`xchg di, [bx+0x2346]`) are known; the routine that seeds the root hasn't been traced. It is also a static route to the code that hands ground objects to the display-list VM ([`world-scene.md` § Next probes](world-scene.md#next-probes)).

@@ -47,7 +47,7 @@ pub struct SlotState {
 /// Map a position from DOS axes to `[I1]`: a 180° rotation about Z, `(x, y, z) -> (-x, -y, z)`.
 ///
 /// DOS axes are the raw frame of `.FLM` slots and anchor points (GLOSSARY.md "DOS axes").
-/// The same rule terrain applies to anchor points (research/parity-findings.md § 3).
+/// The same rule terrain applies to anchor points (research/formats/auxiliary/map.md).
 #[inline]
 pub(crate) fn dos_to_i1_position(p: [f32; 3]) -> [f32; 3] {
     // `+ 0.0` turns the `-0.0` produced by negating zero back into `0.0`.
@@ -86,7 +86,7 @@ impl SlotState {
     ///
     /// The stored pitch `rx` uses the opposite handedness from `quat_from_euler`'s
     /// `pitch` argument: negating it is what makes a view slot look at the drawn actor
-    /// (`CTRY.FLM` tick 1 lands 1.4° off the actor bearing; research/parity-findings.md § 2). Whether
+    /// (`CTRY.FLM` tick 1 lands 1.4° off the actor bearing; research/formats/concepts/coordinates-and-units.md). Whether
     /// the raw convention differs in handedness more broadly is an open question
     /// (research/formats/concepts/coordinates-and-units.md § 1.2).
     pub fn rotation_quat_dos(&self) -> [f32; 4] {

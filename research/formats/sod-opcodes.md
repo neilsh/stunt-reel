@@ -38,7 +38,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **25** | `0x00E1` | 225 | `OP_VOTEHID` | `face: u16` | Vote facet hidden in culling accumulator |
 | **26** | `0x00EA` | 234 | `OP_POLY` | `count: u16, ...regs` | Unsorted flat polygon emission |
 | **27** | `0x00F3` | 243 | `OP_POLYZ` | `count: u16, ...regs` | Depth-sorted flat polygon emission |
-| **28** | `0x00FC` | 252 | `OP_SPHERE` | `center_reg: u16, radius: u16` | Procedural sphere primitive; `radius` is in register (vertex) units. Tree crowns use it (19 per tree in `CTRY.ALL` `0x0504`/`0x0507`); the Rust VM approximates it with a 20-triangle icosahedron (`[Bounded Observation]`, [`parity-findings.md` § 10](../parity-findings.md#10-tree-crowns-are-op_sphere-ground-shade-is-world-fixed-ctryflm-bounded-observation)) |
+| **28** | `0x00FC` | 252 | `OP_SPHERE` | `center_reg: u16, radius: u16` | Procedural sphere primitive; `radius` is in register (vertex) units. Tree crowns use it: 19 per tree in `CTRY.ALL` `0x0504`/`0x0507` (1,399 and 933 placements), radius 600 to 1,100 at scale index 10 (crowns of about 1.2 to 2.1 m). `FreeFlight/src/siobj.cpp` leaves it unimplemented. The Rust VM draws a 20-triangle icosahedron at 0.92 of the radius (80 triangles would give a 700 MB vertex buffer on `CTRY.FLM`, over wgpu's 256 MiB); crowns match the capture's position and colour but are faceted (`[Bounded Observation]`; found 2026-10-22 at `16a3170`, [parity log](../parity/log.md)) |
 | **29** | `0x0105` | 261 | `OP_DISC` | `center_reg: u16, radius: u16` | Flat circular disc primitive |
 | **30** | `0x010E` | 270 | `OP_PERFDISK` | `center_reg: u16, r_in: u16, r_out: u16` | Perforated disc (ring with center shaft) |
 | **31** | `0x0117` | 279 | `OP_SIDE` | `...` | Cylindrical side primitive |
@@ -48,7 +48,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **35** | `0x013B` | 315 | `OP_MISTY` | `...` | Distance fog / atmospheric haze attenuation |
 | **36** | `0x0144` | 324 | `OP_SHADE1` | `normal_reg: u16, ramp: u16` | Front-facing directional lighting ramp |
 | **37** | `0x014D` | 333 | `OP_SHADE2` | `normal_reg: u16, ramp: u16` | Back-facing directional lighting ramp |
-| **38** | `0x0156` | 342 | `OP_SHADES` | `count: u16, ...triplets` | Batch upload lighting normal vectors |
+| **38** | `0x0156` | 342 | `OP_SHADES` | `count: u16, ...triplets` | Batch upload lighting normal vectors. Parsed and deliberately not applied; per-vertex shade words observed 4 to 68 in `CTRY.ALL`, and `siobj.cpp` discards them too (`[Bounded Observation]`). The props loss is structural, not tonal: 79% of prop-layer pixels already matched in the first index comparison |
 | **39** | `0x015F` | 351 | `OP_GOURAUD` | `...` | Smooth Gouraud-shaded polygon |
 | **40** | `0x0168` | 360 | `OP_SHADEPOLY`| `count: u16, regs..., norm, shades...` | Normal-lit shaded polygon (`OP_GVPOLY`) |
 | **41** | `0x0171` | 369 | `OP_AIRBRUSH` | `...` | Dithered / airbrushed soft shadow polygon |
@@ -87,7 +87,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **74** | `0x029A` | 666 | `OP_SUBSL` | `...` | Slicing plane subtraction |
 | **75** | `0x02A3` | 675 | `OP_ADDSL` | `...` | Slicing plane addition |
 | **76** | `0x02AC` | 684 | `OP_DUPSL` | `...` | Duplicate slicing plane |
-| **77** | `0x02B5` | 693 | `OP_SHADE16` | `norm: u16, ramp: u16` | 16-level directional lighting ramp sample |
+| **77** | `0x02B5` | 693 | `OP_SHADE16` | `norm: u16, ramp: u16` | 16-level directional lighting ramp sample. Parsed and not applied, like `OP_SHADES` |
 | **78** | `0x02BE` | 702 | `OP_GVPOLY16` | `count: u16, regs..., norm, shades...` | 16-level shaded polygon emission |
 | **79** | `0x02C7` | 711 | `OP_SHADE216` | `norm: u16, ramp: u16` | 16-level back-facing lighting ramp sample |
 | **80** | `0x02D0` | 720 | `OP_DOT` | `reg_off: u16` | Draw single point / pixel dot at `regs[reg]` |

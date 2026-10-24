@@ -90,6 +90,9 @@ This guarantees interpolation takes the shortest geodesic path on $S^3$, prevent
 
 `TrajectoryRecord.tick` (and `AudioCue.tick`) is always the cumulative 50 Hz authored tick, never a slice ordinal; a slice's ordinal is only its index in the timeline. Zero-duration slices share a tick with their predecessor, so ordinals and ticks diverge for real films.
 
+#### Camera Roll Crosses the 0 / 2π Wrap
+`[Established]` as a fact about the data: a view slot's `roll_radians` is an angle, and films move it across the wrap. `CTRY.FLM` goes from about 0 degrees at tick 20 to about 359.5 degrees at tick 43, with a near-level horizon in the capture throughout. Interpolating the roll as a plain scalar sweeps up to 294.5 degrees (tick 32) the long way; roll must interpolate along the shorter arc (`lerp_angle` in `crates/stunt-core/src/flm/interpolate.rs`), which reads 0, then 360, then 359 degrees across ticks 20 to 44. Capture ordinal 3 (tick 32) went from SSIM 0.66 to 0.78 (`mean_ssim_scored` 0.769 to 0.770). _Found 2026-10-22; see the [parity log](../../parity/log.md)._
+
 #### Partial Films
 A slice that fails to decode does not discard the film. The slices decoded before the failure are kept, and `stop_reason()` reports why decoding stopped, mirroring the Partial SOD convention (`GLOSSARY.md`). Only an invalid header is an error. Sampling operates over the decoded slices only.
 
@@ -131,6 +134,12 @@ Opcode `0x9C` payload consists of 3 bytes: `[arg1: u8, arg2_lo: u8, arg2_hi: u8]
 3. **Stereo Panning:** Derived from MSB or channel nibbles:
    $$\text{pan} = \begin{cases} +1.0 & \text{if } (\text{arg1} \ \& \ 0x80) \ne 0 \text{ (Right)} \\ -1.0 & \text{otherwise (Left)} \end{cases}$$
 
+### 3.4 Fast-Cut Montages (`INTRO.FLM`)
+
+`[Bounded Observation]` The `INTRO.FLM` segment at ticks 2600 to 2900 changes `view_obj` almost every slice (11, 10, 0, 2, 7, 0, 4, 0, 5, 0, 10, 12, 12, 11, 10, 11, 10, 1, 0, 10), and the variable table resets at tick 2786 (var 1 `44236 -> 8192`, var 4 `20480 -> 8192`, var 12 `0 -> 16384`, with vars 10 and 11 ramping from 0). With a camera change nearly every slice, a one-tick timing error shows a different camera. `[Hypothesis]`: the poor match at ticks 2690 to 2850 is page timing on a fast-cut segment, not a wrong view slot.
+
+The earlier montage at ticks 1261 to 1485 alternates `view_obj` between a numbered slot and 0 every 3 to 8 ticks (`dur` 0 to 10) and ramps variable 10 about 50 per tick (11102 to 16437) with the other variables constant. Searching each capture against our renders over offsets 0 to -180 gives a best match that grows with the capture tick: -72 at 1297, -84 at 1352, -124 at 1407, -168 at 1440, -180 at 1462 (about 0.9 extra ticks of lag per clock tick), while all 22 captures are distinct (no frozen page). `[Hypothesis]`: the player's scene clock falls behind its film clock here (frame skipping under load, or a different montage rate), which no fixed page offset can match. The fixed one-tick page lag is a separate effect ([`capture.md`](../../playone-exe/capture.md)). _Found 2026-10-22; see the [parity log](../../parity/log.md)._
+
 ---
 
 ## 4. Open Questions & Reverse Engineering Backlog
@@ -139,6 +148,8 @@ Opcode `0x9C` payload consists of 3 bytes: `[arg1: u8, arg2_lo: u8, arg2_hi: u8]
 2. **`[BK-TIME-02]` Variable Table Register Depth** (`[Supported Inference]`): Slices update `nextvar[0..15]` registers via opcodes `0x80`–`0x8F`. Whether more than 16 registers exist in `PLAYONE.EXE`'s runtime state table remains under investigation.
 3. **`[BK-TIME-03]` Propeller Subobject Blur Transition Threshold** (`[Established]`): Confirmed from Adrian Stephens' 1997 notes that parameter `9` controls propeller angular velocity, triggering visual substitution of 3D blades with a semi-transparent disc when speed exceeds threshold.
 4. **`[BK-TIME-04]` Render Frame Drops Do Not Slow Simulation** (`[Supported Inference]`): The 50 Hz PIT interrupt continues to advance the tick counters while the VGA-synchronized render loop draws; a slow renderer therefore advances several simulation ticks between frames rather than reducing the tick rate. Direct measurement of ticks-per-rendered-frame under emulated load remains open.
+
+5. **`[BK-TIME-05]` Montage Scene Clock** (`[Hypothesis]`): the player's tick-skipping rule that makes the montage scene clock run behind the film clock (§ 3.4) is unidentified; implementing it needs that rule from `PLAYONE`.
 
 ---
 
