@@ -3,7 +3,7 @@
 * **Evidence**: corpus census of every compiled `.SOD` model in `corpus/` (`.ALL` and `.RES` archive entries and loose `.BIN` files), walked by the census mode of the evaluator in [`crates/stunt-core/src/sod/vm.rs`](../../crates/stunt-core/src/sod/vm.rs) (`walk_sod`), and joined to the films that place each shape.
 * **Scope**: which shapes are Partial SODs, their blocking opcode, the masked opcodes behind it, the films that use them, and the order to implement the opcodes in. Terms follow [`GLOSSARY.md`](../../GLOSSARY.md).
 * **Tier**: `[Bounded Observation]` throughout (see § 4).
-* **Owns**: the implementation queue for unhandled `.SOD` opcodes. Opcode semantics and operands stay in [`formats/sod.md` § 3.2](sod.md#32-the-authoritative-107-opcode-reference-table--fmt-sod-opcodes); binary evidence stays in [`playone-exe/`](../playone-exe/).
+* **Owns**: the implementation queue for unhandled `.SOD` opcodes. Opcode semantics and operands stay in [`sod-opcodes.md` § 1](sod-opcodes.md#1-the-authoritative-107-opcode-reference-table--fmt-sod-opcodes); binary evidence stays in [`playone-exe/`](../playone-exe/).
 
 § 3 is the output of `mise run sod-census -- --format markdown` (§ 5). A first census was hand-run on 2026-10-23 with a throwaway hook in `vm.rs`; § 3.1 records where the tool's output differs from it.
 
@@ -15,7 +15,7 @@ The 309 archives hold 3,432 unique `MODEL_%04X.SOD` chunks (deduplicated by cont
 
 Fourteen unimplemented opcodes are reached:
 
-| Opcode | Mnemonic | Seen as | Operands assumed for the skip (from § 3.2) |
+| Opcode | Mnemonic | Seen as | Operands assumed for the skip (from the opcode table) |
 | :---: | :--- | :--- | :--- |
 | `0x007E` | `OP_PUSHCENTRE` | blocking | none |
 | `0x0087` | `OP_POPCENTRE` | masked | none |
@@ -30,10 +30,10 @@ Fourteen unimplemented opcodes are reached:
 | `0x02E2` | `OP_ROTX` | masked | `angle_bam: u16` |
 | `0x02EB` | `OP_ROTZ` | masked | `angle_bam: u16` |
 | `0x02FD` | `OP_BVGT` | blocking and masked | `reg: u16, val: i16, rel_off: i16` |
-| `0x0333` | `OP_TEXTURE` | ends the walk (loose `TESTTEXT.BIN` only; § 3.2 gives no width) | unknown |
+| `0x0333` | `OP_TEXTURE` | ends the walk (loose `TESTTEXT.BIN` only; the opcode table gives no width) | unknown |
 | `0x022E` | `OP_TAP` | blocking without anchors | implemented; see [`sod-vm.md`](../playone-exe/sod-vm.md) |
 
-The other unimplemented opcodes with a width in § 3.2 (`CENSUS_SKIPS` in `vm.rs`) were never reached under the limits in § 4.
+The other unimplemented opcodes with a width in the opcode table (`CENSUS_SKIPS` in `vm.rs`) were never reached under the limits in § 4.
 
 ---
 
@@ -46,8 +46,8 @@ Ordered by shape IDs unblocked per opcode implemented. A shape decodes fully onl
 | 1 | `OP_ANIMATE` | 20 (group A) | 191 paired films; `0105`–`010C` and `3A80` each in 39–130, including `INTRO.FLM` and `CTRY.FLM` (`0107`) | none | `[Established]` dispatch and blit, [`sod-animate.md`](../playone-exe/sod-animate.md); selector and `.FLM` mapping open |
 | 2 | `OP_SHADE1` | 5 (group D) | 38 films; `7F0A` in 31 | none | community table; `OP_SHADE2` is `[Hypothesis]` in [`formats/INDEX.md`](INDEX.md) |
 | 3 | `OP_GOSUB` | 2 (group F) | `7F03` in 6 films, `7E3B` in 1 | none | community table; subroutine bodies are not walked (§ 4) |
-| 4 | Centre stack: `PUSHCENTRE`, `MOVECENTRE`, `POPCENTRE` | 11 (group B) | `CRISMAS.FLM` only | item 3 | community table; si-tools (§ 6) |
-| 5 | Matrix stack and rotations: `PUSHRELMAT`, `POPRELMAT`, `ROTX`, `ROTZ`, then `OP_BVGT` (and `OP_GOTO` for group E) | 12 (groups C, E, H, J) | 77 films for group C alone; `7F09` in 40, including `INTRO.FLM` | items 3, 4 | community table; si-tools (§ 6) |
+| 4 | Centre stack: `PUSHCENTRE`, `MOVECENTRE`, `POPCENTRE` | 11 (group B) | `CRISMAS.FLM` only | item 3 | community table; si-tools ([`sod-opcodes.md` § 3](sod-opcodes.md#3-community-semantics-from-si-tools)) |
+| 5 | Matrix stack and rotations: `PUSHRELMAT`, `POPRELMAT`, `ROTX`, `ROTZ`, then `OP_BVGT` (and `OP_GOTO` for group E) | 12 (groups C, E, H, J) | 77 films for group C alone; `7F09` in 40, including `INTRO.FLM` | items 3, 4 | community table; si-tools ([`sod-opcodes.md` § 3](sod-opcodes.md#3-community-semantics-from-si-tools)) |
 
 For `INTRO.FLM` parity, `7F09` needs items 3–5 together: it blocks on `BVGT` and masks the centre stack, the matrix stack, `ROTX` and `GOSUB` behind it. Item 1 is the larger win by film count.
 
@@ -139,7 +139,7 @@ Film use per placed shape (films resolved through their paired `.ALL`):
 * **Counts reproduce.** 3,432 unique chunks, 3,368 clean and 14 `TAP`-only match. The hand run listed 49 blocked models because it keyed by shape ID; the tool counts 50 variants, since `7E22` has one in group A and one in group D (the hand run's "last one scanned" problem, now reported both ways).
 * **Group A (`ANIMATE`), D (`SHADE1`) and the `TAP` group are unchanged** in shape IDs. Old group E (`GOSUB`, `7E3B`, `7F03`) is group F here.
 * **Old group C's order was wrong.** Its models block on `BVGT`, with `PUSHCENTRE` behind it, not the reverse: a lenient decode of `INTRO.ALL` `7F09` stops at offset `0x0C34` on `0x02FD`. `BVGT` therefore has no prerequisite to be the blocking opcode, though the centre stack is still needed for a full decode.
-* **"Ends at `MOVECENTRE`" was a walk artefact.** The hand run stopped there; with every § 3.2 width in the skip table the walk reaches `RETURN` in every group and finds masked `GOSUB`, `POPCENTRE`, `PUSHRELMAT`, `POPRELMAT`, `ROTX`, `ROTZ` and `GOTO`. That splits old B into B (`6403`–`641B`) and E (`7F18`, `7F1B`), and old C into C, H (`7F20`, `7F21`) and J (`7F1C`). `POPCENTRE`, listed as never reached, is reached in all of them.
+* **"Ends at `MOVECENTRE`" was a walk artefact.** The hand run stopped there; with every opcode-table width in the skip table the walk reaches `RETURN` in every group and finds masked `GOSUB`, `POPCENTRE`, `PUSHRELMAT`, `POPRELMAT`, `ROTX`, `ROTZ` and `GOTO`. That splits old B into B (`6403`–`641B`) and E (`7F18`, `7F1B`), and old C into C, H (`7F20`, `7F21`) and J (`7F1C`). `POPCENTRE`, listed as never reached, is reached in all of them.
 * **New scope.** `.RES` entries, loose `.BIN` models and film use were not in the hand run. They add groups G and I (`GTX.RES` bodies, also as loose `.BIN`), K (`TESTTEXT.BIN`, `OP_TEXTURE`) and L (`UFO2.BIN`).
 
 ---
@@ -147,7 +147,7 @@ Film use per placed shape (films resolved through their paired `.ALL`):
 ## 4. Limits
 
 * **Linear walk.** Branches, `GOTO` and `GOSUB` are stepped over, not followed, and the walk ends at the first `OP_RETURN`. Code after the main `RETURN`, including `GOSUB` targets, is not walked and may hold further masked opcodes.
-* **Assumed operand widths.** Skips use the widths in [`formats/sod.md` § 3.2](sod.md#32-the-authoritative-107-opcode-reference-table--fmt-sod-opcodes) (`CENSUS_SKIPS` in `vm.rs`), which come from `SOD.H`, not the binary (`OP_ANIMATE` and `OP_TAP` excepted). A wrong width desynchronises the walk and can invent or hide later opcodes. Every group reaching `RETURN` is weak evidence the widths it used are right.
+* **Assumed operand widths.** Skips use the widths in [`sod-opcodes.md` § 1](sod-opcodes.md#1-the-authoritative-107-opcode-reference-table--fmt-sod-opcodes) (`CENSUS_SKIPS` in `vm.rs`), which come from `SOD.H`, not the binary (`OP_ANIMATE` and `OP_TAP` excepted). A wrong width desynchronises the walk and can invent or hide later opcodes. Every group reaching `RETURN` is weak evidence the widths it used are right.
 * **No anchors.** `OP_TAP` is stepped over by its `count` words, so `TAP` appears as a skip even where `ANCHORPT.DAT` would resolve it.
 * **Film join.** A film is paired with the `<NAME>.ALL` in its own folder ([`formats/flm.md`](flm.md)), and only those films count. 409 of the 700 films have none: the 143 in `Films/FLMOnly/` ship without sets, and 254 in `NEW/Morganroth/VAULT/` sit beside `.ALL` files of other names. Their placements are not counted, so film counts are lower bounds. Film names are deduplicated, so copies of one film in several folders count once.
 
@@ -164,22 +164,3 @@ mise run sod-census -- --format markdown
 runs `stuntreel sod-census` over `corpus/` (corpus-only, like `verify-corpus`, and never part of `mise run check`; `--corpus DIR` points elsewhere). Without `--format markdown` it prints each model variant with its films, plus any model that failed to walk and any file that failed to parse. Paste the markdown output over § 3 above § 3.1, then update §§ 1–2 and § 3.1 if the groups move.
 
 When an opcode gets a real handler in `vm.rs`, delete its `CENSUS_SKIPS` entry (a unit test fails until you do) and re-run the census: its models drop out of § 3, and any opcode it was masking becomes the new blocking one.
-
-## 6. Community Semantics from si-tools (`[Hypothesis]`)
-
-Alberto Marnetto's MIT-licensed [`si-tools/sod-decoder`](https://github.com/AlbertoMarnetto/si-tools/tree/master/sod-decoder) (2026, a C++ rewrite of FreeFlight's `siobj.cpp`) implements every opcode in § 2. Its readings are leads only: confirm each one against the opcode's `PLAYONE.EXE` handler (reached through the dispatch slots in [`sod-vm.md`](../playone-exe/sod-vm.md) section 1) before `vm.rs` implements it. Where it disagrees with § 1, the disagreement is marked.
-
-| Opcode | si-tools reading | Against § 1 |
-| :--- | :--- | :--- |
-| `PUSHCENTRE` / `POPCENTRE` | Push and pop the relative origin `relpos`, which is added to every emitted vertex | agrees |
-| `MOVECENTRE` | `relpos += register[reg_off / 12]` | agrees |
-| `PUSHRELMAT` / `POPRELMAT` | Push and pop a 3×3 matrix that `VECTORS` applies to raw input points | agrees |
-| `ROTX` / `ROTY` / `ROTZ` | The operand is a **variable byte offset** (`variable[w / 2]`), not an immediate; the variable is an angle with 4096 units per turn, post-multiplied into the matrix | **differs**: § 1 assumes an immediate `angle_bam` |
-| `BVLT` / `BVGT` | `reg` is a **variable byte offset**; branch when `variable <= val` (`BVLT`) or `variable >= val` (`BVGT`), unsigned | **differs**: § 1 reads `reg` as a register |
-| `BZLT` | Branch when the register's local Z `<= val - relpos.z`; the handler's `shift` scaling is not modelled | not in § 1 |
-| `GOTO` / `GOSUB` | Target = address of the operand word + `rel_offset` bytes; `GOSUB` runs the target until `RETURN` | agrees; § 1 leaves the base unstated |
-| `SHADE1` | Two operand words, no geometry | agrees |
-| `ANIMATE` | `point_reg`, `radius / 2`, `variable offset`, `count`, then `count` words | agrees with [`sod-animate.md`](../playone-exe/sod-animate.md) |
-| `REJ` | `face_base`, `count`, then `count` register triples; backface test truncates the cross-product components to 16 bits before the dot product (`getnorm` / `reject3d`) | not in § 1 |
-| `GVPOLY` | Colour in the high byte of the trailing word, then one shade word per vertex | not in § 1 |
-| `IPG` types 0, 2, 8 | Cube, ground quad and XY quad; fill registers only, draw no faces | not in § 1 |

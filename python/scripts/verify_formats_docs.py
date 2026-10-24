@@ -71,6 +71,12 @@ FORMAT_SPECS: list[str] = [
     "research/formats/auxiliary/map.md",
 ]
 
+# Reference documents split out of a format specification. They are not held to the
+# five-section template; each must exist and link back to its parent specification.
+REFERENCE_DOCS: dict[str, str] = {
+    "research/formats/sod-opcodes.md": "sod.md",
+}
+
 CONCEPT_DOCS: list[str] = [
     "research/formats/concepts/coordinates-and-units.md",
     "research/formats/concepts/palette-and-shading.md",
@@ -97,11 +103,10 @@ CONCEPT_DOC_SECTIONS: list[str] = [
 ]
 
 INDEX_SECTIONS: list[str] = [
-    "## 1. Master Format Catalog",
-    "## 2. Runtime Asset Dependency Graph & Data Flow Architecture",
-    "## 3. Shared Architectural Concepts Directory",
-    "## 4. Reverse Engineering Backlog & Open Questions",
-    "## 5. Provenance & Community Attribution",
+    "## 1. Format Catalog",
+    "## 2. Runtime Asset Graph",
+    "## 3. Concepts and Auxiliary Notes",
+    "## 4. Provenance",
 ]
 
 # Invariants, Seam contracts and fixtures are NOT template sections: each document links to
@@ -155,12 +160,12 @@ LINK_SCAN_FILES: list[str] = [
     "docs/ARCHITECTURE.md",
     "docs/SPEC.md",
     "research/playone-exe/memory-map.md",
-    "docs/TEAM_SHEET.md",
-    "docs/playbooks/m1-runtime-capture.md",
+    "docs/process/TEAM_SHEET.md",
     "GLOSSARY.md",
     "tests/fixtures/README.md",
     "corpus/README.md",
     *REQUIRED_DOCS,
+    *REFERENCE_DOCS,
 ]
 
 
@@ -302,7 +307,19 @@ def verify_schema_conformance(repo_root: Path) -> VerificationResult:
 
         details.append(f"Conforms to 5-section format schema: {rel_path}")
 
-    # 2. Concept Guides
+    # 2. Reference documents (no section template; must link their parent specification)
+    for rel_path, parent_name in REFERENCE_DOCS.items():
+        file_path = repo_root / rel_path
+        if not file_path.exists():
+            errors.append(f"Missing reference document: {rel_path}")
+            continue
+
+        content = file_path.read_text(encoding="utf-8")
+        if not re.search(rf"\]\((?:[^)#]*/)?{re.escape(parent_name)}(?:#[^)]*)?\)", content):
+            errors.append(f"{rel_path} must link its parent specification {parent_name}")
+        details.append(f"Reference document links {parent_name}: {rel_path}")
+
+    # 3. Concept Guides
     for rel_path in CONCEPT_DOCS:
         file_path = repo_root / rel_path
         if not file_path.exists():
@@ -338,7 +355,7 @@ def verify_schema_conformance(repo_root: Path) -> VerificationResult:
 
         details.append(f"Conforms to 5-section concept schema: {rel_path}")
 
-    # 3. Master Index
+    # 4. Master Index
     index_path = repo_root / INDEX_DOC
     if index_path.exists():
         index_content = index_path.read_text(encoding="utf-8")
@@ -448,7 +465,7 @@ def verify_provenance_and_attribution(repo_root: Path) -> VerificationResult:
     errors: list[str] = []
     details: list[str] = []
 
-    # Check each documentation file for Section 5 attribution
+    # Check each documentation file for its provenance section
     for rel_path in REQUIRED_DOCS:
         file_path = repo_root / rel_path
         if not file_path.exists():
@@ -456,7 +473,7 @@ def verify_provenance_and_attribution(repo_root: Path) -> VerificationResult:
 
         content = file_path.read_text(encoding="utf-8")
         sec5_match = re.search(
-            r"## 5\. (?:Attribution & Provenance|Provenance & Community Attribution)(.*?)(?:\n## \d+\.|\Z)",
+            r"## \d+\. (?:Attribution & Provenance|Provenance)(.*?)(?:\n## \d+\.|\Z)",
             content,
             re.DOTALL,
         )

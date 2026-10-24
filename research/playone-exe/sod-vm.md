@@ -2,7 +2,7 @@
 
 * **Binary**: `PLAYONE.EXE` (LZEXE 0.91; unpacked EXE 201,548 bytes, i.e. the 200,524-byte load image plus its 1,024-byte MZ header)
 * **Method**: DOSBox-X `MEMDUMPBIN` of the unpacked image after the LOAD FILM dialog settles; Capstone 16-bit disassembly
-* **Scope**: `OP_TAP` (`0x022E`) operand encoding and register side effects
+* **Scope**: `OP_TAP` (`0x022E`) operand encoding and register side effects; the general VM execution model (section 8)
 * **Anchor**: `# [FMT-SOD-TAP]`, `# [MEM-SOD-VM]`
 
 Runtime segments in the captured session: `CS = 0x0F17`, `DS = 0x1575` for the main data segment, and a fixed display-list work segment at `0x1DF8` holding both the anchor table and the 1024-entry vertex register arena. The memory image was dumped starting at segment `0x0D51`.
@@ -174,3 +174,51 @@ Open items:
 - Exact fixed-point matrix and shift for non-identity model transforms `[Unknown]`.
 - Retail `PLAYONE.EXE` anchor-table population path `[Bounded Observation]`.
 - HUGETAP semantics `[Unknown]`.
+
+---
+
+## 8. Execution Model
+
+The VM is a stack-based, register-oriented geometry engine. Opcode semantics and operand widths are in [`formats/sod-opcodes.md`](../formats/sod-opcodes.md); this section holds the state the opcodes act on. Dispatch is section 1. Each claim carries its tier.
+
+### 8.1 Vertex Register Bank
+
+`[Established]` for the 12-byte stride, the 1024-entry arena at `DS:0x4450` and the `x/y/z` words (section 4 step 4). `[Supported Inference]` for the index mask.
+
+- The VM keeps 1024 vertex registers (`regs[0..1023]`). In `PLAYONE.EXE` each is 12 bytes: three signed 16-bit coordinate words plus projection and flag words at `+6`, `+8` and `+0xA` (section 3).
+- Bytecode operands address a register by **byte offset** (a multiple of 12). The reconstruction decodes `reg_index = (reg_off / 12) & 1023`; the mask keeps a bad operand inside the bank.
+- The reconstruction stores each register as three floating-point metres `[x, y, z]`, scaled by the header scale table ([`sod.md`](../formats/sod.md) section 2); the original holds raw 16-bit units.
+- Whether `PLAYONE.EXE` paged the bank or kept it in the work segment is Q-SOD-06 in [`sod.md`](../formats/sod.md). The captured session holds it in the work segment `0x1DF8`.
+
+### 8.2 Vector Accumulator
+
+`[Supported Inference]` — operand semantics from `SOD.H`, FreeFlight and the assembler macros; handlers other than `TAP` are not traced.
+
+The VM keeps one 3D accumulator, `cur_vert = [x, y, z]`, which the vector opcodes read and write:
+
+- `OP_CLRV` zeroes it; `OP_GETV reg` loads `regs[reg]`; `OP_PUTV reg` stores it into `regs[reg]`.
+- `OP_ADDV reg` and `OP_SUBV reg` add or subtract `regs[reg]`; `OP_NEGV` negates; `OP_INTV reg` sets it to the midpoint `(cur_vert + regs[reg]) * 0.5`.
+- `OP_SHLV n` and `OP_SHRV n` multiply or divide by `2^n`.
+- `OP_BLOKADD` and `OP_BLOKNEG` apply the accumulator or a negation across a register range.
+
+The CTRY hill example in section 5 uses this pattern: `GETV 511; SHLV 1; PUTV 510`.
+
+### 8.3 Transform Stack and Subobject Articulation
+
+`[Supported Inference]` — from the assembler macro sources (`SABRE.SOD`, `CURTISS.SOD`) and FreeFlight's `siobj.cpp`; the handlers are not disassembled.
+
+Moving parts (propellers, landing gear, rudders) are subobjects drawn under a hierarchical stack, so they stay attached to the body:
+
+1. `OP_PUSHCENTRE` (`0x007E`) pushes the current rotation origin onto the centre stack.
+2. `OP_PUSHRELMAT` (`0x01E6`) pushes the current 3x3 local orientation matrix.
+3. `OP_MOVECENTRE reg` (`0x0090`) translates the origin to `regs[reg]`, for example a landing-gear hinge.
+4. `OP_ROTX` (`0x02E2`), `OP_ROTY` (`0x01DD`) and `OP_ROTZ` (`0x02EB`) rotate about one axis by a 16-bit BAM angle driven by an animation variable (`undercarriage1`, `rudder`). The si-tools reading of the operand differs ([`sod-opcodes.md`](../formats/sod-opcodes.md) section 3).
+5. `OP_GOSUB target` (`0x01A7`) evaluates the articulated subobject geometry (for example `sabre_uc`).
+6. `OP_POPRELMAT` (`0x01EF`) restores the parent matrix.
+7. `OP_POPCENTRE` (`0x0087`) restores the parent rotation centre.
+
+### 8.4 Control Flow
+
+`[Supported Inference]`
+
+`OP_GOTO` jumps and `OP_GOSUB` calls by a relative word offset; `OP_RETURN` (`OP_END`) ends the list or returns from a subroutine. `OP_SORTON` and the conditional branches `OP_BHID`/`OP_BVIS` (`OP_IFVIS`), `OP_BVLT`, `OP_BVGT` and `OP_BZLT` choose which subtree runs; the visibility and BSP behaviour is in [`sod-opcodes.md`](../formats/sod-opcodes.md) section 2.5. The branch targets are relative, so a walk that mis-sizes one operand desynchronises (see [`sod-opcode-coverage.md`](../formats/sod-opcode-coverage.md) section 4).

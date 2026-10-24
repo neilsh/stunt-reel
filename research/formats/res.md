@@ -179,6 +179,8 @@ The following backlog documents unresolved questions and their empirical status:
 | **Q-RES-03** | Third-party compression flags | Retail floppy/CD-ROM archives contain zero compressed entries. Community tools occasionally hinted at LZSS compression flags. | `[Bounded Observation]` | Flag `was_compressed` remains `false`. Hook LZSS decoder if modded compressed archives are encountered. |
 | **Q-RES-04** | Dynamic memory caching & LRU eviction | Real-mode `PLAYONE.EXE` cached `.RES` offset tables in conventional RAM while streaming payloads on demand. | `[Supported Inference]` | Modern engine loads archive tables fully into memory; zero disk thrashing. |
 | **Q-RES-05** | European CD-ROM multilingual string tables | French/German releases may include localized prop display strings in `GAME.RES` or `ACTORS.RES`. | `[Bounded Observation]` | Ensure UTF-8 / CP437 decoding handles extended Latin characters gracefully without panic. |
+| **Q-RES-06** | Kaitai `_index` in `pos:`/`size:` | Slicing regions with `repeat: expr` and `offsets[_index + 1]` compiles under KSC 0.11, but the generated Python raises `UnboundLocalError` for the loop variable on every corpus `.RES`. | `[Bounded Observation]` | [`res.ksy`](res.ksy) passes `_index` into a parameterised `segment(i)` type; do not rewrite it into the failed form. |
+| **Q-RES-07** | Dynamic scenery swapping | Whether `SCENERY1.RES`-`SCENERY6.RES` load during flight by player position or are staged from the `.SET` scene configuration. | `[Hypothesis]` | Load the set's scenery archives up front. |
 
 ---
 

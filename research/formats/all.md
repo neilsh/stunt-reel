@@ -116,6 +116,8 @@ The following backlog documents open questions and investigations regarding the 
 | **Q-ALL-03** | Dynamic Sound Pre-Caching | Original engine loaded audio chunks directly into Sound Blaster DMA buffers at scene initialization. | `[Supported Inference]` | Store PCM audio buffers in memory; log playback events during Milestone 2. |
 | **Q-ALL-04** | Duplicate Resource IDs in Container | If a malformed `.ALL` contains duplicate IDs, later entries overwrite earlier entries in `BTreeMap`. | `[Established]` | Safe behavior; duplicate IDs log a warning and overwrite deterministically. |
 | **Q-ALL-05** | Standalone Movie Linker Internal Symbol Table | `MAKEONE.EXE` may have compiled an internal symbol hash map during film linking before stripping string names and writing raw numeric 16-bit IDs to the `.ALL` directory header. | `[Hypothesis]` | Modern engine indexes chunks directly by 16-bit numeric ID without requiring external symbol maps. |
+| **Q-ALL-06** | Audio chunk headers | Chunks `0xC000`-`0xCFFF` are 8-bit mono PCM; whether each carries a 26-byte Creative Voice header or is headerless depends on the `MAKEONE.EXE` packaging version. | `[Supported Inference]` | Sniff the `Creative Voice File` magic and strip it if present. |
+| **Q-ALL-07** | Resource lookup order | `Seam 1` resolves a key in the active scene's `.ALL` first and falls back to the global `.RES` archive selected by `res_index`. | `[Supported Inference]` | Keep that order in the VFS. |
 
 ---
 

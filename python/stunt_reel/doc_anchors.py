@@ -74,23 +74,23 @@ ANCHORS: tuple[Anchor, ...] = (
     ),
     Anchor(
         "FMT-SOD-OPCODES",
-        "research/formats/sod.md",
-        "3.2 The Authoritative 107-Opcode Reference Table (`# [FMT-SOD-OPCODES]`)",
+        "research/formats/sod-opcodes.md",
+        "1. The Authoritative 107-Opcode Reference Table (`# [FMT-SOD-OPCODES]`)",
     ),
     Anchor(
         "FMT-SOD-IFVIS",
-        "research/formats/sod.md",
-        "3.1.6 BSP Sorting & Two-Sided Visibility Logic (`# [FMT-SOD-IFVIS]`)",
+        "research/formats/sod-opcodes.md",
+        "2.5 BSP Sorting & Two-Sided Visibility Logic (`# [FMT-SOD-IFVIS]`)",
     ),
     Anchor(
         "FMT-SOD-TAP",
-        "research/formats/sod.md",
-        "3.1.4a Terrain Anchor Load (`OP_TAP`, `0x022E`) (`# [FMT-SOD-TAP]`)",
+        "research/formats/sod-opcodes.md",
+        "2.3 Terrain Anchor Load (`OP_TAP`, `0x022E`) (`# [FMT-SOD-TAP]`)",
     ),
     Anchor(
         "FMT-SOD-ANIMATE",
-        "research/formats/sod.md",
-        "3.1.4b Animation Resource Draw (`OP_ANIMATE`, `0x01F8`) (`# [FMT-SOD-ANIMATE]`)",
+        "research/formats/sod-opcodes.md",
+        "2.4 Animation Resource Draw (`OP_ANIMATE`, `0x01F8`) (`# [FMT-SOD-ANIMATE]`)",
     ),
     Anchor(
         "FMT-FLM-OPCODES",
