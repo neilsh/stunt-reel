@@ -324,9 +324,13 @@ impl FilmScene {
                 distance: distance(eye, [0.0; 3]),
             });
         }
+        // The record's field of view is the default lens's; zoom it by the interpolated
+        // lens (research/playone-exe/lod.md section 2.2).
+        let mut camera = record.camera;
+        camera.fov_degrees = camera.lens_fov_degrees(camera.fov_degrees);
         SceneFrame {
             tick,
-            camera: record.camera,
+            camera,
             world,
             actors,
             palette: record.palette,

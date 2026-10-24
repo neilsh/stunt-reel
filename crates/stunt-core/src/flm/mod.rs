@@ -195,6 +195,10 @@ impl<'a> FlmPlayer<'a> {
             45.0
         };
 
+        // Each camera's zoom word is the film variable of its view index (image `0x11FC`
+        // reads `[0x4888 + 0x7E + 2 * view_obj]`; research/playone-exe/lod.md section 2).
+        let lens = self.variables.get(view_idx).copied().unwrap_or(0);
+
         let roll = if view_slot_active {
             bam_to_radians(self.slots[view_idx].rot_bam[0])
         } else {
@@ -207,6 +211,7 @@ impl<'a> FlmPlayer<'a> {
             fov_degrees: fov,
             roll_radians: roll,
             cut_from_previous: cut,
+            lens,
         };
 
         // Active actors evaluation (all active slots except the view_obj camera slot)
@@ -342,8 +347,10 @@ mod tests {
         let mut player = FlmPlayer::new(SYNTHETIC_MINIMAL_FLM).expect("player initialization");
 
         // Slice 0: var_set 0 = 0x9890, view_obj 0, clear credits, 0xFF
-        assert!(player.step_slice().is_some());
+        let (record, _) = player.step_slice().expect("slice 0");
         assert_eq!(player.variables[0], 0x9890);
+        // Camera 0's lens is variable 0.
+        assert_eq!(record.camera.lens, 0x9890);
 
         assert!(player.step_slice().is_some());
         assert!(player.step_slice().is_none());

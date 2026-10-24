@@ -70,6 +70,7 @@ fn camera(
         fov_degrees,
         roll_radians,
         cut_from_previous,
+        ..Default::default()
     }
 }
 

@@ -249,6 +249,7 @@ fn synthetic_orbit(max_ticks: Option<usize>) -> FilmTimeline {
                         fov_degrees: 45.0,
                         roll_radians: 0.0,
                         cut_from_previous: tick == 0,
+                        ..Default::default()
                     },
                     actors: Vec::new(),
                     audio_cues: Vec::new(),

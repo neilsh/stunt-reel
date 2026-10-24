@@ -245,6 +245,7 @@ pub(crate) fn interpolate_trajectory(
             eff_alpha,
         ),
         cut_from_previous: record_b.camera.cut_from_previous && alpha_clamped >= 1.0,
+        lens: lerp_variable(record_a.camera.lens, record_b.camera.lens, eff_alpha),
     };
 
     // Interpolate actors
@@ -311,17 +312,19 @@ pub(crate) fn interpolate_trajectory(
     }
 }
 
-/// Interpolates film palette variables as `PLAYONE` does (`CS:0x136F`): an unsigned
-/// `u16` lerp whose step is rounded toward negative infinity.
+/// Interpolates a film variable as `PLAYONE` does (`CS:0x136F`): an unsigned `u16` lerp
+/// whose step is rounded toward negative infinity.
+fn lerp_variable(from: u16, to: u16, alpha: f32) -> u16 {
+    let from = f32::from(from);
+    (from + (f32::from(to) - from) * alpha).floor() as u16
+}
+
+/// Interpolates the film palette variables with [`lerp_variable`].
 fn lerp_palette(a: PaletteControls, b: PaletteControls, alpha: f32) -> PaletteControls {
-    let lerp = |from: u16, to: u16| {
-        let from = f32::from(from);
-        (from + (f32::from(to) - from) * alpha).floor() as u16
-    };
     PaletteControls {
-        sky: lerp(a.sky, b.sky),
-        brightness: lerp(a.brightness, b.brightness),
-        saturation: lerp(a.saturation, b.saturation),
+        sky: lerp_variable(a.sky, b.sky, alpha),
+        brightness: lerp_variable(a.brightness, b.brightness, alpha),
+        saturation: lerp_variable(a.saturation, b.saturation, alpha),
     }
 }
 
@@ -357,6 +360,7 @@ mod tests {
                 fov_degrees: 45.0,
                 roll_radians: 0.0,
                 cut_from_previous: cut,
+                ..Default::default()
             },
             actors,
             audio_cues: Vec::new(),

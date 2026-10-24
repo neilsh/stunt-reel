@@ -662,6 +662,7 @@ fn camera_rotation_maps_minus_z_to_the_view_direction() {
             fov_degrees: 45.0,
             roll_radians: roll,
             cut_from_previous: false,
+            ..Default::default()
         };
         let q = camera_rotation(&camera);
         let rotation = Quat::from_xyzw(q[0], q[1], q[2], q[3]);
@@ -686,6 +687,7 @@ fn camera_roll_rotates_up_about_the_view_axis() {
         fov_degrees: 45.0,
         roll_radians: 0.0,
         cut_from_previous: false,
+        ..Default::default()
     };
     let q = camera_rotation(&level);
     assert!(Quat::from_xyzw(q[0], q[1], q[2], q[3]).angle_between(Quat::IDENTITY) < 1e-5);

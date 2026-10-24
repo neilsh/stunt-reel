@@ -14,6 +14,7 @@ use crate::contracts::palette::PaletteControls;
 /// - `target`: Focus look-at position in meters [x, y, z]
 /// - `fov_degrees`: Vertical field of view in degrees
 /// - `roll_radians`: View roll angle in radians (BAM conversion)
+/// - `lens`: The view camera's zoom word, film variable `view_obj`
 /// - `cut_from_previous`: Instantaneous camera cut flag suppressing sub-tick lerp `[I4]`
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -29,6 +30,55 @@ pub struct CameraTransform {
     /// True when the film cuts here, suppressing sub-tick interpolation `[I4]`.
     #[cfg_attr(feature = "serde", serde(default))]
     pub cut_from_previous: bool,
+    /// Zoom word of the view camera: film variable `n` while `view_obj` is `n`
+    /// (research/playone-exe/lod.md section 2). It sets [`Self::lens_zoom`].
+    #[cfg_attr(feature = "serde", serde(default = "default_camera_lens"))]
+    pub lens: u16,
+}
+
+/// Lens word `CTRY.FLM` and `INTRO.FLM` give every camera before any zoom.
+pub const DEFAULT_CAMERA_LENS: u16 = 8192;
+
+#[cfg(feature = "serde")]
+fn default_camera_lens() -> u16 {
+    DEFAULT_CAMERA_LENS
+}
+
+impl CameraTransform {
+    /// PLAYONE's projection zoom for this camera, 1.0 at [`DEFAULT_CAMERA_LENS`].
+    ///
+    /// Mirrors image `0x120A..0x1226` and `0x12DC`: `lens * 0x7FFF` is shifted left until
+    /// bit 30 is set, at most three times; the high word `0x229C` scales the view
+    /// matrix's two screen rows as a Q15 factor and the unused shift count `0x229E`
+    /// shifts its depth row right (research/playone-exe/lod.md section 2.2). The zoom is
+    /// therefore `0x229C / 0x8000 * 2^0x229E`, about `lens / 8192`.
+    #[must_use]
+    pub fn lens_zoom(&self) -> f32 {
+        let mut product = u32::from(self.lens) * 0x7FFF;
+        let mut shifts_left = 3;
+        while product & 0x4000_0000 == 0 && shifts_left > 0 {
+            product <<= 1;
+            shifts_left -= 1;
+        }
+        (product >> 16) as f32 / 32768.0 * f32::from(1u16 << shifts_left)
+    }
+
+    /// Vertical field of view for this camera's lens, given `base_fov_degrees` at
+    /// [`DEFAULT_CAMERA_LENS`], which it returns exactly. A zero lens keeps the base.
+    #[must_use]
+    pub fn lens_fov_degrees(&self, base_fov_degrees: f32) -> f32 {
+        let default_zoom = Self {
+            lens: DEFAULT_CAMERA_LENS,
+            ..*self
+        }
+        .lens_zoom();
+        let zoom = self.lens_zoom() / default_zoom;
+        if zoom <= 0.0 || self.lens == DEFAULT_CAMERA_LENS {
+            return base_fov_degrees;
+        }
+        let half = (base_fov_degrees.to_radians() / 2.0).tan() / zoom;
+        2.0 * half.atan().to_degrees()
+    }
 }
 
 impl Default for CameraTransform {
@@ -39,6 +89,7 @@ impl Default for CameraTransform {
             fov_degrees: 45.0,
             roll_radians: 0.0,
             cut_from_previous: false,
+            lens: DEFAULT_CAMERA_LENS,
         }
     }
 }
@@ -184,6 +235,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn lens_zoom_follows_playone_normalisation() {
+        let camera = |lens| CameraTransform {
+            lens,
+            ..CameraTransform::default()
+        };
+        // 0x229C = 0x7FFF after three shifts, no depth shift.
+        assert_eq!(camera(DEFAULT_CAMERA_LENS).lens_zoom(), 32767.0 / 32768.0);
+        // One shift: 0x229C = 0x4FFF, depth shifted right twice.
+        assert_eq!(camera(20480).lens_zoom(), 20479.0 / 8192.0);
+        // No shift: 0x229C = 0x5665, depth shifted right three times.
+        assert_eq!(camera(44236).lens_zoom(), 22117.0 / 4096.0);
+        assert_eq!(camera(0).lens_zoom(), 0.0);
+        // A zoomed lens narrows the field of view; a zero lens keeps it.
+        assert_eq!(camera(DEFAULT_CAMERA_LENS).lens_fov_degrees(45.0), 45.0);
+        let narrow = camera(44236).lens_fov_degrees(45.0);
+        assert!((narrow - 8.77).abs() < 0.01, "{narrow}");
+        assert_eq!(camera(0).lens_fov_degrees(45.0), 45.0);
+    }
+
+    #[test]
     fn test_camera_transform_default() {
         let cam = CameraTransform::default();
         assert_eq!(cam.eye, [0.0, 10.0, 50.0]);
@@ -239,6 +310,7 @@ mod tests {
                 fov_degrees: 60.0,
                 roll_radians: 0.1,
                 cut_from_previous: true,
+                lens: 20480,
             },
             actors: vec![ActorTransform {
                 actor_id: 1,

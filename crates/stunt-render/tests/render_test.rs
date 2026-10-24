@@ -102,6 +102,7 @@ fn test_camera_controller_and_aspect_ratio() {
         fov_degrees: 60.0,
         roll_radians: 0.0,
         cut_from_previous: false,
+        ..Default::default()
     };
     cam.set_authored_transform(authored);
 
@@ -273,6 +274,7 @@ fn test_headless_offscreen_render_execution() {
             fov_degrees: 45.0,
             roll_radians: 0.0,
             cut_from_previous: false,
+            ..Default::default()
         }),
         ir,
     );
@@ -348,6 +350,7 @@ fn test_unaligned_width_reads_back_unpadded_rows() {
             fov_degrees: 45.0,
             roll_radians: 0.0,
             cut_from_previous: false,
+            ..Default::default()
         }),
         ir,
     );

@@ -76,6 +76,7 @@ fn timeline_with_palette(actors: Vec<ActorTransform>, palette: PaletteControls) 
             fov_degrees: 45.0,
             roll_radians: 0.0,
             cut_from_previous: false,
+            ..Default::default()
         },
         actors,
         audio_cues: Vec::new(),
