@@ -74,4 +74,13 @@ The renderer-only levers are exhausted, so each item starts by reading one `PLAY
 3. **The `INTRO.FLM` flat-sand frames** — 11 frames lose more than 0.30 to terrain at IoU 0.97 to 1.0 and index agreement 0.00 to 0.33 (ticks 1088, 1098, 1308-1374, 1505 and 2690-2778), where the capture is 54 to 97% sand index 91 and we draw 195 or 208. Coverage is right and content is absent, so a colour rule alone cannot fix it; at tick 1505 the capture also carries about 17.8% of indices 216 to 218, which we never emit. This is not the montage tick rule: the montage window (ticks 1290 to 1500) now scores 0.7807, above the film mean of 0.7224.
 4. **Prop shading and detail** — props are 0.0779 / 0.0727, the second class on both films, and the one lever left that needs no decode.
 
+### Where the 2026-10-24 goal stopped
+
+The goal ran two rounds and adopted nothing, which is its own stop rule. Both rounds went at the ground question from opposite ends and both were stopped by missing evidence rather than by a negative result:
+
+* **The stream is not in conventional memory.** The runner at `0x9161` calls the display list's first word as code, so a relocated record carries the handler's offset; `0x995C` occurs in none of the 96 dumps and `0x9A24` twice ([world-scene.md](../playone-exe/world-scene.md) section 6).
+* **The light is handed in, not computed.** `0x9100` writes `L` from AX/BX/DX and fills the rest of its block from DGROUP; the caller is the binary's one genuinely unreferenced entry ([terrain-shade.md](../playone-exe/terrain-shade.md#41-the-entry-decodes-but-it-is-handed-its-light)).
+
+So the next goal cannot open on item 1 or on the model-origin half of item 2 without evidence this one could not obtain. The two routes that would produce it are an EMS page-frame dump during playback, and the loader's relocation rule from the unpacked image — the first is a harness job, the second static work this notebook has the addresses for. Item 3 (the flat-sand frames) is untouched and does not depend on either.
+
 Moved out of this list: the two-sided flag. `SodVertex::flags` bit 1 has no known writer, and the tick-832 regression it was meant to repair is one frame worth about 0.0003 of the film mean. It is tracked as an open question in [sod-vm.md](../playone-exe/sod-vm.md).

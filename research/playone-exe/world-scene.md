@@ -79,6 +79,7 @@ _Found 2026-10-23 at `f61e792`, `48b955a`, `39a3868`, `728b9ab`, `6ae7b31`; see 
 * **A baked ground display list resident in conventional memory** (rounds 5-6 and 14 scans above): none at clocks 276/277 in either coordinate system.
 * **A first-pass dispatcher translating opcodes** (searched for a walker over `table + op + 5`, `slot + 3`): the slots are the translation (section 4).
 * **The archived stream threaded by file offset** (2026-10-24): walking from `0x13FC` or `0xEFE4` with `[w0][count shades][next]` stops at the first record, because its terminator (`0x0009`, `0x3004`) is not an offset into the file that holds an op word.
+* **The live ground stream in conventional memory, relocated** (2026-10-24): the runner at `0x9161` does `lodsw es:[si]` then `call ax`, so a relocated op word is the *handler's* code offset (`0x995C` at image, `0x171C` in VM terms), and the earlier scans did not look for the image form. Across all 96 dumps under `build/re/mem` and `build/scratch`, `0x995C` occurs **zero** times and `0x9A24` twice, the chance rate. The list is therefore outside the 16 dumped segments — the EMS page frame or the 4 KiB segment tail the 0xF000-byte dump skips.
 * **Colour computed at load by `OP_FRACTAL` or `OP_IPG`** (section 3): constant `0x50` and a zero type table.
 * **Searching in notebook `CS = 0x0F17` coordinates and with a separate colour/count layout:** both made earlier scans unable to match; superseded by sections 2 and 4.
 

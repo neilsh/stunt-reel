@@ -50,6 +50,24 @@ Dispatch `0x839C` -> handler `0x9481`. Operand stream: `di_off, count, (nx, ny, 
 
 `L` is three words in the same layout as the negated sun vector six bytes later, and only the shading opcode reads it, so it is the scene light direction. **Its caller is unknown**: there is no direct `call`/`jmp`, no `lcall 0,0x9100` and no `mov ax,0x9100`; the entry is reached indirectly.
 
+### 4.1 The entry decodes, but it is handed its light
+
+`[Established]` for the instruction sequence, `[Unknown]` for the caller. Disassembled at image `0x9100`, the routine is a per-frame setup that fills a 0x2E-byte state block at `work:0x806E` and then runs the display list:
+
+```asm
+9100  push ds / mov di,0x15d4 / mov ds,di   ; work segment: 0x15D4 here, 0x1DF8 at runtime (+0x824)
+9106  mov [0x8072],ax ; mov [0x8074],bx ; mov [0x8076],dx   ; L, straight from the caller's AX/BX/DX
+9111  sub ch,cl
+9113  mov [0x806e],cx                     ; shift word: low byte is the exponent
+911d  shr [0x8108],cl ; mov [0x8070],ax    ; projection scale
+9124  cmp bp,0x200 / test against [0x8084] → one of two clip sets
+914f  [0x807e]=0x3994 [0x8080]=0x4794 [0x8082]=0x1ab1
+9167  [0x807e]=0x3943 [0x8080]=0x42ce [0x8082]=0x1afa
+9161  lodsw ax,es:[si] / call ax           ; the first word of the stream is a code offset
+```
+
+So the light is not computed here: it arrives in registers from a caller the binary does not reference directly, which is why no static search finds it. What the routine does own is the block layout and the fact that `0x806E` is a **shift count, not a model origin**: its low byte is the exponent used at `0xADAC`, where a model coordinate pair `([si+0x0A],[si+0x0C])` becomes `((hi >> (0x10 - cl)) + (lo << cl)) - [0x8084]`. The 0x17 words at `0x806E` are copied to the stack, passed through `0x1B75` and copied back at `0xB568`-`0xB585`, so that block is the walker's per-frame input.
+
 ## 5. Index composition
 
 Opcodes `0x0168` (handler `0x995C`, per-vertex path) and `0x02BE` (handler `0x9A24`) both do:
