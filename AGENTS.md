@@ -32,7 +32,7 @@ Refer directly to authoritative documents rather than duplicating definitions:
 | **Anchor Registry** | [`python/stunt_reel/doc_anchors.py`](python/stunt_reel/doc_anchors.py) | Every `[I*]`, `# [FMT-*]` and `# [MEM-*]` token and the one heading that defines it; `tests/test_doc_invariants.py` checks both directions. |
 | **Runtime Memory Map** | [`research/playone-exe/memory-map.md`](research/playone-exe/memory-map.md) | `DGROUP` (`0x0D51`) offset reference tables, real-mode linear translation, and memory anchors (`# [MEM-*]`). |
 | **Seam Contracts** | [`contracts/mod.rs`](crates/stunt-core/src/contracts/mod.rs) | Contract boundaries: [`vfs`](crates/stunt-core/src/contracts/vfs.rs) (Seam 1), [`trajectory`](crates/stunt-core/src/contracts/trajectory.rs) (Seam 2), [`shape`](crates/stunt-core/src/contracts/shape.rs) (Seam 3), and Seam 4, capture and compare: [`palette`](crates/stunt-core/src/contracts/palette.rs), frames from `stunt-render`, and the `stuntreel parity` subcommand in [`crates/stunt-cli/src/parity/`](crates/stunt-cli/src/parity/). |
-| **Project Setup & Tasks** | [`README.md`](README.md) & [`mise.toml`](mise.toml) | Environment prerequisites, task runner definitions (`check`, `lint`, `fmt`, `typecheck`, `test`, `play`, `mcp`), and manual command fallbacks. |
+| **Project Setup & Tasks** | [`README.md`](README.md) & [`mise.toml`](mise.toml) | Environment prerequisites, task runner definitions (`check`, `lint`, `fmt`, `typecheck`, `test`, `play`, `mcp`, `init`, `clean`), and manual command fallbacks. |
 | **Repository Layout** | [`README.md#project-structure`](README.md#project-structure) | Workspace crate locations, tooling directories, and asset storage rules. |
 | **Synthetic Fixtures** | [`tests/fixtures/README.md`](tests/fixtures/README.md) | Cleanroom synthetic mock files (`.res`, `.flm`, `.json`) and binary specifications. |
 | **Reference Corpus** | [`corpus/README.md`](corpus/README.md) | Upstream demo archive and community developer package structure (`stisldem/`, `si_archive/`). |
@@ -86,3 +86,10 @@ Each turn re-sends the whole conversation, so cost is roughly turns times contex
 3. **Scoped checks while iterating.** Use `mise run check-rust` or `mise run check-py` (one line per step, failures only); run the full `mise run check` once, before a commit or hand-off (Directive 2).
 4. **Scripts before subagents.** Mechanical checks (link, anchor, table or mapping audits) belong in a script. Delegate only real chunks of work: Haiku first, Sonnet as fallback, at most about 8 subagents per task, since each one starts cold.
 5. **Parity work** follows the [`improving-render-parity`](.agents/skills/improving-render-parity/SKILL.md) skill, which holds its own cost rules (build once, batched sweeps, scratch paths, image budget).
+
+### SOP 6: Working in a Worktree
+
+1. One agent per worktree, one branch per worktree, both outside the checkout (`<repo>.wt/<slug>`). Never run a second agent in your worktree, and never work on a branch another worktree holds.
+2. `mise run init` once per worktree links the shared data root and creates the virtualenv. Nothing else is needed: `mise run check` is corpus-free.
+3. The shared data root (`<parent-of-primary>/<repo-name>.data`, or `STUNT_DATA_ROOT`) is **read-only**. `mise run capture-ref` and oracle generation refuse without `STUNT_DATA_WRITE=1`, and only one session may capture at a time: DOSBox-X and port `58991` are machine-wide, not per worktree.
+4. `mise run clean -- --yes` removes this worktree's `target/`, `build/` and caches before you reap it; the shared data root is untouched. See [ADR 0008](docs/adr/0008-worktrees-share-one-read-only-data-root.md).

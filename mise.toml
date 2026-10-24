@@ -57,6 +57,14 @@ description = "Launch DOSBox-X MCP server (ensuring DOSBox-X is running)"
 depends = ["ensure-dosbox"]
 run = "dosbox-x-mcp-server"
 
+[tasks.init]
+description = "Link the shared data root into this worktree and create the Python environment (mise run init -- --migrate adopts an existing corpus)"
+run = "uv sync --locked --all-groups && uv run python python/scripts/worktree_init.py init"
+
+[tasks.clean]
+description = "Report this worktree's build outputs; remove them with --yes (mise run clean -- --yes)"
+run = "uv run python python/scripts/worktree_init.py clean"
+
 [tasks.capture-ref]
 description = "Capture PLAYONE.EXE Mode 13h frames for visual parity (default CTRY; mise run capture-ref -- --film corpus/stisldem/VAULT/INTRO.FLM)"
 run = "uv run python python/scripts/capture_playone_reference.py"

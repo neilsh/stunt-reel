@@ -29,9 +29,7 @@ htmlcov/
 # Corpus archives, extracted data & capture dumps (Invariant [I7])
 corpus/*.zip
 corpus/stisldem/*
-!corpus/stisldem/.gitkeep
 corpus/si_archive/*
-!corpus/si_archive/.gitkeep
 corpus/oracle/
 corpus/captures/
 corpus/dumps/

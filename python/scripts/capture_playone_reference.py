@@ -19,6 +19,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from stunt_reel.dataroot import require_shared_write
 from stunt_reel.tac import playone
 from stunt_reel.tac.client import TacClient
 from stunt_reel.tac.framebuffer import capture
@@ -137,6 +138,7 @@ def clear_frames(out_dir: Path) -> None:
 
 def run_session(args: argparse.Namespace) -> int:
     """Launch one emulator, drive the dialog, and capture frames."""
+    require_shared_write("mise run capture-ref")
     film: Path = args.film if args.film.is_absolute() else REPO_ROOT / args.film
     out: Path = args.out or Path("build/parity/reference") / film.stem.lower()
     out_dir: Path = out if out.is_absolute() else REPO_ROOT / out

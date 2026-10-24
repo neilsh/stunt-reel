@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from stunt_reel.dataroot import is_shared, require_shared_write
 from stunt_reel.tac.dos_math import compute_world_matrix as math_compute_world_matrix
 
 __all__ = [
@@ -266,6 +267,8 @@ def load_trajectory_records(path: str | Path) -> list[TrajectoryRecord]:
 def save_trajectory_records(records: Sequence[TrajectoryRecord], path: str | Path) -> None:
     """Save list of TrajectoryRecord objects to a JSON file matching Seam 2 specification."""
     dest = Path(path)
+    if is_shared(dest):
+        require_shared_write(f"writing {dest.name}")
     dest.parent.mkdir(parents=True, exist_ok=True)
     payload = [rec.to_dict() for rec in records]
     json_text = json.dumps(payload, indent=2) + "\n"

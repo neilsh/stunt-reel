@@ -22,11 +22,11 @@ The living specification is [`docs/SPEC.md`](docs/SPEC.md) — goals, invariants
 ### 1. mise
 
 ```powershell
-mise install          # pinned toolchains, DOSBox-X, Kaitai compiler
-uv sync --all-groups  # Python virtualenv plus dev tools (ruff, mypy, pytest, kaitaistruct)
+mise install   # pinned toolchains, DOSBox-X, Kaitai compiler
+mise run init  # Python environment, then link the shared data root
 ```
 
-Pinned versions live in [`mise.toml`](mise.toml); the `kaitaistruct==0.11` runtime is installed by `uv sync` for the schema checks.
+Pinned versions live in [`mise.toml`](mise.toml); `mise run init` runs `uv sync`, which installs the `kaitaistruct==0.11` runtime for the schema checks.
 
 ### 2. Agent / MCP integration
 
@@ -51,6 +51,18 @@ Register the server in the agent's MCP configuration file (`~/.gemini/config/mcp
 > [!NOTE]
 > DOSBox-X profiles connect *out* to the control port via `[dosbox] mcp_server = 58991`. `mise run capture-ref` binds that port itself, so stop the MCP server and any other DOSBox-X instance before capturing.
 
+### 3. Worktrees and the shared data root
+
+Several agents can work at once, each in its own `git worktree` outside the checkout (`D:\git\stunt-reel.wt\<slug>`). The corpus, the reference captures and `target_bin/` are gitignored, so they live once per machine instead of once per checkout:
+
+```text
+D:\git\stunt-reel.data\   corpus\{stisldem,si_archive,oracle}, reference\, target_bin\
+```
+
+`mise run init` links those into a worktree with junctions, so the relative `corpus/` and `build/parity/reference/` paths work unchanged; build outputs, caches and `.venv` stay per worktree. `STUNT_DATA_ROOT` names a different data root, and `mise run init -- --migrate` moves an existing in-checkout `corpus/` into it.
+
+The data root is **read-only**: `mise run capture-ref` and oracle generation refuse unless `STUNT_DATA_WRITE=1` is set, and only one session may capture at a time, because DOSBox-X and port `58991` are machine-wide. `mise run clean -- --yes` reports and removes this worktree's outputs before you reap it. See [ADR 0008](docs/adr/0008-worktrees-share-one-read-only-data-root.md).
+
 ---
 
 ## Project Structure
@@ -66,9 +78,9 @@ Register the server in the agent's MCP configuration file (`~/.gemini/config/mcp
 | `tests/` | Python suite and cleanroom fixtures — [`tests/fixtures/README.md`](tests/fixtures/README.md); Rust integration tests live in `crates/*/tests/` |
 | `docs/` | Living spec, architecture routing, ADRs, and process documents (`process/`) |
 | `research/` | Format specifications beside their `.ksy` layouts plus `PLAYONE.EXE` analysis notes — [`research/formats/INDEX.md`](research/formats/INDEX.md) |
-| `corpus/` | Gitignored demo and archive data — [`corpus/README.md`](corpus/README.md) |
+| `corpus/` | Gitignored demo and archive data, linked from the shared data root — [`corpus/README.md`](corpus/README.md) |
 | `target_bin/` | Gitignored original game binaries |
-| `build/` | Gitignored outputs: `build/parity/{reference,ours,report}/` and `build/gltf_output/` |
+| `build/` | Gitignored outputs: `build/parity/{ours,report}/` and `build/gltf_output/`; `build/parity/reference/` borrows the shared captures |
 | `dosbox-*.conf` | `dosbox-playone.conf` (interactive play), `dosbox-parity.conf` (capture), `dosbox-mcp.conf` (agent debugger), `test_mcp.conf` |
 | `play_ctry.bat` | Convenience launcher for `mise run play` |
 

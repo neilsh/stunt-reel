@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import contextlib
 import math
+import os
 import socket
 import struct
 import tempfile
@@ -255,7 +256,8 @@ class ListenTransport(_FramedTransport):
         self.port = port
         self.timeout = timeout
         self._listener: socket.socket | None = None
-        self._read_path: Path = Path(tempfile.gettempdir()) / "stunt_tac_read.bin"
+        # Per-process: a fixed name let two captures overwrite each other's dump.
+        self._read_path: Path = Path(tempfile.gettempdir()) / f"stunt_tac_read_{os.getpid()}.bin"
 
     def listen(self) -> None:
         """Bind the control port and wait for one emulator connection."""
