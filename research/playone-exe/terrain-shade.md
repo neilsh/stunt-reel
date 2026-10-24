@@ -76,7 +76,7 @@ The flat variant at `0x9A58` (used when `work:[0x806B] == 0`) replaces `s >> 1` 
 
 ## 6. The filler writes an index ramp
 
-Polygon filler `0x75DB` (reached by `lcall 0,0x75DB` from `0x9A15`), per span:
+Polygon filler `0x75DB` (reached by `lcall 0,0x75DB` from `0x9A15`; the 16-bit accumulate is at `0x7671`), per span:
 
 ```asm
 760c  ad              lodsw                ; span x1
@@ -137,7 +137,7 @@ _Found 2026-10-23 at `b44c6bc`; see the [parity log](../parity/log.md)._
   | 1194 | 2.89 | -0.5 | 193 | 92% |
 
 * **Not the palette, the map or the fade.** Palette entries 192-199 are byte-identical at ticks 10, 273, 448 and 667 (`[36,69,20]` to `[101,162,69]`), so 194 and 196 are genuinely different framebuffer values. Only the fade (from about tick 990) dims them, and the shifts happen before it.
-* **One polygon, up to three shades.** 61,205 flat-terrain samples (every second frame, every fourth pixel; pixel ray to `y = 0`, first `MAP.BIN` patch in loader order containing the point) land on record 4, the airfield, where the capture draws 196 on 50%, 194 on 27% and 193 on 13% (rest edge and prop pixels). A pixel-ID render over all 114 frames agrees: record 4 holds 2,438,973 of 3.35 million terrain pixels and is drawn 196 on 58.3%, 194 on 24.3%, 193 on 15.4%, 195 on 0.3%. All five of its anchors carry `f[10] = 31`, so no per-patch or per-anchor field is the driver.
+* **One polygon, up to three shades.** 61,205 flat-terrain samples (every second frame, every fourth pixel; pixel ray to `y = 0`, first `MAP.BIN` patch in loader order containing the point) land on record 4, the airfield, where the capture draws 196 on 50%, 194 on 27% and 193 on 13% (rest edge and prop pixels). A pixel-ID render over all 114 frames (`DBG_TERRAIN_ID`, every patch at its own index) agrees: record 4 holds 2,438,973 of 3.35 million terrain pixels and is drawn 196 on 58.3%, 194 on 24.3%, 193 on 15.4%, 195 on 0.3%. All five of its anchors carry `f[10] = 31`, so no per-patch or per-anchor field is the driver.
 * **The split follows screen position.** At tick 273 the capture splits 194 (far) from 196 (near) inside the patch, with no data-colour edge within 3 px of the boundary (328 boundary nodes). The boundary slope is about 0.23 rows per pixel against 0.30 for a constant-`w` line and 0 for a scanline, at reconstructed `w` of 18-20 m with camera roll 340 degrees. That matches the straight screen-space iso-index line of section 1, not a world plane.
 * **The level changes per shot, not with the camera.** Ticks 273 (eye 7.0 m) and 448 (eye 3.3 m) share pitch -13.2 degrees and view direction yet differ (far ground 194 against a uniform 196). The sky moves on the same timescale (top-of-sky mode 234 at tick 10 to 228 at tick 1194) but not monotonically with the ground.
 * **Pooled by depth** (all frames): below 10 m the capture draws 196 on 89% of flat pixels, 20-30 m 194 on 81%, 30-40 m 194 on 77%, 60-400 m mostly 196 (61-73%). No fixed depth law reconciles near and far bins across frames.

@@ -14,7 +14,7 @@ _Found 2026-10-22; see the [loss attribution row](log.md)._
 
 ## 2. Current breakdown
 
-Loss by class, most recent run per film (`main` at `d90a047`, 2026-10-23, no DBG switches): CTRY 0.7708 over 114 scored frames (index agreement 0.475, IoU 0.978): terrain 0.113, props 0.074, sky 0.018, reference-only 0.014, actors 0.008. INTRO 0.6762 over 209 (0.481, 0.919): terrain 0.170, props 0.068, reference-only 0.029, sky 0.024, ocean 0.012.
+Loss by class, most recent run per film (`integration/library-adoption`, 2026-10-23, after the page-timing adoption, no DBG switches): CTRY 0.7732 over 114 scored frames (index agreement 0.505, IoU 0.9783): terrain 0.1026, props 0.0816, sky 0.0183, reference-only 0.0141, actors 0.0083. INTRO 0.6799 over 209 (0.534, 0.9205): terrain 0.1434, props 0.0912, reference-only 0.0289, sky 0.0243, actors 0.0125, ocean 0.0117. Terrain is about 45% of the loss on both films (CTRY 0.1026 of 0.227, INTRO 0.1434 of 0.320).
 
 Earlier breakdowns, superseded: CTRY after the lighting change (2026-10-22) terrain 0.116, props 0.072, reference-only 0.035, actors 0.008, sky and ocean 0.003 (total 0.234). The INTRO baseline of 2026-10-22 (0.676, IoU 0.802, index agreement 0.482) had terrain 0.175, props 0.071, reference-only 0.051, actors 0.013, ocean 0.012, sky 0.002.
 
@@ -58,7 +58,7 @@ _Found 2026-10-23 at `d90a047`; see the [parity log](log.md)._
 
 ## Ruled out
 
-* **Global framing offset** (2026-10-23): capture rows 0-184 shifted by `dy`, columns by `dx`, scored against unchanged renders (`mean_ssim_scored`). Rows -6..+6: CTRY 0.7694, **0.7776** (-4), 0.7761, 0.7732 (0), 0.7631, 0.7477, 0.7400; INTRO 0.6665, 0.6723, 0.6747, **0.6799** (0), 0.6737, 0.6655, 0.6596. Columns -8..+8: CTRY flat within 0.0006 over -4..+6 (best 0.7738 at +6), INTRO best 0.6806 at -2. CTRY peaks 4 rows up (+0.0044) where INTRO loses 0.0052, so no rigid offset serves both films. Nothing adopted. See [`framing-and-actors.md`](framing-and-actors.md).
+* **Global framing offset** (2026-10-23): capture rows 0-184 shifted by `dy`, columns by `dx`, scored against unchanged renders (`mean_ssim_scored`). Rows -6..+6: CTRY 0.7694, **0.7776** (-4), 0.7761, 0.7732 (0), 0.7631, 0.7477, 0.7400; INTRO 0.6665, 0.6723, 0.6747, **0.6799** (0), 0.6737, 0.6655, 0.6596. Columns -8..+8 in steps of 2: CTRY 0.7615, 0.7643, 0.7687, 0.7730, 0.7732 (0), 0.7730, 0.7734, **0.7738** (+6), 0.7714; INTRO 0.6768, 0.6773, 0.6792, **0.6806** (-2), 0.6799 (0), 0.6792, 0.6798, 0.6794, 0.6768. Both films are flat horizontally (CTRY within 0.0006 over -4..+6, INTRO's best +0.0007). CTRY peaks 4 rows up (+0.0044) where INTRO loses 0.0052, so no rigid offset serves both films. Nothing adopted. See [`framing-and-actors.md`](framing-and-actors.md).
 * **Terrain distance cull** (not attempted): the land/sea boundary is already nearly right (section 5).
 
 ## Next probes
