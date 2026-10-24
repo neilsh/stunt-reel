@@ -100,3 +100,20 @@ the `res\*.res` cache (packed payloads) or the image, and the image carries `OP_
 Next: one harness run - break at `0x9982`/`0x99A6` and recover `ES:SI`/`CS:IP` for a ground
 polygon (or dump the EMS page frame and grep it for `colour << 8 | count` headers). Then either
 decode the stream and its builder, or pivot to the generated-terrain route.
+
+---
+
+## Round 12 update: the ground colour is stored per polygon; the builder is the remaining unknown
+
+Static trace (`parity-findings.md` section 23): the handler consumes `es:[si+1]` (the high byte of
+`w0 = (colour << 8) | (count & 0x0F)`) and adds only the light term - no palette lookup, no table.
+The stream is self-patching threaded code (handler tail `0x996E`: `lodsw; and ax,0xF; shl ax,1;
+add si,ax; lodsw; jmp ax`), generated at runtime and absent from all 72 memory dumps (handler IPs,
+slot aliases and record headers all searched - the earlier scans only looked for opcodes/colours).
+`OP_IPG` (`0x965F`) and `OP_FRACTAL` (`0xA56C`) can emit terrain records with a supplied colour.
+
+Next: find the first-pass dispatcher that translates opcodes into the patched stream (search for a
+walker over `table + op + 5` or `slot + 3`, and for writes of `0x2551`-style IPs into the work
+segment; no literal `0x1316`, so look for the `call $+3`/`pop si` self-relative base at `0x7B76`,
+`0x15D45`, `0x163A1`, `0x163BD`, `0x17148`, `0x17329`). Cheap cross-check: dump `work:0x1DF8` and
+grep for words in `0x1F00-0x3000` or `0x1400-0x1A00`.
