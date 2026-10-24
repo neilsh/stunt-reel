@@ -84,3 +84,19 @@ Next session: start from this note. The one blocking unknown is the player's bak
 list; recovering it (builder routine or EMS page frame), decoding it, and re-baking or rebuilding
 the terrain from it is the whole remaining path. Then resume normal renderer rounds with the
 adoption rule.
+
+---
+
+## Round 11 update: record layout corrected, no resident list
+
+Delegated decode result (`parity-findings.md` section 22): the ground record is
+`w0 = (colour << 8) | (count & 0x0F)`, then `N` words indexing the shade array `work:0x7468`, then
+the next code address (threaded stream) - colour and count share one word, which is why the earlier
+scans missed. Rescanned with that layout: no ground display list resident in the image or the
+round-5/6 dumps at clocks 276/277. The player has no `MAP.BIN`/`ANCHORPT.DAT`; world data comes from
+the `res\*.res` cache (packed payloads) or the image, and the image carries `OP_FRACTAL` (`0x1D4`) and
+`OP_IPG` (Ground), so the terrain colours may be *generated at load* rather than baked into a list.
+
+Next: one harness run - break at `0x9982`/`0x99A6` and recover `ES:SI`/`CS:IP` for a ground
+polygon (or dump the EMS page frame and grep it for `colour << 8 | count` headers). Then either
+decode the stream and its builder, or pivot to the generated-terrain route.
