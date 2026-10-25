@@ -2,7 +2,7 @@
 
 ## 1. Overview & File Identification
 
-The static world environment of *Stunt Island* (1992, Walt Disney Computer Software / The Assembly Line) is defined by a triad of specialized scenery and terrain files: `ANCHORPT.DAT`, `MAP.BIN`, and `SCENERY.scn`. Together with auxiliary `.RES` scenery containers (`SCENERY1.RES` through `SCENERY6.RES`), these files govern the continuous island landmass, mountain elevations, coastal shorelines, ocean water quad, and the hierarchical spatial distribution of every permanent airport runway, building, hangar, and landmark on the island.
+The static world environment of *Stunt Island* is defined by a triad of specialized scenery and terrain files: `ANCHORPT.DAT`, `MAP.BIN`, and `SCENERY.scn`. Together with auxiliary `.RES` scenery containers (`SCENERY1.RES` through `SCENERY6.RES`), these files govern the continuous island landmass, mountain elevations, coastal shorelines, ocean water quad, and the hierarchical spatial distribution of every permanent airport runway, building, hangar, and landmark on the island.
 
 - **File Extensions / Formats:**
   - `ANCHORPT.DAT`: Discrete topological heightmap and ground-normal anchor point table.

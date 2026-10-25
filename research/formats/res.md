@@ -2,7 +2,7 @@
 
 ## 1. Overview & File Identification
 
-The `.RES` file format is the foundational static resource container for *Stunt Island* (1992, Walt Disney Computer Software / The Assembly Line). The game engine relies on `.RES` packages located in the `res\` directory (`DS:05DB` in `PLAYONE.EXE`) to store all primary game assets: 3D geometry display lists (`.SOD`), 2D software bitmaps and sprites (`.SPR`), frame animations (`.ANM`), sound stage dialogue recordings (`DIALOG.RES`), UI definitions (`GAME.RES`), and world scenery models (`SCENERY1.RES`–`SCENERY6.RES`).
+The `.RES` file format is the foundational static resource container for *Stunt Island*. The game engine relies on `.RES` packages located in the `res\` directory (`DS:05DB` in `PLAYONE.EXE`) to store all primary game assets: 3D geometry display lists (`.SOD`), 2D software bitmaps and sprites (`.SPR`), frame animations (`.ANM`), sound stage dialogue recordings (`DIALOG.RES`), UI definitions (`GAME.RES`), and world scenery models (`SCENERY1.RES`–`SCENERY6.RES`).
 
 ### Key File Attributes
 

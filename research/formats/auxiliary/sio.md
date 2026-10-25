@@ -2,7 +2,7 @@
 
 ## 1. Overview & File Identification
 
-The `.SIO` format is an intermediate 3D mesh and point-cloud authoring format created for *Stunt Island* (1992, Walt Disney Computer Software / The Assembly Line). It was designed and implemented by Dave Palmowski (1999–2001, Stunt Island Filmmakers Association / SIFA) as the native file format for **SLICE** ("Stunt isLand Inhouse Custom Editor"), an external visual 3D modeler originally developed in Visual Basic 5.0 to author complex curved vehicles and structural props for the community film *UFO Command Act 2*.
+The `.SIO` format is an intermediate 3D mesh and point-cloud authoring format created for *Stunt Island*. It was designed and implemented by Dave Palmowski (1999–2001, Stunt Island Filmmakers Association / SIFA) as the native file format for **SLICE** ("Stunt isLand Inhouse Custom Editor"), an external visual 3D modeler originally developed in Visual Basic 5.0 to author complex curved vehicles and structural props for the community film *UFO Command Act 2*.
 
 - **File Extension:** `.SIO`
 - **Magic Bytes:** 8 bytes: `53 64 73 01 00 00 00 00` (ASCII `b"Sds\x01"` followed by four zero version bytes).

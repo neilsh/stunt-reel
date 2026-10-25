@@ -2,7 +2,7 @@
 
 ## 1. Overview & File Identification
 
-The `.SPR` format represents uncompressed 8-bit indexed raster billboard images and animation frames developed for *Stunt Island* (1992, Walt Disney Computer Software / The Assembly Line). The format was codified by Dave Palmowski (2001, Stunt Island Filmmakers Association / SIFA) with the release of the `SpriteMaker` suite (`PCX2SPR.EXE`, `MAKESPR.EXE`, and `DRAWSPRT.EXE`), enabling community filmmakers and modders to inject custom camera-facing billboard visual effects (explosions, smoke clouds, muzzle flashes, rocket flares, dynamic logos, and the Death Star easter egg) into the engine.
+The `.SPR` format represents uncompressed 8-bit indexed raster billboard images and animation frames developed for *Stunt Island*. The format was codified by Dave Palmowski (2001, Stunt Island Filmmakers Association / SIFA) with the release of the `SpriteMaker` suite (`PCX2SPR.EXE`, `MAKESPR.EXE`, and `DRAWSPRT.EXE`), enabling community filmmakers and modders to inject custom camera-facing billboard visual effects (explosions, smoke clouds, muzzle flashes, rocket flares, dynamic logos, and the Death Star easter egg) into the engine.
 
 - **File Extension:** `.SPR`
 - **Magic Bytes:** None. The file begins directly with two 16-bit little-endian unsigned integers representing horizontal pixel width and vertical pixel height.
