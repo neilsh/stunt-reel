@@ -6,6 +6,7 @@ meta:
   id: spr
   title: Stunt Island billboard sprite (`.SPR`)
   file-extension: spr
+  ks-version: 0.11
   endian: le
 seq:
   - id: width

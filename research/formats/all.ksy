@@ -9,6 +9,7 @@ meta:
   id: all
   title: Stunt Island movie bundle (`.ALL`)
   file-extension: all
+  ks-version: 0.11
   endian: le
 seq:
   - id: num_chunk_ids

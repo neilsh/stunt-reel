@@ -11,6 +11,7 @@ meta:
   id: res
   title: Stunt Island resource archive (`.RES`)
   file-extension: res
+  ks-version: 0.11
   endian: le
 seq:
   - id: magic

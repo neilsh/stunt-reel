@@ -9,6 +9,7 @@ meta:
   id: flm_slice
   title: Stunt Island film time slice (`.FLM`)
   file-extension: flm
+  ks-version: 0.11
   endian: le
 params:
   - id: moves

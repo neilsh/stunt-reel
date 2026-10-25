@@ -9,6 +9,7 @@ meta:
   id: sod
   title: Stunt Island procedural model (`.SOD`)
   file-extension: sod
+  ks-version: 0.11
   endian: le
 seq:
   - id: op_id

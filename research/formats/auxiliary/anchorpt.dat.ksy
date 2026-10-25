@@ -7,6 +7,7 @@ meta:
   id: anchorpt
   title: Stunt Island terrain anchor points (`ANCHORPT.DAT`)
   file-extension: dat
+  ks-version: 0.11
   endian: le
 seq:
   - id: points

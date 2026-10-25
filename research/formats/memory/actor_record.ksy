@@ -7,6 +7,7 @@
 meta:
   id: actor_record
   title: Runtime actor chain entry (64 bytes)
+  ks-version: 0.11
   endian: le
 seq:
   - id: actor_id

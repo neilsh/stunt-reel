@@ -10,6 +10,7 @@ meta:
   id: sio
   title: Stunt Island SLICE point cloud (`.SIO`)
   file-extension: sio
+  ks-version: 0.11
   endian: le
 seq:
   - id: magic

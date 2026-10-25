@@ -8,6 +8,7 @@ meta:
   id: map_area
   title: Stunt Island terrain patch table (`MAP.BIN`)
   file-extension: bin
+  ks-version: 0.11
   endian: le
 seq:
   - id: patches

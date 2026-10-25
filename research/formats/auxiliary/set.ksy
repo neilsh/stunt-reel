@@ -2,6 +2,7 @@ meta:
   id: set
   title: Stunt Island scene definition (`.SET`)
   file-extension: set
+  ks-version: 0.11
   endian: le
 doc: |
   A `.SET` file is an 84-byte environment header, then `num_events`

@@ -8,6 +8,7 @@ meta:
   id: scenery
   title: Stunt Island BSP scenery graph (`SCENERY.scn`)
   file-extension: scn
+  ks-version: 0.11
   endian: le
 seq:
   - id: words
