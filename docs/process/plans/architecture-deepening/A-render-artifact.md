@@ -1,6 +1,6 @@
 # Unit A: the render artifact seam
 
-Status: design agreed 2026-10-24; landings 1-3 of 4 merged. Source: architecture review card 1 (the render artifact seam) plus the report-aggregation rider.
+Status: design agreed 2026-10-24; all four landings merged. Source: architecture review card 1 (the render artifact seam) plus the report-aggregation rider.
 
 ## 1. Problem
 
@@ -114,4 +114,6 @@ Abandon or re-shape the unit if: the port crate needs `stunt-render` or wgpu to 
 
 2. **Landing 2 merged 2026-10-24.** A render directory must carry one of the two documents: with neither, parity refuses with the re-render message; the legacy sidecar is still read. The measured fade no longer decides `scored` (ADR 0005): the floor comes from authored brightness, and a tick with no authored entry is not excluded. The baseline was regenerated - 1333 CTRY frames and 2876 INTRO frames - and the pre-change binary and the landing-2 binary produce semantically identical reports on both regenerated directories and on the legacy-only baseline render directory.
 
-3. **Landing 3 merged 2026-10-24.** The Python adapter `python/stunt_reel/parity_artifacts.py` mirrors the port (records, validation, naming, the `--frames` mapping, retime document rewriting); `parity_inputs.py` is a thin shim; the probe and sweep consume the adapter and drop their 320/185/16 and sidecar constants. Retime on a real CLI-written directory preserved 1333 ticks, film, geometry, palette and camera, synced the legacy sidecar and kept unknown keys. Verification: scoped ruff, mypy and parity tests green (72 passed); full Python suite 247 passed, 4 skipped; retime byte-compared against `build/tmp/a2-render/ctry`. The full `mise run check` runs at unit completion because the other units are mid-flight.
+3. **Landing 3 merged 2026-10-24.** The Python adapter `python/stunt_reel/parity_artifacts.py` mirrors the port (records, validation, naming, the `--frames` mapping, retime document rewriting); `parity_inputs.py` was a thin shim at this point; the probe and sweep consume the adapter and drop their 320/185/16 and sidecar constants. Retime on a real CLI-written directory preserved 1333 ticks, film, geometry, palette and camera, synced the legacy sidecar and kept unknown keys. Verification: scoped ruff, mypy and parity tests green (72 passed); full Python suite 247 passed, 4 skipped; retime byte-compared against `build/tmp/a2-render/ctry`.
+
+4. **Landing 4 merged 2026-10-24.** The render writer no longer writes the legacy `palette_controls.json` sidecar; parity still reads it from renders made before the record. The `parity_inputs.py` shim and its tests are deleted, and ADR 0010's validation-home sentence now points at the adapter alone. Verification: a three-tick render writes only `render.json` (no sidecar) with the same PNG/`.idx`/`.layer` bytes; the Python suite is green without the shim; the full `mise run check` runs at integration with unit C's deletion stage.

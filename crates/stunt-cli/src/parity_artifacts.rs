@@ -2,15 +2,15 @@
 //!
 //! The port owns the schema; this module owns the files. It is the only place
 //! the CLI learns artifact names and JSON details, and the only place that
-//! writes `render.json`. During the migration it also writes the legacy
-//! `palette_controls.json` sidecar and reads it as a fallback.
+//! writes `render.json`. It still reads the legacy `palette_controls.json`
+//! sidecar as a fallback for renders made before the record existed.
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use stunt_core::contracts::{CameraTransform, PaletteControls};
 use stunt_core::scene::SceneFrame;
 use stunt_parity::{
@@ -140,31 +140,6 @@ fn camera_pose(camera: CameraTransform) -> CameraPose {
     }
 }
 
-fn legacy_sidecar(film: &FilmId, ticks: &[RenderTick]) -> Value {
-    let ticks: Vec<Value> = ticks
-        .iter()
-        .map(|tick| {
-            json!({
-                "tick": tick.tick,
-                "sky": tick.palette.sky,
-                "brightness": tick.palette.brightness,
-                "saturation": tick.palette.saturation,
-                "camera": {
-                    "eye": tick.camera.eye,
-                    "target": tick.camera.target,
-                    "fov_degrees": tick.camera.fov_degrees,
-                    "roll_radians": tick.camera.roll_radians,
-                },
-            })
-        })
-        .collect();
-    json!({
-        "film": film.name,
-        "flm_bytes": film.flm_bytes,
-        "ticks": ticks,
-    })
-}
-
 /// Collects one render directory's document and writes it last.
 ///
 /// Frame files themselves are still written by the caller during this landing;
@@ -197,17 +172,12 @@ impl RenderJournal {
         });
     }
 
-    /// Writes the legacy sidecar, then `render.json` last; both are omitted
-    /// when no whole-tick frame was recorded, matching the sidecar's old behaviour.
+    /// Writes `render.json` last; it is omitted when no whole-tick frame was
+    /// recorded. The legacy sidecar is no longer written (ADR 0005 landing 4).
     pub(crate) fn finish(self) -> Result<(), AdapterError> {
         if self.ticks.is_empty() {
             return Ok(());
         }
-        write_json(
-            &self.dir.join(LEGACY_SIDECAR),
-            &legacy_sidecar(&self.film, &self.ticks),
-            false,
-        )?;
         let path = self.dir.join(RENDER_DOCUMENT);
         let record = RenderRecord {
             schema_version: SCHEMA_VERSION,
@@ -425,6 +395,7 @@ pub(crate) fn read_report(path: &Path) -> Result<Report, AdapterError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use stunt_core::contracts::{CameraTransform, PaletteControls};
     use stunt_core::scene::SceneFrame;
 
@@ -461,14 +432,14 @@ mod tests {
     }
 
     #[test]
-    fn journal_writes_both_documents_and_the_record_wins() {
+    fn journal_writes_the_record_and_no_legacy_sidecar() {
         let dir = temp_dir("journal");
         let mut journal = RenderJournal::begin(&dir, FilmId::default(), geometry());
         journal.record(7, &frame());
         journal.finish().expect("finish");
 
         assert!(dir.join(RENDER_DOCUMENT).is_file());
-        assert!(dir.join(LEGACY_SIDECAR).is_file());
+        assert!(!dir.join(LEGACY_SIDECAR).exists());
 
         let controls = load_render_controls(&dir).expect("load");
         assert_eq!(controls.geometry, Some(geometry()));
