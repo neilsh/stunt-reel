@@ -2,9 +2,11 @@
 # Format anchor: [FMT-SET-HEADER] in set.md.
 #
 # The 96-byte header is verified across all 93 corpus scenes: `magic_tag` is
-# 0x08 at 0x0052 and 0x60 + 64 * prop_count + 12 * event_count never exceeds
-# the file size. The prop/event table start and prop slot numbering are not
-# settled (BK-SET-04), so bytes after 0x0060 are left raw.
+# 0x08 at 0x0052. `0x53` counts events (six printed set dumps agree); the byte
+# at 0x54 is unidentified, observed 0-3. No size model with a 64-byte prop
+# stride and a 12-byte event stride is established, and the prop/event table
+# start and prop slot numbering are not settled (BK-SET-04, BK-SET-05), so
+# bytes after 0x0060 stay raw.
 meta:
   id: set
   title: Stunt Island scene definition (`.SET`)
@@ -51,12 +53,13 @@ seq:
     valid:
       expr: _ == 0x08
     doc: Structural validation constant `0x08` at byte 0x0052.
-  - id: num_props
-    -orig-id: prop_count
-    type: u1
   - id: num_events
     -orig-id: event_count
     type: u1
+    doc: Number of event records; agrees with the printed count of six sets.
+  - id: unknown_54
+    type: u1
+    doc: Unidentified; observed 0-3. Formerly read as the event count.
   - id: table_header
     size: 11
   - id: rest

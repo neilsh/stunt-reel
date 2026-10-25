@@ -32,7 +32,7 @@ A `.SET` file begins with a 96-byte (`0x60`) global environment header containin
 | `0x2A`–`0x2B` | 2 | `u16` (LE) | `crash_penalty` | Cost deducted from budget upon aircraft or prop destruction | `[Established]` |
 | `0x2C` | 1 | `u8` | `vehicle_flags` | Initial player vehicle mechanical state bitmask (see § 2.2) | `[Established]` |
 | `0x2D` | 1 | `u8` | `reserved_2d` | Structural alignment byte | `[Bounded Observation]` |
-| `0x2E`–`0x2F` | 2 | `u16` (LE) | `time_of_day` | Simulation time scalar (`0..65535`), modulating palette lighting ramp | `[Established]` |
+| `0x2E`–`0x2F` | 2 | `u16` (LE) | `time_of_day` | Simulation time scalar (`0..65535`), modulating palette lighting ramp; encoding unconfirmed (§ 3.5) | `[Bounded Observation]` |
 | `0x30` | 1 | `u8` | `reserved_30` | Internal engine padding | `[Bounded Observation]` |
 | `0x31` | 1 | `u8` | `default_camera` | Default active camera rig index (`cam_id - 1`) | `[Established]` |
 | `0x32` | 1 | `u8` | `weapon_type` | Primary player vehicle armament: `0` = None, `1` = Machine Gun, `2` = Missiles, `3` = Bombs | `[Established]` |
@@ -42,11 +42,11 @@ A `.SET` file begins with a 96-byte (`0x60`) global environment header containin
 | `0x3E` | 1 | `u8` | `initial_view_mode` | Initial viewpoint mode index (see § 2.3) | `[Established]` |
 | `0x3F`–`0x51` | 19 | `u8[19]` | `reserved_pad` | Reserved alignment and internal runtime pointers | `[Bounded Observation]` |
 | `0x52` | 1 | `u8` | `magic_tag` | Structural validation constant `0x08` | `[Established]` |
-| `0x53` | 1 | `u8` | `prop_count` | Number of active placed prop records in the prop table (identity contested; see below) | `[Bounded Observation]` |
-| `0x54` | 1 | `u8` | `event_count` | Number of scripted event trigger records in the event table | `[Established]` |
+| `0x53` | 1 | `u8` | `event_count` | Number of event records. Agrees with the printed event count of all six sets that have a dump (1, 1, 8, 2, 2, 10) | `[Bounded Observation]` |
+| `0x54` | 1 | `u8` | *unidentified* | Observed values 0–3 with no correlation to prop, event, camera or collision-window counts. Formerly read as `event_count` | `[Unknown]` |
 | `0x55`–`0x5F` | 11 | `u8[11]` | `table_header` | Table linkage offsets and internal memory pointer scratchpad | `[Bounded Observation]` |
 
-`prop_count` and `event_count` are single bytes, so the encoding admits 255 of each. The authoring tools expose 40 prop slots and 64 events; those are **authored limits**, not field bounds ([`GLOSSARY.md`](../../../GLOSSARY.md)).
+`0x53` is a single byte, so the encoding admits 255 events while the authoring tools expose 64: an **authored limit**, not a field bound ([`GLOSSARY.md`](../../../GLOSSARY.md)). The prop count is not stored in a dedicated header byte at all — the six dumped sets carry 4 to 39 props and no header byte matches them.
 
 The recording byte is the authoring screen's Global-Rec setting: the handbook names the three values Off, Auto and On, and states that an event's `Start Rec` or `Stop Rec` overrides this byte and every other recording setting (*handbook* p.97). It records authored policy rather than per-frame data; whether `PLAYONE.EXE` reads it is not established. Two corpus sets that both print `Initial Recorder :On` store different bytes — `0x02` in `BOMBING.SET` and `0xFF` in `DRIVING.SET` — so `0xFF` is not reliably an unset sentinel and its meaning is open.
 
@@ -141,7 +141,7 @@ Bit:   7   6   5   4   3   2   1   0
 
 ### 3.5 Scripted Event Trigger Records (12-Byte Blocks)
 
-Following the prop table (or located at an offset indexed by `0x55`), scripted event records are stored as contiguous 12-byte blocks. The count of active events is defined by `event_count` (`0x54`).
+Following the prop table (or located at an offset indexed by `0x55`), scripted event records are stored as contiguous 12-byte blocks. The count of active events is defined by `event_count` (`0x53`).
 
 | Relative Offset | Size | Type | Field Name | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -151,9 +151,9 @@ Following the prop table (or located at an offset indexed by `0x55`), scripted e
 | `+0x06` | 2 | `u16` (LE) | `action_param` | Auxiliary parameter (camera ID, audio sample ID, intensity) | `[Established]` |
 | `+0x08` | 4 | `u32` (LE) | `payload_data` | Additional parameter data, bitflags, or vector payload | `[Bounded Observation]` |
 
-The 12-byte event stride is documented, but the table location is unresolved for the same reason; no schema decodes events yet. What the corpus does establish is the shape of the region. `AUTOMATE.SET` and `CATCH.SET` are both exactly 1120 bytes with `0x53 = 4`, yet carry `0x54 = 1` and `0x54 = 3`; the event records therefore occupy a fixed-size block rather than a variable-length tail. The same 64-byte record stride that `set.md` gives the prop table continues through the file body (records at `0x3D0`, `0x410`, ... in `AUTOMATE.SET`), and no 12-byte-periodic structure appears in `BOMBING.SET` at all.
+Neither the table's location nor its 12-byte stride is corroborated. No 12-byte-periodic structure appears anywhere in `BOMBING.SET`, while the 64-byte record stride this note gives the prop table continues through the file body (records at `0x3D0`, `0x410`, ... in `AUTOMATE.SET`). An earlier revision of this section argued that events occupy a fixed-size block because `AUTOMATE.SET` and `CATCH.SET` share a size while differing in `0x54`; that argument rested on the wrong byte and is withdrawn — both files carry `0x53 = 4` events.
 
-Reading the printed dumps as a ground truth does not hold up. `BOMBING.TXT` is a tutorial article containing several sets' worth of `Prop #` blocks, and its printed values disagree with `BOMBING.SET` on at least two header fields: it lists five or more props where `0x53 = 1`, and states `Time of Day :08:00` where `0x2E` reads `0xD582`. The leading explanation is that the 1993 print shows a different revision of the file, so a dump is a lead rather than an oracle and no field below is promoted on its word alone.
+The printed dumps are a ground truth only in part. `BOMBING.TXT` is a tutorial article carrying several sets' worth of `Prop #` blocks, so a prop list cannot be attributed to one file; but matched by stunt title, the six dumps that name a shipped set confirm `0x53` as the event count every time. One header field still disagrees: `BOMBING.SET` prints `Time of Day :08:00` while `0x2E` reads `0xD582`, so that field's encoding is unconfirmed and its tier is lowered above.
 
 ### 3.6 Event Action Codes (`action_code`)
 
@@ -190,7 +190,7 @@ $$Z_{\text{world}} = \frac{Z_{\text{editor}} - 100000}{10.0} \quad (\text{meters
 | `[BK-SET-02]` | Trajectory Waypoint Spline Record | Bit-level packing of the 20-byte `trajectory_state` field (`+0x20`–`+0x33`) governing multi-point AI flight paths. | `[Bounded Observation]` |
 | `[BK-SET-03]` | Extended Event Opcode Catalog | Verification of additional action codes ($0x0005..0x0010$) for mid-air refueling, formation flying, and radio chatter. | `[Hypothesis]` |
 | `[BK-SET-04]` | Header Size Variants (`0x60` vs `0x160`) | Disambiguation of extended 352-byte headers observed in mission `.SET` files with full narrative briefing text. | `[Supported Inference]` |
-| `[BK-SET-05]` | Event Action-Code Catalogue | Map the handbook's THEN actions (*handbook* pp.92–95) onto `action_code` values. The event region is bounded, not located: it is a fixed-size block (§ 3.5), the 12-byte stride is uncorroborated, and the printed dumps disagree with their binaries, so the next step is locating the block in `AUTOMATE.SET` and `CATCH.SET`, the pair that differ in `0x54` while sharing a size. | `[Hypothesis]` |
+| `[BK-SET-05]` | Event Action-Code Catalogue | Map the handbook's THEN actions (*handbook* pp.92–95) onto `action_code` values. Progress: `0x53` is the event count, so a set's rules are now enumerable from its header. Open: the event table's location and its 12-byte stride are both uncorroborated (§ 3.5). | `[Hypothesis]` |
 
 ---
 
