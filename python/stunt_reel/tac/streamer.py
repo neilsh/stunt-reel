@@ -34,6 +34,7 @@ from stunt_reel.tac.models import (
     load_trajectory_records,
     save_trajectory_records,
 )
+from stunt_reel.tac.transport import MockTransport
 from stunt_reel.tac.vsync import VsyncTrap
 
 __all__ = [
@@ -430,8 +431,6 @@ class TrajectoryStreamer:
     ) -> list[TrajectoryRecord]:
         """Capture simulation ticks from runtime memory and validate architectural invariants."""
         # Ensure MockTransport is populated if running against offline mock
-        from stunt_reel.tac.transport import MockTransport
-
         if (
             isinstance(self.client.transport, MockTransport)
             and getattr(self.client.transport, "_scenario", None) is None
@@ -442,47 +441,43 @@ class TrajectoryStreamer:
         last_eye: list[float] | None = None
         last_mode: int | None = None
 
-        self.vsync_trap.arm(self.client)
         self.vsync_trap.reset()
 
-        try:
-            for _ in range(num_ticks):
-                sim_tick = self.vsync_trap.wait_next_sim_tick(self.client)
+        for _ in range(num_ticks):
+            sim_tick = self.vsync_trap.wait_next_sim_tick(self.client.transport)
 
-                cam, last_mode = self.decode_camera_from_memory(
-                    camera_addr, last_eye=last_eye, last_mode=last_mode
-                )
-                last_eye = cam.eye
+            cam, last_mode = self.decode_camera_from_memory(
+                camera_addr, last_eye=last_eye, last_mode=last_mode
+            )
+            last_eye = cam.eye
 
-                actors = self.decode_actors_from_memory(actor_heap_ptr)
+            actors = self.decode_actors_from_memory(actor_heap_ptr)
 
-                cues = self.decode_audio_cues(sim_tick)
+            cues = self.decode_audio_cues(sim_tick)
 
-                # Invariant validation
-                for actor in actors:
-                    diff = quat_norm_diff(actor.rotation_quat)
-                    if diff >= 1e-4:
-                        raise ValueError(
-                            f"Unit quaternion invariant violated at tick {sim_tick} "
-                            f"for actor {actor.actor_id}: diff={diff:e} >= 1e-4"
-                        )
-                    expected_m = actor.compute_world_matrix()
-                    for m_act, m_exp in zip(actor.world_matrix, expected_m, strict=True):
-                        if abs(m_act - m_exp) > 1e-4:
-                            raise ValueError(
-                                f"Matrix tearing detected at tick {sim_tick} for actor {actor.actor_id}"
-                            )
-
-                records.append(
-                    TrajectoryRecord(
-                        tick=sim_tick,
-                        camera=cam,
-                        actors=actors,
-                        audio_cues=cues,
+            # Invariant validation
+            for actor in actors:
+                diff = quat_norm_diff(actor.rotation_quat)
+                if diff >= 1e-4:
+                    raise ValueError(
+                        f"Unit quaternion invariant violated at tick {sim_tick} "
+                        f"for actor {actor.actor_id}: diff={diff:e} >= 1e-4"
                     )
+                expected_m = actor.compute_world_matrix()
+                for m_act, m_exp in zip(actor.world_matrix, expected_m, strict=True):
+                    if abs(m_act - m_exp) > 1e-4:
+                        raise ValueError(
+                            f"Matrix tearing detected at tick {sim_tick} for actor {actor.actor_id}"
+                        )
+
+            records.append(
+                TrajectoryRecord(
+                    tick=sim_tick,
+                    camera=cam,
+                    actors=actors,
+                    audio_cues=cues,
                 )
-        finally:
-            self.vsync_trap.disarm(self.client)
+            )
 
         if output_path is not None:
             save_trajectory_records(records, output_path)
@@ -495,8 +490,6 @@ class TrajectoryStreamer:
         output_path: str | Path = DEFAULT_ORACLE_PATH,
     ) -> list[TrajectoryRecord]:
         """Extract, validate, and write 600-tick golden oracle intro trajectory via memory streamer."""
-        from stunt_reel.tac.transport import MockTransport
-
         mock = MockTransport()
         mock.load_trajectory(generate_intro_trajectory(600))
         client = TacClient(mock)

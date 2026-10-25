@@ -1,11 +1,21 @@
-"""Transport layer abstractions for DOSBox-X debugger communication.
+"""Transport layer: the operation-altitude seam to DOSBox-X.
 
-Supports:
-- Transport Protocol: Abstract interface for commands and queries.
-- LiveSocketTransport: Line-framed socket client connecting to dosbox-x-mcp-server (TCP 58991).
-- ListenTransport: Socket listener accepting DOSBox-X's outbound debugger connection,
-  which is how ``[dosbox] mcp_server`` actually connects.
-- MockTransport: In-memory virtual 8086 machine for 100% offline CI verification [I7].
+The transport speaks operations rather than debugger text:
+
+- read_memory(address, length)       read real-mode bytes
+- write_memory(address, data)       write real-mode bytes (used by BDA injection)
+- dump_framebuffer()                dump page 0 of the Mode 13h framebuffer
+- read_palette()                    read the live DAC palette, with its provenance
+- inject_key(key)                   queue one BIOS Data Area keystroke
+- step_to_retrace()                 arm the post-retrace trap, then stop at its next hit
+- close()                           drop the connection and release the control port
+
+Implementations:
+
+- LiveSocketTransport: line-framed socket client connecting to dosbox-x-mcp-server (TCP 58991).
+- ListenTransport: socket listener accepting DOSBox-X's outbound debugger connection,
+  which is how [dosbox] mcp_server actually connects. Also the control-port lock.
+- MockTransport: in-memory virtual 8086 machine for 100% offline CI verification [I7].
 """
 
 from __future__ import annotations
@@ -14,50 +24,154 @@ import contextlib
 import errno
 import math
 import os
+import re
 import socket
 import struct
 import tempfile
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, Protocol, TextIO, runtime_checkable
+from typing import Protocol, TextIO, runtime_checkable
+
+from stunt_reel.tac.bda import BdaInjector
+from stunt_reel.tac.models import TrajectoryRecord
+from stunt_reel.tac.palette import MODE_13H_PALETTE
+from stunt_reel.tac.playone import VBLANK_TRAP
 
 __all__ = [
+    "FRAME_BYTES",
+    "PAGE_OFFSET",
+    "PALETTE_ENTRIES",
+    "RGB",
+    "Address",
+    "Key",
     "ListenTransport",
     "LiveSocketTransport",
     "MockTransport",
     "Transport",
-    "format_hex_dump",
 ]
+
+#: A colour as an 8-bit RGB triple.
+RGB = tuple[int, int, int]
+#: A BIOS keystroke: (ASCII code, scan code).
+Key = tuple[int, int]
+#: A real-mode segmented address: (segment, offset).
+Address = tuple[int, int]
+
+#: Mode 13h page size in bytes (320x200, one byte per pixel).
+FRAME_BYTES: int = 320 * 200
+#: Byte offset of the page PLAYONE.EXE scans out during playback.
+PAGE_OFFSET: int = 0
+#: Number of VGA DAC entries.
+PALETTE_ENTRIES: int = 256
+#: Real-mode segment of the VGA linear framebuffer window.
+_VGA_SEGMENT: int = 0xA000
+
+_DAC_ENTRY_RE = re.compile(r"[0-9A-Fa-f]{6}")
 
 
 @runtime_checkable
 class Transport(Protocol):
-    """Abstract protocol for executing debugger commands against DOSBox-X."""
+    """The operations a capture session and the trajectory streamer need."""
 
-    def send_command(self, cmd: str) -> list[str]:
-        """Send a debugger command and return the framed response lines."""
+    def read_memory(self, address: Address, length: int) -> bytes:
+        """Read length bytes from a real-mode segment:offset address."""
         ...
 
-    def is_connected(self) -> bool:
-        """Check if transport is currently connected and active."""
+    def dump_framebuffer(self) -> bytes:
+        """Dump the 64,000-byte Mode 13h page at offset 0."""
+        ...
+
+    def read_palette(self) -> tuple[list[RGB], str]:
+        """Read the live DAC palette and its provenance (dacpal or fallback)."""
+        ...
+
+    def inject_key(self, key: Key) -> None:
+        """Queue one keystroke in the BIOS Data Area ring buffer."""
+        ...
+
+    def step_to_retrace(self) -> None:
+        """Arm the post-retrace trap on the first call, then stop at its next hit."""
         ...
 
     def close(self) -> None:
-        """Close connection and clean up resources."""
+        """Close the connection and release any resources held by the transport."""
         ...
+
+
+def _decode_hex_dump(lines: Sequence[str], length: int) -> bytes:
+    """Decode DOSBox-X D hex-dump lines into raw bytes, stopping at length."""
+    raw = bytearray()
+    for line in lines:
+        line_str = line.strip()
+        if not line_str or ":" not in line_str:
+            continue
+        rest = line_str.split(":", 1)[1].strip()
+        tokens = rest.split()
+        if not tokens:
+            continue
+        # First token is the offset within the line (e.g. "0C60").
+        for token in tokens[1:]:
+            if token == "-":  # noqa: S105 - the dump's half-row separator
+                continue
+            if len(token) != 2:
+                # Non-hex characters indicate the ASCII column or formatting.
+                break
+            try:
+                raw.append(int(token, 16))
+            except ValueError:
+                break
+            if len(raw) == length:
+                return bytes(raw)
+        if len(raw) >= length:
+            break
+    return bytes(raw[:length])
+
+
+def _scale_6bit(value: int) -> int:
+    """Scale a 6-bit VGA DAC channel (0..=63) to the 8-bit range (0..=255)."""
+    return (value * 255 + 31) // 63
+
+
+def parse_dac_palette(lines: Sequence[str]) -> tuple[list[RGB], str]:
+    """Parse VGA DACPAL lines into 8-bit RGB triples, with fallback provenance.
+
+    DAC registers are 6 bits per channel and are scaled to 0..=255 so reference
+    pixels are comparable to rendered palette-index pixels. The SDK table is the
+    documented fallback when the emulator does not report a palette.
+    """
+    palette: list[RGB] = []
+    for line in lines:
+        if ":" not in line:
+            continue
+        for entry in _DAC_ENTRY_RE.findall(line.split(":", 1)[1]):
+            palette.append(
+                (
+                    _scale_6bit(int(entry[0:2], 16)),
+                    _scale_6bit(int(entry[2:4], 16)),
+                    _scale_6bit(int(entry[4:6], 16)),
+                )
+            )
+        if len(palette) >= PALETTE_ENTRIES:
+            break
+
+    if len(palette) == PALETTE_ENTRIES:
+        return palette, "dacpal"
+
+    fallback = [MODE_13H_PALETTE[i] for i in range(PALETTE_ENTRIES)]
+    return [(int(r), int(g), int(b)) for r, g, b in fallback], "fallback"
 
 
 class _LineChannel:
     """Line-framed request/response channel over a connected socket.
 
-    Owns a text ``makefile`` view of the socket (UTF-8, undecodable bytes replaced,
-    ``\\n`` as the only line terminator) and speaks the dosbox-x-mcp-server framing
+    Owns a text makefile view of the socket (UTF-8, undecodable bytes replaced,
+    \\n as the only line terminator) and speaks the dosbox-x-mcp-server framing
     shared by every live transport:
 
-    - request: ``REQ <id> <command>\\n``
-    - response: ``BEGIN <id> OK|ERR\\n``, body lines, ``END <id>\\n``
+    - request: REQ <id> <command>\\n
+    - response: BEGIN <id> OK|ERR\\n, body lines, END <id>\\n
 
-    A ``TimeoutError`` leaves the socket's buffered reader unusable (the stdlib refuses
+    A TimeoutError leaves the socket's buffered reader unusable (the stdlib refuses
     further reads after one), so callers must drop the connection when it is raised.
     """
 
@@ -94,8 +208,8 @@ class _LineChannel:
     def request(self, req_id: int, wire: str, label: str) -> list[str]:
         """Send one framed request and return its response body lines.
 
-        Raises ``RuntimeError`` for a malformed or mismatched header and for an ``ERR``
-        response; ``ConnectionResetError`` if the peer closes mid-response.
+        Raises RuntimeError for a malformed or mismatched header and for an ERR
+        response; ConnectionResetError if the peer closes mid-response.
         """
         self._file.write(f"REQ {req_id} {wire}\n")
         self._file.flush()
@@ -125,7 +239,7 @@ class _LineChannel:
 
 
 class _FramedTransport:
-    """Shared request bookkeeping and error policy for the socket transports."""
+    """Shared operations, framing bookkeeping and error policy for the live transports."""
 
     _NOT_CONNECTED = "Socket is not connected"
     _CLOSED = "Socket closed prematurely by remote host"
@@ -133,6 +247,7 @@ class _FramedTransport:
     def __init__(self) -> None:
         self._channel: _LineChannel | None = None
         self._req_id: int = 1
+        self._trap_armed: bool = False
 
     def _attach(self, sock: socket.socket) -> None:
         self._channel = _LineChannel(sock, self._CLOSED)
@@ -168,16 +283,61 @@ class _FramedTransport:
             channel.discard_pending()
             raise
 
+    def _wire(self, command: str) -> str:
+        """Wire form of one debugger command; the listener overrides with EXEC."""
+        return command
+
+    def request(self, command: str) -> list[str]:
+        """Send one debugger command through the framed line channel.
+
+        This is the packet-level channel the operations are built on; tests drive
+        it directly to pin BEGIN/END framing without depending on a guest verb.
+        """
+        return self._exchange(self._wire(command), command)
+
+    def read_memory(self, address: Address, length: int) -> bytes:
+        """Read real-mode memory through the debugger's D hex dump."""
+        if length <= 0:
+            return b""
+        segment, offset = address
+        lines = self.request(f"D {segment:04X}:{offset:04X} {length}")
+        return _decode_hex_dump(lines, length)
+
+    def write_memory(self, address: Address, data: bytes) -> None:
+        """Write real-mode memory through SM, in 16-byte debugger-sized chunks."""
+        segment, offset = address
+        for start in range(0, len(data), 16):
+            chunk = data[start : start + 16]
+            chunk_offset = (offset + start) & 0xFFFF
+            hexes = " ".join(f"{byte:02X}" for byte in chunk)
+            self.request(f"SM {segment:04X}:{chunk_offset:04X} {hexes}")
+
+    def dump_framebuffer(self) -> bytes:
+        """Dump page 0 of the Mode 13h framebuffer."""
+        return self.read_memory((_VGA_SEGMENT, PAGE_OFFSET), FRAME_BYTES)
+
+    def read_palette(self) -> tuple[list[RGB], str]:
+        """Read the live DAC palette and its provenance."""
+        return parse_dac_palette(self.request("VGA DACPAL"))
+
+    def inject_key(self, key: Key) -> None:
+        """Queue one keystroke in the BIOS Data Area ring buffer."""
+        BdaInjector.inject_keys(self, [key])
+
+    def step_to_retrace(self) -> None:
+        """Arm the post-retrace trap on the first call, then run to its next hit."""
+        if not self._trap_armed:
+            self.request(f"BP {VBLANK_TRAP}")
+            self._trap_armed = True
+        self.request("RUN")
+
 
 class LiveSocketTransport(_FramedTransport):
-    """Live TCP socket transport connecting to dosbox-x-mcp-server wire protocol.
+    """Live TCP socket transport connecting to the dosbox-x-mcp-server wire protocol.
 
     Wire framing:
-    - Outgoing request: `REQ <id> <command>\n`
-    - Incoming response:
-        `BEGIN <id> OK\n` or `BEGIN <id> ERR\n`
-        `<line 1>\n` ...
-        `END <id>\n`
+    - Outgoing request: REQ <id> <command>\\n
+    - Incoming response: BEGIN <id> OK|ERR, body lines, END <id>
     """
 
     def __init__(
@@ -191,11 +351,6 @@ class LiveSocketTransport(_FramedTransport):
         self.port = port
         self.timeout = timeout
 
-    @property
-    def _buffer(self) -> str:
-        """Unread text carried between requests; always empty (see ``discard_pending``)."""
-        return ""
-
     def connect(self) -> None:
         """Establish TCP connection to the debugger server."""
         if self._channel is not None:
@@ -204,51 +359,31 @@ class LiveSocketTransport(_FramedTransport):
         sock.settimeout(self.timeout)
         self._attach(sock)
 
-    def send_command(self, cmd: str) -> list[str]:
-        """Send framed REQ command and parse BEGIN ... END response block."""
-        if self._channel is None:
-            self.connect()
-        return self._exchange(cmd.strip(), cmd)
 
-
-def format_hex_dump(seg: int, off: int, data: bytes) -> list[str]:
-    """Render a memory slice as DOSBox-X ``D`` hex-dump lines (16 bytes per row)."""
-    lines: list[str] = []
-    for offset_step in range(0, len(data), 16):
-        chunk = data[offset_step : offset_step + 16]
-        curr_off = (off + offset_step) & 0xFFFF
-        hex_tokens = [f"{b:02X}" for b in chunk]
-        if len(hex_tokens) > 8:
-            hex_str = " ".join(hex_tokens[:8]) + " - " + " ".join(hex_tokens[8:])
-        else:
-            hex_str = " ".join(hex_tokens)
-        ascii_chars = "".join(chr(b) if 32 <= b <= 126 else "." for b in chunk)
-        lines.append(f"{seg:04X}:{curr_off:04X}  {hex_str:<49}  {ascii_chars}")
-    return lines
-
-
-#: ``bind`` errnos that mean another socket holds the port (Winsock reports its own).
+#: bind errnos that mean another socket holds the port (Winsock reports its own).
 _ADDR_IN_USE = frozenset({errno.EADDRINUSE, getattr(errno, "WSAEADDRINUSE", errno.EADDRINUSE)})
 
 
 class ListenTransport(_FramedTransport):
     """Debugger transport that listens for DOSBox-X's outbound debugger connection.
 
-    DOSBox-X configured with ``[dosbox] mcp_server = <port>`` is a TCP *client*: it
-    dials the controller that listens on that port. This transport owns the listener,
-    accepts the single emulator connection, and speaks the ``REQ <id> <command>`` /
-    ``BEGIN <id> OK`` / ``END <id>`` framing.
+    DOSBox-X configured with [dosbox] mcp_server = <port> is a TCP client: it
+    dials the controller that listens on that port. This transport owns the listener
+    (the machine-wide capture lock), accepts the single emulator connection, and
+    speaks the REQ <id> <command> / BEGIN <id> OK / END <id> framing.
 
-    Two live-debugger quirks are normalized here so [`TacClient`] reads the same as
-    against [`MockTransport`]:
-    - Only ``PING`` and ``BREAK`` are bare verbs; every debugger command must be
-      sent as ``EXEC <command>``.
-    - The live ``D <seg>:<off> <len>`` command only moves the debugger's data view,
-      so reads are translated into ``MEMDUMPBIN`` against a host file that this
-      transport reads back.
+    Two live-debugger quirks are normalized here so the operations read the same as
+    against MockTransport:
+    - Only PING and BREAK are bare verbs; every debugger command must be sent as
+      EXEC <command>.
+    - A live D command only moves the debugger's data view, so reads use
+      MEMDUMPBIN against a host file that this transport reads back.
     """
 
     BARE_VERBS: frozenset[str] = frozenset({"PING", "BREAK"})
+
+    _NOT_CONNECTED = "DOSBox-X has not connected yet"
+    _CLOSED = "DOSBox-X closed the debugger socket"
 
     def __init__(
         self,
@@ -286,7 +421,7 @@ class ListenTransport(_FramedTransport):
         self._listener = sock
 
     def accept(self, timeout: float | None = None) -> None:
-        """Block until DOSBox-X connects, or raise ``TimeoutError``."""
+        """Block until DOSBox-X connects, or raise TimeoutError."""
         if self._listener is None:
             raise RuntimeError("listen() must be called before accept()")
         self._listener.settimeout(self.timeout if timeout is None else timeout)
@@ -296,9 +431,6 @@ class ListenTransport(_FramedTransport):
         # SO_EXCLUSIVEADDRUSE it would refuse the next capture's bind for minutes.
         conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
         self._attach(conn)
-
-    _NOT_CONNECTED = "DOSBox-X has not connected yet"
-    _CLOSED = "DOSBox-X closed the debugger socket"
 
     def _drop_connection(self) -> None:
         """Forget the emulator connection but keep listening for a reconnect."""
@@ -312,20 +444,20 @@ class ListenTransport(_FramedTransport):
                 self._listener.close()
             self._listener = None
 
-    def _request(self, wire: str) -> list[str]:
-        """Send one framed request and return its response body lines."""
-        return self._exchange(wire, wire)
+    def _wire(self, command: str) -> str:
+        """Wrap debugger commands in EXEC; PING and BREAK are the only bare verbs."""
+        tokens = command.split()
+        if tokens and tokens[0].upper() in self.BARE_VERBS:
+            return command
+        return f"EXEC {command}"
 
-    def _dump_memory(self, args: Sequence[str]) -> list[str]:
-        """Translate ``D <seg>:<off> <len>`` into a ``MEMDUMPBIN`` round trip."""
-        if not args:
-            raise ValueError("D requires a <segment>:<offset> target")
-        target = args[0]
-        length = int(args[1]) if len(args) > 1 else 16
+    def read_memory(self, address: Address, length: int) -> bytes:
+        """Read real-mode memory through MEMDUMPBIN and a per-process host file."""
         if length <= 0:
-            return []
-
-        body = self._request(f"EXEC MEMDUMPBIN {target} {length:04X} {self._read_path.as_posix()}")
+            return b""
+        segment, offset = address
+        target = f"{segment:04X}:{offset:04X}"
+        body = self.request(f"MEMDUMPBIN {target} {length:04X} {self._read_path.as_posix()}")
         try:
             data = self._read_path.read_bytes()
         except OSError as exc:
@@ -334,35 +466,34 @@ class ListenTransport(_FramedTransport):
             raise RuntimeError(
                 f"MEMDUMPBIN {target} wrote {len(data)} bytes, expected {length}: {body}"
             )
-
-        seg_s, off_s = target.split(":", 1)
-        return format_hex_dump(int(seg_s, 16), int(off_s, 16), data)
-
-    def send_command(self, cmd: str) -> list[str]:
-        """Execute one debugger command against the live emulator."""
-        tokens = cmd.strip().split()
-        if not tokens:
-            return []
-        if tokens[0].upper() == "D":
-            return self._dump_memory(tokens[1:])
-        wire = cmd.strip() if tokens[0].upper() in self.BARE_VERBS else f"EXEC {cmd.strip()}"
-        return self._request(wire)
+        return data
 
 
 class MockTransport:
-    """In-memory virtual x86 machine for 100% offline CI verification."""
+    """In-memory virtual x86 machine for 100% offline CI verification.
+
+    The guest is programmable: set framebuffer bytes, a palette, or the
+    dump_source / retrace_source hooks to model a boot sequence or a film.
+    """
 
     def __init__(self, memory_size: int = 1024 * 1024) -> None:
         self.memory = bytearray(memory_size)
-        self.breakpoints: set[str] = set()
-        self.io_breakpoints: set[str] = set()
         self.current_tick: int = 0
         self.max_ticks: int = 600
-        self.tick_address: tuple[int, int] = (0x1575, 0x4896)
-        self.custom_handlers: dict[str, Callable[[list[str]], list[str]]] = {}
+        self.tick_address: Address = (0x1575, 0x4896)
         self._closed: bool = False
-        self._scenario: list[Any] | None = None
+        self._scenario: list[TrajectoryRecord] | None = None
         self._sim_started: bool = False
+        self._trap_armed: bool = False
+
+        #: Page served by dump_framebuffer() unless dump_source is set.
+        self.framebuffer: bytearray = bytearray(FRAME_BYTES)
+        #: Palette served by read_palette(); None means the SDK fallback table.
+        self.palette: tuple[list[RGB], str] | None = None
+        #: Optional hook returning one framebuffer page per dump.
+        self.dump_source: Callable[[], bytes] | None = None
+        #: Optional hook advancing the guest once per step_to_retrace() call.
+        self.retrace_source: Callable[[], None] | None = None
 
         # Initialize standard BIOS Data Area (0040:001A head=0x001E, 0040:001C tail=0x001E)
         self.write_u16(0x0040, 0x001A, 0x001E)
@@ -375,7 +506,7 @@ class MockTransport:
         # Initialize DGROUP tick counter
         self.set_sim_tick(0)
 
-    def load_trajectory(self, records: Sequence[Any]) -> None:
+    def load_trajectory(self, records: Sequence[TrajectoryRecord]) -> None:
         """Load precomputed trajectory records to simulate authentic memory on each tick."""
         self._scenario = list(records)
         self.max_ticks = len(self._scenario)
@@ -484,9 +615,9 @@ class MockTransport:
         self.write_u16(seg, off, tick)
         self._write_tick_state(tick)
 
-    def register_handler(self, verb: str, handler: Callable[[list[str]], list[str]]) -> None:
-        """Register custom debugger command handler."""
-        self.custom_handlers[verb.upper()] = handler
+    def _require_open(self) -> None:
+        if self._closed:
+            raise ConnectionError("MockTransport is closed")
 
     def is_connected(self) -> bool:
         """Return True if mock transport is active."""
@@ -496,93 +627,55 @@ class MockTransport:
         """Close mock transport."""
         self._closed = True
 
-    def _parse_seg_off(self, target: str) -> tuple[int, int]:
-        """Parse segment:offset string e.g. '1575:4896' or '0040:001A'."""
-        if ":" not in target:
-            raise ValueError(f"Invalid segment:offset specification: {target}")
-        seg_s, off_s = target.split(":", 1)
-        return int(seg_s, 16), int(off_s, 16)
+    # ------------------------------------------------------------------
+    # Transport operations
+    # ------------------------------------------------------------------
 
-    def send_command(self, cmd: str) -> list[str]:
-        """Execute mock debugger command against virtual RAM and return output lines."""
-        if self._closed:
-            raise ConnectionError("MockTransport is closed")
+    def read_memory(self, address: Address, length: int) -> bytes:
+        """Read raw bytes from virtual memory."""
+        self._require_open()
+        if length <= 0:
+            return b""
+        segment, offset = address
+        return self.read_bytes(segment, offset, length)
 
-        tokens = cmd.strip().split()
-        if not tokens:
-            return ["OK"]
+    def write_memory(self, address: Address, data: bytes) -> None:
+        """Write raw bytes into virtual memory."""
+        self._require_open()
+        segment, offset = address
+        self.write_bytes(segment, offset, data)
 
-        verb = tokens[0].upper()
+    def dump_framebuffer(self) -> bytes:
+        """Serve one framebuffer page from dump_source or the current page bytes."""
+        self._require_open()
+        source = self.dump_source
+        if source is not None:
+            return source()
+        return bytes(self.framebuffer)
 
-        if verb in self.custom_handlers:
-            return self.custom_handlers[verb](tokens[1:])
+    def read_palette(self) -> tuple[list[RGB], str]:
+        """Serve the configured palette, or the SDK fallback table."""
+        self._require_open()
+        if self.palette is not None:
+            return self.palette
+        fallback = [MODE_13H_PALETTE[i] for i in range(PALETTE_ENTRIES)]
+        return [(int(r), int(g), int(b)) for r, g, b in fallback], "fallback"
 
-        if verb == "PING":
-            return ["PONG"]
+    def inject_key(self, key: Key) -> None:
+        """Queue one keystroke in the simulated BIOS Data Area ring buffer."""
+        self._require_open()
+        BdaInjector.inject_keys(self, [key])
 
-        if verb == "BP":
-            if len(tokens) > 1:
-                self.breakpoints.add(tokens[1].upper())
-                return [f"Breakpoint set at {tokens[1]}"]
-            return ["Missing breakpoint address"]
-
-        if verb == "BPIO":
-            if len(tokens) > 1:
-                self.io_breakpoints.add(tokens[1].upper())
-                return [f"IO Breakpoint set for port {tokens[1]}"]
-            return ["Missing port"]
-
-        if verb in ("BPDEL", "BPC"):
-            if len(tokens) > 1 and tokens[1] != "*":
-                self.breakpoints.discard(tokens[1].upper())
-            else:
-                self.breakpoints.clear()
-                self.io_breakpoints.clear()
-            return ["Breakpoints deleted"]
-
-        if verb == "BPLIST":
-            return [f"BP {bp}" for bp in sorted(self.breakpoints)]
-
-        if verb == "RUN":
-            if self._scenario is not None and not self._sim_started:
-                self._sim_started = True
-                self.set_sim_tick(0)
-            elif self.current_tick < self.max_ticks:
-                self.set_sim_tick(self.current_tick + 1)
-            return ["Running... Breakpoint hit at post_vsync"]
-
-        if verb == "VRT":
-            if self._scenario is not None and not self._sim_started:
-                self._sim_started = True
-                self.set_sim_tick(0)
-            elif self.current_tick < self.max_ticks:
-                self.set_sim_tick(self.current_tick + 1)
-            return ["Vertical retrace reached"]
-
-        if verb == "SM":
-            # SM <seg>:<off> <hex_bytes...>
-            if len(tokens) < 3:
-                return ["Usage: SM <seg>:<off> <hex>"]
-            seg, off = self._parse_seg_off(tokens[1])
-            data = bytes.fromhex("".join(tokens[2:]))
-            self.write_bytes(seg, off, data)
-            return ["OK"]
-
-        if verb == "D":
-            # D <seg>:<off> [length]
-            if len(tokens) < 2:
-                return ["Usage: D <seg>:<off> [len]"]
-            seg, off = self._parse_seg_off(tokens[1])
-            length = (
-                int(tokens[2], 16)
-                if len(tokens) > 2 and tokens[2].startswith("0x")
-                else (int(tokens[2]) if len(tokens) > 2 else 128)
-            )
-            return self._format_dump(seg, off, length)
-
-        return ["OK"]
-
-    def _format_dump(self, seg: int, off: int, length: int) -> list[str]:
-        """Format memory slice matching standard DOSBox-X D command hex dump."""
-        start_addr = self.linear_address(seg, off)
-        return format_hex_dump(seg, off, bytes(self.memory[start_addr : start_addr + length]))
+    def step_to_retrace(self) -> None:
+        """Advance the simulated guest to its next post-retrace trap hit."""
+        self._require_open()
+        self._trap_armed = True
+        step = self.retrace_source
+        if step is not None:
+            step()
+            return
+        if self._scenario is not None and not self._sim_started:
+            self._sim_started = True
+            self.set_sim_tick(0)
+        elif self.current_tick < self.max_ticks:
+            self.set_sim_tick(self.current_tick + 1)

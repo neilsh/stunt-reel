@@ -1,37 +1,33 @@
-"""Comprehensive offline unit and integration test suite for the TAC harness.
+"""Offline unit and integration tests for the TAC harness at operation altitude.
 
 Verifies:
 - 3D math and BAM angle conversions
 - Seam 2 dataclass serialization/deserialization
-- MockTransport in-memory emulation and LiveSocketTransport framing
-- TacClient memory reading, writing, and debugger commands
-- BDA keystroke buffer ring arithmetic, wrapping, overflow, and modal dialog navigation
-- Hardware V-Sync trap arming and 70 Hz -> 50 Hz tick deduplication
+- MockTransport memory, framebuffer, palette, keystroke and retrace operations
+- TacClient typed reads over a transport
+- Hardware V-Sync trap 70 Hz -> 50 Hz tick deduplication
 - TrajectoryStreamer 600-tick kinematics, unit quaternion invariant, zero matrix tearing,
-  and position RMSE <= 0.01 m against baseline fixture
+  and position RMSE <= 0.01 m against the baseline fixture
+
+Wire framing lives in test_tac_transport_framing.py, BDA boundaries in
+test_tac_adversarial.py, and the capture session in test_tac_capture_session.py.
 """
 
 from __future__ import annotations
 
-import json
 import math
-import socket
 import struct
-import threading
 from pathlib import Path
 
 import pytest
 
 from stunt_reel.tac import (
-    KEY_ENTER,
     PORT_VGA_STATUS,
     VGA_REFRESH_HZ,
     ActorTransform,
     AudioCue,
-    BdaInjector,
     CameraTransform,
     FilmCapture,
-    LiveSocketTransport,
     MockTransport,
     SceneHeader,
     StaticPropPlacement,
@@ -39,7 +35,6 @@ from stunt_reel.tac import (
     TrajectoryRecord,
     TrajectoryStreamer,
     VsyncTrap,
-    char_to_key,
     compute_position_rmse,
     generate_intro_trajectory,
     load_trajectory_records,
@@ -55,9 +50,9 @@ from stunt_reel.tac.dos_math import (
     quat_normalize,
     vec3_sub,
 )
-from stunt_reel.tac.framebuffer import FRAME_BYTES, capture
-from stunt_reel.tac.playone import DGROUP_RUNTIME_SEG, FILM_CLOCK_OFFSET, GLOBAL_TICK_OFFSET
-from stunt_reel.tac.vsync import DEFAULT_TICK_ADDR
+from stunt_reel.tac.palette import MODE_13H_PALETTE
+from stunt_reel.tac.transport import FRAME_BYTES, parse_dac_palette
+from stunt_reel.tac.vsync import DEFAULT_TICK_ADDRESS
 
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "oracle_intro_trajectory.json"
 
@@ -77,7 +72,6 @@ def test_bam_conversions() -> None:
 
 def test_focal_to_fov_y_conversion() -> None:
     """Verify Stunt Island focal zoom to vertical FOV calculation."""
-    # Standard focal distance ~289.777 gives exactly 45 degrees
     focal = 120.0 / math.tan(math.radians(22.5))
     assert math.isclose(focal_to_fov_y(focal), 45.0, abs_tol=1e-4)
 
@@ -105,44 +99,31 @@ def test_quat_from_euler_invariant_i1_axes() -> None:
     """Verify quat_from_euler maps pitch to X, yaw to Y, and roll to Z per Invariant [I1]."""
     angle = math.radians(30.0)
 
-    # 1. Pitch alone (+X Right): +Y rotates toward -Z, X remains unchanged
     q_pitch = quat_from_euler(yaw=0.0, pitch=angle, roll=0.0)
     assert quat_norm_diff(q_pitch) < 1e-6
     m_pitch = compute_world_matrix([0.0, 0.0, 0.0], q_pitch)
-    col0_x = m_pitch[0:3]
-    col1_y = m_pitch[4:7]
-    assert pytest.approx(col0_x, abs=1e-5) == [1.0, 0.0, 0.0]
-    assert pytest.approx(col1_y, abs=1e-5) == [0.0, math.cos(angle), -math.sin(angle)]
+    assert pytest.approx(m_pitch[0:3], abs=1e-5) == [1.0, 0.0, 0.0]
+    assert pytest.approx(m_pitch[4:7], abs=1e-5) == [0.0, math.cos(angle), -math.sin(angle)]
 
-    # 2. Yaw alone (+Y Up): +X rotates toward +Z, Y remains unchanged
     q_yaw = quat_from_euler(yaw=angle, pitch=0.0, roll=0.0)
     assert quat_norm_diff(q_yaw) < 1e-6
     m_yaw = compute_world_matrix([0.0, 0.0, 0.0], q_yaw)
-    col0_x = m_yaw[0:3]
-    col1_y = m_yaw[4:7]
-    assert pytest.approx(col1_y, abs=1e-5) == [0.0, 1.0, 0.0]
-    assert pytest.approx(col0_x, abs=1e-5) == [math.cos(angle), 0.0, math.sin(angle)]
+    assert pytest.approx(m_yaw[4:7], abs=1e-5) == [0.0, 1.0, 0.0]
+    assert pytest.approx(m_yaw[0:3], abs=1e-5) == [math.cos(angle), 0.0, math.sin(angle)]
 
-    # 3. Roll alone (+Z Backward): +X rotates toward +Y, Z remains unchanged
     q_roll = quat_from_euler(yaw=0.0, pitch=0.0, roll=angle)
     assert quat_norm_diff(q_roll) < 1e-6
     m_roll = compute_world_matrix([0.0, 0.0, 0.0], q_roll)
-    col0_x = m_roll[0:3]
-    col2_z = m_roll[8:11]
-    assert pytest.approx(col2_z, abs=1e-5) == [0.0, 0.0, 1.0]
-    assert pytest.approx(col0_x, abs=1e-5) == [math.cos(angle), math.sin(angle), 0.0]
+    assert pytest.approx(m_roll[8:11], abs=1e-5) == [0.0, 0.0, 1.0]
+    assert pytest.approx(m_roll[0:3], abs=1e-5) == [math.cos(angle), math.sin(angle), 0.0]
 
-    # 4. Identity
-    q_id = quat_from_euler(0.0, 0.0, 0.0)
-    assert q_id == [0.0, 0.0, 0.0, 1.0]
+    assert quat_from_euler(0.0, 0.0, 0.0) == [0.0, 0.0, 0.0, 1.0]
 
 
 def test_compute_world_matrix() -> None:
     """Verify column-major 4x4 matrix computation matching Rust contract."""
-    pos = [10.0, 20.0, 30.0]
-    quat = [0.0, 0.0, 0.0, 1.0]  # Identity
-    m = compute_world_matrix(pos, quat)
-    expected = [
+    m = compute_world_matrix([10.0, 20.0, 30.0], [0.0, 0.0, 0.0, 1.0])
+    assert m == [
         1.0,
         0.0,
         0.0,
@@ -160,7 +141,6 @@ def test_compute_world_matrix() -> None:
         30.0,
         1.0,
     ]
-    assert m == expected
 
 
 # ==============================================================================
@@ -179,8 +159,7 @@ def test_models_dataclass_serde_roundtrip() -> None:
     )
     cam_dict = cam.to_dict()
     assert cam_dict["cut_from_previous"] is True
-    cam_restored = CameraTransform.from_dict(cam_dict)
-    assert cam_restored == cam
+    assert CameraTransform.from_dict(cam_dict) == cam
 
     actor = ActorTransform(
         actor_id=42,
@@ -191,25 +170,16 @@ def test_models_dataclass_serde_roundtrip() -> None:
         state_mask=0x0001,
         joint_angles_bam=[(0, 0x4000)],
     )
-    actor_dict = actor.to_dict()
-    actor_restored = ActorTransform.from_dict(actor_dict)
-    assert actor_restored == actor
+    assert ActorTransform.from_dict(actor.to_dict()) == actor
     assert actor.compute_world_matrix() == compute_world_matrix(
         actor.position_meters, actor.rotation_quat
     )
 
     cue = AudioCue(tick=10, sample_name="ENGINE.VOC", volume=0.8, pan=-0.5)
-    cue_dict = cue.to_dict()
-    assert AudioCue.from_dict(cue_dict) == cue
+    assert AudioCue.from_dict(cue.to_dict()) == cue
 
-    record = TrajectoryRecord(
-        tick=10,
-        camera=cam,
-        actors=[actor],
-        audio_cues=[cue],
-    )
-    rec_dict = record.to_dict()
-    assert TrajectoryRecord.from_dict(rec_dict) == record
+    record = TrajectoryRecord(tick=10, camera=cam, actors=[actor], audio_cues=[cue])
+    assert TrajectoryRecord.from_dict(record.to_dict()) == record
 
     header = SceneHeader(
         film_name="INTRO",
@@ -224,8 +194,7 @@ def test_models_dataclass_serde_roundtrip() -> None:
         ],
     )
     capture = FilmCapture(header=header, ticks=[record])
-    cap_dict = capture.to_dict()
-    assert FilmCapture.from_dict(cap_dict) == capture
+    assert FilmCapture.from_dict(capture.to_dict()) == capture
 
 
 def test_scene_header_ignores_legacy_tick_rate_hz() -> None:
@@ -260,340 +229,126 @@ def test_models_file_save_and_load(tmp_path: Path) -> None:
 
 
 # ==============================================================================
-# 3. Transport Unit Tests
+# 3. MockTransport Operations
 # ==============================================================================
 
 
-def test_mock_transport_operations() -> None:
-    """Verify in-memory virtual RAM reading, writing, and debugger commands."""
+def test_mock_memory_operations() -> None:
+    """Read and write virtual memory through the transport operations."""
     mock = MockTransport()
-    assert mock.is_connected()
+    mock.write_memory((0x0D51, 0x0100), bytes([0x12, 0x34, 0xAB, 0xCD]))
+    assert mock.read_memory((0x0D51, 0x0100), 4) == bytes([0x12, 0x34, 0xAB, 0xCD])
+    assert mock.read_memory((0x0D51, 0x0100), 0) == b""
 
-    # Test PING
-    assert mock.send_command("PING") == ["PONG"]
+    mock.write_u16(0x0D51, 0x0200, 0x1234)
+    assert mock.read_u16(0x0D51, 0x0200) == 0x1234
 
-    # Test Memory SM and D
-    mock.send_command("SM 0D51:0100 12 34 AB CD")
-    data = mock.read_bytes(0x0D51, 0x0100, 4)
-    assert data == bytes([0x12, 0x34, 0xAB, 0xCD])
 
-    dump_lines = mock.send_command("D 0D51:0100 4")
-    assert len(dump_lines) >= 1
-    assert "0D51:0100" in dump_lines[0]
-    assert "12 34 AB CD" in dump_lines[0]
+def test_mock_framebuffer_and_palette_operations() -> None:
+    """Serve framebuffer pages from bytes or a hook, and palettes with provenance."""
+    mock = MockTransport()
+    assert len(mock.dump_framebuffer()) == FRAME_BYTES
+    assert mock.dump_framebuffer() == bytes(FRAME_BYTES)
 
-    # Test Breakpoint commands
-    mock.send_command("BP 0D51:0C5E")
-    assert "0D51:0C5E" in mock.breakpoints
-    mock.send_command("BPIO 03DA")
-    assert "03DA" in mock.io_breakpoints
-    mock.send_command("BPDEL *")
-    assert len(mock.breakpoints) == 0
+    mock.framebuffer[0:4] = b"\x01\x02\x03\x04"
+    assert mock.dump_framebuffer()[0:4] == b"\x01\x02\x03\x04"
 
-    # Test RUN advancing tick
+    pages = [b"\x0a" * FRAME_BYTES, b"\x0b" * FRAME_BYTES]
+    mock.dump_source = lambda: pages.pop(0)
+    assert mock.dump_framebuffer() == b"\x0a" * FRAME_BYTES
+    assert mock.dump_framebuffer() == b"\x0b" * FRAME_BYTES
+
+    fallback, source = mock.read_palette()
+    assert source == "fallback"
+    assert fallback == [tuple(rgb) for rgb in MODE_13H_PALETTE]
+
+    configured = ([(255, 0, 0)] * 256, "dacpal")
+    mock.palette = configured
+    assert mock.read_palette() == configured
+
+
+def test_mock_inject_key_and_retrace_operations() -> None:
+    """Queue a keystroke into the simulated BDA and advance the guest per retrace step."""
+    mock = MockTransport()
+    mock.inject_key((0x0D, 0x1C))
+    assert mock.read_memory((0x0040, 0x001E), 2) == b"\x0d\x1c"
+    assert mock.read_u16(0x0040, 0x001C) == 0x0020
+
     assert mock.current_tick == 0
-    mock.send_command("RUN")
+    mock.step_to_retrace()
     assert mock.current_tick == 1
     assert mock.read_u16(*mock.tick_address) == 1
 
+    mock.retrace_source = lambda: mock.set_sim_tick(7)
+    mock.step_to_retrace()
+    assert mock.current_tick == 7
+
+
+def test_parse_dac_palette_scales_and_falls_back() -> None:
+    """DACPAL lines scale 6-bit DAC channels to 8 bits; short listings fall back."""
+    lines = [f"{row * 8:02X}: " + " ".join(["3F0000"] * 8) for row in range(32)]
+    palette, source = parse_dac_palette(lines)
+    assert source == "dacpal"
+    assert palette == [(255, 0, 0)] * 256
+
+    palette, source = parse_dac_palette(["00: 3F0000"])
+    assert source == "fallback"
+    assert palette == [tuple(rgb) for rgb in MODE_13H_PALETTE]
+
+
+def test_mock_closed_operations_raise() -> None:
+    """Every operation refuses after close."""
+    mock = MockTransport()
+    assert mock.is_connected()
     mock.close()
     assert not mock.is_connected()
-    with pytest.raises(ConnectionError):
-        mock.send_command("PING")
-
-
-def test_live_socket_transport_wire_codec() -> None:
-    """Verify wire framing protocol codec for LiveSocketTransport."""
-    # Spin up mock TCP server on ephemeral port
-    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_sock.bind(("127.0.0.1", 0))
-    server_sock.listen(1)
-    port = server_sock.getsockname()[1]
-
-    def server_thread_fn() -> None:
-        conn, _ = server_sock.accept()
-        buf = ""
-        while True:
-            chunk = conn.recv(1024)
-            if not chunk:
-                break
-            buf += chunk.decode("utf-8")
-            if "\n" in buf:
-                line, buf = buf.split("\n", 1)
-                tokens = line.strip().split()
-                if len(tokens) >= 3 and tokens[0] == "REQ":
-                    req_id = tokens[1]
-                    cmd = tokens[2]
-                    if cmd == "PING":
-                        conn.sendall(f"BEGIN {req_id} OK\nPONG\nEND {req_id}\n".encode())
-                    elif cmd == "ERRTEST":
-                        conn.sendall(f"BEGIN {req_id} ERR\nSyntax error\nEND {req_id}\n".encode())
-        conn.close()
-        server_sock.close()
-
-    th = threading.Thread(target=server_thread_fn, daemon=True)
-    th.start()
-
-    transport = LiveSocketTransport(host="127.0.0.1", port=port, timeout=2.0)
-    transport.connect()
-    assert transport.is_connected()
-
-    # Success case
-    resp = transport.send_command("PING")
-    assert resp == ["PONG"]
-
-    # Error case
-    with pytest.raises(RuntimeError) as exc_info:
-        transport.send_command("ERRTEST")
-    assert "Syntax error" in str(exc_info.value)
-
-    transport.close()
-    assert not transport.is_connected()
-
-
-def test_live_socket_request_id_collision_rejected() -> None:
-    """Verify that BEGIN 10 OK is rejected when expecting BEGIN 1."""
-    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_sock.bind(("127.0.0.1", 0))
-    server_sock.listen(1)
-    port = server_sock.getsockname()[1]
-
-    def server_thread() -> None:
-        conn, _ = server_sock.accept()
-        _ = conn.recv(1024)
-        conn.sendall(b"BEGIN 10 OK\nDATA\nEND 10\n")
-        conn.close()
-        server_sock.close()
-
-    th = threading.Thread(target=server_thread, daemon=True)
-    th.start()
-
-    transport = LiveSocketTransport(host="127.0.0.1", port=port, timeout=1.0)
-    transport.connect()
-    with pytest.raises(RuntimeError) as exc_info:
-        transport.send_command("PING")
-    assert "Unexpected response header" in str(exc_info.value)
-    transport.close()
-
-
-def test_live_socket_buffer_flush_on_error() -> None:
-    """Verify that after a malformed header, residual buffer bytes are flushed."""
-    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_sock.bind(("127.0.0.1", 0))
-    server_sock.listen(1)
-    port = server_sock.getsockname()[1]
-
-    def server_thread() -> None:
-        conn, _ = server_sock.accept()
-        _ = conn.recv(1024)
-        conn.sendall(b"GARBAGE HEADER 1\nGARBAGE LINE 2\n")
-        _ = conn.recv(1024)
-        conn.sendall(b"BEGIN 2 OK\nPONG\nEND 2\n")
-        conn.close()
-        server_sock.close()
-
-    th = threading.Thread(target=server_thread, daemon=True)
-    th.start()
-
-    transport = LiveSocketTransport(host="127.0.0.1", port=port, timeout=1.0)
-    transport.connect()
-    with pytest.raises(RuntimeError):
-        transport.send_command("CMD1")
-
-    # Second command should succeed because buffer was cleared
-    lines = transport.send_command("CMD2")
-    assert lines == ["PONG"]
-    transport.close()
-
-
-def test_live_socket_disconnect_cleanup() -> None:
-    """Verify that premature disconnection marks transport as disconnected."""
-    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_sock.bind(("127.0.0.1", 0))
-    server_sock.listen(1)
-    port = server_sock.getsockname()[1]
-
-    def server_thread() -> None:
-        conn, _ = server_sock.accept()
-        _ = conn.recv(1024)
-        # Drop connection abruptly
-        conn.close()
-        server_sock.close()
-
-    th = threading.Thread(target=server_thread, daemon=True)
-    th.start()
-
-    transport = LiveSocketTransport(host="127.0.0.1", port=port, timeout=1.0)
-    transport.connect()
-    with pytest.raises(ConnectionResetError):
-        transport.send_command("PING")
-    assert not transport.is_connected()
-    transport.close()
+    for operation in (
+        lambda: mock.read_memory((0x0D51, 0x0100), 2),
+        lambda: mock.write_memory((0x0D51, 0x0100), b"\x00"),
+        mock.dump_framebuffer,
+        mock.read_palette,
+        lambda: mock.inject_key((0x0D, 0x1C)),
+        mock.step_to_retrace,
+    ):
+        with pytest.raises(ConnectionError):
+            operation()
 
 
 # ==============================================================================
-# 4. Client Unit Tests
+# 4. Client Typed Reads
 # ==============================================================================
 
 
 def test_tac_client_memory_helpers() -> None:
-    """Verify TacClient typed reading and writing helpers against MockTransport."""
+    """Verify TacClient typed reading helpers against MockTransport."""
     mock = MockTransport()
     with TacClient(mock) as client:
-        assert client.ping() is True
-
-        # Test write and read types
-        client.write_memory("0D51:0200", bytes([0x78]))
+        mock.write_memory((0x0D51, 0x0200), bytes([0x78]))
         assert client.read_u8("0D51:0200") == 0x78
 
-        client.write_u16("0D51:0202", 0x1234)
+        mock.write_u16(0x0D51, 0x0202, 0x1234)
         assert client.read_u16("0D51:0202") == 0x1234
+        assert client.read_i16("0D51:0202") == 0x1234
 
-        # Fixed point 16.16 (e.g. 10.5 meters = 10 * 65536 + 32768 = 688128)
-        client.write_memory("0D51:0204", (688128).to_bytes(4, "little", signed=True))
+        mock.write_memory((0x0D51, 0x0204), (688128).to_bytes(4, "little", signed=True))
         assert math.isclose(client.read_fixed16_16("0D51:0204"), 10.5, abs_tol=1e-5)
+        assert client.read_i32("0D51:0204") == 688128
+        assert client.read_u32("0D51:0204") == 688128
 
-        # Null-terminated string reading
-        client.write_memory("0D51:0208", b"FOKKER\x00PADDING")
+        mock.write_memory((0x0D51, 0x0208), b"FOKKER\x00PADDING")
         assert client.read_string("0D51:0208") == "FOKKER"
 
-        # Breakpoint helpers
-        client.set_breakpoint("0D51:0C5E")
-        assert "0D51:0C5E" in mock.breakpoints
-        client.delete_breakpoints()
-        assert len(mock.breakpoints) == 0
+        with pytest.raises(ValueError, match="Expected <seg>:<off>"):
+            client.read_u16("0D510202")
+
+        # A truncated read surfaces as the typed-read failure, not silent garbage.
+        mock.memory = mock.memory[: (0x0D51 << 4) + 0x0200]
+        with pytest.raises(RuntimeError, match="u16"):
+            client.read_u16("0D51:0200")
 
 
 # ==============================================================================
-# 5. BDA Injector Unit Tests
-# ==============================================================================
-
-
-def test_bda_char_to_key_mapping() -> None:
-    """Verify character to BIOS scan code and ASCII mapping."""
-    ascii_code, scan_code = char_to_key("i")
-    assert ascii_code == ord("i")
-    assert scan_code == 0x17
-
-    ascii_code, scan_code = char_to_key("c")
-    assert ascii_code == ord("c")
-    assert scan_code == 0x2E
-
-    with pytest.raises(ValueError, match="char_to_key expects single character"):
-        char_to_key("multi")
-
-
-def test_bda_keystroke_injection_and_modal_navigation() -> None:
-    """Verify keystroke injection into BIOS Data Area circular ring buffer."""
-    mock = MockTransport()
-    client = TacClient(mock)
-
-    # Initial state check
-    head, tail = BdaInjector.get_buffer_state(client)
-    assert head == 0x001E
-    assert tail == 0x001E
-
-    # Navigate modal dialog to INTRO.FLM ([Enter, 'i', Enter])
-    BdaInjector.navigate_modal_dialog(client, "intro")
-
-    new_head, new_tail = BdaInjector.get_buffer_state(client)
-    assert new_head == 0x001E
-    # 3 keystrokes * 2 bytes = 6 bytes advanced -> tail = 0x0024
-    assert new_tail == 0x0024
-
-    # Verify injected buffer bytes at 0040:001E
-    raw_bda = client.read_memory("0040:001E", 6)
-    # [Enter (0D 1C), 'i' (69 17), Enter (0D 1C)]
-    expected = bytes([0x0D, 0x1C, 0x69, 0x17, 0x0D, 0x1C])
-    assert raw_bda == expected
-
-
-def test_bda_ring_buffer_wrapping() -> None:
-    """Verify circular ring buffer wrapping when tail advances past 0040:003E."""
-    mock = MockTransport()
-    client = TacClient(mock)
-
-    # Position tail at 0x003C (last 2-byte slot in buffer before wrap)
-    # Position head at 0x0028 so there is plenty of space across the wrap
-    client.write_u16("0040:001A", 0x0028)
-    client.write_u16("0040:001C", 0x003C)
-
-    # Inject 2 keys: first writes to 0x003C, second wraps to 0x001E
-    keys = [KEY_ENTER, char_to_key("c")]
-    BdaInjector.inject_keys(client, keys)
-
-    _, new_tail = BdaInjector.get_buffer_state(client)
-    # First key advanced tail from 0x003C to 0x001E, second key advanced to 0x0020
-    assert new_tail == 0x0020
-
-
-def test_bda_buffer_overflow() -> None:
-    """Verify exception raised when injecting more than buffer capacity."""
-    mock = MockTransport()
-    client = TacClient(mock)
-
-    # Try injecting 16 keys into empty buffer (capacity is 15 keys)
-    keys = [KEY_ENTER] * 16
-    with pytest.raises(BufferError):
-        BdaInjector.inject_keys(client, keys)
-
-
-def test_bda_odd_tail_pointer_normalized() -> None:
-    """Verify that odd tail pointer 0x003D is normalized and does not touch 0040:003E."""
-    mock = MockTransport()
-    client = TacClient(mock)
-    client.write_u16("0040:001A", 0x0024)
-    client.write_u16("0040:001C", 0x003D)
-    client.write_memory("0040:003E", b"\x00\x00")
-
-    BdaInjector.inject_keys(client, [KEY_ENTER])
-    # 0040:003E must remain 0x00 (Floppy status protected)
-    floppy_byte = client.read_memory("0040:003E", 1)
-    assert floppy_byte == b"\x00"
-
-    # Tail should have reset from 0x003D to 0x001E, then advanced by 2 to 0x0020
-    _, tail = BdaInjector.get_buffer_state(client)
-    assert tail == 0x0020
-
-
-def test_bda_atomic_overflow_preserves_memory() -> None:
-    """Verify that overflowing BDA capacity does not leave partial writes in RAM."""
-    mock = MockTransport()
-    client = TacClient(mock)
-    # Head at 0x0024, tail at 0x0020 -> exactly 1 slot available
-    client.write_u16("0040:001A", 0x0024)
-    client.write_u16("0040:001C", 0x0020)
-    client.write_memory("0040:0020", b"\x00\x00")
-
-    # Request 2 keys -> overflow
-    with pytest.raises(BufferError):
-        BdaInjector.inject_keys(client, [char_to_key("a"), char_to_key("b")])
-
-    # Memory at 0040:0020 must remain unmodified
-    assert client.read_memory("0040:0020", 2) == b"\x00\x00"
-    _, tail = BdaInjector.get_buffer_state(client)
-    assert tail == 0x0020
-
-
-def test_bda_empty_film_prefix_defaults() -> None:
-    """Verify that navigate_modal_dialog handles empty prefix without crashing."""
-    mock = MockTransport()
-    client = TacClient(mock)
-    BdaInjector.navigate_modal_dialog(client, "")
-    # Injected keystrokes should be [KEY_ENTER, 'i', KEY_ENTER]
-    raw = client.read_memory("0040:001E", 6)
-    assert raw == bytes([0x0D, 0x1C, 0x69, 0x17, 0x0D, 0x1C])
-
-
-def test_bda_punctuation_scan_codes() -> None:
-    """Verify scan codes for filename punctuation."""
-    assert char_to_key(".") == (0x2E, 0x34)
-    assert char_to_key("-") == (0x2D, 0x0C)
-    assert char_to_key("_") == (0x5F, 0x0C)
-
-
-# ==============================================================================
-# 6. V-Sync Trap & Deduplication Unit Tests
+# 5. V-Sync Trap & Deduplication Unit Tests
 # ==============================================================================
 
 
@@ -603,71 +358,51 @@ def test_vsync_trap_tick_deduplication() -> None:
     assert math.isclose(VGA_REFRESH_HZ, 70.087, rel_tol=1e-3)
 
     mock = MockTransport()
-    client = TacClient(mock)
-    trap = VsyncTrap(post_retrace_bp="0D51:0C5E", tick_addr=DEFAULT_TICK_ADDR)
+    trap = VsyncTrap(tick_address=DEFAULT_TICK_ADDRESS)
 
-    # Custom handler simulating 70 Hz VGA retrace:
-    # Sim tick advances only once every 3 RUN calls!
-    run_count = 0
+    # Simulate a 70 Hz VGA retrace: the sim tick advances only once every 3 steps.
+    step_count = 0
 
-    def mock_run_handler(_args: list[str]) -> list[str]:
-        nonlocal run_count
-        run_count += 1
-        sim_tick = run_count // 3
-        mock.set_sim_tick(sim_tick)
-        return ["Breakpoint hit"]
+    def mock_retrace() -> None:
+        nonlocal step_count
+        step_count += 1
+        mock.set_sim_tick(step_count // 3)
 
-    mock.register_handler("RUN", mock_run_handler)
+    mock.retrace_source = mock_retrace
 
-    trap.arm(client)
-    assert "0D51:0C5E" in mock.breakpoints
-
-    # First call: steps through until sim tick is observed (tick 0)
-    tick0 = trap.wait_next_sim_tick(client)
-    assert tick0 == 0
+    assert trap.wait_next_sim_tick(mock) == 0
     assert trap.captured_frames == 1
 
-    # Second call: steps through duplicate 70 Hz frames until sim tick advances to 1
-    tick1 = trap.wait_next_sim_tick(client)
-    assert tick1 == 1
+    assert trap.wait_next_sim_tick(mock) == 1
     assert trap.captured_frames == 2
     assert trap.duplicate_frames_dropped > 0
-
-    trap.disarm(client)
-    assert len(mock.breakpoints) == 0
 
 
 def test_vsync_trap_timeout() -> None:
     """Verify VsyncTrap raises TimeoutError if simulation tick fails to advance."""
     mock = MockTransport()
-    client = TacClient(mock)
     trap = VsyncTrap(max_spins_per_tick=5)
-    # Set last_captured_tick to 0 so wait_next_sim_tick requires tick > 0
     trap.last_captured_tick = 0
 
-    # Freeze tick counter at 0
-    mock.register_handler("RUN", lambda _args: ["Breakpoint hit"])
+    # Freeze tick counter at 0.
+    mock.retrace_source = lambda: None
 
     with pytest.raises(TimeoutError):
-        trap.wait_next_sim_tick(client)
+        trap.wait_next_sim_tick(mock)
 
 
 # ==============================================================================
-# 7. Streamer & Golden Oracle Unit Tests
+# 6. Streamer & Golden Oracle Unit Tests
 # ==============================================================================
 
 
 def test_decode_camera_from_memory_direct() -> None:
     """Verify direct memory decoding of 32-byte camera rig structure [MEM-CAMERA-RIG]."""
     mock = MockTransport()
-    client = TacClient(mock)
-    streamer = TrajectoryStreamer(client)
+    streamer = TrajectoryStreamer(TacClient(mock))
 
     eye_raw = [round(x * 65536.0) for x in [10.0, 20.0, 30.0]]
     tgt_raw = [round(x * 65536.0) for x in [0.0, 5.0, 0.0]]
-    focal_u16 = 290  # ~45 deg FOV
-    roll_bam = 0x2000  # 45 deg roll
-    mode_id = 1
     raw_cam = struct.pack(
         "<6iHHHH",
         eye_raw[0],
@@ -676,9 +411,9 @@ def test_decode_camera_from_memory_direct() -> None:
         tgt_raw[0],
         tgt_raw[1],
         tgt_raw[2],
-        focal_u16,
-        roll_bam,
-        mode_id,
+        290,
+        0x2000,
+        1,
         0,
     )
     mock.write_bytes(0x0D51, 0x0C10, raw_cam)
@@ -691,11 +426,9 @@ def test_decode_camera_from_memory_direct() -> None:
     assert decoded_mode == 1
     assert cam.cut_from_previous is False
 
-    # Test camera cut detection on distance > 50 m
     cam2, _ = streamer.decode_camera_from_memory("0D51:0C10", last_eye=[100.0, 20.0, 30.0])
     assert cam2.cut_from_previous is True
 
-    # Test camera cut detection on mode change
     cam3, _ = streamer.decode_camera_from_memory("0D51:0C10", last_eye=cam.eye, last_mode=2)
     assert cam3.cut_from_previous is True
 
@@ -703,16 +436,14 @@ def test_decode_camera_from_memory_direct() -> None:
 def test_decode_actor_from_memory_direct() -> None:
     """Verify direct memory decoding of 64-byte actor record [MEM-ACTOR-TABLE]."""
     mock = MockTransport()
-    client = TacClient(mock)
-    streamer = TrajectoryStreamer(client)
+    streamer = TrajectoryStreamer(TacClient(mock))
 
     pos_raw = [round(x * 65536.0) for x in [5.0, 15.0, 25.0]]
-    name_bytes = b"FOKKER\x00\x00"
     rot = quat_normalize([0.0, 0.0, 0.0, 1.0])
     raw_header = struct.pack(
         "<I8s3i4fHH",
         1,
-        name_bytes,
+        b"FOKKER\x00\x00",
         pos_raw[0],
         pos_raw[1],
         pos_raw[2],
@@ -720,13 +451,12 @@ def test_decode_actor_from_memory_direct() -> None:
         rot[1],
         rot[2],
         rot[3],
-        1,  # state_mask
-        1,  # joint_count
+        1,
+        1,
     )
     joints_buf = bytearray(16)
     struct.pack_into("<HH", joints_buf, 0, 0, 0x4000)
-    next_ptr = struct.pack("<HH", 0, 0)
-    mock.write_bytes(0x0D51, 0x0CA0, raw_header + joints_buf + next_ptr)
+    mock.write_bytes(0x0D51, 0x0CA0, raw_header + joints_buf + struct.pack("<HH", 0, 0))
 
     actor, next_addr = streamer.decode_actor_from_memory("0D51:0CA0")
     assert actor.actor_id == 1
@@ -742,54 +472,22 @@ def test_decode_actor_from_memory_direct() -> None:
 def test_decode_actors_linked_list() -> None:
     """Verify traversal of chained actors starting from dynamic heap pointer [MEM-ACTOR-TABLE]."""
     mock = MockTransport()
-    client = TacClient(mock)
-    streamer = TrajectoryStreamer(client)
+    streamer = TrajectoryStreamer(TacClient(mock))
 
-    # Actor 1 at 0D51:0CA0 points to 0D51:0CE0
-    name1 = b"FOKKER\x00\x00"
     raw_act1 = (
-        struct.pack(
-            "<I8s3i4fHH",
-            1,
-            name1,
-            0,
-            0,
-            0,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            1,
-            0,
-        )
+        struct.pack("<I8s3i4fHH", 1, b"FOKKER\x00\x00", 0, 0, 0, 0.0, 0.0, 0.0, 1.0, 1, 0)
         + bytearray(16)
         + struct.pack("<HH", 0x0CE0, 0x0D51)
     )
     mock.write_bytes(0x0D51, 0x0CA0, raw_act1)
 
-    # Actor 2 at 0D51:0CE0 is terminal (next pointer 0x0000:0x0000)
-    name2 = b"TARGET\x00\x00"
     raw_act2 = (
-        struct.pack(
-            "<I8s3i4fHH",
-            2,
-            name2,
-            655360,
-            0,
-            0,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            1,
-            0,
-        )
+        struct.pack("<I8s3i4fHH", 2, b"TARGET\x00\x00", 655360, 0, 0, 0.0, 0.0, 0.0, 1.0, 1, 0)
         + bytearray(16)
         + struct.pack("<HH", 0x0000, 0x0000)
     )
     mock.write_bytes(0x0D51, 0x0CE0, raw_act2)
 
-    # Set heap pointer at 0D51:0C50 -> 0D51:0CA0
     mock.write_u16(0x0D51, 0x0C50, 0x0CA0)
     mock.write_u16(0x0D51, 0x0C52, 0x0D51)
 
@@ -812,18 +510,15 @@ def test_streamer_generates_600_continuous_ticks() -> None:
 
 
 def test_streamer_exact_match_against_baseline_fixture() -> None:
-    """Verify exact match for initial ticks captured from memory against tests/fixtures/oracle_intro_trajectory.json."""
+    """Verify exact match for initial ticks captured from memory against the baseline fixture."""
     mock = MockTransport()
     mock.load_trajectory(generate_intro_trajectory(2))
-    client = TacClient(mock)
-    trap = VsyncTrap()
-    streamer = TrajectoryStreamer(client, trap)
+    streamer = TrajectoryStreamer(TacClient(mock))
     records = streamer.capture_ticks(2)
 
     assert FIXTURE_PATH.exists()
     baseline = load_trajectory_records(FIXTURE_PATH)
 
-    # Tick 0
     assert records[0].tick == 0
     assert pytest.approx(records[0].camera.eye, abs=1e-4) == baseline[0].camera.eye
     assert pytest.approx(records[0].camera.target, abs=1e-4) == baseline[0].camera.target
@@ -838,7 +533,6 @@ def test_streamer_exact_match_against_baseline_fixture() -> None:
     assert len(records[0].audio_cues) == 1
     assert records[0].audio_cues[0].sample_name == "ENGINE.VOC"
 
-    # Tick 1
     assert records[1].tick == 1
     assert pytest.approx(records[1].camera.eye, abs=1e-4) == baseline[1].camera.eye
     assert (
@@ -855,19 +549,15 @@ def test_streamer_exact_match_against_baseline_fixture() -> None:
 def test_streamer_quaternion_normalization_and_zero_matrix_tearing() -> None:
     """Verify | ||q|| - 1.0 | < 1e-4 and zero matrix tearing across 600 ticks captured from memory."""
     mock = MockTransport()
-    client = TacClient(mock)
-    trap = VsyncTrap()
-    streamer = TrajectoryStreamer(client, trap)
+    streamer = TrajectoryStreamer(TacClient(mock))
     records = streamer.capture_ticks(600)
 
     assert len(records) == 600
     for rec in records:
         for actor in rec.actors:
-            # Quaternion invariant
             diff = quat_norm_diff(actor.rotation_quat)
             assert diff < 1e-4, f"Quaternion norm error at tick {rec.tick}: {diff}"
 
-            # Zero matrix tearing: world matrix matches position and quaternion
             expected_matrix = actor.compute_world_matrix()
             for m_act, m_exp in zip(actor.world_matrix, expected_matrix, strict=True):
                 assert math.isclose(m_act, m_exp, abs_tol=1e-4), (
@@ -878,9 +568,7 @@ def test_streamer_quaternion_normalization_and_zero_matrix_tearing() -> None:
 def test_streamer_position_rmse_threshold() -> None:
     """Verify position RMSE <= 0.01 m against baseline fixture for memory capture."""
     mock = MockTransport()
-    client = TacClient(mock)
-    trap = VsyncTrap()
-    streamer = TrajectoryStreamer(client, trap)
+    streamer = TrajectoryStreamer(TacClient(mock))
     records = streamer.capture_ticks(600)
 
     rmse = compute_position_rmse(records, FIXTURE_PATH)
@@ -900,81 +588,3 @@ def test_oracle_intro_trajectory_file_exists_and_valid(tmp_path: Path) -> None:
 
     rmse = compute_position_rmse(records, FIXTURE_PATH)
     assert rmse <= 0.01
-
-
-# ==============================================================================
-# 7. Capture Film-Clock Tagging
-# ==============================================================================
-
-
-def _make_capture_mock(dgroup_segment: int) -> MockTransport:
-    """Build a mock emulator that serves a settling dialog, then one new page per RUN.
-
-    Each RUN advances the film clock (``100 + 3 * run``) and the global tick (5 behind it)
-    at ``dgroup_segment``; decoys at the historic ``0D51`` image segment must never be read.
-    The first RUN shows a 5-index load screen that the capture has to skip.
-    """
-    mock = MockTransport()
-    state = {"dumps": 0, "runs": 0}
-
-    def memdumpbin(args: list[str]) -> list[str]:
-        path = Path(" ".join(args[2:]))
-        if state["runs"] == 0:
-            shift = min(state["dumps"], 3)
-            raster = bytes((i + shift) % 6 for i in range(FRAME_BYTES))
-        elif state["runs"] == 1:
-            raster = bytes(i % 5 for i in range(FRAME_BYTES))
-        else:
-            raster = bytes((i * 7 + state["runs"]) % 40 for i in range(FRAME_BYTES))
-        state["dumps"] += 1
-        path.write_bytes(raster)
-        return ["OK"]
-
-    def run(_args: list[str]) -> list[str]:
-        state["runs"] += 1
-        film_tick = 100 + 3 * state["runs"]
-        mock.write_u16(dgroup_segment, FILM_CLOCK_OFFSET, film_tick)
-        mock.write_u16(dgroup_segment, GLOBAL_TICK_OFFSET, film_tick - 5)
-        return ["Breakpoint hit"]
-
-    def vga(args: list[str]) -> list[str]:
-        assert args == ["DACPAL"]
-        return [f"{row * 8:02X}: " + " ".join(["3F0000"] * 8) for row in range(32)]
-
-    mock.write_u16(0x0D51, FILM_CLOCK_OFFSET, 0xBEEF)
-    mock.write_u16(0x0D51, GLOBAL_TICK_OFFSET, 0xBEEF)
-    mock.register_handler("MEMDUMPBIN", memdumpbin)
-    mock.register_handler("RUN", run)
-    mock.register_handler("VGA", vga)
-    return mock
-
-
-@pytest.mark.parametrize("dgroup_segment", [DGROUP_RUNTIME_SEG, 0x2000])
-def test_capture_tags_frames_with_film_and_global_ticks(
-    tmp_path: Path, dgroup_segment: int
-) -> None:
-    """Every captured frame carries the film clock and global tick read at the trap."""
-    mock = _make_capture_mock(dgroup_segment)
-    client = TacClient(mock)
-
-    if dgroup_segment == DGROUP_RUNTIME_SEG:
-        meta = capture(tmp_path, 3, client)
-    else:
-        meta = capture(tmp_path, 3, client, dgroup_segment=dgroup_segment)
-
-    frames = meta["frames"]
-    assert [f["ordinal"] for f in frames] == [1, 2, 3]
-    # RUN 1 was the load screen; frames come from RUN 2..4.
-    assert [f["film_tick"] for f in frames] == [106, 109, 112]
-    assert [f["global_tick"] for f in frames] == [101, 104, 107]
-    assert [f["frame_file"] for f in frames] == [
-        "tick_0001.idx",
-        "tick_0002.idx",
-        "tick_0003.idx",
-    ]
-    assert meta["palette_source"] == "dacpal"
-    assert meta["dgroup_segment"] == f"{dgroup_segment:04X}"
-
-    on_disk = json.loads((tmp_path / "meta.json").read_text(encoding="utf-8"))
-    assert on_disk["frames"] == frames
-    assert DEFAULT_TICK_ADDR == "1575:4896"

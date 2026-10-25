@@ -1,24 +1,24 @@
-"""Drive ``PLAYONE.EXE``'s LOAD FILM dialog and sample frames deterministically.
+"""Addresses and dialog keys for driving PLAYONE.EXE through the TAC harness.
 
 The parity capture owns the emulator through DOSBox-X's debugger, and this build
 imposes two hard constraints the driver is built around:
 
-* any debugger command issued while ``PLAYONE.EXE`` is still unpacking (roughly the
-  first two seconds) kills the guest with an ``Illegal Unhandled Interrupt Called 6``
-  storm, and reads of DGROUP during the load can crash the emulator outright, so the
-  driver touches nothing until the dialog has settled on screen; and
-* ``VRT`` after Mode 13h playback starts crashes the emulator (``0xC0000409``), so
-  frames are sampled through the documented post-retrace trap at ``0D51:0C5E``: an
-  execution breakpoint plus ``RUN`` stops the guest once per rendered frame.
+* any debugger command issued while PLAYONE.EXE is still unpacking (roughly the
+  first two seconds) kills the guest with an Illegal Unhandled Interrupt Called 6
+  storm, and reads of DGROUP during the load can crash the emulator outright, so
+  the driver touches nothing until the dialog has settled on screen; and
+* VRT after Mode 13h playback starts crashes the emulator (0xC0000409), so frames
+  are sampled through the documented post-retrace trap at 0D51:0C5E: an
+  execution breakpoint plus RUN stops the guest once per rendered frame.
 
-Keystrokes only reach ``INT 16h`` while the guest free-runs, so the dialog is driven
-by writing words into the BIOS keyboard ring buffer and letting the guest poll them.
+Keystrokes only reach INT 16h while the guest free-runs, so the dialog is driven
+by writing words into the BIOS keyboard ring buffer (bda.py) and letting the
+guest poll them.
 """
 
 from __future__ import annotations
 
-from stunt_reel.tac.bda import KEY_DOWN, KEY_ENTER, BdaInjector, char_to_key
-from stunt_reel.tac.client import TacClient
+from stunt_reel.tac.bda import KEY_DOWN, KEY_ENTER, char_to_key
 
 __all__ = [
     "DGROUP_RUNTIME_SEG",
@@ -27,45 +27,30 @@ __all__ = [
     "FILM_PREFIX_LETTER",
     "GLOBAL_TICK_OFFSET",
     "VBLANK_TRAP",
-    "arm_frame_trap",
-    "confirm_film",
-    "next_frame",
+    "film_selection_keys",
 ]
 
-#: Real-mode segment of ``PLAYONE.EXE``'s DGROUP, which holds both code and data.
+#: Real-mode segment of PLAYONE.EXE's DGROUP, which holds both code and data.
 DGROUP_SEG: str = "0D51"
-#: Runtime ``DS`` (the DGROUP segment while playing), observed live in the T11 check. The
+#: Runtime DS (the DGROUP segment while playing), observed live in the T11 check. The
 #: debugger exposes no register read, so captures take it as a parameter defaulting to this.
 DGROUP_RUNTIME_SEG: int = 0x1575
-#: ``DS`` offset of the active film clock, 50 Hz ticks into the film (``# [MEM-FLM-TICK]``).
+#: DS offset of the active film clock, 50 Hz ticks into the film (# [MEM-FLM-TICK]).
 FILM_CLOCK_OFFSET: int = 0x4896
-#: ``DS`` offset of the global 50 Hz timer tick, whose offset from the film clock is not constant (``memory.md`` 3.2).
+#: DS offset of the global 50 Hz timer tick, whose offset from the film clock is not constant (memory.md 3.2).
 GLOBAL_TICK_OFFSET: int = 0x22B8
-#: Code offset immediately after the vertical retrace wait loop (``# [MEM-VSYNC-03DA]``).
+#: Code offset immediately after the vertical retrace wait loop (# [MEM-VSYNC-03DA]).
 VBLANK_TRAP: str = f"{DGROUP_SEG}:0C5E"
-#: First letter of the film to play; jumps the listbox to ``CTRY.ALL``.
+#: First letter of the film to play when a name is missing; jumps the listbox.
 FILM_PREFIX_LETTER: str = "c"
 
 
-def confirm_film(client: TacClient, prefix: str = FILM_PREFIX_LETTER) -> None:
-    """Select the film whose name starts with ``prefix`` in the open dialog and confirm it.
+def film_selection_keys(name: str) -> list[tuple[int, int]]:
+    """BIOS keystrokes that select the film whose file name starts with name[0].
 
-    The listbox starts on ``[..]``; the prefix jump lands on the first entry starting with
-    ``prefix`` (the film's ``.ALL``, when VAULT holds only that film's pair), one Down
-    selects its ``.FLM``, and Enter confirms.
-    Each keystroke is queued in the BIOS Data Area and consumed by the guest's
-    ``INT 16h`` poll while the emulator free-runs.
+    The listbox starts on [..]; the prefix jump lands on the first entry starting with
+    the letter (the film's .ALL, when VAULT holds only that film's pair), one Down
+    selects its .FLM, and Enter confirms.
     """
-    BdaInjector.inject_keys(client, [char_to_key(prefix)])
-    BdaInjector.inject_keys(client, [KEY_DOWN])
-    BdaInjector.inject_keys(client, [KEY_ENTER])
-
-
-def arm_frame_trap(client: TacClient) -> None:
-    """Stop the guest at the post-retrace trap so every sample is a whole frame."""
-    client.execute(f"BP {VBLANK_TRAP}")
-
-
-def next_frame(client: TacClient) -> None:
-    """Run the guest to the next post-retrace trap hit."""
-    client.resume()
+    letter = name[:1].lower() or FILM_PREFIX_LETTER
+    return [char_to_key(letter), KEY_DOWN, KEY_ENTER]

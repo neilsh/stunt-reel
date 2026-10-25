@@ -1,12 +1,12 @@
 """Capture PLAYONE.EXE Mode 13h reference frames for visual parity.
 
-Launches DOSBox-X with ``dosbox-parity.conf`` (which auto-starts ``PLAYONE.EXE`` on
-its LOAD FILM dialog), accepts the emulator's outbound debugger connection on the MCP
-control port, confirms ``CTRY.FLM`` with BIOS Data Area keystrokes, and dumps one
-whole frame per post-retrace trap hit until the frame budget is met.
+Launches DOSBox-X with dosbox-parity.conf (which auto-starts PLAYONE.EXE on its
+LOAD FILM dialog), accepts the emulator's outbound debugger connection on the MCP
+control port, confirms CTRY.FLM with BIOS Data Area keystrokes, and dumps one whole
+frame per post-retrace trap hit until the frame budget is met.
 
-Reference rasters, palettes, and ``meta.json`` land under ``build/`` (gitignored);
-nothing here is committed evidence.
+Reference rasters, palettes, and meta.json land under build/ (gitignored); nothing
+here is committed evidence.
 """
 
 from __future__ import annotations
@@ -14,33 +14,18 @@ from __future__ import annotations
 import argparse
 import hashlib
 import logging
-import shutil
-import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
-from stunt_reel.dataroot import ensure_links_or_report, is_shared, require_shared_write
+from stunt_reel import dataroot
+from stunt_reel.dataroot import SharedWriteError, ensure_links_or_report
 from stunt_reel.tac import playone
-from stunt_reel.tac.client import TacClient
+from stunt_reel.tac.emulator import EmulatorUnavailable, Launching, PortTaken, WaitingForGuest
 from stunt_reel.tac.framebuffer import capture
-from stunt_reel.tac.transport import ListenTransport
+from stunt_reel.tac.session import DialogSettled, Session, SessionError, SessionEvent, run_session
 
-CONTROL_PORT: int = 58991
-LAUNCH_TIMEOUT_SECONDS: float = 30.0
-EMULATOR_STOP_SECONDS: float = 10.0
-REPO_ROOT: Path = Path(__file__).resolve().parents[2]
 DEFAULT_FILM: Path = Path("corpus/stisldem/VAULT/CTRY.FLM")
-#: Engine files the player needs beside ``PLAYONE.EXE`` (everything in the demo root but VAULT).
-ENGINE_FILES: tuple[str, ...] = (
-    "DRIVER1.BIN",
-    "DRIVER2.BIN",
-    "DRIVER3.BIN",
-    "GAME.CFG",
-    "INSTALL.CFG",
-    "PFONT.BIN",
-    "PLAYONE.EXE",
-    "VDATA.BIN",
-)
 
 
 def parse_args() -> argparse.Namespace:
@@ -96,141 +81,88 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def stage_film(film: Path, conf: Path) -> tuple[Path, Path]:
-    """Stage ``film`` alone in a fresh mount and write a DOSBox-X conf that mounts it.
-
-    ``PLAYONE.EXE`` takes no film argument and its listbox only jumps by first letter, so
-    the mount holds the engine files and a ``VAULT`` with just this film's ``.FLM`` and
-    ``.ALL``: the keys are then always the first letter, Down, Enter. Returns the staged
-    mount and the generated conf (both under ``build/parity/stage/``).
-    """
-    archive = film.with_suffix(".ALL")
-    for needed in (film, archive):
-        if not needed.is_file():
-            msg = f"{needed} not found (the film's .FLM and .ALL must sit together)"
-            raise FileNotFoundError(msg)
-    source_root = film.parent.parent
-    stage = REPO_ROOT / "build" / "parity" / "stage" / film.stem.lower()
-    shutil.rmtree(stage, ignore_errors=True)
-    (stage / "VAULT").mkdir(parents=True)
-    for name in ENGINE_FILES:
-        shutil.copy2(source_root / name, stage / name)
-    shutil.copy2(film, stage / "VAULT" / film.name)
-    shutil.copy2(archive, stage / "VAULT" / archive.name)
-
-    text = conf.read_text(encoding="utf-8")
-    mount = stage.relative_to(REPO_ROOT).as_posix()
-    text = text.replace('mount c "corpus/stisldem"', f'mount c "{mount}"')
-    text = text.replace(r"VAULT\CTRY.FLM", rf"VAULT\{film.name}")
-    staged_conf = stage.parent / f"stage-{film.stem.lower()}.conf"
-    staged_conf.write_text(text, encoding="utf-8")
-    return stage, staged_conf
+def resolve(path: Path) -> Path:
+    """Resolve a path against the repository root."""
+    return path if path.is_absolute() else dataroot.REPO_ROOT / path
 
 
 def clear_frames(out_dir: Path) -> None:
     """Delete rasters from an earlier run so the capture cannot leave stale frames."""
     if not out_dir.is_dir():
         return
-    for pattern in ("tick_*.idx", "palettes_*.json", "_scratch.idx"):
+    for pattern in ("tick_*.idx", "palettes_*.json"):
         for stale in out_dir.glob(pattern):
             stale.unlink()
 
 
-def run_session(args: argparse.Namespace) -> int:
-    """Launch one emulator, drive the dialog, and capture frames."""
-    film: Path = args.film if args.film.is_absolute() else REPO_ROOT / args.film
-    out: Path = args.out or Path("build/parity/reference") / film.stem.lower()
-    out_dir: Path = out if out.is_absolute() else REPO_ROOT / out
+def report(event: SessionEvent) -> None:
+    """Print the session's progress the way capture-ref always has."""
+    if isinstance(event, Launching):
+        print(f"[capture] launching {event.exe} -conf {event.conf} (cwd {event.cwd})", flush=True)
+    elif isinstance(event, WaitingForGuest):
+        print(f"[capture] waiting for DOSBox-X on 127.0.0.1:{event.port}", flush=True)
+    elif isinstance(event, DialogSettled):
+        print(f"[capture] dialog settled: {event.distinct_indices} distinct indices", flush=True)
+
+
+def run(args: argparse.Namespace) -> int:
+    """Drive one capture session and report its artifacts."""
+    film = resolve(args.film)
+    out = resolve(args.out or Path("build/parity/reference") / film.stem.lower())
+    conf = resolve(args.conf)
     if not ensure_links_or_report("mise run capture-ref"):
         return 2
-    if is_shared(out_dir):
-        require_shared_write("mise run capture-ref")
-    conf: Path = args.conf if args.conf.is_absolute() else REPO_ROOT / args.conf
-    _stage, conf = stage_film(film, conf)
-    clear_frames(out_dir)
     film_meta = {
         "film": film.name,
         "flm_bytes": film.stat().st_size,
         "flm_sha256": hashlib.sha256(film.read_bytes()).hexdigest(),
     }
 
-    transport = ListenTransport(port=CONTROL_PORT)
+    def sample(session: Session) -> dict[str, Any]:
+        clear_frames(out)
+        return capture(session, out, args.max_frames, extra_meta=film_meta)
+
     try:
-        transport.listen()
-    except OSError as exc:
+        meta = run_session(
+            film,
+            out,
+            sample=sample,
+            conf=conf,
+            dgroup_segment=args.dgroup_segment,
+            no_launch=args.no_launch,
+            progress=report,
+        )
+    except SharedWriteError as exc:
+        print(f"[capture] {exc}", file=sys.stderr)
+        return 2
+    except PortTaken as exc:
         print(
-            f"[capture] cannot listen on 127.0.0.1:{CONTROL_PORT} ({exc}); "
+            f"[capture] cannot listen on 127.0.0.1:{exc.port} ({exc}); "
             "close the running DOSBox-X instance (or use --no-launch)",
             file=sys.stderr,
         )
         return 1
-
-    client = TacClient(transport)
-    emulator: subprocess.Popen[bytes] | None = None
-    try:
-        if not args.no_launch:
-            exe = shutil.which("dosbox-x")
-            if exe is None:
-                print(
-                    "[capture] dosbox-x is not on PATH; run via mise run capture-ref",
-                    file=sys.stderr,
-                )
-                return 1
-            print(
-                f"[capture] launching {exe} -conf {conf} (cwd {REPO_ROOT})",
-                flush=True,
-            )
-            emulator = subprocess.Popen(  # noqa: S603
-                [exe, "-conf", str(conf)], cwd=str(REPO_ROOT)
-            )
-
-        print(f"[capture] waiting for DOSBox-X on 127.0.0.1:{CONTROL_PORT}", flush=True)
-        transport.accept(timeout=LAUNCH_TIMEOUT_SECONDS)
-        if not client.ping():
-            print("[capture] debugger did not answer PING", file=sys.stderr)
-            return 1
-
-        meta = capture(
-            out_dir,
-            args.max_frames,
-            client,
-            dgroup_segment=args.dgroup_segment,
-            film_prefix=film.name[0].lower(),
-            extra_meta=film_meta,
-        )
-    except (RuntimeError, TimeoutError, ConnectionError) as exc:
-        if emulator is not None:
-            print(
-                f"[capture] {exc}; emulator exit status {emulator.poll()}",
-                file=sys.stderr,
-            )
-        else:
-            print(f"[capture] {exc}", file=sys.stderr)
+    except EmulatorUnavailable as exc:
+        print(f"[capture] {exc}; run via mise run capture-ref", file=sys.stderr)
         return 1
-    finally:
-        client.close()
-        if emulator is not None and emulator.poll() is None:
-            emulator.terminate()
-            try:
-                emulator.wait(timeout=EMULATOR_STOP_SECONDS)
-            except subprocess.TimeoutExpired:
-                emulator.kill()
+    except (SessionError, RuntimeError, TimeoutError, ConnectionError) as exc:
+        status = getattr(exc, "emulator_status", None)
+        suffix = f"; emulator exit status {status}" if status is not None else ""
+        print(f"[capture] {exc}{suffix}", file=sys.stderr)
+        return 1
 
     frames = meta["frames"]
     if not frames:
         print("[capture] no frames captured", file=sys.stderr)
         return 1
-    print(
-        f"[capture] captured {len(frames)} frames into {out_dir}",
-        flush=True,
-    )
+    print(f"[capture] captured {len(frames)} frames into {out}", flush=True)
     return 0
 
 
 def main() -> int:
     """Run the capture and terminate the emulator."""
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
-    return run_session(parse_args())
+    return run(parse_args())
 
 
 if __name__ == "__main__":

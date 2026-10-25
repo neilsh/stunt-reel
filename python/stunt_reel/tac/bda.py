@@ -1,17 +1,18 @@
-"""BIOS Data Area (BDA) keystroke buffer injector for automated navigation.
+"""BIOS Data Area (BDA) keystroke buffer injection for automated navigation.
 
 Directly manipulates the standard IBM PC BIOS keyboard circular buffer
 in segment 0x0040 (head: 0040:001A, tail: 0040:001C, buffer: 0040:001E-0040:003D).
 
 Enables headless navigation through PLAYONE.EXE's modal film selection dialog
-(0x0787) without command-line parameter support.
+(0x0787) without command-line parameter support. Every operation goes through the
+transport's memory operations, so a live session and the offline mock share the
+ring-buffer arithmetic.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-
-from stunt_reel.tac.client import TacClient
+from typing import Protocol
 
 __all__ = [
     "BDA_BUFFER_END",
@@ -24,9 +25,23 @@ __all__ = [
     "KEY_ESC",
     "KEY_SPACE",
     "KEY_UP",
+    "BdaBuffer",
     "BdaInjector",
     "char_to_key",
 ]
+
+
+class BdaBuffer(Protocol):
+    """The real-mode memory operations a keystroke injection needs."""
+
+    def read_memory(self, address: tuple[int, int], length: int) -> bytes:
+        """Read length bytes at (segment, offset)."""
+        ...
+
+    def write_memory(self, address: tuple[int, int], data: bytes) -> None:
+        """Write data at (segment, offset)."""
+        ...
+
 
 # BIOS Data Area Memory Offsets
 BDA_SEGMENT: int = 0x0040
@@ -97,30 +112,34 @@ def char_to_key(ch: str) -> tuple[int, int]:
 
 
 class BdaInjector:
-    """Injects keystrokes directly into conventional memory BIOS Data Area."""
+    """Writes keystrokes into the conventional-memory BIOS Data Area ring buffer."""
 
     @staticmethod
-    def get_buffer_state(client: TacClient) -> tuple[int, int]:
+    def get_buffer_state(buffer: BdaBuffer) -> tuple[int, int]:
         """Read current BDA head and tail pointer offsets."""
-        head = client.read_u16(f"{BDA_SEGMENT:04X}:{BDA_HEAD_OFFSET:04X}")
-        tail = client.read_u16(f"{BDA_SEGMENT:04X}:{BDA_TAIL_OFFSET:04X}")
+        head = int.from_bytes(buffer.read_memory((BDA_SEGMENT, BDA_HEAD_OFFSET), 2), "little")
+        tail = int.from_bytes(buffer.read_memory((BDA_SEGMENT, BDA_TAIL_OFFSET), 2), "little")
         return head, tail
 
     @classmethod
-    def inject_keys(cls, client: TacClient, keys: Sequence[tuple[int, int]]) -> None:
-        """Inject sequence of keystrokes (ascii, scan_code) into BDA ring buffer."""
+    def inject_keys(cls, buffer: BdaBuffer, keys: Sequence[tuple[int, int]]) -> None:
+        """Inject a sequence of keystrokes (ascii, scan_code) into the BDA ring buffer.
+
+        The whole sequence is capacity-checked before anything is written, so an
+        overflowing request leaves the buffer, the head and the tail untouched.
+        """
         if not keys:
             return
 
-        head, tail = cls.get_buffer_state(client)
+        head, tail = cls.get_buffer_state(buffer)
 
         # Normalize out-of-range or unaligned pointers (must be even word offsets in [0x001E, 0x003C])
         if not (BDA_BUFFER_START <= head <= 0x003C) or (head % 2 != 0):
             head = BDA_BUFFER_START
-            client.write_u16(f"{BDA_SEGMENT:04X}:{BDA_HEAD_OFFSET:04X}", head)
+            buffer.write_memory((BDA_SEGMENT, BDA_HEAD_OFFSET), head.to_bytes(2, "little"))
         if not (BDA_BUFFER_START <= tail <= 0x003C) or (tail % 2 != 0):
             tail = BDA_BUFFER_START
-            client.write_u16(f"{BDA_SEGMENT:04X}:{BDA_TAIL_OFFSET:04X}", tail)
+            buffer.write_memory((BDA_SEGMENT, BDA_TAIL_OFFSET), tail.to_bytes(2, "little"))
 
         # Atomic buffer capacity check before writing to memory
         buffer_size = BDA_BUFFER_END - BDA_BUFFER_START  # 32 bytes
@@ -140,22 +159,8 @@ class BdaInjector:
 
             # Write word [ascii, scan_code] at curr_tail
             key_bytes = bytes([ascii_code & 0xFF, scan_code & 0xFF])
-            client.write_memory(f"{BDA_SEGMENT:04X}:{curr_tail:04X}", key_bytes)
+            buffer.write_memory((BDA_SEGMENT, curr_tail), key_bytes)
             curr_tail = next_tail
 
         # Commit new tail pointer
-        client.write_u16(f"{BDA_SEGMENT:04X}:{BDA_TAIL_OFFSET:04X}", curr_tail)
-
-    @classmethod
-    def navigate_modal_dialog(cls, client: TacClient, film_prefix: str = "i") -> None:
-        """Automate modal film loading dialog (0x0787).
-
-        Sequence:
-        1. Enter (0x1C0D): Invokes "LOAD FILM" modal dialog.
-        2. Prefix initial character (e.g. 'i' for INTRO.FLM -> 0x1769): Highlights film.
-        3. Enter (0x1C0D): Confirms selection and initiates playback.
-        """
-        prefix = film_prefix[0] if film_prefix else "i"
-        prefix_key = char_to_key(prefix)
-        sequence = [KEY_ENTER, prefix_key, KEY_ENTER]
-        cls.inject_keys(client, sequence)
+        buffer.write_memory((BDA_SEGMENT, BDA_TAIL_OFFSET), curr_tail.to_bytes(2, "little"))
