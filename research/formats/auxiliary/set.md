@@ -153,7 +153,7 @@ $$\text{size} = \texttt{0x54} + 67 \times \text{events} + 64 \times \text{props}
 
 For `BOMBING.SET` the event table is `0x54`–`0x96` and the props begin at `0x97`, which is exactly the offset the 2004 notes found by deleting a prop. `[Supported Inference]`
 
-**Verification.** Every set with a printed dump reproduces its own size from its printed counts: BOMBING 8/1 → 663, BOMBING2 7/1 → 599, DRIVING 15/8 → 1580, FIND&HIT 4/2 → 474, FIND&HT2 4/2 → 474, REALISM 39/10 → 3250. It also closes on all 35 loose corpus sets, and `0x54 + 67 \times events` lands on the prop table for each.
+**Verification.** Every set with a printed dump reproduces its own size from its printed counts: BOMBING 8/1 → 663, BOMBING2 7/1 → 599, DRIVING 15/8 → 1580, FIND&HIT 4/2 → 474, FIND&HT2 4/2 → 474, REALISM 39/10 → 3250. It closes on all 71 sets available locally — the 35 community sets and the 36 retail sets — with no exception, and `0x54 + 67 \times events` lands on the prop table for each.
 
 **How this was established.** `TYPESET.EXE` prints a set, so flipping one byte and re-printing maps a byte to the field it feeds ([§ 6 of the STUNT.EXE note](../../stunt-exe/sets.md)). Every offset of `BOMBING.SET` was flipped and re-printed.
 
