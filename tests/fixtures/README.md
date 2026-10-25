@@ -79,3 +79,11 @@ Golden vectors for the shared DOS math helpers, generated from the Python implem
 A film that is only the `FILM` magic: its header parses, but it holds zero slices. `crates/stunt-cli/src/scene.rs` and `export.rs` tests check that naming it is an error rather than a fall back to the synthetic orbit. The same tests cover a named path that does not exist and a named film with the wrong magic (`synthetic_minimal.sod`), which need no fixture of their own; the no-input case needs no file.
 
 `crates/stunt-gltf/tests/export_test.rs` reuses `synthetic_minimal.all`, `synthetic_minimal.sod`, `synthetic_tap.sod` with `synthetic_anchors.bin`, and `synthetic_timeline.flm` to check exported `.glb` structure; it adds no fixtures of its own.
+
+### 12. `synthetic_minimal.set` (282 bytes)
+A cleanroom-synthesized scene exercising the three-record layout of `[FMT-SET-HEADER]`:
+- **Header**: 84 bytes (`stunt_name` `"SYNTHETIC SET"`, `magic` `0x08` at `0x52`, `num_events = 2` at `0x53`).
+- **Events**: two 67-byte records — `hits … Any Weapon` with `flag #3 =` and `wait 256` / `award $500` / `play` slots, then `500` ticks elapsed with one `explode` slot.
+- **Prop**: one 64-byte record (`prop_slot_id = 0`, `behavior_flags = 0x09`, `placement_flags = 0x01`, `object_model_id = 0x0102`, `override_flags = 0x40`).
+- Used by `tests/test_set_schema.py` to prove the schema consumes the header, the `num_events`-driven events and the trailing prop stride offline, and rejects a byte-truncated file.
+
