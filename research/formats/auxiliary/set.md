@@ -191,11 +191,13 @@ For `BOMBING.SET` the event table is `0x54`–`0x96` and the props begin at `0x9
 | `+0x00` | Action type (§ 3.6) |
 | `+0x01` | Target object, 0-based |
 | `+0x02` | Secondary operand: the flag number for `set flag` / `modify flag` |
-| `+0x03`–`+0x04` | `u16` operand: dollars for `award $`, and the flag value's low byte |
+| `+0x03`–`+0x04` | `u16` operand: dollars for `award $`, flag value for `set flag`, and the new value for `change` |
 | `+0x05` | Sound volume, 1 to 4 |
 | `+0x06` | Sound routing: `1` tape only, `2` pilot only |
 
 The `wait` operand at `+0x03`–`+0x04` is in 50 Hz ticks, not seconds: 256 reads back as `5.12 seconds`, which is 256/50, and 5 reads back as `0.1 seconds`. So the authored timebase in the file is the same 50 Hz clock as `[I4]`.
+
+One scalar is still unscaled. For `change`, the new value lives at `+0x03`–`+0x04`, but it is not linear in any unit tried: `0xFEB9` prints as `90` degrees, `0xFF00` as `-51`, and raising the low byte alone moves the printed angle by about half as much as raising the high byte. The field is located; its scale is open.
 
 So the layout is an IF clause, two AND qualifiers, then a run of 7-byte THEN slots: slot 1 begins at `+0x0B`, and slot `k` begins at `+0x0B + 7(k-1)`. The arithmetic closes exactly: an 11-byte clause header plus eight 7-byte slots is 67 bytes, the record size, and the last slot ends where the prop table starts. The second AND qualifier's type is at `+0x08` by that spacing, but flipping it printed no change, so it is inferred rather than observed.
 
