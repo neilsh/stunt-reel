@@ -7,7 +7,8 @@ dotted schema filename selects the fixed-name asset it names
 resolves formats whose extension does not match their content (compiled
 ``.BIN`` SOD models next to ``MAP.BIN``, and the ``.TKE`` copies of the ``FILM``
 stream next to the ``.FLM`` films), and everything else falls back to
-``meta/file-extension``.
+``meta/file-extension``. A schema under ``memory/`` describes a runtime record
+rather than a file, so it declares no extension and is compiled but not swept.
 
 Local-only by design: ``corpus/`` is gitignored and absent in CI, so this
 sweep is never part of ``mise run check``; run it with
@@ -67,10 +68,12 @@ class SchemaSpec:
     ``filename`` is set when the schema file name carries a dot before the
     ``.ksy`` suffix, in which case it selects that single corpus asset by
     name; otherwise ``extension`` selects every corpus file with that suffix.
+    ``extension`` is None for a runtime-record schema, which has no corpus
+    files and is only compiled.
     """
 
     schema_id: str
-    extension: str
+    extension: str | None
     path: Path
     filename: str | None = None
 
@@ -89,17 +92,31 @@ class SweepResult:
 
 
 def discover_schemas() -> list[SchemaSpec]:
-    """Return every `.ksy` schema declaring both `meta/id` and `meta/file-extension`."""
+    """Return every `.ksy` schema with the rule that selects its corpus files.
+
+    Every schema outside ``memory/`` must declare ``meta/file-extension``; a
+    memory schema describes a runtime record, declares none, and is compiled
+    but not swept.
+    """
     specs: list[SchemaSpec] = []
     for path in sorted(SCHEMA_ROOT.rglob("*.ksy")):
         text = path.read_text(encoding="utf-8")
         id_match = _ID_PATTERN.search(text)
+        if id_match is None:
+            raise SystemExit(f"{path}: schema must declare meta id")
         ext_match = _EXT_PATTERN.search(text)
-        if id_match is None or ext_match is None:
-            raise SystemExit(f"{path}: schema must declare meta id and file-extension")
+        if ext_match is None and not path.is_relative_to(SCHEMA_ROOT / "memory"):
+            raise SystemExit(f"{path}: schema must declare meta file-extension")
         stem = path.name.removesuffix(".ksy")
         filename = stem.upper() if "." in stem else None
-        specs.append(SchemaSpec(id_match.group(1), ext_match.group(1), path, filename))
+        specs.append(
+            SchemaSpec(
+                id_match.group(1),
+                ext_match.group(1) if ext_match else None,
+                path,
+                filename,
+            )
+        )
     return specs
 
 
@@ -355,6 +372,8 @@ CASE_PROVIDERS: dict[str, Callable[[bytes], Iterator[ParseCase]]] = {
 
 def _corpus_files(spec: SchemaSpec, corpus_dir: Path) -> list[Path]:
     """Return the corpus files one schema describes, sorted by path."""
+    if spec.extension is None:
+        return []
     suffix = f".{spec.extension.lower()}"
     selector = CORPUS_SELECTORS.get(spec.schema_id)
     if spec.filename is not None:
@@ -413,6 +432,8 @@ def _run(args: argparse.Namespace, specs: Sequence[SchemaSpec]) -> int:
         print(f"corpus:   {args.corpus.resolve()}")
         print(f"schemas:  {len(specs)}")
         for spec in specs:
+            if spec.extension is None:
+                continue
             generated = Path(tmp) / f"{spec.path.stem}.py"
             if not generated.exists():
                 generated = Path(tmp) / f"{spec.schema_id}.py"
@@ -425,6 +446,9 @@ def _run(args: argparse.Namespace, specs: Sequence[SchemaSpec]) -> int:
     known = 0
     fired: set[tuple[str, str, str]] = set()
     print()
+    for spec in specs:
+        if spec.extension is None:
+            print(f"[{spec.schema_id}] compile-only (runtime record, no file)")
     for result in results:
         schema_id = result.spec.schema_id
         unknown = [item for item in result.anomalies if (schema_id, *item) not in KNOWN_ANOMALIES]
