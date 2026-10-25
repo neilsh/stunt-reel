@@ -168,11 +168,11 @@ Compiles `research/formats/**/*.ksy` and checks documented headers, offsets, and
 
 ## Development & Quality Assurance
 
-The gate is `mise run check`, which chains formatting, linting, strict typing, and both test suites. Individual tasks:
+The gate is `mise run check`: one ordered script ([gate.py](python/scripts/gate.py), [ADR 0014](docs/adr/0014-the-gate-is-one-ordered-script.md)) that prints one line per step, stops at the first failure with its tail, writes the whole output to `target/check.log`, and ends with PASS or FAIL. `mise run check-rust` and `mise run check-py` run the same step list for one language. Individual tasks:
 
 | Task | Runs |
 | --- | --- |
-| `check` | `fmt-check` + `lint` + `typecheck` + `test` + `doc` + `check-rust-matrix` |
+| `check` / `check-rust` / `check-py` | `gate.py` over every step (format, lint, strict typing, rustdoc, both test suites, the no-default-features matrix), one line per step, log in `target/check.log` |
 | `fmt-check` / `fmt` | `cargo fmt` and `ruff format` check/apply |
 | `lint` | `cargo clippy -- -D warnings` and `ruff check .` |
 | `typecheck` | `uv run mypy` (strict) |
@@ -187,8 +187,9 @@ The gate is `mise run check`, which chains formatting, linting, strict typing, a
 | `verify-corpus` | `.ksy` catalog check against `corpus/` |
 | `play` | launch `dosbox-playone.conf` |
 | `ensure-dosbox`, `mcp` | agent debugger plumbing |
+| `parity-probe`, `verify-docs`, `unlzexe`, `probe-light`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) invokes the mise tasks instead of restating them: Ubuntu runs the full `mise run check` gate, Windows runs the non-GPU subset (`fmt-check lint typecheck test-py`), a separate job checks the declared MSRV (`1.88`), and a `cargo deny` job enforces the dependency policy. Corpus- and DOSBox-X-dependent tasks stay local. Optional git hooks mirror the gate; see [`.pre-commit-config.yaml`](.pre-commit-config.yaml).
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) invokes the mise tasks instead of restating them: Ubuntu runs the full `mise run check` gate, Windows runs the non-GPU subset (`fmt-check lint typecheck test-py`), a separate job checks the declared MSRV (`1.88`), and a `cargo deny` job enforces the dependency policy. Corpus- and DOSBox-X-dependent tasks stay local.
 
 ### Shared tool cache
 

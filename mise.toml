@@ -70,7 +70,7 @@ description = "Link the shared data root into this worktree and create the Pytho
 run = "uv sync --locked --all-groups && uv run python python/scripts/worktree_init.py init"
 
 [tasks.clean]
-description = "Report this worktree's build outputs; remove them with --yes (mise run clean -- --yes)"
+description = "Report this worktree's build outputs; remove them with --yes (mise run clean -- --yes), or rotate parity render trees only (mise run clean -- --parity --keep 3 --yes)"
 run = "uv run python python/scripts/worktree_init.py clean"
 
 [tasks.capture-ref]
@@ -86,6 +86,30 @@ env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
 description = "Parity baseline: render both films with the current binary and print the headline scores (mise run parity -- [--films ctry,intro] [--no-build] [--no-render] [--reuse DIR] [--retime N])"
 run = "uv run python python/scripts/parity_run.py"
 env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+
+[tasks.parity-probe]
+description = "Diagnostic probes on one capture/render pair (mise run parity-probe -- crop|shift|iou|retime ... ; summary prints the rows the parity log needs)"
+run = "uv run python python/scripts/parity_probe.py"
+
+[tasks.verify-docs]
+description = "Verify the formats catalog: structure, evidentiary tiers, links, cleanroom isolation"
+run = "uv run python python/scripts/verify_formats_docs.py"
+
+[tasks.unlzexe]
+description = "Unpack PLAYONE.EXE with LZEXE 0.91 (mise run unlzexe -- target_bin/PLAYONE.EXE build/re/playone.img [--mz])"
+run = "uv run python python/scripts/unlzexe.py"
+
+[tasks.probe-light]
+description = "Probe PLAYONE per-shot light and shade arrays through the TAC harness (mise run probe-light -- --ticks 10,150,273,448)"
+run = "uv run python python/scripts/probe_playone_light.py"
+
+[tasks.flm-events]
+description = "Dump the film-level events of one .FLM film (mise run flm-events -- corpus/.../CTRY.FLM [--sounds])"
+run = "uv run python python/scripts/flm_events.py"
+
+[tasks.adversarial]
+description = "Adversarial stress suite over the formats catalog's constraints and claims"
+run = "uv run python python/scripts/adversarial_formats_challenge.py"
 
 # Development & Quality Assurance Tasks
 [tasks.lint-rust]
@@ -170,18 +194,20 @@ description = "Run Python test suite with coverage reporting"
 run = "uv run pytest --cov=stunt_reel --cov-report=term-missing"
 env = { TMP = "{{config_root}}/.cache/tmp", TEMP = "{{config_root}}/.cache/tmp" }
 
+# The three gate tasks dispatch one script (ADR 0014). The step list is the leaf tasks in
+# python/scripts/gate.py, so the halves cannot run a shorter gate than the whole.
 [tasks.check-rust]
-description = "Quiet Rust half of the gate (fmt, clippy, test) for iterating; one line per step"
-run = "python python/scripts/quiet_check.py rust"
+description = "Rust half of the gate (fmt, clippy, test, doc, no-default-features matrix), one line per step"
+run = "python python/scripts/gate.py rust"
 env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
 
 [tasks.check-py]
-description = "Quiet Python half of the gate (fmt, lint, mypy, pytest) for iterating; one line per step"
-run = "python python/scripts/quiet_check.py py"
+description = "Python half of the gate (fmt, lint, mypy, pytest), one line per step"
+run = "python python/scripts/gate.py py"
 
 [tasks.check]
-description = "Run all CI verification steps (format check, lint, typecheck, test)"
-depends = ["fmt-check", "lint", "typecheck", "test", "doc", "check-rust-matrix"]
+description = "Full quality gate: one line per step, PASS/FAIL verdict, full log in target/check.log"
+run = "python python/scripts/gate.py all"
 
 [tasks.verify-corpus]
 description = "Compile research/formats/**/*.ksy and check them against local corpus/ files (opt-in; corpus is gitignored)"
