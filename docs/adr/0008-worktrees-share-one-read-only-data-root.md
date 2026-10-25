@@ -7,7 +7,8 @@ reference captures and ``target_bin/`` are gitignored, so they live once per
 machine in ``<parent-of-primary>/<repo-name>.data`` (``STUNT_DATA_ROOT`` overrides),
 and ``mise run init`` links them into every worktree: ``corpus/stisldem``,
 ``corpus/siarchive``, ``corpus/oracle``, ``target_bin/`` and ``build/parity/reference``.
-Build outputs, Python caches and the virtualenv stay per worktree.
+Build outputs and the virtualenv stay per worktree; downloaded tool caches are
+shared, and writable, through a second link (ADR 0013).
 
 Two consequences are deliberate. The data root is read-only to agents: the two
 writers, ``mise run capture-ref`` and oracle generation, refuse unless
@@ -34,7 +35,7 @@ hardcode it, and one DOSBox-X instance serves the whole machine.
   reproducible offline, and ``[I7]`` keeps it out of Git and CI.
 - **A shared ``CARGO_TARGET_DIR``.** Rejected: Cargo locks the build directory, so
   parallel ``mise run check`` runs serialise — the same lock that already makes the
-  release binary exclusive.
+  release binary exclusive. Downloaded caches are shared instead (ADR 0013).
 - **Symlinks instead of junctions.** Rejected on Windows, where symlinks need
   elevation or Developer Mode and junctions do not.
 

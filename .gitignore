@@ -37,6 +37,9 @@ corpus/dumps/
 # Target binaries & proprietary game data
 target_bin/
 
+# Shared tool cache, one per primary checkout and linked into every worktree (ADR 0013)
+/.cache/
+
 # Environment / local tool overrides
 .mise.local.toml
 mise.local.toml

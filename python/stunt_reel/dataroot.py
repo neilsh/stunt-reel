@@ -11,20 +11,24 @@ first use rather than reading an empty placeholder.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from functools import lru_cache
 from pathlib import Path
 
 __all__ = [
+    "CACHE_DIRNAME",
     "DATA_ENV",
     "LINK_TARGETS",
     "REPO_ROOT",
     "WRITE_ENV",
     "SharedDataError",
     "SharedWriteError",
+    "cache_root",
     "create_link",
     "data_root",
+    "ensure_cache_link",
     "ensure_links",
     "ensure_links_or_report",
     "is_link",
@@ -40,6 +44,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_ENV = "STUNT_DATA_ROOT"
 WRITE_ENV = "STUNT_DATA_WRITE"
 DATA_SUFFIX = ".data"
+#: The writable tool cache every checkout of one primary checkout borrows.
+CACHE_DIRNAME = ".cache"
 
 #: (directory inside the data root, path inside the checkout that borrows it).
 #: The names may differ: the data root keeps the historical ``si_archive``
@@ -94,6 +100,58 @@ def data_root() -> Path:
     if primary is None:
         return REPO_ROOT
     return primary.with_name(primary.name + DATA_SUFFIX)
+
+
+def cache_root() -> Path:
+    """The one writable tool-cache directory every checkout of this repository borrows."""
+    primary = primary_checkout()
+    return (primary if primary is not None else REPO_ROOT) / CACHE_DIRNAME
+
+
+def ensure_cache_link() -> str:
+    """Make this checkout's .cache resolve to the primary checkout's tool cache.
+
+    A fresh worktree runs uv sync before mise run init, so a cache that
+    directory collected is moved into the shared one before the link replaces
+    it.  Returns the line init prints: "= .cache" when the link was already
+    correct, "+ .cache -> <target>" when this call created it.
+    """
+    target = cache_root()
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "tmp").mkdir(exist_ok=True)
+    link = REPO_ROOT / CACHE_DIRNAME
+    if link == target:
+        return "= .cache"
+    if is_link(link):
+        if link_points_at(link, target):
+            return "= .cache"
+        remove_link(link)
+    elif link.exists():
+        if link.is_dir():
+            _adopt_partial_cache(link, target)
+            link.rmdir()
+        else:
+            link.unlink()
+    create_link(link, target)
+    return f"+ .cache -> {target}"
+
+
+def _adopt_partial_cache(partial: Path, target: Path) -> None:
+    """Move a not-yet-linked cache's entries into the shared cache; the shared copy wins."""
+    for entry in partial.iterdir():
+        destination = target / entry.name
+        if destination.exists():
+            _discard(entry)
+            continue
+        shutil.move(str(entry), str(destination))
+
+
+def _discard(path: Path) -> None:
+    """Remove one cache entry: a directory tree, a link, or a file."""
+    if is_link(path) or path.is_file():
+        path.unlink()
+    else:
+        shutil.rmtree(path)
 
 
 def is_shared(path: Path) -> bool:

@@ -34,6 +34,13 @@ asset_pattern = "dosbox-x-vsbuild-win64-*.zip"
 bin_path = "bin/x64/Release SDL2"
 
 [env]
+# One shared, writable tool cache per primary checkout: mise run init links each
+# worktree's .cache to it (ADR 0013). Build outputs, the virtualenv and the
+# Python tool caches stay per worktree. CARGO_HOME is set per cargo task
+# instead of here: mise installs its rustup shim into $CARGO_HOME, and a rustup
+# inside this tree would run at the tree's low integrity and fail to reach the
+# user's RUSTUP_HOME (ADR 0013).
+UV_CACHE_DIR = "{{config_root}}/.cache/uv"
 # Python on Windows defaults text I/O to cp1252; scripts and docs here are UTF-8.
 PYTHONUTF8 = "1"
 
@@ -73,15 +80,18 @@ run = "uv run python python/scripts/capture_playone_reference.py"
 [tasks.sweep]
 description = "Candidate sweep: render and score DBG_* variants on CTRY and INTRO (mise run sweep -- --var DBG_X=0,1 [--films ctry] [--probe iou] [--keep-best] [--no-build] [--reuse DIR] [--retime N])"
 run = "uv run python python/scripts/parity_sweep.py"
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
 
 [tasks.parity]
 description = "Parity baseline: render both films with the current binary and print the headline scores (mise run parity -- [--films ctry,intro] [--no-build] [--no-render] [--reuse DIR] [--retime N])"
 run = "uv run python python/scripts/parity_run.py"
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
 
 # Development & Quality Assurance Tasks
 [tasks.lint-rust]
 description = "Run Rust Clippy lints across all crates"
 run = "cargo clippy --locked --workspace --all-targets --all-features -- -D warnings"
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
 
 [tasks.lint-py]
 description = "Run Ruff linter on Python codebase"
@@ -94,6 +104,7 @@ depends = ["lint-rust", "lint-py"]
 [tasks.fmt-rust]
 description = "Format Rust source files"
 run = "cargo fmt"
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
 
 [tasks.fmt-py]
 description = "Format Python source files"
@@ -106,6 +117,7 @@ depends = ["fmt-rust", "fmt-py"]
 [tasks.fmt-check-rust]
 description = "Check Rust formatting"
 run = "cargo fmt --check"
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
 
 [tasks.fmt-check-py]
 description = "Check Python formatting"
@@ -122,14 +134,17 @@ run = "uv run mypy"
 [tasks.test-rust]
 description = "Run Rust unit and integration tests"
 run = "cargo test --locked --workspace --all-features"
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo", TMP = "{{config_root}}/.cache/tmp", TEMP = "{{config_root}}/.cache/tmp" }
 
 [tasks.cov-rust]
 description = "Line coverage for the Rust format crates (stunt-core, stunt-gltf)"
 run = "cargo llvm-cov --locked -p stunt-core -p stunt-gltf --all-features --summary-only"
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo", TMP = "{{config_root}}/.cache/tmp", TEMP = "{{config_root}}/.cache/tmp" }
 
 [tasks.test-py]
 description = "Run Python pytest suite"
 run = "uv run pytest"
+env = { TMP = "{{config_root}}/.cache/tmp", TEMP = "{{config_root}}/.cache/tmp" }
 
 [tasks.test]
 description = "Run all test suites (Rust & Python)"
@@ -138,23 +153,27 @@ depends = ["test-rust", "test-py"]
 [tasks.deny]
 description = "Check dependency advisories, licenses, and sources"
 run = "cargo deny check"
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
 
 [tasks.doc]
 description = "Build rustdoc with warnings denied"
 run = "cargo doc --workspace --no-deps --all-features"
-env = { RUSTDOCFLAGS = "-D warnings" }
+env = { RUSTDOCFLAGS = "-D warnings", CARGO_HOME = "{{config_root}}/.cache/cargo" }
 
 [tasks.check-rust-matrix]
 description = "Build and test stunt-core without optional features"
 run = "cargo check -p stunt-core --no-default-features && cargo test -p stunt-core --no-default-features"
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo", TMP = "{{config_root}}/.cache/tmp", TEMP = "{{config_root}}/.cache/tmp" }
 
 [tasks.cov-py]
 description = "Run Python test suite with coverage reporting"
 run = "uv run pytest --cov=stunt_reel --cov-report=term-missing"
+env = { TMP = "{{config_root}}/.cache/tmp", TEMP = "{{config_root}}/.cache/tmp" }
 
 [tasks.check-rust]
 description = "Quiet Rust half of the gate (fmt, clippy, test) for iterating; one line per step"
 run = "python python/scripts/quiet_check.py rust"
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
 
 [tasks.check-py]
 description = "Quiet Python half of the gate (fmt, lint, mypy, pytest) for iterating; one line per step"
@@ -171,3 +190,4 @@ run = "uv run python python/scripts/verify_schemas_corpus.py"
 [tasks.sod-census]
 description = "Census of corpus .SOD models that stop on unimplemented opcodes, joined to the films placing them (opt-in; corpus is gitignored; mise run sod-census -- [--format markdown])"
 run = "cargo run --release --locked -p stunt-cli --bin stuntreel -- sod-census"
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }

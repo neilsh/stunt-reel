@@ -2,8 +2,9 @@
 
 ``mise run init`` links the machine-wide data root into this checkout, so the
 relative ``corpus/``, ``build/parity/reference/`` and ``target_bin/`` paths keep working
-in every worktree.  ``mise run clean`` reports the per-worktree build outputs and
-removes them only with ``--yes``.
+in every worktree, and links ``.cache`` to the primary checkout's shared tool
+cache (ADR 0013).  ``mise run clean`` reports the per-worktree build outputs and
+removes them only with ``--yes``; the shared cache is reported, never removed.
 """
 
 from __future__ import annotations
@@ -18,8 +19,11 @@ from stunt_reel.dataroot import (
     DATA_ENV,
     LINK_TARGETS,
     REPO_ROOT,
+    SharedDataError,
+    cache_root,
     create_link,
     data_root,
+    ensure_cache_link,
     is_link,
     is_placeholder,
     link_points_at,
@@ -96,6 +100,11 @@ def _init(migrate: bool) -> int:
         create_link(link, target)
         print(f"  + {relative} -> {target}")
 
+    try:
+        print(f"  {ensure_cache_link()}")
+    except SharedDataError as err:
+        print(f"  ! .cache: {err}")
+
     if problems:
         print(f"\n{problems} path(s) unresolved; see corpus/README.md for the archive layout")
         return 1
@@ -117,6 +126,8 @@ def _clean(confirmed: bool) -> int:
             total += path.stat().st_size
             print(f"  {path.name:<14}{path.stat().st_size / 1_048_576:9.1f} MiB")
     print(f"  {'total':<14}{total / 1_048_576:9.1f} MiB")
+    if cache_root().is_dir():
+        print(f"  {'shared cache':<14}(shared across worktrees; never removed)")
     if not confirmed:
         print("\ndry run; re-run with --yes to remove them")
         return 0

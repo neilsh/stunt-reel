@@ -190,6 +190,10 @@ The gate is `mise run check`, which chains formatting, linting, strict typing, a
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) invokes the mise tasks instead of restating them: Ubuntu runs the full `mise run check` gate, Windows runs the non-GPU subset (`fmt-check lint typecheck test-py`), a separate job checks the declared MSRV (`1.88`), and a `cargo deny` job enforces the dependency policy. Corpus- and DOSBox-X-dependent tasks stay local. Optional git hooks mirror the gate; see [`.pre-commit-config.yaml`](.pre-commit-config.yaml).
 
+### Shared tool cache
+
+`mise run init` links each checkout's `.cache/` to the primary checkout's copy; `mise.toml` points `UV_CACHE_DIR` and the cargo tasks' `CARGO_HOME` into it, so every worktree reuses one set of downloaded crates and uv artifacts. Build outputs (`target/`), the virtualenv and the Python tool caches stay per worktree, because they are revision-specific or not relocatable. `mise run clean` reports the shared cache and never removes it; `rm -rf .cache` resets it. See [ADR 0013](docs/adr/0013-worktrees-share-one-writable-tool-cache.md).
+
 Equivalent direct commands:
 
 ```powershell

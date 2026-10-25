@@ -164,3 +164,37 @@ def test_ensure_links_is_a_no_op_without_a_worktree(
 ) -> None:
     _checkout(monkeypatch, tmp_path / "export")
     assert dataroot.ensure_links() == []
+
+
+def test_cache_link_points_a_worktree_at_the_primary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    primary = _primary(tmp_path)
+    worktree = _worktree(monkeypatch, primary)
+    assert dataroot.ensure_cache_link() == f"+ .cache -> {primary / '.cache'}"
+    assert dataroot.cache_root() == primary / ".cache"
+    assert dataroot.link_points_at(worktree / ".cache", primary / ".cache")
+    assert dataroot.ensure_cache_link() == "= .cache"
+
+
+def test_cache_link_is_a_real_directory_in_the_primary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    primary = _checkout(monkeypatch, _primary(tmp_path))
+    assert dataroot.ensure_cache_link() == "= .cache"
+    assert (primary / ".cache").is_dir()
+    assert not dataroot.is_link(primary / ".cache")
+
+
+def test_cache_link_adopts_a_cache_made_before_the_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The first uv sync of a worktree runs before mise run init links the cache.
+    primary = _primary(tmp_path)
+    worktree = _worktree(monkeypatch, primary)
+    partial = worktree / ".cache" / "uv"
+    partial.mkdir(parents=True)
+    (partial / "artifact").write_bytes(b"cache")
+    assert dataroot.ensure_cache_link().startswith("+ .cache ->")
+    assert (primary / ".cache" / "uv" / "artifact").read_bytes() == b"cache"
+    assert dataroot.link_points_at(worktree / ".cache", primary / ".cache")

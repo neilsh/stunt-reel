@@ -18,7 +18,7 @@ REPO_ROOT = Path(__file__).parent.parent
 CITATION_ROOTS = ("crates", "python", "tests", "docs", "research")
 CITATION_TOP_LEVEL = ("AGENTS.md", "README.md", "GLOSSARY.md")
 CITATION_SUFFIXES = frozenset({".rs", ".py", ".md", ".ksy", ".toml"})
-SKIPPED_DIRS = frozenset({"target", ".venv", "__pycache__", "node_modules", "build"})
+SKIPPED_DIRS = frozenset({".cache", "target", ".venv", "__pycache__", "node_modules", "build"})
 
 
 def _walk(root: Path, skipped: frozenset[str]) -> Iterator[Path]:

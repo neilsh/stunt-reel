@@ -26,6 +26,7 @@ _NOT_READERS = frozenset({"worktree_init.py", "verify_formats_docs.py"})
 #: Never walked: build output, caches, and the git directory itself.
 _PRUNED = frozenset(
     {
+        ".cache",
         ".git",
         ".mypy_cache",
         ".pytest_cache",
@@ -140,3 +141,14 @@ def test_a_worktree_inside_the_checkout_is_ignored_and_excluded() -> None:
         assert _excluded(relative, excludes), (
             f"{relative} is a worktree inside the checkout; ruff's exclude must cover it"
         )
+
+
+def test_the_shared_tool_cache_is_ignored_and_excluded() -> None:
+    # ADR 0013's cache holds every downloaded crate and uv artifact; an unpruned
+    # walk of it is the same mistake test_doc_invariants.py lost 61 seconds to.
+    git = shutil.which("git")
+    assert git, "git must be on PATH: check-ignore is the only authority on .gitignore"
+    assert _ignored(".cache", git), ".cache is a shared tool cache; .gitignore must cover it"
+    assert _excluded(".cache", _ruff_excludes()), (
+        ".cache is a shared tool cache; ruff's exclude must cover it"
+    )
