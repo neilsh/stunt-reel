@@ -171,6 +171,32 @@ For `BOMBING.SET` the event table is `0x54`–`0x96` and the props begin at `0x9
 | `+0x18` | appends `, tape only` | sound routing flags |
 | `+0x19, +0x20, +0x27, +0x2E, +0x35, +0x3C` | each turns one `And do nothing` into `And award $0` | THEN slots 3 to 8 types |
 
+**Clause header** (the 11 bytes before the slots):
+
+| Offset | Field |
+|---|---|
+| `+0x00` | IF condition type (§ 3.6) |
+| `+0x01` | IF object 1, 0-based; `0xFE` = Any Weapon, `0xFF` = Any Object |
+| `+0x02` | IF object 2, or the operand a time/count condition takes |
+| `+0x03`–`+0x04` | Operand word for the IF condition, unused by a collision rule |
+| `+0x05` | AND #1 type (§ 3.6) |
+| `+0x06`–`+0x07` | AND #1 operand |
+| `+0x08` | AND #2 type |
+| `+0x09`–`+0x0A` | AND #2 operand |
+
+**THEN slot** (7 bytes; the operand columns were read by writing a value into each byte under a known action type):
+
+| Offset | Field |
+|---|---|
+| `+0x00` | Action type (§ 3.6) |
+| `+0x01` | Target object, 0-based |
+| `+0x02` | Secondary operand: the flag number for `set flag` / `modify flag` |
+| `+0x03`–`+0x04` | `u16` operand: dollars for `award $`, and the flag value's low byte |
+| `+0x05` | Sound volume, 1 to 4 |
+| `+0x06` | Sound routing: `1` tape only, `2` pilot only |
+
+The `wait` operand at `+0x03`–`+0x04` is in 50 Hz ticks, not seconds: 256 reads back as `5.12 seconds`, which is 256/50, and 5 reads back as `0.1 seconds`. So the authored timebase in the file is the same 50 Hz clock as `[I4]`.
+
 So the layout is an IF clause, two AND qualifiers, then a run of 7-byte THEN slots: slot 1 begins at `+0x0B`, and slot `k` begins at `+0x0B + 7(k-1)`. The arithmetic closes exactly: an 11-byte clause header plus eight 7-byte slots is 67 bytes, the record size, and the last slot ends where the prop table starts. The second AND qualifier's type is at `+0x08` by that spacing, but flipping it printed no change, so it is inferred rather than observed.
 
 Reading the record as a 55-byte base plus 67 per further event, or as 12-byte blocks, or as a table after the props, is withdrawn: the prop-count arithmetic fits those splits equally, and only the flips distinguish them.
