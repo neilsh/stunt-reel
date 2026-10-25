@@ -53,7 +53,7 @@ flowchart TD
 | [`concepts/coordinates-and-units.md`](concepts/coordinates-and-units.md) | `[I1]` basis, fixed-point and BAM units, `sod_scale_table`, FOV, vertex welding |
 | [`concepts/palette-and-shading.md`](concepts/palette-and-shading.md) | `[I3]`, `[I5]`, `[I6]`: Mode 13h DAC, shading ramps, LUT sampling, decals, SSIM |
 | [`concepts/timeline-and-ticks.md`](concepts/timeline-and-ticks.md) | `[I4]` 50 Hz clock, slice timing, sub-tick interpolation, cut suppression |
-| [`concepts/compression.md`](concepts/compression.md) | DOS memory limits, storage tiers, `[I8]` path rules, cleanroom isolation |
+| [`concepts/compression.md`](concepts/compression.md) | DOS memory limits, storage tiers, `[I8]` path rules, asset isolation |
 | [`memory/kaitai-memory-spike.md`](memory/kaitai-memory-spike.md) | Whether runtime memory records fit `.ksy` schemas; includes [`actor_record.ksy`](memory/actor_record.ksy) |
 | [`sod-opcodes.md`](sod-opcodes.md) | Authoritative `.SOD` opcode table |
 | [`sod-opcode-coverage.md`](sod-opcode-coverage.md) | Corpus coverage queue for `.SOD` opcodes |

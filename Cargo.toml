@@ -8,7 +8,11 @@ members = [
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
+description = "Tooling and reconstruction for Stunt Island (1992) film, scene and model formats"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/neilsh/stunt-reel"
+homepage = "https://github.com/neilsh/stunt-reel"
+readme = "README.md"
 publish = false
 
 [workspace.lints.rust]

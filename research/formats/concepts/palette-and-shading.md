@@ -1,9 +1,9 @@
 # Stunt Island Technical Reference: Palette Architecture, Shading Ramps & VGA Color Management
 
 **Document Identifier:** `research/formats/concepts/palette-and-shading.md`  
-**Author:** `worker_fmt_concepts`  
+**Author:** Stunt Reel contributors  
 **Governing Invariant:** `[I3]` (VGA Mode 13h 256-Color Palette Indexing, Flat Facet Shading, $256 \times 32$ LUT), `[I5]` (Coplanar Decals), `[I6]` (Visual Parity & 4:3 Aspect Ratio)  
-**Status:** Cleanroom Technical Reference Specification  
+**Status:** Asset-Isolated Technical Reference Specification  
 
 ---
 
@@ -51,7 +51,7 @@ The VGA Digital-to-Analog Converter (DAC, typically an Inmos INMOS G171 or compa
   | Bit replication | $(c \ll 2) \mid (c \gg 4)$ | `255` | none; an approximation of the capture scaling that differs by 1 at $c \in \{11..15, 48..52\}$ |
   | **Authored table** | $c \ll 2$ | `252` | `MODE_13H_PALETTE` in `crates/stunt-core/src/contracts/palette.rs` (every stored channel is a multiple of 4; the test pins index 255 to `(252, 252, 252)`) and, through it, the `stunt-render` LUT |
 
-  Normalized division $c / 63.0$ is the same quantity as the capture scaling before rounding. Consequence: the native renderer's palette tops out at `252` while the captured reference reaches `255`, a $\le 3/255$ channel offset. Its effect on the `[I6]` SSIM scores has not been measured; treat it as a known discrepancy, not an equivalence. Whether the authored table should store capture-scaled values is an open decision `[Hypothesis]`; the table's literals came from `pal.h` and were not re-derived from a DAC read.
+  Normalized division $c / 63.0$ is the same quantity as the capture scaling before rounding. Consequence: the native renderer's palette tops out at `252` while the captured reference reaches `255`, a $\le 3/255$ channel offset. Its effect on the `[I6]` SSIM scores has not been measured; treat it as a known discrepancy, not an equivalence. Whether the authored table should store capture-scaled values is an open decision `[Hypothesis]`; the table's literals are the Stunt Island master palette (240 scene entries plus 16 UI entries), transcribed from the community SODParse `pal.h` in the Stunt Island Central archive. They are game-derived, not the IBM VGA default and not a synthetic construction, and were not re-derived from a DAC read.
 
 **Governing invariants:** [`[I3]`](../../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I5]`](../../../docs/SPEC.md#i5-coplanar-decal-resolution), [`[I6]`](../../../docs/SPEC.md#i6-visual-parity-acceptance-thresholds--vga-112-aspect-ratio-correction). **Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs). Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
 
@@ -205,7 +205,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ---
 
-## 4. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Analysis Backlog
 
 1. **`[BK-PAL-01]` Dynamic Palette Rotation in Night Scenes** (`[Bounded Observation]`): Disassembly of `PLAYONE.EXE` indicates timer-driven palette cycling for runway approach lights and lightning flashes. Precise register cycling ranges remain to be verified.
 2. **`[BK-PAL-02]` CRT Phosphor Gamma vs sRGB Transfer** (`[Supported Inference]`): Vintage 1990s cathode-ray tube (CRT) monitors exhibited a native gamma curve of $\gamma \approx 2.4$. The current $256 \times 32$ LUT outputs linear sRGB values; an optional post-processing toggle is reserved for future milestones.
@@ -218,9 +218,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 - **Dave Palmowski & Dean Newbury:** Comprehensive documentation of Stunt Island color groups, 16/32-level lighting ramps, and preservation of `si.pal`, `si.act`, and `shading.doc` in `corpus/siarchive/SITools/SpriteMaker/` and `corpus/siarchive/SITools/Docs/`.
 - **Adrian Stephens (1997):** Analysis of subobject palette index mapping, conditional color substitution, and translucent propeller disc rendering (`corpus/siarchive/SITools/Docs/Adrian_Subobjects.txt`).
-- **Doug Armknecht (2002):** Reverse engineering of `.FLM` timeline horizon and sky palette indices (`horizon_sky_palette`) and color state tracking in `corpus/siarchive/Developer/SI_FLM_Format/` (`FLM_NOTES.md`, `FLM_FORMAT_DOUG_NOTES.txt`).
-- **Neil Halelamien (2004):** Reverse engineering of `.SET` time-of-day simulation scalars modulating palette lighting levels in `corpus/siarchive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
-- **FreeFlight Development Team:** Reverse engineering of `.ALL` palette container chunks (`0x8042` and `0x801E`) in `corpus/siarchive/Developer/FreeFlight/src/sires.cpp` and `SIPAL.H`.
-- **StuntReel Teamwork Team (2026):** Milestone 1 & 2 $256 \times 32$ GPU LUT architecture, `@interpolate(flat)` pipeline design, and visual parity specification (`explorer_fmt_aux_concepts/analysis.md`, `crates/stunt-render/`).
+- **Doug Armknecht (2002):** Analysis of `.FLM` timeline horizon and sky palette indices (`horizon_sky_palette`) and color state tracking in `corpus/siarchive/Developer/SI_FLM_Format/` (`FLM_NOTES.md`, `FLM_FORMAT_DOUG_NOTES.txt`).
+- **Neil Halelamien (2004):** Analysis of `.SET` time-of-day simulation scalars modulating palette lighting levels in `corpus/siarchive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
+- **FreeFlight Development Team:** Analysis of `.ALL` palette container chunks (`0x8042` and `0x801E`) in `corpus/siarchive/Developer/FreeFlight/src/sires.cpp` and `SIPAL.H`.
+- **Stunt Reel contributors (2026):** Milestone 1 & 2 $256 \times 32$ GPU LUT architecture, `@interpolate(flat)` pipeline design, and visual parity specification (`crates/stunt-render/`).
 
 ---

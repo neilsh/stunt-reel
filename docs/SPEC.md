@@ -1,11 +1,11 @@
-# SPEC: StuntReel (`stunt-reel`) — Stunt Island Cinematic Remaster & glTF Exporter
+# SPEC: StuntReel (`stunt-reel`) — Stunt Island Film Playback, Reconstruction & glTF Exporter
 
 * **Project Name:** StuntReel
 * **Repository Identifier:** `stunt-reel`
 * **Binary CLI:** `stuntreel`
 * **Status:** Phases 0–2 delivered (Milestone 1 and 2 gates passed); Milestone 3 fidelity backlog open. Ticket-level status: [`TEAM_SHEET.md`](process/TEAM_SHEET.md)
-* **Strategy:** Two-Phase Delivery (Phase 1: Runtime Memory Capture to glTF 2.0; Phase 2: Native Cleanroom Rust Engine)
-* **Methodology:** Cleanroom Reverse Engineering (Nanolathe), AI Hero Specification Architecture, & Offline Test-Driven Verification
+* **Strategy:** Two-Phase Delivery (Phase 1: Runtime Memory Capture to glTF 2.0; Phase 2: Native Rust Engine)
+* **Methodology:** Asset-isolated format analysis, evidence-tiered documentation, and offline test-driven verification
 
 ---
 
@@ -13,29 +13,29 @@
 
 ### 1.1 Executive Summary & Core Purpose
 
-The objective of **StuntReel (`stunt-reel`)** is to build an authoritative, GPU-accelerated cinematic player and ahead-of-time (AOT) animation exporter capable of decoding and rendering Disney and The Assembly Line's 1992 *Stunt Island* standalone movie packages (`.ALL` scene containers and `.FLM` choreography scripts) at arbitrary modern resolutions (4K, Ultrawide) and unlocked framerates ($\ge 60\text{ FPS}$).
+The objective of **StuntReel (`stunt-reel`)** is to build a high-fidelity, GPU-accelerated cinematic player and ahead-of-time (AOT) animation exporter capable of decoding and rendering Disney and The Assembly Line's 1992 *Stunt Island* standalone movie packages (`.ALL` scene containers and `.FLM` choreography scripts) at arbitrary modern resolutions (4K, Ultrawide) and unlocked framerates ($\ge 60\text{ FPS}$).
 
-Rather than attempting a monolithic rewrite of the interactive flight simulator (`STUNT.EXE`)—which requires reverse-engineering real-time 6-DOF aerodynamic integrators, stall curves, and 16-bit authoring GUIs—**StuntReel** scopes exclusively to the standalone film playback runtime (`PLAYONE.EXE`) and its batch linker (`MAKEONE.EXE`). *Stunt Island* films are deterministic, pre-recorded choreographies: static stage setups, camera cuts, actor world trajectories, articulated subobject states, and sound triggers are baked into `.FLM` streams and paired `.ALL` archives.
+Rather than attempting a monolithic rewrite of the interactive flight simulator (`STUNT.EXE`)—which would require documenting real-time 6-DOF aerodynamic integrators, stall curves, and 16-bit authoring GUIs—**StuntReel** scopes exclusively to the standalone film playback runtime (`PLAYONE.EXE`) and its batch linker (`MAKEONE.EXE`). *Stunt Island* films are deterministic, pre-recorded choreographies: static stage setups, camera cuts, actor world trajectories, articulated subobject states, and sound triggers are baked into `.FLM` streams and paired `.ALL` archives.
 
-Our engineering methodology is directly inspired by cleanroom reverse engineering principles:
-1. **Strict Cleanroom Separation:** Retail executables and assets are treated solely as an external specification oracle and are never committed to version control or distributed with engine code.
-2. **Evidentiary Confidence Tiering:** Every reverse-engineered struct, memory offset, and opcode carries a machine-checked evidentiary tag (`[Established]`, `[Supported Inference]`, `[Bounded Observation]`, `[Hypothesis]`, or `[Unknown]`; `[Superseded]` marks retired claims).
+Our engineering methodology rests on three principles:
+1. **Asset isolation:** Retail executables and assets are treated solely as an external specification oracle and are never committed to version control or distributed with engine code. The two small game-derived tables the renderer needs are documented, credited exceptions ([`NOTICE.md`](../NOTICE.md)).
+2. **Evidentiary Confidence Tiering:** Every recovered struct, memory offset, and opcode carries a machine-checked evidentiary tag (`[Established]`, `[Supported Inference]`, `[Bounded Observation]`, `[Hypothesis]`, or `[Unknown]`; `[Superseded]` marks retired claims).
 3. **Hierarchical Routing & Tokenized Contract Anchors:** Documentation is organized via 1-hop routing tables (`docs/ARCHITECTURE.md`) and permanent contract anchors (`# [MEM-...]`, `# [FMT-...]`, `[I1]`–`[I8]`) verified by automated tests so agents never suffer context bloat or citation drift.
 
 ### 1.2 Phased Delivery Architecture
 
 Delivery is sequential. This section records what each phase is for and whether it has shipped; per-ticket status, owners and milestone sign-offs live in [`TEAM_SHEET.md`](process/TEAM_SHEET.md).
 
-1. **Phase 0: Foundation, Cleanroom Scaffolding & Static Reverse Engineering *(Status: Complete)***
+1. **Phase 0: Foundation & Static Analysis *(Status: Complete)***
    * Cargo workspace (`stunt-core`, `stunt-render`, `stunt-cli`) and Python package (`stunt_reel`), managed reproducibly via `mise`.
    * The four Seam contracts in `crates/stunt-core/src/contracts/` (§ 4), the 100% offline synthetic fixture suite, and the unified quality gate (`mise run check`).
    * `PLAYONE.EXE` unpacked and disassembled for startup, memory, navigation and the display-list VM ([`research/playone-exe/`](../research/playone-exe/)).
 
 2. **Phase 1: Capture Harness & AOT glTF 2.0 Exporter *(Status: Complete; Milestone 1 gate passed)***
-   * Treats `PLAYONE.EXE` as an authoritative black-box kinematics compiler running inside headless DOSBox-X, driven over its debugger socket, and gates snapshots on the film clock ([`capture.md`](../research/playone-exe/capture.md), [`MEMORY_MAP.md`](../research/playone-exe/memory-map.md)).
+   * Treats `PLAYONE.EXE` as a reference black-box kinematics compiler running inside headless DOSBox-X, driven over its debugger socket, and gates snapshots on the film clock ([`capture.md`](../research/playone-exe/capture.md), [`MEMORY_MAP.md`](../research/playone-exe/memory-map.md)).
    * Emits the golden trajectory oracle and self-contained animated glTF 2.0 files (`python/stunt_reel/tac/`; glTF export is `crates/stunt-gltf/`).
 
-3. **Phase 2: Native Cleanroom Rust Engine *(Status: Complete; Milestone 2 gate passed)***
+3. **Phase 2: Native Rust Engine *(Status: Complete; Milestone 2 gate passed)***
    * A standalone, zero-emulator Rust runtime (`stunt-core`, `stunt-render`, `stunt-cli`) on `wgpu`: native `.ALL`/`.RES` parsing, `.SOD` display-list transpilation into a flat arena IR, `.FLM` evaluation through `FilmTimeline`, and authentic Mode 13h flat-shaded rendering.
    * Asserts position error ($\text{RMSE} \le 0.01\text{ m}$) against the Phase 1 oracle trajectory and visual parity against captured frames (gates `G04` and `G07`).
 
@@ -109,9 +109,9 @@ Delivery is sequential. This section records what each phase is for and whether 
   * Geometry preserves original 8-bit VGA palette indices (`0..=255`) inside `SodVertex::palette_index`.
   * In Phase 2, the WGSL vertex-to-fragment stage passes palette and facet lighting indices using `@interpolate(flat)` (disabling bilinear attribute interpolation across triangle interiors) and samples an uncompressed $256 \times 32$ RGBA lookup texture (LUT) representing 256 base colors across 32 discrete directional lighting and atmospheric haze levels.
 
-#### [I7] Cleanroom Asset Isolation & Small Pure-Rust Core Dependencies
+#### [I7] Asset Isolation & Small Pure-Rust Core Dependencies
 
-  * Proprietary game binaries and retail data files (`corpus/`, `target_bin/`) are strictly gitignored and never checked into Git or downloaded during CI.
+  * Proprietary game binaries and retail data files (`corpus/`, `target_bin/`) are strictly gitignored and never checked into Git or downloaded during CI. Two small game-derived tables are committed as documented exceptions because `[I3]` rendering needs them: the 256-entry master palette and the 18-entry SOD scale table. They are credited and not relicensed ([`NOTICE.md`](../NOTICE.md)).
   * `crates/stunt-core` may depend on small, pure-Rust crates that do no I/O and touch no windowing, GPU, audio, or emulator code, so unit and contract tests compile and run 100% offline in $< 2\text{ seconds}$. Each added crate is justified in the PR that adds it ([ADR 0002](adr/0002-stunt-core-may-take-small-dependencies.md)).
 
 #### [I8] DOS 8.3 Uppercase Path Normalization
@@ -120,7 +120,7 @@ Delivery is sequential. This section records what each phase is for and whether 
 
 ### 2.4 Evidentiary Tiers & Contract Anchor System
 
-* **Evidentiary Confidence Tiers:** Every reverse-engineered binary struct, memory offset, or opcode carries one explicit evidentiary tag. The vocabulary is owned by `EVIDENTIARY_TIERS` in [`python/scripts/verify_formats_docs.py`](../python/scripts/verify_formats_docs.py), which fails `mise run check` if any document uses another tag or if this section stops defining one. In promotion order:
+* **Evidentiary Confidence Tiers:** Every recovered binary struct, memory offset, or opcode carries one explicit evidentiary tag. The vocabulary is owned by `EVIDENTIARY_TIERS` in [`python/scripts/verify_formats_docs.py`](../python/scripts/verify_formats_docs.py), which fails `mise run check` if any document uses another tag or if this section stops defining one. In promotion order:
   * **`[Unknown]`**: Unmapped padding bytes or unencountered opcodes; parsers must fail loudly with explicit byte-offset context if encountered.
   * **`[Hypothesis]`**: Proposed from reasoning, community notes, or an offline mock; not observed in the binary or a corpus file. Never cite as fact.
   * **`[Bounded Observation]`**: Observed empirically in a single film or fixture; behavior outside observed value ranges remains unverified.
@@ -134,7 +134,7 @@ Delivery is sequential. This section records what each phase is for and whether 
 
 ---
 
-## 3. Reverse-Engineering Reference
+## 3. Format & Behaviour Reference
 
 The specification does not carry binary-analysis findings. They live in `research/` and in the memory map, each with its own evidence and tier:
 
@@ -168,9 +168,9 @@ Which code path is governed by which seam, anchor and note: [`ARCHITECTURE.md`](
 | Gate ID | Verification Scope | Target Seam & Invariants | Execution Command | Required Acceptance Threshold | Runs in Offline CI? |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`G01`** | Formatting, Lints, Types & Doc Anchors | All Crates, `python/stunt_reel`, `docs/` | `mise run check` | Exit code `0`; $0$ warnings; every registered anchor has its heading and every cited anchor is registered (`stunt_reel.doc_anchors`); doc tiers and links validate | **Yes** |
-| **`G02`** | Cleanroom VFS Extraction | Seam 1 (`VfsArchive`), `[I7]`, `[I8]` | `cargo test -p stunt-core --test vfs_spec --test vfs_fuzz` | 100% byte match on `synthetic_minimal.res`; uppercase 8.3 lookup | **Yes** |
+| **`G02`** | Asset-isolated VFS Extraction | Seam 1 (`VfsArchive`), `[I7]`, `[I8]` | `cargo test -p stunt-core --test vfs_spec --test vfs_fuzz` | 100% byte match on `synthetic_minimal.res`; uppercase 8.3 lookup | **Yes** |
 | **`G03`** | Arena Scene Graph & Attribute Welding | Seam 3 (`SodModelIr`), `[I1]`, `[I2]`, `[I3]` | `cargo test -p stunt-core --test sod_spec --test sod_fuzz` | `size_of::<SodVertex>() == 28`; flat `NodeId(u32)` arena; sharp facet normals preserved | **Yes** |
 | **`G04`** | Synthetic `.FLM`, Cut-Aware `[I4]` & Oracle Trajectory | Seam 2 (`TrajectoryRecord`), `[I1]`, `[I4]` | `cargo test -p stunt-core --all-features --test flm_spec --test flm_fuzz` | $\text{RMSE}_{\text{pos}} \le 0.01\text{ m}$ vs. `oracle_intro_trajectory.json`, with `compute_position_rmse` sampling `FilmTimeline` at each oracle tick (50 Hz ticks) of `build_synthetic_intro_flm` (test support); $\alpha = 0$ on cuts | **Yes** |
-| **`G05`** | *(Retired)* Phase 1 glTF 2.0 Visual Parity; the Python exporter and its SSIM gate were replaced by `crates/stunt-gltf` (structural tests on cleanroom fixtures), and parity is gated on `wgpu` only (`G07`) | Seam 3 (`SodModelIr`), `[I5]` | `cargo test -p stunt-gltf` | Exported `.glb` parses back with matching accessor bounds, decal offset, and camera orientation | **Yes** |
+| **`G05`** | *(Retired)* Phase 1 glTF 2.0 Visual Parity; the Python exporter and its SSIM gate were replaced by `crates/stunt-gltf` (structural tests on synthetic fixtures), and parity is gated on `wgpu` only (`G07`) | Seam 3 (`SodModelIr`), `[I5]` | `cargo test -p stunt-gltf` | Exported `.glb` parses back with matching accessor bounds, decal offset, and camera orientation | **Yes** |
 | **`G07`** | Captured-vs-rendered parity loop | Seam 2 + Seam 4, `[I3]`, `[I5]`, `[I6]` | `mise run capture-ref`, then `cargo run -p stunt-cli -- --headless <film.flm> --all <film.all> --frames 1..<total_ticks+2> --sidata <SIDATA dir> --out-dir build/parity/ours/ctry`, then `cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry --test build/parity/ours/ctry --output build/parity/report/ctry` | `report.json` carries `mean_ssim`, `min_ssim`, `mean_iou`, `sky_indices` for every sampled frame, and `i6_gate` (`initial` at $	ext{mean\_ssim\_scored} \ge 0.88$, `sign_off` at $\ge 0.90$; the exit code is unchanged) | Local Corpus |
-| **`G08`** | Headless Interval Capture & Video Export | Seam 2, Seam 4, `[I4]`, `[I6]`, `[I7]` | `cargo test -p stunt-render export` | Headless render of cleanroom synthetic fixtures produces exact interval frame count with valid PNG magic/dimensions; video export produces valid container when ffmpeg is present, or fails gracefully with informative error when absent | **Yes** |
+| **`G08`** | Headless Interval Capture & Video Export | Seam 2, Seam 4, `[I4]`, `[I6]`, `[I7]` | `cargo test -p stunt-render export` | Headless render of synthetic fixtures produces exact interval frame count with valid PNG magic/dimensions; video export produces valid container when ffmpeg is present, or fails gracefully with informative error when absent | **Yes** |

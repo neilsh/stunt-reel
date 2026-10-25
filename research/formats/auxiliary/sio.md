@@ -131,7 +131,7 @@ Where $s = 0.005\text{ m}$ (standard $1:200$ editor scaling) or derived from the
 
 ---
 
-## 4. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Analysis Backlog
 
 | Item ID | Topic | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- |
@@ -147,6 +147,6 @@ The technical specifications for the `.SIO` format are synthesized from the foll
 
 - **Dave Palmowski (1999–2001):** Author of SLICE ("Stunt isLand Inhouse Custom Editor"), original designer of the `.SIO` bytecode format, and author of the operator's manual (`corpus/siarchive/SITools/Slice/manual.txt`).
 - **Dean Newbury & SIFA Community:** Testing and asset preservation of UFO Command Act 2 props, `Tube.SIO`, `LUKSABER.SIO`, and `Derby2.SIO`.
-- **StuntReel Teamwork Team (2026):** Reverse engineering of binary opcode tags (`0x12` `TAG_VERTEX`, `0x06` `TAG_MIDPOINT`), verification of the 8-byte magic signature and trailer sentinels across all 8 corpus test models.
+- **Stunt Reel contributors (2026):** Analysis of binary opcode tags (`0x12` `TAG_VERTEX`, `0x06` `TAG_MIDPOINT`), verification of the 8-byte magic signature and trailer sentinels across all 8 corpus test models.
 
 ---

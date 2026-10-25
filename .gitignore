@@ -27,15 +27,20 @@ htmlcov/
 *.log
 
 # Corpus archives, extracted data & capture dumps (Invariant [I7])
-corpus/*.zip
-corpus/stisldem/*
-corpus/siarchive/*
-corpus/oracle/
-corpus/captures/
-corpus/dumps/
+corpus/**
+!corpus/README.md
+!corpus/siarchive.md
 
 # Target binaries & proprietary game data
 target_bin/
+*.exe
+
+# Local capture output (DOSBox-X default)
+capture/
+
+# OS junk
+Thumbs.db
+.DS_Store
 
 # Shared tool cache, one per primary checkout and linked into every worktree (ADR 0013)
 /.cache/

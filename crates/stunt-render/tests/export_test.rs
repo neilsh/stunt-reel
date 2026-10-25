@@ -3,7 +3,7 @@
 //! Validates Gate G08 and system invariants:
 //! - `[I4]` Discrete simulation ticks temporal authoring.
 //! - `[I6]` 4:3 physical display aspect ratio presentation.
-//! - `[I7]` Cleanroom synthetic fixture execution.
+//! - `[I7]` Synthetic fixture execution.
 //!
 //! The interval frame-capture test moved to renderer_test.rs, where it drives the Renderer
 //! entry point with a counting sink instead of constructing GPU state.

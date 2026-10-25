@@ -12,7 +12,7 @@ A render is never described: it is a directory of files whose names, page-to-fil
 - ADR 0004 keeps the I6 thresholds and `i6_gate()` in the CLI parity module.
 - ADR 0010 keeps the shipped Python package dependency-free; the adapter is standard library only.
 - Invariant I7: no I/O in `stunt-core`. The port crate stays pure.
-- Offline cleanroom tests; fixtures only; no corpus.
+- Offline synthetic-fixture tests; no corpus.
 - No behaviour change to the local parity baseline (report fields identical, sampled planes identical).
 - The page rule (file `tick NNNNN` is the frame drawn at film state N-1) is artifact semantics. The window and `export-gltf` keep their own sampling; they are not migrated by this unit.
 - Capture directories are read through the port; the capture writer stays with unit D, which already rewrites the capture loop.

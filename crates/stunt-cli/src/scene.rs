@@ -229,7 +229,7 @@ fn print_film(timeline: &FilmTimeline) {
     }
 }
 
-/// Loads the named model, or returns the cleanroom synthetic aircraft when none is named.
+/// Loads the named model, or returns the synthetic aircraft when none is named.
 fn load_or_create_model(path: Option<&Path>, sidata: Option<&Path>) -> Result<SodModelIr, String> {
     let Some(path) = path else {
         return Ok(create_default_aircraft_ir());
@@ -275,7 +275,7 @@ fn synthetic_orbit(max_ticks: Option<usize>) -> FilmTimeline {
     FilmTimeline::new(slices, Vec::new())
 }
 
-/// Synthesizes a cleanroom aircraft model IR if no external .SOD file was specified.
+/// Synthesizes a synthetic aircraft model IR if no external .SOD file was specified.
 fn create_default_aircraft_ir() -> SodModelIr {
     let mut ir = SodModelIr::new("FOKKER");
 

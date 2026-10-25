@@ -1,4 +1,4 @@
-//! Cleanroom contracts, parsers, and bytecode VM for *Stunt Island* assets.
+//! Asset-isolated contracts, parsers, and bytecode VM for *Stunt Island* assets.
 //!
 //! The crate exposes the four seam contracts (VFS, trajectory, scene graph, parity) plus
 //! binary parsers for the `.res`, `.flm`, and `.sod` formats. Every type obeys the system

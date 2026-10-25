@@ -1,7 +1,10 @@
 """Authentic IBM PC VGA Mode 13h 256-color palette mapping for the TAC framebuffer.
 
 Adheres strictly to Architectural Invariant [I3].
-Palette data derived from historical Stunt Island development archives (pal.h).
+The table is the Stunt Island master palette (240 scene + 16 UI entries),
+transcribed from the community SODParse/pal.h in the Stunt Island Central
+archive and re-encoded as 6-bit DAC levels shifted left by two. It is
+game-derived, not the IBM VGA default and not synthetic; see NOTICE.md.
 Guarded against drift by tests/fixtures/mode13h_palette.json.
 """
 

@@ -14,7 +14,7 @@ The `.RES` file format is the foundational static resource container for *Stunt 
 | **Engine Role** | Static archive container providing $O(1)$ direct indexed access to geometry, sprites, and dialogue assets without runtime disk seeks or string hashing | `[Established]` | `research/playone-exe/startup.md`, `indices.txt` |
 | **Paired Contract** | `Seam 1: VfsArchive` (`crates/stunt-core/src/contracts/vfs.rs`) | `[Established]` | `# [FMT-RES-HEADER]`, `docs/ARCHITECTURE.md` |
 
-**Governing invariants:** [`[I7]`](../../docs/SPEC.md#i7-cleanroom-asset-isolation--small-pure-rust-core-dependencies), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/res.rs`](../../crates/stunt-core/src/vfs/res.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** `synthetic_minimal.res` (72 bytes), laid out in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
+**Governing invariants:** [`[I7]`](../../docs/SPEC.md#i7-asset-isolation--small-pure-rust-core-dependencies), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/res.rs`](../../crates/stunt-core/src/vfs/res.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** `synthetic_minimal.res` (72 bytes), laid out in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
 
 ---
 
@@ -60,7 +60,7 @@ A long-standing debate in the Stunt Island developer community concerned whether
       uint16_t lru_counter;         // +0x0E: LRU cache eviction tick counter
   };
   ```
-  This 16-byte descriptor was preserved in early reverse-engineering notes by researchers who inspected runtime memory dumps rather than the static files on disk.
+  This 16-byte descriptor was preserved in early community analysis notes by researchers who inspected runtime memory dumps rather than the static files on disk.
 
 ---
 
@@ -168,7 +168,7 @@ System invariant `[I8]` mandates that all virtual filesystem keys are normalized
 
 ---
 
-## 4. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Analysis Backlog
 
 The following backlog documents unresolved questions and their empirical status:
 
@@ -186,16 +186,16 @@ The following backlog documents unresolved questions and their empirical status:
 
 ## 5. Attribution & Provenance
 
-The reverse engineering of the `.RES` archive container format represents decades of dedicated community research:
+Documentation of the `.RES` container format draws on decades of dedicated community research:
 
 ### 5.1 Community Researchers & Tool Authors
 
 - **Adrian Stephens**: Original Assembly Line Engine Developer; designed the memory clump layout and 16-bit resource ID addressing architecture for the 8086/80286 DOS engine.
-- **Chris Phillips** (`bigbang@seanet.com`): Author of `SODParse` (`ripres.c`, `DECODE.C`, `SOD.H`), `SIRes` (`SIResFile.cpp`, `Sod.h`), and `FreeFlight` (`sires.cpp`). Decoded the 8-byte header, offset table slicing, and string table extraction logic.
+- **Chris Phillips**: Author of `SODParse` (`ripres.c`, `DECODE.C`, `SOD.H`), `SIRes` (`SIResFile.cpp`, `Sod.h`), and `FreeFlight` (`sires.cpp`). Decoded the 8-byte header, offset table slicing, and string table extraction logic.
 - **Dave Palmowski**: Author of `RESMaker 1.0` (August 15, 2000). Compiled `indices.txt`, documented index categories 0–255, and proved that `.RES` files store uncompressed asset clumps.
 - **Doug Armknecht**: Curator of the Stunt Island Community Developer Archive (`corpus/siarchive/`, February 2026). Preserved original source files, utilities, and documentation.
 - **Neil Halelamien**: Author of `.SET` scenery format research (2004); documented 16-bit compound keys `(res_index << 8) | item_index` in `Stunt_Island_SET_fileformat_notes.txt`.
-- **Ángel Eduardo** (`arcnorj@yahoo.es`): Author of Stunt Island Extractor (2004–2005); analyzed binary models, prop clumps, and subobject hierarchies.
+- **Ángel Eduardo**: Author of Stunt Island Extractor (2004–2005); analyzed binary models, prop clumps, and subobject hierarchies.
 - **Alberto Marnetto**: Author of the `SI-8x` patch (2024), which raises the renderer's level-of-detail distance threshold eightfold by replacing the `mul` by the detail word with `mov dx, ax; shl dx, 3`, described in [*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island). It doesn't involve `.RES` resources; the same check in `PLAYONE.EXE` is traced in [`lod.md`](../playone-exe/lod.md).
 
 ### 5.2 Primary Reference Paths in `corpus/siarchive/`

@@ -209,6 +209,10 @@ run = "python python/scripts/gate.py py"
 description = "Full quality gate: one line per step, PASS/FAIL verdict, full log in target/check.log"
 run = "python python/scripts/gate.py all"
 
+[tasks.check-windows]
+description = "Windows non-GPU half of the gate (fmt, lint, typecheck, Rust and Python tests; GPU tests skip without a driver)"
+depends = ["fmt-check", "lint", "typecheck", "test"]
+
 [tasks.verify-corpus]
 description = "Compile research/formats/**/*.ksy and check them against local corpus/ files (opt-in; corpus is gitignored)"
 run = "uv run python python/scripts/verify_schemas_corpus.py"

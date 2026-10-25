@@ -1,5 +1,8 @@
 """Minimal LZEXE 0.91 unpacker for `PLAYONE.EXE` analysis.
 
+LZEXE 0.91 is by Fabrice Bellard; this is a minimal Python unpacker written for
+analysis, not a copy or distribution of LZEXE.
+
 Writes the unpacked load image (no MZ header) to ``out`` and ``out.json`` holding the entry
 registers, image size and relocation linear offsets. Reads a proprietary executable from the
 local, gitignored ``target_bin/``; nothing it produces is committed (see ``AGENTS.md``).

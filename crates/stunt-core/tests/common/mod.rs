@@ -63,7 +63,7 @@ pub(crate) fn push_interp_dos(
     }
 }
 
-/// Construct a cleanroom synthetic `.FLM` binary byte buffer matching the Intro
+/// Construct a synthetic `.FLM` binary byte buffer matching the Intro
 /// choreography sequence (for `ticks >= 2`), adhering strictly to format specifications.
 ///
 /// Positions are authored in DOS axes (x and y negated) so the evaluated `[I1]` records

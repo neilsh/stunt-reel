@@ -24,7 +24,7 @@ The static world environment of *Stunt Island* is defined by a triad of speciali
 
 ## 2. Header & Memory Layout
 
-Each file within the scenery subsystem employs a deterministic byte-level layout verified against both binary corpus files and original reverse engineering C implementations (`simap.cpp`, `sisland.cpp`).
+Each file within the scenery subsystem employs a deterministic byte-level layout verified against both binary corpus files and original community C implementations (`simap.cpp`, `sisland.cpp`).
 
 ### 2.1 Component File Size Summary
 
@@ -72,7 +72,7 @@ Executable layout: [`anchorpt.dat.ksy`](anchorpt.dat.ksy).
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `+0x00` | 2 | `i16` (LE) | `num` | Patch index word. Corpus values are not sequential (the first record is 540), so the field is retained raw pending `[BK-MAP-03]` | `[Bounded Observation]` |
 | `+0x02` | 2 | `i16` (LE) | `pos` | Sector activity flag: `(pos & 0xFF) != 0` indicates active land polygon | `[Established]` |
-| `+0x04`–`+0x0B` | 8 | `i16[4]` (LE) | `a, b, c, d` | Spatial bounding box limits or neighboring patch graph linkages. Field `a` is a record byte offset (always `-1` or `30 × index`); see [`[BK-MAP-03]`](#4-open-questions--reverse-engineering-backlog) | `[Bounded Observation]` |
+| `+0x04`–`+0x0B` | 8 | `i16[4]` (LE) | `a, b, c, d` | Spatial bounding box limits or neighboring patch graph linkages. Field `a` is a record byte offset (always `-1` or `30 × index`); see [`[BK-MAP-03]`](#4-open-questions--analysis-backlog) | `[Bounded Observation]` |
 | `+0x0C` | 2 | `i16` (LE) | `color` | Authentic 8-bit VGA Mode 13h palette index (`0..=255`) | `[Established]` |
 | `+0x0E` | 2 | `i16` (LE) | `num_verts` | Number of active vertices forming this terrain polygon ($3 \le N \le 7$, clamped to 7) | `[Established]` |
 | `+0x10`–`+0x1D` | 14 | `u16[7]` (LE) | `v[7]` | Index words for this polygon referencing `ANCHORPT.DAT` anchor records (`0..1023`). 166 of 179 records decode cleanly; records with indices $\ge 1024$ or `(pos & 0xFF) == 0` are inactive/sentinels. | `[Established]` |
@@ -151,7 +151,7 @@ Runtime analysis in `stuntreel` confirms the static scenery reconstruction pipel
 
 ---
 
-## 4. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Analysis Backlog
 
 | Item ID | Topic | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- |
@@ -168,14 +168,14 @@ Runtime analysis in `stuntreel` confirms the static scenery reconstruction pipel
 
 ## 5. Attribution & Provenance
 
-The technical specifications for the scenery tables and BSP hierarchy are synthesized from the following primary community research and reverse engineering artifacts:
+The technical specifications for the scenery tables and BSP hierarchy are synthesized from the following primary community research and analysis artifacts:
 
 - **FreeFlight & SIRes Projects (2001–2003):** Original source code implementations for terrain loading and BSP evaluation in `simap.cpp`, `simap.h`, and `sisland.cpp` (`corpus/siarchive/Developer/FreeFlight/src/`, `corpus/siarchive/Developer/SIRes/Src/`).
 - **Neil Halelamien (2004):** Scenery resource extraction and set coordination research (`corpus/siarchive/Developer/Notes_SETFile/`).
 - **Dave Palmowski (1999–2004):** Analysis of scenery container archives and object placement tools (`corpus/siarchive/SITools/`).
 - **Doug Armknecht (2000–2002):** Island coordinate conventions and camera tracking research (`corpus/siarchive/Developer/SI_FLM_Format/`).
-- **Ángel Eduardo (2004–2005):** Reverse engineering of prop placements, ground clamping (`SETGND`), and model viewing (`corpus/siarchive/Developer/Notes_SIExtractor/Angel_Eduardo_SI_Extractor.txt`).
+- **Ángel Eduardo (2004–2005):** Analysis of prop placements, ground clamping (`SETGND`), and model viewing (`corpus/siarchive/Developer/Notes_SIExtractor/Angel_Eduardo_SI_Extractor.txt`).
 - **Alberto Marnetto (2024):** The `si-8x` level-of-detail threshold patch, described in [*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island) (2024-11-20); the corpus copy is `corpus/siarchive/Developer/SI-8x/` (notes pointer and patch diff).
-- **StuntReel Teamwork Team (2026):** Byte-level layout validation of `ANCHORPT.DAT` (28 bytes), `MAP.BIN` (30 bytes + 2), and `SCENERY.scn` ($29{,}559$ words).
+- **Stunt Reel contributors (2026):** Byte-level layout validation of `ANCHORPT.DAT` (28 bytes), `MAP.BIN` (30 bytes + 2), and `SCENERY.scn` ($29{,}559$ words).
 
 ---

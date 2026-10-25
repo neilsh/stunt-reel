@@ -118,7 +118,7 @@ Unlike coplanar decals which require normal displacement ($\epsilon = 0.001\text
 
 ---
 
-## 4. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Analysis Backlog
 
 | Item ID | Topic | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- |
@@ -135,6 +135,6 @@ The technical specifications and byte layouts for the `.SPR` format are synthesi
 - **Dave Palmowski (2001):** Author of the `SpriteMaker` package, designer of `PCX2SPR.EXE`, `MAKESPR.EXE`, and author of the authoritative format manual (`corpus/siarchive/SITools/SpriteMaker/sprite.txt`, `corpus/siarchive/SITools/SpriteMaker/Dstar.txt`).
 - **SIFA (Stunt Island Filmmakers Association):** Preservation of sprite creation toolsets, palette files (`si.pal`, `si.act`), and community sample sprites (`dethstar.spr`, `f0.spr`, `MACLOGO.SPR`).
 - **Adrian Stephens (The Assembly Line, 1992):** Original Stunt Island assembly engine architecture and billboard display list mechanics.
-- **StuntReel Teamwork Team (2026):** Mathematical validation of the $(W \times H) + 6$ byte formula across the corpus, integration with `Seam 3: SodModelIr`, and documentation of Mode 13h palette index preservation `[I3]`.
+- **Stunt Reel contributors (2026):** Mathematical validation of the $(W \times H) + 6$ byte formula across the corpus, integration with `Seam 3: SodModelIr`, and documentation of Mode 13h palette index preservation `[I3]`.
 
 ---

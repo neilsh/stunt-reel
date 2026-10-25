@@ -6,13 +6,15 @@ Process only: who owns which files, and where each ticket stands. It is **not** 
 
 ## 1. Roles & File Blast Radii
 
+The roles below are automation personas used by the development workflow, not people.
+
 | Role | Domain | Allowed file blast radius |
 |---|---|---|
 | **`sentinel`** | Orchestration: dispatches tickets, enforces branch isolation, reviews handoffs | `docs/process/TEAM_SHEET.md`, PR reviews |
-| **`re-harness-worker`** | DOSBox-X harness and memory reverse engineering | `python/stunt_reel/tac/`, `research/playone-exe/memory-map.md`, `research/playone-exe/`, `tests/test_harness.py` |
+| **`re-harness-worker`** | DOSBox-X harness and memory analysis | `python/stunt_reel/tac/`, `research/playone-exe/memory-map.md`, `research/playone-exe/`, `tests/test_harness.py` |
 | **`gltf-exporter-worker`** *(retired; the exporter is now `crates/stunt-gltf/`, owned by `rust-engine-worker`)* | Baseline `.SOD` mesh ingest and glTF export | `crates/stunt-gltf/` (formerly `python/stunt_reel/gltf/`, `tests/test_gltf.py`) |
-| **`rust-engine-worker`** | Cleanroom Rust engine | `crates/stunt-core/`, `crates/stunt-render/`, `crates/stunt-cli/` |
-| **`parity-auditor`** | Quality gate and cleanroom verification | Read-only across all code; runs `mise run check` and the gates in [`SPEC.md` § 5](../SPEC.md#5-master-verification-matrix) |
+| **`rust-engine-worker`** | Rust engine | `crates/stunt-core/`, `crates/stunt-render/`, `crates/stunt-cli/` |
+| **`parity-auditor`** | Quality gate and asset-isolation verification | Read-only across all code; runs `mise run check` and the gates in [`SPEC.md` § 5](../SPEC.md#5-master-verification-matrix) |
 
 ---
 
@@ -22,13 +24,13 @@ Process only: who owns which files, and where each ticket stands. It is **not** 
 
 | Ticket | Title | Owner | Status | Links |
 |---|---|---|---|---|
-| `T00` | Cleanroom scaffolding, contracts and fixtures | `rust-engine-worker` | Done | [`contracts/`](../../crates/stunt-core/src/contracts/mod.rs), [`tests/fixtures/README.md`](../../tests/fixtures/README.md) |
+| `T00` | Scaffolding, contracts and fixtures | `rust-engine-worker` | Done | [`contracts/`](../../crates/stunt-core/src/contracts/mod.rs), [`tests/fixtures/README.md`](../../tests/fixtures/README.md) |
 | `T01` | DOSBox-X harness and navigation | `re-harness-worker` | Done | [`client.py`](../../python/stunt_reel/tac/client.py), [`bda.py`](../../python/stunt_reel/tac/bda.py), [`navigation.md`](../../research/playone-exe/navigation.md) |
 | `T02` | Real-mode memory map and V-Sync trap | `re-harness-worker` | Done (address conflict open) | [`memory-map.md`](../../research/playone-exe/memory-map.md), [`vsync.py`](../../python/stunt_reel/tac/vsync.py) |
 | `T03` | Trajectory streamer and oracle export | `re-harness-worker` | Done (camera/actor layouts unverified live) | [`streamer.py`](../../python/stunt_reel/tac/streamer.py), [`memory-map.md`](../../research/playone-exe/memory-map.md) |
 | `T04` | Baseline mesh ingest and glTF exporter | `gltf-exporter-worker` | Done | [`stunt-gltf/`](../../crates/stunt-gltf/), [`sod.md`](../../research/formats/sod.md) |
 
-### Milestone 2: Native Cleanroom Rust Engine *(Gate 2 passed)*
+### Milestone 2: Native Rust Engine *(Gate 2 passed)*
 
 | Ticket | Title | Owner | Status | Links |
 |---|---|---|---|---|

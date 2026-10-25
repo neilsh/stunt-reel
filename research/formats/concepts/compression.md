@@ -1,9 +1,9 @@
 # Stunt Island Technical Reference: Compression Architecture & DOS 8.3 Path Normalization
 
 **Document Identifier:** `research/formats/concepts/compression.md`  
-**Author:** `worker_fmt_concepts`  
-**Governing Invariant:** `[I8]` (DOS 8.3 Uppercase Path Normalization), `[I7]` (Cleanroom Asset Isolation)  
-**Status:** Cleanroom Technical Reference Specification  
+**Author:** Stunt Reel contributors  
+**Governing Invariant:** `[I8]` (DOS 8.3 Uppercase Path Normalization), `[I7]` (Asset Isolation)  
+**Status:** Asset-Isolated Technical Reference Specification  
 
 ---
 
@@ -39,7 +39,7 @@ To reconcile these competing demands, *Stunt Island* implemented a tiered storag
 +-------------------------------------------------------------------------------+
 ```
 
-**Governing invariants:** [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I7]`](../../../docs/SPEC.md#i7-cleanroom-asset-isolation--small-pure-rust-core-dependencies), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs). Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
+**Governing invariants:** [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I7]`](../../../docs/SPEC.md#i7-asset-isolation--small-pure-rust-core-dependencies), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs). Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
 
 ---
 
@@ -205,7 +205,7 @@ pub fn decode_pcx_rle(encoded_bytes: &[u8], expected_pixel_count: usize) -> Vec<
 
 ---
 
-## 4. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Analysis Backlog
 
 1. **`[BK-COMP-01]` European Multilingual Release Sub-Chunk Compression** (`[Bounded Observation]`): Certain non-English release disks feature non-zero flags in `.ALL` chunk tables. Verification is needed to determine if an LZSS variant was used to fit multiple language subtitles onto floppy disks.
 2. **`[BK-COMP-02]` Trailing Space Padding in Authoring Tool Filenames** (`[Supported Inference]`): In `MAKERES.EXE`, filenames with fewer than 8 characters are occasionally padded with spaces (`0x20`) rather than null terminators (`0x00`). The VFS normalization pipeline cleanly strips these spaces.
@@ -221,7 +221,7 @@ pub fn decode_pcx_rle(encoded_bytes: &[u8], expected_pixel_count: usize) -> Vec<
 - **Dave Palmowski (1999–2001):** Author of SpriteMaker and PCX2SPR, documenting PCX RLE decoding and `.SPR` uncompressed raster layouts in `corpus/siarchive/SITools/SpriteMaker/`.
 - **Adrian Stephens & FreeFlight Team:** Implementation of `ripres.c` and `sires.cpp` establishing uncompressed `.RES` and `.ALL` payload slicing in `corpus/siarchive/Developer/SODParse/` and `Developer/FreeFlight/`.
 - **Doug Armknecht (2002):** Corpus-wide extraction of uncompressed film streams and chunk boundaries via `flm_extract.py` in `corpus/siarchive/Developer/SI_FLM_Format/`.
-- **Neil Halelamien (2004):** Reverse engineering of `.SET` scene files and documentation of uppercase 8.3 filename conventions in `corpus/siarchive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
-- **StuntReel Teamwork Team (2026):** Invariant `[I8]` specification, `VfsArchive` case-normalization contract, and cleanroom test fixtures (`crates/stunt-core/src/contracts/vfs.rs`, `tests/fixtures/synthetic_minimal.res`).
+- **Neil Halelamien (2004):** Analysis of `.SET` scene files and documentation of uppercase 8.3 filename conventions in `corpus/siarchive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
+- **Stunt Reel contributors (2026):** Invariant `[I8]` specification, `VfsArchive` case-normalization contract, and synthetic test fixtures (`crates/stunt-core/src/contracts/vfs.rs`, `tests/fixtures/synthetic_minimal.res`).
 
 ---

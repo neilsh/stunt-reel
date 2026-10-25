@@ -36,15 +36,15 @@ def test_evidentiary_tier_vocabulary() -> None:
 
 
 def test_formats_catalog_provenance_attribution() -> None:
-    """Verify that all documents cite reverse engineering provenance and credit researchers."""
+    """Verify that all documents cite documentation provenance and credit researchers."""
     result = verify_formats_docs.verify_provenance_and_attribution(REPO_ROOT)
     assert result.passed, f"Provenance and attribution check failed: {result.errors}"
 
 
-def test_formats_catalog_cleanroom_isolation() -> None:
+def test_formats_catalog_asset_isolation() -> None:
     """Verify that research/formats/ contains zero binary files and only valid UTF-8 markdown [I7]."""
-    result = verify_formats_docs.verify_cleanroom_isolation(REPO_ROOT)
-    assert result.passed, f"Cleanroom isolation check failed: {result.errors}"
+    result = verify_formats_docs.verify_asset_isolation(REPO_ROOT)
+    assert result.passed, f"Asset-isolation check failed: {result.errors}"
 
 
 def test_formats_catalog_link_integrity() -> None:

@@ -2,7 +2,7 @@
 
 Schemas under ``research/formats/`` are executable layout descriptions. They
 are compiled to Python in a temporary directory and executed against committed
-cleanroom fixtures or the local (gitignored) reference corpus. Kaitai is not a
+synthetic fixtures or the local (gitignored) reference corpus. Kaitai is not a
 production dependency: the pinned compiler and its JVM come from ``mise``.
 """
 

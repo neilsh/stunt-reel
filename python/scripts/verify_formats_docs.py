@@ -8,13 +8,13 @@ Programmatically validates:
    sequential header ordering, evidentiary tier tagging (see EVIDENTIARY_TIERS),
    and Mermaid asset graphs.
 3. Provenance & Attribution: Direct citations to corpus/siarchive/, .agents/teamwork/,
-   and explicit credit to community reverse-engineers.
-4. Cleanroom Isolation: ZERO binary files in research/formats/, valid UTF-8 encoding,
+   and explicit credit to community researchers.
+4. Asset isolation: ZERO binary files in research/formats/, valid UTF-8 encoding,
    no null bytes, and offline synthetic test fixture alignment [I7].
 5. Link Integrity: Zero broken relative markdown links or anchor targets across
    the catalog and docs/ARCHITECTURE.md.
 6. Synthetic Fixture Consistency: Documented headers, offsets, and opcodes align
-   byte-for-byte with cleanroom test fixtures in tests/fixtures/.
+   byte-for-byte with synthetic test fixtures in tests/fixtures/.
 """
 
 from __future__ import annotations
@@ -90,7 +90,7 @@ FORMAT_SPEC_SECTIONS: list[str] = [
     "## 1. Overview & File Identification",
     "## 2. Header & Memory Layout",
     "## 3. Data Structures & Opcode Table",
-    "## 4. Open Questions & Reverse Engineering Backlog",
+    "## 4. Open Questions & Analysis Backlog",
     "## 5. Attribution & Provenance",
 ]
 
@@ -98,7 +98,7 @@ CONCEPT_DOC_SECTIONS: list[str] = [
     "## 1. Overview & Mathematical / Hardware Principles",
     "## 2. Memory Layout & Bitfield Representations",
     "## 3. Data Structures, Tables & Conversion Algorithms",
-    "## 4. Open Questions & Reverse Engineering Backlog",
+    "## 4. Open Questions & Analysis Backlog",
     "## 5. Attribution & Provenance",
 ]
 
@@ -283,7 +283,7 @@ def verify_schema_conformance(repo_root: Path) -> VerificationResult:
 
         # Verify evidentiary tiers in Section 4
         sec4_match = re.search(
-            r"## 4\. Open Questions & Reverse Engineering Backlog(.*?)(?:## 5\.|\Z)",
+            r"## 4\. Open Questions & Analysis Backlog(.*?)(?:## 5\.|\Z)",
             content,
             re.DOTALL,
         )
@@ -340,7 +340,7 @@ def verify_schema_conformance(repo_root: Path) -> VerificationResult:
                 last_pos = pos
 
         sec4_match = re.search(
-            r"## 4\. Open Questions & Reverse Engineering Backlog(.*?)(?:## 5\.|\Z)",
+            r"## 4\. Open Questions & Analysis Backlog(.*?)(?:## 5\.|\Z)",
             content,
             re.DOTALL,
         )
@@ -524,11 +524,11 @@ def verify_provenance_and_attribution(repo_root: Path) -> VerificationResult:
 
 
 # -----------------------------------------------------------------------------
-# Verification Category 4: Cleanroom Isolation
+# Verification Category 4: Asset isolation
 # -----------------------------------------------------------------------------
 
 
-def verify_cleanroom_isolation(repo_root: Path) -> VerificationResult:
+def verify_asset_isolation(repo_root: Path) -> VerificationResult:
     """Validate that ZERO binary files exist under research/formats/ and all are valid UTF-8 text."""
     errors: list[str] = []
     details: list[str] = []
@@ -536,7 +536,7 @@ def verify_cleanroom_isolation(repo_root: Path) -> VerificationResult:
 
     if not formats_dir.exists():
         return VerificationResult(
-            category="Cleanroom Isolation",
+            category="Asset isolation",
             passed=False,
             errors=[f"Directory does not exist: {formats_dir}"],
             details=[],
@@ -571,7 +571,7 @@ def verify_cleanroom_isolation(repo_root: Path) -> VerificationResult:
         details.append(f"Clean UTF-8 text ({len(raw_bytes):,} bytes): {rel_item}")
 
     return VerificationResult(
-        category="Cleanroom Isolation",
+        category="Asset isolation",
         passed=(len(errors) == 0),
         errors=errors,
         details=details,
@@ -1022,7 +1022,7 @@ def run_all_verifications(
         verify_schema_conformance(repo_root),
         verify_tier_vocabulary(repo_root),
         verify_provenance_and_attribution(repo_root),
-        verify_cleanroom_isolation(repo_root),
+        verify_asset_isolation(repo_root),
         verify_link_integrity(repo_root),
         verify_synthetic_fixtures_consistency(repo_root),
     ]
@@ -1075,7 +1075,7 @@ def main() -> int:
 
     print("\n" + "=" * 80)
     if all_passed:
-        print("RESULT: ALL 7 VERIFICATION SUITES PASSED (100% SPEC & CLEANROOM COMPLIANT)")
+        print("RESULT: ALL 7 VERIFICATION SUITES PASSED (100% SPEC & ASSET-ISOLATED)")
         print("=" * 80)
         return 0
 

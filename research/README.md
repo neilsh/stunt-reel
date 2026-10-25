@@ -2,6 +2,8 @@
 
 `research/` records what the original game does. What we build from it (goals, invariants, architecture, decisions) lives in [`docs/`](../docs/). Each finding has exactly one home, chosen by its **subject**, not by the activity that produced it.
 
+**Provenance and licensing.** These notes are original writing by Stunt Reel contributors and are licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) (see [`README.md` § License](../README.md#license)). Quoted third-party material and cited community research remain under their own terms and are not relicensed by this project. The game-derived constants documented here — the Stunt Island master palette and the 18-entry `.SOD` scale table — are not relicensed either. No game assets are distributed; see [`NOTICE.md`](../NOTICE.md).
+
 ## Layout
 
 | Folder | Subject | Examples |

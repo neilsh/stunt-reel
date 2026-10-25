@@ -81,7 +81,8 @@ pub const OP_DOT: u16 = 0x02D0;
 /// Draw a solid rectangular block (`reg_off, size`).
 pub const OP_BLOCK: u16 = 0x02D9;
 
-/// Power-of-2 scaling multiplier table (`sod_scale_table` in historical C implementation).
+/// Power-of-2 scaling multiplier table: `sod_scale_table` from the community
+/// `SODParse/SOD.H` (Dave Palmowski), 18 entries; `5 / 2^(k-1)` for `k >= 2`.
 pub const SOD_SCALE_TABLE: [f32; 18] = [
     10.0,
     5.0,

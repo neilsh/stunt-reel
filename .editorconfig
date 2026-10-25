@@ -28,3 +28,6 @@ indent_size = 4
 
 [*.py]
 indent_size = 4
+
+[*.{bat,cmd}]
+end_of_line = crlf

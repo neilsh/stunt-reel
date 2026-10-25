@@ -331,7 +331,7 @@ impl From<crate::reader::Eof> for FlmError {
 mod tests {
     use super::*;
 
-    /// Minimal two-slice cleanroom film (`tests/fixtures/synthetic_minimal.flm`).
+    /// Minimal two-slice synthetic film (`tests/fixtures/synthetic_minimal.flm`).
     const SYNTHETIC_MINIMAL_FLM: &[u8] =
         include_bytes!("../../../../tests/fixtures/synthetic_minimal.flm");
 

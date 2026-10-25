@@ -8,7 +8,7 @@ Covers the parts of the harness that survive at the operation altitude:
 2. Direct memory decoding: camera and actor structures on synthetic RAM states,
    truncated reads, camera cuts, linked-list traversal, cycle and degenerate guards.
 3. Invariant [I1] Euler kinematics: axis mapping, orthogonality, determinant, extremes.
-4. Golden oracle and cleanroom isolation over 600 ticks.
+4. Golden oracle and asset isolation over 600 ticks.
 
 Wire framing, request ids and buffer recovery live in test_tac_transport_framing.py.
 """
@@ -529,8 +529,8 @@ def test_trajectory_streamer_600_ticks_complete() -> None:
         assert rmse <= 0.01
 
 
-def test_cleanroom_isolation_corpus_oracle() -> None:
-    """Verify that corpus/oracle/ files are gitignored per Cleanroom Directive 1."""
+def test_asset_isolation_corpus_oracle() -> None:
+    """Verify that corpus/oracle/ files are gitignored per the asset-isolation directive."""
     res = subprocess.run(
         ["git", "check-ignore", "corpus/oracle/intro_trajectory.json"],  # noqa: S607
         capture_output=True,

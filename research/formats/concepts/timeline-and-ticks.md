@@ -1,9 +1,9 @@
 # Stunt Island Technical Reference: Timeline Mechanics, Simulation Ticks & Kinematic Interpolation
 
 **Document Identifier:** `research/formats/concepts/timeline-and-ticks.md`  
-**Author:** `worker_fmt_concepts`  
+**Author:** Stunt Reel contributors  
 **Governing Invariant:** `[I4]` (Discrete Simulation Ticks & Cut-Aware Sub-Tick Interpolation), `[I1]` (Metric Right-Handed Coordinates)  
-**Status:** Cleanroom Technical Reference Specification  
+**Status:** Asset-Isolated Technical Reference Specification  
 
 ---
 
@@ -46,7 +46,7 @@ In 1992 IBM PC-compatibles, fixed simulation timing was governed by the Intel 82
 - **Film Advancement (`[Supported Inference]`):** when the film clock passes the current slice's interval, the next slice's `tick_duration` byte is read and added to the start tick; elapsed ticks divided by `tick_duration` give the sub-tick interpolation factor. Addresses: [`memory.md` § 3.2](../../playone-exe/memory.md#32-tick-counter-evidence).
 - **Display Retrace Decoupling:** The VGA cathode-ray tube raster beam refreshed at $70\text{ Hz}$ (vertical retrace every $14.28\text{ ms}$, monitored on I/O port `0x03DA`). Presentation and simulation are decoupled: the rendering loop polls `0x03DA` for vertical blanking, while simulation time advances in the 50 Hz PIT interrupt (`[MEM-VSYNC-03DA]`). When rendering cannot keep up, a frame advances several simulation ticks at once; this is why capture timing alone overestimates the tick interval.
 
-**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I4]`](../../../docs/SPEC.md#i4-discrete-simulation-ticks--cut-aware-sub-tick-interpolation), [`[I7]`](../../../docs/SPEC.md#i7-cleanroom-asset-isolation--small-pure-rust-core-dependencies). **Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs). Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I4]`](../../../docs/SPEC.md#i4-discrete-simulation-ticks--cut-aware-sub-tick-interpolation), [`[I7]`](../../../docs/SPEC.md#i7-asset-isolation--small-pure-rust-core-dependencies). **Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs). Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
 
 ---
 
@@ -54,7 +54,7 @@ In 1992 IBM PC-compatibles, fixed simulation timing was governed by the Intel 82
 
 The `.FLM` byte-level structures are specified once, in [`flm.md`](../flm.md) and [`flm_slice.ksy`](../flm_slice.ksy); this concept document covers only how their fields drive playback timing (§ 3). It does not re-tabulate them:
 
-* **3-byte slice header** (`prev_slice_len: u16`, `tick_duration: u8`): [`flm.md` § 2.1](../flm.md#21-the-solved-3-byte-slice-header-reverse-engineering-breakthrough). `tick_duration` counts 50 Hz ticks since the previous slice, so slice $i$'s timestamp is the cumulative sum $\sum_{k \le i} \text{tick\_duration}_k$ (slice 0 at tick 0). Its semantics and corpus distribution: [`flm.md` § 2.1.1](../flm.md#211-tick_duration-semantics--corpus-distribution).
+* **3-byte slice header** (`prev_slice_len: u16`, `tick_duration: u8`): [`flm.md` § 2.1](../flm.md#21-the-solved-3-byte-slice-header-format-breakthrough). `tick_duration` counts 50 Hz ticks since the previous slice, so slice $i$'s timestamp is the cumulative sum $\sum_{k \le i} \text{tick\_duration}_k$ (slice 0 at tick 0). Its semantics and corpus distribution: [`flm.md` § 2.1.1](../flm.md#211-tick_duration-semantics--corpus-distribution).
 * **Object `type_flags` bitfield** (`SIF_*`): [`flm.md` § 3.2](../flm.md#32-object-type-flags-type_flags-u8).
 * **Opcode classes and dispatch** (`opcode >> 6`): [`flm.md` § 3.3](../flm.md#33-master-opcode-dispatch-table--fmt-flm-opcodes).
 
@@ -142,7 +142,7 @@ The earlier montage at ticks 1261 to 1485 alternates `view_obj` between a number
 
 ---
 
-## 4. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Analysis Backlog
 
 1. **`[BK-TIME-01]` Opcode Class `0xF0` in Film File Tails** (`[Bounded Observation]`): Observed in corrupted trailing bytes of `CORSAIR.FLM`. Unclear whether this represents an unmapped extended opcode or an uninitialized write buffer artifact.
 2. **`[BK-TIME-02]` Variable Table Register Depth** (`[Supported Inference]`): Slices update `nextvar[0..15]` registers via opcodes `0x80`–`0x8F`. Whether more than 16 registers exist in `PLAYONE.EXE`'s runtime state table remains under investigation.
@@ -155,11 +155,11 @@ The earlier montage at ticks 1261 to 1485 alternates `view_obj` between a number
 
 ## 5. Attribution & Provenance
 
-- **Doug Armknecht (2002):** Reverse engineering of `.FLM` timeline structure, opcode classifications, and extraction scripts in `corpus/siarchive/Developer/SI_FLM_Format/` (`FLM_FORMAT_DOUG_NOTES.txt`, `FLM_NOTES.md`, `flm_extract.py`).
-- **FreeFlight Development Team:** Reverse engineering of `.FLM` playback state machines in `corpus/siarchive/Developer/FreeFlight/src/sifilm.cpp` and `sifilm.h`.
+- **Doug Armknecht (2002):** Analysis of `.FLM` timeline structure, opcode classifications, and extraction scripts in `corpus/siarchive/Developer/SI_FLM_Format/` (`FLM_FORMAT_DOUG_NOTES.txt`, `FLM_NOTES.md`, `flm_extract.py`).
+- **FreeFlight Development Team:** Analysis of `.FLM` playback state machines in `corpus/siarchive/Developer/FreeFlight/src/sifilm.cpp` and `sifilm.h`.
 - **Adrian Stephens (1997):** Analysis of subobject animation timing, propeller rotation parameters, and landing gear state transitions (`corpus/siarchive/SITools/Docs/Adrian_Subobjects.txt`).
-- **Neil Halelamien (2004):** Reverse engineering of stage event trigger timing, prop script clocks, and tick counters in `corpus/siarchive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
+- **Neil Halelamien (2004):** Analysis of stage event trigger timing, prop script clocks, and tick counters in `corpus/siarchive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
 - **Dave Palmowski & Dean Newbury:** Documentation of timeline mechanics, subobject hierarchies, and flight playback tools in `corpus/siarchive/SITools/Docs/`.
-- **StuntReel Teamwork Team (2026):** Discovery of the 3-byte slice header back-pointer resolution, director cut suppression rules, and Seam 2 contracts (`spec_miner_fmt_flm_all/analysis.md`, `crates/stunt-core/src/contracts/trajectory.rs`).
+- **Stunt Reel contributors (2026):** Discovery of the 3-byte slice header back-pointer resolution, director cut suppression rules, and Seam 2 contracts (`crates/stunt-core/src/contracts/trajectory.rs`).
 
 ---

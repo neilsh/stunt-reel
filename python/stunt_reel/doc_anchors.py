@@ -54,7 +54,7 @@ ANCHORS: tuple[Anchor, ...] = (
     Anchor(
         "I6", SPEC, "[I6] Visual Parity Acceptance Thresholds & VGA 1:1.2 Aspect Ratio Correction"
     ),
-    Anchor("I7", SPEC, "[I7] Cleanroom Asset Isolation & Small Pure-Rust Core Dependencies"),
+    Anchor("I7", SPEC, "[I7] Asset Isolation & Small Pure-Rust Core Dependencies"),
     Anchor("I8", SPEC, "[I8] DOS 8.3 Uppercase Path Normalization"),
     # --- Format anchors: defined in the format document that owns the layout ---
     Anchor(

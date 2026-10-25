@@ -1,7 +1,10 @@
 //! Authentic IBM PC VGA Mode 13h 256-color palette mapping.
 //!
 //! Adheres strictly to Architectural Invariant `[I3]`.
-//! Palette data derived from historical Stunt Island development archives (`pal.h`).
+//! The table is the Stunt Island master palette (240 scene + 16 UI entries),
+//! transcribed from the community `SODParse/pal.h` in the Stunt Island Central
+//! archive and re-encoded as 6-bit DAC levels shifted left by two. It is
+//! game-derived, not the IBM VGA default and not synthetic; see `NOTICE.md`.
 
 /// Authentic VGA Mode 13h 256-color DAC palette RGB entries (0..255).
 pub const MODE_13H_PALETTE: [(u8, u8, u8); 256] = [

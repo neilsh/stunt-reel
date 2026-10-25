@@ -1,16 +1,30 @@
 # stunt-reel
 
-Reverse-engineering, analysis, and reconstruction workspace for *Stunt Island* (1992, Walt Disney Computer Software / The Assembly Line): a DOSBox-X harness for the original `PLAYONE.EXE`, cleanroom Rust and Python parsers, a native `wgpu` renderer (`stuntreel`), and a parity loop that scores rendered frames against frames captured from the original player.
+Format analysis, documentation, and modern reconstruction for *Stunt Island* (1992, Walt Disney Computer Software / The Assembly Line): a DOSBox-X harness for the original `PLAYONE.EXE`, offline-tested Rust and Python parsers, a native `wgpu` renderer (`stuntreel`), and a parity loop that scores rendered frames against frames captured from the original player.
+
+> [!NOTE]
+> **Status: pre-alpha.** Formats, APIs and documentation change without notice. No game assets or executables are distributed — see [Legal & assets](#legal--assets).
 
 The living specification is [`docs/SPEC.md`](docs/SPEC.md) — goals, invariants `[I1]`–`[I8]`, evidentiary tiers, and the verification matrix. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) routes each module to its specification anchor and research note; [`AGENTS.md`](AGENTS.md) holds the contributor and agent rules.
+
+---
+
+## Legal & assets
+
+*Stunt Island* and related marks are trademarks of The Walt Disney Company. This is an unofficial, non-commercial research and preservation project: it is not affiliated with, authorised by, or endorsed by The Walt Disney Company or The Assembly Line.
+
+No game assets, executables, or original data files are distributed. `corpus/` and `target_bin/` are gitignored and every test runs offline against synthetic fixtures; you must supply your own lawfully obtained copy of any retail files. Two small game-derived tables are committed as documented exceptions because the renderer needs them for format fidelity — the 256-entry master palette (768 bytes) and an 18-entry SOD scale table — and they are credited and described in [`NOTICE.md`](NOTICE.md). Quoted manual text and cited community research remain under their original terms.
+
+See [`NOTICE.md`](NOTICE.md) for provenance and third-party credits, and [License](#license) for the licence split.
 
 ---
 
 ## Requirements
 
 - **[mise](https://mise.jdx.dev/)** (recommended environment and tool manager)
-- **[Rust](https://www.rust-lang.org/)** 2024 edition (rustc ≥ 1.88), managed via `mise` or `rustup`
+- **[Rust](https://www.rust-lang.org/)** 2024 edition (MSRV 1.88; the pinned toolchain is 1.99.1), managed via `mise` or `rustup`
 - **[uv](https://docs.astral.sh/uv/)** (installed by `mise`; a standalone uv works only at the pinned version, which `required-version` in [`pyproject.toml`](pyproject.toml) enforces) and **Python ≥ 3.11**
+- **[ffmpeg](https://ffmpeg.org/)** on `PATH` (only for `--video` export)
 - **[DOSBox-X](https://dosbox-x.com/) `2026.10.01`** (Windows x64 portable SDL2 build, installed by `mise`)
 - **[`dosbox-x-mcp-server`](https://github.com/caiiiycuk/dosbox-x-mcp-server) `0.1.2`** (managed via `mise`)
 - **Java 21 (Temurin)** and **Kaitai Struct Compiler `0.11`** (managed via `mise`; needed only for the `.ksy` corpus checks)
@@ -22,11 +36,15 @@ The living specification is [`docs/SPEC.md`](docs/SPEC.md) — goals, invariants
 ### 1. mise
 
 ```powershell
+mise trust     # once per fresh clone, if mise asks you to trust the config
 mise install   # pinned toolchains, DOSBox-X, Kaitai compiler
 mise run init  # Python environment, then link the shared data root
 ```
 
 Pinned versions live in [`mise.toml`](mise.toml); `mise run init` runs `uv sync`, which installs the `kaitaistruct==0.11` runtime for the schema checks.
+
+> [!NOTE]
+> The quality gate (`mise run check`) runs on Linux, macOS and Windows. Capture, parity and corpus workflows are Windows + DOSBox-X + local-corpus only; elsewhere you can still build, test and render from synthetic fixtures.
 
 ### 2. Agent / MCP integration
 
@@ -53,10 +71,10 @@ Register the server in the agent's MCP configuration file (`~/.gemini/config/mcp
 
 ### 3. Worktrees and the shared data root
 
-Several agents can work at once, each in its own `git worktree`: beside the checkout (`D:\git\stunt-reel.wt\<slug>`) or under a gitignored directory inside it (`.claude/worktrees/`, `.agents/worktrees/`). The corpus, the reference captures and `target_bin/` are gitignored, so they live once per machine instead of once per checkout:
+Several agents can work at once, each in its own `git worktree`: beside the checkout (`<checkout>.wt\<slug>` on Windows) or under a gitignored directory inside it (`.claude/worktrees/`, `.agents/worktrees/`). The corpus, the reference captures and `target_bin/` are gitignored, so they live once per machine instead of once per checkout:
 
 ```text
-D:\git\stunt-reel.data\   corpus\{stisldem,si_archive,oracle}, reference\, target_bin\
+<parent-of-checkout>\stunt-reel.data\   corpus\{stisldem,si_archive,oracle}, reference\, target_bin\
 ```
 
 The community archive keeps its historical `si_archive` name inside the data root; a checkout links it as `corpus/siarchive`, the collector's spelling, and `LINK_TARGETS` in `python/stunt_reel/dataroot.py` is the one place that maps the two.
@@ -77,8 +95,8 @@ The data root is **read-only**: `mise run capture-ref` into the shared captures 
 | `crates/stunt-cli/` | `stuntreel` binary: interactive/headless presentation plus the `parity` and `export-gltf` subcommands |
 | `python/stunt_reel/tac/` | DOSBox-X TAC harness: control transport, BIOS Data Area input, frame capture — [`research/playone-exe/capture.md`](research/playone-exe/capture.md) |
 | `crates/stunt-gltf/` | glTF 2.0 (`.glb`) exporter for shapes and single scene frames, driven by `stunt-cli export-gltf` |
-| `python/scripts/` | Entry points: `capture_playone_reference.py`, `verify_schemas_corpus.py`, `verify_formats_docs.py`, `adversarial_formats_challenge.py` |
-| `tests/` | Python suite and cleanroom fixtures — [`tests/fixtures/README.md`](tests/fixtures/README.md); Rust integration tests live in `crates/*/tests/` |
+| `python/scripts/` | Entry points for capture, parity, format and documentation checks (e.g. `capture_playone_reference.py`, `parity_run.py`, `parity_sweep.py`, `verify_schemas_corpus.py`, `verify_formats_docs.py`) plus maintenance tools |
+| `tests/` | Python suite and synthetic fixtures — [`tests/fixtures/README.md`](tests/fixtures/README.md); Rust integration tests live in `crates/*/tests/` |
 | `docs/` | Living spec, architecture routing, ADRs, and process documents (`process/`) |
 | `research/` | Format specifications beside their `.ksy` layouts plus `PLAYONE.EXE` analysis notes — [`research/formats/INDEX.md`](research/formats/INDEX.md) |
 | `corpus/` | Gitignored demo and archive data, linked from the shared data root — [`corpus/README.md`](corpus/README.md) |
@@ -138,7 +156,8 @@ cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
 Export a shape, or one frame of a film, to glTF 2.0 for viewing in Blender or any glTF viewer:
 
 ```powershell
-cargo run -p stunt-cli -- export-gltf --archive corpus/stisldem/VAULT/CTRY.ALL \n    --film corpus/stisldem/VAULT/CTRY.FLM --tick 400 --out build/gltf_output/CTRY_t400.glb
+cargo run -p stunt-cli -- export-gltf --archive corpus/stisldem/VAULT/CTRY.ALL \
+    --film corpus/stisldem/VAULT/CTRY.FLM --tick 400 --out build/gltf_output/CTRY_t400.glb
 cargo run -p stunt-cli -- export-gltf --archive corpus/stisldem/VAULT/CTRY.ALL --shape 0x0408 --out build/gltf_output/shape.glb
 ```
 
@@ -173,6 +192,7 @@ The gate is `mise run check`: one ordered script ([gate.py](python/scripts/gate.
 | Task | Runs |
 | --- | --- |
 | `check` / `check-rust` / `check-py` | `gate.py` over every step (format, lint, strict typing, rustdoc, both test suites, the no-default-features matrix), one line per step, log in `target/check.log` |
+| `check-windows` | the non-GPU half of the gate used by the Windows CI job (`fmt-check` + `lint` + `typecheck` + `test`)
 | `fmt-check` / `fmt` | `cargo fmt` and `ruff format` check/apply |
 | `lint` | `cargo clippy -- -D warnings` and `ruff check .` |
 | `typecheck` | `uv run mypy` (strict) |
@@ -189,7 +209,7 @@ The gate is `mise run check`: one ordered script ([gate.py](python/scripts/gate.
 | `ensure-dosbox`, `mcp` | agent debugger plumbing |
 | `parity-probe`, `verify-docs`, `unlzexe`, `probe-light`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) invokes the mise tasks instead of restating them: Ubuntu runs the full `mise run check` gate, Windows runs the non-GPU subset (`fmt-check lint typecheck test-py`), a separate job checks the declared MSRV (`1.88`), and a `cargo deny` job enforces the dependency policy. Corpus- and DOSBox-X-dependent tasks stay local.
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) invokes the mise tasks instead of restating them: Ubuntu runs the full `mise run check` gate, Windows runs `check-windows` (format, lint, typecheck and both test suites; GPU tests skip without a driver), a separate job checks the declared MSRV (`1.88`), and a `cargo deny` job enforces the dependency policy. Corpus- and DOSBox-X-dependent tasks stay local.
 
 ### Shared tool cache
 
@@ -216,6 +236,22 @@ The Python half runs on the standard library unless a dependency earns its place
 | [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog and Kaitai layouts |
 | [`research/playone-exe/`](research/playone-exe/) | Startup, navigation, memory map, and capture harness notes |
 | [`corpus/README.md`](corpus/README.md) | How to populate the demo and archive data |
-| [`tests/fixtures/README.md`](tests/fixtures/README.md) | Cleanroom fixture specifications |
+| [`tests/fixtures/README.md`](tests/fixtures/README.md) | Synthetic fixture specifications |
+| [`GLOSSARY.md`](GLOSSARY.md) | Canonical project vocabulary |
+| [`docs/adr/`](docs/adr/) | Accepted design decisions, one record each |
+| [`research/README.md`](research/README.md) | Research routing, note shape and provenance |
+| [`NOTICE.md`](NOTICE.md) | Provenance, game-derived data and third-party credits |
 | [`AGENTS.md`](AGENTS.md) | Contributor directives and standard operating procedures |
 | [`docs/harness-setup.md`](docs/harness-setup.md) | Host-local harness setup: tool installs, mise config and trust, permission presets, data-root environment |
+
+## Contributing
+
+This is a pre-alpha project; issues and focused pull requests are welcome. Before opening one, run `mise run check` and read [`AGENTS.md`](AGENTS.md) for the working rules.
+
+## License
+
+Original code and schemas are dual-licensed under [MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE), at your option.
+
+Original documentation and research notes are licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
+Game-derived material (the raw palette and scale tables), quoted manual text, and cited community work are not relicensed by this project and remain under their own terms — see [`NOTICE.md`](NOTICE.md).

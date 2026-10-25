@@ -1,6 +1,9 @@
 # Corpus Reference & Data Archives
 
-This directory serves as the root storage for *Stunt Island* reference archives, demo files, and community reverse-engineering packages. Due to copyright and archive size, source archives and extracted binary assets are not committed directly to the repository and should be downloaded and unzipped into their respective subdirectories.
+This directory serves as the root storage for *Stunt Island* reference archives, demo files, and community format-analysis packages. Due to copyright and archive size, source archives and extracted binary assets are not committed directly to the repository.
+
+> [!WARNING]
+> You must supply your own lawfully obtained copy of every archive described here. We do not host, distribute, or endorse these archives; their contents may be copyrighted and their legal status varies by jurisdiction. The quality gate does not need this directory — `mise run check` passes on a clean clone.
 
 ---
 
@@ -10,7 +13,7 @@ The `stisldem/` folder is reserved for the official MS-DOS promotional demo of *
 
 ### Setup Instructions
 
-1. **Download `stisldem.zip`**: Obtain the demo archive (e.g. from classic DOS gaming archives or historical software repositories) into `corpus/`.
+1. **Obtain `stisldem.zip`**: Get the demo archive from a source you are entitled to use, and place it in `corpus/`.
 2. **Extract into `corpus/stisldem/`**:
    - Unzip the contents of `stisldem.zip` directly into the `corpus/stisldem/` directory.
    - **Important**: Ensure directory structure is preserved during extraction (e.g., `pkunzip -d` or standard modern zip extraction) so that the `VAULT/` subfolder (containing demo `.FLM` film reels such as `CTRY.FLM`, `DES.FLM`, `TOWN.FLM`) is created properly.
@@ -32,12 +35,12 @@ The `siarchive/` folder contains historical assets, developer utilities, file fo
 
 ### Setup Instructions
 
-1. **Download Archive**: Download the zip file from [Stunt Island Central Archive](https://armknechted.com/sicentral/newpage/SIArchive.html).
+1. **Obtain the archive**: Get the Stunt Island Central Archive from its curator's site (we neither link, host nor redistribute it) and place the zip in `corpus/`.
 2. **Extract into `corpus/siarchive/`**: Unzip the contents directly into `corpus/siarchive/`.
 
 ### Expected Directory Layout
 
-The extracted `siarchive/` directory includes a `Developer/` folder containing reverse-engineering tools and source code:
+The extracted `siarchive/` directory includes a `Developer/` folder containing format-analysis tools and source code:
 
 - **`Developer/`**
   - **`sodparse/`** (or `SODParse/`):
@@ -49,7 +52,7 @@ The extracted `siarchive/` directory includes a `Developer/` folder containing r
     - `flm_reader.c`
     - `scenery.c`
     - OpenGL 3D island exploration utility (`Play.exe`, `SIDATA/`, and source fragments).
-  - Additional reverse engineering folders: `Notes_SETFile/`, `Notes_SIExtractor/`, `SI-8x/`, `SIDG/`, `SIRes/`, `SI_FLM_Format/`.
+  - Additional analysis folders: `Notes_SETFile/`, `Notes_SIExtractor/`, `SI-8x/`, `SIDG/`, `SIRes/`, `SI_FLM_Format/`.
 
 ### Documentation and Community Sets
 

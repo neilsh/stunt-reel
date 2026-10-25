@@ -182,7 +182,7 @@ The selected ID is resolved through the resource cache and passed to a screen-sp
 
 ### 2.5 BSP Sorting & Two-Sided Visibility Logic (`# [FMT-SOD-IFVIS]`)
 
-`[Supported Inference]` — from the assembler macro sources and `SODParse`; not traced in the binary (open question Q-SOD-01 in [`sod.md`](sod.md#4-open-questions--reverse-engineering-backlog)).
+`[Supported Inference]` — from the assembler macro sources and `SODParse`; not traced in the binary (open question Q-SOD-01 in [`sod.md`](sod.md#4-open-questions--analysis-backlog)).
 
 Because 1992 DOS real-mode software lacked hardware depth buffers:
 - `sorton <face>` (0x018C): Evaluates whether camera eye is in front of or behind separating plane `<face>`. Traverses front and back geometry subtrees in back-to-front order (Binary Space Partitioning for Painter's algorithm).

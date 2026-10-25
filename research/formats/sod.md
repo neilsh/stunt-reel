@@ -99,7 +99,7 @@ In original DOS software rendering, decals (wing insignia, national roundels, le
 
 ---
 
-## 4. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Analysis Backlog
 
 The following backlog documents open questions regarding `.SOD` virtual machine opcodes:
 
@@ -118,12 +118,12 @@ The following backlog documents open questions regarding `.SOD` virtual machine 
 
 ## 5. Attribution & Provenance
 
-The `.SOD` virtual machine specification represents extensive reverse engineering across multiple decades:
+The `.SOD` virtual machine specification draws on extensive community analysis across multiple decades:
 
 ### 5.1 Community Researchers & Tool Authors
 
 - **Adrian Stephens**: Original Assembly Line Engine Developer; authored the original 8086/80286 macro-assembler display-list source files for Stunt Island aircraft (`objdef`, `ipg`, `sorton`, `pushcentre`, `pushrelmat`).
-- **Chris Phillips** (`bigbang@seanet.com`): Author of `SODParse` (`ripres.c`, `DECODE.C`, `SOD.H`), `SIRes` (`SIResFile.cpp`, `Sod.h`), and `FreeFlight` (`siobj.cpp`). Decoded the 107 opcode jump table (multiples of 9), scale table constants, and OpenGL reconstruction.
+- **Chris Phillips**: Author of `SODParse` (`ripres.c`, `DECODE.C`, `SOD.H`), `SIRes` (`SIResFile.cpp`, `Sod.h`), and `FreeFlight` (`siobj.cpp`). Decoded the 107 opcode jump table (multiples of 9), scale table constants, and OpenGL reconstruction.
 - **Dave Palmowski**: Documented `.SOD` bounding boxes, scaling factors, and object coordinates in `SITools/`.
 - **Doug Armknecht**: Curator of `corpus/siarchive/`, preserving developer notes and aircraft source models.
 - **Neil Halelamien**: Documented 16-bit object type IDs referencing `.SOD` models in `Developer/Notes_SETFile/`.

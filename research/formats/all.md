@@ -17,7 +17,7 @@ A `.ALL` archive bundles 3D models (`.SOD`), choreography timeline scripts (`.FL
 | **Engine Role** | Scene-level runtime asset bundle providing direct ID lookups for geometry, palettes, sounds, and choreography | `[Established]` | `# [FMT-ALL-CHUNKS]`, `crates/stunt-core/src/contracts/vfs.rs` |
 | **Paired Contract** | `Seam 1: VfsArchive` (`crates/stunt-core/src/contracts/vfs.rs`) | `[Established]` | `# [FMT-ALL-CHUNKS]`, `docs/ARCHITECTURE.md` |
 
-**Governing invariants:** [`[I3]`](../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I7]`](../../docs/SPEC.md#i7-cleanroom-asset-isolation--small-pure-rust-core-dependencies), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/all.rs`](../../crates/stunt-core/src/vfs/all.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** synthetic archives described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
+**Governing invariants:** [`[I3]`](../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I7]`](../../docs/SPEC.md#i7-asset-isolation--small-pure-rust-core-dependencies), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/all.rs`](../../crates/stunt-core/src/vfs/all.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** synthetic archives described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
 
 ---
 
@@ -111,14 +111,14 @@ When `.ALL` chunks are unpacked into `VfsArchive`, entry filenames are normalize
 
 ---
 
-## 4. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Analysis Backlog
 
 The following backlog documents open questions and investigations regarding the `.ALL` bundle format:
 
 | ID | Topic / Investigation Area | Current Evidence & Finding | Evidentiary Tier | Recommended Handling in Engine |
 | :--- | :--- | :--- | :---: | :--- |
 | **Q-ALL-01** | Scenery Quadtree Nodes (`0x8100..0xBFFF`) | Chunks in this ID range contain quadtree bounding nodes (`SP_POS`, `SP_1NODE`) referenced in `simap.cpp`. Alignment with `SCENERY.BIN` remains under active research. | `[Supported Inference]` | Treat as raw binary chunks (`RES_{id}.BIN`) until quadtree parser is implemented. |
-| **Q-ALL-02** | LZSS Sub-Chunk Compression | Milestone 2 cleanroom fixtures and retail film packages store raw uncompressed bytecode (`was_compressed = false`). Whether specific non-US CD-ROM releases used LZSS within `.ALL` is unverified. | `[Bounded Observation]` | Keep `was_compressed: false` default. Hook LZSS decompressor if compressed markers are found. |
+| **Q-ALL-02** | LZSS Sub-Chunk Compression | Milestone 2 synthetic fixtures and retail film packages store raw uncompressed bytecode (`was_compressed = false`). Whether specific non-US CD-ROM releases used LZSS within `.ALL` is unverified. | `[Bounded Observation]` | Keep `was_compressed: false` default. Hook LZSS decompressor if compressed markers are found. |
 | **Q-ALL-03** | Dynamic Sound Pre-Caching | Original engine loaded audio chunks directly into Sound Blaster DMA buffers at scene initialization. | `[Supported Inference]` | Store PCM audio buffers in memory; log playback events during Milestone 2. |
 | **Q-ALL-04** | Duplicate Resource IDs in Container | If a malformed `.ALL` contains duplicate IDs, later entries overwrite earlier entries in `BTreeMap`. | `[Established]` | Safe behavior; duplicate IDs log a warning and overwrite deterministically. |
 | **Q-ALL-05** | Standalone Movie Linker Internal Symbol Table | `MAKEONE.EXE` may have compiled an internal symbol hash map during film linking before stripping string names and writing raw numeric 16-bit IDs to the `.ALL` directory header. | `[Hypothesis]` | Modern engine indexes chunks directly by 16-bit numeric ID without requiring external symbol maps. |
@@ -129,14 +129,14 @@ The following backlog documents open questions and investigations regarding the 
 
 ## 5. Attribution & Provenance
 
-The documentation and reverse engineering of the `.ALL` bundle format builds upon the work of several community developers:
+The documentation of the `.ALL` bundle format builds upon the work of several community developers:
 
 ### 5.1 Community Researchers & Tool Authors
 
 - **FreeFlight Team**: Authors of `Developer/FreeFlight/src/sires.cpp`, who implemented `sires_load_all_file` and decoded the parallel `num`, `ids`, and `offsets` directory layout.
 - **Dave Palmowski & Dean Newbury**: Authors of `shading.doc`, `si.pal`, and `si.act` in `corpus/siarchive/SITools/SpriteMaker/` and `SITools/Docs/`, establishing the 16-color group organization and 32-level composite shading ramps.
 - **Adrian Stephens**: Original Assembly Line Developer; architected the movie packaging format for `MAKEONE.EXE`.
-- **Doug Armknecht**: Curator of `corpus/siarchive/`, preserving community notes and reverse-engineering code.
+- **Doug Armknecht**: Curator of `corpus/siarchive/`, preserving community notes and analysis code.
 - **Chris Phillips**: Documented palette indexing and `.SOD` geometry loading from `.ALL` containers in `Developer/SODParse/`.
 - **Neil Halelamien**: Author of `.SET` scenery format research (2004); documented prop type 16-bit IDs, scenery quadtree placement, and coordinate linking to `.ALL` bundle chunks in `Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
 - **Ángel Eduardo**: Analyzed `.ALL` container chunk headers and subobjects.

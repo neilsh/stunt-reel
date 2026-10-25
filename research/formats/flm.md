@@ -46,7 +46,7 @@ A `.FLM` file consists of a 4-byte ASCII signature followed by a contiguous sequ
 
 A Kaitai schema covers one slice, not the stream: [`flm_slice.ksy`](flm_slice.ksy) parses a single slice given the three slot masks, threading `create`-driven flag changes through a recursive opcode chain. Slice-to-slice state cannot cross a Kaitai `repeat`, so [`python/stunt_reel/flm_walk.py`](../../python/stunt_reel/flm_walk.py) walks the slice chain and supplies those masks. Corpus measurements: 627,696 slices across 561 of 568 films, 2,278,626 `interp` opcodes that depend on a `create` earlier in the same slice, and 109,185 `create` opcodes that flip a slot's `SIF_MOVES`/`SIF_ROTATES`/`SIF_ANIMATES` bit.
 
-### 2.1 The Solved 3-Byte Slice Header (Reverse-Engineering Breakthrough)
+### 2.1 The Solved 3-Byte Slice Header (Format Breakthrough)
 
 Historically, community source code (`sifilm.cpp`, `flm_extract.py`) parsed slice headers as `inctime: u8` followed by `declared_len: u16`, observing with confusion that `declared_len` was mysteriously an exact multiple of 256 in ~99% of all slices.
 
@@ -186,7 +186,7 @@ Opcode `0x9C` emits an `AudioCue`:
 
 ---
 
-## 4. Open Questions & Reverse Engineering Backlog
+## 4. Open Questions & Analysis Backlog
 
 The following backlog documents open questions and investigations regarding `.FLM` choreography streams:
 
@@ -207,7 +207,7 @@ The following backlog documents open questions and investigations regarding `.FL
 
 ## 5. Attribution & Provenance
 
-The reverse engineering of the `.FLM` format represents the culmination of deep community analysis:
+Documentation of the `.FLM` format represents the culmination of deep community analysis:
 
 ### 5.1 Community Researchers & Tool Authors
 

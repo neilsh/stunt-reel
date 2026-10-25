@@ -1,6 +1,6 @@
 # Stunt Reel
 
-Cleanroom reconstruction of *Stunt Island* (1992) film playback: formats, evaluator, renderer, and parity tooling. This file is the canonical vocabulary. Implementation lives in [`docs/SPEC.md`](docs/SPEC.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Independent reconstruction of *Stunt Island* (1992) film playback: formats, evaluator, renderer, and parity tooling. This file is the canonical vocabulary. Implementation lives in [`docs/SPEC.md`](docs/SPEC.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Film playback
 
@@ -113,6 +113,20 @@ _Avoid_: hidden opcode (collides with face visibility, `OP_VOTEHID`)
 A 28-byte terrain record shared by `MAP.BIN` patches and `OP_TAP`; it carries raw island coordinates and scratch fields for the display-list VM. `OP_TAP` copies the referenced records into the vertex register bank.
 _Avoid_: debug marker, scratchpad touch
 
+## Assets and provenance
+
+**Synthetic fixture**:
+A test file constructed byte-by-byte for this repository, not extracted from a retail game file. The test suite must pass without the corpus.
+_Avoid_: mock asset, cleanroom asset
+
+**Game-derived constant**:
+A small table transcribed from published community documentation or observed behaviour because the renderer cannot work without it: the 256-entry master palette and the 18-entry SOD scale table. It is documented in [`NOTICE.md`](NOTICE.md) and is not relicensed by the project.
+_Avoid_: extracted asset, proprietary blob
+
+**Asset isolation**:
+The rule that retail executables and data files are never committed; the corpus is an external oracle only, and tests use synthetic fixtures. The game-derived constants above are the only documented exceptions.
+_Avoid_: cleanroom
+
 ## Production (authoring)
 
 Vocabulary the handbook uses for the authoring front end. These name data the player reads, not features StuntReel implements: see [`docs/SPEC.md` § 2.1](docs/SPEC.md#21-explicit-scope-boundaries--non-goals).
@@ -172,10 +186,6 @@ _Avoid_: schema library
 **Corpus**:
 The local, gitignored set of original game files used as evidence. Never committed.
 _Avoid_: assets
-
-**Cleanroom fixture**:
-Synthetic input built from format knowledge, containing no proprietary game data.
-_Avoid_: test asset
 
 **Parity**:
 Comparison of a reconstructed render against a captured frame, scored by SSIM and mask IoU. The render is sampled from the timeline at the captured frame's film clock.

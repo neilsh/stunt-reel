@@ -17,7 +17,7 @@ jobs:
   quality:
     name: Quality gate (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -28,16 +28,26 @@ jobs:
             tasks: check
             require_gpu: "1"
           - os: windows-latest
-            tasks: fmt-check lint typecheck test-py
+            tasks: check-windows
             require_gpu: ""
     steps:
       - uses: actions/checkout@v7
       - name: Install lavapipe (software Vulkan)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@v5
         with:
           install_args: rust python uv
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .cache/cargo/registry
+            .cache/cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Install Python environment
         run: uv sync --locked --all-groups
       - name: Run quality tasks
@@ -54,7 +64,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.88"
-      - run: cargo check --workspace --all-features --locked
+      - run: cargo +1.88 check --workspace --all-features --locked
 
   deny:
     name: Dependency policy
@@ -62,8 +72,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@v5
         with:
           install_args: rust
       - uses: taiki-e/install-action@cargo-deny
+        with:
+          tool: cargo-deny@0.20.2
       - run: mise run deny

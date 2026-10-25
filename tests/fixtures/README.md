@@ -1,6 +1,6 @@
 # Synthetic Test Fixtures (`tests/fixtures/`)
 
-This directory contains committed, cleanroom-synthesized minimal fixtures used by Rust and Python test suites. Because proprietary game data (`corpus/` and `target_bin/`) cannot be checked into the repository or downloaded in continuous integration environments, these mock fixtures ensure 100% offline, deterministic CI testing.
+This directory contains committed, synthetically constructed minimal fixtures used by Rust and Python test suites. Because proprietary game data (`corpus/` and `target_bin/`) cannot be checked into the repository or downloaded in continuous integration environments, these mock fixtures ensure 100% offline, deterministic CI testing.
 
 ---
 
@@ -33,7 +33,7 @@ Golden oracle trajectory snapshot conforming to `Seam 2: TrajectoryRecord` (`cra
 - Used to test serialization/deserialization and golden trajectory regression comparisons.
 
 ### 4. `synthetic_minimal.sod` (76 bytes)
-A cleanroom-synthesized minimal `.sod` bytecode model conforming to `[fmt sod]`:
+A synthetically constructed minimal `.sod` bytecode model conforming to `[fmt sod]`:
 - **Header**: 10 bytes (`OP_ID = 0x000c`, `bounding_size = 100`, `yoff = 0`, `scale = 1` ($0.5\text{ m}$), `collision = 0`).
 - **Opcodes**:
   - `OP_VECTORS` (`0x0075`): 5 vertices uploading base triangular wing and inner coplanar decal triangle.
@@ -42,13 +42,13 @@ A cleanroom-synthesized minimal `.sod` bytecode model conforming to `[fmt sod]`:
   - `OP_RETURN` (`0x0195`): Clean bytecode termination.
 
 ### 5. `synthetic_minimal.all` (84 bytes)
-A cleanroom-synthesized full-movie archive container conforming to `# [FMT-ALL-CHUNKS]` and `[fmt all]`:
+A synthetically constructed full-movie archive container conforming to `# [FMT-ALL-CHUNKS]` and `[fmt all]`:
 - **Header**: 8 bytes (`num = 1`, `ids = [0x0001]`, `offsets = [0x00000008]`).
 - **Payload**: Bundles `synthetic_minimal.sod` (76 bytes) as chunk `0x0001` (`MODEL_0001.SOD`).
 - Used to verify end-to-end `.ALL` archive parsing, scene bundle assembly, and headless trajectory evaluation offline without requiring proprietary assets.
 
 ### 6. `synthetic_anchors.bin` (84 bytes)
-A cleanroom-synthesized 28-byte anchor-point table matching the `ANCHORPT.DAT` record layout consumed by `OP_TAP` (`0x022E`):
+A synthetically constructed 28-byte anchor-point table matching the `ANCHORPT.DAT` record layout consumed by `OP_TAP` (`0x022E`):
 - **Record 0**: `x = 100`, `y = 0`, `z = 200`.
 - **Record 1**: `x = 300`, `y = -500`, `z = 400`.
 - **Record 2**: `x = 500`, `y = -32500` (boundary sentinel), `z = 600`.
@@ -70,7 +70,7 @@ A three-slice film exercising authored `tick_duration` and timeline sampling:
 - **Axes**: the coordinates above are the evaluated `[I1]` positions. The bytes are authored in DOS axes, so each `INTERP` opcode stores the negated `x` and `y` (`y = -10.0` is `0xFFF60000`, `x = 0` is unchanged) and the unchanged `z`. All rotations are zero; a zero DOS rotation evaluates to `q_z180 = [0, 0, 1, 0]`, which the timeline tests do not inspect and which fixes the `+Z` camera look axis.- Used by `crates/stunt-core/tests/flm_timeline_test.rs` to verify cumulative timestamps, interpolation, cut suppression, and audio-cue intervals.
 
 ### 9. `mode13h_palette.json`
-A JSON array of 256 `[r, g, b]` triples: the VGA Mode 13h palette (`[I3]`) exported from the Python table. `crates/stunt-core/src/contracts/palette.rs` asserts `MODE_13H_PALETTE` equals it exactly and `tests/test_goldens.py` asserts `stunt_reel.tac.palette` equals it, so the Rust and Python copies cannot drift.
+A JSON array of 256 `[r, g, b]` triples: a dump of the Stunt Island master palette (`[I3]`) — 240 scene entries plus 16 UI entries, game-derived (see `crates/stunt-core/src/contracts/palette.rs`) — not a synthetic construction. `crates/stunt-core/src/contracts/palette.rs` asserts `MODE_13H_PALETTE` equals it exactly and `tests/test_goldens.py` asserts `stunt_reel.tac.palette` equals it, so the Rust and Python copies cannot drift.
 
 ### 10. `dos_math_goldens.json`
 Golden vectors for the shared DOS math helpers, generated from the Python implementations at full float precision: `bam_to_radians`, `focal_to_fov_y`, `quat_from_euler` (`[yaw, pitch, roll]` -> `[x, y, z, w]`) and `world_matrix` (`position` + `quat` -> 16 column-major floats). Rust (`flm/interpolate.rs`, `contracts/trajectory.rs` tests) and Python (`tests/test_goldens.py`) both assert agreement within `1e-5`.
@@ -81,7 +81,7 @@ A film that is only the `FILM` magic: its header parses, but it holds zero slice
 `crates/stunt-gltf/tests/export_test.rs` reuses `synthetic_minimal.all`, `synthetic_minimal.sod`, `synthetic_tap.sod` with `synthetic_anchors.bin`, and `synthetic_timeline.flm` to check exported `.glb` structure; it adds no fixtures of its own.
 
 ### 12. `synthetic_minimal.set` (282 bytes)
-A cleanroom-synthesized scene exercising the three-record layout of `[FMT-SET-HEADER]`:
+A synthetic scene exercising the three-record layout of `[FMT-SET-HEADER]`:
 - **Header**: 84 bytes (`stunt_name` `"SYNTHETIC SET"`, `magic` `0x08` at `0x52`, `num_events = 2` at `0x53`).
 - **Events**: two 67-byte records — `hits … Any Weapon` with `flag #3 =` and `wait 256` / `award $500` / `play` slots, then `500` ticks elapsed with one `explode` slot.
 - **Prop**: one 64-byte record (`prop_slot_id = 0`, `behavior_flags = 0x09`, `placement_flags = 0x01`, `object_model_id = 0x0102`, `override_flags = 0x40`).

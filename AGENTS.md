@@ -1,12 +1,12 @@
 # AGENTS.md — Stunt Reel AI Developer Guide
 
-`stunt-reel` is a reverse engineering, analysis, modern reconstruction, and tooling environment for ***Stunt Island*** (1992, Walt Disney Computer Software / The Assembly Line).
+`stunt-reel` is a format analysis, documentation, modern reconstruction, and tooling environment for ***Stunt Island*** (1992, Walt Disney Computer Software / The Assembly Line).
 
 ---
 
 ## 1. Non-Negotiable Directives
 
-1. **Cleanroom Asset Isolation**: **NEVER** commit proprietary assets, executables, or original binary disks into Git (`corpus/` and `target_bin/` are strictly gitignored). All tests must run 100% offline using synthetic cleanroom fixtures in [`tests/fixtures/`](tests/fixtures/README.md).
+1. **Asset isolation**: **NEVER** commit proprietary assets, executables, or original binary disks into Git (`corpus/` and `target_bin/` are strictly gitignored). All tests must run 100% offline using synthetic fixtures in [`tests/fixtures/`](tests/fixtures/README.md). Two small game-derived tables are documented exceptions — see [`NOTICE.md`](NOTICE.md).
 2. **Quality Gate Requirement**: Before concluding any task or presenting code, **always verify that `mise run check` passes** (format check, lint, typecheck, test across both Rust and Python). See [`README.md`](README.md#development--quality-assurance) and [`mise.toml`](mise.toml).
 3. **Architectural Invariants**: All code must conform to system invariants `[I1]`–`[I8]` defined in [`docs/SPEC.md` § 2](docs/SPEC.md#2-system-architectural-invariants--guardrails) (summarized in [`contracts/mod.rs`](crates/stunt-core/src/contracts/mod.rs)):
    - `[I1]` Right-handed metric coordinates (`+X` Right, `+Y` Up, `+Z` Backward, `-Z` Forward).
@@ -15,7 +15,7 @@
    - `[I4]` Discrete 50 Hz authored simulation ticks with sub-tick interpolation.
    - `[I5]` Coplanar decal identification and normal displacement nudging.
    - `[I6]` Visual parity thresholds (SSIM $\ge 0.88$ initial / $\ge 0.90$ sign-off).
-   - `[I7]` Cleanroom asset isolation and a `stunt-core` limited to small, pure-Rust dependencies (no I/O, windowing, GPU, audio, or emulator).
+   - `[I7]` Asset isolation (with the documented palette/scale-table exception) and a `stunt-core` limited to small, pure-Rust dependencies (no I/O, windowing, GPU, audio, or emulator).
    - `[I8]` DOS 8.3 uppercase path normalization in virtual filesystems.
 
 ---
@@ -34,7 +34,7 @@ Refer directly to authoritative documents rather than duplicating definitions:
 | **Seam Contracts** | [`contracts/mod.rs`](crates/stunt-core/src/contracts/mod.rs) | Contract boundaries: [`vfs`](crates/stunt-core/src/contracts/vfs.rs) (Seam 1), [`trajectory`](crates/stunt-core/src/contracts/trajectory.rs) (Seam 2), [`shape`](crates/stunt-core/src/contracts/shape.rs) (Seam 3), and Seam 4, capture and compare: [`palette`](crates/stunt-core/src/contracts/palette.rs), frames from `stunt-render`, and the `stuntreel parity` subcommand in [`crates/stunt-cli/src/parity/`](crates/stunt-cli/src/parity/). |
 | **Project Setup & Tasks** | [`README.md`](README.md) & [`mise.toml`](mise.toml) | Environment prerequisites, and every task with its command — run `mise tasks` for the live list. The gate is `mise run check` ([gate.py](python/scripts/gate.py), [ADR 0014](docs/adr/0014-the-gate-is-one-ordered-script.md)): one line per step, PASS/FAIL, log in `target/check.log`. |
 | **Repository Layout** | [`README.md#project-structure`](README.md#project-structure) | Workspace crate locations, tooling directories, and asset storage rules. |
-| **Synthetic Fixtures** | [`tests/fixtures/README.md`](tests/fixtures/README.md) | Cleanroom synthetic mock files (`.res`, `.flm`, `.json`) and binary specifications. |
+| **Synthetic Fixtures** | [`tests/fixtures/README.md`](tests/fixtures/README.md) | Synthetic mock files (`.res`, `.flm`, `.json`) and binary specifications. |
 | **Reference Corpus** | [`corpus/README.md`](corpus/README.md) | Upstream demo archive and community developer package structure (`stisldem/`, `siarchive/`). |
 | **Binary Disassembly (Lab Notebook)** | [`research/playone-exe/`](research/playone-exe/) | Evidence for `PLAYONE.EXE`: [`startup.md`](research/playone-exe/startup.md) (image, entry, gates), [`navigation.md`](research/playone-exe/navigation.md) (dialog, input), [`memory.md`](research/playone-exe/memory.md) (offset evidence; tables are in [`memory-map.md`](research/playone-exe/memory-map.md)), [`capture.md`](research/playone-exe/capture.md) (DOSBox-X harness), [`sod-vm.md`](research/playone-exe/sod-vm.md) (display-list VM, `OP_TAP`), [`sod-animate.md`](research/playone-exe/sod-animate.md) (`OP_ANIMATE`), [`terrain-shade.md`](research/playone-exe/terrain-shade.md) and [`world-scene.md`](research/playone-exe/world-scene.md) (ground shading and the world display list), [`lod.md`](research/playone-exe/lod.md) (level of detail, lens), [`palette-fade.md`](research/playone-exe/palette-fade.md), [`static-tooling.md`](research/playone-exe/static-tooling.md). |
 | **Format Specs & Byte Layouts** | [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog; byte layouts are defined only by the `.ksy` schemas beside each spec. |
@@ -54,7 +54,7 @@ Process documents, **not** sources of truth: [`docs/process/TEAM_SHEET.md`](docs
 
 ### SOP 1: Adding or Modifying File Parsers / Contracts
 1. Implement or modify types in [`crates/stunt-core/src/contracts/`](crates/stunt-core/src/contracts/) and re-export in [`contracts/mod.rs`](crates/stunt-core/src/contracts/mod.rs).
-2. Synthesize cleanroom test bytes in [`tests/fixtures/`](tests/fixtures/) and document in [`tests/fixtures/README.md`](tests/fixtures/README.md).
+2. Synthesize synthetic test bytes in [`tests/fixtures/`](tests/fixtures/) and document in [`tests/fixtures/README.md`](tests/fixtures/README.md).
 3. Add unit and roundtrip tests in `crates/stunt-core/tests/` (verifying with `--all-features`).
 4. Run `mise run check` to verify formatting, linter, typechecker, and test pass.
 
@@ -74,7 +74,7 @@ Process documents, **not** sources of truth: [`docs/process/TEAM_SHEET.md`](docs
 Write the body whenever a reviewer would have to ask "why this way?": what forced the change, the cause with the offset, measurement or log row that proves it, and what you rejected. One paragraph, then a bullet per file when several move together; never retell the diff. Renames, formatting and generated files need none. Longer reasoning belongs in the owning note or an ADR, cited from the body. Close with `mise run check passes.` when the whole gate ran, naming any part that did not.
 
 ### SOP 4: Living Specification Updates & Evidentiary Promotion
-1. When reverse engineering uncovers new runtime offsets, opcodes, or binary realities:
+1. When analysis uncovers new runtime offsets, opcodes, or binary realities:
    - Update [`research/playone-exe/memory-map.md`](research/playone-exe/memory-map.md) (offsets) or the `research/` note that owns the finding immediately with verified discoveries; touch [`docs/SPEC.md`](docs/SPEC.md) only for goals, invariants or gates.
    - Promote evidentiary tiers (`[Unknown]` $\rightarrow$ `[Hypothesis]` $\rightarrow$ `[Bounded Observation]` $\rightarrow$ `[Supported Inference]` $\rightarrow$ `[Established]`; the enum is owned by `EVIDENTIARY_TIERS` in [`python/scripts/verify_formats_docs.py`](python/scripts/verify_formats_docs.py)) and cite the linear address or research note.
 2. If extending Seam contracts in [`crates/stunt-core/src/contracts/`](crates/stunt-core/src/contracts/):
