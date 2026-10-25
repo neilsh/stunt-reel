@@ -3,7 +3,10 @@
 Runs the release binary over every captured tick of each film, scores the render against its
 capture with ``stuntreel parity``, and prints one line per film plus the adoption noise note.
 ``build/parity/ours/<film>_current`` and ``build/parity/report/<film>_current`` are the
-canonical baseline directories.
+latest render and report. Before a render replaces the tree, it is renamed to
+``build/parity/previous/<film>`` (one per film, by rename, so no bytes are copied), and the
+re-score command is printed: any render can be compared later with
+``--reuse build/parity/previous``.
 
 Usage::
 
@@ -41,6 +44,8 @@ from stunt_reel.dataroot import ensure_links_or_report
 
 OURS = REPO_ROOT / "build" / "parity" / "ours"
 REPORT = REPO_ROOT / "build" / "parity" / "report"
+#: Previous render per film, kept by a rename so a comparison never needs a re-render.
+PREVIOUS = REPO_ROOT / "build" / "parity" / "previous"
 SCRATCH = REPO_ROOT / "build" / "scratch" / "parity"
 RETIME_SCRATCH = REPO_ROOT / "build" / "scratch" / "retime"
 #: Adoption floor; a margin under it is not attributable to a change (probes.md section 6).
@@ -67,7 +72,18 @@ def prepare_source(film: str, root: Path, options: ParityOptions, *, no_render: 
     render_film(FILMS[film], root, scratch, None)
     check_film(FILMS[film], root, scratch)
     current.parent.mkdir(parents=True, exist_ok=True)
-    shutil.rmtree(current, ignore_errors=True)
+    # Rename rather than copy: the previous tree stays scoreable with --reuse and the
+    # render directories are hundreds of megabytes, so a copy per run is not affordable.
+    previous = PREVIOUS / film
+    if current.is_dir():
+        previous.parent.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(previous, ignore_errors=True)
+        shutil.move(str(current), str(previous))
+        print(
+            f"[parity] previous {film} render kept at {previous}; re-score it with "
+            f"mise run parity -- --films {film} --no-build --reuse {previous.parent}",
+            file=sys.stderr,
+        )
     shutil.move(str(scratch), str(current))
     return current
 

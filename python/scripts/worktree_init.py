@@ -5,6 +5,9 @@ relative ``corpus/``, ``build/parity/reference/`` and ``target_bin/`` paths keep
 in every worktree, and links ``.cache`` to the primary checkout's shared tool
 cache (ADR 0013).  ``mise run clean`` reports the per-worktree build outputs and
 removes them only with ``--yes``; the shared cache is reported, never removed.
+``clean -- --parity --keep N`` narrows the same command to the parity render trees,
+which accumulate one directory per render and are the one build output big enough to
+need selective rotation.
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ import argparse
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 
 from stunt_reel.dataroot import (
@@ -33,6 +37,11 @@ from stunt_reel.dataroot import (
 #: Per-worktree build outputs and caches that ``clean`` reports.
 CLEAN_PATHS: tuple[str, ...] = ("target", "build", ".pytest_cache", ".mypy_cache", ".ruff_cache")
 CLEAN_FILES: tuple[str, ...] = (".coverage",)
+
+#: Roots whose child directories are throwaway parity render trees.
+PARITY_ROOTS: tuple[str, ...] = ("build/parity/ours", "build/scratch/sweep")
+#: Name suffixes that hold a baseline something else reads; never pruned.
+PARITY_PROTECTED: tuple[str, ...] = ("_current", "_previous")
 
 REFERENCE_LINK = "build/parity/reference"
 
@@ -111,7 +120,71 @@ def _init(migrate: bool) -> int:
     return 0
 
 
-def _clean(confirmed: bool) -> int:
+def _tree_footprint(path: Path) -> tuple[int, int]:
+    """Bytes and file count under *path*, following no links."""
+    total = 0
+    files = 0
+    stack = [path]
+    while stack:
+        current = stack.pop()
+        try:
+            with os.scandir(current) as entries:
+                for entry in entries:
+                    if entry.is_dir(follow_symlinks=False):
+                        stack.append(Path(entry.path))
+                    elif entry.is_file(follow_symlinks=False):
+                        total += entry.stat(follow_symlinks=False).st_size
+                        files += 1
+        except OSError:
+            continue
+    return total, files
+
+
+def _prune_render_trees(confirmed: bool, keep: int) -> int:
+    """Report the render trees under ``build/``, keeping the *keep* newest per root."""
+    ranked: list[tuple[Path, int, int]] = []
+    for relative in PARITY_ROOTS:
+        root = REPO_ROOT / relative
+        if not root.is_dir() or is_link(root):
+            continue
+        for child in sorted(root.iterdir()):
+            if not child.is_dir() or child.name.endswith(PARITY_PROTECTED):
+                continue
+            size, files = _tree_footprint(child)
+            ranked.append((child, size, files))
+    if not ranked:
+        print("no render trees under " + ", ".join(PARITY_ROOTS))
+        return 0
+    ranked.sort(key=lambda item: item[0].stat().st_mtime, reverse=True)
+    seen: dict[Path, int] = {}
+    doomed: list[tuple[Path, int]] = []
+    for child, size, files in ranked:
+        index = seen.get(child.parent, 0)
+        seen[child.parent] = index + 1
+        age_days = int((time.time() - child.stat().st_mtime) / 86_400)
+        mark = "keep" if index < keep else "prune"
+        print(
+            f"  {mark:<5} {child.relative_to(REPO_ROOT).as_posix():<34}"
+            f"{size / 1_048_576:9.1f} MiB {files:>6} files {age_days:>3}d old"
+        )
+        if mark == "prune":
+            doomed.append((child, size))
+    freed = sum(size for _, size in doomed)
+    print(f"  {'prune':<5} {freed / 1_048_576:9.1f} MiB in {len(doomed)} tree(s)")
+    if not doomed:
+        return 0
+    if not confirmed:
+        print("\ndry run; re-run with --yes to remove them")
+        return 0
+    for child, _ in doomed:
+        shutil.rmtree(child, ignore_errors=True)
+    print(f"\nremoved {len(doomed)} tree(s)")
+    return 0
+
+
+def _clean(confirmed: bool, parity: bool = False, keep: int = 1) -> int:
+    if parity:
+        return _prune_render_trees(confirmed, keep)
     targets = [REPO_ROOT / name for name in CLEAN_PATHS]
     files = [REPO_ROOT / name for name in CLEAN_FILES]
     total = 0
@@ -159,10 +232,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     clean = commands.add_parser("clean", help="report or remove per-worktree build outputs")
     clean.add_argument("--yes", action="store_true", help="actually remove them")
+    clean.add_argument(
+        "--parity",
+        action="store_true",
+        help="only report or rotate the parity render trees under build/",
+    )
+    clean.add_argument("--keep", type=int, default=1, help="render trees to keep per root")
     args = parser.parse_args(argv)
     if args.command == "init":
         return _init(bool(args.migrate))
-    return _clean(bool(args.yes))
+    if int(args.keep) < 0:
+        parser.error("--keep must not be negative")
+    return _clean(bool(args.yes), parity=bool(args.parity), keep=int(args.keep))
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 Four subcommands read a capture directory through the artifact adapter (its
 ``meta.json`` names each frame's planes and palettes) and a render directory
 (``render.json``, or the legacy ``palette_controls.json`, plus ``tick_%05d``
-planes):
+planes), and a fifth reads one ``report.json`` through the same adapter:
 
 * ``crop``   - capture over ours, one frame region, as a PNG.
 * ``shift``  - best (dx, dy) that slides our actor silhouette onto the
@@ -13,6 +13,9 @@ planes):
 * ``retime`` - relabel an existing render by N ticks (negative allowed),
   rewriting its ``render.json`` and legacy palette sidecar, so a timing
   hypothesis costs no rebuild.
+* ``summary`` - the scored headline, the loss by class, the worst scored
+  frames and the ``research/parity/log.md`` row for one report, so the numbers
+  are never retyped by hand.
 
 Object pixels are capture pixels that are not sky, ground ramp, button bar or
 cursor; the index ranges default to ``CTRY.FLM`` and are per film.
@@ -308,14 +311,57 @@ def cmd_iou(args: argparse.Namespace) -> None:
     print(f"{value:.4f} {count}")
 
 
+def summary(report_path: Path, *, worst: int = 5) -> list[str]:
+    """Summarise one ``report.json``: headline, class loss, worst frames and a log row."""
+    report = read_report(report_path)
+    ssim, iou = report.headline()
+    matched = f"{report.scored_frames}/{report.frames}"
+    headline = f"ssim {ssim:.4f}  iou {iou:.4f}"
+    if report.mean_index_agreement_scored is not None:
+        headline += f"  idx {report.mean_index_agreement_scored:.3f}"
+    lines = [f"[summary] {report_path.parent.name}  {headline}  scored {matched}"]
+    if report.mean_loss_by_class_scored:
+        by_class = "  ".join(
+            f"{name} {loss:.4f}" for name, loss in sorted(report.mean_loss_by_class_scored.items())
+        )
+        lines.append(f"[summary] loss by class: {by_class}")
+    scored = [frame for frame in report.per_frame if frame.scored is True]
+    if scored:
+        lowest = sorted(scored, key=lambda frame: frame.ssim)[:worst]
+        listed = ", ".join(f"tick {frame.film_tick} {frame.ssim:.3f}" for frame in lowest)
+        lines.append(f"[summary] worst scored frames: {listed}")
+    lines.append(
+        f"[summary] log row: | <date> | `<commit>` | {matched} | {ssim:.3f} | {iou:.3f} "
+        f"| <what moved and why> |"
+    )
+    return lines
+
+
+def cmd_summary(args: argparse.Namespace) -> None:
+    for line in summary(args.report, worst=args.worst):
+        print(line)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(required=True)
-    commands = (("crop", cmd_crop), ("shift", cmd_shift), ("iou", cmd_iou), ("retime", cmd_retime))
+    commands = (
+        ("crop", cmd_crop),
+        ("shift", cmd_shift),
+        ("iou", cmd_iou),
+        ("retime", cmd_retime),
+        ("summary", cmd_summary),
+    )
     for name, fn in commands:
         p = sub.add_parser(name)
         p.set_defaults(func=fn)
         p.add_argument("--reference", type=Path, default=Path("build/parity/reference/ctry"))
+        if name == "summary":
+            p.add_argument(
+                "--report", type=Path, default=Path("build/parity/report/ctry/report.json")
+            )
+            p.add_argument("--worst", type=int, default=5, help="low-scoring frames to list")
+            continue
         p.add_argument("--ours", type=Path, required=True, help="render directory")
         if name == "crop":
             p.add_argument("ordinal", type=int)
