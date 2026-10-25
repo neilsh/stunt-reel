@@ -27,7 +27,7 @@ A `.SET` file begins with a 96-byte (`0x60`) global environment header containin
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `0x00`–`0x1D` | 30 | `char[30]` | `stunt_name` | ASCII stunt or mission title, space-padded or null-terminated | `[Established]` |
 | `0x1E`–`0x26` | 9 | `u8[9]` | `reserved_header` | Header alignment padding (typically zeroed) | `[Bounded Observation]` |
-| `0x27` | 1 | `u8` | `recording_mode` | Film recording flag: `0x00` = Off, `0x01` = Auto, `0x02` = On (defaults to `0xFF` in unset templates) | `[Established]` |
+| `0x27` | 1 | `u8` | `recording_mode` | Film recording flag: `0x00` = Off, `0x01` = Auto, `0x02` = On; `0xFF` also occurs (see below) | `[Established]` |
 | `0x28`–`0x29` | 2 | `u16` (LE) | `first_take_bonus` | Cash award for completing stunt on the first take | `[Established]` |
 | `0x2A`–`0x2B` | 2 | `u16` (LE) | `crash_penalty` | Cost deducted from budget upon aircraft or prop destruction | `[Established]` |
 | `0x2C` | 1 | `u8` | `vehicle_flags` | Initial player vehicle mechanical state bitmask (see § 2.2) | `[Established]` |
@@ -45,6 +45,10 @@ A `.SET` file begins with a 96-byte (`0x60`) global environment header containin
 | `0x53` | 1 | `u8` | `prop_count` | Number of active placed prop records in the prop table | `[Established]` |
 | `0x54` | 1 | `u8` | `event_count` | Number of scripted event trigger records in the event table | `[Established]` |
 | `0x55`–`0x5F` | 11 | `u8[11]` | `table_header` | Table linkage offsets and internal memory pointer scratchpad | `[Bounded Observation]` |
+
+`prop_count` and `event_count` are single bytes, so the encoding admits 255 of each. The authoring tools expose 40 prop slots and 64 events; those are **authored limits**, not field bounds ([`GLOSSARY.md`](../../../GLOSSARY.md)).
+
+The recording byte is the authoring screen's Global-Rec setting: the handbook names the three values Off, Auto and On, and states that an event's `Start Rec` or `Stop Rec` overrides this byte and every other recording setting (*handbook* p.97). It records authored policy rather than per-frame data; whether `PLAYONE.EXE` reads it is not established. Two corpus sets that both print `Initial Recorder :On` store different bytes — `0x02` in `BOMBING.SET` and `0xFF` in `DRIVING.SET` — so `0xFF` is not reliably an unset sentinel and its meaning is open.
 
 ### 2.2 Vehicle Mechanical State Bitmask (`vehicle_flags`, Offset `0x2C`)
 
@@ -147,7 +151,7 @@ Following the prop table (or located at an offset indexed by `0x55`), scripted e
 | `+0x06` | 2 | `u16` (LE) | `action_param` | Auxiliary parameter (camera ID, audio sample ID, intensity) | `[Established]` |
 | `+0x08` | 4 | `u32` (LE) | `payload_data` | Additional parameter data, bitflags, or vector payload | `[Bounded Observation]` |
 
-The 12-byte event stride is documented, but the table location is unresolved for the same reason; no schema decodes events yet.
+The 12-byte event stride is documented, but the table location is unresolved for the same reason; no schema decodes events yet. `event_count` itself is corroborated: `BOMBING.SET` stores `1` at `0x54`, and its printed dump (`corpus/si_archive/Misc/Sets/BOMBING.TXT`) lists exactly one rule, `Event#1 One Shot / If Any Weapon hits hz 0120X0120(12) / Then explode C&W Bar(11) / And play 'Explosion #06' on chan 2, vol= 4`.
 
 ### 3.6 Event Action Codes (`action_code`)
 
@@ -157,6 +161,8 @@ The 12-byte event stride is documented, but the table location is unresolved for
 | `0x0002` | `EVT_CAM_SWITCH` | Camera rig index (`cam_id`) | Directs active camera viewport to switch to specified camera |
 | `0x0003` | `EVT_AUDIO_CUE` | Audio sample index in `.RES` | Triggers playback of `.VOC` / `.WAV` sound effect |
 | `0x0004` | `EVT_TAKEOVER` | Control mode flags | Activates autopilot or script-driven vehicle path traversal |
+
+The handbook enumerates the authoring actions this table encodes: `CutTo`, `Change` (with roughly twenty sub-parameters — shape, position, altitude, roll/pitch/yaw, speed, acceleration, zoom, watch target, visibility, collideability, autozoom), `Explode`, `Kill`, `Fade`, `Finish`, `Set Flag`, `Set Time`, `Start Rec`, `Stop Rec`, `Start Sound`, `Wait` and `Award $` (*handbook* pp.92–95), behind the triggers `Collision`, `Crash`, `Time` (maximum 655 seconds), `Weapon Count` and the `Never` placeholder (pp.89–90). Only the four codes above have confirmed symbols, so name-to-code mapping is `[Hypothesis]`. A 12-byte record cannot carry the `Change` sub-parameters directly; either records chain or the payload points elsewhere.
 
 ### 3.7 Editor-to-World Coordinate Conversion (`[I1]`)
 
@@ -182,6 +188,7 @@ $$Z_{\text{world}} = \frac{Z_{\text{editor}} - 100000}{10.0} \quad (\text{meters
 | `[BK-SET-02]` | Trajectory Waypoint Spline Record | Bit-level packing of the 20-byte `trajectory_state` field (`+0x20`–`+0x33`) governing multi-point AI flight paths. | `[Bounded Observation]` |
 | `[BK-SET-03]` | Extended Event Opcode Catalog | Verification of additional action codes ($0x0005..0x0010$) for mid-air refueling, formation flying, and radio chatter. | `[Hypothesis]` |
 | `[BK-SET-04]` | Header Size Variants (`0x60` vs `0x160`) | Disambiguation of extended 352-byte headers observed in mission `.SET` files with full narrative briefing text. | `[Supported Inference]` |
+| `[BK-SET-05]` | Event Action-Code Catalogue | Map the handbook's THEN actions (*handbook* pp.92–95) onto `action_code` values by aligning them with the printed event lists in `corpus/si_archive/Misc/Sets/*.TXT`, which decode every field of their paired `.SET`. Still open: the event table's location (§ 3.5). | `[Hypothesis]` |
 
 ---
 
@@ -193,6 +200,8 @@ The technical specifications for the `.SET` format are synthesized from the foll
 - **Dave Palmowski (1999–2004):** Analysis of prop list insertion for custom shockwave generators and prop catalog indices (`corpus/si_archive/Developer/Notes_SETFile/SET_File_Email_Thread.txt`).
 - **Dean Newbury (2004):** SIFA correspondence and prop slot constraint analysis.
 - **Doug Armknecht (2000–2002):** World coordinate space and island center offset documentation in film trajectory analyses (`corpus/si_archive/Developer/SI_FLM_Format/FLM_NOTES.md`).
+- **The Assembly Line / Disney (1992):** The retail handbook (`corpus/si_archive/Docs/Manual/`), read as a primary source for authoring semantics; see [`research/handbook.md`](../../handbook.md).
+- **Disney tutorial sets (1993):** The 92 `.SET` files and 22 printed field dumps under `corpus/si_archive/Misc/Sets/`, emitted by the authoring tools (`Printed at :Thu Jan 21 15:56:19 1993`), which decode every header and prop field in prose.
 - **StuntReel Teamwork Team (2026):** Resolution of the 80-byte stride historical error to exact 64-byte (`0x40`) stride, validation of 16.16 fixed-point math, and contract alignment.
 
 ---

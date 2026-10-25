@@ -10,6 +10,8 @@
 | [`formats/`](formats/) | File formats and engine concepts shared across files; byte layouts only in the `.ksy` schemas | [`INDEX.md`](formats/INDEX.md), [`flm.md`](formats/flm.md), [`sod-opcodes.md`](formats/sod-opcodes.md), [`concepts/`](formats/concepts/) |
 | [`parity/`](parity/) | How our render differs from the original's, and how we measure it | [`method.md`](parity/method.md), [`log.md`](parity/log.md) |
 
+A source card records a *document* rather than a subject; these live beside this file, e.g. [`handbook.md`](handbook.md) for the retail handbook.
+
 ## Routing rule
 
 1. **A fact about the original goes to the note for its subject.** "The player Gouraud-shades the ground index" belongs in `playone-exe/terrain-shade.md`; "the ground scene is stored in `CTRY.ALL`" belongs in `formats/all.md`. It does not stay in the log of the experiment that found it.

@@ -51,6 +51,11 @@ The extracted `si_archive/` directory includes a `Developer/` folder containing 
     - OpenGL 3D island exploration utility (`Play.exe`, `SIDATA/`, and source fragments).
   - Additional reverse engineering folders: `Notes_SETFile/`, `Notes_SIExtractor/`, `SI-8x/`, `SIDG/`, `SIRes/`, `SI_FLM_Format/`.
 
+### Documentation and Community Sets
+
+- **`Docs/`** — the retail handbook (`Docs/Manual/`), period reviews and ads, the SIFA email archive, and Disney's support updates (`Docs/Disney_Support/`). Read as primary sources; see [`research/handbook.md`](../research/handbook.md).
+- **`Misc/Sets/`** — 92 tutorial `.SET` files from the 1993 authoring examples. Twenty-two ship with a printed `.TXT` dump that decodes every header, prop and event field in prose, which makes them a field-level oracle for the `.SET` format rather than just sample data.
+
 ## External References (not in the corpus)
 
 - [`AlbertoMarnetto/si-tools`](https://github.com/AlbertoMarnetto/si-tools) (MIT, 2026): `si-8x` detail patch, `sod-decoder` (`.SOD` to `.obj`) and `si-free-flight-2` (raylib island viewer that reads the scene tree from the executable's stack segment; its `terrain_mapbin.cpp` embeds a `MAP.BIN` byte-identical to `Developer/FreeFlight/SIDATA/MAP.BIN`). Consulted, not vendored; the local checkout is commit `bf2b666` (2026-04-26).

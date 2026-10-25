@@ -62,7 +62,7 @@ A numbered `.ALL` image resource referenced by an `OP_ANIMATE` table and drawn a
 _Avoid_: shape, joint
 
 **Slot**:
-One of the 64 timeline entity channels in a film. A slot binds a shape and carries position, orientation, and an optional animation input.
+One of the 64 timeline entity channels in a film. A slot binds a shape and carries position, orientation, and an optional animation input. Distinct from **Prop slot** and **Sound slot**, the handbook's other two uses of the word.
 _Avoid_: actor
 
 **Actor**:
@@ -108,6 +108,46 @@ _Avoid_: hidden opcode (collides with face visibility, `OP_VOTEHID`)
 **Anchor point** (also **tap point**):
 A 28-byte terrain record shared by `MAP.BIN` patches and `OP_TAP`; it carries raw island coordinates and scratch fields for the display-list VM. `OP_TAP` copies the referenced records into the vertex register bank.
 _Avoid_: debug marker, scratchpad touch
+
+## Production (authoring)
+
+Vocabulary the handbook uses for the authoring front end. These name data the player reads, not features StuntReel implements: see [`docs/SPEC.md` § 2.1](docs/SPEC.md#21-explicit-scope-boundaries--non-goals).
+
+**Set**:
+The authored stage stored in a `.SET` file: recording mode, numbered prop slots and their placement, camera rigs, and the event list.
+_Avoid_: level, map, stage
+
+**Take**:
+One filmed attempt at a set's stunt, saved as a `.TKE` and numbered per set. A take is raw multi-camera footage; a film is its edit.
+_Avoid_: shot, film
+
+**Event**:
+One numbered rule in a set's event list: an IF trigger, optional AND qualifiers, and THEN actions.
+_Avoid_: script, trigger (alone)
+
+**Flag**:
+An author-assigned integer in a set's event system, range -128 to 127, tested by `Flag =` and `Flag ?` and written by `Set Flag`. Whether flags are the film's variable registers is not established.
+_Avoid_: variable (for the event integers)
+
+**Authored limit**:
+A ceiling the authoring tools impose on a set (40 prop slots, 64 events, 655 seconds of event time), as opposed to a bound the file format enforces; the encoding is often wider, as `prop_count` and `event_count` are single bytes.
+_Avoid_: format limit, hard limit
+
+**Prop slot**:
+A numbered container for a placed prop in a set, 1 to 40. Slots 1 to 8 also record film; slots 9 to 40 hold props only.
+_Avoid_: slot (unqualified), film slot
+
+**Recording slot**:
+One of prop slots 1 to 8 in a set, each producing one camera angle. Slot 1 is the stunt aircraft and slot 2 the spotter.
+_Avoid_: camera (for the slot itself)
+
+**Camera angle**:
+The view produced by one recording slot, to which the editing room assigns a deck.
+_Avoid_: view, shot
+
+**Sound slot**:
+One numbered entry in a `Usersnd` bank; each of the five banks holds up to 253 sounds.
+_Avoid_: slot (unqualified)
 
 ## Evidence
 
