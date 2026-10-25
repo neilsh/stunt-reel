@@ -197,7 +197,21 @@ For `BOMBING.SET` the event table is `0x54`–`0x96` and the props begin at `0x9
 
 The `wait` operand at `+0x03`–`+0x04` is in 50 Hz ticks, not seconds: 256 reads back as `5.12 seconds`, which is 256/50, and 5 reads back as `0.1 seconds`. So the authored timebase in the file is the same 50 Hz clock as `[I4]`.
 
-One scalar is still unscaled. For `change`, the new value lives at `+0x03`–`+0x04`, but it is not linear in any unit tried: `0xFEB9` prints as `90` degrees, `0xFF00` as `-51`, and raising the low byte alone moves the printed angle by about half as much as raising the high byte. The field is located; its scale is open.
+**The `change` operand is scaled by the property.** Writing `0x4000` — a quarter turn in BAM — into `+0x03`–`+0x04` prints differently for each property in the `+0x02` byte:
+
+| Property | Printed for `0x4000` |
+|---|---|
+| `roll` | `90` |
+| `yaw anim` | `-4500` |
+| `zoom` | `2.5` |
+| `speed` | `1364` |
+| `acceleration` | `4261` |
+
+So the operand is a signed 16-bit whose unit belongs to the property, not to the record:
+
+- **Angles** (`roll`, `pitch`, `yaw` and the heading pair) are BAM at 65536 per turn, printed as degrees: `0x4000` is 90°.
+- **Anim properties** are that same BAM value read as a per-tick rate and printed in degrees per second at 50 Hz with the sign flipped: `printed = -angle × 50`. This holds on 11 of 11 samples from `0x0000` to `0xFFFE`; the single boundary case, `0x8000`, prints `-9000` rather than `+9000` because −180° is normalised to +180° before the sign flip.
+- **Scalar properties** carry their own scale, of which only `zoom` is pinned here (`0x4000` → 2.5). Enumerating the rest is property work, not event work.
 
 So the layout is an IF clause, two AND qualifiers, then a run of 7-byte THEN slots: slot 1 begins at `+0x0B`, and slot `k` begins at `+0x0B + 7(k-1)`. The arithmetic closes exactly: an 11-byte clause header plus eight 7-byte slots is 67 bytes, the record size, and the last slot ends where the prop table starts. The second AND qualifier's type is at `+0x08` by that spacing, but flipping it printed no change, so it is inferred rather than observed.
 
