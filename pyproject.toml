@@ -102,3 +102,8 @@ addopts = "-ra -q --strict-markers --strict-config"
 filterwarnings = ["error"]
 testpaths = ["tests"]
 pythonpath = ["python"]
+
+[tool.uv]
+# Keep in step with the `uv` pin in `mise.toml`: uv refuses to run this project under
+# any other version, so a standalone uv cannot silently drift from the mise-managed one.
+required-version = "0.13.1"

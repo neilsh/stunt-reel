@@ -10,7 +10,7 @@ The living specification is [`docs/SPEC.md`](docs/SPEC.md) — goals, invariants
 
 - **[mise](https://mise.jdx.dev/)** (recommended environment and tool manager)
 - **[Rust](https://www.rust-lang.org/)** 2024 edition (rustc ≥ 1.88), managed via `mise` or `rustup`
-- **[uv](https://docs.astral.sh/uv/)** and **Python ≥ 3.11**, managed via `mise` or standalone
+- **[uv](https://docs.astral.sh/uv/)** (installed by `mise`; a standalone uv works only at the pinned version, which `required-version` in [`pyproject.toml`](pyproject.toml) enforces) and **Python ≥ 3.11**
 - **[DOSBox-X](https://dosbox-x.com/) `2026.10.01`** (Windows x64 portable SDL2 build, installed by `mise`)
 - **[`dosbox-x-mcp-server`](https://github.com/caiiiycuk/dosbox-x-mcp-server) `0.1.2`** (managed via `mise`)
 - **Java 21 (Temurin)** and **Kaitai Struct Compiler `0.11`** (managed via `mise`; needed only for the `.ksy` corpus checks)
@@ -195,18 +195,9 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) invokes the mise tas
 
 `mise run init` links each checkout's `.cache/` to the primary checkout's copy; `mise.toml` points `UV_CACHE_DIR` and the cargo tasks' `CARGO_HOME` into it, so every worktree reuses one set of downloaded crates and uv artifacts. Build outputs (`target/`), the virtualenv and the Python tool caches stay per worktree, because they are revision-specific or not relocatable. `mise run clean` reports the shared cache and never removes it; `rm -rf .cache` resets it. See [ADR 0013](docs/adr/0013-worktrees-share-one-writable-tool-cache.md).
 
-Equivalent direct commands:
+### Running individual commands
 
-```powershell
-cargo check --workspace
-cargo clippy --workspace --all-targets --all-features
-cargo fmt --check
-cargo test --workspace --all-features
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy
-uv run pytest
-```
+For a one-off that no task covers, run the pinned tool through mise: `mise exec -- uv run ruff check python/foo.py`. `mise exec` puts the versions [`mise.toml`](mise.toml) pins on `PATH`; a bare `uv` can be a different version, and `[tool.uv] required-version` in [`pyproject.toml`](pyproject.toml) makes that version refuse to run rather than drift.
 
 ### Python dependencies
 
