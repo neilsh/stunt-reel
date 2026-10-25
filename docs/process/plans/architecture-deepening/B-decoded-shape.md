@@ -1,6 +1,6 @@
 # Unit B: the decoded shape seam
 
-Status: design agreed 2026-10-24, implementation not started. Source: architecture review cards 2 (one stop decision), 3 (shape IR owning interface) and 4 (partial SOD carries its stop), designed as one seam and shipped as up to three PRs.
+Status: design agreed 2026-10-24; implemented, merged 58745f8. Source: architecture review cards 2 (one stop decision), 3 (shape IR owning interface) and 4 (partial SOD carries its stop), designed as one seam and shipped as up to three PRs.
 
 ## 1. Problem
 
@@ -99,3 +99,13 @@ Abandon if: the baseline needs consumer clamping; `OP_ANIMATE` forces `meshes()`
 ## 10. Open items
 
 Names (`DecodeRecord`, `ShapeMesh`, `ShapeExtent`, `DecodeMode`) are proposals, confirmed in PR1. The serde exception is recorded in PR2. GLOSSARY terms land with PR2. Census geometry is empty and documented.
+
+## 11. Landing log
+
+Merged as 58745f8 together with unit C stages 1-2; the full `mise run check` passed on the integrated tree (Rust workspace and doc tests, 262 Python tests).
+
+1. **One stop decision.** The VM returns one `VmRun` and asks one policy at every blockage; strict, lenient and census are translations. Existing VM and census assertions were rewritten onto the public entry point.
+2. **Partial SOD as a value.** `SodHeader`, `SodStop` and `SodStopReason` moved into the seam; `DecodeRecord` and `SodModelIr::decode()` added; `ArchiveShapes.partial` and `SceneReport.partial` deleted; the CLI reads records sorted by shape id.
+3. **Shape-owned discipline.** `decode_sod` is the only decode entry and enforces the arena, handle, slice and ordering invariants (`SodError::InvariantViolation`); `meshes()` and `extent()` landed; world, renderer and glTF consume them and their re-validation was deleted; `SodWalk`/`SodSkip`/`walk_sod`/`transpile_sod*` and the glTF range error variants were deleted; census migrated onto the record. `OP_ANIMATE` stays deferred with its extension point recorded.
+
+Docs: SPEC section 4, GLOSSARY (Partial SOD and Decode record), ARCHITECTURE decoding paragraph, ADR 0012.

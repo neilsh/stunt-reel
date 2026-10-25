@@ -1,6 +1,6 @@
 # Unit D: the capture session
 
-Status: design agreed 2026-10-24, implementation not started. Source: architecture review card 6 (one capture session for the emulator) plus the transport-at-operation-altitude rider.
+Status: design agreed 2026-10-24; implemented, review pending. Source: architecture review card 6 (one capture session for the emulator) plus the transport-at-operation-altitude rider.
 
 ## 1. Problem
 
@@ -106,3 +106,14 @@ Abandon if: either script still owns launch, settle, trap or teardown after step
 ## 10. Open items
 
 Names (`run_session`, `Session`, `Page`, `Emulator`, `Transport`) are proposals. `DACPAL` parsing is only exercised live, so the mock cannot prove it; keep a local live smoke step. The conf rewrite is string surgery on two literals and must fail loudly when either misses. The 64 KB temp file remains under the seam and is accepted. Link provisioning stays a CLI-edge line because it names the command.
+
+## 11. Deviations recorded at implementation
+
+1. `run_session` gained `progress: Callable[[SessionEvent], None] | None`, with typed `Launching(exe, conf, cwd)`, `WaitingForGuest(port)` and `DialogSettled(distinct_indices)` events. The capture script formats its existing lines from them; the probe passes `None` and stays silent.
+2. The emulator protocol gained a read-only `exit_status`; `run_session` captures it before teardown and attaches `emulator_status` to the propagating exception, so the capture failure line keeps its `; emulator exit status N` suffix.
+3. The six operations are the seam, but BDA injection needs writes: the live and mock transports additionally expose `write_memory` outside the `Transport` protocol, and `bda.BdaBuffer` is the narrow port.
+4. `clear_frames` now runs inside the capture sampler after the shared-write gate, so a launch or dialog failure no longer clears the previous run's frames.
+5. Dialog settle caps at exactly 600 dumps (the old code could do 601); the accept timeout message now says the guest did not connect in 30 s.
+6. The probe's `FRAME_CAP` is gone: a requested clock that never arrives ends on the trap timeout (exit 1) instead of silently stopping after 2000 frames.
+
+Residual risk, untested here: a live CTRY capture byte-compare and the live probe smoke, because SOP 6 keeps the shared data root read-only without explicit opt-in. The offline scripted-guest tests pin the writer format and meta ordering.

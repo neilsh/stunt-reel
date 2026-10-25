@@ -94,8 +94,12 @@ A `.glb` written by `stunt-gltf` for viewing a shape, or one scene frame, in sta
 _Avoid_: glTF parity, Phase 1 export
 
 **Partial SOD**:
-A shape whose bytecode stopped at an opcode the evaluator does not implement, or at `OP_TAP` without an anchor table; geometry decoded before the stop is retained.
+A decoded shape whose decode record carries a `stop`: its bytecode reached an opcode the evaluator does not implement, or `OP_TAP` without an anchor table, and the geometry decoded before the stop is retained. Partiality is the shape's own provenance, not a parallel report list.
 _Avoid_: corrupt model, truncated SOD
+
+**Decode record**:
+The provenance a shape's decode attaches to it: the stream's 10-byte `.SOD` header, the first blocking opcode (`stop`; `None` when the stream was not blocked), the opcodes a census decode stepped over in stream order, and the byte offset of the first `OP_RETURN` (`None` when the stream ended without one). Authored shapes - the world IR and the synthetic aircraft - carry no record.
+_Avoid_: decode metadata, parse result
 
 **Blocking opcode**:
 The first opcode in a shape's bytecode that the evaluator does not implement; the point where a Partial SOD stops.

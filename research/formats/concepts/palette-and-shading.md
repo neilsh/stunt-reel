@@ -47,7 +47,7 @@ The VGA Digital-to-Analog Converter (DAC, typically an Inmos INMOS G171 or compa
 
   | Name | Formula ($c \in [0, 63]$) | White ($c = 63$) | Used by |
   | :--- | :--- | :--- | :--- |
-  | **Capture scaling** (canonical for DAC reads) | $\lfloor (255c + 31) / 63 \rfloor$ | `255` | `_scale_6bit` in `python/stunt_reel/tac/framebuffer.py`, applied to every `VGA DACPAL` read of the reference capture ([`capture.md`](../../playone-exe/capture.md)) |
+  | **Capture scaling** (canonical for DAC reads) | $\lfloor (255c + 31) / 63 \rfloor$ | `255` | `parse_dac_palette` in `python/stunt_reel/tac/transport.py` (formerly `_scale_6bit` in `framebuffer.py`), applied to every `VGA DACPAL` read of the reference capture ([`capture.md`](../../playone-exe/capture.md)) |
   | Bit replication | $(c \ll 2) \mid (c \gg 4)$ | `255` | none; an approximation of the capture scaling that differs by 1 at $c \in \{11..15, 48..52\}$ |
   | **Authored table** | $c \ll 2$ | `252` | `MODE_13H_PALETTE` in `crates/stunt-core/src/contracts/palette.rs` (every stored channel is a multiple of 4; the test pins index 255 to `(252, 252, 252)`) and, through it, the `stunt-render` LUT |
 

@@ -45,6 +45,8 @@ hardcode it, and one DOSBox-X instance serves the whole machine.
 debug profile drops to ``line-tables-only``: full debug info was 14.4 GB of the
 17 GB ``target/``, paid again by every worktree.
 
+The SOP 6 shared-write gate is applied once by the capture session's `run_session` for both `capture-ref` and the light probe, and the capture lock is the listener bind inside the emulator adapter, so a second session fails at the bind before a process starts.
+
 Two costs are visible in tooling. A worktree inside the checkout is read by every
 recursive tool unless it is both gitignored and ruff-excluded, which is what
 ``tests/test_worktree_layout.py`` fails on: 61 seconds of ``test_doc_invariants``

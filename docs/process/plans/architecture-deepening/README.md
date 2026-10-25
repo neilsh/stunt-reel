@@ -16,10 +16,10 @@ Status: implementation in progress. The programme turns six deepening candidates
 
 | Unit | Scope | Design state | Brief |
 |---|---|---|---|
-| A | Render artifact seam plus the report-aggregation rider | Agreed 2026-10-24; implementation not started | [A-render-artifact.md](A-render-artifact.md) |
-| B | Decoded shape seam: one stop decision, a shape IR that owns its invariants, partial SOD as a value | Agreed 2026-10-24; implementation not started | [B-decoded-shape.md](B-decoded-shape.md) |
-| C | Renderer entry point for headless and window | Agreed 2026-10-24; implementation not started | [C-renderer-entry.md](C-renderer-entry.md) |
-| D | Capture session with an injectable transport; transport at operation altitude | Agreed 2026-10-24; implementation not started | [D-capture-session.md](D-capture-session.md) |
+| A | Render artifact seam plus the report-aggregation rider | Landings 1-3 merged; landing 4 pending | [A-render-artifact.md](A-render-artifact.md) |
+| B | Decoded shape seam: one stop decision, a shape IR that owns its invariants, partial SOD as a value | Done (merged 58745f8) | [B-decoded-shape.md](B-decoded-shape.md) |
+| C | Renderer entry point for headless and window | Stages 1-2 merged; deletion stage pending | [C-renderer-entry.md](C-renderer-entry.md) |
+| D | Capture session with an injectable transport; transport at operation altitude | Merged (e17c9bc); live capture unverified | [D-capture-session.md](D-capture-session.md) |
 
 ## 3. Why this order
 
