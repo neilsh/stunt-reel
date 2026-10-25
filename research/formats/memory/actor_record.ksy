@@ -9,6 +9,9 @@ meta:
   title: Runtime actor chain entry (64 bytes)
   ks-version: 0.11
   endian: le
+doc: |
+  One 64-byte entry in the runtime actor chain. Meaning is in
+  `research/playone-exe/memory-map.md`.
 seq:
   - id: actor_id
     type: u4

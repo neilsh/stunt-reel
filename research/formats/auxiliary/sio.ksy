@@ -12,6 +12,9 @@ meta:
   file-extension: sio
   ks-version: 0.11
   endian: le
+doc: |
+  A SLICE `.SIO` point cloud: magic, revision and records. Meaning is
+  in `sio.md`.
 seq:
   - id: magic
     contents: [0x53, 0x64, 0x73, 0x01]

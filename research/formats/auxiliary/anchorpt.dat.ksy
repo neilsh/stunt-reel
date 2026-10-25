@@ -9,6 +9,9 @@ meta:
   file-extension: dat
   ks-version: 0.11
   endian: le
+doc: |
+  The fixed 1,024-record `ANCHORPT.DAT` anchor table. Meaning is in
+  `map.md`.
 seq:
   - id: points
     type: point

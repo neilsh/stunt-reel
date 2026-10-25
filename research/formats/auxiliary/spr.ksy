@@ -8,6 +8,9 @@ meta:
   file-extension: spr
   ks-version: 0.11
   endian: le
+doc: |
+  A raw 8-bit billboard sprite: dimensions, palette pixels and trailer.
+  Meaning is in `spr.md`.
 seq:
   - id: width
     type: u2

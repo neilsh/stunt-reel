@@ -11,6 +11,9 @@ meta:
   file-extension: all
   ks-version: 0.11
   endian: le
+doc: |
+  A `.ALL` movie bundle: chunk count, chunk ids and offsets, then the
+  chunk payloads. Meaning is in `all.md`.
 seq:
   - id: num_chunk_ids
     type: u2

@@ -11,6 +11,9 @@ meta:
   file-extension: flm
   ks-version: 0.11
   endian: le
+doc: |
+  One `.FLM` time slice, parsed with the slot masks compiled from the
+  whole film. Meaning is in `flm.md`.
 params:
   - id: moves
     type: u8

@@ -13,6 +13,9 @@ meta:
   file-extension: res
   ks-version: 0.11
   endian: le
+doc: |
+  A `.RES` archive: `RS` magic, resource index, offset table and named
+  items. Meaning is in `res.md`.
 seq:
   - id: magic
     contents: "RS"

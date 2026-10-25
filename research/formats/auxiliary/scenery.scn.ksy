@@ -10,6 +10,9 @@ meta:
   file-extension: scn
   ks-version: 0.11
   endian: le
+doc: |
+  The 32-bit word array of the `SCENERY.scn` BSP tree. Meaning is in
+  `map.md`.
 seq:
   - id: words
     type: u4

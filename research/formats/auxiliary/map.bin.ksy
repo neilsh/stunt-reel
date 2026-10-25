@@ -10,6 +10,9 @@ meta:
   file-extension: bin
   ks-version: 0.11
   endian: le
+doc: |
+  The `MAP_AREA` terrain patch table and its two-byte terminator.
+  Meaning is in `map.md`.
 seq:
   - id: patches
     type: patch

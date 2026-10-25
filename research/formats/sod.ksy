@@ -11,6 +11,11 @@ meta:
   file-extension: sod
   ks-version: 0.11
   endian: le
+doc: |
+  A `.SOD` model: the 10-byte header beginning with `OP_ID` (0x000C),
+  then display-list bytecode. `op_id` stays a `u2` compared with
+  `valid`, not `contents`, because callers compare the integer. Meaning
+  is in `sod.md`.
 seq:
   - id: op_id
     type: u2
