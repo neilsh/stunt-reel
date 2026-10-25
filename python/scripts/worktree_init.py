@@ -108,7 +108,16 @@ def _init(migrate: bool) -> int:
             link.rmdir()
         elif link.exists():
             link.unlink()
-        create_link(link, target)
+        try:
+            create_link(link, target)
+        except SharedDataError as err:
+            print(f"  ! {err}")
+            print(
+                "    the target is outside this session's writable workspace; "
+                "provision the worktree from a session with wider file access "
+                "(see docs/harness-setup.md)",
+            )
+            return 1
         print(f"  + {relative} -> {target}")
 
     try:

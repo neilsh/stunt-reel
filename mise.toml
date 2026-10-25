@@ -1,7 +1,7 @@
 [tools]
 # Rust toolchain (provides rustc and cargo). Pinned: "latest" re-resolves whenever
 # this file changes, which silently gave two worktrees different compilers.
-rust = { version = "1.99.1", components = "llvm-tools-preview" }
+rust = { version = "1.99.1", components = "llvm-tools" }
 
 # Python & modern packaging toolchain
 python = "3.11"

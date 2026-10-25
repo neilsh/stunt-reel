@@ -35,13 +35,13 @@ mid-program aborts that program; re-run it rather than assuming it half-complete
 
 Confirmed by failure on 2026-10-25, not by reading the packaged sources:
 
-* `mise run ...` repairs its pinned Rust toolchain under `%LOCALAPPDATA%\mise` on every
-  invocation, and `workspace-write` denies that write (`failed create_dir_all:
-  ...\mise\downloads\rust\1.99.1: Access is denied (os error 5)`), so `mise run init` and
-  `mise run check` stop before their first step. Two ways through: run the command escalated,
-  or set `MISE_DISABLE_TOOLS=rust` and put the installed toolchain's `bin` on `PATH` (for the
-  pin in `mise.toml`: `%LOCALAPPDATA%\mise\installs\rust\1.99.1\bin`) — mise then skips the
-  tool check and the gate runs under `workspace-write`.
+* `mise run` used to repair its pinned Rust toolchain under `%LOCALAPPDATA%\mise` on every
+  invocation, because `components = "llvm-tools-preview"` does not match the component rustup
+  reports (`llvm-tools-x86_64-pc-windows-msvc`), and `workspace-write` denied that write
+  (`failed create_dir_all: ...\mise\downloads\rust\1.99.1: Access is denied (os error 5)`).
+  The pin is now `llvm-tools`, which verifies clean, so a plain `mise run` no longer attempts
+  the install. If it returns, run `mise install` once outside the sandbox;
+  `MISE_DISABLE_TOOLS=rust` with the installed toolchain's `bin` on `PATH` remains a fallback.
 * Directory ACLs are only partially enforced: a directory created under the sandbox can refuse
   a later nested creation inside it, and a stale one can refuse removal.
 * `cargo` writes `target/` inside the checkout, so a warm build is fine once the toolchain

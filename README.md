@@ -61,7 +61,7 @@ D:\git\stunt-reel.data\   corpus\{stisldem,si_archive,oracle}, reference\, targe
 
 The community archive keeps its historical `si_archive` name inside the data root; a checkout links it as `corpus/siarchive`, the collector's spelling, and `LINK_TARGETS` in `python/stunt_reel/dataroot.py` is the one place that maps the two.
 
-`mise run init` links those into a worktree with junctions, so the relative `corpus/` and `build/parity/reference/` paths work unchanged; build outputs, caches and `.venv` stay per worktree. `STUNT_DATA_ROOT` names a different data root, and `mise run init -- --migrate` moves an existing in-checkout `corpus/` into it.
+`mise run init` links those into a worktree with junctions, so the relative `corpus/` and `build/parity/reference/` paths work unchanged; build outputs, caches and `.venv` stay per worktree. `STUNT_DATA_ROOT` names a different data root, and `mise run init -- --migrate` moves an existing in-checkout `corpus/` into it. A sandboxed agent session cannot create those junctions under `workspace-write`, because their targets are outside the workspace; provision the worktree with one run at wider file access — see [docs/harness-setup.md](docs/harness-setup.md).
 
 The data root is **read-only**: `mise run capture-ref` into the shared captures and oracle generation refuse unless `STUNT_DATA_WRITE=1` is set, and only one session may capture at a time, because DOSBox-X and port `58991` are machine-wide. `mise run clean -- --yes` reports and removes this worktree's outputs before you reap it. See [ADR 0008](docs/adr/0008-worktrees-share-one-read-only-data-root.md).
 
@@ -227,3 +227,4 @@ The Python half runs on the standard library unless a dependency earns its place
 | [`corpus/README.md`](corpus/README.md) | How to populate the demo and archive data |
 | [`tests/fixtures/README.md`](tests/fixtures/README.md) | Cleanroom fixture specifications |
 | [`AGENTS.md`](AGENTS.md) | Contributor directives and standard operating procedures |
+| [`docs/harness-setup.md`](docs/harness-setup.md) | Host-local harness setup: tool installs, mise config and trust, permission presets, data-root environment |

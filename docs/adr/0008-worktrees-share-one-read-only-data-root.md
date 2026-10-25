@@ -55,3 +55,5 @@ before it pruned. And a junction is invisible to anything that enumerates the gi
 index: ``corpus/stisldem`` never appears in an editor's tree or in the agent's ``@``
 file picker, because its contents are untracked, though a read by absolute path is
 unaffected.
+
+One consequence of keeping the root outside every checkout: a sandboxed agent session cannot create the junctions from a `workspace-write` workspace, because their targets sit outside it. Provisioning therefore takes one run with wider file access. See [`docs/harness-setup.md`](../harness-setup.md).
