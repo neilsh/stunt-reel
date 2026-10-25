@@ -11,6 +11,7 @@ Supports:
 from __future__ import annotations
 
 import contextlib
+import errno
 import math
 import os
 import socket
@@ -226,6 +227,10 @@ def format_hex_dump(seg: int, off: int, data: bytes) -> list[str]:
     return lines
 
 
+#: ``bind`` errnos that mean another socket holds the port (Winsock reports its own).
+_ADDR_IN_USE = frozenset({errno.EADDRINUSE, getattr(errno, "WSAEADDRINUSE", errno.EADDRINUSE)})
+
+
 class ListenTransport(_FramedTransport):
     """Debugger transport that listens for DOSBox-X's outbound debugger connection.
 
@@ -273,9 +278,10 @@ class ListenTransport(_FramedTransport):
             sock.bind((self.host, self.port))
         except OSError as exc:
             sock.close()
-            raise RuntimeError(
-                f"port {self.port} is taken: another capture or the MCP server holds it"
-            ) from exc
+            if exc.errno not in _ADDR_IN_USE:
+                raise
+            msg = f"port {self.port} is taken: another capture or the MCP server holds it"
+            raise OSError(exc.errno, msg) from exc
         sock.listen(1)
         self._listener = sock
 
@@ -286,6 +292,9 @@ class ListenTransport(_FramedTransport):
         self._listener.settimeout(self.timeout if timeout is None else timeout)
         conn, _addr = self._listener.accept()
         conn.settimeout(self.timeout)
+        # Abort on close rather than leave TIME_WAIT on the port: under
+        # SO_EXCLUSIVEADDRUSE it would refuse the next capture's bind for minutes.
+        conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
         self._attach(conn)
 
     _NOT_CONNECTED = "DOSBox-X has not connected yet"

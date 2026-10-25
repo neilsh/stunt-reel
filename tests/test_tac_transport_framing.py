@@ -219,13 +219,14 @@ def test_listen_send_before_accept_raises_connection_error() -> None:
 
 
 def test_second_listener_on_the_same_port_is_refused() -> None:
-    first = ListenTransport(host="127.0.0.1", port=0)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port: int = probe.getsockname()[1]
+    first = ListenTransport(host="127.0.0.1", port=port)
     first.listen()
-    assert first._listener is not None
-    port: int = first._listener.getsockname()[1]
     second = ListenTransport(host="127.0.0.1", port=port)
     try:
-        with pytest.raises(RuntimeError, match=f"port {port} is taken"):
+        with pytest.raises(OSError, match=f"port {port} is taken"):
             second.listen()
     finally:
         first.close()
