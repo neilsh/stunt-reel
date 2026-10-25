@@ -66,6 +66,7 @@ Process documents, **not** sources of truth: [`docs/process/TEAM_SHEET.md`](docs
 2. Run `mise run check` to ensure all checks pass with zero warnings or errors.
 3. Link modified code symbols and files using markdown links.
 4. Commit with a Conventional Commit subject, e.g. `feat(core): add a parser`, and a body that answers why.
+5. Write the handoff into the plan or `research/` note that owns the work item.
 
 ### Commit Messages
 Write the body whenever a reviewer would have to ask "why this way?": what forced the change, the cause with the offset, measurement or log row that proves it, and what you rejected. One paragraph, then a bullet per file when several move together; never retell the diff. Renames, formatting and generated files need none. Longer reasoning belongs in the owning note or an ADR, cited from the body. Close with `mise run check passes.` when the whole gate ran, naming any part that did not.
@@ -81,11 +82,10 @@ Write the body whenever a reviewer would have to ask "why this way?": what force
 
 ### SOP 5: Working Economically
 Each turn re-sends the whole conversation, so cost is roughly turns times context size.
-1. **One work item per session.** At wrap-up, write the handoff into the plan or `research/` note that owns the item, then start a fresh session for the next one.
-2. **Fewer, fuller turns.** Batch independent reads and commands into one turn. Find the file through [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) before grepping, and read line ranges of files over about 20 KB rather than the whole file.
-3. **Scoped checks while iterating.** Use `mise run check-rust` or `mise run check-py` (one line per step, failures only); run the full `mise run check` once, before a commit or hand-off (Directive 2).
-4. **Scripts before subagents.** Mechanical checks (link, anchor, table or mapping audits) belong in a script. Delegate only real chunks of work: Haiku first, Sonnet as fallback, at most about 8 subagents per task, since each one starts cold.
-5. **Parity work** follows the [`improving-render-parity`](.agents/skills/improving-render-parity/SKILL.md) skill, which holds its own cost rules (build once, batched sweeps, scratch paths, image budget).
+1. **Fewer, fuller turns.** Batch independent reads and commands into one turn. Find the file through [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) before grepping, and read line ranges of files over about 20 KB rather than the whole file.
+2. **Scoped checks while iterating.** Use `mise run check-rust` or `mise run check-py` (one line per step, failures only); run the full `mise run check` once, before a commit or hand-off (Directive 2).
+3. **Scripts before subagents.** Mechanical checks (link, anchor, table or mapping audits) belong in a script. Delegate only real chunks of work: Haiku first, Sonnet as fallback, at most about 8 subagents per task, since each one starts cold.
+4. **Parity work** follows the [`improving-render-parity`](.agents/skills/improving-render-parity/SKILL.md) skill, which holds its own cost rules (build once, batched sweeps, scratch paths, image budget).
 
 ### SOP 6: Working in a Worktree
 
