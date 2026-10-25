@@ -152,7 +152,9 @@ $$\text{size} = \texttt{0x97} + 64 \times (\text{props} - 1 + \text{events}) + 3
 | `0x97` onward | 64-byte records: first `props - 1` prop records, then `events` event records |
 | last `3 × (events - 1)` bytes | A trailer holding three bytes per event after the first |
 
-The event table therefore begins at `0x97 + 64 × (props - 1)`: immediately after the stored props, at a 64-byte-aligned offset. `[Supported Inference]`
+Where the two halves meet is settled for one file only. In `DRIVING.SET` the event records begin immediately after the stored props, at `0x97 + 64 × 14 = 0x417`, and their ids run `0x0a` to `0x11` in printed order. `[Bounded Observation]`
+
+`REALISM.SET` does not follow that order. Its props-first prediction is `0xA17`, but that offset holds ten near-identical records, while the markers of its collision-conditioned rules sit at `0x8B0`, `0x8F0`, `0x930`, `0x970` and `0xBB0` — inside the space the props-first reading assigns to props. Either that file's stored prop count is lower than its printed 39, or the records are ordered differently. The size law does not say which half comes first, so the split is open.
 
 **Verification.** The six sets that have a printed dump reproduce their own size from their printed prop and event counts: BOMBING 8/1 → 663, BOMBING2 7/1 → 599, DRIVING 15/8 → 1580, FIND&HIT 4/2 → 474, FIND&HT2 4/2 → 474, REALISM 39/10 → 3250. The same law yields a whole number of records for all 35 loose corpus sets, with no remainder. The earlier "12-byte block" table is withdrawn: no 12-byte periodicity exists anywhere, and its fixed-block claim rested on `0x54`, which is not the event count (§ 2.1).
 
