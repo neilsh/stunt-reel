@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 from stunt_reel import dataroot
+
+SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+import worktree_init  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -76,6 +83,19 @@ def test_is_shared_separates_the_root_from_the_checkout(
     primary = _checkout(monkeypatch, _primary(tmp_path))
     assert dataroot.is_shared(tmp_path / "stunt-reel.data" / "reference" / "ctry")
     assert not dataroot.is_shared(primary / "build" / "parity" / "ours")
+
+
+def test_is_shared_follows_the_linked_reference_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # capture-ref's default --out reaches the shared captures only through this link,
+    # so is_shared must see through it or the write opt-in is silently skipped.
+    primary = _checkout(monkeypatch, _primary(tmp_path))
+    target = tmp_path / "stunt-reel.data" / "reference"
+    target.mkdir(parents=True)
+    link = primary / "build" / "parity" / "reference"
+    worktree_init._create_link(link, target)
+    assert dataroot.is_shared(link / "ctry")
 
 
 def test_shared_write_needs_the_opt_in(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -6,7 +6,9 @@ Two directions, driven by the registry in ``stunt_reel.doc_anchors``:
 * every anchor cited anywhere in code, tests or documents is registered.
 """
 
+import os
 import re
+from collections.abc import Iterator
 from pathlib import Path
 
 from stunt_reel.doc_anchors import ANCHORS, BY_ID, CITATION_REGEX
@@ -17,6 +19,18 @@ CITATION_ROOTS = ("crates", "python", "tests", "docs", "research")
 CITATION_TOP_LEVEL = ("AGENTS.md", "README.md", "GLOSSARY.md")
 CITATION_SUFFIXES = frozenset({".rs", ".py", ".md", ".ksy", ".toml"})
 SKIPPED_DIRS = frozenset({"target", ".venv", "__pycache__", "node_modules", "build"})
+
+
+def _walk(root: Path, skipped: frozenset[str]) -> Iterator[Path]:
+    """Files under *root*, never descending into a skipped directory.
+
+    Pruning while walking matters: ``rglob`` would first read every nested
+    worktree and every junction into the shared data root, then drop them.
+    """
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [name for name in dirnames if name not in skipped]
+        for name in filenames:
+            yield Path(dirpath) / name
 
 
 def _heading_texts(path: Path) -> set[str]:
@@ -36,10 +50,8 @@ def _citation_files() -> list[Path]:
     for root in CITATION_ROOTS:
         files.extend(
             path
-            for path in (REPO_ROOT / root).rglob("*")
-            if path.is_file()
-            and path.suffix in CITATION_SUFFIXES
-            and not SKIPPED_DIRS.intersection(path.relative_to(REPO_ROOT).parts)
+            for path in _walk(REPO_ROOT / root, SKIPPED_DIRS)
+            if path.suffix in CITATION_SUFFIXES
         )
     return files
 
@@ -92,13 +104,7 @@ CODE_SUFFIXES = frozenset({".rs", ".py", ".wgsl", ".toml"})
 
 
 def _repo_files(suffixes: frozenset[str]) -> list[Path]:
-    return [
-        path
-        for path in REPO_ROOT.rglob("*")
-        if path.is_file()
-        and path.suffix in suffixes
-        and not LINK_SKIPPED_DIRS.intersection(path.relative_to(REPO_ROOT).parts)
-    ]
+    return [path for path in _walk(REPO_ROOT, LINK_SKIPPED_DIRS) if path.suffix in suffixes]
 
 
 def _slug(heading: str) -> str:
