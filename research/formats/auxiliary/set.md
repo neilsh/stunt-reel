@@ -43,10 +43,11 @@ A `.SET` file begins with a 96-byte (`0x60`) global environment header containin
 | `0x3F`–`0x51` | 19 | `u8[19]` | `reserved_pad` | Reserved alignment and internal runtime pointers | `[Bounded Observation]` |
 | `0x52` | 1 | `u8` | `magic_tag` | Structural validation constant `0x08` | `[Established]` |
 | `0x53` | 1 | `u8` | `event_count` | Number of event records. Agrees with the printed event count of all six sets that have a dump (1, 1, 8, 2, 2, 10) | `[Bounded Observation]` |
-| `0x54` | 1 | `u8` | *unidentified* | Observed values 0–3 with no correlation to prop, event, camera or collision-window counts. Formerly read as `event_count` | `[Unknown]` |
-| `0x55`–`0x5F` | 11 | `u8[11]` | `table_header` | Table linkage offsets and internal memory pointer scratchpad | `[Bounded Observation]` |
+| `0x54` | — | — | *(end of header)* | The header stops here: `0x54` is the first byte of the first event record (§ 3.5) | `[Established]` |
 
 `0x53` is a single byte, so the encoding admits 255 events while the authoring tools expose 64: an **authored limit**, not a field bound ([`GLOSSARY.md`](../../../GLOSSARY.md)). The prop count is not stored in a dedicated header byte at all — the six dumped sets carry 4 to 39 props and no header byte matches them.
+
+The header is 84 bytes, ending at `0x53`. The 12 bytes this table used to list at `0x54`–`0x5F` are the first event record's leading fields, not a table header; see § 3.5.
 
 The recording byte is the authoring screen's Global-Rec setting: the handbook names the three values Off, Auto and On, and states that an event's `Start Rec` or `Stop Rec` overrides this byte and every other recording setting (*handbook* p.97). It records authored policy rather than per-frame data; whether `PLAYONE.EXE` reads it is not established. Two corpus sets that both print `Initial Recorder :On` store different bytes — `0x02` in `BOMBING.SET` and `0xFF` in `DRIVING.SET` — so `0xFF` is not reliably an unset sentinel and its meaning is open.
 
@@ -138,35 +139,41 @@ Bit:   7   6   5   4   3   2   1   0
                        |   +------ Visibility hidden override (1 = hidden)
                        +---------- Position locked on set (1 = immovable)
 ```
+### 3.5 File Layout: the Event Table at `0x54`
 
-### 3.5 File Layout: the Event Table at `0x60`
+The event table comes first, immediately after the 84-byte header, and every event record is the same size:
 
-The body is a split of fixed-size records, and the **event table comes first**, immediately after the 96-byte header:
-
-$$\text{size} = \texttt{0x60} + 55 + 67 \times (\text{events} - 1) + 64 \times \text{props}$$
+$$\text{size} = \texttt{0x54} + 67 \times \text{events} + 64 \times \text{props}$$
 
 | Range | Contents |
 |---|---|
-| `0x00`–`0x5F` | The 96-byte header (§ 2.1) |
-| `0x60` … `0x60 + 54 + 67 \u00d7 (events - 1)` | The event table: one 55-byte base record, then 67 bytes per further event |
-| to end of file | The prop table: 64 bytes per prop, all props stored |
+| `0x00`–`0x53` | The 84-byte header (§ 2.1) |
+| `0x54 + 67k` | Event record `k`, 67 bytes, for `k = 0 .. events - 1` |
+| `0x54 + 67 \times events` | Prop records, 64 bytes each, every prop stored |
 
-**Verification.** Every set with a printed dump reproduces its own size from its printed counts: BOMBING 8 props/1 event → 663, BOMBING2 7/1 → 599, DRIVING 15/8 → 1580, FIND&HIT 4/2 → 474, FIND&HT2 4/2 → 474, REALISM 39/10 → 3250; the same arithmetic closes on all 35 loose corpus sets. `[Supported Inference]`
+For `BOMBING.SET` the event table is `0x54`–`0x96` and the props begin at `0x97`, which is exactly the offset the 2004 notes found by deleting a prop. `[Supported Inference]`
 
-**How this was established.** `TYPESET.EXE` prints a set, so flipping one byte and re-printing maps a byte to the field it feeds ([`stunt-exe/sets.md` § 6](../../stunt-exe/sets.md)). Every offset of `BOMBING.SET` was flipped and re-printed; 118 body offsets change the output. Flipping `0x60` changes the `Then explode` target and nothing else, and flipping `0x97` renumbers `Prop #1`, which puts the event table before the props and the prop table at `0x97` — as the 2004 notes also concluded from deleting a prop.
+**Verification.** Every set with a printed dump reproduces its own size from its printed counts: BOMBING 8/1 → 663, BOMBING2 7/1 → 599, DRIVING 15/8 → 1580, FIND&HIT 4/2 → 474, FIND&HT2 4/2 → 474, REALISM 39/10 → 3250. It also closes on all 35 loose corpus sets, and `0x54 + 67 \times events` lands on the prop table for each.
 
-**Event record fields** (offsets from `0x60`, each confirmed by a flip that changes exactly one printed value):
+**How this was established.** `TYPESET.EXE` prints a set, so flipping one byte and re-printing maps a byte to the field it feeds ([§ 6 of the STUNT.EXE note](../../stunt-exe/sets.md)). Every offset of `BOMBING.SET` was flipped and re-printed.
 
-| Offset | What the flip changes | Field |
+**Event record fields**, offsets from the record start. Each row is a flip that changes exactly one printed value:
+
+| Offset | Flip changes | Field |
 |---|---|---|
-| `+0x00` | `Then explode X(11)` → `X(12)` | 0-based index of the action's target prop `[Supported Inference]` |
-| `+0x06` | `And play '…'` → `And cut to …` | THEN action type of the second action slot `[Bounded Observation]` |
-| `+0x0C` | appends `, tape only` to the `play` line | sound routing flags `[Bounded Observation]` |
-| `+0x0D, +0x14, +0x1B, +0x22, +0x29, +0x30` | each turns one `And do nothing` into `And award $0` | the type byte of AND action slots 3 to 8, one slot every 7 bytes `[Supported Inference]` |
+| `+0x00` | the whole `Event#1` block disappears | record type or presence `[Bounded Observation]` |
+| `+0x01` | `If Any Weapon` → `If Any Object` | IF condition type |
+| `+0x02` | `hits …(12)` → `(11)` | IF target, a 0-based prop index |
+| `+0x05` | `And nothing` → `And it's before 0 seconds` | first AND qualifier type |
+| `+0x0B` | `Then explode` → `Then fade to` | THEN slot 1 type |
+| `+0x0C` | `explode …(11)` → `(12)` | THEN slot 1 target, 0-based |
+| `+0x12` | `And play` → `And cut to` | THEN slot 2 type |
+| `+0x18` | appends `, tape only` | sound routing flags |
+| `+0x19, +0x20, +0x27, +0x2E, +0x35, +0x3C` | each turns one `And do nothing` into `And award $0` | THEN slots 3 to 8 types |
 
-So an action slot is 7 bytes: a type byte and its operands, with the first slot at `+0x00`. The IF condition and the remaining operands were not isolated by this sweep, because flipping those bytes left the printed line unchanged — either the field is masked, or TYPESET prints a value it did not read from there.
+So the layout is an IF clause, two AND qualifiers, then a run of 7-byte THEN slots: slot 1 begins at `+0x0B`, and slot `k` begins at `+0x0B + 7(k-1)`, giving eight slots that end exactly where the prop table starts. The second AND qualifier's type is at `+0x08` by that spacing, but flipping it printed no change, so it is inferred rather than observed.
 
-Taken together with § 3.6, the record is one IF clause, two AND qualifiers and a run of THEN actions. Earlier attempts to read it as 12-byte blocks, or to place the event table after the props, are withdrawn: both were artifacts of the prop-count arithmetic, which fits the same size law under either split and did not distinguish them.
+Reading the record as a 55-byte base plus 67 per further event, or as 12-byte blocks, or as a table after the props, is withdrawn: the prop-count arithmetic fits those splits equally, and only the flips distinguish them.
 
 ### 3.6 Event Operators
 
