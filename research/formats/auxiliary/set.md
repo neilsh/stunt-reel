@@ -161,9 +161,9 @@ For `BOMBING.SET` the event table is `0x54`–`0x96` and the props begin at `0x9
 
 | Offset | Flip changes | Field |
 |---|---|---|
-| `+0x00` | the whole `Event#1` block disappears | record type or presence `[Bounded Observation]` |
-| `+0x01` | `If Any Weapon` → `If Any Object` | IF condition type |
-| `+0x02` | `hits …(12)` → `(11)` | IF target, a 0-based prop index |
+| `+0x00` | the whole `Event#1` block disappears, or its IF clause changes form | IF condition type (§ 3.6) |
+| `+0x01` | `If Any Weapon` → `If Any Object` | IF object 1, a 0-based prop index; `0xFE` = Any Weapon, `0xFF` = Any Object |
+| `+0x02` | `hits …(12)` → `(11)` | IF object 2, or the time/count operand when the condition takes one |
 | `+0x05` | `And nothing` → `And it's before 0 seconds` | first AND qualifier type |
 | `+0x0B` | `Then explode` → `Then fade to` | THEN slot 1 type |
 | `+0x0C` | `explode …(11)` → `(12)` | THEN slot 1 target, 0-based |
@@ -171,7 +171,7 @@ For `BOMBING.SET` the event table is `0x54`–`0x96` and the props begin at `0x9
 | `+0x18` | appends `, tape only` | sound routing flags |
 | `+0x19, +0x20, +0x27, +0x2E, +0x35, +0x3C` | each turns one `And do nothing` into `And award $0` | THEN slots 3 to 8 types |
 
-So the layout is an IF clause, two AND qualifiers, then a run of 7-byte THEN slots: slot 1 begins at `+0x0B`, and slot `k` begins at `+0x0B + 7(k-1)`, giving eight slots that end exactly where the prop table starts. The second AND qualifier's type is at `+0x08` by that spacing, but flipping it printed no change, so it is inferred rather than observed.
+So the layout is an IF clause, two AND qualifiers, then a run of 7-byte THEN slots: slot 1 begins at `+0x0B`, and slot `k` begins at `+0x0B + 7(k-1)`. The arithmetic closes exactly: an 11-byte clause header plus eight 7-byte slots is 67 bytes, the record size, and the last slot ends where the prop table starts. The second AND qualifier's type is at `+0x08` by that spacing, but flipping it printed no change, so it is inferred rather than observed.
 
 Reading the record as a 55-byte base plus 67 per further event, or as 12-byte blocks, or as a table after the props, is withdrawn: the prop-count arithmetic fits those splits equally, and only the flips distinguish them.
 
@@ -188,6 +188,16 @@ Reading the record as a 55-byte base plus 67 per further event, or as 12-byte bl
 **The `change` property set (`\\2v`)** — shape, WE position, altitude, SN position, roll, pitch, yaw, roll anim, pitch anim, yaw anim, heading pitch, heading yaw, heading pitch anim, heading yaw anim, speed, acceleration, zoom, watch obj, method, method obj, visibility, collideability, auto zoom, distance.
 
 The four `EVT_*` codes this section previously listed are withdrawn: no source in the corpus reproduces them, and the templates above are the vocabulary the binary actually uses.
+
+### Encoding
+
+The numeric values were read off `BOMBING.SET` by writing each value into one type byte and re-printing (§ 3.5). `[Supported Inference]` for each table, since every entry was observed rather than inferred.
+
+**IF condition type** (`+0x00`): `0` —, `1` hits, `2` crashes, `3` seconds elapsed, `4` weapon count, `5` nothing, `6` it's before, `7` it's after.
+
+**AND qualifier type** (`+0x05` and `+0x08`): `0` nothing, `1` it's before, `2` it's after, `3` event happened, `4` event hasn't happened, `5` flag =, `6` flag <>, `7` speed <, `8` speed >. Values above `8` fall through into the action table below, which is how the two tables sit next to each other in the image.
+
+**THEN action type** (`+0x0B`, `+0x12`, and the first byte of each later 7-byte slot): `0` do nothing, `1` award $, `2` play sound, `3` cut to, `4` set time, `5` finish, `6` change, `7` wait, `8` start recording, `9` stop recording, `10` stop, `11` kill, `12` explode, `13` fade, `14` set flag, `15` modify flag, `16` stop recording if autoediting. Values `17` and above print the `change` property names (shape, WE position, altitude, …), again an out-of-range read into the adjacent table rather than a valid action.
 
 The handbook enumerates the authoring actions this table encodes: `CutTo`, `Change` (with roughly twenty sub-parameters — shape, position, altitude, roll/pitch/yaw, speed, acceleration, zoom, watch target, visibility, collideability, autozoom), `Explode`, `Kill`, `Fade`, `Finish`, `Set Flag`, `Set Time`, `Start Rec`, `Stop Rec`, `Start Sound`, `Wait` and `Award $` (*handbook* pp.92–95), behind the triggers `Collision`, `Crash`, `Time` (maximum 655 seconds), `Weapon Count` and the `Never` placeholder (pp.89–90). Only the four codes above have confirmed symbols, so name-to-code mapping is `[Hypothesis]`. A 12-byte record cannot carry the `Change` sub-parameters directly; either records chain or the payload points elsewhere.
 
