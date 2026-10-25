@@ -57,10 +57,11 @@ pub(super) struct FrameMetrics {
     /// Median ratio of the captured palette's brightness to the static palette's.
     pub(super) fade_level: f32,
     /// Brightness the film authors at this tick (var 14 over [`PALETTE_CONTROL_FULL`]); `None`
-    /// when the render directory carries no palette sidecar.
+    /// when the render record has no entry for the tick.
     pub(super) authored_fade_level: Option<f32>,
-    /// Whether the fade reaches the `--min-fade-level` floor: the authored level when
-    /// known, else the measured `fade_level`.
+    /// Whether the fade reaches the `--min-fade-level` floor, decided by the authored
+    /// brightness. The measured `fade_level` is a cross-check, never the decision
+    /// (ADR 0005); a tick with no authored entry is not excluded.
     pub(super) scored: bool,
     pub(super) iou: f32,
     /// Fraction of non-overlay pixels whose palette index equals the capture's.
@@ -130,7 +131,7 @@ pub(super) fn score_frame(
             ssim,
             fade_level: fade,
             authored_fade_level: authored_fade,
-            scored: authored_fade.unwrap_or(fade) >= policy.min_fade_level,
+            scored: authored_fade.is_none_or(|level| level >= policy.min_fade_level),
             iou: mask_iou_planes(&reference.indices, &render.layers, &overlay),
             index_agreement: index_agreement(&reference.indices, &render.indices, &overlay),
             loss_by_class: attribute_loss(&windows, &classes, SSIM_WINDOW),
@@ -214,10 +215,11 @@ mod tests {
     }
 
     #[test]
-    fn without_controls_the_measured_fade_decides() {
-        assert!(score(&capture(1.0), &matching_render()).scored);
+    fn without_authored_controls_a_frame_is_not_excluded() {
+        // ADR 0005: the measured fade is a cross-check, never the scored decision.
         let faded = score(&capture(0.1), &matching_render());
-        assert!(!faded.scored);
+        assert!(faded.scored);
+        assert!(faded.authored_fade_level.is_none());
         assert!((faded.fade_level - 0.1).abs() < 0.02);
     }
 

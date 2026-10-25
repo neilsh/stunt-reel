@@ -232,7 +232,8 @@ pub(crate) struct RenderControls {
 }
 
 /// Reads a render's controls, preferring `render.json` and falling back to the
-/// legacy sidecar. A directory with neither yields empty controls, as before.
+/// legacy sidecar. A directory with neither is an error: ADR 0005 makes the
+/// document required.
 pub(crate) fn load_render_controls(dir: &Path) -> Result<RenderControls, AdapterError> {
     let record_path = dir.join(RENDER_DOCUMENT);
     if record_path.is_file() {
@@ -259,11 +260,14 @@ pub(crate) fn load_render_controls(dir: &Path) -> Result<RenderControls, Adapter
 
     let legacy_path = dir.join(LEGACY_SIDECAR);
     if !legacy_path.is_file() {
-        return Ok(RenderControls {
-            film: FilmId::default(),
-            geometry: None,
-            controls: BTreeMap::new(),
-        });
+        return Err(schema(
+            dir,
+            SchemaError::MissingField {
+                field: "render.json or palette_controls.json (re-render the directory with \
+                        stuntreel --headless --out-dir)"
+                    .to_string(),
+            },
+        ));
     }
     let value = read_json(&legacy_path)?;
     let film = FilmId {
@@ -529,6 +533,13 @@ mod tests {
         write_json(&dir.join("meta.json"), &meta, false).expect("write meta");
         let error = load_capture(&dir).expect_err("untagged frame");
         assert!(error.to_string().contains("frame 2"), "{error}");
+    }
+
+    #[test]
+    fn a_render_without_any_document_is_refused() {
+        let dir = temp_dir("no-document");
+        let error = load_render_controls(&dir).expect_err("no document");
+        assert!(error.to_string().contains("re-render"), "{error}");
     }
 
     #[test]

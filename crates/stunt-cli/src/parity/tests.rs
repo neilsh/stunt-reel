@@ -5,8 +5,8 @@ use std::fs;
 use serde_json::json;
 
 use super::test_support::{
-    TempDir, read_report, run_parity, write_matching_render, write_reference,
-    write_reference_faded, write_render,
+    TempDir, read_report, run_parity, write_reference, write_reference_faded, write_render,
+    write_render_with_brightness,
 };
 
 #[test]
@@ -28,8 +28,8 @@ fn faded_frames_below_the_floor_are_reported_but_not_scored() {
     write_reference_faded(&tmp.join("ref"), &[7, 12, 20], true, &[1.0, 0.5, 0.1]);
     let test = tmp.join("test");
     fs::create_dir_all(&test).unwrap();
-    for tick in [7, 12, 20] {
-        write_matching_render(&test.join(crate::headless::tick_png_name(tick)));
+    for (tick, brightness) in [(7, 0x8000u16), (12, 0x4000), (20, 0x0800)] {
+        write_render_with_brightness(&test.join(crate::headless::tick_png_name(tick)), brightness);
     }
 
     run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
@@ -72,7 +72,7 @@ fn no_scored_frame_reports_null_scored_means() {
     write_reference_faded(&tmp.join("ref"), &[7], true, &[0.1]);
     let test = tmp.join("test");
     fs::create_dir_all(&test).unwrap();
-    write_matching_render(&test.join(crate::headless::tick_png_name(7)));
+    write_render_with_brightness(&test.join(crate::headless::tick_png_name(7)), 0x0800);
 
     run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
     let report = read_report(&tmp.join("out"));

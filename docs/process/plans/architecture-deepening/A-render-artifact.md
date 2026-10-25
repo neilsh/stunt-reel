@@ -1,6 +1,6 @@
 # Unit A: the render artifact seam
 
-Status: design agreed 2026-10-24; landing 1 of 4 merged. Source: architecture review card 1 (the render artifact seam) plus the report-aggregation rider.
+Status: design agreed 2026-10-24; landings 1-2 of 4 merged. Source: architecture review card 1 (the render artifact seam) plus the report-aggregation rider.
 
 ## 1. Problem
 
@@ -111,3 +111,5 @@ Abandon or re-shape the unit if: the port crate needs `stunt-render` or wgpu to 
 ## 11. Landing log
 
 1. **Landing 1 merged 2026-10-24.** The `stunt-parity` port crate (schema, validation, unit tests); the CLI adapter (`RenderJournal`, capture loader, render-record reader with legacy sidecar fallback, report read/write); `--headless` dual-writes `palette_controls.json` and `render.json` last; parity reads through the adapter; the report schema moved to the port crate. Verification: `mise run check` green; the pre-change binary and the new one produce semantically identical `report.json` on `build/parity/ours/ctry_current` (124 frames); three re-rendered ticks have byte-identical PNG, `.idx` and `.layer` against the baseline.
+
+2. **Landing 2 merged 2026-10-24.** A render directory must carry one of the two documents: with neither, parity refuses with the re-render message; the legacy sidecar is still read. The measured fade no longer decides `scored` (ADR 0005): the floor comes from authored brightness, and a tick with no authored entry is not excluded. The baseline was regenerated - 1333 CTRY frames and 2876 INTRO frames - and the pre-change binary and the landing-2 binary produce semantically identical reports on both regenerated directories and on the legacy-only baseline render directory.

@@ -100,12 +100,18 @@ pub(super) fn write_reference_faded(dir: &Path, film_ticks: &[u64], tag: bool, s
 
 /// Writes a grey-ramp render at `path`, with planes that match the synthetic capture.
 pub(super) fn write_render(path: &Path) {
+    write_render_with_brightness(path, 0x8000);
+}
+
+/// Like [`write_render`], with the film authoring `brightness` at this tick.
+pub(super) fn write_render_with_brightness(path: &Path, brightness: u16) {
     let image = image::RgbaImage::from_fn(MODE13H_WIDTH as u32, MODE13H_HEIGHT as u32, |x, y| {
         let v = ((x + y) % 251) as u8;
         image::Rgba([v, v, v, 255])
     });
     image.save(path).unwrap();
     write_planes(path);
+    write_render_record(path, brightness);
 }
 
 /// Writes the unfaded view of the synthetic capture planes as a render.
@@ -116,6 +122,49 @@ pub(super) fn write_matching_render(path: &Path) {
     });
     image.save(path).unwrap();
     write_planes(path);
+    write_render_record(path, 0x8000);
+}
+
+/// Adds (or replaces) this tick's entry in the render directory's `render.json`.
+fn write_render_record(path: &Path, brightness: u16) {
+    let Some(tick) = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .and_then(|stem| stem.strip_prefix("tick_"))
+        .and_then(|digits| digits.parse::<u32>().ok())
+    else {
+        return;
+    };
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let document_path = dir.join("render.json");
+    let mut ticks: Vec<Value> = fs::read_to_string(&document_path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|value| value.get("ticks").and_then(Value::as_array).cloned())
+        .unwrap_or_default();
+    ticks.retain(|entry| entry.get("tick").and_then(Value::as_u64) != Some(u64::from(tick)));
+    ticks.push(json!({
+        "tick": tick,
+        "palette": {"sky": 0, "brightness": brightness, "saturation": 0x8000u16},
+        "camera": {
+            "eye": [0.0, 0.0, 0.0],
+            "target": [0.0, 0.0, 0.0],
+            "fov_degrees": 45.0,
+            "roll_radians": 0.0,
+        },
+    }));
+    ticks.sort_by_key(|entry| entry.get("tick").and_then(Value::as_u64).unwrap_or(0));
+    let document = json!({
+        "schema_version": 1,
+        "film": {},
+        "geometry": {"width": MODE13H_WIDTH, "height": MODE13H_HEIGHT},
+        "ticks": ticks,
+    });
+    fs::write(
+        &document_path,
+        serde_json::to_string_pretty(&document).unwrap(),
+    )
+    .unwrap();
 }
 
 /// Writes the index and layer planes beside the render PNG at `path`: the capture's own
