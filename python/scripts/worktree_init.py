@@ -40,8 +40,10 @@ CLEAN_FILES: tuple[str, ...] = (".coverage",)
 
 #: Roots whose child directories are throwaway parity render trees.
 PARITY_ROOTS: tuple[str, ...] = ("build/parity/ours", "build/scratch/sweep")
-#: Name suffixes that hold a baseline something else reads; never pruned.
-PARITY_PROTECTED: tuple[str, ...] = ("_current", "_previous")
+#: Name suffixes that hold a baseline something else reads; never pruned. ``_base`` is the
+#: named baseline ``research/parity/method.md` tells you to copy, and losing it to a rotation is
+#: the one unrecoverable outcome here — a scratch tree can always be re-rendered.
+PARITY_PROTECTED: tuple[str, ...] = ("_current", "_previous", "_base")
 
 REFERENCE_LINK = "build/parity/reference"
 
