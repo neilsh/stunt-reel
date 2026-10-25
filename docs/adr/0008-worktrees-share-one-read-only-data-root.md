@@ -25,7 +25,7 @@ hardcode it, and one DOSBox-X instance serves the whole machine.
 
 ## Considered Options
 
-- **Plumbing only** — an environment variable plus ``--data-root`` on every reader.
+- **Plumbing only** — an environment variable plus ``--data-root`` on every reader (the flag survives on the parity scripts as an override that scores another checkout, not as the mechanism).
   Rejected because four DOSBox profiles, ``streamer.py``,
   ``adversarial_formats_challenge.py`` and ``verify_schemas_corpus.py`` resolve
   ``corpus/...`` against the working directory; each would need surgery and would
@@ -44,3 +44,11 @@ hardcode it, and one DOSBox-X instance serves the whole machine.
 ``mise run clean -- --yes`` removes a worktree's outputs before it is reaped, and the
 debug profile drops to ``line-tables-only``: full debug info was 14.4 GB of the
 17 GB ``target/``, paid again by every worktree.
+
+Two costs are visible in tooling. A worktree inside the checkout is read by every
+recursive tool unless it is both gitignored and ruff-excluded, which is what
+``tests/test_worktree_layout.py`` fails on: 61 seconds of ``test_doc_invariants``
+before it pruned. And a junction is invisible to anything that enumerates the git
+index: ``corpus/stisldem`` never appears in an editor's tree or in the agent's ``@``
+file picker, because its contents are untracked, though a read by absolute path is
+unaffected.

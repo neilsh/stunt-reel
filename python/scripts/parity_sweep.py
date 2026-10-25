@@ -490,7 +490,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--films", default=",".join(FILMS), help="comma list; default: all")
     parser.add_argument("--probe", choices=("film", "iou"), default="film")
     parser.add_argument("--keep-best", action="store_true", help="keep the winner's render dirs")
-    parser.add_argument("--data-root", type=Path, default=REPO_ROOT, help="holds corpus/, captures")
+    parser.add_argument(
+        "--data-root",
+        type=Path,
+        default=REPO_ROOT,
+        help="score another checkout's corpus and captures; this one is linked on first read",
+    )
     parser.add_argument("--no-build", action="store_true", help="reuse the release binary")
     parser.add_argument(
         "--reuse", type=Path, default=None, help="score DIR/<film> without rendering"

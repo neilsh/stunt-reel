@@ -82,7 +82,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--retime", type=int, default=None, metavar="N", help="score each film relabelled by N"
     )
-    parser.add_argument("--data-root", type=Path, default=REPO_ROOT, help="holds corpus/, captures")
+    parser.add_argument(
+        "--data-root",
+        type=Path,
+        default=REPO_ROOT,
+        help="score another checkout's corpus and captures; this one is linked on first read",
+    )
     return parser.parse_args(argv)
 
 
