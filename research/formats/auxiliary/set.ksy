@@ -5,13 +5,12 @@
 # 0x08 at 0x0052. `0x53` counts events (six printed set dumps agree); the byte
 # at 0x54 is unidentified, observed 0-3.
 #
-# Body (BK-SET-05):
-#   size = 0x97 + 64 * (props - 1 + events) + 3 * (events - 1)
-# i.e. 55 undecoded bytes at 0x0060, then 64-byte records -- `props - 1` prop
-# records followed by `events` event records -- then a 3-byte-per-extra-event
-# trailer. Verified against the six printed dumps and, as a whole number of
-# records, against all 35 loose corpus sets. The per-field map of an event
-# record is partial; see set.md 3.5.
+# Body (BK-SET-05): the event table comes first.
+#   size = 0x60 + 55 + 67 * (events - 1) + 64 * props
+# i.e. a 55-byte event record at 0x0060 plus 67 bytes per further event, then
+# 64 bytes per prop, all props stored. Verified against the six printed dumps
+# and, as a whole number of records, against all 35 loose corpus sets. Event
+# fields are mapped by byte flipping through TYPESET; see set.md 3.5.
 meta:
   id: set
   title: Stunt Island scene definition (`.SET`)
