@@ -18,6 +18,7 @@ mod config;
 mod export;
 mod headless;
 mod parity;
+mod parity_artifacts;
 mod scene;
 mod sod_census;
 mod window;

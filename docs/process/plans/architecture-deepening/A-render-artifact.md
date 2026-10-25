@@ -1,6 +1,6 @@
 # Unit A: the render artifact seam
 
-Status: design agreed 2026-10-24, implementation not started. Source: architecture review card 1 (the render artifact seam) plus the report-aggregation rider.
+Status: design agreed 2026-10-24; landing 1 of 4 merged. Source: architecture review card 1 (the render artifact seam) plus the report-aggregation rider.
 
 ## 1. Problem
 
@@ -107,3 +107,7 @@ Abandon or re-shape the unit if: the port crate needs `stunt-render` or wgpu to 
 - Crate and module names (`stunt-parity`, `parity_artifacts`) are proposals; confirm at the first PR.
 - Whether `RenderPalette` mirrors or wraps the core palette contract is settled in favour of a port-owned record; record the decision in the first PR.
 - The Python adapter module joins the shipped package (ADR 0010 keeps it dependency-free); confirm this is intended in the first PR.
+
+## 11. Landing log
+
+1. **Landing 1 merged 2026-10-24.** The `stunt-parity` port crate (schema, validation, unit tests); the CLI adapter (`RenderJournal`, capture loader, render-record reader with legacy sidecar fallback, report read/write); `--headless` dual-writes `palette_controls.json` and `render.json` last; parity reads through the adapter; the report schema moved to the port crate. Verification: `mise run check` green; the pre-change binary and the new one produce semantically identical `report.json` on `build/parity/ours/ctry_current` (124 frames); three re-rendered ticks have byte-identical PNG, `.idx` and `.layer` against the baseline.

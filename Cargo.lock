@@ -1935,7 +1935,9 @@ dependencies = [
  "serde_json",
  "stunt-core",
  "stunt-gltf",
+ "stunt-parity",
  "stunt-render",
+ "thiserror 2.0.21",
  "wgpu",
  "winit",
 ]
@@ -1958,6 +1960,15 @@ dependencies = [
  "gltf",
  "serde_json",
  "stunt-core",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "stunt-parity"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 

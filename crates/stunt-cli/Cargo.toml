@@ -15,11 +15,13 @@ workspace = true
 [dependencies]
 stunt-core = { path = "../stunt-core", features = ["bytemuck", "serde"] }
 stunt-gltf = { path = "../stunt-gltf" }
+stunt-parity = { path = "../stunt-parity" }
 stunt-render = { path = "../stunt-render" }
 wgpu = "24.0"
 winit = "0.30"
 pollster = "0.4"
 glam = "0.29"
+thiserror = "2.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"

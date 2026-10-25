@@ -47,20 +47,18 @@ mod tests;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
-use serde_json::Value;
-
 use args::Args;
 use compare::run_compare;
 use fade::fade_reference_set;
-use frames::{
-    load_reference, read_film_ticks, read_index_plane, read_png_luminance, read_render_palettes,
-    read_render_planes, reference_paths, warn_on_film_mismatch,
-};
+use frames::{load_reference, read_index_plane, read_png_luminance, read_render_planes};
 use loss::LOSS_CLASSES;
 use mask::CAPTURE_SKY_INDICES;
 use report::{FrameReport, I6Gate, Report};
 use score::{FrameMetrics, ReferenceFrame, RenderFrame, ScorePolicy, score_frame};
 use sheets::write_contact_sheet;
+use stunt_parity::FilmId;
+
+use crate::parity_artifacts;
 
 pub(crate) use args::usage;
 
@@ -76,6 +74,24 @@ fn i6_gate(mean_ssim_scored: Option<f32>) -> I6Gate {
     I6Gate {
         initial: reaches(I6_INITIAL_SSIM),
         sign_off: reaches(I6_SIGN_OFF_SSIM),
+    }
+}
+
+/// Prints a warning when the capture and the render name different films or `.FLM` sizes.
+fn warn_on_film_mismatch(capture: &FilmId, render: &FilmId) {
+    if capture.names_conflict(render) {
+        println!(
+            "[parity] warning: the capture is of {} but the render is of {}",
+            capture.name.as_deref().unwrap_or("?"),
+            render.name.as_deref().unwrap_or("?")
+        );
+    }
+    if capture.bytes_conflict(render) {
+        println!(
+            "[parity] warning: the capture's .FLM is {} bytes but the render's is {}",
+            capture.flm_bytes.unwrap_or(0),
+            render.flm_bytes.unwrap_or(0)
+        );
     }
 }
 
@@ -110,20 +126,31 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     fs::create_dir_all(&args.output)
         .map_err(|e| format!("create output directory {}: {e}", args.output.display()))?;
 
-    let meta_path = args.reference.join("meta.json");
-    let meta_text =
-        fs::read_to_string(&meta_path).map_err(|e| format!("read {}: {e}", meta_path.display()))?;
-    let meta: Value = serde_json::from_str(&meta_text)
-        .map_err(|e| format!("parse {}: {e}", meta_path.display()))?;
-    let frames = meta
-        .get("frames")
-        .and_then(Value::as_array)
-        .ok_or_else(|| format!("{} has no frames array", meta_path.display()))?;
-
-    warn_on_film_mismatch(&meta, &args.test);
-    let film_ticks = read_film_ticks(frames, &meta_path)?;
-    let render_palettes = read_render_palettes(&args.test)?;
-    let first_plane = read_index_plane(&reference_paths(&args.reference, &frames[0], 1).0)?;
+    let capture =
+        parity_artifacts::load_capture(&args.reference).map_err(|error| error.to_string())?;
+    let render =
+        parity_artifacts::load_render_controls(&args.test).map_err(|error| error.to_string())?;
+    warn_on_film_mismatch(&capture.film, &render.film);
+    if let Some(geometry) = render.geometry
+        && (geometry.width != capture.geometry.width || geometry.height != capture.geometry.height)
+    {
+        return Err(format!(
+            "render geometry {}x{} differs from the capture's {}x{}; re-render \
+             with --width {} --height {}",
+            geometry.width,
+            geometry.height,
+            capture.geometry.width,
+            capture.geometry.height,
+            capture.geometry.width,
+            capture.geometry.height
+        ));
+    }
+    let frames = &capture.frames;
+    let render_palettes = render.controls;
+    let first_frame = frames
+        .first()
+        .ok_or_else(|| format!("{} has no captured frames", args.reference.display()))?;
+    let first_plane = read_index_plane(&args.reference.join(&first_frame.frame_file))?;
     let fade_set = fade_reference_set(&first_plane);
     let policy = ScorePolicy {
         fade_set: &fade_set,
@@ -131,17 +158,18 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     };
 
     let mut sheet_ordinals: BTreeSet<usize> = CONTACT_SHEET_ORDINALS.iter().copied().collect();
-    sheet_ordinals.insert(film_ticks.len());
+    sheet_ordinals.insert(frames.len());
 
     let mut scores: Vec<FrameRow> = Vec::with_capacity(frames.len());
     let mut unmatched = 0usize;
     let mut written_sheets: BTreeSet<usize> = BTreeSet::new();
     let mut worst: Vec<(f32, usize, Vec<f32>, Vec<f32>)> = Vec::new();
 
-    for (index, frame) in frames.iter().enumerate() {
-        let ordinal = index + 1;
-        let film_tick = film_ticks[index];
-        let (reference_file, palette_file) = reference_paths(&args.reference, frame, ordinal);
+    for frame in frames {
+        let ordinal = frame.ordinal as usize;
+        let film_tick = frame.film_tick as usize;
+        let reference_file = args.reference.join(&frame.frame_file);
+        let palette_file = args.reference.join(&frame.palette_file);
         let test_file = args.test.join(crate::headless::tick_png_name(film_tick));
 
         if !reference_file.is_file() || !palette_file.is_file() || !test_file.is_file() {
@@ -157,7 +185,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
                 luminance: read_png_luminance(&test_file)?,
                 indices: render_indices,
                 layers: render_layers,
-                controls: render_palettes.get(&film_tick).copied(),
+                controls: render_palettes.get(&(film_tick as u32)).copied(),
             },
             &policy,
         );
@@ -262,11 +290,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             .collect(),
     };
     let report_path = args.output.join("report.json");
-    fs::write(
-        &report_path,
-        serde_json::to_string_pretty(&report).map_err(|e| format!("serialize report: {e}"))?,
-    )
-    .map_err(|e| format!("write {}: {e}", report_path.display()))?;
+    parity_artifacts::write_report(&report_path, &report).map_err(|error| error.to_string())?;
 
     println!(
         "[parity] {} frames, mean SSIM {mean_ssim:.3}, mean IoU {mean_iou:.3}",

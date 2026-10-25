@@ -3,12 +3,13 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde_json::json;
 use stunt_core::flm::{CAMERA_FORWARD, TIMELINE_HZ, TIMELINE_TICK_SECONDS};
 use stunt_core::scene::FilmScene;
+use stunt_parity::Geometry;
 use stunt_render::{FfmpegVideoWriter, HeadlessRenderer, SceneRenderer};
 
 use crate::config::CliConfig;
+use crate::parity_artifacts::{RenderJournal, film_identity};
 
 /// Evenly spaced ticks covering the half-open range `[start_tick, end_tick)`,
 /// including the first tick and the final tick in the range.
@@ -48,10 +49,6 @@ impl std::fmt::Display for SampleKey {
         }
     }
 }
-
-/// Per-tick film palette controls written beside the `tick_NNNNN.png` renders, so
-/// `parity` can rebuild the palette each render used.
-pub(crate) const PALETTE_SIDECAR_NAME: &str = "palette_controls.json";
 
 /// File name `parity` looks up for the render of 0-based 50 Hz `tick`.
 pub(crate) fn tick_png_name(tick: usize) -> String {
@@ -216,9 +213,20 @@ pub(crate) fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), 
         }
     }
 
+    let mut render_journal = config.out_dir.as_ref().map(|dir| {
+        RenderJournal::begin(
+            dir,
+            film_identity(config.flm_path.as_deref()),
+            Geometry {
+                width: config.width,
+                height: config.height,
+                viewport_rows: config.viewport_rows,
+            },
+        )
+    });
+
     let mut written_pngs = 0usize;
     let mut written_video_frames = 0usize;
-    let mut tick_palettes = Vec::new();
 
     for (key, tick) in samples {
         // `PLAYONE` advances the film clock at the start of a frame and the capture reads the
@@ -227,19 +235,10 @@ pub(crate) fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), 
         // capture on both films (CTRY 0.7713 -> 0.7732, INTRO 0.6775 -> 0.6793 when the renders
         // are shifted, research/playone-exe/capture.md).
         let frame = scene.frame((tick - 1.0).max(0.0));
-        if let SampleKey::Tick(tick) = key {
-            tick_palettes.push(json!({
-                "tick": tick,
-                "sky": frame.palette.sky,
-                "brightness": frame.palette.brightness,
-                "saturation": frame.palette.saturation,
-                "camera": {
-                    "eye": frame.camera.eye,
-                    "target": frame.camera.target,
-                    "fov_degrees": frame.camera.fov_degrees,
-                    "roll_radians": frame.camera.roll_radians,
-                },
-            }));
+        if let (Some(journal), SampleKey::Tick(tick)) = (render_journal.as_mut(), key)
+            && let Ok(tick) = u32::try_from(tick)
+        {
+            journal.record(tick, &frame);
         }
         let (rgba_bytes, plane) = renderer
             .render_scene_with_plane(&mut scene_renderer, &frame, None, Some(config.clear_index))
@@ -261,23 +260,8 @@ pub(crate) fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), 
     }
 
     if let Some(out_dir) = &config.out_dir {
-        if !tick_palettes.is_empty() {
-            let path = out_dir.join(PALETTE_SIDECAR_NAME);
-            let text = serde_json::to_string(&json!({
-                "film": config
-                    .flm_path
-                    .as_ref()
-                    .and_then(|p| p.file_name())
-                    .map(|n| n.to_string_lossy().into_owned()),
-                "flm_bytes": config
-                    .flm_path
-                    .as_ref()
-                    .and_then(|p| fs::metadata(p).ok())
-                    .map(|m| m.len()),
-                "ticks": tick_palettes,
-            }))
-            .map_err(|e| format!("serialize {}: {e}", path.display()))?;
-            fs::write(&path, text).map_err(|e| format!("write {}: {e}", path.display()))?;
+        if let Some(journal) = render_journal {
+            journal.finish().map_err(|e| e.to_string())?;
         }
         println!(
             "[stuntreel] Wrote {written_pngs} parity frames to {}",

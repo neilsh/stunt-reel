@@ -4,13 +4,14 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use serde_json::Value;
-
 use super::args::Args;
-use super::frames::{load_reference, load_render_rescaled, reference_luminance, reference_paths};
+use super::frames::{load_reference, load_render_rescaled, reference_luminance};
 use super::report::Report;
 use super::report_diff::compare_reports;
 use super::sheets::{abs_difference, write_panel_sheet};
+use stunt_parity::CapturedFrame;
+
+use crate::parity_artifacts;
 
 /// Compares the fresh `report` with the previous report at `previous_path`: prints the
 /// summary, writes `compare.json`, and renders before/after sheets when the previous
@@ -19,12 +20,10 @@ pub(super) fn run_compare(
     args: &Args,
     previous_path: &Path,
     report: &Report,
-    frames: &[Value],
+    frames: &[CapturedFrame],
 ) -> Result<(), String> {
-    let text = fs::read_to_string(previous_path)
-        .map_err(|e| format!("read {}: {e}", previous_path.display()))?;
-    let previous: Report = serde_json::from_str(&text)
-        .map_err(|e| format!("parse {}: {e}", previous_path.display()))?;
+    let previous =
+        parity_artifacts::read_report(previous_path).map_err(|error| error.to_string())?;
     let comparison = compare_reports(&previous, report)
         .map_err(|e| format!("compare with {}: {e}", previous_path.display()))?;
 
@@ -70,8 +69,11 @@ pub(super) fn run_compare(
             );
             continue;
         }
-        let (reference_file, palette_file) =
-            reference_paths(&args.reference, &frames[ordinal - 1], ordinal);
+        let frame = frames
+            .get(ordinal - 1)
+            .ok_or_else(|| format!("frame {ordinal} missing from the capture"))?;
+        let reference_file = args.reference.join(&frame.frame_file);
+        let palette_file = args.reference.join(&frame.palette_file);
         let (indices, palette) = load_reference(&reference_file, &palette_file)?;
         let reference = reference_luminance(&indices, &palette);
         let before = load_render_rescaled(&before_png)?;
@@ -102,6 +104,7 @@ mod tests {
     use crate::parity::test_support::{
         TempDir, run_parity, write_matching_render, write_reference, write_render,
     };
+    use serde_json::Value;
     use stunt_render::MODE13H_WIDTH;
 
     #[test]

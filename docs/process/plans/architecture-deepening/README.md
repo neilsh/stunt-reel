@@ -1,6 +1,6 @@
 # Architecture Deepening Programme (Milestone 4)
 
-Status: design complete, implementation not started. The programme turns six deepening candidates from the architecture review into four design units, worked in order. Every brief is agreed; implementation is handed off below.
+Status: implementation in progress. The programme turns six deepening candidates from the architecture review into four design units, worked in order. Every brief is agreed; unit A landing 1 is merged and the handoff below governs the remaining landings.
 
 ## 1. Settled programme decisions
 
