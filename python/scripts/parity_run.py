@@ -36,6 +36,8 @@ from parity_sweep import (
     score_dir,
 )
 
+from stunt_reel.dataroot import SharedDataError, ensure_links
+
 OURS = REPO_ROOT / "build" / "parity" / "ours"
 REPORT = REPO_ROOT / "build" / "parity" / "report"
 SCRATCH = REPO_ROOT / "build" / "scratch" / "parity"
@@ -95,6 +97,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     root: Path = args.data_root.resolve()
+    if root == REPO_ROOT:
+        try:
+            for relative in ensure_links():
+                print(f"[parity] linked {relative}", file=sys.stderr)
+        except SharedDataError as err:
+            print(f"parity_run: {err}", file=sys.stderr)
+            return 2
     problems = preflight(root, films, build_required=not args.no_build)
     if problems:
         print("parity_run: " + "\n  ".join(problems), file=sys.stderr)

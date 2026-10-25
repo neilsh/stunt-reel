@@ -17,6 +17,12 @@ bound by ``ListenTransport`` with ``listen(1)`` (``SO_EXCLUSIVEADDRUSE`` on Wind
 so a second capture fails at the bind), the four ``dosbox-*.conf`` profiles
 hardcode it, and one DOSBox-X instance serves the whole machine.
 
+## What enforces this
+
+- **The write guard.** [`require_shared_write`](../../python/stunt_reel/dataroot.py) is called by both writers: [`capture-ref`](../../python/scripts/capture_playone_reference.py) when `--out` resolves into the root, and oracle generation per destination in [`models.py`](../../python/stunt_reel/tac/models.py). [`test_dataroot.py`](../../tests/test_dataroot.py) covers the opt-in and the resolution through a real junction.
+- **The capture lock.** The bind in [`transport.py`](../../python/stunt_reel/tac/transport.py), covered by the port-taken case in [`test_tac_transport_framing.py`](../../tests/test_tac_transport_framing.py). It serialises captures only: a second DOSBox-X still starts, and oracle generation is not exclusive.
+- **`init` on first use.** [`ensure_links`](../../python/stunt_reel/dataroot.py) repairs a worktree that never ran `mise run init` at the point the corpus is read — `capture-ref`, `parity` and `sweep` — replacing a `.gitkeep` placeholder with the junction, creating a shared directory that is still empty, and refusing rather than moving a checkout that holds data of its own (`--migrate` is that decision). Covered by [`test_dataroot.py`](../../tests/test_dataroot.py). A worktree made by any tool therefore works on first read; the `stuntreel` census takes its corpus path from the caller, so it fails loudly instead.
+
 ## Considered Options
 
 - **Plumbing only** — an environment variable plus ``--data-root`` on every reader.

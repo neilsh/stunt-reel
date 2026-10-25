@@ -11,19 +11,19 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
-from stunt_reel.dataroot import DATA_ENV, REPO_ROOT, data_root
-
-#: (directory inside the data root, path inside the checkout that borrows it)
-LINKS: tuple[tuple[str, str], ...] = (
-    ("stisldem", "corpus/stisldem"),
-    ("si_archive", "corpus/si_archive"),
-    ("oracle", "corpus/oracle"),
-    ("target_bin", "target_bin"),
-    ("reference", "build/parity/reference"),
+from stunt_reel.dataroot import (
+    DATA_ENV,
+    LINK_TARGETS,
+    REPO_ROOT,
+    create_link,
+    data_root,
+    is_link,
+    is_placeholder,
+    link_points_at,
+    remove_link,
 )
 
 #: Per-worktree build outputs and caches that ``clean`` reports.
@@ -31,65 +31,13 @@ CLEAN_PATHS: tuple[str, ...] = ("target", "build", ".pytest_cache", ".mypy_cache
 CLEAN_FILES: tuple[str, ...] = (".coverage",)
 
 REFERENCE_LINK = "build/parity/reference"
-FILE_ATTRIBUTE_REPARSE_POINT = 0x400
-
-
-def _is_link(path: Path) -> bool:
-    """True for symbolic links and Windows junctions, which ``is_symlink`` misses."""
-    if path.is_symlink():
-        return True
-    try:
-        # lstat, not stat: stat follows the reparse point and reports the target.
-        attributes = getattr(path.lstat(), "st_file_attributes", 0)
-    except OSError:
-        return False
-    return bool(attributes & FILE_ATTRIBUTE_REPARSE_POINT)
-
-
-def _is_placeholder(path: Path) -> bool:
-    """True when git kept the directory alive with a ``.gitkeep`` and no data."""
-    return all(entry.name == ".gitkeep" for entry in path.iterdir())
-
-
-def _link_points_at(path: Path, target: Path) -> bool:
-    try:
-        return Path(os.path.realpath(path)) == target
-    except OSError:
-        return False
-
-
-def _remove_link(path: Path) -> None:
-    if path.is_symlink():
-        path.unlink()
-    else:
-        path.rmdir()
-
-
-def _create_link(link: Path, target: Path) -> None:
-    link.parent.mkdir(parents=True, exist_ok=True)
-    if os.name != "nt":
-        os.symlink(target, link, target_is_directory=True)
-        return
-    # A junction needs neither elevation nor Developer Mode, unlike a symlink.
-    command = [
-        os.environ.get("COMSPEC", "cmd.exe"),
-        "/c",
-        "mklink",
-        "/J",
-        str(link),
-        str(target),
-    ]
-    result = subprocess.run(command, capture_output=True, text=True, check=False)  # noqa: S603
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout).strip()
-        raise SystemExit(f"cannot link {link} -> {target}: {detail}")
 
 
 def _size(path: Path) -> int:
     """Bytes under *path*, without descending into links to the data root."""
     total = 0
     for dirpath, dirnames, filenames in os.walk(path):
-        dirnames[:] = [name for name in dirnames if not _is_link(Path(dirpath) / name)]
+        dirnames[:] = [name for name in dirnames if not is_link(Path(dirpath) / name)]
         for name in filenames:
             try:
                 total += (Path(dirpath) / name).stat().st_size
@@ -101,7 +49,7 @@ def _size(path: Path) -> int:
 def _migrate(relative: str, target: Path) -> None:
     """Move an existing in-checkout directory into the data root, once."""
     link = REPO_ROOT / relative
-    if _is_link(link) or not link.is_dir() or _is_placeholder(link):
+    if is_link(link) or not link.is_dir() or is_placeholder(link):
         return
     if target.exists():
         print(f"  ! {relative}: both the checkout and {target} hold data; left alone")
@@ -117,11 +65,11 @@ def _init(migrate: bool) -> int:
     print(f"worktree   {REPO_ROOT}")
     print(f"data root  {root} ({source})")
     if migrate:
-        for shared, relative in LINKS:
+        for shared, relative in LINK_TARGETS:
             _migrate(relative, root / shared)
 
     problems = 0
-    for shared, relative in LINKS:
+    for shared, relative in LINK_TARGETS:
         target = root / shared
         link = REPO_ROOT / relative
         if not target.exists():
@@ -130,13 +78,13 @@ def _init(migrate: bool) -> int:
             # say so, because every reader below that fails will name this path.
             target.mkdir(parents=True, exist_ok=True)
             print(f"  ! {target} was missing; created it empty")
-        if _is_link(link) and _link_points_at(link, target):
+        if is_link(link) and link_points_at(link, target):
             print(f"  = {relative}")
             continue
-        if _is_link(link):
-            _remove_link(link)
+        if is_link(link):
+            remove_link(link)
         elif link.is_dir():
-            if not _is_placeholder(link):
+            if not is_placeholder(link):
                 print(f"  ! {relative} is a directory with files; re-run with --migrate")
                 problems += 1
                 continue
@@ -145,7 +93,7 @@ def _init(migrate: bool) -> int:
             link.rmdir()
         elif link.exists():
             link.unlink()
-        _create_link(link, target)
+        create_link(link, target)
         print(f"  + {relative} -> {target}")
 
     if problems:
@@ -159,7 +107,7 @@ def _clean(confirmed: bool) -> int:
     files = [REPO_ROOT / name for name in CLEAN_FILES]
     total = 0
     for path in targets:
-        if not path.exists() or _is_link(path):
+        if not path.exists() or is_link(path):
             continue
         size = _size(path)
         total += size
@@ -174,16 +122,16 @@ def _clean(confirmed: bool) -> int:
         return 0
 
     reference = REPO_ROOT / REFERENCE_LINK
-    restore = _is_link(reference)
+    restore = is_link(reference)
     if restore:
-        _remove_link(reference)
+        remove_link(reference)
     for path in targets:
-        if path.exists() and not _is_link(path):
+        if path.exists() and not is_link(path):
             shutil.rmtree(path)
     for path in files:
         path.unlink(missing_ok=True)
     if restore:
-        _create_link(reference, data_root() / "reference")
+        create_link(reference, data_root() / "reference")
     print("\nremoved; the shared data root is untouched")
     return 0
 

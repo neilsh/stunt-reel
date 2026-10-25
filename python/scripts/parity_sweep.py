@@ -42,6 +42,8 @@ from typing import Any
 import parity_probe
 from parity_probe import capture_ticks
 
+from stunt_reel.dataroot import SharedDataError, ensure_links
+
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SCRATCH = Path("build/scratch/sweep")
 VAR_NAME = re.compile(r"DBG_[A-Z0-9_]+")
@@ -514,6 +516,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"parity_sweep: {err}", file=sys.stderr)
         return 2
     root: Path = args.data_root.resolve()
+    if root == REPO_ROOT:
+        try:
+            for relative in ensure_links():
+                print(f"[sweep] linked {relative}", file=sys.stderr)
+        except SharedDataError as err:
+            print(f"parity_sweep: {err}", file=sys.stderr)
+            return 2
     problems = preflight(root, films, build_required=not args.no_build)
     if problems:
         print("parity_sweep: " + "\n  ".join(problems), file=sys.stderr)
