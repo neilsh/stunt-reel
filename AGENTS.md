@@ -85,7 +85,7 @@ Write the body whenever a reviewer would have to ask "why this way?": what force
 Each turn re-sends the whole conversation, so cost is roughly turns times context size.
 1. **Fewer, fuller turns.** Batch independent reads and commands into one turn. Find the file through [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) before grepping, and read line ranges of files over about 20 KB rather than the whole file. Reach a file with `read` and a string with `grep`/`glob`; `Get-ChildItem` and `Get-Content` through a shell cost a turn and return a formatted table.
 2. **Scoped checks while iterating.** Use `mise run check-rust` or `mise run check-py` (one line per step, failures only); run the full `mise run check` once, before a commit or hand-off (Directive 2).
-3. **Scripts before subagents.** Mechanical checks (link, anchor, table or mapping audits) belong in a script. Delegate only real chunks of work: Haiku first, Sonnet as fallback, at most about 8 subagents per task, since each one starts cold.
+3. **Scripts before subagents.** Mechanical checks (link, anchor, table or mapping audits) belong in a script. Delegate only real chunks of work: at most about 8 subagents per task, since each one starts cold.
 4. **Parity work** follows the [`improving-render-parity`](.agents/skills/improving-render-parity/SKILL.md) skill, which holds its own cost rules (build once, batched sweeps, scratch paths, image budget).
 5. **Drive everything through `mise run`.** Every agent-facing script has a task, so `mise run *` is the one command shape the harness pre-approves ([`docs/harness.md`](docs/harness.md)) and `mise tasks` is the one list of what exists. A task name you cannot find there does not exist — do not guess one.
 
