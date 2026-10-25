@@ -7,6 +7,7 @@
 | File | Size | Unpacks to |
 |---|---|---|
 | `corpus/siarchive/Films/OldPLAY/STUNT.EXE` | 137,240 | `stunt.img` 248,460 |
+| `target_bin/StuntIsl/STUNT.EXE` | 138,318 | not yet unpacked |
 | `corpus/siarchive/Films/OldPLAY/MAKEONE.EXE` | 103,247 | `makeone.img` 201,884 |
 | `corpus/siarchive/Films/OldPLAY/PLAYONE.EXE` | 102,703 | `playone.img` 200,524 |
 | `corpus/siarchive/Films/MultiFLM/*/PLAYONE.EXE` | 97,790 | not yet unpacked |
@@ -51,6 +52,18 @@ This is the authoritative operator list for [`set.md` § 3.6](../formats/auxilia
 ## 4. What this buys the event-table work
 
 The templates are fed from the record, so the code that formats a rule is the code that reads its fields. Finding the formatter and reading how it loads each `\\N` argument converts the current inferred field map into a direct one. That is the next step, and it needs a disassembler rather than byte diffing; [`playone-exe/static-tooling.md`](../playone-exe/static-tooling.md) records which ones were evaluated.
+
+## 5. The retail install and TYPESET.EXE
+
+`target_bin/StuntIsl/` is a full retail install, and it settles two things.
+
+**It holds a second STUNT.EXE build**: 138,318 bytes against the corpus copy's 137,240, with `MAKEONE.EXE` and `PLAYONE.EXE` identical either side. As with `PLAYONE`, an address must name its build.
+
+**It holds `TYPESET.EXE`, the tool that produced every printed set dump.** The install ships the wrapper: `SETINFO.BAT` is `TYPESET %1.SET > %1.TXT` and `PRINTSET.BAT` is `TYPESET %1.SET > PRN:`. Every `.TXT` in `Misc/Sets/` is therefore TYPESET's output, and its wording ("Event#1 One Shot", "If … And … Then …") is that program's, not the handbook's.
+
+TYPESET is LZEXE-packed (28,411 to 39,786 bytes, `build/re/typeset.img`) and is a Microsoft C program. Its string table carries the same operator templates as `STUNT.EXE` plus one `STUNT.EXE` builds at run time: `flag #\1b <> \2b`, the not-equal qualifier. It also lists `yaw`, `auto zoom` and `distance` in the `change` property set.
+
+The install's own `SETS/` directory holds 36 `.SET` files — the retail levels, including `CTRY.SET`, the set behind `CTRY.FLM` — which are additional layout samples the community archive does not duplicate.
 
 ## Ruled out
 

@@ -174,16 +174,19 @@ Every other byte of the 64 is either constant across those eight rules or has no
 
 The printed dumps are a ground truth only in part. `BOMBING.TXT` is a tutorial article carrying several sets' worth of `Prop #` blocks, so a prop list cannot be attributed to one file; but matched by stunt title, the six dumps that name a shipped set confirm `0x53` as the event count every time. One header field still disagrees: `BOMBING.SET` prints `Time of Day :08:00` while `0x2E` reads `0xD582`, so that field's encoding is unconfirmed and its tier is lowered above.
 
-### 3.6 Event Action Codes (`action_code`)
+### 3.6 Event Operators
 
-| Opcode | Symbolic Name | Target Parameter Semantics | Description |
-| :--- | :--- | :--- | :--- |
-| `0x0001` | `EVT_EXPLODE` | Explosion particle scale | Triggers instantaneous destruction and explosion billboard |
-| `0x0002` | `EVT_CAM_SWITCH` | Camera rig index (`cam_id`) | Directs active camera viewport to switch to specified camera |
-| `0x0003` | `EVT_AUDIO_CUE` | Audio sample index in `.RES` | Triggers playback of `.VOC` / `.WAV` sound effect |
-| `0x0004` | `EVT_TAKEOVER` | Control mode flags | Activates autopilot or script-driven vehicle path traversal |
+`TYPESET.EXE` is the tool that prints a set (`SETINFO.BAT` runs `TYPESET %1.SET > %1.TXT`), so these are the operator names the retail build itself emits. It renders each rule through printf templates, which makes each operand's width part of the evidence: `\\1O` is an object index, `\\1b` a byte, `\\1w` a word, `\\3t` a time, `\\1m` miles per hour. `[Established]` as vocabulary; the numeric encoding of each operator is still unknown.
 
-These four symbols are carried from earlier community summaries. No source in the corpus reproduces the values, and they do not correspond to the byte-level property ids observed in § 3.5, so the whole table is unverified pending that field map; treat the codes as `[Hypothesis]` rather than as the `[Established]` tier this section previously implied.
+**IF** — `\\1O hits \\2O`, `\\1O crashes`, `\\1p seconds have elapsed`, `weapon count = \\1w`, `never`.
+
+**AND** — `it's before \\1p seconds`, `it's after \\1p seconds`, `event #\\1w has happened`, `event #\\1w hasnt happened`, `flag #\\1b = \\2b`, `flag #\\1b <> \\2b`, `plane's speed < \\1m mph`, `plane's speed > \\1m mph`.
+
+**THEN** — `do nothing`, `award $\\3w`, `play \\s`, `cut to \\1o`, `set time to \\3t`, `finish - \\r`, `change \\1o's \\2v to \\x`, `wait \\3p seconds`, `start recording`, `stop recording`, `stop \\1o`, `kill \\1o`, `explode \\1o`, `fade to \\3w%`, `set flag #\\2b to \\3b`, `modify flag #\\2b by \\3b`, `stop recording if autoediting`.
+
+**The `change` property set (`\\2v`)** — shape, WE position, altitude, SN position, roll, pitch, yaw, roll anim, pitch anim, yaw anim, heading pitch, heading yaw, heading pitch anim, heading yaw anim, speed, acceleration, zoom, watch obj, method, method obj, visibility, collideability, auto zoom, distance.
+
+The four `EVT_*` codes this section previously listed are withdrawn: no source in the corpus reproduces them, and the templates above are the vocabulary the binary actually uses.
 
 The handbook enumerates the authoring actions this table encodes: `CutTo`, `Change` (with roughly twenty sub-parameters — shape, position, altitude, roll/pitch/yaw, speed, acceleration, zoom, watch target, visibility, collideability, autozoom), `Explode`, `Kill`, `Fade`, `Finish`, `Set Flag`, `Set Time`, `Start Rec`, `Stop Rec`, `Start Sound`, `Wait` and `Award $` (*handbook* pp.92–95), behind the triggers `Collision`, `Crash`, `Time` (maximum 655 seconds), `Weapon Count` and the `Never` placeholder (pp.89–90). Only the four codes above have confirmed symbols, so name-to-code mapping is `[Hypothesis]`. A 12-byte record cannot carry the `Change` sub-parameters directly; either records chain or the payload points elsewhere.
 
