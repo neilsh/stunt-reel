@@ -53,6 +53,8 @@ The extracted `si_archive/` directory includes a `Developer/` folder containing 
 
 ### Documentation and Community Sets
 
+A folder-by-folder map of the whole extracted archive, with counts and what each part is good for: [`si_archive.md`](si_archive.md).
+
 - **`Docs/`** — the retail handbook (`Docs/Manual/`), period reviews and ads, the SIFA email archive, and Disney's support updates (`Docs/Disney_Support/`). Read as primary sources; see [`research/handbook.md`](../research/handbook.md).
 - **`Misc/Sets/`** — 92 tutorial `.SET` files from the 1993 authoring examples. Twenty-two ship with a printed `.TXT` dump that decodes every header, prop and event field in prose, which makes them a field-level oracle for the `.SET` format rather than just sample data.
 
