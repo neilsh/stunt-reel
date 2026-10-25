@@ -1,16 +1,18 @@
 """Diagnostic probes for parity work (see research/parity/probes.md).
 
-Four subcommands read a capture directory (``tick_%04d.idx`` by ordinal plus
-``palettes_%04d.json``) and a render directory (``tick_%05d.idx`` and
-``.layer`` by film tick), both written by the parity loop:
+Four subcommands read a capture directory through the artifact adapter (its
+``meta.json`` names each frame's planes and palettes) and a render directory
+(``render.json``, or the legacy ``palette_controls.json`, plus ``tick_%05d``
+planes):
 
 * ``crop``   - capture over ours, one frame region, as a PNG.
 * ``shift``  - best (dx, dy) that slides our actor silhouette onto the
   capture's object pixels, per scored frame.
 * ``iou``    - mean IoU of our actor pixels against the capture's object
   pixels inside the actor's padded bounding box.
-* ``retime`` - relabel an existing render by N ticks (negative allowed) and
-  rebuild its palette sidecar, so a timing hypothesis costs no rebuild.
+* ``retime`` - relabel an existing render by N ticks (negative allowed),
+  rewriting its ``render.json`` and legacy palette sidecar, so a timing
+  hypothesis costs no rebuild.
 
 Object pixels are capture pixels that are not sky, ground ramp, button bar or
 cursor; the index ranges default to ``CTRY.FLM`` and are per film.
@@ -19,7 +21,6 @@ cursor; the index ranges default to ``CTRY.FLM`` and are per film.
 from __future__ import annotations
 
 import argparse
-import json
 import shutil
 import struct
 import sys
@@ -27,13 +28,24 @@ import zlib
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
-from parity_inputs import capture_ticks, load_palette, load_sidecar, scored_frames
+from stunt_reel.parity_artifacts import (
+    LAYER_FIRST_ACTOR,
+    LEGACY_SIDECAR,
+    RENDER_SUFFIXES,
+    CapturedFrame,
+    CaptureSet,
+    Geometry,
+    RenderControls,
+    open_render,
+    read_capture,
+    read_capture_palette,
+    read_report,
+    render_plane_paths,
+    tick_stem,
+    write_retimed_documents,
+)
 
-WIDTH = 320
-ROWS = 185
-ACTOR_LAYER_MIN = 16
 #: Inclusive index ranges that are not "object": ground ramp, sky, shade greens.
 CTRY_BACKGROUND = ((192, 199), (228, 238), (161, 165))
 #: Cursor (255) and shadow/black (0) are never object pixels.
@@ -64,15 +76,22 @@ def is_object(index: int, background: tuple[tuple[int, int], ...]) -> bool:
     return not any(lo <= index <= hi for lo, hi in background)
 
 
-def actor_pixels(layer: bytes) -> list[int]:
-    """Pixel offsets (within the viewport) drawn by an actor (layer id >= 16)."""
-    return [i for i in range(ROWS * WIDTH) if layer[2 * i] >= ACTOR_LAYER_MIN]
+def actor_pixels(layer: bytes, geometry: Geometry) -> list[int]:
+    """Pixel offsets (within the viewport) drawn by an actor (layer id >= first actor)."""
+    width, rows = geometry.width, geometry.plane_rows()
+    return [pixel for pixel in range(width * rows) if layer[2 * pixel] >= LAYER_FIRST_ACTOR]
 
 
-#: Files `--headless` writes per rendered tick, beside the frame PNG.
-RENDER_SUFFIXES = (".png", ".idx", ".layer")
-#: Sidecar `stunt-cli --headless` writes beside its frames (`PALETTE_SIDECAR_NAME`).
-RENDER_SIDECAR = "palette_controls.json"
+def _geometry(capture: CaptureSet, controls: RenderControls) -> Geometry:
+    """The render's geometry, falling back to the capture's for a legacy directory."""
+    return controls.geometry if controls.geometry is not None else capture.geometry
+
+
+def _capture_frame(capture: CaptureSet, ordinal: int) -> CapturedFrame:
+    for frame in capture.frames:
+        if frame.ordinal == ordinal:
+            return frame
+    raise ValueError(f"the capture has no ordinal {ordinal}")
 
 
 class RetimeError(RuntimeError):
@@ -81,32 +100,17 @@ class RetimeError(RuntimeError):
 
 @dataclass(frozen=True)
 class RetimeResult:
-    """What a retime wrote: target frames copied, targets with no source, a rebuilt sidecar."""
+    """What a retime wrote: frames copied, targets with no source, documents rebuilt."""
 
     copied: int
     missing: list[int]
     palette_written: bool
+    record_written: bool = False
 
 
 def plan_retime(ticks: Iterable[int], by: int) -> list[tuple[int, int]]:
     """`(target, source)` per distinct captured tick: target `t` shows source `t + by`."""
     return [(tick, tick + by) for tick in sorted(set(ticks))]
-
-
-def rebuild_palette(sidecar: dict[str, Any], pairs: Iterable[tuple[int, int]]) -> dict[str, Any]:
-    """Copies each source tick's palette entry onto its target tick; invents no entry."""
-    by_tick = {int(entry["tick"]): entry for entry in sidecar.get("ticks", [])}
-    ticks: list[dict[str, Any]] = []
-    for target, source in pairs:
-        entry = by_tick.get(source)
-        if entry is None:
-            continue
-        shifted = dict(entry)
-        shifted["tick"] = target
-        ticks.append(shifted)
-    rebuilt = {key: value for key, value in sidecar.items() if key != "ticks"}
-    rebuilt["ticks"] = ticks
-    return rebuilt
 
 
 def retime_render(
@@ -121,17 +125,19 @@ def retime_render(
     """Writes `out` as the render in `ours` re-labelled by `by` ticks.
 
     Target `t` gets the frame, index and layer planes of source `t + by`, and the
-    sidecar's palette entry is copied from the source tick and relabelled. Ticks whose
-    source is absent are reported and, with `allow_missing`, skipped; otherwise they
-    are an error. A non-empty `out` is refused unless `force`.
+    render's documents are rewritten so their tick metadata follows the shift; the
+    legacy sidecar is kept in sync only while it exists. Ticks whose source is absent
+    are reported and, with `allow_missing`, skipped; otherwise they are an error. A
+    non-empty `out` is refused unless `force`.
     """
-    pairs = plan_retime(capture_ticks(reference), by)
+    capture = read_capture(reference)
+    pairs = plan_retime((frame.film_tick for frame in capture.frames), by)
     if out.exists() and any(out.iterdir()) and not force:
         raise RetimeError(f"{out} is not empty; pass --force to replace its frames")
     missing = [
         target
         for target, source in pairs
-        if not all((ours / f"tick_{source:05d}{ext}").is_file() for ext in RENDER_SUFFIXES)
+        if not all((ours / f"{tick_stem(source)}{ext}").is_file() for ext in RENDER_SUFFIXES)
     ]
     if missing and not allow_missing:
         raise RetimeError(
@@ -145,16 +151,20 @@ def retime_render(
         if target in skipped:
             continue
         for ext in RENDER_SUFFIXES:
-            shutil.copyfile(ours / f"tick_{source:05d}{ext}", out / f"tick_{target:05d}{ext}")
+            shutil.copyfile(
+                ours / f"{tick_stem(source)}{ext}",
+                out / f"{tick_stem(target)}{ext}",
+            )
         copied += 1
-    palette_written = False
-    sidecar_path = ours / RENDER_SIDECAR
-    if sidecar_path.is_file():
-        sidecar = load_sidecar(sidecar_path)
-        rebuilt = rebuild_palette(sidecar, [p for p in pairs if p[0] not in skipped])
-        (out / RENDER_SIDECAR).write_text(json.dumps(rebuilt, indent=2) + "\n", encoding="utf-8")
-        palette_written = True
-    return RetimeResult(copied, missing, palette_written)
+    documents = write_retimed_documents(
+        ours, out, [pair for pair in pairs if pair[0] not in skipped]
+    )
+    return RetimeResult(
+        copied=copied,
+        missing=missing,
+        palette_written=documents.sidecar_written,
+        record_written=documents.record_written,
+    )
 
 
 def cmd_retime(args: argparse.Namespace) -> int:
@@ -172,7 +182,7 @@ def cmd_retime(args: argparse.Namespace) -> int:
         return 2
     if not result.palette_written:
         print(
-            f"retime: {args.ours} has no {RENDER_SIDECAR}; {args.out} has none",
+            f"retime: {args.ours} has no {LEGACY_SIDECAR}; {args.out} has none",
             file=sys.stderr,
         )
     print(f"copied {result.copied} frames; missing {len(result.missing)} ticks")
@@ -180,14 +190,18 @@ def cmd_retime(args: argparse.Namespace) -> int:
 
 
 def render_region(
-    index: bytes, palette: list[list[int]], box: tuple[int, int, int, int], scale: int
+    index: bytes,
+    palette: tuple[tuple[int, int, int], ...],
+    box: tuple[int, int, int, int],
+    scale: int,
+    width: int,
 ) -> list[list[int]]:
     x0, y0, x1, y1 = box
     rows: list[list[int]] = []
     for y in range(y0, y1):
         row: list[int] = []
         for x in range(x0, x1):
-            row += [min(255, int(v)) for v in palette[index[y * WIDTH + x]][:3]] * scale
+            row += [min(255, int(v)) for v in palette[index[y * width + x]][:3]] * scale
         rows += [row] * scale
     return rows
 
@@ -201,12 +215,15 @@ def make_crop(
     scale: int,
     out: Path,
 ) -> None:
-    """Writes capture ordinal ``ordinal`` over our film tick ``tick`` for ``box`` as a PNG."""
-    palette = load_palette(reference / f"palettes_{ordinal:04d}.json")
-    capture = (reference / f"tick_{ordinal:04d}.idx").read_bytes()
-    render = (ours / f"tick_{tick:05d}.idx").read_bytes()
-    top = render_region(capture, palette, box, scale)
-    bottom = render_region(render, palette, box, scale)
+    """Writes capture ordinal `ordinal` over our film tick `tick` for `box` as a PNG."""
+    capture = read_capture(reference)
+    geometry = _geometry(capture, open_render(ours))
+    frame = _capture_frame(capture, ordinal)
+    palette = read_capture_palette(reference / frame.palette_file)
+    capture_index = (reference / frame.frame_file).read_bytes()
+    render_index = render_plane_paths(ours, tick)[0].read_bytes()
+    top = render_region(capture_index, palette, box, scale, geometry.width)
+    bottom = render_region(render_index, palette, box, scale, geometry.width)
     width = (box[2] - box[0]) * scale
     divider = [[255, 0, 255] * width] * 2
     write_png(out, width, top + divider + bottom)
@@ -218,28 +235,35 @@ def cmd_crop(args: argparse.Namespace) -> None:
 
 
 def cmd_shift(args: argparse.Namespace) -> None:
-    for frame in scored_frames(args.report):
-        layer = (args.ours / f"tick_{frame['film_tick']:05d}.layer").read_bytes()
-        pixels = actor_pixels(layer)
+    capture = read_capture(args.reference)
+    geometry = _geometry(capture, open_render(args.ours))
+    width, rows = geometry.width, geometry.plane_rows()
+    for frame in read_report(args.report).per_frame:
+        if frame.scored is not True:
+            continue
+        layer = render_plane_paths(args.ours, frame.film_tick)[1].read_bytes()
+        pixels = actor_pixels(layer, geometry)
         if len(pixels) < args.min_pixels:
             continue
-        capture = (args.reference / f"tick_{frame['ordinal']:04d}.idx").read_bytes()
+        capture_index = (
+            args.reference / _capture_frame(capture, frame.ordinal).frame_file
+        ).read_bytes()
         sample = pixels[::3]
         best = (-1, 0, 0)
         for dy in range(-args.reach, args.reach + 1, 2):
             for dx in range(-args.reach, args.reach + 1, 2):
                 hit = 0
                 for p in sample:
-                    x, y = p % WIDTH + dx, p // WIDTH + dy
+                    x, y = p % width + dx, p // width + dy
                     if (
-                        0 <= x < WIDTH
-                        and 0 <= y < ROWS
-                        and is_object(capture[y * WIDTH + x], CTRY_BACKGROUND)
+                        0 <= x < width
+                        and 0 <= y < rows
+                        and is_object(capture_index[y * width + x], CTRY_BACKGROUND)
                     ):
                         hit += 1
                 if hit > best[0]:
                     best = (hit, dx, dy)
-        print(frame["film_tick"], len(pixels), best[1], best[2], round(best[0] / len(sample), 2))
+        print(frame.film_tick, len(pixels), best[1], best[2], round(best[0] / len(sample), 2))
 
 
 def actor_iou(
@@ -250,22 +274,27 @@ def actor_iou(
     pad: int = 25,
     min_pixels: int = 100,
 ) -> tuple[float, int]:
-    """Mean actor-window IoU over every ``every``-th scored frame, and the frames used."""
+    """Mean actor-window IoU over every `every`-th scored frame, and the frames used."""
+    capture = read_capture(reference)
+    geometry = _geometry(capture, open_render(ours))
+    width, rows = geometry.width, geometry.plane_rows()
     total = 0.0
     count = 0
-    for frame in scored_frames(report)[::every]:
-        layer = (ours / f"tick_{frame['film_tick']:05d}.layer").read_bytes()
-        pixels = set(actor_pixels(layer))
+    scored = [frame for frame in read_report(report).per_frame if frame.scored is True]
+    for frame in scored[::every]:
+        layer = render_plane_paths(ours, frame.film_tick)[1].read_bytes()
+        pixels = set(actor_pixels(layer, geometry))
         if len(pixels) < min_pixels:
             continue
-        xs = [i % WIDTH for i in pixels]
-        ys = [i // WIDTH for i in pixels]
-        capture = (reference / f"tick_{frame['ordinal']:04d}.idx").read_bytes()
+        xs = [i % width for i in pixels]
+        ys = [i // width for i in pixels]
+        captured = _capture_frame(capture, frame.ordinal)
+        capture_index = (reference / captured.frame_file).read_bytes()
         seen = {
-            y * WIDTH + x
-            for y in range(max(0, min(ys) - pad), min(ROWS, max(ys) + pad))
-            for x in range(max(0, min(xs) - pad), min(WIDTH, max(xs) + pad))
-            if is_object(capture[y * WIDTH + x], CTRY_BACKGROUND)
+            y * width + x
+            for y in range(max(0, min(ys) - pad), min(rows, max(ys) + pad))
+            for x in range(max(0, min(xs) - pad), min(width, max(xs) + pad))
+            if is_object(capture_index[y * width + x], CTRY_BACKGROUND)
         }
         total += len(pixels & seen) / len(pixels | seen)
         count += 1

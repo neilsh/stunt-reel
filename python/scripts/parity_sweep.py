@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import argparse
 import itertools
-import json
 import os
 import re
 import shutil
@@ -37,13 +36,19 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import parity_probe
 from cli import add_parity_options, parity_options
-from parity_inputs import capture_ticks, scored_frames
 
 from stunt_reel.dataroot import ensure_links_or_report
+from stunt_reel.parity_artifacts import (
+    Geometry,
+    frames_for_captured_ticks,
+    open_render,
+    read_capture,
+    read_report,
+    render_plane_paths,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SCRATCH = Path("build/scratch/sweep")
@@ -123,24 +128,6 @@ def expand_variants(names: list[str], value_lists: list[list[str]]) -> list[tupl
     return list(itertools.product(*value_lists))
 
 
-def render_range(ticks: list[int]) -> str:
-    """``--frames`` range covering the captured film ticks (frame n renders tick n - 1)."""
-    return f"{min(ticks) + 1}..{max(ticks) + 2}"
-
-
-def parse_report(data: dict[str, Any]) -> tuple[float, float]:
-    """Headline SSIM and mask IoU of a ``parity`` report: scored frames, else all matched."""
-    ssim = data.get("mean_ssim_scored")
-    iou = data.get("mean_iou_scored")
-    if ssim is None:
-        ssim = data.get("mean_ssim")
-    if iou is None:
-        iou = data.get("mean_iou")
-    if ssim is None or iou is None:
-        raise ValueError("report has no mean SSIM or mean IoU")
-    return float(ssim), float(iou)
-
-
 def rank(variants: list[Variant]) -> list[Variant]:
     """Best first by mean SSIM, then mean IoU; variants with a failed film go last."""
 
@@ -194,17 +181,18 @@ def winner_line(names: list[str], variants: list[Variant]) -> str:
     return f"winner: {label(names, best.values)} (mean SSIM {_cell(best.mean_ssim())})"
 
 
-def padded_box(pixels: list[int], pad: int) -> tuple[int, int, int, int]:
+def padded_box(pixels: list[int], pad: int, geometry: Geometry) -> tuple[int, int, int, int]:
     """Viewport box around pixel offsets, padded and clamped; the whole viewport when empty."""
+    width, rows = geometry.width, geometry.plane_rows()
     if not pixels:
-        return 0, 0, parity_probe.WIDTH, parity_probe.ROWS
-    xs = [p % parity_probe.WIDTH for p in pixels]
-    ys = [p // parity_probe.WIDTH for p in pixels]
+        return 0, 0, width, rows
+    xs = [p % width for p in pixels]
+    ys = [p // width for p in pixels]
     return (
         max(0, min(xs) - pad),
         max(0, min(ys) - pad),
-        min(parity_probe.WIDTH, max(xs) + pad),
-        min(parity_probe.ROWS, max(ys) + pad),
+        min(width, max(xs) + pad),
+        min(rows, max(ys) + pad),
     )
 
 
@@ -229,31 +217,28 @@ def run(cmd: list[str], env: dict[str, str] | None = None) -> None:
         raise RuntimeError(f"{Path(cmd[0]).name} exited {done.returncode}: {tail}")
 
 
-#: Sidecar ``stunt-cli --headless`` writes beside its frames (``PALETTE_SIDECAR_NAME``).
-RENDER_SIDECAR = "palette_controls.json"
-
-
 def check_render(reference: Path, render: Path, ticks: list[int]) -> None:
     """Refuses a render that cannot be scored against ``reference``.
 
-    Raises ``ValueError`` when the render's sidecar names a different film or ``.FLM`` size than
-    the capture's ``meta.json`` (either side may lack the tags), or when a captured tick has no
-    ``.idx``/``.layer`` planes beside its frame.
+    Raises ``ValueError`` when the render's document names a different film or ``.FLM`` size
+    than the capture's ``meta.json`` (either side may lack the tags), or when a captured tick
+    has no ``.idx``/``.layer`` planes beside its frame.
     """
-    meta = json.loads((reference / "meta.json").read_text(encoding="utf-8"))
-    sidecar_path = render / RENDER_SIDECAR
-    if sidecar_path.is_file():
-        sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
-        ours, theirs = sidecar.get("film"), meta.get("film")
-        if ours and theirs and str(ours).upper() != str(theirs).upper():
-            raise ValueError(f"the capture is of {theirs} but the render is of {ours}")
-        ours, theirs = sidecar.get("flm_bytes"), meta.get("flm_bytes")
-        if ours is not None and theirs is not None and ours != theirs:
-            raise ValueError(f"the capture's .FLM is {theirs} bytes but the render's is {ours}")
+    capture = read_capture(reference)
+    controls = open_render(render)
+    if controls.film.names_conflict(capture.film):
+        raise ValueError(
+            f"the capture is of {capture.film.name} but the render is of {controls.film.name}"
+        )
+    if controls.film.bytes_conflict(capture.film):
+        raise ValueError(
+            f"the capture's .FLM is {capture.film.flm_bytes} bytes but the render's is "
+            f"{controls.film.flm_bytes}"
+        )
     missing = [
         tick
         for tick in ticks
-        if not all((render / f"tick_{tick:05d}.{ext}").is_file() for ext in ("idx", "layer"))
+        if not all(path.is_file() for path in render_plane_paths(render, tick))
     ]
     if missing:
         raise ValueError(
@@ -269,7 +254,9 @@ def render_film(film: Film, root: Path, render: Path, env: dict[str, str] | None
             *(exe, "--headless", str(root / film.flm), "--all", str(root / film.all)),
             *(
                 "--frames",
-                render_range(capture_ticks(root / film.reference)),
+                frames_for_captured_ticks(
+                    frame.film_tick for frame in read_capture(root / film.reference).frames
+                ),
                 "--sidata",
                 str(root / film.sidata),
                 "--out-dir",
@@ -284,7 +271,7 @@ def render_film(film: Film, root: Path, render: Path, env: dict[str, str] | None
 def check_film(film: Film, root: Path, render: Path) -> None:
     """Refuses a render of ``film`` that cannot be scored against its capture."""
     reference = root / film.reference
-    check_render(reference, render, capture_ticks(reference))
+    check_render(reference, render, [frame.film_tick for frame in read_capture(reference).frames])
 
 
 def score_dir(film: Film, root: Path, render: Path, report: Path, probe: str) -> Score:
@@ -298,7 +285,7 @@ def score_dir(film: Film, root: Path, render: Path, report: Path, probe: str) ->
         ]
     )
     report_json = report / "report.json"
-    ssim, iou = parse_report(json.loads(report_json.read_text(encoding="utf-8")))
+    ssim, iou = read_report(report_json).headline()
     actor = None
     if probe == "iou":
         actor, _ = parity_probe.actor_iou(report_json, reference, render)
@@ -323,18 +310,22 @@ def write_crops(
     for name in films:
         report_json = workdir / f"{name}_report" / "report.json"
         reference, render = root / FILMS[name].reference, renders[name]
-        best: tuple[int, dict[str, int], list[int]] | None = None
-        for frame in scored_frames(report_json):
-            layer = (render / f"tick_{frame['film_tick']:05d}.layer").read_bytes()
-            pixels = parity_probe.actor_pixels(layer)
+        capture = read_capture(reference)
+        geometry = open_render(render).geometry or capture.geometry
+        best: tuple[int, int, int, list[int]] | None = None
+        for frame in read_report(report_json).per_frame:
+            if frame.scored is not True:
+                continue
+            layer = render_plane_paths(render, frame.film_tick)[1].read_bytes()
+            pixels = parity_probe.actor_pixels(layer, geometry)
             if best is None or len(pixels) > best[0]:
-                best = (len(pixels), frame, pixels)
+                best = (len(pixels), frame.ordinal, frame.film_tick, pixels)
         if best is None:
             continue
-        _, frame, pixels = best
+        _, ordinal, film_tick, pixels = best
         out = workdir / f"crop_{name}.png"
-        box = padded_box(pixels, CROP_PAD)
-        parity_probe.make_crop(reference, render, frame["ordinal"], frame["film_tick"], box, 3, out)
+        box = padded_box(pixels, CROP_PAD, geometry)
+        parity_probe.make_crop(reference, render, ordinal, film_tick, box, 3, out)
         written.append(out)
     return written
 
@@ -383,12 +374,12 @@ def preflight(
 
 def format_summary(name: str, report: Path) -> str:
     """One line naming a scored film: ``ctry  ssim ... iou ... idx ... scored n/m``."""
-    data = json.loads((report / "report.json").read_text(encoding="utf-8"))
-    ssim, iou = parse_report(data)
-    index = data.get("mean_index_agreement_scored")
-    scored = data.get("scored_frames", 0)
-    frames = data.get("frames", len(data.get("per_frame", [])))
-    index_text = "-" if index is None else f"{float(index):.3f}"
+    document = read_report(report / "report.json")
+    ssim, iou = document.headline()
+    index = document.mean_index_agreement_scored
+    scored = document.scored_frames
+    frames = document.frames
+    index_text = "-" if index is None else f"{index:.3f}"
     return f"{name:<5} ssim {ssim:.4f}  iou {iou:.4f}  idx {index_text}  scored {scored}/{frames}"
 
 
@@ -465,11 +456,8 @@ def run_reuse(reuse: Path, retime: int | None, films: list[str], root: Path, *, 
                     allow_missing=True,
                 )
                 render = retimed
-            if not (render / RENDER_SIDECAR).is_file():
-                print(
-                    f"warning: {render} has no {RENDER_SIDECAR}; the measured fade decides",
-                    file=sys.stderr,
-                )
+            for warning in open_render(render).warnings:
+                print(f"warning: {render} {warning}", file=sys.stderr)
             report = reuse / f"{name}_report"
             score_dir(film, root, render, report, probe)
             print(format_summary(name, report))

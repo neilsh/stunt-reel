@@ -47,7 +47,7 @@ Origin: the `CTRY.FLM` + `CTRY.ALL` export audit. Each ticket is independent. Fi
 | `T10` | `OP_ANIMATE` (`0x01F8`) semantics | `rust-engine-worker` | **Open** | [`sod-animate.md`](../../research/playone-exe/sod-animate.md), [`sod.md` `# [FMT-SOD-ANIMATE]`](../../research/formats/sod-opcodes.md#24-animation-resource-draw-op_animate-0x01f8--fmt-sod-animate) |
 | `T11` | Consume `tick_duration` in playback and export | `rust-engine-worker` | Done | [`timeline-and-ticks.md`](../../research/formats/concepts/timeline-and-ticks.md), [`flm.md` § 2.1.1](../../research/formats/flm.md#211-tick_duration-semantics--corpus-distribution), [`memory.md` § 3.2](../../research/playone-exe/memory.md#32-tick-counter-evidence) |
 | `T12` | `--tick-range A..=B` (0-based, inclusive) replaces `--frames`; `--frames` becomes an error that names it | `rust-engine-worker` | **Open** | [`config.rs`](../../crates/stunt-cli/src/config.rs), [`headless.rs`](../../crates/stunt-cli/src/headless.rs) |
-| `T13` | Typed serde render sidecar `render.json` (still reads `palette_controls.json`; records width, height, viewport_rows), required by parity; `parity_probe.py` drops its hard-coded 320/185/16 | `rust-engine-worker` | **Open** | [ADR 0005](../adr/0005-parity-requires-the-render-sidecar.md), [`parity/`](../../crates/stunt-cli/src/parity/), [`parity_probe.py`](../../python/scripts/parity_probe.py) |
+| `T13` | Typed serde render sidecar `render.json` (still reads `palette_controls.json`; records width, height, viewport_rows), required by parity; `parity_probe.py` drops its hard-coded 320/185/16 | `rust-engine-worker` | **Done** (landings 1-3) | [ADR 0005](../adr/0005-parity-requires-the-render-sidecar.md), [`parity/`](../../crates/stunt-cli/src/parity/), [`parity_probe.py`](../../python/scripts/parity_probe.py) |
 | `T14` | One film clock range `0..=total_ticks`; the window wraps at `% (total_ticks + 1)` | `rust-engine-worker` | **Open** | [`config.rs`](../../crates/stunt-cli/src/config.rs) |
 | `T15` | Typed parity report, once `T12`–`T14` show what `FrameScore` and the per-film summary need | `rust-engine-worker` | **Open** (deferred) | [`score.rs`](../../crates/stunt-cli/src/parity/score.rs) |
 
@@ -57,7 +57,7 @@ Four design units from the architecture review, worked in order A-D. Each unit's
 
 | Ticket | Title | Owner | Status | Links |
 |---|---|---|---|---|
-| `A01` | Render artifact seam: typed render/capture port, one adapter per language, report-aggregation rider | - | **Implementing**, landing 2/4 merged | [brief](plans/architecture-deepening/A-render-artifact.md), [ADR 0005](../adr/0005-parity-requires-the-render-sidecar.md) |
+| `A01` | Render artifact seam: typed render/capture port, one adapter per language, report-aggregation rider | - | **Implementing**, landing 3/4 merged | [brief](plans/architecture-deepening/A-render-artifact.md), [ADR 0005](../adr/0005-parity-requires-the-render-sidecar.md) |
 | `A02` | Decoded shape seam: one stop decision, a shape IR that owns its invariants, partial SOD as a value | - | **Design agreed**, implementation pending | [brief](plans/architecture-deepening/B-decoded-shape.md) |
 | `A03` | Renderer entry point: one renderer interface for headless and window | - | **Design agreed**, implementation pending | [brief](plans/architecture-deepening/C-renderer-entry.md) |
 | `A04` | Capture session: one emulator session with an injectable transport; transport at operation altitude | - | **Design agreed**, implementation pending | [brief](plans/architecture-deepening/D-capture-session.md) |
