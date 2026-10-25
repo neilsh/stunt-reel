@@ -73,6 +73,7 @@ The data root is **read-only**: `mise run capture-ref` into the shared captures 
 | --- | --- |
 | `crates/stunt-core/` | Seam contracts, `.RES`/`.ALL`/`.SOD`/`.FLM` parsers, and the `.SOD` bytecode VM |
 | `crates/stunt-render/` | `wgpu` pipelines, Mode 13h palette LUT, headless renderer, SSIM/IoU comparator |
+| `crates/stunt-parity/` | Parity artifact port: typed render, capture and report documents with a schema version and validation |
 | `crates/stunt-cli/` | `stuntreel` binary: interactive/headless presentation plus the `parity` and `export-gltf` subcommands |
 | `python/stunt_reel/tac/` | DOSBox-X TAC harness: control transport, BIOS Data Area input, frame capture — [`research/playone-exe/capture.md`](research/playone-exe/capture.md) |
 | `crates/stunt-gltf/` | glTF 2.0 (`.glb`) exporter for shapes and single scene frames, driven by `stunt-cli export-gltf` |

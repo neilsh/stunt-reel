@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted; not yet implemented
+accepted; implemented
 
 ## Context
 
@@ -22,3 +22,14 @@ Parity requires the sidecar. A render directory without it is an error, and `aut
 ## Consequences
 
 Renders made before the sidecar existed can no longer be scored. Re-rendering is the fix, and the error should say so. Current state, for reference: `score.rs` still has the `unwrap_or(fade)` fallback, `render.json` is not written or read, the sidecar is still `palette_controls.json`, and `parity_probe.py` still hard-codes 320, 185 and 16 ([`python/scripts/parity_probe.py`](../../python/scripts/parity_probe.py)). The work is tickets `T13` and `T14` in [`TEAM_SHEET.md`](../process/TEAM_SHEET.md).
+
+## Implementation note
+
+Landings 1-2 of the architecture deepening programme implemented this decision.
+`render.json` is typed, written last beside the legacy `palette_controls.json`,
+and parity requires one of the two documents, refusing a directory with neither
+and naming the re-render action. The measured fade is a cross-check only:
+`scored` comes from the authored brightness, and a tick with no authored entry is
+not excluded. The documents are defined by the versioned port in
+[ADR 0011](0011-parity-artifacts-are-a-versioned-port.md). `T13` is complete;
+`T14` (the film-clock range) remains a separate ticket.
