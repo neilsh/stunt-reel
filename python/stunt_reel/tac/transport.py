@@ -462,6 +462,10 @@ class ListenTransport(_FramedTransport):
             data = self._read_path.read_bytes()
         except OSError as exc:
             raise RuntimeError(f"MEMDUMPBIN {target} produced no file: {body}") from exc
+        finally:
+            # A low-integrity process may not reach the user temp dir, so the file
+            # can land in the checkout; never leave a read-back dump behind.
+            self._read_path.unlink(missing_ok=True)
         if len(data) != length:
             raise RuntimeError(
                 f"MEMDUMPBIN {target} wrote {len(data)} bytes, expected {length}: {body}"
