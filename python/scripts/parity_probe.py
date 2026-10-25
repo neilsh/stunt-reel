@@ -29,6 +29,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from parity_inputs import capture_ticks, load_palette, load_sidecar, scored_frames
+
 WIDTH = 320
 ROWS = 185
 ACTOR_LAYER_MIN = 16
@@ -67,12 +69,6 @@ def actor_pixels(layer: bytes) -> list[int]:
     return [i for i in range(ROWS * WIDTH) if layer[2 * i] >= ACTOR_LAYER_MIN]
 
 
-def scored_frames(report: Path) -> list[dict[str, int]]:
-    """``film_tick`` and ``ordinal`` of every scored frame in ``report.json``."""
-    data = json.loads(report.read_text(encoding="utf-8"))
-    return [f for f in data["per_frame"] if f["scored"]]
-
-
 #: Files `--headless` writes per rendered tick, beside the frame PNG.
 RENDER_SUFFIXES = (".png", ".idx", ".layer")
 #: Sidecar `stunt-cli --headless` writes beside its frames (`PALETTE_SIDECAR_NAME`).
@@ -90,12 +86,6 @@ class RetimeResult:
     copied: int
     missing: list[int]
     palette_written: bool
-
-
-def capture_ticks(reference: Path) -> list[int]:
-    """Film clock of every captured frame in `reference/meta.json`."""
-    meta = json.loads((reference / "meta.json").read_text(encoding="utf-8"))
-    return [int(frame["film_tick"]) for frame in meta["frames"]]
 
 
 def plan_retime(ticks: Iterable[int], by: int) -> list[tuple[int, int]]:
@@ -160,7 +150,7 @@ def retime_render(
     palette_written = False
     sidecar_path = ours / RENDER_SIDECAR
     if sidecar_path.is_file():
-        sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        sidecar = load_sidecar(sidecar_path)
         rebuilt = rebuild_palette(sidecar, [p for p in pairs if p[0] not in skipped])
         (out / RENDER_SIDECAR).write_text(json.dumps(rebuilt, indent=2) + "\n", encoding="utf-8")
         palette_written = True
@@ -212,7 +202,7 @@ def make_crop(
     out: Path,
 ) -> None:
     """Writes capture ordinal ``ordinal`` over our film tick ``tick`` for ``box`` as a PNG."""
-    palette = json.loads((reference / f"palettes_{ordinal:04d}.json").read_text(encoding="utf-8"))
+    palette = load_palette(reference / f"palettes_{ordinal:04d}.json")
     capture = (reference / f"tick_{ordinal:04d}.idx").read_bytes()
     render = (ours / f"tick_{tick:05d}.idx").read_bytes()
     top = render_region(capture, palette, box, scale)

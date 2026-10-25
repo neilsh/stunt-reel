@@ -40,7 +40,8 @@ from pathlib import Path
 from typing import Any
 
 import parity_probe
-from parity_probe import capture_ticks
+from cli import add_parity_options, parity_options
+from parity_inputs import capture_ticks, scored_frames
 
 from stunt_reel.dataroot import ensure_links_or_report
 
@@ -323,7 +324,7 @@ def write_crops(
         report_json = workdir / f"{name}_report" / "report.json"
         reference, render = root / FILMS[name].reference, renders[name]
         best: tuple[int, dict[str, int], list[int]] | None = None
-        for frame in parity_probe.scored_frames(report_json):
+        for frame in scored_frames(report_json):
             layer = (render / f"tick_{frame['film_tick']:05d}.layer").read_bytes()
             pixels = parity_probe.actor_pixels(layer)
             if best is None or len(pixels) > best[0]:
@@ -439,9 +440,8 @@ def prepare_render(
     return retimed
 
 
-def run_reuse(args: argparse.Namespace, films: list[str], root: Path) -> int:
+def run_reuse(reuse: Path, retime: int | None, films: list[str], root: Path, *, probe: str) -> int:
     """Scores ``--reuse DIR``'s per-film render trees without rendering."""
-    reuse: Path = args.reuse
     if not reuse.is_dir():
         print(f"parity_sweep: --reuse directory not found: {reuse}", file=sys.stderr)
         return 2
@@ -453,14 +453,14 @@ def run_reuse(args: argparse.Namespace, films: list[str], root: Path) -> int:
             if not render.is_dir():
                 raise ValueError(f"{render} is not a render directory")
             check_film(film, root, render)
-            if args.retime is not None:
+            if retime is not None:
                 retimed = reuse / f"{name}_retime"
                 shutil.rmtree(retimed, ignore_errors=True)
                 parity_probe.retime_render(
                     render,
                     root / film.reference,
                     retimed,
-                    args.retime,
+                    retime,
                     force=True,
                     allow_missing=True,
                 )
@@ -471,7 +471,7 @@ def run_reuse(args: argparse.Namespace, films: list[str], root: Path) -> int:
                     file=sys.stderr,
                 )
             report = reuse / f"{name}_report"
-            score_dir(film, root, render, report, args.probe)
+            score_dir(film, root, render, report, probe)
             print(format_summary(name, report))
         except (RuntimeError, ValueError, OSError, KeyError) as err:
             failures += 1
@@ -487,22 +487,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--var", action="append", default=None, metavar="DBG_NAME=v1,v2", help="repeatable"
     )
-    parser.add_argument("--films", default=",".join(FILMS), help="comma list; default: all")
+    add_parity_options(parser, films=FILMS, data_root=REPO_ROOT)
     parser.add_argument("--probe", choices=("film", "iou"), default="film")
     parser.add_argument("--keep-best", action="store_true", help="keep the winner's render dirs")
-    parser.add_argument(
-        "--data-root",
-        type=Path,
-        default=REPO_ROOT,
-        help="score another checkout's corpus and captures; this one is linked on first read",
-    )
-    parser.add_argument("--no-build", action="store_true", help="reuse the release binary")
-    parser.add_argument(
-        "--reuse", type=Path, default=None, help="score DIR/<film> without rendering"
-    )
-    parser.add_argument(
-        "--retime", type=int, default=None, metavar="N", help="relabel each film by N ticks"
-    )
     return parser.parse_args(argv)
 
 
@@ -513,22 +500,20 @@ def main(argv: list[str] | None = None) -> int:
         parsed = [parse_var(spec) for spec in args.var or []]
         names = [n for n, _ in parsed]
         combos = expand_variants(names, [v for _, v in parsed])
-        films = [f.strip() for f in args.films.split(",") if f.strip()]
-        unknown = [f for f in films if f not in FILMS]
-        if unknown or not films:
-            raise ValueError(f"--films must be from {', '.join(FILMS)}, got {args.films!r}")
+        options = parity_options(args, films=FILMS)
     except ValueError as err:
         print(f"parity_sweep: {err}", file=sys.stderr)
         return 2
-    root: Path = args.data_root.resolve()
+    films = list(options.films)
+    root = options.data_root
     if root == REPO_ROOT and not ensure_links_or_report("parity_sweep"):
         return 2
-    problems = preflight(root, films, build_required=not args.no_build)
+    problems = preflight(root, films, build_required=not options.no_build)
     if problems:
         print("parity_sweep: " + "\n  ".join(problems), file=sys.stderr)
         return 2
 
-    if not args.no_build:
+    if not options.no_build:
         print("[sweep] cargo build --release -p stunt-cli", file=sys.stderr)
         try:
             build_release()
@@ -536,8 +521,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"parity_sweep: build failed: {err}", file=sys.stderr)
             return 1
 
-    if args.reuse is not None:
-        return run_reuse(args, films, root)
+    if options.reuse is not None:
+        return run_reuse(options.reuse, options.retime, films, root, probe=args.probe)
 
     print(f"[sweep] {len(combos)} variant(s)", file=sys.stderr)
     scratch = REPO_ROOT / SCRATCH
@@ -554,7 +539,7 @@ def main(argv: list[str] | None = None) -> int:
             for film in films:
                 try:
                     variant.renders[film] = prepare_render(
-                        film, FILMS[film], root, workdir, env, args.retime
+                        film, FILMS[film], root, workdir, env, options.retime
                     )
                     score = score_dir(
                         FILMS[film],

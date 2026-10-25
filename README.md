@@ -202,6 +202,10 @@ uv run mypy
 uv run pytest
 ```
 
+### Python dependencies
+
+The Python half runs on the standard library unless a dependency earns its place. [ADR 0010](docs/adr/0010-python-scripts-may-take-well-established-dependencies.md) holds the bar: wheels on every CI platform, typed, an acceptable licence, and a release within about two years, with the admitting ADR stating the job the dependency does and why the standard library cannot. The shipped `stunt_reel` wheel stays dependency-free; a tooling-only dependency belongs in the dev group, where `python/scripts/` can import it. pydantic, pydantic-settings and Typer were considered for the parity scripts and refused in that ADR.
+
 ---
 
 ## Documentation Map

@@ -24,6 +24,7 @@ import shutil
 import sys
 from pathlib import Path
 
+from cli import ParityOptions, UsageError, add_parity_options, parity_options
 from parity_probe import retime_render
 from parity_sweep import (
     FILMS,
@@ -46,15 +47,15 @@ RETIME_SCRATCH = REPO_ROOT / "build" / "scratch" / "retime"
 NOISE_NOTE = "noise floor +/-0.002 SSIM; margin below 0.002 is not an adoption"
 
 
-def prepare_source(film: str, root: Path, args: argparse.Namespace) -> Path:
+def prepare_source(film: str, root: Path, options: ParityOptions, *, no_render: bool) -> Path:
     """The render directory to score: reused, existing, or freshly rendered ``_current``."""
     current = OURS / f"{film}_current"
-    if args.reuse is not None:
-        source = Path(args.reuse) / film
+    if options.reuse is not None:
+        source = Path(options.reuse) / film
         if not source.is_dir():
             raise ValueError(f"{source} is not a render directory")
         return source
-    if args.no_render:
+    if no_render:
         if not current.is_dir():
             raise ValueError(
                 f"{current} is missing; run `mise run parity` without --no-render first"
@@ -73,42 +74,26 @@ def prepare_source(film: str, root: Path, args: argparse.Namespace) -> Path:
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--films", default=",".join(FILMS), help="comma list; default: all")
-    parser.add_argument("--no-build", action="store_true", help="reuse the release binary")
+    add_parity_options(parser, films=FILMS, data_root=REPO_ROOT)
     parser.add_argument("--no-render", action="store_true", help="score the existing _current dirs")
-    parser.add_argument(
-        "--reuse", type=Path, default=None, help="score DIR/<film> instead of _current"
-    )
-    parser.add_argument(
-        "--retime", type=int, default=None, metavar="N", help="score each film relabelled by N"
-    )
-    parser.add_argument(
-        "--data-root",
-        type=Path,
-        default=REPO_ROOT,
-        help="score another checkout's corpus and captures; this one is linked on first read",
-    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    films = [f.strip() for f in args.films.split(",") if f.strip()]
-    unknown = [f for f in films if f not in FILMS]
-    if unknown or not films:
-        print(
-            f"parity_run: --films must be from {', '.join(FILMS)}, got {args.films!r}",
-            file=sys.stderr,
-        )
+    try:
+        options = parity_options(args, films=FILMS)
+    except UsageError as err:
+        print(f"parity_run: {err}", file=sys.stderr)
         return 2
-    root: Path = args.data_root.resolve()
+    root = options.data_root
     if root == REPO_ROOT and not ensure_links_or_report("parity_run"):
         return 2
-    problems = preflight(root, films, build_required=not args.no_build)
+    problems = preflight(root, list(options.films), build_required=not options.no_build)
     if problems:
         print("parity_run: " + "\n  ".join(problems), file=sys.stderr)
         return 2
-    if not args.no_build:
+    if not options.no_build:
         print("[parity] cargo build --release -p stunt-cli", file=sys.stderr)
         try:
             build_release()
@@ -117,21 +102,21 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     failures = 0
-    for film in films:
+    for film in options.films:
         try:
-            source = prepare_source(film, root, args)
+            source = prepare_source(film, root, options, no_render=args.no_render)
             check_film(FILMS[film], root, source)
             scored = source
             suffix = ""
-            if args.retime is not None:
-                suffix = f"_retime{args.retime:+d}"
+            if options.retime is not None:
+                suffix = f"_retime{options.retime:+d}"
                 retimed = RETIME_SCRATCH / f"{film}_current{suffix}"
                 shutil.rmtree(retimed, ignore_errors=True)
                 result = retime_render(
                     source,
                     root / FILMS[film].reference,
                     retimed,
-                    args.retime,
+                    options.retime,
                     force=True,
                     allow_missing=True,
                 )
