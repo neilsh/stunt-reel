@@ -130,7 +130,7 @@ An author-assigned integer in a set's event system, range -128 to 127, tested by
 _Avoid_: variable (for the event integers)
 
 **Authored limit**:
-A ceiling the authoring tools impose on a set (40 prop slots, 64 events, 655 seconds of event time), as opposed to a bound the file format enforces; the encoding is often wider, as `prop_count` and `event_count` are single bytes.
+A ceiling the authoring tools impose on a set (40 prop slots, 64 events, 655 seconds of event time), as opposed to a bound the file format enforces; the encoding is often wider, as `num_events` is a single byte, and the prop count is not stored at all — it is derived from the file length.
 _Avoid_: format limit, hard limit
 
 **Prop slot**:

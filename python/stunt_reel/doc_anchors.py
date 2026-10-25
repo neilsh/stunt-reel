@@ -100,7 +100,7 @@ ANCHORS: tuple[Anchor, ...] = (
     Anchor(
         "FMT-SET-HEADER",
         "research/formats/auxiliary/set.md",
-        "2.1 Global Environment Header (`0x0000`–`0x005F`) (`# [FMT-SET-HEADER]`)",  # noqa: RUF001
+        "2.1 Global Environment Header (`0x0000`–`0x0053`) (`# [FMT-SET-HEADER]`)",  # noqa: RUF001
     ),
     Anchor(
         "FMT-SPR-HEADER",

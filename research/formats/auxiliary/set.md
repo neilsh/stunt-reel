@@ -2,7 +2,7 @@
 
 ## 1. Overview & File Identification
 
-The `.SET` format encapsulates complete world scenes, stage configurations, prop placements, environmental conditions, and scripted event triggers used throughout *Stunt Island* (1992, Walt Disney Computer Software / The Assembly Line). It is the primary scene definition format, written and read only by the Set Designer subsystem in `STUNT.EXE`; the string evidence is in [`research/stunt-exe/sets.md`](../../stunt-exe/sets.md). Neither `makeone.img` nor `playone.img` contains the `.SET` string — both reference only `VAULT\*.TKE`, `VAULT\*.FLM`, `VAULT\SPOOL.$$$` and `VAULT\*.*` — so the film linker and the player reach a set through the `.ALL` archive rather than by opening the file.
+The `.SET` format encapsulates complete world scenes, stage configurations, prop placements, environmental conditions, and scripted event triggers used throughout *Stunt Island*. It is the primary scene definition format, written and read only by the Set Designer subsystem in `STUNT.EXE`; the string evidence is in [`research/stunt-exe/sets.md`](../../stunt-exe/sets.md). Neither `makeone.img` nor `playone.img` contains the `.SET` string — both reference only `VAULT\*.TKE`, `VAULT\*.FLM`, `VAULT\SPOOL.$$$` and `VAULT\*.*` — so the film linker and the player reach a set through the `.ALL` archive rather than by opening the file.
 
 - **File Extension:** `.SET`
 - **Magic Bytes:** None in the initial header word. Instead, `.SET` files begin with an ASCII stunt name string (`0x00`–`0x1D`) and contain a structural magic constant `0x08` at byte offset `0x52`.
@@ -13,39 +13,40 @@ The `.SET` format encapsulates complete world scenes, stage configurations, prop
   2. *Prop Entity Instantiation:* Allocates and positions both static scenery props (buildings, trees, runway lights) and dynamic actor entities (aircraft, ground vehicles, cameras) in world space.
   3. *Scripted Event Triggering:* Drives deterministic gameplay and cinematic triggers (timed explosions, dynamic camera cuts, audio cue playback, and vehicle autopilot takeover).
 
-**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization). **Contract and code:** [`contracts/shape.rs`](../../../crates/stunt-core/src/contracts/shape.rs) and [`contracts/vfs.rs`](../../../crates/stunt-core/src/contracts/vfs.rs). No synthetic `.SET` fixture exists yet.
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization). **Contract and code:** [`contracts/shape.rs`](../../../crates/stunt-core/src/contracts/shape.rs) and [`contracts/vfs.rs`](../../../crates/stunt-core/src/contracts/vfs.rs). A synthetic scene ([`synthetic_minimal.set`](../../../tests/fixtures/README.md)) exercises the schema offline through [`tests/test_set_schema.py`](../../../tests/test_set_schema.py).
 
 ---
 
 ## 2. Header & Memory Layout
 
-A `.SET` file begins with a 96-byte (`0x60`) global environment header containing mission metadata, vehicle configuration, and table count indicators. The executable header layout is [`set.ksy`](set.ksy).
+A `.SET` file begins with an 84-byte (`0x54`) global environment header containing mission metadata, vehicle configuration, and table count indicators. [`set.ksy`](set.ksy) is the executable layout for the header, the event records and the prop stride; this section gives their meaning.
 
-### 2.1 Global Environment Header (`0x0000`–`0x005F`) (`# [FMT-SET-HEADER]`)
+### 2.1 Global Environment Header (`0x0000`–`0x0053`) (`# [FMT-SET-HEADER]`)
 
-| Offset (Hex) | Size (Bytes) | Type | Field Name | Description | Evidentiary Tier |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `0x00`–`0x1D` | 30 | `char[30]` | `stunt_name` | ASCII stunt or mission title, space-padded or null-terminated | `[Established]` |
-| `0x1E`–`0x26` | 9 | `u8[9]` | `reserved_header` | Header alignment padding (typically zeroed) | `[Bounded Observation]` |
-| `0x27` | 1 | `u8` | `recording_mode` | Film recording flag: `0x00` = Off, `0x01` = Auto, `0x02` = On; `0xFF` also occurs (see below) | `[Established]` |
-| `0x28`–`0x29` | 2 | `u16` (LE) | `first_take_bonus` | Cash award for completing stunt on the first take | `[Established]` |
-| `0x2A`–`0x2B` | 2 | `u16` (LE) | `crash_penalty` | Cost deducted from budget upon aircraft or prop destruction | `[Established]` |
-| `0x2C` | 1 | `u8` | `vehicle_flags` | Initial player vehicle mechanical state bitmask (see § 2.2) | `[Established]` |
-| `0x2D` | 1 | `u8` | `reserved_2d` | Structural alignment byte | `[Bounded Observation]` |
-| `0x2E`–`0x2F` | 2 | `u16` (LE) | `time_of_day` | Simulation time scalar (`0..65535`), modulating palette lighting ramp; encoding unconfirmed (§ 3.5) | `[Bounded Observation]` |
-| `0x30` | 1 | `u8` | `reserved_30` | Internal engine padding | `[Bounded Observation]` |
-| `0x31` | 1 | `u8` | `default_camera` | Default active camera rig index (`cam_id - 1`) | `[Established]` |
-| `0x32` | 1 | `u8` | `weapon_type` | Primary player vehicle armament: `0` = None, `1` = Machine Gun, `2` = Missiles, `3` = Bombs | `[Established]` |
-| `0x33` | 1 | `u8` | `max_takes` | Maximum allowed filming retakes (default: `99`) | `[Established]` |
-| `0x34`–`0x35` | 2 | `u16` (LE) | `take_penalty` | Budget deduction per retake | `[Established]` |
-| `0x36`–`0x3D` | 8 | `u8[8]` | `reserved_settings` | Camera rig tuning and sensitivity parameters | `[Bounded Observation]` |
-| `0x3E` | 1 | `u8` | `initial_view_mode` | Initial viewpoint mode index (see § 2.3) | `[Established]` |
-| `0x3F`–`0x51` | 19 | `u8[19]` | `reserved_pad` | Reserved alignment and internal runtime pointers | `[Bounded Observation]` |
-| `0x52` | 1 | `u8` | `magic_tag` | Structural validation constant `0x08` | `[Established]` |
-| `0x53` | 1 | `u8` | `event_count` | Number of event records. Agrees with the printed event count of all six sets that have a dump (1, 1, 8, 2, 2, 10) | `[Bounded Observation]` |
-| `0x54` | — | — | *(end of header)* | The header stops here: `0x54` is the first byte of the first event record (§ 3.5) | `[Established]` |
+Offsets and widths live in [`set.ksy`](set.ksy); the table gives each field's meaning and its evidence.
 
-`0x53` is a single byte, so the encoding admits 255 events while the authoring tools expose 64: an **authored limit**, not a field bound ([`GLOSSARY.md`](../../../GLOSSARY.md)). The prop count is not stored in a dedicated header byte at all — the six dumped sets carry 4 to 39 props and no header byte matches them.
+| Field | Meaning | Evidentiary Tier |
+| :--- | :--- | :--- |
+| `stunt_name` | ASCII stunt or mission title, space-padded or null-terminated | `[Established]` |
+| `reserved1` | Header alignment padding (typically zeroed) | `[Bounded Observation]` |
+| `recording_mode` | Film recording flag: `0x00` = Off, `0x01` = Auto, `0x02` = On; `0xFF` also occurs (see below) | `[Established]` |
+| `first_take_bonus` | Cash award for completing stunt on the first take | `[Established]` |
+| `crash_penalty` | Cost deducted from budget upon aircraft or prop destruction | `[Established]` |
+| `vehicle_flags` | Initial player vehicle mechanical state bitmask (see § 2.2) | `[Established]` |
+| `reserved2` | Structural alignment byte | `[Bounded Observation]` |
+| `time_of_day` | Simulation time scalar (`0..65535`), modulating palette lighting ramp; encoding unconfirmed (§ 3.5) | `[Bounded Observation]` |
+| `reserved3` | Internal engine padding | `[Bounded Observation]` |
+| `default_camera` | Default active camera rig index (`cam_id - 1`) | `[Established]` |
+| `weapon_type` | Primary player vehicle armament: `0` = None, `1` = Machine Gun, `2` = Missiles, `3` = Bombs | `[Established]` |
+| `max_takes` | Maximum allowed filming retakes (default: `99`) | `[Established]` |
+| `take_penalty` | Budget deduction per retake | `[Established]` |
+| `reserved_settings` | Camera rig tuning and sensitivity parameters | `[Bounded Observation]` |
+| `initial_view_mode` | Initial viewpoint mode index (see § 2.3) | `[Established]` |
+| `reserved4` | Reserved alignment and internal runtime pointers | `[Bounded Observation]` |
+| `magic` | Structural validation constant `0x08` | `[Established]` |
+| `num_events` | Number of event records. Agrees with the printed event count of all six sets that have a dump (1, 1, 8, 2, 2, 10) | `[Bounded Observation]` |
+
+`num_events` is a single byte at `0x53`, so the encoding admits 255 events while the authoring tools expose 64: an **authored limit**, not a field bound ([`GLOSSARY.md`](../../../GLOSSARY.md)). The prop count is not stored in a dedicated header byte at all — the six dumped sets carry 4 to 39 props and no header byte matches them; [`set.ksy`](set.ksy) derives it from the remaining length.
 
 The header is 84 bytes, ending at `0x53`. The 12 bytes this table used to list at `0x54`–`0x5F` are the first event record's leading fields, not a table header; see § 3.5.
 
@@ -82,7 +83,7 @@ The viewpoint mode selects the initial camera tracking perspective:
 
 ### 3.1 Prop Record Table (Exact 64-Byte Stride `0x40`)
 
-The prop record table is documented as beginning at offset `0x0060` (or `0x0160` with extended mission briefing headers). Corpus evidence is not decisive: for 139 of 626 records read at `0x0060`, `prop_slot_id` is at least `prop_count`, so either the table start or the field layout differs in those files (`[BK-SET-04]`). `set.ksy` therefore encodes only the 96-byte header and leaves the remainder raw.
+Prop records begin where the events end, at `0x54 + 67 × num_events`, and run to end of file in 64-byte strides (§ 3.5). [`set.ksy`](set.ksy) owns that stride and leaves each record's fields raw, because the map below does not close on the corpus: at the correct start, 427 of 2032 records carry a `prop_slot_id` at or above the derived prop count, and only 770 match their own index, so some fields either move between files or mean something else (`[BK-SET-04]`).
 
 > **Historical Stride Correction:** Early community reverse engineering notes (Neil Halelamien, 2004) asserted that "Every prop takes (16*5=80 bytes)". Empirical analysis of record deltas ($0xD6 - 0x97 + 1 = 0x40 = 64\text{ bytes}$) disproves this typo: each record is strictly **64 bytes (0x40)**, perfectly aligning with four 16-byte paragraph blocks in real-mode x86 memory.
 
@@ -139,65 +140,41 @@ Bit:   7   6   5   4   3   2   1   0
                        |   +------ Visibility hidden override (1 = hidden)
                        +---------- Position locked on set (1 = immovable)
 ```
+
 ### 3.5 File Layout: the Event Table at `0x54`
 
 The event table comes first, immediately after the 84-byte header, and every event record is the same size:
 
 $$\text{size} = \texttt{0x54} + 67 \times \text{events} + 64 \times \text{props}$$
 
-| Range | Contents |
-|---|---|
-| `0x00`–`0x53` | The 84-byte header (§ 2.1) |
-| `0x54 + 67k` | Event record `k`, 67 bytes, for `k = 0 .. events - 1` |
-| `0x54 + 67 \times events` | Prop records, 64 bytes each, every prop stored |
+[`set.ksy`](set.ksy) is the executable definition, including the header field names, the 67-byte record and its eight 7-byte THEN slots; this section does not repeat them.
 
 For `BOMBING.SET` the event table is `0x54`–`0x96` and the props begin at `0x97`, which is exactly the offset the 2004 notes found by deleting a prop. `[Supported Inference]`
 
-**Verification.** Every set with a printed dump reproduces its own size from its printed counts: BOMBING 8/1 → 663, BOMBING2 7/1 → 599, DRIVING 15/8 → 1580, FIND&HIT 4/2 → 474, FIND&HT2 4/2 → 474, REALISM 39/10 → 3250. It closes on all 71 sets available locally — the 35 community sets and the 36 retail sets — with no exception, and `0x54 + 67 \times events` lands on the prop table for each.
+**Verification.** Every set with a printed dump reproduces its own size from its printed counts: BOMBING 8/1 → 663, BOMBING2 7/1 → 599, DRIVING 15/8 → 1580, FIND&HIT 4/2 → 474, FIND&HT2 4/2 → 474, REALISM 39/10 → 3250. It closes on all 129 sets available locally — 93 under `corpus/` (35 loose, 30 `Maverick`, 21 `Christmas_2025`, 6 `MIC-SETS`, 1 `ClawIsle`) and 36 under `target_bin/StuntIsl/SETS/` — with no exception, and `0x54 + 67 × num_events` lands on the prop table for each. Reproduce it with `mise run verify-corpus -- --schema set` and `mise run verify-corpus -- --corpus target_bin/StuntIsl/SETS --schema set`; `tests/test_set_schema.py` covers the same shape offline. The sweep stays out of `mise run check`, which is corpus-free by design.
 
 **How this was established.** `TYPESET.EXE` prints a set, so flipping one byte and re-printing maps a byte to the field it feeds ([§ 6 of the STUNT.EXE note](../../stunt-exe/sets.md)). Every offset of `BOMBING.SET` was flipped and re-printed.
 
-**Event record fields**, offsets from the record start. Each row is a flip that changes exactly one printed value:
+**Event fields, by flip.** Each row is a single-byte flip that changes exactly one printed value; the field names are the ones in [`set.ksy`](set.ksy):
 
-| Offset | Flip changes | Field |
-|---|---|---|
-| `+0x00` | the whole `Event#1` block disappears, or its IF clause changes form | IF condition type (§ 3.6) |
-| `+0x01` | `If Any Weapon` → `If Any Object` | IF object 1, a 0-based prop index; `0xFE` = Any Weapon, `0xFF` = Any Object |
-| `+0x02` | `hits …(12)` → `(11)` | IF object 2, or the time/count operand when the condition takes one |
-| `+0x05` | `And nothing` → `And it's before 0 seconds` | first AND qualifier type |
-| `+0x0B` | `Then explode` → `Then fade to` | THEN slot 1 type |
-| `+0x0C` | `explode …(11)` → `(12)` | THEN slot 1 target, 0-based |
-| `+0x12` | `And play` → `And cut to` | THEN slot 2 type |
-| `+0x18` | appends `, tape only` | sound routing flags |
-| `+0x19, +0x20, +0x27, +0x2E, +0x35, +0x3C` | each turns one `And do nothing` into `And award $0` | THEN slots 3 to 8 types |
-
-**Clause header** (the 11 bytes before the slots):
-
-| Offset | Field |
+| Field | Flip changes |
 |---|---|
-| `+0x00` | IF condition type (§ 3.6) |
-| `+0x01` | IF object 1, 0-based; `0xFE` = Any Weapon, `0xFF` = Any Object |
-| `+0x02` | IF object 2, or the operand a time/count condition takes |
-| `+0x03`–`+0x04` | Operand word for the IF condition, unused by a collision rule |
-| `+0x05` | AND #1 type (§ 3.6) |
-| `+0x06`–`+0x07` | AND #1 operand |
-| `+0x08` | AND #2 type |
-| `+0x09`–`+0x0A` | AND #2 operand |
+| `if_type` | the whole `Event#1` block disappears, or its IF clause changes form |
+| `if_object_1` | `If Any Weapon` → `If Any Object` |
+| `if_object_2` | `hits …(12)` → `(11)` |
+| `if_operand` | the time or count operand when the condition takes one |
+| `and_1_type` | `And nothing` → `And it's before 0 seconds` |
+| `action_type` (slot 1) | `Then explode` → `Then fade to` |
+| `target` (slot 1) | `explode …(11)` → `(12)` |
+| `action_type` (slot 2) | `And play` → `And cut to` |
+| `sound_routing` (slot 2) | appends `, tape only` |
+| `action_type` (slots 3–8) | each turns one `And do nothing` into `And award $0` |
 
-**THEN slot** (7 bytes; the operand columns were read by writing a value into each byte under a known action type):
+The slot operand columns were read by writing a value into each byte under a known action type.
 
-| Offset | Field |
-|---|---|
-| `+0x00` | Action type (§ 3.6) |
-| `+0x01` | Target object, 0-based |
-| `+0x02` | Secondary operand: the flag number for `set flag` / `modify flag` |
-| `+0x03`–`+0x04` | `u16` operand: dollars for `award $`, flag value for `set flag`, and the new value for `change` |
-| `+0x05` | Sound volume, 1 to 4 |
-| `+0x06` | Sound routing: `1` tape only, `2` pilot only |
+The `wait` operand (`operand` in a THEN slot) is in 50 Hz ticks, not seconds: 256 reads back as `5.12 seconds`, which is 256/50, and 5 reads back as `0.1 seconds`. So the authored timebase in the file is the same 50 Hz clock as `[I4]`.
 
-The `wait` operand at `+0x03`–`+0x04` is in 50 Hz ticks, not seconds: 256 reads back as `5.12 seconds`, which is 256/50, and 5 reads back as `0.1 seconds`. So the authored timebase in the file is the same 50 Hz clock as `[I4]`.
-
-**The `change` operand is scaled by the property.** Writing `0x4000` — a quarter turn in BAM — into `+0x03`–`+0x04` prints differently for each property in the `+0x02` byte:
+**The `change` operand is scaled by the property.** Writing `0x4000` — a quarter turn in BAM — into a `change` action's 16-bit operand prints differently for each property in that slot's `secondary_operand` byte:
 
 | Property | Printed for `0x4000` |
 |---|---|
@@ -213,13 +190,13 @@ So the operand is a signed 16-bit whose unit belongs to the property, not to the
 - **Anim properties** are that same BAM value read as a per-tick rate and printed in degrees per second at 50 Hz with the sign flipped: `printed = -angle × 50`. This holds on 11 of 11 samples from `0x0000` to `0xFFFE`; the single boundary case, `0x8000`, prints `-9000` rather than `+9000` because −180° is normalised to +180° before the sign flip.
 - **Scalar properties** carry their own scale, of which only `zoom` is pinned here (`0x4000` → 2.5). Enumerating the rest is property work, not event work.
 
-So the layout is an IF clause, two AND qualifiers, then a run of 7-byte THEN slots: slot 1 begins at `+0x0B`, and slot `k` begins at `+0x0B + 7(k-1)`. The arithmetic closes exactly: an 11-byte clause header plus eight 7-byte slots is 67 bytes, the record size, and the last slot ends where the prop table starts. The second AND qualifier's type is at `+0x08` by that spacing, but flipping it printed no change, so it is inferred rather than observed.
+An 11-byte clause header plus eight 7-byte slots is 67 bytes, the record size, and the last slot ends where the prop table starts. The second AND qualifier's type printed no change when flipped, so `and_2_type` is inferred from the record's spacing rather than observed. `[Supported Inference]`
 
 Reading the record as a 55-byte base plus 67 per further event, or as 12-byte blocks, or as a table after the props, is withdrawn: the prop-count arithmetic fits those splits equally, and only the flips distinguish them.
 
 ### 3.6 Event Operators
 
-`TYPESET.EXE` is the tool that prints a set (`SETINFO.BAT` runs `TYPESET %1.SET > %1.TXT`), so these are the operator names the retail build itself emits. It renders each rule through printf templates, which makes each operand's width part of the evidence: `\\1O` is an object index, `\\1b` a byte, `\\1w` a word, `\\3t` a time, `\\1m` miles per hour. `[Established]` as vocabulary; the numeric encoding of each operator is still unknown.
+`TYPESET.EXE` is the tool that prints a set (`SETINFO.BAT` runs `TYPESET %1.SET > %1.TXT`), so these are the operator names the retail build itself emits. It renders each rule through printf templates, which makes each operand's width part of the evidence: `\\1O` is an object index, `\\1b` a byte, `\\1w` a word, `\\3t` a time, `\\1m` miles per hour. `[Established]` as vocabulary; the numeric encodings are in the tables below.
 
 **IF** — `\\1O hits \\2O`, `\\1O crashes`, `\\1p seconds have elapsed`, `weapon count = \\1w`, `never`.
 
@@ -235,13 +212,13 @@ The four `EVT_*` codes this section previously listed are withdrawn: no source i
 
 The numeric values were read off `BOMBING.SET` by writing each value into one type byte and re-printing (§ 3.5). `[Supported Inference]` for each table, since every entry was observed rather than inferred.
 
-**IF condition type** (`+0x00`): `0` —, `1` hits, `2` crashes, `3` seconds elapsed, `4` weapon count, `5` nothing, `6` it's before, `7` it's after.
+**IF condition type** (`if_type`): `0` —, `1` hits, `2` crashes, `3` seconds elapsed, `4` weapon count, `5` nothing, `6` it's before, `7` it's after.
 
-**AND qualifier type** (`+0x05` and `+0x08`): `0` nothing, `1` it's before, `2` it's after, `3` event happened, `4` event hasn't happened, `5` flag =, `6` flag <>, `7` speed <, `8` speed >. Values above `8` fall through into the action table below, which is how the two tables sit next to each other in the image.
+**AND qualifier type** (`and_1_type`, `and_2_type`): `0` nothing, `1` it's before, `2` it's after, `3` event happened, `4` event hasn't happened, `5` flag =, `6` flag <>, `7` speed <, `8` speed >. Values above `8` fall through into the action table below, which is how the two tables sit next to each other in the image.
 
-**THEN action type** (`+0x0B`, `+0x12`, and the first byte of each later 7-byte slot): `0` do nothing, `1` award $, `2` play sound, `3` cut to, `4` set time, `5` finish, `6` change, `7` wait, `8` start recording, `9` stop recording, `10` stop, `11` kill, `12` explode, `13` fade, `14` set flag, `15` modify flag, `16` stop recording if autoediting. Values `17` and above print the `change` property names (shape, WE position, altitude, …), again an out-of-range read into the adjacent table rather than a valid action.
+**THEN action type** (`action_type`, in every slot): `0` do nothing, `1` award $, `2` play sound, `3` cut to, `4` set time, `5` finish, `6` change, `7` wait, `8` start recording, `9` stop recording, `10` stop, `11` kill, `12` explode, `13` fade, `14` set flag, `15` modify flag, `16` stop recording if autoediting. Values `17` and above print the `change` property names (shape, WE position, altitude, …), again an out-of-range read into the adjacent table rather than a valid action.
 
-The handbook enumerates the authoring actions this table encodes: `CutTo`, `Change` (with roughly twenty sub-parameters — shape, position, altitude, roll/pitch/yaw, speed, acceleration, zoom, watch target, visibility, collideability, autozoom), `Explode`, `Kill`, `Fade`, `Finish`, `Set Flag`, `Set Time`, `Start Rec`, `Stop Rec`, `Start Sound`, `Wait` and `Award $` (*handbook* pp.92–95), behind the triggers `Collision`, `Crash`, `Time` (maximum 655 seconds), `Weapon Count` and the `Never` placeholder (pp.89–90). Only the four codes above have confirmed symbols, so name-to-code mapping is `[Hypothesis]`. A 12-byte record cannot carry the `Change` sub-parameters directly; either records chain or the payload points elsewhere.
+The handbook enumerates the authoring actions this table encodes: `CutTo`, `Change` (with roughly twenty sub-parameters — shape, position, altitude, roll/pitch/yaw, speed, acceleration, zoom, watch target, visibility, collideability, autozoom), `Explode`, `Kill`, `Fade`, `Finish`, `Set Flag`, `Set Time`, `Start Rec`, `Stop Rec`, `Start Sound`, `Wait` and `Award $` (*handbook* pp.92–95), behind the triggers `Collision`, `Crash`, `Time` (maximum 655 seconds), `Weapon Count` and the `Never` placeholder (pp.89–90). A `change` action carries its property in `secondary_operand` and its new value in the 16-bit `operand` (§ 3.5), so the record carries the sub-parameter directly.
 
 ### 3.7 Editor-to-World Coordinate Conversion (`[I1]`)
 
@@ -263,11 +240,11 @@ $$Z_{\text{world}} = \frac{Z_{\text{editor}} - 100000}{10.0} \quad (\text{meters
 
 | Item ID | Topic | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- |
-| `[BK-SET-01]` | Vehicle Tuning Bytes `0x36`–`0x3D` | Precise aerodynamic scalar mappings governing flight control sensitivity and elevator response in Set Designer. | `[Unknown]` |
-| `[BK-SET-02]` | Trajectory Waypoint Spline Record | Bit-level packing of the 20-byte `trajectory_state` field (`+0x20`–`+0x33`) governing multi-point AI flight paths. | `[Bounded Observation]` |
-| `[BK-SET-03]` | Extended Event Opcode Catalog | Verification of additional action codes ($0x0005..0x0010$) for mid-air refueling, formation flying, and radio chatter. | `[Hypothesis]` |
-| `[BK-SET-04]` | Header Size Variants (`0x60` vs `0x160`) | Disambiguation of extended 352-byte headers observed in mission `.SET` files with full narrative briefing text. | `[Supported Inference]` |
-| `[BK-SET-05]` | Event Action-Code Catalogue | Map the handbook's THEN actions (*handbook* pp.92–95) onto `action_code` values. Progress: `0x53` is the event count, so a set's rules are now enumerable from its header. Open: the event table's location and its 12-byte stride are both uncorroborated (§ 3.5). | `[Hypothesis]` |
+| `[BK-SET-01]` | Vehicle Tuning Bytes (`reserved_settings`) | Precise aerodynamic scalar mappings governing flight control sensitivity and elevator response in Set Designer. | `[Unknown]` |
+| `[BK-SET-02]` | Trajectory Waypoint Spline Record | Bit-level packing of the 20-byte `trajectory_state` field governing multi-point AI flight paths. | `[Bounded Observation]` |
+| `[BK-SET-03]` | `change` Operand Scales | The 16-bit `change` operand is BAM for angles and ×50 for anim properties (§ 3.5); only `zoom` is pinned among the scalar properties. | `[Bounded Observation]` |
+| `[BK-SET-04]` | Prop Record Field Map | The 64-byte stride and the table start (`0x54 + 67 × num_events`) are established; the map in § 3.1 does not close on 427 of 2032 records there, and only 770 `prop_slot_id`s match their index. | `[Bounded Observation]` |
+| `[BK-SET-05]` | Event Action-Code Catalogue | Map the handbook's THEN actions (*handbook* pp.92–95) onto `action_type` values. Progress: `num_events` at `0x53` enumerates a set's rules, § 3.6 fixes codes `0`–`16`, and the record is 67 bytes; open is whether every handbook action has exactly one code. | `[Hypothesis]` |
 
 ---
 
