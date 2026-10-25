@@ -18,23 +18,23 @@ pub const LAYER_PROP: u32 = 3;
 pub const LAYER_FIRST_ACTOR: u32 = 16;
 
 /// Format of the optional plane target: `layer << 8 | unlit palette index` per pixel.
-pub const PLANE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Uint;
+pub(crate) const PLANE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Uint;
 
 /// GPU uniform buffer structure for per-model transformation matrix matching WGSL `@group(2) @binding(0)`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct ModelUniform {
+pub(crate) struct ModelUniform {
     /// 4x4 column-major affine model-to-world transform matrix.
-    pub model_matrix: [f32; 16],
+    pub(crate) model_matrix: [f32; 16],
     /// Base layer id (first word) written to the plane target, added to the vertex's scenery
     /// class (zero except for world vertices); the rest is padding.
-    pub layer: [u32; 4],
+    pub(crate) layer: [u32; 4],
 }
 
 impl ModelUniform {
     /// A uniform drawing with `model_matrix` into `layer`.
     #[must_use]
-    pub fn new(model_matrix: [f32; 16], layer: u32) -> Self {
+    pub(crate) fn new(model_matrix: [f32; 16], layer: u32) -> Self {
         Self {
             model_matrix,
             layer: [layer, 0, 0, 0],
@@ -50,26 +50,22 @@ impl Default for ModelUniform {
 
 /// Dual presentation pipelines separating base solid geometry from coplanar decals.
 #[derive(Debug)]
-pub struct RenderPipelines {
+pub(crate) struct RenderPipelines {
     /// Base mesh pipeline with zero depth bias and `Less` depth compare.
-    pub base_pipeline: wgpu::RenderPipeline,
+    pub(crate) base_pipeline: wgpu::RenderPipeline,
     /// Decal mesh pipeline conforming to `[I5]` with hardware depth bias and `LessEqual` compare.
-    pub decal_pipeline: wgpu::RenderPipeline,
+    pub(crate) decal_pipeline: wgpu::RenderPipeline,
     /// Fullscreen pipeline that paints the sky bands behind all geometry.
-    pub sky_pipeline: wgpu::RenderPipeline,
+    pub(crate) sky_pipeline: wgpu::RenderPipeline,
     /// Solid-black fullscreen pipeline used to paint `[I6]` letterbox bars.
-    pub bar_pipeline: wgpu::RenderPipeline,
-    /// Common pipeline layout shared across base and decal passes.
-    pub pipeline_layout: wgpu::PipelineLayout,
+    pub(crate) bar_pipeline: wgpu::RenderPipeline,
     /// Bind group layout for `@group(2) @binding(0)` (ModelUniform).
-    pub model_bind_group_layout: wgpu::BindGroupLayout,
-    /// Common shader module compiled from `mode13h.wgsl`.
-    pub shader_module: wgpu::ShaderModule,
+    pub(crate) model_bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl RenderPipelines {
     /// Returns the vertex buffer layout for zero-copy upload of `SodVertex`.
-    pub fn vertex_buffer_layout() -> wgpu::VertexBufferLayout<'static> {
+    pub(crate) fn vertex_buffer_layout() -> wgpu::VertexBufferLayout<'static> {
         // Assert compile-time layout compatibility with Invariant [I2] / Seam 3
         const _: () = assert!(std::mem::size_of::<SodVertex>() == 28);
         const _: () = assert!(std::mem::align_of::<SodVertex>() == 4);
@@ -103,7 +99,7 @@ impl RenderPipelines {
     }
 
     /// Creates the bind group layout for per-model uniform buffer (`@group(2)`).
-    pub fn create_model_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    pub(crate) fn create_model_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("stunt_model_uniform_layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -120,7 +116,7 @@ impl RenderPipelines {
     }
 
     /// Compiles shaders and instantiates both base and decal render pipelines.
-    pub fn new(
+    pub(crate) fn new(
         device: &wgpu::Device,
         color_format: wgpu::TextureFormat,
         depth_format: wgpu::TextureFormat,
@@ -139,7 +135,7 @@ impl RenderPipelines {
 
     /// Like [`Self::new`], but every pass using these pipelines must carry a second colour
     /// attachment of `PLANE_FORMAT` that receives `layer << 8 | palette index` per pixel.
-    pub fn new_with_plane(
+    pub(crate) fn new_with_plane(
         device: &wgpu::Device,
         color_format: wgpu::TextureFormat,
         depth_format: wgpu::TextureFormat,
@@ -364,9 +360,7 @@ impl RenderPipelines {
             decal_pipeline,
             sky_pipeline,
             bar_pipeline,
-            pipeline_layout,
             model_bind_group_layout,
-            shader_module,
         }
     }
 }

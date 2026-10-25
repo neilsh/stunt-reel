@@ -47,7 +47,7 @@ struct MatrixSlot {
 
 /// GPU renderer for the scene frames of one [`FilmScene`].
 #[derive(Debug)]
-pub struct SceneRenderer {
+pub(crate) struct SceneRenderer {
     shapes: HashMap<u16, GpuModel>,
     world: Option<GpuModel>,
     slots: Vec<MatrixSlot>,
@@ -58,7 +58,7 @@ pub struct SceneRenderer {
 impl SceneRenderer {
     /// Uploads every shape and the world of `scene`; the world keeps an identity matrix.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         pipelines: &RenderPipelines,
@@ -86,7 +86,7 @@ impl SceneRenderer {
     /// The camera is `frame.camera` unless `camera` overrides it (e.g. a free camera);
     /// an override does not change the per-actor LOD distances carried by the frame.
     /// Actors whose shape was not uploaded are skipped.
-    pub fn prepare(
+    pub(crate) fn prepare(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -150,7 +150,7 @@ impl SceneRenderer {
     /// Encodes the draws chosen by the last [`Self::prepare`] into `rpass`.
     ///
     /// The pass must target the formats `pipelines` was built for.
-    pub fn draw(
+    pub(crate) fn draw(
         &self,
         rpass: &mut wgpu::RenderPass<'_>,
         pipelines: &RenderPipelines,

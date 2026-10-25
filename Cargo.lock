@@ -1930,7 +1930,6 @@ dependencies = [
  "clap",
  "glam",
  "image",
- "pollster",
  "serde",
  "serde_json",
  "stunt-core",
@@ -1938,7 +1937,6 @@ dependencies = [
  "stunt-parity",
  "stunt-render",
  "thiserror 2.0.21",
- "wgpu",
  "winit",
 ]
 

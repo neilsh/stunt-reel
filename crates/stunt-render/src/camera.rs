@@ -137,7 +137,7 @@ pub struct CameraController {
     /// Physical viewport aspect ratio (defaults to 4:3 = 1.3333333 per `[I6]`).
     pub aspect_ratio: f32,
     /// Factor applied to the projection's vertical focal scale; above 1.0 squeezes the same
-    /// view into a shorter viewport (see `HeadlessRenderer::viewport_rows`).
+    /// view into a shorter viewport (see `Offscreen::viewport_rows`).
     pub projection_y_scale: f32,
     /// Near clip plane in meters.
     pub near_clip: f32,
@@ -255,18 +255,18 @@ impl CameraController {
 
 /// GPU-resident buffer and bind group manager for camera uniforms.
 #[derive(Debug)]
-pub struct CameraGpuResources {
+pub(crate) struct CameraGpuResources {
     /// Uniform buffer containing `CameraUniform`.
-    pub buffer: wgpu::Buffer,
+    pub(crate) buffer: wgpu::Buffer,
     /// Bind group layout for `@group(0) @binding(0)`.
-    pub bind_group_layout: wgpu::BindGroupLayout,
+    pub(crate) bind_group_layout: wgpu::BindGroupLayout,
     /// Bind group containing the buffer.
-    pub bind_group: wgpu::BindGroup,
+    pub(crate) bind_group: wgpu::BindGroup,
 }
 
 impl CameraGpuResources {
     /// Creates the bind group layout for `@group(0) @binding(0) var<uniform> camera: CameraUniform;`.
-    pub fn create_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    pub(crate) fn create_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("stunt_camera_uniform_layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -283,7 +283,7 @@ impl CameraGpuResources {
     }
 
     /// Instantiates buffer and bind group on the device.
-    pub fn new(device: &wgpu::Device) -> Self {
+    pub(crate) fn new(device: &wgpu::Device) -> Self {
         let bind_group_layout = Self::create_bind_group_layout(device);
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("stunt_camera_uniform_buffer"),
@@ -314,7 +314,7 @@ impl CameraGpuResources {
     }
 
     /// Uploads updated camera uniform data to the GPU buffer.
-    pub fn upload(&self, queue: &wgpu::Queue, uniform: &CameraUniform) {
+    pub(crate) fn upload(&self, queue: &wgpu::Queue, uniform: &CameraUniform) {
         queue.write_buffer(&self.buffer, 0, bytemuck::bytes_of(uniform));
     }
 }

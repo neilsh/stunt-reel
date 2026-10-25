@@ -11,7 +11,8 @@ pub const PALETTE_LUT_WIDTH: u32 = 256;
 pub const PALETTE_LUT_HEIGHT: u32 = 32;
 
 /// Total byte size of the uncompressed 256x32 RGBA8 lookup texture (32,768 bytes).
-pub const PALETTE_LUT_BYTE_SIZE: usize = (PALETTE_LUT_WIDTH * PALETTE_LUT_HEIGHT * 4) as usize;
+pub(crate) const PALETTE_LUT_BYTE_SIZE: usize =
+    (PALETTE_LUT_WIDTH * PALETTE_LUT_HEIGHT * 4) as usize;
 
 /// Generates the 256x32 RGBA8 lookup table texture bytes for the static Mode 13h table.
 ///
@@ -53,15 +54,13 @@ pub fn build_palette_lut_bytes_from(palette: &[(u8, u8, u8); 256]) -> [u8; PALET
 /// Starts with the static table; [`Self::set_controls`] switches it to the film palette
 /// for a frame's [`PaletteControls`].
 #[derive(Debug)]
-pub struct PaletteLut {
+pub(crate) struct PaletteLut {
     /// Texture handle on the device.
-    pub texture: wgpu::Texture,
-    /// Texture view referenced in bind groups.
-    pub view: wgpu::TextureView,
+    pub(crate) texture: wgpu::Texture,
     /// Bind group containing the palette LUT texture at `@binding(0)`.
-    pub bind_group: wgpu::BindGroup,
+    pub(crate) bind_group: wgpu::BindGroup,
     /// Shared bind group layout.
-    pub bind_group_layout: wgpu::BindGroupLayout,
+    pub(crate) bind_group_layout: wgpu::BindGroupLayout,
     /// Palette currently in the texture.
     palette: [(u8, u8, u8); 256],
     /// Controls the texture was built from; `None` for the static table.
@@ -70,7 +69,7 @@ pub struct PaletteLut {
 
 impl PaletteLut {
     /// Creates the bind group layout for `@group(1) @binding(0) var palette_lut: texture_2d<f32>;`.
-    pub fn create_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    pub(crate) fn create_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("stunt_mode13h_palette_lut_layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -87,7 +86,7 @@ impl PaletteLut {
     }
 
     /// Initializes and uploads the 256x32 palette texture to GPU memory.
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+    pub(crate) fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let bind_group_layout = Self::create_bind_group_layout(device);
         let lut_bytes = build_palette_lut_bytes();
 
@@ -121,7 +120,6 @@ impl PaletteLut {
 
         Self {
             texture,
-            view,
             bind_group,
             bind_group_layout,
             palette: MODE_13H_PALETTE,
@@ -130,22 +128,15 @@ impl PaletteLut {
     }
 
     /// Rebuilds the texture from the film palette for `controls`, if they changed.
-    pub fn set_controls(&mut self, queue: &wgpu::Queue, controls: PaletteControls) {
+    pub(crate) fn set_controls(&mut self, queue: &wgpu::Queue, controls: PaletteControls) {
         if self.controls != Some(controls) {
             self.upload(queue, controls.film_palette(), Some(controls));
         }
     }
 
-    /// Restores the static Mode 13h table, if a film palette is loaded.
-    pub fn reset(&mut self, queue: &wgpu::Queue) {
-        if self.controls.is_some() {
-            self.upload(queue, MODE_13H_PALETTE, None);
-        }
-    }
-
     /// Normalized `(R, G, B)` of `index` in the palette currently loaded.
     #[must_use]
-    pub fn rgb_float(&self, index: u8) -> (f32, f32, f32) {
+    pub(crate) fn rgb_float(&self, index: u8) -> (f32, f32, f32) {
         let (r, g, b) = self.palette[usize::from(index)];
         (
             f32::from(r) / 255.0,

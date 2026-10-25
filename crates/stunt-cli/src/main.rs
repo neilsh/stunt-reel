@@ -6,7 +6,7 @@
 //! writes outputs (PNG, ffmpeg video, the `parity` subcommand). `sod-census` reports the corpus
 //! models that stop on an unimplemented `.SOD` opcode. Every film-to-frame
 //! decision goes through [`stunt_core::scene::FilmScene`] and
-//! [`stunt_render::SceneRenderer`], the same path for headless and windowed playback.
+//! [`stunt_render::Renderer`], the same path for headless and windowed playback.
 //!
 //! Complies with Architectural Invariants:
 //! - `[I1]` Right-handed metric coordinate basis (+X Right, +Y Up, -Z Forward).
