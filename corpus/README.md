@@ -26,18 +26,18 @@ The `stisldem/` folder is reserved for the official MS-DOS promotional demo of *
 
 ---
 
-## 2. Stunt Island Central Archive (`si_archive/`)
+## 2. Stunt Island Central Archive (`siarchive/`)
 
-The `si_archive/` folder contains historical assets, developer utilities, file format documentation, and community tools curated by Doug Armknecht.
+The `siarchive/` folder contains historical assets, developer utilities, file format documentation, and community tools curated by Doug Armknecht.
 
 ### Setup Instructions
 
 1. **Download Archive**: Download the zip file from [Stunt Island Central Archive](https://armknechted.com/sicentral/newpage/SIArchive.html).
-2. **Extract into `corpus/si_archive/`**: Unzip the contents directly into `corpus/si_archive/`.
+2. **Extract into `corpus/siarchive/`**: Unzip the contents directly into `corpus/siarchive/`.
 
 ### Expected Directory Layout
 
-The extracted `si_archive/` directory includes a `Developer/` folder containing reverse-engineering tools and source code:
+The extracted `siarchive/` directory includes a `Developer/` folder containing reverse-engineering tools and source code:
 
 - **`Developer/`**
   - **`sodparse/`** (or `SODParse/`):
@@ -53,10 +53,10 @@ The extracted `si_archive/` directory includes a `Developer/` folder containing 
 
 ### Documentation and Community Sets
 
-A folder-by-folder map of the whole extracted archive, with counts and what each part is good for: [`si_archive.md`](si_archive.md).
+A folder-by-folder map of the whole extracted archive, with counts and what each part is good for: [`siarchive.md`](siarchive.md).
 
 - **`Docs/`** — the retail handbook (`Docs/Manual/`), period reviews and ads, the SIFA email archive, and Disney's support updates (`Docs/Disney_Support/`). Read as primary sources; see [`research/handbook.md`](../research/handbook.md).
-- **`Misc/Sets/`** — 92 tutorial `.SET` files from the 1993 authoring examples. Twenty-two ship with a printed `.TXT` dump that decodes every header, prop and event field in prose, which makes them a field-level oracle for the `.SET` format rather than just sample data.
+- **`Misc/Sets/`** — 92 tutorial `.SET` files from the 1993 authoring examples. Twenty-two ship with a printed `.TXT` describing the same set; they are tutorial articles rather than one-to-one dumps and disagree with their binaries on some header fields, so treat them as a lead rather than an oracle.
 
 ## External References (not in the corpus)
 

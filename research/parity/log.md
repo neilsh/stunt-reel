@@ -8,7 +8,7 @@ The file is append-only: add a row at the end of the table and never edit an ear
 
 | Date | Commit | Matched frames | Mean SSIM | Mean IoU | Notes |
 |---|---|---|---|---|---|
-| 2026-10-21 | `a5e9897` | 122 (18 end-hold unmatched: render stopped at tick 1341) | 0.571 | 0.830 | Baseline, film-clock matching; world via `corpus/si_archive/.../SIDATA`. |
+| 2026-10-21 | `a5e9897` | 122 (18 end-hold unmatched: render stopped at tick 1341) | 0.571 | 0.830 | Baseline, film-clock matching; world via `corpus/siarchive/.../SIDATA`. |
 | 2026-10-21 | `82ea965` | 122 | 0.567 | 0.830 | DOS axes -> `[I1]`, including actor orientation: the biplane is now upright like `PLAYONE`. Small SSIM drop (size/position error remains); worst-moving frames 39-45 (about ticks 426-492), -0.02 each. |
 | 2026-10-21 | `1f673d9` / `935834a` / `ced1d06` | 122 | 0.567 | 0.830 | Refactors; renders byte-identical to `82ea965`. |
 | 2026-10-21 | `5799a53` | 140 | 0.495 overall; 0.567 over the 122 animated ticks | 0.812 | Default range now renders tick 1342. The 18 end-hold captures are `PLAYONE`'s blank screen (reference black + cursor + button bar) against our final camera view: SSIM about 0.005. The scoring policy for the end hold is undecided. |

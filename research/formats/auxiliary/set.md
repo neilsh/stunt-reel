@@ -198,12 +198,12 @@ $$Z_{\text{world}} = \frac{Z_{\text{editor}} - 100000}{10.0} \quad (\text{meters
 
 The technical specifications for the `.SET` format are synthesized from the following primary community research and reverse engineering artifacts:
 
-- **Neil Halelamien (2004):** Reverse engineering of `.SET` file structures, binary diff analysis of Set Designer output files (`100000.SET`, `NOPROP1.SET`), bitmask decoding of vehicle and prop state flags, and the 2004 SIFA email thread (`corpus/si_archive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`, `corpus/si_archive/Developer/Notes_SETFile/SET_File_Email_Thread.txt`).
-- **Dave Palmowski (1999–2004):** Analysis of prop list insertion for custom shockwave generators and prop catalog indices (`corpus/si_archive/Developer/Notes_SETFile/SET_File_Email_Thread.txt`).
+- **Neil Halelamien (2004):** Reverse engineering of `.SET` file structures, binary diff analysis of Set Designer output files (`100000.SET`, `NOPROP1.SET`), bitmask decoding of vehicle and prop state flags, and the 2004 SIFA email thread (`corpus/siarchive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`, `corpus/siarchive/Developer/Notes_SETFile/SET_File_Email_Thread.txt`).
+- **Dave Palmowski (1999–2004):** Analysis of prop list insertion for custom shockwave generators and prop catalog indices (`corpus/siarchive/Developer/Notes_SETFile/SET_File_Email_Thread.txt`).
 - **Dean Newbury (2004):** SIFA correspondence and prop slot constraint analysis.
-- **Doug Armknecht (2000–2002):** World coordinate space and island center offset documentation in film trajectory analyses (`corpus/si_archive/Developer/SI_FLM_Format/FLM_NOTES.md`).
-- **The Assembly Line / Disney (1992):** The retail handbook (`corpus/si_archive/Docs/Manual/`), read as a primary source for authoring semantics; see [`research/handbook.md`](../../handbook.md).
-- **Disney tutorial sets (1993):** The 92 `.SET` files and 22 printed field dumps under `corpus/si_archive/Misc/Sets/`, emitted by the authoring tools (`Printed at :Thu Jan 21 15:56:19 1993`), which decode every header and prop field in prose.
+- **Doug Armknecht (2000–2002):** World coordinate space and island center offset documentation in film trajectory analyses (`corpus/siarchive/Developer/SI_FLM_Format/FLM_NOTES.md`).
+- **The Assembly Line / Disney (1992):** The retail handbook (`corpus/siarchive/Docs/Manual/`), read as a primary source for authoring semantics; see [`research/handbook.md`](../../handbook.md).
+- **Disney tutorial sets (1993):** The 92 `.SET` files and 22 printed field dumps under `corpus/siarchive/Misc/Sets/`, emitted by the authoring tools (`Printed at :Thu Jan 21 15:56:19 1993`), which decode every header and prop field in prose.
 - **StuntReel Teamwork Team (2026):** Resolution of the 80-byte stride historical error to exact 64-byte (`0x40`) stride, validation of 16.16 fixed-point math, and contract alignment.
 
 ---

@@ -139,7 +139,7 @@ Each bit in a BAM word represents a binary subdivision of a complete $360^\circ$
 
 ### 3.1 The SOD Model Scale Factor Table
 
-In `.SOD` geometry files, raw 16-bit integer vertices are multiplied by a scalar selected via a 16-bit scale exponent index stored in the model header (Word offset `+0x06`). This scalar is defined in community reverse-engineering archives (`corpus/si_archive/Developer/SODParse/SOD.H`):
+In `.SOD` geometry files, raw 16-bit integer vertices are multiplied by a scalar selected via a 16-bit scale exponent index stored in the model header (Word offset `+0x06`). This scalar is defined in community reverse-engineering archives (`corpus/siarchive/Developer/SODParse/SOD.H`):
 
 ```c
 static float sod_scale_table[] = {
@@ -178,7 +178,7 @@ World-space scenery layout (`.SET`) and film choreography (`.FLM`) anchor the si
 #### The Island Center Offset Discovery
 In `.SET` files, prop positions are specified in editor units ($EU \in [0, 200000]$), where the origin $(0, 0, 0)$ of the metric simulation world is positioned at editor coordinate $(100000, 0, 100000)$.
 
-As confirmed empirically by Neil Halelamien (2004) in `corpus/si_archive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`, changing editor units produces $16.16$ fixed-point increments scaled by a factor of 10:
+As confirmed empirically by Neil Halelamien (2004) in `corpus/siarchive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`, changing editor units produces $16.16$ fixed-point increments scaled by a factor of 10:
 
 ```
 Editor Coordinate -> Hexadecimal 16.16 Bytes (LE) -> Metric Meters
@@ -269,10 +269,10 @@ $$\text{WeldKey} = \left(\text{quantize}(\mathbf{position}, 10^{-4}\text{ m}),\;
 
 ## 5. Attribution & Provenance
 
-- **Neil Halelamien (2004):** Reverse engineering of `.SET` file structures, 16.16 fixed-point coordinate discovery, editor-to-world origin shift (`100000, 0, 100000`), and BAM facing angles in `corpus/si_archive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt` and `SET_File_Email_Thread.txt`.
-- **Adrian Stephens (1997):** First documented analysis of subobject rotational joints, propeller animation parameters, and landing gear angular indices during SIFA IRC discussions in `corpus/si_archive/SITools/Docs/Adrian_Subobjects.txt`.
-- **Doug Armknecht (2002):** Reverse engineering of `.FLM` trajectory streaming, binary angle parsing, and position extraction scripts in `corpus/si_archive/Developer/SI_FLM_Format/` (`FLM_FORMAT_DOUG_NOTES.txt`, `FLM_NOTES.md`).
-- **Dave Palmowski (1999–2001):** Author of SLICE and SODParse, establishing `sod_scale_table` constants and 16-bit integer model vertex definitions in `corpus/si_archive/Developer/SODParse/SOD.H` and `corpus/si_archive/SITools/Slice/`.
+- **Neil Halelamien (2004):** Reverse engineering of `.SET` file structures, 16.16 fixed-point coordinate discovery, editor-to-world origin shift (`100000, 0, 100000`), and BAM facing angles in `corpus/siarchive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt` and `SET_File_Email_Thread.txt`.
+- **Adrian Stephens (1997):** First documented analysis of subobject rotational joints, propeller animation parameters, and landing gear angular indices during SIFA IRC discussions in `corpus/siarchive/SITools/Docs/Adrian_Subobjects.txt`.
+- **Doug Armknecht (2002):** Reverse engineering of `.FLM` trajectory streaming, binary angle parsing, and position extraction scripts in `corpus/siarchive/Developer/SI_FLM_Format/` (`FLM_FORMAT_DOUG_NOTES.txt`, `FLM_NOTES.md`).
+- **Dave Palmowski (1999–2001):** Author of SLICE and SODParse, establishing `sod_scale_table` constants and 16-bit integer model vertex definitions in `corpus/siarchive/Developer/SODParse/SOD.H` and `corpus/siarchive/SITools/Slice/`.
 - **StuntReel Teamwork Team (2026):** Milestone 1 & 2 mathematical synthesis, glTF 2.0 basis alignment, attribute-preserving vertex welding, and Seam 1–4 contracts (`explorer_fmt_aux_concepts/analysis.md`, `crates/stunt-core/src/contracts/trajectory.rs`).
 
 ---

@@ -41,10 +41,12 @@ DATA_ENV = "STUNT_DATA_ROOT"
 WRITE_ENV = "STUNT_DATA_WRITE"
 DATA_SUFFIX = ".data"
 
-#: (directory inside the data root, path inside the checkout that borrows it)
+#: (directory inside the data root, path inside the checkout that borrows it).
+#: The names may differ: the data root keeps the historical ``si_archive``
+#: directory while the checkout calls it ``siarchive``, the collector's spelling.
 LINK_TARGETS: tuple[tuple[str, str], ...] = (
     ("stisldem", "corpus/stisldem"),
-    ("si_archive", "corpus/si_archive"),
+    ("si_archive", "corpus/siarchive"),
     ("oracle", "corpus/oracle"),
     ("target_bin", "target_bin"),
     ("reference", "build/parity/reference"),

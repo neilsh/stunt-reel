@@ -8,7 +8,7 @@ The static world environment of *Stunt Island* (1992, Walt Disney Computer Softw
   - `ANCHORPT.DAT`: Discrete topological heightmap and ground-normal anchor point table.
   - `MAP.BIN`: Continuous polygonal terrain surface patch table.
   - `SCENERY.scn`: Hierarchical Binary Spatial Partitioning (BSP) and Level-of-Detail (LOD) scene graph tree.
-- **Typical Container / Storage:** Loose runtime data files located in `SIDATA\` (e.g. `corpus/si_archive/Developer/FreeFlight/SIDATA/` and `corpus/si_archive/Developer/SIRes/SiData/`) or integrated directly into engine executables (`STUNT.EXE`, `PLAYONE.EXE`).
+- **Typical Container / Storage:** Loose runtime data files located in `SIDATA\` (e.g. `corpus/siarchive/Developer/FreeFlight/SIDATA/` and `corpus/siarchive/Developer/SIRes/SiData/`) or integrated directly into engine executables (`STUNT.EXE`, `PLAYONE.EXE`).
 - **Embedded copies in `PLAYONE.EXE`** (`[Established]`, byte comparison of the unpacked load image with `Developer/FreeFlight/SIDATA/`, 2026-10-23):
   - The scene tree is the start of the stack segment (MZ `SS = 0x2286`, image offset `0x22860`). It is `SCENERY.scn` with 16-bit words instead of 32-bit ones, without the file's leading `0` word: all 29,558 words agree, and the 8,979 that differ are pointers 2 lower, because they lack that leading word. Alberto Marnetto's `si-free-flight-2` reads the tree from this segment (see [`corpus/README.md`](../../../corpus/README.md#external-references-not-in-the-corpus)).
   - The anchor table starts at image offset `0x15D44` and holds 231 records. Their `(x, y, z)` match `ANCHORPT.DAT`, except for 5 records whose `y` is `0` in the image and `-32768` in the file. The image's scratch words `f[11]` are all zero, so the file is a runtime dump. Its records 231–1023 are `-32768` fill.
@@ -170,12 +170,12 @@ Runtime analysis in `stuntreel` confirms the static scenery reconstruction pipel
 
 The technical specifications for the scenery tables and BSP hierarchy are synthesized from the following primary community research and reverse engineering artifacts:
 
-- **FreeFlight & SIRes Projects (2001–2003):** Original source code implementations for terrain loading and BSP evaluation in `simap.cpp`, `simap.h`, and `sisland.cpp` (`corpus/si_archive/Developer/FreeFlight/src/`, `corpus/si_archive/Developer/SIRes/Src/`).
-- **Neil Halelamien (2004):** Scenery resource extraction and set coordination research (`corpus/si_archive/Developer/Notes_SETFile/`).
-- **Dave Palmowski (1999–2004):** Analysis of scenery container archives and object placement tools (`corpus/si_archive/SITools/`).
-- **Doug Armknecht (2000–2002):** Island coordinate conventions and camera tracking research (`corpus/si_archive/Developer/SI_FLM_Format/`).
-- **Ángel Eduardo (2004–2005):** Reverse engineering of prop placements, ground clamping (`SETGND`), and model viewing (`corpus/si_archive/Developer/Notes_SIExtractor/Angel_Eduardo_SI_Extractor.txt`).
-- **Alberto Marnetto (2024):** The `si-8x` level-of-detail threshold patch, described in [*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island) (2024-11-20); the corpus copy is `corpus/si_archive/Developer/SI-8x/` (notes pointer and patch diff).
+- **FreeFlight & SIRes Projects (2001–2003):** Original source code implementations for terrain loading and BSP evaluation in `simap.cpp`, `simap.h`, and `sisland.cpp` (`corpus/siarchive/Developer/FreeFlight/src/`, `corpus/siarchive/Developer/SIRes/Src/`).
+- **Neil Halelamien (2004):** Scenery resource extraction and set coordination research (`corpus/siarchive/Developer/Notes_SETFile/`).
+- **Dave Palmowski (1999–2004):** Analysis of scenery container archives and object placement tools (`corpus/siarchive/SITools/`).
+- **Doug Armknecht (2000–2002):** Island coordinate conventions and camera tracking research (`corpus/siarchive/Developer/SI_FLM_Format/`).
+- **Ángel Eduardo (2004–2005):** Reverse engineering of prop placements, ground clamping (`SETGND`), and model viewing (`corpus/siarchive/Developer/Notes_SIExtractor/Angel_Eduardo_SI_Extractor.txt`).
+- **Alberto Marnetto (2024):** The `si-8x` level-of-detail threshold patch, described in [*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island) (2024-11-20); the corpus copy is `corpus/siarchive/Developer/SI-8x/` (notes pointer and patch diff).
 - **StuntReel Teamwork Team (2026):** Byte-level layout validation of `ANCHORPT.DAT` (28 bytes), `MAP.BIN` (30 bytes + 2), and `SCENERY.scn` ($29{,}559$ words).
 
 ---

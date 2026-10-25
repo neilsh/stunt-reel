@@ -1,7 +1,7 @@
 # Executable structural layout of the Stunt Island `.ALL` movie bundle.
 # Format anchor: [FMT-ALL-CHUNKS] in all.md.
 #
-# Layout verified against the 289 `.ALL` files in corpus/si_archive/:
+# Layout verified against the 289 `.ALL` files in corpus/siarchive/:
 # the directory holds `num_chunk_ids + 1` offsets, the first equals the header
 # size (6 * num_chunk_ids + 6), and the last is the file-size sentinel. Chunk
 # classification (palette / SOD / FILM / audio) is parser policy, not layout.

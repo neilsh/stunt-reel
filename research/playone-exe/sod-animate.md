@@ -44,7 +44,7 @@ The work-segment projection term `[0x8070]` is assigned by `CS:0x0F17:0x21D0` fr
 
 ## 3. Corpus Cross-Check
 
-In `corpus/si_archive/Films/MultiFLM/AmCrisis/Ac.all`:
+In `corpus/siarchive/Films/MultiFLM/AmCrisis/Ac.all`:
 
 * Chunk `0x0105` is 58 bytes and contains one `OP_ANIMATE` record at byte `0x16`: register offset `0`, parameter `0x2000`, selector `0x16`, count `12`, and resource IDs `0x1F01`–`0x1F0C`.
 * The referenced chunks `0x1F01`–`0x1F0C` are each 3,206 bytes and begin with width `64`, height `50`; `64 * 50 = 3,200` bytes, consistent with image resources plus a 6-byte header.

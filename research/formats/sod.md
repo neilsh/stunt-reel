@@ -69,7 +69,7 @@ The scale factor converts 16-bit integer model units into metric meters per Inva
 | **16** | $5/32768$ | $1/65536\text{ m/unit}$ | 65536 units = 1 meter | Extended precision |
 | **17** | $5/65536$ | $1/131072\text{ m/unit}$ | 131072 units = 1 meter | Last entry in `SOD.H` |
 
-The table above ends at 17, but the corpus goes past it (`[Bounded Observation]`): of 102,633 `.SOD` chunks across every `.ALL` in `corpus/si_archive/`, 7 have `scale_index` 18 and 6 have 19 (for example shape `0x7E09` in `COL3-1`, `COL3-2`, `COL5-1`, `COL5-7` and `CREDITS.ALL`, and `0x7E1A` in `eGALLOC7.ALL`). `compute_scale_factor` in [`vm.rs`](../../crates/stunt-core/src/sod/vm.rs) extends the pattern past the table as $5 / 2^{k-1}$. Whether `PLAYONE`'s own table covers 18 and 19, or reads past its end, is `[Unknown]`.
+The table above ends at 17, but the corpus goes past it (`[Bounded Observation]`): of 102,633 `.SOD` chunks across every `.ALL` in `corpus/siarchive/`, 7 have `scale_index` 18 and 6 have 19 (for example shape `0x7E09` in `COL3-1`, `COL3-2`, `COL5-1`, `COL5-7` and `CREDITS.ALL`, and `0x7E1A` in `eGALLOC7.ALL`). `compute_scale_factor` in [`vm.rs`](../../crates/stunt-core/src/sod/vm.rs) extends the pattern past the table as $5 / 2^{k-1}$. Whether `PLAYONE`'s own table covers 18 and 19, or reads past its end, is `[Unknown]`.
 
 #### Mathematical Scaling Formula:
 $$S_k = \begin{cases} 1.0 & \text{if } k = 0 \\ \dfrac{1.0}{2^k} & \text{if } k \ge 1 \end{cases}$$
@@ -125,13 +125,13 @@ The `.SOD` virtual machine specification represents extensive reverse engineerin
 - **Adrian Stephens**: Original Assembly Line Engine Developer; authored the original 8086/80286 macro-assembler display-list source files for Stunt Island aircraft (`objdef`, `ipg`, `sorton`, `pushcentre`, `pushrelmat`).
 - **Chris Phillips** (`bigbang@seanet.com`): Author of `SODParse` (`ripres.c`, `DECODE.C`, `SOD.H`), `SIRes` (`SIResFile.cpp`, `Sod.h`), and `FreeFlight` (`siobj.cpp`). Decoded the 107 opcode jump table (multiples of 9), scale table constants, and OpenGL reconstruction.
 - **Dave Palmowski**: Documented `.SOD` bounding boxes, scaling factors, and object coordinates in `SITools/`.
-- **Doug Armknecht**: Curator of `corpus/si_archive/`, preserving developer notes and aircraft source models.
+- **Doug Armknecht**: Curator of `corpus/siarchive/`, preserving developer notes and aircraft source models.
 - **Neil Halelamien**: Documented 16-bit object type IDs referencing `.SOD` models in `Developer/Notes_SETFile/`.
 - **Ángel Eduardo**: Analyzed subobject joint hierarchies, spheres, discs, and Set Designer models in `Developer/Notes_SIExtractor/`.
 - **Alberto Marnetto**: Author of the `SI-8x` patch (2024), which raises the renderer's level-of-detail distance threshold eightfold by replacing the `mul` by the detail word with `mov dx, ax; shl dx, 3`, described in [*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island). The same site in `PLAYONE.EXE` is traced in [`lod.md`](../playone-exe/lod.md).
 - **Alberto Marnetto (2026)**: Author of [`si-tools/sod-decoder`](https://github.com/AlbertoMarnetto/si-tools/tree/master/sod-decoder), an MIT-licensed C++ `.SOD` to Wavefront exporter derived from FreeFlight's `siobj.cpp`; it walks more aircraft parts than `SODParse`. Consulted for operand readings, not ported ([`sod-opcodes.md`](sod-opcodes.md) § 3).
 
-### 5.2 Primary Reference Paths in `corpus/si_archive/`
+### 5.2 Primary Reference Paths in `corpus/siarchive/`
 
 - `Developer/SODParse/DECODE.C` (Chris Phillips' 107-opcode disassembler)
 - `Developer/SODParse/SOD.H` (Opcode constants, scale table, data structures)

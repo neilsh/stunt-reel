@@ -59,6 +59,8 @@ Several agents can work at once, each in its own `git worktree`: beside the chec
 D:\git\stunt-reel.data\   corpus\{stisldem,si_archive,oracle}, reference\, target_bin\
 ```
 
+The community archive keeps its historical `si_archive` name inside the data root; a checkout links it as `corpus/siarchive`, the collector's spelling, and `LINK_TARGETS` in `python/stunt_reel/dataroot.py` is the one place that maps the two.
+
 `mise run init` links those into a worktree with junctions, so the relative `corpus/` and `build/parity/reference/` paths work unchanged; build outputs, caches and `.venv` stay per worktree. `STUNT_DATA_ROOT` names a different data root, and `mise run init -- --migrate` moves an existing in-checkout `corpus/` into it.
 
 The data root is **read-only**: `mise run capture-ref` into the shared captures and oracle generation refuse unless `STUNT_DATA_WRITE=1` is set, and only one session may capture at a time, because DOSBox-X and port `58991` are machine-wide. `mise run clean -- --yes` reports and removes this worktree's outputs before you reap it. See [ADR 0008](docs/adr/0008-worktrees-share-one-read-only-data-root.md).
@@ -102,7 +104,7 @@ mise run play        # or: .\play_ctry.bat
 mise run capture-ref
 cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
     --all corpus/stisldem/VAULT/CTRY.ALL --frames 1..1344 \
-    --sidata corpus/si_archive/Developer/FreeFlight/SIDATA \
+    --sidata corpus/siarchive/Developer/FreeFlight/SIDATA \
     --out-dir build/parity/ours/ctry --width 320 --height 200 --viewport-rows 185
 cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry \
     --test build/parity/ours/ctry --output build/parity/report/ctry
@@ -122,7 +124,7 @@ Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`, and a free port 
 cargo run -p stunt-cli -- corpus/stisldem/VAULT/CTRY.FLM --all corpus/stisldem/VAULT/CTRY.ALL
 ```
 
-Opens the interactive presentation (Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits). Interactive playback follows the authored 50 Hz timeline and interpolates between slices. `--help` lists the headless flags, `--frames <A..B>` (half-open, 1-based 50 Hz tick ordinals), `--ticks`, and the `parity` subcommand. `ANCHORPT.DAT`, `MAP.BIN`, and `SCENERY.scn` are searched for in `--sidata <dir>` first, then the archive's directory, its parent and grandparent, then `sidata/` or `SIDATA/` inside the parent (filename case ignored); the demo's `corpus/si_archive/Developer/FreeFlight/SIDATA` needs an explicit `--sidata`.
+Opens the interactive presentation (Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits). Interactive playback follows the authored 50 Hz timeline and interpolates between slices. `--help` lists the headless flags, `--frames <A..B>` (half-open, 1-based 50 Hz tick ordinals), `--ticks`, and the `parity` subcommand. `ANCHORPT.DAT`, `MAP.BIN`, and `SCENERY.scn` are searched for in `--sidata <dir>` first, then the archive's directory, its parent and grandparent, then `sidata/` or `SIDATA/` inside the parent (filename case ignored); the demo's `corpus/siarchive/Developer/FreeFlight/SIDATA` needs an explicit `--sidata`.
 
 ### Export a film to video container
 

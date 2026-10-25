@@ -7,7 +7,7 @@ Programmatically validates:
    schema that owns each byte layout,
    sequential header ordering, evidentiary tier tagging (see EVIDENTIARY_TIERS),
    and Mermaid asset graphs.
-3. Provenance & Attribution: Direct citations to corpus/si_archive/, .agents/teamwork/,
+3. Provenance & Attribution: Direct citations to corpus/siarchive/, .agents/teamwork/,
    and explicit credit to community reverse-engineers.
 4. Cleanroom Isolation: ZERO binary files in research/formats/, valid UTF-8 encoding,
    no null bytes, and offline synthetic test fixture alignment [I7].
@@ -461,7 +461,7 @@ def verify_tier_vocabulary(repo_root: Path) -> VerificationResult:
 
 
 def verify_provenance_and_attribution(repo_root: Path) -> VerificationResult:
-    """Validate citations to corpus/si_archive/, .agents/teamwork/, and key community authors."""
+    """Validate citations to corpus/siarchive/, .agents/teamwork/, and key community authors."""
     errors: list[str] = []
     details: list[str] = []
 
@@ -485,13 +485,13 @@ def verify_provenance_and_attribution(repo_root: Path) -> VerificationResult:
 
         # Check for citation to corpus archive or teamwork lineage
         has_citation = (
-            "corpus/si_archive" in sec5_content
+            "corpus/siarchive" in sec5_content
             or ".agents/teamwork/" in sec5_content
             or "teamwork" in sec5_content.lower()
         )
         if not has_citation:
             errors.append(
-                f"Missing citation to corpus/si_archive/ or .agents/teamwork/ in {rel_path}"
+                f"Missing citation to corpus/siarchive/ or .agents/teamwork/ in {rel_path}"
             )
 
         # Check that community authors are cited in Section 5

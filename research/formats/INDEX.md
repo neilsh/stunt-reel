@@ -64,4 +64,4 @@ Runtime memory offsets are in [`research/playone-exe/memory-map.md`](../playone-
 
 ## 4. Provenance
 
-Community sources: Adrian Stephens (original engine), Chris Phillips (`.RES`, `.SOD` and terrain decoding), Dave Palmowski (SpriteMaker, SLICE, ResMaker), Doug Armknecht (`.FLM` corpus analysis), Neil Halelamien (`.SET` notes). The archive they come from is `corpus/si_archive/` ([`corpus/README.md`](../../corpus/README.md)); each specification's section 5 carries its own attribution and reference paths.
+Community sources: Adrian Stephens (original engine), Chris Phillips (`.RES`, `.SOD` and terrain decoding), Dave Palmowski (SpriteMaker, SLICE, ResMaker), Doug Armknecht (`.FLM` corpus analysis), Neil Halelamien (`.SET` notes). The archive they come from is `corpus/siarchive/` ([`corpus/README.md`](../../corpus/README.md)); each specification's section 5 carries its own attribution and reference paths.

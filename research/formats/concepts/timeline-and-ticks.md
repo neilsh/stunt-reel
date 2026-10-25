@@ -155,11 +155,11 @@ The earlier montage at ticks 1261 to 1485 alternates `view_obj` between a number
 
 ## 5. Attribution & Provenance
 
-- **Doug Armknecht (2002):** Reverse engineering of `.FLM` timeline structure, opcode classifications, and extraction scripts in `corpus/si_archive/Developer/SI_FLM_Format/` (`FLM_FORMAT_DOUG_NOTES.txt`, `FLM_NOTES.md`, `flm_extract.py`).
-- **FreeFlight Development Team:** Reverse engineering of `.FLM` playback state machines in `corpus/si_archive/Developer/FreeFlight/src/sifilm.cpp` and `sifilm.h`.
-- **Adrian Stephens (1997):** Analysis of subobject animation timing, propeller rotation parameters, and landing gear state transitions (`corpus/si_archive/SITools/Docs/Adrian_Subobjects.txt`).
-- **Neil Halelamien (2004):** Reverse engineering of stage event trigger timing, prop script clocks, and tick counters in `corpus/si_archive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
-- **Dave Palmowski & Dean Newbury:** Documentation of timeline mechanics, subobject hierarchies, and flight playback tools in `corpus/si_archive/SITools/Docs/`.
+- **Doug Armknecht (2002):** Reverse engineering of `.FLM` timeline structure, opcode classifications, and extraction scripts in `corpus/siarchive/Developer/SI_FLM_Format/` (`FLM_FORMAT_DOUG_NOTES.txt`, `FLM_NOTES.md`, `flm_extract.py`).
+- **FreeFlight Development Team:** Reverse engineering of `.FLM` playback state machines in `corpus/siarchive/Developer/FreeFlight/src/sifilm.cpp` and `sifilm.h`.
+- **Adrian Stephens (1997):** Analysis of subobject animation timing, propeller rotation parameters, and landing gear state transitions (`corpus/siarchive/SITools/Docs/Adrian_Subobjects.txt`).
+- **Neil Halelamien (2004):** Reverse engineering of stage event trigger timing, prop script clocks, and tick counters in `corpus/siarchive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
+- **Dave Palmowski & Dean Newbury:** Documentation of timeline mechanics, subobject hierarchies, and flight playback tools in `corpus/siarchive/SITools/Docs/`.
 - **StuntReel Teamwork Team (2026):** Discovery of the 3-byte slice header back-pointer resolution, director cut suppression rules, and Seam 2 contracts (`spec_miner_fmt_flm_all/analysis.md`, `crates/stunt-core/src/contracts/trajectory.rs`).
 
 ---

@@ -114,7 +114,7 @@ The variables are common across the corpus. Of 561 films that decode, 407 lower 
 
 ### 5.1 Night Capture (`COL3-2.FLM`)
 
-`[Established]` for the modelled palette at the captured ticks. `corpus/si_archive/Films/MultiFLM/Collage3/COL3-2.FLM` sets var 13 to 32813 (`N = 64`, full night) at tick 0, to 0 at tick 100, back to 32813 at tick 198 and 713, and to 45 at tick 698. It was captured with the harness of [`capture.md`](capture.md), mounting a directory that holds only that film's `.FLM` and `.ALL` beside the demo's engine files, so the dialog's `c`, `Down`, `Enter` keys select it. The 30 captured frames cover ticks 168–201 (var 14 is 0) and 458–726 (var 14 is 32768).
+`[Established]` for the modelled palette at the captured ticks. `corpus/siarchive/Films/MultiFLM/Collage3/COL3-2.FLM` sets var 13 to 32813 (`N = 64`, full night) at tick 0, to 0 at tick 100, back to 32813 at tick 198 and 713, and to 45 at tick 698. It was captured with the harness of [`capture.md`](capture.md), mounting a directory that holds only that film's `.FLM` and `.ALL` beside the demo's engine files, so the dialog's `c`, `Down`, `Enter` keys select it. The 30 captured frames cover ticks 168–201 (var 14 is 0) and 458–726 (var 14 is 32768).
 
 `PaletteControls::film_palette` fed the variables sampled at the capture's `film_tick` reproduces all 240 live DAC entries of every frame, comparing 6-bit levels, so the night path in section 3.1 is exact: the night sky gradient, the night lights at entries 213–214, the darkened scene entries, and the all-black palette while var 14 is 0. The ticks quoted for `COL3-2.FLM` are slice starts, as above.
 

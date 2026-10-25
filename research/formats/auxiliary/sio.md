@@ -6,7 +6,7 @@ The `.SIO` format is an intermediate 3D mesh and point-cloud authoring format cr
 
 - **File Extension:** `.SIO`
 - **Magic Bytes:** 8 bytes: `53 64 73 01 00 00 00 00` (ASCII `b"Sds\x01"` followed by four zero version bytes).
-- **Typical Container / Storage:** Loose authoring files stored in project workspaces or tooling directories (e.g. `corpus/si_archive/SITools/Slice/`).
+- **Typical Container / Storage:** Loose authoring files stored in project workspaces or tooling directories (e.g. `corpus/siarchive/SITools/Slice/`).
 - **Byte Endianness:** Little-endian (standard x86 16-bit integer formatting).
 - **Engine Lifecycle Role:**
   1. *Intermediate Geometric Modeling:* Serves as a high-level 3D point cloud and wireframe authoring format supporting geometric primitives (centralized cubes, circles, spheres, Bezier curves, and random point-cloud splats).
@@ -106,7 +106,7 @@ The stream concludes when the parser encounters the terminator tag `0xFF` follow
 
 ### 3.3 Reference File Empirical Validation
 
-Validating against test models bundled in `corpus/si_archive/SITools/Slice/`:
+Validating against test models bundled in `corpus/siarchive/SITools/Slice/`:
 
 | File Name | File Size | Header Check | Vertex Count (`0x12`) | Midpoint Count (`0x06`) | Terminator Check |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -145,7 +145,7 @@ Where $s = 0.005\text{ m}$ (standard $1:200$ editor scaling) or derived from the
 
 The technical specifications for the `.SIO` format are synthesized from the following primary community research and development artifacts:
 
-- **Dave Palmowski (1999–2001):** Author of SLICE ("Stunt isLand Inhouse Custom Editor"), original designer of the `.SIO` bytecode format, and author of the operator's manual (`corpus/si_archive/SITools/Slice/manual.txt`).
+- **Dave Palmowski (1999–2001):** Author of SLICE ("Stunt isLand Inhouse Custom Editor"), original designer of the `.SIO` bytecode format, and author of the operator's manual (`corpus/siarchive/SITools/Slice/manual.txt`).
 - **Dean Newbury & SIFA Community:** Testing and asset preservation of UFO Command Act 2 props, `Tube.SIO`, `LUKSABER.SIO`, and `Derby2.SIO`.
 - **StuntReel Teamwork Team (2026):** Reverse engineering of binary opcode tags (`0x12` `TAG_VERTEX`, `0x06` `TAG_MIDPOINT`), verification of the 8-byte magic signature and trailer sentinels across all 8 corpus test models.
 

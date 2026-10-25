@@ -6,10 +6,10 @@
 
 | File | What it is |
 |---|---|
-| `corpus/si_archive/Docs/Manual/stuntisle.pdf` | The retail handbook, 5.1 MB, scanned page images. Gitignored with the rest of `corpus/`. |
-| `corpus/si_archive/Docs/Manual/SIManual.txt` | OCR text of that scan, 13,333 lines. The Table of Contents sits at lines 62–387; an alphabetical index ends the file. Chapter headings repeat as page footers. |
-| `corpus/si_archive/Docs/Disney_Support/SIUPDATE.TXT` | The revised handbook, 5,961 lines: same chapters plus eight tutorials and a support FAQ. |
-| `corpus/si_archive/Docs/Disney_Support/SIUPDATE2.txt` | The later revised edition, 7,033 lines. |
+| `corpus/siarchive/Docs/Manual/stuntisle.pdf` | The retail handbook, 5.1 MB, scanned page images. Gitignored with the rest of `corpus/`. |
+| `corpus/siarchive/Docs/Manual/SIManual.txt` | OCR text of that scan, 13,333 lines. The Table of Contents sits at lines 62–387; an alphabetical index ends the file. Chapter headings repeat as page footers. |
+| `corpus/siarchive/Docs/Disney_Support/SIUPDATE.TXT` | The revised handbook, 5,961 lines: same chapters plus eight tutorials and a support FAQ. |
+| `corpus/siarchive/Docs/Disney_Support/SIUPDATE2.txt` | The later revised edition, 7,033 lines. |
 | `corpus/SIPatch.zip` | The Product Update (called Patch #3 in the support text): Cessna/Beechcraft elevator, Easy/Hard flight model, rudder pedals. `SINEW.TXT` is its changelog. |
 
 ## 2. How to cite it
@@ -56,4 +56,4 @@ A handbook-only claim is `[Hypothesis]` with an inline `handbook p.N`, promoted 
 
 1. **Which build is analysed?** [`playone-exe/startup.md`](playone-exe/startup.md) pins no version, and `SI_UP2` (12/09/92) fixed a palette shift where ocean and lakes rendered red or pink on some video cards. Whether that patch touched `PLAYONE.EXE`'s palette path, and so whether any `[MEM-*]` offset is build-specific, is unestablished.
 2. **Are flags the film's variable registers?** The handbook's flags are -128 to 127, a signed byte, while film variables are 16-bit. The "16 flags, 16 slots" reading in `Q-FLM-10` survives only as `[Hypothesis]`.
-3. **Can the action codes be named?** The THEN list (pp.92–95) is the candidate catalogue for `action_code`, and the corpus offers 92 `.SET` files under `corpus/si_archive/Misc/Sets/`, 22 with a printed `.TXT`. Those prints are tutorial articles rather than one-to-one dumps and disagree with their binaries on at least two header fields, so they are a lead and not an oracle. See `[BK-SET-05]` in [`formats/auxiliary/set.md`](formats/auxiliary/set.md).
+3. **Can the action codes be named?** The THEN list (pp.92–95) is the candidate catalogue for `action_code`, and the corpus offers 92 `.SET` files under `corpus/siarchive/Misc/Sets/`, 22 with a printed `.TXT`. Those prints are tutorial articles rather than one-to-one dumps and disagree with their binaries on at least two header fields, so they are a lead and not an oracle. See `[BK-SET-05]` in [`formats/auxiliary/set.md`](formats/auxiliary/set.md).

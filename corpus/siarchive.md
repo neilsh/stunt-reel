@@ -1,4 +1,4 @@
-# `si_archive/`: What Is In the Reference Corpus
+# `siarchive/`: What Is In the Reference Corpus
 
 The extracted Stunt Island Central Archive (Doug Armknecht's collection): roughly **3,700 files and 600 MB**. Every byte here is gitignored under `[I7]` and used as evidence only; nothing in it ships with the project or enters a test fixture.
 

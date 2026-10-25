@@ -12,7 +12,7 @@ In the retail game, `.FLM` files reside in the `vault\` directory (e.g., `ACT1.F
 | :--- | :--- | :---: | :--- |
 | **File Extension** | `.FLM` (typically uppercase DOS 8.3, e.g., `INTRO.FLM`, `ACT1.FLM`, `FOKKER.FLM`) | `[Established]` | `research/playone-exe/startup.md` |
 | **Magic Signature** | 4-byte ASCII: `b"FILM"` (`0x46, 0x49, 0x4C, 0x4D`) at byte offset `0x0000` | `[Established]` | `sifilm.cpp:72`, `flm_extract.py:76`, `synthetic_minimal.flm` |
-| **Extension Variants** | 132 corpus files under `corpus/si_archive/Misc/` use the `.TKE` extension but are byte-identical `FILM` streams: all 132 parse as films (17,585 slices) | `[Established]` | corpus census, `verify-corpus` |
+| **Extension Variants** | 132 corpus files under `corpus/siarchive/Misc/` use the `.TKE` extension but are byte-identical `FILM` streams: all 132 parse as films (17,585 slices) | `[Established]` | corpus census, `verify-corpus` |
 | **Byte Endianness** | Mixed: 16-bit integers and 32-bit fixed-point scalars are Little-Endian; composite time-slice headers feature a 16-bit back-pointer | `[Established]` | `sifilm.cpp:43-58`, cross-corpus verification |
 | **Container Pairing** | Paired 1:1 with `<NAME>.ALL` full-scene container in `VAULT\` directory | `[Established]` | `PLAYONE.EXE:0x0787`, `research/playone-exe/navigation.md` |
 | **Engine Role** | Deterministic playback stream driving camera channels, 6-DOF actor trajectories, subobject joints, and sound triggers | `[Established]` | `docs/SPEC.md § 1.1`, `crates/stunt-core/src/contracts/trajectory.rs` |
@@ -211,15 +211,15 @@ The reverse engineering of the `.FLM` format represents the culmination of deep 
 
 ### 5.1 Community Researchers & Tool Authors
 
-- **Doug Armknecht**: Primary researcher of the `.FLM` binary stream. Authored `flm_extract.py`, `flm_compare.py`, `flm_corpus_analyze.py`, and `flm_trace_flags.py` in `corpus/si_archive/Developer/SI_FLM_Format/`. Decoded the 3-byte slice header and solved the reverse-scrubbing back-pointer across all 15,544 corpus slices.
-- **FreeFlight Development Team**: Authors of `sifilm.h` and `sifilm.cpp` in `corpus/si_archive/Developer/FreeFlight/src/`, establishing initial opcode classifications (`create`, `interp`, `view_obj`, `sound`).
-- **Dave Palmowski & Dean Newbury**: Authors of technical documentation on the Stunt Island Editing Room timeline mechanics, subobject animations, and actor slot constraints in `corpus/si_archive/SITools/Docs/`.
+- **Doug Armknecht**: Primary researcher of the `.FLM` binary stream. Authored `flm_extract.py`, `flm_compare.py`, `flm_corpus_analyze.py`, and `flm_trace_flags.py` in `corpus/siarchive/Developer/SI_FLM_Format/`. Decoded the 3-byte slice header and solved the reverse-scrubbing back-pointer across all 15,544 corpus slices.
+- **FreeFlight Development Team**: Authors of `sifilm.h` and `sifilm.cpp` in `corpus/siarchive/Developer/FreeFlight/src/`, establishing initial opcode classifications (`create`, `interp`, `view_obj`, `sound`).
+- **Dave Palmowski & Dean Newbury**: Authors of technical documentation on the Stunt Island Editing Room timeline mechanics, subobject animations, and actor slot constraints in `corpus/siarchive/SITools/Docs/`.
 - **Adrian Stephens**: Original Assembly Line Developer; architected the choreography engine, fixed-point kinematics, and BAM angle system.
 - **Chris Phillips**: Decoded `.SOD` subobject bindings driven by `.FLM` joint angles.
 - **Neil Halelamien**: Author of `.SET` scenery format research (2004); documented world object coordinates, prop placements, and scene initialization referenced by `.FLM` choreography streams in `Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
 - **Ángel Eduardo**: Documented actor slot allocation in Stunt Island Set Designer.
 
-### 5.2 Primary Reference Paths in `corpus/si_archive/`
+### 5.2 Primary Reference Paths in `corpus/siarchive/`
 
 - `Developer/SI_FLM_Format/FLM_NOTES.md` (Doug Armknecht's format specification)
 - `Developer/SI_FLM_Format/CORPUS_FINDINGS.md` (Statistical analysis across 50 corpus films)

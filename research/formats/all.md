@@ -29,7 +29,7 @@ A `.ALL` archive employs a flat directory header consisting of an item count fol
 
 The executable byte layout is [`all.ksy`](all.ksy): `num_chunk_ids: u2`, `chunk_ids: u2[num]`, then `num + 1` `u4` offsets, giving a `len_header` of `6 * num + 6` bytes with the final offset acting as an EOF sentinel. The schema is the single source for field widths, offsets and byte order; this section keeps only the corpus evidence and parser policy.
 
-Corpus verification (`[Bounded Observation]`): across the 289 `.ALL` files in `corpus/si_archive/`, `offsets[0]` equals `len_header` in every file, and the sentinel equals the file size in 288 of 289. `Films/MultiFLM/UFOAct2/BRIEFING.ALL` points past EOF, consistent with a truncated archive rather than a different layout.
+Corpus verification (`[Bounded Observation]`): across the 289 `.ALL` files in `corpus/siarchive/`, `offsets[0]` equals `len_header` in every file, and the sentinel equals the file size in 288 of 289. `Films/MultiFLM/UFOAct2/BRIEFING.ALL` points past EOF, consistent with a truncated archive rather than a different layout.
 
 #### Chunk Bounds & Slicing
 Payload data immediately follows the directory header in contiguous, non-overlapping slices:
@@ -134,14 +134,14 @@ The documentation and reverse engineering of the `.ALL` bundle format builds upo
 ### 5.1 Community Researchers & Tool Authors
 
 - **FreeFlight Team**: Authors of `Developer/FreeFlight/src/sires.cpp`, who implemented `sires_load_all_file` and decoded the parallel `num`, `ids`, and `offsets` directory layout.
-- **Dave Palmowski & Dean Newbury**: Authors of `shading.doc`, `si.pal`, and `si.act` in `corpus/si_archive/SITools/SpriteMaker/` and `SITools/Docs/`, establishing the 16-color group organization and 32-level composite shading ramps.
+- **Dave Palmowski & Dean Newbury**: Authors of `shading.doc`, `si.pal`, and `si.act` in `corpus/siarchive/SITools/SpriteMaker/` and `SITools/Docs/`, establishing the 16-color group organization and 32-level composite shading ramps.
 - **Adrian Stephens**: Original Assembly Line Developer; architected the movie packaging format for `MAKEONE.EXE`.
-- **Doug Armknecht**: Curator of `corpus/si_archive/`, preserving community notes and reverse-engineering code.
+- **Doug Armknecht**: Curator of `corpus/siarchive/`, preserving community notes and reverse-engineering code.
 - **Chris Phillips**: Documented palette indexing and `.SOD` geometry loading from `.ALL` containers in `Developer/SODParse/`.
 - **Neil Halelamien**: Author of `.SET` scenery format research (2004); documented prop type 16-bit IDs, scenery quadtree placement, and coordinate linking to `.ALL` bundle chunks in `Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
 - **Ángel Eduardo**: Analyzed `.ALL` container chunk headers and subobjects.
 
-### 5.2 Primary Reference Paths in `corpus/si_archive/`
+### 5.2 Primary Reference Paths in `corpus/siarchive/`
 
 - `Developer/FreeFlight/src/sires.cpp` (C++ `.ALL` container unpacker)
 - `SITools/SpriteMaker/si.pal` (Raw Mode 13h 256-color palette data)

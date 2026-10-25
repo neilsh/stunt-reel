@@ -143,7 +143,7 @@ def test_ensure_links_refuses_a_checkout_holding_real_data(
     root = tmp_path / "stunt-reel.data"
     (root / "si_archive").mkdir(parents=True)
     worktree = _worktree(monkeypatch, _primary(tmp_path))
-    populated = worktree / "corpus" / "si_archive"
+    populated = worktree / "corpus" / "siarchive"
     populated.mkdir(parents=True)
     (populated / "SITools.zip").write_bytes(b"PK\x03\x04")
     with pytest.raises(dataroot.SharedDataError, match="migrate"):

@@ -216,11 +216,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ## 5. Attribution & Provenance
 
-- **Dave Palmowski & Dean Newbury:** Comprehensive documentation of Stunt Island color groups, 16/32-level lighting ramps, and preservation of `si.pal`, `si.act`, and `shading.doc` in `corpus/si_archive/SITools/SpriteMaker/` and `corpus/si_archive/SITools/Docs/`.
-- **Adrian Stephens (1997):** Analysis of subobject palette index mapping, conditional color substitution, and translucent propeller disc rendering (`corpus/si_archive/SITools/Docs/Adrian_Subobjects.txt`).
-- **Doug Armknecht (2002):** Reverse engineering of `.FLM` timeline horizon and sky palette indices (`horizon_sky_palette`) and color state tracking in `corpus/si_archive/Developer/SI_FLM_Format/` (`FLM_NOTES.md`, `FLM_FORMAT_DOUG_NOTES.txt`).
-- **Neil Halelamien (2004):** Reverse engineering of `.SET` time-of-day simulation scalars modulating palette lighting levels in `corpus/si_archive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
-- **FreeFlight Development Team:** Reverse engineering of `.ALL` palette container chunks (`0x8042` and `0x801E`) in `corpus/si_archive/Developer/FreeFlight/src/sires.cpp` and `SIPAL.H`.
+- **Dave Palmowski & Dean Newbury:** Comprehensive documentation of Stunt Island color groups, 16/32-level lighting ramps, and preservation of `si.pal`, `si.act`, and `shading.doc` in `corpus/siarchive/SITools/SpriteMaker/` and `corpus/siarchive/SITools/Docs/`.
+- **Adrian Stephens (1997):** Analysis of subobject palette index mapping, conditional color substitution, and translucent propeller disc rendering (`corpus/siarchive/SITools/Docs/Adrian_Subobjects.txt`).
+- **Doug Armknecht (2002):** Reverse engineering of `.FLM` timeline horizon and sky palette indices (`horizon_sky_palette`) and color state tracking in `corpus/siarchive/Developer/SI_FLM_Format/` (`FLM_NOTES.md`, `FLM_FORMAT_DOUG_NOTES.txt`).
+- **Neil Halelamien (2004):** Reverse engineering of `.SET` time-of-day simulation scalars modulating palette lighting levels in `corpus/siarchive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
+- **FreeFlight Development Team:** Reverse engineering of `.ALL` palette container chunks (`0x8042` and `0x801E`) in `corpus/siarchive/Developer/FreeFlight/src/sires.cpp` and `SIPAL.H`.
 - **StuntReel Teamwork Team (2026):** Milestone 1 & 2 $256 \times 32$ GPU LUT architecture, `@interpolate(flat)` pipeline design, and visual parity specification (`explorer_fmt_aux_concepts/analysis.md`, `crates/stunt-render/`).
 
 ---

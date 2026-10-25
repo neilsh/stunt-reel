@@ -196,8 +196,8 @@ def test_area3_flm_timeline_and_cuts() -> dict[str, Any]:
     """Adversarially verify the 3-byte slice header back-pointer relation and camera cut suppression."""
     findings: dict[str, Any] = {}
 
-    flm_paths = glob.glob("corpus/si_archive/Films/FLMOnly/*.FLM")
-    sys.path.insert(0, "corpus/si_archive/Developer/SI_FLM_Format/Source")
+    flm_paths = glob.glob("corpus/siarchive/Films/FLMOnly/*.FLM")
+    sys.path.insert(0, "corpus/siarchive/Developer/SI_FLM_Format/Source")
     from flm_extract import FilmParser  # type: ignore[import-not-found]
 
     total_slices = 0
@@ -264,10 +264,10 @@ def test_area4_palette_and_lighting() -> dict[str, Any]:
     """Adversarially verify Chunk 0x8042 bit-exactness against si.pal and 32-level composite ramps."""
     findings: dict[str, Any] = {}
 
-    with open("corpus/si_archive/SITools/SpriteMaker/si.pal", "rb") as f:
+    with open("corpus/siarchive/SITools/SpriteMaker/si.pal", "rb") as f:
         sipal = f.read()
 
-    all_files = glob.glob("corpus/si_archive/Films/MultiFLM/*/*.ALL")
+    all_files = glob.glob("corpus/siarchive/Films/MultiFLM/*/*.ALL")
     files_with_8042 = 0
     bit_exact_matches = 0
     prefix_verified = 0

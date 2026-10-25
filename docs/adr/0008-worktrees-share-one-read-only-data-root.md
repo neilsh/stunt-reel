@@ -6,7 +6,7 @@ the checkout, or under a gitignored directory inside it such as
 reference captures and ``target_bin/`` are gitignored, so they live once per
 machine in ``<parent-of-primary>/<repo-name>.data`` (``STUNT_DATA_ROOT`` overrides),
 and ``mise run init`` links them into every worktree: ``corpus/stisldem``,
-``corpus/si_archive``, ``corpus/oracle``, ``target_bin/`` and ``build/parity/reference``.
+``corpus/siarchive``, ``corpus/oracle``, ``target_bin/`` and ``build/parity/reference``.
 Build outputs, Python caches and the virtualenv stay per worktree.
 
 Two consequences are deliberate. The data root is read-only to agents: the two

@@ -1,7 +1,7 @@
 # Executable structural layout of the Stunt Island `.SIO` slice mesh.
 # Format anchor: [FMT-SIO-RECORDS] in sio.md.
 #
-# Verified against all eight SLICE models in corpus/si_archive/SITools/Slice/:
+# Verified against all eight SLICE models in corpus/siarchive/SITools/Slice/:
 # every stream is a one-byte opcode tag dispatch over 9-byte vertex and
 # 7-byte midpoint records, ending in the four-byte `FF FF 00 00` sentinel.
 # The tag is one byte, so the sentinel's leading `0xFFFF` word is the

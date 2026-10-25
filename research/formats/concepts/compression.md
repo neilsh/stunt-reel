@@ -86,7 +86,7 @@ Retail `PLAYONE.EXE` is packed with Fabrice Bellard's **LZEXE 0.91**:
 - **Packed Size:** $102{,}703\text{ bytes}$
 - **Unpacked Image Size:** $200{,}524\text{ bytes}$ of load image, or $201{,}548\text{ bytes}$ as an MZ-wrapped file with the 1,024-byte header [`unlzexe.py`](../../../python/scripts/unlzexe.py) writes
 - **Bitstream:** plain LZSS, no Huffman stage — a 16-bit little-endian flag word read LSB-first; `1` is a literal; `0`+`0` is a 2-bit length plus an 8-bit span; `0`+`1` is a 13-bit span plus a 3-bit length, with an extended length byte where `0` ends the stream and `1` skips a segment. [`unlzexe.py`](../../../python/scripts/unlzexe.py) implements exactly this and reproduces `build/re/playone.img` (`[Established]`)
-- **Loader layout:** the eight-word info block sits at `(CS + header_paragraphs) × 16`, and the relocations at `loader + 0x158`. [`unlzexe.py`](../../../python/scripts/unlzexe.py) raises `IndexError` on `target_bin/StuntIsl/STUNT.EXE` (138,318 bytes) while it unpacks `corpus/si_archive/Films/OldPLAY/STUNT.EXE` (137,240 bytes) cleanly, so that copy carries a different loader layout or is not a plain 0.91 build (`[Bounded Observation]`; see `[BK-COMP-05]`)
+- **Loader layout:** the eight-word info block sits at `(CS + header_paragraphs) × 16`, and the relocations at `loader + 0x158`. [`unlzexe.py`](../../../python/scripts/unlzexe.py) raises `IndexError` on `target_bin/StuntIsl/STUNT.EXE` (138,318 bytes) while it unpacks `corpus/siarchive/Films/OldPLAY/STUNT.EXE` (137,240 bytes) cleanly, so that copy carries a different loader layout or is not a plain 0.91 build (`[Bounded Observation]`; see `[BK-COMP-05]`)
 - **Header Structure:** Standard MS-DOS `MZ` signature (`0x4D, 0x5A`) followed by a 28-byte MZ header and a small real-mode decompression stub located at segment `0x0000:0x0020`.
 - **Relocation Table:** The LZEXE stub reads a compressed relocation table appended to the compressed payload, relocates segment references in conventional memory, and jumps to the unpacked entry point at `0000:0C5Eh`.
 
@@ -176,7 +176,7 @@ pub fn slice_payload<'a>(
 
 ### 3.3 PCX RLE Decompression Algorithm
 
-Used when decoding community source artwork in `corpus/si_archive/SITools/SpriteMaker/`:
+Used when decoding community source artwork in `corpus/siarchive/SITools/SpriteMaker/`:
 
 ```rust
 pub fn decode_pcx_rle(encoded_bytes: &[u8], expected_pixel_count: usize) -> Vec<u8> {
@@ -218,10 +218,10 @@ pub fn decode_pcx_rle(encoded_bytes: &[u8], expected_pixel_count: usize) -> Vec<
 ## 5. Attribution & Provenance
 
 - **Fabrice Bellard (1990):** Creator of the LZEXE 0.91 MS-DOS executable compressor.
-- **Dave Palmowski (1999–2001):** Author of SpriteMaker and PCX2SPR, documenting PCX RLE decoding and `.SPR` uncompressed raster layouts in `corpus/si_archive/SITools/SpriteMaker/`.
-- **Adrian Stephens & FreeFlight Team:** Implementation of `ripres.c` and `sires.cpp` establishing uncompressed `.RES` and `.ALL` payload slicing in `corpus/si_archive/Developer/SODParse/` and `Developer/FreeFlight/`.
-- **Doug Armknecht (2002):** Corpus-wide extraction of uncompressed film streams and chunk boundaries via `flm_extract.py` in `corpus/si_archive/Developer/SI_FLM_Format/`.
-- **Neil Halelamien (2004):** Reverse engineering of `.SET` scene files and documentation of uppercase 8.3 filename conventions in `corpus/si_archive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
+- **Dave Palmowski (1999–2001):** Author of SpriteMaker and PCX2SPR, documenting PCX RLE decoding and `.SPR` uncompressed raster layouts in `corpus/siarchive/SITools/SpriteMaker/`.
+- **Adrian Stephens & FreeFlight Team:** Implementation of `ripres.c` and `sires.cpp` establishing uncompressed `.RES` and `.ALL` payload slicing in `corpus/siarchive/Developer/SODParse/` and `Developer/FreeFlight/`.
+- **Doug Armknecht (2002):** Corpus-wide extraction of uncompressed film streams and chunk boundaries via `flm_extract.py` in `corpus/siarchive/Developer/SI_FLM_Format/`.
+- **Neil Halelamien (2004):** Reverse engineering of `.SET` scene files and documentation of uppercase 8.3 filename conventions in `corpus/siarchive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
 - **StuntReel Teamwork Team (2026):** Invariant `[I8]` specification, `VfsArchive` case-normalization contract, and cleanroom test fixtures (`crates/stunt-core/src/contracts/vfs.rs`, `tests/fixtures/synthetic_minimal.res`).
 
 ---
