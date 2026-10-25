@@ -65,6 +65,10 @@ seq:
   - id: rest
     size-eos: true
     doc: |
-      Records and trailer: `props - 1` prop records of 64 bytes, then `events`
-      event records of 64 bytes, then 3 bytes per event after the first. The
-      event record's fields are only partly mapped; see set.md 3.5.
+      `events` event records of 67 bytes, then 64 bytes per prop.
+
+      An event record is an 11-byte clause header (IF type, object 1, object 2,
+      AND #1 type and operand, AND #2 type and operand) followed by eight
+      7-byte THEN slots: action type, target, secondary operand, a u16 operand
+      in 50 Hz ticks or dollars, sound volume, sound routing. Operator values,
+      field offsets and the field map are in set.md 3.5 and 3.6.
