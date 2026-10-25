@@ -65,6 +65,21 @@ TYPESET is LZEXE-packed (28,411 to 39,786 bytes, `build/re/typeset.img`) and is 
 
 The install's own `SETS/` directory holds 36 `.SET` files — the retail levels, including `CTRY.SET`, the set behind `CTRY.FLM` — which are additional layout samples the community archive does not duplicate.
 
+## 6. Running the retail utilities
+
+The install ships DOS programs, so the printer itself is a usable oracle.
+
+```
+dosbox-x -conf dosbox-utils.conf -c "typeset base.set > out.txt" -c "exit"
+```
+
+[`dosbox-utils.conf`](../../dosbox-utils.conf) mounts `build/utils` as `C:` and deliberately starts no MCP server, because port `58991` belongs to the capture harness. Copy `TYPESET.EXE` and the set under test into `build/utils` first. Verified: `TYPESET` on `BOMBING.SET` reproduces the same field list as `BOMBING.TXT`, so the oracle matches the shipped dumps.
+
+That makes a byte-to-field map mechanical in principle — flip one byte, dump again, and diff the two outputs, ignoring the `Printed at` line. Two practical obstacles, both measured:
+
+- **DOSBox-X detaches from the console.** A launch that is merely redirected returns in milliseconds while the guest is still starting, so a caller must run it in the foreground through a pipe or poll for the output file. Timings taken from a redirect are meaningless.
+- **A guest run is slow enough to matter.** A ten-variant batch written against a 675-entry host directory did not finish inside 300 s, and one launch did not produce its dump within 60 s. Until that is fixed — a disk image instead of a host directory, or the capture harness's socket-driven approach — sweeping 663 offsets is not practical, and the oracle is sane only for single targeted runs.
+
 ## Ruled out
 
 - *PLAYONE or MAKEONE reading `.SET`*: neither image contains the string, and both reference only the `VAULT` trio.
