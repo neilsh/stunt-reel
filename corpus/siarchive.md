@@ -49,6 +49,8 @@ The film corpus, split by how each package was assembled: `FLMOnly/` (143), `FLM
 
 `NewPLAY/` is a complete run directory rather than loose films: `DRIVER1-3.BIN`, `GAME.CFG`, `GAME.VAR`, `Vault/`. `GAME.VAR` is the detail word documented in [`research/playone-exe/lod.md`](../research/playone-exe/lod.md).
 
+`OldPLAY/` is the only folder holding the authoring side: `STUNT.EXE`, `MAKEONE.EXE`, `PLAYONE.EXE`, `ADDSNDS.EXE` and `TYPESET.EXE`. `STUNT.EXE` is what writes and reads `.SET` files; see [`research/stunt-exe/sets.md`](../research/stunt-exe/sets.md). Note that `MultiFLM/*/PLAYONE.EXE` is a second, smaller build (97,790 bytes against 102,703), so a `PLAYONE` offset must name its build.
+
 ## `Misc/` (192 files, 12.9 MB)
 
 | Folder | What it holds | Relevance |

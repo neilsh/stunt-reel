@@ -8,6 +8,7 @@
 |---|---|---|
 | [`playone-exe/`](playone-exe/) | Behaviour of `PLAYONE.EXE`: code, memory, runtime state, and the tools used to study it | [`terrain-shade.md`](playone-exe/terrain-shade.md), [`lod.md`](playone-exe/lod.md), [`memory-map.md`](playone-exe/memory-map.md) (offset tables), [`static-tooling.md`](playone-exe/static-tooling.md) |
 | [`formats/`](formats/) | File formats and engine concepts shared across files; byte layouts only in the `.ksy` schemas | [`INDEX.md`](formats/INDEX.md), [`flm.md`](formats/flm.md), [`sod-opcodes.md`](formats/sod-opcodes.md), [`concepts/`](formats/concepts/) |
+| [`stunt-exe/`](stunt-exe/) | Behaviour of `STUNT.EXE`, the authoring executable: sets, events, and the editor's file handling | [`sets.md`](stunt-exe/sets.md) |
 | [`parity/`](parity/) | How our render differs from the original's, and how we measure it | [`method.md`](parity/method.md), [`log.md`](parity/log.md) |
 
 A source card records a *document* rather than a subject; these live beside this file, e.g. [`handbook.md`](handbook.md) for the retail handbook.
