@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from functools import lru_cache
 from pathlib import Path
 
@@ -25,6 +26,7 @@ __all__ = [
     "create_link",
     "data_root",
     "ensure_links",
+    "ensure_links_or_report",
     "is_link",
     "is_placeholder",
     "is_shared",
@@ -214,3 +216,14 @@ def ensure_links() -> list[str]:
         create_link(link, target)
         repaired.append(relative)
     return repaired
+
+
+def ensure_links_or_report(program: str) -> bool:
+    """``ensure_links`` for a command's first lines: say what it did, or why it refused."""
+    try:
+        for relative in ensure_links():
+            sys.stderr.write(f"{program}: linked {relative}\n")
+    except SharedDataError as err:
+        sys.stderr.write(f"{program}: {err}\n")
+        return False
+    return True

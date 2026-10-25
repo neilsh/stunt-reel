@@ -17,6 +17,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from stunt_reel.dataroot import ensure_links_or_report
+
 
 def test_area1_bam_and_fixed_point() -> dict[str, Any]:
     """Adversarially stress-test BAM angular math and fixed-point 16.16 arithmetic."""
@@ -356,6 +358,8 @@ def test_area4_palette_and_lighting() -> dict[str, Any]:
 
 
 def main() -> int:
+    if not ensure_links_or_report("adversarial_formats_challenge"):
+        return 1
     print("=" * 80)
     print("CHALLENGER 2 EMPIRICAL ADVERSARIAL VERIFICATION HARNESS")
     print("=" * 80)

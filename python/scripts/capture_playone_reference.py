@@ -19,7 +19,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from stunt_reel.dataroot import SharedDataError, ensure_links, is_shared, require_shared_write
+from stunt_reel.dataroot import ensure_links_or_report, is_shared, require_shared_write
 from stunt_reel.tac import playone
 from stunt_reel.tac.client import TacClient
 from stunt_reel.tac.framebuffer import capture
@@ -141,11 +141,7 @@ def run_session(args: argparse.Namespace) -> int:
     film: Path = args.film if args.film.is_absolute() else REPO_ROOT / args.film
     out: Path = args.out or Path("build/parity/reference") / film.stem.lower()
     out_dir: Path = out if out.is_absolute() else REPO_ROOT / out
-    try:
-        for relative in ensure_links():
-            print(f"[capture] linked {relative}", file=sys.stderr)
-    except SharedDataError as err:
-        print(f"mise run capture-ref: {err}", file=sys.stderr)
+    if not ensure_links_or_report("mise run capture-ref"):
         return 2
     if is_shared(out_dir):
         require_shared_write("mise run capture-ref")

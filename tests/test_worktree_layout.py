@@ -9,6 +9,7 @@ is what enforces it.
 
 from __future__ import annotations
 
+import ast
 import os
 import shutil
 import subprocess
@@ -16,6 +17,11 @@ import tomllib
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+SCRIPTS = REPO_ROOT / "python" / "scripts"
+
+#: Scripts that name corpus paths without reading the corpus: the linker itself,
+#: and the doc checker, which only asserts that other pages cite the archive.
+_NOT_READERS = frozenset({"worktree_init.py", "verify_formats_docs.py"})
 
 #: Never walked: build output, caches, and the git directory itself.
 _PRUNED = frozenset(
@@ -93,6 +99,33 @@ def test_the_detector_finds_a_linked_worktree(tmp_path: Path) -> None:
     worktree.mkdir(parents=True)
     (worktree / ".git").write_text("gitdir: elsewhere\n", encoding="utf-8")
     assert _nested_worktrees(tmp_path) == [worktree]
+
+
+def _corpus_scripts() -> set[str]:
+    """Scripts holding a ``corpus/`` path literal, docstring usage examples included."""
+    found: set[str] = set()
+    for path in sorted(SCRIPTS.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and ("corpus/" in node.value or node.value == "corpus")
+            ):
+                found.add(path.name)
+                break
+    return found
+
+
+def test_every_script_that_reads_the_corpus_links_it() -> None:
+    readers = _corpus_scripts() - _NOT_READERS
+    assert "capture_playone_reference.py" in readers, "the detector missed a known corpus reader"
+    for name in sorted(readers):
+        text = (SCRIPTS / name).read_text(encoding="utf-8")
+        assert "ensure_links_or_report(" in text, (
+            f"{name} names corpus paths but never links the data root; in a worktree that "
+            "skipped mise run init it reads an empty corpus"
+        )
 
 
 def test_a_worktree_inside_the_checkout_is_ignored_and_excluded() -> None:

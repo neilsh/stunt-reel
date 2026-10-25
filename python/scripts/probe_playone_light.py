@@ -24,6 +24,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.tac import playone
 from stunt_reel.tac.client import TacClient
 from stunt_reel.tac.framebuffer import _wait_until_static, read_ticks
@@ -163,6 +164,8 @@ def stage_film(film: Path, conf: Path) -> tuple[Path, Path]:
 
 def main() -> int:
     """Run the probe and terminate the emulator."""
+    if not ensure_links_or_report("probe_playone_light"):
+        return 2
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
     return run(parse_args())
 
