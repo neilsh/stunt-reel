@@ -53,7 +53,7 @@ The film corpus, split by how each package was assembled: `FLMOnly/` (143), `FLM
 
 | Folder | What it holds | Relevance |
 |---|---|---|
-| `Sets/` (120) | **92 `.SET` files and 22 printed `.TXT` dumps** emitted by the authoring tools | A field-level oracle for `.SET`: every header, prop and event field decoded in prose next to its binary |
+| `Sets/` (120) | **92 `.SET` files and 22 printed `.TXT` articles** emitted by the authoring tools | Printed descriptions of sets: field values, prop lists and event programs. They are tutorial articles rather than one-to-one dumps and disagree with their binaries on some header fields, so treat them as a lead |
 | `UserSnds/` (7) | `Dean1`, `Dean2` sound banks | The `Usersnd` category the handbook describes |
 | `MIDI/` (35) | Music | Outside playback scope |
 | `GameMaps/` (7) | CivNet and Warcraft II maps | **Not Stunt Island** |

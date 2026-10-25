@@ -42,7 +42,7 @@ A `.SET` file begins with a 96-byte (`0x60`) global environment header containin
 | `0x3E` | 1 | `u8` | `initial_view_mode` | Initial viewpoint mode index (see § 2.3) | `[Established]` |
 | `0x3F`–`0x51` | 19 | `u8[19]` | `reserved_pad` | Reserved alignment and internal runtime pointers | `[Bounded Observation]` |
 | `0x52` | 1 | `u8` | `magic_tag` | Structural validation constant `0x08` | `[Established]` |
-| `0x53` | 1 | `u8` | `prop_count` | Number of active placed prop records in the prop table | `[Established]` |
+| `0x53` | 1 | `u8` | `prop_count` | Number of active placed prop records in the prop table (identity contested; see below) | `[Bounded Observation]` |
 | `0x54` | 1 | `u8` | `event_count` | Number of scripted event trigger records in the event table | `[Established]` |
 | `0x55`–`0x5F` | 11 | `u8[11]` | `table_header` | Table linkage offsets and internal memory pointer scratchpad | `[Bounded Observation]` |
 
@@ -151,7 +151,9 @@ Following the prop table (or located at an offset indexed by `0x55`), scripted e
 | `+0x06` | 2 | `u16` (LE) | `action_param` | Auxiliary parameter (camera ID, audio sample ID, intensity) | `[Established]` |
 | `+0x08` | 4 | `u32` (LE) | `payload_data` | Additional parameter data, bitflags, or vector payload | `[Bounded Observation]` |
 
-The 12-byte event stride is documented, but the table location is unresolved for the same reason; no schema decodes events yet. `event_count` itself is corroborated: `BOMBING.SET` stores `1` at `0x54`, and its printed dump (`corpus/si_archive/Misc/Sets/BOMBING.TXT`) lists exactly one rule, `Event#1 One Shot / If Any Weapon hits hz 0120X0120(12) / Then explode C&W Bar(11) / And play 'Explosion #06' on chan 2, vol= 4`.
+The 12-byte event stride is documented, but the table location is unresolved for the same reason; no schema decodes events yet. What the corpus does establish is the shape of the region. `AUTOMATE.SET` and `CATCH.SET` are both exactly 1120 bytes with `0x53 = 4`, yet carry `0x54 = 1` and `0x54 = 3`; the event records therefore occupy a fixed-size block rather than a variable-length tail. The same 64-byte record stride that `set.md` gives the prop table continues through the file body (records at `0x3D0`, `0x410`, ... in `AUTOMATE.SET`), and no 12-byte-periodic structure appears in `BOMBING.SET` at all.
+
+Reading the printed dumps as a ground truth does not hold up. `BOMBING.TXT` is a tutorial article containing several sets' worth of `Prop #` blocks, and its printed values disagree with `BOMBING.SET` on at least two header fields: it lists five or more props where `0x53 = 1`, and states `Time of Day :08:00` where `0x2E` reads `0xD582`. The leading explanation is that the 1993 print shows a different revision of the file, so a dump is a lead rather than an oracle and no field below is promoted on its word alone.
 
 ### 3.6 Event Action Codes (`action_code`)
 
@@ -188,7 +190,7 @@ $$Z_{\text{world}} = \frac{Z_{\text{editor}} - 100000}{10.0} \quad (\text{meters
 | `[BK-SET-02]` | Trajectory Waypoint Spline Record | Bit-level packing of the 20-byte `trajectory_state` field (`+0x20`–`+0x33`) governing multi-point AI flight paths. | `[Bounded Observation]` |
 | `[BK-SET-03]` | Extended Event Opcode Catalog | Verification of additional action codes ($0x0005..0x0010$) for mid-air refueling, formation flying, and radio chatter. | `[Hypothesis]` |
 | `[BK-SET-04]` | Header Size Variants (`0x60` vs `0x160`) | Disambiguation of extended 352-byte headers observed in mission `.SET` files with full narrative briefing text. | `[Supported Inference]` |
-| `[BK-SET-05]` | Event Action-Code Catalogue | Map the handbook's THEN actions (*handbook* pp.92–95) onto `action_code` values by aligning them with the printed event lists in `corpus/si_archive/Misc/Sets/*.TXT`, which decode every field of their paired `.SET`. Still open: the event table's location (§ 3.5). | `[Hypothesis]` |
+| `[BK-SET-05]` | Event Action-Code Catalogue | Map the handbook's THEN actions (*handbook* pp.92–95) onto `action_code` values. The event region is bounded, not located: it is a fixed-size block (§ 3.5), the 12-byte stride is uncorroborated, and the printed dumps disagree with their binaries, so the next step is locating the block in `AUTOMATE.SET` and `CATCH.SET`, the pair that differ in `0x54` while sharing a size. | `[Hypothesis]` |
 
 ---
 
