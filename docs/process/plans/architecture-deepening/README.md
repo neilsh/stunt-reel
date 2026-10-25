@@ -72,5 +72,7 @@ All four units merged: A in four landings (`3a08e13`, `0e763d4`, `417aba2`, `d6d
 
 Verified at the integrated tree: `mise run check` green (260 Python tests after the shim removal, Rust workspace and doc tests); `cargo doc` with `-D warnings` clean; clippy clean; release build OK; a three-tick render is byte-identical in PNG, `.idx` and `.layer` and now writes only `render.json`; parity reports on the regenerated CTRY and INTRO directories and on a legacy-only directory are semantically identical to the pre-change binary's, so units B and C did not move the baseline.
 
-Residual risk, recorded rather than hidden: a live CTRY capture and light-probe smoke were not run because SOP 6 keeps the shared data root read-only without an explicit opt-in and the capture claims the machine-wide port; the window path stays untested in CI; `crates/stunt-render/src/mesh.rs` keeps a temporary module-level `allow` until its items become `pub(crate)`; and `T14` (the film-clock range) remains open outside this programme.
+Live verification (2026-10-25, with the user's opt-in): a CTRY capture wrote 124 valid frames and held at the film's last tick; a second run wrote 122, and the two runs sample different film-clock tags, so byte identity across captures is not an invariant - parity matches by tag and both scored in the stored reference's band (mean SSIM 0.798/0.794 vs 0.793, IoU 0.978). The light probe printed its `[shot]` lines and wrote its segment dumps.
+
+Residual risk, recorded rather than hidden: the window path stays untested in CI; `crates/stunt-render/src/mesh.rs` keeps a temporary module-level `allow` until its items become `pub(crate)`; and `T14` (the film-clock range) remains open outside this programme.
 

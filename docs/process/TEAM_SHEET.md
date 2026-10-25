@@ -60,7 +60,7 @@ Four design units from the architecture review, worked in order A-D. Each unit's
 | `A01` | Render artifact seam: typed render/capture port, one adapter per language, report-aggregation rider | - | **Done** (landings 1-4 merged) | [brief](plans/architecture-deepening/A-render-artifact.md), [ADR 0005](../adr/0005-parity-requires-the-render-sidecar.md) |
 | `A02` | Decoded shape seam: one stop decision, a shape IR that owns its invariants, partial SOD as a value | - | **Done** (merged 58745f8) | [brief](plans/architecture-deepening/B-decoded-shape.md) |
 | `A03` | Renderer entry point: one renderer interface for headless and window | - | **Done** (all stages merged) | [brief](plans/architecture-deepening/C-renderer-entry.md) |
-| `A04` | Capture session: one emulator session with an injectable transport; transport at operation altitude | - | **Done** (merged; live capture unverified) | [brief](plans/architecture-deepening/D-capture-session.md) |
+| `A04` | Capture session: one emulator session with an injectable transport; transport at operation altitude | - | **Done** (merged; live capture and probe verified 2026-10-25) | [brief](plans/architecture-deepening/D-capture-session.md) |
 
 
 ---

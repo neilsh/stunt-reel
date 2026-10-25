@@ -1,6 +1,6 @@
 # Unit D: the capture session
 
-Status: design agreed 2026-10-24; implemented and merged (e17c9bc); live capture unverified. Source: architecture review card 6 (one capture session for the emulator) plus the transport-at-operation-altitude rider.
+Status: design agreed 2026-10-24; implemented and merged (e17c9bc); live capture and probe verified 2026-10-25. Source: architecture review card 6 (one capture session for the emulator) plus the transport-at-operation-altitude rider.
 
 ## 1. Problem
 
@@ -116,4 +116,13 @@ Names (`run_session`, `Session`, `Page`, `Emulator`, `Transport`) are proposals.
 5. Dialog settle caps at exactly 600 dumps (the old code could do 601); the accept timeout message now says the guest did not connect in 30 s.
 6. The probe's `FRAME_CAP` is gone: a requested clock that never arrives ends on the trap timeout (exit 1) instead of silently stopping after 2000 frames.
 
-Residual risk, untested here: a live CTRY capture byte-compare and the live probe smoke, because SOP 6 keeps the shared data root read-only without explicit opt-in. The offline scripted-guest tests pin the writer format and meta ordering.
+## 12. Live verification (2026-10-25)
+
+With the user's explicit opt-in for the capture round, the live path was exercised:
+
+- `mise run capture-ref -- --out build/tmp/live-capture-ctry` wrote 124 frames (249 files), held the film clock at 1342, and wrote the same top-level meta keys and film identity as the stored reference.
+- A second run of the same code wrote 122 frames. The two runs shared only 11 film-clock tags, and the page stored for a nominally equal tag can differ; the existing capture note documents the same run-to-run non-repeatability from 2026-10-22. Byte identity across captures is not an invariant; the writer format and the tags are.
+- Both captures score in the stored reference's band against the same render directory: mean SSIM 0.798 and 0.794 versus the reference's 0.793, IoU 0.978 for all three, 111-114 scored frames.
+- The light probe sampled ticks 21 and 51, printed its `[shot]` lines and wrote 61,440-byte segment dumps, exit 0.
+
+The offline scripted-guest tests pin the writer format and meta ordering; this run confirms the live emulator path and the probe still work.
