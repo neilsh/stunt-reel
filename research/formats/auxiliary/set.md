@@ -139,40 +139,34 @@ Bit:   7   6   5   4   3   2   1   0
                        +---------- Position locked on set (1 = immovable)
 ```
 
-### 3.5 Record Layout and the Event Table
+### 3.5 File Layout: the Event Table at `0x60`
 
-The file is a split of fixed-size records, and the event table is the second half of them:
+The body is a split of fixed-size records, and the **event table comes first**, immediately after the 96-byte header:
 
-$$\text{size} = \texttt{0x97} + 64 \times (\text{props} - 1 + \text{events}) + 3 \times (\text{events} - 1)$$
+$$\text{size} = \texttt{0x60} + 55 + 67 \times (\text{events} - 1) + 64 \times \text{props}$$
 
 | Range | Contents |
 |---|---|
 | `0x00`–`0x5F` | The 96-byte header (§ 2.1) |
-| `0x60`–`0x96` | 55 bytes, not yet decoded |
-| `0x97` onward | 64-byte records: first `props - 1` prop records, then `events` event records |
-| last `3 × (events - 1)` bytes | Three bytes per event after the first. They are not a pointer table: read as 24-bit values they mostly land on zero and exceed the file size where they do not |
+| `0x60` … `0x60 + 54 + 67 \u00d7 (events - 1)` | The event table: one 55-byte base record, then 67 bytes per further event |
+| to end of file | The prop table: 64 bytes per prop, all props stored |
 
-Where the two halves meet is settled for one file only. In `DRIVING.SET` the event records begin immediately after the stored props, at `0x97 + 64 × 14 = 0x417`, and their ids run `0x0a` to `0x11` in printed order. `[Bounded Observation]`
+**Verification.** Every set with a printed dump reproduces its own size from its printed counts: BOMBING 8 props/1 event → 663, BOMBING2 7/1 → 599, DRIVING 15/8 → 1580, FIND&HIT 4/2 → 474, FIND&HT2 4/2 → 474, REALISM 39/10 → 3250; the same arithmetic closes on all 35 loose corpus sets. `[Supported Inference]`
 
-`REALISM.SET` does not follow that order. Its props-first prediction is `0xA17`, but that offset holds ten near-identical records, while the markers of its collision-conditioned rules sit at `0x8B0`, `0x8F0`, `0x930`, `0x970` and `0xBB0` — inside the space the props-first reading assigns to props. Either that file's stored prop count is lower than its printed 39, or the records are ordered differently. The size law does not say which half comes first, so the split is open.
+**How this was established.** `TYPESET.EXE` prints a set, so flipping one byte and re-printing maps a byte to the field it feeds ([`stunt-exe/sets.md` § 6](../../stunt-exe/sets.md)). Every offset of `BOMBING.SET` was flipped and re-printed; 118 body offsets change the output. Flipping `0x60` changes the `Then explode` target and nothing else, and flipping `0x97` renumbers `Prop #1`, which puts the event table before the props and the prop table at `0x97` — as the 2004 notes also concluded from deleting a prop.
 
-**Verification.** The six sets that have a printed dump reproduce their own size from their printed prop and event counts: BOMBING 8/1 → 663, BOMBING2 7/1 → 599, DRIVING 15/8 → 1580, FIND&HIT 4/2 → 474, FIND&HT2 4/2 → 474, REALISM 39/10 → 3250. The same law yields a whole number of records for all 35 loose corpus sets, with no remainder. The earlier "12-byte block" table is withdrawn: no 12-byte periodicity exists anywhere, and its fixed-block claim rested on `0x54`, which is not the event count (§ 2.1).
+**Event record fields** (offsets from `0x60`, each confirmed by a flip that changes exactly one printed value):
 
-**Prop 1 is not stored.** Every dumped set stores one fewer prop record than its dump lists, and one more event record than the trailer accounts for. Reading the missing prop as prop slot 1, the stunt aircraft the set never places, is consistent with the printed rules that address props from slot 2 upward. `[Hypothesis]`
-
-**Event record fields.** DRIVING's eight rules differ only in the collision window they test and the property they change, so their records align cleanly. In those records, at the offsets relative to the record start:
-
-| Offset | Observation across the eight rules | Reading |
+| Offset | What the flip changes | Field |
 |---|---|---|
-| `+0x00` | `0x0b` in `BOMBING.SET` and `0x0a` in `BOMBING2.SET` | The 0-based index of the prop named by the IF clause: `BOMBING` tests `hz 0120X0120(12)` and stores 11, `BOMBING2` tests `Cathedral(11)` and stores 10 `[Bounded Observation]` |
-| `+0x15` | `0x0a`, `0x0b`, ... `0x11`, one per rule in order | The 0-based index of the referenced prop, i.e. the printed `(11)` to `(18)`; but see the layout caveat below `[Bounded Observation]` |
-| `+0x19` | `0x0d` for `change yaw anim`, `0x02` for `change visibility`, `0x09` for `change heading yaw` | The property the THEN clause changes `[Hypothesis]` |
+| `+0x00` | `Then explode X(11)` → `X(12)` | 0-based index of the action's target prop `[Supported Inference]` |
+| `+0x06` | `And play '…'` → `And cut to …` | THEN action type of the second action slot `[Bounded Observation]` |
+| `+0x0C` | appends `, tape only` to the `play` line | sound routing flags `[Bounded Observation]` |
+| `+0x0D, +0x14, +0x1B, +0x22, +0x29, +0x30` | each turns one `And do nothing` into `And award $0` | the type byte of AND action slots 3 to 8, one slot every 7 bytes `[Supported Inference]` |
 
-Every other byte of the 64 is either constant across those eight rules or has not yet been tied to a printed value, so the field map stays partial.
+So an action slot is 7 bytes: a type byte and its operands, with the first slot at `+0x00`. The IF condition and the remaining operands were not isolated by this sweep, because flipping those bytes left the printed line unchanged — either the field is masked, or TYPESET prints a value it did not read from there.
 
-**The record has no fixed field map.** The two-byte marker that carries these indices (`09 13` in `DRIVING` and `BOMBING`, `01 13` for time-conditioned rules in `REALISM`) sits at `+0x13` in `DRIVING`'s records, at `+0x02` in `BOMBING`'s, and between `+0x19` and `+0x27` in `REALISM`'s. Since each record is still exactly 64 bytes, the interpretation is that the record is a fixed-size union whose field layout, and possibly its field order, depends on the shapes of the IF and THEN clauses. A fixed offset table therefore cannot be written for it yet, and any claim of one is unsupported.
-
-The printed dumps are a ground truth only in part. `BOMBING.TXT` is a tutorial article carrying several sets' worth of `Prop #` blocks, so a prop list cannot be attributed to one file; but matched by stunt title, the six dumps that name a shipped set confirm `0x53` as the event count every time. One header field still disagrees: `BOMBING.SET` prints `Time of Day :08:00` while `0x2E` reads `0xD582`, so that field's encoding is unconfirmed and its tier is lowered above.
+Taken together with § 3.6, the record is one IF clause, two AND qualifiers and a run of THEN actions. Earlier attempts to read it as 12-byte blocks, or to place the event table after the props, are withdrawn: both were artifacts of the prop-count arithmetic, which fits the same size law under either split and did not distinguish them.
 
 ### 3.6 Event Operators
 
