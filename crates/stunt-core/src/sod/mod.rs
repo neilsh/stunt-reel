@@ -14,16 +14,32 @@ mod tessellate_tests;
 #[cfg(test)]
 mod vm_tests;
 
+pub use crate::contracts::shape::{DecodeMode, DecodeRecord, SodHeader, SodStop, SodStopReason};
 pub use decal::{DECAL_FLAG_BIT, EPSILON_DISPLACEMENT};
-pub use tessellate::{IDENTITY_MATRIX, transpile_sod, transpile_sod_lenient};
+pub use tessellate::{IDENTITY_MATRIX, decode_sod};
 pub use vm::{
     CENSUS_SKIPS, CensusSkip, OP_ADDV, OP_BLOCK, OP_CLRV, OP_COLOR, OP_DOT, OP_END, OP_GETV,
     OP_GVPOLY, OP_GVPOLY16, OP_ID, OP_IFVIS, OP_INTV, OP_IPG, OP_LINECOL, OP_MOVETO, OP_NEGV,
     OP_PERFDISK, OP_PERS, OP_POLYZ, OP_PUTV, OP_REJ, OP_RETURN, OP_SHADE16, OP_SHADES, OP_SHLV,
     OP_SHRV, OP_SORT, OP_SPHERE, OP_SUBV, OP_TAP, OP_VEC, OP_VECTORS, OP_ZLINETO, SOD_SCALE_TABLE,
-    SodHeader, SodSkip, SodStop, SodStopReason, SodWalk, SodWalkEnd, census_skip,
-    compute_scale_factor, walk_sod,
+    census_skip, compute_scale_factor,
 };
+
+impl SodStop {
+    /// The decode error a strict decode reports for this stop.
+    pub(crate) fn into_error(self) -> SodError {
+        match self.reason {
+            SodStopReason::UnknownOpcode => SodError::InvalidOpcode {
+                opcode: self.opcode,
+                offset: self.offset,
+            },
+            SodStopReason::MissingAnchors => SodError::MissingAnchors {
+                opcode: self.opcode,
+                offset: self.offset,
+            },
+        }
+    }
+}
 
 /// Errors that can occur during .SOD display-list parsing or transpilation.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -75,6 +91,14 @@ pub enum SodError {
         opcode: u16,
         /// Byte offset of the opcode within the model payload.
         offset: usize,
+    },
+    /// The decode produced a shape that violates the shape invariants, so the decoder has
+    /// a bug: dense arena, symmetric handles, one root, contained whole-triangle slices or
+    /// base-before-decal order. Never a property of the input bytes.
+    #[error("decoded shape violates the shape invariants: {reason}")]
+    InvariantViolation {
+        /// Human-readable description of the violated invariant.
+        reason: String,
     },
 }
 

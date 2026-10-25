@@ -1,13 +1,16 @@
-//! StuntReel Modern `wgpu` Presentation Engine (`crates/stunt-render/src/lib.rs`).
+//! StuntReel Modern GPU Presentation Engine (crates/stunt-render/src/lib.rs).
 //!
 //! Delivers hardware-accelerated presentation of Stunt Island scenes conforming
 //! strictly to system architectural invariants:
 //! - `[I1]` Right-handed metric coordinate basis (+X Right, +Y Up, -Z Forward).
 //! - `[I2]` Flat arena allocation without self-referential pointers.
-//! - `[I3]` VGA Mode 13h 256-color palette lookup texture with `@interpolate(flat)`.
+//! - `[I3]` VGA Mode 13h 256-color palette lookup texture with @interpolate(flat).
 //! - `[I4]` Discrete simulation ticks (50 Hz) with sub-tick interpolation.
 //! - `[I5]` Dual-pipeline hardware depth bias pass for coplanar decals.
-//! - `[I6]` 4:3 physical aspect ratio ($320 \times 240$) and SSIM parity evaluation.
+//! - `[I6]` 4:3 physical aspect ratio (320x240) and SSIM parity evaluation.
+//!
+//! Renderer is the entry point for both destinations: offscreen readback into a PageSink and a
+//! presented window surface.
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
@@ -17,6 +20,7 @@ pub mod mesh;
 pub mod palette;
 pub mod parity;
 pub mod pipeline;
+pub mod renderer;
 pub mod scene_renderer;
 pub mod video;
 
@@ -37,6 +41,10 @@ pub use parity::{
 pub use pipeline::{
     LAYER_FIRST_ACTOR, LAYER_NONE, LAYER_OCEAN, LAYER_PROP, LAYER_TERRAIN, ModelUniform,
     PLANE_FORMAT, RenderPipelines,
+};
+pub use renderer::{
+    DEFAULT_CLEAR_PALETTE_INDEX, DEFAULT_PAGE_HEIGHT, DEFAULT_PAGE_WIDTH, Offscreen, PageSink,
+    PageSize, RenderError, RenderOptions, RenderedPage, Renderer, SinkError,
 };
 pub use scene_renderer::SceneRenderer;
 pub use video::{FfmpegVideoWriter, VideoExportError};

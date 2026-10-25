@@ -1,67 +1,13 @@
-//! Integration and verification test suite for `stunt-render`.
+//! Palette LUT, camera and SSIM tests that need no GPU adapter.
 //!
-//! Validates:
-//! - Shader module compilation (`mode13h.wgsl`)
-//! - Dual-pipeline depth bias configuration (`[I5]`)
-//! - Mode 13h 256x32 palette LUT generation (`[I3]`)
-//! - 4:3 aspect camera matrices and 6-DOF Free-Cam controls (`[I1]`, `[I6]`)
-//! - Headless offscreen framebuffer capture (`[I6]`)
-//! - Windowed SSIM evaluation (`[I6]`)
+//! The offscreen render tests moved to renderer_test.rs, where they cross the Renderer entry
+//! point and assert on RenderedPage: the plane is the test seam.
 
-mod common;
-
-use stunt_core::contracts::{
-    CameraTransform, NodeKind, SodModelIr, SodVertex, VisibilityCondition,
-};
-use stunt_core::scene::FilmScene;
+use stunt_core::contracts::CameraTransform;
 use stunt_render::{
-    ASPECT_4_3, ASPECT_CORRECTED_HEIGHT, CameraController, CameraGpuResources, CameraMode,
-    GpuModel, LAYER_FIRST_ACTOR, MODE13H_WIDTH, PaletteLut, RenderPipelines, SceneRenderer,
+    ASPECT_4_3, ASPECT_CORRECTED_HEIGHT, CameraController, CameraMode, MODE13H_WIDTH,
     build_palette_lut_bytes, compute_frame_ssim, rgba_to_luminance,
 };
-
-#[test]
-fn test_shader_module_compilation_and_validation() {
-    let Some(renderer) = common::gpu_or_skip() else {
-        return;
-    };
-    let device = &renderer.device;
-
-    let shader = device.create_shader_module(wgpu::include_wgsl!("../src/shaders/mode13h.wgsl"));
-    assert!(
-        format!("{shader:?}").contains("ShaderModule"),
-        "Shader module must compile cleanly"
-    );
-}
-
-#[test]
-fn test_dual_pipeline_depth_bias_configuration() {
-    let Some(renderer) = common::gpu_or_skip() else {
-        return;
-    };
-    let (device, queue) = (&renderer.device, &renderer.queue);
-
-    let camera_res = CameraGpuResources::new(device);
-    let palette_lut = PaletteLut::new(device, queue);
-
-    let pipelines = RenderPipelines::new(
-        device,
-        wgpu::TextureFormat::Rgba8Unorm,
-        wgpu::TextureFormat::Depth24Plus,
-        &camera_res.bind_group_layout,
-        &palette_lut.bind_group_layout,
-    );
-
-    // Verify vertex buffer layout conforms strictly to SodVertex [I2] (28 bytes)
-    let v_layout = RenderPipelines::vertex_buffer_layout();
-    assert_eq!(v_layout.array_stride, 28);
-    assert_eq!(v_layout.attributes.len(), 3);
-    assert_eq!(v_layout.attributes[0].offset, 0); // position
-    assert_eq!(v_layout.attributes[1].offset, 12); // normal
-    assert_eq!(v_layout.attributes[2].offset, 24); // attr (palette_index, flags)
-
-    assert!(format!("{pipelines:?}").contains("RenderPipelines"));
-}
 
 #[test]
 fn test_palette_lut_data_integrity() {
@@ -149,7 +95,8 @@ fn test_ssim_evaluator() {
         "Expected 1.0, got {ssim_ident}"
     );
 
-    // Slightly perturbed frame (0.5 LSB average) -> SSIM should easily exceed the sign-off threshold (>= 0.90)
+    // Slightly perturbed frame (0.5 LSB average) -> SSIM should easily exceed the sign-off
+    // threshold (>= 0.90)
     let frame_test: Vec<f32> = frame_ref.iter().map(|&v| (v + 0.5).min(255.0)).collect();
     let ssim_test = compute_frame_ssim(
         &frame_ref,
@@ -163,225 +110,9 @@ fn test_ssim_evaluator() {
 }
 
 #[test]
-fn test_headless_offscreen_render_execution() {
-    let Some(mut renderer) = common::gpu_or_skip() else {
-        return;
-    };
-
-    assert_eq!(renderer.width, 320);
-    assert_eq!(renderer.height, 240);
-
-    // Build a simple test model with base geometry and coplanar decal
-    let mut ir = SodModelIr::new("TEST_CUBE");
-    let v0 = SodVertex {
-        position: [-1.0, -1.0, 0.0],
-        normal: [0.0, 0.0, 1.0],
-        palette_index: 40,
-        flags: 0,
-        scenery_class: 0,
-        _padding: 0,
-    };
-    let v1 = SodVertex {
-        position: [1.0, -1.0, 0.0],
-        normal: [0.0, 0.0, 1.0],
-        palette_index: 40,
-        flags: 0,
-        scenery_class: 0,
-        _padding: 0,
-    };
-    let v2 = SodVertex {
-        position: [0.0, 1.0, 0.0],
-        normal: [0.0, 0.0, 1.0],
-        palette_index: 40,
-        flags: 0,
-        scenery_class: 0,
-        _padding: 0,
-    };
-
-    // Coplanar decal
-    let d0 = SodVertex {
-        position: [-0.5, -0.5, 0.0],
-        normal: [0.0, 0.0, 1.0],
-        palette_index: 220,
-        flags: 1, // decal
-        scenery_class: 0,
-        _padding: 0,
-    };
-    let d1 = SodVertex {
-        position: [0.5, -0.5, 0.0],
-        normal: [0.0, 0.0, 1.0],
-        palette_index: 220,
-        flags: 1,
-        scenery_class: 0,
-        _padding: 0,
-    };
-    let d2 = SodVertex {
-        position: [0.0, 0.5, 0.0],
-        normal: [0.0, 0.0, 1.0],
-        palette_index: 220,
-        flags: 1,
-        scenery_class: 0,
-        _padding: 0,
-    };
-
-    ir.vertices = vec![v0, v1, v2, d0, d1, d2];
-    // Indices are relative to each mesh's `vertex_offset`. The winding is clockwise, like the
-    // SOD models: the pipeline culls back faces with `FrontFace::Cw`.
-    ir.indices = vec![0, 2, 1, 0, 2, 1];
-
-    let root = ir.allocate_node(
-        "BASE",
-        None,
-        glam::Mat4::IDENTITY.to_cols_array(),
-        VisibilityCondition::Always,
-        NodeKind::Mesh {
-            vertex_offset: 0,
-            vertex_count: 3,
-            index_offset: 0,
-            index_count: 3,
-            is_decal: false,
-        },
-    );
-
-    ir.allocate_node(
-        "DECAL",
-        Some(root),
-        glam::Mat4::IDENTITY.to_cols_array(),
-        VisibilityCondition::Always,
-        NodeKind::Mesh {
-            vertex_offset: 3,
-            vertex_count: 3,
-            index_offset: 3,
-            index_count: 3,
-            is_decal: true,
-        },
-    );
-
-    let gpu_model = GpuModel::from_ir(
-        &renderer.device,
-        &renderer.queue,
-        &renderer.pipelines.model_bind_group_layout,
-        &ir,
-    );
-    let (base_meshes, decal_meshes) = gpu_model.collect_visible_meshes(1, 5.0);
-    assert_eq!(base_meshes.len(), 1);
-    assert_eq!(decal_meshes.len(), 1);
-
-    // No actors in the film, so the loose model is drawn once at the origin.
-    let scene = FilmScene::with_single_model(
-        common::still_timeline(CameraTransform {
-            eye: [0.0, 0.0, 5.0],
-            target: [0.0, 0.0, 0.0],
-            fov_degrees: 45.0,
-            roll_radians: 0.0,
-            cut_from_previous: false,
-            ..Default::default()
-        }),
-        ir,
-    );
-    let mut scene_renderer = SceneRenderer::new(
-        &renderer.device,
-        &renderer.queue,
-        &renderer.pipelines,
-        &scene,
-    );
-    let (pixels, plane) = renderer
-        .render_scene_with_plane(&mut scene_renderer, &scene.frame(0.0), None, Some(180))
-        .expect("Render frame succeeds");
-
-    let base_pixels = plane
-        .iter()
-        .filter(|&&p| p == (LAYER_FIRST_ACTOR << 8 | 40))
-        .count();
-    assert!(base_pixels > 100, "base triangle missing: {base_pixels}");
-
-    assert_eq!(pixels.len(), 320 * 240 * 4);
-
-    // Verify non-zero alpha and rendered pixels
-    let non_zero_pixels = pixels
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .filter(|p| p[3] == 255)
-        .count();
-    assert_eq!(non_zero_pixels, 320 * 240, "All pixels must have alpha 255");
-
-    // Convert to luminance and verify SSIM against itself
-    let lum = rgba_to_luminance(&pixels);
-    assert_eq!(lum.len(), 320 * 240);
-    let ssim = compute_frame_ssim(&lum, &lum, 320, 240, 11, 8);
-    assert!((ssim - 1.0).abs() < 1e-4);
-}
-
-#[test]
-fn test_unaligned_width_reads_back_unpadded_rows() {
-    // 100 * 4 = 400 bytes per row, not a multiple of the 256-byte copy pitch.
-    let (w, h) = (100usize, 75usize);
-    let Some(mut renderer) = common::gpu_or_skip_with(w as u32, h as u32) else {
-        return;
-    };
-    let vertex = |x: f32, y: f32| SodVertex {
-        position: [x, y, 0.0],
-        normal: [0.0, 0.0, 1.0],
-        palette_index: 40,
-        flags: 0,
-        scenery_class: 0,
-        _padding: 0,
-    };
-    let mut ir = SodModelIr::new("TRI");
-    ir.vertices = vec![vertex(-1.0, -1.0), vertex(1.0, -1.0), vertex(0.0, 1.0)];
-    // Clockwise, like the SOD models: the pipeline culls back faces with `FrontFace::Cw`.
-    ir.indices = vec![0, 2, 1];
-    ir.allocate_node(
-        "TRI",
-        None,
-        glam::Mat4::IDENTITY.to_cols_array(),
-        VisibilityCondition::Always,
-        NodeKind::Mesh {
-            vertex_offset: 0,
-            vertex_count: 3,
-            index_offset: 0,
-            index_count: 3,
-            is_decal: false,
-        },
-    );
-    let scene = FilmScene::with_single_model(
-        common::still_timeline(CameraTransform {
-            eye: [0.0, 0.0, 5.0],
-            target: [0.0, 0.0, 0.0],
-            fov_degrees: 45.0,
-            roll_radians: 0.0,
-            cut_from_previous: false,
-            ..Default::default()
-        }),
-        ir,
-    );
-    let mut scene_renderer = SceneRenderer::new(
-        &renderer.device,
-        &renderer.queue,
-        &renderer.pipelines,
-        &scene,
-    );
-    let (pixels, plane) = renderer
-        .render_scene_with_plane(&mut scene_renderer, &scene.frame(0.0), None, Some(180))
-        .expect("render succeeds");
-
-    assert_eq!(pixels.len(), w * h * 4);
-    assert_eq!(plane.len(), w * h);
-    // The centred triangle is left-right symmetric in every row; a wrong row pitch on
-    // readback would shear it sideways.
-    let mut rows_drawn = 0;
-    for row in plane.chunks_exact(w) {
-        let cols: Vec<usize> = (0..w).filter(|&x| row[x] >> 8 != 0).collect();
-        if cols.is_empty() {
-            continue;
-        }
-        rows_drawn += 1;
-        let centre = (cols[0] + cols[cols.len() - 1]) as f32 / 2.0;
-        assert!(
-            (centre - (w - 1) as f32 / 2.0).abs() <= 1.0,
-            "row centred at {centre}"
-        );
-    }
-    assert!(rows_drawn > h / 4, "triangle covers only {rows_drawn} rows");
+fn test_blank_page_luminance_is_flat() {
+    let rgba = vec![255u8; MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT * 4];
+    let lum = rgba_to_luminance(&rgba);
+    assert_eq!(lum.len(), MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT);
+    assert!(lum.iter().all(|&value| (value - 255.0).abs() < 1e-3));
 }

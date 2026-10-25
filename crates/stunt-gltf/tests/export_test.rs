@@ -13,7 +13,7 @@ use stunt_core::contracts::{
 };
 use stunt_core::flm::{SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES};
 use stunt_core::scene::{FilmScene, SceneInputs};
-use stunt_core::sod::{EPSILON_DISPLACEMENT, transpile_sod};
+use stunt_core::sod::{DecodeMode, EPSILON_DISPLACEMENT, decode_sod};
 use stunt_gltf::{GltfError, camera_rotation, export_scene_frame, export_shape, summarize};
 
 fn fixture(name: &str) -> Vec<u8> {
@@ -134,12 +134,18 @@ impl Glb {
 }
 
 fn model(name: &str) -> SodModelIr {
-    transpile_sod(&fixture(name), "MODEL", None).expect("fixture model")
+    decode_sod(&fixture(name), "MODEL", None, DecodeMode::Strict).expect("fixture model")
 }
 
 fn tap_model() -> SodModelIr {
     let anchors = parse_anchor_table(&fixture("synthetic_anchors.bin"));
-    transpile_sod(&fixture("synthetic_tap.sod"), "TAP", Some(&anchors)).expect("tap model")
+    decode_sod(
+        &fixture("synthetic_tap.sod"),
+        "TAP",
+        Some(&anchors),
+        DecodeMode::Strict,
+    )
+    .expect("tap model")
 }
 
 fn mesh_nodes(ir: &SodModelIr) -> Vec<(&str, u32, u32, u32, u32, bool)> {
@@ -402,34 +408,10 @@ fn hierarchy_visibility_and_joints_are_preserved() {
 }
 
 #[test]
-fn empty_and_inconsistent_models_are_errors() {
+fn an_empty_model_is_an_error() {
     assert!(matches!(
         export_shape(&SodModelIr::new("EMPTY")),
         Err(GltfError::EmptyModel)
-    ));
-
-    let mut ir = model("synthetic_minimal.sod");
-    let count = ir.vertices.len();
-    *ir.indices.last_mut().unwrap() = count as u32;
-    let err = export_shape(&ir).expect_err("index past the vertex buffer");
-    assert!(matches!(
-        err,
-        GltfError::IndexOutOfRange { index, vertex_count } if index as usize == count && vertex_count == count
-    ));
-    assert!(!err.to_string().is_empty());
-
-    let mut ir = model("synthetic_minimal.sod");
-    if let Some(node) = ir
-        .nodes
-        .iter_mut()
-        .find(|n| matches!(n.kind, NodeKind::Mesh { .. }))
-        && let NodeKind::Mesh { index_count, .. } = &mut node.kind
-    {
-        *index_count += 1000;
-    }
-    assert!(matches!(
-        export_shape(&ir),
-        Err(GltfError::MeshSliceOutOfRange { .. })
     ));
 }
 

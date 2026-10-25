@@ -6,20 +6,6 @@ pub enum GltfError {
     /// The model has no vertices or no indices, so there is nothing to export.
     #[error("model has no vertices or indices to export")]
     EmptyModel,
-    /// An index addresses a vertex beyond the model's vertex buffer.
-    #[error("index {index} is out of range of the {vertex_count}-vertex buffer")]
-    IndexOutOfRange {
-        /// Offending index value.
-        index: u32,
-        /// Number of vertices in the buffer.
-        vertex_count: usize,
-    },
-    /// A mesh node's index slice runs past the model's index buffer.
-    #[error("mesh node {node:?} index slice exceeds the index buffer")]
-    MeshSliceOutOfRange {
-        /// Name of the mesh node.
-        node: String,
-    },
     /// A node lists a child handle that is not in the arena.
     #[error("node handle {0} does not exist in the model")]
     InvalidNodeReference(u32),

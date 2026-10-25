@@ -122,14 +122,6 @@ fn glb_for_shape(archive: &Path, sidata: Option<&Path>, shape_id: u16) -> Result
         .unwrap_or_default();
     let decoded = decode_archive_shapes(&bytes, &anchors)
         .map_err(|e| format!("parse {}: {e}", archive.display()))?;
-    for (id, stop) in &decoded.partial {
-        if *id == shape_id {
-            eprintln!(
-                "[stuntreel] shape 0x{id:04X} is partial: stopped at 0x{:04X} opcode 0x{:04X} ({})",
-                stop.offset, stop.opcode, stop.reason
-            );
-        }
-    }
     let Some(model) = decoded.shapes.get(&shape_id) else {
         let skipped = decoded
             .skipped
@@ -140,6 +132,12 @@ fn glb_for_shape(archive: &Path, sidata: Option<&Path>, shape_id: u16) -> Result
             None => format!("{} has no shape 0x{shape_id:04X}", archive.display()),
         });
     };
+    if let Some(stop) = model.decode().and_then(|record| record.stop) {
+        eprintln!(
+            "[stuntreel] shape 0x{shape_id:04X} is partial: stopped at 0x{:04X} opcode 0x{:04X} ({})",
+            stop.offset, stop.opcode, stop.reason
+        );
+    }
     export_shape(model).map_err(|e| format!("shape 0x{shape_id:04X}: {e}"))
 }
 

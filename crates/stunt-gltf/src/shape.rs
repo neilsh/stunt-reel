@@ -32,8 +32,8 @@ pub(crate) struct ShapeAssets {
 /// The scene's root nodes are the model's root nodes; every [`SodNode`] becomes a glTF node
 /// with its `local_matrix`, and carries its visibility condition in `extras` (visibility is
 /// recorded, not evaluated). Returns [`GltfError::EmptyModel`] when the model has no
-/// vertices or indices, and [`GltfError::IndexOutOfRange`] when an index addresses a vertex
-/// the buffer does not hold.
+/// vertices or indices. The shape IR owns its slices and bounds, so nothing here
+/// re-validates or re-measures them.
 pub fn export_shape(model: &SodModelIr) -> Result<Vec<u8>, GltfError> {
     if model.vertices.is_empty() || model.indices.is_empty() {
         return Err(GltfError::EmptyModel);
@@ -51,28 +51,17 @@ pub(crate) fn add_shape_assets(
     builder: &mut GlbBuilder,
     model: &SodModelIr,
 ) -> Result<ShapeAssets, GltfError> {
-    let vertex_count = model.vertices.len();
-    if let Some(&index) = model.indices.iter().find(|&&i| i as usize >= vertex_count) {
-        return Err(GltfError::IndexOutOfRange {
-            index,
-            vertex_count,
-        });
-    }
-
     let mut mesh_of_node = vec![None; model.nodes.len()];
-    if vertex_count == 0 {
+    let Some(extent) = model.extent() else {
         return Ok(ShapeAssets { mesh_of_node });
-    }
+    };
+    let vertex_count = model.vertices.len();
 
     let mut positions = Vec::with_capacity(vertex_count * 12);
     let mut normals = Vec::with_capacity(vertex_count * 12);
     let mut colors = Vec::with_capacity(vertex_count * 16);
-    let mut min = [f32::INFINITY; 3];
-    let mut max = [f32::NEG_INFINITY; 3];
     for v in &model.vertices {
         for axis in 0..3 {
-            min[axis] = min[axis].min(v.position[axis]);
-            max[axis] = max[axis].max(v.position[axis]);
             positions.extend_from_slice(&v.position[axis].to_le_bytes());
             normals.extend_from_slice(&v.normal[axis].to_le_bytes());
         }
@@ -97,7 +86,7 @@ pub(crate) fn add_shape_assets(
         builder,
         &positions,
         "VEC3",
-        Some((min.to_vec(), max.to_vec())),
+        Some((extent.min.to_vec(), extent.max.to_vec())),
     );
     let normal = vec_accessor(builder, &normals, "VEC3", None);
     let color = vec_accessor(builder, &colors, "VEC4", None);
@@ -105,38 +94,21 @@ pub(crate) fn add_shape_assets(
     let index_bytes: Vec<u8> = model.indices.iter().flat_map(|i| i.to_le_bytes()).collect();
     let index_view = builder.add_view(&index_bytes, TARGET_ELEMENT_ARRAY_BUFFER);
 
-    for node in &model.nodes {
-        let NodeKind::Mesh {
-            index_offset,
-            index_count,
-            ..
-        } = node.kind
-        else {
-            continue;
-        };
-        let (offset, count) = (index_offset as usize, index_count as usize);
-        if offset
-            .checked_add(count)
-            .is_none_or(|end| end > model.indices.len())
-        {
-            return Err(GltfError::MeshSliceOutOfRange {
-                node: node.name.clone(),
-            });
-        }
-        if count == 0 {
+    for mesh in model.meshes() {
+        if mesh.indices.is_empty() {
             continue;
         }
         let indices = builder.add_accessor(&AccessorSpec {
             view: index_view,
-            byte_offset: offset * 4,
+            byte_offset: mesh.index_offset as usize * 4,
             component_type: COMPONENT_UNSIGNED_INT,
-            count,
+            count: mesh.indices.len(),
             kind: "SCALAR",
             bounds: None,
         });
-        mesh_of_node[node.id.0 as usize] = Some(builder.meshes.len());
+        mesh_of_node[mesh.node.id.0 as usize] = Some(builder.meshes.len());
         builder.meshes.push(json!({
-            "name": node.name,
+            "name": mesh.node.name,
             "primitives": [{
                 "attributes": { "POSITION": position, "NORMAL": normal, "COLOR_0": color },
                 "indices": indices,

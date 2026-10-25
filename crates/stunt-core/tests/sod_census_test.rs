@@ -1,9 +1,14 @@
-//! Census walk ([`walk_sod`]): unimplemented opcodes are stepped over by their
-//! `CENSUS_SKIPS` width and logged, while lenient and strict decodes still stop on them.
+//! Census decode: opcodes outside the execution table are stepped over by their
+//! `CENSUS_SKIPS` width and recorded on the shape's decode record, while strict and lenient
+//! decodes still stop on them.
+//!
+//! The masked stream is synthesized inline rather than committed under `tests/fixtures/`:
+//! only this test consumes it, and a fixture file would need a README row describing bytes
+//! nothing else reads.
 
 use stunt_core::sod::{
-    OP_COLOR, OP_RETURN, OP_TAP, SodError, SodSkip, SodStop, SodStopReason, SodWalkEnd,
-    census_skip, transpile_sod, transpile_sod_lenient, walk_sod,
+    DecodeMode, DecodeRecord, OP_COLOR, OP_RETURN, OP_TAP, SodError, SodStop, SodStopReason,
+    census_skip, decode_sod,
 };
 
 const PUSHCENTRE: u16 = 0x007E;
@@ -23,11 +28,11 @@ fn model(words: &[u16]) -> Vec<u8> {
     bytes
 }
 
-fn skipped(offset: usize, opcode: u16) -> SodSkip {
-    SodSkip {
+fn stopped(offset: usize, opcode: u16, reason: SodStopReason) -> SodStop {
+    SodStop {
         offset,
         opcode,
-        reason: SodStopReason::UnknownOpcode,
+        reason,
     }
 }
 
@@ -49,40 +54,62 @@ fn masked_stream() -> Vec<u8> {
     ])
 }
 
+fn census(data: &[u8]) -> DecodeRecord {
+    let ir = decode_sod(data, "CENSUS", None, DecodeMode::Census).expect("census decode");
+    assert!(
+        ir.vertices.is_empty() && ir.indices.is_empty(),
+        "census mode builds no geometry"
+    );
+    ir.decode()
+        .expect("a census decode carries a record")
+        .clone()
+}
+
 #[test]
-fn walk_skips_and_logs_each_unimplemented_opcode() {
-    let walk = walk_sod(&masked_stream()).expect("census walk");
+fn census_steps_over_and_records_each_unimplemented_opcode() {
+    let record = census(&masked_stream());
     assert_eq!(
-        walk.skipped,
+        record.stepped_over,
         vec![
-            skipped(10, PUSHCENTRE),
-            skipped(12, MOVECENTRE),
-            skipped(16, BVGT),
-            skipped(28, ANIMATE),
-            SodSkip {
-                offset: 42,
-                opcode: OP_TAP,
-                reason: SodStopReason::MissingAnchors,
-            },
+            stopped(10, PUSHCENTRE, SodStopReason::UnknownOpcode),
+            stopped(12, MOVECENTRE, SodStopReason::UnknownOpcode),
+            stopped(16, BVGT, SodStopReason::UnknownOpcode),
+            stopped(28, ANIMATE, SodStopReason::UnknownOpcode),
+            stopped(42, OP_TAP, SodStopReason::MissingAnchors),
         ]
     );
-    assert_eq!(walk.end, SodWalkEnd::Return(52));
+    assert_eq!(record.stop, None);
+    assert_eq!(record.returned_at, Some(52));
+}
+
+#[test]
+fn census_records_the_masked_opcodes_behind_the_first_blocking_one() {
+    // PUSHCENTRE blocks first; ANIMATE and TAP are masked behind it but still walked. The
+    // record keeps stream order, so entry 0 is the first blocking opcode and the rest sit
+    // behind it.
+    let record = census(&model(&[
+        PUSHCENTRE, ANIMATE, 0, 0, 0, 0, OP_TAP, 0, 1, 0, OP_RETURN,
+    ]));
+    assert_eq!(
+        record.stepped_over[0],
+        stopped(10, PUSHCENTRE, SodStopReason::UnknownOpcode)
+    );
+    assert_eq!(record.stepped_over[1].opcode, ANIMATE);
+    assert_eq!(record.stepped_over[2].opcode, OP_TAP);
+    assert_eq!(record.returned_at, Some(30));
+    assert_eq!(record.stop, None);
 }
 
 #[test]
 fn lenient_and_strict_decodes_still_stop_at_the_blocking_opcode() {
     let bytes = masked_stream();
-    let (_, stop) = transpile_sod_lenient(&bytes, "CENSUS", None).expect("lenient decode");
+    let ir = decode_sod(&bytes, "CENSUS", None, DecodeMode::Lenient).expect("lenient decode");
     assert_eq!(
-        stop,
-        Some(SodStop {
-            offset: 10,
-            opcode: PUSHCENTRE,
-            reason: SodStopReason::UnknownOpcode,
-        })
+        ir.decode().and_then(|record| record.stop),
+        Some(stopped(10, PUSHCENTRE, SodStopReason::UnknownOpcode))
     );
     assert_eq!(
-        transpile_sod(&bytes, "CENSUS", None).map(|_| ()),
+        decode_sod(&bytes, "CENSUS", None, DecodeMode::Strict).map(|_| ()),
         Err(SodError::InvalidOpcode {
             opcode: PUSHCENTRE,
             offset: 10,
@@ -91,38 +118,47 @@ fn lenient_and_strict_decodes_still_stop_at_the_blocking_opcode() {
 }
 
 #[test]
-fn walk_steps_over_gosub_without_following_it() {
+fn census_steps_over_gosub_without_following_it() {
     // The GOSUB target (+8 bytes) holds an opcode with no width; a linear walk never sees it.
-    let walk = walk_sod(&model(&[GOSUB, 8, OP_RETURN, 0x0FFF])).expect("census walk");
-    assert_eq!(walk.skipped, vec![skipped(10, GOSUB)]);
-    assert_eq!(walk.end, SodWalkEnd::Return(14));
-}
-
-#[test]
-fn walk_ends_on_an_opcode_without_a_width() {
-    assert_eq!(census_skip(0x0FFF), None);
-    let walk = walk_sod(&model(&[SHADE1, 0, 0, 0x0FFF, OP_RETURN])).expect("census walk");
-    assert_eq!(walk.skipped, vec![skipped(10, SHADE1)]);
+    let record = census(&model(&[GOSUB, 8, OP_RETURN, 0x0FFF]));
     assert_eq!(
-        walk.end,
-        SodWalkEnd::Unskippable(SodStop {
-            offset: 16,
-            opcode: 0x0FFF,
-            reason: SodStopReason::UnknownOpcode,
-        })
+        record.stepped_over,
+        vec![stopped(10, GOSUB, SodStopReason::UnknownOpcode)]
     );
+    assert_eq!(record.returned_at, Some(14));
+    assert_eq!(record.stop, None);
 }
 
 #[test]
-fn walk_without_return_ends_at_end_of_data() {
-    let walk = walk_sod(&model(&[PUSHCENTRE])).expect("census walk");
-    assert_eq!(walk.skipped, vec![skipped(10, PUSHCENTRE)]);
-    assert_eq!(walk.end, SodWalkEnd::EndOfData);
+fn census_stops_on_an_opcode_without_a_width() {
+    assert_eq!(census_skip(0x0FFF), None);
+    let record = census(&model(&[SHADE1, 0, 0, 0x0FFF, OP_RETURN]));
+    assert_eq!(
+        record.stepped_over,
+        vec![stopped(10, SHADE1, SodStopReason::UnknownOpcode)]
+    );
+    assert_eq!(
+        record.stop,
+        Some(stopped(16, 0x0FFF, SodStopReason::UnknownOpcode))
+    );
+    assert_eq!(record.returned_at, None);
 }
 
 #[test]
-fn walk_of_a_fully_implemented_model_skips_nothing() {
-    let walk = walk_sod(&model(&[OP_COLOR, 3, OP_RETURN])).expect("census walk");
-    assert!(walk.skipped.is_empty());
-    assert_eq!(walk.end, SodWalkEnd::Return(14));
+fn census_without_return_ends_at_end_of_data() {
+    let record = census(&model(&[PUSHCENTRE]));
+    assert_eq!(
+        record.stepped_over,
+        vec![stopped(10, PUSHCENTRE, SodStopReason::UnknownOpcode)]
+    );
+    assert_eq!(record.stop, None);
+    assert_eq!(record.returned_at, None);
+}
+
+#[test]
+fn census_of_a_fully_implemented_model_records_nothing() {
+    let record = census(&model(&[OP_COLOR, 3, OP_RETURN]));
+    assert!(record.stepped_over.is_empty());
+    assert_eq!(record.stop, None);
+    assert_eq!(record.returned_at, Some(14));
 }

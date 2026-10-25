@@ -8,17 +8,18 @@
 //!
 //! Archive chunk names follow `# [FMT-ALL-CHUNKS]` (`MODEL_%04X.SOD`, `[I8]`): the hex in the
 //! name is the resource ID that `ActorTransform::shape_id` carries. Chunks that stop at an
-//! opcode outside the decoded table keep the geometry parsed so far and are reported as
-//! partial in [`SceneReport`]. The anchor table follows ADR-0001.
+//! opcode outside the decoded table keep the geometry parsed so far and carry the stop in
+//! their decode record, so a partial shape is still a value with provenance. The anchor
+//! table follows ADR-0001.
 
 use std::collections::HashMap;
 
 use crate::anchor::{AnchorPoint, parse_anchor_table};
-use crate::contracts::{CameraTransform, PaletteControls, SodModelIr};
+use crate::contracts::{CameraTransform, PaletteControls, ShapeExtent, SodModelIr};
 use crate::flm::{FilmTimeline, FlmError};
-use crate::sod::{SodError, SodStop, transpile_sod_lenient};
+use crate::sod::{DecodeMode, SodError, decode_sod};
 use crate::vfs::VfsError;
-use crate::world::{World, WorldBounds, WorldInputs, build_world};
+use crate::world::{World, WorldInputs, build_world};
 
 /// Column-major identity matrix.
 const IDENTITY_MATRIX: [f32; 16] = [
@@ -67,8 +68,8 @@ pub struct WorldStats {
     pub terrain_patches: usize,
     /// Distinct static props placed.
     pub props_placed: usize,
-    /// Bounds of the world mesh in `[I1]` metres.
-    pub bounds: WorldBounds,
+    /// Extent of the world mesh in `[I1]` metres.
+    pub bounds: ShapeExtent,
 }
 
 /// What happened while loading a scene: data for the caller to print or assert on.
@@ -76,8 +77,6 @@ pub struct WorldStats {
 pub struct SceneReport {
     /// Chunks that failed to decode and were dropped.
     pub skipped: Vec<SkippedChunk>,
-    /// Shapes kept with only the geometry parsed before an unrecognized opcode.
-    pub partial: Vec<(u16, SodStop)>,
     /// True when a non-empty anchor table was supplied.
     pub anchors_loaded: bool,
     /// Why film decoding stopped before the epilogue; `None` for a complete film.
@@ -90,11 +89,13 @@ pub struct SceneReport {
 #[derive(Debug, Clone, Default)]
 pub struct ArchiveShapes {
     /// Decoded models keyed by the resource ID in their chunk name.
+    ///
+    /// A shape that stopped at an unrecognized opcode is still here: its
+    /// [`crate::contracts::SodModelIr::decode`] record carries the stop, so partiality
+    /// travels with the shape rather than as a parallel list.
     pub shapes: HashMap<u16, SodModelIr>,
     /// Chunks that failed to decode.
     pub skipped: Vec<SkippedChunk>,
-    /// Shapes that decoded only up to an unrecognized opcode.
-    pub partial: Vec<(u16, SodStop)>,
 }
 
 /// Decodes every `MODEL_%04X.SOD` chunk of `.ALL` bytes, resolving `OP_TAP` against `anchors`.
@@ -112,11 +113,8 @@ pub fn decode_archive_shapes(
         let Some(shape_id) = model_shape_id(&entry.name) else {
             continue;
         };
-        match transpile_sod_lenient(&entry.data, &entry.name, anchor_slice) {
-            Ok((ir, stop)) => {
-                if let Some(stop) = stop {
-                    out.partial.push((shape_id, stop));
-                }
+        match decode_sod(&entry.data, &entry.name, anchor_slice, DecodeMode::Lenient) {
+            Ok(ir) => {
                 out.shapes.insert(shape_id, ir);
             }
             Err(error) => out.skipped.push(SkippedChunk {
@@ -254,7 +252,6 @@ impl FilmScene {
         );
         let report = SceneReport {
             skipped: decoded.skipped,
-            partial: decoded.partial,
             anchors_loaded: !anchors.is_empty(),
             film_stop: timeline.stop_reason().cloned(),
             world: world.as_ref().map(|w| WorldStats {

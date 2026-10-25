@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use stunt_core::anchor::{AnchorPoint, parse_anchor_table};
 use stunt_core::contracts::{NodeKind, SodModelIr};
-use stunt_core::sod::transpile_sod;
+use stunt_core::sod::{DecodeMode, decode_sod};
 use stunt_core::world::{WorldInputs, build_world};
 
 fn fixtures_dir() -> PathBuf {
@@ -32,7 +32,7 @@ fn fixture_anchors() -> Vec<AnchorPoint> {
 fn fixture_shapes(shape_id: u16) -> HashMap<u16, SodModelIr> {
     let data =
         std::fs::read(fixtures_dir().join("synthetic_minimal.sod")).expect("read SOD fixture");
-    let ir = transpile_sod(&data, "MODEL_0001", None).expect("transpile fixture");
+    let ir = decode_sod(&data, "MODEL_0001", None, DecodeMode::Strict).expect("decode fixture");
     HashMap::from([(shape_id, ir)])
 }
 

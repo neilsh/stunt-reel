@@ -26,7 +26,7 @@ use stunt_core::contracts::{
 };
 use stunt_core::flm::{FilmTimeline, SliceKeyframe, TIMELINE_HZ, TIMELINE_TICK_SECONDS};
 use stunt_core::scene::{FilmScene, SceneInputs, SceneReport};
-use stunt_core::sod::transpile_sod;
+use stunt_core::sod::{DecodeMode, SodStop, decode_sod};
 
 /// Locates the scenery data file `filename` (see the module docs for the search order).
 ///
@@ -141,13 +141,24 @@ fn load_film(path: &Path) -> Result<FilmTimeline, String> {
     Ok(timeline)
 }
 
+/// Decoded shapes that stopped early, ordered by shape id so the report is stable.
+fn partial_shapes(scene: &FilmScene) -> Vec<(u16, SodStop)> {
+    let mut partial: Vec<(u16, SodStop)> = scene
+        .shapes()
+        .filter_map(|(id, shape)| shape.decode()?.stop.map(|stop| (id, stop)))
+        .collect();
+    partial.sort_by_key(|(shape_id, _)| *shape_id);
+    partial
+}
+
 /// Prints what loaded: models, partial SODs, anchors, world, and the film's extent.
 fn print_report(scene: &FilmScene, report: &SceneReport, anchor_file_found: bool) {
+    let partial = partial_shapes(scene);
     println!(
         "[stuntreel] scene: {} models loaded, {} skipped, {} partial",
         scene.shapes().count(),
         report.skipped.len(),
-        report.partial.len()
+        partial.len()
     );
     for chunk in &report.skipped {
         eprintln!(
@@ -155,7 +166,7 @@ fn print_report(scene: &FilmScene, report: &SceneReport, anchor_file_found: bool
             chunk.name, chunk.error
         );
     }
-    for (shape_id, stop) in &report.partial {
+    for (shape_id, stop) in &partial {
         println!(
             "[stuntreel] partial SOD 0x{shape_id:04X} stopped at 0x{:04X} opcode 0x{:04X} ({})",
             stop.offset, stop.opcode, stop.reason
@@ -231,7 +242,8 @@ fn load_or_create_model(path: Option<&Path>, sidata: Option<&Path>) -> Result<So
         .map(|b| parse_anchor_table(&b))
         .unwrap_or_default();
     let anchor_slice = (!anchors.is_empty()).then_some(anchors.as_slice());
-    transpile_sod(&bytes, stem, anchor_slice).map_err(|e| format!("parse {}: {e}", path.display()))
+    decode_sod(&bytes, stem, anchor_slice, DecodeMode::Strict)
+        .map_err(|e| format!("parse {}: {e}", path.display()))
 }
 
 /// A circular fly-by around the origin: one keyframe per 20 ms tick, 60 by default.

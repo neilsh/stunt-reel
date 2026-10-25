@@ -8,7 +8,7 @@
 //! Reference specs: `# [FMT-SOD-OPCODES]`, `# [FMT-SOD-IFVIS]`, historical `DECODE.C`/`SOD.H`.
 
 use crate::anchor::AnchorPoint;
-use crate::contracts::shape::VisibilityCondition;
+use crate::contracts::shape::{SodHeader, SodStop, SodStopReason, VisibilityCondition};
 use crate::reader::ByteReader;
 use crate::sod::SodError;
 
@@ -114,23 +114,6 @@ pub fn compute_scale_factor(scale_index: usize) -> f32 {
         10.0
     };
     scale_raw / 10.0
-}
-
-/// Parsed 10-byte header of a `.SOD` procedural model.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct SodHeader {
-    /// Bounding volume diameter in model units (`u16`), used for coarse culling.
-    pub bounding_size: u16,
-    /// Signed vertical offset of the model origin above its ground plane, in model units.
-    pub ground_y_offset: i16,
-    /// Index into [`SOD_SCALE_TABLE`] selecting the integer-to-meter multiplier.
-    pub scale_index: u8,
-    /// High byte of the header's flags/scale word, preserved verbatim for consumers.
-    pub header_flags: u8,
-    /// Metric multiplier (meters per integer unit) derived from `scale_index`.
-    pub scale_factor: f32,
-    /// Engine collision metadata word copied verbatim from the header.
-    pub collision_meta: u16,
 }
 
 /// Intermediate polygonal facet emitted by the bytecode VM before decal resolution and welding.
@@ -390,87 +373,75 @@ fn parse_visibility_condition(code: u16) -> VisibilityCondition {
     }
 }
 
-/// Why a lenient decode stopped before the end of the bytecode stream.
+/// How a VM pass treats an opcode it cannot execute.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SodStopReason {
-    /// The opcode is outside the decoded table.
-    UnknownOpcode,
-    /// [`OP_TAP`] was reached without a usable anchor table.
-    MissingAnchors,
+pub(crate) enum Policy {
+    /// Fail the decode.
+    Strict,
+    /// Stop at the blocking opcode, keeping the geometry decoded so far.
+    Lenient,
+    /// Step over a blocking opcode whose width is known and log it; stop on one without
+    /// a width.
+    Census,
 }
 
-impl std::fmt::Display for SodStopReason {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::UnknownOpcode => f.write_str("unknown opcode"),
-            Self::MissingAnchors => f.write_str("missing anchor table"),
-        }
+/// The VM's verdict on one opcode it cannot execute.
+enum Blockage {
+    /// Fail the decode.
+    Fail(SodError),
+    /// End the run and report the stop.
+    Stop(SodStop),
+    /// Log the stop and continue past the opcode's operands.
+    StepOver(SodStop),
+}
+
+/// The one stop-or-step-over decision, shared by every blocking site.
+///
+/// `steppable` is true when the site knows how many operand words the opcode owns; only a
+/// census run may then continue past it. Strict fails and lenient stops at any blockage.
+fn blocked(
+    policy: Policy,
+    offset: usize,
+    opcode: u16,
+    reason: SodStopReason,
+    steppable: bool,
+) -> Blockage {
+    let stop = SodStop {
+        offset,
+        opcode,
+        reason,
+    };
+    match policy {
+        Policy::Strict => Blockage::Fail(stop.into_error()),
+        Policy::Lenient => Blockage::Stop(stop),
+        Policy::Census if steppable => Blockage::StepOver(stop),
+        Policy::Census => Blockage::Stop(stop),
     }
 }
 
-/// Location, opcode, and reason of a bytecode stream that stopped early.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SodStop {
-    /// Byte offset of the stopping opcode within the model payload.
-    pub offset: usize,
-    /// The stopping opcode word.
-    pub opcode: u16,
-    /// Why decoding stopped.
-    pub reason: SodStopReason,
+/// Everything one VM pass produced.
+pub(crate) struct VmRun {
+    /// The parsed 10-byte header.
+    pub header: SodHeader,
+    /// Polygons emitted before the stream ended, in draw order.
+    pub polygons: Vec<RawPolygon>,
+    /// The first blocking opcode the run stopped on.
+    pub stop: Option<SodStop>,
+    /// Blocking opcodes a census run stepped over, in stream order.
+    pub stepped_over: Vec<SodStop>,
+    /// Byte offset of the first `OP_RETURN`; `None` when the stream ended without one.
+    pub returned_at: Option<usize>,
 }
 
-/// Executes the `.SOD` bytecode virtual machine against input bytes.
+/// Runs one pass of the VM.
 ///
-/// `anchors` supplies the global 28-byte anchor table referenced by [`OP_TAP`];
-/// pass `None` for models that do not use TAP. Returns the parsed header and raw
-/// polygon stream, and fails on any opcode outside the decoded table.
-pub(crate) fn execute_sod_vm(
+/// The policy decides, at every blocking site, whether to fail, stop or step over;
+/// header parsing, register arithmetic and geometry emission are shared by every mode.
+pub(crate) fn run_vm(
     data: &[u8],
+    policy: Policy,
     anchors: Option<&[AnchorPoint]>,
-) -> Result<(SodHeader, Vec<RawPolygon>), SodError> {
-    let (header, polygons, stop) = execute_sod_vm_impl(data, false, anchors)?;
-    match stop {
-        None => Ok((header, polygons)),
-        Some(SodStop {
-            offset,
-            opcode,
-            reason: SodStopReason::UnknownOpcode,
-        }) => Err(SodError::InvalidOpcode { opcode, offset }),
-        Some(SodStop {
-            offset,
-            reason: SodStopReason::MissingAnchors,
-            ..
-        }) => Err(SodError::MissingAnchors {
-            opcode: OP_TAP,
-            offset,
-        }),
-    }
-}
-
-/// Executes the `.SOD` bytecode virtual machine, optionally tolerating unknown opcodes.
-///
-/// When `lenient` is set, an unknown opcode or an unavailable TAP anchor table ends
-/// execution and is reported as [`SodStop`] alongside the polygons decoded up to that
-/// offset, so a partially decoded model stays renderable. Strict mode returns the same
-/// polygons only for streams that decode to completion.
-pub(crate) fn execute_sod_vm_impl(
-    data: &[u8],
-    lenient: bool,
-    anchors: Option<&[AnchorPoint]>,
-) -> Result<(SodHeader, Vec<RawPolygon>, Option<SodStop>), SodError> {
-    run_vm(data, lenient, anchors, None)
-}
-
-/// Shared VM loop. With `census` set the run is lenient, and opcodes listed in
-/// [`CENSUS_SKIPS`] (plus `OP_TAP` without anchors) are logged and stepped over
-/// instead of ending the run.
-fn run_vm(
-    data: &[u8],
-    lenient: bool,
-    anchors: Option<&[AnchorPoint]>,
-    mut census: Option<&mut CensusLog>,
-) -> Result<(SodHeader, Vec<RawPolygon>, Option<SodStop>), SodError> {
-    let lenient = lenient || census.is_some();
+) -> Result<VmRun, SodError> {
     if data.len() < 10 {
         return Err(SodError::UnexpectedEof {
             expected: 10,
@@ -514,6 +485,8 @@ fn run_vm(
     // Pen position in metres for `OP_MOVETO` / `OP_ZLINETO`.
     let mut pen = [0.0f32; 3];
     let mut polygons = Vec::new();
+    let mut stepped_over: Vec<SodStop> = Vec::new();
+    let mut returned_at: Option<usize> = None;
     let mut current_visibility = VisibilityCondition::Always;
     let mut visibility_scope_end = 0usize;
 
@@ -841,34 +814,32 @@ fn run_vm(
 
                 let table = match anchors {
                     Some(points) if !points.is_empty() => points,
-                    _ => {
-                        if let Some(log) = census.as_deref_mut() {
+                    _ => match blocked(
+                        policy,
+                        op_offset,
+                        opcode,
+                        SodStopReason::MissingAnchors,
+                        true,
+                    ) {
+                        Blockage::Fail(error) => return Err(error),
+                        Blockage::Stop(stop) => {
+                            return Ok(VmRun {
+                                header,
+                                polygons,
+                                stop: Some(stop),
+                                stepped_over,
+                                returned_at,
+                            });
+                        }
+                        Blockage::StepOver(stop) => {
+                            // The point count is in the operand, so the walk can skip it.
                             for _ in 0..count {
                                 r.read_u16_le()?;
                             }
-                            log.skipped.push(SodSkip {
-                                offset: op_offset,
-                                opcode,
-                                reason: SodStopReason::MissingAnchors,
-                            });
+                            stepped_over.push(stop);
                             continue;
                         }
-                        if lenient {
-                            return Ok((
-                                header,
-                                polygons,
-                                Some(SodStop {
-                                    offset: op_offset,
-                                    opcode,
-                                    reason: SodStopReason::MissingAnchors,
-                                }),
-                            ));
-                        }
-                        return Err(SodError::MissingAnchors {
-                            opcode,
-                            offset: op_offset,
-                        });
-                    }
+                    },
                 };
 
                 let start_reg = (reg_off / 12) & 1023;
@@ -885,21 +856,26 @@ fn run_vm(
                     }
 
                     let Some(anchor) = table.get(anchor_off / 28) else {
-                        if lenient {
-                            return Ok((
-                                header,
-                                polygons,
-                                Some(SodStop {
-                                    offset: op_offset,
-                                    opcode,
-                                    reason: SodStopReason::MissingAnchors,
-                                }),
-                            ));
-                        }
-                        return Err(SodError::MissingAnchors {
+                        // Mid-operand, so there is no width to step over: every policy ends
+                        // the run here (strict fails, lenient and census report a stop).
+                        match blocked(
+                            policy,
+                            op_offset,
                             opcode,
-                            offset: op_offset,
-                        });
+                            SodStopReason::MissingAnchors,
+                            false,
+                        ) {
+                            Blockage::Fail(error) => return Err(error),
+                            Blockage::Stop(stop) | Blockage::StepOver(stop) => {
+                                return Ok(VmRun {
+                                    header,
+                                    polygons,
+                                    stop: Some(stop),
+                                    stepped_over,
+                                    returned_at,
+                                });
+                            }
+                        }
                     };
 
                     regs[(start_reg + i) & 1023] = anchor.register_position();
@@ -920,52 +896,55 @@ fn run_vm(
             }
             OP_RETURN => {
                 // Bytecode termination
-                if let Some(log) = census.as_deref_mut() {
-                    log.return_offset = Some(op_offset);
-                }
+                returned_at = Some(op_offset);
                 break;
             }
             _ => {
-                if let Some(log) = census.as_deref_mut()
-                    && let Some(skip) = census_skip(opcode)
-                {
-                    let mut words = usize::from(skip.fixed_words);
-                    for i in 0..skip.fixed_words {
-                        let word = r.read_u16_le()?;
-                        if skip.count_word == Some(i) {
-                            words += usize::from(word);
-                        }
-                    }
-                    for _ in usize::from(skip.fixed_words)..words {
-                        r.read_u16_le()?;
-                    }
-                    log.skipped.push(SodSkip {
-                        offset: op_offset,
-                        opcode,
-                        reason: SodStopReason::UnknownOpcode,
-                    });
-                    continue;
-                }
-                if lenient {
-                    return Ok((
-                        header,
-                        polygons,
-                        Some(SodStop {
-                            offset: op_offset,
-                            opcode,
-                            reason: SodStopReason::UnknownOpcode,
-                        }),
-                    ));
-                }
-                return Err(SodError::InvalidOpcode {
+                let skip = census_skip(opcode);
+                match blocked(
+                    policy,
+                    op_offset,
                     opcode,
-                    offset: op_offset,
-                });
+                    SodStopReason::UnknownOpcode,
+                    skip.is_some(),
+                ) {
+                    Blockage::Fail(error) => return Err(error),
+                    Blockage::Stop(stop) => {
+                        return Ok(VmRun {
+                            header,
+                            polygons,
+                            stop: Some(stop),
+                            stepped_over,
+                            returned_at,
+                        });
+                    }
+                    Blockage::StepOver(stop) => {
+                        let skip = skip.expect("a steppable opcode has a census width");
+                        let mut words = usize::from(skip.fixed_words);
+                        for i in 0..skip.fixed_words {
+                            let word = r.read_u16_le()?;
+                            if skip.count_word == Some(i) {
+                                words += usize::from(word);
+                            }
+                        }
+                        for _ in usize::from(skip.fixed_words)..words {
+                            r.read_u16_le()?;
+                        }
+                        stepped_over.push(stop);
+                        continue;
+                    }
+                }
             }
         }
     }
 
-    Ok((header, polygons, None))
+    Ok(VmRun {
+        header,
+        polygons,
+        stop: None,
+        stepped_over,
+        returned_at,
+    })
 }
 
 /// Operand layout the census walk assumes when stepping over an unimplemented opcode.
@@ -990,7 +969,7 @@ const fn skip(opcode: u16, mnemonic: &'static str, fixed_words: u16) -> CensusSk
     }
 }
 
-/// Operand widths for opcodes the VM does not implement, used only by [`walk_sod`].
+/// Operand widths for opcodes the VM does not implement, used only by a census decode.
 ///
 /// Widths come from the operand column of `research/formats/sod.md` § 3.2, which follows the
 /// community `SOD.H` rather than the binary (`OP_ANIMATE` excepted), so a wrong entry
@@ -1025,6 +1004,10 @@ pub const CENSUS_SKIPS: &[CensusSkip] = &[
     skip(0x01DD, "ROTY", 1),
     skip(0x01E6, "PUSHRELMAT", 0),
     skip(0x01EF, "POPRELMAT", 0),
+    // `OP_ANIMATE` is a clipped screen-space image draw, not geometry (T10), so the census
+    // steps over it. When the draw channel lands: delete this entry, collect the draws beside
+    // the polygon stream, and add a sibling accessor to the shape IR. `meshes()` stays
+    // geometry-only, `extent()` stays metric, and the stop policy does not change.
     CensusSkip {
         opcode: 0x01F8,
         mnemonic: "ANIMATE",
@@ -1056,71 +1039,4 @@ pub const CENSUS_SKIPS: &[CensusSkip] = &[
 #[must_use]
 pub fn census_skip(opcode: u16) -> Option<CensusSkip> {
     CENSUS_SKIPS.iter().copied().find(|s| s.opcode == opcode)
-}
-
-/// What the census walk recorded while running.
-#[derive(Debug, Default)]
-struct CensusLog {
-    skipped: Vec<SodSkip>,
-    return_offset: Option<usize>,
-}
-
-/// An opcode the census walk stepped over instead of executing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SodSkip {
-    /// Byte offset of the opcode within the model payload.
-    pub offset: usize,
-    /// The opcode word.
-    pub opcode: u16,
-    /// [`SodStopReason::MissingAnchors`] for `OP_TAP` without an anchor table, otherwise
-    /// [`SodStopReason::UnknownOpcode`].
-    pub reason: SodStopReason,
-}
-
-/// Where a census walk ended.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SodWalkEnd {
-    /// The first `OP_RETURN`, at this byte offset.
-    Return(usize),
-    /// The bytecode ran out, or an `OP_IFVIS` section ran past it, before any `OP_RETURN`.
-    EndOfData,
-    /// An unimplemented opcode with no [`CENSUS_SKIPS`] entry, so its width is unknown.
-    Unskippable(SodStop),
-}
-
-/// Result of [`walk_sod`].
-#[derive(Debug, Clone, PartialEq)]
-pub struct SodWalk {
-    /// The model header.
-    pub header: SodHeader,
-    /// Opcodes stepped over, in stream order. The first is the blocking opcode; the rest
-    /// are masked behind it.
-    pub skipped: Vec<SodSkip>,
-    /// Where the walk ended.
-    pub end: SodWalkEnd,
-}
-
-/// Walks a model for the opcode census, without anchors.
-///
-/// Runs the same handlers as a lenient decode but steps over each opcode in [`CENSUS_SKIPS`]
-/// and each `OP_TAP` (by its `count` anchor words), logging it, so opcodes masked behind
-/// the blocking one are found too. The walk is linear: branches, `GOTO` and `GOSUB` are
-/// stepped over rather than followed, and it ends at the first `OP_RETURN`.
-///
-/// # Errors
-///
-/// The same header and operand errors as a lenient decode.
-pub fn walk_sod(data: &[u8]) -> Result<SodWalk, SodError> {
-    let mut log = CensusLog::default();
-    let (header, _, stop) = run_vm(data, true, None, Some(&mut log))?;
-    let end = match (stop, log.return_offset) {
-        (Some(stop), _) => SodWalkEnd::Unskippable(stop),
-        (None, Some(offset)) => SodWalkEnd::Return(offset),
-        (None, None) => SodWalkEnd::EndOfData,
-    };
-    Ok(SodWalk {
-        header,
-        skipped: log.skipped,
-        end,
-    })
 }

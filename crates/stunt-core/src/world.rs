@@ -21,7 +21,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::anchor::AnchorPoint;
 use crate::contracts::{
-    NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, SodModelIr, SodVertex,
+    NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, ShapeExtent, SodModelIr, SodVertex,
     VisibilityCondition,
 };
 
@@ -54,15 +54,6 @@ const FOCAL_PIXELS: f32 = 290.0;
 /// past wgpu's 256 MiB buffer limit, and the dropped props cannot reach a pixel.
 const MIN_PROP_PIXELS: f32 = 0.5;
 
-/// Axis-aligned bounds of the world mesh in `[I1]` metres.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct WorldBounds {
-    /// Smallest vertex coordinate on each of `X`, `Y`, `Z`.
-    pub min: [f32; 3],
-    /// Largest vertex coordinate on each of `X`, `Y`, `Z`.
-    pub max: [f32; 3],
-}
-
 /// The assembled static world and the counts that describe how it was built.
 #[derive(Clone, Debug)]
 pub struct World {
@@ -73,8 +64,8 @@ pub struct World {
     pub terrain_patches: usize,
     /// Distinct `(shape, position)` prop placements after de-duplication.
     pub props_placed: usize,
-    /// Bounds of every vertex in [`Self::ir`].
-    pub bounds: WorldBounds,
+    /// Extent of every vertex in [`Self::ir`].
+    pub bounds: ShapeExtent,
 }
 
 /// Builds the static world from its raw inputs and the film archive's decoded shapes.
@@ -123,7 +114,9 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
 
     let base_y = 0.0;
     let ir = build_world_ir(pts, &map_areas, &unique_instances, shapes, base_y);
-    let bounds = vertex_bounds(&ir);
+    let bounds = ir
+        .extent()
+        .expect("the world IR always carries the ocean quad");
     Some(World {
         ir,
         terrain_patches: map_areas.len(),
@@ -216,32 +209,14 @@ pub(crate) fn cull_subpixel_instances(
         .into_iter()
         .filter(|&(shape_id, pos)| {
             let radius = *radii.entry(shape_id).or_insert_with(|| {
-                shapes.get(&shape_id).map_or(0.0, |ir| {
-                    ir.vertices
-                        .iter()
-                        .map(|v| {
-                            let [x, y, z] = v.position;
-                            (x * x + y * y + z * z).sqrt()
-                        })
-                        .fold(0.0, f32::max)
-                })
+                shapes
+                    .get(&shape_id)
+                    .and_then(SodModelIr::extent)
+                    .map_or(0.0, |extent| extent.radius)
             });
             radius * FOCAL_PIXELS >= MIN_PROP_PIXELS * path_distance(pos, eyes).max(1.0)
         })
         .collect()
-}
-
-/// Computes the axis-aligned bounds of all vertices of `ir`.
-fn vertex_bounds(ir: &SodModelIr) -> WorldBounds {
-    let mut min = [f32::INFINITY; 3];
-    let mut max = [f32::NEG_INFINITY; 3];
-    for v in &ir.vertices {
-        for axis in 0..3 {
-            min[axis] = min[axis].min(v.position[axis]);
-            max[axis] = max[axis].max(v.position[axis]);
-        }
-    }
-    WorldBounds { min, max }
 }
 
 /// Polygonal terrain patch from `MAP.BIN`.
@@ -581,8 +556,8 @@ fn push_terrain(ir: &mut SodModelIr, anchors: &[AnchorPoint], map_areas: &[MapAr
     }
 }
 
-/// Appends every placed prop's mesh nodes whose `is_decal` equals `decals`, translated to
-/// its placement and lifted by `base_y`. Indices outside a node's own vertex range are dropped.
+/// Appends every placed prop's mesh slices whose `is_decal` equals `decals`, translated
+/// to its placement and lifted by `base_y`.
 fn push_props(
     ir: &mut SodModelIr,
     instances: &[(u16, [f32; 3])],
@@ -591,26 +566,15 @@ fn push_props(
     decals: bool,
 ) {
     for &(shape_id, pos) in instances {
-        let Some(model_ir) = ir_models.get(&shape_id) else {
+        let Some(model) = ir_models.get(&shape_id) else {
             continue;
         };
-        for node in &model_ir.nodes {
-            let NodeKind::Mesh {
-                vertex_offset,
-                vertex_count,
-                index_offset,
-                index_count,
-                is_decal,
-            } = node.kind
-            else {
-                continue;
-            };
-            if is_decal != decals || index_count == 0 {
+        for mesh in model.meshes() {
+            if mesh.is_decal() != decals || mesh.indices.is_empty() {
                 continue;
             }
             let start = ir.vertices.len() as u32;
-            let v_range = vertex_offset as usize..(vertex_offset + vertex_count) as usize;
-            for v in &model_ir.vertices[v_range] {
+            for v in mesh.vertices {
                 ir.vertices.push(SodVertex {
                     position: [
                         v.position[0] + pos[0],
@@ -624,11 +588,8 @@ fn push_props(
                     _padding: 0,
                 });
             }
-            let i_range = index_offset as usize..(index_offset + index_count) as usize;
-            for &idx in &model_ir.indices[i_range] {
-                if (vertex_offset..vertex_offset + vertex_count).contains(&idx) {
-                    ir.indices.push(start + idx - vertex_offset);
-                }
+            for &index in mesh.indices {
+                ir.indices.push(start + index - mesh.vertex_offset);
             }
         }
     }
@@ -949,49 +910,5 @@ mod tests {
         assert_eq!(unique.len(), 2);
         assert_eq!(unique[0].0, 0x0100);
         assert_eq!(unique[1].0, 0x0101);
-    }
-
-    #[test]
-    fn test_build_world_ir_out_of_bounds_index() {
-        let pts = Vec::new();
-        let map_areas = Vec::new();
-        let mut ir_models = HashMap::new();
-        let mut prop_ir = SodModelIr::new("CORRUPT_PROP");
-        prop_ir.allocate_node(
-            "BASE",
-            None,
-            [0.0; 16],
-            VisibilityCondition::Always,
-            NodeKind::Mesh {
-                vertex_offset: 10,
-                vertex_count: 2,
-                index_offset: 0,
-                index_count: 3,
-                is_decal: false,
-            },
-        );
-        prop_ir.vertices.resize(
-            12,
-            SodVertex {
-                position: [0.0; 3],
-                normal: [0.0, 1.0, 0.0],
-                palette_index: 1,
-                flags: 0,
-                scenery_class: 0,
-                _padding: 0,
-            },
-        );
-        // Indices intentionally include:
-        // - 5 (< vertex_offset 10)
-        // - 10 (valid, in [10, 12))
-        // - 99 (> vertex_offset + vertex_count 12)
-        prop_ir.indices = vec![5, 10, 99];
-        ir_models.insert(0x0200, prop_ir);
-
-        let instances = vec![(0x0200, [0.0, 0.0, 0.0])];
-        // Must not panic on underflow or out-of-bounds index
-        let world_ir = build_world_ir(&pts, &map_areas, &instances, &ir_models, 0.0);
-        // Ocean quad uses 6 indices, fallback ground plane uses 6 indices, valid prop index pushed 1 index (index 10)
-        assert_eq!(world_ir.indices.len(), 6 + 6 + 1);
     }
 }

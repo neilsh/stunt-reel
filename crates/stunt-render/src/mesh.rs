@@ -13,7 +13,7 @@ use std::ops::Range;
 
 use crate::pipeline::ModelUniform;
 use glam::Mat4;
-use stunt_core::contracts::{NodeId, NodeKind, SodModelIr, SodVertex, VisibilityCondition};
+use stunt_core::contracts::{NodeId, SodModelIr, SodVertex, VisibilityCondition};
 
 /// Cached node data inside GPU model representation.
 #[derive(Debug, Clone)]
@@ -82,25 +82,17 @@ impl GpuModel {
         let limit = device.limits().max_buffer_size;
         let max_vertices = (limit / std::mem::size_of::<SodVertex>() as u64) as usize;
         let max_indices = (limit / std::mem::size_of::<u32>() as u64) as usize;
-        let sources: Vec<Option<SourceSlice>> = ir
-            .nodes
-            .iter()
-            .map(|node| match node.kind {
-                NodeKind::Mesh {
-                    vertex_offset,
-                    index_offset,
-                    index_count,
-                    is_decal,
-                    ..
-                } => Some(SourceSlice {
-                    vertex_offset,
-                    index_offset,
-                    index_count,
-                    is_decal,
-                }),
-                _ => None,
-            })
-            .collect();
+        // One source per mesh slice, keyed by node so the planned slices can be handed
+        // back to the same nodes. `meshes()` already skips a node whose window is unsafe.
+        let mut sources: Vec<Option<SourceSlice>> = vec![None; ir.nodes.len()];
+        for mesh in ir.meshes() {
+            sources[mesh.node.id.0 as usize] = Some(SourceSlice {
+                vertex_offset: mesh.vertex_offset,
+                index_offset: mesh.index_offset,
+                index_count: mesh.indices.len() as u32,
+                is_decal: mesh.is_decal(),
+            });
+        }
         let mesh_sources: Vec<SourceSlice> = sources.iter().flatten().copied().collect();
         let plan = plan_upload(
             ir.vertices.len(),
@@ -228,9 +220,7 @@ impl GpuModel {
     pub fn draw_slices(&self, rpass: &mut wgpu::RenderPass<'_>, meshes: &[GpuMeshSlice]) {
         let mut bound = None;
         for mesh in meshes {
-            let Some(chunk) = self.chunks.get(mesh.chunk as usize) else {
-                continue;
-            };
+            let chunk = &self.chunks[mesh.chunk as usize];
             if bound != Some(mesh.chunk) {
                 rpass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
                 rpass.set_index_buffer(chunk.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
@@ -348,8 +338,7 @@ pub(crate) struct UploadPlan {
 /// A model within both budgets is one chunk holding the source buffers unchanged. Otherwise
 /// each source slice is cut into runs of whole triangles in draw order; a run copies the
 /// contiguous vertex window its triangles reference and rebases their indices to it, and a
-/// chunk takes runs until the next triangle would overflow it. Triangles that reference a
-/// vertex outside the model, and a trailing partial triangle, are dropped.
+/// chunk takes runs until the next triangle would overflow it.
 pub(crate) fn plan_upload(
     vertex_count: usize,
     indices: &[u32],
@@ -385,16 +374,15 @@ pub(crate) fn plan_upload(
     let mut slices = Vec::with_capacity(sources.len());
     for source in sources {
         let mut out = Vec::new();
-        let start = (source.index_offset as usize).min(indices.len());
-        let end = (start + source.index_count as usize).min(indices.len());
+        // The IR owns its windows: `meshes()` only hands out slices contained in the buffers,
+        // and every slice is whole triangles, so no triangle needs checking or dropping.
+        let start = source.index_offset as usize;
+        let end = start + source.index_count as usize;
         let base = source.vertex_offset as usize;
         // The open run: its source vertex window and its triangles as source vertices.
         let mut run: Option<(Range<usize>, Vec<[usize; 3]>)> = None;
         for tri in indices[start..end].as_chunks::<3>().0 {
             let tri = tri.map(|v| base + v as usize);
-            if tri.iter().any(|&v| v >= vertex_count) {
-                continue;
-            }
             let lo = tri.into_iter().min().unwrap_or(0);
             let hi = tri.into_iter().max().unwrap_or(0) + 1;
             let last = chunks.last().expect("a split plan starts with a chunk");
@@ -529,10 +517,11 @@ mod tests {
     }
 
     #[test]
-    fn split_honours_vertex_offset_and_drops_out_of_range_triangles() {
-        let indices = [0, 1, 2, 1, 2, 9, 2, 3, 4];
-        let plan = plan_upload(10, &indices, &[source(5, 0, 9)], 6, 9);
-        // 1+5, 2+5, 9+5 = 14 is past the 10 vertices, so the middle triangle is dropped.
+    fn split_honours_vertex_offset_and_keeps_whole_triangles() {
+        let indices = [0, 1, 2, 2, 3, 4];
+        let plan = plan_upload(10, &indices, &[source(5, 0, 6)], 6, 9);
+        // Every index addresses the vertex window from offset 5 onward; the run copies the
+        // contiguous window 5..10 and rebases the indices into it.
         assert_eq!(drawn(&plan, &plan.slices[0]), vec![5, 6, 7, 7, 8, 9]);
     }
 }

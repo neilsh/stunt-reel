@@ -1,4 +1,6 @@
-//! Unit tests for the SOD `vm` stage, relocated from integration tests so the stage can stay crate-private.
+//! Unit tests for the SOD decode stage, relocated from integration tests so the stage can
+//! stay crate-private. Everything is asserted through [`crate::sod::decode_sod`] and the
+//! shape it returns.
 
 use crate::anchor::AnchorPoint;
 use std::fs;
@@ -6,13 +8,26 @@ use std::path::PathBuf;
 
 use crate::contracts::shape::{NodeId, NodeKind, SodModelIr};
 use crate::sod::DECAL_FLAG_BIT;
-use crate::sod::tessellate::transpile_sod;
-use crate::sod::vm::{compute_polygon_normal, execute_sod_vm, execute_sod_vm_impl};
+use crate::sod::vm::compute_polygon_normal;
 use crate::sod::{
-    OP_ADDV, OP_CLRV, OP_COLOR, OP_DOT, OP_GETV, OP_ID, OP_INTV, OP_LINECOL, OP_MOVETO, OP_NEGV,
-    OP_POLYZ, OP_PUTV, OP_RETURN, OP_SHLV, OP_SHRV, OP_SPHERE, OP_SUBV, OP_TAP, OP_VECTORS,
-    OP_ZLINETO, SodError, SodStop, SodStopReason, transpile_sod_lenient,
+    CENSUS_SKIPS, DecodeMode, OP_ADDV, OP_CLRV, OP_COLOR, OP_DOT, OP_GETV, OP_ID, OP_INTV,
+    OP_LINECOL, OP_MOVETO, OP_NEGV, OP_POLYZ, OP_PUTV, OP_RETURN, OP_SHLV, OP_SHRV, OP_SPHERE,
+    OP_SUBV, OP_TAP, OP_VECTORS, OP_ZLINETO, SodError, SodStop, SodStopReason, decode_sod,
 };
+
+/// Decodes `data` strictly with no anchor table.
+fn decode(data: &[u8], name: &str) -> Result<SodModelIr, SodError> {
+    decode_sod(data, name, None, DecodeMode::Strict)
+}
+
+/// Decodes `data` strictly against `anchors`.
+fn decode_with_anchors(
+    data: &[u8],
+    name: &str,
+    anchors: &[AnchorPoint],
+) -> Result<SodModelIr, SodError> {
+    decode_sod(data, name, Some(anchors), DecodeMode::Strict)
+}
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -84,10 +99,10 @@ fn test_challenge_synthetic_minimal_fixture_precision() {
     assert!(path.exists(), "fixture exists");
 
     let data = fs::read(&path).expect("read fixture");
-    let ir = transpile_sod(&data, "SYNTHETIC_MINIMAL", None).expect("transpile fixture");
+    let ir = decode(&data, "SYNTHETIC_MINIMAL").expect("decode fixture");
 
-    // Header validation
-    let (header, _) = execute_sod_vm(&data, None).expect("execute VM");
+    // Header survives on the decode record
+    let header = ir.decode().expect("decoded shape keeps its record").header;
     assert_eq!(header.bounding_size, 100);
     assert_eq!(header.ground_y_offset, 0);
     assert_eq!(header.scale_index, 1); // 0.5 factor
@@ -165,16 +180,15 @@ fn test_sphere_emits_icosahedron_around_register_center() {
     bytes.extend_from_slice(&50u16.to_le_bytes()); // radius
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let (_, polys) = execute_sod_vm(&bytes, None).expect("execute VM");
-    assert_eq!(polys.len(), 20);
-    for poly in &polys {
-        assert_eq!(poly.palette_index, 45);
-        assert_eq!(poly.vertices.len(), 3);
-        for v in &poly.vertices {
-            let d =
-                ((v[0] - 100.0).powi(2) + (v[1] - 200.0).powi(2) + (v[2] - 300.0).powi(2)).sqrt();
-            assert!((d - 46.0).abs() < 1e-3, "vertex {d} from center");
-        }
+    let ir = decode(&bytes, "SPHERE").expect("decode sphere");
+    assert_eq!(ir.indices.len(), 20 * 3, "20 flat-shaded faces");
+    for v in &ir.vertices {
+        assert_eq!(v.palette_index, 45);
+        let d = ((v.position[0] - 100.0).powi(2)
+            + (v.position[1] - 200.0).powi(2)
+            + (v.position[2] - 300.0).powi(2))
+        .sqrt();
+        assert!((d - 46.0).abs() < 1e-3, "vertex {d} from center");
     }
 }
 
@@ -212,14 +226,13 @@ fn test_sod_vm_register_boundary_0_and_1023() {
     bytes.extend_from_slice(&(1023u16 * 12).to_le_bytes());
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let (header, polys) = execute_sod_vm(&bytes, None).expect("execute VM");
-    assert_eq!(header.bounding_size, 100);
-    assert_eq!(polys.len(), 1);
-    assert_eq!(polys[0].palette_index, 45);
-    assert_eq!(polys[0].vertices.len(), 3);
-    for v in &polys[0].vertices {
-        assert_eq!(*v, [10.0, 20.0, 30.0]);
-    }
+    let ir = decode(&bytes, "REGISTERS").expect("decode registers");
+    assert_eq!(ir.decode().expect("record").header.bounding_size, 100);
+    // All three vertices are the same point, so welding collapses them to one.
+    assert_eq!(ir.vertices.len(), 1);
+    assert_eq!(ir.vertices[0].position, [10.0, 20.0, 30.0]);
+    assert_eq!(ir.vertices[0].palette_index, 45);
+    assert_eq!(ir.indices.len(), 3);
 }
 
 #[test]
@@ -240,7 +253,7 @@ fn test_sod_vm_out_of_bounds_and_unaligned_register_masking() {
     bytes.extend_from_slice(&65535u16.to_le_bytes());
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let (_header, _polys) = execute_sod_vm(&bytes, None).expect("safely masked registers");
+    decode(&bytes, "MASK").expect("safely masked registers");
 }
 
 #[test]
@@ -299,11 +312,12 @@ fn test_sod_vm_vector_arithmetic_operations() {
     bytes.extend_from_slice(&24u16.to_le_bytes());
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let (_header, polys) = execute_sod_vm(&bytes, None).expect("execute VM");
-    assert_eq!(polys.len(), 1);
-    assert_eq!(polys[0].vertices[0], [10.0, 20.0, 30.0]);
-    assert_eq!(polys[0].vertices[1], [4.0, 6.0, 8.0]);
-    assert_eq!(polys[0].vertices[2], [-7.0, -13.0, -19.0]);
+    let ir = decode(&bytes, "ARITHMETIC").expect("decode arithmetic");
+    assert_eq!(ir.vertices.len(), 3);
+    assert_eq!(ir.vertices[0].position, [10.0, 20.0, 30.0]);
+    assert_eq!(ir.vertices[1].position, [4.0, 6.0, 8.0]);
+    assert_eq!(ir.vertices[2].position, [-7.0, -13.0, -19.0]);
+    assert_eq!(ir.indices.len(), 3);
 }
 
 #[test]
@@ -321,11 +335,10 @@ fn test_sod_normal_computation_fallback() {
 #[test]
 fn test_tap_resolves_anchor_points_into_non_degenerate_polygon() {
     let table = anchors();
-    let (_, polygons) = execute_sod_vm(&tap_bytes(), Some(&table)).expect("TAP resolves");
+    let ir = decode_with_anchors(&tap_bytes(), "TAP_MODEL", &table).expect("TAP resolves");
 
-    assert_eq!(polygons.len(), 1);
-    let vertices = &polygons[0].vertices;
-    assert_eq!(vertices.len(), 3);
+    assert_eq!(ir.vertices.len(), 3);
+    let vertices: Vec<[f32; 3]> = ir.vertices.iter().map(|v| v.position).collect();
     // Header scale index 1 = 0.5 m/unit; raw anchors map through [-x, -y, z].
     assert_eq!(vertices[0], [-50.0, 0.0, 100.0]);
     assert_eq!(vertices[1], [-150.0, 250.0, 200.0]);
@@ -341,36 +354,30 @@ fn test_tap_resolves_anchor_points_into_non_degenerate_polygon() {
 #[test]
 fn test_tap_variable_operand_width_preserves_following_opcodes() {
     let table = anchors();
-    let (_, polygons, stop) =
-        execute_sod_vm_impl(&tap_bytes(), true, Some(&table)).expect("lenient decode");
-    assert_eq!(stop, None, "count=3 TAP must not desynchronize the stream");
-    assert_eq!(polygons.len(), 1);
-    assert_eq!(
-        polygons[0].palette_index, 40,
-        "OP_COLOR after the three anchor words must be decoded"
-    );
-
-    let ir: SodModelIr =
-        transpile_sod(&tap_bytes(), "TAP_MODEL", Some(&table)).expect("transpile TAP model");
+    let ir = decode_with_anchors(&tap_bytes(), "TAP_MODEL", &table).expect("decode TAP model");
     assert_eq!(ir.vertices.len(), 3);
     assert_eq!(ir.indices.len(), 3);
+    assert_eq!(
+        ir.vertices[0].palette_index, 40,
+        "OP_COLOR after the three anchor words must be decoded"
+    );
 }
 
 #[test]
 fn test_tap_without_anchor_table_is_a_distinct_error() {
     let bytes = tap_bytes();
     assert_eq!(
-        execute_sod_vm(&bytes, None),
+        decode(&bytes, "TAP"),
         Err(SodError::MissingAnchors {
             opcode: OP_TAP,
             offset: 10,
         })
     );
 
-    let (_, polygons, stop) = execute_sod_vm_impl(&bytes, true, None).expect("lenient stop");
-    assert!(polygons.is_empty());
+    let ir = decode_sod(&bytes, "TAP", None, DecodeMode::Lenient).expect("lenient stop");
+    assert!(ir.vertices.is_empty());
     assert_eq!(
-        stop,
+        ir.decode().and_then(|record| record.stop),
         Some(SodStop {
             offset: 10,
             opcode: OP_TAP,
@@ -383,37 +390,27 @@ fn test_tap_without_anchor_table_is_a_distinct_error() {
 fn test_lenient_decode_reports_stop_and_keeps_geometry() {
     let bytes = stop_after_header();
 
-    let strict = execute_sod_vm_impl(&bytes, false, None);
     assert_eq!(
-        strict,
+        decode(&bytes, "STOPPED"),
         Err(SodError::InvalidOpcode {
             opcode: 0x0FFF,
             offset: 10,
         })
     );
 
-    let (header, polygons, stop) = execute_sod_vm_impl(&bytes, true, None).expect("lenient decode");
-    assert_eq!(header.bounding_size, 0);
-    assert!(polygons.is_empty());
+    let ir = decode_sod(&bytes, "STOPPED", None, DecodeMode::Lenient).expect("lenient decode");
+    let record = ir.decode().expect("lenient decode keeps its record");
+    assert_eq!(record.header.bounding_size, 0);
+    assert!(ir.vertices.is_empty());
     assert_eq!(
-        stop,
+        record.stop,
         Some(SodStop {
             offset: 10,
             opcode: 0x0FFF,
             reason: SodStopReason::UnknownOpcode,
         })
     );
-
-    let (ir, stop) = transpile_sod_lenient(&bytes, "STOPPED", None).expect("lenient transpile");
     assert_eq!(ir.name, "STOPPED");
-    assert_eq!(
-        stop,
-        Some(SodStop {
-            offset: 10,
-            opcode: 0x0FFF,
-            reason: SodStopReason::UnknownOpcode,
-        })
-    );
 }
 
 fn line_dot_bytes(ops: &[(u16, u16)]) -> Vec<u8> {
@@ -440,31 +437,30 @@ fn test_moveto_zlineto_emits_thin_ribbons_in_line_colour() {
         (OP_MOVETO, 0),
         (OP_ZLINETO, 12),
     ]);
-    let (_, polys) = execute_sod_vm(&bytes, None).expect("execute VM");
-    assert_eq!(polys.len(), 4);
-    for poly in &polys {
-        assert_eq!(poly.palette_index, 33);
-        assert_eq!(poly.vertices.len(), 4);
-        for v in &poly.vertices {
-            assert!(v[0] >= -1e-3 && v[0] <= 100.001);
-            assert!(v[1].abs() <= 0.03 && v[2].abs() <= 0.03);
-        }
+    let ir = decode(&bytes, "LINES").expect("decode lines");
+    // Two perpendicular ribbons, each emitted with both windings: four quads.
+    assert_eq!(ir.indices.len(), 4 * 6);
+    for v in &ir.vertices {
+        assert_eq!(v.palette_index, 33);
+        assert!(v.position[0] >= -1e-3 && v.position[0] <= 100.001);
+        assert!(v.position[1].abs() <= 0.03 && v.position[2].abs() <= 0.03);
     }
 }
 
 #[test]
 fn test_zero_length_line_emits_nothing_and_dot_emits_octahedron() {
     let bytes = line_dot_bytes(&[(OP_MOVETO, 12), (OP_ZLINETO, 12), (OP_DOT, 12)]);
-    let (_, polys) = execute_sod_vm(&bytes, None).expect("execute VM");
-    assert_eq!(polys.len(), 8);
-    assert!(polys.iter().all(|p| p.vertices.len() == 3));
+    let ir = decode(&bytes, "DOT").expect("decode dot");
+    // Eight flat-shaded triangles, no ribbon for the zero-length line.
+    assert_eq!(ir.indices.len(), 8 * 3);
+    assert!(!ir.vertices.is_empty());
 }
 
 #[test]
 fn test_census_skip_table_never_shadows_a_real_handler() {
     // Implementing an opcode means deleting its CENSUS_SKIPS entry: a strict decode must
     // still reject every opcode the table lists.
-    for skip in crate::sod::CENSUS_SKIPS {
+    for skip in CENSUS_SKIPS {
         assert_eq!(
             skip.opcode % 9,
             0,
@@ -476,7 +472,7 @@ fn test_census_skip_table_never_shadows_a_real_handler() {
         bytes.extend_from_slice(&[0u8; 16]);
         bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
         assert_eq!(
-            execute_sod_vm(&bytes, None).map(|_| ()),
+            decode(&bytes, "SHADOW").map(|_| ()),
             Err(SodError::InvalidOpcode {
                 opcode: skip.opcode,
                 offset: 10,

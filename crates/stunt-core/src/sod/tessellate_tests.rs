@@ -1,9 +1,12 @@
 //! Unit tests for the SOD `tessellate` stage, relocated from integration tests so the stage can stay crate-private.
 
-use crate::contracts::shape::VisibilityCondition;
-use crate::sod::tessellate::quantize_weld_key;
-use crate::sod::vm::{RawPolygon, execute_sod_vm};
-use crate::sod::{DECAL_FLAG_BIT, OP_COLOR, OP_ID, OP_IFVIS, OP_POLYZ, OP_RETURN, OP_VECTORS};
+use crate::contracts::shape::{NodeId, NodeKind, SodModelIr, SodVertex, VisibilityCondition};
+use crate::sod::tessellate::{check_shape_invariants, quantize_weld_key};
+use crate::sod::vm::RawPolygon;
+use crate::sod::{
+    DECAL_FLAG_BIT, DecodeMode, OP_COLOR, OP_ID, OP_IFVIS, OP_POLYZ, OP_RETURN, OP_VECTORS,
+    SodError, decode_sod,
+};
 
 fn make_sod_header(
     bounding_size: u16,
@@ -23,15 +26,6 @@ fn make_sod_header(
 
 #[test]
 fn test_challenge_i1_vertex_welding_full_attribute_tuple_oracle() {
-    let header = crate::sod::SodHeader {
-        bounding_size: 100,
-        ground_y_offset: 0,
-        scale_index: 0,
-        header_flags: 0,
-        scale_factor: 1.0,
-        collision_meta: 0,
-    };
-
     // Base triangle
     let tri1 = RawPolygon {
         vertices: vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 2.0, 0.0]],
@@ -72,12 +66,8 @@ fn test_challenge_i1_vertex_welding_full_attribute_tuple_oracle() {
         visibility: VisibilityCondition::Always,
     };
 
-    let ir = crate::sod::tessellate::build_sod_model_ir(
-        "WELD_ORACLE",
-        &header,
-        &[tri1, tri2, tri3, tri4],
-    )
-    .expect("build ir");
+    let ir = crate::sod::tessellate::build_sod_model_ir("WELD_ORACLE", &[tri1, tri2, tri3, tri4])
+        .expect("build ir");
 
     // tri1 emits 3 vertices (indices 0, 1, 2)
     // tri2 reuses vertices 0 and 1, emits 1 new vertex (index 3) -> total 4 vertices so far
@@ -102,15 +92,6 @@ fn test_challenge_i1_vertex_welding_full_attribute_tuple_oracle() {
 
 #[test]
 fn test_challenge_i5_decal_edge_sharing_and_welding() {
-    let header = crate::sod::SodHeader {
-        bounding_size: 100,
-        ground_y_offset: 0,
-        scale_index: 0,
-        header_flags: 0,
-        scale_factor: 1.0,
-        collision_meta: 0,
-    };
-
     // Base quad at z=0 (Palette 10)
     let base = RawPolygon {
         vertices: vec![
@@ -154,8 +135,8 @@ fn test_challenge_i5_decal_edge_sharing_and_welding() {
     assert!(processed[1].is_decal);
     assert!(processed[2].is_decal);
 
-    let ir = crate::sod::tessellate::build_sod_model_ir("DECAL_WELD", &header, &processed)
-        .expect("build ir");
+    let ir =
+        crate::sod::tessellate::build_sod_model_ir("DECAL_WELD", &processed).expect("build ir");
 
     // Base mesh: 1 quad -> 2 triangles -> 4 welded vertices (indices: 6)
     // Decal mesh: 2 triangles sharing 2 vertices -> 4 unique vertices (indices: 6)
@@ -177,15 +158,6 @@ fn test_challenge_i5_decal_edge_sharing_and_welding() {
 
 #[test]
 fn test_challenge_i1_welding_distance_threshold_oracle() {
-    let header = crate::sod::SodHeader {
-        bounding_size: 100,
-        ground_y_offset: 0,
-        scale_index: 0,
-        header_flags: 0,
-        scale_factor: 1.0,
-        collision_meta: 0,
-    };
-
     // Sub-threshold separation (0.00004 m < 1e-4 tolerance) -> MUST WELD
     let poly_a = RawPolygon {
         vertices: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
@@ -209,8 +181,7 @@ fn test_challenge_i1_welding_distance_threshold_oracle() {
     };
 
     let ir_welded =
-        crate::sod::tessellate::build_sod_model_ir("SUB_TOL", &header, &[poly_a, poly_b])
-            .expect("build ir");
+        crate::sod::tessellate::build_sod_model_ir("SUB_TOL", &[poly_a, poly_b]).expect("build ir");
     assert_eq!(
         ir_welded.vertices.len(),
         3,
@@ -235,9 +206,8 @@ fn test_challenge_i1_welding_distance_threshold_oracle() {
         visibility: VisibilityCondition::Always,
     };
 
-    let ir_distinct =
-        crate::sod::tessellate::build_sod_model_ir("SUPER_TOL", &header, &[poly_c, poly_d])
-            .expect("build ir");
+    let ir_distinct = crate::sod::tessellate::build_sod_model_ir("SUPER_TOL", &[poly_c, poly_d])
+        .expect("build ir");
     assert_eq!(
         ir_distinct.vertices.len(),
         6,
@@ -278,16 +248,7 @@ fn test_attribute_preserving_vertex_welding() {
         visibility: VisibilityCondition::Always,
     };
 
-    let header = crate::sod::SodHeader {
-        bounding_size: 10,
-        ground_y_offset: 0,
-        scale_index: 0,
-        header_flags: 0,
-        scale_factor: 1.0,
-        collision_meta: 0,
-    };
-
-    let ir = crate::sod::tessellate::build_sod_model_ir("WELD_TEST", &header, &[p1, p2, p3, p4])
+    let ir = crate::sod::tessellate::build_sod_model_ir("WELD_TEST", &[p1, p2, p3, p4])
         .expect("build ir");
 
     // 4 triangles = 12 indices
@@ -302,6 +263,61 @@ fn test_attribute_preserving_vertex_welding() {
         k1, k2,
         "Coordinates within 1e-4 tolerance must weld to identical key"
     );
+}
+
+#[test]
+fn internal_defects_are_refused_loudly() {
+    // A non-dense arena is a decoder bug, not an input property.
+    let mut ir = SodModelIr::new("DEFECT");
+    ir.allocate_node(
+        "ROOT",
+        None,
+        [0.0; 16],
+        VisibilityCondition::Always,
+        NodeKind::TransformGroup,
+    );
+    ir.nodes[0].id = NodeId(7);
+    let err = check_shape_invariants(&ir).expect_err("non-dense arena is refused");
+    assert!(matches!(err, SodError::InvariantViolation { .. }), "{err}");
+    assert!(err.to_string().contains("must be dense"), "{err}");
+
+    // An index outside its own node's vertex window is refused too.
+    let mut ir = SodModelIr::new("DEFECT");
+    let root = ir.allocate_node(
+        "ROOT",
+        None,
+        [0.0; 16],
+        VisibilityCondition::Always,
+        NodeKind::TransformGroup,
+    );
+    ir.allocate_node(
+        "OUT_OF_WINDOW",
+        Some(root),
+        [0.0; 16],
+        VisibilityCondition::Always,
+        NodeKind::Mesh {
+            vertex_offset: 0,
+            vertex_count: 2,
+            index_offset: 0,
+            index_count: 3,
+            is_decal: false,
+        },
+    );
+    ir.vertices.resize(
+        2,
+        SodVertex {
+            position: [0.0; 3],
+            normal: [0.0, 1.0, 0.0],
+            palette_index: 1,
+            flags: 0,
+            scenery_class: 0,
+            _padding: 0,
+        },
+    );
+    ir.indices = vec![0, 1, 2];
+    let err = check_shape_invariants(&ir).expect_err("index outside the vertex window is refused");
+    assert!(matches!(err, SodError::InvariantViolation { .. }), "{err}");
+    assert!(err.to_string().contains("vertex window"), "{err}");
 }
 
 #[test]
@@ -345,20 +361,13 @@ fn test_sod_vm_ifvis_conditional_sections() {
 
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let (header, polys) = execute_sod_vm(&bytes, None).expect("execute VM");
-    assert_eq!(polys.len(), 2);
-    assert_eq!(polys[0].visibility, VisibilityCondition::Always);
-    assert_eq!(
-        polys[1].visibility,
-        VisibilityCondition::LodDistanceSq(1000.0)
-    );
-
-    let ir = crate::sod::tessellate::build_sod_model_ir("IFVIS_MODEL", &header, &polys)
-        .expect("build ir");
-    assert_eq!(ir.nodes.len(), 3); // Root and 2 distinct visibility batches
+    let ir = decode_sod(&bytes, "IFVIS_MODEL", None, DecodeMode::Strict).expect("decode");
+    // The second polygon is coplanar with the first, so decal resolution moves it into the
+    // DECAL batch; its OP_IFVIS visibility still lands on that batch's node.
+    assert_eq!(ir.nodes.len(), 3); // Root plus a base and a decal batch
     assert_eq!(ir.nodes[1].name, "IFVIS_MODEL_BASE");
     assert_eq!(ir.nodes[1].visibility, VisibilityCondition::Always);
-    assert_eq!(ir.nodes[2].name, "IFVIS_MODEL_BASE_1");
+    assert_eq!(ir.nodes[2].name, "IFVIS_MODEL_DECAL");
     assert_eq!(
         ir.nodes[2].visibility,
         VisibilityCondition::LodDistanceSq(1000.0)

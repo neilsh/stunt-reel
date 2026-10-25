@@ -1,17 +1,16 @@
-//! Automated offline verification for interval frame capture and video container export.
+//! Automated offline verification for video container export.
 //!
 //! Validates Gate G08 and system invariants:
 //! - `[I4]` Discrete simulation ticks temporal authoring.
 //! - `[I6]` 4:3 physical display aspect ratio presentation.
 //! - `[I7]` Cleanroom synthetic fixture execution.
-
-mod common;
+//!
+//! The interval frame-capture test moved to renderer_test.rs, where it drives the Renderer
+//! entry point with a counting sink instead of constructing GPU state.
 
 use std::fs;
 use std::path::PathBuf;
-use stunt_core::contracts::CameraTransform;
-use stunt_core::scene::FilmScene;
-use stunt_render::{CameraController, FfmpegVideoWriter, SceneRenderer, VideoExportError};
+use stunt_render::{FfmpegVideoWriter, VideoExportError};
 
 fn get_temp_test_dir(name: &str) -> PathBuf {
     let nonce = std::time::SystemTime::now()
@@ -21,108 +20,6 @@ fn get_temp_test_dir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("stuntreel_{name}_{nonce}"));
     fs::create_dir_all(&dir).expect("create test temp dir");
     dir
-}
-
-#[test]
-fn test_interval_frame_capture_exact_count_magic_and_dimensions() {
-    let Some(mut renderer) = common::gpu_or_skip() else {
-        return;
-    };
-
-    let out_dir = get_temp_test_dir("interval_test");
-
-    // An empty scene: each frame is the camera override over the clear colour.
-    let scene = FilmScene::new(
-        common::still_timeline(CameraTransform {
-            eye: [0.0, 10.0, 50.0],
-            target: [0.0, 0.0, 0.0],
-            fov_degrees: 45.0,
-            roll_radians: 0.0,
-            cut_from_previous: true,
-            ..Default::default()
-        }),
-        Default::default(),
-        None,
-    );
-    let mut scene_renderer = SceneRenderer::new(
-        &renderer.device,
-        &renderer.queue,
-        &renderer.pipelines,
-        &scene,
-    );
-
-    // 10 simulation ticks, interval step = 2 (should produce exactly 5 frames: 1, 3, 5, 7, 9)
-    let total_ticks = 10;
-    let step = 2;
-    let mut camera = CameraController::default();
-    let mut expected_ordinals = Vec::new();
-
-    for tick in 0..total_ticks {
-        let ordinal = tick + 1;
-        if (ordinal - 1) % step != 0 {
-            continue;
-        }
-        expected_ordinals.push(ordinal);
-
-        camera.set_authored_transform(CameraTransform {
-            eye: [0.0, 10.0, 50.0 - (tick as f32 * 0.5)],
-            target: [0.0, 0.0, 0.0],
-            fov_degrees: 45.0,
-            roll_radians: 0.0,
-            cut_from_previous: tick == 0,
-            ..Default::default()
-        });
-
-        let frame_path = out_dir.join(format!("frame_{ordinal:04}.png"));
-        let rgba = renderer
-            .render_scene(
-                &mut scene_renderer,
-                &scene.frame(tick as f32),
-                Some(&camera),
-                Some(180),
-            )
-            .expect("render frame");
-        image::save_buffer(
-            &frame_path,
-            &rgba,
-            renderer.width,
-            renderer.height,
-            image::ColorType::Rgba8,
-        )
-        .expect("save frame png");
-    }
-
-    // (a) Verify exact count
-    let entries: Vec<_> = fs::read_dir(&out_dir)
-        .expect("read out dir")
-        .filter_map(Result::ok)
-        .collect();
-    assert_eq!(
-        entries.len(),
-        5,
-        "Expected exactly 5 frames for 10 ticks with step 2"
-    );
-
-    // (b) Verify valid PNG headers, non-empty data, correct dimensions
-    let png_magic = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-    for ordinal in expected_ordinals {
-        let path = out_dir.join(format!("frame_{ordinal:04}.png"));
-        assert!(path.exists(), "Frame file must exist: {}", path.display());
-
-        let bytes = fs::read(&path).expect("read frame png");
-        assert!(bytes.len() > 100, "PNG file must be non-empty");
-
-        // Standard PNG 8-byte magic: \x89PNG\r\n\x1a\n
-        assert_eq!(&bytes[0..8], &png_magic, "Valid PNG header magic required");
-
-        // Verify dimensions via image crate
-        let img = image::load_from_memory(&bytes).expect("decode png bytes");
-        assert_eq!(img.width(), 320, "Width must be 320 [I6]");
-        assert_eq!(img.height(), 240, "Height must be 240 [I6]");
-    }
-
-    // Cleanup
-    let _ = fs::remove_dir_all(&out_dir);
 }
 
 #[test]

@@ -1,6 +1,8 @@
-//! Verifies `SceneRenderer`: per-draw matrices, state-mask visibility, and the world draw.
+//! Verifies the scene renderer through the Renderer entry point: per-draw matrices,
+//! state-mask visibility, and the world draw, all read from RenderedPage.
 //!
-//! Skips when no GPU adapter is available, like the other render tests (see `common`).
+//! Skips when no GPU adapter is available, like the other render tests (see common); fails
+//! instead of skipping under STUNT_REQUIRE_GPU=1 (ADR 0006).
 
 mod common;
 
@@ -8,18 +10,18 @@ use std::collections::HashMap;
 
 use stunt_core::contracts::palette::PaletteControls;
 use stunt_core::contracts::{
-    ActorTransform, CameraTransform, NodeKind, SodModelIr, SodVertex, TrajectoryRecord,
-    VisibilityCondition,
+    ActorTransform, CameraTransform, NodeKind, ShapeExtent, SodModelIr, SodVertex,
+    TrajectoryRecord, VisibilityCondition,
 };
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
 use stunt_core::scene::FilmScene;
-use stunt_core::world::{World, WorldBounds};
-use stunt_render::SceneRenderer;
+use stunt_core::world::World;
+use stunt_render::{Offscreen, RenderOptions};
 
 const SHAPE_ID: u16 = 7;
 const CLEAR_INDEX: u8 = 180;
 
-/// A 2 m wide triangle in the XY plane, visible only where `visibility` allows.
+/// A 2 m wide triangle in the XY plane, visible only where visibility allows.
 fn triangle(name: &str, visibility: VisibilityCondition) -> SodModelIr {
     let vertex = |x: f32, y: f32| SodVertex {
         position: [x, y, 0.0],
@@ -31,7 +33,7 @@ fn triangle(name: &str, visibility: VisibilityCondition) -> SodModelIr {
     };
     let mut ir = SodModelIr::new(name);
     ir.vertices = vec![vertex(-1.0, -1.0), vertex(1.0, -1.0), vertex(0.0, 1.0)];
-    // Clockwise, like the SOD models: the pipeline culls back faces with `FrontFace::Cw`.
+    // Clockwise, like the SOD models: the pipeline culls back faces with FrontFace::Cw.
     ir.indices = vec![0, 2, 1];
     ir.allocate_node(
         "TRI",
@@ -100,20 +102,11 @@ fn scene(actors: Vec<ActorTransform>, visibility: VisibilityCondition) -> FilmSc
 
 /// Renders tick 0 and returns (width, height, per-pixel "covered by geometry" flags).
 fn render(scene: &FilmScene) -> Option<(usize, usize, Vec<bool>)> {
-    let mut renderer = common::gpu_or_skip()?;
-    let mut scene_renderer = SceneRenderer::new(
-        &renderer.device,
-        &renderer.queue,
-        &renderer.pipelines,
-        scene,
-    );
-    let frame = scene.frame(0.0);
-    let (_pixels, plane) = renderer
-        .render_scene_with_plane(&mut scene_renderer, &frame, None, Some(CLEAR_INDEX))
-        .expect("render succeeds");
-    let (w, h) = (renderer.width as usize, renderer.height as usize);
+    let mut test = common::gpu_or_skip(scene)?;
+    let page = test.draw(&scene.frame(0.0));
+    let (w, h) = (page.width() as usize, page.height() as usize);
     // The sky paints every uncovered pixel, so geometry is told apart by its layer.
-    let drawn = plane.iter().map(|&p| p >> 8 != 0).collect();
+    let drawn = page.plane().iter().map(|&p| p >> 8 != 0).collect();
     Some((w, h, drawn))
 }
 
@@ -171,9 +164,10 @@ fn world_is_drawn_when_present() {
         ir,
         terrain_patches: 0,
         props_placed: 0,
-        bounds: WorldBounds {
+        bounds: ShapeExtent {
             min: [-1.0, -1.0, 0.0],
             max: [1.0, 1.0, 0.0],
+            radius: 1.0,
         },
     };
     let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world));
@@ -195,22 +189,21 @@ fn zero_brightness_frame_renders_black_including_the_clear_colour() {
         shapes,
         None,
     );
-    let Some(mut renderer) = common::gpu_or_skip() else {
-        return;
-    };
-    let mut scene_renderer = SceneRenderer::new(
-        &renderer.device,
-        &renderer.queue,
-        &renderer.pipelines,
-        &scene,
-    );
     let frame = scene.frame(0.0);
     assert_eq!(frame.palette, faded);
-    let pixels = renderer
-        .render_scene(&mut scene_renderer, &frame, None, Some(CLEAR_INDEX))
-        .expect("render succeeds");
+    let Some(mut test) = common::gpu_or_skip_offscreen(
+        &scene,
+        Offscreen::default(),
+        RenderOptions {
+            clear_palette_index: CLEAR_INDEX,
+            ..RenderOptions::default()
+        },
+    ) else {
+        return;
+    };
+    let page = test.draw(&frame);
     assert!(
-        pixels
+        page.rgba()
             .as_chunks::<4>()
             .0
             .iter()

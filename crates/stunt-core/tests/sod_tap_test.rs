@@ -7,9 +7,7 @@
 use std::path::PathBuf;
 use stunt_core::anchor::AnchorPoint;
 
-use stunt_core::sod::{
-    OP_TAP, SodError, SodStop, SodStopReason, transpile_sod, transpile_sod_lenient,
-};
+use stunt_core::sod::{DecodeMode, OP_TAP, SodError, SodStop, SodStopReason, decode_sod};
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -58,7 +56,7 @@ fn tap(op_reg: u16, count: u16, offsets: &[u16]) -> Vec<u8> {
 fn test_tap_rejects_misaligned_anchor_offset() {
     let bytes = tap(0, 1, &[2]);
     assert!(matches!(
-        transpile_sod(&bytes, "TAP", Some(&anchors())),
+        decode_sod(&bytes, "TAP", Some(&anchors()), DecodeMode::Strict),
         Err(SodError::MalformedOpcode { opcode: OP_TAP, .. })
     ));
 }
@@ -67,7 +65,7 @@ fn test_tap_rejects_misaligned_anchor_offset() {
 fn test_tap_rejects_misaligned_register_offset() {
     let bytes = tap(6, 1, &[0]);
     assert!(matches!(
-        transpile_sod(&bytes, "TAP", Some(&anchors())),
+        decode_sod(&bytes, "TAP", Some(&anchors()), DecodeMode::Strict),
         Err(SodError::MalformedOpcode { opcode: OP_TAP, .. })
     ));
 }
@@ -78,7 +76,7 @@ fn test_tap_rejects_empty_and_oversized_counts() {
         let bytes = tap(0, count, &[]);
         assert!(
             matches!(
-                transpile_sod(&bytes, "TAP", Some(&anchors())),
+                decode_sod(&bytes, "TAP", Some(&anchors()), DecodeMode::Strict),
                 Err(SodError::MalformedOpcode { opcode: OP_TAP, .. })
             ),
             "count {count} must be rejected"
@@ -92,16 +90,16 @@ fn test_tap_anchor_index_out_of_range_is_a_missing_anchor_stop() {
     let bytes = tap(0, 1, &[28]);
 
     assert_eq!(
-        transpile_sod(&bytes, "TAP", Some(&single)).unwrap_err(),
+        decode_sod(&bytes, "TAP", Some(&single), DecodeMode::Strict).unwrap_err(),
         SodError::MissingAnchors {
             opcode: OP_TAP,
             offset: 10,
         }
     );
 
-    let (_, stop) = transpile_sod_lenient(&bytes, "TAP", Some(&single)).expect("lenient stop");
+    let ir = decode_sod(&bytes, "TAP", Some(&single), DecodeMode::Lenient).expect("lenient stop");
     assert_eq!(
-        stop,
+        ir.decode().and_then(|record| record.stop),
         Some(SodStop {
             offset: 10,
             opcode: OP_TAP,

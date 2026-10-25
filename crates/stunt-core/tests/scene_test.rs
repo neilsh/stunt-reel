@@ -9,10 +9,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use common::{ACTOR_RZ_BAM, push_interp};
-use stunt_core::contracts::SodModelIr;
+use stunt_core::contracts::{SodModelIr, SodStop, SodStopReason};
 use stunt_core::flm::{FilmTimeline, FlmError, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES};
 use stunt_core::scene::{FilmScene, SceneError, SceneInputs};
-use stunt_core::sod::transpile_sod;
+use stunt_core::sod::{DecodeMode, OP_TAP, decode_sod};
 
 fn fixture(name: &str) -> Vec<u8> {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -64,7 +64,7 @@ fn archive(chunks: &[(u16, &[u8])]) -> Vec<u8> {
 }
 
 fn model(bytes: &[u8]) -> SodModelIr {
-    transpile_sod(bytes, "MODEL", None).expect("fixture model")
+    decode_sod(bytes, "MODEL", None, DecodeMode::Strict).expect("fixture model")
 }
 
 fn scene_inputs(film: &[u8]) -> SceneInputs<'_> {
@@ -91,7 +91,14 @@ fn actors_sharing_a_shape_get_separate_draws() {
     .expect("load");
 
     assert!(report.skipped.is_empty());
-    assert!(report.partial.is_empty());
+    assert!(
+        scene
+            .shape(7)
+            .and_then(SodModelIr::decode)
+            .expect("decoded shape")
+            .stop
+            .is_none()
+    );
     assert!(report.film_stop.is_none());
     assert!(!report.anchors_loaded);
     assert!(report.world.is_none());
@@ -171,20 +178,36 @@ fn tap_shape_without_anchors_is_reported_partial() {
     })
     .expect("load");
     assert!(!report.anchors_loaded);
-    assert_eq!(report.partial.len(), 1);
-    assert_eq!(report.partial[0].0, 5);
-    assert!(scene.shape(5).is_some(), "partial shapes are kept");
+    let record = scene
+        .shape(5)
+        .and_then(SodModelIr::decode)
+        .expect("decoded shape");
+    assert_eq!(
+        record.stop,
+        Some(SodStop {
+            offset: 10,
+            opcode: OP_TAP,
+            reason: SodStopReason::MissingAnchors,
+        })
+    );
     assert_eq!(scene.frame(0.0).actors.len(), 1);
 
     let anchors = fixture("synthetic_anchors.bin");
-    let (_, report) = FilmScene::load(&SceneInputs {
+    let (scene, report) = FilmScene::load(&SceneInputs {
         archive: Some(&all),
         anchors: Some(&anchors),
         ..scene_inputs(&film)
     })
     .expect("load");
     assert!(report.anchors_loaded);
-    assert!(report.partial.is_empty());
+    assert!(
+        scene
+            .shape(5)
+            .and_then(SodModelIr::decode)
+            .expect("decoded shape")
+            .stop
+            .is_none()
+    );
 }
 
 #[test]

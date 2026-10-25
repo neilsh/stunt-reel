@@ -1,14 +1,15 @@
 //! Interactive winit playback with the authored camera or Free-Cam.
+//!
+//! The window owns input, time and the camera; the Renderer owns every GPU object, the surface,
+//! the letterbox and the resize. Opening the renderer here is the thin, CI-untested window
+//! adapter recorded by ADR 0006 and the unit C brief.
 
 use std::sync::Arc;
 use std::time::Instant;
 
 use stunt_core::flm::TIMELINE_HZ;
 use stunt_core::scene::FilmScene;
-use stunt_render::{
-    ASPECT_4_3, CameraController, CameraGpuResources, CameraMode, PaletteLut, RenderPipelines,
-    SceneRenderer,
-};
+use stunt_render::{CameraController, CameraMode, RenderError, RenderOptions, Renderer};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, ElementState, KeyEvent, WindowEvent};
@@ -19,24 +20,20 @@ use winit::window::{Window, WindowId};
 use crate::config::CliConfig;
 use crate::headless::playback_ticks;
 
-/// Creates the depth attachment used by the interactive surface pass.
-fn create_depth_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
-    device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: Some("stunt_window_depth_texture"),
-            size: wgpu::Extent3d {
-                width: width.max(1),
-                height: height.max(1),
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Depth24Plus,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        })
-        .create_view(&wgpu::TextureViewDescriptor::default())
+/// Reports why opening the window renderer failed, in the same words as the old bootstrap.
+fn log_open_error(error: &RenderError) {
+    match error {
+        RenderError::NoGpuAdapter => {
+            eprintln!("[stuntreel] No suitable GPU adapter for window");
+        }
+        RenderError::DeviceRequest(message) => {
+            eprintln!("[stuntreel] Failed to create device: {message}");
+        }
+        RenderError::SurfaceCreate(message) => {
+            eprintln!("[stuntreel] Failed to create surface: {message}");
+        }
+        other => eprintln!("[stuntreel] Failed to create renderer: {other}"),
+    }
 }
 
 /// Interactive window application state.
@@ -46,20 +43,12 @@ pub(crate) struct WindowApp {
     scene: FilmScene,
     playback_ticks: u32,
     window: Option<Arc<Window>>,
-    device: Option<wgpu::Device>,
-    queue: Option<wgpu::Queue>,
-    surface: Option<wgpu::Surface<'static>>,
-    surface_config: Option<wgpu::SurfaceConfiguration>,
-    pipelines: Option<RenderPipelines>,
-    palette_lut: Option<PaletteLut>,
-    camera_resources: Option<CameraGpuResources>,
-    depth_view: Option<wgpu::TextureView>,
-    scene_renderer: Option<SceneRenderer>,
+    /// The renderer opened on the window's surface, or None before the first resume.
+    renderer: Option<Renderer>,
     camera: CameraController,
     current_tick: f32,
     paused: bool,
     last_frame_time: Instant,
-    max_texture_dimension_2d: u32,
     // Free-Cam input keys
     key_w: bool,
     key_s: bool,
@@ -77,20 +66,11 @@ impl WindowApp {
             scene,
             playback_ticks,
             window: None,
-            device: None,
-            queue: None,
-            surface: None,
-            surface_config: None,
-            pipelines: None,
-            palette_lut: None,
-            camera_resources: None,
-            depth_view: None,
-            scene_renderer: None,
+            renderer: None,
             camera: CameraController::default(),
             current_tick: 0.0,
             paused: false,
             last_frame_time: Instant::now(),
-            max_texture_dimension_2d: 2048,
             key_w: false,
             key_s: false,
             key_a: false,
@@ -137,171 +117,22 @@ impl WindowApp {
     fn render(&mut self, dt: f32) {
         self.advance_timeline(dt);
 
-        let (
-            Some(device),
-            Some(queue),
-            Some(surface),
-            Some(surface_config),
-            Some(pipelines),
-            Some(cam_res),
-            Some(lut),
-            Some(depth_view),
-            Some(scene_renderer),
-        ) = (
-            &self.device,
-            &self.queue,
-            &self.surface,
-            &self.surface_config,
-            &self.pipelines,
-            &self.camera_resources,
-            &mut self.palette_lut,
-            &self.depth_view,
-            &mut self.scene_renderer,
-        )
-        else {
+        let Some(renderer) = self.renderer.as_mut() else {
             return;
         };
 
         let frame = self.scene.frame(self.current_tick);
-        lut.set_controls(queue, frame.palette);
         if self.camera.mode == CameraMode::Authored {
             self.camera.set_authored_transform(frame.camera);
         }
-        scene_renderer.prepare(device, queue, cam_res, &frame, Some(&self.camera));
-
-        let surface_texture = match surface.get_current_texture() {
-            Ok(tex) => tex,
-            Err(wgpu::SurfaceError::Lost) => {
-                surface.configure(device, surface_config);
-                return;
-            }
-            Err(wgpu::SurfaceError::OutOfMemory) => {
+        if let Err(error) = renderer.draw(&frame, Some(&self.camera)) {
+            if matches!(error, RenderError::SurfaceOutOfMemory) {
                 eprintln!("[stuntreel] Surface out of memory");
-                return;
-            }
-            Err(_) => return,
-        };
-
-        let view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("stunt_window_encoder"),
-        });
-
-        // Compute 4:3 letterbox viewport per Invariant [I6]
-        let win_w = surface_config.width as f32;
-        let win_h = surface_config.height as f32;
-        let target_aspect = ASPECT_4_3;
-        let cur_aspect = win_w / win_h.max(1.0);
-
-        let (vp_x, vp_y, vp_w, vp_h) = if cur_aspect > target_aspect {
-            // Pillarbox: bars on left and right
-            let vp_h = win_h;
-            let vp_w = win_h * target_aspect;
-            let vp_x = (win_w - vp_w) / 2.0;
-            (vp_x, 0.0, vp_w, vp_h)
-        } else {
-            // Letterbox: bars on top and bottom
-            let vp_w = win_w;
-            let vp_h = win_w / target_aspect;
-            let vp_y = (win_h - vp_h) / 2.0;
-            (0.0, vp_y, vp_w, vp_h)
-        };
-
-        let width = surface_config.width;
-        let height = surface_config.height;
-        let sc_x = vp_x.max(0.0) as u32;
-        let sc_y = vp_y.max(0.0) as u32;
-        let sc_w = (vp_w as u32).clamp(1, width.saturating_sub(sc_x).max(1));
-        let sc_h = (vp_h as u32).clamp(1, height.saturating_sub(sc_y).max(1));
-
-        let right_edge = (vp_x + vp_w).min(win_w) as u32;
-        let bottom_edge = (vp_y + vp_h).min(win_h) as u32;
-        let bars: [(u32, u32, u32, u32); 2] = if cur_aspect > target_aspect {
-            [
-                (0, 0, sc_x, height),
-                (right_edge, 0, width.saturating_sub(right_edge), height),
-            ]
-        } else {
-            [
-                (0, 0, width, sc_y),
-                (0, bottom_edge, width, height.saturating_sub(bottom_edge)),
-            ]
-        };
-
-        // Palette-index clear color matches the headless capture (default sky index 180).
-        let (cr, cg, cb) = lut.rgb_float(self.config.clear_index);
-        let clear_color = wgpu::Color {
-            r: cr as f64,
-            g: cg as f64,
-            b: cb as f64,
-            a: 1.0,
-        };
-
-        {
-            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("stunt_window_render_pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(clear_color),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: depth_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-
-            // Set 4:3 letterbox viewport and scissor rect
-            rpass.set_viewport(vp_x, vp_y, vp_w, vp_h, 0.0, 1.0);
-            rpass.set_scissor_rect(sc_x, sc_y, sc_w, sc_h);
-
-            // Passes 1-2: world and actors, base geometry then the `[I5]` decal pass
-            scene_renderer.draw(&mut rpass, pipelines, cam_res, lut);
-
-            // Pass 3: Paint the `[I6]` pillarbox/letterbox bars black
-            rpass.set_viewport(0.0, 0.0, win_w, win_h, 0.0, 1.0);
-            rpass.set_pipeline(&pipelines.bar_pipeline);
-            for (bar_x, bar_y, bar_w, bar_h) in bars {
-                if bar_w == 0 || bar_h == 0 {
-                    continue;
-                }
-                rpass.set_scissor_rect(bar_x, bar_y, bar_w, bar_h);
-                rpass.draw(0..3, 0..1);
+            } else {
+                eprintln!("[stuntreel] Render failed: {error}");
             }
         }
-
-        queue.submit(Some(encoder.finish()));
-        surface_texture.present();
     }
-}
-
-/// The window surface format: plain `Rgba8Unorm`/`Bgra8Unorm` when offered, else the first.
-///
-/// The palette LUT holds display-ready Mode 13h colours, as the headless `Rgba8Unorm` target
-/// stores them; an sRGB surface would encode them a second time and wash the window out.
-fn pick_surface_format(formats: &[wgpu::TextureFormat]) -> wgpu::TextureFormat {
-    formats
-        .iter()
-        .copied()
-        .find(|f| {
-            matches!(
-                f,
-                wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8Unorm
-            )
-        })
-        .unwrap_or(formats[0])
 }
 
 impl ApplicationHandler for WindowApp {
@@ -315,7 +146,7 @@ impl ApplicationHandler for WindowApp {
             .with_inner_size(LogicalSize::new(960.0, 720.0)); // 4:3 3x scale of 320x240
 
         let window = match event_loop.create_window(win_attrs) {
-            Ok(w) => Arc::new(w),
+            Ok(window) => Arc::new(window),
             Err(e) => {
                 eprintln!("[stuntreel] Failed to create window: {e}");
                 event_loop.exit();
@@ -323,97 +154,24 @@ impl ApplicationHandler for WindowApp {
             }
         };
 
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
-
-        let surface = match instance.create_surface(Arc::clone(&window)) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("[stuntreel] Failed to create surface: {e}");
+        let options = RenderOptions {
+            clear_palette_index: self.config.clear_index,
+            software_only: false,
+        };
+        let mut renderer = match Renderer::surface(&self.scene, Arc::clone(&window), options) {
+            Ok(renderer) => renderer,
+            Err(error) => {
+                log_open_error(&error);
                 event_loop.exit();
                 return;
             }
         };
-
-        let adapter =
-            match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })) {
-                Some(a) => a,
-                None => {
-                    eprintln!("[stuntreel] No suitable GPU adapter for window");
-                    event_loop.exit();
-                    return;
-                }
-            };
-
-        let adapter_limits = adapter.limits();
-        let max_dim = adapter_limits.max_texture_dimension_2d;
-        self.max_texture_dimension_2d = max_dim;
-
-        let (device, queue) = match pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("stunt_window_device"),
-                required_features: wgpu::Features::empty(),
-                required_limits:
-                    wgpu::Limits::downlevel_defaults().using_resolution(adapter_limits),
-                memory_hints: wgpu::MemoryHints::Performance,
-            },
-            None,
-        )) {
-            Ok(pair) => pair,
-            Err(e) => {
-                eprintln!("[stuntreel] Failed to create device: {e}");
-                event_loop.exit();
-                return;
-            }
-        };
-
+        // The surface opens at 1x1; this explicit resize is where it learns the window size.
         let size = window.inner_size();
-        let surface_caps = surface.get_capabilities(&adapter);
-        let surface_format = pick_surface_format(&surface_caps.formats);
-
-        let surface_config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_format,
-            width: size.width.clamp(1, max_dim),
-            height: size.height.clamp(1, max_dim),
-            present_mode: wgpu::PresentMode::AutoVsync,
-            desired_maximum_frame_latency: 2,
-            alpha_mode: surface_caps.alpha_modes[0],
-            view_formats: vec![],
-        };
-        surface.configure(&device, &surface_config);
-
-        let camera_resources = CameraGpuResources::new(&device);
-        let palette_lut = PaletteLut::new(&device, &queue);
-
-        let pipelines = RenderPipelines::new(
-            &device,
-            surface_format,
-            wgpu::TextureFormat::Depth24Plus,
-            &camera_resources.bind_group_layout,
-            &palette_lut.bind_group_layout,
-        );
-
-        let scene_renderer = SceneRenderer::new(&device, &queue, &pipelines, &self.scene);
-
-        let depth_view = create_depth_view(&device, surface_config.width, surface_config.height);
+        renderer.resize(size.width, size.height);
 
         self.window = Some(Arc::clone(&window));
-        self.device = Some(device);
-        self.queue = Some(queue);
-        self.surface = Some(surface);
-        self.surface_config = Some(surface_config);
-        self.pipelines = Some(pipelines);
-        self.palette_lut = Some(palette_lut);
-        self.camera_resources = Some(camera_resources);
-        self.depth_view = Some(depth_view);
-        self.scene_renderer = Some(scene_renderer);
+        self.renderer = Some(renderer);
 
         window.request_redraw();
     }
@@ -424,13 +182,8 @@ impl ApplicationHandler for WindowApp {
                 event_loop.exit();
             }
             WindowEvent::Resized(new_size) => {
-                if let (Some(device), Some(surface), Some(config)) =
-                    (&self.device, &self.surface, &mut self.surface_config)
-                {
-                    config.width = new_size.width.clamp(1, self.max_texture_dimension_2d);
-                    config.height = new_size.height.clamp(1, self.max_texture_dimension_2d);
-                    surface.configure(device, config);
-                    self.depth_view = Some(create_depth_view(device, config.width, config.height));
+                if let Some(renderer) = self.renderer.as_mut() {
+                    renderer.resize(new_size.width, new_size.height);
                 }
             }
             WindowEvent::KeyboardInput {
@@ -502,32 +255,5 @@ impl ApplicationHandler for WindowApp {
                 .free_cam
                 .rotate(dx as f32 * sens, -dy as f32 * sens);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_surface_format_prefers_non_srgb() {
-        use wgpu::TextureFormat::{Bgra8Unorm, Bgra8UnormSrgb, Rgb10a2Unorm, Rgba8UnormSrgb};
-        assert_eq!(
-            pick_surface_format(&[Bgra8UnormSrgb, Bgra8Unorm]),
-            Bgra8Unorm
-        );
-        assert_eq!(
-            pick_surface_format(&[
-                Rgb10a2Unorm,
-                Rgba8UnormSrgb,
-                wgpu::TextureFormat::Rgba8Unorm
-            ]),
-            wgpu::TextureFormat::Rgba8Unorm
-        );
-        // Nothing plain on offer: the surface's first format.
-        assert_eq!(
-            pick_surface_format(&[Bgra8UnormSrgb, Rgb10a2Unorm]),
-            Bgra8UnormSrgb
-        );
     }
 }

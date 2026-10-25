@@ -1,4 +1,4 @@
-//! Named, deterministic behaviour of the `.SOD` transpiler (Seam 3, `transpile_sod`).
+//! Named, deterministic behaviour of the `.SOD` decoder (Seam 3, `decode_sod`).
 //!
 //! Every test here feeds one specific input and asserts a specific result: exact vertices,
 //! node layout, error variants and messages. Tests whose only pass condition is "never
@@ -21,12 +21,13 @@ use std::fs;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 
+use stunt_core::anchor::AnchorPoint;
 use stunt_core::contracts::shape::{NodeId, NodeKind, SodModelIr, SodVertex};
 use stunt_core::sod::{
     DECAL_FLAG_BIT, EPSILON_DISPLACEMENT, OP_COLOR, OP_GETV, OP_GVPOLY, OP_ID, OP_IFVIS, OP_IPG,
     OP_POLYZ, OP_RETURN, OP_VECTORS, SOD_SCALE_TABLE, compute_scale_factor,
 };
-use stunt_core::sod::{SodError, transpile_sod};
+use stunt_core::sod::{DecodeMode, SodError, decode_sod};
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -36,6 +37,15 @@ fn fixtures_dir() -> PathBuf {
         .unwrap()
         .join("tests")
         .join("fixtures")
+}
+
+/// Decodes `data` strictly: every test here pins the strict entry point.
+fn decode(
+    data: &[u8],
+    name: &str,
+    anchors: Option<&[AnchorPoint]>,
+) -> Result<SodModelIr, SodError> {
+    decode_sod(data, name, anchors, DecodeMode::Strict)
 }
 
 fn make_sod_header(
@@ -137,8 +147,7 @@ fn synthetic_minimal_fixture_builds_base_and_decal_meshes() {
     let data = fs::read(&path).expect("read synthetic_minimal.sod");
     assert_eq!(data.len(), 76, "fixture size must be 76 bytes");
 
-    let ir: SodModelIr =
-        transpile_sod(&data, "SYNTHETIC_MINIMAL", None).expect("transpilation succeeds");
+    let ir: SodModelIr = decode(&data, "SYNTHETIC_MINIMAL", None).expect("transpilation succeeds");
 
     assert_eq!(ir.name, "SYNTHETIC_MINIMAL");
 
@@ -313,7 +322,7 @@ fn ipg_cube_and_quads_triangulate_to_18_indices() {
 
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let ir = transpile_sod(&bytes, "IPG_MODEL", None).expect("transpile succeeds");
+    let ir = decode(&bytes, "IPG_MODEL", None).expect("transpile succeeds");
     assert_eq!(ir.name, "IPG_MODEL");
     // 3 quads triangulated into 2 triangles each = 6 triangles = 18 indices
     assert_eq!(ir.indices.len(), 18);
@@ -363,7 +372,7 @@ fn gvpoly_uses_explicit_normal_and_color() {
 
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let ir = transpile_sod(&bytes, "GVPOLY_MODEL", None).expect("transpilation succeeds");
+    let ir = decode(&bytes, "GVPOLY_MODEL", None).expect("transpilation succeeds");
     assert_eq!(ir.vertices.len(), 3);
     assert_eq!(ir.vertices[0].normal, [0.0, 0.0, 1.0]);
     assert_eq!(ir.vertices[0].palette_index, 55);
@@ -378,7 +387,7 @@ fn ifvis_section_past_eof_clamps_safely() {
     bytes.extend_from_slice(&1u16.to_le_bytes());
     bytes.extend_from_slice(&5000u16.to_le_bytes());
 
-    let ir = transpile_sod(&bytes, "CLAMP_MODEL", None).expect("graceful clamping");
+    let ir = decode(&bytes, "CLAMP_MODEL", None).expect("graceful clamping");
     assert_eq!(ir.name, "CLAMP_MODEL");
 }
 
@@ -416,7 +425,7 @@ fn scale_and_ground_offset_convert_to_metric_coordinates() {
 
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let ir = transpile_sod(&bytes, "COORD_TEST", None).expect("transpile succeeds");
+    let ir = decode(&bytes, "COORD_TEST", None).expect("transpile succeeds");
 
     assert_eq!(ir.vertices.len(), 3);
 
@@ -465,7 +474,7 @@ fn all_256_palette_indices_preserved() {
 
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let ir = transpile_sod(&bytes, "PALETTE_256", None).expect("transpile succeeds");
+    let ir = decode(&bytes, "PALETTE_256", None).expect("transpile succeeds");
 
     // Because vertices have different palette indices, they do not weld across colors
     // 256 colors * 3 vertices = 768 vertices
@@ -519,7 +528,7 @@ fn flat_arena_node_allocation_and_buffer_slices() {
 
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let ir = transpile_sod(&bytes, "ARENA_CUBE", None).expect("transpile succeeds");
+    let ir = decode(&bytes, "ARENA_CUBE", None).expect("transpile succeeds");
 
     // Arena checks:
     // Root node at NodeId(0)
@@ -571,7 +580,7 @@ fn empty_model_has_only_root_node() {
     let mut bytes = make_sod_header(50, 0, 0, 0);
     bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let ir = transpile_sod(&bytes, "EMPTY_MODEL", None).expect("empty model transpiles");
+    let ir = decode(&bytes, "EMPTY_MODEL", None).expect("empty model transpiles");
     assert_eq!(ir.name, "EMPTY_MODEL");
     assert_eq!(ir.root_nodes, vec![NodeId(0)]);
     assert_eq!(ir.nodes.len(), 1); // Only root node
@@ -622,7 +631,7 @@ fn collinear_and_zero_area_polygons_transpile() {
 
     buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "COLLINEAR", None)));
+    let res = catch_unwind(AssertUnwindSafe(|| decode(&buf, "COLLINEAR", None)));
     assert!(res.is_ok(), "Panic on collinear / zero-area polygon");
     let ir = res.unwrap().expect("transpile succeeds");
     assert_eq!(ir.name, "COLLINEAR");
@@ -657,9 +666,7 @@ fn extreme_i16_coordinates_transpile() {
     buf.extend_from_slice(&24u16.to_le_bytes());
     buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let res = catch_unwind(AssertUnwindSafe(|| {
-        transpile_sod(&buf, "EXTREME_COORDS", None)
-    }));
+    let res = catch_unwind(AssertUnwindSafe(|| decode(&buf, "EXTREME_COORDS", None)));
     assert!(res.is_ok(), "Panic on extreme coordinates");
     let ir = res.unwrap().expect("transpile succeeds");
     assert_eq!(ir.vertices.len(), 3);
@@ -673,7 +680,7 @@ fn extreme_i16_coordinates_transpile() {
 #[test]
 fn truncated_header_reports_unexpected_eof() {
     let short_data = [0x0Cu8, 0x00, 0x64, 0x00, 0x00];
-    let err = transpile_sod(&short_data, "SHORT", None).unwrap_err();
+    let err = decode(&short_data, "SHORT", None).unwrap_err();
     assert_eq!(
         err,
         SodError::UnexpectedEof {
@@ -691,7 +698,7 @@ fn invalid_magic_reports_expected_and_actual() {
     // Overwrite magic with 0x9999
     data[0] = 0x99;
     data[1] = 0x99;
-    let err = transpile_sod(&data, "BAD_MAGIC", None).unwrap_err();
+    let err = decode(&data, "BAD_MAGIC", None).unwrap_err();
     assert_eq!(
         err,
         SodError::InvalidMagic {
@@ -708,7 +715,7 @@ fn truncated_opcode_operand_is_unexpected_eof() {
     let mut bytes = make_sod_header(50, 0, 0, 0);
     // Append OP_GETV without its required offset word
     bytes.extend_from_slice(&OP_GETV.to_le_bytes());
-    let err = transpile_sod(&bytes, "TRUNC_OP", None).unwrap_err();
+    let err = decode(&bytes, "TRUNC_OP", None).unwrap_err();
     assert!(matches!(err, SodError::UnexpectedEof { .. }));
 }
 
@@ -724,7 +731,7 @@ fn truncated_vector_stream_is_unexpected_eof() {
     bytes.extend_from_slice(&2i16.to_le_bytes());
     bytes.extend_from_slice(&3i16.to_le_bytes());
 
-    let err = transpile_sod(&bytes, "TRUNC_VEC", None).unwrap_err();
+    let err = decode(&bytes, "TRUNC_VEC", None).unwrap_err();
     assert!(matches!(err, SodError::UnexpectedEof { .. }));
 }
 
@@ -734,7 +741,7 @@ fn invalid_opcode_reports_byte_offset() {
     let mut bytes = make_sod_header(50, 0, 0, 0);
     // Append completely invalid opcode 0x7777
     bytes.extend_from_slice(&0x7777u16.to_le_bytes());
-    let err = transpile_sod(&bytes, "BAD_OP", None).unwrap_err();
+    let err = decode(&bytes, "BAD_OP", None).unwrap_err();
     assert_eq!(
         err,
         SodError::InvalidOpcode {
@@ -758,7 +765,7 @@ fn polygon_under_three_vertices_is_malformed() {
     bytes.extend_from_slice(&0u16.to_le_bytes());
     bytes.extend_from_slice(&12u16.to_le_bytes());
 
-    let err = transpile_sod(&bytes, "DEGEN_POLY", None).unwrap_err();
+    let err = decode(&bytes, "DEGEN_POLY", None).unwrap_err();
     assert!(matches!(err, SodError::MalformedPolygon { .. }));
     assert!(err.to_string().contains("malformed polygon"));
 }

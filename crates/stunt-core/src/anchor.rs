@@ -37,7 +37,7 @@ impl AnchorPoint {
 /// Parses 28-byte anchor point records from the bytes of `ANCHORPT.DAT`.
 ///
 /// Only the leading `x`, `y`, `z` words of each record are kept; a trailing partial
-/// record is ignored. The result is the table [`crate::sod::transpile_sod`] resolves
+/// record is ignored. The result is the table [`crate::sod::decode_sod`] resolves
 /// `OP_TAP` against and that [`crate::world::build_world`] places terrain patches over.
 #[must_use]
 pub fn parse_anchor_table(data: &[u8]) -> Vec<AnchorPoint> {

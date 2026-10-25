@@ -3,7 +3,7 @@
 //! Corpus-only, like `mise run verify-corpus`: it reads `corpus/` and is never part of
 //! `mise run check`. Every compiled model is collected (`MODEL_%04X.SOD` chunks of `.ALL`
 //! archives, `0x000C`-magic entries of `.RES` archives, and loose `.BIN` files with that
-//! magic), deduplicated by content, and walked by [`walk_sod`], which steps over
+//! magic), deduplicated by content, and decoded in census mode, which steps over
 //! unimplemented opcodes instead of stopping. Variants with the same opcode pattern and
 //! walk end form a group.
 //!
@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{CommandFactory, Parser, ValueEnum};
 use stunt_core::flm::FilmTimeline;
-use stunt_core::sod::{OP_TAP, SodStopReason, SodWalk, SodWalkEnd, census_skip, walk_sod};
+use stunt_core::sod::{DecodeMode, DecodeRecord, OP_TAP, SodStopReason, census_skip, decode_sod};
 use stunt_core::vfs::detect_and_parse;
 
 /// `sod-census` options as clap parses them.
@@ -276,14 +276,17 @@ impl<'a> Report<'a> {
         let mut report = Self::default();
         let mut groups: BTreeMap<Pattern, Vec<&Variant>> = BTreeMap::new();
         for (data, variant) in &scan.models {
-            let walk = match walk_sod(data) {
-                Ok(walk) => walk,
+            let model = match decode_sod(data, "CENSUS", None, DecodeMode::Census) {
+                Ok(model) => model,
                 Err(e) => {
                     report.failed.push((label(variant), e.to_string()));
                     continue;
                 }
             };
-            let found = pattern(&walk);
+            let record = model
+                .decode()
+                .expect("a census decode always carries a decode record");
+            let found = pattern(record);
             let mut tallies = vec![if variant.in_archive() {
                 &mut report.archive
             } else {
@@ -484,24 +487,24 @@ impl<'a> Report<'a> {
 }
 
 /// `None` when the walk stepped over nothing and reached `OP_RETURN`.
-fn pattern(walk: &SodWalk) -> Option<Pattern> {
-    let ends_at = match walk.end {
-        SodWalkEnd::Return(_) => "RETURN".to_string(),
-        SodWalkEnd::EndOfData => "end of data".to_string(),
-        SodWalkEnd::Unskippable(stop) => format!("0x{:04X} (no width)", stop.opcode),
+fn pattern(record: &DecodeRecord) -> Option<Pattern> {
+    let ends_at = match record.stop {
+        Some(stop) => format!("0x{:04X} (no width)", stop.opcode),
+        None if record.returned_at.is_some() => "RETURN".to_string(),
+        None => "end of data".to_string(),
     };
-    if walk.skipped.is_empty() && matches!(walk.end, SodWalkEnd::Return(_)) {
+    if record.stepped_over.is_empty() && record.stop.is_none() && record.returned_at.is_some() {
         return None;
     }
     let mut opcodes = Vec::new();
-    for skip in &walk.skipped {
+    for skip in &record.stepped_over {
         if !opcodes.contains(&skip.opcode) {
             opcodes.push(skip.opcode);
         }
     }
-    let tap_only = !walk.skipped.is_empty()
-        && walk
-            .skipped
+    let tap_only = !record.stepped_over.is_empty()
+        && record
+            .stepped_over
             .iter()
             .all(|s| s.reason == SodStopReason::MissingAnchors);
     Some(Pattern {

@@ -1,6 +1,6 @@
 //! Never-panics and structured-error coverage for the `.SOD` transpiler (Seam 3).
 //!
-//! `transpile_sod` consumes untrusted bytes, so these tests assert that it never panics and
+//! `decode_sod` consumes untrusted bytes, so these tests assert that it never panics and
 //! that malformed input comes back as a `SodError`. Inputs are generated, mutated or swept
 //! across a matrix; the pass condition is "no panic" (plus the expected `SodError` variant or
 //! a coarse success invariant where noted). Named single-input behaviour with exact expected
@@ -22,15 +22,24 @@ mod common;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
+use stunt_core::sod::{DecodeMode, SodError, decode_sod};
 use stunt_core::sod::{
     OP_ADDV, OP_BLOCK, OP_CLRV, OP_COLOR, OP_DOT, OP_GETV, OP_GVPOLY, OP_GVPOLY16, OP_ID, OP_IFVIS,
     OP_INTV, OP_IPG, OP_LINECOL, OP_MOVETO, OP_NEGV, OP_PERFDISK, OP_PERS, OP_POLYZ, OP_PUTV,
     OP_REJ, OP_RETURN, OP_SHADES, OP_SHLV, OP_SHRV, OP_SORT, OP_SPHERE, OP_SUBV, OP_VEC,
     OP_VECTORS, OP_ZLINETO, compute_scale_factor,
 };
-use stunt_core::sod::{SodError, transpile_sod};
 
 use common::rng::{XorShift64, mutate};
+
+/// Decodes `data` strictly: a fuzz input that decodes at all must decode cleanly.
+fn decode(
+    data: &[u8],
+    name: &str,
+    anchors: Option<&[stunt_core::anchor::AnchorPoint]>,
+) -> Result<stunt_core::contracts::SodModelIr, SodError> {
+    decode_sod(data, name, anchors, DecodeMode::Strict)
+}
 
 fn make_sod_header(
     bounding_size: u16,
@@ -57,7 +66,7 @@ fn make_sod_header(
 fn matrix_sub_header_truncations() {
     // Zero length
     assert_eq!(
-        transpile_sod(&[], "ZERO", None).unwrap_err(),
+        decode(&[], "ZERO", None).unwrap_err(),
         SodError::UnexpectedEof {
             expected: 10,
             actual: 0
@@ -69,7 +78,7 @@ fn matrix_sub_header_truncations() {
         let zeros = vec![0u8; len];
         let ones = vec![0xFFu8; len];
 
-        let res_zeros = catch_unwind(AssertUnwindSafe(|| transpile_sod(&zeros, "ZEROS", None)));
+        let res_zeros = catch_unwind(AssertUnwindSafe(|| decode(&zeros, "ZEROS", None)));
         assert!(res_zeros.is_ok(), "Panic on zeros length {len}");
         assert_eq!(
             res_zeros.unwrap().unwrap_err(),
@@ -79,7 +88,7 @@ fn matrix_sub_header_truncations() {
             }
         );
 
-        let res_ones = catch_unwind(AssertUnwindSafe(|| transpile_sod(&ones, "ONES", None)));
+        let res_ones = catch_unwind(AssertUnwindSafe(|| decode(&ones, "ONES", None)));
         assert!(res_ones.is_ok(), "Panic on ones length {len}");
         assert_eq!(
             res_ones.unwrap().unwrap_err(),
@@ -101,7 +110,7 @@ fn matrix_invalid_magic_words() {
         let mut buf = make_sod_header(100, 0, 0, 0);
         buf[0..2].copy_from_slice(&invalid_magic.to_le_bytes());
 
-        let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "BAD_MAGIC", None)));
+        let res = catch_unwind(AssertUnwindSafe(|| decode(&buf, "BAD_MAGIC", None)));
         assert!(res.is_ok(), "Panic on invalid magic 0x{invalid_magic:04X}");
         assert_eq!(
             res.unwrap().unwrap_err(),
@@ -162,7 +171,7 @@ fn matrix_truncated_opcode_payloads_for_all_opcodes() {
                 buf.extend_from_slice(&vec![0xAAu8; partial_len]);
             }
 
-            let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "PARTIAL_OP", None)));
+            let res = catch_unwind(AssertUnwindSafe(|| decode(&buf, "PARTIAL_OP", None)));
             assert!(
                 res.is_ok(),
                 "Panic on opcode 0x{op:04X} with partial payload len {partial_len}"
@@ -216,7 +225,7 @@ fn matrix_register_offsets_wrap_and_unaligned() {
         buf.extend_from_slice(&off.to_le_bytes());
         buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "REG_TEST", None)));
+        let res = catch_unwind(AssertUnwindSafe(|| decode(&buf, "REG_TEST", None)));
         assert!(res.is_ok(), "Panic on register offset {off}");
         assert!(res.unwrap().is_ok());
     }
@@ -254,7 +263,7 @@ fn matrix_ipg_start_registers_near_1023() {
             }
             buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-            let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "IPG_BOUND", None)));
+            let res = catch_unwind(AssertUnwindSafe(|| decode(&buf, "IPG_BOUND", None)));
             assert!(
                 res.is_ok(),
                 "Panic on IPG type {ipg_type} at start_reg {start_reg}"
@@ -282,7 +291,7 @@ fn matrix_vectors_wrap_past_register_1023() {
         }
         buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "VEC_WRAP", None)));
+        let res = catch_unwind(AssertUnwindSafe(|| decode(&buf, "VEC_WRAP", None)));
         assert!(res.is_ok(), "Panic on OP_VECTORS wrapping from {start_reg}");
         assert!(res.unwrap().is_ok());
     }
@@ -305,7 +314,7 @@ fn matrix_scale_indices_0_to_255() {
         let mut buf = make_sod_header(100, 0, idx as u8, 0);
         buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf, "SCALE_TEST", None)));
+        let res = catch_unwind(AssertUnwindSafe(|| decode(&buf, "SCALE_TEST", None)));
         assert!(res.is_ok(), "Panic on scale_index {idx}");
         let ir = res.unwrap().expect("valid IR");
         assert_eq!(ir.nodes.len(), 1); // root node
@@ -324,9 +333,7 @@ fn matrix_polygon_counts_under_3() {
         }
         buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res = catch_unwind(AssertUnwindSafe(|| {
-            transpile_sod(&buf, "COUNT_UNDER_3", None)
-        }));
+        let res = catch_unwind(AssertUnwindSafe(|| decode(&buf, "COUNT_UNDER_3", None)));
         assert!(res.is_ok(), "Panic on OP_POLYZ count {count}");
         assert!(matches!(
             res.unwrap().unwrap_err(),
@@ -347,7 +354,7 @@ fn matrix_polygon_counts_under_3() {
         buf_gv.extend_from_slice(&OP_RETURN.to_le_bytes());
 
         let res_gv = catch_unwind(AssertUnwindSafe(|| {
-            transpile_sod(&buf_gv, "GV_COUNT_UNDER_3", None)
+            decode(&buf_gv, "GV_COUNT_UNDER_3", None)
         }));
         assert!(res_gv.is_ok(), "Panic on OP_GVPOLY count {count}");
         assert!(matches!(
@@ -388,9 +395,7 @@ fn fuzz_large_polygon_count() {
     }
     buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    let res = catch_unwind(AssertUnwindSafe(|| {
-        transpile_sod(&buf, "LARGE_MODEL", None)
-    }));
+    let res = catch_unwind(AssertUnwindSafe(|| decode(&buf, "LARGE_MODEL", None)));
     assert!(res.is_ok(), "Panic on 500 polygons");
     let ir = res.unwrap().expect("transpile 500 polygons");
     assert_eq!(ir.name, "LARGE_MODEL");
@@ -411,7 +416,7 @@ fn matrix_shift_amounts_never_panic() {
         buf_shl.extend_from_slice(&shift.to_le_bytes());
         buf_shl.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res_shl = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf_shl, "SHL_OK", None)));
+        let res_shl = catch_unwind(AssertUnwindSafe(|| decode(&buf_shl, "SHL_OK", None)));
         assert!(res_shl.is_ok(), "Panic on OP_SHLV with valid shift {shift}");
 
         let mut buf_shr = make_sod_header(50, 0, 0, 0);
@@ -419,7 +424,7 @@ fn matrix_shift_amounts_never_panic() {
         buf_shr.extend_from_slice(&shift.to_le_bytes());
         buf_shr.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res_shr = catch_unwind(AssertUnwindSafe(|| transpile_sod(&buf_shr, "SHR_OK", None)));
+        let res_shr = catch_unwind(AssertUnwindSafe(|| decode(&buf_shr, "SHR_OK", None)));
         assert!(res_shr.is_ok(), "Panic on OP_SHRV with valid shift {shift}");
     }
 
@@ -431,9 +436,7 @@ fn matrix_shift_amounts_never_panic() {
         buf_shl.extend_from_slice(&overflow_shift.to_le_bytes());
         buf_shl.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res_shl = catch_unwind(AssertUnwindSafe(|| {
-            transpile_sod(&buf_shl, "SHL_PANIC", None)
-        }));
+        let res_shl = catch_unwind(AssertUnwindSafe(|| decode(&buf_shl, "SHL_PANIC", None)));
         let shl_panicked = res_shl.is_err();
 
         let mut buf_shr = make_sod_header(50, 0, 0, 0);
@@ -441,12 +444,10 @@ fn matrix_shift_amounts_never_panic() {
         buf_shr.extend_from_slice(&overflow_shift.to_le_bytes());
         buf_shr.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res_shr = catch_unwind(AssertUnwindSafe(|| {
-            transpile_sod(&buf_shr, "SHR_PANIC", None)
-        }));
+        let res_shr = catch_unwind(AssertUnwindSafe(|| decode(&buf_shr, "SHR_PANIC", None)));
         let shr_panicked = res_shr.is_err();
 
-        // `transpile_sod` must never panic on untrusted input.
+        // `decode_sod` must never panic on untrusted input.
         assert!(
             !shl_panicked,
             "VULNERABILITY: OP_SHLV panicked on shift amount {overflow_shift} (attempt to shift left with overflow)"
@@ -475,7 +476,7 @@ fn fuzz_random_bytecode_with_valid_header() {
         buf.extend_from_slice(&payload);
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            let _ = transpile_sod(&buf, "FUZZ_PAYLOAD", None);
+            let _ = decode(&buf, "FUZZ_PAYLOAD", None);
         }));
 
         assert!(
@@ -509,7 +510,7 @@ fn fuzz_valid_opcode_sequences_with_random_operands() {
         buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            let _ = transpile_sod(&buf, "FUZZ_OPCODES", None);
+            let _ = decode(&buf, "FUZZ_OPCODES", None);
         }));
 
         assert!(
@@ -549,7 +550,7 @@ fn fuzz_mutated_valid_sod() {
     // OP_RETURN
     baseline.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    assert!(transpile_sod(&baseline, "BASELINE", None).is_ok());
+    assert!(decode(&baseline, "BASELINE", None).is_ok());
 
     let mut rng = XorShift64::new(0xABCD_EF01_2345_6789);
 
@@ -558,7 +559,7 @@ fn fuzz_mutated_valid_sod() {
         mutate(&mut rng, &mut mutated, 8);
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            let _ = transpile_sod(&mutated, "MUTATED", None);
+            let _ = decode(&mutated, "MUTATED", None);
         }));
 
         assert!(

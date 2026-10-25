@@ -10,7 +10,7 @@ use gltf::Gltf;
 use stunt_core::anchor::parse_anchor_table;
 use stunt_core::contracts::NodeKind;
 use stunt_core::scene::{FilmScene, SceneInputs};
-use stunt_core::sod::transpile_sod;
+use stunt_core::sod::{DecodeMode, decode_sod};
 use stunt_gltf::{export_scene_frame, export_shape};
 
 fn fixture(name: &str) -> Vec<u8> {
@@ -52,7 +52,8 @@ fn exported_shape_imports_and_validates() {
         ("synthetic_minimal.sod", None),
         ("synthetic_tap.sod", Some(anchors.as_slice())),
     ] {
-        let ir = transpile_sod(&fixture(file), "MODEL", anchors).expect("fixture model");
+        let ir = decode_sod(&fixture(file), "MODEL", anchors, DecodeMode::Strict)
+            .expect("fixture model");
         let bytes = export_shape(&ir).expect("export");
         let gltf = Gltf::from_slice(&bytes).unwrap_or_else(|e| panic!("{file}: {e}"));
 
