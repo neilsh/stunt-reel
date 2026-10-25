@@ -139,19 +139,33 @@ Bit:   7   6   5   4   3   2   1   0
                        +---------- Position locked on set (1 = immovable)
 ```
 
-### 3.5 Scripted Event Trigger Records (12-Byte Blocks)
+### 3.5 Record Layout and the Event Table
 
-Following the prop table (or located at an offset indexed by `0x55`), scripted event records are stored as contiguous 12-byte blocks. The count of active events is defined by `event_count` (`0x53`).
+The file is a split of fixed-size records, and the event table is the second half of them:
 
-| Relative Offset | Size | Type | Field Name | Description | Evidentiary Tier |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `+0x00` | 2 | `u16` (LE) | `trigger_condition` | Trigger threshold: simulation tick index or proximity distance | `[Established]` |
-| `+0x02` | 2 | `u16` (LE) | `action_code` | Scripted action opcode (see § 3.6) | `[Established]` |
-| `+0x04` | 2 | `u16` (LE) | `target_prop_slot` | Prop slot index ($0..N-1$) affected by this event | `[Established]` |
-| `+0x06` | 2 | `u16` (LE) | `action_param` | Auxiliary parameter (camera ID, audio sample ID, intensity) | `[Established]` |
-| `+0x08` | 4 | `u32` (LE) | `payload_data` | Additional parameter data, bitflags, or vector payload | `[Bounded Observation]` |
+$$\text{size} = \texttt{0x97} + 64 \times (\text{props} - 1 + \text{events}) + 3 \times (\text{events} - 1)$$
 
-Neither the table's location nor its 12-byte stride is corroborated. No 12-byte-periodic structure appears anywhere in `BOMBING.SET`, while the 64-byte record stride this note gives the prop table continues through the file body (records at `0x3D0`, `0x410`, ... in `AUTOMATE.SET`). An earlier revision of this section argued that events occupy a fixed-size block because `AUTOMATE.SET` and `CATCH.SET` share a size while differing in `0x54`; that argument rested on the wrong byte and is withdrawn — both files carry `0x53 = 4` events.
+| Range | Contents |
+|---|---|
+| `0x00`–`0x5F` | The 96-byte header (§ 2.1) |
+| `0x60`–`0x96` | 55 bytes, not yet decoded |
+| `0x97` onward | 64-byte records: first `props - 1` prop records, then `events` event records |
+| last `3 × (events - 1)` bytes | A trailer holding three bytes per event after the first |
+
+The event table therefore begins at `0x97 + 64 × (props - 1)`: immediately after the stored props, at a 64-byte-aligned offset. `[Supported Inference]`
+
+**Verification.** The six sets that have a printed dump reproduce their own size from their printed prop and event counts: BOMBING 8/1 → 663, BOMBING2 7/1 → 599, DRIVING 15/8 → 1580, FIND&HIT 4/2 → 474, FIND&HT2 4/2 → 474, REALISM 39/10 → 3250. The same law yields a whole number of records for all 35 loose corpus sets, with no remainder. The earlier "12-byte block" table is withdrawn: no 12-byte periodicity exists anywhere, and its fixed-block claim rested on `0x54`, which is not the event count (§ 2.1).
+
+**Prop 1 is not stored.** Every dumped set stores one fewer prop record than its dump lists, and one more event record than the trailer accounts for. Reading the missing prop as prop slot 1, the stunt aircraft the set never places, is consistent with the printed rules that address props from slot 2 upward. `[Hypothesis]`
+
+**Event record fields.** DRIVING's eight rules differ only in the collision window they test and the property they change, so their records align cleanly. In those records, at the offsets relative to the record start:
+
+| Offset | Observation across the eight rules | Reading |
+|---|---|---|
+| `+0x15` | `0x0a`, `0x0b`, ... `0x11`, one per rule in order | The 0-based index of the referenced prop, i.e. the printed `(11)` to `(18)` `[Bounded Observation]` |
+| `+0x19` | `0x0d` for `change yaw anim`, `0x02` for `change visibility`, `0x09` for `change heading yaw` | The property the THEN clause changes `[Hypothesis]` |
+
+Every other byte of the 64 is either constant across those eight rules or has not yet been tied to a printed value, so the field map stays partial.
 
 The printed dumps are a ground truth only in part. `BOMBING.TXT` is a tutorial article carrying several sets' worth of `Prop #` blocks, so a prop list cannot be attributed to one file; but matched by stunt title, the six dumps that name a shipped set confirm `0x53` as the event count every time. One header field still disagrees: `BOMBING.SET` prints `Time of Day :08:00` while `0x2E` reads `0xD582`, so that field's encoding is unconfirmed and its tier is lowered above.
 
@@ -163,6 +177,8 @@ The printed dumps are a ground truth only in part. `BOMBING.TXT` is a tutorial a
 | `0x0002` | `EVT_CAM_SWITCH` | Camera rig index (`cam_id`) | Directs active camera viewport to switch to specified camera |
 | `0x0003` | `EVT_AUDIO_CUE` | Audio sample index in `.RES` | Triggers playback of `.VOC` / `.WAV` sound effect |
 | `0x0004` | `EVT_TAKEOVER` | Control mode flags | Activates autopilot or script-driven vehicle path traversal |
+
+These four symbols are carried from earlier community summaries. No source in the corpus reproduces the values, and they do not correspond to the byte-level property ids observed in § 3.5, so the whole table is unverified pending that field map; treat the codes as `[Hypothesis]` rather than as the `[Established]` tier this section previously implied.
 
 The handbook enumerates the authoring actions this table encodes: `CutTo`, `Change` (with roughly twenty sub-parameters — shape, position, altitude, roll/pitch/yaw, speed, acceleration, zoom, watch target, visibility, collideability, autozoom), `Explode`, `Kill`, `Fade`, `Finish`, `Set Flag`, `Set Time`, `Start Rec`, `Stop Rec`, `Start Sound`, `Wait` and `Award $` (*handbook* pp.92–95), behind the triggers `Collision`, `Crash`, `Time` (maximum 655 seconds), `Weapon Count` and the `Never` placeholder (pp.89–90). Only the four codes above have confirmed symbols, so name-to-code mapping is `[Hypothesis]`. A 12-byte record cannot carry the `Change` sub-parameters directly; either records chain or the payload points elsewhere.
 

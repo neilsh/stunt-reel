@@ -3,10 +3,15 @@
 #
 # The 96-byte header is verified across all 93 corpus scenes: `magic_tag` is
 # 0x08 at 0x0052. `0x53` counts events (six printed set dumps agree); the byte
-# at 0x54 is unidentified, observed 0-3. No size model with a 64-byte prop
-# stride and a 12-byte event stride is established, and the prop/event table
-# start and prop slot numbering are not settled (BK-SET-04, BK-SET-05), so
-# bytes after 0x0060 stay raw.
+# at 0x54 is unidentified, observed 0-3.
+#
+# Body (BK-SET-05):
+#   size = 0x97 + 64 * (props - 1 + events) + 3 * (events - 1)
+# i.e. 55 undecoded bytes at 0x0060, then 64-byte records -- `props - 1` prop
+# records followed by `events` event records -- then a 3-byte-per-extra-event
+# trailer. Verified against the six printed dumps and, as a whole number of
+# records, against all 35 loose corpus sets. The per-field map of an event
+# record is partial; see set.md 3.5.
 meta:
   id: set
   title: Stunt Island scene definition (`.SET`)
@@ -65,5 +70,6 @@ seq:
   - id: rest
     size-eos: true
     doc: |
-      Opaque prop, event, and trailing data. The table start is unresolved;
-      see BK-SET-04.
+      Records and trailer: `props - 1` prop records of 64 bytes, then `events`
+      event records of 64 bytes, then 3 bytes per event after the first. The
+      event record's fields are only partly mapped; see set.md 3.5.
