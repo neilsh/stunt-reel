@@ -1,6 +1,6 @@
 # Unit D: the capture session
 
-Status: design agreed 2026-10-24; implemented, review pending. Source: architecture review card 6 (one capture session for the emulator) plus the transport-at-operation-altitude rider.
+Status: design agreed 2026-10-24; implemented and merged (e17c9bc); live capture unverified. Source: architecture review card 6 (one capture session for the emulator) plus the transport-at-operation-altitude rider.
 
 ## 1. Problem
 

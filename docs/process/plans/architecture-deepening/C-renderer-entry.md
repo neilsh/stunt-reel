@@ -1,6 +1,6 @@
 # Unit C: the renderer entry point
 
-Status: design agreed 2026-10-24; stages 1-2 merged, deletion stage pending. Source: architecture review card 5 (one renderer entry point for headless and window).
+Status: design agreed 2026-10-24; all stages merged. Source: architecture review card 5 (one renderer entry point for headless and window).
 
 ## 1. Problem
 
@@ -103,4 +103,4 @@ Merged as 58745f8 together with unit B; full `mise run check` green.
 
 1. **Stage 1, offscreen.** `Renderer::offscreen`, `PageSink`, `RenderedPage`, one acquisition policy including the software fallback, one accept per draw; `run_headless` migrated. 3-tick byte compare against the baseline: PNG, `.idx` and `.layer` identical 9/9.
 2. **Stage 2, surface.** `Renderer::surface` owns the window bootstrap, format choice, resize and letterbox; `window.rs` dropped from 533 to 245 lines and keeps title, size, timing, keys, free-cam, pause and clear colour by inspection. Byte compare 9/9 identical. Release build and a short window smoke were run locally.
-3. **Deletion stage.** Pending: delete `HeadlessRenderer`, remove the GPU re-exports, make the GPU modules crate-private, drop `wgpu`/`pollster` from `stunt-cli`.
+3. **Deletion stage merged (95d8d4f).** `HeadlessRenderer` and `HeadlessError` deleted; `mesh`, `palette`, `pipeline` and `scene_renderer` made crate-private; the GPU re-exports removed; `CameraGpuResources` moved to `pub(crate)`; `wgpu` and `pollster` dropped from `stunt-cli`, with one authorised doc-link fix in `main.rs`. Verification: `cargo doc` with `-D warnings` clean, `rg wgpu|pollster crates/stunt-cli/src` empty, clippy clean, three-tick render 9/9 byte-identical, parity reports unchanged. `mesh.rs` keeps a module-level allow until its items become `pub(crate)`, tracked as a follow-up.

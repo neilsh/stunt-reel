@@ -1,6 +1,6 @@
 # Architecture Deepening Programme (Milestone 4)
 
-Status: implementation in progress. The programme turns six deepening candidates from the architecture review into four design units, worked in order. Every brief is agreed; unit A landing 1 is merged and the handoff below governs the remaining landings.
+Status: implementation complete. All four units are merged; the closure note at the end records what was verified and what residual risk remains.
 
 ## 1. Settled programme decisions
 
@@ -16,10 +16,10 @@ Status: implementation in progress. The programme turns six deepening candidates
 
 | Unit | Scope | Design state | Brief |
 |---|---|---|---|
-| A | Render artifact seam plus the report-aggregation rider | Landings 1-3 merged; landing 4 pending | [A-render-artifact.md](A-render-artifact.md) |
+| A | Render artifact seam plus the report-aggregation rider | Done (landings 1-4 merged) | [A-render-artifact.md](A-render-artifact.md) |
 | B | Decoded shape seam: one stop decision, a shape IR that owns its invariants, partial SOD as a value | Done (merged 58745f8) | [B-decoded-shape.md](B-decoded-shape.md) |
-| C | Renderer entry point for headless and window | Stages 1-2 merged; deletion stage pending | [C-renderer-entry.md](C-renderer-entry.md) |
-| D | Capture session with an injectable transport; transport at operation altitude | Merged (e17c9bc); live capture unverified | [D-capture-session.md](D-capture-session.md) |
+| C | Renderer entry point for headless and window | Done (all stages merged) | [C-renderer-entry.md](C-renderer-entry.md) |
+| D | Capture session with an injectable transport; transport at operation altitude | Done (merged e17c9bc; live capture unverified) | [D-capture-session.md](D-capture-session.md) |
 
 ## 3. Why this order
 
@@ -65,4 +65,12 @@ All four briefs are agreed; implementation has not started. Land one PR per chec
 - **Deviations:** record them in the owning brief, not only in the PR description.
 - **ADRs to write while landing:** the artifact port's source-of-truth and versioning rule, with an implementation note on ADR 0005, in unit A PR1; partial SOD as a value owned by the decode record, in unit B PR2.
 - **Completion:** each unit is complete when its brief's tests survive at the interface, its deletions are done, and the baseline check passes. The programme closes when A-D are complete and the six review candidates no longer reproduce their friction.
+
+## 8. Closure note
+
+All four units merged: A in four landings (`3a08e13`, `0e763d4`, `417aba2`, `d6d8c2d`), B and C stages 1-2 together (`58745f8`), D (`e17c9bc`) and C's deletion stage (`95d8d4f`), with the landing documentation in `1d0c31f`.
+
+Verified at the integrated tree: `mise run check` green (260 Python tests after the shim removal, Rust workspace and doc tests); `cargo doc` with `-D warnings` clean; clippy clean; release build OK; a three-tick render is byte-identical in PNG, `.idx` and `.layer` and now writes only `render.json`; parity reports on the regenerated CTRY and INTRO directories and on a legacy-only directory are semantically identical to the pre-change binary's, so units B and C did not move the baseline.
+
+Residual risk, recorded rather than hidden: a live CTRY capture and light-probe smoke were not run because SOP 6 keeps the shared data root read-only without an explicit opt-in and the capture claims the machine-wide port; the window path stays untested in CI; `crates/stunt-render/src/mesh.rs` keeps a temporary module-level `allow` until its items become `pub(crate)`; and `T14` (the film-clock range) remains open outside this programme.
 
