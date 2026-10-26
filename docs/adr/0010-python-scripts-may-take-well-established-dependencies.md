@@ -63,6 +63,6 @@ packages with the widest use.
 
 ## Consequences
 
-The bar is repeated in the README's development section, because a contributor meets it before
+The bar is repeated in the development guide (`docs/development.md`), because a contributor meets it before
 this record. `cargo deny` still governs Rust only: the Python bar is checked in review against this
 ADR, not by CI. Giving `stunt_reel` a dependency would amend this ADR's first decision, not add to it.

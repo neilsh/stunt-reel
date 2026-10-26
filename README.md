@@ -1,11 +1,63 @@
 # stunt-reel
 
-Format analysis, documentation, and modern reconstruction for *Stunt Island* (1992, Walt Disney Computer Software / The Assembly Line): a DOSBox-X harness for the original `PLAYONE.EXE`, offline-tested Rust and Python parsers, a native `wgpu` renderer (`stuntreel`), and a parity loop that scores rendered frames against frames captured from the original player.
+Format analysis, documentation, and modern reconstruction for *Stunt Island* (1992, Walt Disney Computer Software / The Assembly Line): offline-tested Rust and Python parsers for its file formats, a native `wgpu` renderer (`stuntreel`) that plays the standalone film reels, and a DOSBox-X harness that captures frames from the original `PLAYONE.EXE` to check the renderer against.
 
-> [!NOTE]
-> **Status: pre-alpha.** Formats, APIs and documentation change without notice. No game assets or executables are distributed — see [Legal & assets](#legal--assets).
+> [!WARNING]
+> **Work in progress (pre-alpha).** This is an active reverse-engineering project, not a finished product or a game you can install and play. Formats, APIs, command lines and documentation change without notice, and parts of the rendering are known to differ from the original. It is developed in collaboration with AI coding agents; [`AGENTS.md`](AGENTS.md) is the contributor guide.
 
-The living specification is [`docs/SPEC.md`](docs/SPEC.md) — goals, invariants `[I1]`–`[I8]`, evidentiary tiers, and the verification matrix. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) routes each module to its specification anchor and research note; [`AGENTS.md`](AGENTS.md) holds the contributor and agent rules.
+No game assets or executables are distributed. You need your own lawfully obtained copy of the files you want to analyse or play — see [Legal & assets](#legal--assets).
+
+---
+
+## Status
+
+| Area | State |
+| --- | --- |
+| File formats (`.RES`, `.ALL`, `.SOD`, `.FLM`, `.SET` and auxiliaries) | Documented in [`research/formats/`](research/formats/INDEX.md) with Kaitai Struct layouts; parsed in `stunt-core`. Some fields are still hypotheses — each claim carries an evidentiary tier. |
+| `.SOD` display-list VM and film timeline | Implemented; a few opcodes and timing details are still open. |
+| Native renderer (`stuntreel`) | Plays the demo films `CTRY.FLM` and `INTRO.FLM` at 50 Hz with a free camera. Terrain colours, some actor placement and level of detail do not yet match the original. |
+| glTF export | Shapes and single film frames. |
+| Parity loop | Scores rendered frames against frames captured from the original player. Its log is [`research/parity/log.md`](research/parity/log.md). |
+| Platforms | The build and test gate runs on Linux, macOS and Windows. Capture and parity need Windows, DOSBox-X and your own copy of the demo. |
+| Not planned | The interactive flight simulator and authoring tools (`STUNT.EXE`); audio output is deferred. See [`docs/SPEC.md`](docs/SPEC.md#21-explicit-scope-boundaries--non-goals). |
+
+---
+
+## Quick start
+
+You can build and test everything without any game files:
+
+```powershell
+mise trust && mise install   # pinned toolchains (Rust, Python via uv, DOSBox-X, Kaitai)
+mise run init                # Python environment and shared data root
+mise run check               # format, lint, typecheck and tests, Rust and Python
+```
+
+To render a film you need the *Stunt Island* demo (`stisldem`) in `corpus/stisldem/`, described in [`corpus/README.md`](corpus/README.md):
+
+```powershell
+cargo run -p stunt-cli -- corpus/stisldem/VAULT/CTRY.FLM --all corpus/stisldem/VAULT/CTRY.ALL
+```
+
+Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits. Headless rendering, video and glTF export, reference capture and the parity loop are in the [development guide](docs/development.md).
+
+---
+
+## Where to look
+
+| Document | Covers |
+| --- | --- |
+| [`docs/development.md`](docs/development.md) | Requirements, setup, workflows, project layout, the quality gate and every `mise` task |
+| [`docs/SPEC.md`](docs/SPEC.md) | Goals, invariants `[I1]`–`[I8]`, evidentiary tiers, verification matrix |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Module routing to specification anchors and research notes |
+| [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog and Kaitai layouts |
+| [`research/playone-exe/`](research/playone-exe/) | `PLAYONE.EXE` disassembly notes: startup, memory map, display-list VM, capture harness |
+| [`research/parity/`](research/parity/) | How rendered frames are compared with the original, and the dated results |
+| [`GLOSSARY.md`](GLOSSARY.md) | Project vocabulary: film, slice, tick, shape, slot |
+| [`docs/adr/`](docs/adr/) | Accepted design decisions, one record each |
+| [`tests/fixtures/README.md`](tests/fixtures/README.md) | Synthetic fixtures the offline tests use |
+| [`NOTICE.md`](NOTICE.md) | Provenance, game-derived data and third-party credits |
+| [`AGENTS.md`](AGENTS.md) | Contributor directives and standard operating procedures |
 
 ---
 
@@ -19,234 +71,9 @@ See [`NOTICE.md`](NOTICE.md) for provenance and third-party credits, and [Licens
 
 ---
 
-## Requirements
-
-- **[mise](https://mise.jdx.dev/)** (recommended environment and tool manager)
-- **[Rust](https://www.rust-lang.org/)** 2024 edition (MSRV 1.88; the pinned toolchain is 1.99.1), managed via `mise` or `rustup`
-- **[uv](https://docs.astral.sh/uv/)** (installed by `mise`; a standalone uv works only at the pinned version, which `required-version` in [`pyproject.toml`](pyproject.toml) enforces) and **Python ≥ 3.11**
-- **[ffmpeg](https://ffmpeg.org/)** on `PATH` (only for `--video` export)
-- **[DOSBox-X](https://dosbox-x.com/) `2026.10.01`** (Windows x64 portable SDL2 build, installed by `mise`)
-- **[`dosbox-x-mcp-server`](https://github.com/caiiiycuk/dosbox-x-mcp-server) `0.1.2`** (managed via `mise`)
-- **Java 21 (Temurin)** and **Kaitai Struct Compiler `0.11`** (managed via `mise`; needed only for the `.ksy` corpus checks)
-
----
-
-## Setup
-
-### 1. mise
-
-```powershell
-mise trust     # once per fresh clone, if mise asks you to trust the config
-mise install   # pinned toolchains, DOSBox-X, Kaitai compiler
-mise run init  # Python environment, then link the shared data root
-```
-
-Pinned versions live in [`mise.toml`](mise.toml); `mise run init` runs `uv sync`, which installs the `kaitaistruct==0.11` runtime for the schema checks.
-
-> [!NOTE]
-> The quality gate (`mise run check`) runs on Linux, macOS and Windows. Capture, parity and corpus workflows are Windows + DOSBox-X + local-corpus only; elsewhere you can still build, test and render from synthetic fixtures.
-
-### 2. Agent / MCP integration
-
-```powershell
-mise run ensure-dosbox   # start DOSBox-X with the MCP debugger enabled (no-op if already running)
-mise run mcp             # launch dosbox-x-mcp-server over stdio
-```
-
-Register the server in the agent's MCP configuration file (`~/.gemini/config/mcp_config.json`) and make sure `dosbox-x-mcp-server` is on `PATH`:
-
-```json
-{
-  "mcpServers": {
-    "dosbox-x": {
-      "command": "dosbox-x-mcp-server",
-      "args": []
-    }
-  }
-}
-```
-
-> [!NOTE]
-> DOSBox-X profiles connect *out* to the control port via `[dosbox] mcp_server = 58991`. `mise run capture-ref` binds that port itself, so stop the MCP server and any other DOSBox-X instance before capturing.
-
-### 3. Worktrees and the shared data root
-
-Several agents can work at once, each in its own `git worktree`: beside the checkout (`<checkout>.wt\<slug>` on Windows) or under a gitignored directory inside it (`.claude/worktrees/`, `.agents/worktrees/`). The corpus, the reference captures and `target_bin/` are gitignored, so they live once per machine instead of once per checkout:
-
-```text
-<parent-of-checkout>\stunt-reel.data\   corpus\{stisldem,si_archive,oracle}, reference\, target_bin\
-```
-
-The community archive keeps its historical `si_archive` name inside the data root; a checkout links it as `corpus/siarchive`, the collector's spelling, and `LINK_TARGETS` in `python/stunt_reel/dataroot.py` is the one place that maps the two.
-
-`mise run init` links those into a worktree with junctions, so the relative `corpus/` and `build/parity/reference/` paths work unchanged; build outputs, caches and `.venv` stay per worktree. `STUNT_DATA_ROOT` names a different data root, and `mise run init -- --migrate` moves an existing in-checkout `corpus/` into it. A sandboxed agent session cannot create those junctions under `workspace-write`, because their targets are outside the workspace; provision the worktree with one run at wider file access — see [docs/harness-setup.md](docs/harness-setup.md).
-
-The data root is **read-only**: `mise run capture-ref` into the shared captures and oracle generation refuse unless `STUNT_DATA_WRITE=1` is set, and only one session may capture at a time, because DOSBox-X and port `58991` are machine-wide. `mise run clean -- --yes` reports and removes this worktree's outputs before you reap it. See [ADR 0008](docs/adr/0008-worktrees-share-one-read-only-data-root.md).
-
----
-
-## Project Structure
-
-| Path | Contents |
-| --- | --- |
-| `crates/stunt-core/` | Seam contracts, `.RES`/`.ALL`/`.SOD`/`.FLM` parsers, and the `.SOD` bytecode VM |
-| `crates/stunt-render/` | `wgpu` pipelines, Mode 13h palette LUT, headless renderer, SSIM/IoU comparator |
-| `crates/stunt-parity/` | Parity artifact port: typed render, capture and report documents with a schema version and validation |
-| `crates/stunt-cli/` | `stuntreel` binary: interactive/headless presentation plus the `parity` and `export-gltf` subcommands |
-| `python/stunt_reel/tac/` | DOSBox-X TAC harness: control transport, BIOS Data Area input, frame capture — [`research/playone-exe/capture.md`](research/playone-exe/capture.md) |
-| `crates/stunt-gltf/` | glTF 2.0 (`.glb`) exporter for shapes and single scene frames, driven by `stunt-cli export-gltf` |
-| `python/scripts/` | Entry points for capture, parity, format and documentation checks (e.g. `capture_playone_reference.py`, `parity_run.py`, `parity_sweep.py`, `verify_schemas_corpus.py`, `verify_formats_docs.py`) plus maintenance tools |
-| `tests/` | Python suite and synthetic fixtures — [`tests/fixtures/README.md`](tests/fixtures/README.md); Rust integration tests live in `crates/*/tests/` |
-| `docs/` | Living spec, architecture routing, ADRs, and process documents (`process/`) |
-| `research/` | Format specifications beside their `.ksy` layouts plus `PLAYONE.EXE` analysis notes — [`research/formats/INDEX.md`](research/formats/INDEX.md) |
-| `corpus/` | Gitignored demo and archive data, linked from the shared data root — [`corpus/README.md`](corpus/README.md) |
-| `target_bin/` | Gitignored original game binaries |
-| `build/` | Gitignored outputs: `build/parity/{ours,report}/` and `build/gltf_output/`; `build/parity/reference/` borrows the shared captures |
-| `dosbox-*.conf` | `dosbox-playone.conf` (interactive play), `dosbox-parity.conf` (capture), `dosbox-mcp.conf` (agent debugger), `test_mcp.conf` |
-| `play_ctry.bat` | Convenience launcher for `mise run play` |
-
----
-
-## Workflows
-
-### Play a film in the original player
-
-```powershell
-mise run play        # or: .\play_ctry.bat
-```
-
-`dosbox-playone.conf` mounts `corpus/stisldem`, launches `PLAYONE.EXE`, and queues the autotype sequence that selects `CTRY.FLM`.
-
-### Capture reference frames and score a render
-
-```bash
-mise run capture-ref
-cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
-    --all corpus/stisldem/VAULT/CTRY.ALL --frames 1..1344 \
-    --sidata corpus/siarchive/Developer/FreeFlight/SIDATA \
-    --out-dir build/parity/ours/ctry --width 320 --height 200 --viewport-rows 185
-cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry \
-    --test build/parity/ours/ctry --output build/parity/report/ctry
-# after a change: re-render, then score against the previous report (before/after sheets need its render dir)
-cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry     --test build/parity/ours/ctry --output build/parity/report/ctry_new     --compare build/parity/report/ctry/report.json --compare-test build/parity/ours/ctry_prev
-```
-
-`capture-ref` stores 140 reference frames, each tagged in `meta.json` with the film clock (`film_tick`) it was captured at. `--frames 1..1344` (also the default range) renders ticks 0 through 1,342, the film's last tick included, as `tick_00000.png`–`tick_01342.png`, named by 0-based 50 Hz tick (the end-hold captures sit at tick 1,342), plus `render.json` (typed, written last: film identity, raster geometry, and each tick's palette variables and camera); parity reads it and falls back to the legacy `palette_controls.json` that older renders still carry. The comparator pairs each capture with the render at its `film_tick` (captures made before film-clock tagging must be recaptured). The comparator writes `report.json` (per-frame `ssim`/`iou`, `fade_level`, `scored`; run-level `sky_indices`, `unmatched`, `mean_ssim`, `min_ssim`, `mean_iou`, `mean_ssim_scored`, `mean_iou_scored`, `min_fade_level`, `scored_frames`, `excluded_frames`) and `contact_NNNN.png` sheets under `build/parity/report/ctry/`. `--min-fade-level <F>` (default 0.25) sets the floor for the end-of-film palette fade: the film's authored brightness decides whether a frame is scored and the measured level stays a cross-check, frames below the floor are reported but not scored, and the headline is `mean_ssim_scored` with its scored-frame count (see [`research/parity/method.md`](research/parity/method.md#21-fade-floor)).
-
-`--compare <report.json>` pairs the fresh scores with a previous report by `film_tick` and prints mean SSIM/IoU before → after over the frames present in both, the 5 most improved and 5 most regressed frames, and how many frames moved by more than 0.005; it also writes `compare.json`. The basis is `scored` (SSIM over frames scored in both runs) when both reports carry `scored`, and `all` (SSIM over all common frames) for older reports; the first `[compare]` line states which. With `--compare-test <dir>` (the previous run's render directory) it writes `compare_regressed_tick_NNNNN.png` and `compare_improved_tick_NNNNN.png` (`reference | before | after | |ref−before| | |ref−after|`) for the single biggest mover each way. The method and a dated results table are in [`research/parity/method.md`](research/parity/method.md) and [`research/parity/log.md`](research/parity/log.md).
-
-Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`, and a free port `58991`. How the dialog is driven (BIOS Data Area keystrokes) and how frames are sampled (post-retrace breakpoint at `0D51:0C5E`) is recorded in [`method.md`](research/parity/method.md#1-the-loop) and [`research/playone-exe/capture.md`](research/playone-exe/capture.md).
-
-### Render in the native engine
-
-```powershell
-cargo run -p stunt-cli -- corpus/stisldem/VAULT/CTRY.FLM --all corpus/stisldem/VAULT/CTRY.ALL
-```
-
-Opens the interactive presentation (Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits). Interactive playback follows the authored 50 Hz timeline and interpolates between slices. `--help` lists the headless flags, `--frames <A..B>` (half-open, 1-based 50 Hz tick ordinals), `--ticks`, and the `parity` subcommand. `ANCHORPT.DAT`, `MAP.BIN`, and `SCENERY.scn` are searched for in `--sidata <dir>` first, then the archive's directory, its parent and grandparent, then `sidata/` or `SIDATA/` inside the parent (filename case ignored); the demo's `corpus/siarchive/Developer/FreeFlight/SIDATA` needs an explicit `--sidata`.
-
-### Export a film to video container
-
-```powershell
-# Export film sequence to an MP4 video sampled at 30 fps
-cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
-    --all corpus/stisldem/VAULT/CTRY.ALL --video build/ctry.mp4
-```
-
-Export a shape, or one frame of a film, to glTF 2.0 for viewing in Blender or any glTF viewer:
-
-```powershell
-cargo run -p stunt-cli -- export-gltf --archive corpus/stisldem/VAULT/CTRY.ALL \
-    --film corpus/stisldem/VAULT/CTRY.FLM --tick 400 --out build/gltf_output/CTRY_t400.glb
-cargo run -p stunt-cli -- export-gltf --archive corpus/stisldem/VAULT/CTRY.ALL --shape 0x0408 --out build/gltf_output/shape.glb
-```
-
-Headless video export samples the authored 50 Hz timeline at `--fps` (default 30), interpolates between slices, and encodes directly into a standard video container (`.mp4`, `.webm`, `.mkv`, or `.avi`) via `ffmpeg`, with physical $4:3$ aspect ratio correction ($320 \times 240$, `[I6]`). `--frames <A..B>` limits the export to a half-open range of 1-based tick ordinals. `CTRY.FLM` spans 1,342 ticks (26.84 s), producing 806 sampled frames at 30 fps; the container is trimmed to the authored span, so ffmpeg encodes 805 frames and ffprobe reports 26.833 s (nearest whole frame; 26.84 s exactly at `--fps 50`). Requires `ffmpeg` on `PATH`.
-
-### Interval-based frame capture for rapid audits
-
-```powershell
-# Capture one frame every 25 ticks (0.5 s) across the full 1,342-tick film
-cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
-    --all corpus/stisldem/VAULT/CTRY.ALL --frames 1..1343 --frame-step 25 \
-    --out-dir build/parity/ours/ctry_sparse
-```
-
-`--frames` uses 1-based 50 Hz tick ordinals; `--frame-step <N>` extracts every Nth tick, saving frames named by 0-based tick (`tick_00000.png`, `tick_00025.png`, etc.) without redundant disk consumption. `--sample-count <N>` writes `sample_0001.png`… (1-based sample index) instead; those are not parity inputs.
-
-### Validate the format catalog against a local corpus
-
-```powershell
-mise run verify-corpus              # report anomalies
-mise run verify-corpus -- --strict  # fail on them
-```
-
-Compiles `research/formats/**/*.ksy` and checks documented headers, offsets, and opcodes against `corpus/`. Local-only: `corpus/` is gitignored and absent in CI.
-
----
-
-## Development & Quality Assurance
-
-The gate is `mise run check`: one ordered script ([gate.py](python/scripts/gate.py), [ADR 0014](docs/adr/0014-the-gate-is-one-ordered-script.md)) that prints one line per step, stops at the first failure with its tail, writes the whole output to `target/check.log`, and ends with PASS or FAIL. `mise run check-rust` and `mise run check-py` run the same step list for one language. Individual tasks:
-
-| Task | Runs |
-| --- | --- |
-| `check` / `check-rust` / `check-py` | `gate.py` over every step (format, lint, strict typing, rustdoc, both test suites, the no-default-features matrix), one line per step, log in `target/check.log` |
-| `check-windows` | the non-GPU half of the gate used by the Windows CI job (`fmt-check` + `lint` + `typecheck` + `test`)
-| `fmt-check` / `fmt` | `cargo fmt` and `ruff format` check/apply |
-| `lint` | `cargo clippy -- -D warnings` and `ruff check .` |
-| `typecheck` | `uv run mypy` (strict) |
-| `doc` | rustdoc with `RUSTDOCFLAGS=-D warnings` |
-| `check-rust-matrix` | `stunt-core` without the `serde`/`bytemuck` features |
-| `test` | `cargo test --workspace --all-features` and `uv run pytest` |
-| `fmt-rust`, `fmt-py`, `fmt-check-rust`, `fmt-check-py`, `lint-rust`, `lint-py`, `test-rust`, `test-py` | single-language halves of the tasks above |
-| `cov-rust` | `cargo llvm-cov` line-coverage summary for `stunt-core` and `stunt-gltf` (not part of `check`) |
-| `cov-py` | `pytest` with `--cov=stunt_reel` term-missing report (no fail-under) |
-| `deny` | `cargo deny check` — advisories, license allow-list, wildcard bans, and registry sources |
-| `capture-ref` | reference capture into `build/parity/reference/ctry` (`--max-frames` defaults to 140) |
-| `verify-corpus` | `.ksy` catalog check against `corpus/` |
-| `play` | launch `dosbox-playone.conf` |
-| `ensure-dosbox`, `mcp` | agent debugger plumbing |
-| `parity-probe`, `verify-docs`, `unlzexe`, `probe-light`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
-
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) invokes the mise tasks instead of restating them: Ubuntu runs the full `mise run check` gate, Windows runs `check-windows` (format, lint, typecheck and both test suites; GPU tests skip without a driver), a separate job checks the declared MSRV (`1.88`), and a `cargo deny` job enforces the dependency policy. Corpus- and DOSBox-X-dependent tasks stay local.
-
-### Shared tool cache
-
-`mise run init` links each checkout's `.cache/` to the primary checkout's copy; `mise.toml` points `UV_CACHE_DIR` and the cargo tasks' `CARGO_HOME` into it, so every worktree reuses one set of downloaded crates and uv artifacts. Build outputs (`target/`), the virtualenv and the Python tool caches stay per worktree, because they are revision-specific or not relocatable. `mise run clean` reports the shared cache and never removes it; `rm -rf .cache` resets it. See [ADR 0013](docs/adr/0013-worktrees-share-one-writable-tool-cache.md).
-
-### Running individual commands
-
-For a one-off that no task covers, run the pinned tool through mise: `mise exec -- uv run ruff check python/foo.py`. `mise exec` puts the versions [`mise.toml`](mise.toml) pins on `PATH`; a bare `uv` can be a different version, and `[tool.uv] required-version` in [`pyproject.toml`](pyproject.toml) makes that version refuse to run rather than drift.
-
-### Python dependencies
-
-The Python half runs on the standard library unless a dependency earns its place. [ADR 0010](docs/adr/0010-python-scripts-may-take-well-established-dependencies.md) holds the bar: wheels on every CI platform, typed, an acceptable licence, and a release within about two years, with the admitting ADR stating the job the dependency does and why the standard library cannot. The shipped `stunt_reel` wheel stays dependency-free; a tooling-only dependency belongs in the dev group, where `python/scripts/` can import it. pydantic, pydantic-settings and Typer were considered for the parity scripts and refused in that ADR.
-
----
-
-## Documentation Map
-
-| Document | Covers |
-| --- | --- |
-| [`docs/SPEC.md`](docs/SPEC.md) | Master specification, invariants `[I1]`–`[I8]`, evidentiary tiers, verification matrix |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 1-hop module routing to specification anchors and research notes |
-| [`research/playone-exe/memory-map.md`](research/playone-exe/memory-map.md) | `DGROUP` map and runtime anchors (`# [MEM-*]`) |
-| [`docs/process/TEAM_SHEET.md`](docs/process/TEAM_SHEET.md) | Multi-agent roles and file blast radii |
-| [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog and Kaitai layouts |
-| [`research/playone-exe/`](research/playone-exe/) | Startup, navigation, memory map, and capture harness notes |
-| [`corpus/README.md`](corpus/README.md) | How to populate the demo and archive data |
-| [`tests/fixtures/README.md`](tests/fixtures/README.md) | Synthetic fixture specifications |
-| [`GLOSSARY.md`](GLOSSARY.md) | Canonical project vocabulary |
-| [`docs/adr/`](docs/adr/) | Accepted design decisions, one record each |
-| [`research/README.md`](research/README.md) | Research routing, note shape and provenance |
-| [`NOTICE.md`](NOTICE.md) | Provenance, game-derived data and third-party credits |
-| [`AGENTS.md`](AGENTS.md) | Contributor directives and standard operating procedures |
-| [`docs/harness-setup.md`](docs/harness-setup.md) | Host-local harness setup: tool installs, mise config and trust, permission presets, data-root environment |
-
 ## Contributing
 
-This is a pre-alpha project; issues and focused pull requests are welcome. Before opening one, run `mise run check` and read [`AGENTS.md`](AGENTS.md) for the working rules.
+Issues are welcome. For anything larger than a small fix, please open an issue before a pull request so we can agree on the approach. This is a small project with no promised response times. Before opening a pull request, run `mise run check` and read [`AGENTS.md`](AGENTS.md). Report vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md).
 
 ## License
 
