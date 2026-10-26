@@ -35,6 +35,14 @@ def test_evidentiary_tier_vocabulary() -> None:
     assert result.passed, f"Tier vocabulary check failed: {result.errors}"
 
 
+def test_tier_like_regex_ignores_nested_bracket_expressions() -> None:
+    """A type expression such as Callable[[Session], T] is not a tier tag."""
+    assert verify_formats_docs.TIER_LIKE_REGEX.search("Callable[[Session], T]") is None
+    assert verify_formats_docs.TIER_LIKE_REGEX.search("[Established]") is not None
+    assert verify_formats_docs.TIER_LIKE_REGEX.search("[Bounded Observation]") is not None
+    assert verify_formats_docs.TIER_LIKE_REGEX.search("see [Bogus]") is not None
+
+
 def test_formats_catalog_provenance_attribution() -> None:
     """Verify that all documents cite documentation provenance and credit researchers."""
     result = verify_formats_docs.verify_provenance_and_attribution(REPO_ROOT)

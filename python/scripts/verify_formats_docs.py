@@ -187,8 +187,9 @@ TIER_SCAN_GLOBS: list[str] = [
 
 # A bracketed Title Case phrase that is not a link, footnote or checkbox looks
 # like a tier tag; anything that looks like one but is not in EVIDENTIARY_TIERS
-# is a vocabulary error.
-TIER_LIKE_REGEX = re.compile(r"\[([A-Z][a-z]+(?: [A-Z][a-z]+)*)\](?![(\[:])")
+# is a vocabulary error. A preceding "[" means the bracket belongs to a nested
+# expression such as Callable[[Session], T], not to a tag.
+TIER_LIKE_REGEX = re.compile(r"(?<!\[)\[([A-Z][a-z]+(?: [A-Z][a-z]+)*)\](?![(\[:])")
 
 
 def link_scan_files(repo_root: Path) -> list[str]:
