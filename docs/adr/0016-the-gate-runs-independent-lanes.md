@@ -82,8 +82,9 @@ through the restricted token, which is a property of the harness, not of the gat
   all-features artifacts.
 - **Let mise dispatch the graph** (`run = [{ tasks = [...] }]`). Rejected: it puts a second copy of
   the step list in `mise.toml`, losing ADR 0014's one-list guarantee and the verdict and log.
-- **`sccache`.** Still the lever for cold builds, and still deferred for the reasons in ADR 0013;
-  lanes are orthogonal to it.
+- **`sccache`.** Rejected, not deferred: [ADR 0017](0017-the-gate-keeps-no-compiler-cache.md)
+  measured it and the `kache` alternative against the cold gate and the Windows sandbox; lanes are
+  orthogonal to it either way.
 - **`pytest-xdist`.** Not taken: the Python suite is now the warm critical path (about 15 s), but a
   new dependency for it would have to clear [ADR 0010](0010-python-scripts-may-take-well-established-dependencies.md).
 

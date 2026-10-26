@@ -42,10 +42,10 @@ and uv artifacts are disposable; `rm -rf .cache` is the reset.
   for the whole build (measured above), serialising parallel `mise run check`
   runs. See [ADR 0008](0008-worktrees-share-one-read-only-data-root.md), which
   reached the same conclusion for build output.
-- **`sccache`.** Deferred, not rejected: it shares compiled dependencies without
-  the target lock, but it needs incremental compilation off, one local server,
-  and a spike before its client/server channel is trusted under the Windows
-  sandbox's restricted token.
+- **`sccache` and `kache`.** Rejected, with the timings and sandbox evidence in
+  [ADR 0017](0017-the-gate-keeps-no-compiler-cache.md): the best candidate halves
+  the cold gate but misses the agreed target, needs one absolute `CARGO_HOME`
+  instead of the per-checkout path this record chose, and saves no disk.
 - **Labelling the user-profile caches `low`.** Rejected: DSH's Windows sandbox
   runs children with a write-restricted token whose restricting SIDs the profile
   ACLs do not carry, so a mandatory label alone would not grant the write; adding
