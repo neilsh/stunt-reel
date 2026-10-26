@@ -55,10 +55,10 @@ and uv artifacts are disposable; `rm -rf .cache` is the reset.
 ## Consequences
 
 A worktree's first `uv sync` runs before the link exists and is adopted into the
-shared cache by `init`; later runs write the shared cache directly. The test
-tasks point `TMP`/`TEMP` at the shared cache's `tmp/`, and pytest pins a
-per-checkout basetemp, because a low-integrity test binary cannot write the
-user's temp directory. Cargo's
+shared cache by `init`; later runs write the shared cache directly. `mise.toml`
+points `TMP`/`TEMP` at the shared cache's `tmp/` for every task, and pytest names
+a per-run basetemp, because a low-integrity test binary cannot write the user's
+temp directory. Cargo's
 package-cache lock briefly serialises worktree builds, which is acceptable where
 the artifact-directory lock was not. A checkout that never runs `init` silently
 keeps a local `.cache`; `init` prints the link state so the drift is visible.
