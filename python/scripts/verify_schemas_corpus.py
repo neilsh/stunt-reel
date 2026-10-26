@@ -38,7 +38,6 @@ import io
 import itertools
 import re
 import sys
-import tempfile
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -52,6 +51,7 @@ from stunt_reel.kaitai import (
     compiler_version,
     load_generated_module,
 )
+from stunt_reel.scratch import scratch_dir
 
 SCHEMA_ROOT = Path("research") / "formats"
 _KAITAISTRUCT: Any = importlib.import_module("kaitaistruct")
@@ -427,7 +427,7 @@ def sweep(spec: SchemaSpec, parser: Any, corpus_dir: Path, verbose: bool = False
 
 def _run(args: argparse.Namespace, specs: Sequence[SchemaSpec]) -> int:
     results: list[SweepResult] = []
-    with tempfile.TemporaryDirectory(prefix="stunt-kaitai-corpus-") as tmp:
+    with scratch_dir(prefix="stunt-kaitai-corpus-") as tmp:
         compile_schemas([spec.path for spec in specs], tmp)
         print(f"corpus:   {args.corpus.resolve()}")
         print(f"schemas:  {len(specs)}")
