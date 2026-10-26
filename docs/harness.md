@@ -8,9 +8,11 @@ Nothing here is a fact about Stunt Island.
 
 ## Policy (any agent)
 
-* **The gate is `mise run check`** — one ordered script, one line per step, a PASS/FAIL verdict
-  and `target/check.log` ([ADR 0014](adr/0014-the-gate-is-one-ordered-script.md)).
-  `check-rust` and `check-py` run the same steps for one language.
+* **The gate is `mise run check`** — one script, one line per step, a PASS/FAIL verdict and
+  `target/check.log` ([ADR 0014](adr/0014-the-gate-is-one-ordered-script.md),
+  [ADR 0016](adr/0016-the-gate-runs-independent-lanes.md)): independent steps run as concurrent
+  lanes, ordered only where they share a resource. `check-rust` and `check-py` run the same steps
+  for one language.
 * **Everything goes through `mise run`.** Every agent-facing script has a task, so `mise run *`
   is the one command shape to pre-approve and `mise tasks` is the exhaustive list; a task name
   that is not there does not exist ([AGENTS.md](../AGENTS.md) SOP 5.5).

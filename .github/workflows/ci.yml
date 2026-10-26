@@ -47,7 +47,10 @@ jobs:
             .cache/cargo/registry
             .cache/cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          # v2 (2026-10-25): the gate added target/check and target/matrix for its concurrent
+          # lanes. A cache hit never saves, so the old key would leave those directories cold on
+          # every run; the bump forces one fresh save that includes them.
+          key: ${{ runner.os }}-cargo-v2-${{ hashFiles('**/Cargo.lock') }}
       - name: Install Python environment
         run: uv sync --locked --all-groups
       - name: Run quality tasks

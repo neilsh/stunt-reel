@@ -1,11 +1,17 @@
 # The gate is one ordered script, not a task graph
 
+## Status
+
+superseded in part by [ADR 0016](0016-the-gate-runs-independent-lanes.md): the one step list,
+the verdict and the log stay; the steps now run as concurrent lanes, ordered only where they
+share a resource.
+
 `mise run check` used to be mise's `depends` chain: six aggregate tasks, each printing its own
 output, no verdict at the end, and no log to read afterwards. The quiet halves had already
 drifted — `check-rust` and `check-py` ran a shorter step list than `check`, so "the gate
 passed" could mean two different things. It now runs [gate.py](../../python/scripts/gate.py),
-which executes the leaf tasks in order, prints one line per step, stops at the first failure and
-quotes its tail, writes the complete output to `target/check.log`, and ends with a PASS or
+which executes the leaf tasks, prints one line per step, quotes the tail of every failing step,
+writes the complete output to `target/check.log`, and ends with a PASS or
 FAIL over the step count. There is one step list, so a half-gate cannot diverge from the whole
 one.
 

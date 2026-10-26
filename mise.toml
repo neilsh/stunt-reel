@@ -125,7 +125,9 @@ run = "uv run python python/scripts/adversarial_formats_challenge.py"
 [tasks.lint-rust]
 description = "Run Rust Clippy lints across all crates"
 run = "cargo clippy --locked --workspace --all-targets --all-features -- -D warnings"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+# Check-profile artifacts live in their own target directory so the clippy lane and the
+# build-profile test lane can compile at the same time instead of queueing on one lock.
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo", CARGO_TARGET_DIR = "{{config_root}}/target/check" }
 
 [tasks.lint-py]
 description = "Run Ruff linter on Python codebase"
@@ -194,16 +196,21 @@ run = "cargo doc --workspace --no-deps --all-features"
 env = { RUSTDOCFLAGS = "-D warnings", CARGO_HOME = "{{config_root}}/.cache/cargo" }
 
 [tasks.check-rust-matrix]
-description = "Build and test stunt-core without optional features"
-run = "cargo check -p stunt-core --no-default-features && cargo test -p stunt-core --no-default-features"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+description = "Test stunt-core without optional features, in a target directory of its own"
+# cargo test also builds the plain library for the integration tests, so the old
+# `cargo check` prefix compiled the same no-default-features library a second time for no extra
+# coverage. The private directory keeps this build from invalidating the all-features
+# artifacts in target/ and lets it run beside the other lanes.
+run = "cargo test -p stunt-core --no-default-features"
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo", CARGO_TARGET_DIR = "{{config_root}}/target/matrix" }
 
 [tasks.cov-py]
 description = "Run Python test suite with coverage reporting"
 run = "uv run pytest --cov=stunt_reel --cov-report=term-missing"
 
-# The three gate tasks dispatch one script (ADR 0014). The step list is the leaf tasks in
-# python/scripts/gate.py, so the halves cannot run a shorter gate than the whole.
+# The three gate tasks dispatch one script (ADR 0014; lanes: ADR 0016). The step list is the
+# leaf tasks in python/scripts/gate.py, so the halves cannot run a shorter gate than the whole,
+# and every step there needs a lane in STEP_LANES or the gate refuses to start.
 [tasks.check-rust]
 description = "Rust half of the gate (fmt, clippy, test, doc, no-default-features matrix), one line per step"
 run = "python python/scripts/gate.py rust"

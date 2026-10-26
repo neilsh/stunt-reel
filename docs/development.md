@@ -172,7 +172,7 @@ Compiles `research/formats/**/*.ksy` and checks documented headers, offsets, and
 
 ## Development & Quality Assurance
 
-The gate is `mise run check`: one ordered script ([gate.py](../python/scripts/gate.py), [ADR 0014](adr/0014-the-gate-is-one-ordered-script.md)) that prints one line per step, stops at the first failure with its tail, writes the whole output to `target/check.log`, and ends with PASS or FAIL. `mise run check-rust` and `mise run check-py` run the same step list for one language. Individual tasks:
+The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), [ADR 0014](adr/0014-the-gate-is-one-ordered-script.md) and [ADR 0016](adr/0016-the-gate-runs-independent-lanes.md)) that prints one line per step, quotes the tail of every failing step, writes the whole output to `target/check.log`, and ends with PASS or FAIL. Independent steps run as concurrent lanes — cargo steps that share a target directory stay in one ordered lane, everything else runs beside them — so one run also reports every failing step, not only the first. `mise run check-rust` and `mise run check-py` run the same step list for one language. Individual tasks:
 
 | Task | Runs |
 | --- | --- |
@@ -193,6 +193,8 @@ The gate is `mise run check`: one ordered script ([gate.py](../python/scripts/ga
 | `play` | launch `dosbox-playone.conf` |
 | `ensure-dosbox`, `mcp` | agent debugger plumbing |
 | `parity-probe`, `verify-docs`, `unlzexe`, `probe-light`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
+
+The gate's lanes build the check profile into `target/check` and the no-default-features matrix into `target/matrix`, so those builds can run beside the `target/` build instead of waiting on its lock. All three directories sit under `target/`, which `.gitignore`, ruff's exclude, the recursive walkers and `mise run clean` already cover.
 
 CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) invokes the mise tasks instead of restating them: Ubuntu runs the full `mise run check` gate, Windows runs `check-windows` (format, lint, typecheck and both test suites; GPU tests skip without a driver), a separate job checks the declared MSRV (`1.88`), and a `cargo deny` job enforces the dependency policy. Corpus- and DOSBox-X-dependent tasks stay local.
 
