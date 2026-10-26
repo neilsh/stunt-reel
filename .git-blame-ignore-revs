@@ -1,0 +1,10 @@
+# Revisions whose diffs are normalizations rather than authorship.
+#
+# Consumed by `git config blame.ignoreRevsFile .git-blame-ignore-revs`; local
+# clones opt in, and GitHub's blame view honours this file automatically at the
+# repository root. Add a revision only when its whole diff is formatting or
+# whitespace, never a refactor, rename or move: blame cannot trace lines a
+# refactor re-created, so those stay attributed to it anyway.
+
+# 2026-10-18 style: normalize end-of-file formatting (trailing blank lines only)
+34cbe920ebf45497d0a972b85f563551d5a51d22
