@@ -65,7 +65,7 @@ Four design units from the architecture review, worked in order A-D. Each unit's
 | `A03` | Renderer entry point: one renderer interface for headless and window | - | **Done** (all stages merged) | [brief](plans/architecture-deepening/C-renderer-entry.md) |
 | `A04` | Capture session: one emulator session with an injectable transport; transport at operation altitude | - | **Done** (merged; live capture and probe verified 2026-10-25) | [brief](plans/architecture-deepening/D-capture-session.md) |
 
-### Milestone 5: Retro Hardening *(Implementation in progress)*
+### Milestone 5: Retro Hardening *(Complete)*
 
 Source: [retro-hardening plan](plans/retro-hardening-2026-10-25.md), agreed 2026-10-25. One branch/PR; commits per ticket; the full `mise run check` runs once at the tip.
 
