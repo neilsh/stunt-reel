@@ -21,7 +21,7 @@ stunt-gltf = { path = "../stunt-gltf" }
 stunt-parity = { path = "../stunt-parity" }
 stunt-render = { path = "../stunt-render" }
 winit = "0.30"
-glam = "0.29"
+glam = "0.34"
 thiserror = "2.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
 serde = { version = "1", features = ["derive"] }
