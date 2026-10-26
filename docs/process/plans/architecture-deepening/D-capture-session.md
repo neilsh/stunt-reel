@@ -1,6 +1,6 @@
 # Unit D: the capture session
 
-Status: design agreed 2026-10-24; implemented and merged (e17c9bc); live capture and probe verified 2026-10-25. Source: architecture review card 6 (one capture session for the emulator) plus the transport-at-operation-altitude rider.
+Status: design agreed 2026-10-24; implemented and merged 2026-10-25 (`feat(tac): give the capture harness one session and an operations transport`); live capture and probe verified 2026-10-25. Source: architecture review card 6 (one capture session for the emulator) plus the transport-at-operation-altitude rider.
 
 ## 1. Problem
 

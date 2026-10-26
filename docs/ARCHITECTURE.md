@@ -45,3 +45,7 @@ Code path to the documents that govern it. Every cell links to its single home: 
 A decoded shape owns its provenance and its geometry: `stunt_core::sod::decode_sod` is the single entry point in strict, lenient or census mode, it attaches a `DecodeRecord` (header, first blocking opcode, census step-overs, first `OP_RETURN`) to the shape, and it enforces the shape invariants consumers rely on. The world builder, renderer and glTF exporter therefore read `meshes()` and `extent()` instead of re-validating ranges or re-measuring bounds; authored shapes carry no decode record.
 
 The one sanctioned second decoder is deliberate: the Kaitai `.ksy` schemas under `research/formats/` and `python/stunt_reel/flm_walk.py` are written from the format description, not from the Rust code, and `python/scripts/verify_*.py` compare them against the corpus. A disagreement there is evidence about the format, so these stay independent of the Rust parsers.
+
+## Direction and History
+
+The 2026-10-25 architecture deepening programme (parity artifact port, decoded shape seam, renderer entry point, capture session) is closed; its decisions, closure note and residual risk are in [process/plans/architecture-deepening/README.md](process/plans/architecture-deepening/README.md).

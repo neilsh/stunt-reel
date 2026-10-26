@@ -1,6 +1,6 @@
 # Retro hardening plan (2026-10-25)
 
-Status: implementation in progress. Source: the retrospective of the architecture-deepening session, grilled and agreed on 2026-10-25. Work items are `T16`-`T20` in [TEAM_SHEET.md](../TEAM_SHEET.md); this note is the decision record and landing log.
+Status: implementation complete. Source: the retrospective of the architecture-deepening session, grilled and agreed on 2026-10-25. Work items are `T16`-`T20` in [TEAM_SHEET.md](../TEAM_SHEET.md); this note is the decision record and landing log.
 
 ## 1. Decisions
 
@@ -15,16 +15,18 @@ Status: implementation in progress. Source: the retrospective of the architectur
 | Ticket | Title | Owner | Status | Evidence |
 |---|---|---|---|---|
 | `T16` | Verify the fresh-worktree `pytest` cache assumption | `tooling-worker` | **Done (no change needed)** | reproduction on 2026-10-25 passed in a fresh worktree; [salvage note](review-dsh-friction-salvage.md) corrected |
-| `T17` | Tier checker ignores nested bracket expressions | `tooling-worker` | **Open** | [`verify_formats_docs.py`](../../../python/scripts/verify_formats_docs.py), [`test_formats_catalog.py`](../../../tests/test_formats_catalog.py) |
-| `T18` | Writer policy for Agent Teams | `tooling-worker` | **Open** | [harness.md](../../harness.md), [AGENTS.md](../../../AGENTS.md#sop-6-working-in-a-worktree) |
-| `T19` | `mise run build-at` for a previous revision | `tooling-worker` | **Open** | [mise.toml](../../../mise.toml), [method.md](../../../research/parity/method.md) |
-| `T20` | Commit-reference convention and programme pointer | `sentinel` | **Open** | [architecture-deepening README](architecture-deepening/README.md), [ARCHITECTURE.md](../../ARCHITECTURE.md) |
+| `T17` | Tier checker ignores nested bracket expressions | `tooling-worker` | **Done** | [`verify_formats_docs.py`](../../../python/scripts/verify_formats_docs.py), [`test_formats_catalog.py`](../../../tests/test_formats_catalog.py) |
+| `T18` | Writer policy for Agent Teams | `tooling-worker` | **Done** | [harness.md](../../harness.md), [AGENTS.md](../../../AGENTS.md#sop-6-working-in-a-worktree) |
+| `T19` | `mise run build-at` for a previous revision | `tooling-worker` | **Done** | [build_at.py](../../../python/scripts/build_at.py), [mise.toml](../../../mise.toml) |
+| `T20` | Commit-reference convention and programme pointer | `sentinel` | **Done** | [architecture-deepening README](architecture-deepening/README.md), [ARCHITECTURE.md](../../ARCHITECTURE.md) |
 
 `T16` closed without code: a fresh worktree's first `pytest` run passed, and `pytest` created `.pytest_cache` itself before using the configured basetemp. The salvage note's environment bullet is corrected rather than adding an unnecessary `mkdir`.
 
 ## 3. Verification
 
 One branch and one PR; one commit per ticket; scoped checks while iterating; the full `mise run check` once at the tip. No parity, capture or render run: the batch touches tests, tooling and docs only.
+
+The full gate passes 9/9. On this host the link step returns `LNK1104` when `TMP`/`TEMP` point at the user temp directory inside a worktree, so the gate was run with both redirected to `build/tmp`; `build-at` isolates them for the same reason.
 
 ## 4. Deferred and rejected
 
@@ -34,3 +36,7 @@ One branch and one PR; one commit per ticket; scoped checks while iterating; the
 ## 5. Landing log
 
 1. **Plan and tickets.** This note, the `tooling-worker` row and the Milestone 5 rows; `T16` verified and closed.
+2. **T17, tier checker.** The tier pattern ignores a bracket preceded by another bracket, and a regression test pins both the ignored `Callable[[Session], T]` form and the tags that must still be found. The scanner no longer rewrites legitimate signatures.
+3. **T18, writer policy.** `docs/harness.md` defines a writer, keeps the Lead as the default single writer, and admits the worktree-per-writer mode for two or more independent tickets under a commit-on-own-branch / Lead-integrates contract; SOP 6 points at it.
+4. **T19, build-at.** `mise run build-at -- <rev> <out>` builds a revision in a detached worktree with isolated target and temp directories, copies the binary and removes the worktree; the parity method points at it. Verification built a 7,836,160-byte `stuntreel.exe` from `HEAD`. (The first run exposed a linker `LNK1104` in the user temp directory; the isolated `TMP`/`TEMP` is part of the fix.)
+5. **T20, references.** Durable records cite commit subjects and dates; the closure note points at the salvage hash mapping and `ARCHITECTURE.md` gains a history pointer to the closed programme.

@@ -17,9 +17,9 @@ Status: implementation complete. All four units are merged; the closure note at 
 | Unit | Scope | Design state | Brief |
 |---|---|---|---|
 | A | Render artifact seam plus the report-aggregation rider | Done (landings 1-4 merged) | [A-render-artifact.md](A-render-artifact.md) |
-| B | Decoded shape seam: one stop decision, a shape IR that owns its invariants, partial SOD as a value | Done (merged 58745f8) | [B-decoded-shape.md](B-decoded-shape.md) |
+| B | Decoded shape seam: one stop decision, a shape IR that owns its invariants, partial SOD as a value | Done (merged 2026-10-25) | [B-decoded-shape.md](B-decoded-shape.md) |
 | C | Renderer entry point for headless and window | Done (all stages merged) | [C-renderer-entry.md](C-renderer-entry.md) |
-| D | Capture session with an injectable transport; transport at operation altitude | Done (merged e17c9bc; live capture unverified) | [D-capture-session.md](D-capture-session.md) |
+| D | Capture session with an injectable transport; transport at operation altitude | Done (merged 2026-10-25; live capture verified 2026-10-25) | [D-capture-session.md](D-capture-session.md) |
 
 ## 3. Why this order
 
@@ -68,7 +68,9 @@ All four briefs are agreed; implementation has not started. Land one PR per chec
 
 ## 8. Closure note
 
-All four units merged: A in four landings (`3a08e13`, `0e763d4`, `417aba2`, `d6d8c2d`), B and C stages 1-2 together (`58745f8`), D (`e17c9bc`) and C's deletion stage (`95d8d4f`), with the landing documentation in `1d0c31f`.
+All four units merged on 2026-10-25: A in four landings (`refactor(parity): add the artifact port and dual-write the render record`; `fix(parity): require the render record and drop the measured-fade fallback`; `feat(parity): add the stdlib Python adapter for the artifact port`; `refactor(parity): stop writing the legacy render sidecar`), B and C stages 1-2 together (`feat(core,render): decode one shape, draw through one renderer`), D (`feat(tac): give the capture harness one session and an operations transport`) and C's deletion stage (`refactor(render): hide the GPU plumbing behind Renderer`), with the landing documentation in `docs: record the decoded-shape, renderer and capture-session landings`.
+
+Commit subjects and dates are cited instead of hashes because the history was rewritten to the noreply identity on 2026-10-25; pre-rewrite hashes remain in the [salvage note](../review-dsh-friction-salvage.md).
 
 Verified at the integrated tree: `mise run check` green (260 Python tests after the shim removal, Rust workspace and doc tests); `cargo doc` with `-D warnings` clean; clippy clean; release build OK; a three-tick render is byte-identical in PNG, `.idx` and `.layer` and now writes only `render.json`; parity reports on the regenerated CTRY and INTRO directories and on a legacy-only directory are semantically identical to the pre-change binary's, so units B and C did not move the baseline.
 

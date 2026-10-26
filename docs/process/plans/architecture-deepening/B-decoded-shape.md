@@ -1,6 +1,6 @@
 # Unit B: the decoded shape seam
 
-Status: design agreed 2026-10-24; implemented, merged 58745f8. Source: architecture review cards 2 (one stop decision), 3 (shape IR owning interface) and 4 (partial SOD carries its stop), designed as one seam and shipped as up to three PRs.
+Status: design agreed 2026-10-24; implemented, merged 2026-10-25 (`feat(core,render): decode one shape, draw through one renderer`). Source: architecture review cards 2 (one stop decision), 3 (shape IR owning interface) and 4 (partial SOD carries its stop), designed as one seam and shipped as up to three PRs.
 
 ## 1. Problem
 
@@ -102,7 +102,7 @@ Names (`DecodeRecord`, `ShapeMesh`, `ShapeExtent`, `DecodeMode`) are proposals, 
 
 ## 11. Landing log
 
-Merged as 58745f8 together with unit C stages 1-2; the full `mise run check` passed on the integrated tree (Rust workspace and doc tests, 262 Python tests).
+Merged 2026-10-25 together with unit C stages 1-2 (`feat(core,render): decode one shape, draw through one renderer`); the full `mise run check` passed on the integrated tree (Rust workspace and doc tests, 262 Python tests).
 
 1. **One stop decision.** The VM returns one `VmRun` and asks one policy at every blockage; strict, lenient and census are translations. Existing VM and census assertions were rewritten onto the public entry point.
 2. **Partial SOD as a value.** `SodHeader`, `SodStop` and `SodStopReason` moved into the seam; `DecodeRecord` and `SodModelIr::decode()` added; `ArchiveShapes.partial` and `SceneReport.partial` deleted; the CLI reads records sorted by shape id.
