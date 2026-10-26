@@ -14,8 +14,15 @@ Nothing here is a fact about Stunt Island.
 * **Everything goes through `mise run`.** Every agent-facing script has a task, so `mise run *`
   is the one command shape to pre-approve and `mise tasks` is the exhaustive list; a task name
   that is not there does not exist ([AGENTS.md](../AGENTS.md) SOP 5.5).
-* **One writer per checkout path, one branch per worktree.** A read-only scout may share a
-  path; two writers must not ([AGENTS.md](../AGENTS.md) SOP 6).
+* **One writer per checkout path at any moment.** A *writer* is a session that mutates the
+  checkout during a turn; a read-only scout is not a writer. The Lead is the default writer;
+  teammates are read-only scouts, designers or reviewers and never write in the shared
+  checkout ([AGENTS.md](../AGENTS.md) SOP 6).
+* **Worktree-per-writer is an opt-in mode** for at least two genuinely independent tickets:
+  disjoint files, separately verifiable, no shared file. Each writer branches from the Lead's
+  current `HEAD`, commits only on its own branch, and at most two writers plus the Lead work
+  at once; the Lead integrates in the same session, in dependency order, with the full gate at
+  the tip. The contract is [the retro-hardening plan](process/plans/retro-hardening-2026-10-25.md).
 * No harness enforces any of this for you: `mise.toml` and `gate.py` enforce the gate, and the
   rest is reviewed.
 
@@ -66,6 +73,15 @@ Cancelling is not free either: the operation is abandoned and the next step usua
 `run_code` defaults to a 120 s deadline. Long steps — a cold build, a sweep, a capture — must
 pass `timeoutMs` or they die at 120 s. For anything over roughly ten minutes, start it as a
 background job and keep working.
+
+### Teammates
+
+Agent Teams share the Lead's checkout. The policy above still applies: only one member
+writes at a time, and the Lead is the default writer. Teammates may read, design, review and
+return patches. If the Lead assigns independent tickets, it creates one worktree per writer
+from its current `HEAD`; each writer commits only on that branch and the Lead integrates
+it, never the teammate. A shared file (`AGENTS.md`, `docs/harness.md`, `mise.toml`,
+`tests/conftest.py`) folds the tickets into one writer regardless of file scope.
 
 ### Reading and editing
 
