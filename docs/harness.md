@@ -61,6 +61,24 @@ Confirmed by failure on 2026-10-25, not by reading the packaged sources:
 
 A denied gate is an environment symptom before it is a code symptom.
 
+### Temporary directories
+
+The sandbox also denies the OS temp directory to the processes the tests spawn: a gate run whose
+`TMP` and `TEMP` pointed at the user's temp directory panicked in the `test-rust` step with
+`create temp dir: Os { code: 5, kind: PermissionDenied, message: "Access is denied." }`, and
+`pytest` hit `PermissionError: [WinError 5]` under DSH's own per-session temp path — so that
+directory is not a dependable exception either.
+
+`mise.toml` sets `TMP` and `TEMP` to `.cache/tmp` in `[env]`, and `mise run init` creates
+it, so every `mise run` task writes temporary files inside the checkout. A command started
+directly gets none of that: `[env]` reaches `mise run` and `mise exec`, not a bare shell. When
+a direct run is unavoidable, set the variables in the same call, because each `pwsh` call is a
+fresh process:
+
+```powershell
+$env:TMP = "$PWD\.cache\tmp"; $env:TEMP = $env:TMP; cargo test --workspace --all-features
+```
+
 ### Approvals
 
 Each operation the policy does not pre-approve stops and waits, and a wait that outlives the
@@ -74,9 +92,35 @@ Cancelling is not free either: the operation is abandoned and the next step usua
 
 ### Timeouts
 
-`run_code` defaults to a 120 s deadline. Long steps — a cold build, a sweep, a capture — must
-pass `timeoutMs` or they die at 120 s. For anything over roughly ten minutes, start it as a
-background job and keep working.
+`run_code` defaults to a 120 s deadline and accepts `timeoutMs` up to a hard cap of 600 s. Pass
+`timeoutMs` for a step known to be slow but bounded — a cold build, a sweep, a capture — rather
+than let it die at 120 s. For anything not known to finish inside about 60 s, start it as a
+background job (`run_in_background`) and collect it with `job_output`: no deadline applies to
+a job, and it outlives the program that started it. Start a command that might hang in the
+background from the first call — a `git filter-branch` once consumed the full 600 s and left
+the repository untouched.
+
+### The shell it gives you
+
+Commands run through Windows PowerShell 5.1 (`5.1.26100`), one fresh `pwsh -Command` per call:
+`$env:` assignments, functions, variables and `Push-Location` do not survive into the next call,
+so a setup step and the command that needs it belong in the same call. This is the host's
+Windows PowerShell; a harness that shells out through it inherits the version, while which shell
+a harness gives you is its own choice.
+
+5.1 has no `Set-Content -Encoding utf8NoBOM`: the parameter rejects the value with an
+"Unable to match the identifier name utf8NoBOM to a valid enumerator name" error, and one
+sweep's writes all failed while the sweep kept going, which reads like "nothing to change".
+Write UTF-8 without a BOM through
+`[IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding($false)))`, and
+read one file back before running such a write over many.
+
+### Delegation
+
+A `subagent` is spawned with an id and reports back when it finishes; `send_message` addressed
+to that id failed with `active teammate "<id>" not found` (`TEAM_MEMBER_NOT_FOUND`), so nothing
+can be added to its instructions after it starts. Treat the brief as the whole instruction —
+goal, paths it may read, output shape and stopping condition — because there is no second one.
 
 ### Teammates
 
@@ -110,8 +154,9 @@ from vendor documentation — this page records what we have seen.
 
 ## Adding another harness
 
-Add a section when you have used the harness here, and state what it confines, what it asks
-before running a command, where its settings live, and whether those settings can be committed.
+Add a section when you have used the harness here, and state what it confines, what shell it
+gives you, what it asks before running a command, where its settings live, and whether those
+settings can be committed.
 Do not assume a behaviour because a different harness has it. Split this page into
 `docs/harness/<tool>.md` when a second section outgrows a screen.
 
