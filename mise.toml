@@ -43,6 +43,12 @@ bin_path = "bin/x64/Release SDL2"
 UV_CACHE_DIR = "{{config_root}}/.cache/uv"
 # Python on Windows defaults text I/O to cp1252; scripts and docs here are UTF-8.
 PYTHONUTF8 = "1"
+# The sandbox denies the OS temp directory to the processes a task spawns, so every task
+# points at one path inside the shared cache; mise run init creates it (ADR 0013,
+# docs/harness.md). Set here rather than per test task so a new test-bearing task cannot
+# forget it, and so mise exec applies it too.
+TMP = "{{config_root}}/.cache/tmp"
+TEMP = "{{config_root}}/.cache/tmp"
 
 [tasks.play]
 description = "Launch Stunt Island film reel playback"
@@ -162,17 +168,16 @@ run = "uv run mypy"
 [tasks.test-rust]
 description = "Run Rust unit and integration tests"
 run = "cargo test --locked --workspace --all-features"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo", TMP = "{{config_root}}/.cache/tmp", TEMP = "{{config_root}}/.cache/tmp" }
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
 
 [tasks.cov-rust]
 description = "Line coverage for the Rust format crates (stunt-core, stunt-gltf)"
 run = "cargo llvm-cov --locked -p stunt-core -p stunt-gltf --all-features --summary-only"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo", TMP = "{{config_root}}/.cache/tmp", TEMP = "{{config_root}}/.cache/tmp" }
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
 
 [tasks.test-py]
 description = "Run Python pytest suite"
 run = "uv run pytest"
-env = { TMP = "{{config_root}}/.cache/tmp", TEMP = "{{config_root}}/.cache/tmp" }
 
 [tasks.test]
 description = "Run all test suites (Rust & Python)"
@@ -191,12 +196,11 @@ env = { RUSTDOCFLAGS = "-D warnings", CARGO_HOME = "{{config_root}}/.cache/cargo
 [tasks.check-rust-matrix]
 description = "Build and test stunt-core without optional features"
 run = "cargo check -p stunt-core --no-default-features && cargo test -p stunt-core --no-default-features"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo", TMP = "{{config_root}}/.cache/tmp", TEMP = "{{config_root}}/.cache/tmp" }
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
 
 [tasks.cov-py]
 description = "Run Python test suite with coverage reporting"
 run = "uv run pytest --cov=stunt_reel --cov-report=term-missing"
-env = { TMP = "{{config_root}}/.cache/tmp", TEMP = "{{config_root}}/.cache/tmp" }
 
 # The three gate tasks dispatch one script (ADR 0014). The step list is the leaf tasks in
 # python/scripts/gate.py, so the halves cannot run a shorter gate than the whole.
