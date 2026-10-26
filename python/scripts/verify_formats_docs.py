@@ -27,7 +27,6 @@ import math
 import re
 import struct
 import sys
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -39,6 +38,7 @@ from stunt_reel.kaitai import (
     compiler_version,
     load_generated_module,
 )
+from stunt_reel.scratch import scratch_dir
 
 # -----------------------------------------------------------------------------
 # Catalog Specification Constants
@@ -693,7 +693,7 @@ def _validate_res_with_kaitai(repo_root: Path, res_bytes: bytes) -> tuple[list[s
 
     schema_path = repo_root / "research" / "formats" / "res.ksy"
     try:
-        with tempfile.TemporaryDirectory(prefix="stunt-kaitai-") as tmp:
+        with scratch_dir(prefix="stunt-kaitai-") as tmp:
             compile_schemas([schema_path], tmp)
             res_module = load_generated_module(Path(tmp) / "res.py", "stunt_kaitai_res")
             res_cls: Any = res_module.Res
@@ -782,7 +782,7 @@ def _validate_flm_with_kaitai(repo_root: Path, flm_bytes: bytes) -> tuple[list[s
 
     schema_path = repo_root / "research" / "formats" / "flm_slice.ksy"
     try:
-        with tempfile.TemporaryDirectory(prefix="stunt-kaitai-") as tmp:
+        with scratch_dir(prefix="stunt-kaitai-") as tmp:
             compile_schemas([schema_path], tmp)
             module = load_generated_module(Path(tmp) / "flm_slice.py", "stunt_kaitai_flm_slice")
             flm_cls: Any = module.FlmSlice

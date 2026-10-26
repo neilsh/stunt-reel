@@ -1,21 +1,33 @@
-"""Shared pytest configuration: registers the TAC mock fixtures as a plugin."""
+"""Shared pytest configuration: registers the TAC mock fixtures as a plugin.
+
+The temporary root is per run and lives in the checkout's pytest cache directory.
+pytest deletes a --basetemp it finds on disk and resets a cache directory it
+creates, and a sandboxed run may do neither; naming the root after the run means
+there is nothing stale to delete, and creating the cache directory first means
+pytest never resets it.  On Windows the mkdir mode shim keeps pytest's own
+0o700 temporary directories usable under the sandbox.
+"""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+
+from pytest_helpers import (
+    cache_dir,
+    install_windows_mkdir_shim,
+    per_run_basetemp,
+    prune_old_basetemps,
+)
 
 pytest_plugins = ["tac_mock"]
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Keep pytest's temporary root inside the checkout when the OS temp dir is unusable.
-
-    A low-integrity Python -- a sandboxed process, or any binary carrying this
-    checkout's integrity label -- cannot write the user's temp directory, so
-    tempfile falls back to the working directory and every tmp_path lands in the
-    checkout, where the nested-worktree walker mistakes its fake .git file for a
-    worktree.  A per-checkout basetemp keeps temporary files out of that walk and
-    out of the OS temp dir at once.
-    """
+    """Give the run a fresh temporary root inside the checkout's pytest cache."""
+    install_windows_mkdir_shim()
+    rootpath = Path(config.rootpath)
+    prune_old_basetemps(cache_dir(rootpath))
     if config.option.basetemp is None:
-        config.option.basetemp = str(config.rootpath / ".pytest_cache" / "basetemp")
+        config.option.basetemp = str(per_run_basetemp(rootpath))

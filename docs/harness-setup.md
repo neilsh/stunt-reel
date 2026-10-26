@@ -113,4 +113,12 @@ without it.
   setup hook, so provisioning keeps the `danger-full-access` step. The same run also writes
   mise's per-checkout trust record. The data root stays outside the checkout by design
   ([ADR 0008](adr/0008-worktrees-share-one-read-only-data-root.md)).
+- pytest's per-checkout cache and temporary root used to break `mise run check` under
+  `workspace-write`: pytest deletes a `--basetemp` it finds and resets a cache directory it
+  creates, and the sandbox denies both. [tests/conftest.py](../tests/conftest.py) now creates
+  `.pytest_cache` first and gives each run a fresh `basetemp-<stamp>-<id>` (newest three
+  kept), so there is nothing stale to delete. A Windows-only shim in the same conftest drops
+  the mode from `os.mkdir`, because a directory created with `0o700` cannot be reopened even by
+  the process that made it; [scratch.py](../python/stunt_reel/scratch.py) does the same for
+  tooling that shells out.
 - Worktrees outside the session workspace are unsupported under `workspace-write`.

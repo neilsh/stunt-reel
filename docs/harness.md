@@ -51,6 +51,10 @@ Confirmed by failure on 2026-10-25, not by reading the packaged sources:
   `MISE_DISABLE_TOOLS=rust` with the installed toolchain's `bin` on `PATH` remains a fallback.
 * Directory ACLs are only partially enforced: a directory created under the sandbox can refuse
   a later nested creation inside it, and a stale one can refuse removal.
+* A directory created with `mkdir(mode=0o700)` cannot be listed or removed by the process that
+  created it, although Windows ignores the mode. pytest creates every temporary root that way;
+  [`tests/conftest.py`](../tests/conftest.py) installs a Windows-only `os.mkdir` shim that drops
+  the mode, so the gate's Python half runs under `workspace-write`.
 * `cargo` writes `target/` inside the checkout, so a warm build is fine once the toolchain
   resolves. `uv`'s cache is redirected into the shared `.cache/` (ADR 0013), so it is inside
   the workspace.
