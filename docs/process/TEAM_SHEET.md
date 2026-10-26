@@ -15,6 +15,7 @@ The roles below are automation personas used by the development workflow, not pe
 | **`gltf-exporter-worker`** *(retired; the exporter is now `crates/stunt-gltf/`, owned by `rust-engine-worker`)* | Baseline `.SOD` mesh ingest and glTF export | `crates/stunt-gltf/` (formerly `python/stunt_reel/gltf/`, `tests/test_gltf.py`) |
 | **`rust-engine-worker`** | Rust engine | `crates/stunt-core/`, `crates/stunt-render/`, `crates/stunt-cli/` |
 | **`parity-auditor`** | Quality gate and asset-isolation verification | Read-only across all code; runs `mise run check` and the gates in [`SPEC.md` § 5](../SPEC.md#5-master-verification-matrix) |
+| **`tooling-worker`** | Repository tooling and harness policy | `mise.toml`, `python/scripts/`, `tests/conftest.py`, `tests/test_formats_catalog.py`, `docs/harness.md`, `docs/harness-setup.md`, `docs/process/plans/` |
 
 ---
 
@@ -53,7 +54,7 @@ Origin: the `CTRY.FLM` + `CTRY.ALL` export audit. Each ticket is independent. Fi
 | `T14` | One film clock range `0..=total_ticks`; the window wraps at `% (total_ticks + 1)` | `rust-engine-worker` | **Open** | [`config.rs`](../../crates/stunt-cli/src/config.rs) |
 | `T15` | Typed parity report, once `T12`–`T14` show what `FrameScore` and the per-film summary need | `rust-engine-worker` | **Open** (deferred) | [`score.rs`](../../crates/stunt-cli/src/parity/score.rs) |
 
-### Milestone 4: Architecture Deepening *(Design phase)*
+### Milestone 4: Architecture Deepening *(Complete)*
 
 Four design units from the architecture review, worked in order A-D. Each unit's brief lives in [`docs/process/plans/architecture-deepening/`](plans/architecture-deepening/README.md) and records the interface, migration, test survival and kill criteria. Implementation is one PR per unit, each requiring `mise run check` green and an unchanged local parity baseline. Owners are assigned when implementation starts.
 
@@ -63,6 +64,18 @@ Four design units from the architecture review, worked in order A-D. Each unit's
 | `A02` | Decoded shape seam: one stop decision, a shape IR that owns its invariants, partial SOD as a value | - | **Done** (merged 58745f8) | [brief](plans/architecture-deepening/B-decoded-shape.md) |
 | `A03` | Renderer entry point: one renderer interface for headless and window | - | **Done** (all stages merged) | [brief](plans/architecture-deepening/C-renderer-entry.md) |
 | `A04` | Capture session: one emulator session with an injectable transport; transport at operation altitude | - | **Done** (merged; live capture and probe verified 2026-10-25) | [brief](plans/architecture-deepening/D-capture-session.md) |
+
+### Milestone 5: Retro Hardening *(Implementation in progress)*
+
+Source: [retro-hardening plan](plans/retro-hardening-2026-10-25.md), agreed 2026-10-25. One branch/PR; commits per ticket; the full `mise run check` runs once at the tip.
+
+| Ticket | Title | Owner | Status | Links |
+|---|---|---|---|---|
+| `T16` | Verify the fresh-worktree `pytest` cache assumption | `tooling-worker` | **Done** (verified; no change) | [plan](plans/retro-hardening-2026-10-25.md), [salvage note](plans/review-dsh-friction-salvage.md) |
+| `T17` | Tier checker ignores nested bracket expressions | `tooling-worker` | **Open** | [plan](plans/retro-hardening-2026-10-25.md), [`verify_formats_docs.py`](../../python/scripts/verify_formats_docs.py) |
+| `T18` | Writer policy for Agent Teams | `tooling-worker` | **Open** | [plan](plans/retro-hardening-2026-10-25.md), [harness.md](../../docs/harness.md) |
+| `T19` | `mise run build-at` for a previous revision | `tooling-worker` | **Open** | [plan](plans/retro-hardening-2026-10-25.md), [mise.toml](../../mise.toml) |
+| `T20` | Commit-reference convention and programme pointer | `sentinel` | **Open** | [plan](plans/retro-hardening-2026-10-25.md), [ARCHITECTURE.md](../../docs/ARCHITECTURE.md) |
 
 
 ---

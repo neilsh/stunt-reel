@@ -75,10 +75,10 @@ Oldest first, on top of `main` (`60922b7`):
   Under `workspace-write` that write is denied and every task stops before its first step;
   `MISE_DISABLE_TOOLS=rust` with the installed toolchain's `bin` on `PATH` lets the gate run
   without escalation ([`docs/harness.md`](../../harness.md) records both routes).
-- A freshly created worktree fails its first `pytest` run: `tests/conftest.py` points
-  `--basetemp` at `<root>/.pytest_cache/basetemp`, and pytest creates it with
-  `mkdir(parents=False)`, so it needs `.pytest_cache` to exist first. `mkdir .pytest_cache`
-  once per worktree fixes it; making the fallback create the parent would fix it for good.
+- **Corrected 2026-10-25 (retro-hardening `T16`):** the freshly created worktree's
+  first `pytest` run now passes. With the current toolchain, `pytest` creates
+  `.pytest_cache` itself before using the basetemp configured in `tests/conftest.py`, so
+  no `mkdir` is needed and no fallback change is required.
 
 ## Open questions
 
