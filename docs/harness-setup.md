@@ -78,6 +78,13 @@ The scripted setup is `mise run init`; under DSH its link step needs the wider p
 4. Verify the links and that the corpus reads (see below).
 5. Switch back to `workspace-write`; later `mise run` tasks in that worktree do not need
    the state write, because an existing trust record is not rewritten.
+6. To retire the worktree later, run `mise run reap -- --yes` from the primary checkout;
+   it unlinks the junctions into the data root before `git worktree remove` runs. Never
+   call `git worktree remove` directly on a linked worktree: git 2.47.1 deleted the
+   junction targets, and 2.55.0 left the junction directories behind and deregistered the
+   worktree ([ADR 0018](adr/0018-reaping-unlinks-the-data-root-links-first.md)). Anything
+   else that deletes recursively needs the links unlinked first, and `robocopy /MIR` needs
+   `/XJ`.
 
 Why the split: [`worktree_init.py`](../python/scripts/worktree_init.py) creates junctions
 whose targets are in the shared data root, outside the workspace. DSH creates a junction

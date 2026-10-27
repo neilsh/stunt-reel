@@ -79,6 +79,10 @@ run = "uv sync --locked --all-groups && uv run python python/scripts/worktree_in
 description = "Report this worktree's build outputs; remove them with --yes (mise run clean -- --yes), or rotate parity render trees only (mise run clean -- --parity --keep 3 --yes)"
 run = "uv run python python/scripts/worktree_init.py clean"
 
+[tasks.reap]
+description = "Remove worktrees whose branch is already in main, unlinking their data-root junctions first (mise run reap -- --yes [--cherry] [--prune] [--stash-dirty] [--discard-untracked])"
+run = "uv run python python/scripts/worktree_init.py reap"
+
 [tasks.build-at]
 description = "Build stunt-cli from a git revision with an isolated target dir (mise run build-at -- <rev> <out>)"
 run = "uv run python python/scripts/build_at.py"
