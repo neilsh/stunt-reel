@@ -7,7 +7,9 @@ cache (ADR 0013).  ``mise run clean`` reports the per-worktree build outputs and
 removes them only with ``--yes``; the shared cache is reported, never removed.
 ``clean -- --parity --keep N`` narrows the same command to the parity render trees,
 which accumulate one directory per render and are the one build output big enough to
-need selective rotation.
+need selective rotation.  ``reap`` removes merged worktrees: it unlinks every link
+into the data root, proves none remain, and only then lets git delete the checkout,
+because git's worktree removal has recursed through Windows junctions on some builds.
 """
 
 from __future__ import annotations
@@ -15,8 +17,10 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from stunt_reel.dataroot import (
@@ -46,6 +50,9 @@ PARITY_ROOTS: tuple[str, ...] = ("build/parity/ours", "build/scratch/sweep")
 PARITY_PROTECTED: tuple[str, ...] = ("_current", "_previous", "_base")
 
 REFERENCE_LINK = "build/parity/reference"
+
+#: Directories inside the primary checkout where linked worktrees live (SOP 6).
+POOL_DIRS: tuple[str, ...] = (".agents/worktrees", ".claude/worktrees")
 
 
 def _size(path: Path) -> int:
@@ -231,8 +238,369 @@ def _clean(confirmed: bool, parity: bool = False, keep: int = 1) -> int:
     return 0
 
 
+@dataclass(frozen=True)
+class _Worktree:
+    """One entry of ``git worktree list --porcelain``."""
+
+    path: Path
+    head: str
+    branch: str | None
+
+
+@dataclass
+class _Candidate:
+    """A worktree ``reap`` may remove, with the state that decides whether it may."""
+
+    worktree: _Worktree
+    merged: bool
+    dirty: list[str]
+    untracked: list[str]
+    links: list[Path]
+    size: int
+
+
+def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run one git command in *repo*; the caller decides what a failure means."""
+    git = shutil.which("git")
+    if git is None:
+        raise SharedDataError("git is not on PATH")
+    return subprocess.run(  # noqa: S603
+        [git, *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _parse_worktrees(text: str) -> list[_Worktree]:
+    """Parse ``git worktree list --porcelain``; the primary checkout comes first."""
+    found: list[_Worktree] = []
+    path: Path | None = None
+    head = ""
+    branch: str | None = None
+    for line in [*text.splitlines(), ""]:
+        if not line:
+            if path is not None:
+                found.append(_Worktree(path=path, head=head, branch=branch))
+            path, head, branch = None, "", None
+            continue
+        key, _, value = line.partition(" ")
+        if key == "worktree":
+            path = Path(value)
+        elif key == "HEAD":
+            head = value
+        elif key == "branch":
+            branch = value.removeprefix("refs/heads/")
+    return found
+
+
+def _worktrees(repo: Path) -> list[_Worktree]:
+    """Every worktree git knows in *repo*, primary first."""
+    result = _git(repo, "worktree", "list", "--porcelain")
+    if result.returncode != 0:
+        raise SharedDataError(f"cannot list worktrees: {result.stderr.strip()}")
+    return _parse_worktrees(result.stdout)
+
+
+def _is_ancestor(repo: Path, branch: str) -> bool:
+    """True when ``main`` already contains every commit of *branch*."""
+    return _git(repo, "merge-base", "--is-ancestor", branch, "main").returncode == 0
+
+
+def _unmerged_patch_count(repo: Path, branch: str) -> int:
+    """Patches on *branch* that ``main`` does not already hold."""
+    result = _git(repo, "cherry", "main", branch)
+    return sum(1 for line in result.stdout.splitlines() if line.startswith("+"))
+
+
+def _changed(path: Path, *, untracked: bool) -> list[str]:
+    """Modified tracked files, or untracked ones, of one checkout."""
+    flag = "--untracked-files=normal" if untracked else "--untracked-files=no"
+    result = _git(path, "status", "--porcelain=v1", flag)
+    if result.returncode != 0:
+        return [f"cannot read status: {result.stderr.strip()}"]
+    lines = result.stdout.splitlines()
+    if untracked:
+        return [line for line in lines if line.startswith("??")]
+    return [line for line in lines if not line.startswith("??")]
+
+
+def _reparse_points(root: Path) -> list[Path]:
+    """Every link under *root*, never descending into one."""
+    found: list[Path] = []
+    stack = [root]
+    while stack:
+        current = stack.pop()
+        try:
+            with os.scandir(current) as entries:
+                for entry in entries:
+                    path = Path(entry.path)
+                    if is_link(path):
+                        found.append(path)
+                    elif entry.is_dir(follow_symlinks=False):
+                        stack.append(path)
+        except OSError:
+            continue
+    return found
+
+
+def _unlink_reparse_points(root: Path) -> list[str]:
+    """Unlink every link under *root*; return the ones that refused."""
+    failures: list[str] = []
+    for path in _reparse_points(root):
+        try:
+            remove_link(path)
+        except OSError as err:
+            failures.append(f"{path}: {err}")
+    return failures
+
+
+def _candidates(
+    repo: Path, entries: list[_Worktree], *, include_cherry: bool
+) -> tuple[list[_Candidate], list[str]]:
+    """Classify worktrees under *repo*; return what may go and what will not."""
+    primary = entries[0].path
+    candidates: list[_Candidate] = []
+    skipped: list[str] = []
+    for worktree in entries[1:]:
+        label = worktree.branch or "(detached)"
+        if primary not in worktree.path.parents:
+            skipped.append(f"{label}: outside this checkout's worktree pool")
+            continue
+        if worktree.path == repo or worktree.path in repo.parents:
+            skipped.append(f"{label}: contains this checkout")
+            continue
+        if worktree.branch is None:
+            skipped.append(f"{label}: detached HEAD")
+            continue
+        merged = _is_ancestor(repo, worktree.branch)
+        if not merged:
+            patches = _unmerged_patch_count(repo, worktree.branch)
+            if not (include_cherry and patches == 0):
+                skipped.append(f"{label}: {patches} patch(es) not in main")
+                continue
+        candidates.append(
+            _Candidate(
+                worktree=worktree,
+                merged=merged,
+                dirty=_changed(worktree.path, untracked=False),
+                untracked=_changed(worktree.path, untracked=True),
+                links=_reparse_points(worktree.path),
+                size=_size(worktree.path),
+            )
+        )
+    return candidates, skipped
+
+
+def _describe(candidate: _Candidate) -> str:
+    """One report line for a candidate."""
+    worktree = candidate.worktree
+    state = "merged" if candidate.merged else "cherry"
+    flags: list[str] = []
+    if candidate.dirty:
+        flags.append(f"{len(candidate.dirty)} modified")
+    if candidate.untracked:
+        flags.append(f"{len(candidate.untracked)} untracked")
+    if candidate.links:
+        flags.append(f"{len(candidate.links)} link(s)")
+    detail = ", ".join(flags) if flags else "clean"
+    branch = worktree.branch or "(detached)"
+    return (
+        f"  {state:<6} {branch:<42}{candidate.size / 1_048_576:9.1f} MiB"
+        f"  {worktree.head[:10]}  {detail}"
+    )
+
+
+def _blocked(candidate: _Candidate, *, stash_dirty: bool, discard_untracked: bool) -> list[str]:
+    """What stops *candidate* from being removed without losing work."""
+    reasons: list[str] = []
+    if candidate.dirty and not stash_dirty:
+        reasons.append("modified files; pass --stash-dirty to stash them")
+    if candidate.untracked and not discard_untracked:
+        reasons.append("untracked files; pass --discard-untracked to drop them")
+    return reasons
+
+
+def _reap_one(
+    repo: Path,
+    candidate: _Candidate,
+    *,
+    stash_dirty: bool,
+    discard_untracked: bool,
+) -> str | None:
+    """Remove one candidate; return a failure message, or None on success."""
+    worktree = candidate.worktree
+    branch = worktree.branch
+    path = worktree.path
+    if candidate.dirty and not stash_dirty:
+        return f"{branch}: modified files"
+    if candidate.untracked and not discard_untracked:
+        return f"{branch}: untracked files"
+    if candidate.dirty:
+        stash = _git(path, "stash", "push", "--message", f"reap {branch}: uncommitted work")
+        if stash.returncode != 0:
+            return f"{branch}: git stash failed: {stash.stderr.strip()}"
+        if _changed(path, untracked=False):
+            return f"{branch}: still modified after stashing"
+    failures = _unlink_reparse_points(path)
+    if failures:
+        return f"{branch}: cannot unlink: {'; '.join(failures)}"
+    remaining = _reparse_points(path)
+    if remaining:
+        return f"{branch}: links remain: {', '.join(str(item) for item in remaining)}"
+    remove_args = ["worktree", "remove"]
+    if candidate.untracked:
+        remove_args.append("--force")
+    remove = _git(repo, *remove_args, str(path))
+    if remove.returncode != 0:
+        return f"{branch}: git worktree remove failed: {remove.stderr.strip()}"
+    if branch is not None:
+        delete = _git(repo, "branch", "-d" if candidate.merged else "-D", branch)
+        if delete.returncode != 0:
+            return f"{branch}: git branch delete failed: {delete.stderr.strip()}"
+    return None
+
+
+def _prune_leftovers(entries: list[_Worktree], *, confirmed: bool) -> tuple[int, int]:
+    """Remove pool directories git no longer registers; return count and bytes."""
+    primary = entries[0].path
+    registered = {entry.path for entry in entries}
+    removed = 0
+    freed = 0
+    for relative in POOL_DIRS:
+        pool = primary / relative
+        if not pool.is_dir() or is_link(pool):
+            continue
+        for child in sorted(pool.iterdir()):
+            if not child.is_dir() or is_link(child) or child in registered:
+                continue
+            size = _size(child)
+            print(f"  leftover {relative}/{child.name:<38}{size / 1_048_576:9.1f} MiB")
+            if not confirmed:
+                continue
+            failures = _unlink_reparse_points(child)
+            if failures or _reparse_points(child):
+                print(f"  ! {child.name}: links remain; left alone")
+                continue
+            if any(child.iterdir()):
+                print(f"  ! {child.name}: holds files git does not know; left alone")
+                continue
+            try:
+                child.rmdir()
+            except OSError as err:
+                print(f"  ! {child.name}: {err}")
+                continue
+            removed += 1
+            freed += size
+    return removed, freed
+
+
+def _prune_branches(
+    repo: Path, entries: list[_Worktree], *, include_cherry: bool, confirmed: bool
+) -> tuple[int, int]:
+    """Delete branches no worktree holds; return removed and kept counts."""
+    held = {entry.branch for entry in entries if entry.branch}
+    result = _git(repo, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+    removed = 0
+    kept = 0
+    for branch in sorted(result.stdout.splitlines()):
+        if not branch or branch == "main" or branch in held:
+            continue
+        merged = _is_ancestor(repo, branch)
+        patches = _unmerged_patch_count(repo, branch)
+        if not merged and not (include_cherry and patches == 0):
+            kept += 1
+            continue
+        print(f"  branch   {branch:<48}{'merged' if merged else 'patch-equivalent'}")
+        if not confirmed:
+            continue
+        delete = _git(repo, "branch", "-d" if merged else "-D", branch)
+        if delete.returncode == 0:
+            removed += 1
+        else:
+            print(f"  ! {branch}: {delete.stderr.strip()}")
+    return removed, kept
+
+
+def _reap(
+    confirmed: bool,
+    *,
+    include_cherry: bool = False,
+    prune: bool = False,
+    stash_dirty: bool = False,
+    discard_untracked: bool = False,
+) -> int:
+    """Remove merged worktrees, unlinking every data-root link first."""
+    repo = REPO_ROOT
+    try:
+        entries = _worktrees(repo)
+    except SharedDataError as err:
+        print(f"  ! {err}")
+        return 1
+    if len(entries) < 2:
+        print("no linked worktrees")
+        return 0
+    if entries[0].path != repo:
+        print("reap must run from the primary checkout")
+        return 1
+    candidates, skipped = _candidates(repo, entries, include_cherry=include_cherry)
+    print(f"worktree   {repo}")
+    print("candidates:")
+    for candidate in candidates:
+        print(_describe(candidate))
+    if not candidates:
+        print("  (none)")
+    if skipped:
+        print("skipped:")
+        for line in skipped:
+            print(f"  {line}")
+    blocked = False
+    for candidate in candidates:
+        reasons = _blocked(candidate, stash_dirty=stash_dirty, discard_untracked=discard_untracked)
+        if reasons:
+            label = candidate.worktree.branch or "(detached)"
+            print(f"  ! {label}: {'; '.join(reasons)}")
+            blocked = True
+    if blocked:
+        print("\nrefusing to remove anything until every candidate is clean or allowed")
+        return 1
+    if not confirmed:
+        if prune:
+            _prune_leftovers(entries, confirmed=False)
+            _prune_branches(repo, entries, include_cherry=include_cherry, confirmed=False)
+        print("\ndry run; re-run with --yes to reap")
+        return 0
+    failed = 0
+    reclaimed = 0
+    for candidate in candidates:
+        error = _reap_one(
+            repo,
+            candidate,
+            stash_dirty=stash_dirty,
+            discard_untracked=discard_untracked,
+        )
+        if error is not None:
+            print(f"  ! {error}")
+            failed += 1
+            continue
+        reclaimed += candidate.size
+        print(f"  removed  {candidate.worktree.branch}")
+    print(f"\nreaped {len(candidates) - failed} worktree(s), {reclaimed / 1_048_576:.1f} MiB")
+    if prune:
+        print("\npruning pool leftovers and branches without a worktree:")
+        fresh = _worktrees(repo)
+        leftover_dirs, leftover_bytes = _prune_leftovers(fresh, confirmed=True)
+        branches, kept = _prune_branches(repo, fresh, include_cherry=include_cherry, confirmed=True)
+        print(
+            f"  removed {branches} branch(es) and {leftover_dirs} leftover dir(s),"
+            f" {leftover_bytes / 1_048_576:.1f} MiB; kept {kept} unmerged branch(es)"
+        )
+    return 1 if failed else 0
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Run ``init`` or ``clean``."""
+    """Run ``init``, ``clean`` or ``reap``."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
     init = commands.add_parser("init", help="link the shared data root into this checkout")
@@ -249,9 +617,41 @@ def main(argv: list[str] | None = None) -> int:
         help="only report or rotate the parity render trees under build/",
     )
     clean.add_argument("--keep", type=int, default=1, help="render trees to keep per root")
+    reap = commands.add_parser(
+        "reap", help="remove merged worktrees after unlinking their data-root links"
+    )
+    reap.add_argument("--yes", action="store_true", help="actually remove them")
+    reap.add_argument(
+        "--cherry",
+        action="store_true",
+        help="also reap worktrees whose patches main already holds without a merge",
+    )
+    reap.add_argument(
+        "--prune",
+        action="store_true",
+        help="also remove unregistered pool dirs and branches left without a worktree",
+    )
+    reap.add_argument(
+        "--stash-dirty",
+        action="store_true",
+        help="stash a worktree's modified files instead of refusing",
+    )
+    reap.add_argument(
+        "--discard-untracked",
+        action="store_true",
+        help="delete a worktree's untracked files instead of refusing",
+    )
     args = parser.parse_args(argv)
     if args.command == "init":
         return _init(bool(args.migrate))
+    if args.command == "reap":
+        return _reap(
+            bool(args.yes),
+            include_cherry=bool(args.cherry),
+            prune=bool(args.prune),
+            stash_dirty=bool(args.stash_dirty),
+            discard_untracked=bool(args.discard_untracked),
+        )
     if int(args.keep) < 0:
         parser.error("--keep must not be negative")
     return _clean(bool(args.yes), parity=bool(args.parity), keep=int(args.keep))
