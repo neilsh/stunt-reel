@@ -2,8 +2,9 @@
 
 #![allow(dead_code)]
 
+use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use stunt_core::contracts::{CameraTransform, TrajectoryRecord};
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
@@ -22,6 +23,58 @@ pub(crate) const REQUIRE_GPU_ENV: &str = "STUNT_REQUIRE_GPU";
 /// Whether a missing adapter must fail the test instead of skipping it.
 pub(crate) fn require_gpu() -> bool {
     std::env::var(REQUIRE_GPU_ENV).as_deref() == Ok("1")
+}
+
+/// Serializes the whole lifetime of every GPU renderer in this test process.
+///
+/// Each libtest thread used to create and destroy its own `wgpu::Instance` at the same time as
+/// the others. On Windows that drives concurrent instance, device, pipeline and teardown work
+/// through the Vulkan loader, the DX12 device factory and the GL/WGL hidden-window threads, and
+/// the Windows loader lock plus the vendor driver locks can deadlock (see
+/// `target/renderer_test-hang/report.md`: 8/100 runs at default threads, 0/25 serialized).
+/// One test process therefore uses one renderer at a time: [`open_or_skip`] takes this lock
+/// before creating the renderer, and [`LockedRenderer`] holds it until the renderer has been
+/// dropped. Tests that never create a GPU renderer stay parallel.
+static GPU_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+/// Locks the process-wide GPU test lock, recovering from any poison left by a panicking test.
+fn lock_gpu() -> MutexGuard<'static, ()> {
+    GPU_TEST_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// A [`Renderer`] that holds the process-wide GPU test lock until it drops.
+///
+/// Fields drop in declaration order, so `renderer` (and its device, queue and instance) is torn
+/// down before `_guard` releases the lock.
+pub(crate) struct LockedRenderer {
+    renderer: Renderer,
+    _guard: MutexGuard<'static, ()>,
+}
+
+impl LockedRenderer {
+    fn new(renderer: Renderer, guard: MutexGuard<'static, ()>) -> Self {
+        Self {
+            renderer,
+            _guard: guard,
+        }
+    }
+}
+
+impl Deref for LockedRenderer {
+    type Target = Renderer;
+
+    fn deref(&self) -> &Self::Target {
+        &self.renderer
+    }
+}
+
+impl DerefMut for LockedRenderer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.renderer
+    }
 }
 
 /// Collects every page a renderer hands it.
@@ -59,7 +112,7 @@ impl PageSink for RecordingSink {
 
 /// A renderer opened for one scene, plus the handle to the pages it accepted.
 pub(crate) struct TestRenderer {
-    pub(crate) renderer: Renderer,
+    pub(crate) renderer: LockedRenderer,
     pub(crate) sink: RecordingSink,
     pub(crate) size: PageSize,
 }
@@ -90,15 +143,17 @@ impl TestRenderer {
 
 /// Opens an offscreen renderer over the scene, or skips/fails per ADR 0006.
 ///
-/// Panics instead of returning None when STUNT_REQUIRE_GPU=1.
+/// Panics instead of returning None when STUNT_REQUIRE_GPU=1. The returned renderer holds the
+/// process-wide GPU test lock until it is dropped.
 pub(crate) fn open_or_skip(
     scene: &FilmScene,
     target: Offscreen,
     options: RenderOptions,
     sink: Box<dyn PageSink>,
-) -> Option<Renderer> {
+) -> Option<LockedRenderer> {
+    let guard = lock_gpu();
     match Renderer::offscreen(scene, target, sink, options) {
-        Ok(renderer) => Some(renderer),
+        Ok(renderer) => Some(LockedRenderer::new(renderer, guard)),
         Err(error) if require_gpu() => {
             panic!("{REQUIRE_GPU_ENV}=1 but no GPU renderer could be created: {error}")
         }
