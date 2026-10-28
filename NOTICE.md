@@ -19,10 +19,12 @@ are game-derived and are not relicensed by this project:
 - `MODE_13H_PALETTE` (768 bytes: 256 RGB triples), the Stunt Island master palette
   (240 scene entries + 16 UI entries). It was transcribed from the community
   `SODParse/pal.h` in the Stunt Island Central archive and re-encoded as 6-bit DAC
-  levels shifted left by two. The same data is pinned in
-  `tests/fixtures/mode13h_palette.json` so the Rust and Python copies cannot drift.
+  levels shifted left by two. It is committed in three places, kept identical so the Rust
+  and Python copies cannot drift: `crates/stunt-core/src/contracts/palette.rs`,
+  `python/stunt_reel/tac/palette.py` and the test pin `tests/fixtures/mode13h_palette.json`.
 - `SOD_SCALE_TABLE` (18 floating-point entries), the scale table from the community
   `SODParse/SOD.H` (Dave Palmowski), matching the historical `DECODE.C` implementation.
+  It is committed once, in `crates/stunt-core/src/sod/vm.rs`.
 
 ## Third-party material and credits
 

@@ -118,7 +118,7 @@ description = "Diagnostic probes on one capture/render pair (mise run parity-pro
 run = "uv run python python/scripts/parity_probe.py"
 
 [tasks.verify-docs]
-description = "Verify the formats catalog: structure, evidentiary tiers, links, cleanroom isolation"
+description = "Verify the formats catalog: structure, evidentiary tiers, links, asset isolation"
 run = "uv run python python/scripts/verify_formats_docs.py"
 
 [tasks.unlzexe]

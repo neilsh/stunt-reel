@@ -79,6 +79,6 @@ Issues are welcome. For anything larger than a small fix, please open an issue b
 
 Original code and schemas are dual-licensed under [MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE), at your option.
 
-Original documentation and research notes are licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+Original documentation and research notes are licensed [CC BY 4.0](LICENSE-CC-BY-4.0).
 
 Game-derived material (the raw palette and scale tables), quoted manual text, and cited community work are not relicensed by this project and remain under their own terms — see [`NOTICE.md`](NOTICE.md).
