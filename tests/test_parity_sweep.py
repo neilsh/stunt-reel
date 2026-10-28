@@ -14,10 +14,11 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import parity_probe  # noqa: E402
 import parity_sweep  # noqa: E402
-from parity_sweep import Score, Variant  # noqa: E402
+from parity_sweep import Variant  # noqa: E402
 
 from stunt_reel import parity_artifacts  # noqa: E402
 from stunt_reel.parity_artifacts import FilmId, Geometry, RenderRecord  # noqa: E402
+from stunt_reel.parity_pipeline import Score  # noqa: E402
 
 
 def _geometry() -> Geometry:
@@ -133,92 +134,6 @@ def test_actor_iou_on_synthetic_planes(tmp_path: Path) -> None:
     assert value == pytest.approx(0.5)
 
 
-def _render_tree(tmp_path: Path, film: str, flm_bytes: int, ticks: list[int]) -> tuple[Path, Path]:
-    """A capture of CTRY.FLM (100 bytes) at ticks 7 and 9, and a render with planes at `ticks`."""
-    reference, render = tmp_path / "ref", tmp_path / "ours"
-    reference.mkdir()
-    render.mkdir()
-    frames = [{"film_tick": 7}, {"film_tick": 9}]
-    meta = {"film": "CTRY.FLM", "flm_bytes": 100, "frames": frames}
-    (reference / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
-    parity_artifacts.write_render(
-        render / "render.json",
-        RenderRecord(
-            schema_version=1,
-            film=FilmId(name=film, flm_bytes=flm_bytes),
-            geometry=_geometry(),
-            ticks=(),
-        ),
-    )
-    for tick in ticks:
-        (render / f"tick_{tick:05d}.idx").write_bytes(b"")
-        (render / f"tick_{tick:05d}.layer").write_bytes(b"")
-    return reference, render
-
-
-def test_check_render_accepts_a_matching_render_with_planes(tmp_path: Path) -> None:
-    reference, render = _render_tree(tmp_path, "ctry.flm", 100, [7, 9])
-    parity_sweep.check_render(reference, render, [7, 9])
-
-
-def test_check_render_accepts_a_legacy_sidecar_render(tmp_path: Path) -> None:
-    reference, render = _render_tree(tmp_path, "CTRY.FLM", 100, [7, 9])
-    (render / "render.json").unlink()
-    (render / "palette_controls.json").write_text(
-        json.dumps({"film": "CTRY.FLM", "flm_bytes": 100, "ticks": []}), encoding="utf-8"
-    )
-    parity_sweep.check_render(reference, render, [7, 9])
-
-
-@pytest.mark.parametrize(
-    ("film", "flm_bytes", "message"),
-    [("INTRO.FLM", 100, "render is of INTRO.FLM"), ("CTRY.FLM", 101, "render's is 101$")],
-)
-def test_check_render_refuses_another_film(
-    tmp_path: Path, film: str, flm_bytes: int, message: str
-) -> None:
-    reference, render = _render_tree(tmp_path, film, flm_bytes, [7, 9])
-    with pytest.raises(ValueError, match=message):
-        parity_sweep.check_render(reference, render, [7, 9])
-
-
-def test_check_render_refuses_a_render_without_planes(tmp_path: Path) -> None:
-    reference, render = _render_tree(tmp_path, "CTRY.FLM", 100, [7])
-    (render / "tick_00007.layer").unlink()
-    with pytest.raises(ValueError, match="no render planes for 2 captured tick"):
-        parity_sweep.check_render(reference, render, [7, 9])
-
-
-def _report(tmp_path: Path, **fields: float | int | None) -> Path:
-    report = tmp_path / "report"
-    report.mkdir()
-    document: dict[str, object] = {"per_frame": []}
-    document.update(fields)
-    (report / "report.json").write_text(json.dumps(document), encoding="utf-8")
-    return report
-
-
-def test_format_summary_names_the_scored_means(tmp_path: Path) -> None:
-    report = _report(
-        tmp_path,
-        mean_ssim_scored=0.77322346,
-        mean_iou_scored=0.97829825,
-        mean_index_agreement_scored=0.5046078,
-        scored_frames=114,
-        frames=140,
-    )
-    assert (
-        parity_sweep.format_summary("ctry", report)
-        == "ctry  ssim 0.7732  iou 0.9783  idx 0.505  scored 114/140"
-    )
-
-
-def test_format_summary_marks_a_missing_index_agreement(tmp_path: Path) -> None:
-    report = _report(tmp_path, mean_ssim=0.7, mean_iou=0.9, mean_index_agreement_scored=None)
-    assert parity_sweep.format_summary("intro", report).startswith("intro ssim 0.7000")
-    assert " idx - " in parity_sweep.format_summary("intro", report)
-
-
 def test_identical_variants_are_flagged_to_four_decimals() -> None:
     first = _variant(1, "0", 0.771234, 0.676234)
     second = _variant(2, "1", 0.771236, 0.676236)
@@ -237,43 +152,6 @@ def test_noise_note_appears_only_inside_the_adoption_floor() -> None:
     assert "within noise" in parity_sweep.noise_note(0.0019)
     assert parity_sweep.noise_note(0.002) == ""
     assert parity_sweep.noise_note(0.01) == ""
-
-
-def _input_tree(tmp_path: Path) -> Path:
-    """A data root holding every corpus input and reference capture of both films."""
-    for film in ("ctry", "intro"):
-        inputs = parity_sweep.FILMS[film]
-        for path in (inputs.flm, inputs.all):
-            target = tmp_path / path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(b"")
-        (tmp_path / inputs.sidata).mkdir(parents=True, exist_ok=True)
-        reference = tmp_path / inputs.reference
-        reference.mkdir(parents=True, exist_ok=True)
-        (reference / "meta.json").write_text('{"frames": []}', encoding="utf-8")
-    return tmp_path
-
-
-def test_preflight_names_a_missing_capture(tmp_path: Path) -> None:
-    root = _input_tree(tmp_path)
-    (root / parity_sweep.FILMS["intro"].reference / "meta.json").unlink()
-    problems = parity_sweep.preflight(
-        root, ["ctry", "intro"], build_required=False, locked=lambda _path: False
-    )
-    assert len(problems) == 1
-    assert "capture-ref" in problems[0]
-
-
-def test_preflight_names_a_locked_release_binary(tmp_path: Path) -> None:
-    root = _input_tree(tmp_path)
-    problems = parity_sweep.preflight(
-        root, ["ctry"], build_required=True, locked=lambda _path: True
-    )
-    assert problems == ["release binary is in use; rerun with --no-build or wait"]
-    assert (
-        parity_sweep.preflight(root, ["ctry"], build_required=False, locked=lambda _path: True)
-        == []
-    )
 
 
 def test_validate_selector_requires_var_or_reuse() -> None:

@@ -27,20 +27,20 @@ import sys
 from pathlib import Path
 
 from cli import ParityOptions, UsageError, add_parity_options, parity_options
-from parity_probe import retime_render
-from parity_sweep import (
+
+from stunt_reel import parity_layout
+from stunt_reel.dataroot import ensure_links_or_report
+from stunt_reel.parity_pipeline import (
     FILMS,
     REPO_ROOT,
+    Retime,
     build_release,
     check_film,
     format_summary,
     preflight,
     render_film,
-    score_dir,
+    score_film,
 )
-
-from stunt_reel import parity_layout
-from stunt_reel.dataroot import ensure_links_or_report
 
 #: Adoption floor; a margin under it is not attributable to a change (probes.md section 6).
 NOISE_NOTE = "noise floor +/-0.002 SSIM; margin below 0.002 is not an adoption"
@@ -50,10 +50,7 @@ def prepare_source(film: str, root: Path, options: ParityOptions, *, no_render: 
     """The render directory to score: reused, existing, or freshly rendered ``_current``."""
     current = REPO_ROOT / parity_layout.render_dir(film)
     if options.reuse is not None:
-        source = Path(options.reuse) / film
-        if not source.is_dir():
-            raise ValueError(f"{source} is not a render directory")
-        return source
+        return Path(options.reuse) / film
     if no_render:
         if not current.is_dir():
             raise ValueError(
@@ -63,8 +60,8 @@ def prepare_source(film: str, root: Path, options: ParityOptions, *, no_render: 
     print(f"[parity] rendering {film} into {current}", file=sys.stderr)
     scratch = REPO_ROOT / parity_layout.render_scratch_dir(film)
     shutil.rmtree(scratch, ignore_errors=True)
-    render_film(FILMS[film], root, scratch, None)
-    check_film(FILMS[film], root, scratch)
+    render_film(film, root, scratch, None)
+    check_film(film, root, scratch)
     current.parent.mkdir(parents=True, exist_ok=True)
     # Rename rather than copy: the previous tree stays scoreable with --reuse and the
     # render directories are hundreds of megabytes, so a copy per run is not affordable.
@@ -115,30 +112,20 @@ def main(argv: list[str] | None = None) -> int:
     for film in options.films:
         try:
             source = prepare_source(film, root, options, no_render=args.no_render)
-            check_film(FILMS[film], root, source)
-            scored = source
             suffix = ""
+            request = None
             if options.retime is not None:
                 suffix = f"_retime{options.retime:+d}"
-                retimed = REPO_ROOT / parity_layout.retime_dir(film, suffix)
-                shutil.rmtree(retimed, ignore_errors=True)
-                result = retime_render(
-                    source,
-                    root / FILMS[film].reference,
-                    retimed,
-                    options.retime,
-                    force=True,
-                    allow_missing=True,
-                )
+                request = Retime(options.retime, REPO_ROOT / parity_layout.retime_dir(film, suffix))
+            report = REPO_ROOT / parity_layout.report_dir(film, suffix)
+            result = score_film(film, root, source, report, retime=request)
+            if result.retime is not None:
                 print(
-                    f"[parity] {film}: copied {result.copied} frames; "
-                    f"missing {len(result.missing)} ticks",
+                    f"[parity] {film}: copied {result.retime.copied} frames; "
+                    f"missing {len(result.retime.missing)} ticks",
                     file=sys.stderr,
                 )
-                scored = retimed
-            report = REPO_ROOT / parity_layout.report_dir(film, suffix)
-            score_dir(FILMS[film], root, scored, report, "film")
-            print(format_summary(film, report), flush=True)
+            print(format_summary(film, result.report), flush=True)
         except (RuntimeError, ValueError, OSError, KeyError) as err:
             failures += 1
             print(

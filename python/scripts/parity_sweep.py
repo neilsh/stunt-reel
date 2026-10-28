@@ -30,10 +30,8 @@ import itertools
 import os
 import re
 import shutil
-import subprocess
 import sys
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -44,48 +42,26 @@ from stunt_reel import parity_layout
 from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.parity_artifacts import (
     Geometry,
-    frames_for_captured_ticks,
     open_render,
     read_capture,
     read_report,
     render_plane_paths,
 )
+from stunt_reel.parity_pipeline import (
+    FILMS,
+    REPO_ROOT,
+    FilmFailure,
+    FilmScore,
+    Score,
+    build_release,
+    format_summary,
+    preflight,
+    run_films,
+)
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 VAR_NAME = re.compile(r"DBG_[A-Z0-9_]+")
 #: Padding around the actor's silhouette in the winner's crop, in pixels.
 CROP_PAD = 25
-
-
-@dataclass(frozen=True)
-class Film:
-    """Inputs of one film's render and score; paths are relative to the data root."""
-
-    flm: str
-    all: str
-    sidata: str
-    reference: Path
-
-
-_VAULT = "corpus/stisldem/VAULT"
-_SIDATA = "corpus/siarchive/Developer/FreeFlight/SIDATA"
-#: Per-film inputs (research/parity/method.md section 1, attribution.md, framing-and-actors.md).
-FILMS: dict[str, Film] = {
-    "ctry": Film(
-        f"{_VAULT}/CTRY.FLM", f"{_VAULT}/CTRY.ALL", _SIDATA, parity_layout.capture_dir("ctry")
-    ),
-    "intro": Film(
-        f"{_VAULT}/INTRO.FLM", f"{_VAULT}/INTRO.ALL", _SIDATA, parity_layout.capture_dir("intro")
-    ),
-}
-RENDER_FLAGS = ("--width", "320", "--height", "200", "--viewport-rows", "185")
-
-
-@dataclass(frozen=True)
-class Score:
-    ssim: float
-    iou: float
-    actor_iou: float | None = None
 
 
 @dataclass
@@ -196,112 +172,6 @@ def padded_box(pixels: list[int], pad: int, geometry: Geometry) -> tuple[int, in
     )
 
 
-def binary_path() -> Path:
-    return REPO_ROOT / "target" / "release" / ("stuntreel.exe" if os.name == "nt" else "stuntreel")
-
-
-def run(cmd: list[str], env: dict[str, str] | None = None) -> None:
-    """Runs a command with its output captured; raises with the output's tail on failure."""
-    done = subprocess.run(  # noqa: S603 - fixed argument vectors, no shell
-        cmd,
-        cwd=REPO_ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-    if done.returncode != 0:
-        tail = "\n".join((done.stdout + done.stderr).strip().splitlines()[-8:])
-        raise RuntimeError(f"{Path(cmd[0]).name} exited {done.returncode}: {tail}")
-
-
-def check_render(reference: Path, render: Path, ticks: list[int]) -> None:
-    """Refuses a render that cannot be scored against ``reference``.
-
-    Raises ``ValueError`` when the render's document names a different film or ``.FLM`` size
-    than the capture's ``meta.json`` (either side may lack the tags), or when a captured tick
-    has no ``.idx``/``.layer`` planes beside its frame.
-    """
-    capture = read_capture(reference)
-    controls = open_render(render)
-    if controls.film.names_conflict(capture.film):
-        raise ValueError(
-            f"the capture is of {capture.film.name} but the render is of {controls.film.name}"
-        )
-    if controls.film.bytes_conflict(capture.film):
-        raise ValueError(
-            f"the capture's .FLM is {capture.film.flm_bytes} bytes but the render's is "
-            f"{controls.film.flm_bytes}"
-        )
-    missing = [
-        tick
-        for tick in ticks
-        if not all(path.is_file() for path in render_plane_paths(render, tick))
-    ]
-    if missing:
-        raise ValueError(
-            f"{render} has no render planes for {len(missing)} captured tick(s), first {missing[0]}"
-        )
-
-
-def render_film(film: Film, root: Path, render: Path, env: dict[str, str] | None) -> None:
-    """Renders ``film`` into ``render`` with ``env`` in the environment."""
-    exe = str(binary_path())
-    run(
-        [
-            *(exe, "--headless", str(root / film.flm), "--all", str(root / film.all)),
-            *(
-                "--frames",
-                frames_for_captured_ticks(
-                    frame.film_tick for frame in read_capture(root / film.reference).frames
-                ),
-                "--sidata",
-                str(root / film.sidata),
-                "--out-dir",
-                str(render),
-            ),
-            *RENDER_FLAGS,
-        ],
-        env,
-    )
-
-
-def check_film(film: Film, root: Path, render: Path) -> None:
-    """Refuses a render of ``film`` that cannot be scored against its capture."""
-    reference = root / film.reference
-    check_render(reference, render, [frame.film_tick for frame in read_capture(reference).frames])
-
-
-def score_dir(film: Film, root: Path, render: Path, report: Path, probe: str) -> Score:
-    """Scores the render directory ``render`` of ``film`` against its capture."""
-    reference = root / film.reference
-    exe = str(binary_path())
-    run(
-        [
-            *(exe, "parity", "--reference", str(reference), "--test", str(render)),
-            *("--output", str(report)),
-        ]
-    )
-    report_json = report / "report.json"
-    ssim, iou = read_report(report_json).headline()
-    actor = None
-    if probe == "iou":
-        actor, _ = parity_probe.actor_iou(report_json, reference, render)
-    return Score(ssim, iou, actor)
-
-
-def score_film(
-    name: str, film: Film, root: Path, workdir: Path, env: dict[str, str], probe: str
-) -> Score:
-    """Renders ``film`` into ``workdir`` with ``env`` and scores it against its capture."""
-    render, report = workdir / name, workdir / f"{name}_report"
-    render_film(film, root, render, env)
-    check_film(film, root, render)
-    return score_dir(film, root, render, report, probe)
-
-
 def write_crops(
     films: list[str], root: Path, workdir: Path, renders: dict[str, Path]
 ) -> list[Path]:
@@ -332,55 +202,6 @@ def write_crops(
 
 #: Adoption floor: a margin under this is not attributable to a change (probes.md section 6).
 NOISE_FLOOR = 0.002
-
-
-def build_release() -> None:
-    """Builds the release binary once, since every render and score runs it."""
-    run(["cargo", "build", "--release", "-p", "stunt-cli"])
-
-
-def binary_locked(path: Path) -> bool:
-    """Whether a process holds ``path`` open for writing (Windows refuses that on a running exe)."""
-    if os.name != "nt" or not path.is_file():
-        return False
-    try:
-        with path.open("r+b"):
-            return False
-    except PermissionError:
-        return True
-
-
-def preflight(
-    root: Path,
-    films: list[str],
-    *,
-    build_required: bool,
-    locked: Callable[[Path], bool] = binary_locked,
-) -> list[str]:
-    """Problems that stop a sweep or baseline before any build or render starts."""
-    problems: list[str] = []
-    for name in films:
-        film = FILMS[name]
-        for path in (film.flm, film.all, film.sidata):
-            if not (root / path).exists():
-                problems.append(f"missing input {root / path} (try --data-root)")
-        reference = root / film.reference
-        if not (reference / "meta.json").is_file():
-            problems.append(f"missing capture {reference} (run `mise run capture-ref`)")
-    if build_required and locked(binary_path()):
-        problems.append("release binary is in use; rerun with --no-build or wait")
-    return problems
-
-
-def format_summary(name: str, report: Path) -> str:
-    """One line naming a scored film: ``ctry  ssim ... iou ... idx ... scored n/m``."""
-    document = read_report(report / "report.json")
-    ssim, iou = document.headline()
-    index = document.mean_index_agreement_scored
-    scored = document.scored_frames
-    frames = document.frames
-    index_text = "-" if index is None else f"{index:.3f}"
-    return f"{name:<5} ssim {ssim:.4f}  iou {iou:.4f}  idx {index_text}  scored {scored}/{frames}"
 
 
 def _same_scores(left: Score | None, right: Score | None) -> bool:
@@ -414,59 +235,38 @@ def validate_selector(reuse: Path | None, specs: list[str]) -> None:
         raise ValueError("--var is required unless --reuse is given")
 
 
-def prepare_render(
-    name: str, film: Film, root: Path, workdir: Path, env: dict[str, str], by: int | None
-) -> Path:
-    """Renders ``film`` into ``workdir/<name>``, checks it, and returns its retimed copy."""
-    render = workdir / name
-    render_film(film, root, render, env)
-    check_film(film, root, render)
-    if by is None:
-        return render
-    retimed = workdir / f"{name}_retime"
-    shutil.rmtree(retimed, ignore_errors=True)
-    parity_probe.retime_render(
-        render, root / film.reference, retimed, by, force=True, allow_missing=True
+def _first_line(error: Exception, limit: int) -> str:
+    """The first line of a failure, trimmed to the caller's budget."""
+    return str(error).splitlines()[0][:limit]
+
+
+def with_actor_iou(attempt: FilmScore, root: Path) -> Score:
+    """Adds ``parity_probe``'s actor-window IoU to one pipeline score."""
+    actor, _ = parity_probe.actor_iou(
+        attempt.report / "report.json",
+        root / FILMS[attempt.film].reference,
+        attempt.render,
     )
-    return retimed
+    return Score(attempt.score.ssim, attempt.score.iou, actor)
 
 
-def run_reuse(reuse: Path, retime: int | None, films: list[str], root: Path, *, probe: str) -> int:
+def run_reuse(reuse: Path, retime: int | None, films: list[str], root: Path) -> int:
     """Scores ``--reuse DIR``'s per-film render trees without rendering."""
     if not reuse.is_dir():
         print(f"parity_sweep: --reuse directory not found: {reuse}", file=sys.stderr)
         return 2
     failures = 0
-    for name in films:
-        film = FILMS[name]
-        try:
-            render = reuse / name
-            if not render.is_dir():
-                raise ValueError(f"{render} is not a render directory")
-            check_film(film, root, render)
-            if retime is not None:
-                retimed = reuse / f"{name}_retime"
-                shutil.rmtree(retimed, ignore_errors=True)
-                parity_probe.retime_render(
-                    render,
-                    root / film.reference,
-                    retimed,
-                    retime,
-                    force=True,
-                    allow_missing=True,
-                )
-                render = retimed
-            for warning in open_render(render).warnings:
-                print(f"warning: {render} {warning}", file=sys.stderr)
-            report = reuse / f"{name}_report"
-            score_dir(film, root, render, report, probe)
-            print(format_summary(name, report))
-        except (RuntimeError, ValueError, OSError, KeyError) as err:
+    for attempt in run_films(films, root, reuse, render=False, retime=retime):
+        if isinstance(attempt, FilmFailure):
             failures += 1
             print(
-                f"parity_sweep: {name} FAILED ({str(err).splitlines()[0][:120]})",
+                f"parity_sweep: {attempt.film} FAILED ({_first_line(attempt.error, 120)})",
                 file=sys.stderr,
             )
+            continue
+        for warning in attempt.warnings:
+            print(f"warning: {attempt.render} {warning}", file=sys.stderr)
+        print(format_summary(attempt.film, attempt.report))
     return 0 if failures == 0 else 1
 
 
@@ -510,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     if options.reuse is not None:
-        return run_reuse(options.reuse, options.retime, films, root, probe=args.probe)
+        return run_reuse(options.reuse, options.retime, films, root)
 
     print(f"[sweep] {len(combos)} variant(s)", file=sys.stderr)
     scratch = REPO_ROOT / parity_layout.sweep_root()
@@ -524,23 +324,22 @@ def main(argv: list[str] | None = None) -> int:
             env = {**os.environ, **dict(zip(names, values, strict=True))}
             variant = Variant(index, values, {})
             notes = []
-            for film in films:
+            for attempt in run_films(films, root, workdir, env=env, retime=options.retime):
+                if isinstance(attempt, FilmFailure):
+                    variant.scores[attempt.film] = None
+                    notes.append(f"{attempt.film} FAILED ({_first_line(attempt.error, 80)})")
+                    continue
                 try:
-                    variant.renders[film] = prepare_render(
-                        film, FILMS[film], root, workdir, env, options.retime
+                    measured = (
+                        with_actor_iou(attempt, root) if args.probe == "iou" else attempt.score
                     )
-                    score = score_dir(
-                        FILMS[film],
-                        root,
-                        variant.renders[film],
-                        workdir / f"{film}_report",
-                        args.probe,
-                    )
-                    variant.scores[film] = score
-                    notes.append(f"{film} {score.ssim:.4f}")
                 except (RuntimeError, ValueError, OSError, KeyError) as err:
-                    variant.scores[film] = None
-                    notes.append(f"{film} FAILED ({str(err).splitlines()[0][:80]})")
+                    variant.scores[attempt.film] = None
+                    notes.append(f"{attempt.film} FAILED ({_first_line(err, 80)})")
+                    continue
+                variant.renders[attempt.film] = attempt.render
+                variant.scores[attempt.film] = measured
+                notes.append(f"{attempt.film} {measured.ssim:.4f}")
             variants.append(variant)
             mean = variant.mean_ssim()
             if (

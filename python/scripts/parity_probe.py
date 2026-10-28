@@ -24,19 +24,15 @@ cursor; the index ranges default to ``CTRY.FLM`` and are per film.
 from __future__ import annotations
 
 import argparse
-import shutil
 import struct
 import sys
 import zlib
-from collections.abc import Iterable
-from dataclasses import dataclass
 from pathlib import Path
 
 from stunt_reel import parity_layout
 from stunt_reel.parity_artifacts import (
     LAYER_FIRST_ACTOR,
     LEGACY_SIDECAR,
-    RENDER_SUFFIXES,
     CapturedFrame,
     CaptureSet,
     Geometry,
@@ -46,9 +42,8 @@ from stunt_reel.parity_artifacts import (
     read_capture_palette,
     read_report,
     render_plane_paths,
-    tick_stem,
-    write_retimed_documents,
 )
+from stunt_reel.parity_pipeline import RetimeError, retime_render
 
 #: Inclusive index ranges that are not "object": ground ramp, sky, shade greens.
 CTRY_BACKGROUND = ((192, 199), (228, 238), (161, 165))
@@ -96,79 +91,6 @@ def _capture_frame(capture: CaptureSet, ordinal: int) -> CapturedFrame:
         if frame.ordinal == ordinal:
             return frame
     raise ValueError(f"the capture has no ordinal {ordinal}")
-
-
-class RetimeError(RuntimeError):
-    """A retime request that cannot be served: a busy output directory or missing ticks."""
-
-
-@dataclass(frozen=True)
-class RetimeResult:
-    """What a retime wrote: frames copied, targets with no source, documents rebuilt."""
-
-    copied: int
-    missing: list[int]
-    palette_written: bool
-    record_written: bool = False
-
-
-def plan_retime(ticks: Iterable[int], by: int) -> list[tuple[int, int]]:
-    """`(target, source)` per distinct captured tick: target `t` shows source `t + by`."""
-    return [(tick, tick + by) for tick in sorted(set(ticks))]
-
-
-def retime_render(
-    ours: Path,
-    reference: Path,
-    out: Path,
-    by: int,
-    *,
-    force: bool = False,
-    allow_missing: bool = False,
-) -> RetimeResult:
-    """Writes `out` as the render in `ours` re-labelled by `by` ticks.
-
-    Target `t` gets the frame, index and layer planes of source `t + by`, and the
-    render's documents are rewritten so their tick metadata follows the shift; the
-    legacy sidecar is kept in sync only while it exists. Ticks whose source is absent
-    are reported and, with `allow_missing`, skipped; otherwise they are an error. A
-    non-empty `out` is refused unless `force`.
-    """
-    capture = read_capture(reference)
-    pairs = plan_retime((frame.film_tick for frame in capture.frames), by)
-    if out.exists() and any(out.iterdir()) and not force:
-        raise RetimeError(f"{out} is not empty; pass --force to replace its frames")
-    missing = [
-        target
-        for target, source in pairs
-        if not all((ours / f"{tick_stem(source)}{ext}").is_file() for ext in RENDER_SUFFIXES)
-    ]
-    if missing and not allow_missing:
-        raise RetimeError(
-            f"missing render for {len(missing)} tick(s), first {missing[0]}; "
-            "pass --allow-missing to skip them"
-        )
-    skipped = set(missing)
-    out.mkdir(parents=True, exist_ok=True)
-    copied = 0
-    for target, source in pairs:
-        if target in skipped:
-            continue
-        for ext in RENDER_SUFFIXES:
-            shutil.copyfile(
-                ours / f"{tick_stem(source)}{ext}",
-                out / f"{tick_stem(target)}{ext}",
-            )
-        copied += 1
-    documents = write_retimed_documents(
-        ours, out, [pair for pair in pairs if pair[0] not in skipped]
-    )
-    return RetimeResult(
-        copied=copied,
-        missing=missing,
-        palette_written=documents.sidecar_written,
-        record_written=documents.record_written,
-    )
 
 
 def cmd_retime(args: argparse.Namespace) -> int:

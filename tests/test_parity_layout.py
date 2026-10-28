@@ -10,11 +10,12 @@ from stunt_reel import parity_layout
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "python" / "scripts"
 STUNTS = REPO_ROOT / "python" / "stunt_reel"
-#: The seven modules that used to spell the layout; ``clean`` is the one that deletes trees.
+#: The eight modules that used to spell the layout; ``clean`` is the one that deletes trees.
 CALLERS = (
     SCRIPTS / "parity_run.py",
     SCRIPTS / "parity_sweep.py",
     SCRIPTS / "parity_probe.py",
+    STUNTS / "parity_pipeline.py",
     STUNTS / "dataroot.py",
     SCRIPTS / "worktree_init.py",
     STUNTS / "tac" / "staging.py",
@@ -72,7 +73,7 @@ def test_only_a_baseline_is_protected_from_the_rotation() -> None:
 
 
 def test_the_layout_literals_live_only_in_the_layout_module() -> None:
-    """Deleting the module would return the paths to seven callers; keep it the one home."""
+    """Deleting the module would return the paths to eight callers; keep it the one home."""
     offenders = {
         path.relative_to(REPO_ROOT).as_posix(): values
         for path in CALLERS
