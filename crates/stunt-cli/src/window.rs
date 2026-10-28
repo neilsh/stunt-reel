@@ -126,11 +126,7 @@ impl WindowApp {
             self.camera.set_authored_transform(frame.camera);
         }
         if let Err(error) = renderer.draw(&frame, Some(&self.camera)) {
-            if matches!(error, RenderError::SurfaceOutOfMemory) {
-                eprintln!("[stuntreel] Surface out of memory");
-            } else {
-                eprintln!("[stuntreel] Render failed: {error}");
-            }
+            eprintln!("[stuntreel] Render failed: {error}");
         }
     }
 }

@@ -253,9 +253,6 @@ pub enum RenderError {
     /// The page sink rejected a page; a sink failure is terminal.
     #[error(transparent)]
     Sink(#[from] SinkError),
-    /// The swap chain is exhausted.
-    #[error("the window surface is out of memory")]
-    SurfaceOutOfMemory,
 }
 
 /// A renderer bound to one destination and one FilmScene.
@@ -305,7 +302,8 @@ impl Renderer {
             &palette_lut.bind_group_layout,
         );
         let scene_renderer = SceneRenderer::new(&device, &queue, &pipelines, scene);
-        let destination = Destination::Offscreen(OffscreenTarget::new(&device, target, sink));
+        let destination =
+            Destination::Offscreen(Box::new(OffscreenTarget::new(&device, target, sink)));
         Ok(Self {
             device,
             queue,
@@ -355,7 +353,7 @@ impl Renderer {
             camera_resources,
             scene_renderer,
             clear_palette_index: options.clear_palette_index,
-            destination: Destination::Surface(surface_target),
+            destination: Destination::Surface(Box::new(surface_target)),
         })
     }
 
@@ -455,13 +453,15 @@ impl Renderer {
         scene_renderer.prepare(device, queue, camera_resources, frame, camera);
 
         let surface_texture = match target.surface.get_current_texture() {
-            Ok(texture) => texture,
-            Err(wgpu::SurfaceError::Lost) => {
+            wgpu::CurrentSurfaceTexture::Success(texture)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
+            wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {
                 target.surface.configure(device, &target.config);
                 return Ok(());
             }
-            Err(wgpu::SurfaceError::OutOfMemory) => return Err(RenderError::SurfaceOutOfMemory),
-            Err(_) => return Ok(()),
+            wgpu::CurrentSurfaceTexture::Timeout
+            | wgpu::CurrentSurfaceTexture::Occluded
+            | wgpu::CurrentSurfaceTexture::Validation => return Ok(()),
         };
         let view = surface_texture
             .texture
@@ -526,6 +526,7 @@ impl Renderer {
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
+                    depth_slice: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(clear_color),
                         store: wgpu::StoreOp::Store,
@@ -541,6 +542,7 @@ impl Renderer {
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
 
             rpass.set_viewport(vp_x, vp_y, vp_w, vp_h, 0.0, 1.0);
@@ -560,15 +562,15 @@ impl Renderer {
         }
 
         queue.submit(Some(encoder.finish()));
-        surface_texture.present();
+        queue.present(surface_texture);
         Ok(())
     }
 }
 
 /// Where an open renderer sends the frames it draws.
 enum Destination {
-    Offscreen(OffscreenTarget),
-    Surface(SurfaceTarget),
+    Offscreen(Box<OffscreenTarget>),
+    Surface(Box<SurfaceTarget>),
 }
 
 /// The offscreen colour and plane targets and their CPU readback buffers.
@@ -674,6 +676,7 @@ impl OffscreenTarget {
                     Some(wgpu::RenderPassColorAttachment {
                         view: &self.color_view,
                         resolve_target: None,
+                        depth_slice: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(clear_color),
                             store: wgpu::StoreOp::Store,
@@ -682,6 +685,7 @@ impl OffscreenTarget {
                     Some(wgpu::RenderPassColorAttachment {
                         view: &self.plane_view,
                         resolve_target: None,
+                        depth_slice: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color {
                                 r: f64::from(clear_palette_index),
@@ -703,6 +707,7 @@ impl OffscreenTarget {
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
 
             if let Some(rows) = self.viewport_rows {
@@ -792,6 +797,7 @@ impl SurfaceTarget {
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
+            color_space: wgpu::SurfaceColorSpace::Auto,
             width: 1,
             height: 1,
             present_mode: wgpu::PresentMode::AutoVsync,
@@ -840,20 +846,21 @@ fn acquire(
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: surface,
             force_fallback_adapter: false,
+            apply_limit_buckets: false,
         }))
+        .ok()
         .or_else(|| request_fallback_adapter(instance, surface))
         .ok_or(RenderError::NoGpuAdapter)?
     };
 
-    let (device, queue) = pollster::block_on(adapter.request_device(
-        &wgpu::DeviceDescriptor {
-            label: Some("stunt_renderer_device"),
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()),
-            memory_hints: wgpu::MemoryHints::Performance,
-        },
-        None,
-    ))
+    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        label: Some("stunt_renderer_device"),
+        required_features: wgpu::Features::empty(),
+        required_limits: wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()),
+        memory_hints: wgpu::MemoryHints::Performance,
+        experimental_features: wgpu::ExperimentalFeatures::disabled(),
+        trace: wgpu::Trace::Off,
+    }))
     .map_err(|error| RenderError::DeviceRequest(error.to_string()))?;
     Ok((adapter, device, queue))
 }
@@ -867,15 +874,16 @@ fn request_fallback_adapter(
         power_preference: wgpu::PowerPreference::LowPower,
         compatible_surface: surface,
         force_fallback_adapter: true,
+        apply_limit_buckets: false,
     }))
+    .ok()
 }
 
 /// The renderer instance: every backend wgpu was built with.
 fn create_instance() -> wgpu::Instance {
-    wgpu::Instance::new(&wgpu::InstanceDescriptor {
+    wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::all(),
-        flags: wgpu::InstanceFlags::default(),
-        ..Default::default()
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
     })
 }
 
@@ -929,14 +937,18 @@ fn read_back(
         let _ = sender.send(result);
     });
 
-    device.poll(wgpu::Maintain::Wait);
+    device
+        .poll(wgpu::PollType::wait_indefinitely())
+        .map_err(|error| RenderError::Readback(error.to_string()))?;
 
     receiver
         .recv()
         .map_err(|error| RenderError::Readback(error.to_string()))?
         .map_err(|error| RenderError::Readback(error.to_string()))?;
 
-    let mapped = buffer_slice.get_mapped_range();
+    let mapped = buffer_slice
+        .get_mapped_range()
+        .map_err(|error| RenderError::Readback(error.to_string()))?;
     let row_bytes = width as usize * 4;
     let bytes = mapped
         .chunks_exact(padded_row_bytes as usize)

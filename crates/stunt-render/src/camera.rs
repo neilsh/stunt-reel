@@ -4,7 +4,7 @@
 //! - `[I1]` Metric right-handed coordinate basis (+X right, +Y up, -Z forward, +Z backward).
 //! - `[I6]` VGA 4:3 physical aspect ratio correction ($320 \times 240$ base).
 
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec3, camera::rh};
 use stunt_core::contracts::CameraTransform;
 
 /// Standard 4:3 physical aspect ratio for VGA Mode 13h ($320 \times 240$).
@@ -202,12 +202,12 @@ impl CameraController {
                     up = roll_rot * up;
                 }
 
-                Mat4::look_at_rh(eye, target, up)
+                rh::view::look_at_mat4(eye, target, up)
             }
             CameraMode::FreeCam => {
                 let eye = self.free_cam.position;
                 let target = eye + self.free_cam.forward();
-                Mat4::look_at_rh(eye, target, self.free_cam.up())
+                rh::view::look_at_mat4(eye, target, self.free_cam.up())
             }
         }
     }
@@ -220,8 +220,12 @@ impl CameraController {
         };
         let fov_rad = fov_deg.to_radians();
 
-        let mut proj =
-            Mat4::perspective_rh(fov_rad, self.aspect_ratio, self.near_clip, self.far_clip);
+        let mut proj = rh::proj::directx::perspective(
+            fov_rad,
+            self.aspect_ratio,
+            self.near_clip,
+            self.far_clip,
+        );
         proj.y_axis.y *= self.projection_y_scale;
         proj
     }
@@ -294,6 +298,7 @@ impl CameraGpuResources {
         buffer
             .slice(..)
             .get_mapped_range_mut()
+            .expect("the camera uniform buffer is mapped at creation")
             .copy_from_slice(bytemuck::bytes_of(&CameraUniform::default()));
         buffer.unmap();
 

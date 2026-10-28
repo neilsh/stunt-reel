@@ -169,19 +169,24 @@ impl RenderPipelines {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("stunt_mode13h_pipeline_layout"),
-            bind_group_layouts: &[camera_layout, palette_layout, &model_bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[
+                Some(camera_layout),
+                Some(palette_layout),
+                Some(&model_bind_group_layout),
+            ],
+            immediate_size: 0,
         });
 
         let shader_module =
             device.create_shader_module(wgpu::include_wgsl!("shaders/mode13h.wgsl"));
         let vertex_layout = Self::vertex_buffer_layout();
+        let vertex_buffers = [Some(vertex_layout)];
 
         // Base geometry depth stencil state: normal depth test, zero bias
         let base_depth_stencil = wgpu::DepthStencilState {
             format: depth_format,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Less,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Less),
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState {
                 constant: 0,
@@ -198,8 +203,8 @@ impl RenderPipelines {
         // (research/parity/log.md, 2026-10-23).
         let decal_depth_stencil = wgpu::DepthStencilState {
             format: depth_format,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::LessEqual,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState {
                 constant: -2,
@@ -249,7 +254,7 @@ impl RenderPipelines {
                 module: &shader_module,
                 entry_point: Some("vs_main"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: std::slice::from_ref(&vertex_layout),
+                buffers: &vertex_buffers,
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader_module,
@@ -260,7 +265,7 @@ impl RenderPipelines {
             primitive: model_primitive,
             depth_stencil: Some(base_depth_stencil),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -271,7 +276,7 @@ impl RenderPipelines {
                 module: &shader_module,
                 entry_point: Some("vs_main"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: std::slice::from_ref(&vertex_layout),
+                buffers: &vertex_buffers,
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader_module,
@@ -282,7 +287,7 @@ impl RenderPipelines {
             primitive: model_primitive,
             depth_stencil: Some(decal_depth_stencil),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -307,21 +312,21 @@ impl RenderPipelines {
             // Must match the render pass attachment format; bars ignore depth entirely.
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: depth_format,
-                depth_write_enabled: false,
-                depth_compare: wgpu::CompareFunction::Always,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::Always),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
         // Sky: first draw of the pass, ignores and never writes depth. It needs no model matrix.
         let sky_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("stunt_sky_pipeline_layout"),
-            bind_group_layouts: &[camera_layout, palette_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(camera_layout), Some(palette_layout)],
+            immediate_size: 0,
         });
         let sky_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("stunt_sky_pipeline"),
@@ -345,13 +350,13 @@ impl RenderPipelines {
             primitive,
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: depth_format,
-                depth_write_enabled: false,
-                depth_compare: wgpu::CompareFunction::Always,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::Always),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
