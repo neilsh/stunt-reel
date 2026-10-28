@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use stunt_core::contracts::get_palette_rgb;
+use stunt_parity::Geometry;
 use stunt_render::{LAYER_NONE, LAYER_TERRAIN, MODE13H_HEIGHT, MODE13H_WIDTH};
 
 use super::mask::is_capture_sky;
@@ -173,19 +174,22 @@ fn write_planes(path: &Path) {
     let indices: Vec<u8> = (0..MODE13H_WIDTH * MODE13H_HEIGHT)
         .map(plane_index)
         .collect();
-    let layers: Vec<u8> = indices
+    let layers: Vec<u32> = indices
         .iter()
-        .flat_map(|&index| {
-            let layer = if is_capture_sky(index) {
+        .map(|&index| {
+            if is_capture_sky(index) {
                 LAYER_NONE
             } else {
                 LAYER_TERRAIN
-            };
-            (layer as u16).to_le_bytes()
+            }
         })
         .collect();
-    fs::write(path.with_extension("idx"), indices).unwrap();
-    fs::write(path.with_extension("layer"), layers).unwrap();
+    let geometry = Geometry {
+        width: MODE13H_WIDTH as u32,
+        height: MODE13H_HEIGHT as u32,
+        viewport_rows: None,
+    };
+    crate::plane_codec::write_page_planes(path, &geometry, &indices, &layers).unwrap();
 }
 
 pub(super) fn run_parity(reference: &Path, test: &Path, output: &Path) -> Result<(), String> {

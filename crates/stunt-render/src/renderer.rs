@@ -155,12 +155,17 @@ impl SinkError {
     }
 }
 
-/// One rendered page: tightly packed RGBA8 pixels and the plane word of every pixel.
+/// One rendered page: tightly packed RGBA8 pixels and its two plane views.
+///
+/// The GPU writes one `layer << 8 | palette index` word per pixel. The page splits that word
+/// once, so a sink reads [`RenderedPage::indices`] and [`RenderedPage::layers`] instead of
+/// repacking it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RenderedPage {
     size: PageSize,
     rgba: Vec<u8>,
-    plane: Vec<u32>,
+    indices: Vec<u8>,
+    layers: Vec<u32>,
 }
 
 impl RenderedPage {
@@ -168,7 +173,8 @@ impl RenderedPage {
     ///
     /// The RGBA buffer holds exactly size.pixel_count() * 4 bytes and the plane one
     /// little-endian u32 per pixel: layer << 8 | unlit palette index, where uncovered pixels are
-    /// the clear index on LAYER_NONE.
+    /// the clear index on LAYER_NONE. The index byte and the layer word are kept apart; the
+    /// `.layer` file stores a u16, so its codec checks the narrowing instead of truncating.
     pub fn new(size: PageSize, rgba: Vec<u8>, plane: Vec<u32>) -> Result<Self, RenderError> {
         let pixels = size.pixel_count();
         if rgba.len() != pixels * 4 {
@@ -183,7 +189,14 @@ impl RenderedPage {
                 plane.len()
             )));
         }
-        Ok(Self { size, rgba, plane })
+        let indices = plane.iter().map(|word| (*word & 0xFF) as u8).collect();
+        let layers = plane.iter().map(|word| *word >> 8).collect();
+        Ok(Self {
+            size,
+            rgba,
+            indices,
+            layers,
+        })
     }
 
     /// The page geometry.
@@ -210,16 +223,25 @@ impl RenderedPage {
         &self.rgba
     }
 
-    /// One layer << 8 | unlit palette index word per pixel, top row first.
+    /// One palette index per pixel, top row first: the low byte of each plane word.
     #[must_use]
-    pub fn plane(&self) -> &[u32] {
-        &self.plane
+    pub fn indices(&self) -> &[u8] {
+        &self.indices
+    }
+
+    /// One layer id per pixel, top row first: the plane word's layer.
+    ///
+    /// The `.layer` artifact stores a u16 per pixel; a writer checks that narrowing rather than
+    /// truncating silently.
+    #[must_use]
+    pub fn layers(&self) -> &[u32] {
+        &self.layers
     }
 
     /// The page's parts, for a sink that takes ownership of the buffers.
     #[must_use]
-    pub fn into_parts(self) -> (PageSize, Vec<u8>, Vec<u32>) {
-        (self.size, self.rgba, self.plane)
+    pub fn into_parts(self) -> (PageSize, Vec<u8>, Vec<u8>, Vec<u32>) {
+        (self.size, self.rgba, self.indices, self.layers)
     }
 }
 
@@ -991,7 +1013,12 @@ mod tests {
         assert_eq!(page.height(), 2);
         assert_eq!(page.size(), size);
         assert_eq!(page.rgba().len(), 16);
-        assert_eq!(page.plane().len(), 4);
+        assert_eq!(page.indices(), [0; 4].as_slice());
+        assert_eq!(page.layers(), [0x10; 4].as_slice());
+        let word = (0x10 << 8) | 40;
+        let split = RenderedPage::new(size, vec![7; 16], vec![word; 4]).expect("page");
+        assert_eq!(split.indices(), [40; 4].as_slice());
+        assert_eq!(split.layers(), [0x10; 4].as_slice());
         assert!(RenderedPage::new(size, vec![0; 15], vec![0; 4]).is_err());
         assert!(RenderedPage::new(size, vec![0; 16], vec![0; 3]).is_err());
     }

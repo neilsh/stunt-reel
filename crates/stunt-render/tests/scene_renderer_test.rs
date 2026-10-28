@@ -16,7 +16,7 @@ use stunt_core::contracts::{
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
 use stunt_core::scene::FilmScene;
 use stunt_core::world::World;
-use stunt_render::{Offscreen, RenderOptions};
+use stunt_render::{LAYER_NONE, Offscreen, RenderOptions};
 
 const SHAPE_ID: u16 = 7;
 const CLEAR_INDEX: u8 = 180;
@@ -106,7 +106,11 @@ fn render(scene: &FilmScene) -> Option<(usize, usize, Vec<bool>)> {
     let page = test.draw(&scene.frame(0.0));
     let (w, h) = (page.width() as usize, page.height() as usize);
     // The sky paints every uncovered pixel, so geometry is told apart by its layer.
-    let drawn = page.plane().iter().map(|&p| p >> 8 != 0).collect();
+    let drawn = page
+        .layers()
+        .iter()
+        .map(|&layer| layer != LAYER_NONE)
+        .collect();
     Some((w, h, drawn))
 }
 
