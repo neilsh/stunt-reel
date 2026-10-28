@@ -1,5 +1,7 @@
 # stunt-reel
 
+[![CI](https://github.com/neilsh/stunt-reel/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/neilsh/stunt-reel/actions/workflows/ci.yml)
+
 Format analysis, documentation, and modern reconstruction for *Stunt Island* (1992, Walt Disney Computer Software / The Assembly Line): offline-tested Rust and Python parsers for its file formats, a native `wgpu` renderer (`stuntreel`) that plays the standalone film reels, and a DOSBox-X harness that captures frames from the original `PLAYONE.EXE` to check the renderer against.
 
 > [!WARNING]
