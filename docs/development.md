@@ -6,7 +6,7 @@ Setup, workflows and the quality gate for working on `stunt-reel`. The project o
 
 - **[mise](https://mise.jdx.dev/)** (recommended environment and tool manager)
 - **[Rust](https://www.rust-lang.org/)** 2024 edition (MSRV 1.88; the pinned toolchain is 1.99.1), managed via `mise` or `rustup`
-- **[uv](https://docs.astral.sh/uv/)** (installed by `mise`; a standalone uv works only at the pinned version, which `required-version` in [`pyproject.toml`](../pyproject.toml) enforces) and **Python ≥ 3.11**
+- **[uv](https://docs.astral.sh/uv/)** (installed by `mise`, which pins the exact version; `required-version` in [`pyproject.toml`](../pyproject.toml) refuses a standalone uv older than that pin) and **Python ≥ 3.11**
 - **[ffmpeg](https://ffmpeg.org/)** on `PATH` (only for `--video` export)
 - **[DOSBox-X](https://dosbox-x.com/) `2026.10.01`** (Windows x64 portable SDL2 build, installed by `mise`)
 - **[`dosbox-x-mcp-server`](https://github.com/caiiiycuk/dosbox-x-mcp-server) `0.1.2`** (managed via `mise`)
@@ -208,7 +208,7 @@ The virtualenv lives in that cache too: `init` lays it out as `<cache>/venvs/<ch
 
 ### Running individual commands
 
-For a one-off that no task covers, run the pinned tool through mise: `mise exec -- uv run ruff check python/foo.py`. `mise exec` puts the versions [`mise.toml`](../mise.toml) pins on `PATH`; a bare `uv` can be a different version, and `[tool.uv] required-version` in [`pyproject.toml`](../pyproject.toml) makes that version refuse to run rather than drift.
+For a one-off that no task covers, run the pinned tool through mise: `mise exec -- uv run ruff check python/foo.py`. `mise exec` puts the versions [`mise.toml`](../mise.toml) pins on `PATH`; a bare `uv` can be a different version. `[tool.uv] required-version` in [`pyproject.toml`](../pyproject.toml) is a floor at the pin, not an exact match: an older uv refuses to run, a newer one runs. It cannot be exact because Dependabot's `uv` updater brings its own, newer uv and stops with `tool_version_not_supported` when the project names a different version; raise the floor whenever `mise.toml` raises the pin.
 
 ### Python dependencies
 

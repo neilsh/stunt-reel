@@ -112,6 +112,7 @@ testpaths = ["tests"]
 pythonpath = ["python"]
 
 [tool.uv]
-# Keep in step with the `uv` pin in `mise.toml`: uv refuses to run this project under
-# any other version, so a standalone uv cannot silently drift from the mise-managed one.
-required-version = "0.13.1"
+# A floor, not an exact pin. `mise.toml` pins the exact uv for local and CI runs; this
+# refuses an older standalone uv. Dependabot's updater brings its own newer uv and stops
+# with `tool_version_not_supported` at an exact pin, so the floor moves with mise's pin.
+required-version = ">=0.13.1"
