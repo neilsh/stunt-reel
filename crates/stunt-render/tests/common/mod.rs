@@ -30,8 +30,8 @@ pub(crate) fn require_gpu() -> bool {
 /// Each libtest thread used to create and destroy its own `wgpu::Instance` at the same time as
 /// the others. On Windows that drives concurrent instance, device, pipeline and teardown work
 /// through the Vulkan loader, the DX12 device factory and the GL/WGL hidden-window threads, and
-/// the Windows loader lock plus the vendor driver locks can deadlock (see
-/// `target/renderer_test-hang/report.md`: 8/100 runs at default threads, 0/25 serialized).
+/// the Windows loader lock plus the vendor driver locks can deadlock: 8 runs in 100 at default
+/// libtest threads, none in 25 serialized (see `docs/development.md`).
 /// One test process therefore uses one renderer at a time: [`open_or_skip`] takes this lock
 /// before creating the renderer, and [`LockedRenderer`] holds it until the renderer has been
 /// dropped. Tests that never create a GPU renderer stay parallel.

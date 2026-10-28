@@ -3,7 +3,7 @@
 
 The GPU integration tests can deadlock inside the graphics driver/loader on some machines: the
 process stays alive forever, libtest never prints its final ``test result:`` line, and a plain
-``cargo test`` waits indefinitely (see ``target/renderer_test-hang/report.md``). This runner builds
+``cargo test`` waits indefinitely (see ``docs/development.md``). This runner builds
 the test binary once, runs it ``--runs`` times with a wall-clock bound, kills the whole process tree
 when the bound expires, and reports ``HANG`` with the last stdout lines and the child-process count.
 
