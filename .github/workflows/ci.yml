@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   # Everything, including the full Windows gate: a manual run is the "prove this branch"
   # request, so it must not be a subset of what main gets.
   workflow_dispatch:
