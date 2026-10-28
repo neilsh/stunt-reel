@@ -30,17 +30,17 @@ jobs:
       # toolchain it uses instead.
       MISE_AUTO_INSTALL: "false"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install lavapipe (software Vulkan)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
-      - uses: jdx/mise-action@v5
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # java and the Kaitai compiler are not optional: the gate's `test-py` step sets
           # STUNT_REQUIRE_KSC=1, so a missing compiler fails the schema contract test rather
           # than skipping it.
           install_args: rust python uv java github:kaitai-io/kaitai_struct_compiler
       - name: Cache Cargo
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -78,8 +78,8 @@ jobs:
     env:
       MISE_AUTO_INSTALL: "false"
     steps:
-      - uses: actions/checkout@v7
-      - uses: jdx/mise-action@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           install_args: python uv
       - name: Install Python environment
@@ -96,14 +96,14 @@ jobs:
     env:
       MISE_AUTO_INSTALL: "false"
     steps:
-      - uses: actions/checkout@v7
-      - uses: jdx/mise-action@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # Java and the Kaitai compiler keep this run's pytest selection identical to the
           # Ubuntu gate's, instead of letting the schema contract tests skip.
           install_args: rust python uv java github:kaitai-io/kaitai_struct_compiler
       - name: Cache Cargo
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -127,7 +127,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The repository's allowed-actions policy admits GitHub-owned actions and the two
       # third-party patterns it names; rustup already ships on the runner, so install the
       # MSRV toolchain directly instead of adding another action to the allowlist.
@@ -144,11 +144,11 @@ jobs:
       # its own copy as well and compiled it from source inside this job.
       MISE_AUTO_INSTALL: "false"
     steps:
-      - uses: actions/checkout@v7
-      - uses: jdx/mise-action@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           install_args: rust
-      - uses: taiki-e/install-action@cargo-deny
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
           tool: cargo-deny@0.20.2
       - run: mise run deny
