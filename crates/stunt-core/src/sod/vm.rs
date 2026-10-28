@@ -148,7 +148,10 @@ fn sphere_polygons(
     palette_index: u8,
     visibility: VisibilityCondition,
 ) -> Vec<RawPolygon> {
-    const PHI: f32 = std::f32::consts::GOLDEN_RATIO;
+    // The golden ratio as its f32 bit pattern (1.6180339887...): `std::f32::consts::GOLDEN_RATIO`
+    // is newer than the 1.88 MSRV in Cargo.toml. Spelled as bits rather than the decimal because
+    // clippy's `approx_constant` rejects a retyped constant, and the bits pin the exact value.
+    const PHI: f32 = f32::from_bits(0x3FCF_1BBD);
     const FACES: [[usize; 3]; 20] = [
         [0, 11, 5],
         [0, 5, 1],

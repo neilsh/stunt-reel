@@ -23,6 +23,16 @@ KEEP_BASETEMPS = 3
 _SHIM_INSTALLED = False
 
 
+def _needs_mkdir_shim() -> bool:
+    """Return whether this process needs the shim, without narrowing a caller.
+
+    The answer is a plain bool from a call, not a `sys.platform` comparison in
+    the caller, so a mypy run analysing for another platform cannot narrow the
+    guard to always true and mark the shim body unreachable.
+    """
+    return sys.platform == "win32"
+
+
 def install_windows_mkdir_shim() -> None:
     """Ignore the POSIX mode on Windows, once per process.
 
@@ -32,7 +42,7 @@ def install_windows_mkdir_shim() -> None:
     dropping it changes no behaviour outside the sandbox.
     """
     global _SHIM_INSTALLED
-    if _SHIM_INSTALLED or sys.platform != "win32":
+    if _SHIM_INSTALLED or not _needs_mkdir_shim():
         return
     real_mkdir = os.mkdir
 

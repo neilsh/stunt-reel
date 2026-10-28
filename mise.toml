@@ -1,7 +1,11 @@
 [tools]
 # Rust toolchain (provides rustc and cargo). Pinned: "latest" re-resolves whenever
 # this file changes, which silently gave two worktrees different compilers.
-rust = { version = "1.99.1", components = "llvm-tools" }
+# rustfmt and clippy are named explicitly because GitHub's runners configure rustup's
+# `minimal` profile, which omits both; rustup's `default` profile would add them but
+# also pull rust-docs, which the gate never uses. `minimal` is stated here too so a
+# developer machine's default profile cannot reintroduce rust-docs on a fresh install.
+rust = { version = "1.99.1", profile = "minimal", components = "llvm-tools,rustfmt,clippy" }
 
 # Python & modern packaging toolchain
 python = "3.11"
