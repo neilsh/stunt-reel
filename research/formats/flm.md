@@ -95,7 +95,7 @@ The epilogue is not a slice: it has no opcode payload and no terminator of its o
 2. A header whose `tick_duration` byte is `0xFF` terminates the stream; any trailing bytes are filler. No authored slice in the 627,696-slice corpus exceeds `tick_duration = 0x7F`, so the marker is unambiguous.
 3. The back-pointer chain should be validated, but a mismatch is a warning rather than a fatal error.
 
-`python/stunt_reel/flm_walk.py` has implemented (1) and (2) since inception; `FlmParser::parse_slice` gained the same rule after it misread `CTRY.FLM`'s epilogue as a 141st slice.
+`python/stunt_reel/flm_walk.py` has implemented (1) and (2) since inception; the Rust player's slice walk (`FlmPlayer::decode_slice` in `crates/stunt-core/src/flm/player.rs`) gained the same rule after it misread `CTRY.FLM`'s epilogue as a 141st slice.
 
 ---
 

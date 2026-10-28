@@ -60,12 +60,24 @@ impl FilmTimeline {
 
     /// Parse and evaluate a `.FLM` buffer into a sampled timeline.
     ///
+    /// The player walks the stream and yields keyframes already stamped with their
+    /// cumulative tick, so a slice's tick is assigned once rather than rewritten after
+    /// evaluation.
+    ///
     /// Only an unreadable film header is an error. A slice that fails to decode stops
     /// the walk: the slices decoded before it are kept and [`Self::stop_reason`] reports
     /// why, so callers decide whether a partial film is acceptable.
     pub fn from_bytes(data: &[u8]) -> Result<Self, FlmError> {
-        let mut player = crate::flm::FlmPlayer::new(data)?;
-        player.evaluate_timeline()
+        let mut player = super::player::FlmPlayer::new(data)?;
+        let mut slices = Vec::new();
+        while let Some(slice) = player.step_slice() {
+            slices.push(slice);
+        }
+        let timeline = Self::new(slices, player.warnings().to_vec());
+        Ok(match player.take_last_error() {
+            Some(reason) => timeline.with_stop_reason(reason),
+            None => timeline,
+        })
     }
 
     /// Authored slice keyframes in film order.
