@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Everything, including the full Windows gate: a manual run is the "prove this branch"
+  # request, so it must not be a subset of what main gets.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -15,29 +18,28 @@ permissions:
 
 jobs:
   quality:
-    name: Quality gate (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # The ubuntu job runs the GPU tests on lavapipe (Mesa's software Vulkan driver);
-          # STUNT_REQUIRE_GPU=1 makes a missing adapter fail them instead of skipping.
-          - os: ubuntu-latest
-            tasks: check
-            require_gpu: "1"
-          - os: windows-latest
-            tasks: check-windows
-            require_gpu: ""
+    name: Quality gate (ubuntu)
+    # The full gate on every pull request and on main. The ubuntu job is the one that runs
+    # the GPU tests, so it installs a software Vulkan driver; see ADR 0006.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # mise installs every tool mise.toml declares on the first `mise run` unless this is
+      # off. Inside CI that compiled cargo-deny and cargo-llvm-cov from source on every job
+      # and pulled Java, the Kaitai compiler and DOSBox into jobs whose task list never calls
+      # them, which is minutes of the gate's cold start. Each job installs exactly the
+      # toolchain it uses instead.
+      MISE_AUTO_INSTALL: "false"
     steps:
       - uses: actions/checkout@v7
       - name: Install lavapipe (software Vulkan)
-        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
       - uses: jdx/mise-action@v5
         with:
-          install_args: rust python uv
+          # java and the Kaitai compiler are not optional: the gate's `test-py` step sets
+          # STUNT_REQUIRE_KSC=1, so a missing compiler fails the schema contract test rather
+          # than skipping it.
+          install_args: rust python uv java github:kaitai-io/kaitai_struct_compiler
       - name: Cache Cargo
         uses: actions/cache@v6
         with:
@@ -47,17 +49,79 @@ jobs:
             .cache/cargo/registry
             .cache/cargo/git
             target
-          # v2 (2026-10-25): the gate added target/check and target/matrix for its concurrent
-          # lanes. A cache hit never saves, so the old key would leave those directories cold on
-          # every run; the bump forces one fresh save that includes them.
-          key: ${{ runner.os }}-cargo-v2-${{ hashFiles('**/Cargo.lock') }}
+          # v3 (2026-10-28): adds the `restore-keys` prefix below. A lockfile change misses
+          # the exact key; with no prefix fallback that rebuilt the whole workspace from
+          # scratch (a cold gate run measured 10m40 against 4m19 warm). The prefix restores
+          # the newest previous cache and rebuilds only the delta. The bump forces one fresh
+          # save, as the v2 note did for the gate's target/check and target/matrix lanes.
+          key: ${{ runner.os }}-cargo-v3-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-v3-
+      - name: Install Python environment
+        run: uv sync --locked --all-groups
+      - name: Run quality tasks
+        timeout-minutes: 25
+        env:
+          # STUNT_REQUIRE_GPU=1 makes a missing adapter fail the GPU tests instead of
+          # skipping them.
+          STUNT_REQUIRE_GPU: "1"
+        run: mise run check
+
+  windows-smoke:
+    name: Windows smoke
+    # The tests that can behave differently on Windows — junctions, reparse points, the
+    # .cache link, the pytest basetemp workaround — all live in the Python tree: crates/ has
+    # no cfg(windows). So pull requests pay for a Windows interpreter and a pytest run, not
+    # a Rust build, and the full Windows gate below stays on main.
+    if: github.event_name == 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    env:
+      MISE_AUTO_INSTALL: "false"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: python uv
+      - name: Install Python environment
+        run: uv sync --locked --all-groups
+      - run: mise run check-windows-smoke
+
+  windows:
+    name: Quality gate (windows)
+    # Main and manual runs only: a warm Windows build still costs about nine minutes, and a
+    # pull request needs it no more than it needs a second opinion on the Rust tree.
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      MISE_AUTO_INSTALL: "false"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          # Java and the Kaitai compiler keep this run's pytest selection identical to the
+          # Ubuntu gate's, instead of letting the schema contract tests skip.
+          install_args: rust python uv java github:kaitai-io/kaitai_struct_compiler
+      - name: Cache Cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .cache/cargo/registry
+            .cache/cargo/git
+            target
+          key: ${{ runner.os }}-cargo-v3-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-v3-
       - name: Install Python environment
         run: uv sync --locked --all-groups
       - name: Run quality tasks
         timeout-minutes: 30
-        env:
-          STUNT_REQUIRE_GPU: ${{ matrix.require_gpu }}
-        run: mise run ${{ matrix.tasks }}
+        # No driver is installed here and STUNT_REQUIRE_GPU stays unset, so the GPU tests
+        # skip (ADR 0006).
+        run: mise run check-windows
 
   msrv:
     name: MSRV check
@@ -76,6 +140,10 @@ jobs:
     name: Dependency policy
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # The tool comes from taiki-e's prebuilt binary; with auto-install on, mise installed
+      # its own copy as well and compiled it from source inside this job.
+      MISE_AUTO_INSTALL: "false"
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5

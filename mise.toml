@@ -241,6 +241,14 @@ run = "python python/scripts/gate.py all"
 description = "Windows non-GPU half of the gate (fmt, lint, typecheck, Rust and Python tests; GPU tests skip without a driver)"
 depends = ["fmt-check", "lint", "typecheck", "test"]
 
+# The Windows-only behaviour is all in the Python tree — junctions, reparse points, the
+# .cache link, the pytest basetemp workaround — so the pull-request job runs this instead of
+# the whole check-windows; the full task stays on main. A test that starts depending on
+# Windows path semantics belongs in this list too.
+[tasks.check-windows-smoke]
+description = "Windows-only smoke: the tests that exercise junctions, reparse points and .cache links"
+run = "uv run pytest tests/test_dataroot.py tests/test_worktree_layout.py tests/test_worktree_reap.py tests/test_pytest_basetemp.py"
+
 [tasks.verify-corpus]
 description = "Compile research/formats/**/*.ksy and check them against local corpus/ files (opt-in; corpus is gitignored)"
 run = "uv run python python/scripts/verify_schemas_corpus.py"
