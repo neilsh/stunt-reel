@@ -32,19 +32,21 @@ from stunt_reel.dataroot import (
     LINK_TARGETS,
     REPO_ROOT,
     VENV_DIRNAME,
+    LinkOutcome,
     SharedDataError,
     cache_root,
     create_link,
     data_root,
     discard_env,
     ensure_cache_link,
+    ensure_links,
     ensure_venv_link,
     env_target,
     is_link,
     is_placeholder,
-    link_points_at,
     orphan_envs,
     remove_link,
+    shared_target,
     sweep_orphan_envs,
 )
 
@@ -127,6 +129,20 @@ def _uv_sync(environment: Path | None) -> int:
     return int(result.returncode)
 
 
+def _render_link(outcome: LinkOutcome) -> list[str]:
+    """The lines ``init`` prints for one link outcome, indentation included."""
+    if outcome.status == "refused":
+        return [f"  ! {outcome.reason or outcome.relative}"]
+    if outcome.status == "created-empty":
+        return [
+            f"  ! {outcome.target} was missing; created it empty",
+            f"  + {outcome.relative} -> {outcome.target}",
+        ]
+    if outcome.status == "repaired":
+        return [f"  + {outcome.relative} -> {outcome.target}"]
+    return [f"  = {outcome.relative}"]
+
+
 def _init(migrate: bool) -> int:
     root = data_root()
     source = DATA_ENV if DATA_ENV in os.environ else "derived"
@@ -135,6 +151,20 @@ def _init(migrate: bool) -> int:
     if migrate:
         for shared, relative in LINK_TARGETS:
             _migrate(relative, root / shared)
+    if root != REPO_ROOT:
+        # A fresh machine has no data root yet, and provisioning it is init's job:
+        # that is why ensure_links, the read path, refuses one that is missing.
+        root.mkdir(parents=True, exist_ok=True)
+    try:
+        outcomes = ensure_links()
+    except SharedDataError as err:
+        print(f"  ! {err}")
+        print(
+            "    the target is outside this session's writable workspace; "
+            "provision the worktree from a session with wider file access "
+            "(see docs/harness-setup.md)",
+        )
+        return 1
 
     # The links come before the sync, so uv hardlinks its packages out of the shared
     # cache instead of copying them, and so the environment is not born in the checkout.
@@ -157,41 +187,11 @@ def _init(migrate: bool) -> int:
         return code
 
     problems = 0
-    for shared, relative in LINK_TARGETS:
-        target = root / shared
-        link = REPO_ROOT / relative
-        if not target.exists():
-            # Reference captures, the oracle and target_bin are populated later, so
-            # an empty shared directory is a valid starting point.  Corpus data is not:
-            # say so, because every reader below that fails will name this path.
-            target.mkdir(parents=True, exist_ok=True)
-            print(f"  ! {target} was missing; created it empty")
-        if is_link(link) and link_points_at(link, target):
-            print(f"  = {relative}")
-            continue
-        if is_link(link):
-            remove_link(link)
-        elif link.is_dir():
-            if not is_placeholder(link):
-                print(f"  ! {relative} is a directory with files; re-run with --migrate")
-                problems += 1
-                continue
-            for entry in link.iterdir():
-                entry.unlink()
-            link.rmdir()
-        elif link.exists():
-            link.unlink()
-        try:
-            create_link(link, target)
-        except SharedDataError as err:
-            print(f"  ! {err}")
-            print(
-                "    the target is outside this session's writable workspace; "
-                "provision the worktree from a session with wider file access "
-                "(see docs/harness-setup.md)",
-            )
-            return 1
-        print(f"  + {relative} -> {target}")
+    for outcome in outcomes:
+        if outcome.status == "refused":
+            problems += 1
+        for line in _render_link(outcome):
+            print(line)
 
     if problems:
         print(f"\n{problems} path(s) unresolved; see corpus/README.md for the archive layout")
@@ -301,7 +301,7 @@ def _clean(confirmed: bool, parity: bool = False, keep: int = 1) -> int:
     for path in files:
         path.unlink(missing_ok=True)
     if restore:
-        create_link(reference, data_root() / "reference")
+        create_link(reference, shared_target(parity_layout.capture_root().as_posix()))
     print("\nremoved; the shared data root is untouched")
     return 0
 
