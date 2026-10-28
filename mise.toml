@@ -176,6 +176,11 @@ description = "Run Rust unit and integration tests"
 run = "cargo test --locked --workspace --all-features"
 env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
 
+[tasks.test-render]
+description = "Run stunt-render's GPU integration tests with a bounded hang watchdog (detects hangs instead of waiting forever)"
+run = "uv run python python/scripts/watch_render_test.py"
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+
 [tasks.cov-rust]
 description = "Line coverage for the Rust format crates (stunt-core, stunt-gltf)"
 run = "cargo llvm-cov --locked -p stunt-core -p stunt-gltf --all-features --summary-only"

@@ -54,6 +54,7 @@ jobs:
       - name: Install Python environment
         run: uv sync --locked --all-groups
       - name: Run quality tasks
+        timeout-minutes: 30
         env:
           STUNT_REQUIRE_GPU: ${{ matrix.require_gpu }}
         run: mise run ${{ matrix.tasks }}
