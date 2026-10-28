@@ -244,18 +244,15 @@ impl<'a> FlmPlayer<'a> {
                 Vec::new()
             };
 
-            let mut actor = ActorTransform {
+            actors.push(ActorTransform {
                 actor_id,
                 model_name,
                 shape_id: slot.shape_id,
-                world_matrix: [0.0; 16],
                 rotation_quat,
                 position_meters,
                 state_mask,
                 joint_angles_bam,
-            };
-            actor.world_matrix = actor.compute_world_matrix();
-            actors.push(actor);
+            });
         }
 
         Some((

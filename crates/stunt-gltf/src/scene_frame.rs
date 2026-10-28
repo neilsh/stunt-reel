@@ -11,8 +11,7 @@ use std::collections::hash_map::Entry;
 
 use glam::{Mat3, Quat, Vec3};
 use serde_json::json;
-use stunt_core::contracts::CameraTransform;
-use stunt_core::scene::FilmScene;
+use stunt_core::scene::{FilmScene, ViewCamera};
 
 use crate::GltfError;
 use crate::glb::{GlbBuilder, num, num_array};
@@ -34,7 +33,7 @@ pub fn export_scene_frame(scene: &FilmScene, tick: f32) -> Result<Vec<u8>, GltfE
     let mut builder = GlbBuilder::new();
     let mut roots = Vec::new();
 
-    let camera = &frame.camera;
+    let camera = &frame.view;
     builder.cameras.push(json!({
         "name": "FilmCamera",
         "type": "perspective",
@@ -102,7 +101,7 @@ pub fn export_scene_frame(scene: &FilmScene, tick: f32) -> Result<Vec<u8>, GltfE
 /// A zero-length view yields the identity; a view parallel to the up vector falls back to
 /// `-Z` (looking up) or `+Z` (looking down) as the reference up so the basis stays finite.
 #[must_use]
-pub fn camera_rotation(camera: &CameraTransform) -> [f32; 4] {
+pub fn camera_rotation(camera: &ViewCamera) -> [f32; 4] {
     let forward = (Vec3::from(camera.target) - Vec3::from(camera.eye)).normalize_or_zero();
     if forward == Vec3::ZERO {
         return [0.0, 0.0, 0.0, 1.0];

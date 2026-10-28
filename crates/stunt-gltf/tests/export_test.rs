@@ -9,10 +9,10 @@ use glam::{Quat, Vec3};
 use serde_json::Value;
 use stunt_core::anchor::parse_anchor_table;
 use stunt_core::contracts::{
-    CameraTransform, NodeKind, SodModelIr, SodVertex, VisibilityCondition, get_palette_rgb_float,
+    NodeKind, SodModelIr, SodVertex, VisibilityCondition, get_palette_rgb_float,
 };
 use stunt_core::flm::{SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES};
-use stunt_core::scene::{FilmScene, SceneInputs};
+use stunt_core::scene::{FilmScene, SceneInputs, ViewCamera};
 use stunt_core::sod::{DecodeMode, EPSILON_DISPLACEMENT, decode_sod};
 use stunt_gltf::{GltfError, camera_rotation, export_scene_frame, export_shape, summarize};
 
@@ -480,7 +480,7 @@ fn load(film: &[u8], all: &[u8]) -> FilmScene {
     .0
 }
 
-fn assert_camera_matches(glb: &Glb, camera: &CameraTransform) {
+fn assert_camera_matches(glb: &Glb, camera: &ViewCamera) {
     let cam_node = glb.node_named("Camera").expect("camera node");
     let cam = &glb.array("cameras")[cam_node["camera"].as_u64().unwrap() as usize];
     assert_eq!(cam["type"], "perspective");
@@ -541,7 +541,7 @@ fn timeline_frames_export_camera_and_actors() {
     );
     for tick in [0.0, 7.0] {
         let glb = parse_glb(&export_scene_frame(&scene, tick).expect("export"));
-        assert_camera_matches(&glb, &scene.frame(tick).camera);
+        assert_camera_matches(&glb, &scene.frame(tick).view);
         assert_actors_match(&glb, &scene, tick);
         assert!(glb.node_named("WORLD").is_none());
     }
@@ -638,13 +638,11 @@ fn camera_rotation_maps_minus_z_to_the_view_direction() {
         ([0.0, 5.0, 0.0], [0.0, 0.0, 0.0], 0.7),
     ];
     for (eye, target, roll) in cases {
-        let camera = CameraTransform {
+        let camera = ViewCamera {
             eye,
             target,
             fov_degrees: 45.0,
             roll_radians: roll,
-            cut_from_previous: false,
-            ..Default::default()
         };
         let q = camera_rotation(&camera);
         let rotation = Quat::from_xyzw(q[0], q[1], q[2], q[3]);
@@ -663,19 +661,17 @@ fn camera_rotation_maps_minus_z_to_the_view_direction() {
 
 #[test]
 fn camera_roll_rotates_up_about_the_view_axis() {
-    let level = CameraTransform {
+    let level = ViewCamera {
         eye: [0.0, 0.0, 0.0],
         target: [0.0, 0.0, -1.0],
         fov_degrees: 45.0,
         roll_radians: 0.0,
-        cut_from_previous: false,
-        ..Default::default()
     };
     let q = camera_rotation(&level);
     assert!(Quat::from_xyzw(q[0], q[1], q[2], q[3]).angle_between(Quat::IDENTITY) < 1e-5);
 
     // Roll rotates +Y about the forward axis (-Z) by +90 degrees, as the renderer does: +X.
-    let rolled = CameraTransform {
+    let rolled = ViewCamera {
         roll_radians: std::f32::consts::FRAC_PI_2,
         ..level
     };

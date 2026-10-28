@@ -106,8 +106,6 @@ pub struct ActorTransform {
     /// slot carries no drawn model.
     #[cfg_attr(feature = "serde", serde(default))]
     pub shape_id: u16,
-    /// 4x4 column-major affine model-to-world transform matrix.
-    pub world_matrix: [f32; 16],
     /// Unit quaternion rotation `[x, y, z, w]` converted from direction cosines.
     pub rotation_quat: [f32; 4],
     /// World position `[x, y, z]` in meters per `[I1]`.
@@ -270,7 +268,6 @@ mod tests {
             actor_id: 0,
             model_name: "TEST".to_string(),
             shape_id: 0,
-            world_matrix: [0.0; 16],
             rotation_quat: [0.0, 0.0, 0.0, 1.0], // Identity quaternion
             position_meters: [10.0, 20.0, 30.0],
             state_mask: 0,
@@ -316,10 +313,6 @@ mod tests {
                 actor_id: 1,
                 model_name: "FOKKER".to_string(),
                 shape_id: 0x0107,
-                world_matrix: [
-                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 10.0, 20.0, 30.0,
-                    1.0,
-                ],
                 rotation_quat: [0.0, 0.0, 0.0, 1.0],
                 position_meters: [10.0, 20.0, 30.0],
                 state_mask: 0x0001,
@@ -388,7 +381,6 @@ mod tests {
                 actor_id: 0,
                 model_name: "GOLDEN".to_string(),
                 shape_id: 0,
-                world_matrix: [0.0; 16],
                 rotation_quat: [quat[0], quat[1], quat[2], quat[3]],
                 position_meters: [pos[0], pos[1], pos[2]],
                 state_mask: 0,

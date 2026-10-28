@@ -53,12 +53,10 @@ fn triangle(name: &str, visibility: VisibilityCondition) -> SodModelIr {
 }
 
 fn actor_at(x: f32, state_mask: u16) -> ActorTransform {
-    let matrix = glam::Mat4::from_translation(glam::Vec3::new(x, 0.0, 0.0));
     ActorTransform {
         actor_id: 0,
         model_name: "TRI".to_string(),
         shape_id: SHAPE_ID,
-        world_matrix: matrix.to_cols_array(),
         rotation_quat: [0.0, 0.0, 0.0, 1.0],
         position_meters: [x, 0.0, 0.0],
         state_mask,

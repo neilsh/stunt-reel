@@ -2,8 +2,8 @@
 
 ## Status
 
-proposed; implemented by C1 of the architecture-deepening programme. On sign-off the
-status becomes accepted and the implementation lands in `neilsh/arch-01-trajectory`.
+accepted; implemented by C1 of the architecture-deepening programme. Design signed off
+2026-10-28.
 
 ## Context
 
@@ -84,4 +84,6 @@ migration is needed.
 - The wire change is a removal: new JSON has no `world_matrix`, old JSON still
   deserializes because serde ignores unknown fields, and the Python `from_dict` ignores
   the legacy key. The checked-in fixture and mirror move together.
+- The glossary's **Trajectory record** and **Scene frame** entries carry the
+  authored/view distinction.
 - No new dependency and no change to `[I1]` or `[I4]`.

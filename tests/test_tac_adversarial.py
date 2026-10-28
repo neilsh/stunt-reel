@@ -297,7 +297,6 @@ def test_decode_actor_from_memory_synthetic() -> None:
     assert actor.rotation_quat == [0.0, 0.0, 0.0, 1.0]
     assert actor.state_mask == 0x0005
     assert actor.joint_angles_bam == [(1, 0x1000), (2, 0x2000)]
-    assert actor.world_matrix == actor.compute_world_matrix()
     assert next_addr == "0D51:0CE0"
 
 
@@ -522,7 +521,6 @@ def test_trajectory_streamer_600_ticks_complete() -> None:
         assert 0.0 < rec.camera.fov_degrees < 180.0
         for actor in rec.actors:
             assert quat_norm_diff(actor.rotation_quat) < 1e-14
-            assert actor.world_matrix == actor.compute_world_matrix()
 
     if FIXTURE_PATH.exists():
         rmse = compute_position_rmse(records, FIXTURE_PATH)

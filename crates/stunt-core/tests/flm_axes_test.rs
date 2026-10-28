@@ -48,7 +48,6 @@ fn raw_matrix_for(slot: &SlotState) -> [f32; 16] {
         actor_id: 1,
         model_name: String::new(),
         shape_id: 1,
-        world_matrix: [0.0; 16],
         rotation_quat: slot.rotation_quat_dos(),
         position_meters: slot.position_dos_meters(),
         state_mask: 1,
@@ -114,7 +113,12 @@ fn test_rotated_actor_world_matrix_is_rz180_times_raw_matrix() {
         expected[col * 4] = -raw[col * 4];
         expected[col * 4 + 1] = -raw[col * 4 + 1];
     }
-    assert_close(&actor.world_matrix, &expected, TOLERANCE, "world_matrix");
+    assert_close(
+        &actor.compute_world_matrix(),
+        &expected,
+        TOLERANCE,
+        "world_matrix",
+    );
     assert_close(
         &actor.position_meters,
         &[120.5, 30.25, 75.0],
@@ -123,14 +127,7 @@ fn test_rotated_actor_world_matrix_is_rz180_times_raw_matrix() {
     );
 
     // The 3x3 part really changed: this is not just the translation flip the CLI used to do.
-    assert!((actor.world_matrix[0] - raw[0]).abs() > 1e-3);
-    // The stored world matrix agrees with the stored quaternion and position.
-    let rebuilt = ActorTransform {
-        world_matrix: [0.0; 16],
-        ..actor.clone()
-    }
-    .compute_world_matrix();
-    assert_close(&actor.world_matrix, &rebuilt, TOLERANCE, "rebuilt matrix");
+    assert!((actor.compute_world_matrix()[0] - raw[0]).abs() > 1e-3);
 }
 
 #[test]

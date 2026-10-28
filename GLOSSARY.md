@@ -25,7 +25,7 @@ A film's slices placed on the 50 Hz clock by cumulative tick duration. Playback 
 _Avoid_: track, sequence
 
 **Trajectory record**:
-The evaluated snapshot of camera, actors, audio cues, and palette controls at a slice timestamp or at an interpolated tick sampled from the timeline. This is what the renderer consumes. Its timestamp is always a 50 Hz tick, never a slice ordinal; a slice's ordinal is only its position in the timeline.
+The evaluated snapshot of camera, actors, audio cues, and palette controls at a slice timestamp or at an interpolated tick sampled from the timeline. It carries authored facts — pose and base lens, never a derived value: the model-to-world matrix is computed by `ActorTransform::compute_world_matrix()`, and the lens-zoomed view camera belongs to the scene frame. Its timestamp is always a 50 Hz tick, never a slice ordinal; a slice's ordinal is only its position in the timeline.
 _Avoid_: trajectory tick, frame
 
 **Trajectory**:
@@ -86,7 +86,7 @@ A film's timeline bound to its archive's shapes and the world. Sampling it at a 
 _Avoid_: scene bundle
 
 **Scene frame**:
-What to draw at one tick: the camera, the world, and one draw per visible actor carrying its shape, world matrix, state mask, and distance to the camera. Two actors sharing a shape are two draws.
+What to draw at one tick: the lens-zoomed view camera (`ViewCamera`), the world, and one draw per visible actor carrying its shape, world matrix, state mask, and distance to the camera. Two actors sharing a shape are two draws.
 _Avoid_: frame (alone), draw list
 
 **glTF export**:

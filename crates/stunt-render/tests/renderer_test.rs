@@ -9,7 +9,7 @@ mod common;
 use stunt_core::contracts::{
     CameraTransform, NodeKind, SodModelIr, SodVertex, VisibilityCondition,
 };
-use stunt_core::scene::FilmScene;
+use stunt_core::scene::{FilmScene, ViewCamera};
 use stunt_render::{
     CameraController, LAYER_FIRST_ACTOR, LAYER_NONE, Offscreen, PageSink, PageSize, RenderError,
     RenderOptions, RenderedPage, SinkError,
@@ -361,13 +361,11 @@ fn interval_samples_are_accepted_once_each() {
             continue;
         }
         expected += 1;
-        camera.set_authored_transform(CameraTransform {
+        camera.set_authored_transform(ViewCamera {
             eye: [0.0, 10.0, 50.0 - (tick as f32 * 0.5)],
             target: [0.0, 0.0, 0.0],
             fov_degrees: 45.0,
             roll_radians: 0.0,
-            cut_from_previous: tick == 0,
-            ..Default::default()
         });
         let page = test.draw_with(&scene.frame(tick as f32), Some(&camera));
         assert_eq!(page.size(), PageSize::default());

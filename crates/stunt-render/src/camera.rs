@@ -5,7 +5,7 @@
 //! - `[I6]` VGA 4:3 physical aspect ratio correction ($320 \times 240$ base).
 
 use glam::{Mat4, Vec3, camera::rh};
-use stunt_core::contracts::CameraTransform;
+use stunt_core::scene::ViewCamera;
 
 /// Standard 4:3 physical aspect ratio for VGA Mode 13h ($320 \times 240$).
 pub const ASPECT_4_3: f32 = 4.0 / 3.0;
@@ -131,7 +131,7 @@ pub struct CameraController {
     /// Active camera mode.
     pub mode: CameraMode,
     /// Current authored transform received from trajectory streamer.
-    pub authored: CameraTransform,
+    pub authored: ViewCamera,
     /// Detached Free-Cam navigation state.
     pub free_cam: FreeCamState,
     /// Physical viewport aspect ratio (defaults to 4:3 = 1.3333333 per `[I6]`).
@@ -153,7 +153,7 @@ impl Default for CameraController {
     fn default() -> Self {
         Self {
             mode: CameraMode::Authored,
-            authored: CameraTransform::default(),
+            authored: ViewCamera::default(),
             free_cam: FreeCamState::default(),
             aspect_ratio: ASPECT_4_3,
             projection_y_scale: 1.0,
@@ -183,7 +183,7 @@ impl CameraController {
     }
 
     /// Updates the authored camera transform from a simulation tick.
-    pub fn set_authored_transform(&mut self, transform: CameraTransform) {
+    pub fn set_authored_transform(&mut self, transform: ViewCamera) {
         self.authored = transform;
     }
 

@@ -3,7 +3,7 @@
 //! The offscreen render tests moved to renderer_test.rs, where they cross the Renderer entry
 //! point and assert on RenderedPage: the plane is the test seam.
 
-use stunt_core::contracts::CameraTransform;
+use stunt_core::scene::ViewCamera;
 use stunt_render::{
     ASPECT_4_3, ASPECT_CORRECTED_HEIGHT, CameraController, CameraMode, MODE13H_WIDTH,
     build_palette_lut_bytes, compute_frame_ssim, rgba_to_luminance,
@@ -42,13 +42,11 @@ fn test_camera_controller_and_aspect_ratio() {
     let mut cam = CameraController::default();
     assert!((cam.aspect_ratio - ASPECT_4_3).abs() < 1e-4);
 
-    let authored = CameraTransform {
+    let authored = ViewCamera {
         eye: [10.0, 20.0, 30.0],
         target: [0.0, 0.0, 0.0],
         fov_degrees: 60.0,
         roll_radians: 0.0,
-        cut_from_previous: false,
-        ..Default::default()
     };
     cam.set_authored_transform(authored);
 

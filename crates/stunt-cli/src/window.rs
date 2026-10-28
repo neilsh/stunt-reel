@@ -123,7 +123,7 @@ impl WindowApp {
 
         let frame = self.scene.frame(self.current_tick);
         if self.camera.mode == CameraMode::Authored {
-            self.camera.set_authored_transform(frame.camera);
+            self.camera.set_authored_transform(frame.view);
         }
         if let Err(error) = renderer.draw(&frame, Some(&self.camera)) {
             eprintln!("[stuntreel] Render failed: {error}");

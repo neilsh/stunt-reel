@@ -28,7 +28,7 @@ Golden oracle trajectory snapshot conforming to `Seam 2: TrajectoryRecord` (`cra
 - Holds evaluated `[I1]` records, not raw DOS axes. `build_synthetic_intro_flm` authors its slots in DOS axes to match: every `INTERP` stores the negated `x` and `y` of the position listed here, and the actor slot (slot 1) stores `rz = 0x8000` (a half turn about Z) so that `q_z180 * q` evaluates to the identity `rotation_quat` `[0, 0, 0, 1]` recorded below. The camera slot keeps `rz = 0`; its look direction is unaffected because `q_z180` fixes `+Z`.
 - Contains a sequence of discrete simulation ticks (ticks 0 and 1). The ticks are 50 Hz cumulative ticks (slice $i$ at the sum of `tick_duration` over slices `0..=i`), not slice ordinals, of the film produced by `build_synthetic_intro_flm(2)` in `crates/stunt-core/tests/common/mod.rs` (test-only, not part of the library). Its slices are authored with `tick_duration` 0 and then 1, so slice $t$ lands on tick $t$. `compute_position_rmse` samples `FilmTimeline` at each oracle tick.
 - Evaluates `CameraTransform` (`eye`, `target`, `fov_degrees`, `roll_radians`).
-- Evaluates `ActorTransform` (`actor_id`, `model_name`, `world_matrix`, `rotation_quat`, `position_meters`, `state_mask`).
+- Evaluates `ActorTransform` (`actor_id`, `model_name`, `rotation_quat`, `position_meters`, `state_mask`).
 - Evaluates `AudioCue` events (`tick`, `sample_name`, `volume`, `pan`).
 - Used to test serialization/deserialization and golden trajectory regression comparisons.
 
