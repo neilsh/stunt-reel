@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted
+accepted; §1 and §5 amended by [ADR 0020](0020-publish-through-a-fresh-scrubbed-repository.md)
 
 ## Context
 
