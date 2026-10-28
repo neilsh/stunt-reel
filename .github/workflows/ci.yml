@@ -65,9 +65,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.88"
+      # The repository's allowed-actions policy admits GitHub-owned actions and the two
+      # third-party patterns it names; rustup already ships on the runner, so install the
+      # MSRV toolchain directly instead of adding another action to the allowlist.
+      - name: Install Rust 1.88
+        run: rustup toolchain install 1.88 --profile minimal
       - run: cargo +1.88 check --workspace --all-features --locked
 
   deny:
