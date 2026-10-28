@@ -285,7 +285,7 @@ def run_session(
     out: Path,
     *,
     sample: Callable[[Session], T],
-    conf: Path = Path("dosbox-parity.conf"),
+    conf: Path = Path("tools/dosbox/dosbox-parity.conf"),
     dgroup_segment: int = playone.DGROUP_RUNTIME_SEG,
     no_launch: bool = False,
     emulator: Emulator | None = None,

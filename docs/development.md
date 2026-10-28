@@ -87,8 +87,7 @@ The data root is **read-only**: `mise run capture-ref` into the shared captures 
 | `corpus/` | Gitignored demo and archive data, linked from the shared data root — [`corpus/README.md`](../corpus/README.md) |
 | `target_bin/` | Gitignored original game binaries |
 | `build/` | Gitignored outputs: `build/parity/{ours,report}/` and `build/gltf_output/`; `build/parity/reference/` borrows the shared captures |
-| `dosbox-*.conf` | `dosbox-playone.conf` (interactive play), `dosbox-parity.conf` (capture), `dosbox-mcp.conf` (agent debugger), `test_mcp.conf` |
-| `play_ctry.bat` | Convenience launcher for `mise run play` |
+| `tools/dosbox/` | DOSBox-X configs (`dosbox-playone.conf` interactive play, `dosbox-parity.conf` capture, `dosbox-mcp.conf` agent debugger, `dosbox-utils.conf` period tools) and `play_ctry.bat`, a launcher for `mise run play` — [`tools/dosbox/README.md`](../tools/dosbox/README.md) |
 
 ---
 
@@ -97,10 +96,10 @@ The data root is **read-only**: `mise run capture-ref` into the shared captures 
 ### Play a film in the original player
 
 ```powershell
-mise run play        # or: .\play_ctry.bat
+mise run play        # or: .	ools\dosbox\play_ctry.bat
 ```
 
-`dosbox-playone.conf` mounts `corpus/stisldem`, launches `PLAYONE.EXE`, and queues the autotype sequence that selects `CTRY.FLM`.
+`tools/dosbox/dosbox-playone.conf` mounts `corpus/stisldem`, launches `PLAYONE.EXE`, and queues the autotype sequence that selects `CTRY.FLM`.
 
 ### Capture reference frames and score a render
 
@@ -191,7 +190,7 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | `deny` | `cargo deny check` — advisories, license allow-list, wildcard bans, and registry sources |
 | `capture-ref` | reference capture into `build/parity/reference/ctry` (`--max-frames` defaults to 140) |
 | `verify-corpus` | `.ksy` catalog check against `corpus/` |
-| `play` | launch `dosbox-playone.conf` |
+| `play` | launch `tools/dosbox/dosbox-playone.conf` |
 | `ensure-dosbox`, `mcp` | agent debugger plumbing |
 | `parity-probe`, `verify-docs`, `unlzexe`, `probe-light`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
 

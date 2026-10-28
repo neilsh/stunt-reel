@@ -70,10 +70,10 @@ The install's own `SETS/` directory holds 36 `.SET` files — the retail levels,
 The install ships DOS programs, so the printer itself is a usable oracle.
 
 ```
-dosbox-x -conf dosbox-utils.conf -c "typeset base.set > out.txt" -c "exit"
+dosbox-x -conf tools/dosbox/dosbox-utils.conf -c "typeset base.set > out.txt" -c "exit"
 ```
 
-[`dosbox-utils.conf`](../../dosbox-utils.conf) mounts `build/utils` as `C:` and deliberately starts no MCP server, because port `58991` belongs to the capture harness. Copy `TYPESET.EXE` and the set under test into `build/utils` first. Verified: `TYPESET` on `BOMBING.SET` reproduces the same field list as `BOMBING.TXT`, so the oracle matches the shipped dumps.
+[`dosbox-utils.conf`](../../tools/dosbox/dosbox-utils.conf) mounts `build/utils` as `C:` and deliberately starts no MCP server, because port `58991` belongs to the capture harness. Copy `TYPESET.EXE` and the set under test into `build/utils` first. Verified: `TYPESET` on `BOMBING.SET` reproduces the same field list as `BOMBING.TXT`, so the oracle matches the shipped dumps.
 
 That makes a byte-to-field map mechanical in principle — flip one byte, dump again, and diff the two outputs, ignoring the `Printed at` line. Two practical obstacles, both measured:
 

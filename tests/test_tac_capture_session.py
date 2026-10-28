@@ -693,7 +693,7 @@ def test_capture_script_keeps_its_flags_and_progress_lines(
     assert args.out is None
     assert args.dgroup_segment == DGROUP_RUNTIME_SEG
     assert args.max_frames == 2000
-    assert args.conf == Path("dosbox-parity.conf")
+    assert args.conf == Path("tools/dosbox/dosbox-parity.conf")
     assert args.no_launch is False
 
     exe = Path("dosbox-x.exe")
@@ -779,7 +779,7 @@ def test_probe_script_keeps_its_flags_and_shot_line(
     assert args.film == Path("corpus/stisldem/VAULT/CTRY.FLM")
     assert args.ticks == "10,150,273,448,700,900,1100"
     assert args.out == Path("build/scratch/round5")
-    assert args.stage == Path("dosbox-parity.conf")
+    assert args.stage == Path("tools/dosbox/dosbox-parity.conf")
     assert args.dump_all_segments is False
 
     mock = MockTransport()

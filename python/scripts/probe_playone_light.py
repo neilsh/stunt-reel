@@ -55,7 +55,10 @@ def parse_args() -> argparse.Namespace:
         "--out", type=Path, default=Path("build/scratch/round5"), help="dump directory"
     )
     parser.add_argument(
-        "--stage", type=Path, default=Path("dosbox-parity.conf"), help="DOSBox-X config"
+        "--stage",
+        type=Path,
+        default=Path("tools/dosbox/dosbox-parity.conf"),
+        help="DOSBox-X config",
     )
     parser.add_argument(
         "--dump-all-segments",

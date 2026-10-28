@@ -1,6 +1,6 @@
 """Capture PLAYONE.EXE Mode 13h reference frames for visual parity.
 
-Launches DOSBox-X with dosbox-parity.conf (which auto-starts PLAYONE.EXE on its
+Launches DOSBox-X with tools/dosbox/dosbox-parity.conf (which auto-starts PLAYONE.EXE on its
 LOAD FILM dialog), accepts the emulator's outbound debugger connection on the MCP
 control port, confirms CTRY.FLM with BIOS Data Area keystrokes, and dumps one whole
 frame per post-retrace trap hit until the frame budget is met.
@@ -70,7 +70,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--conf",
         type=Path,
-        default=Path("dosbox-parity.conf"),
+        default=Path("tools/dosbox/dosbox-parity.conf"),
         help="DOSBox-X configuration used for the capture run",
     )
     parser.add_argument(
