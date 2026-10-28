@@ -29,7 +29,7 @@ You can build and test everything without any game files:
 
 ```powershell
 mise trust && mise install   # pinned toolchains (Rust, Python via uv, DOSBox-X, Kaitai)
-mise run init                # Python environment and shared data root
+mise run init                # shared data root, cached Python environment
 mise run check               # format, lint, typecheck and tests, Rust and Python
 ```
 

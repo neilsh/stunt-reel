@@ -15,7 +15,7 @@ page is the machine setup they assume.
 | mise trust and tracked-config records | `%USERPROFILE%\.local\state\mise` | no |
 | mise global settings | `%USERPROFILE%\.config\mise\config.toml` | no |
 | Shared data root | `<parent-of-primary>/<repo-name>.data`, see [ADR 0008](adr/0008-worktrees-share-one-read-only-data-root.md) | no |
-| Shared tool cache | `<primary>/.cache`, linked per worktree, see [ADR 0013](adr/0013-worktrees-share-one-writable-tool-cache.md) | no |
+| Shared tool cache, with each worktree's virtualenv under `venvs/` | `<primary>/.cache`, linked per worktree, see [ADR 0013](adr/0013-worktrees-share-one-writable-tool-cache.md) and [ADR 0019](adr/0019-a-worktrees-virtualenv-lives-in-the-shared-cache.md) | no |
 | DSH permission mode and approvals | `~/.dsh` (host settings) | no |
 | Worktrees | `.agents/worktrees/` inside the primary checkout | no |
 
@@ -64,7 +64,8 @@ Run these in a normal terminal, outside an agent sandbox.
 
 4. Keep the worktree pool inside the checkout. For a `workspace-write` session, a
    worktree must live under the session workspace (`.agents/worktrees/`). A pool beside
-   the checkout puts `.venv`, `.cache` and every junction target outside the sandbox.
+   the checkout puts the checkout, its `.cache` and `.venv` junctions and every junction
+   target outside the sandbox.
 
 ## Provisioning a worktree
 
@@ -73,8 +74,8 @@ The scripted setup is `mise run init`; under DSH its link step needs the wider p
 1. Create the worktree: DSH's `create_worktree`, or `git worktree add` under
    `.agents/worktrees/`.
 2. Switch the session to `danger-full-access`.
-3. Run `mise run init`; it runs `uv sync` and creates the junctions and the `.cache`
-   link.
+3. Run `mise run init`; it creates the `.cache` and `.venv` junctions and the data-root
+   links, then runs `uv sync` into the cached environment.
 4. Verify the links and that the corpus reads (see below).
 5. Switch back to `workspace-write`; later `mise run` tasks in that worktree do not need
    the state write, because an existing trust record is not rewritten.

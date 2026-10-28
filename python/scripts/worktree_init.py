@@ -3,7 +3,10 @@
 ``mise run init`` links the machine-wide data root into this checkout, so the
 relative ``corpus/``, ``build/parity/reference/`` and ``target_bin/`` paths keep working
 in every worktree, and links ``.cache`` to the primary checkout's shared tool
-cache (ADR 0013).  ``mise run clean`` reports the per-worktree build outputs and
+cache (ADR 0013).  It parks this checkout's ``.venv`` inside that cache too
+(ADR 0019) and then runs ``uv sync``, so the environment is hardlinked out of the
+cache instead of copied into the checkout, which is 3 s per worktree.  ``mise run
+clean`` reports the per-worktree build outputs and
 removes them only with ``--yes``; the shared cache is reported, never removed.
 ``clean -- --parity --keep N`` narrows the same command to the parity render trees,
 which accumulate one directory per render and are the one build output big enough to
@@ -27,15 +30,21 @@ from stunt_reel.dataroot import (
     DATA_ENV,
     LINK_TARGETS,
     REPO_ROOT,
+    VENV_DIRNAME,
     SharedDataError,
     cache_root,
     create_link,
     data_root,
+    discard_env,
     ensure_cache_link,
+    ensure_venv_link,
+    env_target,
     is_link,
     is_placeholder,
     link_points_at,
+    orphan_envs,
     remove_link,
+    sweep_orphan_envs,
 )
 
 #: Per-worktree build outputs and caches that ``clean`` reports.
@@ -81,6 +90,51 @@ def _migrate(relative: str, target: Path) -> None:
     print(f"  > {relative} -> {target}")
 
 
+def _uv_venv(environment: Path) -> int:
+    """Seed a linked environment, which uv will not create through a link itself.
+
+    ``uv sync`` refuses a project environment that exists but holds no interpreter,
+    and the junction cannot point at a directory that does not exist yet, so the
+    first init of a worktree asks ``uv venv`` for the interpreter before syncing.
+    """
+    if (environment / "pyvenv.cfg").is_file():
+        return 0
+    uv = shutil.which("uv")
+    if uv is None:
+        print("  ! uv is not on PATH; run this through mise")
+        return 1
+    result = subprocess.run(  # noqa: S603
+        [uv, "venv", "--allow-existing", str(environment)],
+        check=False,
+    )
+    return int(result.returncode)
+
+
+def _uv_sync(environment: Path | None) -> int:
+    """Run ``uv sync`` for this checkout, installing into *environment* when it is linked.
+
+    The links must exist first: uv resolves its cache through ``.cache``, and an
+    environment created before the link would be a copy on the checkout's own volume
+    (ADR 0019).
+    """
+    uv = shutil.which("uv")
+    if uv is None:
+        print("  ! uv is not on PATH; run this through mise")
+        return 1
+    child = dict(os.environ)
+    if environment is not None:
+        child["UV_PROJECT_ENVIRONMENT"] = str(environment)
+    print("  uv sync --locked --all-groups")
+    result = subprocess.run(  # noqa: S603
+        [uv, "sync", "--locked", "--all-groups"],
+        env=child,
+        check=False,
+    )
+    if result.returncode != 0:
+        print(f"  ! uv sync failed (exit {result.returncode})")
+    return int(result.returncode)
+
+
 def _init(migrate: bool) -> int:
     root = data_root()
     source = DATA_ENV if DATA_ENV in os.environ else "derived"
@@ -89,6 +143,26 @@ def _init(migrate: bool) -> int:
     if migrate:
         for shared, relative in LINK_TARGETS:
             _migrate(relative, root / shared)
+
+    # The links come before the sync, so uv hardlinks its packages out of the shared
+    # cache instead of copying them, and so the environment is not born in the checkout.
+    venv: str | None = None
+    try:
+        print(f"  {ensure_cache_link()}")
+        venv = ensure_venv_link()
+    except (SharedDataError, OSError) as err:
+        print(f"  ! .cache: {err}")
+    if venv is not None:
+        print(f"  {venv}")
+    stale = sweep_orphan_envs()
+    if stale:
+        print(f"  - {len(stale)} environment(s) whose checkout is gone")
+    environment = env_target(REPO_ROOT) if venv is not None else None
+    if environment is not None and _uv_venv(environment):
+        return 1
+    code = _uv_sync(environment)
+    if code:
+        return code
 
     problems = 0
     for shared, relative in LINK_TARGETS:
@@ -126,11 +200,6 @@ def _init(migrate: bool) -> int:
             )
             return 1
         print(f"  + {relative} -> {target}")
-
-    try:
-        print(f"  {ensure_cache_link()}")
-    except SharedDataError as err:
-        print(f"  ! .cache: {err}")
 
     if problems:
         print(f"\n{problems} path(s) unresolved; see corpus/README.md for the archive layout")
@@ -217,6 +286,12 @@ def _clean(confirmed: bool, parity: bool = False, keep: int = 1) -> int:
             total += path.stat().st_size
             print(f"  {path.name:<14}{path.stat().st_size / 1_048_576:9.1f} MiB")
     print(f"  {'total':<14}{total / 1_048_576:9.1f} MiB")
+    environment = env_target(REPO_ROOT)
+    if is_link(REPO_ROOT / VENV_DIRNAME) and environment.is_dir():
+        print(
+            f"  {'worktree env':<14}{_size(environment) / 1_048_576:9.1f} MiB"
+            " (in the shared cache; reap removes it)"
+        )
     if cache_root().is_dir():
         print(f"  {'shared cache':<14}(shared across worktrees; never removed)")
     if not confirmed:
@@ -459,6 +534,8 @@ def _reap_one(
         delete = _git(repo, "branch", "-d" if candidate.merged else "-D", branch)
         if delete.returncode != 0:
             return f"{branch}: git branch delete failed: {delete.stderr.strip()}"
+    # The environment lives in the shared cache, outside the checkout git just removed.
+    discard_env(path)
     return None
 
 
@@ -491,9 +568,20 @@ def _prune_leftovers(entries: list[_Worktree], *, confirmed: bool) -> tuple[int,
             except OSError as err:
                 print(f"  ! {child.name}: {err}")
                 continue
+            discard_env(child)
             removed += 1
             freed += size
     return removed, freed
+
+
+def _prune_envs(*, confirmed: bool) -> int:
+    """Remove cached environments whose checkout is gone; return how many."""
+    stale = orphan_envs()
+    for target in stale:
+        print(f"  env      {target.name}")
+    if not confirmed or not stale:
+        return 0
+    return len(sweep_orphan_envs())
 
 
 def _prune_branches(
@@ -568,6 +656,7 @@ def _reap(
     if not confirmed:
         if prune:
             _prune_leftovers(entries, confirmed=False)
+            _prune_envs(confirmed=False)
             _prune_branches(repo, entries, include_cherry=include_cherry, confirmed=False)
         print("\ndry run; re-run with --yes to reap")
         return 0
@@ -591,10 +680,12 @@ def _reap(
         print("\npruning pool leftovers and branches without a worktree:")
         fresh = _worktrees(repo)
         leftover_dirs, leftover_bytes = _prune_leftovers(fresh, confirmed=True)
+        envs = _prune_envs(confirmed=True)
         branches, kept = _prune_branches(repo, fresh, include_cherry=include_cherry, confirmed=True)
         print(
-            f"  removed {branches} branch(es) and {leftover_dirs} leftover dir(s),"
-            f" {leftover_bytes / 1_048_576:.1f} MiB; kept {kept} unmerged branch(es)"
+            f"  removed {branches} branch(es), {leftover_dirs} leftover dir(s) and"
+            f" {envs} environment(s), {leftover_bytes / 1_048_576:.1f} MiB;"
+            f" kept {kept} unmerged branch(es)"
         )
     return 1 if failed else 0
 

@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from stunt_reel import dataroot
+
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
@@ -157,6 +159,35 @@ def test_reap_one_unlinks_then_removes_and_keeps_the_target(tmp_path: Path) -> N
     assert (target / "nested" / "keep.txt").read_text(encoding="utf-8") == "keep"
     branches = _run_git(repo, "branch", "--format=%(refname:short)")
     assert "wt-test" not in branches.split()
+
+
+def test_reap_one_discards_the_worktrees_cached_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The environment lives in the shared cache, outside the checkout git removes, so
+    # reap has to delete it or every reaped worktree leaves one behind.
+    if os.name != "nt":
+        pytest.skip("directory junctions are a Windows feature")
+    repo = _init_repo(tmp_path)
+    worktree = tmp_path / "wt"
+    _run_git(repo, "worktree", "add", "-q", str(worktree), "-b", "wt-test")
+    monkeypatch.setattr(dataroot, "REPO_ROOT", repo)
+    target = dataroot.env_target(worktree)
+    target.mkdir(parents=True)
+    (target / dataroot.ENV_MARKER).write_text(str(worktree), encoding="utf-8")
+    dataroot.create_link(worktree / ".venv", target)
+    candidate = worktree_init._Candidate(
+        worktree=worktree_init._Worktree(path=worktree, head="", branch="wt-test"),
+        merged=True,
+        dirty=[],
+        untracked=[],
+        links=worktree_init._reparse_points(worktree),
+        size=0,
+    )
+    assert (
+        worktree_init._reap_one(repo, candidate, stash_dirty=False, discard_untracked=False) is None
+    )
+    assert not target.exists()
 
 
 def test_candidates_keep_unmerged_and_outside_pool(tmp_path: Path) -> None:

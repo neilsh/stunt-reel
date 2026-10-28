@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -184,6 +185,74 @@ def test_cache_link_is_a_real_directory_in_the_primary(
     assert dataroot.ensure_cache_link() == "= .cache"
     assert (primary / ".cache").is_dir()
     assert not dataroot.is_link(primary / ".cache")
+
+
+def test_env_link_parks_a_worktrees_environment_in_the_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A checkout's volume usually differs from the primary's, so uv can only hardlink
+    # the packages out of the cache when the environment itself sits in the cache.
+    primary = _primary(tmp_path)
+    worktree = _worktree(monkeypatch, primary)
+    target = dataroot.env_target(worktree)
+    assert dataroot.ensure_venv_link() == f"+ .venv -> {target}"
+    assert target.parent == primary / ".cache" / dataroot.ENV_DIRNAME
+    assert dataroot.link_points_at(worktree / ".venv", target)
+    assert (target / dataroot.ENV_MARKER).read_text(encoding="utf-8").strip() == str(worktree)
+    assert dataroot.ensure_venv_link() == "= .venv"
+
+
+def test_env_link_discards_a_per_checkout_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A worktree that synced before running init holds a copy on its own volume; its
+    # absolute paths cannot move, so init throws the copy away instead of adopting it.
+    primary = _primary(tmp_path)
+    worktree = _worktree(monkeypatch, primary)
+    copy = worktree / ".venv"
+    (copy / "Lib" / "site-packages").mkdir(parents=True)
+    (copy / "pyvenv.cfg").write_text("home = C:/Python311\n", encoding="utf-8")
+    line = dataroot.ensure_venv_link()
+    assert line is not None
+    assert line.endswith("(per-checkout copy discarded)")
+    assert dataroot.link_points_at(copy, dataroot.env_target(worktree))
+    assert not (dataroot.env_target(worktree) / "pyvenv.cfg").exists()
+
+
+def test_env_link_leaves_the_primary_checkout_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The primary's .venv already sits beside the cache and needs no junction.
+    primary = _checkout(monkeypatch, _primary(tmp_path))
+    (primary / ".venv").mkdir()
+    assert dataroot.ensure_venv_link() is None
+    assert not dataroot.is_link(primary / ".venv")
+
+
+def test_env_target_is_stable_and_per_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    primary = _primary(tmp_path)
+    first = _worktree(monkeypatch, primary, slug="one")
+    target = dataroot.env_target(first)
+    assert dataroot.env_target(first) == target
+    assert dataroot.env_target(_worktree(monkeypatch, primary, slug="two")) != target
+    assert target.parent == dataroot.env_root()
+
+
+def test_orphan_envs_are_the_ones_whose_checkout_is_gone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    primary = _primary(tmp_path)
+    worktree = _worktree(monkeypatch, primary)
+    dataroot.ensure_venv_link()
+    target = dataroot.env_target(worktree)
+    assert dataroot.orphan_envs() == []
+    shutil.rmtree(worktree)
+    _checkout(monkeypatch, primary)
+    assert dataroot.orphan_envs() == [target]
+    assert dataroot.sweep_orphan_envs() == [target]
+    assert not target.exists()
 
 
 def test_cache_link_adopts_a_cache_made_before_the_link(

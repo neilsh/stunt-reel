@@ -21,10 +21,10 @@ Setup, workflows and the quality gate for working on `stunt-reel`. The project o
 ```powershell
 mise trust     # once per fresh clone, if mise asks you to trust the config
 mise install   # pinned toolchains, DOSBox-X, Kaitai compiler
-mise run init  # Python environment, then link the shared data root
+mise run init  # link the shared data root and cached environment, then uv sync
 ```
 
-Pinned versions live in [`mise.toml`](../mise.toml); `mise run init` runs `uv sync`, which installs the `kaitaistruct==0.11` runtime for the schema checks.
+Pinned versions live in [`mise.toml`](../mise.toml); `mise run init` links the shared cache and then runs `uv sync`, which installs the `kaitaistruct==0.11` runtime for the schema checks.
 
 > [!NOTE]
 > The quality gate (`mise run check`) runs on Linux, macOS and Windows. Capture, parity and corpus workflows are Windows + DOSBox-X + local-corpus only; elsewhere you can still build, test and render from synthetic fixtures.
@@ -64,7 +64,7 @@ Several agents can work at once, each in its own `git worktree`: beside the chec
 
 The community archive keeps its historical `si_archive` name inside the data root; a checkout links it as `corpus/siarchive`, the collector's spelling, and `LINK_TARGETS` in `python/stunt_reel/dataroot.py` is the one place that maps the two.
 
-`mise run init` links those into a worktree with junctions, so the relative `corpus/` and `build/parity/reference/` paths work unchanged; build outputs, caches and `.venv` stay per worktree. `STUNT_DATA_ROOT` names a different data root, and `mise run init -- --migrate` moves an existing in-checkout `corpus/` into it. A sandboxed agent session cannot create those junctions under `workspace-write`, because their targets are outside the workspace; provision the worktree with one run at wider file access — see [docs/harness-setup.md](harness-setup.md).
+`mise run init` links those into a worktree with junctions, so the relative `corpus/` and `build/parity/reference/` paths work unchanged; build outputs and the Python tool caches stay per worktree, while the virtualenv lives in the shared cache (see [Shared tool cache](#shared-tool-cache), and [ADR 0019](adr/0019-a-worktrees-virtualenv-lives-in-the-shared-cache.md)). `STUNT_DATA_ROOT` names a different data root, and `mise run init -- --migrate` moves an existing in-checkout `corpus/` into it. A sandboxed agent session cannot create those junctions under `workspace-write`, because their targets are outside the workspace; provision the worktree with one run at wider file access — see [docs/harness-setup.md](harness-setup.md).
 
 The data root is **read-only**: `mise run capture-ref` into the shared captures and oracle generation refuse unless `STUNT_DATA_WRITE=1` is set, and only one session may capture at a time, because DOSBox-X and port `58991` are machine-wide. Retire a worktree with `mise run reap -- --yes`, which unlinks the junctions before `git worktree remove` runs; `mise run clean -- --yes` only clears outputs of a checkout you are keeping. See [ADR 0008](adr/0008-worktrees-share-one-read-only-data-root.md) and [ADR 0018](adr/0018-reaping-unlinks-the-data-root-links-first.md).
 
@@ -203,7 +203,9 @@ CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) invokes the mise 
 
 ### Shared tool cache
 
-`mise run init` links each checkout's `.cache/` to the primary checkout's copy; `mise.toml` points `UV_CACHE_DIR` and the cargo tasks' `CARGO_HOME` into it, so every worktree reuses one set of downloaded crates and uv artifacts. Build outputs (`target/`), the virtualenv and the Python tool caches stay per worktree, because they are revision-specific or not relocatable. `mise run clean` reports the shared cache and never removes it; `rm -rf .cache` resets it. See [ADR 0013](adr/0013-worktrees-share-one-writable-tool-cache.md).
+`mise run init` links each checkout's `.cache/` to the primary checkout's copy; `mise.toml` points `UV_CACHE_DIR` and the cargo tasks' `CARGO_HOME` into it, so every worktree reuses one set of downloaded crates and uv artifacts. Build outputs (`target/`) and the Python tool caches stay per worktree, because they are revision-specific or not relocatable.
+
+The virtualenv lives in that cache too: `init` lays it out as `<cache>/venvs/<checkout>-<digest>` and points `.venv` at it with a junction, because uv can only hardlink packages onto the cache's own volume and a worktree usually sits on another one. A per-checkout environment would copy 68 MiB (3.1 s) at every fresh init; the linked one installs in about 150 ms. `reap` deletes a reaped worktree's environment, `init` and `reap --prune` sweep environments whose checkout is gone, and `mise run clean` reports it without removing it. `rm -rf .cache` deletes every environment with the cache. See [ADR 0013](adr/0013-worktrees-share-one-writable-tool-cache.md) and [ADR 0019](adr/0019-a-worktrees-virtualenv-lives-in-the-shared-cache.md).
 
 ### Running individual commands
 

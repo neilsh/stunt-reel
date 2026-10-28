@@ -39,8 +39,11 @@ bin_path = "bin/x64/Release SDL2"
 
 [env]
 # One shared, writable tool cache per primary checkout: mise run init links each
-# worktree's .cache to it (ADR 0013). Build outputs, the virtualenv and the
-# Python tool caches stay per worktree. CARGO_HOME is set per cargo task
+# worktree's .cache to it (ADR 0013), and parks the worktree's virtualenv inside it
+# as venvs/<checkout> (ADR 0019) so uv hardlinks the packages out of the cache
+# instead of copying 68 MiB into the checkout at every fresh worktree. Build
+# outputs and the Python tool caches stay per worktree. CARGO_HOME is set per
+# cargo task
 # instead of here: mise installs its rustup shim into $CARGO_HOME, and a rustup
 # inside this tree would run at the tree's low integrity and fail to reach the
 # user's RUSTUP_HOME (ADR 0013).
@@ -76,8 +79,13 @@ depends = ["ensure-dosbox"]
 run = "dosbox-x-mcp-server"
 
 [tasks.init]
-description = "Link the shared data root into this worktree and create the Python environment (mise run init -- --migrate adopts an existing corpus)"
-run = "uv sync --locked --all-groups && uv run python python/scripts/worktree_init.py init"
+description = "Link the shared data root and the cached Python environment into this worktree, then sync it (mise run init -- --migrate adopts an existing corpus)"
+# Plain python, not "uv run": the script links .cache and .venv first and only then
+# runs uv sync, so the environment is hardlinked out of the shared cache rather than
+# copied; uv run would create one in the checkout before the link exists (ADR 0019).
+# PYTHONPATH names the package source, which is all the linker imports.
+run = "python python/scripts/worktree_init.py init"
+env = { PYTHONPATH = "{{config_root}}/python" }
 
 [tasks.clean]
 description = "Report this worktree's build outputs; remove them with --yes (mise run clean -- --yes), or rotate parity render trees only (mise run clean -- --parity --keep 3 --yes)"

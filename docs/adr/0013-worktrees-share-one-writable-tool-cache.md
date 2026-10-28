@@ -3,9 +3,12 @@
 `CARGO_HOME` and `UV_CACHE_DIR` point at `<checkout>/.cache`, and `mise run init`
 links that directory to the primary checkout's copy, so every worktree of this
 repository reuses one set of downloaded crates and uv artifacts instead of
-paying for its own. Build outputs (`target/`), the virtualenv and the Python
-tool caches stay per worktree: they are revision-specific or not relocatable,
-and a shared `CARGO_TARGET_DIR` serialises whole builds — two concurrent probe
+paying for its own. [ADR 0019](0019-a-worktrees-virtualenv-lives-in-the-shared-cache.md)
+later moved the virtualenv into that cache too, because uv cannot hardlink a
+package onto another volume and a worktree usually is on one. Build outputs
+(`target/`) and the Python tool caches stay per worktree: they are
+revision-specific or not relocatable, and a shared `CARGO_TARGET_DIR` serialises
+whole builds — two concurrent probe
 builds on one artifact directory took 26.6 s against 13.4 s on separate ones.
 The shared cache is writable, unlike the data root, because downloaded crates
 and uv artifacts are disposable; `rm -rf .cache` is the reset.
@@ -15,9 +18,11 @@ and uv artifacts are disposable; `rm -rf .cache` is the reset.
 - **The link.** [`ensure_cache_link`](../../python/stunt_reel/dataroot.py) runs
   from `mise run init` ([`worktree_init.py`](../../python/scripts/worktree_init.py)):
   it creates the primary's `.cache`, moves a cache that the first `uv sync` made
-  before the link existed into it, and replaces the directory with a junction
-  on Windows (a symlink elsewhere). [`test_dataroot.py`](../../tests/test_dataroot.py)
-  covers the worktree, primary and adoption cases.
+  before the link existed into it, and replaces the directory with a junction on
+  Windows (a symlink elsewhere). `init` links the cache before it syncs, so only a
+  worktree that synced before running `init` still needs that adoption (ADR 0019).
+  [`test_dataroot.py`](../../tests/test_dataroot.py) covers the worktree, primary and
+  adoption cases.
 - **The environment.** [`mise.toml`](../../mise.toml) sets `UV_CACHE_DIR` from
   `{{config_root}}` and `CARGO_HOME` on the tasks that invoke cargo, so every
   checkout resolves to its own `.cache` link without a machine-specific path.
@@ -54,8 +59,9 @@ and uv artifacts are disposable; `rm -rf .cache` is the reset.
 
 ## Consequences
 
-A worktree's first `uv sync` runs before the link exists and is adopted into the
-shared cache by `init`; later runs write the shared cache directly. `mise.toml`
+`init` links the cache before it runs `uv sync`, so the first sync already writes
+the shared cache; a worktree that synced before running `init` keeps its partial
+cache, which `init` adopts (ADR 0019 covers the environment that same sync made). `mise.toml`
 points `TMP`/`TEMP` at the shared cache's `tmp/` for every task, and pytest names
 a per-run basetemp, because a low-integrity test binary cannot write the user's
 temp directory. Cargo's
