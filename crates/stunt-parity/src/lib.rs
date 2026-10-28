@@ -6,9 +6,11 @@
 //! and the Python adapter in `python/stunt_reel/parity_artifacts.py`; both
 //! speak the types defined here.
 //!
-//! `render.json` and a capture's `meta.json` carry [`SCHEMA_VERSION`].
-//! Reports stay readable across versions through `serde(default)` optional
-//! fields; making a field required is a schema bump.
+//! `render.json` and a capture's `meta.json` carry [`SCHEMA_VERSION`]. A capture
+//! written before the field existed reads as the current version, and a legacy
+//! capture's ordinals, file names and 320x200 geometry are defaulted here rather
+//! than in either adapter. Reports stay readable across versions through
+//! `serde(default)` optional fields; making a field required is a schema bump.
 
 pub mod capture;
 pub mod error;

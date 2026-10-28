@@ -21,6 +21,7 @@ import pytest
 
 from stunt_reel import dataroot
 from stunt_reel.dataroot import SharedWriteError
+from stunt_reel.parity_artifacts import FilmId
 from stunt_reel.tac import staging
 from stunt_reel.tac.emulator import (
     EMULATOR_STOP_SECONDS,
@@ -56,7 +57,7 @@ from tac_mock import (
 
 #: Dumps the capture guest's boot sequence and settled dialog take.
 SETTLE_DUMPS: int = 9
-FILM_META: dict[str, Any] = {"film": "CTRY.FLM", "flm_bytes": 19, "flm_sha256": "0" * 64}
+FILM: FilmId = FilmId(name="CTRY.FLM", flm_bytes=19, flm_sha256="0" * 64)
 
 
 def _run_capture(
@@ -65,12 +66,12 @@ def _run_capture(
     *,
     max_frames: int = 3,
     dgroup_segment: int = DGROUP_RUNTIME_SEG,
-    extra_meta: dict[str, Any] | None = FILM_META,
+    film: FilmId | None = FILM,
 ) -> dict[str, Any]:
     return run_session(
         repo.film,
         repo.out,
-        sample=lambda session: capture(session, repo.out, max_frames, extra_meta=extra_meta),
+        sample=lambda session: capture(session, repo.out, max_frames, film=film),
         conf=repo.conf,
         dgroup_segment=dgroup_segment,
         emulator=emulator,
@@ -114,23 +115,24 @@ def test_capture_artifacts_keep_their_contract(staged_repo: StagedRepo) -> None:
     meta = _run_capture(staged_repo, capture_emulator())
 
     assert list(meta) == [
+        "schema_version",
         "film",
         "flm_bytes",
         "flm_sha256",
         "frames",
+        "width",
+        "height",
         "palette_source",
         "dgroup_segment",
         "frame_bytes",
-        "width",
-        "height",
     ]
     assert list(meta["frames"][0]) == [
         "ordinal",
         "film_tick",
-        "global_tick",
-        "vga_start",
         "frame_file",
         "palette_file",
+        "global_tick",
+        "vga_start",
         "distinct_indices",
     ]
 
@@ -139,8 +141,8 @@ def test_capture_artifacts_keep_their_contract(staged_repo: StagedRepo) -> None:
     palette = json.loads((staged_repo.out / "palettes_0001.json").read_text(encoding="utf-8"))
     assert palette == [[255, 0, 0]] * 256
     meta_text = (staged_repo.out / "meta.json").read_text(encoding="utf-8")
-    assert json.dumps(json.loads(meta_text), indent=2) == meta_text
-    assert meta_text == json.dumps(meta, indent=2)
+    assert json.dumps(json.loads(meta_text), indent=2) + "\n" == meta_text
+    assert meta_text == json.dumps(meta, indent=2) + "\n"
 
 
 def test_meta_is_written_last(staged_repo: StagedRepo) -> None:

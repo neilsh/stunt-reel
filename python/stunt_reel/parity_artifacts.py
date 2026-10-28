@@ -3,9 +3,14 @@
 This is the Python mirror of the Rust port in ``crates/stunt-parity``: the same
 documents, field names, schema version and validation rules, so a ``render.json``
 written by either side loads in the other. The module is the one home for artifact
-names, tick file naming, the capture ``--frames`` mapping and the retime document
-rewrite; callers stop hard-coding the 320x200 raster, the 185-row viewport or the
-actor layer id.
+names, tick file naming, the capture ``--frames`` mapping, the capture document
+writer and the retime document rewrite; callers stop hard-coding the 320x200
+raster, the 185-row viewport or the actor layer id.
+
+The capture writer emits the port's document first and then merges the harness's
+diagnostic keys (``palette_source``, ``global_tick`` and so on). Those keys are
+capture evidence, not parity contract: the port does not read them, and a
+diagnostic may not shadow a field the port owns.
 
 ``render.json`` is the typed render record (ADR 0005). ``palette_controls.json``
 is the legacy sidecar, still read as a fallback until renders made before the
@@ -25,7 +30,9 @@ from pathlib import Path
 from typing import Any, cast
 
 __all__ = [
+    "CAPTURE_HEIGHT",
     "CAPTURE_META",
+    "CAPTURE_WIDTH",
     "LAYER_FIRST_ACTOR",
     "LEGACY_SIDECAR",
     "PALETTE_ENTRIES",
@@ -55,6 +62,7 @@ __all__ = [
     "render_plane_paths",
     "retime_document",
     "tick_stem",
+    "write_capture",
     "write_render",
     "write_report",
     "write_retimed_documents",
@@ -66,6 +74,10 @@ SCHEMA_VERSION = 1
 RENDER_DOCUMENT = "render.json"
 #: Capture directory description written by ``mise run capture-ref``.
 CAPTURE_META = "meta.json"
+#: Width of the Mode 13h raster a capture without a width was made at.
+CAPTURE_WIDTH = 320
+#: Height of the Mode 13h raster a capture without a height was made at.
+CAPTURE_HEIGHT = 200
 #: Legacy render sidecar, read until renders made before the record age out.
 LEGACY_SIDECAR = "palette_controls.json"
 #: Files a render writes per whole tick, beside the tick's stem.
@@ -330,16 +342,20 @@ class CapturedFrame:
 
 @dataclass(frozen=True)
 class CaptureSet:
-    """Document written by the capture harness as ``meta.json``."""
+    """Document written by the capture harness as ``meta.json``.
 
-    schema_version: int | None
+    A capture without ``schema_version`` reads as the current version, so a
+    legacy document and a new one are the same value here.
+    """
+
+    schema_version: int
     film: FilmId
     geometry: Geometry
     frames: tuple[CapturedFrame, ...]
 
     def validate(self, path: Path | None = None) -> None:
-        """Check the optional schema version, geometry and frame identity."""
-        if self.schema_version is not None and self.schema_version != SCHEMA_VERSION:
+        """Check the schema version, geometry and frame identity."""
+        if self.schema_version != SCHEMA_VERSION:
             raise _error(
                 "unsupported_version",
                 f"unsupported schema version {self.schema_version}; expected {SCHEMA_VERSION}",
@@ -353,8 +369,16 @@ class CaptureSet:
                     f"frame {frame.ordinal}: frame_file and palette_file are required",
                     path,
                 )
-            if "/" in frame.frame_file or "\\" in frame.frame_file:
-                raise _error("frame", f"frame {frame.ordinal}: frame_file must be a basename", path)
+            for field_name, name in (
+                ("frame_file", frame.frame_file),
+                ("palette_file", frame.palette_file),
+            ):
+                if "/" in name or "\\" in name:
+                    raise _error(
+                        "frame",
+                        f"frame {frame.ordinal}: {field_name} must be a basename",
+                        path,
+                    )
 
 
 @dataclass(frozen=True)
@@ -800,46 +824,148 @@ def open_render(directory: Path) -> RenderControls:
     )
 
 
-def read_capture(directory: Path) -> CaptureSet:
-    """Read and validate a capture directory's ``meta.json``."""
-    path = directory / CAPTURE_META
-    raw = _as_object(_read_json(path), path, "the capture metadata")
-    frames = _as_array(raw.get("frames"), path, "frames")
-    captured: list[CapturedFrame] = []
-    for index, value in enumerate(frames):
-        ordinal = index + 1
-        where = f"frames[{index}]"
-        frame = _as_object(value, path, where)
-        film_tick = _as_unsigned(frame.get("film_tick"), path, f"{where}.film_tick", 0xFFFFFFFF)
-        default_frame = f"tick_{ordinal:0{CAPTURE_ORDINAL_WIDTH}d}.idx"
-        default_palette = f"palettes_{ordinal:0{CAPTURE_ORDINAL_WIDTH}d}.json"
-        frame_file = _optional_string(frame.get("frame_file"), path, f"{where}.frame_file")
-        palette_file = _optional_string(frame.get("palette_file"), path, f"{where}.palette_file")
-        captured.append(
-            CapturedFrame(
-                ordinal=ordinal,
-                film_tick=film_tick,
-                frame_file=default_frame if frame_file is None else frame_file,
-                palette_file=default_palette if palette_file is None else palette_file,
-            )
-        )
-    geometry = Geometry(
-        width=_as_unsigned(raw.get("width", 320), path, "width", 0xFFFFFFFF),
-        height=_as_unsigned(raw.get("height", 200), path, "height", 0xFFFFFFFF),
-        viewport_rows=None,
+#: Top-level fields the capture document owns; a diagnostic may not overwrite one.
+_CAPTURE_FIELDS = frozenset(
+    {"schema_version", "film", "flm_bytes", "flm_sha256", "frames", "width", "height"}
+)
+#: Per-frame fields the capture document owns; a diagnostic may not overwrite one.
+_CAPTURE_FRAME_FIELDS = frozenset({"ordinal", "film_tick", "frame_file", "palette_file"})
+
+
+def _captured_frame_object(
+    value: Any, path: Path | None, field_name: str, ordinal: int
+) -> CapturedFrame:
+    """One frame entry, defaulting the ordinal's file names when the legacy document omits them."""
+    frame = _as_object(value, path, field_name)
+    film_tick = _as_unsigned(frame.get("film_tick"), path, f"{field_name}.film_tick", 0xFFFFFFFF)
+    frame_file = _optional_string(frame.get("frame_file"), path, f"{field_name}.frame_file")
+    palette_file = _optional_string(frame.get("palette_file"), path, f"{field_name}.palette_file")
+    default_frame = f"tick_{ordinal:0{CAPTURE_ORDINAL_WIDTH}d}.idx"
+    default_palette = f"palettes_{ordinal:0{CAPTURE_ORDINAL_WIDTH}d}.json"
+    return CapturedFrame(
+        ordinal=ordinal,
+        film_tick=film_tick,
+        frame_file=default_frame if frame_file is None else frame_file,
+        palette_file=default_palette if palette_file is None else palette_file,
     )
-    capture = CaptureSet(
+
+
+def _capture_object(document: Mapping[str, Any], path: Path | None) -> CaptureSet:
+    """A capture set from the flat ``meta.json`` shape, applying the legacy defaults."""
+    frames = _as_array(document.get("frames"), path, "frames")
+    version = document.get("schema_version")
+    return CaptureSet(
         schema_version=(
-            None
-            if raw.get("schema_version") is None
-            else _as_unsigned(raw.get("schema_version"), path, "schema_version", 0xFFFFFFFF)
+            SCHEMA_VERSION
+            if version is None
+            else _as_unsigned(version, path, "schema_version", 0xFFFFFFFF)
         ),
-        film=_film_fields(raw, path),
-        geometry=geometry,
-        frames=tuple(captured),
+        film=_film_fields(document, path),
+        geometry=Geometry(
+            width=_as_unsigned(document.get("width", CAPTURE_WIDTH), path, "width", 0xFFFFFFFF),
+            height=_as_unsigned(document.get("height", CAPTURE_HEIGHT), path, "height", 0xFFFFFFFF),
+            viewport_rows=None,
+        ),
+        frames=tuple(
+            _captured_frame_object(value, path, f"frames[{index}]", index + 1)
+            for index, value in enumerate(frames)
+        ),
     )
+
+
+def _capture_document(capture: CaptureSet) -> dict[str, Any]:
+    """The port's capture document, in the flat shape every capture already has."""
+    document: dict[str, Any] = {"schema_version": capture.schema_version}
+    if capture.film.name is not None:
+        document["film"] = capture.film.name
+    if capture.film.flm_bytes is not None:
+        document["flm_bytes"] = capture.film.flm_bytes
+    if capture.film.flm_sha256 is not None:
+        document["flm_sha256"] = capture.film.flm_sha256
+    document["frames"] = [
+        {
+            "ordinal": frame.ordinal,
+            "film_tick": frame.film_tick,
+            "frame_file": frame.frame_file,
+            "palette_file": frame.palette_file,
+        }
+        for frame in capture.frames
+    ]
+    document["width"] = capture.geometry.width
+    document["height"] = capture.geometry.height
+    return document
+
+
+def _merge_diagnostics(
+    document: dict[str, Any],
+    diagnostics: Mapping[str, Any] | None,
+    owned: frozenset[str],
+    path: Path | None,
+    *,
+    where: str | None = None,
+) -> None:
+    """Add evidence keys after the port document, refusing to shadow a port field."""
+    if diagnostics is None:
+        return
+    for key, value in diagnostics.items():
+        if key in owned:
+            prefix = f"{where}." if where is not None else ""
+            raise _error(
+                "conflict",
+                f"diagnostic {prefix}{key} would overwrite a capture document field",
+                path,
+            )
+        document[key] = value
+
+
+def read_capture(directory: Path) -> CaptureSet:
+    """Read and validate a capture directory's ``meta.json``.
+
+    A document without ``schema_version`` reads as the current version, and a
+    frame without an ordinal or file names takes the capture-order defaults.
+    """
+    path = directory / CAPTURE_META
+    capture = _capture_object(_as_object(_read_json(path), path, "the capture metadata"), path)
     capture.validate(path)
     return capture
+
+
+def write_capture(
+    directory: Path,
+    capture: CaptureSet,
+    *,
+    diagnostics: Mapping[str, Any] | None = None,
+    frame_diagnostics: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Validate and write a capture directory's ``meta.json``, returning the document.
+
+    The port document is written first and through a temporary file and rename, so
+    readers never see half a capture. ``diagnostics`` and ``frame_diagnostics``
+    then add the harness's evidence keys; a diagnostic may not overwrite a field
+    the port owns.
+    """
+    path = directory / CAPTURE_META
+    capture.validate(path)
+    document = _capture_document(capture)
+    _merge_diagnostics(document, diagnostics, _CAPTURE_FIELDS, path)
+    if frame_diagnostics is not None:
+        frames = cast("list[dict[str, Any]]", document["frames"])
+        if len(frame_diagnostics) != len(frames):
+            raise _wrong_type(
+                path,
+                "frame_diagnostics",
+                f"an array of {len(frames)} objects",
+            )
+        for index, (frame, extra) in enumerate(zip(frames, frame_diagnostics, strict=True)):
+            _merge_diagnostics(
+                frame,
+                extra,
+                _CAPTURE_FRAME_FIELDS,
+                path,
+                where=f"frames[{index}]",
+            )
+    _write_json(path, document)
+    return document
 
 
 def read_capture_palette(path: Path) -> tuple[tuple[int, int, int], ...]:

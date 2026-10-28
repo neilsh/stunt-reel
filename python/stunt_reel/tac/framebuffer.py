@@ -7,8 +7,10 @@ playback, per Invariant [I4]. Every recorded page is tagged with the film clock
 (DS:0x4896, # [MEM-FLM-TICK]) read while the guest is halted at the trap, so parity
 compares it against the render of the same 50 Hz tick instead of capture order.
 
-The artifact names, keys and JSON layout are a capture contract: tick_NNNN.idx,
-palettes_NNNN.json and meta.json (written last) must stay byte-identical. Reference
+The artifact names and JSON layout are a capture contract: tick_NNNN.idx,
+palettes_NNNN.json and meta.json (written last) must stay in place. ``meta.json``
+is the port's capture document plus the diagnostics this sampler records; the
+writer owns its shape, so this module never assembles it by hand. Reference
 rasters are evidence only: the caller writes them under build/.
 """
 
@@ -16,9 +18,20 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from stunt_reel.parity_artifacts import (
+    CAPTURE_HEIGHT,
+    CAPTURE_WIDTH,
+    SCHEMA_VERSION,
+    CapturedFrame,
+    CaptureSet,
+    FilmId,
+    Geometry,
+    write_capture,
+)
 from stunt_reel.tac.transport import FRAME_BYTES, PAGE_OFFSET, PALETTE_ENTRIES
 
 if TYPE_CHECKING:
@@ -39,8 +52,8 @@ __all__ = [
 
 _LOGGER = logging.getLogger(__name__)
 
-FRAME_WIDTH: int = 320
-FRAME_HEIGHT: int = 200
+FRAME_WIDTH: int = CAPTURE_WIDTH
+FRAME_HEIGHT: int = CAPTURE_HEIGHT
 
 #: Distinct indices that mark film content; the modal dialog only ever uses six.
 FILM_MIN_COLORS: int = 20
@@ -59,22 +72,24 @@ def capture(
     max_frames: int,
     *,
     stop_after_repeats: int = END_HOLD_FRAMES,
-    extra_meta: dict[str, Any] | None = None,
+    film: FilmId | None = None,
 ) -> dict[str, Any]:
     """Sample film frames from an open session and write the reference artifacts.
 
     Frames are numbered from one in capture order (tick_{ordinal:04d}.idx); that
-    ordinal is only a file name. Each frame's meta entry carries film_tick (the
-    film clock, which is what parity matches on) and global_tick (diagnostic).
+    ordinal is only a file name. meta.json is the port's capture document: each
+    frame carries film_tick (the film clock, which is what parity matches on), and
+    the sampler's diagnostics ride beside it through the writer.
 
     Capture stops early once stop_after_repeats consecutive frames share one film
     clock (the film has ended and is holding its last picture; running on risks the
-    emulator dropping the connection), and max_frames is only a cap. extra_meta is
-    merged into meta.json, which is written last.
+    emulator dropping the connection), and max_frames is only a cap. meta.json is
+    written last.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    frames: list[dict[str, Any]] = []
+    frames: list[CapturedFrame] = []
+    frame_diagnostics: list[Mapping[str, Any]] = []
     previous_raster: bytes | None = None
     palette_source = "dacpal"
     idle = 0
@@ -108,7 +123,7 @@ def capture(
         previous_raster = raster
 
         film_tick, global_tick = page.film_clock
-        if frames and film_tick == frames[-1]["film_tick"]:
+        if frames and film_tick == frames[-1].film_tick:
             repeats += 1
         else:
             repeats = 0
@@ -120,13 +135,17 @@ def capture(
         palette_path.write_text(json.dumps([list(rgb) for rgb in palette]), encoding="utf-8")
 
         frames.append(
+            CapturedFrame(
+                ordinal=ordinal,
+                film_tick=film_tick,
+                frame_file=frame_path.name,
+                palette_file=palette_path.name,
+            )
+        )
+        frame_diagnostics.append(
             {
-                "ordinal": ordinal,
-                "film_tick": film_tick,
                 "global_tick": global_tick,
                 "vga_start": PAGE_OFFSET,
-                "frame_file": frame_path.name,
-                "palette_file": palette_path.name,
                 "distinct_indices": distinct,
             }
         )
@@ -141,14 +160,19 @@ def capture(
             _LOGGER.info("[capture] film clock holding at %d: end of film", film_tick)
             break
 
-    meta: dict[str, Any] = {
-        **(extra_meta or {}),
-        "frames": frames,
-        "palette_source": palette_source,
-        "dgroup_segment": f"{session.dgroup_segment:04X}",
-        "frame_bytes": FRAME_BYTES,
-        "width": FRAME_WIDTH,
-        "height": FRAME_HEIGHT,
-    }
-    (out_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
-    return meta
+    capture_set = CaptureSet(
+        schema_version=SCHEMA_VERSION,
+        film=film if film is not None else FilmId(),
+        geometry=Geometry(width=FRAME_WIDTH, height=FRAME_HEIGHT),
+        frames=tuple(frames),
+    )
+    return write_capture(
+        out_dir,
+        capture_set,
+        diagnostics={
+            "palette_source": palette_source,
+            "dgroup_segment": f"{session.dgroup_segment:04X}",
+            "frame_bytes": FRAME_BYTES,
+        },
+        frame_diagnostics=tuple(frame_diagnostics),
+    )
