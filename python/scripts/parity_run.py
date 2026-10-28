@@ -2,11 +2,10 @@
 
 Runs the release binary over every captured tick of each film, scores the render against its
 capture with ``stuntreel parity``, and prints one line per film plus the adoption noise note.
-``build/parity/ours/<film>_current`` and ``build/parity/report/<film>_current`` are the
-latest render and report. Before a render replaces the tree, it is renamed to
-``build/parity/previous/<film>`` (one per film, by rename, so no bytes are copied), and the
-re-score command is printed: any render can be compared later with
-``--reuse build/parity/previous``.
+The latest render and report are the ``_current`` trees that ``stunt_reel.parity_layout``
+names. Before a render replaces the tree, it is renamed to that film's previous render (one
+per film, by rename, so no bytes are copied), and the re-score command is printed: any render
+can be compared later with ``--reuse`` on the previous root.
 
 Usage::
 
@@ -40,21 +39,16 @@ from parity_sweep import (
     score_dir,
 )
 
+from stunt_reel import parity_layout
 from stunt_reel.dataroot import ensure_links_or_report
 
-OURS = REPO_ROOT / "build" / "parity" / "ours"
-REPORT = REPO_ROOT / "build" / "parity" / "report"
-#: Previous render per film, kept by a rename so a comparison never needs a re-render.
-PREVIOUS = REPO_ROOT / "build" / "parity" / "previous"
-SCRATCH = REPO_ROOT / "build" / "scratch" / "parity"
-RETIME_SCRATCH = REPO_ROOT / "build" / "scratch" / "retime"
 #: Adoption floor; a margin under it is not attributable to a change (probes.md section 6).
 NOISE_NOTE = "noise floor +/-0.002 SSIM; margin below 0.002 is not an adoption"
 
 
 def prepare_source(film: str, root: Path, options: ParityOptions, *, no_render: bool) -> Path:
     """The render directory to score: reused, existing, or freshly rendered ``_current``."""
-    current = OURS / f"{film}_current"
+    current = REPO_ROOT / parity_layout.render_dir(film)
     if options.reuse is not None:
         source = Path(options.reuse) / film
         if not source.is_dir():
@@ -67,14 +61,14 @@ def prepare_source(film: str, root: Path, options: ParityOptions, *, no_render: 
             )
         return current
     print(f"[parity] rendering {film} into {current}", file=sys.stderr)
-    scratch = SCRATCH / film
+    scratch = REPO_ROOT / parity_layout.render_scratch_dir(film)
     shutil.rmtree(scratch, ignore_errors=True)
     render_film(FILMS[film], root, scratch, None)
     check_film(FILMS[film], root, scratch)
     current.parent.mkdir(parents=True, exist_ok=True)
     # Rename rather than copy: the previous tree stays scoreable with --reuse and the
     # render directories are hundreds of megabytes, so a copy per run is not affordable.
-    previous = PREVIOUS / film
+    previous = REPO_ROOT / parity_layout.previous_dir(film)
     if current.is_dir():
         previous.parent.mkdir(parents=True, exist_ok=True)
         shutil.rmtree(previous, ignore_errors=True)
@@ -126,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
             suffix = ""
             if options.retime is not None:
                 suffix = f"_retime{options.retime:+d}"
-                retimed = RETIME_SCRATCH / f"{film}_current{suffix}"
+                retimed = REPO_ROOT / parity_layout.retime_dir(film, suffix)
                 shutil.rmtree(retimed, ignore_errors=True)
                 result = retime_render(
                     source,
@@ -142,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
                     file=sys.stderr,
                 )
                 scored = retimed
-            report = REPORT / f"{film}_current{suffix}"
+            report = REPO_ROOT / parity_layout.report_dir(film, suffix)
             score_dir(FILMS[film], root, scored, report, "film")
             print(format_summary(film, report), flush=True)
         except (RuntimeError, ValueError, OSError, KeyError) as err:

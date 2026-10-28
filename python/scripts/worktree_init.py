@@ -1,8 +1,8 @@
 """Prepare or clean one git worktree.
 
 ``mise run init`` links the machine-wide data root into this checkout, so the
-relative ``corpus/``, ``build/parity/reference/`` and ``target_bin/`` paths keep working
-in every worktree, and links ``.cache`` to the primary checkout's shared tool
+relative ``corpus/``, capture and ``target_bin/`` paths keep working in every
+worktree, and links ``.cache`` to the primary checkout's shared tool
 cache (ADR 0013).  It parks this checkout's ``.venv`` inside that cache too
 (ADR 0019) and then runs ``uv sync``, so the environment is hardlinked out of the
 cache instead of copied into the checkout, which is 3 s per worktree.  ``mise run
@@ -26,6 +26,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from stunt_reel import parity_layout
 from stunt_reel.dataroot import (
     DATA_ENV,
     LINK_TARGETS,
@@ -50,15 +51,6 @@ from stunt_reel.dataroot import (
 #: Per-worktree build outputs and caches that ``clean`` reports.
 CLEAN_PATHS: tuple[str, ...] = ("target", "build", ".pytest_cache", ".mypy_cache", ".ruff_cache")
 CLEAN_FILES: tuple[str, ...] = (".coverage",)
-
-#: Roots whose child directories are throwaway parity render trees.
-PARITY_ROOTS: tuple[str, ...] = ("build/parity/ours", "build/scratch/sweep")
-#: Name suffixes that hold a baseline something else reads; never pruned. ``_base`` is the
-#: named baseline ``research/parity/method.md` tells you to copy, and losing it to a rotation is
-#: the one unrecoverable outcome here — a scratch tree can always be re-rendered.
-PARITY_PROTECTED: tuple[str, ...] = ("_current", "_previous", "_base")
-
-REFERENCE_LINK = "build/parity/reference"
 
 #: Directories inside the primary checkout where linked worktrees live (SOP 6).
 POOL_DIRS: tuple[str, ...] = (".agents/worktrees", ".claude/worktrees")
@@ -228,19 +220,20 @@ def _tree_footprint(path: Path) -> tuple[int, int]:
 
 
 def _prune_render_trees(confirmed: bool, keep: int) -> int:
-    """Report the render trees under ``build/``, keeping the *keep* newest per root."""
+    """Report the render trees under the layout's roots, keeping the *keep* newest per root."""
+    roots = [REPO_ROOT / root for root in parity_layout.RENDER_ROOTS]
     ranked: list[tuple[Path, int, int]] = []
-    for relative in PARITY_ROOTS:
-        root = REPO_ROOT / relative
+    for root in roots:
         if not root.is_dir() or is_link(root):
             continue
         for child in sorted(root.iterdir()):
-            if not child.is_dir() or child.name.endswith(PARITY_PROTECTED):
+            if not child.is_dir() or parity_layout.is_protected_render(child.name):
                 continue
             size, files = _tree_footprint(child)
             ranked.append((child, size, files))
     if not ranked:
-        print("no render trees under " + ", ".join(PARITY_ROOTS))
+        names = ", ".join(root.as_posix() for root in parity_layout.RENDER_ROOTS)
+        print(f"no render trees under {names}")
         return 0
     ranked.sort(key=lambda item: item[0].stat().st_mtime, reverse=True)
     seen: dict[Path, int] = {}
@@ -298,7 +291,7 @@ def _clean(confirmed: bool, parity: bool = False, keep: int = 1) -> int:
         print("\ndry run; re-run with --yes to remove them")
         return 0
 
-    reference = REPO_ROOT / REFERENCE_LINK
+    reference = REPO_ROOT / parity_layout.capture_root()
     restore = is_link(reference)
     if restore:
         remove_link(reference)

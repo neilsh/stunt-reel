@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from stunt_reel import dataroot
+from stunt_reel import dataroot, parity_layout
 from stunt_reel.dataroot import SharedWriteError, ensure_links_or_report
 from stunt_reel.parity_artifacts import FilmId
 from stunt_reel.tac import playone
@@ -38,7 +38,8 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_FILM,
         help=(
             "the film's .FLM file (its .ALL must sit beside it); it is staged alone into "
-            f"build/parity/stage/<name>/ so the dialog needs one prefix key (default {DEFAULT_FILM})"
+            f"{parity_layout.stage_root().as_posix()}/<name>/ so the dialog needs one prefix "
+            f"key (default {DEFAULT_FILM})"
         ),
     )
     parser.add_argument(
@@ -47,7 +48,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "directory receiving tick_*.idx, palettes_*.json, and meta.json "
-            "(default build/parity/reference/<film name, lower case>)"
+            f"(default {parity_layout.capture_root().as_posix()}/<film name, lower case>)"
         ),
     )
     parser.add_argument(
@@ -109,7 +110,7 @@ def report(event: SessionEvent) -> None:
 def run(args: argparse.Namespace) -> int:
     """Drive one capture session and report its artifacts."""
     film = resolve(args.film)
-    out = resolve(args.out or Path("build/parity/reference") / film.stem.lower())
+    out = resolve(args.out or parity_layout.capture_dir(film.stem))
     conf = resolve(args.conf)
     if not ensure_links_or_report("mise run capture-ref"):
         return 2
