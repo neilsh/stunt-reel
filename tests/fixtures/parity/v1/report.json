@@ -1,0 +1,21 @@
+{
+  "reference_frames": 3,
+  "frames": 2,
+  "unmatched": 1,
+  "sky_indices": [228, 238],
+  "mean_ssim": 0.74185,
+  "min_ssim": 0.6125,
+  "mean_iou": 0.83,
+  "min_fade_level": 0.35,
+  "mean_ssim_scored": 0.8712,
+  "i6_gate": { "initial": false, "sign_off": false },
+  "mean_iou_scored": 0.86,
+  "mean_index_agreement_scored": 0.91,
+  "mean_loss_by_class_scored": { "terrain": 0.02 },
+  "scored_frames": 1,
+  "excluded_frames": 1,
+  "per_frame": [
+    { "ordinal": 1, "film_tick": 7, "ssim": 0.8712, "iou": 0.86, "index_agreement": 0.91, "loss_by_class": { "terrain": 0.02 }, "fade_level": 0.41, "authored_fade_level": 0.4, "scored": true },
+    { "ordinal": 2, "film_tick": 9, "ssim": 0.6125, "iou": 0.8, "fade_level": 0.31, "scored": false }
+  ]
+}

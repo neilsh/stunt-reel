@@ -346,6 +346,242 @@ pub(crate) fn read_report(path: &Path) -> Result<Report, AdapterError> {
     })
 }
 
+/// The committed corpus under `tests/fixtures/parity/v1`, read through this adapter.
+#[cfg(test)]
+mod conformance {
+    use super::*;
+    use crate::plane_codec::read_page_planes;
+
+    /// The shared corpus, resolved without the process working directory.
+    fn corpus() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/parity/v1")
+    }
+
+    /// Fails unless `|actual - expected| <= 1e-6 * max(1, |actual|, |expected|)`.
+    fn assert_close(actual: f32, expected: f32, field: &str) {
+        let tolerance = 1e-6 * actual.abs().max(expected.abs()).max(1.0);
+        assert!(
+            (actual - expected).abs() <= tolerance,
+            "{field}: {actual} != {expected} (tolerance {tolerance})"
+        );
+    }
+
+    fn assert_close_option(actual: Option<f32>, expected: Option<f32>, field: &str) {
+        match (actual, expected) {
+            (Some(actual), Some(expected)) => assert_close(actual, expected, field),
+            (None, None) => {}
+            _ => panic!("{field}: one side is null"),
+        }
+    }
+
+    fn assert_close_map(
+        actual: Option<&BTreeMap<String, f32>>,
+        expected: Option<&BTreeMap<String, f32>>,
+        field: &str,
+    ) {
+        match (actual, expected) {
+            (Some(actual), Some(expected)) => {
+                assert_eq!(actual.len(), expected.len(), "{field}: key count");
+                for (key, expected) in expected {
+                    let actual = actual
+                        .get(key)
+                        .unwrap_or_else(|| panic!("{field}: {key} is missing"));
+                    assert_close(*actual, *expected, &format!("{field}.{key}"));
+                }
+            }
+            (None, None) => {}
+            _ => panic!("{field}: one side is null"),
+        }
+    }
+
+    #[test]
+    fn render_fixture_pins_identity_geometry_and_controls() {
+        let controls = load_render_controls(&corpus()).expect("load render.json");
+        assert_eq!(controls.film.name.as_deref(), Some("SYNTH.FLM"));
+        assert_eq!(controls.film.flm_bytes, Some(17));
+        assert_eq!(
+            controls.geometry,
+            Some(Geometry {
+                width: 4,
+                height: 3,
+                viewport_rows: Some(2),
+            })
+        );
+        assert_eq!(controls.controls.len(), 2);
+        let tick = controls.controls.get(&7).expect("tick 7 controls");
+        assert_eq!(tick.sky, 0);
+        assert_eq!(tick.brightness, 32768);
+        assert_eq!(tick.saturation, 32768);
+        assert!(controls.controls.contains_key(&9));
+    }
+
+    #[test]
+    fn capture_fixture_pins_frames_and_ignores_harness_diagnostics() {
+        let raw: Value = serde_json::from_str(
+            &fs::read_to_string(corpus().join("meta.json")).expect("read meta.json"),
+        )
+        .expect("parse meta.json");
+        assert_eq!(raw["palette_source"].as_str(), Some("measured"));
+        assert_eq!(
+            raw["frames"][0]["palette_source"].as_str(),
+            Some("measured")
+        );
+
+        let capture = load_capture(&corpus()).expect("load capture");
+        assert_eq!(capture.schema_version, SCHEMA_VERSION);
+        assert_eq!(
+            capture.geometry,
+            Geometry {
+                width: 4,
+                height: 3,
+                viewport_rows: None,
+            }
+        );
+        assert_eq!(capture.frames.len(), 2);
+        assert_eq!(
+            (capture.frames[0].ordinal, capture.frames[0].film_tick),
+            (1, 7)
+        );
+        assert_eq!(
+            (capture.frames[1].ordinal, capture.frames[1].film_tick),
+            (2, 9)
+        );
+        assert_eq!(capture.frames[0].frame_file, "tick_0001.idx");
+        assert_eq!(capture.frames[1].frame_file, "tick_0002.idx");
+        assert_eq!(capture.frames[1].palette_file, "palettes_0002.json");
+    }
+
+    #[test]
+    fn legacy_capture_fixture_reads_as_version_one() {
+        let raw: Value = serde_json::from_str(
+            &fs::read_to_string(corpus().join("meta_legacy.json")).expect("read meta_legacy.json"),
+        )
+        .expect("parse meta_legacy.json");
+        assert!(
+            raw.get("schema_version").is_none(),
+            "the fixture must stay a legacy document"
+        );
+
+        let legacy: CaptureSet = serde_json::from_value(raw).expect("legacy capture");
+        assert_eq!(legacy.schema_version, SCHEMA_VERSION);
+        assert_eq!(legacy.frames.len(), 2);
+        assert_eq!(legacy.frames[0].film_tick, 7);
+        legacy.validate().expect("legacy capture is valid");
+    }
+
+    #[test]
+    fn report_fixture_round_trips_typed_and_satisfies_its_identities() {
+        let report = read_report(&corpus().join("report.json")).expect("read report.json");
+        report.validate().expect("valid report");
+        assert_eq!(report.reference_frames, 3);
+        assert_eq!(report.frames, 2);
+        assert_eq!(report.scored_frames, 1);
+        assert_eq!(report.excluded_frames, 1);
+        assert_eq!(report.unmatched, 1);
+        assert_eq!(report.sky_indices, [228, 238]);
+
+        let text = serde_json::to_string(&report).expect("re-serialise report");
+        let back: Report = serde_json::from_str(&text).expect("re-read report");
+
+        assert_eq!(back.reference_frames, report.reference_frames);
+        assert_eq!(back.frames, report.frames);
+        assert_eq!(back.unmatched, report.unmatched);
+        assert_eq!(back.sky_indices, report.sky_indices);
+        assert_eq!(back.i6_gate, report.i6_gate);
+        assert_eq!(back.scored_frames, report.scored_frames);
+        assert_eq!(back.excluded_frames, report.excluded_frames);
+        assert_close(back.mean_ssim, report.mean_ssim, "mean_ssim");
+        assert_close(back.min_ssim, report.min_ssim, "min_ssim");
+        assert_close(back.mean_iou, report.mean_iou, "mean_iou");
+        assert_close(back.min_fade_level, report.min_fade_level, "min_fade_level");
+        assert_close_option(
+            back.mean_ssim_scored,
+            report.mean_ssim_scored,
+            "mean_ssim_scored",
+        );
+        assert_close_option(
+            back.mean_iou_scored,
+            report.mean_iou_scored,
+            "mean_iou_scored",
+        );
+        assert_close_option(
+            back.mean_index_agreement_scored,
+            report.mean_index_agreement_scored,
+            "mean_index_agreement_scored",
+        );
+        assert_close_map(
+            back.mean_loss_by_class_scored.as_ref(),
+            report.mean_loss_by_class_scored.as_ref(),
+            "mean_loss_by_class_scored",
+        );
+
+        assert_eq!(back.per_frame.len(), report.per_frame.len());
+        for (index, (back_frame, frame)) in back.per_frame.iter().zip(&report.per_frame).enumerate()
+        {
+            let field = |name: &str| format!("per_frame[{index}].{name}");
+            assert_eq!(back_frame.ordinal, frame.ordinal);
+            assert_eq!(back_frame.film_tick, frame.film_tick);
+            assert_eq!(back_frame.scored, frame.scored);
+            assert_close(back_frame.ssim, frame.ssim, &field("ssim"));
+            assert_close(back_frame.iou, frame.iou, &field("iou"));
+            assert_close_option(
+                back_frame.index_agreement,
+                frame.index_agreement,
+                &field("index_agreement"),
+            );
+            assert_close_map(
+                back_frame.loss_by_class.as_ref(),
+                frame.loss_by_class.as_ref(),
+                &field("loss_by_class"),
+            );
+            assert_close_option(
+                back_frame.fade_level,
+                frame.fade_level,
+                &field("fade_level"),
+            );
+            assert_close_option(
+                back_frame.authored_fade_level,
+                frame.authored_fade_level,
+                &field("authored_fade_level"),
+            );
+        }
+    }
+
+    #[test]
+    fn page_fixture_pins_the_index_and_layer_rows() {
+        let geometry = Geometry {
+            width: 4,
+            height: 3,
+            viewport_rows: Some(2),
+        };
+        // read_page_planes derives the two plane paths from this stem and never opens the PNG.
+        let planes = read_page_planes(&corpus().join("pages/tick_00007.png"), &geometry)
+            .expect("read page planes");
+        assert_eq!(planes.indices.len(), 12);
+        assert_eq!(planes.layers.len(), 12);
+
+        let rows: [([u8; 4], [u16; 4]); 3] = [
+            ([180, 180, 180, 180], [0, 0, 0, 0]),
+            ([0, 40, 40, 0], [0, 16, 16, 0]),
+            ([0, 0, 0, 0], [16, 16, 16, 16]),
+        ];
+        for (row, (indices, layers)) in rows.into_iter().enumerate() {
+            let start = row * 4;
+            assert_eq!(
+                &planes.indices[start..start + 4],
+                &indices[..],
+                "row {row} indices"
+            );
+            // Row 2 lies outside the 2-row viewport but the reader still returns it.
+            assert_eq!(
+                &planes.layers[start..start + 4],
+                &layers[..],
+                "row {row} layers"
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
