@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from stunt_reel import parity_layout
+from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.parity_artifacts import (
     RENDER_SUFFIXES,
     frames_for_captured_ticks,
@@ -66,7 +67,6 @@ __all__ = [
     "score_film",
 ]
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 #: Render geometry for parity: captures are 320x200 with a 185-row viewport.
 RENDER_FLAGS = ("--width", "320", "--height", "200", "--viewport-rows", "185")
 

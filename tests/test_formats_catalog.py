@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add python/scripts to sys.path so verify_formats_docs can be imported
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -85,3 +87,18 @@ def test_formats_catalog_cli_execution() -> None:
         f"CLI execution failed with code {proc.returncode}:\n{proc.stdout}\n{proc.stderr}"
     )
     assert "ALL 7 VERIFICATION SUITES PASSED" in proc.stdout
+
+
+def test_kaitai_cross_checks_reject_a_compiler_of_the_wrong_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both fixture cross-checks enforce the pinned compiler version, not only the RES one."""
+    monkeypatch.setattr(
+        verify_formats_docs, "compiler_version", lambda: "kaitai-struct-compiler 0.9"
+    )
+    for check in (
+        verify_formats_docs._validate_res_with_kaitai,
+        verify_formats_docs._validate_flm_with_kaitai,
+    ):
+        errors, _details = check(REPO_ROOT, b"")
+        assert any("version mismatch" in error for error in errors), check.__name__

@@ -767,6 +767,12 @@ def _validate_flm_with_kaitai(repo_root: Path, flm_bytes: bytes) -> tuple[list[s
             "Kaitai Struct Compiler not found on PATH; flm_slice.ksy fixture cross-check skipped"
         )
         return errors, details
+    if REQUIRED_KSC_VERSION not in version:
+        errors.append(
+            "Kaitai Struct Compiler version mismatch: expected "
+            f"{REQUIRED_KSC_VERSION}, got '{version}'"
+        )
+        return errors, details
 
     try:
         views = flm_walk.walk_film(flm_bytes)
