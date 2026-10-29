@@ -35,10 +35,11 @@ codebase already keeps per-process scratch (`stunt_tac_read_<pid>.bin` in
   line prints the real port. `CONTROL_PORT` is gone.
 - **The tests.** [`test_tac_capture_session.py`](../../tests/test_tac_capture_session.py)
   covers two sessions binding distinct advertised ports, the argv DOSBox-X is launched
-  with (`-set dosbox mcp_server=…` alone; a launch that set only `-set debugger
-  mcp_server=…` never dialled, so the profiles' duplicate `[debugger]` lines did
-  nothing), and port 0 reporting what it bound. The "two sessions cannot hold one port" test is deleted with the rule
-  it encoded.
+  with, and port 0 reporting what it bound. What a launch *does* with that argv is
+  measured rather than unit-tested: `[dosbox]` alone carries the port and a launch that
+  set only `[debugger]` never dialled ([capture.md § 1](../../research/playone-exe/capture.md)),
+  so the profiles' duplicate `[debugger]` lines had never done anything. The "two
+  sessions cannot hold one port" test is deleted with the rule it encoded.
 - **The stage mount.** [`stage_film()`](../../python/stunt_reel/tac/staging.py)
   builds a mount named after the capture process ([`stage_dir`](../../python/stunt_reel/parity_layout.py))
   and [`run_session`](../../python/stunt_reel/tac/session.py) removes it after the
@@ -75,16 +76,20 @@ Two captures still contend for the machine's cores. `LAUNCH_TIMEOUT_SECONDS` and
 dialog-settle budgets are wall-clock, so a second session can spend them; a timeout is
 then a scheduling measurement, not a reason to bring the lock back. 
 
-Frames are not interchangeable between runs, and this change did not make them so: a
-solo capture and the shared reference disagree at three of the four film ticks they
-share (32, 54 and 65 differ; 43 matches), and the same raster appears at tick 54 in one
-run and tick 55 in another. The trap samples whichever retrace it stops on, so a
-frame's declared film tick can sit beside a raster that belongs to its neighbour. Two
-simultaneous captures inherit that, so a concurrent pair is a workflow convenience, not
-a way to produce interchangeable reference sets.
+Frames are not byte-identical between runs, and this change did not make them so: the
+captured page lags the film clock by a whole tick and the alignment drifts by 0-2 ticks
+between runs ([capture.md § 4](../../research/playone-exe/capture.md)), which the
+renderer already compensates by sampling at `tick - 1`. Two simultaneous captures
+inherit exactly that, so a concurrent pair is a workflow convenience, not a way to
+produce interchangeable reference sets.
 
-Two sessions writing the same shared capture directory under `STUNT_DATA_WRITE=1` are
-the operator's business: the write guard is a consent gate, not a concurrency gate.
+`--out` defaults to the shared `build/parity/reference/<film>`, and a session clears
+its output directory before sampling, so two captures of one film must be given
+different `--out` or the second deletes the first's frames. Two sessions writing the
+same shared directory under `STUNT_DATA_WRITE=1` remain the operator's business: the
+write guard is a consent gate, not a concurrency gate. Per-user DOSBox-X state was
+checked while two captures ran — nothing under the DOSBox-X config directories was
+written — so the instances share nothing there.
 
 The interactive debugger still depends on `58991` being bindable in one narrow sense —
 the MCP server tries it first — but nothing on this side pins it any more, so an

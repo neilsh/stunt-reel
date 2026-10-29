@@ -265,11 +265,13 @@ def _attach_status(error: BaseException, status: int | None) -> None:
         return
 
 
-def _discard_stage(stage: Path, staged_conf: Path) -> None:
+def _discard_stage(staged: staging.StagedMount | None) -> None:
     """Remove this session's staged mount and conf once no emulator holds them."""
+    if staged is None:
+        return
     with contextlib.suppress(OSError):
-        staged_conf.unlink(missing_ok=True)
-    shutil.rmtree(stage, ignore_errors=True)
+        staged.conf.unlink(missing_ok=True)
+    shutil.rmtree(staged.mount, ignore_errors=True)
 
 
 def _teardown(transport: Transport | None, machine: Emulator) -> None:
@@ -305,8 +307,10 @@ def run_session(
     The SOP 6 shared-write gate is applied to out once, before anything is staged or
     launched. The port is bound before the process launches; teardown closes the
     transport, releases the port and then stops the emulator, and a callback
-    exception never masks it. progress, when given, receives typed events so a CLI
-    can format its own output; the package never formats console text.
+    exception never masks it. A no_launch session stages nothing: the emulator it
+    attaches to already mounted its own tree, and removing a fresh one would only risk
+    the tree that emulator is still reading. progress, when given, receives typed events
+    so a CLI can format its own output; the package never formats console text.
     """
     root = dataroot.REPO_ROOT
     film_path = _resolve(film, root)
@@ -314,11 +318,16 @@ def run_session(
     conf_path = _resolve(conf, root)
     if dataroot.is_shared(out_path):
         dataroot.require_shared_write("the capture session")
-    stage, staged_conf = staging.stage_film(film_path, conf_path)
+    staged = None if no_launch else staging.stage_film(film_path, conf_path)
     machine: Emulator = (
         emulator
         if emulator is not None
-        else DosboxX(staged_conf, port=port, no_launch=no_launch, progress=progress)
+        else DosboxX(
+            conf_path if staged is None else staged.conf,
+            port=port,
+            no_launch=no_launch,
+            progress=progress,
+        )
     )
 
     transport: Transport | None = None
@@ -347,4 +356,4 @@ def run_session(
     finally:
         if completed:
             _teardown(transport, machine)
-        _discard_stage(stage, staged_conf)
+        _discard_stage(staged)

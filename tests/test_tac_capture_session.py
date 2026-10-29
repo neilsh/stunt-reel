@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import os
 import shutil
 import struct
 import sys
@@ -648,22 +647,22 @@ def test_staging_copies_engine_files_and_rewrites_the_conf(staged_repo: StagedRe
     shutil.copy2(staged_repo.film, intro)
     shutil.copy2(staged_repo.film.with_suffix(".ALL"), intro.with_suffix(".ALL"))
 
-    stage, staged_conf = staging.stage_film(intro, staged_repo.conf, session="t1")
+    stage, staged_conf = staging.stage_film(intro, staged_repo.conf)
 
     for name in ENGINE_FILES:
         assert (stage / name).is_file()
     assert (stage / "VAULT" / "INTRO.FLM").is_file()
     assert (stage / "VAULT" / "INTRO.ALL").is_file()
     text = staged_conf.read_text(encoding="utf-8")
-    assert 'mount c "build/parity/stage/intro-t1"' in text
+    assert f'mount c "{stage.relative_to(dataroot.REPO_ROOT).as_posix()}"' in text
     assert r"VAULT\INTRO.FLM" in text
     assert "corpus/stisldem" not in text
 
 
 def test_two_sessions_stage_into_distinct_mounts(staged_repo: StagedRepo) -> None:
     """A second capture must not delete the mount the first is emulating (ADR 0021)."""
-    first, first_conf = staging.stage_film(staged_repo.film, staged_repo.conf, session="a")
-    second, second_conf = staging.stage_film(staged_repo.film, staged_repo.conf, session="b")
+    first, first_conf = staging.stage_film(staged_repo.film, staged_repo.conf)
+    second, second_conf = staging.stage_film(staged_repo.film, staged_repo.conf)
 
     assert first != second
     assert first_conf != second_conf
@@ -681,9 +680,23 @@ def test_a_finished_session_removes_its_staged_mount(staged_repo: StagedRepo) ->
         emulator=capture_emulator(),
     )
 
-    label = str(os.getpid())
-    assert not (dataroot.REPO_ROOT / parity_layout.stage_dir("CTRY", label)).exists()
-    assert not (dataroot.REPO_ROOT / parity_layout.stage_conf("CTRY", label)).exists()
+    stage_root = dataroot.REPO_ROOT / parity_layout.stage_root()
+    assert list(stage_root.glob("ctry-*")) == []
+    assert list(stage_root.glob("stage-ctry-*.conf")) == []
+
+
+def test_a_no_launch_session_stages_nothing(staged_repo: StagedRepo) -> None:
+    """--no-launch attaches to a running emulator, which mounted its own tree already."""
+    run_session(
+        staged_repo.film,
+        staged_repo.out,
+        sample=lambda _session: None,
+        conf=staged_repo.conf,
+        no_launch=True,
+        emulator=capture_emulator(),
+    )
+
+    assert list((dataroot.REPO_ROOT / parity_layout.stage_root()).glob("ctry-*")) == []
 
 
 def test_staging_fails_loudly_when_the_conf_literal_is_missing(
@@ -806,6 +819,19 @@ def test_capture_script_keeps_its_flags_and_progress_lines(
     ]
 
 
+def test_capture_script_requires_a_port_to_attach(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--no-launch without --port would wait out the timeout on a port nobody dials."""
+    module = _load_script("capture_playone_reference")
+    monkeypatch.setattr(sys, "argv", ["capture_playone_reference.py", "--no-launch"])
+
+    with pytest.raises(SystemExit) as info:
+        module.parse_args()
+    assert info.value.code == 2
+    assert "--port" in capsys.readouterr().err
+
+
 def test_capture_script_failure_lines_and_exit_codes(
     staged_repo: StagedRepo,
     monkeypatch: pytest.MonkeyPatch,
@@ -836,6 +862,13 @@ def test_capture_script_failure_lines_and_exit_codes(
     stub_raises(taken)
     assert module.run(args) == 1
     assert capsys.readouterr().err == f"[capture] cannot bind a control port ({taken})\n"
+
+    pinned = PortTaken(47991, OSError(10048, "only one usage of each socket address"))
+    stub_raises(pinned)
+    assert module.run(args) == 1
+    assert capsys.readouterr().err == (
+        f"[capture] cannot bind a control port on 127.0.0.1:47991 ({pinned})\n"
+    )
 
     missing = EmulatorUnavailable("dosbox-x is not on PATH")
     stub_raises(missing)

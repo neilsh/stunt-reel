@@ -89,7 +89,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="attach to an already launched DOSBox-X instead of starting one",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.no_launch and args.port == 0:
+        parser.error(
+            "--no-launch needs --port: a running DOSBox-X can only dial a port it was told"
+        )
+    return args
 
 
 def resolve(path: Path) -> Path:
@@ -148,7 +153,8 @@ def run(args: argparse.Namespace) -> int:
         print(f"[capture] {exc}", file=sys.stderr)
         return 2
     except PortTaken as exc:
-        print(f"[capture] cannot bind a control port ({exc})", file=sys.stderr)
+        where = "" if exc.port == 0 else f" on 127.0.0.1:{exc.port}"
+        print(f"[capture] cannot bind a control port{where} ({exc})", file=sys.stderr)
         return 1
     except EmulatorUnavailable as exc:
         print(f"[capture] {exc}; run via mise run capture-ref", file=sys.stderr)
