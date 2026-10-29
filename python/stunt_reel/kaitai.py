@@ -47,6 +47,15 @@ def compiler_version() -> str | None:
     return banner or None
 
 
+def version_matches(banner: str) -> bool:
+    """True when the banner's version token is exactly the pinned REQUIRED_KSC_VERSION.
+
+    A substring test would accept 0.110 or 0.11-SNAPSHOT for a pin of 0.11.
+    """
+    tokens = banner.split()
+    return bool(tokens) and tokens[-1] == REQUIRED_KSC_VERSION
+
+
 def compile_schemas(schema_paths: Sequence[Path], outdir: str | Path) -> None:
     """Compile `.ksy` schemas to Python under ``outdir``.
 

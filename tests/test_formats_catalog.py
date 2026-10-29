@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from stunt_reel import kaitai
+
 # Add python/scripts to sys.path so verify_formats_docs can be imported
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -92,13 +94,26 @@ def test_formats_catalog_cli_execution() -> None:
 def test_kaitai_cross_checks_reject_a_compiler_of_the_wrong_version(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Both fixture cross-checks enforce the pinned compiler version, not only the RES one."""
-    monkeypatch.setattr(
-        verify_formats_docs, "compiler_version", lambda: "kaitai-struct-compiler 0.9"
-    )
-    for check in (
-        verify_formats_docs._validate_res_with_kaitai,
-        verify_formats_docs._validate_flm_with_kaitai,
+    """Both fixture cross-checks enforce the complete pinned version, not a substring of it."""
+    for banner in (
+        "kaitai-struct-compiler 0.9",
+        "kaitai-struct-compiler 0.11-SNAPSHOT",
+        "kaitai-struct-compiler 0.110",
     ):
-        errors, _details = check(REPO_ROOT, b"")
-        assert any("version mismatch" in error for error in errors), check.__name__
+        monkeypatch.setattr(verify_formats_docs, "compiler_version", lambda banner=banner: banner)
+        for check in (
+            verify_formats_docs._validate_res_with_kaitai,
+            verify_formats_docs._validate_flm_with_kaitai,
+        ):
+            errors, _details = check(REPO_ROOT, b"")
+            assert any("version mismatch" in error for error in errors), (check.__name__, banner)
+
+
+def test_version_matches_compares_the_whole_version() -> None:
+    """The pin is the banner's version token, so a longer or prefixed version is a mismatch."""
+    assert kaitai.version_matches(f"kaitai-struct-compiler {kaitai.REQUIRED_KSC_VERSION}")
+    assert not kaitai.version_matches(f"kaitai-struct-compiler {kaitai.REQUIRED_KSC_VERSION}0")
+    assert not kaitai.version_matches(f"kaitai-struct-compiler 1{kaitai.REQUIRED_KSC_VERSION}")
+    assert not kaitai.version_matches(
+        f"kaitai-struct-compiler {kaitai.REQUIRED_KSC_VERSION}-SNAPSHOT"
+    )

@@ -37,6 +37,7 @@ from stunt_reel.kaitai import (
     compile_schemas,
     compiler_version,
     load_generated_module,
+    version_matches,
 )
 from stunt_reel.scratch import scratch_dir
 
@@ -684,7 +685,7 @@ def _validate_res_with_kaitai(repo_root: Path, res_bytes: bytes) -> tuple[list[s
             "Kaitai Struct Compiler not found on PATH; res.ksy fixture cross-check skipped"
         )
         return errors, details
-    if REQUIRED_KSC_VERSION not in version:
+    if not version_matches(version):
         errors.append(
             "Kaitai Struct Compiler version mismatch: expected "
             f"{REQUIRED_KSC_VERSION}, got '{version}'"
@@ -767,7 +768,7 @@ def _validate_flm_with_kaitai(repo_root: Path, flm_bytes: bytes) -> tuple[list[s
             "Kaitai Struct Compiler not found on PATH; flm_slice.ksy fixture cross-check skipped"
         )
         return errors, details
-    if REQUIRED_KSC_VERSION not in version:
+    if not version_matches(version):
         errors.append(
             "Kaitai Struct Compiler version mismatch: expected "
             f"{REQUIRED_KSC_VERSION}, got '{version}'"
