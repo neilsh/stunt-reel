@@ -50,6 +50,7 @@ from stunt_reel.kaitai import (
     compile_schemas,
     compiler_version,
     load_generated_module,
+    version_matches,
 )
 from stunt_reel.scratch import scratch_dir
 
@@ -509,7 +510,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if version is None:
         print("Kaitai Struct Compiler not found on PATH; run 'mise install'", file=sys.stderr)
         return 1
-    if REQUIRED_KSC_VERSION not in version:
+    if not version_matches(version):
         print(
             f"expected Kaitai Struct Compiler {REQUIRED_KSC_VERSION}, got '{version}'",
             file=sys.stderr,

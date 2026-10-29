@@ -6,6 +6,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from stunt_reel import kaitai
+
 # Add python/scripts to sys.path so verify_formats_docs can be imported
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -85,3 +89,42 @@ def test_formats_catalog_cli_execution() -> None:
         f"CLI execution failed with code {proc.returncode}:\n{proc.stdout}\n{proc.stderr}"
     )
     assert "ALL 7 VERIFICATION SUITES PASSED" in proc.stdout
+
+
+def test_kaitai_cross_checks_reject_a_compiler_of_the_wrong_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both fixture cross-checks enforce the complete pinned version, not a substring of it."""
+    for banner in (
+        "kaitai-struct-compiler 0.9",
+        "kaitai-struct-compiler 0.11-SNAPSHOT",
+        "kaitai-struct-compiler 0.110",
+    ):
+        monkeypatch.setattr(verify_formats_docs, "compiler_version", lambda banner=banner: banner)
+        for check in (
+            verify_formats_docs._validate_res_with_kaitai,
+            verify_formats_docs._validate_flm_with_kaitai,
+        ):
+            errors, _details = check(REPO_ROOT, b"")
+            assert any("version mismatch" in error for error in errors), (check.__name__, banner)
+
+
+def test_version_matches_compares_the_whole_version() -> None:
+    """The pin is the banner's version token, so a longer or prefixed version is a mismatch."""
+    pin = kaitai.REQUIRED_KSC_VERSION
+    assert kaitai.version_matches(f"kaitai-struct-compiler {pin}")
+    assert not kaitai.version_matches(f"kaitai-struct-compiler {pin}0")
+    assert not kaitai.version_matches(f"kaitai-struct-compiler 1{pin}")
+    assert not kaitai.version_matches(f"kaitai-struct-compiler {pin}-SNAPSHOT")
+    assert not kaitai.version_matches("")
+
+
+def test_version_matches_ignores_jvm_notices_around_the_banner() -> None:
+    """The banner shares stderr with JVM option notices, which are not the version."""
+    pin = kaitai.REQUIRED_KSC_VERSION
+    notice = "Picked up JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8"
+    banner = f"kaitai-struct-compiler {pin}"
+    assert kaitai.version_matches(f"{notice}\n{banner}")
+    assert kaitai.version_matches(f"{banner}\n{notice}")
+    assert not kaitai.version_matches(f"{notice}\nkaitai-struct-compiler 0.9\n{notice}")
+    assert not kaitai.version_matches(notice)
