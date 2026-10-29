@@ -9,8 +9,11 @@
 //!
 //! Each matched pair is scored by [`score::score_frame`]. Scores follow Invariant `[I6]`:
 //! both sides are reduced to Rec. 601 luminance, stretched from 320x200 to the 320x240
-//! physical 4:3 raster, and compared with the shared `compute_frame_ssim` window evaluator. IoU compares each side's non-sky mask,
-//! which measures framing agreement independently of shading. A capture's sky is every
+//! physical 4:3 raster, and compared window by window with the shared
+//! `compute_window_scores` evaluator, whose windows the gate averages itself so the same
+//! windows also attribute the loss by class.
+//! IoU compares each side's non-sky mask, which measures framing agreement independently
+//! of shading. A capture's sky is every
 //! pixel in the sky bands ([`mask::CAPTURE_SKY_INDICES`]), not one modal index.
 //!
 //! The original fades its palette with the film's brightness variable, and so does the
@@ -118,6 +121,81 @@ struct FrameRow {
     /// Film clock the frame was captured at; selects the rendered `tick_NNNNN.png`.
     film_tick: usize,
     metrics: FrameMetrics,
+}
+
+/// Aggregates the matched frames into the `report.json` document.
+///
+/// `scores` must not be empty: the means over every matched frame divide by its length.
+/// The `*_scored` means cover only the frames that reached the fade floor and are `None`
+/// when no frame did.
+fn build_report(
+    reference_frames: usize,
+    scores: &[FrameRow],
+    unmatched: usize,
+    min_fade_level: f32,
+) -> Report {
+    let matched = scores.len() as f32;
+    let mean_ssim = scores.iter().map(|s| s.metrics.ssim).sum::<f32>() / matched;
+    let min_ssim = scores
+        .iter()
+        .map(|s| s.metrics.ssim)
+        .fold(f32::INFINITY, f32::min);
+    let mean_iou = scores.iter().map(|s| s.metrics.iou).sum::<f32>() / matched;
+    let scored_frames: Vec<&FrameRow> = scores.iter().filter(|s| s.metrics.scored).collect();
+    let excluded_frames = scores.len() - scored_frames.len();
+    let scored_mean = |value: fn(&FrameRow) -> f32| {
+        (!scored_frames.is_empty()).then(|| {
+            scored_frames.iter().map(|s| value(s)).sum::<f32>() / scored_frames.len() as f32
+        })
+    };
+    let mean_ssim_scored = scored_mean(|s| s.metrics.ssim);
+    let mean_iou_scored = scored_mean(|s| s.metrics.iou);
+    let attributed: Vec<[f32; LOSS_CLASSES.len()]> = scored_frames
+        .iter()
+        .map(|s| s.metrics.loss_by_class)
+        .collect();
+    let mean_loss_by_class = (!attributed.is_empty()).then(|| {
+        let mut mean = [0.0f32; LOSS_CLASSES.len()];
+        for loss in &attributed {
+            for (total, value) in mean.iter_mut().zip(loss) {
+                *total += value / attributed.len() as f32;
+            }
+        }
+        loss_by_class(mean)
+    });
+    let mean_index_agreement_scored = scored_mean(|s| s.metrics.index_agreement);
+
+    Report {
+        reference_frames,
+        frames: scores.len(),
+        unmatched,
+        sky_indices: [*CAPTURE_SKY_INDICES.start(), *CAPTURE_SKY_INDICES.end()],
+        mean_ssim,
+        min_ssim,
+        mean_iou,
+        min_fade_level,
+        mean_ssim_scored,
+        i6_gate: i6_gate(mean_ssim_scored),
+        mean_iou_scored,
+        mean_index_agreement_scored,
+        mean_loss_by_class_scored: mean_loss_by_class,
+        scored_frames: scored_frames.len(),
+        excluded_frames,
+        per_frame: scores
+            .iter()
+            .map(|s| FrameReport {
+                ordinal: s.ordinal,
+                film_tick: s.film_tick as u64,
+                ssim: s.metrics.ssim,
+                iou: s.metrics.iou,
+                index_agreement: Some(s.metrics.index_agreement),
+                loss_by_class: Some(loss_by_class(s.metrics.loss_by_class)),
+                fade_level: Some(s.metrics.fade_level),
+                authored_fade_level: s.metrics.authored_fade_level,
+                scored: Some(s.metrics.scored),
+            })
+            .collect(),
+    }
 }
 
 /// Runs the comparator and writes `report.json` plus contact sheets.
@@ -230,80 +308,20 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         ));
     }
 
-    let matched = scores.len() as f32;
-    let mean_ssim = scores.iter().map(|s| s.metrics.ssim).sum::<f32>() / matched;
-    let min_ssim = scores
-        .iter()
-        .map(|s| s.metrics.ssim)
-        .fold(f32::INFINITY, f32::min);
-    let mean_iou = scores.iter().map(|s| s.metrics.iou).sum::<f32>() / matched;
-    let scored_frames: Vec<&FrameRow> = scores.iter().filter(|s| s.metrics.scored).collect();
-    let excluded_frames = scores.len() - scored_frames.len();
-    let scored_mean = |value: fn(&FrameRow) -> f32| {
-        (!scored_frames.is_empty()).then(|| {
-            scored_frames.iter().map(|s| value(s)).sum::<f32>() / scored_frames.len() as f32
-        })
-    };
-    let mean_ssim_scored = scored_mean(|s| s.metrics.ssim);
-    let mean_iou_scored = scored_mean(|s| s.metrics.iou);
-    let attributed: Vec<[f32; LOSS_CLASSES.len()]> = scored_frames
-        .iter()
-        .map(|s| s.metrics.loss_by_class)
-        .collect();
-    let mean_loss_by_class = (!attributed.is_empty()).then(|| {
-        let mut mean = [0.0f32; LOSS_CLASSES.len()];
-        for loss in &attributed {
-            for (total, value) in mean.iter_mut().zip(loss) {
-                *total += value / attributed.len() as f32;
-            }
-        }
-        loss_by_class(mean)
-    });
-    let mean_index_agreement_scored = scored_mean(|s| s.metrics.index_agreement);
-
-    let report = Report {
-        reference_frames: frames.len(),
-        frames: scores.len(),
-        unmatched,
-        sky_indices: [*CAPTURE_SKY_INDICES.start(), *CAPTURE_SKY_INDICES.end()],
-        mean_ssim,
-        min_ssim,
-        mean_iou,
-        min_fade_level: args.min_fade_level,
-        mean_ssim_scored,
-        i6_gate: i6_gate(mean_ssim_scored),
-        mean_iou_scored,
-        mean_index_agreement_scored,
-        mean_loss_by_class_scored: mean_loss_by_class,
-        scored_frames: scored_frames.len(),
-        excluded_frames,
-        per_frame: scores
-            .iter()
-            .map(|s| FrameReport {
-                ordinal: s.ordinal,
-                film_tick: s.film_tick as u64,
-                ssim: s.metrics.ssim,
-                iou: s.metrics.iou,
-                index_agreement: Some(s.metrics.index_agreement),
-                loss_by_class: Some(loss_by_class(s.metrics.loss_by_class)),
-                fade_level: Some(s.metrics.fade_level),
-                authored_fade_level: s.metrics.authored_fade_level,
-                scored: Some(s.metrics.scored),
-            })
-            .collect(),
-    };
+    let report = build_report(frames.len(), &scores, unmatched, args.min_fade_level);
     let report_path = args.output.join("report.json");
     parity_artifacts::write_report(&report_path, &report).map_err(|error| error.to_string())?;
 
+    let (mean_ssim, mean_iou) = (report.mean_ssim, report.mean_iou);
+    let excluded_frames = report.excluded_frames;
     println!(
         "[parity] {} frames, mean SSIM {mean_ssim:.3}, mean IoU {mean_iou:.3}",
-        scores.len()
+        report.frames
     );
-    match (mean_ssim_scored, mean_iou_scored) {
+    match (report.mean_ssim_scored, report.mean_iou_scored) {
         (Some(ssim), Some(iou)) => println!(
             "[parity] {} scored frame(s) (fade level >= {:.2}), mean SSIM {ssim:.3}, mean IoU {iou:.3}; {excluded_frames} excluded",
-            scored_frames.len(),
-            args.min_fade_level
+            report.scored_frames, args.min_fade_level
         ),
         _ => println!(
             "[parity] no frame reaches the fade floor (fade level >= {:.2}); {excluded_frames} excluded",
@@ -318,7 +336,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             .join(", ");
         println!("[parity] SSIM loss by class (sums to 1 - mean SSIM over scored frames): {line}");
     }
-    if let Some(agreement) = mean_index_agreement_scored {
+    if let Some(agreement) = report.mean_index_agreement_scored {
         println!("[parity] mean index agreement {agreement:.3} over the scored frames with planes");
     }
     if unmatched > 0 {

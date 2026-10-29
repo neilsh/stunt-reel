@@ -1,9 +1,11 @@
-//! End-to-end `run` tests over synthetic captures and renders.
+//! End-to-end `run` tests over synthetic captures and renders, and in-memory `build_report` tests.
 
 use std::fs;
 
 use serde_json::json;
 
+use super::loss::LOSS_CLASSES;
+use super::score::FrameMetrics;
 use super::test_support::{
     TempDir, read_report, run_parity, write_reference, write_reference_faded, write_render,
     write_render_with_brightness,
@@ -162,4 +164,138 @@ fn the_i6_gate_passes_each_threshold_independently() {
     assert_eq!(gate(Some(0.89)), (true, false));
     assert_eq!(gate(Some(0.5)), (false, false));
     assert_eq!(gate(None), (false, false));
+}
+
+/// How `row` splits a frame's `1 - ssim` among [`LOSS_CLASSES`] (sky, terrain, actors), so a
+/// class mapped to the wrong slot changes a mean.
+const LOSS_SPLIT: [f32; LOSS_CLASSES.len()] = [0.5, 0.0, 0.0, 0.3, 0.0, 0.2, 0.0, 0.0, 0.0];
+
+/// A matched frame with the given SSIM, IoU and scored flag; the other measurements are
+/// derived so each frame's loss array sums to `1 - ssim`.
+fn row(ordinal: usize, ssim: f32, iou: f32, scored: bool) -> super::FrameRow {
+    let loss_by_class = LOSS_SPLIT.map(|share| share * (1.0 - ssim));
+    super::FrameRow {
+        ordinal,
+        film_tick: ordinal * 10,
+        metrics: FrameMetrics {
+            ssim,
+            fade_level: if scored { 1.0 } else { 0.1 },
+            authored_fade_level: None,
+            scored,
+            iou,
+            index_agreement: ssim / 2.0,
+            loss_by_class,
+        },
+    }
+}
+
+fn assert_close(actual: Option<f32>, expected: f32) {
+    let actual = actual.expect("a mean over scored frames");
+    assert!((actual - expected).abs() < 1e-6, "{actual} != {expected}");
+}
+
+/// Every class's mean loss is its `LOSS_SPLIT` share of `total` (the mean of `1 - ssim`).
+fn assert_loss_split(loss: &std::collections::BTreeMap<String, f32>, total: f32) {
+    assert_eq!(loss.len(), LOSS_CLASSES.len());
+    for (name, share) in LOSS_CLASSES.iter().zip(LOSS_SPLIT) {
+        let actual = loss[*name];
+        assert!(
+            (actual - share * total).abs() < 1e-6,
+            "{name}: {actual} != {}",
+            share * total
+        );
+    }
+}
+
+#[test]
+fn build_report_over_all_scored_frames_has_equal_overall_and_scored_means() {
+    let rows = [row(1, 0.9, 0.8, true), row(2, 0.7, 0.6, true)];
+    let report = super::build_report(5, &rows, 3, 0.25);
+
+    assert_eq!(report.reference_frames, 5);
+    assert_eq!(report.frames, 2);
+    assert_eq!(report.unmatched, 3);
+    assert_eq!(report.min_fade_level, 0.25);
+    assert_eq!(report.scored_frames, 2);
+    assert_eq!(report.excluded_frames, 0);
+    assert!((report.mean_ssim - 0.8).abs() < 1e-6);
+    assert!((report.min_ssim - 0.7).abs() < 1e-6);
+    assert!((report.mean_iou - 0.7).abs() < 1e-6);
+    assert_close(report.mean_ssim_scored, report.mean_ssim);
+    assert_close(report.mean_iou_scored, report.mean_iou);
+    assert_close(report.mean_index_agreement_scored, 0.4);
+    let loss = report.mean_loss_by_class_scored.expect("class losses");
+    assert_loss_split(&loss, 0.2);
+    assert_eq!(report.per_frame.len(), 2);
+    assert_eq!(report.per_frame[1].ordinal, 2);
+    assert_eq!(report.per_frame[1].film_tick, 20);
+    assert_eq!(report.per_frame[1].scored, Some(true));
+}
+
+#[test]
+fn build_report_excludes_frames_below_the_fade_floor_from_scored_means() {
+    let rows = [
+        row(1, 0.9, 0.8, true),
+        row(2, 0.7, 0.6, true),
+        row(3, 0.1, 0.2, false),
+    ];
+    let report = super::build_report(3, &rows, 0, 0.25);
+
+    assert_eq!(report.frames, 3);
+    assert_eq!(report.scored_frames, 2);
+    assert_eq!(report.excluded_frames, 1);
+    // Overall means span every matched frame; the minimum is the excluded frame's.
+    assert!((report.mean_ssim - 1.7 / 3.0).abs() < 1e-6);
+    assert!((report.min_ssim - 0.1).abs() < 1e-6);
+    assert!((report.mean_iou - 1.6 / 3.0).abs() < 1e-6);
+    // Scored means skip it.
+    assert_close(report.mean_ssim_scored, 0.8);
+    assert_close(report.mean_iou_scored, 0.7);
+    assert_close(report.mean_index_agreement_scored, 0.4);
+    let loss = report.mean_loss_by_class_scored.expect("class losses");
+    assert_loss_split(&loss, 0.2);
+    // The per-frame list keeps the excluded frame, flagged unscored.
+    let scored: Vec<_> = report.per_frame.iter().map(|f| f.scored).collect();
+    assert_eq!(scored, vec![Some(true), Some(true), Some(false)]);
+    assert_eq!(report.per_frame[2].fade_level, Some(0.1));
+}
+
+#[test]
+fn build_report_with_no_scored_frame_has_no_scored_means() {
+    let rows = [row(1, 0.4, 0.5, false), row(2, 0.2, 0.3, false)];
+    let report = super::build_report(2, &rows, 0, 0.25);
+
+    assert_eq!(report.scored_frames, 0);
+    assert_eq!(report.excluded_frames, 2);
+    assert!((report.mean_ssim - 0.3).abs() < 1e-6);
+    assert!(report.mean_ssim_scored.is_none());
+    assert!(report.mean_iou_scored.is_none());
+    assert!(report.mean_index_agreement_scored.is_none());
+    assert!(report.mean_loss_by_class_scored.is_none());
+    assert_eq!(report.per_frame.len(), 2);
+}
+
+#[test]
+fn build_report_gate_follows_the_scored_mean_not_the_overall_mean() {
+    // The excluded frame drags the overall mean to 0.64, below both thresholds, but the
+    // scored mean of 0.91 reaches both.
+    let rows = [
+        row(1, 0.92, 0.9, true),
+        row(2, 0.90, 0.9, true),
+        row(3, 0.10, 0.1, false),
+    ];
+    let report = super::build_report(3, &rows, 0, 0.25);
+    assert!(report.mean_ssim < 0.88);
+    assert_close(report.mean_ssim_scored, 0.91);
+    assert_eq!(report.i6_gate, super::i6_gate(report.mean_ssim_scored));
+    assert!(report.i6_gate.initial && report.i6_gate.sign_off);
+
+    // A scored mean of 0.89 reaches only the initial threshold.
+    let rows = [row(1, 0.89, 0.9, true), row(2, 0.1, 0.1, false)];
+    let gate = super::build_report(2, &rows, 0, 0.25).i6_gate;
+    assert!(gate.initial && !gate.sign_off);
+
+    // No scored frame fails both.
+    let gate = super::build_report(1, &[row(1, 0.99, 0.9, false)], 0, 0.25).i6_gate;
+    assert!(!gate.initial && !gate.sign_off);
 }
