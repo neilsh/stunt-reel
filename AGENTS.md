@@ -41,7 +41,7 @@ Refer directly to authoritative documents rather than duplicating definitions:
 | **Research Routing** | [`research/README.md`](research/README.md) | Where each kind of finding goes, note shape, size guideline. |
 | **Parity** | [`research/parity/`](research/parity/) | [`method.md`](research/parity/method.md) (loop, scoring), [`log.md`](research/parity/log.md) (dated results), [`attribution.md`](research/parity/attribution.md), [`framing-and-actors.md`](research/parity/framing-and-actors.md), [`film-segments.md`](research/parity/film-segments.md) (where the render differs). |
 | **Agent Skills** | [`.agents/skills/`](.agents/skills/) | Shared task workflows, e.g. [`improving-render-parity`](.agents/skills/improving-render-parity/SKILL.md); `.claude/skills/` holds stubs that point here. |
-| **Skill Configuration** | [`docs/agents/`](docs/agents/) | Per-repo settings the engineering skills read: [`issue-tracker.md`](docs/agents/issue-tracker.md) (GitHub Issues via `gh`), [`triage-labels.md`](docs/agents/triage-labels.md) (label vocabulary), [`domain.md`](docs/agents/domain.md) (`GLOSSARY.md` stands in for `CONTEXT.md`). |
+| **Skill Configuration** | [`docs/agents/`](docs/agents/) | Per-repo settings the engineering skills read: [`issue-tracker.md`](docs/agents/issue-tracker.md) (GitHub Issues via `gh`), [`triage-labels.md`](docs/agents/triage-labels.md) (label vocabulary), [`domain.md`](docs/agents/domain.md) (where the glossary and ADRs live). |
 | **Decisions (ADRs)** | [`docs/adr/`](docs/adr/) | One file per accepted design decision, e.g. [`0001-sod-tap-anchor-table.md`](docs/adr/0001-sod-tap-anchor-table.md). |
 | **Coding & Format Rules** | [`Cargo.toml`](Cargo.toml), [`pyproject.toml`](pyproject.toml), [`.editorconfig`](.editorconfig) | Clippy workspace lints, Ruff & Mypy configurations, LF line endings, and 4-space indentation. |
 | **Agents & Harnesses** | [`docs/harness.md`](docs/harness.md) | Policy every agent follows, then per-harness capability notes: sandbox modes, temp-directory and shell gotchas, what needs escalation, approvals, timeouts, subagent delegation, and where each harness keeps its settings. |
@@ -113,4 +113,4 @@ Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `
 
 ### Domain docs
 
-Single-context; the glossary is [`GLOSSARY.md`](GLOSSARY.md) (no `CONTEXT.md`), ADRs are in [`docs/adr/`](docs/adr/). See [`docs/agents/domain.md`](docs/agents/domain.md).
+Single-context; the glossary is [`GLOSSARY.md`](GLOSSARY.md), ADRs are in [`docs/adr/`](docs/adr/). See [`docs/agents/domain.md`](docs/agents/domain.md).
