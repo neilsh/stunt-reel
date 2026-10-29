@@ -437,6 +437,24 @@ def test_listen_read_memory_round_trips_memdumpbin() -> None:
         assert t.read_memory((0x0D51, 0x0100), 4) == bytes([0xDE, 0xAD, 0xBE, 0xEF])
 
 
+def test_each_listener_reads_memory_through_its_own_dump_file() -> None:
+    """Two listeners in one process must not overwrite each other's MEMDUMPBIN file."""
+    first = ListenTransport(host="127.0.0.1", port=0)
+    second = ListenTransport(host="127.0.0.1", port=0)
+
+    assert first._read_path != second._read_path
+
+
+def test_closing_a_listener_removes_a_leftover_dump_file() -> None:
+    """A read that failed before its read-back must not leave a dump in the temp dir."""
+    listener = ListenTransport(host="127.0.0.1", port=0)
+    listener._read_path.write_bytes(b"\x00")
+
+    listener.close()
+
+    assert not listener._read_path.exists()
+
+
 def test_listen_write_memory_wraps_sm_in_exec() -> None:
     """Every listener debugger command is EXEC-wrapped."""
 

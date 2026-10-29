@@ -23,13 +23,14 @@ Implementations:
 from __future__ import annotations
 
 import contextlib
+import itertools
 import math
 import os
 import re
 import socket
 import struct
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Protocol, TextIO, runtime_checkable
 
@@ -66,6 +67,9 @@ PAGE_OFFSET: int = 0
 PALETTE_ENTRIES: int = 256
 #: Real-mode segment of the VGA linear framebuffer window.
 _VGA_SEGMENT: int = 0xA000
+
+#: Dump-file names are per listener, so two listeners in one process cannot share one.
+_DUMP_IDS: Iterator[int] = itertools.count(1)
 
 _DAC_ENTRY_RE = re.compile(r"[0-9A-Fa-f]{6}")
 
@@ -398,8 +402,10 @@ class ListenTransport(_FramedTransport):
         self.port = port
         self.timeout = timeout
         self._listener: socket.socket | None = None
-        # Per-process: a fixed name let two captures overwrite each other's dump.
-        self._read_path: Path = Path(tempfile.gettempdir()) / f"stunt_tac_read_{os.getpid()}.bin"
+        # Per-listener: a process-wide name let two sessions overwrite each other's dump.
+        self._read_path: Path = (
+            Path(tempfile.gettempdir()) / f"stunt_tac_read_{os.getpid()}_{next(_DUMP_IDS)}.bin"
+        )
 
     def listen(self) -> int:
         """Bind the control port and return the port DOSBox-X must dial."""
@@ -444,6 +450,8 @@ class ListenTransport(_FramedTransport):
             with contextlib.suppress(OSError):
                 self._listener.close()
             self._listener = None
+        with contextlib.suppress(OSError):
+            self._read_path.unlink(missing_ok=True)
 
     def _wire(self, command: str) -> str:
         """Wrap debugger commands in EXEC; PING and BREAK are the only bare verbs."""
@@ -453,7 +461,7 @@ class ListenTransport(_FramedTransport):
         return f"EXEC {command}"
 
     def read_memory(self, address: Address, length: int) -> bytes:
-        """Read real-mode memory through MEMDUMPBIN and a per-process host file."""
+        """Read real-mode memory through MEMDUMPBIN and this listener's host file."""
         if length <= 0:
             return b""
         segment, offset = address
