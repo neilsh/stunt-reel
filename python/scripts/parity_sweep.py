@@ -44,8 +44,8 @@ from stunt_reel.parity_artifacts import (
     Geometry,
     open_render,
     read_capture,
+    read_page,
     read_report,
-    render_plane_paths,
 )
 from stunt_reel.parity_pipeline import (
     FILMS,
@@ -186,8 +186,8 @@ def write_crops(
         for frame in read_report(report_json).per_frame:
             if frame.scored is not True:
                 continue
-            layer = render_plane_paths(render, frame.film_tick)[1].read_bytes()
-            pixels = parity_probe.actor_pixels(layer, geometry)
+            page = read_page(render, frame.film_tick, geometry)
+            pixels = page.actor_pixels()
             if best is None or len(pixels) > best[0]:
                 best = (len(pixels), frame.ordinal, frame.film_tick, pixels)
         if best is None:

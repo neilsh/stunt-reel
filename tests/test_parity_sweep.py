@@ -100,13 +100,14 @@ def test_actor_iou_on_synthetic_planes(tmp_path: Path) -> None:
     """The refactored probe: ours is a 10x10 square, the capture shows an overlapping 10x5."""
     geometry = _geometry()
     width, rows = geometry.width, geometry.plane_rows()
-    layer = bytearray(2 * width * rows)
+    layer = bytearray(2 * width * geometry.height)
     capture = bytearray([233]) * (width * rows)  # sky is never an object pixel
     for y in range(50, 60):
         for x in range(100, 110):
             layer[2 * (y * width + x)] = parity_artifacts.LAYER_FIRST_ACTOR
             if y < 55:
                 capture[y * width + x] = 10
+    (tmp_path / "tick_00007.idx").write_bytes(bytes(width * geometry.height))
     (tmp_path / "tick_00007.layer").write_bytes(bytes(layer))
     (tmp_path / "tick_0001.idx").write_bytes(bytes(capture))
     (tmp_path / "meta.json").write_text(

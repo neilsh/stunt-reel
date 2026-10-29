@@ -9,29 +9,25 @@ stays clean after a run. `render.json` and `report.json` are authored by the Rus
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
 from stunt_reel.parity_artifacts import (
     SCHEMA_VERSION,
+    ArtifactError,
     CapturedFrame,
     FilmId,
     Geometry,
     read_capture,
+    read_page,
     read_render,
     read_report,
+    render_plane_paths,
     write_capture,
     write_render,
     write_report,
 )
-
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-
-import parity_probe  # noqa: E402
 
 CORPUS = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "parity" / "v1"
 APPROX_REL = 1e-6
@@ -173,18 +169,59 @@ def test_report_fixture_round_trips_through_the_adapter(tmp_path: Path) -> None:
         _assert_close_optional(back_frame.authored_fade_level, frame.authored_fade_level)
 
 
-def test_page_fixture_narrows_actor_pixels_to_the_viewport() -> None:
+def test_page_fixture_reads_through_one_reader() -> None:
     geometry = Geometry(width=4, height=3, viewport_rows=2)
-    indices = (CORPUS / "pages" / "tick_00007.idx").read_bytes()
-    layer = (CORPUS / "pages" / "tick_00007.layer").read_bytes()
-    assert len(indices) == geometry.width * geometry.height == 12
-    assert len(layer) == 2 * geometry.width * geometry.height == 24
+    page = read_page(CORPUS / "pages", 7, geometry)
+    assert page.geometry == geometry
+    assert len(page.indices) == geometry.width * geometry.height == 12
+    assert len(page.layers) == geometry.width * geometry.height == 12
+    assert page.indices == bytes([180, 180, 180, 180, 0, 40, 40, 0, 0, 0, 0, 0])
+    assert page.layers == (0, 0, 0, 0, 0, 16, 16, 0, 16, 16, 16, 16)
 
-    layers = [
-        int.from_bytes(layer[offset : offset + 2], "little") for offset in range(0, len(layer), 2)
-    ]
-    assert indices == bytes([180, 180, 180, 180, 0, 40, 40, 0, 0, 0, 0, 0])
-    assert layers == [0, 0, 0, 0, 0, 16, 16, 0, 16, 16, 16, 16]
+    # The files span the full 4x3 raster and the reader keeps all twelve layers;
+    # only the actor scan narrows to the 2-row viewport, so row 2 is ignored.
+    assert page.actor_pixels() == [5, 6]
 
-    # Row 2 is outside the viewport, so the actor scan stops after row 1.
-    assert parity_probe.actor_pixels(layer, geometry) == [5, 6]
+
+def test_read_page_names_a_plane_of_the_wrong_size(tmp_path: Path) -> None:
+    geometry = Geometry(width=4, height=3, viewport_rows=2)
+    index_path, layer_path = render_plane_paths(tmp_path, 7)
+
+    index_path.write_bytes(b"\x00" * 11)
+    layer_path.write_bytes(b"\x00" * 24)
+    with pytest.raises(ArtifactError, match=r"tick_00007\.idx") as truncated:
+        read_page(tmp_path, 7, geometry)
+    assert truncated.value.kind == "geometry"
+
+    index_path.write_bytes(b"\x00" * 12)
+    layer_path.write_bytes(b"\x00" * 26)
+    with pytest.raises(ArtifactError, match=r"tick_00007\.layer") as oversized:
+        read_page(tmp_path, 7, geometry)
+    assert oversized.value.kind == "geometry"
+
+
+def test_read_page_keeps_the_high_byte_of_a_layer_id(tmp_path: Path) -> None:
+    # The corpus page carries only 0x0000 and 0x0010, which a decoder reading the
+    # low byte alone would also produce. 0x0100 separates the two: its low byte is
+    # below the actor threshold, so a low-byte decoder sees no actor at all.
+    geometry = Geometry(width=4, height=3, viewport_rows=2)
+    index_path, layer_path = render_plane_paths(tmp_path, 7)
+    index_path.write_bytes(bytes(12))
+    layer_bytes = bytearray(24)
+    layer_bytes[2 * 5 : 2 * 5 + 2] = (0x0100).to_bytes(2, "little")
+    layer_path.write_bytes(layer_bytes)
+
+    page = read_page(tmp_path, 7, geometry)
+
+    assert page.layers[5] == 0x0100
+    assert page.actor_pixels() == [5]
+
+
+def test_read_page_rejects_a_viewport_taller_than_the_raster(tmp_path: Path) -> None:
+    index_path, layer_path = render_plane_paths(tmp_path, 7)
+    index_path.write_bytes(bytes(12))
+    layer_path.write_bytes(bytes(24))
+
+    with pytest.raises(ArtifactError, match=r"tick_00007\.idx") as invalid:
+        read_page(tmp_path, 7, Geometry(width=4, height=3, viewport_rows=4))
+    assert invalid.value.kind == "geometry"

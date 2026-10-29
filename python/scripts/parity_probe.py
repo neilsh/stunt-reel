@@ -31,7 +31,6 @@ from pathlib import Path
 
 from stunt_reel import parity_layout
 from stunt_reel.parity_artifacts import (
-    LAYER_FIRST_ACTOR,
     LEGACY_SIDECAR,
     CapturedFrame,
     CaptureSet,
@@ -40,8 +39,8 @@ from stunt_reel.parity_artifacts import (
     open_render,
     read_capture,
     read_capture_palette,
+    read_page,
     read_report,
-    render_plane_paths,
 )
 from stunt_reel.parity_pipeline import RetimeError, retime_render
 
@@ -73,12 +72,6 @@ def is_object(index: int, background: tuple[tuple[int, int], ...]) -> bool:
     if index in NEVER_OBJECT:
         return False
     return not any(lo <= index <= hi for lo, hi in background)
-
-
-def actor_pixels(layer: bytes, geometry: Geometry) -> list[int]:
-    """Pixel offsets (within the viewport) drawn by an actor (layer id >= first actor)."""
-    width, rows = geometry.width, geometry.plane_rows()
-    return [pixel for pixel in range(width * rows) if layer[2 * pixel] >= LAYER_FIRST_ACTOR]
 
 
 def _geometry(capture: CaptureSet, controls: RenderControls) -> Geometry:
@@ -147,7 +140,7 @@ def make_crop(
     frame = _capture_frame(capture, ordinal)
     palette = read_capture_palette(reference / frame.palette_file)
     capture_index = (reference / frame.frame_file).read_bytes()
-    render_index = render_plane_paths(ours, tick)[0].read_bytes()
+    render_index = read_page(ours, tick, geometry).indices
     top = render_region(capture_index, palette, box, scale, geometry.width)
     bottom = render_region(render_index, palette, box, scale, geometry.width)
     width = (box[2] - box[0]) * scale
@@ -167,8 +160,8 @@ def cmd_shift(args: argparse.Namespace) -> None:
     for frame in read_report(args.report).per_frame:
         if frame.scored is not True:
             continue
-        layer = render_plane_paths(args.ours, frame.film_tick)[1].read_bytes()
-        pixels = actor_pixels(layer, geometry)
+        page = read_page(args.ours, frame.film_tick, geometry)
+        pixels = page.actor_pixels()
         if len(pixels) < args.min_pixels:
             continue
         capture_index = (
@@ -208,8 +201,8 @@ def actor_iou(
     count = 0
     scored = [frame for frame in read_report(report).per_frame if frame.scored is True]
     for frame in scored[::every]:
-        layer = render_plane_paths(ours, frame.film_tick)[1].read_bytes()
-        pixels = set(actor_pixels(layer, geometry))
+        page = read_page(ours, frame.film_tick, geometry)
+        pixels = set(page.actor_pixels())
         if len(pixels) < min_pixels:
             continue
         xs = [i % width for i in pixels]

@@ -94,7 +94,9 @@ File naming and numbering; the page-to-film-clock rule; plane layouts and length
 - Die: the raw `parity_inputs` validator tests, the sidecar unknown-key test (replaced by a round-trip test), `parse_report`, and the duplicated `RENDER_SIDECAR` and geometry constants.
 - New, offline: shared `render_v1`, `capture_v1` and `report_v1` fixtures read and rewritten by both adapters; unknown-version refusal; legacy-versus-record conflict; missing or incomplete `render.json`; geometry mismatch before planes; tick ordering; report identities and null means; journal-to-round round-trip; retime round-trip preserving unknown keys.
 
-**Follow-up (2026-10-28).** The shared fixtures above never landed: neither language has a conformance document, and the page bytes have no cross-language pin. The corpus that lands them — the three documents, a legacy capture, and the `.idx`/`.layer` page pair — is specified in [parity-conformance-corpus.md](../parity-conformance-corpus.md). The `Round` and `ReportBuilder` half of the unit is still unlanded and is tracked separately.
+**Follow-up (2026-10-28).** The shared fixtures above never landed: neither language has a conformance document, and the page bytes have no cross-language pin. The corpus that lands them — the three documents, a legacy capture, and the `.idx`/`.layer` page pair — is specified in [parity-conformance-corpus.md](../parity-conformance-corpus.md).
+
+**Landed (2026-10-29).** That corpus now exists in `tests/fixtures/parity/v1/` and both adapters are pinned against it: a `conformance` module in [parity_artifacts.rs](../../../../crates/stunt-cli/src/parity_artifacts.rs) and [test_parity_conformance.py](../../../../tests/test_parity_conformance.py). The page bytes stay pinned end to end now that `parity_artifacts.read_page` replaces the four hand-decoded reads. The `Round` and `ReportBuilder` half of the unit is still unlanded and is tracked separately.
 
 ## 8. Deletions
 
