@@ -18,7 +18,7 @@ use winit::keyboard::{Key, NamedKey};
 use winit::window::{Window, WindowId};
 
 use crate::config::CliConfig;
-use crate::headless::playback_ticks;
+use crate::playback::Playback;
 
 /// Reports why opening the window renderer failed, in the same words as the old bootstrap.
 fn log_open_error(error: &RenderError) {
@@ -41,7 +41,7 @@ pub(crate) struct WindowApp {
     config: CliConfig,
     /// The film scene, built once before the event loop and reused across resumes.
     scene: FilmScene,
-    playback_ticks: u32,
+    playback: Playback,
     window: Option<Arc<Window>>,
     /// The renderer opened on the window's surface, or None before the first resume.
     renderer: Option<Renderer>,
@@ -60,15 +60,16 @@ pub(crate) struct WindowApp {
 
 impl WindowApp {
     pub(crate) fn new(config: CliConfig, scene: FilmScene) -> Self {
-        let playback_ticks = playback_ticks(&config, &scene);
+        let playback = Playback::new(&config, &scene);
+        let current_tick = playback.range().start() as f32;
         Self {
             config,
             scene,
-            playback_ticks,
+            playback,
             window: None,
             renderer: None,
             camera: CameraController::default(),
-            current_tick: 0.0,
+            current_tick,
             paused: false,
             last_frame_time: Instant::now(),
             key_w: false,
@@ -107,11 +108,15 @@ impl WindowApp {
     }
 
     /// Advances the authored timeline in wall-clock time `[I4]`.
+    ///
+    /// The film clock visits every tick of the range `--frames` selects, so the loop
+    /// wraps over that whole inclusive range (T14).
     fn advance_timeline(&mut self, dt: f32) {
-        if self.paused || self.playback_ticks == 0 {
+        if self.paused {
             return;
         }
-        self.current_tick = (self.current_tick + dt * TIMELINE_HZ) % self.playback_ticks as f32;
+        let progressed = self.current_tick + dt * TIMELINE_HZ;
+        self.current_tick = self.playback.range().wrap(progressed);
     }
 
     fn render(&mut self, dt: f32) {

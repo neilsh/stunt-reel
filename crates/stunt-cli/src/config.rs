@@ -31,7 +31,7 @@ struct Options {
     /// Half-open 1-based tick ordinals to render; 1..N+2 covers ticks 0..=N
     /// (default: ticks 0..=total, the film's last tick included)
     #[arg(long, value_name = "A..B", value_parser = parse_frame_range)]
-    frames: Option<(usize, usize)>,
+    frames: Option<FrameRange>,
     /// Directory searched first for ANCHORPT.DAT, MAP.BIN and SCENERY.scn; then the archive's
     /// directory, its parent and grandparent, then sidata/ or SIDATA/ inside the parent
     /// (names match any case)
@@ -86,9 +86,9 @@ pub(crate) struct CliConfig {
     pub sod_path: Option<PathBuf>,
     pub all_path: Option<PathBuf>,
     pub out_dir: Option<PathBuf>,
-    /// Half-open `[start, end)` 1-based tick ordinals to render; `None` renders ticks
-    /// `0..=total_ticks`.
-    pub frame_range: Option<(usize, usize)>,
+    /// Half-open `[start, end)` 1-based tick ordinals to render, resolved against the
+    /// film clock by [`crate::playback`]; `None` renders ticks `0..=total_ticks`.
+    pub frame_range: Option<FrameRange>,
     /// Directory searched first for `ANCHORPT.DAT`, `MAP.BIN` and `SCENERY.scn`.
     pub sidata_dir: Option<PathBuf>,
     pub width: u32,
@@ -208,8 +208,38 @@ fn companion(path: &Path, ext: &str) -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
-/// Parses a half-open `A..B` frame range.
-fn parse_frame_range(spec: &str) -> Result<(usize, usize), String> {
+/// The half-open range of 1-based tick ordinals `--frames` asked for.
+///
+/// `A..B` renders tick ordinals `A` through `B - 1`, i.e. 0-based ticks `A - 1`
+/// through `B - 2`. T12 replaces the flag with 0-based inclusive `--tick-range
+/// A..=B`; until then [`crate::playback`] resolves these ordinals against the film.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FrameRange {
+    start: usize,
+    end: usize,
+}
+
+impl FrameRange {
+    /// A half-open range of 1-based tick ordinals.
+    pub(crate) fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
+    }
+
+    /// The first rendered tick ordinal (1-based).
+    #[must_use]
+    pub(crate) fn start(self) -> usize {
+        self.start
+    }
+
+    /// One past the last rendered tick ordinal (1-based).
+    #[must_use]
+    pub(crate) fn end(self) -> usize {
+        self.end
+    }
+}
+
+/// Parses a half-open `A..B` frame range into 1-based tick ordinals.
+fn parse_frame_range(spec: &str) -> Result<FrameRange, String> {
     let (start, end) = spec
         .split_once("..")
         .ok_or_else(|| format!("expected A..B, got {spec:?}"))?;
@@ -224,7 +254,7 @@ fn parse_frame_range(spec: &str) -> Result<(usize, usize), String> {
     if end <= start {
         return Err(format!("{spec:?}: end must be greater than start"));
     }
-    Ok((start, end))
+    Ok(FrameRange::new(start, end))
 }
 
 fn parse_positive_usize(text: &str) -> Result<usize, String> {
@@ -328,7 +358,7 @@ mod tests {
         ])
         .expect("parse succeeds");
 
-        assert_eq!(config.frame_range, Some((2, 10)));
+        assert_eq!(config.frame_range, Some(FrameRange::new(2, 10)));
         assert_eq!(config.frame_step, 3);
         assert_eq!(config.sample_count, Some(5));
         assert_eq!(config.fps, 50.0);
