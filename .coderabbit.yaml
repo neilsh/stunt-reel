@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit reviews pull requests as a second reader, never as a second gate: the gate
+# (`mise run check`) and a person decide whether a pull request merges, and a comment here is
+# advice (see CONTRIBUTING.md). Everything this file does not mention stays at CodeRabbit's
+# default; the entries below exist only where a default cannot say it.
+
+reviews:
+  # The four paths where a review comment cannot be useful: two lockfiles, the synthetic
+  # fixture bytes, and the parity log, whose rows are append-only and union-merged
+  # (.gitattributes), so a note about their shape is guaranteed to be ignored.
+  path_filters:
+    - "!Cargo.lock"
+    - "!uv.lock"
+    - "!tests/fixtures/**"
+    - "!research/parity/log.md"
+
+  auto_review:
+    drafts: false
+
+  path_instructions:
+    - path: "crates/stunt-core/**"
+      instructions: |
+        `stunt-core` takes only small, pure-Rust dependencies — no I/O, windowing, GPU,
+        audio or emulator crates ([I7] in AGENTS.md). Do not propose a new dependency
+        without naming the invariant or seam it serves, and check Cargo.toml first.
+        Node state is a flat `Vec<SodNode>` indexed by `NodeId(u32)` ([I2]); do not suggest
+        `Rc<RefCell<_>>`.
+    - path: "research/**"
+      instructions: |
+        These are the analysis notes, and their rules are not ordinary markdown style.
+        Review structure, internal links, anchors and evidentiary tiers, and flag a claim
+        that restates a definition owned elsewhere. Do not try to verify a fact about
+        PLAYONE.EXE or a byte layout: that needs the binary and the corpus, and a review
+        comment is not evidence.
+    - path: "docs/adr/**"
+      instructions: |
+        An ADR records a decision already made: context, the decision, the options rejected
+        and why, and the consequences. Review for a missing rejected option or consequence,
+        not for whether the decision was right, and do not propose rewording an accepted
+        ADR's decision.
+    - path: "python/**"
+      instructions: |
+        Linting and typing are the gate's job (`ruff check`, `ruff format --check`, strict
+        `mypy`); do not restate them as review comments. Prefer the standard library and
+        the dependencies already declared in pyproject.toml. A script under python/scripts/
+        reaches people through `mise run`, so a new one needs a task in mise.toml.
+
+# AGENTS.md is read automatically; SPEC.md owns the invariants it cites and GLOSSARY.md the
+# vocabulary it uses, and neither is on CodeRabbit's default guideline list.
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - files: "AGENTS.md, docs/SPEC.md, GLOSSARY.md"
+        applyTo: "**"
