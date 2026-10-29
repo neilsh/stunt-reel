@@ -47,6 +47,7 @@ __all__ = [
     "FrameReport",
     "Geometry",
     "I6Gate",
+    "Page",
     "RenderControls",
     "RenderPalette",
     "RenderRecord",
@@ -57,6 +58,7 @@ __all__ = [
     "open_render",
     "read_capture",
     "read_capture_palette",
+    "read_page",
     "read_render",
     "read_report",
     "render_plane_paths",
@@ -273,6 +275,20 @@ class Geometry:
     def plane_rows(self) -> int:
         """Rows a rendered plane spans: the viewport when narrowed, else the height."""
         return self.viewport_rows if self.viewport_rows is not None else self.height
+
+
+@dataclass(frozen=True)
+class Page:
+    """One render page's planes: the full raster, with the viewport only narrowing scans."""
+
+    indices: bytes
+    layers: tuple[int, ...]
+    geometry: Geometry
+
+    def actor_pixels(self) -> list[int]:
+        """Pixel offsets (within the viewport) drawn by an actor (layer id >= first actor)."""
+        width, rows = self.geometry.width, self.geometry.plane_rows()
+        return [pixel for pixel in range(width * rows) if self.layers[pixel] >= LAYER_FIRST_ACTOR]
 
 
 @dataclass(frozen=True)
@@ -757,6 +773,39 @@ def render_plane_paths(directory: Path, tick: int) -> tuple[Path, Path]:
     """The index and layer plane paths a render writes for *tick*."""
     stem = tick_stem(tick)
     return directory / f"{stem}.idx", directory / f"{stem}.layer"
+
+
+def _read_plane(path: Path, kind: str, expected: int, geometry: Geometry) -> bytes:
+    """Reads one plane file, naming it when it is unreadable or the wrong size."""
+    try:
+        data = path.read_bytes()
+    except OSError as err:
+        raise _error("missing", f"the file must be readable ({err})", path) from err
+    if len(data) != expected:
+        raise _error(
+            "geometry",
+            f"holds {len(data)} {kind}, expected {expected} for {geometry.width}x{geometry.height}",
+            path,
+        )
+    return data
+
+
+def read_page(directory: Path, tick: int, geometry: Geometry) -> Page:
+    """Reads one render page's planes, sizing them from the record's full raster.
+
+    The files span width * height pixels even when viewport_rows narrows the drawn
+    scene, exactly as the Rust plane_codec writes them; only Page.actor_pixels
+    narrows its scan to the viewport.
+    """
+    index_path, layer_path = render_plane_paths(directory, tick)
+    pixels = geometry.width * geometry.height
+    indices = _read_plane(index_path, "palette indices", pixels, geometry)
+    layer_bytes = _read_plane(layer_path, "layer bytes", 2 * pixels, geometry)
+    layers = tuple(
+        int.from_bytes(layer_bytes[offset : offset + 2], "little")
+        for offset in range(0, len(layer_bytes), 2)
+    )
+    return Page(indices=indices, layers=layers, geometry=geometry)
 
 
 def frames_for_captured_ticks(ticks: Iterable[int]) -> str:
