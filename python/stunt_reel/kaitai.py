@@ -18,6 +18,7 @@ from pathlib import Path
 from types import ModuleType
 
 REQUIRED_KSC_VERSION = "0.11"
+_KSC_NAME = "kaitai-struct-compiler"
 
 
 def ksc_command() -> list[str] | None:
@@ -48,12 +49,17 @@ def compiler_version() -> str | None:
 
 
 def version_matches(banner: str) -> bool:
-    """True when the banner's version token is exactly the pinned REQUIRED_KSC_VERSION.
+    """True when the compiler's own banner line reports exactly REQUIRED_KSC_VERSION.
 
-    A substring test would accept 0.110 or 0.11-SNAPSHOT for a pin of 0.11.
+    The captured text also carries JVM option notices, so only the line that starts
+    with the compiler's name is read. A substring test would accept 0.110 or
+    0.11-SNAPSHOT for a pin of 0.11.
     """
-    tokens = banner.split()
-    return bool(tokens) and tokens[-1] == REQUIRED_KSC_VERSION
+    for line in banner.splitlines():
+        tokens = line.split()
+        if len(tokens) == 2 and tokens[0] == _KSC_NAME:
+            return tokens[1] == REQUIRED_KSC_VERSION
+    return False
 
 
 def compile_schemas(schema_paths: Sequence[Path], outdir: str | Path) -> None:

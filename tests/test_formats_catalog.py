@@ -111,9 +111,20 @@ def test_kaitai_cross_checks_reject_a_compiler_of_the_wrong_version(
 
 def test_version_matches_compares_the_whole_version() -> None:
     """The pin is the banner's version token, so a longer or prefixed version is a mismatch."""
-    assert kaitai.version_matches(f"kaitai-struct-compiler {kaitai.REQUIRED_KSC_VERSION}")
-    assert not kaitai.version_matches(f"kaitai-struct-compiler {kaitai.REQUIRED_KSC_VERSION}0")
-    assert not kaitai.version_matches(f"kaitai-struct-compiler 1{kaitai.REQUIRED_KSC_VERSION}")
-    assert not kaitai.version_matches(
-        f"kaitai-struct-compiler {kaitai.REQUIRED_KSC_VERSION}-SNAPSHOT"
-    )
+    pin = kaitai.REQUIRED_KSC_VERSION
+    assert kaitai.version_matches(f"kaitai-struct-compiler {pin}")
+    assert not kaitai.version_matches(f"kaitai-struct-compiler {pin}0")
+    assert not kaitai.version_matches(f"kaitai-struct-compiler 1{pin}")
+    assert not kaitai.version_matches(f"kaitai-struct-compiler {pin}-SNAPSHOT")
+    assert not kaitai.version_matches("")
+
+
+def test_version_matches_ignores_jvm_notices_around_the_banner() -> None:
+    """The banner shares stderr with JVM option notices, which are not the version."""
+    pin = kaitai.REQUIRED_KSC_VERSION
+    notice = "Picked up JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8"
+    banner = f"kaitai-struct-compiler {pin}"
+    assert kaitai.version_matches(f"{notice}\n{banner}")
+    assert kaitai.version_matches(f"{banner}\n{notice}")
+    assert not kaitai.version_matches(f"{notice}\nkaitai-struct-compiler 0.9\n{notice}")
+    assert not kaitai.version_matches(notice)
