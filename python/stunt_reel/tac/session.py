@@ -15,6 +15,7 @@ StalePage.
 from __future__ import annotations
 
 import contextlib
+import shutil
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -264,6 +265,13 @@ def _attach_status(error: BaseException, status: int | None) -> None:
         return
 
 
+def _discard_stage(stage: Path, staged_conf: Path) -> None:
+    """Remove this session's staged mount and conf once no emulator holds them."""
+    with contextlib.suppress(OSError):
+        staged_conf.unlink(missing_ok=True)
+    shutil.rmtree(stage, ignore_errors=True)
+
+
 def _teardown(transport: Transport | None, machine: Emulator) -> None:
     """Close the transport, release the port and stop the emulator; the first error wins."""
     errors: list[Exception] = []
@@ -306,7 +314,7 @@ def run_session(
     conf_path = _resolve(conf, root)
     if dataroot.is_shared(out_path):
         dataroot.require_shared_write("the capture session")
-    _stage, staged_conf = staging.stage_film(film_path, conf_path)
+    stage, staged_conf = staging.stage_film(film_path, conf_path)
     machine: Emulator = (
         emulator
         if emulator is not None
@@ -339,3 +347,4 @@ def run_session(
     finally:
         if completed:
             _teardown(transport, machine)
+        _discard_stage(stage, staged_conf)

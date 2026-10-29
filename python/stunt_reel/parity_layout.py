@@ -116,14 +116,14 @@ def retime_dir(film: str, suffix: str = "") -> Path:
     return _RETIME / f"{_film_name(film)}{CURRENT_SUFFIX}{suffix}"
 
 
-def stage_dir(film: str) -> Path:
-    """The DOSBox-X mount that stages *film* alone."""
-    return _STAGE / _film_name(film)
+def stage_dir(film: str, session: str) -> Path:
+    """The DOSBox-X mount that stages *film* alone for one session (ADR 0021)."""
+    return _STAGE / f"{_film_name(film)}-{session}"
 
 
-def stage_conf(film: str) -> Path:
+def stage_conf(film: str, session: str) -> Path:
     """The generated conf beside :func:`stage_dir` that mounts it."""
-    return _STAGE / f"stage-{_film_name(film)}.conf"
+    return _STAGE / f"stage-{_film_name(film)}-{session}.conf"
 
 
 def stage_root() -> Path:

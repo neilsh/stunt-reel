@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_FILM,
         help=(
             "the film's .FLM file (its .ALL must sit beside it); it is staged alone into "
-            f"{parity_layout.stage_root().as_posix()}/<name>/ so the dialog needs one prefix "
+            f"{parity_layout.stage_root().as_posix()}/<name>-<session>/ so the dialog needs one prefix "
             f"key (default {DEFAULT_FILM})"
         ),
     )

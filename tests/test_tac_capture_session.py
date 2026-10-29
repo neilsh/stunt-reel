@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import struct
 import sys
@@ -20,7 +21,7 @@ from typing import Any
 
 import pytest
 
-from stunt_reel import dataroot
+from stunt_reel import dataroot, parity_layout
 from stunt_reel.dataroot import SharedWriteError
 from stunt_reel.parity_artifacts import FilmId
 from stunt_reel.tac import staging
@@ -649,16 +650,42 @@ def test_staging_copies_engine_files_and_rewrites_the_conf(staged_repo: StagedRe
     shutil.copy2(staged_repo.film, intro)
     shutil.copy2(staged_repo.film.with_suffix(".ALL"), intro.with_suffix(".ALL"))
 
-    stage, staged_conf = staging.stage_film(intro, staged_repo.conf)
+    stage, staged_conf = staging.stage_film(intro, staged_repo.conf, session="t1")
 
     for name in ENGINE_FILES:
         assert (stage / name).is_file()
     assert (stage / "VAULT" / "INTRO.FLM").is_file()
     assert (stage / "VAULT" / "INTRO.ALL").is_file()
     text = staged_conf.read_text(encoding="utf-8")
-    assert 'mount c "build/parity/stage/intro"' in text
+    assert 'mount c "build/parity/stage/intro-t1"' in text
     assert r"VAULT\INTRO.FLM" in text
     assert "corpus/stisldem" not in text
+
+
+def test_two_sessions_stage_into_distinct_mounts(staged_repo: StagedRepo) -> None:
+    """A second capture must not delete the mount the first is emulating (ADR 0021)."""
+    first, first_conf = staging.stage_film(staged_repo.film, staged_repo.conf, session="a")
+    second, second_conf = staging.stage_film(staged_repo.film, staged_repo.conf, session="b")
+
+    assert first != second
+    assert first_conf != second_conf
+    assert (first / "VAULT" / staged_repo.film.name).is_file()
+    assert (second / "VAULT" / staged_repo.film.name).is_file()
+
+
+def test_a_finished_session_removes_its_staged_mount(staged_repo: StagedRepo) -> None:
+    """Each session owns a mount, so none may survive the run that made it."""
+    run_session(
+        staged_repo.film,
+        staged_repo.out,
+        sample=lambda _session: None,
+        conf=staged_repo.conf,
+        emulator=capture_emulator(),
+    )
+
+    label = str(os.getpid())
+    assert not (dataroot.REPO_ROOT / parity_layout.stage_dir("CTRY", label)).exists()
+    assert not (dataroot.REPO_ROOT / parity_layout.stage_conf("CTRY", label)).exists()
 
 
 def test_staging_fails_loudly_when_the_conf_literal_is_missing(

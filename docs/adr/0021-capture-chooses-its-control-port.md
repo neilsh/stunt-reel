@@ -16,9 +16,11 @@ failures that only someone reading `netsh interface ipv4 show excludedportrange`
 explain. Binding port 0 removes the class of failure instead of retrying past it.
 
 The machine-wide lock goes with it. "One capture at a time" was never a requirement;
-it was a side effect of the fixed port. A second capture now owns a second port and a
-second DOSBox-X, and the guest is cycle-driven (`core = normal`, `cycles = 8000`), so
-neither session's frames depend on the other existing. No lock file replaces it: this
+it was a side effect of the fixed port. A second capture now owns a second port, a
+second DOSBox-X and a stage mount of its own, so neither session can damage the other's
+run. The guest's emulated work per tick is fixed (`core = normal`, `cycles = 8000`), but
+the sampling loop asks for one retrace hit at a time, so load can shift which retrace a
+frame is taken at; see Consequences. No lock file replaces it: this
 codebase already keeps per-process scratch (`stunt_tac_read_<pid>.bin` in
 [`transport.py`](../../python/stunt_reel/tac/transport.py)) rather than global locks.
 
@@ -37,6 +39,13 @@ codebase already keeps per-process scratch (`stunt_tac_read_<pid>.bin` in
   carry the port because it is not established which one this build reads, and one
   launch cannot separate them), and port 0 reporting what it bound. The "two sessions cannot hold one port" test is deleted with the rule
   it encoded.
+- **The stage mount.** [`stage_film()`](../../python/stunt_reel/tac/staging.py)
+  builds a mount named after the capture process ([`stage_dir`](../../python/stunt_reel/parity_layout.py))
+  and [`run_session`](../../python/stunt_reel/tac/session.py) removes it after the
+  emulator stops. The fixed port had hidden this: one shared
+  `build/parity/stage/<film>` meant a second capture of the same film deleted the tree
+  the first was emulating from, and the machine-wide lock was what kept that from
+  happening.
 - **The interactive launch.** `dosbox-mcp.conf` carries no port either:
   [`ensure_dosbox.py`](../../python/scripts/ensure_dosbox.py) takes the port the MCP
   server reports through `dosbox_mcp_port` and passes it through the same
@@ -63,11 +72,19 @@ codebase already keeps per-process scratch (`stunt_tac_read_<pid>.bin` in
 ## Consequences
 
 Two captures still contend for the machine's cores. `LAUNCH_TIMEOUT_SECONDS` and the
-dialog-settle budgets are wall-clock, so a second session can spend them; the frames do
-not move because the guest is cycle-driven, so a timeout is a scheduling measurement
-rather than a reason to bring the lock back. Two sessions writing the same shared
-capture directory under `STUNT_DATA_WRITE=1` are the operator's business: the write
-guard is a consent gate, not a concurrency gate.
+dialog-settle budgets are wall-clock, so a second session can spend them; a timeout is
+then a scheduling measurement, not a reason to bring the lock back. 
+
+Frames are not interchangeable between runs, and this change did not make them so: a
+solo capture and the shared reference disagree at three of the four film ticks they
+share (32, 54 and 65 differ; 43 matches), and the same raster appears at tick 54 in one
+run and tick 55 in another. The trap samples whichever retrace it stops on, so a
+frame's declared film tick can sit beside a raster that belongs to its neighbour. Two
+simultaneous captures inherit that, so a concurrent pair is a workflow convenience, not
+a way to produce interchangeable reference sets.
+
+Two sessions writing the same shared capture directory under `STUNT_DATA_WRITE=1` are
+the operator's business: the write guard is a consent gate, not a concurrency gate.
 
 The interactive debugger still depends on `58991` being bindable in one narrow sense —
 the MCP server tries it first — but nothing on this side pins it any more, so an
