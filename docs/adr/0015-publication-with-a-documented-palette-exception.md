@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted; §1 and §5 amended by [ADR 0020](0020-publish-through-a-fresh-scrubbed-repository.md)
+accepted; §1 and §5 amended 2026-10-28 (see the amendments after Consequences)
 
 ## Context
 
@@ -55,3 +55,23 @@ respect it. `[I7]`'s heading changes, so its anchor references and the anchor re
 change with it. The public history contains no personal email address. The side branches
 still carry the old identity and must be rewritten before they can land. The CI Windows job
 and MSRV job need fixing before a "green in private" gate is meaningful (separate changes).
+
+## Amendments
+
+- **§1, publishing route (2026-10-28).** The private repository was not made public. Pull
+  requests merged in the web UI under the maintainer's email stay visible on GitHub after any
+  force-push, and a `.mailmap` only changes how `git log` displays names, so flipping
+  visibility would have published the address however the branches were rewritten. The history
+  was rewritten with `git filter-repo` (every author and committer on the noreply identity, two
+  machine paths in ADR 0019 replaced by placeholders), the private repository was renamed
+  `stunt-reel-archive`, and only the rewritten `main` was pushed to a new public
+  `neilsh/stunt-reel`. The cost is the old pull-request threads and Actions history, which stay
+  in the archive. To keep the address out from now on, the account sets *Keep my email
+  addresses private* and *Block command line pushes that expose my email*; commit identity is a
+  local setting, so CI cannot enforce it, and [`CONTRIBUTING.md`](../../CONTRIBUTING.md) tells
+  contributors that their commit email is published. The steps and their verification are in
+  [`docs/process/plans/public-release-2026-10-28.md`](../process/plans/public-release-2026-10-28.md).
+- **§5, wording (2026-10-28).** The README says reverse engineering, because that is what the
+  project does: format analysis of a 1992 program for interoperability and preservation.
+  Avoiding the term made the description vaguer without changing the legal footing. The
+  "cleanroom" claim stays retired.
