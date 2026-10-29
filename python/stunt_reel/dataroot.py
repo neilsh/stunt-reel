@@ -5,7 +5,9 @@ checkout would otherwise need its own copy.  They live once per machine, outside
 every checkout: ``<parent-of-primary>/<repo-name>.data`` unless ``STUNT_DATA_ROOT``
 names another place.  ``mise run init`` links them in, and ``ensure_links`` links
 them in again wherever the corpus is read, so a checkout made by any tool works on
-first use rather than reading an empty placeholder.
+first use rather than reading an empty placeholder.  ``ensure_links`` is the one
+policy for those links: it returns one outcome per target, and its callers only
+render them.
 
 The shared tool cache works the same way, and so does the Python environment: a
 worktree's ``.venv`` is a junction at ``<cache>/venvs/<checkout>-<digest>``, because uv
@@ -20,8 +22,10 @@ import os
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from stunt_reel import parity_layout
 
@@ -34,6 +38,8 @@ __all__ = [
     "REPO_ROOT",
     "VENV_DIRNAME",
     "WRITE_ENV",
+    "LinkOutcome",
+    "LinkStatus",
     "SharedDataError",
     "SharedWriteError",
     "cache_root",
@@ -54,6 +60,7 @@ __all__ = [
     "primary_checkout",
     "remove_link",
     "require_shared_write",
+    "shared_target",
     "sweep_orphan_envs",
 ]
 
@@ -91,6 +98,24 @@ class SharedWriteError(RuntimeError):
 
 class SharedDataError(RuntimeError):
     """Raised when a checkout cannot be linked to the shared data root."""
+
+
+#: What one checkout-relative link came to.  ``ok`` and ``repaired`` describe a link
+#: that points at an existing shared target; ``created-empty`` says the target itself
+#: was missing and was created empty first, which is a valid starting point for the
+#: captures, the oracle and ``target_bin`` (ADR 0008); ``refused`` says this call left
+#: the target alone and ``reason`` says why.
+LinkStatus = Literal["ok", "repaired", "created-empty", "refused"]
+
+
+@dataclass(frozen=True)
+class LinkOutcome:
+    """One ``LINK_TARGETS`` entry after :func:`ensure_links`, for a caller to render."""
+
+    relative: str
+    status: LinkStatus
+    target: Path
+    reason: str | None = None
 
 
 def primary_checkout() -> Path | None:
@@ -132,23 +157,23 @@ def cache_root() -> Path:
     return (primary if primary is not None else REPO_ROOT) / CACHE_DIRNAME
 
 
-def ensure_cache_link() -> str:
+def ensure_cache_link() -> LinkOutcome:
     """Make this checkout's .cache resolve to the primary checkout's tool cache.
 
     A fresh worktree runs uv sync before mise run init, so a cache that
     directory collected is moved into the shared one before the link replaces
-    it.  Returns the line init prints: "= .cache" when the link was already
-    correct, "+ .cache -> <target>" when this call created it.
+    it.  Returns the outcome init renders: ok when the link was already correct,
+    repaired when this call made it.
     """
     target = cache_root()
     target.mkdir(parents=True, exist_ok=True)
     (target / "tmp").mkdir(exist_ok=True)
     link = REPO_ROOT / CACHE_DIRNAME
     if link == target:
-        return "= .cache"
+        return LinkOutcome(CACHE_DIRNAME, "ok", target)
     if is_link(link):
         if link_points_at(link, target):
-            return "= .cache"
+            return LinkOutcome(CACHE_DIRNAME, "ok", target)
         remove_link(link)
     elif link.exists():
         if link.is_dir():
@@ -157,7 +182,7 @@ def ensure_cache_link() -> str:
         else:
             link.unlink()
     create_link(link, target)
-    return f"+ .cache -> {target}"
+    return LinkOutcome(CACHE_DIRNAME, "repaired", target)
 
 
 def _adopt_partial_cache(partial: Path, target: Path) -> None:
@@ -344,15 +369,35 @@ def create_link(link: Path, target: Path) -> None:
         raise SharedDataError(f"cannot link {link} -> {target}: {detail}")
 
 
-def ensure_links() -> list[str]:
-    """Link the shared data root into this checkout, repairing what is missing.
+def shared_target(relative: str) -> Path:
+    """The data-root directory a checkout-relative link borrows.
+
+    The two names live only in :data:`LINK_TARGETS`, so a caller that needs the shared
+    side of one link (``mise run clean`` restores the capture link) asks here instead of
+    spelling it again.
+    """
+    for shared, subject in LINK_TARGETS:
+        if subject == relative:
+            return data_root() / shared
+    raise KeyError(f"{relative} is not one of LINK_TARGETS")
+
+
+def ensure_links() -> list[LinkOutcome]:
+    """Link the shared data root into this checkout; this is the one link policy.
 
     Called where the corpus is read rather than where the worktree is made, so a
     checkout from any tool works on first use: a directory holding nothing but a
     ``.gitkeep`` is a worktree whose ``mise run init`` never ran, and it is replaced
-    by the link.  Returns the checkout-relative paths it repaired, so a caller can
-    say what it did.  Refuses, rather than moving anything, when the checkout holds
-    real data: that is ``mise run init -- --migrate``'s decision, not a read's.
+    by the link.  A shared directory that does not exist yet is created empty first,
+    because the captures, the oracle and ``target_bin`` are populated later (ADR 0008).
+
+    Returns one outcome per :data:`LINK_TARGETS` entry, which is all a caller needs to
+    render what happened: a target already in place is ``ok``, not absent from the list.
+    The walk is two passes, and the first refuses before anything is touched when the
+    checkout holds real data of its own.  Moving that data is
+    ``mise run init -- --migrate``'s decision, not a read's, and a half-repaired checkout
+    reads as a worktree whose corpus is half present, which is worse than the empty
+    placeholder: a refused run returns only the refused outcomes and touched nothing.
     """
     root = data_root()
     if root == REPO_ROOT:
@@ -362,22 +407,35 @@ def ensure_links() -> list[str]:
             f"no shared data root at {root}; run `mise run init -- --migrate` in the "
             f"primary checkout, or set {DATA_ENV}"
         )
-    # Refuse before touching anything: a half-repaired checkout reads as a worktree
-    # whose corpus is half present, which is worse than the empty placeholder.
-    for _shared, relative in LINK_TARGETS:
+    refused: list[LinkOutcome] = []
+    for shared, relative in LINK_TARGETS:
         link = REPO_ROOT / relative
-        if link.is_dir() and not is_link(link) and not is_placeholder(link):
-            raise SharedDataError(
-                f"{relative} holds data of its own; run `mise run init -- --migrate` "
-                "to move it into the shared root"
+        if not link.is_dir() or is_link(link) or is_placeholder(link):
+            continue
+        refused.append(
+            LinkOutcome(
+                relative=relative,
+                status="refused",
+                target=root / shared,
+                reason=(
+                    f"{relative} holds data of its own; run `mise run init -- --migrate` "
+                    "to move it into the shared root"
+                ),
             )
-    repaired: list[str] = []
+        )
+    if refused:
+        return refused
+    outcomes: list[LinkOutcome] = []
     for shared, relative in LINK_TARGETS:
         target = root / shared
         link = REPO_ROOT / relative
+        created_empty = not target.exists()
+        if created_empty:
+            target.mkdir(parents=True, exist_ok=True)
         if is_link(link) and link_points_at(link, target):
-            if not target.exists():
-                raise SharedDataError(f"{relative} links to a missing {target}")
+            outcomes.append(
+                LinkOutcome(relative, "created-empty" if created_empty else "ok", target)
+            )
             continue
         if is_link(link):
             remove_link(link)
@@ -387,18 +445,26 @@ def ensure_links() -> list[str]:
             link.rmdir()
         elif link.exists():
             link.unlink()
-        target.mkdir(parents=True, exist_ok=True)
         create_link(link, target)
-        repaired.append(relative)
-    return repaired
+        outcomes.append(
+            LinkOutcome(relative, "created-empty" if created_empty else "repaired", target)
+        )
+    return outcomes
 
 
 def ensure_links_or_report(program: str) -> bool:
     """``ensure_links`` for a command's first lines: say what it did, or why it refused."""
     try:
-        for relative in ensure_links():
-            sys.stderr.write(f"{program}: linked {relative}\n")
+        outcomes = ensure_links()
     except SharedDataError as err:
         sys.stderr.write(f"{program}: {err}\n")
         return False
+    refused = [outcome for outcome in outcomes if outcome.status == "refused"]
+    for outcome in refused:
+        sys.stderr.write(f"{program}: {outcome.reason or outcome.relative}\n")
+    if refused:
+        return False
+    for outcome in outcomes:
+        if outcome.status != "ok":
+            sys.stderr.write(f"{program}: linked {outcome.relative}\n")
     return True

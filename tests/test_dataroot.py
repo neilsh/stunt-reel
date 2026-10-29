@@ -117,11 +117,18 @@ def test_ensure_links_repairs_a_worktree_that_never_ran_init(
     root = tmp_path / "stunt-reel.data"
     (root / "stisldem").mkdir(parents=True)
     worktree = _worktree(monkeypatch, _primary(tmp_path))
-    assert dataroot.ensure_links() == [relative for _, relative in dataroot.LINK_TARGETS]
-    for shared, relative in dataroot.LINK_TARGETS:
-        assert dataroot.link_points_at(worktree / relative, root / shared)
+    outcomes = dataroot.ensure_links()
+    assert [(outcome.relative, outcome.status) for outcome in outcomes] == [
+        ("corpus/stisldem", "repaired"),
+        ("corpus/siarchive", "created-empty"),
+        ("corpus/oracle", "created-empty"),
+        ("target_bin", "created-empty"),
+        ("build/parity/reference", "created-empty"),
+    ]
+    for outcome in outcomes:
+        assert dataroot.link_points_at(worktree / outcome.relative, outcome.target)
     assert (root / "reference").is_dir()  # a shared directory that was still empty
-    assert dataroot.ensure_links() == []
+    assert {outcome.status for outcome in dataroot.ensure_links()} == {"ok"}
 
 
 def test_ensure_links_replaces_a_gitkeep_placeholder(
@@ -133,7 +140,8 @@ def test_ensure_links_replaces_a_gitkeep_placeholder(
     placeholder = worktree / "corpus" / "stisldem"
     placeholder.mkdir(parents=True)
     (placeholder / ".gitkeep").write_text("", encoding="utf-8")
-    assert "corpus/stisldem" in dataroot.ensure_links()
+    repaired = [outcome for outcome in dataroot.ensure_links() if outcome.status == "repaired"]
+    assert [outcome.relative for outcome in repaired] == ["corpus/stisldem"]
     assert dataroot.link_points_at(worktree / "corpus" / "stisldem", root / "stisldem")
 
 
@@ -147,9 +155,28 @@ def test_ensure_links_refuses_a_checkout_holding_real_data(
     populated = worktree / "corpus" / "siarchive"
     populated.mkdir(parents=True)
     (populated / "SITools.zip").write_bytes(b"PK\x03\x04")
-    with pytest.raises(dataroot.SharedDataError, match="migrate"):
-        dataroot.ensure_links()
+    outcomes = dataroot.ensure_links()
+    assert [(outcome.relative, outcome.status) for outcome in outcomes] == [
+        ("corpus/siarchive", "refused")
+    ]
+    assert "migrate" in (outcomes[0].reason or "")
+    # The refusal is all-or-nothing: the other links were not touched either.
     assert not (worktree / "target_bin").exists()
+    assert not (root / "stisldem").exists()
+
+
+def test_ensure_links_replaces_a_link_that_points_elsewhere(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "stunt-reel.data"
+    (root / "stisldem").mkdir(parents=True)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    worktree = _worktree(monkeypatch, _primary(tmp_path))
+    dataroot.create_link(worktree / "corpus" / "stisldem", elsewhere)
+    outcome = next(item for item in dataroot.ensure_links() if item.relative == "corpus/stisldem")
+    assert (outcome.status, outcome.target) == ("repaired", root / "stisldem")
+    assert dataroot.link_points_at(worktree / "corpus" / "stisldem", root / "stisldem")
 
 
 def test_ensure_links_names_init_when_the_root_is_absent(
@@ -167,22 +194,67 @@ def test_ensure_links_is_a_no_op_without_a_worktree(
     assert dataroot.ensure_links() == []
 
 
+def test_shared_target_derives_both_names_from_the_link_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _checkout(monkeypatch, _primary(tmp_path))
+    for shared, relative in dataroot.LINK_TARGETS:
+        assert dataroot.shared_target(relative) == dataroot.data_root() / shared
+    with pytest.raises(KeyError):
+        dataroot.shared_target("corpus/elsewhere")
+
+
+def test_ensure_links_or_report_renders_the_outcomes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "stunt-reel.data"
+    (root / "stisldem").mkdir(parents=True)
+    _worktree(monkeypatch, _primary(tmp_path))
+    assert dataroot.ensure_links_or_report("reader")
+    assert capsys.readouterr().err == "".join(
+        f"reader: linked {relative}\n" for _shared, relative in dataroot.LINK_TARGETS
+    )
+    assert dataroot.ensure_links_or_report("reader")
+    assert capsys.readouterr().err == ""
+
+
+def test_ensure_links_or_report_names_a_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "stunt-reel.data"
+    (root / "si_archive").mkdir(parents=True)
+    worktree = _worktree(monkeypatch, _primary(tmp_path))
+    populated = worktree / "corpus" / "siarchive"
+    populated.mkdir(parents=True)
+    (populated / "SITools.zip").write_bytes(b"PK\x03\x04")
+    assert not dataroot.ensure_links_or_report("reader")
+    err = capsys.readouterr().err
+    assert err.startswith("reader: corpus/siarchive holds data of its own")
+    assert "migrate" in err
+
+
 def test_cache_link_points_a_worktree_at_the_primary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     primary = _primary(tmp_path)
     worktree = _worktree(monkeypatch, primary)
-    assert dataroot.ensure_cache_link() == f"+ .cache -> {primary / '.cache'}"
+    outcome = dataroot.ensure_cache_link()
+    assert (outcome.relative, outcome.status, outcome.target) == (
+        ".cache",
+        "repaired",
+        primary / ".cache",
+    )
     assert dataroot.cache_root() == primary / ".cache"
     assert dataroot.link_points_at(worktree / ".cache", primary / ".cache")
-    assert dataroot.ensure_cache_link() == "= .cache"
+    assert dataroot.ensure_cache_link().status == "ok"
 
 
 def test_cache_link_is_a_real_directory_in_the_primary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     primary = _checkout(monkeypatch, _primary(tmp_path))
-    assert dataroot.ensure_cache_link() == "= .cache"
+    outcome = dataroot.ensure_cache_link()
+    assert (outcome.relative, outcome.status) == (".cache", "ok")
     assert (primary / ".cache").is_dir()
     assert not dataroot.is_link(primary / ".cache")
 
@@ -264,6 +336,7 @@ def test_cache_link_adopts_a_cache_made_before_the_link(
     partial = worktree / ".cache" / "uv"
     partial.mkdir(parents=True)
     (partial / "artifact").write_bytes(b"cache")
-    assert dataroot.ensure_cache_link().startswith("+ .cache ->")
+    outcome = dataroot.ensure_cache_link()
+    assert (outcome.status, outcome.target) == ("repaired", primary / ".cache")
     assert (primary / ".cache" / "uv" / "artifact").read_bytes() == b"cache"
     assert dataroot.link_points_at(worktree / ".cache", primary / ".cache")
