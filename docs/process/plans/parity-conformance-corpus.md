@@ -1,6 +1,6 @@
 # Parity Conformance Corpus (unit E, design note)
 
-Status: E1-E3 landed 2026-10-29; E4 (the page reader) is the stacked follow-up. This is the test half that unit A's brief
+Status: landed 2026-10-29 (E1-E3 in `7daa6fe`; E4 in `a99aaa3`). This is the test half that unit A's brief
 promised in §7 and never landed: `render_v1`, `capture_v1` and `report_v1` fixtures
 read and rewritten by both adapters, plus the page bytes that sit beside them.
 
