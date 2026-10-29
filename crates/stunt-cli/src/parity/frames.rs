@@ -1,4 +1,4 @@
-//! Loading captured and rendered frames: index planes, palettes, PNGs and planes.
+//! Loading captured frames and rendered PNGs: index planes, palettes and luminance.
 
 use std::fs;
 use std::path::Path;
@@ -92,39 +92,4 @@ pub(super) fn read_png_luminance(path: &Path) -> Result<Vec<f32>, String> {
         ));
     }
     Ok(rgba_to_luminance(rgba.as_raw()))
-}
-
-/// A render's palette-index plane and layer-id plane.
-pub(super) type RenderPlanes = (Vec<u8>, Vec<u16>);
-
-/// Reads the render's index and layer planes for `tick`; a missing plane is an error.
-pub(super) fn read_render_planes(test_dir: &Path, tick: usize) -> Result<RenderPlanes, String> {
-    let png = test_dir.join(crate::headless::tick_png_name(tick));
-    let (idx_path, layer_path) = (png.with_extension("idx"), png.with_extension("layer"));
-    if !idx_path.is_file() || !layer_path.is_file() {
-        return Err(format!(
-            "{} has no render planes ({} and {}); re-render it with the current \
-             `stunt-cli --headless`, which writes them beside every frame",
-            test_dir.display(),
-            idx_path.display(),
-            layer_path.display()
-        ));
-    }
-    let indices = read_index_plane(&idx_path)?;
-    let bytes = fs::read(&layer_path).map_err(|e| format!("read {}: {e}", layer_path.display()))?;
-    if bytes.len() != MODE13H_WIDTH * MODE13H_HEIGHT * 2 {
-        return Err(format!(
-            "{} is {} bytes, expected {}",
-            layer_path.display(),
-            bytes.len(),
-            MODE13H_WIDTH * MODE13H_HEIGHT * 2
-        ));
-    }
-    let layers = bytes
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .map(|pair| u16::from_le_bytes(*pair))
-        .collect();
-    Ok((indices, layers))
 }

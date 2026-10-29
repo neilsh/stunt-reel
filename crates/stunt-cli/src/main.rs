@@ -19,6 +19,7 @@ mod export;
 mod headless;
 mod parity;
 mod parity_artifacts;
+mod plane_codec;
 mod scene;
 mod sod_census;
 mod window;

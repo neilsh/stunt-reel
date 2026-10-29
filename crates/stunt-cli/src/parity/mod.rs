@@ -50,7 +50,7 @@ use std::fs;
 use args::Args;
 use compare::run_compare;
 use fade::fade_reference_set;
-use frames::{load_reference, read_index_plane, read_png_luminance, read_render_planes};
+use frames::{load_reference, read_index_plane, read_png_luminance};
 use loss::LOSS_CLASSES;
 use mask::CAPTURE_SKY_INDICES;
 use report::{FrameReport, I6Gate, Report};
@@ -58,7 +58,7 @@ use score::{FrameMetrics, ReferenceFrame, RenderFrame, ScorePolicy, score_frame}
 use sheets::write_contact_sheet;
 use stunt_parity::FilmId;
 
-use crate::parity_artifacts;
+use crate::{parity_artifacts, plane_codec};
 
 pub(crate) use args::usage;
 
@@ -131,9 +131,11 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     let render =
         parity_artifacts::load_render_controls(&args.test).map_err(|error| error.to_string())?;
     warn_on_film_mismatch(&capture.film, &render.film);
-    if let Some(geometry) = render.geometry
-        && (geometry.width != capture.geometry.width || geometry.height != capture.geometry.height)
-    {
+    let geometry = render
+        .geometry
+        .clone()
+        .unwrap_or_else(|| capture.geometry.clone());
+    if geometry.width != capture.geometry.width || geometry.height != capture.geometry.height {
         return Err(format!(
             "render geometry {}x{} differs from the capture's {}x{}; re-render \
              with --width {} --height {}",
@@ -178,13 +180,14 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         }
 
         let (indices, palette) = load_reference(&reference_file, &palette_file)?;
-        let (render_indices, render_layers) = read_render_planes(&args.test, film_tick)?;
+        let planes = plane_codec::read_page_planes(&test_file, &geometry)
+            .map_err(|error| error.to_string())?;
         let score = score_frame(
             &ReferenceFrame { indices, palette },
             &RenderFrame {
                 luminance: read_png_luminance(&test_file)?,
-                indices: render_indices,
-                layers: render_layers,
+                indices: planes.indices,
+                layers: planes.layers,
                 controls: render_palettes.get(&(film_tick as u32)).copied(),
             },
             &policy,

@@ -11,8 +11,8 @@ use stunt_core::contracts::{
 };
 use stunt_core::scene::FilmScene;
 use stunt_render::{
-    CameraController, LAYER_FIRST_ACTOR, Offscreen, PageSink, PageSize, RenderError, RenderOptions,
-    RenderedPage, SinkError,
+    CameraController, LAYER_FIRST_ACTOR, LAYER_NONE, Offscreen, PageSink, PageSize, RenderError,
+    RenderOptions, RenderedPage, SinkError,
 };
 
 /// A camera 5 m in front of the origin, looking down -Z.
@@ -74,7 +74,7 @@ fn empty_scene() -> FilmScene {
 }
 
 #[test]
-fn offscreen_draw_writes_page_lengths_alpha_and_plane_words() {
+fn offscreen_draw_writes_page_lengths_alpha_and_planes() {
     // Clockwise, like the SOD models: the pipeline culls back faces with FrontFace::Cw.
     let ir = model(
         vec![
@@ -93,7 +93,8 @@ fn offscreen_draw_writes_page_lengths_alpha_and_plane_words() {
     let page = test.draw(&scene.frame(0.0));
     assert_eq!(page.size(), PageSize::new(320, 240));
     assert_eq!(page.rgba().len(), 320 * 240 * 4);
-    assert_eq!(page.plane().len(), 320 * 240);
+    assert_eq!(page.indices().len(), 320 * 240);
+    assert_eq!(page.layers().len(), 320 * 240);
     assert!(
         page.rgba()
             .as_chunks::<4>()
@@ -104,9 +105,11 @@ fn offscreen_draw_writes_page_lengths_alpha_and_plane_words() {
     );
 
     let base_pixels = page
-        .plane()
+        .indices()
         .iter()
-        .filter(|&&word| word == (LAYER_FIRST_ACTOR << 8 | 40))
+        .copied()
+        .zip(page.layers().iter().copied())
+        .filter(|&(index, layer)| index == 40 && layer == LAYER_FIRST_ACTOR)
         .count();
     assert!(base_pixels > 100, "base triangle missing: {base_pixels}");
 }
@@ -164,14 +167,18 @@ fn coplanar_decal_wins_the_depth_tie() {
 
     let page = test.draw(&scene.frame(0.0));
     let decal_pixels = page
-        .plane()
+        .indices()
         .iter()
-        .filter(|&&word| word == (LAYER_FIRST_ACTOR << 8 | 220))
+        .copied()
+        .zip(page.layers().iter().copied())
+        .filter(|&(index, layer)| index == 220 && layer == LAYER_FIRST_ACTOR)
         .count();
     let base_pixels = page
-        .plane()
+        .indices()
         .iter()
-        .filter(|&&word| word == (LAYER_FIRST_ACTOR << 8 | 40))
+        .copied()
+        .zip(page.layers().iter().copied())
+        .filter(|&(index, layer)| index == 40 && layer == LAYER_FIRST_ACTOR)
         .count();
     assert!(decal_pixels > 100, "decal missing: {decal_pixels}");
     assert!(base_pixels > 100, "base missing: {base_pixels}");
@@ -239,16 +246,19 @@ fn viewport_rows_leaves_lower_rows_at_the_clear_index() {
     for row in 185..200 {
         for x in 0..width {
             assert_eq!(
-                page.plane()[row * width + x],
-                u32::from(CLEAR),
+                (
+                    page.indices()[row * width + x],
+                    page.layers()[row * width + x]
+                ),
+                (CLEAR, LAYER_NONE),
                 "row {row} stays at the clear index"
             );
         }
     }
     assert!(
-        page.plane()[..185 * width]
+        page.indices()[..185 * width]
             .iter()
-            .any(|&word| word != u32::from(CLEAR)),
+            .any(|&index| index != CLEAR),
         "the scene area is not left at the clear index"
     );
 }
@@ -290,12 +300,13 @@ fn unaligned_width_reads_back_unpadded_rows() {
 
     let page = test.draw(&scene.frame(0.0));
     assert_eq!(page.rgba().len(), width * height * 4);
-    assert_eq!(page.plane().len(), width * height);
+    assert_eq!(page.indices().len(), width * height);
+    assert_eq!(page.layers().len(), width * height);
     // The centred triangle is left-right symmetric in every row; a wrong row pitch on
     // readback would shear it sideways.
     let mut rows_drawn = 0;
-    for row in page.plane().chunks_exact(width) {
-        let cols: Vec<usize> = (0..width).filter(|&x| row[x] >> 8 != 0).collect();
+    for row in page.layers().chunks_exact(width) {
+        let cols: Vec<usize> = (0..width).filter(|&x| row[x] != LAYER_NONE).collect();
         if cols.is_empty() {
             continue;
         }
@@ -320,7 +331,8 @@ fn software_only_opens_the_fallback_adapter() {
     };
     let page = test.draw(&scene.frame(0.0));
     assert_eq!(page.size(), PageSize::default());
-    assert_eq!(page.plane().len(), 320 * 240);
+    assert_eq!(page.indices().len(), 320 * 240);
+    assert_eq!(page.layers().len(), 320 * 240);
 }
 
 #[test]

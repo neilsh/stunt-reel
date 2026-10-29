@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use stunt_core::flm::{CAMERA_FORWARD, TIMELINE_HZ, TIMELINE_TICK_SECONDS};
@@ -57,22 +57,6 @@ impl std::fmt::Display for SampleKey {
 /// File name parity looks up for the render of 0-based 50 Hz tick.
 pub(crate) fn tick_png_name(tick: usize) -> String {
     format!("tick_{tick:05}.png")
-}
-
-/// Writes the index and layer planes beside `png_path` as `<stem>.idx` (one
-/// palette-index byte per pixel, before lighting) and `<stem>.layer` (one little-endian
-/// u16 layer id per pixel; see `stunt_render::LAYER_OCEAN`).
-fn write_planes(png_path: &Path, plane: &[u32]) -> Result<(), String> {
-    let indices: Vec<u8> = plane.iter().map(|&p| (p & 0xFF) as u8).collect();
-    let layers: Vec<u8> = plane
-        .iter()
-        .flat_map(|&p| ((p >> 8) as u16).to_le_bytes())
-        .collect();
-    for (extension, bytes) in [("idx", indices), ("layer", layers)] {
-        let path = png_path.with_extension(extension);
-        std::fs::write(&path, bytes).map_err(|e| format!("write {}: {e}", path.display()))?;
-    }
-    Ok(())
 }
 
 /// File name written under --out-dir for a rendered sample.
@@ -135,6 +119,7 @@ impl PageSink for SinglePngSink {
 /// document, and/or video frames, whichever the run asked for.
 struct SampleSink {
     out_dir: Option<PathBuf>,
+    geometry: Geometry,
     video: Option<FfmpegVideoWriter>,
     journal: Option<RenderJournal>,
     pending: Option<SampleKey>,
@@ -163,8 +148,13 @@ impl SampleSink {
             let frame_path = out_dir.join(sample_png_name(key));
             save_rgba_png(&frame_path, page.width(), page.height(), page.rgba())
                 .map_err(|e| SinkError::new(format!("{key}: {e}")))?;
-            write_planes(&frame_path, page.plane())
-                .map_err(|e| SinkError::new(format!("{key}: {e}")))?;
+            crate::plane_codec::write_page_planes(
+                &frame_path,
+                &self.geometry,
+                page.indices(),
+                page.layers(),
+            )
+            .map_err(|e| SinkError::new(format!("{key}: {e}")))?;
             self.written_pngs += 1;
         }
         if let Some(writer) = &mut self.video {
@@ -309,19 +299,21 @@ pub(crate) fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), 
         }
     }
 
+    let geometry = Geometry {
+        width: config.width,
+        height: config.height,
+        viewport_rows: config.viewport_rows,
+    };
     let journal = config.out_dir.as_ref().map(|dir| {
         RenderJournal::begin(
             dir,
             film_identity(config.flm_path.as_deref()),
-            Geometry {
-                width: config.width,
-                height: config.height,
-                viewport_rows: config.viewport_rows,
-            },
+            geometry.clone(),
         )
     });
     let sink = Rc::new(RefCell::new(SampleSink {
         out_dir: config.out_dir.clone(),
+        geometry,
         video: video_writer.take(),
         journal,
         pending: None,
