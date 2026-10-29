@@ -354,6 +354,8 @@ def run_session(
         _attach_status(exc, status)
         raise
     finally:
-        if completed:
-            _teardown(transport, machine)
-        _discard_stage(staged)
+        try:
+            if completed:
+                _teardown(transport, machine)
+        finally:
+            _discard_stage(staged)

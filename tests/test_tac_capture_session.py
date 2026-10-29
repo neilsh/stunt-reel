@@ -428,6 +428,45 @@ def test_a_callback_error_outranks_a_teardown_error(staged_repo: StagedRepo) -> 
         )
 
 
+def test_a_failing_teardown_still_removes_the_staged_mount(staged_repo: StagedRepo) -> None:
+    """A teardown error propagates, and the session's mount and conf are still discarded."""
+
+    class FailingCloseTransport(MockTransport):
+        def close(self) -> None:
+            super().close()
+            raise RuntimeError("teardown failed")
+
+    class QuietEmulator:
+        def __init__(self, transport: Transport) -> None:
+            self.transport = transport
+
+        @property
+        def exit_status(self) -> int | None:
+            return None
+
+        def start(self) -> Transport:
+            return self.transport
+
+        def stop(self, _timeout: float) -> None:
+            return None
+
+    transport = FailingCloseTransport()
+    CaptureGuest(transport=transport)
+
+    with pytest.raises(RuntimeError, match="teardown failed"):
+        run_session(
+            staged_repo.film,
+            staged_repo.out,
+            sample=lambda _session: None,
+            conf=staged_repo.conf,
+            emulator=QuietEmulator(transport),
+        )
+
+    stage_root = dataroot.REPO_ROOT / parity_layout.stage_root()
+    assert list(stage_root.glob("ctry-*")) == []
+    assert list(stage_root.glob("stage-ctry-*.conf")) == []
+
+
 def test_teardown_closes_the_transport_before_stopping_the_emulator(
     staged_repo: StagedRepo,
 ) -> None:
@@ -712,6 +751,23 @@ def test_staging_fails_loudly_when_the_conf_literal_is_missing(
     missing_mount.write_text("VAULT\\CTRY.FLM\n", encoding="utf-8")
     with pytest.raises(RuntimeError, match="does not contain"):
         staging.stage_film(staged_repo.film, missing_mount)
+
+
+def test_a_failed_staging_leaves_no_mount_behind(staged_repo: StagedRepo, tmp_path: Path) -> None:
+    """run_session never sees the paths of a stage that raised, so staging cleans up itself."""
+    bad_conf = tmp_path / "no-film.conf"
+    bad_conf.write_text('mount c "corpus/stisldem"\n', encoding="utf-8")
+    with pytest.raises(RuntimeError, match="does not contain"):
+        staging.stage_film(staged_repo.film, bad_conf)
+
+    missing_engine = staged_repo.film.parent.parent / ENGINE_FILES[-1]
+    missing_engine.unlink()
+    with pytest.raises(FileNotFoundError):
+        staging.stage_film(staged_repo.film, staged_repo.conf)
+
+    stage_root = dataroot.REPO_ROOT / parity_layout.stage_root()
+    assert list(stage_root.glob("ctry-*")) == []
+    assert list(stage_root.glob("stage-ctry-*.conf")) == []
 
 
 def test_staging_requires_the_all_sibling(staged_repo: StagedRepo) -> None:

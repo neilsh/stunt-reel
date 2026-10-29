@@ -8,6 +8,7 @@ fresh directory and writes a conf that mounts it, both under the parity stage ro
 
 from __future__ import annotations
 
+import contextlib
 import itertools
 import os
 import shutil
@@ -80,16 +81,23 @@ def stage_film(film: Path, conf: Path) -> StagedMount:
     source_root = film.parent.parent
     label = _stage_label()
     mount_dir = dataroot.REPO_ROOT / parity_layout.stage_dir(film.stem, label)
-    (mount_dir / "VAULT").mkdir(parents=True, exist_ok=True)
-    for name in ENGINE_FILES:
-        shutil.copy2(source_root / name, mount_dir / name)
-    shutil.copy2(film, mount_dir / "VAULT" / film.name)
-    shutil.copy2(archive, mount_dir / "VAULT" / archive.name)
-
-    mount = mount_dir.relative_to(dataroot.REPO_ROOT).as_posix()
-    text = conf.read_text(encoding="utf-8")
-    text = _replace_once(text, _CORPUS_MOUNT, f'mount c "{mount}"', conf)
-    text = _replace_once(text, _FILM_LITERAL, rf"VAULT\{film.name}", conf)
     staged_conf = dataroot.REPO_ROOT / parity_layout.stage_conf(film.stem, label)
-    staged_conf.write_text(text, encoding="utf-8")
+    try:
+        (mount_dir / "VAULT").mkdir(parents=True, exist_ok=True)
+        for name in ENGINE_FILES:
+            shutil.copy2(source_root / name, mount_dir / name)
+        shutil.copy2(film, mount_dir / "VAULT" / film.name)
+        shutil.copy2(archive, mount_dir / "VAULT" / archive.name)
+
+        mount = mount_dir.relative_to(dataroot.REPO_ROOT).as_posix()
+        text = conf.read_text(encoding="utf-8")
+        text = _replace_once(text, _CORPUS_MOUNT, f'mount c "{mount}"', conf)
+        text = _replace_once(text, _FILM_LITERAL, rf"VAULT\{film.name}", conf)
+        staged_conf.write_text(text, encoding="utf-8")
+    except BaseException:
+        # The caller never receives these paths, so nothing else can remove them.
+        shutil.rmtree(mount_dir, ignore_errors=True)
+        with contextlib.suppress(OSError):
+            staged_conf.unlink(missing_ok=True)
+        raise
     return StagedMount(mount_dir, staged_conf)
