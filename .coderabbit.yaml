@@ -15,8 +15,14 @@ reviews:
     - "!tests/fixtures/**"
     - "!research/parity/log.md"
 
+  # Every pull request, whatever branch it targets. CodeRabbit's default is the repository's
+  # default branch alone, so a stacked pull request whose base is a feature branch got no
+  # automatic review at all. `.*` is a regex over base branch names, and the default branch
+  # stays included: this widens the set rather than replacing it.
   auto_review:
     drafts: false
+    base_branches:
+      - ".*"
 
   path_instructions:
     - path: "crates/stunt-core/**"
