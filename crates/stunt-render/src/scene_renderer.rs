@@ -83,7 +83,7 @@ impl SceneRenderer {
 
     /// Uploads the camera and per-draw matrices for `frame` and selects visible meshes.
     ///
-    /// The camera is `frame.camera` unless `camera` overrides it (e.g. a free camera);
+    /// The camera is `frame.view` unless `camera` overrides it (e.g. a free camera);
     /// an override does not change the per-actor LOD distances carried by the frame.
     /// Actors whose shape was not uploaded are skipped.
     pub(crate) fn prepare(
@@ -98,7 +98,7 @@ impl SceneRenderer {
             camera.build_uniform()
         } else {
             let mut authored = CameraController::default();
-            authored.set_authored_transform(frame.camera);
+            authored.set_authored_transform(frame.view);
             authored.build_uniform()
         };
         camera_resources.upload(queue, &uniform);

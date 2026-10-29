@@ -145,13 +145,49 @@ pub struct ActorDraw {
     pub distance: f32,
 }
 
+/// The lens-zoomed camera used to draw a [`SceneFrame`].
+///
+/// This is a **view** camera, not the authored [`CameraTransform`] a trajectory
+/// record carries: [`Self::from_authored`] is the only place the lens zoom is
+/// applied, so a record never holds a final field of view.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ViewCamera {
+    /// Camera world position in meters `[x, y, z]` per `[I1]`.
+    pub eye: [f32; 3],
+    /// Look-at point in meters `[x, y, z]`.
+    pub target: [f32; 3],
+    /// Vertical field of view in degrees after the lens zoom.
+    pub fov_degrees: f32,
+    /// View roll about the forward axis in radians.
+    pub roll_radians: f32,
+}
+
+impl ViewCamera {
+    /// Applies the authored lens zoom to a trajectory record's camera.
+    #[must_use]
+    pub fn from_authored(camera: &CameraTransform) -> Self {
+        Self {
+            eye: camera.eye,
+            target: camera.target,
+            fov_degrees: camera.lens_fov_degrees(camera.fov_degrees),
+            roll_radians: camera.roll_radians,
+        }
+    }
+}
+
+impl Default for ViewCamera {
+    fn default() -> Self {
+        Self::from_authored(&CameraTransform::default())
+    }
+}
+
 /// Everything to draw at one tick.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SceneFrame {
     /// Sampled film tick (50 Hz, fractional for sub-tick interpolation `[I4]`).
     pub tick: f32,
-    /// Camera at this tick.
-    pub camera: CameraTransform,
+    /// Lens-zoomed camera at this tick.
+    pub view: ViewCamera,
     /// True when [`FilmScene::world`] should be drawn with an identity transform.
     pub world: bool,
     /// One draw per actor whose shape is in the table. Actors sharing a shape each get
@@ -295,7 +331,7 @@ impl FilmScene {
         let Some(record) = self.timeline.sample(tick) else {
             return SceneFrame {
                 tick,
-                camera: CameraTransform::default(),
+                view: ViewCamera::default(),
                 world,
                 actors: Vec::new(),
                 palette: PaletteControls::default(),
@@ -308,7 +344,7 @@ impl FilmScene {
             .filter(|a| self.shapes.contains_key(&a.shape_id))
             .map(|a| ActorDraw {
                 shape_id: a.shape_id,
-                world_matrix: a.world_matrix,
+                world_matrix: a.compute_world_matrix(),
                 state_mask: a.state_mask,
                 distance: distance(eye, a.position_meters),
             })
@@ -321,13 +357,9 @@ impl FilmScene {
                 distance: distance(eye, [0.0; 3]),
             });
         }
-        // The record's field of view is the default lens's; zoom it by the interpolated
-        // lens (research/playone-exe/lod.md section 2.2).
-        let mut camera = record.camera;
-        camera.fov_degrees = camera.lens_fov_degrees(camera.fov_degrees);
         SceneFrame {
             tick,
-            camera,
+            view: ViewCamera::from_authored(&record.camera),
             world,
             actors,
             palette: record.palette,

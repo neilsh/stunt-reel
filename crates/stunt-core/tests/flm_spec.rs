@@ -43,13 +43,12 @@ fn fixtures_dir() -> PathBuf {
 // Builders and independent math oracles
 // ----------------------------------------------------------------------------
 
-/// An actor at `position_meters` with an identity orientation and an unfilled world matrix.
+/// An actor at `position_meters` with an identity orientation.
 fn actor(actor_id: u32, model_name: &str, position_meters: [f32; 3]) -> ActorTransform {
     ActorTransform {
         actor_id,
         model_name: model_name.to_string(),
         shape_id: 0,
-        world_matrix: [0.0; 16],
         rotation_quat: [0.0, 0.0, 0.0, 1.0],
         position_meters,
         state_mask: 1,
@@ -84,20 +83,13 @@ fn keyframe(record: TrajectoryRecord) -> SliceKeyframe {
 }
 
 /// Wrap evaluated records into a timeline keyed by each record's own `tick`.
-///
-/// Actor world matrices are filled in, as the evaluator does for real films.
 fn timeline_of(records: Vec<TrajectoryRecord>) -> FilmTimeline {
     let slices = records
         .into_iter()
-        .map(|mut record| {
-            for actor in &mut record.actors {
-                actor.world_matrix = actor.compute_world_matrix();
-            }
-            SliceKeyframe {
-                tick: record.tick,
-                tick_duration: 1,
-                record,
-            }
+        .map(|record| SliceKeyframe {
+            tick: record.tick,
+            tick_duration: 1,
+            record,
         })
         .collect();
     FilmTimeline::new(slices, Vec::new())
@@ -756,7 +748,7 @@ fn sub_tick_interpolation_is_linear_when_not_a_cut() {
 
         // 6. Verify Actor World Matrix is valid
         assert_valid_euclidean_transform(
-            &sub.actors[0].world_matrix,
+            &sub.actors[0].compute_world_matrix(),
             sub.actors[0].position_meters,
         );
     }
@@ -1034,7 +1026,7 @@ fn intro_film_streams_keep_invariants_and_self_parity() {
                     diff < 1e-4,
                     "Unit quaternion invariant violated at tick {i}: diff = {diff}"
                 );
-                assert_valid_euclidean_transform(&act.world_matrix, act.position_meters);
+                assert_valid_euclidean_transform(&act.compute_world_matrix(), act.position_meters);
             }
 
             // Camera cuts must occur at ticks 200 and 400 (per intro kinematics in streamer.py)
@@ -1149,8 +1141,8 @@ fn intro_film_matches_oracle_trajectory_within_gate_tolerance() {
         oracle_records[0].actors[0].rotation_quat
     );
     assert_eq!(
-        evaluated[0].actors[0].world_matrix,
-        oracle_records[0].actors[0].world_matrix
+        evaluated[0].actors[0].compute_world_matrix(),
+        oracle_records[0].actors[0].compute_world_matrix()
     );
     assert_eq!(evaluated[0].audio_cues.len(), 1);
     assert_eq!(evaluated[0].audio_cues[0].sample_name, "ENGINE.VOC");
@@ -1166,8 +1158,8 @@ fn intro_film_matches_oracle_trajectory_within_gate_tolerance() {
         oracle_records[1].actors[0].position_meters
     );
     assert_eq!(
-        evaluated[1].actors[0].world_matrix,
-        oracle_records[1].actors[0].world_matrix
+        evaluated[1].actors[0].compute_world_matrix(),
+        oracle_records[1].actors[0].compute_world_matrix()
     );
     assert!(evaluated[1].audio_cues.is_empty());
 

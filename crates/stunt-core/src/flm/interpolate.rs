@@ -265,7 +265,7 @@ pub(crate) fn interpolate_trajectory(
                 act_b.state_mask
             };
 
-            let mut actor = ActorTransform {
+            actors.push(ActorTransform {
                 actor_id: act_a.actor_id,
                 model_name: act_a.model_name.clone(),
                 shape_id: if eff_alpha < 0.5 {
@@ -273,7 +273,6 @@ pub(crate) fn interpolate_trajectory(
                 } else {
                     act_b.shape_id
                 },
-                world_matrix: [0.0; 16],
                 rotation_quat: rot,
                 position_meters: pos,
                 state_mask,
@@ -282,9 +281,7 @@ pub(crate) fn interpolate_trajectory(
                 } else {
                     act_b.joint_angles_bam.clone()
                 },
-            };
-            actor.world_matrix = actor.compute_world_matrix();
-            actors.push(actor);
+            });
         } else if eff_alpha < 0.5 {
             actors.push(act_a.clone());
         }
@@ -338,7 +335,6 @@ mod tests {
             actor_id,
             model_name: "FOKKER".to_string(),
             shape_id: 0,
-            world_matrix: [0.0; 16],
             rotation_quat: [0.0, 0.0, 0.0, 1.0],
             position_meters,
             state_mask: 1,
@@ -617,8 +613,7 @@ mod tests {
         for (pos, quat) in test_cases {
             let mut actor = actor(1, pos);
             actor.rotation_quat = quat;
-            actor.world_matrix = actor.compute_world_matrix();
-            assert_rigid_transform(&actor.world_matrix, pos);
+            assert_rigid_transform(&actor.compute_world_matrix(), pos);
         }
     }
 

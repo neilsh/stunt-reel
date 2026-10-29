@@ -428,7 +428,7 @@ impl Renderer {
         palette_lut.set_controls(queue, frame.palette);
         let squeezed = target.viewport_rows.map(|rows| {
             let mut controller = CameraController::default();
-            controller.set_authored_transform(frame.camera);
+            controller.set_authored_transform(frame.view);
             controller.projection_y_scale = target.size.height as f32 / rows.max(1) as f32;
             controller
         });

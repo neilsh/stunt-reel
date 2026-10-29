@@ -241,7 +241,7 @@ pub(crate) fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), 
             .unwrap_or_else(|| PathBuf::from("stuntreel_capture.png"));
 
         let frame = scene.frame(start_tick as f32);
-        let cam = frame.camera;
+        let cam = frame.view;
         println!(
             "[stuntreel] camera forward: {}",
             if CAMERA_FORWARD[2] < 0.0 { "-Z" } else { "+Z" }

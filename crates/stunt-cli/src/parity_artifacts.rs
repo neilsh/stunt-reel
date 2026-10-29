@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
-use stunt_core::contracts::{CameraTransform, PaletteControls};
-use stunt_core::scene::SceneFrame;
+use stunt_core::contracts::PaletteControls;
+use stunt_core::scene::{SceneFrame, ViewCamera};
 use stunt_parity::{
     ArtifactError as SchemaError, CameraPose, CaptureSet, FilmId, Geometry, RenderPalette,
     RenderRecord, RenderTick, Report, SCHEMA_VERSION,
@@ -144,7 +144,7 @@ fn core_palette(palette: RenderPalette) -> PaletteControls {
     }
 }
 
-fn camera_pose(camera: CameraTransform) -> CameraPose {
+fn camera_pose(camera: ViewCamera) -> CameraPose {
     CameraPose {
         eye: camera.eye,
         target: camera.target,
@@ -181,7 +181,7 @@ impl RenderJournal {
         self.ticks.push(RenderTick {
             tick,
             palette: render_palette(frame.palette),
-            camera: camera_pose(frame.camera),
+            camera: camera_pose(frame.view),
         });
     }
 
@@ -350,7 +350,7 @@ pub(crate) fn read_report(path: &Path) -> Result<Report, AdapterError> {
 mod tests {
     use super::*;
     use serde_json::json;
-    use stunt_core::contracts::{CameraTransform, PaletteControls};
+    use stunt_core::contracts::PaletteControls;
     use stunt_core::scene::SceneFrame;
 
     fn temp_dir(name: &str) -> PathBuf {
@@ -366,7 +366,7 @@ mod tests {
     fn frame() -> SceneFrame {
         SceneFrame {
             tick: 7.0,
-            camera: CameraTransform::default(),
+            view: ViewCamera::default(),
             world: false,
             actors: Vec::new(),
             palette: PaletteControls {

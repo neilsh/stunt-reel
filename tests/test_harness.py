@@ -164,7 +164,6 @@ def test_models_dataclass_serde_roundtrip() -> None:
     actor = ActorTransform(
         actor_id=42,
         model_name="FOKKER",
-        world_matrix=[1.0] * 16,
         rotation_quat=[0.0, 0.0, 0.0, 1.0],
         position_meters=[10.0, 20.0, 30.0],
         state_mask=0x0001,
@@ -465,7 +464,6 @@ def test_decode_actor_from_memory_direct() -> None:
     assert quat_norm_diff(actor.rotation_quat) < 1e-6
     assert actor.state_mask == 1
     assert actor.joint_angles_bam == [(0, 0x4000)]
-    assert actor.world_matrix == actor.compute_world_matrix()
     assert next_addr is None
 
 
@@ -527,8 +525,8 @@ def test_streamer_exact_match_against_baseline_fixture() -> None:
         == baseline[0].actors[0].position_meters
     )
     assert (
-        pytest.approx(records[0].actors[0].world_matrix, abs=1e-4)
-        == baseline[0].actors[0].world_matrix
+        pytest.approx(records[0].actors[0].compute_world_matrix(), abs=1e-4)
+        == baseline[0].actors[0].compute_world_matrix()
     )
     assert len(records[0].audio_cues) == 1
     assert records[0].audio_cues[0].sample_name == "ENGINE.VOC"
@@ -540,14 +538,14 @@ def test_streamer_exact_match_against_baseline_fixture() -> None:
         == baseline[1].actors[0].position_meters
     )
     assert (
-        pytest.approx(records[1].actors[0].world_matrix, abs=1e-4)
-        == baseline[1].actors[0].world_matrix
+        pytest.approx(records[1].actors[0].compute_world_matrix(), abs=1e-4)
+        == baseline[1].actors[0].compute_world_matrix()
     )
     assert len(records[1].audio_cues) == 0
 
 
-def test_streamer_quaternion_normalization_and_zero_matrix_tearing() -> None:
-    """Verify | ||q|| - 1.0 | < 1e-4 and zero matrix tearing across 600 ticks captured from memory."""
+def test_streamer_quaternion_normalization() -> None:
+    """Verify | ||q|| - 1.0 | < 1e-4 across 600 ticks captured from memory."""
     mock = MockTransport()
     streamer = TrajectoryStreamer(TacClient(mock))
     records = streamer.capture_ticks(600)
@@ -557,12 +555,6 @@ def test_streamer_quaternion_normalization_and_zero_matrix_tearing() -> None:
         for actor in rec.actors:
             diff = quat_norm_diff(actor.rotation_quat)
             assert diff < 1e-4, f"Quaternion norm error at tick {rec.tick}: {diff}"
-
-            expected_matrix = actor.compute_world_matrix()
-            for m_act, m_exp in zip(actor.world_matrix, expected_matrix, strict=True):
-                assert math.isclose(m_act, m_exp, abs_tol=1e-4), (
-                    f"Matrix tearing at tick {rec.tick}"
-                )
 
 
 def test_streamer_position_rmse_threshold() -> None:

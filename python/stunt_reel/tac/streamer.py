@@ -118,12 +118,10 @@ def generate_intro_trajectory(num_ticks: int = 600) -> list[TrajectoryRecord]:
         actor = ActorTransform(
             actor_id=1,
             model_name="FOKKER",
-            world_matrix=[],  # Populated via compute_world_matrix
             rotation_quat=unit_rot,
             position_meters=pos,
             state_mask=1,
         )
-        actor.world_matrix = actor.compute_world_matrix()
 
         # 2. Evaluate Camera Rig
         cut_flag = False
@@ -357,17 +355,15 @@ class TrajectoryStreamer:
             sub_id, bam_val = struct.unpack_from("<HH", data, 0x2C + j * 4)
             joints.append((sub_id, bam_val))
 
-        # 5. Assemble ActorTransform and compute world_matrix
+        # 5. Assemble ActorTransform
         actor = ActorTransform(
             actor_id=actor_id,
             model_name=model_name,
-            world_matrix=[],
             rotation_quat=rot_quat,
             position_meters=pos,
             state_mask=state_mask,
             joint_angles_bam=joints,
         )
-        actor.world_matrix = actor.compute_world_matrix()
 
         # 6. Parse Next Actor Link Far Pointer
         next_off, next_seg = struct.unpack_from("<HH", data, 0x3C)
@@ -463,12 +459,6 @@ class TrajectoryStreamer:
                         f"Unit quaternion invariant violated at tick {sim_tick} "
                         f"for actor {actor.actor_id}: diff={diff:e} >= 1e-4"
                     )
-                expected_m = actor.compute_world_matrix()
-                for m_act, m_exp in zip(actor.world_matrix, expected_m, strict=True):
-                    if abs(m_act - m_exp) > 1e-4:
-                        raise ValueError(
-                            f"Matrix tearing detected at tick {sim_tick} for actor {actor.actor_id}"
-                        )
 
             records.append(
                 TrajectoryRecord(

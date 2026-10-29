@@ -107,7 +107,7 @@ fn actors_sharing_a_shape_get_separate_draws() {
 
     let frame = scene.frame(0.0);
     assert!(!frame.world);
-    assert_eq!(frame.camera.eye, [0.0, 0.0, 10.0]);
+    assert_eq!(frame.view.eye, [0.0, 0.0, 10.0]);
     assert_eq!(frame.actors.len(), 2);
     assert!(frame.actors.iter().all(|a| a.shape_id == 7));
     assert_ne!(frame.actors[0].world_matrix, frame.actors[1].world_matrix);

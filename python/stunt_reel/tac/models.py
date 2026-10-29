@@ -70,7 +70,6 @@ class ActorTransform:
 
     actor_id: int
     model_name: str
-    world_matrix: list[float]
     rotation_quat: list[float]
     position_meters: list[float]
     state_mask: int
@@ -85,7 +84,6 @@ class ActorTransform:
         d: dict[str, Any] = {
             "actor_id": int(self.actor_id),
             "model_name": str(self.model_name),
-            "world_matrix": [float(x) for x in self.world_matrix],
             "rotation_quat": [float(x) for x in self.rotation_quat],
             "position_meters": [float(x) for x in self.position_meters],
             "state_mask": int(self.state_mask),
@@ -102,7 +100,6 @@ class ActorTransform:
         return cls(
             actor_id=int(data["actor_id"]),
             model_name=str(data["model_name"]),
-            world_matrix=[float(x) for x in data["world_matrix"]],
             rotation_quat=[float(x) for x in data["rotation_quat"]],
             position_meters=[float(x) for x in data["position_meters"]],
             state_mask=int(data["state_mask"]),
