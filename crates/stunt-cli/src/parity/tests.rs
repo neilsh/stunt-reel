@@ -166,11 +166,14 @@ fn the_i6_gate_passes_each_threshold_independently() {
     assert_eq!(gate(None), (false, false));
 }
 
+/// How `row` splits a frame's `1 - ssim` among [`LOSS_CLASSES`] (sky, terrain, actors), so a
+/// class mapped to the wrong slot changes a mean.
+const LOSS_SPLIT: [f32; LOSS_CLASSES.len()] = [0.5, 0.0, 0.0, 0.3, 0.0, 0.2, 0.0, 0.0, 0.0];
+
 /// A matched frame with the given SSIM, IoU and scored flag; the other measurements are
 /// derived so each frame's loss array sums to `1 - ssim`.
 fn row(ordinal: usize, ssim: f32, iou: f32, scored: bool) -> super::FrameRow {
-    let mut loss_by_class = [0.0; LOSS_CLASSES.len()];
-    loss_by_class[0] = 1.0 - ssim;
+    let loss_by_class = LOSS_SPLIT.map(|share| share * (1.0 - ssim));
     super::FrameRow {
         ordinal,
         film_tick: ordinal * 10,
@@ -191,6 +194,19 @@ fn assert_close(actual: Option<f32>, expected: f32) {
     assert!((actual - expected).abs() < 1e-6, "{actual} != {expected}");
 }
 
+/// Every class's mean loss is its `LOSS_SPLIT` share of `total` (the mean of `1 - ssim`).
+fn assert_loss_split(loss: &std::collections::BTreeMap<String, f32>, total: f32) {
+    assert_eq!(loss.len(), LOSS_CLASSES.len());
+    for (name, share) in LOSS_CLASSES.iter().zip(LOSS_SPLIT) {
+        let actual = loss[*name];
+        assert!(
+            (actual - share * total).abs() < 1e-6,
+            "{name}: {actual} != {}",
+            share * total
+        );
+    }
+}
+
 #[test]
 fn build_report_over_all_scored_frames_has_equal_overall_and_scored_means() {
     let rows = [row(1, 0.9, 0.8, true), row(2, 0.7, 0.6, true)];
@@ -209,8 +225,7 @@ fn build_report_over_all_scored_frames_has_equal_overall_and_scored_means() {
     assert_close(report.mean_iou_scored, report.mean_iou);
     assert_close(report.mean_index_agreement_scored, 0.4);
     let loss = report.mean_loss_by_class_scored.expect("class losses");
-    assert_eq!(loss.len(), LOSS_CLASSES.len());
-    assert!((loss[LOSS_CLASSES[0]] - 0.2).abs() < 1e-6);
+    assert_loss_split(&loss, 0.2);
     assert_eq!(report.per_frame.len(), 2);
     assert_eq!(report.per_frame[1].ordinal, 2);
     assert_eq!(report.per_frame[1].film_tick, 20);
@@ -238,7 +253,7 @@ fn build_report_excludes_frames_below_the_fade_floor_from_scored_means() {
     assert_close(report.mean_iou_scored, 0.7);
     assert_close(report.mean_index_agreement_scored, 0.4);
     let loss = report.mean_loss_by_class_scored.expect("class losses");
-    assert!((loss[LOSS_CLASSES[0]] - 0.2).abs() < 1e-6);
+    assert_loss_split(&loss, 0.2);
     // The per-frame list keeps the excluded frame, flagged unscored.
     let scored: Vec<_> = report.per_frame.iter().map(|f| f.scored).collect();
     assert_eq!(scored, vec![Some(true), Some(true), Some(false)]);
