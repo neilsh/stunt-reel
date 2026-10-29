@@ -198,3 +198,30 @@ def test_read_page_names_a_plane_of_the_wrong_size(tmp_path: Path) -> None:
     with pytest.raises(ArtifactError, match=r"tick_00007\.layer") as oversized:
         read_page(tmp_path, 7, geometry)
     assert oversized.value.kind == "geometry"
+
+
+def test_read_page_keeps_the_high_byte_of_a_layer_id(tmp_path: Path) -> None:
+    # The corpus page carries only 0x0000 and 0x0010, which a decoder reading the
+    # low byte alone would also produce. 0x0100 separates the two: its low byte is
+    # below the actor threshold, so a low-byte decoder sees no actor at all.
+    geometry = Geometry(width=4, height=3, viewport_rows=2)
+    index_path, layer_path = render_plane_paths(tmp_path, 7)
+    index_path.write_bytes(bytes(12))
+    layer_bytes = bytearray(24)
+    layer_bytes[2 * 5 : 2 * 5 + 2] = (0x0100).to_bytes(2, "little")
+    layer_path.write_bytes(layer_bytes)
+
+    page = read_page(tmp_path, 7, geometry)
+
+    assert page.layers[5] == 0x0100
+    assert page.actor_pixels() == [5]
+
+
+def test_read_page_rejects_a_viewport_taller_than_the_raster(tmp_path: Path) -> None:
+    index_path, layer_path = render_plane_paths(tmp_path, 7)
+    index_path.write_bytes(bytes(12))
+    layer_path.write_bytes(bytes(24))
+
+    with pytest.raises(ArtifactError, match=r"tick_00007\.idx") as invalid:
+        read_page(tmp_path, 7, Geometry(width=4, height=3, viewport_rows=4))
+    assert invalid.value.kind == "geometry"

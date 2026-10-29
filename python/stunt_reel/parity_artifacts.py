@@ -795,9 +795,11 @@ def read_page(directory: Path, tick: int, geometry: Geometry) -> Page:
 
     The files span width * height pixels even when viewport_rows narrows the drawn
     scene, exactly as the Rust plane_codec writes them; only Page.actor_pixels
-    narrows its scan to the viewport.
+    narrows its scan to the viewport. The caller's geometry is validated here, so a
+    viewport taller than the raster fails before any scan would run off the plane.
     """
     index_path, layer_path = render_plane_paths(directory, tick)
+    geometry.validate(index_path)
     pixels = geometry.width * geometry.height
     indices = _read_plane(index_path, "palette indices", pixels, geometry)
     layer_bytes = _read_plane(layer_path, "layer bytes", 2 * pixels, geometry)
