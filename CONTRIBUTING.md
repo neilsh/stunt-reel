@@ -18,6 +18,11 @@ architecture routing, and the research notes. Environment setup and the task lis
   synthetic fixtures in [`tests/fixtures/`](tests/fixtures/README.md).
 - **Run the gate.** `mise run check` (format, lint, typecheck and tests for Rust and Python)
   must pass. CI runs it on every pull request.
+- **CodeRabbit comments are advisory.** A pull request also gets an AI review from
+  [CodeRabbit](https://coderabbit.ai), configured in [`.coderabbit.yaml`](.coderabbit.yaml).
+  It cannot block a merge: the gate and a person are the review, so decline a comment with a
+  reason and move on. While the repository has fewer than ten stars CodeRabbit reviews on
+  request, so comment `@coderabbitai review` on your pull request to get one.
 - **Write the why.** Use a Conventional Commit subject and a body that explains the reason for
   the change, as described in
   [`AGENTS.md` § Commit Messages](AGENTS.md#commit-messages).
