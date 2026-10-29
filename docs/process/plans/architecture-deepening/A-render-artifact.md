@@ -94,6 +94,8 @@ File naming and numbering; the page-to-film-clock rule; plane layouts and length
 - Die: the raw `parity_inputs` validator tests, the sidecar unknown-key test (replaced by a round-trip test), `parse_report`, and the duplicated `RENDER_SIDECAR` and geometry constants.
 - New, offline: shared `render_v1`, `capture_v1` and `report_v1` fixtures read and rewritten by both adapters; unknown-version refusal; legacy-versus-record conflict; missing or incomplete `render.json`; geometry mismatch before planes; tick ordering; report identities and null means; journal-to-round round-trip; retime round-trip preserving unknown keys.
 
+**Follow-up (2026-10-28).** The shared fixtures above never landed: neither language has a conformance document, and the page bytes have no cross-language pin. The corpus that lands them — the three documents, a legacy capture, and the `.idx`/`.layer` page pair — is specified in [parity-conformance-corpus.md](../parity-conformance-corpus.md). The `Round` and `ReportBuilder` half of the unit is still unlanded and is tracked separately.
+
 ## 8. Deletions
 
 `write_planes`, `tick_png_name` and the sidecar constant move behind the adapter; `read_render_palettes` and `read_film_ticks` are replaced by the port; the second sidecar parse in `warn_on_film_mismatch` disappears; the Python `RENDER_SIDECAR`, `RENDER_SUFFIXES`, `WIDTH`, `ROWS`, `ACTOR_LAYER_MIN` and `parse_report` disappear; the aggregate computation in line inside `parity/mod.rs` becomes one builder.
