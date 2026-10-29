@@ -23,6 +23,8 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
+from stunt_reel import parity_layout
+
 __all__ = [
     "CACHE_DIRNAME",
     "DATA_ENV",
@@ -77,7 +79,7 @@ LINK_TARGETS: tuple[tuple[str, str], ...] = (
     ("si_archive", "corpus/siarchive"),
     ("oracle", "corpus/oracle"),
     ("target_bin", "target_bin"),
-    ("reference", "build/parity/reference"),
+    ("reference", parity_layout.capture_root().as_posix()),
 )
 
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400

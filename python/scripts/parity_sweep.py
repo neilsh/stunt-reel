@@ -3,24 +3,24 @@
 Assumes the ``DBG_*`` switches are already in the working tree (never committed). Builds
 ``stunt-cli`` once, then for each combination of ``--var`` values renders every film with those
 variables in the environment, scores it against the film's capture with ``stuntreel parity``,
-and prints one table sorted best first, then the winner. Render directories live under
-``build/scratch/sweep/`` and are deleted after scoring.
+and prints one table sorted best first, then the winner. Render directories live under the
+sweep root that ``stunt_reel.parity_layout`` names and are deleted after scoring.
 
 Usage::
 
     mise run sweep -- --var DBG_PITCH=0,-0.5 --var DBG_DY=-0.2,-0.3 [--films ctry,intro]
         [--probe film|iou] [--keep-best] [--data-root DIR] [--no-build] [--retime N]
-    mise run sweep -- --reuse build/scratch/retime [--films ctry,intro] [--retime N]
+    mise run sweep -- --reuse <retime root> [--films ctry,intro] [--retime N]
 
 stdout carries only the table and the winner line; progress goes to stderr. Variants are ranked
 by mean SSIM over the films (then mean mask IoU), so a CTRY-only gain that costs INTRO shows up.
 ``--probe iou`` adds the actor-window IoU of ``parity_probe.py`` (its CTRY background ranges are
-used for every film). ``--data-root`` points at a checkout holding ``corpus/`` and
-``build/parity/reference/`` when this one (a worktree) has none. ``--no-build`` reuses the
-existing release binary, ``--reuse DIR`` scores an existing ``DIR/<film>`` tree without
-rendering, and ``--retime N`` relabels each film directory by N ticks before scoring (see
-``parity_probe.py retime``). Two variants that score identically to four decimals produce a
-warning, and a winner within the 0.002 adoption floor says so.
+used for every film). ``--data-root`` points at a checkout holding ``corpus/`` and the capture
+directories when this one (a worktree) has none. ``--no-build`` reuses the existing release
+binary, ``--reuse DIR`` scores an existing ``DIR/<film>`` tree without rendering, and ``--retime
+N`` relabels each film directory by N ticks before scoring (see ``parity_probe.py retime``). Two
+variants that score identically to four decimals produce a warning, and a winner within the
+0.002 adoption floor says so.
 """
 
 from __future__ import annotations
@@ -40,6 +40,7 @@ from pathlib import Path
 import parity_probe
 from cli import add_parity_options, parity_options
 
+from stunt_reel import parity_layout
 from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.parity_artifacts import (
     Geometry,
@@ -51,7 +52,6 @@ from stunt_reel.parity_artifacts import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SCRATCH = Path("build/scratch/sweep")
 VAR_NAME = re.compile(r"DBG_[A-Z0-9_]+")
 #: Padding around the actor's silhouette in the winner's crop, in pixels.
 CROP_PAD = 25
@@ -64,7 +64,7 @@ class Film:
     flm: str
     all: str
     sidata: str
-    reference: str
+    reference: Path
 
 
 _VAULT = "corpus/stisldem/VAULT"
@@ -72,10 +72,10 @@ _SIDATA = "corpus/siarchive/Developer/FreeFlight/SIDATA"
 #: Per-film inputs (research/parity/method.md section 1, attribution.md, framing-and-actors.md).
 FILMS: dict[str, Film] = {
     "ctry": Film(
-        f"{_VAULT}/CTRY.FLM", f"{_VAULT}/CTRY.ALL", _SIDATA, "build/parity/reference/ctry"
+        f"{_VAULT}/CTRY.FLM", f"{_VAULT}/CTRY.ALL", _SIDATA, parity_layout.capture_dir("ctry")
     ),
     "intro": Film(
-        f"{_VAULT}/INTRO.FLM", f"{_VAULT}/INTRO.ALL", _SIDATA, "build/parity/reference/intro"
+        f"{_VAULT}/INTRO.FLM", f"{_VAULT}/INTRO.ALL", _SIDATA, parity_layout.capture_dir("intro")
     ),
 }
 RENDER_FLAGS = ("--width", "320", "--height", "200", "--viewport-rows", "185")
@@ -513,7 +513,7 @@ def main(argv: list[str] | None = None) -> int:
         return run_reuse(options.reuse, options.retime, films, root, probe=args.probe)
 
     print(f"[sweep] {len(combos)} variant(s)", file=sys.stderr)
-    scratch = REPO_ROOT / SCRATCH
+    scratch = REPO_ROOT / parity_layout.sweep_root()
     variants: list[Variant] = []
     best: Variant | None = None
     try:
@@ -579,7 +579,9 @@ def main(argv: list[str] | None = None) -> int:
     if best is not None:
         workdir = scratch / f"v{best.index:03d}"
         crops = write_crops(films, root, workdir, best.renders)
-        line += f"; kept {SCRATCH / workdir.name}" + (f", crops {len(crops)}" if crops else "")
+        line += f"; kept {parity_layout.sweep_root() / workdir.name}" + (
+            f", crops {len(crops)}" if crops else ""
+        )
     print(line)
     return 0
 

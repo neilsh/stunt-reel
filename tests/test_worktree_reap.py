@@ -219,3 +219,22 @@ def test_candidates_keep_unmerged_and_outside_pool(tmp_path: Path) -> None:
     joined = "\n".join(skipped)
     assert "unmerged: 1 patch(es) not in main" in joined
     assert "outside: outside this checkout's worktree pool" in joined
+
+
+def test_clean_parity_keeps_the_baselines_and_removes_a_scratch_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The rotation asks the layout which names are baselines before deleting a tree."""
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+    ours = tmp_path / "build" / "parity" / "ours"
+    sweep = tmp_path / "build" / "scratch" / "sweep"
+    for tree in (ours / "ctry_current", ours / "ctry_base", ours / "ctry_old", sweep / "v001"):
+        tree.mkdir(parents=True)
+        (tree / "tick_00000.idx").write_bytes(b"frame")
+
+    assert worktree_init._prune_render_trees(confirmed=True, keep=0) == 0
+
+    assert (ours / "ctry_current").is_dir()
+    assert (ours / "ctry_base").is_dir()
+    assert not (ours / "ctry_old").exists()
+    assert not (sweep / "v001").exists()

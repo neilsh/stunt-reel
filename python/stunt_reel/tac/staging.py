@@ -3,7 +3,7 @@
 PLAYONE.EXE takes no film argument and its listbox only jumps by first letter, so
 the mount holds the demo's engine files and a VAULT with just this film's .FLM and
 .ALL: the keys are then always the first letter, Down, Enter. Staging copies into a
-fresh directory and writes a conf that mounts it, both under build/parity/stage/.
+fresh directory and writes a conf that mounts it, both under the parity stage root.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from stunt_reel import dataroot
+from stunt_reel import dataroot, parity_layout
 
 __all__ = ["ENGINE_FILES", "stage_film"]
 
@@ -44,7 +44,7 @@ def _replace_once(text: str, literal: str, replacement: str, conf: Path) -> str:
 def stage_film(film: Path, conf: Path) -> tuple[Path, Path]:
     """Stage film alone in a fresh mount and write a DOSBox-X conf that mounts it.
 
-    Returns the staged mount and the generated conf (both under build/parity/stage/).
+    Returns the staged mount and the generated conf (both under the parity stage root).
     """
     archive = film.with_suffix(".ALL")
     for needed in (film, archive):
@@ -52,7 +52,7 @@ def stage_film(film: Path, conf: Path) -> tuple[Path, Path]:
             msg = f"{needed} not found (the film's .FLM and .ALL must sit together)"
             raise FileNotFoundError(msg)
     source_root = film.parent.parent
-    stage = dataroot.REPO_ROOT / "build" / "parity" / "stage" / film.stem.lower()
+    stage = dataroot.REPO_ROOT / parity_layout.stage_dir(film.stem)
     shutil.rmtree(stage, ignore_errors=True)
     (stage / "VAULT").mkdir(parents=True)
     for name in ENGINE_FILES:
@@ -64,6 +64,6 @@ def stage_film(film: Path, conf: Path) -> tuple[Path, Path]:
     text = conf.read_text(encoding="utf-8")
     text = _replace_once(text, _CORPUS_MOUNT, f'mount c "{mount}"', conf)
     text = _replace_once(text, _FILM_LITERAL, rf"VAULT\{film.name}", conf)
-    staged_conf = stage.parent / f"stage-{film.stem.lower()}.conf"
+    staged_conf = dataroot.REPO_ROOT / parity_layout.stage_conf(film.stem)
     staged_conf.write_text(text, encoding="utf-8")
     return stage, staged_conf

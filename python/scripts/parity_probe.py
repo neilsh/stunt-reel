@@ -32,6 +32,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from stunt_reel import parity_layout
 from stunt_reel.parity_artifacts import (
     LAYER_FIRST_ACTOR,
     LEGACY_SIDECAR,
@@ -355,10 +356,12 @@ def main() -> int:
     for name, fn in commands:
         p = sub.add_parser(name)
         p.set_defaults(func=fn)
-        p.add_argument("--reference", type=Path, default=Path("build/parity/reference/ctry"))
+        p.add_argument("--reference", type=Path, default=parity_layout.capture_dir("ctry"))
         if name == "summary":
             p.add_argument(
-                "--report", type=Path, default=Path("build/parity/report/ctry/report.json")
+                "--report",
+                type=Path,
+                default=parity_layout.manual_report_dir("ctry") / "report.json",
             )
             p.add_argument("--worst", type=int, default=5, help="low-scoring frames to list")
             continue
@@ -377,7 +380,9 @@ def main() -> int:
             p.add_argument("--allow-missing", action="store_true", help="skip absent sources")
         else:
             p.add_argument(
-                "--report", type=Path, default=Path("build/parity/report/ctry/report.json")
+                "--report",
+                type=Path,
+                default=parity_layout.manual_report_dir("ctry") / "report.json",
             )
             p.add_argument("--min-pixels", type=int, default=100)
         if name == "shift":
