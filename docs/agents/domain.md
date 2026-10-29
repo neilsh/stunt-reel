@@ -2,6 +2,8 @@
 
 How the engineering skills should consume this repo's domain documentation when exploring the codebase. This is a single-context repo.
 
+_Source: adapted from the `setup-matt-pocock-skills` template in [mattpocock/skills](https://github.com/mattpocock/skills), trimmed to this repo (real ADR example, no multi-context layout). Re-running the setup skill overwrites it._
+
 ## Before exploring, read these
 
 - **`GLOSSARY.md`** at the repo root: the canonical project vocabulary (film, slice, tick, trajectory record, epilogue, shape, slot, partial SOD).
