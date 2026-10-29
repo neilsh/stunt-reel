@@ -9,10 +9,13 @@ from typing import Any
 import pytest
 
 from stunt_reel.parity_artifacts import (
+    CAPTURE_HEIGHT,
+    CAPTURE_WIDTH,
     SCHEMA_VERSION,
     ArtifactError,
     CameraPose,
     CapturedFrame,
+    CaptureSet,
     FilmId,
     FrameReport,
     Geometry,
@@ -31,6 +34,7 @@ from stunt_reel.parity_artifacts import (
     render_plane_paths,
     retime_document,
     tick_stem,
+    write_capture,
     write_render,
     write_report,
     write_retimed_documents,
@@ -231,12 +235,34 @@ def _capture_meta() -> dict[str, Any]:
     }
 
 
-def test_read_capture_defaults_geometry_and_file_names(tmp_path: Path) -> None:
+def _capture() -> CaptureSet:
+    return CaptureSet(
+        schema_version=SCHEMA_VERSION,
+        film=FilmId(name="CTRY.FLM", flm_bytes=100, flm_sha256="abc"),
+        geometry=Geometry(width=320, height=200),
+        frames=(
+            CapturedFrame(
+                ordinal=1,
+                film_tick=9,
+                frame_file="tick_0001.idx",
+                palette_file="palettes_0001.json",
+            ),
+            CapturedFrame(
+                ordinal=2,
+                film_tick=10,
+                frame_file="other.idx",
+                palette_file="palettes_0002.json",
+            ),
+        ),
+    )
+
+
+def test_read_capture_defaults_version_geometry_and_file_names(tmp_path: Path) -> None:
     _write_json(tmp_path / "meta.json", _capture_meta())
     capture = read_capture(tmp_path)
-    assert capture.schema_version is None
+    assert capture.schema_version == SCHEMA_VERSION
     assert capture.film == FilmId(name="CTRY.FLM", flm_bytes=100, flm_sha256="abc")
-    assert capture.geometry == Geometry(width=320, height=200)
+    assert capture.geometry == Geometry(width=CAPTURE_WIDTH, height=CAPTURE_HEIGHT)
     assert capture.frames[0] == CapturedFrame(
         ordinal=1,
         film_tick=9,
@@ -246,6 +272,39 @@ def test_read_capture_defaults_geometry_and_file_names(tmp_path: Path) -> None:
     assert capture.frames[1].film_tick == 10
     assert capture.frames[1].frame_file == "other.idx"
     assert capture.frames[1].ordinal == 2
+
+
+def test_write_capture_emits_the_port_document_and_round_trips(tmp_path: Path) -> None:
+    document = write_capture(tmp_path, _capture())
+    assert document["schema_version"] == SCHEMA_VERSION
+    assert document["width"] == CAPTURE_WIDTH
+    assert document["height"] == CAPTURE_HEIGHT
+    assert read_capture(tmp_path) == _capture()
+
+
+def test_write_capture_keeps_diagnostics_beside_the_port_fields(tmp_path: Path) -> None:
+    document = write_capture(
+        tmp_path,
+        _capture(),
+        diagnostics={"palette_source": "dacpal", "dgroup_segment": "1575"},
+        frame_diagnostics=({"global_tick": 12}, {"global_tick": 13}),
+    )
+    assert document["palette_source"] == "dacpal"
+    assert document["frames"][0]["global_tick"] == 12
+    on_disk = json.loads((tmp_path / "meta.json").read_text(encoding="utf-8"))
+    assert on_disk["palette_source"] == "dacpal"
+    assert on_disk["frames"][1]["global_tick"] == 13
+    assert read_capture(tmp_path) == _capture()
+
+
+def test_a_capture_diagnostic_cannot_shadow_a_port_field(tmp_path: Path) -> None:
+    with pytest.raises(ArtifactError, match="overwrite a capture document field") as refusal:
+        write_capture(tmp_path, _capture(), diagnostics={"width": 1})
+    assert refusal.value.kind == "conflict"
+    assert not (tmp_path / "meta.json").exists()
+
+    with pytest.raises(ArtifactError, match=r"frames\[0\]\.film_tick"):
+        write_capture(tmp_path, _capture(), frame_diagnostics=({"film_tick": 7}, {}))
 
 
 def test_a_capture_without_a_film_tick_is_rejected(tmp_path: Path) -> None:
@@ -260,14 +319,24 @@ def test_a_capture_frame_file_must_be_a_basename(tmp_path: Path) -> None:
     meta = _capture_meta()
     meta["frames"] = [{"film_tick": 1, "frame_file": "../tick_0001.idx"}]
     _write_json(tmp_path / "meta.json", meta)
-    with pytest.raises(ArtifactError, match="must be a basename") as refusal:
+    with pytest.raises(ArtifactError, match="frame_file must be a basename") as refusal:
         read_capture(tmp_path)
     assert refusal.value.kind == "frame"
 
 
-def test_capture_versions_are_optional_but_checked(tmp_path: Path) -> None:
+def test_a_capture_palette_file_must_be_a_basename(tmp_path: Path) -> None:
     meta = _capture_meta()
-    meta["schema_version"] = SCHEMA_VERSION
+    meta["frames"] = [{"film_tick": 1, "palette_file": "palettes/0001.json"}]
+    _write_json(tmp_path / "meta.json", meta)
+    with pytest.raises(ArtifactError, match="palette_file must be a basename") as refusal:
+        read_capture(tmp_path)
+    assert refusal.value.kind == "frame"
+
+
+def test_capture_without_a_version_reads_as_version_one_and_future_versions_fail(
+    tmp_path: Path,
+) -> None:
+    meta = _capture_meta()
     assert read_capture(_write_json(tmp_path / "meta.json", meta).parent).schema_version == 1
     meta["schema_version"] = 9
     with pytest.raises(ArtifactError, match="schema version 9") as refusal:

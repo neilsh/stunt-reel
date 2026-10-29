@@ -20,6 +20,7 @@ from typing import Any
 
 from stunt_reel import dataroot
 from stunt_reel.dataroot import SharedWriteError, ensure_links_or_report
+from stunt_reel.parity_artifacts import FilmId
 from stunt_reel.tac import playone
 from stunt_reel.tac.emulator import EmulatorUnavailable, Launching, PortTaken, WaitingForGuest
 from stunt_reel.tac.framebuffer import capture
@@ -112,15 +113,15 @@ def run(args: argparse.Namespace) -> int:
     conf = resolve(args.conf)
     if not ensure_links_or_report("mise run capture-ref"):
         return 2
-    film_meta = {
-        "film": film.name,
-        "flm_bytes": film.stat().st_size,
-        "flm_sha256": hashlib.sha256(film.read_bytes()).hexdigest(),
-    }
+    film_id = FilmId(
+        name=film.name,
+        flm_bytes=film.stat().st_size,
+        flm_sha256=hashlib.sha256(film.read_bytes()).hexdigest(),
+    )
 
     def sample(session: Session) -> dict[str, Any]:
         clear_frames(out)
-        return capture(session, out, args.max_frames, extra_meta=film_meta)
+        return capture(session, out, args.max_frames, film=film_id)
 
     try:
         meta = run_session(

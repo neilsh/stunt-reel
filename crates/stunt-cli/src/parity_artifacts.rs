@@ -14,14 +14,16 @@ use serde_json::Value;
 use stunt_core::contracts::{CameraTransform, PaletteControls};
 use stunt_core::scene::SceneFrame;
 use stunt_parity::{
-    ArtifactError as SchemaError, CameraPose, CaptureSet, CapturedFrame, FilmId, Geometry,
-    RenderPalette, RenderRecord, RenderTick, Report, SCHEMA_VERSION,
+    ArtifactError as SchemaError, CameraPose, CaptureSet, FilmId, Geometry, RenderPalette,
+    RenderRecord, RenderTick, Report, SCHEMA_VERSION,
 };
 
 /// Document written beside a render directory's frames, last.
 pub(crate) const RENDER_DOCUMENT: &str = "render.json";
 /// Legacy render sidecar, read until renders made before the record age out.
 pub(crate) const LEGACY_SIDECAR: &str = "palette_controls.json";
+/// Document written by the capture harness in a capture directory.
+pub(crate) const CAPTURE_META: &str = "meta.json";
 
 /// A broken artifact read or write, naming the file.
 #[derive(Debug, thiserror::Error)]
@@ -65,6 +67,17 @@ pub(crate) enum AdapterError {
         path: PathBuf,
         /// Schema defect.
         source: SchemaError,
+    },
+    /// The capture's frames predate film-clock tagging, so parity cannot match them.
+    #[error(
+        "{path}: {source}; the capture predates film-clock tagging and must be recaptured \
+         (mise run capture-ref)"
+    )]
+    CaptureUntagged {
+        /// File that has no film clock.
+        path: PathBuf,
+        /// Why the capture set did not parse.
+        source: serde_json::Error,
     },
 }
 
@@ -294,85 +307,26 @@ pub(crate) fn load_render_controls(dir: &Path) -> Result<RenderControls, Adapter
 }
 
 /// Reads a capture directory's `meta.json` into the port's capture set.
+///
+/// The port owns the document's legacy defaults; the adapter only adds the
+/// recapture action when a frame has no film clock, which is the one defect the
+/// reader cannot fix for the user.
 pub(crate) fn load_capture(dir: &Path) -> Result<CaptureSet, AdapterError> {
-    let path = dir.join("meta.json");
+    let path = dir.join(CAPTURE_META);
     let value = read_json(&path)?;
-    let frames = value
-        .get("frames")
-        .and_then(Value::as_array)
-        .ok_or_else(|| {
-            schema(
-                &path,
-                SchemaError::MissingField {
-                    field: "frames".to_string(),
-                },
-            )
-        })?;
-    let film = FilmId {
-        name: value
-            .get("film")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        flm_bytes: value.get("flm_bytes").and_then(Value::as_u64),
-        flm_sha256: value
-            .get("flm_sha256")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-    };
-    let geometry = Geometry {
-        width: value
-            .get("width")
-            .and_then(Value::as_u64)
-            .and_then(|width| u32::try_from(width).ok())
-            .unwrap_or(320),
-        height: value
-            .get("height")
-            .and_then(Value::as_u64)
-            .and_then(|height| u32::try_from(height).ok())
-            .unwrap_or(200),
-        viewport_rows: None,
-    };
-    let mut captured = Vec::with_capacity(frames.len());
-    for (index, frame) in frames.iter().enumerate() {
-        let ordinal = u32::try_from(index + 1).unwrap_or(u32::MAX);
-        let film_tick = frame
-            .get("film_tick")
-            .and_then(Value::as_u64)
-            .and_then(|tick| u32::try_from(tick).ok())
-            .ok_or_else(|| {
-                schema(
-                    &path,
-                    SchemaError::Frame {
-                        ordinal,
-                        reason: "has no film_tick: the capture predates film-clock tagging \
-                            and must be recaptured (mise run capture-ref)"
-                            .to_string(),
-                    },
-                )
-            })?;
-        let name = |key: &str, fallback: String| {
-            frame
-                .get(key)
-                .and_then(Value::as_str)
-                .map(str::to_string)
-                .unwrap_or(fallback)
-        };
-        captured.push(CapturedFrame {
-            ordinal,
-            film_tick,
-            frame_file: name("frame_file", format!("tick_{ordinal:04}.idx")),
-            palette_file: name("palette_file", format!("palettes_{ordinal:04}.json")),
-        });
-    }
-    let set = CaptureSet {
-        schema_version: value
-            .get("schema_version")
-            .and_then(Value::as_u64)
-            .and_then(|version| u32::try_from(version).ok()),
-        film,
-        geometry,
-        frames: captured,
-    };
+    let set: CaptureSet = serde_json::from_value(value).map_err(|source| {
+        if source.to_string().contains("has no film_tick") {
+            AdapterError::CaptureUntagged {
+                path: path.clone(),
+                source,
+            }
+        } else {
+            AdapterError::Parse {
+                path: path.clone(),
+                source,
+            }
+        }
+    })?;
     set.validate().map_err(|error| schema(&path, error))?;
     Ok(set)
 }
@@ -475,35 +429,50 @@ mod tests {
     }
 
     #[test]
-    fn capture_names_are_resolved_and_film_tick_is_required() {
+    fn capture_names_and_legacy_defaults_come_from_the_port() {
         let dir = temp_dir("capture");
         let meta = json!({
             "film": "CTRY.FLM",
             "flm_bytes": 10,
-            "width": 320,
-            "height": 200,
+            "palette_source": "dacpal",
             "frames": [
-                {"film_tick": 9},
+                {"film_tick": 9, "global_tick": 12},
                 {"film_tick": 10, "frame_file": "other.idx", "palette_file": "palettes_0002.json"},
             ],
         });
-        write_json(&dir.join("meta.json"), &meta, false).expect("write meta");
+        write_json(&dir.join(CAPTURE_META), &meta, false).expect("write meta");
         let set = load_capture(&dir).expect("load capture");
+        assert_eq!(set.schema_version, SCHEMA_VERSION);
+        assert_eq!(set.geometry.width, 320);
+        assert_eq!(set.geometry.height, 200);
         assert_eq!(set.frames.len(), 2);
         assert_eq!(set.frames[0].frame_file, "tick_0001.idx");
+        assert_eq!(set.frames[0].palette_file, "palettes_0001.json");
         assert_eq!(set.frames[1].frame_file, "other.idx");
         assert_eq!(set.frames[1].ordinal, 2);
     }
 
     #[test]
-    fn a_capture_without_a_film_tick_is_rejected() {
+    fn a_capture_palette_file_must_be_a_basename() {
+        let dir = temp_dir("palette-basename");
+        let meta = json!({
+            "frames": [{"film_tick": 1, "palette_file": "../palettes_0001.json"}],
+        });
+        write_json(&dir.join(CAPTURE_META), &meta, false).expect("write meta");
+        let error = load_capture(&dir).expect_err("palette path");
+        assert!(error.to_string().contains("palette_file"), "{error}");
+    }
+
+    #[test]
+    fn a_capture_without_a_film_tick_is_rejected_with_the_recapture_action() {
         let dir = temp_dir("untagged");
         let meta = json!({
             "frames": [{"film_tick": 1}, {}],
         });
-        write_json(&dir.join("meta.json"), &meta, false).expect("write meta");
+        write_json(&dir.join(CAPTURE_META), &meta, false).expect("write meta");
         let error = load_capture(&dir).expect_err("untagged frame");
         assert!(error.to_string().contains("frame 2"), "{error}");
+        assert!(error.to_string().contains("recaptured"), "{error}");
     }
 
     #[test]
