@@ -30,7 +30,7 @@ Owner: unassigned. One writer per file; the corpus is shared, read-only data.
 | D4 | Placement and wiring | Fixtures under `tests/fixtures/parity/v1/`; Rust tests in `crates/stunt-cli/src/parity_artifacts.rs`; Python tests in `tests/test_parity_conformance.py`; a section in [`tests/fixtures/README.md`](../../../tests/fixtures/README.md). No new mise task: `check-rust` and `check-py` already run both suites. |
 | D5 | Evolution | Optional additions update v1 fixtures and tests without bumping `SCHEMA_VERSION`; making a field required forks `v2/` and bumps the version; v1 tests stay while v1 is accepted. |
 | D6 | Corpus vs inline tests | Corpus: happy path, the legacy no-`schema_version` capture, and one narrowed-viewport page. Inline: palette-missing frame, unknown `schema_version` refusal, tick-order violation. |
-| D7 | Comparator | Per-side helper, no new dependency. Rust: `assert_close` using `|a - b| <= 1e-6 * max(1.0, |a|, |b|)`, matching the house idiom in `fade.rs`, `loss.rs`, `mask.rs`, `report_diff.rs`. Python: `pytest.approx(rel=1e-6, abs=1e-9)`. |
+| D7 | Comparator | Per-side helper, no new dependency. Rust: `assert_close` using `abs(a - b) <= 1e-6 * max(1.0, abs(a), abs(b))`, matching the house idiom in `fade.rs`, `loss.rs`, `mask.rs`, `report_diff.rs`. Python: `pytest.approx(rel=1e-6, abs=1e-9)`. |
 | D8 | Page rider | Add `parity_artifacts.read_page(directory, tick, geometry) -> Page` carrying `indices`, `layers` and `geometry`, with `Page.actor_pixels()`; switch the four probe/sweep call sites; Rust needs no production change. |
 
 ## 3. The corpus
