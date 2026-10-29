@@ -41,6 +41,7 @@ Refer directly to authoritative documents rather than duplicating definitions:
 | **Research Routing** | [`research/README.md`](research/README.md) | Where each kind of finding goes, note shape, size guideline. |
 | **Parity** | [`research/parity/`](research/parity/) | [`method.md`](research/parity/method.md) (loop, scoring), [`log.md`](research/parity/log.md) (dated results), [`attribution.md`](research/parity/attribution.md), [`framing-and-actors.md`](research/parity/framing-and-actors.md), [`film-segments.md`](research/parity/film-segments.md) (where the render differs). |
 | **Agent Skills** | [`.agents/skills/`](.agents/skills/) | Shared task workflows, e.g. [`improving-render-parity`](.agents/skills/improving-render-parity/SKILL.md); `.claude/skills/` holds stubs that point here. |
+| **Skill Configuration** | [`docs/agents/`](docs/agents/) | Per-repo settings the engineering skills read: [`issue-tracker.md`](docs/agents/issue-tracker.md) (GitHub Issues via `gh`), [`triage-labels.md`](docs/agents/triage-labels.md) (label vocabulary), [`domain.md`](docs/agents/domain.md) (`GLOSSARY.md` stands in for `CONTEXT.md`). |
 | **Decisions (ADRs)** | [`docs/adr/`](docs/adr/) | One file per accepted design decision, e.g. [`0001-sod-tap-anchor-table.md`](docs/adr/0001-sod-tap-anchor-table.md). |
 | **Coding & Format Rules** | [`Cargo.toml`](Cargo.toml), [`pyproject.toml`](pyproject.toml), [`.editorconfig`](.editorconfig) | Clippy workspace lints, Ruff & Mypy configurations, LF line endings, and 4-space indentation. |
 | **Agents & Harnesses** | [`docs/harness.md`](docs/harness.md) | Policy every agent follows, then per-harness capability notes: sandbox modes, temp-directory and shell gotchas, what needs escalation, approvals, timeouts, subagent delegation, and where each harness keeps its settings. |
@@ -97,3 +98,19 @@ Each turn re-sends the whole conversation, so cost is roughly turns times contex
 3. The shared data root (`<parent-of-primary>/<repo-name>.data`, or `STUNT_DATA_ROOT`) is **read-only**. `mise run capture-ref` and oracle generation refuse without `STUNT_DATA_WRITE=1`, and only one session may capture at a time: DOSBox-X and port `58991` are machine-wide, not per worktree, and a second capture fails at the bind. Set `STUNT_DATA_WRITE=1` only after the user agrees in chat; a capture whose `--out` is inside the worktree needs no opt-in.
 4. Plans and handoffs go in the repo note, plan or ADR that owns them, never only in agent memory: memory is keyed by checkout path, so a session in another worktree never sees it. Shared append-only files such as [`research/parity/log.md`](research/parity/log.md) take rows at the end only; `.gitattributes` union-merges them.
 5. Reap with `mise run reap -- --yes` from the primary checkout: it unlinks the six data-root links, proves none remain, and only then runs `git worktree remove` and deletes the branch. Add `--cherry` for branches whose patches `main` already holds, `--prune` for pool leftovers and branches without a worktree, and `--stash-dirty`/`--discard-untracked` to allow work at risk. Never call `git worktree remove` yourself on a worktree `mise run init` has linked: git's worktree removal has deleted through Windows junctions on one build and left their skeletons on another ([ADR 0018](docs/adr/0018-reaping-unlinks-the-data-root-links-first.md)). `mise run clean -- --yes` only clears a checkout you are keeping. See [ADR 0008](docs/adr/0008-worktrees-share-one-read-only-data-root.md).
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for `neilsh/stunt-reel`, via the `gh` CLI. See [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See [`docs/agents/triage-labels.md`](docs/agents/triage-labels.md).
+
+### Domain docs
+
+Single-context; the glossary is [`GLOSSARY.md`](GLOSSARY.md) (no `CONTEXT.md`), ADRs are in [`docs/adr/`](docs/adr/). See [`docs/agents/domain.md`](docs/agents/domain.md).
