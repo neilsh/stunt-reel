@@ -3,6 +3,11 @@
 //!
 //! `--frames` is parsed as half-open 1-based tick ordinals and resolved here once into
 //! [`TickRange`]; T12 replaces the flag with 0-based inclusive `--tick-range A..=B`.
+//!
+//! The wrap is `% (total_ticks + 1)` over the inclusive range (T14), and headless, window
+//! and export all ask this module, so the offset and the wrap exist once. The clock stays in
+//! the CLI, not `stunt-core`: choosing which frames a command plays is a command concern,
+//! and `stunt-core` owns only timeline sampling.
 
 use stunt_core::flm::{TIMELINE_HZ, TIMELINE_TICK_SECONDS};
 use stunt_core::scene::FilmScene;
