@@ -113,6 +113,6 @@ pythonpath = ["python"]
 
 [tool.uv]
 # A floor, not an exact pin. `mise.toml` pins the exact uv for local and CI runs; this
-# refuses an older standalone uv. Dependabot's updater brings its own newer uv and stops
+# refuses an older standalone uv. Renovate's `pep621` manager runs its own uv and stops
 # with `tool_version_not_supported` at an exact pin, so the floor moves with mise's pin.
 required-version = ">=0.13.1"

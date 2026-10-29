@@ -1,0 +1,91 @@
+// .jsonc rather than .json5: the config reference lists both and recommends .jsonc for a file
+// that carries comments. Renovate replaces Dependabot for every ecosystem here - crates,
+// Python dev dependencies,
+// GitHub Actions and the tools `mise.toml` pins, which Dependabot could never see. The rules
+// and the reasoning live in docs/development.md ("Dependency updates"); the `description`
+// fields below stay because Renovate reads them and comments are only for us.
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+
+  // config:recommended supplies the defaults, the dependency dashboard and major separation;
+  // the digest helper keeps every action pinned to a SHA when a bump replaces its tag.
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+
+  // The hosted app runs every four hours. `schedule` only gates branch creation, so a bump
+  // arrives on Monday morning instead of whenever its release was published.
+  "timezone": "America/Los_Angeles",
+  "schedule": ["before 4am on monday"],
+
+  // Nothing opens while a release is younger than three days. With the default
+  // internalChecksFilter ("strict") this holds the branch, so a same-day yank never reaches us.
+  "minimumReleaseAge": "3 days",
+
+  // A yanked crate or a transitive advisory has no version bump to absorb it, so the lock file
+  // gets a refresh of its own - monthly, because the surface is small and each run costs a gate.
+  // Lock-file maintenance can never be grouped with anything.
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 4am on the first day of the month"],
+  },
+
+  "packageRules": [
+    // Nine mise pins would be nine PRs, none worth its own gate run. The compiler, Python and
+    // the two trap tools below override this group.
+    {
+      "description": "Mise-pinned tools arrive as one PR; the pin is a version line, not a risk.",
+      "matchManagers": ["mise"],
+      "groupName": "mise tools",
+    },
+    // Python's minor is a policy change, not a dependency update: ruff's target-version and
+    // mypy's python_version live in pyproject.toml, which Renovate cannot see. Patch releases
+    // still flow; a minor waits for a human, the same way an MSRV bump does.
+    {
+      "description": "Cap the mise Python pin at the current minor; patches still flow.",
+      "matchManagers": ["mise"],
+      "matchPackageNames": ["python"],
+      "allowedVersions": "<3.12",
+    },
+    // rustup resolves the compiler from rust-toolchain.toml while mise installs it, so the two
+    // declarations must move together; tests/test_toolchain_pins.py fails if they disagree and
+    // this group is what keeps a split from ever reaching a PR.
+    {
+      "description": "One PR for both compiler declarations: mise installs, rust-toolchain resolves.",
+      "matchManagers": ["mise", "rust-toolchain"],
+      "matchPackageNames": ["rust"],
+      "groupName": "rust toolchain",
+    },
+    // A version bump alone installs nothing for these three: kaitai carries a sha256 of its
+    // release zip, and the DOSBox entries name an asset_pattern and bin_path. Upgrading them is
+    // a hand change, and no gate run on any platform would catch it if it were not.
+    {
+      "description": "Freeze the tools whose bump needs a checksum or an asset pattern.",
+      "matchManagers": ["mise"],
+      "matchPackageNames": ["/kaitai|dosbox/"],
+      "enabled": false,
+    },
+    {
+      "description": "One PR a week for the four actions, SHA and version comment kept in step.",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+    },
+    // Patch and minor crate bumps fail the same way; a major is where msrv and deny go red, so
+    // it gets its own PR where a failure names one crate instead of hiding behind a green bump.
+    {
+      "description": "Patch and minor crate bumps share a PR.",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "cargo",
+    },
+    {
+      "description": "A crate major is where msrv and deny fail, so it must be its own PR.",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "cargo major",
+    },
+    {
+      "description": "The dev group is one toolchain for the Python half of the gate.",
+      "matchManagers": ["pep621"],
+      "groupName": "python dev deps",
+    },
+  ],
+}
