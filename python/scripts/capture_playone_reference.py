@@ -1,8 +1,8 @@
 """Capture PLAYONE.EXE Mode 13h reference frames for visual parity.
 
 Launches DOSBox-X with tools/dosbox/dosbox-parity.conf (which auto-starts PLAYONE.EXE on its
-LOAD FILM dialog), accepts the emulator's outbound debugger connection on the MCP
-control port, confirms CTRY.FLM with BIOS Data Area keystrokes, and dumps one whole
+LOAD FILM dialog), accepts the emulator's outbound debugger connection on a control
+port the OS chooses, confirms CTRY.FLM with BIOS Data Area keystrokes, and dumps one whole
 frame per post-retrace trap hit until the frame budget is met.
 
 Reference rasters, palettes, and meta.json land under build/ (gitignored); nothing
@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_FILM,
         help=(
             "the film's .FLM file (its .ALL must sit beside it); it is staged alone into "
-            f"{parity_layout.stage_root().as_posix()}/<name>/ so the dialog needs one prefix "
+            f"{parity_layout.stage_root().as_posix()}/<name>-<session>/ so the dialog needs one prefix "
             f"key (default {DEFAULT_FILM})"
         ),
     )
@@ -76,11 +76,25 @@ def parse_args() -> argparse.Namespace:
         help="DOSBox-X configuration used for the capture run",
     )
     parser.add_argument(
+        "--port",
+        type=int,
+        default=0,
+        help=(
+            "pin the control port instead of letting the OS choose; a pre-launched "
+            "DOSBox-X needs this to know where to dial, so use it with --no-launch"
+        ),
+    )
+    parser.add_argument(
         "--no-launch",
         action="store_true",
         help="attach to an already launched DOSBox-X instead of starting one",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.no_launch and args.port == 0:
+        parser.error(
+            "--no-launch needs --port: a running DOSBox-X can only dial a port it was told"
+        )
+    return args
 
 
 def resolve(path: Path) -> Path:
@@ -131,6 +145,7 @@ def run(args: argparse.Namespace) -> int:
             sample=sample,
             conf=conf,
             dgroup_segment=args.dgroup_segment,
+            port=args.port,
             no_launch=args.no_launch,
             progress=report,
         )
@@ -138,11 +153,8 @@ def run(args: argparse.Namespace) -> int:
         print(f"[capture] {exc}", file=sys.stderr)
         return 2
     except PortTaken as exc:
-        print(
-            f"[capture] cannot listen on 127.0.0.1:{exc.port} ({exc}); "
-            "close the running DOSBox-X instance (or use --no-launch)",
-            file=sys.stderr,
-        )
+        where = "" if exc.port == 0 else f" on 127.0.0.1:{exc.port}"
+        print(f"[capture] cannot bind a control port{where} ({exc})", file=sys.stderr)
         return 1
     except EmulatorUnavailable as exc:
         print(f"[capture] {exc}; run via mise run capture-ref", file=sys.stderr)

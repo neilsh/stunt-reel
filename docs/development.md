@@ -34,8 +34,8 @@ Pinned versions live in [`mise.toml`](../mise.toml); `mise run init` links the s
 Only needed to inspect the original player live from an MCP-capable AI coding agent; building, testing, rendering and the parity loop do not use it.
 
 ```powershell
-mise run ensure-dosbox   # start DOSBox-X with the MCP debugger enabled (no-op if already running)
-mise run mcp             # launch dosbox-x-mcp-server over stdio
+mise run mcp                    # launch dosbox-x-mcp-server over stdio; it reports its port through dosbox_mcp_port
+mise run ensure-dosbox -- --mcp-port <port>   # start DOSBox-X dialling that port (once per debugger session)
 ```
 
 Register the server in your agent's MCP configuration (the file and key names depend on the agent) and make sure `dosbox-x-mcp-server` is on `PATH`. A typical entry:
@@ -52,7 +52,7 @@ Register the server in your agent's MCP configuration (the file and key names de
 ```
 
 > [!NOTE]
-> DOSBox-X profiles connect *out* to the control port via `[dosbox] mcp_server = 58991`. `mise run capture-ref` binds that port itself, so stop the MCP server and any other DOSBox-X instance before capturing.
+> DOSBox-X always dials *out*; it never listens. A profile carries no port: `mise run capture-ref` binds port 0, passes the port the OS gave it with `-set "dosbox mcp_server=<port>"`, and two captures therefore never collide ([ADR 0021](adr/0021-capture-chooses-its-control-port.md)). For the interactive debugger, ask the MCP server for `dosbox_mcp_port` and pass it to `mise run ensure-dosbox -- --mcp-port <port>`.
 
 ### 3. Worktrees and the shared data root
 
@@ -66,7 +66,7 @@ The community archive keeps its historical `si_archive` name inside the data roo
 
 `mise run init` links those into a worktree with junctions, so the relative `corpus/` and `build/parity/reference/` paths work unchanged; build outputs and the Python tool caches stay per worktree, while the virtualenv lives in the shared cache (see [Shared tool cache](#shared-tool-cache), and [ADR 0019](adr/0019-a-worktrees-virtualenv-lives-in-the-shared-cache.md)). `STUNT_DATA_ROOT` names a different data root, and `mise run init -- --migrate` moves an existing in-checkout `corpus/` into it: plain `mise run init` refuses a checkout that already holds data rather than linking only the paths that are still empty. A sandboxed agent session cannot create those junctions under `workspace-write`, because their targets are outside the workspace; provision the worktree with one run at wider file access — see [docs/harness-setup.md](harness-setup.md).
 
-The data root is **read-only**: `mise run capture-ref` into the shared captures and oracle generation refuse unless `STUNT_DATA_WRITE=1` is set, and only one session may capture at a time, because DOSBox-X and port `58991` are machine-wide. Retire a worktree with `mise run reap -- --yes`, which unlinks the junctions before `git worktree remove` runs; `mise run clean -- --yes` only clears outputs of a checkout you are keeping. See [ADR 0008](adr/0008-worktrees-share-one-read-only-data-root.md) and [ADR 0018](adr/0018-reaping-unlinks-the-data-root-links-first.md).
+The data root is **read-only**: `mise run capture-ref` into the shared captures and oracle generation refuse unless `STUNT_DATA_WRITE=1` is set. Retire a worktree with `mise run reap -- --yes`, which unlinks the junctions before `git worktree remove` runs; `mise run clean -- --yes` only clears outputs of a checkout you are keeping. See [ADR 0008](adr/0008-worktrees-share-one-read-only-data-root.md) and [ADR 0018](adr/0018-reaping-unlinks-the-data-root-links-first.md).
 
 ---
 
@@ -119,7 +119,7 @@ cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry     --t
 
 `--compare <report.json>` pairs the fresh scores with a previous report by `film_tick` and prints mean SSIM/IoU before → after over the frames present in both, the 5 most improved and 5 most regressed frames, and how many frames moved by more than 0.005; it also writes `compare.json`. The basis is `scored` (SSIM over frames scored in both runs) when both reports carry `scored`, and `all` (SSIM over all common frames) for older reports; the first `[compare]` line states which. With `--compare-test <dir>` (the previous run's render directory) it writes `compare_regressed_tick_NNNNN.png` and `compare_improved_tick_NNNNN.png` (`reference | before | after | |ref−before| | |ref−after|`) for the single biggest mover each way. The method and a dated results table are in [`research/parity/method.md`](../research/parity/method.md) and [`research/parity/log.md`](../research/parity/log.md).
 
-Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`, and a free port `58991`. How the dialog is driven (BIOS Data Area keystrokes) and how frames are sampled (post-retrace breakpoint at `0D51:0C5E`) is recorded in [`method.md`](../research/parity/method.md#1-the-loop) and [`research/playone-exe/capture.md`](../research/playone-exe/capture.md).
+Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`. No port needs to be free. How the dialog is driven (BIOS Data Area keystrokes) and how frames are sampled (post-retrace breakpoint at `0D51:0C5E`) is recorded in [`method.md`](../research/parity/method.md#1-the-loop) and [`research/playone-exe/capture.md`](../research/playone-exe/capture.md).
 
 ### Render in the native engine
 

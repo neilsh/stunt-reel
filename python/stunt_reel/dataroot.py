@@ -310,8 +310,7 @@ def require_shared_write(what: str) -> None:
     if os.environ.get(WRITE_ENV) == "1":
         return
     raise SharedWriteError(
-        f"{what} writes the shared data root ({data_root()}); set {WRITE_ENV}=1 to "
-        "allow it, and only one session may capture at a time"
+        f"{what} writes the shared data root ({data_root()}); set {WRITE_ENV}=1 to allow it"
     )
 
 

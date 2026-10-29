@@ -4,13 +4,13 @@ Status: design agreed 2026-10-24; implemented and merged 2026-10-25 (`feat(tac):
 
 ## 1. Problem
 
-Two scripts own the whole capture session - staging, launch, the machine-wide port, accept and handshake, dialog settle, trap arming, sampling and teardown - with `framebuffer.capture()` holding the frame loop and artifact writer in between. The transport seam speaks debugger text, so callers know syntax and the mock cannot drive a session. The probe imports a private framebuffer helper and the capture script's staging function, and the trajectory streamer is a third consumer of the same text client.
+Two scripts own the whole capture session - staging, launch, the fixed control port, accept and handshake, dialog settle, trap arming, sampling and teardown - with `framebuffer.capture()` holding the frame loop and artifact writer in between. The transport seam speaks debugger text, so callers know syntax and the mock cannot drive a session. The probe imports a private framebuffer helper and the capture script's staging function, and the trajectory streamer is a third consumer of the same text client.
 
 ## 2. Constraints
 
 - ADR-0010: the shipped `python/stunt_reel` package stays standard-library only; scripts are tooling.
 - Offline CI never runs DOSBox-X or the corpus; the mock must drive a whole session with synthetic fixtures.
-- Capture is local and one session at a time: port 58991 is machine-wide; the SOP 6 shared-write gate applies to the output root.
+- Capture is local, and sessions no longer serialise on a fixed port (superseded by [ADR 0021](../../../adr/0021-capture-chooses-its-control-port.md), which also removes this plan's `CONTROL_PORT`); the SOP 6 shared-write gate applies to the output root.
 - Unit A is settled: the CLI-side artifact adapter owns the read side; the capture writer stays here. Artifact names, keys and contents must not change.
 - The light probe stays available with its flags unchanged; the private imports go away.
 - The transport rider: operations are `read_memory`, `dump_framebuffer`, `read_palette`, `inject_key`, `step_to_retrace` and `close`, implemented by the live adapters and the mock alike.

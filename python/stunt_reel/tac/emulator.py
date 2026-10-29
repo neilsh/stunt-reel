@@ -1,8 +1,9 @@
 """The DOSBox-X process behind one capture session.
 
-DosboxX binds the machine-wide control port before it launches the emulator, so a
-second session fails at the bind rather than after a launch; it accepts the single
-guest connection, checks the debugger responds, and stops the process on teardown.
+DosboxX binds a control port (port 0, so the OS picks one), launches DOSBox-X with
+`-set` telling it that port, accepts the single guest connection, checks the
+debugger responds, and stops the process on teardown. Two sessions therefore own two
+different ports and coexist (ADR 0021).
 
 MockEmulator returns a preconfigured mock transport, which is how the offline suite
 drives a whole capture session without DOSBox-X or the corpus.
@@ -21,7 +22,6 @@ from stunt_reel import dataroot
 from stunt_reel.tac.transport import ListenTransport, MockTransport, Transport
 
 __all__ = [
-    "CONTROL_PORT",
     "EMULATOR_EXE",
     "EMULATOR_STOP_SECONDS",
     "LAUNCH_TIMEOUT_SECONDS",
@@ -34,15 +34,35 @@ __all__ = [
     "MockEmulator",
     "PortTaken",
     "WaitingForGuest",
+    "dosbox_executable",
+    "launch_argv",
 ]
 
-#: Port DOSBox-X dials out to; machine-wide, so one capture session at a time.
-CONTROL_PORT: int = 58991
 #: How long the guest has to dial in before the launch counts as failed.
 LAUNCH_TIMEOUT_SECONDS: float = 30.0
 #: How long the process has to exit on terminate before it is killed.
 EMULATOR_STOP_SECONDS: float = 10.0
 EMULATOR_EXE: str = "dosbox-x"
+
+
+def dosbox_executable() -> str:
+    """The DOSBox-X executable on PATH, or EmulatorUnavailable."""
+    exe = shutil.which(EMULATOR_EXE)
+    if exe is None:
+        raise EmulatorUnavailable(f"{EMULATOR_EXE} is not on PATH")
+    return exe
+
+
+def launch_argv(exe: str, conf: Path, port: int) -> list[str]:
+    """The command line that starts DOSBox-X dialling the controller's control port.
+
+    Only [dosbox] carries it. A launch that set `-set "debugger mcp_server=<port>"`
+    alone never dialled, which is why the profiles' duplicate [debugger] lines did
+    nothing (measured against v2026.10.01; ADR 0021). Every launch that wants a
+    debugger goes through here, so a capture and an interactive session cannot drift
+    apart.
+    """
+    return [exe, "-conf", str(conf), "-set", f"dosbox mcp_server={port}"]
 
 
 @dataclass(frozen=True)
@@ -66,7 +86,7 @@ EmulatorEvent = Launching | WaitingForGuest
 
 
 class PortTaken(OSError):  # noqa: N818 - the agreed interface name
-    """The control port is already bound, e.g. by another capture or the MCP server."""
+    """The controller could not bind a control port, e.g. if one was pinned and held."""
 
     def __init__(self, port: int, cause: OSError) -> None:
         self.port = port
@@ -90,7 +110,7 @@ class Emulator(Protocol):
         ...
 
     def start(self) -> Transport:
-        """Bind the control port, launch the guest and return the operations transport."""
+        """Bind a control port, launch the guest and return the operations transport."""
         ...
 
     def stop(self, timeout: float) -> None:
@@ -99,13 +119,13 @@ class Emulator(Protocol):
 
 
 class DosboxX:
-    """A DOSBox-X process reached through the listener that owns the control port."""
+    """A DOSBox-X process reached through the listener that owns its control port."""
 
     def __init__(
         self,
         conf: Path,
         *,
-        port: int = CONTROL_PORT,
+        port: int = 0,
         host: str = "127.0.0.1",
         no_launch: bool = False,
         launch_timeout: float = LAUNCH_TIMEOUT_SECONDS,
@@ -131,23 +151,22 @@ class DosboxX:
             self._progress(event)
 
     def start(self) -> Transport:
-        """Bind the port before launching, then accept and validate the guest connection."""
+        """Bind a control port, launch, then accept and validate the guest connection."""
         transport = ListenTransport(host=self.host, port=self.port)
         try:
-            transport.listen()
+            control_port = transport.listen()
         except OSError as exc:
             raise PortTaken(self.port, exc) from exc
         self._transport = transport
         try:
             if not self.no_launch:
-                exe = shutil.which(EMULATOR_EXE)
-                if exe is None:
-                    raise EmulatorUnavailable(f"{EMULATOR_EXE} is not on PATH")
+                exe = dosbox_executable()
                 self._say(Launching(Path(exe), self.conf, dataroot.REPO_ROOT))
                 self._process = subprocess.Popen(  # noqa: S603
-                    [exe, "-conf", str(self.conf)], cwd=str(dataroot.REPO_ROOT)
+                    launch_argv(exe, self.conf, control_port),
+                    cwd=str(dataroot.REPO_ROOT),
                 )
-            self._say(WaitingForGuest(self.port))
+            self._say(WaitingForGuest(control_port))
             transport.accept(timeout=self.launch_timeout)
             if not any("PONG" in line for line in transport.request("PING")):
                 raise GuestTimeout("debugger did not answer PING")

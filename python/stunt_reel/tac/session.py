@@ -1,7 +1,7 @@
 """One capture session: stage the film, drive the emulator, sample and tear down.
 
 run_session owns everything the two capture scripts used to duplicate: staging,
-launch, the machine-wide port, accept and the PING, dialog settle, trap arming
+launch, the control port, accept and the PING, dialog settle, trap arming
 through the transport operations, the callback lifetime, and teardown ordering.
 The sample callback runs exactly once, on the calling thread, after the dialog
 settles and the film is confirmed, and the session exists only inside it.
@@ -15,6 +15,7 @@ StalePage.
 from __future__ import annotations
 
 import contextlib
+import shutil
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -264,6 +265,15 @@ def _attach_status(error: BaseException, status: int | None) -> None:
         return
 
 
+def _discard_stage(staged: staging.StagedMount | None) -> None:
+    """Remove this session's staged mount and conf once no emulator holds them."""
+    if staged is None:
+        return
+    with contextlib.suppress(OSError):
+        staged.conf.unlink(missing_ok=True)
+    shutil.rmtree(staged.mount, ignore_errors=True)
+
+
 def _teardown(transport: Transport | None, machine: Emulator) -> None:
     """Close the transport, release the port and stop the emulator; the first error wins."""
     errors: list[Exception] = []
@@ -287,6 +297,7 @@ def run_session(
     sample: Callable[[Session], T],
     conf: Path = Path("tools/dosbox/dosbox-parity.conf"),
     dgroup_segment: int = playone.DGROUP_RUNTIME_SEG,
+    port: int = 0,
     no_launch: bool = False,
     emulator: Emulator | None = None,
     progress: Callable[[SessionEvent], None] | None = None,
@@ -296,8 +307,10 @@ def run_session(
     The SOP 6 shared-write gate is applied to out once, before anything is staged or
     launched. The port is bound before the process launches; teardown closes the
     transport, releases the port and then stops the emulator, and a callback
-    exception never masks it. progress, when given, receives typed events so a CLI
-    can format its own output; the package never formats console text.
+    exception never masks it. A no_launch session stages nothing: the emulator it
+    attaches to already mounted its own tree, and removing a fresh one would only risk
+    the tree that emulator is still reading. progress, when given, receives typed events
+    so a CLI can format its own output; the package never formats console text.
     """
     root = dataroot.REPO_ROOT
     film_path = _resolve(film, root)
@@ -305,11 +318,16 @@ def run_session(
     conf_path = _resolve(conf, root)
     if dataroot.is_shared(out_path):
         dataroot.require_shared_write("the capture session")
-    _stage, staged_conf = staging.stage_film(film_path, conf_path)
+    staged = None if no_launch else staging.stage_film(film_path, conf_path)
     machine: Emulator = (
         emulator
         if emulator is not None
-        else DosboxX(staged_conf, no_launch=no_launch, progress=progress)
+        else DosboxX(
+            conf_path if staged is None else staged.conf,
+            port=port,
+            no_launch=no_launch,
+            progress=progress,
+        )
     )
 
     transport: Transport | None = None
@@ -336,5 +354,8 @@ def run_session(
         _attach_status(exc, status)
         raise
     finally:
-        if completed:
-            _teardown(transport, machine)
+        try:
+            if completed:
+                _teardown(transport, machine)
+        finally:
+            _discard_stage(staged)

@@ -4,7 +4,7 @@ Covers the move from the old script-owned loop (dialog settle, BDA confirmation,
 trap, sampling, teardown) to run_session plus the capture sampler: artifact bytes,
 meta ordering, the clock-hold stop, lazy/stale pages, palette fallback, granular
 errors, staging, the shared-write gate and the emulator lifecycle. DOSBox-X is
-never launched and port 58991 is never bound.
+never launched and no control port is bound.
 """
 
 from __future__ import annotations
@@ -14,18 +14,20 @@ import json
 import shutil
 import struct
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from stunt_reel import dataroot
+from stunt_reel import dataroot, parity_layout
 from stunt_reel.dataroot import SharedWriteError
 from stunt_reel.parity_artifacts import FilmId
 from stunt_reel.tac import staging
 from stunt_reel.tac.emulator import (
     EMULATOR_STOP_SECONDS,
     DosboxX,
+    EmulatorEvent,
     EmulatorUnavailable,
     Launching,
     MockEmulator,
@@ -426,6 +428,45 @@ def test_a_callback_error_outranks_a_teardown_error(staged_repo: StagedRepo) -> 
         )
 
 
+def test_a_failing_teardown_still_removes_the_staged_mount(staged_repo: StagedRepo) -> None:
+    """A teardown error propagates, and the session's mount and conf are still discarded."""
+
+    class FailingCloseTransport(MockTransport):
+        def close(self) -> None:
+            super().close()
+            raise RuntimeError("teardown failed")
+
+    class QuietEmulator:
+        def __init__(self, transport: Transport) -> None:
+            self.transport = transport
+
+        @property
+        def exit_status(self) -> int | None:
+            return None
+
+        def start(self) -> Transport:
+            return self.transport
+
+        def stop(self, _timeout: float) -> None:
+            return None
+
+    transport = FailingCloseTransport()
+    CaptureGuest(transport=transport)
+
+    with pytest.raises(RuntimeError, match="teardown failed"):
+        run_session(
+            staged_repo.film,
+            staged_repo.out,
+            sample=lambda _session: None,
+            conf=staged_repo.conf,
+            emulator=QuietEmulator(transport),
+        )
+
+    stage_root = dataroot.REPO_ROOT / parity_layout.stage_root()
+    assert list(stage_root.glob("ctry-*")) == []
+    assert list(stage_root.glob("stage-ctry-*.conf")) == []
+
+
 def test_teardown_closes_the_transport_before_stopping_the_emulator(
     staged_repo: StagedRepo,
 ) -> None:
@@ -472,7 +513,7 @@ def test_teardown_closes_the_transport_before_stopping_the_emulator(
 
 
 def test_port_taken_before_launch(staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A held control port fails the session before any process is launched."""
+    """A control port the caller pinned, and another socket holds, fails before launch."""
     port = free_port()
     blocker = ListenTransport(host="127.0.0.1", port=port)
     blocker.listen()
@@ -505,20 +546,85 @@ def test_launch_failure_releases_the_port(
     probe.close()
 
 
-def test_two_sessions_cannot_hold_one_port(staged_repo: StagedRepo) -> None:
-    """The port is the machine-wide lock: a second session is refused."""
-    port = free_port()
-    first = DosboxX(staged_repo.conf, port=port, no_launch=True)
-    thread = fake_guest(port)
-    transport = first.start()
+class DialOnAdvertise:
+    """Connect a fake guest to the control port a session advertises, and record it."""
+
+    def __init__(self) -> None:
+        self.ports: list[int] = []
+        self.threads: list[threading.Thread] = []
+
+    def __call__(self, event: EmulatorEvent) -> None:
+        if isinstance(event, WaitingForGuest):
+            self.ports.append(event.port)
+            self.threads.append(fake_guest(event.port))
+
+    def join(self) -> None:
+        """Wait for every guest thread to finish."""
+        for thread in self.threads:
+            thread.join(timeout=2.0)
+
+
+def _start_with_guest(conf: Path, dialer: DialOnAdvertise) -> tuple[DosboxX, Transport]:
+    """Start a session whose fake guest dials the advertised control port."""
+    emulator = DosboxX(conf, no_launch=True, progress=dialer)
+    return emulator, emulator.start()
+
+
+def test_two_sessions_bind_distinct_control_ports(staged_repo: StagedRepo) -> None:
+    """Two captures coexist: each asks for port 0 and dials its own advertised port."""
+    dialer = DialOnAdvertise()
+    first, first_transport = _start_with_guest(staged_repo.conf, dialer)
     try:
-        second = DosboxX(staged_repo.conf, port=port, no_launch=True)
-        with pytest.raises(PortTaken):
-            second.start()
+        second, second_transport = _start_with_guest(staged_repo.conf, dialer)
+        try:
+            assert len(dialer.ports) == 2
+            assert dialer.ports[0] > 0
+            assert dialer.ports[0] != dialer.ports[1]
+        finally:
+            second_transport.close()
+            second.stop(0.1)
+    finally:
+        first_transport.close()
+        first.stop(0.1)
+        dialer.join()
+
+
+def test_start_tells_dosbox_x_the_bound_control_port(
+    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The launch carries the bound port, so DOSBox-X cannot dial a stale one."""
+    argv: list[list[str]] = []
+    dialer = DialOnAdvertise()
+    monkeypatch.setattr("stunt_reel.tac.emulator.shutil.which", lambda _name: "dosbox-x")
+    monkeypatch.setattr(
+        "stunt_reel.tac.emulator.subprocess.Popen",
+        lambda args, **_kwargs: argv.append(list(args)),
+    )
+
+    transport = DosboxX(staged_repo.conf, progress=dialer).start()
+    try:
+        assert argv == [
+            [
+                "dosbox-x",
+                "-conf",
+                str(staged_repo.conf),
+                "-set",
+                f"dosbox mcp_server={dialer.ports[0]}",
+            ]
+        ]
     finally:
         transport.close()
-        first.stop(0.1)
-        thread.join(timeout=2.0)
+        dialer.join()
+
+
+def test_control_port_defaults_to_the_one_the_os_chooses() -> None:
+    """listen() on port 0 reports the port the OS picked."""
+    listener = ListenTransport(host="127.0.0.1")
+    port = listener.listen()
+    try:
+        assert port > 0
+    finally:
+        listener.close()
 
 
 def test_raising_callback_releases_the_port(staged_repo: StagedRepo) -> None:
@@ -587,9 +693,49 @@ def test_staging_copies_engine_files_and_rewrites_the_conf(staged_repo: StagedRe
     assert (stage / "VAULT" / "INTRO.FLM").is_file()
     assert (stage / "VAULT" / "INTRO.ALL").is_file()
     text = staged_conf.read_text(encoding="utf-8")
-    assert 'mount c "build/parity/stage/intro"' in text
+    assert f'mount c "{stage.relative_to(dataroot.REPO_ROOT).as_posix()}"' in text
     assert r"VAULT\INTRO.FLM" in text
     assert "corpus/stisldem" not in text
+
+
+def test_two_sessions_stage_into_distinct_mounts(staged_repo: StagedRepo) -> None:
+    """A second capture must not delete the mount the first is emulating (ADR 0021)."""
+    first, first_conf = staging.stage_film(staged_repo.film, staged_repo.conf)
+    second, second_conf = staging.stage_film(staged_repo.film, staged_repo.conf)
+
+    assert first != second
+    assert first_conf != second_conf
+    assert (first / "VAULT" / staged_repo.film.name).is_file()
+    assert (second / "VAULT" / staged_repo.film.name).is_file()
+
+
+def test_a_finished_session_removes_its_staged_mount(staged_repo: StagedRepo) -> None:
+    """Each session owns a mount, so none may survive the run that made it."""
+    run_session(
+        staged_repo.film,
+        staged_repo.out,
+        sample=lambda _session: None,
+        conf=staged_repo.conf,
+        emulator=capture_emulator(),
+    )
+
+    stage_root = dataroot.REPO_ROOT / parity_layout.stage_root()
+    assert list(stage_root.glob("ctry-*")) == []
+    assert list(stage_root.glob("stage-ctry-*.conf")) == []
+
+
+def test_a_no_launch_session_stages_nothing(staged_repo: StagedRepo) -> None:
+    """--no-launch attaches to a running emulator, which mounted its own tree already."""
+    run_session(
+        staged_repo.film,
+        staged_repo.out,
+        sample=lambda _session: None,
+        conf=staged_repo.conf,
+        no_launch=True,
+        emulator=capture_emulator(),
+    )
+
+    assert list((dataroot.REPO_ROOT / parity_layout.stage_root()).glob("ctry-*")) == []
 
 
 def test_staging_fails_loudly_when_the_conf_literal_is_missing(
@@ -605,6 +751,23 @@ def test_staging_fails_loudly_when_the_conf_literal_is_missing(
     missing_mount.write_text("VAULT\\CTRY.FLM\n", encoding="utf-8")
     with pytest.raises(RuntimeError, match="does not contain"):
         staging.stage_film(staged_repo.film, missing_mount)
+
+
+def test_a_failed_staging_leaves_no_mount_behind(staged_repo: StagedRepo, tmp_path: Path) -> None:
+    """run_session never sees the paths of a stage that raised, so staging cleans up itself."""
+    bad_conf = tmp_path / "no-film.conf"
+    bad_conf.write_text('mount c "corpus/stisldem"\n', encoding="utf-8")
+    with pytest.raises(RuntimeError, match="does not contain"):
+        staging.stage_film(staged_repo.film, bad_conf)
+
+    missing_engine = staged_repo.film.parent.parent / ENGINE_FILES[-1]
+    missing_engine.unlink()
+    with pytest.raises(FileNotFoundError):
+        staging.stage_film(staged_repo.film, staged_repo.conf)
+
+    stage_root = dataroot.REPO_ROOT / parity_layout.stage_root()
+    assert list(stage_root.glob("ctry-*")) == []
+    assert list(stage_root.glob("stage-ctry-*.conf")) == []
 
 
 def test_staging_requires_the_all_sibling(staged_repo: StagedRepo) -> None:
@@ -696,19 +859,33 @@ def test_capture_script_keeps_its_flags_and_progress_lines(
     assert args.dgroup_segment == DGROUP_RUNTIME_SEG
     assert args.max_frames == 2000
     assert args.conf == Path("tools/dosbox/dosbox-parity.conf")
+    assert args.port == 0
     assert args.no_launch is False
 
     exe = Path("dosbox-x.exe")
     conf = Path("build/parity/stage/stage-ctry.conf")
     cwd = Path("D:/git/stunt-reel")
     module.report(Launching(exe, conf, cwd))
-    module.report(WaitingForGuest(58991))
+    module.report(WaitingForGuest(54321))
     module.report(DialogSettled(6))
     assert capsys.readouterr().out.splitlines() == [
         f"[capture] launching {exe} -conf {conf} (cwd {cwd})",
-        "[capture] waiting for DOSBox-X on 127.0.0.1:58991",
+        "[capture] waiting for DOSBox-X on 127.0.0.1:54321",
         "[capture] dialog settled: 6 distinct indices",
     ]
+
+
+def test_capture_script_requires_a_port_to_attach(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--no-launch without --port would wait out the timeout on a port nobody dials."""
+    module = _load_script("capture_playone_reference")
+    monkeypatch.setattr(sys, "argv", ["capture_playone_reference.py", "--no-launch"])
+
+    with pytest.raises(SystemExit) as info:
+        module.parse_args()
+    assert info.value.code == 2
+    assert "--port" in capsys.readouterr().err
 
 
 def test_capture_script_failure_lines_and_exit_codes(
@@ -736,13 +913,17 @@ def test_capture_script_failure_lines_and_exit_codes(
     assert capsys.readouterr().err == f"[capture] {shared}\n"
 
     taken = PortTaken(
-        58991, OSError(10048, "port 58991 is taken: another capture or the MCP server holds it")
+        0, OSError(10013, "an attempt was made to access a socket in a way forbidden")
     )
     stub_raises(taken)
     assert module.run(args) == 1
+    assert capsys.readouterr().err == f"[capture] cannot bind a control port ({taken})\n"
+
+    pinned = PortTaken(47991, OSError(10048, "only one usage of each socket address"))
+    stub_raises(pinned)
+    assert module.run(args) == 1
     assert capsys.readouterr().err == (
-        f"[capture] cannot listen on 127.0.0.1:{taken.port} ({taken}); "
-        "close the running DOSBox-X instance (or use --no-launch)\n"
+        f"[capture] cannot bind a control port on 127.0.0.1:47991 ({pinned})\n"
     )
 
     missing = EmulatorUnavailable("dosbox-x is not on PATH")

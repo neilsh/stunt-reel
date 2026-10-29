@@ -167,6 +167,12 @@ _Avoid_: view, shot
 One numbered entry in a `Usersnd` bank; each of the five banks holds up to 253 sounds.
 _Avoid_: slot (unqualified)
 
+## Capture and emulation
+
+**Control port**:
+The TCP endpoint a capture session binds and tells DOSBox-X to dial; DOSBox-X is always the client, never the listener. A capture takes whatever port the OS assigns, while an interactive debugger uses the port its MCP server reports.
+_Avoid_: MCP port, debugger port, capture lock
+
 ## Artifacts
 
 **Render record**:

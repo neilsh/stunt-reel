@@ -381,7 +381,7 @@ def test_listen_request_before_accept_raises_connection_error() -> None:
     t.close()
 
 
-def test_second_listener_on_the_same_port_is_refused() -> None:
+def test_second_listener_on_the_same_pinned_port_is_refused() -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.bind(("127.0.0.1", 0))
         port: int = probe.getsockname()[1]
@@ -389,7 +389,9 @@ def test_second_listener_on_the_same_port_is_refused() -> None:
     first.listen()
     second = ListenTransport(host="127.0.0.1", port=port)
     try:
-        with pytest.raises(OSError, match=f"port {port} is taken"):
+        # No longer the capture lock (ADR 0021): a caller that pins a port still
+        # gets the OS's own refusal instead of a second listener on that port.
+        with pytest.raises(OSError):  # noqa: PT011 - the refusal wording is platform-specific
             second.listen()
     finally:
         first.close()
@@ -433,6 +435,24 @@ def test_listen_read_memory_round_trips_memdumpbin() -> None:
 
     with _listen(server) as t:
         assert t.read_memory((0x0D51, 0x0100), 4) == bytes([0xDE, 0xAD, 0xBE, 0xEF])
+
+
+def test_each_listener_reads_memory_through_its_own_dump_file() -> None:
+    """Two listeners in one process must not overwrite each other's MEMDUMPBIN file."""
+    first = ListenTransport(host="127.0.0.1", port=0)
+    second = ListenTransport(host="127.0.0.1", port=0)
+
+    assert first._read_path != second._read_path
+
+
+def test_closing_a_listener_removes_a_leftover_dump_file() -> None:
+    """A read that failed before its read-back must not leave a dump in the temp dir."""
+    listener = ListenTransport(host="127.0.0.1", port=0)
+    listener._read_path.write_bytes(b"\x00")
+
+    listener.close()
+
+    assert not listener._read_path.exists()
 
 
 def test_listen_write_memory_wraps_sm_in_exec() -> None:

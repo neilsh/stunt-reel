@@ -12,23 +12,25 @@ The transport speaks operations rather than debugger text:
 
 Implementations:
 
-- LiveSocketTransport: line-framed socket client connecting to dosbox-x-mcp-server (TCP 58991).
+- LiveSocketTransport: line-framed socket client dialing a debugger control server at
+  the host and port its caller supplies.
 - ListenTransport: socket listener accepting DOSBox-X's outbound debugger connection,
-  which is how [dosbox] mcp_server actually connects. Also the control-port lock.
+  which is how [dosbox] mcp_server actually connects. It binds port 0 by default, so the
+  OS gives every session its own control port (ADR 0021).
 - MockTransport: in-memory virtual 8086 machine for 100% offline CI verification [I7].
 """
 
 from __future__ import annotations
 
 import contextlib
-import errno
+import itertools
 import math
 import os
 import re
 import socket
 import struct
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Protocol, TextIO, runtime_checkable
 
@@ -65,6 +67,9 @@ PAGE_OFFSET: int = 0
 PALETTE_ENTRIES: int = 256
 #: Real-mode segment of the VGA linear framebuffer window.
 _VGA_SEGMENT: int = 0xA000
+
+#: Dump-file names are per listener, so two listeners in one process cannot share one.
+_DUMP_IDS: Iterator[int] = itertools.count(1)
 
 _DAC_ENTRY_RE = re.compile(r"[0-9A-Fa-f]{6}")
 
@@ -343,7 +348,8 @@ class LiveSocketTransport(_FramedTransport):
     def __init__(
         self,
         host: str = "127.0.0.1",
-        port: int = 58991,
+        *,
+        port: int,
         timeout: float = 5.0,
     ) -> None:
         super().__init__()
@@ -360,17 +366,17 @@ class LiveSocketTransport(_FramedTransport):
         self._attach(sock)
 
 
-#: bind errnos that mean another socket holds the port (Winsock reports its own).
-_ADDR_IN_USE = frozenset({errno.EADDRINUSE, getattr(errno, "WSAEADDRINUSE", errno.EADDRINUSE)})
-
-
 class ListenTransport(_FramedTransport):
     """Debugger transport that listens for DOSBox-X's outbound debugger connection.
 
     DOSBox-X configured with [dosbox] mcp_server = <port> is a TCP client: it
-    dials the controller that listens on that port. This transport owns the listener
-    (the machine-wide capture lock), accepts the single emulator connection, and
-    speaks the REQ <id> <command> / BEGIN <id> OK / END <id> framing.
+    dials the controller that listens on that port. This transport owns the listener,
+    accepts the single emulator connection, and speaks the REQ <id> <command> /
+    BEGIN <id> OK / END <id> framing.
+
+    The port defaults to 0, so the OS assigns one per session and `listen()`
+    returns what it gave: the launch passes that back to DOSBox-X, which is what lets
+    two captures coexist (ADR 0021). A caller may still pin a port.
 
     Two live-debugger quirks are normalized here so the operations read the same as
     against MockTransport:
@@ -388,7 +394,7 @@ class ListenTransport(_FramedTransport):
     def __init__(
         self,
         host: str = "127.0.0.1",
-        port: int = 58991,
+        port: int = 0,
         timeout: float = 120.0,
     ) -> None:
         super().__init__()
@@ -396,14 +402,16 @@ class ListenTransport(_FramedTransport):
         self.port = port
         self.timeout = timeout
         self._listener: socket.socket | None = None
-        # Per-process: a fixed name let two captures overwrite each other's dump.
-        self._read_path: Path = Path(tempfile.gettempdir()) / f"stunt_tac_read_{os.getpid()}.bin"
+        # Per-listener: a process-wide name let two sessions overwrite each other's dump.
+        self._read_path: Path = (
+            Path(tempfile.gettempdir()) / f"stunt_tac_read_{os.getpid()}_{next(_DUMP_IDS)}.bin"
+        )
 
-    def listen(self) -> None:
-        """Bind the control port and wait for one emulator connection."""
+    def listen(self) -> int:
+        """Bind the control port and return the port DOSBox-X must dial."""
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # The port is the machine-wide capture lock. On Windows SO_REUSEADDR lets a
-        # second process bind it too, so ask for exclusive use there instead.
+        # Exclusive use stops another process from sharing the number the OS just gave
+        # us: on Windows SO_REUSEADDR would let a second socket bind the same port.
         exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
         if exclusive is not None:
             sock.setsockopt(socket.SOL_SOCKET, exclusive, 1)
@@ -411,14 +419,13 @@ class ListenTransport(_FramedTransport):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind((self.host, self.port))
-        except OSError as exc:
+        except OSError:
             sock.close()
-            if exc.errno not in _ADDR_IN_USE:
-                raise
-            msg = f"port {self.port} is taken: another capture or the MCP server holds it"
-            raise OSError(exc.errno, msg) from exc
+            raise
         sock.listen(1)
         self._listener = sock
+        port: int = sock.getsockname()[1]
+        return port
 
     def accept(self, timeout: float | None = None) -> None:
         """Block until DOSBox-X connects, or raise TimeoutError."""
@@ -443,6 +450,8 @@ class ListenTransport(_FramedTransport):
             with contextlib.suppress(OSError):
                 self._listener.close()
             self._listener = None
+        with contextlib.suppress(OSError):
+            self._read_path.unlink(missing_ok=True)
 
     def _wire(self, command: str) -> str:
         """Wrap debugger commands in EXEC; PING and BREAK are the only bare verbs."""
@@ -452,7 +461,7 @@ class ListenTransport(_FramedTransport):
         return f"EXEC {command}"
 
     def read_memory(self, address: Address, length: int) -> bytes:
-        """Read real-mode memory through MEMDUMPBIN and a per-process host file."""
+        """Read real-mode memory through MEMDUMPBIN and this listener's host file."""
         if length <= 0:
             return b""
         segment, offset = address

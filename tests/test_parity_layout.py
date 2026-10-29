@@ -50,8 +50,8 @@ def test_the_layout_answers_every_artifact_location() -> None:
         "build/scratch/retime/ctry_current_retime-1"
     )
     assert parity_layout.stage_root() == Path("build/parity/stage")
-    assert parity_layout.stage_dir("INTRO") == Path("build/parity/stage/intro")
-    assert parity_layout.stage_conf("INTRO") == Path("build/parity/stage/stage-intro.conf")
+    assert parity_layout.stage_dir("INTRO", "42") == Path("build/parity/stage/intro-42")
+    assert parity_layout.stage_conf("INTRO", "42") == Path("build/parity/stage/stage-intro-42.conf")
     assert parity_layout.sweep_root() == Path("build/scratch/sweep")
 
 
