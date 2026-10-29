@@ -1,0 +1,19 @@
+{
+  "film": "SYNTH.FLM",
+  "frames": [
+    {
+      "ordinal": 1,
+      "film_tick": 7,
+      "frame_file": "tick_0001.idx",
+      "palette_file": "palettes_0001.json"
+    },
+    {
+      "ordinal": 2,
+      "film_tick": 9,
+      "frame_file": "tick_0002.idx",
+      "palette_file": "palettes_0002.json"
+    }
+  ],
+  "width": 4,
+  "height": 3
+}

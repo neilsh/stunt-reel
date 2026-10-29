@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "film": "SYNTH.FLM",
+  "flm_bytes": 17,
+  "frames": [
+    {
+      "ordinal": 1,
+      "film_tick": 7,
+      "frame_file": "tick_0001.idx",
+      "palette_file": "palettes_0001.json",
+      "palette_source": "measured"
+    },
+    {
+      "ordinal": 2,
+      "film_tick": 9,
+      "frame_file": "tick_0002.idx",
+      "palette_file": "palettes_0002.json"
+    }
+  ],
+  "width": 4,
+  "height": 3,
+  "palette_source": "measured"
+}

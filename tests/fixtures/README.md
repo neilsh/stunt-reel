@@ -87,3 +87,22 @@ A synthetic scene exercising the three-record layout of `[FMT-SET-HEADER]`:
 - **Prop**: one 64-byte record (`prop_slot_id = 0`, `behavior_flags = 0x09`, `placement_flags = 0x01`, `object_model_id = 0x0102`, `override_flags = 0x40`).
 - Used by `tests/test_set_schema.py` to prove the schema consumes the header, the `num_events`-driven events and the trailing prop stride offline, and rejects a byte-truncated file.
 
+### 13. `parity/v1/` (parity conformance corpus)
+
+The shared wire-contract corpus for the two parity artifact adapters: the Rust port in `crates/stunt-parity` and the Python mirror in `python/stunt_reel/parity_artifacts.py` (see [ADR 0011](../../docs/adr/0011-parity-artifacts-are-a-versioned-port.md)). It pins the documents, not a run; the geometry is deliberately tiny (4x3 with a 2-row viewport) so the page bytes are hand-checkable.
+
+| File | Pins |
+|---|---|
+| `render.json` | The Rust render document (`RenderRecord`): film `SYNTH.FLM` at 17 bytes, 4x3 geometry with `viewport_rows: 2`, and ticks 7 and 9 with palette controls `{sky 0, brightness 32768, saturation 32768}` and their camera poses. |
+| `meta.json` | The Python capture document (`CaptureSet`): flat `film`/`flm_bytes`, two frames at film ticks 7 and 9, `width` 4 and `height` 3, plus the harness's `palette_source` diagnostics the port ignores on read. |
+| `meta_legacy.json` | A pre-port capture: the same document with `schema_version`, `flm_bytes` and `palette_source` removed. It must read as version 1 with both `film_tick` values intact; a frame without one is rejected, so parity can still pair it with a render. |
+| `report.json` | The Rust report document (`Report`): `reference_frames 3 = frames 2 + unmatched 1`, `frames 2 = scored_frames 1 + excluded_frames 1`, the I6 gate closed, and a second frame that omits `index_agreement`, `loss_by_class` and `authored_fade_level` so `serde(default)` and Python's optional handling are exercised. A rewrite serialises those as `null`, so comparisons are typed, never byte-level. |
+| `pages/tick_00007.idx` | 12 index bytes over the full 4x3 raster, row-major: row 0 all sky (180), row 1 `0 40 40 0` (two actor pixels), row 2 `0 0 0 0`. Named with the five-digit render stem, not a capture's four-digit ordinal. |
+| `pages/tick_00007.layer` | 12 little-endian `u16` layers (24 bytes): row 0 none, row 1 `0 16 16 0` (actor layer 16), row 2 `16 16 16 16` — outside the 2-row viewport, so consumers that scan the viewport must ignore it while the Rust reader returns all twelve. |
+
+**Authorship.** Python authors `meta.json` and `meta_legacy.json` by building a `CaptureSet` and calling `write_capture`; Rust authors `render.json` and `report.json`, which are the port's own documents. The bytes are committed, and a change to a document is made on its authoring side while both adapters are re-run against the result.
+
+**Evolution.** v1 may gain optional fields in place: a reader that uses `serde(default)` or `.get(...)` tolerates them, and the fixtures and both conformance tests are updated without touching `SCHEMA_VERSION`. A required change — a new required field, a rename, or a changed shape — forks `tests/fixtures/parity/v2/` and bumps `SCHEMA_VERSION`; the v1 fixtures and tests stay while v1 is accepted.
+
+**Read-only.** The conformance tests read these files and never write them; round-trip tests write to their own temporary directories. `git status` after a test run must show the corpus unchanged.
+
