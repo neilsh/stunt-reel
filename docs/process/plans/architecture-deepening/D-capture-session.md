@@ -10,7 +10,7 @@ Two scripts own the whole capture session - staging, launch, the machine-wide po
 
 - ADR-0010: the shipped `python/stunt_reel` package stays standard-library only; scripts are tooling.
 - Offline CI never runs DOSBox-X or the corpus; the mock must drive a whole session with synthetic fixtures.
-- Capture is local and one session at a time: port 58991 is machine-wide; the SOP 6 shared-write gate applies to the output root.
+- Capture is local, and sessions no longer serialise on a fixed port (superseded by [ADR 0021](../../../adr/0021-capture-chooses-its-control-port.md), which also removes this plan's `CONTROL_PORT`); the SOP 6 shared-write gate applies to the output root.
 - Unit A is settled: the CLI-side artifact adapter owns the read side; the capture writer stays here. Artifact names, keys and contents must not change.
 - The light probe stays available with its flags unchanged; the private imports go away.
 - The transport rider: operations are `read_memory`, `dump_framebuffer`, `read_palette`, `inject_key`, `step_to_retrace` and `close`, implemented by the live adapters and the mock alike.

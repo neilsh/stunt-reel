@@ -381,7 +381,7 @@ def test_listen_request_before_accept_raises_connection_error() -> None:
     t.close()
 
 
-def test_second_listener_on_the_same_port_is_refused() -> None:
+def test_second_listener_on_the_same_pinned_port_is_refused() -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.bind(("127.0.0.1", 0))
         port: int = probe.getsockname()[1]
@@ -389,7 +389,9 @@ def test_second_listener_on_the_same_port_is_refused() -> None:
     first.listen()
     second = ListenTransport(host="127.0.0.1", port=port)
     try:
-        with pytest.raises(OSError, match=f"port {port} is taken"):
+        # No longer the capture lock (ADR 0021): a caller that pins a port still
+        # gets the OS's own refusal instead of a second listener on that port.
+        with pytest.raises(OSError):  # noqa: PT011 - the refusal wording is platform-specific
             second.listen()
     finally:
         first.close()

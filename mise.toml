@@ -62,20 +62,11 @@ description = "Launch Stunt Island film reel playback"
 run = "dosbox-x -conf tools/dosbox/dosbox-playone.conf"
 
 [tasks.ensure-dosbox]
-description = "Ensure DOSBox-X is running in the background with MCP enabled"
-# Unix (macOS / Linux): uses pgrep and backgrounding (&)
-run = """
-if ! pgrep -x "dosbox-x" > /dev/null 2>&1; then
-    dosbox-x -conf tools/dosbox/dosbox-mcp.conf &
-    sleep 1
-fi
-"""
-# Windows: checks Get-Process to prevent duplicate instances and starts detached
-run_windows = "powershell -NoProfile -Command \"if (-not (Get-Process dosbox-x -ErrorAction SilentlyContinue)) { Start-Process (mise which dosbox-x) -ArgumentList @('-conf', 'tools/dosbox/dosbox-mcp.conf') -WorkingDirectory (Get-Location) }\""
+description = "Launch DOSBox-X for the interactive debugger on the port the MCP server reported (mise run ensure-dosbox -- --mcp-port <dosbox_mcp_port>; see docs/development.md § 2)"
+run = "uv run python python/scripts/ensure_dosbox.py"
 
 [tasks.mcp]
-description = "Launch DOSBox-X MCP server (ensuring DOSBox-X is running)"
-depends = ["ensure-dosbox"]
+description = "Launch the MCP server over stdio; DOSBox-X follows through ensure-dosbox (see docs/development.md § 2)"
 run = "dosbox-x-mcp-server"
 
 [tasks.init]

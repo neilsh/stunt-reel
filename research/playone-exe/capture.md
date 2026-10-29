@@ -8,7 +8,7 @@ Reference rasters are evidence only and land under `build/parity/` (gitignored);
 
 ## 1. Control Topology
 
-* **Direction (`[Established]`):** DOSBox-X configured with `[dosbox] mcp_server = 58991` is a TCP **client** — it dials the controller, which listens (`ListenTransport` in [`python/stunt_reel/tac/transport.py`](../../python/stunt_reel/tac/transport.py)).
+* **Direction (`[Established]`):** DOSBox-X configured with `[dosbox] mcp_server = <port>` is a TCP **client** — it dials the controller, which listens (`ListenTransport` in [`python/stunt_reel/tac/transport.py`](../../python/stunt_reel/tac/transport.py)). The port is not a constant: a capture session binds port 0 and passes the port it was given with `-set` ([ADR 0021](../../docs/adr/0021-capture-chooses-its-control-port.md)).
 * **Framing (`[Established]`):** requests are `REQ <id> <command>`; responses are `BEGIN <id> OK|ERR`, body lines, `END <id>`. Only `PING` and `BREAK` are bare verbs; every other command is sent as `EXEC <command>` and must be a **debugger** command.
 * **No key command (`[Established]`):** `EXEC AUTOTYPE ENTER` is rejected with `*** Debugger command not recognized`. The handler table exposes memory/breakpoint/VGA/register verbs (`SM`, `SR`, `BP`, `BPINT`, `BPDEL`, `FM`, `RUN`, `RUNWATCH`, `VRT`, `MEMDUMPBIN`, `VGA MODE|CRTC|DAC|DACPAL|SEQ|GC|DRAW`, `LOG`, …) and nothing that queues a guest keystroke. Keystrokes therefore come from the BIOS Data Area, not from the debugger.
 * **`D` translation (`[Established]`):** the live `D <seg>:<off> <len>` only moves the debugger's data view; the transport rewrites it as `MEMDUMPBIN <target> <len hex> <host path>` and reads the host file back.

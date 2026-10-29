@@ -1,7 +1,7 @@
 """One capture session: stage the film, drive the emulator, sample and tear down.
 
 run_session owns everything the two capture scripts used to duplicate: staging,
-launch, the machine-wide port, accept and the PING, dialog settle, trap arming
+launch, the control port, accept and the PING, dialog settle, trap arming
 through the transport operations, the callback lifetime, and teardown ordering.
 The sample callback runs exactly once, on the calling thread, after the dialog
 settles and the film is confirmed, and the session exists only inside it.
@@ -287,6 +287,7 @@ def run_session(
     sample: Callable[[Session], T],
     conf: Path = Path("tools/dosbox/dosbox-parity.conf"),
     dgroup_segment: int = playone.DGROUP_RUNTIME_SEG,
+    port: int = 0,
     no_launch: bool = False,
     emulator: Emulator | None = None,
     progress: Callable[[SessionEvent], None] | None = None,
@@ -309,7 +310,7 @@ def run_session(
     machine: Emulator = (
         emulator
         if emulator is not None
-        else DosboxX(staged_conf, no_launch=no_launch, progress=progress)
+        else DosboxX(staged_conf, port=port, no_launch=no_launch, progress=progress)
     )
 
     transport: Transport | None = None
