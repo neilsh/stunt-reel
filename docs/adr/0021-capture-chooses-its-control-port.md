@@ -35,9 +35,9 @@ codebase already keeps per-process scratch (`stunt_tac_read_<pid>.bin` in
   line prints the real port. `CONTROL_PORT` is gone.
 - **The tests.** [`test_tac_capture_session.py`](../../tests/test_tac_capture_session.py)
   covers two sessions binding distinct advertised ports, the argv DOSBox-X is launched
-  with (`-set dosbox mcp_server=…` then `-set debugger mcp_server=…`: both sections
-  carry the port because it is not established which one this build reads, and one
-  launch cannot separate them), and port 0 reporting what it bound. The "two sessions cannot hold one port" test is deleted with the rule
+  with (`-set dosbox mcp_server=…` alone; a launch that set only `-set debugger
+  mcp_server=…` never dialled, so the profiles' duplicate `[debugger]` lines did
+  nothing), and port 0 reporting what it bound. The "two sessions cannot hold one port" test is deleted with the rule
   it encoded.
 - **The stage mount.** [`stage_film()`](../../python/stunt_reel/tac/staging.py)
   builds a mount named after the capture process ([`stage_dir`](../../python/stunt_reel/parity_layout.py))

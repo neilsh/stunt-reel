@@ -41,8 +41,6 @@ def test_launch_passes_the_control_port(
         str(dataroot.REPO_ROOT / "tools/dosbox/dosbox-mcp.conf"),
         "-set",
         "dosbox mcp_server=50413",
-        "-set",
-        "debugger mcp_server=50413",
     ]
     assert calls[0][1]["cwd"] == str(dataroot.REPO_ROOT)
     assert "50413" in capsys.readouterr().out

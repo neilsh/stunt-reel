@@ -56,20 +56,13 @@ def dosbox_executable() -> str:
 def launch_argv(exe: str, conf: Path, port: int) -> list[str]:
     """The command line that starts DOSBox-X dialling the controller's control port.
 
-    Both [dosbox] and [debugger] carry the port because it is not established which
-    section this build reads: the profiles carried both until ADR 0021, and one launch
-    cannot separate them. Every launch that wants a debugger goes through here, so a
-    capture and an interactive session cannot drift apart (ADR 0021).
+    Only [dosbox] carries it. A launch that set `-set "debugger mcp_server=<port>"`
+    alone never dialled, which is why the profiles' duplicate [debugger] lines did
+    nothing (measured against v2026.10.01; ADR 0021). Every launch that wants a
+    debugger goes through here, so a capture and an interactive session cannot drift
+    apart.
     """
-    return [
-        exe,
-        "-conf",
-        str(conf),
-        "-set",
-        f"dosbox mcp_server={port}",
-        "-set",
-        f"debugger mcp_server={port}",
-    ]
+    return [exe, "-conf", str(conf), "-set", f"dosbox mcp_server={port}"]
 
 
 @dataclass(frozen=True)

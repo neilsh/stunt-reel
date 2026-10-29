@@ -572,8 +572,6 @@ def test_start_tells_dosbox_x_the_bound_control_port(
                 str(staged_repo.conf),
                 "-set",
                 f"dosbox mcp_server={dialer.ports[0]}",
-                "-set",
-                f"debugger mcp_server={dialer.ports[0]}",
             ]
         ]
     finally:
