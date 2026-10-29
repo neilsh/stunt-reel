@@ -17,9 +17,11 @@ import parity_run  # noqa: E402
 import parity_sweep  # noqa: E402
 from cli import ParityOptions, UsageError, add_parity_options, parity_options  # noqa: E402
 
+from stunt_reel.parity_pipeline import FILMS, REPO_ROOT  # noqa: E402
+
 
 def _options(module: Any, argv: list[str]) -> ParityOptions:
-    return parity_options(module.parse_args(argv), films=module.FILMS)
+    return parity_options(module.parse_args(argv), films=FILMS)
 
 
 def test_both_entry_points_build_the_same_options() -> None:
@@ -29,8 +31,8 @@ def test_both_entry_points_build_the_same_options() -> None:
 
 def test_defaults_cover_every_film_and_this_checkout() -> None:
     options = _options(parity_run, [])
-    assert options.films == tuple(parity_sweep.FILMS)
-    assert options.data_root == parity_sweep.REPO_ROOT.resolve()
+    assert options.films == tuple(FILMS)
+    assert options.data_root == REPO_ROOT.resolve()
     assert (options.no_build, options.reuse, options.retime) == (False, None, None)
 
 
@@ -49,7 +51,7 @@ def test_an_unknown_film_is_refused_with_one_message() -> None:
 
 def test_the_shared_flags_are_defined_once() -> None:
     parser = argparse.ArgumentParser(prog="parity")
-    add_parity_options(parser, films=parity_sweep.FILMS, data_root=parity_sweep.REPO_ROOT)
+    add_parity_options(parser, films=FILMS, data_root=REPO_ROOT)
     actions = {action.dest: action for action in parser._actions}
     assert set(actions) == {"help", "films", "data_root", "no_build", "reuse", "retime"}
     assert actions["films"].default == "ctry,intro"
