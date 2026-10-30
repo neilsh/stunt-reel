@@ -68,11 +68,12 @@ def latest(records: list[Record], slug: str, stage: str) -> Record | None:
 
 def summarize(records: list[Record]) -> str:
     """Counts per stage, the still-failing stages, and the SSIM extremes of the latest scores."""
-    counts: dict[str, Counter[str]] = {stage: Counter() for stage in STAGES}
     latest_by_key: dict[tuple[str, str], Record] = {}
     for record in records:
-        counts.setdefault(record.stage, Counter())[record.status] += 1
         latest_by_key[(record.slug, record.stage)] = record
+    counts: dict[str, Counter[str]] = {stage: Counter() for stage in STAGES}
+    for (_, stage), record in latest_by_key.items():
+        counts.setdefault(stage, Counter())[record.status] += 1
 
     lines = ["stage      ok  error  skipped"]
     for stage, tally in counts.items():

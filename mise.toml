@@ -117,7 +117,7 @@ description = "Diagnostic probes on one capture/render pair (mise run parity-pro
 run = "uv run python python/scripts/parity_probe.py"
 
 [tasks.batch-parity]
-description = "Batch parity survey: every distinct corpus film through archive, capture, render and score, resumable from a ledger (mise run batch-parity -- [--only SLUG,...] [--limit N] [--stages archive,capture,render,score] [--retry-errors] [--summary] [--archive-timeout S] [--capture-timeout S] [--data-root DIR])"
+description = "Batch parity survey: every distinct corpus film through archive, capture, render and score, resumable from a ledger (mise run batch-parity -- [--only SLUG,...] [--limit N] [--stages archive,capture,render,score] [--retry-errors] [--summary] [--skip SLUG,...] [--jobs N] [--max-renders N] [--min-free-gb GB] [--archive-timeout S] [--capture-timeout S] [--data-root DIR])"
 run = "uv run python python/scripts/batch_parity.py"
 
 [tasks.verify-docs]

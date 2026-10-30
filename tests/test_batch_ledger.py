@@ -59,6 +59,17 @@ def test_latest_returns_the_last_record_for_slug_and_stage() -> None:
     assert batch_ledger.latest(records, "a", "score") is None
 
 
+def test_summarize_counts_the_latest_record_per_slug_and_stage() -> None:
+    records = [
+        _record("a", "capture", "error", "timeout"),
+        _record("a", "capture", "ok"),
+    ]
+    capture_row = next(
+        line for line in batch_ledger.summarize(records).splitlines() if line.startswith("capture")
+    )
+    assert capture_row.split() == ["capture", "1", "0", "0"]
+
+
 def test_summarize_lists_each_failed_slug_once_with_its_stage() -> None:
     records = [
         _record("vault-ctry", "capture", "error", "timeout"),
