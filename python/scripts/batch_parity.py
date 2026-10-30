@@ -84,6 +84,7 @@ def process(
                 break
             if stage == "score":
                 _copy_contact_sheets(film.slug, root)
+                _drop_render(film.slug, root)
     return errors
 
 
@@ -94,6 +95,11 @@ def _copy_contact_sheets(slug: str, root: Path) -> None:
     frames.mkdir(parents=True, exist_ok=True)
     for sheet in sorted((film_dir / "report").glob("*.png")):
         shutil.copy2(sheet, frames / sheet.name)
+
+
+def _drop_render(slug: str, root: Path) -> None:
+    """Delete the film's rendered frames; they run to gigabytes and the report and sheets are kept."""
+    shutil.rmtree(root / parity_layout.batch_film_dir(slug) / "render", ignore_errors=True)
 
 
 def _report(record: Record) -> None:
