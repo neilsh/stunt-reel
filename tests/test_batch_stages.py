@@ -96,6 +96,25 @@ def test_capture_command_uses_the_film_path(tmp_path: Path) -> None:
     assert command[command.index("--name") + 1] == "x-y"
 
 
+def test_capture_frames_adds_the_sample_flag_only_when_positive(tmp_path: Path) -> None:
+    full = FakeRunner()
+    batch_stages.run_capture(_film(tmp_path), tmp_path, full, 900.0)
+    assert "--sample-frames" not in full.calls[0][0]
+
+    sampled = FakeRunner()
+    batch_stages.run_capture(_film(tmp_path), tmp_path, sampled, 900.0, frames=40)
+    command, _ = sampled.calls[0]
+    assert command[command.index("--sample-frames") + 1] == "40"
+
+
+def test_a_known_stall_is_a_skipped_capture_record(tmp_path: Path) -> None:
+    record = batch_stages.skip_stalled_capture(_film(tmp_path))
+    assert (record.stage, record.status) == ("capture", "skipped")
+    assert record.message == "known capture stall"
+    assert "amcrisis-ac" in batch_stages.KNOWN_CAPTURE_STALLS
+    assert len(batch_stages.KNOWN_CAPTURE_STALLS) == 6
+
+
 def test_render_without_a_capture_is_an_error_naming_capture(tmp_path: Path) -> None:
     runner = FakeRunner()
     record = batch_stages.run_render(_film(tmp_path), tmp_path, runner, 600.0)

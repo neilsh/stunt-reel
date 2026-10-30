@@ -35,10 +35,14 @@ class FakeStages:
     def __init__(self) -> None:
         self.failing: set[tuple[str, str]] = set()
         self.calls: list[tuple[str, str]] = []
+        self.options: list[dict[str, int]] = []
 
     def factory(self, stage: str) -> StageFunction:
-        def run_stage(film: BatchFilm, _root: Path, _run: Runner, _timeout: float) -> Record:
+        def run_stage(
+            film: BatchFilm, _root: Path, _run: Runner, _timeout: float, **options: int
+        ) -> Record:
             self.calls.append((film.slug, stage))
+            self.options.append(options)
             failed = (film.slug, stage) in self.failing
             return Record(
                 slug=film.slug,
@@ -80,6 +84,8 @@ def _process(
     stages: tuple[str, ...] = STAGES,
     retry_errors: bool = False,
     limit: int | None = None,
+    skip: frozenset[str] = frozenset(),
+    capture_frames: int = 0,
 ) -> int:
     return batch_parity.process(
         films,
@@ -90,6 +96,8 @@ def _process(
         retry_errors=retry_errors,
         limit=limit,
         timeouts=TIMEOUTS,
+        skip=skip,
+        capture_frames=capture_frames,
     )
 
 
@@ -224,3 +232,88 @@ def test_rendered_frames_are_deleted_after_a_successful_score(
     (render / "tick_00001.idx").write_bytes(b"x")
     _process([_film("a-film")], tmp_path)
     assert not render.exists()
+
+
+def test_capture_frames_reach_only_the_capture_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _install(monkeypatch)
+    _process([_film("a-film")], tmp_path, capture_frames=40)
+    assert fake.options == [{}, {"frames": 40}, {}, {}]
+
+
+def test_a_known_stall_is_recorded_skipped_and_stops_that_film(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _install(monkeypatch)
+    films = [_film("amcrisis-ac"), _film("a-film")]
+    assert _process(films, tmp_path, skip=frozenset({"amcrisis-ac"})) == 0
+    assert fake.calls == [
+        ("amcrisis-ac", "archive"),
+        ("a-film", "archive"),
+        ("a-film", "capture"),
+        ("a-film", "render"),
+        ("a-film", "score"),
+    ]
+    ledger = tmp_path / "ledger.jsonl"
+    stalled = batch_ledger.latest(batch_ledger.read(ledger), "amcrisis-ac", "capture")
+    assert stalled is not None
+    assert (stalled.status, stalled.message) == ("skipped", "known capture stall")
+
+    # A second run neither repeats the record nor runs the later stages.
+    _process(films, tmp_path, skip=frozenset({"amcrisis-ac"}))
+    assert len(fake.calls) == 5
+    assert [r.stage for r in batch_ledger.read(ledger) if r.slug == "amcrisis-ac"] == [
+        "archive",
+        "capture",
+    ]
+
+
+def test_a_film_that_leaves_the_skip_list_captures_despite_its_skipped_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _install(monkeypatch)
+    films = [_film("amcrisis-ac")]
+    _process(films, tmp_path, stages=("capture",), skip=frozenset({"amcrisis-ac"}))
+    assert fake.calls == []
+    _process(films, tmp_path, stages=("capture", "render"))
+    assert fake.calls == [("amcrisis-ac", "capture"), ("amcrisis-ac", "render")]
+
+
+def _corpus(root: Path) -> None:
+    for folder, stem in (("AMCRISIS", "AC"), ("VAULT", "CTRY")):
+        (root / "corpus" / folder).mkdir(parents=True)
+        (root / "corpus" / folder / f"{stem}.FLM").write_bytes(stem.encode())
+
+
+def test_main_skips_known_stalls_unless_only_or_retry_errors_name_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _install(monkeypatch)
+    _corpus(tmp_path)
+    monkeypatch.setattr(batch_parity, "_run_command", _no_process)
+    root = ["--data-root", str(tmp_path), "--stages", "capture"]
+
+    assert batch_parity.main(root) == 0
+    assert fake.calls == [("vault-ctry", "capture")]
+    assert fake.options == [{"frames": 40}]
+
+    assert batch_parity.main([*root, "--only", "amcrisis-ac", "--capture-frames", "0"]) == 0
+    assert fake.calls[-1] == ("amcrisis-ac", "capture")
+    assert fake.options[-1] == {}
+
+    (tmp_path / parity_layout.batch_root() / "ledger.jsonl").unlink()
+    fake.calls.clear()
+    assert batch_parity.main([*root, "--retry-errors"]) == 0
+    assert {slug for slug, _ in fake.calls} == {"amcrisis-ac", "vault-ctry"}
+
+
+def test_skip_flag_adds_slugs_to_the_default_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _install(monkeypatch)
+    _corpus(tmp_path)
+    monkeypatch.setattr(batch_parity, "_run_command", _no_process)
+    args = ["--data-root", str(tmp_path), "--stages", "capture", "--skip", "vault-ctry"]
+    assert batch_parity.main(args) == 0
+    assert fake.calls == []

@@ -3,6 +3,7 @@
 Usage:
     mise run batch-parity -- [--only SLUG,...] [--limit N] [--stages archive,capture,render,score]
         [--retry-errors] [--summary] [--archive-timeout S] [--capture-timeout S] [--data-root DIR]
+        [--capture-frames K] [--skip SLUG,...]
 
 Every stage outcome is appended to the ledger under the data root (`batch_root()/ledger.jsonl`).
 A stage whose latest record is ok or skipped is not repeated, so rerunning the same command resumes
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import os
 import shutil
 import signal
@@ -40,6 +42,7 @@ __all__ = ["main", "process"]
 
 _LEDGER_NAME = "ledger.jsonl"
 _DEFAULT_TIMEOUT = 900.0
+_DEFAULT_CAPTURE_FRAMES = 40
 _RENDER_TIMEOUT = 600.0
 _TIMEOUT_EXIT = 124
 
@@ -65,8 +68,15 @@ def process(
     retry_errors: bool,
     limit: int | None,
     timeouts: dict[str, float],
+    skip: frozenset[str] = frozenset(),
+    capture_frames: int = 0,
 ) -> int:
-    """Run the requested stages of each film in turn; return how many stage errors this call recorded."""
+    """Run the requested stages of each film in turn; return how many stage errors this call recorded.
+
+    A film in *skip* gets a ``skipped`` capture record in place of its capture and runs no later
+    stage; a film outside it ignores such a record, so leaving the list lets it capture.
+    *capture_frames* samples that many frames per capture (0 captures every frame).
+    """
     records = read(ledger)
     errors = 0
     for film in films[:limit]:
@@ -74,11 +84,25 @@ def process(
             if stage not in stages:
                 continue
             prior = latest(records, film.slug, stage)
+            if stage == "capture":
+                stalled = prior is not None and prior.message == batch_stages.KNOWN_STALL_MESSAGE
+                if film.slug in skip and (prior is None or stalled):
+                    if prior is None:
+                        record = batch_stages.skip_stalled_capture(film)
+                        append(ledger, record)
+                        records.append(record)
+                        _report(record)
+                    break
+                if stalled:
+                    prior = None  # the film left the skip list: capture it after all
             if prior is not None and prior.status != "error":
                 continue
             if prior is not None and not retry_errors:
                 break
-            record = _stage_function(stage)(film, root, run, timeouts[stage])
+            function = _stage_function(stage)
+            if stage == "capture" and capture_frames > 0:
+                function = functools.partial(batch_stages.run_capture, frames=capture_frames)
+            record = function(film, root, run, timeouts[stage])
             append(ledger, record)
             records.append(record)
             _report(record)
@@ -175,6 +199,17 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--capture-timeout", type=float, default=_DEFAULT_TIMEOUT, help="seconds per capture"
     )
     parser.add_argument(
+        "--capture-frames",
+        type=int,
+        default=_DEFAULT_CAPTURE_FRAMES,
+        help="frames sampled per film, spread over its whole length; 0 captures every frame",
+    )
+    parser.add_argument(
+        "--skip",
+        default=None,
+        help="comma list of film slugs whose capture is skipped, added to the known stalls",
+    )
+    parser.add_argument(
         "--data-root", type=Path, default=REPO_ROOT, help="checkout holding corpus/ and captures"
     )
     return parser.parse_args(argv)
@@ -211,6 +246,8 @@ def main(argv: list[str] | None = None) -> int:
         "render": _RENDER_TIMEOUT,
         "score": _RENDER_TIMEOUT,
     }
+    known = () if args.retry_errors else batch_stages.KNOWN_CAPTURE_STALLS
+    skip = frozenset({*known, *_names(args.skip)} - wanted)
     errors = process(
         films,
         root,
@@ -220,6 +257,8 @@ def main(argv: list[str] | None = None) -> int:
         retry_errors=args.retry_errors,
         limit=args.limit,
         timeouts=timeouts,
+        skip=skip,
+        capture_frames=args.capture_frames,
     )
     print(f"batch-parity: {len(films)} films, {errors} new stage errors; ledger {ledger}")
     return 0

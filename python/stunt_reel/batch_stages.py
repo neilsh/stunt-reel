@@ -25,7 +25,16 @@ from stunt_reel.parity_pipeline import RENDER_FLAGS, binary_path
 if TYPE_CHECKING:
     from stunt_reel.batch_films import BatchFilm
 
-__all__ = ["Runner", "run_archive", "run_capture", "run_render", "run_score"]
+__all__ = [
+    "KNOWN_CAPTURE_STALLS",
+    "KNOWN_STALL_MESSAGE",
+    "Runner",
+    "run_archive",
+    "run_capture",
+    "run_render",
+    "run_score",
+    "skip_stalled_capture",
+]
 
 #: Runs one command with a timeout in seconds; returns the exit code and the tail of its output.
 Runner = Callable[[list[str], float], tuple[int, str]]
@@ -35,6 +44,18 @@ _MAKE_ALL = Path("python/scripts/make_all.py")
 ARCHIVE_CONF = Path("tools/dosbox/dosbox-archive.conf")
 _CAPTURE = Path("python/scripts/capture_playone_reference.py")
 _SIDATA = Path("corpus/siarchive/Developer/FreeFlight/SIDATA")
+#: Films whose capture never starts the film (``no new frame after 2001 trap hits``), about 207 s
+#: each before giving up (research/parity/batch.md); the survey skips them by default.
+KNOWN_CAPTURE_STALLS: tuple[str, ...] = (
+    "amcrisis-ac",
+    "collage4-exit",
+    "collage4-exit2",
+    "egalloc-egalloc0",
+    "egalloc-egalloc5",
+    "flmonly-bigman",
+)
+#: The message of the ``skipped`` capture record a known stall gets.
+KNOWN_STALL_MESSAGE = "known capture stall"
 _TAIL_WIDTH = 400
 #: Seconds make_all's own timeout precedes the runner's kill, so it can stop DOSBox-X itself.
 _TEARDOWN_MARGIN = 90
@@ -60,12 +81,25 @@ def run_archive(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Rec
     return _execute(film, "archive", command, timeout, run, started)
 
 
-def run_capture(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Record:
-    """Capture the reference frames of the film with ``capture_playone_reference.py``."""
+def skip_stalled_capture(film: BatchFilm) -> Record:
+    """The ``skipped`` capture record of a film known to stall, without starting an emulator."""
+    return _record(film, "capture", "skipped", KNOWN_STALL_MESSAGE, time.perf_counter())
+
+
+def run_capture(
+    film: BatchFilm, root: Path, run: Runner, timeout: float, *, frames: int = 0
+) -> Record:
+    """Capture the reference frames of the film with ``capture_playone_reference.py``.
+
+    A positive *frames* samples about that many frames spread over the whole film
+    (``--sample-frames``); ``0`` captures every frame.
+    """
     started = time.perf_counter()
     command = [sys.executable, str(root / _CAPTURE), "--film", str(film.flm)]
     if film.name is not None:
         command += ["--name", film.name]
+    if frames > 0:
+        command += ["--sample-frames", str(frames)]
     return _execute(film, "capture", command, timeout, run, started)
 
 
