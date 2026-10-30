@@ -350,6 +350,19 @@ def test_convert_layout_refuses_a_root_holding_both_names(tmp_path: Path) -> Non
     root = tmp_path / "stunt-reel.data"
     _old_layout(root)
     (root / "corpus").mkdir()
+    (root / "corpus" / "README.md").write_text("new", encoding="utf-8")
     with pytest.raises(dataroot.SharedDataError, match="both old names"):
         dataroot.convert_layout(root)
     assert (root / "stisldem" / "A.TXT").is_file()  # nothing moved
+
+
+def test_convert_layout_accepts_the_empty_directories_a_read_created(tmp_path: Path) -> None:
+    # ensure_links creates corpus/<name> and captures empty when a read precedes --migrate.
+    root = tmp_path / "stunt-reel.data"
+    _old_layout(root)
+    (root / "corpus" / "stuntisl").mkdir(parents=True)
+    (root / "captures").mkdir()
+    dataroot.convert_layout(root)
+    assert (root / "corpus" / "stuntisl" / "PLAYONE.EXE").is_file()
+    assert not (root / "corpus" / "stuntisl" / "stuntisl").exists()
+    assert (root / "captures" / "ctry" / dataroot.LEGACY_CAPTURE_ID / "meta.json").is_file()

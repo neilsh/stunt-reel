@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import logging
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -134,7 +135,9 @@ def run(args: argparse.Namespace) -> int:
         or parity_layout.capture_path(
             film.stem,
             parity_layout.new_capture_id(
-                datetime.now(UTC).date(), dataroot.REPO_ROOT.name, flm_sha256
+                datetime.now(UTC).date(),
+                re.sub(r"[^A-Za-z0-9._-]", "-", dataroot.REPO_ROOT.name),
+                flm_sha256,
             ),
         )
     )

@@ -360,6 +360,11 @@ def shared_target(relative: str) -> Path:
     raise KeyError(f"{relative} is not one of LINK_TARGETS")
 
 
+def _holds_files(path: Path) -> bool:
+    """True when *path* is a file or a directory tree containing one."""
+    return path.is_file() or (path.is_dir() and any(item.is_file() for item in path.rglob("*")))
+
+
 def convert_layout(root: Path) -> list[str]:
     """Convert an old-layout data root to the corpus/captures layout (ADR 0022); say what moved.
 
@@ -368,18 +373,23 @@ def convert_layout(root: Path) -> list[str]:
     ``corpus/patches``.  The top-level ``target_bin/PLAYONE.EXE`` is dropped when it is
     byte-identical to ``StuntIsl``'s, and ``oracle`` is deleted: it was generated, not
     evidence.  ``reference/<film>`` becomes ``captures/<film>/`` + :data:`LEGACY_CAPTURE_ID`.
-    A root already in the new layout is left alone; one holding both an old and a new name
-    is refused before anything moves, because merging them would guess which side is right.
+    A root already in the new layout is left alone; one holding both an old name and a new
+    name with files in it is refused before anything moves, because merging them would guess which side is right.
     """
     old = [name for name in _OLD_NAMES if (root / name).exists()]
     if not old:
         return []
-    new = [name for name in ("corpus", "captures") if (root / name).exists()]
+    # A read before the migration (capture-ref, parity) makes ensure_links create the new
+    # directories empty; those are not data, so only a new name holding files is a conflict.
+    new = [name for name in ("corpus", "captures") if _holds_files(root / name)]
     if new:
         raise SharedDataError(
             f"{root} holds both old names ({', '.join(old)}) and new ones ({', '.join(new)}); "
             "merge them by hand"
         )
+    for name in ("corpus", "captures"):
+        if (root / name).is_dir():
+            shutil.rmtree(root / name)
     moves: list[tuple[Path, Path]] = []
     for name, destination in (("stisldem", "stisldem"), ("si_archive", "siarchive")):
         if (root / name).exists():
