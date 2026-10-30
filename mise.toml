@@ -113,7 +113,7 @@ description = "Verify the formats catalog: structure, evidentiary tiers, links, 
 run = "uv run python python/scripts/verify_formats_docs.py"
 
 [tasks.unlzexe]
-description = "Unpack PLAYONE.EXE with LZEXE 0.91 (mise run unlzexe -- target_bin/PLAYONE.EXE build/re/playone.img [--mz])"
+description = "Unpack PLAYONE.EXE with LZEXE 0.91 (mise run unlzexe -- corpus/stuntisl/PLAYONE.EXE build/re/playone.img [--mz])"
 run = "uv run python python/scripts/unlzexe.py"
 
 [tasks.probe-light]

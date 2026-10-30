@@ -26,7 +26,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from stunt_reel import parity_layout
+from stunt_reel import references
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.parity_artifacts import (
     RENDER_SUFFIXES,
@@ -78,19 +78,14 @@ class Film:
     flm: str
     all: str
     sidata: str
-    reference: Path
 
 
 _VAULT = "corpus/stisldem/VAULT"
 _SIDATA = "corpus/siarchive/Developer/FreeFlight/SIDATA"
 #: Per-film inputs (research/parity/method.md section 1, attribution.md, framing-and-actors.md).
 FILMS: dict[str, Film] = {
-    "ctry": Film(
-        f"{_VAULT}/CTRY.FLM", f"{_VAULT}/CTRY.ALL", _SIDATA, parity_layout.capture_dir("ctry")
-    ),
-    "intro": Film(
-        f"{_VAULT}/INTRO.FLM", f"{_VAULT}/INTRO.ALL", _SIDATA, parity_layout.capture_dir("intro")
-    ),
+    "ctry": Film(f"{_VAULT}/CTRY.FLM", f"{_VAULT}/CTRY.ALL", _SIDATA),
+    "intro": Film(f"{_VAULT}/INTRO.FLM", f"{_VAULT}/INTRO.ALL", _SIDATA),
 }
 
 
@@ -260,9 +255,10 @@ def preflight(
         for path in (film.flm, film.all, film.sidata):
             if not (root / path).exists():
                 problems.append(f"missing input {root / path} (try --data-root)")
-        reference = root / film.reference
-        if not (reference / "meta.json").is_file():
-            problems.append(f"missing capture {reference} (run `mise run capture-ref`)")
+        try:
+            references.reference_dir(root, name)
+        except references.ReferenceCaptureError as err:
+            problems.append(str(err))
     if build_required and locked(binary_path()):
         problems.append("release binary is in use; rerun with --no-build or wait")
     return problems
@@ -299,7 +295,7 @@ def check_render(reference: Path, render: Path, ticks: Iterable[int]) -> None:
 
 def check_film(film: str, root: Path, render: Path) -> None:
     """Refuses a render of ``film`` that cannot be scored against its capture."""
-    reference = root / FILMS[film].reference
+    reference = references.reference_dir(root, film)
     check_render(reference, render, [frame.film_tick for frame in read_capture(reference).frames])
 
 
@@ -325,7 +321,8 @@ def render_film(
             *(
                 "--frames",
                 frames_for_captured_ticks(
-                    frame.film_tick for frame in read_capture(root / entry.reference).frames
+                    frame.film_tick
+                    for frame in read_capture(references.reference_dir(root, film)).frames
                 ),
                 "--sidata",
                 str(root / entry.sidata),
@@ -369,7 +366,7 @@ def score_film(
                 str(binary_path()),
                 "parity",
                 "--reference",
-                str(root / FILMS[film].reference),
+                str(references.reference_dir(root, film)),
                 "--test",
                 str(scored),
             ),
@@ -398,7 +395,7 @@ def _relabel(film: str, root: Path, render: Path, request: Retime) -> RetimeResu
     shutil.rmtree(request.out, ignore_errors=True)
     return retime_render(
         render,
-        root / FILMS[film].reference,
+        references.reference_dir(root, film),
         request.out,
         request.by,
         force=True,

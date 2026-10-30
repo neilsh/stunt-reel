@@ -619,7 +619,7 @@ def verify_link_integrity(repo_root: Path) -> VerificationResult:
                     continue
 
                 # Gitignored data trees exist only on developer machines
-                if url.startswith(("corpus/", "target_bin/")):
+                if url.startswith("corpus/"):
                     continue
 
                 links_checked += 1

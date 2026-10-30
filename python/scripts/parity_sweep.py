@@ -38,7 +38,7 @@ from pathlib import Path
 import parity_probe
 from cli import add_parity_options, parity_options
 
-from stunt_reel import parity_layout
+from stunt_reel import parity_layout, references
 from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.parity_artifacts import (
     Geometry,
@@ -179,7 +179,7 @@ def write_crops(
     written: list[Path] = []
     for name in films:
         report_json = workdir / f"{name}_report" / "report.json"
-        reference, render = root / FILMS[name].reference, renders[name]
+        reference, render = references.reference_dir(root, name), renders[name]
         capture = read_capture(reference)
         geometry = open_render(render).geometry or capture.geometry
         best: tuple[int, int, int, list[int]] | None = None
@@ -244,7 +244,7 @@ def with_actor_iou(attempt: FilmScore, root: Path) -> Score:
     """Adds ``parity_probe``'s actor-window IoU to one pipeline score."""
     actor, _ = parity_probe.actor_iou(
         attempt.report / "report.json",
-        root / FILMS[attempt.film].reference,
+        references.reference_dir(root, attempt.film),
         attempt.render,
     )
     return Score(attempt.score.ssim, attempt.score.iou, actor)

@@ -1,0 +1,10 @@
+# The capture parity scores each film against (ADR 0022). A capture is named by id and by the
+# hash of its content; promoting a new reference is an edit of this file in a reviewed commit.
+
+[ctry]
+capture = "legacy-2026-10-24"
+sha256 = "ae815140e52c86d6fb1add177684c8d203730187436071c4519e1cfad226a994"
+
+[intro]
+capture = "legacy-2026-10-24"
+sha256 = "40e1b428e145e854fea0318aa6a8a2242aacba27abd1e53fe5406ca8f4caeae8"

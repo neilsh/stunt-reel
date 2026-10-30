@@ -3,7 +3,7 @@
 Covers the move from the old script-owned loop (dialog settle, BDA confirmation,
 trap, sampling, teardown) to run_session plus the capture sampler: artifact bytes,
 meta ordering, the clock-hold stop, lazy/stale pages, palette fallback, granular
-errors, staging, the shared-write gate and the emulator lifecycle. DOSBox-X is
+errors, staging and the emulator lifecycle. DOSBox-X is
 never launched and no control port is bound.
 """
 
@@ -21,7 +21,6 @@ from typing import Any
 import pytest
 
 from stunt_reel import dataroot, parity_layout
-from stunt_reel.dataroot import SharedWriteError
 from stunt_reel.parity_artifacts import FilmId
 from stunt_reel.tac import staging
 from stunt_reel.tac.emulator import (
@@ -72,7 +71,6 @@ def _run_capture(
 ) -> dict[str, Any]:
     return run_session(
         repo.film,
-        repo.out,
         sample=lambda session: capture(session, repo.out, max_frames, film=film),
         conf=repo.conf,
         dgroup_segment=dgroup_segment,
@@ -202,7 +200,6 @@ def test_run_session_settles_and_injects_dialog_keys(staged_repo: StagedRepo) ->
 
     run_session(
         staged_repo.film,
-        staged_repo.out,
         sample=sample,
         conf=staged_repo.conf,
         emulator=MockEmulator(guest.mock),
@@ -224,7 +221,6 @@ def test_page_properties_are_lazy(staged_repo: StagedRepo) -> None:
 
     run_session(
         staged_repo.film,
-        staged_repo.out,
         sample=sample,
         conf=staged_repo.conf,
         emulator=MockEmulator(guest.mock),
@@ -250,7 +246,6 @@ def test_page_is_stale_after_next_frame_and_session_end(staged_repo: StagedRepo)
 
     run_session(
         staged_repo.film,
-        staged_repo.out,
         sample=sample,
         conf=staged_repo.conf,
         emulator=MockEmulator(CaptureGuest().mock),
@@ -284,7 +279,6 @@ def test_dialog_never_settling_reports_granular_error(staged_repo: StagedRepo) -
     with pytest.raises(DialogUnsettled, match="never settled after 600 dumps"):
         run_session(
             staged_repo.film,
-            staged_repo.out,
             sample=lambda _session: None,
             conf=staged_repo.conf,
             emulator=emulator,
@@ -301,7 +295,6 @@ def test_short_dump_during_settle_raises(staged_repo: StagedRepo) -> None:
     with pytest.raises(ShortDump, match="expected 64000"):
         run_session(
             staged_repo.film,
-            staged_repo.out,
             sample=lambda _session: None,
             conf=staged_repo.conf,
             emulator=MockEmulator(mock),
@@ -327,7 +320,6 @@ def test_probe_samples_only_requested_ticks(staged_repo: StagedRepo) -> None:
 
     run_session(
         staged_repo.film,
-        staged_repo.out,
         sample=probe,
         conf=staged_repo.conf,
         emulator=MockEmulator(guest.mock),
@@ -346,7 +338,6 @@ def test_raising_callback_still_stops_the_emulator(staged_repo: StagedRepo) -> N
     with pytest.raises(RuntimeError, match="sampler failed") as info:
         run_session(
             staged_repo.film,
-            staged_repo.out,
             sample=sample,
             conf=staged_repo.conf,
             emulator=emulator,
@@ -382,7 +373,6 @@ def test_emulator_exit_status_is_attached_to_the_propagating_error(
     with pytest.raises(RuntimeError, match="sampler failed") as info:
         run_session(
             staged_repo.film,
-            staged_repo.out,
             sample=sample,
             conf=staged_repo.conf,
             emulator=CrashedEmulator(CaptureGuest().mock),
@@ -421,7 +411,6 @@ def test_a_callback_error_outranks_a_teardown_error(staged_repo: StagedRepo) -> 
     with pytest.raises(RuntimeError, match="sampler failed"):
         run_session(
             staged_repo.film,
-            staged_repo.out,
             sample=sample,
             conf=staged_repo.conf,
             emulator=QuietEmulator(transport),
@@ -456,7 +445,6 @@ def test_a_failing_teardown_still_removes_the_staged_mount(staged_repo: StagedRe
     with pytest.raises(RuntimeError, match="teardown failed"):
         run_session(
             staged_repo.film,
-            staged_repo.out,
             sample=lambda _session: None,
             conf=staged_repo.conf,
             emulator=QuietEmulator(transport),
@@ -498,7 +486,6 @@ def test_teardown_closes_the_transport_before_stopping_the_emulator(
 
     run_session(
         staged_repo.film,
-        staged_repo.out,
         sample=lambda _session: None,
         conf=staged_repo.conf,
         emulator=RecordingEmulator(transport),
@@ -664,7 +651,6 @@ def test_raising_callback_releases_the_port(staged_repo: StagedRepo) -> None:
     with pytest.raises(RuntimeError, match="sampler failed"):
         run_session(
             staged_repo.film,
-            staged_repo.out,
             sample=sample,
             conf=staged_repo.conf,
             emulator=PortEmulator(transport),
@@ -676,7 +662,7 @@ def test_raising_callback_releases_the_port(staged_repo: StagedRepo) -> None:
 
 
 # ==============================================================================
-# Staging and the shared-write gate
+# Staging
 # ==============================================================================
 
 
@@ -713,7 +699,6 @@ def test_a_finished_session_removes_its_staged_mount(staged_repo: StagedRepo) ->
     """Each session owns a mount, so none may survive the run that made it."""
     run_session(
         staged_repo.film,
-        staged_repo.out,
         sample=lambda _session: None,
         conf=staged_repo.conf,
         emulator=capture_emulator(),
@@ -728,7 +713,6 @@ def test_a_no_launch_session_stages_nothing(staged_repo: StagedRepo) -> None:
     """--no-launch attaches to a running emulator, which mounted its own tree already."""
     run_session(
         staged_repo.film,
-        staged_repo.out,
         sample=lambda _session: None,
         conf=staged_repo.conf,
         no_launch=True,
@@ -775,44 +759,6 @@ def test_staging_requires_the_all_sibling(staged_repo: StagedRepo) -> None:
     staged_repo.film.with_suffix(".ALL").unlink()
     with pytest.raises(FileNotFoundError, match=r"\.ALL must sit together"):
         staging.stage_film(staged_repo.film, staged_repo.conf)
-
-
-def test_shared_write_gate_refuses_before_launch(
-    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """run_session refuses a shared output root once, before staging or launch."""
-    monkeypatch.delenv(dataroot.WRITE_ENV, raising=False)
-    shared = dataroot.data_root() / "reference" / "ctry"
-    emulator = capture_emulator()
-
-    with pytest.raises(SharedWriteError, match=dataroot.WRITE_ENV):
-        run_session(
-            staged_repo.film,
-            shared,
-            sample=lambda _session: None,
-            conf=staged_repo.conf,
-            emulator=emulator,
-        )
-    assert not emulator.started
-
-
-def test_shared_write_gate_allows_an_opted_in_run(
-    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """STUNT_DATA_WRITE=1 opens the shared root for a capture session."""
-    monkeypatch.setenv(dataroot.WRITE_ENV, "1")
-    shared = dataroot.data_root() / "reference" / "ctry"
-    emulator = capture_emulator()
-
-    result = run_session(
-        staged_repo.film,
-        shared,
-        sample=lambda _session: "sampled",
-        conf=staged_repo.conf,
-        emulator=emulator,
-    )
-    assert result == "sampled"
-    assert emulator.started
 
 
 # ==============================================================================
@@ -888,6 +834,29 @@ def test_capture_script_requires_a_port_to_attach(
     assert "--port" in capsys.readouterr().err
 
 
+def test_capture_script_never_writes_over_a_capture(
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    """An --out that already holds a capture is refused before any emulator starts (ADR 0022)."""
+    module = _load_script("capture_playone_reference")
+    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "meta.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, out))
+
+    def no_session(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("a taken capture directory must not start a session")
+
+    monkeypatch.setattr(module, "run_session", no_session)
+    assert module.run(module.parse_args()) == 2
+    assert "never written over" in capsys.readouterr().err
+    assert (out / "meta.json").read_text(encoding="utf-8") == "{}"
+
+
 def test_capture_script_failure_lines_and_exit_codes(
     staged_repo: StagedRepo,
     monkeypatch: pytest.MonkeyPatch,
@@ -906,11 +875,6 @@ def test_capture_script_failure_lines_and_exit_codes(
             raise error
 
         monkeypatch.setattr(module, "run_session", stub)
-
-    shared = SharedWriteError("the capture session writes the shared data root")
-    stub_raises(shared)
-    assert module.run(args) == 2
-    assert capsys.readouterr().err == f"[capture] {shared}\n"
 
     taken = PortTaken(
         0, OSError(10013, "an attempt was made to access a socket in a way forbidden")
@@ -1017,11 +981,6 @@ def test_probe_script_failure_lines_and_exit_codes(
             raise error
 
         monkeypatch.setattr(module, "run_session", stub)
-
-    shared = SharedWriteError("the capture session writes the shared data root")
-    stub_raises(shared)
-    assert module.run(args) == 2
-    assert capsys.readouterr().err == f"[probe] {shared}\n"
 
     missing = EmulatorUnavailable("dosbox-x is not on PATH")
     stub_raises(missing)

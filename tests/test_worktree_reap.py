@@ -111,7 +111,7 @@ def test_unlinking_keeps_the_target_and_clears_every_link(tmp_path: Path) -> Non
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     _junction(checkout / "corpus", target)
-    _junction(checkout / "target_bin", target)
+    _junction(checkout / "captures", target)
     assert worktree_init._unlink_reparse_points(checkout) == []
     assert worktree_init._reparse_points(checkout) == []
     assert (target / "keep.txt").read_text(encoding="utf-8") == "keep"

@@ -96,7 +96,7 @@ def test_cited_anchors_are_registered() -> None:
     )
 
 
-LINK_SKIPPED_DIRS = SKIPPED_DIRS | {".git", "corpus", "target_bin", "worktrees"}
+LINK_SKIPPED_DIRS = SKIPPED_DIRS | {".git", "corpus", "worktrees"}
 MARKDOWN_LINK_REGEX = re.compile(r"!?\[[^\]\n]*\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)")
 HTML_ID_REGEX = re.compile(r"<a\s+(?:name|id)=\"([^\"]+)\"")
 CODE_DOC_PATH_REGEX = re.compile(r"(?<![\w./-])((?:research|docs)/[\w./-]+?\.md)\b")

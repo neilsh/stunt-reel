@@ -226,7 +226,7 @@ Commit subjects: `test(parity): pin both artifact adapters with a shared corpus`
 - Before handoff: `mise run check` (format, lint, typecheck, Rust and Python tests, rustdoc,
   no-default-features matrix).
 - After a test run, `git status` must show the fixture files unchanged: tests read, never write.
-- No test may require `corpus/`, `target_bin/` or `build/parity`.
+- No test may require `corpus/` or `build/parity`.
 
 ## 9. Notes and risks
 

@@ -5,13 +5,13 @@ analysis, not a copy or distribution of LZEXE.
 
 Writes the unpacked load image (no MZ header) to ``out`` and ``out.json`` holding the entry
 registers, image size and relocation linear offsets. Reads a proprietary executable from the
-local, gitignored ``target_bin/``; nothing it produces is committed (see ``AGENTS.md``).
+local, gitignored ``corpus/stuntisl/``; nothing it produces is committed (see ``AGENTS.md``).
 
-Usage: ``python python/scripts/unlzexe.py target_bin/PLAYONE.EXE build/re/playone.img``
+Usage: ``python python/scripts/unlzexe.py corpus/stuntisl/PLAYONE.EXE build/re/playone.img``
 
 With ``--mz`` the output is instead a complete unpacked MZ executable (header plus image), for
 tools such as Ghidra that load MZ files:
-``python python/scripts/unlzexe.py --mz target_bin/PLAYONE.EXE build/re/playone_unpacked.exe``
+``python python/scripts/unlzexe.py --mz corpus/stuntisl/PLAYONE.EXE build/re/playone_unpacked.exe``
 """
 
 from __future__ import annotations
@@ -21,6 +21,8 @@ import struct
 import sys
 from pathlib import Path
 from typing import cast
+
+from stunt_reel.dataroot import ensure_links_or_report
 
 
 def _relocations(d: bytes, loader: int) -> list[int]:
@@ -152,6 +154,8 @@ def main(argv: list[str]) -> int:
     argv = [a for a in argv if a != "--mz"]
     if len(argv) != 3:
         print(__doc__)
+        return 2
+    if not ensure_links_or_report("unlzexe"):
         return 2
     image, meta = unpack(Path(argv[1]).read_bytes())
     out = Path(argv[2])

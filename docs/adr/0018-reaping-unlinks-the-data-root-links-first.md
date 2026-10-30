@@ -7,8 +7,9 @@ accepted; `mise run reap` is the only supported way to remove a worktree.
 ## Context
 
 [ADR 0008](0008-worktrees-share-one-read-only-data-root.md) links the shared data root
-into every worktree with junctions, so `corpus/`, `target_bin/` and
-`build/parity/reference/` work unchanged. A linked worktree therefore holds six reparse
+into every worktree with junctions, so `corpus/` and
+`build/parity/captures/` work unchanged (the links were `corpus/`, `target_bin/` and
+`build/parity/reference/` until [ADR 0022](0022-captures-are-add-only-beside-a-read-only-corpus.md); reaping unlinks any reparse point, so it serves either set). A linked worktree therefore holds several reparse
 points whose targets live outside it, and `mise run init` recreates them on demand.
 
 Removing that worktree is not one operation. `git worktree remove` is the documented

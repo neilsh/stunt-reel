@@ -8,7 +8,7 @@ Line. "Stunt Island" and related marks are trademarks of The Walt Disney Company
 ## No game assets
 
 No game executables, films, archives, artwork, audio, or manual scans are distributed
-here. `corpus/` and `target_bin/` are gitignored, and you must supply your own lawfully
+here. `corpus/` is gitignored, and you must supply your own lawfully
 obtained copy of any retail files. Tests run offline against synthetic fixtures.
 
 ## Game-derived data

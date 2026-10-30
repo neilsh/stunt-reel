@@ -5,8 +5,10 @@ LOAD FILM dialog), accepts the emulator's outbound debugger connection on a cont
 port the OS chooses, confirms CTRY.FLM with BIOS Data Area keystrokes, and dumps one whole
 frame per post-retrace trap hit until the frame budget is met.
 
-Reference rasters, palettes, and meta.json land under build/ (gitignored); nothing
-here is committed evidence.
+Rasters, palettes, and meta.json land in a new directory per capture under the captures root
+(gitignored, shared through the data root). A capture is written once and never changed
+(ADR 0022); making it the reference parity scores against is a reviewed edit of
+research/parity/references.toml, not something this script does.
 """
 
 from __future__ import annotations
@@ -15,11 +17,12 @@ import argparse
 import hashlib
 import logging
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from stunt_reel import dataroot, parity_layout
-from stunt_reel.dataroot import SharedWriteError, ensure_links_or_report
+from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.parity_artifacts import FilmId
 from stunt_reel.tac import playone
 from stunt_reel.tac.emulator import EmulatorUnavailable, Launching, PortTaken, WaitingForGuest
@@ -47,8 +50,9 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "directory receiving tick_*.idx, palettes_*.json, and meta.json "
-            f"(default {parity_layout.capture_root().as_posix()}/<film name, lower case>)"
+            "new directory receiving tick_*.idx, palettes_*.json, and meta.json; an existing "
+            f"non-empty one is refused (default {parity_layout.capture_root().as_posix()}/"
+            "<film name, lower case>/<date>-<checkout>-<film hash>)"
         ),
     )
     parser.add_argument(
@@ -102,13 +106,9 @@ def resolve(path: Path) -> Path:
     return path if path.is_absolute() else dataroot.REPO_ROOT / path
 
 
-def clear_frames(out_dir: Path) -> None:
-    """Delete rasters from an earlier run so the capture cannot leave stale frames."""
-    if not out_dir.is_dir():
-        return
-    for pattern in ("tick_*.idx", "palettes_*.json"):
-        for stale in out_dir.glob(pattern):
-            stale.unlink()
+def is_taken(out_dir: Path) -> bool:
+    """True when *out_dir* already holds anything: a capture is never written over."""
+    return out_dir.is_dir() and any(out_dir.iterdir())
 
 
 def report(event: SessionEvent) -> None:
@@ -124,24 +124,30 @@ def report(event: SessionEvent) -> None:
 def run(args: argparse.Namespace) -> int:
     """Drive one capture session and report its artifacts."""
     film = resolve(args.film)
-    out = resolve(args.out or parity_layout.capture_dir(film.stem))
     conf = resolve(args.conf)
     if not ensure_links_or_report("mise run capture-ref"):
         return 2
-    film_id = FilmId(
-        name=film.name,
-        flm_bytes=film.stat().st_size,
-        flm_sha256=hashlib.sha256(film.read_bytes()).hexdigest(),
+    flm_sha256 = hashlib.sha256(film.read_bytes()).hexdigest()
+    film_id = FilmId(name=film.name, flm_bytes=film.stat().st_size, flm_sha256=flm_sha256)
+    out = resolve(
+        args.out
+        or parity_layout.capture_path(
+            film.stem,
+            parity_layout.new_capture_id(
+                datetime.now(UTC).date(), dataroot.REPO_ROOT.name, flm_sha256
+            ),
+        )
     )
+    if is_taken(out):
+        print(f"[capture] {out} already exists; a capture is never written over", file=sys.stderr)
+        return 2
 
     def sample(session: Session) -> dict[str, Any]:
-        clear_frames(out)
         return capture(session, out, args.max_frames, film=film_id)
 
     try:
         meta = run_session(
             film,
-            out,
             sample=sample,
             conf=conf,
             dgroup_segment=args.dgroup_segment,
@@ -149,9 +155,6 @@ def run(args: argparse.Namespace) -> int:
             no_launch=args.no_launch,
             progress=report,
         )
-    except SharedWriteError as exc:
-        print(f"[capture] {exc}", file=sys.stderr)
-        return 2
     except PortTaken as exc:
         where = "" if exc.port == 0 else f" on 127.0.0.1:{exc.port}"
         print(f"[capture] cannot bind a control port{where} ({exc})", file=sys.stderr)

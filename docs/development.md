@@ -56,17 +56,17 @@ Register the server in your agent's MCP configuration (the file and key names de
 
 ### 3. Worktrees and the shared data root
 
-Several agents can work at once, each in its own `git worktree`: beside the checkout (`<checkout>.wt\<slug>` on Windows) or under a gitignored directory inside it (`.claude/worktrees/`, `.agents/worktrees/`). The corpus, the reference captures and `target_bin/` are gitignored, so they live once per machine instead of once per checkout:
+Several agents can work at once, each in its own `git worktree`: beside the checkout (`<checkout>.wt\<slug>` on Windows) or under a gitignored directory inside it (`.claude/worktrees/`, `.agents/worktrees/`). The game files and the captures are gitignored, so they live once per machine instead of once per checkout:
 
 ```text
-<parent-of-checkout>\stunt-reel.data\   corpus\{stisldem,si_archive,oracle}, reference\, target_bin\
+<parent-of-checkout>\stunt-reel.data\   corpus\{stisldem,siarchive,stuntisl,patches}, captures\<film>\<capture id>\
 ```
 
-The community archive keeps its historical `si_archive` name inside the data root; a checkout links it as `corpus/siarchive`, the collector's spelling, and `LINK_TARGETS` in `python/stunt_reel/dataroot.py` is the one place that maps the two.
+Each corpus folder is its own link, because `corpus/README.md` and `corpus/siarchive.md` are tracked and `corpus/` cannot itself be one; `captures\` is linked as `build/parity/captures/`. `LINK_TARGETS` in `python/stunt_reel/dataroot.py` is the one place that names them.
 
-`mise run init` links those into a worktree with junctions, so the relative `corpus/` and `build/parity/reference/` paths work unchanged; build outputs and the Python tool caches stay per worktree, while the virtualenv lives in the shared cache (see [Shared tool cache](#shared-tool-cache), and [ADR 0019](adr/0019-a-worktrees-virtualenv-lives-in-the-shared-cache.md)). `STUNT_DATA_ROOT` names a different data root, and `mise run init -- --migrate` moves an existing in-checkout `corpus/` into it: plain `mise run init` refuses a checkout that already holds data rather than linking only the paths that are still empty. A sandboxed agent session cannot create those junctions under `workspace-write`, because their targets are outside the workspace; provision the worktree with one run at wider file access — see [docs/harness-setup.md](harness-setup.md).
+`mise run init` links those into a worktree with junctions, so the relative `corpus/` and `build/parity/captures/` paths work unchanged; build outputs and the Python tool caches stay per worktree, while the virtualenv lives in the shared cache (see [Shared tool cache](#shared-tool-cache), and [ADR 0019](adr/0019-a-worktrees-virtualenv-lives-in-the-shared-cache.md)). `STUNT_DATA_ROOT` names a different data root, and `mise run init -- --migrate` first converts an old-layout data root (`stisldem`, `si_archive`, `oracle`, `target_bin`, `reference`) to the layout above, refusing a root that holds both old and new names, then moves an existing in-checkout `corpus/` into it: plain `mise run init` refuses a checkout that already holds data rather than linking only the paths that are still empty. A sandboxed agent session cannot create those junctions under `workspace-write`, because their targets are outside the workspace; provision the worktree with one run at wider file access — see [docs/harness-setup.md](harness-setup.md).
 
-The data root is **read-only**: `mise run capture-ref` into the shared captures and oracle generation refuse unless `STUNT_DATA_WRITE=1` is set. Retire a worktree with `mise run reap -- --yes`, which unlinks the junctions before `git worktree remove` runs; `mise run clean -- --yes` only clears outputs of a checkout you are keeping. See [ADR 0008](adr/0008-worktrees-share-one-read-only-data-root.md) and [ADR 0018](adr/0018-reaping-unlinks-the-data-root-links-first.md).
+Nothing writes `corpus/`, and a capture adds a new directory under `captures/` and never changes one; `mise run capture-ref` refuses an `--out` that already holds files. Parity scores a film against the capture [`research/parity/references.toml`](../research/parity/references.toml) names by id and content hash, so promoting a capture is a reviewed commit, and a machine without that capture fails with its id ([ADR 0022](adr/0022-captures-are-add-only-beside-a-read-only-corpus.md)). Retire a worktree with `mise run reap -- --yes`, which unlinks the junctions before `git worktree remove` runs; `mise run clean -- --yes` only clears outputs of a checkout you are keeping. See [ADR 0008](adr/0008-worktrees-share-one-read-only-data-root.md) and [ADR 0018](adr/0018-reaping-unlinks-the-data-root-links-first.md).
 
 ---
 
@@ -84,9 +84,8 @@ The data root is **read-only**: `mise run capture-ref` into the shared captures 
 | `tests/` | Python suite and synthetic fixtures — [`tests/fixtures/README.md`](../tests/fixtures/README.md); Rust integration tests live in `crates/*/tests/` |
 | `docs/` | Living spec, architecture routing, ADRs, and process documents (`process/`) |
 | `research/` | Format specifications beside their `.ksy` layouts plus `PLAYONE.EXE` analysis notes — [`research/formats/INDEX.md`](../research/formats/INDEX.md) |
-| `corpus/` | Gitignored demo and archive data, linked from the shared data root — [`corpus/README.md`](../corpus/README.md) |
-| `target_bin/` | Gitignored original game binaries |
-| `build/` | Gitignored outputs: `build/parity/{ours,report}/` and `build/gltf_output/`; `build/parity/reference/` borrows the shared captures |
+| `corpus/` | Gitignored demo, full retail install (`stuntisl/`), patches and archive data, linked from the shared data root — [`corpus/README.md`](../corpus/README.md) |
+| `build/` | Gitignored outputs: `build/parity/{ours,report}/` and `build/gltf_output/`; `build/parity/captures/` borrows the shared captures; `build/oracle/` holds the synthetic oracle trajectory |
 | `tools/dosbox/` | DOSBox-X configs (`dosbox-playone.conf` interactive play, `dosbox-parity.conf` capture, `dosbox-mcp.conf` agent debugger, `dosbox-utils.conf` period tools) and `play_ctry.bat`, a launcher for `mise run play` — [`tools/dosbox/README.md`](../tools/dosbox/README.md) |
 
 ---
@@ -109,10 +108,10 @@ cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
     --all corpus/stisldem/VAULT/CTRY.ALL --frames 1..1344 \
     --sidata corpus/siarchive/Developer/FreeFlight/SIDATA \
     --out-dir build/parity/ours/ctry --width 320 --height 200 --viewport-rows 185
-cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry \
+cargo run -p stunt-cli -- parity --reference build/parity/captures/ctry/<id> \
     --test build/parity/ours/ctry --output build/parity/report/ctry
 # after a change: re-render, then score against the previous report (before/after sheets need its render dir)
-cargo run -p stunt-cli -- parity --reference build/parity/reference/ctry     --test build/parity/ours/ctry --output build/parity/report/ctry_new     --compare build/parity/report/ctry/report.json --compare-test build/parity/ours/ctry_prev
+cargo run -p stunt-cli -- parity --reference build/parity/captures/ctry/<id>     --test build/parity/ours/ctry --output build/parity/report/ctry_new     --compare build/parity/report/ctry/report.json --compare-test build/parity/ours/ctry_prev
 ```
 
 `capture-ref` stores 140 reference frames, each tagged in `meta.json` with the film clock (`film_tick`) it was captured at. `--frames 1..1344` (also the default range) renders ticks 0 through 1,342, the film's last tick included, as `tick_00000.png`–`tick_01342.png`, named by 0-based 50 Hz tick (the end-hold captures sit at tick 1,342), plus `render.json` (typed, written last: film identity, raster geometry, and each tick's palette variables and camera); parity reads it and falls back to the legacy `palette_controls.json` that older renders still carry. The comparator pairs each capture with the render at its `film_tick` (captures made before film-clock tagging must be recaptured). The comparator writes `report.json` (per-frame `ssim`/`iou`, `fade_level`, `scored`; run-level `sky_indices`, `unmatched`, `mean_ssim`, `min_ssim`, `mean_iou`, `mean_ssim_scored`, `mean_iou_scored`, `min_fade_level`, `scored_frames`, `excluded_frames`) and `contact_NNNN.png` sheets under `build/parity/report/ctry/`. `--min-fade-level <F>` (default 0.25) sets the floor for the end-of-film palette fade: the film's authored brightness decides whether a frame is scored and the measured level stays a cross-check, frames below the floor are reported but not scored, and the headline is `mean_ssim_scored` with its scored-frame count (see [`research/parity/method.md`](../research/parity/method.md#21-fade-floor)).
@@ -188,7 +187,7 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | `cov-rust` | `cargo llvm-cov` line-coverage summary for `stunt-core` and `stunt-gltf` (not part of `check`) |
 | `cov-py` | `pytest` with `--cov=stunt_reel` term-missing report (no fail-under) |
 | `deny` | `cargo deny check` — advisories, license allow-list, wildcard bans, and registry sources |
-| `capture-ref` | reference capture into `build/parity/reference/ctry` (`--max-frames` defaults to 140) |
+| `capture-ref` | new capture into `build/parity/captures/ctry/<id>`, never over an existing one (`--max-frames` defaults to 140) |
 | `verify-corpus` | `.ksy` catalog check against `corpus/` |
 | `play` | launch `tools/dosbox/dosbox-playone.conf` |
 | `ensure-dosbox`, `mcp` | agent debugger plumbing |

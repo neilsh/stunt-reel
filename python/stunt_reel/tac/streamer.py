@@ -1,7 +1,7 @@
 """Trajectory streamer and golden oracle exporter for Stunt Island.
 
 Records continuous simulation ticks into Seam 2 TrajectoryRecord JSON streams
-(corpus/oracle/intro_trajectory.json) conforming to:
+(build/oracle/intro_trajectory.json, synthetic) conforming to:
 - [I1] Metric right-handed coordinates (+X right, +Y up, +Z back, -Z forward)
 - [I4] Decoupled simulation ticks and camera cut handling
 - Unit quaternions (| ||q|| - 1.0 | < 1e-4)
@@ -44,7 +44,9 @@ __all__ = [
     "generate_intro_trajectory",
 ]
 
-DEFAULT_ORACLE_PATH = Path("corpus/oracle/intro_trajectory.json")
+#: A per-worktree build output: hand-written kinematics, not a trajectory captured from
+#: PLAYONE.EXE, so it is never evidence and nothing reads it (ADR 0022).
+DEFAULT_ORACLE_PATH = Path("build/oracle/intro_trajectory.json")
 
 #: Distance in meters from the view slot to its look-at point (research/formats/concepts/coordinates-and-units.md).
 LOOKAHEAD_METERS = 1000.0

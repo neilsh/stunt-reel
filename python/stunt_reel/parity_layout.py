@@ -1,9 +1,9 @@
 """Where the parity artifacts live, and the rule for what the rotation may delete.
 
 Every path here is relative; callers join it with the root they mean: renders, reports and
-staging are per checkout, while a capture lives in the shared data root and is linked into
-the checkout (ADR 0008 governs those links). Nothing here resolves a root, touches the
-filesystem, or decides how a capture runs; it answers "where", so no caller spells the
+staging are per checkout, while the captures live in the shared data root and are linked into
+the checkout (ADR 0008 governs those links, ADR 0022 the add-only captures). Nothing here
+resolves a root, touches the filesystem, or decides how a capture runs; it answers "where", so no caller spells the
 layout again.
 
 The rotation's rule lives here too. :data:`RENDER_ROOTS` holds the roots whose child
@@ -14,17 +14,20 @@ hold a baseline and must survive. The prior render is not a protected *suffix*: 
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 __all__ = [
     "BASE_SUFFIX",
     "CURRENT_SUFFIX",
     "PROTECTED_SUFFIXES",
+    "REFERENCES_FILE",
     "RENDER_ROOTS",
-    "capture_dir",
+    "capture_path",
     "capture_root",
     "is_protected_render",
     "manual_report_dir",
+    "new_capture_id",
     "previous_dir",
     "render_dir",
     "render_scratch_dir",
@@ -40,7 +43,7 @@ __all__ = [
 _PARITY = Path("build/parity")
 _SCRATCH = Path("build/scratch")
 
-_CAPTURE = _PARITY / "reference"
+_CAPTURE = _PARITY / "captures"
 _RENDER = _PARITY / "ours"
 _REPORT = _PARITY / "report"
 _PREVIOUS = _PARITY / "previous"
@@ -49,6 +52,8 @@ _RENDER_SCRATCH = _SCRATCH / "parity"
 _RETIME = _SCRATCH / "retime"
 _SWEEP = _SCRATCH / "sweep"
 
+#: The committed file naming each film's reference capture (ADR 0022), relative to the checkout.
+REFERENCES_FILE = Path("research/parity/references.toml")
 #: The suffix of the latest render and report pair, ``<film>_current``.
 CURRENT_SUFFIX = "_current"
 #: The suffix of a pinned baseline a reader copies by hand, ``<film>_base``.
@@ -73,9 +78,17 @@ def capture_root() -> Path:
     return _CAPTURE
 
 
-def capture_dir(film: str) -> Path:
-    """The capture directory of *film*, relative to the data root."""
-    return _CAPTURE / _film_name(film)
+def capture_path(film: str, capture_id: str) -> Path:
+    """The directory of one capture of *film*, relative to the checkout.
+
+    A capture is written once into a new directory and never changed (ADR 0022).
+    """
+    return _CAPTURE / _film_name(film) / capture_id
+
+
+def new_capture_id(day: date, session: str, film_sha256: str) -> str:
+    """A fresh capture id: the date, the session that wrote it and a short hash of the film."""
+    return f"{day.isoformat()}-{session}-{film_sha256[:8]}"
 
 
 def render_dir(film: str) -> Path:

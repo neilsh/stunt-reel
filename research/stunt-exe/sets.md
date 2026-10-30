@@ -7,13 +7,13 @@
 | File | Size | Unpacks to |
 |---|---|---|
 | `corpus/siarchive/Films/OldPLAY/STUNT.EXE` | 137,240 | `stunt.img` 248,460 |
-| `target_bin/StuntIsl/STUNT.EXE` | 138,318 | not yet unpacked |
+| `corpus/stuntisl/STUNT.EXE` | 138,318 | not yet unpacked |
 | `corpus/siarchive/Films/OldPLAY/MAKEONE.EXE` | 103,247 | `makeone.img` 201,884 |
 | `corpus/siarchive/Films/OldPLAY/PLAYONE.EXE` | 102,703 | `playone.img` 200,524 |
 | `corpus/siarchive/Films/MultiFLM/*/PLAYONE.EXE` | 97,790 | not yet unpacked |
-| `corpus/stisldem/PLAYONE.EXE` | 102,703 | same build as `target_bin/` |
+| `corpus/stisldem/PLAYONE.EXE` | 102,703 | same build as `corpus/stuntisl/` |
 
-Two distinct `PLAYONE` builds circulate (97,790 and 102,703 bytes). `target_bin/PLAYONE.EXE` is the 102,703 one, so every `[MEM-*]` offset in [`playone-exe/`](../playone-exe/) describes that build and must be re-checked before being applied to the 97,790 one.
+Two distinct `PLAYONE` builds circulate (97,790 and 102,703 bytes). `corpus/stuntisl/PLAYONE.EXE` is the 102,703 one, so every `[MEM-*]` offset in [`playone-exe/`](../playone-exe/) describes that build and must be re-checked before being applied to the 97,790 one.
 
 Unpack with `python python/scripts/unlzexe.py <exe> build/re/<name>.img`.
 
@@ -55,7 +55,7 @@ The templates are fed from the record, so the code that formats a rule is the co
 
 ## 5. The retail install and TYPESET.EXE
 
-`target_bin/StuntIsl/` is a full retail install, and it settles two things.
+`corpus/stuntisl/` is a full retail install, and it settles two things.
 
 **It holds a second STUNT.EXE build**: 138,318 bytes against the corpus copy's 137,240, with `MAKEONE.EXE` and `PLAYONE.EXE` identical either side. As with `PLAYONE`, an address must name its build.
 

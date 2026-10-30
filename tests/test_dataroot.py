@@ -15,7 +15,6 @@ from stunt_reel import dataroot
 def _isolated(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Drop the caller's overrides and the cached root around every test."""
     monkeypatch.delenv(dataroot.DATA_ENV, raising=False)
-    monkeypatch.delenv(dataroot.WRITE_ENV, raising=False)
     dataroot.data_root.cache_clear()
     yield
     dataroot.data_root.cache_clear()
@@ -69,7 +68,6 @@ def test_outside_git_the_checkout_is_its_own_root(
     root = _checkout(monkeypatch, tmp_path / "export")
     assert dataroot.primary_checkout() is None
     assert dataroot.data_root() == root
-    assert not dataroot.is_shared(root / "corpus")
 
 
 def test_environment_overrides_the_derived_root(
@@ -80,54 +78,25 @@ def test_environment_overrides_the_derived_root(
     assert dataroot.data_root() == (tmp_path / "elsewhere").resolve()
 
 
-def test_is_shared_separates_the_root_from_the_checkout(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    primary = _checkout(monkeypatch, _primary(tmp_path))
-    assert dataroot.is_shared(tmp_path / "stunt-reel.data" / "reference" / "ctry")
-    assert not dataroot.is_shared(primary / "build" / "parity" / "ours")
-
-
-def test_is_shared_follows_the_linked_reference_directory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # capture-ref's default --out reaches the shared captures only through this link,
-    # so is_shared must see through it or the write opt-in is silently skipped.
-    primary = _checkout(monkeypatch, _primary(tmp_path))
-    target = tmp_path / "stunt-reel.data" / "reference"
-    target.mkdir(parents=True)
-    link = primary / "build" / "parity" / "reference"
-    dataroot.create_link(link, target)
-    assert dataroot.is_shared(link / "ctry")
-
-
-def test_shared_write_needs_the_opt_in(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _checkout(monkeypatch, _primary(tmp_path))
-    with pytest.raises(dataroot.SharedWriteError, match=dataroot.WRITE_ENV):
-        dataroot.require_shared_write("capture")
-    monkeypatch.setenv(dataroot.WRITE_ENV, "1")
-    dataroot.require_shared_write("capture")
-
-
 def test_ensure_links_repairs_a_worktree_that_never_ran_init(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The failure this exists for: a checkout made by an agent's own worktree tooling
     # reads corpus/stisldem as an empty placeholder instead of failing at creation.
     root = tmp_path / "stunt-reel.data"
-    (root / "stisldem").mkdir(parents=True)
+    (root / "corpus" / "stisldem").mkdir(parents=True)
     worktree = _worktree(monkeypatch, _primary(tmp_path))
     outcomes = dataroot.ensure_links()
     assert [(outcome.relative, outcome.status) for outcome in outcomes] == [
         ("corpus/stisldem", "repaired"),
         ("corpus/siarchive", "created-empty"),
-        ("corpus/oracle", "created-empty"),
-        ("target_bin", "created-empty"),
-        ("build/parity/reference", "created-empty"),
+        ("corpus/stuntisl", "created-empty"),
+        ("corpus/patches", "created-empty"),
+        ("build/parity/captures", "created-empty"),
     ]
     for outcome in outcomes:
         assert dataroot.link_points_at(worktree / outcome.relative, outcome.target)
-    assert (root / "reference").is_dir()  # a shared directory that was still empty
+    assert (root / "captures").is_dir()  # a shared directory that was still empty
     assert {outcome.status for outcome in dataroot.ensure_links()} == {"ok"}
 
 
@@ -135,14 +104,14 @@ def test_ensure_links_replaces_a_gitkeep_placeholder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root = tmp_path / "stunt-reel.data"
-    (root / "stisldem").mkdir(parents=True)
+    (root / "corpus" / "stisldem").mkdir(parents=True)
     worktree = _worktree(monkeypatch, _primary(tmp_path))
     placeholder = worktree / "corpus" / "stisldem"
     placeholder.mkdir(parents=True)
     (placeholder / ".gitkeep").write_text("", encoding="utf-8")
     repaired = [outcome for outcome in dataroot.ensure_links() if outcome.status == "repaired"]
     assert [outcome.relative for outcome in repaired] == ["corpus/stisldem"]
-    assert dataroot.link_points_at(worktree / "corpus" / "stisldem", root / "stisldem")
+    assert dataroot.link_points_at(worktree / "corpus" / "stisldem", root / "corpus" / "stisldem")
 
 
 def test_ensure_links_refuses_a_checkout_holding_real_data(
@@ -150,7 +119,7 @@ def test_ensure_links_refuses_a_checkout_holding_real_data(
 ) -> None:
     # Moving a populated corpus is --migrate's decision, and it must not be half-applied.
     root = tmp_path / "stunt-reel.data"
-    (root / "si_archive").mkdir(parents=True)
+    (root / "corpus" / "siarchive").mkdir(parents=True)
     worktree = _worktree(monkeypatch, _primary(tmp_path))
     populated = worktree / "corpus" / "siarchive"
     populated.mkdir(parents=True)
@@ -161,22 +130,22 @@ def test_ensure_links_refuses_a_checkout_holding_real_data(
     ]
     assert "migrate" in (outcomes[0].reason or "")
     # The refusal is all-or-nothing: the other links were not touched either.
-    assert not (worktree / "target_bin").exists()
-    assert not (root / "stisldem").exists()
+    assert not (worktree / "corpus" / "stuntisl").exists()
+    assert not (root / "corpus" / "stisldem").exists()
 
 
 def test_ensure_links_replaces_a_link_that_points_elsewhere(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root = tmp_path / "stunt-reel.data"
-    (root / "stisldem").mkdir(parents=True)
+    (root / "corpus" / "stisldem").mkdir(parents=True)
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     worktree = _worktree(monkeypatch, _primary(tmp_path))
     dataroot.create_link(worktree / "corpus" / "stisldem", elsewhere)
     outcome = next(item for item in dataroot.ensure_links() if item.relative == "corpus/stisldem")
-    assert (outcome.status, outcome.target) == ("repaired", root / "stisldem")
-    assert dataroot.link_points_at(worktree / "corpus" / "stisldem", root / "stisldem")
+    assert (outcome.status, outcome.target) == ("repaired", root / "corpus" / "stisldem")
+    assert dataroot.link_points_at(worktree / "corpus" / "stisldem", root / "corpus" / "stisldem")
 
 
 def test_ensure_links_names_init_when_the_root_is_absent(
@@ -208,7 +177,7 @@ def test_ensure_links_or_report_renders_the_outcomes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     root = tmp_path / "stunt-reel.data"
-    (root / "stisldem").mkdir(parents=True)
+    (root / "corpus" / "stisldem").mkdir(parents=True)
     _worktree(monkeypatch, _primary(tmp_path))
     assert dataroot.ensure_links_or_report("reader")
     assert capsys.readouterr().err == "".join(
@@ -222,7 +191,7 @@ def test_ensure_links_or_report_names_a_refusal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     root = tmp_path / "stunt-reel.data"
-    (root / "si_archive").mkdir(parents=True)
+    (root / "corpus" / "siarchive").mkdir(parents=True)
     worktree = _worktree(monkeypatch, _primary(tmp_path))
     populated = worktree / "corpus" / "siarchive"
     populated.mkdir(parents=True)
@@ -340,3 +309,47 @@ def test_cache_link_adopts_a_cache_made_before_the_link(
     assert (outcome.status, outcome.target) == ("repaired", primary / ".cache")
     assert (primary / ".cache" / "uv" / "artifact").read_bytes() == b"cache"
     assert dataroot.link_points_at(worktree / ".cache", primary / ".cache")
+
+
+def _old_layout(root: Path) -> None:
+    for name in ("stisldem", "si_archive", "oracle", "target_bin/StuntIsl", "target_bin/patch"):
+        (root / name).mkdir(parents=True)
+    (root / "stisldem" / "A.TXT").write_text("a", encoding="utf-8")
+    (root / "target_bin" / "StuntIsl" / "PLAYONE.EXE").write_bytes(b"MZ")
+    (root / "target_bin" / "PLAYONE.EXE").write_bytes(b"MZ")
+    (root / "oracle" / "intro_trajectory.json").write_text("[]", encoding="utf-8")
+    (root / "reference" / "ctry").mkdir(parents=True)
+    (root / "reference" / "ctry" / "meta.json").write_text("{}", encoding="utf-8")
+
+
+def test_convert_layout_moves_an_old_root_to_corpus_and_captures(tmp_path: Path) -> None:
+    root = tmp_path / "stunt-reel.data"
+    _old_layout(root)
+    moved = dataroot.convert_layout(root)
+    assert (root / "corpus" / "stisldem" / "A.TXT").is_file()
+    assert (root / "corpus" / "siarchive").is_dir()
+    assert (root / "corpus" / "stuntisl" / "PLAYONE.EXE").is_file()
+    assert (root / "corpus" / "patches").is_dir()
+    assert (root / "captures" / "ctry" / dataroot.LEGACY_CAPTURE_ID / "meta.json").is_file()
+    for old in ("stisldem", "si_archive", "oracle", "target_bin", "reference"):
+        assert not (root / old).exists()
+    assert any("oracle removed" in line for line in moved)
+    assert dataroot.convert_layout(root) == []  # a converted root is left alone
+
+
+def test_convert_layout_keeps_a_different_top_level_executable(tmp_path: Path) -> None:
+    root = tmp_path / "stunt-reel.data"
+    _old_layout(root)
+    (root / "target_bin" / "PLAYONE.EXE").write_bytes(b"MZ-other")
+    moved = dataroot.convert_layout(root)
+    assert (root / "target_bin" / "PLAYONE.EXE").read_bytes() == b"MZ-other"
+    assert any("target_bin still holds" in line for line in moved)
+
+
+def test_convert_layout_refuses_a_root_holding_both_names(tmp_path: Path) -> None:
+    root = tmp_path / "stunt-reel.data"
+    _old_layout(root)
+    (root / "corpus").mkdir()
+    with pytest.raises(dataroot.SharedDataError, match="both old names"):
+        dataroot.convert_layout(root)
+    assert (root / "stisldem" / "A.TXT").is_file()  # nothing moved
