@@ -19,6 +19,7 @@ from pathlib import Path
 from stunt_reel import parity_layout
 
 __all__ = [
+    "META_FILE",
     "ArchiveError",
     "ArchiveMeta",
     "ArchiveMissing",
@@ -140,7 +141,12 @@ def resolve_all(flm: Path, root: Path) -> Path:
         meta_file = directory / META_FILE
         if directory.suffix == ".partial" or not meta_file.is_file():
             continue
-        meta = ArchiveMeta.from_json(meta_file.read_text(encoding="utf-8"))
+        try:
+            meta = ArchiveMeta.from_json(meta_file.read_text(encoding="utf-8"))
+        except (ValueError, TypeError, AttributeError, OSError) as exc:
+            raise ArchiveError(
+                f"stored archive {directory.name} has an unreadable meta.json: {exc}"
+            ) from exc
         if meta.flm_sha256 != digest:
             continue
         archive = directory / f"{flm.stem.upper()}.ALL"
@@ -148,6 +154,9 @@ def resolve_all(flm: Path, root: Path) -> Path:
             not archive.is_file()
             or hashlib.sha256(archive.read_bytes()).hexdigest() != meta.all_sha256
         ):
-            raise ArchiveError(f"stored archive {directory.name} no longer matches its meta.json")
+            raise ArchiveError(
+                f"stored archive {directory.name} no longer matches its meta.json; "
+                f"delete {directory} and rerun make-all"
+            )
         return archive
     raise ArchiveMissing(f"no .ALL for {flm}; run: mise run make-all -- --film {flm}")
