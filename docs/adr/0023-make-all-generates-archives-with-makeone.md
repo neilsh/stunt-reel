@@ -75,4 +75,4 @@ remedy is to delete that `captures/all/<film>/<id>/` directory and rerun `make-a
 text says so. If the emulator fails to stop after a good run, the archive is kept and a warning
 is printed, because the run took minutes and its output is already complete.
 
-The batch survey runs `MAKEONE` under `tools/dosbox/dosbox-archive.conf`, the parity conf with a dynamic core and `cycles = max 50%`: on `flmonly-747land` that took 16 s instead of 179 s and wrote a byte-identical `.ALL`. Captures keep `core = normal`.
+The batch survey runs `MAKEONE` under `tools/dosbox/dosbox-archive.conf`, the parity conf with a dynamic core and `cycles = max`: on `flmonly-747land` that took 13 s instead of 179 s and wrote a byte-identical `.ALL`. Captures keep `core = normal`.

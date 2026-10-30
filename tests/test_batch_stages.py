@@ -139,6 +139,6 @@ def test_archive_conf_differs_from_the_capture_conf_only_in_the_cpu_lines() -> N
 
     assert body(archive) == body(capture)
     assert "core = dynamic" in archive
-    assert "cycles = max 50%" in archive
+    assert "cycles = max" in archive
     assert "core = normal" in capture
     assert "cycles = 8000" in capture
