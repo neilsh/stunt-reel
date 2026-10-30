@@ -108,3 +108,46 @@ def test_the_all_stem_is_reserved() -> None:
         with pytest.raises(ValueError, match="ALL"):
             parity_layout.require_film_stem(stem)
     parity_layout.require_film_stem("BALLOON")
+
+
+def test_slug_is_parent_and_stem() -> None:
+    """The slug names the film by where it comes from, never by which corpus copy was read."""
+    assert parity_layout.film_slug(Path("/d/corpus/stisldem/VAULT/CTRY.FLM")) == "vault-ctry"
+    assert (
+        parity_layout.film_slug(Path("/d/corpus/stuntisl/SIFILMS/VAULT/CTRY.FLM")) == "vault-ctry"
+    )
+    assert (
+        parity_layout.film_slug(Path("/d/x/MultiFLM/LaborDay/FLAGDAY1.FLM")) == "laborday-flagday1"
+    )
+    assert parity_layout.film_slug(Path("/d/x/Labor Day/My Film!.flm")) == "labor-day-my-film"
+
+
+def test_slug_without_a_parent_is_refused() -> None:
+    """A film with no parent folder cannot be named from its path; the message says what to do."""
+    with pytest.raises(ValueError, match="--name"):
+        parity_layout.film_slug(Path("/FILM.FLM"))
+
+
+def test_require_slug() -> None:
+    """A slug is lower-case words joined by ``-`` or ``_``."""
+    assert parity_layout.require_slug("vault-ctry") == "vault-ctry"
+    for bad in ("All Films", "", "-x", "Vault-ctry"):
+        with pytest.raises(ValueError, match="slug"):
+            parity_layout.require_slug(bad)
+
+
+def test_run_id_and_paths() -> None:
+    """Frame captures and archives share a film directory and differ by kind."""
+    assert parity_layout.run_id(7) == "007"
+    assert parity_layout.frames_root("vault-ctry") == Path(
+        "build/parity/captures/vault-ctry/frames"
+    )
+    assert parity_layout.frames_path("vault-ctry", "001") == Path(
+        "build/parity/captures/vault-ctry/frames/001"
+    )
+    assert parity_layout.archives_root("vault-ctry") == Path(
+        "build/parity/captures/vault-ctry/archives"
+    )
+    assert parity_layout.archive_path("vault-ctry", "001") == Path(
+        "build/parity/captures/vault-ctry/archives/001"
+    )
