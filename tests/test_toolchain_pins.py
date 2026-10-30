@@ -125,13 +125,13 @@ def test_the_python_targets_follow_the_pin() -> None:
 
 
 def test_the_environment_runs_the_python_pin() -> None:
-    """A floor lets uv install a newer Python; this is the pin the gate must run on."""
+    """A floor lets uv install a newer Python; the gate must run the pin exactly."""
     pin = _python_pin()
-    assert sys.version_info[:2] == pin[:2], (
+    assert sys.version_info[:3] == pin, (
         f"pytest is running on Python {_dotted(sys.version_info[:3])}, but mise.toml pins "
         f"{_dotted(pin)}. uv used an interpreter the pin does not name: run the gate through "
-        "mise, and delete any cached environment built on another Python "
-        "(venvs/<checkout>-<digest>) before rerunning mise run init"
+        "mise, then delete this checkout's environment (`.venv`, or the "
+        "`venvs/<checkout>-<digest>` a worktree links to) and rerun `mise run init`"
     )
 
 
