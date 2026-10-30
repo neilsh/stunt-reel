@@ -7,6 +7,7 @@ adds a directory; it never rewrites one.
 
 from __future__ import annotations
 
+import hashlib
 import itertools
 import json
 import shutil
@@ -19,9 +20,11 @@ from stunt_reel import parity_layout
 __all__ = [
     "ArchiveError",
     "ArchiveMeta",
+    "ArchiveMissing",
     "ArchiveTaken",
     "check_archive",
     "publish_archive",
+    "resolve_all",
 ]
 
 #: The file inside an id directory that says the directory is complete; it is written last.
@@ -30,6 +33,10 @@ META_FILE = "meta.json"
 
 class ArchiveError(RuntimeError):
     """A generated archive that cannot be used."""
+
+
+class ArchiveMissing(ArchiveError):  # noqa: N818 - the agreed interface name
+    """No archive exists for the film; ``make-all`` generates one."""
 
 
 class ArchiveTaken(ArchiveError):  # noqa: N818 - the agreed interface name
@@ -111,3 +118,35 @@ def publish_archive(root: Path, film: str, capture_id: str, data: bytes, meta: A
     (partial / META_FILE).write_text(meta.to_json(), encoding="utf-8")
     partial.rename(target)
     return target
+
+
+def resolve_all(flm: Path, root: Path) -> Path:
+    """Return the ``.ALL`` that goes with *flm*, or raise ArchiveMissing.
+
+    A sibling with the film's stem wins (matched case-insensitively, so ``x.All`` beside
+    ``x.flm`` counts). Otherwise the stored archive with the greatest id whose film hash
+    equals *flm*'s; its bytes must still hash to the recorded ``all_sha256``, and a
+    mismatch is an error naming the id, never a fall back to an older archive.
+    """
+    stem = flm.stem.lower()
+    for sibling in sorted(flm.parent.iterdir()):
+        if sibling.is_file() and sibling.suffix.lower() == ".all" and sibling.stem.lower() == stem:
+            return sibling
+    digest = hashlib.sha256(flm.read_bytes()).hexdigest()
+    films = root / parity_layout.all_root() / stem
+    stored = sorted(films.iterdir(), reverse=True) if films.is_dir() else []
+    for directory in stored:
+        meta_file = directory / META_FILE
+        if directory.suffix == ".partial" or not meta_file.is_file():
+            continue
+        meta = ArchiveMeta.from_json(meta_file.read_text(encoding="utf-8"))
+        if meta.flm_sha256 != digest:
+            continue
+        archive = directory / f"{flm.stem.upper()}.ALL"
+        if (
+            not archive.is_file()
+            or hashlib.sha256(archive.read_bytes()).hexdigest() != meta.all_sha256
+        ):
+            raise ArchiveError(f"stored archive {directory.name} no longer matches its meta.json")
+        return archive
+    raise ArchiveMissing(f"no .ALL for {flm}; run: mise run make-all -- --film {flm}")
