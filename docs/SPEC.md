@@ -33,11 +33,11 @@ Delivery is sequential. This section records what each phase is for and whether 
 
 2. **Phase 1: Capture Harness & AOT glTF 2.0 Exporter *(Status: Complete; Milestone 1 gate passed)***
    * Treats `PLAYONE.EXE` as a reference black-box kinematics compiler running inside headless DOSBox-X, driven over its debugger socket, and gates snapshots on the film clock ([`capture.md`](../research/playone-exe/capture.md), [`MEMORY_MAP.md`](../research/playone-exe/memory-map.md)).
-   * Emits the golden trajectory oracle and self-contained animated glTF 2.0 files (`python/stunt_reel/tac/`; glTF export is `crates/stunt-gltf/`).
+   * Emits a synthetic trajectory oracle (hand-written kinematics under `build/oracle/`, not captured from `PLAYONE.EXE`; [ADR 0022](adr/0022-captures-are-add-only-beside-a-read-only-corpus.md)) and self-contained animated glTF 2.0 files (`python/stunt_reel/tac/`; glTF export is `crates/stunt-gltf/`).
 
 3. **Phase 2: Native Rust Engine *(Status: Complete; Milestone 2 gate passed)***
    * A standalone, zero-emulator Rust runtime (`stunt-core`, `stunt-render`, `stunt-cli`) on `wgpu`: native `.ALL`/`.RES` parsing, `.SOD` display-list transpilation into a flat arena IR, `.FLM` evaluation through `FilmTimeline`, and authentic Mode 13h flat-shaded rendering.
-   * Asserts position error ($\text{RMSE} \le 0.01\text{ m}$) against the Phase 1 oracle trajectory and visual parity against captured frames (gates `G04` and `G07`).
+   * Asserts position error ($\text{RMSE} \le 0.01\text{ m}$) against the synthetic Phase 1 oracle trajectory and visual parity against captured frames (gates `G04` and `G07`).
 
 4. **Ongoing: Fidelity Backlog *(Status: Open; Milestone 3)***
    * Decode and timing gaps found by the `CTRY.FLM` export audit, such as `OP_ANIMATE` semantics. Findings: [`research/parity/`](../research/parity/); tickets: [`TEAM_SHEET.md`](process/TEAM_SHEET.md).

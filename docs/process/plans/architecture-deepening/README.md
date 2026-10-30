@@ -42,7 +42,7 @@ Each brief settles, and is only accepted when it settles:
 ## 5. Regression bar
 
 - Offline gate: `mise run check` (format, lint, typecheck, Rust and Python tests, rustdoc, no-default-features matrix).
-- Local baseline: `build/parity/reference` and `build/parity/report` for CTRY and INTRO. Before a unit, keep the current render directories and `report.json`; after it, every report field must match and sampled `.idx`/`.layer` planes must be byte-identical.
+- Local baseline: `build/parity/captures` (`build/parity/reference` before ADR 0022) and `build/parity/report` for CTRY and INTRO. Before a unit, keep the current render directories and `report.json`; after it, every report field must match and sampled `.idx`/`.layer` planes must be byte-identical.
 - The local baseline lives under `build/` and is gitignored, so it is a working-session bar, not a CI guarantee. Committed tests stay offline and use synthetic fixtures only.
 - New interfaces are pinned by committed fixtures under `tests/fixtures/`.
 

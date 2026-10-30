@@ -41,6 +41,7 @@ class Reference:
     sha256: str
 
 
+# Cached by path: safe because a capture is never changed once written (ADR 0022).
 @lru_cache(maxsize=32)
 def capture_digest(directory: Path) -> str:
     """SHA-256 over every file under *directory*: each relative path and that file's hash.
