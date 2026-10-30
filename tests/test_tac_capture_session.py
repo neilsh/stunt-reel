@@ -9,6 +9,7 @@ never launched and no control port is bound.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import shutil
@@ -20,7 +21,9 @@ from typing import Any
 
 import pytest
 
+from archive_helpers import build_all
 from stunt_reel import dataroot, parity_layout
+from stunt_reel.all_archive import ArchiveMeta, publish_archive
 from stunt_reel.parity_artifacts import FilmId
 from stunt_reel.tac import staging
 from stunt_reel.tac.emulator import (
@@ -926,6 +929,79 @@ def test_capture_script_failure_lines_and_exit_codes(
     monkeypatch.setattr(module, "run_session", lambda *_a, **_k: {"frames": []})
     assert module.run(args) == 1
     assert capsys.readouterr().err == "[capture] no frames captured\n"
+
+
+def _stored_archive(staged_repo: StagedRepo, data: bytes) -> None:
+    """Remove the film's sibling archive and store *data* as the generated one for its hash."""
+    staged_repo.film.with_suffix(".ALL").unlink()
+    flm = staged_repo.film.read_bytes()
+    meta = ArchiveMeta(
+        film=staged_repo.film.name,
+        flm_bytes=len(flm),
+        flm_sha256=hashlib.sha256(flm).hexdigest(),
+        all_bytes=len(data),
+        all_sha256=hashlib.sha256(data).hexdigest(),
+    )
+    publish_archive(dataroot.REPO_ROOT, staged_repo.film.name, "2026-10-29-wt-abcd1234", data, meta)
+
+
+def test_capture_script_uses_a_stored_archive_for_a_film_without_a_sibling(
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """capture-ref stages the archive make-all stored, found by the film's hash."""
+    module = _load_script("capture_playone_reference")
+    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
+    stored = build_all([b"stored"])
+    _stored_archive(staged_repo, stored)
+    monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, tmp_path / "out"))
+    seen: dict[str, Any] = {}
+
+    def stub(*_args: Any, **kwargs: Any) -> dict[str, Any]:
+        seen.update(kwargs)
+        return {"frames": [{"ordinal": 1}]}
+
+    monkeypatch.setattr(module, "run_session", stub)
+    assert module.run(module.parse_args()) == 0
+
+    mount, _conf = seen["profile"].stage(staged_repo.film, staged_repo.conf)
+    assert (mount / "VAULT" / "CTRY.ALL").read_bytes() == stored
+
+
+def test_capture_script_without_any_archive_names_make_all(
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    module = _load_script("capture_playone_reference")
+    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
+    staged_repo.film.with_suffix(".ALL").unlink()
+    monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, tmp_path / "out"))
+    monkeypatch.setattr(
+        module, "run_session", lambda *_a, **_k: pytest.fail("no archive, no session")
+    )
+
+    assert module.run(module.parse_args()) == 2
+    assert "mise run make-all -- --film" in capsys.readouterr().err
+
+
+def test_capture_script_refuses_the_all_stem(
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _load_script("capture_playone_reference")
+    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
+    film = staged_repo.film.with_name("ALL.FLM")
+    film.write_bytes(b"FILM")
+    argv = _capture_argv(staged_repo, tmp_path / "out")
+    argv[argv.index("--film") + 1] = str(film)
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setattr(module, "run_session", lambda *_a, **_k: pytest.fail("reserved stem"))
+
+    assert module.run(module.parse_args()) == 2
 
 
 def test_probe_script_keeps_its_flags_and_shot_line(
