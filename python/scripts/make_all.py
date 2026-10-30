@@ -119,6 +119,7 @@ def run(args: argparse.Namespace, emulator: Emulator | None = None) -> int:
             timeout=args.timeout,
             emulator=emulator,
             progress=report,
+            warn=lambda message: print(f"[make-all] warning: {message}", file=sys.stderr),
         )
         check_archive(data)
     except PortTaken as exc:

@@ -100,10 +100,13 @@ def make_all(
     poll: float = POLL_SECONDS,
     emulator: Emulator | None = None,
     progress: Callable[[SessionEvent], None] | None = None,
+    warn: Callable[[str], None] | None = None,
 ) -> bytes:
     """Run MAKEONE on *film* in a private mount and return the bytes of the ``.ALL`` it wrote.
 
-    The archive is read inside the session, because teardown removes the mount.
+    The archive is read inside the session, because teardown removes the mount. If the
+    emulator then fails to stop, the run still produced a good archive: it is returned and
+    the failure goes to *warn*, instead of discarding a run that takes minutes.
     """
     root = dataroot.REPO_ROOT
     source = game_root if game_root.is_absolute() else root / game_root
@@ -114,15 +117,25 @@ def make_all(
         mounts.append(staged)
         return staged
 
+    kept: list[bytes] = []
+
     def sample(session: Session) -> bytes:
         wait_for_text(session, timeout=timeout, poll=poll)
-        return _read_archive(mounts[0].mount / "VAULT", film)
+        kept.append(_read_archive(mounts[0].mount / "VAULT", film))
+        return kept[0]
 
-    return run_session(
-        film,
-        sample=sample,
-        conf=conf,
-        emulator=emulator,
-        progress=progress,
-        profile=Profile(stage=stage, keys=film_selection_keys),
-    )
+    try:
+        return run_session(
+            film,
+            sample=sample,
+            conf=conf,
+            emulator=emulator,
+            progress=progress,
+            profile=Profile(stage=stage, keys=film_selection_keys),
+        )
+    except Exception as exc:
+        if not kept:
+            raise
+        if warn is not None:
+            warn(f"the archive was written but shutting down the emulator failed: {exc}")
+        return kept[0]
