@@ -26,6 +26,7 @@ CALLERS = (
     SCRIPTS / "capture_playone_reference.py",
     SCRIPTS / "make_all.py",
     STUNTS / "batch_ledger.py",
+    STUNTS / "batch_stages.py",
 )
 
 
