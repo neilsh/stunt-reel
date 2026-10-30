@@ -1,0 +1,113 @@
+"""Generated ``.ALL`` archives: the structural check and the add-only store.
+
+``MAKEONE.EXE`` turns a film's ``.FLM`` into the ``.ALL`` that ``PLAYONE.EXE`` plays. A generated archive is written once under
+``captures/all/<film>/<id>/`` and never changed (ADR 0022), so this module only ever
+adds a directory; it never rewrites one.
+"""
+
+from __future__ import annotations
+
+import itertools
+import json
+import shutil
+import struct
+from dataclasses import asdict, dataclass, fields
+from pathlib import Path
+
+from stunt_reel import parity_layout
+
+__all__ = [
+    "ArchiveError",
+    "ArchiveMeta",
+    "ArchiveTaken",
+    "check_archive",
+    "publish_archive",
+]
+
+#: The file inside an id directory that says the directory is complete; it is written last.
+META_FILE = "meta.json"
+
+
+class ArchiveError(RuntimeError):
+    """A generated archive that cannot be used."""
+
+
+class ArchiveTaken(ArchiveError):  # noqa: N818 - the agreed interface name
+    """The archive id already holds a published archive; one is never written over."""
+
+
+@dataclass(frozen=True)
+class ArchiveMeta:
+    """What ``meta.json`` records about one generated archive."""
+
+    film: str
+    flm_bytes: int
+    flm_sha256: str
+    all_bytes: int
+    all_sha256: str
+    makeone_sha256: str = ""
+    game_files: tuple[tuple[str, int], ...] = ()
+    wall_seconds: float = 0.0
+    created: str = ""
+
+    def to_json(self) -> str:
+        """The ``meta.json`` text."""
+        return json.dumps(asdict(self), indent=2) + "\n"
+
+    @classmethod
+    def from_json(cls, text: str) -> ArchiveMeta:
+        """Parse ``meta.json``; unknown keys are ignored and absent optional keys take defaults."""
+        raw = json.loads(text)
+        known = {field.name for field in fields(cls)}
+        values = {key: value for key, value in raw.items() if key in known}
+        values["game_files"] = tuple(
+            (str(name), int(size)) for name, size in values.get("game_files", ())
+        )
+        return cls(**values)
+
+
+def check_archive(data: bytes) -> int:
+    """Return the chunk count of *data*, or raise ArchiveError when it is not an intact archive.
+
+    The layout is ``research/formats/all.ksy``: a ``u16`` count ``n``, ``n`` ids, then
+    ``n + 1`` ``u32`` offsets. The first offset equals the header size ``6n + 6``, offsets
+    never decrease, and the last is the file size.
+    """
+    if len(data) < 2:
+        raise ArchiveError("archive is shorter than its chunk count")
+    count: int = struct.unpack_from("<H", data)[0]
+    if count == 0:
+        raise ArchiveError("archive declares no chunks")
+    header = 6 * count + 6
+    if len(data) < header:
+        raise ArchiveError(f"archive is {len(data)} bytes, shorter than its {header}-byte header")
+    offsets = struct.unpack_from(f"<{count + 1}I", data, 2 + 2 * count)
+    if offsets[0] != header:
+        raise ArchiveError(f"first offset is {offsets[0]}, expected the header size {header}")
+    if any(later < earlier for earlier, later in itertools.pairwise(offsets)):
+        raise ArchiveError("chunk offsets decrease")
+    if offsets[-1] != len(data):
+        raise ArchiveError(f"final offset is {offsets[-1]}, expected the file size {len(data)}")
+    return count
+
+
+def publish_archive(root: Path, film: str, capture_id: str, data: bytes, meta: ArchiveMeta) -> Path:
+    """Write *data* as ``<root>/captures/all/<film>/<capture_id>/<FILM>.ALL`` and return the directory.
+
+    The files go to a ``.partial`` sibling, ``meta.json`` last, and the sibling is renamed
+    into place, so a reader never sees half an archive. An id that already holds
+    ``meta.json`` is refused; a directory without it is an interrupted run and is replaced.
+    """
+    stem = Path(film).stem
+    target = root / parity_layout.all_path(stem, capture_id)
+    if (target / META_FILE).exists():
+        raise ArchiveTaken(f"{target} already holds an archive; an archive is never written over")
+    partial = target.with_name(target.name + ".partial")
+    for stale in (target, partial):
+        if stale.exists():
+            shutil.rmtree(stale)
+    partial.mkdir(parents=True)
+    (partial / f"{stem.upper()}.ALL").write_bytes(data)
+    (partial / META_FILE).write_text(meta.to_json(), encoding="utf-8")
+    partial.rename(target)
+    return target
