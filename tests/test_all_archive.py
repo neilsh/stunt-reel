@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import struct
 from pathlib import Path
 
@@ -12,9 +13,11 @@ from stunt_reel import parity_layout
 from stunt_reel.all_archive import (
     ArchiveError,
     ArchiveMeta,
+    ArchiveMissing,
     ArchiveTaken,
     check_archive,
     publish_archive,
+    resolve_all,
 )
 
 CHUNKS = [b"alpha", b"bb", b"c" * 9]
@@ -110,3 +113,63 @@ def test_publish_clears_a_partial_without_meta(tmp_path: Path) -> None:
     assert (target / "BALLOON.ALL").read_bytes() == data
     assert (target / "meta.json").is_file()
     assert not partial.exists()
+
+
+FLM_BYTES = b"FILM-balloon"
+
+
+def _store(root: Path, capture_id: str, flm: bytes, archive: bytes) -> Path:
+    meta = ArchiveMeta(
+        film="BALLOON.FLM",
+        flm_bytes=len(flm),
+        flm_sha256=hashlib.sha256(flm).hexdigest(),
+        all_bytes=len(archive),
+        all_sha256=hashlib.sha256(archive).hexdigest(),
+    )
+    return publish_archive(root, "BALLOON.FLM", capture_id, archive, meta)
+
+
+def _film(tmp_path: Path, name: str = "BALLOON.FLM") -> Path:
+    directory = tmp_path / "vault"
+    directory.mkdir(exist_ok=True)
+    film = directory / name
+    film.write_bytes(FLM_BYTES)
+    return film
+
+
+def test_a_sibling_wins_over_a_stored_archive(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    sibling = film.with_suffix(".ALL")
+    sibling.write_bytes(build_all([b"sibling"]))
+    _store(tmp_path, ID, FLM_BYTES, build_all([b"stored"]))
+    assert resolve_all(film, tmp_path) == sibling
+
+
+def test_a_sibling_is_found_whatever_its_case(tmp_path: Path) -> None:
+    film = _film(tmp_path, "balloon.flm")
+    sibling = film.parent / "balloon.All"
+    sibling.write_bytes(build_all([b"s"]))
+    assert resolve_all(film, tmp_path) == sibling
+
+
+def test_the_newest_stored_archive_for_the_film_hash_is_used(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    _store(tmp_path, "2026-10-28-wt-aaaaaaaa", FLM_BYTES, build_all([b"old"]))
+    newest = _store(tmp_path, "2026-10-30-wt-bbbbbbbb", FLM_BYTES, build_all([b"new"]))
+    _store(tmp_path, "2026-11-01-wt-cccccccc", b"another film", build_all([b"other"]))
+    assert resolve_all(film, tmp_path) == newest / "BALLOON.ALL"
+
+
+def test_a_changed_stored_archive_is_an_error_naming_the_id(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    _store(tmp_path, "2026-10-28-wt-aaaaaaaa", FLM_BYTES, build_all([b"old"]))
+    newest = _store(tmp_path, "2026-10-30-wt-bbbbbbbb", FLM_BYTES, build_all([b"new"]))
+    (newest / "BALLOON.ALL").write_bytes(b"tampered")
+    with pytest.raises(ArchiveError, match="2026-10-30-wt-bbbbbbbb"):
+        resolve_all(film, tmp_path)
+
+
+def test_nothing_found_names_make_all(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    with pytest.raises(ArchiveMissing, match=r"mise run make-all -- --film"):
+        resolve_all(film, tmp_path)
