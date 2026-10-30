@@ -63,6 +63,12 @@ def test_the_timeout_fires() -> None:
         makeone.wait_for_text(Modes("M_VGA"), timeout=10, poll=2, clock=clock, sleep=clock.sleep)  # type: ignore[arg-type]
 
 
+def test_a_guest_that_never_leaves_text_mode_times_out() -> None:
+    clock = FakeClock()
+    with pytest.raises(makeone.MakeOneTimeout):
+        makeone.wait_for_text(Modes("M_TEXT"), timeout=10, poll=2, clock=clock, sleep=clock.sleep)  # type: ignore[arg-type]
+
+
 def test_make_all_returns_the_archive_written_into_the_mount(
     staged_repo: StagedRepo, game_root: Path, makeone_conf: Path
 ) -> None:
