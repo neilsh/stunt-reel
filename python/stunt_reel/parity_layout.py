@@ -26,6 +26,8 @@ __all__ = [
     "RUN_WIDTH",
     "archive_path",
     "archives_root",
+    "batch_film_dir",
+    "batch_root",
     "capture_root",
     "film_slug",
     "frames_path",
@@ -58,6 +60,7 @@ _STAGE = _PARITY / "stage"
 _RENDER_SCRATCH = _SCRATCH / "parity"
 _RETIME = _SCRATCH / "retime"
 _SWEEP = _SCRATCH / "sweep"
+_BATCH = _PARITY / "batch"
 
 #: The committed file naming each film's reference capture (ADR 0022), relative to the checkout.
 REFERENCES_FILE = Path("research/parity/references.toml")
@@ -83,6 +86,16 @@ RENDER_ROOTS: tuple[Path, ...] = (_RENDER, _SWEEP)
 def _film_name(film: str) -> str:
     """The lower-case name a film contributes to a directory."""
     return film.lower()
+
+
+def batch_root() -> Path:
+    """The directory holding the batch survey's ledger and per-film outputs."""
+    return _BATCH
+
+
+def batch_film_dir(slug: str) -> Path:
+    """The batch survey's output for the film *slug*: its render, report and example frames."""
+    return _BATCH / require_slug(slug)
 
 
 def capture_root() -> Path:

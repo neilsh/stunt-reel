@@ -56,9 +56,9 @@
   - `STAGES = ("archive", "capture", "render", "score")`
   - `@dataclass(frozen=True) class Record: slug: str; stage: str; status: str; message: str; seconds: float; at: str; ssim: float | None = None; iou: float | None = None`, where `status` is `"ok"`, `"error"` or `"skipped"`.
   - `append(path: Path, record: Record) -> None` (one JSON line, opened in append mode).
-  - `read(path: Path) -> list[Record]` (missing file gives `[]`; a malformed line is skipped, not fatal).
-  - `latest(records: list[Record], slug: str, stage: str) -> Record | None`.
-  - `summarize(records: list[Record]) -> str`: counts of ok/error/skipped per stage, then one line per slug whose latest record for any stage is `error`, as `slug  stage  message`, then the 5 lowest and 5 highest SSIM among latest `score` records.
+  - `read(path: Path) -> list of Record` (missing file gives `[]`; a malformed line is skipped, not fatal).
+  - `latest(records, slug: str, stage: str)` returns the newest Record for that pair, or None.
+  - `summarize(records) -> str`: counts of ok/error/skipped per stage, then one line per slug whose latest record for any stage is `error`, as `slug  stage  message`, then the 5 lowest and 5 highest SSIM among latest `score` records.
 
 - [ ] **Step 1: Write failing tests** in `tests/test_batch_ledger.py`: `test_append_then_read_roundtrips`, `test_read_missing_file_is_empty`, `test_read_skips_a_malformed_line`, `test_latest_returns_the_last_record_for_slug_and_stage`, `test_summarize_lists_each_failed_slug_once_with_its_stage` (two errors for one slug at different stages, the later ok on the first stage: only the still-failing stage is listed).
 - [ ] **Step 2: Run** `mise run test-py -- tests/test_batch_ledger.py`; expect FAIL (module missing).
