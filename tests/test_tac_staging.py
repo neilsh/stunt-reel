@@ -113,3 +113,20 @@ def test_stage_makeone_missing_film_leaves_nothing_behind(
     with pytest.raises(FileNotFoundError):
         staging.stage_makeone(staged_repo.film.with_name("NOPE.FLM"), game_root, makeone_conf)
     assert _no_stage_left()
+
+
+def test_stage_play_finds_the_engine_files_when_the_film_is_outside_a_game_tree(
+    staged_repo: StagedRepo,
+    tmp_path: Path,
+) -> None:
+    """A film kept anywhere is staged with the demo's engine files, not its parent's neighbours."""
+    film = tmp_path / "films" / "FOO.FLM"
+    film.parent.mkdir()
+    film.write_bytes(b"FILM")
+    archive = tmp_path / "FOO.ALL"
+    archive.write_bytes(b"ARCHIVE")
+
+    mount, _conf = staging.stage_play(film, archive, staged_repo.conf)
+
+    assert set(staging.ENGINE_FILES) <= _tree(mount)
+    assert (mount / "VAULT" / "FOO.ALL").read_bytes() == b"ARCHIVE"

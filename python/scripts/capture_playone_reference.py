@@ -202,7 +202,7 @@ def run(args: argparse.Namespace) -> int:
     except EmulatorUnavailable as exc:
         print(f"[capture] {exc}; run via mise run capture-ref", file=sys.stderr)
         return 1
-    except (SessionError, RuntimeError, TimeoutError, ConnectionError) as exc:
+    except (SessionError, RuntimeError, TimeoutError, ConnectionError, OSError) as exc:
         status = getattr(exc, "emulator_status", None)
         suffix = f"; emulator exit status {status}" if status is not None else ""
         print(f"[capture] {exc}{suffix}", file=sys.stderr)

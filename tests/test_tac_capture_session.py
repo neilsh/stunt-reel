@@ -919,6 +919,10 @@ def test_capture_script_failure_lines_and_exit_codes(
     assert module.run(args) == 1
     assert capsys.readouterr().err == "[capture] boom; emulator exit status 3221226505\n"
 
+    stub_raises(FileNotFoundError("PLAYONE.EXE not found"))
+    assert module.run(args) == 1
+    assert capsys.readouterr().err == "[capture] PLAYONE.EXE not found\n"
+
     def stub_ok(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
         return {"frames": [{"ordinal": 1}]}
 

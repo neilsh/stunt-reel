@@ -83,6 +83,19 @@ def _replace_once(text: str, literal: str, replacement: str, conf: Path) -> str:
     return text.replace(literal, replacement, 1)
 
 
+def _engine_root(film: Path) -> Path:
+    """Where PLAYONE's engine files come from: the film's game tree, else the demo.
+
+    A film beside its engine files (``<tree>/VAULT/X.FLM`` with ``PLAYONE.EXE`` in ``<tree>``)
+    uses that tree; a film kept anywhere else, such as one ``make-all`` converted from another
+    folder, takes the demo's, because the engine files are the same for every film.
+    """
+    beside = film.parent.parent
+    if (beside / "PLAYONE.EXE").is_file():
+        return beside
+    return dataroot.REPO_ROOT / "corpus" / "stisldem"
+
+
 def _stage(
     film: Path,
     conf: Path,
@@ -130,7 +143,7 @@ def stage_play(film: Path, archive: Path, conf: Path) -> StagedMount:
         if not needed.is_file():
             msg = f"{needed} not found (the film's .FLM and .ALL must sit together)"
             raise FileNotFoundError(msg)
-    source_root = film.parent.parent
+    source_root = _engine_root(film)
 
     def populate(mount_dir: Path) -> None:
         for name in ENGINE_FILES:
