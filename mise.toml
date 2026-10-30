@@ -94,6 +94,10 @@ run = "uv run python python/scripts/build_at.py"
 description = "Capture PLAYONE.EXE Mode 13h frames for visual parity (default CTRY; mise run capture-ref -- --film corpus/stisldem/VAULT/INTRO.FLM)"
 run = "uv run python python/scripts/capture_playone_reference.py"
 
+[tasks.make-all]
+description = "Generate a film's .ALL with MAKEONE.EXE in DOSBox-X into captures/all/ (mise run make-all -- --film corpus/stuntisl/VAULT/BALLOON.FLM)"
+run = "uv run python python/scripts/make_all.py"
+
 [tasks.sweep]
 description = "Candidate sweep: render and score DBG_* variants on CTRY and INTRO (mise run sweep -- --var DBG_X=0,1 [--films ctry] [--probe iou] [--keep-best] [--no-build] [--reuse DIR] [--retime N])"
 run = "uv run python python/scripts/parity_sweep.py"

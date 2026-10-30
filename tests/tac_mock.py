@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from stunt_reel import dataroot
+from stunt_reel import dataroot, parity_layout
 from stunt_reel.tac.emulator import MockEmulator
 from stunt_reel.tac.playone import DGROUP_RUNTIME_SEG, FILM_CLOCK_OFFSET, GLOBAL_TICK_OFFSET
 from stunt_reel.tac.staging import ENGINE_FILES, MAKEONE_FILES
@@ -201,3 +201,31 @@ def makeone_conf(tmp_path: Path) -> Path:
     ]
     conf.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return conf
+
+
+def makeone_guest(
+    *, text_after: int | None, archive: bytes | None
+) -> tuple[MockEmulator, list[tuple[int, int]]]:
+    """A MAKEONE guest: graphics until *text_after* polls, then text mode with *archive* written."""
+    guest = CaptureGuest()
+    mock = guest.mock
+    polls = {"n": 0}
+    keys: list[tuple[int, int]] = []
+    send = mock.inject_key
+
+    def inject(key: tuple[int, int]) -> None:
+        keys.append(key)
+        send(key)
+
+    def mode() -> str:
+        polls["n"] += 1
+        if text_after is None or polls["n"] <= text_after:
+            return "M_VGA"
+        if archive is not None:
+            for mount in (dataroot.REPO_ROOT / parity_layout.stage_root()).glob("ctry-*"):
+                (mount / "VAULT" / "CTRY.ALL").write_bytes(archive)
+        return "M_TEXT"
+
+    mock.inject_key = inject  # type: ignore[method-assign]
+    mock.video_mode_source = mode
+    return MockEmulator(mock), keys
