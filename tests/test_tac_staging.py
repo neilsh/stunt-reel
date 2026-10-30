@@ -41,6 +41,22 @@ def test_stage_play_takes_an_explicit_archive(
     assert (mount / "VAULT" / "CTRY.FLM").is_file()
 
 
+def test_stage_starts_from_an_empty_mount_when_a_stale_one_has_the_label(
+    staged_repo: StagedRepo,
+    game_root: Path,
+    makeone_conf: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(staging, "_stage_label", lambda: "reused")
+    stale = dataroot.REPO_ROOT / parity_layout.stage_dir(staged_repo.film.stem, "reused")
+    (stale / "VAULT").mkdir(parents=True)
+    (stale / "VAULT" / "CTRY.ALL").write_bytes(b"left by a killed run")
+
+    mount, _conf = staging.stage_makeone(staged_repo.film, game_root, makeone_conf)
+
+    assert "VAULT/CTRY.ALL" not in _tree(mount)
+
+
 def test_stage_makeone_holds_exactly_the_makeone_tree(
     staged_repo: StagedRepo,
     game_root: Path,

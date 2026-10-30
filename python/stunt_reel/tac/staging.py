@@ -111,7 +111,9 @@ def _stage(
     mount_dir = dataroot.REPO_ROOT / parity_layout.stage_dir(film.stem, label)
     staged_conf = dataroot.REPO_ROOT / parity_layout.stage_conf(film.stem, label)
     try:
-        (mount_dir / "VAULT").mkdir(parents=True, exist_ok=True)
+        # A killed run can leave a mount under a reused pid's label; stale files must not leak in.
+        shutil.rmtree(mount_dir, ignore_errors=True)
+        (mount_dir / "VAULT").mkdir(parents=True)
         populate(mount_dir)
         mount = mount_dir.relative_to(dataroot.REPO_ROOT).as_posix()
         text = conf.read_text(encoding="utf-8")
