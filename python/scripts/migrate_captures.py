@@ -16,6 +16,7 @@ import json
 import re
 import shutil
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -118,6 +119,16 @@ def _move(source: Path, target: Path, *, frames: bool) -> None:
     shutil.rmtree(source)
 
 
+def _matches_pin(source: Path, pin: str) -> bool:
+    """True when *source*, or the capture it will become, hashes to *pin*."""
+    if references.capture_digest(source) == pin:
+        return True
+    with tempfile.TemporaryDirectory() as scratch:
+        converted = Path(scratch) / "capture"
+        _copy_frames(source, converted)
+        return references.capture_digest(converted) == pin
+
+
 def _only_run(directory: Path) -> Path | None:
     """The single run directory inside *directory*, or ``None`` when there is not exactly one."""
     runs = [item for item in directory.iterdir() if item.is_dir()]
@@ -127,8 +138,9 @@ def _only_run(directory: Path) -> Path | None:
 def migrate(root: Path, pins: Mapping[str, str], *, apply: bool) -> list[str]:
     """Plan the moves under *root*, make them when *apply*, and return one line per item.
 
-    *pins* maps a film to the digest its old frame capture must have; a mismatch raises
-    :class:`MigrationError` before anything moves.
+    *pins* maps a film to the digest of its frame capture: either the old capture or what it
+    becomes (the move is deterministic), so the check works before and after re-pinning. A
+    mismatch raises :class:`MigrationError` before anything moves.
     """
     captures = root / _relative(parity_layout.capture_root())
     plan: list[tuple[str, Path, Path, bool]] = []
@@ -150,7 +162,7 @@ def migrate(root: Path, pins: Mapping[str, str], *, apply: bool) -> list[str]:
             else:
                 plan.append((film, source, target, frames))
     for film, source, _target, frames in plan:
-        if frames and film in pins and references.capture_digest(source) != pins[film]:
+        if frames and film in pins and not _matches_pin(source, pins[film]):
             raise MigrationError(
                 f"{source} no longer hashes to its pin in references.toml; nothing was moved"
             )
@@ -180,7 +192,14 @@ def write_pins(path: Path, root: Path) -> list[str]:
     """Point each ``references.toml`` entry at run ``001`` of its slug, with that digest."""
     text = path.read_text(encoding="utf-8")
     lines: list[str] = []
-    for film, entry in tomllib.loads(text).items():
+    entries = tomllib.loads(text)
+    for film, entry in entries.items():
+        capture = root / _relative(parity_layout.frames_path(entry["film"], _FIRST_RUN))
+        if not (capture / "meta.json").is_file():
+            raise MigrationError(
+                f"{film}: {capture} holds no migrated capture; nothing was re-pinned"
+            )
+    for film, entry in entries.items():
         digest = references.capture_digest(
             root / _relative(parity_layout.frames_path(entry["film"], _FIRST_RUN))
         )

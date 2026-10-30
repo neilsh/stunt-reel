@@ -87,7 +87,13 @@ def read_reference(root: Path, film: str) -> Reference:
         raise ReferenceCaptureError(
             f"{path} names no reference capture for {name} (film, capture, sha256)"
         )
-    return Reference(name, entry["film"], entry["capture"], entry["sha256"])
+    try:
+        slug = parity_layout.require_slug(entry["film"])
+    except ValueError as err:
+        raise ReferenceCaptureError(
+            f"{path}: the film entry of {name} is not a slug: {err}"
+        ) from err
+    return Reference(name, slug, entry["capture"], entry["sha256"])
 
 
 def reference_dir(root: Path, film: str) -> Path:

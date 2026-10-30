@@ -48,6 +48,15 @@ def test_an_absent_capture_is_named_by_id(tmp_path: Path) -> None:
         references.reference_dir(tmp_path, "ctry")
 
 
+def test_a_film_that_is_not_a_slug_is_refused(tmp_path: Path) -> None:
+    pointers = tmp_path / parity_layout.REFERENCES_FILE
+    pointers.parent.mkdir(parents=True)
+    lines = ["[ctry]", 'film = "../x"', 'capture = "001"', f'sha256 = "{"0" * 64}"']
+    pointers.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    with pytest.raises(references.ReferenceCaptureError, match="not a slug"):
+        references.reference_dir(tmp_path, "ctry")
+
+
 def test_a_changed_capture_is_refused(tmp_path: Path) -> None:
     directory = _capture(tmp_path, "ctry", "legacy-1")
     _point(tmp_path, "ctry", "legacy-1", "0" * 64)

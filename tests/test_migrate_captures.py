@@ -118,6 +118,35 @@ def test_a_right_pin_lets_the_move_proceed(script: Any, tmp_path: Path) -> None:
     assert (root / "captures/vault-ctry/frames/001").is_dir()
 
 
+def test_a_pin_of_the_migrated_capture_is_accepted_before_the_move(
+    script: Any, tmp_path: Path
+) -> None:
+    """After re-pinning, an unmigrated root still passes: the pin names what the capture becomes."""
+    root = _root(tmp_path)
+    twin = _root(tmp_path / "twin")
+    script.migrate(twin, {}, apply=True)
+    pin = references.capture_digest(twin / "captures/vault-ctry/frames/001")
+    script.migrate(root, {"ctry": pin}, apply=True)
+    assert (root / "captures/vault-ctry/frames/001").is_dir()
+
+
+def test_write_pins_refuses_a_film_that_was_not_migrated(script: Any, tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    _old_capture(root, "intro", "a")
+    _old_capture(root, "intro", "b")  # two runs: the migration skips it
+    script.migrate(root, {}, apply=True)
+    pointers = tmp_path / "references.toml"
+    entries = [
+        '[ctry]\nfilm = "vault-ctry"\ncapture = "x"\nsha256 = "0"\n',
+        '[intro]\nfilm = "vault-intro"\ncapture = "x"\nsha256 = "0"\n',
+    ]
+    text = "\n".join(entries)
+    pointers.write_text(text, encoding="utf-8")
+    with pytest.raises(script.MigrationError, match="intro"):
+        script.write_pins(pointers, root)
+    assert pointers.read_text(encoding="utf-8") == text
+
+
 def test_file_bytes_survive_the_move(script: Any, tmp_path: Path) -> None:
     root = _root(tmp_path)
     old = _tree(root / "captures/ctry" / OLD_ID)

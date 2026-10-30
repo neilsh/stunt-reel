@@ -28,7 +28,20 @@ of which only the hash described the capture.
 - **Frame files sit under `frames/`** inside a capture so `meta.json` is visible. The capture
   readers accept a file name that is a basename or `frames/<basename>`; older captures read unchanged.
 
+## Considered Options
+
+- **Kind first** (`captures/frames/<film>/`). Rejected: a film's captures and archives sit in
+  separate trees, and `meta.json` sits among the numbered files.
+- **Hash-based run ids.** Rejected: they refuse a repeat capture of identical bytes and repeat
+  what `meta.json` and `references.toml` already hold.
+- **Naming a film by its physical corpus path.** Rejected: one film exists in up to four corpus
+  copies and would be filed four times.
+- **A permanent link at the old names.** Rejected: it leaves two names for one capture.
+
 ## Consequences
+
+- Packs with the same folder name in different corpus roots share one slug, and the second film
+  is filed as the next run of the first. `--name` is the workaround until a pattern emerges.
 
 - A repeat capture of the same bytes is allowed and becomes the next run; make-all no longer refuses an existing id.
 - The digest of a capture covers relative paths and `meta.json`, so moving the two existing captures

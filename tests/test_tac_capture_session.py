@@ -873,6 +873,11 @@ def test_capture_script_clears_the_leftovers_of_a_run_that_died(tmp_path: Path) 
     (out / "frames" / "tick_0001.idx").write_bytes(b"\x00")
     (out / "tick_0002.idx").write_bytes(b"\x00")
     (out / "palettes_0001.json").write_text("{}", encoding="utf-8")
+    (out / "frames" / "notes.txt").write_text("mine", encoding="utf-8")
+    assert module.is_taken(out)  # a file that is not ours keeps the directory taken
+    assert (out / "frames" / "notes.txt").read_text(encoding="utf-8") == "mine"
+    assert not list((out / "frames").glob("tick_*"))
+    (out / "frames" / "notes.txt").unlink()
     assert not module.is_taken(out)
     assert list(out.iterdir()) == []
     (out / "tick_0001.idx").write_bytes(b"\x00")

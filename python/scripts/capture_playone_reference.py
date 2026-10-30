@@ -131,10 +131,13 @@ def is_taken(out_dir: Path) -> bool:
     if not out_dir.is_dir():
         return False
     if not (out_dir / "meta.json").exists():
-        shutil.rmtree(out_dir / CAPTURE_FRAMES_DIR, ignore_errors=True)
-        for pattern in ("tick_*.idx", "palettes_*.json"):
-            for partial in out_dir.glob(pattern):
-                partial.unlink()
+        frames = out_dir / CAPTURE_FRAMES_DIR
+        for directory in (frames, out_dir):
+            for pattern in ("tick_*.idx", "palettes_*.json"):
+                for partial in directory.glob(pattern):
+                    partial.unlink()
+        if frames.is_dir() and not any(frames.iterdir()):
+            frames.rmdir()
     return any(out_dir.iterdir())
 
 
