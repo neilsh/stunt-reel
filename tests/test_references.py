@@ -51,7 +51,8 @@ def test_a_changed_capture_is_refused(tmp_path: Path) -> None:
     assert directory.is_dir()
 
 
-def test_a_missing_file_or_film_is_named(tmp_path: Path) -> None:
+def test_a_missing_file_or_film_is_named(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(references, "REPO_ROOT", tmp_path / "empty-checkout")
     with pytest.raises(references.ReferenceCaptureError, match="does not exist"):
         references.reference_dir(tmp_path, "ctry")
     _point(tmp_path, "intro", "x", "0" * 64)
@@ -59,3 +60,13 @@ def test_a_missing_file_or_film_is_named(tmp_path: Path) -> None:
         references.ReferenceCaptureError, match="names no reference capture for ctry"
     ):
         references.reference_dir(tmp_path, "ctry")
+
+
+def test_a_data_root_without_a_pointer_reads_the_checkouts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout, data = tmp_path / "checkout", tmp_path / "data"
+    directory = _capture(data, "ctry", "legacy-1")
+    _point(checkout, "ctry", "legacy-1", references.capture_digest(directory))
+    monkeypatch.setattr(references, "REPO_ROOT", checkout)
+    assert references.reference_dir(data, "ctry") == directory

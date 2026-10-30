@@ -857,6 +857,21 @@ def test_capture_script_never_writes_over_a_capture(
     assert (out / "meta.json").read_text(encoding="utf-8") == "{}"
 
 
+def test_capture_script_clears_the_leftovers_of_a_run_that_died(tmp_path: Path) -> None:
+    """Rasters without a meta.json are no capture: the same id can be retried (ADR 0022)."""
+    module = _load_script("capture_playone_reference")
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "tick_0001.idx").write_bytes(b"\x00")
+    (out / "palettes_0001.json").write_text("{}", encoding="utf-8")
+    assert not module.is_taken(out)
+    assert list(out.iterdir()) == []
+    (out / "tick_0001.idx").write_bytes(b"\x00")
+    (out / "meta.json").write_text("{}", encoding="utf-8")
+    assert module.is_taken(out)
+    assert (out / "tick_0001.idx").exists()
+
+
 def test_capture_script_failure_lines_and_exit_codes(
     staged_repo: StagedRepo,
     monkeypatch: pytest.MonkeyPatch,
