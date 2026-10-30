@@ -171,3 +171,8 @@ def walk_film(data: bytes) -> list[SliceView]:
         )
         previous_start = header_start
         index += 1
+
+
+def film_ticks(data: bytes) -> int:
+    """The film's length in 50 Hz ticks: the sum of its slices' ``tick_duration`` bytes."""
+    return sum(data[view.start + 2] for view in walk_film(data))
