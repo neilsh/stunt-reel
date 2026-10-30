@@ -8,7 +8,7 @@ import pytest
 
 from stunt_reel import dataroot, parity_layout
 from stunt_reel.tac import staging
-from tac_mock import StagedRepo, staged_repo  # noqa: F401  (the fixture)
+from tac_mock import StagedRepo
 
 REAL_CONF = Path(__file__).resolve().parent.parent / "tools" / "dosbox" / "dosbox-parity.conf"
 BACKSLASH = chr(92)
@@ -27,32 +27,8 @@ def _no_stage_left() -> bool:
     return not stage_root.exists() or not any(stage_root.iterdir())
 
 
-@pytest.fixture
-def game_root(tmp_path: Path) -> Path:
-    root = tmp_path / "game"
-    root.mkdir()
-    for name in staging.MAKEONE_FILES:
-        (root / name).write_bytes(b"x" + name.encode())
-    (root / "RES" / "sub").mkdir(parents=True)
-    (root / "RES" / "a.bin").write_bytes(b"a")
-    (root / "RES" / "sub" / "b.bin").write_bytes(b"b")
-    (root / "VAULT").mkdir()
-    (root / "VAULT" / "OTHER.FLM").write_bytes(b"o")
-    (root / "VAULT" / "OTHER.TKE").write_bytes(b"t")
-    (root / "SETS").mkdir()
-    (root / "SETS" / "X.SET").write_bytes(b"s")
-    return root
-
-
-@pytest.fixture
-def makeone_conf(tmp_path: Path) -> Path:
-    conf = tmp_path / "makeone.conf"
-    conf.write_text(CONF_WITH_PLAYONE, encoding="utf-8")
-    return conf
-
-
 def test_stage_play_takes_an_explicit_archive(
-    staged_repo: StagedRepo,  # noqa: F811
+    staged_repo: StagedRepo,
     tmp_path: Path,
 ) -> None:
     archive = tmp_path / "elsewhere" / "weird.All"
@@ -66,7 +42,7 @@ def test_stage_play_takes_an_explicit_archive(
 
 
 def test_stage_makeone_holds_exactly_the_makeone_tree(
-    staged_repo: StagedRepo,  # noqa: F811
+    staged_repo: StagedRepo,
     game_root: Path,
     makeone_conf: Path,
 ) -> None:
@@ -81,7 +57,7 @@ def test_stage_makeone_holds_exactly_the_makeone_tree(
 
 
 def test_stage_makeone_rewrites_the_real_conf(
-    staged_repo: StagedRepo,  # noqa: F811
+    staged_repo: StagedRepo,
     game_root: Path,
 ) -> None:
     mount, conf = staging.stage_makeone(staged_repo.film, game_root, REAL_CONF)
@@ -94,7 +70,7 @@ def test_stage_makeone_rewrites_the_real_conf(
 
 
 def test_stage_makeone_rewrites_the_playone_line(
-    staged_repo: StagedRepo,  # noqa: F811
+    staged_repo: StagedRepo,
     game_root: Path,
     tmp_path: Path,
 ) -> None:
@@ -105,7 +81,7 @@ def test_stage_makeone_rewrites_the_playone_line(
 
 
 def test_stage_makeone_rejects_a_conf_without_the_playone_line(
-    staged_repo: StagedRepo,  # noqa: F811
+    staged_repo: StagedRepo,
     game_root: Path,
     tmp_path: Path,
 ) -> None:
@@ -117,7 +93,7 @@ def test_stage_makeone_rejects_a_conf_without_the_playone_line(
 
 
 def test_stage_makeone_without_res_leaves_nothing_behind(
-    staged_repo: StagedRepo,  # noqa: F811
+    staged_repo: StagedRepo,
     game_root: Path,
     makeone_conf: Path,
 ) -> None:
@@ -130,7 +106,7 @@ def test_stage_makeone_without_res_leaves_nothing_behind(
 
 
 def test_stage_makeone_missing_film_leaves_nothing_behind(
-    staged_repo: StagedRepo,  # noqa: F811
+    staged_repo: StagedRepo,
     game_root: Path,
     makeone_conf: Path,
 ) -> None:

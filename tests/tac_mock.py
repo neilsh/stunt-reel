@@ -20,7 +20,7 @@ import pytest
 from stunt_reel import dataroot
 from stunt_reel.tac.emulator import MockEmulator
 from stunt_reel.tac.playone import DGROUP_RUNTIME_SEG, FILM_CLOCK_OFFSET, GLOBAL_TICK_OFFSET
-from stunt_reel.tac.staging import ENGINE_FILES
+from stunt_reel.tac.staging import ENGINE_FILES, MAKEONE_FILES
 from stunt_reel.tac.transport import FRAME_BYTES, MockTransport
 
 __all__ = [
@@ -167,3 +167,37 @@ def fake_guest(port: int, *, attempts: int = 500) -> threading.Thread:
     thread = threading.Thread(target=run, daemon=True)
     thread.start()
     return thread
+
+
+@pytest.fixture
+def game_root(tmp_path: Path) -> Path:
+    """A synthetic full-game tree: the MAKEONE files, a RES tree and files MAKEONE must not need."""
+    root = tmp_path / "game"
+    root.mkdir()
+    for name in MAKEONE_FILES:
+        (root / name).write_bytes(b"x" + name.encode())
+    (root / "RES" / "sub").mkdir(parents=True)
+    (root / "RES" / "a.bin").write_bytes(b"a")
+    (root / "RES" / "sub" / "b.bin").write_bytes(b"b")
+    (root / "VAULT").mkdir()
+    (root / "VAULT" / "OTHER.FLM").write_bytes(b"o")
+    (root / "VAULT" / "OTHER.TKE").write_bytes(b"t")
+    (root / "SETS").mkdir()
+    (root / "SETS" / "X.SET").write_bytes(b"s")
+    return root
+
+
+@pytest.fixture
+def makeone_conf(tmp_path: Path) -> Path:
+    """A parity-shaped conf that still carries the playone.exe autoexec line."""
+    conf = tmp_path / "makeone.conf"
+    film_literal = chr(92).join(["VAULT", "CTRY.FLM"])
+    lines = [
+        'mount c "corpus/stisldem"',
+        f"title {film_literal}",
+        "[autoexec]",
+        "c:",
+        "playone.exe",
+    ]
+    conf.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return conf

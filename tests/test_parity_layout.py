@@ -23,6 +23,7 @@ CALLERS = (
     STUNTS / "all_archive.py",
     SCRIPTS / "worktree_init.py",
     STUNTS / "tac" / "staging.py",
+    STUNTS / "tac" / "makeone.py",
     SCRIPTS / "capture_playone_reference.py",
 )
 

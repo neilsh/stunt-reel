@@ -37,6 +37,7 @@ from stunt_reel.tac.transport import FRAME_BYTES, RGB, Transport
 __all__ = [
     "BOOT_PAGES",
     "MAX_DIALOG_DUMPS",
+    "PLAYONE_PROFILE",
     "SETTLED_DUMPS",
     "DialogSettled",
     "DialogUnsettled",
@@ -44,6 +45,7 @@ __all__ = [
     "GuestTimeout",
     "Page",
     "PortTaken",
+    "Profile",
     "Session",
     "SessionError",
     "SessionEvent",
@@ -198,6 +200,10 @@ class Session(Protocol):
         """Run the guest to its next post-retrace trap hit and return the stopped page."""
         ...
 
+    def video_mode(self) -> str:
+        """The VGA mode name the emulator reports now, for example ``M_VGA`` or ``M_TEXT``."""
+        ...
+
 
 class _LiveSession:
     """The session handed to a sampler; created and finished by run_session."""
@@ -219,6 +225,14 @@ class _LiveSession:
             raise SessionLost(f"lost the debugger while stepping to the trap: {exc}") from exc
         self._page = Page(self._transport, self.dgroup_segment)
         return self._page
+
+    def video_mode(self) -> str:
+        """Ask the debugger for the VGA mode name."""
+        with _guest_errors("reading the video mode"):
+            try:
+                return self._transport.video_mode()
+            except ValueError as exc:
+                raise SessionError(str(exc)) from exc
 
     def finish(self) -> None:
         """Expire the last page so the sampler cannot use it after the session."""
@@ -290,6 +304,18 @@ def _teardown(transport: Transport | None, machine: Emulator) -> None:
         raise errors[0]
 
 
+@dataclass(frozen=True)
+class Profile:
+    """What differs between the programs a session drives: how to stage and what to type."""
+
+    stage: Callable[[Path, Path], staging.StagedMount]
+    keys: Callable[[str], list[tuple[int, int]]]
+
+
+#: Today's behaviour: a PLAYONE mount with the film's sibling archive, and its list-box keys.
+PLAYONE_PROFILE = Profile(stage=staging.stage_film, keys=playone.film_selection_keys)
+
+
 def run_session(
     film: Path,
     *,
@@ -300,6 +326,7 @@ def run_session(
     no_launch: bool = False,
     emulator: Emulator | None = None,
     progress: Callable[[SessionEvent], None] | None = None,
+    profile: Profile = PLAYONE_PROFILE,
 ) -> T:
     """Run one capture session and return the sampler's result.
 
@@ -313,7 +340,7 @@ def run_session(
     root = dataroot.REPO_ROOT
     film_path = _resolve(film, root)
     conf_path = _resolve(conf, root)
-    staged = None if no_launch else staging.stage_film(film_path, conf_path)
+    staged = None if no_launch else profile.stage(film_path, conf_path)
     machine: Emulator = (
         emulator
         if emulator is not None
@@ -332,7 +359,7 @@ def run_session(
         settled = _settle(transport)
         if progress is not None:
             progress(DialogSettled(settled))
-        for key in playone.film_selection_keys(film_path.name):
+        for key in profile.keys(film_path.name):
             with _guest_errors("injecting a dialog keystroke"):
                 transport.inject_key(key)
         session = _LiveSession(transport, dgroup_segment)
