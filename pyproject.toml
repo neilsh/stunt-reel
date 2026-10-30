@@ -26,7 +26,7 @@ dev = [
     "mypy>=1.14.0",
     "pytest>=8.3.0",
     "pytest-cov>=6.0.0",
-    "ruff>=0.9.0",
+    "ruff>=0.12.0",
 ]
 
 [tool.hatch.version]
@@ -75,14 +75,56 @@ select = [
     "ARG",    # flake8-unused-arguments
     "S",      # flake8-bandit
     "T20",    # flake8-print
+    "BLE",    # flake8-blind-except: no bare `except Exception`
+    "FURB",   # refurb: modern idioms
+    "ICN",    # flake8-import-conventions
+    "ISC",    # flake8-implicit-str-concat
+    "LOG",    # flake8-logging
+    "PERF",   # perflint
+    "PGH",    # pygrep-hooks: blanket `noqa` / `type: ignore`
+    "PTH",    # flake8-use-pathlib
+    "RET",    # flake8-return
+    "RSE",    # flake8-raise
+    "TC",     # flake8-type-checking: typing-only imports under TYPE_CHECKING
+    "TID",    # flake8-tidy-imports
+    "TRY300", # try-consider-else
+    "TRY301", # raise-within-try
+    "YTT",    # flake8-2020
+    "PLC",    # pylint conventions
+    "PLE",    # pylint errors
+    "PLW",    # pylint warnings
 ]
+# Deliberately NOT selected (checked 2026-10-29; counts are violations at the time):
+#   D       pydocstyle: ~370 hits (248 undocumented public functions, 98 imperative-mood);
+#           the docs live in docs/ and research/, not docstrings.
+#   ANN     annotations: ANN401 flags 60 `Any`s at JSON/Kaitai boundaries; mypy strict
+#           already requires every annotation.
+#   EM/TRY003  exception-message style: ~240 hits, no bug class behind them.
+#   PLR     magic values and size limits (PLR2004 ~196, branches/arguments ~35): noisy
+#           for byte-format code where the numbers are the spec.
+#   COM812  conflicts with `ruff format`.
+#   INP001  scripts are not packages.
+#   SLF001  tests and tools reach into private members on purpose.
 ignore = [
-    "E501",   # line length violations handled by ruff format
+    "E501",  # line length violations handled by ruff format
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]        # asserts are the assertion mechanism in tests
-"python/scripts/**" = ["T20"]  # CLI scripts write human-readable progress to stdout
+"tests/**" = [
+    "S101",    # asserts are the assertion mechanism in tests
+    "BLE001",  # tests catch broadly to record what escaped
+    "PERF401", # clarity over speed in test setup
+]
+"python/scripts/**" = [
+    "T20",     # CLI scripts write human-readable progress to stdout
+    "BLE001",  # scripts turn any failure into a reported verdict
+    "PERF401", # clarity over speed in one-shot tooling
+]
+
+"python/scripts/adversarial_formats_challenge.py" = [
+    "PTH",     # one-off corpus probe written against open()/glob
+    "PLC0415", # imports the corpus parser after extending sys.path
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["stunt_reel"]

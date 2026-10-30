@@ -15,9 +15,8 @@ import json
 import shutil
 import struct
 import sys
-import threading
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -58,6 +57,9 @@ from tac_mock import (
     fake_guest,
     free_port,
 )
+
+if TYPE_CHECKING:
+    import threading
 
 #: Dumps the capture guest's boot sequence and settled dialog take.
 SETTLE_DUMPS: int = 9
@@ -1070,9 +1072,11 @@ def test_probe_script_keeps_its_flags_and_shot_line(
     module.sample(page, 42, work, tmp_path, dump_all=False)
 
     assert capsys.readouterr().out.splitlines() == [
-        "[shot] tick    42 workseg 1DF8 L [100, -200, 300] |L| 374.2 "
-        "sun_billboard [1, 2, 3] sun_position [4, 5, 6, 7, 8, 9] "
-        "shade [10, 11, 12, 13, 14, 15, 16, 17]"
+        (
+            "[shot] tick    42 workseg 1DF8 L [100, -200, 300] |L| 374.2 "
+            "sun_billboard [1, 2, 3] sun_position [4, 5, 6, 7, 8, 9] "
+            "shade [10, 11, 12, 13, 14, 15, 16, 17]"
+        )
     ]
     assert (tmp_path / "work_t42.bin").stat().st_size == module.SEGMENT_BYTES
     assert (tmp_path / "ds_t42.bin").stat().st_size == module.SEGMENT_BYTES

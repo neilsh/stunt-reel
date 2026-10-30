@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import math
 import struct
-from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from stunt_reel.tac.client import TacClient
 from stunt_reel.tac.dos_math import (
@@ -36,6 +36,9 @@ from stunt_reel.tac.models import (
 )
 from stunt_reel.tac.transport import MockTransport
 from stunt_reel.tac.vsync import VsyncTrap
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 __all__ = [
     "DEFAULT_ORACLE_PATH",
@@ -404,7 +407,7 @@ class TrajectoryStreamer:
                     break  # Uninitialized memory slot
                 actors.append(actor)
                 curr_addr = next_addr
-            except Exception:
+            except Exception:  # noqa: BLE001 - any decode failure ends the actor list
                 break
 
         return actors

@@ -13,13 +13,15 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from stunt_reel import dataroot
 from stunt_reel.tac.transport import ListenTransport, MockTransport, Transport
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 __all__ = [
     "EMULATOR_EXE",
@@ -169,7 +171,7 @@ class DosboxX:
             self._say(WaitingForGuest(control_port))
             transport.accept(timeout=self.launch_timeout)
             if not any("PONG" in line for line in transport.request("PING")):
-                raise GuestTimeout("debugger did not answer PING")
+                raise GuestTimeout("debugger did not answer PING")  # noqa: TRY301
         except TimeoutError as exc:
             self._abort_start()
             raise GuestTimeout(

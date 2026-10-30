@@ -9,14 +9,18 @@ sign of the end is the video mode going back to text, so a run waits for that.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from stunt_reel import dataroot
 from stunt_reel.tac import staging
 from stunt_reel.tac.bda import KEY_ENTER, char_to_key
-from stunt_reel.tac.emulator import Emulator
 from stunt_reel.tac.session import Profile, Session, SessionEvent, run_session
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from stunt_reel.tac.emulator import Emulator
 
 __all__ = [
     "DEFAULT_TIMEOUT",

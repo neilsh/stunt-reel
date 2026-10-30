@@ -8,7 +8,10 @@ tests/fixtures/dos_math_goldens.json.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 __all__ = [
     "bam_to_radians",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import struct
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -20,6 +20,9 @@ from stunt_reel.all_archive import (
     publish_archive,
     resolve_all,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 CHUNKS = [b"alpha", b"bb", b"c" * 9]
 ID = "2026-10-29-wt-abcd1234"

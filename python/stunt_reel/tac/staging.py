@@ -12,11 +12,13 @@ import contextlib
 import itertools
 import os
 import shutil
-from collections.abc import Callable, Iterator
-from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from stunt_reel import dataroot, parity_layout
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+    from pathlib import Path
 
 __all__ = [
     "ENGINE_FILES",

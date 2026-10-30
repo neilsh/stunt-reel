@@ -30,14 +30,17 @@ import re
 import socket
 import struct
 import tempfile
-from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
-from typing import Protocol, TextIO, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TextIO, runtime_checkable
 
 from stunt_reel.tac.bda import BdaInjector
-from stunt_reel.tac.models import TrajectoryRecord
 from stunt_reel.tac.palette import MODE_13H_PALETTE
 from stunt_reel.tac.playone import VBLANK_TRAP
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator, Sequence
+
+    from stunt_reel.tac.models import TrajectoryRecord
 
 __all__ = [
     "FRAME_BYTES",
@@ -163,14 +166,14 @@ def parse_dac_palette(lines: Sequence[str]) -> tuple[list[RGB], str]:
     for line in lines:
         if ":" not in line:
             continue
-        for entry in _DAC_ENTRY_RE.findall(line.split(":", 1)[1]):
-            palette.append(
-                (
-                    _scale_6bit(int(entry[0:2], 16)),
-                    _scale_6bit(int(entry[2:4], 16)),
-                    _scale_6bit(int(entry[4:6], 16)),
-                )
+        palette.extend(
+            (
+                _scale_6bit(int(entry[0:2], 16)),
+                _scale_6bit(int(entry[2:4], 16)),
+                _scale_6bit(int(entry[4:6], 16)),
             )
+            for entry in _DAC_ENTRY_RE.findall(line.split(":", 1)[1])
+        )
         if len(palette) >= PALETTE_ENTRIES:
             break
 

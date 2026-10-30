@@ -38,10 +38,9 @@ import io
 import itertools
 import re
 import sys
-from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from stunt_reel import flm_walk
 from stunt_reel.dataroot import ensure_links_or_report
@@ -53,6 +52,9 @@ from stunt_reel.kaitai import (
     version_matches,
 )
 from stunt_reel.scratch import scratch_dir
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable, Iterator, Sequence
 
 SCHEMA_ROOT = Path("research") / "formats"
 _KAITAISTRUCT: Any = importlib.import_module("kaitaistruct")

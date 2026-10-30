@@ -14,8 +14,11 @@ hold a baseline and must survive. The prior render is not a protected *suffix*: 
 
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from datetime import date
 
 __all__ = [
     "BASE_SUFFIX",

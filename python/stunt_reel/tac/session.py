@@ -16,10 +16,9 @@ from __future__ import annotations
 
 import contextlib
 import shutil
-from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, TypeVar
+from typing import TYPE_CHECKING, Protocol, TypeVar
 
 from stunt_reel import dataroot
 from stunt_reel.tac import playone, staging
@@ -33,6 +32,9 @@ from stunt_reel.tac.emulator import (
     PortTaken,
 )
 from stunt_reel.tac.transport import FRAME_BYTES, RGB, Transport
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
 
 __all__ = [
     "BOOT_PAGES",
@@ -294,11 +296,11 @@ def _teardown(transport: Transport | None, machine: Emulator) -> None:
     if transport is not None:
         try:
             transport.close()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - teardown collects every failure
             errors.append(exc)
     try:
         machine.stop(EMULATOR_STOP_SECONDS)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         errors.append(exc)
     if errors:
         raise errors[0]
@@ -368,7 +370,7 @@ def run_session(
         finally:
             session.finish()
         completed = True
-        return result
+        return result  # noqa: TRY300 - `completed` must be set before the handler runs
     except BaseException as exc:
         status = machine.exit_status
         with contextlib.suppress(Exception):

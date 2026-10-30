@@ -11,8 +11,7 @@ pytest never resets it.  On Windows the mkdir mode shim keeps pytest's own
 from __future__ import annotations
 
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 from pytest_helpers import (
     cache_dir,
@@ -20,6 +19,9 @@ from pytest_helpers import (
     per_run_basetemp,
     prune_old_basetemps,
 )
+
+if TYPE_CHECKING:
+    import pytest
 
 pytest_plugins = ["tac_mock"]
 

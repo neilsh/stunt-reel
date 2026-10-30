@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import shutil
-from collections.abc import Iterator
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from stunt_reel import dataroot
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
 
 
 @pytest.fixture(autouse=True)

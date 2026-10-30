@@ -33,7 +33,7 @@ import shutil
 import sys
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import parity_probe
 from cli import add_parity_options, parity_options
@@ -58,6 +58,9 @@ from stunt_reel.parity_pipeline import (
     preflight,
     run_films,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 VAR_NAME = re.compile(r"DBG_[A-Z0-9_]+")
 #: Padding around the actor's silhouette in the winner's crop, in pixels.

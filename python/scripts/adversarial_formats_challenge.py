@@ -412,9 +412,8 @@ def main() -> int:
     if all_clean:
         print("VERDICT: EMPIRICAL CHALLENGE SUITE PASSED (100% SPECIFICATION ACCURACY)")
         return 0
-    else:
-        print("VERDICT: EMPIRICAL CHALLENGE FAILED")
-        return 1
+    print("VERDICT: EMPIRICAL CHALLENGE FAILED")
+    return 1
 
 
 if __name__ == "__main__":

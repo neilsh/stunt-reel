@@ -11,9 +11,8 @@ from __future__ import annotations
 import socket
 import threading
 import time
-from collections.abc import Iterator
 from dataclasses import dataclass
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -22,6 +21,10 @@ from stunt_reel.tac.emulator import MockEmulator
 from stunt_reel.tac.playone import DGROUP_RUNTIME_SEG, FILM_CLOCK_OFFSET, GLOBAL_TICK_OFFSET
 from stunt_reel.tac.staging import ENGINE_FILES, MAKEONE_FILES
 from stunt_reel.tac.transport import FRAME_BYTES, MockTransport
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
 
 __all__ = [
     "CaptureGuest",

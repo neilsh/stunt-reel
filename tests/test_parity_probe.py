@@ -5,8 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -15,6 +14,9 @@ if str(SCRIPTS_DIR) not in sys.path:
 import parity_probe  # noqa: E402
 
 from stunt_reel import parity_artifacts  # noqa: E402
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def _report(per_frame: tuple[parity_artifacts.FrameReport, ...]) -> parity_artifacts.Report:
