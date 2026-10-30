@@ -96,4 +96,4 @@ _Found 2026-10-22; see the [parity log](../parity/log.md)._
 
 ## 6. Speed and Configuration Experiments
 
-See [`capture-speed.md`](capture-speed.md): the per-frame cost is wall-paced (0.25 s per frame, 4 s of boot), no DOSBox-X setting, `turbo` or frame sampling cut it, eight captures at once keep the tick spread within 0 to 2 ticks on an idle machine, and `nosound` freezes the film clock.
+See [`capture-speed.md`](capture-speed.md): the per-frame cost is wall-paced (0.25 s per frame, 4 s of boot), no DOSBox-X setting, `turbo` or frame sampling cut it, eight captures at once keep the tick spread within 0 to 2 ticks on an idle machine, and `nosound` freezes the film clock. A different emulator, dosbox-automation, was evaluated for deterministic video capture: [`capture-dosbox-automation.md`](capture-dosbox-automation.md).

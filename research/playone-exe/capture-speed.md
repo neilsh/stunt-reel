@@ -1,6 +1,6 @@
 # `PLAYONE.EXE`: Capture Speed and DOSBox-X Configuration Experiments
 
-The harness is in [`capture.md`](capture.md). This note records what was tried to make capture faster, more repeatable or parallel, and what each change did.
+The harness is in [`capture.md`](capture.md); a frame-locked video alternative on another emulator is in [`capture-dosbox-automation.md`](capture-dosbox-automation.md). This note records what was tried to make capture faster, more repeatable or parallel, and what each change did.
 
 ## 1. Experiments
 

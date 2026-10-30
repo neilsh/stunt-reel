@@ -37,6 +37,14 @@ asset_pattern = "dosbox-x-vsbuild-win64-*.zip"
 # Why SDL2: SDL2 build is required on Windows for stability with OpenGL output
 bin_path = "bin/x64/Release SDL2"
 
+# dosbox-automation (DOSBox Staging fork with a REST/Lua automation API): a capture
+# candidate evaluated beside DOSBox-X. Windows portable zip, pinned by checksum.
+[tools."github:dosbox-automation/dosbox-automation"]
+version = "0.85.1"
+os = ["windows"]
+asset_pattern = "dosbox-automation-*-windows-x64.zip"
+checksum = "sha256:6835621f4731235651a886ef67c4fc40693454a6386f0e5ab5c0570965a186ee"
+
 [env]
 # One shared, writable tool cache per primary checkout: mise run init links each
 # worktree's .cache to it (ADR 0013), and parks the worktree's virtualenv inside it
