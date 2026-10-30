@@ -143,6 +143,12 @@ No code unless the pilot finds a bug (fix it test-first in the owning task's fil
 
 ---
 
+## Outcome
+
+Tasks 1 to 4 landed as planned. Task 5 stopped on purpose at 79 of 529 films scored (enough to characterise the failure modes and the score spread); the results, cost and open questions are in [`research/parity/batch.md`](../../../research/parity/batch.md). Follow-up work added beyond this plan: a faster archive config, `--jobs` with a render cap and disk guard, a capture-validity check and a stall skip list.
+
+---
+
 ## Self-Review
 
 - Coverage: generate `.ALL` (Tasks 3, 4), capture (3, 4), render and score with saved example frames (3, 4), error tracking (1, 4, 5).
