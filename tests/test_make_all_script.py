@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import importlib.util
 import sys
@@ -32,6 +33,10 @@ def _load() -> Any:
 def script(monkeypatch: pytest.MonkeyPatch) -> Any:
     module = _load()
     monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
+    # The real poll interval is 2 s per wait; the mock guest answers at once.
+    monkeypatch.setattr(
+        module.makeone, "make_all", functools.partial(module.makeone.make_all, poll=0.0)
+    )
     return module
 
 
