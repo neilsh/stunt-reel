@@ -34,6 +34,8 @@ _MAKE_ALL = Path("python/scripts/make_all.py")
 _CAPTURE = Path("python/scripts/capture_playone_reference.py")
 _SIDATA = Path("corpus/siarchive/Developer/FreeFlight/SIDATA")
 _TAIL_WIDTH = 400
+#: Seconds make_all's own timeout precedes the runner's kill, so it can stop DOSBox-X itself.
+_TEARDOWN_MARGIN = 90
 
 
 def run_archive(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Record:
@@ -47,7 +49,7 @@ def run_archive(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Rec
         "--film",
         str(film.flm),
         "--timeout",
-        str(timeout),
+        str(max(timeout - _TEARDOWN_MARGIN, 1)),
     ]
     if film.name is not None:
         command += ["--name", film.name]

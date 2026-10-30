@@ -52,6 +52,12 @@ def test_archive_command_carries_name_only_when_set(tmp_path: Path) -> None:
     assert command[command.index("--film") + 1] == str(tmp_path / "VAULT" / "CTRY.FLM")
     assert "--name" not in command
     assert timeout == 900.0
+    # make_all's own timeout fires 90 s before the runner's kill so it can tear DOSBox-X down.
+    assert command[command.index("--timeout") + 1] == "810.0"
+
+    short = FakeRunner()
+    batch_stages.run_archive(_film(tmp_path), tmp_path, short, 30.0)
+    assert short.calls[0][0][short.calls[0][0].index("--timeout") + 1] == "1"
 
     named = FakeRunner()
     batch_stages.run_archive(_film(tmp_path, name="vault-ctry-0a1b2c3d"), tmp_path, named, 900.0)
