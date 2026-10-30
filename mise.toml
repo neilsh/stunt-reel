@@ -8,7 +8,7 @@
 rust = { version = "1.99.1", profile = "minimal", components = "llvm-tools,rustfmt,clippy" }
 
 # Python & modern packaging toolchain
-python = "3.11.17"
+python = "3.12.16"
 uv = "0.13.1"
 
 # Supply-chain auditing for Cargo manifests (advisories, licenses, sources)

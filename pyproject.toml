@@ -7,7 +7,7 @@ name = "stunt-reel"
 dynamic = ["version"]
 description = "Tooling, automation, and analysis environment for Stunt Island film reels and game executables"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = "MIT OR Apache-2.0"
 license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
 authors = [
@@ -37,7 +37,7 @@ packages = ["python/stunt_reel"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 src = ["python", "tests"]
 exclude = [
     ".agents",
@@ -135,7 +135,7 @@ indent-style = "space"
 line-ending = "auto"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 warn_unused_configs = true
 warn_redundant_casts = true
@@ -158,3 +158,9 @@ pythonpath = ["python"]
 # refuses an older standalone uv. Renovate's `pep621` manager runs its own uv and stops
 # with `tool_version_not_supported` at an exact pin, so the floor moves with mise's pin.
 required-version = ">=0.13.1"
+# uv's default `managed` preference downloads the newest interpreter the floor allows and
+# runs the gate on that, not on the Python `mise.toml` installs: a fresh worktree on
+# 2026-10 was running 3.14 against a 3.11 pin. `system` prefers the interpreter on PATH,
+# so under `mise run`/`mise exec` uv runs the pinned one;
+# tests/test_toolchain_pins.py fails when it does not.
+python-preference = "system"
