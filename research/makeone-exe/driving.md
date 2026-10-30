@@ -2,7 +2,7 @@
 
 `MAKEONE.EXE` is the retail film linker: it turns a film's `.FLM` into the `.ALL` archive that `PLAYONE.EXE` plays ([`all.md`](../formats/all.md)). The retail manual describes it as a DOS program that opens a Load File requester, prepares the chosen film and returns to DOS. This note records what it does when the capture harness drives it, so a film without an `.ALL` can be given one. The harness itself is in [`capture.md`](../playone-exe/capture.md); the design is in [`docs/process/plans/make-all-2026-10-29.md`](../../docs/process/plans/make-all-2026-10-29.md) and [ADR 0023](../../docs/adr/0023-make-all-generates-archives-with-makeone.md).
 
-Every observation below is `[Bounded Observation]`: one film (`BALLOON.FLM` from the full game), one spike on 2026-10-29, `dosbox-x-v2026.10.01`, the parity profile (`core = normal`, `output = surface`). The tier of a statement is repeated in its section's first line.
+Every observation below is `[Bounded Observation]`: `BALLOON.FLM` from the full game in a spike on 2026-10-29 (and `TRAINTNL.FLM` in section 7), `dosbox-x-v2026.10.01`, the parity profile (`core = normal`, `output = surface`). The tier of a statement is repeated in its section's first line.
 
 ---
 
@@ -28,7 +28,7 @@ flowchart LR
 
 ## 2. Keys
 
-`[Bounded Observation]`. The prefix jump fills the Filename field, so the keys are the film's first letter and Enter, with no Down (unlike `PLAYONE`'s list box, which needs a Down; [`playone.py`](../../python/stunt_reel/tac/playone.py)). With only the target film in `VAULT` the list shows `balloon.flm` and `balloon.tke`, and `b` selects `balloon.flm`. The spike pressed `b` about 10 s after the controller connected, 0.7 s before Enter; the harness's dialog settle has not been tried on these screens (Open questions).
+`[Bounded Observation]`. The prefix jump fills the Filename field, so the keys are the film's first letter and Enter, with no Down (unlike `PLAYONE`'s list box, which needs a Down; [`playone.py`](../../python/stunt_reel/tac/playone.py)). With only the target film in `VAULT` the list shows `balloon.flm` and `balloon.tke`, and `b` selects `balloon.flm`. The spike pressed `b` about 10 s after the controller connected, 0.7 s before Enter; the harness's own dialog settle also works on these screens (section 7).
 
 ## 3. Completion
 
@@ -61,6 +61,10 @@ The engine files were not dropped one at a time. A mount that already held an `.
 
 A stale `dosbox-x.exe` from an earlier killed run holds the control port; kill it first.
 
+## 7. Through `mise run make-all`
+
+`[Bounded Observation]`, 2026-10-30, the committed command rather than the spike scripts. The dialog settle that `PLAYONE` uses (five identical dumps after at least three changes) fired on `MAKEONE`'s screens with 4 distinct indices, so no fixed delay is needed before the keys. `BALLOON.FLM`: 46,702 bytes, md5 `1db59e1edd4d3debaca5e6188ead38df` again, 81.1 s, and `capture-ref` then captured 30 frames from the stored archive. `TRAINTNL.FLM` (28,517 bytes, longer): 107,816 bytes in 134.3 s, 30 frames captured (film ticks to about 322, 52 distinct indices on the last). Run time grows with the film's length.
+
 ---
 
 ## Ruled out
@@ -71,11 +75,11 @@ A stale `dosbox-x.exe` from an earlier killed run holds the control port; kill i
 
 ## Open questions
 
-1. Does the harness's dialog settle (five identical dumps after three changes) fire on the caching box and requester? The spike used a fixed delay.
-2. Run time scales with the film's length; only `BALLOON` was timed. What do the longer films take?
+1. Run time scales with the film's length: 81 s for `BALLOON`, 134 s for `TRAINTNL`. What do the longest films take against the 600 s default cap?
+2. Is a `.ALL` made from one `.FLM` byte-stable across runs for films other than `BALLOON`? Only that one was repeated.
 3. Films that need more than the shipped `RES\` (community films with custom sounds) and films whose `.FLM` references takes: untested.
 4. Does a `.ALL` made under DOSBox-X carry the sound set-up of the machine that ran `MAKEONE` (`corpus/siarchive/Films/Playing_Films.txt`)? Frames are unaffected.
 5. A film whose name starts with a digit or a character outside [`bda.py`](../../python/stunt_reel/tac/bda.py)'s scan-code table.
 6. Does `PLAYONE` require the archive's stem to equal the film's?
 
-_Found 2026-10-29; see the [parity log](../parity/log.md)._
+_Found 2026-10-29 and 2026-10-30; see the [parity log](../parity/log.md)._
