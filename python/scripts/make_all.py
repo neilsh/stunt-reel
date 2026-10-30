@@ -20,6 +20,7 @@ from pathlib import Path
 
 from stunt_reel import dataroot, parity_layout
 from stunt_reel.all_archive import (
+    META_FILE,
     ArchiveError,
     ArchiveMeta,
     ArchiveTaken,
@@ -104,7 +105,7 @@ def run(args: argparse.Namespace, emulator: Emulator | None = None) -> int:
         created, re.sub(r"[^A-Za-z0-9._-]", "-", dataroot.REPO_ROOT.name), flm_sha256
     )
     target = dataroot.REPO_ROOT / parity_layout.all_path(film.stem, capture_id)
-    if (target / "meta.json").exists():
+    if (target / META_FILE).exists():
         print(
             f"[make-all] {target} already exists; an archive is never written over", file=sys.stderr
         )
@@ -134,25 +135,27 @@ def run(args: argparse.Namespace, emulator: Emulator | None = None) -> int:
         print(f"[make-all] {exc}{suffix}", file=sys.stderr)
         return 1
 
-    makeone_exe = game_root / "MAKEONE.EXE"
-    meta = ArchiveMeta(
-        film=film.name,
-        flm_bytes=len(flm_bytes),
-        flm_sha256=flm_sha256,
-        all_bytes=len(data),
-        all_sha256=hashlib.sha256(data).hexdigest(),
-        makeone_sha256=hashlib.sha256(makeone_exe.read_bytes()).hexdigest(),
-        game_files=tuple(
-            (name, (game_root / name).stat().st_size) for name in staging.MAKEONE_FILES
-        ),
-        wall_seconds=round(time.monotonic() - started, 1),
-        created=created.isoformat(),
-    )
     try:
+        meta = ArchiveMeta(
+            film=film.name,
+            flm_bytes=len(flm_bytes),
+            flm_sha256=flm_sha256,
+            all_bytes=len(data),
+            all_sha256=hashlib.sha256(data).hexdigest(),
+            makeone_sha256=hashlib.sha256((game_root / "MAKEONE.EXE").read_bytes()).hexdigest(),
+            game_files=tuple(
+                (name, (game_root / name).stat().st_size) for name in staging.MAKEONE_FILES
+            ),
+            wall_seconds=round(time.monotonic() - started, 1),
+            created=created.isoformat(),
+        )
         written = publish_archive(dataroot.REPO_ROOT, film.name, capture_id, data, meta)
     except ArchiveTaken as exc:
         print(f"[make-all] {exc}", file=sys.stderr)
         return 2
+    except OSError as exc:
+        print(f"[make-all] could not store the archive: {exc}", file=sys.stderr)
+        return 1
     print(f"[make-all] wrote {written} ({len(data)} bytes in {meta.wall_seconds} s)", flush=True)
     return 0
 

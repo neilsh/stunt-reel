@@ -133,6 +133,49 @@ def test_a_non_archive_is_rejected_and_publishes_nothing(
     assert _archives() == []
 
 
+def test_a_publish_failure_is_a_make_all_line_and_exit_1(
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_repo: StagedRepo,
+    game_root: Path,
+    makeone_conf: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def full_disk(*_args: object) -> Path:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(script, "publish_archive", full_disk)
+    emulator, _keys = makeone_guest(text_after=1, archive=ARCHIVE)
+    args = _args(script, monkeypatch, staged_repo.film, game_root, makeone_conf)
+
+    assert script.run(args, emulator) == 1
+    assert "[make-all] could not store the archive: disk full" in capsys.readouterr().err
+
+
+def test_a_missing_game_file_is_a_make_all_line_and_exit_1(
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_repo: StagedRepo,
+    game_root: Path,
+    makeone_conf: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    emulator, _keys = makeone_guest(text_after=1, archive=ARCHIVE)
+    args = _args(script, monkeypatch, staged_repo.film, game_root, makeone_conf)
+    original = script.makeone.make_all
+
+    def vanish(*a: Any, **k: Any) -> bytes:
+        data: bytes = original(*a, **k)
+        (game_root / "MAKEONE.EXE").unlink()
+        return data
+
+    monkeypatch.setattr(script.makeone, "make_all", vanish)
+
+    assert script.run(args, emulator) == 1
+    assert "[make-all]" in capsys.readouterr().err
+    assert _archives() == []
+
+
 def test_a_timeout_exits_1_and_leaves_no_mount(
     script: Any,
     monkeypatch: pytest.MonkeyPatch,

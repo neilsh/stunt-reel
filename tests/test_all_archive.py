@@ -11,6 +11,7 @@ import pytest
 from archive_helpers import build_all
 from stunt_reel import parity_layout
 from stunt_reel.all_archive import (
+    META_FILE,
     ArchiveError,
     ArchiveMeta,
     ArchiveMissing,
@@ -152,6 +153,15 @@ def test_a_sibling_is_found_whatever_its_case(tmp_path: Path) -> None:
     assert resolve_all(film, tmp_path) == sibling
 
 
+def test_a_sibling_must_match_the_stem_and_suffix_exactly(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    for decoy in ("BALLOON2.ALL", "BALLOON.ALL.BAK", "OTHER.ALL", "BALLOON.TKE"):
+        (film.parent / decoy).write_bytes(build_all([b"decoy"]))
+    exact = film.parent / "Balloon.all"
+    exact.write_bytes(build_all([b"exact"]))
+    assert resolve_all(film, tmp_path) == exact
+
+
 def test_the_newest_stored_archive_for_the_film_hash_is_used(tmp_path: Path) -> None:
     film = _film(tmp_path)
     _store(tmp_path, "2026-10-28-wt-aaaaaaaa", FLM_BYTES, build_all([b"old"]))
@@ -165,6 +175,23 @@ def test_a_changed_stored_archive_is_an_error_naming_the_id(tmp_path: Path) -> N
     _store(tmp_path, "2026-10-28-wt-aaaaaaaa", FLM_BYTES, build_all([b"old"]))
     newest = _store(tmp_path, "2026-10-30-wt-bbbbbbbb", FLM_BYTES, build_all([b"new"]))
     (newest / "BALLOON.ALL").write_bytes(b"tampered")
+    with pytest.raises(ArchiveError, match="2026-10-30-wt-bbbbbbbb"):
+        resolve_all(film, tmp_path)
+
+
+def test_a_changed_stored_archive_says_how_to_recover(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    stored = _store(tmp_path, "2026-10-30-wt-bbbbbbbb", FLM_BYTES, build_all([b"new"]))
+    (stored / "BALLOON.ALL").write_bytes(b"tampered")
+    with pytest.raises(ArchiveError, match=r"delete .*2026-10-30-wt-bbbbbbbb.* and rerun"):
+        resolve_all(film, tmp_path)
+
+
+@pytest.mark.parametrize("text", ["not json", "[]", '{"film": "BALLOON.FLM"}'])
+def test_a_malformed_meta_is_an_archive_error_naming_the_id(tmp_path: Path, text: str) -> None:
+    film = _film(tmp_path)
+    stored = _store(tmp_path, "2026-10-30-wt-bbbbbbbb", FLM_BYTES, build_all([b"new"]))
+    (stored / META_FILE).write_text(text, encoding="utf-8")
     with pytest.raises(ArchiveError, match="2026-10-30-wt-bbbbbbbb"):
         resolve_all(film, tmp_path)
 
