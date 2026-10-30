@@ -6,6 +6,8 @@ import ast
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 from stunt_reel import parity_layout
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -87,3 +89,19 @@ def test_the_layout_literals_live_only_in_the_layout_module() -> None:
         if (values := _layout_literals(path))
     }
     assert offenders == {}, "ask stunt_reel.parity_layout for the path instead"
+
+
+def test_all_layout_sits_under_the_capture_root() -> None:
+    """Generated archives live beside the frame captures, one directory per film and id."""
+    assert parity_layout.all_root() == Path("build/parity/captures/all")
+    assert parity_layout.all_path("BALLOON", "2026-10-29-wt-abcd1234") == Path(
+        "build/parity/captures/all/balloon/2026-10-29-wt-abcd1234"
+    )
+
+
+def test_the_all_stem_is_reserved() -> None:
+    """A film called ALL would share ``captures/all``; both scripts refuse it."""
+    for stem in ("ALL", "all"):
+        with pytest.raises(ValueError, match="ALL"):
+            parity_layout.require_film_stem(stem)
+    parity_layout.require_film_stem("BALLOON")

@@ -23,6 +23,9 @@ __all__ = [
     "PROTECTED_SUFFIXES",
     "REFERENCES_FILE",
     "RENDER_ROOTS",
+    "RESERVED_FILM_STEMS",
+    "all_path",
+    "all_root",
     "capture_path",
     "capture_root",
     "is_protected_render",
@@ -32,6 +35,7 @@ __all__ = [
     "render_dir",
     "render_scratch_dir",
     "report_dir",
+    "require_film_stem",
     "retime_dir",
     "stage_conf",
     "stage_dir",
@@ -64,6 +68,9 @@ BASE_SUFFIX = "_base"
 #: :func:`previous_dir`, a root the rotation does not scan.
 PROTECTED_SUFFIXES: tuple[str, ...] = (CURRENT_SUFFIX, BASE_SUFFIX)
 
+#: Film stems no capture may use: ``captures/all`` holds generated archives, so a film of that name would share it.
+RESERVED_FILM_STEMS: tuple[str, ...] = ("all",)
+
 #: Roots whose child directories are throwaway render trees a rotation may remove.
 RENDER_ROOTS: tuple[Path, ...] = (_RENDER, _SWEEP)
 
@@ -84,6 +91,25 @@ def capture_path(film: str, capture_id: str) -> Path:
     A capture is written once into a new directory and never changed (ADR 0022).
     """
     return _CAPTURE / _film_name(film) / capture_id
+
+
+def all_root() -> Path:
+    """The directory holding every generated ``.ALL`` archive, inside the shared captures link."""
+    return _CAPTURE / "all"
+
+
+def all_path(film: str, capture_id: str) -> Path:
+    """The directory of one generated archive of *film*, relative to the checkout.
+
+    Written once and never changed (ADR 0022), like a frame capture.
+    """
+    return all_root() / _film_name(film) / capture_id
+
+
+def require_film_stem(stem: str) -> None:
+    """Refuse a film stem that would collide with ``captures/all``."""
+    if stem.lower() in RESERVED_FILM_STEMS:
+        raise ValueError(f"a film named {stem.upper()} would share captures/all; rename it")
 
 
 def new_capture_id(day: date, session: str, film_sha256: str) -> str:
