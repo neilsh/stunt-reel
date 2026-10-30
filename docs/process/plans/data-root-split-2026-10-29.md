@@ -1,6 +1,6 @@
 # Data-root split plan (2026-10-29)
 
-Status: **steps 1-6 landed 2026-10-29; step 7 (migrating a machine) pending**. Source: the `/grill-with-docs` interview of
+Status: **all steps landed 2026-10-29**. Source: the `/grill-with-docs` interview of
 2026-10-29 (four rounds), starting from "why do we have `STUNT_DATA_WRITE`?". The durable
 decision is [ADR 0022](../../adr/0022-captures-are-add-only-beside-a-read-only-corpus.md);
 this note owns the landing steps and the log. It lands on its own branch and PR, before
@@ -92,3 +92,4 @@ is deferred until captures take noticeable space; its command is named then.
 | 2026-10-29 | 4 | `references.py` and `research/parity/references.toml`, seeded with `legacy-2026-10-24` and the content hashes of the two existing captures; `parity`, `sweep` and `parity-probe` resolve through it. |
 | 2026-10-29 | 5 | `DEFAULT_ORACLE_PATH` is `build/oracle/intro_trajectory.json`; the adversarial test asserts it is a gitignored build path. |
 | 2026-10-29 | 6 | AGENTS.md SOP 6 item 3, development.md section 3, ADR 0008/0018/0021/0022 notes, and the research notes that named `build/parity/reference` or `target_bin`. `mise run check` passes. |
+| 2026-10-29 | 7 | Migrated this machine with `mise run init -- --migrate`; the three stale links (`corpus/oracle`, `target_bin`, `build/parity/reference`) were removed by hand, since `init` only replaces links it still names. `mise run parity`: CTRY ssim 0.7803 iou 0.9779, INTRO ssim 0.7229 iou 0.9503. Re-scoring the render kept from before the migration gives the same four numbers, so the scores did not move; they sit 0.0005 off the 2026-10-24 log rows, which predate later commits. |
