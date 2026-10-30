@@ -63,7 +63,7 @@ A stale `dosbox-x.exe` from an earlier killed run holds the control port; kill i
 
 ## 7. Through `mise run make-all`
 
-`[Bounded Observation]`, 2026-10-30, the committed command rather than the spike scripts. The dialog settle that `PLAYONE` uses (five identical dumps after at least three changes) fired on `MAKEONE`'s screens with 4 distinct indices, so no fixed delay is needed before the keys. `BALLOON.FLM`: 46,702 bytes, md5 `1db59e1edd4d3debaca5e6188ead38df` again, 81.1 s, and `capture-ref` then captured 30 frames from the stored archive. `TRAINTNL.FLM` (28,517 bytes, longer): 107,816 bytes in 134.3 s, 30 frames captured (film ticks to about 322, 52 distinct indices on the last). Run time grows with the film's length.
+`[Bounded Observation]`, 2026-10-29, the committed command rather than the spike scripts. The dialog settle that `PLAYONE` uses (five identical dumps after at least three changes) fired on `MAKEONE`'s screens with 4 distinct indices, so no fixed delay is needed before the keys. `BALLOON.FLM`: 46,702 bytes, md5 `1db59e1edd4d3debaca5e6188ead38df` again, 81.1 s, and `capture-ref` then captured 30 frames from the stored archive. `TRAINTNL.FLM` (28,517 bytes, longer): 107,816 bytes in 134.3 s, 30 frames captured (film ticks to about 322, 52 distinct indices on the last). Run time grows with the film's length.
 
 ---
 
@@ -82,4 +82,4 @@ A stale `dosbox-x.exe` from an earlier killed run holds the control port; kill i
 5. A film whose name starts with a digit or a character outside [`bda.py`](../../python/stunt_reel/tac/bda.py)'s scan-code table.
 6. Does `PLAYONE` require the archive's stem to equal the film's?
 
-_Found 2026-10-29 and 2026-10-30; see the [parity log](../parity/log.md)._
+_Found 2026-10-29; see the [parity log](../parity/log.md)._
