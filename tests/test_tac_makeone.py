@@ -131,7 +131,7 @@ def test_a_teardown_failure_after_a_good_run_keeps_the_archive(
     def refuse_to_stop(_timeout: float) -> None:
         raise OSError("the emulator would not stop")
 
-    emulator.stop = refuse_to_stop  # type: ignore[method-assign]
+    emulator.stop = refuse_to_stop  # type: ignore[assignment]
     warnings: list[str] = []
 
     data = makeone.make_all(
@@ -153,7 +153,7 @@ def test_a_failure_before_the_archive_is_still_an_error(
     staged_repo: StagedRepo, game_root: Path, makeone_conf: Path
 ) -> None:
     emulator, _keys = makeone_guest(text_after=1, archive=None)
-    emulator.stop = lambda _timeout: (_ for _ in ()).throw(OSError("late"))  # type: ignore[method-assign]
+    emulator.stop = lambda _timeout: (_ for _ in ()).throw(OSError("late"))  # type: ignore[assignment]
     with pytest.raises(makeone.NoArchive):
         makeone.make_all(
             staged_repo.film,
