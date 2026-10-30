@@ -1,8 +1,9 @@
 """One owner per tool pin: mise installs, rustup resolves, the floors stay policy.
 
 `mise.toml` and `rust-toolchain.toml` name the Rust channel twice, and one Python
-version appears as a pin (`mise.toml`), a floor (`requires-python`) and two targets
-(`[tool.ruff]`, `[tool.mypy]`).  The "Dependency updates" section of
+version appears as a pin (`mise.toml`), a floor (`requires-python`), two targets
+(`[tool.ruff]`, `[tool.mypy]`) and the interpreter uv is told to run
+(`[tool.uv] python-preference`).  The "Dependency updates" section of
 [docs/development.md](../docs/development.md) splits those into pins a bot may move, floors
 it may not, and targets that follow the floor; this is what makes the split enforceable
 instead of aspirational.
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -43,6 +45,16 @@ def _pin(tool: Any) -> str:
     """A mise pin is a version string or an inline table carrying `version`."""
     value: str = str(tool["version"]) if isinstance(tool, dict) else str(tool)
     return value
+
+
+def _python_pin() -> tuple[int, int, int]:
+    """The Python version `mise.toml` installs."""
+    return _numbers(_pin(_mise_tools()["python"]))
+
+
+def _dotted(version: tuple[int, ...]) -> str:
+    """A version tuple as dotted text: `(3, 12, 16)` -> `3.12.16`."""
+    return ".".join(str(part) for part in version)
 
 
 def _components(value: Any) -> set[str]:
@@ -96,13 +108,13 @@ def test_both_rust_declarations_provide_the_llvm_tools() -> None:
 
 
 def test_the_python_pin_satisfies_the_floor() -> None:
-    pin = _numbers(_pin(_mise_tools()["python"]))[:2]
+    pin = _python_pin()[:2]
     floor = _numbers(_toml("pyproject.toml")["project"]["requires-python"])[:2]
     assert pin >= floor, f"mise.toml pins Python {pin} below the requires-python floor {floor}"
 
 
 def test_the_python_targets_follow_the_pin() -> None:
-    pin = _numbers(_pin(_mise_tools()["python"]))[:2]
+    pin = _python_pin()[:2]
     pyproject = _toml("pyproject.toml")
     assert _ruff_target(str(pyproject["tool"]["ruff"]["target-version"])) == pin, (
         "ruff's target-version no longer matches the interpreter mise installs; Renovate "
@@ -110,6 +122,17 @@ def test_the_python_targets_follow_the_pin() -> None:
     )
     mypy_target = _numbers(str(pyproject["tool"]["mypy"]["python_version"]))[:2]
     assert mypy_target == pin, "mypy's python_version no longer matches the interpreter"
+
+
+def test_the_environment_runs_the_python_pin() -> None:
+    """A floor lets uv install a newer Python; this is the pin the gate must run on."""
+    pin = _python_pin()
+    assert sys.version_info[:2] == pin[:2], (
+        f"pytest is running on Python {_dotted(sys.version_info[:3])}, but mise.toml pins "
+        f"{_dotted(pin)}. uv used an interpreter the pin does not name: run the gate through "
+        "mise, and delete any cached environment built on another Python "
+        "(venvs/<checkout>-<digest>) before rerunning mise run init"
+    )
 
 
 def test_there_is_no_second_python_pin() -> None:

@@ -18,7 +18,7 @@ import contextlib
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, TypeVar
+from typing import TYPE_CHECKING, Protocol
 
 from stunt_reel import dataroot
 from stunt_reel.tac import playone, staging
@@ -57,8 +57,6 @@ __all__ = [
     "TrapTimeout",
     "run_session",
 ]
-
-T = TypeVar("T")
 
 #: Dumps allowed while waiting for the modal dialog to finish drawing.
 MAX_DIALOG_DUMPS: int = 600
@@ -318,7 +316,7 @@ class Profile:
 PLAYONE_PROFILE = Profile(stage=staging.stage_film, keys=playone.film_selection_keys)
 
 
-def run_session(
+def run_session[T](
     film: Path,
     *,
     sample: Callable[[Session], T],

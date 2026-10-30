@@ -30,7 +30,7 @@ No game assets or executables are distributed. You need your own lawfully obtain
 You can build and test everything without any game files:
 
 ```powershell
-mise trust && mise install   # pinned toolchains (Rust, Python via uv, DOSBox-X, Kaitai)
+mise trust && mise install   # pinned toolchains (Rust, Python, uv, Java, DOSBox-X, Kaitai)
 mise run init                # shared data root, cached Python environment
 mise run check               # format, lint, typecheck and tests, Rust and Python
 ```

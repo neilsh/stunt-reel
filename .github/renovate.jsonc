@@ -43,7 +43,7 @@
       "description": "Cap the mise Python pin at the current minor; patches still flow.",
       "matchManagers": ["mise"],
       "matchPackageNames": ["python"],
-      "allowedVersions": "<3.12",
+      "allowedVersions": "<3.13",
     },
     // rustup resolves the compiler from rust-toolchain.toml while mise installs it, so the two
     // declarations must move together; tests/test_toolchain_pins.py fails if they disagree and
