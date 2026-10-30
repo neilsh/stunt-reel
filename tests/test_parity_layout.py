@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ast
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -43,12 +42,6 @@ def _layout_literals(path: Path) -> list[str]:
 def test_the_layout_answers_every_artifact_location() -> None:
     """One accessor per location; a film name is normalised to lower case."""
     assert parity_layout.capture_root() == Path("build/parity/captures")
-    assert parity_layout.capture_path("CTRY", "2026-10-29-wt-ab12cd34") == Path(
-        "build/parity/captures/ctry/2026-10-29-wt-ab12cd34"
-    )
-    assert parity_layout.new_capture_id(date(2026, 10, 29), "wt", "ab12cd34ef") == (
-        "2026-10-29-wt-ab12cd34"
-    )
     assert Path("research/parity/references.toml") == parity_layout.REFERENCES_FILE
     assert parity_layout.render_dir("ctry") == Path("build/parity/ours/ctry_current")
     assert parity_layout.previous_dir("ctry") == Path("build/parity/previous/ctry")
@@ -92,22 +85,6 @@ def test_the_layout_literals_live_only_in_the_layout_module() -> None:
         if (values := _layout_literals(path))
     }
     assert offenders == {}, "ask stunt_reel.parity_layout for the path instead"
-
-
-def test_all_layout_sits_under_the_capture_root() -> None:
-    """Generated archives live beside the frame captures, one directory per film and id."""
-    assert parity_layout.all_root() == Path("build/parity/captures/all")
-    assert parity_layout.all_path("BALLOON", "2026-10-29-wt-abcd1234") == Path(
-        "build/parity/captures/all/balloon/2026-10-29-wt-abcd1234"
-    )
-
-
-def test_the_all_stem_is_reserved() -> None:
-    """A film called ALL would share ``captures/all``; both scripts refuse it."""
-    for stem in ("ALL", "all"):
-        with pytest.raises(ValueError, match="ALL"):
-            parity_layout.require_film_stem(stem)
-    parity_layout.require_film_stem("BALLOON")
 
 
 def test_slug_is_parent_and_stem() -> None:

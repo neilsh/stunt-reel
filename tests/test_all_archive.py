@@ -20,7 +20,6 @@ from stunt_reel.all_archive import (
     resolve_all,
 )
 
-
 CHUNKS = [b"alpha", b"bb", b"c" * 9]
 
 

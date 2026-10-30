@@ -35,7 +35,6 @@ __all__ = [
     "DATA_ENV",
     "ENV_DIRNAME",
     "ENV_MARKER",
-    "LEGACY_CAPTURE_ID",
     "LINK_TARGETS",
     "REPO_ROOT",
     "VENV_DIRNAME",
@@ -87,8 +86,8 @@ LINK_TARGETS: tuple[tuple[str, str], ...] = (
     ("captures", parity_layout.capture_root().as_posix()),
 )
 
-#: The capture id the captures of the old data-root layout take when they are converted.
-LEGACY_CAPTURE_ID = "legacy-2026-10-24"
+#: Where ``reference/<film>`` of the old data-root layout lands: ``captures/vault-<film>/frames/001``.
+_FIRST_RUN = parity_layout.run_id(1)
 #: Top-level names of the old layout (ADR 0008); ``reference`` held ``<film>/`` directly.
 _OLD_NAMES = ("stisldem", "si_archive", "oracle", "target_bin", "reference")
 
@@ -365,6 +364,12 @@ def _holds_files(path: Path) -> bool:
     return path.is_file() or (path.is_dir() and any(item.is_file() for item in path.rglob("*")))
 
 
+def _legacy_destination(film: str) -> Path:
+    """Where an old ``reference/<film>`` goes, relative to the data root."""
+    run = parity_layout.frames_path(f"vault-{film}", _FIRST_RUN)
+    return run.relative_to(parity_layout.capture_root().parent)
+
+
 def convert_layout(root: Path) -> list[str]:
     """Convert an old-layout data root to the corpus/captures layout (ADR 0022); say what moved.
 
@@ -372,7 +377,7 @@ def convert_layout(root: Path) -> list[str]:
     ``target_bin/StuntIsl`` becomes ``corpus/stuntisl`` and ``target_bin/patch`` becomes
     ``corpus/patches``.  The top-level ``target_bin/PLAYONE.EXE`` is dropped when it is
     byte-identical to ``StuntIsl``'s, and ``oracle`` is deleted: it was generated, not
-    evidence.  ``reference/<film>`` becomes ``captures/<film>/`` + :data:`LEGACY_CAPTURE_ID`.
+    evidence.  ``reference/<film>`` becomes ``captures/vault-<film>/frames/001`` (ADR 0024).
     A root already in the new layout is left alone; one holding both an old name and a new
     name with files in it is refused before anything moves, because merging them would guess which side is right.
     """
@@ -398,7 +403,7 @@ def convert_layout(root: Path) -> list[str]:
         if (root / "target_bin" / name).exists():
             moves.append((root / "target_bin" / name, root / "corpus" / destination))
     moves.extend(
-        (film, root / "captures" / film.name / LEGACY_CAPTURE_ID)
+        (film, root / _legacy_destination(film.name))
         for film in sorted(entry for entry in (root / "reference").glob("*") if entry.is_dir())
     )
     moved: list[str] = []

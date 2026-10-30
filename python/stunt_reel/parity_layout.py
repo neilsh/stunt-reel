@@ -16,10 +16,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from datetime import date
 
 __all__ = [
     "BASE_SUFFIX",
@@ -27,25 +23,19 @@ __all__ = [
     "PROTECTED_SUFFIXES",
     "REFERENCES_FILE",
     "RENDER_ROOTS",
-    "RESERVED_FILM_STEMS",
     "RUN_WIDTH",
-    "all_path",
-    "all_root",
     "archive_path",
     "archives_root",
-    "capture_path",
     "capture_root",
     "film_slug",
     "frames_path",
     "frames_root",
     "is_protected_render",
     "manual_report_dir",
-    "new_capture_id",
     "previous_dir",
     "render_dir",
     "render_scratch_dir",
     "report_dir",
-    "require_film_stem",
     "require_slug",
     "retime_dir",
     "run_id",
@@ -80,9 +70,6 @@ BASE_SUFFIX = "_base"
 #: :func:`previous_dir`, a root the rotation does not scan.
 PROTECTED_SUFFIXES: tuple[str, ...] = (CURRENT_SUFFIX, BASE_SUFFIX)
 
-#: Film stems no capture may use: ``captures/all`` holds generated archives, so a film of that name would share it.
-RESERVED_FILM_STEMS: tuple[str, ...] = ("all",)
-
 #: Digits in a run directory name (``001``).
 RUN_WIDTH = 3
 _SLUG = re.compile(r"[a-z0-9][a-z0-9_-]*")
@@ -100,38 +87,6 @@ def _film_name(film: str) -> str:
 def capture_root() -> Path:
     """The directory holding every capture; the shared data root links it into a checkout."""
     return _CAPTURE
-
-
-def capture_path(film: str, capture_id: str) -> Path:
-    """The directory of one capture of *film*, relative to the checkout.
-
-    A capture is written once into a new directory and never changed (ADR 0022).
-    """
-    return _CAPTURE / _film_name(film) / capture_id
-
-
-def all_root() -> Path:
-    """The directory holding every generated ``.ALL`` archive, inside the shared captures link."""
-    return _CAPTURE / "all"
-
-
-def all_path(film: str, capture_id: str) -> Path:
-    """The directory of one generated archive of *film*, relative to the checkout.
-
-    Written once and never changed (ADR 0022), like a frame capture.
-    """
-    return all_root() / _film_name(film) / capture_id
-
-
-def require_film_stem(stem: str) -> None:
-    """Refuse a film stem that would collide with ``captures/all``."""
-    if stem.lower() in RESERVED_FILM_STEMS:
-        raise ValueError(f"a film named {stem.upper()} would share captures/all; rename it")
-
-
-def new_capture_id(day: date, session: str, film_sha256: str) -> str:
-    """A fresh capture id: the date, the session that wrote it and a short hash of the film."""
-    return f"{day.isoformat()}-{session}-{film_sha256[:8]}"
 
 
 def film_slug(film: Path) -> str:
