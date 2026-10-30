@@ -3,10 +3,10 @@
 
 [ctry]
 film = "vault-ctry"
-capture = "legacy-2026-10-24"
-sha256 = "ae815140e52c86d6fb1add177684c8d203730187436071c4519e1cfad226a994"
+capture = "001"
+sha256 = "5accb984f78eb553cd078b7101804fe398a28923acce971ae54a8e8132a3ee28"
 
 [intro]
 film = "vault-intro"
-capture = "legacy-2026-10-24"
-sha256 = "40e1b428e145e854fea0318aa6a8a2242aacba27abd1e53fe5406ca8f4caeae8"
+capture = "001"
+sha256 = "24766859a05fd6e213dac2811a9b417894afed32efa8c2f48f5028a650b30d2a"
