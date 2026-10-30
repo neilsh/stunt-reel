@@ -151,7 +151,7 @@ def test_a_publish_failure_is_a_make_all_line_and_exit_1(
     makeone_conf: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def full_disk(*_args: object) -> Path:
+    def full_disk(*_args: object, **_kwargs: object) -> Path:
         raise OSError("disk full")
 
     monkeypatch.setattr(script, "publish_archive", full_disk)

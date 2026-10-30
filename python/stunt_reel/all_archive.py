@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import shutil
 import struct
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
@@ -94,14 +95,15 @@ def check_archive(data: bytes) -> int:
     return count
 
 
-def publish_archive(root: Path, slug: str, film: str, data: bytes, meta: ArchiveMeta) -> Path:
+def publish_archive(root: Path, data: bytes, meta: ArchiveMeta, *, slug: str, film: str) -> Path:
     """Write *data* as the next ``<root>/captures/<slug>/archives/<run>/<FILM>.ALL``; return the directory.
 
     The run number is claimed first as ``<run>.lock``, which also keeps another publisher from
     choosing it. The files go to a ``<run>.partial`` sibling, ``meta.json`` last, and the
     sibling is renamed into place, so a reader never sees half an archive. The claim is
-    released in every case; a run that dies leaves ``.lock`` and ``.partial`` behind, which
-    readers skip and which hold their number until someone deletes them.
+    released in every case, and a failed write removes its ``.partial``; only a process that
+    dies leaves ``.lock`` and ``.partial`` behind, which readers skip and which hold their
+    number until someone deletes them.
     """
     stem = Path(film).stem
     parent = root / parity_layout.archives_root(slug)
@@ -111,9 +113,13 @@ def publish_archive(root: Path, slug: str, film: str, data: bytes, meta: Archive
         target = parent / run
         partial = parent / f"{run}.partial"
         partial.mkdir()
-        (partial / f"{stem.upper()}.ALL").write_bytes(data)
-        (partial / META_FILE).write_text(meta.to_json(), encoding="utf-8")
-        partial.rename(target)
+        try:
+            (partial / f"{stem.upper()}.ALL").write_bytes(data)
+            (partial / META_FILE).write_text(meta.to_json(), encoding="utf-8")
+            partial.rename(target)
+        except BaseException:
+            shutil.rmtree(partial, ignore_errors=True)
+            raise
     finally:
         lock.rmdir()
     return target

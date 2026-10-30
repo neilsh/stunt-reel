@@ -141,7 +141,7 @@ def run(args: argparse.Namespace, emulator: Emulator | None = None) -> int:
             wall_seconds=round(time.monotonic() - started, 1),
             created=created.isoformat(),
         )
-        written = publish_archive(dataroot.REPO_ROOT, slug, film.name, data, meta)
+        written = publish_archive(dataroot.REPO_ROOT, data, meta, slug=slug, film=film.name)
     except OSError as exc:
         print(f"[make-all] could not store the archive: {exc}", file=sys.stderr)
         return 1

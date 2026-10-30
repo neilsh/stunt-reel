@@ -85,7 +85,7 @@ SLUG = "vault-balloon"
 
 def test_publish_writes_meta_last_and_renames(tmp_path: Path) -> None:
     data = build_all(CHUNKS)
-    target = publish_archive(tmp_path, SLUG, "BALLOON.FLM", data, _meta(data))
+    target = publish_archive(tmp_path, data, _meta(data), slug=SLUG, film="BALLOON.FLM")
     assert target == tmp_path / parity_layout.archive_path(SLUG, "001")
     assert (target / "BALLOON.ALL").read_bytes() == data
     assert ArchiveMeta.from_json(
@@ -96,9 +96,11 @@ def test_publish_writes_meta_last_and_renames(tmp_path: Path) -> None:
 
 def test_publish_adds_the_next_run_and_never_touches_an_earlier_one(tmp_path: Path) -> None:
     data = build_all(CHUNKS)
-    first = publish_archive(tmp_path, SLUG, "BALLOON.FLM", data, _meta(data))
+    first = publish_archive(tmp_path, data, _meta(data), slug=SLUG, film="BALLOON.FLM")
     before = {p.name: p.read_bytes() for p in first.iterdir()}
-    second = publish_archive(tmp_path, SLUG, "BALLOON.FLM", build_all([b"other"]), _meta(data))
+    second = publish_archive(
+        tmp_path, build_all([b"other"]), _meta(data), slug=SLUG, film="BALLOON.FLM"
+    )
     assert second.name == "002"
     assert {p.name: p.read_bytes() for p in first.iterdir()} == before
 
@@ -108,7 +110,7 @@ def test_a_held_claim_or_partial_keeps_its_number(tmp_path: Path) -> None:
     parent = tmp_path / parity_layout.archives_root(SLUG)
     (parent / "001.lock").mkdir(parents=True)
     (parent / "002.partial").mkdir()
-    target = publish_archive(tmp_path, SLUG, "BALLOON.FLM", data, _meta(data))
+    target = publish_archive(tmp_path, data, _meta(data), slug=SLUG, film="BALLOON.FLM")
     assert target.name == "003"
     assert (parent / "001.lock").is_dir()
 
@@ -123,9 +125,10 @@ def test_publish_releases_its_claim_when_the_write_fails(
 
     monkeypatch.setattr(Path, "write_bytes", full_disk)
     with pytest.raises(OSError, match="disk full"):
-        publish_archive(tmp_path, SLUG, "BALLOON.FLM", data, _meta(data))
+        publish_archive(tmp_path, data, _meta(data), slug=SLUG, film="BALLOON.FLM")
     parent = tmp_path / parity_layout.archives_root(SLUG)
     assert not list(parent.glob("*.lock"))
+    assert not list(parent.glob("*.partial"))
     assert not (parent / "001").exists()
 
 
@@ -140,7 +143,7 @@ def _store(root: Path, flm: bytes, archive: bytes) -> Path:
         all_bytes=len(archive),
         all_sha256=hashlib.sha256(archive).hexdigest(),
     )
-    return publish_archive(root, SLUG, "BALLOON.FLM", archive, meta)
+    return publish_archive(root, archive, meta, slug=SLUG, film="BALLOON.FLM")
 
 
 def _film(tmp_path: Path, name: str = "BALLOON.FLM") -> Path:
