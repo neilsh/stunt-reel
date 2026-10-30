@@ -26,7 +26,7 @@ from typing import Any
 from stunt_reel import dataroot, parity_layout, runs
 from stunt_reel.all_archive import ArchiveError, resolve_all
 from stunt_reel.dataroot import ensure_links_or_report
-from stunt_reel.parity_artifacts import FilmId
+from stunt_reel.parity_artifacts import CAPTURE_FRAMES_DIR, FilmId
 from stunt_reel.tac import playone, staging
 from stunt_reel.tac.emulator import EmulatorUnavailable, Launching, PortTaken, WaitingForGuest
 from stunt_reel.tac.framebuffer import capture
@@ -131,6 +131,7 @@ def is_taken(out_dir: Path) -> bool:
     if not out_dir.is_dir():
         return False
     if not (out_dir / "meta.json").exists():
+        shutil.rmtree(out_dir / CAPTURE_FRAMES_DIR, ignore_errors=True)
         for pattern in ("tick_*.idx", "palettes_*.json"):
             for partial in out_dir.glob(pattern):
                 partial.unlink()

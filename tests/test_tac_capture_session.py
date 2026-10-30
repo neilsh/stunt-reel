@@ -104,9 +104,9 @@ def test_capture_tags_frames_with_film_and_global_ticks(
     assert [f["film_tick"] for f in frames] == [106, 109, 112]
     assert [f["global_tick"] for f in frames] == [101, 104, 107]
     assert [f["frame_file"] for f in frames] == [
-        "tick_0001.idx",
-        "tick_0002.idx",
-        "tick_0003.idx",
+        "frames/tick_0001.idx",
+        "frames/tick_0002.idx",
+        "frames/tick_0003.idx",
     ]
     assert meta["palette_source"] == "dacpal"
     assert meta["dgroup_segment"] == f"{dgroup_segment:04X}"
@@ -142,8 +142,10 @@ def test_capture_artifacts_keep_their_contract(staged_repo: StagedRepo) -> None:
     ]
 
     expected_page = bytes((i * 7 + 2) % FILM_COLORS for i in range(FRAME_BYTES))
-    assert (staged_repo.out / "tick_0001.idx").read_bytes() == expected_page
-    palette = json.loads((staged_repo.out / "palettes_0001.json").read_text(encoding="utf-8"))
+    assert (staged_repo.out / "frames" / "tick_0001.idx").read_bytes() == expected_page
+    palette = json.loads(
+        (staged_repo.out / "frames" / "palettes_0001.json").read_text(encoding="utf-8")
+    )
     assert palette == [[255, 0, 0]] * 256
     meta_text = (staged_repo.out / "meta.json").read_text(encoding="utf-8")
     assert json.dumps(json.loads(meta_text), indent=2) + "\n" == meta_text
@@ -168,7 +170,7 @@ def test_meta_is_written_last(staged_repo: StagedRepo) -> None:
     with pytest.raises(ShortDump):
         _run_capture(staged_repo, emulator)
 
-    assert (staged_repo.out / "tick_0001.idx").is_file()
+    assert (staged_repo.out / "frames" / "tick_0001.idx").is_file()
     assert not (staged_repo.out / "meta.json").exists()
     assert emulator.stopped
 
@@ -867,7 +869,9 @@ def test_capture_script_clears_the_leftovers_of_a_run_that_died(tmp_path: Path) 
     module = _load_script("capture_playone_reference")
     out = tmp_path / "out"
     out.mkdir()
-    (out / "tick_0001.idx").write_bytes(b"\x00")
+    (out / "frames").mkdir()
+    (out / "frames" / "tick_0001.idx").write_bytes(b"\x00")
+    (out / "tick_0002.idx").write_bytes(b"\x00")
     (out / "palettes_0001.json").write_text("{}", encoding="utf-8")
     assert not module.is_taken(out)
     assert list(out.iterdir()) == []
