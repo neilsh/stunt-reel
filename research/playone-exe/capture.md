@@ -2,7 +2,7 @@
 
 This document describes how the parity reference set is captured from the original player: the control topology, the emulator behaviours that constrain the harness, the protocol that survives them, and the observed results. It is the runtime companion to [`startup.md`](startup.md), [`navigation.md`](navigation.md), and [`memory.md`](memory.md).
 
-Reference rasters are evidence only and land under `build/parity/` (gitignored); `mise run capture-ref` drives the capture.
+Reference rasters are evidence only and land under `build/parity/` (gitignored); `mise run capture-ref` drives the capture. A film without an `.ALL` gets one from `MAKEONE.EXE` under the same harness (`mise run make-all`), which also reads the video mode with `VGA MODE`; those findings are in [`../makeone-exe/driving.md`](../makeone-exe/driving.md).
 
 ---
 

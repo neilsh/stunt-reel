@@ -1,6 +1,7 @@
 """Generated ``.ALL`` archives: the structural check and the add-only store.
 
-``MAKEONE.EXE`` turns a film's ``.FLM`` into the ``.ALL`` that ``PLAYONE.EXE`` plays. A generated archive is written once under
+``MAKEONE.EXE`` turns a film's ``.FLM`` into the ``.ALL`` that ``PLAYONE.EXE`` plays
+(``research/makeone-exe/driving.md``). A generated archive is written once under
 ``captures/all/<film>/<id>/`` and never changed (ADR 0022), so this module only ever
 adds a directory; it never rewrites one.
 """

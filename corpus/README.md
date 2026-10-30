@@ -20,6 +20,8 @@ The `stisldem/` folder is reserved for the official MS-DOS promotional demo of *
 
 ### Expected Contents
 
+The demo's `VAULT/` holds a complete `.FLM` + `.ALL` pair only for `INTRO` and `CTRY`. The full game (`corpus/stuntisl/`, when supplied) ships further `.FLM` files with no `.ALL`; `mise run make-all` generates one with `MAKEONE.EXE` and stores it under `captures/all/`, never here.
+
 - `PLAYONE.EXE` — Standalone film reel playback utility.
 - `VAULT/` — Directory containing sample film reels (`.FLM`), takes (`.TKE`), and camera setups.
 - `DRIVER1.BIN`, `DRIVER2.BIN`, `DRIVER3.BIN` — Audio drivers.

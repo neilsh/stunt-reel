@@ -50,7 +50,7 @@ _Avoid_: joint angle, frame counter
 ## Assets and models
 
 **Archive**:
-A `.ALL` container of numbered model and auxiliary resource chunks, paired with a film. SOD model chunks are addressed by `shape_id`.
+A `.ALL` container of numbered model and auxiliary resource chunks, paired with a film. SOD model chunks are addressed by `shape_id`. `MAKEONE.EXE` writes one from a film; `mise run make-all` runs it and stores the result under `captures/all/`.
 _Avoid_: bundle, resource file
 
 **Shape**:
