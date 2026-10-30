@@ -304,7 +304,7 @@ def test_main_skips_known_stalls_unless_only_or_retry_errors_name_them(
 
     assert batch_parity.main(root) == 0
     assert fake.calls == [("vault-ctry", "capture")]
-    assert fake.options == [{"frames": 40}]
+    assert fake.options == [{}]
 
     assert batch_parity.main([*root, "--only", "amcrisis-ac", "--capture-frames", "0"]) == 0
     assert fake.calls[-1] == ("amcrisis-ac", "capture")

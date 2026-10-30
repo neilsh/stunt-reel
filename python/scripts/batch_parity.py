@@ -46,7 +46,7 @@ __all__ = ["main", "process"]
 
 _LEDGER_NAME = "ledger.jsonl"
 _DEFAULT_TIMEOUT = 900.0
-_DEFAULT_CAPTURE_FRAMES = 40
+_DEFAULT_CAPTURE_FRAMES = 0  # sampling did not thin vault-balloon; see capture.md section 6
 _RENDER_TIMEOUT = 600.0
 _TIMEOUT_EXIT = 124
 _DEFAULT_MAX_RENDERS = 2
