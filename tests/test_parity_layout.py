@@ -20,6 +20,7 @@ CALLERS = (
     SCRIPTS / "parity_probe.py",
     STUNTS / "parity_pipeline.py",
     STUNTS / "dataroot.py",
+    STUNTS / "all_archive.py",
     SCRIPTS / "worktree_init.py",
     STUNTS / "tac" / "staging.py",
     SCRIPTS / "capture_playone_reference.py",
