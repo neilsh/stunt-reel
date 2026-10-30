@@ -442,7 +442,7 @@ pub(crate) struct VmRun {
 /// header parsing, register arithmetic and geometry emission are shared by every mode.
 #[expect(
     clippy::expect_used,
-    reason = "the invariant is stated in the expect message"
+    reason = "a steppable opcode always has a census width"
 )]
 pub(crate) fn run_vm(
     data: &[u8],

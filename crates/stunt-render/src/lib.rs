@@ -26,7 +26,7 @@ pub mod video;
 #[allow(
     unreachable_pub,
     dead_code,
-    reason = "mesh.rs items stay pub and unused outside the renderer until the shape landing"
+    reason = "the renderer does not use mesh.rs yet, so its pub items are unreachable and unused"
 )]
 mod mesh;
 mod palette;

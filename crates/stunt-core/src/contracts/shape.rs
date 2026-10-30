@@ -43,12 +43,18 @@ pub struct SodVertex {
 // Manual bytemuck trait implementations to eliminate mandatory crate dependencies
 // while preserving compile-time safety and GPU buffer alignment.
 #[cfg(feature = "bytemuck")]
+#[allow(
+    unsafe_code,
+    reason = "bytemuck is an optional feature, so the trait is implemented by hand"
+)]
 // SAFETY: `SodVertex` is `#[repr(C)]`, and its explicit `u8` padding leaves no implicit padding bytes.
-#[allow(unsafe_code, reason = "manual bytemuck impl, see the SAFETY note")]
 unsafe impl bytemuck::Pod for SodVertex {}
 #[cfg(feature = "bytemuck")]
+#[allow(
+    unsafe_code,
+    reason = "bytemuck is an optional feature, so the trait is implemented by hand"
+)]
 // SAFETY: every field is a plain integer or float, so the all-zero bit pattern is a valid value.
-#[allow(unsafe_code, reason = "manual bytemuck impl, see the SAFETY note")]
 unsafe impl bytemuck::Zeroable for SodVertex {}
 
 /// Lightweight, typed handle indexing into a flat arena vector per `[I2]`.

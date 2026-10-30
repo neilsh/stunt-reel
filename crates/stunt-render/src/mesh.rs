@@ -341,7 +341,7 @@ pub(crate) struct UploadPlan {
 /// chunk takes runs until the next triangle would overflow it.
 #[expect(
     clippy::expect_used,
-    reason = "the invariant is stated in the expect message"
+    reason = "`chunks` is seeded with a first chunk before `last()` is read"
 )]
 pub(crate) fn plan_upload(
     vertex_count: usize,

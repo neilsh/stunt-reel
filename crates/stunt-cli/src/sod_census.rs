@@ -193,7 +193,7 @@ fn scan_corpus(root: &Path) -> Scan {
 impl Scan {
     #[expect(
         clippy::expect_used,
-        reason = "the invariant is stated in the expect message"
+        reason = "`variant` inserts the model before it looks it up"
     )]
     fn variant(&mut self, data: &[u8]) -> &mut Variant {
         if !self.models.contains_key(data) {
@@ -278,7 +278,7 @@ struct Report<'a> {
 impl<'a> Report<'a> {
     #[expect(
         clippy::expect_used,
-        reason = "the invariant is stated in the expect message"
+        reason = "a census decode always carries a decode record"
     )]
     fn build(scan: &'a Scan) -> Self {
         let mut report = Self::default();

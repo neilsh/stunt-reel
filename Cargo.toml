@@ -15,7 +15,8 @@ homepage = "https://github.com/neilsh/stunt-reel"
 readme = "README.md"
 publish = false
 
-# Lint levels are `warn`: editors show warnings and the gate (`-D warnings`) is the hard stop.
+# Lint levels are `warn` (except `unused_must_use`): editors show warnings and the gate
+# (`-D warnings`) is the hard stop.
 [workspace.lints.rust]
 rust_2018_idioms = { level = "warn", priority = -1 }
 missing_debug_implementations = "warn"
@@ -46,6 +47,7 @@ print_stderr = "warn"
 allow_attributes_without_reason = "warn"
 undocumented_unsafe_blocks = "warn"
 clone_on_ref_ptr = "warn"
+# Style picks outside the groups above.
 match_wildcard_for_single_variants = "warn"
 uninlined_format_args = "warn"
 
@@ -60,14 +62,14 @@ pub_underscore_fields = "allow" # `_pad` fields keep `#[repr(C)]` GPU and Pod la
 cast_precision_loss = "allow" # integer to f32 in pixel and coordinate maths is intended
 
 # Wanted eventually: allowed only until the existing hits are cleared (counts from the
-# 2026-10-29 measurement). Remove each line once its hits are fixed.
+# 2026-10-29 measurement, re-counted after the first fix pass). Remove each line once its hits are fixed.
 # TODO(lints): enable per parser module in stunt-core with a module-level `#![warn]`, then
 #   fix with `.get()` or fixed-size readers.
-indexing_slicing = "allow" # 231
+indexing_slicing = "allow" # 198
 # TODO(lints): replace with `try_from`, or mark intended truncation with `#[expect(.., reason)]`.
-cast_possible_truncation = "allow" # 171
-cast_sign_loss = "allow" # 47
-cast_possible_wrap = "allow" # 21
+cast_possible_truncation = "allow" # 164
+cast_sign_loss = "allow" # 45
+cast_possible_wrap = "allow" # 20
 # TODO(lints): document `# Errors` and `# Panics` on public fallible functions.
 missing_errors_doc = "allow" # 31
 missing_panics_doc = "allow" # 2

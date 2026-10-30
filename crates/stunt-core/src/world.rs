@@ -76,7 +76,7 @@ pub struct World {
 #[must_use]
 #[expect(
     clippy::expect_used,
-    reason = "the invariant is stated in the expect message"
+    reason = "`build_world_ir` always emits the ocean quad, so the extent exists"
 )]
 pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) -> Option<World> {
     let pts = inputs.anchors;

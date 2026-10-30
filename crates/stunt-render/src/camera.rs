@@ -289,7 +289,7 @@ impl CameraGpuResources {
     /// Instantiates buffer and bind group on the device.
     #[expect(
         clippy::expect_used,
-        reason = "the invariant is stated in the expect message"
+        reason = "the buffer is created with `mapped_at_creation: true`, so its range is mapped"
     )]
     pub(crate) fn new(device: &wgpu::Device) -> Self {
         let bind_group_layout = Self::create_bind_group_layout(device);
