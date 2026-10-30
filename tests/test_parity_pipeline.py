@@ -109,14 +109,16 @@ def _input_tree(root: Path, ticks: list[int]) -> Path:
 
 def _pin(root: Path, film: str, frames: list[dict[str, int]]) -> Path:
     """Write a capture of *film* under *root* and name it in the root's references.toml."""
-    reference = root / parity_layout.capture_path(film, "test-0001")
+    reference = root / parity_layout.frames_path(f"vault-{film}", "test-0001")
     reference.mkdir(parents=True, exist_ok=True)
     (reference / "meta.json").write_text(json.dumps({"frames": frames}), encoding="utf-8")
     pointers = root / parity_layout.REFERENCES_FILE
     pointers.parent.mkdir(parents=True, exist_ok=True)
     digest = references.capture_digest(reference)
     with pointers.open("a", encoding="utf-8") as handle:
-        handle.write(f'[{film}]\ncapture = "test-0001"\nsha256 = "{digest}"\n')
+        handle.write(
+            f'[{film}]\nfilm = "vault-{film}"\ncapture = "test-0001"\nsha256 = "{digest}"\n'
+        )
     return reference
 
 
@@ -161,7 +163,7 @@ def test_score_film_runs_parity_and_reads_the_report(tmp_path: Path) -> None:
             str(parity_pipeline.binary_path()),
             "parity",
             "--reference",
-            str(root / parity_layout.capture_path("ctry", "test-0001")),
+            str(root / parity_layout.frames_path("vault-ctry", "test-0001")),
             "--test",
             str(render),
             "--output",
@@ -495,7 +497,7 @@ def test_format_summary_marks_a_missing_index_agreement(tmp_path: Path) -> None:
 
 def test_preflight_names_a_missing_capture(tmp_path: Path) -> None:
     root = _input_tree(tmp_path, [])
-    (root / parity_layout.capture_path("intro", "test-0001") / "meta.json").unlink()
+    (root / parity_layout.frames_path("vault-intro", "test-0001") / "meta.json").unlink()
     problems = parity_pipeline.preflight(
         root, ["ctry", "intro"], build_required=False, locked=lambda _path: False
     )

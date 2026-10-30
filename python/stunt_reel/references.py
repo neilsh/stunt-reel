@@ -1,6 +1,6 @@
 """Which capture parity scores a film against, and the proof it is the one named.
 
-A capture is written once into ``captures/<film>/<capture id>/`` and never changed
+A capture is written once into ``captures/<slug>/frames/<run>/`` and never changed
 (ADR 0022).  Which of them is a film's *reference* is not a property of the data root: the
 committed ``research/parity/references.toml`` names it by id and content hash, so promoting
 a capture is a reviewed commit and two branches can score against different ones.  This
@@ -41,6 +41,7 @@ class Reference:
     """One ``references.toml`` entry: the capture id and the hash its content must have."""
 
     film: str
+    slug: str
     capture_id: str
     sha256: str
 
@@ -79,19 +80,20 @@ def read_reference(root: Path, film: str) -> Reference:
     entry = document.get(name)
     if (
         not isinstance(entry, dict)
+        or not isinstance(entry.get("film"), str)
         or not isinstance(entry.get("capture"), str)
         or not isinstance(entry.get("sha256"), str)
     ):
         raise ReferenceCaptureError(
-            f"{path} names no reference capture for {name} (capture, sha256)"
+            f"{path} names no reference capture for {name} (film, capture, sha256)"
         )
-    return Reference(name, entry["capture"], entry["sha256"])
+    return Reference(name, entry["film"], entry["capture"], entry["sha256"])
 
 
 def reference_dir(root: Path, film: str) -> Path:
     """The verified directory of *film*'s reference capture under *root*."""
     pointer = read_reference(root, film)
-    directory = root / parity_layout.capture_path(film, pointer.capture_id)
+    directory = root / parity_layout.frames_path(pointer.slug, pointer.capture_id)
     if not (directory / "meta.json").is_file():
         raise ReferenceCaptureError(
             f"reference capture {pointer.capture_id} of {pointer.film} is absent on this "
