@@ -30,7 +30,7 @@ impl AnchorPoint {
     #[must_use]
     pub fn register_position(&self) -> [f32; 3] {
         let y = if self.is_valid() { self.y } else { 0 };
-        [-(self.x as f32), -(y as f32), self.z as f32]
+        [-f32::from(self.x), -f32::from(y), f32::from(self.z)]
     }
 }
 

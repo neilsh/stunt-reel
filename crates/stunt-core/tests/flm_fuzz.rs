@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! Robustness matrices and fuzzing for the `.FLM` parser and `FilmTimeline` evaluator.
 //!
 //! Every test here feeds generated, mutated or exhaustively enumerated byte streams (or
@@ -50,7 +59,7 @@ fn fuzz_random_streams() {
         }
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            let _ = FilmTimeline::from_bytes(&buf);
+            drop(FilmTimeline::from_bytes(&buf));
         }));
 
         assert!(
@@ -130,7 +139,7 @@ fn fuzz_mutated_flm_streams() {
         }
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            let _ = FilmTimeline::from_bytes(&mutated);
+            drop(FilmTimeline::from_bytes(&mutated));
         }));
 
         assert!(
@@ -180,7 +189,7 @@ fn matrix_create_truncation() {
             assert!(
                 matches!(
                     err,
-                    Some(FlmError::UnexpectedEof { .. }) | Some(FlmError::InvalidSlice { .. })
+                    Some(FlmError::UnexpectedEof { .. } | FlmError::InvalidSlice { .. })
                 ),
                 "Expected UnexpectedEof or InvalidSlice, got {err:?}"
             );
@@ -268,7 +277,7 @@ fn matrix_interp_truncation() {
             assert!(
                 matches!(
                     err,
-                    Some(FlmError::UnexpectedEof { .. }) | Some(FlmError::InvalidSlice { .. })
+                    Some(FlmError::UnexpectedEof { .. } | FlmError::InvalidSlice { .. })
                 ),
                 "Expected error on truncated interp, got {err:?}"
             );

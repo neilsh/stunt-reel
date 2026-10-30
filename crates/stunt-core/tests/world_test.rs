@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! Static world assembly through the public [`stunt_core::world`] interface.
 //!
 //! Inputs are synthetic: `synthetic_anchors.bin` and `synthetic_minimal.sod` from

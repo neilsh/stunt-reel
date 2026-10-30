@@ -43,10 +43,12 @@ pub struct SodVertex {
 // Manual bytemuck trait implementations to eliminate mandatory crate dependencies
 // while preserving compile-time safety and GPU buffer alignment.
 #[cfg(feature = "bytemuck")]
-#[allow(unsafe_code)] // SodVertex is #[repr(C)] with u8 padding making field padding impossible.
+// SAFETY: `SodVertex` is `#[repr(C)]`, and its explicit `u8` padding leaves no implicit padding bytes.
+#[allow(unsafe_code, reason = "manual bytemuck impl, see the SAFETY note")]
 unsafe impl bytemuck::Pod for SodVertex {}
 #[cfg(feature = "bytemuck")]
-#[allow(unsafe_code)] // Same layout argument as the Pod impl above: all-zero is a valid value.
+// SAFETY: every field is a plain integer or float, so the all-zero bit pattern is a valid value.
+#[allow(unsafe_code, reason = "manual bytemuck impl, see the SAFETY note")]
 unsafe impl bytemuck::Zeroable for SodVertex {}
 
 /// Lightweight, typed handle indexing into a flat arena vector per `[I2]`.
@@ -638,8 +640,8 @@ mod tests {
     #[test]
     fn test_sod_vertex_layout_and_size() {
         // Invariant [I1]: Metric vertex struct alignment
-        assert_eq!(std::mem::size_of::<SodVertex>(), 28);
-        assert_eq!(std::mem::align_of::<SodVertex>(), 4);
+        assert_eq!(size_of::<SodVertex>(), 28);
+        assert_eq!(align_of::<SodVertex>(), 4);
     }
 
     #[cfg(feature = "bytemuck")]

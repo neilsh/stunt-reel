@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! Camera orientation for a real film: the view slot drives the look direction.
 //!
 //! Corpus-gated: `corpus/` is gitignored, so this runs only on a machine carrying the
@@ -42,16 +51,15 @@ fn test_ctry_view_slot_directs_camera_at_drawn_actor() {
     let timeline = FilmTimeline::from_bytes(&bytes).expect("CTRY.FLM parses");
 
     // The second authored slice (slice index 1).
-    let record = timeline
-        .slices()
-        .get(1)
-        .map(|slice| &slice.record)
-        .unwrap_or_else(|| {
+    let record = timeline.slices().get(1).map_or_else(
+        || {
             panic!(
                 "CTRY.FLM produced no second slice ({} total)",
                 timeline.slices().len()
             )
-        });
+        },
+        |slice| &slice.record,
+    );
 
     let drawn: Vec<_> = record
         .actors

@@ -55,8 +55,10 @@ fn faded_frames_below_the_floor_are_reported_but_not_scored() {
     assert!((level(1) - 0.5).abs() < 0.02);
     assert!((level(2) - 0.1).abs() < 0.02);
     // `mean_ssim` spans all matched frames; `mean_ssim_scored` only the first two.
-    let mean_scored =
-        (per_frame[0]["ssim"].as_f64().unwrap() + per_frame[1]["ssim"].as_f64().unwrap()) / 2.0;
+    let mean_scored = f64::midpoint(
+        per_frame[0]["ssim"].as_f64().unwrap(),
+        per_frame[1]["ssim"].as_f64().unwrap(),
+    );
     assert!((report["mean_ssim_scored"].as_f64().unwrap() - mean_scored).abs() < 1e-5);
     assert!(report.get("mean_ssim_compensated").is_none());
     let mean_raw = per_frame
@@ -170,7 +172,7 @@ fn the_i6_gate_passes_each_threshold_independently() {
 /// class mapped to the wrong slot changes a mean.
 const LOSS_SPLIT: [f32; LOSS_CLASSES.len()] = [0.5, 0.0, 0.0, 0.3, 0.0, 0.2, 0.0, 0.0, 0.0];
 
-/// A matched frame with the given SSIM, IoU and scored flag; the other measurements are
+/// A matched frame with the given SSIM, `IoU` and scored flag; the other measurements are
 /// derived so each frame's loss array sums to `1 - ssim`.
 fn row(ordinal: usize, ssim: f32, iou: f32, scored: bool) -> super::FrameRow {
     let loss_by_class = LOSS_SPLIT.map(|share| share * (1.0 - ssim));

@@ -114,18 +114,15 @@ impl<'a> ByteReader<'a> {
     /// On a missing terminator the cursor is left at the end of the buffer.
     pub fn read_cstring(&mut self) -> Result<String, Eof> {
         let rest = self.data.get(self.pos..).unwrap_or(&[]);
-        match rest.iter().position(|&b| b == 0) {
-            Some(n) => {
-                self.pos += n + 1;
-                Ok(String::from_utf8_lossy(&rest[..n]).into_owned())
-            }
-            None => {
-                self.pos = self.pos.max(self.data.len());
-                Err(Eof {
-                    expected: self.pos + 1,
-                    actual: self.data.len(),
-                })
-            }
+        if let Some(n) = rest.iter().position(|&b| b == 0) {
+            self.pos += n + 1;
+            Ok(String::from_utf8_lossy(&rest[..n]).into_owned())
+        } else {
+            self.pos = self.pos.max(self.data.len());
+            Err(Eof {
+                expected: self.pos + 1,
+                actual: self.data.len(),
+            })
         }
     }
 }

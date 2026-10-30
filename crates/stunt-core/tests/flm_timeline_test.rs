@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! Timeline sampling tests for authored `tick_duration` values.
 //!
 //! Covers cumulative 50 Hz timestamps, sub-tick interpolation, same-tick slices,
@@ -154,7 +163,7 @@ fn test_partial_film_keeps_decoded_slices() {
         .map(|len| FilmTimeline::from_bytes(&bytes[..len]))
         .find_map(|result| result.ok().filter(|t| t.stop_reason().is_some()))
         .expect("some truncation stops mid-slice");
-    assert!(!partial.slices().is_empty());
+    assert_ne!(partial.slices(), []);
     assert!(partial.slices().len() < complete.slices().len());
     assert_eq!(
         partial.slices()[0].record.camera.eye,

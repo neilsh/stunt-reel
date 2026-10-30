@@ -1,6 +1,11 @@
 #![deny(unsafe_code)]
+#![allow(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "a command-line tool reports to its terminal"
+)]
 
-//! StuntReel Modern CLI & Presentation Engine (`stuntreel`).
+//! `StuntReel` Modern CLI & Presentation Engine (`stuntreel`).
 //!
 //! The CLI parses arguments, locates input files ([`scene`]), owns the winit window, and
 //! writes outputs (PNG, ffmpeg video, the `parity` subcommand). `sod-census` reports the corpus

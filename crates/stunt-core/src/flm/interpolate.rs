@@ -14,7 +14,7 @@ pub(crate) const CAMERA_CUT_DISPLACEMENT_THRESHOLD_METERS: f32 = 50.0;
 /// Convert a 16-bit Binary Angular Measurement (BAM) to radians `[0, 2*pi)`.
 #[inline]
 pub(crate) fn bam_to_radians(raw_u16: u16) -> f32 {
-    (raw_u16 as f32 / 65536.0) * TAU
+    (f32::from(raw_u16) / 65536.0) * TAU
 }
 
 /// Convert an angle in radians to a 16-bit BAM value.
@@ -30,7 +30,7 @@ pub(crate) fn radians_to_bam(rad: f32) -> u16 {
 
 /// Convert Stunt Island integer focal distance scalar to vertical FOV in degrees.
 ///
-/// Uses aspect-corrected half-height H_half = 120.0 for 320x240 (4:3) Mode 13h:
+/// Uses aspect-corrected half-height `H_half` = 120.0 for 320x240 (4:3) Mode 13h:
 /// `FOV_y = 2 * arctan(120.0 / focal_dist) * (180.0 / pi)`.
 pub(crate) fn focal_to_fov_y(focal_dist: f32) -> f32 {
     if focal_dist <= 0.0 {
@@ -185,8 +185,7 @@ pub(crate) fn lerp_f32(a: f32, b: f32, t: f32) -> f32 {
 /// the 0/2π wrap does not sweep the long way round.
 #[inline]
 pub(crate) fn lerp_angle(a: f32, b: f32, t: f32) -> f32 {
-    let delta =
-        (b - a + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+    let delta = (b - a + std::f32::consts::PI).rem_euclid(TAU) - std::f32::consts::PI;
     a + t * delta
 }
 
@@ -217,6 +216,10 @@ pub(crate) fn detect_camera_cut(
 /// Invariant `[I4]`:
 /// If `record_b.camera.cut_from_previous == true`, sub-tick interpolation is suppressed
 /// (`alpha_eff = 0.0`), holding pose `record_a` until the exact tick boundary `record_b`.
+#[expect(
+    clippy::float_cmp,
+    reason = "an exact keyframe or endpoint hit is a sentinel, not a computed result"
+)]
 pub(crate) fn interpolate_trajectory(
     record_a: &TrajectoryRecord,
     record_b: &TrajectoryRecord,
@@ -502,10 +505,10 @@ mod tests {
     fn interpolation_survives_extreme_alpha_values() {
         let dummy_a = record(0, [0.0, 0.0, 0.0], false, vec![]);
         let dummy_b = record(1, [10.0, 20.0, 30.0], true, vec![]);
-        let _ = interpolate_trajectory(&dummy_a, &dummy_b, -10.0);
-        let _ = interpolate_trajectory(&dummy_a, &dummy_b, 10.0);
-        let _ = interpolate_trajectory(&dummy_a, &dummy_b, f32::NAN);
-        let _ = interpolate_trajectory(&dummy_a, &dummy_b, f32::INFINITY);
+        drop(interpolate_trajectory(&dummy_a, &dummy_b, -10.0));
+        drop(interpolate_trajectory(&dummy_a, &dummy_b, 10.0));
+        drop(interpolate_trajectory(&dummy_a, &dummy_b, f32::NAN));
+        drop(interpolate_trajectory(&dummy_a, &dummy_b, f32::INFINITY));
     }
 
     #[test]
@@ -518,7 +521,7 @@ mod tests {
         assert!((slerped[3].abs() - 1.0).abs() < 1e-4);
 
         // Nearly parallel
-        let q_near = [0.0, 0.0, 0.0001, 0.999999];
+        let q_near = [0.0, 0.0, 0.0001, 0.999_999];
         let slerped_near = slerp_quat(q1, q_near, 0.5);
         assert!(quat_norm_diff(slerped_near) < 1e-4);
     }
@@ -619,7 +622,7 @@ mod tests {
 
     #[test]
     fn lerp_angle_takes_the_shorter_arc_across_the_wrap() {
-        let tau = std::f32::consts::TAU;
+        let tau = TAU;
         // 359 degrees to 1 degree is a 2 degree arc, not 358.
         let a = 359f32.to_radians();
         let b = 1f32.to_radians();

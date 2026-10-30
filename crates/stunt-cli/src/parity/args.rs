@@ -30,7 +30,7 @@ pub(super) struct Args {
         allow_negative_numbers = true
     )]
     pub(super) min_fade_level: f32,
-    /// Match frames by film_tick against a previous report and print mean SSIM/IoU deltas,
+    /// Match frames by `film_tick` against a previous report and print mean SSIM/IoU deltas,
     /// the 5 most improved/regressed frames and the counts changed by more than 0.005;
     /// writes compare.json
     #[arg(long, value_name = "REPORT.JSON")]

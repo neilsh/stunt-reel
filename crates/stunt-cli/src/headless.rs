@@ -254,9 +254,7 @@ pub(crate) fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), 
     }
     drop(renderer);
 
-    sink.borrow_mut()
-        .finish_journal()
-        .map_err(|e| e.to_string())?;
+    sink.borrow_mut().finish_journal().map_err(|e| e.clone())?;
     if let Some(out_dir) = &config.out_dir {
         let written_pngs = sink.borrow().written_pngs;
         println!(
@@ -265,9 +263,7 @@ pub(crate) fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), 
         );
     }
 
-    sink.borrow_mut()
-        .finish_video()
-        .map_err(|e| e.to_string())?;
+    sink.borrow_mut().finish_video().map_err(|e| e.clone())?;
     if let Some(video_path) = &config.video_path {
         let written_video_frames = sink.borrow().written_video_frames;
         println!(

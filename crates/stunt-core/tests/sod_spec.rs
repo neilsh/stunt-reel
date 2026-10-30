@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! Named, deterministic behaviour of the `.SOD` decoder (Seam 3, `decode_sod`).
 //!
 //! Every test here feeds one specific input and asserts a specific result: exact vertices,
@@ -58,7 +67,7 @@ fn make_sod_header(
     header.extend_from_slice(&OP_ID.to_le_bytes());
     header.extend_from_slice(&bounding_size.to_le_bytes());
     header.extend_from_slice(&ground_y_offset.to_le_bytes());
-    let flags_scale = (scale_index as u16) | ((header_flags as u16) << 8);
+    let flags_scale = u16::from(scale_index) | (u16::from(header_flags) << 8);
     header.extend_from_slice(&flags_scale.to_le_bytes());
     header.extend_from_slice(&0u16.to_le_bytes()); // collision_meta
     header
@@ -72,12 +81,12 @@ fn make_sod_header(
 #[test]
 fn sod_vertex_size_alignment_and_field_offsets() {
     assert_eq!(
-        std::mem::size_of::<SodVertex>(),
+        size_of::<SodVertex>(),
         28,
         "Gate G03: size_of::<SodVertex> must be exactly 28 bytes"
     );
     assert_eq!(
-        std::mem::align_of::<SodVertex>(),
+        align_of::<SodVertex>(),
         4,
         "Gate G03: align_of::<SodVertex> must be 4 bytes"
     );
@@ -92,13 +101,13 @@ fn sod_vertex_size_alignment_and_field_offsets() {
         _padding: 0,
     };
 
-    let base_ptr = &dummy as *const SodVertex as usize;
-    let pos_ptr = &dummy.position as *const [f32; 3] as usize;
-    let norm_ptr = &dummy.normal as *const [f32; 3] as usize;
-    let pal_ptr = &dummy.palette_index as *const u8 as usize;
-    let flags_ptr = &dummy.flags as *const u8 as usize;
-    let class_ptr = &dummy.scenery_class as *const u8 as usize;
-    let pad_ptr = &dummy._padding as *const u8 as usize;
+    let base_ptr = &raw const dummy as usize;
+    let pos_ptr = &raw const dummy.position as usize;
+    let norm_ptr = &raw const dummy.normal as usize;
+    let pal_ptr = &raw const dummy.palette_index as usize;
+    let flags_ptr = &raw const dummy.flags as usize;
+    let class_ptr = &raw const dummy.scenery_class as usize;
+    let pad_ptr = &raw const dummy._padding as usize;
 
     assert_eq!(pos_ptr - base_ptr, 0, "position offset must be 0");
     assert_eq!(norm_ptr - base_ptr, 12, "normal offset must be 12");
@@ -121,10 +130,12 @@ fn sod_vertex_pod_roundtrip() {
     };
 
     // Treat as raw 28 bytes
+    // SAFETY: `SodVertex` is `#[repr(C)]` plain data of exactly 28 bytes with no implicit padding.
     let raw_bytes: [u8; 28] = unsafe { std::mem::transmute(original) };
     assert_eq!(raw_bytes.len(), 28);
 
     // Reconstruct
+    // SAFETY: the bytes came from a valid `SodVertex`, and every bit pattern of its fields is valid.
     let recovered: SodVertex = unsafe { std::mem::transmute(raw_bytes) };
     assert_eq!(recovered.position, original.position);
     assert_eq!(recovered.normal, original.normal);

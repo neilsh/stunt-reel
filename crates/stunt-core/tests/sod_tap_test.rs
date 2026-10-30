@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! `OP_TAP` (`0x022E`) anchor-table resolution.
 //!
 //! `tests/fixtures/synthetic_tap.sod` references three `synthetic_anchors.bin`

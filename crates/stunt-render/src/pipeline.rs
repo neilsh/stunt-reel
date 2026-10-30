@@ -59,7 +59,7 @@ pub(crate) struct RenderPipelines {
     pub(crate) sky_pipeline: wgpu::RenderPipeline,
     /// Solid-black fullscreen pipeline used to paint `[I6]` letterbox bars.
     pub(crate) bar_pipeline: wgpu::RenderPipeline,
-    /// Bind group layout for `@group(2) @binding(0)` (ModelUniform).
+    /// Bind group layout for `@group(2) @binding(0)` (`ModelUniform`).
     pub(crate) model_bind_group_layout: wgpu::BindGroupLayout,
 }
 
@@ -67,8 +67,8 @@ impl RenderPipelines {
     /// Returns the vertex buffer layout for zero-copy upload of `SodVertex`.
     pub(crate) fn vertex_buffer_layout() -> wgpu::VertexBufferLayout<'static> {
         // Assert compile-time layout compatibility with Invariant [I2] / Seam 3
-        const _: () = assert!(std::mem::size_of::<SodVertex>() == 28);
-        const _: () = assert!(std::mem::align_of::<SodVertex>() == 4);
+        const _: () = assert!(size_of::<SodVertex>() == 28);
+        const _: () = assert!(align_of::<SodVertex>() == 4);
 
         const ATTRIBUTES: [wgpu::VertexAttribute; 3] = [
             // Location 0: position [x, y, z] in metric meters (12 bytes)
@@ -92,7 +92,7 @@ impl RenderPipelines {
         ];
 
         wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<SodVertex>() as wgpu::BufferAddress,
+            array_stride: size_of::<SodVertex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &ATTRIBUTES,
         }
@@ -376,7 +376,7 @@ mod tests {
 
     #[test]
     fn test_model_uniform_size() {
-        assert_eq!(std::mem::size_of::<ModelUniform>(), 80);
+        assert_eq!(size_of::<ModelUniform>(), 80);
     }
 
     #[test]

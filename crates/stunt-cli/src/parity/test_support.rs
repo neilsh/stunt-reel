@@ -17,7 +17,7 @@ pub(super) struct TempDir(PathBuf);
 impl TempDir {
     pub(super) fn new(name: &str) -> Self {
         let path = std::env::temp_dir().join(format!("stunt_parity_{name}_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&path);
+        drop(fs::remove_dir_all(&path));
         fs::create_dir_all(&path).expect("create temp dir");
         Self(path)
     }
@@ -29,7 +29,7 @@ impl TempDir {
 
 impl Drop for TempDir {
     fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
+        drop(fs::remove_dir_all(&self.0));
     }
 }
 

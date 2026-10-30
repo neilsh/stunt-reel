@@ -1,7 +1,16 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! Palette LUT, camera and SSIM tests that need no GPU adapter.
 //!
-//! The offscreen render tests moved to renderer_test.rs, where they cross the Renderer entry
-//! point and assert on RenderedPage: the plane is the test seam.
+//! The offscreen render tests moved to `renderer_test.rs`, where they cross the Renderer entry
+//! point and assert on `RenderedPage`: the plane is the test seam.
 
 use stunt_core::scene::ViewCamera;
 use stunt_render::{
@@ -33,7 +42,7 @@ fn test_palette_lut_data_integrity() {
 
     // Verify row 0 (ambient floor factor 0.2)
     let idx_40_amb = 40 * 4;
-    let expected_r = (r40 as f32 * 0.2).round() as u8;
+    let expected_r = (f32::from(r40) * 0.2).round() as u8;
     assert_eq!(bytes[idx_40_amb], expected_r);
 }
 

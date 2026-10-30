@@ -1,6 +1,6 @@
 //! Shared test-support code for the GPU integration tests.
 
-#![allow(dead_code)]
+#![allow(dead_code, reason = "each test crate uses a subset of the helpers")]
 
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -143,7 +143,7 @@ impl TestRenderer {
 
 /// Opens an offscreen renderer over the scene, or skips/fails per ADR 0006.
 ///
-/// Panics instead of returning None when STUNT_REQUIRE_GPU=1. The returned renderer holds the
+/// Panics instead of returning None when `STUNT_REQUIRE_GPU=1`. The returned renderer holds the
 /// process-wide GPU test lock until it is dropped.
 pub(crate) fn open_or_skip(
     scene: &FilmScene,
@@ -169,7 +169,7 @@ pub(crate) fn gpu_or_skip(scene: &FilmScene) -> Option<TestRenderer> {
     gpu_or_skip_with(scene, PageSize::default())
 }
 
-/// Like gpu_or_skip, with a page of width x height.
+/// Like `gpu_or_skip`, with a page of width x height.
 pub(crate) fn gpu_or_skip_with(scene: &FilmScene, size: PageSize) -> Option<TestRenderer> {
     gpu_or_skip_offscreen(
         scene,
@@ -181,7 +181,7 @@ pub(crate) fn gpu_or_skip_with(scene: &FilmScene, size: PageSize) -> Option<Test
     )
 }
 
-/// Like gpu_or_skip, with the full offscreen target and options.
+/// Like `gpu_or_skip`, with the full offscreen target and options.
 pub(crate) fn gpu_or_skip_offscreen(
     scene: &FilmScene,
     target: Offscreen,
@@ -196,7 +196,7 @@ pub(crate) fn gpu_or_skip_offscreen(
     })
 }
 
-/// Like gpu_or_skip, restricted to the software fallback adapter.
+/// Like `gpu_or_skip`, restricted to the software fallback adapter.
 pub(crate) fn gpu_or_skip_software(scene: &FilmScene) -> Option<TestRenderer> {
     gpu_or_skip_offscreen(
         scene,

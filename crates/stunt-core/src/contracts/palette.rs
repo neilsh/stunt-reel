@@ -276,7 +276,11 @@ pub fn get_palette_rgb(index: u8) -> (u8, u8, u8) {
 #[inline]
 pub fn get_palette_rgb_float(index: u8) -> (f32, f32, f32) {
     let (r, g, b) = MODE_13H_PALETTE[index as usize];
-    (r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
+    (
+        f32::from(r) / 255.0,
+        f32::from(g) / 255.0,
+        f32::from(b) / 255.0,
+    )
 }
 
 /// Film variable value at which brightness and saturation are unchanged (`0x8000`).

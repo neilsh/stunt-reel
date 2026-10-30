@@ -80,8 +80,8 @@ impl GpuModel {
         ir: &SodModelIr,
     ) -> Self {
         let limit = device.limits().max_buffer_size;
-        let max_vertices = (limit / std::mem::size_of::<SodVertex>() as u64) as usize;
-        let max_indices = (limit / std::mem::size_of::<u32>() as u64) as usize;
+        let max_vertices = (limit / size_of::<SodVertex>() as u64) as usize;
+        let max_indices = (limit / size_of::<u32>() as u64) as usize;
         // One source per mesh slice, keyed by node so the planned slices can be handed
         // back to the same nodes. `meshes()` already skips a node whose window is unsafe.
         let mut sources: Vec<Option<SourceSlice>> = vec![None; ir.nodes.len()];
@@ -112,7 +112,7 @@ impl GpuModel {
         let model_uniform = ModelUniform::default();
         let model_uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&format!("{}_model_uniform", ir.name)),
-            size: std::mem::size_of::<ModelUniform>() as u64,
+            size: size_of::<ModelUniform>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -258,7 +258,7 @@ impl GpuChunk {
         } else {
             format!("_{n}")
         };
-        let vertex_size = std::mem::size_of::<SodVertex>();
+        let vertex_size = size_of::<SodVertex>();
         let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&format!("{}_vertex_buffer{suffix}", ir.name)),
             size: (plan.vertex_count.max(1) * vertex_size) as u64,
@@ -278,7 +278,7 @@ impl GpuChunk {
         let index_bytes: &[u8] = bytemuck::cast_slice(indices);
         let index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&format!("{}_index_buffer{suffix}", ir.name)),
-            size: (index_bytes.len().max(std::mem::size_of::<u32>())) as u64,
+            size: (index_bytes.len().max(size_of::<u32>())) as u64,
             usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -339,6 +339,10 @@ pub(crate) struct UploadPlan {
 /// each source slice is cut into runs of whole triangles in draw order; a run copies the
 /// contiguous vertex window its triangles reference and rebases their indices to it, and a
 /// chunk takes runs until the next triangle would overflow it.
+#[expect(
+    clippy::expect_used,
+    reason = "the invariant is stated in the expect message"
+)]
 pub(crate) fn plan_upload(
     vertex_count: usize,
     indices: &[u32],

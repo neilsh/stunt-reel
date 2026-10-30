@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! Film scene assembly and frame sampling through the public [`stunt_core::scene`] interface.
 //!
 //! Everything is synthetic: fixture SODs and anchors from `tests/fixtures/`, plus

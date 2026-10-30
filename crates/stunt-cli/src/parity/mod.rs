@@ -12,7 +12,7 @@
 //! physical 4:3 raster, and compared window by window with the shared
 //! `compute_window_scores` evaluator, whose windows the gate averages itself so the same
 //! windows also attribute the loss by class.
-//! IoU compares each side's non-sky mask, which measures framing agreement independently
+//! `IoU` compares each side's non-sky mask, which measures framing agreement independently
 //! of shading. A capture's sky is every
 //! pixel in the sky bands ([`mask::CAPTURE_SKY_INDICES`]), not one modal index.
 //!
@@ -25,7 +25,7 @@
 //! the scored frames.
 //!
 //! Every render needs its palette-index and layer planes (`tick_NNNNN.idx`/`.layer`, written
-//! by `--headless`): IoU and loss attribution read the render's coverage from the layer
+//! by `--headless`): `IoU` and loss attribution read the render's coverage from the layer
 //! plane, never from its colours, so a render directory without planes is an error.
 //!
 //! `--compare <report.json>` additionally matches the fresh scores against a previous

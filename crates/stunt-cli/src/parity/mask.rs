@@ -1,4 +1,4 @@
-//! Overlay and sky masks, IoU and index agreement.
+//! Overlay and sky masks, `IoU` and index agreement.
 
 use std::ops::RangeInclusive;
 

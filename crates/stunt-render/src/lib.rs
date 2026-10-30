@@ -1,4 +1,4 @@
-//! StuntReel Modern GPU Presentation Engine (crates/stunt-render/src/lib.rs).
+//! `StuntReel` Modern GPU Presentation Engine (crates/stunt-render/src/lib.rs).
 //!
 //! Delivers hardware-accelerated presentation of Stunt Island scenes conforming
 //! strictly to system architectural invariants:
@@ -9,7 +9,7 @@
 //! - `[I5]` Dual-pipeline hardware depth bias pass for coplanar decals.
 //! - `[I6]` 4:3 physical aspect ratio (320x240) and SSIM parity evaluation.
 //!
-//! Renderer is the entry point for both destinations: offscreen readback into a PageSink and a
+//! Renderer is the entry point for both destinations: offscreen readback into a `PageSink` and a
 //! presented window surface. Everything behind it - the pipelines, palette LUT, camera resources,
 //! scene renderer and GPU mesh arena - is crate-private; the plane is the test seam.
 #![deny(unsafe_code)]
@@ -23,7 +23,11 @@ pub mod video;
 // Renderer plumbing: crate-private, so no GPU handle type is reachable from outside the crate.
 // The decoded-shape landing still owns mesh.rs, whose items stay pub and unused outside the
 // renderer; the two allows keep that module untouched while the seam is closed.
-#[allow(unreachable_pub, dead_code)]
+#[allow(
+    unreachable_pub,
+    dead_code,
+    reason = "mesh.rs items stay pub and unused outside the renderer until the shape landing"
+)]
 mod mesh;
 mod palette;
 mod pipeline;

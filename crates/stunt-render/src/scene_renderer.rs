@@ -194,7 +194,7 @@ impl SceneRenderer {
     fn new_slot(device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> MatrixSlot {
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("stunt_scene_actor_model_uniform"),
-            size: std::mem::size_of::<ModelUniform>() as u64,
+            size: size_of::<ModelUniform>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });

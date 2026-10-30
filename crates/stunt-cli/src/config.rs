@@ -21,11 +21,11 @@ struct Options {
     /// Procedural .SOD model to bind to actor 1
     #[arg(long, value_name = "MODEL.SOD")]
     sod: Option<PathBuf>,
-    /// Bind every actor shape_id to its .SOD chunk in the archive
+    /// Bind every actor `shape_id` to its .SOD chunk in the archive
     #[arg(long, value_name = "MOVIE.ALL")]
     all: Option<PathBuf>,
-    /// Write DIR/tick_NNNNN.png (NNNNN = 0-based 50 Hz tick); with --sample-count or
-    /// --video, DIR/sample_NNNN.png instead
+    /// Write `DIR/tick_NNNNN.png` (NNNNN = 0-based 50 Hz tick); with --sample-count or
+    /// --video, `DIR/sample_NNNN.png` instead
     #[arg(long, value_name = "DIR")]
     out_dir: Option<PathBuf>,
     /// Half-open 1-based tick ordinals to render; 1..N+2 covers ticks 0..=N

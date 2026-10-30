@@ -31,9 +31,9 @@ pub fn rgba_to_luminance(rgba: &[u8]) -> Vec<f32> {
     let mut lum = Vec::with_capacity(pixel_count);
     for chunk in rgba.as_chunks::<4>().0 {
         lum.push(compute_luminance(
-            chunk[0] as f32,
-            chunk[1] as f32,
-            chunk[2] as f32,
+            f32::from(chunk[0]),
+            f32::from(chunk[1]),
+            f32::from(chunk[2]),
         ));
     }
     lum
@@ -44,9 +44,9 @@ pub fn rgb_to_luminance(rgb: &[u8]) -> Vec<f32> {
     let mut lum = Vec::with_capacity(rgb.len() / 3);
     for chunk in rgb.as_chunks::<3>().0 {
         lum.push(compute_luminance(
-            chunk[0] as f32,
-            chunk[1] as f32,
-            chunk[2] as f32,
+            f32::from(chunk[0]),
+            f32::from(chunk[1]),
+            f32::from(chunk[2]),
         ));
     }
     lum

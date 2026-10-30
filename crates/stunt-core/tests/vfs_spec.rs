@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! Behavioral specification of the VFS archive parsers (Seam 1): `.RES`, `.ALL` and
 //! `detect_and_parse`.
 //!
@@ -1127,7 +1136,7 @@ fn all_rejects_invalid_offset_tables() {
     assert!(matches!(
         parse_all(&data),
         Err(VfsError::UnexpectedEof {
-            expected: 393212,
+            expected: 393_212,
             actual: 100
         })
     ));

@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! Never-panics and structured-error coverage for the `.SOD` transpiler (Seam 3).
 //!
 //! `decode_sod` consumes untrusted bytes, so these tests assert that it never panics and
@@ -51,7 +60,7 @@ fn make_sod_header(
     header.extend_from_slice(&OP_ID.to_le_bytes());
     header.extend_from_slice(&bounding_size.to_le_bytes());
     header.extend_from_slice(&ground_y_offset.to_le_bytes());
-    let flags_scale = (scale_index as u16) | ((header_flags as u16) << 8);
+    let flags_scale = u16::from(scale_index) | (u16::from(header_flags) << 8);
     header.extend_from_slice(&flags_scale.to_le_bytes());
     header.extend_from_slice(&0u16.to_le_bytes()); // collision_meta
     header
@@ -476,7 +485,7 @@ fn fuzz_random_bytecode_with_valid_header() {
         buf.extend_from_slice(&payload);
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            let _ = decode(&buf, "FUZZ_PAYLOAD", None);
+            drop(decode(&buf, "FUZZ_PAYLOAD", None));
         }));
 
         assert!(
@@ -510,7 +519,7 @@ fn fuzz_valid_opcode_sequences_with_random_operands() {
         buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            let _ = decode(&buf, "FUZZ_OPCODES", None);
+            drop(decode(&buf, "FUZZ_OPCODES", None));
         }));
 
         assert!(
@@ -559,7 +568,7 @@ fn fuzz_mutated_valid_sod() {
         mutate(&mut rng, &mut mutated, 8);
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            let _ = decode(&mutated, "MUTATED", None);
+            drop(decode(&mutated, "MUTATED", None));
         }));
 
         assert!(
