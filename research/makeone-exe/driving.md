@@ -28,7 +28,7 @@ flowchart LR
 
 ## 2. Keys
 
-`[Bounded Observation]`. The prefix jump fills the Filename field, so the keys are the film's first letter and Enter, with no Down (unlike `PLAYONE`'s list box, which needs a Down; [`playone.py`](../../python/stunt_reel/tac/playone.py)). With only the target film in `VAULT` the list shows `balloon.flm` and `balloon.tke`, and `b` selects `balloon.flm`. The spike pressed `b` about 10 s after the controller connected, 0.7 s before Enter; the harness's own dialog settle also works on these screens (section 7).
+`[Bounded Observation]`. The prefix jump fills the Filename field, so the keys are the film's first letter and Enter, with no Down (unlike `PLAYONE`'s list box, which needs a Down; [`playone.py`](../../python/stunt_reel/tac/playone.py)). In the spike's mount `VAULT` held `balloon.flm` and `balloon.tke`, and `b` selected `balloon.flm`; the committed command stages the `.FLM` alone, where the list shows only that film. The spike pressed `b` about 10 s after the controller connected, 0.7 s before Enter; the harness's own dialog settle also works on these screens (section 7).
 
 ## 3. Completion
 

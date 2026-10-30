@@ -66,3 +66,9 @@ Each new film costs a run of its own length, because `MAKEONE` plays the film in
 Generated archives accumulate under `captures/all/` like captures do and are pruned
 explicitly. A `.ALL` made under DOSBox-X may carry a different sound set-up than one made
 on the original machine; frames are unaffected.
+
+Archives are add-only (ADR 0022) and there is no overwrite path. When `resolve_all` reports a
+stored archive that no longer matches its `meta.json`, or whose `meta.json` cannot be read, the
+remedy is to delete that `captures/all/<film>/<id>/` directory and rerun `make-all`; the error
+text says so. If the emulator fails to stop after a good run, the archive is kept and a warning
+is printed, because the run took minutes and its output is already complete.
