@@ -22,9 +22,9 @@ from typing import Any
 import pytest
 
 from archive_helpers import build_all
-from stunt_reel import dataroot, parity_layout
+from stunt_reel import dataroot, parity_artifacts, parity_layout
 from stunt_reel.all_archive import ArchiveMeta, publish_archive
-from stunt_reel.parity_artifacts import FilmId
+from stunt_reel.parity_artifacts import CaptureSet, FilmId, Geometry
 from stunt_reel.tac import staging
 from stunt_reel.tac.emulator import (
     EMULATOR_STOP_SECONDS,
@@ -971,6 +971,37 @@ def test_capture_script_uses_a_stored_archive_for_a_film_without_a_sibling(
 
     mount, _conf = seen["profile"].stage(staged_repo.film, staged_repo.conf)
     assert (mount / "VAULT" / "CTRY.ALL").read_bytes() == stored
+
+
+def test_capture_records_the_hash_of_the_archive_it_played(
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A capture can be traced to its .ALL: a later make-all may change which one resolves."""
+    module = _load_script("capture_playone_reference")
+    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
+    stored = build_all([b"stored"])
+    _stored_archive(staged_repo, stored)
+    monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, tmp_path / "out"))
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(module, "capture", lambda *_a, **kwargs: seen.update(kwargs) or {})
+    monkeypatch.setattr(
+        module, "run_session", lambda *_a, **kwargs: {"frames": [kwargs["sample"](None)]}
+    )
+
+    assert module.run(module.parse_args()) == 0
+
+    assert seen["film"].all_sha256 == hashlib.sha256(stored).hexdigest()
+
+
+def test_the_archive_hash_round_trips_through_the_capture_document() -> None:
+    film = FilmId(name="CTRY.FLM", flm_bytes=19, flm_sha256="0" * 64, all_sha256="1" * 64)
+    document = parity_artifacts._capture_document(
+        CaptureSet(schema_version=1, film=film, geometry=Geometry(320, 200), frames=())
+    )
+    assert document["all_sha256"] == "1" * 64
+    assert parity_artifacts._film_fields(document, None) == film
 
 
 def test_capture_script_without_any_archive_names_make_all(

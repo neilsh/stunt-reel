@@ -151,13 +151,18 @@ def run(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"[capture] {exc}", file=sys.stderr)
         return 2
+    if not film.is_file():
+        print(f"[capture] {film} not found", file=sys.stderr)
+        return 2
     if not ensure_links_or_report("mise run capture-ref"):
         return 2
     profile = PLAYONE_PROFILE
+    all_sha256: str | None = None
     if not args.no_launch:
         try:
             archive = resolve_all(film, dataroot.REPO_ROOT)
-        except ArchiveError as exc:
+            all_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
+        except (ArchiveError, OSError) as exc:
             print(f"[capture] {exc}", file=sys.stderr)
             return 2
         profile = Profile(
@@ -165,7 +170,12 @@ def run(args: argparse.Namespace) -> int:
             keys=playone.film_selection_keys,
         )
     flm_sha256 = hashlib.sha256(film.read_bytes()).hexdigest()
-    film_id = FilmId(name=film.name, flm_bytes=film.stat().st_size, flm_sha256=flm_sha256)
+    film_id = FilmId(
+        name=film.name,
+        flm_bytes=film.stat().st_size,
+        flm_sha256=flm_sha256,
+        all_sha256=all_sha256,
+    )
     out = resolve(
         args.out
         or parity_layout.capture_path(
