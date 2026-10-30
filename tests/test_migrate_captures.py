@@ -215,3 +215,21 @@ def test_write_pins_points_the_reference_at_the_new_capture(script: Any, tmp_pat
     assert pointers.read_text(encoding="utf-8") == (
         f'# keep me\n\n[ctry]\nfilm = "vault-ctry"\ncapture = "001"\nsha256 = "{digest}"\n'
     )
+
+
+def test_write_pins_does_not_re_pin_a_changed_001(script: Any, tmp_path: Path) -> None:
+    """A repeat run keeps the recorded digest and reports a capture that changed since."""
+    root = _root(tmp_path)
+    script.migrate(root, {}, apply=True)
+    pointers = tmp_path / "references.toml"
+    pointers.write_text(
+        '[ctry]\nfilm = "vault-ctry"\ncapture = "001"\nsha256 = "0"\n',
+        encoding="utf-8",
+    )
+    text = pointers.read_text(encoding="utf-8")
+    with pytest.raises(script.MigrationError, match="no longer hashes"):
+        script.write_pins(pointers, root)
+    assert pointers.read_text(encoding="utf-8") == text
+    digest = references.capture_digest(root / "captures/vault-ctry/frames/001")
+    pointers.write_text(text.replace('"0"', f'"{digest}"'), encoding="utf-8")
+    script.write_pins(pointers, root)  # unchanged capture: accepted

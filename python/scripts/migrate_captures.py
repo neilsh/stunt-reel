@@ -189,7 +189,11 @@ def read_pins(path: Path) -> dict[str, str]:
 
 
 def write_pins(path: Path, root: Path) -> list[str]:
-    """Point each ``references.toml`` entry at run ``001`` of its slug, with that digest."""
+    """Point each ``references.toml`` entry at run ``001`` of its slug, with that digest.
+
+    An entry that already names ``001`` is a repeat run: its recorded digest must still match
+    the capture, otherwise a changed capture would be re-pinned instead of reported.
+    """
     text = path.read_text(encoding="utf-8")
     lines: list[str] = []
     entries = tomllib.loads(text)
@@ -198,6 +202,10 @@ def write_pins(path: Path, root: Path) -> list[str]:
         if not (capture / "meta.json").is_file():
             raise MigrationError(
                 f"{film}: {capture} holds no migrated capture; nothing was re-pinned"
+            )
+        if entry["capture"] == _FIRST_RUN and references.capture_digest(capture) != entry["sha256"]:
+            raise MigrationError(
+                f"{film}: {capture} no longer hashes to its pin; nothing was re-pinned"
             )
     for film, entry in entries.items():
         digest = references.capture_digest(
