@@ -8,9 +8,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from stunt_reel import batch_stages
+from stunt_reel import batch_stages, parity_layout
 from stunt_reel.batch_films import BatchFilm
+
+if TYPE_CHECKING:
+    from stunt_reel.batch_ledger import Record
 
 
 class FakeRunner:
@@ -34,6 +38,68 @@ def _film(tmp_path: Path, *, name: str | None = None, sibling: bool = False) -> 
         sha256="0" * 64,
         has_sibling_all=sibling,
     )
+
+
+def _write_capture(tmp_path: Path, slug: str, ticks: list[int], run: str = "001") -> None:
+    """A fake capture run with a ``meta.json`` of frames at *ticks*, as the harness writes it."""
+    directory = tmp_path / parity_layout.frames_root(slug) / run
+    directory.mkdir(parents=True)
+    frames = [{"ordinal": i + 1, "film_tick": tick} for i, tick in enumerate(ticks)]
+    meta = {"film": "CTRY.FLM", "frames": frames, "width": 320, "height": 200}
+    (directory / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def _capture_record(tmp_path: Path, ticks: list[int] | None) -> Record:
+    film = _film(tmp_path)
+    if ticks is not None:
+        _write_capture(tmp_path, film.slug, ticks)
+    return batch_stages.run_capture(film, tmp_path, FakeRunner(), 900.0)
+
+
+def test_a_capture_whose_clock_advanced_is_ok(tmp_path: Path) -> None:
+    assert _capture_record(tmp_path, [0, 50, 100, 150, 200, 250]).status == "ok"
+
+
+def test_a_short_film_with_two_advancing_frames_is_ok(tmp_path: Path) -> None:
+    assert _capture_record(tmp_path, [0, 12]).status == "ok"
+
+
+def test_a_capture_stuck_at_zero_is_invalid(tmp_path: Path) -> None:
+    record = _capture_record(tmp_path, [0, 0, 0])
+    assert record.status == "error"
+    assert record.message.startswith("capture invalid: ")
+    assert "clock" in record.message
+
+
+def test_a_capture_whose_first_and_last_ticks_match_is_invalid(tmp_path: Path) -> None:
+    record = _capture_record(tmp_path, [40, 41, 40])
+    assert record.status == "error"
+    assert record.message.startswith("capture invalid: ")
+
+
+def test_a_capture_with_one_frame_is_invalid(tmp_path: Path) -> None:
+    record = _capture_record(tmp_path, [7])
+    assert record.status == "error"
+    assert record.message.startswith("capture invalid: ")
+    assert "1 frame" in record.message
+
+
+def test_a_successful_capture_run_without_a_capture_is_invalid(tmp_path: Path) -> None:
+    record = _capture_record(tmp_path, None)
+    assert record.status == "error"
+    assert record.message.startswith("capture invalid: ")
+
+
+def test_the_capture_checked_is_the_latest_run(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    _write_capture(tmp_path, film.slug, [0, 0, 0], run="001")
+    _write_capture(tmp_path, film.slug, [0, 100, 200], run="002")
+    assert batch_stages.run_capture(film, tmp_path, FakeRunner(), 900.0).status == "ok"
+
+
+def test_a_failed_capture_command_keeps_its_exit_error(tmp_path: Path) -> None:
+    record = batch_stages.run_capture(_film(tmp_path), tmp_path, FakeRunner(code=1), 900.0)
+    assert record.message == "exit 1"
 
 
 def test_archive_is_skipped_when_a_sibling_all_exists(tmp_path: Path) -> None:
@@ -88,6 +154,7 @@ def test_a_runner_exception_becomes_an_error_record(tmp_path: Path) -> None:
 
 def test_capture_command_uses_the_film_path(tmp_path: Path) -> None:
     runner = FakeRunner()
+    _write_capture(tmp_path, "x-y", [0, 10])
     record = batch_stages.run_capture(_film(tmp_path, name="x-y"), tmp_path, runner, 900.0)
     assert record.status == "ok"
     command, _ = runner.calls[0]

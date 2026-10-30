@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 __all__ = [
     "KNOWN_CAPTURE_STALLS",
     "KNOWN_STALL_MESSAGE",
+    "MIN_CAPTURE_FRAMES",
     "Runner",
     "run_archive",
     "run_capture",
@@ -56,6 +57,9 @@ KNOWN_CAPTURE_STALLS: tuple[str, ...] = (
 )
 #: The message of the ``skipped`` capture record a known stall gets.
 KNOWN_STALL_MESSAGE = "known capture stall"
+#: A capture needs at least this many frames: a film short enough to yield 2 or 3 legitimately
+#: still passes if its clock advanced, but a single frame shows no progress at all.
+MIN_CAPTURE_FRAMES = 2
 _TAIL_WIDTH = 400
 #: Seconds make_all's own timeout precedes the runner's kill, so it can stop DOSBox-X itself.
 _TEARDOWN_MARGIN = 90
@@ -100,7 +104,34 @@ def run_capture(
         command += ["--name", film.name]
     if frames > 0:
         command += ["--sample-frames", str(frames)]
-    return _execute(film, "capture", command, timeout, run, started)
+    outcome = _execute(film, "capture", command, timeout, run, started)
+    if outcome.status != "ok":
+        return outcome
+    problem = _capture_problem(root, film.slug)
+    if problem is not None:
+        return _record(film, "capture", "error", f"capture invalid: {problem}", started)
+    return outcome
+
+
+def _capture_problem(root: Path, slug: str) -> str | None:
+    """Why the latest capture of *slug* cannot be parity evidence, or ``None`` when it can.
+
+    A capture is unusable when its film clock never advanced (the first and last ``film_tick``
+    match, which covers every frame at one tick) or it holds fewer than
+    :data:`MIN_CAPTURE_FRAMES` frames.
+    """
+    try:
+        capture = _latest_capture(root, slug)
+        if capture is None:
+            return "no capture directory was written"
+        ticks = [frame.film_tick for frame in parity_artifacts.read_capture(capture).frames]
+    except Exception as exc:  # noqa: BLE001 - a stage never raises; the failure is the record
+        return f"unreadable meta.json: {_describe(exc)}"
+    if len(ticks) < MIN_CAPTURE_FRAMES:
+        return f"only {len(ticks)} frame(s) captured, need {MIN_CAPTURE_FRAMES}"
+    if ticks[0] == ticks[-1]:
+        return f"film clock never advanced (film_tick {ticks[0]} in all {len(ticks)} frames)"
+    return None
 
 
 def run_render(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Record:
