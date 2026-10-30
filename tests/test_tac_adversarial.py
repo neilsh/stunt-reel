@@ -24,6 +24,7 @@ from pathlib import Path
 import pytest
 
 from stunt_reel.tac import (
+    DEFAULT_ORACLE_PATH,
     KEY_DOWN,
     KEY_ENTER,
     BdaInjector,
@@ -527,13 +528,14 @@ def test_trajectory_streamer_600_ticks_complete() -> None:
         assert rmse <= 0.01
 
 
-def test_asset_isolation_corpus_oracle() -> None:
-    """Verify that corpus/oracle/ files are gitignored per the asset-isolation directive."""
-    res = subprocess.run(
-        ["git", "check-ignore", "corpus/oracle/intro_trajectory.json"],  # noqa: S607
+def test_default_oracle_is_a_gitignored_build_output() -> None:
+    """The synthetic oracle is written under build/, which Git ignores, never into the corpus."""
+    path = DEFAULT_ORACLE_PATH.as_posix()
+    assert path.startswith("build/")
+    res = subprocess.run(  # noqa: S603
+        ["git", "check-ignore", path],  # noqa: S607
         capture_output=True,
         text=True,
         check=False,
     )
     assert res.returncode == 0
-    assert "corpus/oracle/" in res.stdout

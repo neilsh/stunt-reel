@@ -29,7 +29,8 @@ import sys
 import zlib
 from pathlib import Path
 
-from stunt_reel import parity_layout
+from stunt_reel import parity_layout, references
+from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.parity_artifacts import (
     LEGACY_SIDECAR,
     CapturedFrame,
@@ -271,7 +272,12 @@ def main() -> int:
     for name, fn in commands:
         p = sub.add_parser(name)
         p.set_defaults(func=fn)
-        p.add_argument("--reference", type=Path, default=parity_layout.capture_dir("ctry"))
+        p.add_argument(
+            "--reference",
+            type=Path,
+            default=None,
+            help="a capture directory (default: ctry's reference from references.toml)",
+        )
         if name == "summary":
             p.add_argument(
                 "--report",
@@ -306,6 +312,12 @@ def main() -> int:
             p.add_argument("--every", type=int, default=2, help="use every Nth scored frame")
             p.add_argument("--pad", type=int, default=25)
     args = parser.parse_args()
+    if args.reference is None:
+        try:
+            args.reference = references.reference_dir(REPO_ROOT, "ctry")
+        except references.ReferenceCaptureError as err:
+            print(f"parity_probe: {err}", file=sys.stderr)
+            return 1
     result = args.func(args)
     return 0 if result is None else int(result)
 

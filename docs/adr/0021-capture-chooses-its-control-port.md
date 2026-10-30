@@ -83,11 +83,9 @@ renderer already compensates by sampling at `tick - 1`. Two simultaneous capture
 inherit exactly that, so a concurrent pair is a workflow convenience, not a way to
 produce interchangeable reference sets.
 
-`--out` defaults to the shared `build/parity/reference/<film>`, and a session clears
-its output directory before sampling, so two captures of one film must be given
-different `--out` or the second deletes the first's frames. Two sessions writing the
-same shared directory under `STUNT_DATA_WRITE=1` remain the operator's business: the
-write guard is a consent gate, not a concurrency gate. Per-user DOSBox-X state was
+*Superseded in part by [ADR 0022](0022-captures-are-add-only-beside-a-read-only-corpus.md): `--out` now defaults to a new capture id and an existing directory is refused, so the clearing and the write guard described here are gone.* `--out` defaulted to the shared `build/parity/reference/<film>`, and a session cleared
+its output directory before sampling, so two captures of one film had to be given
+different `--out` or the second deleted the first's frames. Per-user DOSBox-X state was
 checked while two captures ran — nothing under the DOSBox-X config directories was
 written — so the instances share nothing there.
 

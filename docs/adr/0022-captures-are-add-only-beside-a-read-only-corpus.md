@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted 2026-10-29, not yet implemented: the landing steps are in
+accepted and implemented 2026-10-29: the landing steps and log are in
 [the data-root split plan](../process/plans/data-root-split-2026-10-29.md). Supersedes
 the write guard of [ADR 0008](0008-worktrees-share-one-read-only-data-root.md); one
 data root per machine, linked into every worktree, stays.
@@ -37,12 +37,14 @@ oracle becomes a per-worktree build output.
 
 ## What will enforce this
 
-Nothing yet; these are the planned guards, to be replaced by links when they land.
+These guards replace the write guard; the tests named here carry them.
 
-- **The capture id.** `capture-ref` writes a new id directory by default and refuses an
-  existing one, which replaces `clear_frames`.
-- **The pointer.** Parity resolves a film's reference through `references.toml` and fails,
-  naming the id, when that capture is absent or its hash differs.
+- **The capture id.** [`capture_playone_reference.py`](../../python/scripts/capture_playone_reference.py)
+  writes a new id directory by default and refuses an existing one, which replaces
+  `clear_frames`; `tests/test_tac_capture_session.py` covers the refusal.
+- **The pointer.** Parity resolves a film's reference through `references.toml` with
+  [`references.py`](../../python/stunt_reel/references.py) and fails, naming the id, when
+  that capture is absent or its hash differs (`tests/test_references.py`).
 - **The links.** `LINK_TARGETS` in [`dataroot.py`](../../python/stunt_reel/dataroot.py)
   names no oracle and no `target_bin`, so no checkout path leads a writer into
   `corpus\`.

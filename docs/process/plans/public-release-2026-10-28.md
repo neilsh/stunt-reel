@@ -156,7 +156,7 @@ Ordinary commits under `<noreply>`, made in a scratch clone of the mirror that i
    `docs/development.md` (90–103, 194) and `research/stunt-exe/sets.md`. Make `play_ctry.bat`
    `pushd` to the repository root. Add `tools/dosbox/README.md`.
 2. **Q4 smoke run** (local, needs the corpus): `mise run play` launches; a `capture-ref` with
-   `--out` inside the checkout completes (no `STUNT_DATA_WRITE` needed).
+   `--out` inside the checkout completes.
 3. **Q7**: `LICENSE-CC-BY-4.0`; pin `hatchling` to the version uv resolves today.
 4. **Q8**: `NOTICE.md` names `crates/stunt-core/src/contracts/palette.rs`,
    `python/stunt_reel/tac/palette.py`, `tests/fixtures/mode13h_palette.json` and

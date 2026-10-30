@@ -1,6 +1,6 @@
 # Synthetic Test Fixtures (`tests/fixtures/`)
 
-This directory contains committed, synthetically constructed minimal fixtures used by Rust and Python test suites. Because proprietary game data (`corpus/` and `target_bin/`) cannot be checked into the repository or downloaded in continuous integration environments, these mock fixtures ensure 100% offline, deterministic CI testing.
+This directory contains committed, synthetically constructed minimal fixtures used by Rust and Python test suites. Because proprietary game data (`corpus/`) cannot be checked into the repository or downloaded in continuous integration environments, these mock fixtures ensure 100% offline, deterministic CI testing.
 
 ---
 

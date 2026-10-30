@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 from stunt_reel import dataroot
-from stunt_reel.dataroot import SharedWriteError, ensure_links_or_report
+from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.tac import playone
 from stunt_reel.tac.emulator import EmulatorUnavailable
 from stunt_reel.tac.session import Page, Session, SessionError, run_session
@@ -135,15 +135,11 @@ def run(args: argparse.Namespace) -> int:
     try:
         run_session(
             film,
-            out,
             sample=lambda session: sample_ticks(
                 session, ticks, out, dump_all=args.dump_all_segments
             ),
             conf=conf,
         )
-    except SharedWriteError as exc:
-        print(f"[probe] {exc}", file=sys.stderr)
-        return 2
     except EmulatorUnavailable as exc:
         print(f"[probe] {exc}; run via mise exec", file=sys.stderr)
         return 1

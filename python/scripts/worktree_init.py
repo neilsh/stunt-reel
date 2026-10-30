@@ -1,7 +1,7 @@
 """Prepare or clean one git worktree.
 
 ``mise run init`` links the machine-wide data root into this checkout, so the
-relative ``corpus/``, capture and ``target_bin/`` paths keep working in every
+relative ``corpus/`` and capture paths keep working in every
 worktree, and links ``.cache`` to the primary checkout's shared tool
 cache (ADR 0013).  It parks this checkout's ``.venv`` inside that cache too
 (ADR 0019) and then runs ``uv sync``, so the environment is hardlinked out of the
@@ -35,6 +35,7 @@ from stunt_reel.dataroot import (
     LinkOutcome,
     SharedDataError,
     cache_root,
+    convert_layout,
     create_link,
     data_root,
     discard_env,
@@ -149,6 +150,13 @@ def _init(migrate: bool) -> int:
     print(f"worktree   {REPO_ROOT}")
     print(f"data root  {root} ({source})")
     if migrate:
+        if root != REPO_ROOT and root.is_dir():
+            try:
+                for line in convert_layout(root):
+                    print(f"  > {line}")
+            except SharedDataError as err:
+                print(f"  ! {err}")
+                return 1
         for shared, relative in LINK_TARGETS:
             _migrate(relative, root / shared)
     if root != REPO_ROOT:
@@ -691,7 +699,7 @@ def main(argv: list[str] | None = None) -> int:
     init.add_argument(
         "--migrate",
         action="store_true",
-        help="move existing in-checkout data into the shared root before linking",
+        help="convert an old-layout shared root, then move existing in-checkout data into it before linking",
     )
     clean = commands.add_parser("clean", help="report or remove per-worktree build outputs")
     clean.add_argument("--yes", action="store_true", help="actually remove them")

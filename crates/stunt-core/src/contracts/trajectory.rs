@@ -175,7 +175,7 @@ pub struct AudioCue {
 /// Complete snapshot of the cinematic world state at 50 Hz tick `t`.
 ///
 /// Implements `Seam 2: TrajectoryRecord` per `docs/ARCHITECTURE.md`.
-/// Used as the golden oracle format for `corpus/oracle/intro_trajectory.json`.
+/// Used as the format of the synthetic `build/oracle/intro_trajectory.json`.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TrajectoryRecord {

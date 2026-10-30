@@ -1,6 +1,6 @@
 # Data-root split plan (2026-10-29)
 
-Status: **planned**, nothing landed. Source: the `/grill-with-docs` interview of
+Status: **steps 1-6 landed 2026-10-29; step 7 (migrating a machine) pending**. Source: the `/grill-with-docs` interview of
 2026-10-29 (four rounds), starting from "why do we have `STUNT_DATA_WRITE`?". The durable
 decision is [ADR 0022](../../adr/0022-captures-are-add-only-beside-a-read-only-corpus.md);
 this note owns the landing steps and the log. It lands on its own branch and PR, before
@@ -86,3 +86,9 @@ is deferred until captures take noticeable space; its command is named then.
 
 | Date | Step | Result |
 |---|---|---|
+| 2026-10-29 | 1 | `LINK_TARGETS` is `corpus/{stisldem,siarchive,stuntisl,patches}` plus `captures` -> `build/parity/captures`; `STUNT_DATA_WRITE`, `require_shared_write`, `is_shared`, `SharedWriteError` and their callers are gone; `run_session` lost its `out` argument, which only the guard used; `unlzexe.py` now links the data root since it reads `corpus/stuntisl`. |
+| 2026-10-29 | 2 | `dataroot.convert_layout` converts an old root and refuses one holding both names; `init --migrate` runs it first. Reap needed no change (it unlinks any reparse point); a test now links a pre-split `target_bin` beside `captures`. |
+| 2026-10-29 | 3 | `capture_playone_reference.py` writes `captures/<film>/<date>-<checkout>-<film hash>` and refuses a non-empty `--out`; `clear_frames` is deleted. The refusal sits in the script, not `run_session`, because the light probe also calls `run_session` and writes into scratch directories it reuses. |
+| 2026-10-29 | 4 | `references.py` and `research/parity/references.toml`, seeded with `legacy-2026-10-24` and the content hashes of the two existing captures; `parity`, `sweep` and `parity-probe` resolve through it. |
+| 2026-10-29 | 5 | `DEFAULT_ORACLE_PATH` is `build/oracle/intro_trajectory.json`; the adversarial test asserts it is a gitignored build path. |
+| 2026-10-29 | 6 | AGENTS.md SOP 6 item 3, development.md section 3, ADR 0008/0018/0021/0022 notes, and the research notes that named `build/parity/reference` or `target_bin`. `mise run check` passes. |

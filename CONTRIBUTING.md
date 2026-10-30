@@ -14,7 +14,7 @@ architecture routing, and the research notes. Environment setup and the task lis
 
 - **No game files, ever.** Never commit Stunt Island assets, executables or disk images, or
   anything derived from them beyond the two tables documented in [`NOTICE.md`](NOTICE.md).
-  `corpus/` and `target_bin/` are gitignored for that reason; tests run offline on the
+  `corpus/` is gitignored for that reason; tests run offline on the
   synthetic fixtures in [`tests/fixtures/`](tests/fixtures/README.md).
 - **Run the gate.** `mise run check` (format, lint, typecheck and tests for Rust and Python)
   must pass. CI runs it on every pull request.

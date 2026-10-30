@@ -76,7 +76,7 @@ The three engines carry the same forty bytes of renderer code. The patch replace
 
 This is the article's "MAKEONE and PLAYONE share the rendering code" made concrete: one code sequence, three detail words, and a per-engine store. The `PLAYONE` vanilla site is the one traced in section 1; the other three addresses come from the patch bytes, not from a disassembly of their handlers, so the table is `[Established]` for the bytes and `[Hypothesis]` for the `STUNT.EXE` and `MAKEONE.EXE` control flow matching `PLAYONE`'s.
 
-The shipped diff files are not in-place patches. Each is a whole-file XOR against a re-packed binary: 84% of the packed bytes differ in the vanilla `PLAYONE` diff (85,948 of 102,703) while the unpacked images differ by five of the six patched bytes. `si-8x-main.cpp:110` selects a patchset by file size alone, so a build that shares a size but not the bytes would be silently corrupted. The supported vanilla copies are `corpus/siarchive/Films/OldPLAY/STUNT.EXE` (137,240), `target_bin/StuntIsl/MAKEONE.EXE` (103,247) and `corpus/stisldem/PLAYONE.EXE` (102,703); `corpus/siarchive/Films/NewPLAY/PLAYONE.EXE` (97,790) is the P3 build.
+The shipped diff files are not in-place patches. Each is a whole-file XOR against a re-packed binary: 84% of the packed bytes differ in the vanilla `PLAYONE` diff (85,948 of 102,703) while the unpacked images differ by five of the six patched bytes. `si-8x-main.cpp:110` selects a patchset by file size alone, so a build that shares a size but not the bytes would be silently corrupted. The supported vanilla copies are `corpus/siarchive/Films/OldPLAY/STUNT.EXE` (137,240), `corpus/stuntisl/MAKEONE.EXE` (103,247) and `corpus/stisldem/PLAYONE.EXE` (102,703); `corpus/siarchive/Films/NewPLAY/PLAYONE.EXE` (97,790) is the P3 build.
 
 ## 2. Where `DS:0x22A4` Comes From
 
@@ -112,7 +112,7 @@ The detail scale matches the article: `0xFFFF` is 100%, and the in-game slider w
 
 * The image initialises `DS:0x0710` to `0xFFFF`. When `game.var` cannot be opened, the word presumably keeps that value: the loader `0x4790` returns carry on failure (see its other caller at `0x0CD2`), and the only other code that names the buffer is a second `game.var` routine at `0x45B9` (`mov dx, 0x5B5; mov di, 0x710; mov cx, 0x1C; jmp 0x46EA`: 28 bytes, the size of `GAME.VAR`), most likely the save path. That part is `[Supported Inference]`; neither the loader's failure path nor `0x46EA` has been read.
 * The parity stage built by [`capture_playone_reference.py`](../../python/scripts/capture_playone_reference.py) copies `ENGINE_FILES` from `corpus/stisldem`. That directory has no `GAME.VAR` and `ENGINE_FILES` doesn't list one, so **every capture runs at detail `0xFFFF` (100%)**. `[Established]` from the image bytes and the stage contents.
-* The `GAME.VAR` in the local `target_bin/StuntIsl` starts with `60 3C` (`0x3C60`, about 24%). The archive copies under `corpus/siarchive/Films/*/GAME.VAR` start with `FF FF`. Staging either kind would change which level of detail the reference frames show, so a `GAME.VAR` must not be added to the stage without recording its first word next to the capture.
+* The `GAME.VAR` in the local `corpus/stuntisl` starts with `60 3C` (`0x3C60`, about 24%). The archive copies under `corpus/siarchive/Films/*/GAME.VAR` start with `FF FF`. Staging either kind would change which level of detail the reference frames show, so a `GAME.VAR` must not be added to the stage without recording its first word next to the capture.
 
 ## 4. Consequences For The Renderer
 

@@ -1,9 +1,10 @@
-"""Locate the shared, read-only data root that every checkout borrows.
+"""Locate the shared data root that every checkout borrows.
 
-``corpus/``, the reference captures and ``target_bin/`` are gitignored, so each
+The original game files (``corpus/``) and the captures are gitignored, so each
 checkout would otherwise need its own copy.  They live once per machine, outside
 every checkout: ``<parent-of-primary>/<repo-name>.data`` unless ``STUNT_DATA_ROOT``
-names another place.  ``mise run init`` links them in, and ``ensure_links`` links
+names another place.  Nothing this project runs writes ``corpus/``, and a capture adds
+a new directory under ``captures/`` and never changes one (ADR 0022).  ``mise run init`` links them in, and ``ensure_links`` links
 them in again wherever the corpus is read, so a checkout made by any tool works on
 first use rather than reading an empty placeholder.  ``ensure_links`` is the one
 policy for those links: it returns one outcome per target, and its callers only
@@ -34,15 +35,15 @@ __all__ = [
     "DATA_ENV",
     "ENV_DIRNAME",
     "ENV_MARKER",
+    "LEGACY_CAPTURE_ID",
     "LINK_TARGETS",
     "REPO_ROOT",
     "VENV_DIRNAME",
-    "WRITE_ENV",
     "LinkOutcome",
     "LinkStatus",
     "SharedDataError",
-    "SharedWriteError",
     "cache_root",
+    "convert_layout",
     "create_link",
     "data_root",
     "discard_env",
@@ -54,19 +55,16 @@ __all__ = [
     "env_target",
     "is_link",
     "is_placeholder",
-    "is_shared",
     "link_points_at",
     "orphan_envs",
     "primary_checkout",
     "remove_link",
-    "require_shared_write",
     "shared_target",
     "sweep_orphan_envs",
 ]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_ENV = "STUNT_DATA_ROOT"
-WRITE_ENV = "STUNT_DATA_WRITE"
 DATA_SUFFIX = ".data"
 #: The writable tool cache every checkout of one primary checkout borrows.
 CACHE_DIRNAME = ".cache"
@@ -79,21 +77,22 @@ ENV_MARKER = ".checkout"
 VENV_DIRNAME = ".venv"
 
 #: (directory inside the data root, path inside the checkout that borrows it).
-#: The names may differ: the data root keeps the historical ``si_archive``
-#: directory while the checkout calls it ``siarchive``, the collector's spelling.
+#: Each corpus folder is its own link, because ``corpus/README.md`` and
+#: ``corpus/siarchive.md`` are tracked and ``corpus/`` cannot itself be one.
 LINK_TARGETS: tuple[tuple[str, str], ...] = (
-    ("stisldem", "corpus/stisldem"),
-    ("si_archive", "corpus/siarchive"),
-    ("oracle", "corpus/oracle"),
-    ("target_bin", "target_bin"),
-    ("reference", parity_layout.capture_root().as_posix()),
+    ("corpus/stisldem", "corpus/stisldem"),
+    ("corpus/siarchive", "corpus/siarchive"),
+    ("corpus/stuntisl", "corpus/stuntisl"),
+    ("corpus/patches", "corpus/patches"),
+    ("captures", parity_layout.capture_root().as_posix()),
 )
 
+#: The capture id the captures of the old data-root layout take when they are converted.
+LEGACY_CAPTURE_ID = "legacy-2026-10-24"
+#: Top-level names of the old layout (ADR 0008); ``reference`` held ``<film>/`` directly.
+_OLD_NAMES = ("stisldem", "si_archive", "oracle", "target_bin", "reference")
+
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
-
-
-class SharedWriteError(RuntimeError):
-    """Raised when something would write the shared data root without opting in."""
 
 
 class SharedDataError(RuntimeError):
@@ -103,7 +102,7 @@ class SharedDataError(RuntimeError):
 #: What one checkout-relative link came to.  ``ok`` and ``repaired`` describe a link
 #: that points at an existing shared target; ``created-empty`` says the target itself
 #: was missing and was created empty first, which is a valid starting point for the
-#: captures, the oracle and ``target_bin`` (ADR 0008); ``refused`` says this call left
+#: captures (ADR 0008); ``refused`` says this call left
 #: the target alone and ``reason`` says why.
 LinkStatus = Literal["ok", "repaired", "created-empty", "refused"]
 
@@ -141,7 +140,7 @@ def primary_checkout() -> Path | None:
 
 @lru_cache(maxsize=1)
 def data_root() -> Path:
-    """The one directory holding the corpus, the reference captures and ``target_bin/``."""
+    """The one directory holding the corpus and the captures."""
     override = os.environ.get(DATA_ENV)
     if override:
         return Path(override).expanduser().resolve()
@@ -294,26 +293,6 @@ def sweep_orphan_envs() -> list[Path]:
     return removed
 
 
-def is_shared(path: Path) -> bool:
-    """True when *path* resolves inside the shared data root, rather than this checkout."""
-    root = data_root()
-    if root == REPO_ROOT:
-        return False
-    try:
-        return path.resolve().is_relative_to(root)
-    except OSError:
-        return False
-
-
-def require_shared_write(what: str) -> None:
-    """Refuse a write into the shared root unless the session opted in."""
-    if os.environ.get(WRITE_ENV) == "1":
-        return
-    raise SharedWriteError(
-        f"{what} writes the shared data root ({data_root()}); set {WRITE_ENV}=1 to allow it"
-    )
-
-
 def is_link(path: Path) -> bool:
     """True for symbolic links and Windows junctions, which ``is_symlink`` misses."""
     if path.is_symlink():
@@ -381,6 +360,59 @@ def shared_target(relative: str) -> Path:
     raise KeyError(f"{relative} is not one of LINK_TARGETS")
 
 
+def convert_layout(root: Path) -> list[str]:
+    """Convert an old-layout data root to the corpus/captures layout (ADR 0022); say what moved.
+
+    ``stisldem`` and ``si_archive`` move under ``corpus/`` (the second as ``siarchive``),
+    ``target_bin/StuntIsl`` becomes ``corpus/stuntisl`` and ``target_bin/patch`` becomes
+    ``corpus/patches``.  The top-level ``target_bin/PLAYONE.EXE`` is dropped when it is
+    byte-identical to ``StuntIsl``'s, and ``oracle`` is deleted: it was generated, not
+    evidence.  ``reference/<film>`` becomes ``captures/<film>/`` + :data:`LEGACY_CAPTURE_ID`.
+    A root already in the new layout is left alone; one holding both an old and a new name
+    is refused before anything moves, because merging them would guess which side is right.
+    """
+    old = [name for name in _OLD_NAMES if (root / name).exists()]
+    if not old:
+        return []
+    new = [name for name in ("corpus", "captures") if (root / name).exists()]
+    if new:
+        raise SharedDataError(
+            f"{root} holds both old names ({', '.join(old)}) and new ones ({', '.join(new)}); "
+            "merge them by hand"
+        )
+    moves: list[tuple[Path, Path]] = []
+    for name, destination in (("stisldem", "stisldem"), ("si_archive", "siarchive")):
+        if (root / name).exists():
+            moves.append((root / name, root / "corpus" / destination))
+    for name, destination in (("StuntIsl", "stuntisl"), ("patch", "patches")):
+        if (root / "target_bin" / name).exists():
+            moves.append((root / "target_bin" / name, root / "corpus" / destination))
+    for film in sorted(entry for entry in (root / "reference").glob("*") if entry.is_dir()):
+        moves.append((film, root / "captures" / film.name / LEGACY_CAPTURE_ID))
+    moved: list[str] = []
+    for source, target in moves:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source), str(target))
+        moved.append(
+            f"{source.relative_to(root).as_posix()} -> {target.relative_to(root).as_posix()}"
+        )
+    duplicate = root / "target_bin" / "PLAYONE.EXE"
+    kept = root / "corpus" / "stuntisl" / "PLAYONE.EXE"
+    if duplicate.is_file() and kept.is_file() and duplicate.read_bytes() == kept.read_bytes():
+        duplicate.unlink()
+        moved.append("target_bin/PLAYONE.EXE dropped (a copy of corpus/stuntisl/PLAYONE.EXE)")
+    if (root / "oracle").is_dir():
+        shutil.rmtree(root / "oracle")
+        moved.append("oracle removed (a synthetic build output now)")
+    for name in ("target_bin", "reference"):
+        directory = root / name
+        if directory.is_dir() and not any(directory.iterdir()):
+            directory.rmdir()
+        elif directory.exists():
+            moved.append(f"{name} still holds files this conversion does not know; left alone")
+    return moved
+
+
 def ensure_links() -> list[LinkOutcome]:
     """Link the shared data root into this checkout; this is the one link policy.
 
@@ -388,7 +420,7 @@ def ensure_links() -> list[LinkOutcome]:
     checkout from any tool works on first use: a directory holding nothing but a
     ``.gitkeep`` is a worktree whose ``mise run init`` never ran, and it is replaced
     by the link.  A shared directory that does not exist yet is created empty first,
-    because the captures, the oracle and ``target_bin`` are populated later (ADR 0008).
+    because the captures are populated later (ADR 0008).
 
     Returns one outcome per :data:`LINK_TARGETS` entry, which is all a caller needs to
     render what happened: a target already in place is ``ok``, not absent from the list.

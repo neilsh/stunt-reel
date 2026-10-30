@@ -1,7 +1,7 @@
 # `PLAYONE.EXE`: Film Brightness and the End-of-Film Fade
 
 * **Binary**: `PLAYONE.EXE` (LZEXE 0.91), statically unpacked
-* **Method**: The packed file was decompressed with a local LZEXE 0.91 unpacker into a 200,524-byte load image (no MZ header). Disassembly is Capstone 16-bit. Corpus cross-check: `CTRY.FLM` `var_set` stream against the fade levels measured from the parity captures (`build/parity/reference/ctry`).
+* **Method**: The packed file was decompressed with a local LZEXE 0.91 unpacker into a 200,524-byte load image (no MZ header). Disassembly is Capstone 16-bit. Corpus cross-check: `CTRY.FLM` `var_set` stream against the fade levels measured from the parity captures (`build/parity/captures/ctry/<id>`).
 * **Scope**: What drives the palette fade at the end of `CTRY.FLM` (Q-FLM-09 in [`../formats/flm.md`](../formats/flm.md)).
 * **Anchor**: `# [MEM-FLM-VARS]`, `# [MEM-PALETTE]`
 

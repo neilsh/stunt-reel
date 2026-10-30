@@ -292,7 +292,6 @@ def _teardown(transport: Transport | None, machine: Emulator) -> None:
 
 def run_session(
     film: Path,
-    out: Path,
     *,
     sample: Callable[[Session], T],
     conf: Path = Path("tools/dosbox/dosbox-parity.conf"),
@@ -304,8 +303,7 @@ def run_session(
 ) -> T:
     """Run one capture session and return the sampler's result.
 
-    The SOP 6 shared-write gate is applied to out once, before anything is staged or
-    launched. The port is bound before the process launches; teardown closes the
+    The port is bound before the process launches; teardown closes the
     transport, releases the port and then stops the emulator, and a callback
     exception never masks it. A no_launch session stages nothing: the emulator it
     attaches to already mounted its own tree, and removing a fresh one would only risk
@@ -314,10 +312,7 @@ def run_session(
     """
     root = dataroot.REPO_ROOT
     film_path = _resolve(film, root)
-    out_path = _resolve(out, root)
     conf_path = _resolve(conf, root)
-    if dataroot.is_shared(out_path):
-        dataroot.require_shared_write("the capture session")
     staged = None if no_launch else staging.stage_film(film_path, conf_path)
     machine: Emulator = (
         emulator

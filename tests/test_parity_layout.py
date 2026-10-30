@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from datetime import date
 from pathlib import Path
 
 from stunt_reel import parity_layout
@@ -36,8 +37,14 @@ def _layout_literals(path: Path) -> list[str]:
 
 def test_the_layout_answers_every_artifact_location() -> None:
     """One accessor per location; a film name is normalised to lower case."""
-    assert parity_layout.capture_root() == Path("build/parity/reference")
-    assert parity_layout.capture_dir("CTRY") == Path("build/parity/reference/ctry")
+    assert parity_layout.capture_root() == Path("build/parity/captures")
+    assert parity_layout.capture_path("CTRY", "2026-10-29-wt-ab12cd34") == Path(
+        "build/parity/captures/ctry/2026-10-29-wt-ab12cd34"
+    )
+    assert parity_layout.new_capture_id(date(2026, 10, 29), "wt", "ab12cd34ef") == (
+        "2026-10-29-wt-ab12cd34"
+    )
+    assert Path("research/parity/references.toml") == parity_layout.REFERENCES_FILE
     assert parity_layout.render_dir("ctry") == Path("build/parity/ours/ctry_current")
     assert parity_layout.previous_dir("ctry") == Path("build/parity/previous/ctry")
     assert parity_layout.report_dir("ctry") == Path("build/parity/report/ctry_current")

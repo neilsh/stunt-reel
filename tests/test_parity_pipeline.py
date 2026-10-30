@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from stunt_reel import parity_artifacts, parity_layout, parity_pipeline
+from stunt_reel import parity_artifacts, parity_layout, parity_pipeline, references
 from stunt_reel.parity_artifacts import (
     SCHEMA_VERSION,
     CameraPose,
@@ -36,7 +36,6 @@ def test_the_catalogue_names_each_films_inputs_and_its_capture() -> None:
     for name, film in parity_pipeline.FILMS.items():
         assert film.flm.endswith(f"{name.upper()}.FLM")
         assert film.all.endswith(f"{name.upper()}.ALL")
-        assert film.reference == parity_layout.capture_dir(name)
 
 
 class FakeRun:
@@ -103,11 +102,22 @@ def _input_tree(root: Path, ticks: list[int]) -> Path:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(b"")
         (root / film.sidata).mkdir(parents=True, exist_ok=True)
-        reference = root / film.reference
-        reference.mkdir(parents=True, exist_ok=True)
-        frames = [{"film_tick": tick} for tick in ticks]
-        (reference / "meta.json").write_text(json.dumps({"frames": frames}), encoding="utf-8")
+    for name in parity_pipeline.FILMS:
+        _pin(root, name, [{"film_tick": tick} for tick in ticks])
     return root
+
+
+def _pin(root: Path, film: str, frames: list[dict[str, int]]) -> Path:
+    """Write a capture of *film* under *root* and name it in the root's references.toml."""
+    reference = root / parity_layout.capture_path(film, "test-0001")
+    reference.mkdir(parents=True, exist_ok=True)
+    (reference / "meta.json").write_text(json.dumps({"frames": frames}), encoding="utf-8")
+    pointers = root / parity_layout.REFERENCES_FILE
+    pointers.parent.mkdir(parents=True, exist_ok=True)
+    digest = references.capture_digest(reference)
+    with pointers.open("a", encoding="utf-8") as handle:
+        handle.write(f'[{film}]\ncapture = "test-0001"\nsha256 = "{digest}"\n')
+    return reference
 
 
 def test_build_release_runs_cargo_through_the_adapter() -> None:
@@ -142,7 +152,6 @@ def test_render_film_asks_for_the_captured_tick_range(tmp_path: Path) -> None:
 
 def test_score_film_runs_parity_and_reads_the_report(tmp_path: Path) -> None:
     root = _input_tree(tmp_path, [])
-    film = parity_pipeline.FILMS["ctry"]
     render, report = tmp_path / "ours", tmp_path / "report"
     _write_render(render)
     fake = FakeRun()
@@ -152,7 +161,7 @@ def test_score_film_runs_parity_and_reads_the_report(tmp_path: Path) -> None:
             str(parity_pipeline.binary_path()),
             "parity",
             "--reference",
-            str(root / film.reference),
+            str(root / parity_layout.capture_path("ctry", "test-0001")),
             "--test",
             str(render),
             "--output",
@@ -385,7 +394,7 @@ def test_retime_preserves_unknown_document_keys(tmp_path: Path) -> None:
 
 def test_run_films_writes_the_retimed_copy_beside_the_render(tmp_path: Path) -> None:
     root = tmp_path / "root"
-    _capture(root / parity_pipeline.FILMS["ctry"].reference, [10, 11])
+    _pin(root, "ctry", [{"ordinal": 1, "film_tick": 10}, {"ordinal": 2, "film_tick": 11}])
     work = tmp_path / "reuse"
     _render(work / "ctry", [10, 11])
     fake = FakeRun()
@@ -486,11 +495,12 @@ def test_format_summary_marks_a_missing_index_agreement(tmp_path: Path) -> None:
 
 def test_preflight_names_a_missing_capture(tmp_path: Path) -> None:
     root = _input_tree(tmp_path, [])
-    (root / parity_pipeline.FILMS["intro"].reference / "meta.json").unlink()
+    (root / parity_layout.capture_path("intro", "test-0001") / "meta.json").unlink()
     problems = parity_pipeline.preflight(
         root, ["ctry", "intro"], build_required=False, locked=lambda _path: False
     )
     assert len(problems) == 1
+    assert "test-0001" in problems[0]
     assert "capture-ref" in problems[0]
 
 

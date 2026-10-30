@@ -31,8 +31,7 @@ corpus/**
 !corpus/README.md
 !corpus/siarchive.md
 
-# Target binaries & proprietary game data
-target_bin/
+# Proprietary executables
 *.exe
 
 # Local capture output (DOSBox-X default)
