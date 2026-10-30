@@ -948,7 +948,7 @@ def _stored_archive(staged_repo: StagedRepo, data: bytes) -> None:
         all_bytes=len(data),
         all_sha256=hashlib.sha256(data).hexdigest(),
     )
-    publish_archive(dataroot.REPO_ROOT, staged_repo.film.name, "2026-10-29-wt-abcd1234", data, meta)
+    publish_archive(dataroot.REPO_ROOT, "vault-ctry", staged_repo.film.name, data, meta)
 
 
 def test_capture_script_uses_a_stored_archive_for_a_film_without_a_sibling(
