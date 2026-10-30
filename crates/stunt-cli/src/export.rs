@@ -270,7 +270,7 @@ mod tests {
         ]))
         .expect("export succeeds");
         let bytes = fs::read(&out).expect("output written");
-        let _ = fs::remove_file(&out);
+        drop(fs::remove_file(&out));
         assert_eq!(&bytes[..4], b"glTF");
         assert!(summarize(&bytes).expect("valid glb").meshes >= 2);
     }
@@ -290,7 +290,7 @@ mod tests {
         ]))
         .expect("export succeeds");
         let bytes = fs::read(&out).expect("output written");
-        let _ = fs::remove_file(&out);
+        drop(fs::remove_file(&out));
         assert!(summarize(&bytes).expect("valid glb").nodes >= 2);
     }
 

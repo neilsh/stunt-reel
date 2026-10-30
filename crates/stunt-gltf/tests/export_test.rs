@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! glTF export of shapes and scene frames, checked by parsing the produced `.glb` bytes.
 //!
 //! Everything is synthetic: fixture SODs and anchors from `tests/fixtures/` plus hand-built

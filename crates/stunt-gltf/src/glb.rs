@@ -1,7 +1,7 @@
 //! GLB container and JSON document packing (Khronos glTF 2.0 binary layout).
 //!
 //! Layout: 12-byte header (`glTF`, version 2, total length), a JSON chunk padded with
-//! spaces to 4 bytes, and a BIN chunk padded with zeros to 4 bytes. BufferViews start on
+//! spaces to 4 bytes, and a BIN chunk padded with zeros to 4 bytes. `BufferViews` start on
 //! 4-byte boundaries and carry `ARRAY_BUFFER` / `ELEMENT_ARRAY_BUFFER` targets.
 
 use serde_json::{Map, Value, json};

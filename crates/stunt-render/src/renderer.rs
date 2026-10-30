@@ -1,8 +1,8 @@
 //! One renderer entry point for offscreen readback and a presented surface.
 //!
 //! Opens an instance, an adapter and a device through a single acquisition policy, uploads the
-//! film's shapes once, and then draws one SceneFrame per Renderer::draw call. The destination is
-//! fixed at open: an Offscreen renderer reads every drawn page back and hands it to its PageSink,
+//! film's shapes once, and then draws one `SceneFrame` per `Renderer::draw` call. The destination is
+//! fixed at open: an Offscreen renderer reads every drawn page back and hands it to its `PageSink`,
 //! a surface renderer presents it. The caller never branches on the destination and never sees a
 //! readback.
 //!
@@ -77,7 +77,7 @@ impl Default for PageSize {
 /// An offscreen destination: the page size plus how many target rows the 3D scene fills.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Offscreen {
-    /// Fixed page size; Renderer::resize is a no-op offscreen.
+    /// Fixed page size; `Renderer::resize` is a no-op offscreen.
     pub size: PageSize,
     /// When set, the scene is drawn into the top this-many rows only, with the vertical focal
     /// scale kept, as PLAYONE.EXE does above its button bar. None fills the target.
@@ -132,7 +132,7 @@ impl Default for RenderOptions {
     }
 }
 
-/// A PageSink could not consume a page; a sink failure is terminal.
+/// A `PageSink` could not consume a page; a sink failure is terminal.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{message}")]
 pub struct SinkError {
@@ -171,9 +171,9 @@ pub struct RenderedPage {
 impl RenderedPage {
     /// Builds a page, refusing buffers that do not match the size.
     ///
-    /// The RGBA buffer holds exactly size.pixel_count() * 4 bytes and the plane one
+    /// The RGBA buffer holds exactly `size.pixel_count()` * 4 bytes and the plane one
     /// little-endian u32 per pixel: layer << 8 | unlit palette index, where uncovered pixels are
-    /// the clear index on LAYER_NONE. The index byte and the layer word are kept apart; the
+    /// the clear index on `LAYER_NONE`. The index byte and the layer word are kept apart; the
     /// `.layer` file stores a u16, so its codec checks the narrowing instead of truncating.
     pub fn new(size: PageSize, rgba: Vec<u8>, plane: Vec<u32>) -> Result<Self, RenderError> {
         let pixels = size.pixel_count();
@@ -247,7 +247,7 @@ impl RenderedPage {
 
 /// Consumes the pages an offscreen Renderer reads back.
 ///
-/// The renderer calls PageSink::accept exactly once per Renderer::draw and does not know what a
+/// The renderer calls `PageSink::accept` exactly once per `Renderer::draw` and does not know what a
 /// page becomes; the sink owns every file. An error is terminal for the run.
 pub trait PageSink {
     /// Consumes one rendered page.
@@ -277,7 +277,7 @@ pub enum RenderError {
     Sink(#[from] SinkError),
 }
 
-/// A renderer bound to one destination and one FilmScene.
+/// A renderer bound to one destination and one `FilmScene`.
 pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -304,7 +304,7 @@ impl fmt::Debug for Renderer {
 impl Renderer {
     /// Opens an offscreen renderer that reads every page back into the sink.
     ///
-    /// The page size is fixed here; Renderer::resize is a no-op. Every Renderer::draw calls
+    /// The page size is fixed here; `Renderer::resize` is a no-op. Every `Renderer::draw` calls
     /// sink.accept exactly once.
     pub fn offscreen(
         scene: &FilmScene,
@@ -340,7 +340,7 @@ impl Renderer {
 
     /// Opens a renderer that presents every drawn frame to the window.
     ///
-    /// The surface starts configured at 1x1; call Renderer::resize with the window's inner size
+    /// The surface starts configured at 1x1; call `Renderer::resize` with the window's inner size
     /// before drawing. The window is bounded by the raw-window-handle traits, the recorded
     /// exception to the no-GPU-types-in-signatures rule.
     pub fn surface<W>(
@@ -911,7 +911,7 @@ fn create_instance() -> wgpu::Instance {
 
 /// The window surface format: plain Rgba8Unorm/Bgra8Unorm when offered, else the first.
 ///
-/// The palette LUT holds display-ready Mode 13h colours, as the offscreen Rgba8Unorm target
+/// The palette LUT holds display-ready Mode 13h colours, as the offscreen `Rgba8Unorm` target
 /// stores them; an sRGB surface would encode them a second time and wash the window out.
 fn pick_surface_format(formats: &[wgpu::TextureFormat]) -> Option<wgpu::TextureFormat> {
     formats
@@ -1015,7 +1015,7 @@ mod tests {
         assert_eq!(page.rgba().len(), 16);
         assert_eq!(page.indices(), [0; 4].as_slice());
         assert_eq!(page.layers(), [0x10; 4].as_slice());
-        let word = (0x10 << 8) | 40;
+        let word = (0x10 << 8) | 0x28;
         let split = RenderedPage::new(size, vec![7; 16], vec![word; 4]).expect("page");
         assert_eq!(split.indices(), [40; 4].as_slice());
         assert_eq!(split.layers(), [0x10; 4].as_slice());

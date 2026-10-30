@@ -202,7 +202,7 @@ impl SamplePlan {
     }
 }
 
-/// Evenly spaced ticks covering the half-open range [start_tick, end_tick),
+/// Evenly spaced ticks covering the half-open range [`start_tick`, `end_tick`),
 /// including the first tick and the final tick in the range.
 ///
 /// Used by --sample-count so the final authored tick is represented.

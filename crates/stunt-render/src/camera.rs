@@ -287,11 +287,15 @@ impl CameraGpuResources {
     }
 
     /// Instantiates buffer and bind group on the device.
+    #[expect(
+        clippy::expect_used,
+        reason = "the buffer is created with `mapped_at_creation: true`, so its range is mapped"
+    )]
     pub(crate) fn new(device: &wgpu::Device) -> Self {
         let bind_group_layout = Self::create_bind_group_layout(device);
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("stunt_camera_uniform_buffer"),
-            size: std::mem::size_of::<CameraUniform>() as u64,
+            size: size_of::<CameraUniform>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: true,
         });
@@ -342,8 +346,8 @@ mod tests {
 
     #[test]
     fn test_camera_uniform_size_and_alignment() {
-        assert_eq!(std::mem::size_of::<CameraUniform>(), 160);
-        assert_eq!(std::mem::size_of::<CameraUniform>() % 16, 0);
+        assert_eq!(size_of::<CameraUniform>(), 160);
+        assert_eq!(size_of::<CameraUniform>() % 16, 0);
     }
 
     #[test]

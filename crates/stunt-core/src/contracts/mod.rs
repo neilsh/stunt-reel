@@ -1,4 +1,4 @@
-//! StuntReel Core Seam Contracts (`crates/stunt-core/src/contracts/mod.rs`)
+//! `StuntReel` Core Seam Contracts (`crates/stunt-core/src/contracts/mod.rs`)
 //!
 //! This module defines the immutable type contracts and testing seams
 //! establishing the boundary between:

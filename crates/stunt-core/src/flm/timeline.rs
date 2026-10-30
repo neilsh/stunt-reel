@@ -148,6 +148,10 @@ impl FilmTimeline {
     /// Audio cues are only carried when the sample lands exactly on a slice timestamp;
     /// use [`Self::cues_between`] to collect every cue across an interval.
     #[must_use]
+    #[expect(
+        clippy::float_cmp,
+        reason = "an exact keyframe or endpoint hit is a sentinel, not a computed result"
+    )]
     pub fn sample(&self, tick: f32) -> Option<TrajectoryRecord> {
         let first = self.slices.first()?;
         if !tick.is_finite() || tick < first.tick as f32 {

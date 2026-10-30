@@ -1,8 +1,17 @@
-//! Renders through the Renderer entry point and asserts on RenderedPage: the plane is the
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
+//! Renders through the Renderer entry point and asserts on `RenderedPage`: the plane is the
 //! test seam.
 //!
 //! Every GPU test skips when no adapter is available and fails instead of skipping when
-//! STUNT_REQUIRE_GPU=1 (ADR 0006). The window surface path stays untested here.
+//! `STUNT_REQUIRE_GPU=1` (ADR 0006). The window surface path stays untested here.
 
 mod common;
 

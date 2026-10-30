@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! Independent validation of exported `.glb` bytes by re-importing them with the `gltf` crate.
 //!
 //! `export_test.rs` checks the writer against hand-parsed JSON and `summarize`; here the

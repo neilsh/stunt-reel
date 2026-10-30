@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! Cross-check of the hand-written SSIM in `stunt_render::parity` against `image-compare`.
 //!
 //! The in-tree SSIM is intentional (`[I6]` thresholds are tied to its exact variant, and it adds
@@ -43,7 +52,7 @@ fn perturbed(amplitude: u32) -> Vec<u8> {
         .map(|(i, &v)| {
             let i = i as u32;
             let noise = (i.wrapping_mul(2_654_435_761) >> 24) % (2 * amplitude + 1);
-            (v as i32 + noise as i32 - amplitude as i32).clamp(0, 255) as u8
+            (i32::from(v) + noise as i32 - amplitude as i32).clamp(0, 255) as u8
         })
         .collect()
 }

@@ -19,8 +19,8 @@ use crate::sod::decal::identify_coplanar_decals;
 use crate::sod::vm::{Policy, RawPolygon, run_vm};
 
 // Compile-time assertion of Gate G03 requirements
-const _: () = assert!(std::mem::size_of::<SodVertex>() == 28);
-const _: () = assert!(std::mem::align_of::<SodVertex>() == 4);
+const _: () = assert!(size_of::<SodVertex>() == 28);
+const _: () = assert!(align_of::<SodVertex>() == 4);
 
 /// Standard 4x4 affine identity matrix in column-major order.
 pub const IDENTITY_MATRIX: [f32; 16] = [

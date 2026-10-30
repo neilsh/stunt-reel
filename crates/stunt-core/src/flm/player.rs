@@ -428,13 +428,13 @@ impl<'a> FlmPlayer<'a> {
                         };
 
                         let volume = if param != 0 && (param >> 8) != 0 {
-                            ((param >> 8) as f32) / 255.0
+                            f32::from(param >> 8) / 255.0
                         } else {
                             0.8
                         };
 
                         let pan = if param != 0 && (param & 0xFF) != 0 {
-                            ((param & 0xFF) as f32 - 128.0) / 128.0
+                            (f32::from(param & 0xFF) - 128.0) / 128.0
                         } else {
                             0.0
                         };
@@ -540,7 +540,7 @@ impl<'a> FlmPlayer<'a> {
             let position_meters = slot.position_meters();
             let rotation_quat = slot.rotation_quat();
             let state_mask = if slot.type_flags != 0 {
-                slot.type_flags as u16
+                u16::from(slot.type_flags)
             } else {
                 1
             };

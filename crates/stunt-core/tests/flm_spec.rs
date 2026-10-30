@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! Behavioural specification of the `.FLM` choreography evaluator ([`FilmTimeline`]).
 //!
 //! Each test names one behaviour and asserts specific expected results. Inputs that are
@@ -106,9 +115,9 @@ fn independent_oracle_rmse(evaluated: &FilmTimeline, oracle: &[TrajectoryRecord]
             .expect("timeline must not be empty");
 
         // Camera eye error
-        let dx = (eval_rec.camera.eye[0] - base_rec.camera.eye[0]) as f64;
-        let dy = (eval_rec.camera.eye[1] - base_rec.camera.eye[1]) as f64;
-        let dz = (eval_rec.camera.eye[2] - base_rec.camera.eye[2]) as f64;
+        let dx = f64::from(eval_rec.camera.eye[0] - base_rec.camera.eye[0]);
+        let dy = f64::from(eval_rec.camera.eye[1] - base_rec.camera.eye[1]);
+        let dz = f64::from(eval_rec.camera.eye[2] - base_rec.camera.eye[2]);
         sq_errors.push(dx * dx + dy * dy + dz * dz);
 
         // Actor position error
@@ -119,9 +128,9 @@ fn independent_oracle_rmse(evaluated: &FilmTimeline, oracle: &[TrajectoryRecord]
                 .find(|a| a.actor_id == base_act.actor_id)
                 .expect("Oracle actor ID must exist in evaluated record");
 
-            let ax = (eval_act.position_meters[0] - base_act.position_meters[0]) as f64;
-            let ay = (eval_act.position_meters[1] - base_act.position_meters[1]) as f64;
-            let az = (eval_act.position_meters[2] - base_act.position_meters[2]) as f64;
+            let ax = f64::from(eval_act.position_meters[0] - base_act.position_meters[0]);
+            let ay = f64::from(eval_act.position_meters[1] - base_act.position_meters[1]);
+            let az = f64::from(eval_act.position_meters[2] - base_act.position_meters[2]);
             sq_errors.push(ax * ax + ay * ay + az * az);
         }
     }
@@ -393,7 +402,7 @@ fn unterminated_slice_body_is_a_structured_stop_reason() {
         assert!(
             matches!(
                 last_err,
-                Some(FlmError::InvalidSlice { .. }) | Some(FlmError::UnexpectedEof { .. })
+                Some(FlmError::InvalidSlice { .. } | FlmError::UnexpectedEof { .. })
             ),
             "Expected InvalidSlice or UnexpectedEof for unclosed slice without 0xFF, got {last_err:?}"
         );
@@ -608,7 +617,7 @@ fn slot_state_converts_dos_axes_to_i1() {
     assert_ne!(slot.type_flags & SIF_ROTATES, 0);
     assert_ne!(slot.type_flags & SIF_ANIMATES, 0);
 
-    slot.pos_fixed = [65536, 131072, -65536];
+    slot.pos_fixed = [65_536, 131_072, -65_536];
     assert_eq!(slot.position_dos_meters(), [1.0, 2.0, -1.0]);
     assert_eq!(slot.position_meters(), [-1.0, -2.0, -1.0]);
 }
@@ -618,6 +627,10 @@ fn slot_state_converts_dos_axes_to_i1() {
 // ----------------------------------------------------------------------------
 
 #[test]
+#[expect(
+    clippy::float_cmp,
+    reason = "an exact keyframe or endpoint hit is a sentinel, not a computed result"
+)]
 fn sub_tick_interpolation_is_linear_when_not_a_cut() {
     // Exact midpoint of a pure-Z move between two non-cut ticks.
     let midpoint = FilmTimeline::new(
@@ -759,14 +772,16 @@ fn sub_tick_interpolation_is_linear_when_not_a_cut() {
     let sub_75 = timeline.sample(0.75).expect("sample");
 
     for i in 0..3 {
-        let avg_eye = 0.5 * (sub_25.camera.eye[i] + sub_75.camera.eye[i]);
+        let avg_eye = f32::midpoint(sub_25.camera.eye[i], sub_75.camera.eye[i]);
         assert!(
             (sub_50.camera.eye[i] - avg_eye).abs() < 1e-5,
             "Midpoint linearity violated on eye[{i}]"
         );
 
-        let avg_act =
-            0.5 * (sub_25.actors[0].position_meters[i] + sub_75.actors[0].position_meters[i]);
+        let avg_act = f32::midpoint(
+            sub_25.actors[0].position_meters[i],
+            sub_75.actors[0].position_meters[i],
+        );
         assert!(
             (sub_50.actors[0].position_meters[i] - avg_act).abs() < 1e-5,
             "Midpoint linearity violated on actor pos[{i}]"
@@ -1184,7 +1199,7 @@ fn intro_film_matches_oracle_trajectory_within_gate_tolerance() {
         "Must compare 2 camera eyes + 2 actor positions"
     );
     assert!(
-        indep_rmse <= (GATE_G04_RMSE_THRESHOLD_METERS as f64),
+        indep_rmse <= f64::from(GATE_G04_RMSE_THRESHOLD_METERS),
         "Gate G04 failed: independent RMSE {indep_rmse:.6} m > {GATE_G04_RMSE_THRESHOLD_METERS:.6} m"
     );
     assert!(
@@ -1194,7 +1209,7 @@ fn intro_film_matches_oracle_trajectory_within_gate_tolerance() {
 
     // Verify engine parity helper
     assert!(
-        (rmse as f64 - indep_rmse).abs() < 1e-6,
+        (f64::from(rmse) - indep_rmse).abs() < 1e-6,
         "Engine compute_position_rmse ({rmse}) disagrees with independent oracle ({indep_rmse})"
     );
 }

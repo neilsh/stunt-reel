@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! DOS axes to `[I1]` conversion in the `.FLM` evaluator (GLOSSARY.md "DOS axes").
 //!
 //! Slots are authored in DOS axes; every evaluated `TrajectoryRecord` is `[I1]`. The map is

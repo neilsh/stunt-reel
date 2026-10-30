@@ -74,6 +74,10 @@ pub struct World {
 /// Returns `None` when there is nothing to build: no scenery bytes, no anchors, and no
 /// usable terrain patches.
 #[must_use]
+#[expect(
+    clippy::expect_used,
+    reason = "`build_world_ir` always emits the ocean quad, so the extent exists"
+)]
 pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) -> Option<World> {
     let pts = inputs.anchors;
     let map_areas = inputs
@@ -236,7 +240,7 @@ pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
             break;
         }
         let pos = i16::from_le_bytes([data[offset + 2], data[offset + 3]]);
-        if (pos & 0xFF) == 0 {
+        if pos.trailing_zeros() >= 8 {
             continue;
         }
         let color = data[offset + 12];
@@ -272,7 +276,10 @@ pub(crate) fn approx_dist(x1: i32, y1: i32, x2: i32, y2: i32) -> i32 {
 }
 
 /// Traverses `SCENERY.scn` hierarchical BSP tree to collect prop placements.
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the traversal threads its whole state explicitly"
+)]
 pub(crate) fn traverse_scn(
     words: &[i32],
     mut ni: usize,
@@ -295,9 +302,9 @@ pub(crate) fn traverse_scn(
                 if ni + 4 >= words.len() {
                     break;
                 }
-                let x = words[ni + 1] as u16 as i16 as i32;
-                let y = words[ni + 2] as u16 as i16 as i32;
-                let z = words[ni + 3] as u16 as i16 as i32;
+                let x = i32::from(words[ni + 1] as u16 as i16);
+                let y = i32::from(words[ni + 2] as u16 as i16);
+                let z = i32::from(words[ni + 3] as u16 as i16);
                 let next = (words[ni + 4] as u32 as usize) / 2;
                 cx += x;
                 cy += y;
@@ -309,8 +316,8 @@ pub(crate) fn traverse_scn(
                 if ni + 3 >= words.len() {
                     break;
                 }
-                let x = words[ni + 1] as u16 as i16 as i32;
-                let z = words[ni + 2] as u16 as i16 as i32;
+                let x = i32::from(words[ni + 1] as u16 as i16);
+                let z = i32::from(words[ni + 2] as u16 as i16);
                 let next = (words[ni + 3] as u32 as usize) / 2;
                 cx += x;
                 cz += z;
@@ -323,8 +330,8 @@ pub(crate) fn traverse_scn(
                 if ni + 4 >= words.len() {
                     break;
                 }
-                let ext = words[ni + 2] as u16 as i32;
-                let splitdist = words[ni + 3] as u16 as i16 as i32;
+                let ext = i32::from(words[ni + 2] as u16);
+                let splitdist = i32::from(words[ni + 3] as u16 as i16);
                 if near([-(cx as f32), -(cy as f32), cz as f32], ext, splitdist) {
                     ni = (words[ni + 4] as u32 as usize) / 2;
                 } else {
@@ -838,10 +845,10 @@ mod tests {
         let (ocean, ground) = world_ir.vertices.split_at(4);
         assert!(ocean.iter().all(|v| v.palette_index == OCEAN_COLOR
             && v.scenery_class == SCENERY_OCEAN
-            && v.position[1] == 4.0));
+            && (v.position[1] - 4.0).abs() < f32::EPSILON));
         assert!(ground.iter().all(|v| v.palette_index == GROUND_COLOR
             && v.scenery_class == SCENERY_TERRAIN
-            && v.position[1] == 5.0));
+            && (v.position[1] - 5.0).abs() < f32::EPSILON));
         assert!(world_ir.nodes.iter().all(|n| n.name != "WORLD_DECAL"));
     }
 
@@ -887,7 +894,7 @@ mod tests {
         assert!(ir.vertices.iter().all(|v| v.palette_index == 7
             && v.scenery_class == SCENERY_TERRAIN
             && v.flags == FLAGS_UNSHADED
-            && v.position[1] == 2.0));
+            && (v.position[1] - 2.0).abs() < f32::EPSILON));
         assert_eq!(ir.vertices[1].position, [10.0, 2.0, 0.0]);
     }
 

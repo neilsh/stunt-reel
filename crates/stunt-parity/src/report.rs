@@ -25,7 +25,7 @@ pub struct FrameReport {
     pub film_tick: u64,
     /// Structural similarity against the capture.
     pub ssim: f32,
-    /// Mask IoU against the capture.
+    /// Mask `IoU` against the capture.
     pub iou: f32,
     /// Fraction of pixels whose palette index agrees.
     #[serde(default)]
@@ -65,7 +65,7 @@ pub struct Report {
     /// Lowest SSIM over every matched frame.
     #[serde(default)]
     pub min_ssim: f32,
-    /// Mean IoU over every matched frame.
+    /// Mean `IoU` over every matched frame.
     #[serde(default)]
     pub mean_iou: f32,
     /// Fade floor the run used.
@@ -77,7 +77,7 @@ pub struct Report {
     /// Whether the scored mean reached each I6 threshold.
     #[serde(default)]
     pub i6_gate: I6Gate,
-    /// Mean IoU over scored frames.
+    /// Mean `IoU` over scored frames.
     #[serde(default)]
     pub mean_iou_scored: Option<f32>,
     /// Mean index agreement over scored frames.

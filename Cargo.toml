@@ -15,21 +15,76 @@ homepage = "https://github.com/neilsh/stunt-reel"
 readme = "README.md"
 publish = false
 
+# Lint levels are `warn` (except `unused_must_use`): editors show warnings and the gate
+# (`-D warnings`) is the hard stop.
 [workspace.lints.rust]
 rust_2018_idioms = { level = "warn", priority = -1 }
 missing_debug_implementations = "warn"
 unreachable_pub = "warn"
 unused_must_use = "deny"
+unused_qualifications = "warn"
+trivial_casts = "warn"
+unused_lifetimes = "warn"
+let_underscore_drop = "warn"
+# Not a good fit: `unused_crate_dependencies` fires per target, so every integration test file
+# reports the package dependencies it does not use. Use `cargo machete` or `cargo udeps` instead.
+unused_crate_dependencies = "allow"
+# TODO(lints): enable `missing_docs` (1 hit in stunt-core at the last measurement).
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Restriction picks: panic-safety for code that reads untrusted game bytes. Tests are exempt
+# through clippy.toml.
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+string_slice = "warn"
 dbg_macro = "warn"
 todo = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+allow_attributes_without_reason = "warn"
+undocumented_unsafe_blocks = "warn"
 clone_on_ref_ptr = "warn"
+# Style picks outside the groups above.
 match_wildcard_for_single_variants = "warn"
 uninlined_format_args = "warn"
-module_name_repetitions = "allow"
-must_use_candidate = "allow"
+
+# Not a good fit for this project: allowed for good.
+module_name_repetitions = "allow" # file-format types repeat their module name by design
+must_use_candidate = "allow" # noise on pure accessors
+similar_names = "allow" # paired names (x/y, lo/hi, src/dst) are the vocabulary of the format code
+many_single_char_names = "allow" # coordinate and matrix maths
+too_many_lines = "allow" # opcode dispatch and table-driven decoders are long matches
+assert_is_empty = "allow" # its `assert_eq!(x, [])` rewrite needs a type annotation for empty arrays
+pub_underscore_fields = "allow" # `_pad` fields keep `#[repr(C)]` GPU and Pod layouts explicit
+cast_precision_loss = "allow" # integer to f32 in pixel and coordinate maths is intended
+
+# Wanted eventually: allowed only until the existing hits are cleared (counts from the
+# 2026-10-29 measurement, re-counted after the first fix pass). Remove each line once its hits are fixed.
+# TODO(lints): enable per parser module in stunt-core with a module-level `#![warn]`, then
+#   fix with `.get()` or fixed-size readers.
+indexing_slicing = "allow" # 198
+# TODO(lints): replace with `try_from`, or mark intended truncation with `#[expect(.., reason)]`.
+cast_possible_truncation = "allow" # 164
+cast_sign_loss = "allow" # 45
+cast_possible_wrap = "allow" # 20
+# TODO(lints): document `# Errors` and `# Panics` on public fallible functions.
+missing_errors_doc = "allow" # 31
+missing_panics_doc = "allow" # 2
+# TODO(lints): single hits each; fix or justify with `#[expect(.., reason)]`.
+unnecessary_wraps = "allow" # 3
+needless_pass_by_value = "allow" # 2
+match_same_arms = "allow" # 2
+trivially_copy_pass_by_ref = "allow" # 1
+large_types_passed_by_value = "allow" # 1
+large_stack_arrays = "allow" # 1
+struct_field_names = "allow" # 1
+struct_excessive_bools = "allow" # 1
+implicit_hasher = "allow" # 1
+needless_continue = "allow" # 1
+case_sensitive_file_extension_comparisons = "allow" # 1 (test only)
 
 # Full debug info put 14.4 GB in `target/debug`, paid once per worktree.
 # Line tables still symbolise a backtrace down to the line.

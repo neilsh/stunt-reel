@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! Automated offline verification for video container export.
 //!
 //! Validates Gate G08 and system invariants:
@@ -5,7 +14,7 @@
 //! - `[I6]` 4:3 physical display aspect ratio presentation.
 //! - `[I7]` Synthetic fixture execution.
 //!
-//! The interval frame-capture test moved to renderer_test.rs, where it drives the Renderer
+//! The interval frame-capture test moved to `renderer_test.rs`, where it drives the Renderer
 //! entry point with a counting sink instead of constructing GPU state.
 
 use std::fs;
@@ -36,7 +45,7 @@ fn test_video_export_container_validity_or_graceful_missing_dep() {
             err_msg.contains("ffmpeg"),
             "Error message must clearly mention ffmpeg"
         );
-        let _ = fs::remove_dir_all(&test_dir);
+        drop(fs::remove_dir_all(&test_dir));
         return;
     }
 
@@ -70,7 +79,7 @@ fn test_video_export_container_validity_or_graceful_missing_dep() {
     assert_eq!(&video_bytes[4..8], b"ftyp", "Valid MP4 ftyp container box");
 
     // Cleanup
-    let _ = fs::remove_dir_all(&test_dir);
+    drop(fs::remove_dir_all(&test_dir));
 }
 
 #[test]

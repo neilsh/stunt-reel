@@ -34,9 +34,9 @@ pub fn build_palette_lut_bytes_from(palette: &[(u8, u8, u8); 256]) -> [u8; PALET
 
         for color_idx in 0..PALETTE_LUT_WIDTH {
             let (r0, g0, b0) = palette[color_idx as usize];
-            let r = (r0 as f32 * factor).round().clamp(0.0, 255.0) as u8;
-            let g = (g0 as f32 * factor).round().clamp(0.0, 255.0) as u8;
-            let b = (b0 as f32 * factor).round().clamp(0.0, 255.0) as u8;
+            let r = (f32::from(r0) * factor).round().clamp(0.0, 255.0) as u8;
+            let g = (f32::from(g0) * factor).round().clamp(0.0, 255.0) as u8;
+            let b = (f32::from(b0) * factor).round().clamp(0.0, 255.0) as u8;
 
             let offset = ((level * PALETTE_LUT_WIDTH + color_idx) * 4) as usize;
             lut_bytes[offset] = r;

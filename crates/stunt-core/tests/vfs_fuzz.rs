@@ -1,3 +1,12 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr,
+    clippy::default_trait_access,
+    clippy::items_after_statements,
+    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
+)]
 //! Panic-freedom fuzz and matrix tests for the VFS archive parsers (Seam 1).
 //!
 //! Every test here passes when `parse_res`, `parse_all` and `detect_and_parse` never panic on
@@ -28,12 +37,12 @@ fn matrix_sub_header_buffers_never_panic() {
         let ones = vec![0xFFu8; len];
 
         catch_unwind(AssertUnwindSafe(|| {
-            let _ = parse_res(&zeros);
-            let _ = parse_res(&ones);
-            let _ = parse_all(&zeros);
-            let _ = parse_all(&ones);
-            let _ = detect_and_parse(&zeros);
-            let _ = detect_and_parse(&ones);
+            drop(parse_res(&zeros));
+            drop(parse_res(&ones));
+            drop(parse_all(&zeros));
+            drop(parse_all(&ones));
+            drop(detect_and_parse(&zeros));
+            drop(detect_and_parse(&ones));
         }))
         .expect("Sub-header buffer parsing must never panic");
     }
@@ -49,9 +58,9 @@ fn fuzz_pure_random_bytes_never_panic() {
         rng.fill_bytes(&mut buf);
 
         let res = catch_unwind(AssertUnwindSafe(|| {
-            let _ = parse_res(&buf);
-            let _ = parse_all(&buf);
-            let _ = detect_and_parse(&buf);
+            drop(parse_res(&buf));
+            drop(parse_all(&buf));
+            drop(detect_and_parse(&buf));
         }));
 
         assert!(

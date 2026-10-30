@@ -188,7 +188,7 @@ mod tests {
             "stunt-reel-plane-codec-{name}-{}",
             std::process::id()
         ));
-        let _ = fs::remove_dir_all(&dir);
+        drop(fs::remove_dir_all(&dir));
         fs::create_dir_all(&dir).expect("create temp dir");
         dir
     }

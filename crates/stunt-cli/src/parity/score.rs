@@ -1,6 +1,6 @@
 //! The per-frame scoring call: one captured frame against one render, in memory.
 //!
-//! [`score_frame`] owns every per-frame measurement (SSIM, mask IoU, index agreement, loss
+//! [`score_frame`] owns every per-frame measurement (SSIM, mask `IoU`, index agreement, loss
 //! attribution and the fade floor), so `run` only loads files, matches frames by film tick
 //! and writes the report.
 

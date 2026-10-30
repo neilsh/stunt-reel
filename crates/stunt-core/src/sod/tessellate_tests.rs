@@ -18,7 +18,7 @@ fn make_sod_header(
     header.extend_from_slice(&OP_ID.to_le_bytes());
     header.extend_from_slice(&bounding_size.to_le_bytes());
     header.extend_from_slice(&ground_y_offset.to_le_bytes());
-    let flags_scale = (scale_index as u16) | ((header_flags as u16) << 8);
+    let flags_scale = u16::from(scale_index) | (u16::from(header_flags) << 8);
     header.extend_from_slice(&flags_scale.to_le_bytes());
     header.extend_from_slice(&0u16.to_le_bytes()); // collision_meta
     header

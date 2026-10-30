@@ -41,7 +41,7 @@ pub(super) fn fade_level(set: &[u8], palette: &[(u8, u8, u8)]) -> f32 {
     ratios.sort_by(f32::total_cmp);
     let mid = ratios.len() / 2;
     if ratios.len().is_multiple_of(2) {
-        (ratios[mid - 1] + ratios[mid]) / 2.0
+        f32::midpoint(ratios[mid - 1], ratios[mid])
     } else {
         ratios[mid]
     }

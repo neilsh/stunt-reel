@@ -50,6 +50,7 @@ pub fn compute_position_rmse(timeline: &FilmTimeline, oracle: &[TrajectoryRecord
         return f32::INFINITY;
     }
 
-    let mean_sq: f64 = sq_errors.iter().map(|&e| e as f64).sum::<f64>() / (sq_errors.len() as f64);
+    let mean_sq: f64 =
+        sq_errors.iter().map(|&e| f64::from(e)).sum::<f64>() / (sq_errors.len() as f64);
     mean_sq.sqrt() as f32
 }

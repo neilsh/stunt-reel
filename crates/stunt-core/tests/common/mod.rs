@@ -1,6 +1,6 @@
 //! Shared test-support code for the `stunt-core` integration tests (`.FLM` helpers, fuzz RNG).
 
-#![allow(dead_code)]
+#![allow(dead_code, reason = "each test crate uses a subset of the helpers")]
 
 use stunt_core::contracts::trajectory::TrajectoryRecord;
 use stunt_core::flm::{

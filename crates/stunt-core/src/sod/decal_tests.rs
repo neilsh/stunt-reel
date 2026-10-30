@@ -239,7 +239,7 @@ fn test_challenge_i5_rejection_of_disjoint_and_noncoplanar_facets() {
             [2.0, 0.0, 4.0],
         ],
         palette_index: 20,
-        normal: [0.087155, 0.996195, 0.0],
+        normal: [0.087_155, 0.996_195, 0.0],
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,

@@ -371,8 +371,8 @@ pub(crate) fn compute_polygon_normal(vertices: &[[f32; 3]]) -> [f32; 3] {
 /// Evaluates dynamic `OP_IFVIS` condition code to [`VisibilityCondition`].
 fn parse_visibility_condition(code: u16) -> VisibilityCondition {
     match code {
-        0 => VisibilityCondition::Always,
         1 => VisibilityCondition::LodDistanceSq(1000.0),
+        // 0 is "always"; unknown values degrade to the same.
         _ => VisibilityCondition::Always,
     }
 }
@@ -417,9 +417,8 @@ fn blocked(
     };
     match policy {
         Policy::Strict => Blockage::Fail(stop.into_error()),
-        Policy::Lenient => Blockage::Stop(stop),
         Policy::Census if steppable => Blockage::StepOver(stop),
-        Policy::Census => Blockage::Stop(stop),
+        Policy::Lenient | Policy::Census => Blockage::Stop(stop),
     }
 }
 
@@ -441,6 +440,10 @@ pub(crate) struct VmRun {
 ///
 /// The policy decides, at every blocking site, whether to fail, stop or step over;
 /// header parsing, register arithmetic and geometry emission are shared by every mode.
+#[expect(
+    clippy::expect_used,
+    reason = "a steppable opcode always has a census width"
+)]
 pub(crate) fn run_vm(
     data: &[u8],
     policy: Policy,
@@ -533,9 +536,9 @@ pub(crate) fn run_vm(
                 let reg_idx = ((reg_off / 12) & 1023) as usize;
                 let target = regs[reg_idx];
                 cur_vert = [
-                    (cur_vert[0] + target[0]) * 0.5,
-                    (cur_vert[1] + target[1]) * 0.5,
-                    (cur_vert[2] + target[2]) * 0.5,
+                    f32::midpoint(cur_vert[0], target[0]),
+                    f32::midpoint(cur_vert[1], target[1]),
+                    f32::midpoint(cur_vert[2], target[2]),
                 ];
             }
             OP_ADDV => {
@@ -563,7 +566,7 @@ pub(crate) fn run_vm(
             }
             OP_SHLV => {
                 let shift = r.read_u16_le()?;
-                let s = (shift as u32) & 31;
+                let s = u32::from(shift) & 31;
                 cur_vert = [
                     ((cur_vert[0] as i32).wrapping_shl(s)) as f32,
                     ((cur_vert[1] as i32).wrapping_shl(s)) as f32,
@@ -572,7 +575,7 @@ pub(crate) fn run_vm(
             }
             OP_SHRV => {
                 let shift = r.read_u16_le()?;
-                let s = (shift as u32) & 31;
+                let s = u32::from(shift) & 31;
                 cur_vert = [
                     ((cur_vert[0] as i32).wrapping_shr(s)) as f32,
                     ((cur_vert[1] as i32).wrapping_shr(s)) as f32,
@@ -584,9 +587,9 @@ pub(crate) fn run_vm(
                 match ipg_type {
                     0 => {
                         // Cube
-                        let dx = r.read_i16_le()? as f32;
-                        let dy = r.read_i16_le()? as f32;
-                        let dz = r.read_i16_le()? as f32;
+                        let dx = f32::from(r.read_i16_le()?);
+                        let dy = f32::from(r.read_i16_le()?);
+                        let dz = f32::from(r.read_i16_le()?);
                         let start_off = r.read_u16_le()?;
                         let start_reg = ((start_off / 12) & 1023) as usize;
 
@@ -601,8 +604,8 @@ pub(crate) fn run_vm(
                     }
                     2 => {
                         // Ground Quad
-                        let dx = r.read_i16_le()? as f32;
-                        let dz = r.read_i16_le()? as f32;
+                        let dx = f32::from(r.read_i16_le()?);
+                        let dz = f32::from(r.read_i16_le()?);
                         let start_off = r.read_u16_le()?;
                         let start_reg = ((start_off / 12) & 1023) as usize;
 
@@ -613,8 +616,8 @@ pub(crate) fn run_vm(
                     }
                     8 => {
                         // Flat Vertical Quad
-                        let dx = r.read_i16_le()? as f32;
-                        let dy = r.read_i16_le()? as f32;
+                        let dx = f32::from(r.read_i16_le()?);
+                        let dy = f32::from(r.read_i16_le()?);
                         let start_off = r.read_u16_le()?;
                         let start_reg = ((start_off / 12) & 1023) as usize;
 
@@ -642,9 +645,9 @@ pub(crate) fn run_vm(
                 let start_reg = ((start_off / 12) & 1023) as usize;
 
                 for i in 0..count {
-                    let vx = r.read_i16_le()? as f32;
-                    let vy = r.read_i16_le()? as f32;
-                    let vz = r.read_i16_le()? as f32;
+                    let vx = f32::from(r.read_i16_le()?);
+                    let vy = f32::from(r.read_i16_le()?);
+                    let vz = f32::from(r.read_i16_le()?);
                     regs[(start_reg + (i as usize)) & 1023] = [vx, vy, vz];
                 }
             }
