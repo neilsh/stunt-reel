@@ -74,6 +74,7 @@ def capture(
     *,
     stop_after_repeats: int = END_HOLD_FRAMES,
     film: FilmId | None = None,
+    provenance: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Sample film frames from an open session and write the reference artifacts.
 
@@ -85,7 +86,8 @@ def capture(
     Capture stops early once stop_after_repeats consecutive frames share one film
     clock (the film has ended and is holding its last picture; running on risks the
     emulator dropping the connection), and max_frames is only a cap. meta.json is
-    written last.
+    written last. *provenance* (when and by which checkout) joins the diagnostics in
+    meta.json; it is not part of the capture's identity, which is the film and its frames.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -174,6 +176,7 @@ def capture(
             "palette_source": palette_source,
             "dgroup_segment": f"{session.dgroup_segment:04X}",
             "frame_bytes": FRAME_BYTES,
+            **(provenance or {}),
         },
         frame_diagnostics=tuple(frame_diagnostics),
     )
