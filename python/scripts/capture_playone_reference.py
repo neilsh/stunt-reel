@@ -17,15 +17,16 @@ import argparse
 import hashlib
 import logging
 import re
+import shutil
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from stunt_reel import dataroot, parity_layout
+from stunt_reel import dataroot, parity_layout, runs
 from stunt_reel.all_archive import ArchiveError, resolve_all
 from stunt_reel.dataroot import ensure_links_or_report
-from stunt_reel.parity_artifacts import FilmId
+from stunt_reel.parity_artifacts import CAPTURE_FRAMES_DIR, FilmId
 from stunt_reel.tac import playone, staging
 from stunt_reel.tac.emulator import EmulatorUnavailable, Launching, PortTaken, WaitingForGuest
 from stunt_reel.tac.framebuffer import capture
@@ -57,13 +58,17 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--name",
+        help="the film's directory under captures/ (default: its parent folder and stem)",
+    )
+    parser.add_argument(
         "--out",
         type=Path,
         default=None,
         help=(
             "new directory receiving tick_*.idx, palettes_*.json, and meta.json; an existing "
             f"non-empty one is refused (default {parity_layout.capture_root().as_posix()}/"
-            "<film name, lower case>/<date>-<checkout>-<film hash>)"
+            "<film>/frames/<next run number>)"
         ),
     )
     parser.add_argument(
@@ -126,9 +131,13 @@ def is_taken(out_dir: Path) -> bool:
     if not out_dir.is_dir():
         return False
     if not (out_dir / "meta.json").exists():
-        for pattern in ("tick_*.idx", "palettes_*.json"):
-            for partial in out_dir.glob(pattern):
-                partial.unlink()
+        frames = out_dir / CAPTURE_FRAMES_DIR
+        for directory in (frames, out_dir):
+            for pattern in ("tick_*.idx", "palettes_*.json"):
+                for partial in directory.glob(pattern):
+                    partial.unlink()
+        if frames.is_dir() and not any(frames.iterdir()):
+            frames.rmdir()
     return any(out_dir.iterdir())
 
 
@@ -146,13 +155,13 @@ def run(args: argparse.Namespace) -> int:
     """Drive one capture session and report its artifacts."""
     film = resolve(args.film)
     conf = resolve(args.conf)
-    try:
-        parity_layout.require_film_stem(film.stem)
-    except ValueError as exc:
-        print(f"[capture] {exc}", file=sys.stderr)
-        return 2
     if not film.is_file():
         print(f"[capture] {film} not found", file=sys.stderr)
+        return 2
+    try:
+        slug = parity_layout.slug_for(film, args.name)
+    except ValueError as exc:
+        print(f"[capture] {exc}", file=sys.stderr)
         return 2
     if not ensure_links_or_report("mise run capture-ref"):
         return 2
@@ -160,7 +169,7 @@ def run(args: argparse.Namespace) -> int:
     all_sha256: str | None = None
     if not args.no_launch:
         try:
-            archive = resolve_all(film, dataroot.REPO_ROOT)
+            archive = resolve_all(film, dataroot.REPO_ROOT, slug)
             all_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
         except (ArchiveError, OSError) as exc:
             print(f"[capture] {exc}", file=sys.stderr)
@@ -176,23 +185,40 @@ def run(args: argparse.Namespace) -> int:
         flm_sha256=flm_sha256,
         all_sha256=all_sha256,
     )
-    out = resolve(
-        args.out
-        or parity_layout.capture_path(
-            film.stem,
-            parity_layout.new_capture_id(
-                datetime.now(UTC).date(),
-                re.sub(r"[^A-Za-z0-9._-]", "-", dataroot.REPO_ROOT.name),
-                flm_sha256,
-            ),
-        )
-    )
+    claimed: Path | None = None
+    if args.out is None:
+        parent = dataroot.REPO_ROOT / parity_layout.frames_root(slug)
+        out = parent / runs.claim_run(parent)
+        claimed = out
+    else:
+        out = resolve(args.out)
+    try:
+        return _capture_into(args, out, film, film_id, profile, conf)
+    finally:
+        # A run that died before meta.json (written last) is no capture; free its number.
+        if claimed is not None and not (claimed / "meta.json").exists():
+            shutil.rmtree(claimed, ignore_errors=True)
+
+
+def _capture_into(
+    args: argparse.Namespace,
+    out: Path,
+    film: Path,
+    film_id: FilmId,
+    profile: Profile,
+    conf: Path,
+) -> int:
+    """Run the session and write its capture into *out*; 0 on success."""
     if is_taken(out):
         print(f"[capture] {out} already exists; a capture is never written over", file=sys.stderr)
         return 2
+    provenance = {
+        "captured_on": datetime.now(UTC).date().isoformat(),
+        "checkout": re.sub(r"[^A-Za-z0-9._-]", "-", dataroot.REPO_ROOT.name),
+    }
 
     def sample(session: Session) -> dict[str, Any]:
-        return capture(session, out, args.max_frames, film=film_id)
+        return capture(session, out, args.max_frames, film=film_id, provenance=provenance)
 
     try:
         meta = run_session(

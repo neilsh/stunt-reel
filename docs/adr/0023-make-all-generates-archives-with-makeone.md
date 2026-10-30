@@ -6,7 +6,9 @@ accepted 2026-10-29. The design and decision numbers (D1 to D10) are in
 [the make-all plan](../process/plans/make-all-2026-10-29.md); the evidence is in
 [`research/makeone-exe/driving.md`](../../research/makeone-exe/driving.md). Builds on
 [ADR 0021](0021-capture-chooses-its-control-port.md) and
-[ADR 0022](0022-captures-are-add-only-beside-a-read-only-corpus.md).
+[ADR 0022](0022-captures-are-add-only-beside-a-read-only-corpus.md). Where the archive is
+stored (`captures/all/<film>/<id>/`) is superseded by
+[ADR 0024](0024-captures-are-filed-by-film-then-kind.md).
 
 ## Context
 

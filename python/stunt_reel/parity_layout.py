@@ -14,11 +14,8 @@ hold a baseline and must survive. The prior render is not a protected *suffix*: 
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from datetime import date
 
 __all__ = [
     "BASE_SUFFIX",
@@ -26,20 +23,23 @@ __all__ = [
     "PROTECTED_SUFFIXES",
     "REFERENCES_FILE",
     "RENDER_ROOTS",
-    "RESERVED_FILM_STEMS",
-    "all_path",
-    "all_root",
-    "capture_path",
+    "RUN_WIDTH",
+    "archive_path",
+    "archives_root",
     "capture_root",
+    "film_slug",
+    "frames_path",
+    "frames_root",
     "is_protected_render",
     "manual_report_dir",
-    "new_capture_id",
     "previous_dir",
     "render_dir",
     "render_scratch_dir",
     "report_dir",
-    "require_film_stem",
+    "require_slug",
     "retime_dir",
+    "run_id",
+    "slug_for",
     "stage_conf",
     "stage_dir",
     "stage_root",
@@ -71,8 +71,10 @@ BASE_SUFFIX = "_base"
 #: :func:`previous_dir`, a root the rotation does not scan.
 PROTECTED_SUFFIXES: tuple[str, ...] = (CURRENT_SUFFIX, BASE_SUFFIX)
 
-#: Film stems no capture may use: ``captures/all`` holds generated archives, so a film of that name would share it.
-RESERVED_FILM_STEMS: tuple[str, ...] = ("all",)
+#: Digits in a run directory name (``001``).
+RUN_WIDTH = 3
+_SLUG = re.compile(r"[a-z0-9][a-z0-9_-]*")
+_SLUG_JUNK = re.compile(r"[^a-z0-9_]+")
 
 #: Roots whose child directories are throwaway render trees a rotation may remove.
 RENDER_ROOTS: tuple[Path, ...] = (_RENDER, _SWEEP)
@@ -88,36 +90,55 @@ def capture_root() -> Path:
     return _CAPTURE
 
 
-def capture_path(film: str, capture_id: str) -> Path:
-    """The directory of one capture of *film*, relative to the checkout.
+def film_slug(film: Path) -> str:
+    """The capture directory name of the film at *film*: its parent folder and stem.
 
-    A capture is written once into a new directory and never changed (ADR 0022).
+    The slug names a film by where it comes from, never by which corpus copy was read, so
+    ``VAULT/CTRY.FLM`` is ``vault-ctry`` in every copy.  Runs of characters outside
+    ``[a-z0-9_]`` collapse to ``-``.  *film* should be resolved so a relative path has a parent.
     """
-    return _CAPTURE / _film_name(film) / capture_id
+    parent = film.parent.name
+    slug = _SLUG_JUNK.sub("-", f"{parent}-{film.stem}".lower()).strip("-")
+    if not parent or not film.stem or not slug:
+        raise ValueError(f"cannot name {film} from its path; pass --name")
+    return slug
 
 
-def all_root() -> Path:
-    """The directory holding every generated ``.ALL`` archive, inside the shared captures link."""
-    return _CAPTURE / "all"
+def slug_for(film: Path, name: str | None = None) -> str:
+    """The validated slug of the film at *film*: the ``--name`` override, else :func:`film_slug`."""
+    return require_slug(name or film_slug(film.resolve()))
 
 
-def all_path(film: str, capture_id: str) -> Path:
-    """The directory of one generated archive of *film*, relative to the checkout.
-
-    Written once and never changed (ADR 0022), like a frame capture.
-    """
-    return all_root() / _film_name(film) / capture_id
-
-
-def require_film_stem(stem: str) -> None:
-    """Refuse a film stem that would collide with ``captures/all``."""
-    if stem.lower() in RESERVED_FILM_STEMS:
-        raise ValueError(f"a film named {stem.upper()} would share captures/all; rename it")
+def require_slug(slug: str) -> str:
+    """*slug* unchanged, or a ``ValueError`` when it is not a usable directory name."""
+    if not _SLUG.fullmatch(slug):
+        raise ValueError(f"film slug {slug!r} must match {_SLUG.pattern}")
+    return slug
 
 
-def new_capture_id(day: date, session: str, film_sha256: str) -> str:
-    """A fresh capture id: the date, the session that wrote it and a short hash of the film."""
-    return f"{day.isoformat()}-{session}-{film_sha256[:8]}"
+def run_id(number: int) -> str:
+    """The zero-padded directory name of run *number*."""
+    return f"{number:0{RUN_WIDTH}d}"
+
+
+def frames_root(slug: str) -> Path:
+    """The directory holding every frame capture of the film *slug*."""
+    return _CAPTURE / slug / "frames"
+
+
+def frames_path(slug: str, run: str) -> Path:
+    """The directory of one frame capture, written once and never changed (ADR 0022)."""
+    return frames_root(slug) / run
+
+
+def archives_root(slug: str) -> Path:
+    """The directory holding every generated ``.ALL`` archive of the film *slug*."""
+    return _CAPTURE / slug / "archives"
+
+
+def archive_path(slug: str, run: str) -> Path:
+    """The directory of one generated archive, written once and never changed (ADR 0022)."""
+    return archives_root(slug) / run
 
 
 def render_dir(film: str) -> Path:

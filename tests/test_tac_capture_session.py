@@ -104,9 +104,9 @@ def test_capture_tags_frames_with_film_and_global_ticks(
     assert [f["film_tick"] for f in frames] == [106, 109, 112]
     assert [f["global_tick"] for f in frames] == [101, 104, 107]
     assert [f["frame_file"] for f in frames] == [
-        "tick_0001.idx",
-        "tick_0002.idx",
-        "tick_0003.idx",
+        "frames/tick_0001.idx",
+        "frames/tick_0002.idx",
+        "frames/tick_0003.idx",
     ]
     assert meta["palette_source"] == "dacpal"
     assert meta["dgroup_segment"] == f"{dgroup_segment:04X}"
@@ -142,8 +142,10 @@ def test_capture_artifacts_keep_their_contract(staged_repo: StagedRepo) -> None:
     ]
 
     expected_page = bytes((i * 7 + 2) % FILM_COLORS for i in range(FRAME_BYTES))
-    assert (staged_repo.out / "tick_0001.idx").read_bytes() == expected_page
-    palette = json.loads((staged_repo.out / "palettes_0001.json").read_text(encoding="utf-8"))
+    assert (staged_repo.out / "frames" / "tick_0001.idx").read_bytes() == expected_page
+    palette = json.loads(
+        (staged_repo.out / "frames" / "palettes_0001.json").read_text(encoding="utf-8")
+    )
     assert palette == [[255, 0, 0]] * 256
     meta_text = (staged_repo.out / "meta.json").read_text(encoding="utf-8")
     assert json.dumps(json.loads(meta_text), indent=2) + "\n" == meta_text
@@ -168,7 +170,7 @@ def test_meta_is_written_last(staged_repo: StagedRepo) -> None:
     with pytest.raises(ShortDump):
         _run_capture(staged_repo, emulator)
 
-    assert (staged_repo.out / "tick_0001.idx").is_file()
+    assert (staged_repo.out / "frames" / "tick_0001.idx").is_file()
     assert not (staged_repo.out / "meta.json").exists()
     assert emulator.stopped
 
@@ -867,8 +869,15 @@ def test_capture_script_clears_the_leftovers_of_a_run_that_died(tmp_path: Path) 
     module = _load_script("capture_playone_reference")
     out = tmp_path / "out"
     out.mkdir()
-    (out / "tick_0001.idx").write_bytes(b"\x00")
+    (out / "frames").mkdir()
+    (out / "frames" / "tick_0001.idx").write_bytes(b"\x00")
+    (out / "tick_0002.idx").write_bytes(b"\x00")
     (out / "palettes_0001.json").write_text("{}", encoding="utf-8")
+    (out / "frames" / "notes.txt").write_text("mine", encoding="utf-8")
+    assert module.is_taken(out)  # a file that is not ours keeps the directory taken
+    assert (out / "frames" / "notes.txt").read_text(encoding="utf-8") == "mine"
+    assert not list((out / "frames").glob("tick_*"))
+    (out / "frames" / "notes.txt").unlink()
     assert not module.is_taken(out)
     assert list(out.iterdir()) == []
     (out / "tick_0001.idx").write_bytes(b"\x00")
@@ -948,7 +957,7 @@ def _stored_archive(staged_repo: StagedRepo, data: bytes) -> None:
         all_bytes=len(data),
         all_sha256=hashlib.sha256(data).hexdigest(),
     )
-    publish_archive(dataroot.REPO_ROOT, staged_repo.film.name, "2026-10-29-wt-abcd1234", data, meta)
+    publish_archive(dataroot.REPO_ROOT, data, meta, slug="vault-ctry", film=staged_repo.film.name)
 
 
 def test_capture_script_uses_a_stored_archive_for_a_film_without_a_sibling(
@@ -1024,21 +1033,102 @@ def test_capture_script_without_any_archive_names_make_all(
     assert "mise run make-all -- --film" in capsys.readouterr().err
 
 
-def test_capture_script_refuses_the_all_stem(
-    staged_repo: StagedRepo,
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def _default_run(
+    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch, *extra: str
+) -> tuple[Any, dict[str, Any]]:
+    """The capture script with no ``--out`` and its session stubbed; returns it and the kwargs seen."""
     module = _load_script("capture_playone_reference")
     monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
-    film = staged_repo.film.with_name("ALL.FLM")
-    film.write_bytes(b"FILM")
-    argv = _capture_argv(staged_repo, tmp_path / "out")
-    argv[argv.index("--film") + 1] = str(film)
-    monkeypatch.setattr(sys, "argv", argv)
-    monkeypatch.setattr(module, "run_session", lambda *_a, **_k: pytest.fail("reserved stem"))
+    argv = _capture_argv(staged_repo, Path("unused"))
+    del argv[argv.index("--out") : argv.index("--out") + 2]
+    monkeypatch.setattr(sys, "argv", [*argv, *extra])
+    seen: dict[str, Any] = {}
 
+    def fake_capture(_session: object, out_dir: Path, *_a: object, **kwargs: Any) -> dict[str, Any]:
+        seen.update(kwargs)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "meta.json").write_text("{}", encoding="utf-8")
+        return {}
+
+    monkeypatch.setattr(module, "capture", fake_capture)
+    monkeypatch.setattr(
+        module, "run_session", lambda *_a, **kwargs: {"frames": [kwargs["sample"](None)]}
+    )
+    return module, seen
+
+
+def test_a_default_capture_claims_the_next_run_of_the_films_slug(
+    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no --out the capture is the film's next frames/<run>, named by its path."""
+    module, seen = _default_run(staged_repo, monkeypatch)
+    frames = dataroot.REPO_ROOT / parity_layout.frames_root("vault-ctry")
+    assert module.run(module.parse_args()) == 0
+    assert module.run(module.parse_args()) == 0
+    assert sorted(p.name for p in frames.iterdir()) == ["001", "002"]
+    assert set(seen["provenance"]) == {"captured_on", "checkout"}
+
+
+def test_name_overrides_the_slug_and_a_bad_one_is_refused(
+    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module, _seen = _default_run(staged_repo, monkeypatch, "--name", "my-ctry")
+    assert module.run(module.parse_args()) == 0
+    assert (dataroot.REPO_ROOT / parity_layout.frames_path("my-ctry", "001")).is_dir()
+    module, _seen = _default_run(staged_repo, monkeypatch, "--name", "Bad Name")
     assert module.run(module.parse_args()) == 2
+
+
+def test_name_also_selects_where_the_stored_archive_is_looked_up(
+    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An archive make-all stored under --name is the one capture-ref --name plays."""
+    staged_repo.film.with_suffix(".ALL").unlink()
+    flm = staged_repo.film.read_bytes()
+    data = build_all([b"named"])
+    meta = ArchiveMeta(
+        film=staged_repo.film.name,
+        flm_bytes=len(flm),
+        flm_sha256=hashlib.sha256(flm).hexdigest(),
+        all_bytes=len(data),
+        all_sha256=hashlib.sha256(data).hexdigest(),
+    )
+    publish_archive(dataroot.REPO_ROOT, data, meta, slug="my-ctry", film=staged_repo.film.name)
+    module, _seen = _default_run(staged_repo, monkeypatch, "--name", "my-ctry")
+    assert module.run(module.parse_args()) == 0
+    module, _seen = _default_run(staged_repo, monkeypatch)
+    assert module.run(module.parse_args()) == 2
+
+
+def test_a_failed_default_capture_frees_its_run_number(
+    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A run that never wrote meta.json leaves no directory, so the number is reused."""
+    module, _seen = _default_run(staged_repo, monkeypatch)
+    monkeypatch.setattr(module, "run_session", lambda *_a, **_k: {"frames": []})
+    assert module.run(module.parse_args()) == 1
+    frames = dataroot.REPO_ROOT / parity_layout.frames_root("vault-ctry")
+    assert list(frames.iterdir()) == []
+
+
+def test_capture_records_when_and_by_whom_in_the_diagnostics(staged_repo: StagedRepo) -> None:
+    """Provenance rides in meta.json beside the sampler's diagnostics."""
+    emulator = capture_emulator()
+    meta = run_session(
+        staged_repo.film,
+        sample=lambda session: capture(
+            session,
+            staged_repo.out,
+            3,
+            film=FILM,
+            provenance={"captured_on": "2026-10-29", "checkout": "wt"},
+        ),
+        conf=staged_repo.conf,
+        dgroup_segment=DGROUP_RUNTIME_SEG,
+        emulator=emulator,
+    )
+    assert meta["captured_on"] == "2026-10-29"
+    assert meta["checkout"] == "wt"
 
 
 def test_probe_script_keeps_its_flags_and_shot_line(

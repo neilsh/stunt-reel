@@ -7,8 +7,9 @@ playback, per Invariant [I4]. Every recorded page is tagged with the film clock
 (DS:0x4896, # [MEM-FLM-TICK]) read while the guest is halted at the trap, so parity
 compares it against the render of the same 50 Hz tick instead of capture order.
 
-The artifact names and JSON layout are a capture contract: tick_NNNN.idx,
-palettes_NNNN.json and meta.json (written last) must stay in place. ``meta.json``
+The artifact names and JSON layout are a capture contract: frames/tick_NNNN.idx,
+frames/palettes_NNNN.json and meta.json (written last) must stay in place; the frame
+files sit in a subdirectory so meta.json is visible beside them (ADR 0024). ``meta.json``
 is the port's capture document plus the diagnostics this sampler records; the
 writer owns its shape, so this module never assembles it by hand. Reference
 rasters are evidence only: the caller writes them under build/.
@@ -21,6 +22,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from stunt_reel.parity_artifacts import (
+    CAPTURE_FRAMES_DIR,
     CAPTURE_HEIGHT,
     CAPTURE_WIDTH,
     SCHEMA_VERSION,
@@ -74,10 +76,11 @@ def capture(
     *,
     stop_after_repeats: int = END_HOLD_FRAMES,
     film: FilmId | None = None,
+    provenance: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Sample film frames from an open session and write the reference artifacts.
 
-    Frames are numbered from one in capture order (tick_{ordinal:04d}.idx); that
+    Frames are numbered from one in capture order (frames/tick_{ordinal:04d}.idx); that
     ordinal is only a file name. meta.json is the port's capture document: each
     frame carries film_tick (the film clock, which is what parity matches on), and
     the sampler's diagnostics ride beside it through the writer.
@@ -85,9 +88,11 @@ def capture(
     Capture stops early once stop_after_repeats consecutive frames share one film
     clock (the film has ended and is holding its last picture; running on risks the
     emulator dropping the connection), and max_frames is only a cap. meta.json is
-    written last.
+    written last. *provenance* (when and by which checkout) joins the diagnostics in
+    meta.json; it is not part of the capture's identity, which is the film and its frames.
     """
-    out_dir.mkdir(parents=True, exist_ok=True)
+    frames_dir = out_dir / CAPTURE_FRAMES_DIR
+    frames_dir.mkdir(parents=True, exist_ok=True)
 
     frames: list[CapturedFrame] = []
     frame_diagnostics: list[Mapping[str, Any]] = []
@@ -129,18 +134,18 @@ def capture(
         else:
             repeats = 0
         ordinal = len(frames) + 1
-        frame_path = out_dir / f"tick_{ordinal:04d}.idx"
+        frame_path = frames_dir / f"tick_{ordinal:04d}.idx"
         frame_path.write_bytes(raster)
         palette, palette_source = page.palette
-        palette_path = out_dir / f"palettes_{ordinal:04d}.json"
+        palette_path = frames_dir / f"palettes_{ordinal:04d}.json"
         palette_path.write_text(json.dumps([list(rgb) for rgb in palette]), encoding="utf-8")
 
         frames.append(
             CapturedFrame(
                 ordinal=ordinal,
                 film_tick=film_tick,
-                frame_file=frame_path.name,
-                palette_file=palette_path.name,
+                frame_file=f"{CAPTURE_FRAMES_DIR}/{frame_path.name}",
+                palette_file=f"{CAPTURE_FRAMES_DIR}/{palette_path.name}",
             )
         )
         frame_diagnostics.append(
@@ -174,6 +179,7 @@ def capture(
             "palette_source": palette_source,
             "dgroup_segment": f"{session.dgroup_segment:04X}",
             "frame_bytes": FRAME_BYTES,
+            **(provenance or {}),
         },
         frame_diagnostics=tuple(frame_diagnostics),
     )

@@ -2,7 +2,7 @@
 
 ``MAKEONE.EXE`` turns a film's ``.FLM`` into the ``.ALL`` that ``PLAYONE.EXE`` plays
 (``research/makeone-exe/driving.md``). A generated archive is written once under
-``captures/all/<film>/<id>/`` and never changed (ADR 0022), so this module only ever
+``captures/<slug>/archives/<run>/`` and never changed (ADR 0022), so this module only ever
 adds a directory; it never rewrites one.
 """
 
@@ -16,14 +16,13 @@ import struct
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
-from stunt_reel import parity_layout
+from stunt_reel import parity_layout, runs
 
 __all__ = [
     "META_FILE",
     "ArchiveError",
     "ArchiveMeta",
     "ArchiveMissing",
-    "ArchiveTaken",
     "check_archive",
     "publish_archive",
     "resolve_all",
@@ -39,10 +38,6 @@ class ArchiveError(RuntimeError):
 
 class ArchiveMissing(ArchiveError):  # noqa: N818 - the agreed interface name
     """No archive exists for the film; ``make-all`` generates one."""
-
-
-class ArchiveTaken(ArchiveError):  # noqa: N818 - the agreed interface name
-    """The archive id already holds a published archive; one is never written over."""
 
 
 @dataclass(frozen=True)
@@ -100,62 +95,55 @@ def check_archive(data: bytes) -> int:
     return count
 
 
-def publish_archive(root: Path, film: str, capture_id: str, data: bytes, meta: ArchiveMeta) -> Path:
-    """Write *data* as ``<root>/captures/all/<film>/<capture_id>/<FILM>.ALL`` and return the directory.
+def publish_archive(root: Path, data: bytes, meta: ArchiveMeta, *, slug: str, film: str) -> Path:
+    """Write *data* as the next ``<root>/captures/<slug>/archives/<run>/<FILM>.ALL``; return the directory.
 
-    The files go to a ``.partial`` sibling, ``meta.json`` last, and the sibling is renamed
-    into place, so a reader never sees half an archive. An id that already holds
-    ``meta.json`` is refused; a directory without it is an interrupted run and is replaced.
-    Two runs can share an id (same day, checkout and film bytes), so a ``.lock`` directory,
-    made atomically, is held from before the check to after the rename: a second publisher
-    gets ArchiveTaken and deletes nothing.
+    The run number is claimed first as ``<run>.lock``, which also keeps another publisher from
+    choosing it. The files go to a ``<run>.partial`` sibling, ``meta.json`` last, and the
+    sibling is renamed into place, so a reader never sees half an archive. The claim is
+    released in every case, and a failed write removes its ``.partial``; only a process that
+    dies leaves ``.lock`` and ``.partial`` behind, which readers skip and which hold their
+    number until someone deletes them.
     """
     stem = Path(film).stem
-    target = root / parity_layout.all_path(stem, capture_id)
-    lock = target.with_name(target.name + ".lock")
-    lock.parent.mkdir(parents=True, exist_ok=True)
+    parent = root / parity_layout.archives_root(slug)
+    run = runs.claim_run(parent, ".lock")
+    lock = parent / f"{run}.lock"
     try:
-        lock.mkdir()
-    except FileExistsError as exc:
-        raise ArchiveTaken(
-            f"{target} is being published by another run; if none is running, delete {lock}"
-        ) from exc
-    try:
-        if (target / META_FILE).exists():
-            raise ArchiveTaken(
-                f"{target} already holds an archive; an archive is never written over"
-            )
-        partial = target.with_name(target.name + ".partial")
-        for stale in (target, partial):
-            if stale.exists():
-                shutil.rmtree(stale)
-        partial.mkdir(parents=True)
-        (partial / f"{stem.upper()}.ALL").write_bytes(data)
-        (partial / META_FILE).write_text(meta.to_json(), encoding="utf-8")
-        partial.rename(target)
+        target = parent / run
+        partial = parent / f"{run}.partial"
+        partial.mkdir()
+        try:
+            (partial / f"{stem.upper()}.ALL").write_bytes(data)
+            (partial / META_FILE).write_text(meta.to_json(), encoding="utf-8")
+            partial.rename(target)
+        except BaseException:
+            shutil.rmtree(partial, ignore_errors=True)
+            raise
     finally:
         lock.rmdir()
     return target
 
 
-def resolve_all(flm: Path, root: Path) -> Path:
+def resolve_all(flm: Path, root: Path, slug: str | None = None) -> Path:
     """Return the ``.ALL`` that goes with *flm*, or raise ArchiveMissing.
 
     A sibling with the film's stem wins (matched case-insensitively, so ``x.All`` beside
     ``x.flm`` counts). Otherwise the stored archive with the greatest id whose film hash
     equals *flm*'s; its bytes must still hash to the recorded ``all_sha256``, and a
-    mismatch is an error naming the id, never a fall back to an older archive.
+    mismatch is an error naming the run, never a fall back to an older archive. *slug* names
+    the film's directory; it defaults to the one :func:`parity_layout.film_slug` derives.
     """
     stem = flm.stem.lower()
     for sibling in sorted(flm.parent.iterdir()):
         if sibling.is_file() and sibling.suffix.lower() == ".all" and sibling.stem.lower() == stem:
             return sibling
     digest = hashlib.sha256(flm.read_bytes()).hexdigest()
-    films = root / parity_layout.all_root() / stem
-    stored = sorted(films.iterdir(), reverse=True) if films.is_dir() else []
-    for directory in stored:
+    parent = root / parity_layout.archives_root(slug or parity_layout.slug_for(flm))
+    for number in reversed(runs.run_numbers(parent)):
+        directory = parent / parity_layout.run_id(number)
         meta_file = directory / META_FILE
-        if directory.suffix == ".partial" or not meta_file.is_file():
+        if not meta_file.is_file():
             continue
         try:
             meta = ArchiveMeta.from_json(meta_file.read_text(encoding="utf-8"))

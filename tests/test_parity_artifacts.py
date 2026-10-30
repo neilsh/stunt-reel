@@ -324,6 +324,28 @@ def test_a_capture_frame_file_must_be_a_basename(tmp_path: Path) -> None:
     assert refusal.value.kind == "frame"
 
 
+@pytest.mark.parametrize("name", ["frames/", "frames/../tick_0001.idx", "frames/frames/t.idx"])
+def test_only_one_frames_directory_is_allowed_in_a_frame_file(tmp_path: Path, name: str) -> None:
+    meta = _capture_meta()
+    meta["frames"] = [{"film_tick": 1, "frame_file": name}]
+    _write_json(tmp_path / "meta.json", meta)
+    with pytest.raises(ArtifactError, match="frame_file must be a basename"):
+        read_capture(tmp_path)
+
+
+def test_a_frame_file_may_sit_under_frames(tmp_path: Path) -> None:
+    meta = _capture_meta()
+    meta["frames"] = [
+        {
+            "film_tick": 1,
+            "frame_file": "frames/tick_0001.idx",
+            "palette_file": "frames/palettes_0001.json",
+        }
+    ]
+    _write_json(tmp_path / "meta.json", meta)
+    assert read_capture(tmp_path).frames[0].frame_file == "frames/tick_0001.idx"
+
+
 def test_a_capture_palette_file_must_be_a_basename(tmp_path: Path) -> None:
     meta = _capture_meta()
     meta["frames"] = [{"film_tick": 1, "palette_file": "palettes/0001.json"}]

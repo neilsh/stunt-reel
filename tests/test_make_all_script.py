@@ -62,8 +62,8 @@ def _args(
     return script.parse_args()
 
 
-def _archives(film: str = "ctry") -> list[Path]:
-    root = dataroot.REPO_ROOT / parity_layout.all_root() / film
+def _archives(slug: str = "vault-ctry") -> list[Path]:
+    root = dataroot.REPO_ROOT / parity_layout.archives_root(slug)
     return sorted(root.iterdir()) if root.exists() else []
 
 
@@ -87,24 +87,7 @@ def test_a_run_publishes_the_archive_with_meta(
     assert dict(meta.game_files)["MAKEONE.EXE"] == (game_root / "MAKEONE.EXE").stat().st_size
 
 
-def test_the_all_stem_is_refused_before_launch(
-    script: Any,
-    monkeypatch: pytest.MonkeyPatch,
-    staged_repo: StagedRepo,
-    game_root: Path,
-    makeone_conf: Path,
-) -> None:
-    film = staged_repo.film.with_name("ALL.FLM")
-    film.write_bytes(b"FILM")
-    emulator, _keys = makeone_guest(text_after=1, archive=ARCHIVE)
-
-    assert script.run(_args(script, monkeypatch, film, game_root, makeone_conf), emulator) == 2
-
-    assert not emulator.started
-    assert _archives("all") == []
-
-
-def test_an_existing_id_is_refused_before_launch(
+def test_a_second_run_adds_the_next_archive(
     script: Any,
     monkeypatch: pytest.MonkeyPatch,
     staged_repo: StagedRepo,
@@ -118,10 +101,32 @@ def test_an_existing_id_is_refused_before_launch(
     before = {p.name: p.read_bytes() for p in directory.iterdir()}
 
     second, _keys = makeone_guest(text_after=1, archive=build_all([b"other"]))
-    assert script.run(args, second) == 2
+    assert script.run(args, second) == 0
 
-    assert not second.started
+    assert [p.name for p in _archives()] == ["001", "002"]
     assert {p.name: p.read_bytes() for p in directory.iterdir()} == before
+
+
+def test_name_overrides_the_derived_slug_and_a_bad_one_is_refused(
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_repo: StagedRepo,
+    game_root: Path,
+    makeone_conf: Path,
+) -> None:
+    emulator, _keys = makeone_guest(text_after=1, archive=ARCHIVE)
+    args = _args(
+        script, monkeypatch, staged_repo.film, game_root, makeone_conf, "--name", "my-ctry"
+    )
+    assert script.run(args, emulator) == 0
+    assert len(_archives("my-ctry")) == 1
+
+    refused, _keys = makeone_guest(text_after=1, archive=ARCHIVE)
+    bad = _args(
+        script, monkeypatch, staged_repo.film, game_root, makeone_conf, "--name", "Bad Name"
+    )
+    assert script.run(bad, refused) == 2
+    assert not refused.started
 
 
 def test_a_non_archive_is_rejected_and_publishes_nothing(
@@ -146,7 +151,7 @@ def test_a_publish_failure_is_a_make_all_line_and_exit_1(
     makeone_conf: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def full_disk(*_args: object) -> Path:
+    def full_disk(*_args: object, **_kwargs: object) -> Path:
         raise OSError("disk full")
 
     monkeypatch.setattr(script, "publish_archive", full_disk)

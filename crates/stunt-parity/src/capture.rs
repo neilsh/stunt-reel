@@ -20,6 +20,9 @@ const DEFAULT_WIDTH: u32 = 320;
 /// Height of the Mode 13h raster a legacy capture was made at.
 const DEFAULT_HEIGHT: u32 = 200;
 
+/// The one subdirectory of a capture directory that file names may point into (ADR 0024).
+const FRAMES_DIR: &str = "frames/";
+
 /// One captured frame's place in a capture directory.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CapturedFrame {
@@ -27,9 +30,9 @@ pub struct CapturedFrame {
     pub ordinal: u32,
     /// Film clock the captured page shows; parity matches on this.
     pub film_tick: u32,
-    /// Raster file name, a basename inside the capture directory.
+    /// Raster file name: a basename inside the capture directory, optionally under `frames/`.
     pub frame_file: String,
-    /// Palette file name, a basename inside the capture directory.
+    /// Palette file name: a basename inside the capture directory, optionally under `frames/`.
     pub palette_file: String,
 }
 
@@ -68,10 +71,13 @@ impl CaptureSet {
                 ("frame_file", &frame.frame_file),
                 ("palette_file", &frame.palette_file),
             ] {
-                if name.contains('/') || name.contains('\\') {
+                let leaf = name.strip_prefix(FRAMES_DIR).unwrap_or(name);
+                if leaf.is_empty() || leaf.contains('/') || name.contains('\\') {
                     return Err(ArtifactError::Frame {
                         ordinal: frame.ordinal,
-                        reason: format!("{field} must be a basename"),
+                        reason: format!(
+                            "{field} must be a basename, optionally under {FRAMES_DIR}"
+                        ),
                     });
                 }
             }
@@ -280,6 +286,27 @@ mod tests {
         let mut set = capture();
         set.frames[0].palette_file = "palettes/0001.json".to_string();
         assert!(matches!(set.validate(), Err(ArtifactError::Frame { .. })));
+
+        for bad in [
+            "frames/",
+            "frames/../tick_0001.idx",
+            "frames/frames/tick_0001.idx",
+        ] {
+            let mut set = capture();
+            set.frames[0].frame_file = bad.to_string();
+            assert!(
+                matches!(set.validate(), Err(ArtifactError::Frame { .. })),
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_frame_may_sit_under_the_frames_directory() {
+        let mut set = capture();
+        set.frames[0].frame_file = "frames/tick_0001.idx".to_string();
+        set.frames[0].palette_file = "frames/palettes_0001.json".to_string();
+        assert!(set.validate().is_ok());
     }
 
     #[test]

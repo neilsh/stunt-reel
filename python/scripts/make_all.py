@@ -3,7 +3,7 @@
 PLAYONE.EXE needs a film's .ALL beside its .FLM, and most films ship without one.
 MAKEONE.EXE writes it: this script stages the film and the game's RES tree in a private
 mount, loads the film in MAKEONE's requester, waits for the guest to return to DOS, and
-stores the archive once under captures/all/<film>/<id>/ (ADR 0022). A film then needs no
+stores the archive once under captures/<film>/archives/<run>/ (ADR 0022, 0024). A film then needs no
 extra flags for capture-ref, which finds the stored archive by the film's hash.
 """
 
@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import logging
-import re
 import sys
 import time
 from datetime import UTC, datetime
@@ -20,10 +19,8 @@ from pathlib import Path
 
 from stunt_reel import dataroot, parity_layout
 from stunt_reel.all_archive import (
-    META_FILE,
     ArchiveError,
     ArchiveMeta,
-    ArchiveTaken,
     check_archive,
     publish_archive,
 )
@@ -45,6 +42,10 @@ def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--film", type=Path, required=True, help="the film's .FLM file")
+    parser.add_argument(
+        "--name",
+        help="the film's directory under captures/ (default: its parent folder and stem)",
+    )
     parser.add_argument(
         "--game-root",
         type=Path,
@@ -87,13 +88,13 @@ def run(args: argparse.Namespace, emulator: Emulator | None = None) -> int:
     """Generate and store one archive; 0 on success, 1 on a failed run, 2 when refused."""
     film = resolve(args.film)
     game_root = resolve(args.game_root)
-    try:
-        parity_layout.require_film_stem(film.stem)
-    except ValueError as exc:
-        print(f"[make-all] {exc}", file=sys.stderr)
-        return 2
     if not film.is_file():
         print(f"[make-all] {film} not found", file=sys.stderr)
+        return 2
+    try:
+        slug = parity_layout.slug_for(film, args.name)
+    except ValueError as exc:
+        print(f"[make-all] {exc}", file=sys.stderr)
         return 2
     if not ensure_links_or_report("mise run make-all"):
         return 2
@@ -101,17 +102,6 @@ def run(args: argparse.Namespace, emulator: Emulator | None = None) -> int:
     flm_bytes = film.read_bytes()
     flm_sha256 = hashlib.sha256(flm_bytes).hexdigest()
     created = datetime.now(UTC).date()
-    capture_id = parity_layout.new_capture_id(
-        created, re.sub(r"[^A-Za-z0-9._-]", "-", dataroot.REPO_ROOT.name), flm_sha256
-    )
-    target = dataroot.REPO_ROOT / parity_layout.all_path(film.stem, capture_id)
-    if (target / META_FILE).exists():
-        print(
-            f"[make-all] {target} already exists; capture-ref already uses it. "
-            "To regenerate, delete that directory and rerun",
-            file=sys.stderr,
-        )
-        return 2
 
     started = time.monotonic()
     try:
@@ -151,10 +141,7 @@ def run(args: argparse.Namespace, emulator: Emulator | None = None) -> int:
             wall_seconds=round(time.monotonic() - started, 1),
             created=created.isoformat(),
         )
-        written = publish_archive(dataroot.REPO_ROOT, film.name, capture_id, data, meta)
-    except ArchiveTaken as exc:
-        print(f"[make-all] {exc}", file=sys.stderr)
-        return 2
+        written = publish_archive(dataroot.REPO_ROOT, data, meta, slug=slug, film=film.name)
     except OSError as exc:
         print(f"[make-all] could not store the archive: {exc}", file=sys.stderr)
         return 1

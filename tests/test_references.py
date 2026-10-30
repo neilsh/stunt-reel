@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 def _capture(root: Path, film: str, capture_id: str, text: str = "{}") -> Path:
-    directory = root / parity_layout.capture_path(film, capture_id)
+    directory = root / parity_layout.frames_path(f"vault-{film}", capture_id)
     directory.mkdir(parents=True)
     (directory / "meta.json").write_text(text, encoding="utf-8")
     (directory / "tick_0001.idx").write_bytes(b"\x01\x02")
@@ -23,7 +23,9 @@ def _capture(root: Path, film: str, capture_id: str, text: str = "{}") -> Path:
 def _point(root: Path, film: str, capture_id: str, sha256: str) -> None:
     pointers = root / parity_layout.REFERENCES_FILE
     pointers.parent.mkdir(parents=True, exist_ok=True)
-    pointers.write_text(f'[{film}]\ncapture = "{capture_id}"\nsha256 = "{sha256}"\n', "utf-8")
+    pointers.write_text(
+        f'[{film}]\nfilm = "vault-{film}"\ncapture = "{capture_id}"\nsha256 = "{sha256}"\n', "utf-8"
+    )
 
 
 def test_a_named_capture_with_the_recorded_hash_resolves(tmp_path: Path) -> None:
@@ -43,6 +45,15 @@ def test_the_digest_follows_content_and_names(tmp_path: Path) -> None:
 def test_an_absent_capture_is_named_by_id(tmp_path: Path) -> None:
     _point(tmp_path, "ctry", "gone-1", "0" * 64)
     with pytest.raises(references.ReferenceCaptureError, match=r"gone-1.*absent on this machine"):
+        references.reference_dir(tmp_path, "ctry")
+
+
+def test_a_film_that_is_not_a_slug_is_refused(tmp_path: Path) -> None:
+    pointers = tmp_path / parity_layout.REFERENCES_FILE
+    pointers.parent.mkdir(parents=True)
+    lines = ["[ctry]", 'film = "../x"', 'capture = "001"', f'sha256 = "{"0" * 64}"']
+    pointers.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    with pytest.raises(references.ReferenceCaptureError, match="not a slug"):
         references.reference_dir(tmp_path, "ctry")
 
 

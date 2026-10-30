@@ -94,6 +94,8 @@ LAYER_FIRST_ACTOR = 16
 RENDER_TICK_WIDTH = 5
 #: Zero-padding of a capture ordinal in its default raster file names.
 CAPTURE_ORDINAL_WIDTH = 4
+#: The one subdirectory of a capture a frame or palette file name may point into (ADR 0024).
+CAPTURE_FRAMES_DIR = "frames"
 
 
 class ArtifactError(ValueError):
@@ -393,10 +395,12 @@ class CaptureSet:
                 ("frame_file", frame.frame_file),
                 ("palette_file", frame.palette_file),
             ):
-                if "/" in name or "\\" in name:
+                leaf = name.removeprefix(f"{CAPTURE_FRAMES_DIR}/")
+                if not leaf or "/" in leaf or "\\" in name:
                     raise _error(
                         "frame",
-                        f"frame {frame.ordinal}: {field_name} must be a basename",
+                        f"frame {frame.ordinal}: {field_name} must be a basename, "
+                        f"optionally under {CAPTURE_FRAMES_DIR}/",
                         path,
                     )
 
