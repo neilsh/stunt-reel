@@ -105,6 +105,14 @@ def test_slug_without_a_parent_is_refused() -> None:
         parity_layout.film_slug(Path("/FILM.FLM"))
 
 
+def test_slug_for_prefers_the_override() -> None:
+    film = Path("/d/corpus/stisldem/VAULT/CTRY.FLM")
+    assert parity_layout.slug_for(film) == "vault-ctry"
+    assert parity_layout.slug_for(film, "mine") == "mine"
+    with pytest.raises(ValueError, match="slug"):
+        parity_layout.slug_for(film, "Not Ok")
+
+
 def test_require_slug() -> None:
     """A slug is lower-case words joined by ``-`` or ``_``."""
     assert parity_layout.require_slug("vault-ctry") == "vault-ctry"

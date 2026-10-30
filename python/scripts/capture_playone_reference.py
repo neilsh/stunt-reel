@@ -156,7 +156,7 @@ def run(args: argparse.Namespace) -> int:
         print(f"[capture] {film} not found", file=sys.stderr)
         return 2
     try:
-        slug = parity_layout.require_slug(args.name or parity_layout.film_slug(film.resolve()))
+        slug = parity_layout.slug_for(film, args.name)
     except ValueError as exc:
         print(f"[capture] {exc}", file=sys.stderr)
         return 2
@@ -166,7 +166,7 @@ def run(args: argparse.Namespace) -> int:
     all_sha256: str | None = None
     if not args.no_launch:
         try:
-            archive = resolve_all(film, dataroot.REPO_ROOT)
+            archive = resolve_all(film, dataroot.REPO_ROOT, slug)
             all_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
         except (ArchiveError, OSError) as exc:
             print(f"[capture] {exc}", file=sys.stderr)

@@ -92,7 +92,7 @@ def run(args: argparse.Namespace, emulator: Emulator | None = None) -> int:
         print(f"[make-all] {film} not found", file=sys.stderr)
         return 2
     try:
-        slug = parity_layout.require_slug(args.name or parity_layout.film_slug(film.resolve()))
+        slug = parity_layout.slug_for(film, args.name)
     except ValueError as exc:
         print(f"[make-all] {exc}", file=sys.stderr)
         return 2

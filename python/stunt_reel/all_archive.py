@@ -133,7 +133,7 @@ def resolve_all(flm: Path, root: Path, slug: str | None = None) -> Path:
         if sibling.is_file() and sibling.suffix.lower() == ".all" and sibling.stem.lower() == stem:
             return sibling
     digest = hashlib.sha256(flm.read_bytes()).hexdigest()
-    parent = root / parity_layout.archives_root(slug or parity_layout.film_slug(flm.resolve()))
+    parent = root / parity_layout.archives_root(slug or parity_layout.slug_for(flm))
     for number in reversed(runs.run_numbers(parent)):
         directory = parent / parity_layout.run_id(number)
         meta_file = directory / META_FILE

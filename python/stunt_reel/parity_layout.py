@@ -39,6 +39,7 @@ __all__ = [
     "require_slug",
     "retime_dir",
     "run_id",
+    "slug_for",
     "stage_conf",
     "stage_dir",
     "stage_root",
@@ -101,6 +102,11 @@ def film_slug(film: Path) -> str:
     if not parent or not film.stem or not slug:
         raise ValueError(f"cannot name {film} from its path; pass --name")
     return slug
+
+
+def slug_for(film: Path, name: str | None = None) -> str:
+    """The validated slug of the film at *film*: the ``--name`` override, else :func:`film_slug`."""
+    return require_slug(name or film_slug(film.resolve()))
 
 
 def require_slug(slug: str) -> str:

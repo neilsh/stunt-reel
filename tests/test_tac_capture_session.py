@@ -1074,6 +1074,27 @@ def test_name_overrides_the_slug_and_a_bad_one_is_refused(
     assert module.run(module.parse_args()) == 2
 
 
+def test_name_also_selects_where_the_stored_archive_is_looked_up(
+    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An archive make-all stored under --name is the one capture-ref --name plays."""
+    staged_repo.film.with_suffix(".ALL").unlink()
+    flm = staged_repo.film.read_bytes()
+    data = build_all([b"named"])
+    meta = ArchiveMeta(
+        film=staged_repo.film.name,
+        flm_bytes=len(flm),
+        flm_sha256=hashlib.sha256(flm).hexdigest(),
+        all_bytes=len(data),
+        all_sha256=hashlib.sha256(data).hexdigest(),
+    )
+    publish_archive(dataroot.REPO_ROOT, "my-ctry", staged_repo.film.name, data, meta)
+    module, _seen = _default_run(staged_repo, monkeypatch, "--name", "my-ctry")
+    assert module.run(module.parse_args()) == 0
+    module, _seen = _default_run(staged_repo, monkeypatch)
+    assert module.run(module.parse_args()) == 2
+
+
 def test_a_failed_default_capture_frees_its_run_number(
     staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
 ) -> None:
