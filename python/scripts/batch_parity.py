@@ -14,7 +14,10 @@ film are copied into its frames directory.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import os
 import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -108,21 +111,43 @@ def _report(record: Record) -> None:
     print(f"{record.slug} {record.stage} {record.status}{tail}", flush=True)
 
 
+_NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+
+
 def _run_command(command: list[str], timeout: float) -> tuple[int, str]:
-    """Run *command* to completion or *timeout*; return its exit code and combined output."""
-    try:
-        done = subprocess.run(  # noqa: S603 - the command is built from fixed paths and film names
-            command,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        return _TIMEOUT_EXIT, f"timeout after {timeout:g}s"
-    return done.returncode, done.stdout + done.stderr
+    """Run *command* to completion or *timeout*; return its exit code and combined output.
+
+    On a timeout the whole process tree is ended: a plain ``subprocess.run`` timeout kills only the
+    direct child, which leaks the DOSBox-X it started.
+    """
+    windows = sys.platform == "win32"
+    with subprocess.Popen(  # noqa: S603 - the command is built from fixed paths and film names
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        creationflags=_NEW_GROUP if windows else 0,
+        start_new_session=not windows,
+    ) as child:
+        try:
+            output, _ = child.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _kill_tree(child.pid)
+            child.communicate()
+            return _TIMEOUT_EXIT, f"timeout after {timeout:g}s"
+        return child.returncode, output
+
+
+def _kill_tree(pid: int) -> None:
+    """End *pid* and every process it started."""
+    if sys.platform == "win32":
+        command = ["taskkill", "/T", "/F", "/PID", str(pid)]
+        subprocess.run(command, capture_output=True, check=False)  # noqa: S603 - fixed taskkill invocation
+    else:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(pid, signal.SIGKILL)
 
 
 def _names(value: str | None) -> list[str]:
