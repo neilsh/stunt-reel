@@ -107,7 +107,9 @@ def run(args: argparse.Namespace, emulator: Emulator | None = None) -> int:
     target = dataroot.REPO_ROOT / parity_layout.all_path(film.stem, capture_id)
     if (target / META_FILE).exists():
         print(
-            f"[make-all] {target} already exists; an archive is never written over", file=sys.stderr
+            f"[make-all] {target} already exists; capture-ref already uses it. "
+            "To regenerate, delete that directory and rerun",
+            file=sys.stderr,
         )
         return 2
 
