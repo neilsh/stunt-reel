@@ -18,6 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from stunt_reel import parity_layout
+from stunt_reel.dataroot import REPO_ROOT
 
 __all__ = [
     "Reference",
@@ -59,7 +60,11 @@ def capture_digest(directory: Path) -> str:
 def read_reference(root: Path, film: str) -> Reference:
     """The entry for *film* in *root*'s ``references.toml``."""
     name = film.lower()
+    # The pointer is a committed repository file; *root* only says where the captures are,
+    # so a data root without one reads this checkout's.
     path = root / parity_layout.REFERENCES_FILE
+    if not path.is_file():
+        path = REPO_ROOT / parity_layout.REFERENCES_FILE
     try:
         document = tomllib.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as err:

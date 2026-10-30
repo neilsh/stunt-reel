@@ -333,7 +333,7 @@ def test_convert_layout_moves_an_old_root_to_corpus_and_captures(tmp_path: Path)
     assert (root / "captures" / "ctry" / dataroot.LEGACY_CAPTURE_ID / "meta.json").is_file()
     for old in ("stisldem", "si_archive", "oracle", "target_bin", "reference"):
         assert not (root / old).exists()
-    assert any("oracle removed" in line for line in moved)
+    assert any("oracle/intro_trajectory.json removed" in line for line in moved)
     assert dataroot.convert_layout(root) == []  # a converted root is left alone
 
 
@@ -366,3 +366,13 @@ def test_convert_layout_accepts_the_empty_directories_a_read_created(tmp_path: P
     assert (root / "corpus" / "stuntisl" / "PLAYONE.EXE").is_file()
     assert not (root / "corpus" / "stuntisl" / "stuntisl").exists()
     assert (root / "captures" / "ctry" / dataroot.LEGACY_CAPTURE_ID / "meta.json").is_file()
+
+
+def test_convert_layout_keeps_foreign_files_in_the_old_oracle(tmp_path: Path) -> None:
+    root = tmp_path / "stunt-reel.data"
+    _old_layout(root)
+    (root / "oracle" / "mine.json").write_text("[]", encoding="utf-8")
+    moved = dataroot.convert_layout(root)
+    assert not (root / "oracle" / "intro_trajectory.json").exists()
+    assert (root / "oracle" / "mine.json").is_file()
+    assert any("oracle still holds" in line for line in moved)

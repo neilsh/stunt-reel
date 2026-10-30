@@ -108,8 +108,18 @@ def resolve(path: Path) -> Path:
 
 
 def is_taken(out_dir: Path) -> bool:
-    """True when *out_dir* already holds anything: a capture is never written over."""
-    return out_dir.is_dir() and any(out_dir.iterdir())
+    """True when *out_dir* holds a capture, or anything else: a capture is never written over.
+
+    A run that died before ``meta.json`` (which is written last) left only rasters and
+    palettes; that is no capture, so those files are cleared and the same id can be retried.
+    """
+    if not out_dir.is_dir():
+        return False
+    if not (out_dir / "meta.json").exists():
+        for pattern in ("tick_*.idx", "palettes_*.json"):
+            for partial in out_dir.glob(pattern):
+                partial.unlink()
+    return any(out_dir.iterdir())
 
 
 def report(event: SessionEvent) -> None:

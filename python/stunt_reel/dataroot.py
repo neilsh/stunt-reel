@@ -411,10 +411,11 @@ def convert_layout(root: Path) -> list[str]:
     if duplicate.is_file() and kept.is_file() and duplicate.read_bytes() == kept.read_bytes():
         duplicate.unlink()
         moved.append("target_bin/PLAYONE.EXE dropped (a copy of corpus/stuntisl/PLAYONE.EXE)")
-    if (root / "oracle").is_dir():
-        shutil.rmtree(root / "oracle")
-        moved.append("oracle removed (a synthetic build output now)")
-    for name in ("target_bin", "reference"):
+    generated = root / "oracle" / "intro_trajectory.json"
+    if generated.is_file():
+        generated.unlink()
+        moved.append("oracle/intro_trajectory.json removed (a synthetic build output now)")
+    for name in ("target_bin", "reference", "oracle"):
         directory = root / name
         if directory.is_dir() and not any(directory.iterdir()):
             directory.rmdir()

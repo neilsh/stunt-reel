@@ -312,7 +312,7 @@ def main() -> int:
             p.add_argument("--every", type=int, default=2, help="use every Nth scored frame")
             p.add_argument("--pad", type=int, default=25)
     args = parser.parse_args()
-    if args.reference is None:
+    if args.reference is None and args.func is not cmd_summary:
         try:
             args.reference = references.reference_dir(REPO_ROOT, "ctry")
         except references.ReferenceCaptureError as err:
