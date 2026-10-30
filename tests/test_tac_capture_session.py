@@ -1060,7 +1060,7 @@ def test_a_default_capture_claims_the_next_run_of_the_films_slug(
     frames = dataroot.REPO_ROOT / parity_layout.frames_root("vault-ctry")
     assert module.run(module.parse_args()) == 0
     assert module.run(module.parse_args()) == 0
-    assert [p.name for p in frames.iterdir()] == ["001", "002"]
+    assert sorted(p.name for p in frames.iterdir()) == ["001", "002"]
     assert set(seen["provenance"]) == {"captured_on", "checkout"}
 
 
