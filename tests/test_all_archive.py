@@ -102,6 +102,28 @@ def test_publish_refuses_an_existing_id(tmp_path: Path) -> None:
     assert {p.name: p.read_bytes() for p in target.iterdir()} == before
 
 
+def test_a_held_publication_claim_refuses_without_touching_anything(tmp_path: Path) -> None:
+    data = build_all(CHUNKS)
+    target = tmp_path / parity_layout.all_path("BALLOON", ID)
+    target.mkdir(parents=True)
+    (target / "BALLOON.ALL").write_bytes(b"another run's archive")
+    target.with_name(target.name + ".lock").mkdir()
+    with pytest.raises(ArchiveTaken):
+        publish_archive(tmp_path, "BALLOON.FLM", ID, data, _meta(data))
+    assert (target / "BALLOON.ALL").read_bytes() == b"another run's archive"
+
+
+def test_publish_releases_its_claim_on_success_and_on_failure(tmp_path: Path) -> None:
+    data = build_all(CHUNKS)
+    target = tmp_path / parity_layout.all_path("BALLOON", ID)
+    lock = target.with_name(target.name + ".lock")
+    publish_archive(tmp_path, "BALLOON.FLM", ID, data, _meta(data))
+    assert not lock.exists()
+    with pytest.raises(ArchiveTaken):
+        publish_archive(tmp_path, "BALLOON.FLM", ID, data, _meta(data))
+    assert not lock.exists()
+
+
 def test_publish_clears_a_partial_without_meta(tmp_path: Path) -> None:
     data = build_all(CHUNKS)
     target = tmp_path / parity_layout.all_path("BALLOON", ID)

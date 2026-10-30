@@ -106,19 +106,35 @@ def publish_archive(root: Path, film: str, capture_id: str, data: bytes, meta: A
     The files go to a ``.partial`` sibling, ``meta.json`` last, and the sibling is renamed
     into place, so a reader never sees half an archive. An id that already holds
     ``meta.json`` is refused; a directory without it is an interrupted run and is replaced.
+    Two runs can share an id (same day, checkout and film bytes), so a ``.lock`` directory,
+    made atomically, is held from before the check to after the rename: a second publisher
+    gets ArchiveTaken and deletes nothing.
     """
     stem = Path(film).stem
     target = root / parity_layout.all_path(stem, capture_id)
-    if (target / META_FILE).exists():
-        raise ArchiveTaken(f"{target} already holds an archive; an archive is never written over")
-    partial = target.with_name(target.name + ".partial")
-    for stale in (target, partial):
-        if stale.exists():
-            shutil.rmtree(stale)
-    partial.mkdir(parents=True)
-    (partial / f"{stem.upper()}.ALL").write_bytes(data)
-    (partial / META_FILE).write_text(meta.to_json(), encoding="utf-8")
-    partial.rename(target)
+    lock = target.with_name(target.name + ".lock")
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        lock.mkdir()
+    except FileExistsError as exc:
+        raise ArchiveTaken(
+            f"{target} is being published by another run; if none is running, delete {lock}"
+        ) from exc
+    try:
+        if (target / META_FILE).exists():
+            raise ArchiveTaken(
+                f"{target} already holds an archive; an archive is never written over"
+            )
+        partial = target.with_name(target.name + ".partial")
+        for stale in (target, partial):
+            if stale.exists():
+                shutil.rmtree(stale)
+        partial.mkdir(parents=True)
+        (partial / f"{stem.upper()}.ALL").write_bytes(data)
+        (partial / META_FILE).write_text(meta.to_json(), encoding="utf-8")
+        partial.rename(target)
+    finally:
+        lock.rmdir()
     return target
 
 
