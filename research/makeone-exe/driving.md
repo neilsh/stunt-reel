@@ -67,15 +67,31 @@ A stale `dosbox-x.exe` from an earlier killed run holds the control port; kill i
 
 ---
 
+## 8. Run Time Under Different CPU Settings
+
+`[Bounded Observation]`, 2026-10-30, `flmonly-747land` unless named; the batch survey was loading the machine (about 19% CPU idle load, 16 logical cores), so seconds are indicative. Every run below wrote the same 146,215-byte `.ALL` (sha256 `998ec65c…`), checked with `cmp`.
+
+| `[cpu]` setting | Seconds |
+|---|---|
+| `core = normal`, `cycles = 8000` (the parity conf) | 179 |
+| `core = normal`, `cycles = max` | 27 |
+| `core = dynamic`, `cycles = max` | 13 to 17 |
+| `core = dynamic`, `cycles = max 50%` | 16 (30 to 34 under survey load) |
+
+`MAKEONE` is not single-stepped by the debugger, so the `cacheblocks` crash that rules out the dynamic core for captures does not apply here. The same `dynamic` plus `max` setting also produced byte-identical archives for `flmonly-747` (852 s down to 27 s), `flmonly-battle` (346 s to 19 s) and `flmonly-bigfoot` (44 s to 7 s). DOSBox-X took no more than 0.94 of one core (about 5% of total CPU) at `cycles = max`, so a percentage cap bought nothing. [`tools/dosbox/dosbox-archive.conf`](../../tools/dosbox/dosbox-archive.conf) is the parity conf with only these two lines changed; captures keep the parity conf ([ADR 0023](../../docs/adr/0023-make-all-generates-archives-with-makeone.md)).
+
+Where the remaining time goes (from existing logs, nothing re-run): launch to dialog settled is 3 to 4 s, `wait_for_text` polls `VGA MODE` every 2 s ([`makeone.py`](../../python/stunt_reel/tac/makeone.py) `POLL_SECONDS`), so a run overshoots by 0 to 2 s, and the stage copies 35 files (10,137,583 bytes) of `RES\` per run ([`staging.py`](../../python/stunt_reel/tac/staging.py)). The `autotype -w 12` route of § 6 is not on the live path. Untested cheap options: `POLL_SECONDS` 0.25, `[dosbox] fastbioslogo = true` with `startbanner = false`, and a directory junction for `RES\` (unsafe if `MAKEONE` writes into it).
+
 ## Ruled out
 
 - **Running without `RES\`.** The run never left the caching box in 25 s.
+- **A capped `cycles = max 50%`.** It was 1.7 times slower than `max` (30 to 34 s against 18 s) and saved about 2 points of total CPU; plain `max` is used.
 - **Needing the `.TKE`.** `BALLOON` converted without its take file.
 - **`autotype` at boot as the primary route.** It works only with a long wait and cannot tell completion from a stall; it is the fallback if a film breaks the controller.
 
 ## Open questions
 
-1. Run time scales with the film's length: 81 s for `BALLOON`, 134 s for `TRAINTNL`. What do the longest films take against the 600 s default cap?
+1. Run time scales with the film's length (81 s `BALLOON` and 134 s `TRAINTNL` at `cycles = 8000`). At `dynamic` plus `max` the longest film measured took 27 s (`flmonly-747`); films over 300 KB that timed out at 900 s under the old conf are not yet re-run at the new speed.
 2. Is a `.ALL` made from one `.FLM` byte-stable across runs for films other than `BALLOON`? Only that one was repeated.
 3. Films that need more than the shipped `RES\` (community films with custom sounds) and films whose `.FLM` references takes: untested.
 4. Does a `.ALL` made under DOSBox-X carry the sound set-up of the machine that ran `MAKEONE` (`corpus/siarchive/Films/Playing_Films.txt`)? Frames are unaffected.

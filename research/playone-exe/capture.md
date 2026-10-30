@@ -91,3 +91,9 @@ _Found 2026-10-22; see the [parity log](../parity/log.md)._
 | `no new frame after N trap hits (… dominant index M)` | the film never started (wrong list selection) or ended; `M` distinguishes a static UI page from a blank one |
 | `emulator exit status 3221226505` | `0xC0000409` crash — a debugger command was issued while the guest was in a state this build cannot step (see § 2) |
 | `DOSBox-X command error … *** Debugger command not recognized` | a shell command (`AUTOTYPE`, `MOUNT`, …) was sent through `EXEC`; only debugger verbs are valid |
+
+---
+
+## 6. Speed and Configuration Experiments
+
+See [`capture-speed.md`](capture-speed.md): the per-frame cost is wall-paced (0.25 s per frame, 4 s of boot), no DOSBox-X setting, `turbo` or frame sampling cut it, eight captures at once keep the tick spread within 0 to 2 ticks on an idle machine, and `nosound` freezes the film clock.
