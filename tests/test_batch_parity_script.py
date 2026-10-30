@@ -38,15 +38,11 @@ class FakeStages:
     def __init__(self) -> None:
         self.failing: set[tuple[str, str]] = set()
         self.calls: list[tuple[str, str]] = []
-        self.options: list[dict[str, int]] = []
         self.during: Callable[[str, str], None] | None = None
 
     def factory(self, stage: str) -> StageFunction:
-        def run_stage(
-            film: BatchFilm, _root: Path, _run: Runner, _timeout: float, **options: int
-        ) -> Record:
+        def run_stage(film: BatchFilm, _root: Path, _run: Runner, _timeout: float) -> Record:
             self.calls.append((film.slug, stage))
-            self.options.append(options)
             if self.during is not None:
                 self.during(film.slug, stage)
             failed = (film.slug, stage) in self.failing
@@ -91,7 +87,6 @@ def _process(
     retry_errors: bool = False,
     limit: int | None = None,
     skip: frozenset[str] = frozenset(),
-    capture_frames: int = 0,
     **concurrency: Any,
 ) -> int:
     return batch_parity.process(
@@ -104,7 +99,6 @@ def _process(
         limit=limit,
         timeouts=TIMEOUTS,
         skip=skip,
-        capture_frames=capture_frames,
         **concurrency,
     )
 
@@ -242,14 +236,6 @@ def test_rendered_frames_are_deleted_after_a_successful_score(
     assert not render.exists()
 
 
-def test_capture_frames_reach_only_the_capture_stage(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fake = _install(monkeypatch)
-    _process([_film("a-film")], tmp_path, capture_frames=40)
-    assert fake.options == [{}, {"frames": 40}, {}, {}]
-
-
 def test_a_known_stall_is_recorded_skipped_and_stops_that_film(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -289,7 +275,7 @@ def test_a_film_that_leaves_the_skip_list_captures_despite_its_skipped_record(
 
 
 def _corpus(root: Path) -> None:
-    for folder, stem in (("AMCRISIS", "AC"), ("VAULT", "CTRY")):
+    for folder, stem in (("COLLAGE4", "EXIT"), ("VAULT", "CTRY")):
         (root / "corpus" / folder).mkdir(parents=True)
         (root / "corpus" / folder / f"{stem}.FLM").write_bytes(stem.encode())
 
@@ -304,16 +290,14 @@ def test_main_skips_known_stalls_unless_only_or_retry_errors_name_them(
 
     assert batch_parity.main(root) == 0
     assert fake.calls == [("vault-ctry", "capture")]
-    assert fake.options == [{}]
 
-    assert batch_parity.main([*root, "--only", "amcrisis-ac", "--capture-frames", "0"]) == 0
-    assert fake.calls[-1] == ("amcrisis-ac", "capture")
-    assert fake.options[-1] == {}
+    assert batch_parity.main([*root, "--only", "collage4-exit"]) == 0
+    assert fake.calls[-1] == ("collage4-exit", "capture")
 
     (tmp_path / parity_layout.batch_root() / "ledger.jsonl").unlink()
     fake.calls.clear()
     assert batch_parity.main([*root, "--retry-errors"]) == 0
-    assert {slug for slug, _ in fake.calls} == {"amcrisis-ac", "vault-ctry"}
+    assert {slug for slug, _ in fake.calls} == {"collage4-exit", "vault-ctry"}
 
 
 def test_skip_flag_adds_slugs_to_the_default_list(

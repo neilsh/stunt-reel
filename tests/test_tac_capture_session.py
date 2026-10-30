@@ -23,7 +23,6 @@ import pytest
 from archive_helpers import build_all
 from stunt_reel import dataroot, parity_artifacts, parity_layout
 from stunt_reel.all_archive import ArchiveMeta, publish_archive
-from stunt_reel.flm_walk import film_ticks
 from stunt_reel.parity_artifacts import CaptureSet, FilmId, Geometry
 from stunt_reel.tac import staging
 from stunt_reel.tac.emulator import (
@@ -36,7 +35,7 @@ from stunt_reel.tac.emulator import (
     PortTaken,
     WaitingForGuest,
 )
-from stunt_reel.tac.framebuffer import capture, stride_for
+from stunt_reel.tac.framebuffer import capture
 from stunt_reel.tac.palette import MODE_13H_PALETTE
 from stunt_reel.tac.playone import DGROUP_RUNTIME_SEG
 from stunt_reel.tac.session import (
@@ -74,11 +73,10 @@ def _run_capture(
     max_frames: int = 3,
     dgroup_segment: int = DGROUP_RUNTIME_SEG,
     film: FilmId | None = FILM,
-    stride: int = 1,
 ) -> dict[str, Any]:
     return run_session(
         repo.film,
-        sample=lambda session: capture(session, repo.out, max_frames, film=film, stride=stride),
+        sample=lambda session: capture(session, repo.out, max_frames, film=film),
         conf=repo.conf,
         dgroup_segment=dgroup_segment,
         emulator=emulator,
@@ -189,43 +187,6 @@ def test_clock_hold_stops_capture(staged_repo: StagedRepo) -> None:
 
     assert len(meta["frames"]) == 3
     assert [f["film_tick"] for f in meta["frames"]] == [0, 0, 0]
-
-
-def test_stride_dumps_every_nth_trap_hit_and_tags_it_exactly(staged_repo: StagedRepo) -> None:
-    """A stride skips the dump, clock and palette of the hits between samples, not the hits."""
-    guest = CaptureGuest()
-
-    meta = _run_capture(staged_repo, MockEmulator(guest.mock), stride=2)
-
-    # Sampled hits 2, 4 and 6 (clock 100 + 3 * hit); the stepped-over hits are never read.
-    assert [f["film_tick"] for f in meta["frames"]] == [106, 112, 118]
-    assert [f["global_tick"] for f in meta["frames"]] == [101, 107, 113]
-    assert guest.hits == 6
-    assert guest.dumps == SETTLE_DUMPS + 3
-
-
-def test_stride_counts_idle_in_trap_hits(staged_repo: StagedRepo) -> None:
-    """A sampled idle page is stride idle hits, so the give-up bound stays in trap hits."""
-    guest = CaptureGuest()
-    settle = guest.dump
-    # The dialog settles as usual; every page after the first trap hit is blank, never film content.
-    guest.mock.dump_source = lambda: settle() if guest.hits == 0 else bytes(FRAME_BYTES)
-
-    with pytest.raises(RuntimeError, match="after 2002 trap hits"):
-        _run_capture(staged_repo, MockEmulator(guest.mock), stride=2)
-
-
-def test_stride_for_spreads_the_sample_over_the_whole_film() -> None:
-    assert stride_for(0, 40) == 1
-    assert stride_for(1342, 0) == 1
-    assert stride_for(1342, 40) == 3
-    assert stride_for(30000, 40) == 68
-    assert stride_for(100, 40) == 1
-
-
-def test_film_ticks_sums_the_slice_durations() -> None:
-    fixture = Path(__file__).resolve().parent / "fixtures" / "synthetic_timeline.flm"
-    assert film_ticks(fixture.read_bytes()) == 12
 
 
 # ==============================================================================
@@ -850,7 +811,6 @@ def test_capture_script_keeps_its_flags_and_progress_lines(
     assert args.out is None
     assert args.dgroup_segment == DGROUP_RUNTIME_SEG
     assert args.max_frames == 2000
-    assert args.sample_frames == 0
     assert args.conf == Path("tools/dosbox/dosbox-parity.conf")
     assert args.port == 0
     assert args.no_launch is False

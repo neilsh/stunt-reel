@@ -26,11 +26,10 @@ from typing import Any
 from stunt_reel import dataroot, parity_layout, runs
 from stunt_reel.all_archive import ArchiveError, resolve_all
 from stunt_reel.dataroot import ensure_links_or_report
-from stunt_reel.flm_walk import FlmWalkError, film_ticks
 from stunt_reel.parity_artifacts import CAPTURE_FRAMES_DIR, FilmId
 from stunt_reel.tac import playone, staging
 from stunt_reel.tac.emulator import EmulatorUnavailable, Launching, PortTaken, WaitingForGuest
-from stunt_reel.tac.framebuffer import capture, stride_for
+from stunt_reel.tac.framebuffer import capture
 from stunt_reel.tac.session import (
     PLAYONE_PROFILE,
     DialogSettled,
@@ -88,16 +87,6 @@ def parse_args() -> argparse.Namespace:
         help=(
             "cap on captured film frames; capture normally stops by itself once the film "
             "clock holds still at the end of the film"
-        ),
-    )
-    parser.add_argument(
-        "--sample-frames",
-        type=int,
-        default=0,
-        help=(
-            "spread about this many frames over the whole film instead of dumping every trap "
-            "hit: the film's length in ticks sets a stride of trap hits between dumps (0, the "
-            "default, dumps every hit). Tags stay exact; --max-frames still caps the count"
         ),
     )
     parser.add_argument(
@@ -211,23 +200,6 @@ def run(args: argparse.Namespace) -> int:
             shutil.rmtree(claimed, ignore_errors=True)
 
 
-def _stride(sample_frames: int, film: Path) -> int:
-    """Trap hits between dumps for *sample_frames* frames over *film*; 1 when it is unwalkable."""
-    if sample_frames <= 0:
-        return 1
-    try:
-        ticks = film_ticks(film.read_bytes())
-    except FlmWalkError as exc:
-        print(f"[capture] {film.name} is not walkable ({exc}); sampling every frame", flush=True)
-        return 1
-    stride = stride_for(ticks, sample_frames)
-    print(
-        f"[capture] {ticks} film ticks, {sample_frames} frames: dumping every {stride} trap hits",
-        flush=True,
-    )
-    return stride
-
-
 def _capture_into(
     args: argparse.Namespace,
     out: Path,
@@ -245,12 +217,8 @@ def _capture_into(
         "checkout": re.sub(r"[^A-Za-z0-9._-]", "-", dataroot.REPO_ROOT.name),
     }
 
-    stride = _stride(args.sample_frames, film)
-
     def sample(session: Session) -> dict[str, Any]:
-        return capture(
-            session, out, args.max_frames, stride=stride, film=film_id, provenance=provenance
-        )
+        return capture(session, out, args.max_frames, film=film_id, provenance=provenance)
 
     try:
         meta = run_session(

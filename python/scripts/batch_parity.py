@@ -3,7 +3,7 @@
 Usage:
     mise run batch-parity -- [--only SLUG,...] [--limit N] [--stages archive,capture,render,score]
         [--retry-errors] [--summary] [--archive-timeout S] [--capture-timeout S] [--data-root DIR]
-        [--capture-frames K] [--skip SLUG,...] [--jobs N] [--max-renders M] [--min-free-gb G]
+        [--skip SLUG,...] [--jobs N] [--max-renders M] [--min-free-gb G]
 
 Every stage outcome is appended to the ledger under the data root (`batch_root()/ledger.jsonl`).
 A stage whose latest record is ok or skipped is not repeated, so rerunning the same command resumes
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import functools
 import os
 import shutil
 import signal
@@ -46,7 +45,6 @@ __all__ = ["main", "process"]
 
 _LEDGER_NAME = "ledger.jsonl"
 _DEFAULT_TIMEOUT = 900.0
-_DEFAULT_CAPTURE_FRAMES = 0  # sampling did not thin vault-balloon; see capture.md section 6
 _RENDER_TIMEOUT = 600.0
 _TIMEOUT_EXIT = 124
 _DEFAULT_MAX_RENDERS = 2
@@ -85,7 +83,6 @@ def process(
     limit: int | None,
     timeouts: dict[str, float],
     skip: frozenset[str] = frozenset(),
-    capture_frames: int = 0,
     jobs: int = 1,
     max_renders: int = _DEFAULT_MAX_RENDERS,
     min_free_gb: float = 0.0,
@@ -96,7 +93,6 @@ def process(
 
     A film in *skip* gets a ``skipped`` capture record in place of its capture and runs no later
     stage; a film outside it ignores such a record, so leaving the list lets it capture.
-    *capture_frames* samples that many frames per capture (0 captures every frame).
 
     *jobs* films run at once, each worker taking one film's stages in order; at most *max_renders*
     of them render at a time, and a render starts only while *min_free_gb* gigabytes are free under
@@ -111,7 +107,6 @@ def process(
         retry_errors=retry_errors,
         timeouts=timeouts,
         skip=skip,
-        capture_frames=capture_frames,
         renders=threading.BoundedSemaphore(max(max_renders, 1)),
         min_free=int(min_free_gb * _GIB),
         free_bytes=free_bytes,
@@ -145,7 +140,6 @@ class _Shared:
     retry_errors: bool
     timeouts: dict[str, float]
     skip: frozenset[str]
-    capture_frames: int
     renders: threading.BoundedSemaphore
     min_free: int
     free_bytes: Callable[[Path], int]
@@ -184,8 +178,6 @@ def _process_film(film: BatchFilm, shared: _Shared) -> int:
         if prior is not None and not shared.retry_errors:
             break
         function = _stage_function(stage)
-        if stage == "capture" and shared.capture_frames > 0:
-            function = functools.partial(batch_stages.run_capture, frames=shared.capture_frames)
         if stage == "render":
             record = _render_guarded(function, film, shared)
         else:
@@ -299,12 +291,6 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--capture-timeout", type=float, default=_DEFAULT_TIMEOUT, help="seconds per capture"
     )
     parser.add_argument(
-        "--capture-frames",
-        type=int,
-        default=_DEFAULT_CAPTURE_FRAMES,
-        help="frames sampled per film, spread over its whole length; 0 captures every frame",
-    )
-    parser.add_argument(
         "--skip",
         default=None,
         help="comma list of film slugs whose capture is skipped, added to the known stalls",
@@ -373,7 +359,6 @@ def main(argv: list[str] | None = None) -> int:
         limit=args.limit,
         timeouts=timeouts,
         skip=skip,
-        capture_frames=args.capture_frames,
         jobs=args.jobs,
         max_renders=args.max_renders,
         min_free_gb=args.min_free_gb,

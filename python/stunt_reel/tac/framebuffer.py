@@ -50,9 +50,7 @@ __all__ = [
     "MAX_IDLE_HITS",
     "PAGE_OFFSET",
     "PALETTE_ENTRIES",
-    "TICKS_PER_HIT",
     "capture",
-    "stride_for",
 ]
 
 _LOGGER = logging.getLogger(__name__)
@@ -69,20 +67,6 @@ END_HOLD_FRAMES: int = 3
 #: Trap hits without a new film frame, once frames exist, that mean the film has ended
 #: (faded to black or back to the dialog).
 END_IDLE_HITS: int = 300
-#: Film ticks between two trap hits, measured on CTRY (1,342 ticks over 124 frames) and INTRO.
-TICKS_PER_HIT: int = 11
-
-
-def stride_for(film_ticks: int, sample_frames: int) -> int:
-    """Trap hits between samples that spread about *sample_frames* frames over the whole film.
-
-    A film of ``film_ticks`` ticks yields about ``film_ticks / TICKS_PER_HIT`` trap hits; the
-    stride is how many of them make one sample. ``0`` frames, or a film shorter than the
-    sample, means every hit (stride 1), which is the unsampled capture.
-    """
-    if sample_frames <= 0:
-        return 1
-    return max(1, film_ticks // (TICKS_PER_HIT * sample_frames))
 
 
 def capture(
@@ -91,7 +75,6 @@ def capture(
     max_frames: int,
     *,
     stop_after_repeats: int = END_HOLD_FRAMES,
-    stride: int = 1,
     film: FilmId | None = None,
     provenance: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
@@ -107,11 +90,6 @@ def capture(
     emulator dropping the connection), and max_frames is only a cap. meta.json is
     written last. *provenance* (when and by which checkout) joins the diagnostics in
     meta.json; it is not part of the capture's identity, which is the film and its frames.
-
-    With *stride* above one, the guest still runs to every trap hit but only each stride-th hit
-    is dumped, tagged and written: the hits between are stepped over without a framebuffer dump,
-    clock read or palette read, so a sample costs the same and the film's pictures between
-    samples are skipped. Idle counts stay in trap hits (a sampled idle page is *stride* hits).
     """
     frames_dir = out_dir / CAPTURE_FRAMES_DIR
     frames_dir.mkdir(parents=True, exist_ok=True)
@@ -124,14 +102,12 @@ def capture(
     repeats = 0
 
     while len(frames) < max_frames:
-        for _ in range(stride - 1):
-            session.next_frame()
         page = session.next_frame()
         raster = page.raster
         distinct = len(set(raster))
 
         if raster == previous_raster or distinct < FILM_MIN_COLORS:
-            idle += stride
+            idle += 1
             if frames and idle > END_IDLE_HITS:
                 _LOGGER.info(
                     "[capture] no new film frame for %d trap hits after %d frames: "
