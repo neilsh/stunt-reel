@@ -50,6 +50,7 @@ __all__ = [
     "LiveSocketTransport",
     "MockTransport",
     "Transport",
+    "parse_video_mode",
 ]
 
 #: A colour as an 8-bit RGB triple.
@@ -72,6 +73,16 @@ _VGA_SEGMENT: int = 0xA000
 _DUMP_IDS: Iterator[int] = itertools.count(1)
 
 _DAC_ENTRY_RE = re.compile(r"[0-9A-Fa-f]{6}")
+_VIDEO_MODE_RE = re.compile(r"mode=(M_[A-Z0-9_]+)")
+
+
+def parse_video_mode(lines: Sequence[str]) -> str:
+    """The mode name in a ``VGA MODE`` reply, e.g. ``M_VGA`` from ``... | mode=M_VGA vref=70Hz``."""
+    for line in lines:
+        found = _VIDEO_MODE_RE.search(line)
+        if found is not None:
+            return found.group(1)
+    raise ValueError(f"no mode= field in the VGA MODE reply: {list(lines)!r}")
 
 
 @runtime_checkable
@@ -96,6 +107,10 @@ class Transport(Protocol):
 
     def step_to_retrace(self) -> None:
         """Arm the post-retrace trap on the first call, then stop at its next hit."""
+        ...
+
+    def video_mode(self) -> str:
+        """The VGA mode name the emulator reports, for example ``M_VGA`` or ``M_TEXT``."""
         ...
 
     def close(self) -> None:
@@ -336,6 +351,10 @@ class _FramedTransport:
             self._trap_armed = True
         self.request("RUN")
 
+    def video_mode(self) -> str:
+        """Ask the debugger for the VGA mode name."""
+        return parse_video_mode(self.request("VGA MODE"))
+
 
 class LiveSocketTransport(_FramedTransport):
     """Live TCP socket transport connecting to the dosbox-x-mcp-server wire protocol.
@@ -507,6 +526,10 @@ class MockTransport:
         self.dump_source: Callable[[], bytes] | None = None
         #: Optional hook advancing the guest once per step_to_retrace() call.
         self.retrace_source: Callable[[], None] | None = None
+        #: Mode served by video_mode() unless video_mode_source is set.
+        self.video_mode_name: str = "M_VGA"
+        #: Optional hook returning the mode name per video_mode() call.
+        self.video_mode_source: Callable[[], str] | None = None
 
         # Initialize standard BIOS Data Area (0040:001A head=0x001E, 0040:001C tail=0x001E)
         self.write_u16(0x0040, 0x001A, 0x001E)
@@ -678,6 +701,12 @@ class MockTransport:
         """Queue one keystroke in the simulated BIOS Data Area ring buffer."""
         self._require_open()
         BdaInjector.inject_keys(self, [key])
+
+    def video_mode(self) -> str:
+        """Serve the configured mode name, from video_mode_source when it is set."""
+        self._require_open()
+        source = self.video_mode_source
+        return source() if source is not None else self.video_mode_name
 
     def step_to_retrace(self) -> None:
         """Advance the simulated guest to its next post-retrace trap hit."""
