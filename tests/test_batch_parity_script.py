@@ -6,10 +6,13 @@ corpus is built in `tmp_path`, and the process runner fails the test if anything
 
 from __future__ import annotations
 
+import json
 import sys
+import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -36,6 +39,7 @@ class FakeStages:
         self.failing: set[tuple[str, str]] = set()
         self.calls: list[tuple[str, str]] = []
         self.options: list[dict[str, int]] = []
+        self.during: Callable[[str, str], None] | None = None
 
     def factory(self, stage: str) -> StageFunction:
         def run_stage(
@@ -43,6 +47,8 @@ class FakeStages:
         ) -> Record:
             self.calls.append((film.slug, stage))
             self.options.append(options)
+            if self.during is not None:
+                self.during(film.slug, stage)
             failed = (film.slug, stage) in self.failing
             return Record(
                 slug=film.slug,
@@ -86,6 +92,7 @@ def _process(
     limit: int | None = None,
     skip: frozenset[str] = frozenset(),
     capture_frames: int = 0,
+    **concurrency: Any,
 ) -> int:
     return batch_parity.process(
         films,
@@ -98,6 +105,7 @@ def _process(
         timeouts=TIMEOUTS,
         skip=skip,
         capture_frames=capture_frames,
+        **concurrency,
     )
 
 
@@ -317,3 +325,95 @@ def test_skip_flag_adds_slugs_to_the_default_list(
     args = ["--data-root", str(tmp_path), "--stages", "capture", "--skip", "vault-ctry"]
     assert batch_parity.main(args) == 0
     assert fake.calls == []
+
+
+def _slugs(count: int) -> list[str]:
+    return [f"film-{index}" for index in range(count)]
+
+
+def test_jobs_keep_each_films_stage_order_and_one_ledger_record_per_stage_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _install(monkeypatch)
+    fake.during = lambda _slug, _stage: time.sleep(0.005)
+    films = [_film(slug) for slug in _slugs(6)]
+    assert _process(films, tmp_path, jobs=3) == 0
+    for slug in _slugs(6):
+        assert [stage for name, stage in fake.calls if name == slug] == list(STAGES)
+    lines = (tmp_path / "ledger.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 6 * len(STAGES)
+    assert all(json.loads(line)["status"] == "ok" for line in lines)
+
+    assert _process(films, tmp_path, jobs=3) == 0
+    assert len(fake.calls) == 6 * len(STAGES), "a second run repeats nothing"
+
+
+def test_jobs_an_error_stops_only_its_own_film_and_errors_are_summed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _install(monkeypatch)
+    fake.failing.update({("film-1", "capture"), ("film-2", "archive")})
+    films = [_film(slug) for slug in _slugs(4)]
+    assert _process(films, tmp_path, jobs=4) == 2
+    done = {slug: [stage for name, stage in fake.calls if name == slug] for slug in _slugs(4)}
+    assert done["film-0"] == list(STAGES)
+    assert done["film-1"] == ["archive", "capture"]
+    assert done["film-2"] == ["archive"]
+    assert done["film-3"] == list(STAGES)
+
+
+def test_jobs_limit_and_stages_keep_their_meaning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _install(monkeypatch)
+    films = [_film(slug) for slug in _slugs(5)]
+    _process(films, tmp_path, jobs=3, limit=2, stages=("capture", "render"))
+    assert sorted(fake.calls) == sorted(
+        [(slug, stage) for slug in ("film-0", "film-1") for stage in ("capture", "render")]
+    )
+
+
+def test_max_renders_caps_simultaneous_render_stages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _install(monkeypatch)
+    lock = threading.Lock()
+    active = 0
+    peak = 0
+
+    def during(_slug: str, stage: str) -> None:
+        nonlocal active, peak
+        if stage != "render":
+            return
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.03)
+        with lock:
+            active -= 1
+
+    fake.during = during
+    films = [_film(slug) for slug in _slugs(6)]
+    assert _process(films, tmp_path, jobs=6, max_renders=2) == 0
+    assert 1 <= peak <= 2
+    assert len(fake.calls) == 6 * len(STAGES)
+
+
+def test_a_render_waits_for_free_disk_instead_of_recording_an_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _install(monkeypatch)
+    gib = 1024**3
+    free = iter([1 * gib, 2 * gib, 9 * gib])
+    sleeps: list[float] = []
+    errors = _process(
+        [_film("a-film")],
+        tmp_path,
+        min_free_gb=8.0,
+        free_bytes=lambda _path: next(free),
+        sleep=sleeps.append,
+    )
+    assert errors == 0
+    assert sleeps == [30.0, 30.0]
+    assert ("a-film", "render") in fake.calls
+    assert all(r.status == "ok" for r in batch_ledger.read(tmp_path / "ledger.jsonl"))

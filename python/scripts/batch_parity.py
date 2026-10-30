@@ -3,7 +3,7 @@
 Usage:
     mise run batch-parity -- [--only SLUG,...] [--limit N] [--stages archive,capture,render,score]
         [--retry-errors] [--summary] [--archive-timeout S] [--capture-timeout S] [--data-root DIR]
-        [--capture-frames K] [--skip SLUG,...]
+        [--capture-frames K] [--skip SLUG,...] [--jobs N] [--max-renders M] [--min-free-gb G]
 
 Every stage outcome is appended to the ledger under the data root (`batch_root()/ledger.jsonl`).
 A stage whose latest record is ok or skipped is not repeated, so rerunning the same command resumes
@@ -22,6 +22,10 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -45,6 +49,10 @@ _DEFAULT_TIMEOUT = 900.0
 _DEFAULT_CAPTURE_FRAMES = 40
 _RENDER_TIMEOUT = 600.0
 _TIMEOUT_EXIT = 124
+_DEFAULT_MAX_RENDERS = 2
+_DEFAULT_MIN_FREE_GB = 8.0
+_DISK_POLL_SECONDS = 30.0
+_GIB = 1024**3
 
 
 def _stage_function(stage: str) -> Callable[[BatchFilm, Path, Runner, float], Record]:
@@ -56,6 +64,14 @@ def _stage_function(stage: str) -> Callable[[BatchFilm, Path, Runner, float], Re
         "score": batch_stages.run_score,
     }
     return functions[stage]
+
+
+def _free_bytes(path: Path) -> int:
+    """Free bytes on the volume holding *path*, or its nearest existing parent."""
+    probe = path
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    return shutil.disk_usage(probe).free
 
 
 def process(
@@ -70,49 +86,133 @@ def process(
     timeouts: dict[str, float],
     skip: frozenset[str] = frozenset(),
     capture_frames: int = 0,
+    jobs: int = 1,
+    max_renders: int = _DEFAULT_MAX_RENDERS,
+    min_free_gb: float = 0.0,
+    free_bytes: Callable[[Path], int] = _free_bytes,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> int:
-    """Run the requested stages of each film in turn; return how many stage errors this call recorded.
+    """Run the requested stages of each film; return how many stage errors this call recorded.
 
     A film in *skip* gets a ``skipped`` capture record in place of its capture and runs no later
     stage; a film outside it ignores such a record, so leaving the list lets it capture.
     *capture_frames* samples that many frames per capture (0 captures every frame).
+
+    *jobs* films run at once, each worker taking one film's stages in order; at most *max_renders*
+    of them render at a time, and a render starts only while *min_free_gb* gigabytes are free under
+    the batch root (it polls with *sleep* until they are). One lock orders ledger appends, the
+    resume records and the progress lines. ``jobs=1`` runs the films in the calling thread.
     """
-    records = read(ledger)
-    errors = 0
-    for film in films[:limit]:
-        for stage in STAGES:
-            if stage not in stages:
-                continue
-            prior = latest(records, film.slug, stage)
-            if stage == "capture":
-                stalled = prior is not None and prior.message == batch_stages.KNOWN_STALL_MESSAGE
-                if film.slug in skip and (prior is None or stalled):
-                    if prior is None:
-                        record = batch_stages.skip_stalled_capture(film)
-                        append(ledger, record)
-                        records.append(record)
-                        _report(record)
-                    break
-                if stalled:
-                    prior = None  # the film left the skip list: capture it after all
-            if prior is not None and prior.status != "error":
-                continue
-            if prior is not None and not retry_errors:
-                break
-            function = _stage_function(stage)
-            if stage == "capture" and capture_frames > 0:
-                function = functools.partial(batch_stages.run_capture, frames=capture_frames)
-            record = function(film, root, run, timeouts[stage])
-            append(ledger, record)
-            records.append(record)
+    shared = _Shared(
+        root=root,
+        ledger=ledger,
+        run=run,
+        stages=stages,
+        retry_errors=retry_errors,
+        timeouts=timeouts,
+        skip=skip,
+        capture_frames=capture_frames,
+        renders=threading.BoundedSemaphore(max(max_renders, 1)),
+        min_free=int(min_free_gb * _GIB),
+        free_bytes=free_bytes,
+        sleep=sleep,
+        records=read(ledger),
+    )
+    selected = films[:limit]
+    if jobs <= 1 or len(selected) <= 1:
+        return sum(_process_film(film, shared) for film in selected)
+    pool = ThreadPoolExecutor(max_workers=jobs)
+    try:
+        futures = [pool.submit(_process_film, film, shared) for film in selected]
+        return sum(future.result() for future in futures)
+    except KeyboardInterrupt:
+        # Stop submitting: films not yet started are dropped, running ones finish or are killed
+        # by the runner's own process-tree kill.
+        pool.shutdown(wait=True, cancel_futures=True)
+        raise
+    finally:
+        pool.shutdown(wait=True)
+
+
+@dataclass
+class _Shared:
+    """What every film worker shares: the settings and the lock-guarded ledger state."""
+
+    root: Path
+    ledger: Path
+    run: Runner
+    stages: tuple[str, ...]
+    retry_errors: bool
+    timeouts: dict[str, float]
+    skip: frozenset[str]
+    capture_frames: int
+    renders: threading.BoundedSemaphore
+    min_free: int
+    free_bytes: Callable[[Path], int]
+    sleep: Callable[[float], None]
+    records: list[Record]
+    lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def prior(self, slug: str, stage: str) -> Record | None:
+        with self.lock:
+            return latest(self.records, slug, stage)
+
+    def commit(self, record: Record) -> None:
+        """Append *record* to the ledger and the resume list, and print its line, as one step."""
+        with self.lock:
+            append(self.ledger, record)
+            self.records.append(record)
             _report(record)
-            if record.status == "error":
-                errors += 1
+
+
+def _process_film(film: BatchFilm, shared: _Shared) -> int:
+    """Run one film's stages in order, stopping at its first error; return 1 if it errored."""
+    for stage in STAGES:
+        if stage not in shared.stages:
+            continue
+        prior = shared.prior(film.slug, stage)
+        if stage == "capture":
+            stalled = prior is not None and prior.message == batch_stages.KNOWN_STALL_MESSAGE
+            if film.slug in shared.skip and (prior is None or stalled):
+                if prior is None:
+                    shared.commit(batch_stages.skip_stalled_capture(film))
                 break
-            if stage == "score":
-                _copy_contact_sheets(film.slug, root)
-                _drop_render(film.slug, root)
-    return errors
+            if stalled:
+                prior = None  # the film left the skip list: capture it after all
+        if prior is not None and prior.status != "error":
+            continue
+        if prior is not None and not shared.retry_errors:
+            break
+        function = _stage_function(stage)
+        if stage == "capture" and shared.capture_frames > 0:
+            function = functools.partial(batch_stages.run_capture, frames=shared.capture_frames)
+        if stage == "render":
+            record = _render_guarded(function, film, shared)
+        else:
+            record = function(film, shared.root, shared.run, shared.timeouts[stage])
+        shared.commit(record)
+        if record.status == "error":
+            return 1
+        if stage == "score":
+            _copy_contact_sheets(film.slug, shared.root)
+            _drop_render(film.slug, shared.root)
+    return 0
+
+
+def _render_guarded(
+    function: Callable[[BatchFilm, Path, Runner, float], Record], film: BatchFilm, shared: _Shared
+) -> Record:
+    """Run the render stage when a render slot and enough free disk are available."""
+    with shared.renders:
+        batch = shared.root / parity_layout.batch_root()
+        announced = False
+        while shared.free_bytes(batch) < shared.min_free:
+            if not announced:
+                with shared.lock:
+                    print(f"{film.slug} render waiting for free disk", flush=True)
+                announced = True
+            shared.sleep(_DISK_POLL_SECONDS)
+        return function(film, shared.root, shared.run, shared.timeouts["render"])
 
 
 def _copy_contact_sheets(slug: str, root: Path) -> None:
@@ -210,6 +310,21 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="comma list of film slugs whose capture is skipped, added to the known stalls",
     )
     parser.add_argument(
+        "--jobs", type=int, default=1, help="films processed at once (default 1, one at a time)"
+    )
+    parser.add_argument(
+        "--max-renders",
+        type=int,
+        default=_DEFAULT_MAX_RENDERS,
+        help="render stages allowed at once; each writes 2 to 5 GB until its score",
+    )
+    parser.add_argument(
+        "--min-free-gb",
+        type=float,
+        default=_DEFAULT_MIN_FREE_GB,
+        help="a render waits (polling every 30 s) while less than this is free under the batch root",
+    )
+    parser.add_argument(
         "--data-root", type=Path, default=REPO_ROOT, help="checkout holding corpus/ and captures"
     )
     return parser.parse_args(argv)
@@ -259,6 +374,9 @@ def main(argv: list[str] | None = None) -> int:
         timeouts=timeouts,
         skip=skip,
         capture_frames=args.capture_frames,
+        jobs=args.jobs,
+        max_renders=args.max_renders,
+        min_free_gb=args.min_free_gb,
     )
     print(f"batch-parity: {len(films)} films, {errors} new stage errors; ledger {ledger}")
     return 0

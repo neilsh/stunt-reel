@@ -9,10 +9,11 @@ mise run batch-parity                       # resumable: finished stages are ski
 mise run batch-parity -- --only SLUG,...    # named films
 mise run batch-parity -- --limit N          # the first N films by slug
 mise run batch-parity -- --retry-errors     # rerun stages whose latest record is an error
+mise run batch-parity -- --jobs N            # N films at once (default 1)
 mise run batch-parity -- --summary          # counts, failing films, lowest and highest SSIM
 ```
 
-Each distinct film (579 `.FLM` files, 529 after de-duplication by sha256, [`batch_films.py`](../../python/stunt_reel/batch_films.py)) goes through four stages ([`batch_parity.py`](../../python/scripts/batch_parity.py), [`batch_stages.py`](../../python/stunt_reel/batch_stages.py)): `archive` (`MAKEONE` through `make_all`; skipped when a sibling `.ALL` exists, 260 films), `capture` (`capture_playone_reference`), `render` (`stuntreel --headless`) and `score` (`stuntreel parity`). The stages stop at a film's first error. The append-only ledger is `build/parity/batch/ledger.jsonl` ([`batch_ledger.py`](../../python/stunt_reel/batch_ledger.py)), one record per stage run (`slug`, `stage`, `status`, `message`, `seconds`, `ssim`, `iou`); the latest record per slug and stage wins. Per film, `build/parity/batch/<slug>/report/` holds `report.json` and the contact sheets, copied to `frames/`; the rendered frames are deleted after a successful score because they run to 2 to 5 GB per film. Nothing here touches `references.toml`: the survey scores whatever capture it makes and pins nothing.
+Each distinct film (579 `.FLM` files, 529 after de-duplication by sha256, [`batch_films.py`](../../python/stunt_reel/batch_films.py)) goes through four stages ([`batch_parity.py`](../../python/scripts/batch_parity.py), [`batch_stages.py`](../../python/stunt_reel/batch_stages.py)): `archive` (`MAKEONE` through `make_all`; skipped when a sibling `.ALL` exists, 260 films), `capture` (`capture_playone_reference`), `render` (`stuntreel --headless`) and `score` (`stuntreel parity`). The stages stop at a film's first error. The append-only ledger is `build/parity/batch/ledger.jsonl` ([`batch_ledger.py`](../../python/stunt_reel/batch_ledger.py)), one record per stage run (`slug`, `stage`, `status`, `message`, `seconds`, `ssim`, `iou`); the latest record per slug and stage wins. Per film, `build/parity/batch/<slug>/report/` holds `report.json` and the contact sheets, copied to `frames/`; the rendered frames are deleted after a successful score because they run to 2 to 5 GB per film. With `--jobs N` each worker runs one film's stages in order; ledger appends and progress lines share one lock, `--max-renders M` (default 2) caps simultaneous renders, and a render waits, polling every 30 s, while less than `--min-free-gb` (default 8) is free under the batch root. Nothing here touches `references.toml`: the survey scores whatever capture it makes and pins nothing.
 
 ## 2. Interim Results
 
@@ -39,5 +40,5 @@ At the original settings, archive generation was 44% of wall time and capture 52
 1. Reject captures whose clock never advances, or with fewer than a handful of frames, before scoring; count how many of the scored films are affected.
 2. Why do the six stalled films never start (`6 distinct indices` at the dialog)? A wrong list selection by first letter is the first suspect.
 3. A scored single-frame film with IoU 0.83 and index agreement 0.001 suggests a palette or index-plane mismatch; look at one report's index planes.
-4. Parallel whole-film jobs: add `--jobs N` with a ledger lock and a free-disk guard once a quiet-machine run shows tick lag stays within 0 to 2 ticks.
+4. Parallel whole-film jobs: `--jobs N` is implemented; a quiet-machine run of 8 captures kept tick lag within 0 to 2 ticks, but a full `--jobs` survey has not run yet.
 5. The archive timeouts that remain at the new speed, and whether any film needs more than 900 s.
