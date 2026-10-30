@@ -23,12 +23,21 @@ from pathlib import Path
 from typing import Any
 
 from stunt_reel import dataroot, parity_layout
+from stunt_reel.all_archive import ArchiveError, resolve_all
 from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.parity_artifacts import FilmId
-from stunt_reel.tac import playone
+from stunt_reel.tac import playone, staging
 from stunt_reel.tac.emulator import EmulatorUnavailable, Launching, PortTaken, WaitingForGuest
 from stunt_reel.tac.framebuffer import capture
-from stunt_reel.tac.session import DialogSettled, Session, SessionError, SessionEvent, run_session
+from stunt_reel.tac.session import (
+    PLAYONE_PROFILE,
+    DialogSettled,
+    Profile,
+    Session,
+    SessionError,
+    SessionEvent,
+    run_session,
+)
 
 DEFAULT_FILM: Path = Path("corpus/stisldem/VAULT/CTRY.FLM")
 
@@ -41,7 +50,8 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_FILM,
         help=(
-            "the film's .FLM file (its .ALL must sit beside it); it is staged alone into "
+            "the film's .FLM file; its .ALL is the sibling or one stored by make-all (a film "
+            "with neither is refused); it is staged alone into "
             f"{parity_layout.stage_root().as_posix()}/<name>-<session>/ so the dialog needs one prefix "
             f"key (default {DEFAULT_FILM})"
         ),
@@ -136,8 +146,24 @@ def run(args: argparse.Namespace) -> int:
     """Drive one capture session and report its artifacts."""
     film = resolve(args.film)
     conf = resolve(args.conf)
+    try:
+        parity_layout.require_film_stem(film.stem)
+    except ValueError as exc:
+        print(f"[capture] {exc}", file=sys.stderr)
+        return 2
     if not ensure_links_or_report("mise run capture-ref"):
         return 2
+    profile = PLAYONE_PROFILE
+    if not args.no_launch:
+        try:
+            archive = resolve_all(film, dataroot.REPO_ROOT)
+        except ArchiveError as exc:
+            print(f"[capture] {exc}", file=sys.stderr)
+            return 2
+        profile = Profile(
+            stage=lambda film_path, conf_path: staging.stage_play(film_path, archive, conf_path),
+            keys=playone.film_selection_keys,
+        )
     flm_sha256 = hashlib.sha256(film.read_bytes()).hexdigest()
     film_id = FilmId(name=film.name, flm_bytes=film.stat().st_size, flm_sha256=flm_sha256)
     out = resolve(
@@ -167,6 +193,7 @@ def run(args: argparse.Namespace) -> int:
             port=args.port,
             no_launch=args.no_launch,
             progress=report,
+            profile=profile,
         )
     except PortTaken as exc:
         where = "" if exc.port == 0 else f" on 127.0.0.1:{exc.port}"
