@@ -55,6 +55,8 @@ def test_archive_command_carries_name_only_when_set(tmp_path: Path) -> None:
     # make_all's own timeout fires 90 s before the runner's kill so it can tear DOSBox-X down.
     assert command[command.index("--timeout") + 1] == "810.0"
 
+    assert command[command.index("--conf") + 1] == str(tmp_path / batch_stages.ARCHIVE_CONF)
+
     short = FakeRunner()
     batch_stages.run_archive(_film(tmp_path), tmp_path, short, 30.0)
     assert short.calls[0][0][short.calls[0][0].index("--timeout") + 1] == "1"
@@ -120,3 +122,23 @@ def test_score_record_carries_ssim_and_iou(tmp_path: Path) -> None:
     assert record.stage == "score"
     assert record.ssim == 0.7
     assert record.iou == 0.9
+
+
+def test_archive_conf_differs_from_the_capture_conf_only_in_the_cpu_lines() -> None:
+    tools = Path(__file__).resolve().parent.parent / "tools" / "dosbox"
+    capture = (tools / "dosbox-parity.conf").read_text(encoding="utf-8").splitlines()
+    archive = (tools / "dosbox-archive.conf").read_text(encoding="utf-8").splitlines()
+
+    def body(lines: list[str]) -> list[str]:
+        # Comments and the two cpu settings may differ; everything else must agree.
+        return [
+            line
+            for line in lines
+            if not line.startswith("#") and not line.startswith(("core =", "cycles ="))
+        ]
+
+    assert body(archive) == body(capture)
+    assert "core = dynamic" in archive
+    assert "cycles = max 50%" in archive
+    assert "core = normal" in capture
+    assert "cycles = 8000" in capture

@@ -31,6 +31,8 @@ __all__ = ["Runner", "run_archive", "run_capture", "run_render", "run_score"]
 Runner = Callable[[list[str], float], tuple[int, str]]
 
 _MAKE_ALL = Path("python/scripts/make_all.py")
+#: MAKEONE runs under a faster CPU profile than captures use (ADR 0023).
+ARCHIVE_CONF = Path("tools/dosbox/dosbox-archive.conf")
 _CAPTURE = Path("python/scripts/capture_playone_reference.py")
 _SIDATA = Path("corpus/siarchive/Developer/FreeFlight/SIDATA")
 _TAIL_WIDTH = 400
@@ -50,6 +52,8 @@ def run_archive(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Rec
         str(film.flm),
         "--timeout",
         str(max(timeout - _TEARDOWN_MARGIN, 1)),
+        "--conf",
+        str(root / ARCHIVE_CONF),
     ]
     if film.name is not None:
         command += ["--name", film.name]
