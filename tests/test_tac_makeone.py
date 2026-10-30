@@ -10,9 +10,8 @@ from archive_helpers import build_all
 from stunt_reel import dataroot, parity_layout
 from stunt_reel.tac import makeone
 from stunt_reel.tac.bda import KEY_ENTER, char_to_key
-from stunt_reel.tac.emulator import MockEmulator
 from stunt_reel.tac.session import DialogSettled
-from tac_mock import CaptureGuest, StagedRepo
+from tac_mock import StagedRepo, makeone_guest
 
 ARCHIVE = build_all([b"one", b"two"])
 
@@ -47,34 +46,6 @@ def _stage_dirs() -> list[str]:
     return sorted(p.name for p in root.iterdir()) if root.exists() else []
 
 
-def _guest(
-    *, text_after: int | None, archive: bytes | None
-) -> tuple[MockEmulator, list[tuple[int, int]]]:
-    """A MAKEONE guest: graphics until *text_after* polls, then text mode with *archive* written."""
-    guest = CaptureGuest()
-    mock = guest.mock
-    polls = {"n": 0}
-    keys: list[tuple[int, int]] = []
-    send = mock.inject_key
-
-    def inject(key: tuple[int, int]) -> None:
-        keys.append(key)
-        send(key)
-
-    def mode() -> str:
-        polls["n"] += 1
-        if text_after is None or polls["n"] <= text_after:
-            return "M_VGA"
-        if archive is not None:
-            for mount in (dataroot.REPO_ROOT / parity_layout.stage_root()).glob("ctry-*"):
-                (mount / "VAULT" / "CTRY.ALL").write_bytes(archive)
-        return "M_TEXT"
-
-    mock.inject_key = inject  # type: ignore[method-assign]
-    mock.video_mode_source = mode
-    return MockEmulator(mock), keys
-
-
 def test_keys_are_the_letter_then_enter() -> None:
     assert makeone.film_selection_keys("BALLOON.FLM") == [char_to_key("b"), KEY_ENTER]
 
@@ -95,7 +66,7 @@ def test_the_timeout_fires() -> None:
 def test_make_all_returns_the_archive_written_into_the_mount(
     staged_repo: StagedRepo, game_root: Path, makeone_conf: Path
 ) -> None:
-    emulator, keys = _guest(text_after=2, archive=ARCHIVE)
+    emulator, keys = makeone_guest(text_after=2, archive=ARCHIVE)
     events: list[object] = []
 
     data = makeone.make_all(
@@ -116,7 +87,7 @@ def test_make_all_returns_the_archive_written_into_the_mount(
 def test_make_all_without_an_archive_raises(
     staged_repo: StagedRepo, game_root: Path, makeone_conf: Path
 ) -> None:
-    emulator, _keys = _guest(text_after=1, archive=None)
+    emulator, _keys = makeone_guest(text_after=1, archive=None)
     with pytest.raises(makeone.NoArchive):
         makeone.make_all(
             staged_repo.film, game_root=game_root, conf=makeone_conf, poll=0.0, emulator=emulator
@@ -126,20 +97,20 @@ def test_make_all_without_an_archive_raises(
 def test_the_mount_is_gone_afterwards(
     staged_repo: StagedRepo, game_root: Path, makeone_conf: Path
 ) -> None:
-    emulator, _keys = _guest(text_after=1, archive=ARCHIVE)
+    emulator, _keys = makeone_guest(text_after=1, archive=ARCHIVE)
     makeone.make_all(
         staged_repo.film, game_root=game_root, conf=makeone_conf, poll=0.0, emulator=emulator
     )
     assert _stage_dirs() == []
 
-    emulator, _keys = _guest(text_after=1, archive=None)
+    emulator, _keys = makeone_guest(text_after=1, archive=None)
     with pytest.raises(makeone.NoArchive):
         makeone.make_all(
             staged_repo.film, game_root=game_root, conf=makeone_conf, poll=0.0, emulator=emulator
         )
     assert _stage_dirs() == []
 
-    emulator, _keys = _guest(text_after=None, archive=None)
+    emulator, _keys = makeone_guest(text_after=None, archive=None)
     with pytest.raises(makeone.MakeOneTimeout):
         makeone.make_all(
             staged_repo.film,

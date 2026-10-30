@@ -25,6 +25,7 @@ CALLERS = (
     STUNTS / "tac" / "staging.py",
     STUNTS / "tac" / "makeone.py",
     SCRIPTS / "capture_playone_reference.py",
+    SCRIPTS / "make_all.py",
 )
 
 
