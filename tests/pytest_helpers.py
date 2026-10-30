@@ -14,7 +14,10 @@ import secrets
 import shutil
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 CACHE_DIRNAME = ".pytest_cache"
 BASETEMP_PREFIX = "basetemp-"
@@ -41,7 +44,7 @@ def install_windows_mkdir_shim() -> None:
     basetemp and numbered temp dirs that way.  Windows ignores the mode anyway, so
     dropping it changes no behaviour outside the sandbox.
     """
-    global _SHIM_INSTALLED
+    global _SHIM_INSTALLED  # noqa: PLW0603
     if _SHIM_INSTALLED or not _needs_mkdir_shim():
         return
     real_mkdir = os.mkdir

@@ -15,10 +15,13 @@ import hashlib
 import tomllib
 from dataclasses import dataclass
 from functools import lru_cache
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from stunt_reel import parity_layout
 from stunt_reel.dataroot import REPO_ROOT
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 __all__ = [
     "Reference",

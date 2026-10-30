@@ -252,9 +252,11 @@ def preflight(
     problems: list[str] = []
     for name in films:
         film = FILMS[name]
-        for path in (film.flm, film.all, film.sidata):
-            if not (root / path).exists():
-                problems.append(f"missing input {root / path} (try --data-root)")
+        problems.extend(
+            f"missing input {root / path} (try --data-root)"
+            for path in (film.flm, film.all, film.sidata)
+            if not (root / path).exists()
+        )
         try:
             references.reference_dir(root, name)
         except references.ReferenceCaptureError as err:

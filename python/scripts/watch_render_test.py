@@ -276,7 +276,7 @@ def _collect_after_kill(process: subprocess.Popen[str]) -> str:
     """Reap the killed process and return everything it wrote before dying."""
     try:
         stdout, _ = process.communicate(timeout=10.0)
-        return stdout
+        return stdout  # noqa: TRY300
     except subprocess.TimeoutExpired:
         with contextlib.suppress(OSError):
             process.kill()
@@ -397,7 +397,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.bin is not None:
             binary = Path(args.bin).resolve()
             if not binary.is_file():
-                raise WatchError(f"test binary not found: {binary}")
+                raise WatchError(f"test binary not found: {binary}")  # noqa: TRY301
             if not args.quiet:
                 print(f"BIN {binary}")
         else:

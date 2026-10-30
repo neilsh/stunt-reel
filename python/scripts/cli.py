@@ -7,10 +7,13 @@ that only one of the two takes stays in that script.
 
 from __future__ import annotations
 
-import argparse
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import argparse
+    from collections.abc import Mapping
 
 __all__ = [
     "ParityOptions",

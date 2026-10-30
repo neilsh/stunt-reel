@@ -330,7 +330,7 @@ def create_link(link: Path, target: Path) -> None:
     """Point *link* at *target*, with a junction on Windows and a symlink elsewhere."""
     link.parent.mkdir(parents=True, exist_ok=True)
     if os.name != "nt":
-        os.symlink(target, link, target_is_directory=True)
+        link.symlink_to(target, target_is_directory=True)
         return
     # A junction needs neither elevation nor Developer Mode, unlike a symlink.
     command = [
@@ -397,8 +397,10 @@ def convert_layout(root: Path) -> list[str]:
     for name, destination in (("StuntIsl", "stuntisl"), ("patch", "patches")):
         if (root / "target_bin" / name).exists():
             moves.append((root / "target_bin" / name, root / "corpus" / destination))
-    for film in sorted(entry for entry in (root / "reference").glob("*") if entry.is_dir()):
-        moves.append((film, root / "captures" / film.name / LEGACY_CAPTURE_ID))
+    moves.extend(
+        (film, root / "captures" / film.name / LEGACY_CAPTURE_ID)
+        for film in sorted(entry for entry in (root / "reference").glob("*") if entry.is_dir())
+    )
     moved: list[str] = []
     for source, target in moves:
         target.parent.mkdir(parents=True, exist_ok=True)

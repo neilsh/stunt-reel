@@ -8,10 +8,12 @@ go through the session and the transport operations directly.
 
 from __future__ import annotations
 
-from types import TracebackType
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
-from stunt_reel.tac.transport import Address, Transport
+if TYPE_CHECKING:
+    from types import TracebackType
+
+    from stunt_reel.tac.transport import Address, Transport
 
 __all__ = ["TacClient"]
 

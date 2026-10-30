@@ -31,10 +31,12 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import TextIO
+from typing import TYPE_CHECKING, TextIO
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 LOG_PATH = Path("target") / "check.log"
 

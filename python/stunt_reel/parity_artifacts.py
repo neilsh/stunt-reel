@@ -24,10 +24,12 @@ handlers keep working), naming the file and the field.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping, Sequence
+    from pathlib import Path
 
 __all__ = [
     "CAPTURE_HEIGHT",
@@ -536,7 +538,7 @@ def _geometry_document(geometry: Geometry) -> dict[str, Any]:
 
 
 def _geometry_object(document: Mapping[str, Any], path: Path | None) -> Geometry:
-    geometry = Geometry(
+    return Geometry(
         width=_as_unsigned(document.get("width"), path, "geometry.width", 0xFFFFFFFF),
         height=_as_unsigned(document.get("height"), path, "geometry.height", 0xFFFFFFFF),
         viewport_rows=(
@@ -547,7 +549,6 @@ def _geometry_object(document: Mapping[str, Any], path: Path | None) -> Geometry
             )
         ),
     )
-    return geometry
 
 
 def _palette_object(
@@ -872,8 +873,10 @@ def open_render(directory: Path) -> RenderControls:
         record=None,
         legacy=True,
         warnings=(
-            f"has no {RENDER_DOCUMENT}; reading the legacy {LEGACY_SIDECAR} "
-            "(re-render the directory to replace it)",
+            (
+                f"has no {RENDER_DOCUMENT}; reading the legacy {LEGACY_SIDECAR} "
+                "(re-render the directory to replace it)"
+            ),
         ),
     )
 

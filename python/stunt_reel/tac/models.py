@@ -9,12 +9,14 @@ Governed by architectural invariants:
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from stunt_reel.tac.dos_math import compute_world_matrix as math_compute_world_matrix
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 __all__ = [
     "ActorTransform",

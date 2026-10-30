@@ -17,7 +17,6 @@ tools such as Ghidra that load MZ files:
 from __future__ import annotations
 
 import json
-import os
 import struct
 import sys
 from pathlib import Path
@@ -157,7 +156,7 @@ def main(argv: list[str]) -> int:
         print(__doc__)
         return 2
     # Only a corpus input needs the data root linked; any other file reads as it is.
-    reads_corpus = Path(os.path.abspath(argv[1])).is_relative_to(REPO_ROOT / "corpus")
+    reads_corpus = Path(argv[1]).absolute().is_relative_to(REPO_ROOT / "corpus")
     if reads_corpus and not ensure_links_or_report("unlzexe"):
         return 2
     image, meta = unpack(Path(argv[1]).read_bytes())

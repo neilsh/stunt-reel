@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from stunt_reel import parity_layout, references
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _capture(root: Path, film: str, capture_id: str, text: str = "{}") -> Path:

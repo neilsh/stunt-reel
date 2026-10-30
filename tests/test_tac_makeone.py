@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -12,6 +12,9 @@ from stunt_reel.tac import makeone
 from stunt_reel.tac.bda import KEY_ENTER, char_to_key
 from stunt_reel.tac.session import DialogSettled
 from tac_mock import StagedRepo, makeone_guest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 ARCHIVE = build_all([b"one", b"two"])
 

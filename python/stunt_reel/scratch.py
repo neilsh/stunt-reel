@@ -11,9 +11,12 @@ from __future__ import annotations
 import secrets
 import shutil
 import tempfile
-from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 @contextmanager

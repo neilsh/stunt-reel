@@ -13,9 +13,12 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Sequence
-from pathlib import Path
-from types import ModuleType
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from pathlib import Path
+    from types import ModuleType
 
 REQUIRED_KSC_VERSION = "0.11"
 _KSC_NAME = "kaitai-struct-compiler"

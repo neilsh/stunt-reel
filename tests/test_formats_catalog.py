@@ -5,8 +5,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 from stunt_reel import kaitai
 
@@ -16,6 +15,9 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import verify_formats_docs  # noqa: E402
+
+if TYPE_CHECKING:
+    import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

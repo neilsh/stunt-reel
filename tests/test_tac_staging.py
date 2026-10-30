@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from stunt_reel import dataroot, parity_layout
 from stunt_reel.tac import staging
-from tac_mock import StagedRepo
+
+if TYPE_CHECKING:
+    from tac_mock import StagedRepo
 
 REAL_CONF = Path(__file__).resolve().parent.parent / "tools" / "dosbox" / "dosbox-parity.conf"
 BACKSLASH = chr(92)

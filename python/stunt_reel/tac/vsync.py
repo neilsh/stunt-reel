@@ -8,8 +8,12 @@ stops at each later hit.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from stunt_reel.tac.playone import DGROUP_RUNTIME_SEG, FILM_CLOCK_OFFSET
-from stunt_reel.tac.transport import Address, Transport
+
+if TYPE_CHECKING:
+    from stunt_reel.tac.transport import Address, Transport
 
 __all__ = [
     "DEFAULT_TICK_ADDRESS",

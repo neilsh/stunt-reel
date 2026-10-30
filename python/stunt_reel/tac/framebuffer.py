@@ -18,8 +18,6 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Mapping
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from stunt_reel.parity_artifacts import (
@@ -35,6 +33,9 @@ from stunt_reel.parity_artifacts import (
 from stunt_reel.tac.transport import FRAME_BYTES, PAGE_OFFSET, PALETTE_ENTRIES
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+    from pathlib import Path
+
     from stunt_reel.tac.session import Session
 
 __all__ = [

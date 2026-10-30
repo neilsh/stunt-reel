@@ -45,5 +45,5 @@ def test_prune_keeps_the_newest_runs(tmp_path: Path) -> None:
 def test_mkdir_shim_keeps_a_0o700_directory_usable(tmp_path: Path) -> None:
     pytest_helpers.install_windows_mkdir_shim()
     child = tmp_path / "mode-700"
-    os.mkdir(child, 0o700)
+    os.mkdir(child, 0o700)  # noqa: PTH102 - exercising the os.mkdir shim
     assert list(child.iterdir()) == []
