@@ -190,8 +190,8 @@ _Avoid_: schema library
 ## Evidence
 
 **Corpus**:
-The local, gitignored set of original game files used as evidence. Never committed.
-_Avoid_: assets
+The local, gitignored set of original game files used as evidence: the demo, the full retail install, its patches and the community archive. Nothing this project runs ever changes it, and it is never committed.
+_Avoid_: assets, data archive, target binaries
 
 **Parity**:
 Comparison of a reconstructed render against a captured frame, scored by SSIM and mask IoU. The render is sampled from the timeline at the captured frame's film clock.
@@ -200,6 +200,14 @@ _Avoid_: parity (for checking a trajectory against an oracle trajectory)
 **Oracle trajectory**:
 A trusted reference trajectory that an evaluated timeline is checked against for position error. It concerns trajectory records only, never rendered pixels.
 _Avoid_: parity oracle, golden frames
+
+**Capture**:
+One run of `PLAYONE.EXE` under DOSBox-X that records a film's captured frames and palettes. A capture is never changed after it is written; a new run makes a new capture.
+_Avoid_: recording (the game's own word for filming a take), recapture (for overwriting one)
+
+**Reference capture**:
+The capture that parity scores a film against, chosen by an explicit promotion that the repository records.
+_Avoid_: golden frames, the reference (unqualified)
 
 **Captured frame**:
 One distinct rendered frame grabbed from `PLAYONE.EXE` at the vertical-retrace trap, numbered by capture order and tagged with its film clock.

@@ -4,7 +4,10 @@
 
 superseded in part by [ADR 0021](0021-capture-chooses-its-control-port.md): the data
 root stays read-only as described here; captures no longer serialise machine-wide,
-because each session binds its own control port.
+because each session binds its own control port. Its write guard is superseded by
+[ADR 0022](0022-captures-are-add-only-beside-a-read-only-corpus.md) (accepted, not yet
+implemented): the root splits into a corpus nothing writes and add-only captures, and
+`STUNT_DATA_WRITE` goes. Until that lands, the guard described below is what runs.
 
 Each agent works in its own git worktree, wherever its tool creates it: beside
 the checkout, or under a gitignored directory inside it such as
