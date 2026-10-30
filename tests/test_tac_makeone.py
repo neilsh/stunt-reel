@@ -121,3 +121,45 @@ def test_the_mount_is_gone_afterwards(
             emulator=emulator,
         )
     assert _stage_dirs() == []
+
+
+def test_a_teardown_failure_after_a_good_run_keeps_the_archive(
+    staged_repo: StagedRepo, game_root: Path, makeone_conf: Path
+) -> None:
+    emulator, _keys = makeone_guest(text_after=1, archive=ARCHIVE)
+
+    def refuse_to_stop(_timeout: float) -> None:
+        raise OSError("the emulator would not stop")
+
+    emulator.stop = refuse_to_stop  # type: ignore[method-assign]
+    warnings: list[str] = []
+
+    data = makeone.make_all(
+        staged_repo.film,
+        game_root=game_root,
+        conf=makeone_conf,
+        poll=0.0,
+        emulator=emulator,
+        warn=warnings.append,
+    )
+
+    assert data == ARCHIVE
+    assert len(warnings) == 1
+    assert "would not stop" in warnings[0]
+    assert _stage_dirs() == []
+
+
+def test_a_failure_before_the_archive_is_still_an_error(
+    staged_repo: StagedRepo, game_root: Path, makeone_conf: Path
+) -> None:
+    emulator, _keys = makeone_guest(text_after=1, archive=None)
+    emulator.stop = lambda _timeout: (_ for _ in ()).throw(OSError("late"))  # type: ignore[method-assign]
+    with pytest.raises(makeone.NoArchive):
+        makeone.make_all(
+            staged_repo.film,
+            game_root=game_root,
+            conf=makeone_conf,
+            poll=0.0,
+            emulator=emulator,
+            warn=lambda _message: None,
+        )
