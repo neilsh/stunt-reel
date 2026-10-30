@@ -12,13 +12,20 @@ import contextlib
 import itertools
 import os
 import shutil
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import NamedTuple
 
 from stunt_reel import dataroot, parity_layout
 
-__all__ = ["ENGINE_FILES", "StagedMount", "stage_film"]
+__all__ = [
+    "ENGINE_FILES",
+    "MAKEONE_FILES",
+    "StagedMount",
+    "stage_film",
+    "stage_makeone",
+    "stage_play",
+]
 
 #: Mount labels are per call, so two sessions in one process cannot share a mount.
 _LABELS: Iterator[int] = itertools.count(1)
@@ -48,9 +55,23 @@ ENGINE_FILES: tuple[str, ...] = (
     "VDATA.BIN",
 )
 
-#: The two conf literals a parity run rewrites; a miss must fail rather than mount the wrong tree.
+#: What MAKEONE.EXE needs at the mount root; its RES tree is copied beside them.
+MAKEONE_FILES: tuple[str, ...] = (
+    "MAKEONE.EXE",
+    "DRIVER1.BIN",
+    "DRIVER2.BIN",
+    "DRIVER3.BIN",
+    "GAME.CFG",
+    "INSTALL.CFG",
+    "PFONT.BIN",
+    "VDATA.BIN",
+)
+
+#: The conf literals a parity run rewrites; a miss must fail rather than mount the wrong tree.
 _CORPUS_MOUNT = 'mount c "corpus/stisldem"'
 _FILM_LITERAL = r"VAULT\CTRY.FLM"
+#: The autoexec command a MAKEONE run replaces; the newline keeps a comment mentioning it from matching.
+_PLAYONE_LINE = "\nplayone.exe"
 
 
 def _replace_once(text: str, literal: str, replacement: str, conf: Path) -> str:
@@ -62,37 +83,29 @@ def _replace_once(text: str, literal: str, replacement: str, conf: Path) -> str:
     return text.replace(literal, replacement, 1)
 
 
-def stage_film(film: Path, conf: Path) -> StagedMount:
-    """Stage film alone in a mount that belongs to this session, with its conf.
+def _stage(
+    film: Path,
+    conf: Path,
+    populate: Callable[[Path], None],
+    extra_literals: tuple[tuple[str, str], ...] = (),
+) -> StagedMount:
+    """Build one session's mount with *populate*, write its conf, and clean up on any failure.
 
-    Two captures of one film must not share a mount: each session used to rewrite one
-    directory under the stage root, so a second session deleted the tree the first was
-    still emulating from (ADR 0021). The mount is labelled per call, so two sessions in
-    one process cannot share one either, and the caller removes it once its emulator has
-    stopped.
-
-    Returns the staged mount and the generated conf (both under the parity stage root).
+    The mount is labelled per call, so two sessions in one process cannot share one, and the
+    caller removes it once its emulator has stopped (ADR 0021).
     """
-    archive = film.with_suffix(".ALL")
-    for needed in (film, archive):
-        if not needed.is_file():
-            msg = f"{needed} not found (the film's .FLM and .ALL must sit together)"
-            raise FileNotFoundError(msg)
-    source_root = film.parent.parent
     label = _stage_label()
     mount_dir = dataroot.REPO_ROOT / parity_layout.stage_dir(film.stem, label)
     staged_conf = dataroot.REPO_ROOT / parity_layout.stage_conf(film.stem, label)
     try:
         (mount_dir / "VAULT").mkdir(parents=True, exist_ok=True)
-        for name in ENGINE_FILES:
-            shutil.copy2(source_root / name, mount_dir / name)
-        shutil.copy2(film, mount_dir / "VAULT" / film.name)
-        shutil.copy2(archive, mount_dir / "VAULT" / archive.name)
-
+        populate(mount_dir)
         mount = mount_dir.relative_to(dataroot.REPO_ROOT).as_posix()
         text = conf.read_text(encoding="utf-8")
         text = _replace_once(text, _CORPUS_MOUNT, f'mount c "{mount}"', conf)
         text = _replace_once(text, _FILM_LITERAL, rf"VAULT\{film.name}", conf)
+        for literal, replacement in extra_literals:
+            text = _replace_once(text, literal, replacement, conf)
         staged_conf.write_text(text, encoding="utf-8")
     except BaseException:
         # The caller never receives these paths, so nothing else can remove them.
@@ -101,3 +114,57 @@ def stage_film(film: Path, conf: Path) -> StagedMount:
             staged_conf.unlink(missing_ok=True)
         raise
     return StagedMount(mount_dir, staged_conf)
+
+
+def stage_play(film: Path, archive: Path, conf: Path) -> StagedMount:
+    """Stage *film* and its *archive* alone in a mount for PLAYONE.EXE, with its conf.
+
+    PLAYONE finds both in the mount's VAULT directory, so they are copied just in time: the film under its own
+    name and the archive as ``<film stem>.ALL`` whatever the source spelled. Two captures of
+    one film must not share a mount: each session used to rewrite one directory under the
+    stage root, so a second session deleted the tree the first was still emulating from.
+
+    Returns the staged mount and the generated conf (both under the parity stage root).
+    """
+    for needed in (film, archive):
+        if not needed.is_file():
+            msg = f"{needed} not found (the film's .FLM and .ALL must sit together)"
+            raise FileNotFoundError(msg)
+    source_root = film.parent.parent
+
+    def populate(mount_dir: Path) -> None:
+        for name in ENGINE_FILES:
+            shutil.copy2(source_root / name, mount_dir / name)
+        shutil.copy2(film, mount_dir / "VAULT" / film.name)
+        shutil.copy2(archive, mount_dir / "VAULT" / f"{film.stem}.ALL")
+
+    return _stage(film, conf, populate)
+
+
+def stage_film(film: Path, conf: Path) -> StagedMount:
+    """Stage *film* with the ``.ALL`` that sits beside it (see :func:`stage_play`)."""
+    return stage_play(film, film.with_suffix(".ALL"), conf)
+
+
+def stage_makeone(film: Path, game_root: Path, conf: Path) -> StagedMount:
+    """Stage *film* in a fresh mount for MAKEONE.EXE, with a conf that runs it.
+
+    The mount holds :data:`MAKEONE_FILES`, the whole ``RES`` tree from *game_root* and
+    the film in its VAULT directory only, and is never reused: MAKEONE writes its ``.ALL`` into the mount, so
+    a mount that already held one would make the output ambiguous. The conf is the parity conf
+    with ``playone.exe`` replaced by ``makeone.exe``.
+    """
+    res = game_root / "RES"
+    for needed in (film, res):
+        if not needed.exists():
+            raise FileNotFoundError(
+                f"{needed} not found (MAKEONE needs the film and the game's RES tree)"
+            )
+
+    def populate(mount_dir: Path) -> None:
+        for name in MAKEONE_FILES:
+            shutil.copy2(game_root / name, mount_dir / name)
+        shutil.copytree(res, mount_dir / "RES")
+        shutil.copy2(film, mount_dir / "VAULT" / film.name)
+
+    return _stage(film, conf, populate, ((_PLAYONE_LINE, "\nmakeone.exe"),))
