@@ -239,6 +239,8 @@ class FilmId:
     name: str | None = None
     flm_bytes: int | None = None
     flm_sha256: str | None = None
+    #: Hash of the ``.ALL`` the capture played, so a later ``make-all`` cannot hide which one it was.
+    all_sha256: str | None = None
 
     def names_conflict(self, other: FilmId) -> bool:
         """Whether both sides name a film and the names differ, ignoring case."""
@@ -512,6 +514,7 @@ def _film_fields(document: Mapping[str, Any], path: Path | None) -> FilmId:
         name=_optional_string(document.get("film"), path, "film"),
         flm_bytes=_optional_int(document.get("flm_bytes"), path, "flm_bytes"),
         flm_sha256=_optional_string(document.get("flm_sha256"), path, "flm_sha256"),
+        all_sha256=_optional_string(document.get("all_sha256"), path, "all_sha256"),
     )
 
 
@@ -877,7 +880,16 @@ def open_render(directory: Path) -> RenderControls:
 
 #: Top-level fields the capture document owns; a diagnostic may not overwrite one.
 _CAPTURE_FIELDS = frozenset(
-    {"schema_version", "film", "flm_bytes", "flm_sha256", "frames", "width", "height"}
+    {
+        "schema_version",
+        "film",
+        "flm_bytes",
+        "flm_sha256",
+        "all_sha256",
+        "frames",
+        "width",
+        "height",
+    }
 )
 #: Per-frame fields the capture document owns; a diagnostic may not overwrite one.
 _CAPTURE_FRAME_FIELDS = frozenset({"ordinal", "film_tick", "frame_file", "palette_file"})
@@ -933,6 +945,8 @@ def _capture_document(capture: CaptureSet) -> dict[str, Any]:
         document["flm_bytes"] = capture.film.flm_bytes
     if capture.film.flm_sha256 is not None:
         document["flm_sha256"] = capture.film.flm_sha256
+    if capture.film.all_sha256 is not None:
+        document["all_sha256"] = capture.film.all_sha256
     document["frames"] = [
         {
             "ordinal": frame.ordinal,
