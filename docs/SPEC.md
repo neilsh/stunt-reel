@@ -143,7 +143,7 @@ The specification does not carry binary-analysis findings. They live in `researc
 | `PLAYONE.EXE` image, entry point, LZEXE packing, command tail (only a leading `?` is read, everything else is ignored), memory and disk gates | [`research/playone-exe/startup.md`](../research/playone-exe/startup.md) |
 | Modal `LOAD FILM` dialog, prefix search, BIOS Data Area keystroke injection, `.FLM` + `.ALL` pairing rule | [`research/playone-exe/navigation.md`](../research/playone-exe/navigation.md) |
 | `DGROUP` offsets, work-segment offsets, `# [MEM-*]` anchors | [`research/playone-exe/memory-map.md`](../research/playone-exe/memory-map.md) (evidence: [`memory.md`](../research/playone-exe/memory.md)) |
-| dosbox-automation capture harness and plan protocol | [`research/playone-exe/capture.md`](../research/playone-exe/capture.md) |
+| dosbox-automation capture harness and plan protocol | [`research/playone-exe/capture-dosbox-automation.md`](../research/playone-exe/capture-dosbox-automation.md) |
 | Display-list VM, `OP_TAP`, `OP_ANIMATE` | [`sod-vm.md`](../research/playone-exe/sod-vm.md), [`sod-animate.md`](../research/playone-exe/sod-animate.md) |
 | File formats and byte layouts | [`research/formats/INDEX.md`](../research/formats/INDEX.md) and the `.ksy` schemas |
 | Parity: method, results log, where the loss sits | [`research/parity/`](../research/parity/) |

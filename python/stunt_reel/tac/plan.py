@@ -260,7 +260,10 @@ def run_plan(
     dumps: dict[int, Dump] = {}
     picked = list(pick(trace))
     dump_ranges = ranges(trace, picked) if callable(ranges) else ranges
-    chunks = chunk(picked)
+    # MAX_DUMPS was measured with pages and palettes only; extra ranges spend the same Lua heap.
+    page_only = FRAME_BYTES + PALETTE_BYTES
+    per_frame = page_only + sum(r.length for r in dump_ranges)
+    chunks = chunk(picked, max(1, page_only * MAX_DUMPS // per_frame))
 
     def dump_pass(frames: list[int]) -> dict[int, Dump]:
         with open_runner() as runner:

@@ -129,6 +129,8 @@ def probe(
     pointer = (playone.AUTOMATION_DS, WORK_SEGMENT_POINTER)
 
     def ranges(trace: plan.Trace, frames: Sequence[int]) -> list[luagen.MemRange]:
+        if not frames:
+            raise RuntimeError(f"the film never reached any of the ticks {ticks}")
         works = {trace.entry(f).words[0] for f in frames}
         if len(works) != 1:
             raise RuntimeError(

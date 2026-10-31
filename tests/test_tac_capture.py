@@ -529,6 +529,13 @@ def test_probe_reads_the_work_segment_from_the_trace_then_dumps_it(
     assert "mem_read(0x1DF8, 0x0, 61440)" in mock.scripts[-1]
 
 
+def test_probe_names_ticks_the_film_never_reached(tmp_path: Path) -> None:
+    module = _load_script("probe_playone_light")
+
+    with pytest.raises(RuntimeError, match=r"never reached any of the ticks \[9000, 9999\]"):
+        module.probe(FakeFilm().runner(), KEYS, [9000, 9999], tmp_path, dump_all=False)
+
+
 def test_probe_script_failure_lines_and_exit_codes(
     staged_repo: StagedRepo,
     monkeypatch: pytest.MonkeyPatch,

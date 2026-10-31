@@ -2,7 +2,7 @@
 
 Capture moved to dosbox-automation ([`capture-dosbox-automation.md`](capture-dosbox-automation.md), plan [`dosbox-automation-switch-2026-10-30.md`](../../docs/process/plans/dosbox-automation-switch-2026-10-30.md)). This note keeps what is specific to DOSBox-X `2026.10.01` and `dosbox-x-mcp-server` `0.1.2`, so a reader of an old log row, a `references.toml` pin or a capture made before the switch can interpret it. The harness code (`transport.py`, `session.py`, `vsync.py`, `client.py`, `ensure_dosbox.py`, the `mcp` and `ensure-dosbox` tasks) exists through commit `81724a6`; the removal commit deletes it, and `git show 81724a6:python/stunt_reel/tac/transport.py` recovers it.
 
-Findings about `PLAYONE.EXE` itself (clock words, palette upload, render path) are not DOSBox-X specific and stay in [`memory.md`](memory.md), [`palette-fade.md`](palette-fade.md) and [`capture-dosbox-automation.md`](capture-dosbox-automation.md). One correction applies: `0F17:0C5E` (`0D51:0C5E` in the debugger's view) is the `ret` of `set_palette` (image `0x7B8E`), not a post-retrace loop boundary ([`capture-dosbox-automation.md` § 4.3](capture-dosbox-automation.md)). The trap below stopped at "the next slice" in practice, not at that address.
+Findings about `PLAYONE.EXE` itself (clock words, palette upload, render path) are not DOSBox-X specific and stay in [`memory.md`](memory.md), [`palette-fade.md`](palette-fade.md) and [`capture-dosbox-automation.md`](capture-dosbox-automation.md). One correction applies: `0F17:0C5E` is the `ret` of `set_palette` (image `0x7B8E`), not a post-retrace loop boundary ([`capture-dosbox-automation.md` § 4.3](capture-dosbox-automation.md)). Whether the debugger's `0D51:0C5E` breakpoint named the same bytes is unresolved: its linear address `0xE16E` maps to another image offset under each recorded load base. The trap below stopped at "the next slice" in practice, not at that address.
 
 ---
 
@@ -52,7 +52,9 @@ The parity profile therefore used `core = normal`, `output = surface`, no `autot
 
 Capture ended after 3 frames at one film clock, or 300 trap hits with no new film frame (`END_IDLE_HITS`); `--max-frames` (default 2000) capped it. Sampling was wall-paced: 0.25 s per frame and about 4 s of boot.
 
-## 5. Measured Behaviour (`[Bounded Observation]`)
+## 5. Measured Behaviour
+
+Every item below is `[Bounded Observation]`.
 
 * **Speed:** 140 `CTRY.FLM` frames in about 26 s; `INTRO.FLM` 213 frames in about 2 min 10 s (ticks 769 to 3,640, one frame per 11 ticks, nothing below 20 colours). Eight parallel captures finished in 64 s with the tick spread within 0 to 2, about 450 films per hour against 64 to 95 serial. No setting changed the 0.25 s per-frame cost (window size, frameskip, `core = dynamic`, `cycles = max`, `turbo`, `priority`, core pinning).
 * **Not repeatable:** first-frame `film_tick` 6 to 10 across runs, later frames differ by 0 to 2 ticks, 93 of 112 pages differ between two baseline runs, mid-run dips of about -28 ticks under load. `film_tick` tagging is what made runs comparable.

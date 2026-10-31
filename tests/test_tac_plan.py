@@ -129,7 +129,8 @@ def test_run_plan_traces_picks_then_dumps_in_chunks() -> None:
 
     picked = sorted(result.dumps)
     assert len(picked) == len(ENTRIES) - 1  # tick 0 is not a film frame
-    assert len(mock.scripts) == 1 + 5  # one trace pass, then ceil(199 / 40) = 5 dump passes
+    # One trace pass, then ceil(199 / 39) = 6 dump passes: the 2-byte range trims 40 to 39.
+    assert len(mock.scripts) == 1 + 6
     assert all('out["p"' not in s for s in mock.scripts[:1])
     dump = result.dumps[picked[0]]
     assert dump.page == PAGE
@@ -168,6 +169,31 @@ def test_dump_passes_run_side_by_side_up_to_the_limit() -> None:
 
     assert len(result.dumps) == len(ENTRIES) - 1
     assert state["most"] == 3
+
+
+def test_extra_ranges_shrink_each_pass_to_the_measured_byte_budget() -> None:
+    """40 page-only dumps fit Lua's memory; 40 pages plus a 60 KiB segment each would not."""
+    mock = _runner(ENTRIES)
+    probe_ranges = [luagen.MemRange(0x17C9, 0, 0xF000)]
+
+    plan.run_plan(
+        _open(mock),
+        keys=KEYS,
+        first=FIRST,
+        last=FIRST + len(ENTRIES) - 1,
+        pick=lambda trace: plan.pick_every(trace, stride=2)[:40],
+        ranges=probe_ranges,
+        timeout=5,
+    )
+
+    per_pass = [
+        len(re.findall(r"\d+", m.group(1)))
+        for s in mock.scripts[1:]
+        if (m := re.search(r"local dumps = \{([^}]*)\}", s))
+    ]
+    page_only = plan.FRAME_BYTES + plan.PALETTE_BYTES
+    assert max(per_pass) <= page_only * luagen.MAX_DUMPS // (page_only + 0xF000) < luagen.MAX_DUMPS
+    assert sum(per_pass) == 40
 
 
 def test_run_plan_with_nothing_picked_runs_only_the_trace() -> None:
