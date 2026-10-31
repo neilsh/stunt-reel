@@ -334,6 +334,18 @@ def test_an_environment_of_unknown_owner_is_kept(
     assert primary.is_dir()
 
 
+def test_an_undecodable_marker_is_an_unknown_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A marker that is not UTF-8 names no checkout; init must keep going, not raise.
+    _checkout(monkeypatch, _primary(tmp_path))
+    unknown = dataroot.env_root() / "garbled-00000000"
+    unknown.mkdir(parents=True)
+    dataroot.env_marker(unknown).write_bytes(b"\xff\xfe\x80")
+    assert dataroot.orphan_envs() == []
+    assert unknown.is_dir()
+
+
 def test_a_marker_inside_the_environment_still_names_its_checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

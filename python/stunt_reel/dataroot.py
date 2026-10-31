@@ -287,7 +287,7 @@ def _env_owner(target: Path) -> Path | None:
     for marker in (env_marker(target), target / ENV_MARKER):
         try:
             return Path(marker.read_text(encoding="utf-8").strip())
-        except OSError:
+        except (OSError, UnicodeError):
             continue
     return None
 
