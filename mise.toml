@@ -17,7 +17,7 @@ uv = "0.13.1"
 # Line coverage for the Rust crates (`mise run cov-rust`); not part of `check`.
 "cargo:cargo-llvm-cov" = "0.9.1"
 
-# Opt-in commit hooks (`mise run hooks`); they run gate steps, never their own tools (ADR 0026).
+# Runs the commit hooks (`mise run pre-commit`); they call mise tasks, never their own tools (ADR 0026).
 prek = "0.5.5"
 
 # JVM + Kaitai Struct Compiler for executing research/formats/**/*.ksy during verification.
@@ -74,10 +74,6 @@ run = "uv run python python/scripts/worktree_init.py clean"
 [tasks.reap]
 description = "Remove worktrees whose branch is already in main, unlinking their data-root junctions first (mise run reap -- --yes [--cherry] [--prune] [--stash-dirty] [--discard-untracked])"
 run = "uv run python python/scripts/worktree_init.py reap"
-
-[tasks.hooks]
-description = "Install the opt-in prek pre-commit hooks (ADR 0026): the gate's fmt and lint checks plus prek built-ins"
-run = "prek install --config ./prek.toml --allow-missing-config"
 
 [tasks.build-at]
 description = "Build stunt-cli from a git revision with an isolated target dir (mise run build-at -- <rev> <out>)"
@@ -250,14 +246,18 @@ description = "Full quality gate: one line per step, PASS/FAIL verdict, full log
 run = "python python/scripts/gate.py all"
 
 [tasks.test-docs]
-description = "Documentation invariants only: anchors, Markdown links, cited paths (part of test-py; the pre-commit hook runs it alone)"
+description = "Documentation invariants only: anchors, Markdown links, cited paths (part of test-py; the pre-commit hook runs it on every commit)"
 run = "uv run pytest tests/test_doc_invariants.py -q"
 
+[tasks.diff-check]
+description = "Staged conflict markers and whitespace errors (git diff --cached --check); a pre-commit hook"
+run = "git diff --cached --check"
+
 # The committed hook (.githooks/pre-commit, installed by mise run init) runs this and nothing
-# else, so its checks are leaf tasks of this file like the gate's (ADR 0014): no second copy.
+# else. prek.toml's local hooks are leaf tasks of this file like the gate's (ADR 0014): no second copy.
 [tasks.pre-commit]
-description = "What the pre-commit hook runs: staged conflict markers, ruff format and lint, and test-docs when Markdown is staged"
-run = "python python/scripts/gate.py staged"
+description = "What the pre-commit hook runs: prek over prek.toml (ADR 0026)"
+run = "prek run --config prek.toml"
 
 [tasks.check-windows]
 description = "Windows non-GPU half of the gate (fmt, lint, typecheck, Rust and Python tests; GPU tests skip without a driver)"

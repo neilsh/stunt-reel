@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installed by `mise run init`, which points core.hooksPath at .githooks. The checks are
-# `mise run pre-commit` (python/scripts/gate.py staged); this file only dispatches them.
+# `mise run pre-commit`, which runs prek over prek.toml; this file only dispatches them.
 # They are a fast subset, not the gate: run `mise run check` before committing as usual.
 # Skip once with `git commit --no-verify`.
 
