@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import importlib.util
 import inspect
 import re
 import threading
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -54,9 +56,18 @@ def test_trace_decodes_the_flag_mask() -> None:
     assert (palette.changed, palette.torn, palette.palette_changed) == (False, False, True)
 
 
-def test_trace_refuses_a_mask_above_seven() -> None:
+def test_trace_decodes_the_composed_flag() -> None:
+    trace = plan.decode_trace("x5:7:9,6:8:1", FIRST)
+
+    composed, plain = trace.entries
+    assert (composed.changed, composed.composed, composed.torn) == (True, True, False)
+    assert plain.composed is False
+
+
+def test_trace_refuses_a_mask_above_fifteen() -> None:
+    plan.decode_trace("x5:7:15", FIRST)
     with pytest.raises(plan.PlanError):
-        plan.decode_trace("x5:7:8", FIRST)
+        plan.decode_trace("x5:7:16", FIRST)
 
 
 def test_decode_trace_requires_the_letter_prefix() -> None:
@@ -151,6 +162,60 @@ def test_a_dump_pass_that_reads_a_torn_page_drops_it() -> None:
     assert sorted(result.dumps) == [FIRST + 5]
     assert result.dropped == (FIRST + 3,)
     assert any(f"unusable page at frame {FIRST + 3}" in line for line in lines)
+
+
+def test_pick_ticks_can_keep_unusable_frames_for_a_memory_probe() -> None:
+    """A probe that reads memory, not the page, wants the first frame at the tick, torn or not."""
+    entries = [(5, 0, CHANGED), (10, 1, CHANGED | TORN), (11, 2, CHANGED | PALETTE)]
+    trace = plan.decode_trace(_trace_text(entries), FIRST)
+
+    assert plan.pick_ticks(trace, [10, 11], skip_unusable=False) == [FIRST + 1, FIRST + 2]
+
+
+def test_a_plan_that_reads_no_page_keeps_a_torn_dump() -> None:
+    torn_at_pick = [(t, g, c | (TORN if i == 3 else 0)) for i, (t, g, c) in enumerate(ENTRIES)]
+    mock = _runner(ENTRIES, dump_entries=torn_at_pick)
+
+    result = plan.run_plan(
+        _open(mock),
+        keys=KEYS,
+        layout=playone.UNPATCHED,
+        first=FIRST,
+        last=FIRST + 50,
+        pick=lambda trace: [trace.first + 3, trace.first + 5],
+        timeout=5,
+        skip_unusable=False,
+    )
+
+    assert sorted(result.dumps) == [FIRST + 3, FIRST + 5]
+    assert result.dropped == ()
+
+
+def test_the_light_probe_samples_torn_frames(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """probe_playone_light reads the work and DGROUP segments, which a torn page does not spoil."""
+    path = Path(__file__).resolve().parent.parent / "python" / "scripts" / "probe_playone_light.py"
+    spec = importlib.util.spec_from_file_location("probe_playone_light", path)
+    assert spec is not None
+    assert spec.loader is not None
+    probe = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(probe)
+    entries = [(5, 0, CHANGED), (10, 1, CHANGED | TORN), (11, 2, CHANGED)]
+    trace = plan.decode_trace(_trace_text(entries), FIRST)
+    seen: dict[str, Any] = {}
+
+    def run_plan(_open_runner: object, **kwargs: Any) -> plan.PlanResult:
+        seen.update(kwargs, picked=list(kwargs["pick"](trace)))
+        return plan.PlanResult(trace, {})
+
+    monkeypatch.setattr(plan, "run_plan", run_plan)
+    probe.probe(
+        _open(_runner(ENTRIES)), KEYS, [10], tmp_path, dump_all=False, layout=playone.UNPATCHED
+    )
+
+    assert seen["picked"] == [FIRST + 1]
+    assert seen["skip_unusable"] is False
 
 
 def _dump_output(frames: list[int], trace: str) -> dict[str, Any]:

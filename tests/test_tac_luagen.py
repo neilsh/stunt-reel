@@ -96,12 +96,27 @@ def test_no_per_byte_loop_over_a_page() -> None:
     assert not re.search(r":sub\((\w+), \1\)", text)
 
 
-def test_trace_reads_both_composed_pages_and_the_palette() -> None:
-    text = _script()  # a trace pass has no dump block, so these reads are the trace's own
+@pytest.mark.parametrize(
+    ("layout", "pages", "palette"),
+    [
+        (playone.UNPATCHED, ("0x22CA", "0x22CC"), "0x2768"),
+        # Patch #3's pages are inferred from the uniform 0x67A shift (playone.PATCH3).
+        (playone.PATCH3, ("0x1C50", "0x1C52"), "0x20EE"),
+    ],
+    ids=["unpatched", "patch3"],
+)
+def test_trace_reads_both_composed_pages_and_the_palette(
+    layout: playone.PlayoneLayout, pages: tuple[str, str], palette: str
+) -> None:
+    text = _script(layout=layout)  # a trace pass has no dump block, so these reads are its own
 
-    assert "mem_read_word(DS, 0x22CA)" in text
-    assert "mem_read_word(DS, 0x22CC)" in text
-    assert f"mem_read(DS, 0x{playone.UNPATCHED.working_palette:X}, 768)" in text
+    assert f"local DS = 0x{layout.ds:04X}" in text
+    for page in pages:
+        assert f"mem_read_word(DS, {page})" in text
+    assert f"mem_read(DS, {palette}, 768)" in text
+    other = playone.PATCH3 if layout is playone.UNPATCHED else playone.UNPATCHED
+    for offset in other.composed_pages:
+        assert f"mem_read_word(DS, 0x{offset:04X})" not in text
 
 
 def test_tear_check_compares_bands() -> None:
@@ -113,9 +128,13 @@ def test_tear_check_compares_bands() -> None:
     assert ":byte(" not in text
 
 
-def test_the_trace_mask_sums_the_three_flags() -> None:
-    assert (luagen.TRACE_CHANGED, luagen.TRACE_TORN, luagen.TRACE_PALETTE) == (1, 2, 4)
-    assert "torn(pg) and 2" in _script()
+def test_the_trace_mask_sums_the_four_flags() -> None:
+    flags = (luagen.TRACE_CHANGED, luagen.TRACE_TORN, luagen.TRACE_PALETTE, luagen.TRACE_COMPOSED)
+    assert flags == (1, 2, 4, 8)
+    text = _script()
+    assert "+ split(pg) +" in text
+    # A page equal to a composed page is the composed flag, and torn is decided after it.
+    assert text.index("then return 8 end") < text.index("onlyA and onlyB")
 
 
 def test_the_trace_cannot_start_before_the_keys_have_finished() -> None:

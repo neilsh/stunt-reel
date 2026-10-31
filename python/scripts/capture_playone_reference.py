@@ -86,7 +86,10 @@ def parse_args() -> argparse.Namespace:
         default=FILM_STRIDE_TICKS,
         help=f"film ticks between kept frames (default {FILM_STRIDE_TICKS})",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.max_frames < 1:
+        parser.error("--max-frames must be at least 1")
+    return args
 
 
 def resolve(path: Path) -> Path:
