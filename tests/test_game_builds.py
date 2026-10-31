@@ -135,6 +135,21 @@ def test_a_second_build_replaces_the_first(tmp_path: Path) -> None:
     assert not (out / "patched" / "STRAY.TXT").exists()
 
 
+def test_a_failed_rebuild_leaves_no_manifest_of_the_old_trees(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    game, patches, out = _game(tmp_path), _patches(tmp_path), tmp_path / "b"
+    game_builds.build_trees(game, patches, out)
+
+    def fail(_staging: Path, _final: Path) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(game_builds, "_replace_dir", fail)
+    with pytest.raises(OSError, match="disk full"):
+        game_builds.build_trees(game, patches, out)
+    assert not (out / game_builds.MANIFEST_NAME).exists()
+
+
 @pytest.mark.parametrize("missing", ["P3-SI1.EXE", "P3-SI4.EXE"])
 def test_a_missing_archive_is_refused_like_patsi_bat(tmp_path: Path, missing: str) -> None:
     with pytest.raises(game_builds.BuildError, match=re.escape(missing)):

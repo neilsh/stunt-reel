@@ -226,6 +226,8 @@ def build_trees(game: Path, patch_dir: Path, out: Path) -> dict[str, Any]:
         for path in partial.values():
             shutil.rmtree(path, ignore_errors=True)
         raise
+    # A failure from here on must not leave the previous build's manifest describing new trees.
+    (out / MANIFEST_NAME).unlink(missing_ok=True)
     for name in BUILD_NAMES:
         _replace_dir(partial[name], out / name)
     manifest: dict[str, Any] = {

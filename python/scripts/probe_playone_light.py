@@ -183,6 +183,20 @@ def run(args: argparse.Namespace) -> int:
         print(f"[probe] {exc}", file=sys.stderr)
         return 1
     try:
+        layout = playone.layout_for(staged.mount / "PLAYONE.EXE")
+    except (playone.UnknownBuild, OSError) as exc:
+        staging.unstage(staged)
+        print(f"[probe] {exc}", file=sys.stderr)
+        return 2
+    if layout is not playone.UNPATCHED:
+        # The work segment and the DGROUP ranges the probe reads are mapped for 0D51 only.
+        staging.unstage(staged)
+        print(
+            f"[probe] the probe reads the unpatched PLAYONE.EXE only, not {layout.name}",
+            file=sys.stderr,
+        )
+        return 2
+    try:
         probe(
             lambda: automation.launched(staged.write_conf),
             playone.film_selection_names(film.stem),

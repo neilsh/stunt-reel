@@ -598,6 +598,10 @@ def test_probe_script_failure_lines_and_exit_codes(
 
     monkeypatch.setattr(module, "probe", lambda *_a, **_k: None)
     assert module.run(args) == 0
+
+    monkeypatch.setattr(playone, "layout_for", lambda _exe: playone.PATCH3)
+    assert module.run(args) == 2
+    assert "unpatched PLAYONE.EXE only, not patch3" in capsys.readouterr().err
     assert capsys.readouterr().out == ""
 
 
