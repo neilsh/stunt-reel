@@ -3,8 +3,8 @@
 Stages the film and its .ALL under the data root, launches dosbox-automation on its own web-server
 port, and runs a plan: a Lua trace of the whole film, a choice of frames made here, and dump passes
 that read the A000 page and the working palette at exactly those emulated frames (see
-research/playone-exe/capture-dosbox-automation.md). Runs are bit-repeatable; no debugger and no
-control socket is involved.
+research/playone-exe/capture-dosbox-automation.md). Most films replay bit for bit; where one
+lands a tick apart, each page keeps the tick its own pass read. No debugger is involved.
 
 Rasters, palettes, and meta.json land in a new directory per capture under the captures root
 (gitignored, shared through the data root). A capture is written once and never changed
