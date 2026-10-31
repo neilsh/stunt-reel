@@ -8,10 +8,13 @@ Two directions, driven by the registry in ``stunt_reel.doc_anchors``:
 
 import os
 import re
-from collections.abc import Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from stunt_reel.doc_anchors import ANCHORS, BY_ID, CITATION_REGEX
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 REPO_ROOT = Path(__file__).parent.parent
 
