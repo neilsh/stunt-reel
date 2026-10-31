@@ -10,6 +10,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
@@ -20,9 +22,8 @@ import gate  # noqa: E402
 def test_lane_map_covers_every_step_exactly_once() -> None:
     steps = [*gate.STEPS["rust"], *gate.STEPS["py"]]
     assert len(steps) == len(set(steps)), "a step is listed twice in STEPS"
-    staged = {*gate.STAGED_STEPS, *gate.STAGED_MARKDOWN_STEPS}
-    assert sorted(gate.STEP_LANES) == sorted(set(steps) | staged), (
-        "STEP_LANES must name every step of the gate and of the staged plan, and only those"
+    assert sorted(gate.STEP_LANES) == sorted(steps), (
+        "STEP_LANES must name every step, and only steps"
     )
 
 
@@ -41,3 +42,9 @@ def test_lanes_keep_plan_order_and_drop_no_step() -> None:
         for _, tasks in lanes:
             positions = [plan.index(task) for task in tasks]
             assert positions == sorted(positions), "a lane reordered its steps"
+
+
+def test_the_gate_has_no_staged_half() -> None:
+    """The commit hooks run through prek now (ADR 0026), not a plan of the gate's own."""
+    with pytest.raises(SystemExit):
+        gate.main(["staged"])

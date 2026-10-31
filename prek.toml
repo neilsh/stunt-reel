@@ -1,0 +1,80 @@
+# The commit hooks, run by prek (ADR 0026). `mise run init` points core.hooksPath at .githooks,
+# whose pre-commit runs `mise run pre-commit`, which is `prek run` over this file; nothing is
+# installed by prek. prek checks the staged content: it sets unstaged edits aside first.
+#
+# Every local hook is exactly `mise run <task>` for a leaf task of mise.toml, so the hooks use
+# the gate's own tools and versions and cannot drift from it; the rest are prek built-ins, which
+# carry no version pin. To add a hook, add a leaf task first or pick a built-in, then update
+# docs/adr/0026 and tests/test_prek_config.py, which refuses any other shape.
+# The full gate is still `mise run check`.
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "diff-check"
+name = "Staged conflict markers and whitespace errors (git diff --cached --check)"
+entry = "mise run diff-check"
+language = "system"
+always_run = true
+pass_filenames = false
+
+[[repos.hooks]]
+id = "fmt-check-rust"
+name = "Rust formatting (cargo fmt --check)"
+entry = "mise run fmt-check-rust"
+language = "system"
+types = ["rust"]
+pass_filenames = false
+
+[[repos.hooks]]
+id = "fmt-check-py"
+name = "Python formatting (ruff format --check)"
+entry = "mise run fmt-check-py"
+language = "system"
+types = ["python"]
+pass_filenames = false
+
+[[repos.hooks]]
+id = "lint-py"
+name = "Python lint (ruff check)"
+entry = "mise run lint-py"
+language = "system"
+types = ["python"]
+pass_filenames = false
+
+[[repos.hooks]]
+id = "test-docs"
+name = "Documentation invariants (anchors, links, cited paths)"
+entry = "mise run test-docs"
+language = "system"
+always_run = true
+pass_filenames = false
+
+[[repos]]
+repo = "builtin"
+
+# CI runs the built-ins over a commit range with nothing staged, so these two must not depend on
+# what is staged (--enforce-all) or on a merge being in progress (--assume-in-merge).
+[[repos.hooks]]
+id = "check-added-large-files"
+args = ["--enforce-all"]
+
+[[repos.hooks]]
+id = "check-illegal-windows-names"
+
+[[repos.hooks]]
+id = "check-case-conflict"
+
+[[repos.hooks]]
+id = "check-merge-conflict"
+args = ["--assume-in-merge"]
+
+[[repos.hooks]]
+id = "check-toml"
+
+[[repos.hooks]]
+id = "check-yaml"
+
+[[repos.hooks]]
+id = "detect-private-key"

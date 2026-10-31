@@ -38,14 +38,18 @@ jobs:
       MISE_AUTO_INSTALL: "false"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The commit-hook step below diffs against the base branch or the previous tip.
+          fetch-depth: 0
       - name: Install lavapipe (software Vulkan)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # java and the Kaitai compiler are not optional: the gate's `test-py` step sets
           # STUNT_REQUIRE_KSC=1, so a missing compiler fails the schema contract test rather
-          # than skipping it.
-          install_args: rust python uv java github:kaitai-io/kaitai_struct_compiler
+          # than skipping it. prek is likewise required (STUNT_REQUIRE_PREK=1), and runs the
+          # commit-hook built-ins below.
+          install_args: rust python uv java github:kaitai-io/kaitai_struct_compiler prek
       - name: Cache Cargo
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -72,6 +76,27 @@ jobs:
           # skipping them.
           STUNT_REQUIRE_GPU: "1"
         run: mise run check
+      - name: Commit-hook built-ins on the changes
+        # ADR 0026: a commit made with --no-verify, or pushed straight to main, still gets the
+        # prek built-ins. The local hooks are skipped: the gate above ran the format, lint and
+        # doc checks, and diff-check reads the index, which is empty here; check-merge-conflict
+        # catches conflict markers instead (prek.toml's args make both built-ins read commits). A
+        # pull request checks its diff from the base branch, a push its diff from the previous
+        # tip, and a manual run (or a push whose previous tip is gone) every file.
+        env:
+          SKIP: diff-check,fmt-check-rust,fmt-check-py,lint-py,test-docs
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            set -- --from-ref "origin/$BASE_REF" --to-ref HEAD
+          elif [ "$EVENT" = push ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            set -- --from-ref "$BEFORE" --to-ref HEAD
+          else
+            set -- --all-files
+          fi
+          mise exec -- prek run --config prek.toml "$@"
 
   windows-smoke:
     name: Windows smoke

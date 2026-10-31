@@ -17,16 +17,9 @@ of them. The plan is one step list for the whole gate and for each half.
 
 Steps that can silently skip are listed in ``REQUIRED_ENV``. The Python test step sets
 ``STUNT_REQUIRE_KSC=1``, so a missing Kaitai compiler fails the gate instead of skipping the
-schema contract test.
+schema contract test, and ``STUNT_REQUIRE_PREK=1`` does the same for the commit hooks' prek test.
 
-``staged`` is the pre-commit hook's plan (``.githooks/pre-commit`` runs ``mise run pre-commit``):
-``git diff --cached --check`` for conflict markers and whitespace errors, the quick Python lane,
-and the documentation invariants when Markdown is staged. It is a subset of the gate's steps
-plus ``test-docs``, dispatched the same way, so the hook holds no command of its own. It writes
-``target/pre-commit.log`` and leaves the full gate's log alone. It is not the gate: a commit
-still needs ``mise run check``.
-
-Usage: ``python python/scripts/gate.py {all|rust|py|staged} [--tail N]``
+Usage: ``python python/scripts/gate.py {all|rust|py} [--tail N]``
 """
 
 from __future__ import annotations
@@ -46,7 +39,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 LOG_PATH = Path("target") / "check.log"
-STAGED_LOG_PATH = Path("target") / "pre-commit.log"
 
 # The step list is every leaf task, in display order; a task that only aggregates others
 # (check, fmt-check, lint, test) must never appear here or the gate recurses. A step added here
@@ -71,63 +63,16 @@ STEP_LANES: dict[str, str] = {
     "lint-py": "py-lint",
     "typecheck": "py-typecheck",
     "test-py": "py-test",
-    "test-docs": "py-docs",
 }
 
-REQUIRED_ENV: dict[str, dict[str, str]] = {"test-py": {"STUNT_REQUIRE_KSC": "1"}}
-
-# The pre-commit plan (``staged``): leaf tasks like STEPS, each with a STEP_LANES entry. The Python
-# lane runs on every commit because it takes about a second; the documentation invariants walk
-# the repository, so they run only when Markdown is staged. A rebase that left conflict markers
-# and a docs commit with broken links are what this plan exists to stop.
-STAGED_STEPS: list[str] = ["fmt-check-py", "lint-py"]
-STAGED_MARKDOWN_STEPS: list[str] = ["test-docs"]
-
-# The one step ``staged`` runs itself rather than as a mise task: it is git, not a project tool.
-DIFF_CHECK = "diff-check"
+REQUIRED_ENV: dict[str, dict[str, str]] = {
+    "test-py": {"STUNT_REQUIRE_KSC": "1", "STUNT_REQUIRE_PREK": "1"}
+}
 
 
 def _plan(half: str) -> list[str]:
     """Return the ordered steps for one half of the gate."""
     return [*STEPS["rust"], *STEPS["py"]] if half == "all" else STEPS[half]
-
-
-def _staged_plan(paths: Sequence[str]) -> list[str]:
-    """The pre-commit steps for a commit that stages *paths*."""
-    plan = list(STAGED_STEPS)
-    if any(path.lower().endswith(".md") for path in paths):
-        plan.extend(STAGED_MARKDOWN_STEPS)
-    return plan
-
-
-def _git(*args: str) -> subprocess.CompletedProcess[str]:
-    git = shutil.which("git")
-    if git is None:
-        raise SystemExit("git is not on PATH")
-    return subprocess.run(  # noqa: S603 - fixed git arguments, git resolved from PATH
-        [git, *args],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-
-
-def _staged_paths() -> list[str]:
-    """Paths the index adds, copies, deletes, modifies or renames against ``HEAD``.
-
-    Deletions count: removing a Markdown file can break the links that point at it.
-    """
-    proc = _git("diff", "--cached", "--name-only", "--diff-filter=ACDMR", "-z")
-    return [path for path in proc.stdout.split("\0") if path]
-
-
-def _diff_check() -> tuple[int, str, float]:
-    """``git diff --cached --check``: conflict markers and whitespace errors in what is staged."""
-    started = time.monotonic()
-    proc = _git("diff", "--cached", "--check")
-    return proc.returncode, f"{proc.stdout}{proc.stderr}", time.monotonic() - started
 
 
 def _report(task: str, code: int, elapsed: float) -> None:
@@ -196,31 +141,20 @@ def _run_lane(
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument(
-        "half", choices=("all", "rust", "py", "staged"), help="which half of the gate"
-    )
+    parser.add_argument("half", choices=("all", "rust", "py"), help="which half of the gate")
     parser.add_argument("--tail", type=int, default=40, help="lines shown of a failing step")
     args = parser.parse_args(argv)
 
-    staged = args.half == "staged"
-    plan = _staged_plan(_staged_paths()) if staged else _plan(str(args.half))
+    plan = _plan(str(args.half))
     lanes = _lane_plan(plan)
     mise = _mise()
-    log_path = STAGED_LOG_PATH if staged else LOG_PATH
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     results: dict[str, tuple[int, str, float]] = {}
     lock = threading.Lock()
     started = time.monotonic()
 
-    with log_path.open("w", encoding="utf-8", errors="replace") as log:
+    with LOG_PATH.open("w", encoding="utf-8", errors="replace") as log:
         log.write(f"# gate {args.half} started {time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
-        if staged:
-            # Before the lanes: a conflict marker makes every later step's verdict moot.
-            code, output, elapsed = _diff_check()
-            results[DIFF_CHECK] = (code, output, elapsed)
-            log.write(f"\n===== git diff --cached --check (exit {code}) =====\n{output}")
-            _report(DIFF_CHECK, code, elapsed)
-            plan = [DIFF_CHECK, *plan]
         for lane, tasks in lanes:
             log.write(f"# lane {lane:<12} {' -> '.join(tasks)}\n")
         log.flush()
@@ -246,7 +180,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         passed = len(plan) - len(failed)
         verdict = "PASS" if not failed else f"FAIL ({', '.join(failed)})"
         print(
-            f"[gate] {verdict} {passed}/{len(plan)} steps in {total:.0f}s; log: {log_path}",
+            f"[gate] {verdict} {passed}/{len(plan)} steps in {total:.0f}s; log: {LOG_PATH}",
             flush=True,
         )
         log.write(f"\n# {verdict} {passed}/{len(plan)} steps in {total:.0f}s\n")
