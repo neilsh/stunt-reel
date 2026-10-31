@@ -21,13 +21,18 @@ from __future__ import annotations
 from stunt_reel.tac.bda import KEY_DOWN, KEY_ENTER, char_to_key
 
 __all__ = [
+    "AUTOMATION_DS",
+    "DGROUP_PARAGRAPH",
     "DGROUP_RUNTIME_SEG",
     "DGROUP_SEG",
     "FILM_CLOCK_OFFSET",
     "FILM_PREFIX_LETTER",
     "GLOBAL_TICK_OFFSET",
+    "IMAGE_PARAGRAPH",
     "VBLANK_TRAP",
+    "WORKING_PALETTE_OFFSET",
     "film_selection_keys",
+    "film_selection_names",
 ]
 
 #: Real-mode segment of PLAYONE.EXE's DGROUP, which holds both code and data.
@@ -43,6 +48,13 @@ GLOBAL_TICK_OFFSET: int = 0x22B8
 VBLANK_TRAP: str = f"{DGROUP_SEG}:0C5E"
 #: First letter of the film to play when a name is missing; jumps the listbox.
 FILM_PREFIX_LETTER: str = "c"
+#: DGROUP paragraph within the image, and the paragraph dosbox-automation loads the image at.
+DGROUP_PARAGRAPH: int = 0x0D51
+IMAGE_PARAGRAPH: int = 0x01F5
+#: Runtime DS under dosbox-automation (DOSBox-X's is DGROUP_RUNTIME_SEG): image + DGROUP.
+AUTOMATION_DS: int = IMAGE_PARAGRAPH + DGROUP_PARAGRAPH
+#: DS offset of the working palette in 6-bit DAC units (768 bytes).
+WORKING_PALETTE_OFFSET: int = 0x2768
 
 
 def film_selection_keys(name: str) -> list[tuple[int, int]]:
@@ -54,3 +66,9 @@ def film_selection_keys(name: str) -> list[tuple[int, int]]:
     """
     letter = name[:1].lower() or FILM_PREFIX_LETTER
     return [char_to_key(letter), KEY_DOWN, KEY_ENTER]
+
+
+def film_selection_names(name: str) -> list[str]:
+    """The same dialog sequence as :func:`film_selection_keys`, as dosbox-automation key names."""
+    letter = name[:1].lower() or FILM_PREFIX_LETTER
+    return [f"KBD_{letter}", "KBD_down", "KBD_enter"]
