@@ -1,0 +1,60 @@
+# Opt-in commit hooks, run by prek: `mise run hooks` installs them (ADR 0026).
+#
+# Every local hook is exactly `mise run <step>` for a step of the gate (python/scripts/gate.py),
+# so the hooks use the gate's own tools and versions and cannot drift from it; the rest are prek
+# built-ins, which carry no version pin. To add a hook, add a gate step first or pick a built-in,
+# then update docs/adr/0026 and tests/test_prek_config.py, which refuses any other shape.
+# The full gate is still `mise run check`.
+
+default_install_hook_types = ["pre-commit"]
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "fmt-check-rust"
+name = "Rust formatting (cargo fmt --check)"
+entry = "mise run fmt-check-rust"
+language = "system"
+types = ["rust"]
+pass_filenames = false
+
+[[repos.hooks]]
+id = "fmt-check-py"
+name = "Python formatting (ruff format --check)"
+entry = "mise run fmt-check-py"
+language = "system"
+types = ["python"]
+pass_filenames = false
+
+[[repos.hooks]]
+id = "lint-py"
+name = "Python lint (ruff check)"
+entry = "mise run lint-py"
+language = "system"
+types = ["python"]
+pass_filenames = false
+
+[[repos]]
+repo = "builtin"
+
+[[repos.hooks]]
+id = "check-added-large-files"
+
+[[repos.hooks]]
+id = "check-illegal-windows-names"
+
+[[repos.hooks]]
+id = "check-case-conflict"
+
+[[repos.hooks]]
+id = "check-merge-conflict"
+
+[[repos.hooks]]
+id = "check-toml"
+
+[[repos.hooks]]
+id = "check-yaml"
+
+[[repos.hooks]]
+id = "detect-private-key"
