@@ -103,6 +103,23 @@ The DOSBox-X debugger harness is in [`capture.md`](capture.md) and its speed and
 * **The cursor is parked over the button bar.** `[Bounded Observation]`. `PLAYONE` draws its mouse cursor on the page we capture, at screen centre (about row 99, column 160) in the unpatched build, inside the 3D view. One relative `dosbox.mouse_move(-2000, 2000)` right after the dialog keys clamps it to the bottom-left corner (rows 192 to 199 from column 1), over the button bar and below the 3D view's 185 rows; a page dumped 300 frames later is identical with one call or five, and the 127 differing pixels against an unparked run are the two cursor images only, so no button lights up under it. Every generated script now parks it ([`luagen.py`](../../python/stunt_reel/tac/luagen.py)); captures before 2026-10-31 carry the centred cursor.
 * **Window size.** With no `window_size`, dosbox-automation sizes the window from the desktop; the generated conf sets `window_size = 640x480` (2x with 4:3 correction).
 
+### 4.5 Torn Pages and the DAC Lag
+
+2026-10-31, the `capture` profile (dynamic core, 45,000 cycles), unpatched `PLAYONE.EXE`, scratch Lua over every emulated frame of `CTRY.FLM` and `INTRO.FLM`; the method and raw counts are in [`tear-palette-investigation-2026-10-31.md`](../../docs/process/plans/tear-palette-investigation-2026-10-31.md).
+
+* **A page read in the frame callback can be torn.** `[Supported Inference]` for the mechanism. The callback runs at an emulated-frame boundary set by emulated time, and the `A000` update (`0x738C`, `repe cmpsw`/`rep movsw` then sprites, no retrace wait) takes tens of thousands of guest cycles, so a boundary can land inside it. The game keeps two composed pages, their segments in `DS:0x22CA` and `0x22CC` (`0x336B` and `0x430B` here), swapped every render; after a finished copy rows 0–191 of `A000` equal one of them. Torn pages show a clean split: top rows from one buffer, the rest from the other.
+* **How often.** `[Bounded Observation]`, 24 bands of 8 rows per page:
+
+  | | frames | changed film frames torn | all frames torn | picked frames of reference `004` torn |
+  |---|---|---|---|---|
+  | `CTRY.FLM` | 1,908 | 4.1% (66; 71 at row level) | 3.5% | 3 of 121 (4 at row level) |
+  | `INTRO.FLM` | 5,384 | 2.9% (127) | 2.4% | 7 of 346 |
+
+  In every `CTRY.FLM` case but one, frame *f* + 1 is clean. The rate should scale as 1/cycles (REST snapshots at 7,000 cycles gave 10 of 97); not swept.
+* **The DAC lags the working palette.** `[Bounded Observation]`, one `CTRY.FLM` fade, five palette steps, frames 2680–2729 against a lossless AVI decoded per palette half. At the best page-to-video alignment every step fits exactly one model: at the step's first frame *c* the DAC is the old palette, at *c* + 1 the low half is new and the high half old, from *c* + 2 both are new. So the DAC with page *f* is `low = W(f-1)`, `high = W(f-2)`, which settles the palette-lead question of § 4.3: one frame for the low half, two for the high.
+* **Exposure in the `004` references.** `[Bounded Observation]`. No picked frame of `004` falls at *c* or *c* + 1 (0 of 121 and 0 of 346), because the page rarely changes there and `pick` takes changed pages only; 17 of 1,618 and 2 of 4,367 candidate frames are in the window.
+* **What the harness does with it.** The trace carries a torn flag and a palette-changed flag per frame, `pick` skips torn frames and the two frames of each palette step, and a dump pass that reads an unusable page fails ([`luagen.py`](../../python/stunt_reel/tac/luagen.py), [`plan.py`](../../python/stunt_reel/tac/plan.py)). Rebuilding the DAC from the two previous palettes was not built; it waits for a film whose fade leaves too few frames.
+
 ## 5. Consequences
 
 * **Determinism.** A frame-locked dosbox-automation capture is byte-repeatable where the DOSBox-X debugger runs vary by a few ticks (the baseline noise in [`capture-speed.md`](capture-speed.md) § 1), and it records every emulated frame, so no sampling stride decides which pages exist.
@@ -177,7 +194,9 @@ A cell that matches none of these (a fade, a black frame, the dialog) means the 
 
 1. What leaves 653, 489 and 1,082 pixels at DOSBox-X ticks 220, 495 and 660 with no exact dosbox-automation page (§ 4.3)? Is it a sub-tick state, a tear, or DOSBox-X variance? Capture two DOSBox-X runs of the same film to measure its own variance first.
 2. Does a breakpoint at image `0x7417` (end of the `A000` diff-copy) give a whole page? It was read from the listing, not tried (§ 4.3).
-3. Does the working palette lead the DAC and video by 0 or about 2 frames (§ 4.3 disagrees between two runs)? Test the working palette at *f-2* on the fade steps.
+3. Does the working palette lead the DAC and video by 0 or about 2 frames (§ 4.3 disagrees between two runs)? Answered for one `CTRY.FLM` fade in § 4.5: one frame for the low half, two for the high. Still open: does an `INTRO.FLM` fade (frames 6140–6400), or a second cycle count, give the same 0/1/2 pattern?
 4. What else lives in the `DS = 0x15D4` segment (image `0x15D40` onward) that deserves a [`memory-map.md`](memory-map.md) entry, and what are the other relocated segment words `0x1DE7`, `0x1DEA` and `0x20F6`?
 5. What makes `COUNT.FLM` replays land a tick apart when `CTRY.FLM` replays are identical (§ 4.4)? Candidates: the unpatched `PLAYONE.EXE` against a film made for the patched one, sound-card IRQ timing, or BIOS time seeded from the host at boot.
 6. Do the patched `PLAYONE.EXE` (Patch #3) and its `DS`, film clock and working-palette offsets match the unpatched build's, and which films need which build?
+7. Does the torn rate scale as 1/cycles (§ 4.5)? A trace at 7,000 cycles should show about six times the rate at 45,000.
+8. Do other films double-buffer through `DS:0x22CA` and `0x22CC`? A film that does not would read as never torn; `torn_frames` per film in a batch survey would show it.

@@ -118,6 +118,10 @@ The variables are common across the corpus. Of 561 films that decode, 407 lower 
 
 `PaletteControls::film_palette` fed the variables sampled at the capture's `film_tick` reproduces all 240 live DAC entries of every frame, comparing 6-bit levels, so the night path in section 3.1 is exact: the night sky gradient, the night lights at entries 213–214, the darkened scene entries, and the all-black palette while var 14 is 0. The ticks quoted for `COL3-2.FLM` are slice starts, as above.
 
+### 5.2 The DAC Lags the Working Palette
+
+The working palette `DS:0x2768` reaches the DAC in two retrace-gated halves, so the DAC shown with the page of emulated frame *f* is the working palette of *f* - 1 in entries 0–127 and of *f* - 2 in entries 128–255 (`[Bounded Observation]`, one `CTRY.FLM` fade under dosbox-automation, [`capture-dosbox-automation.md` § 4.5](capture-dosbox-automation.md#45-torn-pages-and-the-dac-lag)). Each palette step therefore leaves two frames whose DAC is not their working palette; the capture harness skips them rather than rebuilding the DAC.
+
 ## 6. Open Points
 
 * Variables 0–3 have no reader and the consumers of vars 10 and 12 are not decoded; var 11 is stored in an audio-mixer channel field that nothing reads (section 3.2). Var 10's steady climb in `CTRY.FLM` suggests a time or progress value (`[Hypothesis]`). `COL3-2.FLM` moves vars 2–7, 10 and 11 at tick 198 (`COL3-2` studio, see [`film-segments.md`](../parity/film-segments.md#1-col3-2flm-the-studio-interior)); that is the only film lead, and no reader ties any of them to the studio.
