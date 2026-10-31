@@ -64,6 +64,43 @@ The DOSBox-X debugger harness is in [`capture.md`](capture.md) and its speed and
 * **What video does not give.** The frames are RGB: index agreement, IoU on the index plane and fade-compensated scoring ([`../parity/method.md`](../parity/method.md)) need the palette indices. The video's colours are exactly the scaled DAC (§ 4), but two indices can share an RGB (one pair in four sampled frames), so the index plane is not always recoverable from video alone. A page read and a DAC read (`3C7`/`3C9`) at the frames to be scored would supply it; the REST path is not frame-locked, and the Lua path has no port access.
 * **Not built.** `stunt_reel/tac` still drives DOSBox-X only. A dosbox-automation driver would sit behind the operations seam in [`transport.py`](../../python/stunt_reel/tac/transport.py) and replace the capture loop in [`framebuffer.py`](../../python/stunt_reel/tac/framebuffer.py), not extend it.
 
+## 6. Reference: the Lua Driver and the Timer Glyphs
+
+The scratch scripts are not committed; this is what a driver needs. Launch `dosbox.exe -conf <conf>` with `DOSBOX_API_TOKEN` set to 64 hex characters, `[webserver] webserver_enabled = true`, `webserver_port = <port>`, a mount under the data root (not `Temp`) and `[capture] capture_dir`. Then `POST /api/v1/script/load` (body is the Lua, `text/plain`), `POST /api/v1/script/start`, and poll `GET /api/v1/script/status` until `state` is `completed`; the log is in `output`. The per-frame log must be written in chunks of 100 into separate `dosbox.output` keys; a 64,000-byte page converted to hex in one frame exceeds the Lua instruction limit.
+
+```lua
+local DS = 0x0F46                     -- DGROUP segment for this emulator (§ 2)
+local out = dosbox.output
+local function wait_until(f) while dosbox.frame() < f do dosbox.wait_frames(1) end end
+wait_until(1200)                      -- an absolute emulated frame, so the start is boot-relative
+dosbox.capture_start()                -- raw video; video frame j is emulated frame 1200 + j
+out.cap_start_frame = dosbox.frame()
+for _, k in ipairs({"KBD_c", "KBD_down", "KBD_enter"}) do   -- first letter of the film, Down, Enter
+  dosbox.wait_frames(20); dosbox.key(k, true); dosbox.wait_frames(5); dosbox.key(k, false)
+end
+local chunk, n = {}, 0
+for i = 1, 3100 do
+  dosbox.wait_frames(1)
+  chunk[#chunk + 1] = dosbox.frame() .. "," .. dosbox.mem_read_word(DS, 0x4896) .. "," .. dosbox.mem_read_word(DS, 0x22B8)
+  if #chunk == 100 then out["k" .. string.format("%04d", n)] = table.concat(chunk, ";"); chunk = {}; n = n + 1 end
+end
+if #chunk > 0 then out["k" .. string.format("%04d", n)] = table.concat(chunk, ";") end
+dosbox.capture_stop()
+out.done = true
+```
+
+**HUD timer decoding.** The AVI is read with `ffmpeg -vf scale=320:200:flags=neighbor -pix_fmt rgb24` (DOSBox-X's is 640x400; dosbox-automation's is already 320x200). The timer is `MM:SS.cc` at rows 179 to 183, six 3x5 digit cells at columns 1, 5, 11, 15, 21 and 25 (the colon and dot sit between), with a pixel counted as ink when its RGB sum is below 60. Glyphs, row by row (`#` is ink):
+
+| Digit | Rows | Digit | Rows |
+|---|---|---|---|
+| 0 | `###` `#.#` `#.#` `#.#` `###` | 5 | `###` `#..` `###` `..#` `###` |
+| 1 | `##.` `.#.` `.#.` `.#.` `###` | 6 | `###` `#..` `###` `#.#` `###` |
+| 2 | `###` `..#` `###` `#..` `###` | 7 | `###` `..#` `..#` `..#` `..#` |
+| 3 | `###` `..#` `.##` `..#` `###` | 8 | `###` `#.#` `###` `#.#` `###` |
+| 4 | `#..` `#.#` `###` `..#` `..#` | 9 | `###` `#.#` `###` `..#` `###` |
+
+A cell that matches none of these (a fade, a black frame, the dialog) means the frame has no timer.
+
 ---
 
 **Ruled out**
