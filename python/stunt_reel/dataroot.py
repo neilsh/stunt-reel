@@ -280,11 +280,12 @@ def _remove_env(target: Path) -> bool:
 
 
 def _read_marker(marker: Path) -> str | None:
-    """The checkout *marker* names, or ``None`` when it is missing or unreadable."""
+    """The checkout *marker* names, or ``None`` when it is missing, unreadable or empty."""
     try:
-        return marker.read_text(encoding="utf-8").strip()
+        checkout = marker.read_text(encoding="utf-8").strip()
     except (OSError, UnicodeError):
         return None
+    return checkout or None
 
 
 def _env_owner(target: Path) -> Path | None:
