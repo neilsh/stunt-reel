@@ -1,15 +1,11 @@
-# DOSBox-X configurations
+# DOSBox configuration
 
-Profiles for running the original *Stunt Island* programs under DOSBox-X. Each one mounts a
-path **relative to the repository root**, so launch them from the root (the `mise` tasks and
-`play_ctry.bat` do). None of them ship game files: `corpus/` comes from the shared data root
-([`corpus/README.md`](../../corpus/README.md)).
+Capture, probing, `make-all` and `play` run on dosbox-automation 0.85.1 and need no checked-in
+conf: `python/stunt_reel/tac/staging.py` renders one per run beside a staged mount under the
+data root, with a free web-server port chosen at launch ([ADR 0025](../../docs/adr/0025-capture-runs-are-plans-not-sessions.md)).
+The DOSBox-X profiles that used to live here are retired; what they established is in
+[`research/playone-exe/dosbox-x-legacy.md`](../../research/playone-exe/dosbox-x-legacy.md).
 
 | File | Used by | Purpose |
 |---|---|---|
-| `dosbox-playone.conf` | `mise run play`, `play_ctry.bat` | Interactive playback: mounts `corpus/stisldem`, starts `PLAYONE.EXE` and autotypes the `CTRY.FLM` selection |
-| `dosbox-parity.conf` | `mise run capture-ref`, `probe-light` | Parity capture profile; the harness rewrites its mount and film literals into a staged copy ([`research/playone-exe/capture.md`](../../research/playone-exe/capture.md)) and passes the control port the controller bound ([ADR 0021](../../docs/adr/0021-capture-chooses-its-control-port.md)) |
-| `dosbox-archive.conf` | the batch survey (`make_all.py --conf`) | `dosbox-parity.conf` with a dynamic core and `cycles = max` for MAKEONE, which the debugger does not step ([ADR 0023](../../docs/adr/0023-make-all-generates-archives-with-makeone.md)) |
-| `dosbox-mcp.conf` | `mise run ensure-dosbox` | Agent debugger; `--mcp-port` carries the port the MCP server reported through `dosbox_mcp_port` |
-| `dosbox-utils.conf` | by hand | Period utilities from `build/utils`, no control port ([`research/stunt-exe/sets.md`](../../research/stunt-exe/sets.md)) |
-| `play_ctry.bat` | by hand | Windows shortcut for `mise run play` |
+| `dosbox-utils.conf` | by hand | Period utilities from `build/utils`, no control port ([`research/stunt-exe/sets.md`](../../research/stunt-exe/sets.md)); written for DOSBox-X and not rerun on dosbox-automation |

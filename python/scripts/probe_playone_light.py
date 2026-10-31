@@ -1,10 +1,11 @@
-"""Probe PLAYONE.EXE's per-shot lighting and shade arrays through the DOSBox-X TAC harness.
+"""Probe PLAYONE.EXE's per-shot lighting and shade arrays on dosbox-automation.
 
 The terrain shade path (see research/playone-exe/terrain-shade.md) reads a light vector
 from work:0x8072/0x8074/0x8076 and turns per-vertex normals into an 8.8 palette-index
-ramp. This probe drives one film through the harness and, at chosen film clocks, prints the
-light vector, the sun-billboard vector, the sun-position words and the first shade-array
-entries, so the per-shot input can be pinned down without breakpoints.
+ramp. This probe runs one film as a plan: the trace reads the work-segment pointer, and the
+dump passes read the work and DGROUP segments at the first frame of each chosen film clock, so
+the light vector, the sun-billboard vector, the sun-position words and the first shade-array
+entries can be pinned down without breakpoints.
 
 Writes work_tNNN.bin and ds_tNNN.bin (60 KiB each, the work and DGROUP segments) into
 --out, plus one line per sample on stdout. Reads a proprietary executable from the local,
@@ -21,12 +22,18 @@ import logging
 import struct
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from stunt_reel import dataroot
 from stunt_reel.dataroot import ensure_links_or_report
-from stunt_reel.tac import playone
+from stunt_reel.tac import automation, luagen, plan, playone, staging
 from stunt_reel.tac.emulator import EmulatorUnavailable
-from stunt_reel.tac.session import Page, Session, SessionError, run_session
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+    from contextlib import AbstractContextManager
+
+    from stunt_reel.tac.automation import ScriptRunner
 
 DEFAULT_FILM: Path = Path("corpus/stisldem/VAULT/CTRY.FLM")
 DEFAULT_TICKS: tuple[int, ...] = (10, 150, 273, 448, 700, 900, 1100)
@@ -40,6 +47,8 @@ SHADE_ARRAY_OFFSET: int = 0x7468
 SUN_POSITION_OFFSET: int = 0x49EC
 SEGMENT_BYTES: int = 0xF000
 SHADE_WORDS: int = 8
+#: A trace window well past the longest film (70.087 emulated frames per second).
+MAX_TRACE_FRAMES: int = 12000
 
 
 def parse_args() -> argparse.Namespace:
@@ -55,15 +64,9 @@ def parse_args() -> argparse.Namespace:
         "--out", type=Path, default=Path("build/scratch/round5"), help="dump directory"
     )
     parser.add_argument(
-        "--stage",
-        type=Path,
-        default=Path("tools/dosbox/dosbox-parity.conf"),
-        help="DOSBox-X config",
-    )
-    parser.add_argument(
         "--dump-all-segments",
         action="store_true",
-        help="also dump all 16 real-mode segments at each sample (60 KiB each)",
+        help="also dump all 16 real-mode segments at each sample (60 KiB each; mind the 15 MB output cap)",
     )
     return parser.parse_args()
 
@@ -73,12 +76,12 @@ def resolve(path: Path) -> Path:
     return path if path.is_absolute() else dataroot.REPO_ROOT / path
 
 
-def signed_words(page: Page, segment: int, offset: int, count: int) -> list[int]:
-    """Reads count little-endian signed 16-bit words from segment:offset."""
-    data = page.read_memory(segment, offset, 2 * count)
-    if len(data) < 2 * count:
-        raise RuntimeError(f"short read at {segment:04X}:{offset:04X}")
-    return list(struct.unpack("<" + "h" * count, data[: 2 * count]))
+def signed_words(data: bytes, offset: int, count: int) -> list[int]:
+    """Reads count little-endian signed 16-bit words from *data* at *offset*."""
+    chunk = data[offset : offset + 2 * count]
+    if len(chunk) < 2 * count:
+        raise RuntimeError(f"short read at offset {offset:04X}")
+    return list(struct.unpack("<" + "h" * count, chunk))
 
 
 def magnitude(values: list[int]) -> float:
@@ -87,65 +90,114 @@ def magnitude(values: list[int]) -> float:
     return float(round(total**0.5, 1))
 
 
-def sample(page: Page, tick: int, work: int, out: Path, *, dump_all: bool = False) -> None:
+def sample(
+    work_bytes: bytes,
+    ds_bytes: bytes,
+    tick: int,
+    work: int,
+    out: Path,
+    *,
+    segments: Sequence[bytes] = (),
+) -> None:
     """Prints and dumps one sample of the lighting state."""
-    light = signed_words(page, work, LIGHT_OFFSET, 3)
-    billboard = signed_words(page, work, SUN_BILLBOARD_OFFSET, 3)
-    sun_position = signed_words(page, playone.DGROUP_RUNTIME_SEG, SUN_POSITION_OFFSET, 6)
-    shades = signed_words(page, work, SHADE_ARRAY_OFFSET, SHADE_WORDS)
+    light = signed_words(work_bytes, LIGHT_OFFSET, 3)
+    billboard = signed_words(work_bytes, SUN_BILLBOARD_OFFSET, 3)
+    sun_position = signed_words(ds_bytes, SUN_POSITION_OFFSET, 6)
+    shades = signed_words(work_bytes, SHADE_ARRAY_OFFSET, SHADE_WORDS)
     print(
         f"[shot] tick {tick:5d} workseg {work:04X} L {light} |L| {magnitude(light)} "
         f"sun_billboard {billboard} sun_position {sun_position} shade {shades}",
         flush=True,
     )
-    (out / f"work_t{tick}.bin").write_bytes(page.read_memory(work, 0, SEGMENT_BYTES))
-    (out / f"ds_t{tick}.bin").write_bytes(
-        page.read_memory(playone.DGROUP_RUNTIME_SEG, 0, SEGMENT_BYTES)
-    )
-    if dump_all:
-        for segment in range(0x10):
-            (out / f"seg_{segment:04X}.bin").write_bytes(
-                page.read_memory(segment, 0, SEGMENT_BYTES)
-            )
+    (out / f"work_t{tick}.bin").write_bytes(work_bytes)
+    (out / f"ds_t{tick}.bin").write_bytes(ds_bytes)
+    for segment, data in enumerate(segments):
+        (out / f"seg_{segment:04X}_t{tick}.bin").write_bytes(data)
 
 
-def sample_ticks(session: Session, ticks: list[int], out: Path, *, dump_all: bool) -> None:
-    """Steps one frame at a time until every requested film clock has been sampled."""
+def probe(
+    open_runner: Callable[[], AbstractContextManager[ScriptRunner]],
+    keys: list[str],
+    ticks: list[int],
+    out: Path,
+    *,
+    dump_all: bool,
+) -> None:
+    """Run the plan and print and dump a sample at each requested film clock."""
     out.mkdir(parents=True, exist_ok=True)
-    pending = list(ticks)
-    while pending:
-        page = session.next_frame()
-        tick, _global = page.film_clock
-        if tick < pending[0]:
-            continue
-        pending.pop(0)
-        work = int.from_bytes(
-            page.read_memory(playone.DGROUP_RUNTIME_SEG, WORK_SEGMENT_POINTER, 2), "little"
-        )
-        sample(page, tick, work, out, dump_all=dump_all)
+    first = luagen.boot_end(len(keys))
+    pointer = (playone.AUTOMATION_DS, WORK_SEGMENT_POINTER)
+    planned: list[int] = []
+
+    def ranges(trace: plan.Trace, frames: Sequence[int]) -> list[luagen.MemRange]:
+        if not frames:
+            raise RuntimeError(f"the film never reached any of the ticks {ticks}")
+        works = {trace.entry(f).words[0] for f in frames}
+        if len(works) != 1:
+            raise RuntimeError(
+                "the work segment moved between samples: "
+                + ", ".join(f"{w:04X}" for w in sorted(works))
+            )
+        planned.append(works.pop())
+        found = [
+            luagen.MemRange(planned[0], 0, SEGMENT_BYTES),
+            luagen.MemRange(playone.AUTOMATION_DS, 0, SEGMENT_BYTES),
+        ]
+        if dump_all:
+            found += [luagen.MemRange(segment, 0, SEGMENT_BYTES) for segment in range(0x10)]
+        return found
+
+    result = plan.run_plan(
+        open_runner,
+        keys=keys,
+        first=first,
+        last=first + MAX_TRACE_FRAMES,
+        pick=lambda trace: plan.pick_ticks(trace, ticks),
+        ranges=ranges,
+        words=[pointer],
+        end_hold=30,
+        progress=lambda line: print(f"[probe] {line}", flush=True),
+    )
+    # The ranges were planned at the trace pass's segment, so a dump pass that read another
+    # pointer dumped bytes that are not its work segment.
+    for frame, dump in result.dumps.items():
+        if planned and dump.entry.words[0] != planned[0]:
+            raise RuntimeError(
+                f"dump pass at frame {frame} read work segment {dump.entry.words[0]:04X}, "
+                f"but the trace pass read {planned[0]:04X}"
+            )
+    for frame in sorted(result.dumps):
+        entry = result.dumps[frame].entry
+        work_bytes, ds_bytes, *segments = result.dumps[frame].ranges
+        sample(work_bytes, ds_bytes, entry.film_tick, entry.words[0], out, segments=segments)
 
 
 def run(args: argparse.Namespace) -> int:
-    """Drive one emulator session and sample the lighting state."""
+    """Stage one film, run the plan and sample the lighting state."""
     film = resolve(args.film)
     out = resolve(args.out)
-    conf = resolve(args.stage)
     ticks = [int(part) for part in args.ticks.split(",")]
-
     try:
-        run_session(
-            film,
-            sample=lambda session: sample_ticks(
-                session, ticks, out, dump_all=args.dump_all_segments
-            ),
-            conf=conf,
+        staged = staging.stage_film(film)
+    except OSError as exc:
+        print(f"[probe] {exc}", file=sys.stderr)
+        return 1
+    try:
+        probe(
+            lambda: automation.launched(staged.write_conf),
+            playone.film_selection_names(film.stem),
+            ticks,
+            out,
+            dump_all=args.dump_all_segments,
         )
     except EmulatorUnavailable as exc:
         print(f"[probe] {exc}; run via mise exec", file=sys.stderr)
         return 1
-    except (SessionError, RuntimeError, TimeoutError, ConnectionError) as exc:
+    except (automation.ScriptError, plan.PlanError, RuntimeError, TimeoutError, OSError) as exc:
         print(f"[probe] {exc}", file=sys.stderr)
         return 1
+    finally:
+        staging.unstage(staged)
     return 0
 
 

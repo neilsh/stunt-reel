@@ -170,7 +170,7 @@ _Avoid_: slot (unqualified)
 ## Capture and emulation
 
 **Control port**:
-The TCP endpoint a capture session binds and tells DOSBox-X to dial; DOSBox-X is always the client, never the listener. A capture takes whatever port the OS assigns, while an interactive debugger uses the port its MCP server reports.
+The TCP port of the emulator's REST server. Each run picks a free one at launch and writes it into that run's conf, so two captures never collide ([ADR 0025](docs/adr/0025-capture-runs-are-plans-not-sessions.md)).
 _Avoid_: MCP port, debugger port, capture lock
 
 ## Artifacts
@@ -202,7 +202,7 @@ A trusted reference trajectory that an evaluated timeline is checked against for
 _Avoid_: parity oracle, golden frames
 
 **Capture**:
-One run of `PLAYONE.EXE` under DOSBox-X that records a film's captured frames and palettes. A capture is never changed after it is written; a new run makes a new capture.
+One run of `PLAYONE.EXE` under dosbox-automation that records a film's captured frames and palettes. A capture is never changed after it is written; a new run makes a new capture.
 _Avoid_: recording (the game's own word for filming a take), recapture (for overwriting one)
 
 **Reference capture**:

@@ -11,7 +11,7 @@ The roles below are automation personas used by the development workflow, not pe
 | Role | Domain | Allowed file blast radius |
 |---|---|---|
 | **`sentinel`** | Orchestration: dispatches tickets, enforces branch isolation, reviews handoffs | `docs/process/TEAM_SHEET.md`, PR reviews |
-| **`re-harness-worker`** | DOSBox-X harness and memory analysis | `python/stunt_reel/tac/`, `research/playone-exe/memory-map.md`, `research/playone-exe/`, `tests/test_harness.py` |
+| **`re-harness-worker`** | Emulator harness and memory analysis | `python/stunt_reel/tac/`, `research/playone-exe/memory-map.md`, `research/playone-exe/`, `tests/test_harness.py` |
 | **`gltf-exporter-worker`** *(retired; the exporter is now `crates/stunt-gltf/`, owned by `rust-engine-worker`)* | Baseline `.SOD` mesh ingest and glTF export | `crates/stunt-gltf/` (formerly `python/stunt_reel/gltf/`, `tests/test_gltf.py`) |
 | **`rust-engine-worker`** | Rust engine | `crates/stunt-core/`, `crates/stunt-render/`, `crates/stunt-cli/` |
 | **`parity-auditor`** | Quality gate and asset-isolation verification | Read-only across all code; runs `mise run check` and the gates in [`SPEC.md` § 5](../SPEC.md#5-master-verification-matrix) |

@@ -17,7 +17,7 @@ of which only the hash described the capture.
 
 ## Decision
 
-- **Film first.** `captures/<film>/frames/<run>/` holds a DOSBox-X frame capture and
+- **Film first.** `captures/<film>/frames/<run>/` holds a frame capture and
   `captures/<film>/archives/<run>/` a generated `.ALL`. Every top-level entry is a film; no name is reserved.
 - **The film is named by its source.** The slug is the parent folder and stem of the corpus
   path, lower case, runs outside `[a-z0-9_]` collapsed to `-`: `VAULT/CTRY.FLM` is `vault-ctry`

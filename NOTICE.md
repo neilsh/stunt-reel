@@ -42,5 +42,4 @@ original terms; citation does not relicense them. Key credits:
 - **Neil Halelamien** — original `.SET` format notes (2004).
 
 Dependencies retain their own licences; `cargo deny` enforces the Rust allow-list and the
-Python tooling dependencies are dev-only. DOSBox-X, ffmpeg, Kaitai Struct and the
-DOSBox-X MCP server are external prerequisites, not bundled here.
+Python tooling dependencies are dev-only. dosbox-automation, ffmpeg and Kaitai Struct are external prerequisites, not bundled here.

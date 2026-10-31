@@ -1,19 +1,10 @@
-"""Addresses and dialog keys for driving PLAYONE.EXE through the TAC harness.
+"""Addresses and dialog keys for driving PLAYONE.EXE through dosbox-automation.
 
-The parity capture owns the emulator through DOSBox-X's debugger, and this build
-imposes two hard constraints the driver is built around:
-
-* any debugger command issued while PLAYONE.EXE is still unpacking (roughly the
-  first two seconds) kills the guest with an Illegal Unhandled Interrupt Called 6
-  storm, and reads of DGROUP during the load can crash the emulator outright, so
-  the driver touches nothing until the dialog has settled on screen; and
-* VRT after Mode 13h playback starts crashes the emulator (0xC0000409), so frames
-  are sampled through the documented post-retrace trap at 0D51:0C5E: an
-  execution breakpoint plus RUN stops the guest once per rendered frame.
-
-Keystrokes only reach INT 16h while the guest free-runs, so the dialog is driven
-by writing words into the BIOS keyboard ring buffer (bda.py) and letting the
-guest poll them.
+A run is a plan (``plan.py``): Lua traces the film clock per emulated frame, then replays the
+boot and dumps the frames Python picked. The dialog is driven by ``KBD_*`` key names in the
+generated Lua (``film_selection_names``); the ``film_selection_keys`` scan codes and the DOSBox-X
+segment constants remain for the offline streamer model and its notes
+(``research/playone-exe/dosbox-x-legacy.md``).
 """
 
 from __future__ import annotations
@@ -21,19 +12,24 @@ from __future__ import annotations
 from stunt_reel.tac.bda import KEY_DOWN, KEY_ENTER, char_to_key
 
 __all__ = [
+    "AUTOMATION_DS",
+    "DGROUP_PARAGRAPH",
     "DGROUP_RUNTIME_SEG",
     "DGROUP_SEG",
     "FILM_CLOCK_OFFSET",
     "FILM_PREFIX_LETTER",
     "GLOBAL_TICK_OFFSET",
+    "IMAGE_PARAGRAPH",
     "VBLANK_TRAP",
+    "WORKING_PALETTE_OFFSET",
     "film_selection_keys",
+    "film_selection_names",
 ]
 
 #: Real-mode segment of PLAYONE.EXE's DGROUP, which holds both code and data.
 DGROUP_SEG: str = "0D51"
-#: Runtime DS (the DGROUP segment while playing), observed live in the T11 check. The
-#: debugger exposes no register read, so captures take it as a parameter defaulting to this.
+#: Runtime DS under the retired DOSBox-X harness, observed live in the T11 check. Only the
+#: offline streamer model (``vsync.py``, ``MockTransport``) uses it; live runs use AUTOMATION_DS.
 DGROUP_RUNTIME_SEG: int = 0x1575
 #: DS offset of the active film clock, 50 Hz ticks into the film (# [MEM-FLM-TICK]).
 FILM_CLOCK_OFFSET: int = 0x4896
@@ -43,6 +39,13 @@ GLOBAL_TICK_OFFSET: int = 0x22B8
 VBLANK_TRAP: str = f"{DGROUP_SEG}:0C5E"
 #: First letter of the film to play when a name is missing; jumps the listbox.
 FILM_PREFIX_LETTER: str = "c"
+#: DGROUP paragraph within the image, and the paragraph dosbox-automation loads the image at.
+DGROUP_PARAGRAPH: int = 0x0D51
+IMAGE_PARAGRAPH: int = 0x01F5
+#: Runtime DS under dosbox-automation (DOSBox-X's is DGROUP_RUNTIME_SEG): image + DGROUP.
+AUTOMATION_DS: int = IMAGE_PARAGRAPH + DGROUP_PARAGRAPH
+#: DS offset of the working palette in 6-bit DAC units (768 bytes).
+WORKING_PALETTE_OFFSET: int = 0x2768
 
 
 def film_selection_keys(name: str) -> list[tuple[int, int]]:
@@ -54,3 +57,9 @@ def film_selection_keys(name: str) -> list[tuple[int, int]]:
     """
     letter = name[:1].lower() or FILM_PREFIX_LETTER
     return [char_to_key(letter), KEY_DOWN, KEY_ENTER]
+
+
+def film_selection_names(name: str) -> list[str]:
+    """The same dialog sequence as :func:`film_selection_keys`, as dosbox-automation key names."""
+    letter = name[:1].lower() or FILM_PREFIX_LETTER
+    return [f"KBD_{letter}", "KBD_down", "KBD_enter"]

@@ -14,7 +14,7 @@ import pytest
 from archive_helpers import build_all
 from stunt_reel import dataroot, parity_layout
 from stunt_reel.all_archive import ArchiveMeta
-from tac_mock import StagedRepo, makeone_guest
+from tac_mock import StagedRepo, makeone_launcher
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "python" / "scripts"
 ARCHIVE = build_all([b"one", b"two"])
@@ -45,7 +45,6 @@ def _args(
     monkeypatch: pytest.MonkeyPatch,
     film: Path,
     game_root: Path,
-    conf: Path,
     *extra: str,
 ) -> Any:
     argv = [
@@ -54,8 +53,6 @@ def _args(
         str(film),
         "--game-root",
         str(game_root),
-        "--conf",
-        str(conf),
         *extra,
     ]
     monkeypatch.setattr(sys, "argv", argv)
@@ -72,12 +69,11 @@ def test_a_run_publishes_the_archive_with_meta(
     monkeypatch: pytest.MonkeyPatch,
     staged_repo: StagedRepo,
     game_root: Path,
-    makeone_conf: Path,
 ) -> None:
-    emulator, _keys = makeone_guest(text_after=1, archive=ARCHIVE)
-    args = _args(script, monkeypatch, staged_repo.film, game_root, makeone_conf, "--timeout", "30")
+    launch, _state = makeone_launcher(text_after=1, archive=ARCHIVE)
+    args = _args(script, monkeypatch, staged_repo.film, game_root, "--timeout", "30")
 
-    assert script.run(args, emulator) == 0
+    assert script.run(args, launch) == 0
 
     (directory,) = _archives()
     assert (directory / "CTRY.ALL").read_bytes() == ARCHIVE
@@ -92,15 +88,14 @@ def test_a_second_run_adds_the_next_archive(
     monkeypatch: pytest.MonkeyPatch,
     staged_repo: StagedRepo,
     game_root: Path,
-    makeone_conf: Path,
 ) -> None:
-    first, _keys = makeone_guest(text_after=1, archive=ARCHIVE)
-    args = _args(script, monkeypatch, staged_repo.film, game_root, makeone_conf)
+    first, _state = makeone_launcher(text_after=1, archive=ARCHIVE)
+    args = _args(script, monkeypatch, staged_repo.film, game_root)
     assert script.run(args, first) == 0
     (directory,) = _archives()
     before = {p.name: p.read_bytes() for p in directory.iterdir()}
 
-    second, _keys = makeone_guest(text_after=1, archive=build_all([b"other"]))
+    second, _state = makeone_launcher(text_after=1, archive=build_all([b"other"]))
     assert script.run(args, second) == 0
 
     assert [p.name for p in _archives()] == ["001", "002"]
@@ -112,21 +107,16 @@ def test_name_overrides_the_derived_slug_and_a_bad_one_is_refused(
     monkeypatch: pytest.MonkeyPatch,
     staged_repo: StagedRepo,
     game_root: Path,
-    makeone_conf: Path,
 ) -> None:
-    emulator, _keys = makeone_guest(text_after=1, archive=ARCHIVE)
-    args = _args(
-        script, monkeypatch, staged_repo.film, game_root, makeone_conf, "--name", "my-ctry"
-    )
-    assert script.run(args, emulator) == 0
+    launch, _state = makeone_launcher(text_after=1, archive=ARCHIVE)
+    args = _args(script, monkeypatch, staged_repo.film, game_root, "--name", "my-ctry")
+    assert script.run(args, launch) == 0
     assert len(_archives("my-ctry")) == 1
 
-    refused, _keys = makeone_guest(text_after=1, archive=ARCHIVE)
-    bad = _args(
-        script, monkeypatch, staged_repo.film, game_root, makeone_conf, "--name", "Bad Name"
-    )
+    refused, refused_state = makeone_launcher(text_after=1, archive=ARCHIVE)
+    bad = _args(script, monkeypatch, staged_repo.film, game_root, "--name", "Bad Name")
     assert script.run(bad, refused) == 2
-    assert not refused.started
+    assert not refused_state.started
 
 
 def test_a_non_archive_is_rejected_and_publishes_nothing(
@@ -134,12 +124,11 @@ def test_a_non_archive_is_rejected_and_publishes_nothing(
     monkeypatch: pytest.MonkeyPatch,
     staged_repo: StagedRepo,
     game_root: Path,
-    makeone_conf: Path,
 ) -> None:
-    emulator, _keys = makeone_guest(text_after=1, archive=b"junk")
-    args = _args(script, monkeypatch, staged_repo.film, game_root, makeone_conf)
+    launch, _state = makeone_launcher(text_after=1, archive=b"junk")
+    args = _args(script, monkeypatch, staged_repo.film, game_root)
 
-    assert script.run(args, emulator) == 1
+    assert script.run(args, launch) == 1
     assert _archives() == []
 
 
@@ -148,17 +137,16 @@ def test_a_publish_failure_is_a_make_all_line_and_exit_1(
     monkeypatch: pytest.MonkeyPatch,
     staged_repo: StagedRepo,
     game_root: Path,
-    makeone_conf: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     def full_disk(*_args: object, **_kwargs: object) -> Path:
         raise OSError("disk full")
 
     monkeypatch.setattr(script, "publish_archive", full_disk)
-    emulator, _keys = makeone_guest(text_after=1, archive=ARCHIVE)
-    args = _args(script, monkeypatch, staged_repo.film, game_root, makeone_conf)
+    launch, _state = makeone_launcher(text_after=1, archive=ARCHIVE)
+    args = _args(script, monkeypatch, staged_repo.film, game_root)
 
-    assert script.run(args, emulator) == 1
+    assert script.run(args, launch) == 1
     assert "[make-all] could not store the archive: disk full" in capsys.readouterr().err
 
 
@@ -167,11 +155,10 @@ def test_a_missing_game_file_is_a_make_all_line_and_exit_1(
     monkeypatch: pytest.MonkeyPatch,
     staged_repo: StagedRepo,
     game_root: Path,
-    makeone_conf: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    emulator, _keys = makeone_guest(text_after=1, archive=ARCHIVE)
-    args = _args(script, monkeypatch, staged_repo.film, game_root, makeone_conf)
+    launch, _state = makeone_launcher(text_after=1, archive=ARCHIVE)
+    args = _args(script, monkeypatch, staged_repo.film, game_root)
     original = script.makeone.make_all
 
     def vanish(*a: Any, **k: Any) -> bytes:
@@ -181,7 +168,7 @@ def test_a_missing_game_file_is_a_make_all_line_and_exit_1(
 
     monkeypatch.setattr(script.makeone, "make_all", vanish)
 
-    assert script.run(args, emulator) == 1
+    assert script.run(args, launch) == 1
     assert "[make-all]" in capsys.readouterr().err
     assert _archives() == []
 
@@ -191,14 +178,11 @@ def test_a_timeout_exits_1_and_leaves_no_mount(
     monkeypatch: pytest.MonkeyPatch,
     staged_repo: StagedRepo,
     game_root: Path,
-    makeone_conf: Path,
 ) -> None:
-    emulator, _keys = makeone_guest(text_after=None, archive=None)
-    args = _args(
-        script, monkeypatch, staged_repo.film, game_root, makeone_conf, "--timeout", "0.01"
-    )
+    launch, _state = makeone_launcher(text_after=None, archive=None)
+    args = _args(script, monkeypatch, staged_repo.film, game_root, "--timeout", "0.01")
 
-    assert script.run(args, emulator) == 1
+    assert script.run(args, launch) == 1
     assert _archives() == []
-    stage_root = dataroot.REPO_ROOT / parity_layout.stage_root()
+    stage_root = dataroot.data_root() / parity_layout.stage_root()
     assert not stage_root.exists() or not any(stage_root.iterdir())

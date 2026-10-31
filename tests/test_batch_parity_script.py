@@ -1,6 +1,6 @@
 """Offline tests for `python/scripts/batch_parity.py`: the four stage functions are replaced by fakes.
 
-Nothing here launches DOSBox-X, MAKEONE or the stuntreel binary, and nothing reads the corpus: the
+Nothing here launches dosbox-automation, MAKEONE or the stuntreel binary, and nothing reads the corpus: the
 corpus is built in `tmp_path`, and the process runner fails the test if anything calls it.
 """
 
@@ -60,6 +60,8 @@ class FakeStages:
 
 def _install(monkeypatch: pytest.MonkeyPatch) -> FakeStages:
     fake = FakeStages()
+    # main() would otherwise wait for the host's real disk to have 8 GB free before a render.
+    monkeypatch.setattr(batch_parity, "_DEFAULT_MIN_FREE_GB", 0.0)
     for stage in STAGES:
         monkeypatch.setattr(batch_stages, f"run_{stage}", fake.factory(stage))
     return fake

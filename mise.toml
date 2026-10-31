@@ -23,19 +23,13 @@ uv = "0.13.1"
 java = "temurin-21"
 "github:kaitai-io/kaitai_struct_compiler" = { version = "0.11", asset_pattern = "kaitai-struct-compiler-0.11.zip", strip_components = 1, bin_path = "bin", checksum = "sha256:ff89389d9dc9e770d78a24af328763cb1f8e7b31ce7766c9edf10669a060f2a2" }
 
-# DOSBox-X MCP Server: prebuilt release binary downloaded via mise's GitHub backend.
-# Automatically resolves architecture across Windows, macOS, and Linux.
-"github:caiiiycuk/dosbox-x-mcp-server" = "0.1.2"
-
-# Windows 64-bit DOSBox-X tool definition.
-# Only activated on Windows; on macOS/Linux, dosbox-x is installed via system package manager or Homebrew.
-[tools."github:joncampbell123/dosbox-x"]
-version = "dosbox-x-v2026.10.01"
+# dosbox-automation (DOSBox Staging fork with a REST/Lua automation API): the emulator behind
+# capture-ref, probe-light, make-all and play. Windows portable zip, pinned by checksum.
+[tools."github:dosbox-automation/dosbox-automation"]
+version = "0.85.1"
 os = ["windows"]
-# Pin explicitly to portable 64-bit zip to avoid 32-bit archives or setup installers (.exe)
-asset_pattern = "dosbox-x-vsbuild-win64-*.zip"
-# Why SDL2: SDL2 build is required on Windows for stability with OpenGL output
-bin_path = "bin/x64/Release SDL2"
+asset_pattern = "dosbox-automation-*-windows-x64.zip"
+checksum = "sha256:6835621f4731235651a886ef67c4fc40693454a6386f0e5ab5c0570965a186ee"
 
 [env]
 # One shared, writable tool cache per primary checkout: mise run init links each
@@ -58,16 +52,8 @@ TMP = "{{config_root}}/.cache/tmp"
 TEMP = "{{config_root}}/.cache/tmp"
 
 [tasks.play]
-description = "Launch Stunt Island film reel playback"
-run = "dosbox-x -conf tools/dosbox/dosbox-playone.conf"
-
-[tasks.ensure-dosbox]
-description = "Launch DOSBox-X for the interactive debugger on the port the MCP server reported (mise run ensure-dosbox -- --mcp-port <dosbox_mcp_port>; see docs/development.md § 2)"
-run = "uv run python python/scripts/ensure_dosbox.py"
-
-[tasks.mcp]
-description = "Launch the MCP server over stdio; see docs/development.md § 2 for the DOSBox-X side"
-run = "dosbox-x-mcp-server"
+description = "Play a film in PLAYONE.EXE on dosbox-automation (mise run play -- --film corpus/stisldem/VAULT/INTRO.FLM)"
+run = "uv run python python/scripts/play.py"
 
 [tasks.init]
 description = "Link the shared data root and the cached Python environment into this worktree, then sync it (mise run init -- --migrate adopts an existing corpus)"
@@ -95,7 +81,7 @@ description = "Capture PLAYONE.EXE Mode 13h frames for visual parity into captur
 run = "uv run python python/scripts/capture_playone_reference.py"
 
 [tasks.make-all]
-description = "Generate a film's .ALL with MAKEONE.EXE in DOSBox-X into captures/<film>/archives/ (mise run make-all -- --film corpus/stuntisl/VAULT/BALLOON.FLM)"
+description = "Generate a film's .ALL with MAKEONE.EXE on dosbox-automation into captures/<film>/archives/ (mise run make-all -- --film corpus/stuntisl/VAULT/BALLOON.FLM)"
 run = "uv run python python/scripts/make_all.py"
 
 [tasks.migrate-captures]
@@ -129,7 +115,7 @@ description = "Unpack PLAYONE.EXE with LZEXE 0.91 (mise run unlzexe -- corpus/st
 run = "uv run python python/scripts/unlzexe.py"
 
 [tasks.probe-light]
-description = "Probe PLAYONE per-shot light and shade arrays through the TAC harness (mise run probe-light -- --ticks 10,150,273,448)"
+description = "Probe PLAYONE per-shot light and shade arrays through dosbox-automation (mise run probe-light -- --ticks 10,150,273,448)"
 run = "uv run python python/scripts/probe_playone_light.py"
 
 [tasks.flm-events]

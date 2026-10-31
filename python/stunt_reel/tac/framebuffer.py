@@ -1,18 +1,19 @@
 """VGA Mode 13h reference-frame capture and artifact writing for visual parity.
 
-capture() is a sampler over a Session: it records a page only when it differs from
-the previous page and carries enough palette indices to be film content, which
-skips the modal dialog, palette fades, and the DOS text screen that surround
-playback, per Invariant [I4]. Every recorded page is tagged with the film clock
-(DS:0x4896, # [MEM-FLM-TICK]) read while the guest is halted at the trap, so parity
-compares it against the render of the same 50 Hz tick instead of capture order.
+capture() runs a plan ([`plan`](plan.py)): one trace of the whole film, a choice of frames
+from it, then dump passes that read the A000 page and the DS working palette at exactly those
+emulated frames. A frame is kept when its page changed and the film clock is running, which
+skips the dialog and load screens, and at most one is kept per ``stride`` film ticks (the
+sampler's old density), per Invariant [I4]. Every kept frame is tagged with the film clock
+(DS:0x4896, # [MEM-FLM-TICK]) read in the same Lua step as the page, so parity compares it
+against the render of the same 50 Hz tick instead of capture order.
 
 The artifact names and JSON layout are a capture contract: frames/tick_NNNN.idx,
 frames/palettes_NNNN.json and meta.json (written last) must stay in place; the frame
 files sit in a subdirectory so meta.json is visible beside them (ADR 0024). ``meta.json``
 is the port's capture document plus the diagnostics this sampler records; the
 writer owns its shape, so this module never assembles it by hand. Reference
-rasters are evidence only: the caller writes them under build/.
+rasters are evidence only: the caller writes them under the data root.
 """
 
 from __future__ import annotations
@@ -32,22 +33,23 @@ from stunt_reel.parity_artifacts import (
     Geometry,
     write_capture,
 )
-from stunt_reel.tac.transport import FRAME_BYTES, PAGE_OFFSET, PALETTE_ENTRIES
+from stunt_reel.tac import luagen, plan
+from stunt_reel.tac.playone import AUTOMATION_DS
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping, Sequence
+    from contextlib import AbstractContextManager
     from pathlib import Path
 
-    from stunt_reel.tac.session import Session
+    from stunt_reel.tac.automation import ScriptRunner
 
 __all__ = [
     "END_HOLD_FRAMES",
-    "END_IDLE_HITS",
-    "FILM_MIN_COLORS",
+    "FILM_STRIDE_TICKS",
     "FRAME_BYTES",
     "FRAME_HEIGHT",
     "FRAME_WIDTH",
-    "MAX_IDLE_HITS",
+    "MAX_TRACE_FRAMES",
     "PAGE_OFFSET",
     "PALETTE_ENTRIES",
     "capture",
@@ -57,114 +59,86 @@ _LOGGER = logging.getLogger(__name__)
 
 FRAME_WIDTH: int = CAPTURE_WIDTH
 FRAME_HEIGHT: int = CAPTURE_HEIGHT
+FRAME_BYTES: int = plan.FRAME_BYTES
+PAGE_OFFSET: int = 0
+PALETTE_ENTRIES: int = 256
 
-#: Distinct indices that mark film content; the modal dialog only ever uses six.
-FILM_MIN_COLORS: int = 20
-#: Trap hits allowed without a new frame before the capture gives up.
-MAX_IDLE_HITS: int = 2000
-#: Consecutive captured frames at one film clock that mean the film has ended.
-END_HOLD_FRAMES: int = 3
-#: Trap hits without a new film frame, once frames exist, that mean the film has ended
-#: (faded to black or back to the dialog).
-END_IDLE_HITS: int = 300
+#: Emulated frames at an unchanged film clock that mean the film has ended and holds its last
+#: picture (the clock advances at most every 2 frames while a film plays).
+END_HOLD_FRAMES: int = 30
+#: Film ticks between kept frames: the old trap sampler's density (one frame per 11 ticks).
+FILM_STRIDE_TICKS: int = 11
+#: Cap on a trace, in emulated frames (70.087 per second): well past the longest film.
+MAX_TRACE_FRAMES: int = 12000
 
 
 def capture(
-    session: Session,
+    open_runner: Callable[[], AbstractContextManager[ScriptRunner]],
     out_dir: Path,
-    max_frames: int,
     *,
-    stop_after_repeats: int = END_HOLD_FRAMES,
+    keys: Sequence[str],
+    max_frames: int,
+    stride: int = FILM_STRIDE_TICKS,
     film: FilmId | None = None,
     provenance: Mapping[str, str] | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
-    """Sample film frames from an open session and write the reference artifacts.
+    """Plan and run a capture of the film *keys* selects, and write the reference artifacts.
 
-    Frames are numbered from one in capture order (frames/tick_{ordinal:04d}.idx); that
-    ordinal is only a file name. meta.json is the port's capture document: each
-    frame carries film_tick (the film clock, which is what parity matches on), and
-    the sampler's diagnostics ride beside it through the writer.
-
-    Capture stops early once stop_after_repeats consecutive frames share one film
-    clock (the film has ended and is holding its last picture; running on risks the
-    emulator dropping the connection), and max_frames is only a cap. meta.json is
-    written last. *provenance* (when and by which checkout) joins the diagnostics in
-    meta.json; it is not part of the capture's identity, which is the film and its frames.
+    Frames are numbered from one in emulated-frame order (frames/tick_{ordinal:04d}.idx); that
+    ordinal is only a file name. meta.json is the port's capture document: each frame carries
+    film_tick (the film clock, which is what parity matches on), and the diagnostics ride beside
+    it through the writer. meta.json is written last. *provenance* (when and by which checkout)
+    joins the diagnostics in meta.json; it is not part of the capture's identity, which is the
+    film and its frames.
     """
     frames_dir = out_dir / CAPTURE_FRAMES_DIR
     frames_dir.mkdir(parents=True, exist_ok=True)
 
+    first = luagen.boot_end(len(keys))
+    result = plan.run_plan(
+        open_runner,
+        keys=keys,
+        first=first,
+        last=first + MAX_TRACE_FRAMES,
+        pick=lambda trace: plan.pick_every(trace, stride=stride)[:max_frames],
+        end_hold=END_HOLD_FRAMES,
+        progress=progress,
+    )
+
     frames: list[CapturedFrame] = []
     frame_diagnostics: list[Mapping[str, Any]] = []
-    previous_raster: bytes | None = None
-    palette_source = "dacpal"
-    idle = 0
-    repeats = 0
-
-    while len(frames) < max_frames:
-        page = session.next_frame()
-        raster = page.raster
-        distinct = len(set(raster))
-
-        if raster == previous_raster or distinct < FILM_MIN_COLORS:
-            idle += 1
-            if frames and idle > END_IDLE_HITS:
-                _LOGGER.info(
-                    "[capture] no new film frame for %d trap hits after %d frames: "
-                    "end of film (%d indices on the page)",
-                    idle,
-                    len(frames),
-                    distinct,
-                )
-                break
-            if idle > MAX_IDLE_HITS:
-                dominant = max(set(raster), key=raster.count)
-                raise RuntimeError(
-                    f"no new frame after {idle} trap hits "
-                    f"({len(frames)} frame(s) captured, {distinct} indices on the page), "
-                    f"dominant index {dominant}"
-                )
-            continue
-        idle = 0
-        previous_raster = raster
-
-        film_tick, global_tick = page.film_clock
-        if frames and film_tick == frames[-1].film_tick:
-            repeats += 1
-        else:
-            repeats = 0
-        ordinal = len(frames) + 1
+    for ordinal, emu_frame in enumerate(sorted(result.dumps), start=1):
+        dump = result.dumps[emu_frame]
+        entry = dump.entry
         frame_path = frames_dir / f"tick_{ordinal:04d}.idx"
-        frame_path.write_bytes(raster)
-        palette, palette_source = page.palette
+        frame_path.write_bytes(dump.page)
         palette_path = frames_dir / f"palettes_{ordinal:04d}.json"
-        palette_path.write_text(json.dumps([list(rgb) for rgb in palette]), encoding="utf-8")
-
+        palette = [list(rgb) for rgb in plan.palette_rgb(dump.palette6)]
+        palette_path.write_text(json.dumps(palette), encoding="utf-8")
         frames.append(
             CapturedFrame(
                 ordinal=ordinal,
-                film_tick=film_tick,
+                film_tick=entry.film_tick,
                 frame_file=f"{CAPTURE_FRAMES_DIR}/{frame_path.name}",
                 palette_file=f"{CAPTURE_FRAMES_DIR}/{palette_path.name}",
             )
         )
         frame_diagnostics.append(
             {
-                "global_tick": global_tick,
+                "global_tick": entry.global_tick,
+                "emu_frame": emu_frame,
                 "vga_start": PAGE_OFFSET,
-                "distinct_indices": distinct,
+                "distinct_indices": len(set(dump.page)),
             }
         )
         _LOGGER.info(
-            "[capture] frame %04d: film tick %d (global %d), %s distinct indices",
+            "[capture] frame %04d: film tick %d (global %d, emulated frame %d)",
             ordinal,
-            film_tick,
-            global_tick,
-            distinct,
+            entry.film_tick,
+            entry.global_tick,
+            emu_frame,
         )
-        if stop_after_repeats > 0 and repeats + 1 >= stop_after_repeats:
-            _LOGGER.info("[capture] film clock holding at %d: end of film", film_tick)
-            break
 
     capture_set = CaptureSet(
         schema_version=SCHEMA_VERSION,
@@ -176,8 +150,8 @@ def capture(
         out_dir,
         capture_set,
         diagnostics={
-            "palette_source": palette_source,
-            "dgroup_segment": f"{session.dgroup_segment:04X}",
+            "palette_source": "working",
+            "dgroup_segment": f"{AUTOMATION_DS:04X}",
             "frame_bytes": FRAME_BYTES,
             **(provenance or {}),
         },

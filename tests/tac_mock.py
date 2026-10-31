@@ -1,106 +1,113 @@
-"""Shared offline fixtures for session-level TAC tests.
+"""Shared offline fixtures for the capture tests.
 
-Provides the programmable capture guest (a MockTransport whose dump and retrace
-hooks model boot, the settled dialog and one film frame per trap hit), a synthetic
-repository root with a staged-shaped film tree, and a fake DOSBox-X dialer that
-speaks just enough framing for the emulator adapter's lifecycle tests.
+Provides a synthetic repository root with a staged-shaped film tree, a scripted film that
+answers the generated Lua the way dosbox-automation would (trace and dump passes), and a
+MAKEONE launcher whose guest returns to text mode on cue. No emulator starts.
 """
 
 from __future__ import annotations
 
-import socket
-import threading
-import time
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+import re
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from stunt_reel import dataroot, parity_layout
-from stunt_reel.tac.emulator import MockEmulator
-from stunt_reel.tac.playone import DGROUP_RUNTIME_SEG, FILM_CLOCK_OFFSET, GLOBAL_TICK_OFFSET
+from stunt_reel import dataroot
+from stunt_reel.tac.automation import MockAutomation
 from stunt_reel.tac.staging import ENGINE_FILES, MAKEONE_FILES
-from stunt_reel.tac.transport import FRAME_BYTES, MockTransport
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
     from pathlib import Path
 
+    from stunt_reel.tac.staging import StagedMount
+
 __all__ = [
-    "CaptureGuest",
+    "FILM_COLORS",
+    "FakeFilm",
+    "MakeOneState",
     "StagedRepo",
-    "capture_emulator",
-    "capture_mock",
-    "fake_guest",
-    "free_port",
+    "makeone_launcher",
     "staged_repo",
 ]
 
-#: Distinct indices on a recorded film page; above the capture's film-content floor.
+#: Distinct indices on a recorded film page.
 FILM_COLORS: int = 40
+_PAGE_BYTES = 320 * 200
 
 
-class CaptureGuest:
-    """Models the boot sequence, settled dialog and one film page per trap hit.
+class FakeFilm:
+    """A film that answers the generated Lua: tick 0 for the dialog, then a moving clock, then a hold.
 
-    Each trap hit advances the film clock by 3 (100 + 3 * hits) and the global tick
-    by the same, five behind the film clock. Decoys at the historic 0D51 image
-    segment must never be read.
+    The clock starts ``dialog_frames`` frames after the first traced frame and advances
+    ``tick_step`` per emulated frame for ``moving_frames`` frames, then holds its last value
+    with a static page (the end of the film). The global tick is the film tick plus 100.
     """
 
-    def __init__(
-        self,
-        dgroup_segment: int = DGROUP_RUNTIME_SEG,
-        transport: MockTransport | None = None,
-    ) -> None:
-        self.dgroup_segment = dgroup_segment
-        self.dumps = 0
-        self.hits = 0
-        self.mock = transport if transport is not None else MockTransport()
-        self.mock.palette = ([(255, 0, 0)] * 256, "dacpal")
-        self.mock.write_u16(0x0D51, FILM_CLOCK_OFFSET, 0xBEEF)
-        self.mock.write_u16(0x0D51, GLOBAL_TICK_OFFSET, 0xBEEF)
-        self.mock.dump_source = self.dump
-        self.mock.retrace_source = self.retrace
+    def __init__(self, *, dialog_frames: int = 4, moving_frames: int = 40, tick_step: int = 2):
+        self.dialog_frames = dialog_frames
+        self.moving_frames = moving_frames
+        self.tick_step = tick_step
+        self.scripts: list[str] = []
 
-    def dump(self) -> bytes:
-        """Serve the pages of the boot sequence, then a new film page after each hit."""
-        if self.hits == 0:
-            shift = min(self.dumps, 3)
-            raster = bytes((i + shift) % 6 for i in range(FRAME_BYTES))
-        elif self.hits == 1:
-            raster = bytes(i % 5 for i in range(FRAME_BYTES))
-        else:
-            raster = bytes((i * 7 + self.hits) % FILM_COLORS for i in range(FRAME_BYTES))
-        self.dumps += 1
-        return raster
+    def tick(self, frame: int, first: int) -> int:
+        moved = min(frame - first - self.dialog_frames + 1, self.moving_frames)
+        return max(moved, 0) * self.tick_step
 
-    def retrace(self) -> None:
-        """Advance one post-retrace trap hit and publish the film and global clocks."""
-        self.hits += 1
-        film_tick = 100 + 3 * self.hits
-        self.mock.write_u16(self.dgroup_segment, FILM_CLOCK_OFFSET, film_tick)
-        self.mock.write_u16(self.dgroup_segment, GLOBAL_TICK_OFFSET, film_tick - 5)
+    def page(self, tick: int) -> bytes:
+        return bytes((i * 7 + tick) % FILM_COLORS for i in range(_PAGE_BYTES))
 
+    def handler(self, lua: str) -> dict[str, Any]:
+        self.scripts.append(lua)
+        window = re.search(r"for f = (\d+), (\d+) do", lua)
+        assert window is not None, "not a trace script"
+        first, last = int(window.group(1)), int(window.group(2))
+        hold = re.search(r"hold >= (\d+) then break", lua)
+        dumps_match = re.search(r"local dumps = \{([^}]*)\}", lua)
+        dumps = (
+            [int(x) for x in dumps_match.group(1).split(",")]
+            if dumps_match and dumps_match.group(1)
+            else []
+        )
+        entries: list[str] = []
+        out: dict[str, Any] = {"done": True}
+        last_tick, held, previous = -1, 0, None
+        for frame in range(first, last + 1):
+            tick = self.tick(frame, first)
+            held = held + 1 if tick == last_tick else 0
+            last_tick = tick
+            page = self.page(tick)
+            entries.append(f"{tick}:{tick + 100}:{int(page != previous)}")
+            previous = page
+            if frame in dumps:
+                out[f"p{frame}"] = "x" + page.hex()
+                out[f"c{frame}"] = "x" + (bytes([63, 0, 0]) * 256).hex()
+                for n in range(1, len(re.findall(r'out\["m" \.\. f', lua)) + 1):
+                    out[f"m{frame}_{n}"] = "x" + b"\x00".hex()
+            if hold is not None and tick > 0 and held >= int(hold.group(1)):
+                break
+        out["trace"] = "x" + ",".join(entries)
+        return out
 
-def capture_mock(dgroup_segment: int = DGROUP_RUNTIME_SEG) -> MockTransport:
-    """The capture guest's transport, for tests that use the session directly."""
-    return CaptureGuest(dgroup_segment).mock
+    def runner(self) -> Callable[[], Any]:
+        mock = MockAutomation(self.handler)
 
+        @contextmanager
+        def open_runner() -> Iterator[MockAutomation]:
+            yield mock
 
-def capture_emulator(dgroup_segment: int = DGROUP_RUNTIME_SEG) -> MockEmulator:
-    """The capture guest behind a MockEmulator, ready for run_session."""
-    return MockEmulator(capture_mock(dgroup_segment))
+        return open_runner
 
 
 @dataclass(frozen=True)
 class StagedRepo:
-    """A synthetic checkout with a film tree, a parity conf and an output directory."""
+    """A synthetic checkout with a film tree and an output directory."""
 
     root: Path
     film: Path
     out: Path
-    conf: Path
 
 
 @pytest.fixture
@@ -116,60 +123,14 @@ def staged_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Sta
     film = vault / "CTRY.FLM"
     film.write_bytes(b"FLM" + bytes(16))
     (vault / "CTRY.ALL").write_bytes(b"ALL")
-
-    conf = tmp_path / "dosbox-parity.conf"
-    conf.write_text(
-        '# Parity capture (VAULT\\CTRY.FLM)\nmount c "corpus/stisldem"\n',
-        encoding="utf-8",
-    )
     out = tmp_path / "out"
 
     monkeypatch.setattr(dataroot, "REPO_ROOT", root)
     dataroot.data_root.cache_clear()
     try:
-        yield StagedRepo(root=root, film=film, out=out, conf=conf)
+        yield StagedRepo(root=root, film=film, out=out)
     finally:
         dataroot.data_root.cache_clear()
-
-
-def free_port() -> int:
-    """An ephemeral TCP port that is free at the moment it is chosen."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        probe.bind(("127.0.0.1", 0))
-        port: int = probe.getsockname()[1]
-    return port
-
-
-def fake_guest(port: int, *, attempts: int = 500) -> threading.Thread:
-    """A stand-in DOSBox-X that dials port and answers PING with the shared framing."""
-
-    def run() -> None:
-        conn: socket.socket | None = None
-        for _ in range(attempts):
-            try:
-                conn = socket.create_connection(("127.0.0.1", port), timeout=0.2)
-                break
-            except OSError:
-                time.sleep(0.01)
-        if conn is None:
-            return
-        with conn:
-            buffer = b""
-            while True:
-                chunk = conn.recv(1024)
-                if not chunk:
-                    return
-                buffer += chunk
-                while b"\n" in buffer:
-                    line, buffer = buffer.split(b"\n", 1)
-                    tokens = line.split()
-                    if len(tokens) >= 3 and tokens[0] == b"REQ":
-                        req_id = tokens[1].decode("ascii")
-                        conn.sendall(f"BEGIN {req_id} OK\nPONG\nEND {req_id}\n".encode())
-
-    thread = threading.Thread(target=run, daemon=True)
-    thread.start()
-    return thread
 
 
 @pytest.fixture
@@ -190,45 +151,50 @@ def game_root(tmp_path: Path) -> Path:
     return root
 
 
-@pytest.fixture
-def makeone_conf(tmp_path: Path) -> Path:
-    """A parity-shaped conf that still carries the playone.exe autoexec line."""
-    conf = tmp_path / "makeone.conf"
-    film_literal = chr(92).join(["VAULT", "CTRY.FLM"])
-    lines = [
-        'mount c "corpus/stisldem"',
-        f"title {film_literal}",
-        "[autoexec]",
-        "c:",
-        "playone.exe",
-    ]
-    conf.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return conf
+@dataclass
+class MakeOneState:
+    """What a scripted MAKEONE guest saw."""
+
+    scripts: list[str] = field(default_factory=list)
+    started: bool = False
+    stopped: bool = False
+    polls: int = 0
+    #: Raised when the emulator is stopped, to model a failing teardown.
+    stop_error: Exception | None = None
 
 
-def makeone_guest(
+def makeone_launcher(
     *, text_after: int | None, archive: bytes | None
-) -> tuple[MockEmulator, list[tuple[int, int]]]:
+) -> tuple[Callable[[StagedMount], Any], MakeOneState]:
     """A MAKEONE guest: graphics until *text_after* polls, then text mode with *archive* written."""
-    guest = CaptureGuest()
-    mock = guest.mock
-    polls = {"n": 0}
-    keys: list[tuple[int, int]] = []
-    send = mock.inject_key
+    state = MakeOneState()
 
-    def inject(key: tuple[int, int]) -> None:
-        keys.append(key)
-        send(key)
+    class Client:
+        def __init__(self, staged: StagedMount) -> None:
+            self._staged = staged
 
-    def mode() -> str:
-        polls["n"] += 1
-        if text_after is None or polls["n"] <= text_after:
-            return "M_VGA"
-        if archive is not None:
-            for mount in (dataroot.REPO_ROOT / parity_layout.stage_root()).glob("ctry-*"):
-                (mount / "VAULT" / "CTRY.ALL").write_bytes(archive)
-        return "M_TEXT"
+        def run_script(self, text: str, *, timeout: float) -> dict[str, object]:  # noqa: ARG002
+            state.scripts.append(text)
+            return {"done": True}
 
-    mock.inject_key = inject  # type: ignore[method-assign]
-    mock.video_mode_source = mode
-    return MockEmulator(mock), keys
+        def is_text_mode(self) -> bool:
+            state.polls += 1
+            if text_after is None or state.polls <= text_after:
+                return False
+            if archive is not None:
+                (self._staged.mount / "VAULT" / "CTRY.ALL").write_bytes(archive)
+            return True
+
+    @contextmanager
+    def launch(staged: StagedMount) -> Iterator[Client]:
+        state.started = True
+        try:
+            yield Client(staged)
+        except BaseException:
+            state.stopped = True  # a teardown error never outranks the one in flight
+            raise
+        state.stopped = True
+        if state.stop_error is not None:
+            raise state.stop_error
+
+    return launch, state

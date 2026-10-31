@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/neilsh/stunt-reel/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/neilsh/stunt-reel/actions/workflows/ci.yml)
 
-Format analysis, documentation, and modern reconstruction for *Stunt Island* (1992, Walt Disney Computer Software / The Assembly Line): offline-tested Rust and Python parsers for its file formats, a native `wgpu` renderer (`stuntreel`) that plays the standalone film reels, and a DOSBox-X harness that captures frames from the original `PLAYONE.EXE` to check the renderer against.
+Format analysis, documentation, and modern reconstruction for *Stunt Island* (1992, Walt Disney Computer Software / The Assembly Line): offline-tested Rust and Python parsers for its file formats, a native `wgpu` renderer (`stuntreel`) that plays the standalone film reels, and a dosbox-automation harness that captures frames from the original `PLAYONE.EXE` to check the renderer against.
 
 > [!WARNING]
 > **Work in progress (pre-alpha).** This is an active reverse-engineering project, not a finished product or a game you can install and play. Formats, APIs, command lines and documentation change without notice, and parts of the rendering are known to differ from the original. It is developed in collaboration with AI coding agents; [`AGENTS.md`](AGENTS.md) is the contributor guide.
@@ -20,7 +20,7 @@ No game assets or executables are distributed. You need your own lawfully obtain
 | Native renderer (`stuntreel`) | Plays the demo films `CTRY.FLM` and `INTRO.FLM` at 50 Hz with a free camera. Terrain colours, some actor placement and level of detail do not yet match the original. |
 | glTF export | Shapes and single film frames. |
 | Parity loop | Scores rendered frames against frames captured from the original player. Its log is [`research/parity/log.md`](research/parity/log.md). |
-| Platforms | The build and test gate runs on Linux, macOS and Windows. Capture and parity need Windows, DOSBox-X and your own copy of the demo. |
+| Platforms | The build and test gate runs on Linux, macOS and Windows. Capture and parity need Windows, dosbox-automation and your own copy of the demo. |
 | Not planned | The interactive flight simulator and authoring tools (`STUNT.EXE`); audio output is deferred. See [`docs/SPEC.md`](docs/SPEC.md#21-explicit-scope-boundaries--non-goals). |
 
 ---
@@ -30,7 +30,7 @@ No game assets or executables are distributed. You need your own lawfully obtain
 You can build and test everything without any game files:
 
 ```powershell
-mise trust && mise install   # pinned toolchains (Rust, Python, uv, Java, DOSBox-X, Kaitai)
+mise trust && mise install   # pinned toolchains (Rust, Python, uv, Java, dosbox-automation, Kaitai)
 mise run init                # shared data root, cached Python environment
 mise run check               # format, lint, typecheck and tests, Rust and Python
 ```

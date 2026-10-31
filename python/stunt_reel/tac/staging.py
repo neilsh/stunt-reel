@@ -1,18 +1,18 @@
-"""Stage one film for a DOSBox-X capture run.
+"""Stage one film for an emulator capture run.
 
 PLAYONE.EXE takes no film argument and its listbox only jumps by first letter, so
 the mount holds the demo's engine files and a VAULT with just this film's .FLM and
 .ALL: the keys are then always the first letter, Down, Enter. Staging copies into a
-fresh directory and writes a conf that mounts it, both under the parity stage root.
+fresh stage directory under the data root and writes a conf that mounts it beside the mount:
+dosbox-automation refuses a mount under the checkout ("outside allowed directories").
 """
 
 from __future__ import annotations
 
-import contextlib
 import itertools
 import os
 import shutil
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from stunt_reel import dataroot, parity_layout
 
@@ -20,13 +20,27 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from pathlib import Path
 
+#: ``capture`` (also used by ``play``) is the dynamic core at 45,000 cycles, the middle of the
+#: plateau where PLAYONE draws a new page on about 99% of emulated frames (7,000: 46%; more than
+#: 100,000 or ``max`` draws fewer). Its replays are byte-identical and it costs 0.23 of a host core
+#: against the normal core's 0.39 at the same rate (capture-dosbox-automation.md § 4.4).
+#: ``archive`` is the fast core for MAKEONE, which nothing samples (ADR 0023: 13 s against 179 s).
+CpuProfile = Literal["capture", "archive"]
+_CPU_LINES: dict[str, tuple[str, str]] = {
+    "capture": ("core = dynamic", "cpu_cycles = 45000"),
+    "archive": ("core = dynamic", "cpu_cycles = max"),
+}
+
 __all__ = [
     "ENGINE_FILES",
     "MAKEONE_FILES",
+    "CpuProfile",
     "StagedMount",
+    "render_conf",
     "stage_film",
     "stage_makeone",
     "stage_play",
+    "unstage",
 ]
 
 #: Mount labels are per call, so two sessions in one process cannot share a mount.
@@ -34,10 +48,29 @@ _LABELS: Iterator[int] = itertools.count(1)
 
 
 class StagedMount(NamedTuple):
-    """One session's staged mount and the conf that mounts it."""
+    """One session's staged mount and the conf that mounts it, both inside :attr:`root`."""
 
     mount: Path
     conf: Path
+
+    @property
+    def root(self) -> Path:
+        """The stage directory that holds the mount and the conf."""
+        return self.conf.parent
+
+    def write_conf(
+        self, port: int, *, program: str = "playone.exe", cpu: CpuProfile = "capture"
+    ) -> Path:
+        """Write the conf for *port* running *program* on the *cpu* profile; return its path.
+
+        Each port gets its own file beside :attr:`conf`, because dump passes launch side by side
+        from one stage and a shared file would hand one emulator another's port.
+        """
+        path = self.conf.with_name(f"{self.conf.stem}-{port}{self.conf.suffix}")
+        path.write_text(
+            render_conf(self.mount, port=port, program=program, cpu=cpu), encoding="utf-8"
+        )
+        return path
 
 
 def _stage_label() -> str:
@@ -69,21 +102,6 @@ MAKEONE_FILES: tuple[str, ...] = (
     "VDATA.BIN",
 )
 
-#: The conf literals a parity run rewrites; a miss must fail rather than mount the wrong tree.
-_CORPUS_MOUNT = 'mount c "corpus/stisldem"'
-_FILM_LITERAL = r"VAULT\CTRY.FLM"
-#: The autoexec command a MAKEONE run replaces; the newline keeps a comment mentioning it from matching.
-_PLAYONE_LINE = "\nplayone.exe"
-
-
-def _replace_once(text: str, literal: str, replacement: str, conf: Path) -> str:
-    """Replace one required conf literal, failing loudly when it is absent."""
-    if literal not in text:
-        raise RuntimeError(
-            f"{conf} does not contain {literal!r}; the capture conf must be a parity conf"
-        )
-    return text.replace(literal, replacement, 1)
-
 
 def _engine_root(film: Path) -> Path:
     """Where PLAYONE's engine files come from: the film's game tree, else the demo.
@@ -98,50 +116,82 @@ def _engine_root(film: Path) -> Path:
     return dataroot.REPO_ROOT / "corpus" / "stisldem"
 
 
-def _stage(
-    film: Path,
-    conf: Path,
-    populate: Callable[[Path], None],
-    extra_literals: tuple[tuple[str, str], ...] = (),
-) -> StagedMount:
-    """Build one session's mount with *populate*, write its conf, and clean up on any failure.
+def _stage(film: Path, populate: Callable[[Path], None]) -> StagedMount:
+    """Build one run's mount with *populate*, cleaning up on any failure.
 
-    The mount is labelled per call, so two sessions in one process cannot share one, and the
-    caller removes it once its emulator has stopped (ADR 0021).
+    The stage is labelled per call, so two runs in one process cannot share one, and the
+    caller removes it with :func:`unstage` once its emulator has stopped. The conf is written
+    at launch ([`StagedMount.write_conf`]) because the port is only known then.
     """
     label = _stage_label()
-    mount_dir = dataroot.REPO_ROOT / parity_layout.stage_dir(film.stem, label)
-    staged_conf = dataroot.REPO_ROOT / parity_layout.stage_conf(film.stem, label)
+    root = dataroot.data_root() / parity_layout.stage_dir(film.stem, label)
+    mount_dir = dataroot.data_root() / parity_layout.stage_mount(film.stem, label)
+    staged_conf = dataroot.data_root() / parity_layout.stage_conf(film.stem, label)
     try:
-        # A killed run can leave a mount under a reused pid's label; stale files must not leak in.
-        shutil.rmtree(mount_dir, ignore_errors=True)
+        # A killed run can leave a stage under a reused pid's label; stale files must not leak in.
+        shutil.rmtree(root, ignore_errors=True)
         (mount_dir / "VAULT").mkdir(parents=True)
         populate(mount_dir)
-        mount = mount_dir.relative_to(dataroot.REPO_ROOT).as_posix()
-        text = conf.read_text(encoding="utf-8")
-        text = _replace_once(text, _CORPUS_MOUNT, f'mount c "{mount}"', conf)
-        text = _replace_once(text, _FILM_LITERAL, rf"VAULT\{film.name}", conf)
-        for literal, replacement in extra_literals:
-            text = _replace_once(text, literal, replacement, conf)
-        staged_conf.write_text(text, encoding="utf-8")
     except BaseException:
         # The caller never receives these paths, so nothing else can remove them.
-        shutil.rmtree(mount_dir, ignore_errors=True)
-        with contextlib.suppress(OSError):
-            staged_conf.unlink(missing_ok=True)
+        shutil.rmtree(root, ignore_errors=True)
         raise
     return StagedMount(mount_dir, staged_conf)
 
 
-def stage_play(film: Path, archive: Path, conf: Path) -> StagedMount:
-    """Stage *film* and its *archive* alone in a mount for PLAYONE.EXE, with its conf.
+def unstage(staged: StagedMount) -> None:
+    """Delete the whole stage (mount and conf); a second call is a no-op."""
+    shutil.rmtree(staged.root, ignore_errors=True)
+
+
+def render_conf(
+    mount: Path,
+    *,
+    port: int,
+    program: str,
+    capture_dir: Path | None = None,
+    cpu: CpuProfile = "capture",
+) -> str:
+    """The dosbox-automation conf that mounts *mount*, serves REST on *port* and runs *program*.
+
+    The ``capture`` profile's runs replay bit for bit (``capture-dosbox-automation.md`` § 4.4).
+    """
+    lines = [
+        "[sdl]",
+        "output = texture",
+        # 2x with 4:3 correction; the default sizes the window from the desktop, which fills it.
+        "window_size = 640x480",
+        "[dosbox]",
+        "machine = svga_s3",
+        "[cpu]",
+        *_CPU_LINES[cpu],
+        "[webserver]",
+        "webserver_enabled = true",
+        f"webserver_port = {port}",
+    ]
+    if capture_dir is not None:
+        lines += ["[capture]", f"capture_dir = {capture_dir}"]
+    lines += [
+        "[sblaster]",
+        "sbtype = sb16",
+        "[autoexec]",
+        "@echo off",
+        f'mount c "{mount}"',
+        "c:",
+        program,
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def stage_play(film: Path, archive: Path) -> StagedMount:
+    """Stage *film* and its *archive* alone in a mount for PLAYONE.EXE.
 
     PLAYONE finds both in the mount's VAULT directory, so they are copied just in time: the film under its own
     name and the archive as ``<film stem>.ALL`` whatever the source spelled. Two captures of
     one film must not share a mount: each session used to rewrite one directory under the
     stage root, so a second session deleted the tree the first was still emulating from.
 
-    Returns the staged mount and the generated conf (both under the parity stage root).
+    Returns the stage; its conf is written at launch (``StagedMount.write_conf``).
     """
     for needed in (film, archive):
         if not needed.is_file():
@@ -155,21 +205,20 @@ def stage_play(film: Path, archive: Path, conf: Path) -> StagedMount:
         shutil.copy2(film, mount_dir / "VAULT" / film.name)
         shutil.copy2(archive, mount_dir / "VAULT" / f"{film.stem}.ALL")
 
-    return _stage(film, conf, populate)
+    return _stage(film, populate)
 
 
-def stage_film(film: Path, conf: Path) -> StagedMount:
+def stage_film(film: Path) -> StagedMount:
     """Stage *film* with the ``.ALL`` that sits beside it (see :func:`stage_play`)."""
-    return stage_play(film, film.with_suffix(".ALL"), conf)
+    return stage_play(film, film.with_suffix(".ALL"))
 
 
-def stage_makeone(film: Path, game_root: Path, conf: Path) -> StagedMount:
-    """Stage *film* in a fresh mount for MAKEONE.EXE, with a conf that runs it.
+def stage_makeone(film: Path, game_root: Path) -> StagedMount:
+    """Stage *film* in a fresh mount for MAKEONE.EXE (launch it with ``program="makeone.exe"``).
 
     The mount holds :data:`MAKEONE_FILES`, the whole ``RES`` tree from *game_root* and
     the film in its VAULT directory only, and is never reused: MAKEONE writes its ``.ALL`` into the mount, so
-    a mount that already held one would make the output ambiguous. The conf is the parity conf
-    with ``playone.exe`` replaced by ``makeone.exe``.
+    a mount that already held one would make the output ambiguous.
     """
     res = game_root / "RES"
     for needed in (film, res):
@@ -184,4 +233,4 @@ def stage_makeone(film: Path, game_root: Path, conf: Path) -> StagedMount:
         shutil.copytree(res, mount_dir / "RES")
         shutil.copy2(film, mount_dir / "VAULT" / film.name)
 
-    return _stage(film, conf, populate, ((_PLAYONE_LINE, "\nmakeone.exe"),))
+    return _stage(film, populate)

@@ -1,5 +1,8 @@
 # `PLAYONE.EXE`: Debugger Capture Harness (DOSBox-X)
 
+> [!NOTE]
+> **Historical.** Capture, probing and `make-all` now run as plans on dosbox-automation ([ADR 0025](../../docs/adr/0025-capture-runs-are-plans-not-sessions.md); mechanics in [`capture-dosbox-automation.md`](capture-dosbox-automation.md) and `python/stunt_reel/tac/plan.py`). The DOSBox-X debugger harness described below is retired with its code; the facts it established are kept in [`dosbox-x-legacy.md`](dosbox-x-legacy.md).
+
 This document describes how the parity reference set is captured from the original player: the control topology, the emulator behaviours that constrain the harness, the protocol that survives them, and the observed results. It is the runtime companion to [`startup.md`](startup.md), [`navigation.md`](navigation.md), and [`memory.md`](memory.md).
 
 Reference rasters are evidence only and land under `build/parity/` (gitignored); `mise run capture-ref` drives the capture. A film without an `.ALL` gets one from `MAKEONE.EXE` under the same harness (`mise run make-all`), which also reads the video mode with `VGA MODE`; those findings are in [`../makeone-exe/driving.md`](../makeone-exe/driving.md).
@@ -50,7 +53,7 @@ The load lockout itself is recorded in [`memory.md` § 3.4](memory.md#34-lzexe-u
 
 ## 3. Working Protocol
 
-Implemented by the capture session in [`python/stunt_reel/tac/session.py`](../../python/stunt_reel/tac/session.py) (settle, keys, trap, callback lifetime, teardown), [`emulator.py`](../../python/stunt_reel/tac/emulator.py) (launch, stop, port) and [`staging.py`](../../python/stunt_reel/tac/staging.py) (mount and conf), over the operations seam in [`transport.py`](../../python/stunt_reel/tac/transport.py); [`framebuffer.py`](../../python/stunt_reel/tac/framebuffer.py) is the capture sampler and artifact writer, and [`python/scripts/capture_playone_reference.py`](../../python/scripts/capture_playone_reference.py) only formats progress.
+Implemented by the capture session in `python/stunt_reel/tac/session.py` (settle, keys, trap, callback lifetime, teardown), [`emulator.py`](../../python/stunt_reel/tac/emulator.py) (launch, stop, port) and [`staging.py`](../../python/stunt_reel/tac/staging.py) (mount and conf), over the operations seam in [`transport.py`](../../python/stunt_reel/tac/transport.py); [`framebuffer.py`](../../python/stunt_reel/tac/framebuffer.py) is the capture sampler and artifact writer, and [`python/scripts/capture_playone_reference.py`](../../python/scripts/capture_playone_reference.py) only formats progress.
 
 1. **Wait for the dialog with framebuffer dumps only.** The page sequence at boot is DOSBox-X splash (41 indices) → blank (1) → two graphics pages (5, 6) → the `LOAD FILM` dialog (6 indices, static). Return once at least three distinct pages have been seen and the page has been identical for five consecutive dumps; up to 600 dumps. No debugger command that touches guest memory is issued before this point.
 2. **Drive the dialog through the BIOS ring buffer** ([`navigation.md` § 4](navigation.md#4-keyboard-architecture--input-injection)): `c` (prefix jump to `CTRY.ALL`), `Down` (`CTRY.FLM`), `Enter` (confirm). The keys are written to `0040:001E`/`0040:001C` while the emulator free-runs; stepping would stop the modal loop from reaching `INT 16h`.
@@ -96,4 +99,4 @@ _Found 2026-10-22; see the [parity log](../parity/log.md)._
 
 ## 6. Speed and Configuration Experiments
 
-See [`capture-speed.md`](capture-speed.md): the per-frame cost is wall-paced (0.25 s per frame, 4 s of boot), no DOSBox-X setting, `turbo` or frame sampling cut it, eight captures at once keep the tick spread within 0 to 2 ticks on an idle machine, and `nosound` freezes the film clock.
+See [`capture-speed.md`](capture-speed.md): the per-frame cost is wall-paced (0.25 s per frame, 4 s of boot), no DOSBox-X setting, `turbo` or frame sampling cut it, eight captures at once keep the tick spread within 0 to 2 ticks on an idle machine, and `nosound` freezes the film clock. A different emulator, dosbox-automation, was evaluated for deterministic video capture: [`capture-dosbox-automation.md`](capture-dosbox-automation.md).
