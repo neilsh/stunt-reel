@@ -91,6 +91,42 @@ def test_prek_checks_the_staged_content(prek: str, tmp_path: Path) -> None:
     assert target.read_text(encoding="utf-8") == "x = 3\n"
 
 
+@pytest.mark.parametrize(
+    ("name", "content"),
+    [
+        ("log.md", "one\n<<<<<<< HEAD\ntwo\n=======\nthree\n>>>>>>> main\n"),
+        ("blob.txt", "x" * 600_000 + "\n"),
+    ],
+    ids=["conflict-markers", "large-file"],
+)
+def test_ci_built_ins_catch_a_committed_change(
+    prek: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, content: str
+) -> None:
+    """CI stages nothing and is not mid-merge, so the built-ins must judge committed files.
+
+    A commit made with --no-verify reaches CI as a commit range; without `--enforce-all` and
+    `--assume-in-merge` the large-file and conflict-marker built-ins pass it unread.
+    """
+    assert GIT is not None
+    repo = _repo(tmp_path)
+    shutil.copyfile(REPO_ROOT / "prek.toml", repo / "prek.toml")
+    _run(repo, GIT, "add", "prek.toml")
+    assert _run(repo, GIT, "commit", "-q", "-m", "config").returncode == 0
+    (repo / name).write_text(content, encoding="utf-8", newline="\n")
+    _run(repo, GIT, "add", name)
+    assert _run(repo, GIT, "commit", "-q", "--no-verify", "-m", "bad").returncode == 0
+    monkeypatch.setenv("SKIP", _ci_skip())
+    result = _run(
+        repo, prek, "run", "--config", "prek.toml", "--from-ref", "HEAD~1", "--to-ref", "HEAD"
+    )
+    assert result.returncode != 0, result.stdout + result.stderr
+
+
+def _ci_skip() -> str:
+    ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    return re.findall(r"\bSKIP: (\S+)", ci)[0]
+
+
 def test_ci_skips_exactly_the_local_hooks() -> None:
     """The gate covers the local hooks, so CI's prek step skips them and only them."""
     ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")

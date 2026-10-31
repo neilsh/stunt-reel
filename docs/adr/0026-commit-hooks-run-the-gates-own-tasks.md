@@ -72,10 +72,14 @@ prek runs the commit-time checks; `gate.py` stays the gate.
 - **`gate.py staged` is removed** with its constants, its log path and its tests; `gate.py` runs
   only `all`, `rust` and `py` again.
 - **CI runs the hooks' extra checks.** The `quality` job installs prek and runs it with the
-  gate-step hooks skipped (`SKIP=diff-check,fmt-check-rust,fmt-check-py,lint-py,test-docs`), since
-  the gate it already runs covers them: a pull request over `--from-ref origin/<base>`, a push to
-  `main` over `--from-ref <previous tip>` (admins may push there without a pull request), and a
-  manual run over `--all-files`. A commit made with `--no-verify` or without hooks no longer reaches `main`
+  local hooks skipped (`SKIP=diff-check,fmt-check-rust,fmt-check-py,lint-py,test-docs`): the gate
+  it already runs covers the format, lint and doc checks, and `diff-check` reads an index that is
+  empty in CI, so `check-merge-conflict` stands in for its conflict markers. CI stages nothing and
+  is not mid-merge, so `check-added-large-files` takes `--enforce-all` and `check-merge-conflict`
+  takes `--assume-in-merge`; without them both pass a commit unread. A pull request is checked
+  over `--from-ref origin/<base>`, a push to `main` over `--from-ref <previous tip>` (admins may
+  push there without a pull request), and a manual run over `--all-files`. A commit made with
+  `--no-verify` or without hooks no longer reaches `main`
   unchecked for the built-ins.
 - **prek is pinned in `mise.toml`** like every other tool; the hooks carry no versions.
 

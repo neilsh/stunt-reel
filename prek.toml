@@ -54,8 +54,11 @@ pass_filenames = false
 [[repos]]
 repo = "builtin"
 
+# CI runs the built-ins over a commit range with nothing staged, so these two must not depend on
+# what is staged (--enforce-all) or on a merge being in progress (--assume-in-merge).
 [[repos.hooks]]
 id = "check-added-large-files"
+args = ["--enforce-all"]
 
 [[repos.hooks]]
 id = "check-illegal-windows-names"
@@ -65,6 +68,7 @@ id = "check-case-conflict"
 
 [[repos.hooks]]
 id = "check-merge-conflict"
+args = ["--assume-in-merge"]
 
 [[repos.hooks]]
 id = "check-toml"

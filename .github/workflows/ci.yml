@@ -78,7 +78,9 @@ jobs:
         run: mise run check
       - name: Commit-hook built-ins on the changes
         # ADR 0026: a commit made with --no-verify, or pushed straight to main, still gets the
-        # prek built-ins. The gate above already ran the local hooks, so they are skipped. A
+        # prek built-ins. The local hooks are skipped: the gate above ran the format, lint and
+        # doc checks, and diff-check reads the index, which is empty here; check-merge-conflict
+        # catches conflict markers instead (prek.toml's args make both built-ins read commits). A
         # pull request checks its diff from the base branch, a push its diff from the previous
         # tip, and a manual run (or a push whose previous tip is gone) every file.
         env:
