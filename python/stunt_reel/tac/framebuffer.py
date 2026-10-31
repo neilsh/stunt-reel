@@ -94,8 +94,9 @@ def capture(
     film and its frames. *layout* is the PLAYONE.EXE build being run; its name is recorded as
     ``playone_build``.
     """
-    frames_dir = out_dir / CAPTURE_FRAMES_DIR
-    frames_dir.mkdir(parents=True, exist_ok=True)
+    if max_frames < 1:
+        # Otherwise the pick is empty and the capture fails as if the film had no usable frame.
+        raise ValueError(f"max_frames must be at least 1, not {max_frames}")
 
     first = luagen.boot_end(len(keys))
     result = plan.run_plan(
@@ -108,18 +109,26 @@ def capture(
         progress=progress,
         layout=layout,
     )
-    entries = result.trace.entries
-    torn = sum(e.torn for e in entries)
-    palette_steps = sum(e.palette_changed for e in entries)
-    candidates = sum(e.changed and e.film_tick > 0 for e in entries)
+    trace = result.trace
+    torn = sum(e.torn for e in trace.entries)
+    palette_steps = sum(e.palette_changed for e in trace.entries)
+    candidates = [
+        f for f in trace.frames if trace.entry(f).changed and trace.entry(f).film_tick > 0
+    ]
     if candidates and not result.dumps:
-        # Every film frame was skipped: say so instead of writing a capture with no frames.
+        # Every film frame was skipped: say so instead of writing a capture with no frames. The
+        # counts are over the frames the message names; meta.json's are over the whole trace.
+        candidates_torn = sum(trace.entry(f).torn for f in candidates)
+        spoiled = sum(not trace.entry(f).torn and not plan.usable(trace, f) for f in candidates)
         raise plan.PlanError(
-            f"no usable frame among {candidates} changed film frames: {torn} torn, "
-            f"{palette_steps} palette steps (each spoils its frame and the next), "
+            f"no usable frame among {len(candidates)} changed film frames: {candidates_torn} torn, "
+            f"{spoiled} spoiled by a palette step (at the frame or the one before), "
             f"{len(result.dropped)} dropped in dump passes"
         )
 
+    # Made only now, so a capture that fails above leaves no empty frames/ behind.
+    frames_dir = out_dir / CAPTURE_FRAMES_DIR
+    frames_dir.mkdir(parents=True, exist_ok=True)
     frames: list[CapturedFrame] = []
     frame_diagnostics: list[Mapping[str, Any]] = []
     for ordinal, emu_frame in enumerate(sorted(result.dumps), start=1):
