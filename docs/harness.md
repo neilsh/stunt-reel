@@ -106,16 +106,9 @@ the repository untouched.
 
 Commands run through Windows PowerShell 5.1 (`5.1.26100`), one fresh `pwsh -Command` per call:
 `$env:` assignments, functions, variables and `Push-Location` do not survive into the next call,
-so a setup step and the command that needs it belong in the same call. This is the host's
-Windows PowerShell; a harness that shells out through it inherits the version, while which shell
-a harness gives you is its own choice.
-
-5.1 has no `Set-Content -Encoding utf8NoBOM`: the parameter rejects the value with an
-"Unable to match the identifier name utf8NoBOM to a valid enumerator name" error, and one
-sweep's writes all failed while the sweep kept going, which reads like "nothing to change".
-Write UTF-8 without a BOM through
-`[IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding($false)))`, and
-read one file back before running such a write over many.
+so a setup step and the command that needs it belong in the same call. Its 5.1 pitfalls are in
+[Windows PowerShell 5.1](#windows-powershell-51), because every harness that shells out through
+it meets them.
 
 ### Delegation
 
@@ -153,6 +146,46 @@ other name.
 
 Not yet documented: its sandboxing and timeout behaviour. Fill that in from observation, not
 from vendor documentation — this page records what we have seen.
+
+### Editing a stack layer another worktree holds
+
+Observed 2026-10-31, stacked PRs under `gh stack`, one worktree per layer. Git refuses to check
+out a branch another worktree holds, and the session could write only inside its own worktree,
+so a fix to a lower layer is made on a detached `HEAD` and the branch is moved underneath:
+
+```sh
+git switch --detach <layer>                 # in your own worktree; the layer's tip, no branch
+# edit, mise run check, git commit
+git update-ref refs/heads/<layer> HEAD <old-tip>  # move the branch; <old-tip> guards a race
+git -C <worktree-holding-layer> status --porcelain  # must print nothing before the next line
+git -C <worktree-holding-layer> reset --hard        # its index and files catch up with the branch
+```
+
+Without the last step the other worktree still has the old files checked out under the moved
+branch, and `git status` there reports your commit reversed as staged changes. `reset --hard`
+discards anything uncommitted in it, which is why the `status` check comes first; writing into
+another worktree may need approval. Then rebase the layers above onto the new tip. `gh stack add`
+works only from the top branch of the stack, so run it in the worktree that holds the top.
+
+## Windows PowerShell 5.1
+
+Any harness that shells out through the host's Windows PowerShell 5.1 meets these; observed
+under DeepSeek Harness (2026-10-25) and Claude Code (2026-10-31).
+
+* **No `utf8NoBOM`.** `Set-Content -Encoding utf8NoBOM` fails with "Unable to match the
+  identifier name utf8NoBOM to a valid enumerator name", and one sweep's writes all failed while
+  the sweep kept going, which reads like "nothing to change". 5.1's `Set-Content` and `Out-File`
+  also write CRLF. Write UTF-8 without a BOM and with LF through
+  `[IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding($false)))`, with
+  `` "`n" `` as the only line break in `$text`, and read one file back before running such a
+  write over many. `research/parity/log.md` is LF and append-only, so this is how a row goes in.
+* **Commit messages from a file.** A here-string piped to `git commit -F -` does not reach git.
+  Write the message with `WriteAllText` above and run `git commit -F <file>`.
+* **Search with the Grep tool, not a shell.** A pattern with quotes in it does not survive 5.1's
+  quoting into a native command's arguments intact; the harness's own search tool takes it as
+  written.
+* **Parse `gh` output with `ConvertFrom-Json`.** A `gh ... --jq '<expression>'` filter loses its
+  quotes the same way; ask for `--json <fields>` and pipe it to `ConvertFrom-Json` instead.
 
 ## Adding another harness
 
