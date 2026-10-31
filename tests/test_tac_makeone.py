@@ -8,13 +8,33 @@ import pytest
 
 from archive_helpers import build_all
 from stunt_reel import dataroot, parity_layout
-from stunt_reel.tac import makeone
+from stunt_reel.tac import automation, makeone, staging
 from tac_mock import StagedRepo, makeone_launcher
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 ARCHIVE = build_all([b"one", b"two"])
+
+
+def test_makeone_launches_with_the_archive_cpu_profile(
+    staged_repo: StagedRepo, game_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """MAKEONE is not sampled, so it runs on the fast core (13 s against 179 s, ADR 0023)."""
+    confs: list[list[str]] = []
+
+    def fake_launched(write_conf: Callable[[int], Path]) -> object:
+        confs.append(write_conf(1).read_text(encoding="utf-8").splitlines())
+        return object()
+
+    monkeypatch.setattr(automation, "launched", fake_launched)
+    staged = staging.stage_makeone(staged_repo.film, game_root)
+
+    makeone._launch(staged)
+
+    assert "cpu_cycles = max" in confs[0]
+    assert confs[0][-1] == "makeone.exe"
 
 
 class Modes:

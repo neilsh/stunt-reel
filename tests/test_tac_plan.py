@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+import threading
+import time
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
@@ -52,6 +54,14 @@ def test_chunk_splits_a_frame_list_into_runs_of_at_most_the_dump_limit() -> None
     assert plan.chunk([]) == []
 
 
+def test_chunk_balances_the_passes() -> None:
+    """Passes run side by side, so a one-frame last pass would cost a whole replay for nothing."""
+    chunks = plan.chunk(list(range(121)))
+
+    assert [len(c) for c in chunks] == [31, 30, 30, 30]
+    assert [f for c in chunks for f in c] == list(range(121))
+
+
 def test_pick_new_film_ticks_takes_the_first_changed_frame_per_stride() -> None:
     entries = [(0, 0, 1), (10, 1, 1), (10, 2, 0), (15, 3, 1), (21, 4, 1), (22, 5, 1), (40, 6, 0)]
     trace = plan.decode_trace(_trace_text(entries), FIRST)
@@ -76,14 +86,19 @@ def _dump_output(frames: list[int], trace: str) -> dict[str, Any]:
     return out
 
 
-def _runner(entries: list[tuple[int, int, int]], *, corrupt: bool = False) -> MockAutomation:
+def _runner(
+    entries: list[tuple[int, int, int]],
+    *,
+    dump_entries: list[tuple[int, int, int]] | None = None,
+) -> MockAutomation:
+    """A film whose dump passes trace *dump_entries* (default: the same as the trace pass)."""
     text = _trace_text(entries)
+    dump_text = text if dump_entries is None else _trace_text(dump_entries)
 
     def handler(lua: str) -> dict[str, Any]:
         match = re.search(r"local dumps = \{([^}]*)\}", lua)
         frames = [int(x) for x in match.group(1).split(",")] if match and match.group(1) else []
-        reply = text if not (corrupt and frames) else _trace_text([(9, 9, 1), *entries[1:]])
-        return _dump_output(frames, reply)
+        return _dump_output(frames, dump_text if frames else text)
 
     return MockAutomation(handler)
 
@@ -123,6 +138,38 @@ def test_run_plan_traces_picks_then_dumps_in_chunks() -> None:
     assert result.trace.entry(picked[0]).film_tick == 2
 
 
+def test_dump_passes_run_side_by_side_up_to_the_limit() -> None:
+    """A long film needs many replays (INTRO: 8 passes, 17 min one after another)."""
+    mock = _runner(ENTRIES)
+    lock = threading.Lock()
+    state = {"open": 0, "most": 0}
+
+    @contextmanager
+    def opener() -> Iterator[MockAutomation]:
+        with lock:
+            state["open"] += 1
+            state["most"] = max(state["most"], state["open"])
+        try:
+            time.sleep(0.05)
+            yield mock
+        finally:
+            with lock:
+                state["open"] -= 1
+
+    result = plan.run_plan(
+        opener,
+        keys=KEYS,
+        first=FIRST,
+        last=FIRST + len(ENTRIES) - 1,
+        pick=lambda trace: plan.pick_every(trace, stride=2),
+        timeout=5,
+        parallel=3,
+    )
+
+    assert len(result.dumps) == len(ENTRIES) - 1
+    assert state["most"] == 3
+
+
 def test_run_plan_with_nothing_picked_runs_only_the_trace() -> None:
     mock = _runner(ENTRIES)
 
@@ -139,10 +186,47 @@ def test_run_plan_with_nothing_picked_runs_only_the_trace() -> None:
     assert len(mock.scripts) == 1
 
 
-def test_a_dump_pass_that_disagrees_with_the_trace_is_a_divergence() -> None:
-    mock = _runner(ENTRIES, corrupt=True)
+def test_a_dump_keeps_the_tick_its_own_pass_read_when_the_film_jitters() -> None:
+    """A tick of jitter between passes (live on COUNT.FLM) labels the page with its own tick."""
+    lagging = [(max(t - 1, 0), g - 1, c) for t, g, c in ENTRIES]
+    mock = _runner(ENTRIES, dump_entries=lagging)
+    lines: list[str] = []
+
+    result = plan.run_plan(
+        _open(mock),
+        keys=KEYS,
+        first=FIRST,
+        last=FIRST + 50,
+        pick=lambda trace: [trace.first + 3, trace.first + 5],
+        timeout=5,
+        progress=lines.append,
+    )
+
+    assert result.trace.entry(FIRST + 3).film_tick == 6
+    assert result.dumps[FIRST + 3].entry.film_tick == 5
+    assert result.dumps[FIRST + 3].entry.global_tick == 105
+    assert "2 of 2 dumped frames read another tick than the trace pass (at most 1)" in lines
+
+
+def test_a_dump_pass_that_drifts_past_the_skew_is_a_divergence() -> None:
+    far = [(t + plan.MAX_SKEW_TICKS + 1, g, c) for t, g, c in ENTRIES]
+    mock = _runner(ENTRIES, dump_entries=far)
 
     with pytest.raises(plan.PlanDivergence, match="frame"):
+        plan.run_plan(
+            _open(mock),
+            keys=KEYS,
+            first=FIRST,
+            last=FIRST + 50,
+            pick=lambda trace: [trace.first + 3],
+            timeout=5,
+        )
+
+
+def test_a_dump_pass_that_ends_before_a_picked_frame_is_a_divergence() -> None:
+    mock = _runner(ENTRIES, dump_entries=ENTRIES[:3])
+
+    with pytest.raises(plan.PlanDivergence, match="traced only"):
         plan.run_plan(
             _open(mock),
             keys=KEYS,

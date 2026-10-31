@@ -50,61 +50,89 @@
 
 ## Task 1: Preserve the DOSBox-X facts
 
-- [ ] **1.1** Create `research/playone-exe/dosbox-x-legacy.md` from the DOSBox-X content of `capture.md`, `capture-speed.md`, ADR 0021 and `docs/development.md` § 2: the `mcp_server` dial-out, the debugger command table, `BP 0D51:0C5E`, port 0 binding, the `dacexpand` formula, the `DS = 0x1575` constants, measured speeds and the caveats. State at the top that the harness is retired, which commit last had it, and that the `0C5E` target is the `ret` of `set_palette` ([`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.3).
-- [ ] **1.2** Add a pointer from `research/README.md` and `static-tooling.md`. Run `mise run check-py` (the doc-anchor tests check `# [MEM-*]` tokens: move none of them).
-- [ ] **1.3** Commit: `docs(research): move the retired DOSBox-X harness into its own note`.
+- [x] **1.1** Create `research/playone-exe/dosbox-x-legacy.md` from the DOSBox-X content of `capture.md`, `capture-speed.md`, ADR 0021 and `docs/development.md` § 2: the `mcp_server` dial-out, the debugger command table, `BP 0D51:0C5E`, port 0 binding, the `dacexpand` formula, the `DS = 0x1575` constants, measured speeds and the caveats. State at the top that the harness is retired, which commit last had it, and that the `0C5E` target is the `ret` of `set_palette` ([`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.3).
+- [x] **1.2** Add a pointer from `research/README.md` and `static-tooling.md`. Run `mise run check-py` (the doc-anchor tests check `# [MEM-*]` tokens: move none of them).
+- [x] **1.3** Commit: `docs(research): move the retired DOSBox-X harness into its own note`.
 
 ## Task 2: Staging and conf under the data root
 
-- [ ] **2.1** Write the failing tests in `tests/test_tac_staging.py`: the stage directory is `<data>/stage/<film>-<label>/`, the conf and the mount are inside it, the conf has `webserver_enabled`, `webserver_port`, `core = normal`, `cpu_cycles = 7000` (370 render loops against 369; § 4.1), `machine = svga_s3`, `sbtype = sb16`, an `[autoexec]` that mounts and runs `playone.exe`, and removal deletes the whole directory.
-- [ ] **2.2** Change `staging.py` and `parity_layout.stage_dir` to the new location. `parity_layout.py` stays the only place with the path literal.
-- [ ] **2.3** Confirm the existing film and archive copying (`MAKEONE_FILES`, the sibling `.ALL`) is unchanged.
-- [ ] **2.4** Commit.
+- [x] **2.1** Write the failing tests in `tests/test_tac_staging.py`: the stage directory is `<data>/stage/<film>-<label>/`, the conf and the mount are inside it, the conf has `webserver_enabled`, `webserver_port`, `core = normal`, `cpu_cycles = 7000` (370 render loops against 369; § 4.1), `machine = svga_s3`, `sbtype = sb16`, an `[autoexec]` that mounts and runs `playone.exe`, and removal deletes the whole directory.
+- [x] **2.2** Change `staging.py` and `parity_layout.stage_dir` to the new location. `parity_layout.py` stays the only place with the path literal.
+- [x] **2.3** Confirm the existing film and archive copying (`MAKEONE_FILES`, the sibling `.ALL`) is unchanged.
+- [x] **2.4** Commit.
 
 ## Task 3: Lua generator and the automation emulator
 
-- [ ] **3.1** Tests for `luagen.py` as string checks: the boot section waits to the start frame then presses the film keys with 20-frame gaps and 5-frame holds; the trace section reads `DS:0x4896` and `DS:0x22B8` and compares `A000` as strings; the dump section hex-encodes with `gsub(".", H)`; outputs are prefixed with a letter; no per-byte loop over 64 KB exists.
-- [ ] **3.2** Implement `luagen.py` from the proven `scan.py` and `inv7_run.py` in the spike notes (the 'snippet' in `capture-dosbox-automation.md` § 6).
-- [ ] **3.3** Tests for `automation.py` against a fake HTTP server: token header, `script/load` as `text/plain`, polling `script/status` until `completed` or `error`, the error text carried into the exception, shutdown on teardown, and port-race retry.
-- [ ] **3.4** Implement the client and `DosboxAutomation(Emulator)` (`EmulatorUnavailable` when the executable is not found, `GuestTimeout` for a run that exceeds its budget).
-- [ ] **3.5** Add a `MockEmulator` that returns canned trace and dump output, and a `[dosbox-automation]` mise tool entry check (the pin already exists in `mise.toml`).
-- [ ] **3.6** Commit.
+- [x] **3.1** Tests for `luagen.py` as string checks: the boot section waits to the start frame then presses the film keys with 20-frame gaps and 5-frame holds; the trace section reads `DS:0x4896` and `DS:0x22B8` and compares `A000` as strings; the dump section hex-encodes with `gsub(".", H)`; outputs are prefixed with a letter; no per-byte loop over 64 KB exists.
+- [x] **3.2** Implement `luagen.py` from the proven `scan.py` and `inv7_run.py` in the spike notes (the 'snippet' in `capture-dosbox-automation.md` § 6).
+- [x] **3.3** Tests for `automation.py` against a fake HTTP server: token header, `script/load` as `text/plain`, polling `script/status` until `completed` or `error`, the error text carried into the exception, shutdown on teardown, and port-race retry.
+- [x] **3.4** Implement the client and `DosboxAutomation(Emulator)` (`EmulatorUnavailable` when the executable is not found, `GuestTimeout` for a run that exceeds its budget).
+- [x] **3.5** Add a `MockEmulator` that returns canned trace and dump output, and a `[dosbox-automation]` mise tool entry check (the pin already exists in `mise.toml`).
+- [x] **3.6** Commit.
 
 ## Task 4: Plans replace sessions
 
-- [ ] **4.1** Tests for `plan.py`: decoding a trace string (`tick:global:changed,...`), chunking a frame list to at most 90 per run, and mapping dumps back to frames.
-- [ ] **4.2** Implement `run_plan(film, trace_plan, pick, dump_plan_builder)`. `pick` is a Python function over the trace that returns the frames to dump, so the sampler's old adaptive logic (new film tick, end of film after N holds, requested ticks) moves there.
-- [ ] **4.3** Rewrite `framebuffer.capture` and `capture_playone_reference.py` on it. Keep `meta.json` and the `frames/` layout (ADR 0022 and 0024).
-- [ ] **4.4** Rewrite `probe_playone_light.py` (the work segment pointer and the lighting words are read into the trace, then the dump reads the ranges).
-- [ ] **4.5** Update `test_tac_capture_session.py` and `test_tac_adversarial.py` to the mock emulator.
-- [ ] **4.6** Delete `transport.py`, `vsync.py`, `client.py`, `bda.py` and the framing and video-mode tests when nothing imports them; keep `streamer.py` only if its decoders still apply (check callers first).
-- [ ] **4.7** Commit.
+- [x] **4.1** Tests for `plan.py`: decoding a trace string (`tick:global:changed,...`), chunking a frame list to at most 90 per run, and mapping dumps back to frames.
+- [x] **4.2** Implement `run_plan(film, trace_plan, pick, dump_plan_builder)`. `pick` is a Python function over the trace that returns the frames to dump, so the sampler's old adaptive logic (new film tick, end of film after N holds, requested ticks) moves there.
+- [x] **4.3** Rewrite `framebuffer.capture` and `capture_playone_reference.py` on it. Keep `meta.json` and the `frames/` layout (ADR 0022 and 0024).
+- [x] **4.4** Rewrite `probe_playone_light.py` (the work segment pointer and the lighting words are read into the trace, then the dump reads the ranges).
+- [x] **4.5** Update `test_tac_capture_session.py` and `test_tac_adversarial.py` to the mock emulator.
+- [x] **4.6** Delete `transport.py`, `vsync.py`, `client.py`, `bda.py` and the framing and video-mode tests when nothing imports them; keep `streamer.py` only if its decoders still apply (check callers first).
+- [x] **4.7** Commit.
 
 ## Task 5: make-all and play
 
-- [ ] **5.1** Port `makeone.py`: end of run is the video mode back to text. Read it from `GET /api/v1/video/frame/info` or `video/text`, polled every 2 s, with the 600 s timeout.
-- [ ] **5.2** Replace the `play` task with a dosbox-automation conf (interactive, no webserver needed). Remove `play_ctry.bat` if it only launched DOSBox-X.
-- [ ] **5.3** Update `batch_stages.py` and its tests; the batch driver runs one emulator at a time unless the plan allows parallel chunks.
-- [ ] **5.4** Commit.
+- [x] **5.1** Port `makeone.py`: end of run is the video mode back to text. Read it from `GET /api/v1/video/frame/info` or `video/text`, polled every 2 s, with the 600 s timeout.
+- [x] **5.2** Replace the `play` task with a dosbox-automation conf (interactive, no webserver needed). Remove `play_ctry.bat` if it only launched DOSBox-X.
+- [x] **5.3** Update `batch_stages.py` and its tests; the batch driver runs one emulator at a time unless the plan allows parallel chunks.
+- [x] **5.4** Commit.
 
 ## Task 6: Tear rule, DAC model, re-baseline
 
 - [ ] **6.1** Capture `CTRY.FLM` and `INTRO.FLM` with the new path plus a video capture, and measure the tear rate against the lossless AVI at matched frames. Write the rule (accept a page whose rows match some video frame in *f-2* to *f+4*, else retry at *f+1*) into `research/parity/method.md` and implement it in `pick`.
-- [ ] **6.2** Record the DAC for each page: the working palette plus the fade model (low half new, high half previous) for frames where the working palette differs from the previous frame's. Decide the palette-lead question left open in § 4.3 by testing the working palette at *f-2*.
+- [x] **6.2** Record the DAC for each page: the working palette plus the fade model (low half new, high half previous) for frames where the working palette differs from the previous frame's. Decide the palette-lead question left open in § 4.3 by testing the working palette at *f-2*.
 - [ ] **6.3** Capture the new references as new add-only directories, edit `references.toml` in a reviewed commit with the new hashes, rescore, and append a `parity/log.md` row stating the move against the DOSBox-X references.
-- [ ] **6.4** Commit.
+- [x] **6.4** Commit.
 
 ## Task 7: Remove DOSBox-X
 
-- [ ] **7.1** Delete the `dosbox-x` and `dosbox-x-mcp-server` entries, the `ensure-dosbox` and `mcp` tasks and `renovate.jsonc` rules from `mise.toml` and `.github/renovate.jsonc`.
-- [ ] **7.2** Delete `python/scripts/ensure_dosbox.py`, its test, and the DOSBox-X confs under `tools/dosbox/`; rewrite `tools/dosbox/README.md`.
-- [ ] **7.3** Rewrite `docs/development.md` §§ 1, 2 and the tables, `README.md`, `AGENTS.md` (the routing table row for `capture.md`), `GLOSSARY.md`, `docs/SPEC.md`, `docs/harness-setup.md`, `docs/ARCHITECTURE.md` and `NOTICE.md` mentions. Run `rg -i dosbox-x` over everything except `research/` and the legacy note; the only hits left are the legacy pointers.
-- [ ] **7.4** Write `docs/adr/0025-capture-runs-are-plans-not-sessions.md` and mark ADR 0021 superseded; update `doc_anchors.py` if any anchor moves.
+- [x] **7.1** Delete the `dosbox-x` and `dosbox-x-mcp-server` entries, the `ensure-dosbox` and `mcp` tasks and `renovate.jsonc` rules from `mise.toml` and `.github/renovate.jsonc`.
+- [x] **7.2** Delete `python/scripts/ensure_dosbox.py`, its test, and the DOSBox-X confs under `tools/dosbox/`; rewrite `tools/dosbox/README.md`.
+- [x] **7.3** Rewrite `docs/development.md` §§ 1, 2 and the tables, `README.md`, `AGENTS.md` (the routing table row for `capture.md`), `GLOSSARY.md`, `docs/SPEC.md`, `docs/harness-setup.md`, `docs/ARCHITECTURE.md` and `NOTICE.md` mentions. Run `rg -i dosbox-x` over everything except `research/` and the legacy note; the only hits left are the legacy pointers.
+- [x] **7.4** Write `docs/adr/0025-capture-runs-are-plans-not-sessions.md` and mark ADR 0021 superseded; update `doc_anchors.py` if any anchor moves.
 - [ ] **7.5** Run `mise run check`, then reap the old DOSBox-X processes by hand (the user's call).
-- [ ] **7.6** Commit.
+- [x] **7.6** Commit.
 
 ## Open Questions
 
 1. The tear rule (Task 6.1) and the palette lead (6.2) are the two measurements that can change the capture format.
 2. Whether `mount_allowed_bases` in a primary config would let the stage live elsewhere. Not needed while the stage sits under the data root.
 3. Linux and macOS capture is lost: dosbox-automation ships a Windows zip only, and capture is local-only and not in CI.
+
+## Status and Handoff (2026-10-30)
+
+Tasks 1 to 5 and 7 are done on branch `worktree-dosbox-automation-spike`; Task 6 is partly done (6.2 and 6.4 recorded, 6.1 and 6.3 open). The live findings are in [`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.4 and [`driving.md`](../../../research/makeone-exe/driving.md) § 9.
+
+Verified live: `capture-ref` on `CTRY.FLM` (113 frames at 7,000 cycles one pass at a time; 121 frames in 112 s at 45,000 with parallel passes) and `INTRO.FLM` (315 frames, 17 min before passes ran in parallel); `make-all` on `747LAND.FLM` on both CPU profiles, byte-identical to the DOSBox-X archive. Not run live: `mise run play` (it waits for a person to close the window), `probe-light`, and the batch survey.
+
+Rulings made while executing (cost if wrong in brackets):
+
+- The stage is `<data>/stage/<film>-<label>/{mount/, dosbox.conf}` and the conf is rendered per run at launch, because the port is only known then and the emulator refuses a mount under the checkout. [one layout change]
+- The offline streamer stack (`streamer.py`, `client.py`, `bda.py`, `vsync.py`, `Transport`, `MockTransport`) stays, because the Rust oracle cites `streamer.py` as its reference model; only the live DOSBox-X I/O, `session.py` and `ensure_dosbox.py` were deleted. [dead code kept]
+- The trace stops after the film clock holds for 30 frames (`end_hold`), so the frame window is only a cap. [a film with a long pause mid-film is cut short]
+- `MAX_DUMPS` is 40, not 90: 90 pages ran out of Lua memory live. [more replay passes]
+- A dumped page carries the tick its own pass read; a frame more than `MAX_SKEW_TICKS` (2) from the trace pass is a `PlanDivergence`. `COUNT.FLM` replays differ by a tick; `CTRY.FLM` replays do not. [a capture with a stride under 5 ticks could hold two pages of one tick]
+- `make-all` runs MAKEONE on the `archive` CPU profile (dynamic core, `cpu_cycles = max`): 41 s against 227 s, same archive bytes. [a film whose archive differs between profiles]
+- Every run's window is `window_size = 640x480`.
+- Capture and `play` run the normal core at 45,000 cycles, not 7,000: the render rate saturates there (99% of emulated frames draw a new page against 46%). 7,000 only matched DOSBox-X's loop count. [captures no longer match the DOSBox-X references' pacing; they are being replaced]
+- Dump passes run up to four at once, split evenly, each launch with its own `dosbox-<port>.conf`: one pass at a time put `INTRO.FLM` past the batch's 900 s timeout. [four emulators' memory and CPU during a capture]
+- The tear rule and fade model are written into [`method.md`](../../../research/parity/method.md) § 3.1 but not applied in `pick`; the AVI tear rate was not re-measured. `references.toml` still names the DOSBox-X captures. [tears go unflagged; references stay DOSBox-X-era]
+- `tools/dosbox/dosbox-utils.conf` stays as a by-hand profile, unverified on dosbox-automation; `capture.md` and `capture-speed.md` carry a historical banner rather than a rewrite.
+- `KNOWN_CAPTURE_STALLS` is unchanged pending a re-survey.
+
+Next:
+
+1. Score a dosbox-automation capture with `stuntreel parity` against a render, then decide 6.3 (promote new references).
+2. Patch #3: build patched and unpatched `PLAYONE.EXE`, `STUNT.EXE` and `MAKEONE.EXE` trees from `corpus/patches/`, find the patched build's offsets, and test `COUNT.FLM` and the other stalled films on it. A separate piece of work.
+3. Re-survey the batch on dosbox-automation (timeouts, the stall list).
+4. 7.5: the stale `dosbox-x.exe` processes on the machine are the user's to end.

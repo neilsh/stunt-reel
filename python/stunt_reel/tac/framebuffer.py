@@ -110,7 +110,7 @@ def capture(
     frame_diagnostics: list[Mapping[str, Any]] = []
     for ordinal, emu_frame in enumerate(sorted(result.dumps), start=1):
         dump = result.dumps[emu_frame]
-        entry = result.trace.entry(emu_frame)
+        entry = dump.entry
         frame_path = frames_dir / f"tick_{ordinal:04d}.idx"
         frame_path.write_bytes(dump.page)
         palette_path = frames_dir / f"palettes_{ordinal:04d}.json"

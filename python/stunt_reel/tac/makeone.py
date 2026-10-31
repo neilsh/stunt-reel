@@ -106,8 +106,10 @@ def _read_archive(vault: Path, film: Path) -> bytes:
 
 
 def _launch(staged: staging.StagedMount) -> AbstractContextManager[automation.AutomationClient]:
-    """Start dosbox-automation on the stage with MAKEONE as its program."""
-    return automation.launched(lambda port: staged.write_conf(port, program="makeone.exe"))
+    """Start dosbox-automation on the stage with MAKEONE as its program, on the fast core."""
+    return automation.launched(
+        lambda port: staged.write_conf(port, program="makeone.exe", cpu="archive")
+    )
 
 
 def make_all(

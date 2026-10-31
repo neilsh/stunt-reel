@@ -78,9 +78,20 @@ A stale `dosbox-x.exe` from an earlier killed run holds the control port; kill i
 | `core = dynamic`, `cycles = max` | 13 to 17 |
 | `core = dynamic`, `cycles = max 50%` | 16 (30 to 34 under survey load) |
 
-`MAKEONE` is not single-stepped by the debugger, so the `cacheblocks` crash that rules out the dynamic core for captures does not apply here. The same `dynamic` plus `max` setting also produced byte-identical archives for `flmonly-747` (852 s down to 27 s), `flmonly-battle` (346 s to 19 s) and `flmonly-bigfoot` (44 s to 7 s). DOSBox-X took no more than 0.94 of one core (about 5% of total CPU) at `cycles = max`, so a percentage cap bought nothing. `tools/dosbox/dosbox-archive.conf` is the parity conf with only these two lines changed; captures keep the parity conf ([ADR 0023](../../docs/adr/0023-make-all-generates-archives-with-makeone.md)).
+`MAKEONE` is not single-stepped by the debugger, so the `cacheblocks` crash that rules out the dynamic core for captures does not apply here. The same `dynamic` plus `max` setting also produced byte-identical archives for `flmonly-747` (852 s down to 27 s), `flmonly-battle` (346 s to 19 s) and `flmonly-bigfoot` (44 s to 7 s). DOSBox-X took no more than 0.94 of one core (about 5% of total CPU) at `cycles = max`, so a percentage cap bought nothing. `tools/dosbox/dosbox-archive.conf` was the parity conf with only these two lines changed (retired with DOSBox-X; § 9 has the dosbox-automation profiles); captures kept the parity conf ([ADR 0023](../../docs/adr/0023-make-all-generates-archives-with-makeone.md)).
 
 Where the remaining time goes (from existing logs, nothing re-run): launch to dialog settled is 3 to 4 s, `wait_for_text` polls `VGA MODE` every 2 s ([`makeone.py`](../../python/stunt_reel/tac/makeone.py) `POLL_SECONDS`), so a run overshoots by 0 to 2 s, and the stage copies 35 files (10,137,583 bytes) of `RES\` per run ([`staging.py`](../../python/stunt_reel/tac/staging.py)). The `autotype -w 12` route of § 6 is not on the live path. Untested cheap options: `POLL_SECONDS` 0.25, `[dosbox] fastbioslogo = true` with `startbanner = false`, and a directory junction for `RES\` (unsafe if `MAKEONE` writes into it).
+
+## 9. On dosbox-automation
+
+`[Bounded Observation]`, 2026-10-30, `flmonly-747land`, the committed `mise run make-all` path ([ADR 0025](../../docs/adr/0025-capture-runs-are-plans-not-sessions.md)). A Lua script presses `KBD_<letter>` and `KBD_enter` from emulated frame 1200 (20-frame gap, 5 held), then Python polls `GET /api/v1/video/text` every 2 s until it has seen a graphics mode and then a text mode. No dialog-settle wait was needed: frame 1200 is past the requester on both CPU profiles.
+
+| Profile ([`staging.py`](../../python/stunt_reel/tac/staging.py) `CpuProfile`) | `[cpu]` | Seconds | `.ALL` sha256 |
+|---|---|---|---|
+| `capture` | `core = normal`, `cpu_cycles = 7000` | 226.5 | `998ec65c…` (146,215 bytes) |
+| `archive` (what `make-all` uses) | `core = dynamic`, `cpu_cycles = max` | 41.3 | `998ec65c…` |
+
+Both match the DOSBox-X archive `captures/flmonly-747land/archives/001` byte for byte, so the emulator change does not change the archive. The `archive` run is about 3 times slower than DOSBox-X's 13 to 17 s at the same setting; the boot to frame 1200 alone is 17 s of emulated time, which the key script waits through on either profile. Twelve stale `dosbox-x.exe` processes from earlier sessions were running throughout, so the seconds are indicative.
 
 ## Ruled out
 
@@ -97,5 +108,7 @@ Where the remaining time goes (from existing logs, nothing re-run): launch to di
 4. Does a `.ALL` made under DOSBox-X carry the sound set-up of the machine that ran `MAKEONE` (`corpus/siarchive/Films/Playing_Films.txt`)? Frames are unaffected.
 5. A film whose name starts with a digit or a character outside [`bda.py`](../../python/stunt_reel/tac/bda.py)'s scan-code table.
 6. Does `PLAYONE` require the archive's stem to equal the film's?
+7. Can the key script start earlier than frame 1200 on the `archive` profile? Every run pays about 17 s of emulated boot; the requester's first frame was not measured on dosbox-automation.
+8. Patch #3 (`corpus/patches/p3-si5.exe`) ships its own `MAKEONE.EXE` (98,000 bytes against the corpus's unpatched 103,247). Whether a patched `MAKEONE` writes a different `.ALL` is untested.
 
 _Found 2026-10-29; see the [parity log](../parity/log.md)._

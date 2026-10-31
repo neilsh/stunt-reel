@@ -41,12 +41,13 @@ __all__ = [
 Runner = Callable[[list[str], float], tuple[int, str]]
 
 _MAKE_ALL = Path("python/scripts/make_all.py")
-#: MAKEONE runs under a faster CPU profile than captures use (ADR 0023).
+#: MAKEONE runs on the fast "archive" CPU profile, captures on the repeatable one (ADR 0023).
 _CAPTURE = Path("python/scripts/capture_playone_reference.py")
 _SIDATA = Path("corpus/siarchive/Developer/FreeFlight/SIDATA")
-#: Films whose capture never starts the film (``no new frame after 2001 trap hits``), about 207 s
+#: Films whose DOSBox-X capture never started the film (``no new frame after 2001 trap hits``), 207 s
 #: each before giving up (research/parity/batch.md); the survey skips them by default. Stalls
-#: are intermittent, so only films that still failed after a retry are listed.
+#: are intermittent, so only films that still failed after a retry are listed. Not yet
+#: re-surveyed on dosbox-automation, where flmonly-count captured.
 KNOWN_CAPTURE_STALLS: tuple[str, ...] = (
     "collage4-exit",
     "collage4-exit2",

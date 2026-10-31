@@ -155,7 +155,7 @@ def probe(
         progress=lambda line: print(f"[probe] {line}", flush=True),
     )
     for frame in sorted(result.dumps):
-        entry = result.trace.entry(frame)
+        entry = result.dumps[frame].entry
         work_bytes, ds_bytes, *segments = result.dumps[frame].ranges
         sample(work_bytes, ds_bytes, entry.film_tick, entry.words[0], out, segments=segments)
 

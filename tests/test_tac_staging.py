@@ -155,10 +155,22 @@ def test_write_conf_names_the_port_and_the_program(staged_repo: StagedRepo) -> N
     conf = staged.write_conf(41234, program="makeone.exe")
 
     text = conf.read_text(encoding="utf-8")
-    assert conf == staged.conf
+    assert conf.parent == staged.root
     assert "webserver_port = 41234" in text
     assert f'mount c "{staged.mount}"' in text
     assert text.splitlines()[-1] == "makeone.exe"
+
+
+def test_each_launch_gets_its_own_conf(staged_repo: StagedRepo) -> None:
+    """Dump passes launch side by side from one stage; a shared conf would swap their ports."""
+    staged = staging.stage_film(staged_repo.film)
+
+    first = staged.write_conf(41234)
+    second = staged.write_conf(41235)
+
+    assert first != second
+    assert "webserver_port = 41234" in first.read_text(encoding="utf-8").splitlines()
+    assert "webserver_port = 41235" in second.read_text(encoding="utf-8").splitlines()
 
 
 def test_unstage_deletes_the_whole_stage(staged_repo: StagedRepo) -> None:
@@ -177,10 +189,11 @@ def test_render_conf_carries_the_automation_dials(tmp_path: Path) -> None:
     )
 
     for line in (
+        "window_size = 640x480",
         "webserver_enabled = true",
         "webserver_port = 41234",
         "core = normal",
-        "cpu_cycles = 7000",
+        "cpu_cycles = 45000",
         "machine = svga_s3",
         "sbtype = sb16",
         "[autoexec]",
@@ -198,3 +211,21 @@ def test_render_conf_runs_the_program_it_is_given(tmp_path: Path) -> None:
 
     assert text.splitlines()[-1] == "makeone.exe"
     assert "playone.exe" not in text
+
+
+def test_the_archive_profile_runs_the_fast_core_and_the_capture_profile_the_repeatable_one(
+    tmp_path: Path,
+) -> None:
+    archive = staging.render_conf(tmp_path, port=1, program="makeone.exe", cpu="archive")
+    capture = staging.render_conf(tmp_path, port=1, program="playone.exe")
+
+    assert {"core = dynamic", "cpu_cycles = max"} <= set(archive.splitlines())
+    assert {"core = normal", "cpu_cycles = 45000"} <= set(capture.splitlines())
+
+
+def test_write_conf_passes_the_cpu_profile(staged_repo: StagedRepo) -> None:
+    staged = staging.stage_film(staged_repo.film)
+
+    conf = staged.write_conf(1, program="makeone.exe", cpu="archive")
+
+    assert "cpu_cycles = max" in conf.read_text(encoding="utf-8").splitlines()

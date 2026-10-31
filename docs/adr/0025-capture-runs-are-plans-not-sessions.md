@@ -19,13 +19,20 @@ A run is a **plan**. The first pass is a Lua trace that records, for each emulat
 clock, the global tick and whether the page changed. Python picks the frames worth keeping from
 that trace. The second pass replays the same boot and dumps the picked pages, the working palette
 (`DS:0x2768`) and any extra memory ranges, at most `MAX_DUMPS` pages per pass because a pass of 90
-ran out of Lua memory. The dump pass's own trace is compared with the first; a mismatch is
-`PlanDivergence`, so frames are never filed under another run's ticks.
+ran out of Lua memory. Each dumped page is labelled with the film clock read in the same Lua
+step, from the dump pass's own trace, never the first pass's: runs of some films land a tick
+apart from boot to boot, so a replay is close but not always identical. A dumped frame more than
+`MAX_SKEW_TICKS` (2) from the first pass, or one the replay never reached, is `PlanDivergence`.
 
 Each run stages its conf and mount together under `<data root>/stage/<film>-<label>/` (the emulator
 refuses a mount under the checkout), picks a free port at launch, and gets a fresh random bearer
-token through the environment only. `play` and `make-all` use the same staging; `make-all` presses
-its keys with a script and polls `GET /video/text` for the return to a text mode.
+token through the environment only. Dump passes run side by side (up to four), each launch
+writing its own conf. `play` and `make-all` use the same staging; `make-all` presses its keys with
+a script and polls `GET /video/text` for the return to a text mode.
+
+Capture and `play` run the normal core at 45,000 cycles, where the render rate saturates at one
+page per emulated frame; MAKEONE runs the dynamic core at `max`, which writes the same archive in
+a fifth of the time.
 
 ## Consequences
 

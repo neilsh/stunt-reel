@@ -12,7 +12,7 @@ from __future__ import annotations
 import itertools
 import os
 import shutil
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from stunt_reel import dataroot, parity_layout
 
@@ -20,9 +20,20 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from pathlib import Path
 
+#: ``capture`` (also used by ``play``) is the bit-repeatable normal core at 45,000 cycles, the
+#: middle of the plateau where PLAYONE draws a new page on about 99% of emulated frames (7,000:
+#: 46%; more than 100,000 or ``max`` draws fewer; capture-dosbox-automation.md § 4.4).
+#: ``archive`` is the fast core for MAKEONE, which nothing samples (ADR 0023: 13 s against 179 s).
+CpuProfile = Literal["capture", "archive"]
+_CPU_LINES: dict[str, tuple[str, str]] = {
+    "capture": ("core = normal", "cpu_cycles = 45000"),
+    "archive": ("core = dynamic", "cpu_cycles = max"),
+}
+
 __all__ = [
     "ENGINE_FILES",
     "MAKEONE_FILES",
+    "CpuProfile",
     "StagedMount",
     "render_conf",
     "stage_film",
@@ -46,10 +57,19 @@ class StagedMount(NamedTuple):
         """The stage directory that holds the mount and the conf."""
         return self.conf.parent
 
-    def write_conf(self, port: int, *, program: str = "playone.exe") -> Path:
-        """Write the conf for *port* running *program*, and return its path."""
-        self.conf.write_text(render_conf(self.mount, port=port, program=program), encoding="utf-8")
-        return self.conf
+    def write_conf(
+        self, port: int, *, program: str = "playone.exe", cpu: CpuProfile = "capture"
+    ) -> Path:
+        """Write the conf for *port* running *program* on the *cpu* profile; return its path.
+
+        Each port gets its own file beside :attr:`conf`, because dump passes launch side by side
+        from one stage and a shared file would hand one emulator another's port.
+        """
+        path = self.conf.with_name(f"{self.conf.stem}-{port}{self.conf.suffix}")
+        path.write_text(
+            render_conf(self.mount, port=port, program=program, cpu=cpu), encoding="utf-8"
+        )
+        return path
 
 
 def _stage_label() -> str:
@@ -129,20 +149,22 @@ def render_conf(
     port: int,
     program: str,
     capture_dir: Path | None = None,
+    cpu: CpuProfile = "capture",
 ) -> str:
     """The dosbox-automation conf that mounts *mount*, serves REST on *port* and runs *program*.
 
-    ``cpu_cycles = 7000`` reproduces the render-loop count the DOSBox-X captures had (370 against 369) and
-    ``core = normal`` keeps runs bit-repeatable (``capture-dosbox-automation.md`` § 4.1).
+    The ``capture`` profile keeps ``core = normal``, whose runs replay bit for bit
+    (``capture-dosbox-automation.md`` § 4.1 and § 4.4).
     """
     lines = [
         "[sdl]",
         "output = texture",
+        # 2x with 4:3 correction; the default sizes the window from the desktop, which fills it.
+        "window_size = 640x480",
         "[dosbox]",
         "machine = svga_s3",
         "[cpu]",
-        "core = normal",
-        "cpu_cycles = 7000",
+        *_CPU_LINES[cpu],
         "[webserver]",
         "webserver_enabled = true",
         f"webserver_port = {port}",

@@ -33,6 +33,7 @@ class _Emulator:
 
     def __init__(self, write_conf: Any) -> None:
         self.conf = write_conf(41234)
+        self.conf_text = self.conf.read_text(encoding="utf-8")
         self.scripts: list[str] = []
         self.events: list[str] = []
         _Emulator.instances.append(self)
@@ -65,6 +66,7 @@ def test_play_presses_the_film_keys_waits_and_leaves_no_stage(
     assert module.run(module.parse_args(["--film", str(staged_repo.film)])) == 0
 
     (emulator,) = _Emulator.instances
+    assert "cpu_cycles = 45000" in emulator.conf_text.splitlines()
     assert '"KBD_c", "KBD_down", "KBD_enter"' in emulator.scripts[0]
     assert emulator.events == ["wait", "stop"]
     stage_root = dataroot.data_root() / parity_layout.stage_root()

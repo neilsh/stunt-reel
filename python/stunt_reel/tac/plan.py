@@ -1,15 +1,17 @@
 """Capture plans: a trace pass, a frame choice made in Python, and chunked dump passes.
 
-The guest cannot be paused, so a run is deterministic instead: the same film and conf give
-the same per-frame clocks and page-changed flags (validated 2026-10-30 over 2,101 frames of
-``CTRY.FLM``). Pass 1 traces every frame; ``pick`` chooses the frames worth keeping; pass 2
-replays the boot and dumps exactly those, at most :data:`~stunt_reel.tac.luagen.MAX_DUMPS` per
-run because the output store holds about 15 MB. A dump pass repeats the trace, and any
-disagreement with pass 1 means determinism was lost, which fails loudly (:class:`PlanDivergence`).
+The guest cannot be paused, so a run is replayed instead: the same film and conf give the same
+per-frame clocks for ``CTRY.FLM`` and ``INTRO.FLM``, and within a tick for ``COUNT.FLM``
+(research/playone-exe/capture-dosbox-automation.md § 4.4). Pass 1 traces every frame; ``pick``
+chooses the frames worth keeping; later passes replay the boot and dump exactly those, at most
+:data:`~stunt_reel.tac.luagen.MAX_DUMPS` per pass because a larger pass runs out of Lua memory.
+Each page is labelled with the tick its own pass read, and a pass that drifts further than
+:data:`MAX_SKEW_TICKS` fails loudly (:class:`PlanDivergence`).
 """
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -22,7 +24,9 @@ if TYPE_CHECKING:
     from stunt_reel.tac.automation import ScriptRunner
 
 __all__ = [
+    "DEFAULT_PARALLEL_PASSES",
     "FRAME_BYTES",
+    "MAX_SKEW_TICKS",
     "PALETTE_BYTES",
     "Dump",
     "PlanDivergence",
@@ -41,6 +45,13 @@ __all__ = [
 
 FRAME_BYTES: int = 320 * 200
 PALETTE_BYTES: int = 768
+#: Film ticks a dumped frame may differ from the trace pass at the same emulated frame. Runs of
+#: some films (COUNT.FLM, live 2026-10-30) land a tick apart from boot to boot; a page is always
+#: labelled with the tick read in its own Lua step, so jitter moves a sample but never mislabels it.
+MAX_SKEW_TICKS: int = 2
+#: Dump passes run at once. Sixteen parallel runs were measured bit-identical on 16 logical
+#: cores (capture-dosbox-automation.md § 4.1); four keeps a capture beside other work.
+DEFAULT_PARALLEL_PASSES: int = 4
 #: Default seconds one pass may take; a full-length film runs for minutes.
 DEFAULT_TIMEOUT_SECONDS: float = 900.0
 
@@ -52,7 +63,7 @@ class PlanError(RuntimeError):
 
 
 class PlanDivergence(PlanError):  # noqa: N818 - the agreed interface name
-    """A dump pass disagreed with the trace pass, so the run is not deterministic."""
+    """A dump pass drifted from the trace pass by more than the jitter a run is allowed."""
 
 
 @dataclass(frozen=True)
@@ -90,6 +101,8 @@ class Dump:
     page: bytes
     palette6: bytes
     ranges: tuple[bytes, ...]
+    #: The clocks and words the dump pass itself read at this frame, in the step that read the page.
+    entry: TraceEntry
 
 
 @dataclass(frozen=True)
@@ -118,8 +131,17 @@ def decode_trace(text: str, first: int) -> Trace:
 
 
 def chunk(frames: Sequence[int], size: int = MAX_DUMPS) -> list[list[int]]:
-    """Split *frames* into runs of at most *size*."""
-    return [list(frames[i : i + size]) for i in range(0, len(frames), size)]
+    """Split *frames* into the fewest runs of at most *size*, as even as possible."""
+    if not frames:
+        return []
+    count = -(-len(frames) // size)
+    base, extra = divmod(len(frames), count)
+    runs, start = [], 0
+    for n in range(count):
+        end = start + base + (1 if n < extra else 0)
+        runs.append(list(frames[start:end]))
+        start = end
+    return runs
 
 
 def pick_every(trace: Trace, *, stride: int) -> list[int]:
@@ -171,29 +193,32 @@ def _unhex(output: Mapping[str, Any], key: str, length: int | None = None) -> by
 
 
 def decode_dumps(
-    output: Mapping[str, Any], frames: Sequence[int], range_count: int
+    output: Mapping[str, Any], frames: Sequence[int], range_count: int, trace: Trace
 ) -> dict[int, Dump]:
-    """Decode the ``p``/``c``/``m`` outputs of a dump pass for *frames*."""
+    """Decode the ``p``/``c``/``m`` outputs of a dump pass for *frames*, with its own *trace*."""
     return {
         f: Dump(
             frame=f,
             page=_unhex(output, f"p{f}", FRAME_BYTES),
             palette6=_unhex(output, f"c{f}", PALETTE_BYTES),
             ranges=tuple(_unhex(output, f"m{f}_{n}") for n in range(1, range_count + 1)),
+            entry=trace.entry(f),
         )
         for f in frames
     }
 
 
-def _check_same(expected: Trace, got: Trace, label: str) -> None:
-    if len(got.entries) != len(expected.entries):
-        raise PlanDivergence(
-            f"{label} traced {len(got.entries)} frames, the first pass {len(expected.entries)}"
-        )
-    for frame in expected.frames:
-        if expected.entry(frame) != got.entry(frame):
+def _check_close(expected: Trace, got: Trace, frames: Sequence[int], label: str) -> None:
+    """Raise unless the dump pass reached every dumped frame within MAX_SKEW_TICKS of the trace."""
+    for frame in frames:
+        if frame not in got.frames:
             raise PlanDivergence(
-                f"{label} disagrees with the trace pass at frame {frame}: "
+                f"{label} traced only {len(got.entries)} frames and never reached frame {frame}"
+            )
+        skew = abs(got.entry(frame).film_tick - expected.entry(frame).film_tick)
+        if skew > MAX_SKEW_TICKS:
+            raise PlanDivergence(
+                f"{label} disagrees with the trace pass at frame {frame} by {skew} ticks: "
                 f"{got.entry(frame)} against {expected.entry(frame)}"
             )
 
@@ -210,11 +235,13 @@ def run_plan(
     end_hold: int | None = None,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
     progress: Callable[[str], None] | None = None,
+    parallel: int = DEFAULT_PARALLEL_PASSES,
 ) -> PlanResult:
     """Run the trace pass, let *pick* choose frames from it, then dump them in chunks.
 
-    *open_runner* opens a fresh emulator for each pass (every pass reboots the film). *ranges*
-    may be a function of the trace and the picked frames, for memory whose segment the trace reads.
+    *open_runner* opens a fresh emulator for each pass (every pass reboots the film), and up to
+    *parallel* dump passes run at once. *ranges* may be a function of the trace and the picked
+    frames, for memory whose segment the trace reads.
     """
     common: dict[str, Any] = {
         "keys": keys,
@@ -233,12 +260,33 @@ def run_plan(
     picked = list(pick(trace))
     dump_ranges = ranges(trace, picked) if callable(ranges) else ranges
     chunks = chunk(picked)
-    for number, frames in enumerate(chunks, start=1):
-        say(f"dump pass {number}/{len(chunks)}: {len(frames)} frames")
+
+    def dump_pass(frames: list[int]) -> dict[int, Dump]:
         with open_runner() as runner:
             out = runner.run_script(
                 script(**common, dump_frames=frames, ranges=dump_ranges), timeout=timeout
             )
-        _check_same(trace, decode_trace(str(out.get("trace", "")), first), "dump pass")
-        dumps.update(decode_dumps(out, frames, len(dump_ranges)))
+        own = decode_trace(str(out.get("trace", "")), first)
+        _check_close(trace, own, frames, "dump pass")
+        return decode_dumps(out, frames, len(dump_ranges), own)
+
+    # Each pass is its own emulator, so passes run side by side; results join in frame order.
+    with ThreadPoolExecutor(max_workers=max(1, min(parallel, len(chunks)))) as pool:
+        futures = []
+        for number, frames in enumerate(chunks, start=1):
+            say(f"dump pass {number}/{len(chunks)}: {len(frames)} frames")
+            futures.append(pool.submit(dump_pass, frames))
+        try:
+            for future in futures:
+                dumps.update(future.result())
+        except BaseException:
+            pool.shutdown(cancel_futures=True)
+            raise
+    moved = [f for f, d in dumps.items() if d.entry.film_tick != trace.entry(f).film_tick]
+    if moved:
+        worst = max(abs(dumps[f].entry.film_tick - trace.entry(f).film_tick) for f in moved)
+        say(
+            f"{len(moved)} of {len(dumps)} dumped frames read another tick than the trace pass "
+            f"(at most {worst})"
+        )
     return PlanResult(trace, dumps)
