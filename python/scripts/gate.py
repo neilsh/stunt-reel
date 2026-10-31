@@ -17,7 +17,7 @@ of them. The plan is one step list for the whole gate and for each half.
 
 Steps that can silently skip are listed in ``REQUIRED_ENV``. The Python test step sets
 ``STUNT_REQUIRE_KSC=1``, so a missing Kaitai compiler fails the gate instead of skipping the
-schema contract test.
+schema contract test, and ``STUNT_REQUIRE_PREK=1`` does the same for the commit hooks' prek test.
 
 Usage: ``python python/scripts/gate.py {all|rust|py} [--tail N]``
 """
@@ -65,7 +65,9 @@ STEP_LANES: dict[str, str] = {
     "test-py": "py-test",
 }
 
-REQUIRED_ENV: dict[str, dict[str, str]] = {"test-py": {"STUNT_REQUIRE_KSC": "1"}}
+REQUIRED_ENV: dict[str, dict[str, str]] = {
+    "test-py": {"STUNT_REQUIRE_KSC": "1", "STUNT_REQUIRE_PREK": "1"}
+}
 
 
 def _plan(half: str) -> list[str]:
