@@ -225,7 +225,7 @@ def makeone_guest(
         if text_after is None or polls["n"] <= text_after:
             return "M_VGA"
         if archive is not None:
-            for mount in (dataroot.REPO_ROOT / parity_layout.stage_root()).glob("ctry-*"):
+            for mount in (dataroot.data_root() / parity_layout.stage_root()).glob("ctry-*/mount"):
                 (mount / "VAULT" / "CTRY.ALL").write_bytes(archive)
         return "M_TEXT"
 

@@ -1,14 +1,14 @@
-"""Stage one film for a DOSBox-X capture run.
+"""Stage one film for an emulator capture run.
 
 PLAYONE.EXE takes no film argument and its listbox only jumps by first letter, so
 the mount holds the demo's engine files and a VAULT with just this film's .FLM and
 .ALL: the keys are then always the first letter, Down, Enter. Staging copies into a
-fresh directory and writes a conf that mounts it, both under the parity stage root.
+fresh stage directory under the data root and writes a conf that mounts it beside the mount:
+dosbox-automation refuses a mount under the checkout ("outside allowed directories").
 """
 
 from __future__ import annotations
 
-import contextlib
 import itertools
 import os
 import shutil
@@ -24,9 +24,11 @@ __all__ = [
     "ENGINE_FILES",
     "MAKEONE_FILES",
     "StagedMount",
+    "render_conf",
     "stage_film",
     "stage_makeone",
     "stage_play",
+    "unstage",
 ]
 
 #: Mount labels are per call, so two sessions in one process cannot share a mount.
@@ -34,10 +36,15 @@ _LABELS: Iterator[int] = itertools.count(1)
 
 
 class StagedMount(NamedTuple):
-    """One session's staged mount and the conf that mounts it."""
+    """One session's staged mount and the conf that mounts it, both inside :attr:`root`."""
 
     mount: Path
     conf: Path
+
+    @property
+    def root(self) -> Path:
+        """The stage directory that holds the mount and the conf."""
+        return self.conf.parent
 
 
 def _stage_label() -> str:
@@ -110,14 +117,15 @@ def _stage(
     caller removes it once its emulator has stopped (ADR 0021).
     """
     label = _stage_label()
-    mount_dir = dataroot.REPO_ROOT / parity_layout.stage_dir(film.stem, label)
-    staged_conf = dataroot.REPO_ROOT / parity_layout.stage_conf(film.stem, label)
+    root = dataroot.data_root() / parity_layout.stage_dir(film.stem, label)
+    mount_dir = dataroot.data_root() / parity_layout.stage_mount(film.stem, label)
+    staged_conf = dataroot.data_root() / parity_layout.stage_conf(film.stem, label)
     try:
-        # A killed run can leave a mount under a reused pid's label; stale files must not leak in.
-        shutil.rmtree(mount_dir, ignore_errors=True)
+        # A killed run can leave a stage under a reused pid's label; stale files must not leak in.
+        shutil.rmtree(root, ignore_errors=True)
         (mount_dir / "VAULT").mkdir(parents=True)
         populate(mount_dir)
-        mount = mount_dir.relative_to(dataroot.REPO_ROOT).as_posix()
+        mount = mount_dir.as_posix()
         text = conf.read_text(encoding="utf-8")
         text = _replace_once(text, _CORPUS_MOUNT, f'mount c "{mount}"', conf)
         text = _replace_once(text, _FILM_LITERAL, rf"VAULT\{film.name}", conf)
@@ -126,11 +134,52 @@ def _stage(
         staged_conf.write_text(text, encoding="utf-8")
     except BaseException:
         # The caller never receives these paths, so nothing else can remove them.
-        shutil.rmtree(mount_dir, ignore_errors=True)
-        with contextlib.suppress(OSError):
-            staged_conf.unlink(missing_ok=True)
+        shutil.rmtree(root, ignore_errors=True)
         raise
     return StagedMount(mount_dir, staged_conf)
+
+
+def unstage(staged: StagedMount) -> None:
+    """Delete the whole stage (mount and conf); a second call is a no-op."""
+    shutil.rmtree(staged.root, ignore_errors=True)
+
+
+def render_conf(
+    mount: Path,
+    *,
+    port: int,
+    program: str,
+    capture_dir: Path | None = None,
+) -> str:
+    """The dosbox-automation conf that mounts *mount*, serves REST on *port* and runs *program*.
+
+    ``cpu_cycles = 7000`` reproduces DOSBox-X's render-loop count (370 against 369) and
+    ``core = normal`` keeps runs bit-repeatable (``capture-dosbox-automation.md`` § 4.1).
+    """
+    lines = [
+        "[sdl]",
+        "output = texture",
+        "[dosbox]",
+        "machine = svga_s3",
+        "[cpu]",
+        "core = normal",
+        "cpu_cycles = 7000",
+        "[webserver]",
+        "webserver_enabled = true",
+        f"webserver_port = {port}",
+    ]
+    if capture_dir is not None:
+        lines += ["[capture]", f"capture_dir = {capture_dir}"]
+    lines += [
+        "[sblaster]",
+        "sbtype = sb16",
+        "[autoexec]",
+        "@echo off",
+        f'mount c "{mount}"',
+        "c:",
+        program,
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def stage_play(film: Path, archive: Path, conf: Path) -> StagedMount:

@@ -26,7 +26,7 @@ def _tree(root: Path) -> set[str]:
 
 
 def _no_stage_left() -> bool:
-    stage_root = dataroot.REPO_ROOT / parity_layout.stage_root()
+    stage_root = dataroot.data_root() / parity_layout.stage_root()
     return not stage_root.exists() or not any(stage_root.iterdir())
 
 
@@ -51,7 +51,7 @@ def test_stage_starts_from_an_empty_mount_when_a_stale_one_has_the_label(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(staging, "_stage_label", lambda: "reused")
-    stale = dataroot.REPO_ROOT / parity_layout.stage_dir(staged_repo.film.stem, "reused")
+    stale = dataroot.data_root() / parity_layout.stage_mount(staged_repo.film.stem, "reused")
     (stale / "VAULT").mkdir(parents=True)
     (stale / "VAULT" / "CTRY.ALL").write_bytes(b"left by a killed run")
 
@@ -84,7 +84,7 @@ def test_stage_makeone_rewrites_the_real_conf(
     text = conf.read_text(encoding="utf-8")
     assert "makeone.exe" in text
     assert "playone.exe" not in text
-    assert f'mount c "{mount.relative_to(dataroot.REPO_ROOT).as_posix()}"' in text
+    assert f'mount c "{mount.as_posix()}"' in text
     assert FILM_LITERAL in text
 
 
@@ -149,3 +149,56 @@ def test_stage_play_finds_the_engine_files_when_the_film_is_outside_a_game_tree(
 
     assert set(staging.ENGINE_FILES) <= _tree(mount)
     assert (mount / "VAULT" / "FOO.ALL").read_bytes() == b"ARCHIVE"
+
+
+def test_stage_lives_under_the_data_root_with_conf_and_mount_together(
+    staged_repo: StagedRepo,
+) -> None:
+    """dosbox-automation refuses a mount under the checkout, so conf and mount share a stage."""
+    staged = staging.stage_film(staged_repo.film, staged_repo.conf)
+
+    assert staged.mount.name == "mount"
+    assert staged.root == dataroot.data_root() / parity_layout.stage_dir(
+        "CTRY", staged.root.name[5:]
+    )
+    assert staged.conf.parent == staged.root
+    assert staged.root.parent == dataroot.data_root() / parity_layout.stage_root()
+
+
+def test_unstage_deletes_the_whole_stage(staged_repo: StagedRepo) -> None:
+    staged = staging.stage_film(staged_repo.film, staged_repo.conf)
+
+    staging.unstage(staged)
+
+    assert not staged.root.exists()
+    staging.unstage(staged)  # idempotent
+
+
+def test_render_conf_carries_the_automation_dials(tmp_path: Path) -> None:
+    mount = tmp_path / "mount"
+    text = staging.render_conf(
+        mount, port=41234, program="playone.exe", capture_dir=tmp_path / "cap"
+    )
+
+    for line in (
+        "webserver_enabled = true",
+        "webserver_port = 41234",
+        "core = normal",
+        "cpu_cycles = 7000",
+        "machine = svga_s3",
+        "sbtype = sb16",
+        "[autoexec]",
+        f'mount c "{mount}"',
+        "c:",
+        "playone.exe",
+        f"capture_dir = {tmp_path / 'cap'}",
+    ):
+        assert line in text.splitlines()
+    assert text.index("[autoexec]") < text.index("playone.exe")
+
+
+def test_render_conf_runs_the_program_it_is_given(tmp_path: Path) -> None:
+    text = staging.render_conf(tmp_path, port=1, program="makeone.exe")
+
+    assert text.splitlines()[-1] == "makeone.exe"
+    assert "playone.exe" not in text

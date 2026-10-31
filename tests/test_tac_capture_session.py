@@ -457,7 +457,7 @@ def test_a_failing_teardown_still_removes_the_staged_mount(staged_repo: StagedRe
             emulator=QuietEmulator(transport),
         )
 
-    stage_root = dataroot.REPO_ROOT / parity_layout.stage_root()
+    stage_root = dataroot.data_root() / parity_layout.stage_root()
     assert list(stage_root.glob("ctry-*")) == []
     assert list(stage_root.glob("stage-ctry-*.conf")) == []
 
@@ -686,7 +686,7 @@ def test_staging_copies_engine_files_and_rewrites_the_conf(staged_repo: StagedRe
     assert (stage / "VAULT" / "INTRO.FLM").is_file()
     assert (stage / "VAULT" / "INTRO.ALL").is_file()
     text = staged_conf.read_text(encoding="utf-8")
-    assert f'mount c "{stage.relative_to(dataroot.REPO_ROOT).as_posix()}"' in text
+    assert f'mount c "{stage.as_posix()}"' in text
     assert r"VAULT\INTRO.FLM" in text
     assert "corpus/stisldem" not in text
 
@@ -711,7 +711,7 @@ def test_a_finished_session_removes_its_staged_mount(staged_repo: StagedRepo) ->
         emulator=capture_emulator(),
     )
 
-    stage_root = dataroot.REPO_ROOT / parity_layout.stage_root()
+    stage_root = dataroot.data_root() / parity_layout.stage_root()
     assert list(stage_root.glob("ctry-*")) == []
     assert list(stage_root.glob("stage-ctry-*.conf")) == []
 
@@ -726,7 +726,7 @@ def test_a_no_launch_session_stages_nothing(staged_repo: StagedRepo) -> None:
         emulator=capture_emulator(),
     )
 
-    assert list((dataroot.REPO_ROOT / parity_layout.stage_root()).glob("ctry-*")) == []
+    assert list((dataroot.data_root() / parity_layout.stage_root()).glob("ctry-*")) == []
 
 
 def test_staging_fails_loudly_when_the_conf_literal_is_missing(
@@ -756,7 +756,7 @@ def test_a_failed_staging_leaves_no_mount_behind(staged_repo: StagedRepo, tmp_pa
     with pytest.raises(FileNotFoundError):
         staging.stage_film(staged_repo.film, staged_repo.conf)
 
-    stage_root = dataroot.REPO_ROOT / parity_layout.stage_root()
+    stage_root = dataroot.data_root() / parity_layout.stage_root()
     assert list(stage_root.glob("ctry-*")) == []
     assert list(stage_root.glob("stage-ctry-*.conf")) == []
 

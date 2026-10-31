@@ -200,5 +200,5 @@ def test_a_timeout_exits_1_and_leaves_no_mount(
 
     assert script.run(args, emulator) == 1
     assert _archives() == []
-    stage_root = dataroot.REPO_ROOT / parity_layout.stage_root()
+    stage_root = dataroot.data_root() / parity_layout.stage_root()
     assert not stage_root.exists() or not any(stage_root.iterdir())

@@ -44,6 +44,7 @@ __all__ = [
     "slug_for",
     "stage_conf",
     "stage_dir",
+    "stage_mount",
     "stage_root",
     "sweep_root",
 ]
@@ -56,7 +57,8 @@ _CAPTURE = _PARITY / "captures"
 _RENDER = _PARITY / "ours"
 _REPORT = _PARITY / "report"
 _PREVIOUS = _PARITY / "previous"
-_STAGE = _PARITY / "stage"
+#: Relative to the data root, not the checkout: dosbox-automation refuses a mount under the checkout.
+_STAGE = Path("stage")
 _RENDER_SCRATCH = _SCRATCH / "parity"
 _RETIME = _SCRATCH / "retime"
 _SWEEP = _SCRATCH / "sweep"
@@ -193,17 +195,22 @@ def retime_dir(film: str, suffix: str = "") -> Path:
 
 
 def stage_dir(film: str, label: str) -> Path:
-    """The DOSBox-X mount that stages *film* alone for one session (ADR 0021)."""
+    """One session's stage (relative to the data root): its mount and its conf."""
     return _STAGE / f"{_film_name(film)}-{label}"
 
 
 def stage_conf(film: str, label: str) -> Path:
-    """The generated conf beside :func:`stage_dir` that mounts it."""
-    return _STAGE / f"stage-{_film_name(film)}-{label}.conf"
+    """The generated conf inside :func:`stage_dir`, next to the mount."""
+    return stage_dir(film, label) / "dosbox.conf"
+
+
+def stage_mount(film: str, label: str) -> Path:
+    """The DOS C: drive that stages *film* alone, inside :func:`stage_dir`."""
+    return stage_dir(film, label) / "mount"
 
 
 def stage_root() -> Path:
-    """The directory holding the stage mounts and their generated confs."""
+    """The directory (relative to the data root) holding every session's stage."""
     return _STAGE
 
 

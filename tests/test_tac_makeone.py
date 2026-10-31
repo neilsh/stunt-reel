@@ -45,7 +45,7 @@ class FakeClock:
 
 
 def _stage_dirs() -> list[str]:
-    root = dataroot.REPO_ROOT / parity_layout.stage_root()
+    root = dataroot.data_root() / parity_layout.stage_root()
     return sorted(p.name for p in root.iterdir()) if root.exists() else []
 
 

@@ -285,7 +285,7 @@ def _discard_stage(staged: staging.StagedMount | None) -> None:
         return
     with contextlib.suppress(OSError):
         staged.conf.unlink(missing_ok=True)
-    shutil.rmtree(staged.mount, ignore_errors=True)
+    shutil.rmtree(staged.root, ignore_errors=True)
 
 
 def _teardown(transport: Transport | None, machine: Emulator) -> None:
