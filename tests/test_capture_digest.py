@@ -51,7 +51,7 @@ def test_the_dir_form_hashes_the_same(
         encoding="utf-8",
     )
     monkeypatch.setattr(dataroot, "REPO_ROOT", tmp_path)
-    assert capture_digest.main(["--dir", str(directory)]) == 0
+    assert capture_digest.main(["--dir", str(directory)], root=tmp_path) == 0
     out = capsys.readouterr().out.splitlines()
     assert out[1] == f'sha256 = "{references.capture_digest(directory)}"'
     assert "[intro]" in out
@@ -63,7 +63,7 @@ def test_a_dir_outside_the_checkout_gets_no_entry(
     """A copy elsewhere is not what parity reads, so no entry may point at its id."""
     directory = _capture(tmp_path / "elsewhere", "vault-intro", "999")
     monkeypatch.setattr(dataroot, "REPO_ROOT", tmp_path / "checkout")
-    assert capture_digest.main(["--dir", str(directory)]) == 0
+    assert capture_digest.main(["--dir", str(directory)], root=tmp_path / "checkout") == 0
     out = capsys.readouterr().out.splitlines()
     assert out[1] == f'sha256 = "{references.capture_digest(directory)}"'
     assert "[intro]" not in out
@@ -81,3 +81,20 @@ def test_a_directory_without_meta_is_refused(
 ) -> None:
     assert capture_digest.main(["vault-ctry", "404"], root=tmp_path) == 1
     assert "not a capture" in capsys.readouterr().err
+
+
+def test_the_links_are_repaired_before_any_capture_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Like parity, repair the data-root link first, for --dir as well as film and run."""
+    directory = _capture(tmp_path, "vault-intro", "999")
+    calls: list[str] = []
+
+    def refuse(program: str) -> bool:
+        calls.append(program)
+        return False
+
+    monkeypatch.setattr(dataroot, "ensure_links_or_report", refuse)
+    assert capture_digest.main(["--dir", str(directory)]) == 1
+    assert capture_digest.main(["vault-intro", "999"]) == 1
+    assert calls == ["capture_digest", "capture_digest"]

@@ -28,6 +28,16 @@ import worktree_init  # noqa: E402
 GIT = shutil.which("git")
 needs_git = pytest.mark.skipif(GIT is None, reason="git is not on PATH")
 
+#: Variables that point git at another repository. Git sets them while it runs a hook, so a
+#: suite started from one would otherwise configure and commit in the outer repository.
+_GIT_LOCATION_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in _GIT_LOCATION_ENV:
+        monkeypatch.delenv(name, raising=False)
+
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     assert GIT is not None
@@ -40,6 +50,8 @@ def _repo(path: Path) -> Path:
     _git(path, "init", "-q")
     _git(path, "config", "user.name", "test")
     _git(path, "config", "user.email", "test@example.invalid")
+    # A user's commit.gpgSign would otherwise make every fixture commit fail without a key.
+    _git(path, "config", "commit.gpgSign", "false")
     return path
 
 
@@ -94,7 +106,7 @@ def test_staged_conflict_markers_fail_the_diff_check(
     repo = _repo(tmp_path)
     (repo / "note.md").write_text("one\n", encoding="utf-8")
     _git(repo, "add", "note.md")
-    _git(repo, "commit", "-q", "-m", "one")
+    assert _git(repo, "commit", "-q", "-m", "one").returncode == 0
     monkeypatch.chdir(repo)
     assert gate._diff_check()[0] == 0
     (repo / "note.md").write_text("one\n<<<<<<< HEAD\ntwo\n", encoding="utf-8")
@@ -113,7 +125,7 @@ def test_deleting_markdown_brings_in_the_doc_invariants(
     repo = _repo(tmp_path)
     (repo / "note.md").write_text("one\n", encoding="utf-8")
     _git(repo, "add", "note.md")
-    _git(repo, "commit", "-q", "-m", "one")
+    assert _git(repo, "commit", "-q", "-m", "one").returncode == 0
     _git(repo, "rm", "-q", "note.md")
     monkeypatch.chdir(repo)
     assert gate._staged_paths() == ["note.md"]

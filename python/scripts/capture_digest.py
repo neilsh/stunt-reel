@@ -71,20 +71,22 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     args = parser.parse_args(argv)
 
     promotable = True
+    # Parity repairs a missing or stale data-root link before it reads a capture, so do the same
+    # first: the --dir comparison and the film/run path both go through that link.
+    if root is None:
+        if not dataroot.ensure_links_or_report("capture_digest"):
+            return 1
+        root = dataroot.REPO_ROOT
     if args.dir is not None:
         directory = args.dir.resolve()
         slug, run = directory.parent.parent.name, directory.name
         # Parity reads captures through the checkout's data-root link; a copy elsewhere with
         # the same name is not the directory a references.toml entry would name.
-        canonical = (dataroot.REPO_ROOT / parity_layout.frames_path(slug, run)).resolve()
+        canonical = (root / parity_layout.frames_path(slug, run)).resolve()
         promotable = directory == canonical
     elif args.film and args.run:
         slug = parity_layout.require_slug(args.film)
         run = str(args.run)
-        if root is None:
-            if not dataroot.ensure_links_or_report("capture_digest"):
-                return 1
-            root = dataroot.REPO_ROOT
         directory = root / parity_layout.frames_path(slug, run)
     else:
         parser.error("name a film slug and a run id, or --dir")

@@ -163,7 +163,7 @@ git update-ref refs/heads/<layer> HEAD <old-tip> &&
 
 The `status` check comes first because once the branch moves, the other worktree still has the
 old files checked out under it and `git status` there reports your commit reversed as staged
-changes, so a check made afterwards cannot tell those from real uncommitted work. `reset --hard`
+changes, so a check made afterward cannot tell those from real uncommitted work. `reset --hard`
 discards anything uncommitted, and the `&&` keeps it from running when `<old-tip>` no longer
 matches and `update-ref` refuses. Writing into another worktree may need approval. Then rebase the layers above onto the new tip. `gh stack add`
 works only from the top branch of the stack, so run it in the worktree that holds the top.
