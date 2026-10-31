@@ -56,7 +56,7 @@
 
 ## Task 2: Staging and conf under the data root
 
-- [x] **2.1** Write the failing tests in `tests/test_tac_staging.py`: the stage directory is `<data>/stage/<film>-<label>/`, the conf and the mount are inside it, the conf has `webserver_enabled`, `webserver_port`, `core = normal`, `cpu_cycles = 7000` (370 render loops against 369; § 4.1), `machine = svga_s3`, `sbtype = sb16`, an `[autoexec]` that mounts and runs `playone.exe`, and removal deletes the whole directory.
+- [x] **2.1** Write the failing tests in `tests/test_tac_staging.py`: the stage directory is `<data>/stage/<film>-<label>/`, the conf and the mount are inside it, the conf has `webserver_enabled`, `webserver_port`, `core = normal`, `cpu_cycles = 7000` (370 render loops against 369; § 4.1), `machine = svga_s3`, `sbtype = sb16`, an `[autoexec]` that mounts and runs `playone.exe`, and removal deletes the whole directory. (Amended 2026-10-31: the committed profiles are `core = dynamic` at 45,000 cycles for `capture` and `play`, and `max` for `archive`; see the Rulings.)
 - [x] **2.2** Change `staging.py` and `parity_layout.stage_dir` to the new location. `parity_layout.py` stays the only place with the path literal.
 - [x] **2.3** Confirm the existing film and archive copying (`MAKEONE_FILES`, the sibling `.ALL`) is unchanged.
 - [x] **2.4** Commit.
@@ -67,7 +67,7 @@
 - [x] **3.2** Implement `luagen.py` from the proven `scan.py` and `inv7_run.py` in the spike notes (the 'snippet' in `capture-dosbox-automation.md` § 6).
 - [x] **3.3** Tests for `automation.py` against a fake HTTP server: token header, `script/load` as `text/plain`, polling `script/status` until `completed` or `error`, the error text carried into the exception, shutdown on teardown, and port-race retry.
 - [x] **3.4** Implement the client and `DosboxAutomation(Emulator)` (`EmulatorUnavailable` when the executable is not found, `GuestTimeout` for a run that exceeds its budget).
-- [x] **3.5** Add a `MockEmulator` that returns canned trace and dump output, and a `[dosbox-automation]` mise tool entry check (the pin already exists in `mise.toml`).
+- [x] **3.5** Add a `MockEmulator` that returns canned trace and dump output, and a `[dosbox-automation]` mise tool entry check (the pin already exists in `mise.toml`). (Amended 2026-10-31: the check is `test_mise_pins_dosbox_automation_with_a_checksum` in `tests/test_tac_automation.py`.)
 - [x] **3.6** Commit.
 
 ## Task 4: Plans replace sessions
@@ -77,7 +77,7 @@
 - [x] **4.3** Rewrite `framebuffer.capture` and `capture_playone_reference.py` on it. Keep `meta.json` and the `frames/` layout (ADR 0022 and 0024).
 - [x] **4.4** Rewrite `probe_playone_light.py` (the work segment pointer and the lighting words are read into the trace, then the dump reads the ranges).
 - [x] **4.5** Update `test_tac_capture_session.py` and `test_tac_adversarial.py` to the mock emulator.
-- [x] **4.6** Delete `transport.py`, `vsync.py`, `client.py`, `bda.py` and the framing and video-mode tests when nothing imports them; keep `streamer.py` only if its decoders still apply (check callers first).
+- [x] **4.6** Delete `transport.py`, `vsync.py`, `client.py`, `bda.py` and the framing and video-mode tests when nothing imports them; keep `streamer.py` only if its decoders still apply (check callers first). (Amended 2026-10-31: only the live DOSBox-X I/O was deleted; the offline streamer stack stays, see the Rulings, `[dead code kept]`.)
 - [x] **4.7** Commit.
 
 ## Task 5: make-all and play
@@ -98,7 +98,7 @@
 
 - [x] **7.1** Delete the `dosbox-x` and `dosbox-x-mcp-server` entries, the `ensure-dosbox` and `mcp` tasks and `renovate.jsonc` rules from `mise.toml` and `.github/renovate.jsonc`.
 - [x] **7.2** Delete `python/scripts/ensure_dosbox.py`, its test, and the DOSBox-X confs under `tools/dosbox/`; rewrite `tools/dosbox/README.md`.
-- [x] **7.3** Rewrite `docs/development.md` §§ 1, 2 and the tables, `README.md`, `AGENTS.md` (the routing table row for `capture.md`), `GLOSSARY.md`, `docs/SPEC.md`, `docs/harness-setup.md`, `docs/ARCHITECTURE.md` and `NOTICE.md` mentions. Run `rg -i dosbox-x` over everything except `research/` and the legacy note; the only hits left are the legacy pointers.
+- [x] **7.3** Rewrite `docs/development.md` §§ 1, 2 and the tables, `README.md`, `AGENTS.md` (the routing table row for `capture.md`), `GLOSSARY.md`, `docs/SPEC.md`, `docs/harness-setup.md`, `docs/ARCHITECTURE.md` and `NOTICE.md` mentions. Run `rg -i dosbox-x` over everything except `research/` and the legacy note; the only hits left are the legacy pointers. (Amended 2026-10-31: the remaining hits are retirement pointers and history: `emulator.py`, `batch_stages.py`, the ADRs and older plans.)
 - [x] **7.4** Write `docs/adr/0025-capture-runs-are-plans-not-sessions.md` and mark ADR 0021 superseded; update `doc_anchors.py` if any anchor moves.
 - [ ] **7.5** Run `mise run check` (passes, 2026-10-31), then reap the old DOSBox-X processes by hand (the user's call; still open).
 - [x] **7.6** Commit.
