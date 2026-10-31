@@ -78,6 +78,8 @@ class PlayoneLayout:
     film_clock: int
     global_tick: int
     working_palette: int
+    #: DS offsets of the two words holding the composed pages' segments (the tear test).
+    composed_pages: tuple[int, int]
 
     @property
     def ds(self) -> int:
@@ -93,6 +95,7 @@ UNPATCHED = PlayoneLayout(
     film_clock=FILM_CLOCK_OFFSET,
     global_tick=GLOBAL_TICK_OFFSET,
     working_palette=WORKING_PALETTE_OFFSET,
+    composed_pages=(0x22CA, 0x22CC),
 )
 #: Patch #3's PLAYONE.EXE (97,790 bytes; ``mise run game-builds`` puts it in the patched tree).
 PATCH3 = PlayoneLayout(
@@ -102,6 +105,8 @@ PATCH3 = PlayoneLayout(
     film_clock=0x421C,
     global_tick=0x1C3E,
     working_palette=0x20EE,
+    # Inferred from the uniform 0x67A shift, not read from code; a live tear rate checks it.
+    composed_pages=(0x1C50, 0x1C52),
 )
 LAYOUTS: tuple[PlayoneLayout, ...] = (UNPATCHED, PATCH3)
 

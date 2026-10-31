@@ -92,7 +92,30 @@ def test_no_per_byte_loop_over_a_page() -> None:
     assert not re.search(r"for\s+\w+\s*=\s*\d+\s*,\s*(64000|65535|63999)", text)
     assert ":byte(" not in text
     assert "string.byte" not in text
-    assert ":sub(" not in text
+    # Band slices are fine; a one-byte slice would mean a per-byte loop.
+    assert not re.search(r":sub\((\w+), \1\)", text)
+
+
+def test_trace_reads_both_composed_pages_and_the_palette() -> None:
+    text = _script()  # a trace pass has no dump block, so these reads are the trace's own
+
+    assert "mem_read_word(DS, 0x22CA)" in text
+    assert "mem_read_word(DS, 0x22CC)" in text
+    assert f"mem_read(DS, 0x{playone.UNPATCHED.working_palette:X}, 768)" in text
+
+
+def test_tear_check_compares_bands() -> None:
+    text = _script()
+
+    assert "2560" in text
+    assert "61440" in text
+    assert "string.byte" not in text
+    assert ":byte(" not in text
+
+
+def test_the_trace_mask_sums_the_three_flags() -> None:
+    assert (luagen.TRACE_CHANGED, luagen.TRACE_TORN, luagen.TRACE_PALETTE) == (1, 2, 4)
+    assert "torn(pg) and 2" in _script()
 
 
 def test_the_trace_cannot_start_before_the_keys_have_finished() -> None:

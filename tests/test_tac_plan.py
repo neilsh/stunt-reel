@@ -46,6 +46,19 @@ def test_decode_trace_reads_clocks_changed_flags_and_extra_words() -> None:
     assert wide.entries[0].changed is False
 
 
+def test_trace_decodes_the_flag_mask() -> None:
+    trace = plan.decode_trace("x5:7:3,6:8:4", FIRST)
+
+    torn, palette = trace.entries
+    assert (torn.changed, torn.torn, torn.palette_changed) == (True, True, False)
+    assert (palette.changed, palette.torn, palette.palette_changed) == (False, False, True)
+
+
+def test_trace_refuses_a_mask_above_seven() -> None:
+    with pytest.raises(plan.PlanError):
+        plan.decode_trace("x5:7:8", FIRST)
+
+
 def test_decode_trace_requires_the_letter_prefix() -> None:
     with pytest.raises(plan.PlanError, match="prefix"):
         plan.decode_trace("5:100:1", FIRST)
@@ -82,6 +95,62 @@ def test_pick_ticks_takes_the_first_frame_at_or_after_each_requested_tick() -> N
     trace = plan.decode_trace(_trace_text(entries), FIRST)
 
     assert plan.pick_ticks(trace, [6, 12, 25, 99]) == [FIRST + 1, FIRST + 2, FIRST + 3]
+
+
+CHANGED, TORN, PALETTE = luagen.TRACE_CHANGED, luagen.TRACE_TORN, luagen.TRACE_PALETTE
+
+
+def test_pick_every_skips_a_torn_frame_for_the_next_change() -> None:
+    entries = [(1, 0, CHANGED), (2, 1, CHANGED | TORN), (3, 2, CHANGED)]
+    trace = plan.decode_trace(_trace_text(entries), FIRST)
+
+    assert plan.pick_every(trace, stride=1) == [FIRST, FIRST + 2]
+
+
+def test_pick_every_skips_the_two_frames_of_a_palette_step() -> None:
+    """The DAC shows W(f-1) low and W(f-2) high, so a step at c spoils c and c + 1."""
+    entries = [(1, 0, CHANGED), (2, 1, CHANGED | PALETTE), (3, 2, CHANGED), (4, 3, CHANGED)]
+    trace = plan.decode_trace(_trace_text(entries), FIRST)
+
+    assert plan.pick_every(trace, stride=1) == [FIRST, FIRST + 3]
+
+
+def test_pick_ticks_moves_past_an_unusable_frame() -> None:
+    entries = [(5, 0, CHANGED), (10, 1, CHANGED | TORN), (11, 2, CHANGED)]
+    trace = plan.decode_trace(_trace_text(entries), FIRST)
+
+    assert plan.pick_ticks(trace, [10]) == [FIRST + 2]
+
+
+def test_a_palette_step_at_the_first_frame_spares_nothing_before_it() -> None:
+    entries = [(1, 0, CHANGED | PALETTE), (2, 1, CHANGED), (3, 2, CHANGED)]
+    trace = plan.decode_trace(_trace_text(entries), FIRST)
+
+    assert plan.usable(trace, FIRST) is False
+    assert plan.usable(trace, FIRST + 1) is False
+    assert plan.usable(trace, FIRST + 2) is True
+
+
+def test_a_dump_pass_that_reads_a_torn_page_drops_it() -> None:
+    """Jitter (COUNT.FLM) can move a tear onto a picked frame: drop that page, keep the rest."""
+    torn_at_pick = [(t, g, c | (TORN if i == 3 else 0)) for i, (t, g, c) in enumerate(ENTRIES)]
+    mock = _runner(ENTRIES, dump_entries=torn_at_pick)
+    lines: list[str] = []
+
+    result = plan.run_plan(
+        _open(mock),
+        keys=KEYS,
+        layout=playone.UNPATCHED,
+        first=FIRST,
+        last=FIRST + 50,
+        pick=lambda trace: [trace.first + 3, trace.first + 5],
+        timeout=5,
+        progress=lines.append,
+    )
+
+    assert sorted(result.dumps) == [FIRST + 5]
+    assert result.dropped == (FIRST + 3,)
+    assert any(f"unusable page at frame {FIRST + 3}" in line for line in lines)
 
 
 def _dump_output(frames: list[int], trace: str) -> dict[str, Any]:

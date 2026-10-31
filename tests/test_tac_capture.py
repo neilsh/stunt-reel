@@ -21,7 +21,7 @@ from archive_helpers import build_all
 from stunt_reel import dataroot, parity_artifacts, parity_layout
 from stunt_reel.all_archive import ArchiveMeta, publish_archive
 from stunt_reel.parity_artifacts import CaptureSet, FilmId, Geometry
-from stunt_reel.tac import automation, framebuffer, luagen, playone, staging
+from stunt_reel.tac import automation, framebuffer, luagen, plan, playone, staging
 from stunt_reel.tac.emulator import EmulatorUnavailable
 from stunt_reel.tac.framebuffer import capture
 from tac_mock import FILM_COLORS, FakeFilm, StagedRepo
@@ -88,6 +88,9 @@ def test_capture_artifacts_keep_their_contract(staged_repo: StagedRepo) -> None:
         "dgroup_segment",
         "frame_bytes",
         "playone_build",
+        "torn_frames",
+        "palette_steps",
+        "dropped_frames",
     ]
     assert list(meta["frames"][0]) == [
         "ordinal",
@@ -165,6 +168,63 @@ def test_a_film_whose_clock_never_runs_captures_no_frames(staged_repo: StagedRep
     meta = _capture(staged_repo, FakeFilm(moving_frames=0))
 
     assert meta["frames"] == []
+
+
+def test_capture_records_torn_and_palette_counts(staged_repo: StagedRepo) -> None:
+    torn, palette = luagen.TRACE_TORN, luagen.TRACE_PALETTE
+    film = FakeFilm(flags={5: torn, 9: torn, 12: palette, 20: palette, 30: palette})
+
+    meta = _capture(staged_repo, film, max_frames=100, stride=1)
+
+    assert meta["torn_frames"] == 2
+    assert meta["palette_steps"] == 3
+
+
+def test_capture_with_no_usable_frame_says_why(staged_repo: StagedRepo) -> None:
+    """Every changed film frame torn must fail loudly, not write an empty capture."""
+    film = FakeFilm(moving_frames=10, flags=dict.fromkeys(range(200), luagen.TRACE_TORN))
+
+    with pytest.raises(plan.PlanError, match=r"no usable frame among 10 changed .* \d+ torn"):
+        _capture(staged_repo, film, max_frames=100, stride=1)
+
+    assert not (staged_repo.out / "meta.json").exists()
+
+
+@pytest.mark.parametrize("all_dropped", [False, True])
+def test_capture_reports_frames_dropped_in_dump_passes(
+    staged_repo: StagedRepo, all_dropped: bool
+) -> None:
+    first = luagen.boot_end(len(KEYS))
+    trace_film = FakeFilm(moving_frames=3)
+    dropped_offsets = [4, 5, 6] if all_dropped else [4, 6]
+    dump_film = FakeFilm(moving_frames=3, flags=dict.fromkeys(dropped_offsets, luagen.TRACE_TORN))
+
+    def handler(text: str) -> dict[str, Any]:
+        return (trace_film if "dumps = {}" in text else dump_film).handler(text)
+
+    mock = automation.MockAutomation(handler)
+
+    @contextmanager
+    def runner() -> Iterator[automation.MockAutomation]:
+        yield mock
+
+    def run() -> dict[str, Any]:
+        return capture(
+            runner, staged_repo.out, keys=KEYS, max_frames=3, stride=1, layout=playone.UNPATCHED
+        )
+
+    if all_dropped:
+        with pytest.raises(
+            plan.PlanError,
+            match=r"3 changed film frames: 0 torn, 0 palette steps .* 3 dropped in dump passes",
+        ):
+            run()
+        assert not (staged_repo.out / "meta.json").exists()
+    else:
+        meta = run()
+        assert [frame["film_tick"] for frame in meta["frames"]] == [4]
+        assert meta["dropped_frames"] == [first + 4, first + 6]
+        assert json.loads((staged_repo.out / "meta.json").read_text(encoding="utf-8")) == meta
 
 
 def test_capture_records_when_and_by_whom_in_the_diagnostics(staged_repo: StagedRepo) -> None:
