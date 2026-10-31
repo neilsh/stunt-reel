@@ -80,6 +80,10 @@ run = "uv run python python/scripts/build_at.py"
 description = "Capture PLAYONE.EXE Mode 13h frames for visual parity into captures/<film>/frames/ (default CTRY; mise run capture-ref -- --film corpus/stisldem/VAULT/INTRO.FLM)"
 run = "uv run python python/scripts/capture_playone_reference.py"
 
+[tasks.capture-digest]
+description = "Print a capture's content hash and the references.toml entry that would promote it (mise run capture-digest -- vault-ctry 005)"
+run = "uv run python python/scripts/capture_digest.py"
+
 [tasks.make-all]
 description = "Generate a film's .ALL with MAKEONE.EXE on dosbox-automation into captures/<film>/archives/ (mise run make-all -- --film corpus/stuntisl/VAULT/BALLOON.FLM)"
 run = "uv run python python/scripts/make_all.py"
@@ -237,6 +241,16 @@ run = "python python/scripts/gate.py py"
 [tasks.check]
 description = "Full quality gate: one line per step, PASS/FAIL verdict, full log in target/check.log"
 run = "python python/scripts/gate.py all"
+
+[tasks.test-docs]
+description = "Documentation invariants only: anchors, Markdown links, cited paths (part of test-py; the pre-commit hook runs it alone)"
+run = "uv run pytest tests/test_doc_invariants.py -q"
+
+# The committed hook (.githooks/pre-commit, installed by mise run init) runs this and nothing
+# else, so its checks are leaf tasks of this file like the gate's (ADR 0014): no second copy.
+[tasks.pre-commit]
+description = "What the pre-commit hook runs: staged conflict markers, ruff format and lint, and test-docs when Markdown is staged"
+run = "python python/scripts/gate.py staged"
 
 [tasks.check-windows]
 description = "Windows non-GPU half of the gate (fmt, lint, typecheck, Rust and Python tests; GPU tests skip without a driver)"

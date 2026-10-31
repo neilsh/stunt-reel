@@ -15,6 +15,13 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Read tool releases from the GitHub API (mise-action passes the token) instead of
+  # mise-versions.jdx.dev. A job whose mise.toml hash misses the tool cache installs from
+  # scratch, and on 2026-10-31 that host answered 502 for the Kaitai compiler's release,
+  # failing the gate before a test ran; a cache hit never asks it, so only such jobs failed.
+  MISE_USE_VERSIONS_HOST: "false"
+
 jobs:
   quality:
     name: Quality gate (ubuntu)
