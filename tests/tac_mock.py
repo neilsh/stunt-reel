@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from stunt_reel import dataroot
+from stunt_reel.tac import playone
 from stunt_reel.tac.automation import MockAutomation
 from stunt_reel.tac.staging import ENGINE_FILES, MAKEONE_FILES
 
@@ -126,6 +127,8 @@ def staged_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Sta
     out = tmp_path / "out"
 
     monkeypatch.setattr(dataroot, "REPO_ROOT", root)
+    # The synthetic PLAYONE.EXE matches no build's hash; read it as the unpatched one.
+    monkeypatch.setattr(playone, "layout_for", lambda _exe: playone.UNPATCHED)
     dataroot.data_root.cache_clear()
     try:
         yield StagedRepo(root=root, film=film, out=out)

@@ -12,7 +12,12 @@ KEYS = ["KBD_c", "KBD_down", "KBD_enter"]
 
 
 def _script(**kwargs: object) -> str:
-    args: dict[str, object] = {"keys": KEYS, "first": 1300, "last": 1400}
+    args: dict[str, object] = {
+        "keys": KEYS,
+        "first": 1300,
+        "last": 1400,
+        "layout": playone.UNPATCHED,
+    }
     args.update(kwargs)
     return luagen.script(**args)  # type: ignore[arg-type]
 
@@ -47,6 +52,16 @@ def test_the_trace_reads_both_clocks_and_compares_the_page_as_strings() -> None:
     assert "(pg ~= prev)" in text
     assert 'out.trace = "x" .. table.concat(tr, ",")' in text
     assert "out.done = true" in text
+
+
+def test_the_patched_layout_reads_its_own_segment_and_offsets() -> None:
+    text = _script(layout=playone.PATCH3, dump_frames=[1350])
+
+    assert "local DS = 0x0E66" in text
+    assert "dosbox.mem_read_word(DS, 0x421C)" in text
+    assert "dosbox.mem_read_word(DS, 0x1C3E)" in text
+    assert "dosbox.mem_read(DS, 0x20EE, 768)" in text
+    assert "0x4896" not in text
 
 
 def test_extra_words_join_each_trace_entry() -> None:

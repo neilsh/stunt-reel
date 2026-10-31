@@ -183,8 +183,12 @@ def render_conf(
     return "\n".join(lines) + "\n"
 
 
-def stage_play(film: Path, archive: Path) -> StagedMount:
+def stage_play(film: Path, archive: Path, engine_root: Path | None = None) -> StagedMount:
     """Stage *film* and its *archive* alone in a mount for PLAYONE.EXE.
+
+    The engine files come from *engine_root* when given (a game tree such as a
+    ``game-builds`` tree, to run another PLAYONE.EXE build), else from the film's own tree or
+    the demo.
 
     PLAYONE finds both in the mount's VAULT directory, so they are copied just in time: the film under its own
     name and the archive as ``<film stem>.ALL`` whatever the source spelled. Two captures of
@@ -197,7 +201,7 @@ def stage_play(film: Path, archive: Path) -> StagedMount:
         if not needed.is_file():
             msg = f"{needed} not found (the film's .FLM and .ALL must sit together)"
             raise FileNotFoundError(msg)
-    source_root = _engine_root(film)
+    source_root = engine_root if engine_root is not None else _engine_root(film)
 
     def populate(mount_dir: Path) -> None:
         for name in ENGINE_FILES:
@@ -208,9 +212,9 @@ def stage_play(film: Path, archive: Path) -> StagedMount:
     return _stage(film, populate)
 
 
-def stage_film(film: Path) -> StagedMount:
+def stage_film(film: Path, engine_root: Path | None = None) -> StagedMount:
     """Stage *film* with the ``.ALL`` that sits beside it (see :func:`stage_play`)."""
-    return stage_play(film, film.with_suffix(".ALL"))
+    return stage_play(film, film.with_suffix(".ALL"), engine_root)
 
 
 def stage_makeone(film: Path, game_root: Path) -> StagedMount:

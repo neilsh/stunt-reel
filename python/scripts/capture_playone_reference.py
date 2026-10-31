@@ -65,6 +65,16 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--game-root",
+        type=Path,
+        default=None,
+        help=(
+            "game tree whose PLAYONE.EXE and engine files to run, such as "
+            "<data root>/builds/patched from mise run game-builds (default: the film's own tree, "
+            "else the demo); the build is recognised by its hash"
+        ),
+    )
+    parser.add_argument(
         "--max-frames",
         type=int,
         default=2000,
@@ -163,11 +173,18 @@ def _capture_into(
         "captured_on": datetime.now(UTC).date().isoformat(),
         "checkout": re.sub(r"[^A-Za-z0-9._-]", "-", dataroot.REPO_ROOT.name),
     }
+    engine_root = resolve(args.game_root) if args.game_root is not None else None
     try:
-        staged = staging.stage_play(film, archive)
+        staged = staging.stage_play(film, archive, engine_root)
     except OSError as exc:
         print(f"[capture] {exc}", file=sys.stderr)
         return 1
+    try:
+        layout = playone.layout_for(staged.mount / "PLAYONE.EXE")
+    except (playone.UnknownBuild, OSError) as exc:
+        staging.unstage(staged)
+        print(f"[capture] {exc}", file=sys.stderr)
+        return 2
     try:
         meta: dict[str, Any] = capture(
             lambda: automation.launched(staged.write_conf),
@@ -178,6 +195,7 @@ def _capture_into(
             film=film_id,
             provenance=provenance,
             progress=report,
+            layout=layout,
         )
     except EmulatorUnavailable as exc:
         print(f"[capture] {exc}; run via mise run capture-ref", file=sys.stderr)

@@ -21,7 +21,7 @@ from archive_helpers import build_all
 from stunt_reel import dataroot, parity_artifacts, parity_layout
 from stunt_reel.all_archive import ArchiveMeta, publish_archive
 from stunt_reel.parity_artifacts import CaptureSet, FilmId, Geometry
-from stunt_reel.tac import automation, framebuffer, luagen, playone
+from stunt_reel.tac import automation, framebuffer, luagen, playone, staging
 from stunt_reel.tac.emulator import EmulatorUnavailable
 from stunt_reel.tac.framebuffer import capture
 from tac_mock import FILM_COLORS, FakeFilm, StagedRepo
@@ -35,7 +35,13 @@ FRAME_BYTES = 320 * 200
 
 
 def _capture(repo: StagedRepo, film: FakeFilm, **kwargs: Any) -> dict[str, Any]:
-    options: dict[str, Any] = {"keys": KEYS, "max_frames": 3, "stride": 2, "film": FILM}
+    options: dict[str, Any] = {
+        "keys": KEYS,
+        "max_frames": 3,
+        "stride": 2,
+        "film": FILM,
+        "layout": playone.UNPATCHED,
+    }
     options.update(kwargs)
     return capture(film.runner(), repo.out, **options)
 
@@ -81,6 +87,7 @@ def test_capture_artifacts_keep_their_contract(staged_repo: StagedRepo) -> None:
         "palette_source",
         "dgroup_segment",
         "frame_bytes",
+        "playone_build",
     ]
     assert list(meta["frames"][0]) == [
         "ordinal",
@@ -119,7 +126,15 @@ def test_meta_is_written_last(staged_repo: StagedRepo) -> None:
         yield Runner()
 
     with pytest.raises(automation.ScriptError, match="instruction limit"):
-        capture(failing, staged_repo.out, keys=KEYS, max_frames=3, stride=2, film=FILM)
+        capture(
+            failing,
+            staged_repo.out,
+            keys=KEYS,
+            max_frames=3,
+            stride=2,
+            film=FILM,
+            layout=playone.UNPATCHED,
+        )
 
     assert not (staged_repo.out / "meta.json").exists()
 
@@ -351,8 +366,8 @@ def test_capture_script_stages_the_stored_archive_and_records_its_hash(
     seen: dict[str, Any] = {}
     real_stage = module.staging.stage_play
 
-    def spy(film: Path, archive: Path) -> Any:
-        staged = real_stage(film, archive)
+    def spy(film: Path, archive: Path, engine_root: Path | None = None) -> Any:
+        staged = real_stage(film, archive, engine_root)
         seen["archive"] = (staged.mount / "VAULT" / "CTRY.ALL").read_bytes()
         return staged
 
@@ -518,7 +533,7 @@ def test_probe_reads_the_work_segment_from_the_trace_then_dumps_it(
     def opener() -> Iterator[Any]:
         yield mock
 
-    module.probe(opener, KEYS, [4, 10], tmp_path, dump_all=False)
+    module.probe(opener, KEYS, [4, 10], tmp_path, dump_all=False, layout=playone.UNPATCHED)
 
     lines = capsys.readouterr().out.splitlines()
     assert next(line for line in lines if line.startswith("[shot]")).startswith(
@@ -554,7 +569,7 @@ def test_probe_refuses_a_dump_pass_that_read_another_work_segment(tmp_path: Path
         yield mock
 
     with pytest.raises(RuntimeError, match="read work segment 1DF9, but the trace pass read 1DF8"):
-        module.probe(opener, KEYS, [4, 10], tmp_path, dump_all=False)
+        module.probe(opener, KEYS, [4, 10], tmp_path, dump_all=False, layout=playone.UNPATCHED)
     assert not (tmp_path / "work_t4.bin").exists()
 
 
@@ -562,7 +577,14 @@ def test_probe_names_ticks_the_film_never_reached(tmp_path: Path) -> None:
     module = _load_script("probe_playone_light")
 
     with pytest.raises(RuntimeError, match=r"never reached any of the ticks \[9000, 9999\]"):
-        module.probe(FakeFilm().runner(), KEYS, [9000, 9999], tmp_path, dump_all=False)
+        module.probe(
+            FakeFilm().runner(),
+            KEYS,
+            [9000, 9999],
+            tmp_path,
+            dump_all=False,
+            layout=playone.UNPATCHED,
+        )
 
 
 def test_probe_script_failure_lines_and_exit_codes(
@@ -597,4 +619,51 @@ def test_probe_script_failure_lines_and_exit_codes(
 
     monkeypatch.setattr(module, "probe", lambda *_a, **_k: None)
     assert module.run(args) == 0
+
+    monkeypatch.setattr(playone, "layout_for", lambda _exe: playone.PATCH3)
+    assert module.run(args) == 2
+    assert "unpatched PLAYONE.EXE only, not patch3" in capsys.readouterr().err
     assert capsys.readouterr().out == ""
+
+
+def test_capture_script_runs_the_game_root_build_with_its_layout(
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    """--game-root stages that tree's engine files and reads the offsets of its PLAYONE build."""
+    module = _load_script("capture_playone_reference")
+    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
+    tree = tmp_path / "patched"
+    tree.mkdir()
+    for name in staging.ENGINE_FILES:
+        (tree / name).write_bytes(b"patched " + name.encode())
+    argv = [*_capture_argv(staged_repo, tmp_path / "out"), "--game-root", str(tree)]
+    monkeypatch.setattr(sys, "argv", argv)
+    seen: dict[str, Any] = {}
+
+    def layout_for(exe: Path) -> playone.PlayoneLayout:
+        seen["exe"] = exe.read_bytes()
+        return playone.PATCH3
+
+    monkeypatch.setattr(module.playone, "layout_for", layout_for)
+
+    def fake_capture(*_a: Any, **kwargs: Any) -> dict[str, Any]:
+        seen.update(kwargs)
+        return {"frames": [{"ordinal": 1}]}
+
+    monkeypatch.setattr(module, "capture", fake_capture)
+    assert module.run(module.parse_args()) == 0
+    assert seen["exe"] == b"patched PLAYONE.EXE"
+    assert seen["layout"] is playone.PATCH3
+
+    def unknown(exe: Path) -> playone.PlayoneLayout:
+        raise playone.UnknownBuild(f"{exe.name} is no known PLAYONE.EXE build")
+
+    monkeypatch.setattr(module.playone, "layout_for", unknown)
+    capsys.readouterr()
+    assert module.run(module.parse_args()) == 2
+    assert "no known PLAYONE.EXE build" in capsys.readouterr().err
+    stage_root = dataroot.data_root() / parity_layout.stage_root()
+    assert not stage_root.exists() or not any(stage_root.iterdir())

@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from contextlib import AbstractContextManager
 
     from stunt_reel.tac.automation import ScriptRunner
+    from stunt_reel.tac.playone import PlayoneLayout
 
 __all__ = [
     "DEFAULT_PARALLEL_PASSES",
@@ -237,6 +238,7 @@ def run_plan(
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
     progress: Callable[[str], None] | None = None,
     parallel: int = DEFAULT_PARALLEL_PASSES,
+    layout: PlayoneLayout,
 ) -> PlanResult:
     """Run the trace pass, let *pick* choose frames from it, then dump them in chunks.
 
@@ -250,6 +252,7 @@ def run_plan(
         "last": last,
         "words": words,
         "end_hold": end_hold,
+        "layout": layout,
     }
     say = progress or (lambda _line: None)
     say("pass 1: tracing the film")

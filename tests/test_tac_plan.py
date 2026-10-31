@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import re
 import threading
 import time
@@ -10,15 +11,21 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from stunt_reel.tac import luagen, plan
+from stunt_reel.tac import framebuffer, luagen, plan, playone
 from stunt_reel.tac.automation import MockAutomation
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
 KEYS = ["KBD_c", "KBD_down", "KBD_enter"]
 FIRST = 1300
 PAGE = b"\x07" * plan.FRAME_BYTES
+
+
+@pytest.mark.parametrize("fn", [luagen.script, plan.run_plan, framebuffer.capture])
+def test_every_capture_entry_point_requires_a_layout(fn: Callable[..., object]) -> None:
+    # A default would read a Patch #3 build at unpatched offsets without a word.
+    assert inspect.signature(fn).parameters["layout"].default is inspect.Parameter.empty
 
 
 def _trace_text(entries: list[tuple[int, int, int]]) -> str:
@@ -120,6 +127,7 @@ def test_run_plan_traces_picks_then_dumps_in_chunks() -> None:
     result = plan.run_plan(
         _open(mock),
         keys=KEYS,
+        layout=playone.UNPATCHED,
         first=FIRST,
         last=FIRST + len(ENTRIES) - 1,
         pick=lambda trace: plan.pick_every(trace, stride=2),
@@ -160,6 +168,7 @@ def test_dump_passes_run_side_by_side_up_to_the_limit() -> None:
     result = plan.run_plan(
         opener,
         keys=KEYS,
+        layout=playone.UNPATCHED,
         first=FIRST,
         last=FIRST + len(ENTRIES) - 1,
         pick=lambda trace: plan.pick_every(trace, stride=2),
@@ -179,6 +188,7 @@ def test_extra_ranges_shrink_each_pass_to_the_measured_byte_budget() -> None:
     plan.run_plan(
         _open(mock),
         keys=KEYS,
+        layout=playone.UNPATCHED,
         first=FIRST,
         last=FIRST + len(ENTRIES) - 1,
         pick=lambda trace: plan.pick_every(trace, stride=2)[:40],
@@ -202,6 +212,7 @@ def test_run_plan_with_nothing_picked_runs_only_the_trace() -> None:
     result = plan.run_plan(
         _open(mock),
         keys=KEYS,
+        layout=playone.UNPATCHED,
         first=FIRST,
         last=FIRST + 10,
         pick=lambda _trace: [],
@@ -221,6 +232,7 @@ def test_a_dump_keeps_the_tick_its_own_pass_read_when_the_film_jitters() -> None
     result = plan.run_plan(
         _open(mock),
         keys=KEYS,
+        layout=playone.UNPATCHED,
         first=FIRST,
         last=FIRST + 50,
         pick=lambda trace: [trace.first + 3, trace.first + 5],
@@ -242,6 +254,7 @@ def test_a_dump_pass_that_drifts_past_the_skew_is_a_divergence() -> None:
         plan.run_plan(
             _open(mock),
             keys=KEYS,
+            layout=playone.UNPATCHED,
             first=FIRST,
             last=FIRST + 50,
             pick=lambda trace: [trace.first + 3],
@@ -256,6 +269,7 @@ def test_a_dump_pass_that_ends_before_a_picked_frame_is_a_divergence() -> None:
         plan.run_plan(
             _open(mock),
             keys=KEYS,
+            layout=playone.UNPATCHED,
             first=FIRST,
             last=FIRST + 50,
             pick=lambda trace: [trace.first + 3],
@@ -283,6 +297,7 @@ def test_ranges_may_depend_on_the_trace_and_the_picked_frames() -> None:
     result = plan.run_plan(
         _open(mock),
         keys=KEYS,
+        layout=playone.UNPATCHED,
         first=FIRST,
         last=FIRST + len(ENTRIES) - 1,
         pick=lambda trace: [trace.first + 5],

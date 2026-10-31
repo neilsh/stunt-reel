@@ -5,7 +5,7 @@ from it, then dump passes that read the A000 page and the DS working palette at 
 emulated frames. A frame is kept when its page changed and the film clock is running, which
 skips the dialog and load screens, and at most one is kept per ``stride`` film ticks (the
 sampler's old density), per Invariant [I4]. Every kept frame is tagged with the film clock
-(DS:0x4896, # [MEM-FLM-TICK]) read in the same Lua step as the page, so parity compares it
+(the layout's ``film_clock``, # [MEM-FLM-TICK]) read in the same Lua step as the page, so parity compares it
 against the render of the same 50 Hz tick instead of capture order.
 
 The artifact names and JSON layout are a capture contract: frames/tick_NNNN.idx,
@@ -34,7 +34,6 @@ from stunt_reel.parity_artifacts import (
     write_capture,
 )
 from stunt_reel.tac import luagen, plan
-from stunt_reel.tac.playone import AUTOMATION_DS
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -42,6 +41,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from stunt_reel.tac.automation import ScriptRunner
+    from stunt_reel.tac.playone import PlayoneLayout
 
 __all__ = [
     "END_HOLD_FRAMES",
@@ -82,6 +82,7 @@ def capture(
     film: FilmId | None = None,
     provenance: Mapping[str, str] | None = None,
     progress: Callable[[str], None] | None = None,
+    layout: PlayoneLayout,
 ) -> dict[str, Any]:
     """Plan and run a capture of the film *keys* selects, and write the reference artifacts.
 
@@ -90,7 +91,8 @@ def capture(
     film_tick (the film clock, which is what parity matches on), and the diagnostics ride beside
     it through the writer. meta.json is written last. *provenance* (when and by which checkout)
     joins the diagnostics in meta.json; it is not part of the capture's identity, which is the
-    film and its frames.
+    film and its frames. *layout* is the PLAYONE.EXE build being run; its name is recorded as
+    ``playone_build``.
     """
     frames_dir = out_dir / CAPTURE_FRAMES_DIR
     frames_dir.mkdir(parents=True, exist_ok=True)
@@ -104,6 +106,7 @@ def capture(
         pick=lambda trace: plan.pick_every(trace, stride=stride)[:max_frames],
         end_hold=END_HOLD_FRAMES,
         progress=progress,
+        layout=layout,
     )
 
     frames: list[CapturedFrame] = []
@@ -151,8 +154,9 @@ def capture(
         capture_set,
         diagnostics={
             "palette_source": "working",
-            "dgroup_segment": f"{AUTOMATION_DS:04X}",
+            "dgroup_segment": f"{layout.ds:04X}",
             "frame_bytes": FRAME_BYTES,
+            "playone_build": layout.name,
             **(provenance or {}),
         },
         frame_diagnostics=tuple(frame_diagnostics),
