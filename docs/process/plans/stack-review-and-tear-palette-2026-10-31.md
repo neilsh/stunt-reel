@@ -228,3 +228,16 @@ Live runs; nothing writes `corpus/`, new runs land as `captures/<film>/frames/00
 - [ ] **Step 3:** Point `references.toml` at `005` in the working tree only and run `mise run parity -- --no-build`. Expected: CTRY SSIM ≥ 0.7808 and INTRO ≥ 0.5488 (the 004 row); torn picks of 004 (CTRY ticks at frames 1816, 1986) score higher on their ticks.
 - [ ] **Step 4:** If Expected holds: pin both `capture_digest` sha256 values, append one LF row to `research/parity/log.md`, `mise run check`, commit `feat(parity): promote the tear-free captures to the references`. If not, restore `references.toml`, append the row anyway with the note, and record the finding in § 4.5.
 - [ ] **Step 5:** `gh stack submit --auto`, then set the new PR's body with the `pr` skill template (Summary: the trace-mask diff sketch; Evidence: 004 vs 005 parity rows and torn counts; Merge Danger: two-way door, blast radius "captures").
+
+## Status and Handoff (2026-10-31)
+
+Tasks 0 to 8 are done and Task 9 ran; layer 3 is `claude/tear-palette-skip`. The live recaptures flagged exactly the investigation's counts (CTRY 66 torn of 1,908, INTRO 127 of 5,384), and a patched CTRY capture flagged 72 of 1,906, which confirms `PATCH3.composed_pages`. Against one render, `005` scores CTRY 0.7800 / INTRO 0.5444 where `004` scores 0.7808 / 0.5488, so the promotion gate failed and `references.toml` stays on `004` (`parity/log.md`; open question 9 of `capture-dosbox-automation.md`).
+
+Rulings made while executing (cost if wrong in brackets):
+
+- Task 0's rebase left conflict markers in one #29 commit; the commits were rebuilt on a detached head before anything was pushed. [none; caught before push]
+- Task 2's pin test already existed (`test_mise_pins_dosbox_automation_with_a_checksum`), so 3.5's amendment names it and no test was added. [none]
+- `test_no_per_byte_loop_over_a_page` forbade every `:sub(`; the band test needs slices, so it now forbids one-byte slices only. [a per-byte loop written another way slips past; the `for` regex still guards pages]
+- `patch3.md` § 3 names the dynamic core, because `efb6009` is an ancestor of the branch the runs were made on. [the runs were older than the rebase]
+- After the final review, a dump pass drops an unusable page instead of raising `PlanDivergence` (Task 7 said raise): a jitter film would otherwise rarely finish. [a capture silently has one page fewer; the progress line names it]
+- Task 9 step 2's "near 100%" symptom cannot occur: wrong composed-page words make `torn()` always false, so only "near 0%" means wrong offsets. A `composed_matches` diagnostic that would catch it on any build was not added, since both known layouts are now checked live. [a future build with wrong words captures with tears unflagged]
