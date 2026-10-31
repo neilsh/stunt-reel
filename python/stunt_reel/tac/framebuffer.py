@@ -116,7 +116,8 @@ def capture(
         # Every film frame was skipped: say so instead of writing a capture with no frames.
         raise plan.PlanError(
             f"no usable frame among {candidates} changed film frames: {torn} torn, "
-            f"{palette_steps} palette steps (each spoils its frame and the next)"
+            f"{palette_steps} palette steps (each spoils its frame and the next), "
+            f"{len(result.dropped)} dropped in dump passes"
         )
 
     frames: list[CapturedFrame] = []
@@ -169,6 +170,7 @@ def capture(
             "playone_build": layout.name,
             "torn_frames": torn,
             "palette_steps": palette_steps,
+            "dropped_frames": list(result.dropped),
             **(provenance or {}),
         },
         frame_diagnostics=tuple(frame_diagnostics),
