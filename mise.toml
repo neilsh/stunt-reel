@@ -17,6 +17,9 @@ uv = "0.13.1"
 # Line coverage for the Rust crates (`mise run cov-rust`); not part of `check`.
 "cargo:cargo-llvm-cov" = "0.9.1"
 
+# Opt-in commit hooks (`mise run hooks`); they run gate steps, never their own tools (ADR 0026).
+prek = "0.5.5"
+
 # JVM + Kaitai Struct Compiler for executing research/formats/**/*.ksy during verification.
 # Java is required only to compile .ksy schemas; generated parsers run on the
 # pure-Python kaitaistruct runtime.
@@ -71,6 +74,10 @@ run = "uv run python python/scripts/worktree_init.py clean"
 [tasks.reap]
 description = "Remove worktrees whose branch is already in main, unlinking their data-root junctions first (mise run reap -- --yes [--cherry] [--prune] [--stash-dirty] [--discard-untracked])"
 run = "uv run python python/scripts/worktree_init.py reap"
+
+[tasks.hooks]
+description = "Install the opt-in prek pre-commit hooks (ADR 0026): the gate's fmt and lint checks plus prek built-ins"
+run = "prek install --config ./prek.toml --allow-missing-config"
 
 [tasks.build-at]
 description = "Build stunt-cli from a git revision with an isolated target dir (mise run build-at -- <rev> <out>)"
