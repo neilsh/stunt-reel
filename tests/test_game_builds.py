@@ -231,6 +231,21 @@ def test_an_output_inside_a_source_tree_is_refused(tmp_path: Path, inside: str) 
         game_builds.build_trees(game, patches, game)
 
 
+def test_a_source_linked_from_inside_the_output_is_refused(tmp_path: Path) -> None:
+    """A link at out/unpatched resolves elsewhere, but a rebuild would still replace it."""
+    game = _game(tmp_path)
+    out = tmp_path / "builds"
+    out.mkdir()
+    link = out / "unpatched"
+    try:
+        link.symlink_to(game, target_is_directory=True)
+    except OSError:
+        pytest.skip("this host cannot create directory symlinks")
+    with pytest.raises(game_builds.BuildError, match="only read"):
+        game_builds.build_trees(link, _patches(tmp_path), out)
+    assert (game / "STUNT.EXE").is_file()
+
+
 def test_an_output_holding_a_source_tree_is_refused(tmp_path: Path) -> None:
     """A rebuild replaces out/unpatched, so a source there would be deleted."""
     out = tmp_path / "builds"

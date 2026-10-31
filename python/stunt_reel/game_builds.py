@@ -207,11 +207,12 @@ def build_trees(game: Path, patch_dir: Path, out: Path) -> dict[str, Any]:
     """
     if not (game / "PLAYONE.EXE").is_file():
         raise BuildError(f"{game} is not a game tree (no PLAYONE.EXE)")
-    target = out.resolve()
+    # Both the literal and the resolved paths: the corpus folders are links into the data root.
+    targets = {out.absolute(), out.resolve()}
     for source in (game, patch_dir):
-        root = source.resolve()
-        if target.is_relative_to(root) or root.is_relative_to(target):
-            raise BuildError(f"{out} overlaps {source}, which is only read (ADR 0022)")
+        for root in {source.absolute(), source.resolve()}:
+            if any(t.is_relative_to(root) or root.is_relative_to(t) for t in targets):
+                raise BuildError(f"{out} overlaps {source}, which is only read (ADR 0022)")
     out.mkdir(parents=True, exist_ok=True)
     partial = {name: out / f".{name}.partial" for name in BUILD_NAMES}
     for path in partial.values():
