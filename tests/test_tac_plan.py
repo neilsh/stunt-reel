@@ -97,6 +97,57 @@ def test_pick_ticks_takes_the_first_frame_at_or_after_each_requested_tick() -> N
     assert plan.pick_ticks(trace, [6, 12, 25, 99]) == [FIRST + 1, FIRST + 2, FIRST + 3]
 
 
+CHANGED, TORN, PALETTE = luagen.TRACE_CHANGED, luagen.TRACE_TORN, luagen.TRACE_PALETTE
+
+
+def test_pick_every_skips_a_torn_frame_for_the_next_change() -> None:
+    entries = [(1, 0, CHANGED), (2, 1, CHANGED | TORN), (3, 2, CHANGED)]
+    trace = plan.decode_trace(_trace_text(entries), FIRST)
+
+    assert plan.pick_every(trace, stride=1) == [FIRST, FIRST + 2]
+
+
+def test_pick_every_skips_the_two_frames_of_a_palette_step() -> None:
+    """The DAC shows W(f-1) low and W(f-2) high, so a step at c spoils c and c + 1."""
+    entries = [(1, 0, CHANGED), (2, 1, CHANGED | PALETTE), (3, 2, CHANGED), (4, 3, CHANGED)]
+    trace = plan.decode_trace(_trace_text(entries), FIRST)
+
+    assert plan.pick_every(trace, stride=1) == [FIRST, FIRST + 3]
+
+
+def test_pick_ticks_moves_past_an_unusable_frame() -> None:
+    entries = [(5, 0, CHANGED), (10, 1, CHANGED | TORN), (11, 2, CHANGED)]
+    trace = plan.decode_trace(_trace_text(entries), FIRST)
+
+    assert plan.pick_ticks(trace, [10]) == [FIRST + 2]
+
+
+def test_a_palette_step_at_the_first_frame_spares_nothing_before_it() -> None:
+    entries = [(1, 0, CHANGED | PALETTE), (2, 1, CHANGED), (3, 2, CHANGED)]
+    trace = plan.decode_trace(_trace_text(entries), FIRST)
+
+    assert plan.usable(trace, FIRST) is False
+    assert plan.usable(trace, FIRST + 1) is False
+    assert plan.usable(trace, FIRST + 2) is True
+
+
+def test_a_dump_pass_that_reads_a_torn_page_diverges() -> None:
+    """Jitter can move a tear onto a picked frame; the page must not be kept."""
+    torn_at_pick = [(t, g, c | (TORN if i == 3 else 0)) for i, (t, g, c) in enumerate(ENTRIES)]
+    mock = _runner(ENTRIES, dump_entries=torn_at_pick)
+
+    with pytest.raises(plan.PlanDivergence, match=f"unusable page at frame {FIRST + 3}"):
+        plan.run_plan(
+            _open(mock),
+            keys=KEYS,
+            layout=playone.UNPATCHED,
+            first=FIRST,
+            last=FIRST + 50,
+            pick=lambda trace: [trace.first + 3],
+            timeout=5,
+        )
+
+
 def _dump_output(frames: list[int], trace: str) -> dict[str, Any]:
     out: dict[str, Any] = {"trace": trace, "done": True}
     for f in frames:

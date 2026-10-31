@@ -49,6 +49,7 @@ __all__ = [
     "pick_every",
     "pick_ticks",
     "run_plan",
+    "usable",
 ]
 
 FRAME_BYTES: int = 320 * 200
@@ -172,16 +173,30 @@ def chunk(frames: Sequence[int], size: int = MAX_DUMPS) -> list[list[int]]:
     return runs
 
 
-def pick_every(trace: Trace, *, stride: int) -> list[int]:
-    """Frames whose page changed and whose film clock is *stride* or more past the last pick.
+def usable(trace: Trace, frame: int) -> bool:
+    """False when *frame*'s page is torn, or the DAC may still lag the working palette.
 
-    Clock zero is not film content (the dialog and load screens run with the clock at zero).
+    The DAC shows the working palette of frame - 1 in its low half and of frame - 2 in its high
+    half (tear-palette investigation § 2.1), so it equals frame's own only if the palette changed
+    neither at *frame* nor at *frame* - 1. A frame before the trace counts as unchanged.
+    """
+    entry = trace.entry(frame)
+    if entry.torn or entry.palette_changed:
+        return False
+    return frame == trace.first or not trace.entry(frame - 1).palette_changed
+
+
+def pick_every(trace: Trace, *, stride: int) -> list[int]:
+    """Usable frames whose page changed and whose film clock is *stride* or more past the last pick.
+
+    Clock zero is not film content (the dialog and load screens run with the clock at zero). An
+    unusable frame is passed over, so the next changed frame takes its place.
     """
     picked: list[int] = []
     last_tick: int | None = None
     for frame in trace.frames:
         entry = trace.entry(frame)
-        if not entry.changed or entry.film_tick <= 0:
+        if not entry.changed or entry.film_tick <= 0 or not usable(trace, frame):
             continue
         if last_tick is None or entry.film_tick - last_tick >= stride:
             picked.append(frame)
@@ -190,10 +205,15 @@ def pick_every(trace: Trace, *, stride: int) -> list[int]:
 
 
 def pick_ticks(trace: Trace, ticks: Sequence[int]) -> list[int]:
-    """The first frame at or after each requested film clock; clocks the film never reaches are dropped."""
+    """The first usable frame at or after each requested film clock.
+
+    Clocks the film never reaches are dropped; an unusable frame consumes no pending clock.
+    """
     picked: list[int] = []
     pending = sorted(ticks)
     for frame in trace.frames:
+        if not usable(trace, frame):
+            continue
         tick = trace.entry(frame).film_tick
         while pending and tick >= pending[0]:
             if not picked or picked[-1] != frame:
@@ -301,6 +321,11 @@ def run_plan(
             )
         own = decode_trace(str(out.get("trace", "")), first)
         _check_close(trace, own, frames, "dump pass")
+        for f in frames:
+            if not usable(own, f):
+                raise PlanDivergence(
+                    f"dump pass read an unusable page at frame {f}: {own.entry(f)}"
+                )
         return decode_dumps(out, frames, len(dump_ranges), own)
 
     # Each pass is its own emulator, so passes run side by side; results join in frame order.
