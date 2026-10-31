@@ -529,6 +529,35 @@ def test_probe_reads_the_work_segment_from_the_trace_then_dumps_it(
     assert "mem_read(0x1DF8, 0x0, 61440)" in mock.scripts[-1]
 
 
+def test_probe_refuses_a_dump_pass_that_read_another_work_segment(tmp_path: Path) -> None:
+    """The ranges were planned at the trace pass's segment; another pointer means wrong bytes."""
+    module = _load_script("probe_playone_light")
+    film = FakeFilm()
+
+    def handler(lua: str) -> dict[str, Any]:
+        out = film.handler(lua)
+        dumping = any(k.startswith("p") for k in out)
+        word = "7673" if dumping else "7672"
+        out["trace"] = "x" + ",".join(
+            entry.rsplit(":", 1)[0] + f":{word}:" + entry.rsplit(":", 1)[1]
+            for entry in out["trace"][1:].split(",")
+        )
+        for key in [k for k in out if k.startswith("p")]:
+            out[f"m{key[1:]}_1"] = "x" + bytes(module.SEGMENT_BYTES).hex()
+            out[f"m{key[1:]}_2"] = "x" + bytes(module.SEGMENT_BYTES).hex()
+        return out
+
+    mock = automation.MockAutomation(handler)
+
+    @contextmanager
+    def opener() -> Iterator[Any]:
+        yield mock
+
+    with pytest.raises(RuntimeError, match="read work segment 1DF9, but the trace pass read 1DF8"):
+        module.probe(opener, KEYS, [4, 10], tmp_path, dump_all=False)
+    assert not (tmp_path / "work_t4.bin").exists()
+
+
 def test_probe_names_ticks_the_film_never_reached(tmp_path: Path) -> None:
     module = _load_script("probe_playone_light")
 

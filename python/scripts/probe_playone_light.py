@@ -127,6 +127,7 @@ def probe(
     out.mkdir(parents=True, exist_ok=True)
     first = luagen.boot_end(len(keys))
     pointer = (playone.AUTOMATION_DS, WORK_SEGMENT_POINTER)
+    planned: list[int] = []
 
     def ranges(trace: plan.Trace, frames: Sequence[int]) -> list[luagen.MemRange]:
         if not frames:
@@ -137,8 +138,9 @@ def probe(
                 "the work segment moved between samples: "
                 + ", ".join(f"{w:04X}" for w in sorted(works))
             )
+        planned.append(works.pop())
         found = [
-            luagen.MemRange(works.pop(), 0, SEGMENT_BYTES),
+            luagen.MemRange(planned[0], 0, SEGMENT_BYTES),
             luagen.MemRange(playone.AUTOMATION_DS, 0, SEGMENT_BYTES),
         ]
         if dump_all:
@@ -156,6 +158,14 @@ def probe(
         end_hold=30,
         progress=lambda line: print(f"[probe] {line}", flush=True),
     )
+    # The ranges were planned at the trace pass's segment, so a dump pass that read another
+    # pointer dumped bytes that are not its work segment.
+    for frame, dump in result.dumps.items():
+        if planned and dump.entry.words[0] != planned[0]:
+            raise RuntimeError(
+                f"dump pass at frame {frame} read work segment {dump.entry.words[0]:04X}, "
+                f"but the trace pass read {planned[0]:04X}"
+            )
     for frame in sorted(result.dumps):
         entry = result.dumps[frame].entry
         work_bytes, ds_bytes, *segments = result.dumps[frame].ranges
