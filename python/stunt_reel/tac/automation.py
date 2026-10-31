@@ -13,6 +13,7 @@ so a launch whose process exits before it answers is retried on a new port.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import secrets
@@ -27,7 +28,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
     from pathlib import Path
 
 __all__ = [
@@ -39,6 +40,7 @@ __all__ = [
     "ScriptRunner",
     "dosbox_executable",
     "free_port",
+    "launched",
 ]
 
 #: Overrides the executable lookup (otherwise ``dosbox`` on PATH, as mise puts it there).
@@ -112,6 +114,10 @@ class AutomationClient:
     def info(self) -> Any:
         """The emulator's identity; answering at all means the server is up."""
         return self._call("GET", "/dosbox/info")
+
+    def is_text_mode(self) -> bool:
+        """True while the guest shows a text mode (the DOS prompt), False in any graphics mode."""
+        return bool(self._call("GET", "/video/text").get("is_text_mode"))
 
     def shutdown(self) -> None:
         """Ask the emulator to exit."""
@@ -246,6 +252,27 @@ class DosboxAutomation:
         self._exit_status = process.poll()
         self._process = None
         self._client = None
+
+
+@contextlib.contextmanager
+def launched(
+    write_conf: Callable[[int], Path], *, stop_timeout: float = 10.0, **options: Any
+) -> Iterator[AutomationClient]:
+    """Start dosbox-automation from *write_conf*, yield its client, and always stop it.
+
+    A run that fails inside the block (a script error, a timeout) still shuts the emulator down,
+    and the failure is the one that propagates.
+    """
+    emulator = DosboxAutomation(write_conf, **options)
+    try:
+        client = emulator.start()
+        yield client
+    except BaseException:
+        # A teardown error must not outrank the one already in flight.
+        with contextlib.suppress(Exception):
+            emulator.stop(stop_timeout)
+        raise
+    emulator.stop(stop_timeout)
 
 
 class MockAutomation:

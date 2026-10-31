@@ -33,7 +33,7 @@ codebase already keeps per-process scratch (`stunt_tac_read_<pid>.bin` in
   uses — and announces it as
   `WaitingForGuest(port)`, so the `[capture] waiting for DOSBox-X on 127.0.0.1:<port>`
   line prints the real port. `CONTROL_PORT` is gone.
-- **The tests.** [`test_tac_capture_session.py`](../../tests/test_tac_capture_session.py)
+- **The tests.** `test_tac_capture_session.py`
   covers two sessions binding distinct advertised ports, the argv DOSBox-X is launched
   with, and port 0 reporting what it bound. What a launch *does* with that argv is
   measured rather than unit-tested: `[dosbox]` alone carries the port and a launch that
@@ -42,13 +42,13 @@ codebase already keeps per-process scratch (`stunt_tac_read_<pid>.bin` in
   sessions cannot hold one port" test is deleted with the rule it encoded.
 - **The stage mount.** [`stage_film()`](../../python/stunt_reel/tac/staging.py)
   builds a mount named after the capture process ([`stage_dir`](../../python/stunt_reel/parity_layout.py))
-  and [`run_session`](../../python/stunt_reel/tac/session.py) removes it after the
+  and `run_session` removes it after the
   emulator stops. The fixed port had hidden this: one shared
   `build/parity/stage/<film>` meant a second capture of the same film deleted the tree
   the first was emulating from, and the machine-wide lock was what kept that from
   happening.
 - **The interactive launch.** `dosbox-mcp.conf` carries no port either:
-  [`ensure_dosbox.py`](../../python/scripts/ensure_dosbox.py) takes the port the MCP
+  `ensure_dosbox.py` takes the port the MCP
   server reports through `dosbox_mcp_port` and passes it through the same
   `launch_argv()`. That
   server prefers `58991` and falls back to another free port on **any** bind error,

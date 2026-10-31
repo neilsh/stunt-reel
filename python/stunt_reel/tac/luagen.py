@@ -36,6 +36,7 @@ __all__ = [
     "START_FRAME",
     "MemRange",
     "boot_end",
+    "keys_script",
     "script",
 ]
 
@@ -85,6 +86,16 @@ def _keys_lua(keys: Sequence[str]) -> str:
     )
 
 
+def keys_script(keys: Sequence[str]) -> str:
+    """A script that only boots and presses *keys*, then ends (the caller watches the screen)."""
+    return (
+        "local out = dosbox.output\n"
+        "local function wait_until(f) while dosbox.frame() < f do dosbox.wait_frames(1) end end\n"
+        + _keys_lua(keys)
+        + "out.done = true\n"
+    )
+
+
 def _check_frames(
     keys: Sequence[str],
     first: int,
@@ -113,13 +124,19 @@ def script(
     dump_frames: Sequence[int] = (),
     ranges: Sequence[MemRange] = (),
     words: Sequence[tuple[int, int]] = (),
+    end_hold: int | None = None,
 ) -> str:
     """The Lua for one run: boot with *keys*, trace frames *first* to *last*, dump *dump_frames*.
 
     The trace entry for frame *f* is ``film_tick:global_tick[:word...]:changed`` (``changed``
     is 1 when the A000 page differs from frame *f* - 1's). Dumps are ``p<f>`` (page),
     ``c<f>`` (the DS working palette, 6-bit units) and ``m<f>_<n>`` per range, all hex.
+
+    With *end_hold* the trace also stops once the film clock (above zero) has not moved for that
+    many frames, so *last* is only a cap on a film of unknown length.
     """
+    if end_hold is not None and end_hold < 1:
+        raise ValueError(f"end_hold must be at least 1, got {end_hold}")
     _check_frames(keys, first, last, dump_frames)
     extra = "".join(
         f' .. ":" .. dosbox.mem_read_word(0x{seg:04X}, 0x{off:04X})' for seg, off in words
@@ -141,6 +158,9 @@ def script(
             for n, r in enumerate(ranges, start=1)
         ]
         dump_block = "  if dumps[di] == f then\n" + "\n".join(reads) + "\n    di = di + 1\n  end\n"
+    hold_block = (
+        f"  if t > 0 and hold >= {end_hold} then break end\n" if end_hold is not None else ""
+    )
     frames = ", ".join(str(f) for f in dump_frames)
     return (
         f"local DS = 0x{AUTOMATION_DS:04X}\n"
@@ -152,14 +172,16 @@ def script(
         + f"local dumps = {{{frames}}}\n"
         "local di = 1\n"
         "local tr = {}\n"
+        "local lt, hold = -1, 0\n"
         f"local prev = dosbox.mem_read(0xA000, 0, {_PAGE_BYTES})\n"
         f"for f = {first}, {last} do\n"
         "  wait_until(f)\n"
         f"  local t = dosbox.mem_read_word(DS, 0x{FILM_CLOCK_OFFSET:04X})\n"
         f"  local g = dosbox.mem_read_word(DS, 0x{GLOBAL_TICK_OFFSET:04X})\n"
         f"  local pg = dosbox.mem_read(0xA000, 0, {_PAGE_BYTES})\n"
+        "  if t == lt then hold = hold + 1 else hold = 0; lt = t end\n"
         f'  tr[#tr + 1] = t .. ":" .. g{extra} .. ":" .. ((pg ~= prev) and "1" or "0")\n'
-        "  prev = pg\n" + dump_block + "end\n"
+        "  prev = pg\n" + dump_block + hold_block + "end\n"
         'out.trace = "x" .. table.concat(tr, ",")\n'
         "out.done = true\n"
     )

@@ -114,6 +114,11 @@ def test_a_run_over_budget_is_a_guest_timeout(fake: Fake) -> None:
         )
 
 
+def test_is_text_mode_reads_the_video_text_endpoint(fake: Fake) -> None:
+    assert _client(fake).is_text_mode() is False  # the fake replies {"ok": true}
+    assert fake.requests[-1][:2] == ("GET", "/api/v1/video/text")
+
+
 def test_shutdown_posts_the_control_endpoint(fake: Fake) -> None:
     _client(fake).shutdown()
 

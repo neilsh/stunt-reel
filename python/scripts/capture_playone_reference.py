@@ -1,9 +1,10 @@
 """Capture PLAYONE.EXE Mode 13h reference frames for visual parity.
 
-Launches DOSBox-X with tools/dosbox/dosbox-parity.conf (which auto-starts PLAYONE.EXE on its
-LOAD FILM dialog), accepts the emulator's outbound debugger connection on a control
-port the OS chooses, confirms CTRY.FLM with BIOS Data Area keystrokes, and dumps one whole
-frame per post-retrace trap hit until the frame budget is met.
+Stages the film and its .ALL under the data root, launches dosbox-automation on its own web-server
+port, and runs a plan: a Lua trace of the whole film, a choice of frames made here, and dump passes
+that read the A000 page and the working palette at exactly those emulated frames (see
+research/playone-exe/capture-dosbox-automation.md). Runs are bit-repeatable; no debugger and no
+control socket is involved.
 
 Rasters, palettes, and meta.json land in a new directory per capture under the captures root
 (gitignored, shared through the data root). A capture is written once and never changed
@@ -27,18 +28,10 @@ from stunt_reel import dataroot, parity_layout, runs
 from stunt_reel.all_archive import ArchiveError, resolve_all
 from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.parity_artifacts import CAPTURE_FRAMES_DIR, FilmId
-from stunt_reel.tac import playone, staging
-from stunt_reel.tac.emulator import EmulatorUnavailable, Launching, PortTaken, WaitingForGuest
-from stunt_reel.tac.framebuffer import capture
-from stunt_reel.tac.session import (
-    PLAYONE_PROFILE,
-    DialogSettled,
-    Profile,
-    Session,
-    SessionError,
-    SessionEvent,
-    run_session,
-)
+from stunt_reel.tac import automation, playone, staging
+from stunt_reel.tac.emulator import EmulatorUnavailable
+from stunt_reel.tac.framebuffer import FILM_STRIDE_TICKS, capture
+from stunt_reel.tac.plan import PlanError
 
 DEFAULT_FILM: Path = Path("corpus/stisldem/VAULT/CTRY.FLM")
 
@@ -53,8 +46,8 @@ def parse_args() -> argparse.Namespace:
         help=(
             "the film's .FLM file; its .ALL is the sibling or one stored by make-all (a film "
             "with neither is refused); it is staged alone into "
-            f"{parity_layout.stage_root().as_posix()}/<name>-<session>/ so the dialog needs one prefix "
-            f"key (default {DEFAULT_FILM})"
+            f"<data root>/{parity_layout.stage_root().as_posix()}/<name>-<session>/ so the dialog "
+            f"needs one prefix key (default {DEFAULT_FILM})"
         ),
     )
     parser.add_argument(
@@ -72,49 +65,18 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--dgroup-segment",
-        type=lambda text: int(text, 16),
-        default=playone.DGROUP_RUNTIME_SEG,
-        help=(
-            "hex DS segment of PLAYONE.EXE's DGROUP at runtime, used to read the film clock "
-            f"(default {playone.DGROUP_RUNTIME_SEG:04X}, the DS observed in the T11 live check)"
-        ),
-    )
-    parser.add_argument(
         "--max-frames",
         type=int,
         default=2000,
-        help=(
-            "cap on captured film frames; capture normally stops by itself once the film "
-            "clock holds still at the end of the film"
-        ),
+        help="cap on captured film frames; the film's end stops the trace by itself",
     )
     parser.add_argument(
-        "--conf",
-        type=Path,
-        default=Path("tools/dosbox/dosbox-parity.conf"),
-        help="DOSBox-X configuration used for the capture run",
-    )
-    parser.add_argument(
-        "--port",
+        "--stride",
         type=int,
-        default=0,
-        help=(
-            "pin the control port instead of letting the OS choose; a pre-launched "
-            "DOSBox-X needs this to know where to dial, so use it with --no-launch"
-        ),
+        default=FILM_STRIDE_TICKS,
+        help=f"film ticks between kept frames (default {FILM_STRIDE_TICKS})",
     )
-    parser.add_argument(
-        "--no-launch",
-        action="store_true",
-        help="attach to an already launched DOSBox-X instead of starting one",
-    )
-    args = parser.parse_args()
-    if args.no_launch and args.port == 0:
-        parser.error(
-            "--no-launch needs --port: a running DOSBox-X can only dial a port it was told"
-        )
-    return args
+    return parser.parse_args()
 
 
 def resolve(path: Path) -> Path:
@@ -141,20 +103,14 @@ def is_taken(out_dir: Path) -> bool:
     return any(out_dir.iterdir())
 
 
-def report(event: SessionEvent) -> None:
-    """Print the session's progress the way capture-ref always has."""
-    if isinstance(event, Launching):
-        print(f"[capture] launching {event.exe} -conf {event.conf} (cwd {event.cwd})", flush=True)
-    elif isinstance(event, WaitingForGuest):
-        print(f"[capture] waiting for DOSBox-X on 127.0.0.1:{event.port}", flush=True)
-    elif isinstance(event, DialogSettled):
-        print(f"[capture] dialog settled: {event.distinct_indices} distinct indices", flush=True)
+def report(line: str) -> None:
+    """Print the plan's progress the way capture-ref always has."""
+    print(f"[capture] {line}", flush=True)
 
 
 def run(args: argparse.Namespace) -> int:
-    """Drive one capture session and report its artifacts."""
+    """Run one capture plan and report its artifacts."""
     film = resolve(args.film)
-    conf = resolve(args.conf)
     if not film.is_file():
         print(f"[capture] {film} not found", file=sys.stderr)
         return 2
@@ -165,24 +121,16 @@ def run(args: argparse.Namespace) -> int:
         return 2
     if not ensure_links_or_report("mise run capture-ref"):
         return 2
-    profile = PLAYONE_PROFILE
-    all_sha256: str | None = None
-    if not args.no_launch:
-        try:
-            archive = resolve_all(film, dataroot.REPO_ROOT, slug)
-            all_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
-        except (ArchiveError, OSError) as exc:
-            print(f"[capture] {exc}", file=sys.stderr)
-            return 2
-        profile = Profile(
-            stage=lambda film_path, conf_path: staging.stage_play(film_path, archive, conf_path),
-            keys=playone.film_selection_keys,
-        )
-    flm_sha256 = hashlib.sha256(film.read_bytes()).hexdigest()
+    try:
+        archive = resolve_all(film, dataroot.REPO_ROOT, slug)
+        all_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
+    except (ArchiveError, OSError) as exc:
+        print(f"[capture] {exc}", file=sys.stderr)
+        return 2
     film_id = FilmId(
         name=film.name,
         flm_bytes=film.stat().st_size,
-        flm_sha256=flm_sha256,
+        flm_sha256=hashlib.sha256(film.read_bytes()).hexdigest(),
         all_sha256=all_sha256,
     )
     claimed: Path | None = None
@@ -193,7 +141,7 @@ def run(args: argparse.Namespace) -> int:
     else:
         out = resolve(args.out)
     try:
-        return _capture_into(args, out, film, film_id, profile, conf)
+        return _capture_into(args, out, film, archive, film_id)
     finally:
         # A run that died before meta.json (written last) is no capture; free its number.
         if claimed is not None and not (claimed / "meta.json").exists():
@@ -204,11 +152,10 @@ def _capture_into(
     args: argparse.Namespace,
     out: Path,
     film: Path,
+    archive: Path,
     film_id: FilmId,
-    profile: Profile,
-    conf: Path,
 ) -> int:
-    """Run the session and write its capture into *out*; 0 on success."""
+    """Stage the film, run the plan and write its capture into *out*; 0 on success."""
     if is_taken(out):
         print(f"[capture] {out} already exists; a capture is never written over", file=sys.stderr)
         return 2
@@ -216,33 +163,30 @@ def _capture_into(
         "captured_on": datetime.now(UTC).date().isoformat(),
         "checkout": re.sub(r"[^A-Za-z0-9._-]", "-", dataroot.REPO_ROOT.name),
     }
-
-    def sample(session: Session) -> dict[str, Any]:
-        return capture(session, out, args.max_frames, film=film_id, provenance=provenance)
-
     try:
-        meta = run_session(
-            film,
-            sample=sample,
-            conf=conf,
-            dgroup_segment=args.dgroup_segment,
-            port=args.port,
-            no_launch=args.no_launch,
-            progress=report,
-            profile=profile,
-        )
-    except PortTaken as exc:
-        where = "" if exc.port == 0 else f" on 127.0.0.1:{exc.port}"
-        print(f"[capture] cannot bind a control port{where} ({exc})", file=sys.stderr)
+        staged = staging.stage_play(film, archive)
+    except OSError as exc:
+        print(f"[capture] {exc}", file=sys.stderr)
         return 1
+    try:
+        meta: dict[str, Any] = capture(
+            lambda: automation.launched(staged.write_conf),
+            out,
+            keys=playone.film_selection_names(film.stem),
+            max_frames=args.max_frames,
+            stride=args.stride,
+            film=film_id,
+            provenance=provenance,
+            progress=report,
+        )
     except EmulatorUnavailable as exc:
         print(f"[capture] {exc}; run via mise run capture-ref", file=sys.stderr)
         return 1
-    except (SessionError, RuntimeError, TimeoutError, ConnectionError, OSError) as exc:
-        status = getattr(exc, "emulator_status", None)
-        suffix = f"; emulator exit status {status}" if status is not None else ""
-        print(f"[capture] {exc}{suffix}", file=sys.stderr)
+    except (automation.ScriptError, PlanError, RuntimeError, TimeoutError, OSError) as exc:
+        print(f"[capture] {exc}", file=sys.stderr)
         return 1
+    finally:
+        staging.unstage(staged)
 
     frames = meta["frames"]
     if not frames:

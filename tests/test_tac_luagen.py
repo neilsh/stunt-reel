@@ -106,3 +106,26 @@ def test_film_selection_names_match_the_dialog_sequence() -> None:
     assert playone.film_selection_names("CTRY") == ["KBD_c", "KBD_down", "KBD_enter"]
     assert playone.film_selection_names("INTRO")[0] == "KBD_i"
     assert playone.film_selection_names("")[0] == "KBD_c"
+
+
+def test_end_hold_stops_the_trace_when_the_film_clock_stops_advancing() -> None:
+    text = _script(end_hold=3)
+
+    assert "if t == lt then hold = hold + 1 else hold = 0; lt = t end" in text
+    assert "if t > 0 and hold >= 3 then break end" in text
+    assert "break" not in _script()
+
+
+def test_end_hold_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="end_hold"):
+        _script(end_hold=0)
+
+
+def test_keys_script_boots_presses_the_keys_and_ends_without_a_trace() -> None:
+    text = luagen.keys_script(["KBD_m", "KBD_enter"])
+
+    assert text.index("wait_until(1200)") < text.index('{"KBD_m", "KBD_enter"}')
+    assert "dosbox.mem_read" not in text
+    assert text.endswith("out.done = true\n")
+    with pytest.raises(ValueError, match="key name"):
+        luagen.keys_script(["bad"])

@@ -69,14 +69,6 @@ TEMP = "{{config_root}}/.cache/tmp"
 description = "Launch Stunt Island film reel playback"
 run = "dosbox-x -conf tools/dosbox/dosbox-playone.conf"
 
-[tasks.ensure-dosbox]
-description = "Launch DOSBox-X for the interactive debugger on the port the MCP server reported (mise run ensure-dosbox -- --mcp-port <dosbox_mcp_port>; see docs/development.md § 2)"
-run = "uv run python python/scripts/ensure_dosbox.py"
-
-[tasks.mcp]
-description = "Launch the MCP server over stdio; see docs/development.md § 2 for the DOSBox-X side"
-run = "dosbox-x-mcp-server"
-
 [tasks.init]
 description = "Link the shared data root and the cached Python environment into this worktree, then sync it (mise run init -- --migrate adopts an existing corpus)"
 # Plain python, not "uv run": the script links .cache and .venv first and only then

@@ -57,7 +57,7 @@ Each step leaves `mise run check` green.
    synthetic trees in `tmp_path`, as `test_dataroot.py` already does.
 3. **Add-only captures.** [`parity_layout.py`](../../../python/stunt_reel/parity_layout.py)
    gains the capture-id directory; `capture_playone_reference.py`'s default `--out`
-   becomes a new id; [`session.py`](../../../python/stunt_reel/tac/session.py) drops the
+   becomes a new id; `session.py` drops the
    write guard and refuses an existing directory. Update `tests/test_parity_layout.py`
    and `tests/test_tac_capture_session.py`.
 4. **Reference pointer.** Add `research/parity/references.toml`, seeded with the two

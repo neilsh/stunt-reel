@@ -1,4 +1,4 @@
-"""Generate a film's .ALL archive by running MAKEONE.EXE under DOSBox-X.
+"""Generate a film's .ALL archive by running MAKEONE.EXE under dosbox-automation.
 
 PLAYONE.EXE needs a film's .ALL beside its .FLM, and most films ship without one.
 MAKEONE.EXE writes it: this script stages the film and the game's RES tree in a private
@@ -16,6 +16,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from stunt_reel import dataroot, parity_layout
 from stunt_reel.all_archive import (
@@ -26,14 +27,11 @@ from stunt_reel.all_archive import (
 )
 from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.tac import makeone, staging
-from stunt_reel.tac.emulator import (
-    Emulator,
-    EmulatorUnavailable,
-    Launching,
-    PortTaken,
-    WaitingForGuest,
-)
-from stunt_reel.tac.session import DialogSettled, SessionEvent
+from stunt_reel.tac.automation import ScriptError
+from stunt_reel.tac.emulator import EmulatorUnavailable
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 DEFAULT_GAME_ROOT: Path = Path("corpus/stuntisl")
 
@@ -53,12 +51,6 @@ def parse_args() -> argparse.Namespace:
         help=f"full-game tree holding MAKEONE.EXE, its engine files and RES (default {DEFAULT_GAME_ROOT})",
     )
     parser.add_argument(
-        "--conf",
-        type=Path,
-        default=Path("tools/dosbox/dosbox-parity.conf"),
-        help="DOSBox-X configuration the MAKEONE conf is derived from",
-    )
-    parser.add_argument(
         "--timeout",
         type=float,
         default=makeone.DEFAULT_TIMEOUT,
@@ -72,19 +64,12 @@ def resolve(path: Path) -> Path:
     return path if path.is_absolute() else dataroot.REPO_ROOT / path
 
 
-def report(event: SessionEvent) -> None:
-    """Print the session's progress."""
-    if isinstance(event, Launching):
-        print(f"[make-all] launching {event.exe} -conf {event.conf} (cwd {event.cwd})", flush=True)
-    elif isinstance(event, WaitingForGuest):
-        print(f"[make-all] waiting for DOSBox-X on 127.0.0.1:{event.port}", flush=True)
-    elif isinstance(event, DialogSettled):
-        print(
-            f"[make-all] requester settled: {event.distinct_indices} distinct indices", flush=True
-        )
+def report(line: str) -> None:
+    """Print the run's progress."""
+    print(f"[make-all] {line}", flush=True)
 
 
-def run(args: argparse.Namespace, emulator: Emulator | None = None) -> int:
+def run(args: argparse.Namespace, launch: Callable[..., Any] | None = None) -> int:
     """Generate and store one archive; 0 on success, 1 on a failed run, 2 when refused."""
     film = resolve(args.film)
     game_root = resolve(args.game_root)
@@ -105,26 +90,21 @@ def run(args: argparse.Namespace, emulator: Emulator | None = None) -> int:
 
     started = time.monotonic()
     try:
+        extra: dict[str, Any] = {} if launch is None else {"launch": launch}
         data = makeone.make_all(
             film,
             game_root=game_root,
-            conf=resolve(args.conf),
+            **extra,
             timeout=args.timeout,
-            emulator=emulator,
             progress=report,
             warn=lambda message: print(f"[make-all] warning: {message}", file=sys.stderr),
         )
         check_archive(data)
-    except PortTaken as exc:
-        print(f"[make-all] cannot bind a control port ({exc})", file=sys.stderr)
-        return 1
     except EmulatorUnavailable as exc:
         print(f"[make-all] {exc}; run via mise run make-all", file=sys.stderr)
         return 1
-    except (ArchiveError, RuntimeError, TimeoutError, ConnectionError, OSError) as exc:
-        status = getattr(exc, "emulator_status", None)
-        suffix = f"; emulator exit status {status}" if status is not None else ""
-        print(f"[make-all] {exc}{suffix}", file=sys.stderr)
+    except (ArchiveError, ScriptError, RuntimeError, TimeoutError, OSError) as exc:
+        print(f"[make-all] {exc}", file=sys.stderr)
         return 1
 
     try:
