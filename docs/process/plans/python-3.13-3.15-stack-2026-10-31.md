@@ -65,3 +65,21 @@ PR 1 also carries this plan as its first commit. PR 1 has no apply-ruff follow-u
 - **`TC003` fix: move the import under `TYPE_CHECKING`** in PR 3, not 3.15's `lazy import` syntax, which 3.14 cannot parse. PR 5 runs ruff at py315; if `TC003` still fires on the `TYPE_CHECKING` import, PR 5 switches it to `lazy import`.
 - **`A001` fix: rename the `sentinel` variable** in PR 5 rather than suppress the rule; the builtin is real from 3.15.
 - **No parity run.** The batch-parity survey and captures are not part of this work: a Python bump changes neither a render nor a capture, so `mise run check` is the whole verification.
+
+## Handoff
+
+The stack is built locally and not pushed. Bottom up:
+
+| Branch | Commit | Python pin | Ruff target |
+|---|---|---|---|
+| `claude/python-upgrade-strategy-42329c` | `5199896` (plan commits `b997594` and `ba2c9be` sit below it on this branch) | 3.13.18 | py313 |
+| `python/3.14` | `fd3dd52` | 3.14.10 | py313 |
+| `python/3.14-ruff` | `0fe68d6` | 3.14.10 | py314 |
+| `python/3.15` | `3ad7f90` | 3.15.2 | py314 |
+| `python/3.15-ruff` | this commit | 3.15.2 | py315 |
+
+- **Gate-required fixes (rule 2): none.** No upgrade PR needed a code change to pass `mise run check`.
+- **Forced by the ruff targets, in their apply-ruff PRs:** py314 (`0fe68d6`) made `ruff format` rewrite three parenthesized multi-exception `except` clauses to the PEP 758 bare form in `python/stunt_reel/batch_ledger.py` and `python/stunt_reel/tac/automation.py`; the design's probe ran `ruff check` only and missed this. py315 (this PR) armed `A001` on the `sentinel` variable in `tests/test_tac_adversarial.py`, renamed to `canary`. py315 changed no formatting.
+- **`TC003`:** did not fire at py315 because `0fe68d6` had already moved the import under `TYPE_CHECKING`, so the "make lazy" finding in the Probe table never applied; the `TYPE_CHECKING` import in `tests/test_doc_invariants.py` stays and `lazy import` was not needed.
+- **Other checkouts:** after a pin change run `mise install`, then delete both `<repo>/.cache/uv/interpreter-v4` and the checkout's cached venv (`<repo>/.cache/venvs/<checkout>-*`, or `.venv` in the primary checkout; both are only caches), then `mise run init`. Symptoms seen while building the stack: with a stale `interpreter-v4` entry every `uv run` recreated the venv and the concurrent gate lanes failed (Task 1); a stale venv kept the old interpreter and failed `test_the_environment_runs_the_python_pin` after switching pins (Task 5).
+- **Open item:** one gate run's `test-py` lane failed with "Required uv version >=0.13.1 does not match 0.10.9" (a uv older than the mise pin reached that lane) and passed on rerun; cause not found.
