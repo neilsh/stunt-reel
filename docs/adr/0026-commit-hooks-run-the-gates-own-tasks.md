@@ -52,8 +52,10 @@ hook is one of two kinds:
    already owns that policy.
 
 `prek.toml` sets `default_install_hook_types = ["pre-commit"]`. prek is pinned in
-[`mise.toml`](../../mise.toml) like every other tool, and `mise run hooks` runs `prek install`.
-Git keeps hooks in the common `.git/hooks`, so one install serves every linked worktree; only the
+[`mise.toml`](../../mise.toml) like every other tool, and `mise run hooks` runs
+`prek install --allow-missing-config`. Git keeps hooks in the common `.git/hooks`, so one install
+serves every linked worktree, and a worktree whose branch predates `prek.toml` commits without
+hooks instead of failing; only the
 `pre-commit` shim is written, which leaves the untracked noreply-email `pre-push` hook from the
 [public-release plan](../process/plans/public-release-2026-10-28.md) untouched.
 

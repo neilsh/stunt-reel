@@ -116,4 +116,5 @@ Not runnable from a session without network access to GitHub releases.
 - [ ] `git fetch && git switch prek-hooks` (or a worktree), `mise install prek`, `mise run hooks` → `.git/hooks/pre-commit` exists, `.git/hooks/pre-push` unchanged.
 - [ ] `prek validate-config` → no errors (confirms the `builtin` and `default_install_hook_types` TOML spelling the docs did not show).
 - [ ] `prek run --all-files` → all pass; if a built-in flags existing files, fix the files or record the exclusion in ADR 0026.
+- [ ] Commit in a worktree whose branch has no `prek.toml` (e.g. one cut from `main` before the merge) → the commit succeeds without hooks.
 - [ ] Stage a misformatted `.py`, `git commit` → blocked by `fmt-check-py`; `mise run fmt` → commit succeeds.

@@ -88,4 +88,7 @@ def test_prek_is_pinned_and_installed_through_mise() -> None:
     with (REPO_ROOT / "mise.toml").open("rb") as handle:
         mise = tomllib.load(handle)
     assert re.fullmatch(r"\d+\.\d+\.\d+", mise["tools"]["prek"])
-    assert mise["tasks"]["hooks"]["run"] == "prek install"
+    # Git shares .git/hooks across worktrees, and prek fails a commit when the checkout has no
+    # prek.toml unless the shim was installed to allow that: a worktree on an older branch, or
+    # the primary checkout before this change merged, must still commit.
+    assert mise["tasks"]["hooks"]["run"] == "prek install --allow-missing-config"
