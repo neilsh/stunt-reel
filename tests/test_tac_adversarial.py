@@ -146,14 +146,14 @@ def test_bda_atomic_overflow_preserves_memory() -> None:
     # 1 slot available: head=0x0024, tail=0x0020
     _set_bda_pointers(mock, 0x0024, 0x0020)
 
-    sentinel = b"\x77\x88\x99\xaa"
-    mock.write_memory((0x0040, 0x0020), sentinel)
+    canary = b"\x77\x88\x99\xaa"
+    mock.write_memory((0x0040, 0x0020), canary)
 
     # Attempt to inject 2 keys (only 1 slot available)
     with pytest.raises(BufferError):
         BdaInjector.inject_keys(mock, [char_to_key("x"), char_to_key("y")])
 
-    assert mock.read_memory((0x0040, 0x0020), 4) == sentinel
+    assert mock.read_memory((0x0040, 0x0020), 4) == canary
 
     _head, tail = _bda_state(mock)
     assert tail == 0x0020
