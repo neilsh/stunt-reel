@@ -66,8 +66,8 @@ TMP = "{{config_root}}/.cache/tmp"
 TEMP = "{{config_root}}/.cache/tmp"
 
 [tasks.play]
-description = "Launch Stunt Island film reel playback"
-run = "dosbox-x -conf tools/dosbox/dosbox-playone.conf"
+description = "Play a film in PLAYONE.EXE on dosbox-automation (mise run play -- --film corpus/stisldem/VAULT/INTRO.FLM)"
+run = "uv run python python/scripts/play.py"
 
 [tasks.init]
 description = "Link the shared data root and the cached Python environment into this worktree, then sync it (mise run init -- --migrate adopts an existing corpus)"
@@ -95,7 +95,7 @@ description = "Capture PLAYONE.EXE Mode 13h frames for visual parity into captur
 run = "uv run python python/scripts/capture_playone_reference.py"
 
 [tasks.make-all]
-description = "Generate a film's .ALL with MAKEONE.EXE in DOSBox-X into captures/<film>/archives/ (mise run make-all -- --film corpus/stuntisl/VAULT/BALLOON.FLM)"
+description = "Generate a film's .ALL with MAKEONE.EXE on dosbox-automation into captures/<film>/archives/ (mise run make-all -- --film corpus/stuntisl/VAULT/BALLOON.FLM)"
 run = "uv run python python/scripts/make_all.py"
 
 [tasks.migrate-captures]
@@ -129,7 +129,7 @@ description = "Unpack PLAYONE.EXE with LZEXE 0.91 (mise run unlzexe -- corpus/st
 run = "uv run python python/scripts/unlzexe.py"
 
 [tasks.probe-light]
-description = "Probe PLAYONE per-shot light and shade arrays through the TAC harness (mise run probe-light -- --ticks 10,150,273,448)"
+description = "Probe PLAYONE per-shot light and shade arrays through dosbox-automation (mise run probe-light -- --ticks 10,150,273,448)"
 run = "uv run python python/scripts/probe_playone_light.py"
 
 [tasks.flm-events]

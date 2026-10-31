@@ -3,7 +3,7 @@
 Each stage builds one command, hands it to an injected runner and returns a ledger record. A
 stage never raises: a non-zero exit, a timeout, a missing capture or an unusable archive becomes
 an ``error`` record with a one-line message. The runner is the only thing that starts a process,
-so tests pass a fake and nothing here launches DOSBox-X, MAKEONE or the stuntreel binary.
+so tests pass a fake and nothing here launches dosbox-automation, MAKEONE or the stuntreel binary.
 
 The ``root`` argument is the checkout whose layout paths and scripts a stage uses; the data root
 is linked into it, so captures and archives resolve through it.
@@ -42,7 +42,6 @@ Runner = Callable[[list[str], float], tuple[int, str]]
 
 _MAKE_ALL = Path("python/scripts/make_all.py")
 #: MAKEONE runs under a faster CPU profile than captures use (ADR 0023).
-ARCHIVE_CONF = Path("tools/dosbox/dosbox-archive.conf")
 _CAPTURE = Path("python/scripts/capture_playone_reference.py")
 _SIDATA = Path("corpus/siarchive/Developer/FreeFlight/SIDATA")
 #: Films whose capture never starts the film (``no new frame after 2001 trap hits``), about 207 s
@@ -60,7 +59,7 @@ KNOWN_STALL_MESSAGE = "known capture stall"
 #: still passes if its clock advanced, but a single frame shows no progress at all.
 MIN_CAPTURE_FRAMES = 2
 _TAIL_WIDTH = 400
-#: Seconds make_all's own timeout precedes the runner's kill, so it can stop DOSBox-X itself.
+#: Seconds make_all's own timeout precedes the runner's kill, so it can stop the emulator itself.
 _TEARDOWN_MARGIN = 90
 
 
@@ -76,8 +75,6 @@ def run_archive(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Rec
         str(film.flm),
         "--timeout",
         str(max(timeout - _TEARDOWN_MARGIN, 1)),
-        "--conf",
-        str(root / ARCHIVE_CONF),
     ]
     if film.name is not None:
         command += ["--name", film.name]

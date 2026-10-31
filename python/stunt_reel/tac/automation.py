@@ -233,6 +233,13 @@ class DosboxAutomation:
             process.wait()
         self._exit_status = process.poll()
 
+    def wait(self) -> int | None:
+        """Block until the emulator exits (a person closing the window); return its status."""
+        process = self._process
+        if process is not None:
+            process.wait()
+        return self.exit_status
+
     def stop(self, timeout: float) -> None:
         """Ask the emulator to exit, waiting *timeout* seconds before killing it."""
         process, client = self._process, self._client
