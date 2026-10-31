@@ -1,101 +1,118 @@
-# Commit hooks run the gate's own tasks
+# Commit hooks run through prek, calling the gate's own tasks
 
 ## Status
 
-accepted. Reverses the deletion of `.pre-commit-config.yaml` recorded in
+accepted. Supersedes the `staged` plan that
+[#32](https://github.com/neilsh/stunt-reel/pull/32) added to
+[`gate.py`](../../python/scripts/gate.py); keeps that change's committed `.githooks/` and its
+installation by `mise run init`. Reverses the deletion of `.pre-commit-config.yaml` recorded in
 [`review-dsh-friction-salvage.md`](../process/plans/review-dsh-friction-salvage.md) on the
-condition that removed it: the new hooks cannot hold a copy of the gate.
+condition that removed it: the hooks hold no copy of the gate.
 
 ## Context
 
-The repository once shipped a `.pre-commit-config.yaml`. Nothing installed or ran it, the README
-said its hooks "mirror the gate", and it pinned ruff `0.9.1` while the gate ran `0.17.1`. It was
-deleted with `quiet_check.py` for the reason [ADR 0014](0014-the-gate-is-one-ordered-script.md)
-gives: a second copy of the gate drifts from the first.
+The repository once shipped a `.pre-commit-config.yaml`. Nothing installed or ran it, and it
+pinned ruff `0.9.1` while the gate ran `0.17.1`. It was deleted for the reason
+[ADR 0014](0014-the-gate-is-one-ordered-script.md) gives: a second copy of the gate drifts.
 
-The wish behind it has not gone away. A formatting or lint slip is cheapest to catch at
-`git commit`, before a full `mise run check` (55–64 s cold, about 18 s warm, per
-[ADR 0017](0017-the-gate-keeps-no-compiler-cache.md)) or CI reports it.
-[prek](https://github.com/j178/prek) is a single-binary, pre-commit-compatible hook runner whose
-built-in hooks are implemented natively, so they need no network, no Python environment and no
-pinned hook repository.
+#32 then added a committed pre-commit hook: `mise run init` points `core.hooksPath` at
+`.githooks/`, whose `pre-commit` runs `mise run pre-commit`, which ran `gate.py staged`. That plan
+read the staged paths, ran `fmt-check-py` and `lint-py` (and `test-docs` when Markdown was
+staged) and `git diff --cached --check`. It is a small hook runner of the repository's own, and
+it has two gaps:
+
+- **It checks the working tree, not the commit.** `gate.py staged` lists the staged paths and
+  then runs ruff over the tree as it stands, so an unstaged edit can fail a clean commit or pass
+  a broken one.
+- **Each new check is code.** Choosing steps by file type, and checks such as large files or
+  Windows-illegal names, are Python branches with their own tests.
+
+[prek](https://github.com/j178/prek) is a single-binary, pre-commit-compatible hook runner. Before
+a default run it saves unstaged changes to a patch, checks the index out over the tree
+(`git checkout --`), runs the hooks, and reapplies the patch (prek 0.5.5 `src/cli/run/stash.rs`),
+so hooks see what is being committed. It selects hooks by file type from configuration and ships
+native built-in checks that need no network or Python environment.
 
 ## Decision
 
-Opt-in pre-commit hooks, run by prek, configured in `prek.toml` at the repository root. Every
-hook is one of two kinds:
+prek runs the commit-time checks; `gate.py` stays the gate.
 
-1. **A gate step.** A `repo = "local"` hook whose `entry` is exactly `mise run <task>`, where
-   `<task>` is a step in `STEPS` of [`gate.py`](../../python/scripts/gate.py). It sets
-   `pass_filenames = false` and fires only when a file of its kind is staged:
+- **Installation is unchanged.** `.githooks/pre-commit` still chains to an untracked hook and then
+  runs `mise run pre-commit`; `mise run init` still sets `core.hooksPath`. The `pre-commit` task
+  now runs `prek run --config prek.toml`. No `prek install`: the committed hook is the shim, and
+  because `core.hooksPath` is relative, a checkout of an older branch runs that branch's own
+  `.githooks/`.
+- **`prek.toml` holds the plan.** Every local hook is exactly `mise run <task>` for a leaf task of
+  [`mise.toml`](../../mise.toml), with `pass_filenames = false`, so each command is still defined
+  once:
 
-   | hook id | entry | fires on |
-   | --- | --- | --- |
-   | `fmt-check-rust` | `mise run fmt-check-rust` | `types = ["rust"]` |
-   | `fmt-check-py` | `mise run fmt-check-py` | `types = ["python"]` |
-   | `lint-py` | `mise run lint-py` | `types = ["python"]` |
+  | hook id | entry | fires on |
+  | --- | --- | --- |
+  | `diff-check` | `mise run diff-check` (`git diff --cached --check`) | every commit |
+  | `fmt-check-rust` | `mise run fmt-check-rust` | `types = ["rust"]` |
+  | `fmt-check-py` | `mise run fmt-check-py` | `types = ["python"]` |
+  | `lint-py` | `mise run lint-py` | `types = ["python"]` |
+  | `test-docs` | `mise run test-docs` | `types = ["markdown"]` |
 
-   Only the fast, read-only steps qualify. Clippy, the test suites, mypy, rustdoc and the
-   feature matrix stay in `mise run check`. A hook never rewrites files; the fix is
-   `mise run fmt`.
-2. **A prek built-in** (`repo = "builtin"`) that backs a rule this repository already states:
+  `fmt-check-rust` is new: #32's plan checked no Rust. The rest are prek built-ins that back a rule
+  this repository already states:
 
-   | hook id | rule it backs |
-   | --- | --- |
-   | `check-added-large-files` | asset isolation `[I7]`: no game binaries in Git |
-   | `check-illegal-windows-names`, `check-case-conflict` | the gate and the capture tooling run on Windows |
-   | `check-merge-conflict` | union-merged append-only files ([SOP 6.4](../../AGENTS.md)) must not keep markers |
-   | `check-toml`, `check-yaml` | `mise.toml`, `pyproject.toml`, `.github/` and `.coderabbit.yaml` are configuration |
-   | `detect-private-key` | the repository is public ([ADR 0015](0015-publication-with-a-documented-palette-exception.md)) |
+  | hook id | rule it backs |
+  | --- | --- |
+  | `check-added-large-files` | asset isolation `[I7]`: no game binaries in Git |
+  | `check-illegal-windows-names`, `check-case-conflict` | the gate and the capture tooling run on Windows |
+  | `check-merge-conflict` | union-merged append-only files ([SOP 6.4](../../AGENTS.md)) must not keep markers |
+  | `check-toml`, `check-yaml` | `mise.toml`, `pyproject.toml`, `.github/` and `.coderabbit.yaml` are configuration |
+  | `detect-private-key` | the repository is public ([ADR 0015](0015-publication-with-a-documented-palette-exception.md)) |
 
-   Whitespace and end-of-file fixers are excluded: they rewrite files, and `.editorconfig`
-   already owns that policy.
-
-`prek.toml` sets `default_install_hook_types = ["pre-commit"]`. prek is pinned in
-[`mise.toml`](../../mise.toml) like every other tool, and `mise run hooks` runs
-`prek install --config ./prek.toml --allow-missing-config`. Git keeps hooks in the common `.git/hooks`, so one install
-serves every linked worktree, and a worktree whose branch predates `prek.toml` commits without
-hooks instead of failing; the explicit `--config` keeps such a checkout from running an old
-`.pre-commit-config.yaml` instead. Only the
-`pre-commit` shim is written, which leaves the untracked noreply-email `pre-push` hook from the
-[public-release plan](../process/plans/public-release-2026-10-28.md) untouched.
+  No hook rewrites files: the whitespace and end-of-file fixers are left out, and the fix for a
+  format failure is `mise run fmt`.
+- **`gate.py staged` is removed** with its constants, its log path and its tests; `gate.py` runs
+  only `all`, `rust` and `py` again.
+- **CI runs the hooks' extra checks.** The `quality` job installs prek and runs
+  `prek run --from-ref origin/<base> --to-ref HEAD` with the gate-step hooks skipped
+  (`SKIP=diff-check,fmt-check-rust,fmt-check-py,lint-py,test-docs`), since the gate it already
+  runs covers them. A commit made with `--no-verify` or without hooks no longer reaches `main`
+  unchecked for the built-ins.
+- **prek is pinned in `mise.toml`** like every other tool; the hooks carry no versions.
 
 ## What enforces this
 
-- **The hook test.** [`tests/test_prek_config.py`](../../tests/test_prek_config.py) reads
-  `prek.toml` and fails the gate if a local hook's entry is anything other than
-  `mise run <task>` for a task in `gate.STEPS`, if a local hook passes filenames, if a repository
-  other than `local` or `builtin` appears (no remote hook repository, so no second version pin),
-  or if `default_install_hook_types` names anything but `pre-commit`.
-- **One pin.** prek's version lives only in `mise.toml`; the hooks themselves carry none.
+- [`tests/test_prek_config.py`](../../tests/test_prek_config.py) reads `prek.toml` and fails the
+  gate if a local hook's entry is not `mise run <task>` for a leaf task of `mise.toml`, if a local
+  hook sets any key beyond `id`, `name`, `entry`, `language`, `types` and
+  `pass_filenames`, if the hook or built-in sets differ from the tables above, if a repository
+  other than `local` or `builtin` appears, or if the `pre-commit` task stops running prek.
+- A prek integration test builds a scratch repository, stages a clean file, leaves a
+  conflict-marked edit unstaged, and asserts `prek run` passes; the reverse must fail. It runs
+  where prek is installed and is required in CI (`STUNT_REQUIRE_PREK=1`), the way
+  `STUNT_REQUIRE_KSC` guards the schema test.
 
 ## Considered Options
 
-- **Hooks call the tools directly on the staged files** (`uv run ruff check {files}`). Rejected:
-  slightly faster, and still the uv.lock ruff, but a second argument list beside the mise task is
-  the softer form of the drift being avoided.
-- **Upstream hook repositories** (`astral-sh/ruff-pre-commit`, `doublify/pre-commit-rust`).
-  Rejected: this is the deleted file — a second version pin kept in step by hand.
-- **`mise run check` on `pre-push`.** Rejected for now: about a minute per push, and CI already
-  runs the gate on every pull request. It would also contend with the existing untracked
-  `pre-push` hook.
-- **Install the hooks from `mise run init`.** Rejected: hooks stay opt-in, and `init` runs in
-  sandboxed sessions where writing `.git/hooks` in the common directory is outside the workspace.
-- **`.pre-commit-config.yaml` instead of `prek.toml`.** Rejected: the old file name invites
-  running it with Python pre-commit, which cannot run the `builtin` hooks.
-- **Run prek in CI.** Rejected: CI runs the full gate, which covers the three gate-step hooks.
-  The built-ins are not part of the gate, so CI does not run them; see Consequences.
+- **Keep `gate.py staged` and add the missing checks to it.** Rejected: more of the repository's
+  own runner to maintain, and it still checks the working tree, not the commit.
+- **Keep #32's runner and call prek from `.githooks/pre-commit` for the built-ins only.**
+  Rejected: two runners in one hook, and the working-tree gap stays.
+- **`prek install` into `.git/hooks`.** Rejected: `core.hooksPath` turns those hooks off, and the
+  shared hooks directory fails commits in checkouts without `prek.toml` unless installed with
+  `--allow-missing-config`. The committed `.githooks/` has neither problem.
+- **Hooks that call the tools directly on the staged files** (`uv run ruff check {files}`).
+  Rejected: a second argument list beside the mise task is the drift being avoided.
+- **Upstream hook repositories** (`astral-sh/ruff-pre-commit` and others). Rejected: a second
+  version pin kept in step by hand, which is the deleted file.
+- **Move the untracked noreply `pre-push` check into prek.** Not taken here: whether that policy
+  is tracked is a separate decision. `.githooks/pre-push` still chains to it.
 
 ## Consequences
 
-- A commit that stages Rust or Python runs the formatting and lint checks the gate would run, with
-  the same tool versions, in a few seconds. They check the whole tree, not only the staged files,
-  so an unformatted file elsewhere also blocks the commit until `mise run fmt`.
-- `git commit --no-verify` skips the hooks; the gate and CI remain the enforcement for the three
-  gate steps. The built-in checks run only where hooks are installed: a commit made without them,
-  or with `--no-verify`, reaches CI unchecked for large files, illegal names, merge markers,
-  TOML/YAML syntax and private keys.
-- Hooks need `mise` on the `PATH` that Git's hook shell sees. On Windows that is Git for
-  Windows' `sh`, which inherits the user's `PATH`.
-- Adding a hook means adding a gate step first, or choosing a built-in; the hook test refuses
-  anything else.
+- A commit runs the checks that match its staged files, against the staged content, with the
+  gate's tool versions. Untracked files are not stashed, so a whole-tree step such as ruff still
+  sees untracked `.py` files, as before.
+- The hook's output is prek's pass/fail list; #32's one-line-per-step report and
+  `target/pre-commit.log` go away with `gate.py staged`.
+- prek is a required tool for every checkout that runs `mise run init`, and for CI.
+- `git commit --no-verify` skips the hooks. The gate covers the gate-step hooks and the CI step
+  covers the built-ins.
+- Adding a hook means adding a leaf task or choosing a built-in, then updating this record and
+  the hook test.
