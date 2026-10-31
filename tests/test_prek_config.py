@@ -25,6 +25,10 @@ import gate  # noqa: E402
 #: The gate steps that run at commit, and the file types that trigger each.
 GATE_HOOKS = {"fmt-check-rust": ["rust"], "fmt-check-py": ["python"], "lint-py": ["python"]}
 
+#: Every key a local hook may set: anything else (`stages`, `files`, `exclude`, `always_run`) could
+#: silence a hook or change when it fires.
+LOCAL_HOOK_KEYS = {"id", "name", "entry", "language", "types", "pass_filenames"}
+
 #: The prek built-ins ADR 0026 adopts; none of them rewrites a file.
 BUILTINS = {
     "check-added-large-files",
@@ -64,6 +68,9 @@ def test_local_hooks_take_no_arguments() -> None:
     for hook in _hooks("local"):
         assert hook["pass_filenames"] is False, f"{hook['id']} must not pass filenames"
         assert "args" not in hook, f"{hook['id']} must not add arguments to the gate step"
+        assert set(hook) == LOCAL_HOOK_KEYS, (
+            f"{hook['id']} sets {sorted(set(hook) ^ LOCAL_HOOK_KEYS)}"
+        )
 
 
 def test_local_hooks_are_the_adr_set() -> None:
@@ -90,5 +97,8 @@ def test_prek_is_pinned_and_installed_through_mise() -> None:
     assert re.fullmatch(r"\d+\.\d+\.\d+", mise["tools"]["prek"])
     # Git shares .git/hooks across worktrees, and prek fails a commit when the checkout has no
     # prek.toml unless the shim was installed to allow that: a worktree on an older branch, or
-    # the primary checkout before this change merged, must still commit.
-    assert mise["tasks"]["hooks"]["run"] == "prek install --allow-missing-config"
+    # the primary checkout before this change merged, must still commit. The explicit --config
+    # keeps such a checkout from running an old .pre-commit-config.yaml instead.
+    assert (
+        mise["tasks"]["hooks"]["run"] == "prek install --config ./prek.toml --allow-missing-config"
+    )

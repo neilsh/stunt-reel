@@ -53,9 +53,10 @@ hook is one of two kinds:
 
 `prek.toml` sets `default_install_hook_types = ["pre-commit"]`. prek is pinned in
 [`mise.toml`](../../mise.toml) like every other tool, and `mise run hooks` runs
-`prek install --allow-missing-config`. Git keeps hooks in the common `.git/hooks`, so one install
+`prek install --config ./prek.toml --allow-missing-config`. Git keeps hooks in the common `.git/hooks`, so one install
 serves every linked worktree, and a worktree whose branch predates `prek.toml` commits without
-hooks instead of failing; only the
+hooks instead of failing; the explicit `--config` keeps such a checkout from running an old
+`.pre-commit-config.yaml` instead. Only the
 `pre-commit` shim is written, which leaves the untracked noreply-email `pre-push` hook from the
 [public-release plan](../process/plans/public-release-2026-10-28.md) untouched.
 
@@ -82,14 +83,18 @@ hooks instead of failing; only the
   sandboxed sessions where writing `.git/hooks` in the common directory is outside the workspace.
 - **`.pre-commit-config.yaml` instead of `prek.toml`.** Rejected: the old file name invites
   running it with Python pre-commit, which cannot run the `builtin` hooks.
-- **Run prek in CI.** Rejected: CI runs the full gate, which is a superset.
+- **Run prek in CI.** Rejected: CI runs the full gate, which covers the three gate-step hooks.
+  The built-ins are not part of the gate, so CI does not run them; see Consequences.
 
 ## Consequences
 
 - A commit that stages Rust or Python runs the formatting and lint checks the gate would run, with
   the same tool versions, in a few seconds. They check the whole tree, not only the staged files,
   so an unformatted file elsewhere also blocks the commit until `mise run fmt`.
-- `git commit --no-verify` skips the hooks; the gate and CI remain the enforcement.
+- `git commit --no-verify` skips the hooks; the gate and CI remain the enforcement for the three
+  gate steps. The built-in checks run only where hooks are installed: a commit made without them,
+  or with `--no-verify`, reaches CI unchecked for large files, illegal names, merge markers,
+  TOML/YAML syntax and private keys.
 - Hooks need `mise` on the `PATH` that Git's hook shell sees. On Windows that is Git for
   Windows' `sh`, which inherits the user's `PATH`.
 - Adding a hook means adding a gate step first, or choosing a built-in; the hook test refuses

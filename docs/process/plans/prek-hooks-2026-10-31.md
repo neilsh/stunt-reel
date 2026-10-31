@@ -17,7 +17,7 @@
 - The builtin hooks are exactly `check-added-large-files`, `check-illegal-windows-names`, `check-case-conflict`, `check-merge-conflict`, `check-toml`, `check-yaml`, `detect-private-key`. No fixers.
 - Only `local` and `builtin` repositories; no `rev` anywhere.
 - `default_install_hook_types = ["pre-commit"]`.
-- prek pin `"0.5.5"` lives only in `mise.toml` `[tools]`; `[tasks.hooks]` runs `prek install`.
+- prek pin `"0.5.5"` lives only in `mise.toml` `[tools]`; `[tasks.hooks]` runs `prek install --config ./prek.toml --allow-missing-config` (amended after review: see ADR 0026).
 - Stage by name, never `git add -A` (AGENTS.md SOP 3). Commit trailers: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` and the session line.
 
 ## Review Focus

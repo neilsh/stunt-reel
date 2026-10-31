@@ -170,7 +170,7 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | `capture-ref` | new capture into `build/parity/captures/<film>/frames/<next run>`, never over an existing one (`--max-frames` defaults to 140) |
 | `verify-corpus` | `.ksy` catalog check against `corpus/` |
 | `play` | play a film in `PLAYONE.EXE` on dosbox-automation |
-| `hooks` | `prek install`: the optional commit hooks below |
+| `hooks` | `prek install --config ./prek.toml --allow-missing-config`: the optional commit hooks below |
 | `parity-probe`, `verify-docs`, `unlzexe`, `probe-light`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
 
 ### Commit hooks (optional)
