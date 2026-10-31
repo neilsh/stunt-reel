@@ -19,8 +19,7 @@ import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from stunt_reel import parity_layout, references
-from stunt_reel.dataroot import REPO_ROOT, ensure_links_or_report
+from stunt_reel import dataroot, parity_layout, references
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -28,7 +27,7 @@ if TYPE_CHECKING:
 
 def _entries() -> dict[str, dict[str, object]]:
     """``references.toml`` as committed in this checkout, keyed by film name."""
-    path = REPO_ROOT / parity_layout.REFERENCES_FILE
+    path = dataroot.REPO_ROOT / parity_layout.REFERENCES_FILE
     if not path.is_file():
         return {}
     document = tomllib.loads(path.read_text(encoding="utf-8"))
@@ -77,15 +76,15 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
         slug, run = directory.parent.parent.name, directory.name
         # Parity reads captures through the checkout's data-root link; a copy elsewhere with
         # the same name is not the directory a references.toml entry would name.
-        canonical = (REPO_ROOT / parity_layout.frames_path(slug, run)).resolve()
+        canonical = (dataroot.REPO_ROOT / parity_layout.frames_path(slug, run)).resolve()
         promotable = directory == canonical
     elif args.film and args.run:
         slug = parity_layout.require_slug(args.film)
         run = str(args.run)
         if root is None:
-            if not ensure_links_or_report("capture_digest"):
+            if not dataroot.ensure_links_or_report("capture_digest"):
                 return 1
-            root = REPO_ROOT
+            root = dataroot.REPO_ROOT
         directory = root / parity_layout.frames_path(slug, run)
     else:
         parser.error("name a film slug and a run id, or --dir")

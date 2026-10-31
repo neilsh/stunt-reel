@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from stunt_reel import parity_layout, references
+from stunt_reel import dataroot, parity_layout, references
 
 if TYPE_CHECKING:
     import pytest
@@ -47,10 +47,10 @@ def test_the_dir_form_hashes_the_same(
     pointers = tmp_path / parity_layout.REFERENCES_FILE
     pointers.parent.mkdir(parents=True)
     pointers.write_text(
-        (capture_digest.REPO_ROOT / parity_layout.REFERENCES_FILE).read_text(encoding="utf-8"),
+        (dataroot.REPO_ROOT / parity_layout.REFERENCES_FILE).read_text(encoding="utf-8"),
         encoding="utf-8",
     )
-    monkeypatch.setattr(capture_digest, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(dataroot, "REPO_ROOT", tmp_path)
     assert capture_digest.main(["--dir", str(directory)]) == 0
     out = capsys.readouterr().out.splitlines()
     assert out[1] == f'sha256 = "{references.capture_digest(directory)}"'
@@ -62,7 +62,7 @@ def test_a_dir_outside_the_checkout_gets_no_entry(
 ) -> None:
     """A copy elsewhere is not what parity reads, so no entry may point at its id."""
     directory = _capture(tmp_path / "elsewhere", "vault-intro", "999")
-    monkeypatch.setattr(capture_digest, "REPO_ROOT", tmp_path / "checkout")
+    monkeypatch.setattr(dataroot, "REPO_ROOT", tmp_path / "checkout")
     assert capture_digest.main(["--dir", str(directory)]) == 0
     out = capsys.readouterr().out.splitlines()
     assert out[1] == f'sha256 = "{references.capture_digest(directory)}"'
