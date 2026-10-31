@@ -90,6 +90,7 @@ def test_capture_artifacts_keep_their_contract(staged_repo: StagedRepo) -> None:
         "playone_build",
         "torn_frames",
         "palette_steps",
+        "composed_matches",
         "dropped_frames",
     ]
     assert list(meta["frames"][0]) == [
@@ -180,6 +181,27 @@ def test_capture_records_torn_and_palette_counts(staged_repo: StagedRepo) -> Non
     assert meta["palette_steps"] == 3
 
 
+def test_capture_counts_pages_that_equal_a_composed_page(staged_repo: StagedRepo) -> None:
+    composed = luagen.TRACE_COMPOSED
+    film = FakeFilm(flags=dict.fromkeys(range(5, 25), composed))
+    lines: list[str] = []
+
+    meta = _capture(staged_repo, film, max_frames=100, stride=1, progress=lines.append)
+
+    assert meta["composed_matches"] == 20
+    assert not any("composed page" in line for line in lines)
+
+
+def test_no_composed_match_warns_that_the_offsets_may_be_wrong(staged_repo: StagedRepo) -> None:
+    """Wrong composed_pages offsets read as no tears at all; a zero count says so instead."""
+    lines: list[str] = []
+
+    meta = _capture(staged_repo, FakeFilm(), progress=lines.append)
+
+    assert meta["composed_matches"] == 0
+    assert any("no traced page equals a composed page" in line for line in lines)
+
+
 def test_capture_with_no_usable_frame_says_why(staged_repo: StagedRepo) -> None:
     """Every changed film frame torn must fail loudly, not write an empty capture."""
     film = FakeFilm(moving_frames=10, flags=dict.fromkeys(range(200), luagen.TRACE_TORN))
@@ -188,6 +210,34 @@ def test_capture_with_no_usable_frame_says_why(staged_repo: StagedRepo) -> None:
         _capture(staged_repo, film, max_frames=100, stride=1)
 
     assert not (staged_repo.out / "meta.json").exists()
+    # Nothing at all: an empty frames/ directory is not a capture either.
+    assert not staged_repo.out.exists()
+
+
+def test_no_usable_frame_counts_only_the_changed_film_frames(staged_repo: StagedRepo) -> None:
+    """The counts in the message are over the frames it names, not over the whole trace."""
+    torn, palette = luagen.TRACE_TORN, luagen.TRACE_PALETTE
+    # Offsets 4..7 are the four changed film frames (ticks 2, 4, 6, 8): 4 and 7 torn, 5 a
+    # palette step, 6 the frame after it. The dialog frames' flags must not be counted.
+    flags = {0: torn, 1: torn, 2: palette, 4: torn, 5: palette, 7: torn, 20: torn}
+    film = FakeFilm(moving_frames=4, flags=flags)
+
+    with pytest.raises(
+        plan.PlanError,
+        match=r"no usable frame among 4 changed film frames: 2 torn, 2 spoiled by a palette step",
+    ):
+        _capture(staged_repo, film, max_frames=100, stride=1)
+
+
+def test_max_frames_below_one_is_refused_before_running(staged_repo: StagedRepo) -> None:
+    """Zero frames asked for is a caller's mistake, not a film with no usable frame."""
+    film = FakeFilm()
+
+    with pytest.raises(ValueError, match="max_frames"):
+        _capture(staged_repo, film, max_frames=0)
+
+    assert film.scripts == []
+    assert not staged_repo.out.exists()
 
 
 @pytest.mark.parametrize("all_dropped", [False, True])
@@ -216,7 +266,7 @@ def test_capture_reports_frames_dropped_in_dump_passes(
     if all_dropped:
         with pytest.raises(
             plan.PlanError,
-            match=r"3 changed film frames: 0 torn, 0 palette steps .* 3 dropped in dump passes",
+            match=r"3 changed film frames: 0 torn, 0 spoiled by a palette step .* 3 dropped in dump",
         ):
             run()
         assert not (staged_repo.out / "meta.json").exists()
@@ -279,6 +329,19 @@ def _load_script(name: str) -> Any:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_capture_script_refuses_max_frames_below_one(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    module = _load_script("capture_playone_reference")
+    monkeypatch.setattr(sys, "argv", ["capture_playone_reference.py", "--max-frames", "0"])
+
+    with pytest.raises(SystemExit) as stopped:
+        module.parse_args()
+
+    assert stopped.value.code == 2
+    assert "--max-frames must be at least 1" in capsys.readouterr().err
 
 
 def _capture_argv(staged_repo: StagedRepo, out: Path) -> list[str]:

@@ -30,6 +30,7 @@ __all__ = [
     "MAX_READ",
     "START_FRAME",
     "TRACE_CHANGED",
+    "TRACE_COMPOSED",
     "TRACE_PALETTE",
     "TRACE_TORN",
     "MemRange",
@@ -50,10 +51,13 @@ MAX_READ: int = 65535
 _PAGE_BYTES: int = 64000
 _PALETTE_BYTES: int = 768
 #: Bits of a trace entry's last field: the page changed, the page is torn between the two
-#: composed pages, the working palette changed since the previous frame.
+#: composed pages, the working palette changed since the previous frame, and rows 0..191 equal
+#: one composed page. The last is a check on the layout: a page that never equals either
+#: composed page means the offsets are wrong, which would otherwise read as a film with no tears.
 TRACE_CHANGED: int = 1
 TRACE_TORN: int = 2
 TRACE_PALETTE: int = 4
+TRACE_COMPOSED: int = 8
 #: Rows 0..191 of the page, the part copied from a composed page (192..199 are the button bar,
 #: drawn on A000 directly), compared in bands of 8 rows: 192 row compares per frame exceeded
 #: the instruction limit, 24 bands fit a whole film (tear-palette investigation § 1.1).
@@ -148,7 +152,8 @@ def script(
     The trace entry for frame *f* is ``film_tick:global_tick[:word...]:mask``, the mask the sum
     of :data:`TRACE_CHANGED` (the A000 page differs from frame *f* - 1's), :data:`TRACE_TORN`
     (rows 0..191 match neither composed page, and some bands match only one and others only
-    the other) and :data:`TRACE_PALETTE` (the working palette differs from frame *f* - 1's).
+    the other), :data:`TRACE_PALETTE` (the working palette differs from frame *f* - 1's) and
+    :data:`TRACE_COMPOSED` (rows 0..191 equal one composed page).
     Dumps are ``p<f>`` (page),
     ``c<f>`` (the DS working palette, 6-bit units) and ``m<f>_<n>`` per range, all hex.
 
@@ -187,22 +192,22 @@ def script(
     palette_read = f"dosbox.mem_read(DS, 0x{layout.working_palette:X}, {_PALETTE_BYTES})"
     tear_lua = (
         f"local ROWS, BAND = {_COMPOSED_BYTES}, {_BAND_BYTES}\n"
-        "local function torn(pg)\n"
+        "local function split(pg)\n"
         f"  local a = dosbox.mem_read(dosbox.mem_read_word(DS, 0x{page_a:04X}), 0, ROWS)\n"
         f"  local b = dosbox.mem_read(dosbox.mem_read_word(DS, 0x{page_b:04X}), 0, ROWS)\n"
         "  local top = pg:sub(1, ROWS)\n"
-        "  if top == a or top == b then return false end\n"
+        f"  if top == a or top == b then return {TRACE_COMPOSED} end\n"
         "  local onlyA, onlyB = false, false\n"
         "  for o = 1, ROWS, BAND do\n"
         "    local s = top:sub(o, o + BAND - 1)\n"
         "    local ea, eb = s == a:sub(o, o + BAND - 1), s == b:sub(o, o + BAND - 1)\n"
         "    if ea and not eb then onlyA = true elseif eb and not ea then onlyB = true end\n"
         "  end\n"
-        "  return onlyA and onlyB\n"
+        f"  return (onlyA and onlyB) and {TRACE_TORN} or 0\n"
         "end\n"
     )
     mask = (
-        f"((pg ~= prev) and {TRACE_CHANGED} or 0) + (torn(pg) and {TRACE_TORN} or 0)"
+        f"((pg ~= prev) and {TRACE_CHANGED} or 0) + split(pg)"
         f" + ((pal ~= ppal) and {TRACE_PALETTE} or 0)"
     )
     return (

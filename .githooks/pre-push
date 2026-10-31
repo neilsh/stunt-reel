@@ -1,0 +1,8 @@
+#!/bin/sh
+# core.hooksPath (set by `mise run init`) turns off the untracked hooks in the git directory,
+# where the noreply-author pre-push check lives, so this hook only hands over to that one.
+local_hook="$(git rev-parse --git-common-dir)/hooks/pre-push"
+if [ -x "$local_hook" ]; then
+    exec "$local_hook" "$@"
+fi
+exit 0

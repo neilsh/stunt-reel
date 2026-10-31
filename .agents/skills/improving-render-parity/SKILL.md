@@ -59,6 +59,21 @@ Every turn re-sends the whole conversation, so the loop costs turns times contex
 7. **Scratch goes in `build/scratch/`** (gitignored), never `$TEMP`, whose Windows path breaks shell globs. Delete candidate render directories once scored. `PYTHONUTF8=1` is set for Python text I/O; committed scripts still pass `encoding="utf-8"`.
 8. **Never commit `DBG_*` switches.** `git checkout crates` removes them. Parse a switch's value with `std::env::var(...).ok().and_then(|v| v.parse().ok())`, never `is_ok()` (`"0"` counts as set; the sweep's identical-variant warning catches it, [`probes.md`](../../../research/parity/probes.md) section 8).
 
+## Comparing a candidate reference
+
+A new capture becomes a film's reference only through a reviewed commit of `research/parity/references.toml` plus a `log.md` row. To decide whether to promote one, score the candidate and the current reference with the same binary:
+
+```
+- [ ] 1. mise run capture-digest -- <slug> <run>   (prints sha256 and the [film] entry to paste)
+- [ ] 2. Copy research/parity/references.toml to build/scratch/references.toml, then paste the entry into the working tree's copy
+- [ ] 3. mise run parity -- --films <film> --no-build   (renders and scores the candidate)
+- [ ] 4. Copy build/scratch/references.toml back over research/parity/references.toml
+- [ ] 5. mise run parity -- --films <film> --no-build   (renders and scores the current reference)
+- [ ] 6. Compare the two scored lines; promote only in a commit of its own, with the log row
+```
+
+Restore from the copy rather than with `git checkout`, which would also discard any edit to the file that was there before step 2. Leave out `--no-render` on the second run. A render covers only the ticks its own capture tagged, so the `_current` tree from step 3 has no frames at the other reference's ticks. `--no-build` is what keeps the binary the same, so the two scores differ only by the reference.
+
 ## Finishing an item
 
 Add a row to `research/parity/log.md` for every attempt, adopted or not, and put the finding in the note that owns the residual. End the session after the handoff note; start the next hypothesis in a fresh session.
