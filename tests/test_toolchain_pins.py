@@ -5,8 +5,8 @@ version appears as a pin (`mise.toml`), a floor (`requires-python`), two targets
 (`[tool.ruff]`, `[tool.mypy]`) and the interpreter uv is told to run
 (`[tool.uv] python-preference`).  The "Dependency updates" section of
 [docs/development.md](../docs/development.md) splits those into pins a bot may move, floors
-it may not, and targets that follow the floor; this is what makes the split enforceable
-instead of aspirational.
+it may not, and targets that follow the pin (mypy's equals it; ruff's may trail it by one minor
+until the apply-ruff PR); this is what makes the split enforceable instead of aspirational.
 """
 
 from __future__ import annotations
@@ -17,6 +17,8 @@ import sys
 import tomllib
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -69,6 +71,16 @@ def _ruff_target(text: str) -> tuple[int, int]:
     return (int(digits[:-2]), int(digits[-2:]))
 
 
+def _ruff_target_allowed(target: tuple[int, int], pin: tuple[int, int]) -> bool:
+    """Ruff's target equals the pin, or trails it by one minor.
+
+    An upgrade PR moves the interpreter; the PR above it moves ruff's target and fixes what
+    the new target arms, so between the two ruff may sit one minor behind.  Two behind, or
+    ahead of the pin, is drift.
+    """
+    return target[0] == pin[0] and pin[1] - 1 <= target[1] <= pin[1]
+
+
 #: A JSONC string literal, a `//` comment, or a `/* */` comment: group 1 keeps strings.
 _JSONC_TOKENS = re.compile(r'("(?:\\.|[^"\\])*")|//[^\n]*|/\*.*?\*/', re.DOTALL)
 
@@ -107,6 +119,21 @@ def test_both_rust_declarations_provide_the_llvm_tools() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("target", "pin", "allowed"),
+    [
+        ((3, 14), (3, 14), True),
+        ((3, 13), (3, 14), True),
+        ((3, 12), (3, 14), False),
+        ((3, 15), (3, 14), False),
+    ],
+)
+def test_ruff_may_trail_the_pin_by_one_minor(
+    target: tuple[int, int], pin: tuple[int, int], *, allowed: bool
+) -> None:
+    assert _ruff_target_allowed(target, pin) is allowed
+
+
 def test_the_python_pin_satisfies_the_floor() -> None:
     pin = _python_pin()[:2]
     floor = _numbers(_toml("pyproject.toml")["project"]["requires-python"])[:2]
@@ -116,9 +143,11 @@ def test_the_python_pin_satisfies_the_floor() -> None:
 def test_the_python_targets_follow_the_pin() -> None:
     pin = _python_pin()[:2]
     pyproject = _toml("pyproject.toml")
-    assert _ruff_target(str(pyproject["tool"]["ruff"]["target-version"])) == pin, (
-        "ruff's target-version no longer matches the interpreter mise installs; Renovate "
-        "cannot move it, so the pin has outrun its target"
+    ruff_target = _ruff_target(str(pyproject["tool"]["ruff"]["target-version"]))
+    assert _ruff_target_allowed(ruff_target, pin), (
+        f"ruff targets Python {_dotted(ruff_target)} but mise installs {_dotted(pin)}; "
+        "Renovate cannot move the target, so the pin has outrun it (one minor behind is "
+        "allowed between an upgrade PR and its apply-ruff PR)"
     )
     mypy_target = _numbers(str(pyproject["tool"]["mypy"]["python_version"]))[:2]
     assert mypy_target == pin, "mypy's python_version no longer matches the interpreter"
