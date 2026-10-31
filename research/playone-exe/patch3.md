@@ -73,6 +73,10 @@ SI Central's advice that some older films play only on the unpatched `PLAYONE` a
 
 ---
 
+### 3.1 Composed Pages
+
+`[Bounded Observation]`, 2026-10-31. The patched build's composed-page words were taken as `0x1C50` and `0x1C52`, the unpatched `0x22CA`/`0x22CC` less `0x67A`. A `CTRY.FLM` capture on the patched tree (`mise run capture-ref -- --game-root <data root>/builds/patched`) traced 1,906 frames and flagged 72 torn (3.8%), against 66 of 1,908 on the unpatched build; a torn flag needs bands that match only one buffer and others only the other, which words naming other memory could not produce. See [`capture-dosbox-automation.md` § 4.5](capture-dosbox-automation.md#45-torn-pages-and-the-dac-lag).
+
 ## Ruled out
 
 - **Running `PATSI.BAT` itself.** It ends in the interactive `SETUP`, and writing the corpus is not allowed (ADR 0022); the build applies the same deletions and extractions to a copy.

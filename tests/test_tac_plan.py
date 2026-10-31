@@ -131,21 +131,26 @@ def test_a_palette_step_at_the_first_frame_spares_nothing_before_it() -> None:
     assert plan.usable(trace, FIRST + 2) is True
 
 
-def test_a_dump_pass_that_reads_a_torn_page_diverges() -> None:
-    """Jitter can move a tear onto a picked frame; the page must not be kept."""
+def test_a_dump_pass_that_reads_a_torn_page_drops_it() -> None:
+    """Jitter (COUNT.FLM) can move a tear onto a picked frame: drop that page, keep the rest."""
     torn_at_pick = [(t, g, c | (TORN if i == 3 else 0)) for i, (t, g, c) in enumerate(ENTRIES)]
     mock = _runner(ENTRIES, dump_entries=torn_at_pick)
+    lines: list[str] = []
 
-    with pytest.raises(plan.PlanDivergence, match=f"unusable page at frame {FIRST + 3}"):
-        plan.run_plan(
-            _open(mock),
-            keys=KEYS,
-            layout=playone.UNPATCHED,
-            first=FIRST,
-            last=FIRST + 50,
-            pick=lambda trace: [trace.first + 3],
-            timeout=5,
-        )
+    result = plan.run_plan(
+        _open(mock),
+        keys=KEYS,
+        layout=playone.UNPATCHED,
+        first=FIRST,
+        last=FIRST + 50,
+        pick=lambda trace: [trace.first + 3, trace.first + 5],
+        timeout=5,
+        progress=lines.append,
+    )
+
+    assert sorted(result.dumps) == [FIRST + 5]
+    assert result.dropped == (FIRST + 3,)
+    assert any(f"unusable page at frame {FIRST + 3}" in line for line in lines)
 
 
 def _dump_output(frames: list[int], trace: str) -> dict[str, Any]:

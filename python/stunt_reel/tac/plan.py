@@ -126,6 +126,8 @@ class PlanResult:
 
     trace: Trace
     dumps: dict[int, Dump]
+    #: Picked frames whose page was unusable in its own dump pass, so no dump was kept.
+    dropped: tuple[int, ...] = ()
 
 
 def decode_trace(text: str, first: int) -> Trace:
@@ -321,12 +323,16 @@ def run_plan(
             )
         own = decode_trace(str(out.get("trace", "")), first)
         _check_close(trace, own, frames, "dump pass")
+        # Jitter (COUNT.FLM) can move a tear or a palette step onto a picked frame; that page
+        # is dropped rather than failing a capture whose other pages are good.
         for f in frames:
             if not usable(own, f):
-                raise PlanDivergence(
-                    f"dump pass read an unusable page at frame {f}: {own.entry(f)}"
-                )
-        return decode_dumps(out, frames, len(dump_ranges), own)
+                say(f"dump pass read an unusable page at frame {f}, dropped: {own.entry(f)}")
+        return {
+            f: d
+            for f, d in decode_dumps(out, frames, len(dump_ranges), own).items()
+            if usable(own, f)
+        }
 
     # Each pass is its own emulator, so passes run side by side; results join in frame order.
     with ThreadPoolExecutor(max_workers=max(1, min(parallel, len(chunks)))) as pool:
@@ -347,4 +353,5 @@ def run_plan(
             f"{len(moved)} of {len(dumps)} dumped frames read another tick than the trace pass "
             f"(at most {worst})"
         )
-    return PlanResult(trace, dumps)
+    dropped = tuple(sorted(set(picked) - set(dumps)))
+    return PlanResult(trace, dumps, dropped)
