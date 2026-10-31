@@ -60,6 +60,8 @@ class FakeStages:
 
 def _install(monkeypatch: pytest.MonkeyPatch) -> FakeStages:
     fake = FakeStages()
+    # main() would otherwise wait for the host's real disk to have 8 GB free before a render.
+    monkeypatch.setattr(batch_parity, "_DEFAULT_MIN_FREE_GB", 0.0)
     for stage in STAGES:
         monkeypatch.setattr(batch_stages, f"run_{stage}", fake.factory(stage))
     return fake
