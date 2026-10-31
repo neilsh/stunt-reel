@@ -229,3 +229,13 @@ def test_an_output_inside_a_source_tree_is_refused(tmp_path: Path, inside: str) 
     assert not out.exists()
     with pytest.raises(game_builds.BuildError, match="only read"):
         game_builds.build_trees(game, patches, game)
+
+
+def test_an_output_holding_a_source_tree_is_refused(tmp_path: Path) -> None:
+    """A rebuild replaces out/unpatched, so a source there would be deleted."""
+    out = tmp_path / "builds"
+    out.mkdir()
+    game = _game(out).rename(out / "unpatched")
+    with pytest.raises(game_builds.BuildError, match="only read"):
+        game_builds.build_trees(game, _patches(tmp_path), out)
+    assert (game / "STUNT.EXE").is_file()
