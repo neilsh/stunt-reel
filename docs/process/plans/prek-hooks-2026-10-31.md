@@ -10,6 +10,15 @@
 
 **Spec:** [ADR 0026](../../adr/0026-commit-hooks-run-the-gates-own-tasks.md). This file replaces the plan for the earlier opt-in design.
 
+## Handoff (2026-10-31)
+
+ADR 0026 and this plan are approved; execution is inline (superpowers:executing-plans), then one
+whole-branch review. No task has started: the branch still holds the earlier opt-in prek design
+(`[tasks.hooks]`, the old `tests/test_prek_config.py`), which Task 1 replaces. The first session
+had no prek, mise or PyPI, so continue on a machine with them and run Task 5 there too. CodeRabbit's
+open findings on the PR (route `pre-commit` through prek; ADR table vs `prek.toml`) are what Tasks
+1 and 4 do.
+
 ## Global Constraints
 
 - Local hooks are exactly: `diff-check` (no file filter), `fmt-check-rust` (`types = ["rust"]`), `fmt-check-py` and `lint-py` (`types = ["python"]`), `test-docs` (`always_run = true`). Each has `entry = "mise run <id>"`, `language = "system"`, `pass_filenames = false`.
