@@ -206,15 +206,17 @@ def pick_every(trace: Trace, *, stride: int) -> list[int]:
     return picked
 
 
-def pick_ticks(trace: Trace, ticks: Sequence[int]) -> list[int]:
+def pick_ticks(trace: Trace, ticks: Sequence[int], *, skip_unusable: bool = True) -> list[int]:
     """The first usable frame at or after each requested film clock.
 
     Clocks the film never reaches are dropped; an unusable frame consumes no pending clock.
+    With *skip_unusable* off, any frame qualifies: a plan that samples memory rather than the
+    page (the light probe) is not spoiled by a torn page or a palette step.
     """
     picked: list[int] = []
     pending = sorted(ticks)
     for frame in trace.frames:
-        if not usable(trace, frame):
+        if skip_unusable and not usable(trace, frame):
             continue
         tick = trace.entry(frame).film_tick
         while pending and tick >= pending[0]:
@@ -287,12 +289,14 @@ def run_plan(
     progress: Callable[[str], None] | None = None,
     parallel: int = DEFAULT_PARALLEL_PASSES,
     layout: PlayoneLayout,
+    skip_unusable: bool = True,
 ) -> PlanResult:
     """Run the trace pass, let *pick* choose frames from it, then dump them in chunks.
 
     *open_runner* opens a fresh emulator for each pass (every pass reboots the film), and up to
     *parallel* dump passes run at once. *ranges* may be a function of the trace and the picked
-    frames, for memory whose segment the trace reads.
+    frames, for memory whose segment the trace reads. With *skip_unusable* off, a dump whose own
+    pass reads its page as torn or in a palette step is kept: for a plan that samples memory.
     """
     common: dict[str, Any] = {
         "keys": keys,
@@ -325,13 +329,12 @@ def run_plan(
         _check_close(trace, own, frames, "dump pass")
         # Jitter (COUNT.FLM) can move a tear or a palette step onto a picked frame; that page
         # is dropped rather than failing a capture whose other pages are good.
+        kept = {f for f in frames if not skip_unusable or usable(own, f)}
         for f in frames:
-            if not usable(own, f):
+            if f not in kept:
                 say(f"dump pass read an unusable page at frame {f}, dropped: {own.entry(f)}")
         return {
-            f: d
-            for f, d in decode_dumps(out, frames, len(dump_ranges), own).items()
-            if usable(own, f)
+            f: d for f, d in decode_dumps(out, frames, len(dump_ranges), own).items() if f in kept
         }
 
     # Each pass is its own emulator, so passes run side by side; results join in frame order.

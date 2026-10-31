@@ -153,7 +153,10 @@ def probe(
         keys=keys,
         first=first,
         last=first + MAX_TRACE_FRAMES,
-        pick=lambda trace: plan.pick_ticks(trace, ticks),
+        # The samples are the work and DGROUP segments, not the page, so a torn page or a
+        # palette step spoils nothing: take the first frame at each tick, as before the skip.
+        pick=lambda trace: plan.pick_ticks(trace, ticks, skip_unusable=False),
+        skip_unusable=False,
         ranges=ranges,
         words=[pointer],
         end_hold=30,
