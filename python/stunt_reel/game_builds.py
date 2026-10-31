@@ -207,6 +207,10 @@ def build_trees(game: Path, patch_dir: Path, out: Path) -> dict[str, Any]:
     """
     if not (game / "PLAYONE.EXE").is_file():
         raise BuildError(f"{game} is not a game tree (no PLAYONE.EXE)")
+    target = out.resolve()
+    for source in (game, patch_dir):
+        if target.is_relative_to(source.resolve()):
+            raise BuildError(f"{out} is inside {source}, which is only read (ADR 0022)")
     out.mkdir(parents=True, exist_ok=True)
     partial = {name: out / f".{name}.partial" for name in BUILD_NAMES}
     for path in partial.values():

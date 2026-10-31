@@ -217,3 +217,15 @@ def test_the_script_prints_each_change_and_where_the_trees_are(
     monkeypatch.setattr(module, "PATCHES", tmp_path / "nowhere")
     assert module.run(module.parse_args()) == 1
     assert "P3-SI1.EXE" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("inside", ["game", "patches"])
+def test_an_output_inside_a_source_tree_is_refused(tmp_path: Path, inside: str) -> None:
+    game = _game(tmp_path)
+    patches = _patches(tmp_path)
+    out = (game if inside == "game" else patches) / "builds"
+    with pytest.raises(game_builds.BuildError, match="only read"):
+        game_builds.build_trees(game, patches, out)
+    assert not out.exists()
+    with pytest.raises(game_builds.BuildError, match="only read"):
+        game_builds.build_trees(game, patches, game)
