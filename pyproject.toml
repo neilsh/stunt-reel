@@ -7,7 +7,7 @@ name = "stunt-reel"
 dynamic = ["version"]
 description = "Tooling, automation, and analysis environment for Stunt Island film reels and game executables"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.15"
 license = "MIT OR Apache-2.0"
 license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
 authors = [
@@ -135,7 +135,7 @@ indent-style = "space"
 line-ending = "auto"
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.15"
 strict = true
 warn_unused_configs = true
 warn_redundant_casts = true
