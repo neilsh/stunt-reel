@@ -53,7 +53,7 @@ Live check: `CTRY.FLM` with its shipped `.ALL` on the patched tree, `mise run ca
 
 ## 3. Which Build Each Film Needs
 
-`[Bounded Observation]`, 2026-10-30/31, dosbox-automation 0.85.1, the committed harness (`core = normal`, 45,000 cycles for `PLAYONE`; `core = dynamic`, `max` for `MAKEONE`), into scratch directories rather than the captures store. These are the four films the DOSBox-X survey left as capture stalls ([`../parity/batch.md`](../parity/batch.md)). Film lengths are the authored totals from `mise run flm-events`.
+`[Bounded Observation]`, 2026-10-30/31, dosbox-automation 0.85.1, the committed harness (`core = dynamic`, 45,000 cycles for `PLAYONE`; `core = dynamic`, `max` for `MAKEONE`; the `capture` profile since `efb6009`), into scratch directories rather than the captures store. These are the four films the DOSBox-X survey left as capture stalls ([`../parity/batch.md`](../parity/batch.md)). Film lengths are the authored totals from `mise run flm-events`.
 
 | Film | Ticks | Unpatched `PLAYONE` | Patched `PLAYONE` | Needs |
 |---|---|---|---|---|
@@ -85,3 +85,5 @@ SI Central's advice that some older films play only on the unpatched `PLAYONE` a
 3. Which films, if any, play on one `PLAYONE` build only when given the archive that build's `MAKEONE` writes? Generating both archives for the films whose resources the patch replaced (sprites, the two sound banks) would test SI Central's claim directly.
 4. What `MAKEONE` waits for when it stays in graphics mode after writing the archive (`COUNT`, `EXIT` patched). A screen read at that point would show whether it is a prompt; `make-all` could then also accept an archive that has stopped changing.
 5. Does the Easy/Hard flight model change how a film plays back? `SINEW.TXT` describes it as a flying change; whether `PLAYONE` replays recorded positions (no effect) or re-simulates (an effect) decides whether film choice by build is about physics or about something else.
+6. The batch survey has no `--game-root`, so it cannot run the patched build, and its list of capture stalls (`KNOWN_CAPTURE_STALLS`) awaits a re-survey under dosbox-automation on both builds.
+7. `captures/<film>/archives/<run>` and `frames/<run>` record the build only in `meta.json`, so a run name says nothing about which `PLAYONE` or `MAKEONE` made it. Whether the store should file runs by build is open.
