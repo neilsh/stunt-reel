@@ -27,8 +27,11 @@ first means that download happens once per machine, into the cache that keeps it
 ## What enforces this
 
 - **The link.** ``ensure_venv_link`` ([dataroot.py](../../python/stunt_reel/dataroot.py))
-  creates the cache directory, writes the ``.checkout`` marker naming the checkout it
-  serves, and replaces ``.venv`` with a junction at it.  A ``.venv`` that is a real
+  creates the cache directory, writes the marker ``<environment>.checkout`` naming the
+  checkout it serves, and replaces ``.venv`` with a junction at it.  The marker sits
+  beside the environment, not in it: uv empties the environment directory when it
+  replaces the interpreter (a Python pin change), and a marker inside went with it.  A
+  ``.venv`` that is a real
   directory is the copy uv made before the link existed; its absolute paths cannot move,
   so it is discarded, never adopted.
 - **The seed.** ``uv sync`` refuses a project environment it cannot validate and cannot
@@ -41,7 +44,9 @@ first means that download happens once per machine, into the cache that keeps it
   an environment in the checkout before the link existed.
 - **The cleanup.** ``reap`` deletes the environment after git removes the checkout, the
   pool-leftover and orphan sweeps do the same for checkouts that are gone, and
-  ``mise run clean`` reports it without removing it.
+  ``mise run clean`` reports it without removing it.  The orphan sweep removes only an
+  environment whose marker names a checkout that no longer exists; one with no marker
+  has an unknown owner and is kept.
 - **Tests.** [test_dataroot.py](../../tests/test_dataroot.py) covers the link, the
   discarded copy, the primary checkout, the per-checkout target and the orphan sweep;
   [test_worktree_reap.py](../../tests/test_worktree_reap.py) covers the reap deletion.

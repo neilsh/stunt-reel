@@ -242,7 +242,9 @@ def test_env_link_parks_a_worktrees_environment_in_the_cache(
     assert dataroot.ensure_venv_link() == f"+ .venv -> {target}"
     assert target.parent == primary / ".cache" / dataroot.ENV_DIRNAME
     assert dataroot.link_points_at(worktree / ".venv", target)
-    assert (target / dataroot.ENV_MARKER).read_text(encoding="utf-8").strip() == str(worktree)
+    marker = dataroot.env_marker(target)
+    assert marker.parent == target.parent
+    assert marker.read_text(encoding="utf-8").strip() == str(worktree)
     assert dataroot.ensure_venv_link() == "= .venv"
 
 
@@ -297,6 +299,52 @@ def test_orphan_envs_are_the_ones_whose_checkout_is_gone(
     assert dataroot.orphan_envs() == [target]
     assert dataroot.sweep_orphan_envs() == [target]
     assert not target.exists()
+    assert not dataroot.env_marker(target).exists()
+
+
+def test_env_marker_survives_uv_replacing_the_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # uv empties the environment directory when the interpreter no longer satisfies
+    # requires-python; a marker inside it went too, and another worktree's init then
+    # swept the live environment as an orphan.
+    primary = _primary(tmp_path)
+    worktree = _worktree(monkeypatch, primary)
+    dataroot.ensure_venv_link()
+    target = dataroot.env_target(worktree)
+    shutil.rmtree(target)
+    target.mkdir()
+    _checkout(monkeypatch, primary)
+    assert dataroot.orphan_envs() == []
+    shutil.rmtree(worktree)
+    assert dataroot.orphan_envs() == [target]
+
+
+def test_an_environment_of_unknown_owner_is_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No marker proves nothing about the checkout; only a named checkout that is gone
+    # makes an environment an orphan.
+    primary = _checkout(monkeypatch, _primary(tmp_path))
+    unknown = dataroot.env_root() / "unknown-00000000"
+    unknown.mkdir(parents=True)
+    assert dataroot.orphan_envs() == []
+    assert dataroot.sweep_orphan_envs() == []
+    assert unknown.is_dir()
+    assert primary.is_dir()
+
+
+def test_a_marker_inside_the_environment_still_names_its_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Environments made before the marker moved beside them keep it inside until their
+    # checkout's next init.
+    primary = _checkout(monkeypatch, _primary(tmp_path))
+    legacy = dataroot.env_root() / "gone-00000000"
+    legacy.mkdir(parents=True)
+    (legacy / dataroot.ENV_MARKER).write_text(str(tmp_path / "gone"), encoding="utf-8")
+    assert dataroot.orphan_envs() == [legacy]
+    assert primary.is_dir()
 
 
 def test_cache_link_adopts_a_cache_made_before_the_link(
