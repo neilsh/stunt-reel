@@ -44,10 +44,10 @@ def test_decode_trace_requires_the_letter_prefix() -> None:
         plan.decode_trace("x5:abc:1", FIRST)
 
 
-def test_chunk_splits_a_frame_list_into_runs_of_at_most_ninety() -> None:
+def test_chunk_splits_a_frame_list_into_runs_of_at_most_the_dump_limit() -> None:
     chunks = plan.chunk(list(range(200)))
 
-    assert [len(c) for c in chunks] == [90, 90, 20]
+    assert [len(c) for c in chunks] == [40, 40, 40, 40, 40]
     assert [f for c in chunks for f in c] == list(range(200))
     assert plan.chunk([]) == []
 
@@ -114,7 +114,7 @@ def test_run_plan_traces_picks_then_dumps_in_chunks() -> None:
 
     picked = sorted(result.dumps)
     assert len(picked) == len(ENTRIES) - 1  # tick 0 is not a film frame
-    assert len(mock.scripts) == 1 + 3  # one trace pass, then ceil(199 / 90) dump passes
+    assert len(mock.scripts) == 1 + 5  # one trace pass, then ceil(199 / 40) = 5 dump passes
     assert all('out["p"' not in s for s in mock.scripts[:1])
     dump = result.dumps[picked[0]]
     assert dump.page == PAGE

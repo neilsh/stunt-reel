@@ -45,8 +45,8 @@ START_FRAME: int = 1200
 #: Frames between key presses, and frames a key stays down.
 KEY_GAP: int = 20
 KEY_HOLD: int = 5
-#: One page sample is 128 KB of hex, and the output store holds about 15 MB.
-MAX_DUMPS: int = 90
+#: One page sample is 128 KB of hex; 90 samples ran out of Lua memory (live, 2026-10-30), 40 fit.
+MAX_DUMPS: int = 40
 #: ``dosbox.mem_read`` returns at most one 64 KB segment.
 MAX_READ: int = 65535
 _PAGE_BYTES: int = 64000
