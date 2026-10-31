@@ -9,7 +9,14 @@ segment constants remain for the offline streamer model and its notes
 
 from __future__ import annotations
 
+import hashlib
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
 from stunt_reel.tac.bda import KEY_DOWN, KEY_ENTER, char_to_key
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 __all__ = [
     "AUTOMATION_DS",
@@ -20,10 +27,16 @@ __all__ = [
     "FILM_PREFIX_LETTER",
     "GLOBAL_TICK_OFFSET",
     "IMAGE_PARAGRAPH",
+    "LAYOUTS",
+    "PATCH3",
+    "UNPATCHED",
     "VBLANK_TRAP",
     "WORKING_PALETTE_OFFSET",
+    "PlayoneLayout",
+    "UnknownBuild",
     "film_selection_keys",
     "film_selection_names",
+    "layout_for",
 ]
 
 #: Real-mode segment of PLAYONE.EXE's DGROUP, which holds both code and data.
@@ -46,6 +59,63 @@ IMAGE_PARAGRAPH: int = 0x01F5
 AUTOMATION_DS: int = IMAGE_PARAGRAPH + DGROUP_PARAGRAPH
 #: DS offset of the working palette in 6-bit DAC units (768 bytes).
 WORKING_PALETTE_OFFSET: int = 0x2768
+
+
+class UnknownBuild(ValueError):  # noqa: N818 - names the condition, like NoArchive
+    """A PLAYONE.EXE whose hash matches no known layout, so its offsets are unknown."""
+
+
+@dataclass(frozen=True)
+class PlayoneLayout:
+    """Where one build of PLAYONE.EXE keeps what a capture reads, identified by its SHA-256.
+
+    Offsets are DS-relative. Patch #3 relinked the program: its DGROUP starts 0xE0 paragraphs
+    lower and every data offset the harness reads moved down by 0x67A
+    (``research/playone-exe/patch3.md``).
+    """
+
+    name: str
+    sha256: str
+    dgroup_paragraph: int
+    film_clock: int
+    global_tick: int
+    working_palette: int
+
+    @property
+    def ds(self) -> int:
+        """Runtime DS under dosbox-automation: the load paragraph plus DGROUP's."""
+        return IMAGE_PARAGRAPH + self.dgroup_paragraph
+
+
+#: The 1992 PLAYONE.EXE that ``corpus/stuntisl`` and the demo ship (102,703 bytes).
+UNPATCHED = PlayoneLayout(
+    name="unpatched",
+    sha256="3c93493c5ec4eb64e4942ccaaa77d3fdb658fb5b5ab0f2454e57590ffe9977f4",
+    dgroup_paragraph=DGROUP_PARAGRAPH,
+    film_clock=FILM_CLOCK_OFFSET,
+    global_tick=GLOBAL_TICK_OFFSET,
+    working_palette=WORKING_PALETTE_OFFSET,
+)
+#: Patch #3's PLAYONE.EXE (97,790 bytes; ``mise run game-builds`` puts it in the patched tree).
+PATCH3 = PlayoneLayout(
+    name="patch3",
+    sha256="fc532c94e4ff3e70bffdc3c51b72cce5f5a20e5d502256bb9fb58c3c4f411769",
+    dgroup_paragraph=0x0C71,
+    film_clock=0x421C,
+    global_tick=0x1C3E,
+    working_palette=0x20EE,
+)
+LAYOUTS: tuple[PlayoneLayout, ...] = (UNPATCHED, PATCH3)
+
+
+def layout_for(exe: Path) -> PlayoneLayout:
+    """The layout of the PLAYONE.EXE at *exe*; raises UnknownBuild for any other file."""
+    digest = hashlib.sha256(exe.read_bytes()).hexdigest()
+    for layout in LAYOUTS:
+        if layout.sha256 == digest:
+            return layout
+    known = ", ".join(f"{layout.name} {layout.sha256[:8]}" for layout in LAYOUTS)
+    raise UnknownBuild(f"{exe} (sha256 {digest[:8]}) is no known PLAYONE.EXE build ({known})")
 
 
 def film_selection_keys(name: str) -> list[tuple[int, int]]:

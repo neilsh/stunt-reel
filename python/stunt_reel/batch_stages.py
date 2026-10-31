@@ -44,16 +44,12 @@ _MAKE_ALL = Path("python/scripts/make_all.py")
 #: MAKEONE runs on the fast "archive" CPU profile, captures on the repeatable one (ADR 0023).
 _CAPTURE = Path("python/scripts/capture_playone_reference.py")
 _SIDATA = Path("corpus/siarchive/Developer/FreeFlight/SIDATA")
-#: Films whose DOSBox-X capture never started the film (``no new frame after 2001 trap hits``), 207 s
-#: each before giving up (research/parity/batch.md); the survey skips them by default. Stalls
-#: are intermittent, so only films that still failed after a retry are listed. Not yet
-#: re-surveyed on dosbox-automation, where flmonly-count captured.
-KNOWN_CAPTURE_STALLS: tuple[str, ...] = (
-    "collage4-exit",
-    "collage4-exit2",
-    "flmonly-bigman",
-    "flmonly-count",
-)
+#: Films the survey skips by default because their capture cannot succeed. Of the four DOSBox-X
+#: stalls (research/parity/batch.md), collage4-exit, collage4-exit2 and flmonly-count capture
+#: whole on dosbox-automation with either PLAYONE build; flmonly-bigman replays a tick apart
+#: from boot to boot on both builds, so a dump pass disagrees with the trace
+#: (research/playone-exe/patch3.md section 3).
+KNOWN_CAPTURE_STALLS: tuple[str, ...] = ("flmonly-bigman",)
 #: The message of the ``skipped`` capture record a known stall gets.
 KNOWN_STALL_MESSAGE = "known capture stall"
 #: A capture needs at least this many frames: a film short enough to yield 2 or 3 legitimately

@@ -84,6 +84,10 @@ run = "uv run python python/scripts/capture_playone_reference.py"
 description = "Generate a film's .ALL with MAKEONE.EXE on dosbox-automation into captures/<film>/archives/ (mise run make-all -- --film corpus/stuntisl/VAULT/BALLOON.FLM)"
 run = "uv run python python/scripts/make_all.py"
 
+[tasks.game-builds]
+description = "Build the unpatched and the Patch #3 game trees under <data root>/builds/ with a manifest of what the patch changes (mise run game-builds)"
+run = "uv run python python/scripts/game_builds.py"
+
 [tasks.migrate-captures]
 description = "One-time move of the existing captures into the film-first layout (ADR 0024); a dry run unless given --yes (mise run migrate-captures -- --yes --write-pins)"
 run = "uv run python python/scripts/migrate_captures.py"

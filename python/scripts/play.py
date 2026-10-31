@@ -26,14 +26,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--film", type=Path, default=DEFAULT_FILM, help="film to play")
+    parser.add_argument(
+        "--game-root",
+        type=Path,
+        default=None,
+        help="game tree whose PLAYONE.EXE to run, such as <data root>/builds/patched",
+    )
     return parser.parse_args(argv)
 
 
 def run(args: argparse.Namespace) -> int:
     """Stage the film, pick it in the dialog and wait for the window to be closed."""
     film = args.film if args.film.is_absolute() else dataroot.REPO_ROOT / args.film
+    root = args.game_root
+    if root is not None and not root.is_absolute():
+        root = dataroot.REPO_ROOT / root
     try:
-        staged = staging.stage_film(film)
+        staged = staging.stage_film(film, root)
     except OSError as exc:
         print(f"[play] {exc}", file=sys.stderr)
         return 1

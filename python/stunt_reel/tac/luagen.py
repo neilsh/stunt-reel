@@ -18,12 +18,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from stunt_reel.tac.playone import (
-    AUTOMATION_DS,
-    FILM_CLOCK_OFFSET,
-    GLOBAL_TICK_OFFSET,
-    WORKING_PALETTE_OFFSET,
-)
+from stunt_reel.tac.playone import UNPATCHED, PlayoneLayout
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -133,6 +128,7 @@ def script(
     ranges: Sequence[MemRange] = (),
     words: Sequence[tuple[int, int]] = (),
     end_hold: int | None = None,
+    layout: PlayoneLayout = UNPATCHED,
 ) -> str:
     """The Lua for one run: boot with *keys*, trace frames *first* to *last*, dump *dump_frames*.
 
@@ -141,7 +137,8 @@ def script(
     ``c<f>`` (the DS working palette, 6-bit units) and ``m<f>_<n>`` per range, all hex.
 
     With *end_hold* the trace also stops once the film clock (above zero) has not moved for that
-    many frames, so *last* is only a cap on a film of unknown length.
+    many frames, so *last* is only a cap on a film of unknown length. *layout* says where the
+    PLAYONE.EXE build being run keeps the clocks and the palette.
     """
     if end_hold is not None and end_hold < 1:
         raise ValueError(f"end_hold must be at least 1, got {end_hold}")
@@ -154,7 +151,7 @@ def script(
         reads = [
             '    out["p" .. f] = "x" .. pg:gsub(".", H)',
             (
-                f'    out["c" .. f] = "x" .. dosbox.mem_read(DS, 0x{WORKING_PALETTE_OFFSET:X}, '
+                f'    out["c" .. f] = "x" .. dosbox.mem_read(DS, 0x{layout.working_palette:X}, '
                 f'{_PALETTE_BYTES}):gsub(".", H)'
             ),
         ]
@@ -171,7 +168,7 @@ def script(
     )
     frames = ", ".join(str(f) for f in dump_frames)
     return (
-        f"local DS = 0x{AUTOMATION_DS:04X}\n"
+        f"local DS = 0x{layout.ds:04X}\n"
         "local out = dosbox.output\n"
         "local function wait_until(f) while dosbox.frame() < f do dosbox.wait_frames(1) end end\n"
         "local H = {}\n"
@@ -184,8 +181,8 @@ def script(
         f"local prev = dosbox.mem_read(0xA000, 0, {_PAGE_BYTES})\n"
         f"for f = {first}, {last} do\n"
         "  wait_until(f)\n"
-        f"  local t = dosbox.mem_read_word(DS, 0x{FILM_CLOCK_OFFSET:04X})\n"
-        f"  local g = dosbox.mem_read_word(DS, 0x{GLOBAL_TICK_OFFSET:04X})\n"
+        f"  local t = dosbox.mem_read_word(DS, 0x{layout.film_clock:04X})\n"
+        f"  local g = dosbox.mem_read_word(DS, 0x{layout.global_tick:04X})\n"
         f"  local pg = dosbox.mem_read(0xA000, 0, {_PAGE_BYTES})\n"
         "  if t == lt then hold = hold + 1 else hold = 0; lt = t end\n"
         f'  tr[#tr + 1] = t .. ":" .. g{extra} .. ":" .. ((pg ~= prev) and "1" or "0")\n'

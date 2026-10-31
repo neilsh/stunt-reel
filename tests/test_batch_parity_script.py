@@ -277,7 +277,7 @@ def test_a_film_that_leaves_the_skip_list_captures_despite_its_skipped_record(
 
 
 def _corpus(root: Path) -> None:
-    for folder, stem in (("COLLAGE4", "EXIT"), ("VAULT", "CTRY")):
+    for folder, stem in (("FLMONLY", "BIGMAN"), ("VAULT", "CTRY")):
         (root / "corpus" / folder).mkdir(parents=True)
         (root / "corpus" / folder / f"{stem}.FLM").write_bytes(stem.encode())
 
@@ -293,13 +293,13 @@ def test_main_skips_known_stalls_unless_only_or_retry_errors_name_them(
     assert batch_parity.main(root) == 0
     assert fake.calls == [("vault-ctry", "capture")]
 
-    assert batch_parity.main([*root, "--only", "collage4-exit"]) == 0
-    assert fake.calls[-1] == ("collage4-exit", "capture")
+    assert batch_parity.main([*root, "--only", "flmonly-bigman"]) == 0
+    assert fake.calls[-1] == ("flmonly-bigman", "capture")
 
     (tmp_path / parity_layout.batch_root() / "ledger.jsonl").unlink()
     fake.calls.clear()
     assert batch_parity.main([*root, "--retry-errors"]) == 0
-    assert {slug for slug, _ in fake.calls} == {"collage4-exit", "vault-ctry"}
+    assert {slug for slug, _ in fake.calls} == {"flmonly-bigman", "vault-ctry"}
 
 
 def test_skip_flag_adds_slugs_to_the_default_list(

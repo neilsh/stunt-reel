@@ -167,8 +167,7 @@ def test_a_known_stall_is_a_skipped_capture_record(tmp_path: Path) -> None:
     record = batch_stages.skip_stalled_capture(_film(tmp_path))
     assert (record.stage, record.status) == ("capture", "skipped")
     assert record.message == "known capture stall"
-    assert "collage4-exit" in batch_stages.KNOWN_CAPTURE_STALLS
-    assert len(batch_stages.KNOWN_CAPTURE_STALLS) == 4
+    assert batch_stages.KNOWN_CAPTURE_STALLS == ("flmonly-bigman",)
 
 
 def test_render_without_a_capture_is_an_error_naming_capture(tmp_path: Path) -> None:

@@ -109,6 +109,7 @@ Both match the DOSBox-X archive `captures/flmonly-747land/archives/001` byte for
 5. A film whose name starts with a digit or a character outside [`bda.py`](../../python/stunt_reel/tac/bda.py)'s scan-code table.
 6. Does `PLAYONE` require the archive's stem to equal the film's?
 7. Can the key script start earlier than frame 1200 on the `archive` profile? Every run pays about 17 s of emulated boot; the requester's first frame was not measured on dosbox-automation.
-8. Patch #3 (`corpus/patches/p3-si5.exe`) ships its own `MAKEONE.EXE` (98,000 bytes against the corpus's unpatched 103,247). Whether a patched `MAKEONE` writes a different `.ALL` is untested.
+8. Patch #3's `MAKEONE.EXE` writes the same `.ALL` as the unpatched one for `COUNT`, `EXIT` and `EXIT2`, and a different one for `BIGMAN` (1,429,089 bytes against 1,425,743), which only the patched `PLAYONE` plays ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3). Which other films differ is open.
+9. `MAKEONE` sometimes writes the archive and never leaves graphics mode (`COUNT` on both builds, `EXIT` and `EXIT2` on the patched one), so `make-all` times out on a good archive ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3).
 
 _Found 2026-10-29; see the [parity log](../parity/log.md)._

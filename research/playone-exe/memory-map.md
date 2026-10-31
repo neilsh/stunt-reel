@@ -42,6 +42,21 @@
 
 Rows `0x22C4`, `0x22CE` and `0x22D0` were promoted from `[Supported Inference]` to `[Established]` on 2026-10-23. A Capstone 16-bit decode of the whole unpacked image found exactly those instructions referencing them, all inside the entry routine `0x0C5E`, and raw word matches elsewhere are not instruction operands. Offsets are load-image offsets (see [`startup.md` § 5](startup.md#5-reproducing-the-static-analysis)). The EXEC runs when the command line starts with `?` (`0x0C90`) or when opening `game.cfg` (`DS:0x05AC`, call at `0x0CD2`) fails. The `entry` listing in rea/Ghidra matches the same instructions at analysis address `0x10000 +` image offset.
 
+### 1.1 Patch #3 build
+
+Every row above is for the unpatched 1992 `PLAYONE.EXE` (102,703 bytes, sha256 `3c93493c…`). Patch #3's `PLAYONE.EXE` (97,790 bytes, `fc532c94…`) is relinked: `DGROUP` is paragraph `0x0C71`, so `DS = 0x0E66` under dosbox-automation. Data from `0x2200` up sits `0x67A` lower, including every row the capture harness reads; the strings near `0x0600` sit `0x7C` higher. Evidence: [`patch3.md` § 2](patch3.md#2-patched-playoneexe-offsets). Other rows are not mapped for the patched build.
+
+| Unpatched `DS` offset | Patched `DS` offset | Evidentiary Tier | Row | Anchor |
+|---|---|---|---|---|
+| `0x05AC` | `0x0628` | `[Supported Inference]` | `"game.cfg"` (operand of the paired entry-routine instruction) | |
+| `0x05BE` | `0x063A` | `[Supported Inference]` | `"install.exe"` (same) | |
+| `0x2263`, `0x2264`, `0x2265` | `0x1BE9`, `0x1BEA`, `0x1BEB` | `[Supported Inference]` | Display mode, sound driver mode, audio channel flags (same) | |
+| `0x22B8` | `0x1C3E` | `[Supported Inference]` | Global 50 Hz timer tick | `# [MEM-FLM-TICK]` |
+| `0x22C4` | `0x1C4A` | `[Established]` | Stored PSP segment (`mov [0x1C4A], es` in the patched entry routine) | |
+| `0x22CE`, `0x22D0` | `0x1C54`, `0x1C56` | `[Supported Inference]` | Saved `SS`, `SP` around the `INSTALL.EXE` EXEC (same) | |
+| `0x2768` | `0x20EE` | `[Supported Inference]` | Working palette, 768 bytes of 6-bit DAC values | |
+| `0x4896` | `0x421C` | `[Supported Inference]` | Active film clock | `# [MEM-FLM-TICK]` |
+
 ---
 
 ## 2. Runtime Dynamic Capture Anchors
