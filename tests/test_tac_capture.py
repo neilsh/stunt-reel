@@ -35,7 +35,13 @@ FRAME_BYTES = 320 * 200
 
 
 def _capture(repo: StagedRepo, film: FakeFilm, **kwargs: Any) -> dict[str, Any]:
-    options: dict[str, Any] = {"keys": KEYS, "max_frames": 3, "stride": 2, "film": FILM}
+    options: dict[str, Any] = {
+        "keys": KEYS,
+        "max_frames": 3,
+        "stride": 2,
+        "film": FILM,
+        "layout": playone.UNPATCHED,
+    }
     options.update(kwargs)
     return capture(film.runner(), repo.out, **options)
 
@@ -120,7 +126,15 @@ def test_meta_is_written_last(staged_repo: StagedRepo) -> None:
         yield Runner()
 
     with pytest.raises(automation.ScriptError, match="instruction limit"):
-        capture(failing, staged_repo.out, keys=KEYS, max_frames=3, stride=2, film=FILM)
+        capture(
+            failing,
+            staged_repo.out,
+            keys=KEYS,
+            max_frames=3,
+            stride=2,
+            film=FILM,
+            layout=playone.UNPATCHED,
+        )
 
     assert not (staged_repo.out / "meta.json").exists()
 
@@ -519,7 +533,7 @@ def test_probe_reads_the_work_segment_from_the_trace_then_dumps_it(
     def opener() -> Iterator[Any]:
         yield mock
 
-    module.probe(opener, KEYS, [4, 10], tmp_path, dump_all=False)
+    module.probe(opener, KEYS, [4, 10], tmp_path, dump_all=False, layout=playone.UNPATCHED)
 
     lines = capsys.readouterr().out.splitlines()
     assert next(line for line in lines if line.startswith("[shot]")).startswith(
@@ -555,7 +569,7 @@ def test_probe_refuses_a_dump_pass_that_read_another_work_segment(tmp_path: Path
         yield mock
 
     with pytest.raises(RuntimeError, match="read work segment 1DF9, but the trace pass read 1DF8"):
-        module.probe(opener, KEYS, [4, 10], tmp_path, dump_all=False)
+        module.probe(opener, KEYS, [4, 10], tmp_path, dump_all=False, layout=playone.UNPATCHED)
     assert not (tmp_path / "work_t4.bin").exists()
 
 
@@ -563,7 +577,14 @@ def test_probe_names_ticks_the_film_never_reached(tmp_path: Path) -> None:
     module = _load_script("probe_playone_light")
 
     with pytest.raises(RuntimeError, match=r"never reached any of the ticks \[9000, 9999\]"):
-        module.probe(FakeFilm().runner(), KEYS, [9000, 9999], tmp_path, dump_all=False)
+        module.probe(
+            FakeFilm().runner(),
+            KEYS,
+            [9000, 9999],
+            tmp_path,
+            dump_all=False,
+            layout=playone.UNPATCHED,
+        )
 
 
 def test_probe_script_failure_lines_and_exit_codes(

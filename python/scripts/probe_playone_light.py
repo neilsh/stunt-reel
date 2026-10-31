@@ -122,11 +122,12 @@ def probe(
     out: Path,
     *,
     dump_all: bool,
+    layout: playone.PlayoneLayout,
 ) -> None:
     """Run the plan and print and dump a sample at each requested film clock."""
     out.mkdir(parents=True, exist_ok=True)
     first = luagen.boot_end(len(keys))
-    pointer = (playone.AUTOMATION_DS, WORK_SEGMENT_POINTER)
+    pointer = (layout.ds, WORK_SEGMENT_POINTER)
     planned: list[int] = []
 
     def ranges(trace: plan.Trace, frames: Sequence[int]) -> list[luagen.MemRange]:
@@ -141,7 +142,7 @@ def probe(
         planned.append(works.pop())
         found = [
             luagen.MemRange(planned[0], 0, SEGMENT_BYTES),
-            luagen.MemRange(playone.AUTOMATION_DS, 0, SEGMENT_BYTES),
+            luagen.MemRange(layout.ds, 0, SEGMENT_BYTES),
         ]
         if dump_all:
             found += [luagen.MemRange(segment, 0, SEGMENT_BYTES) for segment in range(0x10)]
@@ -157,6 +158,7 @@ def probe(
         words=[pointer],
         end_hold=30,
         progress=lambda line: print(f"[probe] {line}", flush=True),
+        layout=layout,
     )
     # The ranges were planned at the trace pass's segment, so a dump pass that read another
     # pointer dumped bytes that are not its work segment.
@@ -203,6 +205,7 @@ def run(args: argparse.Namespace) -> int:
             ticks,
             out,
             dump_all=args.dump_all_segments,
+            layout=layout,
         )
     except EmulatorUnavailable as exc:
         print(f"[probe] {exc}; run via mise exec", file=sys.stderr)

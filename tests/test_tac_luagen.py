@@ -12,7 +12,12 @@ KEYS = ["KBD_c", "KBD_down", "KBD_enter"]
 
 
 def _script(**kwargs: object) -> str:
-    args: dict[str, object] = {"keys": KEYS, "first": 1300, "last": 1400}
+    args: dict[str, object] = {
+        "keys": KEYS,
+        "first": 1300,
+        "last": 1400,
+        "layout": playone.UNPATCHED,
+    }
     args.update(kwargs)
     return luagen.script(**args)  # type: ignore[arg-type]
 

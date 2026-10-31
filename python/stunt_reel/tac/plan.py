@@ -16,13 +16,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from stunt_reel.tac.luagen import MAX_DUMPS, MemRange, script
-from stunt_reel.tac.playone import UNPATCHED, PlayoneLayout
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
     from contextlib import AbstractContextManager
 
     from stunt_reel.tac.automation import ScriptRunner
+    from stunt_reel.tac.playone import PlayoneLayout
 
 __all__ = [
     "DEFAULT_PARALLEL_PASSES",
@@ -238,7 +238,7 @@ def run_plan(
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
     progress: Callable[[str], None] | None = None,
     parallel: int = DEFAULT_PARALLEL_PASSES,
-    layout: PlayoneLayout = UNPATCHED,
+    layout: PlayoneLayout,
 ) -> PlanResult:
     """Run the trace pass, let *pick* choose frames from it, then dump them in chunks.
 

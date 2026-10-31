@@ -18,10 +18,10 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from stunt_reel.tac.playone import UNPATCHED, PlayoneLayout
-
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from stunt_reel.tac.playone import PlayoneLayout
 
 __all__ = [
     "KEY_GAP",
@@ -128,7 +128,7 @@ def script(
     ranges: Sequence[MemRange] = (),
     words: Sequence[tuple[int, int]] = (),
     end_hold: int | None = None,
-    layout: PlayoneLayout = UNPATCHED,
+    layout: PlayoneLayout,
 ) -> str:
     """The Lua for one run: boot with *keys*, trace frames *first* to *last*, dump *dump_frames*.
 
