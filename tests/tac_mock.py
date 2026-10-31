@@ -20,7 +20,7 @@ from stunt_reel.tac.automation import MockAutomation
 from stunt_reel.tac.staging import ENGINE_FILES, MAKEONE_FILES
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterator, Mapping
     from pathlib import Path
 
     from stunt_reel.tac.staging import StagedMount
@@ -47,10 +47,19 @@ class FakeFilm:
     with a static page (the end of the film). The global tick is the film tick plus 100.
     """
 
-    def __init__(self, *, dialog_frames: int = 4, moving_frames: int = 40, tick_step: int = 2):
+    def __init__(
+        self,
+        *,
+        dialog_frames: int = 4,
+        moving_frames: int = 40,
+        tick_step: int = 2,
+        flags: Mapping[int, int] | None = None,
+    ):
         self.dialog_frames = dialog_frames
         self.moving_frames = moving_frames
         self.tick_step = tick_step
+        #: Extra trace-mask bits (``luagen.TRACE_TORN``, ``TRACE_PALETTE``) by frame - first.
+        self.flags = dict(flags or {})
         self.scripts: list[str] = []
 
     def tick(self, frame: int, first: int) -> int:
@@ -80,7 +89,8 @@ class FakeFilm:
             held = held + 1 if tick == last_tick else 0
             last_tick = tick
             page = self.page(tick)
-            entries.append(f"{tick}:{tick + 100}:{int(page != previous)}")
+            mask = int(page != previous) | self.flags.get(frame - first, 0)
+            entries.append(f"{tick}:{tick + 100}:{mask}")
             previous = page
             if frame in dumps:
                 out[f"p{frame}"] = "x" + page.hex()

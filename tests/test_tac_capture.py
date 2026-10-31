@@ -21,7 +21,7 @@ from archive_helpers import build_all
 from stunt_reel import dataroot, parity_artifacts, parity_layout
 from stunt_reel.all_archive import ArchiveMeta, publish_archive
 from stunt_reel.parity_artifacts import CaptureSet, FilmId, Geometry
-from stunt_reel.tac import automation, framebuffer, luagen, playone, staging
+from stunt_reel.tac import automation, framebuffer, luagen, plan, playone, staging
 from stunt_reel.tac.emulator import EmulatorUnavailable
 from stunt_reel.tac.framebuffer import capture
 from tac_mock import FILM_COLORS, FakeFilm, StagedRepo
@@ -88,6 +88,8 @@ def test_capture_artifacts_keep_their_contract(staged_repo: StagedRepo) -> None:
         "dgroup_segment",
         "frame_bytes",
         "playone_build",
+        "torn_frames",
+        "palette_steps",
     ]
     assert list(meta["frames"][0]) == [
         "ordinal",
@@ -165,6 +167,26 @@ def test_a_film_whose_clock_never_runs_captures_no_frames(staged_repo: StagedRep
     meta = _capture(staged_repo, FakeFilm(moving_frames=0))
 
     assert meta["frames"] == []
+
+
+def test_capture_records_torn_and_palette_counts(staged_repo: StagedRepo) -> None:
+    torn, palette = luagen.TRACE_TORN, luagen.TRACE_PALETTE
+    film = FakeFilm(flags={5: torn, 9: torn, 12: palette, 20: palette, 30: palette})
+
+    meta = _capture(staged_repo, film, max_frames=100, stride=1)
+
+    assert meta["torn_frames"] == 2
+    assert meta["palette_steps"] == 3
+
+
+def test_capture_with_no_usable_frame_says_why(staged_repo: StagedRepo) -> None:
+    """Every changed film frame torn must fail loudly, not write an empty capture."""
+    film = FakeFilm(moving_frames=10, flags=dict.fromkeys(range(200), luagen.TRACE_TORN))
+
+    with pytest.raises(plan.PlanError, match=r"no usable frame among 10 changed .* \d+ torn"):
+        _capture(staged_repo, film, max_frames=100, stride=1)
+
+    assert not (staged_repo.out / "meta.json").exists()
 
 
 def test_capture_records_when_and_by_whom_in_the_diagnostics(staged_repo: StagedRepo) -> None:

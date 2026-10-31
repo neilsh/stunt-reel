@@ -108,6 +108,16 @@ def capture(
         progress=progress,
         layout=layout,
     )
+    entries = result.trace.entries
+    torn = sum(e.torn for e in entries)
+    palette_steps = sum(e.palette_changed for e in entries)
+    candidates = sum(e.changed and e.film_tick > 0 for e in entries)
+    if candidates and not result.dumps:
+        # Every film frame was skipped: say so instead of writing a capture with no frames.
+        raise plan.PlanError(
+            f"no usable frame among {candidates} changed film frames: {torn} torn, "
+            f"{palette_steps} palette steps (each spoils its frame and the next)"
+        )
 
     frames: list[CapturedFrame] = []
     frame_diagnostics: list[Mapping[str, Any]] = []
@@ -157,6 +167,8 @@ def capture(
             "dgroup_segment": f"{layout.ds:04X}",
             "frame_bytes": FRAME_BYTES,
             "playone_build": layout.name,
+            "torn_frames": torn,
+            "palette_steps": palette_steps,
             **(provenance or {}),
         },
         frame_diagnostics=tuple(frame_diagnostics),
