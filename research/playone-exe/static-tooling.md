@@ -17,7 +17,7 @@ The trial record (timings, the Windows refusal, the load-image attestation) is o
 | What are the functions, their bodies, callers and callees? What does one decompile to? | Ghidra (headless or GUI) on the MZ file | 222 functions recovered, with decompilation and reference tracking. |
 | Who reads or writes a fixed DGROUP offset? | Ghidra | Works for absolute `[disp16]` accesses once `DS` is known. The `0x22C4` writer in `entry` shows up in the listing and the pseudocode. |
 | The same questions, asked by an agent over MCP, with results that record their inputs | rea, with `--snapshot` | Each result carries the target SHA-256, tool versions and analysis profile. Without a snapshot every call re-imports (about 12 s); with one, about 1.4 s. |
-| What value does it hold at tick *n*? Which handler actually runs? What's in the EMS page frame? | DOSBox-X harness ([`capture.md`](capture.md)) | Static tools don't execute or emulate anything. |
+| What value does it hold at tick *n*? Which handler actually runs? What's in the EMS page frame? | dosbox-automation capture ([`capture-dosbox-automation.md`](capture-dosbox-automation.md); retired DOSBox-X harness: [`dosbox-x-legacy.md`](dosbox-x-legacy.md)) | Static tools don't execute or emulate anything. |
 
 ## 2. What Ghidra Cannot See Here
 
