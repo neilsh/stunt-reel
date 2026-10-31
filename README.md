@@ -33,7 +33,6 @@ You can build and test everything without any game files:
 mise trust && mise install   # pinned toolchains (Rust, Python, uv, Java, dosbox-automation, Kaitai)
 mise run init                # shared data root, cached Python environment
 mise run check               # format, lint, typecheck and tests, Rust and Python
-mise run hooks               # optional: commit hooks (format and lint when Rust or Python is staged)
 ```
 
 To render a film you need the *Stunt Island* demo (`stisldem`) in `corpus/stisldem/`, described in [`corpus/README.md`](corpus/README.md):

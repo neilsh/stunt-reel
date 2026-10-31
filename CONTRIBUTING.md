@@ -17,8 +17,7 @@ architecture routing, and the research notes. Environment setup and the task lis
   `corpus/` is gitignored for that reason; tests run offline on the
   synthetic fixtures in [`tests/fixtures/`](tests/fixtures/README.md).
 - **Run the gate.** `mise run check` (format, lint, typecheck and tests for Rust and Python)
-  must pass. CI runs it on every pull request. `mise run hooks` optionally runs its format and
-  lint checks at commit when Rust or Python files are staged.
+  must pass. CI runs it on every pull request.
 - **CodeRabbit comments are advisory.** A pull request also gets an AI review from
   [CodeRabbit](https://coderabbit.ai), configured in [`.coderabbit.yaml`](.coderabbit.yaml).
   It cannot block a merge: the gate and a person are the review, so decline a comment with a

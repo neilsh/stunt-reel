@@ -44,16 +44,18 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   `.githooks/`.
 - **`prek.toml` holds the plan.** Every local hook is exactly `mise run <task>` for a leaf task of
   [`mise.toml`](../../mise.toml), with `pass_filenames = false`, so each command is still defined
-  once:
+  once. A hook fires on its file types, or on every commit with `always_run = true`:
 
   | hook id | entry | fires on |
   | --- | --- | --- |
-  | `diff-check` | `mise run diff-check` (`git diff --cached --check`) | every commit |
+  | `diff-check` | `mise run diff-check` (`git diff --cached --check`) | every commit (`always_run`) |
   | `fmt-check-rust` | `mise run fmt-check-rust` | `types = ["rust"]` |
   | `fmt-check-py` | `mise run fmt-check-py` | `types = ["python"]` |
   | `lint-py` | `mise run lint-py` | `types = ["python"]` |
-  | `test-docs` | `mise run test-docs` | `types = ["markdown"]` |
+  | `test-docs` | `mise run test-docs` | every commit (`always_run`) |
 
+  prek passes no deleted file to a hook, so a commit that only deletes a linked page would skip a
+  hook filtered to Markdown; `test-docs` and `diff-check` therefore run on every commit.
   `fmt-check-rust` is new: #32's plan checked no Rust. The rest are prek built-ins that back a rule
   this repository already states:
 
@@ -69,10 +71,11 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   format failure is `mise run fmt`.
 - **`gate.py staged` is removed** with its constants, its log path and its tests; `gate.py` runs
   only `all`, `rust` and `py` again.
-- **CI runs the hooks' extra checks.** The `quality` job installs prek and runs
-  `prek run --from-ref origin/<base> --to-ref HEAD` with the gate-step hooks skipped
-  (`SKIP=diff-check,fmt-check-rust,fmt-check-py,lint-py,test-docs`), since the gate it already
-  runs covers them. A commit made with `--no-verify` or without hooks no longer reaches `main`
+- **CI runs the hooks' extra checks.** The `quality` job installs prek and runs it with the
+  gate-step hooks skipped (`SKIP=diff-check,fmt-check-rust,fmt-check-py,lint-py,test-docs`), since
+  the gate it already runs covers them: a pull request over `--from-ref origin/<base>`, a push to
+  `main` over `--from-ref <previous tip>` (admins may push there without a pull request), and a
+  manual run over `--all-files`. A commit made with `--no-verify` or without hooks no longer reaches `main`
   unchecked for the built-ins.
 - **prek is pinned in `mise.toml`** like every other tool; the hooks carry no versions.
 
@@ -80,11 +83,13 @@ prek runs the commit-time checks; `gate.py` stays the gate.
 
 - [`tests/test_prek_config.py`](../../tests/test_prek_config.py) reads `prek.toml` and fails the
   gate if a local hook's entry is not `mise run <task>` for a leaf task of `mise.toml`, if a local
-  hook sets any key beyond `id`, `name`, `entry`, `language`, `types` and
-  `pass_filenames`, if the hook or built-in sets differ from the tables above, if a repository
+  hook sets any key beyond `id`, `name`, `entry`, `language`, `pass_filenames`, `types` and
+  `always_run`, if the hook or built-in sets differ from the tables above, if a repository
   other than `local` or `builtin` appears, or if the `pre-commit` task stops running prek.
-- A prek integration test builds a scratch repository, stages a clean file, leaves a
-  conflict-marked edit unstaged, and asserts `prek run` passes; the reverse must fail. It runs
+- A prek integration test ([`tests/test_prek_hooks.py`](../../tests/test_prek_hooks.py)) builds a
+  scratch repository, stages a valid TOML file, leaves a broken edit unstaged, and asserts
+  `prek run` passes and the edit survives; the reverse must fail. The same file holds CI's `SKIP`
+  list to the local hook ids. It runs
   where prek is installed and is required in CI (`STUNT_REQUIRE_PREK=1`), the way
   `STUNT_REQUIRE_KSC` guards the schema test.
 

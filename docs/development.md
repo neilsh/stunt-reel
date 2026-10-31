@@ -155,8 +155,9 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | Task | Runs |
 | --- | --- |
 | `check` / `check-rust` / `check-py` | `gate.py` over every step (format, lint, strict typing, rustdoc, both test suites, the no-default-features matrix), one line per step, log in `target/check.log` |
-| `pre-commit` | what the committed pre-commit hook runs (`gate.py staged`): `git diff --cached --check` for conflict markers, `fmt-check-py` and `lint-py`, and `test-docs` when Markdown is staged; log in `target/pre-commit.log`. A fast subset, not the gate |
-| `test-docs` | `tests/test_doc_invariants.py` alone: anchors, Markdown links, cited paths, no source of truth linking into `docs/process/` |
+| `pre-commit` | what the committed pre-commit hook runs: `prek run --config prek.toml` over the staged content ([ADR 0026](adr/0026-commit-hooks-run-the-gates-own-tasks.md)). A fast subset, not the gate |
+| `diff-check` | `git diff --cached --check`: staged conflict markers and whitespace errors; a pre-commit hook |
+| `test-docs` | `tests/test_doc_invariants.py` alone: anchors, Markdown links, cited paths, no source of truth linking into `docs/process/`; a pre-commit hook on every commit |
 | `check-windows` | the non-GPU half of the gate used by the Windows job on `main` (`fmt-check` + `lint` + `typecheck` + `test`)
 | `check-windows-smoke` | the Windows-only slice of the pytest suite (junctions, reparse points, the `.cache` link, the pytest basetemp workaround), used by the pull-request Windows job
 | `fmt-check` / `fmt` | `cargo fmt` and `ruff format` check/apply |
@@ -173,10 +174,9 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | `capture-ref` | new capture into `build/parity/captures/<film>/frames/<next run>`, never over an existing one (`--max-frames` defaults to 140) |
 | `verify-corpus` | `.ksy` catalog check against `corpus/` |
 | `play` | play a film in `PLAYONE.EXE` on dosbox-automation |
-| `hooks` | `prek install --config ./prek.toml --allow-missing-config`: the optional commit hooks below |
 | `parity-probe`, `verify-docs`, `unlzexe`, `probe-light`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
 
-The pre-commit hook is installed by `mise run init` (`core.hooksPath = .githooks`) and holds no command of its own: it runs `mise run pre-commit`, whose steps are leaf tasks of `mise.toml` chosen by `gate.py`, so it cannot drift from the gate the way the deleted `.pre-commit-config.yaml` did. It catches what commits most often broke (conflict markers left by a rebase, broken doc links) in a few seconds; it does not replace `mise run check` before a commit. Setting `core.hooksPath` turns off untracked hooks in `.git/hooks`, so `.githooks/pre-commit` and `.githooks/pre-push` chain to one there if present, and `init` names any other it turns off. `git commit --no-verify` skips the hook once.
+The pre-commit hook is installed by `mise run init` (`core.hooksPath = .githooks`) and holds no command of its own: it runs `mise run pre-commit`, which is [prek](https://github.com/j178/prek) over [`prek.toml`](../prek.toml) ([ADR 0026](adr/0026-commit-hooks-run-the-gates-own-tasks.md)). prek sets unstaged edits aside first, so the hooks check what is being committed. Its local hooks are leaf tasks of `mise.toml` — `diff-check` and `test-docs` on every commit, `fmt-check-rust` when Rust is staged, `fmt-check-py` and `lint-py` when Python is — so they cannot drift from the gate the way the deleted `.pre-commit-config.yaml` did; the rest are prek built-ins (large files, Windows-illegal names, case conflicts, merge conflicts, TOML and YAML syntax, private keys). No hook rewrites a file: `mise run fmt` fixes a format failure. It catches what commits most often broke (conflict markers left by a rebase, broken doc links) in seconds; it does not replace `mise run check` before a commit, and CI runs the built-ins on every pull request and push to `main`. Setting `core.hooksPath` turns off untracked hooks in `.git/hooks`, so `.githooks/pre-commit` and `.githooks/pre-push` chain to one there if present, and `init` names any other it turns off. `git commit --no-verify` skips the hook once.
 
 The gate's lanes build the check profile into `target/check` and the no-default-features matrix into `target/matrix`, so those builds can run beside the `target/` build instead of waiting on its lock. All three directories sit under `target/`, which `.gitignore`, ruff's exclude, the recursive walkers and `mise run clean` already cover.
 
