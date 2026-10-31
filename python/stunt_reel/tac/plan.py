@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from stunt_reel.tac.luagen import (
     MAX_DUMPS,
     TRACE_CHANGED,
+    TRACE_COMPOSED,
     TRACE_PALETTE,
     TRACE_TORN,
     MemRange,
@@ -66,7 +67,7 @@ DEFAULT_PARALLEL_PASSES: int = 8
 DEFAULT_TIMEOUT_SECONDS: float = 900.0
 
 RGB = tuple[int, int, int]
-_MASK_LIMIT: int = (TRACE_CHANGED | TRACE_TORN | TRACE_PALETTE) + 1
+_MASK_LIMIT: int = (TRACE_CHANGED | TRACE_TORN | TRACE_PALETTE | TRACE_COMPOSED) + 1
 
 
 class PlanError(RuntimeError):
@@ -79,7 +80,7 @@ class PlanDivergence(PlanError):  # noqa: N818 - the agreed interface name
 
 @dataclass(frozen=True)
 class TraceEntry:
-    """What one frame showed: the clocks, any extra words, and the trace mask's three flags."""
+    """What one frame showed: the clocks, any extra words, and the trace mask's four flags."""
 
     film_tick: int
     global_tick: int
@@ -89,6 +90,8 @@ class TraceEntry:
     torn: bool = False
     #: The working palette changed since the previous frame.
     palette_changed: bool = False
+    #: Rows 0..191 equal one of the composed pages: the layout's page offsets read real pages.
+    composed: bool = False
 
 
 @dataclass(frozen=True)
@@ -134,7 +137,7 @@ def decode_trace(text: str, first: int) -> Trace:
     """Decode ``x<tick>:<global>[:word...]:<mask>,...`` into a :class:`Trace`.
 
     The mask is the sum of ``luagen.TRACE_*`` flags; a two-state trace (0 or 1) decodes as
-    neither torn nor a palette step.
+    neither torn nor a palette step nor composed.
     """
     if not text.startswith("x"):
         raise PlanError("trace output is missing its letter prefix")
@@ -156,6 +159,7 @@ def decode_trace(text: str, first: int) -> Trace:
                 changed=bool(mask & TRACE_CHANGED),
                 torn=bool(mask & TRACE_TORN),
                 palette_changed=bool(mask & TRACE_PALETTE),
+                composed=bool(mask & TRACE_COMPOSED),
             )
         )
     return Trace(first, tuple(entries))

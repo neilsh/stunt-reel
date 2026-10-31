@@ -128,9 +128,13 @@ def test_tear_check_compares_bands() -> None:
     assert ":byte(" not in text
 
 
-def test_the_trace_mask_sums_the_three_flags() -> None:
-    assert (luagen.TRACE_CHANGED, luagen.TRACE_TORN, luagen.TRACE_PALETTE) == (1, 2, 4)
-    assert "torn(pg) and 2" in _script()
+def test_the_trace_mask_sums_the_four_flags() -> None:
+    flags = (luagen.TRACE_CHANGED, luagen.TRACE_TORN, luagen.TRACE_PALETTE, luagen.TRACE_COMPOSED)
+    assert flags == (1, 2, 4, 8)
+    text = _script()
+    assert "+ split(pg) +" in text
+    # A page equal to a composed page is the composed flag, and torn is decided after it.
+    assert text.index("then return 8 end") < text.index("onlyA and onlyB")
 
 
 def test_the_trace_cannot_start_before_the_keys_have_finished() -> None:

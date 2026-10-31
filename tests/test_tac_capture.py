@@ -90,6 +90,7 @@ def test_capture_artifacts_keep_their_contract(staged_repo: StagedRepo) -> None:
         "playone_build",
         "torn_frames",
         "palette_steps",
+        "composed_matches",
         "dropped_frames",
     ]
     assert list(meta["frames"][0]) == [
@@ -178,6 +179,27 @@ def test_capture_records_torn_and_palette_counts(staged_repo: StagedRepo) -> Non
 
     assert meta["torn_frames"] == 2
     assert meta["palette_steps"] == 3
+
+
+def test_capture_counts_pages_that_equal_a_composed_page(staged_repo: StagedRepo) -> None:
+    composed = luagen.TRACE_COMPOSED
+    film = FakeFilm(flags=dict.fromkeys(range(5, 25), composed))
+    lines: list[str] = []
+
+    meta = _capture(staged_repo, film, max_frames=100, stride=1, progress=lines.append)
+
+    assert meta["composed_matches"] == 20
+    assert not any("composed page" in line for line in lines)
+
+
+def test_no_composed_match_warns_that_the_offsets_may_be_wrong(staged_repo: StagedRepo) -> None:
+    """Wrong composed_pages offsets read as no tears at all; a zero count says so instead."""
+    lines: list[str] = []
+
+    meta = _capture(staged_repo, FakeFilm(), progress=lines.append)
+
+    assert meta["composed_matches"] == 0
+    assert any("no traced page equals a composed page" in line for line in lines)
 
 
 def test_capture_with_no_usable_frame_says_why(staged_repo: StagedRepo) -> None:

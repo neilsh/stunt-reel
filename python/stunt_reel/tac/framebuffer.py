@@ -112,6 +112,14 @@ def capture(
     trace = result.trace
     torn = sum(e.torn for e in trace.entries)
     palette_steps = sum(e.palette_changed for e in trace.entries)
+    composed = sum(e.composed for e in trace.entries)
+    if trace.entries and not composed and progress is not None:
+        # The tear test compares against the layout's composed pages; offsets that read no real
+        # page make every frame look clean, so a zero here is the visible symptom.
+        progress(
+            f"no traced page equals a composed page; check {layout.name}'s composed_pages "
+            "offsets before trusting the torn count"
+        )
     candidates = [
         f for f in trace.frames if trace.entry(f).changed and trace.entry(f).film_tick > 0
     ]
@@ -179,6 +187,7 @@ def capture(
             "playone_build": layout.name,
             "torn_frames": torn,
             "palette_steps": palette_steps,
+            "composed_matches": composed,
             "dropped_frames": list(result.dropped),
             **(provenance or {}),
         },

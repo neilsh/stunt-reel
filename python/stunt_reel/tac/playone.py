@@ -105,7 +105,8 @@ PATCH3 = PlayoneLayout(
     film_clock=0x421C,
     global_tick=0x1C3E,
     working_palette=0x20EE,
-    # Inferred from the uniform 0x67A shift, not read from code; a live tear rate checks it.
+    # Inferred from the uniform 0x67A shift, not read from code; a live tear rate checks it,
+    # and a capture's composed_matches of zero would say the offsets read no real page.
     composed_pages=(0x1C50, 0x1C52),
 )
 LAYOUTS: tuple[PlayoneLayout, ...] = (UNPATCHED, PATCH3)

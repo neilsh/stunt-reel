@@ -56,9 +56,18 @@ def test_trace_decodes_the_flag_mask() -> None:
     assert (palette.changed, palette.torn, palette.palette_changed) == (False, False, True)
 
 
-def test_trace_refuses_a_mask_above_seven() -> None:
+def test_trace_decodes_the_composed_flag() -> None:
+    trace = plan.decode_trace("x5:7:9,6:8:1", FIRST)
+
+    composed, plain = trace.entries
+    assert (composed.changed, composed.composed, composed.torn) == (True, True, False)
+    assert plain.composed is False
+
+
+def test_trace_refuses_a_mask_above_fifteen() -> None:
+    plan.decode_trace("x5:7:15", FIRST)
     with pytest.raises(plan.PlanError):
-        plan.decode_trace("x5:7:8", FIRST)
+        plan.decode_trace("x5:7:16", FIRST)
 
 
 def test_decode_trace_requires_the_letter_prefix() -> None:
