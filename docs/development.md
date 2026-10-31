@@ -170,7 +170,12 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | `capture-ref` | new capture into `build/parity/captures/<film>/frames/<next run>`, never over an existing one (`--max-frames` defaults to 140) |
 | `verify-corpus` | `.ksy` catalog check against `corpus/` |
 | `play` | play a film in `PLAYONE.EXE` on dosbox-automation |
+| `hooks` | `prek install`: the optional commit hooks below |
 | `parity-probe`, `verify-docs`, `unlzexe`, `probe-light`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
+
+### Commit hooks (optional)
+
+`mise run hooks` installs [prek](https://github.com/j178/prek) pre-commit hooks from [`prek.toml`](../prek.toml) ([ADR 0026](adr/0026-commit-hooks-run-the-gates-own-tasks.md)). When Rust or Python files are staged they run the gate's own `fmt-check-rust`, `fmt-check-py` and `lint-py` tasks, with the gate's tool versions; on every commit they run a few prek built-ins (large files, Windows-illegal names, case conflicts, merge markers, TOML and YAML syntax, private keys). Nothing is rewritten: the format checks cover the whole tree, so fix with `mise run fmt` and commit again, or skip with `git commit --no-verify`. Git keeps hooks in the common `.git/hooks`, so one install serves every worktree, and only the `pre-commit` hook is written. The gate is still `mise run check`; [`tests/test_prek_config.py`](../tests/test_prek_config.py) fails it if a hook becomes anything but a gate step or a built-in.
 
 The gate's lanes build the check profile into `target/check` and the no-default-features matrix into `target/matrix`, so those builds can run beside the `target/` build instead of waiting on its lock. All three directories sit under `target/`, which `.gitignore`, ruff's exclude, the recursive walkers and `mise run clean` already cover.
 

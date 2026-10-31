@@ -44,8 +44,16 @@
 
 ```python
 GATE_HOOKS = {"fmt-check-rust": ["rust"], "fmt-check-py": ["python"], "lint-py": ["python"]}
-BUILTINS = {"check-added-large-files", "check-illegal-windows-names", "check-case-conflict",
-            "check-merge-conflict", "check-toml", "check-yaml", "detect-private-key"}
+BUILTINS = {
+    "check-added-large-files",
+    "check-illegal-windows-names",
+    "check-case-conflict",
+    "check-merge-conflict",
+    "check-toml",
+    "check-yaml",
+    "detect-private-key",
+}
+
 
 def test_local_hooks_run_a_gate_step():
     steps = {*gate.STEPS["rust"], *gate.STEPS["py"]}
@@ -54,23 +62,29 @@ def test_local_hooks_run_a_gate_step():
         assert hook["entry"] == f"mise run {hook['id']}"
         assert hook["language"] == "system"
 
+
 def test_local_hooks_take_no_arguments():
     for hook in _hooks("local"):
         assert hook["pass_filenames"] is False
         assert "args" not in hook
 
+
 def test_local_hooks_are_the_adr_set():
     assert {h["id"]: h["types"] for h in _hooks("local")} == GATE_HOOKS
 
+
 def test_builtin_hooks_are_the_adr_set():
     assert {h["id"] for h in _hooks("builtin")} == BUILTINS
+
 
 def test_only_local_and_builtin_repositories():
     assert {r["repo"] for r in _config()["repos"]} == {"local", "builtin"}
     assert all("rev" not in r for r in _config()["repos"])
 
+
 def test_installs_only_the_pre_commit_shim():
     assert _config()["default_install_hook_types"] == ["pre-commit"]
+
 
 def test_prek_is_pinned_and_installed_through_mise():
     mise = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
