@@ -242,6 +242,16 @@ run = "python python/scripts/gate.py py"
 description = "Full quality gate: one line per step, PASS/FAIL verdict, full log in target/check.log"
 run = "python python/scripts/gate.py all"
 
+[tasks.test-docs]
+description = "Documentation invariants only: anchors, Markdown links, cited paths (part of test-py; the pre-commit hook runs it alone)"
+run = "uv run pytest tests/test_doc_invariants.py -q"
+
+# The committed hook (.githooks/pre-commit, installed by mise run init) runs this and nothing
+# else, so its checks are leaf tasks of this file like the gate's (ADR 0014): no second copy.
+[tasks.pre-commit]
+description = "What the pre-commit hook runs: staged conflict markers, ruff format and lint, and test-docs when Markdown is staged"
+run = "python python/scripts/gate.py staged"
+
 [tasks.check-windows]
 description = "Windows non-GPU half of the gate (fmt, lint, typecheck, Rust and Python tests; GPU tests skip without a driver)"
 depends = ["fmt-check", "lint", "typecheck", "test"]

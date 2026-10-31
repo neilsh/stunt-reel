@@ -20,8 +20,9 @@ import gate  # noqa: E402
 def test_lane_map_covers_every_step_exactly_once() -> None:
     steps = [*gate.STEPS["rust"], *gate.STEPS["py"]]
     assert len(steps) == len(set(steps)), "a step is listed twice in STEPS"
-    assert sorted(gate.STEP_LANES) == sorted(steps), (
-        "STEP_LANES must name every step, and only steps"
+    staged = {*gate.STAGED_STEPS, *gate.STAGED_MARKDOWN_STEPS}
+    assert sorted(gate.STEP_LANES) == sorted(set(steps) | staged), (
+        "STEP_LANES must name every step of the gate and of the staged plan, and only those"
     )
 
 

@@ -144,11 +144,49 @@ def _render_link(outcome: LinkOutcome) -> list[str]:
     return [f"  = {outcome.relative}"]
 
 
+#: The committed hooks directory ``init`` points ``core.hooksPath`` at, relative to the worktree.
+HOOKS_DIR = ".githooks"
+
+
+def ensure_hooks_path(repo: Path) -> list[str]:
+    """Point *repo*'s ``core.hooksPath`` at the committed hooks; the lines ``init`` prints.
+
+    The setting is in the shared repository config, so one ``init`` covers every worktree,
+    and the relative value resolves against whichever worktree runs the hook. A different
+    value someone chose is left alone and reported. Setting it turns off the untracked hooks in
+    the git directory, so any that the committed ones do not chain to are named.
+    """
+    current = _git(repo, "config", "--get", "core.hooksPath").stdout.strip()
+    if current and current != HOOKS_DIR:
+        return [f"  ! core.hooksPath is {current!r}; left alone, so {HOOKS_DIR}/ does not run"]
+    lines = [f"  = core.hooksPath {HOOKS_DIR}"]
+    if not current:
+        result = _git(repo, "config", "core.hooksPath", HOOKS_DIR)
+        if result.returncode != 0:
+            return [f"  ! could not set core.hooksPath: {result.stderr.strip()}"]
+        lines = [f"  + core.hooksPath -> {HOOKS_DIR}"]
+    common = _git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").stdout.strip()
+    local = Path(common) / "hooks"
+    if not common or not local.is_dir():
+        return lines
+    hooks = repo / HOOKS_DIR
+    committed = {path.name for path in hooks.iterdir()} if hooks.is_dir() else set()
+    for hook in sorted(local.iterdir()):
+        if hook.suffix != ".sample" and hook.is_file() and hook.name not in committed:
+            lines.append(f"  ! {hook} no longer runs: core.hooksPath replaces the hooks there")
+    return lines
+
+
 def _init(migrate: bool) -> int:
     root = data_root()
     source = DATA_ENV if DATA_ENV in os.environ else "derived"
     print(f"worktree   {REPO_ROOT}")
     print(f"data root  {root} ({source})")
+    try:
+        for line in ensure_hooks_path(REPO_ROOT):
+            print(line)
+    except SharedDataError as err:
+        print(f"  ! hooks: {err}")
     if migrate:
         if root != REPO_ROOT and root.is_dir():
             try:

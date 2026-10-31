@@ -23,7 +23,7 @@ mise install   # pinned toolchains, dosbox-automation, Kaitai compiler
 mise run init  # link the shared data root and cached environment, then uv sync
 ```
 
-Pinned versions live in [`mise.toml`](../mise.toml); `mise run init` links the shared cache and then runs `uv sync`, which installs the `kaitaistruct==0.11` runtime for the schema checks.
+Pinned versions live in [`mise.toml`](../mise.toml); `mise run init` links the shared cache and then runs `uv sync`, which installs the `kaitaistruct==0.11` runtime for the schema checks. It also points git's `core.hooksPath` at the committed [`.githooks/`](../.githooks/), whose pre-commit hook runs `mise run pre-commit` (see [Development & Quality Assurance](#development--quality-assurance)).
 
 > [!NOTE]
 > The quality gate (`mise run check`) runs on Linux, macOS and Windows. Capture, parity and corpus workflows are Windows + dosbox-automation + local-corpus only; elsewhere you can still build, test and render from synthetic fixtures.
@@ -155,6 +155,8 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | Task | Runs |
 | --- | --- |
 | `check` / `check-rust` / `check-py` | `gate.py` over every step (format, lint, strict typing, rustdoc, both test suites, the no-default-features matrix), one line per step, log in `target/check.log` |
+| `pre-commit` | what the committed pre-commit hook runs (`gate.py staged`): `git diff --cached --check` for conflict markers, `fmt-check-py` and `lint-py`, and `test-docs` when Markdown is staged; log in `target/pre-commit.log`. A fast subset, not the gate |
+| `test-docs` | `tests/test_doc_invariants.py` alone: anchors, Markdown links, cited paths, no source of truth linking into `docs/process/` |
 | `check-windows` | the non-GPU half of the gate used by the Windows job on `main` (`fmt-check` + `lint` + `typecheck` + `test`)
 | `check-windows-smoke` | the Windows-only slice of the pytest suite (junctions, reparse points, the `.cache` link, the pytest basetemp workaround), used by the pull-request Windows job
 | `fmt-check` / `fmt` | `cargo fmt` and `ruff format` check/apply |
@@ -167,11 +169,13 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | `cov-rust` | `cargo llvm-cov` line-coverage summary for `stunt-core` and `stunt-gltf` (not part of `check`) |
 | `cov-py` | `pytest` with `--cov=stunt_reel` term-missing report (no fail-under) |
 | `deny` | `cargo deny check` — advisories, license allow-list, wildcard bans, and registry sources |
+| `capture-digest` | a capture's `sha256` as `references.toml` pins it, and the entry that would promote it (`mise run capture-digest -- vault-ctry 005`) |
 | `capture-ref` | new capture into `build/parity/captures/<film>/frames/<next run>`, never over an existing one (`--max-frames` defaults to 140) |
 | `verify-corpus` | `.ksy` catalog check against `corpus/` |
-| `capture-digest` | a capture's `sha256` as `references.toml` pins it, and the entry that would promote it (`mise run capture-digest -- vault-ctry 005`) |
 | `play` | play a film in `PLAYONE.EXE` on dosbox-automation |
 | `parity-probe`, `verify-docs`, `unlzexe`, `probe-light`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
+
+The pre-commit hook is installed by `mise run init` (`core.hooksPath = .githooks`) and holds no command of its own: it runs `mise run pre-commit`, whose steps are leaf tasks of `mise.toml` chosen by `gate.py`, so it cannot drift from the gate the way the deleted `.pre-commit-config.yaml` did. It catches what commits most often broke (conflict markers left by a rebase, broken doc links) in a few seconds; it does not replace `mise run check` before a commit. Setting `core.hooksPath` turns off untracked hooks in `.git/hooks`, so `.githooks/pre-commit` and `.githooks/pre-push` chain to one there if present, and `init` names any other it turns off. `git commit --no-verify` skips the hook once.
 
 The gate's lanes build the check profile into `target/check` and the no-default-features matrix into `target/matrix`, so those builds can run beside the `target/` build instead of waiting on its lock. All three directories sit under `target/`, which `.gitignore`, ruff's exclude, the recursive walkers and `mise run clean` already cover.
 
