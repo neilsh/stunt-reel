@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from stunt_reel.tac.bda import BdaInjector
 from stunt_reel.tac.palette import MODE_13H_PALETTE
+from stunt_reel.tac.playone import DGROUP_RUNTIME_SEG, FILM_CLOCK_OFFSET
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -142,7 +143,7 @@ class MockTransport:
         self.memory = bytearray(memory_size)
         self.current_tick: int = 0
         self.max_ticks: int = 600
-        self.tick_address: Address = (0x1575, 0x4896)
+        self.tick_address: Address = (DGROUP_RUNTIME_SEG, FILM_CLOCK_OFFSET)
         self._closed: bool = False
         self._scenario: list[TrajectoryRecord] | None = None
         self._sim_started: bool = False

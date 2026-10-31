@@ -17,7 +17,7 @@
 - Offline tests only: nothing under `tests/` starts an emulator or reads `corpus/`. A `MockEmulator` returns canned trace and dump output (AGENTS.md directive 1).
 - Stage the conf and the mount **together under the data root** (`<data>/stage/<run>/`); a mount under the checkout is refused ("outside allowed directories"). Remove the stage after the run.
 - The Lua instruction limit forbids per-byte loops: use `raw:gsub(".", H)` for hex, compare pages as strings, and diff offline in Python. Prefix string outputs with a letter, because `dosbox.output` coerces numeric-looking strings.
-- Keep a run to about 90 page samples and 15 MB of output. Chunk longer plans into runs.
+- Keep a run to at most 40 page samples (`MAX_DUMPS`; 90 ran out of Lua memory live) and 15 MB of output. Chunk longer plans into runs.
 - `DS` is `0x0F46` here (image paragraph `0x01F5` + `0x0D51`), not `0x1575`. Derive it from the constants, do not hard-code it twice.
 - Do not kill running DOSBox-X processes until Task 7. Captures never serialise: each run takes its own web-server port and a fresh random bearer token passed as `DOSBOX_API_TOKEN`.
 - Run `mise run check-py` while iterating and `mise run check` once before each commit. Stage files by name, never `corpus/`. Conventional Commits with a why body, `mise run check passes.`, and the trailer `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
@@ -72,7 +72,7 @@
 
 ## Task 4: Plans replace sessions
 
-- [x] **4.1** Tests for `plan.py`: decoding a trace string (`tick:global:changed,...`), chunking a frame list to at most 90 per run, and mapping dumps back to frames.
+- [x] **4.1** Tests for `plan.py`: decoding a trace string (`tick:global:changed,...`), chunking a frame list to at most `MAX_DUMPS` (40) per run, and mapping dumps back to frames.
 - [x] **4.2** Implement `run_plan(film, trace_plan, pick, dump_plan_builder)`. `pick` is a Python function over the trace that returns the frames to dump, so the sampler's old adaptive logic (new film tick, end of film after N holds, requested ticks) moves there.
 - [x] **4.3** Rewrite `framebuffer.capture` and `capture_playone_reference.py` on it. Keep `meta.json` and the `frames/` layout (ADR 0022 and 0024).
 - [x] **4.4** Rewrite `probe_playone_light.py` (the work segment pointer and the lighting words are read into the trace, then the dump reads the ranges).
@@ -90,8 +90,8 @@
 ## Task 6: Tear rule, DAC model, re-baseline
 
 - [ ] **6.1** Capture `CTRY.FLM` and `INTRO.FLM` with the new path plus a video capture, and measure the tear rate against the lossless AVI at matched frames. Write the rule (accept a page whose rows match some video frame in *f-2* to *f+4*, else retry at *f+1*) into `research/parity/method.md` and implement it in `pick`.
-- [x] **6.2** Record the DAC for each page: the working palette plus the fade model (low half new, high half previous) for frames where the working palette differs from the previous frame's. Decide the palette-lead question left open in § 4.3 by testing the working palette at *f-2*.
-- [ ] **6.3** Capture the new references as new add-only directories, edit `references.toml` in a reviewed commit with the new hashes, rescore, and append a `parity/log.md` row stating the move against the DOSBox-X references.
+- [ ] **6.2** (Partly done: the fade model is written in `method.md` § 3.1, but `framebuffer.py` still records the working palette alone, `"palette_source": "working"`.) Record the DAC for each page: the working palette plus the fade model (low half new, high half previous) for frames where the working palette differs from the previous frame's. Decide the palette-lead question left open in § 4.3 by testing the working palette at *f-2*.
+- [x] **6.3** (Done 2026-10-31: `vault-ctry/frames/004` and `vault-intro/frames/004`; see the `parity/log.md` row.) Capture the new references as new add-only directories, edit `references.toml` in a reviewed commit with the new hashes, rescore, and append a `parity/log.md` row stating the move against the DOSBox-X references.
 - [x] **6.4** Commit.
 
 ## Task 7: Remove DOSBox-X
@@ -111,7 +111,7 @@
 
 ## Status and Handoff (2026-10-30)
 
-Tasks 1 to 5 and 7 are done on branch `worktree-dosbox-automation-spike`; Task 6 is partly done (6.2 and 6.4 recorded, 6.1 and 6.3 open). The live findings are in [`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.4 and [`driving.md`](../../../research/makeone-exe/driving.md) § 9.
+Tasks 1 to 5 and 7 are done on branch `worktree-dosbox-automation-spike`; Task 6 is partly done (6.4 done, 6.2's fade model written down but not applied, 6.1 open). The live findings are in [`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.4 and [`driving.md`](../../../research/makeone-exe/driving.md) § 9.
 
 Verified live: `capture-ref` on `CTRY.FLM` (113 frames at 7,000 cycles one pass at a time; 121 frames in 112 s at 45,000 with parallel passes) and `INTRO.FLM` (315 frames, 17 min before passes ran in parallel); `make-all` on `747LAND.FLM` on both CPU profiles, byte-identical to the DOSBox-X archive. `probe-light` on `CTRY.FLM` (seven samples in 111 s). `mise run play` (640x480 window, key script done in 21 s, exit 0 and stage removed after the window closed). Scored with `stuntreel parity`: new captures score as well as the DOSBox-X references or better on both films (§ 4.4). Not run live: the batch survey. A dynamic-core sweep matched the normal core's rate within 1% at 40% less host CPU, so capture moved to the dynamic core.
 
@@ -127,13 +127,13 @@ Rulings made while executing (cost if wrong in brackets):
 - Every script parks the mouse cursor bottom-left after the dialog keys, over the button bar, so it no longer sits in the 3D view of captured pages. [captures before 2026-10-31 differ by the cursor]
 - Capture and `play` run the dynamic core at 45,000 cycles, not the normal core at 7,000 (the dynamic core costs 0.23 of a host core against 0.39 at the same rate): the render rate saturates there (99% of emulated frames draw a new page against 46%). 7,000 only matched DOSBox-X's loop count. [captures no longer match the DOSBox-X references' pacing; they are being replaced]
 - Dump passes run up to eight at once, split evenly, each launch with its own `dosbox-<port>.conf`: one pass at a time put `INTRO.FLM` past the batch's 900 s timeout. [four emulators' memory and CPU during a capture]
-- The tear rule and fade model are written into [`method.md`](../../../research/parity/method.md) § 3.1 but not applied in `pick`; the AVI tear rate was not re-measured. `references.toml` still names the DOSBox-X captures. [tears go unflagged; references stay DOSBox-X-era]
+- The tear rule and fade model are written into [`method.md`](../../../research/parity/method.md) § 3.1 but not applied in `pick`; the AVI tear rate was not re-measured. [tears go unflagged]
 - `tools/dosbox/dosbox-utils.conf` stays as a by-hand profile, unverified on dosbox-automation; `capture.md` and `capture-speed.md` carry a historical banner rather than a rewrite.
 - `KNOWN_CAPTURE_STALLS` is unchanged pending a re-survey.
 
 Next:
 
-1. Decide 6.3: promote `vault-ctry/frames/003` and a dynamic-core `INTRO.FLM` capture in a reviewed edit of `references.toml` (both scored no worse than the DOSBox-X references).
+1. `INTRO.FLM` before film tick 769: the new reference covers it and the render scores about 0 SSIM on all 70 frames there (`parity/log.md`, 2026-10-31). Find what the opening shows and why the render misses it.
 2. Patch #3: build patched and unpatched `PLAYONE.EXE`, `STUNT.EXE` and `MAKEONE.EXE` trees from `corpus/patches/`, find the patched build's offsets, and test `COUNT.FLM` and the other stalled films on it. A separate piece of work.
 3. Re-survey the batch on dosbox-automation (timeouts, the stall list).
 4. 7.5: the stale `dosbox-x.exe` processes on the machine are the user's to end.

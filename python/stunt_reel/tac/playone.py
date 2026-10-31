@@ -28,8 +28,8 @@ __all__ = [
 
 #: Real-mode segment of PLAYONE.EXE's DGROUP, which holds both code and data.
 DGROUP_SEG: str = "0D51"
-#: Runtime DS (the DGROUP segment while playing), observed live in the T11 check. The
-#: debugger exposes no register read, so captures take it as a parameter defaulting to this.
+#: Runtime DS under the retired DOSBox-X harness, observed live in the T11 check. Only the
+#: offline streamer model (``vsync.py``, ``MockTransport``) uses it; live runs use AUTOMATION_DS.
 DGROUP_RUNTIME_SEG: int = 0x1575
 #: DS offset of the active film clock, 50 Hz ticks into the film (# [MEM-FLM-TICK]).
 FILM_CLOCK_OFFSET: int = 0x4896
