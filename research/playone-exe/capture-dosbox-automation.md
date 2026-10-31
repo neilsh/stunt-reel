@@ -105,7 +105,7 @@ The DOSBox-X debugger harness is in [`capture.md`](capture.md) and its speed and
 
 ### 4.5 Torn Pages and the DAC Lag
 
-2026-10-31, the `capture` profile (dynamic core, 45,000 cycles), unpatched `PLAYONE.EXE`, scratch Lua over every emulated frame of `CTRY.FLM` and `INTRO.FLM`; the method and raw counts are in [`tear-palette-investigation-2026-10-31.md`](../../docs/process/plans/tear-palette-investigation-2026-10-31.md).
+2026-10-31, the `capture` profile (dynamic core, 45,000 cycles), unpatched `PLAYONE.EXE`, scratch Lua over every emulated frame of `CTRY.FLM` and `INTRO.FLM`. Each frame's rows 0–191 of `A000` were compared, in 24 bands of 8 rows, with the two composed pages, and a frame with a band only one page matches and a band only the other matches counts as torn; its working palette was compared with the previous frame's.
 
 * **A page read in the frame callback can be torn.** `[Supported Inference]` for the mechanism. The callback runs at an emulated-frame boundary set by emulated time, and the `A000` update (`0x738C`, `repe cmpsw`/`rep movsw` then sprites, no retrace wait) takes tens of thousands of guest cycles, so a boundary can land inside it. The game keeps two composed pages, their segments in `DS:0x22CA` and `0x22CC` (`0x336B` and `0x430B` here), swapped every render; after a finished copy rows 0–191 of `A000` equal one of them. Torn pages show a clean split: top rows from one buffer, the rest from the other.
 * **How often.** `[Bounded Observation]`, 24 bands of 8 rows per page:
@@ -115,7 +115,7 @@ The DOSBox-X debugger harness is in [`capture.md`](capture.md) and its speed and
   | `CTRY.FLM` | 1,908 | 4.1% (66; 71 at row level) | 3.5% | 3 of 121 (4 at row level) |
   | `INTRO.FLM` | 5,384 | 2.9% (127) | 2.4% | 7 of 346 |
 
-  In every `CTRY.FLM` case but one, frame *f* + 1 is clean. The rate should scale as 1/cycles (REST snapshots at 7,000 cycles gave 10 of 97); not swept.
+  The torn picks of `004`, by emulated frame: `CTRY.FLM` 1677, 1816 and 1986, plus 1662 at row level only (2 of 192 rows); `INTRO.FLM` 3382, 4604, 5053, 5068, 5269, 5284 and 5794. In every `CTRY.FLM` case but one, frame *f* + 1 is clean. The rate should scale as 1/cycles (REST snapshots at 7,000 cycles gave 10 of 97); not swept.
 * **The DAC lags the working palette.** `[Bounded Observation]`, one `CTRY.FLM` fade, five palette steps, frames 2680–2729 against a lossless AVI decoded per palette half. At the best page-to-video alignment every step fits exactly one model: at the step's first frame *c* the DAC is the old palette, at *c* + 1 the low half is new and the high half old, from *c* + 2 both are new. So the DAC with page *f* is `low = W(f-1)`, `high = W(f-2)`, which settles the palette-lead question of § 4.3: one frame for the low half, two for the high.
 * **Exposure in the `004` references.** `[Bounded Observation]`. No picked frame of `004` falls at *c* or *c* + 1 (0 of 121 and 0 of 346), because the page rarely changes there and `pick` takes changed pages only; 17 of 1,618 and 2 of 4,367 candidate frames are in the window.
 * **What the harness does with it.** The trace carries a torn flag and a palette-changed flag per frame, `pick` skips torn frames and the two frames of each palette step, and a page its own dump pass reads as unusable is dropped ([`luagen.py`](../../python/stunt_reel/tac/luagen.py), [`plan.py`](../../python/stunt_reel/tac/plan.py)). Rebuilding the DAC from the two previous palettes was not built; it waits for a film whose fade leaves too few frames.

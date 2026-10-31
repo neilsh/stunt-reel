@@ -168,3 +168,68 @@ def test_code_cited_docs_exist() -> None:
             if not (REPO_ROOT / match.group(1)).exists():
                 missing.append(f"{path.relative_to(REPO_ROOT).as_posix()}: {match.group(1)}")
     assert not missing, "Code cites missing documents:\n" + "\n".join(sorted(set(missing)))
+
+
+# AGENTS.md: process documents are never cited for a fact about the system. These are the
+# sources of truth that must not lean on one.
+PROCESS_DIR = REPO_ROOT / "docs" / "process"
+PROCESS_FREE = ("research", "docs/SPEC.md", "docs/ARCHITECTURE.md")
+
+# Links that point at where work was tracked or planned rather than citing a fact through it.
+# This list may only shrink: a new link fails, and so does an entry that no longer exists.
+PROCESS_POINTERS = frozenset(
+    {
+        ("docs/ARCHITECTURE.md", "docs/process/plans/architecture-deepening/README.md"),
+        ("docs/SPEC.md", "docs/process/TEAM_SHEET.md"),
+        ("research/makeone-exe/driving.md", "docs/process/plans/make-all-2026-10-29.md"),
+        ("research/parity/batch.md", "docs/process/plans/batch-parity-2026-10-30.md"),
+        ("research/parity/method.md", "docs/process/TEAM_SHEET.md"),
+        (
+            "research/playone-exe/dosbox-x-legacy.md",
+            "docs/process/plans/dosbox-automation-switch-2026-10-30.md",
+        ),
+    }
+)
+
+
+def _process_links() -> set[tuple[str, str]]:
+    """(source, target) for every Markdown link from a source of truth into docs/process/."""
+    sources: list[Path] = []
+    for entry in PROCESS_FREE:
+        path = REPO_ROOT / entry
+        if path.is_file():
+            sources.append(path)
+        else:
+            sources.extend(_walk(path, LINK_SKIPPED_DIRS))
+    found: set[tuple[str, str]] = set()
+    for path in sources:
+        if path.suffix != ".md":
+            continue
+        for match in MARKDOWN_LINK_REGEX.finditer(_prose(path)):
+            file_part = match.group(1).partition("#")[0]
+            if not file_part or re.match(r"[a-z][a-z0-9+.-]*:", file_part):
+                continue
+            resolved = (path.parent / file_part).resolve()
+            if resolved.is_relative_to(PROCESS_DIR.resolve()):
+                found.add(
+                    (
+                        path.relative_to(REPO_ROOT).as_posix(),
+                        resolved.relative_to(REPO_ROOT.resolve()).as_posix(),
+                    )
+                )
+    return found
+
+
+def test_sources_of_truth_do_not_link_into_process_docs() -> None:
+    """research/, SPEC.md and ARCHITECTURE.md link into docs/process/ only through the pointers."""
+    links = _process_links()
+    new = sorted(links - PROCESS_POINTERS)
+    assert not new, (
+        "A source of truth links into docs/process/ (AGENTS.md: never cite a process document "
+        "for a fact about the system); move the fact into the note:\n"
+        + "\n".join(f"{source} -> {target}" for source, target in new)
+    )
+    stale = sorted(PROCESS_POINTERS - links)
+    assert not stale, "PROCESS_POINTERS lists links that are gone; drop them:\n" + "\n".join(
+        f"{source} -> {target}" for source, target in stale
+    )
