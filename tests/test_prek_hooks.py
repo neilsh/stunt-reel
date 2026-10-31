@@ -124,7 +124,7 @@ def test_ci_built_ins_catch_a_committed_change(
 
 def _ci_skip() -> str:
     ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    return re.findall(r"\bSKIP: (\S+)", ci)[0]
+    return str(re.findall(r"\bSKIP: (\S+)", ci)[0])
 
 
 def test_ci_skips_exactly_the_local_hooks() -> None:
