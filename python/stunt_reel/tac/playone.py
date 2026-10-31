@@ -1,19 +1,10 @@
-"""Addresses and dialog keys for driving PLAYONE.EXE through the TAC harness.
+"""Addresses and dialog keys for driving PLAYONE.EXE through dosbox-automation.
 
-The parity capture owns the emulator through DOSBox-X's debugger, and this build
-imposes two hard constraints the driver is built around:
-
-* any debugger command issued while PLAYONE.EXE is still unpacking (roughly the
-  first two seconds) kills the guest with an Illegal Unhandled Interrupt Called 6
-  storm, and reads of DGROUP during the load can crash the emulator outright, so
-  the driver touches nothing until the dialog has settled on screen; and
-* VRT after Mode 13h playback starts crashes the emulator (0xC0000409), so frames
-  are sampled through the documented post-retrace trap at 0D51:0C5E: an
-  execution breakpoint plus RUN stops the guest once per rendered frame.
-
-Keystrokes only reach INT 16h while the guest free-runs, so the dialog is driven
-by writing words into the BIOS keyboard ring buffer (bda.py) and letting the
-guest poll them.
+A run is a plan (``plan.py``): Lua traces the film clock per emulated frame, then replays the
+boot and dumps the frames Python picked. The dialog is driven by ``KBD_*`` key names in the
+generated Lua (``film_selection_names``); the ``film_selection_keys`` scan codes and the DOSBox-X
+segment constants remain for the offline streamer model and its notes
+(``research/playone-exe/dosbox-x-legacy.md``).
 """
 
 from __future__ import annotations

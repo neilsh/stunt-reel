@@ -34,7 +34,7 @@ corpus/**
 # Proprietary executables
 *.exe
 
-# Local capture output (DOSBox-X default)
+# Local capture output (dosbox-automation default)
 capture/
 
 # OS junk

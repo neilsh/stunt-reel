@@ -1,6 +1,6 @@
 """Offline tests for `python/scripts/batch_parity.py`: the four stage functions are replaced by fakes.
 
-Nothing here launches DOSBox-X, MAKEONE or the stuntreel binary, and nothing reads the corpus: the
+Nothing here launches dosbox-automation, MAKEONE or the stuntreel binary, and nothing reads the corpus: the
 corpus is built in `tmp_path`, and the process runner fails the test if anything calls it.
 """
 

@@ -1,6 +1,6 @@
 """`batch_parity._run_command` ends the whole process tree on a timeout, not just the direct child.
 
-The children here are plain Python processes; nothing launches DOSBox-X.
+The children here are plain Python processes; nothing launches an emulator.
 """
 
 from __future__ import annotations

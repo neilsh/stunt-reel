@@ -132,7 +132,7 @@ def render_conf(
 ) -> str:
     """The dosbox-automation conf that mounts *mount*, serves REST on *port* and runs *program*.
 
-    ``cpu_cycles = 7000`` reproduces DOSBox-X's render-loop count (370 against 369) and
+    ``cpu_cycles = 7000`` reproduces the render-loop count the DOSBox-X captures had (370 against 369) and
     ``core = normal`` keeps runs bit-repeatable (``capture-dosbox-automation.md`` § 4.1).
     """
     lines = [

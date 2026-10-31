@@ -32,7 +32,7 @@ Delivery is sequential. This section records what each phase is for and whether 
    * `PLAYONE.EXE` unpacked and disassembled for startup, memory, navigation and the display-list VM ([`research/playone-exe/`](../research/playone-exe/)).
 
 2. **Phase 1: Capture Harness & AOT glTF 2.0 Exporter *(Status: Complete; Milestone 1 gate passed)***
-   * Treats `PLAYONE.EXE` as a reference black-box kinematics compiler running inside headless DOSBox-X, driven over its debugger socket, and gates snapshots on the film clock ([`capture.md`](../research/playone-exe/capture.md), [`MEMORY_MAP.md`](../research/playone-exe/memory-map.md)).
+   * Treats `PLAYONE.EXE` as a reference black-box kinematics compiler running inside dosbox-automation, driven as a Lua plan over its REST API, and gates snapshots on the film clock ([`capture.md`](../research/playone-exe/capture.md), [`MEMORY_MAP.md`](../research/playone-exe/memory-map.md)).
    * Emits a synthetic trajectory oracle (hand-written kinematics under `build/oracle/`, not captured from `PLAYONE.EXE`; [ADR 0022](adr/0022-captures-are-add-only-beside-a-read-only-corpus.md)) and self-contained animated glTF 2.0 files (`python/stunt_reel/tac/`; glTF export is `crates/stunt-gltf/`).
 
 3. **Phase 2: Native Rust Engine *(Status: Complete; Milestone 2 gate passed)***
@@ -69,7 +69,7 @@ Delivery is sequential. This section records what each phase is for and whether 
 
 #### Real-Mode Physical Address Translation
 
-  * All 16-bit MS-DOS `Segment:Offset` pointers inspected via `dosbox-x-mcp-server`, GDB, or static disassembly must be normalized to 20-bit linear physical addresses within the $1\text{ MB}$ conventional memory space (`0x00000`–`0xFFFFF`):
+  * All 16-bit MS-DOS `Segment:Offset` pointers inspected via dosbox-automation's Lua memory reads, GDB, or static disassembly must be normalized to 20-bit linear physical addresses within the $1\text{ MB}$ conventional memory space (`0x00000`–`0xFFFFF`):
     $$\text{Address}_{\text{linear}} = (\text{Segment} \ll 4) + \text{Offset} = (\text{Segment} \times 16) + \text{Offset}$$
 
 #### [I4] Discrete Simulation Ticks & Cut-Aware Sub-Tick Interpolation
@@ -94,7 +94,7 @@ Delivery is sequential. This section records what each phase is for and whether 
 
   * Original VGA Mode 13h framebuffers render at $320 \times 200$ pixels displayed on a physical $4:3$ CRT, resulting in non-square pixels stretched vertically by $1.2$:
     $$\text{Aspect}_{\text{physical}} = \frac{320}{200 \times 1.2} = \frac{320}{240} = \frac{4}{3} \approx 1.3333$$
-  * All visual parity gates normalize reference DOSBox-X captures to $4:3$ ($320 \times 240$) prior to Structural Similarity (SSIM) evaluation.
+  * All visual parity gates normalize reference captures to $4:3$ ($320 \times 240$) prior to Structural Similarity (SSIM) evaluation.
   * Off-screen renders (including background sky/horizon palette fills and static stage terrain) must achieve mean $\text{SSIM} \ge 0.88$ initially and mean $\text{SSIM} \ge 0.90$ at sign-off, both measured on the native `wgpu` engine. For the `stuntreel parity` comparator the thresholds apply to `mean_ssim_scored` (SSIM over scored frames) (see [`method.md`](../research/parity/method.md#1-the-loop)). glTF export is a convenience format and has no parity gate of its own; the former Phase 1 glTF tier (G05) is retired.
 
 ### 2.3 Software Architecture Guardrails
@@ -143,7 +143,7 @@ The specification does not carry binary-analysis findings. They live in `researc
 | `PLAYONE.EXE` image, entry point, LZEXE packing, command tail (only a leading `?` is read, everything else is ignored), memory and disk gates | [`research/playone-exe/startup.md`](../research/playone-exe/startup.md) |
 | Modal `LOAD FILM` dialog, prefix search, BIOS Data Area keystroke injection, `.FLM` + `.ALL` pairing rule | [`research/playone-exe/navigation.md`](../research/playone-exe/navigation.md) |
 | `DGROUP` offsets, work-segment offsets, `# [MEM-*]` anchors | [`research/playone-exe/memory-map.md`](../research/playone-exe/memory-map.md) (evidence: [`memory.md`](../research/playone-exe/memory.md)) |
-| DOSBox-X capture harness and protocol | [`research/playone-exe/capture.md`](../research/playone-exe/capture.md) |
+| dosbox-automation capture harness and plan protocol | [`research/playone-exe/capture.md`](../research/playone-exe/capture.md) |
 | Display-list VM, `OP_TAP`, `OP_ANIMATE` | [`sod-vm.md`](../research/playone-exe/sod-vm.md), [`sod-animate.md`](../research/playone-exe/sod-animate.md) |
 | File formats and byte layouts | [`research/formats/INDEX.md`](../research/formats/INDEX.md) and the `.ksy` schemas |
 | Parity: method, results log, where the loss sits | [`research/parity/`](../research/parity/) |

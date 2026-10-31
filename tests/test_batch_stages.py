@@ -197,23 +197,3 @@ def test_score_record_carries_ssim_and_iou(tmp_path: Path) -> None:
     assert record.stage == "score"
     assert record.ssim == 0.7
     assert record.iou == 0.9
-
-
-def test_archive_conf_differs_from_the_capture_conf_only_in_the_cpu_lines() -> None:
-    tools = Path(__file__).resolve().parent.parent / "tools" / "dosbox"
-    capture = (tools / "dosbox-parity.conf").read_text(encoding="utf-8").splitlines()
-    archive = (tools / "dosbox-archive.conf").read_text(encoding="utf-8").splitlines()
-
-    def body(lines: list[str]) -> list[str]:
-        # Comments and the two cpu settings may differ; everything else must agree.
-        return [
-            line
-            for line in lines
-            if not line.startswith("#") and not line.startswith(("core =", "cycles ="))
-        ]
-
-    assert body(archive) == body(capture)
-    assert "core = dynamic" in archive
-    assert "cycles = max" in archive
-    assert "core = normal" in capture
-    assert "cycles = 8000" in capture

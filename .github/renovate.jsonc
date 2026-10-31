@@ -55,7 +55,7 @@
       "groupName": "rust toolchain",
     },
     // A version bump alone installs nothing for these three: kaitai carries a sha256 of its
-    // release zip, and the DOSBox entries name an asset_pattern and bin_path. Upgrading them is
+    // release zip, and the dosbox-automation entry names an asset_pattern and a checksum. Upgrading them is
     // a hand change, and no gate run on any platform would catch it if it were not.
     {
       "description": "Freeze the tools whose bump needs a checksum or an asset pattern.",

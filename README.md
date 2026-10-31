@@ -20,7 +20,7 @@ No game assets or executables are distributed. You need your own lawfully obtain
 | Native renderer (`stuntreel`) | Plays the demo films `CTRY.FLM` and `INTRO.FLM` at 50 Hz with a free camera. Terrain colours, some actor placement and level of detail do not yet match the original. |
 | glTF export | Shapes and single film frames. |
 | Parity loop | Scores rendered frames against frames captured from the original player. Its log is [`research/parity/log.md`](research/parity/log.md). |
-| Platforms | The build and test gate runs on Linux, macOS and Windows. Capture and parity need Windows, DOSBox-X and your own copy of the demo. |
+| Platforms | The build and test gate runs on Linux, macOS and Windows. Capture and parity need Windows, dosbox-automation and your own copy of the demo. |
 | Not planned | The interactive flight simulator and authoring tools (`STUNT.EXE`); audio output is deferred. See [`docs/SPEC.md`](docs/SPEC.md#21-explicit-scope-boundaries--non-goals). |
 
 ---
@@ -30,7 +30,7 @@ No game assets or executables are distributed. You need your own lawfully obtain
 You can build and test everything without any game files:
 
 ```powershell
-mise trust && mise install   # pinned toolchains (Rust, Python, uv, Java, DOSBox-X, Kaitai)
+mise trust && mise install   # pinned toolchains (Rust, Python, uv, Java, dosbox-automation, Kaitai)
 mise run init                # shared data root, cached Python environment
 mise run check               # format, lint, typecheck and tests, Rust and Python
 ```

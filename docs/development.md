@@ -8,8 +8,7 @@ Setup, workflows and the quality gate for working on `stunt-reel`. The project o
 - **[Rust](https://www.rust-lang.org/)** 2024 edition (MSRV 1.88; the pinned toolchain is 1.99.1), managed via `mise` or `rustup`
 - **[uv](https://docs.astral.sh/uv/)** (installed by `mise`, which pins the exact version; `required-version` in [`pyproject.toml`](../pyproject.toml) refuses a standalone uv older than that pin) and **Python ≥ 3.12** (mise installs the pinned interpreter; under `mise`, `[tool.uv] python-preference` keeps uv on it instead of downloading a newer one the floor allows)
 - **[ffmpeg](https://ffmpeg.org/)** on `PATH` (only for `--video` export)
-- **[DOSBox-X](https://dosbox-x.com/) `2026.10.01`** (Windows x64 portable SDL2 build, installed by `mise`)
-- **[`dosbox-x-mcp-server`](https://github.com/caiiiycuk/dosbox-x-mcp-server) `0.1.2`** (managed via `mise`)
+- **[dosbox-automation](https://github.com/dosbox-automation/dosbox-automation) `0.85.1`** (a DOSBox Staging fork with a REST and Lua API; Windows x64 portable zip, installed by `mise`)
 - **Java 21 (Temurin)** and **Kaitai Struct Compiler `0.11`** (managed via `mise`; needed only for the `.ksy` corpus checks)
 
 ---
@@ -20,39 +19,18 @@ Setup, workflows and the quality gate for working on `stunt-reel`. The project o
 
 ```powershell
 mise trust     # once per fresh clone, if mise asks you to trust the config
-mise install   # pinned toolchains, DOSBox-X, Kaitai compiler
+mise install   # pinned toolchains, dosbox-automation, Kaitai compiler
 mise run init  # link the shared data root and cached environment, then uv sync
 ```
 
 Pinned versions live in [`mise.toml`](../mise.toml); `mise run init` links the shared cache and then runs `uv sync`, which installs the `kaitaistruct==0.11` runtime for the schema checks.
 
 > [!NOTE]
-> The quality gate (`mise run check`) runs on Linux, macOS and Windows. Capture, parity and corpus workflows are Windows + DOSBox-X + local-corpus only; elsewhere you can still build, test and render from synthetic fixtures.
+> The quality gate (`mise run check`) runs on Linux, macOS and Windows. Capture, parity and corpus workflows are Windows + dosbox-automation + local-corpus only; elsewhere you can still build, test and render from synthetic fixtures.
 
-### 2. DOSBox-X debugger over MCP (optional)
+### 2. dosbox-automation
 
-Only needed to inspect the original player live from an MCP-capable AI coding agent; building, testing, rendering and the parity loop do not use it.
-
-```powershell
-mise run mcp                    # launch dosbox-x-mcp-server over stdio; it reports its port through dosbox_mcp_port
-mise run ensure-dosbox -- --mcp-port <port>   # start DOSBox-X dialling that port (once per debugger session)
-```
-
-Register the server in your agent's MCP configuration (the file and key names depend on the agent) and make sure `dosbox-x-mcp-server` is on `PATH`. A typical entry:
-
-```json
-{
-  "mcpServers": {
-    "dosbox-x": {
-      "command": "dosbox-x-mcp-server",
-      "args": []
-    }
-  }
-}
-```
-
-> [!NOTE]
-> DOSBox-X always dials *out*; it never listens. A profile carries no port: `mise run capture-ref` binds port 0, passes the port the OS gave it with `-set "dosbox mcp_server=<port>"`, and two captures therefore never collide ([ADR 0021](adr/0021-capture-chooses-its-control-port.md)). For the interactive debugger, ask the MCP server for `dosbox_mcp_port` and pass it to `mise run ensure-dosbox -- --mcp-port <port>`.
+`mise install` puts `dosbox` on the `mise` path; `capture-ref`, `probe-light`, `make-all` and `play` find it through `mise exec` (or `DOSBOX_AUTOMATION_EXE`). Nothing is registered with an agent: each run stages a mount and a conf under the data root (`<data>/stage/<film>-<label>/`), starts the emulator on a free web-server port with a random bearer token passed in the environment, and talks to it over REST. A capture is a plan, a trace pass and a dump pass of Lua that Python checks against each other ([ADR 0025](adr/0025-capture-runs-are-plans-not-sessions.md)), so two runs never collide.
 
 ### 3. Worktrees and the shared data root
 
@@ -78,7 +56,7 @@ A film needs an `.ALL` to be captured: one beside its `.FLM`, or one that `make-
 | `crates/stunt-render/` | `wgpu` pipelines, Mode 13h palette LUT, headless renderer, SSIM/IoU comparator |
 | `crates/stunt-parity/` | Parity artifact port: typed render, capture and report documents with a schema version and validation |
 | `crates/stunt-cli/` | `stuntreel` binary: interactive/headless presentation plus the `parity` and `export-gltf` subcommands |
-| `python/stunt_reel/tac/` | DOSBox-X TAC harness: control transport, BIOS Data Area input, frame capture — [`research/playone-exe/capture.md`](../research/playone-exe/capture.md) |
+| `python/stunt_reel/tac/` | dosbox-automation harness: Lua generator, REST client, capture plans, staging, MAKEONE driver — [`research/playone-exe/capture.md`](../research/playone-exe/capture.md) |
 | `crates/stunt-gltf/` | glTF 2.0 (`.glb`) exporter for shapes and single scene frames, driven by `stunt-cli export-gltf` |
 | `python/scripts/` | Entry points for capture, parity, format and documentation checks (e.g. `capture_playone_reference.py`, `parity_run.py`, `parity_sweep.py`, `verify_schemas_corpus.py`, `verify_formats_docs.py`) plus maintenance tools |
 | `tests/` | Python suite and synthetic fixtures — [`tests/fixtures/README.md`](../tests/fixtures/README.md); Rust integration tests live in `crates/*/tests/` |
@@ -86,7 +64,7 @@ A film needs an `.ALL` to be captured: one beside its `.FLM`, or one that `make-
 | `research/` | Format specifications beside their `.ksy` layouts plus `PLAYONE.EXE` analysis notes — [`research/formats/INDEX.md`](../research/formats/INDEX.md) |
 | `corpus/` | Gitignored demo, full retail install (`stuntisl/`), patches and archive data, linked from the shared data root — [`corpus/README.md`](../corpus/README.md) |
 | `build/` | Gitignored outputs: `build/parity/{ours,report}/` and `build/gltf_output/`; `build/parity/captures/` borrows the shared captures; `build/oracle/` holds the synthetic oracle trajectory |
-| `tools/dosbox/` | DOSBox-X configs (`dosbox-playone.conf` interactive play, `dosbox-parity.conf` capture, `dosbox-mcp.conf` agent debugger, `dosbox-utils.conf` period tools) and `play_ctry.bat`, a launcher for `mise run play` — [`tools/dosbox/README.md`](../tools/dosbox/README.md) |
+| `tools/dosbox/` | `dosbox-utils.conf`, a by-hand profile for the period utilities — [`tools/dosbox/README.md`](../tools/dosbox/README.md) |
 
 ---
 
@@ -95,10 +73,10 @@ A film needs an `.ALL` to be captured: one beside its `.FLM`, or one that `make-
 ### Play a film in the original player
 
 ```powershell
-mise run play        # or: .	ools\dosbox\play_ctry.bat
+mise run play        # CTRY.FLM; mise run play -- --film corpus/stisldem/VAULT/INTRO.FLM
 ```
 
-`tools/dosbox/dosbox-playone.conf` mounts `corpus/stisldem`, launches `PLAYONE.EXE`, and queues the autotype sequence that selects `CTRY.FLM`.
+`python/scripts/play.py` stages the film and its archive, launches `PLAYONE.EXE`, presses the keys that select the film, and leaves the window to you until you close it.
 
 ### Capture reference frames and score a render
 
@@ -189,8 +167,7 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | `deny` | `cargo deny check` — advisories, license allow-list, wildcard bans, and registry sources |
 | `capture-ref` | new capture into `build/parity/captures/<film>/frames/<next run>`, never over an existing one (`--max-frames` defaults to 140) |
 | `verify-corpus` | `.ksy` catalog check against `corpus/` |
-| `play` | launch `tools/dosbox/dosbox-playone.conf` |
-| `ensure-dosbox`, `mcp` | agent debugger plumbing |
+| `play` | play a film in `PLAYONE.EXE` on dosbox-automation |
 | `parity-probe`, `verify-docs`, `unlzexe`, `probe-light`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
 
 The gate's lanes build the check profile into `target/check` and the no-default-features matrix into `target/matrix`, so those builds can run beside the `target/` build instead of waiting on its lock. All three directories sit under `target/`, which `.gitignore`, ruff's exclude, the recursive walkers and `mise run clean` already cover.
@@ -224,7 +201,7 @@ The rules that matter operationally:
 - **Nothing auto-merges.** `msrv` and `deny` are the only enforcement of the Rust floor and the licence allow-list, and Renovate cannot read either: MSRV filtering for the `crate` datasource is undocumented in practice, and no option exists for a licence allow-list. Every bot PR runs the full gate like any other.
 - **Groups split by what a failure implicates.** Patch and minor crate bumps share a PR; majors get their own, because a red `msrv` or `deny` should name one crate rather than hide behind a green action bump. Actions, Python dev dependencies and the mise pins have their own groups.
 - **New releases wait three days** (`minimumReleaseAge`), and lock files refresh monthly (`lockFileMaintenance`): a yanked crate or a transitive advisory has no upgrade for `vulnerabilityAlerts` to propose, so the lock file needs a refresh that is not a version bump.
-- **Two pins are frozen.** `kaitai_struct_compiler` carries a `sha256` of its release zip and the DOSBox entries name an `asset_pattern` and `bin_path`; for those a version bump alone installs nothing, and no gate run on any platform would catch it.
+- **Two pins are frozen.** `kaitai_struct_compiler` carries a `sha256` of its release zip and the dosbox-automation entry names an `asset_pattern` and a `checksum`; for those a version bump alone installs nothing, and no gate run on any platform would catch it.
 - **Security fixes still arrive.** Dependabot's alerts stay on and Renovate raises the fix PRs from them; Dependabot's own version and security updates are off, so one bot writes lock files and one raises advisories.
 
 Three conventions keep the pins honest. A **pin** is what gets installed ([`mise.toml`](../mise.toml) `[tools]`, [`rust-toolchain.toml`](../rust-toolchain.toml)), and only a pin may move automatically. A **floor** is the minimum the project claims (`rust-version = "1.88"`, `requires-python = ">=3.12"`), and moving one is a deliberate act after `msrv` proves it. A **target** is what ruff and mypy assume, which Renovate cannot see, so a pin moves only when its targets move with it. The **interpreter** the gate runs on is the pin's minor: `python-preference` keeps uv on the Python mise puts on PATH, and only a `uv` run outside `mise` against a different PATH interpreter drifts from it. [`tests/test_toolchain_pins.py`](../tests/test_toolchain_pins.py) fails the gate if a pin, a floor, a target and the running interpreter drift apart — and that test is what lets the compiler stay declared in two files at all: `rust-toolchain.toml` resolves (rustup reports the active toolchain overridden by it) while `mise.toml` installs, so the two are one Renovate group and the test proves them equal.

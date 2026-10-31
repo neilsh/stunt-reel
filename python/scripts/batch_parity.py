@@ -234,7 +234,7 @@ def _run_command(command: list[str], timeout: float) -> tuple[int, str]:
     """Run *command* to completion or *timeout*; return its exit code and combined output.
 
     On a timeout the whole process tree is ended: a plain ``subprocess.run`` timeout kills only the
-    direct child, which leaks the DOSBox-X it started.
+    direct child, which leaks the emulator it started.
     """
     windows = sys.platform == "win32"
     with subprocess.Popen(  # noqa: S603 - the command is built from fixed paths and film names

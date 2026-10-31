@@ -23,22 +23,8 @@ uv = "0.13.1"
 java = "temurin-21"
 "github:kaitai-io/kaitai_struct_compiler" = { version = "0.11", asset_pattern = "kaitai-struct-compiler-0.11.zip", strip_components = 1, bin_path = "bin", checksum = "sha256:ff89389d9dc9e770d78a24af328763cb1f8e7b31ce7766c9edf10669a060f2a2" }
 
-# DOSBox-X MCP Server: prebuilt release binary downloaded via mise's GitHub backend.
-# Automatically resolves architecture across Windows, macOS, and Linux.
-"github:caiiiycuk/dosbox-x-mcp-server" = "0.1.2"
-
-# Windows 64-bit DOSBox-X tool definition.
-# Only activated on Windows; on macOS/Linux, dosbox-x is installed via system package manager or Homebrew.
-[tools."github:joncampbell123/dosbox-x"]
-version = "dosbox-x-v2026.10.01"
-os = ["windows"]
-# Pin explicitly to portable 64-bit zip to avoid 32-bit archives or setup installers (.exe)
-asset_pattern = "dosbox-x-vsbuild-win64-*.zip"
-# Why SDL2: SDL2 build is required on Windows for stability with OpenGL output
-bin_path = "bin/x64/Release SDL2"
-
-# dosbox-automation (DOSBox Staging fork with a REST/Lua automation API): a capture
-# candidate evaluated beside DOSBox-X. Windows portable zip, pinned by checksum.
+# dosbox-automation (DOSBox Staging fork with a REST/Lua automation API): the emulator behind
+# capture-ref, probe-light, make-all and play. Windows portable zip, pinned by checksum.
 [tools."github:dosbox-automation/dosbox-automation"]
 version = "0.85.1"
 os = ["windows"]

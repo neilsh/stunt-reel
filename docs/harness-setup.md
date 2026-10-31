@@ -11,7 +11,7 @@ page is the machine setup they assume.
 | Item | Location | In Git? |
 | --- | --- | --- |
 | Tool versions and task definitions | [`mise.toml`](../mise.toml), `uv.lock`, `Cargo.toml` | yes |
-| Installed tools (Rust, Python, uv, Java, DOSBox-X, cargo tools) | `%LOCALAPPDATA%\mise\installs` | no |
+| Installed tools (Rust, Python, uv, Java, dosbox-automation, cargo tools) | `%LOCALAPPDATA%\mise\installs` | no |
 | mise trust and tracked-config records | `%USERPROFILE%\.local\state\mise` | no |
 | mise global settings | `%USERPROFILE%\.config\mise\config.toml` | no |
 | Shared data root | `<parent-of-primary>/<repo-name>.data`, see [ADR 0008](adr/0008-worktrees-share-one-read-only-data-root.md) | no |

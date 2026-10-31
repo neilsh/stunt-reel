@@ -3,7 +3,9 @@
 ## Status
 
 accepted 2026-10-29; supersedes the machine-wide capture lock of
-[ADR 0008](0008-worktrees-share-one-read-only-data-root.md).
+[ADR 0008](0008-worktrees-share-one-read-only-data-root.md). Superseded 2026-10-30 by
+[ADR 0025](0025-capture-runs-are-plans-not-sessions.md): the DOSBox-X debugger socket this
+records is retired, though the rule that a run picks its own port stands.
 
 A capture session binds port 0 — the OS picks — and launches DOSBox-X with
 `-set "dosbox mcp_server=<port>"`, so the port DOSBox-X dials is the port the
