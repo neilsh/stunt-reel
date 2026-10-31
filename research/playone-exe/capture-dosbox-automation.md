@@ -55,18 +55,29 @@ The DOSBox-X debugger harness is in [`capture.md`](capture.md) and its speed and
   | Frames per value | 5.24 | 3.92 | 3.17 | 2.64 | 2.01 | 4.00 | 1.42 |
 
   DOSBox-X's 369 loops fall between 6,000 and 8,000 (about 7,000 by interpolation; not measured). The dynamic core completed without a crash and two runs at 8,000 were bit-identical, as were two at 6,000 on the normal core.
-* **Recorded RGB is the DAC.** Pages read at emulated frames 1500, 1800, 2100 and 2400 (`mem_read` of `A000:0000`) against the video frame `F - 1200`, and the DAC read through `PUT /api/v1/io/port` `3C7` then three `GET` of `3C9` (256 entries in 5.75 s, palette unchanged while reading): each index maps to one RGB at three of the four frames, one pair of indices shares an RGB at frame 1800, and every colour equals `round(x * 255 / 63)` of the 6-bit DAC component with zero error (48 and 72 indices checked). `(x << 2) | (x >> 4)` is off by up to 1 and `x << 2` by up to 3. At frame 2400 three indices have two RGB values (79 pixels) and the video matches the page one frame earlier: a palette change or a one-frame offset, not resolved. The Lua conversion of a page to hex hit the instruction limit in one frame and had to be spread across frames.
+* **Recorded RGB is the DAC.** Pages read at emulated frames 1500, 1800, 2100 and 2400 (`mem_read` of `A000:0000`) against the video frame `F - 1200`, and the DAC read through `PUT /api/v1/io/port` `3C7` then three `GET` of `3C9` (256 entries in 5.75 s, palette unchanged while reading): each index maps to one RGB at three of the four frames, one pair of indices shares an RGB at frame 1800, and every colour equals `round(x * 255 / 63)` of the 6-bit DAC component with zero error (48 and 72 indices checked). `(x << 2) | (x >> 4)` is off by up to 1 and `x << 2` by up to 3. At frame 2400 three indices have two RGB values (79 pixels) and the video matches the page one frame earlier: a one-frame offset in the HUD, not a palette change (§ 4.1). The Lua conversion of a page to hex hit the instruction limit in one frame and had to be spread across frames; § 4.1 reads a page in one frame.
+
+### 4.1 Second Round: Seven Questions Answered
+
+`[Bounded Observation]`, 2026-10-30. Five Haiku subagents and one Sonnet subagent ran fully specified briefs (scripts and logs under `out\inv1` to `inv6` in the data root); the main session re-ran the page-versus-video comparison itself (`w1`, `w2`, `w3`) and read the DS logs from disk. The other subagents' tables are as they reported them.
+
+* **7,000 cycles matches DOSBox-X's loop count, not its pixels.** Normal core, `CTRY.FLM`: 6,500 / 7,000 / 7,500 cycles give 344 / 370 / 396 render loops against DOSBox-X's 369 (three DOSBox-X runs, all 369). Two runs at 7,000 are bit-identical (3,175 frames, equal tick logs). Aligned by HUD timer, none of 58 shared timer values has a byte-identical pair. 96.3% of pixels are within 1 per channel and 14 of 58 best pairs differ by at most 1, which points at the 6-bit to 8-bit conversion (the DOSBox-X rounding was not read); about 3.7% of pixels differ widely and were not located. Only 58 of about 370 timer values are shared, so a comparison needs a tolerance and a nearest-frame search.
+* **The dynamic core is not interchangeable.** At 8,000 cycles it gives 417 loops against the normal core's 424, with two bit-identical runs per core. The film clocks agree from frame 1276 to 2066, then differ by 1 to 2 ticks from frame 2067. Pictures already differ at frame 1280. Of 370 differing timer-paired frames, 341 are different content and 29 equal a neighbour. Use the normal core. Whether the dynamic core's pictures are wrong or only drawn at other instants was not resolved.
+* **Memory and parallel limits.** One `INTRO.FLM` run to 200 frames past the hold (5,832 video frames, 83 s emulated) took 106 s wall (1.28x), 18.9 MB of AVI (227 KB per emulated second) and a 207 MB peak working set. Sixteen and 24 parallel `CTRY.FLM` runs on 16 logical cores and 31 GB of RAM were all bit-identical to the reference with zero dropped frames; wall time per run stayed about 69 to 73 s, and each instance holds about 0.21 GB (40 would need about 8.4 GB).
+* **A page and palette read fits one frame.** In Lua, `dosbox.mem_read(0xA000, 0, 64000)` and `dosbox.mem_read(0x0F46, 0x2768, 768)` (the working palette, 6-bit units; base palette at `DS:0x2468`) in the same step see one instant, because Lua blocks the emulation. The page converts to hex with `raw:gsub(".", H)`, where `H` maps each byte to its `%02x` string; that loop is in C and fits the instruction limit. The game draws straight into `A000`. Runs are bit-identical (26 of 26 spread samples, then 100 of 100 consecutive frames). No render-complete flag turned up in DGROUP. The output store holds about 15 MB, which is about 100 samples per run; a long film needs one run per window of frames. The conf and the game mount must sit together under the data root, or the mount is refused (§ 6).
+* **Frame 2400 is a HUD offset, and the offsets are not systematic.** Two runs of frames 2390 to 2409 are identical (page, palette and meta, 20 of 20). The page equals the video frame at `F - 1200` exactly in 14 of 20 samples and one frame earlier (`F - 1201`) in 4 more; at frame 2400 the 79 differing pixels lie in rows 181 to 184, the timer digits. Two samples (2393: 757 pixels in rows 103 to 184, 2405: 10 pixels in rows 104 to 108) match no video frame, which is the render loop writing `A000` while it is scanned out. In a fade window (frames 2690 to 2709) 16 of 20 samples have an exact video frame within two frames and four (2696, 2697, 2701, 2702) have none, best differing in 3,500 to 4,200 pixels; PLAYONE uploads the DAC in two retrace-gated halves (CS:0x7B70), so a video frame can mix two palettes. The mismatch is therefore the page being read at a frame boundary during a render loop (about 17 per second against 70 frames per second), not a palette change at frame 2400.
+* **DS depends on the code segment.** In every REST sample of both films `film_tick` never goes backwards and equals `global_tick` before the hold, with `film_tick` ending at 1,342 and 3,822. DS is 0x0F46 while `CS` is 0x01F5, and 0x17C9 while `CS` is 0x0A19; 0x336B and 0x430B also occur with `CS` 0x01F5. So 0x17C9 is the data segment of another code module, and the Lua driver's explicit `0x0F46:offset` reads are correct throughout. What lives at segment 0x17C9 was not identified (its first bytes are not a PSP or an MCB).
 
 ## 5. Consequences
 
 * **Determinism.** A frame-locked dosbox-automation capture is byte-repeatable where the DOSBox-X debugger runs vary by a few ticks (the baseline noise in [`capture-speed.md`](capture-speed.md) § 1), and it records every emulated frame, so no sampling stride decides which pages exist.
 * **Exact tick per frame.** The log supplies `film_tick` for every video frame from guest memory, which the DOSBox-X video lacks ("carries no film tick", [`capture-speed.md`](capture-speed.md)). The tags are the tick at the end of each emulated frame, with no debugger latency (compare the 5.75-tick slice jitter in [`capture-speed.md`](capture-speed.md) § 2).
-* **What video does not give.** The frames are RGB: index agreement, IoU on the index plane and fade-compensated scoring ([`../parity/method.md`](../parity/method.md)) need the palette indices. The video's colours are exactly the scaled DAC (§ 4), but two indices can share an RGB (one pair in four sampled frames), so the index plane is not always recoverable from video alone. A page read and a DAC read (`3C7`/`3C9`) at the frames to be scored would supply it; the REST path is not frame-locked, and the Lua path has no port access.
+* **What video does not give.** The frames are RGB: index agreement, IoU on the index plane and fade-compensated scoring ([`../parity/method.md`](../parity/method.md)) need the palette indices. The video's colours are exactly the scaled DAC (§ 4), but two indices can share an RGB (one pair in four sampled frames), so the index plane is not always recoverable from video alone. The Lua page and working-palette read of § 4.1 supplies it at chosen frames, with the caveat that a page read in the middle of a render loop can match no video frame, and in a fade the real DAC lags the working palette by up to a frame in two halves. Index and IoU scoring uses the page and the working palette, not the video.
 * **Not built.** `stunt_reel/tac` still drives DOSBox-X only. A dosbox-automation driver would sit behind the operations seam in [`transport.py`](../../python/stunt_reel/tac/transport.py) and replace the capture loop in [`framebuffer.py`](../../python/stunt_reel/tac/framebuffer.py), not extend it.
 
 ## 6. Reference: the Lua Driver and the Timer Glyphs
 
-The scratch scripts are not committed; this is what a driver needs. Launch `dosbox.exe -conf <conf>` with `DOSBOX_API_TOKEN` set to 64 hex characters, `[webserver] webserver_enabled = true`, `webserver_port = <port>`, a mount under the data root (not `Temp`) and `[capture] capture_dir`. Then `POST /api/v1/script/load` (body is the Lua, `text/plain`), `POST /api/v1/script/start`, and poll `GET /api/v1/script/status` until `state` is `completed`; the log is in `output`. The per-frame log must be written in chunks of 100 into separate `dosbox.output` keys; a 64,000-byte page converted to hex in one frame exceeds the Lua instruction limit.
+The scratch scripts are not committed; this is what a driver needs. Launch `dosbox.exe -conf <conf>` with `DOSBOX_API_TOKEN` set to 64 hex characters, `[webserver] webserver_enabled = true`, `webserver_port = <port>`, a mount under the data root (not `Temp`) with the conf beside it (a conf in a distant folder gets `MOUNT: Blocked ... outside allowed directories`, the emulator sits at a DOS prompt and a stale `video0001.avi` can pass for a film; `mount_allowed_bases` is not a key) and `[capture] capture_dir`. Then `POST /api/v1/script/load` (body is the Lua, `text/plain`), `POST /api/v1/script/start`, and poll `GET /api/v1/script/status` until `state` is `completed`; the log is in `output`. The per-frame log must be written in chunks of 100 into separate `dosbox.output` keys; a 64,000-byte page converted to hex in one frame exceeds the Lua instruction limit.
 
 ```lua
 local DS = 0x0F46                     -- DGROUP segment for this emulator (§ 2)
@@ -89,6 +100,21 @@ dosbox.capture_stop()
 out.done = true
 ```
 
+**Page and working palette at a chosen frame** (§ 4.1), replacing the per-frame loop body above:
+
+```lua
+local H = {}
+for i = 0, 255 do H[string.char(i)] = string.format("%02x", i) end
+for _, f in ipairs(frames) do                      -- at most about 100 frames per run (output store)
+  wait_until(f)
+  local pg = dosbox.mem_read(0xA000, 0, 64000)     -- indices; the game draws straight into A000
+  local wp = dosbox.mem_read(DS, 0x2768, 768)      -- working palette, 6-bit units
+  out["s" .. f] = dosbox.frame() .. "," .. dosbox.mem_read_word(DS, 0x4896) .. "|" .. wp:gsub(".", H) .. "|" .. pg:gsub(".", H)
+end
+```
+
+Rebuild RGB as `round(x * 255 / 63)` per palette byte. Build the Python side with `str.replace`, not `%`, since `%02x` collides with `%` formatting.
+
 **HUD timer decoding.** The AVI is read with `ffmpeg -vf scale=320:200:flags=neighbor -pix_fmt rgb24` (DOSBox-X's is 640x400; dosbox-automation's is already 320x200). The timer is `MM:SS.cc` at rows 179 to 183, six 3x5 digit cells at columns 1, 5, 11, 15, 21 and 25 (the colon and dot sit between), with a pixel counted as ink when its RGB sum is below 60. Glyphs, row by row (`#` is ink):
 
 | Digit | Rows | Digit | Rows |
@@ -106,13 +132,16 @@ A cell that matches none of these (a fade, a black frame, the dialog) means the 
 **Ruled out**
 
 * **A wall-clock start for dosbox-automation.** Capture start and keys by REST delays: one run in three started a frame late and sampled different instants; use frame-locked starts (§ 2).
-* **Frame-for-frame match with DOSBox-X video.** Different guest speed at equal cycles; zero identical frames at the same timer value (§ 3).
+* **Frame-for-frame match with DOSBox-X video.** Different guest speed at equal cycles (§ 3); at 7,000 cycles the loop counts agree (370 against 369) but no timer-aligned pair is byte-identical (§ 4.1).
+* **The dynamic core as a drop-in for the normal core.** Its film clock departs by 1 to 2 ticks from frame 2067 and 341 of 370 differing frames are different content (§ 4.1).
+* **A palette change at frame 2400.** The mismatch is a one-frame offset in the HUD timer rows (§ 4.1).
+* **REST port reads for the DAC in a scoring loop.** About 5.75 s per palette and not frame-locked; the DGROUP working palette in the same Lua step replaces it (§ 4.1).
 * **`Ctrl+Alt+F5` and `F11+I` as DOSBox-X video start through `SendInput`.** No file appeared in the capture directory; the menu command did (§ 3).
 
 **Open questions**
 
-1. At `cpu_cycles = 7000` (interpolated, § 4), do the render-loop count and the frames match DOSBox-X's free-running capture closely enough for a frame-for-frame comparison, and do the two emulators draw identical pixels for the same scene?
-2. What is the one-frame mismatch at emulated frame 2400 (§ 4): a palette change that the video shows a frame late, or a capture offset? Sample every frame around a fade.
-3. Does a page read and DAC read at the frames to be scored fit the REST path, since REST is not frame-locked? A palette-changing frame needs a pause or a frame-locked read, and Lua has no port access.
-4. How much memory does a long capture use, and does 12 instances at once hold at higher counts (the 12 here ran beside other jobs on 16 logical cores)?
-5. Does the dynamic core's slightly different loop count (417 against 424) change any rendered frame, not just timing?
+1. Why do the two emulators differ in about 3.7% of pixels by more than 1 per channel at matched timers, and is the 1-per-channel shift DOSBox-X's 6-bit to 8-bit rounding? Read DOSBox-X's DAC conversion and compare pages index for index at one timer value.
+2. Can a render-complete signal (a flag, a counter, or the instant of the page copy) in `PLAYONE.EXE` be found, so a page read never lands mid-render? The 2393 and 2405 samples match no video frame.
+3. How do the two retrace-gated DAC halves (CS:0x7B70) map onto the video during a fade: does (low half from palette *n*, high half from *n+1*) reproduce every video frame of a fade, as the Sonnet run found for 95 frames?
+4. What is at segment 0x17C9 (code segment 0x0A19)? Is it an overlay or a second module, and does it own other data worth a memory-map entry?
+5. Do the page and palette read, windowed to about 100 samples per run, hold for `INTRO.FLM`, and what does a full-film windowed dump cost in wall time?
