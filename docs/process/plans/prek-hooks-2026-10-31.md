@@ -12,12 +12,17 @@
 
 ## Handoff (2026-10-31)
 
-ADR 0026 and this plan are approved; execution is inline (superpowers:executing-plans), then one
-whole-branch review. No task has started: the branch still holds the earlier opt-in prek design
-(`[tasks.hooks]`, the old `tests/test_prek_config.py`), which Task 1 replaces. The first session
-had no prek, mise or PyPI, so continue on a machine with them and run Task 5 there too. CodeRabbit's
-open findings on the PR (route `pre-commit` through prek; ADR table vs `prek.toml`) are what Tasks
-1 and 4 do.
+Executed. Tasks 1–4 landed as planned, plus CodeRabbit's two plan comments: `diff-check` is
+`always_run`, and CI's built-ins step also runs on pushes to `main` (from the previous tip) and
+on manual runs (`--all-files`). The whole-branch review found that in CI, with nothing staged
+and no merge in progress, `check-added-large-files` and `check-merge-conflict` read nothing;
+they now take `--enforce-all` and `--assume-in-merge`, pinned by
+`test_ci_built_ins_catch_a_committed_change`. Task 5 passed on Windows: a staged clean `.py`
+with an unstaged ruff error commits and keeps the edit; a misformatted `.rs` in a crate is
+blocked; a delete-only `GLOSSARY.md` commit runs `test-docs` and is blocked; a detached `main`
+worktree runs its own `gate.py staged` hook. A worktree-scoped absolute `core.hooksPath` (set
+outside `mise run init`) overrides the shared relative one and makes every branch run the
+primary checkout's hook; unset it with `git config --worktree --unset core.hooksPath`.
 
 ## Global Constraints
 
@@ -47,7 +52,7 @@ open findings on the PR (route `pre-commit` through prek; ADR table vs `prek.tom
 **Interfaces:**
 - Produces: `prek.toml` local hook ids in order `diff-check, fmt-check-rust, fmt-check-py, lint-py, test-docs` (Task 3's `SKIP` test reads them); `tests/test_prek_config.py` helpers `_config() -> dict[str, Any]`, `_hooks(repo: str) -> list[dict[str, Any]]`, `_mise() -> dict[str, Any]` (Task 3 reuses `_hooks`).
 
-- [ ] **Step 1: Rewrite the test.** Keep `_config` and `_hooks`; add `_mise()` (parsed `mise.toml`). Replace `GATE_HOOKS` and `LOCAL_HOOK_KEYS` with:
+- [x] **Step 1: Rewrite the test.** Keep `_config` and `_hooks`; add `_mise()` (parsed `mise.toml`). Replace `GATE_HOOKS` and `LOCAL_HOOK_KEYS` with:
 
 ```python
 LOCAL_HOOKS = {
@@ -96,17 +101,17 @@ def test_prek_installs_nothing():
 
 Keep `test_builtin_hooks_are_the_adr_set` and `test_only_local_and_builtin_repositories` unchanged; drop the `gate` import.
 
-- [ ] **Step 2: Run it.** `uv run pytest tests/test_prek_config.py -q` → fails: `KeyError: 'diff-check'` and the `pre-commit` task still runs `gate.py staged`.
-- [ ] **Step 3: Implement.** Rewrite `prek.toml`'s header comment for the new flow (committed hook → `mise run pre-commit` → prek; no install), drop `default_install_hook_types`, set the five local hooks in the order above. In `mise.toml`: the `[tools]` comment says the hooks run through `mise run pre-commit`; delete `[tasks.hooks]`; add `[tasks.diff-check]` (description: "Staged conflict markers and whitespace errors (git diff --cached --check); a pre-commit hook"); `[tasks.pre-commit]` description "What the pre-commit hook runs: prek over prek.toml (ADR 0026)" and the run above; update the comment above it and `test-docs`'s description ("…the pre-commit hook runs it on every commit"). `.githooks/pre-commit` comment: `mise run pre-commit` runs prek over `prek.toml`.
-- [ ] **Step 4: Run it.** Same command → all pass. Also `uv run pytest tests/test_git_hooks.py -q` still passes (the hook's command line is unchanged).
-- [ ] **Step 5: Commit** `feat(hooks): run the pre-commit hook through prek` with the four files.
+- [x] **Step 2: Run it.** `uv run pytest tests/test_prek_config.py -q` → fails: `KeyError: 'diff-check'` and the `pre-commit` task still runs `gate.py staged`.
+- [x] **Step 3: Implement.** Rewrite `prek.toml`'s header comment for the new flow (committed hook → `mise run pre-commit` → prek; no install), drop `default_install_hook_types`, set the five local hooks in the order above. In `mise.toml`: the `[tools]` comment says the hooks run through `mise run pre-commit`; delete `[tasks.hooks]`; add `[tasks.diff-check]` (description: "Staged conflict markers and whitespace errors (git diff --cached --check); a pre-commit hook"); `[tasks.pre-commit]` description "What the pre-commit hook runs: prek over prek.toml (ADR 0026)" and the run above; update the comment above it and `test-docs`'s description ("…the pre-commit hook runs it on every commit"). `.githooks/pre-commit` comment: `mise run pre-commit` runs prek over `prek.toml`.
+- [x] **Step 4: Run it.** Same command → all pass. Also `uv run pytest tests/test_git_hooks.py -q` still passes (the hook's command line is unchanged).
+- [x] **Step 5: Commit** `feat(hooks): run the pre-commit hook through prek` with the four files.
 
 ### Task 2: Remove `gate.py staged`
 
 **Files:**
 - Modify: `python/scripts/gate.py` (docstring lines 22–29, `STAGED_LOG_PATH`, `"test-docs"` in `STEP_LANES`, `STAGED_STEPS`, `STAGED_MARKDOWN_STEPS`, `DIFF_CHECK`, `_staged_plan`, `_git`, `_staged_paths`, `_diff_check`, the `staged` branches in `main`), `tests/test_gate_plan.py:23-25`, `tests/test_git_hooks.py` (docstring, the message at line 73, delete the tests at lines 86–133)
 
-- [ ] **Step 1: Tighten the tests.** In `test_gate_plan.py` the lane assertion goes back to `sorted(gate.STEP_LANES) == sorted(steps)` with message "STEP_LANES must name every step, and only steps". Add:
+- [x] **Step 1: Tighten the tests.** In `test_gate_plan.py` the lane assertion goes back to `sorted(gate.STEP_LANES) == sorted(steps)` with message "STEP_LANES must name every step, and only steps". Add:
 
 ```python
 def test_the_gate_has_no_staged_half():
@@ -114,10 +119,10 @@ def test_the_gate_has_no_staged_half():
         gate.main(["staged"])
 ```
 
-- [ ] **Step 2: Run them.** `uv run pytest tests/test_gate_plan.py -q` → both fail (`test-docs` lane present; `staged` accepted).
-- [ ] **Step 3: Implement.** Delete the listed code; `argparse` choices back to `("all", "rust", "py")`; the log path is always `LOG_PATH`; the docstring's usage line back to `{all|rust|py}`. In `test_git_hooks.py` delete `test_every_staged_step_is_a_leaf_task_with_a_lane`, `test_markdown_brings_in_the_doc_invariants`, `test_staged_conflict_markers_fail_the_diff_check`, `test_deleting_markdown_brings_in_the_doc_invariants`; the docstring and the line-73 message point at `prek.toml` (ADR 0026) instead of `gate.py staged`.
-- [ ] **Step 4: Run them.** `uv run pytest tests/test_gate_plan.py tests/test_git_hooks.py tests/test_prek_config.py -q` → pass; `uv run ruff check python tests` and `uv run mypy` clean (no unused imports such as `shutil` left behind).
-- [ ] **Step 5: Commit** `refactor(gate): drop the staged plan prek now runs`.
+- [x] **Step 2: Run them.** `uv run pytest tests/test_gate_plan.py -q` → both fail (`test-docs` lane present; `staged` accepted).
+- [x] **Step 3: Implement.** Delete the listed code; `argparse` choices back to `("all", "rust", "py")`; the log path is always `LOG_PATH`; the docstring's usage line back to `{all|rust|py}`. In `test_git_hooks.py` delete `test_every_staged_step_is_a_leaf_task_with_a_lane`, `test_markdown_brings_in_the_doc_invariants`, `test_staged_conflict_markers_fail_the_diff_check`, `test_deleting_markdown_brings_in_the_doc_invariants`; the docstring and the line-73 message point at `prek.toml` (ADR 0026) instead of `gate.py staged`.
+- [x] **Step 4: Run them.** `uv run pytest tests/test_gate_plan.py tests/test_git_hooks.py tests/test_prek_config.py -q` → pass; `uv run ruff check python tests` and `uv run mypy` clean (no unused imports such as `shutil` left behind).
+- [x] **Step 5: Commit** `refactor(gate): drop the staged plan prek now runs`.
 
 ### Task 3: Prove the staged-content claim, and run the built-ins in CI
 
@@ -128,7 +133,7 @@ def test_the_gate_has_no_staged_half():
 **Interfaces:**
 - Consumes: `_hooks` from `tests/test_prek_config.py` (import it, or re-read `prek.toml` the same way).
 
-- [ ] **Step 1: Write the tests.** A `prek` fixture: `shutil.which("prek")`; if absent, `pytest.fail` when `STUNT_REQUIRE_PREK` is set, else `pytest.skip`. A scratch repo built like `tests/test_git_hooks.py::_repo`, with its own `prek.toml` holding only `[[repos]] repo = "builtin"` + `check-toml`, and `a.toml` committed as `x = 1`.
+- [x] **Step 1: Write the tests.** A `prek` fixture: `shutil.which("prek")`; if absent, `pytest.fail` when `STUNT_REQUIRE_PREK` is set, else `pytest.skip`. A scratch repo built like `tests/test_git_hooks.py::_repo`, with its own `prek.toml` holding only `[[repos]] repo = "builtin"` + `check-toml`, and `a.toml` committed as `x = 1`.
 
 ```python
 def test_prek_checks_the_staged_content(prek, tmp_path):
@@ -148,24 +153,24 @@ def test_ci_skips_exactly_the_local_hooks():
 ```
 
 Isolate git env vars as `test_git_hooks.py` does.
-- [ ] **Step 2: Run them.** `uv run pytest tests/test_prek_hooks.py -q` → the CI test fails (no `SKIP` yet); the prek test skips where prek is absent.
-- [ ] **Step 3: Implement.** `REQUIRED_ENV` as above. In `ci.yml` `quality`: `fetch-depth: 0` on checkout; add `prek` to the mise `install_args`; after "Run quality tasks", a step "Commit-hook built-ins on the PR's changes", `if: github.event_name == 'pull_request'`, `env: SKIP: diff-check,fmt-check-rust,fmt-check-py,lint-py,test-docs`, `run: mise exec -- prek run --config prek.toml --from-ref origin/${{ github.base_ref }} --to-ref HEAD`, with a comment citing ADR 0026.
-- [ ] **Step 4: Run them.** Same command → the CI test passes. On the PR, CI must show the integration test passed (not skipped) under the gate, and the new step green.
-- [ ] **Step 5: Commit** `test(hooks): prove prek checks what is staged; run its built-ins in CI`.
+- [x] **Step 2: Run them.** `uv run pytest tests/test_prek_hooks.py -q` → the CI test fails (no `SKIP` yet); the prek test skips where prek is absent.
+- [x] **Step 3: Implement.** `REQUIRED_ENV` as above. In `ci.yml` `quality`: `fetch-depth: 0` on checkout; add `prek` to the mise `install_args`; after "Run quality tasks", a step "Commit-hook built-ins on the PR's changes", `if: github.event_name == 'pull_request'`, `env: SKIP: diff-check,fmt-check-rust,fmt-check-py,lint-py,test-docs`, `run: mise exec -- prek run --config prek.toml --from-ref origin/${{ github.base_ref }} --to-ref HEAD`, with a comment citing ADR 0026.
+- [x] **Step 4: Run them.** Same command → the CI test passes. On the PR, CI must show the integration test passed (not skipped) under the gate, and the new step green.
+- [x] **Step 5: Commit** `test(hooks): prove prek checks what is staged; run its built-ins in CI`.
 
 ### Task 4: Docs
 
 **Files:**
 - Modify: `docs/adr/0026-commit-hooks-run-the-gates-own-tasks.md` (hook table: `test-docs` fires on every commit, with the reason; key list adds `always_run`), `docs/development.md:158` (the `pre-commit` row) and `:179` (the hook paragraph), `README.md:36` (delete the `mise run hooks` line), `CONTRIBUTING.md:20-21` (delete the `mise run hooks` sentence)
 
-- [ ] **Step 1: Edit.** The `pre-commit` row and paragraph say: `mise run init` installs the committed hook; it runs `mise run pre-commit`, which is prek over `prek.toml`; prek checks the staged content; list the hooks; `mise run fmt` to fix; `--no-verify` to skip; CI runs the built-ins; link ADR 0026.
-- [ ] **Step 2: Verify.** `uv run pytest tests/test_doc_invariants.py -q` passes; `grep -rn "gate.py staged\|mise run hooks\|STAGED_" --include=*.md --include=*.py --include=*.toml .` finds nothing outside `docs/process/`.
-- [ ] **Step 3: Commit** `docs(hooks): describe the prek-run commit hook`, then `mise run check` (or the parts this session can run, named in the body).
+- [x] **Step 1: Edit.** The `pre-commit` row and paragraph say: `mise run init` installs the committed hook; it runs `mise run pre-commit`, which is prek over `prek.toml`; prek checks the staged content; list the hooks; `mise run fmt` to fix; `--no-verify` to skip; CI runs the built-ins; link ADR 0026.
+- [x] **Step 2: Verify.** `uv run pytest tests/test_doc_invariants.py -q` passes; `grep -rn "gate.py staged\|mise run hooks\|STAGED_" --include=*.md --include=*.py --include=*.toml .` finds nothing outside `docs/process/`.
+- [x] **Step 3: Commit** `docs(hooks): describe the prek-run commit hook`, then `mise run check` (or the parts this session can run, named in the body).
 
 ### Task 5: Live check (maintainer, Windows)
 
-- [ ] `git switch prek-hooks`, `mise install`, `mise run init` → `core.hooksPath` is `.githooks`.
-- [ ] Commit a staged clean `.py` with an unstaged ruff error in the same file → succeeds; the unstaged edit is still there.
-- [ ] Stage a misformatted `.rs` → the commit is blocked by `fmt-check-rust`.
-- [ ] Commit that only deletes a linked `.md` → `test-docs` runs.
-- [ ] In a worktree on a branch from before this change → the commit runs that branch's own hook.
+- [x] `git switch prek-hooks`, `mise install`, `mise run init` → `core.hooksPath` is `.githooks`.
+- [x] Commit a staged clean `.py` with an unstaged ruff error in the same file → succeeds; the unstaged edit is still there.
+- [x] Stage a misformatted `.rs` → the commit is blocked by `fmt-check-rust`.
+- [x] Commit that only deletes a linked `.md` → `test-docs` runs.
+- [x] In a worktree on a branch from before this change → the commit runs that branch's own hook.
