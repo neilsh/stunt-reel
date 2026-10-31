@@ -34,6 +34,7 @@
 | `0x2272` | `[Established]` | `u8` | Playback-active flag gating the `0x22B8` increment | `# [MEM-FLM-TICK]` |
 | `0x22B8` | `[Established]` | `u16` | Global 50 Hz timer tick (incremented by the INT 8 path while `0x2272` is set) | `# [MEM-FLM-TICK]` |
 | `0x22C4` | `[Established]` | `u16` | Stored PSP segment address: written at image `0x0C78` (`mov [0x22C4], es`, right after `DS` is set to `0x0D51`); read at `0x0CF2`/`0x0CFA` for the free-memory check against `PSP:[2]` | |
+| `0x22CA`, `0x22CC` | `[Supported Inference]` | `u16` x 2 | Segments of the two composed pages, swapped every render; after a finished copy, rows 0–191 of `A000` equal one of them (rows 192–199, the button bar, are drawn on `A000` directly). A page with bands from each is torn ([`../../docs/process/plans/tear-palette-investigation-2026-10-31.md`](../../docs/process/plans/tear-palette-investigation-2026-10-31.md) § 1.1) | |
 | `0x22CE` | `[Established]` | `u16` | Preserved `SS` register during `INSTALL.EXE` child execution: written at image `0x0C94`, restored at `0x0CC4` around the `int 21h AX=4B00h` EXEC of `DS:0x05BE` (`install.exe`) at `0x0CBD` | |
 | `0x22D0` | `[Established]` | `u16` | Preserved `SP` register during `INSTALL.EXE` child execution: written at image `0x0C98`, restored at `0x0CC8` around the same EXEC | |
 | `0x4758` | `[Established]` | `u16` | Field `+0x0E` of the sibling `0x474A` struct; reads 0 during playback — **not** the film clock | `# [MEM-FLM-TICK]` |
@@ -53,6 +54,7 @@ Every row above is for the unpatched 1992 `PLAYONE.EXE` (102,703 bytes, sha256 `
 | `0x2263`, `0x2264`, `0x2265` | `0x1BE9`, `0x1BEA`, `0x1BEB` | `[Supported Inference]` | Display mode, sound driver mode, audio channel flags (same) | |
 | `0x22B8` | `0x1C3E` | `[Supported Inference]` | Global 50 Hz timer tick | `# [MEM-FLM-TICK]` |
 | `0x22C4` | `0x1C4A` | `[Established]` | Stored PSP segment (`mov [0x1C4A], es` in the patched entry routine) | |
+| `0x22CA`, `0x22CC` | `0x1C50`, `0x1C52` | `[Hypothesis]` | Composed-page segments, inferred from the uniform shift only | |
 | `0x22CE`, `0x22D0` | `0x1C54`, `0x1C56` | `[Supported Inference]` | Saved `SS`, `SP` around the `INSTALL.EXE` EXEC (same) | |
 | `0x2768` | `0x20EE` | `[Supported Inference]` | Working palette, 768 bytes of 6-bit DAC values | |
 | `0x4896` | `0x421C` | `[Supported Inference]` | Active film clock | `# [MEM-FLM-TICK]` |
