@@ -192,7 +192,7 @@ def test_render_conf_carries_the_automation_dials(tmp_path: Path) -> None:
         "window_size = 640x480",
         "webserver_enabled = true",
         "webserver_port = 41234",
-        "core = normal",
+        "core = dynamic",
         "cpu_cycles = 45000",
         "machine = svga_s3",
         "sbtype = sb16",
@@ -213,14 +213,14 @@ def test_render_conf_runs_the_program_it_is_given(tmp_path: Path) -> None:
     assert "playone.exe" not in text
 
 
-def test_the_archive_profile_runs_the_fast_core_and_the_capture_profile_the_repeatable_one(
+def test_the_archive_profile_runs_at_max_and_the_capture_profile_at_the_saturation_point(
     tmp_path: Path,
 ) -> None:
     archive = staging.render_conf(tmp_path, port=1, program="makeone.exe", cpu="archive")
     capture = staging.render_conf(tmp_path, port=1, program="playone.exe")
 
     assert {"core = dynamic", "cpu_cycles = max"} <= set(archive.splitlines())
-    assert {"core = normal", "cpu_cycles = 45000"} <= set(capture.splitlines())
+    assert {"core = dynamic", "cpu_cycles = 45000"} <= set(capture.splitlines())
 
 
 def test_write_conf_passes_the_cpu_profile(staged_repo: StagedRepo) -> None:

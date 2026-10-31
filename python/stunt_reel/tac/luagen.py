@@ -72,6 +72,11 @@ def boot_end(key_count: int) -> int:
     return START_FRAME + key_count * (KEY_GAP + KEY_HOLD)
 
 
+#: A relative mouse move far enough left and down to clamp the cursor to the bottom-left corner.
+_PARK_DX: int = -2000
+_PARK_DY: int = 2000
+
+
 def _keys_lua(keys: Sequence[str]) -> str:
     for key in keys:
         if not _KEY_NAME.fullmatch(key):
@@ -83,6 +88,9 @@ def _keys_lua(keys: Sequence[str]) -> str:
         f"  dosbox.wait_frames({KEY_GAP}); dosbox.key(k, true); "
         f"dosbox.wait_frames({KEY_HOLD}); dosbox.key(k, false)\n"
         "end\n"
+        # The cursor is drawn on the page; past the bottom-left edge it sits over the button bar,
+        # below the 3D view (live 2026-10-31). No wait, so boot_end still holds.
+        f"dosbox.mouse_move({_PARK_DX}, {_PARK_DY})\n"
     )
 
 

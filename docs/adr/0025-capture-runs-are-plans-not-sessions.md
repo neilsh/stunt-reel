@@ -26,13 +26,15 @@ apart from boot to boot, so a replay is close but not always identical. A dumped
 
 Each run stages its conf and mount together under `<data root>/stage/<film>-<label>/` (the emulator
 refuses a mount under the checkout), picks a free port at launch, and gets a fresh random bearer
-token through the environment only. Dump passes run side by side (up to four), each launch
+token through the environment only. Dump passes run side by side (up to eight), each launch
 writing its own conf. `play` and `make-all` use the same staging; `make-all` presses its keys with
 a script and polls `GET /video/text` for the return to a text mode.
 
-Capture and `play` run the normal core at 45,000 cycles, where the render rate saturates at one
-page per emulated frame; MAKEONE runs the dynamic core at `max`, which writes the same archive in
-a fifth of the time.
+Capture and `play` run the dynamic core at 45,000 cycles, where the render rate saturates at one
+page per emulated frame; the dynamic core replays exactly there and costs about 0.23 of a host core
+against the normal core's 0.39, which leaves room for more passes at once. MAKEONE runs the dynamic
+core at `max`, which writes the same archive in a fifth of the time; `max` is wrong for capture,
+where it draws fewer pages.
 
 ## Consequences
 

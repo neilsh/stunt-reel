@@ -30,6 +30,14 @@ def test_boot_waits_to_the_start_frame_then_presses_keys_with_gaps_and_holds() -
     assert "dosbox.key(k, true); dosbox.wait_frames(5); dosbox.key(k, false)" in text
 
 
+def test_the_cursor_is_parked_bottom_left_after_the_keys_without_spending_frames() -> None:
+    """The cursor is drawn on the captured page; bottom-left puts it over the button bar."""
+    for text in (_script(), luagen.keys_script(["KBD_c", "KBD_enter"])):
+        move = text.index("dosbox.mouse_move(-2000, 2000)")
+        assert move > text.index("dosbox.key(k, false)")
+        assert "wait_frames" not in text[move : text.index("\n", move)]
+
+
 def test_the_trace_reads_both_clocks_and_compares_the_page_as_strings() -> None:
     text = _script()
 

@@ -20,13 +20,14 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from pathlib import Path
 
-#: ``capture`` (also used by ``play``) is the bit-repeatable normal core at 45,000 cycles, the
-#: middle of the plateau where PLAYONE draws a new page on about 99% of emulated frames (7,000:
-#: 46%; more than 100,000 or ``max`` draws fewer; capture-dosbox-automation.md § 4.4).
+#: ``capture`` (also used by ``play``) is the dynamic core at 45,000 cycles, the middle of the
+#: plateau where PLAYONE draws a new page on about 99% of emulated frames (7,000: 46%; more than
+#: 100,000 or ``max`` draws fewer). Its replays are byte-identical and it costs 0.23 of a host core
+#: against the normal core's 0.39 at the same rate (capture-dosbox-automation.md § 4.4).
 #: ``archive`` is the fast core for MAKEONE, which nothing samples (ADR 0023: 13 s against 179 s).
 CpuProfile = Literal["capture", "archive"]
 _CPU_LINES: dict[str, tuple[str, str]] = {
-    "capture": ("core = normal", "cpu_cycles = 45000"),
+    "capture": ("core = dynamic", "cpu_cycles = 45000"),
     "archive": ("core = dynamic", "cpu_cycles = max"),
 }
 
@@ -153,8 +154,7 @@ def render_conf(
 ) -> str:
     """The dosbox-automation conf that mounts *mount*, serves REST on *port* and runs *program*.
 
-    The ``capture`` profile keeps ``core = normal``, whose runs replay bit for bit
-    (``capture-dosbox-automation.md`` § 4.1 and § 4.4).
+    The ``capture`` profile's runs replay bit for bit (``capture-dosbox-automation.md`` § 4.4).
     """
     lines = [
         "[sdl]",

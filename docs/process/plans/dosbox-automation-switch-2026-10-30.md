@@ -113,7 +113,7 @@
 
 Tasks 1 to 5 and 7 are done on branch `worktree-dosbox-automation-spike`; Task 6 is partly done (6.2 and 6.4 recorded, 6.1 and 6.3 open). The live findings are in [`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.4 and [`driving.md`](../../../research/makeone-exe/driving.md) § 9.
 
-Verified live: `capture-ref` on `CTRY.FLM` (113 frames at 7,000 cycles one pass at a time; 121 frames in 112 s at 45,000 with parallel passes) and `INTRO.FLM` (315 frames, 17 min before passes ran in parallel); `make-all` on `747LAND.FLM` on both CPU profiles, byte-identical to the DOSBox-X archive. `probe-light` on `CTRY.FLM` (seven samples in 111 s). Not run live: `mise run play` (it waits for a person to close the window) and the batch survey. A dynamic-core sweep matched the normal core within 1%, so capture stays on the normal core.
+Verified live: `capture-ref` on `CTRY.FLM` (113 frames at 7,000 cycles one pass at a time; 121 frames in 112 s at 45,000 with parallel passes) and `INTRO.FLM` (315 frames, 17 min before passes ran in parallel); `make-all` on `747LAND.FLM` on both CPU profiles, byte-identical to the DOSBox-X archive. `probe-light` on `CTRY.FLM` (seven samples in 111 s). `mise run play` (640x480 window, key script done in 21 s, exit 0 and stage removed after the window closed). Scored with `stuntreel parity`: new captures score as well as the DOSBox-X references or better on both films (§ 4.4). Not run live: the batch survey. A dynamic-core sweep matched the normal core's rate within 1% at 40% less host CPU, so capture moved to the dynamic core.
 
 Rulings made while executing (cost if wrong in brackets):
 
@@ -124,15 +124,16 @@ Rulings made while executing (cost if wrong in brackets):
 - A dumped page carries the tick its own pass read; a frame more than `MAX_SKEW_TICKS` (2) from the trace pass is a `PlanDivergence`. `COUNT.FLM` replays differ by a tick; `CTRY.FLM` replays do not. [a capture with a stride under 5 ticks could hold two pages of one tick]
 - `make-all` runs MAKEONE on the `archive` CPU profile (dynamic core, `cpu_cycles = max`): 41 s against 227 s, same archive bytes. [a film whose archive differs between profiles]
 - Every run's window is `window_size = 640x480`.
-- Capture and `play` run the normal core at 45,000 cycles, not 7,000: the render rate saturates there (99% of emulated frames draw a new page against 46%). 7,000 only matched DOSBox-X's loop count. [captures no longer match the DOSBox-X references' pacing; they are being replaced]
-- Dump passes run up to four at once, split evenly, each launch with its own `dosbox-<port>.conf`: one pass at a time put `INTRO.FLM` past the batch's 900 s timeout. [four emulators' memory and CPU during a capture]
+- Every script parks the mouse cursor bottom-left after the dialog keys, over the button bar, so it no longer sits in the 3D view of captured pages. [captures before 2026-10-31 differ by the cursor]
+- Capture and `play` run the dynamic core at 45,000 cycles, not the normal core at 7,000 (the dynamic core costs 0.23 of a host core against 0.39 at the same rate): the render rate saturates there (99% of emulated frames draw a new page against 46%). 7,000 only matched DOSBox-X's loop count. [captures no longer match the DOSBox-X references' pacing; they are being replaced]
+- Dump passes run up to eight at once, split evenly, each launch with its own `dosbox-<port>.conf`: one pass at a time put `INTRO.FLM` past the batch's 900 s timeout. [four emulators' memory and CPU during a capture]
 - The tear rule and fade model are written into [`method.md`](../../../research/parity/method.md) § 3.1 but not applied in `pick`; the AVI tear rate was not re-measured. `references.toml` still names the DOSBox-X captures. [tears go unflagged; references stay DOSBox-X-era]
 - `tools/dosbox/dosbox-utils.conf` stays as a by-hand profile, unverified on dosbox-automation; `capture.md` and `capture-speed.md` carry a historical banner rather than a rewrite.
 - `KNOWN_CAPTURE_STALLS` is unchanged pending a re-survey.
 
 Next:
 
-1. Score a dosbox-automation capture with `stuntreel parity` against a render, then decide 6.3 (promote new references).
+1. Decide 6.3: promote `vault-ctry/frames/003` and a dynamic-core `INTRO.FLM` capture in a reviewed edit of `references.toml` (both scored no worse than the DOSBox-X references).
 2. Patch #3: build patched and unpatched `PLAYONE.EXE`, `STUNT.EXE` and `MAKEONE.EXE` trees from `corpus/patches/`, find the patched build's offsets, and test `COUNT.FLM` and the other stalled films on it. A separate piece of work.
 3. Re-survey the batch on dosbox-automation (timeouts, the stall list).
 4. 7.5: the stale `dosbox-x.exe` processes on the machine are the user's to end.
