@@ -169,6 +169,7 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | `deny` | `cargo deny check` — advisories, license allow-list, wildcard bans, and registry sources |
 | `capture-ref` | new capture into `build/parity/captures/<film>/frames/<next run>`, never over an existing one (`--max-frames` defaults to 140) |
 | `verify-corpus` | `.ksy` catalog check against `corpus/` |
+| `capture-digest` | a capture's `sha256` as `references.toml` pins it, and the entry that would promote it (`mise run capture-digest -- vault-ctry 005`) |
 | `play` | play a film in `PLAYONE.EXE` on dosbox-automation |
 | `parity-probe`, `verify-docs`, `unlzexe`, `probe-light`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
 
