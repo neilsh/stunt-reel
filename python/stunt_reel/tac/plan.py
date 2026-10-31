@@ -15,7 +15,14 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from stunt_reel.tac.luagen import MAX_DUMPS, MemRange, script
+from stunt_reel.tac.luagen import (
+    MAX_DUMPS,
+    TRACE_CHANGED,
+    TRACE_PALETTE,
+    TRACE_TORN,
+    MemRange,
+    script,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -58,6 +65,7 @@ DEFAULT_PARALLEL_PASSES: int = 8
 DEFAULT_TIMEOUT_SECONDS: float = 900.0
 
 RGB = tuple[int, int, int]
+_MASK_LIMIT: int = (TRACE_CHANGED | TRACE_TORN | TRACE_PALETTE) + 1
 
 
 class PlanError(RuntimeError):
@@ -70,12 +78,16 @@ class PlanDivergence(PlanError):  # noqa: N818 - the agreed interface name
 
 @dataclass(frozen=True)
 class TraceEntry:
-    """What one frame showed: the clocks, any extra words, and whether the page changed."""
+    """What one frame showed: the clocks, any extra words, and the trace mask's three flags."""
 
     film_tick: int
     global_tick: int
     words: tuple[int, ...]
     changed: bool
+    #: The page mixes the two composed pages (a copy was under way when it was read).
+    torn: bool = False
+    #: The working palette changed since the previous frame.
+    palette_changed: bool = False
 
 
 @dataclass(frozen=True)
@@ -116,7 +128,11 @@ class PlanResult:
 
 
 def decode_trace(text: str, first: int) -> Trace:
-    """Decode ``x<tick>:<global>[:word...]:<changed>,...`` into a :class:`Trace`."""
+    """Decode ``x<tick>:<global>[:word...]:<mask>,...`` into a :class:`Trace`.
+
+    The mask is the sum of ``luagen.TRACE_*`` flags; a two-state trace (0 or 1) decodes as
+    neither torn nor a palette step.
+    """
     if not text.startswith("x"):
         raise PlanError("trace output is missing its letter prefix")
     entries: list[TraceEntry] = []
@@ -126,9 +142,19 @@ def decode_trace(text: str, first: int) -> Trace:
             numbers = [int(x) for x in fields]
         except ValueError:
             raise PlanError(f"malformed trace entry {raw!r}") from None
-        if len(numbers) < 3 or numbers[-1] not in (0, 1):
+        if len(numbers) < 3 or not 0 <= numbers[-1] < _MASK_LIMIT:
             raise PlanError(f"malformed trace entry {raw!r}")
-        entries.append(TraceEntry(numbers[0], numbers[1], tuple(numbers[2:-1]), bool(numbers[-1])))
+        mask = numbers[-1]
+        entries.append(
+            TraceEntry(
+                numbers[0],
+                numbers[1],
+                tuple(numbers[2:-1]),
+                changed=bool(mask & TRACE_CHANGED),
+                torn=bool(mask & TRACE_TORN),
+                palette_changed=bool(mask & TRACE_PALETTE),
+            )
+        )
     return Trace(first, tuple(entries))
 
 

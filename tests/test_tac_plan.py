@@ -46,6 +46,19 @@ def test_decode_trace_reads_clocks_changed_flags_and_extra_words() -> None:
     assert wide.entries[0].changed is False
 
 
+def test_trace_decodes_the_flag_mask() -> None:
+    trace = plan.decode_trace("x5:7:3,6:8:4", FIRST)
+
+    torn, palette = trace.entries
+    assert (torn.changed, torn.torn, torn.palette_changed) == (True, True, False)
+    assert (palette.changed, palette.torn, palette.palette_changed) == (False, False, True)
+
+
+def test_trace_refuses_a_mask_above_seven() -> None:
+    with pytest.raises(plan.PlanError):
+        plan.decode_trace("x5:7:8", FIRST)
+
+
 def test_decode_trace_requires_the_letter_prefix() -> None:
     with pytest.raises(plan.PlanError, match="prefix"):
         plan.decode_trace("5:100:1", FIRST)

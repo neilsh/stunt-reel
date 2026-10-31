@@ -29,6 +29,9 @@ __all__ = [
     "MAX_DUMPS",
     "MAX_READ",
     "START_FRAME",
+    "TRACE_CHANGED",
+    "TRACE_PALETTE",
+    "TRACE_TORN",
     "MemRange",
     "boot_end",
     "keys_script",
@@ -46,6 +49,16 @@ MAX_DUMPS: int = 40
 MAX_READ: int = 65535
 _PAGE_BYTES: int = 64000
 _PALETTE_BYTES: int = 768
+#: Bits of a trace entry's last field: the page changed, the page is torn between the two
+#: composed pages, the working palette changed since the previous frame.
+TRACE_CHANGED: int = 1
+TRACE_TORN: int = 2
+TRACE_PALETTE: int = 4
+#: Rows 0..191 of the page, the part copied from a composed page (192..199 are the button bar,
+#: drawn on A000 directly), compared in bands of 8 rows: 192 row compares per frame exceeded
+#: the instruction limit, 24 bands fit a whole film (tear-palette investigation § 1.1).
+_COMPOSED_BYTES: int = 192 * 320
+_BAND_BYTES: int = 8 * 320
 _KEY_NAME = re.compile(r"KBD_[a-z0-9_]+")
 
 
@@ -132,8 +145,11 @@ def script(
 ) -> str:
     """The Lua for one run: boot with *keys*, trace frames *first* to *last*, dump *dump_frames*.
 
-    The trace entry for frame *f* is ``film_tick:global_tick[:word...]:changed`` (``changed``
-    is 1 when the A000 page differs from frame *f* - 1's). Dumps are ``p<f>`` (page),
+    The trace entry for frame *f* is ``film_tick:global_tick[:word...]:mask``, the mask the sum
+    of :data:`TRACE_CHANGED` (the A000 page differs from frame *f* - 1's), :data:`TRACE_TORN`
+    (rows 0..191 match neither composed page, and some bands match only one and others only
+    the other) and :data:`TRACE_PALETTE` (the working palette differs from frame *f* - 1's).
+    Dumps are ``p<f>`` (page),
     ``c<f>`` (the DS working palette, 6-bit units) and ``m<f>_<n>`` per range, all hex.
 
     With *end_hold* the trace also stops once the film clock (above zero) has not moved for that
@@ -167,6 +183,28 @@ def script(
         f"  if t > 0 and hold >= {end_hold} then break end\n" if end_hold is not None else ""
     )
     frames = ", ".join(str(f) for f in dump_frames)
+    page_a, page_b = layout.composed_pages
+    palette_read = f"dosbox.mem_read(DS, 0x{layout.working_palette:X}, {_PALETTE_BYTES})"
+    tear_lua = (
+        f"local ROWS, BAND = {_COMPOSED_BYTES}, {_BAND_BYTES}\n"
+        "local function torn(pg)\n"
+        f"  local a = dosbox.mem_read(dosbox.mem_read_word(DS, 0x{page_a:04X}), 0, ROWS)\n"
+        f"  local b = dosbox.mem_read(dosbox.mem_read_word(DS, 0x{page_b:04X}), 0, ROWS)\n"
+        "  local top = pg:sub(1, ROWS)\n"
+        "  if top == a or top == b then return false end\n"
+        "  local onlyA, onlyB = false, false\n"
+        "  for o = 1, ROWS, BAND do\n"
+        "    local s = top:sub(o, o + BAND - 1)\n"
+        "    local ea, eb = s == a:sub(o, o + BAND - 1), s == b:sub(o, o + BAND - 1)\n"
+        "    if ea and not eb then onlyA = true elseif eb and not ea then onlyB = true end\n"
+        "  end\n"
+        "  return onlyA and onlyB\n"
+        "end\n"
+    )
+    mask = (
+        f"((pg ~= prev) and {TRACE_CHANGED} or 0) + (torn(pg) and {TRACE_TORN} or 0)"
+        f" + ((pal ~= ppal) and {TRACE_PALETTE} or 0)"
+    )
     return (
         f"local DS = 0x{layout.ds:04X}\n"
         "local out = dosbox.output\n"
@@ -174,19 +212,23 @@ def script(
         "local H = {}\n"
         'for i = 0, 255 do H[string.char(i)] = string.format("%02x", i) end\n'
         + _keys_lua(keys)
+        + tear_lua
         + f"local dumps = {{{frames}}}\n"
         "local di = 1\n"
         "local tr = {}\n"
         "local lt, hold = -1, 0\n"
         f"local prev = dosbox.mem_read(0xA000, 0, {_PAGE_BYTES})\n"
+        f"local ppal = {palette_read}\n"
         f"for f = {first}, {last} do\n"
         "  wait_until(f)\n"
         f"  local t = dosbox.mem_read_word(DS, 0x{layout.film_clock:04X})\n"
         f"  local g = dosbox.mem_read_word(DS, 0x{layout.global_tick:04X})\n"
         f"  local pg = dosbox.mem_read(0xA000, 0, {_PAGE_BYTES})\n"
+        f"  local pal = {palette_read}\n"
         "  if t == lt then hold = hold + 1 else hold = 0; lt = t end\n"
-        f'  tr[#tr + 1] = t .. ":" .. g{extra} .. ":" .. ((pg ~= prev) and "1" or "0")\n'
-        "  prev = pg\n" + dump_block + hold_block + "end\n"
+        f'  tr[#tr + 1] = t .. ":" .. g{extra} .. ":" .. ({mask})\n'
+        "  prev = pg\n"
+        "  ppal = pal\n" + dump_block + hold_block + "end\n"
         'out.trace = "x" .. table.concat(tr, ",")\n'
         "out.done = true\n"
     )
