@@ -241,7 +241,7 @@ def ensure_venv_link() -> str | None:
     target.mkdir(parents=True, exist_ok=True)
     marker = env_marker(target)
     checkout = str(REPO_ROOT)
-    if not marker.is_file() or marker.read_text(encoding="utf-8").strip() != checkout:
+    if _read_marker(marker) != checkout:
         marker.write_text(checkout + "\n", encoding="utf-8")
     link = REPO_ROOT / VENV_DIRNAME
     discarded = False
@@ -279,16 +279,23 @@ def _remove_env(target: Path) -> bool:
     return True
 
 
+def _read_marker(marker: Path) -> str | None:
+    """The checkout *marker* names, or ``None`` when it is missing or unreadable."""
+    try:
+        return marker.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError):
+        return None
+
+
 def _env_owner(target: Path) -> Path | None:
     """The checkout environment *target* names, or ``None`` when no marker says.
 
     An environment made before the marker moved beside it still carries one inside.
     """
     for marker in (env_marker(target), target / ENV_MARKER):
-        try:
-            return Path(marker.read_text(encoding="utf-8").strip())
-        except (OSError, UnicodeError):
-            continue
+        checkout = _read_marker(marker)
+        if checkout is not None:
+            return Path(checkout)
     return None
 
 

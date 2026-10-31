@@ -346,6 +346,19 @@ def test_an_undecodable_marker_is_an_unknown_owner(
     assert unknown.is_dir()
 
 
+def test_env_link_rewrites_an_undecodable_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # init links .venv before it sweeps, so a garbled marker of its own must not stop it.
+    primary = _primary(tmp_path)
+    worktree = _worktree(monkeypatch, primary)
+    marker = dataroot.env_marker(dataroot.env_target(worktree))
+    marker.parent.mkdir(parents=True)
+    marker.write_bytes(b"\xff\xfe\x80")
+    assert dataroot.ensure_venv_link() is not None
+    assert marker.read_text(encoding="utf-8").strip() == str(worktree)
+
+
 def test_a_marker_inside_the_environment_still_names_its_checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
