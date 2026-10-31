@@ -6,7 +6,7 @@
 
 **Why:** [`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) §§ 2 to 4.3. Runs are bit-repeatable, frames are addressed by emulated frame number (video frame *j* is frame 1200 + *j*), a page and its working palette read in one Lua step, and 24 runs go in parallel.
 
-**Architecture:** dosbox-automation cannot pause or step the guest, so the halt-at-a-trap session is replaced by a deterministic **plan, then run** model. A run boots the film from a staged mount, and a generated Lua script records what the plan asks for. Pass 1 is a trace (`film_tick`, `global_tick`, page-changed flag per frame, plus any pointers a probe needs). Python reads the trace, picks frames, and pass 2 dumps pages, palettes and memory ranges at exactly those frames (about 90 samples per run, because the output store holds about 15 MB). Validated 2026-10-30: trace and dump passes over 2,101 frames of `CTRY.FLM` gave identical per-frame clocks and page-changed flags, and a conf plus mount staged under the data root boots while one under the checkout is refused by the mount policy.
+**Architecture:** dosbox-automation cannot pause or step the guest, so the halt-at-a-trap session is replaced by a deterministic **plan, then run** model. A run boots the film from a staged mount, and a generated Lua script records what the plan asks for. Pass 1 is a trace (`film_tick`, `global_tick`, page-changed flag per frame, plus any pointers a probe needs). Python reads the trace, picks frames, and pass 2 dumps pages, palettes and memory ranges at exactly those frames (at most 40 samples per run, `MAX_DUMPS`: the output store holds about 15 MB, but 90 page dumps ran out of Lua memory live). Validated 2026-10-30: trace and dump passes over 2,101 frames of `CTRY.FLM` gave identical per-frame clocks and page-changed flags, and a conf plus mount staged under the data root boots while one under the checkout is refused by the mount policy.
 
 **Tech Stack:** Python 3.12, `urllib` REST with a bearer token, Lua on the emulation thread, ffmpeg only for the optional AVI check.
 
@@ -100,7 +100,7 @@
 - [x] **7.2** Delete `python/scripts/ensure_dosbox.py`, its test, and the DOSBox-X confs under `tools/dosbox/`; rewrite `tools/dosbox/README.md`.
 - [x] **7.3** Rewrite `docs/development.md` §§ 1, 2 and the tables, `README.md`, `AGENTS.md` (the routing table row for `capture.md`), `GLOSSARY.md`, `docs/SPEC.md`, `docs/harness-setup.md`, `docs/ARCHITECTURE.md` and `NOTICE.md` mentions. Run `rg -i dosbox-x` over everything except `research/` and the legacy note; the only hits left are the legacy pointers.
 - [x] **7.4** Write `docs/adr/0025-capture-runs-are-plans-not-sessions.md` and mark ADR 0021 superseded; update `doc_anchors.py` if any anchor moves.
-- [ ] **7.5** Run `mise run check`, then reap the old DOSBox-X processes by hand (the user's call).
+- [ ] **7.5** Run `mise run check` (passes, 2026-10-31), then reap the old DOSBox-X processes by hand (the user's call; still open).
 - [x] **7.6** Commit.
 
 ## Open Questions
@@ -109,9 +109,9 @@
 2. Whether `mount_allowed_bases` in a primary config would let the stage live elsewhere. Not needed while the stage sits under the data root.
 3. Linux and macOS capture is lost: dosbox-automation ships a Windows zip only, and capture is local-only and not in CI.
 
-## Status and Handoff (2026-10-30)
+## Status and Handoff (2026-10-31)
 
-Tasks 1 to 5 and 7 are done on branch `worktree-dosbox-automation-spike`; Task 6 is partly done (6.4 done, 6.2's fade model written down but not applied, 6.1 open). The live findings are in [`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.4 and [`driving.md`](../../../research/makeone-exe/driving.md) § 9.
+Tasks 1 to 5 are done on branch `worktree-dosbox-automation-spike`, and Task 7 except 7.5's process reaping, which is the user's. Task 6 is partly done (6.3 and 6.4 done, 6.2's fade model written down but not applied, 6.1 open). The live findings are in [`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.4 and [`driving.md`](../../../research/makeone-exe/driving.md) § 9.
 
 Verified live: `capture-ref` on `CTRY.FLM` (113 frames at 7,000 cycles one pass at a time; 121 frames in 112 s at 45,000 with parallel passes) and `INTRO.FLM` (315 frames, 17 min before passes ran in parallel); `make-all` on `747LAND.FLM` on both CPU profiles, byte-identical to the DOSBox-X archive. `probe-light` on `CTRY.FLM` (seven samples in 111 s). `mise run play` (640x480 window, key script done in 21 s, exit 0 and stage removed after the window closed). Scored with `stuntreel parity`: new captures score as well as the DOSBox-X references or better on both films (§ 4.4). Not run live: the batch survey. A dynamic-core sweep matched the normal core's rate within 1% at 40% less host CPU, so capture moved to the dynamic core.
 
