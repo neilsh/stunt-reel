@@ -213,7 +213,7 @@ class DosboxAutomation:
                 return False
             try:
                 client.info()
-            except (urllib.error.URLError, OSError, ValueError):
+            except urllib.error.URLError, OSError, ValueError:
                 pass
             else:
                 return True
@@ -249,7 +249,7 @@ class DosboxAutomation:
             if client is not None:
                 try:
                     client.shutdown()
-                except (urllib.error.URLError, OSError):
+                except urllib.error.URLError, OSError:
                     process.terminate()
             try:
                 process.wait(timeout=timeout)

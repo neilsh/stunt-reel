@@ -53,7 +53,7 @@ def read(path: Path) -> list[Record]:
     for line in path.read_text(encoding="utf-8").splitlines():
         try:
             records.append(Record(**json.loads(line)))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             continue
     return records
 
