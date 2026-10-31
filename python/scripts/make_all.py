@@ -16,7 +16,6 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
 
 from stunt_reel import dataroot, parity_layout
 from stunt_reel.all_archive import (
@@ -29,9 +28,6 @@ from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.tac import makeone, staging
 from stunt_reel.tac.automation import ScriptError
 from stunt_reel.tac.emulator import EmulatorUnavailable
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 DEFAULT_GAME_ROOT: Path = Path("corpus/stuntisl")
 
@@ -69,7 +65,7 @@ def report(line: str) -> None:
     print(f"[make-all] {line}", flush=True)
 
 
-def run(args: argparse.Namespace, launch: Callable[..., Any] | None = None) -> int:
+def run(args: argparse.Namespace, launch: makeone.Launch | None = None) -> int:
     """Generate and store one archive; 0 on success, 1 on a failed run, 2 when refused."""
     film = resolve(args.film)
     game_root = resolve(args.game_root)
@@ -90,11 +86,10 @@ def run(args: argparse.Namespace, launch: Callable[..., Any] | None = None) -> i
 
     started = time.monotonic()
     try:
-        extra: dict[str, Any] = {} if launch is None else {"launch": launch}
         data = makeone.make_all(
             film,
             game_root=game_root,
-            **extra,
+            launch=launch,
             timeout=args.timeout,
             progress=report,
             warn=lambda message: print(f"[make-all] warning: {message}", file=sys.stderr),

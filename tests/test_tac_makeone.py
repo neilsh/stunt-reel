@@ -71,7 +71,7 @@ def _stage_dirs() -> list[str]:
 
 
 def test_keys_are_the_letter_then_enter() -> None:
-    assert makeone.film_selection_names("BALLOON.FLM") == ["KBD_b", "KBD_enter"]
+    assert makeone.film_requester_names("BALLOON.FLM") == ["KBD_b", "KBD_enter"]
 
 
 def test_text_mode_before_graphics_does_not_complete() -> None:

@@ -10,24 +10,25 @@ sign of the end is the screen going back to a text mode, which ``GET /video/text
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Protocol
 
 from stunt_reel import dataroot
 from stunt_reel.tac import automation, luagen, staging
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from contextlib import AbstractContextManager
     from pathlib import Path
 
 __all__ = [
     "DEFAULT_TIMEOUT",
     "POLL_SECONDS",
+    "Launch",
     "MakeOneClient",
     "MakeOneError",
     "MakeOneTimeout",
     "NoArchive",
-    "film_selection_names",
+    "film_requester_names",
     "make_all",
     "wait_for_text",
 ]
@@ -64,8 +65,12 @@ class MakeOneClient(Protocol):
         ...
 
 
-def film_selection_names(name: str) -> list[str]:
-    """Key names that load the film whose file name starts with name[0]: the letter, then Enter."""
+#: Starts an emulator on a staged mount; the context manager stops it.
+Launch = Callable[[staging.StagedMount], AbstractContextManager[MakeOneClient]]
+
+
+def film_requester_names(name: str) -> list[str]:
+    """Key names that load the film in MAKEONE's file requester: name[0], then Enter."""
     return [f"KBD_{name[:1].lower()}", "KBD_enter"]
 
 
@@ -118,7 +123,7 @@ def make_all(
     game_root: Path,
     timeout: float = DEFAULT_TIMEOUT,
     poll: float = POLL_SECONDS,
-    launch: Callable[[staging.StagedMount], AbstractContextManager[MakeOneClient]] = _launch,
+    launch: Launch | None = None,
     progress: Callable[[str], None] | None = None,
     warn: Callable[[str], None] | None = None,
 ) -> bytes:
@@ -126,17 +131,19 @@ def make_all(
 
     The archive is read inside the run, because teardown removes the mount. If the emulator
     then fails to stop, the run still produced a good archive: it is returned and the failure
-    goes to *warn*, instead of discarding a run that takes minutes.
+    goes to *warn*, instead of discarding a run that takes minutes. *launch* defaults to
+    dosbox-automation on the archive profile.
     """
+    start = launch or _launch
     source = game_root if game_root.is_absolute() else dataroot.REPO_ROOT / game_root
     staged = staging.stage_makeone(film, source)
     kept: list[bytes] = []
     say = progress or (lambda _line: None)
     try:
-        with launch(staged) as client:
+        with start(staged) as client:
             say("loading the film in MAKEONE's requester")
             client.run_script(
-                luagen.keys_script(film_selection_names(film.stem)), timeout=_KEYS_TIMEOUT
+                luagen.keys_script(film_requester_names(film.stem)), timeout=_KEYS_TIMEOUT
             )
             say("waiting for MAKEONE to return to DOS")
             wait_for_text(client, timeout=timeout, poll=poll)

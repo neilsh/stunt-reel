@@ -16,7 +16,6 @@ from pathlib import Path
 from stunt_reel import dataroot
 from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.tac import automation, luagen, playone, staging
-from stunt_reel.tac.emulator import EmulatorUnavailable
 
 DEFAULT_FILM: Path = Path("corpus/stisldem/VAULT/CTRY.FLM")
 #: Seconds the key script may take (boot to the film dialog, then the key presses).
@@ -45,9 +44,6 @@ def run(args: argparse.Namespace) -> int:
             luagen.keys_script(playone.film_selection_names(film.stem)), timeout=KEYS_TIMEOUT
         )
         emulator.wait()
-    except EmulatorUnavailable as exc:
-        print(f"[play] {exc}", file=sys.stderr)
-        return 1
     except (automation.ScriptError, RuntimeError, TimeoutError, OSError) as exc:
         print(f"[play] {exc}", file=sys.stderr)
         return 1
