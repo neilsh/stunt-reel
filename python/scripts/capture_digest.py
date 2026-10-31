@@ -35,9 +35,18 @@ def _entries() -> dict[str, dict[str, object]]:
     return {name: entry for name, entry in document.items() if isinstance(entry, dict)}
 
 
-def report(slug: str, run: str, digest: str) -> list[str]:
-    """The lines printed for capture *run* of *slug* hashing to *digest*."""
+def report(slug: str, run: str, digest: str, *, promotable: bool = True) -> list[str]:
+    """The lines printed for capture *run* of *slug* hashing to *digest*.
+
+    *promotable* is false for a directory that is not where parity reads that capture: an
+    entry naming it would point parity at a different directory, so none is printed.
+    """
     lines = [f"{parity_layout.frames_path(slug, run).as_posix()}", f'sha256 = "{digest}"']
+    if not promotable:
+        return [
+            *lines,
+            "# not this checkout's capture directory for that id, so no references.toml entry",
+        ]
     for name, entry in _entries().items():
         if entry.get("film") != slug:
             continue
@@ -62,9 +71,14 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     parser.add_argument("--dir", type=Path, help="a capture directory instead of film and run")
     args = parser.parse_args(argv)
 
+    promotable = True
     if args.dir is not None:
         directory = args.dir.resolve()
         slug, run = directory.parent.parent.name, directory.name
+        # Parity reads captures through the checkout's data-root link; a copy elsewhere with
+        # the same name is not the directory a references.toml entry would name.
+        canonical = (REPO_ROOT / parity_layout.frames_path(slug, run)).resolve()
+        promotable = directory == canonical
     elif args.film and args.run:
         slug = parity_layout.require_slug(args.film)
         run = str(args.run)
@@ -79,7 +93,7 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     if not (directory / "meta.json").is_file():
         print(f"{directory} is not a capture (no meta.json)", file=sys.stderr)
         return 1
-    for line in report(slug, run, references.capture_digest(directory)):
+    for line in report(slug, run, references.capture_digest(directory), promotable=promotable):
         print(line)
     return 0
 

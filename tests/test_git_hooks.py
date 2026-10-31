@@ -106,6 +106,21 @@ def test_staged_conflict_markers_fail_the_diff_check(
 
 
 @needs_git
+def test_deleting_markdown_brings_in_the_doc_invariants(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Removing a page can break the links that point at it, so a deletion counts."""
+    repo = _repo(tmp_path)
+    (repo / "note.md").write_text("one\n", encoding="utf-8")
+    _git(repo, "add", "note.md")
+    _git(repo, "commit", "-q", "-m", "one")
+    _git(repo, "rm", "-q", "note.md")
+    monkeypatch.chdir(repo)
+    assert gate._staged_paths() == ["note.md"]
+    assert "test-docs" in gate._staged_plan(gate._staged_paths())
+
+
+@needs_git
 def test_init_sets_the_hooks_path_once(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     (repo / ".githooks").mkdir()

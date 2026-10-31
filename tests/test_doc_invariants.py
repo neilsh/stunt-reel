@@ -192,6 +192,10 @@ PROCESS_POINTERS = frozenset(
 )
 
 
+#: A reference-style link definition, ``[label]: target``, which the inline regex does not see.
+LINK_DEFINITION_REGEX = re.compile(r"^ {0,3}\[[^\]\n]+\]:\s*<?([^\s>]+)>?", re.MULTILINE)
+
+
 def _process_links() -> set[tuple[str, str]]:
     """(source, target) for every Markdown link from a source of truth into docs/process/."""
     sources: list[Path] = []
@@ -205,8 +209,11 @@ def _process_links() -> set[tuple[str, str]]:
     for path in sources:
         if path.suffix != ".md":
             continue
-        for match in MARKDOWN_LINK_REGEX.finditer(_prose(path)):
-            file_part = match.group(1).partition("#")[0]
+        prose = _prose(path)
+        targets = [m.group(1) for m in MARKDOWN_LINK_REGEX.finditer(prose)]
+        targets += [m.group(1) for m in LINK_DEFINITION_REGEX.finditer(prose)]
+        for target in targets:
+            file_part = target.partition("#")[0]
             if not file_part or re.match(r"[a-z][a-z0-9+.-]*:", file_part):
                 continue
             resolved = (path.parent / file_part).resolve()
@@ -233,3 +240,12 @@ def test_sources_of_truth_do_not_link_into_process_docs() -> None:
     assert not stale, "PROCESS_POINTERS lists links that are gone; drop them:\n" + "\n".join(
         f"{source} -> {target}" for source, target in stale
     )
+
+
+def test_reference_style_definitions_are_read_as_links() -> None:
+    """``[p]: ../docs/process/X.md`` links as surely as ``[p](../docs/process/X.md)``."""
+    text = "See [the plan][p].\n\n[p]: ../../docs/process/TEAM_SHEET.md#tickets\n"
+    assert [m.group(1) for m in LINK_DEFINITION_REGEX.finditer(text)] == [
+        "../../docs/process/TEAM_SHEET.md#tickets"
+    ]
+    assert not MARKDOWN_LINK_REGEX.search("[p]: ../../docs/process/TEAM_SHEET.md")

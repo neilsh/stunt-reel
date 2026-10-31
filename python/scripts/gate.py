@@ -115,8 +115,11 @@ def _git(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _staged_paths() -> list[str]:
-    """Paths the index adds, copies, modifies or renames against ``HEAD``."""
-    proc = _git("diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z")
+    """Paths the index adds, copies, deletes, modifies or renames against ``HEAD``.
+
+    Deletions count: removing a Markdown file can break the links that point at it.
+    """
+    proc = _git("diff", "--cached", "--name-only", "--diff-filter=ACDMR", "-z")
     return [path for path in proc.stdout.split("\0") if path]
 
 

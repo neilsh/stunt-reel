@@ -154,17 +154,18 @@ out a branch another worktree holds, and the session could write only inside its
 so a fix to a lower layer is made on a detached `HEAD` and the branch is moved underneath:
 
 ```sh
+git -C <worktree-holding-layer> status --porcelain  # must print nothing: stop here if it does
 git switch --detach <layer>                 # in your own worktree; the layer's tip, no branch
 # edit, mise run check, git commit
-git update-ref refs/heads/<layer> HEAD <old-tip>  # move the branch; <old-tip> guards a race
-git -C <worktree-holding-layer> status --porcelain  # must print nothing before the next line
-git -C <worktree-holding-layer> reset --hard        # its index and files catch up with the branch
+git update-ref refs/heads/<layer> HEAD <old-tip> &&
+  git -C <worktree-holding-layer> reset --hard     # its index and files catch up with the branch
 ```
 
-Without the last step the other worktree still has the old files checked out under the moved
-branch, and `git status` there reports your commit reversed as staged changes. `reset --hard`
-discards anything uncommitted in it, which is why the `status` check comes first; writing into
-another worktree may need approval. Then rebase the layers above onto the new tip. `gh stack add`
+The `status` check comes first because once the branch moves, the other worktree still has the
+old files checked out under it and `git status` there reports your commit reversed as staged
+changes, so a check made afterwards cannot tell those from real uncommitted work. `reset --hard`
+discards anything uncommitted, and the `&&` keeps it from running when `<old-tip>` no longer
+matches and `update-ref` refuses. Writing into another worktree may need approval. Then rebase the layers above onto the new tip. `gh stack add`
 works only from the top branch of the stack, so run it in the worktree that holds the top.
 
 ## Windows PowerShell 5.1
@@ -178,7 +179,9 @@ under DeepSeek Harness (2026-10-25) and Claude Code (2026-10-31).
   also write CRLF. Write UTF-8 without a BOM and with LF through
   `[IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding($false)))`, with
   `` "`n" `` as the only line break in `$text`, and read one file back before running such a
-  write over many. `research/parity/log.md` is LF and append-only, so this is how a row goes in.
+  write over many. `research/parity/log.md` is LF and append-only: add a row with
+  `[IO.File]::AppendAllText($path, $row, (New-Object System.Text.UTF8Encoding($false)))`, never
+  `WriteAllText`, which replaces the file.
 * **Commit messages from a file.** A here-string piped to `git commit -F -` does not reach git.
   Write the message with `WriteAllText` above and run `git commit -F <file>`.
 * **Search with the Grep tool, not a shell.** A pattern with quotes in it does not survive 5.1's
