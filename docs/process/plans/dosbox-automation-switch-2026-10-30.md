@@ -113,7 +113,7 @@
 
 Tasks 1 to 5 and 7 are done on branch `worktree-dosbox-automation-spike`; Task 6 is partly done (6.2 and 6.4 recorded, 6.1 and 6.3 open). The live findings are in [`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.4 and [`driving.md`](../../../research/makeone-exe/driving.md) § 9.
 
-Verified live: `capture-ref` on `CTRY.FLM` (113 frames at 7,000 cycles one pass at a time; 121 frames in 112 s at 45,000 with parallel passes) and `INTRO.FLM` (315 frames, 17 min before passes ran in parallel); `make-all` on `747LAND.FLM` on both CPU profiles, byte-identical to the DOSBox-X archive. Not run live: `mise run play` (it waits for a person to close the window), `probe-light`, and the batch survey.
+Verified live: `capture-ref` on `CTRY.FLM` (113 frames at 7,000 cycles one pass at a time; 121 frames in 112 s at 45,000 with parallel passes) and `INTRO.FLM` (315 frames, 17 min before passes ran in parallel); `make-all` on `747LAND.FLM` on both CPU profiles, byte-identical to the DOSBox-X archive. `probe-light` on `CTRY.FLM` (seven samples in 111 s). Not run live: `mise run play` (it waits for a person to close the window) and the batch survey. A dynamic-core sweep matched the normal core within 1%, so capture stays on the normal core.
 
 Rulings made while executing (cost if wrong in brackets):
 
