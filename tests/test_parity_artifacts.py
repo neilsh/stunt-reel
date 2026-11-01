@@ -55,6 +55,7 @@ from stunt_reel.parity_artifacts import (
     read_report,
     write_capture,
     write_render,
+    write_render_store,
     write_report,
     write_video_capture,
 )
@@ -598,6 +599,15 @@ def test_read_page_reads_a_tick_through_the_store(tmp_path: Path) -> None:
     assert page.indices == frame.indices
     assert page.layers == struct.unpack("<12H", frame.layers)
     assert page.geometry == TINY
+
+
+def test_rewriting_a_store_withdraws_its_record_first(tmp_path: Path) -> None:
+    write_store(tmp_path, _STORE_TICKS)
+    with pytest.raises(ArtifactError, match="at least one tick"):
+        write_render_store(tmp_path, FilmId(), TINY, [])
+    assert not (tmp_path / RENDER_DOCUMENT).exists()
+    with pytest.raises(ArtifactError, match="re-render"):
+        RenderStore(tmp_path)
 
 
 def test_a_render_without_ticks_writes_no_store(tmp_path: Path) -> None:

@@ -159,14 +159,28 @@ pub(crate) struct RenderJournal {
 
 impl RenderJournal {
     /// Starts a journal for `dir`; the caller has already created the directory.
-    pub(crate) fn begin(dir: &Path, film: FilmId, geometry: Geometry) -> Self {
-        Self {
+    ///
+    /// Any `render.json` already in `dir` is removed first, so a run that fails or renders no
+    /// whole tick never leaves the previous render readable as its own.
+    pub(crate) fn begin(dir: &Path, film: FilmId, geometry: Geometry) -> Result<Self, StoreError> {
+        let record = dir.join(RENDER_DOCUMENT);
+        match fs::remove_file(&record) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(source) => {
+                return Err(StoreError::Io {
+                    path: record,
+                    source,
+                });
+            }
+        }
+        Ok(Self {
             dir: dir.to_path_buf(),
             film,
             store: StoreWriter::new(dir, &geometry),
             geometry,
             ticks: Vec::new(),
-        }
+        })
     }
 
     /// Stores the page drawn for film-clock `tick` with `controls` from `camera`.
@@ -698,7 +712,7 @@ mod tests {
     #[test]
     fn journal_writes_the_store_and_the_record_last() {
         let dir = temp_dir("journal");
-        let mut journal = RenderJournal::begin(&dir, FilmId::default(), geometry());
+        let mut journal = RenderJournal::begin(&dir, FilmId::default(), geometry()).expect("begin");
         let frame = frame();
         journal
             .write(7, frame.palette, frame.view, &page(frame.palette, false))
@@ -723,7 +737,7 @@ mod tests {
     #[test]
     fn a_page_whose_picture_is_not_its_palette_lookup_is_refused() {
         let dir = temp_dir("tampered");
-        let mut journal = RenderJournal::begin(&dir, FilmId::default(), geometry());
+        let mut journal = RenderJournal::begin(&dir, FilmId::default(), geometry()).expect("begin");
         let frame = frame();
         let error = journal
             .write(7, frame.palette, frame.view, &page(frame.palette, true))
@@ -733,9 +747,30 @@ mod tests {
     }
 
     #[test]
+    fn a_rerender_withdraws_the_previous_record_before_it_writes() {
+        let dir = temp_dir("rerender");
+        let mut first = RenderJournal::begin(&dir, FilmId::default(), geometry()).expect("begin");
+        let frame = frame();
+        first
+            .write(7, frame.palette, frame.view, &page(frame.palette, false))
+            .expect("write");
+        first.finish().expect("finish");
+        assert!(dir.join(RENDER_DOCUMENT).exists());
+
+        let second = RenderJournal::begin(&dir, FilmId::default(), geometry()).expect("begin");
+        assert!(
+            !dir.join(RENDER_DOCUMENT).exists(),
+            "a reader must not take the previous render for this run's"
+        );
+        second.finish().expect("finish");
+        assert!(read_render_record(&dir).is_err());
+    }
+
+    #[test]
     fn an_empty_journal_writes_no_documents() {
         let dir = temp_dir("empty");
         RenderJournal::begin(&dir, FilmId::default(), geometry())
+            .expect("begin")
             .finish()
             .expect("finish");
         assert!(!dir.join(RENDER_DOCUMENT).exists());

@@ -1170,8 +1170,11 @@ def write_render_store(
 ) -> RenderRecord:
     """Write a whole render store from *frames* in tick order, ``render.json`` last.
 
-    Each tick's ``palette_index`` is assigned by the store; the one it carries is ignored.
+    Each tick's ``palette_index`` is assigned by the store; the one it carries is ignored. Any
+    ``render.json`` already in *directory* is removed first, so a write that fails or holds no
+    tick never leaves the previous render readable as this one.
     """
+    (directory / RENDER_DOCUMENT).unlink(missing_ok=True)
     writer = RenderStoreWriter(directory, geometry)
     ticks: list[RenderTick] = []
     for tick, frame in frames:

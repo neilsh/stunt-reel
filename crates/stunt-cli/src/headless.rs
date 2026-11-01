@@ -214,7 +214,9 @@ pub(crate) fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), 
     let journal = config
         .out_dir
         .as_ref()
-        .map(|dir| RenderJournal::begin(dir, film_identity(config.flm_path.as_deref()), geometry));
+        .map(|dir| RenderJournal::begin(dir, film_identity(config.flm_path.as_deref()), geometry))
+        .transpose()
+        .map_err(|error| error.to_string())?;
     let sink = Rc::new(RefCell::new(SampleSink {
         out_dir: config.out_dir.clone(),
         video: video_writer.take(),
