@@ -29,11 +29,10 @@ pub(super) fn run_compare(
     let comparison = compare_reports(&previous, report)
         .map_err(|e| format!("compare with {}: {e}", previous_path.display()))?;
 
-    let verdict = args
-        .compare_test
-        .as_deref()
-        .map(|previous_render| judge(args, previous_render, report, frames))
-        .transpose()?;
+    let verdict = match args.compare_test.as_deref() {
+        Some(previous_render) => judge(args, previous_render, report, frames)?,
+        None => None,
+    };
 
     let mut document = comparison.to_json();
     if let (Some(verdict), Some(object)) = (&verdict, document.as_object_mut()) {
@@ -47,8 +46,10 @@ pub(super) fn run_compare(
     )
     .map_err(|e| format!("write {}: {e}", compare_path.display()))?;
     println!("{}", comparison.summary());
-    if let Some(verdict) = &verdict {
-        println!("{}", verdict.summary());
+    match (&verdict, args.compare_test.as_deref()) {
+        (Some(verdict), _) => println!("{}", verdict.summary()),
+        (None, Some(previous_render)) => println!("{}", skipped_note(previous_render)),
+        (None, None) => {}
     }
 
     let Some(previous_render) = &args.compare_test else {
@@ -120,13 +121,32 @@ pub(super) fn run_compare(
     Ok(())
 }
 
-/// Judges every fresh frame against the previous render of the same tick.
+/// The note printed in place of the verdict summary when the previous render has no planes.
+fn skipped_note(previous_render: &Path) -> String {
+    format!(
+        "[verdict] skipped: {} has no index planes; re-render it to judge changes",
+        previous_render.display()
+    )
+}
+
+/// Judges every fresh frame against the previous render of the same tick; `None` when the
+/// previous render predates the index and layer planes, which the verdict cannot do without.
 fn judge(
     args: &Args,
     previous_render: &Path,
     report: &Report,
     frames: &[CapturedFrame],
-) -> Result<Verdict, String> {
+) -> Result<Option<Verdict>, String> {
+    let lacks_planes = report.per_frame.iter().any(|entry| {
+        usize::try_from(entry.film_tick).is_ok_and(|tick| {
+            let png = previous_render.join(crate::headless::tick_png_name(tick));
+            let (idx, layer) = crate::plane_codec::plane_paths(&png);
+            png.is_file() && !(idx.is_file() && layer.is_file())
+        })
+    });
+    if lacks_planes {
+        return Ok(None);
+    }
     let mut judged = Vec::with_capacity(report.per_frame.len());
     for entry in &report.per_frame {
         let tick = usize::try_from(entry.film_tick).map_err(|e| e.to_string())?;
@@ -153,10 +173,10 @@ fn judge(
             args.build_floor,
         ));
     }
-    Ok(Verdict {
+    Ok(Some(Verdict {
         frames: judged,
         has_sigma: args.noise_sigma.is_some(),
-    })
+    }))
 }
 
 #[cfg(test)]
@@ -225,6 +245,63 @@ mod tests {
         assert_eq!(
             sheet.width() as usize,
             (MODE13H_WIDTH + CONTACT_SHEET_GAP) * 5 - CONTACT_SHEET_GAP
+        );
+    }
+
+    #[test]
+    fn a_before_tree_without_planes_skips_the_verdict_and_keeps_the_comparison() {
+        let tmp = TempDir::new("verdict_no_planes");
+        write_reference(&tmp.join("ref"), &[7, 12], true);
+        let previous = tmp.join("prev");
+        let current = tmp.join("cur");
+        fs::create_dir_all(&previous).unwrap();
+        fs::create_dir_all(&current).unwrap();
+        for tick in [7, 12] {
+            write_render(&previous.join(crate::headless::tick_png_name(tick)));
+            write_render(&current.join(crate::headless::tick_png_name(tick)));
+        }
+        write_matching_render(&current.join(crate::headless::tick_png_name(12)));
+        run_parity(&tmp.join("ref"), &previous, &tmp.join("base")).expect("baseline");
+        // An old render: the PNGs stay, the planes go.
+        for tick in [7, 12] {
+            let png = previous.join(crate::headless::tick_png_name(tick));
+            let (idx, layer) = crate::plane_codec::plane_paths(&png);
+            fs::remove_file(idx).unwrap();
+            fs::remove_file(layer).unwrap();
+        }
+        let argv = [
+            "--reference",
+            &tmp.join("ref").display().to_string(),
+            "--test",
+            &current.display().to_string(),
+            "--output",
+            &tmp.join("out").display().to_string(),
+            "--compare",
+            &tmp.join("base").join("report.json").display().to_string(),
+            "--compare-test",
+            &previous.display().to_string(),
+        ]
+        .map(String::from);
+        run(argv.into_iter()).expect("a before tree without planes is not an error");
+
+        let doc: Value = serde_json::from_str(
+            &fs::read_to_string(tmp.join("out").join("compare.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(doc["common_frames"], 2);
+        assert_eq!(doc["most_improved"][0]["film_tick"], 12);
+        assert!(doc.get("verdict").is_none());
+        assert!(
+            tmp.join("out")
+                .join("compare_improved_tick_00012.png")
+                .is_file()
+        );
+        assert_eq!(
+            skipped_note(&previous),
+            format!(
+                "[verdict] skipped: {} has no index planes; re-render it to judge changes",
+                previous.display()
+            )
         );
     }
 

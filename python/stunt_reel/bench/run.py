@@ -82,6 +82,37 @@ def _paired_ticks(
     return [t for t in ticks if t in a and t in b and t in rendered]
 
 
+def _recapture_sigmas(
+    metrics: list[str],
+    a: dict[int, CapturePlanes],
+    b: dict[int, CapturePlanes],
+    source: RenderSource,
+    ticks: list[int],
+) -> dict[str, float | None]:
+    """Sigma of each of *metrics*, loading every paired tick's control render once."""
+    paired = _paired_ticks(a, b, source, ticks)
+    if len(paired) < MIN_PAIRED_TICKS:
+        raise BenchError(
+            f"only {len(paired)} scored ticks are in both captures; sigma needs {MIN_PAIRED_TICKS}"
+        )
+    deltas: dict[str, list[float]] = {name: [] for name in metrics}
+    for tick in paired:
+        control = source.load(tick)
+        regions = _regions(control)
+        for name in metrics:
+            fn = METRICS[name]
+            first = fn(a[tick], control, regions)
+            second = fn(b[tick], control, regions)
+            if first is not None and second is not None:
+                deltas[name].append(first - second)
+    # A metric n/a on (nearly) every frame has no noise to measure: None, so nothing it
+    # scores can be called detected.
+    return {
+        name: float(statistics.stdev(values)) if len(values) >= 2 else None
+        for name, values in deltas.items()
+    }
+
+
 def recapture_sigma(
     metric: str,
     a: dict[int, CapturePlanes],
@@ -90,25 +121,7 @@ def recapture_sigma(
     ticks: list[int],
 ) -> float | None:
     """Sigma of *metric*: how far two captures of one film disagree about the same control."""
-    fn = METRICS[metric]
-    paired = _paired_ticks(a, b, source, ticks)
-    if len(paired) < MIN_PAIRED_TICKS:
-        raise BenchError(
-            f"only {len(paired)} scored ticks are in both captures; sigma needs {MIN_PAIRED_TICKS}"
-        )
-    deltas: list[float] = []
-    for tick in paired:
-        control = source.load(tick)
-        regions = _regions(control)
-        first = fn(a[tick], control, regions)
-        second = fn(b[tick], control, regions)
-        if first is not None and second is not None:
-            deltas.append(first - second)
-    if len(deltas) < 2:
-        # A metric n/a on (nearly) every frame has no noise to measure: None, so nothing
-        # it scores can be called detected.
-        return None
-    return float(statistics.stdev(deltas))
+    return _recapture_sigmas([metric], a, b, source, ticks)[metric]
 
 
 def _build_floor(source: RenderSource, floor: RenderSource) -> dict[str, Any]:
@@ -158,9 +171,7 @@ def bench(
     """The ``bench.json`` document for one film."""
     rendered = set(source.ticks())
     film_ticks = [t for t in scored_ticks if t in reference and t in rendered]
-    sigma = {
-        name: recapture_sigma(name, reference, recapture, source, scored_ticks) for name in METRICS
-    }
+    sigma = _recapture_sigmas(list(METRICS), reference, recapture, source, scored_ticks)
     changes: dict[str, dict[str, list[float]]] = {
         name: {fault.key: [] for fault in ALL_FAULTS} for name in METRICS
     }

@@ -269,6 +269,25 @@ def test_a_zero_sigma_detects_any_negative_mean() -> None:
     assert run_module._entry([0.01], 0.0)["detected"] is False
 
 
+def test_sigmas_are_positive_when_the_metric_fell_and_detect_from_exactly_three() -> None:
+    sigma = 0.5  # binary fractions, so 1.5 / 0.5 is exactly DETECT_SIGMAS
+    at_the_line = run_module._entry([-1.5], sigma)
+    assert at_the_line["sigmas"] == run_module.DETECT_SIGMAS == 3.0
+    assert at_the_line["detected"] is True
+    assert at_the_line["mean_change"] == -1.5
+
+    just_short = run_module._entry([-1.49], sigma)
+    assert 2.9 < just_short["sigmas"] < 3.0
+    assert just_short["detected"] is False
+
+
+def test_a_rising_metric_has_negative_sigmas_and_is_not_detected() -> None:
+    entry = run_module._entry([1.5], 0.5)
+    assert entry["sigmas"] == -3.0
+    assert entry["detected"] is False
+    assert entry["mean_change"] == 1.5
+
+
 def test_a_reversed_plant_range_is_an_argument_error() -> None:
     with pytest.raises(argparse.ArgumentTypeError):
         parity_bench.parse_plant("shift_x:4@600-500")

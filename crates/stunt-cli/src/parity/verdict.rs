@@ -271,7 +271,8 @@ impl Verdict {
             self.count(VerdictClass::BuildNoise),
             self.count(VerdictClass::Missing),
         );
-        let changed = self.frames.len() - self.count(VerdictClass::Unchanged) - missing;
+        // Build noise is labelled, not counted as changed (spec section 2).
+        let changed = self.frames.len() - self.count(VerdictClass::Unchanged) - build - missing;
         let mean = self
             .mean_delta()
             .map_or_else(|| "n/a".to_string(), |m| format!("{m:+.3}"));
@@ -405,17 +406,22 @@ mod tests {
         let mut closer = FrameVerdict::missing(1);
         closer.class = VerdictClass::Closer;
         closer.delta = Some(0.01);
+        let mut noise = FrameVerdict::missing(5);
+        noise.class = VerdictClass::BuildNoise;
+        noise.delta = Some(-0.5);
         let verdict = Verdict {
-            frames: vec![closer, FrameVerdict::missing(9)],
+            frames: vec![closer, noise, FrameVerdict::missing(9)],
             has_sigma: false,
         };
+        // The build-noise frame is labelled, not counted as changed: 1 of 3, not 2 of 3.
         assert_eq!(
             verdict.summary(),
-            "[verdict] changed 1/2 frames: 1 closer, 0 further, 0 within noise; mean \u{394} +0.010 on changed windows (0 build noise, 1 missing) (no noise sigma: \u{394} by sign only)"
+            "[verdict] changed 1/3 frames: 1 closer, 0 further, 0 within noise; mean \u{394} +0.010 on changed windows (1 build noise, 1 missing) (no noise sigma: \u{394} by sign only)"
         );
         let doc = verdict.to_json();
         assert_eq!(doc["counts"]["missing"], 1);
-        assert_eq!(doc["frames"].as_array().unwrap().len(), 2);
+        assert_eq!(doc["counts"]["build_noise"], 1);
+        assert_eq!(doc["frames"].as_array().unwrap().len(), 3);
         assert_eq!(verdict.worst_and_best(), (None, Some(1)));
     }
 
