@@ -123,6 +123,7 @@ def test_a_render_record_round_trips_through_json(tmp_path: Path) -> None:
     record = _record()
     write_render(path, record)
     assert read_render(path) == record
+    assert b"\r" not in path.read_bytes(), "render.json is written with LF line endings"
     document = json.loads(path.read_text(encoding="utf-8"))
     assert document["schema_version"] == RENDER_SCHEMA_VERSION
     assert document["film"] == {"name": "CTRY.FLM", "flm_bytes": 100}
@@ -536,6 +537,14 @@ def test_chunks_must_tile_both_files() -> None:
         ),
     )
     assert "chunks[1]: offsets 11 and 10" in _store_refusal(gap)
+    overflow = replace(
+        two,
+        chunks=(
+            replace(two.chunks[0], index=StoreSpan(offset=0, length=2**64 - 1)),
+            replace(two.chunks[1], index=StoreSpan(offset=2**64 - 1, length=10)),
+        ),
+    )
+    assert "chunks[1]: lengths run past" in _store_refusal(overflow)
 
 
 def test_locate_finds_a_tick_by_chunk_and_position() -> None:
@@ -633,11 +642,29 @@ def test_a_corrupt_chunk_names_its_second_and_file(tmp_path: Path) -> None:
     assert refusal.value.path == path
 
 
+def test_a_chunk_of_the_wrong_decoded_length_names_its_second_and_file(tmp_path: Path) -> None:
+    record = _store(tmp_path)
+    path = tmp_path / RENDER_INDEX_FILE
+    # Second 2 holds two 12-pixel ticks; store one byte too many.
+    packed = zstd.compress(bytes(25))
+    path.write_bytes(path.read_bytes()[: record.chunks[1].index.offset] + packed)
+    longer = replace(record.chunks[1], index=replace(record.chunks[1].index, length=len(packed)))
+    write_render(tmp_path / RENDER_DOCUMENT, replace(record, chunks=(record.chunks[0], longer)))
+    store = RenderStore(tmp_path)
+    assert store.frame(7) == frame_for(7)
+    with pytest.raises(ArtifactError, match="second 2 decompresses to 25 bytes, expected 24") as (
+        refusal
+    ):
+        store.frame(101)
+    assert refusal.value.path == path
+
+
 def test_palettes_of_the_wrong_length_are_refused(tmp_path: Path) -> None:
     _store(tmp_path)
-    (tmp_path / RENDER_PALETTE_FILE).write_bytes(zstd.compress(bytes(PALETTE_BYTES)))
-    with pytest.raises(ArtifactError, match="expected 1536 for 2 palettes"):
-        RenderStore(tmp_path)
+    for count in (1, 3):
+        (tmp_path / RENDER_PALETTE_FILE).write_bytes(zstd.compress(bytes(count * PALETTE_BYTES)))
+        with pytest.raises(ArtifactError, match="expected 1536 for 2 palettes"):
+            RenderStore(tmp_path)
 
 
 def test_a_version_1_render_is_refused_with_the_re_render_action(tmp_path: Path) -> None:

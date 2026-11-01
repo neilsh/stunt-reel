@@ -194,8 +194,14 @@ impl RenderRecord {
                     chunk.index.offset, chunk.layer.offset
                 )));
             }
-            index_end += chunk.index.length;
-            layer_end += chunk.layer.length;
+            let (Some(index), Some(layer)) = (
+                index_end.checked_add(chunk.index.length),
+                layer_end.checked_add(chunk.layer.length),
+            ) else {
+                return Err(at("lengths run past the largest file offset".to_string()));
+            };
+            index_end = index;
+            layer_end = layer;
             let end = next_tick + chunk.ticks as usize;
             let Some(ticks) = self.ticks.get(next_tick..end) else {
                 return Err(at(format!(
@@ -386,6 +392,11 @@ mod tests {
         let mut gap = record(vec![0, 50]);
         gap.chunks[1].index.offset = 11;
         assert!(store_error(&gap).contains("chunks[1]: offsets 11 and 10"));
+
+        let mut overflow = record(vec![0, 50]);
+        overflow.chunks[0].index.length = u64::MAX;
+        overflow.chunks[1].index.offset = u64::MAX;
+        assert!(store_error(&overflow).contains("chunks[1]: lengths run past"));
 
         let mut late_start = record(vec![0]);
         late_start.chunks[0].layer.offset = 4;

@@ -121,6 +121,8 @@ _ZSTD_LEVEL = 3
 #: Decoded chunks a :class:`RenderStore` keeps, so a reader reaching back one second does
 #: not decode twice.
 _CACHED_CHUNKS = 2
+#: Largest byte offset a render's chunk table may reach: a u64, as in the Rust record.
+_MAX_OFFSET = 2**64 - 1
 #: Entries in a capture's ``palettes_%04d.json``; Mode 13h has a 256-entry palette.
 PALETTE_ENTRIES = 256
 #: First layer id an actor draw writes (mirrors ``stunt_render::LAYER_FIRST_ACTOR``).
@@ -185,7 +187,8 @@ def _write_json(path: Path, document: Mapping[str, Any]) -> None:
     text = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
     temporary = path.with_name(f".{path.name}.tmp")
     try:
-        temporary.write_text(text, encoding="utf-8")
+        # LF on every platform, as the Rust adapter writes and the repository stores (.editorconfig).
+        temporary.write_text(text, encoding="utf-8", newline="\n")
         temporary.replace(path)
     except OSError as err:
         temporary.unlink(missing_ok=True)
@@ -440,6 +443,8 @@ class RenderRecord:
                 )
             ends[0] += chunk.index.length
             ends[1] += chunk.layer.length
+            if max(ends) > _MAX_OFFSET:
+                raise at("lengths run past the largest file offset")
             end = next_tick + chunk.ticks
             if end > len(self.ticks):
                 raise at(
@@ -883,8 +888,8 @@ def _report_document(report: Report) -> dict[str, Any]:
 def _store_span(value: Any, path: Path | None, field_name: str) -> StoreSpan:
     raw = _as_object(value, path, field_name)
     return StoreSpan(
-        offset=_as_unsigned(raw.get("offset"), path, f"{field_name}.offset", 2**64 - 1),
-        length=_as_unsigned(raw.get("length"), path, f"{field_name}.length", 2**64 - 1),
+        offset=_as_unsigned(raw.get("offset"), path, f"{field_name}.offset", _MAX_OFFSET),
+        length=_as_unsigned(raw.get("length"), path, f"{field_name}.length", _MAX_OFFSET),
     )
 
 

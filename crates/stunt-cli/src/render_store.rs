@@ -497,7 +497,7 @@ impl RenderStore {
             file.seek(SeekFrom::Start(span.offset)).map_err(io(&path))?;
             let mut packed = vec![0u8; span.length as usize];
             file.read_exact(&mut packed).map_err(io(&path))?;
-            let raw = zstd::bulk::decompress(&packed, expected).map_err(|error| {
+            let raw = zstd::decode_all(packed.as_slice()).map_err(|error| {
                 corrupt(
                     &path,
                     format!("second {} does not decompress: {error}", entry.second),
@@ -530,7 +530,9 @@ fn read_palettes(path: &Path, count: u32) -> Result<Vec<Palette>, StoreError> {
     }
     let packed = fs::read(path).map_err(io(path))?;
     let expected = count as usize * PALETTE_BYTES;
-    let raw = zstd::bulk::decompress(&packed, expected)
+    // Decoded without a size cap, so a payload of the wrong length is reported by its length,
+    // as the Python reader does, rather than as a decode failure.
+    let raw = zstd::decode_all(packed.as_slice())
         .map_err(|error| corrupt(path, format!("does not decompress: {error}")))?;
     if raw.len() != expected {
         return Err(corrupt(
@@ -754,17 +756,49 @@ mod tests {
     }
 
     #[test]
+    fn a_chunk_of_the_wrong_decoded_length_names_its_second_and_file() {
+        let dir = temp_dir("long-chunk");
+        write_store(&dir);
+        let mut record = RenderStore::open(&dir).expect("open").record().clone();
+        let path = dir.join(INDEX_FILE);
+        let mut bytes = fs::read(&path).unwrap();
+        bytes.truncate(record.chunks[1].index.offset as usize);
+        // Second 2 holds two 12-pixel ticks; store one byte too many.
+        let packed = zstd::bulk::compress(&[0u8; 25], 3).unwrap();
+        bytes.extend_from_slice(&packed);
+        fs::write(&path, bytes).unwrap();
+        record.chunks[1].index.length = packed.len() as u64;
+        parity_artifacts::write_render_record(&dir, &record).expect("write record");
+        let mut store = RenderStore::open(&dir).expect("open");
+        store.frame(7).expect("second 0 is intact");
+        let error = store.frame(101).unwrap_err().to_string();
+        assert!(error.contains("frames.zst"), "{error}");
+        assert!(
+            error.contains("second 2 decompresses to 25 bytes, expected 24"),
+            "{error}"
+        );
+    }
+
+    #[test]
     fn palettes_of_the_wrong_length_are_refused() {
         let dir = temp_dir("palettes");
         write_store(&dir);
-        fs::write(
-            dir.join(PALETTE_FILE),
-            zstd::bulk::compress(&[0u8; PALETTE_BYTES], 3).unwrap(),
-        )
-        .unwrap();
-        let error = RenderStore::open(&dir).err().expect("refused").to_string();
-        assert!(error.contains("palettes.zst"), "{error}");
-        assert!(error.contains("expected 1536 for 2 palettes"), "{error}");
+        for count in [1, 3] {
+            fs::write(
+                dir.join(PALETTE_FILE),
+                zstd::bulk::compress(&vec![0u8; count * PALETTE_BYTES], 3).unwrap(),
+            )
+            .unwrap();
+            let error = RenderStore::open(&dir).err().expect("refused").to_string();
+            assert!(error.contains("palettes.zst"), "{error}");
+            assert!(
+                error.contains(&format!(
+                    "holds {} bytes, expected 1536 for 2 palettes",
+                    count * PALETTE_BYTES
+                )),
+                "{error}"
+            );
+        }
     }
 
     #[test]
