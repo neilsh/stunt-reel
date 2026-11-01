@@ -457,8 +457,9 @@ Needs the emulator and the corpus; nothing here runs in the gate.
   `trait RenderSource { fn frame(&mut self, tick: u32) -> Result<Option<&RenderFrame>, String>; }`;
   `struct DirRenderSource` (reads `tick_NNNNN.png` and planes from a render directory with its
   controls, caching ticks and dropping those below the lowest still needed);
-  `score_seconds(capture: &VideoCapture, frames: &BTreeMap<usize, Vec<[u8; 3]>>, samples: &[Sample],
-  render: &mut dyn RenderSource, options: &SecondsOptions) -> Result<SecondsReport, String>`.
+  `score_seconds(capture: &VideoCapture, frames: &BTreeMap<usize, Vec<[u8; 3]>>,`
+  `samples` (a slice of `Sample`), `render: &mut dyn RenderSource, options: &SecondsOptions)`
+  `-> Result<SecondsReport, String>`.
 
 Rules the tests pin:
 - Sample targets in second `s` are `50s + (k*50 + n/2) / n` for `k` in `0..n` (`n` = 3 gives 0, 17,
