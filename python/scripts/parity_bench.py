@@ -106,6 +106,10 @@ def judge_make(args: argparse.Namespace) -> int:
     return 0
 
 
+def _fmt(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.2f}"
+
+
 def judge_score(args: argparse.Namespace) -> int:
     reference, render, report, out = _judge_paths(args)
     key = answer_key(reference, render, report, args.seed, args.frames_per_fault)
@@ -116,8 +120,8 @@ def judge_score(args: argparse.Namespace) -> int:
         if isinstance(entry, dict):
             verdict = "PASS" if entry["passes"] else "FAIL"
             print(
-                f"{name:<16} {verdict}  accuracy {entry['accuracy']:.2f}  "
-                f"answered {entry['answered']}  a_share {entry['a_share']:.2f}"
+                f"{name:<16} {verdict}  accuracy {_fmt(entry['accuracy'])}  "
+                f"answered {entry['answered']}  a_share {_fmt(entry['a_share'])}"
             )
     print(f"unanswered {document['unanswered']}  control_a_share {document['control_a_share']}")
     print(f"[bench] wrote {out / 'judge.json'}", file=sys.stderr)

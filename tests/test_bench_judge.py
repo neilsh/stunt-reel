@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -98,3 +99,46 @@ def test_accuracy_counts_both_orders(tmp_path: Path) -> None:
     assert result["flicker:3"]["accuracy"] == 1.0
     assert result["flicker:3"]["passes"] is True
     assert result["unanswered"] == 0
+
+
+def test_ids_file_matches_the_answer_key(tmp_path: Path, inputs: tuple[Path, Path, Path]) -> None:
+    out = tmp_path / "out"
+    make_composites(*inputs, out, seed=3, frames_per_fault=1)
+    ids = (out / "ids.txt").read_text(encoding="utf-8").split()
+    assert len(ids) == len(set(ids))
+    assert set(ids) == set(answer_key(*inputs, seed=3, frames_per_fault=1))
+
+
+def test_orders_swap_the_panels_and_gaps_are_white(
+    tmp_path: Path, inputs: tuple[Path, Path, Path]
+) -> None:
+    out = tmp_path / "out"
+    make_composites(*inputs, out, seed=3, frames_per_fault=1)
+    key = answer_key(*inputs, seed=3, frames_per_fault=1)
+    shift = {i: a for i, (f, a) in key.items() if f == "shift_x:4"}
+    ab = next(i for i, a in shift.items() if a == "B")
+    ba = next(i for i, a in shift.items() if a == "A")
+    one = np.asarray(Image.open(out / f"{ab}.png").convert("RGB"))
+    two = np.asarray(Image.open(out / f"{ba}.png").convert("RGB"))
+    panel = slice(0, 320), slice(328, 648), slice(656, 976)
+    assert (one[:, panel[0]] == two[:, panel[0]]).all()
+    assert (one[:, panel[1]] == two[:, panel[2]]).all()
+    assert (one[:, panel[2]] == two[:, panel[1]]).all()
+    assert not (one[:, panel[1]] == one[:, panel[2]]).all()
+    for image in (one, two):
+        assert (image[:, 320:328] == 255).all()
+        assert (image[:, 648:656] == 255).all()
+
+
+def test_a_fault_never_answered_still_appears(tmp_path: Path) -> None:
+    key = {"a": ("shift_x:4", "A"), "b": ("flicker:3", "B")}
+    path = tmp_path / "answers.txt"
+    path.write_text("a A r\n", encoding="utf-8")
+    result = score_answers(path, key)
+    assert result["flicker:3"] == {
+        "accuracy": None,
+        "answered": 0,
+        "a_share": None,
+        "passes": False,
+    }
+    assert result["unanswered"] == 1

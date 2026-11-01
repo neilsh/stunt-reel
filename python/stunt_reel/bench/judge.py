@@ -114,6 +114,7 @@ def make_composites(
     items, captured, tree = _plan(reference, render, report, seed, frames_per_fault)
     faults = {fault.key: fault for fault in ALL_FAULTS}
     out.mkdir(parents=True, exist_ok=True)
+    written: list[str] = []
     for item in items:
         control = tree.load(item.tick)
         if item.fault == CONTROL_KEY:
@@ -125,7 +126,8 @@ def make_composites(
             planted = made
         a, b = (planted, control) if item.order == "AB" else (control, planted)
         _composite(captured[item.tick], a, b).save(out / f"{item.id}.png")
-    ids = [item.id for item in items]
+        written.append(item.id)
+    ids = written
     random.Random(seed).shuffle(ids)  # noqa: S311 - not security
     (out / "ids.txt").write_text("".join(f"{i}\n" for i in ids), encoding="utf-8")
     return len(ids)
@@ -161,11 +163,15 @@ def score_answers(answers: Path, key: dict[str, tuple[str, str]]) -> dict[str, A
     stray = {i for i in given if i not in key}
     valid = {i: a for i, a in given.items() if i in key}
     result: dict[str, Any] = {"unanswered": len(set(key) - set(valid)) + len(stray)}
-    by_fault: dict[str, list[tuple[str, str]]] = {}
+    by_fault: dict[str, list[tuple[str, str]]] = {fault: [] for fault, _ in key.values()}
     for item_id, answer in valid.items():
         fault, correct = key[item_id]
         by_fault.setdefault(fault, []).append((answer, correct))
     for fault, rows in sorted(by_fault.items()):
+        if not rows:
+            if fault != CONTROL_KEY:
+                result[fault] = {"accuracy": None, "answered": 0, "a_share": None, "passes": False}
+            continue
         a_share = sum(1 for given_answer, _ in rows if given_answer == "A") / len(rows)
         if fault == CONTROL_KEY:
             result["control_a_share"] = a_share
