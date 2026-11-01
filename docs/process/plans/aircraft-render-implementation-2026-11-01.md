@@ -42,8 +42,10 @@ change from that track's `diagnosis.md`, and this plan fixes everything around i
   before rendering, and `errors-score` refuses a render changed since `errors-make`.
 - **A diagnosis that rests on instrumentation output alone**: Task 3 reruns its key command in a
   clean build before any fix is applied.
-- **Diagnosticians writing outside their worktree or into the data root** would break SOP 6 and
-  ADR 0022; the brief forbids it and Task 9's reap dry run shows any leftover.
+- **A subagent acting on the wrong checkout:** every subagent's shell starts in the primary
+  checkout, so a relative path or a bare `mise run` lands there, breaking SOP 6. The briefs give
+  absolute paths and a `cd` rule; Task 9's reap dry run and `git -C E:/git/stunt-reel status`
+  show any leftover.
 
 ---
 
@@ -81,16 +83,18 @@ Expected: `build/parity/bench/<film>/errors/` holds 12 sheets, `brief.md`, `brie
 
 - [ ] **Step 5: Two Haiku graders at once** (`model: "haiku"`, background)
 
-Prompt 1, whole: "Read build/parity/bench/ctry/errors/brief.md and follow it; then read
-build/parity/bench/intro/errors/brief.md and follow it. Each is your whole instruction for its film."
-Prompt 2: the same with `brief-2.md`. Paths are relative to the worktree; give the absolute path.
+Prompt 1, whole: "Read E:/git/stunt-reel.wt/aircraft-render/build/parity/bench/ctry/errors/brief.md
+and follow it; then read …/bench/intro/errors/brief.md (same prefix) and follow it. Each is your
+whole instruction for its film." Prompt 2: the same with `brief-2.md`. Absolute paths, because a
+subagent's shell starts in the primary checkout; the briefs themselves already name absolute
+folders. Wait for both notifications.
 
 - [ ] **Step 6: Disputes and tie-break**
 
 Run: `mise run parity-bench -- errors-disputes --film ctry` and `... --film intro`.
 If either names disputed sheets, one Sonnet subagent (`model: "sonnet"`) with the prompt "Read
-build/parity/bench/<film>/errors/brief-tiebreak.md and follow it" for each film that has one, in
-one prompt.
+E:/git/stunt-reel.wt/aircraft-render/build/parity/bench/<film>/errors/brief-tiebreak.md and follow
+it", listing each film that has one, in one prompt.
 
 - [ ] **Step 7: Score and keep the readouts**
 
@@ -144,6 +148,11 @@ Each prompt is the shared brief below with its track block appended.
 > export-gltf --help` exports a shape or a film frame as glTF). Never commit, push, capture, run
 > `mise run reap` or `clean`, edit `research\parity\references.toml`, or write outside `<W>`.
 > AGENTS.md's quality gate and commit rules do not apply to you, since you commit nothing.
+>
+> Your shell starts in `E:\git\stunt-reel`, another checkout, on every call: begin every Bash
+> command with `cd <W in forward slashes> &&`, and give file tools absolute paths under `<W>`.
+> Prefer `mise run …` tasks and `target/release/stuntreel.exe`, which run without an approval
+> prompt; other commands may wait for one.
 >
 > Read-only inputs: the baseline render and report at `<M>\build\scratch\baseline\<film>\`; the
 > reference capture at `<W>\build\parity\captures\<capture>`; the corpus at
@@ -202,9 +211,10 @@ Do not poll. Each reply names its `diagnosis.md`.
 
 - [ ] **Step 1: Copy** the scratch worktree's `build/scratch/<t>/` to this worktree's `build/scratch/<t>/`.
 - [ ] **Step 2: Read** `diagnosis.md`; check every heading is present and the claim names one cause.
-- [ ] **Step 3: Rerun its key evidence command** in this worktree (clean build, no instrumentation).
-  Expected: the output quoted under **Evidence**. A mismatch means *finding only* for this round,
-  recorded in Task 7.
+- [ ] **Step 3: Rerun its key evidence command** in the scratch worktree, now idle: with
+  `git -C <W> apply build/scratch/<t>/instrumentation.patch` first if the command needs it, then
+  `git -C <W> checkout -- .` after. Expected: the output quoted under **Evidence**. A mismatch
+  means *finding only* for this round, recorded in Task 7.
 - [ ] **Step 4: Decide.** *Fix* when **Proposed change** names files and a failing test and
   `git apply --check build/scratch/<t>/fix.patch` succeeds (or the change is small enough to adapt);
   *merged* when both tracks name the same cause (one fix, gated against both tracks' bars);
@@ -213,6 +223,8 @@ Do not poll. Each reply names its `diagnosis.md`.
   Sonnet implementer for Task 4 with Task 4's steps and the diagnosis as its prompt; it does not commit.
 
 ### Task 4: Apply the fix test-first (per *fix* decision)
+
+One fix is in flight at a time: a second track's Task 4 starts only after the first's Task 7.
 
 **Files:** as `diagnosis.md` **Proposed change** names them; the test in the crate's `tests/`
 directory or its unit-test module, its bytes built in the test or added under `tests/fixtures/`
@@ -243,7 +255,7 @@ and described in `tests/fixtures/README.md` (SOP 1).
 - [ ] **Step 1: Build, render, score.** `mise run parity -- --films ctry,intro` (builds first).
   Record both summary lines.
 - [ ] **Step 2: Verdict, per film:**
-  `target\release\stuntreel.exe parity --reference <cap> --test build/parity/ours/<film>_current --output build/scratch/<t>/gate/<film> --compare build/scratch/baseline/<film>/report.json --compare-test build/scratch/baseline/<film>/render --noise-sigma 0.000303 --build-floor 0`
+  `target/release/stuntreel.exe parity --reference <cap> --test build/parity/ours/<film>_current --output build/scratch/<t>/gate/<film> --compare build/scratch/baseline/<film>/report.json --compare-test build/scratch/baseline/<film>/render --noise-sigma 0.000303 --build-floor 0`
   Expected: a `[verdict] changed …` line; `compare.json` in the output directory.
 - [ ] **Step 3: Overlap, per film:** Task 1 step 3's command on `build/parity/ours/<film>_current`
   and `build/parity/report/<film>_current/report.json`, saved to `build/scratch/<t>/gate/<film>/iou.txt`.
@@ -291,12 +303,16 @@ and described in `tests/fixtures/README.md` (SOP 1).
 - [ ] **Step 1:** Stop the track if it already had two rounds, or if round 1 ended *finding only*
   for want of an undecoded rule (another round cannot supply it).
 - [ ] **Step 2:** Recreate its scratch worktree clean (`git -C <W> status` shows nothing; if not,
-  `git -C <W> checkout -- .`), then dispatch the same brief with one more paragraph: round 1's
-  **Claim**, the gate it failed and the numbers, and "do not repeat these: <Ruled out list>".
+  `git -C <W> checkout -- .`), copy this worktree's `build/scratch/<t>/` back into it as
+  `build/scratch/<t>-round1/`, then dispatch the same brief with one more paragraph: round 1's
+  **Claim**, the gate it failed and the numbers, "round 1's diagnosis and instrumentation patch are
+  in `build/scratch/<t>-round1/`", and "do not repeat these: <Ruled out list>".
 - [ ] **Step 3:** Tasks 3 to 7 again.
 
 ### Task 9: Close
 
+- [ ] **Step 0: Primary checkout untouched.** `git -C E:/git/stunt-reel status --short`. Expected:
+  empty, as at the start (branch `fix/venv-ownership-marker`, clean).
 - [ ] **Step 1: Reap dry run.** From `E:\git\stunt-reel`: `mise run reap`. Expected: exactly the two
   scratch worktrees (`diag/aircraft-a`, `diag/aircraft-b`). Anything else listed: ask the user
   before step 2.
