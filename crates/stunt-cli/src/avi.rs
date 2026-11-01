@@ -18,6 +18,8 @@ pub(crate) enum AviError {
     ChunkPastList { id: String, offset: usize },
     #[error("truncated chunk header at byte {0}")]
     Truncated(usize),
+    #[error("LISTs nested deeper than {0}")]
+    TooDeep(usize),
     #[error("no main header (avih) with a non-zero size")]
     NoHeader,
 }
@@ -37,6 +39,9 @@ fn le32(bytes: &[u8], at: usize) -> Option<u32> {
     Some(u32::from_le_bytes(raw.try_into().ok()?))
 }
 
+/// RIFF AVI nests `RIFF` > `LIST movi` > `LIST rec`; anything much deeper is malformed.
+const MAX_DEPTH: usize = 8;
+
 struct Walk {
     size: Option<(u32, u32)>,
     chunks: Vec<Range<usize>>,
@@ -47,8 +52,12 @@ fn walk(
     start: usize,
     end: usize,
     in_movi: bool,
+    depth: usize,
     out: &mut Walk,
 ) -> Result<(), AviError> {
+    if depth > MAX_DEPTH {
+        return Err(AviError::TooDeep(MAX_DEPTH));
+    }
     let mut pos = start;
     while pos < end {
         if pos + 8 > end {
@@ -71,14 +80,21 @@ fn walk(
         match id {
             b"RIFF" | b"LIST" => {
                 let form = bytes.get(data..data + 4).ok_or(AviError::Truncated(pos))?;
-                walk(bytes, data + 4, data_end, in_movi || form == b"movi", out)?;
+                walk(
+                    bytes,
+                    data + 4,
+                    data_end,
+                    in_movi || form == b"movi",
+                    depth + 1,
+                    out,
+                )?;
             }
-            b"avih" if out.size.is_none() => {
+            b"avih" if out.size.is_none() && size >= 40 => {
                 if let (Some(w), Some(h)) = (le32(bytes, data + 32), le32(bytes, data + 36)) {
                     out.size = Some((w, h));
                 }
             }
-            _ if in_movi && id[0] == b'0' && id[1] == b'0' && id[2] == b'd' => {
+            b"00dc" | b"00db" if in_movi => {
                 out.chunks.push(data..data_end);
             }
             _ => {}
@@ -97,7 +113,7 @@ pub(crate) fn read_video(bytes: &[u8]) -> Result<AviVideo, AviError> {
         size: None,
         chunks: Vec::new(),
     };
-    walk(bytes, 0, bytes.len(), false, &mut out)?;
+    walk(bytes, 0, bytes.len(), false, 0, &mut out)?;
     let (width, height) = out
         .size
         .filter(|&(w, h)| w > 0 && h > 0)
@@ -116,7 +132,7 @@ pub(crate) fn decode_frames(
     mut visit: impl FnMut(usize, &[u8]) -> Result<(), String>,
 ) -> Result<usize, String> {
     let video = read_video(bytes).map_err(|e| e.to_string())?;
-    let mut decoder = Decoder::new(video.width, video.height);
+    let mut decoder = Decoder::new(video.width, video.height).map_err(|e| e.to_string())?;
     for (index, range) in video.chunks.iter().enumerate() {
         let frame = decoder
             .decode(&bytes[range.clone()])
@@ -182,6 +198,32 @@ mod tests {
         movi.extend_from_slice(&[0, 0]);
         let err = read_video(&file(&movi)).unwrap_err();
         assert!(matches!(err, AviError::ChunkPastList { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn a_short_avih_is_ignored() {
+        let mut body = list(b"LIST", b"hdrl", &chunk(b"avih", &[1; 12]));
+        body.extend(list(b"LIST", b"movi", &chunk(b"00dc", &[1])));
+        let err = read_video(&list(b"RIFF", b"AVI ", &body)).unwrap_err();
+        assert_eq!(err, AviError::NoHeader);
+    }
+
+    #[test]
+    fn deeply_nested_lists_are_an_error() {
+        let mut body = chunk(b"00dc", &[1]);
+        for _ in 0..12 {
+            body = list(b"LIST", b"rec ", &body);
+        }
+        let err = read_video(&list(b"RIFF", b"AVI ", &body)).unwrap_err();
+        assert_eq!(err, AviError::TooDeep(MAX_DEPTH));
+    }
+
+    #[test]
+    fn a_huge_avih_dimension_fails_decoding_not_allocation() {
+        let mut body = list(b"LIST", b"hdrl", &avih(u32::MAX, u32::MAX));
+        body.extend(list(b"LIST", b"movi", &chunk(b"00dc", &[1])));
+        let err = decode_frames(&list(b"RIFF", b"AVI ", &body), |_, _| Ok(())).unwrap_err();
+        assert!(err.contains("frame size"), "{err}");
     }
 
     #[test]

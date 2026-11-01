@@ -9,6 +9,8 @@ use thiserror::Error;
 
 const KEYFRAME: u8 = 1;
 const FORMAT_32BPP: u8 = 8;
+/// The largest width or height accepted; real captures are 320x200.
+const MAX_DIMENSION: u32 = 4096;
 
 /// Why a ZMBV chunk could not be decoded.
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -29,6 +31,10 @@ pub(crate) enum ZmbvError {
     Zlib(String),
     #[error("frame data is {got} bytes, expected {want}")]
     Size { got: usize, want: usize },
+    #[error("unsupported frame size {0}x{1}")]
+    Dimensions(u32, u32),
+    #[error("frame data inflates past {0} bytes")]
+    TooLong(usize),
 }
 
 /// Decodes a sequence of ZMBV chunks into `bgr0` frames.
@@ -46,8 +52,12 @@ pub(crate) struct Decoder {
 }
 
 impl Decoder {
-    pub(crate) fn new(width: u32, height: u32) -> Self {
-        Self {
+    /// Creates a decoder for frames of `width` x `height`; both must be in `1..=4096`.
+    pub(crate) fn new(width: u32, height: u32) -> Result<Self, ZmbvError> {
+        if !(1..=MAX_DIMENSION).contains(&width) || !(1..=MAX_DIMENSION).contains(&height) {
+            return Err(ZmbvError::Dimensions(width, height));
+        }
+        Ok(Self {
             width: width as usize,
             height: height as usize,
             block_w: 16,
@@ -56,15 +66,23 @@ impl Decoder {
             zlib: None,
             frame: None,
             next: Vec::new(),
-        }
+        })
     }
 
-    fn inflate(&mut self, input: &[u8]) -> Result<Vec<u8>, ZmbvError> {
+    /// The length of the block table of a delta frame, padded to four bytes.
+    fn table_len(&self) -> usize {
+        let cols = self.width.div_ceil(self.block_w);
+        let rows = self.height.div_ceil(self.block_h);
+        (cols * rows * 2 + 3) & !3
+    }
+
+    /// Inflates `input`, failing if it produces more than `max` bytes.
+    fn inflate(&mut self, input: &[u8], max: usize) -> Result<Vec<u8>, ZmbvError> {
         if !self.compressed {
             return Ok(input.to_vec());
         }
         let zlib = self.zlib.get_or_insert_with(|| Decompress::new(true));
-        let mut out = Vec::with_capacity(self.width * self.height * 4 + 4096);
+        let mut out = Vec::with_capacity((max + 1).min(1 << 16));
         let mut consumed = 0usize;
         loop {
             let before_in = zlib.total_in();
@@ -73,6 +91,9 @@ impl Decoder {
                 .decompress_vec(&input[consumed..], &mut out, FlushDecompress::Sync)
                 .map_err(|e| ZmbvError::Zlib(e.to_string()))?;
             consumed += usize::try_from(zlib.total_in() - before_in).unwrap_or(usize::MAX);
+            if out.len() > max {
+                return Err(ZmbvError::TooLong(max));
+            }
             let progressed = zlib.total_in() != before_in || zlib.total_out() != before_out;
             if status == Status::StreamEnd
                 || (consumed >= input.len() && out.len() < out.capacity())
@@ -80,7 +101,8 @@ impl Decoder {
                 break;
             }
             if out.len() == out.capacity() {
-                out.reserve(out.capacity().max(4096));
+                let grow = out.capacity().max(4096).min(max + 1 - out.len());
+                out.reserve_exact(grow);
             } else if !progressed {
                 return Err(ZmbvError::Zlib("stalled".to_string()));
             }
@@ -123,7 +145,12 @@ impl Decoder {
             }
             rest
         };
-        let data = self.inflate(payload)?;
+        let max = if key {
+            frame_len
+        } else {
+            self.table_len() + frame_len
+        };
+        let data = self.inflate(payload, max)?;
         if key {
             if data.len() < frame_len {
                 return Err(ZmbvError::Size {
@@ -262,7 +289,7 @@ mod tests {
     #[test]
     fn raw_keyframes_decode() {
         let frame: Vec<u8> = (0..4 * 3 * 4).map(|i| u8::try_from(i).unwrap()).collect();
-        let mut d = Decoder::new(4, 3);
+        let mut d = Decoder::new(4, 3).unwrap();
         assert_eq!(
             d.decode(&raw_keyframe(&frame, 8)).unwrap(),
             frame.as_slice()
@@ -272,7 +299,7 @@ mod tests {
     #[test]
     fn a_raw_delta_moves_blocks_and_xors() {
         let frame: Vec<u8> = (0..4 * 2 * 4).map(|i| u8::try_from(i).unwrap()).collect();
-        let mut d = Decoder::new(4, 2);
+        let mut d = Decoder::new(4, 2).unwrap();
         d.decode(&raw_keyframe(&frame, 8)).unwrap();
         // 2x2 blocks, two across and one down. Block 0 copies from dx = +1, no XOR; block 1 is
         // unmoved with an XOR of 0xFF. The first byte is the flags, then the 4-byte table.
@@ -287,23 +314,73 @@ mod tests {
     }
 
     #[test]
+    fn a_raw_delta_clips_edge_blocks_and_reads_negative_dx() {
+        // 5x3 with 2x2 blocks: 3 across, 2 down; the right column is 1 wide and the bottom row
+        // 1 high.
+        let frame: Vec<u8> = (0..5 * 3 * 4).map(|i| u8::try_from(i).unwrap()).collect();
+        let mut d = Decoder::new(5, 3).unwrap();
+        d.decode(&raw_keyframe(&frame, 8)).unwrap();
+        let mut delta = vec![0u8];
+        // Block (0,0): dx = -1 (reads 0 off the left edge); (1,0): unmoved; (2,0): unmoved with
+        // XOR over its 1x2 area; the bottom row is unmoved, with an XOR on its last (1x1) block.
+        let mut table = vec![(-1i8 << 1) as u8, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0];
+        assert_eq!(table.len() % 4, 0);
+        delta.append(&mut table);
+        delta.extend(std::iter::repeat_n(0x0F, 2 * 4 + 4));
+        let out = d.decode(&delta).unwrap().to_vec();
+        let px = |f: &[u8], x: usize, y: usize| f[(y * 5 + x) * 4..][..4].to_vec();
+        assert_eq!(px(&out, 0, 0), vec![0; 4]);
+        assert_eq!(px(&out, 1, 0), px(&frame, 0, 0));
+        assert_eq!(px(&out, 2, 1), px(&frame, 2, 1));
+        let x = |p: Vec<u8>| p.iter().map(|b| b ^ 0x0F).collect::<Vec<u8>>();
+        assert_eq!(px(&out, 4, 0), x(px(&frame, 4, 0)));
+        assert_eq!(px(&out, 4, 1), x(px(&frame, 4, 1)));
+        assert_eq!(px(&out, 4, 2), x(px(&frame, 4, 2)));
+        assert_eq!(out.len(), frame.len());
+    }
+
+    #[test]
+    fn oversized_dimensions_are_rejected() {
+        assert_eq!(
+            Decoder::new(u32::MAX, u32::MAX).unwrap_err(),
+            ZmbvError::Dimensions(u32::MAX, u32::MAX)
+        );
+        assert!(Decoder::new(0, 10).is_err());
+        assert!(Decoder::new(4096, 4096).is_ok());
+    }
+
+    #[test]
+    fn an_over_long_inflate_is_an_error() {
+        use flate2::{Compress, Compression, FlushCompress};
+        // Compresses to a few bytes but inflates to 1 MiB, far past a 4x3 frame.
+        let mut z = Compress::new(Compression::default(), true);
+        let mut packed = Vec::with_capacity(4096);
+        z.compress_vec(&vec![0u8; 1 << 20], &mut packed, FlushCompress::Sync)
+            .unwrap();
+        let mut chunk = vec![KEYFRAME, 0, 1, 1, 8, 2, 2];
+        chunk.extend_from_slice(&packed);
+        let mut d = Decoder::new(4, 3).unwrap();
+        assert_eq!(d.decode(&chunk).unwrap_err(), ZmbvError::TooLong(48));
+    }
+
+    #[test]
     fn an_empty_chunk_repeats_the_previous_frame() {
         let frame = vec![7u8; 4 * 3 * 4];
-        let mut d = Decoder::new(4, 3);
+        let mut d = Decoder::new(4, 3).unwrap();
         d.decode(&raw_keyframe(&frame, 8)).unwrap();
         assert_eq!(d.decode(&[]).unwrap(), frame.as_slice());
     }
 
     #[test]
     fn an_unsupported_format_is_an_error() {
-        let mut d = Decoder::new(4, 3);
+        let mut d = Decoder::new(4, 3).unwrap();
         let err = d.decode(&raw_keyframe(&[0; 48], 4)).unwrap_err();
         assert_eq!(err, ZmbvError::Format(4));
     }
 
     #[test]
     fn a_delta_before_any_keyframe_is_an_error() {
-        let mut d = Decoder::new(4, 3);
+        let mut d = Decoder::new(4, 3).unwrap();
         assert_eq!(
             d.decode(&[0, 0, 0, 0, 0]).unwrap_err(),
             ZmbvError::NoKeyframe
