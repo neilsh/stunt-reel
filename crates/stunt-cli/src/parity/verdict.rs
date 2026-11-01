@@ -230,23 +230,39 @@ impl Verdict {
         self.frames.iter().filter(|f| f.class == class).count()
     }
 
-    /// Mean delta over the frames that have one.
+    /// The (tick, delta) of the frames the verdict judged; build noise is left out.
+    fn judged_deltas(&self) -> impl Iterator<Item = (u64, f32)> + '_ {
+        self.frames
+            .iter()
+            .filter(|f| {
+                matches!(
+                    f.class,
+                    VerdictClass::Closer | VerdictClass::Further | VerdictClass::WithinNoise
+                )
+            })
+            .filter_map(|f| Some((f.film_tick, f.delta?)))
+    }
+
+    /// Mean delta over the judged frames (not build noise).
     pub(super) fn mean_delta(&self) -> Option<f32> {
-        let deltas: Vec<f32> = self.frames.iter().filter_map(|f| f.delta).collect();
+        let deltas: Vec<f32> = self.judged_deltas().map(|(_, d)| d).collect();
         (!deltas.is_empty()).then(|| deltas.iter().sum::<f32>() / deltas.len() as f32)
     }
 
-    /// The film ticks of the most negative and most positive delta, in that order.
+    /// The film ticks of the most negative delta (only if below zero) and the most positive
+    /// (only if above zero), among the judged frames.
     pub(super) fn worst_and_best(&self) -> (Option<u64>, Option<u64>) {
-        let with_delta = || {
-            self.frames
-                .iter()
-                .filter_map(|f| Some((f.film_tick, f.delta?)))
-        };
-        (
-            with_delta().min_by(|a, b| a.1.total_cmp(&b.1)).map(|p| p.0),
-            with_delta().max_by(|a, b| a.1.total_cmp(&b.1)).map(|p| p.0),
-        )
+        let worst = self
+            .judged_deltas()
+            .filter(|p| p.1 < 0.0)
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|p| p.0);
+        let best = self
+            .judged_deltas()
+            .filter(|p| p.1 > 0.0)
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|p| p.0);
+        (worst, best)
     }
 
     /// The summary line printed after the SSIM comparison.
@@ -400,6 +416,29 @@ mod tests {
         let doc = verdict.to_json();
         assert_eq!(doc["counts"]["missing"], 1);
         assert_eq!(doc["frames"].as_array().unwrap().len(), 2);
-        assert_eq!(verdict.worst_and_best(), (Some(1), Some(1)));
+        assert_eq!(verdict.worst_and_best(), (None, Some(1)));
+    }
+
+    #[test]
+    fn build_noise_stays_out_of_the_mean_and_the_picks() {
+        let frame = |tick, class, delta| FrameVerdict {
+            class,
+            delta: Some(delta),
+            ..FrameVerdict::missing(tick)
+        };
+        let verdict = Verdict {
+            frames: vec![
+                frame(1, VerdictClass::Closer, 0.02),
+                frame(2, VerdictClass::Further, -0.01),
+                frame(3, VerdictClass::WithinNoise, 0.0),
+                frame(4, VerdictClass::BuildNoise, -0.5),
+                frame(5, VerdictClass::BuildNoise, 0.5),
+            ],
+            has_sigma: true,
+        };
+        let mean = verdict.mean_delta().unwrap();
+        assert!((mean - 0.01 / 3.0).abs() < 1e-7, "{mean}");
+        assert_eq!(verdict.worst_and_best(), (Some(2), Some(1)));
+        assert_eq!(verdict.to_json()["frames"][3]["delta"], -0.5);
     }
 }

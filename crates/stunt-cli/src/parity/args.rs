@@ -26,7 +26,7 @@ pub(super) struct Args {
         long,
         value_name = "F",
         default_value_t = 0.25,
-        value_parser = parse_min_fade_level,
+        value_parser = parse_non_negative,
         allow_negative_numbers = true
     )]
     pub(super) min_fade_level: f32,
@@ -42,7 +42,7 @@ pub(super) struct Args {
     pub(super) compare_test: Option<PathBuf>,
     /// Run-to-run noise of the Δ on the changed windows; a frame whose |Δ| is below it is
     /// "within noise". Without it the verdict goes by the sign of Δ alone
-    #[arg(long, value_name = "F", requires = "compare_test", value_parser = parse_min_fade_level)]
+    #[arg(long, value_name = "F", requires = "compare_test", value_parser = parse_non_negative)]
     pub(super) noise_sigma: Option<f32>,
     /// Frames with at most N changed pixels are build noise, not judged
     #[arg(long, value_name = "N", default_value_t = 0, requires = "compare_test")]
@@ -54,7 +54,7 @@ pub(crate) fn usage() -> String {
     Args::command().render_help().to_string()
 }
 
-fn parse_min_fade_level(text: &str) -> Result<f32, String> {
+fn parse_non_negative(text: &str) -> Result<f32, String> {
     let level = text.parse::<f32>().map_err(|e| e.to_string())?;
     if !level.is_finite() || level < 0.0 {
         return Err("expected a finite number >= 0".to_string());
