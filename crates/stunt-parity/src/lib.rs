@@ -17,12 +17,14 @@ pub mod error;
 pub mod film;
 pub mod render;
 pub mod report;
+pub mod video;
 
 pub use capture::{CaptureSet, CapturedFrame};
 pub use error::ArtifactError;
 pub use film::FilmId;
 pub use render::{CameraPose, Geometry, RenderPalette, RenderRecord, RenderTick};
 pub use report::{FrameReport, I6Gate, Report};
+pub use video::{CaptureEnd, PaletteChange, PaletteLog, TickLog, VIDEO_FILE, VideoCapture};
 
 /// Version carried by `render.json` and a capture's `meta.json`.
 pub const SCHEMA_VERSION: u32 = 1;

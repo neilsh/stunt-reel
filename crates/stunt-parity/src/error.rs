@@ -49,6 +49,12 @@ pub enum ArtifactError {
         /// Field name the schema requires.
         field: String,
     },
+    /// A video capture's tick or palette log is unusable.
+    #[error("video log: {reason}")]
+    VideoLog {
+        /// What is wrong with the log.
+        reason: String,
+    },
     /// The report's arithmetic identities do not hold.
     #[error("report is inconsistent: {reason}")]
     ReportInconsistent {
@@ -61,6 +67,13 @@ impl ArtifactError {
     /// A geometry defect with a human-readable reason.
     pub(crate) fn geometry(reason: impl Into<String>) -> Self {
         Self::Geometry {
+            reason: reason.into(),
+        }
+    }
+
+    /// A video log defect with a human-readable reason.
+    pub(crate) fn video_log(reason: impl Into<String>) -> Self {
+        Self::VideoLog {
             reason: reason.into(),
         }
     }

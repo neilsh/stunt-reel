@@ -106,3 +106,7 @@ The shared wire-contract corpus for the two parity artifact adapters: the Rust p
 
 **Read-only.** The conformance tests read these files and never write them; round-trip tests write to their own temporary directories. `git status` after a test run must show the corpus unchanged.
 
+
+### 14. `parity/video/` (video capture document)
+
+A synthetic video capture directory holding only `meta.json`: the `VideoCapture` document (`kind` `video`) for film `SYNTH.FLM`, a 4x2 raster, a four-row tick log (frames 101 to 104, film ticks 7, 7, 8, 9, so `film_start_frame` is 103) and a palette history of a 256-entry grey-ramp `initial` plus one 32-entry red change at frame 103. There is no `capture.avi` and no game data; the Rust loader (`load_video_capture`) and the Python loader (`load_video_capture`) both read it in their conformance tests.
