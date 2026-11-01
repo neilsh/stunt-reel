@@ -67,7 +67,9 @@ values are decided on that result (spec § 3 and Stop conditions).
   `python/stunt_reel/bench/ssim.py`
 - Create: `tests/fixtures/parity/bench/make_fixture.py` and its output under
   `tests/fixtures/parity/bench/{capture,render,render_before}/`, `tests/fixtures/parity/bench/golden.json`
-- Modify: `tests/fixtures/README.md`, `crates/stunt-cli/src/parity/tests.rs`
+- Modify: `tests/fixtures/README.md`, `crates/stunt-cli/src/parity/tests.rs`, `.gitattributes`
+  (`*.idx binary` and `*.layer binary`: `* text=auto eol=lf` would otherwise treat an index plane
+  with no NUL byte as text and rewrite its `0x0D 0x0A` pairs)
 - Test: `tests/test_bench_ssim.py`
 
 **Interfaces:**
@@ -75,15 +77,19 @@ values are decided on that result (spec § 3 and Stop conditions).
   - `@dataclass(frozen=True) class RenderPlanes: rgb: NDArray[np.uint8]  # (200, 320, 3)`;
     `idx: NDArray[np.uint8] | None  # (200, 320)`; `layer: NDArray[np.uint16]  # (200, 320)`
   - `@dataclass(frozen=True) class CapturePlanes: idx: NDArray[np.uint8]`; `palette: NDArray[np.uint8]  # (256, 3), 8-bit`
-  - `class RenderTree` with `__init__(self, root: Path)`, `ticks(self) -> list[int]`,
-    `load(self, tick: int) -> RenderPlanes`; raises `BenchError` naming a re-render when a tick's
-    `.idx` or `.layer` is missing.
+  - `class RenderSource(Protocol)` with `ticks(self) -> list[int]` and `load(self, tick: int) -> RenderPlanes`.
+    Faults, metrics and the bench take a `RenderSource`, so their tests build sources in memory
+    instead of writing render trees.
+  - `class RenderTree(RenderSource)` with `__init__(self, root: Path)`; `load` decodes the PNG with
+    Pillow, keeps the 64 most recent ticks in an LRU cache (a whole tree is about 500 MB in memory),
+    and raises `BenchError` naming a re-render when a tick's `.idx` or `.layer` is missing.
   - `def load_capture(directory: Path) -> dict[int, CapturePlanes]` keyed by `film_tick`, via
     `parity_artifacts.read_capture` and `read_capture_palette`.
   - `class BenchError(RuntimeError)`.
 - Produces, in `ssim.py`:
-  - `def capture_luma(planes: CapturePlanes) -> NDArray[np.float64]  # (200, 320)` as
-    `frames.rs::reference_luminance`.
+  - `def capture_luma(planes: CapturePlanes) -> NDArray[np.float64]  # (200, 320)`: the palette lookup
+    and luma of `frames.rs::reference_luminance`, *without* its stretch (the Rust function stretches
+    inside; here `stretch` is a separate step).
   - `def render_luma(rgb: NDArray[np.uint8]) -> NDArray[np.float64]` as `rgb_to_luminance`.
   - `def stretch(plane: NDArray) -> NDArray` rows 200 to 240 as `rescale_mode13h_frame`
     (row `y_out` takes row `int(y_out * 200 / 240)`, computed in float32).
@@ -100,15 +106,19 @@ values are decided on that result (spec § 3 and Stop conditions).
 - [ ] **Step 1: Add the dev dependencies.** `numpy>=2.5` and `pillow>=13` in the dev group; run
   `mise exec -- uv lock`. Pillow decodes the render PNGs and writes the judge's composites.
 - [ ] **Step 2: Write the fixture generator** `tests/fixtures/parity/bench/make_fixture.py`. It writes
-  two film ticks (10 and 20) of 320x200 content, laid out as `test_support.rs::write_reference` and
-  `write_render` lay out theirs (capture: `meta.json`, `tick_NNNN.idx`, `palettes_NNNN.json`; render:
-  `tick_NNNNN.png`, `.idx`, `.layer` as little-endian u16, `render.json`). Content: rows 0–59 sky
-  indices cycling 227–238, rows 60–184 terrain (layer 2) in an 8-pixel checker of two indices, a 20x16
-  actor (layer 16) at x 100, y 120; rows 185–199 a bar. Palette: entry *i* = (i, 255 − i, i // 2).
-  The capture at tick 20 has the actor 4 columns right; `render_before/` is `render/` with the terrain
-  checker phase flipped at tick 20. Run it once and commit its output.
-- [ ] **Step 3: Write golden values with the real scorer.** Build `stuntreel` and run
-  `stuntreel parity --reference tests/fixtures/parity/bench/capture --test tests/fixtures/parity/bench/render --output <tmp>`;
+  two film ticks (10 and 20) of 320x200 content. The capture's `meta.json` goes through
+  `parity_artifacts.write_capture` and the render's `render.json` through `parity_artifacts.write_render`,
+  so both validate; the planes and palettes are laid out as `test_support.rs::write_reference_faded` and
+  `write_render_record` lay out theirs (capture: `tick_NNNN.idx`, `palettes_NNNN.json`; render:
+  `tick_NNNNN.png`, `.idx`, `.layer` as little-endian u16). Content: rows 0–59 sky indices cycling
+  227–238, rows 60–184 terrain (layer 2) in an 8-pixel checker of indices 40 and 41, a 20x16 actor
+  (index 16, layer 16) at x 100, y 120; rows 185–199 a bar of index 250. Capture palette: entry *i* =
+  (i, 255 − i, i // 2). The render's PNG is that palette scaled by 0.9 and rounded, so neither tick
+  scores 1.0 and the golden tests the arithmetic, not just the identity. The capture at tick 20 has
+  the actor 4 columns right; `render_before/` is `render/` with the terrain checker phase flipped at
+  tick 20. Run it once and commit its output.
+- [ ] **Step 3: Write golden values with the real scorer.** Run
+  `cargo run -p stunt-cli --release -- parity --reference tests/fixtures/parity/bench/capture --test tests/fixtures/parity/bench/render --output <tmp>`;
   copy each frame's `film_tick` and `ssim` into `golden.json` as
   `{"ssim": {"10": <value>, "20": <value>}}`.
 - [ ] **Step 4: Write the Rust guard** `bench_fixture_matches_its_golden_ssim` in
@@ -162,13 +172,18 @@ def test_stretch_repeats_every_fifth_row():
 - Test: `tests/test_bench_faults.py`
 
 **Interfaces:**
-- Consumes: `RenderPlanes`, `RenderTree` (Task 1).
+- Consumes: `RenderPlanes`, `RenderSource` (Task 1).
 - Produces:
-  - `@dataclass(frozen=True) class Fault: name: str; magnitude: int | None`
+  - `@dataclass(frozen=True) class Fault: name: str; magnitude: int | None` with a `key` property:
+    `name`, or `name:magnitude`.
   - `ALL_FAULTS: tuple[Fault, ...]` in this order: `none`; `actors_removed`; `shift_x` 1, 2, 4, 8;
     `shift_y` 1, 2, 4; `advance` 1, 3, 5; `flat_terrain`; `flicker` 3, 10; `wrong_tick`; `grey`.
-  - `def plant(fault: Fault, tick: int, tree: RenderTree, rng_seed: int) -> RenderPlanes | None`;
+  - `def plant(fault: Fault, tick: int, source: RenderSource, rng_seed: int) -> RenderPlanes | None`;
     `None` means the fault has no frame at this tick (advance past the end, no qualifying wrong tick).
+  - `WRONG_TICK_DRAWS = 50`: `wrong_tick` draws candidates (ticks at least 100 away) in the RNG's order
+    without replacement and takes the first whose `.idx` differs in at least 10% of pixels; after 50
+    draws it returns `None`. Testing every candidate would read every plane of the tree for every
+    frame.
 
 Each fault's effect on each plane, from the spec's table:
 
@@ -180,11 +195,11 @@ Each fault's effect on each plane, from the spec's table:
 | `advance` *k* | all planes of tick *t* + *k* | same |
 | `flat_terrain` | layer-2 pixels take the mean layer-2 RGB (rounded); `.idx` the modal layer-2 index | unchanged |
 | `flicker` *a* | RGB + *a* on even ticks, − *a* on odd, clipped to 0..255; `.idx` unchanged | unchanged |
-| `wrong_tick` | all planes of a tick drawn by `random.Random(rng_seed * 1_000_003 + tick)` from ticks at least 100 away whose `.idx` differs from tick *t*'s in at least 10% of pixels | same |
+| `wrong_tick` | all planes of a tick drawn by `random.Random(rng_seed * 1_000_003 + tick)` (see `WRONG_TICK_DRAWS`) | same |
 | `grey` | every RGB channel = round(mean render luma); `.idx` `None` | unchanged |
 
-- [ ] **Step 1: Write the failing tests** on small synthetic trees built in `tmp_path` with a helper
-  `make_tree(tmp_path, ticks: dict[int, RenderPlanes])`:
+- [ ] **Step 1: Write the failing tests** on in-memory sources, a helper
+  `MemorySource(ticks: dict[int, RenderPlanes])` in `tests/pytest_helpers.py` that Tasks 3 and 4 reuse:
   - `test_actor_pixels_take_their_left_neighbour`: a row `[5, 7(actor), 7(actor), 9]` becomes
     `[5, 5, 5, 9]`, layers `[2, 2, 2, 2]`; a row starting with an actor keeps it.
   - `test_shift_x_repeats_the_first_column` (k = 2) and `test_shift_y_repeats_the_first_row` (k = 1).
@@ -245,8 +260,9 @@ Definitions:
     `None` = 1.0.
   - `test_grey_skill_is_zero_for_the_grey_frame_itself`.
   - `test_index_metrics_are_na_without_an_index_plane`.
-  - `test_regions_come_from_the_control_render`: `ssim_actors` of the `actors_removed` fault is scored
-    over the control's actor windows (assert the window count equals the control's).
+  - `test_regions_come_from_the_control_render`: with `Regions` from the control, `ssim_actors` of the
+    `actors_removed` planes is a number; with `Regions` built from those planes it would be `None`,
+    since no actor is left to define the windows.
   - `test_differential_of_identical_renders_has_no_delta`.
   - `test_differential_matches_its_golden`: on the fixture, `render_before` against `render` at tick 20;
     assert fractions and `delta` equal `golden.json["differential"]["20"]` to 1e-9.
@@ -272,16 +288,25 @@ Definitions:
   - `def check_fidelity(report: Path, captures: dict[int, CapturePlanes], tree: RenderTree) -> None`:
     raises `BenchError` naming the first tick whose numpy `ssim` differs from `report.json`'s by more
     than `FIDELITY_TOLERANCE`, with both values.
-  - `def recapture_sigma(metric: str, a: dict[int, CapturePlanes], b: dict[int, CapturePlanes], tree: RenderTree) -> float`
-    over the exactly paired ticks; `BenchError` with the count when fewer than `MIN_PAIRED_TICKS`.
-  - `def run_bench(reference: Path, recapture: Path, render: Path, report: Path, seed: int, floor_render: Path | None) -> dict[str, Any]`
-    returning the `bench.json` document:
-    `{"film_ticks": [...], "sigma": {metric: float}, "results": {metric: {fault_key: {"mean_change": float | None, "sigmas": float | None, "detected": bool, "frames": int}}}, "detectable": {metric: {fault_name: int | None}}, "passes": {metric: bool}, "differential": {fault_key: {"mean_delta": float | None, "negative": bool}}, "build_floor": {"max_changed_pixels": int, "mean_changed_pixels": float} | None}`
-    where `fault_key` is `name` or `name:magnitude`.
-- Script: `parity_bench.py run --film ctry [--render DIR] [--report FILE] [--recapture ID] [--seed N] [--floor-render DIR] [--out DIR]`.
-  Defaults: reference from `references.read_reference`, recapture `005`, render
-  `build/parity/ours/<film>_current`, report `build/parity/report/<film>_current/report.json`, seed 1,
-  out `build/parity/bench/<film>`. Prints one row per metric: pass, σ, and per fault the change in σ.
+  - `def recapture_sigma(metric: str, a: dict[int, CapturePlanes], b: dict[int, CapturePlanes], source: RenderSource, ticks: list[int]) -> float`
+    over the exactly paired scored ticks; `BenchError` with the count when fewer than
+    `MIN_PAIRED_TICKS`.
+  - `def bench(reference: dict[int, CapturePlanes], recapture: dict[int, CapturePlanes], source: RenderSource, scored_ticks: list[int], seed: int, floor: RenderSource | None) -> dict[str, Any]`:
+    the in-memory core that the tests drive, returning the `bench.json` document:
+    `{"film_ticks": [...], "sigma": {metric: float}, "results": {metric: {fault_key: {"mean_change": float | None, "sigmas": float | None, "detected": bool, "frames": int}}}, "detectable": {metric: {fault_name: int | None}}, "passes": {metric: bool}, "differential": {fault_key: {"mean_delta": float | None, "negative": bool}}, "build_floor": {"max_changed_pixels": int, "mean_changed_pixels": float} | None}`.
+    `detectable` lists only the faults with magnitudes (`shift_x`, `shift_y`, `advance`, `flicker`).
+    When σ is 0, `sigmas` is `None` and `detected` is `mean_change < 0`.
+  - `def run_bench(reference: Path, recapture: Path, render: Path, report: Path, seed: int, floor_render: Path | None) -> dict[str, Any]`:
+    loads the paths, runs `check_fidelity`, reads the scored ticks from `report.json`, and calls `bench`.
+  - `def plant_tree(render: Path, out: Path, plants: list[tuple[Fault, range]]) -> None`: copies the
+    render tree to `out` and writes each fault over its tick range (PNG, `.idx`, `.layer`; `grey` is
+    refused, having no `.idx`). Task 8 uses it to make a render with known errors.
+- Script subcommands:
+  - `run --film ctry [--render DIR] [--report FILE] [--recapture ID] [--seed N] [--floor-render DIR] [--out DIR]`.
+    Defaults: reference from `references.read_reference`, recapture `005`, render
+    `build/parity/ours/<film>_current`, report `build/parity/report/<film>_current/report.json`, seed 1,
+    out `build/parity/bench/<film>`. Prints one row per metric: pass, σ, and per fault the change in σ.
+  - `plant --render DIR --out DIR --fault KEY@FIRST-LAST ...` (for example `shift_x:4@500-599`).
 
 Rules (spec § 1): only frames `report.json` marks `scored` count. A fault's mean change is the mean over
 its frames of (metric of fault − metric of control) against the reference capture; `detected` when
@@ -292,17 +317,21 @@ a fail). `differential[fault].negative`, for every fault but `none` and `grey`, 
 Task 7's verdict: the mean `delta` of the control as *before* and the fault as *after* must be below 0. The build floor counts changed pixels (Task
 3's rule) between `--render` and `--floor-render`, per tick.
 
-- [ ] **Step 1: Write the failing tests** with a synthetic reference, recapture and render built in
-  `tmp_path` (30 ticks, a moving actor):
-  - `test_a_stale_report_names_the_tick` (Review Focus 2).
+- [ ] **Step 1: Write the failing tests.** `bench` tests use a `MemorySource` of 300 ticks with a
+  moving actor and captures at every 10th tick, so `advance` and `wrong_tick` have frames; the
+  fidelity and `plant_tree` tests use the Task 1 fixture copied to `tmp_path`:
+  - `test_a_stale_report_names_the_tick` (Review Focus 2: the fixture's report with tick 20's `ssim`
+    changed by 0.01).
   - `test_too_few_paired_ticks_stops_with_the_count` (Review Focus 3: 19 paired ticks).
+  - `test_plant_tree_changes_only_the_planted_ticks` (tick 20 planted with `shift_x:4`; tick 10's files
+    byte-identical to the source).
   - `test_a_fault_that_does_nothing_is_not_detected` (a `flat_terrain` on a render with no terrain).
   - `test_a_large_shift_is_detected_by_ssim_structured`.
   - `test_bench_json_has_every_metric_and_fault`.
   - `test_unscored_frames_are_left_out`.
 - [ ] **Step 2: Run** them; expect FAIL.
 - [ ] **Step 3: Implement `run.py`, the script and the task** (`run = "uv run python python/scripts/parity_bench.py"`,
-  description naming `run`, `judge-make` and `judge-score`).
+  description naming `run`, `plant`, `judge-make` and `judge-score`).
 - [ ] **Step 4: Run** them; expect PASS.
 - [ ] **Step 5: Run `mise run check`, commit** `feat(bench): score planted faults against recapture noise`.
 
@@ -316,14 +345,15 @@ Task 7's verdict: the mean `delta` of the control as *before* and the fault as *
 **Interfaces:**
 - Consumes: Tasks 1–2.
 - Produces:
-  - `def make_composites(reference: Path, render: Path, out: Path, seed: int, frames_per_fault: int = 10) -> int`:
+  - `def make_composites(reference: Path, render: Path, report: Path, out: Path, seed: int, frames_per_fault: int = 10) -> int`
+    (`report` supplies the scored ticks):
     for each fault key except `none` and `grey`, picks `frames_per_fault` scored ticks with
     `random.Random(seed)`, and for each writes two composites (both orders) plus
     `frames_per_fault` control pairs (control twice). Each composite is one PNG, capture | A | B, each
     panel 320x240 (rows stretched as Task 1), 8-pixel white gaps, named `<id>.png` where `id` is
     `sha256(f"{seed}:{fault_key}:{tick}:{order}")[:12]`. Writes `ids.txt` (ids in shuffled order, one
     per line) and returns the count. Writes no key.
-  - `def answer_key(reference: Path, render: Path, seed: int, frames_per_fault: int = 10) -> dict[str, tuple[str, str]]`:
+  - `def answer_key(reference: Path, render: Path, report: Path, seed: int, frames_per_fault: int = 10) -> dict[str, tuple[str, str]]`:
     id → (`fault_key`, correct answer `"A"`, `"B"` or `"either"` for control pairs), recomputed from the
     seed.
   - `def score_answers(answers: Path, key: dict[str, tuple[str, str]]) -> dict[str, Any]`: reads lines
@@ -349,23 +379,28 @@ Task 7's verdict: the mean `delta` of the control as *before* and the fault as *
 
 No code. The controller runs this task (subagents for the judging only).
 
-- [ ] **Step 1: Build floor render.** `mise run build-at -- HEAD build/scratch/bench/floor-bin`, then
-  render `CTRY.FLM` with that binary into `build/scratch/bench/ctry_floor` with the flags
-  `mise run parity` uses (method.md § 1 step 3, `--headless`).
-- [ ] **Step 2: Run** `mise run parity -- --films ctry` if `ctry_current` is stale, then
-  `mise run parity-bench -- run --film ctry --floor-render build/scratch/bench/ctry_floor`. Expect the
-  fidelity check to pass; if it does not, stop and report.
+- [ ] **Step 1: Fresh render.** `mise run parity -- --films ctry`, so `ctry_current` and its
+  `report.json` come from this revision's binary.
+- [ ] **Step 2: Floor render.** `mise run build-at -- HEAD build/scratch/bench/floor-bin`, then render
+  `CTRY.FLM` with that binary into `build/scratch/bench/ctry_floor`, using the command line
+  `parity_pipeline.render_film` builds, with the floor binary in place of `binary_path()`.
+- [ ] **Step 2a: Bench.** `mise run parity-bench -- run --film ctry --floor-render build/scratch/bench/ctry_floor`.
+  Expect the fidelity check to pass; if it does not, stop and report.
 - [ ] **Step 3: Judge.** `mise run parity-bench -- judge-make --film ctry --seed <random>`; split
-  `ids.txt` into 4–8 equal lists; dispatch one Haiku subagent per list with the brief: "Read each
-  `<id>.png` listed in `<list>`. Each image shows three panels: the reference, then A, then B. For each,
-  decide which of A or B matches the reference more closely. Append one line per image to `<answers
-  file>` with the shell: `<id> <A or B> <one sentence on the difference you see>`. If writing is refused,
-  return the lines as your final message." Concatenate the answers; run `judge-score` with the same seed.
+  `ids.txt` into 4–8 equal lists; dispatch one Haiku subagent per list (`model: haiku`), each with its
+  own answers file, with the brief: "Read each `<id>.png` listed in `<list>`. Each image shows three
+  panels: the reference, then A, then B. For each, decide which of A or B matches the reference more
+  closely. Append one line per image to `<answers_N.txt>` with the shell:
+  `<id> <A or B> <one sentence on the difference you see>`. Do not read any other file. If writing is
+  refused, return the lines as your final message." Concatenate the answer files; run `judge-score`
+  with the same seed.
   If `wrong_tick` does not pass, the arm is dropped (spec, Stop conditions): record that and skip the
   rest of its reading.
-- [ ] **Step 3a: `INTRO.FLM`.** Once `CTRY.FLM` has run cleanly, repeat Step 2 (without the floor) with
-  `--film intro`, against `vault-intro/frames/005`, as the second column; the judge stays `CTRY.FLM` only.
-- [ ] **Step 4: Record.** Add `method.md` § 4.5 "The metric bench" (what was measured, the table of
+- [ ] **Step 3a: `INTRO.FLM`.** Once `CTRY.FLM` has run cleanly, run Steps 1 and 2a (no floor) with
+  `--films intro` / `--film intro`, against `vault-intro/frames/005`, as the second column; the judge
+  stays `CTRY.FLM` only. If the two `INTRO.FLM` captures share fewer than 20 ticks, record the count and
+  go on without the column.
+- [ ] **Step 4: Record.** Add `method.md` § 2.2 "The metric bench" (what was measured, the table of
   metrics × faults in σ, detectable magnitudes, which metrics pass, the Haiku accuracy per fault, the
   differential check, the build floor) and one `log.md` row at the end. Answer what can be answered
   of the spec's Open questions in the spec.
@@ -378,13 +413,13 @@ No code. The controller runs this task (subagents for the judging only).
 - Create: `crates/stunt-cli/src/parity/verdict.rs`
 - Modify: `crates/stunt-cli/src/parity/mod.rs` (module), `compare.rs` (call it; order sheets by Δ),
   `args.rs` (`--noise-sigma <F>` and `--build-floor <N>`, both `requires = "compare_test"`)
-- Modify: `python/stunt_reel/references.py` (`Reference.noise_sigma: float | None` from an optional
-  `noise_sigma` key), `tests/test_references.py`
 - Test: unit tests in `verdict.rs`; the golden test in `tests.rs`
 
 **Interfaces:**
-- Consumes: the render loader `mod.rs` already uses for `RenderFrame`; `load_reference`;
-  `compute_window_scores`; `golden.json["differential"]` (Task 3).
+- Consumes: `load_reference`; `compute_window_scores`; `golden.json["differential"]` (Task 3). The
+  render planes are loaded inline in `mod.rs` (where it builds `&RenderFrame { ... }`); extract that
+  into `fn load_render_frame(dir: &Path, tick: usize) -> Result<RenderFrame, String>` and use it for both
+  the fresh and the `--compare-test` render.
 - Produces:
   - `pub(super) struct FrameVerdict { film_tick: u64, changed_idx: f32, changed_luma: f32, changed_by_layer: BTreeMap<&'static str, f32>, before_after_ssim: f32, delta: Option<f32>, class: VerdictClass }`
     (`before_after_ssim` is `compute_frame_ssim` of before against after, stretched, no mask)
@@ -413,22 +448,24 @@ existing SSIM deltas.
     `sigma_buckets_small_deltas`, `without_sigma_the_sign_decides`.
   - `a_missing_before_tick_is_counted_not_fatal` (Review Focus 4).
   - `noise_sigma_requires_compare_test` in `args.rs`.
-- [ ] **Step 2: Write the failing Python test** `test_noise_sigma_is_optional_and_numeric` in
-  `tests/test_references.py` (absent → `None`; `0.004` → 0.004; a string → `ReferenceCaptureError`).
-- [ ] **Step 3: Run** `mise run check-rust` and the Python test; expect FAIL.
-- [ ] **Step 4: Implement** `verdict.rs`, the flags, the `compare.rs` call and sheet order, and
-  `noise_sigma` in `references.py`.
-- [ ] **Step 5: Run** them; expect PASS.
-- [ ] **Step 6: Run `mise run check`, commit** `feat(parity): judge a render change on the windows it touched`.
+- [ ] **Step 2: Run** `mise run check-rust`; expect FAIL.
+- [ ] **Step 3: Implement** `verdict.rs`, `load_render_frame`, the flags, and the `compare.rs` call and
+  sheet order.
+- [ ] **Step 4: Run** them; expect PASS.
+- [ ] **Step 5: Run `mise run check`, commit** `feat(parity): judge a render change on the windows it touched`.
 
 ### Task 8: Check the verdict on the planted render and record σ
 
 No new code. The controller runs it.
 
-- [ ] **Step 1:** Score the scratchpad's altered render `ctry_alt` with
-  `stuntreel parity --reference <ctry 004> --test <ctry_alt> --output <tmp> --compare build/parity/report/ctry_current/report.json --compare-test build/parity/ours/ctry_current --noise-sigma <σ of ssim from bench.json> --build-floor <max_changed_pixels>`.
-  Expect seconds 5–6, 10–11 and 15–16 (ticks 250–349, 500–599, 750–849) changed and every other tick
-  `Unchanged`; record how many of the changed frames read `Further`.
-- [ ] **Step 2:** Add `noise_sigma` for `ctry` to `research/parity/references.toml` (the bench's
-  `ssim` σ), extend `method.md` § 1 step 5 with the verdict line and its flags, and add a `log.md` row.
-- [ ] **Step 3: Run `mise run check`, commit** `docs(parity): record the regression verdict on planted faults`.
+- [ ] **Step 1: Plant.** `mise run parity-bench -- plant --render build/parity/ours/ctry_current --out build/scratch/bench/ctry_alt --fault actors_removed@250-349 --fault shift_x:4@500-599 --fault advance:5@750-849`
+  (the three errors of the dropped per-second validation, now made by tested code).
+- [ ] **Step 2: Score and compare.**
+  `stuntreel parity --reference <ctry 004> --test build/scratch/bench/ctry_alt --output build/scratch/bench/ctry_alt_report --compare build/parity/report/ctry_current/report.json --compare-test build/parity/ours/ctry_current --noise-sigma <σ of ssim from bench.json> --build-floor <max_changed_pixels>`.
+  The before render is the planted tree's own source, so only planted ticks can change. Expect every
+  scored tick in 250–349, 500–599 and 750–849 changed (an `actors_removed` tick without actors stays
+  `Unchanged`) and every other tick `Unchanged`; record how many changed frames read `Further`.
+- [ ] **Step 3: Record.** Add `noise_sigma` for `ctry` to `research/parity/references.toml` (the
+  bench's `ssim` σ; `references.read_reference` ignores keys it does not know), extend `method.md` § 1
+  step 5 with the verdict line and its flags, and add a `log.md` row.
+- [ ] **Step 4: Run `mise run check`, commit** `docs(parity): record the regression verdict on planted faults`.
