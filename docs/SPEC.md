@@ -111,7 +111,7 @@ Delivery is sequential. This section records what each phase is for and whether 
 
 #### [I7] Asset Isolation & Small Pure-Rust Core Dependencies
 
-  * Proprietary game binaries and retail data files (`corpus/`) are strictly gitignored and never checked into Git or downloaded during CI. Two small game-derived tables are committed as documented exceptions because `[I3]` rendering needs them: the 256-entry master palette and the 18-entry SOD scale table. They are credited and not relicensed ([`NOTICE.md`](../NOTICE.md)).
+  * Proprietary game binaries and retail data files (`corpus/`) are strictly gitignored and never checked into Git or downloaded during CI. Two small game-derived tables are committed as documented exceptions because `[I3]` rendering needs them: the 256-entry master palette and the 18-entry SOD scale table. Illustrative comparison images (a captured frame beside our render) that a research note cites are the third exception. All are credited and not relicensed ([`NOTICE.md`](../NOTICE.md)).
   * `crates/stunt-core` may depend on small, pure-Rust crates that do no I/O and touch no windowing, GPU, audio, or emulator code, so unit and contract tests compile and run 100% offline in $< 2\text{ seconds}$. Each added crate is justified in the PR that adds it ([ADR 0002](adr/0002-stunt-core-may-take-small-dependencies.md)).
 
 #### [I8] DOS 8.3 Uppercase Path Normalization
