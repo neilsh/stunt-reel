@@ -410,7 +410,7 @@ def parse_grades(text: str, taxonomy: Taxonomy) -> dict[str, SheetGrades]:
         tokens = cells.replace("|", " ").split()
         if not tokens or "=" in tokens[0]:
             raise BenchError(f"grade line has no sheet id: {raw.strip()!r}")
-        sheet, values = tokens[0], tokens[1:]
+        sheet, values = tokens[0].removesuffix(":").removesuffix(".png"), tokens[1:]
         if sheet in parsed:
             raise BenchError(f"sheet {sheet} is graded twice")
         grades: dict[str, int | None] = dict.fromkeys(taxonomy.ids)
@@ -493,6 +493,7 @@ class Readout:
 def readout(
     grades: dict[str, SheetGrades],
     sheets: Sequence[Sheet],
+    ids: Sequence[str],
     film: str,
     categories_digest: str,
     render_digest: str,
@@ -500,9 +501,8 @@ def readout(
     """Per category, the real frames graded 2 or more and the mean grade."""
     real = sorted((s for s in sheets if s.kind == "real"), key=lambda s: s.tick)
     graded = [(s.tick, grades[s.id]) for s in real if s.id in grades]
-    names = list(next(iter(grades.values())).grades) if grades else []
     categories = []
-    for name in names:
+    for name in ids:
         values = [(tick, g.grades.get(name)) for tick, g in graded]
         known = [v for _, v in values if v is not None]
         categories.append(
@@ -548,6 +548,11 @@ def compare(before: Readout, after: Readout, min_change: int) -> list[Change]:
         only_after = sorted(set(after.ticks) - set(before.ticks))
         raise BenchError(
             f"readouts graded different ticks (only before: {only_before}, only now: {only_after})"
+        )
+    if before.missing or after.missing:
+        raise BenchError(
+            f"a readout is missing sheets ({before.missing} before, {after.missing} now); "
+            "grade the missing sheets before comparing"
         )
     earlier = {c.category: set(c.ticks_2plus) for c in before.categories}
     changes = []
@@ -730,12 +735,20 @@ def score_run(
         )
     sheets = plan_sheets(ticks, RenderTree(render), taxonomy, int(run["seed"]), run["calibrate"])
     grades = parse_grades(grades_text, taxonomy)
-    result = readout(grades, sheets, str(run["film"]), taxonomy.digest, render_digest)
-    _write_text(out / READOUT_FILE, json.dumps(result.to_json(), indent=2) + "\n")
-    changes = None
+    stray = sorted(set(grades) - {s.id for s in sheets})
+    if stray:
+        raise BenchError(f"{out / GRADES_FILE} grades sheets this run does not hold: {stray}")
+    earlier = None
     if against is not None:
+        if against.resolve() == (out / READOUT_FILE).resolve():
+            raise BenchError(
+                f"--against {against} is this run's own readout.json; copy the previous readout "
+                "aside before errors-make and compare with the copy"
+            )
         earlier = Readout.from_json(json.loads(against.read_text(encoding="utf-8")))
-        changes = compare(earlier, result, taxonomy.min_change)
+    result = readout(grades, sheets, taxonomy.ids, str(run["film"]), taxonomy.digest, render_digest)
+    _write_text(out / READOUT_FILE, json.dumps(result.to_json(), indent=2) + "\n")
+    changes = None if earlier is None else compare(earlier, result, taxonomy.min_change)
     calibration = calibrate(grades, sheets, taxonomy) if run["calibrate"] else None
     return result, changes, calibration
 

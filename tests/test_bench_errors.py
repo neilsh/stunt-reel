@@ -336,7 +336,8 @@ def _readout(ticks: dict[int, int], digest: str = "c" * 64) -> Readout:
     taxonomy = load_categories(CATEGORIES)
     sheets = _sheets(*((f"s{t}", "real", t, None) for t in ticks))
     lines = [_all_zero(taxonomy, f"s{t}", aircraft_absent=g) for t, g in ticks.items()]
-    return readout(parse_grades("\n".join(lines), taxonomy), sheets, "ctry", digest, "r" * 64)
+    grades = parse_grades("\n".join(lines), taxonomy)
+    return readout(grades, sheets, taxonomy.ids, "ctry", digest, "r" * 64)
 
 
 def test_readout_counts_and_roundtrips() -> None:
@@ -348,7 +349,7 @@ def test_readout_counts_and_roundtrips() -> None:
             _all_zero(taxonomy, "b", aircraft_absent=1, other="odd sky"),
         ]
     )
-    result = readout(parse_grades(text, taxonomy), sheets, "ctry", "c" * 64, "r" * 64)
+    result = readout(parse_grades(text, taxonomy), sheets, taxonomy.ids, "ctry", "c" * 64, "r" * 64)
     absent = next(c for c in result.categories if c.category == "aircraft-absent")
     assert absent.ticks_2plus == (1,)
     assert absent.mean == 1.5
@@ -489,3 +490,72 @@ def test_brief_names_an_absolute_folder(
     _make(run_inputs)
     brief = (tmp_path / "relative" / "brief.md").read_text(encoding="utf-8")
     assert f"`{(tmp_path / 'relative').resolve().as_posix()}/`" in brief
+
+
+def test_parse_grades_strips_file_suffixes() -> None:
+    taxonomy = load_categories(CATEGORIES)
+    grades = parse_grades("aaa.png aircraft-absent=1\nbbb: aircraft-absent=2", taxonomy)
+    assert set(grades) == {"aaa", "bbb"}
+
+
+def test_readout_lists_every_category_when_nothing_matched() -> None:
+    taxonomy = load_categories(CATEGORIES)
+    sheets = _sheets(("a", "real", 1, None))
+    result = readout({}, sheets, taxonomy.ids, "ctry", "c" * 64, "r" * 64)
+    assert [c.category for c in result.categories] == list(taxonomy.ids)
+    assert result.missing == 1
+
+
+def test_compare_refuses_missing_sheets() -> None:
+    taxonomy = load_categories(CATEGORIES)
+    full = _readout(dict.fromkeys(range(4), 2))
+    sheets = _sheets(*((f"s{t}", "real", t, None) for t in range(4)))
+    lines = [_all_zero(taxonomy, f"s{t}", aircraft_absent=2) for t in range(3)]
+    short = readout(
+        parse_grades("\n".join(lines), taxonomy), sheets, taxonomy.ids, "ctry", "c" * 64, "r" * 64
+    )
+    with pytest.raises(BenchError, match="missing"):
+        compare(full, short, 2)
+
+
+def _grade_all(run_inputs: dict[str, Path], **grades: int) -> None:
+    out = run_inputs["out"]
+    taxonomy = load_categories(run_inputs["taxonomy"])
+    ids = (out / "ids.txt").read_text(encoding="utf-8").split()
+    lines = [_all_zero(taxonomy, i, "none", **grades) for i in ids]
+    (out / "grades.txt").write_text("\n".join(lines), encoding="utf-8")
+
+
+def test_score_run_against_an_earlier_readout(tmp_path: Path, run_inputs: dict[str, Path]) -> None:
+    _make(run_inputs)
+    _grade_all(run_inputs, aircraft_absent=2)
+    score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], None)
+    earlier = tmp_path / "earlier.json"
+    shutil.copy(run_inputs["out"] / "readout.json", earlier)
+    _grade_all(run_inputs)
+    _, changes, _ = score_run(
+        run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], earlier
+    )
+    assert changes == []
+
+
+def test_score_refuses_against_its_own_readout(run_inputs: dict[str, Path]) -> None:
+    _make(run_inputs)
+    _grade_all(run_inputs)
+    own = run_inputs["out"] / "readout.json"
+    score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], None)
+    with pytest.raises(BenchError, match=r"readout.json"):
+        score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], own)
+
+
+def test_score_refuses_ids_that_match_no_sheet(run_inputs: dict[str, Path]) -> None:
+    _make(run_inputs)
+    _grade_all(run_inputs)
+    grades = run_inputs["out"] / "grades.txt"
+    taxonomy = load_categories(run_inputs["taxonomy"])
+    grades.write_text(
+        grades.read_text(encoding="utf-8") + "\n" + _all_zero(taxonomy, "deadbeef0000"),
+        encoding="utf-8",
+    )
+    with pytest.raises(BenchError, match="deadbeef0000"):
+        score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], None)
