@@ -34,7 +34,14 @@ def parse_plant(text: str) -> tuple[Fault, range]:
     key, at, span = text.partition("@")
     faults = {fault.key: fault for fault in ALL_FAULTS}
     first, dash, last = span.partition("-")
-    if key not in faults or not at or not dash or not first.isdigit() or not last.isdigit():
+    if (
+        key not in faults
+        or not at
+        or not dash
+        or not first.isdigit()
+        or not last.isdigit()
+        or int(last) < int(first)
+    ):
         raise argparse.ArgumentTypeError(
             f"{text!r} is not KEY@FIRST-LAST with KEY one of {', '.join(faults)}"
         )

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import shutil
-from typing import TYPE_CHECKING, Any
+import sys
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -28,8 +31,11 @@ from stunt_reel.bench.run import (
 )
 from stunt_reel.parity_artifacts import FrameReport, I6Gate, Report, write_report
 
-if TYPE_CHECKING:
-    from pathlib import Path
+SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+import parity_bench  # noqa: E402
 
 H, W = 200, 320
 TICKS = 300
@@ -234,3 +240,38 @@ def test_plant_tree_leaves_the_source_alone(tmp_path: Path, bench_fixture: Path)
     before = (source / "tick_00010.png").read_bytes()
     plant_tree(source, tmp_path / "out", [(Fault("shift_x", 4), range(10, 21))])
     assert (source / "tick_00010.png").read_bytes() == before
+
+
+class NoOceanSource(LazySource):
+    """A film whose layer plane never holds the ocean, so ``index_ocean`` is n/a everywhere."""
+
+    def load(self, tick: int) -> RenderPlanes:
+        planes = super().load(tick)
+        return RenderPlanes(
+            rgb=planes.rgb,
+            idx=planes.idx,
+            layer=np.where(planes.layer == 1, 2, planes.layer).astype(np.uint16),
+        )
+
+
+def test_an_unmeasurable_sigma_is_none_and_never_detects() -> None:
+    source = NoOceanSource()
+    ref, rec = captures(source, noise=0), captures(source, noise=1)
+    assert recapture_sigma("index_ocean", ref, rec, source, CAPTURE_TICKS) is None
+    entry = run_module._entry([-0.5, -0.4], None)
+    assert entry["detected"] is False
+    assert entry["sigmas"] is None
+    assert entry["frames"] == 2
+
+
+def test_a_zero_sigma_detects_any_negative_mean() -> None:
+    assert run_module._entry([-0.01], 0.0)["detected"] is True
+    assert run_module._entry([0.01], 0.0)["detected"] is False
+
+
+def test_a_reversed_plant_range_is_an_argument_error() -> None:
+    with pytest.raises(argparse.ArgumentTypeError):
+        parity_bench.parse_plant("shift_x:4@600-500")
+    fault, ticks = parity_bench.parse_plant("shift_x:4@500-599")
+    assert fault.key == "shift_x:4"
+    assert ticks == range(500, 600)

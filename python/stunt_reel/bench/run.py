@@ -88,7 +88,7 @@ def recapture_sigma(
     b: dict[int, CapturePlanes],
     source: RenderSource,
     ticks: list[int],
-) -> float:
+) -> float | None:
     """Sigma of *metric*: how far two captures of one film disagree about the same control."""
     fn = METRICS[metric]
     paired = _paired_ticks(a, b, source, ticks)
@@ -105,9 +105,9 @@ def recapture_sigma(
         if first is not None and second is not None:
             deltas.append(first - second)
     if len(deltas) < 2:
-        # A metric n/a on (nearly) every frame has no noise to measure; its faults then
-        # have no frames either, so it fails the bench without stopping the others.
-        return 0.0
+        # A metric n/a on (nearly) every frame has no noise to measure: None, so nothing
+        # it scores can be called detected.
+        return None
     return float(statistics.stdev(deltas))
 
 
@@ -130,10 +130,12 @@ def _build_floor(source: RenderSource, floor: RenderSource) -> dict[str, Any]:
     }
 
 
-def _entry(values: list[float], sigma: float) -> dict[str, Any]:
+def _entry(values: list[float], sigma: float | None) -> dict[str, Any]:
     if not values:
         return {"mean_change": None, "sigmas": None, "detected": False, "frames": 0}
     mean = float(np.mean(values))
+    if sigma is None:
+        return {"mean_change": mean, "sigmas": None, "detected": False, "frames": len(values)}
     if sigma == 0.0:
         return {"mean_change": mean, "sigmas": None, "detected": mean < 0, "frames": len(values)}
     drop = -mean / sigma
