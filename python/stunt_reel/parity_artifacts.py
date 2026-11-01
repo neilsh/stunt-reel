@@ -25,6 +25,7 @@ handlers keep working), naming the file and the field.
 
 from __future__ import annotations
 
+import bisect
 import json
 import shutil
 import struct
@@ -32,6 +33,7 @@ import zlib
 from collections import OrderedDict
 from compression import zstd
 from dataclasses import dataclass, field, replace
+from itertools import accumulate
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
@@ -464,14 +466,14 @@ class RenderRecord:
 
     def locate(self, tick: int) -> tuple[int, int] | None:
         """``(chunk, position)`` of *tick*'s planes, or ``None`` when the render lacks it."""
-        first = 0
-        for number, chunk in enumerate(self.chunks):
-            end = first + chunk.ticks
-            for position, entry in enumerate(self.ticks[first:end]):
-                if entry.tick == tick:
-                    return number, position
-            first = end
-        return None
+        row = bisect.bisect_left(self.ticks, tick, key=lambda entry: entry.tick)
+        if row == len(self.ticks) or self.ticks[row].tick != tick:
+            return None
+        ends = list(accumulate(chunk.ticks for chunk in self.chunks))
+        number = bisect.bisect_right(ends, row)
+        if number == len(self.chunks):
+            return None
+        return number, row - (ends[number] - self.chunks[number].ticks)
 
 
 @dataclass(frozen=True)

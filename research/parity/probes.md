@@ -53,7 +53,7 @@ For a hypothesis with a few dozen variants (axis permutations, Euler order and s
 
 ## 6. Timing hypotheses (post-hoc retime)
 
-The page timing is modelled in the renderer: `--headless` samples the scene at `tick - 1` because the page captured for film clock `t` is the state at `t - 1` ([`capture.md`](../playone-exe/capture.md)). Timing questions must therefore not need a rebuild. `retime` relabels an existing render by N ticks and rebuilds its palette sidecar; `--reuse` and `--retime` carry that into a score in one command:
+The page timing is modelled in the renderer: `--headless` samples the scene at `tick - 1` because the page captured for film clock `t` is the state at `t - 1` ([`capture.md`](../playone-exe/capture.md)). Timing questions must therefore not need a rebuild. `retime` relabels an existing render by N ticks and writes it as a new render store; `--reuse` and `--retime` carry that into a score in one command:
 
 ```bash
 python python/scripts/parity_probe.py retime \
@@ -86,7 +86,7 @@ Neither has a subcommand; both were one-off scripts under `build/scratch/`. Pref
 
 ## 8. Tool coverage
 
-Every repeated analysis has a home: baseline render and score is `mise run parity`; candidate products are `mise run sweep`; tick shifts are `parity_probe.py retime` or the `--reuse`/`--retime` flags (which rebuild the palette sidecar entry at the shifted tick; the hand-made shift left it stale); the identical-variant warning catches `std::env::var(...).is_ok()` treating `"0"` as set, which once cost two sweeps. Still hand-rolled, with no subcommand yet: the 11x11 loss-window ranking (`windows`), the per-layer index histogram (`index-diff`) and the sand-coverage count (`coverage`).
+Every repeated analysis has a home: baseline render and score is `mise run parity`; candidate products are `mise run sweep`; tick shifts are `parity_probe.py retime` or the `--reuse`/`--retime` flags (which move the palette entry with the planes to the shifted tick; the hand-made shift left it stale); the identical-variant warning catches `std::env::var(...).is_ok()` treating `"0"` as set, which once cost two sweeps. Still hand-rolled, with no subcommand yet: the 11x11 loss-window ranking (`windows`), the per-layer index histogram (`index-diff`) and the sand-coverage count (`coverage`).
 
 ## 9. Origin markers (proposed, not built)
 

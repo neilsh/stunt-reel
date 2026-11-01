@@ -37,7 +37,7 @@ pub(super) struct RenderFrame {
     pub(super) indices: Vec<u8>,
     /// 320x200 layer-id plane; `LAYER_NONE` is sky.
     pub(super) layers: Vec<u16>,
-    /// The palette controls the film authors at this tick, when the render has a sidecar.
+    /// The palette controls the film authors at this tick, from the render's `render.json`.
     pub(super) controls: Option<PaletteControls>,
 }
 

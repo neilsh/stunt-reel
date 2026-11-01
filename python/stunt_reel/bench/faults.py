@@ -99,8 +99,23 @@ def _flat_terrain(planes: RenderPlanes) -> RenderPlanes:
     idx = planes.idx
     if idx is not None:
         idx = idx.copy()
-        idx[mask] = np.bincount(planes.idx[mask], minlength=256).argmax()  # type: ignore[index]
+        idx[mask] = _flat_index(planes.idx, mask)  # type: ignore[arg-type]
     return RenderPlanes(rgb=rgb, idx=idx, layer=planes.layer.copy())
+
+
+def _flat_index(idx: NDArray[np.uint8], mask: NDArray[np.bool_]) -> int:
+    """The index flat terrain takes: its most common one that no other layer shows.
+
+    A render store keeps one colour per index, so an index shared with another layer would have
+    to show both the flat colour and its own. Failing a terrain-only index, an index the frame
+    does not use; failing that, the most common terrain index.
+    """
+    terrain = np.bincount(idx[mask], minlength=256)
+    own = np.where(np.bincount(idx[~mask], minlength=256) > 0, 0, terrain)
+    if own.any():
+        return int(own.argmax())
+    free = np.flatnonzero(np.bincount(idx.reshape(-1), minlength=256) == 0)
+    return int(free[0]) if free.size else int(terrain.argmax())
 
 
 def _flicker(planes: RenderPlanes, tick: int, amount: int) -> RenderPlanes:
