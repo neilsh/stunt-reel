@@ -10,8 +10,9 @@
 //! DOS axes to `[I1]` conversion in the `.FLM` evaluator (GLOSSARY.md "DOS axes").
 //!
 //! Slots are authored in DOS axes; every evaluated `TrajectoryRecord` is `[I1]`. The map is
-//! a 180 degree rotation about Z: positions `(x, y, z) -> (-x, -y, z)` and orientations
-//! `q' = q_z180 * q` with `q_z180 = [0, 0, 1, 0]`.
+//! a 180 degree rotation about Z: positions `(x, y, z) -> (-x, -y, z)`, the view orientation
+//! `q' = q_z180 * q` with `q_z180 = [0, 0, 1, 0]`, and actor orientations the conjugate
+//! `q_z180 * q * q_z180^-1`, because decoded shapes are already `[I1]` (+Y up).
 
 mod common;
 
@@ -98,11 +99,12 @@ fn test_raw_negative_altitude_evaluates_to_positive_i1_altitude() {
         2.0 * FIXED_STEP,
         "actor position",
     );
-    assert_eq!(actor.rotation_quat, [0.0, 0.0, 1.0, 0.0]);
+    // A zero raw rotation leaves the shape as decoded: upright, not rolled 180 degrees.
+    assert_eq!(actor.rotation_quat, [0.0, 0.0, 0.0, 1.0]);
 }
 
 #[test]
-fn test_rotated_actor_world_matrix_is_rz180_times_raw_matrix() {
+fn test_rotated_actor_world_matrix_is_rz180_conjugate_of_raw_matrix() {
     let actor_pos = [-120.5, -30.25, 75.0];
     let actor_bam = [0x0800u16, 0x0400, 0x2000];
     let film = two_slot_film(([0.0, 0.0, 0.0], [0, 0, 0]), (actor_pos, actor_bam));
@@ -115,12 +117,16 @@ fn test_rotated_actor_world_matrix_is_rz180_times_raw_matrix() {
         ..Default::default()
     });
 
-    // Column-major: element (row, col) lives at col * 4 + row. Rz180 negates rows 0 and 1 of
-    // every column, translation included.
+    // Column-major: element (row, col) lives at col * 4 + row. `Rz180 * raw * Rz180`: the left
+    // factor negates rows 0 and 1 of every column, translation included; the right factor
+    // (model space, already `[I1]`) negates columns 0 and 1 of the rotation.
     let mut expected = raw;
     for col in 0..4 {
-        expected[col * 4] = -raw[col * 4];
-        expected[col * 4 + 1] = -raw[col * 4 + 1];
+        expected[col * 4] = -expected[col * 4];
+        expected[col * 4 + 1] = -expected[col * 4 + 1];
+    }
+    for v in &mut expected[0..8] {
+        *v = -*v;
     }
     assert_close(
         &actor.compute_world_matrix(),
@@ -135,8 +141,8 @@ fn test_rotated_actor_world_matrix_is_rz180_times_raw_matrix() {
         "position",
     );
 
-    // The 3x3 part really changed: this is not just the translation flip the CLI used to do.
-    assert!((actor.compute_world_matrix()[0] - raw[0]).abs() > 1e-3);
+    // The 3x3 part really changed: (row 0, col 2) is negated once, not twice.
+    assert!((actor.compute_world_matrix()[8] - raw[8]).abs() > 1e-3);
 }
 
 #[test]
