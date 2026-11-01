@@ -6,7 +6,7 @@
 
 ## 1. Non-Negotiable Directives
 
-1. **Asset isolation**: **NEVER** commit proprietary assets, executables, or original binary disks into Git (`corpus/` is strictly gitignored). All tests must run 100% offline using synthetic fixtures in [`tests/fixtures/`](tests/fixtures/README.md). Two small game-derived tables are documented exceptions — see [`NOTICE.md`](NOTICE.md).
+1. **Asset isolation**: **NEVER** commit proprietary assets, executables, or original binary disks into Git (`corpus/` is strictly gitignored). All tests must run 100% offline using synthetic fixtures in [`tests/fixtures/`](tests/fixtures/README.md). Two small game-derived tables, and illustrative comparison images (a captured frame beside our render, cited by a research note), are documented exceptions under the rules in [`NOTICE.md`](NOTICE.md).
 2. **Quality Gate Requirement**: Before concluding any task or presenting code, **always verify that `mise run check` passes** (format check, lint, typecheck, test across both Rust and Python). See [`docs/development.md`](docs/development.md#development--quality-assurance) and [`mise.toml`](mise.toml).
 3. **Architectural Invariants**: All code must conform to system invariants `[I1]`–`[I8]` defined in [`docs/SPEC.md` § 2](docs/SPEC.md#2-system-architectural-invariants--guardrails) (summarized in [`contracts/mod.rs`](crates/stunt-core/src/contracts/mod.rs)):
    - `[I1]` Right-handed metric coordinates (`+X` Right, `+Y` Up, `+Z` Backward, `-Z` Forward).

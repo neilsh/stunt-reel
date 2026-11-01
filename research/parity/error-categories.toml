@@ -4,66 +4,81 @@
 # A grading run made before a category existed has no grade for it, which a scorer reports as
 # ungraded, not 0. Keep ids stable once graded: rename by adding a new id. `found_by` (the models
 # whose discovery pass named it) and `since` are bookkeeping, not shown to graders.
+#
+# `examples` names sheets in error-examples/ (`<film>-<tick>.png`: capture top left, render top
+# right, luma difference, actor close-up) that both Haiku and Sonnet graded 2 or more for the
+# category; an empty list means no real frame of the probe reached that. Add one by copying the sheet
+# there and naming it here.
 
 [[category]]
 id = "aircraft-parts-missing"
 definition = "Fuselage, cowl, propeller, wheels, cockpit or the wing stripe/checker pattern are not drawn; only bare wing shapes remain"
 found_by = ["haiku", "sonnet", "opus"]
 since = "2026-10-31"
+examples = ["ctry-0048", "ctry-0092"]
 
 [[category]]
 id = "aircraft-shape-broken"
 definition = "The aircraft's silhouette is wrong: flattened into a sliver or wedge, a wing missing, struts floating free of the wings"
 found_by = ["haiku", "sonnet", "opus"]
 since = "2026-10-31"
+examples = ["ctry-0136", "ctry-0224"]
 
 [[category]]
 id = "aircraft-too-small"
 definition = "The aircraft covers much less of the frame than in the capture"
 found_by = ["haiku", "opus"]
 since = "2026-10-31"
+examples = []
 
 [[category]]
 id = "aircraft-misplaced"
 definition = "The aircraft sits away from its capture position (higher, lower, left or right)"
 found_by = ["haiku", "opus"]
 since = "2026-10-31"
+examples = []
 
 [[category]]
 id = "shadow-missing"
 definition = "The black ground shadow under the aircraft is not drawn"
 found_by = ["haiku", "sonnet", "opus"]
 since = "2026-10-31"
+examples = ["ctry-0367", "ctry-0411"]
 
 [[category]]
 id = "sea-band-wrong"
 definition = "The dark-blue sea strip near the horizon is drawn as a pale grey haze band instead"
 found_by = ["sonnet", "opus"]
 since = "2026-10-31"
+examples = ["ctry-0004", "ctry-0048"]
 
 [[category]]
 id = "scenery-missing"
 definition = "Roads, beach, trees, barn, silos, posts or distant buildings are absent, thinner or smaller"
 found_by = ["sonnet", "opus"]
 since = "2026-10-31"
+examples = ["intro-2068", "ctry-0004"]
 
 [[category]]
 id = "ground-shade-wrong"
 definition = "The whole field is a shade lighter or darker than the capture's"
 found_by = ["haiku", "sonnet", "opus"]
 since = "2026-10-31"
+examples = []
 
 [[category]]
 id = "ground-shade-edges"
 definition = "The edges between ground shades are misplaced, extra, or drawn as sawtooth steps"
 found_by = ["opus"]
 since = "2026-10-31"
+examples = ["intro-1416", "intro-2180"]
 
 [[category]]
 id = "background-misregistration"
 definition = "Horizon, hills, road edges and sky bands are shifted a few pixels or differ slightly in shape"
 found_by = ["haiku", "sonnet", "opus"]
 since = "2026-10-31"
+examples = []
 
 # Added from INTRO.FLM discovery (frames from tick 1000).
 [[category]]
@@ -71,30 +86,35 @@ id = "aircraft-absent"
 definition = "An aircraft is not drawn at all; at most its shadow or a few stray specks remain"
 found_by = ["sonnet", "opus"]
 since = "2026-10-31"
+examples = ["intro-1009", "intro-1108"]
 
 [[category]]
 id = "shadow-shape-wrong"
 definition = "The aircraft's ground shadow is drawn, but as a blob, sliver or fragments instead of the plane's silhouette, or away from where the capture's shadow is"
 found_by = ["sonnet", "opus"]
 since = "2026-10-31"
+examples = ["intro-1108", "intro-1218"]
 
 [[category]]
 id = "actors-missing"
 definition = "Ground vehicles, carts, people or parked and distant aircraft are not drawn (at most dark specks)"
 found_by = ["haiku", "sonnet", "opus"]
 since = "2026-10-31"
+examples = ["intro-1317", "intro-2687"]
 
 [[category]]
 id = "terrain-type-wrong"
 definition = "A ground region is drawn as the wrong surface (grass where the capture has sand), not just a different shade"
 found_by = ["sonnet", "opus"]
 since = "2026-10-31"
+examples = ["intro-2687", "intro-2180"]
 
 [[category]]
 id = "explosion-missing"
 definition = "An explosion, fireball or smoke effect in the capture is not drawn"
 found_by = ["opus"]
 since = "2026-10-31"
+examples = ["intro-1416"]
 
 # Which categories should rise when a fault is planted (keys as in stunt_reel.bench.faults Fault.key).
 # A planted sheet counts as detected when the grade of any of these categories, or an `other` note,
