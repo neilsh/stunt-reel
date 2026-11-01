@@ -56,7 +56,9 @@ def _print_rows(document: dict[str, Any]) -> None:
         for key in keys:
             sigmas = results[key]["sigmas"]
             cells.append(f"{key}={'n/a' if sigmas is None else format(sigmas, '.1f')}")
-        print(f"{name:<16} {verdict}  sigma {document['sigma'][name]:.5f}  " + " ".join(cells))
+        sigma = document["sigma"][name]
+        shown = "n/a" if sigma is None else f"{sigma:.5f}"
+        print(f"{name:<16} {verdict}  sigma {shown}  " + " ".join(cells))
 
 
 def run(args: argparse.Namespace) -> int:

@@ -275,3 +275,18 @@ def test_a_reversed_plant_range_is_an_argument_error() -> None:
     fault, ticks = parity_bench.parse_plant("shift_x:4@500-599")
     assert fault.key == "shift_x:4"
     assert ticks == range(500, 600)
+
+
+def test_rows_print_an_unmeasured_sigma_as_na(capsys: pytest.CaptureFixture[str]) -> None:
+    entry = {"mean_change": None, "sigmas": None, "detected": False, "frames": 0}
+    document = {
+        "sigma": {"ssim": 0.001, "index_ocean": None},
+        "passes": {"ssim": False, "index_ocean": False},
+        "results": {
+            name: {fault.key: entry for fault in ALL_FAULTS} for name in ("ssim", "index_ocean")
+        },
+    }
+    parity_bench._print_rows(document)
+    lines = capsys.readouterr().out.splitlines()
+    assert "sigma n/a" in lines[1]
+    assert "sigma 0.00100" in lines[0]
