@@ -26,6 +26,21 @@ are game-derived and are not relicensed by this project:
   `SODParse/SOD.H` (Dave Palmowski), matching the historical `DECODE.C` implementation.
   It is committed once, in `crates/stunt-core/src/sod/vm.rs`.
 
+## Illustrative comparison images
+
+Research notes may commit a few still images that set a frame captured from the game's own replay
+beside this project's render of the same moment, where a finding is easier to show than describe.
+The captured frames are game-derived and are not relicensed by this project. Every such image:
+
+- is a single 320x200 screen, or a crop or enlargement of one, never a run of frames or a video;
+- holds nothing extracted from game files (no shapes, textures, artwork or sound), only what the
+  screen showed;
+- lives under `research/` and is named by the note or index that cites it, so each one has a stated
+  purpose.
+
+All other captures stay in the external data root. The current set is
+`research/parity/error-examples/`, indexed by `research/parity/error-categories.toml`.
+
 ## Third-party material and credits
 
 Quoted manual text, cited community research, and third-party tools remain under their

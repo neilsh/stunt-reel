@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -20,12 +21,17 @@ from stunt_reel.parity_artifacts import (
     FrameReport,
     Geometry,
     I6Gate,
+    PaletteChange,
+    PaletteLog,
     RenderPalette,
     RenderRecord,
     RenderTick,
     Report,
     RetimedDocuments,
+    TickLog,
+    VideoCapture,
     frames_for_captured_ticks,
+    load_video_capture,
     open_render,
     read_capture,
     read_capture_palette,
@@ -38,6 +44,7 @@ from stunt_reel.parity_artifacts import (
     write_render,
     write_report,
     write_retimed_documents,
+    write_video_capture,
 )
 
 
@@ -564,3 +571,90 @@ def test_write_retimed_documents_keeps_only_the_documents_that_exist(tmp_path: P
     assert not (second / "render.json").exists()
     sidecar = json.loads((second / "palette_controls.json").read_text(encoding="utf-8"))
     assert [entry["tick"] for entry in sidecar["ticks"]] == [11]
+
+
+def _video() -> VideoCapture:
+    return VideoCapture(
+        schema_version=SCHEMA_VERSION,
+        kind="video",
+        film=FilmId(name="SYNTH.FLM", flm_bytes=4, flm_sha256="00", all_sha256="11"),
+        geometry=Geometry(width=4, height=2),
+        playone_build="synthetic",
+        cpu_profile="capture",
+        capture_start_frame=100,
+        film_start_frame=103,
+        end="hold",
+        log=TickLog(frame=(101, 102, 103, 104), film_tick=(7, 7, 8, 9), global_tick=(0, 1, 2, 3)),
+        palettes=PaletteLog(
+            initial=tuple((i, i, i) for i in range(256)),
+            changes=(PaletteChange(frame=103, first=32, rgb=((255, 0, 0),) * 32),),
+        ),
+    )
+
+
+def test_video_capture_round_trips(tmp_path: Path) -> None:
+    document = write_video_capture(tmp_path, _video(), diagnostics={"note": "kept"})
+    assert document["kind"] == "video"
+    assert document["note"] == "kept"
+    assert load_video_capture(tmp_path) == _video()
+
+
+def test_the_video_fixture_loads() -> None:
+    fixture = Path(__file__).parent / "fixtures" / "parity" / "video"
+    capture = load_video_capture(fixture)
+    assert len(capture.log.frame) == 4
+    assert [change.frame for change in capture.palettes.changes] == [103]
+    assert capture.film_start_frame == 103
+
+
+def test_video_capture_rejects_a_frame_capture_and_a_bad_log(tmp_path: Path) -> None:
+    document = write_video_capture(tmp_path, _video(), diagnostics={})
+    del document["kind"]
+    _write_json(tmp_path / "meta.json", document)
+    with pytest.raises(ArtifactError) as missing:
+        load_video_capture(tmp_path)
+    assert missing.value.kind == "missing"
+    document["kind"] = "frames"
+    _write_json(tmp_path / "meta.json", document)
+    with pytest.raises(ArtifactError) as wrong:
+        load_video_capture(tmp_path)
+    assert wrong.value.kind == "video_log"
+    document["kind"] = "video"
+    document["log"]["frame"] = [101, 103, 104, 105]
+    _write_json(tmp_path / "meta.json", document)
+    with pytest.raises(ArtifactError, match="index 1"):
+        load_video_capture(tmp_path)
+
+
+def test_video_capture_validation_rules() -> None:
+    base = _video()
+    for bad, text in (
+        (replace(base, log=replace(base.log, global_tick=(0, 1, 2))), "length"),
+        (replace(base, log=replace(base.log, film_tick=(7, 7, 9, 8))), "frame 104"),
+        (replace(base, film_start_frame=200), "film_start_frame"),
+        (replace(base, palettes=replace(base.palettes, initial=base.palettes.initial[:-1])), "256"),
+        (
+            replace(
+                base,
+                palettes=replace(
+                    base.palettes,
+                    changes=(PaletteChange(frame=103, first=250, rgb=((1, 2, 3),) * 32),),
+                ),
+            ),
+            "past entry",
+        ),
+        (
+            replace(
+                base,
+                palettes=replace(
+                    base.palettes,
+                    changes=(PaletteChange(frame=105, first=0, rgb=((1, 2, 3),)),),
+                ),
+            ),
+            "outside the log",
+        ),
+    ):
+        with pytest.raises(ArtifactError, match=text):
+            bad.validate()
+    assert base.video_index(101) == 1
+    assert base.video_index(99) is None

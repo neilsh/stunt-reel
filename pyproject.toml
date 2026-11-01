@@ -24,6 +24,8 @@ Issues = "https://github.com/neilsh/stunt-reel/issues"
 dev = [
     "kaitaistruct==0.11",
     "mypy>=1.14.0",
+    "numpy>=2.5",
+    "pillow>=13",
     "pytest>=8.3.0",
     "pytest-cov>=6.0.0",
     "ruff>=0.12.0",

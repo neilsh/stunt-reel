@@ -28,6 +28,7 @@ __all__ = [
     "KEY_HOLD",
     "MAX_DUMPS",
     "MAX_READ",
+    "PALETTE_BANDS",
     "START_FRAME",
     "TRACE_CHANGED",
     "TRACE_COMPOSED",
@@ -37,6 +38,7 @@ __all__ = [
     "boot_end",
     "keys_script",
     "script",
+    "video_script",
 ]
 
 #: Emulated frame at which the file dialog is up and keys can be sent.
@@ -63,6 +65,8 @@ TRACE_COMPOSED: int = 8
 #: the instruction limit, 24 bands fit a whole film (tear-palette investigation § 1.1).
 _COMPOSED_BYTES: int = 192 * 320
 _BAND_BYTES: int = 8 * 320
+#: The video script logs palette writes in this many equal bands (32 entries, 96 bytes each).
+PALETTE_BANDS: int = 8
 _KEY_NAME = re.compile(r"KBD_[a-z0-9_]+")
 
 
@@ -235,5 +239,65 @@ def script(
         "  prev = pg\n"
         "  ppal = pal\n" + dump_block + hold_block + "end\n"
         'out.trace = "x" .. table.concat(tr, ",")\n'
+        "out.done = true\n"
+    )
+
+
+def video_script(
+    *,
+    keys: Sequence[str],
+    cap: int,
+    end_hold: int,
+    layout: PlayoneLayout,
+) -> str:
+    """The Lua for a video capture: boot with *keys*, record the screen, log clocks and palette.
+
+    ``dosbox.capture_start()`` begins the AVI once the boot keys are done; then, one emulated
+    frame at a time for at most *cap* frames, the script logs ``frame:film_tick:global_tick``
+    and, when the working palette changed, ``frame:band:hex`` for each of the
+    :data:`PALETTE_BANDS` bands that differ (whole-palette compares per frame, never per byte).
+    The loop ends when the film clock (above zero) has held for *end_hold* frames. Outputs:
+    ``cs`` (the frame recording began), ``pal0`` (the palette then), ``log``, ``pal`` and
+    ``end`` (``hold`` or ``capped``), every string behind an ``x`` so it stays a string.
+    """
+    if cap < 1:
+        raise ValueError(f"cap must be at least 1, got {cap}")
+    if end_hold < 1:
+        raise ValueError(f"end_hold must be at least 1, got {end_hold}")
+    palette_read = f"dosbox.mem_read(DS, 0x{layout.working_palette:X}, {_PALETTE_BYTES})"
+    band = _PALETTE_BYTES // PALETTE_BANDS
+    return (
+        f"local DS = 0x{layout.ds:04X}\n"
+        "local out = dosbox.output\n"
+        "local function wait_until(f) while dosbox.frame() < f do dosbox.wait_frames(1) end end\n"
+        "local H = {}\n"
+        'for i = 0, 255 do H[string.char(i)] = string.format("%02x", i) end\n'
+        + _keys_lua(keys)
+        + "dosbox.capture_start()\n"
+        'out.cs = "x" .. dosbox.frame()\n'
+        f'out.pal0 = "x" .. {palette_read}:gsub(".", H)\n'
+        f"local tr, pl, lt, hold, ppal = {{}}, {{}}, -1, 0, {palette_read}\n"
+        'out["end"] = "xcapped"\n'
+        f"for i = 1, {cap} do\n"
+        "  dosbox.wait_frames(1)\n"
+        "  local f = dosbox.frame()\n"
+        f"  local t = dosbox.mem_read_word(DS, 0x{layout.film_clock:04X}); "
+        f"local g = dosbox.mem_read_word(DS, 0x{layout.global_tick:04X})\n"
+        '  tr[#tr + 1] = f .. ":" .. t .. ":" .. g\n'
+        f"  local pal = {palette_read}\n"
+        "  if pal ~= ppal then\n"
+        f"    for b = 0, {PALETTE_BANDS - 1} do\n"
+        f"      local s = pal:sub(b * {band} + 1, b * {band} + {band})\n"
+        f"      if s ~= ppal:sub(b * {band} + 1, b * {band} + {band}) then "
+        'pl[#pl + 1] = f .. ":" .. b .. ":" .. s:gsub(".", H) end\n'
+        "    end\n"
+        "    ppal = pal\n"
+        "  end\n"
+        "  if t == lt then hold = hold + 1 else hold = 0; lt = t end\n"
+        f'  if t > 0 and hold >= {end_hold} then out["end"] = "xhold"; break end\n'
+        "end\n"
+        "dosbox.capture_stop()\n"
+        'out.log = "x" .. table.concat(tr, ",")\n'
+        'out.pal = "x" .. table.concat(pl, ",")\n'
         "out.done = true\n"
     )

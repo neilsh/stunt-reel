@@ -18,10 +18,10 @@ use super::mask::{
 };
 
 /// SSIM window edge, in pixels.
-const SSIM_WINDOW: usize = 11;
+pub(super) const SSIM_WINDOW: usize = 11;
 
 /// SSIM window stride, in pixels.
-const SSIM_STRIDE: usize = 8;
+pub(super) const SSIM_STRIDE: usize = 8;
 
 /// One captured frame: its 320x200 palette-index plane and its captured palette.
 pub(super) struct ReferenceFrame {

@@ -83,6 +83,10 @@ run = "uv run python python/scripts/build_at.py"
 description = "Capture PLAYONE.EXE Mode 13h frames for visual parity into captures/<film>/frames/ (default CTRY; mise run capture-ref -- --film corpus/stisldem/VAULT/INTRO.FLM)"
 run = "uv run python python/scripts/capture_playone_reference.py"
 
+[tasks.capture-video]
+description = "Record a film as one AVI with its tick and palette log into captures/<film>/video/ (mise run capture-video -- --film corpus/stisldem/VAULT/CTRY.FLM)"
+run = "uv run python python/scripts/capture_video.py"
+
 [tasks.capture-digest]
 description = "Print a capture's content hash and the references.toml entry that would promote it (mise run capture-digest -- vault-ctry 005)"
 run = "uv run python python/scripts/capture_digest.py"
@@ -108,6 +112,10 @@ env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
 description = "Parity baseline: render both films with the current binary and print the headline scores (mise run parity -- [--films ctry,intro] [--no-build] [--no-render] [--reuse DIR] [--retime N])"
 run = "uv run python python/scripts/parity_run.py"
 env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+
+[tasks.parity-bench]
+description = "Parity metric bench: plant faults, score metrics against recapture noise (mise run parity-bench -- run --film ctry [--render DIR] [--recapture ID] | plant --render DIR --out DIR --fault shift_x:4@500-599 | errors-make --film ctry [--calibrate] [--batch] | errors-disputes --film ctry | errors-score --film ctry [--against FILE] [--batch] | errors-example --film ctry --tick T --category ID)"
+run = "uv run python python/scripts/parity_bench.py"
 
 [tasks.parity-probe]
 description = "Diagnostic probes on one capture/render pair (mise run parity-probe -- crop|shift|iou|retime ... ; summary prints the rows the parity log needs)"

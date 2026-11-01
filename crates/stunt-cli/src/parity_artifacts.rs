@@ -15,7 +15,7 @@ use stunt_core::contracts::PaletteControls;
 use stunt_core::scene::{SceneFrame, ViewCamera};
 use stunt_parity::{
     ArtifactError as SchemaError, CameraPose, CaptureSet, FilmId, Geometry, RenderPalette,
-    RenderRecord, RenderTick, Report, SCHEMA_VERSION,
+    RenderRecord, RenderTick, Report, SCHEMA_VERSION, VideoCapture,
 };
 
 /// Document written beside a render directory's frames, last.
@@ -331,6 +331,23 @@ pub(crate) fn load_capture(dir: &Path) -> Result<CaptureSet, AdapterError> {
     Ok(set)
 }
 
+/// Reads a video capture directory's `meta.json` into the port's video document.
+#[allow(
+    dead_code,
+    reason = "only tests read video captures until a video scorer is merged (method.md § 4.4)"
+)]
+pub(crate) fn load_video_capture(dir: &Path) -> Result<VideoCapture, AdapterError> {
+    let path = dir.join(CAPTURE_META);
+    let value = read_json(&path)?;
+    let capture: VideoCapture =
+        serde_json::from_value(value).map_err(|source| AdapterError::Parse {
+            path: path.clone(),
+            source,
+        })?;
+    capture.validate().map_err(|error| schema(&path, error))?;
+    Ok(capture)
+}
+
 /// Writes a validated `report.json`.
 pub(crate) fn write_report(path: &Path, report: &Report) -> Result<(), AdapterError> {
     report.validate().map_err(|error| schema(path, error))?;
@@ -449,6 +466,16 @@ mod conformance {
         assert_eq!(capture.frames[0].frame_file, "tick_0001.idx");
         assert_eq!(capture.frames[1].frame_file, "tick_0002.idx");
         assert_eq!(capture.frames[1].palette_file, "palettes_0002.json");
+    }
+
+    #[test]
+    fn the_video_fixture_loads() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/parity/video");
+        let capture = load_video_capture(&dir).expect("load video capture");
+        assert_eq!(capture.log.frame.len(), 4);
+        assert_eq!(capture.palettes.changes.len(), 1);
+        assert_eq!(capture.palettes.changes[0].frame, 103);
+        assert_eq!(capture.film_start_frame, 103);
     }
 
     #[test]

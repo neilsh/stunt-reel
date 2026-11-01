@@ -106,3 +106,24 @@ The shared wire-contract corpus for the two parity artifact adapters: the Rust p
 
 **Read-only.** The conformance tests read these files and never write them; round-trip tests write to their own temporary directories. `git status` after a test run must show the corpus unchanged.
 
+
+### 14. `parity/video/` (video capture document)
+
+A synthetic video capture directory holding only `meta.json`: the `VideoCapture` document (`kind` `video`) for film `SYNTH.FLM`, a 4x2 raster, a four-row tick log (frames 101 to 104, film ticks 7, 7, 8, 9, so `film_start_frame` is 103) and a palette history of a 256-entry grey-ramp `initial` plus one 32-entry red change at frame 103. There is no `capture.avi` and no game data; the Rust loader (`load_video_capture`) and the Python loader (`load_video_capture`) both read it in their conformance tests.
+
+`parity/video/synthetic.avi` (22 KB) is a ZMBV recording the Rust decoder (`crates/stunt-cli/src/zmbv.rs`) is tested against: 12 frames of 64x48 `bgr0`, one keyframe (16x16 blocks, zlib) followed by delta frames. Frame `n`, pixel `(x, y)` is `[(x*4 + n*3) & 255, (y*5) & 255, ((x + y + n*7)*2) & 255, 0]`, plus an 8x8 block of `[255, 255, 255, 0]` at `(4 + 3n, 4 + 2n)`. It was made by writing those frames raw to `frames.raw` and running `ffmpeg -f rawvideo -pix_fmt bgr0 -s 64x48 -framerate 70 -i frames.raw -c:v zmbv -g 5 synthetic.avi`; the gate never runs ffmpeg. `zmbv::tests::the_synthetic_fixture_decodes_exactly` rebuilds the frames from the formula and compares byte for byte. FFmpeg's encoder emitted a single keyframe in spite of `-g 5`, so delta handling is covered by the later frames and by a hand-built raw delta test.
+
+### 15. `parity/bench/` (parity bench, numpy against Rust)
+
+Two film ticks (10 and 20) of 320x200 content, for the numpy copy of the scorer in `python/stunt_reel/bench/`. Rows 0-59 are sky (indices 227-238 cycling by row), rows 60-184 terrain (layer 2) in an 8-pixel checker of indices 40 and 41, a 20x16 actor (index 16, layer 16) sits at x 100, y 120, and rows 185-199 are a bar of index 250. The capture palette gives entry `i` the colour `(i, 255 - i, i // 2)`.
+
+| Path | Holds |
+|---|---|
+| `capture/` | The reference: `meta.json` (via `write_capture`), `tick_0001.idx`, `tick_0002.idx` and `palettes_0001.json`, `palettes_0002.json`. At tick 20 the actor is 4 columns to the right. |
+| `render/` | The test render: `render.json` (via `write_render`) and `tick_00010`, `tick_00020` as `.png`, `.idx`, `.layer` (little-endian `u16`). Each PNG is the capture palette scaled by 0.9 and rounded, so neither tick scores 1.0 and the golden tests the arithmetic, not just identity. |
+| `render_before/` | `render/` with the terrain checker phase flipped at tick 20, the "before" side of a regression pair. |
+| `golden.json` | `ssim`: `{"10": ..., "20": ...}`, each frame's `ssim` from the Rust scorer. `differential["20"]`: `changed_idx`, `changed_luma`, `changed_by_layer` and `delta` from the numpy `differential` (`python/stunt_reel/bench/metrics.py`) with `render_before` as the before side and `render` as the after side, at tick 20; the Rust verdict test reads it. |
+
+**Authorship.** `make_fixture.py` (run with `mise exec -- uv run python tests/fixtures/parity/bench/make_fixture.py`) writes the three directories. `golden.json` comes from `cargo run -p stunt-cli --release -- parity --reference tests/fixtures/parity/bench/capture --test tests/fixtures/parity/bench/render --output <tmp>`, copying `film_tick` and `ssim` from the report's `per_frame`. `differential["20"]` is not from the Rust scorer: it is the numpy `differential` run on the fixture, and the Rust verdict is checked against it. To regenerate it, run a few lines of Python (`mise exec -- uv run python`) that call `differential(load_capture(bench / "capture")[20], RenderTree(bench / "render_before").load(20), RenderTree(bench / "render").load(20))`, with `load_capture` and `RenderTree` from `stunt_reel.bench.planes`, and store its `changed_idx`, `changed_luma`, `changed_by_layer` and `delta` as `golden["differential"]["20"]`.
+
+**Pinned by.** `bench_fixture_matches_its_golden_ssim` (Rust, within 1e-6) keeps the golden equal to the real scorer; `tests/test_bench_ssim.py::test_numpy_ssim_matches_the_rust_golden` (within 1e-4) keeps numpy equal to the golden; `tests/test_bench_metrics.py::test_differential_matches_its_golden` (within 1e-9) and `parity::tests::verdict_matches_the_numpy_golden` (Rust, within 1e-6 on the fractions and 1e-4 on `delta`) pin `differential["20"]` to the numpy and the Rust verdict. `.gitattributes` marks `*.idx` and `*.layer` binary, since an index plane with no NUL byte would otherwise be treated as text and have its `0x0D 0x0A` pairs rewritten.

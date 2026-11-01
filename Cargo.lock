@@ -1985,6 +1985,7 @@ name = "stunt-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "flate2",
  "glam",
  "image",
  "serde",

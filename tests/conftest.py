@@ -11,7 +11,8 @@ pytest never resets it.  On Windows the mkdir mode shim keeps pytest's own
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from pytest_helpers import (
     cache_dir,
@@ -19,9 +20,6 @@ from pytest_helpers import (
     per_run_basetemp,
     prune_old_basetemps,
 )
-
-if TYPE_CHECKING:
-    import pytest
 
 pytest_plugins = ["tac_mock"]
 
@@ -33,3 +31,9 @@ def pytest_configure(config: pytest.Config) -> None:
     prune_old_basetemps(cache_dir(rootpath))
     if config.option.basetemp is None:
         config.option.basetemp = str(per_run_basetemp(rootpath))
+
+
+@pytest.fixture
+def bench_fixture() -> Path:
+    """The synthetic parity-bench fixture: capture, render, render_before and golden."""
+    return Path(__file__).resolve().parent / "fixtures" / "parity" / "bench"

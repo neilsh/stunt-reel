@@ -32,6 +32,26 @@ By latest record per film and stage: archive 47 ok and 40 skipped (sibling `.ALL
 
 Median stage times, from the ledger: archive 68 s (mixed settings; 7 to 27 s at `cycles = max`), capture 200 s (mean 229, 90th percentile 460, max 722), render 16 s, score 1.2 s. At the original settings archive generation was 44% of wall time and capture 52%; timeouts and failed captures were 37.5% of it. Capture is wall-paced (about 0.25 s per frame, 4 s of boot), and no DOSBox-X setting, `turbo` or frame sampling cut it, so serial capture over all 529 films would take about 36 hours. Eight captures at once on an idle machine finished in 64 s with the tick spread unchanged at 0 to 2 ticks ([`../playone-exe/capture-speed.md`](../playone-exe/capture-speed.md) § 1); `--jobs 8` is therefore the lever, with renders capped by disk (2 to 5 GB each).
 
+## 4. Error readout of the retail vault films
+
+`[Bounded Observation]`, 2026-11-01, render at `ea99618`. The ten films in the retail game's `VAULT` folder went through the survey (`--only`, slugs by content: `HIGHWAY.FLM` is `vault-highways`, `PLANES.FLM` is `vault-splanes`), then through the error readout ([`method.md`](method.md) § 2.3): each kept render, `mise run parity-bench -- errors-make --film <slug> --batch`, one Haiku grader per two films, `errors-score --batch`. Twelve frames per film over its whole length; the table lists the categories graded 2 or more on at least 3 of the 12 (the readout's noise is up to 3 frames per category, so 3 is a lead and 4 or more a finding).
+
+| Film | Ticks | Graded | Categories graded 2+ (frames of 12) | `other` notes | SSIM (scored frames) |
+|---|---|---|---|---|---|
+| `vault-balloon` | 4–1185 | 12 | `aircraft-absent` 6, `actors-missing` 5, `scenery-missing` 4, `aircraft-shape-broken` 4, `aircraft-parts-missing` 4 | 8 | 0.678 (108) |
+| `vault-bomb` | 3–3475 | 12 | `aircraft-too-small` 7, `aircraft-parts-missing` 7, `aircraft-misplaced` 5, `scenery-missing` 4 | 2 | 0.655 (310) |
+| `vault-ctry` | 4–1001 | 12 | `aircraft-shape-broken` 8, `aircraft-parts-missing` 8, `shadow-missing` 5, `scenery-missing` 3 | 4 | 0.776 (113) |
+| `vault-highways` | 52–1070 | 12 | `scenery-missing` 6, `aircraft-parts-missing` 6 | 2 | 0.745 (91) |
+| `vault-land` | 3–898 | 12 | `aircraft-absent` 11, `shadow-shape-wrong` 8 | 0 | 0.750 (95) |
+| `vault-splanes` | 3–961 | 12 | `sea-band-wrong` 12, `scenery-missing` 11, `aircraft-absent` 8, `shadow-shape-wrong` 4, `aircraft-shape-broken` 3, `aircraft-parts-missing` 3 | 0 | 0.631 (106) |
+| `vault-traintnl` | 4–1229 | 12 | `sea-band-wrong` 5, `aircraft-absent` 5, `shadow-shape-wrong` 4, `actors-missing` 4 | 3 | 0.712 (107) |
+
+* **The aircraft is the common error.** It is absent, broken or missing parts on 4 or more frames in all seven films; in `vault-highways` missing aircraft parts tie with missing scenery at 6 frames. `vault-land` draws no aircraft on 11 of 12 frames, the same failure `INTRO.FLM` shows.
+* **`other` notes name kinds no category covers.** `vault-balloon`: the sun disc and sky colour, a missing parachute, two frames drawn flat grey with no ground; `vault-ctry`: tents and hangars drawn as pink cones; `vault-bomb`: black blocks over a wall and sign; `vault-highways`: a missing banner and marker; `vault-traintnl`: train livery drawn dark, a train the capture lacks. Three recur on more than one frame and are now categories: `sun-missing` (the balloon's sun), `frame-blank` (its flat grey frames) and `black-block` (black shapes over the bomb film's wall and sign and the balloon's parachute).
+* **Three films have no capture.** `vault-intro`, `vault-location` and `vault-tod` failed twice, the second time one at a time: the capture script stops with `instruction limit exceeded` about 40 s after the game enters Mode 13h, far short of the long-film limit in [`capture-dosbox-automation.md`](../playone-exe/capture-dosbox-automation.md). `vault-highways` failed the same way under `--jobs 3` and passed alone.
+
+The survey deletes each render after scoring it; the readout needs the render's planes, so the seven were rendered again with the survey's own render stage and kept (about 260 MB each).
+
 ## Ruled out
 
 - **De-duplicating by name.** The same film appears under several folders (`NewPLAY`, `OldPLAY`, `Morganroth`); only the content hash identifies it.
@@ -44,3 +64,4 @@ Median stage times, from the ledger: archive 68 s (mixed settings; 7 to 27 s at 
 3. A scored single-frame film with IoU 0.83 and index agreement 0.001 suggests a palette or index-plane mismatch; look at one report's index planes.
 4. A full `--jobs 8` survey has not run: the idle-machine test passed, but the heavy-load behaviour (the earlier -28 tick dips) is untested.
 5. Resume to cover the remaining 450 films, or sample the families (`egalloc`, `collage4`, `collage5`) where scores are lowest.
+6. Why do `vault-intro`, `vault-location` and `vault-tod` stop with `instruction limit exceeded` about 40 s into Mode 13h, on every attempt (section 4)?

@@ -6,6 +6,8 @@
 # pre-commit hook do not count them as whitespace errors.
 *.md whitespace=-blank-at-eol
 *.png binary
+*.idx binary
+*.layer binary
 *.jpg binary
 *.zip binary
 *.glb binary

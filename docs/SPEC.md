@@ -18,7 +18,7 @@ The objective of **StuntReel (`stunt-reel`)** is to build a high-fidelity, GPU-a
 Rather than attempting a monolithic rewrite of the interactive flight simulator (`STUNT.EXE`)—which would require documenting real-time 6-DOF aerodynamic integrators, stall curves, and 16-bit authoring GUIs—**StuntReel** scopes exclusively to the standalone film playback runtime (`PLAYONE.EXE`) and its batch linker (`MAKEONE.EXE`). *Stunt Island* films are deterministic, pre-recorded choreographies: static stage setups, camera cuts, actor world trajectories, articulated subobject states, and sound triggers are baked into `.FLM` streams and paired `.ALL` archives.
 
 Our engineering methodology rests on three principles:
-1. **Asset isolation:** Retail executables and assets are treated solely as an external specification oracle and are never committed to version control or distributed with engine code. The two small game-derived tables the renderer needs are documented, credited exceptions ([`NOTICE.md`](../NOTICE.md)).
+1. **Asset isolation:** Retail executables and assets are treated solely as an external specification oracle and are never committed to version control or distributed with engine code. The two small game-derived tables the renderer needs, and illustrative comparison images that research notes cite, are documented, credited exceptions ([`NOTICE.md`](../NOTICE.md)).
 2. **Evidentiary Confidence Tiering:** Every recovered struct, memory offset, and opcode carries a machine-checked evidentiary tag (`[Established]`, `[Supported Inference]`, `[Bounded Observation]`, `[Hypothesis]`, or `[Unknown]`; `[Superseded]` marks retired claims).
 3. **Hierarchical Routing & Tokenized Contract Anchors:** Documentation is organized via 1-hop routing tables (`docs/ARCHITECTURE.md`) and permanent contract anchors (`# [MEM-...]`, `# [FMT-...]`, `[I1]`–`[I8]`) verified by automated tests so agents never suffer context bloat or citation drift.
 
@@ -111,7 +111,7 @@ Delivery is sequential. This section records what each phase is for and whether 
 
 #### [I7] Asset Isolation & Small Pure-Rust Core Dependencies
 
-  * Proprietary game binaries and retail data files (`corpus/`) are strictly gitignored and never checked into Git or downloaded during CI. Two small game-derived tables are committed as documented exceptions because `[I3]` rendering needs them: the 256-entry master palette and the 18-entry SOD scale table. They are credited and not relicensed ([`NOTICE.md`](../NOTICE.md)).
+  * Proprietary game binaries and retail data files (`corpus/`) are strictly gitignored and never checked into Git or downloaded during CI. Two small game-derived tables are committed as documented exceptions because `[I3]` rendering needs them: the 256-entry master palette and the 18-entry SOD scale table. Illustrative comparison images (a captured frame beside our render) that a research note cites are the third exception. All are credited and not relicensed ([`NOTICE.md`](../NOTICE.md)).
   * `crates/stunt-core` may depend on small, pure-Rust crates that do no I/O and touch no windowing, GPU, audio, or emulator code, so unit and contract tests compile and run 100% offline in $< 2\text{ seconds}$. Each added crate is justified in the PR that adds it ([ADR 0002](adr/0002-stunt-core-may-take-small-dependencies.md)).
 
 #### [I8] DOS 8.3 Uppercase Path Normalization

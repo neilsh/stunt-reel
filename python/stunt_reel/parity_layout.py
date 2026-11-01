@@ -47,6 +47,8 @@ __all__ = [
     "stage_mount",
     "stage_root",
     "sweep_root",
+    "video_path",
+    "video_root",
 ]
 
 #: The two roots every other location derives from; the only literals the layout spells.
@@ -144,6 +146,16 @@ def frames_root(slug: str) -> Path:
 def frames_path(slug: str, run: str) -> Path:
     """The directory of one frame capture, written once and never changed (ADR 0022)."""
     return frames_root(slug) / run
+
+
+def video_root(slug: str) -> Path:
+    """The directory holding every video capture of the film *slug*."""
+    return _CAPTURE / slug / "video"
+
+
+def video_path(slug: str, run: str) -> Path:
+    """The directory of one video capture, written once and never changed (ADR 0022)."""
+    return video_root(slug) / run
 
 
 def archives_root(slug: str) -> Path:

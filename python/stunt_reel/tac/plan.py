@@ -44,6 +44,7 @@ __all__ = [
     "Trace",
     "TraceEntry",
     "chunk",
+    "dac_rgb",
     "decode_dumps",
     "decode_trace",
     "palette_rgb",
@@ -232,10 +233,20 @@ def pick_ticks(trace: Trace, ticks: Sequence[int], *, skip_unusable: bool = True
     return picked
 
 
+def dac_rgb(units: bytes) -> list[RGB]:
+    """RGB triples from 6-bit DAC units (a multiple of 3 bytes), scaled as the video is."""
+    if len(units) % 3:
+        raise ValueError(f"DAC units come in triples, got {len(units)} bytes")
+    scaled = [round(v * 255 / 63) for v in units]
+    return [(scaled[i], scaled[i + 1], scaled[i + 2]) for i in range(0, len(scaled), 3)]
+
+
 def palette_rgb(palette6: bytes) -> list[RGB]:
-    """256 RGB triples from 6-bit DAC units, scaled the way dosbox-automation's video does."""
-    scaled = [round(v * 255 / 63) for v in palette6]
-    return [(scaled[i], scaled[i + 1], scaled[i + 2]) for i in range(0, PALETTE_BYTES, 3)]
+    """Convert up to 768 bytes of 6-bit DAC units to RGB triples.
+
+    Extra bytes are ignored; a truncated final triple raises ``ValueError``.
+    """
+    return dac_rgb(palette6[:PALETTE_BYTES])
 
 
 def _unhex(output: Mapping[str, Any], key: str, length: int | None = None) -> bytes:

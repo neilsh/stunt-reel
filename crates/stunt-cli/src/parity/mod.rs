@@ -46,6 +46,7 @@ mod sheets;
 mod test_support;
 #[cfg(test)]
 mod tests;
+mod verdict;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -53,7 +54,7 @@ use std::fs;
 use args::Args;
 use compare::run_compare;
 use fade::fade_reference_set;
-use frames::{load_reference, read_index_plane, read_png_luminance};
+use frames::{load_reference, load_render_frame, read_index_plane};
 use loss::LOSS_CLASSES;
 use mask::CAPTURE_SKY_INDICES;
 use report::{FrameReport, I6Gate, Report};
@@ -61,7 +62,7 @@ use score::{FrameMetrics, ReferenceFrame, RenderFrame, ScorePolicy, score_frame}
 use sheets::write_contact_sheet;
 use stunt_parity::FilmId;
 
-use crate::{parity_artifacts, plane_codec};
+use crate::parity_artifacts;
 
 pub(crate) use args::usage;
 
@@ -258,15 +259,12 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         }
 
         let (indices, palette) = load_reference(&reference_file, &palette_file)?;
-        let planes = plane_codec::read_page_planes(&test_file, &geometry)
-            .map_err(|error| error.to_string())?;
+        let render_frame = load_render_frame(&args.test, film_tick)?;
         let score = score_frame(
             &ReferenceFrame { indices, palette },
             &RenderFrame {
-                luminance: read_png_luminance(&test_file)?,
-                indices: planes.indices,
-                layers: planes.layers,
                 controls: render_palettes.get(&(film_tick as u32)).copied(),
+                ..render_frame
             },
             &policy,
         );
