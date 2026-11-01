@@ -95,6 +95,8 @@ pub struct VideoCapture {
 
 impl VideoCapture {
     /// Checks the schema version, kind, geometry, log columns and palette history.
+    ///
+    /// Returns an artifact error when a check fails, including a geometry validation error.
     pub fn validate(&self) -> Result<(), ArtifactError> {
         if self.schema_version != crate::SCHEMA_VERSION {
             return Err(ArtifactError::UnsupportedVersion {
@@ -118,7 +120,8 @@ impl VideoCapture {
         self.validate_palettes()
     }
 
-    /// Index of capture `frame` in the video, or `None` before the recording began.
+    /// Index of capture `frame` relative to the recording start, or `None` before it or if the
+    /// index does not fit in `usize`. The result is not checked against the recording's length.
     #[must_use]
     pub fn video_index(&self, frame: u64) -> Option<usize> {
         let index = frame.checked_sub(self.capture_start_frame)?;

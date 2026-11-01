@@ -104,7 +104,10 @@ fn walk(
     Ok(())
 }
 
-/// Parses `bytes` as an AVI file and returns its dimensions and stream-00 video chunks.
+/// Reads RIFF dimensions and stream-00 video chunks from `bytes`.
+///
+/// Returns an error for malformed chunks or a missing nonzero-size header. An empty chunk list
+/// is allowed; the RIFF form and video codec are not checked here.
 pub(crate) fn read_video(bytes: &[u8]) -> Result<AviVideo, AviError> {
     if bytes.len() < 12 || &bytes[..4] != b"RIFF" {
         return Err(AviError::NotRiff);
@@ -127,6 +130,9 @@ pub(crate) fn read_video(bytes: &[u8]) -> Result<AviVideo, AviError> {
 
 /// Decodes every video frame of `bytes` in order, calling `visit(index, bgr0)` for each, and
 /// returns the number of frames.
+///
+/// Parsing and decoding errors are returned as strings; an error from `visit` stops decoding
+/// and is returned unchanged. Empty chunks repeat the previous frame after a keyframe.
 pub(crate) fn decode_frames(
     bytes: &[u8],
     mut visit: impl FnMut(usize, &[u8]) -> Result<(), String>,

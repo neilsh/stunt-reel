@@ -409,7 +409,11 @@ class SheetGrades:
 
 
 def parse_grades(text: str, taxonomy: Taxonomy) -> dict[str, SheetGrades]:
-    """Grade lines per sheet id; tolerates code fences, backticks, CRLF and blank lines."""
+    """Grade lines per sheet id; tolerates code fences, backticks, CRLF and blank lines.
+
+    Missing categories remain ungraded and unknown categories are retained. Raises
+    ``BenchError`` for duplicate sheet ids, missing ids, or invalid grade tokens.
+    """
     parsed: dict[str, SheetGrades] = {}
     for raw in text.splitlines():
         line = raw.strip().replace("`", "")
@@ -549,7 +553,10 @@ class Change:
 
 
 def compare(before: Readout, after: Readout, min_change: int) -> list[Change]:
-    """Categories whose 2+ count moved by at least *min_change*; refuses unlike readouts."""
+    """Categories whose 2+ count moved by at least *min_change*.
+
+    Raises ``BenchError`` if category digests or ticks differ, or either readout has missing sheets.
+    """
     if before.categories_digest != after.categories_digest:
         raise BenchError(
             f"readouts graded different categories ({before.categories_digest} before, "
@@ -700,6 +707,8 @@ def make_run(
 
     A *recapture* makes it a calibrating run: controls show the recapture in the render's place,
     and each fault in ``[faults]`` is planted on up to :data:`FAULT_FRAMES` frames.
+    Existing PNG sheets, grades, tie-break files and readout in *out* are removed first.
+    Raises ``BenchError`` if no eligible tick is available; input and file errors propagate.
     """
     taxonomy = load_categories(taxonomy_path)
     # A film with no [films] entry is graded over its whole length.
@@ -788,10 +797,13 @@ def write_disputes(out: Path, taxonomy_path: Path) -> int:
 def score_run(
     out: Path, render: Path, taxonomy_path: Path, against: Path | None
 ) -> tuple[Readout, list[Change] | None, Calibration | None]:
-    """Score ``grades.txt`` in *out* and write ``readout.json``; refuses a changed render or file.
+    """Score ``grades.txt`` in *out* and write ``readout.json``.
 
     With a second pass (``grades-2.txt``), each sheet the passes disagree on is scored from
     ``grades-tiebreak.txt`` (see :func:`write_disputes`) and the rest from the first pass.
+    Returns the readout, optional comparison, and optional calibration. Raises ``BenchError``
+    for changed categories or render, invalid grades, missing tie-breaks, or incompatible
+    comparisons. The readout is written before the optional comparison is checked.
     """
     try:
         run = json.loads((out / RUN_FILE).read_text(encoding="utf-8"))

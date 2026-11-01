@@ -117,7 +117,11 @@ def _decode_changes(
 
 
 def decode_video_log(output: Mapping[str, Any]) -> VideoLog:
-    """Decode the output table :func:`~stunt_reel.tac.luagen.video_script` returns."""
+    """Decode the output table :func:`~stunt_reel.tac.luagen.video_script` returns.
+
+    Raises ``VideoCaptureError`` for incomplete or malformed output and ``ValueError`` for
+    invalid numeric or hexadecimal fields. Log ordering is checked when the capture is validated.
+    """
     if output.get("done") is not True:
         raise VideoCaptureError("the recording script did not finish")
     start = _text(output, "cs")
@@ -147,7 +151,10 @@ def decode_video_log(output: Mapping[str, Any]) -> VideoLog:
 
 
 def film_start_frame(log: TickLog) -> int:
-    """The first logged frame whose film clock differs from the row before it."""
+    """The first logged frame whose film clock differs from the row before it.
+
+    Raises ``VideoCaptureError`` if the clock never changes.
+    """
     for index in range(1, len(log.frame)):
         if log.film_tick[index] != log.film_tick[index - 1]:
             return log.frame[index]
@@ -170,7 +177,10 @@ def record_video(
     The emulator writes ``*.avi`` into *recording_dir* (its ``capture_dir``) and finishes the
     file when the runner's context closes, so the AVI is read after that. Its audio is stripped
     into ``out_dir / capture.avi``, the frame count must match the log's rows to within one,
-    and ``meta.json`` is written last so a failed run leaves no capture.
+    and ``meta.json`` is written last. A failure can leave the stripped AVI in *out_dir*.
+
+    Raises ``VideoCaptureError`` for an unusable recording, including an AVI parsing error;
+    runner, validation, and filesystem errors also propagate.
     """
     script = luagen.video_script(keys=keys, cap=cap, end_hold=END_HOLD_FRAMES, layout=layout)
     with open_runner() as runner:

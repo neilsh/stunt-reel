@@ -76,7 +76,8 @@ impl Decoder {
         (cols * rows * 2 + 3) & !3
     }
 
-    /// Inflates `input`, failing if it produces more than `max` bytes.
+    /// Inflates compressed `input`, failing if it produces more than `max` bytes.
+    /// Uncompressed input is returned as-is.
     fn inflate(&mut self, input: &[u8], max: usize) -> Result<Vec<u8>, ZmbvError> {
         if !self.compressed {
             return Ok(input.to_vec());
@@ -111,7 +112,8 @@ impl Decoder {
     }
 
     /// Decodes one chunk and returns the current frame. An empty chunk (a dropped frame) returns
-    /// the previous frame unchanged.
+    /// the previous frame unchanged, or an error if no keyframe has been decoded. Unsupported
+    /// headers, malformed frame data, and decompression failures also return errors.
     pub(crate) fn decode(&mut self, chunk: &[u8]) -> Result<&[u8], ZmbvError> {
         let Some((&flags, rest)) = chunk.split_first() else {
             return self.frame.as_deref().ok_or(ZmbvError::NoKeyframe);

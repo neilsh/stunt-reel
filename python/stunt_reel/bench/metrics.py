@@ -78,7 +78,7 @@ def ssim(capture: CapturePlanes, render: RenderPlanes, regions: Regions) -> floa
 
 
 def ssim_structured(capture: CapturePlanes, render: RenderPlanes, regions: Regions) -> float | None:
-    """Mean window SSIM over clear windows where the capture is not flat."""
+    """Mean window SSIM over clear windows where the capture is not flat, or ``None`` if empty."""
     del regions
     reference = stretch(capture_luma(capture))
     windows = sliding_window_view(reference, (WINDOW, WINDOW))[::STRIDE, ::STRIDE]
@@ -88,7 +88,10 @@ def ssim_structured(capture: CapturePlanes, render: RenderPlanes, regions: Regio
 
 
 def grey_skill(capture: CapturePlanes, render: RenderPlanes, regions: Regions) -> float | None:
-    """How far the render is from the flat grey frame, as a share of the way to perfect."""
+    """How far the render is from the flat grey frame, as a share of the way to perfect.
+
+    Returns ``None`` when the grey frame's SSIM is at least 1.
+    """
     level = np.uint8(round(regions.control_mean_luma))
     floor = frame_ssim(capture, np.full(render.rgb.shape, level, dtype=np.uint8))
     if floor >= 1.0:
@@ -155,19 +158,22 @@ def _ssim_over_layer(
     regions: Regions,
     in_layer: Callable[[NDArray[np.uint16]], NDArray[np.bool_]],
 ) -> float | None:
-    """Mean window SSIM over clear windows that hold a control-render pixel of the layer."""
+    """Mean window SSIM over clear windows holding a control-render pixel of the layer.
+
+    Returns ``None`` when no such windows exist.
+    """
     hit = _any_in_window(stretch(in_layer(regions.layer)))
     scores = window_ssim(stretch(capture_luma(capture)), stretch(render_luma(render.rgb)))
     return _mean(scores, _allowed(capture) & hit)
 
 
 def ssim_actors(capture: CapturePlanes, render: RenderPlanes, regions: Regions) -> float | None:
-    """Mean window SSIM over clear windows that hold an actor pixel of the control render."""
+    """Mean SSIM of clear windows holding a control-render actor pixel, or ``None`` if empty."""
     return _ssim_over_layer(capture, render, regions, lambda layer: layer >= ACTOR_LAYER)
 
 
 def ssim_props(capture: CapturePlanes, render: RenderPlanes, regions: Regions) -> float | None:
-    """Mean window SSIM over clear windows that hold a props pixel of the control render."""
+    """Mean SSIM of clear windows holding a control-render props pixel, or ``None`` if empty."""
     return _ssim_over_layer(capture, render, regions, lambda layer: layer == PROPS_LAYER)
 
 
@@ -208,7 +214,11 @@ def _layer_key(layer: int) -> str:
 
 
 def differential(capture: CapturePlanes, before: RenderPlanes, after: RenderPlanes) -> Differential:
-    """Score *after* against *before* on the pixels and windows the change touched."""
+    """Score *after* against *before* on the pixels and windows the change touched.
+
+    The delta is after-minus-before SSIM, or ``None`` if no clear window was touched.
+    Raises ``BenchError`` if either render lacks an index plane.
+    """
     if before.idx is None or after.idx is None:
         raise BenchError("differential needs both renders to carry an index plane")
     idx_changed = before.idx != after.idx

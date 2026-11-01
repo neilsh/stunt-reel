@@ -77,7 +77,10 @@ def _video_strl(data: bytes, hdrl_start: int, hdrl_end: int) -> bytes:
 
 
 def video_only(src: Path, dst: Path) -> int:
-    """Write *dst* holding only *src*'s stream 0 video chunks; return how many there are."""
+    """Write *dst* holding only *src*'s stream 0 video chunks; return how many there are.
+
+    Raises ``AviError`` for unsupported or malformed AVI structure; file I/O errors propagate.
+    """
     data = src.read_bytes()
     riff_end = _check_container(data)
 

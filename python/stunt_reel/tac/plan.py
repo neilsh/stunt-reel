@@ -242,7 +242,10 @@ def dac_rgb(units: bytes) -> list[RGB]:
 
 
 def palette_rgb(palette6: bytes) -> list[RGB]:
-    """256 RGB triples from a whole 768-byte palette of 6-bit DAC units."""
+    """Convert up to 768 bytes of 6-bit DAC units to RGB triples.
+
+    Extra bytes are ignored; a truncated final triple raises ``ValueError``.
+    """
     return dac_rgb(palette6[:PALETTE_BYTES])
 
 

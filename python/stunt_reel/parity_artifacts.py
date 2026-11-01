@@ -1118,7 +1118,10 @@ class VideoCapture:
     palettes: PaletteLog
 
     def video_index(self, frame: int) -> int | None:
-        """Index of capture *frame* in the video, or ``None`` before the recording began."""
+        """Index of capture *frame* relative to recording start, or ``None`` before it.
+
+        The result is not checked against the recording's length.
+        """
         index = frame - self.capture_start_frame
         return index if index >= 0 else None
 

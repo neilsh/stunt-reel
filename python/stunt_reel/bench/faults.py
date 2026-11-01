@@ -132,8 +132,8 @@ def _grey(planes: RenderPlanes) -> RenderPlanes:
 def plant(fault: Fault, tick: int, source: RenderSource, rng_seed: int) -> RenderPlanes | None:
     """The frame *fault* makes of *tick*; ``None`` when the fault has no frame there.
 
-    Returns new arrays except for ``none`` and ``advance``/``wrong_tick``, which hand back the
-    source's own planes; callers must not mutate them.
+    Some faults reuse the source's arrays; callers must not mutate the returned planes.
+    Raises ``ValueError`` for an unknown fault name.
     """
     planes = source.load(tick)
     magnitude = fault.magnitude or 0

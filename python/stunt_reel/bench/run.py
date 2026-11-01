@@ -120,7 +120,11 @@ def recapture_sigma(
     source: RenderSource,
     ticks: list[int],
 ) -> float | None:
-    """Sigma of *metric*: how far two captures of one film disagree about the same control."""
+    """Sample standard deviation of *metric* differences between captures of the same control.
+
+    Raises ``BenchError`` if fewer than :data:`MIN_PAIRED_TICKS` ticks are shared; returns
+    ``None`` if fewer than two paired ticks produce a value for the metric.
+    """
     return _recapture_sigmas([metric], a, b, source, ticks)[metric]
 
 
@@ -258,7 +262,11 @@ def run_bench(
 
 
 def plant_tree(render: Path, out: Path, plants: list[tuple[Fault, range]]) -> None:
-    """Copy *render* to *out*, overwriting each fault's ticks with the frame the fault makes."""
+    """Copy *render* to *out*, overwriting each fault's ticks with the frame the fault makes.
+
+    Ticks absent from the source and faults without a frame are skipped. Raises ``BenchError``
+    for the grey fault, which has no index plane; copy and file errors propagate.
+    """
     for fault, _ in plants:
         if fault.name == "grey":
             raise BenchError("grey has no index plane, so it cannot be written into a render tree")

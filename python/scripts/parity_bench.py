@@ -47,7 +47,10 @@ CATEGORIES = REPO_ROOT / "research" / "parity" / "error-categories.toml"
 
 
 def parse_plant(text: str) -> tuple[Fault, range]:
-    """``name[:magnitude]@FIRST-LAST`` (inclusive) as a fault and its tick range."""
+    """``name[:magnitude]@FIRST-LAST`` (inclusive) as a fault and its tick range.
+
+    Raises ``argparse.ArgumentTypeError`` for an unknown fault or invalid range.
+    """
     key, at, span = text.partition("@")
     faults = {fault.key: fault for fault in ALL_FAULTS}
     first, dash, last = span.partition("-")
@@ -79,6 +82,7 @@ def _print_rows(document: dict[str, Any]) -> None:
 
 
 def run(args: argparse.Namespace) -> int:
+    """Run the metric bench, write ``bench.json``, and print the results."""
     film = args.film
     root = Path(args.data_root).resolve()
     pointer = references.read_reference(root, film)
@@ -96,6 +100,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def plant(args: argparse.Namespace) -> int:
+    """Copy a render with the requested fault ranges planted in it."""
     plant_tree(args.render, args.out, args.fault)
     print(f"[bench] planted {len(args.fault)} fault ranges into {args.out}", file=sys.stderr)
     return 0
@@ -125,6 +130,7 @@ def _batch_capture(root: Path, slug: str) -> Path:
 
 
 def _revision() -> str:
+    """Return the checkout revision, or ``unknown`` if Git cannot report it."""
     try:
         done = subprocess.run(
             ["git", "rev-parse", "HEAD"],  # noqa: S607 - git from PATH, as every task
@@ -139,6 +145,7 @@ def _revision() -> str:
 
 
 def errors_make(args: argparse.Namespace) -> int:
+    """Create sheets and grading briefs, optionally including calibration controls and faults."""
     film = args.film
     root = Path(args.data_root).resolve()
     recapture = None
@@ -167,6 +174,7 @@ def _fmt(value: float | None) -> str:
 
 
 def errors_disputes(args: argparse.Namespace) -> int:
+    """Write a tie-break brief for disputed sheets and print their count."""
     out = _errors_out(args)
     count = write_disputes(out, CATEGORIES)
     if count:
@@ -177,6 +185,7 @@ def errors_disputes(args: argparse.Namespace) -> int:
 
 
 def errors_score(args: argparse.Namespace) -> int:
+    """Write and print the readout, comparison, and calibration when requested."""
     out = _errors_out(args)
     result, changes, calibration = score_run(out, _render(args), CATEGORIES, args.against)
     frames = len(result.ticks) - result.missing
@@ -212,6 +221,7 @@ def errors_score(args: argparse.Namespace) -> int:
 
 
 def errors_example(args: argparse.Namespace) -> int:
+    """Write a category example sheet for the requested film tick."""
     root = Path(args.data_root).resolve()
     if args.batch:
         reference = _batch_capture(root, args.film)
@@ -223,6 +233,7 @@ def errors_example(args: argparse.Namespace) -> int:
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
+    """Parse the bench subcommand and its arguments."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     run_p = sub.add_parser("run", help="bench the metrics on one film")
@@ -289,6 +300,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run a subcommand; return 1 for handled errors and 2 if data links cannot be prepared."""
     args = parse_args(argv)
     if (
         args.command in ("run", "errors-make", "errors-example")
