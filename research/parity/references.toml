@@ -5,6 +5,9 @@
 film = "vault-ctry"
 capture = "004"
 sha256 = "9869444de53c653214144b83c2bdbce4a686a16f5189a1f5a94f6eb19605ed49"
+# Recapture noise of the per-frame SSIM (004 against 005), from the metric bench
+# (research/parity/method.md section 2.2); `stuntreel parity --noise-sigma` takes it.
+noise_sigma = 0.000303
 
 [intro]
 film = "vault-intro"
