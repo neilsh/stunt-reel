@@ -34,9 +34,9 @@ The harness is in [`capture.md`](capture.md); a frame-locked video alternative o
 
 ## 3. Where a capture ends (the "1001 against 1335" gap)
 
-`[Supported Inference]`, 2026-11-01. The end ticks in [`batch.md`](../parity/batch.md) § 4 and § 5 do not describe the same thing. A capture does not stop early and does not drop its tail: it runs to the film's end (`CTRY.FLM` last tick 1,342) every time. Section 4's `Ticks` column is the span of the 12 frames the error readout picked (`pick_ticks` in [`errors.py`](../../python/stunt_reel/bench/errors.py): scored, `fade_level >= MIN_FADE_LEVEL` = 0.95, spread evenly), so its last tick is the last unfaded scored frame's neighbour, not the capture's last frame. Section 5 lists the capture's own first and last `film_tick`.
+`[Supported Inference]`, 2026-11-01. The end ticks in [`batch.md`](../parity/batch.md) § 4 and § 5 do not describe the same thing. A capture does not stop early or drop its tail: the listed `vault-ctry` runs end at 1332 to 1342, within 10 ticks of `CTRY.FLM`'s last tick (1,342). Section 4's `Ticks` column is the span of the 12 frames the error readout picked (`pick_ticks` in [`errors.py`](../../python/stunt_reel/bench/errors.py): scored, `fade_level >= MIN_FADE_LEVEL` = 0.95, spread evenly), so its last tick is the last unfaded scored frame's neighbour, not the capture's last frame. Section 5 lists the capture's own first and last `film_tick`.
 
-Captures of one film, from `captures/<slug>/frames/<run>/meta.json` (runs 001 to 006 of `vault-ctry` predate the validity check and the stepper; all stop within 7 ticks of the film end):
+Captures of one film, from `captures/<slug>/frames/<run>/meta.json` (runs 001 to 006 of `vault-ctry` predate the validity check and the stepper; all stop within 10 ticks of the film end):
 
 | Film | Run | Frames | First / last `film_tick` |
 |---|---|---|---|
@@ -45,7 +45,7 @@ Captures of one film, from `captures/<slug>/frames/<run>/meta.json` (runs 001 to
 | `vault-splanes` | 001 / 002 | 112 / 112 | 3 to 1235 / 1240 |
 | `vault-bomb` | 001 / 002 | 333 / 328 | 3 to 3730 / 3725 |
 
-The scorer's own report for the current batch captures (`build/parity/batch/<slug>/report/report.json`) excludes the closing fade frames and scores the rest; the last scored tick matches the § 4 range, and the last tick the readout can pick is 1252 / 1159 / 3470 with threshold 0.25, or 990 / 951 / 3470 at 0.95:
+The scorer's own report for the current batch captures (`build/parity/batch/<slug>/report/report.json`) excludes the closing fade frames and scores the rest. Two spans follow from it and are different quantities: the full scored set ends at the last scored tick, while the readout's picked span ends at the last scored frame whose fade level is 0.95 or more, which is what § 4 listed:
 
 | Film | Frames | Last capture tick | Excluded (fade) | Last scored tick | Readout's picked span, current capture | Section 4 |
 |---|---|---|---|---|---|---|
@@ -53,13 +53,13 @@ The scorer's own report for the current batch captures (`build/parity/batch/<slu
 | `vault-splanes` | 112 | 1240 | 6 (1183 to 1240) | 1172 | 3 to 951 | 3 to 961 |
 | `vault-bomb` | 328 | 3725 | 23 (3481 to 3725, fade 0.0) | 3470 | 3 to 3470 | 3 to 3475 |
 
-So both surveys' scored sets are the same size (113, 106 and 305 to 310 frames) and the same span; the SSIM agreement within 0.003 is expected, not a coincidence. The picked-span ends differ from § 4 by 5 to 11 ticks, the capture-to-capture tick jitter ([§ 1](#1-experiments)).
+So both surveys' scored sets cover the same fade-excluded span and nearly the same number of frames (113, 106, and 310 against 305 for `vault-bomb`); SSIM agreeing within 0.005 is expected, not a coincidence. The picked-span ends differ from § 4 by 5 to 11 ticks, the capture-to-capture tick jitter ([§ 1](#1-experiments)).
 
 **Do scores compare different spans?** No. The earlier span is the picked-sample span of the same fade-excluded scored set, not a shorter capture: sampling stops before the fade tail. Fade frames are excluded from the mean in both. Section 5's `Frames` and `film_tick` columns are unscored totals including the fade tail (about 7 frames for 1,342-tick films, 23 for `vault-bomb`, whose film ends in black).
 
 ### Ruled out
 
-* A capture timeout or frame cap: no run of the three films ends before the film's last 7 ticks, and all 12 captures listed end within 12 ticks of the film end (ctry) or in the fade tail.
+* A capture timeout or frame cap: every listed `vault-ctry` run ends within 10 ticks of the film's last tick, and the `vault-splanes` and `vault-bomb` runs end inside their fade tails, 5 ticks apart.
 * The batch capture stage ending at a different point from `capture-ref`: the same runs span 1332 to 1342 whichever script made them.
 
 ### Open questions
