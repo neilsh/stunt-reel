@@ -40,8 +40,9 @@ pub(super) struct Args {
     /// absent)
     #[arg(long, value_name = "DIR", requires = "compare")]
     pub(super) compare_test: Option<PathBuf>,
-    /// Run-to-run noise of the Δ on the changed windows; a frame whose |Δ| is below it is
-    /// "within noise". Without it the verdict goes by the sign of Δ alone
+    /// Recapture noise of the whole-frame SSIM (the film's `noise_sigma` in references.toml),
+    /// a lower bound for the noise of Δ on a few touched windows; a frame whose |Δ| is below
+    /// it is "within noise". Without it the verdict goes by the sign of Δ alone
     #[arg(long, value_name = "F", requires = "compare_test", value_parser = parse_non_negative)]
     pub(super) noise_sigma: Option<f32>,
     /// Frames with at most N changed pixels are build noise, not judged
