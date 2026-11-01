@@ -497,7 +497,10 @@ impl<'a> Report<'a> {
 /// `None` when the walk stepped over nothing and reached `OP_RETURN`.
 fn pattern(record: &DecodeRecord) -> Option<Pattern> {
     let ends_at = match record.stop {
-        Some(stop) => format!("0x{:04X} (no width)", stop.opcode),
+        Some(stop) if stop.reason == SodStopReason::UnknownOpcode => {
+            format!("0x{:04X} (no width)", stop.opcode)
+        }
+        Some(stop) => format!("0x{:04X} ({})", stop.opcode, stop.reason),
         None if record.returned_at.is_some() => "RETURN".to_string(),
         None => "end of data".to_string(),
     };
@@ -666,6 +669,17 @@ mod tests {
         assert!(md.contains("| A | `BZLT` | `RETURN` | 1 | `7E17` | `COLT45.BIN` | 0 |"));
         assert!(md.contains("| — | `TAP` (no anchors supplied) | `RETURN` | 1 | `0202` | — | 0 |"));
         assert!(md.contains("| `6405` | B | 1 | INTRO.FLM |"));
+    }
+
+    #[test]
+    fn a_two_vertex_polygon_stop_names_its_reason() {
+        let data = model(&[0x00F3, 2, 0, 12, 0x0195]);
+        let ir = decode_sod(&data, "CENSUS", None, DecodeMode::Census).expect("census decode");
+        let pattern = pattern(ir.decode().expect("record")).expect("a stop is a pattern");
+        assert_eq!(
+            pattern.ends_at,
+            "0x00F3 (polygon with fewer than three vertices)"
+        );
     }
 
     #[test]

@@ -87,7 +87,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **74** | `0x029A` | 666 | `OP_SUBSL` | `...` | Slicing plane subtraction |
 | **75** | `0x02A3` | 675 | `OP_ADDSL` | `...` | Slicing plane addition |
 | **76** | `0x02AC` | 684 | `OP_DUPSL` | `...` | Duplicate slicing plane |
-| **77** | `0x02B5` | 693 | `OP_SHADE16` | `norm: u16, ramp: u16` | 16-level directional lighting ramp sample. Parsed and not applied, like `OP_SHADES` |
+| **77** | `0x02B5` | 693 | `OP_SHADE16` | `norm: u16, ramp: u16` | 16-level directional lighting ramp sample: sets the polygon colour from the ramp `base` and the per-normal shade `OP_SHADES` wrote (`[Hypothesis]`, [`sod-vm.md` § 8.5](../playone-exe/sod-vm.md#85-polygon-colour-at-shade-time)) |
 | **78** | `0x02BE` | 702 | `OP_GVPOLY16` | `count: u16, regs..., norm, shades...` | 16-level shaded polygon emission |
 | **79** | `0x02C7` | 711 | `OP_SHADE216` | `norm: u16, ramp: u16` | 16-level back-facing lighting ramp sample |
 | **80** | `0x02D0` | 720 | `OP_DOT` | `reg_off: u16` | Draw single point / pixel dot at `regs[reg]` |

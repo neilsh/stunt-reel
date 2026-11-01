@@ -39,6 +39,17 @@ impl SodStop {
                 opcode: self.opcode,
                 offset: self.offset,
             },
+            SodStopReason::MalformedBranch => SodError::MalformedOpcode {
+                opcode: self.opcode,
+                offset: self.offset,
+                reason: "branch target outside the stream".to_string(),
+            },
+            SodStopReason::MalformedPolygon => SodError::MalformedPolygon {
+                reason: format!(
+                    "opcode 0x{:04X} with fewer than three vertices at offset 0x{:04X}",
+                    self.opcode, self.offset
+                ),
+            },
         }
     }
 }

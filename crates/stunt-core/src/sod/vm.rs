@@ -53,8 +53,13 @@ pub const OP_POLYZ: u16 = 0x00F3;
 pub const OP_SPHERE: u16 = 0x00FC;
 /// Emit a perforated disc ring (`center_reg, r_in, r_out`).
 pub const OP_PERFDISK: u16 = 0x010E;
-/// Model-space light for `OP_SHADES` (1.0 = 32767; +Y is down in model space); `[Hypothesis]`, see the `OP_SHADES` arm.
+/// Model-space light for `OP_SHADES` (1.0 = 32767; decoded model space is +Y up, so this
+/// points down); `[Hypothesis]`, and its sign was chosen before actors were stood upright
+/// (`research/playone-exe/sod-vm.md` § 8.5).
 const SHADE_LIGHT: [i64; 3] = [0, -32767, 0];
+
+/// Branches (SORT pushes, `GOTO`, `GOSUB`) one walk may take before it is malformed.
+const MAX_BRANCHES: usize = 4096;
 /// Set the active polygon fill palette index (`color: u16`, `0..=255`).
 pub const OP_COLOR: u16 = 0x0129;
 /// Batch-upload shading normal vectors (`count, ...triplets`).
@@ -528,13 +533,14 @@ pub(crate) fn run_vm(
     let mut returned_at: Option<usize> = None;
     let mut current_visibility = VisibilityCondition::Always;
     let mut visibility_scope_end = 0usize;
-    // Resume offsets of open `OP_SORT` branches: each SORT runs the stream that follows it up
-    // to a `RETURN`, then the second branch up to its `RETURN`, then continues past both.
-    let mut branch_resume: Vec<usize> = Vec::new();
-    let mut sorts_seen: Vec<usize> = Vec::new();
+    // Where each pending `RETURN` resumes, with the `IFVIS` scope to restore there: a SORT
+    // pushes its second branch and its continuation, a GOSUB the instruction after it.
+    let mut branch_resume: Vec<(usize, VisibilityCondition, usize)> = Vec::new();
     // Rotation-centre origin (raw units) added to every emitted vertex, and its stack.
     let mut relpos = [0.0f32; 3];
     let mut centre_stack: Vec<[f32; 3]> = Vec::new();
+    // Branches taken (SORT pushes, GOTO, GOSUB); every target lies ahead except a GOTO or
+    // GOSUB's, so this budget is what ends a malformed loop.
     let mut subs_run = 0usize;
 
     let total_len = data.len();
@@ -553,6 +559,10 @@ pub(crate) fn run_vm(
 
         let op_offset = r.pos();
         let opcode = r.read_u16_le()?;
+        // Set by a branch that leaves the stream or spends the budget, or by a polygon with
+        // fewer than three vertices: strict fails, lenient and census keep the geometry so far
+        // and report the stop.
+        let mut malformed: Option<SodStopReason> = None;
 
         match opcode {
             OP_CLRV => {
@@ -720,86 +730,92 @@ pub(crate) fn run_vm(
             OP_POLYZ => {
                 let count = r.read_u16_le()?;
                 if count < 3 {
-                    return Err(SodError::MalformedPolygon {
-                        reason: format!(
-                            "OP_POLYZ with count {count} < 3 at offset 0x{op_offset:04X}"
-                        ),
+                    if policy == Policy::Strict {
+                        return Err(SodError::MalformedPolygon {
+                            reason: format!(
+                                "OP_POLYZ with count {count} < 3 at offset 0x{op_offset:04X}"
+                            ),
+                        });
+                    }
+                    malformed = Some(SodStopReason::MalformedPolygon);
+                } else {
+                    let mut poly_verts = Vec::with_capacity(count as usize);
+                    for _ in 0..count {
+                        let reg_off = r.read_u16_le()?;
+                        let reg_idx = ((reg_off / 12) & 1023) as usize;
+                        let raw_v = add3(regs[reg_idx], relpos);
+
+                        // Convert to metric coordinates per Invariant [I1]
+                        let mx = raw_v[0] * scale_factor;
+                        let my = (raw_v[1] + f32::from(ground_y_offset)) * scale_factor;
+                        let mz = raw_v[2] * scale_factor;
+                        poly_verts.push([mx, my, mz]);
+                    }
+
+                    let norm = compute_polygon_normal(&poly_verts);
+                    polygons.push(RawPolygon {
+                        vertices: poly_verts,
+                        palette_index: cur_color,
+                        normal: norm,
+                        flags: 0,
+                        is_decal: false,
+                        visibility: current_visibility,
                     });
                 }
-
-                let mut poly_verts = Vec::with_capacity(count as usize);
-                for _ in 0..count {
-                    let reg_off = r.read_u16_le()?;
-                    let reg_idx = ((reg_off / 12) & 1023) as usize;
-                    let raw_v = add3(regs[reg_idx], relpos);
-
-                    // Convert to metric coordinates per Invariant [I1]
-                    let mx = raw_v[0] * scale_factor;
-                    let my = (raw_v[1] + f32::from(ground_y_offset)) * scale_factor;
-                    let mz = raw_v[2] * scale_factor;
-                    poly_verts.push([mx, my, mz]);
-                }
-
-                let norm = compute_polygon_normal(&poly_verts);
-                polygons.push(RawPolygon {
-                    vertices: poly_verts,
-                    palette_index: cur_color,
-                    normal: norm,
-                    flags: 0,
-                    is_decal: false,
-                    visibility: current_visibility,
-                });
             }
             OP_GVPOLY | OP_GVPOLY16 => {
                 let count = r.read_u16_le()?;
                 if count < 3 {
-                    return Err(SodError::MalformedPolygon {
-                        reason: format!(
-                            "GVPOLY with count {count} < 3 at offset 0x{op_offset:04X}"
-                        ),
+                    if policy == Policy::Strict {
+                        return Err(SodError::MalformedPolygon {
+                            reason: format!(
+                                "GVPOLY with count {count} < 3 at offset 0x{op_offset:04X}"
+                            ),
+                        });
+                    }
+                    malformed = Some(SodStopReason::MalformedPolygon);
+                } else {
+                    let mut reg_indices = Vec::with_capacity(count as usize);
+                    for _ in 0..count {
+                        let reg_off = r.read_u16_le()?;
+                        reg_indices.push(((reg_off / 12) & 1023) as usize);
+                    }
+
+                    let norm_off = r.read_u16_le()?;
+                    let norm_reg = ((norm_off / 12) & 1023) as usize;
+
+                    // Skip per-vertex shade offsets
+                    for _ in 0..count {
+                        r.read_u16_le()?;
+                    }
+
+                    let mut poly_verts = Vec::with_capacity(count as usize);
+                    for &r_idx in &reg_indices {
+                        let raw_v = add3(regs[r_idx], relpos);
+                        let mx = raw_v[0] * scale_factor;
+                        let my = (raw_v[1] + f32::from(ground_y_offset)) * scale_factor;
+                        let mz = raw_v[2] * scale_factor;
+                        poly_verts.push([mx, my, mz]);
+                    }
+
+                    let raw_n = regs[norm_reg];
+                    let n_len =
+                        (raw_n[0] * raw_n[0] + raw_n[1] * raw_n[1] + raw_n[2] * raw_n[2]).sqrt();
+                    let norm = if n_len > 1e-12 {
+                        [raw_n[0] / n_len, raw_n[1] / n_len, raw_n[2] / n_len]
+                    } else {
+                        compute_polygon_normal(&poly_verts)
+                    };
+
+                    polygons.push(RawPolygon {
+                        vertices: poly_verts,
+                        palette_index: cur_color,
+                        normal: norm,
+                        flags: 0,
+                        is_decal: false,
+                        visibility: current_visibility,
                     });
                 }
-
-                let mut reg_indices = Vec::with_capacity(count as usize);
-                for _ in 0..count {
-                    let reg_off = r.read_u16_le()?;
-                    reg_indices.push(((reg_off / 12) & 1023) as usize);
-                }
-
-                let norm_off = r.read_u16_le()?;
-                let norm_reg = ((norm_off / 12) & 1023) as usize;
-
-                // Skip per-vertex shade offsets
-                for _ in 0..count {
-                    r.read_u16_le()?;
-                }
-
-                let mut poly_verts = Vec::with_capacity(count as usize);
-                for &r_idx in &reg_indices {
-                    let raw_v = add3(regs[r_idx], relpos);
-                    let mx = raw_v[0] * scale_factor;
-                    let my = (raw_v[1] + f32::from(ground_y_offset)) * scale_factor;
-                    let mz = raw_v[2] * scale_factor;
-                    poly_verts.push([mx, my, mz]);
-                }
-
-                let raw_n = regs[norm_reg];
-                let n_len =
-                    (raw_n[0] * raw_n[0] + raw_n[1] * raw_n[1] + raw_n[2] * raw_n[2]).sqrt();
-                let norm = if n_len > 1e-12 {
-                    [raw_n[0] / n_len, raw_n[1] / n_len, raw_n[2] / n_len]
-                } else {
-                    compute_polygon_normal(&poly_verts)
-                };
-
-                polygons.push(RawPolygon {
-                    vertices: poly_verts,
-                    palette_index: cur_color,
-                    normal: norm,
-                    flags: 0,
-                    is_decal: false,
-                    visibility: current_visibility,
-                });
             }
             OP_IFVIS => {
                 let cond_code = r.read_u16_le()?;
@@ -815,17 +831,22 @@ pub(crate) fn run_vm(
                 // `siobj.cpp` `case 0x18c`: the three words are byte offsets from the
                 // opcode; the branch after the operands runs first, the second branch is at
                 // `op + 4 + second`, and the stream continues at `op + 2 + first`. Targets
-                // must lie ahead, and each SORT is entered once, so a malformed table ends.
+                // must lie ahead; a SORT re-entered through a loop spends the branch budget.
                 let first = usize::from(r.read_u16_le()?);
                 let second = usize::from(r.read_u16_le()?);
                 r.read_u16_le()?;
                 let second_at = op_offset + 4 + second;
                 let after_at = op_offset + 2 + first;
                 let in_range = |at: usize| at > r.pos() && at < total_len;
-                if in_range(second_at) && in_range(after_at) && !sorts_seen.contains(&op_offset) {
-                    sorts_seen.push(op_offset);
-                    branch_resume.push(after_at);
-                    branch_resume.push(second_at);
+                if in_range(second_at) && in_range(after_at) {
+                    subs_run += 1;
+                    if subs_run > MAX_BRANCHES {
+                        malformed = Some(SodStopReason::MalformedBranch);
+                    } else {
+                        let scope = (current_visibility, visibility_scope_end);
+                        branch_resume.push((after_at, scope.0, scope.1));
+                        branch_resume.push((second_at, scope.0, scope.1));
+                    }
                 }
             }
             OP_PUSHCENTRE => centre_stack.push(relpos),
@@ -844,17 +865,14 @@ pub(crate) fn run_vm(
                 let rel = r.read_i16_le()?;
                 let target = operand_at as i64 + i64::from(rel);
                 subs_run += 1;
-                if target <= 0 || target as usize >= total_len || subs_run > 4096 {
-                    return Err(SodError::MalformedOpcode {
-                        opcode,
-                        offset: op_offset,
-                        reason: format!("branch target {target} outside the stream"),
-                    });
+                if target < 10 || target as usize >= total_len || subs_run > MAX_BRANCHES {
+                    malformed = Some(SodStopReason::MalformedBranch);
+                } else {
+                    if opcode == OP_GOSUB {
+                        branch_resume.push((r.pos(), current_visibility, visibility_scope_end));
+                    }
+                    r.set_pos(target as usize);
                 }
-                if opcode == OP_GOSUB {
-                    branch_resume.push(r.pos());
-                }
-                r.set_pos(target as usize);
             }
             OP_PUSHRELMAT | OP_POPRELMAT => {
                 // The relative matrix stays the identity: its only users here are `ROT*`,
@@ -875,13 +893,10 @@ pub(crate) fn run_vm(
                 if taken {
                     let target = operand_at + usize::from(rel);
                     if target >= total_len {
-                        return Err(SodError::MalformedOpcode {
-                            opcode,
-                            offset: op_offset,
-                            reason: format!("BVGT target {target} outside the stream"),
-                        });
+                        malformed = Some(SodStopReason::MalformedBranch);
+                    } else {
+                        r.set_pos(target);
                     }
-                    r.set_pos(target);
                 }
             }
             OP_PERFDISK | OP_VEC => {
@@ -1038,10 +1053,10 @@ pub(crate) fn run_vm(
             OP_RETURN => {
                 returned_at = Some(op_offset);
                 // End of a SORT branch: run the next one; the last RETURN ends the stream.
-                if let Some(resume) = branch_resume.pop() {
+                if let Some((resume, visibility, scope_end)) = branch_resume.pop() {
                     r.set_pos(resume);
-                    current_visibility = VisibilityCondition::Always;
-                    visibility_scope_end = 0;
+                    current_visibility = visibility;
+                    visibility_scope_end = scope_end;
                     continue;
                 }
                 break;
@@ -1080,6 +1095,20 @@ pub(crate) fn run_vm(
                         stepped_over.push(stop);
                         continue;
                     }
+                }
+            }
+        }
+        if let Some(reason) = malformed {
+            match blocked(policy, op_offset, opcode, reason, false) {
+                Blockage::Fail(error) => return Err(error),
+                Blockage::Stop(stop) | Blockage::StepOver(stop) => {
+                    return Ok(VmRun {
+                        header,
+                        polygons,
+                        stop: Some(stop),
+                        stepped_over,
+                        returned_at,
+                    });
                 }
             }
         }

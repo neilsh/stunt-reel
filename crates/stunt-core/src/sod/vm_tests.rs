@@ -6,7 +6,7 @@ use crate::anchor::AnchorPoint;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::contracts::shape::{NodeId, NodeKind, SodModelIr};
+use crate::contracts::shape::{NodeId, NodeKind, SodModelIr, VisibilityCondition};
 use crate::sod::DECAL_FLAG_BIT;
 use crate::sod::vm::compute_polygon_normal;
 use crate::sod::{
@@ -645,4 +645,99 @@ fn test_centre_stack_offsets_vertices_until_popped() {
     };
     assert!(z_of(5).iter().all(|z| *z >= 10.0), "{:?}", z_of(5));
     assert!(z_of(9).iter().all(|z| *z <= 0.0), "{:?}", z_of(9));
+}
+
+#[test]
+fn test_sort_in_a_subroutine_called_twice_runs_every_branch_each_time() {
+    use crate::sod::vm::OP_GOSUB;
+    // Main at p: GOSUB +8 (-> p + 10), GOSUB +4 (-> p + 10), RETURN; the subroutine at p + 10
+    // is the three-branch SORT of `test_sort_runs_both_branches_and_the_continuation`.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_GOSUB, 8, OP_GOSUB, 4, OP_RETURN]);
+    push_words(&mut bytes, &[OP_SORT, 38, 20, 0]);
+    sort_branch(&mut bytes, 5, [0, 1, 2]);
+    sort_branch(&mut bytes, 9, [0, 1, 3]);
+    sort_branch(&mut bytes, 7, [0, 2, 4]);
+
+    let ir = decode(&bytes, "SORT-TWICE").expect("decode sort twice");
+    assert_eq!(ir.indices.len(), 18, "two calls, three branches each");
+}
+
+/// Index count of the mesh nodes whose visibility is `vis`.
+fn indices_with(ir: &SodModelIr, vis: VisibilityCondition) -> u32 {
+    ir.nodes
+        .iter()
+        .filter(|n| n.visibility == vis)
+        .map(|n| match n.kind {
+            NodeKind::Mesh { index_count, .. } => index_count,
+            _ => 0,
+        })
+        .sum()
+}
+
+#[test]
+fn test_return_from_a_subroutine_restores_the_callers_ifvis_scope() {
+    use crate::sod::vm::{OP_GOSUB, OP_IFVIS};
+    // p: IFVIS 1 over 18 bytes { GOSUB +18 (-> p + 24); COLOR 5; POLYZ A }, RETURN at p + 24 - 2;
+    // the subroutine (COLOR 9; POLYZ B; RETURN) sits past the section, so B is ungated and A,
+    // drawn after the call returns, is still gated.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_IFVIS, 1, 18, OP_GOSUB, 18]);
+    push_words(
+        &mut bytes,
+        &[OP_COLOR, 5, OP_POLYZ, 3, 0, 12, 24, OP_RETURN],
+    );
+    sort_branch(&mut bytes, 9, [0, 1, 3]);
+
+    let ir = decode(&bytes, "IFVIS-GOSUB").expect("decode ifvis gosub");
+    assert_eq!(
+        indices_with(&ir, VisibilityCondition::LodDistanceSq(1000.0)),
+        3
+    );
+    assert_eq!(indices_with(&ir, VisibilityCondition::Always), 3);
+}
+
+#[test]
+fn test_lenient_decode_keeps_geometry_before_a_branch_outside_the_stream() {
+    use crate::sod::vm::OP_GOSUB;
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_COLOR, 5, OP_POLYZ, 3, 0, 12, 24]);
+    let gosub_at = bytes.len();
+    push_words(&mut bytes, &[OP_GOSUB, 0x4000, OP_RETURN]);
+
+    let ir = decode_sod(&bytes, "BAD-GOSUB", None, DecodeMode::Lenient).expect("lenient decode");
+    assert_eq!(ir.indices.len(), 3, "the polygon before the branch is kept");
+    let stop = ir
+        .decode()
+        .expect("record")
+        .stop
+        .expect("a stop is reported");
+    assert_eq!((stop.offset, stop.opcode), (gosub_at, OP_GOSUB));
+    assert!(decode(&bytes, "BAD-GOSUB").is_err(), "strict still fails");
+}
+
+#[test]
+fn test_lenient_decode_keeps_geometry_before_a_two_vertex_polygon() {
+    // Nine corpus models (`7E09`, `PIPER.BIN`, ...) hold a two-vertex `POLYZ`/`GVPOLY` in a
+    // SORT subtree; lenient and census decodes stop there and keep what came before.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_COLOR, 5, OP_POLYZ, 3, 0, 12, 24]);
+    let bad_at = bytes.len();
+    push_words(&mut bytes, &[OP_POLYZ, 2, 0, 12, OP_RETURN]);
+
+    let ir = decode_sod(&bytes, "TWO-VERTEX", None, DecodeMode::Lenient).expect("lenient decode");
+    assert_eq!(ir.indices.len(), 3);
+    let stop = ir
+        .decode()
+        .expect("record")
+        .stop
+        .expect("a stop is reported");
+    assert_eq!(
+        (stop.offset, stop.opcode, stop.reason),
+        (bad_at, OP_POLYZ, SodStopReason::MalformedPolygon)
+    );
+    assert!(matches!(
+        decode(&bytes, "TWO-VERTEX"),
+        Err(SodError::MalformedPolygon { .. })
+    ));
 }

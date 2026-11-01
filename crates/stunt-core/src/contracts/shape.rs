@@ -171,6 +171,11 @@ pub enum SodStopReason {
     UnknownOpcode,
     /// `OP_TAP` was reached without a usable anchor table.
     MissingAnchors,
+    /// A branch (`GOTO`, `GOSUB`, `BVGT`) targets outside the stream, or the walk exceeded
+    /// its branch budget.
+    MalformedBranch,
+    /// A polygon opcode (`POLYZ`, `GVPOLY`) with fewer than three vertices.
+    MalformedPolygon,
 }
 
 impl fmt::Display for SodStopReason {
@@ -178,6 +183,8 @@ impl fmt::Display for SodStopReason {
         match self {
             Self::UnknownOpcode => f.write_str("unknown opcode"),
             Self::MissingAnchors => f.write_str("missing anchor table"),
+            Self::MalformedBranch => f.write_str("branch outside the stream"),
+            Self::MalformedPolygon => f.write_str("polygon with fewer than three vertices"),
         }
     }
 }
