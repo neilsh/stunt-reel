@@ -1,0 +1,44 @@
+"""The numpy SSIM reproduces the Rust scorer on the synthetic bench fixture."""
+
+from __future__ import annotations
+
+import json
+import shutil
+from typing import TYPE_CHECKING
+
+import numpy as np
+import pytest
+
+from stunt_reel.bench.planes import BenchError, RenderTree, load_capture
+from stunt_reel.bench.ssim import frame_ssim, stretch
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+def test_numpy_ssim_matches_the_rust_golden(bench_fixture: Path) -> None:
+    golden = json.loads((bench_fixture / "golden.json").read_text(encoding="utf-8"))["ssim"]
+    capture = load_capture(bench_fixture / "capture")
+    tree = RenderTree(bench_fixture / "render")
+    for tick in (10, 20):
+        assert abs(frame_ssim(capture[tick], tree.load(tick).rgb) - golden[str(tick)]) < 1e-4
+
+
+def test_identical_frames_score_one(bench_fixture: Path) -> None:
+    capture = load_capture(bench_fixture / "capture")[10]
+    rgb = capture.palette[capture.idx]
+    assert abs(frame_ssim(capture, rgb) - 1.0) < 1e-9
+
+
+def test_a_render_without_planes_names_a_rerender(tmp_path: Path, bench_fixture: Path) -> None:
+    shutil.copytree(bench_fixture / "render", tmp_path / "r")
+    (tmp_path / "r" / "tick_00010.layer").unlink()
+    with pytest.raises(BenchError, match="re-render"):
+        RenderTree(tmp_path / "r").load(10)
+
+
+def test_stretch_repeats_every_fifth_row() -> None:
+    plane = np.arange(200, dtype=np.float64)[:, None].repeat(320, axis=1)
+    out = stretch(plane)
+    assert out.shape == (240, 320)
+    assert out[:7, 0].tolist() == [0, 0, 1, 2, 3, 4, 5]

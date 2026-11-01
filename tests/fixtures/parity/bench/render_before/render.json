@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "film": {
+    "name": "BENCH.FLM",
+    "flm_bytes": 1
+  },
+  "geometry": {
+    "width": 320,
+    "height": 200
+  },
+  "ticks": [
+    {
+      "tick": 10,
+      "palette": {
+        "sky": 0,
+        "brightness": 32768,
+        "saturation": 32768
+      },
+      "camera": {
+        "eye": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "target": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "fov_degrees": 45.0,
+        "roll_radians": 0.0
+      }
+    },
+    {
+      "tick": 20,
+      "palette": {
+        "sky": 0,
+        "brightness": 32768,
+        "saturation": 32768
+      },
+      "camera": {
+        "eye": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "target": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "fov_degrees": 45.0,
+        "roll_radians": 0.0
+      }
+    }
+  ]
+}
