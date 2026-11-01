@@ -1,12 +1,14 @@
-//! Offscreen playback: a single PNG, an --out-dir tick or sample sequence, or an ffmpeg video.
+//! Offscreen playback: a single PNG, an --out-dir render store or sample sequence, or an ffmpeg
+//! video.
 
 use std::cell::RefCell;
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use stunt_core::contracts::PaletteControls;
 use stunt_core::flm::CAMERA_FORWARD;
-use stunt_core::scene::{FilmScene, SceneFrame};
+use stunt_core::scene::{FilmScene, SceneFrame, ViewCamera};
 use stunt_parity::Geometry;
 use stunt_render::{
     FfmpegVideoWriter, Offscreen, PageSink, RenderOptions, RenderedPage, Renderer, SinkError,
@@ -16,17 +18,10 @@ use crate::config::CliConfig;
 use crate::parity_artifacts::{RenderJournal, film_identity};
 use crate::playback::{Playback, SampleKey, capture_tick};
 
-/// File name parity looks up for the render of 0-based 50 Hz tick.
-pub(crate) fn tick_png_name(tick: usize) -> String {
-    format!("tick_{tick:05}.png")
-}
-
-/// File name written under --out-dir for a rendered sample.
-fn sample_png_name(key: SampleKey) -> String {
-    match key {
-        SampleKey::Tick(tick) => tick_png_name(tick),
-        SampleKey::Index(index) => format!("sample_{index:04}.png"),
-    }
+/// File name written under --out-dir for an evenly spaced sample; whole ticks go to the
+/// render store instead.
+fn sample_png_name(index: usize) -> String {
+    format!("sample_{index:04}.png")
 }
 
 /// Saves tightly packed RGBA8 bytes as a PNG.
@@ -51,47 +46,47 @@ impl PageSink for SinglePngSink {
     }
 }
 
-/// The sink of a multi-sample run: PNG and plane files under --out-dir, the parity journal
-/// document, and/or video frames, whichever the run asked for.
+/// The sink of a multi-sample run: the render store and its document for whole ticks, a PNG
+/// per evenly spaced sample, and/or video frames, whichever the run asked for.
 struct SampleSink {
     out_dir: Option<PathBuf>,
-    geometry: Geometry,
     video: Option<FfmpegVideoWriter>,
     journal: Option<RenderJournal>,
-    pending: Option<SampleKey>,
-    written_pngs: usize,
+    pending: Option<(SampleKey, PaletteControls, ViewCamera)>,
+    written_frames: usize,
     written_video_frames: usize,
 }
 
 impl SampleSink {
     /// Announces the sample the next accepted page belongs to.
     fn begin(&mut self, key: SampleKey, frame: &SceneFrame) {
-        if let (Some(journal), SampleKey::Tick(tick)) = (self.journal.as_mut(), key)
-            && let Ok(tick) = u32::try_from(tick)
-        {
-            journal.record(tick, frame);
-        }
-        self.pending = Some(key);
+        self.pending = Some((key, frame.palette, frame.view));
     }
 
     /// Writes one accepted page to every destination the run selected.
     fn accept_page(&mut self, page: RenderedPage) -> Result<(), SinkError> {
-        let key = self
+        let (key, controls, camera) = self
             .pending
             .take()
             .ok_or_else(|| SinkError::new("rendered a page with no planned sample"))?;
         if let Some(out_dir) = &self.out_dir {
-            let frame_path = out_dir.join(sample_png_name(key));
-            save_rgba_png(&frame_path, page.width(), page.height(), page.rgba())
-                .map_err(|e| SinkError::new(format!("{key}: {e}")))?;
-            crate::plane_codec::write_page_planes(
-                &frame_path,
-                &self.geometry,
-                page.indices(),
-                page.layers(),
-            )
-            .map_err(|e| SinkError::new(format!("{key}: {e}")))?;
-            self.written_pngs += 1;
+            match key {
+                SampleKey::Tick(tick) => {
+                    let tick = u32::try_from(tick)
+                        .map_err(|_| SinkError::new(format!("{key}: tick does not fit a u32")))?;
+                    if let Some(journal) = self.journal.as_mut() {
+                        journal
+                            .write(tick, controls, camera, &page)
+                            .map_err(|e| SinkError::new(format!("{key}: {e}")))?;
+                    }
+                }
+                SampleKey::Index(index) => {
+                    let frame_path = out_dir.join(sample_png_name(index));
+                    save_rgba_png(&frame_path, page.width(), page.height(), page.rgba())
+                        .map_err(|e| SinkError::new(format!("{key}: {e}")))?;
+                }
+            }
+            self.written_frames += 1;
         }
         if let Some(writer) = &mut self.video {
             writer
@@ -102,14 +97,13 @@ impl SampleSink {
         Ok(())
     }
 
-    /// Writes the parity journal document, if the run has one, and closes it.
+    /// Closes the render store and writes its document, if the run has one.
     fn finish_journal(&mut self) -> Result<(), String> {
         if let Some(journal) = self.journal.take() {
             journal.finish().map_err(|e| e.to_string())?;
         }
         Ok(())
     }
-
     /// Closes the ffmpeg video stream, if the run has one.
     fn finish_video(&mut self) -> Result<(), String> {
         if let Some(writer) = self.video.take() {
@@ -217,20 +211,16 @@ pub(crate) fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), 
         height: config.height,
         viewport_rows: config.viewport_rows,
     };
-    let journal = config.out_dir.as_ref().map(|dir| {
-        RenderJournal::begin(
-            dir,
-            film_identity(config.flm_path.as_deref()),
-            geometry.clone(),
-        )
-    });
+    let journal = config
+        .out_dir
+        .as_ref()
+        .map(|dir| RenderJournal::begin(dir, film_identity(config.flm_path.as_deref()), geometry));
     let sink = Rc::new(RefCell::new(SampleSink {
         out_dir: config.out_dir.clone(),
-        geometry,
         video: video_writer.take(),
         journal,
         pending: None,
-        written_pngs: 0,
+        written_frames: 0,
         written_video_frames: 0,
     }));
     let mut renderer = Renderer::offscreen(
@@ -256,9 +246,9 @@ pub(crate) fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), 
 
     sink.borrow_mut().finish_journal().map_err(|e| e.clone())?;
     if let Some(out_dir) = &config.out_dir {
-        let written_pngs = sink.borrow().written_pngs;
+        let written_frames = sink.borrow().written_frames;
         println!(
-            "[stuntreel] Wrote {written_pngs} parity frames to {}",
+            "[stuntreel] Wrote {written_frames} frames to {}",
             out_dir.display()
         );
     }
@@ -280,13 +270,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_out_dir_file_names_follow_tick_or_sample_index() {
-        assert_eq!(sample_png_name(SampleKey::Tick(0)), "tick_00000.png");
-        assert_eq!(sample_png_name(SampleKey::Tick(1341)), "tick_01341.png");
-        assert_eq!(sample_png_name(SampleKey::Tick(1342)), "tick_01342.png");
-        assert_eq!(sample_png_name(SampleKey::Tick(12345)), "tick_12345.png");
-        assert_eq!(sample_png_name(SampleKey::Index(1)), "sample_0001.png");
-        assert_eq!(sample_png_name(SampleKey::Index(140)), "sample_0140.png");
-        assert_eq!(tick_png_name(7), sample_png_name(SampleKey::Tick(7)));
+    fn evenly_spaced_samples_are_named_by_their_index() {
+        assert_eq!(sample_png_name(1), "sample_0001.png");
+        assert_eq!(sample_png_name(140), "sample_0140.png");
     }
 }

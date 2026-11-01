@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import re
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from render_helpers import flip_byte, rewrite_store
 from stunt_reel.bench.errors import (
     Calibration,
     FilmWindow,
@@ -242,29 +244,27 @@ def test_aircraft_absent_needs_one_in_the_capture() -> None:
     assert "CAPTURE shows" in absent.definition
 
 
-@pytest.mark.parametrize("name", ["tick_00010.idx", "tick_00010.layer", "tick_00010.png"])
-def test_planes_digest_covers_every_file_a_sheet_reads(
-    tmp_path: Path, bench_fixture: Path, name: str
+@pytest.mark.parametrize("part", ["indices", "layers", "palette"])
+def test_planes_digest_covers_everything_a_sheet_shows(
+    tmp_path: Path, bench_fixture: Path, part: str
 ) -> None:
     render = bench_fixture / "render"
     copy = tmp_path / "render"
-    shutil.copytree(render, copy)
-    data = bytearray((copy / name).read_bytes())
-    data[-1] ^= 1
-    (copy / name).write_bytes(bytes(data))
+    rewrite_store(
+        render,
+        copy,
+        lambda tick, frame: (
+            replace(frame, **{part: flip_byte(getattr(frame, part), -1)}) if tick == 10 else frame
+        ),
+    )
     assert planes_digest(copy, [10, 20]) != planes_digest(render, [10, 20])
 
 
-def test_planes_digest_changes_with_render(tmp_path: Path, bench_fixture: Path) -> None:
+def test_planes_digest_survives_a_re_encode(tmp_path: Path, bench_fixture: Path) -> None:
     render = bench_fixture / "render"
-    assert planes_digest(render, [10, 20]) == planes_digest(render, [10, 20])
     copy = tmp_path / "render"
-    shutil.copytree(render, copy)
-    plane = copy / "tick_00010.idx"
-    data = bytearray(plane.read_bytes())
-    data[0] ^= 1
-    plane.write_bytes(bytes(data))
-    assert planes_digest(copy, [10, 20]) != planes_digest(render, [10, 20])
+    rewrite_store(render, copy, lambda _tick, frame: frame)
+    assert planes_digest(copy, [10, 20]) == planes_digest(render, [10, 20])
 
 
 def _all_zero(taxonomy: Taxonomy, sheet: str, other: str = "none", **grades: int) -> str:
@@ -484,11 +484,13 @@ def test_make_then_score_roundtrip(run_inputs: dict[str, Path]) -> None:
 def test_score_refuses_changed_render(tmp_path: Path, run_inputs: dict[str, Path]) -> None:
     _make(run_inputs)
     copy = tmp_path / "render-copy"
-    shutil.copytree(run_inputs["render"], copy)
-    plane = copy / "tick_00010.idx"
-    data = bytearray(plane.read_bytes())
-    data[0] ^= 1
-    plane.write_bytes(bytes(data))
+    rewrite_store(
+        run_inputs["render"],
+        copy,
+        lambda tick, frame: (
+            replace(frame, indices=flip_byte(frame.indices)) if tick == 10 else frame
+        ),
+    )
     (run_inputs["out"] / "grades.txt").write_text("", encoding="utf-8")
     before = planes_digest(run_inputs["render"], [10, 20])
     after = planes_digest(copy, [10, 20])

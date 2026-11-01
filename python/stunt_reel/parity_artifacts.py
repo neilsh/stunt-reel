@@ -12,10 +12,12 @@ diagnostic keys (``palette_source``, ``global_tick`` and so on). Those keys are
 capture evidence, not parity contract: the port does not read them, and a
 diagnostic may not shadow a field the port owns.
 
-``render.json`` is the typed render record (ADR 0005). ``palette_controls.json``
-is the legacy sidecar, still read as a fallback until renders made before the
-record age out. Reports keep serde-defaulted optional fields, so a report written
-before a field existed still loads.
+``render.json`` is the typed render record (ADR 0005) and the table of contents of
+the render store beside it (ADR 0027): ``frames.zst``, ``layers.zst`` and
+``palettes.zst``, read by :class:`RenderStore` and written by
+:class:`RenderStoreWriter` with the standard library's ``compression.zstd``. Reports
+keep serde-defaulted optional fields, so a report written before a field existed
+still loads.
 
 Errors are ``ArtifactError`` (a ``ValueError`, so the parity scripts' existing
 handlers keep working), naming the file and the field.
@@ -24,7 +26,12 @@ handlers keep working), naming the file and the field.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+import shutil
+import struct
+import zlib
+from collections import OrderedDict
+from compression import zstd
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
@@ -36,10 +43,15 @@ __all__ = [
     "CAPTURE_META",
     "CAPTURE_WIDTH",
     "LAYER_FIRST_ACTOR",
-    "LEGACY_SIDECAR",
+    "PALETTE_BYTES",
     "PALETTE_ENTRIES",
+    "RENDER_CHUNK_TICKS",
     "RENDER_DOCUMENT",
-    "RENDER_SUFFIXES",
+    "RENDER_INDEX_FILE",
+    "RENDER_LAYER_FILE",
+    "RENDER_PALETTE_FILE",
+    "RENDER_PREVIEW_DIR",
+    "RENDER_SCHEMA_VERSION",
     "SCHEMA_VERSION",
     "VIDEO_FILE",
     "ArtifactError",
@@ -53,12 +65,16 @@ __all__ = [
     "Page",
     "PaletteChange",
     "PaletteLog",
+    "RenderChunk",
     "RenderControls",
     "RenderPalette",
     "RenderRecord",
+    "RenderStore",
+    "RenderStoreWriter",
     "RenderTick",
     "Report",
-    "RetimedDocuments",
+    "StoreSpan",
+    "StoredFrame",
     "TickLog",
     "VideoCapture",
     "frames_for_captured_ticks",
@@ -69,18 +85,17 @@ __all__ = [
     "read_page",
     "read_render",
     "read_report",
-    "render_plane_paths",
-    "retime_document",
-    "tick_stem",
     "write_capture",
     "write_render",
+    "write_render_store",
     "write_report",
-    "write_retimed_documents",
     "write_video_capture",
 ]
 
-#: Version carried by ``render.json`` and a capture's ``meta.json`` (port constant).
+#: Version carried by a capture's ``meta.json``, frame or video (port constant).
 SCHEMA_VERSION = 1
+#: Version carried by ``render.json`` (port constant).
+RENDER_SCHEMA_VERSION = 2
 #: Document written beside a render directory's frames, last.
 RENDER_DOCUMENT = "render.json"
 #: Capture directory description written by ``mise run capture-ref``.
@@ -89,16 +104,27 @@ CAPTURE_META = "meta.json"
 CAPTURE_WIDTH = 320
 #: Height of the Mode 13h raster a capture without a height was made at.
 CAPTURE_HEIGHT = 200
-#: Legacy render sidecar, read until renders made before the record age out.
-LEGACY_SIDECAR = "palette_controls.json"
-#: Files a render writes per whole tick, beside the tick's stem.
-RENDER_SUFFIXES = (".png", ".idx", ".layer")
+#: A render's index planes, one byte per pixel, a zstd frame per film second.
+RENDER_INDEX_FILE = "frames.zst"
+#: A render's layer planes, one little-endian u16 per pixel, chunked like the index planes.
+RENDER_LAYER_FILE = "layers.zst"
+#: A render's distinct palettes, :data:`PALETTE_BYTES` each, as one zstd frame.
+RENDER_PALETTE_FILE = "palettes.zst"
+#: One indexed PNG per film second of a render, for people.
+RENDER_PREVIEW_DIR = "preview"
+#: Film ticks per render chunk: one film second of the authored 50 Hz clock [I4].
+RENDER_CHUNK_TICKS = 50
+#: Bytes of one stored render palette: 256 RGB triples.
+PALETTE_BYTES = 768
+#: zstd level of every render chunk (mirrors the Rust ``render_store``).
+_ZSTD_LEVEL = 3
+#: Decoded chunks a :class:`RenderStore` keeps, so a reader reaching back one second does
+#: not decode twice.
+_CACHED_CHUNKS = 2
 #: Entries in a capture's ``palettes_%04d.json``; Mode 13h has a 256-entry palette.
 PALETTE_ENTRIES = 256
 #: First layer id an actor draw writes (mirrors ``stunt_render::LAYER_FIRST_ACTOR``).
 LAYER_FIRST_ACTOR = 16
-#: Zero-padding of the film clock in ``tick_%05d`` frame names.
-RENDER_TICK_WIDTH = 5
 #: Zero-padding of a capture ordinal in its default raster file names.
 CAPTURE_ORDINAL_WIDTH = 4
 #: The one subdirectory of a capture a frame or palette file name may point into (ADR 0024).
@@ -115,7 +141,7 @@ class ArtifactError(ValueError):
     ``kind`` names the failure so a caller can act on it without parsing the
     message: ``missing``, ``wrong_type``, ``unsupported_version``,
     ``ordering``, ``conflict``, ``geometry``, ``frame``,
-    ``report_inconsistent``, ``video_log`` or ``io``.
+    ``report_inconsistent``, ``video_log``, ``store`` or ``io``.
 
     This is deliberately not a frozen dataclass like the records: Python assigns
     ``__traceback__`` on the exception instance, which a frozen dataclass refuses.
@@ -329,28 +355,50 @@ class CameraPose:
 
 @dataclass(frozen=True)
 class RenderTick:
-    """One rendered tick: the film clock its files are named for."""
+    """One rendered tick: its film clock, how it was drawn, and which stored palette it shows."""
 
     tick: int
     palette: RenderPalette
     camera: CameraPose
+    palette_index: int
+
+
+@dataclass(frozen=True)
+class StoreSpan:
+    """A byte range of one of a render's plane files."""
+
+    offset: int
+    length: int
+
+
+@dataclass(frozen=True)
+class RenderChunk:
+    """One film second of a render: an independent zstd frame in each plane file."""
+
+    second: int
+    ticks: int
+    index: StoreSpan
+    layer: StoreSpan
 
 
 @dataclass(frozen=True)
 class RenderRecord:
-    """Document written beside a render directory's frames, last."""
+    """Document written beside a render directory's plane files, last."""
 
     schema_version: int
     film: FilmId
     geometry: Geometry
     ticks: tuple[RenderTick, ...]
+    palette_count: int
+    chunks: tuple[RenderChunk, ...]
 
     def validate(self, path: Path | None = None) -> None:
-        """Check the schema version, geometry and strict tick ordering."""
-        if self.schema_version != SCHEMA_VERSION:
+        """Check the version, geometry, tick ordering, palette indices and chunk table."""
+        if self.schema_version != RENDER_SCHEMA_VERSION:
             raise _error(
                 "unsupported_version",
-                f"unsupported schema version {self.schema_version}; expected {SCHEMA_VERSION}",
+                f"unsupported schema version {self.schema_version}; "
+                f"expected {RENDER_SCHEMA_VERSION}",
                 path,
             )
         self.geometry.validate(path)
@@ -361,6 +409,64 @@ class RenderRecord:
                 raise _error(
                     "ordering", f"ticks are not strictly ascending at index {index + 1}", path
                 )
+        for index, tick in enumerate(self.ticks):
+            if tick.palette_index >= self.palette_count:
+                raise _error(
+                    "store",
+                    f"render store: ticks[{index}].palette_index {tick.palette_index} is not "
+                    f"below palette_count {self.palette_count}",
+                    path,
+                )
+        self._validate_chunks(path)
+
+    def _validate_chunks(self, path: Path | None) -> None:
+        next_tick = 0
+        ends = [0, 0]
+        previous: int | None = None
+        for number, chunk in enumerate(self.chunks):
+
+            def at(reason: str, number: int = number) -> ArtifactError:
+                return _error("store", f"render store: chunks[{number}]: {reason}", path)
+
+            if previous is not None and chunk.second <= previous:
+                raise at(f"second {chunk.second} does not follow the previous chunk's")
+            previous = chunk.second
+            if chunk.ticks == 0:
+                raise at("holds no ticks")
+            if chunk.index.offset != ends[0] or chunk.layer.offset != ends[1]:
+                raise at(
+                    f"offsets {chunk.index.offset} and {chunk.layer.offset} do not continue the "
+                    f"previous chunk (expected {ends[0]} and {ends[1]})"
+                )
+            ends[0] += chunk.index.length
+            ends[1] += chunk.layer.length
+            end = next_tick + chunk.ticks
+            if end > len(self.ticks):
+                raise at(
+                    f"claims {chunk.ticks} ticks but only {len(self.ticks) - next_tick} remain"
+                )
+            for entry in self.ticks[next_tick:end]:
+                if entry.tick // RENDER_CHUNK_TICKS != chunk.second:
+                    raise at(f"holds tick {entry.tick}, which is not in second {chunk.second}")
+            next_tick = end
+        if next_tick != len(self.ticks):
+            raise _error(
+                "store",
+                f"render store: the chunks hold {next_tick} ticks but the record lists "
+                f"{len(self.ticks)}",
+                path,
+            )
+
+    def locate(self, tick: int) -> tuple[int, int] | None:
+        """``(chunk, position)`` of *tick*'s planes, or ``None`` when the render lacks it."""
+        first = 0
+        for number, chunk in enumerate(self.chunks):
+            end = first + chunk.ticks
+            for position, entry in enumerate(self.ticks[first:end]):
+                if entry.tick == tick:
+                    return number, position
+            first = end
+        return None
 
 
 @dataclass(frozen=True)
@@ -507,22 +613,12 @@ class Report:
 
 @dataclass(frozen=True)
 class RenderControls:
-    """Palette controls and film identity of a render directory, whichever document exists."""
+    """Palette controls, geometry and film identity of a render directory."""
 
     film: FilmId
-    geometry: Geometry | None
+    geometry: Geometry
     controls: dict[int, RenderPalette]
-    record: RenderRecord | None
-    legacy: bool
-    warnings: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class RetimedDocuments:
-    """Which of a retimed render's documents were written."""
-
-    record_written: bool
-    sidecar_written: bool
+    record: RenderRecord
 
 
 def _film_fields(document: Mapping[str, Any], path: Path | None) -> FilmId:
@@ -594,6 +690,9 @@ def _tick_object(value: Any, path: Path | None, field_name: str) -> RenderTick:
         tick=_as_unsigned(raw.get("tick"), path, f"{field_name}.tick", 0xFFFFFFFF),
         palette=_palette_object(raw, path, "palette"),
         camera=_camera_object(raw, path, "camera"),
+        palette_index=_as_unsigned(
+            raw.get("palette_index"), path, f"{field_name}.palette_index", 0xFFFFFFFF
+        ),
     )
 
 
@@ -607,6 +706,11 @@ def _render_record(document: Any, path: Path | None) -> RenderRecord:
         geometry=_geometry_object(geometry, path),
         ticks=tuple(
             _tick_object(entry, path, f"ticks[{index}]") for index, entry in enumerate(ticks)
+        ),
+        palette_count=_as_unsigned(raw.get("palette_count"), path, "palette_count", 0xFFFFFFFF),
+        chunks=tuple(
+            _chunk_object(entry, path, f"chunks[{index}]")
+            for index, entry in enumerate(_as_array(raw.get("chunks"), path, "chunks"))
         ),
     )
 
@@ -633,35 +737,27 @@ def _render_document(record: RenderRecord) -> dict[str, Any]:
                 "fov_degrees": tick.camera.fov_degrees,
                 "roll_radians": tick.camera.roll_radians,
             },
+            "palette_index": tick.palette_index,
         }
         for tick in record.ticks
+    ]
+    chunks = [
+        {
+            "second": chunk.second,
+            "ticks": chunk.ticks,
+            "index": {"offset": chunk.index.offset, "length": chunk.index.length},
+            "layer": {"offset": chunk.layer.offset, "length": chunk.layer.length},
+        }
+        for chunk in record.chunks
     ]
     return {
         "schema_version": record.schema_version,
         "film": film,
         "geometry": _geometry_document(record.geometry),
         "ticks": ticks,
+        "palette_count": record.palette_count,
+        "chunks": chunks,
     }
-
-
-def _legacy_controls(document: Any, path: Path | None) -> tuple[FilmId, dict[int, RenderPalette]]:
-    """Parse the legacy sidecar's film identity and palette controls."""
-    raw = _as_object(document, path, "the sidecar")
-    film = _film_fields(raw, path)
-    controls: dict[int, RenderPalette] = {}
-    ticks = raw.get("ticks")
-    if ticks is None:
-        return film, controls
-    for index, value in enumerate(_as_array(ticks, path, "ticks")):
-        where = f"ticks[{index}]"
-        entry = _as_object(value, path, where)
-        tick = _as_unsigned(entry.get("tick"), path, f"{where}.tick", 0xFFFFFFFF)
-        controls[tick] = RenderPalette(
-            sky=_as_unsigned(entry.get("sky"), path, f"{where}.sky", 0xFFFF),
-            brightness=_as_unsigned(entry.get("brightness"), path, f"{where}.brightness", 0xFFFF),
-            saturation=_as_unsigned(entry.get("saturation"), path, f"{where}.saturation", 0xFFFF),
-        )
-    return film, controls
 
 
 def _capture_palette_object(document: Any, path: Path | None) -> tuple[tuple[int, int, int], ...]:
@@ -784,50 +880,325 @@ def _report_document(report: Report) -> dict[str, Any]:
     }
 
 
-def tick_stem(tick: int) -> str:
-    """The file-name stem a render writes for film-clock *tick*."""
-    return f"tick_{tick:0{RENDER_TICK_WIDTH}d}"
+def _store_span(value: Any, path: Path | None, field_name: str) -> StoreSpan:
+    raw = _as_object(value, path, field_name)
+    return StoreSpan(
+        offset=_as_unsigned(raw.get("offset"), path, f"{field_name}.offset", 2**64 - 1),
+        length=_as_unsigned(raw.get("length"), path, f"{field_name}.length", 2**64 - 1),
+    )
 
 
-def render_plane_paths(directory: Path, tick: int) -> tuple[Path, Path]:
-    """The index and layer plane paths a render writes for *tick*."""
-    stem = tick_stem(tick)
-    return directory / f"{stem}.idx", directory / f"{stem}.layer"
+def _chunk_object(value: Any, path: Path | None, field_name: str) -> RenderChunk:
+    raw = _as_object(value, path, field_name)
+    return RenderChunk(
+        second=_as_unsigned(raw.get("second"), path, f"{field_name}.second", 0xFFFFFFFF),
+        ticks=_as_unsigned(raw.get("ticks"), path, f"{field_name}.ticks", 0xFFFFFFFF),
+        index=_store_span(raw.get("index"), path, f"{field_name}.index"),
+        layer=_store_span(raw.get("layer"), path, f"{field_name}.layer"),
+    )
 
 
-def _read_plane(path: Path, kind: str, expected: int, geometry: Geometry) -> bytes:
-    """Reads one plane file, naming it when it is unreadable or the wrong size."""
-    try:
-        data = path.read_bytes()
-    except OSError as err:
-        raise _error("missing", f"the file must be readable ({err})", path) from err
-    if len(data) != expected:
+def _indexed_png(width: int, height: int, palette: bytes, indices: bytes) -> bytes:
+    """An 8-bit indexed PNG of *indices* in *palette*, standard library only."""
+
+    def chunk(kind: bytes, body: bytes) -> bytes:
+        crc = zlib.crc32(kind + body)
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", crc)
+
+    rows = b"".join(b"\x00" + indices[y * width : (y + 1) * width] for y in range(height))
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 3, 0, 0, 0))
+        + chunk(b"PLTE", palette)
+        + chunk(b"IDAT", zlib.compress(rows))
+        + chunk(b"IEND", b"")
+    )
+
+
+@dataclass(frozen=True)
+class StoredFrame:
+    """One stored render tick: its planes and the palette its picture is drawn in.
+
+    ``indices`` holds one byte per pixel over the full raster, ``layers`` one
+    little-endian u16 per pixel, and ``palette`` 256 RGB triples; the picture is
+    ``palette[index]`` at every pixel.
+    """
+
+    indices: bytes
+    layers: bytes
+    palette: bytes
+
+
+class RenderStore:
+    """Reads a render directory's store (ADR 0027), keeping the last two decoded chunks.
+
+    Opening reads and validates ``render.json``, checks the two plane files against its
+    chunk table and reads the palettes, so a later :meth:`frame` only decodes.
+    """
+
+    def __init__(self, directory: Path) -> None:
+        self.directory = directory
+        self.record = _read_render_v2(directory)
+        ends = (0, 0)
+        if self.record.chunks:
+            last = self.record.chunks[-1]
+            ends = (last.index.offset + last.index.length, last.layer.offset + last.layer.length)
+        if self.record.ticks:
+            for name, end in zip((RENDER_INDEX_FILE, RENDER_LAYER_FILE), ends, strict=True):
+                path = directory / name
+                try:
+                    size = path.stat().st_size
+                except OSError as err:
+                    raise _error("missing", f"the file must be readable ({err})", path) from err
+                if size != end:
+                    raise _error(
+                        "store", f"holds {size} bytes but render.json's chunks end at {end}", path
+                    )
+        self._palettes = _read_palettes(directory / RENDER_PALETTE_FILE, self.record.palette_count)
+        self._rows = {entry.tick: row for row, entry in enumerate(self.record.ticks)}
+        self._cache: OrderedDict[int, tuple[bytes, bytes]] = OrderedDict()
+
+    def ticks(self) -> list[int]:
+        """The film ticks the render holds, ascending."""
+        return [entry.tick for entry in self.record.ticks]
+
+    def holds(self, tick: int) -> bool:
+        """Whether the render holds film tick *tick*."""
+        return tick in self._rows
+
+    def frame(self, tick: int) -> StoredFrame:
+        """The planes and palette of film tick *tick*, decoding its chunk unless cached."""
+        slot = self.record.locate(tick)
+        if slot is None:
+            raise _error("missing", f"holds no render of tick {tick}", self.directory)
+        chunk, position = slot
+        indices, layers = self._decoded(chunk)
+        pixels = self.record.geometry.width * self.record.geometry.height
+        entry = self.record.ticks[self._rows[tick]]
+        return StoredFrame(
+            indices=indices[position * pixels : (position + 1) * pixels],
+            layers=layers[position * pixels * 2 : (position + 1) * pixels * 2],
+            palette=self._palettes[entry.palette_index],
+        )
+
+    def _decoded(self, chunk: int) -> tuple[bytes, bytes]:
+        cached = self._cache.get(chunk)
+        if cached is not None:
+            self._cache.move_to_end(chunk)
+            return cached
+        entry = self.record.chunks[chunk]
+        pixels = self.record.geometry.width * self.record.geometry.height * entry.ticks
+        decoded = (
+            self._read_chunk(RENDER_INDEX_FILE, entry.index, entry.second, pixels),
+            self._read_chunk(RENDER_LAYER_FILE, entry.layer, entry.second, pixels * 2),
+        )
+        self._cache[chunk] = decoded
+        while len(self._cache) > _CACHED_CHUNKS:
+            self._cache.popitem(last=False)
+        return decoded
+
+    def _read_chunk(self, name: str, span: StoreSpan, second: int, expected: int) -> bytes:
+        path = self.directory / name
+        try:
+            with path.open("rb") as handle:
+                handle.seek(span.offset)
+                packed = handle.read(span.length)
+        except OSError as err:
+            raise _error("missing", f"the file must be readable ({err})", path) from err
+        try:
+            raw = zstd.decompress(packed)
+        except zstd.ZstdError as err:
+            raise _error("store", f"second {second} does not decompress: {err}", path) from err
+        if len(raw) != expected:
+            raise _error(
+                "store",
+                f"second {second} decompresses to {len(raw)} bytes, expected {expected}",
+                path,
+            )
+        return raw
+
+
+def _read_render_v2(directory: Path) -> RenderRecord:
+    """``render.json`` of a store, refusing another version before reading its fields."""
+    path = directory / RENDER_DOCUMENT
+    if not path.is_file():
         raise _error(
-            "geometry",
-            f"holds {len(data)} {kind}, expected {expected} for {geometry.width}x{geometry.height}",
+            "missing",
+            f"has no {RENDER_DOCUMENT}; re-render it with the current stuntreel --headless --out-dir",
+            directory,
+        )
+    document = _read_json(path)
+    version = document.get("schema_version") if isinstance(document, dict) else None
+    if version != RENDER_SCHEMA_VERSION:
+        raise _error(
+            "unsupported_version",
+            f"unsupported schema version {version}; expected {RENDER_SCHEMA_VERSION}; re-render "
+            f"{directory} with the current stuntreel --headless --out-dir",
             path,
         )
-    return data
+    record = _render_record(document, path)
+    record.validate(path)
+    return record
 
 
-def read_page(directory: Path, tick: int, geometry: Geometry) -> Page:
-    """Reads one render page's planes, sizing them from the record's full raster.
+def _read_palettes(path: Path, count: int) -> tuple[bytes, ...]:
+    """``palettes.zst``, which must hold exactly *count* palettes."""
+    if count == 0 and not path.exists():
+        return ()
+    try:
+        packed = path.read_bytes()
+    except OSError as err:
+        raise _error("missing", f"the file must be readable ({err})", path) from err
+    try:
+        raw = zstd.decompress(packed)
+    except zstd.ZstdError as err:
+        raise _error("store", f"does not decompress: {err}", path) from err
+    expected = count * PALETTE_BYTES
+    if len(raw) != expected:
+        raise _error(
+            "store", f"holds {len(raw)} bytes, expected {expected} for {count} palettes", path
+        )
+    return tuple(raw[at : at + PALETTE_BYTES] for at in range(0, expected, PALETTE_BYTES))
 
-    The files span width * height pixels even when viewport_rows narrows the drawn
-    scene, exactly as the Rust plane_codec writes them; only Page.actor_pixels
-    narrows its scan to the viewport. The caller's geometry is validated here, so a
-    viewport taller than the raster fails before any scan would run off the plane.
+
+class RenderStoreWriter:
+    """Writes a render's planes in tick order, a zstd chunk per film second (ADR 0027).
+
+    Nothing is created until the first tick. The writer replaces its own files and
+    ``preview/`` and leaves anything else in the directory.
     """
-    index_path, layer_path = render_plane_paths(directory, tick)
-    geometry.validate(index_path)
-    pixels = geometry.width * geometry.height
-    indices = _read_plane(index_path, "palette indices", pixels, geometry)
-    layer_bytes = _read_plane(layer_path, "layer bytes", 2 * pixels, geometry)
-    layers = tuple(
-        int.from_bytes(layer_bytes[offset : offset + 2], "little")
-        for offset in range(0, len(layer_bytes), 2)
+
+    def __init__(self, directory: Path, geometry: Geometry) -> None:
+        self.directory = directory
+        self.geometry = geometry
+        self._pixels = geometry.width * geometry.height
+        self._started = False
+        self._ends = [0, 0]
+        self._last_tick: int | None = None
+        self._palettes: dict[bytes, int] = {}
+        self._open: tuple[int, list[bytes], list[bytes]] | None = None
+        self._chunks: list[RenderChunk] = []
+
+    def push(self, tick: int, palette: bytes, indices: bytes, layers: bytes) -> int:
+        """Append one tick and return the index of its palette in the store.
+
+        *layers* is one little-endian u16 per pixel; *palette* 768 bytes.
+        """
+        if len(indices) != self._pixels or len(layers) != 2 * self._pixels:
+            raise _error(
+                "geometry",
+                f"tick {tick} has {len(indices)} index and {len(layers)} layer bytes, expected "
+                f"{self._pixels} and {2 * self._pixels} for "
+                f"{self.geometry.width}x{self.geometry.height}",
+                self.directory,
+            )
+        if len(palette) != PALETTE_BYTES:
+            raise _error("store", f"tick {tick} palette holds {len(palette)} bytes", self.directory)
+        if self._last_tick is not None and tick <= self._last_tick:
+            raise _error(
+                "ordering", f"tick {tick} does not follow tick {self._last_tick}", self.directory
+            )
+        if not self._started:
+            self._start()
+        second = tick // RENDER_CHUNK_TICKS
+        if self._open is not None and self._open[0] != second:
+            self._close_chunk()
+        if self._open is None:
+            preview = self.directory / RENDER_PREVIEW_DIR / f"sec_{second:04d}.png"
+            preview.write_bytes(
+                _indexed_png(self.geometry.width, self.geometry.height, palette, indices)
+            )
+            self._open = (second, [], [])
+        self._open[1].append(bytes(indices))
+        self._open[2].append(bytes(layers))
+        self._last_tick = tick
+        return self._palettes.setdefault(bytes(palette), len(self._palettes))
+
+    def finish(self) -> tuple[int, tuple[RenderChunk, ...]] | None:
+        """Write the last chunk and ``palettes.zst``: the palette count and chunk table.
+
+        ``None`` when no tick was pushed.
+        """
+        if not self._started:
+            return None
+        self._close_chunk()
+        packed = zstd.compress(b"".join(self._palettes), level=_ZSTD_LEVEL)
+        (self.directory / RENDER_PALETTE_FILE).write_bytes(packed)
+        return len(self._palettes), tuple(self._chunks)
+
+    def _start(self) -> None:
+        preview = self.directory / RENDER_PREVIEW_DIR
+        if preview.is_dir():
+            shutil.rmtree(preview)
+        preview.mkdir(parents=True)
+        for name in (RENDER_INDEX_FILE, RENDER_LAYER_FILE):
+            (self.directory / name).write_bytes(b"")
+        self._started = True
+
+    def _close_chunk(self) -> None:
+        if self._open is None:
+            return
+        second, indices, layers = self._open
+        spans: list[StoreSpan] = []
+        planes = (b"".join(indices), b"".join(layers))
+        for slot, (name, raw) in enumerate(
+            zip((RENDER_INDEX_FILE, RENDER_LAYER_FILE), planes, strict=True)
+        ):
+            packed = zstd.compress(raw, level=_ZSTD_LEVEL)
+            with (self.directory / name).open("ab") as handle:
+                handle.write(packed)
+            spans.append(StoreSpan(offset=self._ends[slot], length=len(packed)))
+            self._ends[slot] += len(packed)
+        self._chunks.append(
+            RenderChunk(second=second, ticks=len(indices), index=spans[0], layer=spans[1])
+        )
+        self._open = None
+
+
+def write_render_store(
+    directory: Path,
+    film: FilmId,
+    geometry: Geometry,
+    frames: Iterable[tuple[RenderTick, StoredFrame]],
+) -> RenderRecord:
+    """Write a whole render store from *frames* in tick order, ``render.json`` last.
+
+    Each tick's ``palette_index`` is assigned by the store; the one it carries is ignored.
+    """
+    writer = RenderStoreWriter(directory, geometry)
+    ticks: list[RenderTick] = []
+    for tick, frame in frames:
+        index = writer.push(tick.tick, frame.palette, frame.indices, frame.layers)
+        ticks.append(replace(tick, palette_index=index))
+    table = writer.finish()
+    if table is None:
+        raise _error("missing", "a render store needs at least one tick", directory)
+    palette_count, chunks = table
+    record = RenderRecord(
+        schema_version=RENDER_SCHEMA_VERSION,
+        film=film,
+        geometry=geometry,
+        ticks=tuple(ticks),
+        palette_count=palette_count,
+        chunks=chunks,
     )
-    return Page(indices=indices, layers=layers, geometry=geometry)
+    write_render(directory / RENDER_DOCUMENT, record)
+    return record
+
+
+def read_page(store: RenderStore, tick: int) -> Page:
+    """One stored tick's planes as a :class:`Page`, over the record's full raster.
+
+    The planes span width * height pixels even when viewport_rows narrows the drawn
+    scene; only Page.actor_pixels narrows its scan to the viewport.
+    """
+    frame = store.frame(tick)
+    count = len(frame.layers) // 2
+    return Page(
+        indices=frame.indices,
+        layers=struct.unpack(f"<{count}H", frame.layers),
+        geometry=store.record.geometry,
+    )
 
 
 def frames_for_captured_ticks(ticks: Iterable[int]) -> str:
@@ -856,44 +1227,17 @@ def write_render(path: Path, record: RenderRecord) -> None:
 
 
 def open_render(directory: Path) -> RenderControls:
-    """Read a render directory's controls, preferring ``render.json`` to the sidecar.
+    """Read a render directory's controls from its ``render.json``.
 
-    A directory with neither document is incomplete: ADR 0005 makes the record
-    required, so the error carries the re-render action. A legacy sidecar-only
-    directory still loads, with no geometry; callers fall back to the capture's.
+    A directory without one, or with another schema version, is refused with the
+    re-render action (ADR 0005, ADR 0027).
     """
-    record_path = directory / RENDER_DOCUMENT
-    if record_path.is_file():
-        record = read_render(record_path)
-        return RenderControls(
-            film=record.film,
-            geometry=record.geometry,
-            controls={tick.tick: tick.palette for tick in record.ticks},
-            record=record,
-            legacy=False,
-            warnings=(),
-        )
-    sidecar_path = directory / LEGACY_SIDECAR
-    if not sidecar_path.is_file():
-        raise _error(
-            "missing",
-            f"missing field {RENDER_DOCUMENT} or {LEGACY_SIDECAR} "
-            "(re-render the directory with stuntreel --headless --out-dir)",
-            directory,
-        )
-    film, controls = _legacy_controls(_read_json(sidecar_path), sidecar_path)
+    record = _read_render_v2(directory)
     return RenderControls(
-        film=film,
-        geometry=None,
-        controls=controls,
-        record=None,
-        legacy=True,
-        warnings=(
-            (
-                f"has no {RENDER_DOCUMENT}; reading the legacy {LEGACY_SIDECAR} "
-                "(re-render the directory to replace it)"
-            ),
-        ),
+        film=record.film,
+        geometry=record.geometry,
+        controls={tick.tick: tick.palette for tick in record.ticks},
+        record=record,
     )
 
 
@@ -1355,62 +1699,3 @@ def write_report(path: Path, report: Report) -> None:
     """Validate and write a ``report.json`` through a temporary file and rename."""
     report.validate(path)
     _write_json(path, _report_document(report))
-
-
-def retime_document(
-    document: Mapping[str, Any], pairs: Iterable[tuple[int, int]]
-) -> dict[str, Any]:
-    """Re-label each source tick entry onto its target tick, preserving unknown keys.
-
-    Works for both ``render.json`` and the legacy sidecar: only the ``tick`` field of
-    each copied ``ticks[]`` entry changes, and entries whose source tick is absent
-    are dropped. Nothing is invented, so a retime cannot introduce a frame.
-    """
-    entries = document.get("ticks")
-    by_tick: dict[int, dict[str, Any]] = {}
-    if entries is not None:
-        for index, value in enumerate(_as_array(entries, None, "ticks")):
-            entry = _as_object(value, None, f"ticks[{index}]")
-            tick = _as_unsigned(entry.get("tick"), None, f"ticks[{index}].tick", 0xFFFFFFFF)
-            by_tick[tick] = entry
-    ticks: list[dict[str, Any]] = []
-    for target, source in pairs:
-        source_entry = by_tick.get(source)
-        if source_entry is None:
-            continue
-        shifted = dict(source_entry)
-        shifted["tick"] = target
-        ticks.append(shifted)
-    rebuilt: dict[str, Any] = {key: value for key, value in document.items() if key != "ticks"}
-    rebuilt["ticks"] = ticks
-    return rebuilt
-
-
-def write_retimed_documents(
-    source: Path, out: Path, pairs: Sequence[tuple[int, int]]
-) -> RetimedDocuments:
-    """Write *source*'s documents into *out*, relabelling ticks by *pairs*.
-
-    *pairs* are ``(target, source)`` pairs, as ``plan_retime`` produces. The legacy
-    sidecar is rewritten while it exists and ``render.json`` is written last, as the
-    render journal does. Unknown keys survive the rewrite, and the shifted record is
-    re-validated before it is written so it still loads in Rust.
-    """
-    out.mkdir(parents=True, exist_ok=True)
-    sidecar_written = False
-    sidecar_path = source / LEGACY_SIDECAR
-    if sidecar_path.is_file():
-        sidecar = _as_object(_read_json(sidecar_path), sidecar_path, "the sidecar")
-        _legacy_controls(sidecar, sidecar_path)
-        _write_json(out / LEGACY_SIDECAR, retime_document(sidecar, pairs))
-        sidecar_written = True
-    record_written = False
-    record_path = source / RENDER_DOCUMENT
-    if record_path.is_file():
-        document = _as_object(_read_json(record_path), record_path, "the render record")
-        _render_record(document, record_path).validate(record_path)
-        shifted = retime_document(document, pairs)
-        _render_record(shifted, record_path).validate(record_path)
-        _write_json(out / RENDER_DOCUMENT, shifted)
-        record_written = True
-    return RetimedDocuments(record_written=record_written, sidecar_written=sidecar_written)

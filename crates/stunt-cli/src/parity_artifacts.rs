@@ -2,9 +2,9 @@
 //!
 //! The port owns the schema; this module owns the files. It is the only place
 //! the CLI learns artifact names and JSON details, and the only place that
-//! writes `render.json`. It still reads the legacy `palette_controls.json`
-//! sidecar as a fallback for renders made before the record existed.
+//! writes `render.json`; the plane files beside it belong to `render_store`.
 
+#[cfg(test)]
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,16 +12,19 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde_json::Value;
 use stunt_core::contracts::PaletteControls;
-use stunt_core::scene::{SceneFrame, ViewCamera};
+use stunt_core::scene::ViewCamera;
+#[cfg(test)]
+use stunt_parity::SCHEMA_VERSION;
 use stunt_parity::{
-    ArtifactError as SchemaError, CameraPose, CaptureSet, FilmId, Geometry, RenderPalette,
-    RenderRecord, RenderTick, Report, SCHEMA_VERSION, VideoCapture,
+    ArtifactError as SchemaError, CameraPose, CaptureSet, FilmId, Geometry, RENDER_SCHEMA_VERSION,
+    RenderPalette, RenderRecord, RenderTick, Report, VideoCapture,
 };
+use stunt_render::RenderedPage;
+
+use crate::render_store::{StoreError, StoreWriter, check_derivable};
 
 /// Document written beside a render directory's frames, last.
 pub(crate) const RENDER_DOCUMENT: &str = "render.json";
-/// Legacy render sidecar, read until renders made before the record age out.
-pub(crate) const LEGACY_SIDECAR: &str = "palette_controls.json";
 /// Document written by the capture harness in a capture directory.
 pub(crate) const CAPTURE_META: &str = "meta.json";
 
@@ -136,14 +139,6 @@ fn render_palette(controls: PaletteControls) -> RenderPalette {
     }
 }
 
-fn core_palette(palette: RenderPalette) -> PaletteControls {
-    PaletteControls {
-        sky: palette.sky,
-        brightness: palette.brightness,
-        saturation: palette.saturation,
-    }
-}
-
 fn camera_pose(camera: ViewCamera) -> CameraPose {
     CameraPose {
         eye: camera.eye,
@@ -153,16 +148,13 @@ fn camera_pose(camera: ViewCamera) -> CameraPose {
     }
 }
 
-/// Collects one render directory's document and writes it last.
-///
-/// Frame files themselves are still written by the caller during this landing;
-/// the journal owns the tick metadata and the two document files.
-#[derive(Debug)]
+/// Collects one render directory: its planes through the store, and its document, written last.
 pub(crate) struct RenderJournal {
     dir: PathBuf,
     film: FilmId,
     geometry: Geometry,
     ticks: Vec<RenderTick>,
+    store: StoreWriter,
 }
 
 impl RenderJournal {
@@ -171,139 +163,97 @@ impl RenderJournal {
         Self {
             dir: dir.to_path_buf(),
             film,
+            store: StoreWriter::new(dir, &geometry),
             geometry,
             ticks: Vec::new(),
         }
     }
 
-    /// Records the controls and camera of the frame drawn for film-clock `tick`.
-    pub(crate) fn record(&mut self, tick: u32, frame: &SceneFrame) {
+    /// Stores the page drawn for film-clock `tick` with `controls` from `camera`.
+    ///
+    /// The page's picture is not kept: it must be `palette[index]` at every pixel for the
+    /// film palette of `controls`, and a page that is not is refused.
+    pub(crate) fn write(
+        &mut self,
+        tick: u32,
+        controls: PaletteControls,
+        camera: ViewCamera,
+        page: &RenderedPage,
+    ) -> Result<(), StoreError> {
+        let palette = controls.film_palette();
+        check_derivable(&palette, page.indices(), page.rgba(), page.width()).map_err(
+            |message| StoreError::Corrupt {
+                path: self.dir.clone(),
+                message: format!("tick {tick}: {message}"),
+            },
+        )?;
+        let palette_index = self
+            .store
+            .push(tick, &palette, page.indices(), page.layers())?;
         self.ticks.push(RenderTick {
             tick,
-            palette: render_palette(frame.palette),
-            camera: camera_pose(frame.view),
+            palette: render_palette(controls),
+            camera: camera_pose(camera),
+            palette_index,
         });
+        Ok(())
     }
 
-    /// Writes `render.json` last; it is omitted when no whole-tick frame was
-    /// recorded. The legacy sidecar is no longer written (ADR 0005 landing 4).
-    pub(crate) fn finish(self) -> Result<(), AdapterError> {
-        if self.ticks.is_empty() {
+    /// Closes the store and writes `render.json` last; neither is written when no whole-tick
+    /// frame was stored.
+    pub(crate) fn finish(self) -> Result<(), StoreError> {
+        let Some(table) = self.store.finish()? else {
             return Ok(());
-        }
-        let path = self.dir.join(RENDER_DOCUMENT);
+        };
         let record = RenderRecord {
-            schema_version: SCHEMA_VERSION,
+            schema_version: RENDER_SCHEMA_VERSION,
             film: self.film,
             geometry: self.geometry,
             ticks: self.ticks,
+            palette_count: table.palette_count,
+            chunks: table.chunks,
         };
-        record.validate().map_err(|error| schema(&path, error))?;
-        write_json(&path, &record, true)
+        write_render_record(&self.dir, &record).map_err(StoreError::Record)
     }
 }
 
-/// Palette controls and film identity of a render directory, whichever document exists.
-#[derive(Debug)]
-pub(crate) struct RenderControls {
-    /// Film identity, when the document recorded one.
-    pub(crate) film: FilmId,
-    /// Raster geometry, present only for a `render.json` render.
-    pub(crate) geometry: Option<Geometry>,
-    /// Film palette controls by film-clock tick.
-    pub(crate) controls: BTreeMap<u32, PaletteControls>,
-}
-
-/// Reads a render's controls, preferring `render.json` and falling back to the
-/// legacy sidecar. A directory with neither is an error: ADR 0005 makes the
-/// document required.
-pub(crate) fn load_render_controls(dir: &Path) -> Result<RenderControls, AdapterError> {
-    let record_path = dir.join(RENDER_DOCUMENT);
-    if record_path.is_file() {
-        let value = read_json(&record_path)?;
-        let record: RenderRecord =
-            serde_json::from_value(value).map_err(|source| AdapterError::Parse {
-                path: record_path.clone(),
-                source,
-            })?;
-        record
-            .validate()
-            .map_err(|error| schema(&record_path, error))?;
-        let controls = record
-            .ticks
-            .iter()
-            .map(|tick| (tick.tick, core_palette(tick.palette)))
-            .collect();
-        return Ok(RenderControls {
-            film: record.film,
-            geometry: Some(record.geometry),
-            controls,
-        });
-    }
-
-    let legacy_path = dir.join(LEGACY_SIDECAR);
-    if !legacy_path.is_file() {
+/// Reads and validates a render directory's `render.json`.
+pub(crate) fn read_render_record(dir: &Path) -> Result<RenderRecord, AdapterError> {
+    let path = dir.join(RENDER_DOCUMENT);
+    let value = read_json(&path)?;
+    let version = value.get("schema_version").and_then(Value::as_u64);
+    if version != Some(u64::from(RENDER_SCHEMA_VERSION)) {
         return Err(schema(
-            dir,
-            SchemaError::MissingField {
-                field: "render.json or palette_controls.json (re-render the directory with \
-                        stuntreel --headless --out-dir)"
-                    .to_string(),
+            &path,
+            SchemaError::UnsupportedVersion {
+                found: version.and_then(|v| u32::try_from(v).ok()).unwrap_or(0),
+                expected: RENDER_SCHEMA_VERSION,
             },
         ));
     }
-    let value = read_json(&legacy_path)?;
-    let film = FilmId {
-        name: value
-            .get("film")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        flm_bytes: value.get("flm_bytes").and_then(Value::as_u64),
-        flm_sha256: None,
-    };
-    let mut controls = BTreeMap::new();
-    if let Some(ticks) = value.get("ticks").and_then(Value::as_array) {
-        for entry in ticks {
-            let field = |name: &str| {
-                entry
-                    .get(name)
-                    .and_then(Value::as_u64)
-                    .and_then(|value| u16::try_from(value).ok())
-            };
-            let tick = entry.get("tick").and_then(Value::as_u64).ok_or_else(|| {
-                schema(
-                    &legacy_path,
-                    SchemaError::MissingField {
-                        field: "tick".to_string(),
-                    },
-                )
-            })?;
-            let (Some(sky), Some(brightness), Some(saturation)) =
-                (field("sky"), field("brightness"), field("saturation"))
-            else {
-                return Err(schema(
-                    &legacy_path,
-                    SchemaError::MissingField {
-                        field: "sky/brightness/saturation".to_string(),
-                    },
-                ));
-            };
-            controls.insert(
-                u32::try_from(tick)
-                    .map_err(|_| schema(&legacy_path, SchemaError::TickOrder { index: 0 }))?,
-                PaletteControls {
-                    sky,
-                    brightness,
-                    saturation,
-                },
-            );
-        }
+    let record: RenderRecord =
+        serde_json::from_value(value).map_err(|source| AdapterError::Parse {
+            path: path.clone(),
+            source,
+        })?;
+    record.validate().map_err(|error| schema(&path, error))?;
+    Ok(record)
+}
+
+/// Validates and writes a render directory's `render.json`.
+pub(crate) fn write_render_record(dir: &Path, record: &RenderRecord) -> Result<(), AdapterError> {
+    let path = dir.join(RENDER_DOCUMENT);
+    record.validate().map_err(|error| schema(&path, error))?;
+    write_json(&path, record, true)
+}
+
+/// The film palette controls a render tick was drawn with.
+pub(crate) fn core_palette(palette: RenderPalette) -> PaletteControls {
+    PaletteControls {
+        sky: palette.sky,
+        brightness: palette.brightness,
+        saturation: palette.saturation,
     }
-    Ok(RenderControls {
-        film,
-        geometry: None,
-        controls,
-    })
 }
 
 /// Reads a capture directory's `meta.json` into the port's capture set.
@@ -363,12 +313,12 @@ pub(crate) fn read_report(path: &Path) -> Result<Report, AdapterError> {
     })
 }
 
-/// The committed corpus under `tests/fixtures/parity/v1`, read through this adapter.
+/// The committed corpus under `tests/fixtures/parity/v1` (captures and reports) and
+/// `tests/fixtures/parity/v2` (renders), read through this adapter.
 #[cfg(test)]
 mod conformance {
     use super::*;
-    use crate::plane_codec::read_page_planes;
-
+    use crate::render_store::{Palette, RenderStore};
     /// The shared corpus, resolved without the process working directory.
     fn corpus() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/parity/v1")
@@ -411,25 +361,138 @@ mod conformance {
         }
     }
 
+    /// The version-2 render under `tests/fixtures/parity/v2/render`.
+    fn v2_render() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/parity/v2/render")
+    }
+
+    /// Tick 7: sky over two actor pixels, with a layer-16 row below the 2-row viewport.
+    const TICK_7_ROWS: [([u8; 4], [u16; 4]); 3] = [
+        ([180, 180, 180, 180], [0, 0, 0, 0]),
+        ([0, 40, 40, 0], [0, 16, 16, 0]),
+        ([0, 0, 0, 0], [16, 16, 16, 16]),
+    ];
+
+    /// The fixture's ticks: three in second 0, none in second 1, two in second 2.
+    const V2_TICKS: [u32; 5] = [7, 9, 30, 100, 149];
+
+    /// Every other tick is tick 7 with its indices raised by `tick - 7`.
+    fn v2_planes(tick: u32) -> (Vec<u8>, Vec<u32>) {
+        let shift = (tick - 7) as u8;
+        TICK_7_ROWS
+            .iter()
+            .flat_map(|(indices, layers)| indices.iter().zip(layers))
+            .map(|(&index, &layer)| (index.wrapping_add(shift), u32::from(layer)))
+            .unzip()
+    }
+
+    /// Ticks 30 and 149 use the second palette, entry i = (255 - i, i, 0); the rest a grey ramp.
+    fn v2_palette(tick: u32) -> Palette {
+        std::array::from_fn(|i| {
+            let i = i as u8;
+            if tick == 30 || tick == 149 {
+                (255 - i, i, 0)
+            } else {
+                (i, i, i)
+            }
+        })
+    }
+
+    /// Regenerates the v2 render fixture. Run it by hand after a format change:
+    /// `cargo test -p stunt-cli write_v2_render_fixture -- --ignored`.
     #[test]
-    fn render_fixture_pins_identity_geometry_and_controls() {
-        let controls = load_render_controls(&corpus()).expect("load render.json");
-        assert_eq!(controls.film.name.as_deref(), Some("SYNTH.FLM"));
-        assert_eq!(controls.film.flm_bytes, Some(17));
+    #[ignore = "writes the committed fixture"]
+    fn write_v2_render_fixture() {
+        let dir = v2_render();
+        fs::create_dir_all(&dir).expect("create fixture dir");
+        let geometry = Geometry {
+            width: 4,
+            height: 3,
+            viewport_rows: Some(2),
+        };
+        let mut writer = StoreWriter::new(&dir, &geometry);
+        let mut ticks = Vec::new();
+        for tick in V2_TICKS {
+            let (indices, layers) = v2_planes(tick);
+            let palette_index = writer
+                .push(tick, &v2_palette(tick), &indices, &layers)
+                .expect("push");
+            let half = tick == 30 || tick == 149;
+            ticks.push(RenderTick {
+                tick,
+                palette: RenderPalette {
+                    sky: 0,
+                    brightness: if half { 16384 } else { 32768 },
+                    saturation: 32768,
+                },
+                camera: CameraPose {
+                    eye: [0.0, 10.0, 43.0 + tick as f32],
+                    target: [0.0, 10.0, 0.0],
+                    fov_degrees: 45.0,
+                    roll_radians: 0.0,
+                },
+                palette_index,
+            });
+        }
+        let table = writer.finish().expect("finish").expect("a store");
+        let record = RenderRecord {
+            schema_version: RENDER_SCHEMA_VERSION,
+            film: FilmId {
+                name: Some("SYNTH.FLM".to_string()),
+                flm_bytes: Some(17),
+                flm_sha256: None,
+            },
+            geometry,
+            ticks,
+            palette_count: table.palette_count,
+            chunks: table.chunks,
+        };
+        write_render_record(&dir, &record).expect("write record");
+    }
+
+    #[test]
+    fn render_fixture_pins_identity_geometry_chunks_and_controls() {
+        let store = RenderStore::open(&v2_render()).expect("open the v2 render");
+        let record = store.record();
+        assert_eq!(record.film.name.as_deref(), Some("SYNTH.FLM"));
+        assert_eq!(record.film.flm_bytes, Some(17));
         assert_eq!(
-            controls.geometry,
-            Some(Geometry {
+            record.geometry,
+            Geometry {
                 width: 4,
                 height: 3,
                 viewport_rows: Some(2),
-            })
+            }
         );
-        assert_eq!(controls.controls.len(), 2);
-        let tick = controls.controls.get(&7).expect("tick 7 controls");
-        assert_eq!(tick.sky, 0);
-        assert_eq!(tick.brightness, 32768);
-        assert_eq!(tick.saturation, 32768);
-        assert!(controls.controls.contains_key(&9));
+        let ticks: Vec<u32> = record.ticks.iter().map(|tick| tick.tick).collect();
+        assert_eq!(ticks, V2_TICKS);
+        let seconds: Vec<(u32, u32)> = record
+            .chunks
+            .iter()
+            .map(|chunk| (chunk.second, chunk.ticks))
+            .collect();
+        assert_eq!(seconds, vec![(0, 3), (2, 2)]);
+        assert_eq!(record.palette_count, 2);
+        let indices: Vec<u32> = record.ticks.iter().map(|t| t.palette_index).collect();
+        assert_eq!(indices, vec![0, 0, 1, 0, 1]);
+        assert_eq!(record.ticks[0].palette.brightness, 32768);
+        assert_eq!(record.ticks[2].palette.brightness, 16384);
+    }
+
+    #[test]
+    fn render_fixture_pins_every_tick_planes_and_palette() {
+        let mut store = RenderStore::open(&v2_render()).expect("open the v2 render");
+        for tick in V2_TICKS {
+            let frame = store.frame(tick).expect("frame");
+            let (indices, layers) = v2_planes(tick);
+            assert_eq!(frame.indices, indices, "tick {tick} indices");
+            let layers: Vec<u16> = layers.iter().map(|&layer| layer as u16).collect();
+            // Row 2 lies outside the 2-row viewport but the reader still returns it.
+            assert_eq!(frame.layers, layers, "tick {tick} layers");
+            assert_eq!(frame.palette, v2_palette(tick), "tick {tick} palette");
+        }
+        let (indices, _) = v2_planes(7);
+        assert_eq!(&indices[4..8], &[0, 40, 40, 0]);
     }
 
     #[test]
@@ -573,40 +636,6 @@ mod conformance {
             );
         }
     }
-
-    #[test]
-    fn page_fixture_pins_the_index_and_layer_rows() {
-        let geometry = Geometry {
-            width: 4,
-            height: 3,
-            viewport_rows: Some(2),
-        };
-        // read_page_planes derives the two plane paths from this stem and never opens the PNG.
-        let planes = read_page_planes(&corpus().join("pages/tick_00007.png"), &geometry)
-            .expect("read page planes");
-        assert_eq!(planes.indices.len(), 12);
-        assert_eq!(planes.layers.len(), 12);
-
-        let rows: [([u8; 4], [u16; 4]); 3] = [
-            ([180, 180, 180, 180], [0, 0, 0, 0]),
-            ([0, 40, 40, 0], [0, 16, 16, 0]),
-            ([0, 0, 0, 0], [16, 16, 16, 16]),
-        ];
-        for (row, (indices, layers)) in rows.into_iter().enumerate() {
-            let start = row * 4;
-            assert_eq!(
-                &planes.indices[start..start + 4],
-                &indices[..],
-                "row {row} indices"
-            );
-            // Row 2 lies outside the 2-row viewport but the reader still returns it.
-            assert_eq!(
-                &planes.layers[start..start + 4],
-                &layers[..],
-                "row {row} layers"
-            );
-        }
-    }
 }
 
 #[cfg(test)]
@@ -648,20 +677,59 @@ mod tests {
         }
     }
 
+    fn page(controls: PaletteControls, tamper: bool) -> RenderedPage {
+        let palette = controls.film_palette();
+        let plane: Vec<u32> = (0..320 * 200)
+            .map(|pixel: u32| (16 << 8) | (pixel % 251))
+            .collect();
+        let mut rgba: Vec<u8> = plane
+            .iter()
+            .flat_map(|&word| {
+                let (r, g, b) = palette[(word & 0xFF) as usize];
+                [r, g, b, 255]
+            })
+            .collect();
+        if tamper {
+            rgba[0] ^= 1;
+        }
+        RenderedPage::new(stunt_render::PageSize::new(320, 200), rgba, plane).expect("page")
+    }
+
     #[test]
-    fn journal_writes_the_record_and_no_legacy_sidecar() {
+    fn journal_writes_the_store_and_the_record_last() {
         let dir = temp_dir("journal");
         let mut journal = RenderJournal::begin(&dir, FilmId::default(), geometry());
-        journal.record(7, &frame());
+        let frame = frame();
+        journal
+            .write(7, frame.palette, frame.view, &page(frame.palette, false))
+            .expect("write");
+        assert!(
+            !dir.join(RENDER_DOCUMENT).exists(),
+            "the record is written last"
+        );
         journal.finish().expect("finish");
 
-        assert!(dir.join(RENDER_DOCUMENT).is_file());
-        assert!(!dir.join(LEGACY_SIDECAR).exists());
+        let record = read_render_record(&dir).expect("read");
+        assert_eq!(record.geometry, geometry());
+        assert_eq!(record.ticks.len(), 1);
+        assert_eq!(record.ticks[0].palette.sky, 0x2000);
+        assert_eq!(record.palette_count, 1);
+        let mut store = crate::render_store::RenderStore::open(&dir).expect("open");
+        let stored = store.frame(7).expect("frame");
+        assert_eq!(stored.palette, frame.palette.film_palette());
+        assert_eq!(stored.layers[0], 16);
+    }
 
-        let controls = load_render_controls(&dir).expect("load");
-        assert_eq!(controls.geometry, Some(geometry()));
-        assert_eq!(controls.controls.len(), 1);
-        assert_eq!(controls.controls[&7].sky, 0x2000);
+    #[test]
+    fn a_page_whose_picture_is_not_its_palette_lookup_is_refused() {
+        let dir = temp_dir("tampered");
+        let mut journal = RenderJournal::begin(&dir, FilmId::default(), geometry());
+        let frame = frame();
+        let error = journal
+            .write(7, frame.palette, frame.view, &page(frame.palette, true))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("tick 7: pixel (0, 0)"), "{error}");
     }
 
     #[test]
@@ -671,24 +739,7 @@ mod tests {
             .finish()
             .expect("finish");
         assert!(!dir.join(RENDER_DOCUMENT).exists());
-        assert!(!dir.join(LEGACY_SIDECAR).exists());
-    }
-
-    #[test]
-    fn legacy_sidecar_still_loads() {
-        let dir = temp_dir("legacy");
-        let sidecar = json!({
-            "film": "CTRY.FLM",
-            "flm_bytes": 1234,
-            "ticks": [
-                {"tick": 7, "sky": 1, "brightness": 2, "saturation": 3, "camera": {}},
-            ],
-        });
-        write_json(&dir.join(LEGACY_SIDECAR), &sidecar, false).expect("write legacy");
-        let controls = load_render_controls(&dir).expect("load");
-        assert!(controls.geometry.is_none());
-        assert_eq!(controls.film.name.as_deref(), Some("CTRY.FLM"));
-        assert_eq!(controls.controls[&7].brightness, 2);
+        assert!(!dir.join(crate::render_store::INDEX_FILE).exists());
     }
 
     #[test]
@@ -739,27 +790,34 @@ mod tests {
     }
 
     #[test]
-    fn a_render_without_any_document_is_refused() {
+    fn a_render_without_a_record_is_refused() {
         let dir = temp_dir("no-document");
-        let error = load_render_controls(&dir).expect_err("no document");
-        assert!(error.to_string().contains("re-render"), "{error}");
+        let error = read_render_record(&dir).expect_err("no document");
+        assert!(error.to_string().contains("render.json"), "{error}");
     }
 
     #[test]
-    fn a_wrong_schema_version_is_rejected() {
+    fn a_wrong_schema_version_is_rejected_before_its_fields() {
         let dir = temp_dir("version");
-        write_json(
-            &dir.join(RENDER_DOCUMENT),
-            &json!({
-                "schema_version": 9,
-                "film": {},
-                "geometry": {"width": 320, "height": 200},
-                "ticks": [],
-            }),
-            true,
-        )
-        .expect("write record");
-        let error = load_render_controls(&dir).expect_err("future version");
-        assert!(error.to_string().contains("schema version 9"), "{error}");
+        for version in [1, 9] {
+            write_json(
+                &dir.join(RENDER_DOCUMENT),
+                &json!({
+                    "schema_version": version,
+                    "film": {},
+                    "geometry": {"width": 320, "height": 200},
+                    "ticks": [],
+                }),
+                true,
+            )
+            .expect("write record");
+            let error = read_render_record(&dir).expect_err("other version");
+            assert!(
+                error
+                    .to_string()
+                    .contains(&format!("schema version {version}; expected 2")),
+                "{error}"
+            );
+        }
     }
 }

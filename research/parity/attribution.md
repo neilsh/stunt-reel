@@ -4,7 +4,7 @@
 
 ## 1. Method: loss by render layer
 
-`stuntreel parity` splits each SSIM window's loss (`1 - ssim`) among the render layers of its pixels in proportion to pixel count (`mean_loss_by_class_scored` in `report.json`); the classes sum to `1 - mean_ssim_scored`. Layer ids in the `.layer` plane: 1 ocean, 2 terrain (`MAP.BIN` patches), 3 props (`SCENERY.scn` placements), 16+n actor draw n of the frame (draw order, not film slot). Extra classes are reference-only (capture non-sky, render sky) and render-only (the reverse). Windows touching the UI overlay are excluded.
+`stuntreel parity` splits each SSIM window's loss (`1 - ssim`) among the render layers of its pixels in proportion to pixel count (`mean_loss_by_class_scored` in `report.json`); the classes sum to `1 - mean_ssim_scored`. Layer ids in the layer plane: 1 ocean, 2 terrain (`MAP.BIN` patches), 3 props (`SCENERY.scn` placements), 16+n actor draw n of the frame (draw order, not film slot). Extra classes are reference-only (capture non-sky, render sky) and render-only (the reverse). Windows touching the UI overlay are excluded.
 
 * Attribution is by what **our render** draws, not by what is missing. In the worst early props frame (ordinal 41, tick 448, SSIM 0.515) the capture shows the hero biplane and its shadow while our render shows faint struts over flat dark ground, so the loss lands on the ground class. The actors class therefore **understates** the aircraft's cost (see [`framing-and-actors.md`](framing-and-actors.md)).
 * The index plane is unlit, so the split says where loss is, not that a palette index is wrong.

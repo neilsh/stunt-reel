@@ -6,7 +6,9 @@
 //! and the Python adapter in `python/stunt_reel/parity_artifacts.py`; both
 //! speak the types defined here.
 //!
-//! `render.json` and a capture's `meta.json` carry [`SCHEMA_VERSION`]. A capture
+//! `render.json` carries [`RENDER_SCHEMA_VERSION`] and a capture's `meta.json`
+//! [`SCHEMA_VERSION`]; the render moved to version 2 alone when its planes moved
+//! into per-second zstd chunks (ADR 0027). A capture
 //! written before the field existed reads as the current version, and a legacy
 //! capture's ordinals, file names and 320x200 geometry are defaulted here rather
 //! than in either adapter. Reports stay readable across versions through
@@ -22,9 +24,15 @@ pub mod video;
 pub use capture::{CaptureSet, CapturedFrame};
 pub use error::ArtifactError;
 pub use film::FilmId;
-pub use render::{CameraPose, Geometry, RenderPalette, RenderRecord, RenderTick};
+pub use render::{
+    CameraPose, Geometry, PALETTE_BYTES, RENDER_CHUNK_TICKS, RenderChunk, RenderPalette,
+    RenderRecord, RenderTick, StoreSpan, TickSlot,
+};
 pub use report::{FrameReport, I6Gate, Report};
 pub use video::{CaptureEnd, PaletteChange, PaletteLog, TickLog, VIDEO_FILE, VideoCapture};
 
-/// Version carried by `render.json` and a capture's `meta.json`.
+/// Version carried by a capture's `meta.json`, frame or video.
 pub const SCHEMA_VERSION: u32 = 1;
+
+/// Version carried by `render.json`.
+pub const RENDER_SCHEMA_VERSION: u32 = 2;

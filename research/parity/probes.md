@@ -2,7 +2,7 @@
 
 Procedures for finding out *what* is wrong once [`method.md`](method.md) says *where* the loss is. Terms are those of [`GLOSSARY.md`](../../GLOSSARY.md). Dated outcomes are in [`log.md`](log.md) and the notes it links; the helpers are [`python/scripts/parity_probe.py`](../../python/scripts/parity_probe.py) and [`parity_sweep.py`](../../python/scripts/parity_sweep.py).
 
-All probes read a capture directory (`build/parity/captures/<film>/<id>`, `tick_NNNN.idx` by ordinal) and a render directory (`tick_NNNNN.idx` and `.layer` by film tick). "Object pixels" are capture pixels that are not sky, ground ramp, button bar or cursor; the index ranges in the script are `CTRY.FLM`'s and must be changed per film.
+All probes read a capture directory (`build/parity/captures/<film>/<id>`, `tick_NNNN.idx` by ordinal) and a render store (index and layer planes by film tick, read through `RenderStore`). "Object pixels" are capture pixels that are not sky, ground ramp, button bar or cursor; the index ranges in the script are `CTRY.FLM`'s and must be changed per film.
 
 ## 1. Side-by-side crop (`crop`)
 
@@ -64,7 +64,7 @@ mise run sweep -- --reuse build/scratch/retime --films ctry,intro --no-build
 mise run parity -- --no-render --retime -1 --no-build
 ```
 
-Target tick `t` gets the frame, `.idx` and `.layer` planes of source `t + N`, and the sidecar's palette entry is copied from the source tick and relabelled to `t`. The sign follows the renderer: offset 0 compares capture `t` with the state at `t - 1` (the accepted timing), and `-1` lands on state `t - 2`. A non-empty `--out` is refused unless `--force`; a source outside the rendered range is reported, and since ±1 always drops one end tick, pass `--allow-missing` (the `parity_run` wrapper does). The sidecar rebuild matters: the hand-made shift that discovered the page lag kept the original tick's palette entry and under-reported INTRO (0.6793 against 0.6799 with the entry relabelled).
+Target tick `t` gets the planes, palette and `render.json` entry of source `t + N`, relabelled to `t`, written into a new store. The sign follows the renderer: offset 0 compares capture `t` with the state at `t - 1` (the accepted timing), and `-1` lands on state `t - 2`. A non-empty `--out` is refused unless `--force`; a source outside the rendered range is reported, and since ±1 always drops one end tick, pass `--allow-missing` (the `parity_run` wrapper does). Moving the palette entry with the planes matters: the hand-made shift that discovered the page lag kept the original tick's palette entry and under-reported INTRO (0.6793 against 0.6799 with the entry relabelled).
 
 Measured `mean_ssim_scored` (CTRY / INTRO, 2026-10-23, post-page-timing build):
 

@@ -227,15 +227,15 @@ def test_contact_sheets_are_copied_after_a_successful_score(
     assert sorted(path.name for path in frames.iterdir()) == ["contact_0001.png"]
 
 
-def test_rendered_frames_are_deleted_after_a_successful_score(
+def test_the_render_is_kept_after_a_successful_score(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _install(monkeypatch)
     render = tmp_path / parity_layout.batch_film_dir("a-film") / "render"
     render.mkdir(parents=True)
-    (render / "tick_00001.idx").write_bytes(b"x")
+    (render / "frames.zst").write_bytes(b"x")
     _process([_film("a-film")], tmp_path)
-    assert not render.exists()
+    assert (render / "frames.zst").is_file()
 
 
 def test_a_known_stall_is_recorded_skipped_and_stops_that_film(

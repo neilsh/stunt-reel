@@ -24,7 +24,7 @@ from PIL import Image, ImageDraw, ImageFont
 from stunt_reel.bench.faults import ACTOR_LAYER, ALL_FAULTS, plant
 from stunt_reel.bench.planes import BenchError, RenderTree, load_capture
 from stunt_reel.bench.ssim import render_luma, stretch
-from stunt_reel.parity_artifacts import read_report, tick_stem
+from stunt_reel.parity_artifacts import read_report
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Sequence
@@ -385,12 +385,20 @@ def render_brief(
 
 
 def planes_digest(render: Path, ticks: Sequence[int]) -> str:
-    """SHA-256 over every file a sheet reads at *ticks* (picture, index and layer planes), so
-    scoring sees the pictures graded."""
+    """SHA-256 over everything a sheet shows at *ticks*, so scoring sees the pictures graded.
+
+    Per tick in order: the tick (u32 little-endian), its palette, its index plane and its
+    layer plane, decoded from the store (ADR 0027). The picture is ``palette[index]``, so
+    this covers it, and the digest does not change with the zstd version or level.
+    """
+    tree = RenderTree(render)
     digest = hashlib.sha256()
     for tick in sorted(ticks):
-        for suffix in (".png", ".idx", ".layer"):
-            digest.update((render / f"{tick_stem(tick)}{suffix}").read_bytes())
+        frame = tree.stored(tick)
+        digest.update(tick.to_bytes(4, "little"))
+        digest.update(frame.palette)
+        digest.update(frame.indices)
+        digest.update(frame.layers)
     return digest.hexdigest()
 
 

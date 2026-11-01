@@ -174,7 +174,7 @@ impl RenderedPage {
     /// The RGBA buffer holds exactly `size.pixel_count()` * 4 bytes and the plane one
     /// little-endian u32 per pixel: layer << 8 | unlit palette index, where uncovered pixels are
     /// the clear index on `LAYER_NONE`. The index byte and the layer word are kept apart; the
-    /// `.layer` file stores a u16, so its codec checks the narrowing instead of truncating.
+    /// render store keeps a u16 layer, so its writer checks the narrowing instead of truncating.
     pub fn new(size: PageSize, rgba: Vec<u8>, plane: Vec<u32>) -> Result<Self, RenderError> {
         let pixels = size.pixel_count();
         if rgba.len() != pixels * 4 {
@@ -231,7 +231,7 @@ impl RenderedPage {
 
     /// One layer id per pixel, top row first: the plane word's layer.
     ///
-    /// The `.layer` artifact stores a u16 per pixel; a writer checks that narrowing rather than
+    /// The render store keeps a u16 per pixel; its writer checks that narrowing rather than
     /// truncating silently.
     #[must_use]
     pub fn layers(&self) -> &[u32] {

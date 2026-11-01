@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from render_helpers import tick_entry
+
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
@@ -17,7 +19,7 @@ import parity_sweep  # noqa: E402
 from parity_sweep import Variant  # noqa: E402
 
 from stunt_reel import parity_artifacts  # noqa: E402
-from stunt_reel.parity_artifacts import FilmId, Geometry, RenderRecord  # noqa: E402
+from stunt_reel.parity_artifacts import FilmId, Geometry, StoredFrame  # noqa: E402
 from stunt_reel.parity_pipeline import Score  # noqa: E402
 
 
@@ -107,16 +109,14 @@ def test_actor_iou_on_synthetic_planes(tmp_path: Path) -> None:
             layer[2 * (y * width + x)] = parity_artifacts.LAYER_FIRST_ACTOR
             if y < 55:
                 capture[y * width + x] = 10
-    (tmp_path / "tick_00007.idx").write_bytes(bytes(width * geometry.height))
-    (tmp_path / "tick_00007.layer").write_bytes(bytes(layer))
+    frame = StoredFrame(
+        indices=bytes(width * geometry.height), layers=bytes(layer), palette=bytes(768)
+    )
+    parity_artifacts.write_render_store(tmp_path, FilmId(), geometry, [(tick_entry(7), frame)])
     (tmp_path / "tick_0001.idx").write_bytes(bytes(capture))
     (tmp_path / "meta.json").write_text(
         json.dumps({"film": "CTRY.FLM", "frames": [{"film_tick": 7}, {"film_tick": 9}]}),
         encoding="utf-8",
-    )
-    parity_artifacts.write_render(
-        tmp_path / "render.json",
-        RenderRecord(schema_version=1, film=FilmId(), geometry=geometry, ticks=()),
     )
     report = tmp_path / "report.json"
     report.write_text(

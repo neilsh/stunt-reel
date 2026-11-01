@@ -5,11 +5,15 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use stunt_core::contracts::get_palette_rgb;
-use stunt_parity::Geometry;
+use stunt_parity::{
+    CameraPose, FilmId, Geometry, RENDER_SCHEMA_VERSION, RenderPalette, RenderRecord, RenderTick,
+};
 use stunt_render::{LAYER_NONE, LAYER_TERRAIN, MODE13H_HEIGHT, MODE13H_WIDTH};
 
 use super::mask::is_capture_sky;
 use super::run;
+use crate::parity_artifacts::write_render_record;
+use crate::render_store::{INDEX_FILE, LAYER_FILE, PALETTE_FILE, Palette, StoreWriter};
 
 /// Scratch directory removed on drop.
 pub(super) struct TempDir(PathBuf);
@@ -99,78 +103,25 @@ pub(super) fn write_reference_faded(dir: &Path, film_ticks: &[u64], tag: bool, s
     .unwrap();
 }
 
-/// Writes a grey-ramp render at `path`, with planes that match the synthetic capture.
-pub(super) fn write_render(path: &Path) {
-    write_render_with_brightness(path, 0x8000);
+/// How a synthetic render tick's picture relates to the synthetic capture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Picture {
+    /// The capture's indices through a scrambled grey palette, so it scores below 1.
+    Grey,
+    /// The capture's indices through the static palette: the unfaded capture itself.
+    Matching,
 }
 
-/// Like [`write_render`], with the film authoring `brightness` at this tick.
-pub(super) fn write_render_with_brightness(path: &Path, brightness: u16) {
-    let image = image::RgbaImage::from_fn(MODE13H_WIDTH as u32, MODE13H_HEIGHT as u32, |x, y| {
-        let v = ((x + y) % 251) as u8;
-        image::Rgba([v, v, v, 255])
-    });
-    image.save(path).unwrap();
-    write_planes(path);
-    write_render_record(path, brightness);
-}
-
-/// Writes the unfaded view of the synthetic capture planes as a render.
-pub(super) fn write_matching_render(path: &Path) {
-    let image = image::RgbaImage::from_fn(MODE13H_WIDTH as u32, MODE13H_HEIGHT as u32, |x, y| {
-        let (r, g, b) = get_palette_rgb(plane_index(y as usize * MODE13H_WIDTH + x as usize));
-        image::Rgba([r, g, b, 255])
-    });
-    image.save(path).unwrap();
-    write_planes(path);
-    write_render_record(path, 0x8000);
-}
-
-/// Adds (or replaces) this tick's entry in the render directory's `render.json`.
-fn write_render_record(path: &Path, brightness: u16) {
-    let Some(tick) = path
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .and_then(|stem| stem.strip_prefix("tick_"))
-        .and_then(|digits| digits.parse::<u32>().ok())
-    else {
-        return;
+/// Writes a render store in `dir` holding `ticks` (ascending), each with the authored
+/// `brightness` and `picture`. Every tick's planes match the synthetic capture: its indices,
+/// with a layer wherever the capture is not sky.
+pub(super) fn write_render_store(dir: &Path, ticks: &[(u32, u16, Picture)]) {
+    fs::create_dir_all(dir).unwrap();
+    let geometry = Geometry {
+        width: MODE13H_WIDTH as u32,
+        height: MODE13H_HEIGHT as u32,
+        viewport_rows: None,
     };
-    let dir = path.parent().unwrap_or(Path::new("."));
-    let document_path = dir.join("render.json");
-    let mut ticks: Vec<Value> = fs::read_to_string(&document_path)
-        .ok()
-        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        .and_then(|value| value.get("ticks").and_then(Value::as_array).cloned())
-        .unwrap_or_default();
-    ticks.retain(|entry| entry.get("tick").and_then(Value::as_u64) != Some(u64::from(tick)));
-    ticks.push(json!({
-        "tick": tick,
-        "palette": {"sky": 0, "brightness": brightness, "saturation": 0x8000u16},
-        "camera": {
-            "eye": [0.0, 0.0, 0.0],
-            "target": [0.0, 0.0, 0.0],
-            "fov_degrees": 45.0,
-            "roll_radians": 0.0,
-        },
-    }));
-    ticks.sort_by_key(|entry| entry.get("tick").and_then(Value::as_u64).unwrap_or(0));
-    let document = json!({
-        "schema_version": 1,
-        "film": {},
-        "geometry": {"width": MODE13H_WIDTH, "height": MODE13H_HEIGHT},
-        "ticks": ticks,
-    });
-    fs::write(
-        &document_path,
-        serde_json::to_string_pretty(&document).unwrap(),
-    )
-    .unwrap();
-}
-
-/// Writes the index and layer planes beside the render PNG at `path`: the capture's own
-/// indices, with a layer wherever the capture is not sky.
-fn write_planes(path: &Path) {
     let indices: Vec<u8> = (0..MODE13H_WIDTH * MODE13H_HEIGHT)
         .map(plane_index)
         .collect();
@@ -184,12 +135,82 @@ fn write_planes(path: &Path) {
             }
         })
         .collect();
-    let geometry = Geometry {
-        width: MODE13H_WIDTH as u32,
-        height: MODE13H_HEIGHT as u32,
-        viewport_rows: None,
+    let grey: Palette = std::array::from_fn(|i| {
+        let v = (i * 53 % 256) as u8;
+        (v, v, v)
+    });
+    let matching: Palette = std::array::from_fn(|i| get_palette_rgb(i as u8));
+    let mut writer = StoreWriter::new(dir, &geometry);
+    let mut entries = Vec::new();
+    for &(tick, brightness, picture) in ticks {
+        let palette = match picture {
+            Picture::Grey => &grey,
+            Picture::Matching => &matching,
+        };
+        let palette_index = writer.push(tick, palette, &indices, &layers).unwrap();
+        entries.push(RenderTick {
+            tick,
+            palette: RenderPalette {
+                sky: 0,
+                brightness,
+                saturation: 0x8000,
+            },
+            camera: CameraPose {
+                eye: [0.0; 3],
+                target: [0.0; 3],
+                fov_degrees: 45.0,
+                roll_radians: 0.0,
+            },
+            palette_index,
+        });
+    }
+    let table = writer.finish().unwrap().expect("at least one tick");
+    let record = RenderRecord {
+        schema_version: RENDER_SCHEMA_VERSION,
+        film: FilmId::default(),
+        geometry,
+        ticks: entries,
+        palette_count: table.palette_count,
+        chunks: table.chunks,
     };
-    crate::plane_codec::write_page_planes(path, &geometry, &indices, &layers).unwrap();
+    write_render_record(dir, &record).unwrap();
+}
+
+/// Writes a grey render of `ticks` in `dir`, at full brightness.
+pub(super) fn write_render(dir: &Path, ticks: &[u32]) {
+    let ticks: Vec<_> = ticks
+        .iter()
+        .map(|&tick| (tick, 0x8000, Picture::Grey))
+        .collect();
+    write_render_store(dir, &ticks);
+}
+
+/// Writes a grey render in `dir` with the film authoring each tick's brightness.
+pub(super) fn write_render_with_brightness(dir: &Path, ticks: &[(u32, u16)]) {
+    let ticks: Vec<_> = ticks
+        .iter()
+        .map(|&(tick, brightness)| (tick, brightness, Picture::Grey))
+        .collect();
+    write_render_store(dir, &ticks);
+}
+
+/// Turns `dir` into a render made before the store: a version-1 `render.json` and no planes.
+pub(super) fn write_version_1_render(dir: &Path) {
+    for name in [INDEX_FILE, LAYER_FILE, PALETTE_FILE] {
+        drop(fs::remove_file(dir.join(name)));
+    }
+    fs::create_dir_all(dir).unwrap();
+    fs::write(
+        dir.join("render.json"),
+        json!({
+            "schema_version": 1,
+            "film": {},
+            "geometry": {"width": MODE13H_WIDTH, "height": MODE13H_HEIGHT},
+            "ticks": [],
+        })
+        .to_string(),
+    )
+    .unwrap();
 }
 
 pub(super) fn run_parity(reference: &Path, test: &Path, output: &Path) -> Result<(), String> {

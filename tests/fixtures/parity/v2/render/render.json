@@ -1,0 +1,156 @@
+{
+  "schema_version": 2,
+  "film": {
+    "name": "SYNTH.FLM",
+    "flm_bytes": 17
+  },
+  "geometry": {
+    "width": 4,
+    "height": 3,
+    "viewport_rows": 2
+  },
+  "ticks": [
+    {
+      "tick": 7,
+      "palette": {
+        "sky": 0,
+        "brightness": 32768,
+        "saturation": 32768
+      },
+      "camera": {
+        "eye": [
+          0.0,
+          10.0,
+          50.0
+        ],
+        "target": [
+          0.0,
+          10.0,
+          0.0
+        ],
+        "fov_degrees": 45.0,
+        "roll_radians": 0.0
+      },
+      "palette_index": 0
+    },
+    {
+      "tick": 9,
+      "palette": {
+        "sky": 0,
+        "brightness": 32768,
+        "saturation": 32768
+      },
+      "camera": {
+        "eye": [
+          0.0,
+          10.0,
+          52.0
+        ],
+        "target": [
+          0.0,
+          10.0,
+          0.0
+        ],
+        "fov_degrees": 45.0,
+        "roll_radians": 0.0
+      },
+      "palette_index": 0
+    },
+    {
+      "tick": 30,
+      "palette": {
+        "sky": 0,
+        "brightness": 16384,
+        "saturation": 32768
+      },
+      "camera": {
+        "eye": [
+          0.0,
+          10.0,
+          73.0
+        ],
+        "target": [
+          0.0,
+          10.0,
+          0.0
+        ],
+        "fov_degrees": 45.0,
+        "roll_radians": 0.0
+      },
+      "palette_index": 1
+    },
+    {
+      "tick": 100,
+      "palette": {
+        "sky": 0,
+        "brightness": 32768,
+        "saturation": 32768
+      },
+      "camera": {
+        "eye": [
+          0.0,
+          10.0,
+          143.0
+        ],
+        "target": [
+          0.0,
+          10.0,
+          0.0
+        ],
+        "fov_degrees": 45.0,
+        "roll_radians": 0.0
+      },
+      "palette_index": 0
+    },
+    {
+      "tick": 149,
+      "palette": {
+        "sky": 0,
+        "brightness": 16384,
+        "saturation": 32768
+      },
+      "camera": {
+        "eye": [
+          0.0,
+          10.0,
+          192.0
+        ],
+        "target": [
+          0.0,
+          10.0,
+          0.0
+        ],
+        "fov_degrees": 45.0,
+        "roll_radians": 0.0
+      },
+      "palette_index": 1
+    }
+  ],
+  "palette_count": 2,
+  "chunks": [
+    {
+      "second": 0,
+      "ticks": 3,
+      "index": {
+        "offset": 0,
+        "length": 45
+      },
+      "layer": {
+        "offset": 0,
+        "length": 29
+      }
+    },
+    {
+      "second": 2,
+      "ticks": 2,
+      "index": {
+        "offset": 45,
+        "length": 33
+      },
+      "layer": {
+        "offset": 29,
+        "length": 28
+      }
+    }
+  ]
+}

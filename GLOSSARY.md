@@ -176,7 +176,7 @@ _Avoid_: MCP port, debugger port, capture lock
 ## Artifacts
 
 **Render record**:
-The `render.json` document describing one render directory: the film identity, the raster geometry, and the palette controls and camera of every whole-tick frame. Parity prefers it over the legacy `palette_controls.json` sidecar.
+The `render.json` document describing one render directory: the film identity, the raster geometry, the palette controls, palette index and camera of every whole-tick frame, and the table of per-second chunks that locates each tick's planes in the render store ([ADR 0027](docs/adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)). It is written last, at schema version 2; a version-1 render is refused.
 _Avoid_: sidecar (for the record), manifest
 
 **Capture set**:
