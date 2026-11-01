@@ -88,6 +88,27 @@ Reading:
 * **`INTRO.FLM`**, 278 scored frames: same picture (removing actors improves `ssim` by 11σ, no metric passes). Its two captures agree so closely that σ is 1.7e-5 for `ssim_structured` and 1.3e-6 for `ssim_props`, so σ units there are inflated and not comparable with `CTRY.FLM`; `index_ocean` is `n/a` throughout.
 * **Haiku judge** (spec experiment): 310 composites (capture | A | B, both orders, 10 control pairs) over five Haiku subagents; one returned no answers, declining to guess. On the 248 answered, accuracy per fault ran from 0.24 (flat terrain) to 0.71 (1-column shift) and the wrong-tick control scored 0.67, below the 0.9 bar, so the arm is dropped. Control pairs read A 56% of the time. The judges reported most pairs as indistinguishable at 320x240.
 
+### 2.3 Error categories graded by a vision model
+
+`[Bounded Observation]`, the same renders and captures as section 2.2. Where the forced-choice judge asked which of two near-identical renders was closer, this asks a model to name and grade the large differences. Each sheet shows capture and render side by side at 2x (the button bar painted grey), their absolute luma difference, and a close-up of the actors' bounding box. Frames: 12 per film spread over the scored ticks below any fade, `CTRY.FLM` ticks 4–499 and `INTRO.FLM` 1009–2687 (its first 20 seconds skipped).
+
+* **Discovery.** Haiku, Sonnet and Opus each listed every difference on the 12 `CTRY.FLM` sheets and proposed categories; all three named the aircraft drawn as bare wing shapes, without fuselage, propeller or wheels, in 12 of 12 frames, and the missing shadow in the same 5. Merged, that gave ten categories. A second pass on `INTRO.FLM`, given the ten, added five: an aircraft not drawn at all (10–11 of 12 frames), a shadow of the wrong shape, missing ground actors, the wrong terrain surface, and a missing explosion. Haiku found what the larger models found but filed new kinds under existing names. The categories are [`error-categories.toml`](error-categories.toml); adding one is one block there.
+* **Grading.** Per film, 42 sheets in shuffled order: the 12 real frames, 12 controls (recapture `005` in the render's place) and 18 planted faults (actors removed, a 4-row shift, a 5-tick advance, 6 frames each). Each sheet gets a grade 0–3 per category. A planted sheet is detected when any category that fault should raise grades higher than on the same frame unplanted:
+
+| Check | `CTRY.FLM` Haiku | Sonnet | `INTRO.FLM` Haiku | Sonnet | Bar |
+|---|---|---|---|---|---|
+| Controls with every grade ≤ 1 | 12/12 | 12/12 | 12/12 | 12/12 | 10/12 |
+| Actors removed | 6/6 | 5/6 | 5/6 | 5/6 | 5/6 |
+| 4-row shift | 0/6 | 0/6 | 0/6 | 0/6 | 4/6 |
+| 5-tick advance | 0/6 | 1/6 | 0/6 | 1/6 | 4/6 |
+
+Reading:
+
+* **Haiku grades as well as Sonnet**, so Haiku does the grading. The two agree within one grade on 610 of 630 (sheet, category) cells for `CTRY.FLM` and 577 of 630 for `INTRO.FLM`.
+* **The grades find missing or wrong objects, not misregistration.** Neither model invents errors on a control or misses a removed aircraft, and neither sees a 4-row shift or a 5-tick advance at this scale; section 2.2's metrics remain the check for those.
+* **A category's grade can fall when the error gets worse.** With the aircraft removed, the graders moved `aircraft-parts-missing=3` to `aircraft-absent=3`; taking the highest grade among the matching categories hid that, so detection compares each category.
+* **What the render gets wrong, real frames:** `CTRY.FLM`, aircraft parts missing in 11–12 of 12 and its shape broken in 8–10, the shadow, sea band and scenery in 3–5 each; `INTRO.FLM`, aircraft absent in 7–10, shadow shape wrong in 7, ground actors missing in 6, scenery (the fence) in 3–7.
+
 ## 3. What is not yet evidence
 
 * **Single film.** Only `CTRY.FLM` has been captured; the rows say nothing about other films, cameras, or actors (`[Unknown]`).
