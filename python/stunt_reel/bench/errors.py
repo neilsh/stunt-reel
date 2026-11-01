@@ -337,7 +337,8 @@ image is one moment of a film shown two ways: **CAPTURE** (top left) is the orig
 **RENDER** (top right) is a reimplementation that should match it exactly. Below them: a **DIFFERENCE**
 image (brighter = more different) and a **CLOSE-UP** of the aircraft area, capture left, render right.
 The grey band at the bottom of each panel is the game's button bar, masked out: ignore it. Some RENDER
-panels may match the capture closely; grade what you see, not what you expect.
+panels may match the capture closely; grade what you see, not what you expect. Where the
+DIFFERENCE panel is black the two panels are identical: grade every category 0.
 
 Folder: `{sheet_dir}/`. `ids.txt` lists {count} image ids; each image is `<id>.png` in that folder.
 Read only `ids.txt` and those images, in the listed order. Do not read any other file and do not

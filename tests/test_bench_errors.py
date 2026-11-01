@@ -74,9 +74,9 @@ def _write(tmp_path: Path, text: str) -> Path:
 
 def test_committed_categories_load() -> None:
     taxonomy = load_categories(CATEGORIES)
-    assert len(taxonomy.categories) == 15
+    assert len(taxonomy.categories) == 18
     assert taxonomy.ids[0] == "aircraft-parts-missing"
-    assert taxonomy.ids[-1] == "explosion-missing"
+    assert taxonomy.ids[-3:] == ("sun-missing", "frame-blank", "black-block")
     assert taxonomy.films["intro"] == FilmWindow(1000, None)
     assert taxonomy.films["ctry"] == FilmWindow(0, 990)
     assert taxonomy.min_change == 4
@@ -225,6 +225,18 @@ def test_render_brief_lists_categories(tmp_path: Path) -> None:
     assert f"`<id> {example} | other: none`" in brief
     assert f"{(tmp_path / 'grades.txt').as_posix()}" in brief
     assert "lists 42 image ids" in brief
+
+
+def test_render_brief_grades_identical_panels_zero(tmp_path: Path) -> None:
+    brief = render_brief(load_categories(CATEGORIES), tmp_path, 42)
+    assert "DIFFERENCE panel is black" in brief
+    assert "grade every category 0" in brief
+
+
+def test_aircraft_absent_needs_one_in_the_capture() -> None:
+    taxonomy = load_categories(CATEGORIES)
+    absent = next(c for c in taxonomy.categories if c.id == "aircraft-absent")
+    assert "CAPTURE shows" in absent.definition
 
 
 def test_idx_digest_changes_with_render(tmp_path: Path, bench_fixture: Path) -> None:

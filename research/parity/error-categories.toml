@@ -86,7 +86,7 @@ examples = []
 # Added from INTRO.FLM discovery (frames from tick 1000).
 [[category]]
 id = "aircraft-absent"
-definition = "An aircraft is not drawn at all; at most its shadow or a few stray specks remain"
+definition = "The CAPTURE shows an aircraft and the RENDER does not draw it at all, at most its shadow or a few stray specks; a frame with no aircraft in either panel is 0"
 found_by = ["sonnet", "opus"]
 since = "2026-10-31"
 examples = ["intro-1009", "intro-1108"]
@@ -118,6 +118,29 @@ definition = "An explosion, fireball or smoke effect in the capture is not drawn
 found_by = ["opus"]
 since = "2026-10-31"
 examples = ["intro-1416"]
+
+# Added from the retail VAULT films' `other` notes (research/parity/batch.md section 4), the
+# three that recurred on more than one frame.
+[[category]]
+id = "sun-missing"
+definition = "The sun disc in the capture's sky is not drawn, or the sky around it is a different colour"
+found_by = ["haiku"]
+since = "2026-11-01"
+examples = []
+
+[[category]]
+id = "frame-blank"
+definition = "The RENDER is one flat colour (often light grey) where the capture shows ground, sky and objects"
+found_by = ["haiku"]
+since = "2026-11-01"
+examples = []
+
+[[category]]
+id = "black-block"
+definition = "A solid black rectangle or blob is drawn over or in place of an object (a wall, sign, parachute) the capture shows"
+found_by = ["haiku"]
+since = "2026-11-01"
+examples = []
 
 # Which categories should rise when a fault is planted (keys as in stunt_reel.bench.faults Fault.key).
 # A planted sheet counts as detected when the grade of any of these categories, or an `other` note,
