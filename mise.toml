@@ -83,6 +83,10 @@ run = "uv run python python/scripts/build_at.py"
 description = "Capture PLAYONE.EXE Mode 13h frames for visual parity into captures/<film>/frames/ (default CTRY; mise run capture-ref -- --film corpus/stisldem/VAULT/INTRO.FLM)"
 run = "uv run python python/scripts/capture_playone_reference.py"
 
+[tasks.capture-video]
+description = "Record a film as one AVI with its tick and palette log into captures/<film>/video/ (mise run capture-video -- --film corpus/stisldem/VAULT/CTRY.FLM)"
+run = "uv run python python/scripts/capture_video.py"
+
 [tasks.capture-digest]
 description = "Print a capture's content hash and the references.toml entry that would promote it (mise run capture-digest -- vault-ctry 005)"
 run = "uv run python python/scripts/capture_digest.py"

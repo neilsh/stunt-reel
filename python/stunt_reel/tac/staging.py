@@ -59,16 +59,24 @@ class StagedMount(NamedTuple):
         return self.conf.parent
 
     def write_conf(
-        self, port: int, *, program: str = "playone.exe", cpu: CpuProfile = "capture"
+        self,
+        port: int,
+        *,
+        program: str = "playone.exe",
+        cpu: CpuProfile = "capture",
+        capture_dir: Path | None = None,
     ) -> Path:
         """Write the conf for *port* running *program* on the *cpu* profile; return its path.
+
+        *capture_dir* is where ``dosbox.capture_start()`` writes its recording.
 
         Each port gets its own file beside :attr:`conf`, because dump passes launch side by side
         from one stage and a shared file would hand one emulator another's port.
         """
         path = self.conf.with_name(f"{self.conf.stem}-{port}{self.conf.suffix}")
         path.write_text(
-            render_conf(self.mount, port=port, program=program, cpu=cpu), encoding="utf-8"
+            render_conf(self.mount, port=port, program=program, cpu=cpu, capture_dir=capture_dir),
+            encoding="utf-8",
         )
         return path
 

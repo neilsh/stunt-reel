@@ -12,11 +12,31 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from stunt_reel.parity_artifacts import PaletteChange, PaletteLog, TickLog
+from stunt_reel.avi import AviError, video_only
+from stunt_reel.parity_artifacts import (
+    CAPTURE_HEIGHT,
+    CAPTURE_WIDTH,
+    SCHEMA_VERSION,
+    VIDEO_FILE,
+    VIDEO_KIND,
+    FilmId,
+    Geometry,
+    PaletteChange,
+    PaletteLog,
+    TickLog,
+    VideoCapture,
+    write_video_capture,
+)
 from stunt_reel.tac import luagen, plan
+from stunt_reel.tac.framebuffer import END_HOLD_FRAMES
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping, Sequence
+    from contextlib import AbstractContextManager
+    from pathlib import Path
+
+    from stunt_reel.tac.automation import ScriptRunner
+    from stunt_reel.tac.playone import PlayoneLayout
 
 __all__ = [
     "VIDEO_MAX_FRAMES",
@@ -24,11 +44,16 @@ __all__ = [
     "VideoLog",
     "decode_video_log",
     "film_start_frame",
+    "record_video",
 ]
 
 #: Cap on a recording, in emulated frames: 7.1 minutes at 70.09 Hz, well past the longest
 #: survey film (about 257 s).
 VIDEO_MAX_FRAMES: int = 30000
+#: Seconds a recording may take: the cap's worth of frames plus the encoder's time.
+VIDEO_TIMEOUT_SECONDS: float = 1800.0
+#: Frames the video and the log may differ by (the frame the recording starts on).
+_FRAME_SLACK: int = 1
 _BAND_ENTRIES: int = 256 // luagen.PALETTE_BANDS
 _BAND_BYTES: int = _BAND_ENTRIES * 3
 
@@ -127,3 +152,68 @@ def film_start_frame(log: TickLog) -> int:
         if log.film_tick[index] != log.film_tick[index - 1]:
             return log.frame[index]
     raise VideoCaptureError("the film clock never moved")
+
+
+def record_video(
+    open_runner: Callable[[], AbstractContextManager[ScriptRunner]],
+    out_dir: Path,
+    recording_dir: Path,
+    *,
+    keys: Sequence[str],
+    layout: PlayoneLayout,
+    film: FilmId,
+    provenance: Mapping[str, str],
+    cap: int = VIDEO_MAX_FRAMES,
+) -> VideoCapture:
+    """Run the recording script, then file its AVI and log into *out_dir*.
+
+    The emulator writes ``*.avi`` into *recording_dir* (its ``capture_dir``) and finishes the
+    file when the runner's context closes, so the AVI is read after that. Its audio is stripped
+    into ``out_dir / capture.avi``, the frame count must match the log's rows to within one,
+    and ``meta.json`` is written last so a failed run leaves no capture.
+    """
+    script = luagen.video_script(keys=keys, cap=cap, end_hold=END_HOLD_FRAMES, layout=layout)
+    with open_runner() as runner:
+        output = runner.run_script(script, timeout=VIDEO_TIMEOUT_SECONDS)
+    decoded = decode_video_log(output)
+    recordings = sorted(recording_dir.glob("*.avi"))
+    if len(recordings) != 1:
+        raise VideoCaptureError(
+            f"expected one .avi in {recording_dir}, found "
+            + (f"{len(recordings)}" if recordings else "no .avi")
+        )
+    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        video_frames = video_only(recordings[0], out_dir / VIDEO_FILE)
+    except AviError as exc:
+        raise VideoCaptureError(f"the recording cannot be used: {exc}") from exc
+    rows = len(decoded.log.frame)
+    if abs(video_frames - rows) > _FRAME_SLACK:
+        raise VideoCaptureError(
+            f"the recording holds {video_frames} video frames but the log has {rows} rows"
+        )
+    capture = VideoCapture(
+        schema_version=SCHEMA_VERSION,
+        kind=VIDEO_KIND,
+        film=film,
+        geometry=Geometry(width=CAPTURE_WIDTH, height=CAPTURE_HEIGHT),
+        playone_build=layout.name,
+        cpu_profile="capture",
+        capture_start_frame=decoded.capture_start_frame,
+        film_start_frame=film_start_frame(decoded.log),
+        end=decoded.end,
+        log=decoded.log,
+        palettes=decoded.palettes,
+    )
+    write_video_capture(
+        out_dir,
+        capture,
+        diagnostics={
+            "video_frames": video_frames,
+            "rows": rows,
+            "palette_changes": len(decoded.palettes.changes),
+            "dgroup_segment": f"{layout.ds:04X}",
+            **provenance,
+        },
+    )
+    return capture

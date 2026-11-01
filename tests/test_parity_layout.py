@@ -141,3 +141,10 @@ def test_run_id_and_paths() -> None:
     assert parity_layout.archive_path("vault-ctry", "001") == Path(
         "build/parity/captures/vault-ctry/archives/001"
     )
+
+
+def test_video_paths_sit_beside_frames() -> None:
+    assert parity_layout.video_root("vault-ctry") == Path("build/parity/captures/vault-ctry/video")
+    assert parity_layout.video_path("vault-ctry", "001") == Path(
+        "build/parity/captures/vault-ctry/video/001"
+    )
