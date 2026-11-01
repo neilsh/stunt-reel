@@ -22,15 +22,18 @@ from stunt_reel.bench.errors import (
     compare,
     idx_digest,
     load_categories,
+    make_run,
     parse_grades,
     pick_ticks,
     plan_sheets,
     readout,
     render_brief,
+    score_run,
     sheet_id,
+    write_example,
 )
 from stunt_reel.bench.planes import BenchError, RenderTree, load_capture
-from stunt_reel.parity_artifacts import FrameReport, I6Gate, Report
+from stunt_reel.parity_artifacts import FrameReport, I6Gate, Report, write_report
 
 REPO = Path(__file__).resolve().parents[1]
 CATEGORIES = REPO / "research" / "parity" / "error-categories.toml"
@@ -368,3 +371,111 @@ def test_compare_reports_past_min_change() -> None:
         compare(before, _readout(dict.fromkeys(range(8), 0), digest="d" * 64), 2)
     with pytest.raises(BenchError, match="9"):
         compare(before, _readout(dict.fromkeys(range(1, 10), 0)), 2)
+
+
+@pytest.fixture
+def run_inputs(tmp_path: Path, bench_fixture: Path) -> dict[str, Path]:
+    report = tmp_path / "report.json"
+    frames = [FrameReport(film_tick=t, ssim=0.9, iou=0.0, scored=True) for t in (10, 20)]
+    write_report(report, _report(frames))
+    taxonomy = tmp_path / "categories" / "error-categories.toml"
+    taxonomy.parent.mkdir()
+    shutil.copy(CATEGORIES, taxonomy)
+    shutil.copytree(CATEGORIES.parent / "error-examples", taxonomy.parent / "error-examples")
+    return {
+        "capture": bench_fixture / "capture",
+        "render": bench_fixture / "render",
+        "report": report,
+        "taxonomy": taxonomy,
+        "out": tmp_path / "errors",
+    }
+
+
+def _make(paths: dict[str, Path], recapture: Path | None = None, render: Path | None = None) -> int:
+    return make_run(
+        "ctry",
+        paths["capture"],
+        recapture,
+        render or paths["render"],
+        paths["report"],
+        paths["out"],
+        paths["taxonomy"],
+        seed=1,
+        revision="abc",
+    )
+
+
+def test_make_then_score_roundtrip(run_inputs: dict[str, Path]) -> None:
+    out = run_inputs["out"]
+    assert _make(run_inputs) == 2
+    ids = (out / "ids.txt").read_text(encoding="utf-8").split()
+    assert sorted(p.name for p in out.iterdir()) == sorted(
+        [*(f"{i}.png" for i in ids), "brief.md", "ids.txt", "run.json"]
+    )
+    run = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    assert run["ticks"] == [10, 20]
+    assert run["revision"] == "abc"
+    assert not any(i in (out / "run.json").read_text(encoding="utf-8") for i in ids)
+    taxonomy = load_categories(run_inputs["taxonomy"])
+    (out / "grades.txt").write_text(
+        "\n".join(_all_zero(taxonomy, i, aircraft_absent=2) for i in ids), encoding="utf-8"
+    )
+    result, changes, calibration = score_run(
+        out, run_inputs["render"], run_inputs["taxonomy"], None
+    )
+    assert result.ticks == (10, 20)
+    assert changes is None
+    assert calibration is None
+    assert (out / "readout.json").is_file()
+
+
+def test_score_refuses_changed_render(tmp_path: Path, run_inputs: dict[str, Path]) -> None:
+    _make(run_inputs)
+    copy = tmp_path / "render-copy"
+    shutil.copytree(run_inputs["render"], copy)
+    plane = copy / "tick_00010.idx"
+    data = bytearray(plane.read_bytes())
+    data[0] ^= 1
+    plane.write_bytes(bytes(data))
+    (run_inputs["out"] / "grades.txt").write_text("", encoding="utf-8")
+    before = idx_digest(run_inputs["render"], [10, 20])
+    after = idx_digest(copy, [10, 20])
+    with pytest.raises(BenchError, match=f"{before}.*{after}"):
+        score_run(run_inputs["out"], copy, run_inputs["taxonomy"], None)
+
+
+def test_make_run_empty_window(run_inputs: dict[str, Path]) -> None:
+    path = run_inputs["taxonomy"]
+    text = path.read_text(encoding="utf-8").replace("start = 0\nend = 990", "start = 5000")
+    path.write_text(text, encoding="utf-8", newline="\n")
+    with pytest.raises(BenchError, match=r"ctry.*5000"):
+        _make(run_inputs)
+
+
+def test_calibrate_run_picks_ticks_both_captures_hold(
+    tmp_path: Path, run_inputs: dict[str, Path]
+) -> None:
+    recapture = tmp_path / "recapture"
+    shutil.copytree(run_inputs["capture"], recapture)
+    meta = json.loads((recapture / "meta.json").read_text(encoding="utf-8"))
+    meta["frames"] = [f for f in meta["frames"] if f["film_tick"] == 10]
+    (recapture / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    _make(run_inputs, recapture=recapture)
+    run = json.loads((run_inputs["out"] / "run.json").read_text(encoding="utf-8"))
+    assert run["ticks"] == [10]
+    assert run["calibrate"] is True
+
+
+def test_write_example_keeps_existing_file(run_inputs: dict[str, Path]) -> None:
+    args = (run_inputs["capture"], run_inputs["render"], run_inputs["taxonomy"])
+    path = write_example("ctry", 10, "aircraft-too-small", *args)
+    assert path.name == "ctry-0010.png"
+    assert path.parent == run_inputs["taxonomy"].parent / "error-examples"
+    taxonomy = load_categories(run_inputs["taxonomy"])
+    assert "ctry-0010" in taxonomy.categories[2].examples
+    path.write_bytes(path.read_bytes() + b"kept")
+    write_example("ctry", 10, "aircraft-misplaced", *args)
+    assert path.read_bytes().endswith(b"kept")
+    with pytest.raises(BenchError, match="zzz"):
+        write_example("ctry", 20, "zzz", *args)
+    assert not (path.parent / "ctry-0020.png").exists()

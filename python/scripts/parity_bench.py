@@ -5,33 +5,39 @@ Subcommands::
     mise run parity-bench -- run --film ctry [--render DIR] [--report FILE] [--recapture ID]
         [--seed N] [--floor-render DIR] [--out DIR]
     mise run parity-bench -- plant --render DIR --out DIR --fault shift_x:4@500-599 ...
-    mise run parity-bench -- judge-make --film ctry --seed N [--out DIR]
-    mise run parity-bench -- judge-score --film ctry --seed N --answers FILE [--out DIR]
+    mise run parity-bench -- errors-make --film ctry [--calibrate] [--recapture ID] [--seed N]
+    mise run parity-bench -- errors-score --film ctry [--against READOUT]
+    mise run parity-bench -- errors-example --film ctry --tick T --category ID
 
 ``run`` writes ``bench.json`` into ``--out`` and prints one row per metric: whether it passes,
 its sigma, and the drop each fault causes in sigma. ``plant`` copies a render tree and writes the
 faults over the ticks named, so a render with known errors can be scored by the real scorer.
-``judge-make`` writes blind capture|A|B composites and ``ids.txt`` for a Haiku judge;
-``judge-score`` scores its answer file and writes ``judge.json``.
+``errors-make`` writes the error readout's sheets, ``ids.txt``, ``brief.md`` and ``run.json``
+into ``build/parity/bench/<film>/errors``; a Haiku subagent reads the brief and writes
+``grades.txt``; ``errors-score`` writes ``readout.json`` and prints it, the changes since
+``--against`` and, for a calibrating run, the calibration. ``errors-example`` commits one tick's
+sheet as an example of a category.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 from stunt_reel import parity_layout, references
+from stunt_reel.bench.errors import make_run, score_run, write_example
 from stunt_reel.bench.faults import ALL_FAULTS, Fault
-from stunt_reel.bench.judge import answer_key, make_composites, score_answers
 from stunt_reel.bench.planes import BenchError
 from stunt_reel.bench.run import plant_tree, run_bench
 from stunt_reel.dataroot import REPO_ROOT, ensure_links_or_report
 
 DEFAULT_RECAPTURE = "005"
 DEFAULT_SEED = 1
+CATEGORIES = REPO_ROOT / "research" / "parity" / "error-categories.toml"
 
 
 def parse_plant(text: str) -> tuple[Fault, range]:
@@ -89,20 +95,42 @@ def plant(args: argparse.Namespace) -> int:
     return 0
 
 
-def _judge_paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path]:
+def _errors_out(args: argparse.Namespace) -> Path:
+    return Path(args.out or REPO_ROOT / "build" / "parity" / "bench" / args.film / "errors")
+
+
+def _render(args: argparse.Namespace) -> Path:
+    return Path(args.render or REPO_ROOT / parity_layout.render_dir(args.film))
+
+
+def _revision() -> str:
+    try:
+        done = subprocess.run(
+            ["git", "rev-parse", "HEAD"],  # noqa: S607 - git from PATH, as every task
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except OSError, subprocess.CalledProcessError:
+        return "unknown"
+    return done.stdout.strip()
+
+
+def errors_make(args: argparse.Namespace) -> int:
     film = args.film
     root = Path(args.data_root).resolve()
     reference = references.reference_dir(root, film)
-    render = args.render or REPO_ROOT / parity_layout.render_dir(film)
+    recapture = None
+    if args.calibrate:
+        pointer = references.read_reference(root, film)
+        recapture = root / parity_layout.frames_path(pointer.slug, args.recapture)
     report = args.report or REPO_ROOT / parity_layout.report_dir(film) / "report.json"
-    out = args.out or REPO_ROOT / "build" / "parity" / "bench" / film / "judge"
-    return reference, render, report, out
-
-
-def judge_make(args: argparse.Namespace) -> int:
-    reference, render, report, out = _judge_paths(args)
-    count = make_composites(reference, render, report, out, args.seed, args.frames_per_fault)
-    print(f"[bench] wrote {count} composites and ids.txt into {out}", file=sys.stderr)
+    out = _errors_out(args)
+    count = make_run(
+        film, reference, recapture, _render(args), report, out, CATEGORIES, args.seed, _revision()
+    )
+    print(f"[bench] wrote {count} sheets and brief.md into {out}", file=sys.stderr)
     return 0
 
 
@@ -110,21 +138,44 @@ def _fmt(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.2f}"
 
 
-def judge_score(args: argparse.Namespace) -> int:
-    reference, render, report, out = _judge_paths(args)
-    key = answer_key(reference, render, report, args.seed, args.frames_per_fault)
-    document = score_answers(args.answers, key)
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "judge.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
-    for name, entry in document.items():
-        if isinstance(entry, dict):
-            verdict = "PASS" if entry["passes"] else "FAIL"
+def errors_score(args: argparse.Namespace) -> int:
+    out = _errors_out(args)
+    result, changes, calibration = score_run(out, _render(args), CATEGORIES, args.against)
+    frames = len(result.ticks) - result.missing
+    for category in result.categories:
+        ungraded = f"  ungraded {category.ungraded}" if category.ungraded else ""
+        print(
+            f"{category.category:<28} 2+ on {len(category.ticks_2plus)}/{frames}  "
+            f"mean {_fmt(category.mean)}{ungraded}"
+        )
+    for tick, note in sorted(result.other.items()):
+        print(f"other @{tick}: {note}")
+    if result.missing:
+        print(f"missing {result.missing} of {len(result.ticks)} sheets")
+    if result.unknown:
+        print(f"unknown categories: {', '.join(result.unknown)}")
+    if changes is not None:
+        print(f"changes since {args.against}: {len(changes) or 'none'}")
+        for change in changes:
             print(
-                f"{name:<16} {verdict}  accuracy {_fmt(entry['accuracy'])}  "
-                f"answered {entry['answered']}  a_share {_fmt(entry['a_share'])}"
+                f"  {change.category:<28} {change.before} -> {change.after}  "
+                f"added {list(change.added)}  removed {list(change.removed)}"
             )
-    print(f"unanswered {document['unanswered']}  control_a_share {document['control_a_share']}")
-    print(f"[bench] wrote {out / 'judge.json'}", file=sys.stderr)
+    if calibration is not None:
+        verdict = "PASS" if calibration.passes else "FAIL"
+        clean = f"{calibration.controls_clean}/{calibration.controls}"
+        print(f"calibration {verdict}: controls clean {clean}")
+        for key, (detected, sheets) in calibration.faults.items():
+            print(f"  {key:<16} detected {detected}/{sheets}")
+    print(f"[bench] wrote {out / 'readout.json'}", file=sys.stderr)
+    return 0
+
+
+def errors_example(args: argparse.Namespace) -> int:
+    root = Path(args.data_root).resolve()
+    reference = references.reference_dir(root, args.film)
+    path = write_example(args.film, args.tick, args.category, reference, _render(args), CATEGORIES)
+    print(f"[bench] {path.name} is an example of {args.category}", file=sys.stderr)
     return 0
 
 
@@ -153,30 +204,36 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         metavar="KEY@A-B",
     )
     plant_p.set_defaults(handler=plant)
-    for name, handler in (("judge-make", judge_make), ("judge-score", judge_score)):
-        judge_p = sub.add_parser(
-            name,
-            help="blind composites for a Haiku judge"
-            if name == "judge-make"
-            else "score a judge's answers",
-        )
-        judge_p.add_argument("--film", required=True)
-        judge_p.add_argument("--render", type=Path, default=None)
-        judge_p.add_argument("--report", type=Path, default=None)
-        judge_p.add_argument("--seed", type=int, default=DEFAULT_SEED)
-        judge_p.add_argument("--frames-per-fault", type=int, default=10)
-        judge_p.add_argument("--out", type=Path, default=None)
-        judge_p.add_argument("--data-root", type=Path, default=REPO_ROOT)
-        if name == "judge-score":
-            judge_p.add_argument("--answers", type=Path, required=True)
-        judge_p.set_defaults(handler=handler)
+    make_p = sub.add_parser("errors-make", help="sheets and a brief for the error readout")
+    make_p.add_argument("--film", required=True)
+    make_p.add_argument("--calibrate", action="store_true", help="add controls and planted faults")
+    make_p.add_argument("--recapture", default=DEFAULT_RECAPTURE, help="recapture id for controls")
+    make_p.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    make_p.add_argument("--render", type=Path, default=None)
+    make_p.add_argument("--report", type=Path, default=None)
+    make_p.add_argument("--out", type=Path, default=None)
+    make_p.add_argument("--data-root", type=Path, default=REPO_ROOT)
+    make_p.set_defaults(handler=errors_make)
+    score_p = sub.add_parser("errors-score", help="score grades.txt into readout.json")
+    score_p.add_argument("--film", required=True)
+    score_p.add_argument("--against", type=Path, default=None, help="an earlier readout.json")
+    score_p.add_argument("--render", type=Path, default=None)
+    score_p.add_argument("--out", type=Path, default=None)
+    score_p.set_defaults(handler=errors_score)
+    example_p = sub.add_parser("errors-example", help="commit a tick's sheet as a category example")
+    example_p.add_argument("--film", required=True)
+    example_p.add_argument("--tick", type=int, required=True)
+    example_p.add_argument("--category", required=True)
+    example_p.add_argument("--render", type=Path, default=None)
+    example_p.add_argument("--data-root", type=Path, default=REPO_ROOT)
+    example_p.set_defaults(handler=errors_example)
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if (
-        args.command in ("run", "judge-make", "judge-score")
+        args.command in ("run", "errors-make", "errors-example")
         and Path(args.data_root).resolve() == REPO_ROOT
         and not ensure_links_or_report("parity_bench")
     ):

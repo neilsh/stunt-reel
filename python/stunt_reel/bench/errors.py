@@ -11,6 +11,7 @@ faults. The sheets carry no key: it is recomputed from the seed when scoring.
 from __future__ import annotations
 
 import hashlib
+import json
 import random
 import re
 import tomllib
@@ -20,10 +21,10 @@ from typing import TYPE_CHECKING, Any, Literal
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-from stunt_reel.bench.faults import ACTOR_LAYER, ALL_FAULTS
-from stunt_reel.bench.planes import BenchError
+from stunt_reel.bench.faults import ACTOR_LAYER, ALL_FAULTS, plant
+from stunt_reel.bench.planes import BenchError, RenderTree, load_capture
 from stunt_reel.bench.ssim import render_luma, stretch
-from stunt_reel.parity_artifacts import tick_stem
+from stunt_reel.parity_artifacts import read_report, tick_stem
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Sequence
@@ -31,7 +32,6 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
-    from stunt_reel.bench.planes import RenderTree
     from stunt_reel.parity_artifacts import Report
 
 __all__ = [
@@ -50,12 +50,15 @@ __all__ = [
     "compare",
     "idx_digest",
     "load_categories",
+    "make_run",
     "parse_grades",
     "pick_ticks",
     "plan_sheets",
     "readout",
     "render_brief",
+    "score_run",
     "sheet_id",
+    "write_example",
 ]
 
 #: Frames a readout grades per film.
@@ -617,3 +620,141 @@ def calibrate(
         ACTORS_BAR, actor_sheets
     )
     return Calibration(clean, len(controls), faults, passes)
+
+
+RUN_FILE = "run.json"
+GRADES_FILE = "grades.txt"
+READOUT_FILE = "readout.json"
+
+
+def _write_text(path: Path, text: str) -> None:
+    path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def _window(taxonomy: Taxonomy, film: str, path: Path) -> FilmWindow:
+    window = taxonomy.films.get(film)
+    if window is None:
+        raise BenchError(f"{path} has no [films.{film}] window")
+    return window
+
+
+def make_run(
+    film: str,
+    capture: Path,
+    recapture: Path | None,
+    render: Path,
+    report: Path,
+    out: Path,
+    taxonomy_path: Path,
+    seed: int,
+    revision: str,
+) -> int:
+    """Write the sheets, ``ids.txt``, ``brief.md`` and ``run.json``; returns the sheets written.
+
+    A *recapture* makes it a calibrating run: controls show the recapture in the render's place,
+    and each fault in ``[faults]`` is planted on up to :data:`FAULT_FRAMES` frames.
+    """
+    taxonomy = load_categories(taxonomy_path)
+    window = _window(taxonomy, film, taxonomy_path)
+    captured = load_capture(capture)
+    recaptured = load_capture(recapture) if recapture is not None else None
+    tree = RenderTree(render)
+    held = set(captured) & set(tree.ticks())
+    if recaptured is not None:
+        held &= set(recaptured)
+    ticks = pick_ticks(read_report(report), held, window)
+    if not ticks:
+        end = "the end" if window.end is None else window.end
+        raise BenchError(
+            f"no scored, unfaded tick of {film} from {window.start} to {end} is both captured "
+            "and rendered"
+        )
+    sheets = plan_sheets(ticks, tree, taxonomy, seed, calibrate=recaptured is not None)
+    out.mkdir(parents=True, exist_ok=True)
+    for stale in [*out.glob("*.png"), out / GRADES_FILE, out / READOUT_FILE]:
+        stale.unlink(missing_ok=True)
+    faults = {fault.key: fault for fault in ALL_FAULTS}
+    written: list[str] = []
+    for sheet in sheets:
+        planes = tree.load(sheet.tick)
+        frame = captured[sheet.tick]
+        if sheet.kind == "control" and recaptured is not None:
+            other = recaptured[sheet.tick]
+            shown = other.palette[other.idx]
+        elif sheet.kind == "planted" and sheet.fault is not None:
+            planted = plant(faults[sheet.fault], sheet.tick, tree, seed)
+            if planted is None:
+                continue
+            shown = planted.rgb
+        else:
+            shown = planes.rgb
+        build_sheet(frame.palette[frame.idx], shown, planes.layer).save(out / f"{sheet.id}.png")
+        written.append(sheet.id)
+    random.Random(seed).shuffle(written)  # noqa: S311 - not security
+    _write_text(out / "ids.txt", "".join(f"{i}\n" for i in written))
+    _write_text(out / "brief.md", render_brief(taxonomy, out, len(written)))
+    run = {
+        "film": film,
+        "ticks": ticks,
+        "seed": seed,
+        "calibrate": recaptured is not None,
+        "revision": revision,
+        "categories_digest": taxonomy.digest,
+        "render_digest": idx_digest(render, ticks),
+    }
+    _write_text(out / RUN_FILE, json.dumps(run, indent=2) + "\n")
+    return len(written)
+
+
+def score_run(
+    out: Path, render: Path, taxonomy_path: Path, against: Path | None
+) -> tuple[Readout, list[Change] | None, Calibration | None]:
+    """Score ``grades.txt`` in *out* and write ``readout.json``; refuses a changed render or file."""
+    try:
+        run = json.loads((out / RUN_FILE).read_text(encoding="utf-8"))
+        grades_text = (out / GRADES_FILE).read_text(encoding="utf-8")
+    except FileNotFoundError as err:
+        raise BenchError(f"{err.filename} is missing; run errors-make and grade first") from err
+    taxonomy = load_categories(taxonomy_path)
+    if run["categories_digest"] != taxonomy.digest:
+        raise BenchError(
+            f"{taxonomy_path} changed since errors-make (categories {run['categories_digest']} "
+            f"then, {taxonomy.digest} now); run errors-make again"
+        )
+    ticks = [int(t) for t in run["ticks"]]
+    render_digest = idx_digest(render, ticks)
+    if run["render_digest"] != render_digest:
+        raise BenchError(
+            f"{render} changed since errors-make (render {run['render_digest']} then, "
+            f"{render_digest} now); run errors-make again"
+        )
+    sheets = plan_sheets(ticks, RenderTree(render), taxonomy, int(run["seed"]), run["calibrate"])
+    grades = parse_grades(grades_text, taxonomy)
+    result = readout(grades, sheets, str(run["film"]), taxonomy.digest, render_digest)
+    _write_text(out / READOUT_FILE, json.dumps(result.to_json(), indent=2) + "\n")
+    changes = None
+    if against is not None:
+        earlier = Readout.from_json(json.loads(against.read_text(encoding="utf-8")))
+        changes = compare(earlier, result, taxonomy.min_change)
+    calibration = calibrate(grades, sheets, taxonomy) if run["calibrate"] else None
+    return result, changes, calibration
+
+
+def write_example(
+    film: str, tick: int, category: str, capture: Path, render: Path, taxonomy_path: Path
+) -> Path:
+    """Write *tick*'s sheet into ``error-examples/`` unless it is there, and name it in *category*."""
+    taxonomy = load_categories(taxonomy_path)
+    if category not in taxonomy.ids:
+        raise BenchError(f"{taxonomy_path}: no category {category!r}")
+    name = f"{film}-{tick:04d}"
+    path = taxonomy_path.parent / "error-examples" / f"{name}.png"
+    if not path.is_file():
+        frame = load_capture(capture).get(tick)
+        if frame is None:
+            raise BenchError(f"{capture} holds no frame at tick {tick}")
+        planes = RenderTree(render).load(tick)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        build_sheet(frame.palette[frame.idx], planes.rgb, planes.layer).save(path)
+    add_example(taxonomy_path, category, name)
+    return path
