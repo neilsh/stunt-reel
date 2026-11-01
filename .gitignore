@@ -36,6 +36,7 @@ corpus/**
 
 # Local capture output (dosbox-automation default)
 capture/
+!tests/fixtures/parity/bench/capture/
 
 # OS junk
 Thumbs.db
