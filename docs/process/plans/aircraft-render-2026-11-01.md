@@ -1,7 +1,14 @@
 # Aircraft render errors: diagnose in parallel, fix serially
 
-Status: spec, approved section by section 2026-11-01, then revised on review: the lead applies
-reviewed patches, a score gate runs before the readout, and each track has its own readout bar. Follows the error readout
+Status: closed 2026-11-01. Both tracks proved to share one cause (`run_vm` skipped `SORTON` and
+stopped at the first `RETURN`); round 1 (the walk alone) and round 2 (plus the centre stack and
+`SHADE` colour) both failed the score gate on three 2–7 px props-only `INTRO.FLM` frames. Round 2
+was adopted as `cddd583` on the user's call that a drawn but miscoloured body beats a missing one,
+and on the readout (`INTRO` aircraft absent 9 -> 0 of 12, `CTRY` shape broken 10 -> 3). Findings:
+`research/parity/framing-and-actors.md` § 1 and `research/playone-exe/sod-vm.md` § 8.5; open: the
+`GVPOLY16` colour path (the fuselage is drawn blue, not white) and the `SHADE` light vector.
+
+Follows the error readout
 ([`error-readout-2026-11-01.md`](error-readout-2026-11-01.md); results in
 `research/parity/log.md` 2026-11-01 and `research/parity/batch.md` § 4), which named the aircraft as
 the render's most common error.
