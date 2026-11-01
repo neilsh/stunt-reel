@@ -50,6 +50,7 @@ __all__ = [
     "ensure_links",
     "ensure_links_or_report",
     "ensure_venv_link",
+    "env_marker",
     "env_root",
     "env_target",
     "is_link",
@@ -70,8 +71,12 @@ CACHE_DIRNAME = ".cache"
 #: The directory inside that cache holding one Python environment per checkout, the
 #: marker file naming the checkout an environment serves, and the link that borrows
 #: it.  The environment stays per checkout because uv installs this checkout's
-#: project into it.
+#: project into it.  The marker sits beside the environment, as
+#: ``<environment>.checkout``, because uv empties the environment directory whenever
+#: it replaces the interpreter.
 ENV_DIRNAME = "venvs"
+#: Suffix of the marker beside an environment (``<environment>.checkout``), and the
+#: name of the legacy marker that older environments still carry inside them.
 ENV_MARKER = ".checkout"
 VENV_DIRNAME = ".venv"
 
@@ -212,6 +217,11 @@ def env_target(checkout: Path) -> Path:
     return env_root() / f"{checkout.name}-{digest}"
 
 
+def env_marker(target: Path) -> Path:
+    """The file beside environment *target* naming the checkout it serves."""
+    return target.with_name(target.name + ENV_MARKER)
+
+
 def ensure_venv_link() -> str | None:
     """Point this checkout's ``.venv`` at its environment inside the shared cache.
 
@@ -231,9 +241,9 @@ def ensure_venv_link() -> str | None:
         return None
     target = env_target(REPO_ROOT)
     target.mkdir(parents=True, exist_ok=True)
-    marker = target / ENV_MARKER
+    marker = env_marker(target)
     checkout = str(REPO_ROOT)
-    if not marker.is_file() or marker.read_text(encoding="utf-8").strip() != checkout:
+    if _read_marker(marker) != checkout:
         marker.write_text(checkout + "\n", encoding="utf-8")
     link = REPO_ROOT / VENV_DIRNAME
     discarded = False
@@ -257,14 +267,49 @@ def ensure_venv_link() -> str | None:
 def discard_env(checkout: Path) -> bool:
     """Remove *checkout*'s environment from the shared cache; True when it went."""
     target = env_target(checkout)
-    if is_link(target) or not target.exists():
+    if is_link(target):
         return False
+    if not target.exists():
+        env_marker(target).unlink(missing_ok=True)
+        return False
+    return _remove_env(target)
+
+
+def _remove_env(target: Path) -> bool:
+    """Delete environment *target* and its marker; True when the environment went."""
     shutil.rmtree(target, ignore_errors=True)
-    return not target.exists()
+    if target.exists():
+        return False
+    env_marker(target).unlink(missing_ok=True)
+    return True
+
+
+def _read_marker(marker: Path) -> str | None:
+    """The checkout *marker* names, or ``None`` when it is missing, unreadable or empty."""
+    try:
+        checkout = marker.read_text(encoding="utf-8").strip()
+    except OSError, UnicodeError:
+        return None
+    return checkout or None
+
+
+def _env_owner(target: Path) -> Path | None:
+    """The checkout environment *target* names, or ``None`` when no marker says.
+
+    An environment made before the marker moved beside it still carries one inside.
+    """
+    for marker in (env_marker(target), target / ENV_MARKER):
+        checkout = _read_marker(marker)
+        if checkout is not None:
+            return Path(checkout)
+    return None
 
 
 def orphan_envs() -> list[Path]:
-    """Environments whose checkout is gone: reaped, or removed by another tool."""
+    """Environments whose checkout is gone: reaped, or removed by another tool.
+
+    An environment with no marker is kept: its owner is unknown, not proven gone.
+    """
     root = env_root()
     if not root.is_dir():
         return []
@@ -272,23 +317,24 @@ def orphan_envs() -> list[Path]:
     for child in sorted(root.iterdir()):
         if is_link(child) or not child.is_dir():
             continue
-        try:
-            checkout = Path((child / ENV_MARKER).read_text(encoding="utf-8").strip())
-        except OSError:
-            orphans.append(child)
-            continue
-        if not checkout.is_dir():
+        checkout = _env_owner(child)
+        if checkout is not None and not checkout.is_dir():
             orphans.append(child)
     return orphans
 
 
 def sweep_orphan_envs() -> list[Path]:
-    """Remove every orphaned environment; return the ones that went."""
-    removed: list[Path] = []
-    for target in orphan_envs():
-        shutil.rmtree(target, ignore_errors=True)
-        if not target.exists():
-            removed.append(target)
+    """Remove every orphaned environment, and any marker left without one.
+
+    Returns the environments that went.  A marker whose environment uv is replacing at
+    that moment can go too; the environment is then kept as unknown-owner until its
+    checkout's next init writes the marker again.
+    """
+    removed = [target for target in orphan_envs() if _remove_env(target)]
+    for marker in env_root().glob(f"*{ENV_MARKER}"):
+        environment = marker.with_name(marker.name.removesuffix(ENV_MARKER))
+        if marker.is_file() and not environment.exists():
+            marker.unlink(missing_ok=True)
     return removed
 
 

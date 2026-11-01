@@ -174,7 +174,7 @@ def test_reap_one_discards_the_worktrees_cached_environment(
     monkeypatch.setattr(dataroot, "REPO_ROOT", repo)
     target = dataroot.env_target(worktree)
     target.mkdir(parents=True)
-    (target / dataroot.ENV_MARKER).write_text(str(worktree), encoding="utf-8")
+    dataroot.env_marker(target).write_text(str(worktree), encoding="utf-8")
     dataroot.create_link(worktree / ".venv", target)
     candidate = worktree_init._Candidate(
         worktree=worktree_init._Worktree(path=worktree, head="", branch="wt-test"),
@@ -188,6 +188,7 @@ def test_reap_one_discards_the_worktrees_cached_environment(
         worktree_init._reap_one(repo, candidate, stash_dirty=False, discard_untracked=False) is None
     )
     assert not target.exists()
+    assert not dataroot.env_marker(target).exists()
 
 
 def test_candidates_keep_unmerged_and_outside_pool(tmp_path: Path) -> None:
