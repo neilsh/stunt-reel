@@ -75,6 +75,8 @@ CACHE_DIRNAME = ".cache"
 #: ``<environment>.checkout``, because uv empties the environment directory whenever
 #: it replaces the interpreter.
 ENV_DIRNAME = "venvs"
+#: Suffix of the marker beside an environment (``<environment>.checkout``), and the
+#: name of the legacy marker that older environments still carry inside them.
 ENV_MARKER = ".checkout"
 VENV_DIRNAME = ".venv"
 
@@ -265,7 +267,10 @@ def ensure_venv_link() -> str | None:
 def discard_env(checkout: Path) -> bool:
     """Remove *checkout*'s environment from the shared cache; True when it went."""
     target = env_target(checkout)
-    if is_link(target) or not target.exists():
+    if is_link(target):
+        return False
+    if not target.exists():
+        env_marker(target).unlink(missing_ok=True)
         return False
     return _remove_env(target)
 
@@ -283,7 +288,7 @@ def _read_marker(marker: Path) -> str | None:
     """The checkout *marker* names, or ``None`` when it is missing, unreadable or empty."""
     try:
         checkout = marker.read_text(encoding="utf-8").strip()
-    except (OSError, UnicodeError):
+    except OSError, UnicodeError:
         return None
     return checkout or None
 
@@ -319,8 +324,18 @@ def orphan_envs() -> list[Path]:
 
 
 def sweep_orphan_envs() -> list[Path]:
-    """Remove every orphaned environment; return the ones that went."""
-    return [target for target in orphan_envs() if _remove_env(target)]
+    """Remove every orphaned environment, and any marker left without one.
+
+    Returns the environments that went.  A marker whose environment uv is replacing at
+    that moment can go too; the environment is then kept as unknown-owner until its
+    checkout's next init writes the marker again.
+    """
+    removed = [target for target in orphan_envs() if _remove_env(target)]
+    for marker in env_root().glob(f"*{ENV_MARKER}"):
+        environment = marker.with_name(marker.name.removesuffix(ENV_MARKER))
+        if marker.is_file() and not environment.exists():
+            marker.unlink(missing_ok=True)
+    return removed
 
 
 def is_link(path: Path) -> bool:

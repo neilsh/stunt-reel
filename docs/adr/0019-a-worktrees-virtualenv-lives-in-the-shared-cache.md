@@ -31,9 +31,8 @@ first means that download happens once per machine, into the cache that keeps it
   checkout it serves, and replaces ``.venv`` with a junction at it.  The marker sits
   beside the environment, not in it: uv empties the environment directory when it
   replaces the interpreter (a Python pin change), and a marker inside went with it.  A
-  ``.venv`` that is a real
-  directory is the copy uv made before the link existed; its absolute paths cannot move,
-  so it is discarded, never adopted.
+  ``.venv`` that is a real directory is the copy uv made before the link existed; its
+  absolute paths cannot move, so it is discarded, never adopted.
 - **The seed.** ``uv sync`` refuses a project environment it cannot validate and cannot
   create one through a link, and a junction cannot point at a directory that does not
   exist.  ``_uv_venv`` therefore runs ``uv venv --allow-existing <target>`` once, before
@@ -46,7 +45,7 @@ first means that download happens once per machine, into the cache that keeps it
   pool-leftover and orphan sweeps do the same for checkouts that are gone, and
   ``mise run clean`` reports it without removing it.  The orphan sweep removes only an
   environment whose marker names a checkout that no longer exists; one with no marker
-  has an unknown owner and is kept.
+  has an unknown owner and is kept, and a marker whose environment is gone is deleted.
 - **Tests.** [test_dataroot.py](../../tests/test_dataroot.py) covers the link, the
   discarded copy, the primary checkout, the per-checkout target and the orphan sweep;
   [test_worktree_reap.py](../../tests/test_worktree_reap.py) covers the reap deletion.

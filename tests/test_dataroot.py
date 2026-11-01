@@ -325,13 +325,12 @@ def test_an_environment_of_unknown_owner_is_kept(
 ) -> None:
     # No marker proves nothing about the checkout; only a named checkout that is gone
     # makes an environment an orphan.
-    primary = _checkout(monkeypatch, _primary(tmp_path))
+    _checkout(monkeypatch, _primary(tmp_path))
     unknown = dataroot.env_root() / "unknown-00000000"
     unknown.mkdir(parents=True)
     assert dataroot.orphan_envs() == []
     assert dataroot.sweep_orphan_envs() == []
     assert unknown.is_dir()
-    assert primary.is_dir()
 
 
 @pytest.mark.parametrize("content", [b"\xff\xfe\x80", b"  \n"], ids=["undecodable", "empty"])
@@ -366,12 +365,31 @@ def test_a_marker_inside_the_environment_still_names_its_checkout(
 ) -> None:
     # Environments made before the marker moved beside them keep it inside until their
     # checkout's next init.
-    primary = _checkout(monkeypatch, _primary(tmp_path))
+    _checkout(monkeypatch, _primary(tmp_path))
     legacy = dataroot.env_root() / "gone-00000000"
     legacy.mkdir(parents=True)
     (legacy / dataroot.ENV_MARKER).write_text(str(tmp_path / "gone"), encoding="utf-8")
     assert dataroot.orphan_envs() == [legacy]
-    assert primary.is_dir()
+    assert dataroot.sweep_orphan_envs() == [legacy]
+    assert not legacy.exists()
+
+
+def test_a_marker_without_its_environment_is_swept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An environment deleted by hand leaves its marker beside it; the sweep removes it,
+    # and discard_env does too for a checkout whose environment is already gone.
+    _checkout(monkeypatch, _primary(tmp_path))
+    stray = dataroot.env_marker(dataroot.env_root() / "gone-00000000")
+    stray.parent.mkdir(parents=True)
+    stray.write_text(str(tmp_path / "gone"), encoding="utf-8")
+    assert dataroot.sweep_orphan_envs() == []
+    assert not stray.exists()
+    gone = tmp_path / "other"
+    marker = dataroot.env_marker(dataroot.env_target(gone))
+    marker.write_text(str(gone), encoding="utf-8")
+    assert dataroot.discard_env(gone) is False
+    assert not marker.exists()
 
 
 def test_cache_link_adopts_a_cache_made_before_the_link(
