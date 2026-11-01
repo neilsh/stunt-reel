@@ -1,6 +1,7 @@
 # Aircraft render errors: diagnose in parallel, fix serially
 
-Status: spec, approved section by section 2026-11-01. Follows the error readout
+Status: spec, approved section by section 2026-11-01, then revised on review: the lead applies
+reviewed patches, a score gate runs before the readout, and each track has its own readout bar. Follows the error readout
 ([`error-readout-2026-11-01.md`](error-readout-2026-11-01.md); results in
 `research/parity/log.md` 2026-11-01 and `research/parity/batch.md` § 4), which named the aircraft as
 the render's most common error.
@@ -38,32 +39,48 @@ sun, blank frames (`batch.md` § 4), and the hero's 10 px placement residual
 
 - **Worktree:** `fix/aircraft-render` from `origin/main` at `514053c`, at
   `<repo>.wt/aircraft-render`; `mise run init` once, one release build.
-- **Baseline:** `mise run parity` on `ctry` and `intro`, then the error readout on each (the
-  `improving-render-parity` skill's "Error readout": `errors-make`, two Haiku graders,
-  `errors-disputes`, a Sonnet tie-break if any sheet is disputed, `errors-score`). Each
-  `readout.json` is copied to `build/scratch/<film>-readout-baseline.json`; every gate compares
-  against these and the baseline scores.
-- **Lead** (the orchestrating session): the only writer in the worktree between rounds. Runs every
-  build, render, score and readout; reviews diagnoses; dispatches subagents; writes `log.md`.
-- **Diagnosticians:** two Sonnet subagents at once, one per track; edit no source in the worktree.
-- **Implementer:** one Sonnet subagent at a time, in the worktree; test first, then the fix, then
-  `mise run check-rust`; does not commit. The lead reviews the diff and commits or reverts.
+- **Baseline:** `mise run parity` on `ctry` and `intro`, each film's render and `report.json` kept
+  under `build/scratch/baseline/<film>/`, its actor overlap (`mise run parity-probe -- iou`) per film, and
+  the error readout on both films (the `improving-render-parity` skill's "Error readout":
+  `errors-make` per film, two Haiku graders, `errors-disputes`, a Sonnet tie-break if any sheet is
+  disputed, `errors-score`). Each grader takes both films' briefs in one prompt, as the `VAULT`
+  readout did with one grader per two films. Each `readout.json` is copied to
+  `build/scratch/<film>-readout-baseline.json`; every gate compares against these.
+- **Lead** (the orchestrating session): the only writer in the worktree. Creates and reaps the
+  scratch worktrees, runs every build, render, score and readout, reviews each diagnosis, applies
+  the fix, dispatches subagents, writes `log.md`.
+- **Diagnosticians:** two Sonnet subagents at once, one per track, each in its own scratch worktree
+  (§ 2). Sonnet, not Haiku first: the work is open-ended diagnosis, not a survey.
+- **Implementer:** the lead applies a reviewed `fix.patch` itself, test first, since the patch is
+  already written and a subagent would start cold only to apply it. One Sonnet implementer
+  subagent is dispatched only when the change outgrows the patch (more than about 100 lines, or a
+  second crate); it does not commit, and the lead reviews its diff.
 - **Graders:** Haiku and Sonnet subagents, dispatched exactly as the skill's "Error readout" says.
+- **Subagent budget:** round 1 is 2 diagnosticians, 3 baseline graders and 3 graders per fix that
+  passes the score gate: 8 to 11, about SOP 5's cap of 8. A round 2 adds 2 to 5. The graders are
+  small, fixed-prompt runs the skill requires.
 
 ### 2. Diagnosis briefs
 
 Each brief is the diagnostician's whole instruction, since a running subagent cannot be messaged.
 
-- **Workspace:** a scratch worktree per track from the same commit (`<repo>.wt/aircraft-diag-a`,
-  `-b`, `mise run init`), where it may add temporary instrumentation, since few `DBG_` switches
-  remain and two agents building in one checkout would collide. It never commits there. Its
-  proposed change goes to `build/scratch/<track>/fix.patch` in the main worktree. The lead reaps
-  both scratch worktrees with `mise run reap` at the end.
-- **Inputs:** the film's reference capture and baseline render, the example sheets,
+- **Workspace:** a scratch worktree per track (`<repo>.wt/aircraft-diag-a`, `-b`), which the lead
+  creates from `origin/main` at `514053c` and runs `mise run init` in before dispatch. Not from this
+  branch: the plan commit changes no code, and `mise run reap` only removes worktrees whose branch
+  `main` already holds. There the
+  diagnostician may add temporary instrumentation, since the code keeps almost no `DBG_` switches
+  and two agents building in one checkout would collide. It never commits there, and it writes
+  nothing outside that worktree. Before finishing, it saves its instrumentation as
+  `build/scratch/<track>/instrumentation.patch` and its proposed change as
+  `build/scratch/<track>/fix.patch`, then restores tracked files (`git checkout -- .`), so the
+  worktree is clean for reaping.
+- **Inputs:** the film's reference capture (`references.toml`) and the baseline render at
+  `<main worktree>/build/scratch/baseline/<film>/`, read-only; the example sheets;
   `framing-and-actors.md` § 1, `research/playone-exe/sod-vm.md`, `research/formats/sod-opcodes.md`,
   `stuntreel export-gltf`, `mise run parity-probe`.
-- **Track A, aircraft absent** (`INTRO.FLM` ticks 1009 and 1108; check against `vault-land` and
-  `vault-splanes`): which actor slot and shape is the aircraft at 1009? Is the shape in
+- **Track A, aircraft absent** (`INTRO.FLM` ticks 1009 and 1108; the `VAULT` films `vault-land`
+  and `vault-splanes` only if a claim needs a second film, since they have no kept render and each
+  costs a `batch-parity` render): which actor slot and shape is the aircraft at 1009? Is the shape in
   `INTRO.ALL`, and does `decode_sod` reach `RETURN` or stop on a blocking opcode? How many
   triangles reach the renderer at that tick after LOD, `IFVIS` and culling? What is the flat black
   shape we draw? Are the missing vehicle and figure the same cause?
@@ -71,7 +88,7 @@ Each brief is the diagnostician's whole instruction, since a running subagent ca
   polygons reach the mesh? Which faces does the back-face cull remove (culling off)? Is the
   `LodDistanceSq(1000)` node ever drawn? Is the fuselage behind an `IFVIS`/BSP branch we take
   wrongly, or the undecoded two-sided flag (`SodVertex::flags` bit 1)?
-- **Output:** `build/scratch/<track>/diagnosis.md` with the headings **Claim**, **Evidence**
+- **Output:** in its own worktree, `build/scratch/<track>/diagnosis.md` with the headings **Claim**, **Evidence**
   (counts, offsets, at most 3 images cited), **Proposed change** (files, plus `fix.patch`),
   **Predicted effect** per film, **Ruled out**, **Open**; a final reply of five lines or fewer
   pointing to it.
@@ -83,33 +100,46 @@ Each brief is the diagnostician's whole instruction, since a running subagent ca
 
 Per diagnosis:
 
-1. **Review.** The lead reads `diagnosis.md` and reruns its key command. If both tracks name the
-   same root cause, they become one fix.
-2. **Implement.** One implementer subagent writes a failing test on a synthetic fixture
-   (`tests/fixtures/`, no game bytes, [I7]), applies the fix (adapting `fix.patch` to what has
-   landed), runs `mise run check-rust`, and reports the diff and test names.
-3. **Gate.** One release build; `mise run parity` on both films; the regression verdict against the
-   baseline render; the readout on both films `--against` the baseline readouts.
-4. **Adopt** (Conventional Commit, body with the evidence) **or revert.** Either way a
+1. **Review.** The lead copies the track's `build/scratch/<track>/` into the main worktree, reads
+   `diagnosis.md` and reruns its key command. If both tracks name the same root cause, they become
+   one fix.
+2. **Implement.** The lead (or, past the size in § 1, one implementer subagent) writes a failing
+   test on a synthetic fixture (`tests/fixtures/`, no game bytes, [I7]), applies the fix (adapting
+   `fix.patch` to what has landed), and runs `mise run check-rust`.
+3. **Score gate** (no subagents). One release build; `mise run parity` on both films; the
+   regression verdict on both films (`stuntreel parity … --compare build/scratch/baseline/<film>/report.json
+   --compare-test build/scratch/baseline/<film>/<render> --noise-sigma 0.000303 --build-floor 0`,
+   `method.md` § 1 step 5); actor overlap (`parity-probe iou`) on both films. A fix that fails here is reverted without a readout.
+4. **Readout gate.** The readout on both films `--against` the baseline readouts.
+5. **Adopt** (Conventional Commit, body with the evidence) **or revert.** Either way a
    `research/parity/log.md` row, and the finding in its owning note (`framing-and-actors.md`,
-   `sod-vm.md`, …).
+   `sod-vm.md`, …). After an adoption, the adopted render and readouts become the baseline for the
+   next fix.
 
 **Adoption bar.** The bench showed that removing our actors raises SSIM, because they match the
 capture worse than the ground (`method.md` § 2.2), so a correct fuselage drawn at the hero's known
-10 px offset can lower SSIM. A fix is adopted when:
+10 px offset can lower SSIM. A fix is adopted when both gates pass:
 
-- **Readout:** on the target film, frames graded 2+ in `aircraft-absent`, `aircraft-parts-missing`
-  and `aircraft-shape-broken` together fall by 4 or more (`min_change`), and no other category
-  rises by 4 or more on either film.
-- **Score:** the regression verdict shows no frame outside the aircraft's windows moving away from
-  the capture. Inside them SSIM may fall only if aircraft overlap rises: the render's actor pixels
-  (layer plane) against the capture's object pixels, as measured in `framing-and-actors.md` § 1
-  (410 of 2,603 at `CTRY.FLM` tick 273). Any SSIM fall is recorded in the log row.
+- **Score:** in the regression verdict, no frame whose changed pixels lie outside the `actors`
+  layer (`changed_by_layer`) is `Further`. Frames whose changes are in the `actors` layer may be
+  `Further` only if the film's actor overlap (`parity-probe iou`, render actor layer against the
+  capture's object pixels) rises. The noise floor is σ = 0.000303 on both films: `CTRY.FLM`'s `noise_sigma` from `references.toml`, used for `INTRO.FLM` too because its
+  two captures agree so closely that its own σ is inflated (`method.md` § 2.2). Any fall in mean
+  SSIM is recorded in the log row.
+- **Readout,** read from `compare`'s report against the baseline:
+  - Track A: `aircraft-absent` falls by 4 or more frames on `INTRO.FLM`. `aircraft-parts-missing`
+    and `aircraft-shape-broken` may rise, since an aircraft that is drawn but imperfect moves from
+    absent to those.
+  - Track B: `aircraft-parts-missing` or `aircraft-shape-broken` falls by 4 or more on `CTRY.FLM`,
+    and `aircraft-absent` does not rise by 4 or more.
+  - Neither: any category outside the three aircraft ones rises by 4 or more on either film.
 
 **Rounds:** at most two per track; a round-2 diagnostician gets round 1's gate result in its brief.
 A track stops after two rounds with nothing adopted.
 
-**End:** full `mise run check`, push the branch; a PR only when the user asks.
+**End:** the lead runs `mise run reap` without `--yes` from the primary checkout and checks that
+the list holds only the two scratch worktrees; if it lists anything else, the user is asked before
+`--yes`. Then the full `mise run check` and a push of the branch; a PR only when the user asks.
 
 ## Risks
 
