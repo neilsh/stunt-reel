@@ -98,6 +98,9 @@ def run_capture(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Rec
         command += ["--name", film.name]
     if film.slug in UNPATCHED_CAPTURES:
         unpatched = dataroot.data_root() / game_builds.BUILDS_DIR / "unpatched"
+        if not (unpatched / "PLAYONE.EXE").is_file():
+            message = f"{unpatched} has no PLAYONE.EXE; run mise run game-builds"
+            return _record(film, "capture", "error", message, started)
         command += ["--game-root", str(unpatched)]
     outcome = _execute(film, "capture", command, timeout, run, started)
     if outcome.status != "ok":

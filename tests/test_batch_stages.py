@@ -16,6 +16,8 @@ from stunt_reel import batch_stages, dataroot, parity_layout
 from stunt_reel.batch_films import BatchFilm
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from stunt_reel.batch_ledger import Record
 
 
@@ -173,16 +175,44 @@ def test_capture_runs_the_films_own_build_by_default(tmp_path: Path) -> None:
     assert "--game-root" not in command
 
 
+@pytest.fixture
+def data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    """A data root of the test's own, so nothing reads the machine's (``data_root`` is cached)."""
+    root = tmp_path / "data"
+    monkeypatch.setenv(dataroot.DATA_ENV, str(root))
+    dataroot.data_root.cache_clear()
+    yield root.resolve()
+    dataroot.data_root.cache_clear()
+
+
+def _unpatched_build(data_root: Path) -> Path:
+    tree = data_root / "builds" / "unpatched"
+    tree.mkdir(parents=True)
+    (tree / "PLAYONE.EXE").write_bytes(b"MZ")
+    return tree
+
+
 @pytest.mark.parametrize("slug", ["vault-intro", "vault-tod"])
 def test_a_film_that_stalls_on_the_patched_build_captures_on_the_unpatched_one(
-    tmp_path: Path, slug: str
+    tmp_path: Path, data_root: Path, slug: str
 ) -> None:
+    tree = _unpatched_build(data_root)
     runner = FakeRunner()
     _write_capture(tmp_path, slug, [0, 10])
     batch_stages.run_capture(_film(tmp_path, name=slug), tmp_path, runner, 900.0)
     command, _ = runner.calls[0]
-    game_root = Path(command[command.index("--game-root") + 1])
-    assert game_root == dataroot.data_root() / "builds" / "unpatched"
+    assert Path(command[command.index("--game-root") + 1]) == tree
+
+
+def test_a_missing_unpatched_build_is_an_error_naming_game_builds(
+    tmp_path: Path, data_root: Path
+) -> None:
+    runner = FakeRunner()
+    record = batch_stages.run_capture(_film(tmp_path, name="vault-tod"), tmp_path, runner, 900.0)
+    assert runner.calls == []
+    assert (record.stage, record.status) == ("capture", "error")
+    assert "mise run game-builds" in record.message
+    assert str(data_root / "builds" / "unpatched") in record.message
 
 
 def test_a_known_stall_is_a_skipped_capture_record(tmp_path: Path) -> None:
