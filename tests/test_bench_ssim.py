@@ -42,3 +42,30 @@ def test_stretch_repeats_every_fifth_row() -> None:
     out = stretch(plane)
     assert out.shape == (240, 320)
     assert out[:7, 0].tolist() == [0, 0, 1, 2, 3, 4, 5]
+
+
+@pytest.mark.parametrize("suffix", ["idx", "layer"])
+def test_a_render_with_a_truncated_plane_is_refused(
+    tmp_path: Path, bench_fixture: Path, suffix: str
+) -> None:
+    render = tmp_path / "render"
+    shutil.copytree(bench_fixture / "render", render)
+    (render / f"tick_00010.{suffix}").write_bytes(b"\x00\x00")
+    with pytest.raises(BenchError, match="wrong size"):
+        RenderTree(render).load(10)
+
+
+def test_a_truncated_capture_plane_is_refused(tmp_path: Path, bench_fixture: Path) -> None:
+    capture = tmp_path / "capture"
+    shutil.copytree(bench_fixture / "capture", capture)
+    (capture / "tick_0001.idx").write_bytes(b"\x00")
+    with pytest.raises(BenchError, match="holds 1 bytes"):
+        load_capture(capture)
+
+
+def test_render_tree_caches_decoded_frames(bench_fixture: Path) -> None:
+    tree = RenderTree(bench_fixture / "render")
+    assert tree.ticks() == [10, 20]
+    first = tree.load(10)
+    assert tree.load(10) is first
+    assert tree.load(20) is not first

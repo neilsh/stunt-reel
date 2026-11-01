@@ -114,3 +114,41 @@ def test_an_opendml_continuation_is_refused(tmp_path: Path) -> None:
 def test_a_file_that_is_not_an_avi_is_refused(tmp_path: Path) -> None:
     with pytest.raises(AviError, match="RIFF AVI"):
         _strip(tmp_path, b"not an avi at all")
+
+
+def test_absolute_index_offsets_preserve_video_flags(tmp_path: Path) -> None:
+    blob = bytearray(build_avi(VIDEO, AUDIO))
+    movi = blob.index(b"movi")
+    index = blob.index(b"idx1")
+    for entry in range(index + 8, len(blob), 16):
+        offset = struct.unpack_from("<I", blob, entry + 8)[0]
+        struct.pack_into("<I", blob, entry + 8, offset + movi)
+
+    _, out = _strip(tmp_path, bytes(blob))
+    assert [flags for _, flags, _, _ in _idx(out)] == [0x10, 0, 0]
+    assert _movi(out) == [(b"00dc", payload) for payload in VIDEO]
+
+
+def test_empty_movi_produces_an_empty_video(tmp_path: Path) -> None:
+    count, out = _strip(tmp_path, build_avi([], []))
+    assert count == 0
+    assert _movi(out) == []
+    assert _idx(out) == []
+    assert struct.unpack_from("<I", out, out.index(b"avih") + 8 + 16)[0] == 0
+
+
+def test_non_video_stream_zero_is_refused(tmp_path: Path) -> None:
+    blob = build_avi(VIDEO, AUDIO).replace(b"vids", b"auds", 1)
+    with pytest.raises(AviError, match="stream 0 is not a video"):
+        _strip(tmp_path, blob)
+
+
+def test_truncated_index_entry_is_refused(tmp_path: Path) -> None:
+    blob = bytearray(build_avi(VIDEO, AUDIO))
+    index = blob.index(b"idx1")
+    size = struct.unpack_from("<I", blob, index + 4)[0]
+    struct.pack_into("<I", blob, index + 4, size - 2)
+    del blob[-2:]
+    struct.pack_into("<I", blob, 4, len(blob) - 8)
+    with pytest.raises(AviError, match="16-byte entries"):
+        _strip(tmp_path, bytes(blob))
