@@ -854,7 +854,11 @@ def score_run(
                 f"--against {against} is this run's own readout.json; copy the previous readout "
                 "aside before errors-make and compare with the copy"
             )
-        earlier = Readout.from_json(json.loads(against.read_text(encoding="utf-8")))
+        try:
+            document = json.loads(against.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as err:
+            raise BenchError(f"{against} is not a readout document: {err}") from err
+        earlier = Readout.from_json(document)
     result = readout(grades, sheets, taxonomy.ids, str(run["film"]), taxonomy.digest, render_digest)
     result = replace(result, disputed=disputes)
     _write_text(out / READOUT_FILE, json.dumps(result.to_json(), indent=2) + "\n")

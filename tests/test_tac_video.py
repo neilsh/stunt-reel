@@ -231,3 +231,19 @@ def test_record_video_refuses_malformed_avi_without_metadata(tmp_path: Path) -> 
             provenance={},
         )
     assert not (tmp_path / "out" / "meta.json").exists()
+
+
+@pytest.mark.parametrize(
+    ("log", "message"),
+    [
+        ("x101:7:0,103:8:1,104:9:2", "ascend by one"),
+        ("x101:7:0,102:8:1,103:2:2", "film_tick falls"),
+    ],
+)
+def test_record_video_reports_an_invalid_log_as_a_capture_error(
+    tmp_path: Path, log: str, message: str
+) -> None:
+    # capture-video catches VideoCaptureError; a bare ArtifactError would end it in a traceback.
+    with pytest.raises(video.VideoCaptureError, match=message):
+        _record(tmp_path, output=_output(log=log), video_frames=3)
+    assert not (tmp_path / "out" / "meta.json").exists()

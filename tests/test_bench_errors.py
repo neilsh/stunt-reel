@@ -743,3 +743,15 @@ def _planted_ids(run_inputs: dict[str, Path]) -> set[str]:
     tree = RenderTree(run_inputs["render"])
     sheets = plan_sheets(run["ticks"], tree, taxonomy, run["seed"], calibrate=True)
     return {s.id for s in sheets if s.kind == "planted"}
+
+
+def test_score_refuses_an_against_file_that_is_not_json(
+    tmp_path: Path, run_inputs: dict[str, Path]
+) -> None:
+    # parity_bench reports a BenchError in one line; a JSONDecodeError would end in a traceback.
+    _make(run_inputs)
+    _grade_all(run_inputs)
+    garbled = tmp_path / "garbled.json"
+    garbled.write_text("{not json", encoding="utf-8")
+    with pytest.raises(BenchError, match="not a readout document"):
+        score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], garbled)

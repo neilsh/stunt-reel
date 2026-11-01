@@ -19,6 +19,7 @@ from stunt_reel.parity_artifacts import (
     SCHEMA_VERSION,
     VIDEO_FILE,
     VIDEO_KIND,
+    ArtifactError,
     FilmId,
     Geometry,
     PaletteChange,
@@ -193,8 +194,9 @@ def record_video(
     into ``out_dir / capture.avi``, the frame count must match the log's rows to within one,
     and ``meta.json`` is written last. A failure can leave the stripped AVI in *out_dir*.
 
-    Raises ``VideoCaptureError`` for an unusable recording, including an AVI parsing error;
-    runner, validation, and filesystem errors also propagate.
+    Raises ``VideoCaptureError`` for an unusable recording, including an AVI parsing error or
+    a log the capture document refuses (frames that skip, a film clock that falls) or a failed
+    ``meta.json`` write; runner and other filesystem errors propagate.
     """
     script = luagen.video_script(keys=keys, cap=cap, end_hold=END_HOLD_FRAMES, layout=layout)
     with open_runner() as runner:
@@ -229,15 +231,18 @@ def record_video(
         log=decoded.log,
         palettes=decoded.palettes,
     )
-    write_video_capture(
-        out_dir,
-        capture,
-        diagnostics={
-            "video_frames": video_frames,
-            "rows": rows,
-            "palette_changes": len(decoded.palettes.changes),
-            "dgroup_segment": f"{layout.ds:04X}",
-            **provenance,
-        },
-    )
+    try:
+        write_video_capture(
+            out_dir,
+            capture,
+            diagnostics={
+                "video_frames": video_frames,
+                "rows": rows,
+                "palette_changes": len(decoded.palettes.changes),
+                "dgroup_segment": f"{layout.ds:04X}",
+                **provenance,
+            },
+        )
+    except ArtifactError as exc:
+        raise VideoCaptureError(f"meta.json was not written: {exc}") from exc
     return capture
