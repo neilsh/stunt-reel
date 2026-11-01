@@ -9,7 +9,8 @@ One ``stuntreel --at-ticks`` process renders every tick (process startup is almo
 single frame's cost), into the render store ``build/scratch/frame/<film>/store``. For each tick
 the capture holds, ``build/scratch/frame/<film>/<film>_<tick>.png`` is the capture frame left
 of ours with a magenta divider; the path is printed. A tick the capture lacks is still
-rendered and its nearest captured ticks are printed instead.
+rendered and its nearest captured ticks are printed instead; one past the film's end is
+named as not rendered.
 """
 
 from __future__ import annotations
@@ -64,6 +65,14 @@ def locate(
     return found, missing
 
 
+def describe_missing(tick: int, nearest: tuple[int | None, int | None], *, rendered: bool) -> str:
+    """The line for a tick with no capture frame; one past the film's end was not rendered."""
+    before, after = nearest
+    if not rendered:
+        return f"tick {tick}: past the film's end, not rendered (last captured: {before})"
+    return f"tick {tick}: not in the capture (nearest captured: {before}, {after})"
+
+
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--film", required=True, choices=list(parity_pipeline.FILMS))
@@ -99,14 +108,15 @@ def main(argv: list[str] | None = None) -> int:
     shutil.rmtree(store_dir, ignore_errors=True)
     parity_pipeline.render_film(args.film, root, store_dir, ticks=ticks)
 
-    geometry = RenderStore(store_dir).record.geometry
+    store = RenderStore(store_dir)
+    geometry = store.record.geometry
     box = box or (0, 0, geometry.width, geometry.viewport_rows or geometry.height)
     for tick, ordinal in found.items():
         png = out / f"{args.film}_{tick}.png"
         parity_probe.make_side_by_side(reference, store_dir, ordinal, tick, box, args.scale, png)
         print(png)
-    for tick, (before, after) in missing.items():
-        print(f"tick {tick}: not in the capture (nearest captured: {before}, {after})")
+    for tick, nearest in missing.items():
+        print(describe_missing(tick, nearest, rendered=store.holds(tick)))
     print(f"render store: {store_dir}")
     return 0
 

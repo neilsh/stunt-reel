@@ -115,3 +115,12 @@ def test_side_by_side_puts_the_capture_left_of_ours(tmp_path: Path) -> None:
     assert (width, len(rows)) == (4 + 2 + 4, 2)
     assert rows[0][:3] == bytes([200, 0, 0])  # the capture's pixel is on the left
     assert rows[0][4 * 3 : 6 * 3] == bytes([255, 0, 255] * 2)  # the magenta divider
+
+
+def test_missing_tick_says_whether_it_was_rendered() -> None:
+    assert parity_frame.describe_missing(1010, (1009, 1020), rendered=True) == (
+        "tick 1010: not in the capture (nearest captured: 1009, 1020)"
+    )
+    assert parity_frame.describe_missing(99999, (3822, None), rendered=False) == (
+        "tick 99999: past the film's end, not rendered (last captured: 3822)"
+    )
