@@ -135,16 +135,19 @@ def test_numpy_ssim_matches_the_rust_golden(bench_fixture):
     for tick in (10, 20):
         assert abs(frame_ssim(capture[tick], tree.load(tick).rgb) - golden[str(tick)]) < 1e-4
 
+
 def test_identical_frames_score_one(bench_fixture):
     capture = load_capture(bench_fixture / "capture")[10]
     rgb = capture.palette[capture.idx]
     assert abs(frame_ssim(capture, rgb) - 1.0) < 1e-9
+
 
 def test_a_render_without_planes_names_a_rerender(tmp_path, bench_fixture):
     shutil.copytree(bench_fixture / "render", tmp_path / "r")
     (tmp_path / "r" / "tick_00010.layer").unlink()
     with pytest.raises(BenchError, match="re-render"):
         RenderTree(tmp_path / "r").load(10)
+
 
 def test_stretch_repeats_every_fifth_row():
     plane = np.arange(200, dtype=np.float64)[:, None].repeat(320, axis=1)
