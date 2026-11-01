@@ -176,3 +176,54 @@ def test_record_video_refuses_a_frame_count_mismatch(tmp_path: Path) -> None:
 def test_record_video_refuses_no_recording(tmp_path: Path) -> None:
     with pytest.raises(video.VideoCaptureError, match=r"no \.avi"):
         _record(tmp_path, output=_output(), video_frames=None)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"cs": "100"}, "prefix"),
+        ({"end": "xunknown"}, "expected 'hold' or 'capped'"),
+        ({"log": "x101:7"}, "malformed entry"),
+        ({"pal0": "x00"}, "initial palette"),
+        ({"pal": "x103:8:" + "00" * 96}, "palette band"),
+        ({"pal": "x103:0:00"}, "palette band"),
+    ],
+)
+def test_decode_video_log_refuses_malformed_output(
+    overrides: dict[str, object], message: str
+) -> None:
+    with pytest.raises(video.VideoCaptureError, match=message):
+        video.decode_video_log(_output(**overrides))
+
+
+def test_palette_changes_keep_prior_frames_when_filling_a_gap() -> None:
+    pal = "x102:1:" + "3f" * 96 + ",103:0:" + "01" * 96 + ",103:2:" + "02" * 96
+    changes = video.decode_video_log(_output(pal=pal)).palettes.changes
+    assert [change.frame for change in changes] == [102, 103]
+    assert changes[1].first == 0
+    assert len(changes[1].rgb) == 96
+    assert changes[1].rgb[32:64] == ((255, 255, 255),) * 32
+
+
+@pytest.mark.parametrize("frame_count", [2, 4])
+def test_record_video_accepts_one_frame_of_slack(tmp_path: Path, frame_count: int) -> None:
+    out_dir, capture = _record(tmp_path, output=_output(), video_frames=frame_count)
+    assert load_video_capture(out_dir) == capture
+
+
+def test_record_video_refuses_malformed_avi_without_metadata(tmp_path: Path) -> None:
+    recording = tmp_path / "recording"
+    recording.mkdir()
+    (recording / "bad.avi").write_bytes(b"not an avi")
+    mock = MockAutomation(lambda _lua: _output())
+    with pytest.raises(video.VideoCaptureError, match="recording cannot be used"):
+        video.record_video(
+            lambda: nullcontext(mock),
+            tmp_path / "out",
+            recording,
+            keys=KEYS,
+            layout=playone.UNPATCHED,
+            film=FILM,
+            provenance={},
+        )
+    assert not (tmp_path / "out" / "meta.json").exists()
