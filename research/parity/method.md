@@ -104,6 +104,23 @@ Approaches that were tried and dropped. Each is recorded so it is not tried agai
 
 * **Sky IoU from one modal index.** Counting only the capture's most common sky index as sky inflated the filled area and understated IoU by about 0.12 on both `CTRY` and `INTRO`; replaced by the 227 to 238 band mask (section 2.0).
 
+### 4.4 Per-second scoring of a video capture
+
+A prototype of `stuntreel parity` (commit `d80e29e`, kept on branch `feat/video-parity-scorer`, not merged) scored a whole-film video capture ([`capture-dosbox-automation.md`](../playone-exe/capture-dosbox-automation.md) § 4.6) per film second. Each second contributed three samples, at film-second offsets 0, 17 and 33 ticks. Each sample searched render ticks −8 to +2 around its own tick for the best SSIM, the median of those local offsets became one film-wide offset, and every sample was then rescored at that offset. It was validated on 2026-10-31 and not adopted (`[Bounded Observation]`, one render, `CTRY.FLM` and `INTRO.FLM`):
+
+* **It is fast and agrees on the headline.** Scoring takes 2.0 s for `CTRY.FLM` and 4.8 s for `INTRO.FLM`. The `CTRY.FLM` mean of 0.782 over 26 seconds matches the per-frame 0.781 against `004`.
+* **Local offsets are noise.** At SSIM near 0.75 the score varies little across the window: the best offset beats the film offset by a median 0.009 and at the 90th percentile 0.029. The winning offset wanders over the whole window, 20 of 81 `CTRY.FLM` samples sit on a bound (`edge`) and 23 of 27 seconds are flagged `slip`. The `slip` and `edge` flags carry no information at this parity level.
+* **The film offset is unstable, so unaltered seconds move.** Changing six seconds of the render moved the film offset from −1 to −2 ticks, and unaltered seconds then moved by up to 0.071 (second 26, a fade). The per-frame scorer, which matches ticks exactly, moved them by 0.000.
+* **Planted errors do not stand out, in either scorer.** In a copy of the `CTRY.FLM` render, three pairs of seconds were altered:
+  * Actors painted over with the background (seconds 5–6): per second +0.012 and +0.016, per frame +0.015.
+  * Every pixel shifted 4 columns (10–11): per second −0.003 and +0.002, per frame +0.000.
+  * Each tick replaced by the picture 5 ticks later (15–16): per second +0.004 and −0.021, per frame −0.024.
+
+  So against this render SSIM is blind to a 4-pixel shift and rewards removing actors. That is a limit of the metric at about 0.75, not of the video path.
+* **It finds what frame captures skip.** `INTRO.FLM` seconds 0–14 score about 0.0002. The game shows a static black title card, "DISNEY INTRO REEL", while the render draws the sky. The frame capture keeps only changed pages, so it holds none of these frames.
+
+What would have to change before trying again: a significance margin on `slip` (best minus film-offset SSIM above the noise, about 0.03), a film offset fixed by a run over unaltered seconds or from the log rather than refitted per render, and a metric that registers geometric error at this parity level.
+
 ## 5. Reading the results log
 
 How to read the rows of [`log.md`](log.md), which holds only dated figures.

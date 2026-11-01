@@ -225,6 +225,17 @@ Each part lands on its own and passes `mise run check`.
 
 ## Open questions
 
+Answered 2026-10-31 by part 3 ([`research/parity/method.md`](../../../research/parity/method.md) § 4.4); per-second scoring is **not adopted** and parts 4–5 are not planned.
+
+- Thresholds: moot; the planted errors did not separate from unaltered seconds at the film offset, so no threshold can.
+- Defaults: at SSIM near 0.75 the local best offset is noise (median gain 0.009 over the film offset). With a 2-tick margin, 23 of 27 `CTRY.FLM` seconds read as `slip` and 20 of 81 samples as `edge`. A `slip` would need a significance margin of about 0.03, and the film offset would need to be fixed, not refitted per render.
+- Audio: dosbox-automation has no audio-off option; `video_only` strips it ([`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.6).
+- Replay jitter: not measured.
+- Kept from this work: `capture-video`, whose recordings cover static stretches that frame captures skip (the `INTRO.FLM` title card), and the ZMBV decoder. Films past about 24,500 frames need the recording split across scripts.
+
+Original questions:
+
+
 - Do 0.88/0.90 still separate good from bad seconds at the film offset, or do they need recalibrating
   (part 3)?
 - Are three samples per second, a −8 to +2 window and a 2-tick `slip` margin the right defaults? Part 3
