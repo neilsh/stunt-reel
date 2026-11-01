@@ -185,6 +185,17 @@ def data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]
     dataroot.data_root.cache_clear()
 
 
+def _newplay_film(tmp_path: Path, slug: str) -> BatchFilm:
+    name = {"vault-intro": "INTRO.FLM", "vault-tod": "TOD.FLM"}[slug]
+    return BatchFilm(
+        slug=slug,
+        name=slug,
+        flm=tmp_path / "corpus" / "siarchive" / "Films" / "NewPLAY" / "Vault" / name,
+        sha256="0" * 64,
+        has_sibling_all=True,
+    )
+
+
 def _unpatched_build(data_root: Path) -> Path:
     tree = data_root / "builds" / "unpatched"
     tree.mkdir(parents=True)
@@ -199,16 +210,35 @@ def test_a_film_that_stalls_on_the_patched_build_captures_on_the_unpatched_one(
     tree = _unpatched_build(data_root)
     runner = FakeRunner()
     _write_capture(tmp_path, slug, [0, 10])
-    batch_stages.run_capture(_film(tmp_path, name=slug), tmp_path, runner, 900.0)
+    batch_stages.run_capture(_newplay_film(tmp_path, slug), tmp_path, runner, 900.0)
     command, _ = runner.calls[0]
     assert Path(command[command.index("--game-root") + 1]) == tree
+
+
+@pytest.mark.usefixtures("data_root")
+def test_the_demo_copy_of_a_film_keeps_its_own_engine(tmp_path: Path) -> None:
+    # In a demo-only corpus vault-intro is stisldem's INTRO.FLM, which plays on the demo engine;
+    # only the NewPLAY copy ships the patched PLAYONE.EXE that stalls.
+    runner = FakeRunner()
+    _write_capture(tmp_path, "vault-intro", [0, 10])
+    demo = BatchFilm(
+        slug="vault-intro",
+        name="vault-intro",
+        flm=tmp_path / "corpus" / "stisldem" / "VAULT" / "INTRO.FLM",
+        sha256="0" * 64,
+        has_sibling_all=True,
+    )
+    record = batch_stages.run_capture(demo, tmp_path, runner, 900.0)
+    assert record.status == "ok"
+    command, _ = runner.calls[0]
+    assert "--game-root" not in command
 
 
 def test_a_missing_unpatched_build_is_an_error_naming_game_builds(
     tmp_path: Path, data_root: Path
 ) -> None:
     runner = FakeRunner()
-    record = batch_stages.run_capture(_film(tmp_path, name="vault-tod"), tmp_path, runner, 900.0)
+    record = batch_stages.run_capture(_newplay_film(tmp_path, "vault-tod"), tmp_path, runner, 900.0)
     assert runner.calls == []
     assert (record.stage, record.status) == ("capture", "error")
     assert "mise run game-builds" in record.message

@@ -55,8 +55,11 @@ KNOWN_CAPTURE_STALLS: tuple[str, ...] = ("flmonly-bigman", "vault-location")
 #: Films captured on the unpatched build instead of their folder's own PLAYONE.EXE. Their
 #: siarchive NewPLAY folder ships Patch #3's, which stalls on these two retail archives while the
 #: unpatched build plays them (research/playone-exe/capture-dosbox-automation.md section 4.7).
-#: Only these: other NewPLAY films capture on the patched build.
+#: Only these, and only their NewPLAY copies: other NewPLAY films capture on the patched build, and
+#: the demo's INTRO.FLM (the same slug in a demo-only corpus) plays on the demo engine.
 UNPATCHED_CAPTURES: tuple[str, ...] = ("vault-intro", "vault-tod")
+#: The siarchive folder whose films run its own Patch #3 PLAYONE.EXE.
+_PATCHED_FOLDER = "NewPLAY"
 #: The message of the ``skipped`` capture record a known stall gets.
 KNOWN_STALL_MESSAGE = "known capture stall"
 #: A capture needs at least this many frames: a film short enough to yield 2 or 3 legitimately
@@ -96,7 +99,7 @@ def run_capture(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Rec
     command = [sys.executable, str(root / _CAPTURE), "--film", str(film.flm)]
     if film.name is not None:
         command += ["--name", film.name]
-    if film.slug in UNPATCHED_CAPTURES:
+    if film.slug in UNPATCHED_CAPTURES and _PATCHED_FOLDER in film.flm.parts:
         unpatched = dataroot.data_root() / game_builds.BUILDS_DIR / "unpatched"
         if not (unpatched / "PLAYONE.EXE").is_file():
             message = f"{unpatched} has no PLAYONE.EXE; run mise run game-builds"
