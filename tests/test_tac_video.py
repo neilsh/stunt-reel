@@ -187,6 +187,10 @@ def test_record_video_refuses_no_recording(tmp_path: Path) -> None:
         ({"pal0": "x00"}, "initial palette"),
         ({"pal": "x103:8:" + "00" * 96}, "palette band"),
         ({"pal": "x103:0:00"}, "palette band"),
+        ({"cs": "xabc"}, "'cs'.*not a number"),
+        ({"log": "x101:x:0"}, "'log'.*not a number"),
+        ({"pal0": "x0"}, "'pal0'.*not hex"),
+        ({"pal": "x103:1:" + "zz" * 96}, "'pal'.*not hex"),
     ],
 )
 def test_decode_video_log_refuses_malformed_output(

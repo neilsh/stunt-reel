@@ -577,7 +577,7 @@ def _video() -> VideoCapture:
     return VideoCapture(
         schema_version=SCHEMA_VERSION,
         kind="video",
-        film=FilmId(name="SYNTH.FLM", flm_bytes=4, flm_sha256="00"),
+        film=FilmId(name="SYNTH.FLM", flm_bytes=4, flm_sha256="00", all_sha256="11"),
         geometry=Geometry(width=4, height=2),
         playone_build="synthetic",
         cpu_profile="capture",

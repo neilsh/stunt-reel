@@ -542,6 +542,7 @@ def _film_object(document: Mapping[str, Any], path: Path | None) -> FilmId:
         name=_optional_string(film.get("name"), path, "film.name"),
         flm_bytes=_optional_int(film.get("flm_bytes"), path, "film.flm_bytes"),
         flm_sha256=_optional_string(film.get("flm_sha256"), path, "film.flm_sha256"),
+        all_sha256=_optional_string(film.get("all_sha256"), path, "film.all_sha256"),
     )
 
 
@@ -1282,6 +1283,8 @@ def _video_document(capture: VideoCapture) -> dict[str, Any]:
         film["flm_bytes"] = capture.film.flm_bytes
     if capture.film.flm_sha256 is not None:
         film["flm_sha256"] = capture.film.flm_sha256
+    if capture.film.all_sha256 is not None:
+        film["all_sha256"] = capture.film.all_sha256
     return {
         "schema_version": capture.schema_version,
         "kind": capture.kind,

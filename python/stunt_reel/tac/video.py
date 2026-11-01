@@ -79,6 +79,20 @@ def _text(output: Mapping[str, Any], key: str) -> str:
     return value[1:]
 
 
+def _number(text: str, key: str) -> int:
+    try:
+        return int(text)
+    except ValueError:
+        raise VideoCaptureError(f"video output {key!r}: {text!r} is not a number") from None
+
+
+def _hex(text: str, key: str) -> bytes:
+    try:
+        return bytes.fromhex(text)
+    except ValueError:
+        raise VideoCaptureError(f"video output {key!r}: {text[:16]!r} is not hex") from None
+
+
 def _fields(item: str, count: int, key: str) -> list[str]:
     parts = item.split(":")
     if len(parts) != count:
@@ -97,10 +111,10 @@ def _decode_changes(
     by_frame: dict[int, dict[int, bytes]] = {}
     for item in filter(None, text.split(",")):
         frame_text, band_text, hexed = _fields(item, 3, "pal")
-        data = bytes.fromhex(hexed)
-        if len(data) != _BAND_BYTES or not 0 <= int(band_text) < luagen.PALETTE_BANDS:
+        data, band = _hex(hexed, "pal"), _number(band_text, "pal")
+        if len(data) != _BAND_BYTES or not 0 <= band < luagen.PALETTE_BANDS:
             raise VideoCaptureError(f"palette band {band_text} at frame {frame_text} is malformed")
-        by_frame.setdefault(int(frame_text), {})[int(band_text)] = data
+        by_frame.setdefault(_number(frame_text, "pal"), {})[band] = data
     state = list(initial)
     changes: list[PaletteChange] = []
     for frame in sorted(by_frame):
@@ -119,8 +133,8 @@ def _decode_changes(
 def decode_video_log(output: Mapping[str, Any]) -> VideoLog:
     """Decode the output table :func:`~stunt_reel.tac.luagen.video_script` returns.
 
-    Raises ``VideoCaptureError`` for incomplete or malformed output and ``ValueError`` for
-    invalid numeric or hexadecimal fields. Log ordering is checked when the capture is validated.
+    Raises ``VideoCaptureError`` for incomplete or malformed output, including a field that is
+    not a number or not hex. Log ordering is checked when the capture is validated.
     """
     if output.get("done") is not True:
         raise VideoCaptureError("the recording script did not finish")
@@ -133,15 +147,15 @@ def decode_video_log(output: Mapping[str, Any]) -> VideoLog:
     ticks: list[int] = []
     for item in filter(None, _text(output, "log").split(",")):
         f, t, g = _fields(item, 3, "log")
-        frames.append(int(f))
-        film.append(int(t))
-        ticks.append(int(g))
-    pal0 = bytes.fromhex(_text(output, "pal0"))
+        frames.append(_number(f, "log"))
+        film.append(_number(t, "log"))
+        ticks.append(_number(g, "log"))
+    pal0 = _hex(_text(output, "pal0"), "pal0")
     if len(pal0) != plan.PALETTE_BYTES:
         raise VideoCaptureError(f"the initial palette holds {len(pal0)} bytes")
     initial = tuple(plan.dac_rgb(pal0))
     return VideoLog(
-        capture_start_frame=int(start),
+        capture_start_frame=_number(start, "cs"),
         end=end,
         log=TickLog(frame=tuple(frames), film_tick=tuple(film), global_tick=tuple(ticks)),
         palettes=PaletteLog(
