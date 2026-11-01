@@ -109,6 +109,8 @@ Reading:
 * **A category's grade can fall when the error gets worse.** With the aircraft removed, the graders moved `aircraft-parts-missing=3` to `aircraft-absent=3`; taking the highest grade among the matching categories hid that, so detection compares each category.
 * **What the render gets wrong, real frames:** `CTRY.FLM`, aircraft parts missing in 11–12 of 12 and its shape broken in 8–10, the shadow, sea band and scenery in 3–5 each; `INTRO.FLM`, aircraft absent in 7–10, shadow shape wrong in 7, ground actors missing in 6, scenery (the fence) in 3–7.
 
+The readout now runs as `mise run parity-bench -- errors-make` and `errors-score`: the first writes the sheets and the grading brief, one Haiku subagent writes the grades, and the second writes `readout.json`, compares it with an earlier one and, on a calibrating run, checks controls and planted faults against the bars above. The procedure is the "Error readout" section of the [`improving-render-parity`](../../.agents/skills/improving-render-parity/SKILL.md) skill.
+
 ## 3. What is not yet evidence
 
 * **Single film.** Only `CTRY.FLM` has been captured; the rows say nothing about other films, cameras, or actors (`[Unknown]`).

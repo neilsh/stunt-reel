@@ -74,6 +74,19 @@ A new capture becomes a film's reference only through a reviewed commit of `rese
 
 Restore from the copy rather than with `git checkout`, which would also discard any edit to the file that was there before step 2. Leave out `--no-render` on the second run. A render covers only the ticks its own capture tagged, so the `_current` tree from step 3 has no frames at the other reference's ticks. `--no-build` is what keeps the binary the same, so the two scores differ only by the reference.
 
+## Error readout
+
+Run it on both films after adopting a render change. It says which kinds of error the render makes and on how many frames; it cannot see misregistration, which the metrics cover. The categories are `research/parity/error-categories.toml`.
+
+```
+- [ ] 1. Copy build/parity/bench/<film>/errors/readout.json to build/scratch/ (the previous readout)
+- [ ] 2. mise run parity-bench -- errors-make --film <film>   (12 sheets and brief.md)
+- [ ] 3. Dispatch one Haiku subagent; its whole prompt: "Read build/parity/bench/<film>/errors/brief.md: it is your whole instruction"
+- [ ] 4. mise run parity-bench -- errors-score --film <film> --against build/scratch/readout.json
+```
+
+Calibrate (`errors-make --calibrate`, 42 sheets, then `errors-score`) only when the categories, the sheet layout or the grading model change; it must print `calibration PASS`. When `other` names the same new kind of error on two or more frames, add a `[[category]]` block, give it an example with `errors-example --film <film> --tick <tick> --category <id>`, and calibrate.
+
 ## Finishing an item
 
 Add a row to `research/parity/log.md` for every attempt, adopted or not, and put the finding in the note that owns the residual. End the session after the handoff note; start the next hypothesis in a fresh session.
