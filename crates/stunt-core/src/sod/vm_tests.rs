@@ -11,8 +11,9 @@ use crate::sod::DECAL_FLAG_BIT;
 use crate::sod::vm::compute_polygon_normal;
 use crate::sod::{
     CENSUS_SKIPS, DecodeMode, OP_ADDV, OP_CLRV, OP_COLOR, OP_DOT, OP_GETV, OP_ID, OP_INTV,
-    OP_LINECOL, OP_MOVETO, OP_NEGV, OP_POLYZ, OP_PUTV, OP_RETURN, OP_SHLV, OP_SHRV, OP_SPHERE,
-    OP_SUBV, OP_TAP, OP_VECTORS, OP_ZLINETO, SodError, SodStop, SodStopReason, decode_sod,
+    OP_LINECOL, OP_MOVETO, OP_NEGV, OP_POLYZ, OP_PUTV, OP_RETURN, OP_SHLV, OP_SHRV, OP_SORT,
+    OP_SPHERE, OP_SUBV, OP_TAP, OP_VECTORS, OP_ZLINETO, SodError, SodStop, SodStopReason,
+    decode_sod,
 };
 
 /// Decodes `data` strictly with no anchor table.
@@ -480,4 +481,168 @@ fn test_census_skip_table_never_shadows_a_real_handler() {
             skip.mnemonic
         );
     }
+}
+
+/// A header and five non-coplanar points in registers 0..=4, for the `OP_SORT` tests.
+fn sort_prelude() -> Vec<u8> {
+    let mut bytes = make_sod_header(100, 0, 0, 0);
+    bytes.extend_from_slice(&OP_VECTORS.to_le_bytes());
+    bytes.extend_from_slice(&5u16.to_le_bytes());
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    for p in [
+        [0i16, 0, 0],
+        [10, 0, 0],
+        [0, 10, 0],
+        [0, 0, 10],
+        [10, 10, 10],
+    ] {
+        for c in p {
+            bytes.extend_from_slice(&c.to_le_bytes());
+        }
+    }
+    bytes
+}
+
+/// `COLOR colour; POLYZ 3 regs; RETURN`: 16 bytes.
+fn sort_branch(bytes: &mut Vec<u8>, colour: u16, regs: [u16; 3]) {
+    bytes.extend_from_slice(&OP_COLOR.to_le_bytes());
+    bytes.extend_from_slice(&colour.to_le_bytes());
+    bytes.extend_from_slice(&OP_POLYZ.to_le_bytes());
+    bytes.extend_from_slice(&3u16.to_le_bytes());
+    for r in regs {
+        bytes.extend_from_slice(&(r * 12).to_le_bytes());
+    }
+    bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+}
+
+#[test]
+fn test_sort_runs_both_branches_and_the_continuation() {
+    // `SORT first second _` at `op`: the inline branch runs to its RETURN, then the branch at
+    // `op + 4 + second`, then the stream continues at `op + 2 + first` (FreeFlight `siobj.cpp`).
+    let mut bytes = sort_prelude();
+    let op = bytes.len();
+    bytes.extend_from_slice(&OP_SORT.to_le_bytes());
+    bytes.extend_from_slice(&38u16.to_le_bytes()); // op + 2 + 38 = op + 40
+    bytes.extend_from_slice(&20u16.to_le_bytes()); // op + 4 + 20 = op + 24
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    sort_branch(&mut bytes, 5, [0, 1, 2]); // op + 8
+    sort_branch(&mut bytes, 9, [0, 1, 3]); // op + 24
+    sort_branch(&mut bytes, 7, [0, 2, 4]); // op + 40
+    let last_return = bytes.len() - 2;
+
+    let ir = decode(&bytes, "SORT").expect("decode sort");
+    let mut colours: Vec<u8> = ir.vertices.iter().map(|v| v.palette_index).collect();
+    colours.sort_unstable();
+    colours.dedup();
+    assert_eq!(colours, vec![5, 7, 9]);
+    assert_eq!(ir.indices.len(), 9);
+    assert_eq!(ir.decode().expect("record").returned_at, Some(last_return));
+    assert_eq!(op + 54, last_return);
+}
+
+#[test]
+fn test_sort_with_a_backward_target_ends_at_the_first_return() {
+    let mut bytes = sort_prelude();
+    let op = bytes.len();
+    bytes.extend_from_slice(&OP_SORT.to_le_bytes());
+    bytes.extend_from_slice(&38u16.to_le_bytes());
+    bytes.extend_from_slice(&0xFFF0u16.to_le_bytes()); // second branch far outside the chunk
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    sort_branch(&mut bytes, 5, [0, 1, 2]);
+    sort_branch(&mut bytes, 9, [0, 1, 3]);
+    sort_branch(&mut bytes, 7, [0, 2, 4]);
+
+    let ir = decode(&bytes, "SORT-BAD").expect("decode malformed sort");
+    assert_eq!(ir.indices.len(), 3);
+    assert_eq!(ir.decode().expect("record").returned_at, Some(op + 22));
+}
+
+#[test]
+fn test_shade16_picks_the_ramp_entry_from_the_normal() {
+    // `SHADES 0 2 (0,-32767,0) (0,32767,0)`, then `SHADE16 norm base; POLYZ` per polygon.
+    // `PLAYONE` 0xA550: colour = base + max(0, (s >> 2) >> 8 [- 2 when base is 0x10]).
+    let mut bytes = sort_prelude();
+    bytes.extend_from_slice(&0x0156u16.to_le_bytes());
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    bytes.extend_from_slice(&2u16.to_le_bytes());
+    for n in [[0i16, -32767, 0], [0, 32767, 0]] {
+        for c in n {
+            bytes.extend_from_slice(&c.to_le_bytes());
+        }
+    }
+    for (norm, base, regs) in [
+        (0u16, 0x30u16, [0u16, 1, 2]),
+        (2, 0x10, [0, 1, 3]),
+        (2, 0x30, [0, 2, 4]),
+    ] {
+        bytes.extend_from_slice(&0x02B5u16.to_le_bytes());
+        bytes.extend_from_slice(&norm.to_le_bytes());
+        bytes.extend_from_slice(&base.to_le_bytes());
+        bytes.extend_from_slice(&OP_POLYZ.to_le_bytes());
+        bytes.extend_from_slice(&3u16.to_le_bytes());
+        for r in regs {
+            bytes.extend_from_slice(&(r * 12).to_le_bytes());
+        }
+    }
+    bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+    let ir = decode(&bytes, "SHADE16").expect("decode shade16");
+    let colours: Vec<u8> = ir
+        .indices
+        .chunks(3)
+        .map(|t| ir.vertices[t[0] as usize].palette_index)
+        .collect();
+    // Unlit face: base. Lit face: 0x10 + 13 = 29 (the -2 adjustment), 0x30 + 15 = 63.
+    assert_eq!(colours, vec![0x30, 29, 63]);
+}
+
+fn push_words(bytes: &mut Vec<u8>, words: &[u16]) {
+    for w in words {
+        bytes.extend_from_slice(&w.to_le_bytes());
+    }
+}
+
+#[test]
+fn test_gosub_runs_the_subroutine_then_resumes_after_the_call() {
+    use crate::sod::vm::OP_GOSUB;
+    // GOSUB's target is the operand word's address plus the byte offset; RETURN resumes after
+    // the operand. Main (20 bytes): GOSUB, COLOR 7, POLYZ 3, RETURN. Subroutine at op + 20.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_GOSUB, 18]);
+    push_words(
+        &mut bytes,
+        &[OP_COLOR, 7, OP_POLYZ, 3, 0, 24 * 5, 48, OP_RETURN],
+    );
+    sort_branch(&mut bytes, 5, [0, 1, 2]);
+
+    let ir = decode(&bytes, "GOSUB").expect("decode gosub");
+    let colours: Vec<u8> = ir.vertices.iter().map(|v| v.palette_index).collect();
+    assert!(colours.contains(&5), "the subroutine polygon is drawn");
+    assert!(colours.contains(&7), "the caller resumes after the call");
+    assert_eq!(ir.indices.len(), 6);
+}
+
+#[test]
+fn test_centre_stack_offsets_vertices_until_popped() {
+    use crate::sod::vm::{OP_MOVECENTRE, OP_POPCENTRE, OP_PUSHCENTRE};
+    // Register 3 is (0, 0, 10): polygons between MOVECENTRE and POPCENTRE sit 10 units
+    // further along Z, the one after POPCENTRE is back at the origin.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_PUSHCENTRE, OP_MOVECENTRE, 36]);
+    push_words(&mut bytes, &[OP_COLOR, 5, OP_POLYZ, 3, 0, 12, 24]);
+    push_words(&mut bytes, &[OP_POPCENTRE]);
+    push_words(
+        &mut bytes,
+        &[OP_COLOR, 9, OP_POLYZ, 3, 0, 12, 24, OP_RETURN],
+    );
+
+    let ir = decode(&bytes, "CENTRE").expect("decode centre");
+    let z_of = |colour: u8| -> Vec<f32> {
+        ir.vertices
+            .iter()
+            .filter(|v| v.palette_index == colour)
+            .map(|v| v.position[2])
+            .collect()
+    };
+    assert!(z_of(5).iter().all(|z| *z >= 10.0), "{:?}", z_of(5));
+    assert!(z_of(9).iter().all(|z| *z <= 0.0), "{:?}", z_of(9));
 }

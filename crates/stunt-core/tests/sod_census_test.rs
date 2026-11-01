@@ -20,12 +20,12 @@ use stunt_core::sod::{
     census_skip, decode_sod,
 };
 
-const PUSHCENTRE: u16 = 0x007E;
-const MOVECENTRE: u16 = 0x0090;
-const SHADE1: u16 = 0x0144;
+const CLR2D: u16 = 0x0360;
+const SCALEIT: u16 = 0x0321;
+const BZLT: u16 = 0x0318;
 const GOSUB: u16 = 0x01A7;
 const ANIMATE: u16 = 0x01F8;
-const BVGT: u16 = 0x02FD;
+const BVLT: u16 = 0x02F4;
 
 fn model(words: &[u16]) -> Vec<u8> {
     let mut bytes = Vec::new();
@@ -49,16 +49,16 @@ fn stopped(offset: usize, opcode: u16, reason: SodStopReason) -> SodStop {
 /// opcodes, so a wrong width would surface as a different opcode list.
 fn masked_stream() -> Vec<u8> {
     model(&[
-        PUSHCENTRE, // offset 10, no operands
-        MOVECENTRE, // 12
-        OP_COLOR,   // operand
-        BVGT,       // 16
+        CLR2D,    // offset 10, no operands
+        SCALEIT,  // 12
+        OP_COLOR, // operand
+        BVLT,     // 16
         OP_RETURN, OP_RETURN, OP_RETURN, OP_COLOR, // 24
         7, ANIMATE, // 28: reg, parameter, selector, count = 2, then two resource IDs
         0, OP_RETURN, OP_RETURN, 2, OP_RETURN, OP_RETURN,
         OP_TAP, // 42: reg, count = 2, then two anchor offsets
         0, 2, OP_RETURN, 28, OP_RETURN, // 52
-        SHADE1,    // after the first RETURN: never reached
+        BZLT,      // after the first RETURN: never reached
         0, 0,
     ])
 }
@@ -80,9 +80,9 @@ fn census_steps_over_and_records_each_unimplemented_opcode() {
     assert_eq!(
         record.stepped_over,
         vec![
-            stopped(10, PUSHCENTRE, SodStopReason::UnknownOpcode),
-            stopped(12, MOVECENTRE, SodStopReason::UnknownOpcode),
-            stopped(16, BVGT, SodStopReason::UnknownOpcode),
+            stopped(10, CLR2D, SodStopReason::UnknownOpcode),
+            stopped(12, SCALEIT, SodStopReason::UnknownOpcode),
+            stopped(16, BVLT, SodStopReason::UnknownOpcode),
             stopped(28, ANIMATE, SodStopReason::UnknownOpcode),
             stopped(42, OP_TAP, SodStopReason::MissingAnchors),
         ]
@@ -93,15 +93,15 @@ fn census_steps_over_and_records_each_unimplemented_opcode() {
 
 #[test]
 fn census_records_the_masked_opcodes_behind_the_first_blocking_one() {
-    // PUSHCENTRE blocks first; ANIMATE and TAP are masked behind it but still walked. The
+    // CLR2D blocks first; ANIMATE and TAP are masked behind it but still walked. The
     // record keeps stream order, so entry 0 is the first blocking opcode and the rest sit
     // behind it.
     let record = census(&model(&[
-        PUSHCENTRE, ANIMATE, 0, 0, 0, 0, OP_TAP, 0, 1, 0, OP_RETURN,
+        CLR2D, ANIMATE, 0, 0, 0, 0, OP_TAP, 0, 1, 0, OP_RETURN,
     ]));
     assert_eq!(
         record.stepped_over[0],
-        stopped(10, PUSHCENTRE, SodStopReason::UnknownOpcode)
+        stopped(10, CLR2D, SodStopReason::UnknownOpcode)
     );
     assert_eq!(record.stepped_over[1].opcode, ANIMATE);
     assert_eq!(record.stepped_over[2].opcode, OP_TAP);
@@ -115,24 +115,25 @@ fn lenient_and_strict_decodes_still_stop_at_the_blocking_opcode() {
     let ir = decode_sod(&bytes, "CENSUS", None, DecodeMode::Lenient).expect("lenient decode");
     assert_eq!(
         ir.decode().and_then(|record| record.stop),
-        Some(stopped(10, PUSHCENTRE, SodStopReason::UnknownOpcode))
+        Some(stopped(10, CLR2D, SodStopReason::UnknownOpcode))
     );
     assert_eq!(
         decode_sod(&bytes, "CENSUS", None, DecodeMode::Strict).map(|_| ()),
         Err(SodError::InvalidOpcode {
-            opcode: PUSHCENTRE,
+            opcode: CLR2D,
             offset: 10,
         })
     );
 }
 
 #[test]
-fn census_steps_over_gosub_without_following_it() {
-    // The GOSUB target (+8 bytes) holds an opcode with no width; a linear walk never sees it.
-    let record = census(&model(&[GOSUB, 8, OP_RETURN, 0x0FFF]));
+fn census_follows_gosub_into_its_subroutine() {
+    // GOSUB's target is its operand word's address plus the offset: 12 + 4 = 16, a
+    // subroutine whose unimplemented opcode is recorded before its RETURN resumes at 14.
+    let record = census(&model(&[GOSUB, 4, OP_RETURN, CLR2D, OP_RETURN]));
     assert_eq!(
         record.stepped_over,
-        vec![stopped(10, GOSUB, SodStopReason::UnknownOpcode)]
+        vec![stopped(16, CLR2D, SodStopReason::UnknownOpcode)]
     );
     assert_eq!(record.returned_at, Some(14));
     assert_eq!(record.stop, None);
@@ -141,10 +142,10 @@ fn census_steps_over_gosub_without_following_it() {
 #[test]
 fn census_stops_on_an_opcode_without_a_width() {
     assert_eq!(census_skip(0x0FFF), None);
-    let record = census(&model(&[SHADE1, 0, 0, 0x0FFF, OP_RETURN]));
+    let record = census(&model(&[BZLT, 0, 0, 0x0FFF, OP_RETURN]));
     assert_eq!(
         record.stepped_over,
-        vec![stopped(10, SHADE1, SodStopReason::UnknownOpcode)]
+        vec![stopped(10, BZLT, SodStopReason::UnknownOpcode)]
     );
     assert_eq!(
         record.stop,
@@ -155,10 +156,10 @@ fn census_stops_on_an_opcode_without_a_width() {
 
 #[test]
 fn census_without_return_ends_at_end_of_data() {
-    let record = census(&model(&[PUSHCENTRE]));
+    let record = census(&model(&[CLR2D]));
     assert_eq!(
         record.stepped_over,
-        vec![stopped(10, PUSHCENTRE, SodStopReason::UnknownOpcode)]
+        vec![stopped(10, CLR2D, SodStopReason::UnknownOpcode)]
     );
     assert_eq!(record.stop, None);
     assert_eq!(record.returned_at, None);
