@@ -128,6 +128,7 @@ examples = ["intro-1416"]
 "advance:5" = ["aircraft-misplaced", "background-misregistration", "aircraft-shape-broken"]
 
 # Tick windows the readout picks frames from (end exclusive; omitted = to the end of the film).
+# A film with no entry here is graded over its whole length.
 [films.ctry]
 start = 0
 end = 990

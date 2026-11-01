@@ -559,3 +559,18 @@ def test_score_refuses_ids_that_match_no_sheet(run_inputs: dict[str, Path]) -> N
     )
     with pytest.raises(BenchError, match="deadbeef0000"):
         score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], None)
+
+
+def test_make_run_grades_a_film_without_a_window_whole(run_inputs: dict[str, Path]) -> None:
+    count = make_run(
+        "vault-balloon",
+        run_inputs["capture"],
+        None,
+        run_inputs["render"],
+        run_inputs["report"],
+        run_inputs["out"],
+        run_inputs["taxonomy"],
+        seed=1,
+        revision="abc",
+    )
+    assert count == 2

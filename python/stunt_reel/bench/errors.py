@@ -636,13 +636,6 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
-def _window(taxonomy: Taxonomy, film: str, path: Path) -> FilmWindow:
-    window = taxonomy.films.get(film)
-    if window is None:
-        raise BenchError(f"{path} has no [films.{film}] window")
-    return window
-
-
 def make_run(
     film: str,
     capture: Path,
@@ -660,7 +653,8 @@ def make_run(
     and each fault in ``[faults]`` is planted on up to :data:`FAULT_FRAMES` frames.
     """
     taxonomy = load_categories(taxonomy_path)
-    window = _window(taxonomy, film, taxonomy_path)
+    # A film with no [films] entry is graded over its whole length.
+    window = taxonomy.films.get(film, FilmWindow(0, None))
     captured = load_capture(capture)
     recaptured = load_capture(recapture) if recapture is not None else None
     tree = RenderTree(render)

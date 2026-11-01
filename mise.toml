@@ -114,7 +114,7 @@ run = "uv run python python/scripts/parity_run.py"
 env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
 
 [tasks.parity-bench]
-description = "Parity metric bench: plant faults, score metrics against recapture noise (mise run parity-bench -- run --film ctry [--render DIR] [--recapture ID] | plant --render DIR --out DIR --fault shift_x:4@500-599 | errors-make --film ctry [--calibrate] | errors-score --film ctry [--against FILE] | errors-example --film ctry --tick T --category ID)"
+description = "Parity metric bench: plant faults, score metrics against recapture noise (mise run parity-bench -- run --film ctry [--render DIR] [--recapture ID] | plant --render DIR --out DIR --fault shift_x:4@500-599 | errors-make --film ctry [--calibrate] [--batch] | errors-score --film ctry [--against FILE] [--batch] | errors-example --film ctry --tick T --category ID)"
 run = "uv run python python/scripts/parity_bench.py"
 
 [tasks.parity-probe]

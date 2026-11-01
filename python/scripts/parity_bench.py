@@ -7,6 +7,7 @@ Subcommands::
     mise run parity-bench -- plant --render DIR --out DIR --fault shift_x:4@500-599 ...
     mise run parity-bench -- errors-make --film ctry [--calibrate] [--recapture ID] [--seed N]
     mise run parity-bench -- errors-score --film ctry [--against READOUT]
+    mise run parity-bench -- errors-make|errors-score --film vault-tod --batch
     mise run parity-bench -- errors-example --film ctry --tick T --category ID
 
 ``run`` writes ``bench.json`` into ``--out`` and prints one row per metric: whether it passes,
@@ -16,7 +17,9 @@ faults over the ticks named, so a render with known errors can be scored by the 
 into ``build/parity/bench/<film>/errors``; a Haiku subagent reads the brief and writes
 ``grades.txt``; ``errors-score`` writes ``readout.json`` and prints it, the changes since
 ``--against`` and, for a calibrating run, the calibration. ``errors-example`` commits one tick's
-sheet as an example of a category.
+sheet as an example of a category. ``--batch`` reads a film the batch survey captured, rendered
+and scored (``mise run batch-parity``) instead of a pinned reference; a film with no
+``[films.<film>]`` window is graded over its whole length.
 """
 
 from __future__ import annotations
@@ -100,7 +103,22 @@ def _errors_out(args: argparse.Namespace) -> Path:
 
 
 def _render(args: argparse.Namespace) -> Path:
-    return Path(args.render or REPO_ROOT / parity_layout.render_dir(args.film))
+    if args.render:
+        return Path(args.render)
+    if args.batch:
+        return REPO_ROOT / parity_layout.batch_film_dir(args.film) / "render"
+    return REPO_ROOT / parity_layout.render_dir(args.film)
+
+
+def _batch_capture(root: Path, slug: str) -> Path:
+    """The batch survey's latest capture of *slug*: its highest-numbered run."""
+    parent = root / parity_layout.frames_root(slug)
+    runs = (
+        [p for p in parent.iterdir() if p.is_dir() and p.name.isdigit()] if parent.is_dir() else []
+    )
+    if not runs:
+        raise BenchError(f"{parent} holds no capture; run mise run batch-parity -- --only {slug}")
+    return max(runs, key=lambda p: int(p.name))
 
 
 def _revision() -> str:
@@ -120,12 +138,19 @@ def _revision() -> str:
 def errors_make(args: argparse.Namespace) -> int:
     film = args.film
     root = Path(args.data_root).resolve()
-    reference = references.reference_dir(root, film)
     recapture = None
-    if args.calibrate:
-        pointer = references.read_reference(root, film)
-        recapture = root / parity_layout.frames_path(pointer.slug, args.recapture)
-    report = args.report or REPO_ROOT / parity_layout.report_dir(film) / "report.json"
+    if args.batch:
+        if args.calibrate:
+            raise BenchError("--calibrate needs a pinned reference and recapture, not --batch")
+        reference = _batch_capture(root, film)
+        report_dir = REPO_ROOT / parity_layout.batch_film_dir(film) / "report"
+    else:
+        reference = references.reference_dir(root, film)
+        if args.calibrate:
+            pointer = references.read_reference(root, film)
+            recapture = root / parity_layout.frames_path(pointer.slug, args.recapture)
+        report_dir = REPO_ROOT / parity_layout.report_dir(film)
+    report = args.report or report_dir / "report.json"
     out = _errors_out(args)
     count = make_run(
         film, reference, recapture, _render(args), report, out, CATEGORIES, args.seed, _revision()
@@ -173,7 +198,10 @@ def errors_score(args: argparse.Namespace) -> int:
 
 def errors_example(args: argparse.Namespace) -> int:
     root = Path(args.data_root).resolve()
-    reference = references.reference_dir(root, args.film)
+    if args.batch:
+        reference = _batch_capture(root, args.film)
+    else:
+        reference = references.reference_dir(root, args.film)
     path = write_example(args.film, args.tick, args.category, reference, _render(args), CATEGORIES)
     print(f"[bench] {path.name} is an example of {args.category}", file=sys.stderr)
     return 0
@@ -213,12 +241,18 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     make_p.add_argument("--report", type=Path, default=None)
     make_p.add_argument("--out", type=Path, default=None)
     make_p.add_argument("--data-root", type=Path, default=REPO_ROOT)
+    make_p.add_argument(
+        "--batch", action="store_true", help="the batch survey's capture, render and report"
+    )
     make_p.set_defaults(handler=errors_make)
     score_p = sub.add_parser("errors-score", help="score grades.txt into readout.json")
     score_p.add_argument("--film", required=True)
     score_p.add_argument("--against", type=Path, default=None, help="an earlier readout.json")
     score_p.add_argument("--render", type=Path, default=None)
     score_p.add_argument("--out", type=Path, default=None)
+    score_p.add_argument(
+        "--batch", action="store_true", help="the batch survey's capture, render and report"
+    )
     score_p.set_defaults(handler=errors_score)
     example_p = sub.add_parser("errors-example", help="commit a tick's sheet as a category example")
     example_p.add_argument("--film", required=True)
@@ -226,6 +260,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     example_p.add_argument("--category", required=True)
     example_p.add_argument("--render", type=Path, default=None)
     example_p.add_argument("--data-root", type=Path, default=REPO_ROOT)
+    example_p.add_argument(
+        "--batch", action="store_true", help="the batch survey's capture, render and report"
+    )
     example_p.set_defaults(handler=errors_example)
     return parser.parse_args(argv)
 
