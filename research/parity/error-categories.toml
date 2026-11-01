@@ -7,8 +7,11 @@
 #
 # `examples` names sheets in error-examples/ (`<film>-<tick>.png`: capture top left, render top
 # right, luma difference, actor close-up) that both Haiku and Sonnet graded 2 or more for the
-# category; an empty list means no real frame of the probe reached that. Add one by copying the sheet
-# there and naming it here.
+# category; an empty list means no real frame of the probe reached that. Add one with
+# `mise run parity-bench -- errors-example`, which copies the sheet there and names it here.
+#
+# The file also holds each film's tick window (`[films.<film>]`) and the smallest change in a
+# category's count of frames graded 2+ that a readout comparison reports (`[readout] min_change`).
 
 [[category]]
 id = "aircraft-parts-missing"
@@ -123,3 +126,16 @@ examples = ["intro-1416"]
 "actors_removed" = ["aircraft-absent", "aircraft-parts-missing", "aircraft-shape-broken", "shadow-missing", "actors-missing"]
 "shift_y:4" = ["background-misregistration", "aircraft-misplaced"]
 "advance:5" = ["aircraft-misplaced", "background-misregistration", "aircraft-shape-broken"]
+
+# Tick windows the readout picks frames from (end exclusive; omitted = to the end of the film).
+[films.ctry]
+start = 0
+end = 990
+
+[films.intro]
+start = 1000
+
+# compare reports a category only when its count of frames graded 2+ moves by at least this much.
+# Set by the repeatability run (research/parity/method.md section 2.3).
+[readout]
+min_change = 2
