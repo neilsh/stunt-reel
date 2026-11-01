@@ -137,6 +137,28 @@ def make_crop(
     write_png(out, width, top + divider + bottom)
 
 
+def make_side_by_side(
+    reference: Path,
+    ours: Path,
+    ordinal: int,
+    tick: int,
+    box: tuple[int, int, int, int],
+    scale: int,
+    out: Path,
+) -> None:
+    """Writes capture ordinal `ordinal` left of our film tick `tick` for `box`, magenta between."""
+    capture = read_capture(reference)
+    store = RenderStore(ours)
+    width = store.record.geometry.width
+    frame = _capture_frame(capture, ordinal)
+    palette = read_capture_palette(reference / frame.palette_file)
+    left = render_region((reference / frame.frame_file).read_bytes(), palette, box, scale, width)
+    right = render_region(read_page(store, tick).indices, palette, box, scale, width)
+    divider = [255, 0, 255] * 2
+    rows = [a + divider + b for a, b in zip(left, right, strict=True)]
+    write_png(out, (box[2] - box[0]) * scale * 2 + 2, rows)
+
+
 def cmd_crop(args: argparse.Namespace) -> None:
     box = (args.x0, args.y0, args.x1, args.y1)
     make_crop(args.reference, args.ours, args.ordinal, args.tick, box, args.scale, args.out)

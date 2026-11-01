@@ -33,6 +33,15 @@ struct Options {
     /// (default: ticks 0..=total, the film's last tick included)
     #[arg(long, value_name = "A..B", value_parser = parse_frame_range)]
     frames: Option<FrameRange>,
+    /// Render exactly these 0-based film ticks (comma-separated), in one process
+    #[arg(
+        long = "at-ticks",
+        value_name = "T,T,...",
+        value_parser = parse_tick_list,
+        requires = "out_dir",
+        conflicts_with_all = ["frames", "sample_count", "video"]
+    )]
+    ticks: Option<TickList>,
     /// Directory searched first for ANCHORPT.DAT, MAP.BIN and SCENERY.scn; then the archive's
     /// directory, its parent and grandparent, then sidata/ or SIDATA/ inside the parent
     /// (names match any case)
@@ -90,6 +99,8 @@ pub(crate) struct CliConfig {
     /// Half-open `[start, end)` 1-based tick ordinals to render, resolved against the
     /// film clock by [`crate::playback`]; `None` renders ticks `0..=total_ticks`.
     pub frame_range: Option<FrameRange>,
+    /// Exact 0-based film ticks from `--at-ticks`, ascending and distinct.
+    pub tick_list: Option<TickList>,
     /// Directory searched first for `ANCHORPT.DAT`, `MAP.BIN` and `SCENERY.scn`.
     pub sidata_dir: Option<PathBuf>,
     pub width: u32,
@@ -126,6 +137,7 @@ impl CliConfig {
             all: mut all_path,
             out_dir,
             frames: frame_range,
+            ticks: tick_list,
             sidata: sidata_dir,
             video: video_path,
             frame_step,
@@ -185,6 +197,7 @@ impl CliConfig {
             all_path,
             out_dir,
             frame_range,
+            tick_list,
             sidata_dir,
             width,
             height,
@@ -237,6 +250,24 @@ impl FrameRange {
     pub(crate) fn end(self) -> usize {
         self.end
     }
+}
+
+/// The 0-based film ticks `--at-ticks` named, ascending and without repeats.
+pub(crate) type TickList = Vec<usize>;
+
+/// Parses `--at-ticks 48,92,1009` into an ascending, de-duplicated tick list.
+fn parse_tick_list(spec: &str) -> Result<TickList, String> {
+    let mut ticks = spec
+        .split(',')
+        .map(|part| {
+            part.trim()
+                .parse::<usize>()
+                .map_err(|e| format!("invalid tick {part:?}: {e}"))
+        })
+        .collect::<Result<TickList, String>>()?;
+    ticks.sort_unstable();
+    ticks.dedup();
+    Ok(ticks)
 }
 
 /// Parses a half-open `A..B` frame range into 1-based tick ordinals.
@@ -319,6 +350,15 @@ mod tests {
         assert!(parse(&["--sample-count", "0", "--out-dir", "o"]).is_err());
         assert!(parse(&["--fps", "0"]).is_err());
         assert!(parse(&["--frames", "5..5"]).is_err());
+    }
+
+    #[test]
+    fn test_ticks_parse_sorted_and_need_out_dir() {
+        let config = parse(&["--at-ticks", "92, 48,92,1009", "--out-dir", "o"]).expect("parses");
+        assert_eq!(config.tick_list, Some(vec![48, 92, 1009]));
+        assert!(parse(&["--at-ticks", "48"]).is_err());
+        assert!(parse(&["--at-ticks", "4x", "--out-dir", "o"]).is_err());
+        assert!(parse(&["--at-ticks", "4", "--out-dir", "o", "--frames", "1..3"]).is_err());
     }
 
     #[test]

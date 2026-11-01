@@ -31,8 +31,13 @@ impl Playback {
     #[must_use]
     pub(crate) fn new(config: &CliConfig, scene: &FilmScene) -> Self {
         let total_ticks = playback_ticks(config, scene);
+        let frame_range = match config.tick_list.as_deref() {
+            Some([first, .., last]) => Some(FrameRange::new(first + 1, last + 2)),
+            Some([only]) => Some(FrameRange::new(only + 1, only + 2)),
+            _ => config.frame_range,
+        };
         Self {
-            range: TickRange::new(config.frame_range, total_ticks),
+            range: TickRange::new(frame_range, total_ticks),
             plan: SamplePlan::from_flags(config),
         }
     }
@@ -149,8 +154,10 @@ impl std::fmt::Display for SampleKey {
 }
 
 /// How a run selects the film-clock ticks it renders.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 enum SamplePlan {
+    /// Exactly these ascending ticks (`--at-ticks`), those past the film clock dropped.
+    List(Vec<usize>),
     /// One render per `step` ticks, named by 0-based tick.
     Ticks { step: usize },
     /// `count` evenly spaced renders across the video span, named by 1-based sample.
@@ -162,7 +169,9 @@ enum SamplePlan {
 impl SamplePlan {
     /// Picks the plan the flags ask for; `--sample-count` conflicts with `--video`.
     fn from_flags(config: &CliConfig) -> Self {
-        if config.video_path.is_some() {
+        if let Some(ticks) = &config.tick_list {
+            Self::List(ticks.clone())
+        } else if config.video_path.is_some() {
             Self::Video { fps: config.fps }
         } else if let Some(count) = config.sample_count {
             Self::Even { count }
@@ -174,8 +183,13 @@ impl SamplePlan {
     }
 
     /// The samples this plan renders over `range`, in playing order.
-    fn samples(self, range: TickRange) -> Vec<(SampleKey, f32)> {
-        match self {
+    fn samples(&self, range: TickRange) -> Vec<(SampleKey, f32)> {
+        match *self {
+            Self::List(ref ticks) => ticks
+                .iter()
+                .filter(|&&tick| tick < range.end_hold())
+                .map(|&tick| (SampleKey::Tick(tick), tick as f32))
+                .collect(),
             Self::Ticks { step } => (range.start()..range.end_hold())
                 .step_by(step)
                 .map(|tick| (SampleKey::Tick(tick), tick as f32))
@@ -291,6 +305,21 @@ mod tests {
                 (SampleKey::Tick(2), 2.0),
                 (SampleKey::Tick(4), 4.0),
                 (SampleKey::Tick(6), 6.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tick_list_samples_exactly_those_ticks() {
+        // Ticks 48, 92 and 1009 span ordinals 49..1011; a tick past the clock is dropped.
+        let range = TickRange::new(Some(FrameRange::new(49, 1011)), 1342);
+        assert_eq!(bounds(range), (48, 1010, 1010));
+        assert_eq!(
+            SamplePlan::List(vec![48, 92, 1009, 5000]).samples(range),
+            vec![
+                (SampleKey::Tick(48), 48.0),
+                (SampleKey::Tick(92), 92.0),
+                (SampleKey::Tick(1009), 1009.0),
             ]
         );
     }
