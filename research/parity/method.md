@@ -59,6 +59,35 @@ Headless renders write the palette controls of every rendered tick to `palette_c
 
 From `36a7305` to `5bf6afe` the comparator also reported `ssim_compensated` (the render's luminance scaled by the fade level, later by the ratio of capture to render fade level) and headlined `mean_ssim_compensated`. That stood in for the fade before the renderer modelled it and was retired once it did; `--compare` reads such reports for their raw `ssim`.
 
+### 2.2 The metric bench
+
+`[Bounded Observation]`, one render per film at `2461289`, references `vault-ctry/frames/004` and `vault-intro/frames/004`, recaptures `005`. `mise run parity-bench -- run --film <film>` (`python/stunt_reel/bench/`) plants render faults in memory on every scored frame and scores ten candidate metrics against the reference. Its numpy SSIM reproduces the Rust `ssim` of `report.json` to within 1e-4 on every frame, and a synthetic fixture with golden values from the Rust scorer pins the two together (`tests/fixtures/parity/bench/`). The yardstick σ is the standard deviation, over the scored ticks both captures hold, of (metric against `004`) − (metric against `005`) with the unchanged render: per-frame variation no render change caused. A fault is detected when the metric falls by at least 3σ on average.
+
+`CTRY.FLM`, 114 scored frames. Each cell is the mean fall in units of σ; positive is worse, so 3 or more is a detection, and a negative cell means the fault moved the render *closer* to the capture:
+
+| Metric | σ | actors removed | x 1 | x 2 | x 4 | x 8 | y 1 | y 2 | y 4 | adv 1 | adv 3 | adv 5 | flat terrain | flicker 3 | flicker 10 | wrong tick | grey |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `ssim` | 0.00030 | -15 | 1.1 | 1.9 | 4.6 | 9.4 | 22 | 44 | 82 | 5.9 | -1.7 | 5.3 | 30 | 3.3 | 30 | 562 | 43 |
+| `ssim_structured` | 0.00269 | -1.0 | 0.8 | 1.3 | 2.6 | 4.6 | 4.3 | 8.1 | 12 | 1.0 | -1.2 | -1.5 | 5.2 | 0.1 | 1.1 | 37 | 12 |
+| `grey_skill` | 0.00095 | -22 | 1.7 | 3.0 | 7.0 | 14 | 28 | 58 | 109 | 6.5 | -3.7 | 6.8 | 44 | 4.9 | 44 | 829 | 53 |
+| `index_ocean` | 0.01361 | 0 | 19 | 18 | 17 | 15 | 17 | 17 | 17 | 11 | 13 | 12 | 0 | 0 | 0 | 22 | n/a |
+| `index_terrain` | 0.00079 | 0 | -1.3 | -1.4 | -0.8 | 2.2 | 2.6 | 7.6 | 21 | -251 | -247 | -233 | 147 | 0 | 0 | 315 | n/a |
+| `index_props` | 0.00019 | 0 | 33 | 46 | 78 | 140 | 193 | 319 | 492 | 1147 | 1183 | 1515 | 0 | 0 | 0 | 2833 | n/a |
+| `index_actors` | 0.00049 | -241 | -48 | -77 | -116 | -180 | -34 | -60 | -116 | -16 | -42 | -61 | 0 | 0 | 0 | -5.1 | n/a |
+| `edge_f` | 0.00112 | 34 | -0.2 | -0.1 | 2.2 | 4.6 | 20 | 41 | 90 | 0.4 | -6.5 | -6.2 | 38 | 0.0 | 0.3 | 261 | 420 |
+| `ssim_actors` | 0.00159 | -113 | -6.1 | -14 | -25 | -45 | 10 | 20 | 21 | -1.0 | -1.3 | -0.8 | 18 | 0.1 | 1.1 | -46 | -136 |
+| `ssim_props` | 0.00024 | -13 | 3.7 | 1.5 | -0.2 | -33 | 67 | 135 | 213 | 28 | -7.8 | 52 | 53 | 3.3 | 35 | 420 | -36 |
+
+Reading:
+
+* **No metric passes**, because some faults improve the render; a metric cannot detect a fault that moves the render towards the capture. Removing the actors raises `ssim` by 0.0044 (15σ) and the actor-window SSIM by 113σ, and the differential score on the windows the removal touches is +0.18: our actors match the capture worse than the ground behind them. Shifting the render right raises `ssim_actors` at every magnitude and `ssim_props` at 8 columns, which suggests drawn objects sit left of where `PLAYONE` puts them; not yet measured directly.
+* **Smallest magnitude detected** (horizontal shift / vertical shift / advance / flicker): `ssim` 4 / 1 / 1 / 3; `grey_skill` 4 / 1 / 1 / 3; `ssim_props` 1 / 1 / 1 / 3; `ssim_structured` 8 / 1 / none / none; `edge_f` 8 / 1 / none / none. A 3-tick advance is not detected by any SSIM metric while 1 and 5 are.
+* **Index agreement** is the most sensitive per layer but reads layers differently: `index_terrain` *improves* by about 240σ under any advance, which no other metric shows; unexplained.
+* **Differential check** (section 2's verdict, numpy): the mean Δ of the unchanged render as *before* and the fault as *after* is negative for every fault except actors removed (+0.180) and advance 3 (+0.0023), the same two that improve the whole-frame score.
+* **Build floor:** a second build of the same revision (`mise run build-at`) renders all 1,337 ticks with no `.idx` or luma pixel different, so the verdict needs no build-noise allowance.
+* **`INTRO.FLM`**, 278 scored frames: same picture (removing actors improves `ssim` by 11σ, no metric passes). Its two captures agree so closely that σ is 1.7e-5 for `ssim_structured` and 1.3e-6 for `ssim_props`, so σ units there are inflated and not comparable with `CTRY.FLM`; `index_ocean` is `n/a` throughout.
+* **Haiku judge** (spec experiment): 310 composites (capture | A | B, both orders, 10 control pairs) over five Haiku subagents; one returned no answers, declining to guess. On the 248 answered, accuracy per fault ran from 0.24 (flat terrain) to 0.71 (1-column shift) and the wrong-tick control scored 0.67, below the 0.9 bar, so the arm is dropped. Control pairs read A 56% of the time. The judges reported most pairs as indistinguishable at 320x240.
+
 ## 3. What is not yet evidence
 
 * **Single film.** Only `CTRY.FLM` has been captured; the rows say nothing about other films, cameras, or actors (`[Unknown]`).

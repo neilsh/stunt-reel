@@ -181,3 +181,9 @@ Output: a `faults` section in `report.json` and one summary line per film, for e
 - Is 3σ too strict for faults the capture itself blurs, such as actors near the frame edge?
 - Does the wrong-tick floor need a minimum distance other than 100 ticks for very static films?
 - Do the [I6] gate values stay at 0.8 and 0.9 once the render's position on the scale is known?
+
+Bench result 2026-10-31 (`research/parity/method.md` § 2.2): no metric passes, because two faults
+(actors removed, a 3-tick advance) move the current render *closer* to the capture; the pass rule assumed
+a render near the game. Section 3 waits (Stop conditions). The Haiku judge missed the wrong-tick control
+(0.67) and is dropped. Section 2 lands on the current SSIM; its differential check is negative for every
+fault except those two, and the build floor is 0.
