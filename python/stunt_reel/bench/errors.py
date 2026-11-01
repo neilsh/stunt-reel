@@ -48,12 +48,12 @@ __all__ = [
     "build_sheet",
     "calibrate",
     "compare",
-    "idx_digest",
     "load_categories",
     "make_run",
     "parse_grades",
     "pick_ticks",
     "plan_sheets",
+    "planes_digest",
     "readout",
     "render_brief",
     "score_run",
@@ -384,11 +384,13 @@ def render_brief(
     )
 
 
-def idx_digest(render: Path, ticks: Sequence[int]) -> str:
-    """SHA-256 over the render's index planes at *ticks*, so scoring sees the pictures graded."""
+def planes_digest(render: Path, ticks: Sequence[int]) -> str:
+    """SHA-256 over every file a sheet reads at *ticks* (picture, index and layer planes), so
+    scoring sees the pictures graded."""
     digest = hashlib.sha256()
     for tick in sorted(ticks):
-        digest.update((render / f"{tick_stem(tick)}.idx").read_bytes())
+        for suffix in (".png", ".idx", ".layer"):
+            digest.update((render / f"{tick_stem(tick)}{suffix}").read_bytes())
     return digest.hexdigest()
 
 
@@ -598,6 +600,8 @@ class Calibration:
     controls: int
     faults: dict[str, tuple[int, int]]
     passes: bool
+    #: No ``actors_removed`` sheet was planted, so the bar tested nothing; ``passes`` is False.
+    inconclusive: bool = False
 
 
 def _at_least(share: tuple[int, int], count: int) -> int:
@@ -613,7 +617,7 @@ ACTORS_BAR = (5, 6)
 
 
 def _detected(planted: SheetGrades | None, real: SheetGrades | None, named: Sequence[str]) -> bool:
-    if planted is None:
+    if planted is None or real is None:
         return False
     for name in named:
         value, base = planted.grades.get(name), None if real is None else real.grades.get(name)
@@ -632,8 +636,8 @@ def calibrate(
     clean = 0
     for sheet in controls:
         graded = grades.get(sheet.id)
-        values = [] if graded is None else [v for v in graded.grades.values() if v is not None]
-        if graded is not None and all(v <= CLEAN for v in values):
+        values = [] if graded is None else [graded.grades.get(n) for n in taxonomy.ids]
+        if graded is not None and all(v is not None and v <= CLEAN for v in values):
             clean += 1
     faults: dict[str, tuple[int, int]] = {}
     for key, named in taxonomy.faults.items():
@@ -641,8 +645,9 @@ def calibrate(
         detected = sum(_detected(grades.get(s.id), real.get(s.tick), named) for s in planted)
         faults[key] = (detected, len(planted))
     actors, actor_sheets = faults.get("actors_removed", (0, 0))
-    passes = actors >= _at_least(ACTORS_BAR, actor_sheets)
-    return Calibration(clean, len(controls), faults, passes)
+    inconclusive = actor_sheets == 0
+    passes = not inconclusive and actors >= _at_least(ACTORS_BAR, actor_sheets)
+    return Calibration(clean, len(controls), faults, passes, inconclusive)
 
 
 RUN_FILE = "run.json"
@@ -762,7 +767,7 @@ def make_run(
         "calibrate": recaptured is not None,
         "revision": revision,
         "categories_digest": taxonomy.digest,
-        "render_digest": idx_digest(render, ticks),
+        "render_digest": planes_digest(render, ticks),
     }
     _write_text(out / RUN_FILE, json.dumps(run, indent=2) + "\n")
     return len(written)
@@ -817,13 +822,16 @@ def score_run(
             f"then, {taxonomy.digest} now); run errors-make again"
         )
     ticks = [int(t) for t in run["ticks"]]
-    render_digest = idx_digest(render, ticks)
+    render_digest = planes_digest(render, ticks)
     if run["render_digest"] != render_digest:
         raise BenchError(
             f"{render} changed since errors-make (render {run['render_digest']} then, "
             f"{render_digest} now); run errors-make again"
         )
-    sheets = plan_sheets(ticks, RenderTree(render), taxonomy, int(run["seed"]), run["calibrate"])
+    planned = plan_sheets(ticks, RenderTree(render), taxonomy, int(run["seed"]), run["calibrate"])
+    # make_run skips a planted sheet plant() declines; only the sheets in ids.txt were graded.
+    written = set((out / "ids.txt").read_text(encoding="utf-8").split())
+    sheets = [s for s in planned if s.id in written]
     grades = _read_grades(out / GRADES_FILE, taxonomy, sheets)
     disputes = 0
     if (out / SECOND_FILE).is_file():

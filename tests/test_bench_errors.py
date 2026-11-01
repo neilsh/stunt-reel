@@ -21,13 +21,13 @@ from stunt_reel.bench.errors import (
     calibrate,
     compare,
     disputed,
-    idx_digest,
     load_categories,
     make_run,
     merge_grades,
     parse_grades,
     pick_ticks,
     plan_sheets,
+    planes_digest,
     readout,
     render_brief,
     score_run,
@@ -242,16 +242,29 @@ def test_aircraft_absent_needs_one_in_the_capture() -> None:
     assert "CAPTURE shows" in absent.definition
 
 
-def test_idx_digest_changes_with_render(tmp_path: Path, bench_fixture: Path) -> None:
+@pytest.mark.parametrize("name", ["tick_00010.idx", "tick_00010.layer", "tick_00010.png"])
+def test_planes_digest_covers_every_file_a_sheet_reads(
+    tmp_path: Path, bench_fixture: Path, name: str
+) -> None:
     render = bench_fixture / "render"
-    assert idx_digest(render, [10, 20]) == idx_digest(render, [10, 20])
+    copy = tmp_path / "render"
+    shutil.copytree(render, copy)
+    data = bytearray((copy / name).read_bytes())
+    data[-1] ^= 1
+    (copy / name).write_bytes(bytes(data))
+    assert planes_digest(copy, [10, 20]) != planes_digest(render, [10, 20])
+
+
+def test_planes_digest_changes_with_render(tmp_path: Path, bench_fixture: Path) -> None:
+    render = bench_fixture / "render"
+    assert planes_digest(render, [10, 20]) == planes_digest(render, [10, 20])
     copy = tmp_path / "render"
     shutil.copytree(render, copy)
     plane = copy / "tick_00010.idx"
     data = bytearray(plane.read_bytes())
     data[0] ^= 1
     plane.write_bytes(bytes(data))
-    assert idx_digest(copy, [10, 20]) != idx_digest(render, [10, 20])
+    assert planes_digest(copy, [10, 20]) != planes_digest(render, [10, 20])
 
 
 def _all_zero(taxonomy: Taxonomy, sheet: str, other: str = "none", **grades: int) -> str:
@@ -346,6 +359,28 @@ def test_calibrate_pass_bars() -> None:
     assert _calibration_run(taxonomy, 12, 0, 6, 5).passes
     assert not _calibration_run(taxonomy, 12, 10, 6, 4).passes
     assert _calibration_run(taxonomy, 2, 2, 2, 2).passes
+    assert not _calibration_run(taxonomy, 2, 2, 6, 5).inconclusive
+
+
+def test_calibration_without_actor_sheets_is_inconclusive() -> None:
+    result = _calibration_run(load_categories(CATEGORIES), 12, 12, 0, 0)
+    assert result.inconclusive
+    assert not result.passes
+
+
+def test_ungraded_control_is_not_clean() -> None:
+    taxonomy = load_categories(CATEGORIES)
+    sheets = _sheets(("r1", "real", 1, None), ("c1", "control", 1, None))
+    text = _all_zero(taxonomy, "r1") + "\nc1 | other: none"
+    assert calibrate(parse_grades(text, taxonomy), sheets, taxonomy).controls_clean == 0
+
+
+def test_detection_needs_the_real_grade() -> None:
+    taxonomy = load_categories(CATEGORIES)
+    sheets = _sheets(("r1", "real", 1, None), ("p1", "planted", 1, "actors_removed"))
+    text = _all_zero(taxonomy, "p1", other="plane gone", aircraft_absent=3)
+    result = calibrate(parse_grades(text, taxonomy), sheets, taxonomy)
+    assert result.faults["actors_removed"] == (0, 1)
 
 
 def _readout(ticks: dict[int, int], digest: str = "c" * 64) -> Readout:
@@ -455,8 +490,8 @@ def test_score_refuses_changed_render(tmp_path: Path, run_inputs: dict[str, Path
     data[0] ^= 1
     plane.write_bytes(bytes(data))
     (run_inputs["out"] / "grades.txt").write_text("", encoding="utf-8")
-    before = idx_digest(run_inputs["render"], [10, 20])
-    after = idx_digest(copy, [10, 20])
+    before = planes_digest(run_inputs["render"], [10, 20])
+    after = planes_digest(copy, [10, 20])
     with pytest.raises(BenchError, match=f"{before}.*{after}"):
         score_run(run_inputs["out"], copy, run_inputs["taxonomy"], None)
 
@@ -686,3 +721,25 @@ def test_agreeing_passes_need_no_tiebreak(run_inputs: dict[str, Path]) -> None:
     result, _, _ = score_run(out, run_inputs["render"], run_inputs["taxonomy"], None)
     assert result.disputed == 0
     assert next(c for c in result.categories if c.category == "aircraft-absent").mean == 3
+
+
+def test_score_counts_only_written_sheets(run_inputs: dict[str, Path]) -> None:
+    out = run_inputs["out"]
+    _make(run_inputs, recapture=run_inputs["capture"])
+    ids = (out / "ids.txt").read_text(encoding="utf-8").split()
+    planted = [i for i in ids if i in _planted_ids(run_inputs)]
+    dropped = planted[0]
+    kept = [i for i in ids if i != dropped]
+    (out / "ids.txt").write_text("".join(f"{i}\n" for i in kept), encoding="utf-8")
+    _grade_all(run_inputs)
+    _, _, calibration = score_run(out, run_inputs["render"], run_inputs["taxonomy"], None)
+    assert calibration is not None
+    assert sum(n for _, n in calibration.faults.values()) == len(planted) - 1
+
+
+def _planted_ids(run_inputs: dict[str, Path]) -> set[str]:
+    run = json.loads((run_inputs["out"] / "run.json").read_text(encoding="utf-8"))
+    taxonomy = load_categories(run_inputs["taxonomy"])
+    tree = RenderTree(run_inputs["render"])
+    sheets = plan_sheets(run["ticks"], tree, taxonomy, run["seed"], calibrate=True)
+    return {s.id for s in sheets if s.kind == "planted"}

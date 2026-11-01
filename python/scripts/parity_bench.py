@@ -212,6 +212,8 @@ def errors_score(args: argparse.Namespace) -> int:
             )
     if calibration is not None:
         verdict = "PASS" if calibration.passes else "FAIL"
+        if calibration.inconclusive:
+            verdict = "INCONCLUSIVE (no actors_removed sheets)"
         clean = f"{calibration.controls_clean}/{calibration.controls}"
         print(f"calibration {verdict}: controls clean {clean} (reported, not gated)")
         for key, (detected, sheets) in calibration.faults.items():
