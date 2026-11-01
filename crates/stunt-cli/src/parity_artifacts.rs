@@ -332,7 +332,10 @@ pub(crate) fn load_capture(dir: &Path) -> Result<CaptureSet, AdapterError> {
 }
 
 /// Reads a video capture directory's `meta.json` into the port's video document.
-#[allow(dead_code, reason = "the video parity loop adopts it in a later task")]
+#[allow(
+    dead_code,
+    reason = "only tests read video captures until a video scorer is merged (method.md § 4.4)"
+)]
 pub(crate) fn load_video_capture(dir: &Path) -> Result<VideoCapture, AdapterError> {
     let path = dir.join(CAPTURE_META);
     let value = read_json(&path)?;
