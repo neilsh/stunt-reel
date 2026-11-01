@@ -479,3 +479,13 @@ def test_write_example_keeps_existing_file(run_inputs: dict[str, Path]) -> None:
     with pytest.raises(BenchError, match="zzz"):
         write_example("ctry", 20, "zzz", *args)
     assert not (path.parent / "ctry-0020.png").exists()
+
+
+def test_brief_names_an_absolute_folder(
+    tmp_path: Path, run_inputs: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    run_inputs["out"] = Path("relative")
+    _make(run_inputs)
+    brief = (tmp_path / "relative" / "brief.md").read_text(encoding="utf-8")
+    assert f"`{(tmp_path / 'relative').resolve().as_posix()}/`" in brief

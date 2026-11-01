@@ -692,7 +692,7 @@ def make_run(
         written.append(sheet.id)
     random.Random(seed).shuffle(written)  # noqa: S311 - not security
     _write_text(out / "ids.txt", "".join(f"{i}\n" for i in written))
-    _write_text(out / "brief.md", render_brief(taxonomy, out, len(written)))
+    _write_text(out / "brief.md", render_brief(taxonomy, out.resolve(), len(written)))
     run = {
         "film": film,
         "ticks": ticks,
