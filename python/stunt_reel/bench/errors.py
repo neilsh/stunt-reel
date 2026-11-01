@@ -15,7 +15,7 @@ import json
 import random
 import re
 import tomllib
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -340,8 +340,8 @@ The grey band at the bottom of each panel is the game's button bar, masked out: 
 panels may match the capture closely; grade what you see, not what you expect. Where the
 DIFFERENCE panel is black the two panels are identical: grade every category 0.
 
-Folder: `{sheet_dir}/`. `ids.txt` lists {count} image ids; each image is `<id>.png` in that folder.
-Read only `ids.txt` and those images, in the listed order. Do not read any other file and do not
+Folder: `{sheet_dir}/`. `{ids_name}` lists {count} image ids; each image is `<id>.png` in that folder.
+Read only `{ids_name}` and those images, in the listed order. Do not read any other file and do not
 dispatch subagents.
 
 ## Categories
@@ -356,21 +356,29 @@ dispatch subagents.
 
 ## Output
 
-One line per image, in `ids.txt` order, every category present, then `| other:` and either `none` or
+One line per image, in `{ids_name}` order, every category present, then `| other:` and either `none` or
 a few words on any error no category covers:
 
 `<id> {example} | other: none`
 
-Write the lines, and nothing else, to `{sheet_dir}/grades.txt`.
+Write the lines, and nothing else, to `{sheet_dir}/{grades_name}`.
 Your final message is only the number of lines written.
 """
 
 
-def render_brief(taxonomy: Taxonomy, sheet_dir: Path, count: int) -> str:
-    """The grader's whole instruction for the *count* sheets in *sheet_dir*."""
+def render_brief(
+    taxonomy: Taxonomy,
+    sheet_dir: Path,
+    count: int,
+    ids_name: str = "ids.txt",
+    grades_name: str = "grades.txt",
+) -> str:
+    """The grader's whole instruction for the *count* sheets listed in *ids_name*."""
     return _BRIEF.format(
         sheet_dir=sheet_dir.as_posix(),
         count=count,
+        ids_name=ids_name,
+        grades_name=grades_name,
         table="\n".join(f"| `{c.id}` | {c.definition} |" for c in taxonomy.categories),
         example=" ".join(f"{i}=0" for i in taxonomy.ids),
     )
@@ -458,6 +466,8 @@ class Readout:
     other: dict[int, str]
     missing: int
     unknown: tuple[str, ...]
+    #: Sheets the two passes disagreed on, scored from the tie-break (0 for a single pass).
+    disputed: int = 0
 
     def to_json(self) -> dict[str, Any]:
         """The ``readout.json`` document."""
@@ -486,6 +496,7 @@ class Readout:
                 other={int(tick): str(note) for tick, note in doc["other"].items()},
                 missing=int(doc["missing"]),
                 unknown=tuple(str(u) for u in doc["unknown"]),
+                disputed=int(doc.get("disputed", 0)),
             )
         except (KeyError, TypeError, ValueError) as err:
             raise BenchError(f"not a readout document: {err}") from err
@@ -629,7 +640,45 @@ def calibrate(
 
 RUN_FILE = "run.json"
 GRADES_FILE = "grades.txt"
+SECOND_FILE = "grades-2.txt"
+TIEBREAK_IDS = "ids-tiebreak.txt"
+TIEBREAK_FILE = "grades-tiebreak.txt"
 READOUT_FILE = "readout.json"
+
+
+def disputed(
+    first: dict[str, SheetGrades], second: dict[str, SheetGrades], ids: Sequence[str]
+) -> list[str]:
+    """The *ids*, in order, that one pass lacks or on which the two passes disagree whether
+    some category is clear (graded :data:`CLEAR` or more)."""
+    out = []
+    for sheet in ids:
+        a, b = first.get(sheet), second.get(sheet)
+        if (
+            a is None
+            or b is None
+            or any(
+                ((a.grades.get(n) or 0) >= CLEAR) != ((b.grades.get(n) or 0) >= CLEAR)
+                for n in a.grades.keys() | b.grades.keys()
+            )
+        ):
+            out.append(sheet)
+    return out
+
+
+def merge_grades(
+    first: dict[str, SheetGrades],
+    second: dict[str, SheetGrades],
+    tiebreak: dict[str, SheetGrades],
+    ids: Sequence[str],
+) -> dict[str, SheetGrades]:
+    """The first pass, with each disputed sheet graded by *tiebreak*."""
+    merged = dict(first)
+    for sheet in disputed(first, second, ids):
+        if sheet not in tiebreak:
+            raise BenchError(f"no tie-break grade for {sheet}")
+        merged[sheet] = tiebreak[sheet]
+    return merged
 
 
 def _write_text(path: Path, text: str) -> None:
@@ -670,7 +719,8 @@ def make_run(
         )
     sheets = plan_sheets(ticks, tree, taxonomy, seed, calibrate=recaptured is not None)
     out.mkdir(parents=True, exist_ok=True)
-    for stale in [*out.glob("*.png"), out / GRADES_FILE, out / READOUT_FILE]:
+    stale_files = [GRADES_FILE, SECOND_FILE, TIEBREAK_IDS, TIEBREAK_FILE, READOUT_FILE]
+    for stale in [*out.glob("*.png"), *(out / name for name in stale_files)]:
         stale.unlink(missing_ok=True)
     faults = {fault.key: fault for fault in ALL_FAULTS}
     written: list[str] = []
@@ -692,6 +742,10 @@ def make_run(
     random.Random(seed).shuffle(written)  # noqa: S311 - not security
     _write_text(out / "ids.txt", "".join(f"{i}\n" for i in written))
     _write_text(out / "brief.md", render_brief(taxonomy, out.resolve(), len(written)))
+    _write_text(
+        out / "brief-2.md",
+        render_brief(taxonomy, out.resolve(), len(written), grades_name=SECOND_FILE),
+    )
     run = {
         "film": film,
         "ticks": ticks,
@@ -705,13 +759,43 @@ def make_run(
     return len(written)
 
 
+def _read_grades(path: Path, taxonomy: Taxonomy, sheets: Sequence[Sheet]) -> dict[str, SheetGrades]:
+    grades = parse_grades(path.read_text(encoding="utf-8"), taxonomy)
+    stray = sorted(set(grades) - {s.id for s in sheets})
+    if stray:
+        raise BenchError(f"{path} grades sheets this run does not hold: {stray}")
+    return grades
+
+
+def write_disputes(out: Path, taxonomy_path: Path) -> int:
+    """Write ``ids-tiebreak.txt`` and ``brief-tiebreak.md`` for the sheets the two passes in *out*
+    disagree on; returns how many (with 0, scoring needs no tie-break)."""
+    taxonomy = load_categories(taxonomy_path)
+    try:
+        ids = (out / "ids.txt").read_text(encoding="utf-8").split()
+        first = parse_grades((out / GRADES_FILE).read_text(encoding="utf-8"), taxonomy)
+        second = parse_grades((out / SECOND_FILE).read_text(encoding="utf-8"), taxonomy)
+    except FileNotFoundError as err:
+        raise BenchError(f"{err.filename} is missing; grade both passes first") from err
+    disputes = disputed(first, second, ids)
+    (out / TIEBREAK_FILE).unlink(missing_ok=True)
+    _write_text(out / TIEBREAK_IDS, "".join(f"{i}\n" for i in disputes))
+    brief = render_brief(taxonomy, out.resolve(), len(disputes), TIEBREAK_IDS, TIEBREAK_FILE)
+    _write_text(out / "brief-tiebreak.md", brief)
+    return len(disputes)
+
+
 def score_run(
     out: Path, render: Path, taxonomy_path: Path, against: Path | None
 ) -> tuple[Readout, list[Change] | None, Calibration | None]:
-    """Score ``grades.txt`` in *out* and write ``readout.json``; refuses a changed render or file."""
+    """Score ``grades.txt`` in *out* and write ``readout.json``; refuses a changed render or file.
+
+    With a second pass (``grades-2.txt``), each sheet the passes disagree on is scored from
+    ``grades-tiebreak.txt`` (see :func:`write_disputes`) and the rest from the first pass.
+    """
     try:
         run = json.loads((out / RUN_FILE).read_text(encoding="utf-8"))
-        grades_text = (out / GRADES_FILE).read_text(encoding="utf-8")
+        (out / GRADES_FILE).stat()
     except FileNotFoundError as err:
         raise BenchError(f"{err.filename} is missing; run errors-make and grade first") from err
     taxonomy = load_categories(taxonomy_path)
@@ -728,10 +812,21 @@ def score_run(
             f"{render_digest} now); run errors-make again"
         )
     sheets = plan_sheets(ticks, RenderTree(render), taxonomy, int(run["seed"]), run["calibrate"])
-    grades = parse_grades(grades_text, taxonomy)
-    stray = sorted(set(grades) - {s.id for s in sheets})
-    if stray:
-        raise BenchError(f"{out / GRADES_FILE} grades sheets this run does not hold: {stray}")
+    grades = _read_grades(out / GRADES_FILE, taxonomy, sheets)
+    disputes = 0
+    if (out / SECOND_FILE).is_file():
+        second = _read_grades(out / SECOND_FILE, taxonomy, sheets)
+        ids = (out / "ids.txt").read_text(encoding="utf-8").split()
+        disputes = len(disputed(grades, second, ids))
+        tiebreak: dict[str, SheetGrades] = {}
+        if disputes:
+            if not (out / TIEBREAK_FILE).is_file():
+                raise BenchError(
+                    f"the two passes disagree on {disputes} sheets; run errors-disputes and "
+                    "grade brief-tiebreak.md"
+                )
+            tiebreak = _read_grades(out / TIEBREAK_FILE, taxonomy, sheets)
+        grades = merge_grades(grades, second, tiebreak, ids)
     earlier = None
     if against is not None:
         if against.resolve() == (out / READOUT_FILE).resolve():
@@ -741,6 +836,7 @@ def score_run(
             )
         earlier = Readout.from_json(json.loads(against.read_text(encoding="utf-8")))
     result = readout(grades, sheets, taxonomy.ids, str(run["film"]), taxonomy.digest, render_digest)
+    result = replace(result, disputed=disputes)
     _write_text(out / READOUT_FILE, json.dumps(result.to_json(), indent=2) + "\n")
     changes = None if earlier is None else compare(earlier, result, taxonomy.min_change)
     calibration = calibrate(grades, sheets, taxonomy) if run["calibrate"] else None

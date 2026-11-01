@@ -20,9 +20,11 @@ from stunt_reel.bench.errors import (
     build_sheet,
     calibrate,
     compare,
+    disputed,
     idx_digest,
     load_categories,
     make_run,
+    merge_grades,
     parse_grades,
     pick_ticks,
     plan_sheets,
@@ -30,6 +32,7 @@ from stunt_reel.bench.errors import (
     render_brief,
     score_run,
     sheet_id,
+    write_disputes,
     write_example,
 )
 from stunt_reel.bench.planes import BenchError, RenderTree, load_capture
@@ -424,7 +427,7 @@ def test_make_then_score_roundtrip(run_inputs: dict[str, Path]) -> None:
     assert _make(run_inputs) == 2
     ids = (out / "ids.txt").read_text(encoding="utf-8").split()
     assert sorted(p.name for p in out.iterdir()) == sorted(
-        [*(f"{i}.png" for i in ids), "brief.md", "ids.txt", "run.json"]
+        [*(f"{i}.png" for i in ids), "brief.md", "brief-2.md", "ids.txt", "run.json"]
     )
     run = json.loads((out / "run.json").read_text(encoding="utf-8"))
     assert run["ticks"] == [10, 20]
@@ -587,3 +590,99 @@ def test_make_run_grades_a_film_without_a_window_whole(run_inputs: dict[str, Pat
         revision="abc",
     )
     assert count == 2
+
+
+def test_second_brief_writes_its_own_grades(run_inputs: dict[str, Path]) -> None:
+    _make(run_inputs)
+    out = run_inputs["out"].resolve().as_posix()
+    second = (run_inputs["out"] / "brief-2.md").read_text(encoding="utf-8")
+    assert f"`{out}/grades-2.txt`" in second
+    assert "`ids.txt`" in second
+
+
+def test_disputed_flags_a_change_across_clear() -> None:
+    taxonomy = load_categories(CATEGORIES)
+    first = parse_grades(
+        "\n".join(
+            [
+                _all_zero(taxonomy, "a", aircraft_absent=3),
+                _all_zero(taxonomy, "b", aircraft_absent=1),
+                _all_zero(taxonomy, "c"),
+            ]
+        ),
+        taxonomy,
+    )
+    second = parse_grades(
+        "\n".join(
+            [
+                _all_zero(taxonomy, "a", aircraft_absent=2),
+                _all_zero(taxonomy, "b", aircraft_absent=2),
+            ]
+        ),
+        taxonomy,
+    )
+    assert disputed(first, second, ["c", "b", "a"]) == ["c", "b"]
+
+
+def test_merge_grades_takes_the_tiebreak_on_disputes() -> None:
+    taxonomy = load_categories(CATEGORIES)
+    first = parse_grades(
+        "\n".join([_all_zero(taxonomy, "a", aircraft_absent=3), _all_zero(taxonomy, "b")]),
+        taxonomy,
+    )
+    second = parse_grades(
+        "\n".join(
+            [
+                _all_zero(taxonomy, "a", aircraft_absent=2),
+                _all_zero(taxonomy, "b", shadow_missing=3),
+            ]
+        ),
+        taxonomy,
+    )
+    tiebreak = parse_grades(_all_zero(taxonomy, "b", shadow_missing=1), taxonomy)
+    merged = merge_grades(first, second, tiebreak, ["a", "b"])
+    assert merged["a"] == first["a"]
+    assert merged["b"] == tiebreak["b"]
+    with pytest.raises(BenchError, match="no tie-break grade for b"):
+        merge_grades(first, second, {}, ["a", "b"])
+
+
+def _grade_second(run_inputs: dict[str, Path], **grades: int) -> None:
+    out = run_inputs["out"]
+    taxonomy = load_categories(run_inputs["taxonomy"])
+    ids = (out / "ids.txt").read_text(encoding="utf-8").split()
+    lines = [_all_zero(taxonomy, i, "none", **grades) for i in ids]
+    (out / "grades-2.txt").write_text("\n".join(lines), encoding="utf-8")
+
+
+def test_two_passes_and_a_tiebreak_score(run_inputs: dict[str, Path]) -> None:
+    out = run_inputs["out"]
+    _make(run_inputs)
+    _grade_all(run_inputs, aircraft_absent=3)
+    _grade_second(run_inputs, aircraft_absent=1)
+    with pytest.raises(BenchError, match="errors-disputes"):
+        score_run(out, run_inputs["render"], run_inputs["taxonomy"], None)
+    assert write_disputes(out, run_inputs["taxonomy"]) == 2
+    ids = (out / "ids-tiebreak.txt").read_text(encoding="utf-8").split()
+    brief = (out / "brief-tiebreak.md").read_text(encoding="utf-8")
+    assert "`ids-tiebreak.txt` lists 2 image ids" in brief
+    assert f"`{out.resolve().as_posix()}/grades-tiebreak.txt`" in brief
+    taxonomy = load_categories(run_inputs["taxonomy"])
+    (out / "grades-tiebreak.txt").write_text(
+        "\n".join(_all_zero(taxonomy, i, aircraft_absent=2) for i in ids), encoding="utf-8"
+    )
+    result, _, _ = score_run(out, run_inputs["render"], run_inputs["taxonomy"], None)
+    absent = next(c for c in result.categories if c.category == "aircraft-absent")
+    assert absent.mean == 2
+    assert result.disputed == 2
+
+
+def test_agreeing_passes_need_no_tiebreak(run_inputs: dict[str, Path]) -> None:
+    out = run_inputs["out"]
+    _make(run_inputs)
+    _grade_all(run_inputs, aircraft_absent=3)
+    _grade_second(run_inputs, aircraft_absent=2)
+    assert write_disputes(out, run_inputs["taxonomy"]) == 0
+    result, _, _ = score_run(out, run_inputs["render"], run_inputs["taxonomy"], None)
+    assert result.disputed == 0
+    assert next(c for c in result.categories if c.category == "aircraft-absent").mean == 3

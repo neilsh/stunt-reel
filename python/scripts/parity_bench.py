@@ -6,6 +6,7 @@ Subcommands::
         [--seed N] [--floor-render DIR] [--out DIR]
     mise run parity-bench -- plant --render DIR --out DIR --fault shift_x:4@500-599 ...
     mise run parity-bench -- errors-make --film ctry [--calibrate] [--recapture ID] [--seed N]
+    mise run parity-bench -- errors-disputes --film ctry
     mise run parity-bench -- errors-score --film ctry [--against READOUT]
     mise run parity-bench -- errors-make|errors-score --film vault-tod --batch
     mise run parity-bench -- errors-example --film ctry --tick T --category ID
@@ -15,7 +16,9 @@ its sigma, and the drop each fault causes in sigma. ``plant`` copies a render tr
 faults over the ticks named, so a render with known errors can be scored by the real scorer.
 ``errors-make`` writes the error readout's sheets, ``ids.txt``, ``brief.md`` and ``run.json``
 into ``build/parity/bench/<film>/errors``; a Haiku subagent reads the brief and writes
-``grades.txt``; ``errors-score`` writes ``readout.json`` and prints it, the changes since
+``grades.txt``, and a second reads ``brief-2.md`` and writes ``grades-2.txt``. ``errors-disputes``
+lists the sheets the two passes disagree on in ``brief-tiebreak.md`` for a Sonnet subagent, which
+writes ``grades-tiebreak.txt``; ``errors-score`` writes ``readout.json`` and prints it, the changes since
 ``--against`` and, for a calibrating run, the calibration. ``errors-example`` commits one tick's
 sheet as an example of a category. ``--batch`` reads a film the batch survey captured, rendered
 and scored (``mise run batch-parity``) instead of a pinned reference; a film with no
@@ -32,7 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from stunt_reel import parity_layout, references
-from stunt_reel.bench.errors import make_run, score_run, write_example
+from stunt_reel.bench.errors import make_run, score_run, write_disputes, write_example
 from stunt_reel.bench.faults import ALL_FAULTS, Fault
 from stunt_reel.bench.planes import BenchError
 from stunt_reel.bench.run import plant_tree, run_bench
@@ -163,6 +166,16 @@ def _fmt(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.2f}"
 
 
+def errors_disputes(args: argparse.Namespace) -> int:
+    out = _errors_out(args)
+    count = write_disputes(out, CATEGORIES)
+    if count:
+        print(f"{count} disputed sheets; grade {out / 'brief-tiebreak.md'}")
+    else:
+        print("the two passes agree; no tie-break needed")
+    return 0
+
+
 def errors_score(args: argparse.Namespace) -> int:
     out = _errors_out(args)
     result, changes, calibration = score_run(out, _render(args), CATEGORIES, args.against)
@@ -175,6 +188,8 @@ def errors_score(args: argparse.Namespace) -> int:
         )
     for tick, note in sorted(result.other.items()):
         print(f"other @{tick}: {note}")
+    if result.disputed:
+        print(f"disputed {result.disputed} sheets, scored from the tie-break")
     if result.missing:
         print(f"missing {result.missing} of {len(result.ticks)} sheets")
     if result.unknown:
@@ -254,6 +269,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--batch", action="store_true", help="the batch survey's capture, render and report"
     )
     score_p.set_defaults(handler=errors_score)
+    disputes_p = sub.add_parser(
+        "errors-disputes", help="list the sheets two grading passes disagree on"
+    )
+    disputes_p.add_argument("--film", required=True)
+    disputes_p.add_argument("--out", type=Path, default=None)
+    disputes_p.set_defaults(handler=errors_disputes)
     example_p = sub.add_parser("errors-example", help="commit a tick's sheet as a category example")
     example_p.add_argument("--film", required=True)
     example_p.add_argument("--tick", type=int, required=True)

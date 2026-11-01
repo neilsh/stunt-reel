@@ -80,10 +80,14 @@ Run it on both films after adopting a render change. It says which kinds of erro
 
 ```
 - [ ] 1. Copy build/parity/bench/<film>/errors/readout.json to build/scratch/<film>-readout.json (the previous readout)
-- [ ] 2. mise run parity-bench -- errors-make --film <film>   (12 sheets and brief.md)
-- [ ] 3. Dispatch one Haiku subagent; its whole prompt: "Read build/parity/bench/<film>/errors/brief.md: it is your whole instruction"
-- [ ] 4. mise run parity-bench -- errors-score --film <film> --against build/scratch/<film>-readout.json
+- [ ] 2. mise run parity-bench -- errors-make --film <film>   (12 sheets, brief.md and brief-2.md)
+- [ ] 3. Dispatch two Haiku subagents at once, one per brief; each one's whole prompt: "Read build/parity/bench/<film>/errors/<brief>: it is your whole instruction"
+- [ ] 4. mise run parity-bench -- errors-disputes --film <film>
+- [ ] 5. If it names disputed sheets, dispatch one Sonnet subagent the same way on brief-tiebreak.md
+- [ ] 6. mise run parity-bench -- errors-score --film <film> --against build/scratch/<film>-readout.json
 ```
+
+Haiku misreads a frame now and then, a different frame each pass, so two passes that agree are trusted and Sonnet grades only the sheets where they disagree whether some category is clear (2 or more).
 
 Skip step 1 and `--against` when there is no previous readout or the previous run was a calibration: a calibration grades only ticks the recapture holds, so `compare` refuses it.
 
