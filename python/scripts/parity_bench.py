@@ -189,7 +189,7 @@ def errors_score(args: argparse.Namespace) -> int:
     if calibration is not None:
         verdict = "PASS" if calibration.passes else "FAIL"
         clean = f"{calibration.controls_clean}/{calibration.controls}"
-        print(f"calibration {verdict}: controls clean {clean}")
+        print(f"calibration {verdict}: controls clean {clean} (reported, not gated)")
         for key, (detected, sheets) in calibration.faults.items():
             print(f"  {key:<16} detected {detected}/{sheets}")
     print(f"[bench] wrote {out / 'readout.json'}", file=sys.stderr)

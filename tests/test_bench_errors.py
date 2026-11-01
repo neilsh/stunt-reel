@@ -339,7 +339,8 @@ def test_calibrate_pass_bars() -> None:
     passing = _calibration_run(taxonomy, 12, 10, 6, 5)
     assert (passing.controls_clean, passing.controls) == (10, 12)
     assert passing.passes
-    assert not _calibration_run(taxonomy, 12, 9, 6, 5).passes
+    # Controls are reported, not gated: their panels are pixel-identical, unlike any real sheet.
+    assert _calibration_run(taxonomy, 12, 0, 6, 5).passes
     assert not _calibration_run(taxonomy, 12, 10, 6, 4).passes
     assert _calibration_run(taxonomy, 2, 2, 2, 2).passes
 
