@@ -79,7 +79,7 @@ def test_committed_categories_load() -> None:
     assert taxonomy.ids[-1] == "explosion-missing"
     assert taxonomy.films["intro"] == FilmWindow(1000, None)
     assert taxonomy.films["ctry"] == FilmWindow(0, 990)
-    assert taxonomy.min_change == 2
+    assert taxonomy.min_change == 4
     assert len(taxonomy.digest) == 64
 
 

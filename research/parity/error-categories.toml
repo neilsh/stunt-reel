@@ -136,6 +136,7 @@ end = 990
 start = 1000
 
 # compare reports a category only when its count of frames graded 2+ moves by at least this much.
-# Set by the repeatability run (research/parity/method.md section 2.3).
+# Set by the repeatability run (research/parity/method.md section 2.3): the largest change between
+# two Haiku gradings of the same sheets was 3.
 [readout]
-min_change = 2
+min_change = 4
