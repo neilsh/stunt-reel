@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import secrets
 import shutil
+import struct
 import sys
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -87,3 +88,55 @@ def prune_old_basetemps(cache: Path, *, keep: int = KEEP_BASETEMPS) -> None:
         return
     for path in runs[: max(0, len(runs) - keep)]:
         shutil.rmtree(path, ignore_errors=True)
+
+
+def _riff_chunk(ckid: bytes, payload: bytes) -> bytes:
+    pad = b"\0" if len(payload) & 1 else b""
+    return ckid + struct.pack("<I", len(payload)) + payload + pad
+
+
+def build_avi(video: list[bytes], audio: list[bytes]) -> bytes:
+    """A minimal AVI: avih, a ``vids`` and an ``auds`` stream list, interleaved ``movi``, ``idx1``.
+
+    The first video chunk is a keyframe (flag 0x10); every other chunk has flag 0. Chunk ``n`` of
+    each kind is written video first, so the file reads 00dc, 01wb, 00dc, 01wb, ...
+    """
+
+    def lst(kind: bytes, payload: bytes) -> bytes:
+        return _riff_chunk(b"LIST", kind + payload)
+
+    count = len(video)
+    avih = bytearray(56)
+    struct.pack_into("<IIII", avih, 0, 14286, 0, 0, 0x10)
+    struct.pack_into("<III", avih, 16, count, 0, 2)
+    struct.pack_into("<II", avih, 32, 320, 200)
+    strl_v = lst(
+        b"strl",
+        _riff_chunk(b"strh", b"vids" + b"\0" * 52) + _riff_chunk(b"strf", b"\0" * 40),
+    )
+    strl_a = lst(
+        b"strl",
+        _riff_chunk(b"strh", b"auds" + b"\0" * 52) + _riff_chunk(b"strf", b"\0" * 16),
+    )
+    hdrl = lst(b"hdrl", _riff_chunk(b"avih", bytes(avih)) + strl_v + strl_a)
+
+    movi = b""
+    index = b""
+    pieces = [(b"00dc", payload) for payload in video]
+    pieces = (
+        [
+            piece
+            for pair in zip(pieces, [(b"01wb", payload) for payload in audio], strict=False)
+            for piece in pair
+        ]
+        + pieces[len(audio) :]
+        + [(b"01wb", payload) for payload in audio[len(video) :]]
+    )
+    keyframe = True
+    for ckid, payload in pieces:
+        flags = 0x10 if ckid == b"00dc" and keyframe else 0
+        keyframe = keyframe and ckid != b"00dc"
+        index += struct.pack("<4sIII", ckid, flags, 4 + len(movi), len(payload))
+        movi += _riff_chunk(ckid, payload)
+    body = b"AVI " + hdrl + lst(b"movi", movi) + _riff_chunk(b"idx1", index)
+    return b"RIFF" + struct.pack("<I", len(body)) + body
