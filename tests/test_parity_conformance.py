@@ -1,9 +1,9 @@
-"""Conformance tests for the shared parity corpus (`tests/fixtures/parity/v1/`).
+"""Conformance tests for the shared parity corpus (`tests/fixtures/parity/v1/` and `v2/`).
 
 The corpus pins the wire contract this adapter shares with the Rust port. These tests read the
 committed bytes and write only into `tmp_path`; a fixture is never rewritten, so `git status`
-stays clean after a run. `render.json` and `report.json` are authored by the Rust side, while
-`meta.json` and `meta_legacy.json` are authored through `write_capture`.
+stays clean after a run. `v2/render/` (a render store) and `v1/report.json` are authored by the
+Rust side, while `v1/meta.json` and `v1/meta_legacy.json` are authored through `write_capture`.
 """
 
 from __future__ import annotations
@@ -13,23 +13,28 @@ from pathlib import Path
 
 import pytest
 
+from render_helpers import tick_entry
 from stunt_reel.parity_artifacts import (
+    RENDER_SCHEMA_VERSION,
     SCHEMA_VERSION,
     ArtifactError,
     CapturedFrame,
     FilmId,
     Geometry,
+    RenderStore,
+    StoredFrame,
     read_capture,
     read_page,
     read_render,
     read_report,
-    render_plane_paths,
     write_capture,
     write_render,
+    write_render_store,
     write_report,
 )
 
 CORPUS = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "parity" / "v1"
+RENDER = CORPUS.parent / "v2" / "render"
 APPROX_REL = 1e-6
 APPROX_ABS = 1e-9
 
@@ -54,11 +59,13 @@ def _assert_close_map(actual: dict[str, float] | None, expected: dict[str, float
 
 
 def test_render_fixture_round_trips_through_the_adapter(tmp_path: Path) -> None:
-    record = read_render(CORPUS / "render.json")
-    assert record.schema_version == SCHEMA_VERSION
+    record = read_render(RENDER / "render.json")
+    assert record.schema_version == RENDER_SCHEMA_VERSION
     assert record.film == FilmId(name="SYNTH.FLM", flm_bytes=17)
     assert record.geometry == Geometry(width=4, height=3, viewport_rows=2)
-    assert [tick.tick for tick in record.ticks] == [7, 9]
+    assert [tick.tick for tick in record.ticks] == [7, 9, 30, 100, 149]
+    assert [tick.palette_index for tick in record.ticks] == [0, 0, 1, 0, 1]
+    assert record.palette_count == 2
     assert record.ticks[0].palette.sky == 0
     assert record.ticks[0].palette.brightness == 32768
     assert record.ticks[0].palette.saturation == 32768
@@ -69,6 +76,8 @@ def test_render_fixture_round_trips_through_the_adapter(tmp_path: Path) -> None:
     assert back.schema_version == record.schema_version
     assert back.film == record.film
     assert back.geometry == record.geometry
+    assert back.palette_count == record.palette_count
+    assert back.chunks == record.chunks
     assert len(back.ticks) == len(record.ticks)
     for back_tick, tick in zip(back.ticks, record.ticks, strict=True):
         assert back_tick.tick == tick.tick
@@ -171,33 +180,16 @@ def test_report_fixture_round_trips_through_the_adapter(tmp_path: Path) -> None:
 
 def test_page_fixture_reads_through_one_reader() -> None:
     geometry = Geometry(width=4, height=3, viewport_rows=2)
-    page = read_page(CORPUS / "pages", 7, geometry)
+    page = read_page(RenderStore(RENDER), 7)
     assert page.geometry == geometry
     assert len(page.indices) == geometry.width * geometry.height == 12
     assert len(page.layers) == geometry.width * geometry.height == 12
     assert page.indices == bytes([180, 180, 180, 180, 0, 40, 40, 0, 0, 0, 0, 0])
     assert page.layers == (0, 0, 0, 0, 0, 16, 16, 0, 16, 16, 16, 16)
 
-    # The files span the full 4x3 raster and the reader keeps all twelve layers;
+    # The planes span the full 4x3 raster and the reader keeps all twelve layers;
     # only the actor scan narrows to the 2-row viewport, so row 2 is ignored.
     assert page.actor_pixels() == [5, 6]
-
-
-def test_read_page_names_a_plane_of_the_wrong_size(tmp_path: Path) -> None:
-    geometry = Geometry(width=4, height=3, viewport_rows=2)
-    index_path, layer_path = render_plane_paths(tmp_path, 7)
-
-    index_path.write_bytes(b"\x00" * 11)
-    layer_path.write_bytes(b"\x00" * 24)
-    with pytest.raises(ArtifactError, match=r"tick_00007\.idx") as truncated:
-        read_page(tmp_path, 7, geometry)
-    assert truncated.value.kind == "geometry"
-
-    index_path.write_bytes(b"\x00" * 12)
-    layer_path.write_bytes(b"\x00" * 26)
-    with pytest.raises(ArtifactError, match=r"tick_00007\.layer") as oversized:
-        read_page(tmp_path, 7, geometry)
-    assert oversized.value.kind == "geometry"
 
 
 def test_read_page_keeps_the_high_byte_of_a_layer_id(tmp_path: Path) -> None:
@@ -205,23 +197,24 @@ def test_read_page_keeps_the_high_byte_of_a_layer_id(tmp_path: Path) -> None:
     # low byte alone would also produce. 0x0100 separates the two: its low byte is
     # below the actor threshold, so a low-byte decoder sees no actor at all.
     geometry = Geometry(width=4, height=3, viewport_rows=2)
-    index_path, layer_path = render_plane_paths(tmp_path, 7)
-    index_path.write_bytes(bytes(12))
     layer_bytes = bytearray(24)
     layer_bytes[2 * 5 : 2 * 5 + 2] = (0x0100).to_bytes(2, "little")
-    layer_path.write_bytes(layer_bytes)
+    frame = StoredFrame(indices=bytes(12), layers=bytes(layer_bytes), palette=bytes(768))
+    write_render_store(tmp_path, FilmId(), geometry, [(tick_entry(7), frame)])
 
-    page = read_page(tmp_path, 7, geometry)
+    page = read_page(RenderStore(tmp_path), 7)
 
     assert page.layers[5] == 0x0100
     assert page.actor_pixels() == [5]
 
 
-def test_read_page_rejects_a_viewport_taller_than_the_raster(tmp_path: Path) -> None:
-    index_path, layer_path = render_plane_paths(tmp_path, 7)
-    index_path.write_bytes(bytes(12))
-    layer_path.write_bytes(bytes(24))
-
-    with pytest.raises(ArtifactError, match=r"tick_00007\.idx") as invalid:
-        read_page(tmp_path, 7, Geometry(width=4, height=3, viewport_rows=4))
+def test_a_viewport_taller_than_the_raster_is_refused(tmp_path: Path) -> None:
+    frame = StoredFrame(indices=bytes(12), layers=bytes(24), palette=bytes(768))
+    with pytest.raises(ArtifactError, match="viewport_rows") as invalid:
+        write_render_store(
+            tmp_path,
+            FilmId(),
+            Geometry(width=4, height=3, viewport_rows=4),
+            [(tick_entry(7), frame)],
+        )
     assert invalid.value.kind == "geometry"

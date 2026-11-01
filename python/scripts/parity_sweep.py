@@ -42,8 +42,7 @@ from stunt_reel import parity_layout, references
 from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.parity_artifacts import (
     Geometry,
-    open_render,
-    read_capture,
+    RenderStore,
     read_page,
     read_report,
 )
@@ -183,13 +182,13 @@ def write_crops(
     for name in films:
         report_json = workdir / f"{name}_report" / "report.json"
         reference, render = references.reference_dir(root, name), renders[name]
-        capture = read_capture(reference)
-        geometry = open_render(render).geometry or capture.geometry
+        store = RenderStore(render)
+        geometry = store.record.geometry
         best: tuple[int, int, int, list[int]] | None = None
         for frame in read_report(report_json).per_frame:
             if frame.scored is not True:
                 continue
-            page = read_page(render, frame.film_tick, geometry)
+            page = read_page(store, frame.film_tick)
             pixels = page.actor_pixels()
             if best is None or len(pixels) > best[0]:
                 best = (len(pixels), frame.ordinal, frame.film_tick, pixels)
@@ -267,8 +266,6 @@ def run_reuse(reuse: Path, retime: int | None, films: list[str], root: Path) -> 
                 file=sys.stderr,
             )
             continue
-        for warning in attempt.warnings:
-            print(f"warning: {attempt.render} {warning}", file=sys.stderr)
         print(format_summary(attempt.film, attempt.report))
     return 0 if failures == 0 else 1
 

@@ -2,8 +2,8 @@
 
 Four subcommands read a capture directory through the artifact adapter (its
 ``meta.json`` names each frame's planes and palettes) and a render directory
-(``render.json``, or the legacy ``palette_controls.json`, plus ``tick_%05d``
-planes), and a fifth reads one ``report.json`` through the same adapter:
+(its ``render.json`` and render store), and a fifth reads one ``report.json``
+through the same adapter:
 
 * ``crop``   - capture over ours, one frame region, as a PNG.
 * ``shift``  - best (dx, dy) that slides our actor silhouette onto the
@@ -11,8 +11,8 @@ planes), and a fifth reads one ``report.json`` through the same adapter:
 * ``iou``    - mean IoU of our actor pixels against the capture's object
   pixels inside the actor's padded bounding box.
 * ``retime`` - relabel an existing render by N ticks (negative allowed),
-  rewriting its ``render.json`` and legacy palette sidecar, so a timing
-  hypothesis costs no rebuild.
+  rewriting its store and ``render.json``, so a timing hypothesis costs no
+  rebuild.
 * ``summary`` - the scored headline, the loss by class, the worst scored
   frames and the ``research/parity/log.md`` row for one report, so the numbers
   are never retyped by hand.
@@ -32,12 +32,9 @@ from pathlib import Path
 from stunt_reel import parity_layout, references
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.parity_artifacts import (
-    LEGACY_SIDECAR,
     CapturedFrame,
     CaptureSet,
-    Geometry,
-    RenderControls,
-    open_render,
+    RenderStore,
     read_capture,
     read_capture_palette,
     read_page,
@@ -75,11 +72,6 @@ def is_object(index: int, background: tuple[tuple[int, int], ...]) -> bool:
     return not any(lo <= index <= hi for lo, hi in background)
 
 
-def _geometry(capture: CaptureSet, controls: RenderControls) -> Geometry:
-    """The render's geometry, falling back to the capture's for a legacy directory."""
-    return controls.geometry if controls.geometry is not None else capture.geometry
-
-
 def _capture_frame(capture: CaptureSet, ordinal: int) -> CapturedFrame:
     for frame in capture.frames:
         if frame.ordinal == ordinal:
@@ -100,11 +92,6 @@ def cmd_retime(args: argparse.Namespace) -> int:
     except RetimeError as err:
         print(f"retime: {err}", file=sys.stderr)
         return 2
-    if not result.palette_written:
-        print(
-            f"retime: {args.ours} has no {LEGACY_SIDECAR}; {args.out} has none",
-            file=sys.stderr,
-        )
     print(f"copied {result.copied} frames; missing {len(result.missing)} ticks")
     return 0
 
@@ -137,11 +124,12 @@ def make_crop(
 ) -> None:
     """Writes capture ordinal `ordinal` over our film tick `tick` for `box` as a PNG."""
     capture = read_capture(reference)
-    geometry = _geometry(capture, open_render(ours))
+    store = RenderStore(ours)
+    geometry = store.record.geometry
     frame = _capture_frame(capture, ordinal)
     palette = read_capture_palette(reference / frame.palette_file)
     capture_index = (reference / frame.frame_file).read_bytes()
-    render_index = read_page(ours, tick, geometry).indices
+    render_index = read_page(store, tick).indices
     top = render_region(capture_index, palette, box, scale, geometry.width)
     bottom = render_region(render_index, palette, box, scale, geometry.width)
     width = (box[2] - box[0]) * scale
@@ -156,12 +144,13 @@ def cmd_crop(args: argparse.Namespace) -> None:
 
 def cmd_shift(args: argparse.Namespace) -> None:
     capture = read_capture(args.reference)
-    geometry = _geometry(capture, open_render(args.ours))
+    store = RenderStore(args.ours)
+    geometry = store.record.geometry
     width, rows = geometry.width, geometry.plane_rows()
     for frame in read_report(args.report).per_frame:
         if frame.scored is not True:
             continue
-        page = read_page(args.ours, frame.film_tick, geometry)
+        page = read_page(store, frame.film_tick)
         pixels = page.actor_pixels()
         if len(pixels) < args.min_pixels:
             continue
@@ -196,13 +185,14 @@ def actor_iou(
 ) -> tuple[float, int]:
     """Mean actor-window IoU over every `every`-th scored frame, and the frames used."""
     capture = read_capture(reference)
-    geometry = _geometry(capture, open_render(ours))
+    store = RenderStore(ours)
+    geometry = store.record.geometry
     width, rows = geometry.width, geometry.plane_rows()
     total = 0.0
     count = 0
     scored = [frame for frame in read_report(report).per_frame if frame.scored is True]
     for frame in scored[::every]:
-        page = read_page(ours, frame.film_tick, geometry)
+        page = read_page(store, frame.film_tick)
         pixels = set(page.actor_pixels())
         if len(pixels) < min_pixels:
             continue

@@ -8,18 +8,15 @@ use super::loss::LOSS_CLASSES;
 use super::score::FrameMetrics;
 use super::test_support::{
     TempDir, read_report, run_parity, write_reference, write_reference_faded, write_render,
-    write_render_with_brightness,
+    write_render_with_brightness, write_version_1_render,
 };
 
 #[test]
-fn a_render_without_planes_is_an_error_that_says_to_re_render() {
+fn a_render_from_before_the_store_is_an_error_that_says_to_re_render() {
     let tmp = TempDir::new("no_planes");
     write_reference(&tmp.join("ref"), &[12], true);
     let test = tmp.join("test");
-    fs::create_dir_all(&test).unwrap();
-    let png = test.join(crate::headless::tick_png_name(12));
-    write_render(&png);
-    fs::remove_file(png.with_extension("layer")).unwrap();
+    write_version_1_render(&test);
     let error = run_parity(&tmp.join("ref"), &test, &tmp.join("out")).unwrap_err();
     assert!(error.contains("re-render"), "{error}");
 }
@@ -29,10 +26,7 @@ fn faded_frames_below_the_floor_are_reported_but_not_scored() {
     let tmp = TempDir::new("faded");
     write_reference_faded(&tmp.join("ref"), &[7, 12, 20], true, &[1.0, 0.5, 0.1]);
     let test = tmp.join("test");
-    fs::create_dir_all(&test).unwrap();
-    for (tick, brightness) in [(7, 0x8000u16), (12, 0x4000), (20, 0x0800)] {
-        write_render_with_brightness(&test.join(crate::headless::tick_png_name(tick)), brightness);
-    }
+    write_render_with_brightness(&test, &[(7, 0x8000), (12, 0x4000), (20, 0x0800)]);
 
     run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
     let report = read_report(&tmp.join("out"));
@@ -75,8 +69,7 @@ fn no_scored_frame_reports_null_scored_means() {
     let tmp = TempDir::new("none_scored");
     write_reference_faded(&tmp.join("ref"), &[7], true, &[0.1]);
     let test = tmp.join("test");
-    fs::create_dir_all(&test).unwrap();
-    write_render_with_brightness(&test.join(crate::headless::tick_png_name(7)), 0x0800);
+    write_render_with_brightness(&test, &[(7, 0x0800)]);
 
     run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
     let report = read_report(&tmp.join("out"));
@@ -95,8 +88,7 @@ fn no_scored_frame_reports_null_scored_means() {
 fn meta_without_film_tick_is_rejected() {
     let tmp = TempDir::new("untagged");
     write_reference(&tmp.join("ref"), &[7, 12], false);
-    fs::create_dir_all(tmp.join("test")).unwrap();
-    write_render(&tmp.join("test").join("tick_00007.png"));
+    write_render(&tmp.join("test"), &[7]);
 
     let error = run_parity(&tmp.join("ref"), &tmp.join("test"), &tmp.join("out"))
         .expect_err("untagged capture must be rejected");
@@ -110,12 +102,8 @@ fn frames_match_renders_by_film_tick() {
     let tmp = TempDir::new("matched");
     write_reference(&tmp.join("ref"), &[7, 12], true);
     let test = tmp.join("test");
-    fs::create_dir_all(&test).unwrap();
-    write_render(&test.join(crate::headless::tick_png_name(7)));
-    write_render(&test.join(crate::headless::tick_png_name(12)));
-    // Neighbouring ticks and the old ordinal names must never be picked up.
-    write_render(&test.join("tick_00001.png"));
-    write_render(&test.join("frame_0001.png"));
+    // A neighbouring tick and the capture ordinal (1) must never be picked up.
+    write_render(&test, &[1, 7, 12]);
 
     run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
     let report = read_report(&tmp.join("out"));
@@ -142,12 +130,9 @@ fn missing_render_for_a_film_tick_is_unmatched() {
     let tmp = TempDir::new("unmatched");
     write_reference(&tmp.join("ref"), &[7, 12], true);
     let test = tmp.join("test");
-    fs::create_dir_all(&test).unwrap();
-    // Only the render for the first capture's film tick exists; the old ordinal
-    // names (`frame_0002.png`, `tick_00002.png`) must not satisfy the second.
-    write_render(&test.join("tick_00007.png"));
-    write_render(&test.join("tick_00002.png"));
-    write_render(&test.join("frame_0002.png"));
+    // Only the render for the first capture's film tick exists; tick 2, the second
+    // capture's ordinal, must not satisfy it.
+    write_render(&test, &[2, 7]);
 
     run_parity(&tmp.join("ref"), &test, &tmp.join("out")).expect("parity runs");
     let report = read_report(&tmp.join("out"));
@@ -344,8 +329,11 @@ fn verdict_matches_the_numpy_golden() {
     )
     .expect("capture frame");
     let reference = super::score::ReferenceFrame { indices, palette };
-    let before = super::frames::load_render_frame(&bench.join("render_before"), 20).unwrap();
-    let after = super::frames::load_render_frame(&bench.join("render"), 20).unwrap();
+    let mut before_store =
+        crate::render_store::RenderStore::open(&bench.join("render_before")).unwrap();
+    let mut after_store = crate::render_store::RenderStore::open(&bench.join("render")).unwrap();
+    let before = super::frames::load_render_frame(&mut before_store, 20).unwrap();
+    let after = super::frames::load_render_frame(&mut after_store, 20).unwrap();
     let verdict = super::verdict::frame_verdict(20, &reference, &before, &after, None, 0);
     let close = |actual: f32, wanted: &serde_json::Value, tolerance: f64| {
         let wanted = wanted.as_f64().unwrap();

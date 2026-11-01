@@ -1,8 +1,9 @@
 """Regenerate the synthetic bench fixture beside this file.
 
 Two film ticks (10 and 20) of 320x200 content: a sky, a checkered terrain, an actor and a
-button bar. ``capture/`` is the reference, ``render/`` a slightly dimmer render of it, and
-``render_before/`` the same render with the terrain checker phase flipped at tick 20.
+button bar. ``capture/`` is the reference, ``render/`` a slightly dimmer render of it (a render
+store, ADR 0027), and ``render_before/`` the same render with the terrain checker phase flipped
+at tick 20.
 
 Run it from the repository root with ``mise exec -- uv run python <this file>``. ``golden.json``
 is not written here: it holds the Rust scorer's SSIM, produced by the command in
@@ -15,7 +16,6 @@ import json
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
 
 from stunt_reel.parity_artifacts import (
     CameraPose,
@@ -24,10 +24,10 @@ from stunt_reel.parity_artifacts import (
     FilmId,
     Geometry,
     RenderPalette,
-    RenderRecord,
     RenderTick,
+    StoredFrame,
     write_capture,
-    write_render,
+    write_render_store,
 )
 
 HERE = Path(__file__).resolve().parent
@@ -101,30 +101,28 @@ def write_capture_dir(directory: Path) -> None:
 
 
 def write_render_dir(directory: Path, *, flip_tick_20: bool) -> None:
-    """Write a render whose PNGs are the capture palette scaled by 0.9."""
+    """Write a render store whose palette is the capture palette scaled by 0.9."""
     directory.mkdir(parents=True, exist_ok=True)
     scaled = np.rint(palette().astype(np.float64) * 0.9).astype(np.uint8)
     pose = CameraPose(
         eye=(0.0, 0.0, 0.0), target=(0.0, 0.0, 0.0), fov_degrees=45.0, roll_radians=0.0
     )
-    ticks = []
+    frames = []
     for tick in TICKS:
         idx, layer = planes(actor_shift=0, checker_flip=flip_tick_20 and tick == 20)
-        stem = f"tick_{tick:05d}"
-        Image.fromarray(scaled[idx], "RGB").save(directory / f"{stem}.png")
-        (directory / f"{stem}.idx").write_bytes(idx.tobytes())
-        (directory / f"{stem}.layer").write_bytes(layer.astype("<u2").tobytes())
-        ticks.append(
-            RenderTick(
-                tick=tick,
-                palette=RenderPalette(sky=0, brightness=0x8000, saturation=0x8000),
-                camera=pose,
-            )
+        entry = RenderTick(
+            tick=tick,
+            palette=RenderPalette(sky=0, brightness=0x8000, saturation=0x8000),
+            camera=pose,
+            palette_index=0,
         )
-    write_render(
-        directory / "render.json",
-        RenderRecord(schema_version=1, film=FILM, geometry=GEOMETRY, ticks=tuple(ticks)),
-    )
+        stored = StoredFrame(
+            indices=idx.tobytes(),
+            layers=layer.astype("<u2").tobytes(),
+            palette=scaled.tobytes(),
+        )
+        frames.append((entry, stored))
+    write_render_store(directory, FILM, GEOMETRY, frames)
 
 
 def main() -> None:

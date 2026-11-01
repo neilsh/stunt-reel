@@ -29,7 +29,7 @@ from stunt_reel.bench.run import (
     plant_tree,
     recapture_sigma,
 )
-from stunt_reel.parity_artifacts import FrameReport, I6Gate, Report, write_report
+from stunt_reel.parity_artifacts import FrameReport, I6Gate, RenderStore, Report, write_report
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -177,13 +177,25 @@ def test_too_few_paired_ticks_stops_with_the_count() -> None:
 def test_plant_tree_changes_only_the_planted_ticks(tmp_path: Path, bench_fixture: Path) -> None:
     out = tmp_path / "planted"
     plant_tree(bench_fixture / "render", out, [(Fault("shift_x", 4), range(20, 21))])
-    source = bench_fixture / "render"
-    for name in ("png", "idx", "layer"):
-        assert (out / f"tick_00010.{name}").read_bytes() == (
-            source / f"tick_00010.{name}"
-        ).read_bytes()
-    assert (out / "tick_00020.idx").read_bytes() != (source / "tick_00020.idx").read_bytes()
-    assert (out / "tick_00020.png").read_bytes() != (source / "tick_00020.png").read_bytes()
+    source, planted = RenderStore(bench_fixture / "render"), RenderStore(out)
+    assert planted.record.ticks == source.record.ticks
+    assert planted.frame(10) == source.frame(10)
+    assert planted.frame(20).indices != source.frame(20).indices
+    assert planted.frame(20).palette == source.frame(20).palette
+
+
+def test_a_colour_fault_is_planted_as_a_shifted_palette(
+    tmp_path: Path, bench_fixture: Path
+) -> None:
+    out = tmp_path / "planted"
+    plant_tree(bench_fixture / "render", out, [(Fault("flicker", 10), range(20, 21))])
+    source, planted = RenderTree(bench_fixture / "render"), RenderTree(out)
+    before, after = source.load(20), planted.load(20)
+    assert before.idx is not None
+    assert after.idx is not None
+    assert np.array_equal(after.idx, before.idx)
+    shifted = np.clip(before.rgb.astype(np.int16) + 10, 0, 255).astype(np.uint8)
+    assert np.array_equal(after.rgb, shifted)
 
 
 def test_plant_tree_refuses_grey(tmp_path: Path, bench_fixture: Path) -> None:
@@ -237,9 +249,10 @@ def test_build_floor_counts_changed_pixels(document: dict[str, Any]) -> None:
 def test_plant_tree_leaves_the_source_alone(tmp_path: Path, bench_fixture: Path) -> None:
     source = tmp_path / "src"
     shutil.copytree(bench_fixture / "render", source)
-    before = (source / "tick_00010.png").read_bytes()
+    before = {path.name: path.read_bytes() for path in source.iterdir() if path.is_file()}
     plant_tree(source, tmp_path / "out", [(Fault("shift_x", 4), range(10, 21))])
-    assert (source / "tick_00010.png").read_bytes() == before
+    after = {path.name: path.read_bytes() for path in source.iterdir() if path.is_file()}
+    assert after == before
 
 
 class NoOceanSource(LazySource):

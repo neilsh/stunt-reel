@@ -3,7 +3,7 @@
 //! Reference frames are palette-index planes (`tick_NNNN.idx` + `palettes_NNNN.json`,
 //! numbered by capture order) dumped from the emulator's scanned-out page. Each frame's
 //! `meta.json` entry carries `film_tick`, the film clock read when it was captured.
-//! Rendered frames are `tick_NNNNN.png` written by `stuntreel --out-dir`, named by the
+//! Rendered frames come from the render store `stuntreel --out-dir` writes, keyed by the
 //! 0-based 50 Hz tick they show, so a capture is compared against the render at the
 //! same `film_tick`. Captures that predate film-clock tagging are rejected.
 //!
@@ -19,14 +19,13 @@
 //! The original fades its palette with the film's brightness variable, and so does the
 //! render. Each capture's fade level (see [`fade::fade_level`]) is measured from its captured
 //! palette; frames whose level falls below `--min-fade-level` are reported but not
-//! scored, because SSIM of near-black frames says little. When the render directory has a
-//! palette sidecar the floor is applied to the film's authored brightness (var 14) instead,
-//! with the measured level kept in the report as a cross-check. The headline is raw SSIM over
-//! the scored frames.
+//! scored, because SSIM of near-black frames says little. The floor is applied to the film's
+//! authored brightness (var 14) from `render.json` instead, with the measured level kept in the
+//! report as a cross-check. The headline is raw SSIM over the scored frames.
 //!
-//! Every render needs its palette-index and layer planes (`tick_NNNNN.idx`/`.layer`, written
-//! by `--headless`): `IoU` and loss attribution read the render's coverage from the layer
-//! plane, never from its colours, so a render directory without planes is an error.
+//! A render's picture is `palette[index]` over its stored index plane, and `IoU` and loss
+//! attribution read its coverage from the stored layer plane, never from its colours
+//! (`crate::render_store`, ADR 0027).
 //!
 //! `--compare <report.json>` additionally matches the fresh scores against a previous
 //! run by `film_tick` (see [`report_diff::compare_reports`]), so a change is judged frame by frame
@@ -63,6 +62,7 @@ use sheets::write_contact_sheet;
 use stunt_parity::FilmId;
 
 use crate::parity_artifacts;
+use crate::render_store::RenderStore;
 
 pub(crate) use args::usage;
 
@@ -119,7 +119,7 @@ const CONTACT_SHEET_WORST: usize = 3;
 struct FrameRow {
     /// 1-based capture order.
     ordinal: usize,
-    /// Film clock the frame was captured at; selects the rendered `tick_NNNNN.png`.
+    /// Film clock the frame was captured at; selects the stored render tick.
     film_tick: usize,
     metrics: FrameMetrics,
 }
@@ -207,13 +207,9 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
 
     let capture =
         parity_artifacts::load_capture(&args.reference).map_err(|error| error.to_string())?;
-    let render =
-        parity_artifacts::load_render_controls(&args.test).map_err(|error| error.to_string())?;
-    warn_on_film_mismatch(&capture.film, &render.film);
-    let geometry = render
-        .geometry
-        .clone()
-        .unwrap_or_else(|| capture.geometry.clone());
+    let mut store = RenderStore::open(&args.test).map_err(|error| error.to_string())?;
+    warn_on_film_mismatch(&capture.film, &store.record().film);
+    let geometry = store.record().geometry.clone();
     if geometry.width != capture.geometry.width || geometry.height != capture.geometry.height {
         return Err(format!(
             "render geometry {}x{} differs from the capture's {}x{}; re-render \
@@ -227,7 +223,12 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         ));
     }
     let frames = &capture.frames;
-    let render_palettes = render.controls;
+    let render_palettes: BTreeMap<u32, _> = store
+        .record()
+        .ticks
+        .iter()
+        .map(|tick| (tick.tick, parity_artifacts::core_palette(tick.palette)))
+        .collect();
     let first_frame = frames
         .first()
         .ok_or_else(|| format!("{} has no captured frames", args.reference.display()))?;
@@ -251,15 +252,13 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         let film_tick = frame.film_tick as usize;
         let reference_file = args.reference.join(&frame.frame_file);
         let palette_file = args.reference.join(&frame.palette_file);
-        let test_file = args.test.join(crate::headless::tick_png_name(film_tick));
-
-        if !reference_file.is_file() || !palette_file.is_file() || !test_file.is_file() {
+        if !reference_file.is_file() || !palette_file.is_file() || !store.holds(frame.film_tick) {
             unmatched += 1;
             continue;
         }
 
         let (indices, palette) = load_reference(&reference_file, &palette_file)?;
-        let render_frame = load_render_frame(&args.test, film_tick)?;
+        let render_frame = load_render_frame(&mut store, frame.film_tick)?;
         let score = score_frame(
             &ReferenceFrame { indices, palette },
             &RenderFrame {

@@ -49,6 +49,12 @@ pub enum ArtifactError {
         /// Field name the schema requires.
         field: String,
     },
+    /// A render's palette indices or chunk table do not describe its plane files.
+    #[error("render store: {reason}")]
+    RenderStore {
+        /// What is wrong with the table.
+        reason: String,
+    },
     /// A video capture's tick or palette log is unusable.
     #[error("video log: {reason}")]
     VideoLog {
@@ -67,6 +73,13 @@ impl ArtifactError {
     /// A geometry defect with a human-readable reason.
     pub(crate) fn geometry(reason: impl Into<String>) -> Self {
         Self::Geometry {
+            reason: reason.into(),
+        }
+    }
+
+    /// A render store defect with a human-readable reason.
+    pub(crate) fn store(reason: impl Into<String>) -> Self {
+        Self::RenderStore {
             reason: reason.into(),
         }
     }

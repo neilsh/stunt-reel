@@ -2,7 +2,7 @@
 
 Procedures for finding out *what* is wrong once [`method.md`](method.md) says *where* the loss is. Terms are those of [`GLOSSARY.md`](../../GLOSSARY.md). Dated outcomes are in [`log.md`](log.md) and the notes it links; the helpers are [`python/scripts/parity_probe.py`](../../python/scripts/parity_probe.py) and [`parity_sweep.py`](../../python/scripts/parity_sweep.py).
 
-All probes read a capture directory (`build/parity/captures/<film>/<id>`, `tick_NNNN.idx` by ordinal) and a render directory (`tick_NNNNN.idx` and `.layer` by film tick). "Object pixels" are capture pixels that are not sky, ground ramp, button bar or cursor; the index ranges in the script are `CTRY.FLM`'s and must be changed per film.
+All probes read a capture directory (`build/parity/captures/<film>/<id>`, `tick_NNNN.idx` by ordinal) and a render store (index and layer planes by film tick, read through `RenderStore`). "Object pixels" are capture pixels that are not sky, ground ramp, button bar or cursor; the index ranges in the script are `CTRY.FLM`'s and must be changed per film.
 
 ## 1. Side-by-side crop (`crop`)
 
@@ -53,7 +53,7 @@ For a hypothesis with a few dozen variants (axis permutations, Euler order and s
 
 ## 6. Timing hypotheses (post-hoc retime)
 
-The page timing is modelled in the renderer: `--headless` samples the scene at `tick - 1` because the page captured for film clock `t` is the state at `t - 1` ([`capture.md`](../playone-exe/capture.md)). Timing questions must therefore not need a rebuild. `retime` relabels an existing render by N ticks and rebuilds its palette sidecar; `--reuse` and `--retime` carry that into a score in one command:
+The page timing is modelled in the renderer: `--headless` samples the scene at `tick - 1` because the page captured for film clock `t` is the state at `t - 1` ([`capture.md`](../playone-exe/capture.md)). Timing questions must therefore not need a rebuild. `retime` relabels an existing render by N ticks and writes it as a new render store; `--reuse` and `--retime` carry that into a score in one command:
 
 ```bash
 python python/scripts/parity_probe.py retime \
@@ -64,7 +64,7 @@ mise run sweep -- --reuse build/scratch/retime --films ctry,intro --no-build
 mise run parity -- --no-render --retime -1 --no-build
 ```
 
-Target tick `t` gets the frame, `.idx` and `.layer` planes of source `t + N`, and the sidecar's palette entry is copied from the source tick and relabelled to `t`. The sign follows the renderer: offset 0 compares capture `t` with the state at `t - 1` (the accepted timing), and `-1` lands on state `t - 2`. A non-empty `--out` is refused unless `--force`; a source outside the rendered range is reported, and since ±1 always drops one end tick, pass `--allow-missing` (the `parity_run` wrapper does). The sidecar rebuild matters: the hand-made shift that discovered the page lag kept the original tick's palette entry and under-reported INTRO (0.6793 against 0.6799 with the entry relabelled).
+Target tick `t` gets the planes, palette and `render.json` entry of source `t + N`, relabelled to `t`, written into a new store. The sign follows the renderer: offset 0 compares capture `t` with the state at `t - 1` (the accepted timing), and `-1` lands on state `t - 2`. A non-empty `--out` is refused unless `--force`; a source outside the rendered range is reported, and since ±1 always drops one end tick, pass `--allow-missing` (the `parity_run` wrapper does). Moving the palette entry with the planes matters: the hand-made shift that discovered the page lag kept the original tick's palette entry and under-reported INTRO (0.6793 against 0.6799 with the entry relabelled).
 
 Measured `mean_ssim_scored` (CTRY / INTRO, 2026-10-23, post-page-timing build):
 
@@ -86,7 +86,7 @@ Neither has a subcommand; both were one-off scripts under `build/scratch/`. Pref
 
 ## 8. Tool coverage
 
-Every repeated analysis has a home: baseline render and score is `mise run parity`; candidate products are `mise run sweep`; tick shifts are `parity_probe.py retime` or the `--reuse`/`--retime` flags (which rebuild the palette sidecar entry at the shifted tick; the hand-made shift left it stale); the identical-variant warning catches `std::env::var(...).is_ok()` treating `"0"` as set, which once cost two sweeps. Still hand-rolled, with no subcommand yet: the 11x11 loss-window ranking (`windows`), the per-layer index histogram (`index-diff`) and the sand-coverage count (`coverage`).
+Every repeated analysis has a home: baseline render and score is `mise run parity`; candidate products are `mise run sweep`; tick shifts are `parity_probe.py retime` or the `--reuse`/`--retime` flags (which move the palette entry with the planes to the shifted tick; the hand-made shift left it stale); the identical-variant warning catches `std::env::var(...).is_ok()` treating `"0"` as set, which once cost two sweeps. Still hand-rolled, with no subcommand yet: the 11x11 loss-window ranking (`windows`), the per-layer index histogram (`index-diff`) and the sand-coverage count (`coverage`).
 
 ## 9. Origin markers (proposed, not built)
 

@@ -10,19 +10,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 import pytest
 
+from render_helpers import write_store
 from stunt_reel import parity_artifacts, parity_layout, parity_pipeline, references
 from stunt_reel.parity_artifacts import (
-    SCHEMA_VERSION,
-    CameraPose,
     FilmId,
     Geometry,
-    RenderPalette,
-    RenderRecord,
-    RenderTick,
+    RenderStore,
     read_render,
 )
 
@@ -76,14 +72,7 @@ def _frames_for(cmd: list[str]) -> list[int]:
 
 
 def _write_render(render: Path, ticks: list[int] | None = None) -> None:
-    render.mkdir(parents=True, exist_ok=True)
-    parity_artifacts.write_render(
-        render / parity_artifacts.RENDER_DOCUMENT,
-        RenderRecord(schema_version=SCHEMA_VERSION, film=FilmId(), geometry=_geometry(), ticks=()),
-    )
-    for tick in ticks or []:
-        for ext in ("idx", "layer"):
-            (render / f"tick_{tick:05d}.{ext}").write_bytes(b"")
+    write_store(render, ticks or [], geometry=_geometry())
 
 
 def _write_report(report: Path, *, ssim: float = 0.8, iou: float = 0.9) -> None:
@@ -220,58 +209,9 @@ def _capture(reference: Path, ticks: list[int]) -> Path:
     return reference
 
 
-def _record(ticks: list[int]) -> RenderRecord:
-    return RenderRecord(
-        schema_version=SCHEMA_VERSION,
-        film=FilmId(name="CTRY.FLM", flm_bytes=100),
-        geometry=_geometry(),
-        ticks=tuple(
-            RenderTick(
-                tick=tick,
-                palette=RenderPalette(sky=45, brightness=32768, saturation=32768),
-                camera=CameraPose(
-                    eye=(0.0, 0.0, 0.0),
-                    target=(0.0, 0.0, 0.0),
-                    fov_degrees=45.0,
-                    roll_radians=0.0,
-                ),
-            )
-            for tick in ticks
-        ),
-    )
-
-
-def _sidecar(ticks: list[int]) -> dict[str, Any]:
-    return {
-        "film": "CTRY.FLM",
-        "flm_bytes": 100,
-        "ticks": [
-            {
-                "tick": tick,
-                "camera": {"eye": [tick, 0, 0]},
-                "brightness": 32768,
-                "saturation": 32768,
-                "sky": 45,
-            }
-            for tick in ticks
-        ],
-    }
-
-
-def _render(
-    directory: Path, ticks: list[int], *, sidecar: bool = True, record: bool = True
-) -> Path:
-    """A render directory with the three per-tick files and, optionally, its documents."""
-    directory.mkdir(parents=True)
-    for tick in ticks:
-        for ext in parity_artifacts.RENDER_SUFFIXES:
-            (directory / f"tick_{tick:05d}{ext}").write_bytes(f"{tick}{ext}".encode())
-    if record:
-        parity_artifacts.write_render(directory / parity_artifacts.RENDER_DOCUMENT, _record(ticks))
-    if sidecar:
-        (directory / parity_artifacts.LEGACY_SIDECAR).write_text(
-            json.dumps(_sidecar(ticks)), encoding="utf-8"
-        )
+def _render(directory: Path, ticks: list[int]) -> Path:
+    """A render store of CTRY.FLM (100 bytes) holding *ticks*."""
+    write_store(directory, ticks, geometry=_geometry(), film=FilmId(name="CTRY.FLM", flm_bytes=100))
     return directory
 
 
@@ -281,42 +221,44 @@ def test_plan_retime_maps_each_distinct_tick_in_both_directions() -> None:
     assert parity_pipeline.plan_retime([7], 0) == [(7, 7)]
 
 
-def test_retime_copies_planes_under_target_names_and_rewrites_both_documents(
-    tmp_path: Path,
-) -> None:
+def test_retime_copies_planes_and_records_under_target_ticks(tmp_path: Path) -> None:
     reference = _capture(tmp_path / "ref", [10, 11, 12])
     render = _render(tmp_path / "ours", [10, 11, 12])
     out = tmp_path / "retimed"
     result = parity_pipeline.retime_render(render, reference, out, 0)
     assert result.copied == 3
     assert result.missing == []
-    assert result.palette_written is True
-    assert result.record_written is True
+    source, retimed = RenderStore(render), RenderStore(out)
     for tick in (10, 11, 12):
-        for ext in parity_artifacts.RENDER_SUFFIXES:
-            assert (out / f"tick_{tick:05d}{ext}").read_bytes() == f"{tick}{ext}".encode()
-    palette = json.loads((out / parity_artifacts.LEGACY_SIDECAR).read_text(encoding="utf-8"))
-    assert [entry["tick"] for entry in palette["ticks"]] == [10, 11, 12]
-    assert palette["film"] == "CTRY.FLM"
+        assert retimed.frame(tick) == source.frame(tick)
     record = read_render(out / parity_artifacts.RENDER_DOCUMENT)
     assert [tick.tick for tick in record.ticks] == [10, 11, 12]
-    assert record.ticks[0].palette == _record([10]).ticks[0].palette
+    assert record.film == FilmId(name="CTRY.FLM", flm_bytes=100)
+    assert record.ticks[0].palette == source.record.ticks[0].palette
+    assert record.ticks[0].camera == source.record.ticks[0].camera
 
 
 def test_retime_positive_offset_takes_the_next_ticks_frames(tmp_path: Path) -> None:
     reference = _capture(tmp_path / "ref", [10, 11])
-    render = _render(tmp_path / "ours", [11, 12], sidecar=False)
+    render = _render(tmp_path / "ours", [11, 12])
     out = tmp_path / "retimed"
     result = parity_pipeline.retime_render(render, reference, out, 1)
     assert result.copied == 2
     assert result.missing == []
-    assert result.palette_written is False
-    assert result.record_written is True
-    assert (out / "tick_00010.png").read_bytes() == b"11.png"
-    assert (out / "tick_00011.png").read_bytes() == b"12.png"
-    assert not (out / parity_artifacts.LEGACY_SIDECAR).exists()
-    record = read_render(out / parity_artifacts.RENDER_DOCUMENT)
-    assert [tick.tick for tick in record.ticks] == [10, 11]
+    source, retimed = RenderStore(render), RenderStore(out)
+    assert retimed.frame(10) == source.frame(11)
+    assert retimed.frame(11) == source.frame(12)
+    assert retimed.ticks() == [10, 11]
+    assert retimed.record.ticks[0].camera == source.record.ticks[0].camera
+
+
+def test_retime_recuts_the_chunks_by_target_second(tmp_path: Path) -> None:
+    reference = _capture(tmp_path / "ref", [49, 50])
+    render = _render(tmp_path / "ours", [50, 51])
+    out = tmp_path / "retimed"
+    parity_pipeline.retime_render(render, reference, out, 1)
+    seconds = [(chunk.second, chunk.ticks) for chunk in RenderStore(out).record.chunks]
+    assert seconds == [(0, 1), (1, 1)]
 
 
 def test_retime_negative_offset_names_the_first_missing_tick(tmp_path: Path) -> None:
@@ -329,8 +271,7 @@ def test_retime_negative_offset_names_the_first_missing_tick(tmp_path: Path) -> 
     )
     assert result.copied == 1
     assert result.missing == [10]
-    assert (tmp_path / "out" / "tick_00011.png").is_file()
-    assert not (tmp_path / "out" / "tick_00010.png").exists()
+    assert RenderStore(tmp_path / "out").ticks() == [11]
 
 
 def test_retime_refuses_a_non_empty_output_unless_forced(tmp_path: Path) -> None:
@@ -343,55 +284,6 @@ def test_retime_refuses_a_non_empty_output_unless_forced(tmp_path: Path) -> None
         parity_pipeline.retime_render(render, reference, out, 0)
     result = parity_pipeline.retime_render(render, reference, out, 0, force=True)
     assert result.copied == 1
-
-
-def test_retime_without_documents_copies_frames_only(tmp_path: Path) -> None:
-    reference = _capture(tmp_path / "ref", [10])
-    render = _render(tmp_path / "ours", [10], sidecar=False, record=False)
-    out = tmp_path / "out"
-    result = parity_pipeline.retime_render(render, reference, out, 0)
-    assert result.palette_written is False
-    assert result.record_written is False
-    assert not (out / parity_artifacts.LEGACY_SIDECAR).exists()
-    assert not (out / parity_artifacts.RENDER_DOCUMENT).exists()
-
-
-def test_retime_keeps_the_legacy_sidecar_in_sync_while_it_exists(tmp_path: Path) -> None:
-    reference = _capture(tmp_path / "ref", [10])
-    render = _render(tmp_path / "ours", [10], record=False)
-    out = tmp_path / "out"
-    result = parity_pipeline.retime_render(render, reference, out, 0)
-    assert result.palette_written is True
-    assert result.record_written is False
-    assert (out / parity_artifacts.LEGACY_SIDECAR).is_file()
-    assert not (out / parity_artifacts.RENDER_DOCUMENT).exists()
-
-
-def test_retime_preserves_unknown_document_keys(tmp_path: Path) -> None:
-    reference = _capture(tmp_path / "ref", [10])
-    render = _render(tmp_path / "ours", [10])
-    record_path = render / parity_artifacts.RENDER_DOCUMENT
-    record_document: dict[str, Any] = json.loads(record_path.read_text(encoding="utf-8"))
-    record_document["future_top"] = {"kept": True}
-    record_document["ticks"][0]["future_entry"] = [1, 2]
-    record_path.write_text(json.dumps(record_document), encoding="utf-8")
-    sidecar_path = render / parity_artifacts.LEGACY_SIDECAR
-    sidecar_document: dict[str, Any] = json.loads(sidecar_path.read_text(encoding="utf-8"))
-    sidecar_document["future_top"] = True
-    sidecar_path.write_text(json.dumps(sidecar_document), encoding="utf-8")
-
-    out = tmp_path / "out"
-    parity_pipeline.retime_render(render, reference, out, 0)
-
-    shifted: dict[str, Any] = json.loads(
-        (out / parity_artifacts.RENDER_DOCUMENT).read_text(encoding="utf-8")
-    )
-    assert shifted["future_top"] == {"kept": True}
-    assert shifted["ticks"][0]["future_entry"] == [1, 2]
-    shifted_sidecar: dict[str, Any] = json.loads(
-        (out / parity_artifacts.LEGACY_SIDECAR).read_text(encoding="utf-8")
-    )
-    assert shifted_sidecar["future_top"] is True
 
 
 def test_run_films_writes_the_retimed_copy_beside_the_render(tmp_path: Path) -> None:
@@ -410,25 +302,13 @@ def test_run_films_writes_the_retimed_copy_beside_the_render(tmp_path: Path) -> 
 
 
 def _render_tree(tmp_path: Path, film: str, flm_bytes: int, ticks: list[int]) -> tuple[Path, Path]:
-    """A capture of CTRY.FLM (100 bytes) at ticks 7 and 9, and a render with planes at ticks."""
+    """A capture of CTRY.FLM (100 bytes) at ticks 7 and 9, and a render store holding ticks."""
     reference, render = tmp_path / "ref", tmp_path / "ours"
     reference.mkdir()
-    render.mkdir()
     frames = [{"film_tick": 7}, {"film_tick": 9}]
     meta = {"film": "CTRY.FLM", "flm_bytes": 100, "frames": frames}
     (reference / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
-    parity_artifacts.write_render(
-        render / "render.json",
-        RenderRecord(
-            schema_version=SCHEMA_VERSION,
-            film=FilmId(name=film, flm_bytes=flm_bytes),
-            geometry=_geometry(),
-            ticks=(),
-        ),
-    )
-    for tick in ticks:
-        (render / f"tick_{tick:05d}.idx").write_bytes(b"")
-        (render / f"tick_{tick:05d}.layer").write_bytes(b"")
+    write_store(render, ticks, geometry=_geometry(), film=FilmId(name=film, flm_bytes=flm_bytes))
     return reference, render
 
 
@@ -437,13 +317,13 @@ def test_check_render_accepts_a_matching_render_with_planes(tmp_path: Path) -> N
     parity_pipeline.check_render(reference, render, [7, 9])
 
 
-def test_check_render_accepts_a_legacy_sidecar_render(tmp_path: Path) -> None:
+def test_check_render_refuses_a_render_from_before_the_store(tmp_path: Path) -> None:
     reference, render = _render_tree(tmp_path, "CTRY.FLM", 100, [7, 9])
-    (render / "render.json").unlink()
-    (render / "palette_controls.json").write_text(
-        json.dumps({"film": "CTRY.FLM", "flm_bytes": 100, "ticks": []}), encoding="utf-8"
-    )
-    parity_pipeline.check_render(reference, render, [7, 9])
+    document = json.loads((render / "render.json").read_text(encoding="utf-8"))
+    document["schema_version"] = 1
+    (render / "render.json").write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(ValueError, match="re-render"):
+        parity_pipeline.check_render(reference, render, [7, 9])
 
 
 @pytest.mark.parametrize(
@@ -460,8 +340,7 @@ def test_check_render_refuses_another_film(
 
 def test_check_render_refuses_a_render_without_planes(tmp_path: Path) -> None:
     reference, render = _render_tree(tmp_path, "CTRY.FLM", 100, [7])
-    (render / "tick_00007.layer").unlink()
-    with pytest.raises(ValueError, match="no render planes for 2 captured tick"):
+    with pytest.raises(ValueError, match=r"no render planes for 1 captured tick.*first 9"):
         parity_pipeline.check_render(reference, render, [7, 9])
 
 

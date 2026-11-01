@@ -9,12 +9,10 @@ the same control render. A fault is *detected* when it lowers the metric by at l
 
 from __future__ import annotations
 
-import shutil
 import statistics
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from PIL import Image
 
 from stunt_reel.bench.faults import ALL_FAULTS, Fault, plant
 from stunt_reel.bench.metrics import METRICS, Regions, differential
@@ -27,10 +25,12 @@ from stunt_reel.bench.planes import (
     load_capture,
 )
 from stunt_reel.bench.ssim import frame_ssim, render_luma
-from stunt_reel.parity_artifacts import read_report, render_plane_paths, tick_stem
+from stunt_reel.parity_artifacts import StoredFrame, read_report, write_render_store
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from numpy.typing import NDArray
 
 __all__ = [
     "DETECT_SIGMAS",
@@ -262,25 +262,54 @@ def run_bench(
 
 
 def plant_tree(render: Path, out: Path, plants: list[tuple[Fault, range]]) -> None:
-    """Copy *render* to *out*, overwriting each fault's ticks with the frame the fault makes.
+    """Write *out* as *render*'s store with each fault's ticks replaced by the frame it makes.
 
-    Ticks absent from the source and faults without a frame are skipped. Raises ``BenchError``
-    for the grey fault, which has no index plane; copy and file errors propagate.
+    Ticks absent from the source and faults without a frame are skipped. A planted frame is
+    stored as its index plane under a palette that reproduces its picture, so a colour-only
+    fault such as ``flicker`` shifts that tick's palette. Raises ``BenchError`` for the grey
+    fault, which has no index plane, and for a frame whose picture no palette over its index
+    plane can carry; file errors propagate.
     """
     for fault, _ in plants:
         if fault.name == "grey":
             raise BenchError("grey has no index plane, so it cannot be written into a render tree")
-    shutil.copytree(render, out)
     source = RenderTree(render)
     held = set(source.ticks())
+    planted: dict[int, StoredFrame] = {}
     for fault, ticks in plants:
         for tick in ticks:
             if tick not in held:
                 continue
-            planted = plant(fault, tick, source, PLANT_SEED)
-            if planted is None or planted.idx is None:
+            planes = plant(fault, tick, source, PLANT_SEED)
+            if planes is None or planes.idx is None:
                 continue
-            idx_path, layer_path = render_plane_paths(out, tick)
-            Image.fromarray(planted.rgb).save(out / f"{tick_stem(tick)}.png")
-            idx_path.write_bytes(planted.idx.tobytes())
-            layer_path.write_bytes(planted.layer.astype("<u2").tobytes())
+            planted[tick] = _stored(fault, tick, planes, planes.idx, source.stored(tick).palette)
+    out.mkdir(parents=True, exist_ok=True)
+    record = source.store.record
+    write_render_store(
+        out,
+        record.film,
+        record.geometry,
+        ((entry, planted.get(entry.tick) or source.stored(entry.tick)) for entry in record.ticks),
+    )
+
+
+def _stored(
+    fault: Fault, tick: int, planes: RenderPlanes, idx: NDArray[np.uint8], base: bytes
+) -> StoredFrame:
+    """*planes* as a stored frame: *base* with each index it shows recoloured to its picture."""
+    idx = idx.reshape(-1)
+    rgb = planes.rgb.reshape(-1, 3)
+    palette = np.frombuffer(base, dtype=np.uint8).reshape(256, 3).copy()
+    shown, first = np.unique(idx, return_index=True)
+    palette[shown] = rgb[first]
+    if not np.array_equal(palette[idx], rgb):
+        raise BenchError(
+            f"{fault.key} at tick {tick} gives one index two colours, so no palette over its "
+            "index plane can carry it into a render tree"
+        )
+    return StoredFrame(
+        indices=idx.astype(np.uint8).tobytes(),
+        layers=planes.layer.astype("<u2").tobytes(),
+        palette=palette.tobytes(),
+    )

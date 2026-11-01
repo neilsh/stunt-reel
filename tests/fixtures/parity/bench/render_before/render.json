@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "film": {
     "name": "BENCH.FLM",
     "flm_bytes": 1
@@ -29,7 +29,8 @@
         ],
         "fov_degrees": 45.0,
         "roll_radians": 0.0
-      }
+      },
+      "palette_index": 0
     },
     {
       "tick": 20,
@@ -51,6 +52,22 @@
         ],
         "fov_degrees": 45.0,
         "roll_radians": 0.0
+      },
+      "palette_index": 0
+    }
+  ],
+  "palette_count": 1,
+  "chunks": [
+    {
+      "second": 0,
+      "ticks": 2,
+      "index": {
+        "offset": 0,
+        "length": 1162
+      },
+      "layer": {
+        "offset": 0,
+        "length": 251
       }
     }
   ]

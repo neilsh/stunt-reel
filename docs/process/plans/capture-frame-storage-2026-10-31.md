@@ -3,7 +3,7 @@
 Status: capture half replaced by [`video-parity-2026-10-31.md`](video-parity-2026-10-31.md), which
 records each film as one AVI instead of frame dumps. The render half (per-second zstd chunks for index
 and layer planes, per-second preview PNGs, no PNG per tick) stands as a separate project, to follow that
-spec's rollout; its section 2 (code) was presented but not approved, and section 3 not presented.
+spec's rollout; its revised section 2 (render half) and section 3 were approved on 2026-11-01.
 
 ## Intent
 
@@ -149,11 +149,147 @@ tick.
   zstd versions may compress differently; per-language round trips, second boundaries, empty seconds,
   the last chunk, out-of-range ordinals, corrupt offsets and bad palette indices; `mise run check`.
 
-### Section 3: rollout (not yet presented)
+### Section 2, render half (revised 2026-11-01, approved 2026-11-01)
 
-New ADR for the format; updates to ADR 0011/0024 references, `docs/ARCHITECTURE.md`, the fixtures
-README and the capture research note; recapture, repoint
-[`references.toml`](../../../research/parity/references.toml) in a reviewed commit, reap the v1 runs.
+Re-checked against `main` at `f7ca3d8` (PR #42 merged). Captures are out of scope; a capture's
+`meta.json` stays at version 1.
+
+**Format refinements to section 1.**
+
+- A render has two plane files, so a chunk records both: `chunks` is a list of
+  `{second, ticks, index: {offset, length}, layer: {offset, length}}`. Offsets run contiguously from 0
+  in each file; a tick's place in its chunk is its order in `ticks`.
+- The effective palettes go in a third file, `palettes.zst`: one zstd frame of 768-byte palettes
+  (256 RGB triples), each distinct palette once, in first-use order. `render.json` gains
+  `palette_count`, and per tick `palette_index` (`palette` is already the tick's controls `sky`,
+  `brightness`, `saturation`). This departs from section 1's JSON list: renders change palette far
+  more often than captures (`ctry_current` 1,333 ticks with 350 distinct controls, `intro_current`
+  2,876 with 171), and 350 palettes in today's JSON shape are about 1.4 MB, as large as the compressed
+  planes and parsed on every open. Python and the scorer then need neither the PNG nor a port of
+  `PaletteControls::film_palette`.
+- `render.json` moves to version 2 on its own: `SCHEMA_VERSION` splits into a render and a capture
+  constant, in both languages.
+- `--sample-count` and `--video` runs (keys `sample_NNNN`, not ticks) keep their PNGs and drop their
+  planes; nothing reads sample planes.
+
+**Rust.**
+
+- `stunt-cli/src/plane_codec.rs` becomes `render_store.rs`, the only Rust code that knows the layout:
+  `RenderStoreWriter` takes `(tick, palette, indices, layers)` in tick order, closes a chunk when the
+  film second changes, writes `preview/sec_NNNN.png` (indexed, through the `png` crate already in the
+  lock) for each second's first tick, and returns the chunk table and palettes. `RenderStore::open(dir)`
+  reads and validates `render.json`, checks the chunk table against the two file sizes, and returns a
+  tick's index plane, layer plane and palette, keeping the last decoded chunk. Decoding a chunk costs
+  one film second (50 ticks, 9.6 MB decoded), so a reader walking ticks in order decodes each chunk
+  once.
+- The writer replaces its own files (`frames.zst`, `layers.zst`, `palettes.zst`, `preview/`) and
+  leaves anything else in the directory; `parity_run` already starts each render in a fresh tree.
+- New crate dependency `zstd` (C libzstd built through `cc`), level 3; `cargo deny` must pass.
+- **The PNG is dropped only because it is derivable.** The writer checks every pixel's RGBA against
+  `palette[index]` and refuses the tick, naming tick and pixel, on any mismatch. Checked on
+  `ctry_current` (every tenth of 1,333 ticks): each index maps to exactly one colour in each tick.
+- `RenderJournal` (`parity_artifacts.rs`) owns the writer, so `render.json` is still written last.
+- Description types in `stunt-parity/src/render.rs`: `palettes`, `palette_index`, `RenderChunk`.
+  `validate()` checks version 2; chunks ascending by second, contiguous in each file; chunk tick counts
+  summing to the tick count; every tick's `tick // 50` equal to its chunk's second; `palette_index` in
+  range; 256 entries per palette.
+- Readers: `parity/frames.rs` (`load_render_frame` takes luminance from `palette[index]`, not a PNG),
+  `parity/mod.rs` (a tick is present when the record holds it, not when a PNG exists),
+  `parity/compare.rs` (both the previous and the current render through the store).
+
+**Python** (`python/stunt_reel`, no new dependency).
+
+- `parity_artifacts.py` gains the same reader and writer on the standard library: `compression.zstd`
+  (Python 3.14+; the project requires 3.15, whose build ships libzstd 1.5.7) and a `zlib` indexed-PNG
+  writer for previews. ADR 0010 is not engaged: `stunt_reel` keeps `dependencies = []`.
+- `render_plane_paths`, `RENDER_SUFFIXES` and the per-tick file checks go. `read_page` reads through the
+  store, so `parity_probe` and `parity_sweep` need no change of their own.
+- `parity_pipeline.py`: `check_render` asks the record for the captured ticks; `retime` streams the
+  source ticks through the reader into a new store, re-cut by the target seconds (memory stays at one
+  chunk, not the 256 MB of a whole `CTRY.FLM` render).
+- `bench/planes.py` `RenderTree` reads the store; `rgb` is `palette[idx]`. Its 64-tick cache (about
+  500 MB for a whole tree's worth of hits) gives way to the reader's decoded chunks: the last two, so
+  a sheet that reaches back one second does not decode twice. `bench/run.py` `plant_tree` streams the
+  source into a new store, substituting the planted ticks, instead of overwriting files in a copy.
+- **`planes_digest`** (`bench/errors.py`) becomes SHA-256 over, for each tick in order: the tick as
+  u32 LE, its 768 palette bytes, its index plane and its layer plane (u16 LE). That is everything a
+  sheet shows (the picture is `palette[index]`), and it does not change with zstd version or level.
+  Digests recorded before the change will not match, so existing readouts are re-graded once; the
+  render must be redone for version 2 anyway.
+
+**Errors.** A version-1 `render.json` is refused with "re-render with the current
+`stuntreel --headless`". A chunk that decompresses to the wrong length names its second and file. A
+missing tick names the tick and the render. An invalid document names the field.
+
+**Tests.**
+
+- `tests/fixtures/parity/v2/render/`: a 4x3 render with ticks in three seconds holding 3, 0 and 2
+  ticks and two palettes, written by Rust, read by both languages and compared as decoded planes (zstd
+  versions may compress differently). The v1 `pages/` planes and `render.json` move to it.
+- `tests/fixtures/parity/bench/render{,_before}` regenerated as stores by `make_fixture.py`; the SSIM
+  and differential goldens must stay unchanged.
+- Per-language round trips; second boundaries; an empty second; the last chunk; a missing tick; a
+  corrupt offset; a truncated chunk; a bad `palette_index`; a `palettes.zst` of the wrong length; a
+  version-1 document; the RGBA mismatch refusal; `planes_digest` stable across a re-encode.
+- The Rust test helpers that write renders (`parity/test_support.rs`, `compare.rs` tests) write
+  through `RenderStoreWriter`, so no test builds the layout by hand.
+
+**Rejected.**
+
+- Palettes as a JSON list in `render.json` (section 1): 1.4 MB for `CTRY.FLM`, see above.
+- Deriving palettes from the controls in Python: a second copy of `film_palette` to keep in step.
+- A chunk per tick or per 10 ticks: renders are read in order, and per-second chunks match the
+  previews and the per-second video scorer.
+- `ruzstd` (pure Rust): its encoder offers fewer levels and is younger than libzstd. [I7]'s pure-Rust
+  clause ([ADR 0002](../../adr/0002-stunt-core-may-take-small-dependencies.md)) covers `stunt-core`
+  only, so `stunt-cli` takes the C library without amending it.
+
+### Section 3: rollout (approved 2026-11-01)
+
+One branch and one PR against `main`. Captures and
+[`references.toml`](../../../research/parity/references.toml) are untouched, so no reviewed repoint is
+needed.
+
+1. **Code and tests** as section 2, test-first, with the v2 fixture and the regenerated bench fixture.
+2. **Records.** A new ADR, "Renders store planes in per-second zstd chunks": the format, the
+   derivable-PNG check, palettes in `palettes.zst`, and stdlib zstd in Python, so ADR 0010 is not
+   engaged. Updated to match: `tests/fixtures/README.md` (§ 13's v1 `pages/`, the bench fixture, the new
+   v2 render), `docs/development.md`, `docs/ARCHITECTURE.md` if it routes `plane_codec.rs`, and the
+   living notes that describe a render directory (`research/parity/method.md`, `attribution.md`,
+   `probes.md`). Dated plans and `log.md` rows stay as written.
+3. **The batch survey keeps renders.** `batch_parity.py` stops deleting each film's `render/` after
+   scoring: at about 3 MB a film, every film's render together is smaller than one of today's, and the
+   error readout reads them.
+4. **Old renders are not converted.** A version-1 render is refused with the re-render message. The
+   next `mise run parity` writes `ours` as version 2, and the rotated `previous` becomes comparable from
+   the run after that; until then `--compare` against a version-1 `previous` still writes
+   `compare.json` (reports only) but skips the verdict and the before/after sheets, naming the
+   re-render action. The v1 trees under `build/parity/` (about 1.6 GB in the primary checkout) are
+   left for the user to delete; nothing deletes them automatically.
+5. **Measurement**, recorded in this plan before the PR, on `CTRY.FLM` (the `ctry_current` render),
+   before and after: size and file count, render wall time, Python time to read every tick through
+   `RenderTree`, and `stuntreel parity` wall time against its reference.
+
+### Measurement (2026-11-01)
+
+`CTRY.FLM`, 1,337 ticks, `build/parity/ours/ctry_current` in this worktree, release build, the same
+machine for both. Before is `main` at `f7ca3d8`; after is this branch. Times are `mise run parity --
+--films ctry --no-build` (render and score) and `--no-render` (score only), two runs each.
+
+| | Before (per-tick files) | After (render store) |
+|---|---|---|
+| Size | 263 MB | 3.9 MB (`frames.zst` 1.98 MB, `layers.zst` 1.20 MB, `render.json` 0.58 MB, `palettes.zst` 18 KB, 27 previews) |
+| Files | 4,012 | 31 |
+| Render and score | 5.7 to 6.9 s | 4.3 to 4.6 s |
+| Score only | 1.1 s | 1.2 to 1.3 s |
+| `RenderTree`, every tick | 0.69 s | 0.81 s |
+| `RenderTree`, one tick from cold | 0.4 ms | 16 ms (parsing `render.json` and decoding one second) |
+| Score | SSIM 0.7808, IoU 0.9774, idx 0.515, 114/121 | identical |
+
+The writer's derivable-picture check passed on every tick, so the film palette over the index plane
+reproduces the renderer's RGBA exactly. Reading is a little slower per tick from cold because
+`render.json` is now a 585 KB document carrying the chunk table and palette indices; every reader in
+the repo opens a store once and walks its ticks, so this does not show in the scorer's time.
 
 ## Open questions
 

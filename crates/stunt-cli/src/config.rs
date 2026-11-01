@@ -24,7 +24,8 @@ struct Options {
     /// Bind every actor `shape_id` to its .SOD chunk in the archive
     #[arg(long, value_name = "MOVIE.ALL")]
     all: Option<PathBuf>,
-    /// Write `DIR/tick_NNNNN.png` (NNNNN = 0-based 50 Hz tick); with --sample-count or
+    /// Write the render store to DIR (`frames.zst`, `layers.zst`, `palettes.zst`,
+    /// `preview/` and `render.json`, by 0-based 50 Hz tick); with --sample-count or
     /// --video, `DIR/sample_NNNN.png` instead
     #[arg(long, value_name = "DIR")]
     out_dir: Option<PathBuf>,

@@ -3,15 +3,27 @@
 from __future__ import annotations
 
 import json
+import struct
+from compression import zstd
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
+from PIL import Image
 
+from render_helpers import TINY, frame_for, write_store
 from stunt_reel.parity_artifacts import (
     CAPTURE_HEIGHT,
     CAPTURE_WIDTH,
+    PALETTE_BYTES,
+    RENDER_CHUNK_TICKS,
+    RENDER_DOCUMENT,
+    RENDER_INDEX_FILE,
+    RENDER_LAYER_FILE,
+    RENDER_PALETTE_FILE,
+    RENDER_PREVIEW_DIR,
+    RENDER_SCHEMA_VERSION,
     SCHEMA_VERSION,
     ArtifactError,
     CameraPose,
@@ -23,11 +35,14 @@ from stunt_reel.parity_artifacts import (
     I6Gate,
     PaletteChange,
     PaletteLog,
+    RenderChunk,
     RenderPalette,
     RenderRecord,
+    RenderStore,
+    RenderStoreWriter,
     RenderTick,
     Report,
-    RetimedDocuments,
+    StoreSpan,
     TickLog,
     VideoCapture,
     frames_for_captured_ticks,
@@ -35,15 +50,13 @@ from stunt_reel.parity_artifacts import (
     open_render,
     read_capture,
     read_capture_palette,
+    read_page,
     read_render,
     read_report,
-    render_plane_paths,
-    retime_document,
-    tick_stem,
     write_capture,
     write_render,
+    write_render_store,
     write_report,
-    write_retimed_documents,
     write_video_capture,
 )
 
@@ -67,19 +80,15 @@ def _tick(tick: int) -> RenderTick:
             fov_degrees=45.0,
             roll_radians=0.0,
         ),
+        palette_index=0,
     )
 
 
 def _record(ticks: tuple[int, ...] = (10, 12)) -> RenderRecord:
-    return RenderRecord(
-        schema_version=SCHEMA_VERSION,
-        film=FilmId(name="CTRY.FLM", flm_bytes=100),
-        geometry=_geometry(),
-        ticks=tuple(_tick(tick) for tick in ticks),
-    )
+    return replace(_store_record(ticks), film=FilmId(name="CTRY.FLM", flm_bytes=100))
 
 
-def _raw_record(schema_version: int = SCHEMA_VERSION) -> dict[str, Any]:
+def _raw_record(schema_version: int = RENDER_SCHEMA_VERSION) -> dict[str, Any]:
     """A document shaped exactly as serde writes it, to pin cross-language loading."""
     return {
         "schema_version": schema_version,
@@ -95,6 +104,16 @@ def _raw_record(schema_version: int = SCHEMA_VERSION) -> dict[str, Any]:
                     "fov_degrees": 45.0,
                     "roll_radians": 0.0,
                 },
+                "palette_index": 0,
+            }
+        ],
+        "palette_count": 1,
+        "chunks": [
+            {
+                "second": 0,
+                "ticks": 1,
+                "index": {"offset": 0, "length": 10},
+                "layer": {"offset": 0, "length": 10},
             }
         ],
     }
@@ -105,20 +124,31 @@ def test_a_render_record_round_trips_through_json(tmp_path: Path) -> None:
     record = _record()
     write_render(path, record)
     assert read_render(path) == record
+    assert b"\r" not in path.read_bytes(), "render.json is written with LF line endings"
     document = json.loads(path.read_text(encoding="utf-8"))
-    assert document["schema_version"] == SCHEMA_VERSION
+    assert document["schema_version"] == RENDER_SCHEMA_VERSION
     assert document["film"] == {"name": "CTRY.FLM", "flm_bytes": 100}
     assert document["geometry"] == {"width": 320, "height": 200, "viewport_rows": 185}
     assert [entry["tick"] for entry in document["ticks"]] == [10, 12]
     assert document["ticks"][0]["palette"]["sky"] == 0x2000
     assert document["ticks"][0]["camera"]["eye"] == [0.0, 10.0, 50.0]
+    assert document["ticks"][0]["palette_index"] == 0
+    assert document["palette_count"] == 1
+    assert document["chunks"] == [
+        {
+            "second": 0,
+            "ticks": 2,
+            "index": {"offset": 0, "length": 10},
+            "layer": {"offset": 0, "length": 10},
+        }
+    ]
 
 
 def test_a_document_written_by_the_rust_side_loads_and_extra_keys_are_ignored(
     tmp_path: Path,
 ) -> None:
     record = read_render(_write_json(tmp_path / "render.json", _raw_record()))
-    assert record.schema_version == SCHEMA_VERSION
+    assert record.schema_version == RENDER_SCHEMA_VERSION
     assert record.film == FilmId(name="CTRY.FLM", flm_bytes=100)
     assert record.geometry == _geometry()
     assert record.ticks == (_tick(10),)
@@ -151,18 +181,18 @@ def test_an_unsupported_version_is_rejected_and_names_the_directory(tmp_path: Pa
 def test_geometry_is_validated_before_anything_is_read(
     tmp_path: Path, geometry: Geometry, message: str
 ) -> None:
-    record = RenderRecord(SCHEMA_VERSION, FilmId(), geometry, ())
+    record = RenderRecord(RENDER_SCHEMA_VERSION, FilmId(), geometry, (), 0, ())
     with pytest.raises(ArtifactError, match=message) as refusal:
         write_render(tmp_path / "render.json", record)
     assert refusal.value.kind == "geometry"
 
 
 def test_tick_ordering_is_checked(tmp_path: Path) -> None:
-    duplicate = RenderRecord(SCHEMA_VERSION, FilmId(), _geometry(), (_tick(10), _tick(10)))
+    duplicate = replace(_store_record((10,)), ticks=(_tick(10), _tick(10)))
     with pytest.raises(ArtifactError, match="duplicate tick at index 1") as repeat:
         duplicate.validate(tmp_path / "render.json")
     assert repeat.value.kind == "ordering"
-    unordered = RenderRecord(SCHEMA_VERSION, FilmId(), _geometry(), (_tick(12), _tick(10)))
+    unordered = replace(_store_record((10,)), ticks=(_tick(12), _tick(10)))
     with pytest.raises(ArtifactError, match="not strictly ascending at index 1"):
         unordered.validate()
 
@@ -176,51 +206,22 @@ def test_film_conflicts_need_both_sides() -> None:
     assert named.bytes_conflict(FilmId(flm_bytes=101))
 
 
-def test_open_render_prefers_the_record_to_the_legacy_sidecar(tmp_path: Path) -> None:
+def test_open_render_reads_the_record(tmp_path: Path) -> None:
     write_render(tmp_path / "render.json", _record())
-    _write_json(
-        tmp_path / "palette_controls.json",
-        {
-            "film": "INTRO.FLM",
-            "flm_bytes": 1,
-            "ticks": [{"tick": 10, "sky": 1, "brightness": 2, "saturation": 3}],
-        },
-    )
     controls = open_render(tmp_path)
-    assert controls.legacy is False
     assert controls.geometry == _geometry()
     assert controls.film == FilmId(name="CTRY.FLM", flm_bytes=100)
     assert controls.controls[10].sky == 0x2000
-    assert controls.warnings == ()
+    assert controls.record == _record()
 
 
-def test_open_render_reads_the_legacy_sidecar_without_geometry(tmp_path: Path) -> None:
-    _write_json(
-        tmp_path / "palette_controls.json",
-        {
-            "film": "CTRY.FLM",
-            "flm_bytes": 100,
-            "future_top": True,
-            "ticks": [
-                {"tick": 7, "sky": 45, "brightness": 32768, "saturation": 32768, "camera": {}}
-            ],
-        },
-    )
-    controls = open_render(tmp_path)
-    assert controls.legacy is True
-    assert controls.geometry is None
-    assert controls.record is None
-    assert controls.film == FilmId(name="CTRY.FLM", flm_bytes=100)
-    assert controls.controls == {7: RenderPalette(sky=45, brightness=32768, saturation=32768)}
-    assert controls.warnings
-    assert "render.json" in controls.warnings[0]
-
-
-def test_open_render_accepts_a_sidecar_without_ticks(tmp_path: Path) -> None:
-    _write_json(tmp_path / "palette_controls.json", {"film": "CTRY.FLM"})
-    controls = open_render(tmp_path)
-    assert controls.legacy is True
-    assert controls.controls == {}
+def test_open_render_refuses_a_version_1_render_with_the_re_render_action(
+    tmp_path: Path,
+) -> None:
+    _write_json(tmp_path / "render.json", _raw_record(1))
+    with pytest.raises(ArtifactError, match="re-render") as refusal:
+        open_render(tmp_path)
+    assert refusal.value.kind == "unsupported_version"
 
 
 def test_open_render_refuses_a_directory_with_neither_document(tmp_path: Path) -> None:
@@ -478,99 +479,232 @@ def test_frames_for_captured_ticks_needs_a_capture() -> None:
         frames_for_captured_ticks([])
 
 
-def test_tick_names_live_in_the_adapter(tmp_path: Path) -> None:
-    assert tick_stem(7) == "tick_00007"
-    assert render_plane_paths(tmp_path, 7) == (
-        tmp_path / "tick_00007.idx",
-        tmp_path / "tick_00007.layer",
+def _store_record(ticks: tuple[int, ...]) -> RenderRecord:
+    """A record whose chunk table matches *ticks*, ten bytes per chunk in each file."""
+    chunks: list[RenderChunk] = []
+    for tick in ticks:
+        second = tick // RENDER_CHUNK_TICKS
+        if chunks and chunks[-1].second == second:
+            chunks[-1] = replace(chunks[-1], ticks=chunks[-1].ticks + 1)
+        else:
+            span = StoreSpan(offset=10 * len(chunks), length=10)
+            chunks.append(RenderChunk(second=second, ticks=1, index=span, layer=span))
+    return RenderRecord(
+        RENDER_SCHEMA_VERSION,
+        FilmId(),
+        _geometry(),
+        tuple(_tick(tick) for tick in ticks),
+        1,
+        tuple(chunks),
     )
 
 
-def test_retime_document_relabels_ticks_and_preserves_unknown_keys() -> None:
-    document: dict[str, Any] = {
-        "schema_version": 1,
-        "future_top": {"kept": True},
-        "film": {"name": "CTRY.FLM"},
-        "geometry": {"width": 320, "height": 200},
-        "ticks": [
-            {
-                "tick": 11,
-                "future_entry": [1, 2],
-                "palette": {"sky": 1, "brightness": 2, "saturation": 3},
-            },
-            {"tick": 13, "palette": {"sky": 4, "brightness": 5, "saturation": 6}},
-        ],
-    }
-    shifted = retime_document(document, [(10, 11), (12, 13), (14, 15)])
-    assert [entry["tick"] for entry in shifted["ticks"]] == [10, 12]
-    assert shifted["future_top"] == {"kept": True}
-    assert shifted["ticks"][0]["future_entry"] == [1, 2]
-    assert shifted["ticks"][0]["palette"] == {"sky": 1, "brightness": 2, "saturation": 3}
-    assert [entry["tick"] for entry in document["ticks"]] == [11, 13]
+def _store_refusal(record: RenderRecord) -> str:
+    with pytest.raises(ArtifactError) as refusal:
+        record.validate()
+    assert refusal.value.kind == "store"
+    return str(refusal.value)
 
 
-def test_retime_document_writes_an_empty_tick_list_when_none_exist() -> None:
-    assert retime_document({"film": "CTRY.FLM"}, [(1, 1)]) == {
-        "film": "CTRY.FLM",
-        "ticks": [],
-    }
+def test_a_palette_index_must_name_a_stored_palette() -> None:
+    record = _store_record((0, 1))
+    bad = replace(record, ticks=(record.ticks[0], replace(record.ticks[1], palette_index=1)))
+    assert "ticks[1].palette_index 1" in _store_refusal(bad)
 
 
-def test_write_retimed_documents_rewrites_both_documents(tmp_path: Path) -> None:
-    source = tmp_path / "ours"
-    source.mkdir()
-    write_render(source / "render.json", _record((10, 12)))
-    record_document = json.loads((source / "render.json").read_text(encoding="utf-8"))
-    record_document["future_top"] = {"kept": True}
-    _write_json(source / "render.json", record_document)
-    _write_json(
-        source / "palette_controls.json",
-        {
-            "film": "CTRY.FLM",
-            "future_top": True,
-            "ticks": [
-                {"tick": 10, "sky": 45, "brightness": 32768, "saturation": 32768},
-                {"tick": 12, "sky": 46, "brightness": 32768, "saturation": 32768},
-            ],
-        },
+def test_chunks_must_follow_the_seconds_of_their_ticks() -> None:
+    three = _store_record((0, 1, 50))
+    stray = replace(three, chunks=(replace(three.chunks[0], ticks=3),))
+    assert "holds tick 50, which is not in second 0" in _store_refusal(stray)
+    two = _store_record((0, 50))
+    descending = replace(two, chunks=(two.chunks[0], replace(two.chunks[1], second=0)))
+    assert "chunks[1]: second 0" in _store_refusal(descending)
+    short = replace(three, chunks=three.chunks[:1])
+    assert "hold 2 ticks but the record lists 3" in _store_refusal(short)
+    long = replace(two, chunks=(two.chunks[0], replace(two.chunks[1], ticks=2)))
+    assert "claims 2 ticks but only 1 remain" in _store_refusal(long)
+    one = _store_record((0,))
+    empty = replace(one, chunks=(replace(one.chunks[0], ticks=0),))
+    assert "holds no ticks" in _store_refusal(empty)
+
+
+def test_chunks_must_tile_both_files() -> None:
+    two = _store_record((0, 50))
+    gap = replace(
+        two,
+        chunks=(
+            two.chunks[0],
+            replace(two.chunks[1], index=StoreSpan(offset=11, length=10)),
+        ),
     )
-    out = tmp_path / "out"
-    written = write_retimed_documents(source, out, [(11, 10), (13, 12)])
-    assert written == RetimedDocuments(record_written=True, sidecar_written=True)
-    shifted = read_render(out / "render.json")
-    assert [tick.tick for tick in shifted.ticks] == [11, 13]
-    assert shifted.ticks[1].palette == _record().ticks[1].palette
-    shifted_document = json.loads((out / "render.json").read_text(encoding="utf-8"))
-    assert shifted_document["future_top"] == {"kept": True}
-    sidecar = json.loads((out / "palette_controls.json").read_text(encoding="utf-8"))
-    assert sidecar["future_top"] is True
-    assert [entry["tick"] for entry in sidecar["ticks"]] == [11, 13]
+    assert "chunks[1]: offsets 11 and 10" in _store_refusal(gap)
+    overflow = replace(
+        two,
+        chunks=(
+            replace(two.chunks[0], index=StoreSpan(offset=0, length=2**64 - 1)),
+            replace(two.chunks[1], index=StoreSpan(offset=2**64 - 1, length=10)),
+        ),
+    )
+    assert "chunks[1]: lengths run past" in _store_refusal(overflow)
 
 
-def test_write_retimed_documents_keeps_only_the_documents_that_exist(tmp_path: Path) -> None:
-    record_only = tmp_path / "record_only"
-    record_only.mkdir()
-    write_render(record_only / "render.json", _record((10,)))
-    first = tmp_path / "first"
-    assert write_retimed_documents(record_only, first, [(11, 10)]) == RetimedDocuments(
-        record_written=True, sidecar_written=False
-    )
-    assert (first / "render.json").is_file()
-    assert not (first / "palette_controls.json").exists()
+def test_locate_finds_a_tick_by_chunk_and_position() -> None:
+    record = _store_record((3, 7, 120, 149, 150))
+    assert record.locate(7) == (0, 1)
+    assert record.locate(149) == (1, 1)
+    assert record.locate(150) == (2, 0)
+    assert record.locate(8) is None
 
-    sidecar_only = tmp_path / "sidecar_only"
-    sidecar_only.mkdir()
-    _write_json(
-        sidecar_only / "palette_controls.json",
-        {"film": "CTRY.FLM", "ticks": [{"tick": 10, "sky": 1, "brightness": 2, "saturation": 3}]},
-    )
-    second = tmp_path / "second"
-    assert write_retimed_documents(sidecar_only, second, [(11, 10)]) == RetimedDocuments(
-        record_written=False, sidecar_written=True
-    )
-    assert not (second / "render.json").exists()
-    sidecar = json.loads((second / "palette_controls.json").read_text(encoding="utf-8"))
-    assert [entry["tick"] for entry in sidecar["ticks"]] == [11]
+
+#: Ticks 7, 9 and 40 (second 0), none in second 1, 101 and 120 (second 2).
+_STORE_TICKS = (7, 9, 40, 101, 120)
+
+
+def _store(directory: Path) -> RenderRecord:
+    return write_store(directory, _STORE_TICKS)
+
+
+def test_every_tick_round_trips_across_seconds_and_an_empty_second(tmp_path: Path) -> None:
+    record = _store(tmp_path)
+    assert [(chunk.second, chunk.ticks) for chunk in record.chunks] == [(0, 3), (2, 2)]
+    assert record.palette_count == 2
+    assert [tick.palette_index for tick in record.ticks] == [0, 0, 1, 0, 1]
+    store = RenderStore(tmp_path)
+    assert store.ticks() == list(_STORE_TICKS)
+    for tick in (*reversed(_STORE_TICKS), *_STORE_TICKS):
+        assert store.frame(tick) == frame_for(tick)
+    assert store.holds(101)
+    assert not store.holds(8)
+    with pytest.raises(ArtifactError, match="holds no render of tick 8"):
+        store.frame(8)
+    assert read_render(tmp_path / RENDER_DOCUMENT) == record
+
+
+def test_each_second_has_an_indexed_preview_of_its_first_tick(tmp_path: Path) -> None:
+    _store(tmp_path)
+    previews = sorted(path.name for path in (tmp_path / RENDER_PREVIEW_DIR).iterdir())
+    assert previews == ["sec_0000.png", "sec_0002.png"]
+    frame = frame_for(101)
+    with Image.open(tmp_path / RENDER_PREVIEW_DIR / "sec_0002.png") as image:
+        assert image.mode == "P"
+        assert image.size == (TINY.width, TINY.height)
+        assert image.tobytes() == frame.indices
+        assert bytes(image.getpalette() or []) == frame.palette
+
+
+def test_read_page_reads_a_tick_through_the_store(tmp_path: Path) -> None:
+    _store(tmp_path)
+    page = read_page(RenderStore(tmp_path), 9)
+    frame = frame_for(9)
+    assert page.indices == frame.indices
+    assert page.layers == struct.unpack("<12H", frame.layers)
+    assert page.geometry == TINY
+
+
+def test_rewriting_a_store_withdraws_its_record_first(tmp_path: Path) -> None:
+    write_store(tmp_path, _STORE_TICKS)
+    with pytest.raises(ArtifactError, match="at least one tick"):
+        write_render_store(tmp_path, FilmId(), TINY, [])
+    assert not (tmp_path / RENDER_DOCUMENT).exists()
+    with pytest.raises(ArtifactError, match="re-render"):
+        RenderStore(tmp_path)
+
+
+def test_a_render_without_ticks_writes_no_store(tmp_path: Path) -> None:
+    writer = RenderStoreWriter(tmp_path, TINY)
+    assert writer.finish() is None
+    assert not (tmp_path / RENDER_INDEX_FILE).exists()
+    assert not (tmp_path / RENDER_PREVIEW_DIR).exists()
+
+
+def test_the_writer_refuses_bad_planes_and_unordered_ticks(tmp_path: Path) -> None:
+    writer = RenderStoreWriter(tmp_path, TINY)
+    frame = frame_for(3)
+    with pytest.raises(ArtifactError, match="expected 12 and 24 for 4x3"):
+        writer.push(3, frame.palette, frame.indices[:11], frame.layers)
+    with pytest.raises(ArtifactError, match="palette holds 767 bytes"):
+        writer.push(3, frame.palette[:-1], frame.indices, frame.layers)
+    writer.push(3, frame.palette, frame.indices, frame.layers)
+    with pytest.raises(ArtifactError, match="tick 3 does not follow tick 3"):
+        writer.push(3, frame.palette, frame.indices, frame.layers)
+
+
+def test_a_plane_file_of_the_wrong_size_is_refused(tmp_path: Path) -> None:
+    _store(tmp_path)
+    path = tmp_path / RENDER_LAYER_FILE
+    path.write_bytes(path.read_bytes()[:-1])
+    with pytest.raises(ArtifactError, match="chunks end at") as refusal:
+        RenderStore(tmp_path)
+    assert refusal.value.path == path
+
+
+def test_a_corrupt_chunk_names_its_second_and_file(tmp_path: Path) -> None:
+    record = _store(tmp_path)
+    span = record.chunks[1].index
+    path = tmp_path / RENDER_INDEX_FILE
+    data = bytearray(path.read_bytes())
+    data[span.offset : span.offset + span.length] = b"\xaa" * span.length
+    path.write_bytes(bytes(data))
+    store = RenderStore(tmp_path)
+    assert store.frame(7) == frame_for(7)
+    with pytest.raises(ArtifactError, match="second 2") as refusal:
+        store.frame(101)
+    assert refusal.value.path == path
+
+
+def test_a_chunk_of_the_wrong_decoded_length_names_its_second_and_file(tmp_path: Path) -> None:
+    record = _store(tmp_path)
+    path = tmp_path / RENDER_INDEX_FILE
+    # Second 2 holds two 12-pixel ticks; store one byte too many.
+    packed = zstd.compress(bytes(25))
+    path.write_bytes(path.read_bytes()[: record.chunks[1].index.offset] + packed)
+    longer = replace(record.chunks[1], index=replace(record.chunks[1].index, length=len(packed)))
+    write_render(tmp_path / RENDER_DOCUMENT, replace(record, chunks=(record.chunks[0], longer)))
+    store = RenderStore(tmp_path)
+    assert store.frame(7) == frame_for(7)
+    with pytest.raises(ArtifactError, match="second 2 decompresses to 25 bytes, expected 24") as (
+        refusal
+    ):
+        store.frame(101)
+    assert refusal.value.path == path
+
+
+def test_palettes_of_the_wrong_length_are_refused(tmp_path: Path) -> None:
+    _store(tmp_path)
+    for count in (1, 3):
+        (tmp_path / RENDER_PALETTE_FILE).write_bytes(zstd.compress(bytes(count * PALETTE_BYTES)))
+        with pytest.raises(ArtifactError, match="expected 1536 for 2 palettes"):
+            RenderStore(tmp_path)
+
+
+def test_a_version_1_render_is_refused_with_the_re_render_action(tmp_path: Path) -> None:
+    _write_json(tmp_path / "render.json", _raw_record(1))
+    with pytest.raises(ArtifactError, match="re-render") as refusal:
+        RenderStore(tmp_path)
+    assert refusal.value.kind == "unsupported_version"
+
+
+def test_the_rust_v2_fixture_reads_the_same_planes() -> None:
+    fixture = Path(__file__).resolve().parent / "fixtures" / "parity" / "v2" / "render"
+    store = RenderStore(fixture)
+    assert store.ticks() == [7, 9, 30, 100, 149]
+    assert [(chunk.second, chunk.ticks) for chunk in store.record.chunks] == [(0, 3), (2, 2)]
+    tick7 = store.frame(7)
+    assert tick7.indices == bytes([180] * 4 + [0, 40, 40, 0] + [0] * 4)
+    assert struct.unpack("<12H", tick7.layers) == (0,) * 4 + (0, 16, 16, 0) + (16,) * 4
+    for tick in (9, 30, 100, 149):
+        shifted = bytes((value + tick - 7) % 256 for value in tick7.indices)
+        assert store.frame(tick).indices == shifted
+        assert store.frame(tick).layers == tick7.layers
+    grey = bytes(value for entry in range(256) for value in (entry, entry, entry))
+    second = bytes(value for entry in range(256) for value in (255 - entry, entry, 0))
+    assert [store.frame(tick).palette for tick in store.ticks()] == [
+        grey,
+        grey,
+        second,
+        grey,
+        second,
+    ]
 
 
 def _video() -> VideoCapture:

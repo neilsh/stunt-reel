@@ -1,22 +1,20 @@
-"""Load the planes the bench scores: a capture's index planes and a render's PNG and planes."""
+"""Load the planes the bench scores: a capture's index planes and a render store's planes."""
 
 from __future__ import annotations
 
-from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
-from PIL import Image
 
 from stunt_reel.parity_artifacts import (
     CAPTURE_HEIGHT,
     CAPTURE_WIDTH,
+    ArtifactError,
+    RenderStore,
+    StoredFrame,
     read_capture,
     read_capture_palette,
-    read_render,
-    render_plane_paths,
-    tick_stem,
 )
 
 if TYPE_CHECKING:
@@ -34,8 +32,6 @@ __all__ = [
 ]
 
 SHAPE = (CAPTURE_HEIGHT, CAPTURE_WIDTH)
-#: Ticks a tree keeps decoded; a whole tree is about 500 MB in memory.
-CACHE_TICKS = 64
 
 
 class BenchError(RuntimeError):
@@ -44,7 +40,7 @@ class BenchError(RuntimeError):
 
 @dataclass(frozen=True)
 class RenderPlanes:
-    """One rendered tick: the PNG, and the index and layer planes beside it."""
+    """One rendered tick: its picture, and its index and layer planes."""
 
     rgb: NDArray[np.uint8]  # (200, 320, 3)
     idx: NDArray[np.uint8] | None  # (200, 320)
@@ -72,44 +68,47 @@ class RenderSource(Protocol):
 
 
 class RenderTree:
-    """A render directory: ``render.json`` plus ``tick_NNNNN.{png,idx,layer}``."""
+    """A render directory's store: ``render.json`` and its zstd chunks (ADR 0027).
+
+    The store is opened on first use and keeps its last two decoded chunks, so walking the
+    ticks in order decodes each film second once; a tick's picture is ``palette[idx]``.
+    """
 
     def __init__(self, root: Path) -> None:
         self.root = root
-        self._cache: OrderedDict[int, RenderPlanes] = OrderedDict()
+        self._store: RenderStore | None = None
+
+    @property
+    def store(self) -> RenderStore:
+        """The opened store; ``BenchError`` when the directory is not a readable one."""
+        if self._store is None:
+            try:
+                self._store = RenderStore(self.root)
+            except ArtifactError as err:
+                raise BenchError(str(err)) from err
+        return self._store
 
     def ticks(self) -> list[int]:
         """The ticks in ``render.json``, ascending."""
-        return [entry.tick for entry in read_render(self.root / "render.json").ticks]
+        return self.store.ticks()
+
+    def stored(self, tick: int) -> StoredFrame:
+        """One tick as stored: its planes and palette."""
+        try:
+            return self.store.frame(tick)
+        except ArtifactError as err:
+            raise BenchError(str(err)) from err
 
     def load(self, tick: int) -> RenderPlanes:
-        """Decode a tick, keeping the :data:`CACHE_TICKS` most recent."""
-        cached = self._cache.get(tick)
-        if cached is not None:
-            self._cache.move_to_end(tick)
-            return cached
-        planes = self._decode(tick)
-        self._cache[tick] = planes
-        while len(self._cache) > CACHE_TICKS:
-            self._cache.popitem(last=False)
-        return planes
-
-    def _decode(self, tick: int) -> RenderPlanes:
-        png = self.root / f"{tick_stem(tick)}.png"
-        idx_path, layer_path = render_plane_paths(self.root, tick)
-        for path in (png, idx_path, layer_path):
-            if not path.is_file():
-                raise BenchError(f"{path} is missing; re-render {self.root} to write its planes")
-        with Image.open(png) as image:
-            rgb = np.asarray(image.convert("RGB"), dtype=np.uint8)
-        if rgb.shape != (*SHAPE, 3):
-            raise BenchError(f"{png} is {rgb.shape}, expected {(*SHAPE, 3)}")
-        idx = np.frombuffer(idx_path.read_bytes(), dtype=np.uint8)
-        layer = np.frombuffer(layer_path.read_bytes(), dtype="<u2")
-        if idx.size != CAPTURE_HEIGHT * CAPTURE_WIDTH or layer.size != idx.size:
-            raise BenchError(f"{idx_path} or {layer_path} is the wrong size; re-render {self.root}")
+        """Decode a tick into arrays."""
+        frame = self.stored(tick)
+        idx = np.frombuffer(frame.indices, dtype=np.uint8)
+        layer = np.frombuffer(frame.layers, dtype="<u2")
+        if idx.size != CAPTURE_HEIGHT * CAPTURE_WIDTH:
+            raise BenchError(f"{self.root} is not {CAPTURE_WIDTH}x{CAPTURE_HEIGHT}; re-render it")
+        palette = np.frombuffer(frame.palette, dtype=np.uint8).reshape(256, 3)
         return RenderPlanes(
-            rgb=rgb,
+            rgb=palette[idx].reshape((*SHAPE, 3)),
             idx=idx.reshape(SHAPE),
             layer=layer.astype(np.uint16).reshape(SHAPE),
         )

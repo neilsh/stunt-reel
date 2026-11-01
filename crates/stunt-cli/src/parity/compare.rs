@@ -14,6 +14,7 @@ use super::verdict::{FrameVerdict, Verdict, frame_verdict};
 use stunt_parity::CapturedFrame;
 
 use crate::parity_artifacts;
+use crate::render_store::RenderStore;
 
 /// Compares the fresh `report` with the previous report at `previous_path`: prints the
 /// summary, writes `compare.json`, and renders before/after sheets when the previous
@@ -56,6 +57,14 @@ pub(super) fn run_compare(
         println!("[compare] no --compare-test <dir>: before/after contact sheets skipped");
         return Ok(());
     };
+    let mut before_store = match RenderStore::open(previous_render) {
+        Ok(store) => store,
+        Err(error) => {
+            println!("[compare] {error}: before/after contact sheets skipped");
+            return Ok(());
+        }
+    };
+    let mut after_store = RenderStore::open(&args.test).map_err(|error| error.to_string())?;
     let ordinals: BTreeMap<u64, usize> = report
         .per_frame
         .iter()
@@ -85,12 +94,11 @@ pub(super) fn run_compare(
             .get(&film_tick)
             .copied()
             .ok_or_else(|| format!("film_tick {film_tick} missing from the fresh report"))?;
-        let tick = usize::try_from(film_tick).map_err(|e| e.to_string())?;
-        let before_png = previous_render.join(crate::headless::tick_png_name(tick));
-        if !before_png.is_file() {
+        let tick = u32::try_from(film_tick).map_err(|e| e.to_string())?;
+        if !before_store.holds(tick) {
             println!(
-                "[compare] {} not found: {label} sheet skipped",
-                before_png.display()
+                "[compare] {} holds no tick {tick}: {label} sheet skipped",
+                previous_render.display()
             );
             continue;
         }
@@ -101,8 +109,8 @@ pub(super) fn run_compare(
         let palette_file = args.reference.join(&frame.palette_file);
         let (indices, palette) = load_reference(&reference_file, &palette_file)?;
         let reference = reference_luminance(&indices, &palette);
-        let before = load_render_rescaled(&before_png)?;
-        let after = load_render_rescaled(&args.test.join(crate::headless::tick_png_name(tick)))?;
+        let before = load_render_rescaled(&mut before_store, tick)?;
+        let after = load_render_rescaled(&mut after_store, tick)?;
         let path = args
             .output
             .join(format!("compare_{label}_tick_{tick:05}.png"));
@@ -121,37 +129,31 @@ pub(super) fn run_compare(
     Ok(())
 }
 
-/// The note printed in place of the verdict summary when the previous render has no planes.
+/// The note printed in place of the verdict summary when the previous render cannot be read.
 fn skipped_note(previous_render: &Path) -> String {
     format!(
-        "[verdict] skipped: {} has no index planes; re-render it to judge changes",
+        "[verdict] skipped: {} is not a readable render store; re-render it to judge changes",
         previous_render.display()
     )
 }
 
 /// Judges every fresh frame against the previous render of the same tick; `None` when the
-/// previous render predates the index and layer planes, which the verdict cannot do without.
+/// previous render is not a readable store (one made before it, for instance), which the
+/// verdict cannot do without.
 fn judge(
     args: &Args,
     previous_render: &Path,
     report: &Report,
     frames: &[CapturedFrame],
 ) -> Result<Option<Verdict>, String> {
-    let lacks_planes = report.per_frame.iter().any(|entry| {
-        usize::try_from(entry.film_tick).is_ok_and(|tick| {
-            let png = previous_render.join(crate::headless::tick_png_name(tick));
-            let (idx, layer) = crate::plane_codec::plane_paths(&png);
-            png.is_file() && !(idx.is_file() && layer.is_file())
-        })
-    });
-    if lacks_planes {
+    let Ok(mut before_store) = RenderStore::open(previous_render) else {
         return Ok(None);
-    }
+    };
+    let mut after_store = RenderStore::open(&args.test).map_err(|error| error.to_string())?;
     let mut judged = Vec::with_capacity(report.per_frame.len());
     for entry in &report.per_frame {
-        let tick = usize::try_from(entry.film_tick).map_err(|e| e.to_string())?;
-        let before_png = previous_render.join(crate::headless::tick_png_name(tick));
-        if !before_png.is_file() {
+        let tick = u32::try_from(entry.film_tick).map_err(|e| e.to_string())?;
+        if !before_store.holds(tick) {
             judged.push(FrameVerdict::missing(entry.film_tick));
             continue;
         }
@@ -162,8 +164,8 @@ fn judge(
             &args.reference.join(&frame.frame_file),
             &args.reference.join(&frame.palette_file),
         )?;
-        let before: RenderFrame = load_render_frame(previous_render, tick)?;
-        let after: RenderFrame = load_render_frame(&args.test, tick)?;
+        let before: RenderFrame = load_render_frame(&mut before_store, tick)?;
+        let after: RenderFrame = load_render_frame(&mut after_store, tick)?;
         judged.push(frame_verdict(
             entry.film_tick,
             &ReferenceFrame { indices, palette },
@@ -185,7 +187,8 @@ mod tests {
     use crate::parity::run;
     use crate::parity::sheets::CONTACT_SHEET_GAP;
     use crate::parity::test_support::{
-        TempDir, run_parity, write_matching_render, write_reference, write_render,
+        Picture, TempDir, run_parity, write_reference, write_render, write_render_store,
+        write_version_1_render,
     };
     use serde_json::Value;
     use stunt_render::MODE13H_WIDTH;
@@ -196,14 +199,12 @@ mod tests {
         write_reference(&tmp.join("ref"), &[7, 12], true);
         let previous = tmp.join("prev");
         let current = tmp.join("cur");
-        fs::create_dir_all(&previous).unwrap();
-        fs::create_dir_all(&current).unwrap();
-        for tick in [7, 12] {
-            write_render(&previous.join(crate::headless::tick_png_name(tick)));
-            write_render(&current.join(crate::headless::tick_png_name(tick)));
-        }
-        // Make the fresh render of tick 12 match the capture, which scores higher.
-        write_matching_render(&current.join(crate::headless::tick_png_name(12)));
+        write_render(&previous, &[7, 12]);
+        // The fresh render of tick 12 matches the capture, which scores higher.
+        write_render_store(
+            &current,
+            &[(7, 0x8000, Picture::Grey), (12, 0x8000, Picture::Matching)],
+        );
 
         run_parity(&tmp.join("ref"), &previous, &tmp.join("base")).expect("baseline");
         let argv = |compare_test: bool| {
@@ -249,26 +250,19 @@ mod tests {
     }
 
     #[test]
-    fn a_before_tree_without_planes_skips_the_verdict_and_keeps_the_comparison() {
+    fn a_before_render_from_before_the_store_skips_the_verdict_and_sheets_only() {
         let tmp = TempDir::new("verdict_no_planes");
         write_reference(&tmp.join("ref"), &[7, 12], true);
         let previous = tmp.join("prev");
         let current = tmp.join("cur");
-        fs::create_dir_all(&previous).unwrap();
-        fs::create_dir_all(&current).unwrap();
-        for tick in [7, 12] {
-            write_render(&previous.join(crate::headless::tick_png_name(tick)));
-            write_render(&current.join(crate::headless::tick_png_name(tick)));
-        }
-        write_matching_render(&current.join(crate::headless::tick_png_name(12)));
+        write_render(&previous, &[7, 12]);
+        write_render_store(
+            &current,
+            &[(7, 0x8000, Picture::Grey), (12, 0x8000, Picture::Matching)],
+        );
         run_parity(&tmp.join("ref"), &previous, &tmp.join("base")).expect("baseline");
-        // An old render: the PNGs stay, the planes go.
-        for tick in [7, 12] {
-            let png = previous.join(crate::headless::tick_png_name(tick));
-            let (idx, layer) = crate::plane_codec::plane_paths(&png);
-            fs::remove_file(idx).unwrap();
-            fs::remove_file(layer).unwrap();
-        }
+        // A render made before the store: its record is version 1 and its planes are gone.
+        write_version_1_render(&previous);
         let argv = [
             "--reference",
             &tmp.join("ref").display().to_string(),
@@ -282,7 +276,7 @@ mod tests {
             &previous.display().to_string(),
         ]
         .map(String::from);
-        run(argv.into_iter()).expect("a before tree without planes is not an error");
+        run(argv.into_iter()).expect("an unreadable before render is not an error");
 
         let doc: Value = serde_json::from_str(
             &fs::read_to_string(tmp.join("out").join("compare.json")).unwrap(),
@@ -292,14 +286,15 @@ mod tests {
         assert_eq!(doc["most_improved"][0]["film_tick"], 12);
         assert!(doc.get("verdict").is_none());
         assert!(
-            tmp.join("out")
+            !tmp.join("out")
                 .join("compare_improved_tick_00012.png")
-                .is_file()
+                .exists()
         );
         assert_eq!(
             skipped_note(&previous),
             format!(
-                "[verdict] skipped: {} has no index planes; re-render it to judge changes",
+                "[verdict] skipped: {} is not a readable render store; re-render it to judge \
+                 changes",
                 previous.display()
             )
         );
@@ -311,12 +306,8 @@ mod tests {
         write_reference(&tmp.join("ref"), &[7, 12], true);
         let previous = tmp.join("prev");
         let current = tmp.join("cur");
-        fs::create_dir_all(&previous).unwrap();
-        fs::create_dir_all(&current).unwrap();
-        for tick in [7, 12] {
-            write_render(&current.join(crate::headless::tick_png_name(tick)));
-        }
-        write_render(&previous.join(crate::headless::tick_png_name(7)));
+        write_render(&current, &[7, 12]);
+        write_render(&previous, &[7]);
         run_parity(&tmp.join("ref"), &current, &tmp.join("base")).expect("baseline");
         let argv = [
             "--reference",

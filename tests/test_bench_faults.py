@@ -115,6 +115,48 @@ def test_flat_terrain_flattens_layer_two() -> None:
     assert out.idx[0, 0] == 4
 
 
+def test_flat_terrain_keeps_an_index_shared_with_another_layer_one_colour() -> None:
+    # Terrain's most common index (0) is also the sky's, so flattening it in place would give
+    # index 0 two colours; the flat terrain moves to an index only terrain uses instead.
+    base = planes(50, idx_value=0, layer_value=2)
+    base.layer[:10, :] = 0
+    base.rgb[:10, :] = 200
+    base.idx[100, :5] = 7  # type: ignore[index]
+    base.rgb[100, :5] = 60
+    out = plant(Fault("flat_terrain", None), 0, MemorySource({0: base}), 1)
+    assert out is not None
+    assert out.idx is not None
+    terrain = out.layer == 2
+    assert set(np.unique(out.idx[terrain]).tolist()) == {7}
+    assert set(np.unique(out.idx[~terrain]).tolist()) == {0}
+    for index in (0, 7):
+        assert len(np.unique(out.rgb[out.idx == index], axis=0)) == 1
+
+
+def test_flat_terrain_takes_a_free_index_when_every_terrain_index_is_shared() -> None:
+    base = planes(50, idx_value=0, layer_value=2)
+    base.layer[:10, :] = 0
+    base.rgb[:10, :] = 200
+    base.rgb[100, :5] = 60
+    out = plant(Fault("flat_terrain", None), 0, MemorySource({0: base}), 1)
+    assert out is not None
+    assert out.idx is not None
+    assert set(np.unique(out.idx[out.layer == 2]).tolist()) == {1}
+
+
+def test_flat_terrain_reuses_an_index_already_showing_the_flat_colour() -> None:
+    # Every index appears outside terrain, so none is terrain-only or free; index 5's other
+    # pixels already show the flat colour (5, 5, 5), so terrain can share it.
+    base = planes(5, idx_value=0, layer_value=2)
+    base.layer[0, :] = 0
+    base.idx[0, :] = np.arange(W) % 256  # type: ignore[index]
+    base.rgb[0, :] = (np.arange(W) % 256)[:, None]
+    out = plant(Fault("flat_terrain", None), 0, MemorySource({0: base}), 1)
+    assert out is not None
+    assert out.idx is not None
+    assert set(np.unique(out.idx[out.layer == 2]).tolist()) == {5}
+
+
 def test_flicker_alternates_and_clips() -> None:
     source = MemorySource({4: planes(250), 5: planes(250)})
     even = plant(Fault("flicker", 10), 4, source, 1)

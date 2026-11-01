@@ -23,20 +23,18 @@ import os
 import shutil
 import subprocess
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from stunt_reel import references
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.parity_artifacts import (
-    RENDER_SUFFIXES,
+    RenderStore,
     frames_for_captured_ticks,
     open_render,
     read_capture,
     read_report,
-    render_plane_paths,
-    tick_stem,
-    write_retimed_documents,
+    write_render_store,
 )
 
 __all__ = [
@@ -103,12 +101,10 @@ class RetimeError(RuntimeError):
 
 @dataclass(frozen=True)
 class RetimeResult:
-    """What a retime wrote: frames copied, targets with no source, documents rebuilt."""
+    """What a retime wrote: frames copied and targets with no source."""
 
     copied: int
     missing: list[int]
-    palette_written: bool
-    record_written: bool = False
 
 
 def plan_retime(ticks: Iterable[int], by: int) -> list[tuple[int, int]]:
@@ -127,47 +123,35 @@ def retime_render(
 ) -> RetimeResult:
     """Writes ``out`` as the render in ``ours`` re-labelled by ``by`` ticks.
 
-    Target ``t`` gets the frame, index and layer planes of source ``t + by``, and the
-    render's documents are rewritten so their tick metadata follows the shift; the
-    legacy sidecar is kept in sync only while it exists. Ticks whose source is absent
-    are reported and, with ``allow_missing``, skipped; otherwise they are an error. A
+    Target ``t`` gets the planes, palette and tick record of source ``t + by``, written
+    as a new render store re-cut by the target seconds, ``render.json`` last; ticks are
+    read one chunk at a time, never the whole render. Ticks whose source is absent are
+    reported and, with ``allow_missing``, skipped; otherwise they are an error. A
     non-empty ``out`` is refused unless ``force``.
     """
     capture = read_capture(reference)
     pairs = plan_retime((frame.film_tick for frame in capture.frames), by)
     if out.exists() and any(out.iterdir()) and not force:
         raise RetimeError(f"{out} is not empty; pass --force to replace its frames")
-    missing = [
-        target
-        for target, source in pairs
-        if not all((ours / f"{tick_stem(source)}{ext}").is_file() for ext in RENDER_SUFFIXES)
-    ]
+    source = RenderStore(ours)
+    missing = [target for target, tick in pairs if not source.holds(tick)]
     if missing and not allow_missing:
         raise RetimeError(
             f"missing render for {len(missing)} tick(s), first {missing[0]}; "
             "pass --allow-missing to skip them"
         )
     skipped = set(missing)
+    kept = [(target, tick) for target, tick in pairs if target not in skipped]
     out.mkdir(parents=True, exist_ok=True)
-    copied = 0
-    for target, source in pairs:
-        if target in skipped:
-            continue
-        for ext in RENDER_SUFFIXES:
-            shutil.copyfile(
-                ours / f"{tick_stem(source)}{ext}",
-                out / f"{tick_stem(target)}{ext}",
-            )
-        copied += 1
-    documents = write_retimed_documents(
-        ours, out, [pair for pair in pairs if pair[0] not in skipped]
-    )
-    return RetimeResult(
-        copied=copied,
-        missing=missing,
-        palette_written=documents.sidecar_written,
-        record_written=documents.record_written,
-    )
+    if kept:
+        rows = {entry.tick: entry for entry in source.record.ticks}
+        write_render_store(
+            out,
+            source.record.film,
+            source.record.geometry,
+            ((replace(rows[tick], tick=target), source.frame(tick)) for target, tick in kept),
+        )
+    return RetimeResult(copied=len(kept), missing=missing)
 
 
 #: The adapter every external command goes through: ``(argv, environment)``, raising on failure.
@@ -209,7 +193,6 @@ class FilmScore:
     report: Path
     score: Score
     retime: RetimeResult | None = None
-    warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -270,8 +253,8 @@ def check_render(reference: Path, render: Path, ticks: Iterable[int]) -> None:
     """Refuses a render that cannot be scored against ``reference``.
 
     Raises ``ValueError`` when the render's document names a different film or ``.FLM``
-    size than the capture's ``meta.json`` (either side may lack the tags), or when a
-    captured tick has no ``.idx``/``.layer`` planes beside its frame.
+    size than the capture's ``meta.json`` (either side may lack the tags), or when the
+    render holds no planes for a captured tick.
     """
     capture = read_capture(reference)
     controls = open_render(render)
@@ -284,11 +267,8 @@ def check_render(reference: Path, render: Path, ticks: Iterable[int]) -> None:
             f"the capture's .FLM is {capture.film.flm_bytes} bytes but the render's is "
             f"{controls.film.flm_bytes}"
         )
-    missing = [
-        tick
-        for tick in ticks
-        if not all(path.is_file() for path in render_plane_paths(render, tick))
-    ]
+    held = {entry.tick for entry in controls.record.ticks}
+    missing = [tick for tick in ticks if tick not in held]
     if missing:
         raise ValueError(
             f"{render} has no render planes for {len(missing)} captured tick(s), first {missing[0]}"
@@ -355,13 +335,11 @@ def score_film(
     if not render.is_dir():
         raise ValueError(f"{render} is not a render directory")
     check_film(film, root, render)
-    warnings = open_render(render).warnings
     result: RetimeResult | None = None
     scored = render
     if retime is not None:
         result = _relabel(film, root, render, retime)
         scored = retime.out
-        warnings = open_render(scored).warnings
     run(
         [
             *(
@@ -384,7 +362,6 @@ def score_film(
         report=report,
         score=Score(ssim, iou),
         retime=result,
-        warnings=warnings,
     )
 
 

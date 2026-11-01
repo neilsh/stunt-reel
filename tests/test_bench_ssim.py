@@ -11,6 +11,7 @@ import pytest
 
 from stunt_reel.bench.planes import BenchError, RenderTree, load_capture
 from stunt_reel.bench.ssim import frame_ssim, stretch
+from stunt_reel.parity_artifacts import RENDER_INDEX_FILE, RENDER_LAYER_FILE
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -30,9 +31,14 @@ def test_identical_frames_score_one(bench_fixture: Path) -> None:
     assert abs(frame_ssim(capture, rgb) - 1.0) < 1e-9
 
 
-def test_a_render_without_planes_names_a_rerender(tmp_path: Path, bench_fixture: Path) -> None:
+def test_a_render_from_before_the_store_names_a_rerender(
+    tmp_path: Path, bench_fixture: Path
+) -> None:
     shutil.copytree(bench_fixture / "render", tmp_path / "r")
-    (tmp_path / "r" / "tick_00010.layer").unlink()
+    record = tmp_path / "r" / "render.json"
+    document = json.loads(record.read_text(encoding="utf-8"))
+    document["schema_version"] = 1
+    record.write_text(json.dumps(document), encoding="utf-8")
     with pytest.raises(BenchError, match="re-render"):
         RenderTree(tmp_path / "r").load(10)
 
@@ -44,14 +50,14 @@ def test_stretch_repeats_every_fifth_row() -> None:
     assert out[:7, 0].tolist() == [0, 0, 1, 2, 3, 4, 5]
 
 
-@pytest.mark.parametrize("suffix", ["idx", "layer"])
-def test_a_render_with_a_truncated_plane_is_refused(
-    tmp_path: Path, bench_fixture: Path, suffix: str
+@pytest.mark.parametrize("name", [RENDER_INDEX_FILE, RENDER_LAYER_FILE])
+def test_a_render_with_a_truncated_plane_file_is_refused(
+    tmp_path: Path, bench_fixture: Path, name: str
 ) -> None:
     render = tmp_path / "render"
     shutil.copytree(bench_fixture / "render", render)
-    (render / f"tick_00010.{suffix}").write_bytes(b"\x00\x00")
-    with pytest.raises(BenchError, match="wrong size"):
+    (render / name).write_bytes(b"\x00\x00")
+    with pytest.raises(BenchError, match="chunks end at"):
         RenderTree(render).load(10)
 
 
@@ -63,9 +69,10 @@ def test_a_truncated_capture_plane_is_refused(tmp_path: Path, bench_fixture: Pat
         load_capture(capture)
 
 
-def test_render_tree_caches_decoded_frames(bench_fixture: Path) -> None:
+def test_a_render_trees_picture_is_its_palette_over_its_index_plane(bench_fixture: Path) -> None:
     tree = RenderTree(bench_fixture / "render")
     assert tree.ticks() == [10, 20]
-    first = tree.load(10)
-    assert tree.load(10) is first
-    assert tree.load(20) is not first
+    planes = tree.load(10)
+    palette = np.frombuffer(tree.stored(10).palette, dtype=np.uint8).reshape(256, 3)
+    assert planes.idx is not None
+    assert np.array_equal(planes.rgb, palette[planes.idx])
