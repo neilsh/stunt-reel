@@ -781,12 +781,13 @@ pub(crate) fn run_vm(
                         reg_indices.push(((reg_off / 12) & 1023) as usize);
                     }
 
-                    let norm_off = r.read_u16_le()?;
-                    let norm_reg = ((norm_off / 12) & 1023) as usize;
-
-                    // Skip per-vertex shade offsets
+                    // The word after the register list is `(ramp_base << 8) | count` (`0x1004`
+                    // is a four-vertex polygon on the red ramp), not a normal register; one
+                    // shade offset per vertex follows, each a byte offset into the `SHADES` words.
+                    let ramp = r.read_u16_le()?;
+                    let mut vertex_shades = Vec::with_capacity(count as usize);
                     for _ in 0..count {
-                        r.read_u16_le()?;
+                        vertex_shades.push(usize::from(r.read_u16_le()?));
                     }
 
                     let mut poly_verts = Vec::with_capacity(count as usize);
@@ -798,19 +799,27 @@ pub(crate) fn run_vm(
                         poly_verts.push([mx, my, mz]);
                     }
 
-                    let raw_n = regs[norm_reg];
-                    let n_len =
-                        (raw_n[0] * raw_n[0] + raw_n[1] * raw_n[1] + raw_n[2] * raw_n[2]).sqrt();
-                    let norm = if n_len > 1e-12 {
-                        [raw_n[0] / n_len, raw_n[1] / n_len, raw_n[2] / n_len]
-                    } else {
-                        compute_polygon_normal(&poly_verts)
-                    };
+                    // Flat approximation of the per-vertex ramp index: the mean of the vertices'
+                    // `SHADE16` levels (`[Hypothesis]`: the player interpolates them, section 8.5).
+                    let base = i32::from((ramp >> 8) as u8);
+                    let sixteen = opcode == OP_GVPOLY16;
+                    let level_sum: i32 = vertex_shades
+                        .iter()
+                        .map(|&off| {
+                            let mut s = shade_words[(off / 2) & 2047];
+                            if sixteen {
+                                s >>= 1;
+                            }
+                            ((s >> 1) >> 8) - if base == 0x10 { 2 } else { 0 }
+                        })
+                        .sum();
+                    let level = level_sum / i32::try_from(vertex_shades.len()).unwrap_or(1);
+                    let palette_index = (base + level.max(0)).clamp(0, 255) as u8;
 
                     polygons.push(RawPolygon {
+                        normal: compute_polygon_normal(&poly_verts),
                         vertices: poly_verts,
-                        palette_index: cur_color,
-                        normal: norm,
+                        palette_index,
                         flags: 0,
                         is_decal: false,
                         visibility: current_visibility,

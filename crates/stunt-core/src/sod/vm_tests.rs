@@ -595,6 +595,25 @@ fn test_shade16_picks_the_ramp_entry_from_the_normal() {
     assert_eq!(colours, vec![0x30, 29, 63]);
 }
 
+#[test]
+fn test_gvpoly16_takes_its_ramp_from_the_word_after_the_registers() {
+    use crate::sod::vm::OP_GVPOLY16;
+    // `SHADES 0 2 (0,-32767,0) (0,32767,0)`, `COLOR 7`, then `GVPOLY16 3 regs, 0x3003, 3 shade
+    // offsets`. The word after the registers is `(ramp_base << 8) | count`, so the polygon is
+    // painted on the grey ramp (0x30 + 15 for a fully lit vertex), not the running colour 7.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[0x0156, 0, 2]);
+    for n in [[0i16, -32767, 0], [0, 32767, 0]] {
+        for c in n {
+            bytes.extend_from_slice(&c.to_le_bytes());
+        }
+    }
+    push_words(&mut bytes, &[OP_COLOR, 7, OP_GVPOLY16, 3, 0, 12, 24]);
+    push_words(&mut bytes, &[0x3003, 2, 2, 2, OP_RETURN]);
+    let ir = decode(&bytes, "GVPOLY16").expect("decode gvpoly16");
+    assert_eq!(ir.vertices[0].palette_index, 63);
+}
+
 fn push_words(bytes: &mut Vec<u8>, words: &[u16]) {
     for w in words {
         bytes.extend_from_slice(&w.to_le_bytes());
