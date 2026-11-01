@@ -79,7 +79,7 @@ Seven of ten films are scored; none is a stuck clock or under 2 frames. SSIM, Io
 ## Ruled out
 
 - **De-duplicating by name.** The same film appears under several folders (`NewPLAY`, `OldPLAY`, `Morganroth`); only the content hash identifies it.
-- **Keeping the rendered frames.** Gigabytes per film; the report and contact sheets are kept.
+- **Keeping per-tick rendered frames.** Gigabytes per film before the render store; the compact store ([ADR 0027](../../docs/adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)) is now kept with the report and contact sheets.
 
 ## Open questions
 
