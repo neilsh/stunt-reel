@@ -113,3 +113,35 @@ def test_ssim_metric_is_frame_ssim(bench_fixture: Path) -> None:
     capture = load_capture(bench_fixture / "capture")[20]
     planes = RenderTree(bench_fixture / "render").load(20)
     assert METRICS["ssim"](capture, planes, regions_of(planes)) == frame_ssim(capture, planes.rgb)
+
+
+PROPS_BLOCK = (slice(70, 90), slice(200, 240))
+
+
+def test_ssim_props_is_none_without_props(bench_fixture: Path) -> None:
+    capture = load_capture(bench_fixture / "capture")[10]
+    perfect = RenderTree(bench_fixture / "render").load(10)
+    assert not (perfect.layer == 3).any()
+    assert METRICS["ssim_props"](capture, perfect, regions_of(perfect)) is None
+
+
+def test_ssim_props_scores_windows_over_props(bench_fixture: Path) -> None:
+    capture = load_capture(bench_fixture / "capture")[10]
+    control = RenderTree(bench_fixture / "render").load(10)
+    layer = control.layer.copy()
+    layer[PROPS_BLOCK] = 3
+    regions = Regions(layer=layer, control_mean_luma=float(render_luma(control.rgb).mean()))
+    perfect = RenderPlanes(
+        rgb=capture.palette[capture.idx], idx=capture.idx.copy(), layer=control.layer
+    )
+    assert METRICS["ssim_props"](capture, perfect, regions) == pytest.approx(1.0)
+
+    rgb = perfect.rgb.copy()
+    rgb[PROPS_BLOCK] = 255 - rgb[PROPS_BLOCK]
+    changed = RenderPlanes(rgb=rgb, idx=perfect.idx, layer=control.layer)
+    props = METRICS["ssim_props"](capture, changed, regions)
+    assert props is not None
+    assert props < 1.0
+    assert METRICS["ssim_actors"](capture, changed, regions) == METRICS["ssim_actors"](
+        capture, perfect, regions
+    )

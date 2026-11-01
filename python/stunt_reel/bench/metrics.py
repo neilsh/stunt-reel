@@ -149,11 +149,26 @@ def edge_f(capture: CapturePlanes, render: RenderPlanes, regions: Regions) -> fl
     return 2.0 * precision * recall / (precision + recall)
 
 
+def _ssim_over_layer(
+    capture: CapturePlanes,
+    render: RenderPlanes,
+    regions: Regions,
+    in_layer: Callable[[NDArray[np.uint16]], NDArray[np.bool_]],
+) -> float | None:
+    """Mean window SSIM over clear windows that hold a control-render pixel of the layer."""
+    hit = _any_in_window(stretch(in_layer(regions.layer)))
+    scores = window_ssim(stretch(capture_luma(capture)), stretch(render_luma(render.rgb)))
+    return _mean(scores, _allowed(capture) & hit)
+
+
 def ssim_actors(capture: CapturePlanes, render: RenderPlanes, regions: Regions) -> float | None:
     """Mean window SSIM over clear windows that hold an actor pixel of the control render."""
-    actors = _any_in_window(stretch(regions.layer >= ACTOR_LAYER))
-    scores = window_ssim(stretch(capture_luma(capture)), stretch(render_luma(render.rgb)))
-    return _mean(scores, _allowed(capture) & actors)
+    return _ssim_over_layer(capture, render, regions, lambda layer: layer >= ACTOR_LAYER)
+
+
+def ssim_props(capture: CapturePlanes, render: RenderPlanes, regions: Regions) -> float | None:
+    """Mean window SSIM over clear windows that hold a props pixel of the control render."""
+    return _ssim_over_layer(capture, render, regions, lambda layer: layer == PROPS_LAYER)
 
 
 METRICS: dict[str, Metric] = {
@@ -166,6 +181,7 @@ METRICS: dict[str, Metric] = {
     "index_actors": _index_metric(ACTOR_LAYER, exact=False),
     "edge_f": edge_f,
     "ssim_actors": ssim_actors,
+    "ssim_props": ssim_props,
 }
 
 
