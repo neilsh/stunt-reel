@@ -21,7 +21,7 @@ By latest record per film and stage: archive 47 ok and 40 skipped (sibling `.ALL
 
 * **Scores** (`[Bounded Observation]`, 79 films): median 0.68, 10th percentile 0.53, 90th percentile 0.79, range 0.004 to 0.924. 35 films score 0.70 or more; one reaches 0.88 (`vault-balloon`, 0.9236). 4 are below 0.1 and 7 below 0.5. For scale, the two pinned films score about 0.78 (CTRY) and 0.68 (INTRO) with the render tuned for them, so the untuned corpus lands in the same band; no film outside those two is near the 0.90 sign-off.
 * **By family** (median, count): `flmonly` 0.73 (36), `desperat` 0.69 (3), `boz` 0.66 (3), `collage4` 0.63 (7), `collage5` 0.60 (9), `egalloc` 0.56 (11); `flmonly` is the best-behaved and `egalloc` the worst, but small families and noisy captures limit what that says.
-* **Degenerate scores.** `vault-balloon` scored 0.9236 with IoU 0.0 and index agreement 0.0 over 3 frames, and its survey capture `frames/002` holds 3 frames at `film_tick` 0, the stuck-clock signature ([`../playone-exe/capture-speed.md`](../playone-exe/capture-speed.md) § 1). Films below 0.05 (`collage4-elbarto` 0.0042, `flmonly-act5` 0.0071, `egalloc-egallo10` 0.0114, `flmonly-act1` 0.0196) had one scored frame with IoU about 0.83 and index agreement near 0. Neither group is parity evidence; the capture-validity check (§ 1) now rejects the stuck-clock case at capture time, but these scores predate it.
+* **Degenerate scores.** (`vault-balloon` was rescored in section 5: 0.678 over 108 frames.) `vault-balloon` scored 0.9236 with IoU 0.0 and index agreement 0.0 over 3 frames, and its survey capture `frames/002` holds 3 frames at `film_tick` 0, the stuck-clock signature ([`../playone-exe/capture-speed.md`](../playone-exe/capture-speed.md) § 1). Films below 0.05 (`collage4-elbarto` 0.0042, `flmonly-act5` 0.0071, `egalloc-egallo10` 0.0114, `flmonly-act1` 0.0196) had one scored frame with IoU about 0.83 and index agreement near 0. Neither group is parity evidence; the capture-validity check (§ 1) now rejects the stuck-clock case at capture time, but these scores predate it.
 * **Capture stalls are intermittent.** `no new frame after 2001 trap hits (0 frame(s) captured, 6 to 9 indices on the page)` after the dialog settled. Five films still end in a capture error: `collage4-exit`, `collage4-exit2`, `flmonly-bigman`, `flmonly-count` (stalls) and `flmonly-colprt2` (`capture invalid: only 1 frame(s)`). But `amcrisis-ac`, `egalloc-egalloc0` and `egalloc-egalloc5` stalled on the first pass and captured fine on a retry (305 s, 146 s, 311 s), so a stall is not a property of the film. Each stall costs about 207 s. These were DOSBox-X debugger stalls (no trap hit). Re-run on dosbox-automation with both `PLAYONE` builds ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3), `collage4-exit`, `collage4-exit2` and `flmonly-count` capture whole (`COUNT` is only 92 ticks long). The driver's default skip list is now `flmonly-bigman` alone, which replays a tick apart from boot to boot so a dump pass disagrees with its trace (`--skip` adds slugs, `--only` or `--retry-errors` runs it).
 * **Archive timeouts** (`exit 124`, 900 s) hit films of 323 KB or more under the original `cycles = 8000` conf; `MAKEONE` plays in real time, so these were long films, not hangs. Under `core = dynamic` and `cycles = max` they were retried and none remains an error ([`../makeone-exe/driving.md`](../makeone-exe/driving.md) § 8).
 * **Orphaned emulators.** A timeout killed only the direct Python child on Windows, so each left a `dosbox-x.exe` and a 12 MB stage directory. The runner now kills the process tree and `make_all` gets a 90 s head start on its own timeout.
@@ -52,6 +52,30 @@ Median stage times, from the ledger: archive 68 s (mixed settings; 7 to 27 s at 
 
 The survey then deleted each render after scoring it; the readout needs the render's planes, so the seven were rendered again with the survey's own render stage and kept (about 260 MB each, before the render store).
 
+## 5. Retail vault films on the render store
+
+`[Bounded Observation]`, 2026-11-01, commit `f0e4300` (PR #44, render store, [ADR 0027](../../docs/adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)). The ten `VAULT` films went through all four stages in a fresh worktree whose ledger was empty (`mise run batch-parity -- --only <ten> --stages archive,capture,render,score --retry-errors --jobs 4`, default `--max-renders`). The ledger skips stages whose latest record is ok and `batch_parity.py` has no force flag, so a rerun in a worktree with old records would reuse them; this run needed none of that. Scoring only: no error readout. Every capture below is a new directory from this run.
+
+| Film | Capture | Frames | `film_tick` | Scored / total | SSIM | IoU | Index agreement | Render | Capture / render / score s |
+|---|---|---|---|---|---|---|---|---|---|
+| `vault-balloon` | ok | 108 | 4–1185 | 108 / 108 | 0.678 | 0.598 | 0.418 | 1.6 MB, 28 files | 93 / 1.9 / 0.4 |
+| `vault-bomb` | ok | 328 | 3–3725 | 305 / 328 | 0.660 | 0.817 | 0.549 | 9.5 MB, 79 | 295 / 4.0 / 1.0 |
+| `vault-ctry` | ok | 120 | 4–1335 | 113 / 120 | 0.776 | 0.977 | 0.526 | 3.9 MB, 31 | 97 / 2.1 / 0.5 |
+| `vault-highways` | ok | 92 | 52–1068 | 92 / 92 | 0.744 | 0.941 | 0.676 | 1.4 MB, 25 | 89 / 2.0 / 0.3 |
+| `vault-land` | ok | 99 | 3–1126 | 94 / 99 | 0.748 | 0.970 | 0.656 | 2.1 MB, 27 | 88 / 2.3 / 0.4 |
+| `vault-splanes` | ok | 112 | 3–1240 | 106 / 112 | 0.632 | 0.878 | 0.452 | 1.0 MB, 29 | 92 / 1.9 / 0.4 |
+| `vault-traintnl` | ok | 108 | 4–1239 | 108 / 108 | 0.712 | 0.908 | 0.716 | 3.4 MB, 29 | 93 / 2.5 / 0.4 |
+| `vault-intro` | capture error | | | | | | | | 177 |
+| `vault-location` | capture error | | | | | | | | 133 |
+| `vault-tod` | capture error | | | | | | | | 44 |
+
+Seven of ten films are scored; none is a stuck clock or under 2 frames. SSIM, IoU and index agreement are the scored-frame means from `report.json`; archive was skipped for all ten (sibling `.ALL`).
+
+* **Against section 4.** SSIM agrees with the earlier readout to within 0.003 for six films (balloon 0.678, bomb 0.655 to 0.660, ctry 0.776, highways 0.745 to 0.744, land 0.750 to 0.748, traintnl 0.712 against 0.712); `vault-splanes` is the same 0.631 to 0.632. The captures run longer than before for five films (ctry ends at tick 1335 against 1001, land 1126 against 898, splanes 1240 against 961, bomb 3725 against 3475, highways 1068 against 1070 unchanged), with frame counts within 7 of the earlier scored counts, so a capture's end tick varies by up to a few hundred ticks between runs while the score does not.
+* **`vault-balloon` is no longer degenerate.** Section 2's 0.9236 (IoU 0.0, 3 frames at tick 0) is superseded: the current capture has 108 frames over ticks 4 to 1185 and scores 0.678, IoU 0.598. That section's remark that the old score predates the validity check is confirmed. Balloon also has the lowest IoU of the seven.
+* **Render store size.** 1.0 to 9.5 MB and 25 to 79 files per film (`frames.zst`, `layers.zst`, `palettes.zst`, `preview/`, `render.json`), against about 260 MB per film in section 4 and 2 to 5 GB before the store; `vault-bomb` is the largest because it has 328 frames. Render time is 2 to 4 s, score under 1 s; capture (88 to 97 s with 4 films at once, 295 s for bomb) is the whole cost.
+* **The three failures are unchanged.** `vault-intro`, `vault-location` and `vault-tod` ended `instruction limit exceeded` (from the capture script, `[string "unnamed"]:32` or `:38`) in the 4-job run and again on the single retry run one at a time, after 177, 133 and 44 s. Four attempts across this run and section 4 now fail the same way.
+
 ## Ruled out
 
 - **De-duplicating by name.** The same film appears under several folders (`NewPLAY`, `OldPLAY`, `Morganroth`); only the content hash identifies it.
@@ -65,3 +89,5 @@ The survey then deleted each render after scoring it; the readout needs the rend
 4. A full `--jobs 8` survey has not run: the idle-machine test passed, but the heavy-load behaviour (the earlier -28 tick dips) is untested.
 5. Resume to cover the remaining 450 films, or sample the families (`egalloc`, `collage4`, `collage5`) where scores are lowest.
 6. Why do `vault-intro`, `vault-location` and `vault-tod` stop with `instruction limit exceeded` about 40 s into Mode 13h, on every attempt (section 4)?
+7. Why does a capture's end tick differ by 100 to 400 ticks between runs of the same film (section 5: ctry 1001 then 1335, splanes 961 then 1240) while SSIM stays within 0.003? If the film clock stops at a different point, the score compares different spans.
+8. Section 4's error readout graded renders from `ea99618` of older captures; should the Haiku readout be rerun on the render-store renders and the fresh captures? Not done here.
