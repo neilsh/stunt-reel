@@ -40,6 +40,13 @@ pub(super) struct Args {
     /// absent)
     #[arg(long, value_name = "DIR", requires = "compare")]
     pub(super) compare_test: Option<PathBuf>,
+    /// Run-to-run noise of the Δ on the changed windows; a frame whose |Δ| is below it is
+    /// "within noise". Without it the verdict goes by the sign of Δ alone
+    #[arg(long, value_name = "F", requires = "compare_test", value_parser = parse_min_fade_level)]
+    pub(super) noise_sigma: Option<f32>,
+    /// Frames with at most N changed pixels are build noise, not judged
+    #[arg(long, value_name = "N", default_value_t = 0, requires = "compare_test")]
+    pub(super) build_floor: usize,
 }
 
 /// Help text for `stuntreel parity`, also listed under the main `--help`.
@@ -110,6 +117,29 @@ mod tests {
                 .unwrap_err()
                 .contains("--compare")
         );
+    }
+
+    #[test]
+    fn noise_sigma_requires_compare_test() {
+        let args = parse(&[
+            "--compare",
+            "p/report.json",
+            "--compare-test",
+            "p/ours",
+            "--noise-sigma",
+            "0.002",
+            "--build-floor",
+            "30",
+        ])
+        .unwrap();
+        assert_eq!(args.noise_sigma, Some(0.002));
+        assert_eq!(args.build_floor, 30);
+        let defaults = parse(&["--compare", "p/report.json", "--compare-test", "p"]).unwrap();
+        assert_eq!((defaults.noise_sigma, defaults.build_floor), (None, 0));
+        for flag in [["--noise-sigma", "0.1"], ["--build-floor", "3"]] {
+            let error = parse(&["--compare", "p/report.json", flag[0], flag[1]]).unwrap_err();
+            assert!(error.contains("--compare-test"), "{flag:?}: {error}");
+        }
     }
 
     #[test]

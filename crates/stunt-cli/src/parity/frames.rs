@@ -3,10 +3,15 @@
 use std::fs;
 use std::path::Path;
 
+use stunt_parity::Geometry;
+
 use stunt_render::{
     ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH, rescale_mode13h_frame,
     rgb_to_luminance, rgba_to_luminance,
 };
+
+use super::score::RenderFrame;
+use crate::plane_codec;
 
 /// A 256-entry RGB palette.
 type Palette = Vec<(u8, u8, u8)>;
@@ -45,6 +50,25 @@ pub(super) fn load_render_rescaled(path: &Path) -> Result<Vec<f32>, String> {
         MODE13H_HEIGHT,
         ASPECT_CORRECTED_HEIGHT,
     ))
+}
+
+/// Loads a render directory's frame at `tick`: luminance, palette-index plane and layer
+/// plane, all 320x200. The palette controls are left `None`; the caller sets them when it
+/// has the render record.
+pub(super) fn load_render_frame(dir: &Path, tick: usize) -> Result<RenderFrame, String> {
+    let png = dir.join(crate::headless::tick_png_name(tick));
+    let geometry = Geometry {
+        width: MODE13H_WIDTH as u32,
+        height: MODE13H_HEIGHT as u32,
+        viewport_rows: None,
+    };
+    let planes = plane_codec::read_page_planes(&png, &geometry).map_err(|e| e.to_string())?;
+    Ok(RenderFrame {
+        luminance: read_png_luminance(&png)?,
+        indices: planes.indices,
+        layers: planes.layers,
+        controls: None,
+    })
 }
 
 /// Reads a 64000-byte Mode 13h palette-index raster.

@@ -329,3 +329,35 @@ fn bench_fixture_matches_its_golden_ssim() {
         );
     }
 }
+
+/// The Rust verdict agrees with the numpy `differential` on the bench fixture.
+#[test]
+fn verdict_matches_the_numpy_golden() {
+    let bench =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/parity/bench");
+    let golden: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(bench.join("golden.json")).unwrap()).unwrap();
+    let expected = &golden["differential"]["20"];
+    let (indices, palette) = super::frames::load_reference(
+        &bench.join("capture").join("tick_0002.idx"),
+        &bench.join("capture").join("palettes_0002.json"),
+    )
+    .expect("capture frame");
+    let reference = super::score::ReferenceFrame { indices, palette };
+    let before = super::frames::load_render_frame(&bench.join("render_before"), 20).unwrap();
+    let after = super::frames::load_render_frame(&bench.join("render"), 20).unwrap();
+    let verdict = super::verdict::frame_verdict(20, &reference, &before, &after, None, 0);
+    let close = |actual: f32, wanted: &serde_json::Value, tolerance: f64| {
+        let wanted = wanted.as_f64().unwrap();
+        assert!(
+            (f64::from(actual) - wanted).abs() < tolerance,
+            "{actual} vs golden {wanted}"
+        );
+    };
+    close(verdict.changed_idx, &expected["changed_idx"], 1e-6);
+    close(verdict.changed_luma, &expected["changed_luma"], 1e-6);
+    for (layer, fraction) in &verdict.changed_by_layer {
+        close(*fraction, &expected["changed_by_layer"][*layer], 1e-6);
+    }
+    close(verdict.delta.expect("a delta"), &expected["delta"], 1e-4);
+}
