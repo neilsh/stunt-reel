@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from stunt_reel.bench.planes import RenderPlanes
+
 CACHE_DIRNAME = ".pytest_cache"
 BASETEMP_PREFIX = "basetemp-"
 KEEP_BASETEMPS = 3
@@ -140,3 +142,18 @@ def build_avi(video: list[bytes], audio: list[bytes]) -> bytes:
         movi += _riff_chunk(ckid, payload)
     body = b"AVI " + hdrl + lst(b"movi", movi) + _riff_chunk(b"idx1", index)
     return b"RIFF" + struct.pack("<I", len(body)) + body
+
+
+class MemorySource:
+    """A :class:`~stunt_reel.bench.planes.RenderSource` over planes held in memory."""
+
+    def __init__(self, ticks: dict[int, RenderPlanes]) -> None:
+        self._ticks = ticks
+
+    def ticks(self) -> list[int]:
+        """The held ticks, ascending."""
+        return sorted(self._ticks)
+
+    def load(self, tick: int) -> RenderPlanes:
+        """The planes of one held tick."""
+        return self._ticks[tick]
