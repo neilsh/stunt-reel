@@ -277,6 +277,30 @@ def test_a_reversed_plant_range_is_an_argument_error() -> None:
     assert ticks == range(500, 600)
 
 
+def test_plant_accepts_repeated_fault_flags() -> None:
+    args = parity_bench.parse_args(
+        [
+            "plant",
+            "--render",
+            "R",
+            "--out",
+            "O",
+            "--fault",
+            "actors_removed@250-349",
+            "--fault",
+            "shift_x:4@500-599",
+            "--fault",
+            "advance:5@750-849",
+        ]
+    )
+    assert [fault.key for fault, _ in args.fault] == [
+        "actors_removed",
+        "shift_x:4",
+        "advance:5",
+    ]
+    assert [ticks for _, ticks in args.fault] == [range(250, 350), range(500, 600), range(750, 850)]
+
+
 def test_rows_print_an_unmeasured_sigma_as_na(capsys: pytest.CaptureFixture[str]) -> None:
     entry = {"mean_change": None, "sigmas": None, "detected": False, "frames": 0}
     document = {

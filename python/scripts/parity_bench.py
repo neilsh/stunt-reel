@@ -144,7 +144,14 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     plant_p = sub.add_parser("plant", help="write known faults into a copy of a render")
     plant_p.add_argument("--render", type=Path, required=True)
     plant_p.add_argument("--out", type=Path, required=True)
-    plant_p.add_argument("--fault", type=parse_plant, nargs="+", required=True, metavar="KEY@A-B")
+    plant_p.add_argument(
+        "--fault",
+        type=parse_plant,
+        nargs="+",
+        action="extend",
+        required=True,
+        metavar="KEY@A-B",
+    )
     plant_p.set_defaults(handler=plant)
     for name, handler in (("judge-make", judge_make), ("judge-score", judge_score)):
         judge_p = sub.add_parser(
