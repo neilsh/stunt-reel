@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from stunt_reel import all_archive, parity_artifacts, parity_layout
+from stunt_reel import all_archive, dataroot, game_builds, parity_artifacts, parity_layout
 from stunt_reel.batch_ledger import Record
 from stunt_reel.parity_pipeline import RENDER_FLAGS, binary_path
 
@@ -29,6 +29,7 @@ __all__ = [
     "KNOWN_CAPTURE_STALLS",
     "KNOWN_STALL_MESSAGE",
     "MIN_CAPTURE_FRAMES",
+    "UNPATCHED_CAPTURES",
     "Runner",
     "run_archive",
     "run_capture",
@@ -48,8 +49,14 @@ _SIDATA = Path("corpus/siarchive/Developer/FreeFlight/SIDATA")
 #: stalls (research/parity/batch.md), collage4-exit, collage4-exit2 and flmonly-count capture
 #: whole on dosbox-automation with either PLAYONE build; flmonly-bigman replays a tick apart
 #: from boot to boot on both builds, so a dump pass disagrees with the trace
-#: (research/playone-exe/patch3.md section 3).
-KNOWN_CAPTURE_STALLS: tuple[str, ...] = ("flmonly-bigman",)
+#: (research/playone-exe/patch3.md section 3). vault-location plays, but at 8,266 ticks it outruns
+#: one trace script's instruction budget (capture-dosbox-automation.md section 4.7).
+KNOWN_CAPTURE_STALLS: tuple[str, ...] = ("flmonly-bigman", "vault-location")
+#: Films captured on the unpatched build instead of their folder's own PLAYONE.EXE. Their
+#: siarchive NewPLAY folder ships Patch #3's, which stalls on these two retail archives while the
+#: unpatched build plays them (research/playone-exe/capture-dosbox-automation.md section 4.7).
+#: Only these: other NewPLAY films capture on the patched build.
+UNPATCHED_CAPTURES: tuple[str, ...] = ("vault-intro", "vault-tod")
 #: The message of the ``skipped`` capture record a known stall gets.
 KNOWN_STALL_MESSAGE = "known capture stall"
 #: A capture needs at least this many frames: a film short enough to yield 2 or 3 legitimately
@@ -89,6 +96,9 @@ def run_capture(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Rec
     command = [sys.executable, str(root / _CAPTURE), "--film", str(film.flm)]
     if film.name is not None:
         command += ["--name", film.name]
+    if film.slug in UNPATCHED_CAPTURES:
+        unpatched = dataroot.data_root() / game_builds.BUILDS_DIR / "unpatched"
+        command += ["--game-root", str(unpatched)]
     outcome = _execute(film, "capture", command, timeout, run, started)
     if outcome.status != "ok":
         return outcome

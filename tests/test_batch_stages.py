@@ -10,7 +10,9 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from stunt_reel import batch_stages, parity_layout
+import pytest
+
+from stunt_reel import batch_stages, dataroot, parity_layout
 from stunt_reel.batch_films import BatchFilm
 
 if TYPE_CHECKING:
@@ -163,11 +165,31 @@ def test_capture_command_uses_the_film_path(tmp_path: Path) -> None:
     assert command[command.index("--name") + 1] == "x-y"
 
 
+def test_capture_runs_the_films_own_build_by_default(tmp_path: Path) -> None:
+    runner = FakeRunner()
+    _write_capture(tmp_path, "vault-ctry", [0, 10])
+    batch_stages.run_capture(_film(tmp_path), tmp_path, runner, 900.0)
+    command, _ = runner.calls[0]
+    assert "--game-root" not in command
+
+
+@pytest.mark.parametrize("slug", ["vault-intro", "vault-tod"])
+def test_a_film_that_stalls_on_the_patched_build_captures_on_the_unpatched_one(
+    tmp_path: Path, slug: str
+) -> None:
+    runner = FakeRunner()
+    _write_capture(tmp_path, slug, [0, 10])
+    batch_stages.run_capture(_film(tmp_path, name=slug), tmp_path, runner, 900.0)
+    command, _ = runner.calls[0]
+    game_root = Path(command[command.index("--game-root") + 1])
+    assert game_root == dataroot.data_root() / "builds" / "unpatched"
+
+
 def test_a_known_stall_is_a_skipped_capture_record(tmp_path: Path) -> None:
     record = batch_stages.skip_stalled_capture(_film(tmp_path))
     assert (record.stage, record.status) == ("capture", "skipped")
     assert record.message == "known capture stall"
-    assert batch_stages.KNOWN_CAPTURE_STALLS == ("flmonly-bigman",)
+    assert batch_stages.KNOWN_CAPTURE_STALLS == ("flmonly-bigman", "vault-location")
 
 
 def test_render_without_a_capture_is_an_error_naming_capture(tmp_path: Path) -> None:
