@@ -14,8 +14,8 @@ import hashlib
 import random
 import re
 import tomllib
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -35,16 +35,25 @@ if TYPE_CHECKING:
     from stunt_reel.parity_artifacts import Report
 
 __all__ = [
+    "Calibration",
     "Category",
+    "CategoryReadout",
+    "Change",
     "FilmWindow",
+    "Readout",
     "Sheet",
+    "SheetGrades",
     "Taxonomy",
     "add_example",
     "build_sheet",
+    "calibrate",
+    "compare",
     "idx_digest",
     "load_categories",
+    "parse_grades",
     "pick_ticks",
     "plan_sheets",
+    "readout",
     "render_brief",
     "sheet_id",
 ]
@@ -369,3 +378,242 @@ def idx_digest(render: Path, ticks: Sequence[int]) -> str:
     for tick in sorted(ticks):
         digest.update((render / f"{tick_stem(tick)}.idx").read_bytes())
     return digest.hexdigest()
+
+
+#: A grade at or above this counts a frame as showing the error.
+CLEAR = 2
+#: A control is clean when every grade is at most this.
+CLEAN = 1
+_GRADE = re.compile(r"^(?P<name>[^=\s]+)=(?P<value>\S*)$")
+
+
+@dataclass(frozen=True)
+class SheetGrades:
+    """One grade line: a grade or ``None`` (ungraded) per category, unknown names, the note."""
+
+    grades: dict[str, int | None]
+    unknown: dict[str, int]
+    other: str
+
+
+def parse_grades(text: str, taxonomy: Taxonomy) -> dict[str, SheetGrades]:
+    """Grade lines per sheet id; tolerates code fences, backticks, CRLF and blank lines."""
+    parsed: dict[str, SheetGrades] = {}
+    for raw in text.splitlines():
+        line = raw.strip().replace("`", "")
+        if not line or raw.strip().startswith("```"):
+            continue
+        cells, _, other = line.partition("| other:")
+        tokens = cells.replace("|", " ").split()
+        if not tokens or "=" in tokens[0]:
+            raise BenchError(f"grade line has no sheet id: {raw.strip()!r}")
+        sheet, values = tokens[0], tokens[1:]
+        if sheet in parsed:
+            raise BenchError(f"sheet {sheet} is graded twice")
+        grades: dict[str, int | None] = dict.fromkeys(taxonomy.ids)
+        unknown: dict[str, int] = {}
+        for token in values:
+            match = _GRADE.match(token)
+            if match is None or match["value"] not in ("0", "1", "2", "3"):
+                raise BenchError(f"{token!r} is not <category>=<0-3> in {raw.strip()!r}")
+            name, value = match["name"], int(match["value"])
+            if name in grades:
+                grades[name] = value
+            else:
+                unknown[name] = value
+        parsed[sheet] = SheetGrades(grades, unknown, other.strip())
+    return parsed
+
+
+def _note(grades: SheetGrades | None) -> str:
+    """The ``other`` note, or empty when it says nothing."""
+    if grades is None or grades.other.lower() in ("", "none"):
+        return ""
+    return grades.other
+
+
+@dataclass(frozen=True)
+class CategoryReadout:
+    """One category over a run's real frames."""
+
+    category: str
+    ticks_2plus: tuple[int, ...]
+    mean: float | None
+    ungraded: int
+
+
+@dataclass(frozen=True)
+class Readout:
+    """What the grader saw on a run's real frames, and which render and categories it graded."""
+
+    film: str
+    ticks: tuple[int, ...]
+    categories_digest: str
+    render_digest: str
+    categories: tuple[CategoryReadout, ...]
+    other: dict[int, str]
+    missing: int
+    unknown: tuple[str, ...]
+
+    def to_json(self) -> dict[str, Any]:
+        """The ``readout.json`` document."""
+        document = asdict(self)
+        document["other"] = {str(tick): note for tick, note in self.other.items()}
+        return document
+
+    @classmethod
+    def from_json(cls, doc: dict[str, Any]) -> Readout:
+        """Read a ``readout.json`` document."""
+        try:
+            return cls(
+                film=str(doc["film"]),
+                ticks=tuple(int(t) for t in doc["ticks"]),
+                categories_digest=str(doc["categories_digest"]),
+                render_digest=str(doc["render_digest"]),
+                categories=tuple(
+                    CategoryReadout(
+                        category=str(c["category"]),
+                        ticks_2plus=tuple(int(t) for t in c["ticks_2plus"]),
+                        mean=None if c["mean"] is None else float(c["mean"]),
+                        ungraded=int(c["ungraded"]),
+                    )
+                    for c in doc["categories"]
+                ),
+                other={int(tick): str(note) for tick, note in doc["other"].items()},
+                missing=int(doc["missing"]),
+                unknown=tuple(str(u) for u in doc["unknown"]),
+            )
+        except (KeyError, TypeError, ValueError) as err:
+            raise BenchError(f"not a readout document: {err}") from err
+
+
+def readout(
+    grades: dict[str, SheetGrades],
+    sheets: Sequence[Sheet],
+    film: str,
+    categories_digest: str,
+    render_digest: str,
+) -> Readout:
+    """Per category, the real frames graded 2 or more and the mean grade."""
+    real = sorted((s for s in sheets if s.kind == "real"), key=lambda s: s.tick)
+    graded = [(s.tick, grades[s.id]) for s in real if s.id in grades]
+    names = list(next(iter(grades.values())).grades) if grades else []
+    categories = []
+    for name in names:
+        values = [(tick, g.grades.get(name)) for tick, g in graded]
+        known = [v for _, v in values if v is not None]
+        categories.append(
+            CategoryReadout(
+                category=name,
+                ticks_2plus=tuple(t for t, v in values if v is not None and v >= CLEAR),
+                mean=sum(known) / len(known) if known else None,
+                ungraded=sum(1 for _, v in values if v is None),
+            )
+        )
+    return Readout(
+        film=film,
+        ticks=tuple(s.tick for s in real),
+        categories_digest=categories_digest,
+        render_digest=render_digest,
+        categories=tuple(categories),
+        other={tick: _note(g) for tick, g in graded if _note(g)},
+        missing=len(real) - len(graded),
+        unknown=tuple(sorted({name for _, g in graded for name in g.unknown})),
+    )
+
+
+@dataclass(frozen=True)
+class Change:
+    """A category whose count of frames graded 2+ moved between two readouts."""
+
+    category: str
+    before: int
+    after: int
+    added: tuple[int, ...]
+    removed: tuple[int, ...]
+
+
+def compare(before: Readout, after: Readout, min_change: int) -> list[Change]:
+    """Categories whose 2+ count moved by at least *min_change*; refuses unlike readouts."""
+    if before.categories_digest != after.categories_digest:
+        raise BenchError(
+            f"readouts graded different categories ({before.categories_digest} before, "
+            f"{after.categories_digest} now); calibrate and start a new series"
+        )
+    if before.ticks != after.ticks:
+        only_before = sorted(set(before.ticks) - set(after.ticks))
+        only_after = sorted(set(after.ticks) - set(before.ticks))
+        raise BenchError(
+            f"readouts graded different ticks (only before: {only_before}, only now: {only_after})"
+        )
+    earlier = {c.category: set(c.ticks_2plus) for c in before.categories}
+    changes = []
+    for category in after.categories:
+        was, now = earlier.get(category.category, set()), set(category.ticks_2plus)
+        if abs(len(now) - len(was)) >= min_change:
+            changes.append(
+                Change(
+                    category.category,
+                    len(was),
+                    len(now),
+                    tuple(sorted(now - was)),
+                    tuple(sorted(was - now)),
+                )
+            )
+    return changes
+
+
+@dataclass(frozen=True)
+class Calibration:
+    """Controls graded clean, and per fault key (detected, sheets)."""
+
+    controls_clean: int
+    controls: int
+    faults: dict[str, tuple[int, int]]
+    passes: bool
+
+
+def _at_least(share: tuple[int, int], count: int) -> int:
+    """``ceil(share * count)``, in integers: the probe's bars scaled to *count* sheets."""
+    numerator, denominator = share
+    return -(-numerator * count // denominator)
+
+
+#: Pass bars from the probe: controls clean on 10 of 12, actors removed caught on 5 of 6.
+CONTROL_BAR = (10, 12)
+ACTORS_BAR = (5, 6)
+
+
+def _detected(planted: SheetGrades | None, real: SheetGrades | None, named: Sequence[str]) -> bool:
+    if planted is None:
+        return False
+    for name in named:
+        value, base = planted.grades.get(name), None if real is None else real.grades.get(name)
+        if value is not None and base is not None and value > base:
+            return True
+    note = _note(planted)
+    return bool(note) and note != _note(real)
+
+
+def calibrate(
+    grades: dict[str, SheetGrades], sheets: Sequence[Sheet], taxonomy: Taxonomy
+) -> Calibration:
+    """Controls clean and planted faults caught, against the probe's bars."""
+    real = {s.tick: grades.get(s.id) for s in sheets if s.kind == "real"}
+    controls = [s for s in sheets if s.kind == "control"]
+    clean = 0
+    for sheet in controls:
+        graded = grades.get(sheet.id)
+        values = [] if graded is None else [v for v in graded.grades.values() if v is not None]
+        if graded is not None and all(v <= CLEAN for v in values):
+            clean += 1
+    faults: dict[str, tuple[int, int]] = {}
+    for key, named in taxonomy.faults.items():
+        planted = [s for s in sheets if s.kind == "planted" and s.fault == key]
+        detected = sum(_detected(grades.get(s.id), real.get(s.tick), named) for s in planted)
+        faults[key] = (detected, len(planted))
+    actors, actor_sheets = faults.get("actors_removed", (0, 0))
+    passes = clean >= _at_least(CONTROL_BAR, len(controls)) and actors >= _at_least(
+        ACTORS_BAR, actor_sheets
+    )
+    return Calibration(clean, len(controls), faults, passes)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import re
 import shutil
 from pathlib import Path
 
@@ -9,13 +11,21 @@ import numpy as np
 import pytest
 
 from stunt_reel.bench.errors import (
+    Calibration,
     FilmWindow,
+    Readout,
+    Sheet,
+    Taxonomy,
     add_example,
     build_sheet,
+    calibrate,
+    compare,
     idx_digest,
     load_categories,
+    parse_grades,
     pick_ticks,
     plan_sheets,
+    readout,
     render_brief,
     sheet_id,
 )
@@ -224,3 +234,137 @@ def test_idx_digest_changes_with_render(tmp_path: Path, bench_fixture: Path) -> 
     data[0] ^= 1
     plane.write_bytes(bytes(data))
     assert idx_digest(copy, [10, 20]) != idx_digest(render, [10, 20])
+
+
+def _all_zero(taxonomy: Taxonomy, sheet: str, other: str = "none", **grades: int) -> str:
+    values = dict.fromkeys(taxonomy.ids, 0) | {k.replace("_", "-"): v for k, v in grades.items()}
+    return f"{sheet} " + " ".join(f"{k}={v}" for k, v in values.items()) + f" | other: {other}"
+
+
+def test_parse_grades_tolerates_fences_and_backticks() -> None:
+    taxonomy = load_categories(CATEGORIES)
+    text = "```\r\n`aaa` aircraft-absent=2 | other: none\r\n\r\nbbb aircraft-absent=1\r\n```\r\n"
+    grades = parse_grades(text, taxonomy)
+    assert set(grades) == {"aaa", "bbb"}
+    assert grades["aaa"].grades["aircraft-absent"] == 2
+    assert grades["aaa"].other == "none"
+    assert grades["bbb"].other == ""
+
+
+def test_parse_grades_missing_category_is_ungraded() -> None:
+    taxonomy = load_categories(CATEGORIES)
+    grades = parse_grades("aaa aircraft-parts-missing=1 wobble=2 | other: none", taxonomy)
+    assert grades["aaa"].grades["aircraft-absent"] is None
+    assert grades["aaa"].grades["aircraft-parts-missing"] == 1
+    assert grades["aaa"].unknown == {"wobble": 2}
+    assert "wobble" not in grades["aaa"].grades
+
+
+@pytest.mark.parametrize(
+    ("text", "named"),
+    [
+        ("aaa aircraft-absent=4", "aircraft-absent=4"),
+        ("aaa aircraft-absent=x", "aircraft-absent=x"),
+        ("=2 aircraft-absent=1", "=2"),
+        ("aaa aircraft-absent=1\naaa aircraft-absent=2", "aaa"),
+    ],
+)
+def test_parse_grades_rejects(text: str, named: str) -> None:
+    with pytest.raises(BenchError, match=re.escape(named)):
+        parse_grades(text, load_categories(CATEGORIES))
+
+
+def _sheets(*specs: tuple[str, str, int, str | None]) -> list[Sheet]:
+    return [Sheet(i, kind, tick, fault) for i, kind, tick, fault in specs]  # type: ignore[arg-type]
+
+
+def test_calibrate_counts_a_moved_grade() -> None:
+    taxonomy = load_categories(CATEGORIES)
+    sheets = _sheets(
+        ("r5", "real", 5, None),
+        ("p5", "planted", 5, "actors_removed"),
+        ("r6", "real", 6, None),
+        ("p6", "planted", 6, "actors_removed"),
+        ("r7", "real", 7, None),
+        ("p7", "planted", 7, "actors_removed"),
+    )
+    text = "\n".join(
+        [
+            _all_zero(taxonomy, "r5", aircraft_parts_missing=3),
+            _all_zero(taxonomy, "p5", aircraft_absent=3),
+            _all_zero(taxonomy, "r6", aircraft_parts_missing=2),
+            _all_zero(taxonomy, "p6", aircraft_parts_missing=2),
+            _all_zero(taxonomy, "r7"),
+            _all_zero(taxonomy, "p7", other="plane gone"),
+        ]
+    )
+    result = calibrate(parse_grades(text, taxonomy), sheets, taxonomy)
+    assert result.faults["actors_removed"] == (2, 3)
+
+
+def _calibration_run(
+    taxonomy: Taxonomy, controls: int, clean: int, actors: int, detected: int
+) -> Calibration:
+    specs: list[tuple[str, str, int, str | None]] = []
+    lines: list[str] = []
+    for t in range(max(controls, actors)):
+        specs.append((f"r{t}", "real", t, None))
+        lines.append(_all_zero(taxonomy, f"r{t}"))
+    for t in range(controls):
+        specs.append((f"c{t}", "control", t, None))
+        lines.append(_all_zero(taxonomy, f"c{t}", ground_shade_wrong=1 if t < clean else 2))
+    for t in range(actors):
+        specs.append((f"p{t}", "planted", t, "actors_removed"))
+        lines.append(_all_zero(taxonomy, f"p{t}", aircraft_absent=3 if t < detected else 0))
+    return calibrate(parse_grades("\n".join(lines), taxonomy), _sheets(*specs), taxonomy)
+
+
+def test_calibrate_pass_bars() -> None:
+    taxonomy = load_categories(CATEGORIES)
+    passing = _calibration_run(taxonomy, 12, 10, 6, 5)
+    assert (passing.controls_clean, passing.controls) == (10, 12)
+    assert passing.passes
+    assert not _calibration_run(taxonomy, 12, 9, 6, 5).passes
+    assert not _calibration_run(taxonomy, 12, 10, 6, 4).passes
+    assert _calibration_run(taxonomy, 2, 2, 2, 2).passes
+
+
+def _readout(ticks: dict[int, int], digest: str = "c" * 64) -> Readout:
+    taxonomy = load_categories(CATEGORIES)
+    sheets = _sheets(*((f"s{t}", "real", t, None) for t in ticks))
+    lines = [_all_zero(taxonomy, f"s{t}", aircraft_absent=g) for t, g in ticks.items()]
+    return readout(parse_grades("\n".join(lines), taxonomy), sheets, "ctry", digest, "r" * 64)
+
+
+def test_readout_counts_and_roundtrips() -> None:
+    taxonomy = load_categories(CATEGORIES)
+    sheets = _sheets(("a", "real", 1, None), ("b", "real", 2, None), ("c", "real", 3, None))
+    text = "\n".join(
+        [
+            _all_zero(taxonomy, "a", aircraft_absent=2),
+            _all_zero(taxonomy, "b", aircraft_absent=1, other="odd sky"),
+        ]
+    )
+    result = readout(parse_grades(text, taxonomy), sheets, "ctry", "c" * 64, "r" * 64)
+    absent = next(c for c in result.categories if c.category == "aircraft-absent")
+    assert absent.ticks_2plus == (1,)
+    assert absent.mean == 1.5
+    assert result.missing == 1
+    assert result.ticks == (1, 2, 3)
+    assert result.other == {2: "odd sky"}
+    assert Readout.from_json(json.loads(json.dumps(result.to_json()))) == result
+
+
+def test_compare_reports_past_min_change() -> None:
+    before = _readout({t: 2 if t < 3 else 0 for t in range(8)})
+    after = _readout({t: 2 if t < 6 else 0 for t in range(8)})
+    changes = compare(before, after, min_change=2)
+    assert [(c.category, c.before, c.after, c.added) for c in changes] == [
+        ("aircraft-absent", 3, 6, (3, 4, 5))
+    ]
+    small = _readout({t: 2 if t < 4 else 0 for t in range(8)})
+    assert compare(before, small, min_change=2) == []
+    with pytest.raises(BenchError, match=r"c{64}.*d{64}"):
+        compare(before, _readout(dict.fromkeys(range(8), 0), digest="d" * 64), 2)
+    with pytest.raises(BenchError, match="9"):
+        compare(before, _readout(dict.fromkeys(range(1, 10), 0)), 2)
