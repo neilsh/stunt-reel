@@ -152,3 +152,22 @@ def test_the_shared_tool_cache_is_ignored_and_excluded() -> None:
     assert _excluded(".cache", _ruff_excludes()), (
         ".cache is a shared tool cache; ruff's exclude must cover it"
     )
+
+
+def test_cargo_home_is_one_absolute_path() -> None:
+    """Every cargo task names the shared cache alike, so a cloned target/ stays fresh (ADR 0030)."""
+    config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert "--git-common-dir" in config["vars"]["cargo_home"]
+    homes = {
+        name: task["env"]["CARGO_HOME"]
+        for name, task in config["tasks"].items()
+        if "CARGO_HOME" in task.get("env", {})
+    }
+    assert homes, "no task sets CARGO_HOME"
+    assert set(homes.values()) == {"{{vars.cargo_home}}"}, homes
+
+
+def test_build_at_sets_cargo_home() -> None:
+    """build-at builds into its own target dir but must still name the shared cache."""
+    config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert config["tasks"]["build-at"]["env"]["CARGO_HOME"] == "{{vars.cargo_home}}"
