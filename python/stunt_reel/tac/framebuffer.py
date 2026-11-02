@@ -68,8 +68,9 @@ PALETTE_ENTRIES: int = 256
 END_HOLD_FRAMES: int = 30
 #: Film ticks between kept frames: the old trap sampler's density (one frame per 11 ticks).
 FILM_STRIDE_TICKS: int = 11
-#: Cap on a trace, in emulated frames (70.087 per second): well past the longest film.
-MAX_TRACE_FRAMES: int = 12000
+#: Cap on the clock pass, in emulated frames (70.087 per second): past the longest corpus film
+#: (VAULT/BACKSTAB, 62,631 ticks, about 88,000 frames), and 16,700 samples, half the Lua budget.
+MAX_TRACE_FRAMES: int = 100_000
 
 
 def capture(
@@ -99,39 +100,36 @@ def capture(
         raise ValueError(f"max_frames must be at least 1, not {max_frames}")
 
     first = luagen.boot_end(len(keys))
-    result = plan.run_plan(
+    result = plan.run_stride_plan(
         open_runner,
         keys=keys,
         first=first,
         last=first + MAX_TRACE_FRAMES,
-        pick=lambda trace: plan.pick_every(trace, stride=stride)[:max_frames],
+        stride=stride,
+        limit=max_frames,
         end_hold=END_HOLD_FRAMES,
+        # The last window's goal is 1 + stride * (max_frames - 1); nothing past it is kept.
+        stop_tick=1 + stride * max_frames,
         progress=progress,
         layout=layout,
     )
+    # The counts are over the frames the window passes read, not every frame of the film.
     trace = result.trace
     torn = sum(e.torn for e in trace.entries)
     palette_steps = sum(e.palette_changed for e in trace.entries)
     composed = sum(e.composed for e in trace.entries)
-    if trace.entries and not composed and progress is not None:
-        # The tear test compares against the layout's composed pages; offsets that read no real
-        # page make every frame look clean, so a zero here is the visible symptom.
-        progress(
-            f"no traced page equals a composed page; check {layout.name}'s composed_pages "
-            "offsets before trusting the torn count"
-        )
-    candidates = [
-        f for f in trace.frames if trace.entry(f).changed and trace.entry(f).film_tick > 0
-    ]
-    if candidates and not result.dumps:
-        # Every film frame was skipped: say so instead of writing a capture with no frames. The
-        # counts are over the frames the message names; meta.json's are over the whole trace.
-        candidates_torn = sum(trace.entry(f).torn for f in candidates)
-        spoiled = sum(not trace.entry(f).torn and not plan.usable(trace, f) for f in candidates)
+    if trace.entries and not composed:
+        # A page is usable only when it equals a composed page, so offsets that read no real
+        # page would leave every window empty: fail on the offsets, not on the film.
         raise plan.PlanError(
-            f"no usable frame among {len(candidates)} changed film frames: {candidates_torn} torn, "
-            f"{spoiled} spoiled by a palette step (at the frame or the one before), "
-            f"{len(result.dropped)} dropped in dump passes"
+            f"none of {len(trace.entries)} window frames equals a composed page; check "
+            f"{layout.name}'s composed_pages offsets"
+        )
+    if trace.entries and not result.dumps:
+        # Every window was empty: say so instead of writing a capture with no frames.
+        raise plan.PlanError(
+            f"no usable frame in {len(result.dropped)} windows ({len(trace.entries)} frames): "
+            f"{torn} matched no composed page, {palette_steps} palette steps"
         )
 
     # Made only now, so a capture that fails above leaves no empty frames/ behind.

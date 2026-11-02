@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from stunt_reel import dataroot
-from stunt_reel.tac import playone
+from stunt_reel.tac import luagen, playone
 from stunt_reel.tac.automation import MockAutomation
 from stunt_reel.tac.staging import ENGINE_FILES, MAKEONE_FILES
 
@@ -54,13 +54,18 @@ class FakeFilm:
         moving_frames: int = 40,
         tick_step: int = 2,
         flags: Mapping[int, int] | None = None,
+        composed: bool = True,
     ):
         self.dialog_frames = dialog_frames
         self.moving_frames = moving_frames
         self.tick_step = tick_step
         #: Extra trace-mask bits (``luagen.TRACE_TORN``, ``TRACE_PALETTE``) by frame - first.
         self.flags = dict(flags or {})
+        #: Whether an untorn page equals a composed page (False: the layout's offsets are wrong).
+        self.composed = composed
         self.scripts: list[str] = []
+        #: The first frame of the last clock pass; window passes count frames from it.
+        self.first: int | None = None
 
     def tick(self, frame: int, first: int) -> int:
         moved = min(frame - first - self.dialog_frames + 1, self.moving_frames)
@@ -69,8 +74,66 @@ class FakeFilm:
     def page(self, tick: int) -> bytes:
         return bytes((i * 7 + tick) % FILM_COLORS for i in range(_PAGE_BYTES))
 
+    def _clock(self, lua: str, sampled: re.Match[str]) -> dict[str, Any]:
+        first, last, every = (int(sampled.group(n)) for n in (1, 2, 3))
+        self.first = first
+        hold_match = re.search(r"hold >= (\d+)", lua)
+        stop_match = re.search(r"or t >= (\d+)", lua)
+        assert hold_match is not None
+        ticks: list[int] = []
+        last_tick, held = -1, 0
+        for frame in range(first, last + 1, every):
+            tick = self.tick(frame, first)
+            ticks.append(tick)
+            held = held + 1 if tick == last_tick else 0
+            last_tick = tick
+            stopped = stop_match is not None and tick >= int(stop_match.group(1))
+            if tick > 0 and (held >= int(hold_match.group(1)) or stopped):
+                break
+        return {"done": True, "clock": "x" + ",".join(str(t) for t in ticks)}
+
+    def _bits(self, frame: int) -> int:
+        assert self.first is not None, "a window pass before any clock pass"
+        return self.flags.get(frame - self.first, 0)
+
+    def _windows(self, lua: str, listed: re.Match[str]) -> dict[str, Any]:
+        assert self.first is not None, "a window pass before any clock pass"
+        first = self.first
+        starts = [int(x) for x in listed.group(1).split(",")]
+        goals = [int(x) for x in listed.group(2).split(",")]
+        span_match = re.search(r"for f = c, c \+ (\d+) do", lua)
+        assert span_match is not None
+        span = int(span_match.group(1)) + 1
+        out: dict[str, Any] = {"done": True}
+        entries: list[str] = []
+        for start, goal in zip(starts, goals, strict=True):
+            for frame in range(start, start + span):
+                tick = self.tick(frame, first)
+                changed = self.page(tick) != self.page(self.tick(frame - 1, first))
+                step = bool(self._bits(frame) & luagen.TRACE_PALETTE)
+                before = bool(self._bits(frame - 1) & luagen.TRACE_PALETTE)
+                composed = self.composed and not self._bits(frame) & luagen.TRACE_TORN
+                mask = (
+                    int(changed)
+                    + (luagen.TRACE_PALETTE if step else 0)
+                    + (luagen.TRACE_COMPOSED if composed else luagen.TRACE_TORN)
+                )
+                entries.append(f"{frame}:{tick}:{tick + 100}:{mask}")
+                if tick >= goal and changed and composed and not step and not before:
+                    out[f"p{frame}"] = "x" + self.page(tick).hex()
+                    out[f"c{frame}"] = "x" + (bytes([63, 0, 0]) * 256).hex()
+                    break
+        out["trace"] = "x" + ",".join(entries)
+        return out
+
     def handler(self, lua: str) -> dict[str, Any]:
         self.scripts.append(lua)
+        sampled = re.search(r"for f = (\d+), (\d+), (\d+) do", lua)
+        if sampled is not None:
+            return self._clock(lua, sampled)
+        listed = re.search(r"local starts, goals = \{([^}]*)\}, \{([^}]*)\}", lua)
+        if listed is not None:
+            return self._windows(lua, listed)
         window = re.search(r"for f = (\d+), (\d+) do", lua)
         assert window is not None, "not a trace script"
         first, last = int(window.group(1)), int(window.group(2))
