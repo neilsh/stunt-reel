@@ -64,6 +64,9 @@ impl<'a> ByteReader<'a> {
     }
 
     /// Consume `n` bytes, or fail with the buffer length the read needed.
+    ///
+    /// # Errors
+    /// Returns [`Eof`] if fewer than `n` bytes remain after the cursor; the cursor does not move.
     pub fn take(&mut self, n: usize) -> Result<&'a [u8], Eof> {
         let end = self.pos.saturating_add(n);
         match self.data.get(self.pos..end) {
@@ -85,38 +88,56 @@ impl<'a> ByteReader<'a> {
     }
 
     /// Read one byte.
+    ///
+    /// # Errors
+    /// Returns [`Eof`] if fewer than one byte remain after the cursor.
     pub fn read_u8(&mut self) -> Result<u8, Eof> {
         Ok(self.array::<1>()?[0])
     }
 
     /// Read an unsigned 16-bit little-endian integer.
+    ///
+    /// # Errors
+    /// Returns [`Eof`] if fewer than two bytes remain after the cursor.
     pub fn read_u16_le(&mut self) -> Result<u16, Eof> {
         Ok(u16::from_le_bytes(self.array()?))
     }
 
     /// Read a signed 16-bit little-endian integer.
+    ///
+    /// # Errors
+    /// Returns [`Eof`] if fewer than two bytes remain after the cursor.
     pub fn read_i16_le(&mut self) -> Result<i16, Eof> {
         Ok(i16::from_le_bytes(self.array()?))
     }
 
     /// Read an unsigned 32-bit little-endian integer.
+    ///
+    /// # Errors
+    /// Returns [`Eof`] if fewer than four bytes remain after the cursor.
     pub fn read_u32_le(&mut self) -> Result<u32, Eof> {
         Ok(u32::from_le_bytes(self.array()?))
     }
 
     /// Read a signed 32-bit little-endian integer.
+    ///
+    /// # Errors
+    /// Returns [`Eof`] if fewer than four bytes remain after the cursor.
     pub fn read_i32_le(&mut self) -> Result<i32, Eof> {
         Ok(i32::from_le_bytes(self.array()?))
     }
 
-    /// Read a null-terminated string (lossy UTF-8), consuming the terminator.
+    /// Read a null-terminated string as raw bytes, consuming the terminator.
     ///
     /// On a missing terminator the cursor is left at the end of the buffer.
-    pub fn read_cstring(&mut self) -> Result<String, Eof> {
+    ///
+    /// # Errors
+    /// Returns [`Eof`] if no zero byte lies at or after the cursor.
+    pub fn read_cstring(&mut self) -> Result<Vec<u8>, Eof> {
         let rest = self.data.get(self.pos..).unwrap_or(&[]);
         if let Some(n) = rest.iter().position(|&b| b == 0) {
             self.pos += n + 1;
-            Ok(String::from_utf8_lossy(&rest[..n]).into_owned())
+            Ok(rest[..n].to_vec())
         } else {
             self.pos = self.pos.max(self.data.len());
             Err(Eof {
@@ -167,8 +188,8 @@ mod tests {
     #[test]
     fn cstring_consumes_terminator() {
         let mut r = ByteReader::new(b"AB\0C\0");
-        assert_eq!(r.read_cstring().as_deref(), Ok("AB"));
-        assert_eq!(r.read_cstring().as_deref(), Ok("C"));
+        assert_eq!(r.read_cstring(), Ok(b"AB".to_vec()));
+        assert_eq!(r.read_cstring(), Ok(b"C".to_vec()));
         assert!(!r.has_more());
     }
 

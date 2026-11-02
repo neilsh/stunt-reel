@@ -87,6 +87,17 @@ The scripted setup is `mise run init`; under DSH its link step needs the wider p
    else that deletes recursively needs the links unlinked first, and `robocopy /MIR` needs
    `/XJ`.
 
+   On some Windows machines Python's directory removal fails on every junction with
+   `[WinError 5] Access is denied`, while `cmd /c rmdir <link>` removes the same junction
+   and leaves its target alone. The suspected cause is Windows Controlled Folder Access
+   (unconfirmed). `remove_link` in [`dataroot.py`](../python/stunt_reel/dataroot.py), which
+   `init`, `clean` and `reap` all use, therefore retries a refused removal once with the
+   shell's `rmdir`, never with `/s`, so a directory that still holds files is refused, not
+   emptied. The path reaches `cmd` in an environment variable expanded after parsing, never
+   on its command line, so `&`, `%` or `(` in a name is plain text. If the retry fails too, `reap` reports both errors and leaves the
+   worktree and its branch alone; after a successful retry it still proves no link remains
+   before it removes the worktree.
+
 Why the split: [`worktree_init.py`](../python/scripts/worktree_init.py) creates junctions
 whose targets are in the shared data root, outside the workspace. DSH creates a junction
 whose target is inside the workspace and denies one whose target is outside it, and it

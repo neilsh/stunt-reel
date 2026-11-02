@@ -15,7 +15,6 @@ pub const GATE_G04_RMSE_THRESHOLD_METERS: f32 = 0.01;
 /// Each oracle record's `tick` is a cumulative 50 Hz tick; the timeline is sampled at
 /// that tick with [`FilmTimeline::sample`] (an empty timeline contributes no samples).
 ///
-/// Matches the Python reference calculation in `python/stunt_reel/tac/streamer.py`.
 /// Evaluates Euclidean distance squared for camera eye positions and all matching actor positions.
 pub fn compute_position_rmse(timeline: &FilmTimeline, oracle: &[TrajectoryRecord]) -> f32 {
     let mut sq_errors = Vec::new();

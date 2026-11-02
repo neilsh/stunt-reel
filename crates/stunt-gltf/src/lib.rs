@@ -24,7 +24,6 @@
 //!   distinct shape's meshes and accessors written once and shared by every instance.
 //! - [`summarize`]: counts read back from `.glb` bytes.
 #![deny(unsafe_code)]
-#![warn(missing_docs)]
 
 mod error;
 mod glb;

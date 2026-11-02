@@ -48,8 +48,8 @@ more expensive:
    ([#80](https://github.com/neilsh/stunt-reel/issues/80)), and `FILMS` is deleted. The batch survey
    gains `check_render`, so some rows may change from a score to an error; note this in
    [`batch.md`](../../../research/parity/batch.md).
-5. **[#82](https://github.com/neilsh/stunt-reel/issues/82)**: `--frames` takes a 0-based inclusive
-   tick range. After step 4 it is built in one place.
+5. **[#82](https://github.com/neilsh/stunt-reel/issues/82)**: `--tick-range A..=B` (0-based, inclusive)
+   replaced `--frames`. After step 4 it is built in one place.
 6. **Batch re-survey** under the new rules: recapture and re-archive every film, and commit the rows
    the fallback suggests.
 7. **Reference recapture**: recapture `ctry` and `intro` on patch3 with patch3 archives, repin

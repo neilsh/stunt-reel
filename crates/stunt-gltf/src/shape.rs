@@ -34,12 +34,17 @@ pub(crate) struct ShapeAssets {
 /// recorded, not evaluated). Returns [`GltfError::EmptyModel`] when the model has no
 /// vertices or indices. The shape IR owns its slices and bounds, so nothing here
 /// re-validates or re-measures them.
+///
+/// # Errors
+/// - [`GltfError::EmptyModel`] if the model has no vertices or no indices.
+/// - [`GltfError::InvalidNodeReference`] if a node lists a child that is not in the arena.
+/// - [`GltfError::TooLarge`] if the output would not fit the 4 GiB GLB container.
 pub fn export_shape(model: &SodModelIr) -> Result<Vec<u8>, GltfError> {
     if model.vertices.is_empty() || model.indices.is_empty() {
         return Err(GltfError::EmptyModel);
     }
     let mut builder = GlbBuilder::new();
-    let assets = add_shape_assets(&mut builder, model)?;
+    let assets = add_shape_assets(&mut builder, model);
     let roots = instantiate(&mut builder, model, &assets)?;
     builder.finish(&roots)
 }
@@ -47,13 +52,10 @@ pub fn export_shape(model: &SodModelIr) -> Result<Vec<u8>, GltfError> {
 /// Writes `model`'s vertex/index data and meshes once; returns the node-to-mesh table.
 ///
 /// A model without vertices yields no meshes (its nodes can still be instantiated).
-pub(crate) fn add_shape_assets(
-    builder: &mut GlbBuilder,
-    model: &SodModelIr,
-) -> Result<ShapeAssets, GltfError> {
+pub(crate) fn add_shape_assets(builder: &mut GlbBuilder, model: &SodModelIr) -> ShapeAssets {
     let mut mesh_of_node = vec![None; model.nodes.len()];
     let Some(extent) = model.extent() else {
-        return Ok(ShapeAssets { mesh_of_node });
+        return ShapeAssets { mesh_of_node };
     };
     let vertex_count = model.vertices.len();
 
@@ -116,7 +118,7 @@ pub(crate) fn add_shape_assets(
             }],
         }));
     }
-    Ok(ShapeAssets { mesh_of_node })
+    ShapeAssets { mesh_of_node }
 }
 
 /// Emits one glTF node per model node (an instance of the shared assets); returns the glTF

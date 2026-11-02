@@ -16,7 +16,9 @@ use std::collections::HashMap;
 
 use crate::anchor::{AnchorPoint, parse_anchor_table};
 use crate::contracts::{CameraTransform, PaletteControls, ShapeExtent, SodModelIr};
+use crate::credits::CreditLines;
 use crate::flm::{FilmTimeline, FlmError};
+use crate::font::PFont;
 use crate::sod::{DecodeMode, SodError, decode_sod};
 use crate::vfs::VfsError;
 use crate::world::{World, WorldInputs, build_world};
@@ -101,6 +103,11 @@ pub struct ArchiveShapes {
 /// Decodes every `MODEL_%04X.SOD` chunk of `.ALL` bytes, resolving `OP_TAP` against `anchors`.
 ///
 /// Other chunks are ignored. An empty `anchors` table is treated as absent.
+///
+/// # Errors
+/// Returns the [`VfsError`] from [`crate::vfs::parse_all`] if `archive` is not a well-formed
+/// `.ALL` container. A single chunk that fails to decode is not an error: it is listed in
+/// [`ArchiveShapes::skipped`].
 pub fn decode_archive_shapes(
     archive: &[u8],
     anchors: &[AnchorPoint],
@@ -195,6 +202,8 @@ pub struct SceneFrame {
     pub actors: Vec<ActorDraw>,
     /// Film variables the palette is built from at this tick.
     pub palette: PaletteControls,
+    /// Credits text on screen at this tick (`0x99` until `0x98`), drawn over the scene.
+    pub credits: Option<CreditLines>,
 }
 
 /// A film with the shapes and static world it plays against.
@@ -205,6 +214,8 @@ pub struct FilmScene {
     world: Option<World>,
     /// Set for a loose model bound with no actors in the film: drawn at the origin.
     origin_shape: Option<u16>,
+    /// `PFONT.BIN`, read from the corpus beside the film, for the credits overlay.
+    font: Option<PFont>,
 }
 
 impl FilmScene {
@@ -220,7 +231,21 @@ impl FilmScene {
             shapes,
             world,
             origin_shape: None,
+            font: None,
         }
+    }
+
+    /// Draws credits with `font`; without one a scene carries credits but draws none.
+    #[must_use]
+    pub fn with_font(mut self, font: PFont) -> Self {
+        self.font = Some(font);
+        self
+    }
+
+    /// The credits font, if one was given.
+    #[must_use]
+    pub fn font(&self) -> Option<&PFont> {
+        self.font.as_ref()
     }
 
     /// Builds a scene around one loose model that has no archive.
@@ -252,6 +277,11 @@ impl FilmScene {
     /// Only an unreadable film header or archive container is an error; per-chunk decode
     /// failures, partial shapes, and a truncated film are reported, not fatal. The world is
     /// built from the decoded shapes and whichever of anchors, map and scenery were given.
+    ///
+    /// # Errors
+    /// Returns [`SceneError::Film`] if `inputs.film` fails [`FilmTimeline::from_bytes`], and
+    /// [`SceneError::Archive`] if `inputs.archive` is present but not a well-formed `.ALL`
+    /// container.
     pub fn load(inputs: &SceneInputs<'_>) -> Result<(Self, SceneReport), SceneError> {
         let timeline = FilmTimeline::from_bytes(inputs.film).map_err(SceneError::Film)?;
         Self::load_with_timeline(timeline, inputs)
@@ -261,6 +291,10 @@ impl FilmScene {
     ///
     /// For callers that supply their own timeline (e.g. a synthetic one) yet still want the
     /// archive shapes and world.
+    ///
+    /// # Errors
+    /// Returns [`SceneError::Archive`] if `inputs.archive` is present but not a well-formed
+    /// `.ALL` container. Never returns [`SceneError::Film`], since `timeline` is already built.
     pub fn load_with_timeline(
         timeline: FilmTimeline,
         inputs: &SceneInputs<'_>,
@@ -335,6 +369,7 @@ impl FilmScene {
                 world,
                 actors: Vec::new(),
                 palette: PaletteControls::default(),
+                credits: None,
             };
         };
         let eye = record.camera.eye;
@@ -363,6 +398,7 @@ impl FilmScene {
             world,
             actors,
             palette: record.palette,
+            credits: self.timeline.credits_at(tick).cloned(),
         }
     }
 }

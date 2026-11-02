@@ -59,6 +59,7 @@ REQUIRED_DOCS: list[str] = [
     "research/formats/auxiliary/spr.md",
     "research/formats/auxiliary/sio.md",
     "research/formats/auxiliary/map.md",
+    "research/formats/auxiliary/pfont.md",
 ]
 
 FORMAT_SPECS: list[str] = [
@@ -70,6 +71,7 @@ FORMAT_SPECS: list[str] = [
     "research/formats/auxiliary/spr.md",
     "research/formats/auxiliary/sio.md",
     "research/formats/auxiliary/map.md",
+    "research/formats/auxiliary/pfont.md",
 ]
 
 # Reference documents split out of a format specification. They are not held to the
@@ -127,6 +129,7 @@ KSY_SOURCES: dict[str, list[str]] = {
         "map.bin.ksy",
         "scenery.scn.ksy",
     ],
+    "research/formats/auxiliary/pfont.md": ["pfont.ksy"],
 }
 
 # Single owner of the evidentiary tier vocabulary. Prose definitions live in

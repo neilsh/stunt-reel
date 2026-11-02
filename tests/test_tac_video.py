@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
@@ -162,6 +163,10 @@ def test_record_video_writes_meta_last_and_strips_audio(tmp_path: Path) -> None:
     assert loaded.end == "hold"
     assert loaded.film_start_frame == 103
     assert loaded.playone_build == playone.UNPATCHED.name
+    assert loaded.playone_sha256 == playone.UNPATCHED.sha256
+    assert json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))["playone_sha256"] == (
+        playone.UNPATCHED.sha256
+    )
     assert loaded.log.frame == (101, 102, 103)
 
 

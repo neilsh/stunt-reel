@@ -1,13 +1,13 @@
 //! Per-class SSIM loss attribution.
 
 use stunt_render::{
-    LAYER_NONE, LAYER_OCEAN, LAYER_PROP, LAYER_TERRAIN, MODE13H_WIDTH, WindowScore,
+    LAYER_NONE, LAYER_OCEAN, LAYER_OVERLAY, LAYER_PROP, LAYER_TERRAIN, MODE13H_WIDTH, WindowScore,
 };
 
 /// What a scored pixel shows, by the render's layer and whether the capture has geometry
 /// there (anything but the sky index). Indexed by [`loss_class`]; `*_render_only` is the
-/// render drawing where the capture shows sky.
-pub(super) const LOSS_CLASSES: [&str; 9] = [
+/// render drawing where the capture shows sky. `overlay` is the credits text, wherever it is.
+pub(super) const LOSS_CLASSES: [&str; 10] = [
     "sky",
     "reference_only",
     "ocean",
@@ -17,12 +17,14 @@ pub(super) const LOSS_CLASSES: [&str; 9] = [
     "ocean_render_only",
     "terrain_render_only",
     "props_and_actors_render_only",
+    "overlay",
 ];
 
 /// Index into [`LOSS_CLASSES`] of a pixel: `layer` from the render plane, `reference_filled`
 /// whether the capture shows non-sky there.
 pub(super) fn loss_class(layer: u16, reference_filled: bool) -> u8 {
     match (u32::from(layer), reference_filled) {
+        (LAYER_OVERLAY, _) => 9,
         (LAYER_NONE, false) => 0,
         (LAYER_NONE, true) => 1,
         (LAYER_OCEAN, true) => 2,
@@ -84,6 +86,8 @@ mod tests {
         assert_eq!(class(16, true), "actors");
         assert_eq!(class(LAYER_TERRAIN, false), "terrain_render_only");
         assert_eq!(class(17, false), "props_and_actors_render_only");
+        assert_eq!(class(LAYER_OVERLAY, true), "overlay");
+        assert_eq!(class(LAYER_OVERLAY, false), "overlay");
     }
 
     #[test]

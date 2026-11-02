@@ -61,6 +61,10 @@ impl FfmpegVideoWriter {
     /// - `width`: Frame width in pixels (e.g. 320).
     /// - `height`: Frame height in pixels (e.g. 240).
     /// - `fps`: Container framerate matching simulation tick frequency (Invariant `[I4]`, e.g. 30.0).
+    ///
+    /// # Errors
+    /// - [`VideoExportError::FfmpegNotFound`] if `ffmpeg` is not on `PATH`.
+    /// - [`VideoExportError::SpawnFailed`] if the process cannot be started for any other reason.
     pub fn open(path: &Path, width: u32, height: u32, fps: f32) -> Result<Self, VideoExportError> {
         Self::open_with_duration(path, width, height, fps, None)
     }
@@ -71,6 +75,9 @@ impl FfmpegVideoWriter {
     /// (`frame_count / fps` rounds to whole frames). Passing the authored duration
     /// adds ffmpeg's `-t` cut so the container length matches the film clock rather
     /// than the last encoded frame boundary.
+    ///
+    /// # Errors
+    /// The same as [`Self::open`].
     pub fn open_with_duration(
         path: &Path,
         width: u32,
@@ -143,6 +150,9 @@ impl FfmpegVideoWriter {
     }
 
     /// Alias for [`open`][Self::open].
+    ///
+    /// # Errors
+    /// The same as [`Self::open`].
     pub fn new(path: &Path, width: u32, height: u32, fps: f32) -> Result<Self, VideoExportError> {
         Self::open(path, width, height, fps)
     }
@@ -166,6 +176,10 @@ impl FfmpegVideoWriter {
     }
 
     /// Writes a single raw RGBA frame to the encoder pipe.
+    ///
+    /// # Errors
+    /// Returns [`VideoExportError::IoError`] if the encoder's stdin is already closed or the
+    /// write to the pipe fails.
     pub fn write_frame(&mut self, rgba_bytes: &[u8]) -> Result<(), VideoExportError> {
         let Some(stdin) = &mut self.stdin else {
             return Err(VideoExportError::IoError(std::io::Error::new(
@@ -181,6 +195,10 @@ impl FfmpegVideoWriter {
     }
 
     /// Closes standard input and waits for `ffmpeg` to finish encoding.
+    ///
+    /// # Errors
+    /// - [`VideoExportError::IoError`] if waiting on the process fails.
+    /// - [`VideoExportError::EncoderFailed`] if `ffmpeg` exits with a non-zero status.
     pub fn finish(mut self) -> Result<(), VideoExportError> {
         drop(self.stdin.take());
         let output = self

@@ -19,6 +19,12 @@ use crate::vfs::VfsError;
 ///   - `b"FILM"` -> `"CHOREO.FLM"`
 ///   - `0x000C` -> `format!("MODEL_{:04X}.SOD", id)`
 ///   - Otherwise -> `format!("RES_{:04X}.BIN", id)`
+///
+/// # Errors
+/// - [`VfsError::UnexpectedEof`] if `data` is shorter than the 2-byte count or the
+///   `2 + 6*num`-byte header, or an offset points past the end of `data`.
+/// - [`VfsError::InvalidOffsetTable`] if the first offset lies inside the header or the
+///   offsets are not non-decreasing.
 pub fn parse_all(data: &[u8]) -> Result<VfsArchive, VfsError> {
     if data.len() < 2 {
         return Err(VfsError::UnexpectedEof {

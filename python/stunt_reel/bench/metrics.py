@@ -17,10 +17,12 @@ from numpy.lib.stride_tricks import sliding_window_view
 
 from stunt_reel.bench.planes import BenchError
 from stunt_reel.bench.ssim import (
+    LAYER_OVERLAY,
     STRIDE,
     UI_BAR_FIRST_ROW,
     WINDOW,
     capture_luma,
+    credits_in_play,
     frame_ssim,
     overlay_mask,
     render_luma,
@@ -49,17 +51,27 @@ PIXELS = 200 * 320
 
 @dataclass(frozen=True)
 class Regions:
-    """What the control render says about a tick: its layer plane and its mean luma."""
+    """What the control render says about a tick: its layer plane and its mean luma.
+
+    ``credits_drawn`` picks the overlay mask (see ``overlay_mask``), from the control render.
+    Every score compared against the control's, and the recapture sigma, share it, so a
+    planted render that loses or gains credits is judged on the same pixels as the control.
+    """
 
     layer: NDArray[np.uint16]
     control_mean_luma: float
+    credits_drawn: bool = False
 
 
 Metric = Callable[["CapturePlanes", "RenderPlanes", Regions], "float | None"]
 
 
-def _allowed(capture: CapturePlanes) -> NDArray[np.bool_]:
-    return window_grid(stretch(overlay_mask(capture.idx)))
+def _overlay(capture: CapturePlanes, regions: Regions) -> NDArray[np.bool_]:
+    return overlay_mask(capture.idx, credits_drawn=regions.credits_drawn)
+
+
+def _allowed(capture: CapturePlanes, credits_drawn: bool) -> NDArray[np.bool_]:
+    return window_grid(stretch(overlay_mask(capture.idx, credits_drawn=credits_drawn)))
 
 
 def _mean(values: NDArray[np.float64], keep: NDArray[np.bool_]) -> float | None:
@@ -73,18 +85,16 @@ def _any_in_window(plane240: NDArray[np.bool_]) -> NDArray[np.bool_]:
 
 def ssim(capture: CapturePlanes, render: RenderPlanes, regions: Regions) -> float | None:
     """The scorer's frame SSIM."""
-    del regions
-    return frame_ssim(capture, render.rgb)
+    return frame_ssim(capture, render.rgb, credits_drawn=regions.credits_drawn)
 
 
 def ssim_structured(capture: CapturePlanes, render: RenderPlanes, regions: Regions) -> float | None:
     """Mean window SSIM over clear windows where the capture is not flat, or ``None`` if empty."""
-    del regions
     reference = stretch(capture_luma(capture))
     windows = sliding_window_view(reference, (WINDOW, WINDOW))[::STRIDE, ::STRIDE]
     span = windows.max(axis=(2, 3)) - windows.min(axis=(2, 3))
     scores = window_ssim(reference, stretch(render_luma(render.rgb)))
-    return _mean(scores, _allowed(capture) & (span > STRUCTURE_SPAN))
+    return _mean(scores, _allowed(capture, regions.credits_drawn) & (span > STRUCTURE_SPAN))
 
 
 def grey_skill(capture: CapturePlanes, render: RenderPlanes, regions: Regions) -> float | None:
@@ -93,10 +103,12 @@ def grey_skill(capture: CapturePlanes, render: RenderPlanes, regions: Regions) -
     Returns ``None`` when the grey frame's SSIM is at least 1.
     """
     level = np.uint8(round(regions.control_mean_luma))
-    floor = frame_ssim(capture, np.full(render.rgb.shape, level, dtype=np.uint8))
+    credits_drawn = regions.credits_drawn
+    grey = np.full(render.rgb.shape, level, dtype=np.uint8)
+    floor = frame_ssim(capture, grey, credits_drawn=credits_drawn)
     if floor >= 1.0:
         return None
-    return (frame_ssim(capture, render.rgb) - floor) / (1.0 - floor)
+    return (frame_ssim(capture, render.rgb, credits_drawn=credits_drawn) - floor) / (1.0 - floor)
 
 
 def _index_metric(low: int, *, exact: bool) -> Metric:
@@ -105,7 +117,7 @@ def _index_metric(low: int, *, exact: bool) -> Metric:
             return None
         layer = regions.layer
         region = (layer == low) if exact else (layer >= low)
-        region = region & ~overlay_mask(capture.idx)
+        region = region & ~_overlay(capture, regions)
         count = int(region.sum())
         if count == 0:
             return None
@@ -137,8 +149,7 @@ def edge_f(capture: CapturePlanes, render: RenderPlanes, regions: Regions) -> fl
     Edges are taken only at pixels with a full 3x3 neighbourhood in rows 0 to 184, and not on
     the overlay's cursor.
     """
-    del regions
-    clear = ~overlay_mask(capture.idx)[1 : UI_BAR_FIRST_ROW - 1, 1:-1]
+    clear = ~_overlay(capture, regions)[1 : UI_BAR_FIRST_ROW - 1, 1:-1]
     a = _edges(capture_luma(capture)) & clear
     b = _edges(render_luma(render.rgb)) & clear
     if not a.any() and not b.any():
@@ -164,7 +175,7 @@ def _ssim_over_layer(
     """
     hit = _any_in_window(stretch(in_layer(regions.layer)))
     scores = window_ssim(stretch(capture_luma(capture)), stretch(render_luma(render.rgb)))
-    return _mean(scores, _allowed(capture) & hit)
+    return _mean(scores, _allowed(capture, regions.credits_drawn) & hit)
 
 
 def ssim_actors(capture: CapturePlanes, render: RenderPlanes, regions: Regions) -> float | None:
@@ -208,6 +219,8 @@ def _layer_key(layer: int) -> str:
         return "terrain"
     if layer == PROPS_LAYER:
         return "props"
+    if layer == LAYER_OVERLAY:
+        return "overlay"
     if layer >= ACTOR_LAYER:
         return "actors"
     return "none"
@@ -226,11 +239,15 @@ def differential(capture: CapturePlanes, before: RenderPlanes, after: RenderPlan
     after_luma = render_luma(after.rgb)
     luma_changed = before_luma != after_luma
     changed = idx_changed | luma_changed
-    by_layer = dict.fromkeys(("ocean", "terrain", "props", "actors", "none"), 0.0)
+    by_layer = dict.fromkeys(("ocean", "terrain", "props", "overlay", "actors", "none"), 0.0)
     layers, counts = np.unique(after.layer[changed], return_counts=True)
     for layer, count in zip(layers.tolist(), counts.tolist(), strict=True):
         by_layer[_layer_key(layer)] += count / PIXELS
-    windows = _any_in_window(stretch(changed)) & _allowed(capture)
+    windows = _any_in_window(stretch(changed)) & _allowed(
+        # Either render's credits keep the ink in play, as in the Rust verdict.
+        capture,
+        credits_in_play(before) or credits_in_play(after),
+    )
     delta: float | None = None
     if windows.any():
         reference = stretch(capture_luma(capture))

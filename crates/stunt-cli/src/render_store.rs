@@ -624,6 +624,7 @@ mod tests {
                     roll_radians: 0.0,
                 },
                 palette_index,
+                credits: None,
             });
         }
         let table = writer.finish().expect("finish").expect("a store");

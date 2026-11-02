@@ -20,11 +20,14 @@
 use std::fmt;
 use std::sync::Arc;
 
+use stunt_core::credits::{ClipRect, CreditLines, draw_credits};
+use stunt_core::font::PFont;
 use stunt_core::scene::{FilmScene, SceneFrame};
 
 use crate::camera::{CameraController, CameraGpuResources};
 use crate::palette::PaletteLut;
-use crate::pipeline::{PLANE_FORMAT, RenderPipelines};
+use crate::parity::{MODE13H_HEIGHT, MODE13H_WIDTH};
+use crate::pipeline::{LAYER_OVERLAY, PLANE_FORMAT, RenderPipelines};
 use crate::scene_renderer::SceneRenderer;
 
 /// Default offscreen page width in pixels (Mode 13h).
@@ -175,7 +178,11 @@ impl RenderedPage {
     /// little-endian u32 per pixel: layer << 8 | unlit palette index, where uncovered pixels are
     /// the clear index on `LAYER_NONE`. The index byte and the layer word are kept apart; the
     /// render store keeps a u16 layer, so its writer checks the narrowing instead of truncating.
-    pub fn new(size: PageSize, rgba: Vec<u8>, plane: Vec<u32>) -> Result<Self, RenderError> {
+    ///
+    /// # Errors
+    /// Returns [`RenderError::Readback`] if `rgba` is not `size.pixel_count() * 4` bytes or
+    /// `plane` is not `size.pixel_count()` words.
+    pub fn new(size: PageSize, rgba: Vec<u8>, plane: &[u32]) -> Result<Self, RenderError> {
         let pixels = size.pixel_count();
         if rgba.len() != pixels * 4 {
             return Err(RenderError::Readback(format!(
@@ -245,12 +252,57 @@ impl RenderedPage {
     }
 }
 
+/// Draws `lines` over `page` as `PLAYONE.EXE` draws them over its 320x200 page, centred in the
+/// view: the top `viewport_rows` page rows when set, else the whole page. Each Mode 13h pixel
+/// covers the page pixels it scales to; they take the palette index, its unlit `palette`
+/// colour and [`LAYER_OVERLAY`].
+fn paint_credits(
+    page: &mut RenderedPage,
+    font: &PFont,
+    lines: &CreditLines,
+    viewport_rows: Option<u32>,
+    palette: &[(u8, u8, u8); 256],
+) {
+    let (width, height) = (page.width() as i32, page.height() as i32);
+    let (mode_w, mode_h) = (MODE13H_WIDTH as i32, MODE13H_HEIGHT as i32);
+    let view_rows = viewport_rows.map_or(height, |rows| rows as i32);
+    let rect = ClipRect {
+        left: 0,
+        top: 0,
+        right: mode_w - 1,
+        bottom: view_rows * mode_h / height - 1,
+    };
+    draw_credits(font, lines, rect, &mut |x, y, index| {
+        if !(0..mode_w).contains(&x) || !(0..mode_h).contains(&y) {
+            return;
+        }
+        let (r, g, b) = palette[usize::from(index)];
+        for py in scaled_span(y, mode_h, height) {
+            for px in scaled_span(x, mode_w, width) {
+                let at = (py * width + px) as usize;
+                page.indices[at] = index;
+                page.layers[at] = LAYER_OVERLAY;
+                page.rgba[at * 4..at * 4 + 3].copy_from_slice(&[r, g, b]);
+            }
+        }
+    });
+}
+
+/// The page pixels, along one axis, that Mode 13h pixel `at` of `from` covers on a page `to`
+/// pixels long.
+fn scaled_span(at: i32, from: i32, to: i32) -> std::ops::Range<i32> {
+    at * to / from..(at + 1) * to / from
+}
+
 /// Consumes the pages an offscreen Renderer reads back.
 ///
 /// The renderer calls `PageSink::accept` exactly once per `Renderer::draw` and does not know what a
 /// page becomes; the sink owns every file. An error is terminal for the run.
 pub trait PageSink {
     /// Consumes one rendered page.
+    ///
+    /// # Errors
+    /// Returns a [`SinkError`] if the sink cannot store or forward the page; the run stops there.
     fn accept(&mut self, page: RenderedPage) -> Result<(), SinkError>;
 }
 
@@ -284,9 +336,11 @@ pub struct Renderer {
     pipelines: RenderPipelines,
     palette_lut: PaletteLut,
     camera_resources: CameraGpuResources,
-    scene_renderer: SceneRenderer,
+    scene_pass: SceneRenderer,
     clear_palette_index: u8,
     destination: Destination,
+    /// The scene's credits font; without one, credits are not drawn.
+    font: Option<PFont>,
 }
 
 impl fmt::Debug for Renderer {
@@ -306,6 +360,10 @@ impl Renderer {
     ///
     /// The page size is fixed here; `Renderer::resize` is a no-op. Every `Renderer::draw` calls
     /// sink.accept exactly once.
+    ///
+    /// # Errors
+    /// - [`RenderError::NoGpuAdapter`] if no adapter can be acquired.
+    /// - [`RenderError::DeviceRequest`] if the adapter refuses to create a device.
     pub fn offscreen(
         scene: &FilmScene,
         target: Offscreen,
@@ -313,7 +371,7 @@ impl Renderer {
         options: RenderOptions,
     ) -> Result<Self, RenderError> {
         let instance = create_instance();
-        let (_adapter, device, queue) = acquire(&instance, None, &options)?;
+        let (_adapter, device, queue) = acquire(&instance, None, options)?;
         let camera_resources = CameraGpuResources::new(&device);
         let palette_lut = PaletteLut::new(&device, &queue);
         let pipelines = RenderPipelines::new_with_plane(
@@ -323,7 +381,7 @@ impl Renderer {
             &camera_resources.bind_group_layout,
             &palette_lut.bind_group_layout,
         );
-        let scene_renderer = SceneRenderer::new(&device, &queue, &pipelines, scene);
+        let scene_pass = SceneRenderer::new(&device, &queue, &pipelines, scene);
         let destination =
             Destination::Offscreen(Box::new(OffscreenTarget::new(&device, target, sink)));
         Ok(Self {
@@ -332,9 +390,10 @@ impl Renderer {
             pipelines,
             palette_lut,
             camera_resources,
-            scene_renderer,
+            scene_pass,
             clear_palette_index: options.clear_palette_index,
             destination,
+            font: scene.font().cloned(),
         })
     }
 
@@ -343,6 +402,12 @@ impl Renderer {
     /// The surface starts configured at 1x1; call `Renderer::resize` with the window's inner size
     /// before drawing. The window is bounded by the raw-window-handle traits, the recorded
     /// exception to the no-GPU-types-in-signatures rule.
+    ///
+    /// # Errors
+    /// - [`RenderError::SurfaceCreate`] if `window` cannot back a surface.
+    /// - [`RenderError::NoGpuAdapter`] if no adapter compatible with the surface can be acquired.
+    /// - [`RenderError::DeviceRequest`] if the adapter refuses to create a device.
+    /// - [`RenderError::SurfaceConfig`] if the surface cannot be configured.
     pub fn surface<W>(
         scene: &FilmScene,
         window: Arc<W>,
@@ -355,7 +420,7 @@ impl Renderer {
         let surface = instance
             .create_surface(window)
             .map_err(|error| RenderError::SurfaceCreate(error.to_string()))?;
-        let (adapter, device, queue) = acquire(&instance, Some(&surface), &options)?;
+        let (adapter, device, queue) = acquire(&instance, Some(&surface), options)?;
         let camera_resources = CameraGpuResources::new(&device);
         let palette_lut = PaletteLut::new(&device, &queue);
         let surface_target = SurfaceTarget::new(surface, &adapter, &device)?;
@@ -366,16 +431,18 @@ impl Renderer {
             &camera_resources.bind_group_layout,
             &palette_lut.bind_group_layout,
         );
-        let scene_renderer = SceneRenderer::new(&device, &queue, &pipelines, scene);
+        let scene_pass = SceneRenderer::new(&device, &queue, &pipelines, scene);
         Ok(Self {
             device,
             queue,
             pipelines,
             palette_lut,
             camera_resources,
-            scene_renderer,
+            scene_pass,
             clear_palette_index: options.clear_palette_index,
             destination: Destination::Surface(Box::new(surface_target)),
+            // Credits are drawn on offscreen pages only; the window shows the scene alone.
+            font: None,
         })
     }
 
@@ -384,6 +451,12 @@ impl Renderer {
     /// Uploads the frame palette into the LUT first, then prepares the camera and per-draw
     /// matrices; a camera override does not change the frame's LOD distances. Offscreen reads the
     /// page back and hands it to the sink; a surface presents it.
+    ///
+    /// # Errors
+    /// - [`RenderError::Readback`] if an offscreen page cannot be read back from the GPU.
+    /// - [`RenderError::Sink`] if the sink rejects the page.
+    ///
+    /// A surface draw never fails: a lost, outdated, timed-out or occluded surface skips the frame.
     pub fn draw(
         &mut self,
         frame: &SceneFrame,
@@ -392,7 +465,8 @@ impl Renderer {
         if matches!(&self.destination, Destination::Offscreen(_)) {
             self.draw_offscreen(frame, camera)
         } else {
-            self.draw_surface(frame, camera)
+            self.draw_surface(frame, camera);
+            Ok(())
         }
     }
 
@@ -417,9 +491,10 @@ impl Renderer {
             pipelines,
             palette_lut,
             camera_resources,
-            scene_renderer,
+            scene_pass,
             clear_palette_index,
             destination,
+            font,
         } = self;
         let Destination::Offscreen(target) = destination else {
             return Ok(());
@@ -432,7 +507,7 @@ impl Renderer {
             controller.projection_y_scale = target.size.height as f32 / rows.max(1) as f32;
             controller
         });
-        scene_renderer.prepare(
+        scene_pass.prepare(
             device,
             queue,
             camera_resources,
@@ -447,43 +522,57 @@ impl Renderer {
             b: f64::from(b),
             a: 1.0,
         };
-        target.capture(device, queue, clear_color, *clear_palette_index, |rpass| {
-            scene_renderer.draw(rpass, pipelines, camera_resources, palette_lut);
-        })
+        let credits = font.as_ref().zip(frame.credits.as_ref());
+        let viewport_rows = target.viewport_rows;
+        target.capture(
+            device,
+            queue,
+            clear_color,
+            *clear_palette_index,
+            |rpass| scene_pass.draw(rpass, pipelines, camera_resources, palette_lut),
+            |page| {
+                if let Some((font, lines)) = credits {
+                    paint_credits(
+                        page,
+                        font,
+                        lines,
+                        viewport_rows,
+                        &frame.palette.film_palette(),
+                    );
+                }
+            },
+        )
     }
 
-    fn draw_surface(
-        &mut self,
-        frame: &SceneFrame,
-        camera: Option<&CameraController>,
-    ) -> Result<(), RenderError> {
+    fn draw_surface(&mut self, frame: &SceneFrame, camera: Option<&CameraController>) {
         let Self {
             device,
             queue,
             pipelines,
             palette_lut,
             camera_resources,
-            scene_renderer,
+            scene_pass,
             clear_palette_index,
             destination,
+            font: _,
         } = self;
         let Destination::Surface(target) = destination else {
-            return Ok(());
+            return;
         };
 
         palette_lut.set_controls(queue, frame.palette);
-        scene_renderer.prepare(device, queue, camera_resources, frame, camera);
+        scene_pass.prepare(device, queue, camera_resources, frame, camera);
 
         let surface_texture = match target.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(texture)
             | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
             wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {
                 target.surface.configure(device, &target.config);
-                return Ok(());
+                return;
             }
             wgpu::CurrentSurfaceTexture::Timeout
             | wgpu::CurrentSurfaceTexture::Occluded
-            | wgpu::CurrentSurfaceTexture::Validation => return Ok(()),
+            | wgpu::CurrentSurfaceTexture::Validation => return,
         };
         let view = surface_texture
             .texture
@@ -569,7 +658,7 @@ impl Renderer {
 
             rpass.set_viewport(vp_x, vp_y, vp_w, vp_h, 0.0, 1.0);
             rpass.set_scissor_rect(sc_x, sc_y, sc_w, sc_h);
-            scene_renderer.draw(&mut rpass, pipelines, camera_resources, palette_lut);
+            scene_pass.draw(&mut rpass, pipelines, camera_resources, palette_lut);
 
             // Letterbox bars, painted black last.
             rpass.set_viewport(0.0, 0.0, win_w, win_h, 0.0, 1.0);
@@ -585,7 +674,6 @@ impl Renderer {
 
         queue.submit(Some(encoder.finish()));
         queue.present(surface_texture);
-        Ok(())
     }
 }
 
@@ -686,6 +774,7 @@ impl OffscreenTarget {
         clear_color: wgpu::Color,
         clear_palette_index: u8,
         draw: impl FnOnce(&mut wgpu::RenderPass<'_>),
+        overlay: impl FnOnce(&mut RenderedPage),
     ) -> Result<(), RenderError> {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("stunt_renderer_encoder"),
@@ -774,7 +863,7 @@ impl OffscreenTarget {
             self.size.width,
             self.padded_row_bytes,
         )?;
-        let plane = read_back(
+        let plane: Vec<u32> = read_back(
             device,
             &self.plane_readback_buffer,
             self.size.width,
@@ -786,7 +875,8 @@ impl OffscreenTarget {
         .map(|word| u32::from_le_bytes(*word))
         .collect();
 
-        let page = RenderedPage::new(self.size, rgba, plane)?;
+        let mut page = RenderedPage::new(self.size, rgba, &plane)?;
+        overlay(&mut page);
         self.sink.accept(page)?;
         Ok(())
     }
@@ -859,7 +949,7 @@ impl SurfaceTarget {
 fn acquire(
     instance: &wgpu::Instance,
     surface: Option<&wgpu::Surface<'static>>,
-    options: &RenderOptions,
+    options: RenderOptions,
 ) -> Result<(wgpu::Adapter, wgpu::Device, wgpu::Queue), RenderError> {
     let adapter = if options.software_only {
         request_fallback_adapter(instance, surface).ok_or(RenderError::NoGpuAdapter)?
@@ -1008,7 +1098,7 @@ mod tests {
     #[test]
     fn rendered_page_rejects_mismatched_buffer_lengths() {
         let size = PageSize::new(2, 2);
-        let page = RenderedPage::new(size, vec![7; 16], vec![0x1000; 4]).expect("page");
+        let page = RenderedPage::new(size, vec![7; 16], &[0x1000; 4]).expect("page");
         assert_eq!(page.width(), 2);
         assert_eq!(page.height(), 2);
         assert_eq!(page.size(), size);
@@ -1016,11 +1106,60 @@ mod tests {
         assert_eq!(page.indices(), [0; 4].as_slice());
         assert_eq!(page.layers(), [0x10; 4].as_slice());
         let word = (0x10 << 8) | 0x28;
-        let split = RenderedPage::new(size, vec![7; 16], vec![word; 4]).expect("page");
+        let split = RenderedPage::new(size, vec![7; 16], &[word; 4]).expect("page");
         assert_eq!(split.indices(), [40; 4].as_slice());
         assert_eq!(split.layers(), [0x10; 4].as_slice());
-        assert!(RenderedPage::new(size, vec![0; 15], vec![0; 4]).is_err());
-        assert!(RenderedPage::new(size, vec![0; 16], vec![0; 3]).is_err());
+        assert!(RenderedPage::new(size, vec![0; 15], &[0; 4]).is_err());
+        assert!(RenderedPage::new(size, vec![0; 16], &[0; 3]).is_err());
+    }
+
+    #[test]
+    fn credits_paint_index_layer_and_colour_in_mode13h_pixels() {
+        use stunt_core::contracts::PaletteControls;
+        use stunt_core::credits::CreditLines;
+        use stunt_core::font::PFont;
+
+        let font = PFont::parse(include_bytes!(
+            "../../../tests/fixtures/synthetic_pfont.bin"
+        ))
+        .expect("synthetic font");
+        let lines = CreditLines::new("I", "");
+        let palette = PaletteControls::default().film_palette();
+        let white = palette[255];
+        let rgb_at = |page: &RenderedPage, x: u32, y: u32| {
+            let at = ((y * page.width() + x) * 4) as usize;
+            (page.rgba()[at], page.rgba()[at + 1], page.rgba()[at + 2])
+        };
+
+        // 320x200 with the scene in 185 rows: ink at (158, 78), shadow at (159, 78).
+        let mut page = RenderedPage::new(
+            PageSize::new(320, 200),
+            vec![9; 320 * 200 * 4],
+            &vec![0; 320 * 200],
+        )
+        .expect("page");
+        paint_credits(&mut page, &font, &lines, Some(185), &palette);
+        let at = |x: u32, y: u32| (y * 320 + x) as usize;
+        assert_eq!(page.indices()[at(158, 78)], 255);
+        assert_eq!(page.layers()[at(158, 78)], LAYER_OVERLAY);
+        assert_eq!(rgb_at(&page, 158, 78), white);
+        assert_eq!(page.indices()[at(159, 78)], 0);
+        assert_eq!(page.layers()[at(159, 78)], LAYER_OVERLAY);
+        assert_eq!(page.layers()[at(157, 78)], crate::pipeline::LAYER_NONE);
+        assert_eq!(rgb_at(&page, 157, 78), (9, 9, 9));
+
+        // 320x240 without a viewport: y = (199 - 28) >> 1 = 85, rows 85..92 map to 102..110.
+        let mut page = RenderedPage::new(
+            PageSize::new(320, 240),
+            vec![0; 320 * 240 * 4],
+            &vec![0; 320 * 240],
+        )
+        .expect("page");
+        paint_credits(&mut page, &font, &lines, None, &palette);
+        let ink: Vec<u32> = (0..240)
+            .filter(|&y| page.indices()[(y * 320 + 158) as usize] == 255)
+            .collect();
+        assert_eq!(ink, (102..110).collect::<Vec<_>>());
     }
 
     #[test]

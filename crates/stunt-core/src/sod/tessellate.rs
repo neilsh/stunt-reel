@@ -51,10 +51,7 @@ pub(crate) fn quantize_weld_key(
 }
 
 /// Builds a [`SodModelIr`] from a processed polygon list.
-pub(crate) fn build_sod_model_ir(
-    name: &str,
-    polygons: &[RawPolygon],
-) -> Result<SodModelIr, SodError> {
+pub(crate) fn build_sod_model_ir(name: &str, polygons: &[RawPolygon]) -> SodModelIr {
     let mut ir = SodModelIr::new(name);
 
     // Invariant [I2]: Allocate root transform group
@@ -67,7 +64,7 @@ pub(crate) fn build_sod_model_ir(
     );
 
     if polygons.is_empty() {
-        return Ok(ir);
+        return ir;
     }
 
     // Group polygons into batches partitioned by (is_decal, visibility) preserving order.
@@ -114,11 +111,11 @@ pub(crate) fn build_sod_model_ir(
                 is_decal,
                 vis,
                 &mut weld_map,
-            )?;
+            );
         }
     }
 
-    Ok(ir)
+    ir
 }
 
 /// Tessellates and welds a slice of polygons into the model's consolidated buffers,
@@ -131,7 +128,7 @@ fn process_polygon_batch(
     is_decal: bool,
     visibility: VisibilityCondition,
     weld_map: &mut HashMap<WeldKey, u32>,
-) -> Result<(), SodError> {
+) {
     let vertex_offset = ir.vertices.len() as u32;
     let index_offset = ir.indices.len() as u32;
 
@@ -188,8 +185,6 @@ fn process_polygon_batch(
             },
         );
     }
-
-    Ok(())
 }
 
 /// Decodes one `.SOD` bytecode stream into a shape (Seam 3).
@@ -226,7 +221,7 @@ pub fn decode_sod(
     } else {
         Vec::new()
     };
-    let mut ir = build_sod_model_ir(name, &polygons)?;
+    let mut ir = build_sod_model_ir(name, &polygons);
     ir.set_decode(DecodeRecord {
         header: run.header,
         stop: run.stop,

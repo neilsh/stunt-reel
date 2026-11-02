@@ -7,7 +7,7 @@ How a rendering change is judged against `PLAYONE.EXE`. Terms are those of [`GLO
 0. **Baseline and captures.** The captures under `build/parity/captures/<film>/<id>` are a prerequisite: `mise run capture-ref` writes a new one and never changes an existing one, `research/parity/references.toml` names the one a film is scored against by id and content hash (promoting is a reviewed commit), `meta.json` tags every frame with its `film_tick`, and both parity tools name the missing directory and that command when a capture is absent. `mise run parity` renders both films with the current release binary, scores them, and prints two lines: `ctry  ssim 0.7732  iou 0.9783  idx 0.505  scored 114/140` and the same for INTRO, then the adoption noise note. Its render and report are the latest render and report, `build/parity/ours/<film>_current` and `build/parity/report/<film>_current`; step 2 keeps the one before them. `--no-build` reuses the release binary (a parallel session may hold it), `--no-render` re-scores the existing `_current` trees, and `--retime N` re-scores them relabelled by N ticks (probes.md section 6), writing a `_retime<N>` report instead of overwriting the baseline.
 1. **Capture once per `PLAYONE` build** (`mise run capture-ref`; another film: `mise run capture-ref -- --film corpus/stisldem/VAULT/INTRO.FLM`, see `playone-exe/capture.md` § 4). Each frame is tagged in `meta.json` with `film_tick` (the film clock: the tick the frame shows) and `global_tick`. Matching uses the film clock because the capture ordinal is not a time axis: a captured frame is a distinct rendered page grabbed at retrace, so ordinals do not map to ticks (`[Supported Inference]`). The tags are read from DGROUP at the player's `DS`, which differs per build, so `DS` (`0x1575` for the demo) is a capture parameter, not a constant.
 2. **The previous render is kept automatically.** To compare the **binary** rather than the renders, `mise run build-at -- <rev> <out>` builds a revision in a detached worktree with an isolated `target/build-at` and copies the binary to `<out>`; it never touches the current checkout. Before a render replaces it, `mise run parity` renames the outgoing `build/parity/ours/<film>_current` to `build/parity/previous/<film>` — a rename, not a copy, so the tree is never duplicated — and prints the re-score command. Comparing without re-rendering then costs `--reuse build/parity/previous`. Only one prior tree per film is kept: the next render replaces it. For a *pinned* baseline you want across many changes, copy the tree yourself to a name ending `_base` (`build/parity/ours/ctry_base` with `build/parity/report/ctry_base`); a report without its render directory cannot produce the before panels, and `_base` is protected from the rotation below. `mise run clean -- --parity --keep N --yes` reports the scratch trees that accumulate in `build/parity/ours` and `build/scratch/sweep` (~19.7 GB at one point) and removes all but the newest N per root, never `_current` or `_base`; the previous render lives in `build/parity/previous/<film>`, a root the rotation does not scan.
-3. **Render every tick including the final one:** `--frames 1..1344 --sidata <SIDATA> --width 320 --height 200 --viewport-rows 185` (the 3D view fills 185 rows; see `playone-exe/capture.md` § 4) writes ticks 0 to 1,342 into a render store ([ADR 0027](../../docs/adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)): `frames.zst`, `layers.zst`, `palettes.zst`, `render.json` and one `preview/sec_NNNN.png` per film second.
+3. **Render every tick including the final one:** `--tick-range 0..=1342 --sidata <SIDATA> --width 320 --height 200 --viewport-rows 185` (the 3D view fills 185 rows; see `playone-exe/capture.md` § 4) writes ticks 0 to 1,342 into a render store ([ADR 0027](../../docs/adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)): `frames.zst`, `layers.zst`, `palettes.zst`, `render.json` and one `preview/sec_NNNN.png` per film second.
 3a. **Planes:** the store holds each tick's index plane and layer plane, and its picture is its palette over its index plane (unlit palette index; layer ids 0 none, 1 ocean, 2 terrain, 3 props, 16+n for actor draw n of the frame). `report.json` carries `mean_loss_by_class_scored`, the SSIM loss split by layer (read it as 'where the loss is', not 'what is wrong'). `parity` uses them for mask IoU and reports `mean_index_agreement_scored`.
 4. **Score:** `stuntreel parity --reference ... --test ... --output ...`. The masks come from index planes, not colours: a capture pixel is sky when its index is in the sky bands 227..=238 (`sky_indices` in `report.json`; [`palette-and-shading.md`](../formats/concepts/palette-and-shading.md)), and a render pixel is sky where its stored layer plane is empty. `--headless --out-dir` writes the render store; a render directory without one (or with a version-1 `render.json`) is an error, so re-render rather than score an old tree. `render` still clears to 233 (`CTRY`'s sky) when given an `.ALL`, but that no longer affects the score. Output is `report.json` plus `contact_NNNN.png` sheets (`reference | rendered | |difference|`).
 5. **Compare:** add `--compare <previous report.json> --compare-test <previous render dir>`. It prints means over the frames present in both reports, the 5 most improved/regressed frames, and the count moved by more than 0.005, and writes `compare.json`. The basis is `scored` when both reports carry `scored` (SSIM over frames scored in both runs) and `all` otherwise (SSIM over all common frames), recorded on the first `[compare]` line and as `"basis"` in `compare.json`. With `--compare-test` it also prints a verdict on the windows the change touched: `[verdict] changed 27/121 frames: 15 closer, 12 further, 0 within noise; mean Δ +0.101 on changed windows`. A frame is changed where its `.idx` or luma differs; Δ is the capture SSIM of *after* minus *before* over the 11x11 windows holding a changed pixel, so unchanged flat ground drops out. `--noise-sigma <σ>` (the film's `noise_sigma` in `references.toml`) buckets |Δ| < σ as within noise. That σ is the recapture noise of the *whole-frame* SSIM (`004` against `005`, § 2.2), not a measurement of the noise of Δ: Δ averages a few touched windows rather than the whole frame, so it should vary at least as much between captures, and σ is a lower bound for it (not measured). "Within noise" is therefore conservative: it labels only changes smaller than that lower bound, and a frame called closer or further may still be noise. Without `--noise-sigma` the sign of Δ decides, and only a Δ of exactly 0 counts as within noise. The verdict judges every matched frame, including the ones the fade floor leaves unscored (§ 2.1), so it can move on faded frames the headline mean ignores. `--build-floor <N>` labels frames with at most N changed pixels as build noise (0 suffices: two builds of one revision render identically, § 2.2). `compare.json` gains `"verdict"`, and the worst-mover sheets follow Δ.
@@ -17,19 +17,180 @@ How a rendering change is judged against `PLAYONE.EXE`. Terms are those of [`GLO
 
 ### 1.1 Extracting frames and video
 
-Tier `[Established]`. `stuntreel --out-dir <dir> --frame-step <N>` samples the 50 Hz timeline every N ticks, which keeps long films from filling the disk. `--frames A..B` is a half-open range of 1-based tick ordinals; each tick is stored in the render store under the 0-based tick rendered, which is the film clock `stuntreel parity` looks up (`--frames 459..460` stores tick 458). With `--sample-count` or `--video` the samples need not fall on whole ticks, so they are written as `sample_%04d.png` (1-based sample index) and are not parity inputs. When `--video` is present, sampling at `--fps` drives the loop and `--frame-step` is ignored.
+Tier `[Established]`. `stuntreel --out-dir <dir> --frame-step <N>` samples the 50 Hz timeline every N ticks, which keeps long films from filling the disk. `--tick-range A..=B` is a 0-based, inclusive range of film ticks; each tick is stored in the render store under its own tick, which is the film clock `stuntreel parity` looks up (`--tick-range 458..=458` stores tick 458). The earlier `--frames A..B` (half-open, 1-based) is now an error. With `--sample-count` or `--video` the samples need not fall on whole ticks, so they are written as `sample_%04d.png` (1-based sample index) and are not parity inputs. When `--video` is present, sampling at `--fps` drives the loop and `--frame-step` is ignored.
 
 `stuntreel --video <path>` (`.mp4`, `.webm`, `.mkv`, `.avi`) pipes frames asynchronously to `ffmpeg`, sampled at `--fps` (default 30) from the authored 50 Hz timeline with 4:3 correction (320x240, `[I6]`), interpolating between slice keyframes. The container is trimmed to the authored span with `-t`: `CTRY.FLM` (140 slices, 1,342 ticks, 26.84 s) samples 806 frames at 30 fps, ffmpeg encodes 805 and reports 26.833 s (26.84 s exactly at `--fps 50`). Without `ffmpeg` on `PATH` the command exits with a diagnostic. Ticket: `T11` in [`TEAM_SHEET.md`](../../docs/process/TEAM_SHEET.md).
 
 ### 1.2 Scoring another captured film
 
-`--frames a..b` is 1-based, so render the whole captured span (`--frames 160..730` for the `COL3-2.FLM` capture): frames outside the range count as missing on one side. Render at `--width 320 --height 200` (the parity command rejects 320x240 input) with `--headless`, so the directory holds the render store. Then:
+`--tick-range a..=b` is 0-based and inclusive, so render the whole captured span (`--tick-range 159..=728` for the `COL3-2.FLM` capture): frames outside the range count as missing on one side. Render at `--width 320 --height 200` (the parity command rejects 320x240 input) with `--headless`, so the directory holds the render store. Then:
 
 ```bash
 stuntreel parity --reference build/parity/captures/<film>/<id> --test build/parity/ours/<film> --output build/parity/report/<film>
 ```
 
 For a side-by-side look, decode a reference `.idx` page (64000 bytes, 320x200) with its `palettes_NNNN.json` and paste it beside ours (`RenderStore(...).frame(tick)` in `stunt_reel.parity_artifacts`, or the second's `preview/` PNG); `contact_*.png` shows only the first frame.
+
+### 1.3 Fields of `report.json` and `compare.json`
+
+Read these before indexing either file in a one-off script. A count and a list often differ by one word: in `report.json`, `frames` is a **number** and `per_frame` is the **list**; in `compare.json`, `verdict.counts` is an **object** keyed by class and `verdict.frames` is the list. Types are JSON types: `number`, `string`, `bool`, `list`, `object`; `or null` means the value can be `null` (a mean over no frame, a field a legacy report lacks), and `, optional` means the key can be absent. A measured value is never missing without being `null`, so test for `null` rather than for the key.
+
+The tables are checked: `report_doc.rs` in `crates/stunt-cli/src/parity/` runs `stuntreel parity` over the synthetic fixtures, parses the tables below (the rows between the `fields` markers, key and type columns) and fails when the output has a key the note does not list, lacks one it lists, or holds a value of another type. Change a serializer and this note in the same commit. The structs are `Report` and `FrameReport` in [`crates/stunt-parity/src/report.rs`](../../crates/stunt-parity/src/report.rs) (`report.json`), `Comparison::to_json` in `report_diff.rs` (`compare.json`) and `Verdict::to_json` in `verdict.rs` (its `verdict` object).
+
+**`report.json`** (top level; written by every run):
+
+<!-- fields: report -->
+| Key | Type | Meaning |
+|---|---|---|
+| `reference_frames` | number | Frames the capture holds. Equals `frames` + `unmatched`. |
+| `frames` | number | Frames matched to a render (a count, not the list). |
+| `unmatched` | number | Captured frames with no render of that `film_tick`. |
+| `sky_indices` | list | `[low, high]`, the inclusive palette-index range counted as sky (227, 238). |
+| `mean_ssim` | number | Mean SSIM over every matched frame. |
+| `min_ssim` | number | Lowest SSIM of any matched frame. |
+| `mean_iou` | number | Mean mask IoU over every matched frame. |
+| `min_fade_level` | number | The `--min-fade-level` floor the run used (default 0.25). |
+| `mean_ssim_scored` | number or null | Mean SSIM over scored frames (the headline); null when none scored. |
+| `i6_gate` | object | Whether `mean_ssim_scored` reaches each `[I6]` threshold. |
+| `mean_iou_scored` | number or null | Mean IoU over scored frames. |
+| `mean_index_agreement_scored` | number or null | Mean of `index_agreement` over scored frames (each over its frame's non-overlay pixels). |
+| `mean_loss_by_class_scored` | object or null | Mean SSIM loss per layer class over scored frames; keys are the classes below. |
+| `scored_frames` | number | Frames whose `scored` is true: authored fade at or above the floor, or no authored fade. |
+| `excluded_frames` | number | Matched frames whose authored fade is below the floor (reported, not scored). `frames` = `scored_frames` + `excluded_frames`. |
+| `per_frame` | list | One object per matched frame, in capture order (next table). |
+<!-- /fields -->
+
+**`per_frame[]`** of `report.json`:
+
+<!-- fields: report.per_frame -->
+| Key | Type | Meaning |
+|---|---|---|
+| `ordinal` | number | 1-based capture order of the frame (`tick_NNNN.idx`); not a time axis. |
+| `film_tick` | number | The film clock the frame was matched on; the key `--compare` joins reports by. |
+| `ssim` | number | SSIM against the capture. |
+| `iou` | number | Mask IoU against the capture. |
+| `index_agreement` | number or null | Fraction of non-overlay pixels whose palette index equals the capture's (overlay pixels leave both counts; 1.0 if every pixel is overlay). |
+| `loss_by_class` | object or null | This frame's SSIM loss split by layer class; keys are the classes below. |
+| `fade_level` | number or null | Fade level measured from the captured palette (about 1.0 when unfaded). |
+| `authored_fade_level` | number or null | Fade level the film authored at this tick, when the render recorded it. |
+| `scored` | bool or null | True when `authored_fade_level` reaches `min_fade_level`, or when it is null (no authored entry); the measured `fade_level` is only a cross-check (ADR 0005). Scored frames count in the `*_scored` means. |
+<!-- /fields -->
+
+**`i6_gate`** of `report.json`:
+
+<!-- fields: report.i6_gate -->
+| Key | Type | Meaning |
+|---|---|---|
+| `initial` | bool | `mean_ssim_scored` is at least 0.88. |
+| `sign_off` | bool | `mean_ssim_scored` is at least 0.90. |
+<!-- /fields -->
+
+**Keys of `loss_by_class`** (per frame and `mean_loss_by_class_scored`; each value is a number, the SSIM loss attributed to that class):
+
+<!-- fields: report.loss_classes -->
+| Key | Type | Meaning |
+|---|---|---|
+| `sky` | number | Neither side draws: render layer empty, capture sky. |
+| `reference_only` | number | Capture shows non-sky where the render's layer is empty. |
+| `ocean` | number | Both draw; the render's layer is ocean. |
+| `terrain` | number | Both draw; the render's layer is terrain. |
+| `props` | number | Both draw; the render's layer is a prop. |
+| `actors` | number | Both draw; the render's layer is an actor. |
+| `ocean_render_only` | number | Render draws ocean where the capture shows sky. |
+| `terrain_render_only` | number | Render draws terrain where the capture shows sky. |
+| `props_and_actors_render_only` | number | Render draws a prop or actor where the capture shows sky. |
+| `overlay` | number | The render's layer holds the credits text, whatever the capture shows there (the key is the render's layer name; this is not the UI overlay). |
+<!-- /fields -->
+
+**`compare.json`** (top level; written with `--compare`):
+
+<!-- fields: compare -->
+| Key | Type | Meaning |
+|---|---|---|
+| `basis` | string | `"scored"` (SSIM over frames scored in both reports) or `"all"` (every common frame; a report predates fade scoring). |
+| `common_frames` | number | Frames (by `film_tick`) in both reports among those `basis` selects (with `"scored"`, scored in each report); the means cover only these. |
+| `before_only_frames` | number | Frames selected by `basis` in the previous report but not the fresh one; a tick in both but scored only before counts here. |
+| `after_only_frames` | number | Frames selected by `basis` in the fresh report but not the previous one. |
+| `changed_threshold` | number | SSIM change beyond which a frame counts as improved or regressed (0.005). |
+| `mean_ssim` | object | Mean SSIM before, after and their difference over the common frames. |
+| `mean_iou` | object | The same for IoU. |
+| `improved_count` | number | Common frames whose SSIM rose by more than `changed_threshold`. |
+| `regressed_count` | number | Common frames whose SSIM fell by more than `changed_threshold`. |
+| `most_improved` | list | Up to 5 frames with the largest SSIM gain, best first. |
+| `most_regressed` | list | Up to 5 frames with the largest SSIM loss, worst first. |
+| `verdict` | object, optional | The regression verdict; present only with `--compare-test` and a readable previous render store. |
+<!-- /fields -->
+
+**`mean_ssim` and `mean_iou`** of `compare.json`:
+
+<!-- fields: compare.mean -->
+| Key | Type | Meaning |
+|---|---|---|
+| `before` | number | The previous report's mean. |
+| `after` | number | The fresh report's mean. |
+| `delta` | number | `after` minus `before`. |
+<!-- /fields -->
+
+**`most_improved[]` and `most_regressed[]`** of `compare.json`:
+
+<!-- fields: compare.delta -->
+| Key | Type | Meaning |
+|---|---|---|
+| `film_tick` | number | The frame's film clock. |
+| `before` | number | Its SSIM in the previous report. |
+| `after` | number | Its SSIM in the fresh report. |
+| `delta` | number | `after` minus `before`. |
+<!-- /fields -->
+
+**`verdict`** of `compare.json` (the regression verdict of section 1, step 5):
+
+<!-- fields: compare.verdict -->
+| Key | Type | Meaning |
+|---|---|---|
+| `frames` | list | One object per matched frame of the fresh report, in capture order (next table). |
+| `counts` | object | Frames per class, keyed by the class names below (an object, not a list). |
+| `mean_delta` | number or null | Mean `delta` over the judged frames (closer, further, within noise); null when none. |
+<!-- /fields -->
+
+**`verdict.frames[]`**:
+
+<!-- fields: compare.verdict.frame -->
+| Key | Type | Meaning |
+|---|---|---|
+| `film_tick` | number | The frame's film clock (there is no `ordinal` here). |
+| `changed_idx` | number | Fraction of the 320x200 frame whose palette index changed. |
+| `changed_luma` | number | Fraction whose luminance changed. |
+| `changed_by_layer` | object | Changed fraction (index or luminance) by the fresh render's layer; keys are the layers below. |
+| `before_after_ssim` | number or null | SSIM of the previous render against the fresh one (stretched, unmasked); null for a missing tick. |
+| `delta` | number or null | Capture SSIM of *after* minus *before* over the windows holding a changed pixel; null when none changed or the tick is missing. |
+| `class` | string | The frame's class: one of the keys of `counts`. |
+<!-- /fields -->
+
+**Keys of `verdict.counts`** (each value is a number of frames; the keys are also the values `class` takes):
+
+<!-- fields: compare.verdict.counts -->
+| Key | Type | Meaning |
+|---|---|---|
+| `unchanged` | number | No pixel changed, or every change sits under the overlay. |
+| `build_noise` | number | At most `--build-floor` pixels changed. |
+| `within_noise` | number | The change on the touched windows is below `--noise-sigma` (or exactly zero). |
+| `closer` | number | The touched windows moved closer to the capture. |
+| `further` | number | The touched windows moved away from the capture. |
+| `missing` | number | The previous render has no such tick. |
+<!-- /fields -->
+
+**Keys of `changed_by_layer`** (each value is a number: changed pixels in that layer as a fraction of the 320x200 frame):
+
+<!-- fields: compare.verdict.layers -->
+| Key | Type | Meaning |
+|---|---|---|
+| `ocean` | number | Changed pixels the fresh render draws as ocean. |
+| `terrain` | number | Changed pixels drawn as terrain. |
+| `props` | number | Changed pixels drawn as props. |
+| `overlay` | number | Changed pixels drawn as credits text. |
+| `actors` | number | Changed pixels drawn as actors. |
+| `none` | number | Changed pixels no layer claims (sky and undrawn). |
+<!-- /fields -->
 
 ## 2. Scoring in one paragraph
 
@@ -55,7 +216,7 @@ The renderer applies the same fade from the film's palette variables, so renders
 
 The fade level is a brightness heuristic built for `CTRY.FLM`'s day sky. On a night film (`COL3-2.FLM`) it reads about 0.24 for most frames, so 29 of 30 are excluded and the scored headline rests on one frame (tick 705, fade 1.012, SSIM 0.479); for that film read the unscored `mean_ssim`. `PLAYONE` fades `CTRY.FLM` from about tick 990 to 1337.
 
-Headless renders record the palette controls of every rendered tick in `render.json`. The comparator reads the authored brightness (var 14) from them to apply the fade floor; the IoU sky mask reads the stored layer plane and does not depend on the palette.
+Headless renders record the palette controls of every rendered tick in `render.json`. The comparator reads the authored brightness (var 14) from them to apply the fade floor; the IoU sky mask reads the stored layer plane and does not depend on the palette. Each tick also records `credits`, whether the film shows credits there (`0x99` until `0x98`); on such a tick the UI-overlay mask keeps capture index 255 as credits ink instead of masking it as the cursor, so a render that drops its credits scores the loss. A render stored before the field falls back to whether its layer plane holds credits.
 
 From `36a7305` to `5bf6afe` the comparator also reported `ssim_compensated` (the render's luminance scaled by the fade level, later by the ratio of capture to render fade level) and headlined `mean_ssim_compensated`. That stood in for the fade before the renderer modelled it and was retired once it did; `--compare` reads such reports for their raw `ssim`.
 
