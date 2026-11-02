@@ -24,6 +24,23 @@ def regions_of(planes: RenderPlanes) -> Regions:
     return Regions(layer=planes.layer, control_mean_luma=float(render_luma(planes.rgb).mean()))
 
 
+def test_the_mask_comes_from_the_regions_not_the_scored_render(bench_fixture: Path) -> None:
+    """Control and planted scores share ``Regions.credits_drawn``, whatever each render drew."""
+    capture = load_capture(bench_fixture / "capture")[10]
+    capture = type(capture)(idx=capture.idx.copy(), palette=capture.palette)
+    capture.idx[60:80, 100:140] = 255  # captured credits ink
+    render = RenderTree(bench_fixture / "render").load(10)
+    rgb = capture.palette[capture.idx]
+    rgb[60:80, 100:140] = 0  # the render lost the ink, and draws no overlay layer
+    planted = RenderPlanes(rgb=rgb, idx=None, layer=render.layer)
+    masked = regions_of(planted)
+    shared = Regions(masked.layer, masked.control_mean_luma, credits_drawn=True)
+    assert METRICS["ssim"](capture, planted, masked) == pytest.approx(1.0)
+    kept = METRICS["ssim"](capture, planted, shared)
+    assert kept is not None
+    assert kept < 1.0
+
+
 def test_every_metric_is_at_its_best_on_a_perfect_render(bench_fixture: Path) -> None:
     capture = load_capture(bench_fixture / "capture")[10]
     perfect = RenderTree(bench_fixture / "render").load(10)
