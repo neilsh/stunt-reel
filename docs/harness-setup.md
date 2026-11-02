@@ -93,8 +93,10 @@ The scripted setup is `mise run init`; under DSH its link step needs the wider p
    (unconfirmed). `remove_link` in [`dataroot.py`](../python/stunt_reel/dataroot.py), which
    `init`, `clean` and `reap` all use, therefore retries a refused removal once with the
    shell's `rmdir`, never with `/s`, so a directory that still holds files is refused, not
-   emptied. If the retry fails too, `reap` reports both errors, still proves no link
-   remains, and leaves the worktree alone.
+   emptied, and a path holding a `cmd` metacharacter (`&`, `%`, `;` and the like) is never
+   passed to the shell. If the retry fails too, `reap` reports both errors and leaves the
+   worktree and its branch alone; after a successful retry it still proves no link remains
+   before it removes the worktree.
 
 Why the split: [`worktree_init.py`](../python/scripts/worktree_init.py) creates junctions
 whose targets are in the shared data root, outside the workspace. DSH creates a junction

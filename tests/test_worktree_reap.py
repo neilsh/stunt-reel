@@ -154,8 +154,18 @@ def test_remove_link_falls_back_to_the_shell_rmdir_when_python_is_refused(
 
     assert not os.path.lexists(link)
     assert (target / "nested" / "keep.txt").read_text(encoding="utf-8") == "keep"
-    assert [command[2:] for command in calls] == [["rmdir", str(link)]]
+    assert [command[1:] for command in calls] == [["/d", "/c", "rmdir", str(link)]]
     assert "/s" not in {part.lower() for part in calls[0]}
+
+
+@pytest.mark.parametrize("name", ["x&calc.exe&x", "x%PATH%x", "a;b", "x|y", "x^y"])
+def test_shell_rmdir_refuses_a_path_cmd_would_interpret(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    monkeypatch.setattr(subprocess, "run", lambda *_a, **_k: pytest.fail("reached the shell"))
+
+    with pytest.raises(OSError, match="metacharacter"):
+        dataroot._shell_rmdir(tmp_path / name)
 
 
 def test_remove_link_reports_both_errors_when_the_fallback_fails_too(
