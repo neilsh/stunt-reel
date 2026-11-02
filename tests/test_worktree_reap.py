@@ -117,6 +117,132 @@ def test_unlinking_keeps_the_target_and_clears_every_link(tmp_path: Path) -> Non
     assert (target / "keep.txt").read_text(encoding="utf-8") == "keep"
 
 
+def _refuse_rmdir_on(monkeypatch: pytest.MonkeyPatch, link: Path) -> None:
+    """Make Python's directory removal fail on *link* the way a Controlled Folder Access host does."""
+    real = Path.rmdir
+
+    def refuse(self: Path) -> None:
+        if self == link:
+            raise PermissionError(5, "Access is denied", str(self))
+        real(self)
+
+    monkeypatch.setattr(Path, "rmdir", refuse)
+
+
+def test_remove_link_falls_back_to_the_shell_rmdir_when_python_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "data"
+    (target / "nested").mkdir(parents=True)
+    (target / "nested" / "keep.txt").write_text("keep", encoding="utf-8")
+    link = tmp_path / "corpus"
+    _junction(link, target)
+    _refuse_rmdir_on(monkeypatch, link)
+    calls: list[list[str]] = []
+    real_run = subprocess.run
+
+    def spy(
+        command: list[str], *args: object, **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        return real_run(command, *args, **kwargs)  # type: ignore[call-overload,no-any-return]
+
+    monkeypatch.setattr(subprocess, "run", spy)
+
+    dataroot.remove_link(link)
+
+    assert not os.path.lexists(link)
+    assert (target / "nested" / "keep.txt").read_text(encoding="utf-8") == "keep"
+    assert [command[2:] for command in calls] == [["rmdir", str(link)]]
+    assert "/s" not in {part.lower() for part in calls[0]}
+
+
+def test_remove_link_reports_both_errors_when_the_fallback_fails_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "data"
+    target.mkdir()
+    link = tmp_path / "corpus"
+    _junction(link, target)
+    _refuse_rmdir_on(monkeypatch, link)
+
+    def refuse_shell(_path: Path) -> None:
+        raise OSError("rmdir exited 5: Access is denied.")
+
+    monkeypatch.setattr(dataroot, "_shell_rmdir", refuse_shell)
+
+    with pytest.raises(OSError, match=r"WinError 5|Access is denied") as raised:
+        dataroot.remove_link(link)
+
+    assert "rmdir exited 5" in str(raised.value)
+    assert "rmdir refused" in str(raised.value)
+    assert dataroot.is_link(link)
+
+
+def test_reap_one_leaves_the_worktree_alone_when_a_link_cannot_be_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _init_repo(tmp_path)
+    worktree = tmp_path / "wt"
+    _run_git(repo, "worktree", "add", "-q", str(worktree), "-b", "wt-test")
+    target = tmp_path / "data"
+    target.mkdir()
+    link = worktree / "corpus"
+    _junction(link, target)
+    _refuse_rmdir_on(monkeypatch, link)
+
+    def refuse_shell(_path: Path) -> None:
+        raise OSError("rmdir exited 5: Access is denied.")
+
+    monkeypatch.setattr(dataroot, "_shell_rmdir", refuse_shell)
+    candidate = worktree_init._Candidate(
+        worktree=worktree_init._Worktree(path=worktree, head="", branch="wt-test"),
+        merged=True,
+        dirty=[],
+        untracked=[],
+        links=[link],
+        size=0,
+    )
+
+    error = worktree_init._reap_one(repo, candidate, stash_dirty=False, discard_untracked=False)
+
+    assert error is not None
+    assert "cannot unlink" in error
+    assert "rmdir refused" in error
+    assert "rmdir exited 5" in error
+    assert worktree.is_dir()
+    assert worktree_init._reparse_points(worktree) == [link]
+    assert "wt-test" in _run_git(repo, "branch", "--format=%(refname:short)").split()
+
+
+def test_reap_one_finishes_through_the_fallback_and_keeps_the_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _init_repo(tmp_path)
+    worktree = tmp_path / "wt"
+    _run_git(repo, "worktree", "add", "-q", str(worktree), "-b", "wt-test")
+    target = tmp_path / "data"
+    target.mkdir()
+    (target / "keep.txt").write_text("keep", encoding="utf-8")
+    link = worktree / "corpus"
+    _junction(link, target)
+    _refuse_rmdir_on(monkeypatch, link)
+    candidate = worktree_init._Candidate(
+        worktree=worktree_init._Worktree(path=worktree, head="", branch="wt-test"),
+        merged=True,
+        dirty=[],
+        untracked=[],
+        links=[link],
+        size=0,
+    )
+
+    assert (
+        worktree_init._reap_one(repo, candidate, stash_dirty=False, discard_untracked=False) is None
+    )
+    assert not worktree.exists()
+    assert (target / "keep.txt").read_text(encoding="utf-8") == "keep"
+
+
 def test_blocked_names_the_flag_that_lifts_it() -> None:
     candidate = worktree_init._Candidate(
         worktree=worktree_init._Worktree(path=Path("D:/git/example/wt"), head="0", branch="b"),

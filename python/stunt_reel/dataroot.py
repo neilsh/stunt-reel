@@ -363,12 +363,42 @@ def link_points_at(path: Path, target: Path) -> bool:
         return False
 
 
+def _shell_rmdir(path: Path) -> None:
+    """Remove the empty-or-linked directory *path* with ``cmd /c rmdir``, never recursively.
+
+    On a junction ``rmdir`` removes the reparse point and leaves its target alone; there
+    is deliberately no ``/s``, so a real directory that still holds files is refused
+    instead of emptied.
+    """
+    command = [os.environ.get("COMSPEC", "cmd.exe"), "/c", "rmdir", str(path)]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)  # noqa: S603
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        raise OSError(f"rmdir exited {result.returncode}: {detail}")
+
+
 def remove_link(path: Path) -> None:
-    """Remove a symbolic link or junction, never the directory it points at."""
+    """Remove a symbolic link or junction, never the directory it points at.
+
+    Some Windows machines refuse Python's directory removal on a junction with
+    ``[WinError 5] Access is denied`` yet let the shell's ``rmdir`` remove the same one
+    (docs/harness-setup.md).  A permission error on Windows therefore retries once with
+    the shell's non-recursive ``rmdir``; if that fails too, the error names both.
+    """
     if path.is_symlink():
         path.unlink()
-    else:
+        return
+    try:
         path.rmdir()
+    except PermissionError as first:
+        if os.name != "nt":
+            raise
+        try:
+            _shell_rmdir(path)
+        except OSError as second:
+            raise OSError(
+                f"rmdir refused ({first}); the shell's rmdir fallback failed too ({second})"
+            ) from second
 
 
 def create_link(link: Path, target: Path) -> None:
