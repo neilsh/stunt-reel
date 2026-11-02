@@ -35,6 +35,8 @@ C1 = 6.5025
 C2 = 58.5225
 UI_BAR_FIRST_ROW = 185
 CURSOR_INDEX = 255
+#: The layer id of credits pixels; the differential files their changes under ``overlay``.
+LAYER_OVERLAY = 4
 _LUMA = np.array([0.299, 0.587, 0.114])
 
 

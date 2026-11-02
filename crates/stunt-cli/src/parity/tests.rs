@@ -362,7 +362,8 @@ fn verdict_matches_the_numpy_golden() {
 }
 
 /// A uniform capture with a block of credits ink (index 255), and a render of the same
-/// background that leaves the ink out; `credits_in_render` puts credits elsewhere on its page.
+/// background that leaves the ink out. `credits_in_render` marks the tick as one where the
+/// film shows credits, as its render record says, and puts credits elsewhere on its page.
 fn credits_frames(
     credits_in_render: bool,
 ) -> (super::score::ReferenceFrame, super::score::RenderFrame) {
@@ -395,12 +396,13 @@ fn credits_frames(
         indices: vec![background; pixels],
         layers,
         controls: None,
+        credits: credits_in_render,
     };
     (reference, render)
 }
 
-/// Credits ink shares the cursor's index 255: masked as the cursor on a tick whose render
-/// draws no credits, scored on a tick whose render draws them.
+/// Credits ink shares the cursor's index 255: masked as the cursor on a tick whose film
+/// shows no credits, scored on a tick whose film shows them.
 #[test]
 fn score_frame_scores_credits_ink_only_on_a_tick_with_credits() {
     let fade_set = super::fade::fade_reference_set(&credits_frames(false).0.indices);
