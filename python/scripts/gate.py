@@ -65,6 +65,15 @@ STEP_LANES: dict[str, str] = {
     "test-py": "py-test",
 }
 
+# The scoped task that runs each half of STEPS (mise.toml: check-rust, check-py). A failing step
+# names the task for its own half, so membership comes from STEPS and cannot drift from the plan.
+SCOPED_TASKS: dict[str, str] = {"rust": "check-rust", "py": "check-py"}
+
+# Steps whose failure `mise run fix` repairs mechanically: ruff's fixable lint findings, ruff
+# format and rustfmt. The task itself is defined in mise.toml beside the steps it mirrors.
+FIX_TASK = "fix"
+FIXABLE_STEPS = frozenset({"fmt-check-rust", "fmt-check-py", "lint-py"})
+
 REQUIRED_ENV: dict[str, dict[str, str]] = {
     "test-py": {"STUNT_REQUIRE_KSC": "1", "STUNT_REQUIRE_PREK": "1"}
 }
@@ -73,6 +82,32 @@ REQUIRED_ENV: dict[str, dict[str, str]] = {
 def _plan(half: str) -> list[str]:
     """Return the ordered steps for one half of the gate."""
     return [*STEPS["rust"], *STEPS["py"]] if half == "all" else STEPS[half]
+
+
+def _reruns(failed: Sequence[str], half: str) -> list[str]:
+    """Return the scoped tasks that re-run only the failed lanes' half of the gate.
+
+    A task is named for each half with a failing step, except the half this run already is
+    (``check-rust`` never suggests itself). A step in neither half names nothing.
+    """
+    return [
+        f"mise run {scoped}"
+        for scope, scoped in SCOPED_TASKS.items()
+        if scope != half and any(task in STEPS[scope] for task in failed)
+    ]
+
+
+def _verdict(failed: Sequence[str], plan: Sequence[str], half: str, total: float) -> str:
+    """Return the gate's closing line: PASS, or FAIL naming the failing steps and what to run."""
+    passed = len(plan) - len(failed)
+    if not failed:
+        return f"[gate] PASS {passed}/{len(plan)} steps in {total:.0f}s; log: {LOG_PATH}"
+    line = f"[gate] FAIL ({', '.join(failed)}) {passed}/{len(plan)} steps in {total:.0f}s"
+    line += f"; log: {LOG_PATH}"
+    if any(task in FIXABLE_STEPS for task in failed):
+        line += f"; fix: mise run {FIX_TASK}"
+    reruns = _reruns(failed, half)
+    return f"{line}; re-run: {', '.join(reruns)}" if reruns else line
 
 
 def _report(task: str, code: int, elapsed: float) -> None:
@@ -174,16 +209,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         total = time.monotonic() - started
         failed = [task for task in plan if results[task][0] != 0]
         for task in failed:
-            print(f"\n---- {task} output tail ----", flush=True)
+            note = f" (fix: mise run {FIX_TASK})" if task in FIXABLE_STEPS else ""
+            print(f"\n---- {task} output tail{note} ----", flush=True)
             print("\n".join(results[task][1].rstrip().splitlines()[-args.tail :]), flush=True)
 
-        passed = len(plan) - len(failed)
-        verdict = "PASS" if not failed else f"FAIL ({', '.join(failed)})"
-        print(
-            f"[gate] {verdict} {passed}/{len(plan)} steps in {total:.0f}s; log: {LOG_PATH}",
-            flush=True,
-        )
-        log.write(f"\n# {verdict} {passed}/{len(plan)} steps in {total:.0f}s\n")
+        verdict = _verdict(failed, plan, str(args.half), total)
+        print(verdict, flush=True)
+        log.write(f"\n# {verdict.removeprefix('[gate] ')}\n")
 
     return 0 if not failed else 1
 
