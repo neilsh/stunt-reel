@@ -194,3 +194,60 @@ def test_keys_script_boots_presses_the_keys_and_ends_without_a_trace() -> None:
     assert text.endswith("out.done = true\n")
     with pytest.raises(ValueError, match="key name"):
         luagen.keys_script(["bad"])
+
+
+# ==============================================================================
+# Clock and window passes
+# ==============================================================================
+
+
+def test_the_clock_pass_samples_every_few_frames_and_waits_in_one_call_per_gap() -> None:
+    text = luagen.clock_script(
+        keys=KEYS,
+        first=1300,
+        last=9000,
+        every=6,
+        end_hold=5,
+        stop_tick=2001,
+        layout=playone.UNPATCHED,
+    )
+
+    assert "for f = 1300, 9000, 6 do" in text
+    assert "dosbox.wait_frames(d)" in text
+    assert "if t > 0 and (hold >= 5 or t >= 2001) then break end" in text
+    assert 'out.clock = "x" .. table.concat(tr, ",")' in text
+    # Nothing reads the page in a clock pass.
+    assert "0xA000" not in text
+
+
+def test_the_clock_pass_refuses_a_start_inside_the_boot_keys() -> None:
+    with pytest.raises(ValueError, match="before the boot keys"):
+        luagen.clock_script(keys=KEYS, first=1200, last=1400, end_hold=5, layout=playone.UNPATCHED)
+
+
+def test_a_window_pass_lists_its_windows_and_dumps_only_usable_pages() -> None:
+    windows = [luagen.Window(1400, 1), luagen.Window(1420, 12)]
+    text = luagen.window_script(keys=KEYS, windows=windows, layout=playone.UNPATCHED)
+
+    assert "local starts, goals = {1400, 1420}, {1, 12}" in text
+    assert f"for f = c, c + {luagen.WINDOW_SPAN - 1} do" in text
+    assert "if t >= goal and changed and comp and not step and not pstep then" in text
+    # A page that equals no composed page is marked torn; the band test is not run.
+    assert f"(comp and {luagen.TRACE_COMPOSED} or {luagen.TRACE_TORN})" in text
+    assert "BAND" not in text
+
+
+@pytest.mark.parametrize(
+    ("windows", "message"),
+    [
+        ([], "at least one window"),
+        ([luagen.Window(1276, 1)], "starts before frame"),
+        ([luagen.Window(1400, 0)], "goal 0"),
+        ([luagen.Window(1400, 1), luagen.Window(1405, 5)], "starts before frame 1412"),
+    ],
+)
+def test_a_window_pass_refuses_windows_it_cannot_read_in_order(
+    windows: list[luagen.Window], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        luagen.window_script(keys=KEYS, windows=windows, layout=playone.UNPATCHED)

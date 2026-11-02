@@ -13,16 +13,23 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from functools import cached_property
 from typing import TYPE_CHECKING, Any
 
 from stunt_reel.tac.luagen import (
+    CLOCK_EVERY,
     MAX_DUMPS,
     TRACE_CHANGED,
     TRACE_COMPOSED,
     TRACE_PALETTE,
     TRACE_TORN,
+    WINDOW_LEAD,
+    WINDOW_SPAN,
     MemRange,
+    Window,
+    clock_script,
     script,
+    window_script,
 )
 
 if TYPE_CHECKING:
@@ -36,6 +43,7 @@ __all__ = [
     "DEFAULT_PARALLEL_PASSES",
     "FRAME_BYTES",
     "MAX_SKEW_TICKS",
+    "MAX_WINDOW_SKEW_TICKS",
     "PALETTE_BYTES",
     "Dump",
     "PlanDivergence",
@@ -43,14 +51,18 @@ __all__ = [
     "PlanResult",
     "Trace",
     "TraceEntry",
+    "choose_windows",
     "chunk",
     "dac_rgb",
+    "decode_clock",
     "decode_dumps",
     "decode_trace",
+    "decode_window_trace",
     "palette_rgb",
     "pick_every",
     "pick_ticks",
     "run_plan",
+    "run_stride_plan",
     "usable",
 ]
 
@@ -60,12 +72,19 @@ PALETTE_BYTES: int = 768
 #: some films (COUNT.FLM, live 2026-10-30) land a tick apart from boot to boot; a page is always
 #: labelled with the tick read in its own Lua step, so jitter moves a sample but never mislabels it.
 MAX_SKEW_TICKS: int = 2
+#: Film ticks a window pass may drift from the clock pass before the plan fails: a window's
+#: width. Long films drift further than MAX_SKEW_TICKS from boot to boot (FLMOnly/Act1.flm, 3
+#: ticks near tick 9,000, live 2026-11-01), which only moves the frame a window dumps.
+MAX_WINDOW_SKEW_TICKS: int = WINDOW_SPAN
 #: Dump passes run at once. Sixteen parallel runs were measured bit-identical on 16 logical
 #: cores (capture-dosbox-automation.md § 4.1), and one pass on the capture profile costs about
 #: 0.23 of a core (§ 4.4), so eight use about two cores and leave room for other work.
 DEFAULT_PARALLEL_PASSES: int = 8
 #: Default seconds one pass may take; a full-length film runs for minutes.
 DEFAULT_TIMEOUT_SECONDS: float = 900.0
+
+#: Emulated frames per second (VGA mode 13h), for timeouts that cover a pass in real time.
+_EMULATED_HZ: float = 70.087
 
 RGB = tuple[int, int, int]
 _MASK_LIMIT: int = (TRACE_CHANGED | TRACE_TORN | TRACE_PALETTE | TRACE_COMPOSED) + 1
@@ -97,19 +116,30 @@ class TraceEntry:
 
 @dataclass(frozen=True)
 class Trace:
-    """Per-frame entries for emulated frames ``first`` onward."""
+    """Per-frame entries for emulated frames ``first`` onward, or for the frames ``at`` names."""
 
     first: int
     entries: tuple[TraceEntry, ...]
+    #: The emulated frame of each entry, ascending, for a trace that read only some frames (a
+    #: window pass); ``None`` for a trace of every frame from ``first``.
+    at: tuple[int, ...] | None = None
 
     @property
-    def frames(self) -> range:
+    def frames(self) -> Sequence[int]:
         """The emulated frame numbers the trace covers."""
+        if self.at is not None:
+            return self.at
         return range(self.first, self.first + len(self.entries))
+
+    @cached_property
+    def _index(self) -> dict[int, int]:
+        return {frame: n for n, frame in enumerate(self.at or ())}
 
     def entry(self, frame: int) -> TraceEntry:
         """The entry for emulated *frame*."""
-        return self.entries[frame - self.first]
+        if self.at is None:
+            return self.entries[frame - self.first]
+        return self.entries[self._index[frame]]
 
 
 @dataclass(frozen=True)
@@ -130,8 +160,11 @@ class PlanResult:
 
     trace: Trace
     dumps: dict[int, Dump]
-    #: Picked frames whose page was unusable in its own dump pass, so no dump was kept.
+    #: Picked frames whose page was unusable in its own dump pass, so no dump was kept; for a
+    #: stride plan, the start frames of windows that held no usable page.
     dropped: tuple[int, ...] = ()
+    #: A stride plan's clock pass: ``(emulated frame, film tick)`` per sample.
+    clock: tuple[tuple[int, int], ...] = ()
 
 
 def decode_trace(text: str, first: int) -> Trace:
@@ -166,7 +199,7 @@ def decode_trace(text: str, first: int) -> Trace:
     return Trace(first, tuple(entries))
 
 
-def chunk(frames: Sequence[int], size: int = MAX_DUMPS) -> list[list[int]]:
+def chunk[T](frames: Sequence[T], size: int = MAX_DUMPS) -> list[list[T]]:
     """Split *frames* into the fewest runs of at most *size*, as even as possible."""
     if not frames:
         return []
@@ -373,3 +406,192 @@ def run_plan(
         )
     dropped = tuple(sorted(set(picked) - set(dumps)))
     return PlanResult(trace, dumps, dropped)
+
+
+def decode_clock(text: str, first: int, every: int) -> tuple[tuple[int, int], ...]:
+    """Decode a clock pass's ``x<tick>,...`` into ``(frame, tick)`` pairs from frame *first*."""
+    if not text.startswith("x"):
+        raise PlanError("clock output is missing its letter prefix")
+    try:
+        ticks = [int(x) for x in text[1:].split(",")] if len(text) > 1 else []
+    except ValueError:
+        raise PlanError(f"malformed clock output {text[:40]!r}") from None
+    return tuple((first + n * every, tick) for n, tick in enumerate(ticks))
+
+
+def decode_window_trace(text: str) -> Trace:
+    """Decode a window pass's ``x<frame>:<tick>:<global>:<mask>,...`` into a sparse :class:`Trace`."""
+    if not text.startswith("x"):
+        raise PlanError("trace output is missing its letter prefix")
+    frames: list[int] = []
+    rows: list[str] = []
+    for raw in text[1:].split(",") if len(text) > 1 else []:
+        frame, _, rest = raw.partition(":")
+        try:
+            frames.append(int(frame))
+        except ValueError:
+            raise PlanError(f"malformed trace entry {raw!r}") from None
+        rows.append(rest)
+    if frames != sorted(set(frames)):
+        raise PlanError("window trace frames must ascend without repeats")
+    dense = decode_trace("x" + ",".join(rows), 0)
+    return Trace(frames[0] if frames else 0, dense.entries, tuple(frames))
+
+
+def choose_windows(
+    clock: Sequence[tuple[int, int]], *, stride: int, limit: int, floor: int
+) -> list[Window]:
+    """One window per *stride* film ticks, where the sampled clock first reaches each goal.
+
+    Goals run 1, 1 + *stride*, ... (clock zero is the dialog and load screens). A window starts
+    the frame after the last sample below its goal, so the frame the clock reaches the goal on
+    lies inside it. A goal the clock jumps past is skipped to the next one above the sample, and a
+    window that would start before *floor* or overlap the previous one (lead frames included) is
+    left out. At most *limit* windows.
+    """
+    windows: list[Window] = []
+    goal = 1
+    previous: int | None = None
+    for frame, tick in clock:
+        if tick >= goal:
+            if previous is not None and previous + 1 >= floor:
+                start = previous + 1
+                windows.append(Window(start, goal))
+                floor = start + WINDOW_SPAN + WINDOW_LEAD
+                if len(windows) >= limit:
+                    break
+            goal += stride * ((tick - goal) // stride + 1)
+        previous = frame
+    return windows
+
+
+def _pass_timeout(timeout: float, frames: int) -> float:
+    """*timeout*, or long enough to emulate *frames* in real time with a margin when that is longer."""
+    return max(timeout, frames / _EMULATED_HZ * 1.25 + 60.0)
+
+
+def _check_window(clock: Mapping[int, int], window: Window, own: Trace, dumped: int | None) -> int:
+    """Raise unless the window pass's clock agrees with the clock pass within MAX_SKEW_TICKS.
+
+    The last frame the window read (its dump, or its last frame) is compared with the clock pass
+    interpolated between the samples on either side of it; returns the skew in whole ticks.
+    Drift only moves which frame a window dumps, because the window tests and labels each page
+    with its own pass's clock; a skew past :data:`MAX_WINDOW_SKEW_TICKS`, which can carry a
+    goal out of its window, means the two passes are not playing the same film.
+    """
+    before = window.start - 1
+    after = next((f for f in range(window.start, window.start + WINDOW_SPAN) if f in clock), None)
+    read = [f for f in range(window.start, window.start + WINDOW_SPAN) if f in own.frames]
+    if before not in clock or after is None or not read:
+        return 0
+    frame = dumped if dumped is not None else read[-1]
+    slope = (clock[after] - clock[before]) / (after - before)
+    expected = clock[before] + slope * (frame - before)
+    skew = round(abs(own.entry(frame).film_tick - expected))
+    if skew > MAX_WINDOW_SKEW_TICKS:
+        raise PlanDivergence(
+            f"window pass disagrees with the clock pass at frame {frame} by {skew} ticks"
+        )
+    return skew
+
+
+def run_stride_plan(
+    open_runner: Callable[[], AbstractContextManager[ScriptRunner]],
+    *,
+    keys: Sequence[str],
+    first: int,
+    last: int,
+    stride: int,
+    limit: int,
+    end_hold: int,
+    layout: PlayoneLayout,
+    stop_tick: int | None = None,
+    every: int = CLOCK_EVERY,
+    timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    progress: Callable[[str], None] | None = None,
+    parallel: int = DEFAULT_PARALLEL_PASSES,
+) -> PlanResult:
+    """Sample the film clock, then dump one usable page per *stride* film ticks, in windows.
+
+    The frame-by-frame trace of :func:`run_plan` costs Lua instructions on every frame and runs
+    out of the one-million budget about 7,800 ticks into a film
+    (research/playone-exe/capture-dosbox-automation.md § 4.7). Here pass 1 reads only the clock,
+    every *every* frames, ending on a clock held for *end_hold* frames or at *stop_tick*;
+    :func:`choose_windows` places at most *limit* windows; and window passes, at most
+    :data:`~stunt_reel.tac.luagen.MAX_DUMPS` windows each, read only those frames and dump the
+    first usable page in each. Usability is decided in Lua by ``window_script``'s rule; a page
+    that equals no composed page counts as torn. The result's trace holds the window frames.
+    """
+    say = progress or (lambda _line: None)
+    say("pass 1: sampling the film clock")
+    hold = -(-end_hold // every)
+    with open_runner() as runner:
+        out = runner.run_script(
+            clock_script(
+                keys=keys,
+                first=first,
+                last=last,
+                every=every,
+                end_hold=hold,
+                stop_tick=stop_tick,
+                layout=layout,
+            ),
+            timeout=_pass_timeout(timeout, last - first),
+        )
+    clock = decode_clock(str(out.get("clock", "")), first, every)
+    say(f"sampled {len(clock)} clock readings")
+    windows = choose_windows(clock, stride=stride, limit=limit, floor=first + WINDOW_LEAD)
+    by_frame = dict(clock)
+    runs = chunk(windows)
+
+    def window_pass(run: list[Window]) -> tuple[Trace, dict[int, Dump], list[int], list[int]]:
+        with open_runner() as runner:
+            out = runner.run_script(
+                window_script(keys=keys, windows=run, layout=layout),
+                timeout=_pass_timeout(timeout, run[-1].start + WINDOW_SPAN - first),
+            )
+        own = decode_window_trace(str(out.get("trace", "")))
+        dumps: dict[int, Dump] = {}
+        empty: list[int] = []
+        skews: list[int] = []
+        for window in run:
+            span = range(window.start, window.start + WINDOW_SPAN)
+            dumped = next((f for f in span if f"p{f}" in out), None)
+            skews.append(_check_window(by_frame, window, own, dumped))
+            if dumped is None:
+                empty.append(window.start)
+                continue
+            dumps.update(decode_dumps(out, [dumped], 0, own))
+        return own, dumps, empty, skews
+
+    traces: list[Trace] = []
+    dumps: dict[int, Dump] = {}
+    dropped: list[int] = []
+    skews: list[int] = []
+    with ThreadPoolExecutor(max_workers=max(1, min(parallel, len(runs)))) as pool:
+        futures = []
+        for number, run in enumerate(runs, start=1):
+            say(f"window pass {number}/{len(runs)}: {len(run)} windows")
+            futures.append(pool.submit(window_pass, run))
+        try:
+            for future in futures:
+                own, kept, empty, skew = future.result()
+                traces.append(own)
+                dumps.update(kept)
+                dropped.extend(empty)
+                skews.extend(skew)
+        except BaseException:
+            pool.shutdown(cancel_futures=True)
+            raise
+    frames = tuple(f for t in traces for f in t.frames)
+    entries = tuple(e for t in traces for e in t.entries)
+    trace = Trace(frames[0] if frames else first, entries, frames)
+    drifted = [s for s in skews if s > MAX_SKEW_TICKS]
+    if drifted:
+        say(
+            f"{len(drifted)} of {len(windows)} windows read a clock more than {MAX_SKEW_TICKS} "
+            f"ticks from the clock pass (at most {max(drifted)})"
+        )
+    if dropped:
+        say(f"{len(dropped)} of {len(windows)} windows held no usable page")
+    return PlanResult(trace, dumps, tuple(dropped), clock)

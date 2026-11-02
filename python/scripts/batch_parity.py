@@ -44,7 +44,10 @@ if TYPE_CHECKING:
 __all__ = ["main", "process"]
 
 _LEDGER_NAME = "ledger.jsonl"
-_DEFAULT_TIMEOUT = 900.0
+#: A capture is a real-time clock pass, then window passes eight at a time, each running in real
+#: time to its last window: FLMOnly/Act1.flm (15,000 ticks, 1,363 windows) took 21 minutes, and a
+#: 2,000-frame capture of a longer film runs past 30.
+_DEFAULT_TIMEOUT = 3600.0
 _RENDER_TIMEOUT = 600.0
 _TIMEOUT_EXIT = 124
 _DEFAULT_MAX_RENDERS = 2
