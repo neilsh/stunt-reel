@@ -23,7 +23,7 @@ capture replacing the reference. `clear_frames` in
 [`capture_playone_reference.py`](../../python/scripts/capture_playone_reference.py)
 empties `--out` before sampling, so a recapture of `ctry` overwrites the reference in
 place and moves every other worktree's parity baseline in the middle of a sweep. And the
-oracle was never evidence: [`stream_oracle_intro`](../../python/stunt_reel/tac/streamer.py)
+oracle was never evidence: `stream_oracle_intro`
 builds it from a `MockTransport` fed hand-written kinematics.
 
 ## Decision

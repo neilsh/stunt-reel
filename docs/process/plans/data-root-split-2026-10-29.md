@@ -26,7 +26,7 @@ release does not document a variable this removes.
 1. `target_bin\PLAYONE.EXE` is the packed original, not the `unlzexe` output, which goes
    to each worktree's `build/re/`.
 2. `corpus/oracle/intro_trajectory.json` comes from
-   [`stream_oracle_intro`](../../../python/stunt_reel/tac/streamer.py) driving a
+   `stream_oracle_intro` driving a
    `MockTransport` loaded with `generate_intro_trajectory()`: hand-written kinematics.
 3. The DOSBox profiles mount `corpus/stisldem` only; the layout keeps that path.
 4. `corpus/README.md` and `corpus/siarchive.md` are tracked, so each corpus folder stays
