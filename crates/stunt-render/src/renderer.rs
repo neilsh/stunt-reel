@@ -20,11 +20,14 @@
 use std::fmt;
 use std::sync::Arc;
 
+use stunt_core::credits::{ClipRect, CreditLines, draw_credits};
+use stunt_core::font::PFont;
 use stunt_core::scene::{FilmScene, SceneFrame};
 
 use crate::camera::{CameraController, CameraGpuResources};
 use crate::palette::PaletteLut;
-use crate::pipeline::{PLANE_FORMAT, RenderPipelines};
+use crate::parity::{MODE13H_HEIGHT, MODE13H_WIDTH};
+use crate::pipeline::{LAYER_OVERLAY, PLANE_FORMAT, RenderPipelines};
 use crate::scene_renderer::SceneRenderer;
 
 /// Default offscreen page width in pixels (Mode 13h).
@@ -245,6 +248,37 @@ impl RenderedPage {
     }
 }
 
+/// Draws `lines` over `page` as `PLAYONE.EXE` draws them over its 320x200 page, centred in the
+/// view: the top `viewport_rows` page rows when set, else the whole page. Each Mode 13h pixel
+/// covers the page pixels it scales to; they take the palette index, its unlit `palette`
+/// colour and [`LAYER_OVERLAY`].
+fn paint_credits(
+    page: &mut RenderedPage,
+    font: &PFont,
+    lines: &CreditLines,
+    viewport_rows: Option<u32>,
+    palette: &[(u8, u8, u8); 256],
+) {
+    let (width, height) = (page.width() as i32, page.height() as i32);
+    let (mode_w, mode_h) = (MODE13H_WIDTH as i32, MODE13H_HEIGHT as i32);
+    let view_rows = viewport_rows.map_or(height, |rows| rows as i32);
+    let rect = ClipRect::new(0, 0, mode_w - 1, view_rows * mode_h / height - 1);
+    draw_credits(font, lines, rect, &mut |x, y, index| {
+        if !(0..mode_w).contains(&x) || !(0..mode_h).contains(&y) {
+            return;
+        }
+        let (r, g, b) = palette[usize::from(index)];
+        for py in y * height / mode_h..(y + 1) * height / mode_h {
+            for px in x * width / mode_w..(x + 1) * width / mode_w {
+                let at = (py * width + px) as usize;
+                page.indices[at] = index;
+                page.layers[at] = LAYER_OVERLAY;
+                page.rgba[at * 4..at * 4 + 3].copy_from_slice(&[r, g, b]);
+            }
+        }
+    });
+}
+
 /// Consumes the pages an offscreen Renderer reads back.
 ///
 /// The renderer calls `PageSink::accept` exactly once per `Renderer::draw` and does not know what a
@@ -287,6 +321,8 @@ pub struct Renderer {
     scene_renderer: SceneRenderer,
     clear_palette_index: u8,
     destination: Destination,
+    /// The scene's credits font; without one, credits are not drawn.
+    font: Option<PFont>,
 }
 
 impl fmt::Debug for Renderer {
@@ -335,6 +371,7 @@ impl Renderer {
             scene_renderer,
             clear_palette_index: options.clear_palette_index,
             destination,
+            font: scene.font().cloned(),
         })
     }
 
@@ -376,6 +413,7 @@ impl Renderer {
             scene_renderer,
             clear_palette_index: options.clear_palette_index,
             destination: Destination::Surface(Box::new(surface_target)),
+            font: scene.font().cloned(),
         })
     }
 
@@ -420,6 +458,7 @@ impl Renderer {
             scene_renderer,
             clear_palette_index,
             destination,
+            font,
         } = self;
         let Destination::Offscreen(target) = destination else {
             return Ok(());
@@ -447,9 +486,26 @@ impl Renderer {
             b: f64::from(b),
             a: 1.0,
         };
-        target.capture(device, queue, clear_color, *clear_palette_index, |rpass| {
-            scene_renderer.draw(rpass, pipelines, camera_resources, palette_lut);
-        })
+        let credits = font.as_ref().zip(frame.credits.as_ref());
+        let viewport_rows = target.viewport_rows;
+        target.capture(
+            device,
+            queue,
+            clear_color,
+            *clear_palette_index,
+            |rpass| scene_renderer.draw(rpass, pipelines, camera_resources, palette_lut),
+            |page| {
+                if let Some((font, lines)) = credits {
+                    paint_credits(
+                        page,
+                        font,
+                        lines,
+                        viewport_rows,
+                        &frame.palette.film_palette(),
+                    );
+                }
+            },
+        )
     }
 
     fn draw_surface(
@@ -466,6 +522,8 @@ impl Renderer {
             scene_renderer,
             clear_palette_index,
             destination,
+            // Credits are drawn on offscreen pages only; the window shows the scene alone.
+            font: _,
         } = self;
         let Destination::Surface(target) = destination else {
             return Ok(());
@@ -686,6 +744,7 @@ impl OffscreenTarget {
         clear_color: wgpu::Color,
         clear_palette_index: u8,
         draw: impl FnOnce(&mut wgpu::RenderPass<'_>),
+        overlay: impl FnOnce(&mut RenderedPage),
     ) -> Result<(), RenderError> {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("stunt_renderer_encoder"),
@@ -786,7 +845,8 @@ impl OffscreenTarget {
         .map(|word| u32::from_le_bytes(*word))
         .collect();
 
-        let page = RenderedPage::new(self.size, rgba, plane)?;
+        let mut page = RenderedPage::new(self.size, rgba, plane)?;
+        overlay(&mut page);
         self.sink.accept(page)?;
         Ok(())
     }
@@ -1021,6 +1081,55 @@ mod tests {
         assert_eq!(split.layers(), [0x10; 4].as_slice());
         assert!(RenderedPage::new(size, vec![0; 15], vec![0; 4]).is_err());
         assert!(RenderedPage::new(size, vec![0; 16], vec![0; 3]).is_err());
+    }
+
+    #[test]
+    fn credits_paint_index_layer_and_colour_in_mode13h_pixels() {
+        use stunt_core::contracts::PaletteControls;
+        use stunt_core::credits::CreditLines;
+        use stunt_core::font::PFont;
+
+        let font = PFont::parse(include_bytes!(
+            "../../../tests/fixtures/synthetic_pfont.bin"
+        ))
+        .expect("synthetic font");
+        let lines = CreditLines::new("I", "");
+        let palette = PaletteControls::default().film_palette();
+        let white = palette[255];
+        let rgb_at = |page: &RenderedPage, x: u32, y: u32| {
+            let at = ((y * page.width() + x) * 4) as usize;
+            (page.rgba()[at], page.rgba()[at + 1], page.rgba()[at + 2])
+        };
+
+        // 320x200 with the scene in 185 rows: ink at (158, 78), shadow at (159, 78).
+        let mut page = RenderedPage::new(
+            PageSize::new(320, 200),
+            vec![9; 320 * 200 * 4],
+            vec![0; 320 * 200],
+        )
+        .expect("page");
+        paint_credits(&mut page, &font, &lines, Some(185), &palette);
+        let at = |x: u32, y: u32| (y * 320 + x) as usize;
+        assert_eq!(page.indices()[at(158, 78)], 255);
+        assert_eq!(page.layers()[at(158, 78)], LAYER_OVERLAY);
+        assert_eq!(rgb_at(&page, 158, 78), white);
+        assert_eq!(page.indices()[at(159, 78)], 0);
+        assert_eq!(page.layers()[at(159, 78)], LAYER_OVERLAY);
+        assert_eq!(page.layers()[at(157, 78)], crate::pipeline::LAYER_NONE);
+        assert_eq!(rgb_at(&page, 157, 78), (9, 9, 9));
+
+        // 320x240 without a viewport: y = (199 - 28) >> 1 = 85, rows 85..92 map to 102..110.
+        let mut page = RenderedPage::new(
+            PageSize::new(320, 240),
+            vec![0; 320 * 240 * 4],
+            vec![0; 320 * 240],
+        )
+        .expect("page");
+        paint_credits(&mut page, &font, &lines, None, &palette);
+        let ink: Vec<u32> = (0..240)
+            .filter(|&y| page.indices()[(y * 320 + 158) as usize] == 255)
+            .collect();
+        assert_eq!(ink, (102..110).collect::<Vec<_>>());
     }
 
     #[test]

@@ -155,7 +155,7 @@ fn the_i6_gate_passes_each_threshold_independently() {
 
 /// How `row` splits a frame's `1 - ssim` among [`LOSS_CLASSES`] (sky, terrain, actors), so a
 /// class mapped to the wrong slot changes a mean.
-const LOSS_SPLIT: [f32; LOSS_CLASSES.len()] = [0.5, 0.0, 0.0, 0.3, 0.0, 0.2, 0.0, 0.0, 0.0];
+const LOSS_SPLIT: [f32; LOSS_CLASSES.len()] = [0.5, 0.0, 0.0, 0.3, 0.0, 0.2, 0.0, 0.0, 0.0, 0.0];
 
 /// A matched frame with the given SSIM, `IoU` and scored flag; the other measurements are
 /// derived so each frame's loss array sums to `1 - ssim`.

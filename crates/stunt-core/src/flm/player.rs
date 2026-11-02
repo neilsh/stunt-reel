@@ -12,8 +12,9 @@ use super::interpolate::{
 };
 use super::timeline::SliceKeyframe;
 use super::{CAMERA_FORWARD, CAMERA_LOOKAHEAD_METERS, FlmError};
-use crate::contracts::palette::{PALETTE_CONTROL_FULL, PaletteControls};
+use crate::contracts::palette::PaletteControls;
 use crate::contracts::trajectory::{ActorTransform, AudioCue, CameraTransform, TrajectoryRecord};
+use crate::credits::{CreditLines, CreditsChange};
 use crate::reader::ByteReader;
 
 /// Object slot flags from `sifilm.h`.
@@ -153,14 +154,11 @@ const VAR_SATURATION: usize = 15;
 
 /// Film variables before the first slice.
 ///
-/// `PLAYONE` zeroes all 16 at every film start (`CS:0x37AA`), which leaves a film that
-/// never sets brightness black (see `research/playone-exe/palette-fade.md`). All but
-/// three corpus films set var 14; starting both at full keeps those three visible.
+/// `PLAYONE` zeroes all 16 at every film start (`CS:0x37AA`), so the scene stays black until
+/// the film first keys brightness (var 14): `INTRO.FLM`'s first title card, keyed at tick
+/// 760, and the three corpus films that never key it (`research/playone-exe/palette-fade.md`).
 fn initial_variables() -> [u16; 16] {
-    let mut variables = [0; 16];
-    variables[VAR_BRIGHTNESS] = PALETTE_CONTROL_FULL;
-    variables[VAR_SATURATION] = PALETTE_CONTROL_FULL;
-    variables
+    [0; 16]
 }
 
 /// One slice decoded from the stream, before its slots are evaluated.
@@ -197,6 +195,8 @@ pub(crate) struct FlmPlayer<'a> {
     last_error: Option<FlmError>,
     focal_distance: f32,
     default_camera_target: [f32; 3],
+    /// Every `0x99` set and `0x98` clear so far, in film order.
+    credits: Vec<CreditsChange>,
 }
 
 impl<'a> FlmPlayer<'a> {
@@ -231,6 +231,7 @@ impl<'a> FlmPlayer<'a> {
             last_error: None,
             focal_distance: 0.0,
             default_camera_target: [0.0, 0.0, 0.0],
+            credits: Vec::new(),
         })
     }
 
@@ -271,6 +272,12 @@ impl<'a> FlmPlayer<'a> {
     #[inline]
     pub(crate) fn warnings(&self) -> &[String] {
         &self.warnings
+    }
+
+    /// Take the credits changes decoded so far.
+    #[inline]
+    pub(crate) fn take_credits(&mut self) -> Vec<CreditsChange> {
+        std::mem::take(&mut self.credits)
     }
 
     /// Take and clear any recorded parsing error.
@@ -427,12 +434,17 @@ impl<'a> FlmPlayer<'a> {
                     } else if c < 0x98 {
                         self.view_obj = c & 0x0F;
                     } else if c == 0x98 {
-                        // Clears the original engine's rolling credits; credits never
-                        // reach an evaluated record here.
+                        self.credits.push(CreditsChange {
+                            tick: self.current_tick,
+                            lines: None,
+                        });
                     } else if c == 0x99 {
-                        // Credited lines never reach a record; consume both to stay aligned.
-                        self.read_cstring()?;
-                        self.read_cstring()?;
+                        let first = self.read_cstring()?;
+                        let second = self.read_cstring()?;
+                        self.credits.push(CreditsChange {
+                            tick: self.current_tick,
+                            lines: Some(CreditLines::new(first, second)),
+                        });
                     } else if c == 0x9B {
                         // `max_obj` bounds the original engine's slot scan, not this one.
                         self.read_u8()?;
@@ -625,6 +637,7 @@ impl<'a> FlmPlayer<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::contracts::palette::PALETTE_CONTROL_FULL;
 
     /// Minimal two-slice synthetic film (`tests/fixtures/synthetic_minimal.flm`).
     const SYNTHETIC_MINIMAL_FLM: &[u8] =
@@ -697,6 +710,35 @@ mod tests {
     }
 
     #[test]
+    fn credits_hold_from_their_set_tick_until_a_clear() {
+        use crate::credits::CreditLines;
+        use crate::flm::FilmTimeline;
+
+        let mut film = Vec::from(&b"FILM"[..]);
+        // Slice 0 at tick 0: no credits.
+        push_slice_with_duration(&mut film, 0, 0, &[0xFF]);
+        // Slice 1 at tick 5: set, then set again; the later pair wins.
+        let mut body = vec![0x99];
+        body.extend_from_slice(b"OLD\0\0");
+        body.push(0x99);
+        body.extend_from_slice(b"TITLE\x0015\0");
+        body.push(0xFF);
+        push_slice_with_duration(&mut film, 1, 5, &body);
+        // Slice 2 at tick 9: clear.
+        push_slice_with_duration(&mut film, body.len() as u16, 4, &[0x98, 0xFF]);
+        push_slice_with_duration(&mut film, 2, 1, &[0xFF]);
+
+        let timeline = FilmTimeline::from_bytes(&film).unwrap();
+        let title = CreditLines::new("TITLE", "15");
+        assert_eq!(timeline.credits_at(0.0), None);
+        assert_eq!(timeline.credits_at(4.9), None);
+        assert_eq!(timeline.credits_at(5.0), Some(&title));
+        assert_eq!(timeline.credits_at(8.5), Some(&title));
+        assert_eq!(timeline.credits_at(9.0), None);
+        assert_eq!(timeline.truncated_to_ticks(6).credits_at(6.0), Some(&title));
+    }
+
+    #[test]
     fn all_sixteen_timeline_variables_are_addressable() {
         let mut film = Vec::from(&b"FILM"[..]);
         let mut var_body = Vec::new();
@@ -744,8 +786,11 @@ mod tests {
     #[test]
     fn palette_variables_reach_records_and_interpolate_between_slices() {
         let mut film = Vec::from(&b"FILM"[..]);
-        // Slice 0 sets var 13 = 0x3000 and leaves 14/15 at their full start values.
-        push_slice(&mut film, &[0x8D, 0x00, 0x30, 0xFF]);
+        // Slice 0 sets var 13 = 0x3000 and vars 14/15 to full.
+        push_slice(
+            &mut film,
+            &[0x8D, 0x00, 0x30, 0x8E, 0x00, 0x80, 0x8F, 0x00, 0x80, 0xFF],
+        );
         // Slice 1, 10 ticks after slice 0 (tick 0), ramps brightness (var 14) to 0 and
         // saturation (var 15) to 0x100.
         film.extend_from_slice(&[7, 0, 10]);
@@ -771,6 +816,25 @@ mod tests {
 
         let last = timeline.sample(10.0).expect("sample").palette;
         assert_eq!((last.brightness, last.saturation), (0, 0x100));
+    }
+
+    #[test]
+    fn palette_variables_start_at_zero_so_a_late_fade_key_plays_black_until_it() {
+        let mut film = Vec::from(&b"FILM"[..]);
+        // Slice 0 sets only var 15, as `INTRO.FLM` does; var 14 is first keyed at tick 762
+        // (`INTRO.FLM` keys it at 760).
+        push_slice_with_duration(&mut film, 0, 0, &[0x8F, 0x00, 0x80, 0xFF]);
+        push_slice_with_duration(&mut film, 4, 0xFF - 1, &[0xFF]);
+        push_slice_with_duration(&mut film, 1, 0xFF - 1, &[0xFF]);
+        push_slice_with_duration(&mut film, 1, 0xFF - 1, &[0xFF]);
+        push_slice_with_duration(&mut film, 1, 0, &[0x8E, 0x00, 0x80, 0xFF]);
+        push_slice_with_duration(&mut film, 4, 1, &[0xFF]);
+
+        let timeline = super::super::FilmTimeline::from_bytes(&film).expect("timeline");
+        let at = |tick: f32| timeline.sample(tick).expect("sample").palette.brightness;
+        assert_eq!(at(0.0), 0, "PLAYONE zeroes every variable at film start");
+        assert_eq!(at(759.0), 0);
+        assert_eq!(at(762.0), PALETTE_CONTROL_FULL);
     }
 
     #[test]

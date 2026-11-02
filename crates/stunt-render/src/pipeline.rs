@@ -14,6 +14,8 @@ pub const LAYER_OCEAN: u32 = 1;
 pub const LAYER_TERRAIN: u32 = 2;
 /// Layer id of the world's props.
 pub const LAYER_PROP: u32 = 3;
+/// Layer id of the 2D credits text drawn over the scene.
+pub const LAYER_OVERLAY: u32 = 4;
 /// Layer id of the first actor draw; actor draw `n` of a frame is `LAYER_FIRST_ACTOR + n`.
 pub const LAYER_FIRST_ACTOR: u32 = 16;
 

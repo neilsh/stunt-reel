@@ -25,6 +25,7 @@ use stunt_core::contracts::{
     CameraTransform, NodeKind, SodModelIr, SodVertex, TrajectoryRecord, VisibilityCondition,
 };
 use stunt_core::flm::{FilmTimeline, SliceKeyframe, TIMELINE_HZ, TIMELINE_TICK_SECONDS};
+use stunt_core::font::PFont;
 use stunt_core::scene::{FilmScene, SceneInputs, SceneReport};
 use stunt_core::sod::{DecodeMode, SodStop, decode_sod};
 
@@ -86,6 +87,8 @@ pub(crate) struct SceneSources<'a> {
     pub(crate) all: Option<&'a Path>,
     pub(crate) sod: Option<&'a Path>,
     pub(crate) sidata: Option<&'a Path>,
+    /// `PFONT.BIN` for the credits; `None` looks it up as a scenery file.
+    pub(crate) font: Option<&'a Path>,
     /// Length of the synthetic orbit; real films are capped by the caller.
     pub(crate) max_ticks: Option<usize>,
 }
@@ -100,6 +103,37 @@ pub(crate) struct SceneSources<'a> {
 /// `--sod` model, or a film with no slices, is an error. The synthetic orbit stands in
 /// only when no film is named, and the synthetic aircraft only when no model is.
 pub(crate) fn build_scene(src: &SceneSources<'_>) -> Result<FilmScene, String> {
+    let scene = build_film_scene(src)?;
+    attach_font(scene, src)
+}
+
+/// Gives the scene its credits font: the `--font` file, which must load, or else a
+/// `PFONT.BIN` found as a scenery file is (the engine root beside `VAULT` holds one).
+/// A film with credits and no font found still plays, without its credits text.
+fn attach_font(scene: FilmScene, src: &SceneSources<'_>) -> Result<FilmScene, String> {
+    let path = match src.font {
+        Some(path) => Some(path.to_path_buf()),
+        None => src
+            .all
+            .or(src.flm)
+            .and_then(|base| find_scenery_file(src.sidata, base, "PFONT.BIN")),
+    };
+    let Some(path) = path else {
+        if scene.timeline().has_credits() {
+            eprintln!(
+                "[stuntreel warning] film has credits but no PFONT.BIN was found; pass --font"
+            );
+        }
+        return Ok(scene);
+    };
+    let bytes = fs::read(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let font = PFont::parse(&bytes).map_err(|e| format!("parse {}: {e}", path.display()))?;
+    println!("[stuntreel] credits font: {}", path.display());
+    Ok(scene.with_font(font))
+}
+
+/// Builds the scene from the film, archive and scenery, without the credits font.
+fn build_film_scene(src: &SceneSources<'_>) -> Result<FilmScene, String> {
     let timeline = match src.flm {
         Some(path) => load_film(path)?,
         None => synthetic_orbit(src.max_ticks),
@@ -451,6 +485,7 @@ mod tests {
             all,
             sod,
             sidata: None,
+            font: None,
             max_ticks: None,
         }
     }
@@ -502,6 +537,46 @@ mod tests {
         let not_a_model = t.file("JUNK.SOD", "not a display list");
         let err = scene_err(&sources(None, None, Some(&not_a_model)));
         assert!(err.contains("JUNK.SOD"), "{err}");
+    }
+
+    #[test]
+    fn the_credits_font_is_found_beside_the_film_or_named() {
+        let t = TempTree::new();
+        let font = fs::read(fixture("synthetic_pfont.bin")).expect("fixture");
+        let film = t.0.join("ENGINE/VAULT/MINIMAL.FLM");
+        fs::create_dir_all(film.parent().expect("parent")).expect("dirs");
+        fs::copy(fixture("synthetic_minimal.flm"), &film).expect("copy film");
+
+        let scene = build_scene(&sources(Some(&film), None, None)).expect("scene");
+        assert!(scene.font().is_none(), "no PFONT.BIN anywhere yet");
+
+        fs::write(t.0.join("ENGINE/pfont.bin"), &font).expect("write font");
+        let scene = build_scene(&sources(Some(&film), None, None)).expect("scene");
+        assert!(scene.font().is_some(), "found in the engine root, any case");
+
+        let named = t.0.join("OTHER.BIN");
+        fs::write(&named, &font).expect("write font");
+        let src = SceneSources {
+            font: Some(&named),
+            ..sources(Some(&film), None, None)
+        };
+        assert!(build_scene(&src).expect("scene").font().is_some());
+    }
+
+    #[test]
+    fn a_named_font_that_does_not_load_is_an_error() {
+        let t = TempTree::new();
+        let missing = t.0.join("NOFONT.BIN");
+        let short = t.file("SHORT.BIN", "too short");
+        for font in [&missing, &short] {
+            let src = SceneSources {
+                font: Some(font),
+                ..sources(None, None, None)
+            };
+            let err = scene_err(&src);
+            let name = font.file_name().expect("name").to_string_lossy();
+            assert!(err.contains(&*name), "{err}");
+        }
     }
 
     #[test]
