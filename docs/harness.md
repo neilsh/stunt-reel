@@ -144,8 +144,8 @@ will ask per command until someone commits the allow rule. [`CLAUDE.md`](../CLAU
 that imports `AGENTS.md`, because Claude Code reads `CLAUDE.md` and this repo's guide has the
 other name.
 
-Not yet documented: its sandboxing and timeout behaviour. Fill that in from observation, not
-from vendor documentation — this page records what we have seen.
+Not yet documented: its timeout behaviour, and its sandboxing beyond the integrity label below.
+Fill that in from observation, not from vendor documentation — this page records what we have seen.
 
 ### Editing a stack layer another worktree holds
 
@@ -167,6 +167,33 @@ changes, so a check made afterward cannot tell those from real uncommitted work.
 discards anything uncommitted, and the `&&` keeps it from running when `<old-tip>` no longer
 matches and `update-ref` refuses. Writing into another worktree may need approval. Then rebase the layers above onto the new tip. `gh stack add`
 works only from the top branch of the stack, so run it in the worktree that holds the top.
+
+### A low-integrity virtualenv
+
+Observed 2026-11-01, the Claude desktop app on Windows, primary checkout on a ReFS Dev Drive.
+The gate's `typecheck` and `test-py` steps failed with `PermissionError: [Errno 13]` on
+`.pytest_cache\v\cache\nodeids` and a mypy internal error, with the sandbox on and with it off,
+while the Rust lanes passed.
+
+* **Cause.** The checkout root carries an inheritable `Mandatory Label\Low Mandatory Level:(OI)(CI)(NW)`
+  beside a `S-1-4-…:(OI)(CI)(W,D,DC)` grant and an `Everyone:(CI)(DENY)(DC)` entry, all set
+  between 2026-10-26 and 10-31. `.venv`, made after them, inherited the Low label, and a process
+  takes the lower of its token's level and its executable's label, so everything started from
+  `.venv\Scripts\python.exe` runs at Low and cannot write the older, Medium `.pytest_cache`,
+  `.mypy_cache`, `build\` or the data root. `icacls .venv\Scripts\python.exe` shows the label.
+* **The sandbox does not need it.** A sandboxed command here runs at Medium (`whoami /groups`)
+  and writes folders without the label, such as `target\` and `docs\`. The entries are most
+  likely left by the Claude Code release that [anthropics/claude-code#105990](https://github.com/anthropics/claude-code/issues/105990)
+  reports demoting itself to Low. Only entries created directly in the root since inherit them;
+  for a file that is not an executable the label is harmless.
+* **Fix.** The machine's owner saves the root's ACL (`icacls <checkout> > <file>`; `icacls /save`
+  does not keep labels), sets the root alone back to Medium with
+  `icacls <checkout> /setintegritylevel "(OI)(CI)M"` (not `/T`, which writes a label onto every
+  file), and rebuilds `.venv` with `mise run init` while nothing runs Python from it. If the label
+  returns, a virtualenv in `.cache\venvs`, which predates it, runs at Medium:
+  `$env:UV_PROJECT_ENVIRONMENT = '<checkout>\.cache\venvs\<name>'` before `mise run …`.
+
+Evidence and sources: [the research note](process/research/windows-sandbox-integrity-label-2026-11-01.md).
 
 ## Windows PowerShell 5.1
 
