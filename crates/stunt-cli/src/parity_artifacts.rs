@@ -128,6 +128,7 @@ pub(crate) fn film_identity(path: Option<&Path>) -> FilmId {
             .and_then(|path| fs::metadata(path).ok())
             .map(|meta| meta.len()),
         flm_sha256: None,
+        all_sha256: None,
     }
 }
 
@@ -455,6 +456,7 @@ mod conformance {
                 name: Some("SYNTH.FLM".to_string()),
                 flm_bytes: Some(17),
                 flm_sha256: None,
+                all_sha256: None,
             },
             geometry,
             ticks,

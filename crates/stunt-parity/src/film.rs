@@ -17,6 +17,9 @@ pub struct FilmId {
     /// SHA-256 of the `.FLM`, when the capture harness recorded one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flm_sha256: Option<String>,
+    /// SHA-256 of the `.ALL` the capture played, so a later `make-all` cannot hide which one it was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub all_sha256: Option<String>,
 }
 
 impl FilmId {
@@ -49,6 +52,7 @@ mod tests {
             name: Some("CTRY.FLM".to_string()),
             flm_bytes: Some(100),
             flm_sha256: None,
+            all_sha256: None,
         };
         assert!(!named.names_conflict(&FilmId::default()));
         assert!(named.names_conflict(&FilmId {
@@ -63,5 +67,14 @@ mod tests {
             flm_bytes: Some(101),
             ..FilmId::default()
         }));
+    }
+
+    #[test]
+    fn the_archive_hash_survives_a_round_trip() {
+        // The film object as Python's write_render emits it.
+        let text = r#"{"name":"CTRY.FLM","flm_bytes":100,"flm_sha256":"abc","all_sha256":"def"}"#;
+        let film: FilmId = serde_json::from_str(text).expect("parse");
+        assert_eq!(film.all_sha256.as_deref(), Some("def"));
+        assert_eq!(serde_json::to_string(&film).expect("write"), text);
     }
 }

@@ -97,6 +97,8 @@ struct CaptureDocument {
     flm_bytes: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     flm_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    all_sha256: Option<String>,
     frames: Vec<FrameDocument>,
     #[serde(default = "default_width")]
     width: u32,
@@ -175,6 +177,7 @@ impl TryFrom<CaptureDocument> for CaptureSet {
                 name: document.film,
                 flm_bytes: document.flm_bytes,
                 flm_sha256: document.flm_sha256,
+                all_sha256: document.all_sha256,
             },
             geometry: Geometry {
                 width: document.width,
@@ -193,6 +196,7 @@ impl From<CaptureSet> for CaptureDocument {
             film: capture.film.name,
             flm_bytes: capture.film.flm_bytes,
             flm_sha256: capture.film.flm_sha256,
+            all_sha256: capture.film.all_sha256,
             frames: capture
                 .frames
                 .into_iter()
