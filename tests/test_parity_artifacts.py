@@ -733,9 +733,24 @@ def test_video_capture_round_trips(tmp_path: Path) -> None:
     assert load_video_capture(tmp_path) == _video()
 
 
+def test_video_capture_records_the_engine_hash_when_it_has_one(tmp_path: Path) -> None:
+    named = replace(_video(), playone_sha256="ab" * 32)
+    document = write_video_capture(tmp_path, named, diagnostics={})
+    assert document["playone_build"] == "synthetic"
+    assert document["playone_sha256"] == "ab" * 32
+    assert load_video_capture(tmp_path) == named
+
+
+def test_a_video_capture_without_the_engine_hash_still_loads(tmp_path: Path) -> None:
+    document = write_video_capture(tmp_path, _video(), diagnostics={})
+    assert "playone_sha256" not in document
+    assert load_video_capture(tmp_path).playone_sha256 is None
+
+
 def test_the_video_fixture_loads() -> None:
     fixture = Path(__file__).parent / "fixtures" / "parity" / "video"
     capture = load_video_capture(fixture)
+    assert capture.playone_sha256 is None  # the fixture predates the field
     assert len(capture.log.frame) == 4
     assert [change.frame for change in capture.palettes.changes] == [103]
     assert capture.film_start_frame == 103
