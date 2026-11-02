@@ -91,7 +91,7 @@ pub(super) fn score_frame(
         MODE13H_HEIGHT,
         ASPECT_CORRECTED_HEIGHT,
     );
-    let overlay = ui_overlay_mask(&reference.indices);
+    let overlay = ui_overlay_mask(&reference.indices, &render.layers);
     let windows = compute_window_scores(
         &reference_rescaled,
         &render_rescaled,

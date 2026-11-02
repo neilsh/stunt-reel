@@ -150,7 +150,7 @@ pub(super) fn frame_verdict(
     let reference_rescaled = reference_luminance(&reference.indices, &reference.palette);
     let before_rescaled = stretch(&before.luminance);
     let after_rescaled = stretch(&after.luminance);
-    let overlay = rescale_mask(&ui_overlay_mask(&reference.indices));
+    let overlay = rescale_mask(&ui_overlay_mask(&reference.indices, &after.layers));
     let changed_plane = rescale_mask(&changed);
 
     let scores = |render: &[f32]| {

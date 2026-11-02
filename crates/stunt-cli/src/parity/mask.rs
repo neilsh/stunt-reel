@@ -3,7 +3,8 @@
 use std::ops::RangeInclusive;
 
 use stunt_render::{
-    ASPECT_CORRECTED_HEIGHT, LAYER_NONE, MODE13H_HEIGHT, MODE13H_WIDTH, rescale_mode13h_frame,
+    ASPECT_CORRECTED_HEIGHT, LAYER_NONE, LAYER_OVERLAY, MODE13H_HEIGHT, MODE13H_WIDTH,
+    rescale_mode13h_frame,
 };
 
 /// First row of the button bar `PLAYONE.EXE` draws over the 3D viewport (rows 185-199).
@@ -25,12 +26,21 @@ pub(super) fn is_capture_sky(index: u8) -> bool {
 
 /// Pixels of a captured frame covered by the UI overlay: the button bar rows and the
 /// cursor. Scoring leaves them out because the renderer does not draw them.
-pub(super) fn ui_overlay_mask(indices: &[u8]) -> Vec<bool> {
+///
+/// The cursor and the credits ink are both palette index 255. A tick whose render draws
+/// credits (any [`LAYER_OVERLAY`] pixel) keeps index 255 in play, so the ink is scored; a
+/// tick without credits masks it as the cursor. The test is per tick, not per pixel, so
+/// ink the render misplaces counts against it instead of vanishing under the mask.
+pub(super) fn ui_overlay_mask(indices: &[u8], render_layers: &[u16]) -> Vec<bool> {
+    let credits_drawn = render_layers
+        .iter()
+        .any(|&layer| u32::from(layer) == LAYER_OVERLAY);
     indices
         .iter()
         .enumerate()
         .map(|(position, &index)| {
-            position / MODE13H_WIDTH >= UI_BAR_FIRST_ROW || index == CURSOR_INDEX
+            position / MODE13H_WIDTH >= UI_BAR_FIRST_ROW
+                || (index == CURSOR_INDEX && !credits_drawn)
         })
         .collect()
 }
@@ -99,7 +109,8 @@ mod tests {
     fn overlay_mask_covers_the_button_bar_rows_and_cursor_pixels() {
         let mut indices = vec![7u8; MODE13H_WIDTH * MODE13H_HEIGHT];
         indices[100 * MODE13H_WIDTH + 160] = CURSOR_INDEX;
-        let mask = ui_overlay_mask(&indices);
+        let layers = vec![0u16; indices.len()];
+        let mask = ui_overlay_mask(&indices, &layers);
         assert!(mask[100 * MODE13H_WIDTH + 160]);
         assert!(!mask[100 * MODE13H_WIDTH + 161]);
         assert!(!mask[(UI_BAR_FIRST_ROW - 1) * MODE13H_WIDTH]);
@@ -110,6 +121,21 @@ mod tests {
         // Row 185 of 200 stretches to row 222 of 240.
         assert!(rescaled[222 * MODE13H_WIDTH]);
         assert!(!rescaled[221 * MODE13H_WIDTH]);
+    }
+
+    #[test]
+    fn credits_ink_is_scored_on_a_tick_whose_render_draws_credits() {
+        let mut indices = vec![7u8; MODE13H_WIDTH * MODE13H_HEIGHT];
+        let ink = 100 * MODE13H_WIDTH + 160;
+        indices[ink] = CURSOR_INDEX;
+        let mut layers = vec![0u16; indices.len()];
+        assert!(ui_overlay_mask(&indices, &layers)[ink]);
+        // Credits anywhere in the render keep the ink, even where the render drew none.
+        layers[50 * MODE13H_WIDTH] = u16::try_from(LAYER_OVERLAY).unwrap();
+        let mask = ui_overlay_mask(&indices, &layers);
+        assert!(!mask[ink]);
+        // The button bar stays masked either way.
+        assert!(mask[UI_BAR_FIRST_ROW * MODE13H_WIDTH]);
     }
 
     #[test]
