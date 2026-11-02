@@ -522,7 +522,7 @@ LEAD_FRAMES = 3
 
 #: The header of the readout table in research/parity/batch.md; ``table_row`` fills its rows.
 TABLE_HEADER = (
-    "| Film | Ticks | Graded | Categories graded 2+ (frames of 12) | `other` notes "
+    "| Film | Ticks | Graded | Categories graded 2+ (frames) | `other` notes "
     "| SSIM (scored frames) |\n|---|---|---|---|---|---|"
 )
 
@@ -534,6 +534,10 @@ def table_row(result: Readout, report: Report | None, lead: int = LEAD_FRAMES) -
         key=lambda c: -len(c.ticks_2plus),
     )
     named = ", ".join(f"`{c.category}` {len(c.ticks_2plus)}" for c in leads) or "none"
+    # A category the grader skipped reads as clean unless the row says so.
+    ungraded = ", ".join(f"`{c.category}` {c.ungraded}" for c in result.categories if c.ungraded)
+    if ungraded:
+        named += f"; ungraded {ungraded}"
     ssim = "n/a"
     if report is not None and report.mean_ssim_scored is not None:
         ssim = f"{report.mean_ssim_scored:.3f} ({report.scored_frames})"
@@ -541,6 +545,29 @@ def table_row(result: Readout, report: Report | None, lead: int = LEAD_FRAMES) -
     span = f"{min(result.ticks)}–{max(result.ticks)}" if result.ticks else "n/a"  # noqa: RUF001
     graded = len(result.ticks) - result.missing
     return f"| `{result.film}` | {span} | {graded} | {named} | {len(result.other)} | {ssim} |"
+
+
+def file_digest(path: Path) -> str:
+    """SHA-256 of *path*'s bytes."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def batch_row(out: Path, report_path: Path) -> str:
+    """The table row for the readout in *out*, its SSIM from the report the run was made from.
+
+    A run that recorded no report digest gets no SSIM. Raises ``BenchError`` if the report
+    changed since ``errors-make``.
+    """
+    result = Readout.from_json(json.loads((out / READOUT_FILE).read_text(encoding="utf-8")))
+    run = json.loads((out / RUN_FILE).read_text(encoding="utf-8"))
+    report = None
+    if report_path.is_file() and run.get("report_digest") is not None:
+        if file_digest(report_path) != run["report_digest"]:
+            raise BenchError(
+                f"{report_path} changed since errors-make; run errors-make and grade again"
+            )
+        report = read_report(report_path)
+    return table_row(result, report)
 
 
 def readout(
@@ -803,6 +830,8 @@ def make_run(
         "revision": revision,
         "categories_digest": taxonomy.digest,
         "render_digest": planes_digest(render, ticks),
+        # Binds the SSIM errors-table prints to the report these ticks were picked from.
+        "report_digest": file_digest(report),
     }
     _write_text(out / RUN_FILE, json.dumps(run, indent=2) + "\n")
     return len(written)

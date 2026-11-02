@@ -38,12 +38,10 @@ from typing import Any
 
 from stunt_reel import parity_layout, references
 from stunt_reel.bench.errors import (
-    READOUT_FILE,
     TABLE_HEADER,
-    Readout,
+    batch_row,
     make_run,
     score_run,
-    table_row,
     write_disputes,
     write_example,
 )
@@ -51,7 +49,6 @@ from stunt_reel.bench.faults import ALL_FAULTS, Fault
 from stunt_reel.bench.planes import BenchError
 from stunt_reel.bench.run import plant_tree, run_bench
 from stunt_reel.dataroot import REPO_ROOT, ensure_links_or_report
-from stunt_reel.parity_artifacts import read_report
 
 DEFAULT_RECAPTURE = "005"
 DEFAULT_SEED = 1
@@ -254,16 +251,16 @@ def errors_table(args: argparse.Namespace) -> int:
     """Print the batch readout table, one row per film, for research/parity/batch.md."""
     print(TABLE_HEADER)
     for film in filter(None, args.films.split(",")):
-        path = _errors_dir(film) / READOUT_FILE
         report_path = REPO_ROOT / parity_layout.batch_film_dir(film) / "report" / "report.json"
         try:
-            result = Readout.from_json(json.loads(path.read_text(encoding="utf-8")))
-            report = read_report(report_path) if report_path.is_file() else None
+            row = batch_row(_errors_dir(film), report_path)
         except FileNotFoundError as err:
-            raise BenchError(f"{path} is missing; run errors-score --film {film} --batch") from err
+            raise BenchError(
+                f"{err.filename} is missing; run errors-score --film {film} --batch"
+            ) from err
         except ValueError as err:
             raise BenchError(f"{film}: {err}") from err
-        print(table_row(result, report))
+        print(row)
     return 0
 
 

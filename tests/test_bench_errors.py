@@ -21,6 +21,7 @@ from stunt_reel.bench.errors import (
     Sheet,
     Taxonomy,
     add_example,
+    batch_row,
     build_sheet,
     calibrate,
     compare,
@@ -792,3 +793,46 @@ def test_table_row_lists_the_leads_by_count_and_the_scored_ssim() -> None:
 def test_table_row_says_none_and_n_a_when_nothing_qualifies() -> None:
     row = table_row(_table_readout(), None, lead=4)
     assert row.endswith("| 3 | none | 1 | n/a |")
+
+
+def test_table_row_marks_categories_the_grader_left_ungraded() -> None:
+    result = replace(
+        _table_readout(),
+        categories=(*_table_readout().categories, CategoryReadout("sun-missing", (), None, 3)),
+    )
+    row = table_row(result, None, lead=2)
+    assert "`aircraft-absent` 2; ungraded `sun-missing` 3 |" in row
+
+
+def test_table_header_names_no_fixed_frame_count() -> None:
+    assert "of 12" not in TABLE_HEADER
+
+
+def test_batch_row_reads_the_report_the_run_was_made_from(run_inputs: dict[str, Path]) -> None:
+    _make(run_inputs)
+    _grade_all(run_inputs)
+    score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], None)
+    assert batch_row(run_inputs["out"], run_inputs["report"]).endswith("| 0.900 (2) |")
+
+
+def test_batch_row_refuses_a_report_replaced_after_the_run(run_inputs: dict[str, Path]) -> None:
+    _make(run_inputs)
+    _grade_all(run_inputs)
+    score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], None)
+    frames = [FrameReport(film_tick=t, ssim=0.5, iou=0.0, scored=True) for t in (10, 20)]
+    write_report(run_inputs["report"], _report(frames))
+    with pytest.raises(BenchError, match="changed since errors-make"):
+        batch_row(run_inputs["out"], run_inputs["report"])
+
+
+def test_batch_row_leaves_ssim_out_for_a_run_without_a_report_digest(
+    run_inputs: dict[str, Path],
+) -> None:
+    _make(run_inputs)
+    _grade_all(run_inputs)
+    score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], None)
+    run_path = run_inputs["out"] / "run.json"
+    run = json.loads(run_path.read_text(encoding="utf-8"))
+    del run["report_digest"]
+    run_path.write_text(json.dumps(run), encoding="utf-8")
+    assert batch_row(run_inputs["out"], run_inputs["report"]).endswith("| n/a |")
