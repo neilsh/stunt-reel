@@ -120,22 +120,23 @@ fn attach_font(scene: FilmScene, src: &SceneSources<'_>) -> Result<FilmScene, St
     if !scene.timeline().has_credits() {
         return Ok(scene);
     }
-    let found = [src.all, src.flm]
+    // A candidate that does not load leaves the next one, the film's, still to try.
+    let mut error = "no PFONT.BIN was found".to_string();
+    let candidates = [src.all, src.flm]
         .into_iter()
         .flatten()
-        .find_map(|base| find_scenery_file(src.sidata, base, "PFONT.BIN"))
-        .ok_or_else(|| "no PFONT.BIN was found".to_string())
-        .and_then(|path| load_font(&path).map(|font| (path, font)));
-    match found {
-        Ok((path, font)) => {
-            println!("[stuntreel] credits font: {}", path.display());
-            Ok(scene.with_font(font))
-        }
-        Err(e) => {
-            eprintln!("[stuntreel warning] film has credits but {e}; pass --font");
-            Ok(scene)
+        .filter_map(|base| find_scenery_file(src.sidata, base, "PFONT.BIN"));
+    for path in candidates {
+        match load_font(&path) {
+            Ok(font) => {
+                println!("[stuntreel] credits font: {}", path.display());
+                return Ok(scene.with_font(font));
+            }
+            Err(e) => error = e,
         }
     }
+    eprintln!("[stuntreel warning] film has credits but {error}; pass --font");
+    Ok(scene)
 }
 
 /// Reads and parses a `PFONT.BIN`.
@@ -610,6 +611,22 @@ mod tests {
         assert!(
             scene.font().is_none(),
             "a found font that does not parse is skipped"
+        );
+
+        // A broken font beside the archive still leaves the film's to load.
+        let archive = t.0.join("captures/intro/archives/001/MINIMAL.ALL");
+        fs::create_dir_all(archive.parent().expect("parent")).expect("dirs");
+        fs::copy(fixture("synthetic_minimal.all"), &archive).expect("copy archive");
+        fs::rename(
+            t.0.join("ENGINE/PFONT.BIN"),
+            t.0.join("captures/intro/archives/001/PFONT.BIN"),
+        )
+        .expect("move broken font");
+        fs::copy(fixture("synthetic_pfont.bin"), t.0.join("ENGINE/PFONT.BIN")).expect("font");
+        let scene = build_scene(&sources(Some(&film), Some(&archive), None)).expect("scene");
+        assert!(
+            scene.font().is_some(),
+            "the film's font follows a broken archive one"
         );
     }
 
