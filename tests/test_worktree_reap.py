@@ -484,6 +484,25 @@ def test_squash_merged_branch_is_removed_and_its_branch_force_deleted(tmp_path: 
     assert "feat" not in _run_git(repo, "branch", "--format=%(refname:short)").split()
 
 
+def test_a_commit_after_classification_keeps_the_worktree_and_branch(tmp_path: Path) -> None:
+    repo, worktree, tip = _squash_repo(tmp_path)
+    merged_prs = worktree_init._MergedPrs(
+        repo,
+        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": tip}]),  # type: ignore[arg-type]
+    )
+    candidates, _ = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False, merged_prs=merged_prs
+    )
+    later = _commit(worktree, "three.txt")
+
+    error = worktree_init._reap_one(repo, candidates[0], stash_dirty=False, discard_untracked=False)
+
+    assert error is not None
+    assert "tip moved" in error
+    assert worktree.is_dir()
+    assert _run_git(repo, "rev-parse", "refs/heads/feat").strip() == later
+
+
 def test_branch_that_moved_on_after_the_merge_is_skipped_with_a_reason(tmp_path: Path) -> None:
     repo, worktree, tip = _squash_repo(tmp_path)
     _commit(worktree, "after-merge.txt")

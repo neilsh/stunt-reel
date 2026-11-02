@@ -660,6 +660,16 @@ def _reap_one(
         return f"{branch}: modified files"
     if candidate.untracked and not discard_untracked:
         return f"{branch}: untracked files"
+    if branch is not None and not candidate.merged:
+        # A force-deleted branch must still be the tip that was classified: a commit made
+        # since then is in neither main nor the merged PR.
+        tip = _git(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}")
+        now = tip.stdout.strip()
+        if now != worktree.head:
+            return (
+                f"{branch}: tip moved since it was classified "
+                f"({worktree.head[:10]} -> {now[:10] or 'gone'}); left alone"
+            )
     if candidate.dirty:
         stash = _git(path, "stash", "push", "--message", f"reap {branch}: uncommitted work")
         if stash.returncode != 0:
@@ -679,7 +689,11 @@ def _reap_one(
     if remove.returncode != 0:
         return f"{branch}: git worktree remove failed: {remove.stderr.strip()}"
     if branch is not None:
-        delete = _git(repo, "branch", "-d" if candidate.merged else "-D", branch)
+        if candidate.merged:
+            delete = _git(repo, "branch", "-d", branch)
+        else:
+            # Compare-and-delete: refused if the branch moved off the classified tip.
+            delete = _git(repo, "update-ref", "-d", f"refs/heads/{branch}", worktree.head)
         if delete.returncode != 0:
             return f"{branch}: git branch delete failed: {delete.stderr.strip()}"
     # The environment lives in the shared cache, outside the checkout git just removed.
