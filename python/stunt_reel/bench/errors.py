@@ -516,6 +516,33 @@ class Readout:
             raise BenchError(f"not a readout document: {err}") from err
 
 
+#: Frames graded 2+ that make a category a lead in the batch table: the readout's noise is up to
+#: 3 frames per category (research/parity/batch.md § 4).
+LEAD_FRAMES = 3
+
+#: The header of the readout table in research/parity/batch.md; ``table_row`` fills its rows.
+TABLE_HEADER = (
+    "| Film | Ticks | Graded | Categories graded 2+ (frames of 12) | `other` notes "
+    "| SSIM (scored frames) |\n|---|---|---|---|---|---|"
+)
+
+
+def table_row(result: Readout, report: Report | None, lead: int = LEAD_FRAMES) -> str:
+    """*result*'s row in the batch readout table, its SSIM from the film's ``report.json``."""
+    leads = sorted(
+        (c for c in result.categories if len(c.ticks_2plus) >= lead),
+        key=lambda c: -len(c.ticks_2plus),
+    )
+    named = ", ".join(f"`{c.category}` {len(c.ticks_2plus)}" for c in leads) or "none"
+    ssim = "n/a"
+    if report is not None and report.mean_ssim_scored is not None:
+        ssim = f"{report.mean_ssim_scored:.3f} ({report.scored_frames})"
+    # batch.md writes tick ranges with an en dash.
+    span = f"{min(result.ticks)}–{max(result.ticks)}" if result.ticks else "n/a"  # noqa: RUF001
+    graded = len(result.ticks) - result.missing
+    return f"| `{result.film}` | {span} | {graded} | {named} | {len(result.other)} | {ssim} |"
+
+
 def readout(
     grades: dict[str, SheetGrades],
     sheets: Sequence[Sheet],

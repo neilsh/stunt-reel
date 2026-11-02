@@ -13,7 +13,9 @@ import pytest
 
 from render_helpers import flip_byte, rewrite_store
 from stunt_reel.bench.errors import (
+    TABLE_HEADER,
     Calibration,
+    CategoryReadout,
     FilmWindow,
     Readout,
     Sheet,
@@ -34,6 +36,7 @@ from stunt_reel.bench.errors import (
     render_brief,
     score_run,
     sheet_id,
+    table_row,
     write_disputes,
     write_example,
 )
@@ -757,3 +760,35 @@ def test_score_refuses_an_against_file_that_is_not_json(
     garbled.write_text("{not json", encoding="utf-8")
     with pytest.raises(BenchError, match="not a readout document"):
         score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], garbled)
+
+
+def _table_readout() -> Readout:
+    return Readout(
+        film="vault-ctry",
+        ticks=(4, 300, 700, 1001),
+        categories_digest="c" * 64,
+        render_digest="r" * 64,
+        categories=(
+            CategoryReadout("aircraft-absent", (4, 300), 1.5, 0),
+            CategoryReadout("scenery-missing", (4, 300, 700), 2.0, 0),
+            CategoryReadout("shadow-missing", (4,), 0.5, 0),
+        ),
+        other={300: "tents drawn as cones"},
+        missing=1,
+        unknown=(),
+    )
+
+
+def test_table_row_lists_the_leads_by_count_and_the_scored_ssim() -> None:
+    report = Report(per_frame=(), reference_frames=0, mean_ssim_scored=0.7764, scored_frames=113)
+    row = table_row(_table_readout(), report, lead=2)
+    assert row == (
+        "| `vault-ctry` | 4–1001 | 3 | `scenery-missing` 3, `aircraft-absent` 2 | 1 "  # noqa: RUF001
+        "| 0.776 (113) |"
+    )
+    assert TABLE_HEADER.splitlines()[0].count("|") == row.count("|")
+
+
+def test_table_row_says_none_and_n_a_when_nothing_qualifies() -> None:
+    row = table_row(_table_readout(), None, lead=4)
+    assert row.endswith("| 3 | none | 1 | n/a |")
