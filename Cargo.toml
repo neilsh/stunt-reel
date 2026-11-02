@@ -73,18 +73,6 @@ cast_possible_wrap = "allow" # 20
 # TODO(lints): document `# Errors` and `# Panics` on public fallible functions.
 missing_errors_doc = "allow" # 31
 missing_panics_doc = "allow" # 2
-# TODO(lints): single hits each; fix or justify with `#[expect(.., reason)]`.
-unnecessary_wraps = "allow" # 3
-needless_pass_by_value = "allow" # 2
-match_same_arms = "allow" # 2
-trivially_copy_pass_by_ref = "allow" # 1
-large_types_passed_by_value = "allow" # 1
-large_stack_arrays = "allow" # 1
-struct_field_names = "allow" # 1
-struct_excessive_bools = "allow" # 1
-implicit_hasher = "allow" # 1
-needless_continue = "allow" # 1
-case_sensitive_file_extension_comparisons = "allow" # 1 (test only)
 
 # Full debug info put 14.4 GB in `target/debug`, paid once per worktree.
 # Line tables still symbolise a backtrace down to the line.

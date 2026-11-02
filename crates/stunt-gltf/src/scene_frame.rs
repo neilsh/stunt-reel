@@ -55,7 +55,7 @@ pub fn export_scene_frame(scene: &FilmScene, tick: f32) -> Result<Vec<u8>, GltfE
     if frame.world
         && let Some(world) = scene.world()
     {
-        let assets = add_shape_assets(&mut builder, &world.ir)?;
+        let assets = add_shape_assets(&mut builder, &world.ir);
         let children = instantiate(&mut builder, &world.ir, &assets)?;
         roots.push(builder.nodes.len());
         builder
@@ -70,7 +70,7 @@ pub fn export_scene_frame(scene: &FilmScene, tick: f32) -> Result<Vec<u8>, GltfE
             .ok_or(GltfError::MissingShape(actor.shape_id))?;
         let assets = match shared.entry(actor.shape_id) {
             Entry::Occupied(e) => e.into_mut(),
-            Entry::Vacant(e) => e.insert(add_shape_assets(&mut builder, model)?),
+            Entry::Vacant(e) => e.insert(add_shape_assets(&mut builder, model)),
         };
         let children = instantiate(&mut builder, model, assets)?;
         let mut node = json!({

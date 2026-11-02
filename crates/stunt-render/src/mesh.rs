@@ -186,12 +186,12 @@ impl GpuModel {
 
             // Evaluate dynamic visibility condition
             let is_visible = match node.visibility {
-                VisibilityCondition::Always => true,
+                // An angle cone is not tested here, so it defaults to visible.
+                VisibilityCondition::Always | VisibilityCondition::AngleCone { .. } => true,
                 VisibilityCondition::LodDistanceSq(max_sq) => dist_sq <= max_sq,
                 VisibilityCondition::ActorState { mask, expected } => {
                     (state_mask & mask) == expected
                 }
-                VisibilityCondition::AngleCone { .. } => true, // default visible if cone not tested
             };
 
             if !is_visible {

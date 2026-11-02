@@ -66,8 +66,7 @@ fn test_challenge_i1_vertex_welding_full_attribute_tuple_oracle() {
         visibility: VisibilityCondition::Always,
     };
 
-    let ir = crate::sod::tessellate::build_sod_model_ir("WELD_ORACLE", &[tri1, tri2, tri3, tri4])
-        .expect("build ir");
+    let ir = crate::sod::tessellate::build_sod_model_ir("WELD_ORACLE", &[tri1, tri2, tri3, tri4]);
 
     // tri1 emits 3 vertices (indices 0, 1, 2)
     // tri2 reuses vertices 0 and 1, emits 1 new vertex (index 3) -> total 4 vertices so far
@@ -135,8 +134,7 @@ fn test_challenge_i5_decal_edge_sharing_and_welding() {
     assert!(processed[1].is_decal);
     assert!(processed[2].is_decal);
 
-    let ir =
-        crate::sod::tessellate::build_sod_model_ir("DECAL_WELD", &processed).expect("build ir");
+    let ir = crate::sod::tessellate::build_sod_model_ir("DECAL_WELD", &processed);
 
     // Base mesh: 1 quad -> 2 triangles -> 4 welded vertices (indices: 6)
     // Decal mesh: 2 triangles sharing 2 vertices -> 4 unique vertices (indices: 6)
@@ -180,8 +178,7 @@ fn test_challenge_i1_welding_distance_threshold_oracle() {
         visibility: VisibilityCondition::Always,
     };
 
-    let ir_welded =
-        crate::sod::tessellate::build_sod_model_ir("SUB_TOL", &[poly_a, poly_b]).expect("build ir");
+    let ir_welded = crate::sod::tessellate::build_sod_model_ir("SUB_TOL", &[poly_a, poly_b]);
     assert_eq!(
         ir_welded.vertices.len(),
         3,
@@ -206,8 +203,7 @@ fn test_challenge_i1_welding_distance_threshold_oracle() {
         visibility: VisibilityCondition::Always,
     };
 
-    let ir_distinct = crate::sod::tessellate::build_sod_model_ir("SUPER_TOL", &[poly_c, poly_d])
-        .expect("build ir");
+    let ir_distinct = crate::sod::tessellate::build_sod_model_ir("SUPER_TOL", &[poly_c, poly_d]);
     assert_eq!(
         ir_distinct.vertices.len(),
         6,
@@ -248,8 +244,7 @@ fn test_attribute_preserving_vertex_welding() {
         visibility: VisibilityCondition::Always,
     };
 
-    let ir = crate::sod::tessellate::build_sod_model_ir("WELD_TEST", &[p1, p2, p3, p4])
-        .expect("build ir");
+    let ir = crate::sod::tessellate::build_sod_model_ir("WELD_TEST", &[p1, p2, p3, p4]);
 
     // 4 triangles = 12 indices
     assert_eq!(ir.indices.len(), 12);
