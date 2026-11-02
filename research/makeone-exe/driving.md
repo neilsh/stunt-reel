@@ -102,7 +102,7 @@ Both match the DOSBox-X archive `captures/flmonly-747land/archives/001` byte for
 
 ## Open questions
 
-1. Run time scales with the film's length (81 s `BALLOON` and 134 s `TRAINTNL` at `cycles = 8000`). At `dynamic` plus `max` the longest film measured took 27 s (`flmonly-747`); films over 300 KB that timed out at 900 s under the old conf are not yet re-run at the new speed.
+1. ~~Films over 300 KB that timed out at 900 s are not yet re-run at the new speed.~~ Answered on dosbox-automation: `make-all` runs on the `archive` profile (section 9), and `BIGMAN` (900 KB of `.FLM`) archives in 476 to 514 s ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3).
 2. Is a `.ALL` made from one `.FLM` byte-stable across runs for films other than `BALLOON`? Only that one was repeated.
 3. Films that need more than the shipped `RES\` (community films with custom sounds) and films whose `.FLM` references takes: untested.
 4. Does a `.ALL` made under DOSBox-X carry the sound set-up of the machine that ran `MAKEONE` (`corpus/siarchive/Films/Playing_Films.txt`)? Frames are unaffected.
@@ -110,6 +110,6 @@ Both match the DOSBox-X archive `captures/flmonly-747land/archives/001` byte for
 6. Does `PLAYONE` require the archive's stem to equal the film's?
 7. Can the key script start earlier than frame 1200 on the `archive` profile? Every run pays about 17 s of emulated boot; the requester's first frame was not measured on dosbox-automation.
 8. Patch #3's `MAKEONE.EXE` writes the same `.ALL` as the unpatched one for `COUNT`, `EXIT` and `EXIT2`, and a different one for `BIGMAN` (1,429,089 bytes against 1,425,743), which only the patched `PLAYONE` plays ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3). Which other films differ is open.
-9. `MAKEONE` sometimes writes the archive and never leaves graphics mode (`COUNT` on both builds, `EXIT` and `EXIT2` on the patched one), so `make-all` times out on a good archive ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3).
+9. `MAKEONE` sometimes writes the archive and never leaves graphics mode (`COUNT` on both builds, `EXIT` and `EXIT2` on the patched one), so `make-all` times out on a good archive ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3). ([#76](https://github.com/neilsh/stunt-reel/issues/76))
 
 _Found 2026-10-29; see the [parity log](../parity/log.md)._

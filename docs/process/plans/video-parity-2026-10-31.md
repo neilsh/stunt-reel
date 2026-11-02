@@ -1,6 +1,6 @@
 # Video parity: score film seconds against an AVI capture
 
-Status: spec, awaiting review. Sections A to C agreed in conversation 2026-10-31. Replaces the capture
+Status: the capture half landed in [#42](https://github.com/neilsh/stunt-reel/pull/42) (`mise run capture-video`); the per-second scorer stays unmerged on `feat/video-parity-scorer` ([`method.md` § 4.4](../../../research/parity/method.md#44-per-second-scoring-of-a-video-capture)). Sections A to C agreed in conversation 2026-10-31. Replaces the capture
 half of [`capture-frame-storage-2026-10-31.md`](capture-frame-storage-2026-10-31.md); its render half
 stays a separate project.
 

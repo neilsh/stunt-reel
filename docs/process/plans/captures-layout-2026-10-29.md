@@ -1,6 +1,6 @@
 # Captures layout: film-first, named by source
 
-Status: design, awaiting review. Supersedes the `captures/<film>/<id>/` and `captures/all/` parts of
+Status: implemented in [#26](https://github.com/neilsh/stunt-reel/pull/26) ([ADR 0024](../../adr/0024-captures-are-filed-by-film-then-kind.md)). Supersedes the `captures/<film>/<id>/` and `captures/all/` parts of
 [ADR 0022](../../adr/0022-captures-are-add-only-beside-a-read-only-corpus.md) and
 [ADR 0023](../../adr/0023-make-all-generates-archives-with-makeone.md) once accepted.
 

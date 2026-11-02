@@ -75,10 +75,6 @@ So both surveys' scored sets cover the same fade-excluded span and nearly the sa
 
 ## Open questions
 
-1. Build the masked, clock-writing stepper and run it on `CTRY.FLM` twice (every 11 ticks, ascending): byte identity, a clean film end, then score the stepped set against the same renders and recalibrate the one-tick alignment offset and `references.toml`.
-2. Does masking all IRQs break film end, exit or the intro films (`INTRO.FLM`), and what is the roughly 100-pixel residual against free-run pages (the cursor)?
-3. Parallel stepped capture: with the clock written by the harness, the heavy-load dips should vanish; confirm with 8 stepped captures plus renders.
-4. How many survey captures hit the stuck clock (3 frames at tick 0)? The stepper makes this impossible by construction; `-time-limit` does not catch it, and a validity check on tick advance and frame count now rejects it.
-5. Does the AVI index carry per-frame timestamps (`skip encoding unchanged frames = true`)? Low priority now that stepped capture is repeatable.
+None. These questions concerned the DOSBox-X debugger harness and are moot since capture moved to dosbox-automation ([#28](https://github.com/neilsh/stunt-reel/pull/28)), where runs are bit-identical ([#83](https://github.com/neilsh/stunt-reel/issues/83)).
 
 _Found 2026-10-30; see the [parity log](../parity/log.md)._

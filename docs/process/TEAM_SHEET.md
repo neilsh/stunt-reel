@@ -21,14 +21,16 @@ The roles below are automation personas used by the development workflow, not pe
 
 ## 2. Milestones & Tickets
 
+New tickets live in [GitHub Issues](https://github.com/neilsh/stunt-reel/issues). The tables below are frozen history, kept for their links.
+
 ### Milestone 1: Runtime Capture Harness & glTF Exporter *(Gate 1 passed)*
 
 | Ticket | Title | Owner | Status | Links |
 |---|---|---|---|---|
 | `T00` | Scaffolding, contracts and fixtures | `rust-engine-worker` | Done | [`contracts/`](../../crates/stunt-core/src/contracts/mod.rs), [`tests/fixtures/README.md`](../../tests/fixtures/README.md) |
 | `T01` | DOSBox-X harness and navigation | `re-harness-worker` | Done | [`client.py`](../../python/stunt_reel/tac/client.py), [`bda.py`](../../python/stunt_reel/tac/bda.py), [`navigation.md`](../../research/playone-exe/navigation.md) |
-| `T02` | Real-mode memory map and V-Sync trap | `re-harness-worker` | Done (address conflict open) | [`memory-map.md`](../../research/playone-exe/memory-map.md), [`vsync.py`](../../python/stunt_reel/tac/vsync.py) |
-| `T03` | Trajectory streamer and oracle export | `re-harness-worker` | Done (camera/actor layouts unverified live) | [`streamer.py`](../../python/stunt_reel/tac/streamer.py), [`memory-map.md`](../../research/playone-exe/memory-map.md) |
+| `T02` | Real-mode memory map and V-Sync trap | `re-harness-worker` | Done (the `0C5E` conflict is moot for capture since [#28](https://github.com/neilsh/stunt-reel/pull/28)) | [`memory-map.md`](../../research/playone-exe/memory-map.md), [`vsync.py`](../../python/stunt_reel/tac/vsync.py) |
+| `T03` | Trajectory streamer and oracle export | `re-harness-worker` | Done (layouts still `[Hypothesis]`; moot for capture since [#28](https://github.com/neilsh/stunt-reel/pull/28)) | [`streamer.py`](../../python/stunt_reel/tac/streamer.py), [`memory-map.md`](../../research/playone-exe/memory-map.md) |
 | `T04` | Baseline mesh ingest and glTF exporter | `gltf-exporter-worker` | Done | [`stunt-gltf/`](../../crates/stunt-gltf/), [`sod.md`](../../research/formats/sod.md) |
 
 ### Milestone 2: Native Rust Engine *(Gate 2 passed)*
@@ -40,19 +42,19 @@ The roles below are automation personas used by the development workflow, not pe
 | `T07` | Native `.FLM` player and parity suite | `rust-engine-worker` | Done | [`flm/`](../../crates/stunt-core/src/flm/), [`flm.md`](../../research/formats/flm.md) |
 | `T08` | `wgpu` presentation engine | `rust-engine-worker` | Done | [`stunt-render/`](../../crates/stunt-render/), [`stunt-cli/`](../../crates/stunt-cli/) |
 
-### Milestone 3: Fidelity Backlog *(Open)*
+### Milestone 3: Fidelity Backlog *(Closed)*
 
 Origin: the `CTRY.FLM` + `CTRY.ALL` export audit. Each ticket is independent. Findings: [`research/parity/`](../../research/parity/).
 
 | Ticket | Title | Owner | Status | Links |
 |---|---|---|---|---|
 | `T09` | `OP_TAP` (`0x022E`) semantics | `rust-engine-worker` | Done | [`sod-vm.md`](../../research/playone-exe/sod-vm.md), [`sod.md` `# [FMT-SOD-TAP]`](../../research/formats/sod-opcodes.md#23-terrain-anchor-load-op_tap-0x022e--fmt-sod-tap), [ADR 0001](../adr/0001-sod-tap-anchor-table.md) |
-| `T10` | `OP_ANIMATE` (`0x01F8`) semantics | `rust-engine-worker` | **Open** | [`sod-animate.md`](../../research/playone-exe/sod-animate.md), [`sod.md` `# [FMT-SOD-ANIMATE]`](../../research/formats/sod-opcodes.md#24-animation-resource-draw-op_animate-0x01f8--fmt-sod-animate) |
+| `T10` | `OP_ANIMATE` (`0x01F8`) semantics | `rust-engine-worker` | **Deferred** (no measured loss; the extension point is recorded in [plan B](plans/architecture-deepening/B-decoded-shape.md)) | [`sod-animate.md`](../../research/playone-exe/sod-animate.md), [`sod.md` `# [FMT-SOD-ANIMATE]`](../../research/formats/sod-opcodes.md#24-animation-resource-draw-op_animate-0x01f8--fmt-sod-animate) |
 | `T11` | Consume `tick_duration` in playback and export | `rust-engine-worker` | Done | [`timeline-and-ticks.md`](../../research/formats/concepts/timeline-and-ticks.md), [`flm.md` § 2.1.1](../../research/formats/flm.md#211-tick_duration-semantics--corpus-distribution), [`memory.md` § 3.2](../../research/playone-exe/memory.md#32-tick-counter-evidence) |
-| `T12` | `--tick-range A..=B` (0-based, inclusive) replaces `--frames`; `--frames` becomes an error that names it | `rust-engine-worker` | **Open** | [`config.rs`](../../crates/stunt-cli/src/config.rs), [`headless.rs`](../../crates/stunt-cli/src/headless.rs) |
+| `T12` | `--tick-range A..=B` (0-based, inclusive) replaces `--frames`; `--frames` becomes an error that names it | `rust-engine-worker` | **Moved** to [#82](https://github.com/neilsh/stunt-reel/issues/82) | [`config.rs`](../../crates/stunt-cli/src/config.rs), [`headless.rs`](../../crates/stunt-cli/src/headless.rs) |
 | `T13` | Typed serde render sidecar `render.json` (still reads `palette_controls.json`; records width, height, viewport_rows), required by parity; `parity_probe.py` drops its hard-coded 320/185/16 | `rust-engine-worker` | **Done** (landings 1-4) | [ADR 0005](../adr/0005-parity-requires-the-render-sidecar.md), [`parity/`](../../crates/stunt-cli/src/parity/), [`parity_probe.py`](../../python/scripts/parity_probe.py) |
-| `T14` | One film clock range `0..=total_ticks`; the window wraps at `% (total_ticks + 1)` | `rust-engine-worker` | **Open** | [`config.rs`](../../crates/stunt-cli/src/config.rs) |
-| `T15` | Typed parity report, once `T12`–`T14` show what `FrameScore` and the per-film summary need | `rust-engine-worker` | **Open** (deferred) | [`score.rs`](../../crates/stunt-cli/src/parity/score.rs) |
+| `T14` | One film clock range `0..=total_ticks`; the window wraps at `% (total_ticks + 1)` | `rust-engine-worker` | **Done** ([#5](https://github.com/neilsh/stunt-reel/pull/5)) | [`config.rs`](../../crates/stunt-cli/src/config.rs) |
+| `T15` | Typed parity report, once `T12`–`T14` show what `FrameScore` and the per-film summary need | `rust-engine-worker` | **Done** (the report document of the parity artifact port, `A01`) | [`score.rs`](../../crates/stunt-cli/src/parity/score.rs) |
 
 ### Milestone 4: Architecture Deepening *(Complete)*
 
@@ -83,5 +85,5 @@ Source: [retro-hardening plan](plans/retro-hardening-2026-10-25.md), agreed 2026
 ## 3. Documentation Revision Protocol
 
 1. **Findings** (any worker): record new offsets, opcodes and observations in the document that owns them (see [`research/README.md`](../../research/README.md) for where each kind of finding goes), with a tier from [`SPEC.md` § 2.4](../SPEC.md#24-evidentiary-tiers--contract-anchor-system). Promote a tier only with a cited address, disassembly or live read.
-2. **Ticket status** (`sentinel`): edit the status column above.
+2. **Ticket status**: tickets live in [GitHub Issues](https://github.com/neilsh/stunt-reel/issues); the tables above are frozen.
 3. **Contracts and invariants** (`parity-auditor`-gated): changes under `crates/stunt-core/src/contracts/` stay backward compatible (`serde(default)`), update `tests/fixtures/` and tests in the same change, and must leave `mise run check` green.

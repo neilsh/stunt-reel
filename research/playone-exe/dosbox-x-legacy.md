@@ -76,7 +76,6 @@ Every item below is `[Bounded Observation]`.
 
 ## Open questions
 
-1. Whether the one-tick page lag in the pinned DOSBox-X references corresponds to a 0 or about 2 frame palette lead in dosbox-automation ([`capture-dosbox-automation.md` § 4.3](capture-dosbox-automation.md)).
-2. The stepper's behaviour at film end, exit and `INTRO.FLM`, and its roughly 100-pixel residual against free-run pages, are unanswered and now moot unless DOSBox-X returns.
+None. Both questions are moot unless DOSBox-X returns: capture runs on dosbox-automation ([#28](https://github.com/neilsh/stunt-reel/pull/28)).
 
 _Moved here 2026-10-30; the findings are in the [parity log](../parity/log.md)._

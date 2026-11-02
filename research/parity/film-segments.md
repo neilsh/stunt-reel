@@ -101,8 +101,8 @@ _Found 2026-10-22; see the [parity log](log.md)._
 
 ## Open questions
 
-1. Read `PLAYONE`'s own slot and shape tables at runtime around tick 458 (the `0x4778` / `0x48B6` arrays and the shape each active slot resolves to) with the capture harness's debugger, and compare with our 18 actors. This separates "the evaluator drops or misplaces slots" from "the engine draws something the film does not list".
+1. Read `PLAYONE`'s own slot and shape tables at runtime around tick 458 (the `0x4778` / `0x48B6` arrays and the shape each active slot resolves to) with the capture harness's debugger, and compare with our 18 actors. This separates "the evaluator drops or misplaces slots" from "the engine draws something the film does not list". ([#67](https://github.com/neilsh/stunt-reel/issues/67))
 2. Inspect `COL3-2.FLM` pixels with `--sidata` to split the 0.127 index agreement into studio gap versus night palette.
-3. Find the INTRO ticks 2690-2850 view: slot selection, aim-at target or Euler composition (section 2.1).
-4. Find which path places the parked aircraft in the INTRO montage (section 2.3).
-5. Draw the credits overlay (`0x99` lines, cleared by `0x98`) for the INTRO title cards (section 2.4): font, position and colour from `PLAYONE.EXE`'s `0x58BD` routine or the capture pixels. 134 of 346 reference frames depend on it.
+3. Find the INTRO ticks 2690-2850 view: slot selection, aim-at target or Euler composition (section 2.1). ([#70](https://github.com/neilsh/stunt-reel/issues/70))
+4. Find which path places the parked aircraft in the INTRO montage (section 2.3). ([#72](https://github.com/neilsh/stunt-reel/issues/72))
+5. Draw the credits overlay (`0x99` lines, cleared by `0x98`) for the INTRO title cards (section 2.4): font, position and colour from `PLAYONE.EXE`'s `0x58BD` routine or the capture pixels. 134 of 346 reference frames depend on it. ([#75](https://github.com/neilsh/stunt-reel/issues/75))

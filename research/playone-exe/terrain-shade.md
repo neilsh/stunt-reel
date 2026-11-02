@@ -176,6 +176,6 @@ The data-side and renderer-side explanations for the ground shade, all negative 
 
 ## Open questions
 
-1. Recover the per-shot light's caller: breakpoint `0x9106` at the post-retrace trap in DOSBox-X, dump `AX/BX/DX` and the return address across film ticks 10 and 448 of `CTRY.FLM`, compare with `DS:0x49EC` and the variable-13 value. With the harness, `L` can already be sampled per frame.
-2. Decode the ground polygons (colour byte, vertex registers, `SHADES` normal blocks) and compare their colours with `MAP.BIN`'s: [`world-scene.md`](world-scene.md) section 6 holds the route.
-3. Only then a renderer round (re-bake terrain colours or build terrain from the player's records), under the [parity skill](../../.agents/skills/improving-render-parity/SKILL.md)'s adoption rule.
+1. Recover the per-shot light's caller: breakpoint `0x9106` at the post-retrace trap in DOSBox-X, dump `AX/BX/DX` and the return address across film ticks 10 and 448 of `CTRY.FLM`, compare with `DS:0x49EC` and the variable-13 value. With the harness, `L` can already be sampled per frame. ([#66](https://github.com/neilsh/stunt-reel/issues/66))
+2. Decode the ground polygons (colour byte, vertex registers, `SHADES` normal blocks) and compare their colours with `MAP.BIN`'s: [`world-scene.md`](world-scene.md) section 6 holds the route. ([#65](https://github.com/neilsh/stunt-reel/issues/65))
+3. Only then a renderer round (re-bake terrain colours or build terrain from the player's records), under the [parity skill](../../.agents/skills/improving-render-parity/SKILL.md)'s adoption rule. ([#69](https://github.com/neilsh/stunt-reel/issues/69))

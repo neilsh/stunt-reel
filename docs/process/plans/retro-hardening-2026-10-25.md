@@ -1,6 +1,6 @@
 # Retro hardening plan (2026-10-25)
 
-Status: implementation complete on branch `wt-202610252029-retro-hardening` (based on `c6fabf5`; not merged at the time of writing). Source: the retrospective of the architecture-deepening session, grilled and agreed on 2026-10-25. Work items are `T16`-`T20` in [TEAM_SHEET.md](../TEAM_SHEET.md); this note is the decision record and landing log.
+Status: implementation complete on branch `wt-202610252029-retro-hardening` (based on `c6fabf5`), since merged into `main` (`016442c`). Source: the retrospective of the architecture-deepening session, grilled and agreed on 2026-10-25. Work items are `T16`-`T20` in [TEAM_SHEET.md](../TEAM_SHEET.md); this note is the decision record and landing log.
 
 ## 1. Decisions
 
