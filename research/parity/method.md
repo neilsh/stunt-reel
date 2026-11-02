@@ -99,7 +99,7 @@ The tables are checked: `report_doc.rs` in `crates/stunt-cli/src/parity/` runs `
 | `ocean_render_only` | number | Render draws ocean where the capture shows sky. |
 | `terrain_render_only` | number | Render draws terrain where the capture shows sky. |
 | `props_and_actors_render_only` | number | Render draws a prop or actor where the capture shows sky. |
-| `overlay` | number | The render's layer is the credits overlay, whatever the capture shows there. |
+| `overlay` | number | The render's layer holds the credits text, whatever the capture shows there (the key is the render's layer name; this is not the UI overlay). |
 <!-- /fields -->
 
 **`compare.json`** (top level; written with `--compare`):
@@ -187,7 +187,7 @@ The tables are checked: `report_doc.rs` in `crates/stunt-cli/src/parity/` runs `
 | `ocean` | number | Changed pixels the fresh render draws as ocean. |
 | `terrain` | number | Changed pixels drawn as terrain. |
 | `props` | number | Changed pixels drawn as props. |
-| `overlay` | number | Changed pixels drawn as the credits overlay. |
+| `overlay` | number | Changed pixels drawn as credits text. |
 | `actors` | number | Changed pixels drawn as actors. |
 | `none` | number | Changed pixels no layer claims (sky and undrawn). |
 <!-- /fields -->
