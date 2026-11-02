@@ -65,11 +65,21 @@ def locate(
     return found, missing
 
 
+def check_crop(box: tuple[int, int, int, int], scale: int, *, width: int, height: int) -> None:
+    """Refuses a crop box outside the ``width`` x ``height`` raster, or a scale below 1."""
+    x0, y0, x1, y1 = box
+    if not (0 <= x0 < x1 <= width and 0 <= y0 < y1 <= height):
+        raise ValueError(f"--crop {x0},{y0},{x1},{y1} is outside the {width}x{height} raster")
+    if scale < 1:
+        raise ValueError(f"--scale wants 1 or more, got {scale}")
+
+
 def describe_missing(tick: int, nearest: tuple[int | None, int | None], *, rendered: bool) -> str:
     """The line for a tick with no capture frame; one past the film's end was not rendered."""
     before, after = nearest
     if not rendered:
-        return f"tick {tick}: past the film's end, not rendered (last captured: {before})"
+        last = "" if before is None else f" (last captured: {before})"
+        return f"tick {tick}: past the film's end, not rendered{last}"
     return f"tick {tick}: not in the capture (nearest captured: {before}, {after})"
 
 
@@ -108,10 +118,23 @@ def main(argv: list[str] | None = None) -> int:
     shutil.rmtree(store_dir, ignore_errors=True)
     parity_pipeline.render_film(args.film, root, store_dir, ticks=ticks)
 
+    if not (store_dir / "render.json").exists():
+        # Every tick was past the film's end, so the renderer wrote no store.
+        for tick in ticks:
+            print(describe_missing(tick, missing.get(tick, (None, None)), rendered=False))
+        return 1
     store = RenderStore(store_dir)
     geometry = store.record.geometry
     box = box or (0, 0, geometry.width, geometry.viewport_rows or geometry.height)
+    try:
+        check_crop(box, args.scale, width=geometry.width, height=geometry.height)
+    except ValueError as err:
+        print(f"parity_frame: {err}", file=sys.stderr)
+        return 2
     for tick, ordinal in found.items():
+        if not store.holds(tick):
+            print(describe_missing(tick, (None, None), rendered=False))
+            continue
         png = out / f"{args.film}_{tick}.png"
         parity_probe.make_side_by_side(reference, store_dir, ordinal, tick, box, args.scale, png)
         print(png)

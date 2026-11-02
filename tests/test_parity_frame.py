@@ -94,7 +94,7 @@ def test_side_by_side_puts_the_capture_left_of_ours(tmp_path: Path) -> None:
     reference.mkdir()
     pixels = TINY.width * TINY.height
     (reference / "f.idx").write_bytes(bytes([1] * pixels))
-    (reference / "p.json").write_text(json.dumps([[200, 0, 0]] * 256), encoding="utf-8")
+    (reference / "p.json").write_text(json.dumps([[i, i, 0] for i in range(256)]), encoding="utf-8")
     (reference / "meta.json").write_text(
         json.dumps(
             {
@@ -113,8 +113,10 @@ def test_side_by_side_puts_the_capture_left_of_ours(tmp_path: Path) -> None:
     )
     width, rows = _png_rows(out)
     assert (width, len(rows)) == (4 + 2 + 4, 2)
-    assert rows[0][:3] == bytes([200, 0, 0])  # the capture's pixel is on the left
+    assert rows[0][:3] == bytes([1, 1, 0])  # the capture's index 1 is on the left
     assert rows[0][4 * 3 : 6 * 3] == bytes([255, 0, 255] * 2)  # the magenta divider
+    # Our tick 5 holds indices 5, 6, 7, 8 on row 0 (render_helpers.frame_for).
+    assert rows[0][6 * 3 :] == bytes([5, 5, 0, 6, 6, 0, 7, 7, 0, 8, 8, 0])
 
 
 def test_missing_tick_says_whether_it_was_rendered() -> None:
@@ -124,3 +126,26 @@ def test_missing_tick_says_whether_it_was_rendered() -> None:
     assert parity_frame.describe_missing(99999, (3822, None), rendered=False) == (
         "tick 99999: past the film's end, not rendered (last captured: 3822)"
     )
+    assert parity_frame.describe_missing(7, (None, None), rendered=False) == (
+        "tick 7: past the film's end, not rendered"
+    )
+
+
+@pytest.mark.parametrize(
+    ("box", "scale", "message"),
+    [
+        ((-1, 0, 4, 2), 1, "outside"),
+        ((0, 0, 4, 3), 1, "outside"),
+        ((2, 0, 2, 2), 1, "outside"),
+        ((0, 0, 4, 2), 0, "--scale"),
+    ],
+)
+def test_crop_outside_the_raster_or_bad_scale_is_refused(
+    box: tuple[int, int, int, int], scale: int, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        parity_frame.check_crop(box, scale, width=4, height=2)
+
+
+def test_crop_inside_the_raster_is_accepted() -> None:
+    parity_frame.check_crop((0, 1, 4, 2), 2, width=4, height=2)

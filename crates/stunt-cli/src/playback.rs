@@ -31,15 +31,14 @@ impl Playback {
     #[must_use]
     pub(crate) fn new(config: &CliConfig, scene: &FilmScene) -> Self {
         let total_ticks = playback_ticks(config, scene);
-        let frame_range = match config.tick_list.as_deref() {
-            Some([first, .., last]) => Some(FrameRange::new(first + 1, last + 2)),
-            Some([only]) => Some(FrameRange::new(only + 1, only + 2)),
-            _ => config.frame_range,
+        let (range, plan) = match config.tick_list.as_deref() {
+            Some(ticks) => list_plan(ticks, total_ticks),
+            None => (
+                TickRange::new(config.frame_range, total_ticks),
+                SamplePlan::from_flags(config),
+            ),
         };
-        Self {
-            range: TickRange::new(frame_range, total_ticks),
-            plan: SamplePlan::from_flags(config),
-        }
+        Self { range, plan }
     }
 
     /// The part of the film clock this run plays.
@@ -153,6 +152,24 @@ impl std::fmt::Display for SampleKey {
     }
 }
 
+/// The range and plan for `--at-ticks`: ticks past the film clock are dropped first, so a
+/// list of only such ticks renders nothing rather than a forced one-tick range.
+fn list_plan(ticks: &[usize], total_ticks: usize) -> (TickRange, SamplePlan) {
+    let kept: Vec<usize> = ticks
+        .iter()
+        .copied()
+        .filter(|&tick| tick <= total_ticks)
+        .collect();
+    let frame_range = match (kept.first(), kept.last()) {
+        (Some(&first), Some(&last)) => Some(FrameRange::new(first + 1, last + 2)),
+        _ => None,
+    };
+    (
+        TickRange::new(frame_range, total_ticks),
+        SamplePlan::List(kept),
+    )
+}
+
 /// How a run selects the film-clock ticks it renders.
 #[derive(Debug, Clone, PartialEq)]
 enum SamplePlan {
@@ -167,11 +184,10 @@ enum SamplePlan {
 }
 
 impl SamplePlan {
-    /// Picks the plan the flags ask for; `--sample-count` conflicts with `--video`.
+    /// Picks the plan the flags ask for; `--sample-count` conflicts with `--video`, and
+    /// `--at-ticks` goes through [`list_plan`].
     fn from_flags(config: &CliConfig) -> Self {
-        if let Some(ticks) = &config.tick_list {
-            Self::List(ticks.clone())
-        } else if config.video_path.is_some() {
+        if config.video_path.is_some() {
             Self::Video { fps: config.fps }
         } else if let Some(count) = config.sample_count {
             Self::Even { count }
@@ -321,6 +337,18 @@ mod tests {
                 (SampleKey::Tick(92), 92.0),
                 (SampleKey::Tick(1009), 1009.0),
             ]
+        );
+    }
+
+    #[test]
+    fn test_tick_list_past_the_clock_renders_nothing() {
+        // CTRY.FLM's clock ends at tick 1342: 5000 alone must not be rendered.
+        let (range, plan) = list_plan(&[5000], 1342);
+        assert_eq!(plan.samples(range), vec![]);
+        let (range, plan) = list_plan(&[48, 1342, 5000], 1342);
+        assert_eq!(
+            plan.samples(range),
+            vec![(SampleKey::Tick(48), 48.0), (SampleKey::Tick(1342), 1342.0)]
         );
     }
 
