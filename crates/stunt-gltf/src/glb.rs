@@ -178,6 +178,11 @@ pub struct GlbSummary {
 }
 
 /// Reads the node and mesh counts of `.glb` bytes produced by this crate.
+///
+/// # Errors
+/// Returns [`GltfError::InvalidContainer`] if `glb` has no `glTF` magic, is not version 2 with a
+/// header length equal to `glb.len()`, is truncated before its header or JSON chunk, does not
+/// start with a JSON chunk, or holds JSON that does not parse.
 pub fn summarize(glb: &[u8]) -> Result<GlbSummary, GltfError> {
     let word = |at: usize| -> Result<u32, GltfError> {
         glb.get(at..at + 4)

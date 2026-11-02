@@ -39,6 +39,8 @@ mod loss;
 mod mask;
 mod report;
 mod report_diff;
+#[cfg(test)]
+mod report_doc;
 mod score;
 mod sheets;
 #[cfg(test)]

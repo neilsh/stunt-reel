@@ -224,6 +224,7 @@ def record_video(
         film=film,
         geometry=Geometry(width=CAPTURE_WIDTH, height=CAPTURE_HEIGHT),
         playone_build=layout.name,
+        playone_sha256=layout.sha256,
         cpu_profile="capture",
         capture_start_frame=decoded.capture_start_frame,
         film_start_frame=film_start_frame(decoded.log),

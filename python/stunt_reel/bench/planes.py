@@ -113,7 +113,7 @@ class RenderTree:
             rgb=palette[idx].reshape((*SHAPE, 3)),
             idx=idx.reshape(SHAPE),
             layer=layer.astype(np.uint16).reshape(SHAPE),
-            credits=any(entry.credits for entry in self.store.record.ticks if entry.tick == tick),
+            credits=self.store.credits(tick),
         )
 
 

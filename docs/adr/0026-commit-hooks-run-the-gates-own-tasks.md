@@ -49,13 +49,15 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   | hook id | entry | fires on |
   | --- | --- | --- |
   | `diff-check` | `mise run diff-check` (`git diff --cached --check`) | every commit (`always_run`) |
+  | `crlf-check` | `mise run crlf-check` ([`check_crlf.py`](../../python/scripts/check_crlf.py)) | every commit (`always_run`) |
   | `fmt-check-rust` | `mise run fmt-check-rust` | `types = ["rust"]` |
   | `fmt-check-py` | `mise run fmt-check-py` | `types = ["python"]` |
   | `lint-py` | `mise run lint-py` | `types = ["python"]` |
   | `test-docs` | `mise run test-docs` | every commit (`always_run`) |
 
   prek passes no deleted file to a hook, so a commit that only deletes a linked page would skip a
-  hook filtered to Markdown; `test-docs` and `diff-check` therefore run on every commit.
+  hook filtered to Markdown; `test-docs`, `diff-check` and `crlf-check` therefore run on every
+  commit.
   `fmt-check-rust` is new: #32's plan checked no Rust. The rest are prek built-ins that back a rule
   this repository already states:
 
@@ -72,7 +74,7 @@ prek runs the commit-time checks; `gate.py` stays the gate.
 - **`gate.py staged` is removed** with its constants, its log path and its tests; `gate.py` runs
   only `all`, `rust` and `py` again.
 - **CI runs the hooks' extra checks.** The `quality` job installs prek and runs it with the
-  local hooks skipped (`SKIP=diff-check,fmt-check-rust,fmt-check-py,lint-py,test-docs`): the gate
+  local hooks skipped (`SKIP=diff-check,crlf-check,fmt-check-rust,fmt-check-py,lint-py,test-docs`): the gate
   it already runs covers the format, lint and doc checks, and `diff-check` reads an index that is
   empty in CI, so `check-merge-conflict` stands in for its conflict markers. CI stages nothing and
   is not mid-merge, so `check-added-large-files` takes `--enforce-all` and `check-merge-conflict`

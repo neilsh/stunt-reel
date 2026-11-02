@@ -45,7 +45,6 @@ from stunt_reel.parity_artifacts import (
     StoreSpan,
     TickLog,
     VideoCapture,
-    frames_for_captured_ticks,
     load_video_capture,
     open_render,
     read_capture,
@@ -53,6 +52,7 @@ from stunt_reel.parity_artifacts import (
     read_page,
     read_render,
     read_report,
+    tick_range_for_captured_ticks,
     write_capture,
     write_render,
     write_render_store,
@@ -483,15 +483,16 @@ def test_write_report_checks_the_identities() -> None:
             write_report(Path("unused.json"), bad)
 
 
-def test_frames_for_captured_ticks_maps_capture_ticks_to_frame_numbers() -> None:
-    # frame n renders tick n - 1, and the range is half-open
-    assert frames_for_captured_ticks([769, 3640, 1000]) == "770..3642"
-    assert frames_for_captured_ticks([10]) == "11..12"
+def test_tick_range_for_captured_ticks_is_the_captures_own_inclusive_ticks() -> None:
+    # 0-based and inclusive: no offset between a capture's film tick and the range
+    assert tick_range_for_captured_ticks([769, 3640, 1000]) == "769..=3640"
+    assert tick_range_for_captured_ticks([10]) == "10..=10"
+    assert tick_range_for_captured_ticks([0, 1342]) == "0..=1342"
 
 
-def test_frames_for_captured_ticks_needs_a_capture() -> None:
-    with pytest.raises(ArtifactError, match="no --frames range"):
-        frames_for_captured_ticks([])
+def test_tick_range_for_captured_ticks_needs_a_capture() -> None:
+    with pytest.raises(ArtifactError, match="no --tick-range"):
+        tick_range_for_captured_ticks([])
 
 
 def _store_record(ticks: tuple[int, ...]) -> RenderRecord:
@@ -577,6 +578,22 @@ _STORE_TICKS = (7, 9, 40, 101, 120)
 
 def _store(directory: Path) -> RenderRecord:
     return write_store(directory, _STORE_TICKS)
+
+
+def test_a_tick_credits_flag_round_trips_and_is_always_written(tmp_path: Path) -> None:
+    """``credits`` is required from schema 3, so it is written for every tick."""
+    path = tmp_path / "render.json"
+    record = _record()
+    flagged = replace(record, ticks=(replace(record.ticks[0], credits=True), record.ticks[1]))
+    write_render(path, flagged)
+    assert read_render(path) == flagged
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert document["ticks"][0]["credits"] is True
+    assert document["ticks"][1]["credits"] is False
+    document["ticks"][0]["credits"] = 1
+    _write_json(path, document)
+    with pytest.raises(ArtifactError, match=r"ticks\[0\]\.credits"):
+        read_render(path)
 
 
 def test_every_tick_round_trips_across_seconds_and_an_empty_second(tmp_path: Path) -> None:
@@ -748,9 +765,24 @@ def test_video_capture_round_trips(tmp_path: Path) -> None:
     assert load_video_capture(tmp_path) == _video()
 
 
+def test_video_capture_records_the_engine_hash_when_it_has_one(tmp_path: Path) -> None:
+    named = replace(_video(), playone_sha256="ab" * 32)
+    document = write_video_capture(tmp_path, named, diagnostics={})
+    assert document["playone_build"] == "synthetic"
+    assert document["playone_sha256"] == "ab" * 32
+    assert load_video_capture(tmp_path) == named
+
+
+def test_a_video_capture_without_the_engine_hash_still_loads(tmp_path: Path) -> None:
+    document = write_video_capture(tmp_path, _video(), diagnostics={})
+    assert "playone_sha256" not in document
+    assert load_video_capture(tmp_path).playone_sha256 is None
+
+
 def test_the_video_fixture_loads() -> None:
     fixture = Path(__file__).parent / "fixtures" / "parity" / "video"
     capture = load_video_capture(fixture)
+    assert capture.playone_sha256 is None  # the fixture predates the field
     assert len(capture.log.frame) == 4
     assert [change.frame for change in capture.palettes.changes] == [103]
     assert capture.film_start_frame == 103

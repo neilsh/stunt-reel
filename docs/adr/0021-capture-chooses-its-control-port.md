@@ -24,11 +24,11 @@ run. The guest's emulated work per tick is fixed (`core = normal`, `cycles = 800
 the sampling loop asks for one retrace hit at a time, so load can shift which retrace a
 frame is taken at; see Consequences. No lock file replaces it: this
 codebase already keeps per-process scratch (`stunt_tac_read_<pid>.bin` in
-[`transport.py`](../../python/stunt_reel/tac/transport.py)) rather than global locks.
+`transport.py`) rather than global locks.
 
 ## What enforces this
 
-- **The bind.** [`ListenTransport.listen()`](../../python/stunt_reel/tac/transport.py)
+- **The bind.** `ListenTransport.listen()`
   binds `self.port` (0 by default) and returns the port the OS gave it.
   [`DosboxX.start()`](../../python/stunt_reel/tac/emulator.py) passes that value to
   DOSBox-X through `launch_argv()` — the one construction `ensure_dosbox.py` also

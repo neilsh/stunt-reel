@@ -92,8 +92,9 @@ def capture(
     film_tick (the film clock, which is what parity matches on), and the diagnostics ride beside
     it through the writer. meta.json is written last. *provenance* (when and by which checkout)
     joins the diagnostics in meta.json; it is not part of the capture's identity, which is the
-    film and its frames. *layout* is the PLAYONE.EXE build being run; its name is recorded as
-    ``playone_build``.
+    film and its frames. *layout* is the PLAYONE.EXE build being run (identified by the hash of the
+    staged executable); its name is recorded as ``playone_build`` and that hash as
+    ``playone_sha256``.
     """
     if max_frames < 1:
         # Otherwise the pick is empty and the capture fails as if the film had no usable frame.
@@ -183,6 +184,7 @@ def capture(
             "dgroup_segment": f"{layout.ds:04X}",
             "frame_bytes": FRAME_BYTES,
             "playone_build": layout.name,
+            "playone_sha256": layout.sha256,
             "torn_frames": torn,
             "palette_steps": palette_steps,
             "composed_matches": composed,

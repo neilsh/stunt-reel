@@ -2,20 +2,24 @@
 
 Usage:
     mise run batch-parity -- [--only SLUG,...] [--limit N] [--stages archive,capture,render,score]
-        [--retry-errors] [--summary] [--archive-timeout S] [--capture-timeout S] [--data-root DIR]
-        [--skip SLUG,...] [--jobs N] [--max-renders M] [--min-free-gb G]
+        [--retry-errors] [--force STAGE,...] [--summary] [--archive-timeout S]
+        [--capture-timeout S] [--data-root DIR] [--skip SLUG,...] [--jobs N] [--max-renders M]
+        [--min-free-gb G] [--no-build]
 
-Every stage outcome is appended to the ledger under the data root (`batch_root()/ledger.jsonl`).
-A stage whose latest record is ok or skipped is not repeated, so rerunning the same command resumes
-where it stopped. A film stops at its first error and the batch moves on to the next film;
-`--retry-errors` reruns the stages whose latest record is an error. The contact sheets of a scored
-film are copied into its frames directory.
+Every stage outcome is appended to the ledger under the data root (`batch_root()/ledger.jsonl`),
+and every progress line to `batch.log` beside it, in UTF-8 whatever shell started the run. A stage
+whose latest record is ok or skipped is not repeated, so rerunning the same command resumes where
+it stopped. A film stops at its first error and the batch moves on to the next film;
+`--retry-errors` reruns the stages whose latest record is an error, and `--force` reruns the named
+stages and every stage after them. A run that renders or scores first builds the release binary
+those stages run. The contact sheets of a scored film are copied into its frames directory.
 """
 
 from __future__ import annotations
 
 import argparse
 import contextlib
+import json
 import os
 import shutil
 import signal
@@ -24,7 +28,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -32,7 +36,7 @@ from stunt_reel import batch_stages, parity_layout
 from stunt_reel.batch_films import discover
 from stunt_reel.batch_ledger import STAGES, append, latest, read, summarize
 from stunt_reel.dataroot import ensure_links_or_report
-from stunt_reel.parity_pipeline import REPO_ROOT
+from stunt_reel.parity_pipeline import REPO_ROOT, build_release
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -44,6 +48,10 @@ if TYPE_CHECKING:
 __all__ = ["main", "process"]
 
 _LEDGER_NAME = "ledger.jsonl"
+_LOG_NAME = "batch.log"
+#: What a forced render or score replaces: the stage's own output in the film's batch directory.
+#: Captures and archives are add-only (ADR 0022), so forcing them only writes a new run.
+_STAGE_OUTPUT = {"render": "render", "score": "report"}
 #: A capture is a real-time clock pass, then window passes eight at a time, each running in real
 #: time to its last window: FLMOnly/Act1.flm (15,000 ticks, 1,363 windows) took 21 minutes, and a
 #: 2,000-frame capture of a longer film runs past 30.
@@ -88,6 +96,7 @@ def process(
     limit: int | None,
     timeouts: dict[str, float],
     skip: frozenset[str] = frozenset(),
+    force: frozenset[str] = frozenset(),
     jobs: int = 1,
     max_renders: int = _DEFAULT_MAX_RENDERS,
     min_free_gb: float = 0.0,
@@ -97,7 +106,9 @@ def process(
     """Run the requested stages of each film; return how many stage errors this call recorded.
 
     A film in *skip* gets a ``skipped`` capture record in place of its capture and runs no later
-    stage; a film outside it ignores such a record, so leaving the list lets it capture.
+    stage; a film outside it ignores such a record, so leaving the list lets it capture. A stage in
+    *force* runs whatever its latest record says, and so does every later stage of that film; a
+    forced render or score first removes the output the earlier run left.
 
     *jobs* films run at once, each worker taking one film's stages in order; at most *max_renders*
     of them render at a time, and a render starts only while *min_free_gb* gigabytes are free under
@@ -112,6 +123,7 @@ def process(
         retry_errors=retry_errors,
         timeouts=timeouts,
         skip=skip,
+        force=force,
         renders=threading.BoundedSemaphore(max(max_renders, 1)),
         min_free=int(min_free_gb * _GIB),
         free_bytes=free_bytes,
@@ -145,6 +157,7 @@ class _Shared:
     retry_errors: bool
     timeouts: dict[str, float]
     skip: frozenset[str]
+    force: frozenset[str]
     renders: threading.BoundedSemaphore
     min_free: int
     free_bytes: Callable[[Path], int]
@@ -161,15 +174,21 @@ class _Shared:
         with self.lock:
             append(self.ledger, record)
             self.records.append(record)
-            _report(record)
+            self.say(_report_line(record))
+
+    def say(self, line: str) -> None:
+        """Print *line* and append it to the run log; the caller holds the lock."""
+        _emit(line, self.ledger.with_name(_LOG_NAME))
 
 
 def _process_film(film: BatchFilm, shared: _Shared) -> int:
     """Run one film's stages in order, stopping at its first error; return 1 if it errored."""
+    forcing = False
     for stage in STAGES:
         if stage not in shared.stages:
             continue
-        prior = shared.prior(film.slug, stage)
+        forcing = forcing or stage in shared.force
+        prior = None if forcing else shared.prior(film.slug, stage)
         if stage == "capture":
             stalled = prior is not None and prior.message == batch_stages.KNOWN_STALL_MESSAGE
             if film.slug in shared.skip and (prior is None or stalled):
@@ -183,16 +202,40 @@ def _process_film(film: BatchFilm, shared: _Shared) -> int:
         if prior is not None and not shared.retry_errors:
             break
         function = _stage_function(stage)
+        if forcing and stage in _STAGE_OUTPUT:
+            output = shared.root / parity_layout.batch_film_dir(film.slug) / _STAGE_OUTPUT[stage]
+            shutil.rmtree(output, ignore_errors=True)
         if stage == "render":
             record = _render_guarded(function, film, shared)
         else:
             record = function(film, shared.root, shared.run, shared.timeouts[stage])
         shared.commit(record)
         if record.status == "error":
+            if forcing:
+                _mark_later_stale(film.slug, stage, record, shared)
             return 1
         if stage == "score":
             _copy_contact_sheets(film.slug, shared.root)
     return 0
+
+
+def _mark_later_stale(slug: str, stage: str, failed: Record, shared: _Shared) -> None:
+    """Record an error for each later stage that has an outcome, and remove its output.
+
+    The ledger keeps each stage's latest record on its own, so without this a forced render that
+    fails would leave the earlier score current, and ``--retry-errors`` would repair the render
+    but keep a report of a different one.
+    """
+    for later in STAGES[STAGES.index(stage) + 1 :]:
+        prior = shared.prior(slug, later)
+        if prior is not None and prior.status != "error":
+            if later in _STAGE_OUTPUT:
+                output = shared.root / parity_layout.batch_film_dir(slug) / _STAGE_OUTPUT[later]
+                shutil.rmtree(output, ignore_errors=True)
+            message = f"stale: forced {stage} failed"
+            shared.commit(
+                replace(failed, stage=later, message=message, seconds=0.0, ssim=None, iou=None)
+            )
 
 
 def _render_guarded(
@@ -205,7 +248,7 @@ def _render_guarded(
         while shared.free_bytes(batch) < shared.min_free:
             if not announced:
                 with shared.lock:
-                    print(f"{film.slug} render waiting for free disk", flush=True)
+                    shared.say(f"{film.slug} render waiting for free disk")
                 announced = True
             shared.sleep(_DISK_POLL_SECONDS)
         return function(film, shared.root, shared.run, shared.timeouts["render"])
@@ -220,10 +263,44 @@ def _copy_contact_sheets(slug: str, root: Path) -> None:
         shutil.copy2(sheet, frames / sheet.name)
 
 
-def _report(record: Record) -> None:
+def _report_line(record: Record) -> str:
     """One line per finished stage: the film, the stage, the status and any message."""
     tail = f" {record.message}" if record.message else ""
-    print(f"{record.slug} {record.stage} {record.status}{tail}", flush=True)
+    return f"{record.slug} {record.stage} {record.status}{tail}"
+
+
+def _emit(line: str, log: Path) -> None:
+    """Print *line* and append it to *log* in UTF-8."""
+    print(line, flush=True)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(line + "\n")
+
+
+def film_rows(root: Path, slugs: list[str]) -> str:
+    """One row per film from its score report, in the column order the survey notes use."""
+    lines = ["film  frames  scored  film_tick  ssim  iou  index_agreement"]
+    for slug in slugs:
+        report = root / parity_layout.batch_film_dir(slug) / "report" / "report.json"
+        try:
+            data = json.loads(report.read_text(encoding="utf-8"))
+        except OSError, ValueError:
+            lines.append(f"{slug}  no report")
+            continue
+        ticks = [frame["film_tick"] for frame in data.get("per_frame", []) if "film_tick" in frame]
+        span = f"{min(ticks)}-{max(ticks)}" if ticks else "-"
+        means = [
+            _metric(data.get(key))
+            for key in ("mean_ssim_scored", "mean_iou_scored", "mean_index_agreement_scored")
+        ]
+        counts = f"{data.get('frames', '-')}  {data.get('scored_frames', '-')}"
+        lines.append(f"{slug}  {counts}  {span}  {'  '.join(means)}")
+    return "\n".join(lines)
+
+
+def _metric(value: object) -> str:
+    """A report mean to three places, or ``-`` when the report has none (no scored frames)."""
+    return f"{value:.3f}" if isinstance(value, int | float) else "-"
 
 
 _NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
@@ -281,7 +358,17 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--retry-errors", action="store_true", help="rerun stages whose latest record is an error"
     )
     parser.add_argument(
-        "--summary", action="store_true", help="print the ledger summary and run nothing"
+        "--force",
+        default=None,
+        help="comma list of stages to rerun whatever their latest record, with every later stage",
+    )
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="print the ledger summary, or with --only one report row per film, and run nothing",
+    )
+    parser.add_argument(
+        "--no-build", action="store_true", help="render and score with the release binary as it is"
     )
     parser.add_argument(
         "--archive-timeout",
@@ -326,13 +413,14 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args.data_root).resolve()
     ledger = root / parity_layout.batch_root() / _LEDGER_NAME
     if args.summary:
-        print(summarize(read(ledger)))
+        slugs = _names(args.only)
+        print(film_rows(root, slugs) if slugs else summarize(read(ledger)))
         return 0
     stages = tuple(_names(args.stages))
-    unknown = [name for name in stages if name not in STAGES]
-    if not stages or unknown:
+    force = frozenset(_names(args.force))
+    if not stages or any(name not in STAGES for name in (*stages, *force)):
         print(
-            f"batch_parity: --stages must be from {', '.join(STAGES)}, got {args.stages!r}",
+            f"batch_parity: --stages and --force take names from {', '.join(STAGES)}",
             file=sys.stderr,
         )
         return 2
@@ -352,6 +440,13 @@ def main(argv: list[str] | None = None) -> int:
         "render": _RENDER_TIMEOUT,
         "score": _RENDER_TIMEOUT,
     }
+    if not args.no_build and {"render", "score"} & set(stages):
+        print("[batch] cargo build --release -p stunt-cli", file=sys.stderr)
+        try:
+            build_release()
+        except RuntimeError as err:
+            print(f"batch_parity: build failed: {err}", file=sys.stderr)
+            return 1
     known = () if args.retry_errors else batch_stages.KNOWN_CAPTURE_STALLS
     skip = frozenset({*known, *_names(args.skip)} - wanted)
     errors = process(
@@ -364,11 +459,15 @@ def main(argv: list[str] | None = None) -> int:
         limit=args.limit,
         timeouts=timeouts,
         skip=skip,
+        force=force,
         jobs=args.jobs,
         max_renders=args.max_renders,
         min_free_gb=args.min_free_gb,
     )
-    print(f"batch-parity: {len(films)} films, {errors} new stage errors; ledger {ledger}")
+    _emit(
+        f"batch-parity: {len(films)} films, {errors} new stage errors; ledger {ledger}",
+        ledger.with_name(_LOG_NAME),
+    )
     return 0
 
 

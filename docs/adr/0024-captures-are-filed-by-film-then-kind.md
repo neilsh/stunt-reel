@@ -26,7 +26,8 @@ of which only the hash described the capture.
   path, lower case, runs outside `[a-z0-9_]` collapsed to `-`: `VAULT/CTRY.FLM` is `vault-ctry`
   whichever corpus copy was read. `--name` overrides it.
 - **Runs are counters.** `001`, `002`, ... per film and kind, claimed by an atomic `mkdir`
-  (an archive claims `NNN.lock`). Date, checkout and the film's hash live in `meta.json`;
+  (an archive claims `NNN.lock`). Date, checkout, the film's hash and the engine build (`playone_build`, the layout name,
+  and `playone_sha256`, the staged `PLAYONE.EXE`'s hash) live in `meta.json`;
   `references.toml` pins a capture by film, run and content digest.
 - **Frame files sit under `frames/`** inside a capture so `meta.json` is visible. The capture
   readers accept a file name that is a basename or `frames/<basename>`; older captures read unchanged.

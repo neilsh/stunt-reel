@@ -444,3 +444,64 @@ fn a_verdict_keeps_the_ink_when_only_the_previous_render_drew_credits() {
     assert_eq!(verdict.class, VerdictClass::Closer);
     assert!(verdict.changed_by_layer["overlay"] > 0.0);
 }
+
+/// The render record's credits schedule decides, not the planes: a render that drops its
+/// credits on a credits tick is judged on the ink, and stray overlay pixels on a tick
+/// without credits do not unmask the cursor.
+#[test]
+fn the_record_credits_flag_overrides_what_the_render_drew() {
+    let fade_set = super::fade::fade_reference_set(&credits_frames(false).0.indices);
+    let policy = super::score::ScorePolicy {
+        fade_set: &fade_set,
+        min_fade_level: 0.0,
+    };
+    let (reference, render) = credits_frames(false);
+    let dropped = super::score::RenderFrame {
+        credits: true,
+        ..render
+    };
+    let scored = super::score::score_frame(&reference, &dropped, &policy).metrics;
+    assert!(scored.ssim < 0.99, "{}", scored.ssim);
+
+    let (reference, render) = credits_frames(true);
+    let stray = super::score::RenderFrame {
+        credits: false,
+        ..render
+    };
+    let masked = super::score::score_frame(&reference, &stray, &policy).metrics;
+    assert!((masked.ssim - 1.0).abs() < 1e-4, "{}", masked.ssim);
+}
+
+/// Two renders of a credits tick, one of which lost the credits, are scored on one mask
+/// when the record says the tick has credits, so `--compare` sees the loss.
+#[test]
+fn a_render_that_loses_its_credits_scores_lower_on_a_credits_tick() {
+    let fade_set = super::fade::fade_reference_set(&credits_frames(false).0.indices);
+    let policy = super::score::ScorePolicy {
+        fade_set: &fade_set,
+        min_fade_level: 0.0,
+    };
+    let (reference, mut drawn) = credits_frames(true);
+    let (r, g, b) = stunt_core::contracts::get_palette_rgb(255);
+    let ink_luminance = stunt_render::rgb_to_luminance(&[r, g, b])[0];
+    for (i, &index) in reference.indices.iter().enumerate() {
+        if index == 255 {
+            drawn.luminance[i] = ink_luminance;
+            drawn.indices[i] = 255;
+        }
+    }
+    drawn.credits = true;
+    let (_, lost) = credits_frames(false);
+    let lost = super::score::RenderFrame {
+        credits: true,
+        ..lost
+    };
+    let with = super::score::score_frame(&reference, &drawn, &policy).metrics;
+    let without = super::score::score_frame(&reference, &lost, &policy).metrics;
+    assert!(
+        with.ssim > without.ssim + 0.01,
+        "{} vs {}",
+        with.ssim,
+        without.ssim
+    );
+}

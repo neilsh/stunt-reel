@@ -52,8 +52,8 @@ pub(super) fn load_render_rescaled(store: &mut RenderStore, tick: u32) -> Result
 }
 
 /// Loads a stored render tick: the luminance of its picture (`palette[index]`), its
-/// palette-index plane and its layer plane, all 320x200. The palette controls are left
-/// `None`; the caller sets them when it has the render record.
+/// palette-index plane and its layer plane, all 320x200, and the record's credits flag. The
+/// palette controls are left `None`; the caller sets them when it has the render record.
 pub(super) fn load_render_frame(store: &mut RenderStore, tick: u32) -> Result<RenderFrame, String> {
     let Geometry { width, height, .. } = store.record().geometry;
     if width as usize != MODE13H_WIDTH || height as usize != MODE13H_HEIGHT {
