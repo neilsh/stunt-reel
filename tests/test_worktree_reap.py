@@ -139,12 +139,10 @@ def test_remove_link_falls_back_to_the_shell_rmdir_when_python_is_refused(
     link = tmp_path / "corpus"
     _junction(link, target)
     _refuse_rmdir_on(monkeypatch, link)
-    calls: list[list[str]] = []
+    calls: list[str] = []
     real_run = subprocess.run
 
-    def spy(
-        command: list[str], *args: object, **kwargs: object
-    ) -> subprocess.CompletedProcess[str]:
+    def spy(command: str, *args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append(command)
         return real_run(command, *args, **kwargs)  # type: ignore[call-overload,no-any-return]
 
@@ -154,18 +152,32 @@ def test_remove_link_falls_back_to_the_shell_rmdir_when_python_is_refused(
 
     assert not os.path.lexists(link)
     assert (target / "nested" / "keep.txt").read_text(encoding="utf-8") == "keep"
-    assert [command[1:] for command in calls] == [["/d", "/c", "rmdir", str(link)]]
-    assert "/s" not in {part.lower() for part in calls[0]}
+    (command,) = calls
+    # The path rides in the environment, never on cmd's command line.
+    assert command.endswith(f'/d /v:on /c rmdir "!{dataroot._RMDIR_PATH_VAR}!"')
+    assert str(link) not in command
+    assert "/s" not in command.lower()
 
 
-@pytest.mark.parametrize("name", ["x&calc.exe&x", "x%PATH%x", "a;b", "x|y", "x^y"])
-def test_shell_rmdir_refuses_a_path_cmd_would_interpret(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
-) -> None:
-    monkeypatch.setattr(subprocess, "run", lambda *_a, **_k: pytest.fail("reached the shell"))
+@pytest.mark.parametrize(
+    "name", ["x&rmdir data&x", "x%PATH%x", "a;b", "p (1)", "c^d", "e!f!g", "Jos\u00e9"]
+)
+def test_shell_rmdir_takes_any_valid_name_as_plain_text(tmp_path: Path, name: str) -> None:
+    """cmd metacharacters and non-ASCII in a junction name neither run nor block removal."""
+    target = tmp_path / "data"
+    target.mkdir()
+    (target / "keep.txt").write_text("keep", encoding="utf-8")
+    plain = tmp_path / "plain"
+    _junction(plain, target)
+    # mklink would parse the name itself, so make the junction plain and rename it.
+    link = tmp_path / name
+    plain.rename(link)
 
-    with pytest.raises(OSError, match="metacharacter"):
-        dataroot._shell_rmdir(tmp_path / name)
+    dataroot._shell_rmdir(link)
+
+    assert not os.path.lexists(link)
+    assert (target / "keep.txt").read_text(encoding="utf-8") == "keep"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["data"]
 
 
 def test_remove_link_reports_both_errors_when_the_fallback_fails_too(

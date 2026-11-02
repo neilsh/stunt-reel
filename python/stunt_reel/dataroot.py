@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -364,8 +363,8 @@ def link_points_at(path: Path, target: Path) -> bool:
         return False
 
 
-#: Path characters cmd reads as plain text; any other could start or split a command.
-_SHELL_SAFE_PATH = re.compile(r"[A-Za-z0-9 ._\-\\/:~+@#$']+")
+#: Environment variable that carries the path into ``cmd``; see :func:`_shell_rmdir`.
+_RMDIR_PATH_VAR = "STUNT_REEL_RMDIR_PATH"
 
 
 def _shell_rmdir(path: Path) -> None:
@@ -375,16 +374,21 @@ def _shell_rmdir(path: Path) -> None:
     is deliberately no ``/s``, so a real directory that still holds files is refused
     instead of emptied.
 
-    ``cmd`` parses its command line itself, so a path holding ``&``, ``%``, ``;`` or another
-    metacharacter could run or remove something else; such a path is refused, not passed.
+    ``cmd`` parses its own command line, so the path never appears on it: it rides in an
+    environment variable that ``/v:on`` expands after parsing, so ``&``, ``%``, ``(``, ``^``
+    or any other character of a valid name is plain text and cannot start a command.
     ``/d`` skips any AutoRun command, and undecodable shell output is replaced rather than
     raised, so a localised error message still reaches the caller.
     """
-    if not _SHELL_SAFE_PATH.fullmatch(str(path)):
-        raise OSError(f"not passing {str(path)!r} to the shell: it holds a cmd metacharacter")
-    command = [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/c", "rmdir", str(path)]
+    comspec = os.environ.get("COMSPEC", "cmd.exe")
+    command = f'"{comspec}" /d /v:on /c rmdir "!{_RMDIR_PATH_VAR}!"'
     result = subprocess.run(  # noqa: S603
-        command, capture_output=True, text=True, errors="replace", check=False
+        command,
+        env={**os.environ, _RMDIR_PATH_VAR: str(path)},
+        capture_output=True,
+        text=True,
+        errors="replace",
+        check=False,
     )
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip()
