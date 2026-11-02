@@ -27,7 +27,7 @@ pub struct CreditsChange {
 
 /// The two text lines of one `0x99` event: the film's two C strings, as raw bytes, since
 /// the font (not an encoding) decides what each byte draws.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreditLines {
     /// First line, drawn on top.
     pub first: Vec<u8>,
@@ -57,19 +57,6 @@ pub struct ClipRect {
     pub right: i32,
     /// Bottom row, inclusive.
     pub bottom: i32,
-}
-
-impl ClipRect {
-    /// A rectangle from its inclusive edges.
-    #[must_use]
-    pub fn new(left: i32, top: i32, right: i32, bottom: i32) -> Self {
-        Self {
-            left,
-            top,
-            right,
-            bottom,
-        }
-    }
 }
 
 /// Calls `put(x, y, index)` for every pixel of the credits, shadow before ink, so a caller

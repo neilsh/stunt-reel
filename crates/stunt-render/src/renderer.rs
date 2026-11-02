@@ -262,14 +262,19 @@ fn paint_credits(
     let (width, height) = (page.width() as i32, page.height() as i32);
     let (mode_w, mode_h) = (MODE13H_WIDTH as i32, MODE13H_HEIGHT as i32);
     let view_rows = viewport_rows.map_or(height, |rows| rows as i32);
-    let rect = ClipRect::new(0, 0, mode_w - 1, view_rows * mode_h / height - 1);
+    let rect = ClipRect {
+        left: 0,
+        top: 0,
+        right: mode_w - 1,
+        bottom: view_rows * mode_h / height - 1,
+    };
     draw_credits(font, lines, rect, &mut |x, y, index| {
         if !(0..mode_w).contains(&x) || !(0..mode_h).contains(&y) {
             return;
         }
         let (r, g, b) = palette[usize::from(index)];
-        for py in y * height / mode_h..(y + 1) * height / mode_h {
-            for px in x * width / mode_w..(x + 1) * width / mode_w {
+        for py in scaled_span(y, mode_h, height) {
+            for px in scaled_span(x, mode_w, width) {
                 let at = (py * width + px) as usize;
                 page.indices[at] = index;
                 page.layers[at] = LAYER_OVERLAY;
@@ -277,6 +282,12 @@ fn paint_credits(
             }
         }
     });
+}
+
+/// The page pixels, along one axis, that Mode 13h pixel `at` of `from` covers on a page `to`
+/// pixels long.
+fn scaled_span(at: i32, from: i32, to: i32) -> std::ops::Range<i32> {
+    at * to / from..(at + 1) * to / from
 }
 
 /// Consumes the pages an offscreen Renderer reads back.

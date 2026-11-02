@@ -38,15 +38,18 @@ impl PFont {
                 actual: bytes.len(),
             });
         }
-        let (widths, glyphs) = bytes.split_at(GLYPH_COUNT);
-        let mut font = Self {
-            widths: [0; GLYPH_COUNT],
-            rows: [[0; GLYPH_ROWS]; GLYPH_COUNT],
+        let length = || FontError::Length {
+            actual: bytes.len(),
         };
-        font.widths.copy_from_slice(widths);
-        font.rows
-            .copy_from_slice(glyphs.as_chunks::<GLYPH_ROWS>().0);
-        Ok(font)
+        let (widths, glyphs) = bytes.split_at(GLYPH_COUNT);
+        Ok(Self {
+            widths: widths.try_into().map_err(|_| length())?,
+            rows: glyphs
+                .as_chunks::<GLYPH_ROWS>()
+                .0
+                .try_into()
+                .map_err(|_| length())?,
+        })
     }
 
     /// Advance of `byte` in pixels. A byte past the table (`0x80` and up) has none and draws

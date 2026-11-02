@@ -107,30 +107,41 @@ pub(crate) fn build_scene(src: &SceneSources<'_>) -> Result<FilmScene, String> {
     attach_font(scene, src)
 }
 
-/// Gives the scene its credits font: the `--font` file, which must load, or else a
-/// `PFONT.BIN` found as a scenery file is, from the archive and then from the film (the
-/// engine root beside `VAULT` holds one). A film with credits and no font found still
-/// plays, without its credits text.
+/// Gives the scene its credits font: the `--font` file, which must load, or else, for a
+/// film that sets credits, a `PFONT.BIN` found as a scenery file is, from the archive and
+/// then from the film (the engine root beside `VAULT` holds one). A film whose font is
+/// missing or does not load still plays, without its credits text.
 fn attach_font(scene: FilmScene, src: &SceneSources<'_>) -> Result<FilmScene, String> {
-    let path = match src.font {
-        Some(path) => Some(path.to_path_buf()),
-        None => [src.all, src.flm]
-            .into_iter()
-            .flatten()
-            .find_map(|base| find_scenery_file(src.sidata, base, "PFONT.BIN")),
-    };
-    let Some(path) = path else {
-        if scene.timeline().has_credits() {
-            eprintln!(
-                "[stuntreel warning] film has credits but no PFONT.BIN was found; pass --font"
-            );
-        }
+    if let Some(path) = src.font {
+        let font = load_font(path)?;
+        println!("[stuntreel] credits font: {}", path.display());
+        return Ok(scene.with_font(font));
+    }
+    if !scene.timeline().has_credits() {
         return Ok(scene);
-    };
-    let bytes = fs::read(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let font = PFont::parse(&bytes).map_err(|e| format!("parse {}: {e}", path.display()))?;
-    println!("[stuntreel] credits font: {}", path.display());
-    Ok(scene.with_font(font))
+    }
+    let found = [src.all, src.flm]
+        .into_iter()
+        .flatten()
+        .find_map(|base| find_scenery_file(src.sidata, base, "PFONT.BIN"))
+        .ok_or_else(|| "no PFONT.BIN was found".to_string())
+        .and_then(|path| load_font(&path).map(|font| (path, font)));
+    match found {
+        Ok((path, font)) => {
+            println!("[stuntreel] credits font: {}", path.display());
+            Ok(scene.with_font(font))
+        }
+        Err(e) => {
+            eprintln!("[stuntreel warning] film has credits but {e}; pass --font");
+            Ok(scene)
+        }
+    }
+}
+
+/// Reads and parses a `PFONT.BIN`.
+fn load_font(path: &Path) -> Result<PFont, String> {
+    let bytes = fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    PFont::parse(&bytes).map_err(|e| format!("parse {}: {e}", path.display()))
 }
 
 /// Builds the scene from the film, archive and scenery, without the credits font.
@@ -470,6 +481,9 @@ mod tests {
         assert_eq!(synthetic_orbit(None).slices().len(), 60);
     }
 
+    /// A one-slice film that sets the credits `T` with an empty second line, then its epilogue.
+    const CREDITS_FILM: &[u8] = b"FILM\0\0\x01\x99T\0\0\xFF\x08\0\xFF";
+
     fn fixture(name: &str) -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/fixtures")
@@ -546,9 +560,10 @@ mod tests {
         let font = fs::read(fixture("synthetic_pfont.bin")).expect("fixture");
         let film = t.0.join("ENGINE/VAULT/MINIMAL.FLM");
         fs::create_dir_all(film.parent().expect("parent")).expect("dirs");
-        fs::copy(fixture("synthetic_minimal.flm"), &film).expect("copy film");
+        fs::write(&film, CREDITS_FILM).expect("write film");
 
         let scene = build_scene(&sources(Some(&film), None, None)).expect("scene");
+        assert!(scene.timeline().has_credits());
         assert!(scene.font().is_none(), "no PFONT.BIN anywhere yet");
 
         fs::write(t.0.join("ENGINE/pfont.bin"), &font).expect("write font");
@@ -573,6 +588,29 @@ mod tests {
             ..sources(Some(&film), None, None)
         };
         assert!(build_scene(&src).expect("scene").font().is_some());
+    }
+
+    #[test]
+    fn only_a_film_with_credits_looks_for_a_font_and_a_broken_one_is_skipped() {
+        let t = TempTree::new();
+        let film = t.0.join("ENGINE/VAULT/MINIMAL.FLM");
+        fs::create_dir_all(film.parent().expect("parent")).expect("dirs");
+        fs::copy(fixture("synthetic_minimal.flm"), &film).expect("copy film");
+        fs::copy(fixture("synthetic_pfont.bin"), t.0.join("ENGINE/PFONT.BIN")).expect("font");
+
+        let scene = build_scene(&sources(Some(&film), None, None)).expect("scene");
+        assert!(
+            scene.font().is_none(),
+            "a film without credits takes no font"
+        );
+
+        fs::write(&film, CREDITS_FILM).expect("write film");
+        fs::write(t.0.join("ENGINE/PFONT.BIN"), "too short").expect("break font");
+        let scene = build_scene(&sources(Some(&film), None, None)).expect("scene");
+        assert!(
+            scene.font().is_none(),
+            "a found font that does not parse is skipped"
+        );
     }
 
     #[test]

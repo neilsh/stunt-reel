@@ -60,7 +60,12 @@ fn draw_text_plots_set_bits_msb_first_and_advances_by_width() {
 #[test]
 fn credits_draw_the_shadow_first_then_ink_over_it() {
     let lines = CreditLines::new("I", "");
-    let rect = ClipRect::new(0, 0, 319, 184);
+    let rect = ClipRect {
+        left: 0,
+        top: 0,
+        right: 319,
+        bottom: 184,
+    };
     let pixels = plot(|put| draw_credits(&font(), &lines, rect, put));
     // x = (319 - 2) >> 1 = 158, y = (184 - 28) >> 1 = 78.
     for y in 78..85 {
@@ -73,7 +78,12 @@ fn credits_draw_the_shadow_first_then_ink_over_it() {
 #[test]
 fn credits_centre_each_line_and_put_the_second_twenty_rows_down() {
     let lines = CreditLines::new("LL", "1");
-    let rect = ClipRect::new(0, 0, 319, 184);
+    let rect = ClipRect {
+        left: 0,
+        top: 0,
+        right: 319,
+        bottom: 184,
+    };
     let pixels = plot(|put| draw_credits(&font(), &lines, rect, put));
     // Line 1: width 8, x = (319 - 8) >> 1 = 155. Line 2: width 3, x = 158, ink one column in.
     assert_eq!(pixels.get(&(155, 78)), Some(&255));
@@ -85,14 +95,24 @@ fn credits_centre_each_line_and_put_the_second_twenty_rows_down() {
 fn credits_whose_first_byte_is_negative_draw_nothing() {
     // `0x0F7F` skips the whole overlay when the text's first byte has its sign bit set.
     let lines = CreditLines::new(vec![0x80, b'I'], "I");
-    let rect = ClipRect::new(0, 0, 319, 184);
+    let rect = ClipRect {
+        left: 0,
+        top: 0,
+        right: 319,
+        bottom: 184,
+    };
     assert!(plot(|put| draw_credits(&font(), &lines, rect, put)).is_empty());
 }
 
 #[test]
 fn credits_centre_inside_an_offset_clip_rectangle() {
     let lines = CreditLines::new("I", "");
-    let rect = ClipRect::new(100, 10, 199, 109);
+    let rect = ClipRect {
+        left: 100,
+        top: 10,
+        right: 199,
+        bottom: 109,
+    };
     let pixels = plot(|put| draw_credits(&font(), &lines, rect, put));
     // x = 100 + ((99 - 2) >> 1) = 148, y = 10 + ((99 - 28) >> 1) = 45.
     assert_eq!(pixels.get(&(148, 45)), Some(&255));

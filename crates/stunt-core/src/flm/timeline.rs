@@ -147,11 +147,11 @@ impl FilmTimeline {
     /// The credits on screen at `tick`: the last change at or before it, if it set text.
     #[must_use]
     pub fn credits_at(&self, tick: f32) -> Option<&CreditLines> {
-        self.credits
-            .iter()
-            .rev()
-            .find(|change| change.tick as f32 <= tick)
-            .and_then(|change| change.lines.as_ref())
+        // The changes are in film order, so their ticks never decrease.
+        let shown = self
+            .credits
+            .partition_point(|change| change.tick as f32 <= tick);
+        self.credits[..shown].last()?.lines.as_ref()
     }
 
     /// Total authored length in seconds.
