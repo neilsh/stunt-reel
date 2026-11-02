@@ -153,6 +153,7 @@ fn glb_for_frame(
         all: Some(archive),
         sod: None,
         sidata,
+        font: None,
         max_ticks: None,
     })?;
     export_scene_frame(&scene, tick).map_err(|e| format!("tick {tick}: {e}"))

@@ -16,11 +16,12 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-#: The local hooks in `prek.toml` order, and the trigger keys each sets. `diff-check` and
-#: `test-docs` fire on every commit: prek passes no deleted files to hooks, so a commit that only
+#: The local hooks in `prek.toml` order, and the trigger keys each sets. `diff-check`,
+#: `crlf-check` and `test-docs` fire on every commit: prek passes no deleted files to hooks, so a commit that only
 #: deletes a linked page would otherwise skip the doc invariants.
 LOCAL_HOOKS: dict[str, dict[str, Any]] = {
     "diff-check": {"always_run": True},
+    "crlf-check": {"always_run": True},
     "fmt-check-rust": {"types": ["rust"]},
     "fmt-check-py": {"types": ["python"]},
     "lint-py": {"types": ["python"]},

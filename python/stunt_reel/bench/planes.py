@@ -45,6 +45,9 @@ class RenderPlanes:
     rgb: NDArray[np.uint8]  # (200, 320, 3)
     idx: NDArray[np.uint8] | None  # (200, 320)
     layer: NDArray[np.uint16]  # (200, 320)
+    #: Whether the film shows credits at this tick, from ``render.json``; ``None`` for a
+    #: render stored before the field (see ``ssim.credits_in_play``).
+    credits: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -111,6 +114,7 @@ class RenderTree:
             rgb=palette[idx].reshape((*SHAPE, 3)),
             idx=idx.reshape(SHAPE),
             layer=layer.astype(np.uint16).reshape(SHAPE),
+            credits=self.store.credits(tick),
         )
 
 

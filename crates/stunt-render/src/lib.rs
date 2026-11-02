@@ -41,7 +41,9 @@ pub use parity::{
     compute_frame_ssim_masked, compute_luminance, compute_window_scores, compute_window_ssim,
     rescale_mode13h_frame, rgb_to_luminance, rgba_to_luminance,
 };
-pub use pipeline::{LAYER_FIRST_ACTOR, LAYER_NONE, LAYER_OCEAN, LAYER_PROP, LAYER_TERRAIN};
+pub use pipeline::{
+    LAYER_FIRST_ACTOR, LAYER_NONE, LAYER_OCEAN, LAYER_OVERLAY, LAYER_PROP, LAYER_TERRAIN,
+};
 pub use renderer::{
     DEFAULT_CLEAR_PALETTE_INDEX, DEFAULT_PAGE_HEIGHT, DEFAULT_PAGE_WIDTH, Offscreen, PageSink,
     PageSize, RenderError, RenderOptions, RenderedPage, Renderer, SinkError,

@@ -28,9 +28,9 @@ New tickets live in [GitHub Issues](https://github.com/neilsh/stunt-reel/issues)
 | Ticket | Title | Owner | Status | Links |
 |---|---|---|---|---|
 | `T00` | Scaffolding, contracts and fixtures | `rust-engine-worker` | Done | [`contracts/`](../../crates/stunt-core/src/contracts/mod.rs), [`tests/fixtures/README.md`](../../tests/fixtures/README.md) |
-| `T01` | DOSBox-X harness and navigation | `re-harness-worker` | Done | [`client.py`](../../python/stunt_reel/tac/client.py), [`bda.py`](../../python/stunt_reel/tac/bda.py), [`navigation.md`](../../research/playone-exe/navigation.md) |
-| `T02` | Real-mode memory map and V-Sync trap | `re-harness-worker` | Done (the `0C5E` conflict is moot for capture since [#28](https://github.com/neilsh/stunt-reel/pull/28)) | [`memory-map.md`](../../research/playone-exe/memory-map.md), [`vsync.py`](../../python/stunt_reel/tac/vsync.py) |
-| `T03` | Trajectory streamer and oracle export | `re-harness-worker` | Done (layouts still `[Hypothesis]`; moot for capture since [#28](https://github.com/neilsh/stunt-reel/pull/28)) | [`streamer.py`](../../python/stunt_reel/tac/streamer.py), [`memory-map.md`](../../research/playone-exe/memory-map.md) |
+| `T01` | DOSBox-X harness and navigation | `re-harness-worker` | Done | `client.py`, `bda.py`, [`navigation.md`](../../research/playone-exe/navigation.md) |
+| `T02` | Real-mode memory map and V-Sync trap | `re-harness-worker` | Done (the `0C5E` conflict is moot for capture since [#28](https://github.com/neilsh/stunt-reel/pull/28)) | [`memory-map.md`](../../research/playone-exe/memory-map.md), `vsync.py` |
+| `T03` | Trajectory streamer and oracle export | `re-harness-worker` | Done (layouts still `[Hypothesis]`; moot for capture since [#28](https://github.com/neilsh/stunt-reel/pull/28)) | `streamer.py`, [`memory-map.md`](../../research/playone-exe/memory-map.md) |
 | `T04` | Baseline mesh ingest and glTF exporter | `gltf-exporter-worker` | Done | [`stunt-gltf/`](../../crates/stunt-gltf/), [`sod.md`](../../research/formats/sod.md) |
 
 ### Milestone 2: Native Rust Engine *(Gate 2 passed)*

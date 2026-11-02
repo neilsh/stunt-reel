@@ -9,8 +9,17 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-from stunt_reel.bench.planes import BenchError, RenderTree, load_capture
-from stunt_reel.bench.ssim import frame_ssim, stretch
+from stunt_reel.bench.planes import BenchError, RenderPlanes, RenderTree, load_capture
+from stunt_reel.bench.ssim import (
+    CURSOR_INDEX,
+    LAYER_OVERLAY,
+    UI_BAR_FIRST_ROW,
+    credits_in_play,
+    draws_credits,
+    frame_ssim,
+    overlay_mask,
+    stretch,
+)
 from stunt_reel.parity_artifacts import RENDER_INDEX_FILE, RENDER_LAYER_FILE
 
 if TYPE_CHECKING:
@@ -41,6 +50,31 @@ def test_a_render_from_before_the_store_names_a_rerender(
     record.write_text(json.dumps(document), encoding="utf-8")
     with pytest.raises(BenchError, match="re-render"):
         RenderTree(tmp_path / "r").load(10)
+
+
+def test_credits_ink_is_kept_on_a_tick_whose_render_draws_credits() -> None:
+    """Mirrors the Rust ``ui_overlay_mask``: index 255 is masked only without credits."""
+    capture = np.full((200, 320), 7, dtype=np.uint8)
+    capture[100, 160] = CURSOR_INDEX
+    layer = np.zeros((200, 320), dtype=np.uint16)
+    assert not draws_credits(layer)
+    assert overlay_mask(capture)[100, 160]
+    layer[50, 0] = LAYER_OVERLAY
+    assert draws_credits(layer)
+    kept = overlay_mask(capture, credits_drawn=draws_credits(layer))
+    assert not kept[100, 160]
+    assert kept[UI_BAR_FIRST_ROW, 0]
+
+
+def test_the_record_credits_flag_wins_over_the_layer_plane() -> None:
+    """Mirrors the Rust ``credits_in_play``: the schedule decides when the record has it."""
+    rgb = np.zeros((200, 320, 3), dtype=np.uint8)
+    layer = np.zeros((200, 320), dtype=np.uint16)
+    assert not credits_in_play(RenderPlanes(rgb=rgb, idx=None, layer=layer))
+    assert credits_in_play(RenderPlanes(rgb=rgb, idx=None, layer=layer, credits=True))
+    layer[50, 0] = LAYER_OVERLAY
+    assert credits_in_play(RenderPlanes(rgb=rgb, idx=None, layer=layer))
+    assert not credits_in_play(RenderPlanes(rgb=rgb, idx=None, layer=layer, credits=False))
 
 
 def test_stretch_repeats_every_fifth_row() -> None:

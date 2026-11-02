@@ -14,10 +14,12 @@ from numpy.lib.stride_tricks import sliding_window_view
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-    from stunt_reel.bench.planes import CapturePlanes
+    from stunt_reel.bench.planes import CapturePlanes, RenderPlanes
 
 __all__ = [
     "capture_luma",
+    "credits_in_play",
+    "draws_credits",
     "frame_ssim",
     "overlay_mask",
     "render_luma",
@@ -35,6 +37,7 @@ C1 = 6.5025
 C2 = 58.5225
 UI_BAR_FIRST_ROW = 185
 CURSOR_INDEX = 255
+LAYER_OVERLAY = 4
 _LUMA = np.array([0.299, 0.587, 0.114])
 
 
@@ -55,9 +58,32 @@ def stretch(plane: NDArray[Any]) -> NDArray[Any]:
     return plane[np.minimum(rows, HEIGHT - 1)]
 
 
-def overlay_mask(capture_idx: NDArray[np.uint8]) -> NDArray[np.bool_]:
-    """Pixels the UI overlay covers: the button bar rows and the cursor index."""
-    mask: NDArray[np.bool_] = capture_idx == CURSOR_INDEX
+def draws_credits(layer: NDArray[np.uint16]) -> bool:
+    """True when a render's layer plane holds credits: any ``LAYER_OVERLAY`` pixel."""
+    return bool((layer == LAYER_OVERLAY).any())
+
+
+def credits_in_play(planes: RenderPlanes) -> bool:
+    """Whether a tick keeps capture index 255 in play as credits ink.
+
+    The film's credits schedule from ``render.json`` when the render has it, so a render that
+    drops its credits is still judged on the ink; otherwise whether the render drew credits.
+    Mirrors the Rust ``credits_in_play``.
+    """
+    return draws_credits(planes.layer) if planes.credits is None else planes.credits
+
+
+def overlay_mask(
+    capture_idx: NDArray[np.uint8], *, credits_drawn: bool = False
+) -> NDArray[np.bool_]:
+    """Pixels the UI overlay covers: the button bar rows and the cursor index.
+
+    Credits ink shares the cursor's index, so a tick whose render draws credits keeps it.
+    """
+    if credits_drawn:
+        mask: NDArray[np.bool_] = np.zeros(capture_idx.shape, dtype=np.bool_)
+    else:
+        mask = capture_idx == CURSOR_INDEX
     mask[UI_BAR_FIRST_ROW:, :] = True
     return mask
 
@@ -92,11 +118,13 @@ def window_ssim(a240: NDArray[Any], b240: NDArray[Any]) -> NDArray[np.float64]:
     return np.where(degenerate, flat, num / safe)
 
 
-def frame_ssim(capture: CapturePlanes, render_rgb: NDArray[np.uint8]) -> float:
+def frame_ssim(
+    capture: CapturePlanes, render_rgb: NDArray[np.uint8], *, credits_drawn: bool = False
+) -> float:
     """The ``score_frame`` SSIM: mean over windows clear of the overlay, 1.0 when none."""
     reference = stretch(capture_luma(capture))
     test = stretch(render_luma(render_rgb))
-    allowed = window_grid(stretch(overlay_mask(capture.idx)))
+    allowed = window_grid(stretch(overlay_mask(capture.idx, credits_drawn=credits_drawn)))
     if not allowed.any():
         return 1.0
     return float(window_ssim(reference, test)[allowed].mean())

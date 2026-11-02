@@ -32,6 +32,7 @@
 | `0x2264` | `[Established]` | `u8` | Sound hardware driver mode | |
 | `0x2265` | `[Established]` | `u8` | Audio playback channel flag | |
 | `0x2272` | `[Established]` | `u8` | Playback-active flag gating the `0x22B8` increment | `# [MEM-FLM-TICK]` |
+| `0x2294`, `0x2296`, `0x2298`, `0x229A` | `[Established]` | `i16` x 4 | Inclusive clip rectangle (left, right, top, bottom) the credits text is centred in at `0x0F84`; the film view is `0..319` by `0..184` ([`pfont.md` § 3.2](../formats/auxiliary/pfont.md#32-drawing-the-credits)) | |
 | `0x22B8` | `[Established]` | `u16` | Global 50 Hz timer tick (incremented by the INT 8 path while `0x2272` is set) | `# [MEM-FLM-TICK]` |
 | `0x22C4` | `[Established]` | `u16` | Stored PSP segment address: written at image `0x0C78` (`mov [0x22C4], es`, right after `DS` is set to `0x0D51`); read at `0x0CF2`/`0x0CFA` for the free-memory check against `PSP:[2]` | |
 | `0x22CA`, `0x22CC` | `[Supported Inference]` | `u16` x 2 | Segments of the two composed pages, swapped every render; after a finished copy, rows 0–191 of `A000` equal one of them (rows 192–199, the button bar, are drawn on `A000` directly). A page with bands from each is torn ([`capture-dosbox-automation.md` § 4.5](capture-dosbox-automation.md#45-torn-pages-and-the-dac-lag)) | |
@@ -39,6 +40,7 @@
 | `0x22D0` | `[Established]` | `u16` | Preserved `SP` register during `INSTALL.EXE` child execution: written at image `0x0C98`, restored at `0x0CC8` around the same EXEC | |
 | `0x4758` | `[Established]` | `u16` | Field `+0x0E` of the sibling `0x474A` struct; reads 0 during playback — **not** the film clock | `# [MEM-FLM-TICK]` |
 | `0x4896` | `[Established]` | `u16` | Active film clock in 50 Hz ticks (struct base `0x4888` + `0x0E`); ends at the film's authored total and holds there; equals `0x22B8` on every frame-locked read until it holds, see below | `# [MEM-FLM-TICK]` |
+| `0x4F02` | `[Established]` | `u8[128]` | `PFONT.BIN` width table, indexed by character code at `0x58D0` ([`pfont.md`](../formats/auxiliary/pfont.md)) | |
 | image offset + `0x8240` | `[Bounded Observation]` | Rule | Relocation: `runtime_linear = image_offset + 0x8240` (`DGROUP` image `0xD510` -> segment `0x1575`); VM `CS:IP` = image - `0x8240`; see [`memory.md` § 4](memory.md#4-image-to-memory-relocation-and-a-candidate-embedded-data-region) | |
 
 Rows `0x22C4`, `0x22CE` and `0x22D0` were promoted from `[Supported Inference]` to `[Established]` on 2026-10-23. A Capstone 16-bit decode of the whole unpacked image found exactly those instructions referencing them, all inside the entry routine `0x0C5E`, and raw word matches elsewhere are not instruction operands. Offsets are load-image offsets (see [`startup.md` § 5](startup.md#5-reproducing-the-static-analysis)). The EXEC runs when the command line starts with `?` (`0x0C90`) or when opening `game.cfg` (`DS:0x05AC`, call at `0x0CD2`) fails. The `entry` listing in rea/Ghidra matches the same instructions at analysis address `0x10000 +` image offset.
@@ -88,7 +90,7 @@ Every row above is for the unpatched 1992 `PLAYONE.EXE` (102,703 bytes, sha256 `
 
 ### # [MEM-CAMERA-RIG]
 * **Segment / Scope**: Runtime `DS` offset `0x0C10` (the concrete `DS` value depends on the load base; in the captured session `DS = 0x1575`).
-* **Evidentiary Tier**: `[Hypothesis]`. The layout below is what `MockTransport._write_tick_state` writes and `TrajectoryStreamer.decode_camera_from_memory` reads ([`transport.py`](../../python/stunt_reel/tac/transport.py), [`streamer.py`](../../python/stunt_reel/tac/streamer.py)); it has been decoded only against that offline mock. The capture loop never reads the camera rig from a live `PLAYONE.EXE` ([`capture.md` § 3](capture.md#3-working-protocol)), and no disassembly of a consumer exists. The harness also addresses it as `0D51:0C10` although `0x0D51` is not the runtime `DS`. Treat offsets, field types (`f32` vs `16.16 i32`) and the `+0x1C` cut rule as unverified.
+* **Evidentiary Tier**: `[Hypothesis]`. The layout below is what `MockTransport._write_tick_state` writes and `TrajectoryStreamer.decode_camera_from_memory` reads (the retired `transport.py` and `streamer.py`, removed in #106); it was decoded only against that offline mock. The capture loop never reads the camera rig from a live `PLAYONE.EXE` ([`capture.md` § 3](capture.md#3-working-protocol)), and no disassembly of a consumer exists. The harness also addresses it as `0D51:0C10` although `0x0D51` is not the runtime `DS`. Treat offsets, field types (`f32` vs `16.16 i32`) and the `+0x1C` cut rule as unverified.
 * **Byte Layout Specification (32 bytes)**:
   * `+0x00` (`f32` / `16.16 i32` LE, 4B): Camera Eye World X coordinate in meters `[I1]`.
   * `+0x04` (`f32` / `16.16 i32` LE, 4B): Camera Eye World Y coordinate in meters.

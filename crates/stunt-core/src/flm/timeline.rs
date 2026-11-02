@@ -6,6 +6,7 @@
 //! wall-clock times and interpolate between adjacent keyframes per `[I4]`.
 
 use crate::contracts::trajectory::{AudioCue, TrajectoryRecord};
+use crate::credits::{CreditLines, CreditsChange};
 use crate::flm::FlmError;
 use crate::flm::interpolate::interpolate_trajectory;
 
@@ -33,6 +34,8 @@ pub struct FilmTimeline {
     total_ticks: u32,
     warnings: Vec<String>,
     stop_reason: Option<FlmError>,
+    /// `0x99` sets and `0x98` clears in film order, so same-tick changes keep their order.
+    credits: Vec<CreditsChange>,
 }
 
 impl FilmTimeline {
@@ -48,7 +51,15 @@ impl FilmTimeline {
             total_ticks,
             warnings,
             stop_reason: None,
+            credits: Vec::new(),
         }
+    }
+
+    /// Attach the film's credits changes, in film order.
+    #[must_use]
+    pub(crate) fn with_credits(mut self, credits: Vec<CreditsChange>) -> Self {
+        self.credits = credits;
+        self
     }
 
     /// Record why slice decoding stopped before the film's epilogue.
@@ -77,7 +88,8 @@ impl FilmTimeline {
         while let Some(slice) = player.step_slice() {
             slices.push(slice);
         }
-        let timeline = Self::new(slices, player.warnings().to_vec());
+        let timeline =
+            Self::new(slices, player.warnings().to_vec()).with_credits(player.take_credits());
         Ok(match player.take_last_error() {
             Some(reason) => timeline.with_stop_reason(reason),
             None => timeline,
@@ -121,7 +133,29 @@ impl FilmTimeline {
             total_ticks,
             warnings: self.warnings.clone(),
             stop_reason: self.stop_reason.clone(),
+            credits: self
+                .credits
+                .iter()
+                .filter(|change| change.tick <= total_ticks)
+                .cloned()
+                .collect(),
         }
+    }
+
+    /// True when the film ever sets credits text (`0x99`).
+    #[must_use]
+    pub fn has_credits(&self) -> bool {
+        self.credits.iter().any(|change| change.lines.is_some())
+    }
+
+    /// The credits on screen at `tick`: the last change at or before it, if it set text.
+    #[must_use]
+    pub fn credits_at(&self, tick: f32) -> Option<&CreditLines> {
+        // The changes are in film order, so their ticks never decrease.
+        let shown = self
+            .credits
+            .partition_point(|change| change.tick as f32 <= tick);
+        self.credits[..shown].last()?.lines.as_ref()
     }
 
     /// Total authored length in seconds.

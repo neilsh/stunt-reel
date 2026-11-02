@@ -80,6 +80,7 @@ fn main() {
         all: config.all_path.as_deref(),
         sod: config.sod_path.as_deref(),
         sidata: config.sidata_dir.as_deref(),
+        font: config.font_path.as_deref(),
         max_ticks: config.max_ticks,
     }) {
         Ok(scene) => scene,

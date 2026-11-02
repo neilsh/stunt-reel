@@ -11,7 +11,7 @@ accepted; implemented by C1 of the architecture-deepening programme. Design sign
 stores `world_matrix` beside `position_meters` and `rotation_quat`, the pose that
 determines it. Each producer — [`flm/mod.rs`](../../crates/stunt-core/src/flm/mod.rs),
 [`flm/interpolate.rs`](../../crates/stunt-core/src/flm/interpolate.rs) and the Python
-reference in [`python/stunt_reel/tac/streamer.py`](../../python/stunt_reel/tac/streamer.py) —
+reference in `python/stunt_reel/tac/streamer.py` —
 constructs the record with zeros and then assigns `compute_world_matrix()`; tests fill
 the field by hand. [`FilmScene::frame`](../../crates/stunt-core/src/scene.rs) copies it
 unchecked into `ActorDraw`. One missed assignment draws every actor at the origin, and
@@ -49,7 +49,7 @@ The G04 oracle and the Python mirror move in the same change: the two-record
 is re-serialized without `world_matrix`,
 [`tests/fixtures/README.md`](../../tests/fixtures/README.md) stops listing it, and
 [`python/stunt_reel/tac/models.py`](../../python/stunt_reel/tac/models.py) /
-[`streamer.py`](../../python/stunt_reel/tac/streamer.py) drop the stored field while
+`streamer.py` drop the stored field while
 keeping their `compute_world_matrix()`. Rust serde ignores the unknown field when
 reading an older record, and the Python reader ignores a legacy `world_matrix` key; no
 migration is needed.

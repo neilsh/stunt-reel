@@ -183,7 +183,8 @@ impl RenderJournal {
         })
     }
 
-    /// Stores the page drawn for film-clock `tick` with `controls` from `camera`.
+    /// Stores the page drawn for film-clock `tick` with `controls` from `camera`; `credits`
+    /// says whether the film shows credits at that tick.
     ///
     /// The page's picture is not kept: it must be `palette[index]` at every pixel for the
     /// film palette of `controls`, and a page that is not is refused.
@@ -192,6 +193,7 @@ impl RenderJournal {
         tick: u32,
         controls: PaletteControls,
         camera: ViewCamera,
+        credits: bool,
         page: &RenderedPage,
     ) -> Result<(), StoreError> {
         let palette = controls.film_palette();
@@ -209,6 +211,7 @@ impl RenderJournal {
             palette: render_palette(controls),
             camera: camera_pose(camera),
             palette_index,
+            credits: Some(credits),
         });
         Ok(())
     }
@@ -446,6 +449,7 @@ mod conformance {
                     roll_radians: 0.0,
                 },
                 palette_index,
+                credits: None,
             });
         }
         let table = writer.finish().expect("finish").expect("a store");
@@ -680,6 +684,7 @@ mod tests {
                 brightness: 0x8000,
                 saturation: 0x8000,
             },
+            credits: None,
         }
     }
 
@@ -715,7 +720,13 @@ mod tests {
         let mut journal = RenderJournal::begin(&dir, FilmId::default(), geometry()).expect("begin");
         let frame = frame();
         journal
-            .write(7, frame.palette, frame.view, &page(frame.palette, false))
+            .write(
+                7,
+                frame.palette,
+                frame.view,
+                true,
+                &page(frame.palette, false),
+            )
             .expect("write");
         assert!(
             !dir.join(RENDER_DOCUMENT).exists(),
@@ -727,6 +738,7 @@ mod tests {
         assert_eq!(record.geometry, geometry());
         assert_eq!(record.ticks.len(), 1);
         assert_eq!(record.ticks[0].palette.sky, 0x2000);
+        assert_eq!(record.ticks[0].credits, Some(true));
         assert_eq!(record.palette_count, 1);
         let mut store = crate::render_store::RenderStore::open(&dir).expect("open");
         let stored = store.frame(7).expect("frame");
@@ -740,7 +752,13 @@ mod tests {
         let mut journal = RenderJournal::begin(&dir, FilmId::default(), geometry()).expect("begin");
         let frame = frame();
         let error = journal
-            .write(7, frame.palette, frame.view, &page(frame.palette, true))
+            .write(
+                7,
+                frame.palette,
+                frame.view,
+                false,
+                &page(frame.palette, true),
+            )
             .unwrap_err()
             .to_string();
         assert!(error.contains("tick 7: pixel (0, 0)"), "{error}");
@@ -752,7 +770,13 @@ mod tests {
         let mut first = RenderJournal::begin(&dir, FilmId::default(), geometry()).expect("begin");
         let frame = frame();
         first
-            .write(7, frame.palette, frame.view, &page(frame.palette, false))
+            .write(
+                7,
+                frame.palette,
+                frame.view,
+                false,
+                &page(frame.palette, false),
+            )
             .expect("write");
         first.finish().expect("finish");
         assert!(dir.join(RENDER_DOCUMENT).exists());
