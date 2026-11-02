@@ -137,6 +137,10 @@ pub struct WindowScore {
 }
 
 /// SSIM of every window not touching `excluded` (row-major, `width * height`), in scan order.
+///
+/// # Panics
+/// Panics if `frame_a` and `frame_b` differ in length, or `excluded` is given with a length
+/// other than theirs.
 pub fn compute_window_scores(
     frame_a: &[f32],
     frame_b: &[f32],

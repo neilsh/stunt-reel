@@ -30,6 +30,10 @@ pub struct Geometry {
 
 impl Geometry {
     /// Checks that the raster is positive and the viewport fits inside it.
+    ///
+    /// # Errors
+    /// Returns [`ArtifactError::Geometry`] if `width` or `height` is zero, or `viewport_rows`
+    /// is zero or taller than `height`.
     pub fn validate(&self) -> Result<(), ArtifactError> {
         if self.width == 0 || self.height == 0 {
             return Err(ArtifactError::geometry("width and height must be positive"));
@@ -139,6 +143,15 @@ pub struct RenderRecord {
 
 impl RenderRecord {
     /// Checks the schema version, geometry, tick ordering, palette indices and chunk table.
+    ///
+    /// # Errors
+    /// - [`ArtifactError::UnsupportedVersion`] if `schema_version` is not
+    ///   [`crate::RENDER_SCHEMA_VERSION`].
+    /// - [`ArtifactError::Geometry`] if the geometry fails [`Geometry::validate`].
+    /// - [`ArtifactError::TickDuplicate`] or [`ArtifactError::TickOrder`] if two neighbouring
+    ///   ticks carry the same film clock or descend.
+    /// - [`ArtifactError::RenderStore`] if a tick's `palette_index` is not below `palette_count`,
+    ///   or the chunk table does not cover the ticks second by second and tile both plane files.
     pub fn validate(&self) -> Result<(), ArtifactError> {
         if self.schema_version != crate::RENDER_SCHEMA_VERSION {
             return Err(ArtifactError::UnsupportedVersion {

@@ -21,6 +21,13 @@ use crate::vfs::VfsError;
 /// - Region 0 (`data[ofs[0]..ofs[1]]`) is treated as the null-separated ASCII name table.
 /// - Entry $i$ payload: `data[ofs[i+1]..ofs[i+2]]`
 /// - If the name table is omitted or not ASCII, names default to `format!("{:04X}.BIN", i)`
+///
+/// # Errors
+/// - [`VfsError::UnexpectedEof`] if `data` is shorter than 8 bytes, `ofs[0]` or any table
+///   offset points past the end of `data`, or the offset table is cut short.
+/// - [`VfsError::InvalidMagic`] if `data` does not begin with `b"RS"`.
+/// - [`VfsError::InvalidOffsetTable`] if `ofs[0]` is below 8 or not 4-byte aligned, or the
+///   offsets are not non-decreasing.
 pub fn parse_res(data: &[u8]) -> Result<VfsArchive, VfsError> {
     if data.len() < 8 {
         return Err(VfsError::UnexpectedEof {

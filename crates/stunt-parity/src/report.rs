@@ -98,6 +98,12 @@ pub struct Report {
 
 impl Report {
     /// Checks the arithmetic identities the report promises.
+    ///
+    /// # Errors
+    /// Returns [`ArtifactError::ReportInconsistent`] if `reference_frames` is not
+    /// `frames + unmatched`, `frames` is not `scored_frames + excluded_frames`, a scored
+    /// mean is missing while `scored_frames` is non-zero or present while it is zero, or the I6 gate passes with no
+    /// scored frame.
     pub fn validate(&self) -> Result<(), ArtifactError> {
         if self.reference_frames != self.frames + self.unmatched {
             return Err(ArtifactError::report(

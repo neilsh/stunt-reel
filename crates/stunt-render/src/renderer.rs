@@ -255,6 +255,9 @@ impl RenderedPage {
 /// page becomes; the sink owns every file. An error is terminal for the run.
 pub trait PageSink {
     /// Consumes one rendered page.
+    ///
+    /// # Errors
+    /// Returns a [`SinkError`] if the sink cannot store or forward the page; the run stops there.
     fn accept(&mut self, page: RenderedPage) -> Result<(), SinkError>;
 }
 
@@ -310,6 +313,10 @@ impl Renderer {
     ///
     /// The page size is fixed here; `Renderer::resize` is a no-op. Every `Renderer::draw` calls
     /// sink.accept exactly once.
+    ///
+    /// # Errors
+    /// - [`RenderError::NoGpuAdapter`] if no adapter can be acquired.
+    /// - [`RenderError::DeviceRequest`] if the adapter refuses to create a device.
     pub fn offscreen(
         scene: &FilmScene,
         target: Offscreen,
@@ -347,6 +354,12 @@ impl Renderer {
     /// The surface starts configured at 1x1; call `Renderer::resize` with the window's inner size
     /// before drawing. The window is bounded by the raw-window-handle traits, the recorded
     /// exception to the no-GPU-types-in-signatures rule.
+    ///
+    /// # Errors
+    /// - [`RenderError::SurfaceCreate`] if `window` cannot back a surface.
+    /// - [`RenderError::NoGpuAdapter`] if no adapter compatible with the surface can be acquired.
+    /// - [`RenderError::DeviceRequest`] if the adapter refuses to create a device.
+    /// - [`RenderError::SurfaceConfig`] if the surface cannot be configured.
     pub fn surface<W>(
         scene: &FilmScene,
         window: Arc<W>,
@@ -388,6 +401,12 @@ impl Renderer {
     /// Uploads the frame palette into the LUT first, then prepares the camera and per-draw
     /// matrices; a camera override does not change the frame's LOD distances. Offscreen reads the
     /// page back and hands it to the sink; a surface presents it.
+    ///
+    /// # Errors
+    /// - [`RenderError::Readback`] if an offscreen page cannot be read back from the GPU.
+    /// - [`RenderError::Sink`] if the sink rejects the page.
+    ///
+    /// A surface draw never fails: a lost, outdated, timed-out or occluded surface skips the frame.
     pub fn draw(
         &mut self,
         frame: &SceneFrame,
