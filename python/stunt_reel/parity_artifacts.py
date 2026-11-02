@@ -508,6 +508,9 @@ class CaptureSet:
                 path,
             )
         self.geometry.validate(path)
+        if self.geometry.viewport_rows is not None:
+            # meta.json has no viewport field: a capture is the whole screen.
+            raise _error("geometry", "invalid geometry: a capture has no viewport_rows", path)
         for frame in self.frames:
             if not frame.frame_file or not frame.palette_file:
                 raise _error(
@@ -730,6 +733,8 @@ def _render_document(record: RenderRecord) -> dict[str, Any]:
         film["flm_bytes"] = record.film.flm_bytes
     if record.film.flm_sha256 is not None:
         film["flm_sha256"] = record.film.flm_sha256
+    if record.film.all_sha256 is not None:
+        film["all_sha256"] = record.film.all_sha256
     ticks = [
         {
             "tick": tick.tick,
