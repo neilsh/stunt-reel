@@ -10,7 +10,6 @@ the same control render. A fault is *detected* when it lowers the metric by at l
 from __future__ import annotations
 
 import statistics
-from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -52,10 +51,6 @@ DETECT_SIGMAS = 3.0
 FIDELITY_TOLERANCE = 1e-4
 #: The seed ``plant_tree`` plants ``wrong_tick`` with.
 PLANT_SEED = 1
-
-
-def _either_draws_credits(regions: Regions, planted: RenderPlanes) -> bool:
-    return regions.credits_drawn or draws_credits(planted.layer)
 
 
 def _regions(control: RenderPlanes) -> Regions:
@@ -199,16 +194,12 @@ def bench(
             planted = plant(fault, tick, source, seed)
             if planted is None:
                 continue
-            # Control and planted share one mask: either one's credits keep the ink in play.
-            shared = replace(regions, credits_drawn=_either_draws_credits(regions, planted))
-            before_scores = (
-                base
-                if shared.credits_drawn == regions.credits_drawn
-                else {name: fn(capture, control, shared) for name, fn in METRICS.items()}
-            )
+            # Planted, control and the recapture sigma all take the control's mask: a fault
+            # that loses the credits is scored on the ink, and one that gains them cannot
+            # unmask the cursor, which the sigma never saw.
             for name, fn in METRICS.items():
-                value = fn(capture, planted, shared)
-                before = before_scores[name]
+                value = fn(capture, planted, regions)
+                before = base[name]
                 if value is not None and before is not None:
                     changes[name][fault.key].append(value - before)
             if fault.name not in ("none", "grey"):

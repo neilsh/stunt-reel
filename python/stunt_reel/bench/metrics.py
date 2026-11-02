@@ -52,9 +52,9 @@ PIXELS = 200 * 320
 class Regions:
     """What the control render says about a tick: its layer plane and its mean luma.
 
-    ``credits_drawn`` picks the overlay mask (see ``overlay_mask``). Every score compared
-    against the control's shares it, so a planted render that loses or gains credits is
-    judged on the same pixels as the control.
+    ``credits_drawn`` picks the overlay mask (see ``overlay_mask``), from the control render.
+    Every score compared against the control's, and the recapture sigma, share it, so a
+    planted render that loses or gains credits is judged on the same pixels as the control.
     """
 
     layer: NDArray[np.uint16]
