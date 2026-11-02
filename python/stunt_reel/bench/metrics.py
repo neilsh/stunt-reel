@@ -21,7 +21,6 @@ from stunt_reel.bench.ssim import (
     UI_BAR_FIRST_ROW,
     WINDOW,
     capture_luma,
-    draws_credits,
     frame_ssim,
     overlay_mask,
     render_luma,
@@ -243,7 +242,7 @@ def differential(capture: CapturePlanes, before: RenderPlanes, after: RenderPlan
     windows = _any_in_window(stretch(changed)) & _allowed(
         # Either render's credits keep the ink in play, as in the Rust verdict.
         capture,
-        draws_credits(before.layer) or draws_credits(after.layer),
+        before.credits or after.credits,
     )
     delta: float | None = None
     if windows.any():

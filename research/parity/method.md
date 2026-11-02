@@ -33,7 +33,7 @@ For a side-by-side look, decode a reference `.idx` page (64000 bytes, 320x200) w
 
 ## 2. Scoring in one paragraph
 
-Both sides become Rec. 601 luminance, are stretched 320x200 -> 320x240, and are scored with the shared 11x11-window SSIM (`compute_frame_ssim`, window 11, stride 8; `[I6]`: >= 0.88 initial, >= 0.90 sign-off; `[Established]`). IoU compares each side's non-sky mask and measures framing independent of shading. Neither is a perceptual judgement.
+Both sides become Rec. 601 luminance, are stretched 320x200 -> 320x240, and are scored with the shared 11x11-window SSIM (`compute_frame_ssim`, window 11, stride 8; `[I6]`: >= 0.88 initial, >= 0.90 sign-off; `[Established]`). IoU compares each side's non-sky mask and measures framing independent of shading. Neither is a perceptual judgement. Windows touching the **UI overlay** are left out: capture rows 185 and below, and index 255 (the cursor) on ticks whose render record says the film shows no credits (`credits` in `render.json`, from the film's schedule, not the render's pixels), so credits ink is scored wherever the film shows it. A frame that expects credits the render did not draw is still scored on the ink and counted in `credits_missing_frames`.
 
 ### 2.0 Sky mask and IoU scale
 
@@ -154,6 +154,7 @@ Approaches that were tried and dropped. Each is recorded so it is not tried agai
 
 ### 4.3 Masks
 
+* **Credits by the render's pixels.** Keeping index 255 on ticks whose render drew any `LAYER_OVERLAY` pixel let a render that lost its credits (no font) mask the captured ink and lose nothing, and let `--compare` read a lost title card as an improvement; replaced by the record's per-tick `credits` flag (section 2).
 * **Sky IoU from one modal index.** Counting only the capture's most common sky index as sky inflated the filled area and understated IoU by about 0.12 on both `CTRY` and `INTRO`; replaced by the 227 to 238 band mask (section 2.0).
 
 ### 4.4 Per-second scoring of a video capture

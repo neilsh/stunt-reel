@@ -611,6 +611,7 @@ mod tests {
                 .push(tick, &palette, &indices, &layers)
                 .expect("push");
             entries.push(RenderTick {
+                credits: false,
                 tick,
                 palette: RenderPalette {
                     sky: 0,

@@ -184,7 +184,7 @@ _Avoid_: MCP port, debugger port, capture lock
 ## Artifacts
 
 **Render record**:
-The `render.json` document describing one render directory: the film identity, the raster geometry, the palette controls, palette index and camera of every whole-tick frame, and the table of per-second chunks that locates each tick's planes in the render store ([ADR 0027](docs/adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)). It is written last, at schema version 2; a version-1 render is refused.
+The `render.json` document describing one render directory: the film identity, the raster geometry, the palette controls, palette index, camera and credits flag of every whole-tick frame, and the table of per-second chunks that locates each tick's planes in the render store ([ADR 0027](docs/adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)). It is written last, at schema version 3; an older render is refused.
 _Avoid_: sidecar (for the record), manifest
 
 **Capture set**:
@@ -222,7 +222,7 @@ One distinct rendered page taken from `PLAYONE.EXE` during a capture, numbered b
 _Avoid_: tick (for the capture ordinal)
 
 **UI overlay**:
-What `PLAYONE.EXE` draws over the 3D scene in a captured frame that is not part of the film: the button bar and the mouse cursor. The renderer does not draw it, and parity leaves it out of scoring. Credits ink shares the cursor's palette index 255, so index 255 is left out only on ticks whose render draws no credits (see **Credits**).
+What `PLAYONE.EXE` draws over the 3D scene in a captured frame that is not part of the film: the button bar and the mouse cursor. The renderer does not draw it, and parity leaves it out of scoring. Credits ink shares the cursor's palette index 255, so index 255 is left out only on ticks where the film shows no credits, as the render record says (see **Credits**).
 _Avoid_: HUD, status bar
 
 **Index agreement**:

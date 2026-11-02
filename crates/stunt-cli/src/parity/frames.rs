@@ -61,12 +61,19 @@ pub(super) fn load_render_frame(store: &mut RenderStore, tick: u32) -> Result<Re
             "the render is {width}x{height}, expected {MODE13H_WIDTH}x{MODE13H_HEIGHT}"
         ));
     }
+    let credits = store
+        .record()
+        .ticks
+        .iter()
+        .find(|entry| entry.tick == tick)
+        .is_some_and(|entry| entry.credits);
     let frame = store.frame(tick).map_err(|e| e.to_string())?;
     Ok(RenderFrame {
         luminance: rgb_to_luminance(&frame.rgb()),
         indices: frame.indices,
         layers: frame.layers,
         controls: None,
+        credits,
     })
 }
 

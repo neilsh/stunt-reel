@@ -164,6 +164,7 @@ fn row(ordinal: usize, ssim: f32, iou: f32, scored: bool) -> super::FrameRow {
     super::FrameRow {
         ordinal,
         film_tick: ordinal * 10,
+        credits_missing: false,
         metrics: FrameMetrics {
             ssim,
             fade_level: if scored { 1.0 } else { 0.1 },
@@ -245,6 +246,16 @@ fn build_report_excludes_frames_below_the_fade_floor_from_scored_means() {
     let scored: Vec<_> = report.per_frame.iter().map(|f| f.scored).collect();
     assert_eq!(scored, vec![Some(true), Some(true), Some(false)]);
     assert_eq!(report.per_frame[2].fade_level, Some(0.1));
+}
+
+#[test]
+fn the_report_counts_frames_whose_credits_the_render_did_not_draw() {
+    let mut missing = row(2, 0.7, 0.6, true);
+    missing.credits_missing = true;
+    let rows = [row(1, 0.9, 0.8, true), missing];
+    let report = super::build_report(2, &rows, 0, 0.25);
+    assert_eq!(report.credits_missing_frames, 1);
+    report.validate().expect("a consistent report");
 }
 
 #[test]

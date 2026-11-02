@@ -63,6 +63,7 @@ def _map_planes(planes: RenderPlanes, fn: Any) -> RenderPlanes:
         rgb=fn(planes.rgb),
         idx=None if planes.idx is None else fn(planes.idx),
         layer=fn(planes.layer),
+        credits=planes.credits,
     )
 
 
@@ -101,7 +102,7 @@ def _flat_terrain(planes: RenderPlanes) -> RenderPlanes:
     if idx is not None:
         idx = idx.copy()
         idx[mask] = _flat_index(planes.idx, mask, planes.rgb, flat)  # type: ignore[arg-type]
-    return RenderPlanes(rgb=rgb, idx=idx, layer=planes.layer.copy())
+    return RenderPlanes(rgb=rgb, idx=idx, layer=planes.layer.copy(), credits=planes.credits)
 
 
 def _flat_index(
@@ -131,7 +132,7 @@ def _flat_index(
 def _flicker(planes: RenderPlanes, tick: int, amount: int) -> RenderPlanes:
     signed = amount if tick % 2 == 0 else -amount
     rgb = np.clip(planes.rgb.astype(np.int16) + signed, 0, 255).astype(np.uint8)
-    return RenderPlanes(rgb=rgb, idx=planes.idx, layer=planes.layer)
+    return RenderPlanes(rgb=rgb, idx=planes.idx, layer=planes.layer, credits=planes.credits)
 
 
 def _wrong_tick(tick: int, source: RenderSource, rng_seed: int) -> RenderPlanes | None:
@@ -151,7 +152,9 @@ def _wrong_tick(tick: int, source: RenderSource, rng_seed: int) -> RenderPlanes 
 
 def _grey(planes: RenderPlanes) -> RenderPlanes:
     level = np.uint8(round(float(render_luma(planes.rgb).mean())))
-    return RenderPlanes(rgb=np.full_like(planes.rgb, level), idx=None, layer=planes.layer)
+    return RenderPlanes(
+        rgb=np.full_like(planes.rgb, level), idx=None, layer=planes.layer, credits=planes.credits
+    )
 
 
 def plant(fault: Fault, tick: int, source: RenderSource, rng_seed: int) -> RenderPlanes | None:

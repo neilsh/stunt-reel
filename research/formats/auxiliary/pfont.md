@@ -52,7 +52,7 @@ Each glyph row is one byte, bit 7 the leftmost pixel, so a glyph is at most 8 pi
 2. **Codes past 127.** `0x58D0` indexes the width table by the full byte, so a code at or above `0x80` would read past it. No film text has one; the parser gives such codes no width and no glyph. `[Unknown]`.
 3. **Where the glyph rows are loaded** and which routine draws UI dialog text with them. `[Unknown]`.
 4. **Clipping.** Whether the text driver `[0x225A]` clips to the clip rectangle is `[Unknown]`; the renderer clips only to the page, which no film text reaches past.
-5. **Credits ink is not scored.** Parity's UI overlay mask drops index 255 as the mouse cursor, which also drops the credits ink; only shadow and background count ([`film-segments.md`](../../parity/film-segments.md) open question 7).
+5. **Credits ink and the cursor share index 255.** Parity's UI overlay mask keeps index 255 on ticks where the film shows credits, as the render record says, and masks it as the cursor elsewhere ([`method.md`](../../parity/method.md) § 2).
 6. **Renderer gaps, not findings.** The renderer draws credits on offscreen pages only, not in the interactive window, and a render without `--viewport-rows` centres them in the whole page (line 1 at row 85, not 78).
 
 ---
