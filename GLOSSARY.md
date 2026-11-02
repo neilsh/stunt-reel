@@ -222,7 +222,7 @@ One distinct rendered page taken from `PLAYONE.EXE` during a capture, numbered b
 _Avoid_: tick (for the capture ordinal)
 
 **UI overlay**:
-What `PLAYONE.EXE` draws over the 3D scene in a captured frame that is not part of the film: the button bar and the mouse cursor. The renderer does not draw it, and parity leaves it out of scoring. Credits ink shares the cursor's palette index 255, so index 255 is left out only on ticks whose render draws no credits (see **Credits**).
+What `PLAYONE.EXE` draws over the 3D scene in a captured frame that is not part of the film: the button bar and the mouse cursor. The renderer does not draw it, and parity leaves it out of scoring. Credits ink shares the cursor's palette index 255, so index 255 is left out only on ticks where the film shows no credits (see **Credits**).
 _Avoid_: HUD, status bar
 
 **Index agreement**:

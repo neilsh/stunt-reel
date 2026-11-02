@@ -14,10 +14,11 @@ from numpy.lib.stride_tricks import sliding_window_view
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-    from stunt_reel.bench.planes import CapturePlanes
+    from stunt_reel.bench.planes import CapturePlanes, RenderPlanes
 
 __all__ = [
     "capture_luma",
+    "credits_in_play",
     "draws_credits",
     "frame_ssim",
     "overlay_mask",
@@ -60,6 +61,16 @@ def stretch(plane: NDArray[Any]) -> NDArray[Any]:
 def draws_credits(layer: NDArray[np.uint16]) -> bool:
     """True when a render's layer plane holds credits: any ``LAYER_OVERLAY`` pixel."""
     return bool((layer == LAYER_OVERLAY).any())
+
+
+def credits_in_play(planes: RenderPlanes) -> bool:
+    """Whether a tick keeps capture index 255 in play as credits ink.
+
+    The film's credits schedule from ``render.json`` when the render has it, so a render that
+    drops its credits is still judged on the ink; otherwise whether the render drew credits.
+    Mirrors the Rust ``credits_in_play``.
+    """
+    return draws_credits(planes.layer) if planes.credits is None else planes.credits
 
 
 def overlay_mask(

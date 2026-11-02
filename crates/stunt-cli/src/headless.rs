@@ -52,7 +52,7 @@ struct SampleSink {
     out_dir: Option<PathBuf>,
     video: Option<FfmpegVideoWriter>,
     journal: Option<RenderJournal>,
-    pending: Option<(SampleKey, PaletteControls, ViewCamera)>,
+    pending: Option<(SampleKey, PaletteControls, ViewCamera, bool)>,
     written_frames: usize,
     written_video_frames: usize,
 }
@@ -60,12 +60,12 @@ struct SampleSink {
 impl SampleSink {
     /// Announces the sample the next accepted page belongs to.
     fn begin(&mut self, key: SampleKey, frame: &SceneFrame) {
-        self.pending = Some((key, frame.palette, frame.view));
+        self.pending = Some((key, frame.palette, frame.view, frame.credits.is_some()));
     }
 
     /// Writes one accepted page to every destination the run selected.
     fn accept_page(&mut self, page: RenderedPage) -> Result<(), SinkError> {
-        let (key, controls, camera) = self
+        let (key, controls, camera, credits) = self
             .pending
             .take()
             .ok_or_else(|| SinkError::new("rendered a page with no planned sample"))?;
@@ -76,7 +76,7 @@ impl SampleSink {
                         .map_err(|_| SinkError::new(format!("{key}: tick does not fit a u32")))?;
                     if let Some(journal) = self.journal.as_mut() {
                         journal
-                            .write(tick, controls, camera, &page)
+                            .write(tick, controls, camera, credits, &page)
                             .map_err(|e| SinkError::new(format!("{key}: {e}")))?;
                     }
                 }

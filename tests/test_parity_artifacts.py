@@ -564,6 +564,22 @@ def _store(directory: Path) -> RenderRecord:
     return write_store(directory, _STORE_TICKS)
 
 
+def test_a_tick_credits_flag_round_trips_and_is_absent_when_unknown(tmp_path: Path) -> None:
+    """``credits`` is written only when known, so a render stored before it still loads."""
+    path = tmp_path / "render.json"
+    record = _record()
+    flagged = replace(record, ticks=(replace(record.ticks[0], credits=True), record.ticks[1]))
+    write_render(path, flagged)
+    assert read_render(path) == flagged
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert document["ticks"][0]["credits"] is True
+    assert "credits" not in document["ticks"][1]
+    document["ticks"][0]["credits"] = 1
+    _write_json(path, document)
+    with pytest.raises(ArtifactError, match=r"ticks\[0\]\.credits"):
+        read_render(path)
+
+
 def test_every_tick_round_trips_across_seconds_and_an_empty_second(tmp_path: Path) -> None:
     record = _store(tmp_path)
     assert [(chunk.second, chunk.ticks) for chunk in record.chunks] == [(0, 3), (2, 2)]

@@ -19,7 +19,7 @@ use stunt_render::{
 };
 
 use super::frames::reference_luminance;
-use super::mask::{draws_credits, rescale_mask, ui_overlay_mask};
+use super::mask::{credits_in_play, rescale_mask, ui_overlay_mask};
 use super::score::{ReferenceFrame, RenderFrame, SSIM_STRIDE, SSIM_WINDOW};
 
 /// Layer keys of [`FrameVerdict::changed_by_layer`].
@@ -153,7 +153,7 @@ pub(super) fn frame_verdict(
     let after_rescaled = stretch(&after.luminance);
     // Either render's credits keep the ink in play, so a change that drops them is judged
     // on the ink it lost rather than masking it away.
-    let credits_drawn = draws_credits(&before.layers) || draws_credits(&after.layers);
+    let credits_drawn = credits_in_play(before) || credits_in_play(after);
     let overlay = rescale_mask(&ui_overlay_mask(&reference.indices, credits_drawn));
     let changed_plane = rescale_mask(&changed);
 
@@ -347,6 +347,7 @@ mod tests {
             indices: reference.indices,
             layers: vec![LAYER_TERRAIN as u16; PIXELS],
             controls: None,
+            credits: None,
         }
     }
 

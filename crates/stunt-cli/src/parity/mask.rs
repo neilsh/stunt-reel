@@ -2,6 +2,8 @@
 
 use std::ops::RangeInclusive;
 
+use super::score::RenderFrame;
+
 use stunt_render::{
     ASPECT_CORRECTED_HEIGHT, LAYER_NONE, LAYER_OVERLAY, MODE13H_HEIGHT, MODE13H_WIDTH,
     rescale_mode13h_frame,
@@ -28,7 +30,7 @@ pub(super) fn is_capture_sky(index: u8) -> bool {
 /// cursor. Scoring leaves them out because the renderer does not draw them.
 ///
 /// The cursor and the credits ink are both palette index 255. On a tick with
-/// `credits_drawn` (see [`draws_credits`]) index 255 stays in play, so the ink is scored;
+/// `credits_drawn` (see [`credits_in_play`]) index 255 stays in play, so the ink is scored;
 /// otherwise it is masked as the cursor. The test is per tick, not per pixel, so ink the
 /// render misplaces counts against it instead of vanishing under the mask.
 pub(super) fn ui_overlay_mask(indices: &[u8], credits_drawn: bool) -> Vec<bool> {
@@ -47,6 +49,16 @@ pub(super) fn draws_credits(render_layers: &[u16]) -> bool {
     render_layers
         .iter()
         .any(|&layer| u32::from(layer) == LAYER_OVERLAY)
+}
+
+/// Whether a tick keeps the capture's index 255 in play as credits ink: the film's credits
+/// schedule from the render record when it has one, so a render that drops its credits is
+/// still judged on the ink; otherwise, for a render stored before the record carried it,
+/// whether the render drew credits.
+pub(super) fn credits_in_play(render: &RenderFrame) -> bool {
+    render
+        .credits
+        .unwrap_or_else(|| draws_credits(&render.layers))
 }
 
 /// Stretches a 320x200 mask to the 320x240 raster with the same row mapping as the frames.

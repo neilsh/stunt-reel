@@ -366,6 +366,9 @@ class RenderTick:
     palette: RenderPalette
     camera: CameraPose
     palette_index: int
+    #: Whether the film shows credits at this tick, whatever the render drew; ``None`` in a
+    #: render stored before the field.
+    credits: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -700,6 +703,11 @@ def _tick_object(value: Any, path: Path | None, field_name: str) -> RenderTick:
         palette_index=_as_unsigned(
             raw.get("palette_index"), path, f"{field_name}.palette_index", 0xFFFFFFFF
         ),
+        credits=(
+            None
+            if raw.get("credits") is None
+            else _as_bool(raw["credits"], path, f"{field_name}.credits")
+        ),
     )
 
 
@@ -722,6 +730,27 @@ def _render_record(document: Any, path: Path | None) -> RenderRecord:
     )
 
 
+def _tick_document(tick: RenderTick) -> dict[str, Any]:
+    document: dict[str, Any] = {
+        "tick": tick.tick,
+        "palette": {
+            "sky": tick.palette.sky,
+            "brightness": tick.palette.brightness,
+            "saturation": tick.palette.saturation,
+        },
+        "camera": {
+            "eye": list(tick.camera.eye),
+            "target": list(tick.camera.target),
+            "fov_degrees": tick.camera.fov_degrees,
+            "roll_radians": tick.camera.roll_radians,
+        },
+        "palette_index": tick.palette_index,
+    }
+    if tick.credits is not None:
+        document["credits"] = tick.credits
+    return document
+
+
 def _render_document(record: RenderRecord) -> dict[str, Any]:
     film: dict[str, Any] = {}
     if record.film.name is not None:
@@ -730,24 +759,7 @@ def _render_document(record: RenderRecord) -> dict[str, Any]:
         film["flm_bytes"] = record.film.flm_bytes
     if record.film.flm_sha256 is not None:
         film["flm_sha256"] = record.film.flm_sha256
-    ticks = [
-        {
-            "tick": tick.tick,
-            "palette": {
-                "sky": tick.palette.sky,
-                "brightness": tick.palette.brightness,
-                "saturation": tick.palette.saturation,
-            },
-            "camera": {
-                "eye": list(tick.camera.eye),
-                "target": list(tick.camera.target),
-                "fov_degrees": tick.camera.fov_degrees,
-                "roll_radians": tick.camera.roll_radians,
-            },
-            "palette_index": tick.palette_index,
-        }
-        for tick in record.ticks
-    ]
+    ticks = [_tick_document(tick) for tick in record.ticks]
     chunks = [
         {
             "second": chunk.second,
@@ -972,6 +984,11 @@ class RenderStore:
     def holds(self, tick: int) -> bool:
         """Whether the render holds film tick *tick*."""
         return tick in self._rows
+
+    def credits(self, tick: int) -> bool | None:
+        """Whether the film shows credits at *tick*, or ``None`` when the record predates it."""
+        row = self._rows.get(tick)
+        return None if row is None else self.record.ticks[row].credits
 
     def frame(self, tick: int) -> StoredFrame:
         """The planes and palette of film tick *tick*, decoding its chunk unless cached."""
