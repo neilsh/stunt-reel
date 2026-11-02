@@ -8,6 +8,7 @@ These tests hold that order, the walker that never descends, and the refusal rul
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -75,6 +76,17 @@ def _init_repo(tmp_path: Path) -> Path:
     return repo
 
 
+def _head(worktree: Path) -> str:
+    """The commit a worktree holds, as reap classifies it."""
+    return _run_git(worktree, "rev-parse", "HEAD").strip()
+
+
+def _ignore_corpus(repo: Path) -> None:
+    """Ignore the data-root link as a real checkout's .gitignore does."""
+    exclude = repo / ".git" / "info" / "exclude"
+    exclude.write_bytes(exclude.read_bytes() + b"corpus\n")
+
+
 def _junction(link: Path, target: Path) -> None:
     if os.name != "nt":
         pytest.skip("directory junctions are a Windows feature")
@@ -117,6 +129,155 @@ def test_unlinking_keeps_the_target_and_clears_every_link(tmp_path: Path) -> Non
     assert (target / "keep.txt").read_text(encoding="utf-8") == "keep"
 
 
+def _refuse_rmdir_on(monkeypatch: pytest.MonkeyPatch, link: Path) -> None:
+    """Make Python's directory removal fail on *link* the way a Controlled Folder Access host does."""
+    real = Path.rmdir
+
+    def refuse(self: Path) -> None:
+        if self == link:
+            raise PermissionError(5, "Access is denied", str(self))
+        real(self)
+
+    monkeypatch.setattr(Path, "rmdir", refuse)
+
+
+def test_remove_link_falls_back_to_the_shell_rmdir_when_python_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "data"
+    (target / "nested").mkdir(parents=True)
+    (target / "nested" / "keep.txt").write_text("keep", encoding="utf-8")
+    link = tmp_path / "corpus"
+    _junction(link, target)
+    _refuse_rmdir_on(monkeypatch, link)
+    calls: list[str] = []
+    real_run = subprocess.run
+
+    def spy(command: str, *args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        return real_run(command, *args, **kwargs)  # type: ignore[call-overload,no-any-return]
+
+    monkeypatch.setattr(subprocess, "run", spy)
+
+    dataroot.remove_link(link)
+
+    assert not os.path.lexists(link)
+    assert (target / "nested" / "keep.txt").read_text(encoding="utf-8") == "keep"
+    (command,) = calls
+    # The path rides in the environment, never on cmd's command line.
+    assert command.endswith(f'/d /v:on /c rmdir "!{dataroot._RMDIR_PATH_VAR}!"')
+    assert str(link) not in command
+    assert "/s" not in command.lower()
+
+
+@pytest.mark.parametrize(
+    "name", ["x&rmdir data&x", "x%PATH%x", "a;b", "p (1)", "c^d", "e!f!g", "Jos\u00e9"]
+)
+def test_shell_rmdir_takes_any_valid_name_as_plain_text(tmp_path: Path, name: str) -> None:
+    """cmd metacharacters and non-ASCII in a junction name neither run nor block removal."""
+    target = tmp_path / "data"
+    target.mkdir()
+    (target / "keep.txt").write_text("keep", encoding="utf-8")
+    plain = tmp_path / "plain"
+    _junction(plain, target)
+    # mklink would parse the name itself, so make the junction plain and rename it.
+    link = tmp_path / name
+    plain.rename(link)
+
+    dataroot._shell_rmdir(link)
+
+    assert not os.path.lexists(link)
+    assert (target / "keep.txt").read_text(encoding="utf-8") == "keep"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["data"]
+
+
+def test_remove_link_reports_both_errors_when_the_fallback_fails_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "data"
+    target.mkdir()
+    link = tmp_path / "corpus"
+    _junction(link, target)
+    _refuse_rmdir_on(monkeypatch, link)
+
+    def refuse_shell(_path: Path) -> None:
+        raise OSError("rmdir exited 5: Access is denied.")
+
+    monkeypatch.setattr(dataroot, "_shell_rmdir", refuse_shell)
+
+    with pytest.raises(OSError, match=r"WinError 5|Access is denied") as raised:
+        dataroot.remove_link(link)
+
+    assert "rmdir exited 5" in str(raised.value)
+    assert "rmdir refused" in str(raised.value)
+    assert dataroot.is_link(link)
+
+
+def test_reap_one_leaves_the_worktree_alone_when_a_link_cannot_be_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _init_repo(tmp_path)
+    worktree = tmp_path / "wt"
+    _run_git(repo, "worktree", "add", "-q", str(worktree), "-b", "wt-test")
+    target = tmp_path / "data"
+    target.mkdir()
+    link = worktree / "corpus"
+    _junction(link, target)
+    _refuse_rmdir_on(monkeypatch, link)
+
+    def refuse_shell(_path: Path) -> None:
+        raise OSError("rmdir exited 5: Access is denied.")
+
+    monkeypatch.setattr(dataroot, "_shell_rmdir", refuse_shell)
+    candidate = worktree_init._Candidate(
+        worktree=worktree_init._Worktree(path=worktree, head=_head(worktree), branch="wt-test"),
+        merged=True,
+        dirty=[],
+        untracked=[],
+        links=[link],
+        size=0,
+    )
+
+    error = worktree_init._reap_one(repo, candidate, stash_dirty=False, discard_untracked=False)
+
+    assert error is not None
+    assert "cannot unlink" in error
+    assert "rmdir refused" in error
+    assert "rmdir exited 5" in error
+    assert worktree.is_dir()
+    assert worktree_init._reparse_points(worktree) == [link]
+    assert "wt-test" in _run_git(repo, "branch", "--format=%(refname:short)").split()
+
+
+def test_reap_one_finishes_through_the_fallback_and_keeps_the_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _init_repo(tmp_path)
+    worktree = tmp_path / "wt"
+    _run_git(repo, "worktree", "add", "-q", str(worktree), "-b", "wt-test")
+    target = tmp_path / "data"
+    target.mkdir()
+    (target / "keep.txt").write_text("keep", encoding="utf-8")
+    link = worktree / "corpus"
+    _junction(link, target)
+    _ignore_corpus(repo)
+    _refuse_rmdir_on(monkeypatch, link)
+    candidate = worktree_init._Candidate(
+        worktree=worktree_init._Worktree(path=worktree, head=_head(worktree), branch="wt-test"),
+        merged=True,
+        dirty=[],
+        untracked=[],
+        links=[link],
+        size=0,
+    )
+
+    assert (
+        worktree_init._reap_one(repo, candidate, stash_dirty=False, discard_untracked=False) is None
+    )
+    assert not worktree.exists()
+    assert (target / "keep.txt").read_text(encoding="utf-8") == "keep"
+
+
 def test_blocked_names_the_flag_that_lifts_it() -> None:
     candidate = worktree_init._Candidate(
         worktree=worktree_init._Worktree(path=Path("D:/git/example/wt"), head="0", branch="b"),
@@ -143,8 +304,9 @@ def test_reap_one_unlinks_then_removes_and_keeps_the_target(tmp_path: Path) -> N
     (target / "nested").mkdir(parents=True)
     (target / "nested" / "keep.txt").write_text("keep", encoding="utf-8")
     _junction(worktree / "corpus", target)
+    _ignore_corpus(repo)
     candidate = worktree_init._Candidate(
-        worktree=worktree_init._Worktree(path=worktree, head="", branch="wt-test"),
+        worktree=worktree_init._Worktree(path=worktree, head=_head(worktree), branch="wt-test"),
         merged=True,
         dirty=[],
         untracked=[],
@@ -177,7 +339,7 @@ def test_reap_one_discards_the_worktrees_cached_environment(
     dataroot.env_marker(target).write_text(str(worktree), encoding="utf-8")
     dataroot.create_link(worktree / ".venv", target)
     candidate = worktree_init._Candidate(
-        worktree=worktree_init._Worktree(path=worktree, head="", branch="wt-test"),
+        worktree=worktree_init._Worktree(path=worktree, head=_head(worktree), branch="wt-test"),
         merged=True,
         dirty=[],
         untracked=[],
@@ -239,3 +401,280 @@ def test_clean_parity_keeps_the_baselines_and_removes_a_scratch_tree(
     assert (ours / "ctry_base").is_dir()
     assert not (ours / "ctry_old").exists()
     assert not (sweep / "v001").exists()
+
+
+def _commit(cwd: Path, name: str) -> str:
+    (cwd / name).write_text(name, encoding="utf-8")
+    _run_git(cwd, "add", name)
+    _run_git(
+        cwd,
+        "-c",
+        "user.email=t@example.invalid",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-qm",
+        name,
+    )
+    return _run_git(cwd, "rev-parse", "HEAD").strip()
+
+
+def _gh_stub(
+    prs: list[dict[str, object]] | None = None,
+    *,
+    returncode: int = 0,
+    stderr: str = "",
+    error: Exception | None = None,
+    calls: list[tuple[str, ...]] | None = None,
+) -> object:
+    """A ``gh`` replacement: the tests never reach the network."""
+
+    def run(_repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+        if calls is not None:
+            calls.append(args)
+        if error is not None:
+            raise error
+        return subprocess.CompletedProcess(
+            args=["gh", *args],
+            returncode=returncode,
+            stdout=json.dumps(prs or []),
+            stderr=stderr,
+        )
+
+    return run
+
+
+def _squash_repo(tmp_path: Path) -> tuple[Path, Path, str]:
+    """A repo whose pool holds ``feat``: two commits that main never merged."""
+    repo = _init_repo(tmp_path)
+    pool = repo / ".agents" / "worktrees"
+    pool.mkdir(parents=True)
+    worktree = pool / "feat"
+    _run_git(repo, "worktree", "add", "-q", str(worktree), "-b", "feat")
+    _commit(worktree, "one.txt")
+    tip = _commit(worktree, "two.txt")
+    # main gets the same change as one squash commit, which ancestry and cherry cannot see.
+    (repo / "squashed.txt").write_text("one two", encoding="utf-8")
+    _commit(repo, "squashed.txt")
+    return repo, worktree, tip
+
+
+def test_squash_merged_branch_is_a_candidate_with_its_pr_number(tmp_path: Path) -> None:
+    repo, worktree, tip = _squash_repo(tmp_path)
+    prs: list[dict[str, object]] = [
+        {"number": 89, "headRefName": "feat", "headRefOid": tip},
+        {"number": 7, "headRefName": "other", "headRefOid": "0" * 40},
+    ]
+    merged_prs = worktree_init._MergedPrs(repo, _gh_stub(prs))  # type: ignore[arg-type]
+
+    candidates, skipped = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False, merged_prs=merged_prs
+    )
+
+    assert skipped == []
+    assert [candidate.worktree.branch for candidate in candidates] == ["feat"]
+    assert candidates[0].pr == 89
+    assert not candidates[0].merged
+    assert "merged as #89" in worktree_init._describe(candidates[0])
+    assert worktree_init._describe(candidates[0]).lstrip().startswith("squash")
+    assert worktree.is_dir()
+
+
+def test_squash_merged_branch_is_removed_and_its_branch_force_deleted(tmp_path: Path) -> None:
+    repo, worktree, tip = _squash_repo(tmp_path)
+    merged_prs = worktree_init._MergedPrs(
+        repo,
+        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": tip}]),  # type: ignore[arg-type]
+    )
+    candidates, _ = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False, merged_prs=merged_prs
+    )
+
+    error = worktree_init._reap_one(repo, candidates[0], stash_dirty=False, discard_untracked=False)
+
+    assert error is None
+    assert not worktree.exists()
+    assert "feat" not in _run_git(repo, "branch", "--format=%(refname:short)").split()
+
+
+def test_a_commit_after_classification_keeps_the_worktree_and_branch(tmp_path: Path) -> None:
+    repo, worktree, tip = _squash_repo(tmp_path)
+    merged_prs = worktree_init._MergedPrs(
+        repo,
+        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": tip}]),  # type: ignore[arg-type]
+    )
+    candidates, _ = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False, merged_prs=merged_prs
+    )
+    later = _commit(worktree, "three.txt")
+
+    error = worktree_init._reap_one(repo, candidates[0], stash_dirty=False, discard_untracked=False)
+
+    assert error is not None
+    assert "tip moved" in error
+    assert worktree.is_dir()
+    assert _run_git(repo, "rev-parse", "refs/heads/feat").strip() == later
+
+
+def test_an_edit_after_classification_blocks_a_forced_removal(tmp_path: Path) -> None:
+    repo, worktree, tip = _squash_repo(tmp_path)
+    (worktree / "scratch.txt").write_text("untracked", encoding="utf-8")
+    merged_prs = worktree_init._MergedPrs(
+        repo,
+        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": tip}]),  # type: ignore[arg-type]
+    )
+    candidates, _ = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False, merged_prs=merged_prs
+    )
+    assert candidates[0].untracked
+    assert not candidates[0].dirty
+    (worktree / "two.txt").write_text("edited after reap listed it", encoding="utf-8")
+
+    error = worktree_init._reap_one(repo, candidates[0], stash_dirty=False, discard_untracked=True)
+
+    assert error is not None
+    assert "modified files" in error
+    assert (worktree / "two.txt").read_text(encoding="utf-8") == "edited after reap listed it"
+
+
+def test_a_worktree_switched_to_another_branch_is_left_alone(tmp_path: Path) -> None:
+    repo, worktree, tip = _squash_repo(tmp_path)
+    merged_prs = worktree_init._MergedPrs(
+        repo,
+        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": tip}]),  # type: ignore[arg-type]
+    )
+    candidates, _ = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False, merged_prs=merged_prs
+    )
+    _run_git(worktree, "switch", "-q", "-c", "other")
+
+    error = worktree_init._reap_one(repo, candidates[0], stash_dirty=False, discard_untracked=False)
+
+    assert error is not None
+    assert "worktree changed" in error
+    assert worktree.is_dir()
+    assert _run_git(repo, "rev-parse", "refs/heads/feat").strip() == tip
+
+
+def test_branch_that_moved_on_after_the_merge_is_skipped_with_a_reason(tmp_path: Path) -> None:
+    repo, worktree, tip = _squash_repo(tmp_path)
+    _commit(worktree, "after-merge.txt")
+    merged_prs = worktree_init._MergedPrs(
+        repo,
+        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": tip}]),  # type: ignore[arg-type]
+    )
+
+    candidates, skipped = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False, merged_prs=merged_prs
+    )
+
+    assert candidates == []
+    assert len(skipped) == 1
+    assert skipped[0].startswith("feat: ")
+    assert "tip differs from the head of merged #89" in skipped[0]
+
+
+def test_cherry_does_not_take_a_branch_that_moved_on_after_its_merge(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    pool = repo / ".agents" / "worktrees"
+    pool.mkdir(parents=True)
+    worktree = pool / "feat"
+    _run_git(repo, "worktree", "add", "-q", str(worktree), "-b", "feat")
+    merged_head = _commit(worktree, "one.txt")
+    _commit(worktree, "two.txt")
+    # main holds both patches, so --cherry alone would call the branch merged. Its own
+    # messages keep its commits from matching the branch's byte for byte within one second.
+    for name in ("one.txt", "two.txt"):
+        (repo / name).write_text(name, encoding="utf-8")
+        _run_git(repo, "add", name)
+        _run_git(
+            repo,
+            "-c",
+            "user.email=t@example.invalid",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-qm",
+            f"main: {name}",
+        )
+    merged_prs = worktree_init._MergedPrs(
+        repo,
+        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": merged_head}]),  # type: ignore[arg-type]
+    )
+
+    candidates, skipped = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=True, merged_prs=merged_prs
+    )
+
+    assert candidates == []
+    assert "tip differs from the head of merged #89" in skipped[0]
+
+
+@pytest.mark.parametrize(
+    "stub",
+    [
+        _gh_stub(error=FileNotFoundError("gh is not on PATH")),
+        _gh_stub(returncode=4, stderr="To get started with GitHub CLI, please run: gh auth login"),
+        _gh_stub(error=subprocess.TimeoutExpired(cmd="gh", timeout=30)),
+    ],
+    ids=["missing", "signed-out", "offline"],
+)
+def test_without_gh_reap_falls_back_to_git_checks_and_says_so(
+    tmp_path: Path,
+    stub: object,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, worktree, _tip = _squash_repo(tmp_path)
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", repo)
+    monkeypatch.setattr(worktree_init, "_gh", stub)
+
+    assert worktree_init._reap(False) == 0
+
+    out = capsys.readouterr().out
+    assert "gh unavailable" in out
+    assert "squash-merged branches are not recognised" in out
+    assert "feat: 2 patch(es) not in main" in out
+    assert worktree.is_dir()
+
+
+def test_dry_run_lists_the_squash_merged_branch_without_removing_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, worktree, tip = _squash_repo(tmp_path)
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", repo)
+    monkeypatch.setattr(
+        worktree_init,
+        "_gh",
+        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": tip}], calls=calls),
+    )
+
+    assert worktree_init._reap(False) == 0
+
+    out = capsys.readouterr().out
+    assert "squash" in out
+    assert "merged as #89" in out
+    assert "gh unavailable" not in out
+    assert worktree.is_dir()
+    assert len(calls) == 1, "one gh call covers every branch"
+    assert "--state" in calls[0]
+    assert "merged" in calls[0]
+
+
+def test_gh_is_not_asked_when_every_branch_is_already_in_main(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    pool = repo / ".agents" / "worktrees"
+    pool.mkdir(parents=True)
+    _run_git(repo, "worktree", "add", "-q", str(pool / "merged"), "-b", "merged")
+    calls: list[tuple[str, ...]] = []
+    merged_prs = worktree_init._MergedPrs(repo, _gh_stub(calls=calls))  # type: ignore[arg-type]
+
+    candidates, _ = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False, merged_prs=merged_prs
+    )
+
+    assert [candidate.worktree.branch for candidate in candidates] == ["merged"]
+    assert calls == []

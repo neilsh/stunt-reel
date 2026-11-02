@@ -72,7 +72,7 @@ description = "Report this worktree's build outputs; remove them with --yes (mis
 run = "uv run python python/scripts/worktree_init.py clean"
 
 [tasks.reap]
-description = "Remove worktrees whose branch is already in main, unlinking their data-root junctions first (mise run reap -- --yes [--cherry] [--prune] [--stash-dirty] [--discard-untracked])"
+description = "Remove worktrees whose branch is already in main or was squash-merged (a merged PR whose head is the branch tip, read with gh), unlinking their data-root junctions first (mise run reap -- --yes [--cherry] [--prune] [--stash-dirty] [--discard-untracked])"
 run = "uv run python python/scripts/worktree_init.py reap"
 
 [tasks.build-at]

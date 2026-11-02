@@ -363,12 +363,60 @@ def link_points_at(path: Path, target: Path) -> bool:
         return False
 
 
+#: Environment variable that carries the path into ``cmd``; see :func:`_shell_rmdir`.
+_RMDIR_PATH_VAR = "STUNT_REEL_RMDIR_PATH"
+
+
+def _shell_rmdir(path: Path) -> None:
+    """Remove the empty-or-linked directory *path* with ``cmd /c rmdir``, never recursively.
+
+    On a junction ``rmdir`` removes the reparse point and leaves its target alone; there
+    is deliberately no ``/s``, so a real directory that still holds files is refused
+    instead of emptied.
+
+    ``cmd`` parses its own command line, so the path never appears on it: it rides in an
+    environment variable that ``/v:on`` expands after parsing, so ``&``, ``%``, ``(``, ``^``
+    or any other character of a valid name is plain text and cannot start a command.
+    ``/d`` skips any AutoRun command, and undecodable shell output is replaced rather than
+    raised, so a localised error message still reaches the caller.
+    """
+    comspec = os.environ.get("COMSPEC", "cmd.exe")
+    command = f'"{comspec}" /d /v:on /c rmdir "!{_RMDIR_PATH_VAR}!"'
+    result = subprocess.run(  # noqa: S603
+        command,
+        env={**os.environ, _RMDIR_PATH_VAR: str(path)},
+        capture_output=True,
+        text=True,
+        errors="replace",
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        raise OSError(f"rmdir exited {result.returncode}: {detail}")
+
+
 def remove_link(path: Path) -> None:
-    """Remove a symbolic link or junction, never the directory it points at."""
+    """Remove a symbolic link or junction, never the directory it points at.
+
+    Some Windows machines refuse Python's directory removal on a junction with
+    ``[WinError 5] Access is denied`` yet let the shell's ``rmdir`` remove the same one
+    (docs/harness-setup.md).  A permission error on Windows therefore retries once with
+    the shell's non-recursive ``rmdir``; if that fails too, the error names both.
+    """
     if path.is_symlink():
         path.unlink()
-    else:
+        return
+    try:
         path.rmdir()
+    except PermissionError as first:
+        if os.name != "nt":
+            raise
+        try:
+            _shell_rmdir(path)
+        except OSError as second:
+            raise OSError(
+                f"rmdir refused ({first}); the shell's rmdir fallback failed too ({second})"
+            ) from second
 
 
 def create_link(link: Path, target: Path) -> None:
