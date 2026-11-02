@@ -1,6 +1,7 @@
 # Seeding a new worktree's `target/` (2026-11-02)
 
-Status: **design, awaiting review; no code yet**. Source: a session of 2026-11-02 that started
+Status: **design approved 2026-11-02; no code yet**. Tasks:
+[`target-seeding-implementation-2026-11-02.md`](target-seeding-implementation-2026-11-02.md). Source: a session of 2026-11-02 that started
 from "why is `target/` so large across the root and worktrees", measured kache 2.0.0, and settled
 on cloning a donor's build output. The evidence and the decision are in
 [ADR 0030](../../adr/0030-new-worktrees-seed-target-by-block-clone.md) (proposed); this note owns
