@@ -307,6 +307,7 @@ mod tests {
             sod: None,
             sidata: None,
             max_ticks: None,
+            font: None,
         })
         .expect("synthetic film loads");
         let config =
