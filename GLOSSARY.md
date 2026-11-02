@@ -50,7 +50,7 @@ _Avoid_: joint angle, frame counter
 ## Assets and models
 
 **Archive**:
-A `.ALL` container of numbered model and auxiliary resource chunks, paired with a film. SOD model chunks are addressed by `shape_id`. `MAKEONE.EXE` writes one from a film; `mise run make-all` runs it and stores the result as `captures/<film>/archives/<run>`.
+A `.ALL` container of numbered model and auxiliary resource chunks, paired with a film. SOD model chunks are addressed by `shape_id`. `MAKEONE.EXE` writes one from a film; `mise run make-all` runs it and stores the result as `captures/<film>/archives/`. A film has at most one stored archive; a new one replaces it. An archive is not a capture.
 _Avoid_: bundle, resource file
 
 **Shape**:
@@ -170,8 +170,8 @@ _Avoid_: slot (unqualified)
 ## Capture and emulation
 
 **Game build**:
-One of the two releases of the `PLAYONE.EXE`/`MAKEONE.EXE` pair: the retail build, or the Patch #3 build that replaced every executable. An archive belongs to the build whose `MAKEONE` wrote it, and a capture to the build whose `PLAYONE` played it.
-_Avoid_: version, patch level
+One of the two releases of the `PLAYONE.EXE`/`MAKEONE.EXE` pair: **unpatched**, the 1992 release that the retail game and the demo ship, or **patch3**, the Patch #3 release that replaced every executable. An archive belongs to the build whose `MAKEONE` wrote it, and a capture to the build whose `PLAYONE` played it.
+_Avoid_: version, patch level, base or retail build (for unpatched)
 
 **Control port**:
 The TCP port of the emulator's REST server. Each run picks a free one at launch and writes it into that run's conf, so two captures never collide ([ADR 0025](docs/adr/0025-capture-runs-are-plans-not-sessions.md)).
@@ -206,7 +206,7 @@ A trusted reference trajectory that an evaluated timeline is checked against for
 _Avoid_: parity oracle, golden frames
 
 **Capture**:
-One run of `PLAYONE.EXE` under dosbox-automation that records a film's captured frames and palettes. A capture is never changed after it is written; a new run makes a new capture.
+One run of `PLAYONE.EXE` under dosbox-automation that records a film's captured frames and palettes. A film has at most one capture of each kind, frames and video; a new capture replaces it, and the reference capture's pin detects the change.
 _Avoid_: recording (the game's own word for filming a take), recapture (for overwriting one)
 
 **Reference capture**:
@@ -214,7 +214,7 @@ The capture that parity scores a film against, chosen by an explicit promotion t
 _Avoid_: golden frames, the reference (unqualified)
 
 **Captured frame**:
-One distinct rendered frame grabbed from `PLAYONE.EXE` at the vertical-retrace trap, numbered by capture order and tagged with its film clock.
+One distinct rendered page taken from `PLAYONE.EXE` during a capture, numbered by capture order and tagged with the film clock read when it was taken.
 _Avoid_: tick (for the capture ordinal)
 
 **UI overlay**:
