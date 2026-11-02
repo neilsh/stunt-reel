@@ -109,14 +109,14 @@ impl<'a> ByteReader<'a> {
         Ok(i32::from_le_bytes(self.array()?))
     }
 
-    /// Read a null-terminated string (lossy UTF-8), consuming the terminator.
+    /// Read a null-terminated string as raw bytes, consuming the terminator.
     ///
     /// On a missing terminator the cursor is left at the end of the buffer.
-    pub fn read_cstring(&mut self) -> Result<String, Eof> {
+    pub fn read_cstring(&mut self) -> Result<Vec<u8>, Eof> {
         let rest = self.data.get(self.pos..).unwrap_or(&[]);
         if let Some(n) = rest.iter().position(|&b| b == 0) {
             self.pos += n + 1;
-            Ok(String::from_utf8_lossy(&rest[..n]).into_owned())
+            Ok(rest[..n].to_vec())
         } else {
             self.pos = self.pos.max(self.data.len());
             Err(Eof {
@@ -167,8 +167,8 @@ mod tests {
     #[test]
     fn cstring_consumes_terminator() {
         let mut r = ByteReader::new(b"AB\0C\0");
-        assert_eq!(r.read_cstring().as_deref(), Ok("AB"));
-        assert_eq!(r.read_cstring().as_deref(), Ok("C"));
+        assert_eq!(r.read_cstring(), Ok(b"AB".to_vec()));
+        assert_eq!(r.read_cstring(), Ok(b"C".to_vec()));
         assert!(!r.has_more());
     }
 

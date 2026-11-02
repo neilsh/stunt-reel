@@ -680,6 +680,7 @@ mod tests {
                 brightness: 0x8000,
                 saturation: 0x8000,
             },
+            credits: None,
         }
     }
 

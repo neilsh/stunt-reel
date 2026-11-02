@@ -8,7 +8,9 @@
 
 pub mod anchor;
 pub mod contracts;
+pub mod credits;
 pub mod flm;
+pub mod font;
 pub mod reader;
 pub mod scene;
 pub mod sod;
