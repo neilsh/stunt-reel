@@ -111,3 +111,26 @@ def test_fix_task_applies_what_the_fixable_steps_check() -> None:
     assert "ruff check --fix" in commands
     assert "fmt-py" in commands
     assert "fmt-rust" in commands
+
+
+def test_failure_tail_header_carries_fix_hint_only_for_fixable_failures(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """The output-tail header is printed by main alone, so exercise it there."""
+    failed = {*gate.FIXABLE_STEPS, "test-rust"}
+
+    def fake_step(_mise: str, task: str) -> tuple[int, str, float]:
+        return (1 if task in failed else 0, f"{task} output\n", 0.0)
+
+    monkeypatch.setattr(gate, "_mise", lambda: "mise")
+    monkeypatch.setattr(gate, "_step", fake_step)
+    monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
+
+    assert gate.main(["all", "--tail", "1"]) == 1
+    output = capsys.readouterr().out
+    for task in gate._plan("all"):
+        if task not in failed:
+            assert f"---- {task} output tail" not in output
+            continue
+        note = f" (fix: mise run {gate.FIX_TASK})" if task in gate.FIXABLE_STEPS else ""
+        assert f"---- {task} output tail{note} ----" in output
