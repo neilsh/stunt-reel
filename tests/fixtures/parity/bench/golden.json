@@ -11,6 +11,7 @@
         "ocean": 0.0,
         "terrain": 0.62,
         "props": 0.0,
+        "overlay": 0.0,
         "actors": 0.0,
         "none": 0.0
       },
