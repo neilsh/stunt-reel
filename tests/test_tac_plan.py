@@ -482,3 +482,14 @@ def test_choose_windows_leaves_out_a_window_that_would_overlap_the_last() -> Non
 
     # Goal 1 starts at 1301, below the floor; goal 5's window at 1307 overlaps nothing.
     assert plan.choose_windows(clock, stride=4, limit=10, floor=1302) == [luagen.Window(1307, 5)]
+
+
+def test_choose_windows_leaves_out_a_window_that_starts_inside_the_last() -> None:
+    clock = [(1300, 0), (1306, 4), (1312, 8), (1318, 12)]
+
+    # The window for goal 1 at 1301 pushes the floor to 1301 + WINDOW_SPAN + WINDOW_LEAD = 1313,
+    # so goal 5's window at 1307 is left out and goal 9's at 1313 is the next one placed.
+    assert plan.choose_windows(clock, stride=4, limit=10, floor=1300) == [
+        luagen.Window(1301, 1),
+        luagen.Window(1313, 9),
+    ]

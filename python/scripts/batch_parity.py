@@ -47,7 +47,9 @@ _LEDGER_NAME = "ledger.jsonl"
 #: A capture is a real-time clock pass, then window passes eight at a time, each running in real
 #: time to its last window: FLMOnly/Act1.flm (15,000 ticks, 1,363 windows) took 21 minutes, and a
 #: 2,000-frame capture of a longer film runs past 30.
-_DEFAULT_TIMEOUT = 3600.0
+_DEFAULT_CAPTURE_TIMEOUT = 3600.0
+#: A MAKEONE run plays the film once in real time; 900 s covers the longest archive.
+_DEFAULT_ARCHIVE_TIMEOUT = 900.0
 _RENDER_TIMEOUT = 600.0
 _TIMEOUT_EXIT = 124
 _DEFAULT_MAX_RENDERS = 2
@@ -282,10 +284,16 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--summary", action="store_true", help="print the ledger summary and run nothing"
     )
     parser.add_argument(
-        "--archive-timeout", type=float, default=_DEFAULT_TIMEOUT, help="seconds per MAKEONE run"
+        "--archive-timeout",
+        type=float,
+        default=_DEFAULT_ARCHIVE_TIMEOUT,
+        help="seconds per MAKEONE run",
     )
     parser.add_argument(
-        "--capture-timeout", type=float, default=_DEFAULT_TIMEOUT, help="seconds per capture"
+        "--capture-timeout",
+        type=float,
+        default=_DEFAULT_CAPTURE_TIMEOUT,
+        help="seconds per capture",
     )
     parser.add_argument(
         "--skip",
