@@ -141,8 +141,15 @@ git commit -m "build(mise): name the shared cargo cache by one absolute path"
     and compares the part before it with `cargo_home`, both normalized by `_norm`; false when no
     such file exists.
   - `_norm(path: str | Path) -> str`: `str(path).replace("/", "\\").rstrip("\\").casefold()`.
-  - `rank_donors(checkouts: Sequence[Path], *, here: Path, rustc_vv: str, cargo_home: Path) ->
-    list[Path]`: drops `here`, missing paths, and any whose `target/` fails `built_by` or
+  - `rank_donors`:
+
+    ```python
+    def rank_donors(
+        checkouts: Sequence[Path], *, here: Path, rustc_vv: str, cargo_home: Path
+    ) -> list[Path]: ...
+    ```
+
+    It drops `here`, missing paths, and any whose `target/` fails `built_by` or
     `uses_cargo_home` or holds no `debug/.fingerprint`; orders the rest with an identical
     `Cargo.lock` (bytes equal to `here`'s) first, then by `target/debug/.fingerprint` mtime,
     newest first. Returns the checkout paths.
@@ -159,48 +166,64 @@ git commit -m "build(mise): name the shared cargo cache by one absolute path"
 RUSTC = "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nhost: x86_64-pc-windows-msvc\n"
 HOME = r"E:\git\stunt-reel\.cache\cargo"
 
-def test_needs_seed_ignores_tmp_log_and_doc(tmp_path):            # Review Focus 1
-    for name in ("tmp", "doc"): (tmp_path / "target" / name).mkdir(parents=True)
+
+def test_needs_seed_ignores_tmp_log_and_doc(tmp_path):  # Review Focus 1
+    for name in ("tmp", "doc"):
+        (tmp_path / "target" / name).mkdir(parents=True)
     (tmp_path / "target" / "check.log").write_text("x")
     assert needs_seed(tmp_path / "target")
     (tmp_path / "target" / "matrix").mkdir()
     assert not needs_seed(tmp_path / "target")
 
+
 def test_needs_seed_when_target_absent(tmp_path):
     assert needs_seed(tmp_path / "target")
 
-def test_built_by_matches_rustc_and_tolerates_missing_info(tmp_path):   # Review Focus 3
+
+def test_built_by_matches_rustc_and_tolerates_missing_info(tmp_path):  # Review Focus 3
     a = _donor(tmp_path / "a")
     assert built_by(a / "target", RUSTC)
     assert not built_by(a / "target", RUSTC.replace("1.99.1", "1.99.0"))
     (a / "target" / ".rustc_info.json").unlink()
     assert not built_by(a / "target", RUSTC)
 
-def test_uses_cargo_home_normalizes_separators_and_case(tmp_path):     # Review Focus 5
+
+def test_uses_cargo_home_normalizes_separators_and_case(tmp_path):  # Review Focus 5
     a = _donor(tmp_path / "a")
     assert uses_cargo_home(a / "target", Path("e:/GIT/stunt-reel/.cache/cargo/"))
     assert not uses_cargo_home(a / "target", Path(r"E:\packages\cargo"))
 
-def test_uses_cargo_home_false_without_registry_dep_info(tmp_path):    # Review Focus 3
+
+def test_uses_cargo_home_false_without_registry_dep_info(tmp_path):  # Review Focus 3
     a = _donor(tmp_path / "a")
-    for d in (a / "target/debug/deps").glob("*.d"): d.unlink()
+    for d in (a / "target/debug/deps").glob("*.d"):
+        d.unlink()
     assert not uses_cargo_home(a / "target", Path(HOME))
 
+
 def test_rank_prefers_matching_lock_then_newest(tmp_path):
-    here = tmp_path / "here"; here.mkdir(); (here / "Cargo.lock").write_text("a")
+    here = tmp_path / "here"
+    here.mkdir()
+    (here / "Cargo.lock").write_text("a")
     old_same = _donor(tmp_path / "old", lock="a", age=600)
     new_same = _donor(tmp_path / "new", lock="a", age=10)
     newest_other = _donor(tmp_path / "other", lock="b", age=1)
-    assert rank_donors([old_same, newest_other, new_same], here=here, rustc_vv=RUSTC,
-                       cargo_home=Path(HOME)) == [new_same, old_same, newest_other]
+    assert rank_donors(
+        [old_same, newest_other, new_same], here=here, rustc_vv=RUSTC, cargo_home=Path(HOME)
+    ) == [new_same, old_same, newest_other]
 
-def test_rank_drops_self_missing_and_disqualified(tmp_path):           # Review Focus 4
+
+def test_rank_drops_self_missing_and_disqualified(tmp_path):  # Review Focus 4
     here = _donor(tmp_path / "here")
     wrong_rustc = _donor(tmp_path / "r", rustc="rustc 1.98.0\n")
     wrong_home = _donor(tmp_path / "h", home=r"E:\packages\cargo")
     good = _donor(tmp_path / "g")
-    assert rank_donors([here, tmp_path / "gone", wrong_rustc, wrong_home, good], here=here,
-                       rustc_vv=RUSTC, cargo_home=Path(HOME)) == [good]
+    assert rank_donors(
+        [here, tmp_path / "gone", wrong_rustc, wrong_home, good],
+        here=here,
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+    ) == [good]
 ```
 
 - [ ] **Step 2: Run them to see them fail**
@@ -246,9 +269,19 @@ git commit -m "feat(seed): pick a donor target/ built by this rustc and cache"
     Elsewhere than Windows it yields true.
   - `robocopy(source: Path, destination: Path) -> None`: runs the Global Constraints command;
     raises `OSError` with the exit code when it is 8 or more.
-  - `seed(checkout: Path, *, checkouts: Sequence[Path], rustc_vv: str, cargo_home: Path,
-    copy: Callable[[Path, Path], None] = robocopy, volume_clones: Callable[[Path], bool] =
-    clones_on) -> SeedOutcome`
+  - `seed`, keyword arguments after `checkout`:
+
+    ```python
+    def seed(
+        checkout: Path,
+        *,
+        checkouts: Sequence[Path],
+        rustc_vv: str,
+        cargo_home: Path,
+        copy: Callable[[Path, Path], None] = robocopy,
+        volume_clones: Callable[[Path], bool] = clones_on,
+    ) -> SeedOutcome: ...
+    ```
 
 `seed` order: `needs_seed(checkout / "target")` else skipped `"target/ already built"`;
 `volume_clones(checkout)` else skipped `"volume does not clone blocks"`; drop checkouts on
@@ -264,49 +297,102 @@ destination it created, return failed `"<exception>"`.
 
 ```python
 def test_seed_copies_dirs_then_files_from_best_donor(tmp_path):
-    here = tmp_path / "here"; here.mkdir(); (here / "Cargo.lock").write_text("a")
+    here = tmp_path / "here"
+    here.mkdir()
+    (here / "Cargo.lock").write_text("a")
     donor = _donor(tmp_path / "d")
-    for name in ("check", "matrix"): (donor / "target" / name).mkdir()
+    for name in ("check", "matrix"):
+        (donor / "target" / name).mkdir()
     (donor / "target" / "CACHEDIR.TAG").write_text("tag")
     calls = []
-    def fake_copy(src, dst): calls.append((src.name, dst)); dst.mkdir(parents=True)
-    out = seed(here, checkouts=[donor], rustc_vv=RUSTC, cargo_home=Path(HOME),
-               copy=fake_copy, volume_clones=lambda _: True)
+
+    def fake_copy(src, dst):
+        calls.append((src.name, dst))
+        dst.mkdir(parents=True)
+
+    out = seed(
+        here,
+        checkouts=[donor],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=fake_copy,
+        volume_clones=lambda _: True,
+    )
     assert out == SeedOutcome("seeded", f"from {donor}")
     assert [name for name, _ in calls] == ["debug", "check", "matrix"]
     assert (here / "target" / ".rustc_info.json").is_file()
     assert (here / "target" / "CACHEDIR.TAG").read_text() == "tag"
 
+
 def test_seed_skips_built_target_and_non_cloning_volume(tmp_path):
     here = _donor(tmp_path / "here")
-    assert seed(here, checkouts=[], rustc_vv=RUSTC, cargo_home=Path(HOME),
-                copy=_never, volume_clones=lambda _: True).status == "skipped"
-    fresh = tmp_path / "fresh"; fresh.mkdir()
-    out = seed(fresh, checkouts=[here], rustc_vv=RUSTC, cargo_home=Path(HOME),
-               copy=_never, volume_clones=lambda _: False)
+    assert (
+        seed(
+            here,
+            checkouts=[],
+            rustc_vv=RUSTC,
+            cargo_home=Path(HOME),
+            copy=_never,
+            volume_clones=lambda _: True,
+        ).status
+        == "skipped"
+    )
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    out = seed(
+        fresh,
+        checkouts=[here],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=_never,
+        volume_clones=lambda _: False,
+    )
     assert out == SeedOutcome("skipped", "volume does not clone blocks")
 
-def test_seed_failure_removes_partial_copy(tmp_path):                   # spec: best effort
-    here = tmp_path / "here"; here.mkdir(); (here / "Cargo.lock").write_text("a")
-    donor = _donor(tmp_path / "d"); (donor / "target" / "check").mkdir()
+
+def test_seed_failure_removes_partial_copy(tmp_path):  # spec: best effort
+    here = tmp_path / "here"
+    here.mkdir()
+    (here / "Cargo.lock").write_text("a")
+    donor = _donor(tmp_path / "d")
+    (donor / "target" / "check").mkdir()
+
     def flaky(src, dst):
         dst.mkdir(parents=True)
-        if src.name == "check": raise OSError("robocopy exit 8")
-    out = seed(here, checkouts=[donor], rustc_vv=RUSTC, cargo_home=Path(HOME),
-               copy=flaky, volume_clones=lambda _: True)
+        if src.name == "check":
+            raise OSError("robocopy exit 8")
+
+    out = seed(
+        here,
+        checkouts=[donor],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=flaky,
+        volume_clones=lambda _: True,
+    )
     assert out.status == "failed" and "exit 8" in out.detail
     assert not (here / "target" / "debug").exists()
     assert not (here / "target" / "check").exists()
 
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Cargo's locks are Windows byte locks here")
-def test_seed_skips_a_donor_that_is_building(tmp_path):                 # Review Focus 2
-    here = tmp_path / "here"; here.mkdir(); (here / "Cargo.lock").write_text("a")
+def test_seed_skips_a_donor_that_is_building(tmp_path):  # Review Focus 2
+    here = tmp_path / "here"
+    here.mkdir()
+    (here / "Cargo.lock").write_text("a")
     donor = _donor(tmp_path / "d")
-    lock = donor / "target" / "debug" / ".cargo-lock"; lock.write_bytes(b"")
+    lock = donor / "target" / "debug" / ".cargo-lock"
+    lock.write_bytes(b"")
     with lock.open("r+b") as held:
         msvcrt.locking(held.fileno(), msvcrt.LK_NBLCK, 1)
-        out = seed(here, checkouts=[donor], rustc_vv=RUSTC, cargo_home=Path(HOME),
-                   copy=_never, volume_clones=lambda _: True)
+        out = seed(
+            here,
+            checkouts=[donor],
+            rustc_vv=RUSTC,
+            cargo_home=Path(HOME),
+            copy=_never,
+            volume_clones=lambda _: True,
+        )
         msvcrt.locking(held.fileno(), msvcrt.LK_UNLCK, 1)
     assert out == SeedOutcome("skipped", f"donor {donor} is building")
 ```
@@ -378,8 +464,10 @@ env = { PYTHONPATH = "{{config_root}}/python" }
 def test_seed_line_formats_each_outcome(monkeypatch):
     for outcome, line in [
         (SeedOutcome("seeded", r"from E:\a"), r"  + target/ seeded from E:\a"),
-        (SeedOutcome("skipped", "volume does not clone blocks"),
-         "  - target/ not seeded: volume does not clone blocks"),
+        (
+            SeedOutcome("skipped", "volume does not clone blocks"),
+            "  - target/ not seeded: volume does not clone blocks",
+        ),
         (SeedOutcome("failed", "robocopy exit 8"), "  ! seed: robocopy exit 8"),
     ]:
         monkeypatch.setattr(worktree_init, "seed", lambda *a, **k: outcome)
@@ -387,11 +475,15 @@ def test_seed_line_formats_each_outcome(monkeypatch):
         monkeypatch.setattr(worktree_init, "_worktrees", lambda repo: [])
         assert worktree_init._seed_target() == line
 
+
 def test_seed_line_never_raises(monkeypatch):
-    def boom(*a, **k): raise RuntimeError("git missing")
+    def boom(*a, **k):
+        raise RuntimeError("git missing")
+
     monkeypatch.setattr(worktree_init, "_worktrees", boom)
     monkeypatch.setattr(worktree_init, "_rustc_vv", lambda: "rustc 1.99.1\n")
     assert worktree_init._seed_target() == "  ! seed: git missing"
+
 
 def test_seed_command_is_wired(monkeypatch, capsys):
     monkeypatch.setattr(worktree_init, "_seed_target", lambda: "  - target/ not seeded: x")
