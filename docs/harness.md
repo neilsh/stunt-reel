@@ -168,6 +168,19 @@ discards anything uncommitted, and the `&&` keeps it from running when `<old-tip
 matches and `update-ref` refuses. Writing into another worktree may need approval. Then rebase the layers above onto the new tip. `gh stack add`
 works only from the top branch of the stack, so run it in the worktree that holds the top.
 
+### A low-integrity virtualenv
+
+Observed 2026-11-01, the Claude desktop app on Windows, primary checkout. The checkout's root
+carried an inheritable `Mandatory Label\Low Mandatory Level:(OI)(CI)(NW)` beside the sandbox's
+`S-1-4-…` entries, so `.venv`, made after it, inherited the Low label. A process started from a
+Low-labelled executable runs at low integrity, so every `mise run` Python task failed to write
+`build\`, the data root and the temp directory with `PermissionError: [Errno 13]` (`WinError 5`
+on `mkdir`) — even from the user's own terminal, while PowerShell and the base interpreter
+wrote the same paths. `icacls .venv\Scripts\python.exe` shows the label. Without touching the
+label, a run works from a virtualenv in `.cache`, which predates it:
+`$env:UV_PROJECT_ENVIRONMENT = '<checkout>\.cache\venvs\<name>'` before `mise run …`. Removing
+the label is a security change for the machine's owner to make.
+
 ## Windows PowerShell 5.1
 
 Any harness that shells out through the host's Windows PowerShell 5.1 meets these; observed

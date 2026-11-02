@@ -36,16 +36,27 @@ FILM: FilmId = FilmId(name="CTRY.FLM", flm_bytes=19, flm_sha256="0" * 64)
 FRAME_BYTES = 320 * 200
 
 
+def _film(**kwargs: Any) -> FakeFilm:
+    """A film whose clock runs a tick per frame after a 20-frame dialog, so windows fit between goals."""
+    options: dict[str, Any] = {"dialog_frames": 20, "tick_step": 1, "moving_frames": 200}
+    options.update(kwargs)
+    return FakeFilm(**options)
+
+
 def _capture(repo: StagedRepo, film: FakeFilm, **kwargs: Any) -> dict[str, Any]:
     options: dict[str, Any] = {
         "keys": KEYS,
         "max_frames": 3,
-        "stride": 2,
+        "stride": 20,
         "film": FILM,
         "layout": playone.UNPATCHED,
     }
     options.update(kwargs)
     return capture(film.runner(), repo.out, **options)
+
+
+def _window_pass(text: str) -> bool:
+    return "local starts, goals" in text
 
 
 # ==============================================================================
@@ -55,13 +66,13 @@ def _capture(repo: StagedRepo, film: FakeFilm, **kwargs: Any) -> dict[str, Any]:
 
 def test_capture_tags_frames_with_film_and_global_ticks(staged_repo: StagedRepo) -> None:
     """Every captured frame carries the film clock and global tick read in the page's Lua step."""
-    meta = _capture(staged_repo, FakeFilm())
+    meta = _capture(staged_repo, _film())
 
     frames = meta["frames"]
     assert [f["ordinal"] for f in frames] == [1, 2, 3]
-    # The dialog frames run at clock 0 and are skipped; the clock then advances by 2 a frame.
-    assert [f["film_tick"] for f in frames] == [2, 4, 6]
-    assert [f["global_tick"] for f in frames] == [102, 104, 106]
+    # The dialog runs at clock 0; each window dumps the first frame at its goal: 1, 21, 41.
+    assert [f["film_tick"] for f in frames] == [1, 21, 41]
+    assert [f["global_tick"] for f in frames] == [101, 121, 141]
     assert [f["frame_file"] for f in frames] == [
         "frames/tick_0001.idx",
         "frames/tick_0002.idx",
@@ -75,7 +86,7 @@ def test_capture_tags_frames_with_film_and_global_ticks(staged_repo: StagedRepo)
 
 def test_capture_artifacts_keep_their_contract(staged_repo: StagedRepo) -> None:
     """Frame bytes, palette JSON and meta key order are the capture contract."""
-    film = FakeFilm()
+    film = _film()
     meta = _capture(staged_repo, film)
 
     assert list(meta) == [
@@ -106,7 +117,7 @@ def test_capture_artifacts_keep_their_contract(staged_repo: StagedRepo) -> None:
         "vga_start",
         "distinct_indices",
     ]
-    assert (staged_repo.out / "frames" / "tick_0001.idx").read_bytes() == film.page(2)
+    assert (staged_repo.out / "frames" / "tick_0001.idx").read_bytes() == film.page(1)
     palette = json.loads(
         (staged_repo.out / "frames" / "palettes_0001.json").read_text(encoding="utf-8")
     )
@@ -117,18 +128,16 @@ def test_capture_artifacts_keep_their_contract(staged_repo: StagedRepo) -> None:
 
 
 def test_meta_is_written_last(staged_repo: StagedRepo) -> None:
-    """A run that fails during a dump pass leaves no meta.json."""
+    """A run that fails during a window pass leaves no meta.json."""
+    film = _film()
 
     @contextmanager
     def failing() -> Iterator[Any]:
         class Runner:
-            calls = 0
-
             def run_script(self, text: str, *, timeout: float) -> dict[str, Any]:  # noqa: ARG002
-                Runner.calls += 1
-                if "dumps = {}" not in text:
+                if _window_pass(text):
                     raise automation.ScriptError("instruction limit exceeded")
-                return FakeFilm().handler(text)
+                return film.handler(text)
 
         yield Runner()
 
@@ -138,7 +147,7 @@ def test_meta_is_written_last(staged_repo: StagedRepo) -> None:
             staged_repo.out,
             keys=KEYS,
             max_frames=3,
-            stride=2,
+            stride=20,
             film=FILM,
             layout=playone.UNPATCHED,
         )
@@ -146,95 +155,85 @@ def test_meta_is_written_last(staged_repo: StagedRepo) -> None:
     assert not (staged_repo.out / "meta.json").exists()
 
 
-def test_the_end_of_the_film_stops_the_trace(staged_repo: StagedRepo) -> None:
-    """The clock holding for END_HOLD_FRAMES ends the trace instead of running to the cap."""
-    film = FakeFilm(moving_frames=10)
-    meta = _capture(staged_repo, film, max_frames=100, stride=1)
+def test_the_end_of_the_film_stops_the_clock_pass(staged_repo: StagedRepo) -> None:
+    """The clock holding for END_HOLD_FRAMES ends the clock pass instead of running to the cap."""
+    film = _film(moving_frames=50)
+    meta = _capture(staged_repo, film, max_frames=100)
 
-    assert len(meta["frames"]) == 10  # the hold adds no new pages
-    assert f"hold >= {framebuffer.END_HOLD_FRAMES} then break end" in film.scripts[0]
+    assert [f["film_tick"] for f in meta["frames"]] == [1, 21, 41]  # the hold adds no new pages
+    hold = -(-framebuffer.END_HOLD_FRAMES // luagen.CLOCK_EVERY)
+    assert f"if t > 0 and (hold >= {hold} or t >= 2001) then break end" in film.scripts[0]
 
 
 def test_stride_and_max_frames_thin_the_frames(staged_repo: StagedRepo) -> None:
-    meta = _capture(staged_repo, FakeFilm(moving_frames=40), stride=10, max_frames=100)
-    assert [f["film_tick"] for f in meta["frames"]][:3] == [2, 12, 22]
+    film = _film()
+    meta = _capture(staged_repo, film, stride=30, max_frames=100)
+    assert [f["film_tick"] for f in meta["frames"]][:3] == [1, 31, 61]
 
+    capped_film = _film()
     capped = _capture(
         StagedRepo(staged_repo.root, staged_repo.film, staged_repo.out.parent / "out2"),
-        FakeFilm(),
-        stride=1,
-        max_frames=5,
+        capped_film,
+        max_frames=2,
     )
-    assert len(capped["frames"]) == 5
+    assert len(capped["frames"]) == 2
+    # Nothing past the last goal is kept, so the clock pass stops there.
+    assert "or t >= 41) then break end" in capped_film.scripts[0]
 
 
 def test_a_film_whose_clock_never_runs_captures_no_frames(staged_repo: StagedRepo) -> None:
-    meta = _capture(staged_repo, FakeFilm(moving_frames=0))
+    meta = _capture(staged_repo, _film(moving_frames=0))
 
     assert meta["frames"] == []
 
 
 def test_capture_records_torn_and_palette_counts(staged_repo: StagedRepo) -> None:
+    """Counts are over the window frames; an unusable page moves the dump to the next frame."""
     torn, palette = luagen.TRACE_TORN, luagen.TRACE_PALETTE
-    film = FakeFilm(flags={5: torn, 9: torn, 12: palette, 20: palette, 30: palette})
+    # Offset 20 is the frame at tick 1, offset 40 the frame at tick 21.
+    film = _film(flags={20: torn, 40: palette})
 
-    meta = _capture(staged_repo, film, max_frames=100, stride=1)
+    meta = _capture(staged_repo, film)
 
-    assert meta["torn_frames"] == 2
-    assert meta["palette_steps"] == 3
+    assert meta["torn_frames"] == 1
+    assert meta["palette_steps"] == 1
+    # Tick 1 is torn, so tick 2; tick 21 is a palette step, and 22 the frame after it, so 23.
+    assert [f["film_tick"] for f in meta["frames"]] == [2, 23, 41]
 
 
 def test_capture_counts_pages_that_equal_a_composed_page(staged_repo: StagedRepo) -> None:
-    composed = luagen.TRACE_COMPOSED
-    film = FakeFilm(flags=dict.fromkeys(range(5, 25), composed))
-    lines: list[str] = []
+    meta = _capture(staged_repo, _film())
 
-    meta = _capture(staged_repo, film, max_frames=100, stride=1, progress=lines.append)
-
-    assert meta["composed_matches"] == 20
-    assert not any("composed page" in line for line in lines)
+    # Windows read offsets 19..20, 37..40 and 55..60 before their dumps: 12 composed pages.
+    assert meta["composed_matches"] == 12
+    assert meta["torn_frames"] == 0
 
 
-def test_no_composed_match_warns_that_the_offsets_may_be_wrong(staged_repo: StagedRepo) -> None:
-    """Wrong composed_pages offsets read as no tears at all; a zero count says so instead."""
-    lines: list[str] = []
+def test_no_composed_match_fails_on_the_offsets(staged_repo: StagedRepo) -> None:
+    """Wrong composed_pages offsets would leave every window empty; that fails on the offsets."""
+    with pytest.raises(plan.PlanError, match=r"equals a composed page; check unpatched"):
+        _capture(staged_repo, _film(composed=False))
 
-    meta = _capture(staged_repo, FakeFilm(), progress=lines.append)
-
-    assert meta["composed_matches"] == 0
-    assert any("no traced page equals a composed page" in line for line in lines)
+    assert not staged_repo.out.exists()
 
 
 def test_capture_with_no_usable_frame_says_why(staged_repo: StagedRepo) -> None:
-    """Every changed film frame torn must fail loudly, not write an empty capture."""
-    film = FakeFilm(moving_frames=10, flags=dict.fromkeys(range(200), luagen.TRACE_TORN))
+    """Every window frame unusable must fail loudly, not write an empty capture."""
+    film = _film(flags=dict.fromkeys(range(400), luagen.TRACE_PALETTE))
 
-    with pytest.raises(plan.PlanError, match=r"no usable frame among 10 changed .* \d+ torn"):
-        _capture(staged_repo, film, max_frames=100, stride=1)
+    with pytest.raises(
+        plan.PlanError, match=r"no usable frame in 3 windows \(\d+ frames\): 0 matched .* steps"
+    ):
+        _capture(staged_repo, film)
 
     assert not (staged_repo.out / "meta.json").exists()
     # Nothing at all: an empty frames/ directory is not a capture either.
     assert not staged_repo.out.exists()
 
 
-def test_no_usable_frame_counts_only_the_changed_film_frames(staged_repo: StagedRepo) -> None:
-    """The counts in the message are over the frames it names, not over the whole trace."""
-    torn, palette = luagen.TRACE_TORN, luagen.TRACE_PALETTE
-    # Offsets 4..7 are the four changed film frames (ticks 2, 4, 6, 8): 4 and 7 torn, 5 a
-    # palette step, 6 the frame after it. The dialog frames' flags must not be counted.
-    flags = {0: torn, 1: torn, 2: palette, 4: torn, 5: palette, 7: torn, 20: torn}
-    film = FakeFilm(moving_frames=4, flags=flags)
-
-    with pytest.raises(
-        plan.PlanError,
-        match=r"no usable frame among 4 changed film frames: 2 torn, 2 spoiled by a palette step",
-    ):
-        _capture(staged_repo, film, max_frames=100, stride=1)
-
-
 def test_max_frames_below_one_is_refused_before_running(staged_repo: StagedRepo) -> None:
     """Zero frames asked for is a caller's mistake, not a film with no usable frame."""
-    film = FakeFilm()
+    film = _film()
 
     with pytest.raises(ValueError, match="max_frames"):
         _capture(staged_repo, film, max_frames=0)
@@ -243,46 +242,21 @@ def test_max_frames_below_one_is_refused_before_running(staged_repo: StagedRepo)
     assert not staged_repo.out.exists()
 
 
-@pytest.mark.parametrize("all_dropped", [False, True])
-def test_capture_reports_frames_dropped_in_dump_passes(
-    staged_repo: StagedRepo, all_dropped: bool
-) -> None:
+def test_capture_reports_windows_with_no_usable_page(staged_repo: StagedRepo) -> None:
     first = luagen.boot_end(len(KEYS))
-    trace_film = FakeFilm(moving_frames=3)
-    dropped_offsets = [4, 5, 6] if all_dropped else [4, 6]
-    dump_film = FakeFilm(moving_frames=3, flags=dict.fromkeys(dropped_offsets, luagen.TRACE_TORN))
+    # Every frame of the second window (offsets 37..46, and the lead before it) is a palette step.
+    film = _film(flags=dict.fromkeys(range(35, 47), luagen.TRACE_PALETTE))
 
-    def handler(text: str) -> dict[str, Any]:
-        return (trace_film if "dumps = {}" in text else dump_film).handler(text)
+    meta = _capture(staged_repo, film)
 
-    mock = automation.MockAutomation(handler)
-
-    @contextmanager
-    def runner() -> Iterator[automation.MockAutomation]:
-        yield mock
-
-    def run() -> dict[str, Any]:
-        return capture(
-            runner, staged_repo.out, keys=KEYS, max_frames=3, stride=1, layout=playone.UNPATCHED
-        )
-
-    if all_dropped:
-        with pytest.raises(
-            plan.PlanError,
-            match=r"3 changed film frames: 0 torn, 0 spoiled by a palette step .* 3 dropped in dump",
-        ):
-            run()
-        assert not (staged_repo.out / "meta.json").exists()
-    else:
-        meta = run()
-        assert [frame["film_tick"] for frame in meta["frames"]] == [4]
-        assert meta["dropped_frames"] == [first + 4, first + 6]
-        assert json.loads((staged_repo.out / "meta.json").read_text(encoding="utf-8")) == meta
+    assert [frame["film_tick"] for frame in meta["frames"]] == [1, 41]
+    assert meta["dropped_frames"] == [first + 37]
+    assert json.loads((staged_repo.out / "meta.json").read_text(encoding="utf-8")) == meta
 
 
 def test_capture_records_when_and_by_whom_in_the_diagnostics(staged_repo: StagedRepo) -> None:
     meta = _capture(
-        staged_repo, FakeFilm(), provenance={"captured_on": "2026-10-29", "checkout": "wt"}
+        staged_repo, _film(), provenance={"captured_on": "2026-10-29", "checkout": "wt"}
     )
 
     assert meta["captured_on"] == "2026-10-29"
@@ -305,19 +279,21 @@ def test_capture_names_the_engine_build_it_ran(staged_repo: StagedRepo) -> None:
 def test_progress_lines_name_each_pass(staged_repo: StagedRepo) -> None:
     lines: list[str] = []
 
-    _capture(staged_repo, FakeFilm(), progress=lines.append)
+    _capture(staged_repo, _film(), progress=lines.append)
 
-    assert lines[0] == "pass 1: tracing the film"
-    assert any(line.startswith("dump pass 1/1: 3 frames") for line in lines)
+    assert lines[0] == "pass 1: sampling the film clock"
+    assert any(line.startswith("window pass 1/1: 3 windows") for line in lines)
 
 
 def test_the_scripts_boot_with_the_dialog_keys(staged_repo: StagedRepo) -> None:
-    film = FakeFilm()
+    film = _film()
     _capture(staged_repo, film)
 
-    assert '{"KBD_c", "KBD_down", "KBD_enter"}' in film.scripts[0]
+    assert all('{"KBD_c", "KBD_down", "KBD_enter"}' in text for text in film.scripts)
     first = luagen.boot_end(len(KEYS))
-    assert f"for f = {first}, {first + framebuffer.MAX_TRACE_FRAMES} do" in film.scripts[0]
+    last = first + framebuffer.MAX_TRACE_FRAMES
+    assert f"for f = {first}, {last}, {luagen.CLOCK_EVERY} do" in film.scripts[0]
+    assert _window_pass(film.scripts[1])
 
 
 def test_the_archive_hash_round_trips_through_the_capture_document() -> None:
@@ -847,3 +823,46 @@ def test_a_script_capture_names_the_engine_it_ran_in_meta_json(
     meta = json.loads((tmp_path / "out" / "meta.json").read_text(encoding="utf-8"))
     expected = layouts[1] if from_game_root else layouts[0]
     assert (meta["playone_build"], meta["playone_sha256"]) == (expected.name, expected.sha256)
+
+
+@pytest.mark.parametrize(("lead", "fails"), [(3, False), (luagen.WINDOW_SPAN + 1, True)])
+def test_window_passes_tolerate_drift_up_to_a_windows_width(
+    staged_repo: StagedRepo, lead: int, fails: bool
+) -> None:
+    """A long film's clock lands ticks apart from boot to boot; only a window's width fails."""
+    clock_film = _film()
+    # The window passes' film starts its clock *lead* frames (ticks) earlier.
+    window_film = _film(dialog_frames=20 - lead)
+
+    def handler(text: str) -> dict[str, Any]:
+        if _window_pass(text):
+            window_film.first = clock_film.first
+            return window_film.handler(text)
+        return clock_film.handler(text)
+
+    @contextmanager
+    def runner() -> Iterator[automation.MockAutomation]:
+        yield automation.MockAutomation(handler)
+
+    lines: list[str] = []
+
+    def run() -> dict[str, Any]:
+        return capture(
+            runner,
+            staged_repo.out,
+            keys=KEYS,
+            max_frames=3,
+            stride=20,
+            layout=playone.UNPATCHED,
+            progress=lines.append,
+        )
+
+    if fails:
+        with pytest.raises(plan.PlanDivergence, match="disagrees with the clock pass"):
+            run()
+    else:
+        meta = run()
+        # Each window dumps its first usable frame at or past its goal by its own pass's clock:
+        # the first window opens at tick 3 already; the others still find 21 and 41.
+        assert [f["film_tick"] for f in meta["frames"]] == [3, 21, 41]
+        assert any("ticks from the clock pass (at most 3)" in line for line in lines)

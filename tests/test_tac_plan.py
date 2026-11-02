@@ -442,3 +442,74 @@ def test_ranges_may_depend_on_the_trace_and_the_picked_frames() -> None:
     assert seen == [(len(ENTRIES), [FIRST + 5])]
     assert result.dumps[FIRST + 5].ranges == (b"\x01\x02",)
     assert "0x17C9" in mock.scripts[-1]
+
+
+# ==============================================================================
+# Stride plans
+# ==============================================================================
+
+
+def test_decode_clock_numbers_samples_by_frame() -> None:
+    assert plan.decode_clock("x0,3,9", 1300, 6) == ((1300, 0), (1306, 3), (1312, 9))
+    assert plan.decode_clock("x", 1300, 6) == ()
+    with pytest.raises(plan.PlanError, match="letter prefix"):
+        plan.decode_clock("0,3", 1300, 6)
+
+
+def test_decode_window_trace_keeps_each_entrys_own_frame() -> None:
+    mask = luagen.TRACE_CHANGED | luagen.TRACE_COMPOSED
+    trace = plan.decode_window_trace(f"x1400:1:101:{mask},1401:2:102:{luagen.TRACE_TORN}")
+
+    assert list(trace.frames) == [1400, 1401]
+    assert trace.entry(1401).film_tick == 2
+    assert trace.entry(1401).torn
+    assert trace.entry(1400).composed
+
+
+def test_choose_windows_places_one_window_per_goal_where_the_clock_reaches_it() -> None:
+    clock = [(1300, 0), (1306, 0), (1312, 4), (1318, 8), (1324, 13), (1330, 17), (1336, 40)]
+
+    windows = plan.choose_windows(clock, stride=10, limit=10, floor=1302)
+
+    # Goal 1 is reached between 1306 and 1312, goal 11 between 1318 and 1324, goal 21 between
+    # 1330 and 1336; the clock jumps past 31 to 40 there, so no window is placed for 31.
+    assert windows == [luagen.Window(1307, 1), luagen.Window(1319, 11), luagen.Window(1331, 21)]
+    assert plan.choose_windows(clock, stride=10, limit=1, floor=1302) == [luagen.Window(1307, 1)]
+
+
+def test_choose_windows_leaves_out_a_window_that_would_overlap_the_last() -> None:
+    clock = [(1300, 0), (1306, 4), (1312, 8)]
+
+    # Goal 1 starts at 1301, below the floor; goal 5's window at 1307 overlaps nothing.
+    assert plan.choose_windows(clock, stride=4, limit=10, floor=1302) == [luagen.Window(1307, 5)]
+
+
+def test_choose_windows_leaves_out_a_window_that_starts_inside_the_last() -> None:
+    clock = [(1300, 0), (1306, 4), (1312, 8), (1318, 12)]
+
+    # The window for goal 1 at 1301 pushes the floor to 1301 + WINDOW_SPAN + WINDOW_LEAD = 1313,
+    # so goal 5's window at 1307 is left out and goal 9's at 1313 is the next one placed.
+    assert plan.choose_windows(clock, stride=4, limit=10, floor=1300) == [
+        luagen.Window(1301, 1),
+        luagen.Window(1313, 9),
+    ]
+
+
+def test_run_stride_plan_rejects_a_clock_sparser_than_a_window() -> None:
+    def never_opened() -> Any:
+        raise AssertionError("no pass may run")
+
+    # With clock samples further apart than a window, a window can hold none, and its drift
+    # would go unchecked.
+    with pytest.raises(ValueError, match="every must be at most WINDOW_SPAN"):
+        plan.run_stride_plan(
+            never_opened,
+            keys=KEYS,
+            first=1300,
+            last=2000,
+            stride=10,
+            limit=10,
+            end_hold=10,
+            layout=playone.UNPATCHED,
+            every=luagen.WINDOW_SPAN + 1,
+        )
