@@ -171,6 +171,7 @@ Encountered in Object Lifecycle opcodes (`0x00..0x3F`):
 
 - **Camera Slot Allocation:** Slots 0 through 7 ($8$ slots) are reserved for recording-capable camera rigs and tracked vehicles.
 - **Invisible Camera Rigs:** Pure camera rigs are characterized by `type_flags` having `SIF_EXISTS`, `SIF_MOVES`, `SIF_ROTATES`, but **`SIF_DRAW == 0`**. These slots represent virtual cameras (Pan, Tilt, Crane, Tracking, Dolly) placed in the world.
+- **No camera mode in the film** (2026-11-01, `[Supported Inference]`). The Editing Room's camera behaviours (Face, Free, Seek, Spot, Follow, Attach N; *handbook* camera chapter) have no opcode or field: `view_obj` carries no payload and no other opcode names a mode or a target slot (FreeFlight `sifilm.cpp` likewise). The recorded rotation already holds the result: in `INTRO.FLM` and `CTRY.FLM` every view slot is an undrawn rig (flags `0x11` or `0x19`), and the tracking shots point within 0.2–0.4° (mean over the shot) of another slot. A player therefore reads the camera's aim from its `interp` rotation and needs no mode logic; whether `PLAYONE.EXE` recomputes a tracking aim at playback is not observed, and the 1.4° `CTRY.FLM` look-direction match (Q-FLM-08) argues against it.
 - **Instantaneous Director Cuts:**
   When `view_obj` switches or when camera displacement between consecutive ticks exceeds the continuity threshold ($\|\mathbf{P}_{t+1} - \mathbf{P}_t\| > 50.0\text{ m}$):
   $$\text{cut\_from\_previous} = \text{true}$$

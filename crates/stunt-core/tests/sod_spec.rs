@@ -339,9 +339,10 @@ fn ipg_cube_and_quads_triangulate_to_18_indices() {
     assert_eq!(ir.indices.len(), 18);
 }
 
-/// `OP_GVPOLY` takes its normal from the explicit normal register and keeps the active color.
+/// `OP_GVPOLY` takes its colour from the ramp word after its registers, not the running colour,
+/// and its normal from its winding.
 #[test]
-fn gvpoly_uses_explicit_normal_and_color() {
+fn gvpoly_takes_its_ramp_word_and_its_winding_normal() {
     let mut bytes = make_sod_header(50, 0, 0, 0); // scale 1.0
 
     // Set 3 vertices at reg 0..2
@@ -358,25 +359,17 @@ fn gvpoly_uses_explicit_normal_and_color() {
     bytes.extend_from_slice(&10i16.to_le_bytes());
     bytes.extend_from_slice(&0i16.to_le_bytes());
 
-    // Explicit unit normal [0, 0, 1] at reg 3 (offset 36)
-    bytes.extend_from_slice(&OP_VECTORS.to_le_bytes());
-    bytes.extend_from_slice(&1u16.to_le_bytes());
-    bytes.extend_from_slice(&36u16.to_le_bytes());
-    bytes.extend_from_slice(&0i16.to_le_bytes());
-    bytes.extend_from_slice(&0i16.to_le_bytes());
-    bytes.extend_from_slice(&1i16.to_le_bytes());
-
-    // Color 55
+    // Running colour 7, which the polygon must not take.
     bytes.extend_from_slice(&OP_COLOR.to_le_bytes());
-    bytes.extend_from_slice(&55u16.to_le_bytes());
+    bytes.extend_from_slice(&7u16.to_le_bytes());
 
-    // OP_GVPOLY: count 3, reg offsets (0, 12, 24), norm offset (36), 3 shade offsets
+    // OP_GVPOLY: count 3, reg offsets (0, 12, 24), ramp word, 3 shade offsets (all zero)
     bytes.extend_from_slice(&OP_GVPOLY.to_le_bytes());
     bytes.extend_from_slice(&3u16.to_le_bytes());
     bytes.extend_from_slice(&0u16.to_le_bytes());
     bytes.extend_from_slice(&12u16.to_le_bytes());
     bytes.extend_from_slice(&24u16.to_le_bytes());
-    bytes.extend_from_slice(&36u16.to_le_bytes()); // norm offset
+    bytes.extend_from_slice(&0x3703u16.to_le_bytes()); // ramp base 55, count 3
     bytes.extend_from_slice(&0u16.to_le_bytes()); // shade 0
     bytes.extend_from_slice(&0u16.to_le_bytes()); // shade 1
     bytes.extend_from_slice(&0u16.to_le_bytes()); // shade 2
