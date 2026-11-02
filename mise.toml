@@ -192,6 +192,19 @@ run = "uv run ruff format --check ."
 description = "Verify all code formatting"
 depends = ["fmt-check-rust", "fmt-check-py"]
 
+# Applies every automatic fix the gate's lint and format steps can: the gate's `fmt-check-rust`,
+# `fmt-check-py` and `lint-py` failures (gate.py FIXABLE_STEPS) name this task. It reuses fmt-rust
+# and fmt-py and runs ruff over the same `.` as lint-py, so it fixes exactly what the gate checks.
+# Ruff's lint fixes run before `ruff format` because they can change layout. `--exit-zero` keeps
+# an unfixable finding from stopping the format; the next `check-py` still reports it.
+[tasks.fix]
+description = "Apply every automatic fix the gate's lint and format steps can (ruff check --fix, ruff format, cargo fmt)"
+run = [
+  { task = "fmt-rust" },
+  "uv run ruff check --fix --exit-zero .",
+  { task = "fmt-py" },
+]
+
 [tasks.typecheck]
 description = "Run Python static type checking (mypy)"
 run = "uv run mypy"
