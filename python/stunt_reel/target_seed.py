@@ -10,11 +10,17 @@ blocks instead of writing them, so a seeded ``target/`` costs little disk. See
 
 from __future__ import annotations
 
+import contextlib
 import json
-from typing import TYPE_CHECKING
+import os
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, BinaryIO, Literal
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Iterator, Sequence
     from pathlib import Path
 
 #: The target directories a seed copies, in copy order: the gate's build, clippy and matrix lanes.
@@ -94,3 +100,140 @@ def rank_donors(
         ranked.append((same_lock, fingerprint.stat().st_mtime, checkout))
     ranked.sort(key=lambda row: (row[0], row[1]), reverse=True)
     return [checkout for _, _, checkout in ranked]
+
+
+#: Cargo's lock files in a profile directory; a build holds them while it writes.
+_BUILD_LOCKS: tuple[str, ...] = (".cargo-lock", ".cargo-build-lock", ".cargo-artifact-lock")
+#: robocopy keeps file and directory timestamps (Cargo's freshness reads them) and never retries.
+_ROBOCOPY_FLAGS: tuple[str, ...] = (
+    "/E",
+    "/COPY:DAT",
+    "/DCOPY:DAT",
+    "/R:0",
+    "/W:0",
+    "/NFL",
+    "/NDL",
+    "/NJH",
+    "/NJS",
+)
+#: robocopy exit codes from this value up report a failure; below it, what was copied.
+_ROBOCOPY_FAILED = 8
+
+
+@dataclass(frozen=True)
+class SeedOutcome:
+    """What a seed did, for the one line ``init`` prints."""
+
+    status: Literal["seeded", "skipped", "failed"]
+    detail: str
+
+
+def clones_on(path: Path) -> bool:
+    """Whether *path*'s volume clones blocks on copy: ReFS, on Windows only."""
+    if sys.platform != "win32":
+        return False
+    import ctypes  # noqa: PLC0415 - only needed on Windows
+
+    drive, _ = os.path.splitdrive(str(path.resolve()))
+    name = ctypes.create_unicode_buffer(64)
+    ok = ctypes.windll.kernel32.GetVolumeInformationW(
+        drive + "\\", None, 0, None, None, None, name, len(name)
+    )
+    return bool(ok) and name.value == "ReFS"
+
+
+@contextlib.contextmanager
+def build_locks_free(target: Path) -> Iterator[bool]:
+    """Hold every Cargo build lock under *target* for the copy; yield false if one is taken."""
+    if sys.platform != "win32":
+        yield True
+        return
+    import msvcrt  # noqa: PLC0415 - only needed on Windows
+
+    with contextlib.ExitStack() as held:
+        for profile in SEEDED_DIRS:
+            for name in _BUILD_LOCKS:
+                lock = target / profile / name
+                if not lock.is_file():
+                    continue
+                handle = held.enter_context(lock.open("r+b"))
+                try:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                except OSError:
+                    yield False
+                    return
+                held.callback(_unlock, handle)
+        yield True
+
+
+def _unlock(handle: BinaryIO) -> None:
+    """Release the one-byte lock ``build_locks_free`` took at the start of *handle*."""
+    import msvcrt  # noqa: PLC0415 - only needed on Windows
+
+    handle.seek(0)
+    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+def robocopy(source: Path, destination: Path) -> None:
+    """Copy the tree *source* to *destination*, keeping timestamps; raise on a robocopy failure."""
+    command = shutil.which("robocopy")
+    if command is None:
+        raise OSError("robocopy is not on PATH")
+    result = subprocess.run(  # noqa: S603 - fixed argv, robocopy resolved from PATH
+        [command, str(source), str(destination), *_ROBOCOPY_FLAGS],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode >= _ROBOCOPY_FAILED:
+        raise OSError(f"robocopy {source} exited {result.returncode}: {result.stdout.strip()}")
+
+
+def seed(
+    checkout: Path,
+    *,
+    checkouts: Sequence[Path],
+    rustc_vv: str,
+    cargo_home: Path,
+    copy: Callable[[Path, Path], None] = robocopy,
+    volume_clones: Callable[[Path], bool] = clones_on,
+) -> SeedOutcome:
+    """Clone the best donor's build output into *checkout*'s empty target/.
+
+    Best effort: anything that goes wrong after copying started removes what was copied, so a
+    failed seed leaves the target/ as it found it and the next build starts from scratch.
+    """
+    target = checkout / "target"
+    if not needs_seed(target):
+        return SeedOutcome("skipped", "target/ already built")
+    if not volume_clones(checkout):
+        return SeedOutcome("skipped", "volume does not clone blocks")
+    drive = os.path.splitdrive(str(checkout))[0].casefold()
+    local = [other for other in checkouts if os.path.splitdrive(str(other))[0].casefold() == drive]
+    donors = rank_donors(local, here=checkout, rustc_vv=rustc_vv, cargo_home=cargo_home)
+    if not donors:
+        return SeedOutcome("skipped", "no donor with this rustc and cargo home")
+    donor = donors[0]
+    created: list[Path] = []
+    with build_locks_free(donor / "target") as free:
+        if not free:
+            return SeedOutcome("skipped", f"donor {donor} is building")
+        try:
+            for name in SEEDED_DIRS:
+                source = donor / "target" / name
+                if source.is_dir():
+                    created.append(target / name)
+                    copy(source, target / name)
+            for name in SEEDED_FILES:
+                source = donor / "target" / name
+                if source.is_file() and not (target / name).exists():
+                    created.append(target / name)
+                    shutil.copy2(source, target / name)
+        except Exception as error:  # noqa: BLE001 - a seed must never fail init
+            for path in created:
+                if path.is_dir():
+                    shutil.rmtree(path, ignore_errors=True)
+                else:
+                    path.unlink(missing_ok=True)
+            return SeedOutcome("failed", str(error))
+    return SeedOutcome("seeded", f"from {donor}")

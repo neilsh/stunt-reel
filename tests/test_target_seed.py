@@ -4,10 +4,20 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from pathlib import Path
 
-from stunt_reel.target_seed import built_by, needs_seed, rank_donors, uses_cargo_home
+import pytest
+
+from stunt_reel.target_seed import (
+    SeedOutcome,
+    built_by,
+    needs_seed,
+    rank_donors,
+    seed,
+    uses_cargo_home,
+)
 
 RUSTC = "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nhost: x86_64-pc-windows-msvc\n"
 HOME = r"E:\git\stunt-reel\.cache\cargo"
@@ -92,3 +102,113 @@ def test_rank_drops_self_missing_and_disqualified(tmp_path: Path) -> None:
         rustc_vv=RUSTC,
         cargo_home=Path(HOME),
     ) == [good]
+
+
+def _never(source: Path, destination: Path) -> None:
+    raise AssertionError(f"copied {source} to {destination}")
+
+
+def _clones(_: Path) -> bool:
+    return True
+
+
+def _fresh(root: Path) -> Path:
+    root.mkdir()
+    (root / "Cargo.lock").write_text("a", encoding="utf-8")
+    return root
+
+
+def test_seed_copies_dirs_then_files_from_best_donor(tmp_path: Path) -> None:
+    here = _fresh(tmp_path / "here")
+    donor = _donor(tmp_path / "d")
+    for name in ("check", "matrix"):
+        (donor / "target" / name).mkdir()
+    (donor / "target" / "CACHEDIR.TAG").write_text("tag", encoding="utf-8")
+    calls: list[str] = []
+
+    def fake_copy(source: Path, destination: Path) -> None:
+        calls.append(source.name)
+        destination.mkdir(parents=True)
+
+    out = seed(
+        here,
+        checkouts=[donor],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=fake_copy,
+        volume_clones=_clones,
+    )
+    assert out == SeedOutcome("seeded", f"from {donor}")
+    assert calls == ["debug", "check", "matrix"]
+    assert (here / "target" / ".rustc_info.json").is_file()
+    assert (here / "target" / "CACHEDIR.TAG").read_text(encoding="utf-8") == "tag"
+
+
+def test_seed_skips_built_target_and_non_cloning_volume(tmp_path: Path) -> None:
+    here = _donor(tmp_path / "here")
+    built = seed(
+        here,
+        checkouts=[],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=_never,
+        volume_clones=_clones,
+    )
+    assert built == SeedOutcome("skipped", "target/ already built")
+    fresh = _fresh(tmp_path / "fresh")
+    out = seed(
+        fresh,
+        checkouts=[here],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=_never,
+        volume_clones=lambda _: False,
+    )
+    assert out == SeedOutcome("skipped", "volume does not clone blocks")
+
+
+def test_seed_failure_removes_partial_copy(tmp_path: Path) -> None:
+    here = _fresh(tmp_path / "here")
+    donor = _donor(tmp_path / "d")
+    (donor / "target" / "check").mkdir()
+
+    def flaky(source: Path, destination: Path) -> None:
+        destination.mkdir(parents=True)
+        if source.name == "check":
+            raise OSError("robocopy exit 8")
+
+    out = seed(
+        here,
+        checkouts=[donor],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=flaky,
+        volume_clones=_clones,
+    )
+    assert out.status == "failed"
+    assert "exit 8" in out.detail
+    assert not (here / "target" / "debug").exists()
+    assert not (here / "target" / "check").exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Cargo's build locks are byte locks on Windows")
+def test_seed_skips_a_donor_that_is_building(tmp_path: Path) -> None:
+    import msvcrt  # noqa: PLC0415 - Windows-only module
+
+    here = _fresh(tmp_path / "here")
+    donor = _donor(tmp_path / "d")
+    lock = donor / "target" / "debug" / ".cargo-lock"
+    lock.write_bytes(b"")
+    with lock.open("r+b") as held:
+        msvcrt.locking(held.fileno(), msvcrt.LK_NBLCK, 1)
+        out = seed(
+            here,
+            checkouts=[donor],
+            rustc_vv=RUSTC,
+            cargo_home=Path(HOME),
+            copy=_never,
+            volume_clones=_clones,
+        )
+        held.seek(0)
+        msvcrt.locking(held.fileno(), msvcrt.LK_UNLCK, 1)
+    assert out == SeedOutcome("skipped", f"donor {donor} is building")
