@@ -76,6 +76,11 @@ def _init_repo(tmp_path: Path) -> Path:
     return repo
 
 
+def _head(worktree: Path) -> str:
+    """The commit a worktree holds, as reap classifies it."""
+    return _run_git(worktree, "rev-parse", "HEAD").strip()
+
+
 def _junction(link: Path, target: Path) -> None:
     if os.name != "nt":
         pytest.skip("directory junctions are a Windows feature")
@@ -219,7 +224,7 @@ def test_reap_one_leaves_the_worktree_alone_when_a_link_cannot_be_removed(
 
     monkeypatch.setattr(dataroot, "_shell_rmdir", refuse_shell)
     candidate = worktree_init._Candidate(
-        worktree=worktree_init._Worktree(path=worktree, head="", branch="wt-test"),
+        worktree=worktree_init._Worktree(path=worktree, head=_head(worktree), branch="wt-test"),
         merged=True,
         dirty=[],
         untracked=[],
@@ -251,7 +256,7 @@ def test_reap_one_finishes_through_the_fallback_and_keeps_the_target(
     _junction(link, target)
     _refuse_rmdir_on(monkeypatch, link)
     candidate = worktree_init._Candidate(
-        worktree=worktree_init._Worktree(path=worktree, head="", branch="wt-test"),
+        worktree=worktree_init._Worktree(path=worktree, head=_head(worktree), branch="wt-test"),
         merged=True,
         dirty=[],
         untracked=[],
@@ -293,7 +298,7 @@ def test_reap_one_unlinks_then_removes_and_keeps_the_target(tmp_path: Path) -> N
     (target / "nested" / "keep.txt").write_text("keep", encoding="utf-8")
     _junction(worktree / "corpus", target)
     candidate = worktree_init._Candidate(
-        worktree=worktree_init._Worktree(path=worktree, head="", branch="wt-test"),
+        worktree=worktree_init._Worktree(path=worktree, head=_head(worktree), branch="wt-test"),
         merged=True,
         dirty=[],
         untracked=[],
@@ -326,7 +331,7 @@ def test_reap_one_discards_the_worktrees_cached_environment(
     dataroot.env_marker(target).write_text(str(worktree), encoding="utf-8")
     dataroot.create_link(worktree / ".venv", target)
     candidate = worktree_init._Candidate(
-        worktree=worktree_init._Worktree(path=worktree, head="", branch="wt-test"),
+        worktree=worktree_init._Worktree(path=worktree, head=_head(worktree), branch="wt-test"),
         merged=True,
         dirty=[],
         untracked=[],
@@ -503,6 +508,25 @@ def test_a_commit_after_classification_keeps_the_worktree_and_branch(tmp_path: P
     assert _run_git(repo, "rev-parse", "refs/heads/feat").strip() == later
 
 
+def test_a_worktree_switched_to_another_branch_is_left_alone(tmp_path: Path) -> None:
+    repo, worktree, tip = _squash_repo(tmp_path)
+    merged_prs = worktree_init._MergedPrs(
+        repo,
+        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": tip}]),  # type: ignore[arg-type]
+    )
+    candidates, _ = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False, merged_prs=merged_prs
+    )
+    _run_git(worktree, "switch", "-q", "-c", "other")
+
+    error = worktree_init._reap_one(repo, candidates[0], stash_dirty=False, discard_untracked=False)
+
+    assert error is not None
+    assert "worktree changed" in error
+    assert worktree.is_dir()
+    assert _run_git(repo, "rev-parse", "refs/heads/feat").strip() == tip
+
+
 def test_branch_that_moved_on_after_the_merge_is_skipped_with_a_reason(tmp_path: Path) -> None:
     repo, worktree, tip = _squash_repo(tmp_path)
     _commit(worktree, "after-merge.txt")
@@ -518,6 +542,30 @@ def test_branch_that_moved_on_after_the_merge_is_skipped_with_a_reason(tmp_path:
     assert candidates == []
     assert len(skipped) == 1
     assert skipped[0].startswith("feat: ")
+    assert "tip differs from the head of merged #89" in skipped[0]
+
+
+def test_cherry_does_not_take_a_branch_that_moved_on_after_its_merge(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    pool = repo / ".agents" / "worktrees"
+    pool.mkdir(parents=True)
+    worktree = pool / "feat"
+    _run_git(repo, "worktree", "add", "-q", str(worktree), "-b", "feat")
+    merged_head = _commit(worktree, "one.txt")
+    _commit(worktree, "two.txt")
+    # main holds both patches, so --cherry alone would call the branch merged.
+    _commit(repo, "one.txt")
+    _commit(repo, "two.txt")
+    merged_prs = worktree_init._MergedPrs(
+        repo,
+        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": merged_head}]),  # type: ignore[arg-type]
+    )
+
+    candidates, skipped = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=True, merged_prs=merged_prs
+    )
+
+    assert candidates == []
     assert "tip differs from the head of merged #89" in skipped[0]
 
 

@@ -593,11 +593,15 @@ def _candidates(
                 pr = merged_prs.find(worktree.branch, worktree.head)
             if pr is None:
                 patches = _unmerged_patch_count(repo, worktree.branch)
+                reason = f"{patches} patch(es) not in main"
+                # A branch that moved on after its PR merged keeps its worktree, --cherry or not.
+                later = merged_prs.moved_on(worktree.branch) if merged_prs else None
+                if later is not None:
+                    skipped.append(
+                        f"{label}: {reason}; tip differs from the head of merged #{later}"
+                    )
+                    continue
                 if not (include_cherry and patches == 0):
-                    reason = f"{patches} patch(es) not in main"
-                    later = merged_prs.moved_on(worktree.branch) if merged_prs else None
-                    if later is not None:
-                        reason += f"; tip differs from the head of merged #{later}"
                     skipped.append(f"{label}: {reason}")
                     continue
         candidates.append(
@@ -660,16 +664,17 @@ def _reap_one(
         return f"{branch}: modified files"
     if candidate.untracked and not discard_untracked:
         return f"{branch}: untracked files"
-    if branch is not None and not candidate.merged:
-        # A force-deleted branch must still be the tip that was classified: a commit made
-        # since then is in neither main nor the merged PR.
-        tip = _git(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}")
-        now = tip.stdout.strip()
-        if now != worktree.head:
-            return (
-                f"{branch}: tip moved since it was classified "
-                f"({worktree.head[:10]} -> {now[:10] or 'gone'}); left alone"
-            )
+    # The worktree must still hold the branch and tip it was classified with: one switched to
+    # another branch is not this candidate, and a commit made since is in neither main nor
+    # the merged PR.
+    current = next((entry for entry in _worktrees(repo) if entry.path == path), None)
+    if current is None or current.branch != branch:
+        return f"{branch}: worktree changed since it was classified; left alone"
+    if current.head != worktree.head:
+        return (
+            f"{branch}: tip moved since it was classified "
+            f"({worktree.head[:10]} -> {current.head[:10]}); left alone"
+        )
     if candidate.dirty:
         stash = _git(path, "stash", "push", "--message", f"reap {branch}: uncommitted work")
         if stash.returncode != 0:
