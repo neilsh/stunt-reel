@@ -100,7 +100,13 @@ pub struct VideoCapture {
 impl VideoCapture {
     /// Checks the schema version, kind, geometry, log columns and palette history.
     ///
-    /// Returns an artifact error when a check fails, including a geometry validation error.
+    /// # Errors
+    /// - [`ArtifactError::UnsupportedVersion`] if `schema_version` is not [`crate::SCHEMA_VERSION`].
+    /// - [`ArtifactError::MissingField`] if `kind` is empty.
+    /// - [`ArtifactError::Geometry`] if the geometry fails [`Geometry::validate`].
+    /// - [`ArtifactError::VideoLog`] if `kind` is not `"video"`, the tick log columns differ in
+    ///   length, frames do not ascend by one, `film_start_frame` is not a logged frame,
+    ///   `film_tick` falls after the film start, or the palette history is malformed.
     pub fn validate(&self) -> Result<(), ArtifactError> {
         if self.schema_version != crate::SCHEMA_VERSION {
             return Err(ArtifactError::UnsupportedVersion {

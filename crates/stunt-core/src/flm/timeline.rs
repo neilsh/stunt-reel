@@ -78,6 +78,10 @@ impl FilmTimeline {
     /// Only an unreadable film header is an error. A slice that fails to decode stops
     /// the walk: the slices decoded before it are kept and [`Self::stop_reason`] reports
     /// why, so callers decide whether a partial film is acceptable.
+    ///
+    /// # Errors
+    /// Returns [`FlmError::UnexpectedEof`] if `data` is shorter than the 4-byte signature, and
+    /// [`FlmError::InvalidSignature`] if it does not begin with `b"FILM"`.
     pub fn from_bytes(data: &[u8]) -> Result<Self, FlmError> {
         let mut player = super::player::FlmPlayer::new(data)?;
         let mut slices = Vec::new();

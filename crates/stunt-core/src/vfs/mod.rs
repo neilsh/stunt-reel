@@ -57,6 +57,10 @@ pub enum VfsError {
 /// Automatically detects container type and parses the input buffer.
 ///
 /// If `data` begins with `b"RS"`, delegates to [`parse_res`]. Otherwise delegates to [`parse_all`].
+///
+/// # Errors
+/// Returns [`VfsError::UnexpectedEof`] if `data` is shorter than 2 bytes, and otherwise
+/// whatever the chosen parser returns.
 pub fn detect_and_parse(data: &[u8]) -> Result<VfsArchive, VfsError> {
     if data.len() < 2 {
         return Err(VfsError::UnexpectedEof {

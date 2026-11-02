@@ -25,6 +25,10 @@ pub fn build_palette_lut_bytes() -> [u8; PALETTE_LUT_BYTE_SIZE] {
 
 /// Generates the 256x32 RGBA8 lookup table texture bytes for `palette`, laid out as in
 /// [`build_palette_lut_bytes`].
+#[expect(
+    clippy::large_stack_arrays,
+    reason = "32 KiB, built once per palette upload and returned as the fixed-size table callers index"
+)]
 pub fn build_palette_lut_bytes_from(palette: &[(u8, u8, u8); 256]) -> [u8; PALETTE_LUT_BYTE_SIZE] {
     let mut lut_bytes = [0u8; PALETTE_LUT_BYTE_SIZE];
 
@@ -130,7 +134,7 @@ impl PaletteLut {
     /// Rebuilds the texture from the film palette for `controls`, if they changed.
     pub(crate) fn set_controls(&mut self, queue: &wgpu::Queue, controls: PaletteControls) {
         if self.controls != Some(controls) {
-            self.upload(queue, controls.film_palette(), Some(controls));
+            self.upload(queue, &controls.film_palette(), Some(controls));
         }
     }
 
@@ -148,15 +152,11 @@ impl PaletteLut {
     fn upload(
         &mut self,
         queue: &wgpu::Queue,
-        palette: [(u8, u8, u8); 256],
+        palette: &[(u8, u8, u8); 256],
         controls: Option<PaletteControls>,
     ) {
-        Self::write_texture(
-            queue,
-            &self.texture,
-            &build_palette_lut_bytes_from(&palette),
-        );
-        self.palette = palette;
+        Self::write_texture(queue, &self.texture, &build_palette_lut_bytes_from(palette));
+        self.palette = *palette;
         self.controls = controls;
     }
 

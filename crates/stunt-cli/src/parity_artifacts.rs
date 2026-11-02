@@ -711,7 +711,7 @@ mod tests {
         if tamper {
             rgba[0] ^= 1;
         }
-        RenderedPage::new(stunt_render::PageSize::new(320, 200), rgba, plane).expect("page")
+        RenderedPage::new(stunt_render::PageSize::new(320, 200), rgba, &plane).expect("page")
     }
 
     #[test]

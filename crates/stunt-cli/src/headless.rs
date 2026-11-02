@@ -64,7 +64,7 @@ impl SampleSink {
     }
 
     /// Writes one accepted page to every destination the run selected.
-    fn accept_page(&mut self, page: RenderedPage) -> Result<(), SinkError> {
+    fn accept_page(&mut self, page: &RenderedPage) -> Result<(), SinkError> {
         let (key, controls, camera, credits) = self
             .pending
             .take()
@@ -76,7 +76,7 @@ impl SampleSink {
                         .map_err(|_| SinkError::new(format!("{key}: tick does not fit a u32")))?;
                     if let Some(journal) = self.journal.as_mut() {
                         journal
-                            .write(tick, controls, camera, credits, &page)
+                            .write(tick, controls, camera, credits, page)
                             .map_err(|e| SinkError::new(format!("{key}: {e}")))?;
                     }
                 }
@@ -121,7 +121,7 @@ struct SharedSink(Rc<RefCell<SampleSink>>);
 
 impl PageSink for SharedSink {
     fn accept(&mut self, page: RenderedPage) -> Result<(), SinkError> {
-        self.0.borrow_mut().accept_page(page)
+        self.0.borrow_mut().accept_page(&page)
     }
 }
 

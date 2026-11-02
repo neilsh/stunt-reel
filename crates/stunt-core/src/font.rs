@@ -32,6 +32,9 @@ pub struct PFont {
 
 impl PFont {
     /// Parses a `PFONT.BIN` image; any length but [`PFONT_BYTES`] is refused.
+    ///
+    /// # Errors
+    /// Returns [`FontError::Length`] if `bytes` is not exactly [`PFONT_BYTES`] long.
     pub fn parse(bytes: &[u8]) -> Result<Self, FontError> {
         if bytes.len() != PFONT_BYTES {
             return Err(FontError::Length {

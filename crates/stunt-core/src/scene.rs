@@ -103,6 +103,11 @@ pub struct ArchiveShapes {
 /// Decodes every `MODEL_%04X.SOD` chunk of `.ALL` bytes, resolving `OP_TAP` against `anchors`.
 ///
 /// Other chunks are ignored. An empty `anchors` table is treated as absent.
+///
+/// # Errors
+/// Returns the [`VfsError`] from [`crate::vfs::parse_all`] if `archive` is not a well-formed
+/// `.ALL` container. A single chunk that fails to decode is not an error: it is listed in
+/// [`ArchiveShapes::skipped`].
 pub fn decode_archive_shapes(
     archive: &[u8],
     anchors: &[AnchorPoint],
@@ -272,6 +277,11 @@ impl FilmScene {
     /// Only an unreadable film header or archive container is an error; per-chunk decode
     /// failures, partial shapes, and a truncated film are reported, not fatal. The world is
     /// built from the decoded shapes and whichever of anchors, map and scenery were given.
+    ///
+    /// # Errors
+    /// Returns [`SceneError::Film`] if `inputs.film` fails [`FilmTimeline::from_bytes`], and
+    /// [`SceneError::Archive`] if `inputs.archive` is present but not a well-formed `.ALL`
+    /// container.
     pub fn load(inputs: &SceneInputs<'_>) -> Result<(Self, SceneReport), SceneError> {
         let timeline = FilmTimeline::from_bytes(inputs.film).map_err(SceneError::Film)?;
         Self::load_with_timeline(timeline, inputs)
@@ -281,6 +291,10 @@ impl FilmScene {
     ///
     /// For callers that supply their own timeline (e.g. a synthetic one) yet still want the
     /// archive shapes and world.
+    ///
+    /// # Errors
+    /// Returns [`SceneError::Archive`] if `inputs.archive` is present but not a well-formed
+    /// `.ALL` container. Never returns [`SceneError::Film`], since `timeline` is already built.
     pub fn load_with_timeline(
         timeline: FilmTimeline,
         inputs: &SceneInputs<'_>,
