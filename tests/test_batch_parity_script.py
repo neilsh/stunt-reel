@@ -502,12 +502,16 @@ def test_a_failed_forced_stage_marks_later_outcomes_stale(
 ) -> None:
     fake = _install(monkeypatch)
     _process([_film("a-film")], tmp_path)
+    report = tmp_path / parity_layout.batch_film_dir("a-film") / "report"
+    report.mkdir(parents=True)
+    (report / "report.json").write_text("{}", encoding="utf-8")
     fake.failing.add(("a-film", "render"))
     _process([_film("a-film")], tmp_path, force=frozenset({"render"}))
     records = batch_ledger.read(tmp_path / "ledger.jsonl")
     score = batch_ledger.latest(records, "a-film", "score")
     assert score is not None
     assert (score.status, score.message) == ("error", "stale: forced render failed")
+    assert not report.exists()  # the summary then shows "no report", not the old render's
 
     fake.failing.clear()
     fake.calls.clear()

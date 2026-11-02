@@ -220,7 +220,7 @@ def _process_film(film: BatchFilm, shared: _Shared) -> int:
 
 
 def _mark_later_stale(slug: str, stage: str, failed: Record, shared: _Shared) -> None:
-    """Record an error for each later stage that has an outcome, so a resume reruns it.
+    """Record an error for each later stage that has an outcome, and remove its output.
 
     The ledger keeps each stage's latest record on its own, so without this a forced render that
     fails would leave the earlier score current, and ``--retry-errors`` would repair the render
@@ -229,6 +229,9 @@ def _mark_later_stale(slug: str, stage: str, failed: Record, shared: _Shared) ->
     for later in STAGES[STAGES.index(stage) + 1 :]:
         prior = shared.prior(slug, later)
         if prior is not None and prior.status != "error":
+            if later in _STAGE_OUTPUT:
+                output = shared.root / parity_layout.batch_film_dir(slug) / _STAGE_OUTPUT[later]
+                shutil.rmtree(output, ignore_errors=True)
             message = f"stale: forced {stage} failed"
             shared.commit(
                 replace(failed, stage=later, message=message, seconds=0.0, ssim=None, iou=None)
