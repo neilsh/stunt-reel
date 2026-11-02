@@ -23,7 +23,7 @@ A render is never described: it is a directory of files whose names, page-to-fil
 - **Versioning:** `render.json` and `meta.json` carry `schema_version: 1`. `report.json` keeps serde-defaulted optional fields plus shared cross-language fixtures; no required-field-set version files until a change genuinely needs one.
 - **Report aggregation:** one builder in the CLI parity module; `i6_gate()` remains there. The report schema stays in the port crate.
 - **Capture:** port and read side only in this unit.
-- **Python page-rule mapping:** the `--frames` mapping for captures gets one helper in the Python adapter rather than being duplicated in the sweep and the probe.
+- **Python page-rule mapping:** the `--tick-range` mapping for captures gets one helper in the Python adapter rather than being duplicated in the sweep and the probe.
 
 ## 4. Chosen design
 
@@ -31,7 +31,7 @@ A render is never described: it is a directory of files whose names, page-to-fil
 
 - `crates/stunt-parity` - a new pure port crate. It holds the render record, the capture set, the report record, the schema version and the artifact errors. Dependencies: serde and `stunt-core` only. No filesystem, no image decoding, no wgpu.
 - `crates/stunt-cli/src/parity_artifacts.rs` - the Rust adapter. It owns discovery, naming, the streaming journal writer, the streaming reader, PNG decoding, the report builder and `render_png`.
-- `python/stunt_reel/parity_artifacts.py` - the Python adapter, standard library only, frozen dataclasses and readers/writers. It also owns `frames_for_captured_ticks`, the one named home for the `--frames` mapping.
+- `python/stunt_reel/parity_artifacts.py` - the Python adapter, standard library only, frozen dataclasses and readers/writers. It also owns `tick_range_for_captured_ticks`, the one named home for the `--tick-range` mapping.
 - `python/scripts/parity_inputs.py` becomes a shim during migration and is then deleted. `parity_sweep`, `parity_probe` and `parity_run` consume the adapter.
 
 ### Interface sketch
@@ -57,7 +57,7 @@ Python adapter:
     open_round(capture, render) -> Round        # frames, geometry, film, warnings
     read_report(path) -> Report                 # headline(), gate, per_frame
     write_render(path, record); read_render(path)
-    frames_for_captured_ticks(ticks) -> str     # the one --frames mapping
+    tick_range_for_captured_ticks(ticks) -> str     # the one --tick-range mapping
 
 ### Invariants
 
@@ -90,7 +90,7 @@ File naming and numbering; the page-to-film-clock rule; plane layouts and length
 ## 7. Tests
 
 - Survive through the new interface: the Rust parity behaviour tests (fade floor, null scored means, film-tick matching, missing planes re-render message, untagged capture, I6 gate), the sweep rank/table/check/preflight/noise tests, the probe retime tests, the CLI tests, and the headless file-name tests moved into the adapter.
-- Move: `test_render_range_covers_captured_ticks` becomes a test of `frames_for_captured_ticks` in the Python adapter.
+- Move: `test_render_range_covers_captured_ticks` becomes a test of `tick_range_for_captured_ticks` in the Python adapter.
 - Die: the raw `parity_inputs` validator tests, the sidecar unknown-key test (replaced by a round-trip test), `parse_report`, and the duplicated `RENDER_SIDECAR` and geometry constants.
 - New, offline: shared `render_v1`, `capture_v1` and `report_v1` fixtures read and rewritten by both adapters; unknown-version refusal; legacy-versus-record conflict; missing or incomplete `render.json`; geometry mismatch before planes; tick ordering; report identities and null means; journal-to-round round-trip; retime round-trip preserving unknown keys.
 
@@ -118,6 +118,6 @@ Abandon or re-shape the unit if: the port crate needs `stunt-render` or wgpu to 
 
 2. **Landing 2 merged 2026-10-24.** A render directory must carry one of the two documents: with neither, parity refuses with the re-render message; the legacy sidecar is still read. The measured fade no longer decides `scored` (ADR 0005): the floor comes from authored brightness, and a tick with no authored entry is not excluded. The baseline was regenerated - 1333 CTRY frames and 2876 INTRO frames - and the pre-change binary and the landing-2 binary produce semantically identical reports on both regenerated directories and on the legacy-only baseline render directory.
 
-3. **Landing 3 merged 2026-10-24.** The Python adapter `python/stunt_reel/parity_artifacts.py` mirrors the port (records, validation, naming, the `--frames` mapping, retime document rewriting); `parity_inputs.py` was a thin shim at this point; the probe and sweep consume the adapter and drop their 320/185/16 and sidecar constants. Retime on a real CLI-written directory preserved 1333 ticks, film, geometry, palette and camera, synced the legacy sidecar and kept unknown keys. Verification: scoped ruff, mypy and parity tests green (72 passed); full Python suite 247 passed, 4 skipped; retime byte-compared against `build/tmp/a2-render/ctry`.
+3. **Landing 3 merged 2026-10-24.** The Python adapter `python/stunt_reel/parity_artifacts.py` mirrors the port (records, validation, naming, the `--tick-range` mapping, retime document rewriting); `parity_inputs.py` was a thin shim at this point; the probe and sweep consume the adapter and drop their 320/185/16 and sidecar constants. Retime on a real CLI-written directory preserved 1333 ticks, film, geometry, palette and camera, synced the legacy sidecar and kept unknown keys. Verification: scoped ruff, mypy and parity tests green (72 passed); full Python suite 247 passed, 4 skipped; retime byte-compared against `build/tmp/a2-render/ctry`.
 
 4. **Landing 4 merged 2026-10-24.** The render writer no longer writes the legacy `palette_controls.json` sidecar; parity still reads it from renders made before the record. The `parity_inputs.py` shim and its tests are deleted, and ADR 0010's validation-home sentence now points at the adapter alone. Verification: a three-tick render writes only `render.json` (no sidecar) with the same PNG/`.idx`/`.layer` bytes; the Python suite is green without the shim; the full `mise run check` runs at integration with unit C's deletion stage.

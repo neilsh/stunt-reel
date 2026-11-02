@@ -152,7 +152,7 @@ pub(crate) fn decode_frames(
 mod tests {
     use super::*;
 
-    fn chunk(id: &[u8; 4], data: &[u8]) -> Vec<u8> {
+    fn chunk(id: [u8; 4], data: &[u8]) -> Vec<u8> {
         let mut v = id.to_vec();
         v.extend_from_slice(&u32::try_from(data.len()).unwrap().to_le_bytes());
         v.extend_from_slice(data);
@@ -162,7 +162,7 @@ mod tests {
         v
     }
 
-    fn list(kind: &[u8; 4], form: &[u8; 4], body: &[u8]) -> Vec<u8> {
+    fn list(kind: [u8; 4], form: [u8; 4], body: &[u8]) -> Vec<u8> {
         let mut data = form.to_vec();
         data.extend_from_slice(body);
         chunk(kind, &data)
@@ -172,22 +172,22 @@ mod tests {
         let mut h = vec![0u8; 56];
         h[32..36].copy_from_slice(&width.to_le_bytes());
         h[36..40].copy_from_slice(&height.to_le_bytes());
-        chunk(b"avih", &h)
+        chunk(*b"avih", &h)
     }
 
     fn file(movi_body: &[u8]) -> Vec<u8> {
-        let mut body = list(b"LIST", b"hdrl", &avih(8, 4));
-        body.extend(list(b"LIST", b"movi", movi_body));
-        list(b"RIFF", b"AVI ", &body)
+        let mut body = list(*b"LIST", *b"hdrl", &avih(8, 4));
+        body.extend(list(*b"LIST", *b"movi", movi_body));
+        list(*b"RIFF", *b"AVI ", &body)
     }
 
     #[test]
     fn other_streams_are_skipped() {
-        let mut movi = chunk(b"00dc", &[1, 2, 3]);
-        movi.extend(chunk(b"01wb", &[9, 9, 9, 9]));
-        movi.extend(chunk(b"00dc", &[]));
-        movi.extend(chunk(b"01wb", &[7]));
-        movi.extend(chunk(b"00dc", &[4, 5]));
+        let mut movi = chunk(*b"00dc", &[1, 2, 3]);
+        movi.extend(chunk(*b"01wb", &[9, 9, 9, 9]));
+        movi.extend(chunk(*b"00dc", &[]));
+        movi.extend(chunk(*b"01wb", &[7]));
+        movi.extend(chunk(*b"00dc", &[4, 5]));
         let bytes = file(&movi);
         let video = read_video(&bytes).unwrap();
         assert_eq!((video.width, video.height), (8, 4));
@@ -197,7 +197,7 @@ mod tests {
 
     #[test]
     fn a_chunk_past_its_list_is_an_error() {
-        let mut movi = chunk(b"00dc", &[1, 2, 3, 4]);
+        let mut movi = chunk(*b"00dc", &[1, 2, 3, 4]);
         // Claim 100 bytes where only 2 remain in the list.
         movi.extend_from_slice(b"00dc");
         movi.extend_from_slice(&100u32.to_le_bytes());
@@ -208,27 +208,27 @@ mod tests {
 
     #[test]
     fn a_short_avih_is_ignored() {
-        let mut body = list(b"LIST", b"hdrl", &chunk(b"avih", &[1; 12]));
-        body.extend(list(b"LIST", b"movi", &chunk(b"00dc", &[1])));
-        let err = read_video(&list(b"RIFF", b"AVI ", &body)).unwrap_err();
+        let mut body = list(*b"LIST", *b"hdrl", &chunk(*b"avih", &[1; 12]));
+        body.extend(list(*b"LIST", *b"movi", &chunk(*b"00dc", &[1])));
+        let err = read_video(&list(*b"RIFF", *b"AVI ", &body)).unwrap_err();
         assert_eq!(err, AviError::NoHeader);
     }
 
     #[test]
     fn deeply_nested_lists_are_an_error() {
-        let mut body = chunk(b"00dc", &[1]);
+        let mut body = chunk(*b"00dc", &[1]);
         for _ in 0..12 {
-            body = list(b"LIST", b"rec ", &body);
+            body = list(*b"LIST", *b"rec ", &body);
         }
-        let err = read_video(&list(b"RIFF", b"AVI ", &body)).unwrap_err();
+        let err = read_video(&list(*b"RIFF", *b"AVI ", &body)).unwrap_err();
         assert_eq!(err, AviError::TooDeep(MAX_DEPTH));
     }
 
     #[test]
     fn a_huge_avih_dimension_fails_decoding_not_allocation() {
-        let mut body = list(b"LIST", b"hdrl", &avih(u32::MAX, u32::MAX));
-        body.extend(list(b"LIST", b"movi", &chunk(b"00dc", &[1])));
-        let err = decode_frames(&list(b"RIFF", b"AVI ", &body), |_, _| Ok(())).unwrap_err();
+        let mut body = list(*b"LIST", *b"hdrl", &avih(u32::MAX, u32::MAX));
+        body.extend(list(*b"LIST", *b"movi", &chunk(*b"00dc", &[1])));
+        let err = decode_frames(&list(*b"RIFF", *b"AVI ", &body), |_, _| Ok(())).unwrap_err();
         assert!(err.contains("frame size"), "{err}");
     }
 

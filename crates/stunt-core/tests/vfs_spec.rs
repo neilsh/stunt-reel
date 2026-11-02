@@ -1296,6 +1296,10 @@ fn detect_and_parse_dispatches_on_res_magic() {
 }
 
 #[test]
+#[expect(
+    clippy::case_sensitive_file_extension_comparisons,
+    reason = "stored names are normalised to uppercase `[I8]`, so the comparison is exact on purpose"
+)]
 fn res_lookup_is_case_insensitive_and_exact_otherwise() {
     // Invariant [I8] Case-Insensitivity Oracle over mixed-case stored names
     let mut rng = SimpleRng::new(0x2026_0417);

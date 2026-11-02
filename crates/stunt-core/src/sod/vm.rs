@@ -573,9 +573,6 @@ pub(crate) fn run_vm(
                 let reg_idx = ((reg_off / 12) & 1023) as usize;
                 cur_vert = regs[reg_idx];
             }
-            OP_ID => {
-                // Secondary ID sentinel in stream; safely ignored
-            }
             OP_PUTV => {
                 let reg_off = r.read_u16_le()?;
                 let reg_idx = ((reg_off / 12) & 1023) as usize;
@@ -883,8 +880,9 @@ pub(crate) fn run_vm(
                     r.set_pos(target as usize);
                 }
             }
-            OP_PUSHRELMAT | OP_POPRELMAT => {
-                // The relative matrix stays the identity: its only users here are `ROT*`,
+            OP_ID | OP_PUSHRELMAT | OP_POPRELMAT => {
+                // `OP_ID`: secondary ID sentinel in stream; safely ignored.
+                // `OP_PUSHRELMAT` and `OP_POPRELMAT`: the relative matrix stays the identity: its only users here are `ROT*`,
                 // and the animation variables they read are zero in a resting pose.
             }
             OP_ROTX | OP_ROTY | OP_ROTZ => {

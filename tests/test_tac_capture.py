@@ -6,6 +6,7 @@ corpus is never read.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import importlib.util
 import json
@@ -29,6 +30,7 @@ from tac_mock import FILM_COLORS, FakeFilm, StagedRepo
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+_REAL_LAYOUT_FOR = playone.layout_for  # before staged_repo replaces it
 KEYS = playone.film_selection_names("CTRY")
 FILM: FilmId = FilmId(name="CTRY.FLM", flm_bytes=19, flm_sha256="0" * 64)
 FRAME_BYTES = 320 * 200
@@ -99,6 +101,7 @@ def test_capture_artifacts_keep_their_contract(staged_repo: StagedRepo) -> None:
         "dgroup_segment",
         "frame_bytes",
         "playone_build",
+        "playone_sha256",
         "torn_frames",
         "palette_steps",
         "composed_matches",
@@ -258,6 +261,19 @@ def test_capture_records_when_and_by_whom_in_the_diagnostics(staged_repo: Staged
 
     assert meta["captured_on"] == "2026-10-29"
     assert meta["checkout"] == "wt"
+
+
+def test_capture_names_the_engine_build_it_ran(staged_repo: StagedRepo) -> None:
+    """meta.json says which PLAYONE.EXE played the film: the layout name and the EXE's hash."""
+    meta = _capture(staged_repo, FakeFilm(), layout=playone.PATCH3)
+
+    assert meta["playone_build"] == "patch3"
+    assert meta["playone_sha256"] == playone.PATCH3.sha256
+    on_disk = json.loads((staged_repo.out / "meta.json").read_text(encoding="utf-8"))
+    assert (on_disk["playone_build"], on_disk["playone_sha256"]) == (
+        "patch3",
+        playone.PATCH3.sha256,
+    )
 
 
 def test_progress_lines_name_each_pass(staged_repo: StagedRepo) -> None:
@@ -766,6 +782,90 @@ def test_capture_script_runs_the_game_root_build_with_its_layout(
     assert "no known PLAYONE.EXE build" in capsys.readouterr().err
     stage_root = dataroot.data_root() / parity_layout.stage_root()
     assert not stage_root.exists() or not any(stage_root.iterdir())
+
+
+def _engine_layouts(
+    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
+) -> tuple[playone.PlayoneLayout, playone.PlayoneLayout]:
+    """Real build detection over two synthetic engines: the film folder's and a --game-root's."""
+    folder_exe = (staged_repo.film.parent.parent / "PLAYONE.EXE").read_bytes()
+    given_exe = b"patched PLAYONE.EXE"
+    # Synthetic executables match no real build; give each a layout under its own hash.
+    layouts = (
+        dataclasses.replace(
+            playone.UNPATCHED, name="folder", sha256=hashlib.sha256(folder_exe).hexdigest()
+        ),
+        dataclasses.replace(
+            playone.PATCH3, name="given", sha256=hashlib.sha256(given_exe).hexdigest()
+        ),
+    )
+    monkeypatch.setattr(playone, "layout_for", _REAL_LAYOUT_FOR)
+    monkeypatch.setattr(playone, "LAYOUTS", layouts)
+    return layouts
+
+
+def _game_root_argv(tmp_path: Path) -> list[str]:
+    """--game-root naming a synthetic engine tree whose PLAYONE.EXE is the "given" one."""
+    tree = tmp_path / "patched"
+    tree.mkdir()
+    for name in staging.ENGINE_FILES:
+        (tree / name).write_bytes(b"patched " + name.encode())
+    return ["--game-root", str(tree)]
+
+
+@pytest.mark.parametrize("from_game_root", [False, True], ids=["film-folder-engine", "game-root"])
+def test_a_script_capture_names_the_engine_it_ran_in_meta_json(
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    from_game_root: bool,
+) -> None:
+    """The recorded build is the staged PLAYONE.EXE's, from the film's tree or from --game-root."""
+    module = _load_script("capture_playone_reference")
+    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
+    layouts = _engine_layouts(staged_repo, monkeypatch)
+    argv = _capture_argv(staged_repo, tmp_path / "out")
+    if from_game_root:
+        argv += _game_root_argv(tmp_path)
+    monkeypatch.setattr(sys, "argv", argv)
+    runner = FakeFilm().runner()
+    monkeypatch.setattr(module.automation, "launched", lambda _conf: runner())
+
+    assert module.run(module.parse_args()) == 0
+
+    meta = json.loads((tmp_path / "out" / "meta.json").read_text(encoding="utf-8"))
+    expected = layouts[1] if from_game_root else layouts[0]
+    assert (meta["playone_build"], meta["playone_sha256"]) == (expected.name, expected.sha256)
+
+
+@pytest.mark.parametrize("from_game_root", [False, True], ids=["film-folder-engine", "game-root"])
+def test_a_video_script_capture_records_with_the_engine_it_staged(
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    from_game_root: bool,
+) -> None:
+    """capture_video picks its own layout; it must be the staged engine's, not the film folder's.
+
+    record_video writing layout.sha256 into meta.json is covered in test_tac_video.py.
+    """
+    module = _load_script("capture_video")
+    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
+    layouts = _engine_layouts(staged_repo, monkeypatch)
+    argv = ["capture_video.py", "--film", str(staged_repo.film), "--out", str(tmp_path / "out")]
+    if from_game_root:
+        argv += _game_root_argv(tmp_path)
+    monkeypatch.setattr(sys, "argv", argv)
+    recorded: list[playone.PlayoneLayout] = []
+
+    def record_video(*_args: object, layout: playone.PlayoneLayout, **_kwargs: object) -> Any:
+        recorded.append(layout)
+        raise RuntimeError("stop after picking the layout")
+
+    monkeypatch.setattr(module.video, "record_video", record_video)
+
+    assert module.run(module.parse_args()) == 1
+    assert recorded == [layouts[1] if from_game_root else layouts[0]]
 
 
 @pytest.mark.parametrize(("lead", "fails"), [(3, False), (luagen.WINDOW_SPAN + 1, True)])
