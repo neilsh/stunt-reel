@@ -113,10 +113,18 @@ impl<'a> ByteReader<'a> {
     ///
     /// On a missing terminator the cursor is left at the end of the buffer.
     pub fn read_cstring(&mut self) -> Result<String, Eof> {
+        self.read_cstring_bytes()
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+    }
+
+    /// Read a null-terminated string as raw bytes, consuming the terminator.
+    ///
+    /// On a missing terminator the cursor is left at the end of the buffer.
+    pub fn read_cstring_bytes(&mut self) -> Result<Vec<u8>, Eof> {
         let rest = self.data.get(self.pos..).unwrap_or(&[]);
         if let Some(n) = rest.iter().position(|&b| b == 0) {
             self.pos += n + 1;
-            Ok(String::from_utf8_lossy(&rest[..n]).into_owned())
+            Ok(rest[..n].to_vec())
         } else {
             self.pos = self.pos.max(self.data.len());
             Err(Eof {

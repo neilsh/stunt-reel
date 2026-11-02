@@ -82,6 +82,14 @@ fn credits_centre_each_line_and_put_the_second_twenty_rows_down() {
 }
 
 #[test]
+fn credits_whose_first_byte_is_negative_draw_nothing() {
+    // `0x0F7F` skips the whole overlay when the text's first byte has its sign bit set.
+    let lines = CreditLines::new(vec![0x80, b'I'], "I");
+    let rect = ClipRect::new(0, 0, 319, 184);
+    assert!(plot(|put| draw_credits(&font(), &lines, rect, put)).is_empty());
+}
+
+#[test]
 fn credits_centre_inside_an_offset_clip_rectangle() {
     let lines = CreditLines::new("I", "");
     let rect = ClipRect::new(100, 10, 199, 109);

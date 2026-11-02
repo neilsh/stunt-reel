@@ -25,20 +25,20 @@ pub struct CreditsChange {
     pub lines: Option<CreditLines>,
 }
 
-/// The two text lines of one `0x99` event, the film's two C strings.
+/// The two text lines of one `0x99` event: the film's two C strings, as raw bytes, since
+/// the font (not an encoding) decides what each byte draws.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CreditLines {
     /// First line, drawn on top.
-    pub first: String,
+    pub first: Vec<u8>,
     /// Second line; empty draws nothing.
-    pub second: String,
+    pub second: Vec<u8>,
 }
 
 impl CreditLines {
     /// Two lines of credits text.
     #[must_use]
-    pub fn new(first: impl Into<String>, second: impl Into<String>) -> Self {
+    pub fn new(first: impl Into<Vec<u8>>, second: impl Into<Vec<u8>>) -> Self {
         Self {
             first: first.into(),
             second: second.into(),
@@ -73,18 +73,22 @@ impl ClipRect {
 }
 
 /// Calls `put(x, y, index)` for every pixel of the credits, shadow before ink, so a caller
-/// that writes them in order gets `PLAYONE`'s page. The first line is drawn even when empty
-/// (it draws nothing); an empty second line is skipped, as at `0x0FB3`.
+/// that writes them in order gets `PLAYONE`'s page. Nothing is drawn when the first byte has
+/// its sign bit set (`0x0F7F`). The first line is drawn even when empty (it draws nothing);
+/// an empty second line is skipped, as at `0x0FB0`. Pixels are not clipped to `rect`.
 pub fn draw_credits(
     font: &PFont,
     lines: &CreditLines,
     rect: ClipRect,
     put: &mut dyn FnMut(i32, i32, u8),
 ) {
+    if lines.first.first().is_some_and(|&byte| byte >= 0x80) {
+        return;
+    }
     let top = rect.top + ((rect.bottom - rect.top - BLOCK_ROWS) >> 1);
-    draw_line(font, lines.first.as_bytes(), rect, top, put);
+    draw_line(font, &lines.first, rect, top, put);
     if !lines.second.is_empty() {
-        draw_line(font, lines.second.as_bytes(), rect, top + LINE_PITCH, put);
+        draw_line(font, &lines.second, rect, top + LINE_PITCH, put);
     }
 }
 

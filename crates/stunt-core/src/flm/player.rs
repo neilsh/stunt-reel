@@ -628,9 +628,9 @@ impl<'a> FlmPlayer<'a> {
         Ok(self.reader.read_i32_le()?)
     }
 
-    /// Read a null-terminated ASCII C-string.
-    fn read_cstring(&mut self) -> Result<String, FlmError> {
-        Ok(self.reader.read_cstring()?)
+    /// Read a null-terminated C string as raw bytes.
+    fn read_cstring(&mut self) -> Result<Vec<u8>, FlmError> {
+        Ok(self.reader.read_cstring_bytes()?)
     }
 }
 
@@ -719,7 +719,8 @@ mod tests {
         push_slice_with_duration(&mut film, 0, 0, &[0xFF]);
         // Slice 1 at tick 5: set, then set again; the later pair wins.
         let mut body = vec![0x99];
-        body.extend_from_slice(b"OLD\0\0");
+        // A byte past ASCII stays a byte: the font, not UTF-8, decides what it draws.
+        body.extend_from_slice(b"OLD\xC9\0\0");
         body.push(0x99);
         body.extend_from_slice(b"TITLE\x0015\0");
         body.push(0xFF);
@@ -730,6 +731,12 @@ mod tests {
 
         let timeline = FilmTimeline::from_bytes(&film).unwrap();
         let title = CreditLines::new("TITLE", "15");
+        let mut player = FlmPlayer::new(&film).unwrap();
+        while player.step_slice().is_some() {}
+        assert_eq!(
+            player.take_credits()[0].lines,
+            Some(CreditLines::new(&b"OLD\xC9"[..], ""))
+        );
         assert_eq!(timeline.credits_at(0.0), None);
         assert_eq!(timeline.credits_at(4.9), None);
         assert_eq!(timeline.credits_at(5.0), Some(&title));

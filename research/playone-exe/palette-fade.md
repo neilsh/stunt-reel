@@ -40,6 +40,19 @@ The film player keeps its state in a structure at `DS:0x474A`. Its sibling at `D
 * **`before` (`0xA0`–`0xAF`), handler `0x3D2A`:** stores the operand at `+0x9E + 2n` and sets bit `n` in `+0x20` or `+0x22`. Opcodes `0xB0`–`0xBF` hit `int3` in this build.
 * **Interpolation, `0x136F`:** for every variable whose bit is set in `+0x24`, `live = start + ((end - start) * frac) >> 15`, with `frac` taken from `DS:0x22E0 >> 1`. Variables therefore move linearly between `var_set` keys rather than stepping.
 
+### 2.1 Authoring: the FX Options
+
+The game manual (`corpus/siarchive/Docs/Manual/SIManual.txt`, "Incorporating Visual Effects") lists four visual FX on the editor's Destination deck for a marked segment of film: Credit, Color, Fade and Speed. Color and Fade each take two bars, the value at the start of the segment and the value at the end. Each option maps onto the film as follows, with the tier per row:
+
+| FX option | What the manual says it sets | Film encoding | Tier |
+|---|---|---|---|
+| Fade | Brightness, from full to black, start and end of the segment | Var 14: a `var_set 14` key at each end of the segment, interpolated by `0x136F`; 32768 is full, 0 black | `[Supported Inference]` |
+| Color | Saturation, from full colour to black and white, start and end | Var 15, same shape; 32768 is full colour | `[Supported Inference]` |
+| Credit | Lines of credits text | `0x99` with two C strings, cleared by `0x98` ([`pfont.md` § 3.2](../formats/auxiliary/pfont.md#32-drawing-the-credits)) | `[Established]` |
+| Speed | Playback rate of the segment, as a percentage | Not identified | `[Unknown]` |
+
+Because `PLAYONE` zeroes every variable at film start (section 6), a film shows black until its first Fade key. `INTRO.FLM` keys var 14 to full at tick 760, back to 0 at 1519 and full at 2055, then ramps it from about 32700 at 3472 down to 0 by 3633 (`mise run flm-events`). Its title cards before 760, between 1519 and 2055, and after 3641 are therefore its credits on black, as the `vault-intro` capture shows. Whether the black first card is a deliberate choice or the default of a segment the author never faded in is not recorded.
+
 ## 3. Palette Build
 
 `0x0EE6` loads the variables from the `0x474A` structure and calls `0x0FD2`:

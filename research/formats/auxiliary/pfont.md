@@ -15,7 +15,7 @@
 
 ## 2. Header & Memory Layout
 
-The byte layout is [`pfont.ksy`](pfont.ksy): a 128-byte width table, then 128 glyphs of 8 one-byte rows, both indexed by character code. `[Established]`: the file is 1,152 bytes in every copy, and drawing a string by this layout reproduces each of 71 captured `INTRO.FLM` title cards pixel for pixel (section 3.2).
+The byte layout is [`pfont.ksy`](pfont.ksy): a 128-byte width table, then 128 glyphs of 8 one-byte rows, both indexed by character code. `[Established]`: the file is 1,152 bytes in every copy, and drawing a string by this layout reproduces the captured `INTRO.FLM` title cards pixel for pixel (section 3.2).
 
 `PLAYONE` reads the width table at `DS:0x4F02` (`0x58D0` indexes `[bx + 0x4F02]` by character code), so the file is loaded whole into `DGROUP`; where the glyph rows land is `[Unknown]`.
 
@@ -42,7 +42,7 @@ Each glyph row is one byte, bit 7 the leftmost pixel, so a glyph is at most 8 pi
 | Colour | Ink index 255 (`CX = 0xFF`) | `0x0FA9` |
 | Shadow | `0x58BD` draws the string at `x + 1` in colour 0, then at `x` in the given colour | `0x58BD` |
 
-`left`, `right`, `top` and `bottom` are the inclusive clip rectangle at `DS:0x2294`, `0x2296`, `0x2298` and `0x229A`. With the 320 x 185 film view (`0..319`, `0..184`), `DISNEY INTRO REEL` (width 92) lands at x 113, row 78, and its countdown number at row 98; all 71 title-card frames of `vault-intro/frames/006` match the rule exactly, ink and shadow.
+`left`, `right`, `top` and `bottom` are the inclusive clip rectangle at `DS:0x2294`, `0x2296`, `0x2298` and `0x229A`. With the 320 x 185 film view (`0..319`, `0..184`), `DISNEY INTRO REEL` (width 92) lands at x 113, row 78, and its countdown number at row 98. Two checks against the capture: every frame of `vault-intro/frames/006` that shows text (71 frames before tick 1520, the countdown from 15 to 1) matches the rule exactly, ink and shadow; and the renderer, drawing by it, scores SSIM 1.000 on all 69 frames before tick 760 of the reference `vault-intro/frames/004`, so each countdown step changes on the captured tick.
 
 ---
 
@@ -51,6 +51,8 @@ Each glyph row is one byte, bit 7 the leftmost pixel, so a glyph is at most 8 pi
 1. **Odd widths.** Every string on the captured title cards has an even width, so the capture cannot tell `right = 319` from `318`; the inclusive 184 bottom row (the film view's 185 rows) suggests 319. `[Hypothesis]`.
 2. **Codes past 127.** `0x58D0` indexes the width table by the full byte, so a code at or above `0x80` would read past it. No film text has one; the parser gives such codes no width and no glyph. `[Unknown]`.
 3. **Where the glyph rows are loaded** and which routine draws UI dialog text with them. `[Unknown]`.
+4. **Clipping.** Whether the text driver `[0x225A]` clips to the clip rectangle is `[Unknown]`; the renderer clips only to the page, which no film text reaches past.
+5. **Renderer gaps, not findings.** The renderer draws credits on offscreen pages only, not in the interactive window, and a render without `--viewport-rows` centres them in the whole page (line 1 at row 85, not 78).
 
 ---
 

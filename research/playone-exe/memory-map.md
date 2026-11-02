@@ -31,8 +31,8 @@
 | `0x2263` | `[Established]` | `u8` | Active display mode flag | |
 | `0x2264` | `[Established]` | `u8` | Sound hardware driver mode | |
 | `0x2265` | `[Established]` | `u8` | Audio playback channel flag | |
-| `0x2294`, `0x2296`, `0x2298`, `0x229A` | `[Established]` | `i16` x 4 | Inclusive clip rectangle (left, right, top, bottom) the credits text is centred in at `0x0F84`; the film view is `0..319` by `0..184` ([`pfont.md` § 3.2](../formats/auxiliary/pfont.md#32-drawing-the-credits)) | |
 | `0x2272` | `[Established]` | `u8` | Playback-active flag gating the `0x22B8` increment | `# [MEM-FLM-TICK]` |
+| `0x2294`, `0x2296`, `0x2298`, `0x229A` | `[Established]` | `i16` x 4 | Inclusive clip rectangle (left, right, top, bottom) the credits text is centred in at `0x0F84`; the film view is `0..319` by `0..184` ([`pfont.md` § 3.2](../formats/auxiliary/pfont.md#32-drawing-the-credits)) | |
 | `0x22B8` | `[Established]` | `u16` | Global 50 Hz timer tick (incremented by the INT 8 path while `0x2272` is set) | `# [MEM-FLM-TICK]` |
 | `0x22C4` | `[Established]` | `u16` | Stored PSP segment address: written at image `0x0C78` (`mov [0x22C4], es`, right after `DS` is set to `0x0D51`); read at `0x0CF2`/`0x0CFA` for the free-memory check against `PSP:[2]` | |
 | `0x22CA`, `0x22CC` | `[Supported Inference]` | `u16` x 2 | Segments of the two composed pages, swapped every render; after a finished copy, rows 0–191 of `A000` equal one of them (rows 192–199, the button bar, are drawn on `A000` directly). A page with bands from each is torn ([`capture-dosbox-automation.md` § 4.5](capture-dosbox-automation.md#45-torn-pages-and-the-dac-lag)) | |

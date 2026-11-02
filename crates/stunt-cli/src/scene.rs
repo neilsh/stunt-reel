@@ -108,15 +108,16 @@ pub(crate) fn build_scene(src: &SceneSources<'_>) -> Result<FilmScene, String> {
 }
 
 /// Gives the scene its credits font: the `--font` file, which must load, or else a
-/// `PFONT.BIN` found as a scenery file is (the engine root beside `VAULT` holds one).
-/// A film with credits and no font found still plays, without its credits text.
+/// `PFONT.BIN` found as a scenery file is, from the archive and then from the film (the
+/// engine root beside `VAULT` holds one). A film with credits and no font found still
+/// plays, without its credits text.
 fn attach_font(scene: FilmScene, src: &SceneSources<'_>) -> Result<FilmScene, String> {
     let path = match src.font {
         Some(path) => Some(path.to_path_buf()),
-        None => src
-            .all
-            .or(src.flm)
-            .and_then(|base| find_scenery_file(src.sidata, base, "PFONT.BIN")),
+        None => [src.all, src.flm]
+            .into_iter()
+            .flatten()
+            .find_map(|base| find_scenery_file(src.sidata, base, "PFONT.BIN")),
     };
     let Some(path) = path else {
         if scene.timeline().has_credits() {
@@ -553,6 +554,17 @@ mod tests {
         fs::write(t.0.join("ENGINE/pfont.bin"), &font).expect("write font");
         let scene = build_scene(&sources(Some(&film), None, None)).expect("scene");
         assert!(scene.font().is_some(), "found in the engine root, any case");
+
+        // An archive stored away from the film (a capture's generated `.ALL`) still finds
+        // the font through the film's folders.
+        let archive = t.0.join("captures/intro/archives/001/MINIMAL.ALL");
+        fs::create_dir_all(archive.parent().expect("parent")).expect("dirs");
+        fs::copy(fixture("synthetic_minimal.all"), &archive).expect("copy archive");
+        let scene = build_scene(&sources(Some(&film), Some(&archive), None)).expect("scene");
+        assert!(
+            scene.font().is_some(),
+            "found beside the film, not the archive"
+        );
 
         let named = t.0.join("OTHER.BIN");
         fs::write(&named, &font).expect("write font");

@@ -48,7 +48,8 @@ struct Options {
     #[arg(long, value_name = "DIR")]
     sidata: Option<PathBuf>,
     /// PLAYONE's PFONT.BIN for the credits text; by default it is looked up as the scenery
-    /// files are (the engine root holds it, beside VAULT)
+    /// files are, from the archive and then from the film (the engine root holds it, beside
+    /// VAULT)
     #[arg(long, value_name = "PFONT.BIN")]
     font: Option<PathBuf>,
     /// Render the film to a video container (.mp4, .webm, .mkv, .avi) via ffmpeg
@@ -107,7 +108,8 @@ pub(crate) struct CliConfig {
     pub tick_list: Option<TickList>,
     /// Directory searched first for `ANCHORPT.DAT`, `MAP.BIN` and `SCENERY.scn`.
     pub sidata_dir: Option<PathBuf>,
-    /// `PFONT.BIN` named with `--font`; `None` searches beside the film.
+    /// `PFONT.BIN` named with `--font`; `None` searches as for the scenery files, from the
+    /// archive and then from the film.
     pub font_path: Option<PathBuf>,
     pub width: u32,
     pub height: u32,
