@@ -495,3 +495,38 @@ def test_summary_with_only_prints_one_report_row_per_film(
     rows = capsys.readouterr().out.splitlines()
     assert rows[1:] == ["a-film  3  2  4-26  0.712  0.800  0.500", "b-film  no report"]
     assert fake.calls == []
+
+
+def test_a_failed_forced_stage_marks_later_outcomes_stale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _install(monkeypatch)
+    _process([_film("a-film")], tmp_path)
+    fake.failing.add(("a-film", "render"))
+    _process([_film("a-film")], tmp_path, force=frozenset({"render"}))
+    records = batch_ledger.read(tmp_path / "ledger.jsonl")
+    score = batch_ledger.latest(records, "a-film", "score")
+    assert score is not None
+    assert (score.status, score.message) == ("error", "stale: forced render failed")
+
+    fake.failing.clear()
+    fake.calls.clear()
+    _process([_film("a-film")], tmp_path, retry_errors=True)
+    assert fake.calls == [("a-film", "render"), ("a-film", "score")]
+
+
+def test_summary_rows_show_a_dash_for_an_absent_mean(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _install(monkeypatch)
+    report = tmp_path / parity_layout.batch_film_dir("a-film") / "report" / "report.json"
+    report.parent.mkdir(parents=True)
+    report.write_text(
+        json.dumps(
+            {"frames": 2, "scored_frames": 0, "mean_ssim_scored": None, "mean_iou_scored": None}
+        ),
+        encoding="utf-8",
+    )
+    args = ["--summary", "--only", "a-film", "--data-root", str(tmp_path)]
+    assert batch_parity.main(args) == 0
+    assert capsys.readouterr().out.splitlines()[1] == "a-film  2  0  -  -  -  -"

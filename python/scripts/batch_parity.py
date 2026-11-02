@@ -28,7 +28,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -211,10 +211,28 @@ def _process_film(film: BatchFilm, shared: _Shared) -> int:
             record = function(film, shared.root, shared.run, shared.timeouts[stage])
         shared.commit(record)
         if record.status == "error":
+            if forcing:
+                _mark_later_stale(film.slug, stage, record, shared)
             return 1
         if stage == "score":
             _copy_contact_sheets(film.slug, shared.root)
     return 0
+
+
+def _mark_later_stale(slug: str, stage: str, failed: Record, shared: _Shared) -> None:
+    """Record an error for each later stage that has an outcome, so a resume reruns it.
+
+    The ledger keeps each stage's latest record on its own, so without this a forced render that
+    fails would leave the earlier score current, and ``--retry-errors`` would repair the render
+    but keep a report of a different one.
+    """
+    for later in STAGES[STAGES.index(stage) + 1 :]:
+        prior = shared.prior(slug, later)
+        if prior is not None and prior.status != "error":
+            message = f"stale: forced {stage} failed"
+            shared.commit(
+                replace(failed, stage=later, message=message, seconds=0.0, ssim=None, iou=None)
+            )
 
 
 def _render_guarded(
@@ -268,12 +286,18 @@ def film_rows(root: Path, slugs: list[str]) -> str:
             continue
         ticks = [frame["film_tick"] for frame in data.get("per_frame", []) if "film_tick" in frame]
         span = f"{min(ticks)}-{max(ticks)}" if ticks else "-"
-        lines.append(
-            f"{slug}  {data['frames']}  {data['scored_frames']}  {span}  "
-            f"{data['mean_ssim_scored']:.3f}  {data['mean_iou_scored']:.3f}  "
-            f"{data['mean_index_agreement_scored']:.3f}"
-        )
+        means = [
+            _metric(data.get(key))
+            for key in ("mean_ssim_scored", "mean_iou_scored", "mean_index_agreement_scored")
+        ]
+        counts = f"{data.get('frames', '-')}  {data.get('scored_frames', '-')}"
+        lines.append(f"{slug}  {counts}  {span}  {'  '.join(means)}")
     return "\n".join(lines)
+
+
+def _metric(value: object) -> str:
+    """A report mean to three places, or ``-`` when the report has none (no scored frames)."""
+    return f"{value:.3f}" if isinstance(value, int | float) else "-"
 
 
 _NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
