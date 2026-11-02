@@ -113,7 +113,7 @@ impl WindowApp {
 
     /// Advances the authored timeline in wall-clock time `[I4]`.
     ///
-    /// The film clock visits every tick of the range `--frames` selects, so the loop
+    /// The film clock visits every tick of the range `--tick-range` selects, so the loop
     /// wraps over that whole inclusive range (T14).
     fn advance_timeline(&mut self, dt: f32) {
         if self.paused {

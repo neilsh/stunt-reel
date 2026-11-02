@@ -93,11 +93,11 @@
 - Create: `python/stunt_reel/batch_stages.py`, `tests/test_batch_stages.py`
 
 **Interfaces:**
-- Consumes: `BatchFilm`, `batch_ledger.Record`, `parity_layout.frames_root(slug)`, `parity_layout.archives_root(slug)`, `all_archive.resolve_all(flm: Path, root: Path, slug: str | None = None) -> Path` (raises `ArchiveMissing`), `parity_pipeline.RENDER_FLAGS`, `parity_pipeline.binary_path()`, `parity_artifacts.read_capture(path)` and `frames_for_captured_ticks(ticks)`, `report.json` reader `read_report(path).headline() -> (ssim, iou)` (find its module with `grep -n "def read_report" python/stunt_reel/*.py`).
+- Consumes: `BatchFilm`, `batch_ledger.Record`, `parity_layout.frames_root(slug)`, `parity_layout.archives_root(slug)`, `all_archive.resolve_all(flm: Path, root: Path, slug: str | None = None) -> Path` (raises `ArchiveMissing`), `parity_pipeline.RENDER_FLAGS`, `parity_pipeline.binary_path()`, `parity_artifacts.read_capture(path)` and `tick_range_for_captured_ticks(ticks)`, `report.json` reader `read_report(path).headline() -> (ssim, iou)` (find its module with `grep -n "def read_report" python/stunt_reel/*.py`).
 - Produces: `Runner = Callable[[list[str], float], tuple[int, str]]` (command, timeout seconds, returns exit code and last 400 characters of combined output), and four functions, each returning a `Record` and never raising:
   - `run_archive(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Record`: `skipped` when `has_sibling_all`; otherwise runs `python/scripts/make_all.py --film <flm> [--name <name>] --timeout <timeout>`.
   - `run_capture(film, root, run, timeout) -> Record`: runs `python/scripts/capture_playone_reference.py --film <flm> [--name <name>]`.
-  - `run_render(film, root, run, timeout) -> Record`: latest capture dir for the slug, then `stuntreel --headless <flm> --all <resolve_all(...)> --frames <frames_for_captured_ticks> --sidata <SIDATA> --out-dir <batch_film_dir/render> + RENDER_FLAGS`.
+  - `run_render(film, root, run, timeout) -> Record`: latest capture dir for the slug, then `stuntreel --headless <flm> --all <resolve_all(...)> --tick-range <tick_range_for_captured_ticks> --sidata <SIDATA> --out-dir <batch_film_dir/render> + RENDER_FLAGS`.
   - `run_score(film, root, run, timeout) -> Record`: `stuntreel parity --reference <capture dir> --test <batch_film_dir/render> --output <batch_film_dir/report>`; on success the record carries `ssim` and `iou` from `report.json`.
   - Exit code non-zero, a timeout, a missing capture, or `ArchiveMissing` give `status="error"` with a one-line `message`. Exceptions inside a stage are caught and become `error` records.
 - Use `sys.executable` for the two Python scripts and `Record.at = datetime.now(UTC).isoformat()`.
