@@ -12,7 +12,9 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+import pytest
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -25,9 +27,6 @@ from stunt_reel.batch_films import BatchFilm  # noqa: E402
 from stunt_reel.batch_ledger import STAGES, Record  # noqa: E402
 from stunt_reel.batch_stages import Runner  # noqa: E402
 
-if TYPE_CHECKING:
-    import pytest
-
 TIMEOUTS = {"archive": 900.0, "capture": 900.0, "render": 600.0, "score": 600.0}
 StageFunction = Callable[[BatchFilm, Path, Runner, float], Record]
 
@@ -39,6 +38,10 @@ class FakeStages:
         self.failing: set[tuple[str, str]] = set()
         self.calls: list[tuple[str, str]] = []
         self.during: Callable[[str, str], None] | None = None
+        self.builds = 0
+
+    def build(self) -> None:
+        self.builds += 1
 
     def factory(self, stage: str) -> StageFunction:
         def run_stage(film: BatchFilm, _root: Path, _run: Runner, _timeout: float) -> Record:
@@ -62,6 +65,7 @@ def _install(monkeypatch: pytest.MonkeyPatch) -> FakeStages:
     fake = FakeStages()
     # main() would otherwise wait for the host's real disk to have 8 GB free before a render.
     monkeypatch.setattr(batch_parity, "_DEFAULT_MIN_FREE_GB", 0.0)
+    monkeypatch.setattr(batch_parity, "build_release", fake.build)
     for stage in STAGES:
         monkeypatch.setattr(batch_stages, f"run_{stage}", fake.factory(stage))
     return fake
@@ -89,6 +93,7 @@ def _process(
     retry_errors: bool = False,
     limit: int | None = None,
     skip: frozenset[str] = frozenset(),
+    force: frozenset[str] = frozenset(),
     **concurrency: Any,
 ) -> int:
     return batch_parity.process(
@@ -101,6 +106,7 @@ def _process(
         limit=limit,
         timeouts=TIMEOUTS,
         skip=skip,
+        force=force,
         **concurrency,
     )
 
@@ -403,3 +409,128 @@ def test_a_render_waits_for_free_disk_instead_of_recording_an_error(
     assert sleeps == [30.0, 30.0]
     assert ("a-film", "render") in fake.calls
     assert all(r.status == "ok" for r in batch_ledger.read(tmp_path / "ledger.jsonl"))
+
+
+def test_force_reruns_the_stage_and_every_later_one_and_clears_its_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _install(monkeypatch)
+    _process([_film("a-film")], tmp_path)
+    render = tmp_path / parity_layout.batch_film_dir("a-film") / "render"
+    render.mkdir(parents=True)
+    (render / "render.json").write_text("{}", encoding="utf-8")
+    fake.calls.clear()
+
+    _process([_film("a-film")], tmp_path, force=frozenset({"render"}))
+
+    assert fake.calls == [("a-film", "render"), ("a-film", "score")]
+    assert not render.exists()
+
+
+def test_force_names_only_known_stages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _install(monkeypatch)
+    _corpus(tmp_path)
+    args = ["--data-root", str(tmp_path), "--force", "rendr"]
+    assert batch_parity.main(args) == 2
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("flags", "builds"),
+    [([], 1), (["--no-build"], 0), (["--stages", "capture"], 0)],
+)
+def test_a_run_that_renders_builds_the_binary_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, flags: list[str], builds: int
+) -> None:
+    fake = _install(monkeypatch)
+    _corpus(tmp_path)
+    monkeypatch.setattr(batch_parity, "_run_command", _no_process)
+    assert batch_parity.main(["--data-root", str(tmp_path), "--only", "vault-ctry", *flags]) == 0
+    assert fake.builds == builds
+
+
+def test_a_failed_build_runs_no_stage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _install(monkeypatch)
+    _corpus(tmp_path)
+
+    def broken() -> None:
+        raise RuntimeError("cargo exited 101: error")
+
+    monkeypatch.setattr(batch_parity, "build_release", broken)
+    assert batch_parity.main(["--data-root", str(tmp_path), "--only", "vault-ctry"]) == 1
+    assert fake.calls == []
+
+
+def test_progress_lines_are_also_written_to_a_utf8_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _install(monkeypatch)
+    fake.failing.add(("a-film", "render"))
+    _process([_film("a-film")], tmp_path)
+    log = (tmp_path / "batch.log").read_text(encoding="utf-8").splitlines()
+    assert log[-2:] == ["a-film capture ok", "a-film render error boom"]
+
+
+def test_summary_with_only_prints_one_report_row_per_film(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = _install(monkeypatch)
+    report = tmp_path / parity_layout.batch_film_dir("a-film") / "report" / "report.json"
+    report.parent.mkdir(parents=True)
+    report.write_text(
+        json.dumps(
+            {
+                "frames": 3,
+                "scored_frames": 2,
+                "mean_ssim_scored": 0.71234,
+                "mean_iou_scored": 0.8,
+                "mean_index_agreement_scored": 0.5,
+                "per_frame": [{"film_tick": 4}, {"film_tick": 15}, {"film_tick": 26}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    args = ["--summary", "--only", "a-film,b-film", "--data-root", str(tmp_path)]
+    assert batch_parity.main(args) == 0
+    rows = capsys.readouterr().out.splitlines()
+    assert rows[1:] == ["a-film  3  2  4-26  0.712  0.800  0.500", "b-film  no report"]
+    assert fake.calls == []
+
+
+def test_a_failed_forced_stage_marks_later_outcomes_stale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _install(monkeypatch)
+    _process([_film("a-film")], tmp_path)
+    report = tmp_path / parity_layout.batch_film_dir("a-film") / "report"
+    report.mkdir(parents=True)
+    (report / "report.json").write_text("{}", encoding="utf-8")
+    fake.failing.add(("a-film", "render"))
+    _process([_film("a-film")], tmp_path, force=frozenset({"render"}))
+    records = batch_ledger.read(tmp_path / "ledger.jsonl")
+    score = batch_ledger.latest(records, "a-film", "score")
+    assert score is not None
+    assert (score.status, score.message) == ("error", "stale: forced render failed")
+    assert not report.exists()  # the summary then shows "no report", not the old render's
+
+    fake.failing.clear()
+    fake.calls.clear()
+    _process([_film("a-film")], tmp_path, retry_errors=True)
+    assert fake.calls == [("a-film", "render"), ("a-film", "score")]
+
+
+def test_summary_rows_show_a_dash_for_an_absent_mean(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _install(monkeypatch)
+    report = tmp_path / parity_layout.batch_film_dir("a-film") / "report" / "report.json"
+    report.parent.mkdir(parents=True)
+    report.write_text(
+        json.dumps(
+            {"frames": 2, "scored_frames": 0, "mean_ssim_scored": None, "mean_iou_scored": None}
+        ),
+        encoding="utf-8",
+    )
+    args = ["--summary", "--only", "a-film", "--data-root", str(tmp_path)]
+    assert batch_parity.main(args) == 0
+    assert capsys.readouterr().out.splitlines()[1] == "a-film  2  0  -  -  -  -"
