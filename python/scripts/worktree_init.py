@@ -10,7 +10,8 @@ clean`` reports the per-worktree build outputs and
 removes them only with ``--yes``; the shared cache is reported, never removed.
 ``clean -- --parity --keep N`` narrows the same command to the parity render trees,
 which accumulate one directory per render and are the one build output big enough to
-need selective rotation.  ``reap`` removes merged worktrees: it unlinks every link
+need selective rotation.  ``reap`` removes merged worktrees, including branches whose pull
+request was squash-merged (found with ``gh``): it unlinks every link
 into the data root, proves none remain, and only then lets git delete the checkout,
 because git's worktree removal has recursed through Windows junctions on some builds.
 """
@@ -18,6 +19,7 @@ because git's worktree removal has recursed through Windows junctions on some bu
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -25,6 +27,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from stunt_reel import parity_layout
 from stunt_reel.dataroot import (
@@ -50,6 +53,9 @@ from stunt_reel.dataroot import (
     shared_target,
     sweep_orphan_envs,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 #: Per-worktree build outputs and caches that ``clean`` reports.
 CLEAN_PATHS: tuple[str, ...] = ("target", "build", ".pytest_cache", ".mypy_cache", ".ruff_cache")
@@ -371,6 +377,8 @@ class _Candidate:
     untracked: list[str]
     links: list[Path]
     size: int
+    #: The merged pull request that squash-landed this branch, when that is why it may go.
+    pr: int | None = None
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -428,6 +436,92 @@ def _unmerged_patch_count(repo: Path, branch: str) -> int:
     return sum(1 for line in result.stdout.splitlines() if line.startswith("+"))
 
 
+#: Merged pull requests asked of GitHub in one call; older ones fall back to the git checks.
+MERGED_PR_LIMIT = 200
+#: Seconds to wait for ``gh`` before treating it as offline.
+GH_TIMEOUT = 30
+
+
+def _gh(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run one ``gh`` command in *repo*; tests replace this, so the gate stays offline."""
+    gh = shutil.which("gh")
+    if gh is None:
+        raise FileNotFoundError("gh is not on PATH")
+    return subprocess.run(  # noqa: S603
+        [gh, *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=GH_TIMEOUT,
+    )
+
+
+class _MergedPrs:
+    """The merged pull requests of the repository, fetched once and only when needed.
+
+    Every PR lands on ``main`` as one squash commit, so neither ancestry nor ``git
+    cherry`` recognises a branch with several commits.  GitHub does: a branch whose
+    local tip is the head commit of a merged PR was merged, and a tip that moved on
+    after the merge is not.  When ``gh`` is missing, signed out or offline,
+    :attr:`unavailable` says why and :meth:`find` matches nothing, which leaves the
+    git checks as the only ones.
+    """
+
+    def __init__(self, repo: Path, gh: Callable[..., subprocess.CompletedProcess[str]] = _gh):
+        self._repo = repo
+        self._gh = gh
+        self._loaded = False
+        self._heads: dict[str, list[tuple[int, str]]] = {}
+        self.unavailable: str | None = None
+
+    def _load(self) -> None:
+        self._loaded = True
+        try:
+            result = self._gh(
+                self._repo,
+                "pr",
+                "list",
+                "--state",
+                "merged",
+                "--base",
+                "main",
+                "--json",
+                "number,headRefName,headRefOid",
+                "--limit",
+                str(MERGED_PR_LIMIT),
+            )
+        except (OSError, subprocess.SubprocessError) as err:
+            self.unavailable = str(err) or type(err).__name__
+            return
+        if result.returncode != 0:
+            lines = result.stderr.strip().splitlines()
+            self.unavailable = lines[0] if lines else f"gh exited {result.returncode}"
+            return
+        try:
+            for item in json.loads(result.stdout):
+                self._heads.setdefault(item["headRefName"], []).append(
+                    (int(item["number"]), str(item["headRefOid"]))
+                )
+        except (ValueError, KeyError, TypeError) as err:
+            self._heads.clear()
+            self.unavailable = f"unreadable gh output ({err})"
+
+    def find(self, branch: str, tip: str) -> int | None:
+        """The merged PR number whose head is *branch* at *tip*, or None."""
+        if not self._loaded:
+            self._load()
+        for number, head in self._heads.get(branch, []):
+            if head == tip:
+                return number
+        return None
+
+    def moved_on(self, branch: str) -> int | None:
+        """The newest merged PR from *branch* when its tip is no longer that PR's head."""
+        numbers = [number for number, _ in self._heads.get(branch, [])]
+        return max(numbers) if numbers else None
+
+
 def _changed(path: Path, *, untracked: bool) -> list[str]:
     """Modified tracked files, or untracked ones, of one checkout."""
     flag = "--untracked-files=normal" if untracked else "--untracked-files=no"
@@ -471,7 +565,11 @@ def _unlink_reparse_points(root: Path) -> list[str]:
 
 
 def _candidates(
-    repo: Path, entries: list[_Worktree], *, include_cherry: bool
+    repo: Path,
+    entries: list[_Worktree],
+    *,
+    include_cherry: bool,
+    merged_prs: _MergedPrs | None = None,
 ) -> tuple[list[_Candidate], list[str]]:
     """Classify worktrees under *repo*; return what may go and what will not."""
     primary = entries[0].path
@@ -489,11 +587,19 @@ def _candidates(
             skipped.append(f"{label}: detached HEAD")
             continue
         merged = _is_ancestor(repo, worktree.branch)
+        pr: int | None = None
         if not merged:
-            patches = _unmerged_patch_count(repo, worktree.branch)
-            if not (include_cherry and patches == 0):
-                skipped.append(f"{label}: {patches} patch(es) not in main")
-                continue
+            if merged_prs is not None:
+                pr = merged_prs.find(worktree.branch, worktree.head)
+            if pr is None:
+                patches = _unmerged_patch_count(repo, worktree.branch)
+                if not (include_cherry and patches == 0):
+                    reason = f"{patches} patch(es) not in main"
+                    later = merged_prs.moved_on(worktree.branch) if merged_prs else None
+                    if later is not None:
+                        reason += f"; tip differs from the head of merged #{later}"
+                    skipped.append(f"{label}: {reason}")
+                    continue
         candidates.append(
             _Candidate(
                 worktree=worktree,
@@ -502,6 +608,7 @@ def _candidates(
                 untracked=_changed(worktree.path, untracked=True),
                 links=_reparse_points(worktree.path),
                 size=_size(worktree.path),
+                pr=pr,
             )
         )
     return candidates, skipped
@@ -510,8 +617,10 @@ def _candidates(
 def _describe(candidate: _Candidate) -> str:
     """One report line for a candidate."""
     worktree = candidate.worktree
-    state = "merged" if candidate.merged else "cherry"
+    state = "merged" if candidate.merged else "squash" if candidate.pr else "cherry"
     flags: list[str] = []
+    if candidate.pr:
+        flags.append(f"merged as #{candidate.pr}")
     if candidate.dirty:
         flags.append(f"{len(candidate.dirty)} modified")
     if candidate.untracked:
@@ -671,8 +780,16 @@ def _reap(
     if entries[0].path != repo:
         print("reap must run from the primary checkout")
         return 1
-    candidates, skipped = _candidates(repo, entries, include_cherry=include_cherry)
+    merged_prs = _MergedPrs(repo, _gh)
+    candidates, skipped = _candidates(
+        repo, entries, include_cherry=include_cherry, merged_prs=merged_prs
+    )
     print(f"worktree   {repo}")
+    if merged_prs.unavailable is not None:
+        print(
+            f"  ! gh unavailable ({merged_prs.unavailable}); squash-merged branches are not"
+            " recognised, using the ancestry and --cherry checks only"
+        )
     print("candidates:")
     for candidate in candidates:
         print(_describe(candidate))
@@ -748,7 +865,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     clean.add_argument("--keep", type=int, default=1, help="render trees to keep per root")
     reap = commands.add_parser(
-        "reap", help="remove merged worktrees after unlinking their data-root links"
+        "reap",
+        help="remove merged or squash-merged worktrees after unlinking their data-root links",
     )
     reap.add_argument("--yes", action="store_true", help="actually remove them")
     reap.add_argument(

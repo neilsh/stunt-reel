@@ -8,6 +8,7 @@ These tests hold that order, the walker that never descends, and the refusal rul
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -365,3 +366,185 @@ def test_clean_parity_keeps_the_baselines_and_removes_a_scratch_tree(
     assert (ours / "ctry_base").is_dir()
     assert not (ours / "ctry_old").exists()
     assert not (sweep / "v001").exists()
+
+
+def _commit(cwd: Path, name: str) -> str:
+    (cwd / name).write_text(name, encoding="utf-8")
+    _run_git(cwd, "add", name)
+    _run_git(
+        cwd,
+        "-c",
+        "user.email=t@example.invalid",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-qm",
+        name,
+    )
+    return _run_git(cwd, "rev-parse", "HEAD").strip()
+
+
+def _gh_stub(
+    prs: list[dict[str, object]] | None = None,
+    *,
+    returncode: int = 0,
+    stderr: str = "",
+    error: Exception | None = None,
+    calls: list[tuple[str, ...]] | None = None,
+) -> object:
+    """A ``gh`` replacement: the tests never reach the network."""
+
+    def run(_repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+        if calls is not None:
+            calls.append(args)
+        if error is not None:
+            raise error
+        return subprocess.CompletedProcess(
+            args=["gh", *args],
+            returncode=returncode,
+            stdout=json.dumps(prs or []),
+            stderr=stderr,
+        )
+
+    return run
+
+
+def _squash_repo(tmp_path: Path) -> tuple[Path, Path, str]:
+    """A repo whose pool holds ``feat``: two commits that main never merged."""
+    repo = _init_repo(tmp_path)
+    pool = repo / ".agents" / "worktrees"
+    pool.mkdir(parents=True)
+    worktree = pool / "feat"
+    _run_git(repo, "worktree", "add", "-q", str(worktree), "-b", "feat")
+    _commit(worktree, "one.txt")
+    tip = _commit(worktree, "two.txt")
+    # main gets the same change as one squash commit, which ancestry and cherry cannot see.
+    (repo / "squashed.txt").write_text("one two", encoding="utf-8")
+    _commit(repo, "squashed.txt")
+    return repo, worktree, tip
+
+
+def test_squash_merged_branch_is_a_candidate_with_its_pr_number(tmp_path: Path) -> None:
+    repo, worktree, tip = _squash_repo(tmp_path)
+    prs: list[dict[str, object]] = [
+        {"number": 89, "headRefName": "feat", "headRefOid": tip},
+        {"number": 7, "headRefName": "other", "headRefOid": "0" * 40},
+    ]
+    merged_prs = worktree_init._MergedPrs(repo, _gh_stub(prs))  # type: ignore[arg-type]
+
+    candidates, skipped = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False, merged_prs=merged_prs
+    )
+
+    assert skipped == []
+    assert [candidate.worktree.branch for candidate in candidates] == ["feat"]
+    assert candidates[0].pr == 89
+    assert not candidates[0].merged
+    assert "merged as #89" in worktree_init._describe(candidates[0])
+    assert worktree_init._describe(candidates[0]).lstrip().startswith("squash")
+    assert worktree.is_dir()
+
+
+def test_squash_merged_branch_is_removed_and_its_branch_force_deleted(tmp_path: Path) -> None:
+    repo, worktree, tip = _squash_repo(tmp_path)
+    merged_prs = worktree_init._MergedPrs(
+        repo,
+        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": tip}]),  # type: ignore[arg-type]
+    )
+    candidates, _ = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False, merged_prs=merged_prs
+    )
+
+    error = worktree_init._reap_one(repo, candidates[0], stash_dirty=False, discard_untracked=False)
+
+    assert error is None
+    assert not worktree.exists()
+    assert "feat" not in _run_git(repo, "branch", "--format=%(refname:short)").split()
+
+
+def test_branch_that_moved_on_after_the_merge_is_skipped_with_a_reason(tmp_path: Path) -> None:
+    repo, worktree, tip = _squash_repo(tmp_path)
+    _commit(worktree, "after-merge.txt")
+    merged_prs = worktree_init._MergedPrs(
+        repo,
+        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": tip}]),  # type: ignore[arg-type]
+    )
+
+    candidates, skipped = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False, merged_prs=merged_prs
+    )
+
+    assert candidates == []
+    assert len(skipped) == 1
+    assert skipped[0].startswith("feat: ")
+    assert "tip differs from the head of merged #89" in skipped[0]
+
+
+@pytest.mark.parametrize(
+    "stub",
+    [
+        _gh_stub(error=FileNotFoundError("gh is not on PATH")),
+        _gh_stub(returncode=4, stderr="To get started with GitHub CLI, please run: gh auth login"),
+        _gh_stub(error=subprocess.TimeoutExpired(cmd="gh", timeout=30)),
+    ],
+    ids=["missing", "signed-out", "offline"],
+)
+def test_without_gh_reap_falls_back_to_git_checks_and_says_so(
+    tmp_path: Path,
+    stub: object,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, worktree, _tip = _squash_repo(tmp_path)
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", repo)
+    monkeypatch.setattr(worktree_init, "_gh", stub)
+
+    assert worktree_init._reap(False) == 0
+
+    out = capsys.readouterr().out
+    assert "gh unavailable" in out
+    assert "squash-merged branches are not recognised" in out
+    assert "feat: 2 patch(es) not in main" in out
+    assert worktree.is_dir()
+
+
+def test_dry_run_lists_the_squash_merged_branch_without_removing_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, worktree, tip = _squash_repo(tmp_path)
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", repo)
+    monkeypatch.setattr(
+        worktree_init,
+        "_gh",
+        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": tip}], calls=calls),
+    )
+
+    assert worktree_init._reap(False) == 0
+
+    out = capsys.readouterr().out
+    assert "squash" in out
+    assert "merged as #89" in out
+    assert "gh unavailable" not in out
+    assert worktree.is_dir()
+    assert len(calls) == 1, "one gh call covers every branch"
+    assert "--state" in calls[0]
+    assert "merged" in calls[0]
+
+
+def test_gh_is_not_asked_when_every_branch_is_already_in_main(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    pool = repo / ".agents" / "worktrees"
+    pool.mkdir(parents=True)
+    _run_git(repo, "worktree", "add", "-q", str(pool / "merged"), "-b", "merged")
+    calls: list[tuple[str, ...]] = []
+    merged_prs = worktree_init._MergedPrs(repo, _gh_stub(calls=calls))  # type: ignore[arg-type]
+
+    candidates, _ = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False, merged_prs=merged_prs
+    )
+
+    assert [candidate.worktree.branch for candidate in candidates] == ["merged"]
+    assert calls == []
