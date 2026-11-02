@@ -188,6 +188,7 @@ def test_scene_header_ignores_legacy_tick_rate_hz() -> None:
 def test_models_file_save_and_load(tmp_path: Path) -> None:
     """Verify loading and saving trajectory records from JSON file."""
     records = load_trajectory_records(FIXTURE_PATH)
+    assert [rec.camera.eye for rec in records] == [[0.0, 10.0, 50.0], [0.0, 10.0, 49.5]]
     out_file = tmp_path / "test_traj.json"
     save_trajectory_records(records, out_file)
     assert out_file.exists()

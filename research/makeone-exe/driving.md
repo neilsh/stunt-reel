@@ -106,7 +106,7 @@ Both match the DOSBox-X archive `captures/flmonly-747land/archives/001` byte for
 2. Is a `.ALL` made from one `.FLM` byte-stable across runs for films other than `BALLOON`? Only that one was repeated.
 3. Films that need more than the shipped `RES\` (community films with custom sounds) and films whose `.FLM` references takes: untested.
 4. Does a `.ALL` made under DOSBox-X carry the sound set-up of the machine that ran `MAKEONE` (`corpus/siarchive/Films/Playing_Films.txt`)? Frames are unaffected.
-5. A film whose name starts with a digit or a character outside `bda.py`'s scan-code table.
+5. A film whose name starts with a digit: `KBD_7` passes [`luagen.py`](../../python/stunt_reel/tac/luagen.py)'s `KBD_[a-z0-9_]+` check, but whether dosbox-automation maps it is untested. A first character outside that set is refused before the run.
 6. Does `PLAYONE` require the archive's stem to equal the film's?
 7. Can the key script start earlier than frame 1200 on the `archive` profile? Every run pays about 17 s of emulated boot; the requester's first frame was not measured on dosbox-automation.
 8. Patch #3's `MAKEONE.EXE` writes the same `.ALL` as the unpatched one for `COUNT`, `EXIT` and `EXIT2`, and a different one for `BIGMAN` (1,429,089 bytes against 1,425,743), which only the patched `PLAYONE` plays ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3). Which other films differ is open.
