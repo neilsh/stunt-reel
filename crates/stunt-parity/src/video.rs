@@ -79,6 +79,10 @@ pub struct VideoCapture {
     pub geometry: Geometry,
     /// Build of `PLAYONE.EXE` that was recorded.
     pub playone_build: String,
+    /// SHA-256 of the `PLAYONE.EXE` that was recorded; absent from captures made before the
+    /// harness recorded it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub playone_sha256: Option<String>,
     /// CPU profile the emulator ran under.
     pub cpu_profile: String,
     /// Capture frame number of video frame 0.
@@ -222,6 +226,7 @@ mod tests {
                 viewport_rows: None,
             },
             playone_build: "synthetic".to_string(),
+            playone_sha256: None,
             cpu_profile: "capture".to_string(),
             capture_start_frame: 100,
             film_start_frame: 103,
@@ -247,6 +252,22 @@ mod tests {
             ArtifactError::VideoLog { reason } => reason,
             other => panic!("expected VideoLog, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn the_engine_hash_is_optional_on_read_and_kept_when_present() {
+        let without = serde_json::to_value(capture()).expect("serialise");
+        assert!(without.get("playone_sha256").is_none());
+        let old: VideoCapture = serde_json::from_value(without).expect("a capture without it");
+        assert_eq!(old.playone_sha256, None);
+        old.validate().expect("valid");
+
+        let mut named = capture();
+        named.playone_sha256 = Some("ab".repeat(32));
+        let json = serde_json::to_value(&named).expect("serialise");
+        assert_eq!(json["playone_sha256"], "ab".repeat(32));
+        let back: VideoCapture = serde_json::from_value(json).expect("a capture with it");
+        assert_eq!(back, named);
     }
 
     #[test]
