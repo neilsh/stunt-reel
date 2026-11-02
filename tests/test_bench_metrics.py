@@ -93,7 +93,14 @@ def test_differential_of_identical_renders_has_no_delta(bench_fixture: Path) -> 
     assert result.changed_idx == 0.0
     assert result.changed_luma == 0.0
     assert result.delta is None
-    assert set(result.changed_by_layer) == {"ocean", "terrain", "props", "actors", "none"}
+    assert set(result.changed_by_layer) == {
+        "ocean",
+        "terrain",
+        "props",
+        "overlay",
+        "actors",
+        "none",
+    }
     assert all(value == 0.0 for value in result.changed_by_layer.values())
 
 

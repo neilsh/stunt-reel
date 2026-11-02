@@ -13,8 +13,8 @@ use std::fmt::Write;
 
 use serde_json::{Value, json};
 use stunt_render::{
-    ASPECT_CORRECTED_HEIGHT, LAYER_FIRST_ACTOR, LAYER_OCEAN, LAYER_PROP, LAYER_TERRAIN,
-    MODE13H_HEIGHT, MODE13H_WIDTH, compute_frame_ssim, compute_window_scores,
+    ASPECT_CORRECTED_HEIGHT, LAYER_FIRST_ACTOR, LAYER_OCEAN, LAYER_OVERLAY, LAYER_PROP,
+    LAYER_TERRAIN, MODE13H_HEIGHT, MODE13H_WIDTH, compute_frame_ssim, compute_window_scores,
     rescale_mode13h_frame,
 };
 
@@ -23,7 +23,7 @@ use super::mask::{rescale_mask, ui_overlay_mask};
 use super::score::{ReferenceFrame, RenderFrame, SSIM_STRIDE, SSIM_WINDOW};
 
 /// Layer keys of [`FrameVerdict::changed_by_layer`].
-const LAYER_KEYS: [&str; 5] = ["ocean", "terrain", "props", "actors", "none"];
+const LAYER_KEYS: [&str; 6] = ["ocean", "terrain", "props", "overlay", "actors", "none"];
 
 /// How a render change moved one frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +102,7 @@ fn layer_key(layer: u16) -> &'static str {
         LAYER_OCEAN => "ocean",
         LAYER_TERRAIN => "terrain",
         LAYER_PROP => "props",
+        LAYER_OVERLAY => "overlay",
         l if l >= LAYER_FIRST_ACTOR => "actors",
         _ => "none",
     }

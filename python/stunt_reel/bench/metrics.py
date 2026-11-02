@@ -17,6 +17,7 @@ from numpy.lib.stride_tricks import sliding_window_view
 
 from stunt_reel.bench.planes import BenchError
 from stunt_reel.bench.ssim import (
+    LAYER_OVERLAY,
     STRIDE,
     UI_BAR_FIRST_ROW,
     WINDOW,
@@ -217,6 +218,8 @@ def _layer_key(layer: int) -> str:
         return "terrain"
     if layer == PROPS_LAYER:
         return "props"
+    if layer == LAYER_OVERLAY:
+        return "overlay"
     if layer >= ACTOR_LAYER:
         return "actors"
     return "none"
@@ -235,7 +238,7 @@ def differential(capture: CapturePlanes, before: RenderPlanes, after: RenderPlan
     after_luma = render_luma(after.rgb)
     luma_changed = before_luma != after_luma
     changed = idx_changed | luma_changed
-    by_layer = dict.fromkeys(("ocean", "terrain", "props", "actors", "none"), 0.0)
+    by_layer = dict.fromkeys(("ocean", "terrain", "props", "overlay", "actors", "none"), 0.0)
     layers, counts = np.unique(after.layer[changed], return_counts=True)
     for layer, count in zip(layers.tolist(), counts.tolist(), strict=True):
         by_layer[_layer_key(layer)] += count / PIXELS
