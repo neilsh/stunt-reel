@@ -590,10 +590,10 @@ class Report:
                 "report is inconsistent: reference_frames must equal frames + unmatched",
                 path,
             )
-        if self.credits_missing_frames > self.frames:
+        if not 0 <= self.credits_missing_frames <= self.frames:
             raise _error(
                 "report_inconsistent",
-                "report is inconsistent: credits_missing_frames cannot exceed frames",
+                "report is inconsistent: credits_missing_frames must be from 0 to frames",
                 path,
             )
         if self.frames != self.scored_frames + self.excluded_frames:

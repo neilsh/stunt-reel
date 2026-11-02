@@ -477,9 +477,10 @@ def test_write_report_checks_the_identities() -> None:
     broken = Report(per_frame=(), reference_frames=1)
     with pytest.raises(ArtifactError, match="reference_frames must equal"):
         write_report(Path("unused.json"), broken)
-    over = Report(per_frame=(), credits_missing_frames=1)
-    with pytest.raises(ArtifactError, match="credits_missing_frames cannot exceed"):
-        write_report(Path("unused.json"), over)
+    for count in (1, -1):
+        bad = Report(per_frame=(), credits_missing_frames=count)
+        with pytest.raises(ArtifactError, match="credits_missing_frames must be from 0"):
+            write_report(Path("unused.json"), bad)
 
 
 def test_frames_for_captured_ticks_maps_capture_ticks_to_frame_numbers() -> None:
