@@ -170,16 +170,10 @@ works only from the top branch of the stack, so run it in the worktree that hold
 
 ### A low-integrity virtualenv
 
-Observed 2026-11-01, the Claude desktop app on Windows, primary checkout. The checkout's root
-carried an inheritable `Mandatory Label\Low Mandatory Level:(OI)(CI)(NW)` beside the sandbox's
-`S-1-4-…` entries, so `.venv`, made after it, inherited the Low label. A process started from a
-Low-labelled executable runs at low integrity, so every `mise run` Python task failed to write
-`build\`, the data root and the temp directory with `PermissionError: [Errno 13]` (`WinError 5`
-on `mkdir`) — even from the user's own terminal, while PowerShell and the base interpreter
-wrote the same paths. `icacls .venv\Scripts\python.exe` shows the label. Without touching the
-label, a run works from a virtualenv in `.cache`, which predates it:
-`$env:UV_PROJECT_ENVIRONMENT = '<checkout>\.cache\venvs\<name>'` before `mise run …`. Removing
-the label is a security change for the machine's owner to make.
+Seen once (2026-11-01): every `mise run` Python task failed with a bare `PermissionError`
+(`WinError 5` on `mkdir`) while PowerShell wrote the same paths. The checkout root carried an
+inheritable `Mandatory Label\Low`, which `.venv` inherited; `icacls .venv` shows it. The machine's
+owner removes it with `icacls <checkout> /setintegritylevel (OI)(CI)M` and recreates `.venv`.
 
 ## Windows PowerShell 5.1
 

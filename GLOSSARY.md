@@ -177,6 +177,14 @@ _Avoid_: version, patch level, base or retail build (for unpatched)
 The TCP port of the emulator's REST server. Each run picks a free one at launch and writes it into that run's conf, so two captures never collide ([ADR 0025](docs/adr/0025-capture-runs-are-plans-not-sessions.md)).
 _Avoid_: MCP port, debugger port, capture lock
 
+**Clock pass**:
+The first pass of a capture: one play of the film that only samples the film clock at a fixed frame interval, to learn where each tick falls.
+_Avoid_: trace (for this sparse sampling), pass 1
+
+**Window**:
+A short run of consecutive emulator frames, placed from the clock pass, from which a capture keeps at most one captured frame, the first usable page at or past its target tick. A window that yields no usable page is dropped.
+_Avoid_: slice (a film's own unit), sample
+
 ## Artifacts
 
 **Render record**:
