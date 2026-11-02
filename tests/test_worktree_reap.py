@@ -553,9 +553,21 @@ def test_cherry_does_not_take_a_branch_that_moved_on_after_its_merge(tmp_path: P
     _run_git(repo, "worktree", "add", "-q", str(worktree), "-b", "feat")
     merged_head = _commit(worktree, "one.txt")
     _commit(worktree, "two.txt")
-    # main holds both patches, so --cherry alone would call the branch merged.
-    _commit(repo, "one.txt")
-    _commit(repo, "two.txt")
+    # main holds both patches, so --cherry alone would call the branch merged. Its own
+    # messages keep its commits from matching the branch's byte for byte within one second.
+    for name in ("one.txt", "two.txt"):
+        (repo / name).write_text(name, encoding="utf-8")
+        _run_git(repo, "add", name)
+        _run_git(
+            repo,
+            "-c",
+            "user.email=t@example.invalid",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-qm",
+            f"main: {name}",
+        )
     merged_prs = worktree_init._MergedPrs(
         repo,
         _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": merged_head}]),  # type: ignore[arg-type]
