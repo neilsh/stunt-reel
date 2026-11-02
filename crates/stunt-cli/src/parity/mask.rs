@@ -27,14 +27,11 @@ pub(super) fn is_capture_sky(index: u8) -> bool {
 /// Pixels of a captured frame covered by the UI overlay: the button bar rows and the
 /// cursor. Scoring leaves them out because the renderer does not draw them.
 ///
-/// The cursor and the credits ink are both palette index 255. A tick whose render draws
-/// credits (any [`LAYER_OVERLAY`] pixel) keeps index 255 in play, so the ink is scored; a
-/// tick without credits masks it as the cursor. The test is per tick, not per pixel, so
-/// ink the render misplaces counts against it instead of vanishing under the mask.
-pub(super) fn ui_overlay_mask(indices: &[u8], render_layers: &[u16]) -> Vec<bool> {
-    let credits_drawn = render_layers
-        .iter()
-        .any(|&layer| u32::from(layer) == LAYER_OVERLAY);
+/// The cursor and the credits ink are both palette index 255. On a tick with
+/// `credits_drawn` (see [`draws_credits`]) index 255 stays in play, so the ink is scored;
+/// otherwise it is masked as the cursor. The test is per tick, not per pixel, so ink the
+/// render misplaces counts against it instead of vanishing under the mask.
+pub(super) fn ui_overlay_mask(indices: &[u8], credits_drawn: bool) -> Vec<bool> {
     indices
         .iter()
         .enumerate()
@@ -43,6 +40,13 @@ pub(super) fn ui_overlay_mask(indices: &[u8], render_layers: &[u16]) -> Vec<bool
                 || (index == CURSOR_INDEX && !credits_drawn)
         })
         .collect()
+}
+
+/// True when a render's layer plane holds credits: any [`LAYER_OVERLAY`] pixel.
+pub(super) fn draws_credits(render_layers: &[u16]) -> bool {
+    render_layers
+        .iter()
+        .any(|&layer| u32::from(layer) == LAYER_OVERLAY)
 }
 
 /// Stretches a 320x200 mask to the 320x240 raster with the same row mapping as the frames.
@@ -109,8 +113,7 @@ mod tests {
     fn overlay_mask_covers_the_button_bar_rows_and_cursor_pixels() {
         let mut indices = vec![7u8; MODE13H_WIDTH * MODE13H_HEIGHT];
         indices[100 * MODE13H_WIDTH + 160] = CURSOR_INDEX;
-        let layers = vec![0u16; indices.len()];
-        let mask = ui_overlay_mask(&indices, &layers);
+        let mask = ui_overlay_mask(&indices, false);
         assert!(mask[100 * MODE13H_WIDTH + 160]);
         assert!(!mask[100 * MODE13H_WIDTH + 161]);
         assert!(!mask[(UI_BAR_FIRST_ROW - 1) * MODE13H_WIDTH]);
@@ -129,10 +132,12 @@ mod tests {
         let ink = 100 * MODE13H_WIDTH + 160;
         indices[ink] = CURSOR_INDEX;
         let mut layers = vec![0u16; indices.len()];
-        assert!(ui_overlay_mask(&indices, &layers)[ink]);
+        assert!(!draws_credits(&layers));
+        assert!(ui_overlay_mask(&indices, false)[ink]);
         // Credits anywhere in the render keep the ink, even where the render drew none.
         layers[50 * MODE13H_WIDTH] = u16::try_from(LAYER_OVERLAY).unwrap();
-        let mask = ui_overlay_mask(&indices, &layers);
+        assert!(draws_credits(&layers));
+        let mask = ui_overlay_mask(&indices, true);
         assert!(!mask[ink]);
         // The button bar stays masked either way.
         assert!(mask[UI_BAR_FIRST_ROW * MODE13H_WIDTH]);

@@ -14,7 +14,7 @@ use super::fade::fade_level;
 use super::frames::reference_luminance;
 use super::loss::{LOSS_CLASSES, attribute_loss, loss_class};
 use super::mask::{
-    index_agreement, is_capture_sky, mask_iou_planes, rescale_mask, ui_overlay_mask,
+    draws_credits, index_agreement, is_capture_sky, mask_iou_planes, rescale_mask, ui_overlay_mask,
 };
 
 /// SSIM window edge, in pixels.
@@ -91,7 +91,7 @@ pub(super) fn score_frame(
         MODE13H_HEIGHT,
         ASPECT_CORRECTED_HEIGHT,
     );
-    let overlay = ui_overlay_mask(&reference.indices, &render.layers);
+    let overlay = ui_overlay_mask(&reference.indices, draws_credits(&render.layers));
     let windows = compute_window_scores(
         &reference_rescaled,
         &render_rescaled,
