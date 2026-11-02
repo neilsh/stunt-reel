@@ -1,6 +1,6 @@
 # Public release plan (2026-10-28)
 
-Status: **in progress** (steps 1–5 landed; 6 and 7 remain). Source: the `/grill-with-docs` interview of 2026-10-28 (two rounds),
+Status: **landed** (steps 1–6; step 7, the local cutover, is per machine and not tracked here). Source: the `/grill-with-docs` interview of 2026-10-28 (two rounds),
 then a fact re-check against `origin/main` (`f87ea6e`) and the GitHub repository. This note owns the decisions and the landing log; the durable
 decision is the amendments section of [ADR 0015](../../adr/0015-publication-with-a-documented-palette-exception.md).
 

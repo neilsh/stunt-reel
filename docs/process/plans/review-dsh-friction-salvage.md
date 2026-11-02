@@ -1,7 +1,7 @@
 # Salvage of `review-dsh-friction`
 
-Status: in progress, 2026-10-25. Branch `wt-202610251243-salvage-review-dsh-friction`, rebased
-onto `main` at `60922b7`.
+Status: landed on `main` (`58a6181`, corrected in `3c0f503`). Branch
+`wt-202610251243-salvage-review-dsh-friction` was rebased onto `main` at `60922b7`.
 
 The repository's history was rewritten on 2026-10-25 to put every commit on the GitHub noreply
 identity, so the branch was cut from the pre-rewrite `main` (`6b0777f`, identical tree) and then
@@ -82,6 +82,5 @@ Oldest first, on top of `main` (`60922b7`):
 
 ## Open questions
 
-- Whether the parity `summary` should also print the `method.md` row for INTRO, or only the
-  film it scored.
-- Whether the harness page grows a third section before a second harness outgrows a screen.
+None. Both questions are moot: [#42](https://github.com/neilsh/stunt-reel/pull/42) rebuilt the parity summary, and no second harness has
+outgrown the harness page.

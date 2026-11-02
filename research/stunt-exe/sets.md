@@ -88,5 +88,5 @@ That makes a byte-to-field map mechanical in principle — flip one byte, dump a
 ## Open questions
 
 1. **The event formatter.** Locate the code that references the templates at `0x19532`–`0x1971e` and read the record fields feeding each specifier. This is the shortest path to a complete field map.
-2. **Which `PLAYONE` build the `[MEM-*]` offsets describe.** Two builds circulate; offsets taken from one may not hold in the other.
+2. ~~**Which `PLAYONE` build the `[MEM-*]` offsets describe.**~~ Answered: the retail build. [`../playone-exe/patch3.md`](../playone-exe/patch3.md) maps the capture offsets on the Patch #3 build; the remaining rows are [#78](https://github.com/neilsh/stunt-reel/issues/78).
 3. **`SETS\TEMP.SET` and `SETS\TEMP.$$$.`** The editor writes through temporary files; whether output is atomic, and whether `TEMP.$$$` is a spool like `SPOOL.$$$`, is unestablished.

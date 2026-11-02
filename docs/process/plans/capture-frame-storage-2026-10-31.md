@@ -3,7 +3,7 @@
 Status: capture half replaced by [`video-parity-2026-10-31.md`](video-parity-2026-10-31.md), which
 records each film as one AVI instead of frame dumps. The render half (per-second zstd chunks for index
 and layer planes, per-second preview PNGs, no PNG per tick) stands as a separate project, to follow that
-spec's rollout; its revised section 2 (render half) and section 3 were approved on 2026-11-01.
+spec's rollout; its revised section 2 (render half) and section 3 were approved on 2026-11-01. The render half landed in [#44](https://github.com/neilsh/stunt-reel/pull/44).
 
 ## Intent
 

@@ -1,6 +1,6 @@
 # Parity scoring: a metric bench, a regression verdict, a sign-off scale and fault readouts
 
-Status: spec, awaiting review. Sections 1 to 4 agreed in conversation 2026-10-31; revised after self-review
+Status: implemented in [#42](https://github.com/neilsh/stunt-reel/pull/42). Sections 1 to 4 agreed in conversation 2026-10-31; revised after self-review
 the same day. Follows [`scoring-failures-2026-10-31.md`](scoring-failures-2026-10-31.md), which explains
 why the current score cannot carry the work below.
 

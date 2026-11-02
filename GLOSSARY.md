@@ -50,7 +50,7 @@ _Avoid_: joint angle, frame counter
 ## Assets and models
 
 **Archive**:
-A `.ALL` container of numbered model and auxiliary resource chunks, paired with a film. SOD model chunks are addressed by `shape_id`. `MAKEONE.EXE` writes one from a film; `mise run make-all` runs it and stores the result under `captures/all/`.
+A `.ALL` container of numbered model and auxiliary resource chunks, paired with a film. SOD model chunks are addressed by `shape_id`. `MAKEONE.EXE` writes one from a film; `mise run make-all` runs it and stores the result as `captures/<film>/archives/<run>`.
 _Avoid_: bundle, resource file
 
 **Shape**:
@@ -168,6 +168,10 @@ One numbered entry in a `Usersnd` bank; each of the five banks holds up to 253 s
 _Avoid_: slot (unqualified)
 
 ## Capture and emulation
+
+**Game build**:
+One of the two releases of the `PLAYONE.EXE`/`MAKEONE.EXE` pair: the retail build, or the Patch #3 build that replaced every executable. An archive belongs to the build whose `MAKEONE` wrote it, and a capture to the build whose `PLAYONE` played it.
+_Avoid_: version, patch level
 
 **Control port**:
 The TCP port of the emulator's REST server. Each run picks a free one at launch and writes it into that run's conf, so two captures never collide ([ADR 0025](docs/adr/0025-capture-runs-are-plans-not-sessions.md)).
