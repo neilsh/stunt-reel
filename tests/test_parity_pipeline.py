@@ -49,7 +49,7 @@ class FakeRun:
             raise RuntimeError(f"{self.fail_on} exploded")
         out_dir = _after(cmd, "--out-dir")
         if out_dir is not None:
-            _write_render(Path(out_dir), _frames_for(cmd))
+            _write_render(Path(out_dir), _ticks_for(cmd))
         output = _after(cmd, "--output")
         if output is not None:
             _write_report(Path(output))
@@ -62,13 +62,13 @@ def _after(cmd: list[str], flag: str) -> str | None:
         return None
 
 
-def _frames_for(cmd: list[str]) -> list[int]:
-    """The film ticks a --frames range renders: frame n draws tick n - 1."""
-    value = _after(cmd, "--frames")
+def _ticks_for(cmd: list[str]) -> list[int]:
+    """The film ticks a --tick-range renders: 0-based and inclusive."""
+    value = _after(cmd, "--tick-range")
     if value is None:
         return []
-    first, _, last = value.partition("..")
-    return [frame - 1 for frame in range(int(first), int(last) + 1)]
+    first, _, last = value.partition("..=")
+    return list(range(int(first), int(last) + 1))
 
 
 def _write_render(render: Path, ticks: list[int] | None = None) -> None:
@@ -130,8 +130,8 @@ def test_render_film_asks_for_the_captured_tick_range(tmp_path: Path) -> None:
             str(root / film.flm),
             "--all",
             str(root / film.all),
-            "--frames",
-            "8..11",
+            "--tick-range",
+            "7..=9",
             "--sidata",
             str(root / film.sidata),
             "--out-dir",

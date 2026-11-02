@@ -3,7 +3,7 @@
 This is the Python mirror of the Rust port in ``crates/stunt-parity``: the same
 documents, field names, schema version and validation rules, so a ``render.json``
 written by either side loads in the other. The module is the one home for artifact
-names, tick file naming, the capture ``--frames`` mapping, the capture document
+names, tick file naming, the capture ``--tick-range`` mapping, the capture document
 writer and the retime document rewrite; callers stop hard-coding the 320x200
 raster, the 185-row viewport or the actor layer id.
 
@@ -79,7 +79,6 @@ __all__ = [
     "StoredFrame",
     "TickLog",
     "VideoCapture",
-    "frames_for_captured_ticks",
     "load_video_capture",
     "open_render",
     "read_capture",
@@ -87,6 +86,7 @@ __all__ = [
     "read_page",
     "read_render",
     "read_report",
+    "tick_range_for_captured_ticks",
     "write_capture",
     "write_render",
     "write_render_store",
@@ -1211,16 +1211,16 @@ def read_page(store: RenderStore, tick: int) -> Page:
     )
 
 
-def frames_for_captured_ticks(ticks: Iterable[int]) -> str:
-    """The ``--frames`` range covering the captured film ticks.
+def tick_range_for_captured_ticks(ticks: Iterable[int]) -> str:
+    """The ``--tick-range`` covering the captured film ticks.
 
-    Frame *n* renders tick *n - 1*, and the range is half-open, so a capture at
-    film tick *t* needs the frame numbered *t + 1*: ``min + 1..max + 2``.
+    The range is 0-based and inclusive, so it is the capture's own ticks:
+    ``min..=max``.
     """
     values = list(ticks)
     if not values:
-        raise _error("missing", "a capture with no frames has no --frames range")
-    return f"{min(values) + 1}..{max(values) + 2}"
+        raise _error("missing", "a capture with no frames has no --tick-range")
+    return f"{min(values)}..={max(values)}"
 
 
 def read_render(path: Path) -> RenderRecord:
