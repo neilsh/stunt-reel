@@ -33,7 +33,8 @@ each build.
 - **One of each kind.** A film has at most one frame capture, one video capture and one archive:
   `captures/<film>/frames/`, `captures/<film>/video/` and `captures/<film>/archives/`, with no run
   directory below them. A reader sees one only once it is complete (its `meta.json` is written
-  last), and otherwise sees none.
+  last), and otherwise sees none. An archive is not a capture; it is filed beside them under the
+  same rule.
 - **The build lives in `meta.json`**, never in the path: the `PLAYONE` build that played a capture,
   and the `MAKEONE` build that wrote an archive.
 - **A new capture replaces the old one.** It is written beside the old one and swapped in once its

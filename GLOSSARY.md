@@ -50,7 +50,7 @@ _Avoid_: joint angle, frame counter
 ## Assets and models
 
 **Archive**:
-A `.ALL` container of numbered model and auxiliary resource chunks, paired with a film. SOD model chunks are addressed by `shape_id`. `MAKEONE.EXE` writes one from a film; `mise run make-all` runs it and stores the result as `captures/<film>/archives/<run>`.
+A `.ALL` container of numbered model and auxiliary resource chunks, paired with a film. SOD model chunks are addressed by `shape_id`. `MAKEONE.EXE` writes one from a film; `mise run make-all` runs it and stores the result as `captures/<film>/archives/`. A film has at most one stored archive; a new one replaces it. An archive is not a capture.
 _Avoid_: bundle, resource file
 
 **Shape**:
@@ -206,7 +206,7 @@ A trusted reference trajectory that an evaluated timeline is checked against for
 _Avoid_: parity oracle, golden frames
 
 **Capture**:
-One run of `PLAYONE.EXE` under dosbox-automation that records a film's captured frames and palettes. A film has at most one capture of each kind; a new capture replaces it, and the reference capture's pin detects the change.
+One run of `PLAYONE.EXE` under dosbox-automation that records a film's captured frames and palettes. A film has at most one capture of each kind, frames and video; a new capture replaces it, and the reference capture's pin detects the change.
 _Avoid_: recording (the game's own word for filming a take), recapture (for overwriting one)
 
 **Reference capture**:

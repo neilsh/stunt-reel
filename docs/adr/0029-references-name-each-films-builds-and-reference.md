@@ -35,7 +35,11 @@ so a surveyed film has no route into the loop.
   unpatched. Capture and `make-all` use the builds the row names. A capture's `meta.json` only
   records what actually ran; when the two disagree, the next capture follows the row.
 - **The fallback is for a film with no row**: if patch3 stalls (the trace budget runs out with the
-  film clock stuck short of the film's end) or the emulator dies, try the unpatched build. Never
+  film clock stuck short of the film's end) or the emulator dies, retry the executable that
+  failed, and only that one, on the unpatched build: a patch3 `MAKEONE` that writes no complete
+  archive moves `makeone`; a patch3 `PLAYONE` that stalls or dies on the film's archive moves
+  `playone`. The suggested row names only the field that moved, so a mixed pair like EXIT/EXIT2's
+  stays possible. If the unpatched `PLAYONE` then fails on a patch3 archive, both move. Never
   fall back on a replay that diverges from its trace, which is drift from boot to boot (BIGMAN), not
   a build problem. A tool that falls back prints the row it suggests; only a reviewed commit adds it.
   `UNPATCHED_CAPTURES` is deleted.

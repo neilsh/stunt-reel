@@ -34,7 +34,9 @@ more expensive:
    build choice (the `references.toml` row, then patch3, then the stall fallback that prints a
    suggested row), staging with an unstage that always runs, replacing the old capture by swap,
    provenance including the engine build ([#95](https://github.com/neilsh/stunt-reel/issues/95)),
-   and the mapping from failures to exit codes. Frame capture, video capture and `make-all` run
+   and the mapping from failures to exit codes. Replacing a capture must also drop
+   `references.capture_digest`'s path-keyed `lru_cache` entry (or remove the cache), or a process
+   that digested the old capture validates a stale pin after the swap. Frame capture, video capture and `make-all` run
    through it. The light probe and `play` use only its staging and failure mapping. Tests go
    through the `ScriptRunner` seam with `MockAutomation` and a temporary data root, and replace the
    monkeypatch tests rather than sit beside them. `UNPATCHED_CAPTURES` is deleted.
