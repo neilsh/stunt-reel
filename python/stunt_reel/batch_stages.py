@@ -49,9 +49,8 @@ _SIDATA = Path("corpus/siarchive/Developer/FreeFlight/SIDATA")
 #: stalls (research/parity/batch.md), collage4-exit, collage4-exit2 and flmonly-count capture
 #: whole on dosbox-automation with either PLAYONE build; flmonly-bigman replays a tick apart
 #: from boot to boot on both builds, so a dump pass disagrees with the trace
-#: (research/playone-exe/patch3.md section 3). vault-location plays, but at 8,266 ticks it outruns
-#: one trace script's instruction budget (capture-dosbox-automation.md section 4.7).
-KNOWN_CAPTURE_STALLS: tuple[str, ...] = ("flmonly-bigman", "vault-location")
+#: (research/playone-exe/patch3.md section 3).
+KNOWN_CAPTURE_STALLS: tuple[str, ...] = ("flmonly-bigman",)
 #: Films captured on the unpatched build instead of their folder's own PLAYONE.EXE. Their
 #: siarchive NewPLAY folder ships Patch #3's, which stalls on these two retail archives while the
 #: unpatched build plays them (research/playone-exe/capture-dosbox-automation.md section 4.7).

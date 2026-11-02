@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from stunt_reel.tac.playone import PlayoneLayout
 
 __all__ = [
+    "CLOCK_EVERY",
     "KEY_GAP",
     "KEY_HOLD",
     "MAX_DUMPS",
@@ -34,11 +35,16 @@ __all__ = [
     "TRACE_COMPOSED",
     "TRACE_PALETTE",
     "TRACE_TORN",
+    "WINDOW_LEAD",
+    "WINDOW_SPAN",
     "MemRange",
+    "Window",
     "boot_end",
+    "clock_script",
     "keys_script",
     "script",
     "video_script",
+    "window_script",
 ]
 
 #: Emulated frame at which the file dialog is up and keys can be sent.
@@ -67,6 +73,15 @@ _COMPOSED_BYTES: int = 192 * 320
 _BAND_BYTES: int = 8 * 320
 #: The video script logs palette writes in this many equal bands (32 entries, 96 bytes each).
 PALETTE_BANDS: int = 8
+#: Emulated frames between film-clock samples in a clock script. A sample costs about 30 Lua
+#: instructions, so the one-million budget holds about 33,000 samples, or 200,000 frames.
+CLOCK_EVERY: int = 6
+#: Frames a window reads past the latest frame its clock crossing can fall on, for unusable pages.
+WINDOW_SLACK: int = 4
+#: Frames one window reads: the clock crossing lies within CLOCK_EVERY frames of its start.
+WINDOW_SPAN: int = CLOCK_EVERY + WINDOW_SLACK
+#: Frames a window reads before its start: the palette two frames back and the page one back.
+WINDOW_LEAD: int = 2
 _KEY_NAME = re.compile(r"KBD_[a-z0-9_]+")
 
 
@@ -238,6 +253,140 @@ def script(
         f'  tr[#tr + 1] = t .. ":" .. g{extra} .. ":" .. ({mask})\n'
         "  prev = pg\n"
         "  ppal = pal\n" + dump_block + hold_block + "end\n"
+        'out.trace = "x" .. table.concat(tr, ",")\n'
+        "out.done = true\n"
+    )
+
+
+def _prelude(keys: Sequence[str], layout: PlayoneLayout) -> str:
+    # wait_until takes one wait_frames call per gap, not one per frame: its cost is per call.
+    return (
+        f"local DS = 0x{layout.ds:04X}\n"
+        "local out = dosbox.output\n"
+        "local function wait_until(f)\n"
+        "  local d = f - dosbox.frame()\n"
+        "  while d > 0 do dosbox.wait_frames(d); d = f - dosbox.frame() end\n"
+        "end\n" + _keys_lua(keys)
+    )
+
+
+def clock_script(
+    *,
+    keys: Sequence[str],
+    first: int,
+    last: int,
+    every: int = CLOCK_EVERY,
+    end_hold: int,
+    stop_tick: int | None = None,
+    layout: PlayoneLayout,
+) -> str:
+    """The Lua for a clock pass: boot with *keys*, then sample the film clock every *every* frames.
+
+    Samples are taken at frames *first*, *first* + *every*, ... up to *last*; the output ``clock``
+    is ``x<tick>,<tick>,...``. The pass ends early once the clock (above zero) has held for
+    *end_hold* samples, or has reached *stop_tick*. Nothing per frame runs in Lua between
+    samples, so a pass costs about 30 instructions per sample however long the film is.
+    """
+    if every < 1:
+        raise ValueError(f"every must be at least 1, got {every}")
+    if end_hold < 1:
+        raise ValueError(f"end_hold must be at least 1, got {end_hold}")
+    _check_frames(keys, first, last, ())
+    stop = f" or t >= {stop_tick}" if stop_tick is not None else ""
+    return (
+        _prelude(keys, layout) + "local tr, lt, hold = {}, -1, 0\n"
+        f"for f = {first}, {last}, {every} do\n"
+        "  wait_until(f)\n"
+        f"  local t = dosbox.mem_read_word(DS, 0x{layout.film_clock:04X})\n"
+        "  tr[#tr + 1] = t\n"
+        "  if t == lt then hold = hold + 1 else hold = 0; lt = t end\n"
+        f"  if t > 0 and (hold >= {end_hold}{stop}) then break end\n"
+        "end\n"
+        'out.clock = "x" .. table.concat(tr, ",")\n'
+        "out.done = true\n"
+    )
+
+
+@dataclass(frozen=True)
+class Window:
+    """Frames *start* to *start* + WINDOW_SPAN - 1, searched for a page at film clock *goal* or later."""
+
+    start: int
+    goal: int
+
+
+def window_script(
+    *,
+    keys: Sequence[str],
+    windows: Sequence[Window],
+    layout: PlayoneLayout,
+) -> str:
+    """The Lua for a window pass: boot with *keys*, then dump one usable page per window.
+
+    Each window also reads the palette at ``start - 2`` and the page and palette at
+    ``start - 1``, then frames ``start`` onward until one is usable: its film clock is at least
+    the window's goal, its page changed, rows 0..191 equal a composed page, and the working
+    palette changed neither at that frame nor the one before (``plan.usable``'s rule). That
+    frame's page and palette are dumped as ``p<f>`` and ``c<f>``. Every frame read from
+    ``start`` on is logged in ``trace`` as ``frame:film_tick:global_tick:mask``, where a page that
+    equals no composed page carries :data:`TRACE_TORN`: the band test is not run, so such a page
+    is treated as torn. Windows must ascend without overlapping, lead frames included.
+    """
+    if not windows:
+        raise ValueError("a window pass needs at least one window")
+    if len(windows) > MAX_DUMPS:
+        raise ValueError(f"at most {MAX_DUMPS} windows per run, got {len(windows)}")
+    floor = boot_end(len(keys)) + WINDOW_LEAD
+    for window in windows:
+        if window.start < floor:
+            raise ValueError(
+                f"window {window.start} starts before frame {floor}, the boot keys plus its lead"
+            )
+        if window.goal < 1:
+            raise ValueError(
+                f"window {window.start} has goal {window.goal}; film clocks start at 1"
+            )
+        floor = window.start + WINDOW_SPAN + WINDOW_LEAD
+    page_a, page_b = layout.composed_pages
+    palette_read = f"dosbox.mem_read(DS, 0x{layout.working_palette:X}, {_PALETTE_BYTES})"
+    starts = ", ".join(str(w.start) for w in windows)
+    goals = ", ".join(str(w.goal) for w in windows)
+    return (
+        _prelude(keys, layout) + "local H = {}\n"
+        'for i = 0, 255 do H[string.char(i)] = string.format("%02x", i) end\n'
+        f"local ROWS = {_COMPOSED_BYTES}\n"
+        "local function composed(pg)\n"
+        "  local top = pg:sub(1, ROWS)\n"
+        f"  return top == dosbox.mem_read(dosbox.mem_read_word(DS, 0x{page_a:04X}), 0, ROWS)\n"
+        f"    or top == dosbox.mem_read(dosbox.mem_read_word(DS, 0x{page_b:04X}), 0, ROWS)\n"
+        "end\n"
+        f"local starts, goals = {{{starts}}}, {{{goals}}}\n"
+        "local tr = {}\n"
+        "for i = 1, #starts do\n"
+        "  local c, goal = starts[i], goals[i]\n"
+        f"  wait_until(c - {WINDOW_LEAD})\n"
+        f"  local ppal = {palette_read}\n"
+        "  wait_until(c - 1)\n"
+        f"  local prev, pal1 = dosbox.mem_read(0xA000, 0, {_PAGE_BYTES}), {palette_read}\n"
+        "  local pstep = pal1 ~= ppal\n"
+        "  ppal = pal1\n"
+        f"  for f = c, c + {WINDOW_SPAN - 1} do\n"
+        "    wait_until(f)\n"
+        f"    local t = dosbox.mem_read_word(DS, 0x{layout.film_clock:04X})\n"
+        f"    local g = dosbox.mem_read_word(DS, 0x{layout.global_tick:04X})\n"
+        f"    local pg, pal = dosbox.mem_read(0xA000, 0, {_PAGE_BYTES}), {palette_read}\n"
+        "    local changed, step, comp = pg ~= prev, pal ~= ppal, composed(pg)\n"
+        f"    local mask = (changed and {TRACE_CHANGED} or 0) + (step and {TRACE_PALETTE} or 0)"
+        f" + (comp and {TRACE_COMPOSED} or {TRACE_TORN})\n"
+        '    tr[#tr + 1] = f .. ":" .. t .. ":" .. g .. ":" .. mask\n'
+        "    if t >= goal and changed and comp and not step and not pstep then\n"
+        '      out["p" .. f] = "x" .. pg:gsub(".", H)\n'
+        '      out["c" .. f] = "x" .. pal:gsub(".", H)\n'
+        "      break\n"
+        "    end\n"
+        "    prev, ppal, pstep = pg, pal, step\n"
+        "  end\n"
+        "end\n"
         'out.trace = "x" .. table.concat(tr, ",")\n'
         "out.done = true\n"
     )
