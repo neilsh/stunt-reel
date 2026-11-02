@@ -7,7 +7,7 @@ Question: can runtime DOS memory records be described by `.ksy` schemas like the
 * **Schema fits.** Fixed offsets, `s4`/`f4`/`u2` scalars, an 8-byte NUL-padded name, a 4-slot joint array and the far-pointer halves all compile and parse. Offsets match the streamer's `struct.unpack_from` reads exactly (64 bytes total).
 * **Derived values fit as `instances`.** `pos_meters` (`/ 65536.0`) compiles. BAM and quaternion normalisation are better left in `dos_math`.
 * **Not expressed by the schema:** `min(joint_count, 4)` truncation (a `repeat-expr: 4` over-reads, caller slices), far-pointer `seg:off` string formatting and the null-pointer rule, name trimming/fallback (`ACTOR_<id>`). These stay in `streamer.py`.
-* **Equivalence test:** [`tests/test_memory_schema_spike.py`](../../../tests/test_memory_schema_spike.py) compiles the schema and compares it with `decode_actor_from_memory` on synthetic bytes (null and non-null link). Skipped when `ksc` is absent.
+* **Equivalence test (retired):** `tests/test_memory_schema_spike.py` compiled the schema and compared it with `decode_actor_from_memory` on synthetic bytes (null and non-null link). It was removed with the offline streamer (#106); the schema stays as the layout record.
 * **Tooling friction:** `ksc` needs a JVM; plain `PATH` here lacked `java`, so it only runs under `mise`. The existing `kaitai.py` helpers are verification-only (compile to a temp dir) and work unchanged for memory schemas.
 
 ## Runtime use: not recommended

@@ -39,8 +39,8 @@ where it draws fewer pages.
 ## Consequences
 
 - `session.py`, the DOSBox-X process and debugger transports, `ensure-dosbox`, the `mcp` task and the
-  checked-in DOSBox-X confs are gone. The offline streamer model stays, because the Rust oracle
-  cites `streamer.py` as its kinematic reference.
+  checked-in DOSBox-X confs are gone. The offline streamer model stayed at first for the Rust
+  oracle's sake and was retired later (#106); the oracle fixture is hand-written.
 - Pages are read between emulated frames without a retrace wait, so a page can tear; the rule for
   judging one is in [`method.md`](../../research/parity/method.md) § 3.1 and is not yet applied in `pick`.
 - Existing references (`references.toml`) were captured on DOSBox-X; promoting a new-path capture
