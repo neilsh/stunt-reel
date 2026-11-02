@@ -45,7 +45,6 @@ from stunt_reel.parity_artifacts import (
     StoreSpan,
     TickLog,
     VideoCapture,
-    frames_for_captured_ticks,
     load_video_capture,
     open_render,
     read_capture,
@@ -53,6 +52,7 @@ from stunt_reel.parity_artifacts import (
     read_page,
     read_render,
     read_report,
+    tick_range_for_captured_ticks,
     write_capture,
     write_render,
     write_render_store,
@@ -468,15 +468,16 @@ def test_write_report_checks_the_identities() -> None:
         write_report(Path("unused.json"), broken)
 
 
-def test_frames_for_captured_ticks_maps_capture_ticks_to_frame_numbers() -> None:
-    # frame n renders tick n - 1, and the range is half-open
-    assert frames_for_captured_ticks([769, 3640, 1000]) == "770..3642"
-    assert frames_for_captured_ticks([10]) == "11..12"
+def test_tick_range_for_captured_ticks_is_the_captures_own_inclusive_ticks() -> None:
+    # 0-based and inclusive: no offset between a capture's film tick and the range
+    assert tick_range_for_captured_ticks([769, 3640, 1000]) == "769..=3640"
+    assert tick_range_for_captured_ticks([10]) == "10..=10"
+    assert tick_range_for_captured_ticks([0, 1342]) == "0..=1342"
 
 
-def test_frames_for_captured_ticks_needs_a_capture() -> None:
-    with pytest.raises(ArtifactError, match="no --frames range"):
-        frames_for_captured_ticks([])
+def test_tick_range_for_captured_ticks_needs_a_capture() -> None:
+    with pytest.raises(ArtifactError, match="no --tick-range"):
+        tick_range_for_captured_ticks([])
 
 
 def _store_record(ticks: tuple[int, ...]) -> RenderRecord:
@@ -749,9 +750,24 @@ def test_video_capture_round_trips(tmp_path: Path) -> None:
     assert load_video_capture(tmp_path) == _video()
 
 
+def test_video_capture_records_the_engine_hash_when_it_has_one(tmp_path: Path) -> None:
+    named = replace(_video(), playone_sha256="ab" * 32)
+    document = write_video_capture(tmp_path, named, diagnostics={})
+    assert document["playone_build"] == "synthetic"
+    assert document["playone_sha256"] == "ab" * 32
+    assert load_video_capture(tmp_path) == named
+
+
+def test_a_video_capture_without_the_engine_hash_still_loads(tmp_path: Path) -> None:
+    document = write_video_capture(tmp_path, _video(), diagnostics={})
+    assert "playone_sha256" not in document
+    assert load_video_capture(tmp_path).playone_sha256 is None
+
+
 def test_the_video_fixture_loads() -> None:
     fixture = Path(__file__).parent / "fixtures" / "parity" / "video"
     capture = load_video_capture(fixture)
+    assert capture.playone_sha256 is None  # the fixture predates the field
     assert len(capture.log.frame) == 4
     assert [change.frame for change in capture.palettes.changes] == [103]
     assert capture.film_start_frame == 103

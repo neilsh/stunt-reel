@@ -28,6 +28,11 @@ const ZFAR: f32 = 20_000.0;
 /// when the frame draws the world, and one `actor_{index}_shape_{shape_id}` node per
 /// [`stunt_core::scene::ActorDraw`] with `matrix` set to its world matrix and
 /// `state_mask`, `distance` and `shape_id` in `extras`.
+///
+/// # Errors
+/// - [`GltfError::MissingShape`] if an actor names a shape the scene does not hold.
+/// - [`GltfError::InvalidNodeReference`] if a model lists a child node that is not in its arena.
+/// - [`GltfError::TooLarge`] if the output would not fit the 4 GiB GLB container.
 pub fn export_scene_frame(scene: &FilmScene, tick: f32) -> Result<Vec<u8>, GltfError> {
     let frame = scene.frame(tick);
     let mut builder = GlbBuilder::new();
@@ -55,7 +60,7 @@ pub fn export_scene_frame(scene: &FilmScene, tick: f32) -> Result<Vec<u8>, GltfE
     if frame.world
         && let Some(world) = scene.world()
     {
-        let assets = add_shape_assets(&mut builder, &world.ir)?;
+        let assets = add_shape_assets(&mut builder, &world.ir);
         let children = instantiate(&mut builder, &world.ir, &assets)?;
         roots.push(builder.nodes.len());
         builder
@@ -70,7 +75,7 @@ pub fn export_scene_frame(scene: &FilmScene, tick: f32) -> Result<Vec<u8>, GltfE
             .ok_or(GltfError::MissingShape(actor.shape_id))?;
         let assets = match shared.entry(actor.shape_id) {
             Entry::Occupied(e) => e.into_mut(),
-            Entry::Vacant(e) => e.insert(add_shape_assets(&mut builder, model)?),
+            Entry::Vacant(e) => e.insert(add_shape_assets(&mut builder, model)),
         };
         let children = instantiate(&mut builder, model, assets)?;
         let mut node = json!({

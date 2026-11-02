@@ -4,7 +4,6 @@
 //! binary parsers for the `.res`, `.flm`, and `.sod` formats. Every type obeys the system
 //! invariants `[I1]`-`[I8]` documented in [`contracts`].
 #![deny(unsafe_code)]
-#![warn(missing_docs)]
 
 pub mod anchor;
 pub mod contracts;

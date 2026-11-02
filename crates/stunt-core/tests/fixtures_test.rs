@@ -7,6 +7,7 @@
     clippy::items_after_statements,
     reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
 )]
+//! The synthetic fixtures under `tests/fixtures/` parse and match their documented contents.
 use std::fs;
 use std::path::PathBuf;
 use stunt_core::contracts::ArchiveFormat;

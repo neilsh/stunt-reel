@@ -137,6 +137,13 @@ pub struct WindowScore {
 }
 
 /// SSIM of every window not touching `excluded` (row-major, `width * height`), in scan order.
+///
+/// Returns no windows when `window_size` or `stride` is zero or the window is larger than
+/// the frame in either dimension.
+///
+/// # Panics
+/// Panics if `frame_a` and `frame_b` differ in length, or `excluded` is given with a length
+/// other than theirs.
 pub fn compute_window_scores(
     frame_a: &[f32],
     frame_b: &[f32],
@@ -155,6 +162,10 @@ pub fn compute_window_scores(
     );
     if let Some(mask) = excluded {
         assert_eq!(mask.len(), frame_a.len(), "Mask length mismatch");
+    }
+
+    if window_size == 0 || stride == 0 || window_size > width || window_size > height {
+        return Vec::new();
     }
 
     let mut scores = Vec::new();
@@ -231,6 +242,19 @@ pub fn compute_frame_ssim_masked(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn degenerate_windows_yield_no_scores_instead_of_panicking_or_hanging() {
+        let frame = [0.5f32];
+        // A window wider than the frame used to slice past it; a zero stride never advanced.
+        assert!(compute_window_scores(&frame, &frame, 1, 1, 2, 1, None).is_empty());
+        assert!(compute_window_scores(&frame, &frame, 1, 1, 1, 0, None).is_empty());
+        assert!(compute_window_scores(&frame, &frame, 1, 1, 0, 1, None).is_empty());
+        assert_eq!(
+            compute_window_scores(&frame, &frame, 1, 1, 1, 1, None).len(),
+            1
+        );
+    }
 
     #[test]
     fn masked_ssim_ignores_windows_touching_the_mask() {

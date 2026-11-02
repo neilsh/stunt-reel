@@ -3,7 +3,7 @@
 This is the Python mirror of the Rust port in ``crates/stunt-parity``: the same
 documents, field names, schema version and validation rules, so a ``render.json``
 written by either side loads in the other. The module is the one home for artifact
-names, tick file naming, the capture ``--frames`` mapping, the capture document
+names, tick file naming, the capture ``--tick-range`` mapping, the capture document
 writer and the retime document rewrite; callers stop hard-coding the 320x200
 raster, the 185-row viewport or the actor layer id.
 
@@ -79,7 +79,6 @@ __all__ = [
     "StoredFrame",
     "TickLog",
     "VideoCapture",
-    "frames_for_captured_ticks",
     "load_video_capture",
     "open_render",
     "read_capture",
@@ -87,6 +86,7 @@ __all__ = [
     "read_page",
     "read_render",
     "read_report",
+    "tick_range_for_captured_ticks",
     "write_capture",
     "write_render",
     "write_render_store",
@@ -1228,16 +1228,16 @@ def read_page(store: RenderStore, tick: int) -> Page:
     )
 
 
-def frames_for_captured_ticks(ticks: Iterable[int]) -> str:
-    """The ``--frames`` range covering the captured film ticks.
+def tick_range_for_captured_ticks(ticks: Iterable[int]) -> str:
+    """The ``--tick-range`` covering the captured film ticks.
 
-    Frame *n* renders tick *n - 1*, and the range is half-open, so a capture at
-    film tick *t* needs the frame numbered *t + 1*: ``min + 1..max + 2``.
+    The range is 0-based and inclusive, so it is the capture's own ticks:
+    ``min..=max``.
     """
     values = list(ticks)
     if not values:
-        raise _error("missing", "a capture with no frames has no --frames range")
-    return f"{min(values) + 1}..{max(values) + 2}"
+        raise _error("missing", "a capture with no frames has no --tick-range")
+    return f"{min(values)}..={max(values)}"
 
 
 def read_render(path: Path) -> RenderRecord:
@@ -1430,6 +1430,7 @@ _VIDEO_FIELDS = frozenset(
         "film",
         "geometry",
         "playone_build",
+        "playone_sha256",
         "cpu_profile",
         "capture_start_frame",
         "film_start_frame",
@@ -1488,6 +1489,8 @@ class VideoCapture:
     end: str
     log: TickLog
     palettes: PaletteLog
+    #: SHA-256 of the ``PLAYONE.EXE`` that ran; absent from captures made before it was recorded.
+    playone_sha256: str | None = None
 
     def video_index(self, frame: int) -> int | None:
         """Index of capture *frame* relative to recording start, or ``None`` before it.
@@ -1626,6 +1629,7 @@ def _video_object(document: Mapping[str, Any], path: Path | None) -> VideoCaptur
         film=_film_object(document, path),
         geometry=_geometry_object(_as_object(document.get("geometry"), path, "geometry"), path),
         playone_build=_as_string(document.get("playone_build"), path, "playone_build"),
+        playone_sha256=_optional_string(document.get("playone_sha256"), path, "playone_sha256"),
         cpu_profile=_as_string(document.get("cpu_profile"), path, "cpu_profile"),
         capture_start_frame=_as_unsigned(
             document.get("capture_start_frame"), path, "capture_start_frame", _U64
@@ -1656,12 +1660,15 @@ def _video_document(capture: VideoCapture) -> dict[str, Any]:
         film["flm_sha256"] = capture.film.flm_sha256
     if capture.film.all_sha256 is not None:
         film["all_sha256"] = capture.film.all_sha256
+    build: dict[str, Any] = {"playone_build": capture.playone_build}
+    if capture.playone_sha256 is not None:
+        build["playone_sha256"] = capture.playone_sha256
     return {
         "schema_version": capture.schema_version,
         "kind": capture.kind,
         "film": film,
         "geometry": _geometry_document(capture.geometry),
-        "playone_build": capture.playone_build,
+        **build,
         "cpu_profile": capture.cpu_profile,
         "capture_start_frame": capture.capture_start_frame,
         "film_start_frame": capture.film_start_frame,
