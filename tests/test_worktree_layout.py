@@ -16,6 +16,8 @@ import subprocess
 import tomllib
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "python" / "scripts"
 
@@ -171,3 +173,24 @@ def test_build_at_sets_cargo_home() -> None:
     """build-at builds into its own target dir but must still name the shared cache."""
     config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
     assert config["tasks"]["build-at"]["env"]["CARGO_HOME"] == "{{vars.cargo_home}}"
+
+
+def test_mise_config_renders_outside_a_git_checkout() -> None:
+    """A checkout without git (a source archive, git's dubious-ownership refusal) still runs mise."""
+    mise = shutil.which("mise")
+    if mise is None:
+        pytest.skip("mise is not on PATH")
+    env = {**os.environ, "GIT_DIR": str(REPO_ROOT / "no-such-git-dir")}
+    result = subprocess.run(  # noqa: S603 - fixed argv, mise resolved from PATH
+        [mise, "vars"],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    homes = [
+        line.split()[1] for line in result.stdout.splitlines() if line.startswith("cargo_home")
+    ]
+    assert homes == [f"{REPO_ROOT}/.cache/cargo"], result.stdout

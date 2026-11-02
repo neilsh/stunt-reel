@@ -104,6 +104,9 @@ def rank_donors(
 
 #: Cargo's lock files in a profile directory; a build holds them while it writes.
 _BUILD_LOCKS: tuple[str, ...] = (".cargo-lock", ".cargo-build-lock", ".cargo-artifact-lock")
+#: Where under a seeded directory its profile's locks sit: ``debug/`` is itself the profile, while
+#: the clippy and matrix lanes are whole target directories with a ``debug/`` profile inside.
+_LOCK_DIRS: tuple[str, ...] = (".", "debug")
 #: robocopy keeps file and directory timestamps (Cargo's freshness reads them) and never retries.
 _ROBOCOPY_FLAGS: tuple[str, ...] = (
     "/E",
@@ -151,9 +154,9 @@ def build_locks_free(target: Path) -> Iterator[bool]:
     import msvcrt  # noqa: PLC0415 - only needed on Windows
 
     with contextlib.ExitStack() as held:
-        for profile in SEEDED_DIRS:
-            for name in _BUILD_LOCKS:
-                lock = target / profile / name
+        for seeded in SEEDED_DIRS:
+            for profile, name in ((p, n) for p in _LOCK_DIRS for n in _BUILD_LOCKS):
+                lock = target / seeded / profile / name
                 if not lock.is_file():
                     continue
                 handle = held.enter_context(lock.open("r+b"))
@@ -198,7 +201,7 @@ def seed(
     copy: Callable[[Path, Path], None] = robocopy,
     volume_clones: Callable[[Path], bool] = clones_on,
 ) -> SeedOutcome:
-    """Clone the best donor's build output into *checkout*'s empty target/.
+    """Clone the best idle donor's build output into *checkout*'s empty target/.
 
     Best effort: anything that goes wrong after copying started removes what was copied, so a
     failed seed leaves the target/ as it found it and the next build starts from scratch.
@@ -213,27 +216,37 @@ def seed(
     donors = rank_donors(local, here=checkout, rustc_vv=rustc_vv, cargo_home=cargo_home)
     if not donors:
         return SeedOutcome("skipped", "no donor with this rustc and cargo home")
-    donor = donors[0]
+    busy: list[Path] = []
+    for donor in donors:
+        with build_locks_free(donor / "target") as free:
+            if not free:
+                busy.append(donor)
+                continue
+            return _copy_from(donor, target, copy)
+    if len(busy) == 1:
+        return SeedOutcome("skipped", f"donor {busy[0]} is building")
+    return SeedOutcome("skipped", f"all {len(busy)} donors are building")
+
+
+def _copy_from(donor: Path, target: Path, copy: Callable[[Path, Path], None]) -> SeedOutcome:
+    """Copy *donor*'s seeded directories and files into *target*, undoing all of it on failure."""
     created: list[Path] = []
-    with build_locks_free(donor / "target") as free:
-        if not free:
-            return SeedOutcome("skipped", f"donor {donor} is building")
-        try:
-            for name in SEEDED_DIRS:
-                source = donor / "target" / name
-                if source.is_dir():
-                    created.append(target / name)
-                    copy(source, target / name)
-            for name in SEEDED_FILES:
-                source = donor / "target" / name
-                if source.is_file() and not (target / name).exists():
-                    created.append(target / name)
-                    shutil.copy2(source, target / name)
-        except Exception as error:  # noqa: BLE001 - a seed must never fail init
-            for path in created:
-                if path.is_dir():
-                    shutil.rmtree(path, ignore_errors=True)
-                else:
-                    path.unlink(missing_ok=True)
-            return SeedOutcome("failed", str(error))
+    try:
+        for name in SEEDED_DIRS:
+            source = donor / "target" / name
+            if source.is_dir():
+                created.append(target / name)
+                copy(source, target / name)
+        for name in SEEDED_FILES:
+            source = donor / "target" / name
+            if source.is_file() and not (target / name).exists():
+                created.append(target / name)
+                shutil.copy2(source, target / name)
+    except Exception as error:  # noqa: BLE001 - a seed must never fail init
+        for path in created:
+            if path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                path.unlink(missing_ok=True)
+        return SeedOutcome("failed", str(error))
     return SeedOutcome("seeded", f"from {donor}")

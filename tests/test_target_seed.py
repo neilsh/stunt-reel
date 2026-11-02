@@ -212,3 +212,62 @@ def test_seed_skips_a_donor_that_is_building(tmp_path: Path) -> None:
         held.seek(0)
         msvcrt.locking(held.fileno(), msvcrt.LK_UNLCK, 1)
     assert out == SeedOutcome("skipped", f"donor {donor} is building")
+
+
+def _hold(lock: Path) -> object:
+    """Open and byte-lock *lock* the way a running Cargo build holds it; the caller closes it."""
+    import msvcrt  # noqa: PLC0415 - Windows-only module
+
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_bytes(b"")
+    handle = lock.open("r+b")
+    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+    return handle
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Cargo's build locks are byte locks on Windows")
+def test_seed_skips_a_donor_whose_clippy_lane_is_building(tmp_path: Path) -> None:
+    here = _fresh(tmp_path / "here")
+    donor = _donor(tmp_path / "d")
+    # The clippy and matrix lanes set CARGO_TARGET_DIR=target/<lane>, so their locks sit one
+    # level down, under the lane's own debug/ profile.
+    held = _hold(donor / "target" / "check" / "debug" / ".cargo-lock")
+    try:
+        out = seed(
+            here,
+            checkouts=[donor],
+            rustc_vv=RUSTC,
+            cargo_home=Path(HOME),
+            copy=_never,
+            volume_clones=_clones,
+        )
+    finally:
+        held.close()  # type: ignore[attr-defined]
+    assert out == SeedOutcome("skipped", f"donor {donor} is building")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Cargo's build locks are byte locks on Windows")
+def test_seed_falls_back_to_an_idle_donor(tmp_path: Path) -> None:
+    here = _fresh(tmp_path / "here")
+    busy = _donor(tmp_path / "busy", age=1)
+    idle = _donor(tmp_path / "idle", age=600)
+    held = _hold(busy / "target" / "debug" / ".cargo-lock")
+    copied: list[Path] = []
+
+    def fake_copy(source: Path, destination: Path) -> None:
+        copied.append(source)
+        destination.mkdir(parents=True)
+
+    try:
+        out = seed(
+            here,
+            checkouts=[busy, idle],
+            rustc_vv=RUSTC,
+            cargo_home=Path(HOME),
+            copy=fake_copy,
+            volume_clones=_clones,
+        )
+    finally:
+        held.close()  # type: ignore[attr-defined]
+    assert out == SeedOutcome("seeded", f"from {idle}")
+    assert copied == [idle / "target" / "debug"]

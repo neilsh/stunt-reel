@@ -58,7 +58,7 @@ TEMP = "{{config_root}}/.cache/tmp"
 # One absolute path in every checkout: Cargo fingerprints a dependency by its CARGO_HOME path,
 # so a target/ cloned from another checkout is fresh only if both name the cache alike (ADR 0030).
 # git's common directory is the primary checkout's .git from any worktree.
-cargo_home = "{{ exec(command='git rev-parse --path-format=absolute --git-common-dir') | dirname }}/.cache/cargo"
+cargo_home = "{{ exec(command='git rev-parse --path-format=absolute --git-common-dir || echo ' ~ config_root ~ '/.git') | dirname }}/.cache/cargo"
 
 [tasks.play]
 description = "Play a film in PLAYONE.EXE on dosbox-automation (mise run play -- --film corpus/stisldem/VAULT/INTRO.FLM)"
