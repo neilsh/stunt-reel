@@ -630,7 +630,7 @@ impl<'a> FlmPlayer<'a> {
 
     /// Read a null-terminated C string as raw bytes.
     fn read_cstring(&mut self) -> Result<Vec<u8>, FlmError> {
-        Ok(self.reader.read_cstring_bytes()?)
+        Ok(self.reader.read_cstring()?)
     }
 }
 
@@ -638,6 +638,7 @@ impl<'a> FlmPlayer<'a> {
 mod tests {
     use super::*;
     use crate::contracts::palette::PALETTE_CONTROL_FULL;
+    use crate::flm::FilmTimeline;
 
     /// Minimal two-slice synthetic film (`tests/fixtures/synthetic_minimal.flm`).
     const SYNTHETIC_MINIMAL_FLM: &[u8] =
@@ -711,9 +712,6 @@ mod tests {
 
     #[test]
     fn credits_hold_from_their_set_tick_until_a_clear() {
-        use crate::credits::CreditLines;
-        use crate::flm::FilmTimeline;
-
         let mut film = Vec::from(&b"FILM"[..]);
         // Slice 0 at tick 0: no credits.
         push_slice_with_duration(&mut film, 0, 0, &[0xFF]);
@@ -803,7 +801,7 @@ mod tests {
         film.extend_from_slice(&[7, 0, 10]);
         film.extend_from_slice(&[0x8E, 0x00, 0x00, 0x8F, 0x00, 0x01, 0xFF]);
 
-        let timeline = super::super::FilmTimeline::from_bytes(&film).expect("timeline");
+        let timeline = FilmTimeline::from_bytes(&film).expect("timeline");
         let first = timeline.sample(0.0).expect("sample").palette;
         assert_eq!(
             first,
@@ -837,7 +835,7 @@ mod tests {
         push_slice_with_duration(&mut film, 1, 0, &[0x8E, 0x00, 0x80, 0xFF]);
         push_slice_with_duration(&mut film, 4, 1, &[0xFF]);
 
-        let timeline = super::super::FilmTimeline::from_bytes(&film).expect("timeline");
+        let timeline = FilmTimeline::from_bytes(&film).expect("timeline");
         let at = |tick: f32| timeline.sample(tick).expect("sample").palette.brightness;
         assert_eq!(at(0.0), 0, "PLAYONE zeroes every variable at film start");
         assert_eq!(at(759.0), 0);

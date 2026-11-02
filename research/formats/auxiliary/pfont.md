@@ -9,7 +9,7 @@
 - **Byte order:** single bytes only.
 - **Where it ships:** every `PLAYONE` tree in the corpus holds one: the demo `stisldem/`, the full game, `builds/patched` and `builds/unpatched`, and each film folder under `siarchive/Films/` ([`patch3.md`](../../playone-exe/patch3.md): Patch #3 leaves it unchanged).
 
-**Governing invariants:** [`[I3]`](../../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading) (the glyphs carry no colour; the caller picks palette indices) and [`[I7]`](../../../docs/SPEC.md#2-system-architectural-invariants--guardrails) (the file is game data, read from the corpus at run time, never committed). **Code:** [`font.rs`](../../../crates/stunt-core/src/font.rs) parses it, [`credits.rs`](../../../crates/stunt-core/src/credits.rs) lays out the credits; the synthetic fixture is `synthetic_pfont.bin` ([`tests/fixtures/README.md`](../../../tests/fixtures/README.md)).
+**Governing invariants:** [`[I3]`](../../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading) (the glyphs carry no colour; the caller picks palette indices) and [`[I7]`](../../../docs/SPEC.md#i7-asset-isolation--small-pure-rust-core-dependencies) (the file is game data, read from the corpus at run time, never committed). **Code:** [`font.rs`](../../../crates/stunt-core/src/font.rs) parses it, [`credits.rs`](../../../crates/stunt-core/src/credits.rs) lays out the credits; the synthetic fixture is `synthetic_pfont.bin` ([`tests/fixtures/README.md`](../../../tests/fixtures/README.md)).
 
 ---
 
@@ -52,7 +52,8 @@ Each glyph row is one byte, bit 7 the leftmost pixel, so a glyph is at most 8 pi
 2. **Codes past 127.** `0x58D0` indexes the width table by the full byte, so a code at or above `0x80` would read past it. No film text has one; the parser gives such codes no width and no glyph. `[Unknown]`.
 3. **Where the glyph rows are loaded** and which routine draws UI dialog text with them. `[Unknown]`.
 4. **Clipping.** Whether the text driver `[0x225A]` clips to the clip rectangle is `[Unknown]`; the renderer clips only to the page, which no film text reaches past.
-5. **Renderer gaps, not findings.** The renderer draws credits on offscreen pages only, not in the interactive window, and a render without `--viewport-rows` centres them in the whole page (line 1 at row 85, not 78).
+5. **Credits ink is not scored.** Parity's UI overlay mask drops index 255 as the mouse cursor, which also drops the credits ink; only shadow and background count ([`film-segments.md`](../../parity/film-segments.md) open question 7).
+6. **Renderer gaps, not findings.** The renderer draws credits on offscreen pages only, not in the interactive window, and a render without `--viewport-rows` centres them in the whole page (line 1 at row 85, not 78).
 
 ---
 

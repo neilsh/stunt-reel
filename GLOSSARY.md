@@ -40,8 +40,12 @@ _Avoid_: trailer, final slice
 An instantaneous camera reposition between consecutive trajectory records, exempt from interpolation.
 
 **Palette controls**:
-Film variables 13 (night term), 14 (brightness) and 15 (saturation), from which `PLAYONE.EXE` rebuilds palette entries 0–239 every frame. Fades, desaturation and dusk are authored through them.
+Film variables 13 (night term), 14 (brightness) and 15 (saturation), from which `PLAYONE.EXE` rebuilds palette entries 0–239 every frame. Fades, desaturation and dusk are authored through them: the editor's **Fade** effect sets brightness and its **Color** effect sets saturation, each as a ramp from the start to the end of a marked segment. All three start at zero, so a film that has not yet faded in plays black.
 _Avoid_: tone, palette fade (for the variables themselves)
+
+**Credits**:
+The two lines of text a film shows over its picture, set and cleared at authored ticks and drawn centred in the view in the game's own font, white with a black shadow. A title card is credits shown while the scene is faded to black.
+_Avoid_: caption, title text, subtitles
 
 **Animation input**:
 The raw 16-bit value carried by a `.FLM` slot with `SIF_ANIMATES`. Its mapping to SOD resource selection is not established.
@@ -218,7 +222,7 @@ One distinct rendered page taken from `PLAYONE.EXE` during a capture, numbered b
 _Avoid_: tick (for the capture ordinal)
 
 **UI overlay**:
-What `PLAYONE.EXE` draws over the 3D scene in a captured frame: the button bar, the mouse cursor, and credits text. The renderer does not draw it, and parity leaves it out of scoring.
+What `PLAYONE.EXE` draws over the 3D scene in a captured frame that is not part of the film: the button bar and the mouse cursor. The renderer does not draw it, and parity leaves it out of scoring. Credits ink shares the cursor's palette index, so it is left out too (see **Credits**).
 _Avoid_: HUD, status bar
 
 **Index agreement**:
