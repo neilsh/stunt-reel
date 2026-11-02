@@ -522,6 +522,9 @@ def run_stride_plan(
     first usable page in each. Usability is decided in Lua by ``window_script``'s rule; a page
     that equals no composed page counts as torn. The result's trace holds the window frames.
     """
+    # _check_window needs a clock sample inside every window to measure drift.
+    if every > WINDOW_SPAN:
+        raise ValueError(f"every must be at most WINDOW_SPAN ({WINDOW_SPAN}), got {every}")
     say = progress or (lambda _line: None)
     say("pass 1: sampling the film clock")
     hold = -(-end_hold // every)

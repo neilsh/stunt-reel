@@ -493,3 +493,23 @@ def test_choose_windows_leaves_out_a_window_that_starts_inside_the_last() -> Non
         luagen.Window(1301, 1),
         luagen.Window(1313, 9),
     ]
+
+
+def test_run_stride_plan_rejects_a_clock_sparser_than_a_window() -> None:
+    def never_opened() -> Any:
+        raise AssertionError("no pass may run")
+
+    # With clock samples further apart than a window, a window can hold none, and its drift
+    # would go unchecked.
+    with pytest.raises(ValueError, match="every must be at most WINDOW_SPAN"):
+        plan.run_stride_plan(
+            never_opened,
+            keys=KEYS,
+            first=1300,
+            last=2000,
+            stride=10,
+            limit=10,
+            end_hold=10,
+            layout=playone.UNPATCHED,
+            every=luagen.WINDOW_SPAN + 1,
+        )
