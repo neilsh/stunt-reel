@@ -413,7 +413,8 @@ impl Renderer {
             scene_renderer,
             clear_palette_index: options.clear_palette_index,
             destination: Destination::Surface(Box::new(surface_target)),
-            font: scene.font().cloned(),
+            // Credits are drawn on offscreen pages only; the window shows the scene alone.
+            font: None,
         })
     }
 
@@ -522,7 +523,6 @@ impl Renderer {
             scene_renderer,
             clear_palette_index,
             destination,
-            // Credits are drawn on offscreen pages only; the window shows the scene alone.
             font: _,
         } = self;
         let Destination::Surface(target) = destination else {

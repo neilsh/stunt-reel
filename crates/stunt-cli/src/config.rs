@@ -47,9 +47,9 @@ struct Options {
     /// (names match any case)
     #[arg(long, value_name = "DIR")]
     sidata: Option<PathBuf>,
-    /// PLAYONE's PFONT.BIN for the credits text; by default it is looked up as the scenery
-    /// files are, from the archive and then from the film (the engine root holds it, beside
-    /// VAULT)
+    /// PLAYONE's PFONT.BIN for the credits text; by default it is searched for in --sidata,
+    /// then beside the archive and the film, their parent and grandparent, and a sidata
+    /// directory there (the engine root holds it, beside VAULT)
     #[arg(long, value_name = "PFONT.BIN")]
     font: Option<PathBuf>,
     /// Render the film to a video container (.mp4, .webm, .mkv, .avi) via ffmpeg
