@@ -9,6 +9,7 @@ The capture plan, Lua and automation have their own tests (test_tac_plan.py and 
 
 from __future__ import annotations
 
+import json
 import math
 from pathlib import Path
 
@@ -195,4 +196,8 @@ def test_models_file_save_and_load(tmp_path: Path) -> None:
 
     loaded = load_trajectory_records(out_file)
     assert loaded == records
+    # Compare the JSON too: a field the model drops would vanish from both sides of ==.
+    assert json.loads(out_file.read_text(encoding="utf-8")) == json.loads(
+        FIXTURE_PATH.read_text(encoding="utf-8")
+    )
     assert [rec.tick for rec in loaded] == [0, 1]

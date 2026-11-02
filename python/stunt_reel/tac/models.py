@@ -74,6 +74,7 @@ class ActorTransform:
     rotation_quat: list[float]
     position_meters: list[float]
     state_mask: int
+    shape_id: int = 0
     joint_angles_bam: list[tuple[int, int]] = field(default_factory=list)
 
     def compute_world_matrix(self) -> list[float]:
@@ -85,6 +86,7 @@ class ActorTransform:
         d: dict[str, Any] = {
             "actor_id": int(self.actor_id),
             "model_name": str(self.model_name),
+            "shape_id": int(self.shape_id),
             "rotation_quat": [float(x) for x in self.rotation_quat],
             "position_meters": [float(x) for x in self.position_meters],
             "state_mask": int(self.state_mask),
@@ -104,6 +106,7 @@ class ActorTransform:
             rotation_quat=[float(x) for x in data["rotation_quat"]],
             position_meters=[float(x) for x in data["position_meters"]],
             state_mask=int(data["state_mask"]),
+            shape_id=int(data.get("shape_id", 0)),
             joint_angles_bam=joint_angles,
         )
 
