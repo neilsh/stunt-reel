@@ -73,6 +73,11 @@ description = "Link the shared data root and the cached Python environment into 
 run = "python python/scripts/worktree_init.py init"
 env = { PYTHONPATH = "{{config_root}}/python" }
 
+[tasks.seed]
+description = "Clone a built target/ from another checkout into this one's empty target/ (ADR 0030)"
+run = "python python/scripts/worktree_init.py seed"
+env = { PYTHONPATH = "{{config_root}}/python" }
+
 [tasks.clean]
 description = "Report this worktree's build outputs; remove them with --yes (mise run clean -- --yes), or rotate parity render trees only (mise run clean -- --parity --keep 3 --yes)"
 run = "uv run python python/scripts/worktree_init.py clean"

@@ -14,6 +14,8 @@ need selective rotation.  ``reap`` removes merged worktrees, including branches 
 request was squash-merged (found with ``gh``): it unlinks every link
 into the data root, proves none remain, and only then lets git delete the checkout,
 because git's worktree removal has recursed through Windows junctions on some builds.
+``init`` (and ``seed`` on its own) also clones another checkout's built ``target/`` into an
+empty one on a ReFS volume, so the first build compiles almost nothing (ADR 0030).
 """
 
 from __future__ import annotations
@@ -53,6 +55,7 @@ from stunt_reel.dataroot import (
     shared_target,
     sweep_orphan_envs,
 )
+from stunt_reel.target_seed import SeedOutcome, seed
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -231,6 +234,7 @@ def _init(migrate: bool) -> int:
     stale = sweep_orphan_envs()
     if stale:
         print(f"  - {len(stale)} environment(s) whose checkout is gone")
+    print(_seed_target())
     environment = env_target(REPO_ROOT) if venv is not None else None
     if environment is not None and _uv_venv(environment):
         return 1
@@ -249,6 +253,39 @@ def _init(migrate: bool) -> int:
         print(f"\n{problems} path(s) unresolved; see corpus/README.md for the archive layout")
         return 1
     return 0
+
+
+def _rustc_vv() -> str | None:
+    """``rustc -vV``, or ``None`` when rustc is not on PATH or fails."""
+    rustc = shutil.which("rustc")
+    if rustc is None:
+        return None
+    result = subprocess.run(  # noqa: S603 - fixed argv, rustc resolved from PATH
+        [rustc, "-vV"], capture_output=True, text=True, check=False
+    )
+    return result.stdout if result.returncode == 0 else None
+
+
+def _seed_target() -> str:
+    """Seed this checkout's empty target/ from another checkout; one line saying what happened."""
+    try:
+        rustc_vv = _rustc_vv()
+        if rustc_vv is None:
+            outcome = SeedOutcome("skipped", "rustc not on PATH")
+        else:
+            outcome = seed(
+                REPO_ROOT,
+                checkouts=[worktree.path for worktree in _worktrees(REPO_ROOT)],
+                rustc_vv=rustc_vv,
+                cargo_home=cache_root() / "cargo",
+            )
+    except Exception as error:
+        outcome = SeedOutcome("failed", str(error))
+    if outcome.status == "seeded":
+        return f"  + target/ seeded {outcome.detail}"
+    if outcome.status == "skipped":
+        return f"  - target/ not seeded: {outcome.detail}"
+    return f"  ! seed: {outcome.detail}"
 
 
 def _tree_footprint(path: Path) -> tuple[int, int]:
@@ -881,6 +918,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="convert an old-layout shared root, then move existing in-checkout data into it before linking",
     )
+    commands.add_parser("seed", help="clone another checkout's built target/ into an empty one")
     clean = commands.add_parser("clean", help="report or remove per-worktree build outputs")
     clean.add_argument("--yes", action="store_true", help="actually remove them")
     clean.add_argument(
@@ -917,6 +955,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "init":
         return _init(bool(args.migrate))
+    if args.command == "seed":
+        print(_seed_target())
+        return 0
     if args.command == "reap":
         return _reap(
             bool(args.yes),
