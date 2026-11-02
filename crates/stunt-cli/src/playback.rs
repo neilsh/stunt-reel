@@ -80,10 +80,11 @@ pub(crate) struct TickRange {
 }
 
 impl TickRange {
-    /// Resolves an inclusive span of 0-based ticks into film-clock bounds, clamping the
-    /// last tick to the film clock.
+    /// Resolves an inclusive span of 0-based ticks into film-clock bounds, clamping both
+    /// ticks to the film clock, so a span wholly past the end plays only the end hold.
     fn new(span: Option<TickSpan>, total_ticks: usize) -> Self {
         let (start, last) = span.map_or((0, total_ticks), |span| (span.first(), span.last()));
+        let start = start.min(total_ticks);
         let end_hold = last.saturating_add(1).min(total_ticks + 1).max(start + 1);
         let video_span = end_hold.min(total_ticks).max(start + 1);
         Self {
@@ -285,6 +286,12 @@ mod tests {
         assert_eq!(
             bounds(TickRange::new(Some(TickSpan::new(0, 99999)), 1342)),
             (0, 1343, 1342)
+        );
+        // A span wholly past the end clamps its first tick too: it plays the end hold,
+        // labelled 1342, not a tick 1343 the film clock never reaches.
+        assert_eq!(
+            bounds(TickRange::new(Some(TickSpan::new(1343, 1343)), 1342)),
+            (1342, 1343, 1343)
         );
     }
 
