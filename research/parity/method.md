@@ -53,10 +53,10 @@ The tables are checked: `report_doc.rs` in `crates/stunt-cli/src/parity/` runs `
 | `mean_ssim_scored` | number or null | Mean SSIM over scored frames (the headline); null when none scored. |
 | `i6_gate` | object | Whether `mean_ssim_scored` reaches each `[I6]` threshold. |
 | `mean_iou_scored` | number or null | Mean IoU over scored frames. |
-| `mean_index_agreement_scored` | number or null | Mean fraction of pixels with the same palette index, over scored frames. |
+| `mean_index_agreement_scored` | number or null | Mean of `index_agreement` over scored frames (each over its frame's non-overlay pixels). |
 | `mean_loss_by_class_scored` | object or null | Mean SSIM loss per layer class over scored frames; keys are the classes below. |
-| `scored_frames` | number | Frames at or above the fade floor. |
-| `excluded_frames` | number | Matched frames below the fade floor (reported, not scored). `frames` = `scored_frames` + `excluded_frames`. |
+| `scored_frames` | number | Frames whose `scored` is true: authored fade at or above the floor, or no authored fade. |
+| `excluded_frames` | number | Matched frames whose authored fade is below the floor (reported, not scored). `frames` = `scored_frames` + `excluded_frames`. |
 | `per_frame` | list | One object per matched frame, in capture order (next table). |
 <!-- /fields -->
 
@@ -69,11 +69,11 @@ The tables are checked: `report_doc.rs` in `crates/stunt-cli/src/parity/` runs `
 | `film_tick` | number | The film clock the frame was matched on; the key `--compare` joins reports by. |
 | `ssim` | number | SSIM against the capture. |
 | `iou` | number | Mask IoU against the capture. |
-| `index_agreement` | number or null | Fraction of pixels whose palette index equals the capture's. |
+| `index_agreement` | number or null | Fraction of non-overlay pixels whose palette index equals the capture's (overlay pixels leave both counts; 1.0 if every pixel is overlay). |
 | `loss_by_class` | object or null | This frame's SSIM loss split by layer class; keys are the classes below. |
 | `fade_level` | number or null | Fade level measured from the captured palette (about 1.0 when unfaded). |
 | `authored_fade_level` | number or null | Fade level the film authored at this tick, when the render recorded it. |
-| `scored` | bool or null | True when `fade_level` reached the floor, so the frame counts in the `*_scored` means. |
+| `scored` | bool or null | True when `authored_fade_level` reaches `min_fade_level`, or when it is null (no authored entry); the measured `fade_level` is only a cross-check (ADR 0005). Scored frames count in the `*_scored` means. |
 <!-- /fields -->
 
 **`i6_gate`** of `report.json`:
@@ -107,9 +107,9 @@ The tables are checked: `report_doc.rs` in `crates/stunt-cli/src/parity/` runs `
 | Key | Type | Meaning |
 |---|---|---|
 | `basis` | string | `"scored"` (SSIM over frames scored in both reports) or `"all"` (every common frame; a report predates fade scoring). |
-| `common_frames` | number | Frames (by `film_tick`) present in both reports; the means cover only these. |
-| `before_only_frames` | number | Frames only the previous report holds. |
-| `after_only_frames` | number | Frames only the fresh report holds. |
+| `common_frames` | number | Frames (by `film_tick`) in both reports among those `basis` selects (with `"scored"`, scored in each report); the means cover only these. |
+| `before_only_frames` | number | Frames selected by `basis` in the previous report but not the fresh one; a tick in both but scored only before counts here. |
+| `after_only_frames` | number | Frames selected by `basis` in the fresh report but not the previous one. |
 | `changed_threshold` | number | SSIM change beyond which a frame counts as improved or regressed (0.005). |
 | `mean_ssim` | object | Mean SSIM before, after and their difference over the common frames. |
 | `mean_iou` | object | The same for IoU. |
