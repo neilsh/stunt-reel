@@ -85,6 +85,10 @@ The capture shows four large aircraft resting on a sand flat (one red biplane, g
 
 _Found 2026-10-22; see the [parity log](log.md)._
 
+### 2.4 Title cards: the credits text we do not draw
+
+`[Bounded Observation]`, 2026-11-01. View slot 3 is a static rig (eye 3.2 m, rotation only) that frames nothing: it points about 89 degrees away from every drawn slot. It is the view for three shots, ticks 0–760, 1519–2055 and 3641–3822, which hold 134 of the 346 frames in the `vault-intro` reference. Over the first two, `credits_set` (`0x99`) counts down `DISNEY INTRO REEL` / `15` to `1` every 50 ticks, and `credits_clear` (`0x98`) ends each run at ticks 759 and 1519 (`mise run flm-events`). The capture is a black screen with that two-line text centred (tick 103: `DISNEY INTRO REEL` over `13`); `stuntreel` draws the black screen without the text, because nothing in the renderer draws the credits string that `PLAYONE.EXE` draws after the 3D scene (`0x58BD`, [`../playone-exe/sod-vm.md`](../playone-exe/sod-vm.md)). Per-shot mean SSIM over those 134 frames is 0.485 on `fix/gvpoly-colour`, the film's lowest-scoring group by far, and it does not move with the camera height (§ Ruled out in [`framing-and-actors.md`](framing-and-actors.md#ruled-out)).
+
 ## Ruled out
 
 - Near-clip plane 0.5 m to 0.05 m on `COL3-2.FLM`: frame unchanged.
@@ -101,3 +105,4 @@ _Found 2026-10-22; see the [parity log](log.md)._
 2. Inspect `COL3-2.FLM` pixels with `--sidata` to split the 0.127 index agreement into studio gap versus night palette.
 3. Find the INTRO ticks 2690-2850 view: slot selection, aim-at target or Euler composition (section 2.1).
 4. Find which path places the parked aircraft in the INTRO montage (section 2.3).
+5. Draw the credits overlay (`0x99` lines, cleared by `0x98`) for the INTRO title cards (section 2.4): font, position and colour from `PLAYONE.EXE`'s `0x58BD` routine or the capture pixels. 134 of 346 reference frames depend on it.

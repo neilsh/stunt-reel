@@ -25,6 +25,13 @@ All scores `mean_ssim_scored`, CTRY / INTRO unless a single film is named. Basel
 * Hero lift (CTRY): +0.3 m **0.780**, +0.6 m 0.775, +1.0 m 0.768, -0.3 m 0.766; by `k * ground_y_offset` k = 1 0.780, k = 2 0.774. INTRO, every actor lifted one extra `ground_y_offset` 0.668, two 0.656.
 * Second `ground_y_offset` per shape, `DBG_GROUND_LIFT` k times (2026-10-23): 1 **0.7732 / 0.6799**, 1.5 0.7652 / 0.6799, 2 0.7623 / 0.6789, 2.5 0.7576 / 0.6775. Only k = 1 is near the peak; the CTRY hero's ~0.3 m is per-actor, not a shape-wide convention.
 
+**Eye height per view slot** (2026-11-01, `fix/gvpoly-colour` at 0.7843 / 0.5189, [log row](log.md)). The hypothesis: each camera is a prop slot, so the eye might sit at a per-prop lens point, which would explain why one global `dy` helped CTRY and cost INTRO. Every view slot in both films is an undrawn rig (no shape, [`flm.md` § 3.5](../formats/flm.md#35-camera-channel-architecture--director-cuts-i4)), so a lens point could only be keyed by slot. `DBG_EYE_DY_SLOT`/`DBG_EYE_DY` moved the eye (aim unchanged) for one slot at a time, -1.0 to +1.0 m, scored as the mean SSIM over that slot's frames only:
+* CTRY slot 3 (70 frames) and slot 2 (51): best at 0; -0.3 m costs 0.012 and 0.005. The 2026-10-22 -0.3 m gain is gone since the aircraft fixes.
+* INTRO slot 2 (132 frames): +0.022 at both -1.0 and +0.6 m, -0.006 at -0.3 m: not monotonic, and against CTRY's slot 2 optimum of 0. The crop at tick 899 moves the horizon 2-4 px; the ground below it differs more.
+* INTRO slot 4 (45): +0.004 at +0.3 m, within its noise; slot 1 (35): +0.018 at +0.3 m, few frames. INTRO slot 3 (134): no change at any height; it is the title card (film-segments.md § 2.4).
+
+No offset is shared by one slot across films or by the slots of one film: neither a per-slot nor a global eye offset.
+
 **Field of view** (`DBG_FOV_SCALE`, 2026-10-23): 0.9 0.7638 / 0.6641, 0.95 0.7716 / 0.6708, 1.0 0.7713 / **0.6775**, 1.05 0.7627 / 0.6748, 1.1 0.7541 / 0.6689. Flat between 0.95 and 1.0 on CTRY, peak at 1.0 on INTRO: not the residual. (The per-frame lens zoom adopted later is in the log.)
 
 **Single framing offset.** Normalised cross-correlation over 23 sample frames peaks at median dy -4 px, dx 0, but spread -10 to +5 px and peak correlation only 0.28 to 0.83: geometry error that varies with the camera, not a rigid shift. Capture-shift scores are in [`attribution.md`](attribution.md#ruled-out).
