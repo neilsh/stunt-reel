@@ -6,13 +6,14 @@ use crate::anchor::AnchorPoint;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::contracts::shape::{NodeId, NodeKind, SodModelIr};
+use crate::contracts::shape::{NodeId, NodeKind, SodModelIr, VisibilityCondition};
 use crate::sod::DECAL_FLAG_BIT;
 use crate::sod::vm::compute_polygon_normal;
 use crate::sod::{
     CENSUS_SKIPS, DecodeMode, OP_ADDV, OP_CLRV, OP_COLOR, OP_DOT, OP_GETV, OP_ID, OP_INTV,
-    OP_LINECOL, OP_MOVETO, OP_NEGV, OP_POLYZ, OP_PUTV, OP_RETURN, OP_SHLV, OP_SHRV, OP_SPHERE,
-    OP_SUBV, OP_TAP, OP_VECTORS, OP_ZLINETO, SodError, SodStop, SodStopReason, decode_sod,
+    OP_LINECOL, OP_MOVETO, OP_NEGV, OP_POLYZ, OP_PUTV, OP_RETURN, OP_SHLV, OP_SHRV, OP_SORT,
+    OP_SPHERE, OP_SUBV, OP_TAP, OP_VECTORS, OP_ZLINETO, SodError, SodStop, SodStopReason,
+    decode_sod,
 };
 
 /// Decodes `data` strictly with no anchor table.
@@ -480,4 +481,263 @@ fn test_census_skip_table_never_shadows_a_real_handler() {
             skip.mnemonic
         );
     }
+}
+
+/// A header and five non-coplanar points in registers 0..=4, for the `OP_SORT` tests.
+fn sort_prelude() -> Vec<u8> {
+    let mut bytes = make_sod_header(100, 0, 0, 0);
+    bytes.extend_from_slice(&OP_VECTORS.to_le_bytes());
+    bytes.extend_from_slice(&5u16.to_le_bytes());
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    for p in [
+        [0i16, 0, 0],
+        [10, 0, 0],
+        [0, 10, 0],
+        [0, 0, 10],
+        [10, 10, 10],
+    ] {
+        for c in p {
+            bytes.extend_from_slice(&c.to_le_bytes());
+        }
+    }
+    bytes
+}
+
+/// `COLOR colour; POLYZ 3 regs; RETURN`: 16 bytes.
+fn sort_branch(bytes: &mut Vec<u8>, colour: u16, regs: [u16; 3]) {
+    bytes.extend_from_slice(&OP_COLOR.to_le_bytes());
+    bytes.extend_from_slice(&colour.to_le_bytes());
+    bytes.extend_from_slice(&OP_POLYZ.to_le_bytes());
+    bytes.extend_from_slice(&3u16.to_le_bytes());
+    for r in regs {
+        bytes.extend_from_slice(&(r * 12).to_le_bytes());
+    }
+    bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+}
+
+#[test]
+fn test_sort_runs_both_branches_and_the_continuation() {
+    // `SORT first second _` at `op`: the inline branch runs to its RETURN, then the branch at
+    // `op + 4 + second`, then the stream continues at `op + 2 + first` (FreeFlight `siobj.cpp`).
+    let mut bytes = sort_prelude();
+    let op = bytes.len();
+    bytes.extend_from_slice(&OP_SORT.to_le_bytes());
+    bytes.extend_from_slice(&38u16.to_le_bytes()); // op + 2 + 38 = op + 40
+    bytes.extend_from_slice(&20u16.to_le_bytes()); // op + 4 + 20 = op + 24
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    sort_branch(&mut bytes, 5, [0, 1, 2]); // op + 8
+    sort_branch(&mut bytes, 9, [0, 1, 3]); // op + 24
+    sort_branch(&mut bytes, 7, [0, 2, 4]); // op + 40
+    let last_return = bytes.len() - 2;
+
+    let ir = decode(&bytes, "SORT").expect("decode sort");
+    let mut colours: Vec<u8> = ir.vertices.iter().map(|v| v.palette_index).collect();
+    colours.sort_unstable();
+    colours.dedup();
+    assert_eq!(colours, vec![5, 7, 9]);
+    assert_eq!(ir.indices.len(), 9);
+    assert_eq!(ir.decode().expect("record").returned_at, Some(last_return));
+    assert_eq!(op + 54, last_return);
+}
+
+#[test]
+fn test_sort_with_a_backward_target_ends_at_the_first_return() {
+    let mut bytes = sort_prelude();
+    let op = bytes.len();
+    bytes.extend_from_slice(&OP_SORT.to_le_bytes());
+    bytes.extend_from_slice(&38u16.to_le_bytes());
+    bytes.extend_from_slice(&0xFFF0u16.to_le_bytes()); // second branch far outside the chunk
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    sort_branch(&mut bytes, 5, [0, 1, 2]);
+    sort_branch(&mut bytes, 9, [0, 1, 3]);
+    sort_branch(&mut bytes, 7, [0, 2, 4]);
+
+    let ir = decode(&bytes, "SORT-BAD").expect("decode malformed sort");
+    assert_eq!(ir.indices.len(), 3);
+    assert_eq!(ir.decode().expect("record").returned_at, Some(op + 22));
+}
+
+#[test]
+fn test_shade16_picks_the_ramp_entry_from_the_normal() {
+    // `SHADES 0 2 (0,-32767,0) (0,32767,0)`, then `SHADE16 norm base; POLYZ` per polygon.
+    // `PLAYONE` 0xA550: colour = base + max(0, (s >> 2) >> 8 [- 2 when base is 0x10]).
+    let mut bytes = sort_prelude();
+    bytes.extend_from_slice(&0x0156u16.to_le_bytes());
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    bytes.extend_from_slice(&2u16.to_le_bytes());
+    for n in [[0i16, -32767, 0], [0, 32767, 0]] {
+        for c in n {
+            bytes.extend_from_slice(&c.to_le_bytes());
+        }
+    }
+    for (norm, base, regs) in [
+        (0u16, 0x30u16, [0u16, 1, 2]),
+        (2, 0x10, [0, 1, 3]),
+        (2, 0x30, [0, 2, 4]),
+    ] {
+        bytes.extend_from_slice(&0x02B5u16.to_le_bytes());
+        bytes.extend_from_slice(&norm.to_le_bytes());
+        bytes.extend_from_slice(&base.to_le_bytes());
+        bytes.extend_from_slice(&OP_POLYZ.to_le_bytes());
+        bytes.extend_from_slice(&3u16.to_le_bytes());
+        for r in regs {
+            bytes.extend_from_slice(&(r * 12).to_le_bytes());
+        }
+    }
+    bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+    let ir = decode(&bytes, "SHADE16").expect("decode shade16");
+    let colours: Vec<u8> = ir
+        .indices
+        .chunks(3)
+        .map(|t| ir.vertices[t[0] as usize].palette_index)
+        .collect();
+    // Unlit face: base. Lit face: 0x10 + 13 = 29 (the -2 adjustment), 0x30 + 15 = 63.
+    assert_eq!(colours, vec![0x30, 29, 63]);
+}
+
+fn push_words(bytes: &mut Vec<u8>, words: &[u16]) {
+    for w in words {
+        bytes.extend_from_slice(&w.to_le_bytes());
+    }
+}
+
+#[test]
+fn test_gosub_runs_the_subroutine_then_resumes_after_the_call() {
+    use crate::sod::vm::OP_GOSUB;
+    // GOSUB's target is the operand word's address plus the byte offset; RETURN resumes after
+    // the operand. Main (20 bytes): GOSUB, COLOR 7, POLYZ 3, RETURN. Subroutine at op + 20.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_GOSUB, 18]);
+    push_words(
+        &mut bytes,
+        &[OP_COLOR, 7, OP_POLYZ, 3, 0, 24 * 5, 48, OP_RETURN],
+    );
+    sort_branch(&mut bytes, 5, [0, 1, 2]);
+
+    let ir = decode(&bytes, "GOSUB").expect("decode gosub");
+    let colours: Vec<u8> = ir.vertices.iter().map(|v| v.palette_index).collect();
+    assert!(colours.contains(&5), "the subroutine polygon is drawn");
+    assert!(colours.contains(&7), "the caller resumes after the call");
+    assert_eq!(ir.indices.len(), 6);
+}
+
+#[test]
+fn test_centre_stack_offsets_vertices_until_popped() {
+    use crate::sod::vm::{OP_MOVECENTRE, OP_POPCENTRE, OP_PUSHCENTRE};
+    // Register 3 is (0, 0, 10): polygons between MOVECENTRE and POPCENTRE sit 10 units
+    // further along Z, the one after POPCENTRE is back at the origin.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_PUSHCENTRE, OP_MOVECENTRE, 36]);
+    push_words(&mut bytes, &[OP_COLOR, 5, OP_POLYZ, 3, 0, 12, 24]);
+    push_words(&mut bytes, &[OP_POPCENTRE]);
+    push_words(
+        &mut bytes,
+        &[OP_COLOR, 9, OP_POLYZ, 3, 0, 12, 24, OP_RETURN],
+    );
+
+    let ir = decode(&bytes, "CENTRE").expect("decode centre");
+    let z_of = |colour: u8| -> Vec<f32> {
+        ir.vertices
+            .iter()
+            .filter(|v| v.palette_index == colour)
+            .map(|v| v.position[2])
+            .collect()
+    };
+    assert!(z_of(5).iter().all(|z| *z >= 10.0), "{:?}", z_of(5));
+    assert!(z_of(9).iter().all(|z| *z <= 0.0), "{:?}", z_of(9));
+}
+
+#[test]
+fn test_sort_in_a_subroutine_called_twice_runs_every_branch_each_time() {
+    use crate::sod::vm::OP_GOSUB;
+    // Main at p: GOSUB +8 (-> p + 10), GOSUB +4 (-> p + 10), RETURN; the subroutine at p + 10
+    // is the three-branch SORT of `test_sort_runs_both_branches_and_the_continuation`.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_GOSUB, 8, OP_GOSUB, 4, OP_RETURN]);
+    push_words(&mut bytes, &[OP_SORT, 38, 20, 0]);
+    sort_branch(&mut bytes, 5, [0, 1, 2]);
+    sort_branch(&mut bytes, 9, [0, 1, 3]);
+    sort_branch(&mut bytes, 7, [0, 2, 4]);
+
+    let ir = decode(&bytes, "SORT-TWICE").expect("decode sort twice");
+    assert_eq!(ir.indices.len(), 18, "two calls, three branches each");
+}
+
+/// Index count of the mesh nodes whose visibility is `vis`.
+fn indices_with(ir: &SodModelIr, vis: VisibilityCondition) -> u32 {
+    ir.nodes
+        .iter()
+        .filter(|n| n.visibility == vis)
+        .map(|n| match n.kind {
+            NodeKind::Mesh { index_count, .. } => index_count,
+            _ => 0,
+        })
+        .sum()
+}
+
+#[test]
+fn test_return_from_a_subroutine_restores_the_callers_ifvis_scope() {
+    use crate::sod::vm::{OP_GOSUB, OP_IFVIS};
+    // p: IFVIS 1 over 18 bytes { GOSUB +18 (-> p + 24); COLOR 5; POLYZ A }, RETURN at p + 24 - 2;
+    // the subroutine (COLOR 9; POLYZ B; RETURN) sits past the section, so B is ungated and A,
+    // drawn after the call returns, is still gated.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_IFVIS, 1, 18, OP_GOSUB, 18]);
+    push_words(
+        &mut bytes,
+        &[OP_COLOR, 5, OP_POLYZ, 3, 0, 12, 24, OP_RETURN],
+    );
+    sort_branch(&mut bytes, 9, [0, 1, 3]);
+
+    let ir = decode(&bytes, "IFVIS-GOSUB").expect("decode ifvis gosub");
+    assert_eq!(
+        indices_with(&ir, VisibilityCondition::LodDistanceSq(1000.0)),
+        3
+    );
+    assert_eq!(indices_with(&ir, VisibilityCondition::Always), 3);
+}
+
+#[test]
+fn test_lenient_decode_keeps_geometry_before_a_branch_outside_the_stream() {
+    use crate::sod::vm::OP_GOSUB;
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_COLOR, 5, OP_POLYZ, 3, 0, 12, 24]);
+    let gosub_at = bytes.len();
+    push_words(&mut bytes, &[OP_GOSUB, 0x4000, OP_RETURN]);
+
+    let ir = decode_sod(&bytes, "BAD-GOSUB", None, DecodeMode::Lenient).expect("lenient decode");
+    assert_eq!(ir.indices.len(), 3, "the polygon before the branch is kept");
+    let stop = ir
+        .decode()
+        .expect("record")
+        .stop
+        .expect("a stop is reported");
+    assert_eq!((stop.offset, stop.opcode), (gosub_at, OP_GOSUB));
+    assert!(decode(&bytes, "BAD-GOSUB").is_err(), "strict still fails");
+}
+
+#[test]
+fn test_lenient_decode_keeps_geometry_before_a_two_vertex_polygon() {
+    // Nine corpus models (`7E09`, `PIPER.BIN`, ...) hold a two-vertex `POLYZ`/`GVPOLY` in a
+    // SORT subtree; lenient and census decodes stop there and keep what came before.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_COLOR, 5, OP_POLYZ, 3, 0, 12, 24]);
+    let bad_at = bytes.len();
+    push_words(&mut bytes, &[OP_POLYZ, 2, 0, 12, OP_RETURN]);
+
+    let ir = decode_sod(&bytes, "TWO-VERTEX", None, DecodeMode::Lenient).expect("lenient decode");
+    assert_eq!(ir.indices.len(), 3);
+    let stop = ir
+        .decode()
+        .expect("record")
+        .stop
+        .expect("a stop is reported");
+    assert_eq!(
+        (stop.offset, stop.opcode, stop.reason),
+        (bad_at, OP_POLYZ, SodStopReason::MalformedPolygon)
+    );
+    assert!(matches!(
+        decode(&bytes, "TWO-VERTEX"),
+        Err(SodError::MalformedPolygon { .. })
+    ));
 }

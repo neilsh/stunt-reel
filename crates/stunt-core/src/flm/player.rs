@@ -79,6 +79,20 @@ pub(crate) fn dos_to_i1_quat(q: [f32; 4]) -> [f32; 4] {
     out
 }
 
+/// Map an actor orientation `[x, y, z, w]` from DOS axes to `[I1]`: the conjugate
+/// `q' = q_z180 * q * q_z180^-1 = (-x, -y, z, w)`.
+///
+/// A shape's vertices are decoded already in `[I1]` (+Y up: wheels at the bottom), while its
+/// slot rotation acts in DOS axes, so the rotation is carried into `[I1]` on both sides.
+/// Left-multiplying alone (`dos_to_i1_quat`, right for the view) rolls every shape 180°
+/// about Z, upside down and mirrored (`INTRO.FLM` tick 1009: the triplane's stacked wings sank
+/// below the ground; research/parity/framing-and-actors.md § 1).
+#[inline]
+pub(crate) fn dos_to_i1_actor_quat(q: [f32; 4]) -> [f32; 4] {
+    let [x, y, z, w] = q;
+    [-x + 0.0, -y + 0.0, z, w]
+}
+
 impl SlotState {
     /// Slot position as 16.16 fixed-point converted to meters, still in DOS axes.
     #[inline]
@@ -121,6 +135,12 @@ impl SlotState {
     /// A zero rotation evaluates to `q_z180 = [0, 0, 1, 0]`, not the identity.
     pub fn rotation_quat(&self) -> [f32; 4] {
         dos_to_i1_quat(self.rotation_quat_dos())
+    }
+
+    /// Orientation of the shape this slot draws, in `[I1]`: the DOS-axes rotation through
+    /// `dos_to_i1_actor_quat`. A zero rotation evaluates to the identity.
+    pub fn actor_rotation_quat(&self) -> [f32; 4] {
+        dos_to_i1_actor_quat(self.rotation_quat_dos())
     }
 }
 
@@ -538,7 +558,7 @@ impl<'a> FlmPlayer<'a> {
             });
 
             let position_meters = slot.position_meters();
-            let rotation_quat = slot.rotation_quat();
+            let rotation_quat = slot.actor_rotation_quat();
             let state_mask = if slot.type_flags != 0 {
                 u16::from(slot.type_flags)
             } else {

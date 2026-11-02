@@ -3,9 +3,10 @@
 //! Evaluates binary `.FLM` film streams into [`crate::contracts::trajectory::TrajectoryRecord`]
 //! time-series streams adhering to Seam 2 and Invariants `[I1]`, `[I4]`.
 //!
-//! Slots are authored in DOS axes (GLOSSARY.md); [`SlotState::position_meters`] and
-//! [`SlotState::rotation_quat`] convert them to `[I1]`, so every evaluated record, camera
-//! included, is already `[I1]` and consumers apply no further axis heuristic.
+//! Slots are authored in DOS axes (GLOSSARY.md); [`SlotState::position_meters`],
+//! [`SlotState::rotation_quat`] (the view) and [`SlotState::actor_rotation_quat`] (drawn
+//! shapes) convert them to `[I1]`, so every evaluated record, camera included, is already
+//! `[I1]` and consumers apply no further axis heuristic.
 
 mod interpolate;
 mod oracle;

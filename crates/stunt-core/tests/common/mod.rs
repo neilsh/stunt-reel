@@ -23,14 +23,13 @@ pub(crate) fn quat_norm_diff(q: [f32; 4]) -> f32 {
     ((q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]).sqrt() - 1.0).abs()
 }
 
-/// Raw `rz` BAM of a half turn (180 degrees) about Z.
+/// Raw `rz` BAM the fixtures author actors with: zero.
 ///
-/// Slots are authored in DOS axes (GLOSSARY.md), where a zero rotation evaluates to `q_z180`
-/// in `[I1]`. Authoring the actor with a half-turn `rz` makes the evaluated `[I1]`
-/// orientation the identity, `[0, 0, 0, 1]`, as the oracle trajectory records it. Cameras
-/// keep `rz = 0` (it is also their roll) and their look direction is unaffected, because
-/// `q_z180` fixes the `+Z` camera axis.
-pub(crate) const ACTOR_RZ_BAM: u16 = 0x8000;
+/// Slots are authored in DOS axes (GLOSSARY.md). An actor's rotation is converted to `[I1]` by
+/// conjugation with `q_z180`, so a zero rotation evaluates to the identity, `[0, 0, 0, 1]`, as
+/// the oracle trajectory records it. (Before that, actors took `q_z180 * q` like the view and
+/// fixtures authored a half turn, `0x8000`, to cancel it.)
+pub(crate) const ACTOR_RZ_BAM: u16 = 0;
 
 /// Append a full-form `INTERP` opcode for a slot, authoring an `[I1]` position in DOS axes.
 ///

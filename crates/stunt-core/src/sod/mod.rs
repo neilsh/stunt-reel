@@ -18,11 +18,13 @@ pub use crate::contracts::shape::{DecodeMode, DecodeRecord, SodHeader, SodStop, 
 pub use decal::{DECAL_FLAG_BIT, EPSILON_DISPLACEMENT};
 pub use tessellate::{IDENTITY_MATRIX, decode_sod};
 pub use vm::{
-    CENSUS_SKIPS, CensusSkip, OP_ADDV, OP_BLOCK, OP_CLRV, OP_COLOR, OP_DOT, OP_END, OP_GETV,
-    OP_GVPOLY, OP_GVPOLY16, OP_ID, OP_IFVIS, OP_INTV, OP_IPG, OP_LINECOL, OP_MOVETO, OP_NEGV,
-    OP_PERFDISK, OP_PERS, OP_POLYZ, OP_PUTV, OP_REJ, OP_RETURN, OP_SHADE16, OP_SHADES, OP_SHLV,
-    OP_SHRV, OP_SORT, OP_SPHERE, OP_SUBV, OP_TAP, OP_VEC, OP_VECTORS, OP_ZLINETO, SOD_SCALE_TABLE,
-    census_skip, compute_scale_factor,
+    CENSUS_SKIPS, CensusSkip, OP_ADDV, OP_BLOCK, OP_BVGT, OP_CLRV, OP_COLOR, OP_DOT, OP_END,
+    OP_GETV, OP_GOSUB, OP_GOTO, OP_GVPOLY, OP_GVPOLY16, OP_ID, OP_IFVIS, OP_INTV, OP_IPG,
+    OP_LINECOL, OP_MOVECENTRE, OP_MOVETO, OP_NEGV, OP_PERFDISK, OP_PERS, OP_POLYZ, OP_POPCENTRE,
+    OP_POPRELMAT, OP_PUSHCENTRE, OP_PUSHRELMAT, OP_PUTV, OP_REJ, OP_RETURN, OP_ROTX, OP_ROTY,
+    OP_ROTZ, OP_SHADE1, OP_SHADE2, OP_SHADE16, OP_SHADE216, OP_SHADES, OP_SHLV, OP_SHRV, OP_SORT,
+    OP_SPHERE, OP_SUBV, OP_TAP, OP_VEC, OP_VECTORS, OP_ZLINETO, SOD_SCALE_TABLE, census_skip,
+    compute_scale_factor,
 };
 
 impl SodStop {
@@ -36,6 +38,17 @@ impl SodStop {
             SodStopReason::MissingAnchors => SodError::MissingAnchors {
                 opcode: self.opcode,
                 offset: self.offset,
+            },
+            SodStopReason::MalformedBranch => SodError::MalformedOpcode {
+                opcode: self.opcode,
+                offset: self.offset,
+                reason: "branch target outside the stream".to_string(),
+            },
+            SodStopReason::MalformedPolygon => SodError::MalformedPolygon {
+                reason: format!(
+                    "opcode 0x{:04X} with fewer than three vertices at offset 0x{:04X}",
+                    self.opcode, self.offset
+                ),
             },
         }
     }

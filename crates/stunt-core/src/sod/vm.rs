@@ -53,10 +53,23 @@ pub const OP_POLYZ: u16 = 0x00F3;
 pub const OP_SPHERE: u16 = 0x00FC;
 /// Emit a perforated disc ring (`center_reg, r_in, r_out`).
 pub const OP_PERFDISK: u16 = 0x010E;
+/// Model-space light for `OP_SHADES` (1.0 = 32767; decoded model space is +Y up, so this
+/// points down); `[Hypothesis]`, and its sign was chosen before actors were stood upright
+/// (`research/playone-exe/sod-vm.md` § 8.5).
+const SHADE_LIGHT: [i64; 3] = [0, -32767, 0];
+
+/// Branches (SORT pushes, `GOTO`, `GOSUB`) one walk may take before it is malformed.
+const MAX_BRANCHES: usize = 4096;
 /// Set the active polygon fill palette index (`color: u16`, `0..=255`).
 pub const OP_COLOR: u16 = 0x0129;
 /// Batch-upload shading normal vectors (`count, ...triplets`).
 pub const OP_SHADES: u16 = 0x0156;
+/// Colour a following polygon from a front-facing lighting ramp (`normal, ramp base`).
+pub const OP_SHADE1: u16 = 0x0144;
+/// Back-facing counterpart of [`OP_SHADE1`] (`normal, ramp base`).
+pub const OP_SHADE2: u16 = 0x014D;
+/// Back-facing 16-level ramp (`normal, ramp base`).
+pub const OP_SHADE216: u16 = 0x02C7;
 /// Emit a normal-lit shaded polygon (`count, regs..., normal, shades...`).
 pub const OP_GVPOLY: u16 = 0x0168;
 /// Conditionally skip the enclosed section based on a visibility code (`cond, size`).
@@ -65,6 +78,28 @@ pub const OP_IFVIS: u16 = 0x017A;
 pub const OP_SORT: u16 = 0x018C;
 /// End the display list or return from a bytecode subroutine (no operands).
 pub const OP_RETURN: u16 = 0x0195;
+/// Push the rotation-centre origin (no operands).
+pub const OP_PUSHCENTRE: u16 = 0x007E;
+/// Pop the rotation-centre origin (no operands).
+pub const OP_POPCENTRE: u16 = 0x0087;
+/// Add `regs[reg_off / 12]` to the rotation-centre origin (`reg_off: u16`).
+pub const OP_MOVECENTRE: u16 = 0x0090;
+/// Push the relative orientation matrix (no operands).
+pub const OP_PUSHRELMAT: u16 = 0x01E6;
+/// Pop the relative orientation matrix (no operands).
+pub const OP_POPRELMAT: u16 = 0x01EF;
+/// Rotate about Y by an animation variable (`var_off: u16`).
+pub const OP_ROTY: u16 = 0x01DD;
+/// Rotate about X by an animation variable (`var_off: u16`).
+pub const OP_ROTX: u16 = 0x02E2;
+/// Rotate about Z by an animation variable (`var_off: u16`).
+pub const OP_ROTZ: u16 = 0x02EB;
+/// Branch when an animation variable is at least a value (`var_off, val, rel`).
+pub const OP_BVGT: u16 = 0x02FD;
+/// Jump by a signed byte offset from the operand word (`rel_offset: i16`).
+pub const OP_GOTO: u16 = 0x019E;
+/// Call by a signed byte offset from the operand word; `RETURN` resumes after it.
+pub const OP_GOSUB: u16 = 0x01A7;
 /// Alias for [`OP_RETURN`]: ends the display list (no operands).
 pub const OP_END: u16 = 0x0195;
 /// 3D bounding-box culling test (`box_reg, count, ...faces`).
@@ -487,6 +522,8 @@ pub(crate) fn run_vm(
     let mut regs = [[0.0f32; 3]; 1024];
     let mut cur_vert = [0.0f32; 3];
     let mut cur_color = 0u8;
+    // Per-normal shade words (`PLAYONE` `work:0x7468`), indexed by byte offset / 2.
+    let mut shade_words = [0i32; 2048];
     // Line colour (`OP_LINECOL`); falls back to the fill colour until first set.
     let mut line_color: Option<u8> = None;
     // Pen position in metres for `OP_MOVETO` / `OP_ZLINETO`.
@@ -496,6 +533,15 @@ pub(crate) fn run_vm(
     let mut returned_at: Option<usize> = None;
     let mut current_visibility = VisibilityCondition::Always;
     let mut visibility_scope_end = 0usize;
+    // Where each pending `RETURN` resumes, with the `IFVIS` scope to restore there: a SORT
+    // pushes its second branch and its continuation, a GOSUB the instruction after it.
+    let mut branch_resume: Vec<(usize, VisibilityCondition, usize)> = Vec::new();
+    // Rotation-centre origin (raw units) added to every emitted vertex, and its stack.
+    let mut relpos = [0.0f32; 3];
+    let mut centre_stack: Vec<[f32; 3]> = Vec::new();
+    // Branches taken (SORT pushes, GOTO, GOSUB); every target lies ahead except a GOTO or
+    // GOSUB's, so this budget is what ends a malformed loop.
+    let mut subs_run = 0usize;
 
     let total_len = data.len();
 
@@ -513,6 +559,10 @@ pub(crate) fn run_vm(
 
         let op_offset = r.pos();
         let opcode = r.read_u16_le()?;
+        // Set by a branch that leaves the stream or spends the budget, or by a polygon with
+        // fewer than three vertices: strict fails, lenient and census keep the geometry so far
+        // and report the stop.
+        let mut malformed: Option<SodStopReason> = None;
 
         match opcode {
             OP_CLRV => {
@@ -661,7 +711,7 @@ pub(crate) fn run_vm(
             OP_MOVETO | OP_ZLINETO | OP_DOT => {
                 // [Hypothesis] one word: register byte offset (`/12` = register).
                 let reg_off = r.read_u16_le()?;
-                let raw_v = regs[((reg_off / 12) & 1023) as usize];
+                let raw_v = add3(regs[((reg_off / 12) & 1023) as usize], relpos);
                 let p = [
                     raw_v[0] * scale_factor,
                     (raw_v[1] + f32::from(ground_y_offset)) * scale_factor,
@@ -680,86 +730,92 @@ pub(crate) fn run_vm(
             OP_POLYZ => {
                 let count = r.read_u16_le()?;
                 if count < 3 {
-                    return Err(SodError::MalformedPolygon {
-                        reason: format!(
-                            "OP_POLYZ with count {count} < 3 at offset 0x{op_offset:04X}"
-                        ),
+                    if policy == Policy::Strict {
+                        return Err(SodError::MalformedPolygon {
+                            reason: format!(
+                                "OP_POLYZ with count {count} < 3 at offset 0x{op_offset:04X}"
+                            ),
+                        });
+                    }
+                    malformed = Some(SodStopReason::MalformedPolygon);
+                } else {
+                    let mut poly_verts = Vec::with_capacity(count as usize);
+                    for _ in 0..count {
+                        let reg_off = r.read_u16_le()?;
+                        let reg_idx = ((reg_off / 12) & 1023) as usize;
+                        let raw_v = add3(regs[reg_idx], relpos);
+
+                        // Convert to metric coordinates per Invariant [I1]
+                        let mx = raw_v[0] * scale_factor;
+                        let my = (raw_v[1] + f32::from(ground_y_offset)) * scale_factor;
+                        let mz = raw_v[2] * scale_factor;
+                        poly_verts.push([mx, my, mz]);
+                    }
+
+                    let norm = compute_polygon_normal(&poly_verts);
+                    polygons.push(RawPolygon {
+                        vertices: poly_verts,
+                        palette_index: cur_color,
+                        normal: norm,
+                        flags: 0,
+                        is_decal: false,
+                        visibility: current_visibility,
                     });
                 }
-
-                let mut poly_verts = Vec::with_capacity(count as usize);
-                for _ in 0..count {
-                    let reg_off = r.read_u16_le()?;
-                    let reg_idx = ((reg_off / 12) & 1023) as usize;
-                    let raw_v = regs[reg_idx];
-
-                    // Convert to metric coordinates per Invariant [I1]
-                    let mx = raw_v[0] * scale_factor;
-                    let my = (raw_v[1] + f32::from(ground_y_offset)) * scale_factor;
-                    let mz = raw_v[2] * scale_factor;
-                    poly_verts.push([mx, my, mz]);
-                }
-
-                let norm = compute_polygon_normal(&poly_verts);
-                polygons.push(RawPolygon {
-                    vertices: poly_verts,
-                    palette_index: cur_color,
-                    normal: norm,
-                    flags: 0,
-                    is_decal: false,
-                    visibility: current_visibility,
-                });
             }
             OP_GVPOLY | OP_GVPOLY16 => {
                 let count = r.read_u16_le()?;
                 if count < 3 {
-                    return Err(SodError::MalformedPolygon {
-                        reason: format!(
-                            "GVPOLY with count {count} < 3 at offset 0x{op_offset:04X}"
-                        ),
+                    if policy == Policy::Strict {
+                        return Err(SodError::MalformedPolygon {
+                            reason: format!(
+                                "GVPOLY with count {count} < 3 at offset 0x{op_offset:04X}"
+                            ),
+                        });
+                    }
+                    malformed = Some(SodStopReason::MalformedPolygon);
+                } else {
+                    let mut reg_indices = Vec::with_capacity(count as usize);
+                    for _ in 0..count {
+                        let reg_off = r.read_u16_le()?;
+                        reg_indices.push(((reg_off / 12) & 1023) as usize);
+                    }
+
+                    let norm_off = r.read_u16_le()?;
+                    let norm_reg = ((norm_off / 12) & 1023) as usize;
+
+                    // Skip per-vertex shade offsets
+                    for _ in 0..count {
+                        r.read_u16_le()?;
+                    }
+
+                    let mut poly_verts = Vec::with_capacity(count as usize);
+                    for &r_idx in &reg_indices {
+                        let raw_v = add3(regs[r_idx], relpos);
+                        let mx = raw_v[0] * scale_factor;
+                        let my = (raw_v[1] + f32::from(ground_y_offset)) * scale_factor;
+                        let mz = raw_v[2] * scale_factor;
+                        poly_verts.push([mx, my, mz]);
+                    }
+
+                    let raw_n = regs[norm_reg];
+                    let n_len =
+                        (raw_n[0] * raw_n[0] + raw_n[1] * raw_n[1] + raw_n[2] * raw_n[2]).sqrt();
+                    let norm = if n_len > 1e-12 {
+                        [raw_n[0] / n_len, raw_n[1] / n_len, raw_n[2] / n_len]
+                    } else {
+                        compute_polygon_normal(&poly_verts)
+                    };
+
+                    polygons.push(RawPolygon {
+                        vertices: poly_verts,
+                        palette_index: cur_color,
+                        normal: norm,
+                        flags: 0,
+                        is_decal: false,
+                        visibility: current_visibility,
                     });
                 }
-
-                let mut reg_indices = Vec::with_capacity(count as usize);
-                for _ in 0..count {
-                    let reg_off = r.read_u16_le()?;
-                    reg_indices.push(((reg_off / 12) & 1023) as usize);
-                }
-
-                let norm_off = r.read_u16_le()?;
-                let norm_reg = ((norm_off / 12) & 1023) as usize;
-
-                // Skip per-vertex shade offsets
-                for _ in 0..count {
-                    r.read_u16_le()?;
-                }
-
-                let mut poly_verts = Vec::with_capacity(count as usize);
-                for &r_idx in &reg_indices {
-                    let raw_v = regs[r_idx];
-                    let mx = raw_v[0] * scale_factor;
-                    let my = (raw_v[1] + f32::from(ground_y_offset)) * scale_factor;
-                    let mz = raw_v[2] * scale_factor;
-                    poly_verts.push([mx, my, mz]);
-                }
-
-                let raw_n = regs[norm_reg];
-                let n_len =
-                    (raw_n[0] * raw_n[0] + raw_n[1] * raw_n[1] + raw_n[2] * raw_n[2]).sqrt();
-                let norm = if n_len > 1e-12 {
-                    [raw_n[0] / n_len, raw_n[1] / n_len, raw_n[2] / n_len]
-                } else {
-                    compute_polygon_normal(&poly_verts)
-                };
-
-                polygons.push(RawPolygon {
-                    vertices: poly_verts,
-                    palette_index: cur_color,
-                    normal: norm,
-                    flags: 0,
-                    is_decal: false,
-                    visibility: current_visibility,
-                });
             }
             OP_IFVIS => {
                 let cond_code = r.read_u16_le()?;
@@ -771,7 +827,79 @@ pub(crate) fn run_vm(
                 current_visibility = parse_visibility_condition(cond_code);
                 visibility_scope_end = r.pos() + sec_len;
             }
-            OP_SORT | OP_PERFDISK | OP_VEC => {
+            OP_SORT => {
+                // `siobj.cpp` `case 0x18c`: the three words are byte offsets from the
+                // opcode; the branch after the operands runs first, the second branch is at
+                // `op + 4 + second`, and the stream continues at `op + 2 + first`. Targets
+                // must lie ahead; a SORT re-entered through a loop spends the branch budget.
+                let first = usize::from(r.read_u16_le()?);
+                let second = usize::from(r.read_u16_le()?);
+                r.read_u16_le()?;
+                let second_at = op_offset + 4 + second;
+                let after_at = op_offset + 2 + first;
+                let in_range = |at: usize| at > r.pos() && at < total_len;
+                if in_range(second_at) && in_range(after_at) {
+                    subs_run += 1;
+                    if subs_run > MAX_BRANCHES {
+                        malformed = Some(SodStopReason::MalformedBranch);
+                    } else {
+                        let scope = (current_visibility, visibility_scope_end);
+                        branch_resume.push((after_at, scope.0, scope.1));
+                        branch_resume.push((second_at, scope.0, scope.1));
+                    }
+                }
+            }
+            OP_PUSHCENTRE => centre_stack.push(relpos),
+            OP_POPCENTRE => {
+                if let Some(c) = centre_stack.pop() {
+                    relpos = c;
+                }
+            }
+            OP_MOVECENTRE => {
+                let reg_off = r.read_u16_le()?;
+                relpos = add3(relpos, regs[((reg_off / 12) & 1023) as usize]);
+            }
+            OP_GOTO | OP_GOSUB => {
+                // Target = address of the operand word + signed byte offset (`siobj.cpp`).
+                let operand_at = r.pos();
+                let rel = r.read_i16_le()?;
+                let target = operand_at as i64 + i64::from(rel);
+                subs_run += 1;
+                if target < 10 || target as usize >= total_len || subs_run > MAX_BRANCHES {
+                    malformed = Some(SodStopReason::MalformedBranch);
+                } else {
+                    if opcode == OP_GOSUB {
+                        branch_resume.push((r.pos(), current_visibility, visibility_scope_end));
+                    }
+                    r.set_pos(target as usize);
+                }
+            }
+            OP_PUSHRELMAT | OP_POPRELMAT => {
+                // The relative matrix stays the identity: its only users here are `ROT*`,
+                // and the animation variables they read are zero in a resting pose.
+            }
+            OP_ROTX | OP_ROTY | OP_ROTZ => {
+                // Operand is an animation-variable byte offset; variable 0 is a zero angle.
+                r.read_u16_le()?;
+            }
+            OP_BVGT => {
+                // `variable >= val` branches by `rel` bytes from the third operand word
+                // (si-tools); the animation variable reads zero, so only `val == 0` takes it.
+                let _var = r.read_u16_le()?;
+                let val = r.read_u16_le()?;
+                let operand_at = r.pos();
+                let rel = r.read_u16_le()?;
+                let taken = val == 0;
+                if taken {
+                    let target = operand_at + usize::from(rel);
+                    if target >= total_len {
+                        malformed = Some(SodStopReason::MalformedBranch);
+                    } else {
+                        r.set_pos(target);
+                    }
+                }
+            }
+            OP_PERFDISK | OP_VEC => {
                 r.read_u16_le()?;
                 r.read_u16_le()?;
                 r.read_u16_le()?;
@@ -779,7 +907,7 @@ pub(crate) fn run_vm(
             OP_SPHERE => {
                 let center_off = r.read_u16_le()?;
                 let radius = f32::from(r.read_u16_le()?);
-                let center = regs[((center_off / 12) & 1023) as usize];
+                let center = add3(regs[((center_off / 12) & 1023) as usize], relpos);
                 polygons.extend(sphere_polygons(
                     center,
                     radius,
@@ -889,21 +1017,48 @@ pub(crate) fn run_vm(
                 }
             }
             OP_SHADES => {
-                r.read_u16_le()?;
-                let count = r.read_u16_le()?;
-                for _ in 0..(count as usize) * 3 {
-                    r.read_u16_le()?;
+                // `PLAYONE` 0x9481: `s = -clamp((N . L) >> 16, +-0x3FFF)` with `N`, `L` at
+                // 1.0 = 32767. `L` is handed to the display-list entry per object, so the
+                // renderer's constant `SHADE_LIGHT` (model up) and its sign are `[Hypothesis]`.
+                let first = r.read_u16_le()? as usize;
+                let count = r.read_u16_le()? as usize;
+                for i in 0..count {
+                    let n = [
+                        i64::from(r.read_u16_le()? as i16),
+                        i64::from(r.read_u16_le()? as i16),
+                        i64::from(r.read_u16_le()? as i16),
+                    ];
+                    let dot =
+                        (n[0] * SHADE_LIGHT[0] + n[1] * SHADE_LIGHT[1] + n[2] * SHADE_LIGHT[2])
+                            >> 16;
+                    shade_words[(first / 2 + i) & 2047] = -(dot.clamp(-0x3FFF, 0x3FFF) as i32);
                 }
             }
-            OP_SHADE16 => {
-                // Normal register and ramp index. The lighting state is not modelled
-                // yet, but the established two-word width keeps the stream aligned.
-                r.read_u16_le()?;
-                r.read_u16_le()?;
+            OP_SHADE1 | OP_SHADE2 | OP_SHADE16 | OP_SHADE216 => {
+                // `PLAYONE` 0xA526 / 0xA519 / 0xA550 / 0xA55D into the shared tail 0xA52F: the
+                // polygon colour is `base + max(0, (s >> 1 [>> 1 for the 16-level forms]) >> 8
+                // + adj)`, `adj = -2` when `base == 0x10`; the SHADE2 forms negate `s`.
+                let norm = r.read_u16_le()? as usize;
+                let base = i32::from(r.read_u16_le()? as u8);
+                let mut s = shade_words[(norm / 2) & 2047];
+                if matches!(opcode, OP_SHADE2 | OP_SHADE216) {
+                    s = -s;
+                }
+                if matches!(opcode, OP_SHADE16 | OP_SHADE216) {
+                    s >>= 1;
+                }
+                let level = ((s >> 1) >> 8) - if base == 0x10 { 2 } else { 0 };
+                cur_color = (base + level.max(0)).clamp(0, 255) as u8;
             }
             OP_RETURN => {
-                // Bytecode termination
                 returned_at = Some(op_offset);
+                // End of a SORT branch: run the next one; the last RETURN ends the stream.
+                if let Some((resume, visibility, scope_end)) = branch_resume.pop() {
+                    r.set_pos(resume);
+                    current_visibility = visibility;
+                    visibility_scope_end = scope_end;
+                    continue;
+                }
                 break;
             }
             _ => {
@@ -943,6 +1098,20 @@ pub(crate) fn run_vm(
                 }
             }
         }
+        if let Some(reason) = malformed {
+            match blocked(policy, op_offset, opcode, reason, false) {
+                Blockage::Fail(error) => return Err(error),
+                Blockage::Stop(stop) | Blockage::StepOver(stop) => {
+                    return Ok(VmRun {
+                        header,
+                        polygons,
+                        stop: Some(stop),
+                        stepped_over,
+                        returned_at,
+                    });
+                }
+            }
+        }
     }
 
     Ok(VmRun {
@@ -952,6 +1121,10 @@ pub(crate) fn run_vm(
         stepped_over,
         returned_at,
     })
+}
+
+fn add3(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 
 /// Operand layout the census walk assumes when stepping over an unimplemented opcode.
@@ -988,9 +1161,6 @@ const fn skip(opcode: u16, mnemonic: &'static str, fixed_words: u16) -> CensusSk
 pub const CENSUS_SKIPS: &[CensusSkip] = &[
     skip(0x0051, "BLOKADD", 3),
     skip(0x005A, "BLOKNEG", 3),
-    skip(0x007E, "PUSHCENTRE", 0),
-    skip(0x0087, "POPCENTRE", 0),
-    skip(0x0090, "MOVECENTRE", 1),
     skip(0x00AB, "LINETO", 1),
     skip(0x00C6, "HUGELINETO", 1),
     skip(0x00CF, "VLINETO", 1),
@@ -1003,14 +1173,7 @@ pub const CENSUS_SKIPS: &[CensusSkip] = &[
         count_word: Some(0),
     },
     skip(0x0105, "DISC", 2),
-    skip(0x0144, "SHADE1", 2),
-    skip(0x014D, "SHADE2", 2),
     skip(0x0183, "BVIS", 2),
-    skip(0x019E, "GOTO", 1),
-    skip(0x01A7, "GOSUB", 1),
-    skip(0x01DD, "ROTY", 1),
-    skip(0x01E6, "PUSHRELMAT", 0),
-    skip(0x01EF, "POPRELMAT", 0),
     // `OP_ANIMATE` is a clipped screen-space image draw, not geometry (T10), so the census
     // steps over it. When the draw channel lands: delete this entry, collect the draws beside
     // the polygon stream, and add a sibling accessor to the shape IR. `meshes()` stays
@@ -1021,11 +1184,7 @@ pub const CENSUS_SKIPS: &[CensusSkip] = &[
         fixed_words: 4,
         count_word: Some(3),
     },
-    skip(0x02C7, "SHADE216", 2),
-    skip(0x02E2, "ROTX", 1),
-    skip(0x02EB, "ROTZ", 1),
     skip(0x02F4, "BVLT", 3),
-    skip(0x02FD, "BVGT", 3),
     skip(0x0306, "WIDELINE", 3),
     skip(0x0318, "BZLT", 2),
     skip(0x0321, "SCALEIT", 1),

@@ -223,6 +223,12 @@ Moving parts (propellers, landing gear, rudders) are subobjects drawn under a hi
 
 `OP_GOTO` jumps and `OP_GOSUB` calls by a relative word offset; `OP_RETURN` (`OP_END`) ends the list or returns from a subroutine. `OP_SORTON` and the conditional branches `OP_BHID`/`OP_BVIS` (`OP_IFVIS`), `OP_BVLT`, `OP_BVGT` and `OP_BZLT` choose which subtree runs; the visibility and BSP behaviour is in [`sod-opcodes.md`](../formats/sod-opcodes.md) section 2.5. The branch targets are relative, so a walk that mis-sizes one operand desynchronises (see [`sod-opcode-coverage.md`](../formats/sod-opcode-coverage.md) section 4).
 
+### 8.5 Polygon Colour at `SHADE` Time
+
+`[Hypothesis]`, static, read once and not yet checked against a capture. Polygon colour is a running word at `[0x41E8]` that `OP_COLOR` and the four shade opcodes all write. `SHADE1` (`0x0144`), `SHADE2` (`0x014D`), `SHADE16` (`0x02B5`) and `SHADE216` (`0x02C7`) take `norm, base` (handlers at image `0xA526`, `0xA519`, `0xA550`, `0xA55D`, shared tail `0xA52F`): they load `s = word[0x7468 + norm]`, the per-normal shade that `SHADES` (`0x9481`) wrote as `-clamp(N.L >> 16)`, halve it (twice for the 16-level forms; the `2` forms negate it first), and store `base + max(0, (s >> 8) + adj)`, with `adj = -2` when `base == 0x10`. `base` is a ramp start: in the `INTRO.FLM` palette `0x10` is red 16..29, `0x30` grey 48..53, `0x40` brown 64..79, the ramps the capture's triplane uses. FreeFlight discards the operands and paints with the last `OP_COLOR`. Two inputs are open: the light vector `L`, passed in registers to the display-list entry `0x9100` by a caller no reference reaches, and the colour path of `GVPOLY16`, whose word after the register list reads `(ramp_base << 8) | count` (`0x3004`) in `CTRY.FLM`'s `0x7F37`. The renderer's stand-in light (`SHADE_LIGHT` in `vm.rs`, straight down in +Y-up model space) and its sign were chosen before actors were stood upright ([`coordinates-and-units.md` § 1.2](../formats/concepts/coordinates-and-units.md#12-right-handed-metric-basis-i1)), so which faces land on the bright end of a ramp is unverified.
+
+_Found 2026-11-01 by the aircraft render round 2; see the [parity log](../parity/log.md)._
+
 ---
 
 ## 9. Per-Frame Routine and Scene Composition
@@ -236,3 +242,4 @@ _Found 2026-10-22 at `ff274e7`; see the [parity log](../parity/log.md)._
 ## 10. Open questions
 
 * **Who sets `SodVertex::flags` bit 1 (two-sided).** The field is documented as bit 1 in [`SodVertex`](../../crates/stunt-core/src/contracts/shape.rs), but nothing is known to write it: the decal path sets bit 0, and no handler or SOD stream field is known to carry bit 1. The renderer now culls back faces on a clockwise winding, so a facet the player draws two-sided would be dropped. The only frame identified as affected is `CTRY.FLM` tick 832, worth about 0.0003 of the film mean, so this is a correctness question about a contract field rather than a parity lever.
+* **The `SHADE` light vector and the `GVPOLY16` colour path** (section 8.5): which caller hands `0x9100` its light vector, and whether `GVPOLY16` takes its ramp from the word after its registers. Both decide the colour of the aircraft parts a full `SORTON` walk would reach ([`framing-and-actors.md`](../parity/framing-and-actors.md) section 1).
