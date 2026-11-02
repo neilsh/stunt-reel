@@ -1,6 +1,6 @@
 # Seeding a new worktree's `target/` (2026-11-02)
 
-Status: **design approved 2026-11-02; no code yet**. Tasks:
+Status: **implemented on branch `claude/stunt-reel-target-size-b4b954`; measurement gate run 2026-11-02, three rows missed (section 5), ADR 0030 still proposed**. Tasks:
 [`target-seeding-implementation-2026-11-02.md`](target-seeding-implementation-2026-11-02.md). Source: a session of 2026-11-02 that started
 from "why is `target/` so large across the root and worktrees", measured kache 2.0.0, and settled
 on cloning a donor's build output. The evidence and the decision are in
@@ -112,6 +112,27 @@ Two fresh scratch worktrees on `E:` at the same commit, A built by `mise run che
 
 If B's gate compiles everything, the precondition in section 2 is wrong for some unit kind; find
 which before going further.
+
+### Results (2026-11-02)
+
+A was this branch's worktree at `690674f`; B was `E:\git\stunt-reel.wt\seed-b` at the same commit,
+seeded by `mise run init`. Other sessions were building on the machine.
+
+| measure | result | verdict |
+| --- | --- | --- |
+| B's cold `mise run check` | 90 s, 15 units compiled: the five workspace crates in each lane, no dependency | **miss** |
+| B's cold `mise run check-rust` (Rust lanes only) | 40 s (fmt 5, clippy 12, matrix 14, test 38, doc 3), against 91 s unseeded and 22 s warm | **miss** (under 30 s) |
+| B's physical disk after the gate | 2,726 MB logical in files of 256 KiB and up, 2,017 MB of it shared; 0.7–0.9 GB of its own with the 167 MB of smaller files | **miss** (under 0.5 GB) |
+| B one commit behind A's `Cargo.lock` change | not measured: no locked crate has a semver-compatible older version in the cache, so a drifted lock cannot be made offline | open |
+| A still warm after seeding B | `mise run check-rust` 22 s, 0 compiled | pass |
+| init time added by seeding | 5.5 s (`mise run seed` alone; `init` without seeding 1.0 s) | pass |
+
+Every dependency arrived fresh, so section 2's precondition holds for registry units. The misses
+have one cause: a new checkout's sources are newer than the donor's workspace outputs, so Cargo
+rebuilds the five workspace crates in every lane and relinks the test executables, which is also
+most of B's own disk. The full gate's wall time is set by `test-py` (about 80 s) either way.
+ADR 0017's "0 crates compiled" did not reproduce. ADR 0030 stays proposed until the criteria are
+revised or workspace units are made fresh too.
 
 ## 6. Steps
 
