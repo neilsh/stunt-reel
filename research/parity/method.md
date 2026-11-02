@@ -214,7 +214,7 @@ The renderer applies the same fade from the film's palette variables, so renders
 
 The fade level is a brightness heuristic built for `CTRY.FLM`'s day sky. On a night film (`COL3-2.FLM`) it reads about 0.24 for most frames, so 29 of 30 are excluded and the scored headline rests on one frame (tick 705, fade 1.012, SSIM 0.479); for that film read the unscored `mean_ssim`. `PLAYONE` fades `CTRY.FLM` from about tick 990 to 1337.
 
-Headless renders record the palette controls of every rendered tick in `render.json`. The comparator reads the authored brightness (var 14) from them to apply the fade floor; the IoU sky mask reads the stored layer plane and does not depend on the palette.
+Headless renders record the palette controls of every rendered tick in `render.json`. The comparator reads the authored brightness (var 14) from them to apply the fade floor; the IoU sky mask reads the stored layer plane and does not depend on the palette. Each tick also records `credits`, whether the film shows credits there (`0x99` until `0x98`); on such a tick the UI-overlay mask keeps capture index 255 as credits ink instead of masking it as the cursor, so a render that drops its credits scores the loss. A render stored before the field falls back to whether its layer plane holds credits.
 
 From `36a7305` to `5bf6afe` the comparator also reported `ssim_compensated` (the render's luminance scaled by the fade level, later by the ratio of capture to render fade level) and headlined `mean_ssim_compensated`. That stood in for the fade before the renderer modelled it and was retired once it did; `--compare` reads such reports for their raw `ssim`.
 

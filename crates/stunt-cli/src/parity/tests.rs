@@ -349,3 +349,147 @@ fn verdict_matches_the_numpy_golden() {
     }
     close(verdict.delta.expect("a delta"), &expected["delta"], 1e-4);
 }
+
+/// A uniform capture with a block of credits ink (index 255), and a render of the same
+/// background that leaves the ink out; `credits_in_render` puts credits elsewhere on its page.
+fn credits_frames(
+    credits_in_render: bool,
+) -> (super::score::ReferenceFrame, super::score::RenderFrame) {
+    use stunt_core::contracts::get_palette_rgb;
+    use stunt_render::{LAYER_NONE, LAYER_OVERLAY, MODE13H_HEIGHT, MODE13H_WIDTH};
+
+    let ink = 255u8;
+    let background = (0..ink)
+        .find(|&i| get_palette_rgb(i) != get_palette_rgb(ink))
+        .unwrap();
+    let pixels = MODE13H_WIDTH * MODE13H_HEIGHT;
+    let ink_at = |i: usize| {
+        (60..80).contains(&(i / MODE13H_WIDTH)) && (100..140).contains(&(i % MODE13H_WIDTH))
+    };
+    let reference = super::score::ReferenceFrame {
+        indices: (0..pixels)
+            .map(|i| if ink_at(i) { ink } else { background })
+            .collect(),
+        palette: (0..=255u8).map(get_palette_rgb).collect(),
+    };
+    let (r, g, b) = get_palette_rgb(background);
+    let luminance = stunt_render::rgb_to_luminance(&[r, g, b])[0];
+    let mut layers = vec![LAYER_NONE as u16; pixels];
+    if credits_in_render {
+        // Credits drawn elsewhere on the page: the tick has credits, this ink is missing.
+        layers[10 * MODE13H_WIDTH + 10] = LAYER_OVERLAY as u16;
+    }
+    let render = super::score::RenderFrame {
+        luminance: vec![luminance; pixels],
+        indices: vec![background; pixels],
+        layers,
+        controls: None,
+        credits: None,
+    };
+    (reference, render)
+}
+
+/// Credits ink shares the cursor's index 255: masked as the cursor on a tick whose render
+/// draws no credits, scored on a tick whose render draws them.
+#[test]
+fn score_frame_scores_credits_ink_only_on_a_tick_with_credits() {
+    let fade_set = super::fade::fade_reference_set(&credits_frames(false).0.indices);
+    let policy = super::score::ScorePolicy {
+        fade_set: &fade_set,
+        min_fade_level: 0.0,
+    };
+    let (reference, render) = credits_frames(false);
+    let masked = super::score::score_frame(&reference, &render, &policy).metrics;
+    assert!((masked.ssim - 1.0).abs() < 1e-4, "{}", masked.ssim);
+    let (reference, render) = credits_frames(true);
+    let scored = super::score::score_frame(&reference, &render, &policy).metrics;
+    assert!(scored.ssim < 0.99, "{}", scored.ssim);
+    assert!(scored.index_agreement < masked.index_agreement);
+}
+
+/// A change that drops the credits is judged on the ink it lost, not masked away.
+#[test]
+fn a_verdict_keeps_the_ink_when_only_the_previous_render_drew_credits() {
+    use super::verdict::VerdictClass;
+
+    let (reference, mut before) = credits_frames(true);
+    // The previous render drew the ink exactly where the capture has it.
+    let (r, g, b) = stunt_core::contracts::get_palette_rgb(255);
+    let ink_luminance = stunt_render::rgb_to_luminance(&[r, g, b])[0];
+    for (i, &index) in reference.indices.iter().enumerate() {
+        if index == 255 {
+            before.luminance[i] = ink_luminance;
+            before.indices[i] = 255;
+            before.layers[i] = stunt_render::LAYER_OVERLAY as u16;
+        }
+    }
+    let (_, after) = credits_frames(false);
+    let verdict = super::verdict::frame_verdict(0, &reference, &before, &after, None, 0);
+    assert_eq!(verdict.class, VerdictClass::Further);
+    assert!(verdict.changed_by_layer["none"] > 0.0);
+    // The reverse change is judged on the same pixels.
+    let verdict = super::verdict::frame_verdict(0, &reference, &after, &before, None, 0);
+    assert_eq!(verdict.class, VerdictClass::Closer);
+    assert!(verdict.changed_by_layer["overlay"] > 0.0);
+}
+
+/// The render record's credits schedule decides, not the planes: a render that drops its
+/// credits on a credits tick is judged on the ink, and stray overlay pixels on a tick
+/// without credits do not unmask the cursor.
+#[test]
+fn the_record_credits_flag_overrides_what_the_render_drew() {
+    let fade_set = super::fade::fade_reference_set(&credits_frames(false).0.indices);
+    let policy = super::score::ScorePolicy {
+        fade_set: &fade_set,
+        min_fade_level: 0.0,
+    };
+    let (reference, render) = credits_frames(false);
+    let dropped = super::score::RenderFrame {
+        credits: Some(true),
+        ..render
+    };
+    let scored = super::score::score_frame(&reference, &dropped, &policy).metrics;
+    assert!(scored.ssim < 0.99, "{}", scored.ssim);
+
+    let (reference, render) = credits_frames(true);
+    let stray = super::score::RenderFrame {
+        credits: Some(false),
+        ..render
+    };
+    let masked = super::score::score_frame(&reference, &stray, &policy).metrics;
+    assert!((masked.ssim - 1.0).abs() < 1e-4, "{}", masked.ssim);
+}
+
+/// Two renders of a credits tick, one of which lost the credits, are scored on one mask
+/// when the record says the tick has credits, so `--compare` sees the loss.
+#[test]
+fn a_render_that_loses_its_credits_scores_lower_on_a_credits_tick() {
+    let fade_set = super::fade::fade_reference_set(&credits_frames(false).0.indices);
+    let policy = super::score::ScorePolicy {
+        fade_set: &fade_set,
+        min_fade_level: 0.0,
+    };
+    let (reference, mut drawn) = credits_frames(true);
+    let (r, g, b) = stunt_core::contracts::get_palette_rgb(255);
+    let ink_luminance = stunt_render::rgb_to_luminance(&[r, g, b])[0];
+    for (i, &index) in reference.indices.iter().enumerate() {
+        if index == 255 {
+            drawn.luminance[i] = ink_luminance;
+            drawn.indices[i] = 255;
+        }
+    }
+    drawn.credits = Some(true);
+    let (_, lost) = credits_frames(false);
+    let lost = super::score::RenderFrame {
+        credits: Some(true),
+        ..lost
+    };
+    let with = super::score::score_frame(&reference, &drawn, &policy).metrics;
+    let without = super::score::score_frame(&reference, &lost, &policy).metrics;
+    assert!(
+        with.ssim > without.ssim + 0.01,
+        "{} vs {}",
+        with.ssim,
+        without.ssim
+    );
+}
