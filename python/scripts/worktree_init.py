@@ -660,10 +660,6 @@ def _reap_one(
     worktree = candidate.worktree
     branch = worktree.branch
     path = worktree.path
-    if candidate.dirty and not stash_dirty:
-        return f"{branch}: modified files"
-    if candidate.untracked and not discard_untracked:
-        return f"{branch}: untracked files"
     # The worktree must still hold the branch and tip it was classified with: one switched to
     # another branch is not this candidate, and a commit made since is in neither main nor
     # the merged PR.
@@ -675,7 +671,15 @@ def _reap_one(
             f"{branch}: tip moved since it was classified "
             f"({worktree.head[:10]} -> {current.head[:10]}); left alone"
         )
-    if candidate.dirty:
+    # Cleanliness is read now, not taken from classification: a forced remove must not drop
+    # an edit made after reap listed the worktree.
+    dirty = _changed(path, untracked=False)
+    untracked = _changed(path, untracked=True)
+    if dirty and not stash_dirty:
+        return f"{branch}: modified files"
+    if untracked and not discard_untracked:
+        return f"{branch}: untracked files"
+    if dirty:
         stash = _git(path, "stash", "push", "--message", f"reap {branch}: uncommitted work")
         if stash.returncode != 0:
             return f"{branch}: git stash failed: {stash.stderr.strip()}"
@@ -687,8 +691,10 @@ def _reap_one(
     remaining = _reparse_points(path)
     if remaining:
         return f"{branch}: links remain: {', '.join(str(item) for item in remaining)}"
+    if _changed(path, untracked=False):
+        return f"{branch}: modified files appeared before removal; left alone"
     remove_args = ["worktree", "remove"]
-    if candidate.untracked:
+    if untracked:
         remove_args.append("--force")
     remove = _git(repo, *remove_args, str(path))
     if remove.returncode != 0:

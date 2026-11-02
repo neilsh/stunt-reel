@@ -81,6 +81,12 @@ def _head(worktree: Path) -> str:
     return _run_git(worktree, "rev-parse", "HEAD").strip()
 
 
+def _ignore_corpus(repo: Path) -> None:
+    """Ignore the data-root link as a real checkout's .gitignore does."""
+    exclude = repo / ".git" / "info" / "exclude"
+    exclude.write_bytes(exclude.read_bytes() + b"corpus\n")
+
+
 def _junction(link: Path, target: Path) -> None:
     if os.name != "nt":
         pytest.skip("directory junctions are a Windows feature")
@@ -254,6 +260,7 @@ def test_reap_one_finishes_through_the_fallback_and_keeps_the_target(
     (target / "keep.txt").write_text("keep", encoding="utf-8")
     link = worktree / "corpus"
     _junction(link, target)
+    _ignore_corpus(repo)
     _refuse_rmdir_on(monkeypatch, link)
     candidate = worktree_init._Candidate(
         worktree=worktree_init._Worktree(path=worktree, head=_head(worktree), branch="wt-test"),
@@ -297,6 +304,7 @@ def test_reap_one_unlinks_then_removes_and_keeps_the_target(tmp_path: Path) -> N
     (target / "nested").mkdir(parents=True)
     (target / "nested" / "keep.txt").write_text("keep", encoding="utf-8")
     _junction(worktree / "corpus", target)
+    _ignore_corpus(repo)
     candidate = worktree_init._Candidate(
         worktree=worktree_init._Worktree(path=worktree, head=_head(worktree), branch="wt-test"),
         merged=True,
@@ -506,6 +514,27 @@ def test_a_commit_after_classification_keeps_the_worktree_and_branch(tmp_path: P
     assert "tip moved" in error
     assert worktree.is_dir()
     assert _run_git(repo, "rev-parse", "refs/heads/feat").strip() == later
+
+
+def test_an_edit_after_classification_blocks_a_forced_removal(tmp_path: Path) -> None:
+    repo, worktree, tip = _squash_repo(tmp_path)
+    (worktree / "scratch.txt").write_text("untracked", encoding="utf-8")
+    merged_prs = worktree_init._MergedPrs(
+        repo,
+        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": tip}]),  # type: ignore[arg-type]
+    )
+    candidates, _ = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False, merged_prs=merged_prs
+    )
+    assert candidates[0].untracked
+    assert not candidates[0].dirty
+    (worktree / "two.txt").write_text("edited after reap listed it", encoding="utf-8")
+
+    error = worktree_init._reap_one(repo, candidates[0], stash_dirty=False, discard_untracked=True)
+
+    assert error is not None
+    assert "modified files" in error
+    assert (worktree / "two.txt").read_text(encoding="utf-8") == "edited after reap listed it"
 
 
 def test_a_worktree_switched_to_another_branch_is_left_alone(tmp_path: Path) -> None:
