@@ -121,6 +121,11 @@ run = "uv run python python/scripts/parity_bench.py"
 description = "Diagnostic probes on one capture/render pair (mise run parity-probe -- crop|shift|iou|retime ... ; summary prints the rows the parity log needs)"
 run = "uv run python python/scripts/parity_probe.py"
 
+[tasks.frame]
+description = "Render film ticks in one process and write each beside its reference capture frame (mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N] [--no-build])"
+run = "uv run python python/scripts/parity_frame.py"
+env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+
 [tasks.batch-parity]
 description = "Batch parity survey: every distinct corpus film through archive, capture, render and score, resumable from a ledger (mise run batch-parity -- [--only SLUG,...] [--limit N] [--stages archive,capture,render,score] [--retry-errors] [--summary] [--skip SLUG,...] [--jobs N] [--max-renders N] [--min-free-gb GB] [--archive-timeout S] [--capture-timeout S] [--data-root DIR])"
 run = "uv run python python/scripts/batch_parity.py"

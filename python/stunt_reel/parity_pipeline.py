@@ -22,7 +22,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -287,10 +287,25 @@ def render_film(
     out: Path,
     env: dict[str, str] | None = None,
     *,
+    ticks: Sequence[int] | None = None,
     run: Run = run_command,
 ) -> None:
-    """Renders ``film`` into ``out`` with ``env`` in the environment."""
+    """Renders ``film`` into ``out`` with ``env`` in the environment.
+
+    By default the captured tick range; with ``ticks`` exactly those film ticks, in one process.
+    """
     entry = FILMS[film]
+    selection = (
+        ("--at-ticks", ",".join(str(tick) for tick in ticks))
+        if ticks is not None
+        else (
+            "--frames",
+            frames_for_captured_ticks(
+                frame.film_tick
+                for frame in read_capture(references.reference_dir(root, film)).frames
+            ),
+        )
+    )
     run(
         [
             *(
@@ -301,11 +316,7 @@ def render_film(
                 str(root / entry.all),
             ),
             *(
-                "--frames",
-                frames_for_captured_ticks(
-                    frame.film_tick
-                    for frame in read_capture(references.reference_dir(root, film)).frames
-                ),
+                *selection,
                 "--sidata",
                 str(root / entry.sidata),
                 "--out-dir",

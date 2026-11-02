@@ -31,10 +31,14 @@ impl Playback {
     #[must_use]
     pub(crate) fn new(config: &CliConfig, scene: &FilmScene) -> Self {
         let total_ticks = playback_ticks(config, scene);
-        Self {
-            range: TickRange::new(config.frame_range, total_ticks),
-            plan: SamplePlan::from_flags(config),
-        }
+        let (range, plan) = match config.tick_list.as_deref() {
+            Some(ticks) => list_plan(ticks, total_ticks),
+            None => (
+                TickRange::new(config.frame_range, total_ticks),
+                SamplePlan::from_flags(config),
+            ),
+        };
+        Self { range, plan }
     }
 
     /// The part of the film clock this run plays.
@@ -148,9 +152,29 @@ impl std::fmt::Display for SampleKey {
     }
 }
 
+/// The range and plan for `--at-ticks`: ticks past the film clock are dropped first, so a
+/// list of only such ticks renders nothing rather than a forced one-tick range.
+fn list_plan(ticks: &[usize], total_ticks: usize) -> (TickRange, SamplePlan) {
+    let kept: Vec<usize> = ticks
+        .iter()
+        .copied()
+        .filter(|&tick| tick <= total_ticks)
+        .collect();
+    let frame_range = match (kept.first(), kept.last()) {
+        (Some(&first), Some(&last)) => Some(FrameRange::new(first + 1, last + 2)),
+        _ => None,
+    };
+    (
+        TickRange::new(frame_range, total_ticks),
+        SamplePlan::List(kept),
+    )
+}
+
 /// How a run selects the film-clock ticks it renders.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 enum SamplePlan {
+    /// Exactly these ascending ticks (`--at-ticks`), those past the film clock dropped.
+    List(Vec<usize>),
     /// One render per `step` ticks, named by 0-based tick.
     Ticks { step: usize },
     /// `count` evenly spaced renders across the video span, named by 1-based sample.
@@ -160,7 +184,8 @@ enum SamplePlan {
 }
 
 impl SamplePlan {
-    /// Picks the plan the flags ask for; `--sample-count` conflicts with `--video`.
+    /// Picks the plan the flags ask for; `--sample-count` conflicts with `--video`, and
+    /// `--at-ticks` goes through [`list_plan`].
     fn from_flags(config: &CliConfig) -> Self {
         if config.video_path.is_some() {
             Self::Video { fps: config.fps }
@@ -174,8 +199,13 @@ impl SamplePlan {
     }
 
     /// The samples this plan renders over `range`, in playing order.
-    fn samples(self, range: TickRange) -> Vec<(SampleKey, f32)> {
-        match self {
+    fn samples(&self, range: TickRange) -> Vec<(SampleKey, f32)> {
+        match *self {
+            Self::List(ref ticks) => ticks
+                .iter()
+                .filter(|&&tick| tick < range.end_hold())
+                .map(|&tick| (SampleKey::Tick(tick), tick as f32))
+                .collect(),
             Self::Ticks { step } => (range.start()..range.end_hold())
                 .step_by(step)
                 .map(|tick| (SampleKey::Tick(tick), tick as f32))
@@ -292,6 +322,33 @@ mod tests {
                 (SampleKey::Tick(4), 4.0),
                 (SampleKey::Tick(6), 6.0),
             ]
+        );
+    }
+
+    #[test]
+    fn test_tick_list_samples_exactly_those_ticks() {
+        // Ticks 48, 92 and 1009 span ordinals 49..1011; a tick past the clock is dropped.
+        let range = TickRange::new(Some(FrameRange::new(49, 1011)), 1342);
+        assert_eq!(bounds(range), (48, 1010, 1010));
+        assert_eq!(
+            SamplePlan::List(vec![48, 92, 1009, 5000]).samples(range),
+            vec![
+                (SampleKey::Tick(48), 48.0),
+                (SampleKey::Tick(92), 92.0),
+                (SampleKey::Tick(1009), 1009.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tick_list_past_the_clock_renders_nothing() {
+        // CTRY.FLM's clock ends at tick 1342: 5000 alone must not be rendered.
+        let (range, plan) = list_plan(&[5000], 1342);
+        assert_eq!(plan.samples(range), vec![]);
+        let (range, plan) = list_plan(&[48, 1342, 5000], 1342);
+        assert_eq!(
+            plan.samples(range),
+            vec![(SampleKey::Tick(48), 48.0), (SampleKey::Tick(1342), 1342.0)]
         );
     }
 

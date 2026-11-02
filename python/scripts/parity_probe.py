@@ -113,6 +113,25 @@ def render_region(
     return rows
 
 
+def _regions(
+    reference: Path,
+    ours: Path,
+    ordinal: int,
+    tick: int,
+    box: tuple[int, int, int, int],
+    scale: int,
+) -> tuple[list[list[int]], list[list[int]]]:
+    """Capture ordinal `ordinal` and our film tick `tick` over `box`, both in the capture's palette."""
+    capture = read_capture(reference)
+    store = RenderStore(ours)
+    width = store.record.geometry.width
+    frame = _capture_frame(capture, ordinal)
+    palette = read_capture_palette(reference / frame.palette_file)
+    theirs = render_region((reference / frame.frame_file).read_bytes(), palette, box, scale, width)
+    mine = render_region(read_page(store, tick).indices, palette, box, scale, width)
+    return theirs, mine
+
+
 def make_crop(
     reference: Path,
     ours: Path,
@@ -123,18 +142,26 @@ def make_crop(
     out: Path,
 ) -> None:
     """Writes capture ordinal `ordinal` over our film tick `tick` for `box` as a PNG."""
-    capture = read_capture(reference)
-    store = RenderStore(ours)
-    geometry = store.record.geometry
-    frame = _capture_frame(capture, ordinal)
-    palette = read_capture_palette(reference / frame.palette_file)
-    capture_index = (reference / frame.frame_file).read_bytes()
-    render_index = read_page(store, tick).indices
-    top = render_region(capture_index, palette, box, scale, geometry.width)
-    bottom = render_region(render_index, palette, box, scale, geometry.width)
+    top, bottom = _regions(reference, ours, ordinal, tick, box, scale)
     width = (box[2] - box[0]) * scale
     divider = [[255, 0, 255] * width] * 2
     write_png(out, width, top + divider + bottom)
+
+
+def make_side_by_side(
+    reference: Path,
+    ours: Path,
+    ordinal: int,
+    tick: int,
+    box: tuple[int, int, int, int],
+    scale: int,
+    out: Path,
+) -> None:
+    """Writes capture ordinal `ordinal` left of our film tick `tick` for `box`, magenta between."""
+    left, right = _regions(reference, ours, ordinal, tick, box, scale)
+    divider = [255, 0, 255] * 2
+    rows = [a + divider + b for a, b in zip(left, right, strict=True)]
+    write_png(out, (box[2] - box[0]) * scale * 2 + 2, rows)
 
 
 def cmd_crop(args: argparse.Namespace) -> None:
