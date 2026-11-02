@@ -10,6 +10,7 @@ the same control render. A fault is *detected* when it lowers the metric by at l
 from __future__ import annotations
 
 import statistics
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -194,6 +195,9 @@ def bench(
             planted = plant(fault, tick, source, seed)
             if planted is None:
                 continue
+            # A fault that substitutes another tick (advance, wrong_tick) keeps this tick's
+            # credits flag, so the differential masks the same windows as the control.
+            planted = replace(planted, credits=control.credits)
             # Planted, control and the recapture sigma all take the control's mask: a fault
             # that loses the credits is scored on the ink, and one that gains them cannot
             # unmask the cursor, which the sigma never saw.
