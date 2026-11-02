@@ -10,7 +10,7 @@ single frame's cost), into the render store ``build/scratch/frame/<film>/store``
 the capture holds, ``build/scratch/frame/<film>/<film>_<tick>.png`` is the capture frame left
 of ours with a magenta divider; the path is printed. A tick the capture lacks is still
 rendered and its nearest captured ticks are printed instead; one past the film's end is
-named as not rendered.
+named as not rendered. Each run replaces the store and the film's earlier PNGs.
 """
 
 from __future__ import annotations
@@ -74,6 +74,12 @@ def check_crop(box: tuple[int, int, int, int], scale: int, *, width: int, height
         raise ValueError(f"--scale wants 1 or more, got {scale}")
 
 
+def clear_previous(out: Path, film: str) -> None:
+    """Deletes ``film``'s side-by-side PNGs from an earlier run, so none outlives its store."""
+    for png in out.glob(f"{film}_*.png"):
+        png.unlink()
+
+
 def describe_missing(tick: int, nearest: tuple[int | None, int | None], *, rendered: bool) -> str:
     """The line for a tick with no capture frame; one past the film's end was not rendered."""
     before, after = nearest
@@ -116,6 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     out = root / FRAME_DIR / args.film
     store_dir = out / "store"
     shutil.rmtree(store_dir, ignore_errors=True)
+    clear_previous(out, args.film)
     parity_pipeline.render_film(args.film, root, store_dir, ticks=ticks)
 
     if not (store_dir / "render.json").exists():

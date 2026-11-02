@@ -149,3 +149,10 @@ def test_crop_outside_the_raster_or_bad_scale_is_refused(
 
 def test_crop_inside_the_raster_is_accepted() -> None:
     parity_frame.check_crop((0, 1, 4, 2), 2, width=4, height=2)
+
+
+def test_clear_previous_removes_only_this_films_pictures(tmp_path: Path) -> None:
+    for name in ("intro_48.png", "intro_1009.png", "ctry_48.png", "notes.txt"):
+        (tmp_path / name).write_bytes(b"x")
+    parity_frame.clear_previous(tmp_path, "intro")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["ctry_48.png", "notes.txt"]
