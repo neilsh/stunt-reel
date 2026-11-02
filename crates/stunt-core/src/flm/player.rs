@@ -167,6 +167,8 @@ struct DecodedSlice {
     tick_duration: u8,
     /// Sound events triggered while this slice runs, stamped with the slice's tick.
     sound_cues: Vec<AudioCue>,
+    /// Credits set or cleared in this slice, kept apart until the slice decodes whole.
+    credits: Vec<CreditsChange>,
 }
 
 /// State machine that walks and evaluates `.FLM` slices at their authored ticks.
@@ -258,7 +260,9 @@ impl<'a> FlmPlayer<'a> {
         let DecodedSlice {
             tick_duration,
             sound_cues,
+            credits,
         } = decoded;
+        self.credits.extend(credits);
         let tick = self.current_tick;
         let record = self.evaluate_slice(sound_cues);
         Some(SliceKeyframe {
@@ -328,6 +332,7 @@ impl<'a> FlmPlayer<'a> {
         self.current_tick = self.current_tick.saturating_add(u32::from(tick_duration));
 
         let mut sound_cues = Vec::new();
+        let mut credits = Vec::new();
 
         loop {
             if self.reader.pos() >= self.reader.len() {
@@ -434,14 +439,14 @@ impl<'a> FlmPlayer<'a> {
                     } else if c < 0x98 {
                         self.view_obj = c & 0x0F;
                     } else if c == 0x98 {
-                        self.credits.push(CreditsChange {
+                        credits.push(CreditsChange {
                             tick: self.current_tick,
                             lines: None,
                         });
                     } else if c == 0x99 {
                         let first = self.read_cstring()?;
                         let second = self.read_cstring()?;
-                        self.credits.push(CreditsChange {
+                        credits.push(CreditsChange {
                             tick: self.current_tick,
                             lines: Some(CreditLines::new(first, second)),
                         });
@@ -501,6 +506,7 @@ impl<'a> FlmPlayer<'a> {
         Ok(Some(DecodedSlice {
             tick_duration,
             sound_cues,
+            credits,
         }))
     }
 
@@ -741,6 +747,22 @@ mod tests {
         assert_eq!(timeline.credits_at(8.5), Some(&title));
         assert_eq!(timeline.credits_at(9.0), None);
         assert_eq!(timeline.truncated_to_ticks(6).credits_at(6.0), Some(&title));
+    }
+
+    #[test]
+    fn a_rejected_slice_keeps_its_credits_out_of_the_timeline() {
+        let mut film = Vec::from(&b"FILM"[..]);
+        push_slice_with_duration(&mut film, 0, 0, &[0xFF]);
+        // Slice 1 sets credits, then hits 0x9A, which no group-2 rule accepts.
+        let mut body = vec![0x99];
+        body.extend_from_slice(b"LOST  ");
+        body.extend_from_slice(&[0x9A, 0xFF]);
+        push_slice_with_duration(&mut film, 1, 5, &body);
+
+        let mut player = FlmPlayer::new(&film).unwrap();
+        while player.step_slice().is_some() {}
+        assert!(player.take_last_error().is_some());
+        assert!(player.take_credits().is_empty());
     }
 
     #[test]
