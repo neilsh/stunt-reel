@@ -24,7 +24,7 @@ from stunt_reel.bench.planes import (
     RenderTree,
     load_capture,
 )
-from stunt_reel.bench.ssim import frame_ssim, render_luma
+from stunt_reel.bench.ssim import draws_credits, frame_ssim, render_luma
 from stunt_reel.parity_artifacts import StoredFrame, read_report, write_render_store
 
 if TYPE_CHECKING:
@@ -64,7 +64,8 @@ def check_fidelity(report: Path, captures: dict[int, CapturePlanes], tree: Rende
         capture = captures.get(frame.film_tick)
         if capture is None or frame.film_tick not in rendered:
             continue
-        ours = frame_ssim(capture, tree.load(frame.film_tick).rgb)
+        render = tree.load(frame.film_tick)
+        ours = frame_ssim(capture, render.rgb, credits_drawn=draws_credits(render.layer))
         if abs(ours - frame.ssim) > FIDELITY_TOLERANCE:
             raise BenchError(
                 f"tick {frame.film_tick}: numpy ssim {ours:.6f} but {report} says "
