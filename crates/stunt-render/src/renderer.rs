@@ -276,13 +276,24 @@ fn paint_credits(
         if !(0..mode_w).contains(&x) || !(0..mode_h).contains(&y) {
             return;
         }
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "a u8 index cannot leave the 256-entry palette"
+        )]
         let (r, g, b) = palette[usize::from(index)];
         for py in scaled_span(y, mode_h, height) {
             for px in scaled_span(x, mode_w, width) {
                 let at = (py * width + px) as usize;
-                page.indices[at] = index;
-                page.layers[at] = LAYER_OVERLAY;
-                page.rgba[at * 4..at * 4 + 3].copy_from_slice(&[r, g, b]);
+                // A pixel outside the page is clipped, like a glyph outside the mode raster.
+                if let (Some(slot), Some(layer), Some(rgb)) = (
+                    page.indices.get_mut(at),
+                    page.layers.get_mut(at),
+                    page.rgba.get_mut(at * 4..at * 4 + 3),
+                ) {
+                    *slot = index;
+                    *layer = LAYER_OVERLAY;
+                    rgb.copy_from_slice(&[r, g, b]);
+                }
             }
         }
     });
@@ -1064,7 +1075,7 @@ fn read_back(
     let row_bytes = width as usize * 4;
     let bytes = mapped
         .chunks_exact(padded_row_bytes as usize)
-        .flat_map(|row| &row[..row_bytes])
+        .flat_map(|row| row.iter().take(row_bytes))
         .copied()
         .collect();
     drop(mapped);

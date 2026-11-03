@@ -13,6 +13,7 @@
 //! presented window surface. Everything behind it - the pipelines, palette LUT, camera resources,
 //! scene renderer and GPU mesh arena - is crate-private; the plane is the test seam.
 #![deny(unsafe_code)]
+#![warn(clippy::indexing_slicing)]
 
 pub mod camera;
 pub mod parity;

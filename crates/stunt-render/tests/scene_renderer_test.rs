@@ -31,6 +31,10 @@ const SHAPE_ID: u16 = 7;
 const CLEAR_INDEX: u8 = 180;
 
 /// A 2 m wide triangle in the XY plane, visible only where visibility allows.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test helper outside #[test]: an out-of-range index is the assertion failure"
+)]
 fn triangle(name: &str, visibility: VisibilityCondition) -> SodModelIr {
     let vertex = |x: f32, y: f32| SodVertex {
         position: [x, y, 0.0],
@@ -121,6 +125,10 @@ fn render(scene: &FilmScene) -> Option<(usize, usize, Vec<bool>)> {
     Some((w, h, drawn))
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test helper outside #[test]: an out-of-range index is the assertion failure"
+)]
 fn drawn_in_columns(drawn: &[bool], w: usize, h: usize, cols: std::ops::Range<usize>) -> usize {
     (0..h)
         .flat_map(|y| cols.clone().map(move |x| (x, y)))

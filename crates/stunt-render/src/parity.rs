@@ -53,23 +53,32 @@ pub fn rgb_to_luminance(rgb: &[u8]) -> Vec<f32> {
 }
 
 /// Rescales 320x200 Mode 13h raster to 320x240 physical 4:3 CRT aspect (1.2x stretch) via nearest-neighbor.
+///
+/// # Panics
+/// Panics if `src` holds fewer than `width * height` values.
 pub fn rescale_mode13h_frame(
     src: &[f32],
     width: usize,
     height: usize,
     target_height: usize,
 ) -> Vec<f32> {
+    assert!(
+        src.len() >= width * height,
+        "source holds {} values, fewer than {width}x{height}",
+        src.len()
+    );
     let mut target = vec![0.0f32; width * target_height];
+    if width == 0 {
+        return target;
+    }
     let scale_y = height as f32 / target_height as f32; // 200 / 240 = 5/6
+    let rows_in: Vec<&[f32]> = src.chunks_exact(width).take(height).collect();
 
-    for y_out in 0..target_height {
-        let mut y_in = (y_out as f32 * scale_y) as usize;
-        if y_in >= height {
-            y_in = height - 1;
+    for (y_out, row_out) in target.chunks_exact_mut(width).enumerate() {
+        let y_in = ((y_out as f32 * scale_y) as usize).min(height.saturating_sub(1));
+        if let Some(row_in) = rows_in.get(y_in) {
+            row_out.copy_from_slice(row_in);
         }
-        let row_out = y_out * width;
-        let row_in = y_in * width;
-        target[row_out..row_out + width].copy_from_slice(&src[row_in..row_in + width]);
     }
 
     target
@@ -90,9 +99,9 @@ pub fn compute_window_ssim(window_x: &[f32], window_y: &[f32], c1: f32, c2: f32)
     let mut var_y = 0.0f32;
     let mut cov_xy = 0.0f32;
 
-    for i in 0..n {
-        let dx = window_x[i] - mu_x;
-        let dy = window_y[i] - mu_y;
+    for (&x, &y) in window_x.iter().zip(window_y) {
+        let dx = x - mu_x;
+        let dy = y - mu_y;
         var_x += dx * dx;
         var_y += dy * dy;
         cov_xy += dx * dy;
@@ -142,8 +151,8 @@ pub struct WindowScore {
 /// the frame in either dimension.
 ///
 /// # Panics
-/// Panics if `frame_a` and `frame_b` differ in length, or `excluded` is given with a length
-/// other than theirs.
+/// Panics if `frame_a` and `frame_b` differ in length or hold fewer than `width * height`
+/// values, or `excluded` is given with a length other than theirs.
 pub fn compute_window_scores(
     frame_a: &[f32],
     frame_b: &[f32],
@@ -163,6 +172,11 @@ pub fn compute_window_scores(
     if let Some(mask) = excluded {
         assert_eq!(mask.len(), frame_a.len(), "Mask length mismatch");
     }
+    assert!(
+        frame_a.len() >= width * height,
+        "frames hold {} values, fewer than {width}x{height}",
+        frame_a.len()
+    );
 
     if window_size == 0 || stride == 0 || window_size > width || window_size > height {
         return Vec::new();
@@ -184,11 +198,14 @@ pub fn compute_window_scores(
             let mut touches_mask = false;
 
             for wy in 0..window_size {
+                // The asserts above with `x <= max_x` and `y <= max_y` keep each row in the
+                // frame, so every `get` here is `Some`.
                 let row_idx = (y + wy) * width + x;
-                win_a.extend_from_slice(&frame_a[row_idx..row_idx + window_size]);
-                win_b.extend_from_slice(&frame_b[row_idx..row_idx + window_size]);
+                let row = row_idx..row_idx + window_size;
+                win_a.extend(frame_a.get(row.clone()).into_iter().flatten());
+                win_b.extend(frame_b.get(row.clone()).into_iter().flatten());
                 if let Some(mask) = excluded {
-                    touches_mask |= mask[row_idx..row_idx + window_size].iter().any(|&m| m);
+                    touches_mask |= mask.get(row).into_iter().flatten().any(|&m| m);
                 }
             }
 

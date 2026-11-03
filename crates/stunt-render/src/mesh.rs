@@ -84,15 +84,22 @@ impl GpuModel {
         let max_indices = (limit / size_of::<u32>() as u64) as usize;
         // One source per mesh slice, keyed by node so the planned slices can be handed
         // back to the same nodes. `meshes()` already skips a node whose window is unsafe.
-        let mut sources: Vec<Option<SourceSlice>> = vec![None; ir.nodes.len()];
-        for mesh in ir.meshes() {
-            sources[mesh.node.id.0 as usize] = Some(SourceSlice {
-                vertex_offset: mesh.vertex_offset,
-                index_offset: mesh.index_offset,
-                index_count: mesh.indices.len() as u32,
-                is_decal: mesh.is_decal(),
-            });
-        }
+        // `meshes()` walks the nodes in arena order, so each node takes the next mesh if
+        // that mesh is its own.
+        let mut meshes = ir.meshes().peekable();
+        let sources: Vec<Option<SourceSlice>> = ir
+            .nodes
+            .iter()
+            .map(|node| {
+                let mesh = meshes.next_if(|mesh| std::ptr::eq(mesh.node, node))?;
+                Some(SourceSlice {
+                    vertex_offset: mesh.vertex_offset,
+                    index_offset: mesh.index_offset,
+                    index_count: mesh.indices.len() as u32,
+                    is_decal: mesh.is_decal(),
+                })
+            })
+            .collect();
         let mesh_sources: Vec<SourceSlice> = sources.iter().flatten().copied().collect();
         let plan = plan_upload(
             ir.vertices.len(),
@@ -220,6 +227,10 @@ impl GpuModel {
     pub fn draw_slices(&self, rpass: &mut wgpu::RenderPass<'_>, meshes: &[GpuMeshSlice]) {
         let mut bound = None;
         for mesh in meshes {
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "draw slices come from this upload's plan, which numbers only its own chunks"
+            )]
             let chunk = &self.chunks[mesh.chunk as usize];
             if bound != Some(mesh.chunk) {
                 rpass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
@@ -267,6 +278,10 @@ impl GpuChunk {
         });
         let mut offset = 0;
         for range in &plan.vertex_ranges {
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "the plan's vertex ranges are windows of `ir.meshes()`, inside `ir.vertices`"
+            )]
             let bytes: &[u8] = bytemuck::cast_slice(&ir.vertices[range.clone()]);
             if !bytes.is_empty() {
                 queue.write_buffer(&vertex_buffer, offset, bytes);
@@ -385,7 +400,12 @@ pub(crate) fn plan_upload(
         let base = source.vertex_offset as usize;
         // The open run: its source vertex window and its triangles as source vertices.
         let mut run: Option<(Range<usize>, Vec<[usize; 3]>)> = None;
-        for tri in indices[start..end].as_chunks::<3>().0 {
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "sources are windows of `SodModelIr::meshes`, which lie inside `indices`"
+        )]
+        let window = &indices[start..end];
+        for tri in window.as_chunks::<3>().0 {
             let tri = tri.map(|v| base + v as usize);
             let lo = tri.into_iter().min().unwrap_or(0);
             let hi = tri.into_iter().max().unwrap_or(0) + 1;
@@ -421,14 +441,21 @@ pub(crate) fn plan_upload(
 }
 
 /// Appends a run to the last chunk and returns its draw slice.
+#[expect(
+    clippy::expect_used,
+    reason = "`plan_upload` seeds `chunks` with a first chunk before any run is flushed"
+)]
 fn flush_run(
     chunks: &mut [ChunkPlan],
     is_decal: bool,
     window: Range<usize>,
     tris: &[[usize; 3]],
 ) -> GpuMeshSlice {
-    let n = chunks.len() - 1;
-    let chunk = &mut chunks[n];
+    let (n, chunk) = chunks
+        .iter_mut()
+        .enumerate()
+        .last()
+        .expect("a split plan starts with a chunk");
     let indices = chunk.indices.get_or_insert_with(Vec::new);
     let slice = GpuMeshSlice {
         chunk: n as u32,

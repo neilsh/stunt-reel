@@ -67,6 +67,10 @@ fn theirs(a: &[u8], b: &[u8]) -> f64 {
         .score
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test helper outside #[test]: an out-of-range index is the assertion failure"
+)]
 fn ours(a: &[u8], b: &[u8], c2: f32) -> f32 {
     let to_f32 = |p: &[u8]| p.iter().map(|&v| f32::from(v)).collect::<Vec<_>>();
     // `compute_frame_ssim` fixes the production constants; rebuild the same non-overlapping

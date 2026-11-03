@@ -49,6 +49,10 @@ fn vertex(x: f32, y: f32, palette_index: u8, flags: u8) -> SodVertex {
 }
 
 /// A model of one mesh node made from vertices, indices and a decal flag.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test helper outside #[test]: an out-of-range index is the assertion failure"
+)]
 fn model(vertices: Vec<SodVertex>, indices: Vec<u32>, is_decal: bool) -> SodModelIr {
     let mut ir = SodModelIr::new("TEST_MODEL");
     let vertex_count = vertices.len() as u32;
