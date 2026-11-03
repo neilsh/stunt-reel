@@ -43,6 +43,7 @@ mod report_diff;
 mod report_doc;
 mod score;
 mod sheets;
+mod ssim;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]
