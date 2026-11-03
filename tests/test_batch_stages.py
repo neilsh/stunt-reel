@@ -296,6 +296,17 @@ def test_render_asks_the_binary_for_the_captured_ticks_into_the_batch_directory(
     assert command[-6:] == list(parity_pipeline.RENDER_FLAGS)
 
 
+def test_score_without_a_complete_capture_does_not_run_the_command(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    (tmp_path / parity_layout.frames_path(film.slug)).mkdir(parents=True)
+    runner = FakeRunner()
+    record = batch_stages.run_score(film, tmp_path, runner, 600.0)
+    assert record.status == "error"
+    assert record.stage == "score"
+    assert "capture" in record.message
+    assert runner.calls == []
+
+
 def test_a_failed_render_keeps_its_exit_and_tail(tmp_path: Path) -> None:
     film = _render_film(tmp_path, [7, 9])
     record = batch_stages.run_render(film, tmp_path, FakeRunner(code=2, tail="no GPU\n"), 600.0)

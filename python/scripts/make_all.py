@@ -17,7 +17,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from stunt_reel import dataroot, parity_layout
+from stunt_reel import capture_store, dataroot, parity_layout
 from stunt_reel.all_archive import (
     ArchiveError,
     ArchiveMeta,
@@ -79,6 +79,11 @@ def run(args: argparse.Namespace, launch: makeone.Launch | None = None) -> int:
         return 2
     if not ensure_links_or_report("mise run make-all"):
         return 2
+    try:
+        capture_store.check_replaceable(dataroot.REPO_ROOT / parity_layout.archive_path(slug))
+    except ValueError as exc:
+        print(f"[make-all] {exc}", file=sys.stderr)
+        return 2
 
     flm_bytes = film.read_bytes()
     flm_sha256 = hashlib.sha256(flm_bytes).hexdigest()
@@ -117,7 +122,7 @@ def run(args: argparse.Namespace, launch: makeone.Launch | None = None) -> int:
             created=created.isoformat(),
         )
         written = publish_archive(dataroot.REPO_ROOT, data, meta, slug=slug, film=film.name)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         print(f"[make-all] could not store the archive: {exc}", file=sys.stderr)
         return 1
     print(f"[make-all] wrote {written} ({len(data)} bytes in {meta.wall_seconds} s)", flush=True)

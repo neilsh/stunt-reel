@@ -918,3 +918,20 @@ def test_window_passes_tolerate_drift_up_to_a_windows_width(
         # the first window opens at tick 3 already; the others still find 21 and 41.
         assert [f["film_tick"] for f in meta["frames"]] == [3, 21, 41]
         assert any("ticks from the clock pass (at most 3)" in line for line in lines)
+
+
+@pytest.mark.parametrize("flag", [("--max-frames", "5"), ("--stride", "3")])
+def test_a_non_default_capture_needs_out(
+    flag: tuple[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Only a default capture may replace the film's stored one (ADR 0028)."""
+    module = _load_script("capture_playone_reference")
+    monkeypatch.setattr(sys, "argv", ["capture_playone_reference.py", *flag])
+    with pytest.raises(SystemExit) as stopped:
+        module.parse_args()
+    assert stopped.value.code == 2
+    assert "needs --out" in capsys.readouterr().err
+    monkeypatch.setattr(sys, "argv", ["capture_playone_reference.py", *flag, "--out", "x"])
+    assert module.parse_args().out is not None

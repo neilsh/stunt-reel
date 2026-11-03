@@ -52,3 +52,38 @@ def test_an_incomplete_capture_is_never_published(tmp_path: Path) -> None:
     assert (target / "frame.idx").read_text(encoding="utf-8") == "good"
     capture_store.discard(staged)
     assert not staged.exists()
+
+
+def test_a_directory_that_is_not_a_capture_is_never_replaced(tmp_path: Path) -> None:
+    """The numbered runs of the old layout must survive until the migration moves them."""
+    target = tmp_path / "frames"
+    (target / "004").mkdir(parents=True)
+    _fill(target / "004", "pinned")
+    with pytest.raises(ValueError, match="migrate-captures"):
+        capture_store.check_replaceable(target)
+    staged = _fill(capture_store.stage(target), "new")
+    with pytest.raises(ValueError, match="no complete capture"):
+        capture_store.publish(staged, target)
+    assert (target / "004" / "frame.idx").read_text(encoding="utf-8") == "pinned"
+
+
+def test_publish_waits_for_another_swap_and_takes_over_a_stale_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "frames"
+    lock = target.with_name("frames.lock")
+    lock.mkdir()
+    monkeypatch.setattr(capture_store, "_SWAP_WAIT_SECONDS", 0.2)
+    with pytest.raises(TimeoutError, match="held by another publish"):
+        capture_store.publish(_fill(capture_store.stage(target), "blocked"), target)
+    monkeypatch.setattr(capture_store, "_STALE_LOCK_SECONDS", 0.0)
+    capture_store.publish(_fill(capture_store.stage(target), "after"), target)
+    assert (target / "frame.idx").read_text(encoding="utf-8") == "after"
+    assert not lock.exists()
+
+
+def test_an_output_inside_the_store_is_refused(tmp_path: Path) -> None:
+    store = tmp_path / "captures"
+    with pytest.raises(ValueError, match="inside the capture store"):
+        capture_store.check_outside(store / "vault-ctry" / "frames", store)
+    capture_store.check_outside(tmp_path / "elsewhere", store)

@@ -188,3 +188,19 @@ def test_a_timeout_exits_1_and_leaves_no_mount(
     assert _archives() == []
     stage_root = dataroot.data_root() / parity_layout.stage_root()
     assert not stage_root.exists() or not any(stage_root.iterdir())
+
+
+def test_an_archives_directory_of_numbered_runs_is_refused_before_makeone(
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_repo: StagedRepo,
+    game_root: Path,
+) -> None:
+    run = dataroot.REPO_ROOT / parity_layout.archive_path("vault-ctry") / "001"
+    run.mkdir(parents=True)
+    (run / "meta.json").write_text("{}", encoding="utf-8")
+    launch, state = makeone_launcher(text_after=1, archive=ARCHIVE)
+    args = _args(script, monkeypatch, staged_repo.film, game_root)
+    assert script.run(args, launch) == 2
+    assert not state.started
+    assert (run / "meta.json").is_file()

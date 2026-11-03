@@ -58,8 +58,8 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "new directory receiving capture.avi and meta.json; an existing non-empty one is "
-            f"refused (default {parity_layout.capture_root().as_posix()}/<film>/video/"
-            "<next run number>)"
+            "refused and no stored capture is replaced (default: replace the film's capture, "
+            f"{parity_layout.capture_root().as_posix()}/<film>/video, by swap)"
         ),
     )
     parser.add_argument(
@@ -84,6 +84,10 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.max_frames < 1:
         parser.error("--max-frames must be at least 1")
+    if args.out is None and args.max_frames != video.VIDEO_MAX_FRAMES:
+        parser.error(
+            "a non-default --max-frames needs --out: only default parameters fill the store (ADR 0028)"
+        )
     return args
 
 
@@ -123,9 +127,20 @@ def run(args: argparse.Namespace) -> int:
         all_sha256=all_sha256,
     )
     if args.out is not None:
-        return _record_into(args, resolve(args.out), film, archive, film_id)
+        out = resolve(args.out)
+        try:
+            capture_store.check_outside(out, dataroot.REPO_ROOT / parity_layout.capture_root())
+        except ValueError as exc:
+            print(f"[capture-video] {exc}", file=sys.stderr)
+            return 2
+        return _record_into(args, out, film, archive, film_id)
     # The film's one capture of this kind is replaced only by a complete, successful one.
     target = dataroot.REPO_ROOT / parity_layout.video_path(slug)
+    try:
+        capture_store.check_replaceable(target)
+    except ValueError as exc:
+        print(f"[capture-video] {exc}", file=sys.stderr)
+        return 2
     out = capture_store.stage(target)
     try:
         code = _record_into(args, out, film, archive, film_id)
