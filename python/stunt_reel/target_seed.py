@@ -226,8 +226,10 @@ def build_locks_free(target: Path) -> Iterator[bool]:
                     lock = target / seeded / profile / name
                     if not lock.is_file():
                         continue
-                    handle = held.enter_context(lock.open("r+b"))
+                    # A lock this session cannot open or take counts as held: the donor is
+                    # passed over, and the next one tried.
                     try:
+                        handle = held.enter_context(lock.open("r+b"))
                         msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
                     except OSError:
                         yield False

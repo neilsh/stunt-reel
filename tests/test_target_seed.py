@@ -342,6 +342,34 @@ def test_seed_falls_back_to_an_idle_donor(tmp_path: Path) -> None:
     assert copied == [idle / "target" / "debug"]
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Cargo's build locks are byte locks on Windows")
+def test_seed_passes_over_a_donor_whose_lock_cannot_be_opened(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    here = _fresh(tmp_path / "here")
+    shut = _donor(tmp_path / "shut", age=1)
+    idle = _donor(tmp_path / "idle", age=600)
+    lock = shut / "target" / "debug" / ".cargo-lock"
+    lock.write_bytes(b"")
+    real_open = Path.open
+
+    def denied(path: Path, *args: object, **kwargs: object) -> object:
+        if path == lock:
+            raise PermissionError(13, "Access is denied", str(path))
+        return real_open(path, *args, **kwargs)  # type: ignore[call-overload]
+
+    monkeypatch.setattr(Path, "open", denied)
+    out = seed(
+        here,
+        checkouts=[shut, idle],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=lambda _s, destination: destination.mkdir(parents=True),
+        volume_clones=_clones,
+    )
+    assert out == SeedOutcome("seeded", f"from {idle}")
+
+
 def _workspace(root: Path, *members: str) -> None:
     """A Cargo workspace at *root* whose crates/* packages are named *members*."""
     root.mkdir(parents=True, exist_ok=True)
