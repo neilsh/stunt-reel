@@ -25,7 +25,7 @@ FILMS = references.reference_films(REPO_ROOT)
 
 
 def _options(module: Any, argv: list[str]) -> ParityOptions:
-    return parity_options(module.parse_args(argv), films=FILMS)
+    return parity_options(module.parse_args(argv))
 
 
 def test_both_entry_points_build_the_same_options() -> None:
@@ -55,10 +55,10 @@ def test_an_unknown_film_is_refused_with_one_message() -> None:
 
 def test_the_shared_flags_are_defined_once() -> None:
     parser = argparse.ArgumentParser(prog="parity")
-    add_parity_options(parser, films=FILMS, data_root=REPO_ROOT)
+    add_parity_options(parser, data_root=REPO_ROOT)
     actions = {action.dest: action for action in parser._actions}
     assert set(actions) == {"help", "films", "data_root", "no_build", "reuse", "retime"}
-    assert actions["films"].default == "ctry,intro"
+    assert actions["films"].default is None
     assert actions["reuse"].help == "score DIR/<film> without rendering"
 
 
@@ -66,3 +66,14 @@ def test_script_specific_flags_stay_local() -> None:
     assert parity_run.parse_args(["--no-render"]).no_render is True
     sweep = parity_sweep.parse_args(["--probe", "iou", "--var", "DBG_X=0", "--keep-best"])
     assert (sweep.probe, sweep.keep_best) == ("iou", True)
+
+
+def test_the_films_come_from_the_selected_data_root(tmp_path: Path) -> None:
+    """Another root's references.toml decides the default set and what --films accepts."""
+    pointers = tmp_path / "research" / "parity" / "references.toml"
+    pointers.parent.mkdir(parents=True)
+    pointers.write_text('[balloon]\nfilm = "vault-balloon"\nsha256 = "ab"\n', encoding="utf-8")
+    options = _options(parity_run, ["--data-root", str(tmp_path)])
+    assert options.films == ("balloon",)
+    with pytest.raises(UsageError, match="must be from balloon"):
+        _options(parity_run, ["--data-root", str(tmp_path), "--films", "ctry"])

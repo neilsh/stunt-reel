@@ -119,7 +119,9 @@ def reference_tree(
     vault.mkdir(parents=True, exist_ok=True)
     (root / parity_pipeline.SIDATA).mkdir(parents=True, exist_ok=True)
     for name in films:
-        (vault / f"{name.upper()}.FLM").write_bytes(b"")
+        (vault / f"{name.upper()}.FLM").write_bytes(
+            name.encode()
+        )  # distinct films: equal bytes are one film
         (vault / f"{name.upper()}.ALL").write_bytes(b"")
         pin_reference(root, name, [{"film_tick": tick} for tick in ticks])
     return root

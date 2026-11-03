@@ -97,3 +97,15 @@ def test_find_looks_a_hash_suffixed_slug_up_in_the_full_manifest(tmp_path: Path)
     found = batch_films.find(tmp_path, suffixed.slug)
     assert found is not None
     assert found.flm == second
+
+
+def test_find_skips_a_copy_the_manifest_skips(tmp_path: Path) -> None:
+    """A later path that copies an earlier film does not own its slug; the next distinct one does."""
+    for folder, body in (("a/X", b"film x"), ("b/VAULT", b"film x"), ("c/VAULT", b"film y")):
+        (tmp_path / folder).mkdir(parents=True)
+        (tmp_path / folder / "M.FLM").write_bytes(body)
+    found = batch_films.find(tmp_path, "vault-m")
+    assert found is not None
+    assert found.flm == tmp_path / "c" / "VAULT" / "M.FLM"
+    owner = next(film for film in batch_films.discover(tmp_path) if film.slug == "vault-m")
+    assert found.flm == owner.flm
