@@ -12,11 +12,15 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import batch_parity  # noqa: E402
+
+pytestmark = pytest.mark.windows
 
 _GRANDCHILD = "import time; time.sleep(30)"
 _CHILD = (

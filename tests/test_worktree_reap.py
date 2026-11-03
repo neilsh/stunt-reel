@@ -25,6 +25,8 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import worktree_init  # noqa: E402
 
+pytestmark = pytest.mark.windows
+
 PORCELAIN = """\
 worktree D:/git/example
 HEAD 1111111111111111111111111111111111111111
