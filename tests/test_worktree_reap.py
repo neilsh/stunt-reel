@@ -678,3 +678,18 @@ def test_gh_is_not_asked_when_every_branch_is_already_in_main(tmp_path: Path) ->
 
     assert [candidate.worktree.branch for candidate in candidates] == ["merged"]
     assert calls == []
+
+
+def test_clean_removes_read_only_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A test's scratch repository under ``.pytest_cache`` holds git objects, which git
+    marks read-only, and Windows refuses to unlink a read-only file."""
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+    objects = tmp_path / ".pytest_cache" / "basetemp" / "repo" / ".git" / "objects" / "05"
+    objects.mkdir(parents=True)
+    blob = objects / "43213c3e614823f0f6500583215b8c4a87066e"
+    blob.write_bytes(b"blob")
+    blob.chmod(0o444)
+
+    assert worktree_init._clean(confirmed=True) == 0
+
+    assert not (tmp_path / ".pytest_cache").exists()
