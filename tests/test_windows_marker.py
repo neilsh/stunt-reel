@@ -25,8 +25,9 @@ def _platform_checks(tree: ast.Module) -> list[int]:
 
     A read goes through whatever name the module was imported as, so ``import sys as
     system`` makes ``system.platform`` a check, and ``from os import name`` is one itself.
+    A name keeps every module any scope binds it to: over-matching costs only a marker.
     """
-    modules: dict[str, str] = {}
+    modules: dict[str, set[str]] = {}
     lines: list[int] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -34,7 +35,9 @@ def _platform_checks(tree: ast.Module) -> list[int]:
                 if alias.name in _WINDOWS_MODULES:
                     lines.append(node.lineno)
                 root = alias.name.split(".")[0]
-                modules[alias.asname or root] = alias.name if alias.asname else root
+                modules.setdefault(alias.asname or root, set()).add(
+                    alias.name if alias.asname else root
+                )
         elif isinstance(node, ast.ImportFrom) and (
             node.module in _WINDOWS_MODULES
             or any((node.module, alias.name) in _PLATFORM_READS for alias in node.names)
@@ -45,7 +48,7 @@ def _platform_checks(tree: ast.Module) -> list[int]:
         for node in ast.walk(tree)
         if isinstance(node, ast.Attribute)
         and isinstance(node.value, ast.Name)
-        and (modules.get(node.value.id), node.attr) in _PLATFORM_READS
+        and any((module, node.attr) in _PLATFORM_READS for module in modules.get(node.value.id, ()))
     )
     return sorted(lines)
 
@@ -88,6 +91,15 @@ def test_the_detector_sees_each_kind_of_platform_check() -> None:
         "F = system.path\n"
     )
     assert _platform_checks(ast.parse(source)) == [1, 2, 5, 6, 7, 8, 9]
+    rebound = (
+        "def a():\n"
+        "    import sys as p\n"
+        "    return p.platform\n"
+        "def b():\n"
+        "    import platform as p\n"
+        "    return p.node()\n"
+    )
+    assert _platform_checks(ast.parse(rebound)) == [3]
 
 
 def test_only_a_module_level_mark_counts() -> None:
