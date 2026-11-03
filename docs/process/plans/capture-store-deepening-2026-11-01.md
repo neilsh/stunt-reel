@@ -37,9 +37,12 @@ more expensive:
    and the mapping from failures to exit codes. Replacing a capture must also drop
    `references.capture_digest`'s path-keyed `lru_cache` entry (or remove the cache), or a process
    that digested the old capture validates a stale pin after the swap. Frame capture, video capture and `make-all` run
-   through it. `play` writes no capture, so it uses only its build choice (the same `playone`
-   resolution, which an explicit `--game-root` overrides), staging and failure mapping, and never
-   falls back. The light probe reads the unpatched `PLAYONE.EXE` only and refuses any other layout,
+   through it. `play` writes no capture, so it uses only its build choice, staging and failure
+   mapping, and never falls back. Its build choice is the pair a capture would use: the row's
+   `playone` for the executable and the archive the row's `makeone` wrote, so a film whose builds
+   differ on purpose plays as it is captured. An explicit `--game-root` overrides the executable
+   only; `play` refuses a pair the row does not name rather than stage a sibling archive the
+   other build wrote (ADR 0029). The light probe reads the unpatched `PLAYONE.EXE` only and refuses any other layout,
    so it takes only staging and failure mapping. Tests go
    through the `ScriptRunner` seam with `MockAutomation` and a temporary data root, and replace the
    monkeypatch tests rather than sit beside them. `UNPATCHED_CAPTURES` is deleted.
