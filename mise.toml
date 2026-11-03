@@ -250,7 +250,7 @@ run = "cargo llvm-cov --locked -p stunt-core -p stunt-gltf --all-features --summ
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.test-py]
-description = "Run Python pytest suite"
+description = "Run Python pytest suite; `mise run test-py -- <path> [-k <expr>]` runs part of it"
 run = "uv run pytest"
 
 [tasks.test]
