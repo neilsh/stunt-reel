@@ -302,16 +302,39 @@ def seed(
             if not free:
                 busy.append(donor)
                 continue
-            return _copy_from(donor, target, copy, members)
+            lanes = [
+                name
+                for name in SEEDED_DIRS
+                if name == "debug" or fresh_lane(donor / "target" / name, rustc_vv, cargo_home)
+            ]
+            outcome = _copy_from(donor, target, copy, members, lanes)
+            stale = [
+                name
+                for name in SEEDED_DIRS
+                if name not in lanes and (donor / "target" / name).is_dir()
+            ]
+            if outcome.status == "seeded" and stale:
+                return SeedOutcome("seeded", f"{outcome.detail} (not its stale {', '.join(stale)})")
+            return outcome
     if len(busy) == 1:
         return SeedOutcome("skipped", f"donor {busy[0]} is building")
     return SeedOutcome("skipped", f"all {len(busy)} donors are building")
 
 
+def fresh_lane(lane: Path, rustc_vv: str, cargo_home: Path) -> bool:
+    """Whether the gate lane's own target directory *lane* (``target/check``, ``target/matrix``)
+    was last built by this rustc against this cargo cache; one that was not would only rebuild."""
+    return built_by(lane, rustc_vv) and uses_cargo_home(lane, cargo_home)
+
+
 def _copy_from(
-    donor: Path, target: Path, copy: Callable[[Path, Path], None], members: frozenset[str]
+    donor: Path,
+    target: Path,
+    copy: Callable[[Path, Path], None],
+    members: frozenset[str],
+    lanes: Sequence[str],
 ) -> SeedOutcome:
-    """Copy *donor*'s seeded directories and files into *target*, undoing all of it on failure.
+    """Copy *donor*'s *lanes* and seeded files into *target*, undoing all of it on failure.
 
     The copy keeps no fingerprint of *members*, the checkout's own crates: they always rebuild.
     Each directory is copied and stripped of them under ``target/.seeding`` and only then moved
@@ -321,7 +344,7 @@ def _copy_from(
     staging = target / STAGING
     moved: list[Path] = []
     try:
-        for name in SEEDED_DIRS:
+        for name in lanes:
             source = donor / "target" / name
             if source.is_dir():
                 copy(source, staging / name)

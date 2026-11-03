@@ -27,15 +27,31 @@ HOME = r"E:\git\stunt-reel\.cache\cargo"
 
 
 def _donor(
-    root: Path, *, rustc: str = RUSTC, home: str = HOME, lock: str = "a", age: float = 0
+    root: Path,
+    *,
+    rustc: str = RUSTC,
+    home: str = HOME,
+    lock: str = "a",
+    age: float = 0,
+    lanes: tuple[str, ...] = (),
 ) -> Path:
-    """A checkout whose target/ looks built by *rustc* against the registry under *home*."""
+    """A checkout whose target/, and each gate lane in *lanes*, looks built by *rustc* against
+    the registry under *home*."""
     target = root / "target"
     fingerprint = target / "debug" / ".fingerprint"
-    deps = target / "debug" / "deps"
     fingerprint.mkdir(parents=True)
-    deps.mkdir(parents=True)
     (root / "Cargo.lock").write_text(lock, encoding="utf-8")
+    for built in (target, *(target / lane for lane in lanes)):
+        _built(built, rustc=rustc, home=home)
+    stamp = time.time() - age
+    os.utime(fingerprint, (stamp, stamp))
+    return root
+
+
+def _built(target: Path, *, rustc: str = RUSTC, home: str = HOME) -> None:
+    """Cargo's record in the target directory *target* of a build by *rustc* against *home*."""
+    deps = target / "debug" / "deps"
+    deps.mkdir(parents=True, exist_ok=True)
     (target / ".rustc_info.json").write_text(
         json.dumps({"outputs": {"1": {"stdout": rustc}}}), encoding="utf-8"
     )
@@ -43,9 +59,6 @@ def _donor(
     (deps / "serde_core-0123456789abcdef.d").write_text(
         f"{deps}\\serde_core-0123456789abcdef.d: {source}\n", encoding="utf-8"
     )
-    stamp = time.time() - age
-    os.utime(fingerprint, (stamp, stamp))
-    return root
 
 
 def test_needs_seed_ignores_tmp_log_and_doc(tmp_path: Path) -> None:
@@ -124,9 +137,7 @@ def _fresh(root: Path, *members: str) -> Path:
 
 def test_seed_copies_dirs_then_files_from_best_donor(tmp_path: Path) -> None:
     here = _fresh(tmp_path / "here")
-    donor = _donor(tmp_path / "d")
-    for name in ("check", "matrix"):
-        (donor / "target" / name).mkdir()
+    donor = _donor(tmp_path / "d", lanes=("check", "matrix"))
     (donor / "target" / "CACHEDIR.TAG").write_text("tag", encoding="utf-8")
     calls: list[str] = []
 
@@ -146,6 +157,29 @@ def test_seed_copies_dirs_then_files_from_best_donor(tmp_path: Path) -> None:
     assert calls == ["debug", "check", "matrix"]
     assert (here / "target" / ".rustc_info.json").is_file()
     assert (here / "target" / "CACHEDIR.TAG").read_text(encoding="utf-8") == "tag"
+
+
+def test_seed_leaves_out_a_lane_built_by_another_rustc_or_cargo_home(tmp_path: Path) -> None:
+    """A stale clippy or matrix lane would only rebuild every dependency: leave it to Cargo."""
+    here = _fresh(tmp_path / "here")
+    donor = _donor(tmp_path / "d", lanes=("check",))
+    _built(donor / "target" / "matrix", home=r"E:\packages\cargo")
+    calls: list[str] = []
+
+    def fake_copy(source: Path, destination: Path) -> None:
+        calls.append(source.name)
+        destination.mkdir(parents=True)
+
+    out = seed(
+        here,
+        checkouts=[donor],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=fake_copy,
+        volume_clones=_clones,
+    )
+    assert out == SeedOutcome("seeded", f"from {donor} (not its stale matrix)")
+    assert calls == ["debug", "check"]
 
 
 def test_seed_skips_built_target_and_non_cloning_volume(tmp_path: Path) -> None:
@@ -173,8 +207,7 @@ def test_seed_skips_built_target_and_non_cloning_volume(tmp_path: Path) -> None:
 
 def test_seed_failure_removes_partial_copy(tmp_path: Path) -> None:
     here = _fresh(tmp_path / "here")
-    donor = _donor(tmp_path / "d")
-    (donor / "target" / "check").mkdir()
+    donor = _donor(tmp_path / "d", lanes=("check",))
 
     def flaky(source: Path, destination: Path) -> None:
         destination.mkdir(parents=True)
@@ -200,9 +233,8 @@ def test_interrupted_seed_leaves_nothing_counted_as_built(tmp_path: Path) -> Non
     """A Ctrl-C mid-copy must not leave a directory that still holds the donor's member
     fingerprints, since the next init would then call target/ built and never repair it."""
     here = _fresh(tmp_path / "here")
-    donor = _donor(tmp_path / "d")
+    donor = _donor(tmp_path / "d", lanes=("check",))
     (donor / "target" / "debug" / ".fingerprint" / "stunt-core-0123456789abcdef").mkdir()
-    (donor / "target" / "check" / "debug").mkdir(parents=True)
 
     def interrupted(source: Path, destination: Path) -> None:
         shutil.copytree(source, destination)
@@ -440,7 +472,7 @@ def test_seed_drops_workspace_fingerprints(tmp_path: Path) -> None:
     """Cargo trusts a workspace unit whose sources are older than its outputs, whatever they
     hold; a seed must never hand B the donor's build of B's own crates."""
     here = _fresh(tmp_path / "here", "stunt-core", "stunt-cli")
-    donor = _donor(tmp_path / "d")
+    donor = _donor(tmp_path / "d", lanes=("check", "matrix"))
     kept = ("serde-0123456789abcdef", "stunt-core-extra-0123456789abcdef")
     dropped = ("stunt-core-0123456789abcdef", "stunt-cli-fedcba9876543210")
     for profile in ("debug", "check/debug", "matrix/debug"):
