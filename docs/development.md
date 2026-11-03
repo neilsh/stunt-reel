@@ -173,7 +173,7 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | `cov-py` | `pytest` with `--cov=stunt_reel` term-missing report (no fail-under) |
 | `deny` | `cargo deny check` — advisories, license allow-list, wildcard bans, and registry sources |
 | `capture-digest` | a capture's `sha256` as `references.toml` pins it, and the entry that would promote it (`mise run capture-digest -- vault-ctry`) |
-| `capture-ref` | the film's frame capture, `build/parity/captures/<film>/frames`, replaced by swap once a capture succeeds; `--out` writes elsewhere and replaces nothing (`--max-frames` defaults to 140) |
+| `capture-ref` | the film's frame capture, `build/parity/captures/<film>/frames`, replaced by swap once a capture succeeds; `--out` writes elsewhere and replaces nothing (`--max-frames` defaults to 2,000) |
 | `verify-corpus` | `.ksy` catalog check against `corpus/` |
 | `play` | play a film in `PLAYONE.EXE` on dosbox-automation |
 | `frame` | render a list of film ticks in one process and write each beside its reference capture frame (`mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N] [--no-build]`); PNGs and the render store go to `build/scratch/frame/<film>/`. `stuntreel --at-ticks T,T,... --out-dir DIR` is the underlying flag |

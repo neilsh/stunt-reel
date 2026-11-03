@@ -117,7 +117,7 @@ def run(args: argparse.Namespace, launch: makeone.Launch | None = None) -> int:
             created=created.isoformat(),
         )
         written = publish_archive(dataroot.REPO_ROOT, data, meta, slug=slug, film=film.name)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         print(f"[make-all] could not store the archive: {exc}", file=sys.stderr)
         return 1
     print(f"[make-all] wrote {written} ({len(data)} bytes in {meta.wall_seconds} s)", flush=True)

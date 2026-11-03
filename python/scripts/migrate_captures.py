@@ -74,18 +74,33 @@ def migrate(root: Path, pins: Mapping[str, str], *, apply: bool) -> list[str]:
         for name in sorted(item.name for item in film.iterdir()):
             kind = film / name
             if name.endswith(_HELD):
+                target = film / name.removesuffix(_HELD)
                 raise MigrationError(
-                    f"{kind} is left from an interrupted migration and holds the pinned run; "
-                    f"move that run to {film / name.removesuffix(_HELD)} by hand, then rerun"
+                    f"{kind} is left from an interrupted migration. The pinned run is either "
+                    f"still inside it or already at {target}: check which one hashes to the pin "
+                    f"(mise run capture-digest), move it to {target} if needed, delete {kind}, "
+                    "then rerun"
                 )
             if name not in KINDS or not kind.is_dir():
                 notes.append(f"skip {kind.relative_to(root).as_posix()}: not a capture kind")
             elif capture_store.current(kind) is None:
+                strays = [item.name for item in kind.iterdir() if not _RUN.fullmatch(item.name)]
+                if strays:
+                    raise MigrationError(
+                        f"{kind} holds {', '.join(sorted(strays))}, which is not a numbered run; "
+                        "move it out by hand; nothing was changed"
+                    )
                 pin = pins.get(film.name) if name == "frames" else None
                 if pin is not None:
                     keep.append((_pinned_run(kind, pin), kind))
                 else:
                     drop.append(kind)
+    for film in films:
+        if film.name in pins and not (film / "frames").is_dir():
+            raise MigrationError(
+                f"{film} has no frames directory, so its pinned reference is not on this machine; "
+                "nothing was changed"
+            )
     for film_name in sorted(set(pins) - {film.name for film in films}):
         notes.append(f"pinned film {film_name} has no captures on this machine")
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -108,5 +109,25 @@ def test_an_interrupted_migration_stops_and_names_the_held_run(script: Any, tmp_
     root, pins = _root(tmp_path)
     frames = root / "captures/vault-ctry/frames"
     frames.rename(frames.with_name("frames.migrating"))
-    with pytest.raises(script.MigrationError, match=r"frames\.migrating.*by hand"):
+    with pytest.raises(script.MigrationError, match=r"frames\.migrating is left.*delete"):
         script.migrate(root, pins, apply=False)
+
+
+def test_a_stray_entry_in_a_kind_stops_before_anything_changes(script: Any, tmp_path: Path) -> None:
+    root, pins = _root(tmp_path)
+    (root / "captures/flmonly-act1/frames/notes.txt").write_text("keep me", encoding="utf-8")
+    before = _tree(root)
+    with pytest.raises(script.MigrationError, match=r"notes\.txt.*not a numbered run"):
+        script.migrate(root, pins, apply=True)
+    assert _tree(root) == before
+
+
+def test_a_pinned_film_without_frames_stops_before_anything_changes(
+    script: Any, tmp_path: Path
+) -> None:
+    root, pins = _root(tmp_path)
+    shutil.rmtree(root / "captures/vault-ctry/frames")
+    before = _tree(root)
+    with pytest.raises(script.MigrationError, match="no frames directory"):
+        script.migrate(root, pins, apply=True)
+    assert _tree(root) == before

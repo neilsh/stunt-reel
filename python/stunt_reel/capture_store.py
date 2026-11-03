@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
-__all__ = ["META_FILE", "current", "discard", "publish", "stage"]
+__all__ = ["META_FILE", "check_replaceable", "current", "discard", "publish", "stage"]
 
 #: The file a writer writes last; its presence is what makes a capture complete.
 META_FILE = "meta.json"
@@ -29,6 +29,19 @@ META_FILE = "meta.json"
 def current(directory: Path) -> Path | None:
     """*directory* when it holds a complete capture, else ``None``."""
     return directory if (directory / META_FILE).is_file() else None
+
+
+def check_replaceable(directory: Path) -> None:
+    """A ``ValueError`` unless *directory* is absent or holds a complete capture.
+
+    Anything else there (the numbered runs of the old layout, or files nobody can account for)
+    is not ours to replace: a swap would delete it.
+    """
+    if directory.exists() and current(directory) is None:
+        raise ValueError(
+            f"{directory} holds no complete capture, so it is not replaced; if it holds numbered "
+            "runs, run mise run migrate-captures first"
+        )
 
 
 def stage(directory: Path) -> Path:
@@ -42,13 +55,14 @@ def stage(directory: Path) -> Path:
 def publish(staged: Path, directory: Path) -> Path:
     """Swap the complete capture *staged* into *directory*, replacing any capture there.
 
-    A ``ValueError`` when *staged* has no ``meta.json``: an incomplete capture never replaces a
-    complete one. If the second rename fails, the old capture is put back. Removing the old
+    A ``ValueError`` when *staged* has no ``meta.json`` (an incomplete capture never replaces a
+    complete one) or when *directory* fails :func:`check_replaceable`. If the second rename fails, the old capture is put back. Removing the old
     capture is best effort: once the new one is in place the publish has succeeded, and a
     locked file only leaves a ``.old-*`` sibling that no reader looks at.
     """
     if current(staged) is None:
         raise ValueError(f"{staged} has no {META_FILE}; an incomplete capture is never published")
+    check_replaceable(directory)
     old = None
     if directory.exists():
         old = directory.with_name(f"{directory.name}.old-{uuid.uuid4().hex[:8]}")

@@ -52,3 +52,16 @@ def test_an_incomplete_capture_is_never_published(tmp_path: Path) -> None:
     assert (target / "frame.idx").read_text(encoding="utf-8") == "good"
     capture_store.discard(staged)
     assert not staged.exists()
+
+
+def test_a_directory_that_is_not_a_capture_is_never_replaced(tmp_path: Path) -> None:
+    """The numbered runs of the old layout must survive until the migration moves them."""
+    target = tmp_path / "frames"
+    (target / "004").mkdir(parents=True)
+    _fill(target / "004", "pinned")
+    with pytest.raises(ValueError, match="migrate-captures"):
+        capture_store.check_replaceable(target)
+    staged = _fill(capture_store.stage(target), "new")
+    with pytest.raises(ValueError, match="no complete capture"):
+        capture_store.publish(staged, target)
+    assert (target / "004" / "frame.idx").read_text(encoding="utf-8") == "pinned"

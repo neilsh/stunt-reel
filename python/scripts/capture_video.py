@@ -126,6 +126,11 @@ def run(args: argparse.Namespace) -> int:
         return _record_into(args, resolve(args.out), film, archive, film_id)
     # The film's one capture of this kind is replaced only by a complete, successful one.
     target = dataroot.REPO_ROOT / parity_layout.video_path(slug)
+    try:
+        capture_store.check_replaceable(target)
+    except ValueError as exc:
+        print(f"[capture-video] {exc}", file=sys.stderr)
+        return 2
     out = capture_store.stage(target)
     try:
         code = _record_into(args, out, film, archive, film_id)
