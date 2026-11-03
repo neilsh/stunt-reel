@@ -1,9 +1,9 @@
-"""Generated ``.ALL`` archives: the structural check and the add-only store.
+"""Generated ``.ALL`` archives: the structural check and the film's one stored archive.
 
 ``MAKEONE.EXE`` turns a film's ``.FLM`` into the ``.ALL`` that ``PLAYONE.EXE`` plays
-(``research/makeone-exe/driving.md``). A generated archive is written once under
-``captures/<slug>/archives/<run>/`` and never changed (ADR 0022), so this module only ever
-adds a directory; it never rewrites one.
+(``research/makeone-exe/driving.md``). A film has one generated archive, in
+``captures/<slug>/archives/``, filed beside its captures under the same rule (ADR 0028): a new
+archive is written beside the old one and swapped in by :mod:`capture_store`.
 """
 
 from __future__ import annotations
@@ -11,12 +11,11 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
-import shutil
 import struct
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
-from stunt_reel import parity_layout, runs
+from stunt_reel import capture_store, parity_layout
 
 __all__ = [
     "META_FILE",
@@ -28,8 +27,8 @@ __all__ = [
     "resolve_all",
 ]
 
-#: The file inside an id directory that says the directory is complete; it is written last.
-META_FILE = "meta.json"
+#: The file inside an archive directory that says it is complete; it is written last.
+META_FILE = capture_store.META_FILE
 
 
 class ArchiveError(RuntimeError):
@@ -96,71 +95,55 @@ def check_archive(data: bytes) -> int:
 
 
 def publish_archive(root: Path, data: bytes, meta: ArchiveMeta, *, slug: str, film: str) -> Path:
-    """Write *data* as the next ``<root>/captures/<slug>/archives/<run>/<FILM>.ALL``; return the directory.
+    """Write *data* as ``<root>/captures/<slug>/archives/<FILM>.ALL``, replacing the old archive.
 
-    The run number is claimed first as ``<run>.lock``, which also keeps another publisher from
-    choosing it. The files go to a ``<run>.partial`` sibling, ``meta.json`` last, and the
-    sibling is renamed into place, so a reader never sees half an archive. The claim is
-    released in every case, and a failed write removes its ``.partial``; only a process that
-    dies leaves ``.lock`` and ``.partial`` behind, which readers skip and which hold their
-    number until someone deletes them.
+    The files go to a staged sibling, ``meta.json`` last, and the sibling is swapped into place,
+    so a reader never sees half an archive. A failed write removes the sibling and leaves the
+    old archive where it was.
     """
     stem = Path(film).stem
-    parent = root / parity_layout.archives_root(slug)
-    run = runs.claim_run(parent, ".lock")
-    lock = parent / f"{run}.lock"
+    target = root / parity_layout.archive_path(slug)
+    staged = capture_store.stage(target)
     try:
-        target = parent / run
-        partial = parent / f"{run}.partial"
-        partial.mkdir()
-        try:
-            (partial / f"{stem.upper()}.ALL").write_bytes(data)
-            (partial / META_FILE).write_text(meta.to_json(), encoding="utf-8")
-            partial.rename(target)
-        except BaseException:
-            shutil.rmtree(partial, ignore_errors=True)
-            raise
-    finally:
-        lock.rmdir()
-    return target
+        (staged / f"{stem.upper()}.ALL").write_bytes(data)
+        (staged / META_FILE).write_text(meta.to_json(), encoding="utf-8")
+        return capture_store.publish(staged, target)
+    except BaseException:
+        capture_store.discard(staged)
+        raise
 
 
 def resolve_all(flm: Path, root: Path, slug: str | None = None) -> Path:
     """Return the ``.ALL`` that goes with *flm*, or raise ArchiveMissing.
 
     A sibling with the film's stem wins (matched case-insensitively, so ``x.All`` beside
-    ``x.flm`` counts). Otherwise the stored archive with the greatest id whose film hash
-    equals *flm*'s; its bytes must still hash to the recorded ``all_sha256``, and a
-    mismatch is an error naming the run, never a fall back to an older archive. *slug* names
-    the film's directory; it defaults to the one :func:`parity_layout.film_slug` derives.
+    ``x.flm`` counts). Otherwise the film's stored archive, when it was made from *flm*'s
+    bytes; its own bytes must still hash to the recorded ``all_sha256``, and a mismatch is an
+    error. *slug* names the film's directory; it defaults to the one
+    :func:`parity_layout.film_slug` derives.
     """
     stem = flm.stem.lower()
     for sibling in sorted(flm.parent.iterdir()):
         if sibling.is_file() and sibling.suffix.lower() == ".all" and sibling.stem.lower() == stem:
             return sibling
-    digest = hashlib.sha256(flm.read_bytes()).hexdigest()
-    parent = root / parity_layout.archives_root(slug or parity_layout.slug_for(flm))
-    for number in reversed(runs.run_numbers(parent)):
-        directory = parent / parity_layout.run_id(number)
-        meta_file = directory / META_FILE
-        if not meta_file.is_file():
-            continue
-        try:
-            meta = ArchiveMeta.from_json(meta_file.read_text(encoding="utf-8"))
-        except (ValueError, TypeError, AttributeError, OSError) as exc:
-            raise ArchiveError(
-                f"stored archive {directory.name} has an unreadable meta.json: {exc}"
-            ) from exc
-        if meta.flm_sha256 != digest:
-            continue
-        archive = directory / f"{flm.stem.upper()}.ALL"
-        if (
-            not archive.is_file()
-            or hashlib.sha256(archive.read_bytes()).hexdigest() != meta.all_sha256
-        ):
-            raise ArchiveError(
-                f"stored archive {directory.name} no longer matches its meta.json; "
-                f"delete {directory} and rerun make-all"
-            )
-        return archive
-    raise ArchiveMissing(f"no .ALL for {flm}; run: mise run make-all -- --film {flm}")
+    make = f"run: mise run make-all -- --film {flm}"
+    directory = capture_store.current(
+        root / parity_layout.archive_path(slug or parity_layout.slug_for(flm))
+    )
+    if directory is None:
+        raise ArchiveMissing(f"no .ALL for {flm}; {make}")
+    try:
+        meta = ArchiveMeta.from_json((directory / META_FILE).read_text(encoding="utf-8"))
+    except (ValueError, TypeError, AttributeError, OSError) as exc:
+        raise ArchiveError(
+            f"stored archive {directory} has an unreadable meta.json: {exc}"
+        ) from exc
+    if meta.flm_sha256 != hashlib.sha256(flm.read_bytes()).hexdigest():
+        raise ArchiveMissing(f"the stored archive of {flm} was made from another .FLM; {make}")
+    archive = directory / f"{flm.stem.upper()}.ALL"
+    if not archive.is_file() or hashlib.sha256(archive.read_bytes()).hexdigest() != meta.all_sha256:
+        raise ArchiveError(
+            f"stored archive {directory} no longer matches its meta.json; "
+            f"delete it and rerun make-all"
+        )
+    return archive

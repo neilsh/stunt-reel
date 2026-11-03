@@ -50,7 +50,7 @@ __all__ = ["main", "process"]
 _LEDGER_NAME = "ledger.jsonl"
 _LOG_NAME = "batch.log"
 #: What a forced render or score replaces: the stage's own output in the film's batch directory.
-#: Captures and archives are add-only (ADR 0022), so forcing them only writes a new run.
+#: A forced capture or archive replaces the old one by swap (ADR 0028); nothing to clear.
 _STAGE_OUTPUT = {"render": "render", "score": "report"}
 #: A capture is a real-time clock pass, then window passes eight at a time, each running in real
 #: time to its last window: FLMOnly/Act1.flm (15,000 ticks, 1,363 windows) took 21 minutes, and a

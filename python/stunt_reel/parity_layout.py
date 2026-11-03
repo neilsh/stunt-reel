@@ -2,7 +2,7 @@
 
 Every path here is relative; callers join it with the root they mean: renders, reports and
 staging are per checkout, while the captures live in the shared data root and are linked into
-the checkout (ADR 0008 governs those links, ADR 0022 the add-only captures). Nothing here
+the checkout (ADR 0008 governs those links, ADR 0028 the one capture of each kind). Nothing here
 resolves a root, touches the filesystem, or decides how a capture runs; it answers "where", so no caller spells the
 layout again.
 
@@ -23,15 +23,12 @@ __all__ = [
     "PROTECTED_SUFFIXES",
     "REFERENCES_FILE",
     "RENDER_ROOTS",
-    "RUN_WIDTH",
     "archive_path",
-    "archives_root",
     "batch_film_dir",
     "batch_root",
     "capture_root",
     "film_slug",
     "frames_path",
-    "frames_root",
     "is_protected_render",
     "manual_report_dir",
     "previous_dir",
@@ -40,7 +37,6 @@ __all__ = [
     "report_dir",
     "require_slug",
     "retime_dir",
-    "run_id",
     "slug_for",
     "stage_conf",
     "stage_dir",
@@ -48,7 +44,6 @@ __all__ = [
     "stage_root",
     "sweep_root",
     "video_path",
-    "video_root",
 ]
 
 #: The two roots every other location derives from; the only literals the layout spells.
@@ -66,7 +61,7 @@ _RETIME = _SCRATCH / "retime"
 _SWEEP = _SCRATCH / "sweep"
 _BATCH = _PARITY / "batch"
 
-#: The committed file naming each film's reference capture (ADR 0022), relative to the checkout.
+#: The committed file pinning each film's reference capture by digest (ADR 0029), relative to the checkout.
 REFERENCES_FILE = Path("research/parity/references.toml")
 #: The suffix of the latest render and report pair, ``<film>_current``.
 CURRENT_SUFFIX = "_current"
@@ -78,8 +73,6 @@ BASE_SUFFIX = "_base"
 #: :func:`previous_dir`, a root the rotation does not scan.
 PROTECTED_SUFFIXES: tuple[str, ...] = (CURRENT_SUFFIX, BASE_SUFFIX)
 
-#: Digits in a run directory name (``001``).
-RUN_WIDTH = 3
 _SLUG = re.compile(r"[a-z0-9][a-z0-9_-]*")
 _SLUG_JUNK = re.compile(r"[^a-z0-9_]+")
 
@@ -133,39 +126,19 @@ def require_slug(slug: str) -> str:
     return slug
 
 
-def run_id(number: int) -> str:
-    """The zero-padded directory name of run *number*."""
-    return f"{number:0{RUN_WIDTH}d}"
-
-
-def frames_root(slug: str) -> Path:
-    """The directory holding every frame capture of the film *slug*."""
+def frames_path(slug: str) -> Path:
+    """The film *slug*'s one frame capture (ADR 0028)."""
     return _CAPTURE / slug / "frames"
 
 
-def frames_path(slug: str, run: str) -> Path:
-    """The directory of one frame capture, written once and never changed (ADR 0022)."""
-    return frames_root(slug) / run
-
-
-def video_root(slug: str) -> Path:
-    """The directory holding every video capture of the film *slug*."""
+def video_path(slug: str) -> Path:
+    """The film *slug*'s one video capture (ADR 0028)."""
     return _CAPTURE / slug / "video"
 
 
-def video_path(slug: str, run: str) -> Path:
-    """The directory of one video capture, written once and never changed (ADR 0022)."""
-    return video_root(slug) / run
-
-
-def archives_root(slug: str) -> Path:
-    """The directory holding every generated ``.ALL`` archive of the film *slug*."""
+def archive_path(slug: str) -> Path:
+    """The film *slug*'s one generated ``.ALL`` archive, filed beside its captures (ADR 0028)."""
     return _CAPTURE / slug / "archives"
-
-
-def archive_path(slug: str, run: str) -> Path:
-    """The directory of one generated archive, written once and never changed (ADR 0022)."""
-    return archives_root(slug) / run
 
 
 def render_dir(film: str) -> Path:

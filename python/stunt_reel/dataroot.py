@@ -3,8 +3,8 @@
 The original game files (``corpus/``) and the captures are gitignored, so each
 checkout would otherwise need its own copy.  They live once per machine, outside
 every checkout: ``<parent-of-primary>/<repo-name>.data`` unless ``STUNT_DATA_ROOT``
-names another place.  Nothing this project runs writes ``corpus/``, and a capture adds
-a new directory under ``captures/`` and never changes one (ADR 0022).  ``mise run init`` links them in, and ``ensure_links`` links
+names another place.  Nothing this project runs writes ``corpus/`` (ADR 0022), and a new
+capture of a film replaces its old one by swap (ADR 0028).  ``mise run init`` links them in, and ``ensure_links`` links
 them in again wherever the corpus is read, so a checkout made by any tool works on
 first use rather than reading an empty placeholder.  ``ensure_links`` is the one
 policy for those links: it returns one outcome per target, and its callers only
@@ -91,8 +91,6 @@ LINK_TARGETS: tuple[tuple[str, str], ...] = (
     ("captures", parity_layout.capture_root().as_posix()),
 )
 
-#: Where ``reference/<film>`` of the old data-root layout lands: ``captures/vault-<film>/frames/001``.
-_FIRST_RUN = parity_layout.run_id(1)
 #: Top-level names of the old layout (ADR 0008); ``reference`` held ``<film>/`` directly.
 _OLD_NAMES = ("stisldem", "si_archive", "oracle", "target_bin", "reference")
 
@@ -460,8 +458,8 @@ def _holds_files(path: Path) -> bool:
 
 def _legacy_destination(film: str) -> Path:
     """Where an old ``reference/<film>`` goes, relative to the data root."""
-    run = parity_layout.frames_path(f"vault-{film}", _FIRST_RUN)
-    return run.relative_to(parity_layout.capture_root().parent)
+    capture = parity_layout.frames_path(f"vault-{film}")
+    return capture.relative_to(parity_layout.capture_root().parent)
 
 
 def convert_layout(root: Path) -> list[str]:
@@ -471,7 +469,7 @@ def convert_layout(root: Path) -> list[str]:
     ``target_bin/StuntIsl`` becomes ``corpus/stuntisl`` and ``target_bin/patch`` becomes
     ``corpus/patches``.  The top-level ``target_bin/PLAYONE.EXE`` is dropped when it is
     byte-identical to ``StuntIsl``'s, and ``oracle`` is deleted: it was generated, not
-    evidence.  ``reference/<film>`` becomes ``captures/vault-<film>/frames/001`` (ADR 0024).
+    evidence.  ``reference/<film>`` becomes ``captures/vault-<film>/frames`` (ADR 0028).
     A root already in the new layout is left alone; one holding both an old name and a new
     name with files in it is refused before anything moves, because merging them would guess which side is right.
     """
