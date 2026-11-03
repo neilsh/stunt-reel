@@ -1,6 +1,7 @@
 # `.ALL` manifests: rebuild a film's archive from a committed id list (2026-11-03)
 
-Status: **design approved in chat 2026-11-03; spec awaiting review, not implemented**. Source:
+Status: **design approved in chat 2026-11-03; spec revised after a self-review (section 11),
+awaiting review, not implemented**. Source:
 a brainstorming session that started from "how difficult would a Rust version of
 `MAKEONE.EXE` be", and the probe recorded in
 [`research/makeone-exe/linking.md`](../../../research/makeone-exe/linking.md). The durable
@@ -34,7 +35,10 @@ From [`linking.md`](../../../research/makeone-exe/linking.md), 289 corpus archiv
 - An id list plus the game's `RES\` rebuilt 83 of 83 stock-only archives byte for byte (§ 3).
 - Some `res_index` values have several files, one per sound setting: `0xC0`/`0xC1` (`MUSIC1/2`
   `.ESS`, `.XMA`, `.XMM`, `.XMP`) and `0xC3` (`COMMNSND.SMP`, `.ZCR`). The manifest must
-  name the file used (§ 5).
+  name the file used (§ 5). No archive takes one `res_index` from two files, and no
+  `res_index` ever had two files that both matched all of its chunks (checked during the
+  review, all 289 archives), so one file per `res_index` is enough.
+- All 35 files in `RES\` are `RS` containers, music and `COMMNSND.ZCR` included.
 - Which items a film gets most likely depends on what the renderer loaded during playback, so
   the selection is recorded, not computed (§ 4). Computing it is out of scope.
 
@@ -47,7 +51,7 @@ From [`linking.md`](../../../research/makeone-exe/linking.md), 289 corpus archiv
   [`references.toml`](../../../research/parity/references.toml).
 - **D2. TOML, grouped by source file.** Python reads it with the standard library's
   `tomllib`. Rust reads and writes it through the `toml` crate, a new dependency of
-  `stunt-cli` only. Items are stored per source file rather than as raw ids, so the numbers
+  `stunt-cli` only, as is `sha2` for the hashes (neither is in `Cargo.lock` today). Items are stored per source file rather than as raw ids, so the numbers
   are small and readable and the sound-variant choice is explicit.
 - **D3. Every source file carries its hash.** A rebuild against different game files (another
   release, Patch #3's replaced resources, a different sound file) fails before writing, and
@@ -101,9 +105,14 @@ Rules, checked by both `extract` and `build`:
   `1..=255` within the file's item count.
 - The ids are `(index << 8) | item` over all sources. They must be unique, and the archive is
   written in ascending id order.
-- `game_root` names where the files are looked up. `build` takes `--game` to override it, for
-  example a Patch #3 tree under the data root's `builds/`. The hashes decide whether the
-  override is acceptable.
+- `game_root` is a hint for where the files are looked up; the hashes are what make a tree
+  acceptable. It is written relative to the checkout when the tree is inside it (`corpus/…`
+  is, through the data-root link), and as an absolute path otherwise, which only works on the
+  machine that wrote it. `build` takes `--game` to override it, for example with a Patch #3
+  tree under the data root's `builds/`.
+- An item number `n` names region `n - 1` of the source file in the
+  [`res.ksy`](../../../research/formats/res.ksy) sense: region 0 is item 1, whether it holds
+  a prop archive's name table or a scenery archive's first payload.
 
 ## 5. Components
 
@@ -113,53 +122,67 @@ Rules, checked by both `extract` and `build`:
   id, rejects duplicates and a count above `u16::MAX`, writes the `6n + 6` header, then the
   payloads. It is the inverse of `parse_all` for an intact archive: a property test checks
   that `parse_all(write_all(x))` gives back `x`.
-- A new module, `link`, behind the existing `serde` feature for the manifest type:
-  - `Manifest`, `Source` (the TOML of section 4).
-  - `SourceArchive { index: u8, items: Vec<&[u8]> }`, one parsed `.RES` or `.SMP` file. It
-    reuses the segment split of `vfs::res`, refactored to expose raw segments if needed.
-  - `build(manifest, lookup: impl Fn(&Source) -> Result<SourceArchive>) -> Result<Vec<u8>>`.
-  - `extract(all: &[u8], candidates: &[(name, SourceArchive)]) -> Result<Vec<Source>>`. For
-    each chunk it finds the candidates whose `index` is the id's high byte and keeps those
-    whose item `(id & 0xFF) - 1` equals the payload. It fails with `LinkError::NoSource { id }`
-    when none matches (add-on content), and with `LinkError::Mixed { index }` when one
-    `res_index` would need two files.
-  - `LinkError` variants: `NoSource`, `Mixed`, `ItemOutOfRange`, `DuplicateId`,
-    `SourceMismatch` (hash), `ArchiveMismatch` (`all_sha256`).
-- Hashing: `stunt-core` gains no SHA-256 dependency. The CLI hashes and passes the digests in,
-  so the core compares strings it is given.
+- `vfs::res::regions(data) -> Result<ResRegions<'_>, VfsError>`, where `ResRegions { index:
+  u8, regions: Vec<&[u8]> }` is the raw split: byte `0x0002` and every region, region 0
+  included. `parse_res` drops region 0 as a name table, so the linker cannot use it as it
+  stands. `parse_res` is refactored onto `regions` so the header checks live in one place,
+  and its behaviour is unchanged.
+- A new module, `link`, with the manifest types behind the existing `serde` feature:
+  - `Manifest`, `Source` (the TOML of section 4). Digests are opaque strings to the core.
+  - `build(manifest, sources: &BTreeMap<u8, ResRegions>) -> Result<Vec<u8>, LinkError>`.
+    The caller has already loaded and hash-checked the files the manifest names.
+  - `extract(all: &[u8], candidates: &[(&str, ResRegions)]) -> Result<Vec<Source>,
+    LinkError>`. For each `res_index` in the archive, it keeps the candidate files with that
+    index in which item `(id & 0xFF)` equals the payload for every chunk with that index. If
+    several qualify, the first by file name wins; the archive's bytes are the same either way,
+    and the corpus has no such case. Hashes are left empty for the CLI to fill.
+  - `LinkError` (structural only): `NoSource { id }` when a chunk matches no candidate
+    (add-on content); `Mixed { index }` when every chunk of an index has a source but no
+    single file covers them all; `ItemOutOfRange`; `DuplicateId`; `Unsorted` (a manifest
+    breaking section 4's rules); `TooLarge` (offsets past `u32`).
+- Hashing stays out of `stunt-core`, which gains no dependency. The CLI computes digests and
+  owns the hash errors.
 
 ### 5.2 `stunt-cli`: `stuntreel link`
 
 - `stuntreel link extract <X.ALL> --flm <X.FLM> --game <tree> [--makeone <exe>] -o
-  <manifest>`. It scans `<tree>/RES/*.RES` and `*.SMP` as candidates, runs `extract`, fills
-  the hashes, rebuilds in memory, and refuses (exit 1, no file written) unless the rebuild
-  equals the input. It writes the TOML.
-- `stuntreel link build <manifest> [--game <tree>] -o <X.ALL>`. It checks every source hash,
-  builds, checks `all_sha256`, and writes the file atomically (a temporary name, then a
-  rename).
-- New dependency in `stunt-cli`: `toml`, plus `sha2` if no SHA-256 implementation is already
-  in its dependency tree.
+  <manifest>`. Every file in `<tree>/RES/` that starts with `RS` is a candidate, not just
+  `*.RES` and `*.SMP`: the music files and `COMMNSND.ZCR` carry `0xC0`, `0xC1` and `0xC3`. It
+  runs `extract`, fills the hashes, rebuilds in memory, and writes the TOML only if the
+  rebuild equals the input.
+- `stuntreel link build <manifest> [--game <tree>] -o <X.ALL>`. It checks every source hash
+  (`SourceMismatch`: file, expected, actual, tree), builds, checks `all_sha256`
+  (`ArchiveMismatch`), and writes the file atomically (a temporary name, then a rename).
+- Exit codes, so callers need not parse messages: 0 written; 1 an error (I/O, a hash, a
+  malformed manifest, a rebuild that differs); 3 not linkable, meaning `NoSource` or `Mixed`
+  (the archive holds content the game's `RES\` lacks).
+- New dependencies in `stunt-cli`: `toml` and `sha2`.
 
 ### 5.3 Python
 
 - [`all_archive.py`](../../../python/stunt_reel/all_archive.py):
   - `manifest_path(slug) -> Path` (`manifests/all/<slug>.toml`).
-  - `resolve_all(flm, root, slug=None, *, link=...)` follows D6. `link` is an injected callable
-    that runs `stuntreel link build`. Its default calls the release binary from
-    `parity_pipeline.binary_path()` and builds it first when missing, as the batch survey does.
-    Tests inject a fake.
+  - `resolve_all(flm, root, slug=None, *, link=...)` follows D6. It reads the manifest with
+    `tomllib` and compares `flm_sha256` itself, so a manifest for another `.FLM` costs no
+    process launch. `link` is an injected callable that runs `stuntreel link build`. Its
+    default first calls `parity_pipeline.build_release()`, a no-op when the binary is current,
+    because an older binary has no `link` subcommand. Then it runs `binary_path()`. Tests
+    inject a fake.
 - [`make_all.py`](../../../python/scripts/make_all.py): after `publish_archive`, it runs
-  `stuntreel link extract` on the published `.ALL`. It prints the manifest path on success, or
-  the `NoSource` id on refusal. `make-all`'s exit code does not depend on the manifest: the
-  archive is already stored.
-- Backfill: `make-all --manifest-only --film X.FLM` extracts the manifest from the film's
-  stored archive without running `MAKEONE`. It covers archives made before this change.
+  `stuntreel link extract` on the published `.ALL` with the same `--game-root`. On exit 0 it
+  prints the manifest path; on exit 3 it says the archive holds add-on content and stays the
+  record. `make-all`'s exit code does not depend on the manifest, because the archive is
+  already stored.
+- Backfill: `make-all --manifest-only --film X.FLM [--game-root <tree>]` extracts the
+  manifest from the film's stored archive without running `MAKEONE`. `meta.json` does not
+  record the game root, so it takes the same default as a normal run. The byte-identical
+  rebuild is what proves the tree is the right one.
 
 ## 6. Error handling
 
 | Situation | Behaviour |
 |---|---|
-| Archive holds an add-on chunk | `extract` refuses with the id; `make-all` keeps the archive, writes no manifest, says why |
+| Archive holds an add-on chunk | `extract` exits 3 naming the id; `make-all` keeps the archive, writes no manifest, says why |
 | Source file missing or hash differs | `build` refuses, naming the file, the expected hash and the tree it looked in |
 | Rebuilt bytes differ from `all_sha256` | `build` refuses; nothing is written |
 | Manifest's `flm_sha256` differs from the film | The manifest does not apply; the resolver goes on to the stored archive (as for a stored archive made from another `.FLM`) |
@@ -171,11 +194,13 @@ Rules, checked by both `extract` and `build`:
   `.RES` files with distinct `res_index`, and a pair of files sharing one `res_index` to model
   the sound variants. A synthetic `.ALL` and its `.toml` manifest are built from them. All are
   documented in the fixtures README.
-- **`stunt-core` tests:** the `write_all` round trip and property test; `extract` then `build`
-  is the identity; a duplicate id, an out-of-range item, a mixed `res_index` and an add-on
-  chunk each give their error.
+- **`stunt-core` tests:** the `write_all` round trip and property test; `regions` keeps
+  region 0 as item 1, and `parse_res`'s existing tests still pass after the refactor;
+  `extract` then `build` is the identity; a duplicate id, an out-of-range item, a mixed
+  `res_index` and an add-on chunk each give their error.
 - **`stunt-cli` tests:** `link extract` and `link build` on the fixtures; a changed source
-  byte gives `SourceMismatch`, and no output file is left.
+  byte gives `SourceMismatch` with exit 1, an add-on chunk gives exit 3, and neither leaves an
+  output file.
 - **Python tests:** the resolve order (sibling, manifest, stored archive) with a fake `link`;
   a matching manifest that fails to build is an error, not a fall back; `make-all` writes a
   manifest on success and none on a `NoSource` refusal (fake binary).
@@ -187,7 +212,7 @@ Rules, checked by both `extract` and `build`:
 
 1. ADR 0030 (manifests are the committed record of a film's archive; amends ADR 0023's resolve
    order) and the `NOTICE.md` section.
-2. `write_all` and its tests.
+2. `write_all`, `vfs::res::regions` with `parse_res` moved onto it, and their tests.
 3. The `link` module, fixtures and tests.
 4. `stuntreel link extract|build` and their tests.
 5. `resolve_all` order and the `make-all` hook and `--manifest-only`, with Python tests.
@@ -213,3 +238,24 @@ Rules, checked by both `extract` and `build`:
 2. When ADR 0029's per-film builds land, should `game_root` become a build name
    (`"patch3"`, `"unpatched"`)? The hashes already pin the files, so this only changes where
    `build` looks by default.
+
+## 11. Review log
+
+Self-review on 2026-11-03, against the code on `main` (`69facb3`) and a corpus check:
+
+- The candidate scan was limited to `*.RES` and `*.SMP`, which misses the music files and
+  `COMMNSND.ZCR`. It now takes every `RS` file in `RES\`.
+- `parse_res` treats region 0 as a name table and drops it, but item 1 of a scenery archive
+  is region 0. Added `vfs::res::regions` and the item-to-region rule.
+- "One file per `res_index`" was assumed. It is now checked over all 289 archives (section 2),
+  with a deterministic tie-break for a case the corpus does not have.
+- The hash errors sat in a core that cannot hash. They moved to the CLI, and `sha2` is named
+  as a new dependency because none is in `Cargo.lock`.
+- `make-all` could not tell add-on content from a failure without parsing messages. Added
+  exit code 3.
+- `resolve_all` could call a release binary built before `link` existed. It now runs
+  `build_release` first, and reads `flm_sha256` itself.
+- Backfill needed a game root that `meta.json` does not record. It now takes `--game-root`
+  with the normal default.
+- `game_root` is now a hint, not an authority, so an absolute path does not break the
+  manifest elsewhere.
