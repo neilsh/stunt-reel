@@ -184,7 +184,8 @@ impl RenderJournal {
         })
     }
 
-    /// Stores the page drawn for film-clock `tick` with `controls` from `camera`.
+    /// Stores the page drawn for film-clock `tick` with `controls` from `camera`; `credits`
+    /// says whether the film shows credits there.
     ///
     /// The page's picture is not kept: it must be `palette[index]` at every pixel for the
     /// film palette of `controls`, and a page that is not is refused.
@@ -193,6 +194,7 @@ impl RenderJournal {
         tick: u32,
         controls: PaletteControls,
         camera: ViewCamera,
+        credits: bool,
         page: &RenderedPage,
     ) -> Result<(), StoreError> {
         let palette = controls.film_palette();
@@ -210,6 +212,7 @@ impl RenderJournal {
             palette: render_palette(controls),
             camera: camera_pose(camera),
             palette_index,
+            credits,
         });
         Ok(())
     }
@@ -329,7 +332,7 @@ pub(crate) fn read_report(path: &Path) -> Result<Report, AdapterError> {
 }
 
 /// The committed corpus under `tests/fixtures/parity/v1` (captures and reports) and
-/// `tests/fixtures/parity/v2` (renders), read through this adapter.
+/// `tests/fixtures/parity/v3` (renders), read through this adapter.
 #[cfg(test)]
 mod conformance {
     use super::*;
@@ -376,9 +379,9 @@ mod conformance {
         }
     }
 
-    /// The version-2 render under `tests/fixtures/parity/v2/render`.
-    fn v2_render() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/parity/v2/render")
+    /// The version-3 render under `tests/fixtures/parity/v3/render`.
+    fn v3_render() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/parity/v3/render")
     }
 
     /// Tick 7: sky over two actor pixels, with a layer-16 row below the 2-row viewport.
@@ -389,10 +392,12 @@ mod conformance {
     ];
 
     /// The fixture's ticks: three in second 0, none in second 1, two in second 2.
-    const V2_TICKS: [u32; 5] = [7, 9, 30, 100, 149];
+    const V3_TICKS: [u32; 5] = [7, 9, 30, 100, 149];
+    /// The one fixture tick whose record expects credits.
+    const V3_CREDITS_TICK: u32 = 9;
 
     /// Every other tick is tick 7 with its indices raised by `tick - 7`.
-    fn v2_planes(tick: u32) -> (Vec<u8>, Vec<u32>) {
+    fn v3_planes(tick: u32) -> (Vec<u8>, Vec<u32>) {
         let shift = (tick - 7) as u8;
         TICK_7_ROWS
             .iter()
@@ -402,7 +407,7 @@ mod conformance {
     }
 
     /// Ticks 30 and 149 use the second palette, entry i = (255 - i, i, 0); the rest a grey ramp.
-    fn v2_palette(tick: u32) -> Palette {
+    fn v3_palette(tick: u32) -> Palette {
         std::array::from_fn(|i| {
             let i = i as u8;
             if tick == 30 || tick == 149 {
@@ -413,12 +418,12 @@ mod conformance {
         })
     }
 
-    /// Regenerates the v2 render fixture. Run it by hand after a format change:
-    /// `cargo test -p stunt-cli write_v2_render_fixture -- --ignored`.
+    /// Regenerates the v3 render fixture. Run it by hand after a format change:
+    /// `cargo test -p stunt-cli write_v3_render_fixture -- --ignored`.
     #[test]
     #[ignore = "writes the committed fixture"]
-    fn write_v2_render_fixture() {
-        let dir = v2_render();
+    fn write_v3_render_fixture() {
+        let dir = v3_render();
         fs::create_dir_all(&dir).expect("create fixture dir");
         let geometry = Geometry {
             width: 4,
@@ -427,10 +432,10 @@ mod conformance {
         };
         let mut writer = StoreWriter::new(&dir, &geometry);
         let mut ticks = Vec::new();
-        for tick in V2_TICKS {
-            let (indices, layers) = v2_planes(tick);
+        for tick in V3_TICKS {
+            let (indices, layers) = v3_planes(tick);
             let palette_index = writer
-                .push(tick, &v2_palette(tick), &indices, &layers)
+                .push(tick, &v3_palette(tick), &indices, &layers)
                 .expect("push");
             let half = tick == 30 || tick == 149;
             ticks.push(RenderTick {
@@ -447,6 +452,7 @@ mod conformance {
                     roll_radians: 0.0,
                 },
                 palette_index,
+                credits: tick == V3_CREDITS_TICK,
             });
         }
         let table = writer.finish().expect("finish").expect("a store");
@@ -468,7 +474,7 @@ mod conformance {
 
     #[test]
     fn render_fixture_pins_identity_geometry_chunks_and_controls() {
-        let store = RenderStore::open(&v2_render()).expect("open the v2 render");
+        let store = RenderStore::open(&v3_render()).expect("open the v3 render");
         let record = store.record();
         assert_eq!(record.film.name.as_deref(), Some("SYNTH.FLM"));
         assert_eq!(record.film.flm_bytes, Some(17));
@@ -481,7 +487,7 @@ mod conformance {
             }
         );
         let ticks: Vec<u32> = record.ticks.iter().map(|tick| tick.tick).collect();
-        assert_eq!(ticks, V2_TICKS);
+        assert_eq!(ticks, V3_TICKS);
         let seconds: Vec<(u32, u32)> = record
             .chunks
             .iter()
@@ -493,21 +499,28 @@ mod conformance {
         assert_eq!(indices, vec![0, 0, 1, 0, 1]);
         assert_eq!(record.ticks[0].palette.brightness, 32768);
         assert_eq!(record.ticks[2].palette.brightness, 16384);
+        let credits: Vec<u32> = record
+            .ticks
+            .iter()
+            .filter(|t| t.credits)
+            .map(|t| t.tick)
+            .collect();
+        assert_eq!(credits, vec![V3_CREDITS_TICK]);
     }
 
     #[test]
     fn render_fixture_pins_every_tick_planes_and_palette() {
-        let mut store = RenderStore::open(&v2_render()).expect("open the v2 render");
-        for tick in V2_TICKS {
+        let mut store = RenderStore::open(&v3_render()).expect("open the v3 render");
+        for tick in V3_TICKS {
             let frame = store.frame(tick).expect("frame");
-            let (indices, layers) = v2_planes(tick);
+            let (indices, layers) = v3_planes(tick);
             assert_eq!(frame.indices, indices, "tick {tick} indices");
             let layers: Vec<u16> = layers.iter().map(|&layer| layer as u16).collect();
             // Row 2 lies outside the 2-row viewport but the reader still returns it.
             assert_eq!(frame.layers, layers, "tick {tick} layers");
-            assert_eq!(frame.palette, v2_palette(tick), "tick {tick} palette");
+            assert_eq!(frame.palette, v3_palette(tick), "tick {tick} palette");
         }
-        let (indices, _) = v2_planes(7);
+        let (indices, _) = v3_planes(7);
         assert_eq!(&indices[4..8], &[0, 40, 40, 0]);
     }
 
@@ -682,6 +695,7 @@ mod tests {
                 brightness: 0x8000,
                 saturation: 0x8000,
             },
+            credits: None,
         }
     }
 
@@ -708,7 +722,7 @@ mod tests {
         if tamper {
             rgba[0] ^= 1;
         }
-        RenderedPage::new(stunt_render::PageSize::new(320, 200), rgba, plane).expect("page")
+        RenderedPage::new(stunt_render::PageSize::new(320, 200), rgba, &plane).expect("page")
     }
 
     #[test]
@@ -717,7 +731,13 @@ mod tests {
         let mut journal = RenderJournal::begin(&dir, FilmId::default(), geometry()).expect("begin");
         let frame = frame();
         journal
-            .write(7, frame.palette, frame.view, &page(frame.palette, false))
+            .write(
+                7,
+                frame.palette,
+                frame.view,
+                true,
+                &page(frame.palette, false),
+            )
             .expect("write");
         assert!(
             !dir.join(RENDER_DOCUMENT).exists(),
@@ -729,6 +749,10 @@ mod tests {
         assert_eq!(record.geometry, geometry());
         assert_eq!(record.ticks.len(), 1);
         assert_eq!(record.ticks[0].palette.sky, 0x2000);
+        assert!(
+            record.ticks[0].credits,
+            "the film's credits flag is recorded"
+        );
         assert_eq!(record.palette_count, 1);
         let mut store = crate::render_store::RenderStore::open(&dir).expect("open");
         let stored = store.frame(7).expect("frame");
@@ -742,7 +766,13 @@ mod tests {
         let mut journal = RenderJournal::begin(&dir, FilmId::default(), geometry()).expect("begin");
         let frame = frame();
         let error = journal
-            .write(7, frame.palette, frame.view, &page(frame.palette, true))
+            .write(
+                7,
+                frame.palette,
+                frame.view,
+                false,
+                &page(frame.palette, true),
+            )
             .unwrap_err()
             .to_string();
         assert!(error.contains("tick 7: pixel (0, 0)"), "{error}");
@@ -754,7 +784,13 @@ mod tests {
         let mut first = RenderJournal::begin(&dir, FilmId::default(), geometry()).expect("begin");
         let frame = frame();
         first
-            .write(7, frame.palette, frame.view, &page(frame.palette, false))
+            .write(
+                7,
+                frame.palette,
+                frame.view,
+                true,
+                &page(frame.palette, false),
+            )
             .expect("write");
         first.finish().expect("finish");
         assert!(dir.join(RENDER_DOCUMENT).exists());
@@ -836,7 +872,7 @@ mod tests {
     #[test]
     fn a_wrong_schema_version_is_rejected_before_its_fields() {
         let dir = temp_dir("version");
-        for version in [1, 9] {
+        for version in [2, 9] {
             write_json(
                 &dir.join(RENDER_DOCUMENT),
                 &json!({
@@ -852,7 +888,7 @@ mod tests {
             assert!(
                 error
                     .to_string()
-                    .contains(&format!("schema version {version}; expected 2")),
+                    .contains(&format!("schema version {version}; expected 3")),
                 "{error}"
             );
         }

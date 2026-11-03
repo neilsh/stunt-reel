@@ -30,10 +30,10 @@ from stunt_reel import references
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.parity_artifacts import (
     RenderStore,
-    frames_for_captured_ticks,
     open_render,
     read_capture,
     read_report,
+    tick_range_for_captured_ticks,
     write_render_store,
 )
 
@@ -299,8 +299,8 @@ def render_film(
         ("--at-ticks", ",".join(str(tick) for tick in ticks))
         if ticks is not None
         else (
-            "--frames",
-            frames_for_captured_ticks(
+            "--tick-range",
+            tick_range_for_captured_ticks(
                 frame.film_tick
                 for frame in read_capture(references.reference_dir(root, film)).frames
             ),

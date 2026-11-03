@@ -35,6 +35,8 @@ C1 = 6.5025
 C2 = 58.5225
 UI_BAR_FIRST_ROW = 185
 CURSOR_INDEX = 255
+#: The layer id of credits pixels; the differential files their changes under ``overlay``.
+LAYER_OVERLAY = 4
 _LUMA = np.array([0.299, 0.587, 0.114])
 
 
@@ -55,9 +57,17 @@ def stretch(plane: NDArray[Any]) -> NDArray[Any]:
     return plane[np.minimum(rows, HEIGHT - 1)]
 
 
-def overlay_mask(capture_idx: NDArray[np.uint8]) -> NDArray[np.bool_]:
-    """Pixels the UI overlay covers: the button bar rows and the cursor index."""
-    mask: NDArray[np.bool_] = capture_idx == CURSOR_INDEX
+def overlay_mask(
+    capture_idx: NDArray[np.uint8], *, credits_drawn: bool = False
+) -> NDArray[np.bool_]:
+    """Pixels the UI overlay covers: the button bar rows and the cursor index.
+
+    Credits ink shares the cursor's index, so a tick whose film shows credits keeps it.
+    """
+    if credits_drawn:
+        mask: NDArray[np.bool_] = np.zeros(capture_idx.shape, dtype=np.bool_)
+    else:
+        mask = capture_idx == CURSOR_INDEX
     mask[UI_BAR_FIRST_ROW:, :] = True
     return mask
 
@@ -92,11 +102,13 @@ def window_ssim(a240: NDArray[Any], b240: NDArray[Any]) -> NDArray[np.float64]:
     return np.where(degenerate, flat, num / safe)
 
 
-def frame_ssim(capture: CapturePlanes, render_rgb: NDArray[np.uint8]) -> float:
+def frame_ssim(
+    capture: CapturePlanes, render_rgb: NDArray[np.uint8], *, credits_drawn: bool = False
+) -> float:
     """The ``score_frame`` SSIM: mean over windows clear of the overlay, 1.0 when none."""
     reference = stretch(capture_luma(capture))
     test = stretch(render_luma(render_rgb))
-    allowed = window_grid(stretch(overlay_mask(capture.idx)))
+    allowed = window_grid(stretch(overlay_mask(capture.idx, credits_drawn=credits_drawn)))
     if not allowed.any():
         return 1.0
     return float(window_ssim(reference, test)[allowed].mean())

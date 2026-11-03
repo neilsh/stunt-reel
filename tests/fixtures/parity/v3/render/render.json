@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "film": {
     "name": "SYNTH.FLM",
     "flm_bytes": 17
@@ -31,7 +31,8 @@
         "fov_degrees": 45.0,
         "roll_radians": 0.0
       },
-      "palette_index": 0
+      "palette_index": 0,
+      "credits": false
     },
     {
       "tick": 9,
@@ -54,7 +55,8 @@
         "fov_degrees": 45.0,
         "roll_radians": 0.0
       },
-      "palette_index": 0
+      "palette_index": 0,
+      "credits": true
     },
     {
       "tick": 30,
@@ -77,7 +79,8 @@
         "fov_degrees": 45.0,
         "roll_radians": 0.0
       },
-      "palette_index": 1
+      "palette_index": 1,
+      "credits": false
     },
     {
       "tick": 100,
@@ -100,7 +103,8 @@
         "fov_degrees": 45.0,
         "roll_radians": 0.0
       },
-      "palette_index": 0
+      "palette_index": 0,
+      "credits": false
     },
     {
       "tick": 149,
@@ -123,7 +127,8 @@
         "fov_degrees": 45.0,
         "roll_radians": 0.0
       },
-      "palette_index": 1
+      "palette_index": 1,
+      "credits": false
     }
   ],
   "palette_count": 2,

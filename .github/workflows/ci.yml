@@ -84,7 +84,7 @@ jobs:
         # pull request checks its diff from the base branch, a push its diff from the previous
         # tip, and a manual run (or a push whose previous tip is gone) every file.
         env:
-          SKIP: diff-check,fmt-check-rust,fmt-check-py,lint-py,test-docs
+          SKIP: diff-check,crlf-check,fmt-check-rust,fmt-check-py,lint-py,test-docs
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
           BEFORE: ${{ github.event.before }}

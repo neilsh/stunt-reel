@@ -37,6 +37,10 @@ fn log_open_error(error: &RenderError) {
 }
 
 /// Interactive window application state.
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "`paused` and the six held Free-Cam keys are independent input flags; grouping the keys in another struct only moves the lint"
+)]
 pub(crate) struct WindowApp {
     config: CliConfig,
     /// The film scene, built once before the event loop and reused across resumes.
@@ -109,7 +113,7 @@ impl WindowApp {
 
     /// Advances the authored timeline in wall-clock time `[I4]`.
     ///
-    /// The film clock visits every tick of the range `--frames` selects, so the loop
+    /// The film clock visits every tick of the range `--tick-range` selects, so the loop
     /// wraps over that whole inclusive range (T14).
     fn advance_timeline(&mut self, dt: f32) {
         if self.paused {

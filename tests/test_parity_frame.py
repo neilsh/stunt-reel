@@ -85,7 +85,7 @@ def test_render_film_with_ticks_asks_the_binary_once_for_the_exact_list(tmp_path
     )
     (cmd,) = calls
     assert cmd[cmd.index("--at-ticks") + 1] == "48,92"
-    assert "--frames" not in cmd
+    assert "--tick-range" not in cmd
     assert cmd[cmd.index("--sidata") + 1] == str(root / film.sidata)
 
 

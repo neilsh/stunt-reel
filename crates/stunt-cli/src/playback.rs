@@ -1,8 +1,8 @@
-//! One 50 Hz film clock for every playback mode: the `--frames` range, the samples a
+//! One 50 Hz film clock for every playback mode: the `--tick-range` span, the samples a
 //! run renders, the one-tick capture offset and the wrap rule.
 //!
-//! `--frames` is parsed as half-open 1-based tick ordinals and resolved here once into
-//! [`TickRange`]; T12 replaces the flag with 0-based inclusive `--tick-range A..=B`.
+//! `--tick-range A..=B` is parsed as 0-based inclusive film ticks and resolved here once
+//! into [`TickRange`].
 //!
 //! The wrap is `% (total_ticks + 1)` over the inclusive range (T14), and headless, window
 //! and export all ask this module, so the offset and the wrap exist once. The clock stays in
@@ -12,7 +12,7 @@
 use stunt_core::flm::{TIMELINE_HZ, TIMELINE_TICK_SECONDS};
 use stunt_core::scene::FilmScene;
 
-use crate::config::{CliConfig, FrameRange};
+use crate::config::{CliConfig, TickSpan};
 
 /// The authored tick count, capped by --ticks.
 fn playback_ticks(config: &CliConfig, scene: &FilmScene) -> usize {
@@ -20,7 +20,7 @@ fn playback_ticks(config: &CliConfig, scene: &FilmScene) -> usize {
     config.max_ticks.map_or(total, |limit| limit.min(total))
 }
 
-/// One playback run's film clock: the range `--frames` selects and the samples it renders.
+/// One playback run's film clock: the range `--tick-range` selects and the samples it renders.
 pub(crate) struct Playback {
     range: TickRange,
     plan: SamplePlan,
@@ -34,7 +34,7 @@ impl Playback {
         let (range, plan) = match config.tick_list.as_deref() {
             Some(ticks) => list_plan(ticks, total_ticks),
             None => (
-                TickRange::new(config.frame_range, total_ticks),
+                TickRange::new(config.tick_span, total_ticks),
                 SamplePlan::from_flags(config),
             ),
         };
@@ -66,7 +66,7 @@ pub(crate) fn capture_tick(tick: f32) -> f32 {
     (tick - 1.0).max(0.0)
 }
 
-/// The part of a film's 50 Hz clock a run plays, resolved from `--frames`.
+/// The part of a film's 50 Hz clock a run plays, resolved from `--tick-range`.
 ///
 /// The film clock visits `0..=total_ticks`. `end_hold` is the exclusive end of the
 /// tick-per-PNG plan, so it includes the film's final clock tick (the end hold) and can
@@ -80,15 +80,12 @@ pub(crate) struct TickRange {
 }
 
 impl TickRange {
-    /// Resolves half-open 1-based ordinals into 0-based film-clock bounds.
-    fn new(frame_range: Option<FrameRange>, total_ticks: usize) -> Self {
-        let (start_ord, end_ord) =
-            frame_range.map_or((1, total_ticks + 2), |range| (range.start(), range.end()));
-        let start = start_ord.max(1) - 1;
-        let end_hold = end_ord
-            .saturating_sub(1)
-            .min(total_ticks + 1)
-            .max(start + 1);
+    /// Resolves an inclusive span of 0-based ticks into film-clock bounds, clamping both
+    /// ticks to the film clock, so a span wholly past the end plays only the end hold.
+    fn new(span: Option<TickSpan>, total_ticks: usize) -> Self {
+        let (start, last) = span.map_or((0, total_ticks), |span| (span.first(), span.last()));
+        let start = start.min(total_ticks);
+        let end_hold = last.saturating_add(1).min(total_ticks + 1).max(start + 1);
         let video_span = end_hold.min(total_ticks).max(start + 1);
         Self {
             start,
@@ -125,7 +122,7 @@ impl TickRange {
     ///
     /// The clock visits every tick in the range, so the loop length is
     /// `end_hold - start`; over the default range that is `total_ticks + 1`, the rule
-    /// T14 records. A narrowed `--frames` range wraps inside itself.
+    /// T14 records. A narrowed `--tick-range` wraps inside itself.
     #[must_use]
     pub(crate) fn wrap(self, tick: f32) -> f32 {
         let length = (self.end_hold - self.start) as f32;
@@ -160,14 +157,11 @@ fn list_plan(ticks: &[usize], total_ticks: usize) -> (TickRange, SamplePlan) {
         .copied()
         .filter(|&tick| tick <= total_ticks)
         .collect();
-    let frame_range = match (kept.first(), kept.last()) {
-        (Some(&first), Some(&last)) => Some(FrameRange::new(first + 1, last + 2)),
+    let span = match (kept.first(), kept.last()) {
+        (Some(&first), Some(&last)) => Some(TickSpan::new(first, last)),
         _ => None,
     };
-    (
-        TickRange::new(frame_range, total_ticks),
-        SamplePlan::List(kept),
-    )
+    (TickRange::new(span, total_ticks), SamplePlan::List(kept))
 }
 
 /// How a run selects the film-clock ticks it renders.
@@ -264,25 +258,95 @@ mod tests {
     fn test_default_range_includes_the_final_tick() {
         // CTRY.FLM: 1,342 ticks, and the film clock reaches tick 1342 itself.
         assert_eq!(bounds(TickRange::new(None, 1342)), (0, 1343, 1342));
-        // The documented parity command.
+        // The documented parity command, `--tick-range 0..=1342`.
         assert_eq!(
-            bounds(TickRange::new(Some(FrameRange::new(1, 1344)), 1342)),
+            bounds(TickRange::new(Some(TickSpan::new(0, 1342)), 1342)),
             (0, 1343, 1342)
         );
-        // Half-open 1-based ordinals as before: 1..1343 stops at tick 1341.
+        // Inclusive: 0..=1341 stops at tick 1341, one short of the end hold.
         assert_eq!(
-            bounds(TickRange::new(Some(FrameRange::new(1, 1343)), 1342)),
+            bounds(TickRange::new(Some(TickSpan::new(0, 1341)), 1342)),
             (0, 1342, 1342)
         );
+        // Both ends are included: 2..=4 plays ticks 2, 3 and 4.
         assert_eq!(
-            bounds(TickRange::new(Some(FrameRange::new(3, 6)), 1342)),
+            bounds(TickRange::new(Some(TickSpan::new(2, 4)), 1342)),
             (2, 5, 5)
+        );
+        // A one-tick range, at the first tick and at the film's last tick.
+        assert_eq!(
+            bounds(TickRange::new(Some(TickSpan::new(0, 0)), 1342)),
+            (0, 1, 1)
+        );
+        assert_eq!(
+            bounds(TickRange::new(Some(TickSpan::new(1342, 1342)), 1342)),
+            (1342, 1343, 1343)
         );
         // Past-the-end ranges clamp.
         assert_eq!(
-            bounds(TickRange::new(Some(FrameRange::new(1, 99999)), 1342)),
+            bounds(TickRange::new(Some(TickSpan::new(0, 99999)), 1342)),
             (0, 1343, 1342)
         );
+        // A span wholly past the end clamps its first tick too: it plays the end hold,
+        // labelled 1342, not a tick 1343 the film clock never reaches.
+        assert_eq!(
+            bounds(TickRange::new(Some(TickSpan::new(1343, 1343)), 1342)),
+            (1342, 1343, 1343)
+        );
+    }
+
+    /// `Playback` for `args` against the synthetic three-slice film
+    /// (`tests/fixtures/synthetic_timeline.flm`), whose clock is a few ticks long.
+    fn fixture_playback(args: &[&str]) -> (Playback, usize) {
+        use crate::scene::{SceneSources, build_scene};
+        let flm = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/synthetic_timeline.flm");
+        let scene = build_scene(&SceneSources {
+            flm: Some(&flm),
+            all: None,
+            sod: None,
+            sidata: None,
+            max_ticks: None,
+            font: None,
+        })
+        .expect("synthetic film loads");
+        let config =
+            CliConfig::parse_from(args.iter().map(|a| (*a).to_string())).expect("arguments parse");
+        let total = scene.timeline().total_ticks() as usize;
+        (Playback::new(&config, &scene), total)
+    }
+
+    fn ticks(playback: &Playback) -> Vec<usize> {
+        playback
+            .samples()
+            .iter()
+            .map(|&(key, _)| match key {
+                SampleKey::Tick(tick) => tick,
+                SampleKey::Index(_) => panic!("tick-per-PNG plan names samples by tick"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_tick_range_renders_exactly_a_through_b_on_a_fixture_film() {
+        let (all, total) = fixture_playback(&["--out-dir", "o"]);
+        assert_eq!(ticks(&all), (0..=total).collect::<Vec<_>>());
+
+        // The first tick alone, an interior span, and the film's last tick alone.
+        let (first, _) = fixture_playback(&["--out-dir", "o", "--tick-range", "0..=0"]);
+        assert_eq!(ticks(&first), vec![0]);
+        let (inner, _) = fixture_playback(&["--out-dir", "o", "--tick-range", "2..=5"]);
+        assert_eq!(ticks(&inner), vec![2, 3, 4, 5]);
+        let last = format!("{total}..={total}");
+        let (end, _) = fixture_playback(&["--out-dir", "o", "--tick-range", &last]);
+        assert_eq!(ticks(&end), vec![total]);
+
+        // The whole film, last tick included, and a span past the end clamps to it.
+        let whole = format!("0..={total}");
+        let (full, _) = fixture_playback(&["--out-dir", "o", "--tick-range", &whole]);
+        assert_eq!(ticks(&full), (0..=total).collect::<Vec<_>>());
+        let (past, _) = fixture_playback(&["--out-dir", "o", "--tick-range", "3..=99999"]);
+        assert_eq!(ticks(&past), (3..=total).collect::<Vec<_>>());
     }
 
     #[test]
@@ -297,8 +361,8 @@ mod tests {
 
     #[test]
     fn test_wrap_stays_inside_a_narrowed_range() {
-        // --frames 3..6 plays ticks 2..=4.
-        let narrowed = TickRange::new(Some(FrameRange::new(3, 6)), 1342);
+        // --tick-range 2..=4 plays ticks 2, 3 and 4.
+        let narrowed = TickRange::new(Some(TickSpan::new(2, 4)), 1342);
         assert_eq!(narrowed.wrap(2.0), 2.0);
         assert_eq!(narrowed.wrap(4.5), 4.5);
         assert_eq!(narrowed.wrap(5.0), 2.0);
@@ -314,7 +378,7 @@ mod tests {
 
     #[test]
     fn test_tick_samples_follow_the_range_and_step() {
-        let range = TickRange::new(Some(FrameRange::new(3, 8)), 1342);
+        let range = TickRange::new(Some(TickSpan::new(2, 6)), 1342);
         assert_eq!(
             SamplePlan::Ticks { step: 2 }.samples(range),
             vec![
@@ -327,8 +391,8 @@ mod tests {
 
     #[test]
     fn test_tick_list_samples_exactly_those_ticks() {
-        // Ticks 48, 92 and 1009 span ordinals 49..1011; a tick past the clock is dropped.
-        let range = TickRange::new(Some(FrameRange::new(49, 1011)), 1342);
+        // Ticks 48, 92 and 1009 span 48..=1009; a tick past the clock is dropped.
+        let range = TickRange::new(Some(TickSpan::new(48, 1009)), 1342);
         assert_eq!(bounds(range), (48, 1010, 1010));
         assert_eq!(
             SamplePlan::List(vec![48, 92, 1009, 5000]).samples(range),
@@ -361,8 +425,8 @@ mod tests {
 
     #[test]
     fn test_video_samples_stop_before_the_authored_length() {
-        // --frames 1..4 spans authored ticks 0..3, so the video is three ticks long.
-        let range = TickRange::new(Some(FrameRange::new(1, 4)), 1342);
+        // --tick-range 0..=2 spans authored ticks 0..3, so the video is three ticks long.
+        let range = TickRange::new(Some(TickSpan::new(0, 2)), 1342);
         assert_eq!(
             SamplePlan::Video { fps: 50.0 }.samples(range),
             vec![

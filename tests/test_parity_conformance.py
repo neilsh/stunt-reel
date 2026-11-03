@@ -1,8 +1,8 @@
-"""Conformance tests for the shared parity corpus (`tests/fixtures/parity/v1/` and `v2/`).
+"""Conformance tests for the shared parity corpus (`tests/fixtures/parity/v1/` and `v3/`).
 
 The corpus pins the wire contract this adapter shares with the Rust port. These tests read the
 committed bytes and write only into `tmp_path`; a fixture is never rewritten, so `git status`
-stays clean after a run. `v2/render/` (a render store) and `v1/report.json` are authored by the
+stays clean after a run. `v3/render/` (a render store) and `v1/report.json` are authored by the
 Rust side, while `v1/meta.json` and `v1/meta_legacy.json` are authored through `write_capture`.
 """
 
@@ -34,7 +34,7 @@ from stunt_reel.parity_artifacts import (
 )
 
 CORPUS = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "parity" / "v1"
-RENDER = CORPUS.parent / "v2" / "render"
+RENDER = CORPUS.parent / "v3" / "render"
 APPROX_REL = 1e-6
 APPROX_ABS = 1e-9
 
@@ -65,6 +65,7 @@ def test_render_fixture_round_trips_through_the_adapter(tmp_path: Path) -> None:
     assert record.geometry == Geometry(width=4, height=3, viewport_rows=2)
     assert [tick.tick for tick in record.ticks] == [7, 9, 30, 100, 149]
     assert [tick.palette_index for tick in record.ticks] == [0, 0, 1, 0, 1]
+    assert [tick.credits for tick in record.ticks] == [False, True, False, False, False]
     assert record.palette_count == 2
     assert record.ticks[0].palette.sky == 0
     assert record.ticks[0].palette.brightness == 32768

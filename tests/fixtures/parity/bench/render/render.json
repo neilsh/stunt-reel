@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "film": {
     "name": "BENCH.FLM",
     "flm_bytes": 1
@@ -30,7 +30,8 @@
         "fov_degrees": 45.0,
         "roll_radians": 0.0
       },
-      "palette_index": 0
+      "palette_index": 0,
+      "credits": false
     },
     {
       "tick": 20,
@@ -53,7 +54,8 @@
         "fov_degrees": 45.0,
         "roll_radians": 0.0
       },
-      "palette_index": 0
+      "palette_index": 0,
+      "credits": true
     }
   ],
   "palette_count": 1,

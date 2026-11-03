@@ -162,6 +162,7 @@ pub(super) fn write_render_store(dir: &Path, ticks: &[(u32, u16, Picture)]) {
                 roll_radians: 0.0,
             },
             palette_index,
+            credits: false,
         });
     }
     let table = writer.finish().unwrap().expect("at least one tick");

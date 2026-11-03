@@ -75,8 +75,8 @@ pub struct World {
 /// usable terrain patches.
 #[must_use]
 #[expect(
-    clippy::expect_used,
-    reason = "`build_world_ir` always emits the ocean quad, so the extent exists"
+    clippy::implicit_hasher,
+    reason = "callers hold the std `HashMap` from `decode_archive_shapes`; a hasher parameter would spread through the crate for no caller"
 )]
 pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) -> Option<World> {
     let pts = inputs.anchors;
@@ -118,9 +118,8 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
 
     let base_y = 0.0;
     let ir = build_world_ir(pts, &map_areas, &unique_instances, shapes, base_y);
-    let bounds = ir
-        .extent()
-        .expect("the world IR always carries the ocean quad");
+    // `build_world_ir` always emits the ocean quad, so the extent exists.
+    let bounds = ir.extent()?;
     Some(World {
         ir,
         terrain_patches: map_areas.len(),

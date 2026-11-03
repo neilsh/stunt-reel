@@ -155,7 +155,7 @@ fn the_i6_gate_passes_each_threshold_independently() {
 
 /// How `row` splits a frame's `1 - ssim` among [`LOSS_CLASSES`] (sky, terrain, actors), so a
 /// class mapped to the wrong slot changes a mean.
-const LOSS_SPLIT: [f32; LOSS_CLASSES.len()] = [0.5, 0.0, 0.0, 0.3, 0.0, 0.2, 0.0, 0.0, 0.0];
+const LOSS_SPLIT: [f32; LOSS_CLASSES.len()] = [0.5, 0.0, 0.0, 0.3, 0.0, 0.2, 0.0, 0.0, 0.0, 0.0];
 
 /// A matched frame with the given SSIM, `IoU` and scored flag; the other measurements are
 /// derived so each frame's loss array sums to `1 - ssim`.
@@ -164,6 +164,7 @@ fn row(ordinal: usize, ssim: f32, iou: f32, scored: bool) -> super::FrameRow {
     super::FrameRow {
         ordinal,
         film_tick: ordinal * 10,
+        credits_missing: false,
         metrics: FrameMetrics {
             ssim,
             fade_level: if scored { 1.0 } else { 0.1 },
@@ -245,6 +246,16 @@ fn build_report_excludes_frames_below_the_fade_floor_from_scored_means() {
     let scored: Vec<_> = report.per_frame.iter().map(|f| f.scored).collect();
     assert_eq!(scored, vec![Some(true), Some(true), Some(false)]);
     assert_eq!(report.per_frame[2].fade_level, Some(0.1));
+}
+
+#[test]
+fn the_report_counts_frames_whose_credits_the_render_did_not_draw() {
+    let mut missing = row(2, 0.7, 0.6, true);
+    missing.credits_missing = true;
+    let rows = [row(1, 0.9, 0.8, true), missing];
+    let report = super::build_report(2, &rows, 0, 0.25);
+    assert_eq!(report.credits_missing_frames, 1);
+    report.validate().expect("a consistent report");
 }
 
 #[test]
@@ -348,4 +359,149 @@ fn verdict_matches_the_numpy_golden() {
         close(*fraction, &expected["changed_by_layer"][*layer], 1e-6);
     }
     close(verdict.delta.expect("a delta"), &expected["delta"], 1e-4);
+}
+
+/// A uniform capture with a block of credits ink (index 255), and a render of the same
+/// background that leaves the ink out. `credits_in_render` marks the tick as one where the
+/// film shows credits, as its render record says, and puts credits elsewhere on its page.
+fn credits_frames(
+    credits_in_render: bool,
+) -> (super::score::ReferenceFrame, super::score::RenderFrame) {
+    use stunt_core::contracts::get_palette_rgb;
+    use stunt_render::{LAYER_NONE, LAYER_OVERLAY, MODE13H_HEIGHT, MODE13H_WIDTH};
+
+    let ink = 255u8;
+    let background = (0..ink)
+        .find(|&i| get_palette_rgb(i) != get_palette_rgb(ink))
+        .unwrap();
+    let pixels = MODE13H_WIDTH * MODE13H_HEIGHT;
+    let ink_at = |i: usize| {
+        (60..80).contains(&(i / MODE13H_WIDTH)) && (100..140).contains(&(i % MODE13H_WIDTH))
+    };
+    let reference = super::score::ReferenceFrame {
+        indices: (0..pixels)
+            .map(|i| if ink_at(i) { ink } else { background })
+            .collect(),
+        palette: (0..=255u8).map(get_palette_rgb).collect(),
+    };
+    let (r, g, b) = get_palette_rgb(background);
+    let luminance = stunt_render::rgb_to_luminance(&[r, g, b])[0];
+    let mut layers = vec![LAYER_NONE as u16; pixels];
+    if credits_in_render {
+        // Credits drawn elsewhere on the page: the tick has credits, this ink is missing.
+        layers[10 * MODE13H_WIDTH + 10] = LAYER_OVERLAY as u16;
+    }
+    let render = super::score::RenderFrame {
+        luminance: vec![luminance; pixels],
+        indices: vec![background; pixels],
+        layers,
+        controls: None,
+        credits: credits_in_render,
+    };
+    (reference, render)
+}
+
+/// Credits ink shares the cursor's index 255: masked as the cursor on a tick whose film
+/// shows no credits, scored on a tick whose film shows them.
+#[test]
+fn score_frame_scores_credits_ink_only_on_a_tick_with_credits() {
+    let fade_set = super::fade::fade_reference_set(&credits_frames(false).0.indices);
+    let policy = super::score::ScorePolicy {
+        fade_set: &fade_set,
+        min_fade_level: 0.0,
+    };
+    let (reference, render) = credits_frames(false);
+    let masked = super::score::score_frame(&reference, &render, &policy).metrics;
+    assert!((masked.ssim - 1.0).abs() < 1e-4, "{}", masked.ssim);
+    let (reference, render) = credits_frames(true);
+    let scored = super::score::score_frame(&reference, &render, &policy).metrics;
+    assert!(scored.ssim < 0.99, "{}", scored.ssim);
+    assert!(scored.index_agreement < masked.index_agreement);
+}
+
+/// A change that drops the credits is judged on the ink it lost, not masked away.
+#[test]
+fn a_verdict_keeps_the_ink_when_only_the_previous_render_drew_credits() {
+    use super::verdict::VerdictClass;
+
+    let (reference, mut before) = credits_frames(true);
+    // The previous render drew the ink exactly where the capture has it.
+    let (r, g, b) = stunt_core::contracts::get_palette_rgb(255);
+    let ink_luminance = stunt_render::rgb_to_luminance(&[r, g, b])[0];
+    for (i, &index) in reference.indices.iter().enumerate() {
+        if index == 255 {
+            before.luminance[i] = ink_luminance;
+            before.indices[i] = 255;
+            before.layers[i] = stunt_render::LAYER_OVERLAY as u16;
+        }
+    }
+    let (_, after) = credits_frames(false);
+    let verdict = super::verdict::frame_verdict(0, &reference, &before, &after, None, 0);
+    assert_eq!(verdict.class, VerdictClass::Further);
+    assert!(verdict.changed_by_layer["none"] > 0.0);
+    // The reverse change is judged on the same pixels.
+    let verdict = super::verdict::frame_verdict(0, &reference, &after, &before, None, 0);
+    assert_eq!(verdict.class, VerdictClass::Closer);
+    assert!(verdict.changed_by_layer["overlay"] > 0.0);
+}
+
+/// The render record's credits schedule decides, not the planes: a render that drops its
+/// credits on a credits tick is judged on the ink, and stray overlay pixels on a tick
+/// without credits do not unmask the cursor.
+#[test]
+fn the_record_credits_flag_overrides_what_the_render_drew() {
+    let fade_set = super::fade::fade_reference_set(&credits_frames(false).0.indices);
+    let policy = super::score::ScorePolicy {
+        fade_set: &fade_set,
+        min_fade_level: 0.0,
+    };
+    let (reference, render) = credits_frames(false);
+    let dropped = super::score::RenderFrame {
+        credits: true,
+        ..render
+    };
+    let scored = super::score::score_frame(&reference, &dropped, &policy).metrics;
+    assert!(scored.ssim < 0.99, "{}", scored.ssim);
+
+    let (reference, render) = credits_frames(true);
+    let stray = super::score::RenderFrame {
+        credits: false,
+        ..render
+    };
+    let masked = super::score::score_frame(&reference, &stray, &policy).metrics;
+    assert!((masked.ssim - 1.0).abs() < 1e-4, "{}", masked.ssim);
+}
+
+/// Two renders of a credits tick, one of which lost the credits, are scored on one mask
+/// when the record says the tick has credits, so `--compare` sees the loss.
+#[test]
+fn a_render_that_loses_its_credits_scores_lower_on_a_credits_tick() {
+    let fade_set = super::fade::fade_reference_set(&credits_frames(false).0.indices);
+    let policy = super::score::ScorePolicy {
+        fade_set: &fade_set,
+        min_fade_level: 0.0,
+    };
+    let (reference, mut drawn) = credits_frames(true);
+    let (r, g, b) = stunt_core::contracts::get_palette_rgb(255);
+    let ink_luminance = stunt_render::rgb_to_luminance(&[r, g, b])[0];
+    for (i, &index) in reference.indices.iter().enumerate() {
+        if index == 255 {
+            drawn.luminance[i] = ink_luminance;
+            drawn.indices[i] = 255;
+        }
+    }
+    drawn.credits = true;
+    let (_, lost) = credits_frames(false);
+    let lost = super::score::RenderFrame {
+        credits: true,
+        ..lost
+    };
+    let with = super::score::score_frame(&reference, &drawn, &policy).metrics;
+    let without = super::score::score_frame(&reference, &lost, &policy).metrics;
+    assert!(
+        with.ssim > without.ssim + 0.01,
+        "{} vs {}",
+        with.ssim,
+        without.ssim
+    );
 }

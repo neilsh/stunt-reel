@@ -10,11 +10,21 @@ import numpy as np
 import pytest
 
 from stunt_reel.bench.planes import BenchError, RenderTree, load_capture
-from stunt_reel.bench.ssim import frame_ssim, stretch
+from stunt_reel.bench.ssim import (
+    CURSOR_INDEX,
+    UI_BAR_FIRST_ROW,
+    frame_ssim,
+    overlay_mask,
+    stretch,
+)
 from stunt_reel.parity_artifacts import RENDER_INDEX_FILE, RENDER_LAYER_FILE
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+#: The bench fixture's one tick with credits (`make_fixture.CREDITS_TICK`).
+CREDITS_TICK = 20
 
 
 def test_numpy_ssim_matches_the_rust_golden(bench_fixture: Path) -> None:
@@ -41,6 +51,23 @@ def test_a_render_from_before_the_store_names_a_rerender(
     record.write_text(json.dumps(document), encoding="utf-8")
     with pytest.raises(BenchError, match="re-render"):
         RenderTree(tmp_path / "r").load(10)
+
+
+def test_credits_ink_is_kept_on_a_tick_whose_film_shows_credits() -> None:
+    """Mirrors the Rust ``ui_overlay_mask``: index 255 is masked only without credits."""
+    capture = np.full((200, 320), 7, dtype=np.uint8)
+    capture[100, 160] = CURSOR_INDEX
+    assert overlay_mask(capture)[100, 160]
+    kept = overlay_mask(capture, credits_drawn=True)
+    assert not kept[100, 160]
+    assert kept[UI_BAR_FIRST_ROW, 0]
+
+
+def test_a_render_tree_reads_each_ticks_credits_flag(bench_fixture: Path) -> None:
+    tree = RenderTree(bench_fixture / "render")
+    flags = {tick: tree.load(tick).credits for tick in tree.ticks()}
+    assert flags[CREDITS_TICK]
+    assert not any(flag for tick, flag in flags.items() if tick != CREDITS_TICK)
 
 
 def test_stretch_repeats_every_fifth_row() -> None:

@@ -52,6 +52,12 @@ pub struct CaptureSet {
 
 impl CaptureSet {
     /// Checks the schema version, geometry and frame identity.
+    ///
+    /// # Errors
+    /// - [`ArtifactError::UnsupportedVersion`] if `schema_version` is not [`crate::SCHEMA_VERSION`].
+    /// - [`ArtifactError::Geometry`] if the geometry fails [`Geometry::validate`].
+    /// - [`ArtifactError::Frame`] if a frame has an empty `frame_file` or `palette_file`, or
+    ///   names one that is not a basename (optionally under `FRAMES_DIR`).
     pub fn validate(&self) -> Result<(), ArtifactError> {
         if self.schema_version != crate::SCHEMA_VERSION {
             return Err(ArtifactError::UnsupportedVersion {

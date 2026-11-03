@@ -39,6 +39,8 @@ pub(super) struct RenderFrame {
     pub(super) layers: Vec<u16>,
     /// The palette controls the film authors at this tick, from the render's `render.json`.
     pub(super) controls: Option<PaletteControls>,
+    /// The film shows credits at this tick, from the render's `render.json`.
+    pub(super) credits: bool,
 }
 
 /// What decides whether a frame is scored.
@@ -91,7 +93,7 @@ pub(super) fn score_frame(
         MODE13H_HEIGHT,
         ASPECT_CORRECTED_HEIGHT,
     );
-    let overlay = ui_overlay_mask(&reference.indices);
+    let overlay = ui_overlay_mask(&reference.indices, render.credits);
     let windows = compute_window_scores(
         &reference_rescaled,
         &render_rescaled,
@@ -185,6 +187,7 @@ mod tests {
             indices,
             layers,
             controls: None,
+            credits: false,
         }
     }
 

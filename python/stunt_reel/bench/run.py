@@ -10,6 +10,7 @@ the same control render. A fault is *detected* when it lowers the metric by at l
 from __future__ import annotations
 
 import statistics
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -54,7 +55,11 @@ PLANT_SEED = 1
 
 
 def _regions(control: RenderPlanes) -> Regions:
-    return Regions(layer=control.layer, control_mean_luma=float(render_luma(control.rgb).mean()))
+    return Regions(
+        layer=control.layer,
+        control_mean_luma=float(render_luma(control.rgb).mean()),
+        credits_drawn=control.credits,
+    )
 
 
 def check_fidelity(report: Path, captures: dict[int, CapturePlanes], tree: RenderTree) -> None:
@@ -64,7 +69,8 @@ def check_fidelity(report: Path, captures: dict[int, CapturePlanes], tree: Rende
         capture = captures.get(frame.film_tick)
         if capture is None or frame.film_tick not in rendered:
             continue
-        ours = frame_ssim(capture, tree.load(frame.film_tick).rgb)
+        render = tree.load(frame.film_tick)
+        ours = frame_ssim(capture, render.rgb, credits_drawn=render.credits)
         if abs(ours - frame.ssim) > FIDELITY_TOLERANCE:
             raise BenchError(
                 f"tick {frame.film_tick}: numpy ssim {ours:.6f} but {report} says "
@@ -189,6 +195,12 @@ def bench(
             planted = plant(fault, tick, source, seed)
             if planted is None:
                 continue
+            # A fault that substitutes another tick (advance, wrong_tick) keeps this tick's
+            # credits flag, so the differential masks the same windows as the control.
+            planted = replace(planted, credits=control.credits)
+            # Planted, control and the recapture sigma all take the control's mask: a fault
+            # that loses the credits is scored on the ink, and one that gains them cannot
+            # unmask the cursor, which the sigma never saw.
             for name, fn in METRICS.items():
                 value = fn(capture, planted, regions)
                 before = base[name]

@@ -92,12 +92,22 @@ pub struct Report {
     /// Matched frames below the fade floor.
     #[serde(default)]
     pub excluded_frames: usize,
+    /// Matched frames whose render record expects credits but whose render drew none
+    /// (no font, or a drawing fault); their captured ink is still scored.
+    #[serde(default)]
+    pub credits_missing_frames: usize,
     /// Per-frame measurements, in capture order.
     pub per_frame: Vec<FrameReport>,
 }
 
 impl Report {
     /// Checks the arithmetic identities the report promises.
+    ///
+    /// # Errors
+    /// Returns [`ArtifactError::ReportInconsistent`] if `reference_frames` is not
+    /// `frames + unmatched`, `frames` is not `scored_frames + excluded_frames`, the SSIM or
+    /// `IoU` scored mean is missing while `scored_frames` is non-zero or present while it is
+    /// zero, or `i6_gate.initial` is true with no scored frame.
     pub fn validate(&self) -> Result<(), ArtifactError> {
         if self.reference_frames != self.frames + self.unmatched {
             return Err(ArtifactError::report(
@@ -121,6 +131,11 @@ impl Report {
         {
             return Err(ArtifactError::report(
                 "scored means must be null when no frame scored",
+            ));
+        }
+        if self.credits_missing_frames > self.frames {
+            return Err(ArtifactError::report(
+                "credits_missing_frames cannot exceed frames",
             ));
         }
         if self.scored_frames == 0 && self.i6_gate.initial {
@@ -167,8 +182,22 @@ mod tests {
             mean_loss_by_class_scored: None,
             scored_frames: 2,
             excluded_frames: 0,
+            credits_missing_frames: 0,
             per_frame: vec![frame(), frame()],
         }
+    }
+
+    #[test]
+    fn credits_missing_frames_defaults_to_zero_and_is_bounded_by_frames() {
+        let mut doc = serde_json::to_value(report()).expect("serialise");
+        doc.as_object_mut()
+            .expect("object")
+            .remove("credits_missing_frames");
+        let old: Report = serde_json::from_value(doc).expect("a report without the field");
+        assert_eq!(old.credits_missing_frames, 0);
+        let mut over = report();
+        over.credits_missing_frames = 3;
+        assert!(over.validate().is_err());
     }
 
     #[test]

@@ -29,17 +29,20 @@ struct Options {
     /// --video, `DIR/sample_NNNN.png` instead
     #[arg(long, value_name = "DIR")]
     out_dir: Option<PathBuf>,
-    /// Half-open 1-based tick ordinals to render; 1..N+2 covers ticks 0..=N
+    /// 0-based, inclusive film ticks to render; 0..=N covers ticks 0 through N
     /// (default: ticks 0..=total, the film's last tick included)
-    #[arg(long, value_name = "A..B", value_parser = parse_frame_range)]
-    frames: Option<FrameRange>,
+    #[arg(long = "tick-range", value_name = "A..=B", value_parser = parse_tick_span)]
+    tick_span: Option<TickSpan>,
+    /// Removed: `--tick-range A..=B` replaces it (0-based, inclusive)
+    #[arg(long, hide = true, num_args = 0.., value_name = "A..B")]
+    frames: Option<Vec<String>>,
     /// Render exactly these 0-based film ticks (comma-separated), in one process
     #[arg(
         long = "at-ticks",
         value_name = "T,T,...",
         value_parser = parse_tick_list,
         requires = "out_dir",
-        conflicts_with_all = ["frames", "sample_count", "video"]
+        conflicts_with_all = ["tick_span", "sample_count", "video"]
     )]
     ticks: Option<TickList>,
     /// Directory searched first for ANCHORPT.DAT, MAP.BIN and SCENERY.scn; then the archive's
@@ -47,6 +50,11 @@ struct Options {
     /// (names match any case)
     #[arg(long, value_name = "DIR")]
     sidata: Option<PathBuf>,
+    /// PLAYONE's PFONT.BIN for the credits text; by default it is searched for in --sidata,
+    /// then beside the archive and the film, their parent and grandparent, and a sidata
+    /// directory there (the engine root holds it, beside VAULT)
+    #[arg(long, value_name = "PFONT.BIN")]
+    font: Option<PathBuf>,
     /// Render the film to a video container (.mp4, .webm, .mkv, .avi) via ffmpeg
     #[arg(long, value_name = "FILE")]
     video: Option<PathBuf>,
@@ -96,13 +104,16 @@ pub(crate) struct CliConfig {
     pub sod_path: Option<PathBuf>,
     pub all_path: Option<PathBuf>,
     pub out_dir: Option<PathBuf>,
-    /// Half-open `[start, end)` 1-based tick ordinals to render, resolved against the
-    /// film clock by [`crate::playback`]; `None` renders ticks `0..=total_ticks`.
-    pub frame_range: Option<FrameRange>,
+    /// The 0-based inclusive ticks from `--tick-range`, resolved against the film clock
+    /// by [`crate::playback`]; `None` renders ticks `0..=total_ticks`.
+    pub tick_span: Option<TickSpan>,
     /// Exact 0-based film ticks from `--at-ticks`, ascending and distinct.
     pub tick_list: Option<TickList>,
     /// Directory searched first for `ANCHORPT.DAT`, `MAP.BIN` and `SCENERY.scn`.
     pub sidata_dir: Option<PathBuf>,
+    /// `PFONT.BIN` named with `--font`; `None` searches as for the scenery files, from the
+    /// archive and then from the film.
+    pub font_path: Option<PathBuf>,
     pub width: u32,
     pub height: u32,
     /// Draw the scene into the top this-many rows of the target only (`--viewport-rows`).
@@ -136,9 +147,11 @@ impl CliConfig {
             sod: sod_path,
             all: mut all_path,
             out_dir,
-            frames: frame_range,
+            tick_span,
+            frames,
             ticks: tick_list,
             sidata: sidata_dir,
+            font: font_path,
             video: video_path,
             frame_step,
             sample_count,
@@ -151,6 +164,14 @@ impl CliConfig {
             output: output_png,
             max_ticks,
         } = options;
+
+        if frames.is_some() {
+            return Err(
+                "--frames was replaced by --tick-range A..=B (0-based film ticks, inclusive); \
+                 --frames A..B rendered ticks A-1 through B-2, so use --tick-range A-1..=B-2"
+                    .to_string(),
+            );
+        }
 
         let mut flm_path = None;
         for path in inputs {
@@ -196,9 +217,10 @@ impl CliConfig {
             sod_path,
             all_path,
             out_dir,
-            frame_range,
+            tick_span,
             tick_list,
             sidata_dir,
+            font_path,
             width,
             height,
             viewport_rows,
@@ -222,33 +244,32 @@ fn companion(path: &Path, ext: &str) -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
-/// The half-open range of 1-based tick ordinals `--frames` asked for.
+/// The 0-based, inclusive ticks `--tick-range A..=B` asked for.
 ///
-/// `A..B` renders tick ordinals `A` through `B - 1`, i.e. 0-based ticks `A - 1`
-/// through `B - 2`. T12 replaces the flag with 0-based inclusive `--tick-range
-/// A..=B`; until then [`crate::playback`] resolves these ordinals against the film.
+/// `first` and `last` are film-clock ticks as everywhere else in the project;
+/// [`crate::playback`] clamps `last` to the film's clock.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FrameRange {
-    start: usize,
-    end: usize,
+pub(crate) struct TickSpan {
+    first: usize,
+    last: usize,
 }
 
-impl FrameRange {
-    /// A half-open range of 1-based tick ordinals.
-    pub(crate) fn new(start: usize, end: usize) -> Self {
-        Self { start, end }
+impl TickSpan {
+    /// The inclusive span `first..=last` of 0-based ticks.
+    pub(crate) fn new(first: usize, last: usize) -> Self {
+        Self { first, last }
     }
 
-    /// The first rendered tick ordinal (1-based).
+    /// The first rendered tick.
     #[must_use]
-    pub(crate) fn start(self) -> usize {
-        self.start
+    pub(crate) fn first(self) -> usize {
+        self.first
     }
 
-    /// One past the last rendered tick ordinal (1-based).
+    /// The last rendered tick, included.
     #[must_use]
-    pub(crate) fn end(self) -> usize {
-        self.end
+    pub(crate) fn last(self) -> usize {
+        self.last
     }
 }
 
@@ -270,23 +291,23 @@ fn parse_tick_list(spec: &str) -> Result<TickList, String> {
     Ok(ticks)
 }
 
-/// Parses a half-open `A..B` frame range into 1-based tick ordinals.
-fn parse_frame_range(spec: &str) -> Result<FrameRange, String> {
-    let (start, end) = spec
-        .split_once("..")
-        .ok_or_else(|| format!("expected A..B, got {spec:?}"))?;
-    let start = start
+/// Parses `A..=B` into a 0-based inclusive tick span.
+fn parse_tick_span(spec: &str) -> Result<TickSpan, String> {
+    let (first, last) = spec
+        .split_once("..=")
+        .ok_or_else(|| format!("expected A..=B (0-based, inclusive), got {spec:?}"))?;
+    let first = first
         .trim()
         .parse::<usize>()
         .map_err(|e| format!("invalid range start: {e}"))?;
-    let end = end
+    let last = last
         .trim()
         .parse::<usize>()
         .map_err(|e| format!("invalid range end: {e}"))?;
-    if end <= start {
-        return Err(format!("{spec:?}: end must be greater than start"));
+    if last < first {
+        return Err(format!("{spec:?}: end must not be less than start"));
     }
-    Ok(FrameRange::new(start, end))
+    Ok(TickSpan::new(first, last))
 }
 
 fn parse_positive_usize(text: &str) -> Result<usize, String> {
@@ -349,7 +370,7 @@ mod tests {
         assert!(parse(&["--sample-count", "5", "--out-dir", "o", "--video", "v.mp4"]).is_err());
         assert!(parse(&["--sample-count", "0", "--out-dir", "o"]).is_err());
         assert!(parse(&["--fps", "0"]).is_err());
-        assert!(parse(&["--frames", "5..5"]).is_err());
+        assert!(parse(&["--tick-range", "5..5"]).is_err());
     }
 
     #[test]
@@ -358,7 +379,42 @@ mod tests {
         assert_eq!(config.tick_list, Some(vec![48, 92, 1009]));
         assert!(parse(&["--at-ticks", "48"]).is_err());
         assert!(parse(&["--at-ticks", "4x", "--out-dir", "o"]).is_err());
-        assert!(parse(&["--at-ticks", "4", "--out-dir", "o", "--frames", "1..3"]).is_err());
+        assert!(parse(&["--at-ticks", "4", "--out-dir", "o", "--tick-range", "0..=2"]).is_err());
+    }
+
+    #[test]
+    fn test_tick_range_is_zero_based_and_inclusive() {
+        let span = |arg: &str| parse(&["--tick-range", arg]).map(|config| config.tick_span);
+        assert_eq!(span("0..=0").expect("one tick"), Some(TickSpan::new(0, 0)));
+        assert_eq!(span("3..=7").expect("parses"), Some(TickSpan::new(3, 7)));
+        assert_eq!(span(" 3 ..= 7 ").expect("trims"), Some(TickSpan::new(3, 7)));
+        assert_eq!(parse(&[]).expect("default").tick_span, None);
+        for bad in ["3..7", "3..=", "..=7", "7..=3", "a..=b", "5", "-1..=3"] {
+            assert!(span(bad).is_err(), "{bad} must be rejected");
+        }
+    }
+
+    #[test]
+    fn test_frames_is_an_error_naming_tick_range() {
+        for args in [
+            &["--frames", "1..4"][..],
+            &["--frames=1..4"],
+            &["--frames"],
+            &[
+                "--out-dir",
+                "o",
+                "--frames",
+                "1..1344",
+                "--frame-step",
+                "25",
+            ],
+        ] {
+            let Err(err) = parse(args) else {
+                panic!("{args:?}: --frames must be an error");
+            };
+            let text = err.to_string();
+            assert!(text.contains("--tick-range A..=B"), "{args:?}: {text}");
+        }
     }
 
     #[test]
@@ -370,6 +426,8 @@ mod tests {
             text.contains("--viewport-rows") && text.contains("export-gltf"),
             "{text}"
         );
+        assert!(text.contains("--tick-range"), "{text}");
+        assert!(!text.contains("--frames "), "{text}");
         assert!(text.contains("Free-Cam"), "{text}");
     }
 
@@ -384,8 +442,8 @@ mod tests {
     fn test_tick_range_and_sample_options_parse() {
         let config = CliConfig::parse_from(vec![
             "film.flm".to_string(),
-            "--frames".to_string(),
-            "2..10".to_string(),
+            "--tick-range".to_string(),
+            "1..=9".to_string(),
             "--frame-step".to_string(),
             "3".to_string(),
             "--sample-count".to_string(),
@@ -399,7 +457,7 @@ mod tests {
         ])
         .expect("parse succeeds");
 
-        assert_eq!(config.frame_range, Some(FrameRange::new(2, 10)));
+        assert_eq!(config.tick_span, Some(TickSpan::new(1, 9)));
         assert_eq!(config.frame_step, 3);
         assert_eq!(config.sample_count, Some(5));
         assert_eq!(config.fps, 50.0);

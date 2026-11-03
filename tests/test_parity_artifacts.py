@@ -45,7 +45,6 @@ from stunt_reel.parity_artifacts import (
     StoreSpan,
     TickLog,
     VideoCapture,
-    frames_for_captured_ticks,
     load_video_capture,
     open_render,
     read_capture,
@@ -53,6 +52,7 @@ from stunt_reel.parity_artifacts import (
     read_page,
     read_render,
     read_report,
+    tick_range_for_captured_ticks,
     write_capture,
     write_render,
     write_render_store,
@@ -108,6 +108,7 @@ def _raw_record(schema_version: int = RENDER_SCHEMA_VERSION) -> dict[str, Any]:
                     "roll_radians": 0.0,
                 },
                 "palette_index": 0,
+                "credits": True,
             }
         ],
         "palette_count": 1,
@@ -136,6 +137,7 @@ def test_a_render_record_round_trips_through_json(tmp_path: Path) -> None:
     assert document["ticks"][0]["palette"]["sky"] == 0x2000
     assert document["ticks"][0]["camera"]["eye"] == [0.0, 10.0, 50.0]
     assert document["ticks"][0]["palette_index"] == 0
+    assert document["ticks"][0]["credits"] is False
     assert document["palette_count"] == 1
     assert document["chunks"] == [
         {
@@ -154,10 +156,18 @@ def test_a_document_written_by_the_rust_side_loads_and_extra_keys_are_ignored(
     assert record.schema_version == RENDER_SCHEMA_VERSION
     assert record.film == FilmId(name="CTRY.FLM", flm_bytes=100)
     assert record.geometry == _geometry()
-    assert record.ticks == (_tick(10),)
+    assert record.ticks == (replace(_tick(10), credits=True),)
     extra = _raw_record()
     extra["future_top"] = {"kept": True}
     assert read_render(_write_json(tmp_path / "extra.json", extra)) == record
+
+
+def test_a_tick_without_its_credits_flag_is_refused(tmp_path: Path) -> None:
+    raw = _raw_record()
+    del raw["ticks"][0]["credits"]
+    with pytest.raises(ArtifactError, match=r"ticks\[0\]\.credits") as refusal:
+        read_render(_write_json(tmp_path / "render.json", raw))
+    assert refusal.value.kind == "wrong_type"
 
 
 def test_an_unsupported_version_is_rejected_and_names_the_directory(tmp_path: Path) -> None:
@@ -218,10 +228,10 @@ def test_open_render_reads_the_record(tmp_path: Path) -> None:
     assert controls.record == _record()
 
 
-def test_open_render_refuses_a_version_1_render_with_the_re_render_action(
+def test_open_render_refuses_a_version_2_render_with_the_re_render_action(
     tmp_path: Path,
 ) -> None:
-    _write_json(tmp_path / "render.json", _raw_record(1))
+    _write_json(tmp_path / "render.json", _raw_record(2))
     with pytest.raises(ArtifactError, match="re-render") as refusal:
         open_render(tmp_path)
     assert refusal.value.kind == "unsupported_version"
@@ -449,6 +459,7 @@ def test_an_old_report_without_optional_fields_still_loads(tmp_path: Path) -> No
     report = read_report(path)
     assert report.per_frame == (FrameReport(film_tick=9, ssim=0.7, iou=0.9),)
     assert report.scored_frames == 0
+    assert report.credits_missing_frames == 0
     assert report.i6_gate == I6Gate()
     assert report.headline() == (0.0, 0.0)
 
@@ -469,17 +480,22 @@ def test_write_report_checks_the_identities() -> None:
     broken = Report(per_frame=(), reference_frames=1)
     with pytest.raises(ArtifactError, match="reference_frames must equal"):
         write_report(Path("unused.json"), broken)
+    for count in (1, -1):
+        bad = Report(per_frame=(), credits_missing_frames=count)
+        with pytest.raises(ArtifactError, match="credits_missing_frames must be from 0"):
+            write_report(Path("unused.json"), bad)
 
 
-def test_frames_for_captured_ticks_maps_capture_ticks_to_frame_numbers() -> None:
-    # frame n renders tick n - 1, and the range is half-open
-    assert frames_for_captured_ticks([769, 3640, 1000]) == "770..3642"
-    assert frames_for_captured_ticks([10]) == "11..12"
+def test_tick_range_for_captured_ticks_is_the_captures_own_inclusive_ticks() -> None:
+    # 0-based and inclusive: no offset between a capture's film tick and the range
+    assert tick_range_for_captured_ticks([769, 3640, 1000]) == "769..=3640"
+    assert tick_range_for_captured_ticks([10]) == "10..=10"
+    assert tick_range_for_captured_ticks([0, 1342]) == "0..=1342"
 
 
-def test_frames_for_captured_ticks_needs_a_capture() -> None:
-    with pytest.raises(ArtifactError, match="no --frames range"):
-        frames_for_captured_ticks([])
+def test_tick_range_for_captured_ticks_needs_a_capture() -> None:
+    with pytest.raises(ArtifactError, match="no --tick-range"):
+        tick_range_for_captured_ticks([])
 
 
 def _store_record(ticks: tuple[int, ...]) -> RenderRecord:
@@ -565,6 +581,22 @@ _STORE_TICKS = (7, 9, 40, 101, 120)
 
 def _store(directory: Path) -> RenderRecord:
     return write_store(directory, _STORE_TICKS)
+
+
+def test_a_tick_credits_flag_round_trips_and_is_always_written(tmp_path: Path) -> None:
+    """``credits`` is required from schema 3, so it is written for every tick."""
+    path = tmp_path / "render.json"
+    record = _record()
+    flagged = replace(record, ticks=(replace(record.ticks[0], credits=True), record.ticks[1]))
+    write_render(path, flagged)
+    assert read_render(path) == flagged
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert document["ticks"][0]["credits"] is True
+    assert document["ticks"][1]["credits"] is False
+    document["ticks"][0]["credits"] = 1
+    _write_json(path, document)
+    with pytest.raises(ArtifactError, match=r"ticks\[0\]\.credits"):
+        read_render(path)
 
 
 def test_every_tick_round_trips_across_seconds_and_an_empty_second(tmp_path: Path) -> None:
@@ -687,8 +719,8 @@ def test_a_version_1_render_is_refused_with_the_re_render_action(tmp_path: Path)
     assert refusal.value.kind == "unsupported_version"
 
 
-def test_the_rust_v2_fixture_reads_the_same_planes() -> None:
-    fixture = Path(__file__).resolve().parent / "fixtures" / "parity" / "v2" / "render"
+def test_the_rust_v3_fixture_reads_the_same_planes() -> None:
+    fixture = Path(__file__).resolve().parent / "fixtures" / "parity" / "v3" / "render"
     store = RenderStore(fixture)
     assert store.ticks() == [7, 9, 30, 100, 149]
     assert [(chunk.second, chunk.ticks) for chunk in store.record.chunks] == [(0, 3), (2, 2)]
@@ -736,9 +768,24 @@ def test_video_capture_round_trips(tmp_path: Path) -> None:
     assert load_video_capture(tmp_path) == _video()
 
 
+def test_video_capture_records_the_engine_hash_when_it_has_one(tmp_path: Path) -> None:
+    named = replace(_video(), playone_sha256="ab" * 32)
+    document = write_video_capture(tmp_path, named, diagnostics={})
+    assert document["playone_build"] == "synthetic"
+    assert document["playone_sha256"] == "ab" * 32
+    assert load_video_capture(tmp_path) == named
+
+
+def test_a_video_capture_without_the_engine_hash_still_loads(tmp_path: Path) -> None:
+    document = write_video_capture(tmp_path, _video(), diagnostics={})
+    assert "playone_sha256" not in document
+    assert load_video_capture(tmp_path).playone_sha256 is None
+
+
 def test_the_video_fixture_loads() -> None:
     fixture = Path(__file__).parent / "fixtures" / "parity" / "video"
     capture = load_video_capture(fixture)
+    assert capture.playone_sha256 is None  # the fixture predates the field
     assert len(capture.log.frame) == 4
     assert [change.frame for change in capture.palettes.changes] == [103]
     assert capture.film_start_frame == 103
@@ -857,7 +904,9 @@ def _round_trip_report(directory: Path, report: Any) -> Any:
         ),
         (
             _round_trip_video,
-            lambda: replace(_video(), film=_FULL_FILM, geometry=Geometry(4, 2, 2)),
+            lambda: replace(
+                _video(), film=_FULL_FILM, geometry=Geometry(4, 2, 2), playone_sha256="22"
+            ),
             set(),
         ),
         (_round_trip_render, lambda: replace(_record(), film=_FULL_FILM), set()),
