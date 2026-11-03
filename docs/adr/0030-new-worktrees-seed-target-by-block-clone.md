@@ -2,8 +2,9 @@
 
 ## Status
 
-proposed; accepted once the prototype in
-[the seeding plan](../process/plans/target-seeding-2026-11-02.md) meets its measurement gate.
+accepted 2026-11-02, at the measured 40 s and 0.7–0.9 GB of own disk per new worktree rather than
+the 30 s and 0.5 GB [the seeding plan](../process/plans/target-seeding-2026-11-02.md) first set:
+the workspace crates rebuild by design, and less than half the unseeded 91 s is worth having now.
 Takes up the "seed a new worktree's `target/` from a built template" option that
 [ADR 0017](0017-the-gate-keeps-no-compiler-cache.md) kept for reopening, and makes one exception to
 [ADR 0013](0013-worktrees-share-one-writable-tool-cache.md): every checkout points `CARGO_HOME` at

@@ -1,6 +1,6 @@
 # Seeding a new worktree's `target/` (2026-11-02)
 
-Status: **implemented on branch `claude/stunt-reel-target-size-b4b954`; measurement gate run 2026-11-02, three rows missed (section 5), ADR 0030 still proposed**. Tasks:
+Status: **implemented on branch `claude/stunt-reel-target-size-b4b954`; measurement gate run 2026-11-02, two rows missed (section 5) and accepted as measured; ADR 0030 accepted 2026-11-02**. Tasks:
 [`target-seeding-implementation-2026-11-02.md`](target-seeding-implementation-2026-11-02.md). Source: a session of 2026-11-02 that started
 from "why is `target/` so large across the root and worktrees", measured kache 2.0.0, and settled
 on cloning a donor's build output. The evidence and the decision are in
@@ -148,8 +148,10 @@ revised or workspace units are made fresh too.
 
 The final review then showed that making workspace units fresh by timestamp alone is unsafe
 (section 2), and the seed now drops their fingerprints. Their rebuild is part of the design, so
-the first row's "0 compiled" applies to dependencies only. The 30 s and 0.5 GB rows still miss:
-whether to accept ADR 0030 at 40 s and 0.7–0.9 GB, or close the gap first (section 7), is open.
+the first row's "0 compiled" applies to dependencies only. The 30 s and 0.5 GB rows still miss;
+ADR 0030 was accepted at 40 s and 0.7–0.9 GB on 2026-11-02, with closing the gap left to
+section 7. A recheck after the fix, seeding an export of the branch from this worktree, compiled
+the five workspace crates and no dependency (`cargo test --no-run`, 9 s).
 
 ## 6. Steps
 

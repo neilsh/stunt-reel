@@ -6,7 +6,9 @@ accepted; nothing is configured. The `sccache` entries in
 [ADR 0013](0013-worktrees-share-one-writable-tool-cache.md) and
 [ADR 0016](0016-the-gate-runs-independent-lanes.md) are superseded by this record. Amended
 2026-10-27 with a re-test on a ReFS Dev Drive; the decision stands (see "Re-test on a Dev
-Drive").
+Drive"). Its kept option, seeding a new worktree's `target/` from a built one, is taken up by
+[ADR 0030](0030-new-worktrees-seed-target-by-block-clone.md), which seeds dependencies only: the
+"0 crates compiled" below did not reproduce, and reusing workspace units is unsafe.
 
 ## Context
 

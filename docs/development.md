@@ -189,7 +189,9 @@ CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) invokes the mise 
 
 ### Shared tool cache
 
-`mise run init` links each checkout's `.cache/` to the primary checkout's copy; `mise.toml` points `UV_CACHE_DIR` and the cargo tasks' `CARGO_HOME` into it, so every worktree reuses one set of downloaded crates and uv artifacts. Build outputs (`target/`) and the Python tool caches stay per worktree, because they are revision-specific or not relocatable.
+`mise run init` links each checkout's `.cache/` to the primary checkout's copy; `mise.toml` points `UV_CACHE_DIR` into it, and the cargo tasks' `CARGO_HOME` at the primary checkout's `.cache/cargo` by absolute path, so every worktree reuses one set of downloaded crates and uv artifacts. Build outputs (`target/`) and the Python tool caches stay per worktree, because they are revision-specific or not relocatable.
+
+On a ReFS volume, `init` also seeds an empty `target/` by cloning another checkout's build output (`mise run seed` does only that): the clone shares disk blocks with its donor, every dependency arrives fresh, and the workspace crates always rebuild. A new worktree's first Rust lanes take about 40 s instead of 91 s. The donor must be built by the same `rustc` against the same `CARGO_HOME` and not be building; init prints which one it used or why it seeded nothing. See [ADR 0030](adr/0030-new-worktrees-seed-target-by-block-clone.md).
 
 The virtualenv lives in that cache too: `init` lays it out as `<cache>/venvs/<checkout>-<digest>` and points `.venv` at it with a junction, because uv can only hardlink packages onto the cache's own volume and a worktree usually sits on another one. A per-checkout environment would copy 68 MiB (3.1 s) at every fresh init; the linked one installs in about 150 ms. `reap` deletes a reaped worktree's environment, `init` and `reap --prune` sweep environments whose checkout is gone, and `mise run clean` reports it without removing it. `rm -rf .cache` deletes every environment with the cache. See [ADR 0013](adr/0013-worktrees-share-one-writable-tool-cache.md) and [ADR 0019](adr/0019-a-worktrees-virtualenv-lives-in-the-shared-cache.md).
 

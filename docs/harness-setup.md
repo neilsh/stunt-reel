@@ -75,7 +75,9 @@ The scripted setup is `mise run init`; under DSH its link step needs the wider p
    `.agents/worktrees/`.
 2. Switch the session to `danger-full-access`.
 3. Run `mise run init`; it creates the `.cache` and `.venv` junctions and the data-root
-   links, then runs `uv sync` into the cached environment.
+   links, seeds an empty `target/` from another checkout on a ReFS volume
+   ([ADR 0030](adr/0030-new-worktrees-seed-target-by-block-clone.md)), then runs `uv sync` into
+   the cached environment.
 4. Verify the links and that the corpus reads (see below).
 5. Switch back to `workspace-write`; later `mise run` tasks in that worktree do not need
    the state write, because an existing trust record is not rewritten.
