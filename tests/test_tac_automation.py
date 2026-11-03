@@ -207,7 +207,9 @@ def test_a_server_that_never_answers_is_a_guest_timeout(tmp_path: Path) -> None:
         pick_port=lambda: dead_port,
         sleep=lambda _s: None,
         clock=lambda: float(next(now)),
-        launch_timeout=5,
+        # Under the 2 s clock step this gives up after one probe: each refused connect to the
+        # dead port is real, and Windows retries one for about 2 s before refusing it.
+        launch_timeout=1,
     )
 
     with pytest.raises(GuestTimeout):
