@@ -8,6 +8,8 @@
 
 use stunt_core::contracts::get_palette_rgb;
 
+use crate::render_store::{Palette, palette_rgb};
+
 /// Static palette entries at or below this R+G+B sum are too dark to measure a fade by.
 const FADE_MIN_STATIC_SUM: u32 = 60;
 
@@ -20,30 +22,31 @@ fn rgb_sum((r, g, b): (u8, u8, u8)) -> u32 {
 pub(super) fn fade_reference_set(indices: &[u8]) -> Vec<u8> {
     let mut present = [false; 256];
     for &index in indices {
-        present[index as usize] = true;
+        if let Some(seen) = present.get_mut(usize::from(index)) {
+            *seen = true;
+        }
     }
     (0..=255u8)
-        .filter(|&i| present[i as usize] && rgb_sum(get_palette_rgb(i)) > FADE_MIN_STATIC_SUM)
+        .zip(present)
+        .filter(|&(i, seen)| seen && rgb_sum(get_palette_rgb(i)) > FADE_MIN_STATIC_SUM)
+        .map(|(i, _)| i)
         .collect()
 }
 
 /// Fade level of a captured `palette`: the median, over the `set` indices, of the
 /// captured R+G+B sum relative to the static palette's. 1.0 for an empty set; the raw
 /// median is returned (a capture without fade reads about 1.0, slightly off either way).
-pub(super) fn fade_level(set: &[u8], palette: &[(u8, u8, u8)]) -> f32 {
+pub(super) fn fade_level(set: &[u8], palette: &Palette) -> f32 {
     let mut ratios: Vec<f32> = set
         .iter()
-        .map(|&i| rgb_sum(palette[i as usize]) as f32 / rgb_sum(get_palette_rgb(i)) as f32)
+        .map(|&i| rgb_sum(palette_rgb(palette, i)) as f32 / rgb_sum(get_palette_rgb(i)) as f32)
         .collect();
-    if ratios.is_empty() {
-        return 1.0;
-    }
     ratios.sort_by(f32::total_cmp);
-    let mid = ratios.len() / 2;
-    if ratios.len().is_multiple_of(2) {
-        f32::midpoint(ratios[mid - 1], ratios[mid])
-    } else {
-        ratios[mid]
+    let (low, high) = ratios.split_at(ratios.len() / 2);
+    match (low.last(), high.first()) {
+        (Some(&below), Some(&above)) if low.len() == high.len() => f32::midpoint(below, above),
+        (_, Some(&middle)) => middle,
+        (_, None) => 1.0,
     }
 }
 

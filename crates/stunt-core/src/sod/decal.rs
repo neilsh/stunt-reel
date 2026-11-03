@@ -16,39 +16,23 @@ pub const EPSILON_DISPLACEMENT: f32 = 0.001;
 /// Computes the axis-aligned bounding box `(min_xyz, max_xyz)` for a polygon.
 #[must_use]
 pub(crate) fn polygon_bounds(poly: &RawPolygon) -> ([f32; 3], [f32; 3]) {
-    if poly.vertices.is_empty() {
+    let Some((&first, rest)) = poly.vertices.split_first() else {
         return ([0.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
-    }
+    };
 
-    let mut min_x = poly.vertices[0][0];
-    let mut min_y = poly.vertices[0][1];
-    let mut min_z = poly.vertices[0][2];
-    let mut max_x = min_x;
-    let mut max_y = min_y;
-    let mut max_z = min_z;
-
-    for v in &poly.vertices[1..] {
-        if v[0] < min_x {
-            min_x = v[0];
-        }
-        if v[0] > max_x {
-            max_x = v[0];
-        }
-        if v[1] < min_y {
-            min_y = v[1];
-        }
-        if v[1] > max_y {
-            max_y = v[1];
-        }
-        if v[2] < min_z {
-            min_z = v[2];
-        }
-        if v[2] > max_z {
-            max_z = v[2];
+    let (mut min, mut max) = (first, first);
+    for v in rest {
+        for ((lo, hi), &c) in min.iter_mut().zip(&mut max).zip(v) {
+            if c < *lo {
+                *lo = c;
+            }
+            if c > *hi {
+                *hi = c;
+            }
         }
     }
 
-    ([min_x, min_y, min_z], [max_x, max_y, max_z])
+    (min, max)
 }
 
 /// Tests whether two 3D bounding boxes overlap within a spatial tolerance.
@@ -78,9 +62,9 @@ pub(crate) fn is_coplanar_facet(
     normal_tol: f32,
     plane_tol: f32,
 ) -> bool {
-    if poly_a.vertices.is_empty() || poly_b.vertices.is_empty() {
+    let (Some(a0), Some(b0)) = (poly_a.vertices.first(), poly_b.vertices.first()) else {
         return false;
-    }
+    };
 
     // 1. Parallel normal test
     let dot_n = poly_a.normal[0] * poly_b.normal[0]
@@ -91,12 +75,8 @@ pub(crate) fn is_coplanar_facet(
     }
 
     // 2. Identical plane distance test
-    let d_a = poly_a.normal[0] * poly_a.vertices[0][0]
-        + poly_a.normal[1] * poly_a.vertices[0][1]
-        + poly_a.normal[2] * poly_a.vertices[0][2];
-    let d_b = poly_b.normal[0] * poly_b.vertices[0][0]
-        + poly_b.normal[1] * poly_b.vertices[0][1]
-        + poly_b.normal[2] * poly_b.vertices[0][2];
+    let d_a = poly_a.normal[0] * a0[0] + poly_a.normal[1] * a0[1] + poly_a.normal[2] * a0[2];
+    let d_b = poly_b.normal[0] * b0[0] + poly_b.normal[1] * b0[1] + poly_b.normal[2] * b0[2];
     if (d_a - d_b).abs() > plane_tol {
         return false;
     }

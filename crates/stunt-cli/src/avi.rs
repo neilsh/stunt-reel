@@ -62,12 +62,15 @@ fn walk(
     while pos < end {
         if pos + 8 > end {
             // Trailing zero pad after the last chunk is tolerated.
-            if bytes[pos..end].iter().all(|&b| b == 0) {
+            if bytes
+                .get(pos..end)
+                .is_some_and(|tail| tail.iter().all(|&b| b == 0))
+            {
                 return Ok(());
             }
             return Err(AviError::Truncated(pos));
         }
-        let id = &bytes[pos..pos + 4];
+        let id = bytes.get(pos..pos + 4).ok_or(AviError::Truncated(pos))?;
         let size = le32(bytes, pos + 4).ok_or(AviError::Truncated(pos))? as usize;
         let data = pos + 8;
         let data_end = data
@@ -109,7 +112,7 @@ fn walk(
 /// Returns an error for malformed chunks or a missing nonzero-size header. An empty chunk list
 /// is allowed; the RIFF form and video codec are not checked here.
 pub(crate) fn read_video(bytes: &[u8]) -> Result<AviVideo, AviError> {
-    if bytes.len() < 12 || &bytes[..4] != b"RIFF" {
+    if bytes.len() < 12 || !bytes.starts_with(b"RIFF") {
         return Err(AviError::NotRiff);
     }
     let mut out = Walk {
@@ -140,8 +143,11 @@ pub(crate) fn decode_frames(
     let video = read_video(bytes).map_err(|e| e.to_string())?;
     let mut decoder = Decoder::new(video.width, video.height).map_err(|e| e.to_string())?;
     for (index, range) in video.chunks.iter().enumerate() {
+        let chunk = bytes
+            .get(range.clone())
+            .ok_or_else(|| format!("frame {index}: chunk {range:?} lies outside the file"))?;
         let frame = decoder
-            .decode(&bytes[range.clone()])
+            .decode(chunk)
             .map_err(|e| format!("frame {index}: {e}"))?;
         visit(index, frame)?;
     }
@@ -204,6 +210,15 @@ mod tests {
         movi.extend_from_slice(&[0, 0]);
         let err = read_video(&file(&movi)).unwrap_err();
         assert!(matches!(err, AviError::ChunkPastList { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn a_chunk_header_cut_short_is_truncated() {
+        // Three non-zero bytes where the next 8-byte chunk header would start.
+        let mut movi = chunk(*b"00dc", &[1, 2]);
+        movi.extend_from_slice(b"00d");
+        let err = read_video(&file(&movi)).unwrap_err();
+        assert!(matches!(err, AviError::Truncated(_)), "{err:?}");
     }
 
     #[test]

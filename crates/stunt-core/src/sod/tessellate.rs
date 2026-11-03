@@ -159,11 +159,10 @@ fn process_polygon_batch(
         }
 
         // Convex polygon fan triangulation: (0, 1, 2), (0, 2, 3), ...
-        let root_idx = poly_indices[0];
-        for i in 1..num_v - 1 {
-            ir.indices.push(root_idx);
-            ir.indices.push(poly_indices[i]);
-            ir.indices.push(poly_indices[i + 1]);
+        if let Some((&root_idx, rest)) = poly_indices.split_first() {
+            for (&b, &c) in rest.iter().zip(rest.iter().skip(1)) {
+                ir.indices.extend([root_idx, b, c]);
+            }
         }
     }
 

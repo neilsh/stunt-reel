@@ -88,8 +88,11 @@ impl Decoder {
         loop {
             let before_in = zlib.total_in();
             let before_out = zlib.total_out();
+            let rest = input
+                .get(consumed..)
+                .ok_or_else(|| ZmbvError::Zlib("inflate consumed past its input".to_string()))?;
             let status = zlib
-                .decompress_vec(&input[consumed..], &mut out, FlushDecompress::Sync)
+                .decompress_vec(rest, &mut out, FlushDecompress::Sync)
                 .map_err(|e| ZmbvError::Zlib(e.to_string()))?;
             consumed += usize::try_from(zlib.total_in() - before_in).unwrap_or(usize::MAX);
             if out.len() > max {
@@ -178,14 +181,27 @@ impl Decoder {
             return Err(ZmbvError::Truncated);
         }
         let (table, mut xor_data) = data.split_at(table_len);
+        let want = w * h * 4;
+        if prev.len() != want {
+            return Err(ZmbvError::Size {
+                got: prev.len(),
+                want,
+            });
+        }
+        // Every pixel read and write below is bounds-checked against these lengths.
+        let size_error = || ZmbvError::Size {
+            got: prev.len(),
+            want,
+        };
+        let (entries, _) = table.as_chunks::<2>();
         self.next.clear();
-        self.next.resize(w * h * 4, 0);
+        self.next.resize(want, 0);
         for by in 0..rows {
             for bx in 0..cols {
-                let entry = &table[(by * cols + bx) * 2..][..2];
-                let dx = i64::from((entry[0] as i8) >> 1);
-                let use_xor = entry[0] & 1 != 0;
-                let dy = i64::from((entry[1] as i8) >> 1);
+                let &[e0, e1] = entries.get(by * cols + bx).ok_or(ZmbvError::Truncated)?;
+                let dx = i64::from((e0 as i8) >> 1);
+                let use_xor = e0 & 1 != 0;
+                let dy = i64::from((e1 as i8) >> 1);
                 let (x0, y0) = (bx * bw, by * bh);
                 let (cw, ch) = (bw.min(w - x0), bh.min(h - y0));
                 let xor_block = if use_xor {
@@ -207,17 +223,22 @@ impl Decoder {
                         let sx = x as i64 + dx;
                         let dst = (y * w + x) * 4;
                         let inside = sx >= 0 && sy >= 0 && sx < w as i64 && sy < h as i64;
-                        for c in 0..4 {
-                            let mut v = if inside {
-                                prev[(sy as usize * w + sx as usize) * 4 + c]
-                            } else {
-                                0
-                            };
-                            if let Some(block) = xor_block {
-                                v ^= block[(row * cw + col) * 4 + c];
-                            }
-                            self.next[dst + c] = v;
+                        let mut pixel = [0u8; 4];
+                        if inside {
+                            let src = (sy as usize * w + sx as usize) * 4;
+                            pixel.copy_from_slice(prev.get(src..src + 4).ok_or_else(size_error)?);
                         }
+                        if let Some(block) = xor_block {
+                            let at = (row * cw + col) * 4;
+                            let mask = block.get(at..at + 4).ok_or(ZmbvError::Truncated)?;
+                            for (value, bits) in pixel.iter_mut().zip(mask) {
+                                *value ^= bits;
+                            }
+                        }
+                        self.next
+                            .get_mut(dst..dst + 4)
+                            .ok_or_else(size_error)?
+                            .copy_from_slice(&pixel);
                     }
                 }
             }
@@ -313,6 +334,19 @@ mod tests {
         assert_eq!(px(&out, 1, 1), px(&frame, 2, 1));
         let inverted: Vec<u8> = px(&frame, 2, 0).iter().map(|b| b ^ 0xFF).collect();
         assert_eq!(px(&out, 2, 0), inverted);
+    }
+
+    #[test]
+    fn a_raw_delta_cut_short_is_truncated() {
+        let frame = vec![0u8; 4 * 2 * 4];
+        let mut d = Decoder::new(4, 2).unwrap();
+        d.decode(&raw_keyframe(&frame, 8)).unwrap();
+        // Block 1 asks for a 2x2 XOR block (16 bytes); only 3 follow the table.
+        let mut delta = vec![0, 0, 0, 1, 0];
+        delta.extend([0xFF; 3]);
+        assert_eq!(d.decode(&delta).unwrap_err(), ZmbvError::Truncated);
+        // A table cut before its last entry.
+        assert_eq!(d.decode(&[0, 0, 0]).unwrap_err(), ZmbvError::Truncated);
     }
 
     #[test]

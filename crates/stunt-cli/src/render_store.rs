@@ -32,6 +32,15 @@ const ZSTD_LEVEL: i32 = 3;
 /// A 256-entry RGB palette.
 pub(crate) type Palette = [(u8, u8, u8); 256];
 
+/// The colour `palette` gives `index`.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "a u8 index cannot leave the 256-entry palette"
+)]
+pub(crate) fn palette_rgb(palette: &Palette, index: u8) -> (u8, u8, u8) {
+    palette[usize::from(index)]
+}
+
 /// A store that could not be written or read, naming the file.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum StoreError {
@@ -107,7 +116,7 @@ pub(crate) fn check_derivable(
         ));
     }
     for (pixel, (&index, colour)) in indices.iter().zip(rgba.as_chunks::<4>().0).enumerate() {
-        let expected = palette[usize::from(index)];
+        let expected = palette_rgb(palette, index);
         if (colour[0], colour[1], colour[2]) != expected {
             let width = width.max(1) as usize;
             return Err(format!(
@@ -383,7 +392,7 @@ impl StoredFrame {
         self.indices
             .iter()
             .flat_map(|&index| {
-                let (r, g, b) = self.palette[usize::from(index)];
+                let (r, g, b) = palette_rgb(&self.palette, index);
                 [r, g, b]
             })
             .collect()
@@ -466,30 +475,59 @@ impl RenderStore {
         };
         let cached = self.cached.insert(decoded);
         let pixels = self.record.geometry.pixel_count();
-        let indices = cached.indices[slot.position * pixels..(slot.position + 1) * pixels].to_vec();
-        let layers = cached.layers[slot.position * pixels * 2..(slot.position + 1) * pixels * 2]
+        // `decode` checked each plane holds the chunk's ticks, and `locate` placed the tick in it.
+        let outside = |name: &str| {
+            corrupt(
+                &self.dir.join(name),
+                format!("tick {tick} lies outside its decoded chunk"),
+            )
+        };
+        let indices = cached
+            .indices
+            .get(slot.position * pixels..(slot.position + 1) * pixels)
+            .ok_or_else(|| outside(INDEX_FILE))?
+            .to_vec();
+        let layers = cached
+            .layers
+            .get(slot.position * pixels * 2..(slot.position + 1) * pixels * 2)
+            .ok_or_else(|| outside(LAYER_FILE))?
             .as_chunks::<2>()
             .0
             .iter()
             .map(|pair| u16::from_le_bytes(*pair))
             .collect();
-        let entry: &RenderTick = &self.record.ticks[self
+        let entry: &RenderTick = self
             .record
             .ticks
             .binary_search_by_key(&tick, |entry| entry.tick)
-            .map_err(|_| StoreError::MissingTick {
+            .ok()
+            .and_then(|at| self.record.ticks.get(at))
+            .ok_or_else(|| StoreError::MissingTick {
                 dir: self.dir.clone(),
                 tick,
-            })?];
+            })?;
+        // `validate` holds every palette index below the count `read_palettes` checked.
+        let palette = *self
+            .palettes
+            .get(entry.palette_index as usize)
+            .ok_or_else(|| {
+                corrupt(
+                    &self.dir.join(PALETTE_FILE),
+                    format!("tick {tick} names missing palette {}", entry.palette_index),
+                )
+            })?;
         Ok(StoredFrame {
             indices,
             layers,
-            palette: self.palettes[entry.palette_index as usize],
+            palette,
         })
     }
 
     fn decode(&self, chunk: usize) -> Result<DecodedChunk, StoreError> {
-        let entry = self.record.chunks[chunk];
+        let entry =
+            *self.record.chunks.get(chunk).ok_or_else(|| {
+                corrupt(&self.dir, format!("the chunk table has no chunk {chunk}"))
+            })?;
         let pixels = self.record.geometry.pixel_count() * entry.ticks as usize;
         let read = |name: &str, span: StoreSpan, expected: usize| {
             let path = self.dir.join(name);

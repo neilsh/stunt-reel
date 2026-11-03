@@ -7,6 +7,8 @@
 use stunt_core::contracts::{PALETTE_CONTROL_FULL, PaletteControls};
 use stunt_render::{ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH};
 
+use crate::render_store::Palette;
+
 use super::fade::fade_level;
 use super::frames::reference_luminance;
 use super::loss::{LOSS_CLASSES, attribute_loss, loss_class};
@@ -24,7 +26,7 @@ pub(super) const SSIM_STRIDE: usize = 8;
 /// One captured frame: its 320x200 palette-index plane and its captured palette.
 pub(super) struct ReferenceFrame {
     pub(super) indices: Vec<u8>,
-    pub(super) palette: Vec<(u8, u8, u8)>,
+    pub(super) palette: Palette,
 }
 
 /// One rendered frame at the capture's film tick.

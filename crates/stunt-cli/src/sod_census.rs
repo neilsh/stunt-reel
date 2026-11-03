@@ -581,20 +581,19 @@ fn opcode_list(pattern: &Pattern) -> String {
 
 /// Shape IDs with runs of three or more consecutive IDs folded into `first`–`last`.
 fn id_list(ids: &BTreeSet<u16>) -> String {
-    let ids: Vec<u16> = ids.iter().copied().collect();
-    let mut parts = Vec::new();
-    let mut i = 0;
-    while i < ids.len() {
-        let mut j = i;
-        while j + 1 < ids.len() && ids[j + 1] == ids[j] + 1 {
-            j += 1;
+    let mut runs: Vec<(u16, u16)> = Vec::new();
+    for &id in ids {
+        match runs.last_mut() {
+            Some((_, last)) if last.checked_add(1) == Some(id) => *last = id,
+            _ => runs.push((id, id)),
         }
-        if j - i >= 2 {
-            parts.push(format!("`{:04X}`–`{:04X}`", ids[i], ids[j]));
-            i = j + 1;
+    }
+    let mut parts = Vec::new();
+    for (first, last) in runs {
+        if last - first >= 2 {
+            parts.push(format!("`{first:04X}`–`{last:04X}`"));
         } else {
-            parts.push(format!("`{:04X}`", ids[i]));
-            i += 1;
+            parts.extend((first..=last).map(|id| format!("`{id:04X}`")));
         }
     }
     parts.join(", ")

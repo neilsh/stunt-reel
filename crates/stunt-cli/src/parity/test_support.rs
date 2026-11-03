@@ -55,14 +55,12 @@ pub(super) fn plane_index(i: usize) -> u8 {
 }
 
 /// The static palette with every channel scaled by `scale`.
-pub(super) fn scaled_palette(scale: f32) -> Vec<(u8, u8, u8)> {
+pub(super) fn scaled_palette(scale: f32) -> Palette {
     let channel = |v: u8| (f32::from(v) * scale).round() as u8;
-    (0..=255u8)
-        .map(|i| {
-            let (r, g, b) = get_palette_rgb(i);
-            (channel(r), channel(g), channel(b))
-        })
-        .collect()
+    std::array::from_fn(|i| {
+        let (r, g, b) = get_palette_rgb(i as u8);
+        (channel(r), channel(g), channel(b))
+    })
 }
 
 /// Like [`write_reference`], with capture `n`'s palette faded to `scales[n]`.

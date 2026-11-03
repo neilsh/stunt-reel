@@ -39,6 +39,7 @@ pedantic = { level = "warn", priority = -1 }
 unwrap_used = "warn"
 expect_used = "warn"
 panic = "warn"
+indexing_slicing = "warn"
 string_slice = "warn"
 dbg_macro = "warn"
 todo = "warn"
@@ -63,9 +64,6 @@ cast_precision_loss = "allow" # integer to f32 in pixel and coordinate maths is 
 
 # Wanted eventually: allowed only until the existing hits are cleared (counts from the
 # 2026-10-29 measurement, re-counted after the first fix pass). Remove each line once its hits are fixed.
-# TODO(lints): enable per parser module in stunt-core with a module-level `#![warn]`, then
-#   fix with `.get()` or fixed-size readers.
-indexing_slicing = "allow" # 198
 # TODO(lints): replace with `try_from`, or mark intended truncation with `#[expect(.., reason)]`.
 cast_possible_truncation = "allow" # 164
 cast_sign_loss = "allow" # 45

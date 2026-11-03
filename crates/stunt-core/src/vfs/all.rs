@@ -6,7 +6,7 @@
 
 use crate::contracts::vfs::{ArchiveFormat, VfsArchive, VfsEntry};
 use crate::reader::ByteReader;
-use crate::vfs::VfsError;
+use crate::vfs::{VfsError, check_non_decreasing};
 
 /// Unpacks a `.ALL` container archive into an in-memory [`VfsArchive`].
 ///
@@ -58,11 +58,12 @@ pub fn parse_all(data: &[u8]) -> Result<VfsArchive, VfsError> {
     }
 
     // Offset table integrity checks
-    if offsets[0] < header_size {
+    if let Some(&first) = offsets.first()
+        && first < header_size
+    {
         return Err(VfsError::InvalidOffsetTable {
             reason: format!(
-                "first offset {} is inside header table (header size {})",
-                offsets[0], header_size
+                "first offset {first} is inside header table (header size {header_size})"
             ),
         });
     }
@@ -76,35 +77,22 @@ pub fn parse_all(data: &[u8]) -> Result<VfsArchive, VfsError> {
         }
     }
 
-    for i in 0..num - 1 {
-        if offsets[i + 1] < offsets[i] {
-            return Err(VfsError::InvalidOffsetTable {
-                reason: format!(
-                    "offset at index {} ({}) is less than previous offset at index {} ({})",
-                    i + 1,
-                    offsets[i + 1],
-                    i,
-                    offsets[i]
-                ),
-            });
-        }
-    }
+    check_non_decreasing(&offsets)?;
 
     let mut archive = VfsArchive::new(ArchiveFormat::All);
-    for i in 0..num {
-        let id = ids[i];
-        let start = offsets[i];
-        let end = if i + 1 < num {
-            offsets[i + 1]
-        } else {
-            data.len()
-        };
+    let ends = offsets.iter().skip(1).copied().chain([data.len()]);
+    for ((&id, &start), end) in ids.iter().zip(&offsets).zip(ends) {
+        // Bounds and order were checked above, so this only fails on a broken invariant.
+        let payload = data.get(start..end).ok_or(VfsError::UnexpectedEof {
+            expected: end,
+            actual: data.len(),
+        })?;
 
-        let payload = &data[start..end];
-
-        let name = if payload.len() >= 4 && &payload[0..4] == b"FILM" {
+        let name = if payload.starts_with(b"FILM") {
             "CHOREO.FLM".to_string()
-        } else if payload.len() >= 2 && u16::from_le_bytes([payload[0], payload[1]]) == 0x000C {
+        } else if let &[lo, hi, ..] = payload
+            && u16::from_le_bytes([lo, hi]) == 0x000C
+        {
             format!("MODEL_{id:04X}.SOD")
         } else {
             format!("RES_{id:04X}.BIN")

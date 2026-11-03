@@ -33,10 +33,16 @@ pub(super) fn write_panel_sheet(path: &Path, panels: &[&[f32]]) -> Result<(), St
     let mut buffer = vec![0u8; sheet_width * height];
 
     for (panel_index, panel) in panels.iter().enumerate() {
-        for y in 0..height {
-            let row = y * sheet_width + panel_index * panel_stride;
-            for x in 0..width {
-                buffer[row + x] = panel[y * width + x].clamp(0.0, 255.0) as u8;
+        assert!(
+            panel.len() >= width * height,
+            "panel {panel_index} holds {} values, fewer than {width}x{height}",
+            panel.len()
+        );
+        let sheet_rows = buffer.chunks_exact_mut(sheet_width);
+        for (sheet_row, panel_row) in sheet_rows.zip(panel.chunks_exact(width)) {
+            let cells = sheet_row.iter_mut().skip(panel_index * panel_stride);
+            for (cell, &value) in cells.zip(panel_row) {
+                *cell = value.clamp(0.0, 255.0) as u8;
             }
         }
     }
