@@ -28,21 +28,21 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from stunt_reel import batch_stages, parity_layout
 from stunt_reel.batch_films import discover
-from stunt_reel.batch_ledger import STAGES, append, latest, read, summarize
+from stunt_reel.batch_ledger import STAGES, Record, append, latest, read, summarize
 from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.parity_pipeline import REPO_ROOT, build_release
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
     from stunt_reel.batch_films import BatchFilm
-    from stunt_reel.batch_ledger import Record
     from stunt_reel.batch_stages import Runner
 
 __all__ = ["main", "process"]
@@ -183,11 +183,13 @@ class _Shared:
 
 def _process_film(film: BatchFilm, shared: _Shared) -> int:
     """Run one film's stages in order, stopping at its first error; return 1 if it errored."""
-    forcing = False
+    forced: str | None = None
     for stage in STAGES:
         if stage not in shared.stages:
             continue
-        forcing = forcing or stage in shared.force
+        if forced is None and stage in shared.force:
+            forced = stage
+        forcing = forced is not None
         prior = None if forcing else shared.prior(film.slug, stage)
         if stage == "capture":
             stalled = prior is not None and prior.message == batch_stages.KNOWN_STALL_MESSAGE
@@ -202,9 +204,8 @@ def _process_film(film: BatchFilm, shared: _Shared) -> int:
         if prior is not None and not shared.retry_errors:
             break
         function = _stage_function(stage)
-        if forcing and stage in _STAGE_OUTPUT:
-            output = shared.root / parity_layout.batch_film_dir(film.slug) / _STAGE_OUTPUT[stage]
-            shutil.rmtree(output, ignore_errors=True)
+        if forcing:
+            _clear_output(film.slug, stage, shared.root)
         if stage == "render":
             record = _render_guarded(function, film, shared)
         else:
@@ -212,29 +213,52 @@ def _process_film(film: BatchFilm, shared: _Shared) -> int:
         shared.commit(record)
         if record.status == "error":
             if forcing:
-                _mark_later_stale(film.slug, stage, record, shared)
+                _mark_stale(film.slug, _after(stage), f"stale: forced {stage} failed", shared)
             return 1
         if stage == "score":
             _copy_contact_sheets(film.slug, shared.root)
+    if forced is not None:
+        omitted = [later for later in _after(forced) if later not in shared.stages]
+        _mark_stale(film.slug, omitted, f"stale: {forced} was forced", shared)
     return 0
 
 
-def _mark_later_stale(slug: str, stage: str, failed: Record, shared: _Shared) -> None:
-    """Record an error for each later stage that has an outcome, and remove its output.
+def _after(stage: str) -> tuple[str, ...]:
+    """The stages that follow *stage*."""
+    return STAGES[STAGES.index(stage) + 1 :]
 
-    The ledger keeps each stage's latest record on its own, so without this a forced render that
-    fails would leave the earlier score current, and ``--retry-errors`` would repair the render
-    but keep a report of a different one.
+
+def _clear_output(slug: str, stage: str, root: Path) -> None:
+    """Remove what a render or score left: its directory and, for a score, the copied sheets."""
+    if stage not in _STAGE_OUTPUT:
+        return
+    film_dir = root / parity_layout.batch_film_dir(slug)
+    shutil.rmtree(film_dir / _STAGE_OUTPUT[stage], ignore_errors=True)
+    if stage == "score":
+        for sheet in (film_dir / "frames").glob("*.png"):
+            sheet.unlink(missing_ok=True)
+
+
+def _mark_stale(slug: str, stages: Iterable[str], message: str, shared: _Shared) -> None:
+    """Record an error for each of *stages* that has an outcome, and remove its output.
+
+    The ledger keeps each stage's latest record on its own, so a forced render that fails, or one
+    run with ``--stages render``, would otherwise leave the earlier score current, and a resume
+    would keep a report of a different render.
     """
-    for later in STAGES[STAGES.index(stage) + 1 :]:
-        prior = shared.prior(slug, later)
+    for stage in stages:
+        prior = shared.prior(slug, stage)
         if prior is not None and prior.status != "error":
-            if later in _STAGE_OUTPUT:
-                output = shared.root / parity_layout.batch_film_dir(slug) / _STAGE_OUTPUT[later]
-                shutil.rmtree(output, ignore_errors=True)
-            message = f"stale: forced {stage} failed"
+            _clear_output(slug, stage, shared.root)
             shared.commit(
-                replace(failed, stage=later, message=message, seconds=0.0, ssim=None, iou=None)
+                Record(
+                    slug=slug,
+                    stage=stage,
+                    status="error",
+                    message=message,
+                    seconds=0.0,
+                    at=datetime.now(UTC).isoformat(),
+                )
             )
 
 
