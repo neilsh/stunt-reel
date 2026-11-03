@@ -40,8 +40,10 @@ __all__ = [
 
 #: The file a writer writes last; its presence is what makes a capture complete.
 META_FILE = "meta.json"
-#: How long a publisher waits for another one's swap of the same capture before giving up.
-_SWAP_WAIT_SECONDS = 30.0
+#: How long a publisher waits for the swap lock before giving up. A swap holds it for
+#: milliseconds, but a snapshot on a volume without hard links holds it while it copies the
+#: capture; five minutes covers the largest capture (216 MB) at under 1 MB/s.
+_SWAP_WAIT_SECONDS = 300.0
 #: A snapshot older than this was left by a reader that died; no scoring run holds one a day.
 _STALE_SNAPSHOT_SECONDS = 86400.0
 

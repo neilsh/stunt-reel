@@ -28,7 +28,9 @@ published file is never changed in place: a writer only swaps whole directories.
   makes `<kind>.read-<id>/` beside the capture, a tree of hard links to its files, and removes it
   when the block ends. Because a published file is never changed, the links are the capture as it
   was when they were made, whatever a later swap does. They cost no space, and they are on the
-  store's volume by construction. A file system without hard links gets a copy.
+  store's volume by construction. A file system without hard links gets a copy, made under
+  the swap lock like the links, so a `publish` waits up to five minutes for the lock rather
+  than the 30 seconds a swap alone would need.
 - **The links are made under the swap lock.** No `publish` lands between two links, so a
   snapshot never mixes two captures. The lock is held for the linking, which takes milliseconds,
   and released before the caller reads; a `publish` waits for it as it waits for another swap.
