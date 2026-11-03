@@ -424,9 +424,10 @@ fn actor_world_matrix(actor: &ActorTransform, shape: &SodModelIr) -> [f32; 16] {
     let mut matrix = actor.compute_world_matrix();
     if let Some(header) = shape.decode().map(|record| record.header) {
         let lift = -f32::from(header.ground_y_offset) * header.scale_factor;
-        for row in 0..3 {
-            matrix[12 + row] += matrix[4 + row] * lift;
-        }
+        let [_, _, _, _, ux, uy, uz, _, _, _, _, _, tx, ty, tz, _] = &mut matrix;
+        *tx += *ux * lift;
+        *ty += *uy * lift;
+        *tz += *uz * lift;
     }
     matrix
 }
