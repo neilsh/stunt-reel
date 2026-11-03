@@ -144,8 +144,8 @@ will ask per command until someone commits the allow rule. [`CLAUDE.md`](../CLAU
 that imports `AGENTS.md`, because Claude Code reads `CLAUDE.md` and this repo's guide has the
 other name.
 
-Not yet documented: its sandboxing and timeout behaviour. Fill that in from observation, not
-from vendor documentation — this page records what we have seen.
+Not yet documented: its timeout behaviour, and its sandboxing beyond the integrity label below.
+Fill that in from observation, not from vendor documentation — this page records what we have seen.
 
 ### Editing a stack layer another worktree holds
 
@@ -174,6 +174,7 @@ Seen once (2026-11-01): every `mise run` Python task failed with a bare `Permiss
 (`WinError 5` on `mkdir`) while PowerShell wrote the same paths. The checkout root carried an
 inheritable `Mandatory Label\Low`, which `.venv` inherited; `icacls .venv` shows it. The machine's
 owner removes it with `icacls <checkout> /setintegritylevel (OI)(CI)M` and recreates `.venv`.
+Evidence and sources: [the research note](process/research/windows-sandbox-integrity-label-2026-11-01.md).
 
 ## Windows PowerShell 5.1
 
