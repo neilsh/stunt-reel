@@ -29,6 +29,12 @@ every dependency (ADR 0030). Workspace units fingerprint their sources by path w
 checkout and by modification time, so Cargo rebuilds the ones whose sources are newer than the
 donor's outputs; ADR 0017's measurement compiled none.
 
+The converse is the hazard: a workspace unit whose sources are older than the donor's outputs is
+fresh whatever the sources hold. A checkout created before its donor's last build would run the
+donor's code, and test binaries embed the donor's `CARGO_MANIFEST_DIR` (a final review reproduced
+both on 2026-11-02). So the seed drops the fingerprints of the checkout's own workspace members,
+and those always rebuild; only dependency units are reused.
+
 So every checkout must name the one shared cache by one absolute path. Today each task sets
 `CARGO_HOME = "{{config_root}}/.cache/cargo"`, a per-checkout junction to the same directory.
 
@@ -47,8 +53,12 @@ So every checkout must name the one shared cache by one absolute path. Today eac
 
   The prototype confirms `exec` and `dirname` behave in this mise version and that the value is
   identical in the primary, `.claude/worktrees/*`, `<repo>.wt/*` and Orca worktrees.
-- [`build_at.py`](../../../python/scripts/build_at.py) and the `build-at` task set the same
-  `CARGO_HOME`; today they fall back to the user's.
+- The `build-at` task sets the same `CARGO_HOME`, as does every task whose script runs cargo itself
+  or through `parity_pipeline` (`batch-parity` and `parity-probe` set none before); a layout test
+  holds this. [`build_at.py`](../../../python/scripts/build_at.py) run without mise still uses the
+  user's.
+- `init` and `seed` pass the same value to the seed as `STUNT_CARGO_HOME`, so the donor check and
+  cargo never derive the path twice.
 - The `.cache` junction stays; uv and `TMP` still use it.
 
 ### 3.2 Seeding step in `mise run init`
@@ -65,7 +75,7 @@ A new module, `python/stunt_reel/target_seed.py`, called from `_init` in
 3. **Pick a donor.** Candidates are the other checkouts from `git worktree list` whose `target/`
    is on the same volume, newest `target/debug/.fingerprint` first. A donor qualifies when:
    - its `target/.rustc_info.json` names the same `rustc` as `rustc -vV` here;
-   - its last build used the shared `CARGO_HOME` (the registry path in one dependency's
+   - its last build used the shared `CARGO_HOME` (the registry path in its newest dependency
      `.d` file starts with it);
    - no build is running in it: each seeded profile's `.cargo-lock` can be locked exclusively,
      and the lock is held until the copy finishes;
@@ -74,7 +84,9 @@ A new module, `python/stunt_reel/target_seed.py`, called from `_init` in
 4. **Copy.** `robocopy <donor>\target\<dir> <new>\target\<dir> /E /COPY:DAT /DCOPY:DAT /R:0 /W:0
    /NFL /NDL /NJH /NJS` for `debug`, `check` and `matrix`, in that order, plus
    `.rustc_info.json` and `CACHEDIR.TAG`. Timestamps must survive. `release` and `build-at` are
-   left out: they are rebuilt per use and are large. Robocopy exit codes 0–7 are success.
+   left out: they are rebuilt per use and are large. Robocopy exit codes 0–7 are success. After
+   each directory, the fingerprints of this checkout's workspace members (`<package>-<16 hex>`
+   under any `.fingerprint/` one or two levels down) are deleted (section 2).
 5. **Best effort.** Any failure prints `! seed: <reason>`, removes what it copied, and lets init
    continue. Seeding never fails init.
 
@@ -104,7 +116,7 @@ Two fresh scratch worktrees on `E:` at the same commit, A built by `mise run che
 
 | measure | accept if |
 | --- | --- |
-| B's cold `mise run check` | under 30 s, and crates compiled is 0 |
+| B's cold `mise run check` | under 30 s, and crates compiled is 0 (revised 2026-11-02: no dependency compiled; the workspace crates always rebuild, section 2) |
 | B's physical disk after the gate (logical size less clusters with a reference count above 1, as in ADR 0030) | under 0.5 GB |
 | B one commit behind A's `Cargo.lock` change | only changed units rebuild |
 | A's `target/` still builds warm after B was seeded from it | 0 crates compiled |
@@ -134,6 +146,11 @@ most of B's own disk. The full gate's wall time is set by `test-py` (about 80 s)
 ADR 0017's "0 crates compiled" did not reproduce. ADR 0030 stays proposed until the criteria are
 revised or workspace units are made fresh too.
 
+The final review then showed that making workspace units fresh by timestamp alone is unsafe
+(section 2), and the seed now drops their fingerprints. Their rebuild is part of the design, so
+the first row's "0 compiled" applies to dependencies only. The 30 s and 0.5 GB rows still miss:
+whether to accept ADR 0030 at 40 s and 0.7–0.9 GB, or close the gap first (section 7), is open.
+
 ## 6. Steps
 
 1. `[vars] cargo_home` in `mise.toml`, used by every `CARGO_HOME` task and by `build-at`; the
@@ -152,6 +169,10 @@ revised or workspace units are made fresh too.
   timing; ADR 0016).
 - No debug info for dependencies (`[profile.dev.package."*"] debug = false`): −0.16 GB per
   worktree, measured.
+- Make workspace units reusable safely, about 18 s per new worktree: first read
+  `CARGO_MANIFEST_DIR` at run time in tests instead of `env!` at compile time, so no binary embeds
+  its checkout; then keep a member's fingerprint only where every source file is byte-identical
+  to the donor's working copy, and give those files the donor's modification time.
 - Reopen kache under ADR 0030's conditions. A draft upstream issue on its seeding is in the
   session record, not posted.
 

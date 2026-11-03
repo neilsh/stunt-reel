@@ -266,6 +266,12 @@ def _rustc_vv() -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
+def _cargo_home() -> Path:
+    """The CARGO_HOME cargo tasks use: mise passes it in; run directly, the shared cache."""
+    named = os.environ.get("STUNT_CARGO_HOME")
+    return Path(named) if named else cache_root() / "cargo"
+
+
 def _seed_target() -> str:
     """Seed this checkout's empty target/ from another checkout; one line saying what happened."""
     try:
@@ -277,7 +283,7 @@ def _seed_target() -> str:
                 REPO_ROOT,
                 checkouts=[worktree.path for worktree in _worktrees(REPO_ROOT)],
                 rustc_vv=rustc_vv,
-                cargo_home=cache_root() / "cargo",
+                cargo_home=_cargo_home(),
             )
     except Exception as error:
         outcome = SeedOutcome("failed", str(error))

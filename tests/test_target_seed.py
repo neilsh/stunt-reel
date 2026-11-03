@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -17,6 +18,7 @@ from stunt_reel.target_seed import (
     rank_donors,
     seed,
     uses_cargo_home,
+    workspace_members,
 )
 
 RUSTC = "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nhost: x86_64-pc-windows-msvc\n"
@@ -271,3 +273,83 @@ def test_seed_falls_back_to_an_idle_donor(tmp_path: Path) -> None:
         held.close()  # type: ignore[attr-defined]
     assert out == SeedOutcome("seeded", f"from {idle}")
     assert copied == [idle / "target" / "debug"]
+
+
+def _workspace(root: Path, *members: str) -> None:
+    """A Cargo workspace at *root* whose crates/* packages are named *members*."""
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "Cargo.toml").write_text(
+        '[workspace]\nresolver = "3"\nmembers = [\n    "crates/*",\n]\n', encoding="utf-8"
+    )
+    for name in members:
+        crate = root / "crates" / name.removeprefix("stunt-")
+        crate.mkdir(parents=True)
+        (crate / "Cargo.toml").write_text(f'[package]\nname = "{name}"\n', encoding="utf-8")
+    (root / "crates" / "notes").mkdir(parents=True, exist_ok=True)
+
+
+def test_workspace_members_reads_member_package_names(tmp_path: Path) -> None:
+    _workspace(tmp_path, "stunt-core", "stunt-cli")
+    assert workspace_members(tmp_path) == frozenset({"stunt-core", "stunt-cli"})
+    assert workspace_members(tmp_path / "missing") == frozenset()
+
+
+def test_seed_drops_workspace_fingerprints(tmp_path: Path) -> None:
+    """Cargo trusts a workspace unit whose sources are older than its outputs, whatever they
+    hold; a seed must never hand B the donor's build of B's own crates."""
+    here = _fresh(tmp_path / "here")
+    _workspace(here, "stunt-core", "stunt-cli")
+    donor = _donor(tmp_path / "d")
+    kept = ("serde-0123456789abcdef", "stunt-core-extra-0123456789abcdef")
+    dropped = ("stunt-core-0123456789abcdef", "stunt-cli-fedcba9876543210")
+    for profile in ("debug", "check/debug", "matrix/debug"):
+        for name in (*kept, *dropped):
+            (donor / "target" / profile / ".fingerprint" / name).mkdir(parents=True)
+
+    def copy_tree(source: Path, destination: Path) -> None:
+        shutil.copytree(source, destination)
+
+    out = seed(
+        here,
+        checkouts=[donor],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=copy_tree,
+        volume_clones=_clones,
+    )
+    assert out == SeedOutcome("seeded", f"from {donor}")
+    for profile in ("debug", "check/debug", "matrix/debug"):
+        seeded = here / "target" / profile / ".fingerprint"
+        assert sorted(entry.name for entry in seeded.iterdir()) == sorted(kept), profile
+        assert (donor / "target" / profile / ".fingerprint" / dropped[0]).is_dir()
+
+
+def test_uses_cargo_home_reads_the_newest_dep_info(tmp_path: Path) -> None:
+    """A donor once built with another cache keeps those .d files; its latest build decides."""
+    a = _donor(tmp_path / "a")
+    deps = a / "target" / "debug" / "deps"
+    stale = deps / "aaa_old-0123456789abcdef.d"
+    source = r"E:\packages\cargo\registry\src\x\lib.rs"
+    stale.write_text(f"{stale}: {source}\n", encoding="utf-8")
+    old = time.time() - 3600
+    os.utime(stale, (old, old))
+    assert uses_cargo_home(a / "target", Path(HOME))
+    now = time.time() + 60
+    os.utime(stale, (now, now))
+    assert not uses_cargo_home(a / "target", Path(HOME))
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="robocopy is Windows-only")
+def test_robocopy_keeps_timestamps_and_raises_on_failure(tmp_path: Path) -> None:
+    from stunt_reel.target_seed import robocopy  # noqa: PLC0415 - Windows-only helper
+
+    source = tmp_path / "src"
+    (source / "deps").mkdir(parents=True)
+    unit = source / "deps" / "a.rlib"
+    unit.write_bytes(b"x")
+    stamp = 1_700_000_000_123_456_700
+    os.utime(unit, ns=(stamp, stamp))
+    robocopy(source, tmp_path / "dst")
+    assert (tmp_path / "dst" / "deps" / "a.rlib").stat().st_mtime_ns == stamp
+    with pytest.raises(OSError, match="exited"):
+        robocopy(tmp_path / "absent", tmp_path / "dst2")

@@ -66,19 +66,25 @@ reachability and slow cache keys), whose errors these logs do not show.
 ## Decision
 
 `mise run init` seeds an empty `target/` by cloning a donor checkout's build output, and every
-checkout uses one absolute `CARGO_HOME` so that the donor's fingerprints stay valid in the new
-checkout. ADR 0017 measured this shape on the Dev Drive: a 17.6 s gate with 0 crates compiled, and
-0.29 GB of physical disk for the copy. Cargo's own freshness check stays in charge, so a unit the
-donor built differently is rebuilt rather than trusted. The plan holds the design, the checks that
-pick a donor, and the measurement the prototype must meet.
+checkout uses one absolute `CARGO_HOME` so that the donor's dependency fingerprints stay valid in
+the new checkout. A dependency's fingerprint names its registry source, so Cargo rebuilds one the
+donor built differently. The workspace's own crates are the exception: Cargo calls one fresh when
+its sources are older than its outputs, whatever the sources hold, so a checkout created before
+its donor's last build would run the donor's code, and its tests would read the donor's
+`CARGO_MANIFEST_DIR`. The seed therefore drops those crates' fingerprints, and they always
+rebuild. Measured on 2026-11-02 (the plan, section 5): every dependency arrived fresh, and the
+Rust lanes took 40 s against 91 s unseeded. ADR 0017's 17.6 s with 0 crates compiled did not
+reproduce, and by this design it cannot. The plan holds the design, the checks that pick a donor,
+and the measurement.
 
 ## Considered Options
 
 - **Adopt kache 2.0.0 now.** It meets the disk goal (with executable caching on) and keeps
-  per-checkout `CARGO_HOME`, but a cold gate in a new worktree is 68–85 s against about 18 s for a
+  per-checkout `CARGO_HOME`, but a cold gate in a new worktree is 68–85 s against 40 s for a
   seeded one, edits are no faster, and it adds a pinned two-binary tool, a daemon, a store and a
   config. Deferred, not rejected: reopen when its new-target seeding works on Windows,
-  kunobi-ninja/kache#1792 is resolved, and a few releases have passed since 2.0.0. It keeps one
+  kunobi-ninja/kache#1792 is resolved, and a few releases have passed since 2.0.0. Its seeding
+  would need the same care for workspace units as ours. It keeps one
   advantage seeding lacks: after a `Cargo.lock` or toolchain change each crate compiles once for
   every worktree, where a seeded worktree rebuilds the changed units itself until its donor does.
 - **One `target/` for every worktree.** Rejected again for ADR 0013's reason: Cargo locks it for a

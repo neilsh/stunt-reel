@@ -53,3 +53,21 @@ def test_seed_command_is_wired(
     monkeypatch.setattr(worktree_init, "_seed_target", lambda: "  - target/ not seeded: x")
     assert worktree_init.main(["seed"]) == 0
     assert "not seeded: x" in capsys.readouterr().out
+
+
+def test_seed_uses_the_cargo_home_mise_names(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Python must judge donors by the very path mise hands cargo, not a second derivation."""
+    seen: list[Path] = []
+
+    def fake_seed(*_args: object, cargo_home: Path, **_kwargs: object) -> SeedOutcome:
+        seen.append(cargo_home)
+        return SeedOutcome("skipped", "x")
+
+    monkeypatch.setattr(worktree_init, "_rustc_vv", lambda: "rustc 1.99.1\n")
+    monkeypatch.setattr(worktree_init, "_worktrees", lambda _repo: [])
+    monkeypatch.setattr(worktree_init, "seed", fake_seed)
+    monkeypatch.setenv("STUNT_CARGO_HOME", str(tmp_path / "home"))
+    worktree_init._seed_target()
+    assert seen == [tmp_path / "home"]

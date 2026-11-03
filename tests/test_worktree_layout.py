@@ -169,6 +169,37 @@ def test_cargo_home_is_one_absolute_path() -> None:
     assert set(homes.values()) == {"{{vars.cargo_home}}"}, homes
 
 
+def test_seeding_tasks_pass_the_cargo_home() -> None:
+    """init and seed judge donors by the CARGO_HOME every cargo task uses (ADR 0030)."""
+    config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
+    for name in ("init", "seed"):
+        assert config["tasks"][name]["env"]["STUNT_CARGO_HOME"] == "{{vars.cargo_home}}", name
+
+
+def test_every_task_that_builds_names_the_shared_cargo_home() -> None:
+    """A script that runs cargo, itself or through parity_pipeline, gets the shared cache.
+
+    Without it cargo falls back to the user's CARGO_HOME and builds a second copy of every
+    dependency (ADR 0030).
+    """
+    config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
+    builds = {
+        path.name
+        for path in SCRIPTS.glob("*.py")
+        if path.name != "worktree_init.py"
+        and any(
+            needle in path.read_text(encoding="utf-8") for needle in ('"cargo"', "parity_pipeline")
+        )
+    }
+    missing = [
+        name
+        for name, task in config["tasks"].items()
+        if any(script in str(task.get("run", "")) for script in builds)
+        and task.get("env", {}).get("CARGO_HOME") != "{{vars.cargo_home}}"
+    ]
+    assert not missing, missing
+
+
 def test_build_at_sets_cargo_home() -> None:
     """build-at builds into its own target dir but must still name the shared cache."""
     config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))

@@ -13,9 +13,11 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, BinaryIO, Literal
 
@@ -53,10 +55,22 @@ def built_by(target: Path, rustc_vv: str) -> bool:
         return False
 
 
+def _mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def uses_cargo_home(target: Path, cargo_home: Path) -> bool:
-    """Whether *target*'s dependencies were built from the registry under *cargo_home*."""
+    """Whether *target*'s latest dependency build used the registry under *cargo_home*.
+
+    A target/ once built with another cache keeps those dep-info files, so the newest one that
+    names a registry source decides.
+    """
     wanted = _norm(cargo_home)
-    for dep_info in sorted((target / "debug" / "deps").glob("*.d")):
+    dep_infos = (target / "debug" / "deps").glob("*.d")
+    for dep_info in sorted(dep_infos, key=_mtime, reverse=True):
         try:
             with dep_info.open(encoding="utf-8", errors="replace") as handle:
                 head = handle.read(_DEP_INFO_BYTES)
@@ -67,6 +81,46 @@ def uses_cargo_home(target: Path, cargo_home: Path) -> bool:
                 if marker in token:
                     return _norm(token.split(marker, 1)[0]) == wanted
     return False
+
+
+def workspace_members(checkout: Path) -> frozenset[str]:
+    """The package names of *checkout*'s Cargo workspace; empty when it has none."""
+    try:
+        manifest = tomllib.loads((checkout / "Cargo.toml").read_text(encoding="utf-8"))
+    except OSError, tomllib.TOMLDecodeError:
+        return frozenset()
+    names: set[str] = set()
+    if isinstance(manifest.get("package"), dict):
+        names.add(str(manifest["package"].get("name", "")))
+    patterns = manifest.get("workspace", {}).get("members", [])
+    for pattern in patterns if isinstance(patterns, list) else []:
+        for member in checkout.glob(f"{pattern}/Cargo.toml"):
+            try:
+                package = tomllib.loads(member.read_text(encoding="utf-8")).get("package", {})
+            except OSError, tomllib.TOMLDecodeError:
+                continue
+            names.add(str(package.get("name", "")))
+    names.discard("")
+    return frozenset(names)
+
+
+def drop_member_fingerprints(seeded: Path, members: frozenset[str]) -> None:
+    """Delete the fingerprints of *members*' units under the copied directory *seeded*.
+
+    Cargo calls a workspace unit fresh when its sources are older than its outputs, whatever they
+    hold, so a donor's build of the checkout's own crates could pass for this checkout's: it would
+    run the donor's code and the donor's ``CARGO_MANIFEST_DIR``. Without a fingerprint Cargo
+    rebuilds the unit; dependencies, named by registry path, keep theirs.
+    """
+    if not members:
+        return
+    unit = re.compile("(?:" + "|".join(map(re.escape, sorted(members))) + r")-[0-9a-f]{16}")
+    for fingerprints in (seeded / ".fingerprint", *seeded.glob("*/.fingerprint")):
+        if not fingerprints.is_dir():
+            continue
+        for entry in fingerprints.iterdir():
+            if unit.fullmatch(entry.name):
+                shutil.rmtree(entry)
 
 
 def rank_donors(
@@ -222,14 +276,19 @@ def seed(
             if not free:
                 busy.append(donor)
                 continue
-            return _copy_from(donor, target, copy)
+            return _copy_from(donor, target, copy, workspace_members(checkout))
     if len(busy) == 1:
         return SeedOutcome("skipped", f"donor {busy[0]} is building")
     return SeedOutcome("skipped", f"all {len(busy)} donors are building")
 
 
-def _copy_from(donor: Path, target: Path, copy: Callable[[Path, Path], None]) -> SeedOutcome:
-    """Copy *donor*'s seeded directories and files into *target*, undoing all of it on failure."""
+def _copy_from(
+    donor: Path, target: Path, copy: Callable[[Path, Path], None], members: frozenset[str]
+) -> SeedOutcome:
+    """Copy *donor*'s seeded directories and files into *target*, undoing all of it on failure.
+
+    The copy keeps no fingerprint of *members*, the checkout's own crates: they always rebuild.
+    """
     created: list[Path] = []
     try:
         for name in SEEDED_DIRS:
@@ -237,6 +296,7 @@ def _copy_from(donor: Path, target: Path, copy: Callable[[Path, Path], None]) ->
             if source.is_dir():
                 created.append(target / name)
                 copy(source, target / name)
+                drop_member_fingerprints(target / name, members)
         for name in SEEDED_FILES:
             source = donor / "target" / name
             if source.is_file() and not (target / name).exists():
