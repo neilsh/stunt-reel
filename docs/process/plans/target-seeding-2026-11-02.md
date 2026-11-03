@@ -177,6 +177,14 @@ the five workspace crates and no dependency (`cargo test --no-run`, 9 s).
   to the donor's working copy, and give those files the donor's modification time.
 - Reopen kache under ADR 0030's conditions. A draft upstream issue on its seeding is in the
   session record, not posted.
+- Re-test `mbx` (mr-boxington, rejected at 1.27 in ADR 0017) once `rust-toolchain.toml` moves to
+  Cargo 1.100 (due 2026-11-12), the first release on which mbx seeds a new checkout's dependency
+  units itself. Reviewed 2026-11-02 against 1.29.1 without running it: the per-checkout
+  `CARGO_HOME` clash and the Windows hard-link error are probably gone, but mbx still moves
+  `target/` into its store behind a symlink, which crosses ADR 0016's lane directories, this
+  seed, `reap` and `clean`, and it turns incremental off. Gate the trial on: restores clone on
+  ReFS, `CARGO_TARGET_DIR` is honoured, and the workspace crates restore or a second worktree's
+  cold Rust lanes beat this seed's 40 s.
 
 ## 8. Open questions
 
