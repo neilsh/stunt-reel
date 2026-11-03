@@ -204,6 +204,10 @@ def retime_render(
 Run = Callable[[list[str], dict[str, str] | None, float | None], tuple[int, str]]
 
 
+#: Seconds the tree kill and the reap after it may take before the adapter gives up waiting.
+_REAP_SECONDS = 10
+
+
 def run_command(
     argv: list[str], env: dict[str, str] | None = None, timeout: float | None = None
 ) -> tuple[int, str]:
@@ -211,7 +215,8 @@ def run_command(
 
     On a timeout the whole process tree is ended, because a plain ``subprocess.run`` timeout
     kills only the direct child, which leaks the emulator it started; the code is
-    :data:`TIMEOUT_EXIT`.
+    :data:`TIMEOUT_EXIT`. An interrupt ends the tree too before it propagates: the child runs in
+    its own process group, so Ctrl+C never reaches it.
     """
     windows = sys.platform == "win32"
     with subprocess.Popen(  # noqa: S603 - fixed argument vectors, no shell
@@ -230,8 +235,13 @@ def run_command(
             output, _ = child.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
             _kill_tree(child.pid)
-            child.communicate()
+            # A descendant the kill missed may still hold the pipe; do not wait on it forever.
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                child.communicate(timeout=_REAP_SECONDS)
             return TIMEOUT_EXIT, f"timeout after {timeout:g}s"
+        except BaseException:
+            _kill_tree(child.pid)
+            raise
         return child.returncode, output[-_TAIL_CHARS:]
 
 
@@ -239,7 +249,10 @@ def _kill_tree(pid: int) -> None:
     """End *pid* and every process it started."""
     if sys.platform == "win32":
         command = ["taskkill", "/T", "/F", "/PID", str(pid)]
-        subprocess.run(command, capture_output=True, check=False)  # noqa: S603 - fixed taskkill invocation
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            subprocess.run(  # noqa: S603 - fixed taskkill invocation
+                command, capture_output=True, check=False, timeout=_REAP_SECONDS
+            )
     else:
         with contextlib.suppress(ProcessLookupError):
             os.killpg(pid, signal.SIGKILL)

@@ -10,7 +10,10 @@ import os
 import subprocess
 import sys
 import time
+from typing import Any
 lazy from pathlib import Path
+
+import pytest
 
 from stunt_reel import parity_pipeline
 
@@ -67,3 +70,29 @@ def test_timeout_kills_the_grandchild_too(tmp_path: Path) -> None:
     finally:
         if grandchild or pid_file.exists():
             _kill(grandchild or int(pid_file.read_text()))
+
+
+def test_an_interrupt_kills_the_tree_and_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The child runs in its own process group, so Ctrl+C must be passed on as a tree kill."""
+    killed: list[int] = []
+    real_kill = parity_pipeline._kill_tree
+    real_communicate: Any = subprocess.Popen.communicate
+    interrupted: list[bool] = []
+
+    def kill(pid: int) -> None:
+        killed.append(pid)
+        real_kill(pid)
+
+    def communicate(self: Any, *args: Any, **kwargs: Any) -> Any:
+        if not interrupted:
+            interrupted.append(True)
+            raise KeyboardInterrupt
+        return real_communicate(self, *args, **kwargs)
+
+    monkeypatch.setattr(parity_pipeline, "_kill_tree", kill)
+    monkeypatch.setattr(subprocess.Popen, "communicate", communicate)
+    started = time.monotonic()
+    with pytest.raises(KeyboardInterrupt):
+        parity_pipeline.run_command([sys.executable, "-c", "import time; time.sleep(30)"], None, 60)
+    assert len(killed) == 1
+    assert time.monotonic() - started < 20
