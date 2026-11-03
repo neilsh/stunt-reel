@@ -173,8 +173,8 @@ description = "Run Rust Clippy lints across all crates"
 run = "cargo clippy --locked --workspace --all-targets --all-features -- -D warnings"
 # Check-profile artifacts live in their own target directory so the clippy lane and the
 # build-profile test lane can compile at the same time instead of queueing on one lock.
-# No incremental state here or in the matrix lane: it held 278 MB after a day's edits and saves
-# under a second per re-check (ADR 0030). The test lane in target/ keeps it.
+# No incremental state here, in doc or in the matrix lane: it held 278 MB after a dozen edits and
+# saves under a second per re-check (ADR 0030). The test lane in target/ keeps it.
 env = { CARGO_HOME = "{{vars.cargo_home}}", CARGO_TARGET_DIR = "{{config_root}}/target/check", CARGO_INCREMENTAL = "0" }
 
 [tasks.lint-py]
@@ -260,7 +260,8 @@ env = { CARGO_HOME = "{{vars.cargo_home}}" }
 description = "Build rustdoc with warnings denied"
 run = "cargo doc --workspace --no-deps --all-features"
 # rustdoc reads its dependencies' metadata, the same units clippy builds in target/check; in
-# target/ it would build a second copy of them (192 MB) beside the test lane's.
+# target/ it would build a second copy of them (192 MB) beside the test lane's. It turns off
+# incremental state like clippy, whose units it reuses.
 env = { RUSTDOCFLAGS = "-D warnings", CARGO_HOME = "{{vars.cargo_home}}", CARGO_TARGET_DIR = "{{config_root}}/target/check", CARGO_INCREMENTAL = "0" }
 
 [tasks.check-rust-matrix]

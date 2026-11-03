@@ -1,9 +1,11 @@
 """Seed a new checkout's ``target/`` by cloning a donor checkout's build output.
 
 Cargo finds a unit fresh from its fingerprint and its outputs' modification times, so a copy that
-keeps both is fresh in another checkout, provided both name the shared cargo cache by the same
-path: a different ``CARGO_HOME`` path alone rebuilds every dependency. On ReFS the copy clones
-blocks instead of writing them, so a seeded ``target/`` costs little disk. See
+keeps both leaves every dependency fresh in another checkout, provided both name the shared cargo
+cache by the same path: a different ``CARGO_HOME`` path alone rebuilds every dependency. The
+checkout's own crates always rebuild, because the seed drops their fingerprints
+(``drop_member_fingerprints``). On ReFS the copy clones blocks instead of writing them, so a
+seeded ``target/`` costs little disk. See
 [ADR 0030](../../docs/adr/0030-new-worktrees-seed-target-by-block-clone.md) and the plan
 ``docs/process/plans/target-seeding-2026-11-02.md``.
 """
@@ -195,7 +197,7 @@ def rank_donors(
 
     A donor must be another existing checkout whose target/ was built by the same compiler against
     the same cargo cache. One with *here*'s exact ``Cargo.lock`` ranks above one without, since
-    then nothing rebuilds; ties go to the most recent build.
+    then no dependency rebuilds; ties go to the most recent build.
     """
     own = _norm(here.resolve())
     try:

@@ -4,7 +4,7 @@ Status: **implemented on branch `claude/stunt-reel-target-size-b4b954`; measurem
 [`target-seeding-implementation-2026-11-02.md`](target-seeding-implementation-2026-11-02.md). Source: a session of 2026-11-02 that started
 from "why is `target/` so large across the root and worktrees", measured kache 2.0.0, and settled
 on cloning a donor's build output. The evidence and the decision are in
-[ADR 0030](../../adr/0030-new-worktrees-seed-target-by-block-clone.md) (proposed); this note owns
+[ADR 0030](../../adr/0030-new-worktrees-seed-target-by-block-clone.md) (accepted); this note owns
 the design, the steps and the measurement gate.
 
 ## 1. Goal

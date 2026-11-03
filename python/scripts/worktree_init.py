@@ -15,7 +15,7 @@ request was squash-merged (found with ``gh``): it unlinks every link
 into the data root, proves none remain, and only then lets git delete the checkout,
 because git's worktree removal has recursed through Windows junctions on some builds.
 ``init`` (and ``seed`` on its own) also clones another checkout's built ``target/`` into an
-empty one on a ReFS volume, so the first build compiles almost nothing (ADR 0030).
+empty one on a ReFS volume, so the first build compiles only the workspace crates (ADR 0030).
 """
 
 from __future__ import annotations
