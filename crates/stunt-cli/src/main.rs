@@ -1,5 +1,4 @@
 #![deny(unsafe_code)]
-#![warn(clippy::indexing_slicing)]
 #![allow(
     clippy::print_stdout,
     clippy::print_stderr,

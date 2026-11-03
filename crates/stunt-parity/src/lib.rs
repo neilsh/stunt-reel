@@ -15,8 +15,6 @@
 //! than in either adapter. Reports stay readable across versions through
 //! `serde(default)` optional fields; making a field required is a schema bump.
 
-#![warn(clippy::indexing_slicing)]
-
 pub mod capture;
 pub mod error;
 pub mod film;
