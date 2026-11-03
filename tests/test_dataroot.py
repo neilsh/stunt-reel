@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
+pytestmark = pytest.mark.windows
+
 
 @pytest.fixture(autouse=True)
 def _isolated(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
@@ -426,7 +428,7 @@ def test_convert_layout_moves_an_old_root_to_corpus_and_captures(tmp_path: Path)
     assert (root / "corpus" / "siarchive").is_dir()
     assert (root / "corpus" / "stuntisl" / "PLAYONE.EXE").is_file()
     assert (root / "corpus" / "patches").is_dir()
-    assert (root / "captures" / "vault-ctry" / "frames" / "001" / "meta.json").is_file()
+    assert (root / "captures" / "vault-ctry" / "frames" / "meta.json").is_file()
     for old in ("stisldem", "si_archive", "oracle", "target_bin", "reference"):
         assert not (root / old).exists()
     assert any("oracle/intro_trajectory.json removed" in line for line in moved)
@@ -461,7 +463,7 @@ def test_convert_layout_accepts_the_empty_directories_a_read_created(tmp_path: P
     dataroot.convert_layout(root)
     assert (root / "corpus" / "stuntisl" / "PLAYONE.EXE").is_file()
     assert not (root / "corpus" / "stuntisl" / "stuntisl").exists()
-    assert (root / "captures" / "vault-ctry" / "frames" / "001" / "meta.json").is_file()
+    assert (root / "captures" / "vault-ctry" / "frames" / "meta.json").is_file()
 
 
 def test_convert_layout_keeps_foreign_files_in_the_old_oracle(tmp_path: Path) -> None:

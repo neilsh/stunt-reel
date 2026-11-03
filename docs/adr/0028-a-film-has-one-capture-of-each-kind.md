@@ -2,7 +2,8 @@
 
 ## Status
 
-accepted 2026-11-01, not yet implemented: the order of work is in
+accepted 2026-11-01. The layout, the reader, the swap and the migration are implemented
+([#139](https://github.com/neilsh/stunt-reel/issues/139)); the rest of the order of work is in
 [the capture store plan](../process/plans/capture-store-deepening-2026-11-01.md). Supersedes the
 add-only rule of [ADR 0022](0022-captures-are-add-only-beside-a-read-only-corpus.md) and the numbered
 runs of [ADR 0023](0023-make-all-generates-archives-with-makeone.md) and

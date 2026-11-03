@@ -160,6 +160,9 @@ addopts = "-ra -q --strict-markers --strict-config"
 filterwarnings = ["error"]
 testpaths = ["tests"]
 pythonpath = ["python"]
+markers = [
+    "windows: behaves differently on Windows; the pull-request Windows job runs only these (check-windows-smoke)",
+]
 
 [tool.uv]
 # A floor, not an exact pin. `mise.toml` pins the exact uv for local and CI runs; this

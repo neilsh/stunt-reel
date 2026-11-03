@@ -12,11 +12,15 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import batch_parity  # noqa: E402
+
+pytestmark = pytest.mark.windows
 
 _GRANDCHILD = "import time; time.sleep(30)"
 _CHILD = (
@@ -57,7 +61,9 @@ def test_timeout_kills_the_grandchild_too(tmp_path: Path) -> None:
     try:
         started = time.monotonic()
         code, output = batch_parity._run_command([sys.executable, "-c", _CHILD, str(pid_file)], 2.0)
-        assert time.monotonic() - started < 8.0
+        # A surviving grandchild holds the pipe, so communicate() would wait out its 30 s sleep.
+        # Stay well under that: the gate's parallel lanes have pushed this past 8 s.
+        assert time.monotonic() - started < 20.0
         assert pid_file.exists()
         grandchild = int(pid_file.read_text())
         assert code == batch_parity._TIMEOUT_EXIT

@@ -5,10 +5,11 @@ web-server port with the stage's recording directory as its capture directory, a
 script: boot, ``dosbox.capture_start()``, then a per-frame log of the film clock, the global tick
 and palette writes until the film holds its last picture. The audio is stripped from the AVI.
 
-The result lands in a new directory per capture under ``captures/<film>/video/`` (gitignored,
-shared through the data root). A capture is written once and never changed (ADR 0022); making
-it the reference parity scores against is a reviewed edit of ``research/parity/references.toml``,
-not something this script does.
+The result becomes the film's one video capture, ``captures/<film>/video/`` (gitignored, shared
+through the data root): a successful recording is written beside the old one and swapped in
+(ADR 0028). Making it the reference parity scores against is a reviewed edit of
+``research/parity/references.toml``, not something this script does. ``--out`` writes anywhere
+else and replaces nothing.
 """
 
 from __future__ import annotations
@@ -17,15 +18,14 @@ import argparse
 import hashlib
 import logging
 import re
-import shutil
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from stunt_reel import dataroot, parity_layout, runs
+from stunt_reel import capture_store, dataroot, parity_layout
 from stunt_reel.all_archive import ArchiveError, resolve_all
 from stunt_reel.dataroot import ensure_links_or_report
-from stunt_reel.parity_artifacts import CAPTURE_META, FilmId
+from stunt_reel.parity_artifacts import FilmId
 from stunt_reel.tac import automation, playone, staging, video
 from stunt_reel.tac.emulator import EmulatorUnavailable
 
@@ -58,8 +58,8 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "new directory receiving capture.avi and meta.json; an existing non-empty one is "
-            f"refused (default {parity_layout.capture_root().as_posix()}/<film>/video/"
-            "<next run number>)"
+            "refused and no stored capture is replaced (default: replace the film's capture, "
+            f"{parity_layout.capture_root().as_posix()}/<film>/video, by swap)"
         ),
     )
     parser.add_argument(
@@ -84,6 +84,10 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.max_frames < 1:
         parser.error("--max-frames must be at least 1")
+    if args.out is None and args.max_frames != video.VIDEO_MAX_FRAMES:
+        parser.error(
+            "a non-default --max-frames needs --out: only default parameters fill the store (ADR 0028)"
+        )
     return args
 
 
@@ -122,19 +126,30 @@ def run(args: argparse.Namespace) -> int:
         flm_sha256=hashlib.sha256(film.read_bytes()).hexdigest(),
         all_sha256=all_sha256,
     )
-    claimed: Path | None = None
-    if args.out is None:
-        parent = dataroot.REPO_ROOT / parity_layout.video_root(slug)
-        out = parent / runs.claim_run(parent)
-        claimed = out
-    else:
+    if args.out is not None:
         out = resolve(args.out)
-    try:
+        try:
+            capture_store.check_outside(out, dataroot.REPO_ROOT / parity_layout.capture_root())
+        except ValueError as exc:
+            print(f"[capture-video] {exc}", file=sys.stderr)
+            return 2
         return _record_into(args, out, film, archive, film_id)
+    # The film's one capture of this kind is replaced only by a complete, successful one.
+    target = dataroot.REPO_ROOT / parity_layout.video_path(slug)
+    try:
+        capture_store.check_replaceable(target)
+    except ValueError as exc:
+        print(f"[capture-video] {exc}", file=sys.stderr)
+        return 2
+    out = capture_store.stage(target)
+    try:
+        code = _record_into(args, out, film, archive, film_id)
+        if code == 0:
+            capture_store.publish(out, target)
+            report(f"replaced the capture in {target}")
+        return code
     finally:
-        # A run that died before meta.json (written last) is no capture; free its number.
-        if claimed is not None and not (claimed / CAPTURE_META).exists():
-            shutil.rmtree(claimed, ignore_errors=True)
+        capture_store.discard(out)
 
 
 def _record_into(

@@ -1,20 +1,17 @@
-"""The one-time move of the existing captures into the film-first layout (ADR 0024)."""
+"""The one-time move to one capture of each kind per film (ADR 0028)."""
 
 from __future__ import annotations
 
 import importlib.util
-import json
+import shutil
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from stunt_reel import references
-from stunt_reel.parity_artifacts import read_capture
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "python" / "scripts"
-OLD_ID = "legacy-2026-10-24"
-NEW_ID = "2026-10-30-stunt-reel-e09ef7b1"
 
 
 def _load() -> Any:
@@ -33,43 +30,13 @@ def _script() -> Any:
     return _load()
 
 
-def _old_capture(root: Path, film: str, run: str) -> Path:
-    directory = root / "captures" / film / run
-    directory.mkdir(parents=True)
-    meta = {
-        "film": f"{film.upper()}.FLM",
-        "flm_sha256": "f" * 64,
-        "frames": [
-            {
-                "ordinal": n,
-                "film_tick": n,
-                "frame_file": f"tick_000{n}.idx",
-                "palette_file": f"palettes_000{n}.json",
-            }
-            for n in (1, 2)
-        ],
-    }
-    (directory / "meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
-    for n in (1, 2):
-        (directory / f"tick_000{n}.idx").write_bytes(bytes([n]) * 8)
-        (directory / f"palettes_000{n}.json").write_text(f"[{n}]", encoding="utf-8")
+def _run(root: Path, film: str, kind: str, run: str, body: bytes, *, complete: bool = True) -> Path:
+    directory = root / "captures" / film / kind / run
+    (directory / "frames").mkdir(parents=True)
+    (directory / "frames" / "tick_00001.idx").write_bytes(body)
+    if complete:
+        (directory / "meta.json").write_text('{"film": "X.FLM"}\n', encoding="utf-8")
     return directory
-
-
-def _old_archive(root: Path, film: str, run: str) -> Path:
-    directory = root / "captures" / "all" / film / run
-    directory.mkdir(parents=True)
-    (directory / f"{film.upper()}.ALL").write_bytes(b"archive-" + film.encode())
-    (directory / "meta.json").write_text('{"film": "x"}\n', encoding="utf-8")
-    return directory
-
-
-def _root(tmp_path: Path) -> Path:
-    root = tmp_path / "data"
-    _old_capture(root, "ctry", OLD_ID)
-    _old_capture(root, "balloon", NEW_ID)
-    _old_archive(root, "balloon", NEW_ID)
-    return root
 
 
 def _tree(directory: Path) -> dict[str, bytes]:
@@ -80,156 +47,118 @@ def _tree(directory: Path) -> dict[str, bytes]:
     }
 
 
-def test_dry_run_moves_nothing(script: Any, tmp_path: Path) -> None:
-    root = _root(tmp_path)
+def _root(tmp_path: Path) -> tuple[Path, dict[str, str]]:
+    root = tmp_path / "data"
+    _run(root, "vault-ctry", "frames", "003", b"old")
+    pinned = _run(root, "vault-ctry", "frames", "004", b"pinned")
+    _run(root, "vault-ctry", "frames", "005", b"noise")
+    _run(root, "vault-ctry", "frames", "006", b"partial", complete=False)
+    _run(root, "vault-ctry", "archives", "001", b"all")
+    _run(root, "vault-ctry", "video", "001", b"avi")
+    _run(root, "flmonly-act1", "frames", "001", b"act1")
+    return root, {"vault-ctry": references.capture_digest(pinned)}
+
+
+def test_dry_run_changes_nothing(script: Any, tmp_path: Path) -> None:
+    root, pins = _root(tmp_path)
     before = _tree(root)
-    lines = script.migrate(root, {}, apply=False)
+    lines = script.migrate(root, pins, apply=False)
     assert _tree(root) == before
-    assert any(
-        "captures/ctry/legacy-2026-10-24 -> captures/vault-ctry/frames/001" in line
-        for line in lines
-    )
+    assert "would keep captures/vault-ctry/frames/004 as captures/vault-ctry/frames" in lines
+    assert "would delete captures/flmonly-act1/frames" in lines
 
 
-def test_vault_captures_and_archives_are_filed_by_slug(script: Any, tmp_path: Path) -> None:
-    root = _root(tmp_path)
-    script.migrate(root, {}, apply=True)
-    assert (root / "captures/vault-ctry/frames/001/meta.json").is_file()
-    assert (root / "captures/vault-ctry/frames/001/frames/tick_0001.idx").is_file()
-    assert (root / "captures/vault-balloon/frames/001/frames/palettes_0002.json").is_file()
-    assert (root / "captures/vault-balloon/archives/001/BALLOON.ALL").is_file()
-    assert not (root / "captures/ctry").exists()
-    assert not (root / "captures/all").exists()
-    assert not list((root / "captures").rglob("*.partial"))
-
-
-def test_a_wrong_pin_aborts_before_any_move(script: Any, tmp_path: Path) -> None:
-    root = _root(tmp_path)
-    before = _tree(root)
-    with pytest.raises(script.MigrationError, match="pin"):
-        script.migrate(root, {"ctry": "0" * 64}, apply=True)
-    assert _tree(root) == before
-
-
-def test_a_right_pin_lets_the_move_proceed(script: Any, tmp_path: Path) -> None:
-    root = _root(tmp_path)
-    pin = references.capture_digest(root / "captures/ctry" / OLD_ID)
-    script.migrate(root, {"ctry": pin}, apply=True)
-    assert (root / "captures/vault-ctry/frames/001").is_dir()
-
-
-def test_a_pin_of_the_migrated_capture_is_accepted_before_the_move(
+def test_keeps_the_pinned_reference_unchanged_and_deletes_the_rest(
     script: Any, tmp_path: Path
 ) -> None:
-    """After re-pinning, an unmigrated root still passes: the pin names what the capture becomes."""
-    root = _root(tmp_path)
-    twin = _root(tmp_path / "twin")
-    script.migrate(twin, {}, apply=True)
-    pin = references.capture_digest(twin / "captures/vault-ctry/frames/001")
-    script.migrate(root, {"ctry": pin}, apply=True)
-    assert (root / "captures/vault-ctry/frames/001").is_dir()
+    root, pins = _root(tmp_path)
+    pinned = _tree(root / "captures/vault-ctry/frames/004")
+    script.migrate(root, pins, apply=True)
+    frames = root / "captures/vault-ctry/frames"
+    assert _tree(frames) == pinned
+    assert references.capture_digest(frames) == pins["vault-ctry"]
+    assert sorted(p.name for p in (root / "captures/vault-ctry").iterdir()) == ["frames"]
+    assert not (root / "captures/flmonly-act1").exists()
 
 
-def test_write_pins_refuses_a_film_that_was_not_migrated(script: Any, tmp_path: Path) -> None:
-    root = _root(tmp_path)
-    _old_capture(root, "intro", "a")
-    _old_capture(root, "intro", "b")  # two runs: the migration skips it
-    script.migrate(root, {}, apply=True)
-    pointers = tmp_path / "references.toml"
-    entries = [
-        '[ctry]\nfilm = "vault-ctry"\ncapture = "x"\nsha256 = "0"\n',
-        '[intro]\nfilm = "vault-intro"\ncapture = "x"\nsha256 = "0"\n',
-    ]
-    text = "\n".join(entries)
-    pointers.write_text(text, encoding="utf-8")
-    with pytest.raises(script.MigrationError, match="intro"):
-        script.write_pins(pointers, root)
-    assert pointers.read_text(encoding="utf-8") == text
-
-
-def test_file_bytes_survive_the_move(script: Any, tmp_path: Path) -> None:
-    root = _root(tmp_path)
-    old = _tree(root / "captures/ctry" / OLD_ID)
-    old_archive = _tree(root / "captures/all/balloon" / NEW_ID)
-    script.migrate(root, {}, apply=True)
-    new = _tree(root / "captures/vault-ctry/frames/001")
-    assert {n: b for n, b in new.items() if n != "meta.json"} == {
-        f"frames/{n}": b for n, b in old.items() if n != "meta.json"
-    }
-    assert _tree(root / "captures/vault-balloon/archives/001") == old_archive
-
-
-def test_second_run_is_a_no_op(script: Any, tmp_path: Path) -> None:
-    root = _root(tmp_path)
-    script.migrate(root, {}, apply=True)
+def test_a_second_run_changes_nothing(script: Any, tmp_path: Path) -> None:
+    root, pins = _root(tmp_path)
+    script.migrate(root, pins, apply=True)
     after = _tree(root)
-    assert script.migrate(root, {}, apply=True) == []
+    assert script.migrate(root, pins, apply=True) == []
     assert _tree(root) == after
 
 
-def test_an_existing_target_is_left_alone(script: Any, tmp_path: Path) -> None:
-    root = _root(tmp_path)
-    target = root / "captures/vault-ctry/frames/001"
-    target.mkdir(parents=True)
-    (target / "meta.json").write_text("{}", encoding="utf-8")
-    lines = script.migrate(root, {}, apply=True)
-    assert any("already exists" in line for line in lines)
-    assert (target / "meta.json").read_text(encoding="utf-8") == "{}"
-    assert (root / "captures/ctry" / OLD_ID / "meta.json").is_file()
+def test_a_pin_that_matches_no_run_stops_before_anything_changes(
+    script: Any, tmp_path: Path
+) -> None:
+    root, _ = _root(tmp_path)
+    before = _tree(root)
+    with pytest.raises(script.MigrationError, match="hashes to its pin"):
+        script.migrate(root, {"vault-ctry": "0" * 64}, apply=True)
+    assert _tree(root) == before
 
 
-def test_meta_keeps_hashes_and_gains_provenance(script: Any, tmp_path: Path) -> None:
-    root = _root(tmp_path)
-    script.migrate(root, {}, apply=True)
-    legacy = json.loads((root / "captures/vault-ctry/frames/001/meta.json").read_text("utf-8"))
-    assert legacy["flm_sha256"] == "f" * 64
-    assert legacy["captured_on"] == "2026-10-24"
-    assert "checkout" not in legacy
-    assert legacy["frames"][0]["frame_file"] == "frames/tick_0001.idx"
-    assert legacy["frames"][1]["palette_file"] == "frames/palettes_0002.json"
-    dated = json.loads((root / "captures/vault-balloon/frames/001/meta.json").read_text("utf-8"))
-    assert (dated["captured_on"], dated["checkout"]) == ("2026-10-30", "stunt-reel")
+def test_pins_come_from_references_toml(script: Any, tmp_path: Path) -> None:
+    path = tmp_path / "references.toml"
+    path.write_text('[ctry]\nfilm = "vault-ctry"\nsha256 = "ab"\nnoise_sigma = 0.1\n', "utf-8")
+    assert script.read_pins(path) == {"vault-ctry": "ab"}
 
 
-def test_the_moved_capture_reads_through_the_capture_reader(script: Any, tmp_path: Path) -> None:
-    root = _root(tmp_path)
-    script.migrate(root, {}, apply=True)
-    capture = read_capture(root / "captures/vault-ctry/frames/001")
-    assert [f.frame_file for f in capture.frames] == [
-        "frames/tick_0001.idx",
-        "frames/tick_0002.idx",
-    ]
+def test_an_interrupted_migration_stops_and_names_the_held_run(script: Any, tmp_path: Path) -> None:
+    root, pins = _root(tmp_path)
+    frames = root / "captures/vault-ctry/frames"
+    frames.rename(frames.with_name("frames.migrating"))
+    with pytest.raises(script.MigrationError, match=r"frames\.migrating is left.*delete"):
+        script.migrate(root, pins, apply=False)
 
 
-def test_write_pins_points_the_reference_at_the_new_capture(script: Any, tmp_path: Path) -> None:
-    root = _root(tmp_path)
-    script.migrate(root, {}, apply=True)
-    pointers = tmp_path / "references.toml"
-    pointers.write_text(
-        '# keep me\n\n[ctry]\nfilm = "vault-ctry"\ncapture = "legacy-2026-10-24"\n'
-        f'sha256 = "{"0" * 64}"\n',
-        encoding="utf-8",
-    )
-    script.write_pins(pointers, root)
-    digest = references.capture_digest(root / "captures/vault-ctry/frames/001")
-    assert pointers.read_text(encoding="utf-8") == (
-        f'# keep me\n\n[ctry]\nfilm = "vault-ctry"\ncapture = "001"\nsha256 = "{digest}"\n'
-    )
+def test_a_stray_entry_in_a_kind_stops_before_anything_changes(script: Any, tmp_path: Path) -> None:
+    root, pins = _root(tmp_path)
+    (root / "captures/flmonly-act1/frames/notes.txt").write_text("keep me", encoding="utf-8")
+    before = _tree(root)
+    with pytest.raises(script.MigrationError, match=r"notes\.txt.*not a numbered run"):
+        script.migrate(root, pins, apply=True)
+    assert _tree(root) == before
 
 
-def test_write_pins_does_not_re_pin_a_changed_001(script: Any, tmp_path: Path) -> None:
-    """A repeat run keeps the recorded digest and reports a capture that changed since."""
-    root = _root(tmp_path)
-    script.migrate(root, {}, apply=True)
-    pointers = tmp_path / "references.toml"
-    pointers.write_text(
-        '[ctry]\nfilm = "vault-ctry"\ncapture = "001"\nsha256 = "0"\n',
-        encoding="utf-8",
-    )
-    text = pointers.read_text(encoding="utf-8")
-    with pytest.raises(script.MigrationError, match="no longer hashes"):
-        script.write_pins(pointers, root)
-    assert pointers.read_text(encoding="utf-8") == text
-    digest = references.capture_digest(root / "captures/vault-ctry/frames/001")
-    pointers.write_text(text.replace('"0"', f'"{digest}"'), encoding="utf-8")
-    script.write_pins(pointers, root)  # unchanged capture: accepted
+def test_a_pinned_film_without_frames_stops_before_anything_changes(
+    script: Any, tmp_path: Path
+) -> None:
+    root, pins = _root(tmp_path)
+    shutil.rmtree(root / "captures/vault-ctry/frames")
+    before = _tree(root)
+    with pytest.raises(script.MigrationError, match="no frames directory"):
+        script.migrate(root, pins, apply=True)
+    assert _tree(root) == before
+
+
+def test_a_migrated_reference_that_no_longer_matches_its_pin_stops(
+    script: Any, tmp_path: Path
+) -> None:
+    root, pins = _root(tmp_path)
+    script.migrate(root, pins, apply=True)
+    _run(root, "vault-ctry", "video", "002", b"new")
+    before = _tree(root)
+    with pytest.raises(script.MigrationError, match="does not hash to its pin"):
+        script.migrate(root, {"vault-ctry": "0" * 64}, apply=True)
+    assert _tree(root) == before
+
+
+def test_a_file_named_like_a_run_stops_before_anything_changes(script: Any, tmp_path: Path) -> None:
+    root, pins = _root(tmp_path)
+    (root / "captures/flmonly-act1/frames/004").write_text("not a run", encoding="utf-8")
+    before = _tree(root)
+    with pytest.raises(script.MigrationError, match=r"004.*not a numbered run"):
+        script.migrate(root, pins, apply=True)
+    assert _tree(root) == before
+
+
+@pytest.mark.parametrize("entry", ["007.lock", "007.partial"])
+def test_an_active_old_writer_stops_the_migration(script: Any, tmp_path: Path, entry: str) -> None:
+    root, pins = _root(tmp_path)
+    (root / "captures/flmonly-act1/archives" / entry).mkdir(parents=True)
+    before = _tree(root)
+    with pytest.raises(script.MigrationError, match="may still be writing"):
+        script.migrate(root, pins, apply=True)
+    assert _tree(root) == before

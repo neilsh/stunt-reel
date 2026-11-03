@@ -103,7 +103,7 @@ description = "Record a film as one AVI with its tick and palette log into captu
 run = "uv run python python/scripts/capture_video.py"
 
 [tasks.capture-digest]
-description = "Print a capture's content hash and the references.toml entry that would promote it (mise run capture-digest -- vault-ctry 005)"
+description = "Print a capture's content hash and the references.toml entry that would promote it (mise run capture-digest -- vault-ctry)"
 run = "uv run python python/scripts/capture_digest.py"
 
 [tasks.make-all]
@@ -115,7 +115,7 @@ description = "Build the unpatched and the Patch #3 game trees under <data root>
 run = "uv run python python/scripts/game_builds.py"
 
 [tasks.migrate-captures]
-description = "One-time move of the existing captures into the film-first layout (ADR 0024); a dry run unless given --yes (mise run migrate-captures -- --yes --write-pins)"
+description = "One-time move to one capture of each kind per film (ADR 0028): keep the pinned references, delete the other runs; a dry run unless given --yes"
 run = "uv run python python/scripts/migrate_captures.py"
 
 [tasks.sweep]
@@ -324,10 +324,11 @@ depends = ["fmt-check", "lint", "typecheck", "test"]
 # The Windows-only behaviour is all in the Python tree — junctions, reparse points, the
 # .cache link, the pytest basetemp workaround, Cargo's build locks and robocopy in the target
 # seed — so the pull-request job runs this instead of the whole check-windows; the full task
-# stays on main. A test that starts depending on Windows path semantics belongs in this list too.
+# stays on main. A module carries the `windows` marker to run here, and
+# tests/test_windows_marker.py fails one that checks the platform without it.
 [tasks.check-windows-smoke]
-description = "Windows-only smoke: the tests that exercise junctions, reparse points and .cache links"
-run = "uv run pytest tests/test_dataroot.py tests/test_worktree_layout.py tests/test_worktree_reap.py tests/test_pytest_basetemp.py tests/test_target_seed.py"
+description = "Windows-only smoke: the tests marked `windows` (junctions, reparse points, .cache links, build locks)"
+run = "uv run pytest -m windows"
 
 [tasks.verify-corpus]
 description = "Compile research/formats/**/*.ksy and check them against local corpus/ files (opt-in; corpus is gitignored)"

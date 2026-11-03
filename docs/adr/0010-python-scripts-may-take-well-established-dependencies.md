@@ -50,7 +50,7 @@ packages with the widest use.
   which `retime` rewrites while preserving keys it does not know; that pass-through is the opposite
   shape to a model, and models would add `plugins = ["pydantic.mypy"]` to a configuration that is
   otherwise strict by default. Validation instead lives in the artifact adapter
-  ([`parity_artifacts.py`](../../python/stunt_reel/parity_artifacts.py) since ADR 0011; its temporary
+  ([`parity_artifacts/`](../../python/stunt_reel/parity_artifacts/) since ADR 0011; its temporary
   `parity_inputs.py` shim was removed in unit A landing 4), which names the file and the field it
   could not read. Revisit when a payload gains a second consumer or a version field.
 - **pydantic-settings, Typer or cyclopts for argument parsing.** Rejected. The framework would be
