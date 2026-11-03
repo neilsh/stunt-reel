@@ -29,6 +29,8 @@ if TYPE_CHECKING:
 SEEDED_DIRS: tuple[str, ...] = ("debug", "check", "matrix")
 #: Files at the top of target/ that a seed copies after the directories.
 SEEDED_FILES: tuple[str, ...] = (".rustc_info.json", "CACHEDIR.TAG")
+#: Where under target/ a seed assembles each copy before moving it into place.
+STAGING = ".seeding"
 
 #: How much of a dep-info file is read looking for a registry source path.
 _DEP_INFO_BYTES = 4096
@@ -275,6 +277,8 @@ def seed(
     failed seed leaves the target/ as it found it and the next build starts from scratch.
     """
     target = checkout / "target"
+    # What a killed seed left half-built; it never counts as built, so clear it whatever happens.
+    shutil.rmtree(target / STAGING, ignore_errors=True)
     if not needs_seed(target):
         return SeedOutcome("skipped", "target/ already built")
     if not volume_clones(checkout):
@@ -308,25 +312,43 @@ def _copy_from(
     """Copy *donor*'s seeded directories and files into *target*, undoing all of it on failure.
 
     The copy keeps no fingerprint of *members*, the checkout's own crates: they always rebuild.
+    Each directory is copied and stripped of them under ``target/.seeding`` and only then moved
+    into place, so a seed stopped part way (Ctrl-C, a killed process) never leaves a directory
+    that holds them and that ``needs_seed`` would count as built.
     """
-    created: list[Path] = []
+    staging = target / STAGING
+    moved: list[Path] = []
     try:
         for name in SEEDED_DIRS:
             source = donor / "target" / name
             if source.is_dir():
-                created.append(target / name)
-                copy(source, target / name)
-                drop_member_fingerprints(target / name, members)
+                copy(source, staging / name)
+                drop_member_fingerprints(staging / name, members)
+                (staging / name).rename(target / name)
+                moved.append(target / name)
         for name in SEEDED_FILES:
             source = donor / "target" / name
             if source.is_file() and not (target / name).exists():
-                created.append(target / name)
-                shutil.copy2(source, target / name)
-    except Exception as error:  # noqa: BLE001 - a seed must never fail init
-        for path in created:
-            if path.is_dir():
-                shutil.rmtree(path, ignore_errors=True)
-            else:
-                path.unlink(missing_ok=True)
-        return SeedOutcome("failed", str(error))
+                staging.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, staging / name)
+                (staging / name).rename(target / name)
+                moved.append(target / name)
+        _remove(staging)
+    except BaseException as error:  # an interrupt is cleaned up too, then re-raised
+        stuck = [str(path) for path in (*moved, staging) if not _remove(path)]
+        if not isinstance(error, Exception):
+            raise
+        # A seed must never fail init: any other error becomes the line init prints.
+        left = f"; could not remove {', '.join(stuck)}" if stuck else ""
+        return SeedOutcome("failed", f"{error}{left}")
     return SeedOutcome("seeded", f"from {donor}")
+
+
+def _remove(path: Path) -> bool:
+    """Delete the file or tree *path*; whether it is gone."""
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+    else:
+        with contextlib.suppress(OSError):
+            path.unlink(missing_ok=True)
+    return not path.exists()

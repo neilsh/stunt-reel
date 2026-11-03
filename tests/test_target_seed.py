@@ -193,6 +193,73 @@ def test_seed_failure_removes_partial_copy(tmp_path: Path) -> None:
     assert "exit 8" in out.detail
     assert not (here / "target" / "debug").exists()
     assert not (here / "target" / "check").exists()
+    assert not (here / "target" / ".seeding").exists()
+
+
+def test_interrupted_seed_leaves_nothing_counted_as_built(tmp_path: Path) -> None:
+    """A Ctrl-C mid-copy must not leave a directory that still holds the donor's member
+    fingerprints, since the next init would then call target/ built and never repair it."""
+    here = _fresh(tmp_path / "here")
+    donor = _donor(tmp_path / "d")
+    (donor / "target" / "debug" / ".fingerprint" / "stunt-core-0123456789abcdef").mkdir()
+    (donor / "target" / "check" / "debug").mkdir(parents=True)
+
+    def interrupted(source: Path, destination: Path) -> None:
+        shutil.copytree(source, destination)
+        if source.name == "check":
+            raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        seed(
+            here,
+            checkouts=[donor],
+            rustc_vv=RUSTC,
+            cargo_home=Path(HOME),
+            copy=interrupted,
+            volume_clones=_clones,
+        )
+    assert needs_seed(here / "target")
+    assert not (here / "target" / ".seeding").exists()
+
+
+def test_seed_clears_a_killed_seeds_staging(tmp_path: Path) -> None:
+    """A killed process runs no cleanup; what it left in staging goes at the next seed."""
+    here = _fresh(tmp_path / "here")
+    stale = here / "target" / ".seeding" / "check" / ".fingerprint" / "stunt-core-0123456789abcdef"
+    stale.mkdir(parents=True)
+    out = seed(
+        here,
+        checkouts=[],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=_never,
+        volume_clones=_clones,
+    )
+    assert out.status == "skipped"
+    assert not (here / "target" / ".seeding").exists()
+
+
+def test_failed_seed_names_what_it_could_not_remove(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    here = _fresh(tmp_path / "here")
+    donor = _donor(tmp_path / "d")
+
+    def broken(_: Path, destination: Path) -> None:
+        destination.mkdir(parents=True)
+        raise OSError("robocopy exit 8")
+
+    monkeypatch.setattr("stunt_reel.target_seed.shutil.rmtree", lambda *_a, **_k: None)
+    out = seed(
+        here,
+        checkouts=[donor],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=broken,
+        volume_clones=_clones,
+    )
+    assert out.status == "failed"
+    assert out.detail == f"robocopy exit 8; could not remove {here / 'target' / '.seeding'}"
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Cargo's build locks are byte locks on Windows")
