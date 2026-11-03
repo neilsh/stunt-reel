@@ -18,7 +18,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from stunt_reel import all_archive, dataroot, game_builds, parity_artifacts, parity_layout
+from stunt_reel import (
+    all_archive,
+    capture_store,
+    dataroot,
+    game_builds,
+    parity_artifacts,
+    parity_layout,
+)
 from stunt_reel.batch_ledger import Record
 from stunt_reel.parity_pipeline import RENDER_FLAGS, binary_path
 
@@ -114,16 +121,16 @@ def run_capture(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Rec
 
 
 def _capture_problem(root: Path, slug: str) -> str | None:
-    """Why the latest capture of *slug* cannot be parity evidence, or ``None`` when it can.
+    """Why the capture of *slug* cannot be parity evidence, or ``None`` when it can.
 
     A capture is unusable when its film clock never advanced (the first and last ``film_tick``
     match, which covers every frame at one tick) or it holds fewer than
     :data:`MIN_CAPTURE_FRAMES` frames.
     """
     try:
-        capture = _latest_capture(root, slug)
+        capture = capture_store.current(root / parity_layout.frames_path(slug))
         if capture is None:
-            return "no capture directory was written"
+            return "no complete capture was written"
         ticks = [frame.film_tick for frame in parity_artifacts.read_capture(capture).frames]
     except Exception as exc:  # noqa: BLE001 - a stage never raises; the failure is the record
         return f"unreadable meta.json: {_describe(exc)}"
@@ -135,10 +142,10 @@ def _capture_problem(root: Path, slug: str) -> str | None:
 
 
 def run_render(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Record:
-    """Render the film over the captured ticks, using its latest capture and its archive."""
+    """Render the film over the captured ticks, using its capture and its archive."""
     started = time.perf_counter()
     try:
-        capture = _latest_capture(root, film.slug)
+        capture = capture_store.current(root / parity_layout.frames_path(film.slug))
         if capture is None:
             return _record(
                 film, "render", "error", "no capture yet; run the capture stage", started
@@ -166,12 +173,12 @@ def run_render(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Reco
 
 
 def run_score(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Record:
-    """Score the render against the latest capture; the record carries the headline SSIM and IoU."""
+    """Score the render against the film's capture; the record carries the headline SSIM and IoU."""
     started = time.perf_counter()
     film_dir = root / parity_layout.batch_film_dir(film.slug)
     report = film_dir / "report"
     try:
-        capture = _latest_capture(root, film.slug)
+        capture = capture_store.current(root / parity_layout.frames_path(film.slug))
         if capture is None:
             return _record(film, "score", "error", "no capture yet; run the capture stage", started)
         command = [
@@ -214,15 +221,6 @@ def _execute(
         message = f"exit {code}: {detail}" if detail else f"exit {code}"
         return _record(film, stage, "error", message, started)
     return _record(film, stage, "ok", "", started)
-
-
-def _latest_capture(root: Path, slug: str) -> Path | None:
-    """The highest-numbered capture run of the film *slug*, or ``None`` when it has none."""
-    parent = root / parity_layout.frames_root(slug)
-    if not parent.is_dir():
-        return None
-    runs = [path for path in parent.iterdir() if path.is_dir() and path.name.isdigit()]
-    return max(runs, key=lambda path: int(path.name), default=None)
 
 
 def _describe(exc: Exception) -> str:

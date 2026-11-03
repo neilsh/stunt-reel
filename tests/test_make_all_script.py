@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from archive_helpers import build_all
-from stunt_reel import dataroot, parity_layout
+from stunt_reel import capture_store, dataroot, parity_layout
 from stunt_reel.all_archive import ArchiveMeta
 from tac_mock import StagedRepo, makeone_launcher
 
@@ -60,8 +60,9 @@ def _args(
 
 
 def _archives(slug: str = "vault-ctry") -> list[Path]:
-    root = dataroot.REPO_ROOT / parity_layout.archives_root(slug)
-    return sorted(root.iterdir()) if root.exists() else []
+    """The film's stored archive, as a list so a test can say there is exactly one or none."""
+    stored = capture_store.current(dataroot.REPO_ROOT / parity_layout.archive_path(slug))
+    return [] if stored is None else [stored]
 
 
 def test_a_run_publishes_the_archive_with_meta(
@@ -83,7 +84,7 @@ def test_a_run_publishes_the_archive_with_meta(
     assert dict(meta.game_files)["MAKEONE.EXE"] == (game_root / "MAKEONE.EXE").stat().st_size
 
 
-def test_a_second_run_adds_the_next_archive(
+def test_a_second_run_replaces_the_archive(
     script: Any,
     monkeypatch: pytest.MonkeyPatch,
     staged_repo: StagedRepo,
@@ -93,13 +94,14 @@ def test_a_second_run_adds_the_next_archive(
     args = _args(script, monkeypatch, staged_repo.film, game_root)
     assert script.run(args, first) == 0
     (directory,) = _archives()
-    before = {p.name: p.read_bytes() for p in directory.iterdir()}
 
-    second, _state = makeone_launcher(text_after=1, archive=build_all([b"other"]))
+    other = build_all([b"other"])
+    second, _state = makeone_launcher(text_after=1, archive=other)
     assert script.run(args, second) == 0
 
-    assert [p.name for p in _archives()] == ["001", "002"]
-    assert {p.name: p.read_bytes() for p in directory.iterdir()} == before
+    assert _archives() == [directory]
+    assert (directory / "CTRY.ALL").read_bytes() == other
+    assert [p.name for p in directory.parent.iterdir()] == ["archives"]
 
 
 def test_name_overrides_the_derived_slug_and_a_bad_one_is_refused(

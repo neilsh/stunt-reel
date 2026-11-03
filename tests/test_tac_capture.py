@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from archive_helpers import build_all
-from stunt_reel import dataroot, parity_artifacts, parity_layout
+from stunt_reel import capture_store, dataroot, parity_artifacts, parity_layout
 from stunt_reel.all_archive import ArchiveMeta, publish_archive
 from stunt_reel.parity_artifacts import CaptureSet, FilmId, Geometry
 from stunt_reel.tac import automation, framebuffer, luagen, plan, playone, staging
@@ -537,14 +537,15 @@ def _default_run(
     return module, seen
 
 
-def test_a_default_capture_claims_the_next_run_of_the_films_slug(
+def test_a_default_capture_replaces_the_films_frame_capture(
     staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module, seen = _default_run(staged_repo, monkeypatch)
-    frames = dataroot.REPO_ROOT / parity_layout.frames_root("vault-ctry")
+    frames = dataroot.REPO_ROOT / parity_layout.frames_path("vault-ctry")
     assert module.run(module.parse_args()) == 0
     assert module.run(module.parse_args()) == 0
-    assert sorted(p.name for p in frames.iterdir()) == ["001", "002"]
+    assert capture_store.current(frames) == frames
+    assert [p.name for p in frames.parent.iterdir()] == ["frames"]
     assert set(seen["provenance"]) == {"captured_on", "checkout"}
 
 
@@ -553,7 +554,7 @@ def test_name_overrides_the_slug_and_a_bad_one_is_refused(
 ) -> None:
     module, _seen = _default_run(staged_repo, monkeypatch, "--name", "my-ctry")
     assert module.run(module.parse_args()) == 0
-    assert (dataroot.REPO_ROOT / parity_layout.frames_path("my-ctry", "001")).is_dir()
+    assert (dataroot.REPO_ROOT / parity_layout.frames_path("my-ctry") / "meta.json").is_file()
     module, _seen = _default_run(staged_repo, monkeypatch, "--name", "Bad Name")
     assert module.run(module.parse_args()) == 2
 
@@ -568,14 +569,22 @@ def test_name_also_selects_where_the_stored_archive_is_looked_up(
     assert module.run(module.parse_args()) == 2
 
 
-def test_a_failed_default_capture_frees_its_run_number(
+def test_a_failed_default_capture_keeps_the_old_one_and_leaves_nothing_behind(
     staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module, _seen = _default_run(staged_repo, monkeypatch)
-    monkeypatch.setattr(module, "capture", lambda *_a, **_k: {"frames": []})
+    assert module.run(module.parse_args()) == 0
+    frames = dataroot.REPO_ROOT / parity_layout.frames_path("vault-ctry")
+    before = (frames / "meta.json").stat().st_mtime_ns
+
+    def no_frames(_open: object, out_dir: Path, **_kwargs: Any) -> dict[str, Any]:
+        (out_dir / "meta.json").write_text('{"frames": []}', encoding="utf-8")
+        return {"frames": []}
+
+    monkeypatch.setattr(module, "capture", no_frames)
     assert module.run(module.parse_args()) == 1
-    frames = dataroot.REPO_ROOT / parity_layout.frames_root("vault-ctry")
-    assert list(frames.iterdir()) == []
+    assert (frames / "meta.json").stat().st_mtime_ns == before
+    assert [p.name for p in frames.parent.iterdir()] == ["frames"]
 
 
 # ==============================================================================

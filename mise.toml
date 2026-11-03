@@ -103,7 +103,7 @@ description = "Record a film as one AVI with its tick and palette log into captu
 run = "uv run python python/scripts/capture_video.py"
 
 [tasks.capture-digest]
-description = "Print a capture's content hash and the references.toml entry that would promote it (mise run capture-digest -- vault-ctry 005)"
+description = "Print a capture's content hash and the references.toml entry that would promote it (mise run capture-digest -- vault-ctry)"
 run = "uv run python python/scripts/capture_digest.py"
 
 [tasks.make-all]
@@ -115,7 +115,7 @@ description = "Build the unpatched and the Patch #3 game trees under <data root>
 run = "uv run python python/scripts/game_builds.py"
 
 [tasks.migrate-captures]
-description = "One-time move of the existing captures into the film-first layout (ADR 0024); a dry run unless given --yes (mise run migrate-captures -- --yes --write-pins)"
+description = "One-time move to one capture of each kind per film (ADR 0028): keep the pinned references, delete the other runs; a dry run unless given --yes"
 run = "uv run python python/scripts/migrate_captures.py"
 
 [tasks.sweep]

@@ -3,8 +3,8 @@
 PLAYONE.EXE needs a film's .ALL beside its .FLM, and most films ship without one.
 MAKEONE.EXE writes it: this script stages the film and the game's RES tree in a private
 mount, loads the film in MAKEONE's requester, waits for the guest to return to DOS, and
-stores the archive once under captures/<film>/archives/<run>/ (ADR 0022, 0024). A film then needs no
-extra flags for capture-ref, which finds the stored archive by the film's hash.
+stores it as the film's one archive, captures/<film>/archives/ (ADR 0028), replacing any older one.
+A film then needs no extra flags for capture-ref, which checks the stored archive against the film's hash.
 """
 
 from __future__ import annotations

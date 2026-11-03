@@ -2,10 +2,10 @@
 
 Subcommands::
 
-    mise run parity-bench -- run --film ctry [--render DIR] [--report FILE] [--recapture ID]
+    mise run parity-bench -- run --film ctry [--render DIR] [--report FILE] --recapture DIR
         [--seed N] [--floor-render DIR] [--out DIR]
     mise run parity-bench -- plant --render DIR --out DIR --fault shift_x:4@500-599 ...
-    mise run parity-bench -- errors-make --film ctry [--calibrate] [--recapture ID] [--seed N]
+    mise run parity-bench -- errors-make --film ctry [--calibrate --recapture DIR] [--seed N]
     mise run parity-bench -- errors-disputes --film ctry
     mise run parity-bench -- errors-score --film ctry [--against READOUT]
     mise run parity-bench -- errors-make|errors-score --film vault-tod --batch
@@ -36,7 +36,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from stunt_reel import parity_layout, references
+from stunt_reel import capture_store, parity_layout, references
 from stunt_reel.bench.errors import (
     TABLE_HEADER,
     batch_row,
@@ -50,7 +50,6 @@ from stunt_reel.bench.planes import BenchError
 from stunt_reel.bench.run import plant_tree, run_bench
 from stunt_reel.dataroot import REPO_ROOT, ensure_links_or_report
 
-DEFAULT_RECAPTURE = "005"
 DEFAULT_SEED = 1
 CATEGORIES = REPO_ROOT / "research" / "parity" / "error-categories.toml"
 
@@ -94,9 +93,8 @@ def run(args: argparse.Namespace) -> int:
     """Run the metric bench, write ``bench.json``, and print the results."""
     film = args.film
     root = Path(args.data_root).resolve()
-    pointer = references.read_reference(root, film)
     reference = references.reference_dir(root, film)
-    recapture = root / parity_layout.frames_path(pointer.slug, args.recapture)
+    recapture = args.recapture
     render = args.render or REPO_ROOT / parity_layout.render_dir(film)
     report = args.report or REPO_ROOT / parity_layout.report_dir(film) / "report.json"
     out = args.out or REPO_ROOT / "build" / "parity" / "bench" / film
@@ -132,14 +130,14 @@ def _render(args: argparse.Namespace) -> Path:
 
 
 def _batch_capture(root: Path, slug: str) -> Path:
-    """The batch survey's latest capture of *slug*: its highest-numbered run."""
-    parent = root / parity_layout.frames_root(slug)
-    runs = (
-        [p for p in parent.iterdir() if p.is_dir() and p.name.isdigit()] if parent.is_dir() else []
-    )
-    if not runs:
-        raise BenchError(f"{parent} holds no capture; run mise run batch-parity -- --only {slug}")
-    return max(runs, key=lambda p: int(p.name))
+    """The film *slug*'s capture, which the batch survey scored."""
+    directory = root / parity_layout.frames_path(slug)
+    capture = capture_store.current(directory)
+    if capture is None:
+        raise BenchError(
+            f"{directory} holds no complete capture; run mise run batch-parity -- --only {slug}"
+        )
+    return capture
 
 
 def _revision() -> str:
@@ -170,8 +168,9 @@ def errors_make(args: argparse.Namespace) -> int:
     else:
         reference = references.reference_dir(root, film)
         if args.calibrate:
-            pointer = references.read_reference(root, film)
-            recapture = root / parity_layout.frames_path(pointer.slug, args.recapture)
+            if args.recapture is None:
+                raise BenchError("--calibrate needs --recapture DIR, a second capture of the film")
+            recapture = args.recapture
         report_dir = REPO_ROOT / parity_layout.report_dir(film)
     report = args.report or report_dir / "report.json"
     out = _errors_out(args)
@@ -272,7 +271,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     run_p.add_argument("--film", required=True)
     run_p.add_argument("--render", type=Path, default=None)
     run_p.add_argument("--report", type=Path, default=None)
-    run_p.add_argument("--recapture", default=DEFAULT_RECAPTURE, help="recapture id")
+    run_p.add_argument(
+        "--recapture", type=Path, required=True, help="a second capture of the film (its --out)"
+    )
     run_p.add_argument("--seed", type=int, default=DEFAULT_SEED)
     run_p.add_argument("--floor-render", type=Path, default=None)
     run_p.add_argument("--out", type=Path, default=None)
@@ -293,7 +294,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     make_p = sub.add_parser("errors-make", help="sheets and a brief for the error readout")
     make_p.add_argument("--film", required=True)
     make_p.add_argument("--calibrate", action="store_true", help="add controls and planted faults")
-    make_p.add_argument("--recapture", default=DEFAULT_RECAPTURE, help="recapture id for controls")
+    make_p.add_argument(
+        "--recapture", type=Path, default=None, help="a second capture of the film, for controls"
+    )
     make_p.add_argument("--seed", type=int, default=DEFAULT_SEED)
     make_p.add_argument("--render", type=Path, default=None)
     make_p.add_argument("--report", type=Path, default=None)

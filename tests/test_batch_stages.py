@@ -44,10 +44,10 @@ def _film(tmp_path: Path, *, name: str | None = None, sibling: bool = False) -> 
     )
 
 
-def _write_capture(tmp_path: Path, slug: str, ticks: list[int], run: str = "001") -> None:
-    """A fake capture run with a ``meta.json`` of frames at *ticks*, as the harness writes it."""
-    directory = tmp_path / parity_layout.frames_root(slug) / run
-    directory.mkdir(parents=True)
+def _write_capture(tmp_path: Path, slug: str, ticks: list[int]) -> None:
+    """A fake capture with a ``meta.json`` of frames at *ticks*, as the harness writes it."""
+    directory = tmp_path / parity_layout.frames_path(slug)
+    directory.mkdir(parents=True, exist_ok=True)
     frames = [{"ordinal": i + 1, "film_tick": tick} for i, tick in enumerate(ticks)]
     meta = {"film": "CTRY.FLM", "frames": frames, "width": 320, "height": 200}
     (directory / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
@@ -94,11 +94,13 @@ def test_a_successful_capture_run_without_a_capture_is_invalid(tmp_path: Path) -
     assert record.message.startswith("capture invalid: ")
 
 
-def test_the_capture_checked_is_the_latest_run(tmp_path: Path) -> None:
+def test_a_capture_without_meta_json_is_not_checked(tmp_path: Path) -> None:
+    """A capture still being written is incomplete, so the stage reports none (ADR 0028)."""
     film = _film(tmp_path)
-    _write_capture(tmp_path, film.slug, [0, 0, 0], run="001")
-    _write_capture(tmp_path, film.slug, [0, 100, 200], run="002")
-    assert batch_stages.run_capture(film, tmp_path, FakeRunner(), 900.0).status == "ok"
+    (tmp_path / parity_layout.frames_path(film.slug)).mkdir(parents=True)
+    record = batch_stages.run_capture(film, tmp_path, FakeRunner(), 900.0)
+    assert record.status == "error"
+    assert "no complete capture" in record.message
 
 
 def test_a_failed_capture_command_keeps_its_exit_error(tmp_path: Path) -> None:
@@ -263,8 +265,9 @@ def test_render_without_a_capture_is_an_error_naming_capture(tmp_path: Path) -> 
 
 def test_score_record_carries_ssim_and_iou(tmp_path: Path) -> None:
     film = _film(tmp_path)
-    capture = tmp_path / "build" / "parity" / "captures" / "vault-ctry" / "frames" / "001"
+    capture = tmp_path / "build" / "parity" / "captures" / "vault-ctry" / "frames"
     capture.mkdir(parents=True)
+    (capture / "meta.json").write_text("{}", encoding="utf-8")
 
     def score_writes_report(command: list[str], _timeout: float) -> tuple[int, str]:
         output = Path(command[command.index("--output") + 1])

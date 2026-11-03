@@ -25,7 +25,7 @@ more expensive:
 1. **[#76](https://github.com/neilsh/stunt-reel/issues/76)**: `make-all` keeps an archive that has
    stopped changing while `MAKEONE` stays in graphics mode. Patch3 being the default (ADR 0029)
    depends on this.
-2. **Store reader and migration** (ADR 0028). Add one reader beside `parity_layout`: the film's
+2. **Store reader and migration** (ADR 0028; [#139](https://github.com/neilsh/stunt-reel/issues/139), implemented). Add one reader beside `parity_layout`: the film's
    complete capture of a kind, or none. Delete `runs.py`, `batch_stages._latest_capture` and
    `parity_bench._batch_capture`. Migration moves the two pinned references (`vault-ctry` and
    `vault-intro` 004) into the new layout unchanged and deletes every other run. `references.toml`
