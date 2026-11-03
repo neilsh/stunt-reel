@@ -59,7 +59,7 @@ The 16-bit unsigned resource identifier (`id: u16`) partitions into distinct fun
 | `0x8040`–`0x80FF` | $32832..33023$ | **240-Color Master Palette** | `0x02D0` (`720` bytes) | Complete 240-color Mode 13h VGA master color table. Example: `0x8042` in `COLORS.ALL`. |
 | `0x8100`–`0xBFFF` | $33024..49151$ | **Scenery / Map Data** | Variable | Scenery quadtree nodes (`.MAP`), terrain elevation grids, and collision tables. |
 | `0xC000`–`0xCFFF` | $49152..53247$ | **Digital Sound Effects (`.VOC`)** | `0x02 0x01` / `0x02 0x00` | 8-bit unsigned PCM audio waveforms. Referenced directly by `arg2` in `.FLM` opcode `0x9C`! |
-| *Special / Any* | *Any* | **Choreography Stream (`.FLM`)** | `b"FILM"` (`0x46, 0x49, 0x4C, 0x4D`) | Full film choreography script. Extracted as `"CHOREO.FLM"` in VFS. |
+| *Special / Any* | *Any* | **Choreography Stream (`.FLM`)** | `b"FILM"` (`0x46, 0x49, 0x4C, 0x4D`) | Full film choreography script. Extracted as `"CHOREO.FLM"` in VFS. No corpus archive carries one ([`../makeone-exe/linking.md`](../makeone-exe/linking.md) § 1); the mapping is parser policy only. |
 
 ### 3.2 VGA Mode 13h Palette & 16-Level Shading Ramps (`[I3]`)
 
@@ -103,6 +103,10 @@ The ground scene that `PLAYONE.EXE` draws is stored in the `.ALL` archive, not i
 
 _Found 2026-10-23 at `6ae7b31`; see the [parity log](../parity/log.md)._
 
+### 3.7 Chunk Provenance (`[Bounded Observation]`)
+
+Every chunk drawn from the shipped game is a byte-identical copy of one `.RES` or `.SMP` item, with id `(res_index << 8) | (segment + 1)`; the palettes `0x801E` and `0x8042` are `SPRITES.RES` items. Ids are ascending and payloads packed without padding, so an id list and the game's `RES\` rebuild 83 of 83 corpus archives byte for byte. Evidence, the selection of items and the sound-setting variants: [`../makeone-exe/linking.md`](../makeone-exe/linking.md).
+
 ### 3.5 Entry Naming Policy (`[I8]`)
 
 When `.ALL` chunks are unpacked into `VfsArchive`, entry filenames are normalized to uppercase 8.3 keys per Invariant `[I8]`:
@@ -118,7 +122,7 @@ The following backlog documents open questions and investigations regarding the 
 
 | ID | Topic / Investigation Area | Current Evidence & Finding | Evidentiary Tier | Recommended Handling in Engine |
 | :--- | :--- | :--- | :---: | :--- |
-| **Q-ALL-01** | Scenery Quadtree Nodes (`0x8100..0xBFFF`) | Chunks in this ID range contain quadtree bounding nodes (`SP_POS`, `SP_1NODE`) referenced in `simap.cpp`. Alignment with `SCENERY.BIN` remains under active research. | `[Supported Inference]` | Treat as raw binary chunks (`RES_{id}.BIN`) until quadtree parser is implemented. |
+| **Q-ALL-01** | Scenery Quadtree Nodes (`0x8100..0xBFFF`) | Expected from `simap.cpp` to hold quadtree bounding nodes (`SP_POS`, `SP_1NODE`), but none of the 289 corpus archives has an id in this range ([`../makeone-exe/linking.md`](../makeone-exe/linking.md) § 1). | `[Bounded Observation]` | Treat as raw binary chunks (`RES_{id}.BIN`) until quadtree parser is implemented. |
 | **Q-ALL-02** | LZSS Sub-Chunk Compression | Milestone 2 synthetic fixtures and retail film packages store raw uncompressed bytecode (`was_compressed = false`). Whether specific non-US CD-ROM releases used LZSS within `.ALL` is unverified. | `[Bounded Observation]` | Keep `was_compressed: false` default. Hook LZSS decompressor if compressed markers are found. |
 | **Q-ALL-03** | Dynamic Sound Pre-Caching | Original engine loaded audio chunks directly into Sound Blaster DMA buffers at scene initialization. | `[Supported Inference]` | Store PCM audio buffers in memory; log playback events during Milestone 2. |
 | **Q-ALL-04** | Duplicate Resource IDs in Container | If a malformed `.ALL` contains duplicate IDs, later entries overwrite earlier entries in `BTreeMap`. | `[Established]` | Safe behavior; duplicate IDs log a warning and overwrite deterministically. |
