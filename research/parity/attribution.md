@@ -14,29 +14,29 @@ _Found 2026-10-22; see the [loss attribution row](log.md)._
 
 ## 2. Current breakdown
 
-Loss by class, most recent run per film (`main` at `794daa5`, 2026-11-02, after the whole-body, upright aircraft of [#47](https://github.com/neilsh/stunt-reel/pull/47) and the `GVPOLY` ramp colour of [#48](https://github.com/neilsh/stunt-reel/pull/48)): CTRY 0.7843 over 114 scored frames (index agreement 0.537, IoU 0.9774): terrain 0.0997, props 0.0680, sky 0.0188, reference-only 0.0143, actors 0.0122, terrain_render_only 0.0011, props_and_actors_render_only 0.0010, ocean 0.0007. INTRO 0.6902 over 209 (0.611, 0.9649): terrain 0.1435, props 0.0698, actors 0.0381, sky 0.0255, reference-only 0.0137, ocean 0.0120, props_and_actors_render_only 0.0062, terrain_render_only 0.0010. Terrain is 46% of the loss on both films. Against the 2026-10-24 breakdown below:
+Loss by class, most recent run per film (2026-11-02, `main` at `793895e`: the whole-body, upright aircraft of [#47](https://github.com/neilsh/stunt-reel/pull/47), the `GVPOLY` ramp colour of [#48](https://github.com/neilsh/stunt-reel/pull/48) and the square-pixel, 256 px projection of [#132](https://github.com/neilsh/stunt-reel/pull/132)): CTRY 0.8291 over 114 scored frames (index agreement 0.587, IoU 0.9897): terrain 0.0783, props 0.0568, sky 0.0158, actors 0.0114, reference-only 0.0078, ocean 0.0008. INTRO 0.7154 over 209 (0.622, 0.9712): terrain 0.1281, props 0.0654, actors 0.0363, sky 0.0260, reference-only 0.0121, ocean 0.0109, props_and_actors_render_only 0.0058. Terrain is 46% of the loss on CTRY and 45% on INTRO. Against the 2026-10-24 breakdown below, with the same measure at `794daa5` (after #47 and #48, before #132) between them:
 
-| Class | CTRY 2026-10-24 | CTRY 2026-11-02 | INTRO 2026-10-24 | INTRO 2026-11-02 |
-|---|---|---|---|---|
-| props | 0.0779 | **0.0680** | 0.0727 | **0.0698** |
-| actors | 0.0035 | **0.0122** | 0.0081 | **0.0381** |
-| props and actors, render only | — | 0.0010 | — | 0.0062 |
-| actor-window IoU (`parity-probe iou`) | 0.091 | 0.227 | 0.062 | 0.093 |
+| Class | CTRY 10-24 | CTRY `794daa5` | CTRY now | INTRO 10-24 | INTRO `794daa5` | INTRO now |
+|---|---|---|---|---|---|---|
+| props | 0.0779 | 0.0680 | **0.0568** | 0.0727 | 0.0698 | **0.0654** |
+| actors | 0.0035 | 0.0122 | **0.0114** | 0.0081 | 0.0381 | **0.0363** |
+| props and actors, render only | — | 0.0010 | 0.0000 | — | 0.0062 | 0.0058 |
+| actor-window IoU (`parity-probe iou`) | 0.091 | 0.227 | 0.221 | 0.062 | 0.093 | 0.097 |
 
-The actors class grew because the aircraft are now drawn whole: loss is attributed by what our render draws (section 1), so a missing body cost the terrain class before and a drawn but miscoloured or misplaced one costs the actors class now. Props remain the second class on both films. The INTRO total is not comparable across the two rows: since 2026-11-01 its title-card frames are below the fade floor, and the 0.7224 row predates the aircraft changes that cost INTRO.
+The actors class grew with #47 because the aircraft are now drawn whole: loss is attributed by what our render draws (section 1), so a missing body cost the terrain class before and a drawn but miscoloured or misplaced one costs the actors class now. #132 left it nearly where #47 and #48 put it, while props and terrain fell with the corrected projection. Props remain the second class on both films. The INTRO total is not comparable with the 2026-10-24 row: since 2026-11-01 its title-card frames are below the fade floor, and the 0.7224 row predates the aircraft changes that cost INTRO.
 
-Error readout on the same renders (12 sheets per film, two Haiku passes and a Sonnet tie-break on 10 and 9 disputed sheets; frames graded 2 or more of 12), against the readout taken when #47 was adopted (2026-11-01, before the orientation fix and #48):
+Error readout on the same renders (the same 12 ticks per film, seed 1; two Haiku passes and a Sonnet tie-break on the disputed sheets: 10 / 9 at `794daa5`, 7 / 6 now; frames graded 2 or more of 12), against the readout taken when #47 was adopted (2026-11-01, before the orientation fix and #48):
 
-| Category | CTRY at #47 | CTRY now | INTRO at #47 | INTRO now |
-|---|---|---|---|---|
-| `aircraft-absent` | — | 0 | 0 (from 9) | 0 |
-| `aircraft-parts-missing` | — | 10 | 11 | 8 |
-| `aircraft-shape-broken` | 3 (from 10) | 7 | 9 | 6 |
-| `aircraft-misplaced` | — | 0 | — | 5 |
-| `shadow-missing` | — | 6 | — | 5 |
-| `scenery-missing` | — | 3 | — | 6 |
+| Category | CTRY at #47 | CTRY `794daa5` | CTRY now | INTRO at #47 | INTRO `794daa5` | INTRO now |
+|---|---|---|---|---|---|---|
+| `aircraft-absent` | — | 0 | 0 | 0 (from 9) | 0 | 0 |
+| `aircraft-parts-missing` | — | 10 | 7 | 11 | 8 | 5 |
+| `aircraft-shape-broken` | 3 (from 10) | 7 | 5 | 9 | 6 | 5 |
+| `aircraft-misplaced` | — | 0 | 0 | — | 5 | 6 |
+| `shadow-missing` | — | 6 | 6 | — | 5 | 5 |
+| `scenery-missing` | — | 3 | 1 | — | 6 | 4 |
 
-(— : not quoted in the #47 row; no earlier `readout.json` survives.) A count must move by 4 to clear grader noise ([`method.md`](method.md) § 2.3), so CTRY `aircraft-shape-broken` 3 -> 7 is at the limit and the rest are inside it. Graders' notes: CTRY tick 4 "wing/gear drawn wrongly, no fuselage detail", tick 268 "aircraft orientation wrong"; INTRO tick 2764 "main aircraft at left edge largely undrawn".
+(— : not quoted in the #47 row; no earlier `readout.json` survives.) A count must move by 4 to clear grader noise ([`method.md`](method.md) § 2.3), so no change in the table clears it except INTRO `aircraft-parts-missing` 11 -> 5 across the three runs and CTRY `aircraft-shape-broken` 3 -> 7 -> 5, which is at the limit. Graders' notes: at `794daa5` CTRY tick 4 "wing/gear drawn wrongly, no fuselage detail", tick 268 "aircraft orientation wrong", INTRO tick 2764 "main aircraft at left edge largely undrawn"; now INTRO tick 3295 "conifers drawn as round bushes".
 
 Earlier breakdowns, superseded: CTRY on 2026-10-24 (`main`, after back-face culling) 0.7808 over 114 scored frames (index agreement 0.507, IoU 0.9780): terrain 0.1032, props 0.0779, sky 0.0183, reference-only 0.0144, actors 0.0035; INTRO 0.7224 over 209 (0.637, 0.9501): terrain 0.1382, props 0.0727, reference-only 0.0189, sky 0.0227, ocean 0.0120, actors 0.0081, terrain_render_only 0.0042. CTRY after the lighting change (2026-10-22) terrain 0.116, props 0.072, reference-only 0.035, actors 0.008, sky and ocean 0.003 (total 0.234). The INTRO baseline of 2026-10-22 (0.676, IoU 0.802, index agreement 0.482) had terrain 0.175, props 0.071, reference-only 0.051, actors 0.013, ocean 0.012, sky 0.002.
 
@@ -45,7 +45,7 @@ Earlier breakdowns, superseded: CTRY on 2026-10-24 (`main`, after back-face cull
 * `INTRO.FLM` uses the partial SOD `0x7F09` (opcode `0x02FD`, `[Unknown]`) and CTRY the partial `0x0107` (`OP_ANIMATE`, `0x01F8`); their cost is not isolated by this split.
 * Worst terrain frames in the early CTRY run: ordinals 52, 55 and 35 (ticks 568, 601, 382), 0.22 to 0.25 each; not inspected.
 
-_Found 2026-10-22 and 2026-10-23 at `d90a047`; re-measured 2026-11-02 at `794daa5` ([#98](https://github.com/neilsh/stunt-reel/issues/98)); see the [parity log](log.md)._
+_Found 2026-10-22 and 2026-10-23 at `d90a047`; re-measured 2026-11-02 at `794daa5` and again after #132 at `793895e` ([#98](https://github.com/neilsh/stunt-reel/issues/98)); see the [parity log](log.md)._
 
 ## 3. The loss is structural: edges, not flat colour
 
@@ -91,10 +91,10 @@ _Found 2026-10-23 at `d90a047`; see the [parity log](log.md)._
 
 The renderer-only levers are exhausted, so each item starts by reading one `PLAYONE.EXE` rule. An item closes when the rule is in its `playone-exe/` note at an image offset, with the change it licenses and the predicted sign on each film. Priority is by measured loss, not by which item reads easiest.
 
-1. **The player's ground polygons and light caller** — terrain is the largest class on both films (0.0997 on `CTRY`, 0.1435 on `INTRO` on 2026-11-02; 46% of the loss on each). On `CTRY` the error is systemic: median terrain loss 0.088, no frame above 0.30, the worst 40 frames holding 57% of it — a shading law, not a misplaced surface. The sand band, the airfield's 193/194/196 base colours and the per-shot light caller are the three parts; `MAP.BIN`'s patches are not the player's records ([world-scene.md](../playone-exe/world-scene.md) section 6; [terrain-shade.md](../playone-exe/terrain-shade.md) next probe 1). ([#65](https://github.com/neilsh/stunt-reel/issues/65), [#66](https://github.com/neilsh/stunt-reel/issues/66), [#69](https://github.com/neilsh/stunt-reel/issues/69))
-2. **Actor placement, model origin and the body** — since its body draws whole and upright ([#47](https://github.com/neilsh/stunt-reel/pull/47)) the CTRY hero is no longer left of the capture, but it sits about 8 rows high where the world sits about 2 rows low (2026-11-02 re-measure, [`framing-and-actors.md`](framing-and-actors.md#1-the-hero-aircraft-residual-open)); actors are now 0.0122 / 0.0381 of the loss. Read the slot and placement arrays (`0x4778` / `0x48B6`) and the model-origin rule; see [`framing-and-actors.md`](framing-and-actors.md#1-the-hero-aircraft-residual-open). The hero's ground shadow is a variant of this round, not a separate item: a flattened biplane collapses both wings onto one footprint, so a monoplane-shadow does not discriminate a flattened copy from a sprite, and every flattening sweep so far ran against our defective body. ([#67](https://github.com/neilsh/stunt-reel/issues/67))
+1. **The player's ground polygons and light caller** — terrain is the largest class on both films (0.0783 on `CTRY`, 0.1281 on `INTRO` on 2026-11-02 after #132; 46% and 45% of the loss). On `CTRY` the error is systemic: median terrain loss 0.088, no frame above 0.30, the worst 40 frames holding 57% of it — a shading law, not a misplaced surface. The sand band, the airfield's 193/194/196 base colours and the per-shot light caller are the three parts; `MAP.BIN`'s patches are not the player's records ([world-scene.md](../playone-exe/world-scene.md) section 6; [terrain-shade.md](../playone-exe/terrain-shade.md) next probe 1). ([#65](https://github.com/neilsh/stunt-reel/issues/65), [#66](https://github.com/neilsh/stunt-reel/issues/66), [#69](https://github.com/neilsh/stunt-reel/issues/69))
+2. **Actor placement, model origin and the body** — since its body draws whole and upright ([#47](https://github.com/neilsh/stunt-reel/pull/47)) the CTRY hero is no longer left of the capture, but it sits about 8 rows high while the world, since #132, needs no shift (2026-11-02 re-measure, [`framing-and-actors.md`](framing-and-actors.md#1-the-hero-aircraft-residual-open)); actors are now 0.0114 / 0.0363 of the loss. Read the slot and placement arrays (`0x4778` / `0x48B6`) and the model-origin rule; see [`framing-and-actors.md`](framing-and-actors.md#1-the-hero-aircraft-residual-open). The hero's ground shadow is a variant of this round, not a separate item: a flattened biplane collapses both wings onto one footprint, so a monoplane-shadow does not discriminate a flattened copy from a sprite, and every flattening sweep so far ran against our defective body. ([#67](https://github.com/neilsh/stunt-reel/issues/67))
 3. **The `INTRO.FLM` flat-sand frames** — 11 frames lose more than 0.30 to terrain at IoU 0.97 to 1.0 and index agreement 0.00 to 0.33 (ticks 1088, 1098, 1308-1374, 1505 and 2690-2778), where the capture is 54 to 97% sand index 91 and we draw 195 or 208. Coverage is right and content is absent, so a colour rule alone cannot fix it; at tick 1505 the capture also carries about 17.8% of indices 216 to 218, which we never emit. This is not the montage tick rule: the montage window (ticks 1290 to 1500) scored 0.7807 on 2026-10-24, above that run's film mean of 0.7224 (both before #47; the window has not been re-scored since). ([#70](https://github.com/neilsh/stunt-reel/issues/70))
-4. **Prop shading and detail** — props are 0.0680 / 0.0698 (2026-11-02; 0.0779 / 0.0727 on 2026-10-24), the second class on both films, and the one lever left that needs no decode. ([#74](https://github.com/neilsh/stunt-reel/issues/74))
+4. **Prop shading and detail** — props are 0.0568 / 0.0654 (2026-11-02 after #132; 0.0779 / 0.0727 on 2026-10-24), the second class on both films, and the one lever left that needs no decode. ([#74](https://github.com/neilsh/stunt-reel/issues/74))
 
 ### Where the 2026-10-24 goal stopped
 
