@@ -28,7 +28,7 @@ dev = [
     "pillow>=13",
     "pytest>=8.3.0",
     "pytest-cov>=6.0.0",
-    "ruff>=0.12.0",
+    "ruff>=0.17.1",  # TC001-TC003 write `lazy` imports at py315 (extend-safe-fixes below)
 ]
 
 [tool.hatch.version]
