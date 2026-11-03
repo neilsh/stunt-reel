@@ -148,13 +148,12 @@ impl VideoCapture {
                 log.global_tick.len()
             )));
         }
-        for (index, pair) in log.frame.windows(2).enumerate() {
-            if pair[0].checked_add(1) != Some(pair[1]) {
+        let pairs = log.frame.iter().zip(log.frame.iter().skip(1));
+        for (index, (&prev, &next)) in pairs.enumerate() {
+            if prev.checked_add(1) != Some(next) {
                 return Err(ArtifactError::video_log(format!(
-                    "frames must ascend by one: index {} is {} after {}",
+                    "frames must ascend by one: index {} is {next} after {prev}",
                     index + 1,
-                    pair[1],
-                    pair[0]
                 )));
             }
         }
@@ -164,13 +163,12 @@ impl VideoCapture {
                 self.film_start_frame
             )));
         };
-        for offset in start + 1..rows {
-            if log.film_tick[offset] < log.film_tick[offset - 1] {
+        let ticks = log.film_tick.iter().skip(start);
+        let frames = log.frame.iter().skip(start + 1);
+        for (&frame, (&prev, &tick)) in frames.zip(ticks.clone().zip(ticks.skip(1))) {
+            if tick < prev {
                 return Err(ArtifactError::video_log(format!(
-                    "film_tick falls at frame {}: {} after {}",
-                    log.frame[offset],
-                    log.film_tick[offset],
-                    log.film_tick[offset - 1]
+                    "film_tick falls at frame {frame}: {tick} after {prev}"
                 )));
             }
         }
