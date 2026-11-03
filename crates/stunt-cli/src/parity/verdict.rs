@@ -117,18 +117,22 @@ pub(super) fn frame_verdict(
     sigma: Option<f32>,
     build_floor: usize,
 ) -> FrameVerdict {
-    let pixels = after.indices.len();
+    let pixels = MODE13H_WIDTH * MODE13H_HEIGHT;
     let mut idx_changed = 0usize;
     let mut luma_changed = 0usize;
     let mut changed = vec![false; pixels];
     let mut by_layer: BTreeMap<&'static str, usize> = LAYER_KEYS.iter().map(|k| (*k, 0)).collect();
     for plane in [
         before.indices.len(),
+        after.indices.len(),
         before.luminance.len(),
         after.luminance.len(),
         after.layers.len(),
     ] {
-        assert_eq!(plane, pixels, "both renders' planes cover the same pixels");
+        assert_eq!(
+            plane, pixels,
+            "both renders' planes cover the Mode 13h raster"
+        );
     }
     let pairs = (before.indices.iter().zip(&after.indices))
         .zip(before.luminance.iter().zip(&after.luminance))

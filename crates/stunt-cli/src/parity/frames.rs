@@ -11,7 +11,6 @@ use super::score::RenderFrame;
 use super::ssim::{rescale_mode13h_frame, rgb_to_luminance};
 use crate::render_store::RenderStore;
 
-/// A 256-entry RGB palette.
 use crate::render_store::{Palette, palette_rgb};
 
 /// Loads a captured frame: its palette-index plane and its captured palette.
