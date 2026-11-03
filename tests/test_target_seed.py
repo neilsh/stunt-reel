@@ -28,6 +28,8 @@ from stunt_reel.target_seed import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+pytestmark = pytest.mark.windows
+
 RUSTC = "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nhost: x86_64-pc-windows-msvc\n"
 HOME = r"E:\git\stunt-reel\.cache\cargo"
 
