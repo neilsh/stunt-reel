@@ -32,7 +32,10 @@ mod palette;
 mod pipeline;
 mod scene_renderer;
 
-pub use camera::{ASPECT_4_3, CameraController, CameraMode, CameraUniform, FreeCamState};
+pub use camera::{
+    ASPECT_4_3, CameraController, CameraMode, CameraUniform, FreeCamState,
+    MODE13H_PROJECTION_ASPECT,
+};
 pub use palette::{
     PALETTE_LUT_HEIGHT, PALETTE_LUT_WIDTH, build_palette_lut_bytes, build_palette_lut_bytes_from,
 };
