@@ -206,8 +206,14 @@ run = [
 ]
 
 [tasks.typecheck]
-description = "Run Python static type checking (mypy)"
-run = "uv run mypy"
+description = "Run Python static type checking (mypy), once as Windows and once as Linux"
+# mypy prunes `sys.platform` branches for the platform it analyses, so a check on one OS
+# passes code the other reports as unreachable; CI typechecks on Linux, most work happens on
+# Windows. Each platform keeps its own cache so neither run invalidates the other.
+run = [
+  "uv run mypy --platform win32 --cache-dir .mypy_cache/win32",
+  "uv run mypy --platform linux --cache-dir .mypy_cache/linux",
+]
 
 [tasks.test-rust]
 description = "Run Rust unit and integration tests"

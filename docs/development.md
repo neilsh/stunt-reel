@@ -164,7 +164,7 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | `fmt-check` / `fmt` | `cargo fmt` and `ruff format` check/apply |
 | `fix` | every automatic fix the gate's lint and format steps can apply: `ruff check --fix`, `ruff format`, `cargo fmt`. The gate names it when `lint-py`, `fmt-check-py` or `fmt-check-rust` fails; it changes nothing on a clean tree |
 | `lint` | `cargo clippy -- -D warnings` and `ruff check .` |
-| `typecheck` | `uv run mypy` (strict) |
+| `typecheck` | `uv run mypy` (strict), once with `--platform win32` and once with `--platform linux` |
 | `doc` | rustdoc with `RUSTDOCFLAGS=-D warnings` |
 | `check-rust-matrix` | `stunt-core` without the `serde`/`bytemuck` features |
 | `test` | `cargo test --workspace --all-features` and `uv run pytest` |
