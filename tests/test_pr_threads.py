@@ -109,3 +109,35 @@ def test_a_stalled_gh_is_reported_as_a_gh_error(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(subprocess, "run", stall)
     with pytest.raises(pr_threads.GhError, match="no answer"):
         pr_threads._gh("repo", "view")
+
+
+def _page(nodes: list[dict[str, Any]], cursor: str | None) -> dict[str, Any]:
+    threads = {"nodes": nodes, "pageInfo": {"hasNextPage": cursor is not None, "endCursor": cursor}}
+    return {"data": {"repository": {"pullRequest": {"reviewThreads": threads}}}}
+
+
+def test_every_page_of_threads_is_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    pages = {None: _page([_thread("**One**")], "c1"), "c1": _page([_thread("**Two**")], None)}
+    seen: list[str | None] = []
+
+    def gh(*args: str) -> dict[str, Any]:
+        after = next((a.removeprefix("after=") for a in args if a.startswith("after=")), None)
+        seen.append(after)
+        return pages[after]
+
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    nodes = pr_threads.read_threads("o", "r", 1)
+    assert seen == [None, "c1"]
+    assert nodes is not None
+    assert [pr_threads.summarize(n["comments"]["nodes"][0]["body"])[1] for n in nodes] == [
+        "One",
+        "Two",
+    ]
+
+
+def test_graphql_errors_are_a_gh_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        pr_threads, "_gh", lambda *_a: {"data": None, "errors": [{"message": "bad cursor"}]}
+    )
+    with pytest.raises(pr_threads.GhError, match="bad cursor"):
+        pr_threads.read_threads("o", "r", 1)

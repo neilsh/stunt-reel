@@ -9,7 +9,8 @@ severity when the bot names one, its title, and the database id of its first com
 the id ``gh api repos/{owner}/{repo}/pulls/<n>/comments/<id>/replies`` answers.
 
 Usage: ``mise run pr-threads -- <number> [--all]``. ``--all`` keeps resolved threads, marked
-``resolved``. Exit status: ``0`` on success, ``2`` when ``gh`` fails.
+``resolved``. Every page of threads is read. Exit status: ``0`` on success, ``2`` when ``gh``
+fails or the query returns errors.
 """
 
 from __future__ import annotations
@@ -26,11 +27,11 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
 QUERY = """
-query($owner: String!, $name: String!, $number: Int!) {
+query($owner: String!, $name: String!, $number: Int!, $after: String) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
-      reviewThreads(first: 100) {
-        pageInfo { hasNextPage }
+      reviewThreads(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
         nodes {
           isResolved
           isOutdated
@@ -145,6 +146,29 @@ def _gh(*args: str) -> Any:
         raise GhError(f"gh {args[0]} printed no JSON") from err
 
 
+def read_threads(owner: str, name: str, number: int) -> list[dict[str, Any]] | None:
+    """Every review thread of pull request *number*, page by page; ``None`` when it is absent."""
+    nodes: list[dict[str, Any]] = []
+    after: str | None = None
+    while True:
+        args = ["api", "graphql", "-f", f"query={QUERY}", "-F", f"owner={owner}"]
+        args += ["-F", f"name={name}", "-F", f"number={number}"]
+        if after is not None:
+            args += ["-f", f"after={after}"]
+        data = _gh(*args)
+        if data.get("errors"):
+            messages = "; ".join(str(e.get("message", e)) for e in data["errors"])
+            raise GhError(f"graphql: {messages}")
+        pull = data["data"]["repository"]["pullRequest"]
+        if pull is None:
+            return None
+        threads = pull["reviewThreads"]
+        nodes += threads["nodes"]
+        if not threads["pageInfo"]["hasNextPage"]:
+            return nodes
+        after = threads["pageInfo"]["endCursor"]
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Print the open review threads of the pull request named on the command line."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -154,32 +178,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         repo = _gh("repo", "view", "--json", "nameWithOwner")["nameWithOwner"]
         owner, name = repo.split("/", 1)
-        data = _gh(
-            "api",
-            "graphql",
-            "-f",
-            f"query={QUERY}",
-            "-F",
-            f"owner={owner}",
-            "-F",
-            f"name={name}",
-            "-F",
-            f"number={args.number}",
-        )
+        nodes = read_threads(owner, name, args.number)
     except GhError as err:
         print(f"pr-threads: {err}", file=sys.stderr)
         return 2
-    pull = data["data"]["repository"]["pullRequest"]
-    if pull is None:
+    if nodes is None:
         print(f"pr-threads: {repo} has no pull request {args.number}", file=sys.stderr)
         return 2
-    threads = pull["reviewThreads"]
-    lines = thread_lines(threads["nodes"], include_resolved=args.all)
+    lines = thread_lines(nodes, include_resolved=args.all)
     print(f"{len(lines)} {'review' if args.all else 'open review'} threads on {repo}#{args.number}")
     for line in lines:
         print(line)
-    if threads["pageInfo"]["hasNextPage"]:
-        print("(more than 100 threads; only the first 100 were read)")
     return 0
 
 
