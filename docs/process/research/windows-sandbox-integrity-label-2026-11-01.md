@@ -81,7 +81,7 @@ All *Observed:* on 2026-11-01, from the desktop app's Code tab with the sandbox 
 
 Revised after section 5; the owner of the machine runs these, from their own terminal.
 
-1. **Save, then relabel the root alone.** `icacls E:\git\stunt-reel > %USERPROFILE%\stunt-reel-acl-before.txt`, then `icacls E:\git\stunt-reel /setintegritylevel "(OI)(CI)M"`. Without `/T`, icacls does not write an explicit label onto every file in the tree.
+1. **Save, then relabel the root alone.** `icacls E:\git\stunt-reel > "$env:USERPROFILE\stunt-reel-acl-before.txt"` (PowerShell; `%USERPROFILE%` in `cmd.exe`), then `icacls E:\git\stunt-reel /setintegritylevel "(OI)(CI)M"`. Without `/T`, icacls does not write an explicit label onto every file in the tree.
 2. **Rebuild `.venv`** (delete it, then `mise run init`) while no session is running Python from it, and confirm with `mise run check` from a sandboxed session.
 3. **If the label comes back** after a later session starts, move the primary checkout's virtualenv into `.cache\venvs`, as [ADR 0019](../../adr/0019-a-worktrees-virtualenv-lives-in-the-shared-cache.md) already does for worktrees. The swap has to move the old `.venv` aside first: on Windows, `rmtree` of an environment another process is running from fails partway and leaves no environment.
 4. Do not use `srt-win acl forget` or any uninstall without first confirming what it removes.
