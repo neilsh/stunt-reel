@@ -225,3 +225,34 @@ def test_mise_config_renders_outside_a_git_checkout() -> None:
         line.split()[1] for line in result.stdout.splitlines() if line.startswith("cargo_home")
     ]
     assert homes == [f"{REPO_ROOT}/.cache/cargo"], result.stdout
+
+
+@pytest.mark.parametrize("with_git", [True, False])
+def test_cargo_home_renders_in_a_checkout_whose_path_has_an_ampersand(
+    tmp_path: Path, *, with_git: bool
+) -> None:
+    """The shell runs a `&` in a path it is handed, so the checkout path never reaches it."""
+    mise = shutil.which("mise")
+    git = shutil.which("git")
+    if mise is None or git is None:
+        pytest.skip("mise or git is not on PATH")
+    checkout = tmp_path / "r&d"
+    checkout.mkdir()
+    config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
+    template = config["vars"]["cargo_home"].replace("\\", "\\\\").replace('"', '\\"')
+    (checkout / "mise.toml").write_text(f'[vars]\ncargo_home = "{template}"\n', encoding="utf-8")
+    env = {**os.environ, "MISE_TRUSTED_CONFIG_PATHS": str(checkout)}
+    if with_git:
+        subprocess.run([git, "init", "-q", str(checkout)], check=True)  # noqa: S603 - fixed argv
+    else:
+        env["GIT_DIR"] = str(checkout / "no-such-git-dir")
+    result = subprocess.run(  # noqa: S603 - fixed argv, mise resolved from PATH
+        [mise, "vars"], cwd=checkout, env=env, capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    homes = [
+        Path(line.split(None, 1)[1].rsplit(None, 1)[0])
+        for line in result.stdout.splitlines()
+        if line.startswith("cargo_home")
+    ]
+    assert homes == [checkout / ".cache" / "cargo"], result.stdout
