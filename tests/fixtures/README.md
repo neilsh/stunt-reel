@@ -89,7 +89,7 @@ A synthetic scene exercising the three-record layout of `[FMT-SET-HEADER]`:
 
 ### 13. `parity/v1/` (parity conformance corpus)
 
-The shared wire-contract corpus for the two parity artifact adapters: the Rust port in `crates/stunt-parity` and the Python mirror in `python/stunt_reel/parity_artifacts.py` (see [ADR 0011](../../docs/adr/0011-parity-artifacts-are-a-versioned-port.md)). It pins the documents, not a run; the geometry is deliberately tiny (4x3 with a 2-row viewport) so the page bytes are hand-checkable.
+The shared wire-contract corpus for the two parity artifact adapters: the Rust port in `crates/stunt-parity` and the Python mirror in `python/stunt_reel/parity_artifacts/` (see [ADR 0011](../../docs/adr/0011-parity-artifacts-are-a-versioned-port.md)). It pins the documents, not a run; the geometry is deliberately tiny (4x3 with a 2-row viewport) so the page bytes are hand-checkable.
 
 | File | Pins |
 |---|---|

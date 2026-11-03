@@ -139,8 +139,8 @@ fn coplanar_decal_wins_the_depth_tie() {
     ]);
     let mut ir = SodModelIr::new("BASE_WITH_DECAL");
     ir.vertices = vertices;
-    // Indices are relative to each mesh's vertex_offset.
-    ir.indices = vec![0, 2, 1, 0, 2, 1];
+    // Indices address the shape's whole vertex buffer, as `stunt-core` emits them.
+    ir.indices = vec![0, 2, 1, 3, 5, 4];
     ir.allocate_node(
         "BASE",
         None,
