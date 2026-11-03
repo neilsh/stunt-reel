@@ -255,7 +255,9 @@ env = { CARGO_HOME = "{{vars.cargo_home}}" }
 [tasks.doc]
 description = "Build rustdoc with warnings denied"
 run = "cargo doc --workspace --no-deps --all-features"
-env = { RUSTDOCFLAGS = "-D warnings", CARGO_HOME = "{{vars.cargo_home}}" }
+# rustdoc reads its dependencies' metadata, the same units clippy builds in target/check; in
+# target/ it would build a second copy of them (192 MB) beside the test lane's.
+env = { RUSTDOCFLAGS = "-D warnings", CARGO_HOME = "{{vars.cargo_home}}", CARGO_TARGET_DIR = "{{config_root}}/target/check" }
 
 [tasks.check-rust-matrix]
 description = "Test stunt-core without optional features, in a target directory of its own"

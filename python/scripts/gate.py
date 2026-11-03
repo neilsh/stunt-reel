@@ -57,7 +57,7 @@ STEP_LANES: dict[str, str] = {
     "fmt-check-rust": "rust-fmt",
     "lint-rust": "rust-lint",
     "test-rust": "rust-build",
-    "doc": "rust-build",
+    "doc": "rust-lint",
     "check-rust-matrix": "rust-matrix",
     "fmt-check-py": "py-fmt",
     "lint-py": "py-lint",

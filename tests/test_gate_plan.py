@@ -134,3 +134,19 @@ def test_failure_tail_header_carries_fix_hint_only_for_fixable_failures(
             continue
         note = f" (fix: mise run {gate.FIX_TASK})" if task in gate.FIXABLE_STEPS else ""
         assert f"---- {task} output tail{note} ----" in output
+
+
+def test_cargo_steps_share_a_lane_exactly_when_they_share_a_target_dir() -> None:
+    """Cargo locks a target directory for a whole build: one lane per directory (ADR 0016)."""
+    tasks = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))["tasks"]
+    target_dirs = {
+        step: tasks[step].get("env", {}).get("CARGO_TARGET_DIR", "{{config_root}}/target")
+        for step in gate.STEP_LANES
+        if str(tasks[step].get("run", "")).startswith("cargo ")
+        and "fmt" not in str(tasks[step]["run"])
+    }
+    assert {"lint-rust", "test-rust", "doc", "check-rust-matrix"} <= set(target_dirs)
+    for step, target in target_dirs.items():
+        for other, other_target in target_dirs.items():
+            same_lane = gate.STEP_LANES[step] == gate.STEP_LANES[other]
+            assert same_lane == (target == other_target), (step, other)

@@ -167,10 +167,10 @@ the five workspace crates and no dependency (`cargo test --no-run`, 9 s).
 
 - A task that cleans idle or merged worktrees' `target/` (the first finding of the session;
   `kache clean --stale` is the model).
-- Move `doc` into the clippy lane's `target/check` to drop its 192 MB duplicate (needs a gate
-  timing; ADR 0016).
-- No debug info for dependencies (`[profile.dev.package."*"] debug = false`): −0.16 GB per
-  worktree, measured.
+- Done 2026-11-02: `doc` builds in the clippy lane's `target/check` (ADR 0016, amended), and
+  dependencies keep no debug info (`[profile.dev.package."*"] debug = false`). A cold
+  `mise run check-rust` from an empty `target/` then took 78 s and left 1.9 GB (1.3 GB `debug`,
+  0.47 GB `check`, 0.20 GB `matrix`), against 2.4 GB before.
 - Make workspace units reusable safely, about 18 s per new worktree: first read
   `CARGO_MANIFEST_DIR` at run time in tests instead of `env!` at compile time, so no binary embeds
   its checkout; then keep a member's fingerprint only where every source file is byte-identical

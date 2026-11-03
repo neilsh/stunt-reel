@@ -75,3 +75,8 @@ cast_possible_wrap = "allow" # 20
 # Line tables still symbolise a backtrace down to the line.
 [profile.dev]
 debug = "line-tables-only"
+
+# Dependencies keep no debug info: about 0.16 GB per worktree, and a backtrace through one still
+# names its function, only without a line number (ADR 0030's follow-ups).
+[profile.dev.package."*"]
+debug = false

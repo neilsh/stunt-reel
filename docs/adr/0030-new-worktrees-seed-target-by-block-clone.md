@@ -93,7 +93,10 @@ and the measurement.
 - **Deduplicating existing `target/` directories after the fact.** Not possible while each
   worktree's `CARGO_HOME` path is written into its output.
 - **Only trimming what a build keeps** (no dependency debug info: 0.16 GB per worktree; incremental
-  off in the clippy and matrix lanes: about 0.33 GB). Small next to seeding; left as follow-ups.
+  off in the clippy and matrix lanes: about 0.33 GB). Small next to seeding, so not instead of
+  it. The first, and building `doc` in `target/check` beside clippy's metadata (0.19 GB), were
+  done on 2026-11-02: a cold gate's `target/` measured 1.9 GB, against the 2.4 GB above.
+  Incremental stays on, for edit-and-recheck speed.
 
 ## Consequences
 
