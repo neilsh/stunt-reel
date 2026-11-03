@@ -1,4 +1,4 @@
-"""`batch_parity._run_command` ends the whole process tree on a timeout, not just the direct child.
+"""`parity_pipeline.run_command` ends the whole process tree on a timeout, not just the direct child.
 
 The children here are plain Python processes; nothing launches an emulator.
 """
@@ -10,13 +10,9 @@ import os
 import subprocess
 import sys
 import time
-from pathlib import Path
+lazy from pathlib import Path
 
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-
-import batch_parity  # noqa: E402
+from stunt_reel import parity_pipeline
 
 _GRANDCHILD = "import time; time.sleep(30)"
 _CHILD = (
@@ -56,11 +52,13 @@ def test_timeout_kills_the_grandchild_too(tmp_path: Path) -> None:
     grandchild = 0
     try:
         started = time.monotonic()
-        code, output = batch_parity._run_command([sys.executable, "-c", _CHILD, str(pid_file)], 2.0)
+        code, output = parity_pipeline.run_command(
+            [sys.executable, "-c", _CHILD, str(pid_file)], None, 2.0
+        )
         assert time.monotonic() - started < 8.0
         assert pid_file.exists()
         grandchild = int(pid_file.read_text())
-        assert code == batch_parity._TIMEOUT_EXIT
+        assert code == parity_pipeline.TIMEOUT_EXIT
         assert "timeout" in output
         deadline = time.monotonic() + 3.0
         while _alive(grandchild) and time.monotonic() < deadline:

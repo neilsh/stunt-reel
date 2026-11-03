@@ -18,7 +18,7 @@ from stunt_reel import parity_layout
 if TYPE_CHECKING:
     from pathlib import Path
 
-__all__ = ["BatchFilm", "discover"]
+__all__ = ["BatchFilm", "discover", "find"]
 
 #: How many leading hex digits of the content hash name a film whose slug collided.
 _HASH_DIGITS = 8
@@ -64,6 +64,25 @@ def discover(corpus: Path) -> list[BatchFilm]:
             )
         )
     return sorted(films, key=lambda film: film.slug)
+
+
+def find(corpus: Path, slug: str) -> BatchFilm | None:
+    """The film filed under *slug*, or ``None``; the first path with that slug, hashed alone.
+
+    This is the parity loop's lookup of one pinned film, and reading all 579 films to find one
+    would cost seconds. A slug a path does not spell (the hash-suffixed name :func:`discover`
+    gives a collision) is looked up in the full manifest.
+    """
+    paths = sorted(
+        path for path in corpus.rglob("*") if path.is_file() and path.suffix.lower() == ".flm"
+    )
+    for flm in paths:
+        if parity_layout.slug_for(flm) == slug:
+            digest = hashlib.sha256(flm.read_bytes()).hexdigest()
+            return BatchFilm(
+                slug=slug, name=None, flm=flm, sha256=digest, has_sibling_all=_has_sibling_all(flm)
+            )
+    return next((film for film in discover(corpus) if film.slug == slug), None)
 
 
 def _has_sibling_all(flm: Path) -> bool:

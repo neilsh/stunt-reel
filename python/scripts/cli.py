@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Mapping
+    from collections.abc import Sequence
 
 __all__ = [
     "ParityOptions",
@@ -43,9 +43,12 @@ class ParityOptions:
 
 
 def add_parity_options(
-    parser: argparse.ArgumentParser, *, films: Mapping[str, object], data_root: Path
+    parser: argparse.ArgumentParser, *, films: Sequence[str], data_root: Path
 ) -> None:
-    """Add ``--films``, ``--data-root``, ``--no-build``, ``--reuse`` and ``--retime``."""
+    """Add ``--films``, ``--data-root``, ``--no-build``, ``--reuse`` and ``--retime``.
+
+    *films* are the loop's films, the ``references.toml`` rows that pin a reference.
+    """
     parser.add_argument("--films", default=",".join(films), help="comma list; default: all")
     parser.add_argument(
         "--data-root",
@@ -62,7 +65,7 @@ def add_parity_options(
     )
 
 
-def parity_options(args: argparse.Namespace, *, films: Mapping[str, object]) -> ParityOptions:
+def parity_options(args: argparse.Namespace, *, films: Sequence[str]) -> ParityOptions:
     """Validate the shared flags and resolve the data root."""
     names = [name.strip() for name in str(args.films).split(",") if name.strip()]
     unknown = [name for name in names if name not in films]

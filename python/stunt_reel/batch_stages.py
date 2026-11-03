@@ -1,9 +1,12 @@
 """The four stages of one film in the batch survey: archive, capture, render and score.
 
-Each stage builds one command, hands it to an injected runner and returns a ledger record. A
-stage never raises: a non-zero exit, a timeout, a missing capture or an unusable archive becomes
-an ``error`` record with a one-line message. The runner is the only thing that starts a process,
-so tests pass a fake and nothing here launches dosbox-automation, MAKEONE or the stuntreel binary.
+Each stage hands its work to an injected runner and returns a ledger record. A stage never
+raises: a non-zero exit, a timeout, a missing capture or an unusable archive becomes an ``error``
+record with a one-line message. The archive and capture stages build their script commands here;
+the render and score stages are the film parity operation of :mod:`parity_pipeline`, which owns the
+``stuntreel`` command lines, so the survey and the parity loop render and check alike. The runner
+is the only thing that starts a process, so tests pass a fake and nothing here launches
+dosbox-automation, MAKEONE or the stuntreel binary.
 
 The ``root`` argument is the checkout whose layout paths and scripts a stage uses; the data root
 is linked into it, so captures and archives resolve through it.
@@ -13,21 +16,19 @@ from __future__ import annotations
 
 import sys
 import time
-from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from stunt_reel import (
-    all_archive,
-    capture_store,
-    dataroot,
-    game_builds,
-    parity_artifacts,
-    parity_layout,
-)
+from stunt_reel import capture_store, dataroot, game_builds, parity_artifacts, parity_layout
 from stunt_reel.batch_ledger import Record
-from stunt_reel.parity_pipeline import RENDER_FLAGS, binary_path
+from stunt_reel.parity_pipeline import (
+    CommandError,
+    Run,
+    current_job,
+    render_film,
+    score_film,
+)
 
 if TYPE_CHECKING:
     from stunt_reel.batch_films import BatchFilm
@@ -37,7 +38,6 @@ __all__ = [
     "KNOWN_STALL_MESSAGE",
     "MIN_CAPTURE_FRAMES",
     "UNPATCHED_CAPTURES",
-    "Runner",
     "run_archive",
     "run_capture",
     "run_render",
@@ -45,13 +45,9 @@ __all__ = [
     "skip_stalled_capture",
 ]
 
-#: Runs one command with a timeout in seconds; returns the exit code and the tail of its output.
-Runner = Callable[[list[str], float], tuple[int, str]]
-
 _MAKE_ALL = Path("python/scripts/make_all.py")
 #: MAKEONE runs on the fast "archive" CPU profile, captures on the repeatable one (ADR 0023).
 _CAPTURE = Path("python/scripts/capture_playone_reference.py")
-_SIDATA = Path("corpus/siarchive/Developer/FreeFlight/SIDATA")
 #: Films the survey skips by default because their capture cannot succeed. Of the four DOSBox-X
 #: stalls (research/parity/batch.md), collage4-exit, collage4-exit2 and flmonly-count capture
 #: whole on dosbox-automation with either PLAYONE build; flmonly-bigman replays a tick apart
@@ -76,7 +72,7 @@ _TAIL_WIDTH = 400
 _TEARDOWN_MARGIN = 90
 
 
-def run_archive(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Record:
+def run_archive(film: BatchFilm, root: Path, run: Run, timeout: float) -> Record:
     """Generate the film's ``.ALL`` with ``make_all.py``, or skip it when a sibling archive exists."""
     started = time.perf_counter()
     if film.has_sibling_all:
@@ -99,7 +95,7 @@ def skip_stalled_capture(film: BatchFilm) -> Record:
     return _record(film, "capture", "skipped", KNOWN_STALL_MESSAGE, time.perf_counter())
 
 
-def run_capture(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Record:
+def run_capture(film: BatchFilm, root: Path, run: Run, timeout: float) -> Record:
     """Capture the reference frames of the film with ``capture_playone_reference.py``."""
     started = time.perf_counter()
     command = [sys.executable, str(root / _CAPTURE), "--film", str(film.flm)]
@@ -141,66 +137,39 @@ def _capture_problem(root: Path, slug: str) -> str | None:
     return None
 
 
-def run_render(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Record:
+def run_render(film: BatchFilm, root: Path, run: Run, timeout: float) -> Record:
     """Render the film over the captured ticks, using its capture and its archive."""
     started = time.perf_counter()
     try:
-        capture = capture_store.current(root / parity_layout.frames_path(film.slug))
-        if capture is None:
+        job = current_job(film, root)
+        if job is None:
             return _record(
                 film, "render", "error", "no capture yet; run the capture stage", started
             )
-        ticks = [frame.film_tick for frame in parity_artifacts.read_capture(capture).frames]
-        archive = all_archive.resolve_all(film.flm, root, film.slug)
-        out = root / parity_layout.batch_film_dir(film.slug) / "render"
-        command = [
-            str(binary_path()),
-            "--headless",
-            str(film.flm),
-            "--all",
-            str(archive),
-            "--tick-range",
-            parity_artifacts.tick_range_for_captured_ticks(ticks),
-            "--sidata",
-            str(root / _SIDATA),
-            "--out-dir",
-            str(out),
-            *RENDER_FLAGS,
-        ]
+        render_film(
+            job, root / parity_layout.batch_film_dir(film.slug) / "render", run=run, timeout=timeout
+        )
+    except CommandError as exc:
+        return _record(film, "render", "error", _exit_message(exc), started)
     except Exception as exc:  # noqa: BLE001 - a stage never raises; the failure is the record
         return _record(film, "render", "error", _describe(exc), started)
-    return _execute(film, "render", command, timeout, run, started)
+    return _record(film, "render", "ok", "", started)
 
 
-def run_score(film: BatchFilm, root: Path, run: Runner, timeout: float) -> Record:
+def run_score(film: BatchFilm, root: Path, run: Run, timeout: float) -> Record:
     """Score the render against the film's capture; the record carries the headline SSIM and IoU."""
     started = time.perf_counter()
     film_dir = root / parity_layout.batch_film_dir(film.slug)
-    report = film_dir / "report"
     try:
-        capture = capture_store.current(root / parity_layout.frames_path(film.slug))
-        if capture is None:
+        job = current_job(film, root)
+        if job is None:
             return _record(film, "score", "error", "no capture yet; run the capture stage", started)
-        command = [
-            str(binary_path()),
-            "parity",
-            "--reference",
-            str(capture),
-            "--test",
-            str(film_dir / "render"),
-            "--output",
-            str(report),
-        ]
+        scored = score_film(job, film_dir / "render", film_dir / "report", run=run, timeout=timeout)
+    except CommandError as exc:
+        return _record(film, "score", "error", _exit_message(exc), started)
     except Exception as exc:  # noqa: BLE001 - a stage never raises; the failure is the record
         return _record(film, "score", "error", _describe(exc), started)
-    outcome = _execute(film, "score", command, timeout, run, started)
-    if outcome.status != "ok":
-        return outcome
-    try:
-        ssim, iou = parity_artifacts.read_report(report / "report.json").headline()
-    except Exception as exc:  # noqa: BLE001 - a stage never raises; the failure is the record
-        return _record(film, "score", "error", f"unreadable report: {_describe(exc)}", started)
-    return _record(film, "score", "ok", "", started, ssim=ssim, iou=iou)
+    return _record(film, "score", "ok", "", started, ssim=scored.score.ssim, iou=scored.score.iou)
 
 
 def _execute(
@@ -208,19 +177,25 @@ def _execute(
     stage: str,
     command: list[str],
     timeout: float,
-    run: Runner,
+    run: Run,
     started: float,
 ) -> Record:
     """Run *command* and record ``ok``, or ``error`` with the exit code and the output tail."""
     try:
-        code, tail = run(command, timeout)
+        code, tail = run(command, None, timeout)
     except Exception as exc:  # noqa: BLE001 - a stage never raises; the failure is the record
         return _record(film, stage, "error", _describe(exc), started)
     if code != 0:
-        detail = _one_line(tail[-_TAIL_WIDTH:])
-        message = f"exit {code}: {detail}" if detail else f"exit {code}"
-        return _record(film, stage, "error", message, started)
+        return _record(
+            film, stage, "error", _exit_message(CommandError(command, code, tail)), started
+        )
     return _record(film, stage, "ok", "", started)
+
+
+def _exit_message(failure: CommandError) -> str:
+    """``exit N`` and the last of the failed command's output, on one line."""
+    detail = _one_line(failure.tail[-_TAIL_WIDTH:])
+    return f"exit {failure.code}: {detail}" if detail else f"exit {failure.code}"
 
 
 def _describe(exc: Exception) -> str:

@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from stunt_reel import batch_stages, dataroot, parity_layout
+from render_helpers import write_store
+from stunt_reel import batch_stages, dataroot, parity_layout, parity_pipeline
 from stunt_reel.batch_films import BatchFilm
 
 if TYPE_CHECKING:
@@ -22,14 +23,16 @@ if TYPE_CHECKING:
 
 
 class FakeRunner:
-    """Records each command and answers with a fixed exit code and output tail."""
+    """The subprocess adapter: records each command and answers with a fixed exit code and tail."""
 
     def __init__(self, code: int = 0, tail: str = "") -> None:
         self.code = code
         self.tail = tail
-        self.calls: list[tuple[list[str], float]] = []
+        self.calls: list[tuple[list[str], float | None]] = []
 
-    def __call__(self, command: list[str], timeout: float) -> tuple[int, str]:
+    def __call__(
+        self, command: list[str], _env: dict[str, str] | None, timeout: float | None
+    ) -> tuple[int, str]:
         self.calls.append((list(command), timeout))
         return self.code, self.tail
 
@@ -149,7 +152,9 @@ def test_nonzero_exit_becomes_an_error_record_with_the_output_tail(tmp_path: Pat
 
 
 def test_a_runner_exception_becomes_an_error_record(tmp_path: Path) -> None:
-    def broken(_command: list[str], _timeout: float) -> tuple[int, str]:
+    def broken(
+        _command: list[str], _env: dict[str, str] | None, _timeout: float | None
+    ) -> tuple[int, str]:
         raise RuntimeError("dosbox not found")
 
     record = batch_stages.run_capture(_film(tmp_path), tmp_path, broken, 900.0)
@@ -254,6 +259,16 @@ def test_a_known_stall_is_a_skipped_capture_record(tmp_path: Path) -> None:
     assert batch_stages.KNOWN_CAPTURE_STALLS == ("flmonly-bigman",)
 
 
+def _render_film(tmp_path: Path, ticks: list[int] | None = None) -> BatchFilm:
+    """The CTRY film with a sibling archive and, when *ticks* is given, a capture of them."""
+    film = _film(tmp_path)
+    film.flm.parent.mkdir(parents=True, exist_ok=True)
+    (film.flm.parent / "CTRY.ALL").write_bytes(b"")
+    if ticks is not None:
+        _write_capture(tmp_path, film.slug, ticks)
+    return film
+
+
 def test_render_without_a_capture_is_an_error_naming_capture(tmp_path: Path) -> None:
     runner = FakeRunner()
     record = batch_stages.run_render(_film(tmp_path), tmp_path, runner, 600.0)
@@ -263,21 +278,89 @@ def test_render_without_a_capture_is_an_error_naming_capture(tmp_path: Path) -> 
     assert runner.calls == []
 
 
-def test_score_record_carries_ssim_and_iou(tmp_path: Path) -> None:
-    film = _film(tmp_path)
-    capture = tmp_path / "build" / "parity" / "captures" / "vault-ctry" / "frames"
-    capture.mkdir(parents=True)
-    (capture / "meta.json").write_text("{}", encoding="utf-8")
+def test_render_asks_the_binary_for_the_captured_ticks_into_the_batch_directory(
+    tmp_path: Path,
+) -> None:
+    film = _render_film(tmp_path, [7, 9])
+    runner = FakeRunner()
+    record = batch_stages.run_render(film, tmp_path, runner, 600.0)
+    assert (record.stage, record.status) == ("render", "ok")
+    ((command, timeout),) = runner.calls
+    assert timeout == 600.0
+    assert command[0] == str(parity_pipeline.binary_path())
+    assert command[command.index("--all") + 1] == str(film.flm.parent / "CTRY.ALL")
+    assert command[command.index("--tick-range") + 1] == "7..=9"
+    assert command[command.index("--sidata") + 1] == str(tmp_path / parity_pipeline.SIDATA)
+    out = tmp_path / parity_layout.batch_film_dir(film.slug) / "render"
+    assert command[command.index("--out-dir") + 1] == str(out)
+    assert command[-6:] == list(parity_pipeline.RENDER_FLAGS)
 
-    def score_writes_report(command: list[str], _timeout: float) -> tuple[int, str]:
+
+def test_a_failed_render_keeps_its_exit_and_tail(tmp_path: Path) -> None:
+    film = _render_film(tmp_path, [7, 9])
+    record = batch_stages.run_render(film, tmp_path, FakeRunner(code=2, tail="no GPU\n"), 600.0)
+    assert (record.stage, record.status) == ("render", "error")
+    assert record.message == "exit 2: no GPU"
+
+
+def test_render_without_an_archive_is_an_error_and_starts_nothing(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    film.flm.parent.mkdir(parents=True)
+    _write_capture(tmp_path, film.slug, [7, 9])
+    runner = FakeRunner()
+    record = batch_stages.run_render(film, tmp_path, runner, 600.0)
+    assert (record.stage, record.status) == ("render", "error")
+    assert "no .ALL" in record.message
+    assert runner.calls == []
+
+
+def _write_render(tmp_path: Path, film: BatchFilm, ticks: list[int]) -> None:
+    write_store(tmp_path / parity_layout.batch_film_dir(film.slug) / "render", ticks)
+
+
+class ReportWriter(FakeRunner):
+    """A score adapter that writes the ``report.json`` the binary would."""
+
+    def __call__(
+        self, command: list[str], env: dict[str, str] | None, timeout: float | None
+    ) -> tuple[int, str]:
         output = Path(command[command.index("--output") + 1])
         output.mkdir(parents=True, exist_ok=True)
         document = {"per_frame": [], "mean_ssim_scored": 0.7, "mean_iou_scored": 0.9}
         (output / "report.json").write_text(json.dumps(document), encoding="utf-8")
-        return 0, ""
+        return super().__call__(command, env, timeout)
 
-    record = batch_stages.run_score(film, tmp_path, score_writes_report, 600.0)
+
+def test_score_record_carries_ssim_and_iou(tmp_path: Path) -> None:
+    film = _render_film(tmp_path, [7, 9])
+    _write_render(tmp_path, film, [7, 9])
+    runner = ReportWriter()
+    record = batch_stages.run_score(film, tmp_path, runner, 600.0)
     assert record.status == "ok"
     assert record.stage == "score"
     assert record.ssim == 0.7
     assert record.iou == 0.9
+    ((command, _timeout),) = runner.calls
+    capture = tmp_path / parity_layout.frames_path(film.slug)
+    assert command[command.index("--reference") + 1] == str(capture)
+    film_dir = tmp_path / parity_layout.batch_film_dir(film.slug)
+    assert command[command.index("--test") + 1] == str(film_dir / "render")
+    assert command[command.index("--output") + 1] == str(film_dir / "report")
+
+
+def test_score_refuses_a_render_that_misses_a_captured_tick(tmp_path: Path) -> None:
+    film = _render_film(tmp_path, [7, 9])
+    _write_render(tmp_path, film, [7])
+    runner = ReportWriter()
+    record = batch_stages.run_score(film, tmp_path, runner, 600.0)
+    assert (record.stage, record.status) == ("score", "error")
+    assert "no render planes for 1 captured tick(s), first 9" in record.message
+    assert runner.calls == []
+
+
+def test_score_without_a_capture_is_an_error_naming_capture(tmp_path: Path) -> None:
+    runner = FakeRunner()
+    record = batch_stages.run_score(_film(tmp_path), tmp_path, runner, 600.0)
+    assert (record.stage, record.status) == ("score", "error")
+    assert "capture" in record.message
+    assert runner.calls == []

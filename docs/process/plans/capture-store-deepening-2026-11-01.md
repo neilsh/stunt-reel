@@ -40,7 +40,7 @@ more expensive:
    through it. The light probe and `play` use only its staging and failure mapping. Tests go
    through the `ScriptRunner` seam with `MockAutomation` and a temporary data root, and replace the
    monkeypatch tests rather than sit beside them. `UNPATCHED_CAPTURES` is deleted.
-4. **Film parity operation.** One module renders a film over a tick range, checks the render and
+4. **Film parity operation** ([#141](https://github.com/neilsh/stunt-reel/issues/141), implemented in `parity_pipeline`, which the loop already imported). One module renders a film over a tick range, checks the render and
    scores it against a capture: the reference capture or the film's current one. It owns the
    `stuntreel` command lines, the SIDATA path and the `report.json` location. Run it through a
    single subprocess adapter, `(argv, env, timeout) -> (code, tail)`, used by both callers. The

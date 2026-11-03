@@ -25,10 +25,10 @@ import batch_parity  # noqa: E402
 from stunt_reel import batch_ledger, batch_stages, parity_layout  # noqa: E402
 from stunt_reel.batch_films import BatchFilm  # noqa: E402
 from stunt_reel.batch_ledger import STAGES, Record  # noqa: E402
-from stunt_reel.batch_stages import Runner  # noqa: E402
+from stunt_reel.parity_pipeline import Run  # noqa: E402
 
 TIMEOUTS = {"archive": 900.0, "capture": 900.0, "render": 600.0, "score": 600.0}
-StageFunction = Callable[[BatchFilm, Path, Runner, float], Record]
+StageFunction = Callable[[BatchFilm, Path, Run, float], Record]
 
 
 class FakeStages:
@@ -44,7 +44,7 @@ class FakeStages:
         self.builds += 1
 
     def factory(self, stage: str) -> StageFunction:
-        def run_stage(film: BatchFilm, _root: Path, _run: Runner, _timeout: float) -> Record:
+        def run_stage(film: BatchFilm, _root: Path, _run: Run, _timeout: float) -> Record:
             self.calls.append((film.slug, stage))
             if self.during is not None:
                 self.during(film.slug, stage)
@@ -71,7 +71,9 @@ def _install(monkeypatch: pytest.MonkeyPatch) -> FakeStages:
     return fake
 
 
-def _no_process(command: list[str], _timeout: float) -> tuple[int, str]:
+def _no_process(
+    command: list[str], _env: dict[str, str] | None, _timeout: float | None
+) -> tuple[int, str]:
     raise AssertionError(f"a stage started a process: {command}")
 
 
@@ -183,7 +185,7 @@ def test_only_selects_slugs_and_unknown_slug_is_refused(
     (tmp_path / "corpus" / "VAULT" / "CTRY.FLM").write_bytes(b"ctry")
     (tmp_path / "corpus" / "MORGAN").mkdir(parents=True)
     (tmp_path / "corpus" / "MORGAN" / "INTRO.FLM").write_bytes(b"intro")
-    monkeypatch.setattr(batch_parity, "_run_command", _no_process)
+    monkeypatch.setattr(batch_parity, "run_command", _no_process)
 
     assert batch_parity.main(["--only", "vault-ctry", "--data-root", str(tmp_path)]) == 0
     assert {slug for slug, _ in fake.calls} == {"vault-ctry"}
@@ -220,7 +222,7 @@ def test_contact_sheets_are_copied_after_a_successful_score(
 ) -> None:
     _install(monkeypatch)
 
-    def score_writes_sheets(film: BatchFilm, root: Path, _run: Runner, _timeout: float) -> Record:
+    def score_writes_sheets(film: BatchFilm, root: Path, _run: Run, _timeout: float) -> Record:
         report = root / parity_layout.batch_film_dir(film.slug) / "report"
         report.mkdir(parents=True, exist_ok=True)
         (report / "contact_0001.png").write_bytes(b"png")
@@ -293,7 +295,7 @@ def test_main_skips_known_stalls_unless_only_or_retry_errors_name_them(
 ) -> None:
     fake = _install(monkeypatch)
     _corpus(tmp_path)
-    monkeypatch.setattr(batch_parity, "_run_command", _no_process)
+    monkeypatch.setattr(batch_parity, "run_command", _no_process)
     root = ["--data-root", str(tmp_path), "--stages", "capture"]
 
     assert batch_parity.main(root) == 0
@@ -313,7 +315,7 @@ def test_skip_flag_adds_slugs_to_the_default_list(
 ) -> None:
     fake = _install(monkeypatch)
     _corpus(tmp_path)
-    monkeypatch.setattr(batch_parity, "_run_command", _no_process)
+    monkeypatch.setattr(batch_parity, "run_command", _no_process)
     args = ["--data-root", str(tmp_path), "--stages", "capture", "--skip", "vault-ctry"]
     assert batch_parity.main(args) == 0
     assert fake.calls == []
@@ -444,7 +446,7 @@ def test_a_run_that_renders_builds_the_binary_first(
 ) -> None:
     fake = _install(monkeypatch)
     _corpus(tmp_path)
-    monkeypatch.setattr(batch_parity, "_run_command", _no_process)
+    monkeypatch.setattr(batch_parity, "run_command", _no_process)
     assert batch_parity.main(["--data-root", str(tmp_path), "--only", "vault-ctry", *flags]) == 0
     assert fake.builds == builds
 

@@ -5,9 +5,11 @@ Each tick's planes differ by tick, so a test can tell which source tick a frame 
 
 from __future__ import annotations
 
+import json
 import struct
 from typing import TYPE_CHECKING
 
+from stunt_reel import parity_layout, parity_pipeline, references
 from stunt_reel.parity_artifacts import (
     PALETTE_BYTES,
     RENDER_SCHEMA_VERSION,
@@ -94,3 +96,30 @@ def flip_byte(data: bytes, at: int = 0) -> bytes:
     changed = bytearray(data)
     changed[at] ^= 1
     return bytes(changed)
+
+
+def pin_reference(root: Path, film: str, frames: list[dict[str, int]]) -> Path:
+    """Write a capture of *film* under *root* and name it in the root's references.toml."""
+    reference = root / parity_layout.frames_path(f"vault-{film}")
+    reference.mkdir(parents=True, exist_ok=True)
+    (reference / "meta.json").write_text(json.dumps({"frames": frames}), encoding="utf-8")
+    pointers = root / parity_layout.REFERENCES_FILE
+    pointers.parent.mkdir(parents=True, exist_ok=True)
+    digest = references.capture_digest(reference)
+    with pointers.open("a", encoding="utf-8") as handle:
+        handle.write(f'[{film}]\nfilm = "vault-{film}"\nsha256 = "{digest}"\n')
+    return reference
+
+
+def reference_tree(
+    root: Path, ticks: list[int], films: tuple[str, ...] = ("ctry", "intro")
+) -> Path:
+    """A data root holding each film's ``.FLM``, ``.ALL`` and SIDATA, and its pinned capture."""
+    vault = root / "corpus" / "stisldem" / "VAULT"
+    vault.mkdir(parents=True, exist_ok=True)
+    (root / parity_pipeline.SIDATA).mkdir(parents=True, exist_ok=True)
+    for name in films:
+        (vault / f"{name.upper()}.FLM").write_bytes(b"")
+        (vault / f"{name.upper()}.ALL").write_bytes(b"")
+        pin_reference(root, name, [{"film_tick": tick} for tick in ticks])
+    return root

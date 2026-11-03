@@ -17,7 +17,11 @@ import parity_run  # noqa: E402
 import parity_sweep  # noqa: E402
 from cli import ParityOptions, UsageError, add_parity_options, parity_options  # noqa: E402
 
-from stunt_reel.parity_pipeline import FILMS, REPO_ROOT  # noqa: E402
+from stunt_reel import references  # noqa: E402
+from stunt_reel.parity_pipeline import REPO_ROOT  # noqa: E402
+
+#: The films of the committed references.toml, which is what the parity loop covers.
+FILMS = references.reference_films(REPO_ROOT)
 
 
 def _options(module: Any, argv: list[str]) -> ParityOptions:
@@ -31,7 +35,7 @@ def test_both_entry_points_build_the_same_options() -> None:
 
 def test_defaults_cover_every_film_and_this_checkout() -> None:
     options = _options(parity_run, [])
-    assert options.films == tuple(FILMS)
+    assert options.films == FILMS
     assert options.data_root == REPO_ROOT.resolve()
     assert (options.no_build, options.reuse, options.retime) == (False, None, None)
 

@@ -78,3 +78,22 @@ def test_result_is_sorted_by_slug(tmp_path: Path) -> None:
     slugs = [film.slug for film in batch_films.discover(tmp_path)]
 
     assert slugs == sorted(slugs) == ["alpha-m", "mid-c", "zed-q"]
+
+
+def test_find_returns_the_first_path_with_the_slug_without_reading_the_rest(tmp_path: Path) -> None:
+    first = _write(tmp_path / "VAULT" / "CTRY.FLM", b"ctry")
+    _write(tmp_path / "OTHER" / "CTRY.FLM", b"ctry2")
+    film = batch_films.find(tmp_path, "vault-ctry")
+    assert film is not None
+    assert (film.flm, film.name) == (first, None)
+    assert film.sha256 == hashlib.sha256(b"ctry").hexdigest()
+    assert batch_films.find(tmp_path, "vault-nope") is None
+
+
+def test_find_looks_a_hash_suffixed_slug_up_in_the_full_manifest(tmp_path: Path) -> None:
+    _write(tmp_path / "a" / "VAULT" / "CTRY.FLM", b"one")
+    second = _write(tmp_path / "b" / "VAULT" / "CTRY.FLM", b"two")
+    (suffixed,) = (film for film in batch_films.discover(tmp_path) if film.name is not None)
+    found = batch_films.find(tmp_path, suffixed.slug)
+    assert found is not None
+    assert found.flm == second

@@ -18,12 +18,8 @@ those stages run. The contact sheets of a scored film are copied into its frames
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
-import os
 import shutil
-import signal
-import subprocess
 import sys
 import threading
 import time
@@ -36,14 +32,14 @@ from stunt_reel import batch_stages, parity_layout
 from stunt_reel.batch_films import discover
 from stunt_reel.batch_ledger import STAGES, append, latest, read, summarize
 from stunt_reel.dataroot import ensure_links_or_report
-from stunt_reel.parity_pipeline import REPO_ROOT, build_release
+from stunt_reel.parity_pipeline import REPO_ROOT, build_release, run_command
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from stunt_reel.batch_films import BatchFilm
     from stunt_reel.batch_ledger import Record
-    from stunt_reel.batch_stages import Runner
+    from stunt_reel.parity_pipeline import Run
 
 __all__ = ["main", "process"]
 
@@ -59,14 +55,13 @@ _DEFAULT_CAPTURE_TIMEOUT = 3600.0
 #: A MAKEONE run plays the film once in real time; 900 s covers the longest archive.
 _DEFAULT_ARCHIVE_TIMEOUT = 900.0
 _RENDER_TIMEOUT = 600.0
-_TIMEOUT_EXIT = 124
 _DEFAULT_MAX_RENDERS = 2
 _DEFAULT_MIN_FREE_GB = 8.0
 _DISK_POLL_SECONDS = 30.0
 _GIB = 1024**3
 
 
-def _stage_function(stage: str) -> Callable[[BatchFilm, Path, Runner, float], Record]:
+def _stage_function(stage: str) -> Callable[[BatchFilm, Path, Run, float], Record]:
     """The stage runner for *stage*, looked up at call time."""
     functions = {
         "archive": batch_stages.run_archive,
@@ -89,7 +84,7 @@ def process(
     films: list[BatchFilm],
     root: Path,
     ledger: Path,
-    run: Runner,
+    run: Run,
     *,
     stages: tuple[str, ...],
     retry_errors: bool,
@@ -152,7 +147,7 @@ class _Shared:
 
     root: Path
     ledger: Path
-    run: Runner
+    run: Run
     stages: tuple[str, ...]
     retry_errors: bool
     timeouts: dict[str, float]
@@ -239,7 +234,7 @@ def _mark_later_stale(slug: str, stage: str, failed: Record, shared: _Shared) ->
 
 
 def _render_guarded(
-    function: Callable[[BatchFilm, Path, Runner, float], Record], film: BatchFilm, shared: _Shared
+    function: Callable[[BatchFilm, Path, Run, float], Record], film: BatchFilm, shared: _Shared
 ) -> Record:
     """Run the render stage when a render slot and enough free disk are available."""
     with shared.renders:
@@ -301,45 +296,6 @@ def film_rows(root: Path, slugs: list[str]) -> str:
 def _metric(value: object) -> str:
     """A report mean to three places, or ``-`` when the report has none (no scored frames)."""
     return f"{value:.3f}" if isinstance(value, int | float) else "-"
-
-
-_NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-
-
-def _run_command(command: list[str], timeout: float) -> tuple[int, str]:
-    """Run *command* to completion or *timeout*; return its exit code and combined output.
-
-    On a timeout the whole process tree is ended: a plain ``subprocess.run`` timeout kills only the
-    direct child, which leaks the emulator it started.
-    """
-    windows = sys.platform == "win32"
-    with subprocess.Popen(  # noqa: S603 - the command is built from fixed paths and film names
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        creationflags=_NEW_GROUP if windows else 0,
-        start_new_session=not windows,
-    ) as child:
-        try:
-            output, _ = child.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            _kill_tree(child.pid)
-            child.communicate()
-            return _TIMEOUT_EXIT, f"timeout after {timeout:g}s"
-        return child.returncode, output
-
-
-def _kill_tree(pid: int) -> None:
-    """End *pid* and every process it started."""
-    if sys.platform == "win32":
-        command = ["taskkill", "/T", "/F", "/PID", str(pid)]
-        subprocess.run(command, capture_output=True, check=False)  # noqa: S603 - fixed taskkill invocation
-    else:
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(pid, signal.SIGKILL)
 
 
 def _names(value: str | None) -> list[str]:
@@ -453,7 +409,7 @@ def main(argv: list[str] | None = None) -> int:
         films,
         root,
         ledger,
-        _run_command,
+        run_command,
         stages=stages,
         retry_errors=args.retry_errors,
         limit=args.limit,
