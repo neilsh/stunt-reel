@@ -24,6 +24,7 @@ import argparse
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -344,7 +345,11 @@ def _prune_render_trees(confirmed: bool, keep: int) -> int:
         if not root.is_dir() or is_link(root):
             continue
         for child in sorted(root.iterdir()):
-            if not child.is_dir() or parity_layout.is_protected_render(child.name):
+            if (
+                not child.is_dir()
+                or is_link(child)
+                or parity_layout.is_protected_render(child.name)
+            ):
                 continue
             size, files = _tree_footprint(child)
             ranked.append((child, size, files))
@@ -374,9 +379,32 @@ def _prune_render_trees(confirmed: bool, keep: int) -> int:
         print("\ndry run; re-run with --yes to remove them")
         return 0
     for child, _ in doomed:
-        shutil.rmtree(child, ignore_errors=True)
+        _remove_tree(child)
     print(f"\nremoved {len(doomed)} tree(s)")
     return 0
+
+
+def _remove_tree(path: Path) -> None:
+    """Delete ``path`` whole, read-only files included: git marks its objects read-only,
+    so a test's scratch repository under ``.pytest_cache`` stops ``rmtree`` on Windows.
+    Any other failure is raised: a link at ``path``, since ``chmod`` follows it and would
+    change the target, and any POSIX failure, where a refused unlink means the parent
+    directory is not writable and the file's own mode is not the cause."""
+
+    def _clear_read_only(
+        function: Callable[[str], object], name: str, error: BaseException
+    ) -> None:
+        if (
+            os.name != "nt"
+            or not isinstance(error, PermissionError)
+            or function not in (os.unlink, os.rmdir)
+            or is_link(Path(name))
+        ):
+            raise error
+        Path(name).chmod(stat.S_IWRITE)
+        function(name)
+
+    shutil.rmtree(path, onexc=_clear_read_only)
 
 
 def _clean(confirmed: bool, parity: bool = False, keep: int = 1) -> int:
@@ -414,7 +442,7 @@ def _clean(confirmed: bool, parity: bool = False, keep: int = 1) -> int:
         remove_link(reference)
     for path in targets:
         if path.exists() and not is_link(path):
-            shutil.rmtree(path)
+            _remove_tree(path)
     for path in files:
         path.unlink(missing_ok=True)
     if restore:

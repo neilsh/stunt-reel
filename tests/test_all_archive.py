@@ -91,7 +91,7 @@ def test_publish_writes_meta_last_and_renames(tmp_path: Path) -> None:
     assert ArchiveMeta.from_json(
         (target / "meta.json").read_text(encoding="utf-8")
     ).all_bytes == len(data)
-    assert sorted(p.name for p in target.parent.iterdir()) == ["archives"]
+    assert sorted(p.name for p in target.parent.iterdir() if p.suffix != ".lock") == ["archives"]
 
 
 def test_publish_replaces_the_films_archive(tmp_path: Path) -> None:
@@ -101,7 +101,7 @@ def test_publish_replaces_the_films_archive(tmp_path: Path) -> None:
     second = publish_archive(tmp_path, other, _meta(other), slug=SLUG, film="BALLOON.FLM")
     assert second == first
     assert (second / "BALLOON.ALL").read_bytes() == other
-    assert sorted(p.name for p in second.parent.iterdir()) == ["archives"]
+    assert sorted(p.name for p in second.parent.iterdir() if p.suffix != ".lock") == ["archives"]
 
 
 def test_a_failed_write_keeps_the_old_archive_and_leaves_nothing_behind(
@@ -118,7 +118,7 @@ def test_a_failed_write_keeps_the_old_archive_and_leaves_nothing_behind(
         publish_archive(tmp_path, data, _meta(data), slug=SLUG, film="BALLOON.FLM")
     monkeypatch.undo()
     assert (target / "BALLOON.ALL").read_bytes() == data
-    assert sorted(p.name for p in target.parent.iterdir()) == ["archives"]
+    assert sorted(p.name for p in target.parent.iterdir() if p.suffix != ".lock") == ["archives"]
 
 
 FLM_BYTES = b"FILM-balloon"

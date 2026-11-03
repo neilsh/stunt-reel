@@ -7,7 +7,7 @@
     clippy::items_after_statements,
     reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
 )]
-//! Palette LUT, camera and SSIM tests that need no GPU adapter.
+//! Palette LUT and camera tests that need no GPU adapter.
 //!
 //! The offscreen render tests moved to `renderer_test.rs`, where they cross the Renderer entry
 //! point and assert on `RenderedPage`: the plane is the test seam.
@@ -15,8 +15,7 @@
 use stunt_core::contracts::trajectory::PLAYONE_FOV_Y_DEGREES;
 use stunt_core::scene::ViewCamera;
 use stunt_render::{
-    ASPECT_CORRECTED_HEIGHT, CameraController, CameraMode, MODE13H_PROJECTION_ASPECT,
-    MODE13H_WIDTH, build_palette_lut_bytes, compute_frame_ssim, rgba_to_luminance,
+    CameraController, CameraMode, MODE13H_PROJECTION_ASPECT, build_palette_lut_bytes,
 };
 
 #[test]
@@ -96,49 +95,4 @@ fn test_camera_controller_and_aspect_ratio() {
 
     let free_uniform = cam.build_uniform();
     assert_ne!(free_uniform.camera_pos, [10.0, 20.0, 30.0]);
-}
-
-#[test]
-fn test_ssim_evaluator() {
-    let size = MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT;
-    let mut frame_ref = vec![100.0f32; size];
-    // Add patterned details
-    for (i, item) in frame_ref.iter_mut().enumerate() {
-        *item = ((i % 128) + 50) as f32;
-    }
-
-    // Identical frame -> SSIM must be 1.0
-    let ssim_ident = compute_frame_ssim(
-        &frame_ref,
-        &frame_ref,
-        MODE13H_WIDTH,
-        ASPECT_CORRECTED_HEIGHT,
-        11,
-        8,
-    );
-    assert!(
-        (ssim_ident - 1.0).abs() < 1e-4,
-        "Expected 1.0, got {ssim_ident}"
-    );
-
-    // Slightly perturbed frame (0.5 LSB average) -> SSIM should easily exceed the sign-off
-    // threshold (>= 0.90)
-    let frame_test: Vec<f32> = frame_ref.iter().map(|&v| (v + 0.5).min(255.0)).collect();
-    let ssim_test = compute_frame_ssim(
-        &frame_ref,
-        &frame_test,
-        MODE13H_WIDTH,
-        ASPECT_CORRECTED_HEIGHT,
-        11,
-        8,
-    );
-    assert!(ssim_test >= 0.90, "SSIM {ssim_test} must be >= 0.90");
-}
-
-#[test]
-fn test_blank_page_luminance_is_flat() {
-    let rgba = vec![255u8; MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT * 4];
-    let lum = rgba_to_luminance(&rgba);
-    assert_eq!(lum.len(), MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT);
-    assert!(lum.iter().all(|&value| (value - 255.0).abs() < 1e-3));
 }

@@ -7,7 +7,7 @@
 //! - `[I3]` VGA Mode 13h 256-color palette lookup texture with `@interpolate(flat)`.
 //! - `[I4]` Discrete simulation ticks (50 Hz) with sub-tick interpolation.
 //! - `[I5]` Dual-pipeline hardware depth bias pass for coplanar decals.
-//! - `[I6]` 4:3 physical aspect ratio (320x240) and SSIM parity evaluation.
+//! - `[I6]` 4:3 physical aspect ratio (320x240); the SSIM scoring itself lives in `stunt-cli`'s parity module.
 //!
 //! Renderer is the entry point for both destinations: offscreen readback into a `PageSink` and a
 //! presented window surface. Everything behind it - the pipelines, palette LUT, camera resources,
@@ -15,7 +15,6 @@
 #![deny(unsafe_code)]
 
 pub mod camera;
-pub mod parity;
 pub mod renderer;
 pub mod video;
 
@@ -39,16 +38,12 @@ pub use camera::{
 pub use palette::{
     PALETTE_LUT_HEIGHT, PALETTE_LUT_WIDTH, build_palette_lut_bytes, build_palette_lut_bytes_from,
 };
-pub use parity::{
-    ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH, WindowScore, compute_frame_ssim,
-    compute_frame_ssim_masked, compute_luminance, compute_window_scores, compute_window_ssim,
-    rescale_mode13h_frame, rgb_to_luminance, rgba_to_luminance,
-};
 pub use pipeline::{
     LAYER_FIRST_ACTOR, LAYER_NONE, LAYER_OCEAN, LAYER_OVERLAY, LAYER_PROP, LAYER_TERRAIN,
 };
 pub use renderer::{
-    DEFAULT_CLEAR_PALETTE_INDEX, DEFAULT_PAGE_HEIGHT, DEFAULT_PAGE_WIDTH, Offscreen, PageSink,
-    PageSize, RenderError, RenderOptions, RenderedPage, Renderer, SinkError,
+    ASPECT_CORRECTED_HEIGHT, DEFAULT_CLEAR_PALETTE_INDEX, DEFAULT_PAGE_HEIGHT, DEFAULT_PAGE_WIDTH,
+    MODE13H_HEIGHT, MODE13H_WIDTH, Offscreen, PageSink, PageSize, RenderError, RenderOptions,
+    RenderedPage, Renderer, SinkError,
 };
 pub use video::{FfmpegVideoWriter, VideoExportError};

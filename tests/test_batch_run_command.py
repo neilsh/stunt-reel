@@ -17,6 +17,8 @@ import pytest
 
 from stunt_reel import parity_pipeline
 
+pytestmark = pytest.mark.windows
+
 _GRANDCHILD = "import time; time.sleep(30)"
 _CHILD = (
     "import subprocess, sys, time\n"
@@ -58,7 +60,9 @@ def test_timeout_kills_the_grandchild_too(tmp_path: Path) -> None:
         code, output = parity_pipeline.run_command(
             [sys.executable, "-c", _CHILD, str(pid_file)], None, 2.0
         )
-        assert time.monotonic() - started < 8.0
+        # A surviving grandchild holds the pipe, so communicate() would wait out its 30 s sleep.
+        # Stay well under that: the gate's parallel lanes have pushed this past 8 s.
+        assert time.monotonic() - started < 20.0
         assert pid_file.exists()
         grandchild = int(pid_file.read_text())
         assert code == parity_pipeline.TIMEOUT_EXIT
