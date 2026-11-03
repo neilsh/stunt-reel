@@ -234,15 +234,26 @@ def run_command(
         try:
             output, _ = child.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
-            _kill_tree(child.pid)
-            # A descendant the kill missed may still hold the pipe; do not wait on it forever.
-            with contextlib.suppress(subprocess.TimeoutExpired):
-                child.communicate(timeout=_REAP_SECONDS)
+            _end(child)
             return TIMEOUT_EXIT, f"timeout after {timeout:g}s"
         except BaseException:
-            _kill_tree(child.pid)
+            _end(child)
             raise
         return child.returncode, output[-_TAIL_CHARS:]
+
+
+def _end(child: subprocess.Popen[str]) -> None:
+    """End *child*'s tree, then the child itself, and reap it, all within bounded waits.
+
+    The direct kill covers a tree kill that failed or timed out: ``Popen``'s context exit waits
+    for the child without a timeout, so the child must be gone by then. A descendant the kill
+    missed may still hold the pipe, so the reap gives up after :data:`_REAP_SECONDS`.
+    """
+    _kill_tree(child.pid)
+    with contextlib.suppress(OSError):
+        child.kill()
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        child.communicate(timeout=_REAP_SECONDS)
 
 
 def _kill_tree(pid: int) -> None:

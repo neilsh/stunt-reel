@@ -96,3 +96,14 @@ def test_an_interrupt_kills_the_tree_and_propagates(monkeypatch: pytest.MonkeyPa
         parity_pipeline.run_command([sys.executable, "-c", "import time; time.sleep(30)"], None, 60)
     assert len(killed) == 1
     assert time.monotonic() - started < 20
+
+
+def test_a_failed_tree_kill_still_ends_the_child(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If the tree kill does nothing, the direct kill keeps Popen's exit wait from hanging."""
+    monkeypatch.setattr(parity_pipeline, "_kill_tree", lambda _pid: None)
+    started = time.monotonic()
+    code, _tail = parity_pipeline.run_command(
+        [sys.executable, "-c", "import time; time.sleep(30)"], None, 1
+    )
+    assert code == parity_pipeline.TIMEOUT_EXIT
+    assert time.monotonic() - started < 20
