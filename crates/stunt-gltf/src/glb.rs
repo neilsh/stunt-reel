@@ -44,6 +44,16 @@ pub(crate) fn num_array(values: &[f32]) -> Value {
     Value::Array(values.iter().copied().map(num).collect())
 }
 
+/// A JSON object of the `fields` whose value is `Some`, in the order given.
+pub(crate) fn object<const N: usize>(fields: [(&str, Option<Value>); N]) -> Value {
+    Value::Object(
+        fields
+            .into_iter()
+            .filter_map(|(key, value)| Some((key.to_owned(), value?)))
+            .collect(),
+    )
+}
+
 /// Parameters of one glTF accessor.
 pub(crate) struct AccessorSpec<'a> {
     pub(crate) view: usize,
@@ -86,17 +96,16 @@ impl GlbBuilder {
 
     /// Adds an accessor and returns its index.
     pub(crate) fn add_accessor(&mut self, spec: &AccessorSpec<'_>) -> usize {
-        let mut accessor = json!({
-            "bufferView": spec.view,
-            "byteOffset": spec.byte_offset,
-            "componentType": spec.component_type,
-            "count": spec.count,
-            "type": spec.kind,
-        });
-        if let Some((min, max)) = &spec.bounds {
-            accessor["min"] = num_array(min);
-            accessor["max"] = num_array(max);
-        }
+        let bounds = spec.bounds.as_ref();
+        let accessor = object([
+            ("bufferView", Some(json!(spec.view))),
+            ("byteOffset", Some(json!(spec.byte_offset))),
+            ("componentType", Some(json!(spec.component_type))),
+            ("count", Some(json!(spec.count))),
+            ("type", Some(json!(spec.kind))),
+            ("min", bounds.map(|(min, _)| num_array(min))),
+            ("max", bounds.map(|(_, max)| num_array(max))),
+        ]);
         self.accessors.push(accessor);
         self.accessors.len() - 1
     }
@@ -185,8 +194,9 @@ pub struct GlbSummary {
 /// start with a JSON chunk, or holds JSON that does not parse.
 pub fn summarize(glb: &[u8]) -> Result<GlbSummary, GltfError> {
     let word = |at: usize| -> Result<u32, GltfError> {
-        glb.get(at..at + 4)
-            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        glb.get(at..)
+            .and_then(<[u8]>::first_chunk::<4>)
+            .map(|&b| u32::from_le_bytes(b))
             .ok_or(GltfError::InvalidContainer("truncated header"))
     };
     if glb.get(..4) != Some(MAGIC.as_slice()) {

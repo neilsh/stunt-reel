@@ -42,10 +42,18 @@ struct Glb {
     bin_len: usize,
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test helper outside #[test]: an out-of-range index is the assertion failure"
+)]
 fn u32_at(data: &[u8], at: usize) -> u32 {
     u32::from_le_bytes(data[at..at + 4].try_into().unwrap())
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test helper outside #[test]: an out-of-range index is the assertion failure"
+)]
 fn parse_glb(data: &[u8]) -> Glb {
     assert_eq!(&data[..4], b"glTF", "magic");
     assert_eq!(u32_at(data, 4), 2, "version");
@@ -76,6 +84,10 @@ fn parse_glb(data: &[u8]) -> Glb {
     }
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test helper outside #[test]: an out-of-range index is the assertion failure"
+)]
 impl Glb {
     fn array(&self, key: &str) -> &Vec<Value> {
         self.json[key].as_array().unwrap_or_else(|| panic!("{key}"))
@@ -489,6 +501,10 @@ fn load(film: &[u8], all: &[u8]) -> FilmScene {
     .0
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test helper outside #[test]: an out-of-range index is the assertion failure"
+)]
 fn assert_camera_matches(glb: &Glb, camera: &ViewCamera) {
     let cam_node = glb.node_named("Camera").expect("camera node");
     let cam = &glb.array("cameras")[cam_node["camera"].as_u64().unwrap() as usize];
@@ -519,6 +535,10 @@ fn assert_camera_matches(glb: &Glb, camera: &ViewCamera) {
     assert!((rotation * Vec3::NEG_Z - view).length() < 1e-4);
 }
 
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test helper outside #[test]: an out-of-range index is the assertion failure"
+)]
 fn assert_actors_match(glb: &Glb, scene: &FilmScene, tick: f32) {
     let frame = scene.frame(tick);
     assert!(!frame.actors.is_empty());

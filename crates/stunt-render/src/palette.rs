@@ -32,21 +32,17 @@ pub fn build_palette_lut_bytes() -> [u8; PALETTE_LUT_BYTE_SIZE] {
 pub fn build_palette_lut_bytes_from(palette: &[(u8, u8, u8); 256]) -> [u8; PALETTE_LUT_BYTE_SIZE] {
     let mut lut_bytes = [0u8; PALETTE_LUT_BYTE_SIZE];
 
-    for level in 0..PALETTE_LUT_HEIGHT {
+    let (texels, _) = lut_bytes.as_chunks_mut::<4>();
+    let (rows, _) = texels.as_chunks_mut::<{ PALETTE_LUT_WIDTH as usize }>();
+    for (level, row) in rows.iter_mut().enumerate() {
         // Discrete shading factor: row 0 is ambient floor (0.2), row 31 is full sun (1.0)
         let factor = 0.2 + 0.8 * (level as f32 / 31.0);
 
-        for color_idx in 0..PALETTE_LUT_WIDTH {
-            let (r0, g0, b0) = palette[color_idx as usize];
+        for (texel, &(r0, g0, b0)) in row.iter_mut().zip(palette) {
             let r = (f32::from(r0) * factor).round().clamp(0.0, 255.0) as u8;
             let g = (f32::from(g0) * factor).round().clamp(0.0, 255.0) as u8;
             let b = (f32::from(b0) * factor).round().clamp(0.0, 255.0) as u8;
-
-            let offset = ((level * PALETTE_LUT_WIDTH + color_idx) * 4) as usize;
-            lut_bytes[offset] = r;
-            lut_bytes[offset + 1] = g;
-            lut_bytes[offset + 2] = b;
-            lut_bytes[offset + 3] = 255;
+            *texel = [r, g, b, 255];
         }
     }
 
@@ -140,6 +136,10 @@ impl PaletteLut {
 
     /// Normalized `(R, G, B)` of `index` in the palette currently loaded.
     #[must_use]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "a u8 index cannot leave the 256-entry palette"
+    )]
     pub(crate) fn rgb_float(&self, index: u8) -> (f32, f32, f32) {
         let (r, g, b) = self.palette[usize::from(index)];
         (

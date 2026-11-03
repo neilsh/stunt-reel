@@ -127,8 +127,11 @@ impl SceneRenderer {
             if slot == self.slots.len() {
                 self.slots.push(Self::new_slot(device, &self.model_layout));
             }
+            let Some(model_slot) = self.slots.get(slot) else {
+                continue;
+            };
             queue.write_buffer(
-                &self.slots[slot].buffer,
+                &model_slot.buffer,
                 0,
                 bytemuck::bytes_of(&ModelUniform::new(
                     actor.world_matrix,
@@ -180,10 +183,12 @@ impl SceneRenderer {
                         Some(w) => (w, &w.model_bind_group),
                         None => continue,
                     },
-                    Target::Shape { shape_id, slot } => match self.shapes.get(&shape_id) {
-                        Some(m) => (m, &self.slots[slot].bind_group),
-                        None => continue,
-                    },
+                    Target::Shape { shape_id, slot } => {
+                        match self.shapes.get(&shape_id).zip(self.slots.get(slot)) {
+                            Some((m, model_slot)) => (m, &model_slot.bind_group),
+                            None => continue,
+                        }
+                    }
                 };
                 rpass.set_bind_group(2, bind_group, &[]);
                 model.draw_slices(rpass, meshes);
