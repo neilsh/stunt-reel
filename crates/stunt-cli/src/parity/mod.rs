@@ -57,7 +57,7 @@ use compare::run_compare;
 use fade::fade_reference_set;
 use frames::{load_reference, load_render_frame, read_index_plane};
 use loss::LOSS_CLASSES;
-use mask::CAPTURE_SKY_INDICES;
+use mask::{CAPTURE_SKY_INDICES, overlay_drawn};
 use report::{FrameReport, I6Gate, Report};
 use score::{FrameMetrics, ReferenceFrame, RenderFrame, ScorePolicy, score_frame};
 use sheets::write_contact_sheet;
@@ -124,6 +124,8 @@ struct FrameRow {
     /// Film clock the frame was captured at; selects the stored render tick.
     film_tick: usize,
     metrics: FrameMetrics,
+    /// The record expects credits here but the render drew no overlay pixel.
+    credits_missing: bool,
 }
 
 /// Aggregates the matched frames into the `report.json` document.
@@ -184,6 +186,7 @@ fn build_report(
         mean_loss_by_class_scored: mean_loss_by_class,
         scored_frames: scored_frames.len(),
         excluded_frames,
+        credits_missing_frames: scores.iter().filter(|s| s.credits_missing).count(),
         per_frame: scores
             .iter()
             .map(|s| FrameReport {
@@ -246,6 +249,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
 
     let mut scores: Vec<FrameRow> = Vec::with_capacity(frames.len());
     let mut unmatched = 0usize;
+    let mut first_missing_credits: Option<usize> = None;
     let mut written_sheets: BTreeSet<usize> = BTreeSet::new();
     let mut worst: Vec<(f32, usize, Vec<f32>, Vec<f32>)> = Vec::new();
 
@@ -261,6 +265,10 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
 
         let (indices, palette) = load_reference(&reference_file, &palette_file)?;
         let render_frame = load_render_frame(&mut store, frame.film_tick)?;
+        let credits_missing = render_frame.credits && !overlay_drawn(&render_frame.layers);
+        if credits_missing && first_missing_credits.is_none() {
+            first_missing_credits = Some(film_tick);
+        }
         let score = score_frame(
             &ReferenceFrame { indices, palette },
             &RenderFrame {
@@ -278,6 +286,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             ordinal,
             film_tick,
             metrics,
+            credits_missing,
         });
 
         if sheet_ordinals.contains(&ordinal) {
@@ -308,6 +317,12 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     }
 
     let report = build_report(frames.len(), &scores, unmatched, args.min_fade_level);
+    if let Some(tick) = first_missing_credits {
+        eprintln!(
+            "[parity warning] {} frame(s) expect credits the render did not draw, first at tick {tick} (no PFONT.BIN?); their ink is scored",
+            report.credits_missing_frames
+        );
+    }
     let report_path = args.output.join("report.json");
     parity_artifacts::write_report(&report_path, &report).map_err(|error| error.to_string())?;
 

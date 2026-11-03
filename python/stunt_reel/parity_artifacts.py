@@ -97,7 +97,7 @@ __all__ = [
 #: Version carried by a capture's ``meta.json``, frame or video (port constant).
 SCHEMA_VERSION = 1
 #: Version carried by ``render.json`` (port constant).
-RENDER_SCHEMA_VERSION = 2
+RENDER_SCHEMA_VERSION = 3
 #: Document written beside a render directory's frames, last.
 RENDER_DOCUMENT = "render.json"
 #: Capture directory description written by ``mise run capture-ref``.
@@ -366,9 +366,8 @@ class RenderTick:
     palette: RenderPalette
     camera: CameraPose
     palette_index: int
-    #: Whether the film shows credits at this tick, whatever the render drew; ``None`` in a
-    #: render stored before the field.
-    credits: bool | None = None
+    #: The film shows credits at this tick; required in ``render.json`` from version 3.
+    credits: bool = False
 
 
 @dataclass(frozen=True)
@@ -575,6 +574,7 @@ class Report:
     mean_loss_by_class_scored: dict[str, float] | None = None
     scored_frames: int = 0
     excluded_frames: int = 0
+    credits_missing_frames: int = 0
 
     def headline(self) -> tuple[float, float]:
         """Headline SSIM and mask IoU: the scored means, else every matched frame."""
@@ -588,6 +588,12 @@ class Report:
             raise _error(
                 "report_inconsistent",
                 "report is inconsistent: reference_frames must equal frames + unmatched",
+                path,
+            )
+        if not 0 <= self.credits_missing_frames <= self.frames:
+            raise _error(
+                "report_inconsistent",
+                "report is inconsistent: credits_missing_frames must be from 0 to frames",
                 path,
             )
         if self.frames != self.scored_frames + self.excluded_frames:
@@ -703,11 +709,7 @@ def _tick_object(value: Any, path: Path | None, field_name: str) -> RenderTick:
         palette_index=_as_unsigned(
             raw.get("palette_index"), path, f"{field_name}.palette_index", 0xFFFFFFFF
         ),
-        credits=(
-            None
-            if raw.get("credits") is None
-            else _as_bool(raw["credits"], path, f"{field_name}.credits")
-        ),
+        credits=_as_bool(raw.get("credits"), path, f"{field_name}.credits"),
     )
 
 
@@ -745,9 +747,8 @@ def _tick_document(tick: RenderTick) -> dict[str, Any]:
             "roll_radians": tick.camera.roll_radians,
         },
         "palette_index": tick.palette_index,
+        "credits": tick.credits,
     }
-    if tick.credits is not None:
-        document["credits"] = tick.credits
     return document
 
 
@@ -862,6 +863,9 @@ def _report_object(document: Any, path: Path | None) -> Report:
         ),
         scored_frames=_as_int(raw.get("scored_frames", 0), path, "scored_frames"),
         excluded_frames=_as_int(raw.get("excluded_frames", 0), path, "excluded_frames"),
+        credits_missing_frames=_as_int(
+            raw.get("credits_missing_frames", 0), path, "credits_missing_frames"
+        ),
     )
 
 
@@ -895,6 +899,7 @@ def _report_document(report: Report) -> dict[str, Any]:
         "mean_loss_by_class_scored": report.mean_loss_by_class_scored,
         "scored_frames": report.scored_frames,
         "excluded_frames": report.excluded_frames,
+        "credits_missing_frames": report.credits_missing_frames,
         "per_frame": [frame_document(frame) for frame in report.per_frame],
     }
 
@@ -985,10 +990,10 @@ class RenderStore:
         """Whether the render holds film tick *tick*."""
         return tick in self._rows
 
-    def credits(self, tick: int) -> bool | None:
-        """Whether the film shows credits at *tick*, or ``None`` when the record predates it."""
+    def credits(self, tick: int) -> bool:
+        """Whether the film shows credits at *tick*; ``False`` for a tick the store lacks."""
         row = self._rows.get(tick)
-        return None if row is None else self.record.ticks[row].credits
+        return row is not None and self.record.ticks[row].credits
 
     def frame(self, tick: int) -> StoredFrame:
         """The planes and palette of film tick *tick*, decoding its chunk unless cached."""

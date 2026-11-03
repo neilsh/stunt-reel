@@ -8,7 +8,8 @@
 //!
 //! `render.json` carries [`RENDER_SCHEMA_VERSION`] and a capture's `meta.json`
 //! [`SCHEMA_VERSION`]; the render moved to version 2 alone when its planes moved
-//! into per-second zstd chunks (ADR 0027). A capture
+//! into per-second zstd chunks (ADR 0027), and to version 3 when each tick gained
+//! its `credits` flag. A capture
 //! written before the field existed reads as the current version, and a legacy
 //! capture's ordinals, file names and 320x200 geometry are defaulted here rather
 //! than in either adapter. Reports stay readable across versions through
@@ -35,4 +36,4 @@ pub use video::{CaptureEnd, PaletteChange, PaletteLog, TickLog, VIDEO_FILE, Vide
 pub const SCHEMA_VERSION: u32 = 1;
 
 /// Version carried by `render.json`.
-pub const RENDER_SCHEMA_VERSION: u32 = 2;
+pub const RENDER_SCHEMA_VERSION: u32 = 3;

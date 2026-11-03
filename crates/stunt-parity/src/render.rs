@@ -91,11 +91,9 @@ pub struct RenderTick {
     /// Index into `palettes.zst` of the colours the frame shows: its picture is
     /// `palette[index]` for every pixel.
     pub palette_index: u32,
-    /// Whether the film shows credits at this tick (`0x99` until `0x98`), whatever the
-    /// render drew; parity keeps the capture's credits ink in play on such a tick. `None`
-    /// in a render stored before the field, which falls back to the render's own planes.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub credits: Option<bool>,
+    /// The film shows credits at this tick, as `PLAYONE` draws them. Parity masks the
+    /// cursor's palette index only when this is false, whatever the render drew.
+    pub credits: bool,
 }
 
 /// A byte range of one of a render's plane files.
@@ -293,7 +291,7 @@ mod tests {
                 roll_radians: 0.0,
             },
             palette_index: 0,
-            credits: None,
+            credits: false,
         }
     }
 
@@ -348,12 +346,12 @@ mod tests {
     #[test]
     fn version_ordering_and_geometry_are_checked() {
         let mut wrong = record(vec![0]);
-        wrong.schema_version = 1;
+        wrong.schema_version = 2;
         assert!(matches!(
             wrong.validate(),
             Err(ArtifactError::UnsupportedVersion {
-                found: 1,
-                expected: 2
+                found: 2,
+                expected: 3
             })
         ));
 

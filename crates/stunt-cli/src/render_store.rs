@@ -611,6 +611,7 @@ mod tests {
                 .push(tick, &palette, &indices, &layers)
                 .expect("push");
             entries.push(RenderTick {
+                credits: false,
                 tick,
                 palette: RenderPalette {
                     sky: 0,
@@ -624,7 +625,6 @@ mod tests {
                     roll_radians: 0.0,
                 },
                 palette_index,
-                credits: None,
             });
         }
         let table = writer.finish().expect("finish").expect("a store");

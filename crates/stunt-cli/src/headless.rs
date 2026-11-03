@@ -5,6 +5,7 @@ use std::cell::RefCell;
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
+use stunt_core::credits::CreditLines;
 
 use stunt_core::contracts::PaletteControls;
 use stunt_core::flm::CAMERA_FORWARD;
@@ -60,7 +61,8 @@ struct SampleSink {
 impl SampleSink {
     /// Announces the sample the next accepted page belongs to.
     fn begin(&mut self, key: SampleKey, frame: &SceneFrame) {
-        self.pending = Some((key, frame.palette, frame.view, frame.credits.is_some()));
+        let credits = frame.credits.as_ref().is_some_and(CreditLines::is_drawn);
+        self.pending = Some((key, frame.palette, frame.view, credits));
     }
 
     /// Writes one accepted page to every destination the run selected.

@@ -2,8 +2,6 @@
 
 use std::ops::RangeInclusive;
 
-use super::score::RenderFrame;
-
 use stunt_render::{
     ASPECT_CORRECTED_HEIGHT, LAYER_NONE, LAYER_OVERLAY, MODE13H_HEIGHT, MODE13H_WIDTH,
     rescale_mode13h_frame,
@@ -29,10 +27,11 @@ pub(super) fn is_capture_sky(index: u8) -> bool {
 /// Pixels of a captured frame covered by the UI overlay: the button bar rows and the
 /// cursor. Scoring leaves them out because the renderer does not draw them.
 ///
-/// The cursor and the credits ink are both palette index 255. On a tick with
-/// `credits_drawn` (see [`credits_in_play`]) index 255 stays in play, so the ink is scored;
-/// otherwise it is masked as the cursor. The test is per tick, not per pixel, so ink the
-/// render misplaces counts against it instead of vanishing under the mask.
+/// The cursor and the credits ink are both palette index 255. On a tick whose render
+/// record says the film shows credits (`credits_drawn`) index 255 stays in play, so the
+/// ink is scored; otherwise it is masked as the cursor. The flag comes from the film, not
+/// from the render's pixels, so a render that misplaces or loses its credits is scored on
+/// the ink it got wrong instead of masking it away.
 pub(super) fn ui_overlay_mask(indices: &[u8], credits_drawn: bool) -> Vec<bool> {
     indices
         .iter()
@@ -44,21 +43,12 @@ pub(super) fn ui_overlay_mask(indices: &[u8], credits_drawn: bool) -> Vec<bool> 
         .collect()
 }
 
-/// True when a render's layer plane holds credits: any [`LAYER_OVERLAY`] pixel.
-pub(super) fn draws_credits(render_layers: &[u16]) -> bool {
+/// True when a render's layer plane holds credits pixels: any [`LAYER_OVERLAY`] pixel.
+/// Diagnostic only: the mask keys on the record's flag.
+pub(super) fn overlay_drawn(render_layers: &[u16]) -> bool {
     render_layers
         .iter()
         .any(|&layer| u32::from(layer) == LAYER_OVERLAY)
-}
-
-/// Whether a tick keeps the capture's index 255 in play as credits ink: the film's credits
-/// schedule from the render record when it has one, so a render that drops its credits is
-/// still judged on the ink; otherwise, for a render stored before the record carried it,
-/// whether the render drew credits.
-pub(super) fn credits_in_play(render: &RenderFrame) -> bool {
-    render
-        .credits
-        .unwrap_or_else(|| draws_credits(&render.layers))
 }
 
 /// Stretches a 320x200 mask to the 320x240 raster with the same row mapping as the frames.
@@ -139,16 +129,16 @@ mod tests {
     }
 
     #[test]
-    fn credits_ink_is_scored_on_a_tick_whose_render_draws_credits() {
+    fn credits_ink_is_scored_on_a_tick_whose_film_shows_credits() {
         let mut indices = vec![7u8; MODE13H_WIDTH * MODE13H_HEIGHT];
         let ink = 100 * MODE13H_WIDTH + 160;
         indices[ink] = CURSOR_INDEX;
         let mut layers = vec![0u16; indices.len()];
-        assert!(!draws_credits(&layers));
+        assert!(!overlay_drawn(&layers));
         assert!(ui_overlay_mask(&indices, false)[ink]);
-        // Credits anywhere in the render keep the ink, even where the render drew none.
         layers[50 * MODE13H_WIDTH] = u16::try_from(LAYER_OVERLAY).unwrap();
-        assert!(draws_credits(&layers));
+        assert!(overlay_drawn(&layers));
+        // The film's flag keeps the ink, whatever the render drew.
         let mask = ui_overlay_mask(&indices, true);
         assert!(!mask[ink]);
         // The button bar stays masked either way.

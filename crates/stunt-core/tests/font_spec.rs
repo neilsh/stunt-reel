@@ -117,3 +117,13 @@ fn credits_centre_inside_an_offset_clip_rectangle() {
     // x = 100 + ((99 - 2) >> 1) = 148, y = 10 + ((99 - 28) >> 1) = 45.
     assert_eq!(pixels.get(&(148, 45)), Some(&255));
 }
+
+#[test]
+fn credits_are_drawn_unless_skipped_or_empty() {
+    assert!(CreditLines::new("TITLE", "").is_drawn());
+    // PLAYONE draws the second line even when the first is empty.
+    assert!(CreditLines::new("", "15").is_drawn());
+    assert!(!CreditLines::new("", "").is_drawn());
+    // The skip at 0x0F7F: a first byte with its sign bit set draws nothing at all.
+    assert!(!CreditLines::new(&b"\x80TITLE"[..], "15").is_drawn());
+}

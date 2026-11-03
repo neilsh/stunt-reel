@@ -105,6 +105,7 @@ def _raw_record(schema_version: int = RENDER_SCHEMA_VERSION) -> dict[str, Any]:
                     "roll_radians": 0.0,
                 },
                 "palette_index": 0,
+                "credits": True,
             }
         ],
         "palette_count": 1,
@@ -133,6 +134,7 @@ def test_a_render_record_round_trips_through_json(tmp_path: Path) -> None:
     assert document["ticks"][0]["palette"]["sky"] == 0x2000
     assert document["ticks"][0]["camera"]["eye"] == [0.0, 10.0, 50.0]
     assert document["ticks"][0]["palette_index"] == 0
+    assert document["ticks"][0]["credits"] is False
     assert document["palette_count"] == 1
     assert document["chunks"] == [
         {
@@ -151,10 +153,18 @@ def test_a_document_written_by_the_rust_side_loads_and_extra_keys_are_ignored(
     assert record.schema_version == RENDER_SCHEMA_VERSION
     assert record.film == FilmId(name="CTRY.FLM", flm_bytes=100)
     assert record.geometry == _geometry()
-    assert record.ticks == (_tick(10),)
+    assert record.ticks == (replace(_tick(10), credits=True),)
     extra = _raw_record()
     extra["future_top"] = {"kept": True}
     assert read_render(_write_json(tmp_path / "extra.json", extra)) == record
+
+
+def test_a_tick_without_its_credits_flag_is_refused(tmp_path: Path) -> None:
+    raw = _raw_record()
+    del raw["ticks"][0]["credits"]
+    with pytest.raises(ArtifactError, match=r"ticks\[0\]\.credits") as refusal:
+        read_render(_write_json(tmp_path / "render.json", raw))
+    assert refusal.value.kind == "wrong_type"
 
 
 def test_an_unsupported_version_is_rejected_and_names_the_directory(tmp_path: Path) -> None:
@@ -215,10 +225,10 @@ def test_open_render_reads_the_record(tmp_path: Path) -> None:
     assert controls.record == _record()
 
 
-def test_open_render_refuses_a_version_1_render_with_the_re_render_action(
+def test_open_render_refuses_a_version_2_render_with_the_re_render_action(
     tmp_path: Path,
 ) -> None:
-    _write_json(tmp_path / "render.json", _raw_record(1))
+    _write_json(tmp_path / "render.json", _raw_record(2))
     with pytest.raises(ArtifactError, match="re-render") as refusal:
         open_render(tmp_path)
     assert refusal.value.kind == "unsupported_version"
@@ -446,6 +456,7 @@ def test_an_old_report_without_optional_fields_still_loads(tmp_path: Path) -> No
     report = read_report(path)
     assert report.per_frame == (FrameReport(film_tick=9, ssim=0.7, iou=0.9),)
     assert report.scored_frames == 0
+    assert report.credits_missing_frames == 0
     assert report.i6_gate == I6Gate()
     assert report.headline() == (0.0, 0.0)
 
@@ -466,6 +477,10 @@ def test_write_report_checks_the_identities() -> None:
     broken = Report(per_frame=(), reference_frames=1)
     with pytest.raises(ArtifactError, match="reference_frames must equal"):
         write_report(Path("unused.json"), broken)
+    for count in (1, -1):
+        bad = Report(per_frame=(), credits_missing_frames=count)
+        with pytest.raises(ArtifactError, match="credits_missing_frames must be from 0"):
+            write_report(Path("unused.json"), bad)
 
 
 def test_tick_range_for_captured_ticks_is_the_captures_own_inclusive_ticks() -> None:
@@ -565,8 +580,8 @@ def _store(directory: Path) -> RenderRecord:
     return write_store(directory, _STORE_TICKS)
 
 
-def test_a_tick_credits_flag_round_trips_and_is_absent_when_unknown(tmp_path: Path) -> None:
-    """``credits`` is written only when known, so a render stored before it still loads."""
+def test_a_tick_credits_flag_round_trips_and_is_always_written(tmp_path: Path) -> None:
+    """``credits`` is required from schema 3, so it is written for every tick."""
     path = tmp_path / "render.json"
     record = _record()
     flagged = replace(record, ticks=(replace(record.ticks[0], credits=True), record.ticks[1]))
@@ -574,7 +589,7 @@ def test_a_tick_credits_flag_round_trips_and_is_absent_when_unknown(tmp_path: Pa
     assert read_render(path) == flagged
     document = json.loads(path.read_text(encoding="utf-8"))
     assert document["ticks"][0]["credits"] is True
-    assert "credits" not in document["ticks"][1]
+    assert document["ticks"][1]["credits"] is False
     document["ticks"][0]["credits"] = 1
     _write_json(path, document)
     with pytest.raises(ArtifactError, match=r"ticks\[0\]\.credits"):
@@ -701,8 +716,8 @@ def test_a_version_1_render_is_refused_with_the_re_render_action(tmp_path: Path)
     assert refusal.value.kind == "unsupported_version"
 
 
-def test_the_rust_v2_fixture_reads_the_same_planes() -> None:
-    fixture = Path(__file__).resolve().parent / "fixtures" / "parity" / "v2" / "render"
+def test_the_rust_v3_fixture_reads_the_same_planes() -> None:
+    fixture = Path(__file__).resolve().parent / "fixtures" / "parity" / "v3" / "render"
     store = RenderStore(fixture)
     assert store.ticks() == [7, 9, 30, 100, 149]
     assert [(chunk.second, chunk.ticks) for chunk in store.record.chunks] == [(0, 3), (2, 2)]

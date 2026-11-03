@@ -33,6 +33,8 @@ from stunt_reel.parity_artifacts import (
 HERE = Path(__file__).resolve().parent
 WIDTH, HEIGHT = 320, 200
 TICKS = (10, 20)
+#: The tick whose record says the film shows credits; the capture has no cursor there.
+CREDITS_TICK = 20
 LAYER_TERRAIN = 2
 LAYER_ACTOR = 16
 CURSOR_X, CURSOR_Y = 200, 40
@@ -115,6 +117,7 @@ def write_render_dir(directory: Path, *, flip_tick_20: bool) -> None:
             palette=RenderPalette(sky=0, brightness=0x8000, saturation=0x8000),
             camera=pose,
             palette_index=0,
+            credits=tick == CREDITS_TICK,
         )
         stored = StoredFrame(
             indices=idx.tobytes(),

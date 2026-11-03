@@ -164,6 +164,7 @@ fn row(ordinal: usize, ssim: f32, iou: f32, scored: bool) -> super::FrameRow {
     super::FrameRow {
         ordinal,
         film_tick: ordinal * 10,
+        credits_missing: false,
         metrics: FrameMetrics {
             ssim,
             fade_level: if scored { 1.0 } else { 0.1 },
@@ -245,6 +246,16 @@ fn build_report_excludes_frames_below_the_fade_floor_from_scored_means() {
     let scored: Vec<_> = report.per_frame.iter().map(|f| f.scored).collect();
     assert_eq!(scored, vec![Some(true), Some(true), Some(false)]);
     assert_eq!(report.per_frame[2].fade_level, Some(0.1));
+}
+
+#[test]
+fn the_report_counts_frames_whose_credits_the_render_did_not_draw() {
+    let mut missing = row(2, 0.7, 0.6, true);
+    missing.credits_missing = true;
+    let rows = [row(1, 0.9, 0.8, true), missing];
+    let report = super::build_report(2, &rows, 0, 0.25);
+    assert_eq!(report.credits_missing_frames, 1);
+    report.validate().expect("a consistent report");
 }
 
 #[test]
@@ -351,7 +362,8 @@ fn verdict_matches_the_numpy_golden() {
 }
 
 /// A uniform capture with a block of credits ink (index 255), and a render of the same
-/// background that leaves the ink out; `credits_in_render` puts credits elsewhere on its page.
+/// background that leaves the ink out. `credits_in_render` marks the tick as one where the
+/// film shows credits, as its render record says, and puts credits elsewhere on its page.
 fn credits_frames(
     credits_in_render: bool,
 ) -> (super::score::ReferenceFrame, super::score::RenderFrame) {
@@ -384,13 +396,13 @@ fn credits_frames(
         indices: vec![background; pixels],
         layers,
         controls: None,
-        credits: None,
+        credits: credits_in_render,
     };
     (reference, render)
 }
 
-/// Credits ink shares the cursor's index 255: masked as the cursor on a tick whose render
-/// draws no credits, scored on a tick whose render draws them.
+/// Credits ink shares the cursor's index 255: masked as the cursor on a tick whose film
+/// shows no credits, scored on a tick whose film shows them.
 #[test]
 fn score_frame_scores_credits_ink_only_on_a_tick_with_credits() {
     let fade_set = super::fade::fade_reference_set(&credits_frames(false).0.indices);
@@ -445,7 +457,7 @@ fn the_record_credits_flag_overrides_what_the_render_drew() {
     };
     let (reference, render) = credits_frames(false);
     let dropped = super::score::RenderFrame {
-        credits: Some(true),
+        credits: true,
         ..render
     };
     let scored = super::score::score_frame(&reference, &dropped, &policy).metrics;
@@ -453,7 +465,7 @@ fn the_record_credits_flag_overrides_what_the_render_drew() {
 
     let (reference, render) = credits_frames(true);
     let stray = super::score::RenderFrame {
-        credits: Some(false),
+        credits: false,
         ..render
     };
     let masked = super::score::score_frame(&reference, &stray, &policy).metrics;
@@ -478,10 +490,10 @@ fn a_render_that_loses_its_credits_scores_lower_on_a_credits_tick() {
             drawn.indices[i] = 255;
         }
     }
-    drawn.credits = Some(true);
+    drawn.credits = true;
     let (_, lost) = credits_frames(false);
     let lost = super::score::RenderFrame {
-        credits: Some(true),
+        credits: true,
         ..lost
     };
     let with = super::score::score_frame(&reference, &drawn, &policy).metrics;

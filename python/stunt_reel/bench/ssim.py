@@ -14,12 +14,10 @@ from numpy.lib.stride_tricks import sliding_window_view
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-    from stunt_reel.bench.planes import CapturePlanes, RenderPlanes
+    from stunt_reel.bench.planes import CapturePlanes
 
 __all__ = [
     "capture_luma",
-    "credits_in_play",
-    "draws_credits",
     "frame_ssim",
     "overlay_mask",
     "render_luma",
@@ -37,6 +35,7 @@ C1 = 6.5025
 C2 = 58.5225
 UI_BAR_FIRST_ROW = 185
 CURSOR_INDEX = 255
+#: The layer id of credits pixels; the differential files their changes under ``overlay``.
 LAYER_OVERLAY = 4
 _LUMA = np.array([0.299, 0.587, 0.114])
 
@@ -58,27 +57,12 @@ def stretch(plane: NDArray[Any]) -> NDArray[Any]:
     return plane[np.minimum(rows, HEIGHT - 1)]
 
 
-def draws_credits(layer: NDArray[np.uint16]) -> bool:
-    """True when a render's layer plane holds credits: any ``LAYER_OVERLAY`` pixel."""
-    return bool((layer == LAYER_OVERLAY).any())
-
-
-def credits_in_play(planes: RenderPlanes) -> bool:
-    """Whether a tick keeps capture index 255 in play as credits ink.
-
-    The film's credits schedule from ``render.json`` when the render has it, so a render that
-    drops its credits is still judged on the ink; otherwise whether the render drew credits.
-    Mirrors the Rust ``credits_in_play``.
-    """
-    return draws_credits(planes.layer) if planes.credits is None else planes.credits
-
-
 def overlay_mask(
     capture_idx: NDArray[np.uint8], *, credits_drawn: bool = False
 ) -> NDArray[np.bool_]:
     """Pixels the UI overlay covers: the button bar rows and the cursor index.
 
-    Credits ink shares the cursor's index, so a tick whose render draws credits keeps it.
+    Credits ink shares the cursor's index, so a tick whose film shows credits keeps it.
     """
     if credits_drawn:
         mask: NDArray[np.bool_] = np.zeros(capture_idx.shape, dtype=np.bool_)

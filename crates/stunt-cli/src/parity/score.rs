@@ -14,8 +14,7 @@ use super::fade::fade_level;
 use super::frames::reference_luminance;
 use super::loss::{LOSS_CLASSES, attribute_loss, loss_class};
 use super::mask::{
-    credits_in_play, index_agreement, is_capture_sky, mask_iou_planes, rescale_mask,
-    ui_overlay_mask,
+    index_agreement, is_capture_sky, mask_iou_planes, rescale_mask, ui_overlay_mask,
 };
 
 /// SSIM window edge, in pixels.
@@ -40,9 +39,8 @@ pub(super) struct RenderFrame {
     pub(super) layers: Vec<u16>,
     /// The palette controls the film authors at this tick, from the render's `render.json`.
     pub(super) controls: Option<PaletteControls>,
-    /// Whether the film shows credits at this tick, from the render's `render.json`; `None`
-    /// for a render stored before the field (see [`super::mask::credits_in_play`]).
-    pub(super) credits: Option<bool>,
+    /// The film shows credits at this tick, from the render's `render.json`.
+    pub(super) credits: bool,
 }
 
 /// What decides whether a frame is scored.
@@ -95,7 +93,7 @@ pub(super) fn score_frame(
         MODE13H_HEIGHT,
         ASPECT_CORRECTED_HEIGHT,
     );
-    let overlay = ui_overlay_mask(&reference.indices, credits_in_play(render));
+    let overlay = ui_overlay_mask(&reference.indices, render.credits);
     let windows = compute_window_scores(
         &reference_rescaled,
         &render_rescaled,
@@ -189,7 +187,7 @@ mod tests {
             indices,
             layers,
             controls: None,
-            credits: None,
+            credits: false,
         }
     }
 

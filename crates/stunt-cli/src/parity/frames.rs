@@ -66,7 +66,7 @@ pub(super) fn load_render_frame(store: &mut RenderStore, tick: u32) -> Result<Re
         .ticks
         .iter()
         .find(|entry| entry.tick == tick)
-        .and_then(|entry| entry.credits);
+        .is_some_and(|entry| entry.credits);
     let frame = store.frame(tick).map_err(|e| e.to_string())?;
     Ok(RenderFrame {
         luminance: rgb_to_luminance(&frame.rgb()),

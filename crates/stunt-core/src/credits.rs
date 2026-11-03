@@ -44,6 +44,19 @@ impl CreditLines {
             second: second.into(),
         }
     }
+
+    /// True when `PLAYONE` draws these credits: the first byte does not have its sign bit
+    /// set (the skip at `0x0F7F`) and a line has text. The parity mask keys on this, carried
+    /// per tick in the render record, rather than on the pixels a render drew.
+    #[must_use]
+    pub fn is_drawn(&self) -> bool {
+        !self.skipped() && (!self.first.is_empty() || !self.second.is_empty())
+    }
+
+    /// The skip at `0x0F7F`: the first byte has its sign bit set.
+    fn skipped(&self) -> bool {
+        self.first.first().is_some_and(|&byte| byte >= 0x80)
+    }
 }
 
 /// An inclusive pixel rectangle: the view the credits are centred in.
@@ -69,7 +82,7 @@ pub fn draw_credits(
     rect: ClipRect,
     put: &mut dyn FnMut(i32, i32, u8),
 ) {
-    if lines.first.first().is_some_and(|&byte| byte >= 0x80) {
+    if lines.skipped() {
         return;
     }
     let top = rect.top + ((rect.bottom - rect.top - BLOCK_ROWS) >> 1);
