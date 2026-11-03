@@ -135,9 +135,11 @@ impl<'a> ByteReader<'a> {
     /// Returns [`Eof`] if no zero byte lies at or after the cursor.
     pub fn read_cstring(&mut self) -> Result<Vec<u8>, Eof> {
         let rest = self.data.get(self.pos..).unwrap_or(&[]);
-        if let Some(n) = rest.iter().position(|&b| b == 0) {
-            self.pos += n + 1;
-            Ok(rest[..n].to_vec())
+        let mut parts = rest.splitn(2, |&b| b == 0);
+        let head = parts.next().unwrap_or(&[]);
+        if parts.next().is_some() {
+            self.pos += head.len() + 1;
+            Ok(head.to_vec())
         } else {
             self.pos = self.pos.max(self.data.len());
             Err(Eof {

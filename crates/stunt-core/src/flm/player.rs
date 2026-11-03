@@ -204,13 +204,7 @@ pub(crate) struct FlmPlayer<'a> {
 impl<'a> FlmPlayer<'a> {
     /// Initialize a new film player from a byte buffer, verifying the `FILM` signature.
     pub(crate) fn new(data: &'a [u8]) -> Result<Self, FlmError> {
-        if data.len() < 4 {
-            return Err(FlmError::UnexpectedEof {
-                expected: 4,
-                actual: data.len(),
-            });
-        }
-        let sig: [u8; 4] = data[0..4].try_into().map_err(|_| FlmError::UnexpectedEof {
+        let &sig = data.first_chunk::<4>().ok_or(FlmError::UnexpectedEof {
             expected: 4,
             actual: data.len(),
         })?;
@@ -382,7 +376,7 @@ impl<'a> FlmPlayer<'a> {
                         }
                     }
 
-                    let slot = &mut self.slots[slot_idx];
+                    let slot = self.slot_mut(slot_idx, c, op_offset)?;
                     slot.type_flags = type_flags;
                     slot.active = active;
                     if let Some(shape_id) = shape_id {
@@ -397,7 +391,7 @@ impl<'a> FlmPlayer<'a> {
                 }
                 1 => {
                     // Group 1: INTERP slot
-                    let flags = self.slots[slot_idx].type_flags;
+                    let flags = self.slot_mut(slot_idx, c, op_offset)?.type_flags;
                     let mut position = None;
                     let mut rotation = None;
                     let mut animate = None;
@@ -418,7 +412,7 @@ impl<'a> FlmPlayer<'a> {
                         animate = Some(self.read_u16_le()?);
                     }
 
-                    let slot = &mut self.slots[slot_idx];
+                    let slot = self.slot_mut(slot_idx, c, op_offset)?;
                     if let Some(position) = position {
                         slot.pos_fixed = position;
                     }
@@ -435,7 +429,13 @@ impl<'a> FlmPlayer<'a> {
                     if c < 0x90 {
                         let var_idx = (c & 0x0F) as usize;
                         let val = self.read_u16_le()?;
-                        self.variables[var_idx] = val;
+                        *self
+                            .variables
+                            .get_mut(var_idx)
+                            .ok_or(FlmError::InvalidOpcode {
+                                opcode: c,
+                                offset: op_offset,
+                            })? = val;
                     } else if c < 0x98 {
                         self.view_obj = c & 0x0F;
                     } else if c == 0x98 {
@@ -510,14 +510,21 @@ impl<'a> FlmPlayer<'a> {
         }))
     }
 
+    /// The slot an opcode addresses; `c` and `offset` name the opcode in the error.
+    fn slot_mut(&mut self, idx: usize, c: u8, offset: usize) -> Result<&mut SlotState, FlmError> {
+        self.slots
+            .get_mut(idx)
+            .ok_or(FlmError::InvalidOpcode { opcode: c, offset })
+    }
+
     /// Evaluate the player's current slot and variable state into a record.
     fn evaluate_slice(&mut self, sound_cues: Vec<AudioCue>) -> TrajectoryRecord {
         // Camera evaluation
         let view_idx = self.view_obj as usize;
-        let view_slot_active = view_idx < SIFILM_MAX_OBJ && self.slots[view_idx].active;
-        let (eye, target) = if view_slot_active {
-            let eye = self.slots[view_idx].position_meters();
-            let forward = rotate_quat(self.slots[view_idx].rotation_quat(), CAMERA_FORWARD);
+        let view_slot = self.slots.get(view_idx).filter(|slot| slot.active);
+        let (eye, target) = if let Some(view_slot) = view_slot {
+            let eye = view_slot.position_meters();
+            let forward = rotate_quat(view_slot.rotation_quat(), CAMERA_FORWARD);
             (
                 eye,
                 [
@@ -529,6 +536,7 @@ impl<'a> FlmPlayer<'a> {
         } else {
             ([0.0, 10.0, 50.0], self.default_camera_target)
         };
+        let roll = view_slot.map_or(0.0, |slot| bam_to_radians(slot.rot_bam[0]));
 
         let cut = detect_camera_cut(eye, self.last_eye, self.view_obj, self.last_view_obj);
         self.last_eye = Some(eye);
@@ -543,12 +551,6 @@ impl<'a> FlmPlayer<'a> {
         // Each camera's zoom word is the film variable of its view index (image `0x11FC`
         // reads `[0x4888 + 0x7E + 2 * view_obj]`; research/playone-exe/lod.md section 2).
         let lens = self.variables.get(view_idx).copied().unwrap_or(0);
-
-        let roll = if view_slot_active {
-            bam_to_radians(self.slots[view_idx].rot_bam[0])
-        } else {
-            0.0
-        };
 
         let camera = CameraTransform {
             eye,

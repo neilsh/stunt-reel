@@ -6,7 +6,7 @@
 
 use crate::contracts::vfs::{ArchiveFormat, VfsArchive, VfsEntry};
 use crate::reader::ByteReader;
-use crate::vfs::VfsError;
+use crate::vfs::{VfsError, check_non_decreasing};
 
 /// Unpacks a `.RES` container archive into an in-memory [`VfsArchive`].
 ///
@@ -36,10 +36,12 @@ pub fn parse_res(data: &[u8]) -> Result<VfsArchive, VfsError> {
         });
     }
 
-    if &data[0..2] != b"RS" {
+    if let &[m0, m1, ..] = data
+        && [m0, m1] != *b"RS"
+    {
         return Err(VfsError::InvalidMagic {
             expected: "RS",
-            actual: [data[0], data[1]],
+            actual: [m0, m1],
         });
     }
 
@@ -88,24 +90,23 @@ pub fn parse_res(data: &[u8]) -> Result<VfsArchive, VfsError> {
         }
     }
 
-    for i in 0..n - 1 {
-        if offsets[i + 1] < offsets[i] {
-            return Err(VfsError::InvalidOffsetTable {
-                reason: format!(
-                    "offset at index {} ({}) is less than previous offset at index {} ({})",
-                    i + 1,
-                    offsets[i + 1],
-                    i,
-                    offsets[i]
-                ),
-            });
-        }
-    }
+    check_non_decreasing(&offsets)?;
 
-    // Parse Name Table between ofs[0] and ofs[1]
-    let name_start = offsets[0];
-    let name_end = offsets[1];
-    let name_slice = &data[name_start..name_end];
+    // Region 0 (ofs[0]..ofs[1]) is the name table; each later region is one payload.
+    // Bounds and order were checked above, so `region` only fails on a broken invariant.
+    let region = |(&start, &end): (&usize, &usize)| {
+        data.get(start..end)
+            .map(|bytes| (start, bytes))
+            .ok_or(VfsError::UnexpectedEof {
+                expected: end,
+                actual: data.len(),
+            })
+    };
+    let mut regions = offsets.iter().zip(offsets.iter().skip(1)).map(region);
+    let Some(name_region) = regions.next() else {
+        return Ok(VfsArchive::new(ArchiveFormat::Res));
+    };
+    let (_, name_slice) = name_region?;
 
     let mut names = Vec::new();
     let mut current_name = Vec::new();
@@ -142,12 +143,9 @@ pub fn parse_res(data: &[u8]) -> Result<VfsArchive, VfsError> {
     }
 
     let mut archive = VfsArchive::new(ArchiveFormat::Res);
-    let payload_count = n - 2;
 
-    for i in 0..payload_count {
-        let start = offsets[i + 1];
-        let end = offsets[i + 2];
-        let payload = &data[start..end];
+    for (i, payload) in regions.enumerate() {
+        let (start, payload) = payload?;
 
         let name = if let Some(raw_name) = names.get(i) {
             let trimmed = raw_name.trim();

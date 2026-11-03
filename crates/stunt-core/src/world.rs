@@ -165,11 +165,12 @@ fn point_segment_distance(point: [f32; 3], a: [f32; 3], b: [f32; 3]) -> f32 {
 
 /// Nearest distance from `point` to the polyline through `eyes`; infinite when `eyes` is empty.
 fn path_distance(point: [f32; 3], eyes: &[[f32; 3]]) -> f32 {
-    if eyes.len() == 1 {
-        point_segment_distance(point, eyes[0], eyes[0])
+    if let &[only] = eyes {
+        point_segment_distance(point, only, only)
     } else {
-        eyes.windows(2)
-            .map(|pair| point_segment_distance(point, pair[0], pair[1]))
+        eyes.iter()
+            .zip(eyes.iter().skip(1))
+            .map(|(&a, &b)| point_segment_distance(point, a, b))
             .fold(f32::INFINITY, f32::min)
     }
 }
@@ -231,35 +232,29 @@ pub(crate) struct MapArea {
 
 /// Parses 30-byte polygon patch records from `MAP.BIN`.
 pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
-    let count = data.len() / 30;
+    let (records, _partial) = data.as_chunks::<30>();
     let mut areas = Vec::new();
-    for i in 0..count {
-        let offset = i * 30;
-        if offset + 30 > data.len() {
-            break;
-        }
-        let pos = i16::from_le_bytes([data[offset + 2], data[offset + 3]]);
+    for record in records {
+        // Constant indices into the fixed 30-byte record, so none can fall outside it.
+        let pos = i16::from_le_bytes([record[2], record[3]]);
         if pos.trailing_zeros() >= 8 {
             continue;
         }
-        let color = data[offset + 12];
-        let num_verts = i16::from_le_bytes([data[offset + 14], data[offset + 15]]) as usize;
+        let color = record[12];
+        let num_verts = i16::from_le_bytes([record[14], record[15]]) as usize;
         let nverts = num_verts.min(7);
         if nverts < 3 {
             continue;
         }
-        let mut verts = Vec::with_capacity(nverts);
-        let mut valid = true;
-        for j in 0..nverts {
-            let v_off = offset + 16 + j * 2;
-            let v_idx = u16::from_le_bytes([data[v_off], data[v_off + 1]]) as usize;
-            if v_idx >= anchor_count {
-                valid = false;
-                break;
-            }
-            verts.push(v_idx);
-        }
-        if valid {
+        // Bytes 16..30 hold up to seven little-endian anchor indices.
+        let (vert_words, _) = record.as_chunks::<2>();
+        let verts: Vec<usize> = vert_words
+            .iter()
+            .skip(8)
+            .take(nverts)
+            .map(|&word| usize::from(u16::from_le_bytes(word)))
+            .collect();
+        if verts.iter().all(|&v_idx| v_idx < anchor_count) {
             areas.push(MapArea { color, verts });
         }
     }
@@ -293,48 +288,42 @@ pub(crate) fn traverse_scn(
     if depth > 128 {
         return;
     }
-    while ni != 0 && ni < words.len() {
-        let op = words[ni];
+    while ni != 0
+        && let Some(&op) = words.get(ni)
+    {
         match op {
             0 => {
                 // SP_POS: x, y, z, next
-                if ni + 4 >= words.len() {
+                let Some([x, y, z, next]) = scn_operands(words, ni) else {
                     break;
-                }
-                let x = i32::from(words[ni + 1] as u16 as i16);
-                let y = i32::from(words[ni + 2] as u16 as i16);
-                let z = i32::from(words[ni + 3] as u16 as i16);
-                let next = (words[ni + 4] as u32 as usize) / 2;
-                cx += x;
-                cy += y;
-                cz += z;
-                ni = next;
+                };
+                cx += i32::from(x as u16 as i16);
+                cy += i32::from(y as u16 as i16);
+                cz += i32::from(z as u16 as i16);
+                ni = scn_pointer(next);
             }
             22 => {
                 // SP_POSXZ: x, z, next
-                if ni + 3 >= words.len() {
+                let Some([x, z, next]) = scn_operands(words, ni) else {
                     break;
-                }
-                let x = i32::from(words[ni + 1] as u16 as i16);
-                let z = i32::from(words[ni + 2] as u16 as i16);
-                let next = (words[ni + 3] as u32 as usize) / 2;
-                cx += x;
-                cz += z;
-                ni = next;
+                };
+                cx += i32::from(x as u16 as i16);
+                cz += i32::from(z as u16 as i16);
+                ni = scn_pointer(next);
             }
             2 => {
                 // SP_1NODE: obj, ext, splitdist, next. PLAYONE descends `next` when the node
                 // is near and otherwise draws `obj` as a stand-in for the whole subtree
                 // (image `0x2121`, research/playone-exe/lod.md section 1).
-                if ni + 4 >= words.len() {
+                let Some([obj, ext, splitdist, next]) = scn_operands(words, ni) else {
                     break;
-                }
-                let ext = i32::from(words[ni + 2] as u16);
-                let splitdist = i32::from(words[ni + 3] as u16 as i16);
+                };
+                let ext = i32::from(ext as u16);
+                let splitdist = i32::from(splitdist as u16 as i16);
                 if near([-(cx as f32), -(cy as f32), cz as f32], ext, splitdist) {
-                    ni = (words[ni + 4] as u32 as usize) / 2;
+                    ni = scn_pointer(next);
                 } else {
-                    let obj = words[ni + 1] as u16;
+                    let obj = obj as u16;
                     if obj != 0 && available_models.contains(&obj) {
                         instances.push((obj, [-(cx as f32), -(cy as f32), cz as f32]));
                     }
@@ -343,14 +332,12 @@ pub(crate) fn traverse_scn(
             }
             4 | 6 | 8 | 16 | 18 => {
                 // SP_2NODE, SP_XPLANE, SP_ZPLANE, SP_HSLOPE, SP_VSLOPE
-                if ni + 2 >= words.len() {
+                let Some([ptr, next]) = scn_operands(words, ni) else {
                     break;
-                }
-                let ptr = (words[ni + 1] as u32 as usize) / 2;
-                let next = (words[ni + 2] as u32 as usize) / 2;
+                };
                 traverse_scn(
                     words,
-                    ptr,
+                    scn_pointer(ptr),
                     cx,
                     cy,
                     cz,
@@ -359,12 +346,12 @@ pub(crate) fn traverse_scn(
                     near,
                     depth + 1,
                 );
-                ni = next;
+                ni = scn_pointer(next);
             }
             10 => {
                 // SP_LEAF: obj
-                if ni + 1 < words.len() {
-                    let obj = words[ni + 1] as u16;
+                if let Some([obj]) = scn_operands(words, ni) {
+                    let obj = obj as u16;
                     if available_models.contains(&obj) {
                         instances.push((obj, [-(cx as f32), -(cy as f32), cz as f32]));
                     }
@@ -373,14 +360,12 @@ pub(crate) fn traverse_scn(
             }
             12 => {
                 // SP_GROUND
-                if ni + 7 >= words.len() {
+                let Some([_, _, _, _, _, ptr, next]) = scn_operands(words, ni) else {
                     break;
-                }
-                let ptr = (words[ni + 6] as u32 as usize) / 2;
-                let next = (words[ni + 7] as u32 as usize) / 2;
+                };
                 traverse_scn(
                     words,
-                    ptr,
+                    scn_pointer(ptr),
                     cx,
                     cy,
                     cz,
@@ -389,24 +374,24 @@ pub(crate) fn traverse_scn(
                     near,
                     depth + 1,
                 );
-                ni = next;
+                ni = scn_pointer(next);
             }
             14 => {
                 // SP_GLEAF
-                if ni + 1 >= words.len() {
+                let Some([next]) = scn_operands(words, ni) else {
                     break;
-                }
-                let next = (words[ni + 1] as u32 as usize) / 2;
-                ni = next;
+                };
+                ni = scn_pointer(next);
             }
             20 => {
                 // SP_LIST
                 let mut curr = ni + 1;
-                while curr < words.len() && words[curr] != 0 {
-                    let child = (words[curr] as u32 as usize) / 2;
+                while let Some(&child) = words.get(curr)
+                    && child != 0
+                {
                     traverse_scn(
                         words,
-                        child,
+                        scn_pointer(child),
                         cx,
                         cy,
                         cz,
@@ -422,6 +407,16 @@ pub(crate) fn traverse_scn(
             _ => break,
         }
     }
+}
+
+/// The `N` operand words after the `SCENERY.scn` opcode at `ni`, or `None` past the end.
+fn scn_operands<const N: usize>(words: &[i32], ni: usize) -> Option<[i32; N]> {
+    words.get(ni + 1..)?.first_chunk().copied()
+}
+
+/// A `SCENERY.scn` byte pointer operand as a word index.
+fn scn_pointer(word: i32) -> usize {
+    (word as u32 as usize) / 2
 }
 
 /// Half-width of the ocean and fallback ground quads, in metres.
@@ -526,9 +521,17 @@ fn push_terrain(ir: &mut SodModelIr, anchors: &[AnchorPoint], map_areas: &[MapAr
             continue;
         }
 
-        let p0 = pts[area.verts[0]];
-        let p1 = pts[area.verts[1]];
-        let p2 = pts[area.verts[2]];
+        let Some(corners) = area
+            .verts
+            .iter()
+            .map(|&idx| pts.get(idx).copied())
+            .collect::<Option<Vec<[f32; 3]>>>()
+        else {
+            continue;
+        };
+        let &[p0, p1, p2, ..] = corners.as_slice() else {
+            continue;
+        };
         let v01 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
         let v02 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
         let norm = [
@@ -544,8 +547,7 @@ fn push_terrain(ir: &mut SodModelIr, anchors: &[AnchorPoint], map_areas: &[MapAr
         };
 
         let start = ir.vertices.len() as u32;
-        for &v_idx in &area.verts {
-            let p = pts[v_idx];
+        for p in corners {
             ir.vertices.push(SodVertex {
                 position: [p[0], p[1] + base_y, p[2]],
                 normal,
@@ -655,6 +657,47 @@ mod tests {
         // If anchor_count is too low, the polygon is rejected
         let areas_low = parse_map_bin(&data, 3);
         assert_eq!(areas_low.len(), 0);
+    }
+
+    #[test]
+    fn truncated_scenery_inputs_stop_without_panicking() {
+        // A trailing partial record is ignored rather than read past the end.
+        let mut anchors = vec![0u8; 28 + 10];
+        anchors[0..2].copy_from_slice(&7i16.to_le_bytes());
+        assert_eq!(parse_anchor_table(&anchors).len(), 1);
+
+        let mut map = vec![0u8; 30 + 20];
+        map[2..4].copy_from_slice(&0x01FFi16.to_le_bytes());
+        map[14..16].copy_from_slice(&3i16.to_le_bytes());
+        // The partial second record claims a patch too, but only the whole first one counts.
+        map[32..34].copy_from_slice(&0x01FFi16.to_le_bytes());
+        map[44..46].copy_from_slice(&3i16.to_le_bytes());
+        assert_eq!(parse_map_bin(&map, 10).len(), 1);
+
+        // Every opcode cut off before its last operand ends the walk with nothing placed.
+        let available = HashSet::from([0x0105]);
+        for (op, operands) in [(0, 4), (22, 3), (2, 4), (4, 2), (10, 1), (12, 7), (14, 1)] {
+            for kept in 0..operands {
+                let mut words = vec![0i32, op];
+                words.extend(std::iter::repeat_n(0x0105, kept));
+                let mut instances = Vec::new();
+                traverse_scn(
+                    &words,
+                    1,
+                    0,
+                    0,
+                    0,
+                    &mut instances,
+                    &available,
+                    &|_, _, _| false,
+                    0,
+                );
+                assert!(
+                    instances.is_empty(),
+                    "op {op} with {kept} operands placed a prop"
+                );
+            }
+        }
     }
 
     #[test]

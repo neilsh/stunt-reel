@@ -47,14 +47,20 @@ fn fixture_shapes(shape_id: u16) -> HashMap<u16, SodModelIr> {
 
 /// One 30-byte `MAP.BIN` patch: active, `color`, indexing `verts` of the anchor table.
 fn map_patch(color: u8, verts: &[u16]) -> Vec<u8> {
-    let mut rec = vec![0u8; 30];
-    rec[0..2].copy_from_slice(&1i16.to_le_bytes());
-    rec[2..4].copy_from_slice(&0x01FFi16.to_le_bytes());
-    rec[12] = color;
-    rec[14..16].copy_from_slice(&(verts.len() as i16).to_le_bytes());
-    for (j, v) in verts.iter().enumerate() {
-        rec[16 + j * 2..18 + j * 2].copy_from_slice(&v.to_le_bytes());
+    assert!(
+        verts.len() <= 7,
+        "a MAP.BIN patch holds at most seven corners"
+    );
+    let mut rec = Vec::with_capacity(30);
+    rec.extend(1i16.to_le_bytes());
+    rec.extend(0x01FFi16.to_le_bytes());
+    rec.resize(12, 0);
+    rec.extend([color, 0]);
+    rec.extend((verts.len() as i16).to_le_bytes());
+    for v in verts {
+        rec.extend(v.to_le_bytes());
     }
+    rec.resize(30, 0);
     rec
 }
 

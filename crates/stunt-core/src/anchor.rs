@@ -41,15 +41,13 @@ impl AnchorPoint {
 /// `OP_TAP` against and that [`crate::world::build_world`] places terrain patches over.
 #[must_use]
 pub fn parse_anchor_table(data: &[u8]) -> Vec<AnchorPoint> {
-    let count = data.len() / 28;
-    let mut pts = Vec::with_capacity(count);
-    for i in 0..count {
-        let offset = i * 28;
-        pts.push(AnchorPoint {
-            x: i16::from_le_bytes([data[offset], data[offset + 1]]),
-            y: i16::from_le_bytes([data[offset + 2], data[offset + 3]]),
-            z: i16::from_le_bytes([data[offset + 4], data[offset + 5]]),
-        });
-    }
-    pts
+    let (records, _partial) = data.as_chunks::<28>();
+    records
+        .iter()
+        .map(|&[x0, x1, y0, y1, z0, z1, ..]| AnchorPoint {
+            x: i16::from_le_bytes([x0, x1]),
+            y: i16::from_le_bytes([y0, y1]),
+            z: i16::from_le_bytes([z0, z1]),
+        })
+        .collect()
 }
