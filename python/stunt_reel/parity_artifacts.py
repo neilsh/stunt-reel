@@ -81,6 +81,7 @@ __all__ = [
     "VideoCapture",
     "load_video_capture",
     "open_render",
+    "parse_report",
     "read_capture",
     "read_capture_palette",
     "read_page",
@@ -178,9 +179,14 @@ def _read_json(path: Path) -> Any:
         text = path.read_text(encoding="utf-8")
     except OSError as err:
         raise _error("missing", f"the file must be readable ({err})", path) from err
+    return _parse_json(text, path)
+
+
+def _parse_json(text: str | bytes, path: Path) -> Any:
+    """Parse *text* read from *path*, reporting malformed JSON as an artifact error."""
     try:
         return json.loads(text)
-    except json.JSONDecodeError as err:
+    except (json.JSONDecodeError, UnicodeDecodeError) as err:
         raise _error("wrong_type", "the file must be valid JSON", path) from err
 
 
@@ -510,6 +516,9 @@ class CaptureSet:
                 path,
             )
         self.geometry.validate(path)
+        if self.geometry.viewport_rows is not None:
+            # meta.json has no viewport field: a capture is the whole screen.
+            raise _error("geometry", "invalid geometry: a capture has no viewport_rows", path)
         for frame in self.frames:
             if not frame.frame_file or not frame.palette_file:
                 raise _error(
@@ -760,6 +769,8 @@ def _render_document(record: RenderRecord) -> dict[str, Any]:
         film["flm_bytes"] = record.film.flm_bytes
     if record.film.flm_sha256 is not None:
         film["flm_sha256"] = record.film.flm_sha256
+    if record.film.all_sha256 is not None:
+        film["all_sha256"] = record.film.all_sha256
     ticks = [_tick_document(tick) for tick in record.ticks]
     chunks = [
         {
@@ -1732,6 +1743,11 @@ def read_capture_palette(path: Path) -> tuple[tuple[int, int, int], ...]:
 def read_report(path: Path) -> Report:
     """Read a ``report.json``, including reports written before recent optional fields."""
     return _report_object(_read_json(path), path)
+
+
+def parse_report(data: bytes, path: Path) -> Report:
+    """Parse ``report.json`` bytes already read from *path*, so a caller can hash the same bytes."""
+    return _report_object(_parse_json(data, path), path)
 
 
 def write_report(path: Path, report: Report) -> None:

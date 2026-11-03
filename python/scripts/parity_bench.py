@@ -10,6 +10,7 @@ Subcommands::
     mise run parity-bench -- errors-score --film ctry [--against READOUT]
     mise run parity-bench -- errors-make|errors-score --film vault-tod --batch
     mise run parity-bench -- errors-example --film ctry --tick T --category ID
+    mise run parity-bench -- errors-table --films vault-ctry,vault-land
 
 ``run`` writes ``bench.json`` into ``--out`` and prints one row per metric: whether it passes,
 its sigma, and the drop each fault causes in sigma. ``plant`` copies a render tree and writes the
@@ -20,7 +21,8 @@ into ``build/parity/bench/<film>/errors``; a Haiku subagent reads the brief and 
 lists the sheets the two passes disagree on in ``brief-tiebreak.md`` for a Sonnet subagent, which
 writes ``grades-tiebreak.txt``; ``errors-score`` writes ``readout.json`` and prints it, the changes since
 ``--against`` and, for a calibrating run, the calibration. ``errors-example`` commits one tick's
-sheet as an example of a category. ``--batch`` reads a film the batch survey captured, rendered
+sheet as an example of a category. ``errors-table`` prints the readout table of
+``research/parity/batch.md`` from batch films' ``readout.json`` and ``report.json``. ``--batch`` reads a film the batch survey captured, rendered
 and scored (``mise run batch-parity``) instead of a pinned reference; a film with no
 ``[films.<film>]`` window is graded over its whole length.
 """
@@ -35,7 +37,14 @@ from pathlib import Path
 from typing import Any
 
 from stunt_reel import parity_layout, references
-from stunt_reel.bench.errors import make_run, score_run, write_disputes, write_example
+from stunt_reel.bench.errors import (
+    TABLE_HEADER,
+    batch_row,
+    make_run,
+    score_run,
+    write_disputes,
+    write_example,
+)
 from stunt_reel.bench.faults import ALL_FAULTS, Fault
 from stunt_reel.bench.planes import BenchError
 from stunt_reel.bench.run import plant_tree, run_bench
@@ -106,8 +115,12 @@ def plant(args: argparse.Namespace) -> int:
     return 0
 
 
+def _errors_dir(film: str) -> Path:
+    return REPO_ROOT / "build" / "parity" / "bench" / film / "errors"
+
+
 def _errors_out(args: argparse.Namespace) -> Path:
-    return Path(args.out or REPO_ROOT / "build" / "parity" / "bench" / args.film / "errors")
+    return Path(args.out or _errors_dir(args.film))
 
 
 def _render(args: argparse.Namespace) -> Path:
@@ -234,6 +247,23 @@ def errors_example(args: argparse.Namespace) -> int:
     return 0
 
 
+def errors_table(args: argparse.Namespace) -> int:
+    """Print the batch readout table, one row per film, for research/parity/batch.md."""
+    print(TABLE_HEADER)
+    for film in filter(None, args.films.split(",")):
+        report_path = REPO_ROOT / parity_layout.batch_film_dir(film) / "report" / "report.json"
+        try:
+            row = batch_row(_errors_dir(film), report_path)
+        except FileNotFoundError as err:
+            raise BenchError(
+                f"{err.filename} is missing; run errors-score --film {film} --batch"
+            ) from err
+        except ValueError as err:
+            raise BenchError(f"{film}: {err}") from err
+        print(row)
+    return 0
+
+
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     """Parse the bench subcommand and its arguments."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -298,6 +328,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--batch", action="store_true", help="the batch survey's capture, render and report"
     )
     example_p.set_defaults(handler=errors_example)
+    table_p = sub.add_parser("errors-table", help="print batch.md's readout table for batch films")
+    table_p.add_argument("--films", required=True, help="comma-separated batch slugs")
+    table_p.set_defaults(handler=errors_table)
     return parser.parse_args(argv)
 
 
