@@ -15,6 +15,7 @@
 use std::collections::HashMap;
 
 use crate::anchor::{AnchorPoint, parse_anchor_table};
+use crate::contracts::trajectory::PLAYONE_FOV_Y_DEGREES;
 use crate::contracts::{CameraTransform, PaletteControls, ShapeExtent, SodModelIr};
 use crate::credits::CreditLines;
 use crate::flm::{FilmTimeline, FlmError};
@@ -311,11 +312,17 @@ impl FilmScene {
             .iter()
             .map(|slice| slice.record.camera.eye)
             .collect();
-        let default_zoom = CameraTransform::default().lens_zoom();
-        let max_lens_zoom = timeline
+        // Magnification of the field of view actually drawn (base and lens) over PLAYONE's
+        // default lens, so a caller-built timeline with a narrow base is covered too.
+        let default_half = (PLAYONE_FOV_Y_DEGREES.to_radians() / 2.0).tan();
+        let max_zoom = timeline
             .slices()
             .iter()
-            .map(|slice| slice.record.camera.lens_zoom() / default_zoom)
+            .map(|slice| {
+                let fov = ViewCamera::from_authored(&slice.record.camera).fov_degrees;
+                default_half / (fov.to_radians() / 2.0).tan()
+            })
+            .filter(|zoom| zoom.is_finite())
             .fold(1.0, f32::max);
         let world = build_world(
             &WorldInputs {
@@ -323,7 +330,7 @@ impl FilmScene {
                 map: inputs.map,
                 scenery: inputs.scenery,
                 view_eyes: &eyes,
-                max_lens_zoom,
+                max_zoom,
             },
             &decoded.shapes,
         );

@@ -43,14 +43,20 @@ pub struct WorldInputs<'a> {
     /// the polyline through them are not built (see `MIN_PROP_PIXELS`); empty keeps every
     /// prop. They also choose each `SP_1NODE`'s level of detail (see `lod_threshold`).
     pub view_eyes: &'a [[f32; 3]],
-    /// Largest lens zoom any camera reaches, relative to the default lens. It scales
-    /// `FOCAL_PIXELS` in the sub-pixel cull so a zoomed camera never misses a prop.
-    pub max_lens_zoom: f32,
+    /// Largest magnification any camera reaches over PLAYONE's default lens, from the field
+    /// of view it draws (base and lens). It scales `FOCAL_PIXELS` in the sub-pixel cull so a
+    /// zoomed camera never misses a prop.
+    pub max_zoom: f32,
 }
 
 /// PLAYONE's focal length in raster pixels at the default lens, equal on both axes
 /// (square raster pixels; see `PLAYONE_FOV_Y_DEGREES` in `contracts::trajectory`).
 const FOCAL_PIXELS: f32 = 256.0;
+
+/// Smallest view-space depth over distance inside the default frame: at its corner,
+/// `256 / hypot(256, 160, 100)` = 0.80498, rounded down. The cull measures distance, so it divides by this to never
+/// under-size an off-axis prop; a zoomed frame is narrower, so the floor stays conservative.
+const CORNER_DEPTH_FLOOR: f32 = 0.804;
 
 /// A prop whose bounding radius never covers more than this many pixels along the camera
 /// path is dropped from the world. Without the cut `INTRO.FLM` carries 11 million vertices,
@@ -120,7 +126,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         dedup_instances(instances),
         shapes,
         inputs.view_eyes,
-        inputs.max_lens_zoom.max(1.0),
+        inputs.max_zoom.max(1.0),
     );
 
     let base_y = 0.0;
@@ -206,7 +212,8 @@ pub(crate) fn lod_threshold(ext: i32, splitdist: i32, scale: f32) -> f32 {
 ///
 /// Consecutive eyes are joined by segments, so a camera cut only makes the cull more
 /// conservative. With fewer than one eye every instance is kept. `zoom` multiplies
-/// [`FOCAL_PIXELS`], so it should be the largest lens zoom the film reaches.
+/// [`FOCAL_PIXELS`], so it should be the largest magnification the film reaches, and the
+/// distance is reduced to the corner depth ([`CORNER_DEPTH_FLOOR`]).
 pub(crate) fn cull_subpixel_instances(
     instances: Vec<(u16, [f32; 3])>,
     shapes: &HashMap<u16, SodModelIr>,
@@ -226,7 +233,8 @@ pub(crate) fn cull_subpixel_instances(
                     .and_then(SodModelIr::extent)
                     .map_or(0.0, |extent| extent.radius)
             });
-            radius * FOCAL_PIXELS * zoom >= MIN_PROP_PIXELS * path_distance(pos, eyes).max(1.0)
+            let depth = CORNER_DEPTH_FLOOR * path_distance(pos, eyes);
+            radius * FOCAL_PIXELS * zoom >= MIN_PROP_PIXELS * depth.max(1.0)
         })
         .collect()
 }

@@ -64,9 +64,9 @@ Delivery is sequential. This section records what each phase is for and whether 
     $$\text{WeldKey} = \left(\text{quantize}(\mathbf{position}, 10^{-4}),\; \text{quantize}(\mathbf{normal}, 10^{-3}),\; \text{palette\_index},\; \text{flags}\right)$$
   * **Binary Angular Measurement (BAM):** 16-bit integer BAM angles ($\text{raw\_u16} \in [0, 65535]$) are converted to floating-point radians via:
     $$\theta_{\text{rad}} = \left(\frac{\text{raw\_u16}}{65536.0}\right) \times 2\pi$$
-  * **Vertical Field of View ($\text{FOV}_y$) Convention:** `CameraTransform::fov_degrees` is strictly defined as **vertical field of view ($\text{FOV}_y$)** in degrees. The DOS engine's integer focal-length zoom scalar (`focal_dist`) converts to vertical $\text{FOV}_y$ against the aspect-corrected half-height ($H_{\text{half}} = 120.0$) via:
+  * **Vertical Field of View ($\text{FOV}_y$) Convention:** `CameraTransform::fov_degrees` is strictly defined as **vertical field of view ($\text{FOV}_y$)** in degrees. The unverified camera-rig mock converts a positive DOS focal-length zoom scalar (`focal_dist`) to vertical $\text{FOV}_y$ against the aspect-corrected half-height ($H_{\text{half}} = 120.0$) via:
     $$\text{FOV}_y = 2 \arctan\left(\frac{H_{\text{half}}}{\text{focal\_dist}}\right) \times \frac{180}{\pi}$$
-    Films use square pixels on the $320 \times 200$ raster with a 256 px focal length at the default lens ($\text{FOV}_y = 42.67^\circ$, aspect $320/200$), followed by the 4:3 stretch of `[I6]` ([`research/parity/framing-and-actors.md`](../research/parity/framing-and-actors.md) § 2).
+    Films take a separate path: square pixels on the $320 \times 200$ raster and $\text{FOV}_y = 2\arctan(100/256) = 42.67^\circ$ at the default lens (aspect $320/200$), followed by the 4:3 stretch of `[I6]` ([`research/parity/framing-and-actors.md`](../research/parity/framing-and-actors.md) § 2).
 
 #### Real-Mode Physical Address Translation
 
