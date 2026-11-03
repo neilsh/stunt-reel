@@ -126,25 +126,9 @@ def test_require_slug() -> None:
             parity_layout.require_slug(bad)
 
 
-def test_run_id_and_paths() -> None:
-    """Frame captures and archives share a film directory and differ by kind."""
-    assert parity_layout.run_id(7) == "007"
-    assert parity_layout.frames_root("vault-ctry") == Path(
-        "build/parity/captures/vault-ctry/frames"
-    )
-    assert parity_layout.frames_path("vault-ctry", "001") == Path(
-        "build/parity/captures/vault-ctry/frames/001"
-    )
-    assert parity_layout.archives_root("vault-ctry") == Path(
-        "build/parity/captures/vault-ctry/archives"
-    )
-    assert parity_layout.archive_path("vault-ctry", "001") == Path(
-        "build/parity/captures/vault-ctry/archives/001"
-    )
-
-
-def test_video_paths_sit_beside_frames() -> None:
-    assert parity_layout.video_root("vault-ctry") == Path("build/parity/captures/vault-ctry/video")
-    assert parity_layout.video_path("vault-ctry", "001") == Path(
-        "build/parity/captures/vault-ctry/video/001"
-    )
+def test_a_film_has_one_capture_of_each_kind() -> None:
+    """Frame captures, video captures and archives share a film directory and differ by kind."""
+    film = Path("build/parity/captures/vault-ctry")
+    assert parity_layout.frames_path("vault-ctry") == film / "frames"
+    assert parity_layout.video_path("vault-ctry") == film / "video"
+    assert parity_layout.archive_path("vault-ctry") == film / "archives"

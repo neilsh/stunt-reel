@@ -5,10 +5,7 @@
 //! and writes the report.
 
 use stunt_core::contracts::{PALETTE_CONTROL_FULL, PaletteControls};
-use stunt_render::{
-    ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH, compute_window_scores,
-    rescale_mode13h_frame,
-};
+use stunt_render::{ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH};
 
 use crate::render_store::Palette;
 
@@ -18,6 +15,7 @@ use super::loss::{LOSS_CLASSES, attribute_loss, loss_class};
 use super::mask::{
     index_agreement, is_capture_sky, mask_iou_planes, rescale_mask, ui_overlay_mask,
 };
+use super::ssim::{compute_window_scores, rescale_mode13h_frame};
 
 /// SSIM window edge, in pixels.
 pub(super) const SSIM_WINDOW: usize = 11;
@@ -185,7 +183,7 @@ mod tests {
             })
             .collect();
         RenderFrame {
-            luminance: stunt_render::rgb_to_luminance(&rgb),
+            luminance: crate::parity::ssim::rgb_to_luminance(&rgb),
             indices,
             layers,
             controls: None,

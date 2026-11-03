@@ -14,13 +14,13 @@ use std::fmt::Write;
 use serde_json::{Value, json};
 use stunt_render::{
     ASPECT_CORRECTED_HEIGHT, LAYER_FIRST_ACTOR, LAYER_OCEAN, LAYER_OVERLAY, LAYER_PROP,
-    LAYER_TERRAIN, MODE13H_HEIGHT, MODE13H_WIDTH, compute_frame_ssim, compute_window_scores,
-    rescale_mode13h_frame,
+    LAYER_TERRAIN, MODE13H_HEIGHT, MODE13H_WIDTH,
 };
 
 use super::frames::reference_luminance;
 use super::mask::{rescale_mask, ui_overlay_mask};
 use super::score::{ReferenceFrame, RenderFrame, SSIM_STRIDE, SSIM_WINDOW};
+use super::ssim::{compute_frame_ssim, compute_window_scores, rescale_mode13h_frame};
 
 /// Layer keys of [`FrameVerdict::changed_by_layer`].
 const LAYER_KEYS: [&str; 6] = ["ocean", "terrain", "props", "overlay", "actors", "none"];
@@ -357,7 +357,7 @@ mod tests {
                 .iter()
                 .map(|&i| {
                     let (r, g, b) = reference.palette[usize::from(i)];
-                    stunt_render::compute_luminance(f32::from(r), f32::from(g), f32::from(b))
+                    crate::parity::ssim::compute_luminance(f32::from(r), f32::from(g), f32::from(b))
                 })
                 .collect(),
             indices: reference.indices,

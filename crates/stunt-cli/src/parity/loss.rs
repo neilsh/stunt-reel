@@ -1,8 +1,10 @@
 //! Per-class SSIM loss attribution.
 
 use stunt_render::{
-    LAYER_NONE, LAYER_OCEAN, LAYER_OVERLAY, LAYER_PROP, LAYER_TERRAIN, MODE13H_WIDTH, WindowScore,
+    LAYER_NONE, LAYER_OCEAN, LAYER_OVERLAY, LAYER_PROP, LAYER_TERRAIN, MODE13H_WIDTH,
 };
+
+use super::ssim::WindowScore;
 
 /// What a scored pixel shows, by the render's layer and whether the capture has geometry
 /// there (anything but the sky index). Indexed by [`loss_class`]; `*_render_only` is the

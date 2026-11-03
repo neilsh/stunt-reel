@@ -1,4 +1,4 @@
-"""Generated ``.ALL`` archives: the structural check and the add-only publish."""
+"""Generated ``.ALL`` archives: the structural check and the film's one stored archive."""
 
 from __future__ import annotations
 
@@ -86,39 +86,29 @@ SLUG = "vault-balloon"
 def test_publish_writes_meta_last_and_renames(tmp_path: Path) -> None:
     data = build_all(CHUNKS)
     target = publish_archive(tmp_path, data, _meta(data), slug=SLUG, film="BALLOON.FLM")
-    assert target == tmp_path / parity_layout.archive_path(SLUG, "001")
+    assert target == tmp_path / parity_layout.archive_path(SLUG)
     assert (target / "BALLOON.ALL").read_bytes() == data
     assert ArchiveMeta.from_json(
         (target / "meta.json").read_text(encoding="utf-8")
     ).all_bytes == len(data)
-    assert sorted(p.name for p in target.parent.iterdir()) == ["001"]
+    assert sorted(p.name for p in target.parent.iterdir() if p.suffix != ".lock") == ["archives"]
 
 
-def test_publish_adds_the_next_run_and_never_touches_an_earlier_one(tmp_path: Path) -> None:
+def test_publish_replaces_the_films_archive(tmp_path: Path) -> None:
     data = build_all(CHUNKS)
     first = publish_archive(tmp_path, data, _meta(data), slug=SLUG, film="BALLOON.FLM")
-    before = {p.name: p.read_bytes() for p in first.iterdir()}
-    second = publish_archive(
-        tmp_path, build_all([b"other"]), _meta(data), slug=SLUG, film="BALLOON.FLM"
-    )
-    assert second.name == "002"
-    assert {p.name: p.read_bytes() for p in first.iterdir()} == before
+    other = build_all([b"other"])
+    second = publish_archive(tmp_path, other, _meta(other), slug=SLUG, film="BALLOON.FLM")
+    assert second == first
+    assert (second / "BALLOON.ALL").read_bytes() == other
+    assert sorted(p.name for p in second.parent.iterdir() if p.suffix != ".lock") == ["archives"]
 
 
-def test_a_held_claim_or_partial_keeps_its_number(tmp_path: Path) -> None:
-    data = build_all(CHUNKS)
-    parent = tmp_path / parity_layout.archives_root(SLUG)
-    (parent / "001.lock").mkdir(parents=True)
-    (parent / "002.partial").mkdir()
-    target = publish_archive(tmp_path, data, _meta(data), slug=SLUG, film="BALLOON.FLM")
-    assert target.name == "003"
-    assert (parent / "001.lock").is_dir()
-
-
-def test_publish_releases_its_claim_when_the_write_fails(
+def test_a_failed_write_keeps_the_old_archive_and_leaves_nothing_behind(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     data = build_all(CHUNKS)
+    target = publish_archive(tmp_path, data, _meta(data), slug=SLUG, film="BALLOON.FLM")
 
     def full_disk(*_args: object) -> int:
         raise OSError("disk full")
@@ -126,10 +116,9 @@ def test_publish_releases_its_claim_when_the_write_fails(
     monkeypatch.setattr(Path, "write_bytes", full_disk)
     with pytest.raises(OSError, match="disk full"):
         publish_archive(tmp_path, data, _meta(data), slug=SLUG, film="BALLOON.FLM")
-    parent = tmp_path / parity_layout.archives_root(SLUG)
-    assert not list(parent.glob("*.lock"))
-    assert not list(parent.glob("*.partial"))
-    assert not (parent / "001").exists()
+    monkeypatch.undo()
+    assert (target / "BALLOON.ALL").read_bytes() == data
+    assert sorted(p.name for p in target.parent.iterdir() if p.suffix != ".lock") == ["archives"]
 
 
 FLM_BYTES = b"FILM-balloon"
@@ -178,20 +167,16 @@ def test_a_sibling_must_match_the_stem_and_suffix_exactly(tmp_path: Path) -> Non
     assert resolve_all(film, tmp_path) == exact
 
 
-def test_the_newest_stored_archive_for_the_film_hash_is_used(tmp_path: Path) -> None:
+def test_the_stored_archive_for_the_film_hash_is_used(tmp_path: Path) -> None:
     film = _film(tmp_path)
-    _store(tmp_path, FLM_BYTES, build_all([b"old"]))
-    newest = _store(tmp_path, FLM_BYTES, build_all([b"new"]))
+    stored = _store(tmp_path, FLM_BYTES, build_all([b"new"]))
+    assert resolve_all(film, tmp_path) == stored / "BALLOON.ALL"
+
+
+def test_an_archive_of_another_film_is_missing(tmp_path: Path) -> None:
+    film = _film(tmp_path)
     _store(tmp_path, b"another film", build_all([b"other"]))
-    assert resolve_all(film, tmp_path) == newest / "BALLOON.ALL"
-
-
-def test_a_changed_stored_archive_is_an_error_naming_the_id(tmp_path: Path) -> None:
-    film = _film(tmp_path)
-    _store(tmp_path, FLM_BYTES, build_all([b"old"]))
-    newest = _store(tmp_path, FLM_BYTES, build_all([b"new"]))
-    (newest / "BALLOON.ALL").write_bytes(b"tampered")
-    with pytest.raises(ArchiveError, match="002"):
+    with pytest.raises(ArchiveMissing, match=r"another \.FLM.*make-all"):
         resolve_all(film, tmp_path)
 
 
@@ -199,16 +184,18 @@ def test_a_changed_stored_archive_says_how_to_recover(tmp_path: Path) -> None:
     film = _film(tmp_path)
     stored = _store(tmp_path, FLM_BYTES, build_all([b"new"]))
     (stored / "BALLOON.ALL").write_bytes(b"tampered")
-    with pytest.raises(ArchiveError, match=r"delete .*001.* and rerun"):
+    with pytest.raises(ArchiveError, match=r"archives no longer matches.*rerun make-all"):
         resolve_all(film, tmp_path)
 
 
 @pytest.mark.parametrize("text", ["not json", "[]", '{"film": "BALLOON.FLM"}'])
-def test_a_malformed_meta_is_an_archive_error_naming_the_id(tmp_path: Path, text: str) -> None:
+def test_a_malformed_meta_is_an_archive_error_naming_the_directory(
+    tmp_path: Path, text: str
+) -> None:
     film = _film(tmp_path)
     stored = _store(tmp_path, FLM_BYTES, build_all([b"new"]))
     (stored / META_FILE).write_text(text, encoding="utf-8")
-    with pytest.raises(ArchiveError, match="001"):
+    with pytest.raises(ArchiveError, match=r"archives has an unreadable meta.json"):
         resolve_all(film, tmp_path)
 
 

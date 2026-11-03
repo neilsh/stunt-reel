@@ -385,7 +385,7 @@ fn credits_frames(
         palette: std::array::from_fn(|i| get_palette_rgb(i as u8)),
     };
     let (r, g, b) = get_palette_rgb(background);
-    let luminance = stunt_render::rgb_to_luminance(&[r, g, b])[0];
+    let luminance = super::ssim::rgb_to_luminance(&[r, g, b])[0];
     let mut layers = vec![LAYER_NONE as u16; pixels];
     if credits_in_render {
         // Credits drawn elsewhere on the page: the tick has credits, this ink is missing.
@@ -427,7 +427,7 @@ fn a_verdict_keeps_the_ink_when_only_the_previous_render_drew_credits() {
     let (reference, mut before) = credits_frames(true);
     // The previous render drew the ink exactly where the capture has it.
     let (r, g, b) = stunt_core::contracts::get_palette_rgb(255);
-    let ink_luminance = stunt_render::rgb_to_luminance(&[r, g, b])[0];
+    let ink_luminance = super::ssim::rgb_to_luminance(&[r, g, b])[0];
     for (i, &index) in reference.indices.iter().enumerate() {
         if index == 255 {
             before.luminance[i] = ink_luminance;
@@ -483,7 +483,7 @@ fn a_render_that_loses_its_credits_scores_lower_on_a_credits_tick() {
     };
     let (reference, mut drawn) = credits_frames(true);
     let (r, g, b) = stunt_core::contracts::get_palette_rgb(255);
-    let ink_luminance = stunt_render::rgb_to_luminance(&[r, g, b])[0];
+    let ink_luminance = super::ssim::rgb_to_luminance(&[r, g, b])[0];
     for (i, &index) in reference.indices.iter().enumerate() {
         if index == 255 {
             drawn.luminance[i] = ink_luminance;

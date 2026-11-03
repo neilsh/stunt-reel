@@ -1,32 +1,30 @@
-//! Invariant `[I6]` Visual Parity and Structural Similarity (SSIM) Evaluator.
+//! Frame-scoring math: Rec. 601 luminance, the 320x200 to 320x240 stretch and windowed SSIM.
 //!
 //! Complies with Architectural Invariants:
-//! - `[I6]` Visual parity acceptance thresholds (the gate itself lives in `stunt-cli`'s parity report).
+//! - `[I6]` Visual parity acceptance thresholds (the gate itself lives in the parity report).
 //! - `[I3]` VGA Mode 13h aspect ratio correction ($320 \times 200 \to 320 \times 240$, 1.2x vertical stretch).
+//!
+//! Pure CPU math over `f32` planes. The parity scorer is its only consumer, which is why it sits
+//! here and not in the renderer crate; the raster dimensions it is called with come from
+//! `stunt_render` (`MODE13H_WIDTH`, `MODE13H_HEIGHT`, `ASPECT_CORRECTED_HEIGHT`).
 
 /// SSIM stability constant C1 for dynamic range [0, 255]: (0.01 * 255)^2 = 6.5025.
-pub const C1_CONSTANT: f32 = 6.5025;
+pub(super) const C1_CONSTANT: f32 = 6.5025;
 
 /// SSIM stability constant C2 for dynamic range [0, 255]: (0.03 * 255)^2 = 58.5225.
-pub const C2_CONSTANT: f32 = 58.5225;
-
-/// Base Mode 13h framebuffer width in pixels.
-pub const MODE13H_WIDTH: usize = 320;
-
-/// Original Mode 13h framebuffer height in pixels.
-pub const MODE13H_HEIGHT: usize = 200;
-
-/// Aspect-corrected 4:3 presentation height in pixels ($200 \times 1.2$).
-pub const ASPECT_CORRECTED_HEIGHT: usize = 240;
+pub(super) const C2_CONSTANT: f32 = 58.5225;
 
 /// Computes Rec. 601 perceptual luminance from RGB in [0.0, 255.0].
 #[inline]
-pub fn compute_luminance(r: f32, g: f32, b: f32) -> f32 {
+pub(super) fn compute_luminance(r: f32, g: f32, b: f32) -> f32 {
     0.299 * r + 0.587 * g + 0.114 * b
 }
 
 /// Converts a contiguous RGBA8 buffer to a flat luminance float slice.
-pub fn rgba_to_luminance(rgba: &[u8]) -> Vec<f32> {
+///
+/// Only the tests read RGBA pages; the scorer works from RGB planes ([`rgb_to_luminance`]).
+#[cfg(test)]
+pub(super) fn rgba_to_luminance(rgba: &[u8]) -> Vec<f32> {
     let pixel_count = rgba.len() / 4;
     let mut lum = Vec::with_capacity(pixel_count);
     for chunk in rgba.as_chunks::<4>().0 {
@@ -40,7 +38,7 @@ pub fn rgba_to_luminance(rgba: &[u8]) -> Vec<f32> {
 }
 
 /// Converts a contiguous RGB8 buffer to a flat luminance float slice.
-pub fn rgb_to_luminance(rgb: &[u8]) -> Vec<f32> {
+pub(super) fn rgb_to_luminance(rgb: &[u8]) -> Vec<f32> {
     let mut lum = Vec::with_capacity(rgb.len() / 3);
     for chunk in rgb.as_chunks::<3>().0 {
         lum.push(compute_luminance(
@@ -55,13 +53,14 @@ pub fn rgb_to_luminance(rgb: &[u8]) -> Vec<f32> {
 /// Rescales 320x200 Mode 13h raster to 320x240 physical 4:3 CRT aspect (1.2x stretch) via nearest-neighbor.
 ///
 /// # Panics
-/// Panics if `src` holds fewer than `width * height` values.
-pub fn rescale_mode13h_frame(
+/// Panics if `height` is zero or `src` holds fewer than `width * height` values.
+pub(super) fn rescale_mode13h_frame(
     src: &[f32],
     width: usize,
     height: usize,
     target_height: usize,
 ) -> Vec<f32> {
+    assert!(height > 0, "source frame has no rows");
     assert!(
         src.len() >= width * height,
         "source holds {} values, fewer than {width}x{height}",
@@ -85,7 +84,7 @@ pub fn rescale_mode13h_frame(
 }
 
 /// Computes SSIM for a single local window between two image patches.
-pub fn compute_window_ssim(window_x: &[f32], window_y: &[f32], c1: f32, c2: f32) -> f32 {
+pub(super) fn compute_window_ssim(window_x: &[f32], window_y: &[f32], c1: f32, c2: f32) -> f32 {
     let n = window_x.len();
     if n == 0 || window_y.len() != n {
         return 0.0;
@@ -123,7 +122,7 @@ pub fn compute_window_ssim(window_x: &[f32], window_y: &[f32], c1: f32, c2: f32)
 }
 
 /// Computes mean Structural Similarity Index (SSIM) between two 2D normalized frames.
-pub fn compute_frame_ssim(
+pub(super) fn compute_frame_ssim(
     frame_a: &[f32],
     frame_b: &[f32],
     width: usize,
@@ -136,13 +135,13 @@ pub fn compute_frame_ssim(
 
 /// SSIM of one window of a frame pair, with the window's top-left corner.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct WindowScore {
+pub(super) struct WindowScore {
     /// Window column.
-    pub x: usize,
+    pub(super) x: usize,
     /// Window row.
-    pub y: usize,
+    pub(super) y: usize,
     /// SSIM of the window.
-    pub score: f32,
+    pub(super) score: f32,
 }
 
 /// SSIM of every window not touching `excluded` (row-major, `width * height`), in scan order.
@@ -153,7 +152,7 @@ pub struct WindowScore {
 /// # Panics
 /// Panics if `frame_a` and `frame_b` differ in length or hold fewer than `width * height`
 /// values, or `excluded` is given with a length other than theirs.
-pub fn compute_window_scores(
+pub(super) fn compute_window_scores(
     frame_a: &[f32],
     frame_b: &[f32],
     width: usize,
@@ -227,7 +226,7 @@ pub fn compute_window_scores(
 /// Like [`compute_frame_ssim`], but a window that touches any `true` pixel of `excluded`
 /// (row-major, `width * height`) contributes nothing to the mean. When every window is
 /// excluded the result is `1.0`, since nothing disagrees.
-pub fn compute_frame_ssim_masked(
+pub(super) fn compute_frame_ssim_masked(
     frame_a: &[f32],
     frame_b: &[f32],
     width: usize,
@@ -259,6 +258,7 @@ pub fn compute_frame_ssim_masked(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use stunt_render::{ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH};
 
     #[test]
     fn degenerate_windows_yield_no_scores_instead_of_panicking_or_hanging() {
@@ -341,5 +341,173 @@ mod tests {
         let rescaled =
             rescale_mode13h_frame(&src, MODE13H_WIDTH, MODE13H_HEIGHT, ASPECT_CORRECTED_HEIGHT);
         assert_eq!(rescaled.len(), MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT);
+    }
+
+    #[test]
+    fn test_ssim_evaluator() {
+        let size = MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT;
+        let mut frame_ref = vec![100.0f32; size];
+        // Add patterned details
+        for (i, item) in frame_ref.iter_mut().enumerate() {
+            *item = ((i % 128) + 50) as f32;
+        }
+
+        // Identical frame -> SSIM must be 1.0
+        let ssim_ident = compute_frame_ssim(
+            &frame_ref,
+            &frame_ref,
+            MODE13H_WIDTH,
+            ASPECT_CORRECTED_HEIGHT,
+            11,
+            8,
+        );
+        assert!(
+            (ssim_ident - 1.0).abs() < 1e-4,
+            "Expected 1.0, got {ssim_ident}"
+        );
+
+        // Slightly perturbed frame (0.5 LSB average) -> SSIM should easily exceed the sign-off
+        // threshold (>= 0.90)
+        let frame_test: Vec<f32> = frame_ref.iter().map(|&v| (v + 0.5).min(255.0)).collect();
+        let ssim_test = compute_frame_ssim(
+            &frame_ref,
+            &frame_test,
+            MODE13H_WIDTH,
+            ASPECT_CORRECTED_HEIGHT,
+            11,
+            8,
+        );
+        assert!(ssim_test >= 0.90, "SSIM {ssim_test} must be >= 0.90");
+    }
+
+    #[test]
+    fn test_blank_page_luminance_is_flat() {
+        let rgba = vec![255u8; MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT * 4];
+        let lum = rgba_to_luminance(&rgba);
+        assert_eq!(lum.len(), MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT);
+        assert!(lum.iter().all(|&value| (value - 255.0).abs() < 1e-3));
+    }
+}
+
+/// Cross-check of the hand-written SSIM above against `image-compare`.
+///
+/// The in-tree SSIM is intentional (`[I6]` thresholds are tied to its exact variant, and it adds
+/// masks and fade compensation); `image-compare` is a dev-dependency used only as an independent
+/// witness. Frames are synthetic gradients, so the test needs no `corpus/` data (`[I7]`).
+///
+/// Both implementations use uniform 8x8 windows over `[0, 255]` with `C1 = (0.01 * 255)^2` and
+/// `C2 = (0.03 * 255)^2`, but they differ in one normalisation: `image-compare` uses the *sum* of
+/// squared deviations as "variance"/"covariance", while this module divides by `n - 1` (= 63).
+/// At the production constants the two scores therefore differ (only identical frames agree), so:
+///
+/// 1. with `C2` rescaled to `C2 / 63` the two formulas are algebraically identical and must
+///    agree to float precision, which checks the window arithmetic and the tiling;
+/// 2. at the production constants only identity (`1.0`) and monotonic ordering are asserted.
+#[cfg(test)]
+mod crosscheck_tests {
+    use super::{C1_CONSTANT, C2_CONSTANT, compute_frame_ssim, compute_window_ssim};
+    use image::GrayImage;
+    use image_compare::{Algorithm, gray_similarity_structure};
+
+    const WIDTH: u32 = 64;
+    const HEIGHT: u32 = 48;
+    const WINDOW: usize = 8;
+
+    /// A smooth diagonal gradient with a little texture, as integer luminance (`image-compare`
+    /// works on `u8`).
+    fn reference() -> Vec<u8> {
+        let mut out = Vec::new();
+        for y in 0..HEIGHT {
+            for x in 0..WIDTH {
+                let base = 40 + 2 * x + 3 * y;
+                let texture = (x * 7 + y * 13) % 11;
+                out.push((base + texture).min(255) as u8);
+            }
+        }
+        out
+    }
+
+    /// The reference with a deterministic perturbation of the given amplitude.
+    fn perturbed(amplitude: u32) -> Vec<u8> {
+        reference()
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| {
+                let i = i as u32;
+                let noise = (i.wrapping_mul(2_654_435_761) >> 24) % (2 * amplitude + 1);
+                (i32::from(v) + noise as i32 - amplitude as i32).clamp(0, 255) as u8
+            })
+            .collect()
+    }
+
+    fn gray(pixels: &[u8]) -> GrayImage {
+        GrayImage::from_raw(WIDTH, HEIGHT, pixels.to_vec()).expect("dimensions")
+    }
+
+    fn theirs(a: &[u8], b: &[u8]) -> f64 {
+        gray_similarity_structure(&Algorithm::MSSIMSimple, &gray(a), &gray(b))
+            .expect("same dimensions")
+            .score
+    }
+
+    fn ours(a: &[u8], b: &[u8], c2: f32) -> f32 {
+        let to_f32 = |p: &[u8]| p.iter().map(|&v| f32::from(v)).collect::<Vec<_>>();
+        // `compute_frame_ssim` fixes the production constants; rebuild the same non-overlapping
+        // tiling with a custom `C2` through the window scorer instead.
+        let (fa, fb) = (to_f32(a), to_f32(b));
+        if c2 == C2_CONSTANT {
+            return compute_frame_ssim(&fa, &fb, WIDTH as usize, HEIGHT as usize, WINDOW, WINDOW);
+        }
+        let mut scores = Vec::new();
+        let (w, h) = (WIDTH as usize, HEIGHT as usize);
+        for y in (0..h).step_by(WINDOW) {
+            for x in (0..w).step_by(WINDOW) {
+                let (mut wa, mut wb) = (Vec::new(), Vec::new());
+                for row in y..y + WINDOW {
+                    wa.extend_from_slice(&fa[row * w + x..row * w + x + WINDOW]);
+                    wb.extend_from_slice(&fb[row * w + x..row * w + x + WINDOW]);
+                }
+                scores.push(compute_window_ssim(&wa, &wb, C1_CONSTANT, c2));
+            }
+        }
+        scores.iter().sum::<f32>() / scores.len() as f32
+    }
+
+    #[test]
+    fn ssim_agrees_with_image_compare() {
+        let base = reference();
+        let rescaled_c2 = C2_CONSTANT / (WINDOW * WINDOW - 1) as f32;
+
+        let mild = perturbed(6);
+        let heavy = perturbed(40);
+
+        // Identical frames score exactly 1 in both.
+        assert!((theirs(&base, &base) - 1.0).abs() < 1e-12);
+        assert_eq!(ours(&base, &base, C2_CONSTANT), 1.0);
+
+        // Same formula once the variance normalisation is matched.
+        for other in [&mild, &heavy] {
+            let a = f64::from(ours(&base, other, rescaled_c2));
+            let b = theirs(&base, other);
+            assert!(
+                (a - b).abs() < 2e-4,
+                "rescaled-C2 ours {a} vs image-compare {b}"
+            );
+        }
+
+        // Production constants: monotonic in perturbation for both implementations.
+        let (our_mild, our_heavy) = (
+            ours(&base, &mild, C2_CONSTANT),
+            ours(&base, &heavy, C2_CONSTANT),
+        );
+        let (their_mild, their_heavy) = (theirs(&base, &mild), theirs(&base, &heavy));
+        assert!(
+            1.0 > our_mild && our_mild > our_heavy,
+            "{our_mild} {our_heavy}"
+        );
+        assert!(
+            1.0 > their_mild && their_mild > their_heavy,
+            "{their_mild} {their_heavy}"
+        );
     }
 }

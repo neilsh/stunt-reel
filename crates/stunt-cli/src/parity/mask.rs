@@ -4,8 +4,9 @@ use std::ops::RangeInclusive;
 
 use stunt_render::{
     ASPECT_CORRECTED_HEIGHT, LAYER_NONE, LAYER_OVERLAY, MODE13H_HEIGHT, MODE13H_WIDTH,
-    rescale_mode13h_frame,
 };
+
+use super::ssim::rescale_mode13h_frame;
 
 /// First row of the button bar `PLAYONE.EXE` draws over the 3D viewport (rows 185-199).
 const UI_BAR_FIRST_ROW: usize = 185;
