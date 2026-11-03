@@ -13,7 +13,9 @@ use super::interpolate::{
 use super::timeline::SliceKeyframe;
 use super::{CAMERA_FORWARD, CAMERA_LOOKAHEAD_METERS, FlmError};
 use crate::contracts::palette::PaletteControls;
-use crate::contracts::trajectory::{ActorTransform, AudioCue, CameraTransform, TrajectoryRecord};
+use crate::contracts::trajectory::{
+    ActorTransform, AudioCue, CameraTransform, PLAYONE_FOV_Y_DEGREES, TrajectoryRecord,
+};
 use crate::credits::{CreditLines, CreditsChange};
 use crate::reader::ByteReader;
 
@@ -537,7 +539,7 @@ impl<'a> FlmPlayer<'a> {
         let fov = if self.focal_distance > 0.0 {
             focal_to_fov_y(self.focal_distance)
         } else {
-            45.0
+            PLAYONE_FOV_Y_DEGREES
         };
 
         // Each camera's zoom word is the film variable of its view index (image `0x11FC`

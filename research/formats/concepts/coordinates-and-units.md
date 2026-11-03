@@ -236,6 +236,8 @@ Mode 13h framebuffers render at $320 \times 200$, but are stretched vertically b
 
 $$\text{FOV}_y = 2 \arctan\left(\frac{120.0}{\text{focal\_dist}}\right) \times \frac{180^\circ}{\pi}$$
 
+**What the capture shows** (2026-11-02, `[Supported Inference]`): `PLAYONE.EXE` does not project at 4:3. It projects with square pixels on the 320 x 200 raster with a focal length of 256 raster pixels at the default lens, so $\text{FOV}_y = 2\arctan(100/256) = 42.67^\circ$ at aspect $320/200$, and the CRT stretch comes after projection ([`../../parity/framing-and-actors.md`](../../parity/framing-and-actors.md) § 2). The renderer follows that. The `focal_dist` conversion above, and the table below, come from the unverified camera-rig mock (`[MEM-CAMERA-RIG]`); no film sets `focal_dist`.
+
 #### Sample Camera Focal Length Conversions
 
 | Focal Distance (`focal_dist`) | Calculated $\text{FOV}_y$ | Lens Equivalent | Typical Usage |

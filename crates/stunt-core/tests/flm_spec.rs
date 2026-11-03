@@ -545,7 +545,10 @@ fn synthetic_minimal_fixture_evaluates_two_ticks() {
     assert_eq!(slice0.tick, 1);
     assert_eq!(slice0.camera.eye, [0.0, 10.0, 50.0]);
     assert_eq!(slice0.camera.target, [0.0, 0.0, 0.0]);
-    assert_eq!(slice0.camera.fov_degrees, 45.0);
+    assert_eq!(
+        slice0.camera.fov_degrees,
+        stunt_core::contracts::trajectory::PLAYONE_FOV_Y_DEGREES
+    );
     assert!(!slice0.camera.cut_from_previous);
     assert!(slice0.actors.is_empty());
     assert!(slice0.audio_cues.is_empty());

@@ -14,6 +14,15 @@
 
 _Found 2026-10-22 and 2026-10-23 at `d90a047`; see the [parity log](log.md)._
 
+## 2. Projection: square raster pixels, focal length 256 (adopted)
+
+`[Supported Inference]`, 2026-11-02. `PLAYONE.EXE` projects with square pixels on the 320 x 200 raster and a focal length of 256 raster pixels at the default lens, so horizontal and vertical focal lengths are equal; the CRT's 1.2x vertical stretch comes after projection. We had projected at 4:3 with a 45 degree vertical field of view: 241.4 px vertically and 289.7 px horizontally. The vertical field of view is now `2 * atan(100 / 256)` = 42.67 degrees ([`PLAYONE_FOV_Y_DEGREES`](../../crates/stunt-core/src/contracts/trajectory.rs)) at aspect 320 / 200 ([`MODE13H_PROJECTION_ASPECT`](../../crates/stunt-render/src/camera.rs)). 256 matches the `x 256` screen slopes `0x22A0`/`0x22A2` ([`lod.md`](../playone-exe/lod.md)), but the rule itself has not been read from the disassembly.
+
+* **Horizon probe.** The sky/ground boundary was fitted column by column in every scored frame where it is visible: 49 CTRY and 23 INTRO frames. In the rest, mountains or framing hide it. The probe then compared that boundary with ours at the same tick. Capture minus ours at column 160 was -8.4 px (CTRY slot 3), -4.9 (CTRY slot 2), -5.0 (INTRO slot 2) and -10.8 (INTRO slot 4, eye at 500 m). It follows the camera's pitch (R² 0.94) and not its altitude (R² 0.10, coefficient about 0), heading or roll. The capture's horizon slope is -1.006 tan(roll) against our -0.833 tan(roll), which is the 4:3 pixel aspect. A projection fit to the capture's horizon gives `fy` 256 and centre row 91.9, against the live `0x41CA` = 92, with an rms error of 0.39 px. Composing the three angles in any other order fits worse (0.71 and 1.31 px), so our Euler order and roll sign stand. PLAYONE's horizon sits at infinity. Ours is the edge of finite ground, about 5 px low at a 500 m eye height, which is about half of the INTRO slot 4 offset and is still open.
+* **Sweep** (`DBG_PROJ_X`, `DBG_PROJ_Y` scaling our focal lengths; `DBG_CAM_PITCH` in degrees). Square 256 px (x 0.884, y 1.0605) scored 0.8274 / 0.7155 against 0.7843 / 0.6902. Each scale alone gave about half the gain: x 0.884 alone 0.7986 / 0.7068, y 1.0605 alone 0.7934 / 0.6893. Moving either scale by about 3% scored lower on both films. The fit also suggested a -0.9 degree pitch offset, but every offset tried (-0.9, -0.4, +0.4, +0.9 degrees) cost 0.02 to 0.05, so none was adopted. Adopted at 0.8291 / 0.7154, IoU 0.9897 / 0.9712.
+
+This is why the eye-height sweeps below found no consistent answer: a height offset was partly compensating for a projection error that changes with pitch, so its best value depended on the shot.
+
 ## Ruled out
 
 All scores `mean_ssim_scored`, CTRY / INTRO unless a single film is named. Baselines moved between rounds (0.771 / 0.676 on 2026-10-22, 0.7708 / 0.6762 at `d90a047`, 0.7732 / 0.6799 after page timing); each sweep is read against its own baseline. Nothing below was adopted.

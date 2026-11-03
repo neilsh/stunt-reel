@@ -14,8 +14,8 @@
 
 use stunt_core::scene::ViewCamera;
 use stunt_render::{
-    ASPECT_4_3, ASPECT_CORRECTED_HEIGHT, CameraController, CameraMode, MODE13H_WIDTH,
-    build_palette_lut_bytes, compute_frame_ssim, rgba_to_luminance,
+    ASPECT_CORRECTED_HEIGHT, CameraController, CameraMode, MODE13H_PROJECTION_ASPECT,
+    MODE13H_WIDTH, build_palette_lut_bytes, compute_frame_ssim, rgba_to_luminance,
 };
 
 #[test]
@@ -49,7 +49,7 @@ fn test_palette_lut_data_integrity() {
 #[test]
 fn test_camera_controller_and_aspect_ratio() {
     let mut cam = CameraController::default();
-    assert!((cam.aspect_ratio - ASPECT_4_3).abs() < 1e-4);
+    assert!((cam.aspect_ratio - MODE13H_PROJECTION_ASPECT).abs() < 1e-4);
 
     let authored = ViewCamera {
         eye: [10.0, 20.0, 30.0],
@@ -61,6 +61,10 @@ fn test_camera_controller_and_aspect_ratio() {
 
     let view = cam.compute_view_matrix();
     let proj = cam.compute_proj_matrix();
+    // Square raster pixels: the same focal length in pixels across 320 columns and 200 rows.
+    let fx_px = proj.x_axis.x * 160.0;
+    let fy_px = proj.y_axis.y * 100.0;
+    assert!((fx_px - fy_px).abs() < 1e-3, "fx {fx_px} fy {fy_px}");
     let uniform = cam.build_uniform();
 
     assert_eq!(uniform.camera_pos, [10.0, 20.0, 30.0]);

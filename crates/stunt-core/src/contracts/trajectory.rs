@@ -39,6 +39,12 @@ pub struct CameraTransform {
 /// Lens word `CTRY.FLM` and `INTRO.FLM` give every camera before any zoom.
 pub const DEFAULT_CAMERA_LENS: u16 = 8192;
 
+/// PLAYONE's vertical field of view at [`DEFAULT_CAMERA_LENS`]: a focal length of 256
+/// raster pixels over the 200-row page's half-height, `2 * atan(100 / 256)`. Fitted to
+/// the capture's horizon and confirmed by sweep (research/parity/framing-and-actors.md,
+/// section 2); 256 matches the `x 256` screen slopes at `0x22A0`/`0x22A2`.
+pub const PLAYONE_FOV_Y_DEGREES: f32 = 42.673_717;
+
 #[cfg(feature = "serde")]
 fn default_camera_lens() -> u16 {
     DEFAULT_CAMERA_LENS
@@ -86,7 +92,7 @@ impl Default for CameraTransform {
         Self {
             eye: [0.0, 10.0, 50.0],
             target: [0.0, 0.0, 0.0],
-            fov_degrees: 45.0,
+            fov_degrees: PLAYONE_FOV_Y_DEGREES,
             roll_radians: 0.0,
             cut_from_previous: false,
             lens: DEFAULT_CAMERA_LENS,
@@ -257,7 +263,7 @@ mod tests {
         let cam = CameraTransform::default();
         assert_eq!(cam.eye, [0.0, 10.0, 50.0]);
         assert_eq!(cam.target, [0.0, 0.0, 0.0]);
-        assert_eq!(cam.fov_degrees, 45.0);
+        assert_eq!(cam.fov_degrees, PLAYONE_FOV_Y_DEGREES);
         assert_eq!(cam.roll_radians, 0.0);
         assert!(!cam.cut_from_previous);
     }
