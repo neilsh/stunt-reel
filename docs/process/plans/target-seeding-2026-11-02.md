@@ -171,6 +171,14 @@ the five workspace crates and no dependency (`cargo test --no-run`, 9 s).
   dependencies keep no debug info (`[profile.dev.package."*"] debug = false`). A cold
   `mise run check-rust` from an empty `target/` then took 78 s and left 1.9 GB (1.3 GB `debug`,
   0.47 GB `check`, 0.20 GB `matrix`), against 2.4 GB before.
+- Done 2026-11-02, measured on this worktree with one real edit per crate, twice:
+  `CARGO_INCREMENTAL=0` for `lint-rust`, `doc` and `check-rust-matrix` freed 278 MB of
+  incremental state (167 MB just after the cold build) and slowed a re-check by 0.5–1 s (clippy
+  after a `stunt-core` edit 2.8–4.0 s to 3.7–4.8 s; after a `stunt-cli` edit 1.6 s to 2.2 s;
+  matrix 4.1 s to 4.7 s). `[profile.test] debug = false` cut the test `.pdb` files from 256 MB to
+  184 MB; the rest is the linker's symbols, which Windows backtraces need for function names.
+  The next cut, one test binary per crate, is
+  [#125](https://github.com/neilsh/stunt-reel/issues/125).
 - Make workspace units reusable safely, about 18 s per new worktree: first read
   `CARGO_MANIFEST_DIR` at run time in tests instead of `env!` at compile time, so no binary embeds
   its checkout; then keep a member's fingerprint only where every source file is byte-identical

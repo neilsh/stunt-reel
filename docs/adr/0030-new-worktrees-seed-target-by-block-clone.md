@@ -96,7 +96,11 @@ and the measurement.
   off in the clippy and matrix lanes: about 0.33 GB). Small next to seeding, so not instead of
   it. The first, and building `doc` in `target/check` beside clippy's metadata (0.19 GB), were
   done on 2026-11-02: a cold gate's `target/` measured 1.9 GB, against the 2.4 GB above.
-  Incremental stays on, for edit-and-recheck speed.
+  Later the same day incremental went off in the clippy, doc and matrix lanes (278 MB after a
+  dozen edits; a re-check after a real edit went from 1.6–4.2 s to 2.2–4.8 s) and test builds
+  lost their debug info (about 70 MB of `.pdb`; frames keep their names, not their lines). The
+  test lane keeps incremental for the edit-and-test loop. One integration-test binary per crate
+  is [#125](https://github.com/neilsh/stunt-reel/issues/125).
 
 ## Consequences
 

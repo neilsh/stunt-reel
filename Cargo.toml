@@ -80,3 +80,8 @@ debug = "line-tables-only"
 # names its function, only without a line number (ADR 0030's follow-ups).
 [profile.dev.package."*"]
 debug = false
+
+# Test builds keep none either: about 70 MB of `.pdb` per worktree. A failing test still reports
+# the panic's file and line and names every frame of its backtrace; the frames lose their lines.
+[profile.test]
+debug = false
