@@ -129,7 +129,7 @@ _Found 2026-10-23 at `c62365a`; see the [parity log](../parity/log.md)._
 
 ### 4.2 The Lens Sets The Field Of View (adopted)
 
-* `CameraTransform` carries `lens = var[view_obj]`, interpolated like the palette variables (`CS:0x136F`). `Scene::frame` sets `fov_degrees = 2 × atan(tan(22.5°) / zoom)`, with the zoom normalised so the default lens keeps exactly the base (section 2.2); the formula is written for the 45° base in use at the time.
+* `CameraTransform` carries `lens = var[view_obj]`, interpolated like the palette variables (`CS:0x136F`). `Scene::frame` passes the camera's base field of view to `CameraTransform::lens_fov_degrees`, which scales it by the zoom, with the zoom normalised so the default lens keeps exactly the base (section 2.2). Before 2026-11-02 the base was 45° and the formula was `2 × atan(tan(22.5°) / zoom)`.
 * **Parity effect (`DBG_LENS_FOV`, one build):** CTRY 0.7733 unchanged; INTRO 0.6856 to 0.7175 (+0.0319), IoU 0.9203 to 0.9501. Adopted under the one-film rule.
 * **Scorer sensitivity.** A first version used the raw zoom `0x7FFF / 0x8000` at the default lens, which draws CTRY at 45.0012° on every frame. That 0.003% scale change alone moved CTRY by -0.0028, past the 0.002 bound. Any later change to the base projection needs both films rescored, as the 2026-11-02 change to 256 px square pixels was ([`../parity/log.md`](../parity/log.md)).
 

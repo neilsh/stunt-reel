@@ -66,7 +66,7 @@ Delivery is sequential. This section records what each phase is for and whether 
     $$\theta_{\text{rad}} = \left(\frac{\text{raw\_u16}}{65536.0}\right) \times 2\pi$$
   * **Vertical Field of View ($\text{FOV}_y$) Convention:** `CameraTransform::fov_degrees` is strictly defined as **vertical field of view ($\text{FOV}_y$)** in degrees. The DOS engine's integer focal-length zoom scalar (`focal_dist`) converts to vertical $\text{FOV}_y$ against the aspect-corrected half-height ($H_{\text{half}} = 120.0$) via:
     $$\text{FOV}_y = 2 \arctan\left(\frac{H_{\text{half}}}{\text{focal\_dist}}\right) \times \frac{180}{\pi}$$
-    That conversion comes from the unverified camera-rig mock, and no film sets `focal_dist`. Films are projected the way `PLAYONE.EXE` projects them, measured against captures: square pixels on the $320 \times 200$ raster, a 256 px focal length at the default lens ($\text{FOV}_y = 42.67^\circ$, aspect $320/200$), with the 4:3 stretch of `[I6]` applied afterwards ([`research/parity/framing-and-actors.md`](../research/parity/framing-and-actors.md) § 2).
+    Films use square pixels on the $320 \times 200$ raster with a 256 px focal length at the default lens ($\text{FOV}_y = 42.67^\circ$, aspect $320/200$), followed by the 4:3 stretch of `[I6]` ([`research/parity/framing-and-actors.md`](../research/parity/framing-and-actors.md) § 2).
 
 #### Real-Mode Physical Address Translation
 

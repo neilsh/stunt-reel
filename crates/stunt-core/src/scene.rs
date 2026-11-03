@@ -311,12 +311,19 @@ impl FilmScene {
             .iter()
             .map(|slice| slice.record.camera.eye)
             .collect();
+        let default_zoom = CameraTransform::default().lens_zoom();
+        let max_lens_zoom = timeline
+            .slices()
+            .iter()
+            .map(|slice| slice.record.camera.lens_zoom() / default_zoom)
+            .fold(1.0, f32::max);
         let world = build_world(
             &WorldInputs {
                 anchors: &anchors,
                 map: inputs.map,
                 scenery: inputs.scenery,
                 view_eyes: &eyes,
+                max_lens_zoom,
             },
             &decoded.shapes,
         );

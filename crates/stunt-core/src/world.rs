@@ -43,6 +43,9 @@ pub struct WorldInputs<'a> {
     /// the polyline through them are not built (see `MIN_PROP_PIXELS`); empty keeps every
     /// prop. They also choose each `SP_1NODE`'s level of detail (see `lod_threshold`).
     pub view_eyes: &'a [[f32; 3]],
+    /// Largest lens zoom any camera reaches, relative to the default lens. It scales
+    /// `FOCAL_PIXELS` in the sub-pixel cull so a zoomed camera never misses a prop.
+    pub max_lens_zoom: f32,
 }
 
 /// PLAYONE's focal length in raster pixels at the default lens, equal on both axes
@@ -113,8 +116,12 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
             0,
         );
     }
-    let unique_instances =
-        cull_subpixel_instances(dedup_instances(instances), shapes, inputs.view_eyes);
+    let unique_instances = cull_subpixel_instances(
+        dedup_instances(instances),
+        shapes,
+        inputs.view_eyes,
+        inputs.max_lens_zoom.max(1.0),
+    );
 
     let base_y = 0.0;
     let ir = build_world_ir(pts, &map_areas, &unique_instances, shapes, base_y);
@@ -198,11 +205,13 @@ pub(crate) fn lod_threshold(ext: i32, splitdist: i32, scale: f32) -> f32 {
 /// Drops placements whose bounding sphere stays under [`MIN_PROP_PIXELS`] along `eyes`.
 ///
 /// Consecutive eyes are joined by segments, so a camera cut only makes the cull more
-/// conservative. With fewer than one eye every instance is kept.
+/// conservative. With fewer than one eye every instance is kept. `zoom` multiplies
+/// [`FOCAL_PIXELS`], so it should be the largest lens zoom the film reaches.
 pub(crate) fn cull_subpixel_instances(
     instances: Vec<(u16, [f32; 3])>,
     shapes: &HashMap<u16, SodModelIr>,
     eyes: &[[f32; 3]],
+    zoom: f32,
 ) -> Vec<(u16, [f32; 3])> {
     if eyes.is_empty() {
         return instances;
@@ -217,7 +226,7 @@ pub(crate) fn cull_subpixel_instances(
                     .and_then(SodModelIr::extent)
                     .map_or(0.0, |extent| extent.radius)
             });
-            radius * FOCAL_PIXELS >= MIN_PROP_PIXELS * path_distance(pos, eyes).max(1.0)
+            radius * FOCAL_PIXELS * zoom >= MIN_PROP_PIXELS * path_distance(pos, eyes).max(1.0)
         })
         .collect()
 }
