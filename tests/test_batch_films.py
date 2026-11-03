@@ -109,3 +109,19 @@ def test_find_skips_a_copy_the_manifest_skips(tmp_path: Path) -> None:
     assert found.flm == tmp_path / "c" / "VAULT" / "M.FLM"
     owner = next(film for film in batch_films.discover(tmp_path) if film.slug == "vault-m")
     assert found.flm == owner.flm
+
+
+def test_find_resolves_a_collision_shaped_slug_through_the_manifest(tmp_path: Path) -> None:
+    """A path that spells another film's collision name does not take it over."""
+    first, second = tmp_path / "a" / "VAULT", tmp_path / "b" / "VAULT"
+    for folder, body in ((first, b"one"), (second, b"two")):
+        folder.mkdir(parents=True)
+        (folder / "M.FLM").write_bytes(body)
+    collided = next(film for film in batch_films.discover(tmp_path) if film.name is not None)
+    impostor = tmp_path / "c" / "VAULT"
+    impostor.mkdir(parents=True)
+    (impostor / f"{collided.slug.removeprefix('vault-').upper()}.FLM").write_bytes(b"three")
+    found = batch_films.find(tmp_path, collided.slug)
+    owner = next(film for film in batch_films.discover(tmp_path) if film.slug == collided.slug)
+    assert found is not None
+    assert found.flm == owner.flm
