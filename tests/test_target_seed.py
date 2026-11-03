@@ -15,6 +15,7 @@ import pytest
 from stunt_reel.target_seed import (
     SeedOutcome,
     built_by,
+    clones_on,
     needs_seed,
     rank_donors,
     seed,
@@ -587,3 +588,64 @@ def test_workspace_members_follow_path_dependencies(tmp_path: Path) -> None:
     assert workspace_members(root) == frozenset(
         {"root", "core", "helper", "shared", "win", "serde"}
     )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Cargo's build locks are byte locks on Windows")
+def test_seed_holds_the_donors_locks_while_it_copies(tmp_path: Path) -> None:
+    """A donor build that starts mid-copy waits; once the seed is done it can lock again."""
+    here = _fresh(tmp_path / "here")
+    donor = _donor(tmp_path / "d", lanes=("check",))
+    locks = [donor / "target" / "debug" / ".cargo-lock"]
+    locks.append(donor / "target" / "check" / "debug" / ".cargo-build-lock")
+    for lock in locks:
+        lock.write_bytes(b"")
+    during: list[bool] = []
+
+    def probing_copy(_: Path, destination: Path) -> None:
+        during.extend(_taken(lock) for lock in locks)
+        destination.mkdir(parents=True)
+
+    out = seed(
+        here,
+        checkouts=[donor],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=probing_copy,
+        volume_clones=_clones,
+    )
+    assert out == SeedOutcome("seeded", f"from {donor}")
+    assert during == [True] * 4
+    assert not any(_taken(lock) for lock in locks)
+
+
+def _taken(lock: Path) -> bool:
+    """Whether another handle holds *lock*'s first byte, probed without changing the file."""
+    with lock.open("r+b") as handle:
+        if sys.platform == "win32":
+            import msvcrt  # noqa: PLC0415 - Windows-only module
+
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError:
+                return True
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    return False
+
+
+def test_workspace_members_refuses_a_member_without_a_package(tmp_path: Path) -> None:
+    _workspace(tmp_path, "stunt-core")
+    (tmp_path / "crates" / "core" / "Cargo.toml").write_text("[lib]\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="names no package"):
+        workspace_members(tmp_path)
+
+
+def test_workspace_members_refuses_members_that_are_not_a_list(tmp_path: Path) -> None:
+    (tmp_path / "Cargo.toml").write_text('[workspace]\nmembers = "crates/*"\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="not a list"):
+        workspace_members(tmp_path)
+
+
+def test_clones_on_says_no_for_an_ntfs_or_non_windows_volume() -> None:
+    """ReFS clones blocks; NTFS (every Windows system drive) and other platforms do not."""
+    system = Path(os.environ.get("SYSTEMROOT", "/"))
+    assert clones_on(system) is False
