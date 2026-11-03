@@ -305,7 +305,7 @@ def _seed_target() -> str:
                 cargo_home=cargo_home,
             )
     except Exception as error:
-        outcome = SeedOutcome("failed", str(error))
+        outcome = SeedOutcome("failed", f"{type(error).__name__}: {error}")
     if outcome.status == "seeded":
         line = f"  + target/ seeded {outcome.detail}"
     elif outcome.status == "skipped":

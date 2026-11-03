@@ -45,7 +45,7 @@ def test_seed_line_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(worktree_init, "_worktrees", boom)
     monkeypatch.setattr(worktree_init, "_rustc_vv", lambda: "rustc 1.99.1\n")
-    assert worktree_init._seed_target() == "  ! seed: git missing"
+    assert worktree_init._seed_target() == "  ! seed: RuntimeError: git missing"
 
 
 def test_seed_command_is_wired(
