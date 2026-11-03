@@ -19,7 +19,7 @@ import os
 import shutil
 import time
 import uuid
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -43,8 +43,6 @@ META_FILE = "meta.json"
 _SWAP_WAIT_SECONDS = 30.0
 #: A swap lock older than this is left by a process that died mid-swap, which takes milliseconds.
 _STALE_LOCK_SECONDS = 300.0
-#: How many times :func:`snapshot` links a capture that a swap keeps replacing before giving up.
-_SNAPSHOT_TRIES = 3
 #: A snapshot older than this was left by a reader that died; no scoring run holds one a day.
 _STALE_SNAPSHOT_SECONDS = 86400.0
 
@@ -147,39 +145,29 @@ def snapshot(directory: Path) -> Iterator[Path]:
     """Hold a copy of the complete capture in *directory* that no later swap changes.
 
     The copy is a sibling of hard links, so it costs no space and stays on the store's volume;
-    a file system without hard links gets a real copy. A writer never changes a published
-    file, only swaps the whole directory (:func:`publish`), so the linked files are the capture
-    as it was when linked. If a swap lands while the links are made, the directory is no longer
-    the same one and the links are made again. A ``ValueError`` when *directory* holds no
-    complete capture. The copy is removed when the block ends; one a killed reader left behind
-    is removed by a later snapshot of the same capture.
+    a file system without hard links gets a real copy. The links are made under the swap lock,
+    so no :func:`publish` lands while they are made, and a writer never changes a published
+    file, only swaps the whole directory, so the linked files stay the capture as it was. The
+    lock is held for the linking only, not while the caller reads. A ``ValueError`` when
+    *directory* holds no complete capture. The copy is removed when the block ends; one a
+    killed reader left behind is removed by a later snapshot of the same capture.
     """
-    _remove_stale_snapshots(directory)
-    for _ in range(_SNAPSHOT_TRIES):
-        before = _identity(directory)
-        if before is None or current(directory) is None:
+    if not directory.parent.is_dir():
+        raise ValueError(f"{directory} holds no complete capture")
+    held = directory.with_name(f"{directory.name}.read-{uuid.uuid4().hex[:8]}")
+    with _swap_lock(directory):
+        _remove_leftovers(directory)
+        if current(directory) is None:
             raise ValueError(f"{directory} holds no complete capture")
-        held = directory.with_name(f"{directory.name}.read-{uuid.uuid4().hex[:8]}")
-        with suppress(FileNotFoundError):
+        try:
             _link_tree(directory, held)
-        if _identity(directory) == before and current(held) is not None:
-            break
-        shutil.rmtree(held, ignore_errors=True)
-    else:
-        raise ValueError(f"{directory} was replaced {_SNAPSHOT_TRIES} times while it was linked")
+        except BaseException:
+            shutil.rmtree(held, ignore_errors=True)
+            raise
     try:
         yield held
     finally:
         shutil.rmtree(held, ignore_errors=True)
-
-
-def _identity(directory: Path) -> tuple[int, int] | None:
-    """The file system's identity of *directory*, which a rename keeps and a swap changes."""
-    try:
-        info = directory.stat()
-    except FileNotFoundError:
-        return None
-    return info.st_dev, info.st_ino
 
 
 def _link_tree(source: Path, target: Path) -> None:
@@ -192,16 +180,20 @@ def _link_tree(source: Path, target: Path) -> None:
             continue
         try:
             os.link(path, destination)
-        except FileNotFoundError:
-            raise  # a swap moved the file away: the caller links again
         except OSError:
             shutil.copy2(path, destination)
 
 
-def _remove_stale_snapshots(directory: Path) -> None:
-    """Remove the snapshots of *directory* that readers which died left behind."""
-    if not directory.parent.is_dir():
-        return
+def _remove_leftovers(directory: Path) -> None:
+    """Remove the old captures and day-old snapshots of *directory* that nothing removed.
+
+    Called under the swap lock, where every ``.old-*`` is garbage: :func:`publish` only puts
+    one back while it holds the lock, and it is left when a reader's open file kept its
+    removal from succeeding. A ``.read-*`` older than a day is a killed reader's. A
+    ``.partial-*`` belongs to a writer that may still be running, so it is left to that writer.
+    """
+    for old in directory.parent.glob(f"{directory.name}.old-*"):
+        shutil.rmtree(old, ignore_errors=True)
     for held in directory.parent.glob(f"{directory.name}.read-*"):
         try:
             stale = time.time() - held.stat().st_mtime > _STALE_SNAPSHOT_SECONDS

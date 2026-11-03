@@ -38,7 +38,7 @@ def test_a_named_capture_with_the_recorded_hash_resolves(tmp_path: Path) -> None
         assert held.name.startswith("frames.read-")
         assert (held / "tick_0001.idx").read_bytes() == b""
     assert not held.exists()
-    assert [path.name for path in directory.parent.iterdir()] == ["frames"]
+    assert [p.name for p in directory.parent.iterdir() if p.suffix != ".lock"] == ["frames"]
 
 
 def test_a_swap_while_the_reference_is_held_does_not_reach_the_holder(tmp_path: Path) -> None:
@@ -84,7 +84,7 @@ def test_a_replaced_capture_is_refused(tmp_path: Path) -> None:
     _point(tmp_path, "ctry", "0" * 64)
     with pytest.raises(references.ReferenceCaptureError, match=r"ctry has hash.*repin"):
         _open(tmp_path, "ctry")
-    assert [path.name for path in directory.parent.iterdir()] == ["frames"]
+    assert [p.name for p in directory.parent.iterdir() if p.suffix != ".lock"] == ["frames"]
 
 
 def test_a_missing_file_or_film_is_named(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

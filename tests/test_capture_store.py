@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
 from typing import TYPE_CHECKING
 
@@ -91,6 +92,11 @@ def test_an_output_inside_the_store_is_refused(tmp_path: Path) -> None:
     capture_store.check_outside(tmp_path / "elsewhere", store)
 
 
+def _names(parent: Path) -> list[str]:
+    """The entries of *parent* apart from the swap lock, which may stay beside a capture."""
+    return sorted(p.name for p in parent.iterdir() if p.suffix != ".lock")
+
+
 def test_a_snapshot_keeps_the_capture_it_linked_across_a_swap(tmp_path: Path) -> None:
     target = tmp_path / "frames"
     capture_store.publish(_fill(capture_store.stage(target), "one"), target)
@@ -98,52 +104,41 @@ def test_a_snapshot_keeps_the_capture_it_linked_across_a_swap(tmp_path: Path) ->
         capture_store.publish(_fill(capture_store.stage(target), "two"), target)
         assert (held / "frame.idx").read_text(encoding="utf-8") == "one"
         assert (target / "frame.idx").read_text(encoding="utf-8") == "two"
-    assert [p.name for p in tmp_path.iterdir()] == ["frames"]
+    assert _names(tmp_path) == ["frames"]
 
 
 def test_there_is_no_snapshot_of_an_incomplete_capture(tmp_path: Path) -> None:
-    target = tmp_path / "frames"
+    target = tmp_path / "captures" / "frames"
     with pytest.raises(ValueError, match="no complete capture"), capture_store.snapshot(target):
         pass
-    target.mkdir()
+    target.mkdir(parents=True)
     _fill(target, "half", complete=False)
     with pytest.raises(ValueError, match="no complete capture"), capture_store.snapshot(target):
         pass
-    assert [p.name for p in tmp_path.iterdir()] == ["frames"]
+    assert _names(target.parent) == ["frames"]
 
 
-def test_a_swap_while_linking_links_again(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    target = tmp_path / "frames"
-    capture_store.publish(_fill(capture_store.stage(target), "one"), target)
-    link = capture_store._link_tree
-    swaps = iter(["two"])
-
-    def swapping(source: Path, held: Path) -> None:
-        link(source, held)
-        for text in swaps:
-            capture_store.publish(_fill(capture_store.stage(target), text), target)
-
-    monkeypatch.setattr(capture_store, "_link_tree", swapping)
-    with capture_store.snapshot(target) as held:
-        assert (held / "frame.idx").read_text(encoding="utf-8") == "two"
-    assert [p.name for p in tmp_path.iterdir()] == ["frames"]
-
-
-def test_a_capture_that_never_holds_still_is_refused(
+def test_a_publish_waits_while_a_snapshot_is_linked(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A swap cannot land between two links, so a snapshot never mixes two captures."""
     target = tmp_path / "frames"
     capture_store.publish(_fill(capture_store.stage(target), "one"), target)
+    staged = _fill(capture_store.stage(target), "two")
     link = capture_store._link_tree
+    writer = threading.Thread(target=capture_store.publish, args=(staged, target))
 
-    def swapping(source: Path, held: Path) -> None:
+    def slow(source: Path, held: Path) -> None:
+        writer.start()
+        time.sleep(0.3)
         link(source, held)
-        capture_store.publish(_fill(capture_store.stage(target), "again"), target)
 
-    monkeypatch.setattr(capture_store, "_link_tree", swapping)
-    with pytest.raises(ValueError, match="replaced 3 times"), capture_store.snapshot(target):
-        pass
-    assert [p.name for p in tmp_path.iterdir()] == ["frames"]
+    monkeypatch.setattr(capture_store, "_link_tree", slow)
+    with capture_store.snapshot(target) as held:
+        writer.join(timeout=10)
+        assert (held / "frame.idx").read_text(encoding="utf-8") == "one"
+        assert (target / "frame.idx").read_text(encoding="utf-8") == "two"
+    assert _names(tmp_path) == ["frames"]
 
 
 def test_a_file_system_without_hard_links_gets_a_copy(
@@ -160,14 +155,15 @@ def test_a_file_system_without_hard_links_gets_a_copy(
         assert (held / "frame.idx").read_text(encoding="utf-8") == "one"
 
 
-def test_a_snapshot_a_dead_reader_left_is_removed(tmp_path: Path) -> None:
+def test_a_snapshot_removes_the_leftovers_of_dead_readers(tmp_path: Path) -> None:
     target = tmp_path / "frames"
     capture_store.publish(_fill(capture_store.stage(target), "one"), target)
     dead, live = tmp_path / "frames.read-dead", tmp_path / "frames.read-live"
-    dead.mkdir()
-    live.mkdir()
-    old = time.time() - 2 * 86400
-    os.utime(dead, (old, old))
+    old, writing = tmp_path / "frames.old-kept", tmp_path / "frames.partial-busy"
+    for sibling in (dead, live, old, writing):
+        sibling.mkdir()
+    a_day_ago = time.time() - 2 * 86400
+    os.utime(dead, (a_day_ago, a_day_ago))
     with capture_store.snapshot(target):
         pass
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["frames", "frames.read-live"]
+    assert _names(tmp_path) == ["frames", "frames.partial-busy", "frames.read-live"]

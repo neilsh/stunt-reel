@@ -124,7 +124,7 @@ def open_reference(root: Path, film: str) -> Iterator[Path]:
     with ExitStack() as stack:
         try:
             held = stack.enter_context(capture_store.snapshot(directory))
-        except ValueError as err:
+        except ValueError as err:  # the one ValueError snapshot raises: no complete capture
             raise ReferenceCaptureError(
                 f"the reference capture of {pointer.film} is absent on this machine "
                 f"({directory}); run `mise run capture-ref` and promote it in "
