@@ -345,7 +345,11 @@ def _prune_render_trees(confirmed: bool, keep: int) -> int:
         if not root.is_dir() or is_link(root):
             continue
         for child in sorted(root.iterdir()):
-            if not child.is_dir() or parity_layout.is_protected_render(child.name):
+            if (
+                not child.is_dir()
+                or is_link(child)
+                or parity_layout.is_protected_render(child.name)
+            ):
                 continue
             size, files = _tree_footprint(child)
             ranked.append((child, size, files))
@@ -382,9 +386,19 @@ def _prune_render_trees(confirmed: bool, keep: int) -> int:
 
 def _remove_tree(path: Path) -> None:
     """Delete ``path`` whole, read-only files included: git marks its objects read-only,
-    so a test's scratch repository under ``.pytest_cache`` stops ``rmtree`` on Windows."""
+    so a test's scratch repository under ``.pytest_cache`` stops ``rmtree`` on Windows.
+    Any other failure, a link at ``path`` among them, is raised: ``chmod`` follows a link,
+    so clearing the bit there would change the target instead."""
 
-    def _clear_read_only(function: Callable[[str], object], name: str, _: BaseException) -> None:
+    def _clear_read_only(
+        function: Callable[[str], object], name: str, error: BaseException
+    ) -> None:
+        if (
+            not isinstance(error, PermissionError)
+            or function not in (os.unlink, os.rmdir)
+            or is_link(Path(name))
+        ):
+            raise error
         Path(name).chmod(stat.S_IWRITE)
         function(name)
 

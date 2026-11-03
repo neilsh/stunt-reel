@@ -693,3 +693,38 @@ def test_clean_removes_read_only_files(tmp_path: Path, monkeypatch: pytest.Monke
     assert worktree_init._clean(confirmed=True) == 0
 
     assert not (tmp_path / ".pytest_cache").exists()
+
+
+def test_remove_tree_refuses_a_link_and_leaves_its_target_alone(tmp_path: Path) -> None:
+    """``chmod`` follows a link, so the read-only retry must not run on one."""
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "frame.idx").write_bytes(b"frame")
+    link = tmp_path / "link"
+    dataroot.create_link(link, target)
+    mode = target.stat().st_mode
+
+    with pytest.raises(OSError, match="symbolic link"):
+        worktree_init._remove_tree(link)
+
+    assert target.stat().st_mode == mode
+    assert (target / "frame.idx").read_bytes() == b"frame"
+    dataroot.remove_link(link)
+
+
+def test_clean_parity_skips_a_linked_render_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A render child that links elsewhere is not this checkout's to prune."""
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "tick_00000.idx").write_bytes(b"frame")
+    linked = tmp_path / "build" / "scratch" / "sweep" / "v001"
+    dataroot.create_link(linked, elsewhere)
+
+    assert worktree_init._prune_render_trees(confirmed=True, keep=0) == 0
+
+    assert dataroot.is_link(linked)
+    assert (elsewhere / "tick_00000.idx").is_file()
+    dataroot.remove_link(linked)
