@@ -89,8 +89,12 @@ fn type_matches(kind: &str, value: &Value) -> bool {
 }
 
 /// Checks `value` against the table `name`: the same keys (a `, optional` one may be absent)
-/// and the documented type for each.
+/// and the documented type for each. A null container passes: its row in the parent table
+/// says whether null is allowed (`mean_loss_by_class_scored` is null when no frame is scored).
 fn assert_documented(tables: &BTreeMap<String, Table>, name: &str, value: &Value, at: &str) {
+    if value.is_null() {
+        return;
+    }
     let table = tables
         .get(name)
         .unwrap_or_else(|| panic!("method.md has no `<!-- fields: {name} -->` table"));
