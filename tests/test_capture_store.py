@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import os
+import shutil
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -38,7 +39,7 @@ def test_publish_replaces_the_old_capture(tmp_path: Path) -> None:
     assert first == target
     capture_store.publish(_fill(capture_store.stage(target), "two"), target)
     assert (target / "frame.idx").read_text(encoding="utf-8") == "two"
-    assert [p.name for p in target.parent.iterdir()] == ["frames"]
+    assert [p.name for p in target.parent.iterdir() if p.suffix != ".lock"] == ["frames"]
 
 
 def test_two_stages_of_one_film_do_not_collide(tmp_path: Path) -> None:
@@ -70,19 +71,40 @@ def test_a_directory_that_is_not_a_capture_is_never_replaced(tmp_path: Path) -> 
     assert (target / "004" / "frame.idx").read_text(encoding="utf-8") == "pinned"
 
 
-def test_publish_waits_for_another_swap_and_takes_over_a_stale_lock(
+def test_publish_waits_for_a_held_swap_lock_then_proceeds_once_released(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     target = tmp_path / "frames"
-    lock = target.with_name("frames.lock")
-    lock.mkdir()
     monkeypatch.setattr(capture_store, "_SWAP_WAIT_SECONDS", 0.2)
-    with pytest.raises(TimeoutError, match="held by another publish"):
-        capture_store.publish(_fill(capture_store.stage(target), "blocked"), target)
-    monkeypatch.setattr(capture_store, "_STALE_LOCK_SECONDS", 0.0)
+    staged = _fill(capture_store.stage(target), "blocked")
+    with (
+        capture_store._swap_lock(target),
+        pytest.raises(TimeoutError, match="held by another publish"),
+    ):
+        capture_store.publish(staged, target)
     capture_store.publish(_fill(capture_store.stage(target), "after"), target)
     assert (target / "frame.idx").read_text(encoding="utf-8") == "after"
-    assert not lock.exists()
+
+
+def test_the_old_capture_is_removed_after_the_lock_is_released(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A slow removal of the old capture must not hold up another publisher's swap."""
+    target = tmp_path / "frames"
+    capture_store.publish(_fill(capture_store.stage(target), "one"), target)
+    seen: list[bool] = []
+    real_rmtree = shutil.rmtree
+
+    def rmtree(path: Path, **kwargs: Any) -> None:
+        if path.name.startswith("frames.old-"):
+            monkeypatch.setattr(capture_store, "_SWAP_WAIT_SECONDS", 0.0)
+            with capture_store._swap_lock(target):
+                seen.append(True)
+        real_rmtree(path, **kwargs)
+
+    monkeypatch.setattr("stunt_reel.capture_store.shutil.rmtree", rmtree)
+    capture_store.publish(_fill(capture_store.stage(target), "two"), target)
+    assert seen == [True]
 
 
 def test_an_output_inside_the_store_is_refused(tmp_path: Path) -> None:

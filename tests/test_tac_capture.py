@@ -545,7 +545,7 @@ def test_a_default_capture_replaces_the_films_frame_capture(
     assert module.run(module.parse_args()) == 0
     assert module.run(module.parse_args()) == 0
     assert capture_store.current(frames) == frames
-    assert [p.name for p in frames.parent.iterdir()] == ["frames"]
+    assert [p.name for p in frames.parent.iterdir() if p.suffix != ".lock"] == ["frames"]
     assert set(seen["provenance"]) == {"captured_on", "checkout"}
 
 
@@ -584,7 +584,7 @@ def test_a_failed_default_capture_keeps_the_old_one_and_leaves_nothing_behind(
     monkeypatch.setattr(module, "capture", no_frames)
     assert module.run(module.parse_args()) == 1
     assert (frames / "meta.json").stat().st_mtime_ns == before
-    assert [p.name for p in frames.parent.iterdir()] == ["frames"]
+    assert [p.name for p in frames.parent.iterdir() if p.suffix != ".lock"] == ["frames"]
 
 
 # ==============================================================================

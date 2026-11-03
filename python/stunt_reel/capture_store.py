@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 import time
 import uuid
 from contextlib import contextmanager
@@ -41,8 +42,6 @@ __all__ = [
 META_FILE = "meta.json"
 #: How long a publisher waits for another one's swap of the same capture before giving up.
 _SWAP_WAIT_SECONDS = 30.0
-#: A swap lock older than this is left by a process that died mid-swap, which takes milliseconds.
-_STALE_LOCK_SECONDS = 300.0
 #: A snapshot older than this was left by a reader that died; no scoring run holds one a day.
 _STALE_SNAPSHOT_SECONDS = 86400.0
 
@@ -91,9 +90,9 @@ def publish(staged: Path, directory: Path) -> Path:
     A ``ValueError`` when *staged* has no ``meta.json`` (an incomplete capture never replaces a
     complete one) or when *directory* fails :func:`check_replaceable`. If the second rename
     fails, the old capture is put back. Two publishers of one capture swap one at a time, under
-    a lock beside it; captures themselves still run side by side. Removing the old capture is
-    best effort: once the new one is in place the publish has succeeded, and a locked file only
-    leaves a ``.old-*`` sibling that no reader looks at.
+    a lock beside it; captures themselves still run side by side. Removing the old capture
+    happens after the lock is released and is best effort: once the new one is in place the
+    publish has succeeded, and a locked file only leaves a ``.old-*`` sibling no reader looks at.
     """
     if current(staged) is None:
         raise ValueError(f"{staged} has no {META_FILE}; an incomplete capture is never published")
@@ -109,35 +108,59 @@ def publish(staged: Path, directory: Path) -> Path:
             if old is not None:
                 old.rename(directory)
             raise
-        if old is not None:
-            shutil.rmtree(old, ignore_errors=True)
+    if old is not None:
+        shutil.rmtree(old, ignore_errors=True)
     return directory
 
 
 @contextmanager
 def _swap_lock(directory: Path) -> Iterator[None]:
-    """Hold ``<directory>.lock`` for one swap; ``mkdir`` is the atomic claim."""
+    """Hold an OS lock on the file ``<directory>.lock`` for one swap.
+
+    The operating system releases the lock when its holder exits, so a publisher that dies
+    mid-swap leaves no stale lock to reclaim, and no pathname is ever removed to take one over.
+    The file itself stays beside the capture.
+    """
     lock = directory.with_name(f"{directory.name}.lock")
     deadline = time.monotonic() + _SWAP_WAIT_SECONDS
-    while True:
-        try:
-            lock.mkdir()
-            break
-        except FileExistsError:
-            try:
-                stale = time.time() - lock.stat().st_mtime > _STALE_LOCK_SECONDS
-            except FileNotFoundError:
-                continue
-            if stale:
-                lock.rmdir()
-                continue
+    with lock.open("a+b") as handle:
+        while not _try_lock(handle.fileno()):
             if time.monotonic() > deadline:
-                raise TimeoutError(f"{lock} is held by another publish of this capture") from None
+                raise TimeoutError(f"{lock} is held by another publish of this capture")
             time.sleep(0.05)
-    try:
-        yield
-    finally:
-        lock.rmdir()
+        try:
+            yield
+        finally:
+            _unlock(handle.fileno())
+
+
+if sys.platform == "win32":
+    import msvcrt
+
+    def _try_lock(fd: int) -> bool:
+        """Take the lock on *fd*'s first byte without waiting; ``False`` when another holds it."""
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        except OSError:
+            return False
+        return True
+
+    def _unlock(fd: int) -> None:
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+
+else:
+    import fcntl
+
+    def _try_lock(fd: int) -> bool:
+        """Take the lock on *fd* without waiting; ``False`` when another holds it."""
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return False
+        return True
+
+    def _unlock(fd: int) -> None:
+        fcntl.flock(fd, fcntl.LOCK_UN)
 
 
 @contextmanager

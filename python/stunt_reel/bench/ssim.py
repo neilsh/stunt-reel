@@ -1,4 +1,4 @@
-"""The Rust parity SSIM (``stunt-render::parity`` and ``stunt-cli::parity::score``) in numpy.
+"""The Rust parity SSIM (``stunt-cli::parity::ssim`` and ``stunt-cli::parity::score``) in numpy.
 
 Pinned to the Rust scorer by ``tests/fixtures/parity/bench/golden.json``. The scorer's
 arithmetic is f32 and this is f64; the two agree to well under 1e-4.

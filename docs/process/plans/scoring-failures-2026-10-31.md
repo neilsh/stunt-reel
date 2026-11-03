@@ -6,7 +6,7 @@ Status: working notes, 2026-10-31. The scorer they examine is not merged; it is 
 [`research/parity/method.md`](../../../research/parity/method.md) § 4.4. Two read-only investigations ran
 on `CTRY.FLM` only, each with its own Python reimplementation of the scorer: 11x11 windows, stride 8,
 Rec. 601 luma, rows stretched from 200 to 240, the bar overlay masked, and the constants of
-`crates/stunt-render/src/parity.rs`. They are cross-checked against the Rust scorer's numbers but are
+[`crates/stunt-cli/src/parity/ssim.rs`](../../../crates/stunt-cli/src/parity/ssim.rs). They are cross-checked against the Rust scorer's numbers but are
 not the binary itself. The scripts and raw arrays are in the session scratchpad (`inv/metric/`,
 `inv/offset/`). The metric investigation left only a summary, so its section carries fewer numbers.
 
