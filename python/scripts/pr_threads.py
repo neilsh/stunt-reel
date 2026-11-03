@@ -37,10 +37,11 @@ query($owner: String!, $name: String!, $number: Int!) {
           path
           line
           originalLine
-          comments(first: 100) {
+          comments(first: 1) {
             totalCount
             nodes { databaseId author { login } body }
           }
+          latest: comments(last: 1) { nodes { author { login } } }
         }
       }
     }
@@ -94,8 +95,7 @@ def _printable(text: str) -> str:
 
 def thread_line(thread: dict[str, Any]) -> str:
     """One thread as ``path:line [severity] title | id N, R replies, last by L``."""
-    comments = thread["comments"]["nodes"]
-    first = comments[0]
+    first = thread["comments"]["nodes"][0]
     severity, title = summarize(first["body"])
     title = _printable(title)
     line = thread["line"] if thread["line"] is not None else thread["originalLine"]
@@ -111,7 +111,8 @@ def thread_line(thread: dict[str, Any]) -> str:
     tag = f" [{severity}]" if severity else ""
     flags = f" ({', '.join(marks)})" if marks else ""
     replies = thread["comments"]["totalCount"] - 1
-    last = (comments[-1]["author"] or {}).get("login", "?")
+    latest = thread["latest"]["nodes"]
+    last = ((latest[0]["author"] if latest else None) or {}).get("login", "?")
     return (
         f"{where}{tag} {title}{flags} | id {first['databaseId']}, {replies} replies, last by {last}"
     )

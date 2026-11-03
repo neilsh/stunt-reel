@@ -48,7 +48,8 @@ def _thread(
         "path": "crates/stunt-parity/src/film.rs",
         "line": line,
         "originalLine": 20,
-        "comments": {"totalCount": len(comments), "nodes": comments},
+        "comments": {"totalCount": len(comments), "nodes": comments[:1]},
+        "latest": {"nodes": comments[-1:]},
     }
 
 
