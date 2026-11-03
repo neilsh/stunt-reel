@@ -40,6 +40,15 @@ impl FilmId {
             _ => false,
         }
     }
+
+    /// Whether both sides recorded an `.ALL` hash and the hashes differ, ignoring case.
+    #[must_use]
+    pub fn archives_conflict(&self, other: &Self) -> bool {
+        match (&self.all_sha256, &other.all_sha256) {
+            (Some(left), Some(right)) => !left.eq_ignore_ascii_case(right),
+            _ => false,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -65,6 +74,23 @@ mod tests {
         }));
         assert!(named.bytes_conflict(&FilmId {
             flm_bytes: Some(101),
+            ..FilmId::default()
+        }));
+    }
+
+    #[test]
+    fn archives_conflict_only_when_both_hashes_are_known() {
+        let left = FilmId {
+            all_sha256: Some("aa".to_string()),
+            ..FilmId::default()
+        };
+        assert!(!left.archives_conflict(&FilmId::default()));
+        assert!(!left.archives_conflict(&FilmId {
+            all_sha256: Some("AA".to_string()),
+            ..FilmId::default()
+        }));
+        assert!(left.archives_conflict(&FilmId {
+            all_sha256: Some("bb".to_string()),
             ..FilmId::default()
         }));
     }

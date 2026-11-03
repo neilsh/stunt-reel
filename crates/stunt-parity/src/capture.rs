@@ -37,8 +37,8 @@ pub struct CapturedFrame {
 }
 
 /// Document written by the capture harness as `meta.json`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "CaptureDocument", into = "CaptureDocument")]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "CaptureDocument")]
 pub struct CaptureSet {
     /// Schema version; older captures without the field read as the current version.
     pub schema_version: u32,
@@ -55,7 +55,8 @@ impl CaptureSet {
     ///
     /// # Errors
     /// - [`ArtifactError::UnsupportedVersion`] if `schema_version` is not [`crate::SCHEMA_VERSION`].
-    /// - [`ArtifactError::Geometry`] if the geometry fails [`Geometry::validate`].
+    /// - [`ArtifactError::Geometry`] if the geometry fails [`Geometry::validate`] or sets
+    ///   `viewport_rows`, which `meta.json` has no field for.
     /// - [`ArtifactError::Frame`] if a frame has an empty `frame_file` or `palette_file`, or
     ///   names one that is not a basename (optionally under `FRAMES_DIR`).
     pub fn validate(&self) -> Result<(), ArtifactError> {
@@ -66,6 +67,12 @@ impl CaptureSet {
             });
         }
         self.geometry.validate()?;
+        if self.geometry.viewport_rows.is_some() {
+            // meta.json has no viewport field: a capture is the whole screen.
+            return Err(ArtifactError::Geometry {
+                reason: "a capture has no viewport_rows".to_string(),
+            });
+        }
         for frame in &self.frames {
             if frame.frame_file.is_empty() || frame.palette_file.is_empty() {
                 return Err(ArtifactError::Frame {
@@ -195,6 +202,18 @@ impl TryFrom<CaptureDocument> for CaptureSet {
     }
 }
 
+impl Serialize for CaptureSet {
+    /// Writes the flat `meta.json` shape, refusing a viewport it has no field for.
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if self.geometry.viewport_rows.is_some() {
+            return Err(serde::ser::Error::custom(
+                "a capture has no viewport_rows; meta.json has no field for one",
+            ));
+        }
+        CaptureDocument::from(self.clone()).serialize(serializer)
+    }
+}
+
 impl From<CaptureSet> for CaptureDocument {
     fn from(capture: CaptureSet) -> Self {
         Self {
@@ -275,6 +294,17 @@ mod tests {
         assert_eq!(set.frames[1].frame_file, "other.idx");
         assert_eq!(set.frames[1].palette_file, "palettes_0002.json");
         set.validate().expect("legacy capture");
+    }
+
+    #[test]
+    fn a_capture_with_a_viewport_is_refused() {
+        let mut set = capture();
+        set.geometry.viewport_rows = Some(185);
+        assert!(matches!(
+            set.validate(),
+            Err(ArtifactError::Geometry { .. })
+        ));
+        assert!(serde_json::to_string(&set).is_err());
     }
 
     #[test]

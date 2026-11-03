@@ -836,3 +836,12 @@ def test_batch_row_leaves_ssim_out_for_a_run_without_a_report_digest(
     del run["report_digest"]
     run_path.write_text(json.dumps(run), encoding="utf-8")
     assert batch_row(run_inputs["out"], run_inputs["report"]).endswith("| n/a |")
+
+
+def test_batch_row_refuses_a_run_whose_report_is_gone(run_inputs: dict[str, Path]) -> None:
+    _make(run_inputs)
+    _grade_all(run_inputs)
+    score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], None)
+    run_inputs["report"].unlink()
+    with pytest.raises(BenchError, match="is missing"):
+        batch_row(run_inputs["out"], run_inputs["report"])

@@ -24,7 +24,7 @@ from PIL import Image, ImageDraw, ImageFont
 from stunt_reel.bench.faults import ACTOR_LAYER, ALL_FAULTS, plant
 from stunt_reel.bench.planes import BenchError, RenderTree, load_capture
 from stunt_reel.bench.ssim import render_luma, stretch
-from stunt_reel.parity_artifacts import read_report
+from stunt_reel.parity_artifacts import parse_report
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Sequence
@@ -547,26 +547,34 @@ def table_row(result: Readout, report: Report | None, lead: int = LEAD_FRAMES) -
     return f"| `{result.film}` | {span} | {graded} | {named} | {len(result.other)} | {ssim} |"
 
 
-def file_digest(path: Path) -> str:
-    """SHA-256 of *path*'s bytes."""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def _read_report_snapshot(path: Path) -> tuple[Report, str]:
+    """*path*'s report and the SHA-256 of the bytes it was parsed from, read once."""
+    try:
+        data = path.read_bytes()
+    except OSError as err:
+        raise BenchError(f"{path} is unreadable ({err})") from err
+    return parse_report(data, path), hashlib.sha256(data).hexdigest()
 
 
 def batch_row(out: Path, report_path: Path) -> str:
     """The table row for the readout in *out*, its SSIM from the report the run was made from.
 
     A run that recorded no report digest gets no SSIM. Raises ``BenchError`` if the report
-    changed since ``errors-make``.
+    is missing or changed since ``errors-make``.
     """
     result = Readout.from_json(json.loads((out / READOUT_FILE).read_text(encoding="utf-8")))
     run = json.loads((out / RUN_FILE).read_text(encoding="utf-8"))
     report = None
-    if report_path.is_file() and run.get("report_digest") is not None:
-        if file_digest(report_path) != run["report_digest"]:
+    if run.get("report_digest") is not None:
+        if not report_path.is_file():
+            raise BenchError(
+                f"{report_path} is missing; the run was made from it, so score the film again"
+            )
+        report, digest = _read_report_snapshot(report_path)
+        if digest != run["report_digest"]:
             raise BenchError(
                 f"{report_path} changed since errors-make; run errors-make and grade again"
             )
-        report = read_report(report_path)
     return table_row(result, report)
 
 
@@ -786,7 +794,8 @@ def make_run(
     held = set(captured) & set(tree.ticks())
     if recaptured is not None:
         held &= set(recaptured)
-    ticks = pick_ticks(read_report(report), held, window)
+    report_document, report_digest = _read_report_snapshot(report)
+    ticks = pick_ticks(report_document, held, window)
     if not ticks:
         end = "the end" if window.end is None else window.end
         raise BenchError(
@@ -831,7 +840,7 @@ def make_run(
         "categories_digest": taxonomy.digest,
         "render_digest": planes_digest(render, ticks),
         # Binds the SSIM errors-table prints to the report these ticks were picked from.
-        "report_digest": file_digest(report),
+        "report_digest": report_digest,
     }
     _write_text(out / RUN_FILE, json.dumps(run, indent=2) + "\n")
     return len(written)
