@@ -116,7 +116,18 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if not args.no_build:
         parity_pipeline.build_release()
-    job = parity_pipeline.reference_job(root, args.film)
+    with parity_pipeline.reference_job(root, args.film) as job:
+        return _draw(job, args, ticks, box)
+
+
+def _draw(
+    job: parity_pipeline.FilmJob,
+    args: argparse.Namespace,
+    ticks: list[int],
+    box: tuple[int, int, int, int] | None,
+) -> int:
+    """Render the job's ticks and write each side-by-side sheet; the exit code."""
+    root = job.root
     reference = job.capture
     found, missing = locate(read_capture(reference), ticks)
 

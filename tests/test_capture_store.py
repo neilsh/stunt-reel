@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import threading
+import time
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -109,3 +112,80 @@ def test_an_output_inside_the_store_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="inside the capture store"):
         capture_store.check_outside(store / "vault-ctry" / "frames", store)
     capture_store.check_outside(tmp_path / "elsewhere", store)
+
+
+def _names(parent: Path) -> list[str]:
+    """The entries of *parent* apart from the swap lock, which may stay beside a capture."""
+    return sorted(p.name for p in parent.iterdir() if p.suffix != ".lock")
+
+
+def test_a_snapshot_keeps_the_capture_it_linked_across_a_swap(tmp_path: Path) -> None:
+    target = tmp_path / "frames"
+    capture_store.publish(_fill(capture_store.stage(target), "one"), target)
+    with capture_store.snapshot(target) as held:
+        capture_store.publish(_fill(capture_store.stage(target), "two"), target)
+        assert (held / "frame.idx").read_text(encoding="utf-8") == "one"
+        assert (target / "frame.idx").read_text(encoding="utf-8") == "two"
+    assert _names(tmp_path) == ["frames"]
+
+
+def test_there_is_no_snapshot_of_an_incomplete_capture(tmp_path: Path) -> None:
+    target = tmp_path / "captures" / "frames"
+    with pytest.raises(ValueError, match="no complete capture"), capture_store.snapshot(target):
+        pass
+    target.mkdir(parents=True)
+    _fill(target, "half", complete=False)
+    with pytest.raises(ValueError, match="no complete capture"), capture_store.snapshot(target):
+        pass
+    assert _names(target.parent) == ["frames"]
+
+
+def test_a_publish_waits_while_a_snapshot_is_linked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A swap cannot land between two links, so a snapshot never mixes two captures."""
+    target = tmp_path / "frames"
+    capture_store.publish(_fill(capture_store.stage(target), "one"), target)
+    staged = _fill(capture_store.stage(target), "two")
+    link = capture_store._link_tree
+    writer = threading.Thread(target=capture_store.publish, args=(staged, target))
+
+    def slow(source: Path, held: Path) -> None:
+        writer.start()
+        time.sleep(0.3)
+        link(source, held)
+
+    monkeypatch.setattr(capture_store, "_link_tree", slow)
+    with capture_store.snapshot(target) as held:
+        writer.join(timeout=10)
+        assert (held / "frame.idx").read_text(encoding="utf-8") == "one"
+        assert (target / "frame.idx").read_text(encoding="utf-8") == "two"
+    assert _names(tmp_path) == ["frames"]
+
+
+def test_a_file_system_without_hard_links_gets_a_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "frames"
+    capture_store.publish(_fill(capture_store.stage(target), "one"), target)
+
+    def refuse(_source: Path, _destination: Path) -> None:
+        raise OSError("hard links are not supported")
+
+    monkeypatch.setattr(os, "link", refuse)
+    with capture_store.snapshot(target) as held:
+        assert (held / "frame.idx").read_text(encoding="utf-8") == "one"
+
+
+def test_a_snapshot_removes_the_leftovers_of_dead_readers(tmp_path: Path) -> None:
+    target = tmp_path / "frames"
+    capture_store.publish(_fill(capture_store.stage(target), "one"), target)
+    dead, live = tmp_path / "frames.read-dead", tmp_path / "frames.read-live"
+    old, writing = tmp_path / "frames.old-kept", tmp_path / "frames.partial-busy"
+    for sibling in (dead, live, old, writing):
+        sibling.mkdir()
+    a_day_ago = time.time() - 2 * 86400
+    os.utime(dead, (a_day_ago, a_day_ago))
+    with capture_store.snapshot(target):
+        pass
+    assert _names(tmp_path) == ["frames", "frames.partial-busy", "frames.read-live"]

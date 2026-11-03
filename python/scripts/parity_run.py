@@ -113,22 +113,24 @@ def main(argv: list[str] | None = None) -> int:
     failures = 0
     for film in options.films:
         try:
-            job = reference_job(root, film)
-            source = prepare_source(job, options, no_render=args.no_render)
-            suffix = ""
-            request = None
-            if options.retime is not None:
-                suffix = f"_retime{options.retime:+d}"
-                request = Retime(options.retime, REPO_ROOT / parity_layout.retime_dir(film, suffix))
-            report = REPO_ROOT / parity_layout.report_dir(film, suffix)
-            result = score_film(job, source, report, retime=request)
-            if result.retime is not None:
-                print(
-                    f"[parity] {film}: copied {result.retime.copied} frames; "
-                    f"missing {len(result.retime.missing)} ticks",
-                    file=sys.stderr,
-                )
-            print(format_summary(film, result.report), flush=True)
+            with reference_job(root, film) as job:
+                source = prepare_source(job, options, no_render=args.no_render)
+                suffix = ""
+                request = None
+                if options.retime is not None:
+                    suffix = f"_retime{options.retime:+d}"
+                    request = Retime(
+                        options.retime, REPO_ROOT / parity_layout.retime_dir(film, suffix)
+                    )
+                report = REPO_ROOT / parity_layout.report_dir(film, suffix)
+                result = score_film(job, source, report, retime=request)
+                if result.retime is not None:
+                    print(
+                        f"[parity] {film}: copied {result.retime.copied} frames; "
+                        f"missing {len(result.retime.missing)} ticks",
+                        file=sys.stderr,
+                    )
+                print(format_summary(film, result.report), flush=True)
         except (RuntimeError, ValueError, OSError, KeyError) as err:
             failures += 1
             print(

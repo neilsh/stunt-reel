@@ -84,8 +84,8 @@ def test_render_film_with_ticks_asks_the_binary_once_for_the_exact_list(tmp_path
         calls.append(cmd)
         return 0, ""
 
-    job = parity_pipeline.reference_job(root, "ctry")
-    parity_pipeline.render_film(job, tmp_path / "out", ticks=[48, 92], run=run)
+    with parity_pipeline.reference_job(root, "ctry") as job:
+        parity_pipeline.render_film(job, tmp_path / "out", ticks=[48, 92], run=run)
     (cmd,) = calls
     assert cmd[cmd.index("--at-ticks") + 1] == "48,92"
     assert "--tick-range" not in cmd

@@ -8,11 +8,14 @@ returns the directory then and ``None`` otherwise, so no reader ever scores half
 A writer never writes into the capture it replaces. :func:`stage` makes a fresh sibling,
 the writer fills it, and :func:`publish` swaps it into place; :func:`discard` drops a sibling
 whose write failed. Two writers of one film each get their own sibling, and the last swap wins.
-Nothing here decides what a capture holds or how one is made.
+A reader that reads one capture for minutes holds a :func:`snapshot` instead (ADR 0031): hard
+links to its files that a later swap cannot change. Nothing here decides what a capture holds or
+how one is made.
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 import time
@@ -31,13 +34,18 @@ __all__ = [
     "current",
     "discard",
     "publish",
+    "snapshot",
     "stage",
 ]
 
 #: The file a writer writes last; its presence is what makes a capture complete.
 META_FILE = "meta.json"
-#: How long a publisher waits for another one's swap of the same capture before giving up.
-_SWAP_WAIT_SECONDS = 30.0
+#: How long a publisher waits for the swap lock before giving up. A swap holds it for
+#: milliseconds, but a snapshot on a volume without hard links holds it while it copies the
+#: capture; five minutes covers the largest capture (216 MB) at under 1 MB/s.
+_SWAP_WAIT_SECONDS = 300.0
+#: A snapshot older than this was left by a reader that died; no scoring run holds one a day.
+_STALE_SNAPSHOT_SECONDS = 86400.0
 
 
 def current(directory: Path) -> Path | None:
@@ -155,6 +163,69 @@ else:
 
     def _unlock(fd: int) -> None:
         fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+@contextmanager
+def snapshot(directory: Path) -> Iterator[Path]:
+    """Hold a copy of the complete capture in *directory* that no later swap changes.
+
+    The copy is a sibling of hard links, so it costs no space and stays on the store's volume;
+    a file system without hard links gets a real copy. The links are made under the swap lock,
+    so no :func:`publish` lands while they are made, and a writer never changes a published
+    file, only swaps the whole directory, so the linked files stay the capture as it was. The
+    lock is held for the linking only, not while the caller reads. A ``ValueError`` when
+    *directory* holds no complete capture. The copy is removed when the block ends; one a
+    killed reader left behind is removed by a later snapshot of the same capture.
+    """
+    if not directory.parent.is_dir():
+        raise ValueError(f"{directory} holds no complete capture")
+    held = directory.with_name(f"{directory.name}.read-{uuid.uuid4().hex[:8]}")
+    with _swap_lock(directory):
+        _remove_leftovers(directory)
+        if current(directory) is None:
+            raise ValueError(f"{directory} holds no complete capture")
+        try:
+            _link_tree(directory, held)
+        except BaseException:
+            shutil.rmtree(held, ignore_errors=True)
+            raise
+    try:
+        yield held
+    finally:
+        shutil.rmtree(held, ignore_errors=True)
+
+
+def _link_tree(source: Path, target: Path) -> None:
+    """Make *target* a tree of hard links to every file under *source*."""
+    target.mkdir()
+    for path in sorted(source.rglob("*")):
+        destination = target / path.relative_to(source)
+        if path.is_dir():
+            destination.mkdir()
+            continue
+        try:
+            os.link(path, destination)
+        except OSError:
+            shutil.copy2(path, destination)
+
+
+def _remove_leftovers(directory: Path) -> None:
+    """Remove the old captures and day-old snapshots of *directory* that nothing removed.
+
+    Called under the swap lock, where every ``.old-*`` is garbage: :func:`publish` only puts
+    one back while it holds the lock, and it is left when a reader's open file kept its
+    removal from succeeding. A ``.read-*`` older than a day is a killed reader's. A
+    ``.partial-*`` belongs to a writer that may still be running, so it is left to that writer.
+    """
+    for old in directory.parent.glob(f"{directory.name}.old-*"):
+        shutil.rmtree(old, ignore_errors=True)
+    for held in directory.parent.glob(f"{directory.name}.read-*"):
+        try:
+            stale = time.time() - held.stat().st_mtime > _STALE_SNAPSHOT_SECONDS
+        except FileNotFoundError:
+            continue
+        if stale:
+            shutil.rmtree(held, ignore_errors=True)
 
 
 def discard(staged: Path) -> None:

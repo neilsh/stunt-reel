@@ -62,3 +62,6 @@ each build.
   batch survey under the new rules then recaptures and re-archives the other films.
 - `references.toml` drops `capture = "NNN"`; a row pins its reference by `sha256` alone.
 - `runs.py`, run claiming and both "latest capture" helpers are deleted.
+- A swap is coordinated between writers only; a reader holds a hard-link snapshot of the capture
+  instead, so a swap cannot change what it reads
+  ([ADR 0031](0031-a-reader-holds-a-snapshot-of-the-reference.md)).
