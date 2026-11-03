@@ -6,10 +6,11 @@ that read the A000 page and the working palette at exactly those emulated frames
 research/playone-exe/capture-dosbox-automation.md). Most films replay bit for bit; where one
 lands a tick apart, each page keeps the tick its own pass read. No debugger is involved.
 
-Rasters, palettes, and meta.json land in a new directory per capture under the captures root
-(gitignored, shared through the data root). A capture is written once and never changed
-(ADR 0022); making it the reference parity scores against is a reviewed edit of
-research/parity/references.toml, not something this script does.
+Rasters, palettes, and meta.json become the film's one frame capture, ``captures/<film>/frames/``
+(gitignored, shared through the data root): a successful capture is written beside the old one
+and swapped in (ADR 0028). Making it the reference parity scores against is a reviewed edit of
+research/parity/references.toml, not something this script does; until then a replaced
+reference fails its pinned hash. ``--out`` writes anywhere else and replaces nothing.
 """
 
 from __future__ import annotations
@@ -18,13 +19,12 @@ import argparse
 import hashlib
 import logging
 import re
-import shutil
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from stunt_reel import dataroot, parity_layout, runs
+from stunt_reel import capture_store, dataroot, parity_layout
 from stunt_reel.all_archive import ArchiveError, resolve_all
 from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.parity_artifacts import CAPTURE_FRAMES_DIR, FilmId
@@ -34,6 +34,10 @@ from stunt_reel.tac.framebuffer import FILM_STRIDE_TICKS, capture
 from stunt_reel.tac.plan import PlanError
 
 DEFAULT_FILM: Path = Path("corpus/stisldem/VAULT/CTRY.FLM")
+
+
+#: The frame cap of a capture that may fill the store; another needs --out (ADR 0028).
+DEFAULT_MAX_FRAMES = 2000
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,9 +63,10 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "new directory receiving tick_*.idx, palettes_*.json, and meta.json; an existing "
-            f"non-empty one is refused (default {parity_layout.capture_root().as_posix()}/"
-            "<film>/frames/<next run number>)"
+            "new directory receiving tick_*.idx, palettes_*.json, and meta.json; one holding a "
+            "capture or other files is refused, but rasters and palettes left by a run that died "
+            "before meta.json are cleared first; no stored capture is replaced (default: replace the "
+            f"film's capture, {parity_layout.capture_root().as_posix()}/<film>/frames, by swap)"
         ),
     )
     parser.add_argument(
@@ -77,7 +82,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-frames",
         type=int,
-        default=2000,
+        default=DEFAULT_MAX_FRAMES,
         help="cap on captured film frames; the film's end stops the trace by itself",
     )
     parser.add_argument(
@@ -89,6 +94,12 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.max_frames < 1:
         parser.error("--max-frames must be at least 1")
+    if args.out is None and (
+        args.max_frames != DEFAULT_MAX_FRAMES or args.stride != FILM_STRIDE_TICKS
+    ):
+        parser.error(
+            "a non-default --max-frames or --stride needs --out: only default parameters fill the store (ADR 0028)"
+        )
     return args
 
 
@@ -146,19 +157,30 @@ def run(args: argparse.Namespace) -> int:
         flm_sha256=hashlib.sha256(film.read_bytes()).hexdigest(),
         all_sha256=all_sha256,
     )
-    claimed: Path | None = None
-    if args.out is None:
-        parent = dataroot.REPO_ROOT / parity_layout.frames_root(slug)
-        out = parent / runs.claim_run(parent)
-        claimed = out
-    else:
+    if args.out is not None:
         out = resolve(args.out)
-    try:
+        try:
+            capture_store.check_outside(out, dataroot.REPO_ROOT / parity_layout.capture_root())
+        except ValueError as exc:
+            print(f"[capture] {exc}", file=sys.stderr)
+            return 2
         return _capture_into(args, out, film, archive, film_id)
+    # The film's one capture of this kind is replaced only by a complete, successful one.
+    target = dataroot.REPO_ROOT / parity_layout.frames_path(slug)
+    try:
+        capture_store.check_replaceable(target)
+    except ValueError as exc:
+        print(f"[capture] {exc}", file=sys.stderr)
+        return 2
+    out = capture_store.stage(target)
+    try:
+        code = _capture_into(args, out, film, archive, film_id)
+        if code == 0:
+            capture_store.publish(out, target)
+            report(f"replaced the capture in {target}")
+        return code
     finally:
-        # A run that died before meta.json (written last) is no capture; free its number.
-        if claimed is not None and not (claimed / "meta.json").exists():
-            shutil.rmtree(claimed, ignore_errors=True)
+        capture_store.discard(out)
 
 
 def _capture_into(

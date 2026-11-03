@@ -18,8 +18,8 @@ if str(SCRIPTS_DIR) not in sys.path:
 import capture_digest  # noqa: E402
 
 
-def _capture(root: Path, slug: str, run: str) -> Path:
-    directory = root / parity_layout.frames_path(slug, run)
+def _capture(root: Path, slug: str) -> Path:
+    directory = root / parity_layout.frames_path(slug)
     directory.mkdir(parents=True)
     (directory / "meta.json").write_text("{}", encoding="utf-8")
     (directory / "tick_0001.idx").write_bytes(b"\x01\x02")
@@ -29,21 +29,21 @@ def _capture(root: Path, slug: str, run: str) -> Path:
 def test_prints_the_digest_and_the_entry_that_promotes_it(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    directory = _capture(tmp_path, "vault-ctry", "999")
+    directory = _capture(tmp_path, "vault-ctry")
     digest = references.capture_digest(directory)
-    assert capture_digest.main(["vault-ctry", "999"], root=tmp_path) == 0
+    assert capture_digest.main(["vault-ctry"], root=tmp_path) == 0
     out = capsys.readouterr().out.splitlines()
-    assert out[0] == "build/parity/captures/vault-ctry/frames/999"
+    assert out[0] == "build/parity/captures/vault-ctry/frames"
     assert out[1] == f'sha256 = "{digest}"'
     # The committed references.toml has a [ctry] entry for vault-ctry, so the block follows.
     block = out[out.index("[ctry]") :]
-    assert block == ["[ctry]", 'film = "vault-ctry"', 'capture = "999"', f'sha256 = "{digest}"']
+    assert block == ["[ctry]", 'film = "vault-ctry"', f'sha256 = "{digest}"']
 
 
 def test_the_dir_form_hashes_the_same(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    directory = _capture(tmp_path, "vault-intro", "999")
+    directory = _capture(tmp_path, "vault-intro")
     pointers = tmp_path / parity_layout.REFERENCES_FILE
     pointers.parent.mkdir(parents=True)
     pointers.write_text(
@@ -60,8 +60,8 @@ def test_the_dir_form_hashes_the_same(
 def test_a_dir_outside_the_checkout_gets_no_entry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A copy elsewhere is not what parity reads, so no entry may point at its id."""
-    directory = _capture(tmp_path / "elsewhere", "vault-intro", "999")
+    """A copy elsewhere is not what parity reads, so no entry may pin it."""
+    directory = _capture(tmp_path / "elsewhere", "vault-intro")
     monkeypatch.setattr(dataroot, "REPO_ROOT", tmp_path / "checkout")
     assert capture_digest.main(["--dir", str(directory)], root=tmp_path / "checkout") == 0
     out = capsys.readouterr().out.splitlines()
@@ -72,22 +72,22 @@ def test_a_dir_outside_the_checkout_gets_no_entry(
 
 def test_the_current_pin_is_recognised() -> None:
     entry = capture_digest._entries()["ctry"]
-    lines = capture_digest.report("vault-ctry", str(entry["capture"]), str(entry["sha256"]))
-    assert lines[-1] == "[ctry] already names this capture with this hash"
+    lines = capture_digest.report("vault-ctry", str(entry["sha256"]))
+    assert lines[-1] == "[ctry] already pins this capture"
 
 
 def test_a_directory_without_meta_is_refused(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert capture_digest.main(["vault-ctry", "404"], root=tmp_path) == 1
+    assert capture_digest.main(["vault-ctry"], root=tmp_path) == 1
     assert "not a capture" in capsys.readouterr().err
 
 
 def test_the_links_are_repaired_before_any_capture_is_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Like parity, repair the data-root link first, for --dir as well as film and run."""
-    directory = _capture(tmp_path, "vault-intro", "999")
+    """Like parity, repair the data-root link first, for --dir as well as a film slug."""
+    directory = _capture(tmp_path, "vault-intro")
     calls: list[str] = []
 
     def refuse(program: str) -> bool:
@@ -96,5 +96,5 @@ def test_the_links_are_repaired_before_any_capture_is_read(
 
     monkeypatch.setattr(dataroot, "ensure_links_or_report", refuse)
     assert capture_digest.main(["--dir", str(directory)]) == 1
-    assert capture_digest.main(["vault-intro", "999"]) == 1
+    assert capture_digest.main(["vault-intro"]) == 1
     assert calls == ["capture_digest", "capture_digest"]

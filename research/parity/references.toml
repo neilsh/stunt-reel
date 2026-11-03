@@ -1,9 +1,9 @@
-# The capture parity scores each film against (ADR 0022). A capture is named by id and by the
-# hash of its content; promoting a new reference is an edit of this file in a reviewed commit.
+# The capture parity scores each film against (ADR 0028, ADR 0029): the film's one frame capture,
+# pinned by the hash of its content; promoting a new reference is an edit of this file in a
+# reviewed commit.
 
 [ctry]
 film = "vault-ctry"
-capture = "004"
 sha256 = "9869444de53c653214144b83c2bdbce4a686a16f5189a1f5a94f6eb19605ed49"
 # Recapture noise of the whole-frame SSIM (004 against 005), from the metric bench
 # (research/parity/method.md section 2.2); `stuntreel parity --noise-sigma` takes it. It is a
@@ -13,5 +13,4 @@ noise_sigma = 0.000303
 
 [intro]
 film = "vault-intro"
-capture = "004"
 sha256 = "ac93c3babb74c5380a0f1263d38a546b43979c8d4200fb0d2dfb58db482c0215"
