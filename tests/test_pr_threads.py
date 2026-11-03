@@ -72,8 +72,8 @@ def test_a_long_title_is_cut() -> None:
 def test_a_thread_line_names_where_what_and_the_id_to_answer() -> None:
     line = pr_threads.thread_line(_thread(_BOT_BODY, replies=2))
     assert line == (
-        "crates/stunt-parity/src/film.rs:22 [Major] Compare `all_sha256` before parity scoring.\n"
-        "    id 111, 2 replies, last by neilsh"
+        "crates/stunt-parity/src/film.rs:22 [Major] Compare `all_sha256` before parity scoring. "
+        "| id 111, 2 replies, last by neilsh"
     )
 
 
