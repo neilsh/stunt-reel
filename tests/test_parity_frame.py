@@ -17,7 +17,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 import parity_frame  # noqa: E402
 import parity_probe  # noqa: E402
 
-from render_helpers import TINY, write_store  # noqa: E402
+from render_helpers import TINY, reference_tree, write_store  # noqa: E402
 from stunt_reel import parity_pipeline  # noqa: E402
 from stunt_reel.parity_artifacts import (  # noqa: E402
     CapturedFrame,
@@ -77,16 +77,19 @@ def test_locate_maps_ticks_to_ordinals_and_names_neighbours_of_the_rest() -> Non
 
 
 def test_render_film_with_ticks_asks_the_binary_once_for_the_exact_list(tmp_path: Path) -> None:
-    root = tmp_path
-    film = parity_pipeline.FILMS["ctry"]
+    root = reference_tree(tmp_path, [48, 92], films=("ctry",))
     calls: list[list[str]] = []
-    parity_pipeline.render_film(
-        "ctry", root, tmp_path / "out", ticks=[48, 92], run=lambda cmd, _env: calls.append(cmd)
-    )
+
+    def run(cmd: list[str], _env: dict[str, str] | None, _timeout: float | None) -> tuple[int, str]:
+        calls.append(cmd)
+        return 0, ""
+
+    job = parity_pipeline.reference_job(root, "ctry")
+    parity_pipeline.render_film(job, tmp_path / "out", ticks=[48, 92], run=run)
     (cmd,) = calls
     assert cmd[cmd.index("--at-ticks") + 1] == "48,92"
     assert "--tick-range" not in cmd
-    assert cmd[cmd.index("--sidata") + 1] == str(root / film.sidata)
+    assert cmd[cmd.index("--sidata") + 1] == str(root / parity_pipeline.SIDATA)
 
 
 def test_side_by_side_puts_the_capture_left_of_ours(tmp_path: Path) -> None:

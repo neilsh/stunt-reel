@@ -92,3 +92,16 @@ def test_a_capture_replaced_in_place_gets_a_fresh_digest(tmp_path: Path) -> None
     (directory / "tick_0001.idx").write_bytes(b"\x09")
     with pytest.raises(references.ReferenceCaptureError, match="hash"):
         references.reference_dir(tmp_path, "ctry")
+
+
+def test_the_loops_films_are_the_rows_that_pin_a_capture(tmp_path: Path) -> None:
+    pointers = tmp_path / parity_layout.REFERENCES_FILE
+    pointers.parent.mkdir(parents=True)
+    rows = [
+        ["[ctry]", 'film = "vault-ctry"', 'sha256 = "0"'],
+        ["[exit]", 'film = "vault-exit"', 'playone = "patch3"'],
+        ["[intro]", 'film = "vault-intro"', 'sha256 = "1"'],
+    ]
+    text = "\n\n".join("\n".join(row) for row in rows) + "\n"
+    pointers.write_text(text, encoding="utf-8")
+    assert references.reference_films(tmp_path) == ("ctry", "intro")

@@ -31,13 +31,14 @@ from cli import ParityOptions, UsageError, add_parity_options, parity_options
 from stunt_reel import parity_layout
 from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.parity_pipeline import (
-    FILMS,
     REPO_ROOT,
+    FilmJob,
     Retime,
     build_release,
     check_film,
     format_summary,
     preflight,
+    reference_job,
     render_film,
     score_film,
 )
@@ -46,8 +47,9 @@ from stunt_reel.parity_pipeline import (
 NOISE_NOTE = "noise floor +/-0.002 SSIM; margin below 0.002 is not an adoption"
 
 
-def prepare_source(film: str, root: Path, options: ParityOptions, *, no_render: bool) -> Path:
+def prepare_source(job: FilmJob, options: ParityOptions, *, no_render: bool) -> Path:
     """The render directory to score: reused, existing, or freshly rendered ``_current``."""
+    film = job.name
     current = REPO_ROOT / parity_layout.render_dir(film)
     if options.reuse is not None:
         return Path(options.reuse) / film
@@ -60,8 +62,8 @@ def prepare_source(film: str, root: Path, options: ParityOptions, *, no_render: 
     print(f"[parity] rendering {film} into {current}", file=sys.stderr)
     scratch = REPO_ROOT / parity_layout.render_scratch_dir(film)
     shutil.rmtree(scratch, ignore_errors=True)
-    render_film(film, root, scratch, None)
-    check_film(film, root, scratch)
+    render_film(job, scratch)
+    check_film(job, scratch)
     current.parent.mkdir(parents=True, exist_ok=True)
     # Rename rather than copy: the previous tree stays scoreable with --reuse and the
     # render directories are hundreds of megabytes, so a copy per run is not affordable.
@@ -81,7 +83,7 @@ def prepare_source(film: str, root: Path, options: ParityOptions, *, no_render: 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    add_parity_options(parser, films=FILMS, data_root=REPO_ROOT)
+    add_parity_options(parser, data_root=REPO_ROOT)
     parser.add_argument("--no-render", action="store_true", help="score the existing _current dirs")
     return parser.parse_args(argv)
 
@@ -89,7 +91,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        options = parity_options(args, films=FILMS)
+        options = parity_options(args)
     except UsageError as err:
         print(f"parity_run: {err}", file=sys.stderr)
         return 2
@@ -111,14 +113,15 @@ def main(argv: list[str] | None = None) -> int:
     failures = 0
     for film in options.films:
         try:
-            source = prepare_source(film, root, options, no_render=args.no_render)
+            job = reference_job(root, film)
+            source = prepare_source(job, options, no_render=args.no_render)
             suffix = ""
             request = None
             if options.retime is not None:
                 suffix = f"_retime{options.retime:+d}"
                 request = Retime(options.retime, REPO_ROOT / parity_layout.retime_dir(film, suffix))
             report = REPO_ROOT / parity_layout.report_dir(film, suffix)
-            result = score_film(film, root, source, report, retime=request)
+            result = score_film(job, source, report, retime=request)
             if result.retime is not None:
                 print(
                     f"[parity] {film}: copied {result.retime.copied} frames; "

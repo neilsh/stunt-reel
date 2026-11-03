@@ -78,3 +78,50 @@ def test_result_is_sorted_by_slug(tmp_path: Path) -> None:
     slugs = [film.slug for film in batch_films.discover(tmp_path)]
 
     assert slugs == sorted(slugs) == ["alpha-m", "mid-c", "zed-q"]
+
+
+def test_find_returns_the_first_path_with_the_slug_without_reading_the_rest(tmp_path: Path) -> None:
+    first = _write(tmp_path / "VAULT" / "CTRY.FLM", b"ctry")
+    _write(tmp_path / "OTHER" / "CTRY.FLM", b"ctry2")
+    film = batch_films.find(tmp_path, "vault-ctry")
+    assert film is not None
+    assert (film.flm, film.name) == (first, None)
+    assert film.sha256 == hashlib.sha256(b"ctry").hexdigest()
+    assert batch_films.find(tmp_path, "vault-nope") is None
+
+
+def test_find_looks_a_hash_suffixed_slug_up_in_the_full_manifest(tmp_path: Path) -> None:
+    _write(tmp_path / "a" / "VAULT" / "CTRY.FLM", b"one")
+    second = _write(tmp_path / "b" / "VAULT" / "CTRY.FLM", b"two")
+    (suffixed,) = (film for film in batch_films.discover(tmp_path) if film.name is not None)
+    found = batch_films.find(tmp_path, suffixed.slug)
+    assert found is not None
+    assert found.flm == second
+
+
+def test_find_skips_a_copy_the_manifest_skips(tmp_path: Path) -> None:
+    """A later path that copies an earlier film does not own its slug; the next distinct one does."""
+    for folder, body in (("a/X", b"film x"), ("b/VAULT", b"film x"), ("c/VAULT", b"film y")):
+        (tmp_path / folder).mkdir(parents=True)
+        (tmp_path / folder / "M.FLM").write_bytes(body)
+    found = batch_films.find(tmp_path, "vault-m")
+    assert found is not None
+    assert found.flm == tmp_path / "c" / "VAULT" / "M.FLM"
+    owner = next(film for film in batch_films.discover(tmp_path) if film.slug == "vault-m")
+    assert found.flm == owner.flm
+
+
+def test_find_resolves_a_collision_shaped_slug_through_the_manifest(tmp_path: Path) -> None:
+    """A path that spells another film's collision name does not take it over."""
+    first, second = tmp_path / "a" / "VAULT", tmp_path / "b" / "VAULT"
+    for folder, body in ((first, b"one"), (second, b"two")):
+        folder.mkdir(parents=True)
+        (folder / "M.FLM").write_bytes(body)
+    collided = next(film for film in batch_films.discover(tmp_path) if film.name is not None)
+    impostor = tmp_path / "c" / "VAULT"
+    impostor.mkdir(parents=True)
+    (impostor / f"{collided.slug.removeprefix('vault-').upper()}.FLM").write_bytes(b"three")
+    found = batch_films.find(tmp_path, collided.slug)
+    owner = next(film for film in batch_films.discover(tmp_path) if film.slug == collided.slug)
+    assert found is not None
+    assert found.flm == owner.flm

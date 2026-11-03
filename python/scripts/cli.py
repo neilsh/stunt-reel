@@ -11,9 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from stunt_reel import references
+
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Mapping
 
 __all__ = [
     "ParityOptions",
@@ -42,11 +43,15 @@ class ParityOptions:
     retime: int | None
 
 
-def add_parity_options(
-    parser: argparse.ArgumentParser, *, films: Mapping[str, object], data_root: Path
-) -> None:
-    """Add ``--films``, ``--data-root``, ``--no-build``, ``--reuse`` and ``--retime``."""
-    parser.add_argument("--films", default=",".join(films), help="comma list; default: all")
+def add_parity_options(parser: argparse.ArgumentParser, *, data_root: Path) -> None:
+    """Add ``--films``, ``--data-root``, ``--no-build``, ``--reuse`` and ``--retime``.
+
+    ``--films`` defaults to every film the data root's ``references.toml`` pins, resolved by
+    :func:`parity_options` once ``--data-root`` is known.
+    """
+    parser.add_argument(
+        "--films", default=None, help="comma list; default: every film references.toml pins"
+    )
     parser.add_argument(
         "--data-root",
         type=Path,
@@ -62,15 +67,20 @@ def add_parity_options(
     )
 
 
-def parity_options(args: argparse.Namespace, *, films: Mapping[str, object]) -> ParityOptions:
-    """Validate the shared flags and resolve the data root."""
-    names = [name.strip() for name in str(args.films).split(",") if name.strip()]
+def parity_options(args: argparse.Namespace) -> ParityOptions:
+    """Validate the shared flags against the films the resolved data root pins."""
+    root = Path(args.data_root).resolve()
+    films = references.reference_films(root)
+    if args.films is None:
+        names = list(films)
+    else:
+        names = [name.strip() for name in str(args.films).split(",") if name.strip()]
     unknown = [name for name in names if name not in films]
     if unknown or not names:
         raise UsageError(f"--films must be from {', '.join(films)}, got {args.films!r}")
     return ParityOptions(
         films=tuple(names),
-        data_root=Path(args.data_root).resolve(),
+        data_root=root,
         no_build=bool(args.no_build),
         reuse=args.reuse,
         retime=args.retime,

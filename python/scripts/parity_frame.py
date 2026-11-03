@@ -91,7 +91,7 @@ def describe_missing(tick: int, nearest: tuple[int | None, int | None], *, rende
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--film", required=True, choices=list(parity_pipeline.FILMS))
+    parser.add_argument("--film", required=True, choices=references.reference_films(REPO_ROOT))
     parser.add_argument("--ticks", required=True, help="comma list of 0-based film ticks")
     parser.add_argument("--crop", default=None, help="x0,y0,x1,y1 (default: the whole viewport)")
     parser.add_argument("--scale", type=int, default=1)
@@ -116,14 +116,15 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if not args.no_build:
         parity_pipeline.build_release()
-    reference = references.reference_dir(root, args.film)
+    job = parity_pipeline.reference_job(root, args.film)
+    reference = job.capture
     found, missing = locate(read_capture(reference), ticks)
 
     out = root / FRAME_DIR / args.film
     store_dir = out / "store"
     shutil.rmtree(store_dir, ignore_errors=True)
     clear_previous(out, args.film)
-    parity_pipeline.render_film(args.film, root, store_dir, ticks=ticks)
+    parity_pipeline.render_film(job, store_dir, ticks=ticks)
 
     if not (store_dir / "render.json").exists():
         # Every tick was past the film's end, so the renderer wrote no store.

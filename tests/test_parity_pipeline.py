@@ -1,9 +1,10 @@
-"""Offline tests for the parity pipeline seam (synthetic data only).
+"""Offline tests for the film parity operation (synthetic data only).
 
-The pipeline owns the film catalogue, render/check/score for one film and for a list,
-the preflight and the release build. These tests pin the commands it hands the adapter,
-the per-film failure a list run returns instead of raising, the retime copy, and the
-checks that refuse an unscorable render.
+The pipeline owns render, check and score for one film and for a list, the preflight and the
+release build, and it hands every command to one adapter, ``(argv, env, timeout) -> (code,
+tail)``. These tests drive it with a fake adapter and pin the commands it builds, the per-film
+failure a list run returns instead of raising, the retime copy, and the checks that refuse an
+unscorable render.
 """
 
 from __future__ import annotations
@@ -13,8 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from render_helpers import write_store
-from stunt_reel import parity_artifacts, parity_layout, parity_pipeline, references
+from render_helpers import pin_reference, reference_tree, write_store
+from stunt_reel import parity_artifacts, parity_layout, parity_pipeline
+from stunt_reel.batch_films import BatchFilm
 from stunt_reel.parity_artifacts import (
     FilmId,
     Geometry,
@@ -27,32 +29,30 @@ def _geometry() -> Geometry:
     return Geometry(width=320, height=200, viewport_rows=185)
 
 
-def test_the_catalogue_names_each_films_inputs_and_its_capture() -> None:
-    assert list(parity_pipeline.FILMS) == ["ctry", "intro"]
-    for name, film in parity_pipeline.FILMS.items():
-        assert film.flm.endswith(f"{name.upper()}.FLM")
-        assert film.all.endswith(f"{name.upper()}.ALL")
-
-
 class FakeRun:
-    """The run adapter: records each command and writes the artifacts a real run would."""
+    """The subprocess adapter: records each command and writes the artifacts a real run would."""
 
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
         self.envs: list[dict[str, str] | None] = []
+        self.timeouts: list[float | None] = []
         self.fail_on: str | None = None
 
-    def __call__(self, cmd: list[str], env: dict[str, str] | None = None) -> None:
+    def __call__(
+        self, cmd: list[str], env: dict[str, str] | None, timeout: float | None
+    ) -> tuple[int, str]:
         self.calls.append(cmd)
         self.envs.append(env)
+        self.timeouts.append(timeout)
         if self.fail_on is not None and any(str(part).endswith(self.fail_on) for part in cmd):
-            raise RuntimeError(f"{self.fail_on} exploded")
+            return 1, f"{self.fail_on} exploded"
         out_dir = _after(cmd, "--out-dir")
         if out_dir is not None:
             _write_render(Path(out_dir), _ticks_for(cmd))
         output = _after(cmd, "--output")
         if output is not None:
             _write_report(Path(output))
+        return 0, ""
 
 
 def _after(cmd: list[str], flag: str) -> str | None:
@@ -83,68 +83,84 @@ def _write_report(report: Path, *, ssim: float = 0.8, iou: float = 0.9) -> None:
     )
 
 
-def _input_tree(root: Path, ticks: list[int]) -> Path:
-    """A data root holding every corpus input and reference capture of both films."""
-    for film in parity_pipeline.FILMS.values():
-        for path in (film.flm, film.all):
-            target = root / path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(b"")
-        (root / film.sidata).mkdir(parents=True, exist_ok=True)
-    for name in parity_pipeline.FILMS:
-        _pin(root, name, [{"film_tick": tick} for tick in ticks])
-    return root
-
-
-def _pin(root: Path, film: str, frames: list[dict[str, int]]) -> Path:
-    """Write a capture of *film* under *root* and name it in the root's references.toml."""
-    reference = root / parity_layout.frames_path(f"vault-{film}")
-    reference.mkdir(parents=True, exist_ok=True)
-    (reference / "meta.json").write_text(json.dumps({"frames": frames}), encoding="utf-8")
-    pointers = root / parity_layout.REFERENCES_FILE
-    pointers.parent.mkdir(parents=True, exist_ok=True)
-    digest = references.capture_digest(reference)
-    with pointers.open("a", encoding="utf-8") as handle:
-        handle.write(f'[{film}]\nfilm = "vault-{film}"\nsha256 = "{digest}"\n')
-    return reference
-
-
 def test_build_release_runs_cargo_through_the_adapter() -> None:
     fake = FakeRun()
     parity_pipeline.build_release(run=fake)
     assert fake.calls == [["cargo", "build", "--release", "-p", "stunt-cli"]]
 
 
+def test_a_failing_command_raises_with_its_exit_and_the_tail() -> None:
+    def failing(
+        _cmd: list[str], _env: dict[str, str] | None, _timeout: float | None
+    ) -> tuple[int, str]:
+        return 3, "one\ntwo"
+
+    with pytest.raises(parity_pipeline.CommandError, match=r"cargo exited 3: one\ntwo") as raised:
+        parity_pipeline.build_release(run=failing)
+    assert (raised.value.code, raised.value.tail) == (3, "one\ntwo")
+
+
 def test_render_film_asks_for_the_captured_tick_range(tmp_path: Path) -> None:
-    root = _input_tree(tmp_path, [7, 9])
-    film = parity_pipeline.FILMS["ctry"]
+    root = reference_tree(tmp_path, [7, 9])
+    vault = root / "corpus" / "stisldem" / "VAULT"
     out = tmp_path / "work" / "ctry"
     fake = FakeRun()
-    parity_pipeline.render_film("ctry", root, out, run=fake)
+    parity_pipeline.render_film(parity_pipeline.reference_job(root, "ctry"), out, run=fake)
     assert fake.calls == [
         [
             str(parity_pipeline.binary_path()),
             "--headless",
-            str(root / film.flm),
+            str(vault / "CTRY.FLM"),
             "--all",
-            str(root / film.all),
+            str(vault / "CTRY.ALL"),
             "--tick-range",
             "7..=9",
             "--sidata",
-            str(root / film.sidata),
+            str(root / parity_pipeline.SIDATA),
             "--out-dir",
             str(out),
             *parity_pipeline.RENDER_FLAGS,
         ]
     ]
+    assert fake.envs == [None]
+
+
+def test_render_film_passes_the_environment_and_timeout_to_the_adapter(tmp_path: Path) -> None:
+    root = reference_tree(tmp_path, [7, 9])
+    fake = FakeRun()
+    parity_pipeline.render_film(
+        parity_pipeline.reference_job(root, "ctry"),
+        tmp_path / "out",
+        {"DBG_X": "1"},
+        timeout=60.0,
+        run=fake,
+    )
+    assert (fake.envs, fake.timeouts) == ([{"DBG_X": "1"}], [60.0])
+
+
+def test_a_film_scored_against_its_current_capture_uses_that_capture(tmp_path: Path) -> None:
+    film = BatchFilm(
+        slug="vault-ctry",
+        name=None,
+        flm=tmp_path / "VAULT" / "CTRY.FLM",
+        sha256="0" * 64,
+        has_sibling_all=True,
+    )
+    assert parity_pipeline.current_job(film, tmp_path) is None
+    capture = pin_reference(tmp_path, "ctry", [{"film_tick": 3}])
+    job = parity_pipeline.current_job(film, tmp_path)
+    assert job is not None
+    assert (job.name, job.capture, job.flm, job.root) == ("vault-ctry", capture, film.flm, tmp_path)
 
 
 def test_score_film_runs_parity_and_reads_the_report(tmp_path: Path) -> None:
-    root = _input_tree(tmp_path, [])
+    root = reference_tree(tmp_path, [])
     render, report = tmp_path / "ours", tmp_path / "report"
     _write_render(render)
     fake = FakeRun()
-    result = parity_pipeline.score_film("ctry", root, render, report, run=fake)
+    result = parity_pipeline.score_film(
+        parity_pipeline.reference_job(root, "ctry"), render, report, run=fake
+    )
     assert fake.calls == [
         [
             str(parity_pipeline.binary_path()),
@@ -162,13 +178,25 @@ def test_score_film_runs_parity_and_reads_the_report(tmp_path: Path) -> None:
 
 
 def test_score_film_refuses_a_missing_render_directory(tmp_path: Path) -> None:
-    root = _input_tree(tmp_path, [])
+    root = reference_tree(tmp_path, [])
+    job = parity_pipeline.reference_job(root, "ctry")
     with pytest.raises(ValueError, match="not a render directory"):
-        parity_pipeline.score_film("ctry", root, tmp_path / "missing", tmp_path / "report")
+        parity_pipeline.score_film(job, tmp_path / "missing", tmp_path / "report")
+
+
+def test_score_film_refuses_a_render_that_misses_a_captured_tick(tmp_path: Path) -> None:
+    root = reference_tree(tmp_path, [7, 9])
+    render = tmp_path / "ours"
+    _write_render(render, [7])
+    fake = FakeRun()
+    job = parity_pipeline.reference_job(root, "ctry")
+    with pytest.raises(ValueError, match="no render planes"):
+        parity_pipeline.score_film(job, render, tmp_path / "report", run=fake)
+    assert fake.calls == []
 
 
 def test_run_films_returns_a_failure_instead_of_raising(tmp_path: Path) -> None:
-    root = _input_tree(tmp_path, [7, 9])
+    root = reference_tree(tmp_path, [7, 9])
     fake = FakeRun()
     fake.fail_on = "INTRO.ALL"
     attempts = parity_pipeline.run_films(["ctry", "intro"], root, tmp_path / "work", run=fake)
@@ -180,7 +208,7 @@ def test_run_films_returns_a_failure_instead_of_raising(tmp_path: Path) -> None:
 
 
 def test_run_films_scores_existing_trees_without_rendering(tmp_path: Path) -> None:
-    root = _input_tree(tmp_path, [])
+    root = reference_tree(tmp_path, [])
     work = tmp_path / "reuse"
     for film in ("ctry", "intro"):
         _write_render(work / film)
@@ -285,8 +313,7 @@ def test_retime_refuses_a_non_empty_output_unless_forced(tmp_path: Path) -> None
 
 
 def test_run_films_writes_the_retimed_copy_beside_the_render(tmp_path: Path) -> None:
-    root = tmp_path / "root"
-    _pin(root, "ctry", [{"ordinal": 1, "film_tick": 10}, {"ordinal": 2, "film_tick": 11}])
+    root = reference_tree(tmp_path / "root", [10, 11], films=("ctry",))
     work = tmp_path / "reuse"
     _render(work / "ctry", [10, 11])
     fake = FakeRun()
@@ -373,7 +400,7 @@ def test_format_summary_marks_a_missing_index_agreement(tmp_path: Path) -> None:
 
 
 def test_preflight_names_a_missing_capture(tmp_path: Path) -> None:
-    root = _input_tree(tmp_path, [])
+    root = reference_tree(tmp_path, [])
     (root / parity_layout.frames_path("vault-intro") / "meta.json").unlink()
     problems = parity_pipeline.preflight(
         root, ["ctry", "intro"], build_required=False, locked=lambda _path: False
@@ -384,7 +411,7 @@ def test_preflight_names_a_missing_capture(tmp_path: Path) -> None:
 
 
 def test_preflight_names_a_locked_release_binary(tmp_path: Path) -> None:
-    root = _input_tree(tmp_path, [])
+    root = reference_tree(tmp_path, [])
     problems = parity_pipeline.preflight(
         root, ["ctry"], build_required=True, locked=lambda _path: True
     )
@@ -393,3 +420,18 @@ def test_preflight_names_a_locked_release_binary(tmp_path: Path) -> None:
         parity_pipeline.preflight(root, ["ctry"], build_required=False, locked=lambda _path: True)
         == []
     )
+
+
+def test_preflight_names_a_missing_flm_archive_and_sidata(tmp_path: Path) -> None:
+    root = reference_tree(tmp_path, [])
+    vault = root / "corpus" / "stisldem" / "VAULT"
+    (vault / "CTRY.FLM").unlink()
+    (vault / "INTRO.ALL").unlink()
+    (root / parity_pipeline.SIDATA).rmdir()
+    problems = parity_pipeline.preflight(
+        root, ["ctry", "intro"], build_required=False, locked=lambda _path: False
+    )
+    assert len(problems) == 3
+    assert f"missing input {root / parity_pipeline.SIDATA}" in problems[0]
+    assert "no .FLM of vault-ctry" in problems[1]
+    assert "no .ALL for" in problems[2]

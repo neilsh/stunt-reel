@@ -47,7 +47,6 @@ from stunt_reel.parity_artifacts import (
     read_report,
 )
 from stunt_reel.parity_pipeline import (
-    FILMS,
     REPO_ROOT,
     FilmFailure,
     FilmScore,
@@ -275,7 +274,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--var", action="append", default=None, metavar="DBG_NAME=v1,v2", help="repeatable"
     )
-    add_parity_options(parser, films=FILMS, data_root=REPO_ROOT)
+    add_parity_options(parser, data_root=REPO_ROOT)
     parser.add_argument("--probe", choices=("film", "iou"), default="film")
     parser.add_argument("--keep-best", action="store_true", help="keep the winner's render dirs")
     return parser.parse_args(argv)
@@ -288,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
         parsed = [parse_var(spec) for spec in args.var or []]
         names = [n for n, _ in parsed]
         combos = expand_variants(names, [v for _, v in parsed])
-        options = parity_options(args, films=FILMS)
+        options = parity_options(args)
     except ValueError as err:
         print(f"parity_sweep: {err}", file=sys.stderr)
         return 2

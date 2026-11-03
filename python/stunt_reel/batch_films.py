@@ -10,6 +10,7 @@ runs a stage or writes a file: it reads the corpus and reports what is there.
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -18,10 +19,13 @@ from stunt_reel import parity_layout
 if TYPE_CHECKING:
     from pathlib import Path
 
-__all__ = ["BatchFilm", "discover"]
+__all__ = ["BatchFilm", "discover", "find"]
 
 #: How many leading hex digits of the content hash name a film whose slug collided.
 _HASH_DIGITS = 8
+#: A slug shaped like the name :func:`discover` gives a collision; only the manifest can say
+#: whether a path spells it or a colliding film was given it.
+_COLLISION_SLUG = re.compile(rf"[a-z0-9][a-z0-9_-]*-[0-9a-f]{{{_HASH_DIGITS}}}")
 
 
 @dataclass(frozen=True)
@@ -64,6 +68,39 @@ def discover(corpus: Path) -> list[BatchFilm]:
             )
         )
     return sorted(films, key=lambda film: film.slug)
+
+
+def find(corpus: Path, slug: str) -> BatchFilm | None:
+    """The film :func:`discover` files under *slug*, or ``None``, hashing as few files as it can.
+
+    This is the parity loop's lookup of one pinned film, and reading all 579 films to find one
+    would cost seconds. :func:`discover` gives a path's own slug to the first path that spells it
+    and is not a copy of an earlier path, so only earlier paths of the same size are hashed to
+    rule a candidate a copy. A slug shaped like the hash-suffixed name a collision gets is
+    looked up in the full manifest, because a path could spell the same name.
+    """
+    if _COLLISION_SLUG.fullmatch(slug):
+        return next((film for film in discover(corpus) if film.slug == slug), None)
+    paths = sorted(
+        path for path in corpus.rglob("*") if path.is_file() and path.suffix.lower() == ".flm"
+    )
+    for index, flm in enumerate(paths):
+        if parity_layout.slug_for(flm) != slug:
+            continue
+        digest = _digest(flm)
+        size = flm.stat().st_size
+        earlier = (path for path in paths[:index] if path.stat().st_size == size)
+        if any(_digest(path) == digest for path in earlier):
+            continue
+        return BatchFilm(
+            slug=slug, name=None, flm=flm, sha256=digest, has_sibling_all=_has_sibling_all(flm)
+        )
+    return next((film for film in discover(corpus) if film.slug == slug), None)
+
+
+def _digest(path: Path) -> str:
+    """The SHA-256 of *path*'s bytes, the identity :func:`discover` gives a film."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _has_sibling_all(flm: Path) -> bool:

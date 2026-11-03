@@ -28,6 +28,7 @@ __all__ = [
     "capture_digest",
     "read_reference",
     "reference_dir",
+    "reference_films",
 ]
 
 
@@ -58,22 +59,39 @@ def capture_digest(directory: Path) -> str:
     return outer.hexdigest()
 
 
-def read_reference(root: Path, film: str) -> Reference:
-    """The entry for *film* in *root*'s ``references.toml``."""
-    name = film.lower()
+def _read_document(root: Path) -> tuple[Path, dict[str, object]]:
+    """The ``references.toml`` that serves *root*, and its parsed table."""
     # The pointer is a committed repository file; *root* only says where the captures are,
     # so a data root without one reads this checkout's.
     path = root / parity_layout.REFERENCES_FILE
     if not path.is_file():
         path = REPO_ROOT / parity_layout.REFERENCES_FILE
     try:
-        document = tomllib.loads(path.read_text(encoding="utf-8"))
+        return path, tomllib.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as err:
         raise ReferenceCaptureError(
             f"{path} does not exist; it names each film's reference"
         ) from err
     except tomllib.TOMLDecodeError as err:
         raise ReferenceCaptureError(f"{path} is not valid TOML: {err}") from err
+
+
+def reference_films(root: Path) -> tuple[str, ...]:
+    """The films the parity loop covers: *root*'s rows that pin a reference with ``sha256``."""
+    _, document = _read_document(root)
+    return tuple(
+        name
+        for name, entry in document.items()
+        if isinstance(entry, dict)
+        and isinstance(entry.get("film"), str)
+        and isinstance(entry.get("sha256"), str)
+    )
+
+
+def read_reference(root: Path, film: str) -> Reference:
+    """The entry for *film* in *root*'s ``references.toml``."""
+    name = film.lower()
+    path, document = _read_document(root)
     entry = document.get(name)
     if (
         not isinstance(entry, dict)
