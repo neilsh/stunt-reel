@@ -34,6 +34,14 @@ fn fixture(name: &str) -> Vec<u8> {
 
 /// A one-slice film: camera at `eye` in slot 0, then one actor per `(shape_id, position)`.
 fn film(eye: [f32; 3], actors: &[(u16, [f32; 3])]) -> Vec<u8> {
+    film_with_actor_rotation(eye, actors, ACTOR_RZ_BAM)
+}
+
+fn film_with_actor_rotation(
+    eye: [f32; 3],
+    actors: &[(u16, [f32; 3])],
+    actor_rz_bam: u16,
+) -> Vec<u8> {
     let mut body = vec![0x9B, (actors.len() + 1) as u8];
     body.extend_from_slice(&[0x00, SIF_EXISTS | SIF_MOVES | SIF_ROTATES, 0x90]);
     for (i, (shape_id, _)) in actors.iter().enumerate() {
@@ -43,7 +51,7 @@ fn film(eye: [f32; 3], actors: &[(u16, [f32; 3])]) -> Vec<u8> {
     }
     push_interp(&mut body, 0x40, eye, 0);
     for (i, (_, pos)) in actors.iter().enumerate() {
-        push_interp(&mut body, 0x41 + i as u8, *pos, ACTOR_RZ_BAM);
+        push_interp(&mut body, 0x41 + i as u8, *pos, actor_rz_bam);
     }
     body.push(0xFF);
 
@@ -131,7 +139,8 @@ fn actor_is_drawn_without_its_shapes_ground_offset() {
     // already its model origin, so the draw takes the lift back out along the actor's +Y.
     let mut sod = fixture("synthetic_minimal.sod");
     sod[4..6].copy_from_slice(&40i16.to_le_bytes());
-    let film = film([0.0, 0.0, 10.0], &[(7, [3.0, 2.0, 0.0])]);
+    // A quarter turn, so the actor's +Y is not world +Y and the lift's axis is tested.
+    let film = film_with_actor_rotation([0.0, 0.0, 10.0], &[(7, [3.0, 2.0, 0.0])], 0x4000);
     let all = archive(&[(7, &sod)]);
     let (scene, _) = FilmScene::load(&SceneInputs {
         archive: Some(&all),
@@ -148,6 +157,11 @@ fn actor_is_drawn_without_its_shapes_ground_offset() {
 
     let frame = scene.frame(0.0);
     let m = frame.actors[0].world_matrix;
+    assert!(
+        (m[5] - 1.0).abs() > 0.5,
+        "actor basis is unrotated: {:?}",
+        &m[4..7]
+    );
     let expected = [3.0 - m[4] * lift, 2.0 - m[5] * lift, -m[6] * lift];
     for (got, want) in m[12..15].iter().zip(expected) {
         assert!(
