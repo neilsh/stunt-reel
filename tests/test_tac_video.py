@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from contextlib import nullcontext
+from contextlib import nullcontext, suppress
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -252,3 +252,35 @@ def test_record_video_reports_an_invalid_log_as_a_capture_error(
     with pytest.raises(video.VideoCaptureError, match=message):
         _record(tmp_path, output=_output(log=log), video_frames=3)
     assert not (tmp_path / "out" / "meta.json").exists()
+
+
+_JUNK: tuple[object, ...] = (None, 5, "", "x", "xzz", "x-1", "x::", "x,,", "x1.5", "x 7")
+
+
+def _corruptions() -> list[tuple[str, dict[str, object]]]:
+    """Every key replaced with junk, and every sub-field of each key's first entry too."""
+    base = _output(pal="x103:1:" + "3f" * 96)
+    cases: list[tuple[str, dict[str, object]]] = []
+    for key, value in base.items():
+        cases.append((f"{key}=<deleted>", {k: v for k, v in base.items() if k != key}))
+        cases.extend((f"{key}={junk!r}", {**base, key: junk}) for junk in _JUNK)
+        if not isinstance(value, str):
+            continue
+        first, _, rest = value[1:].partition(",")
+        parts = first.split(":")
+        for index in range(len(parts)):
+            for junk in ("", "zz", "-1", "1.5", "9" * 30):
+                entry = ":".join(junk if i == index else p for i, p in enumerate(parts))
+                text = "x" + entry + ("," + rest if rest else "")
+                cases.append((f"{key}[{index}]={junk!r}", {**base, key: text}))
+    return cases
+
+
+@pytest.mark.parametrize(
+    "output", [case for _, case in _corruptions()], ids=[i for i, _ in _corruptions()]
+)
+def test_decode_video_log_raises_only_video_capture_error(output: dict[str, object]) -> None:
+    # A garbled field either decodes or raises the capture's own error; a bare ValueError or
+    # TypeError would surface as a traceback instead of a refused capture.
+    with suppress(video.VideoCaptureError):
+        video.decode_video_log(output)

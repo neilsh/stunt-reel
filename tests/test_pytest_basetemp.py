@@ -11,6 +11,8 @@ import pytest
 
 import pytest_helpers
 
+pytestmark = pytest.mark.windows
+
 
 def test_per_run_basetemp_differs_per_run() -> None:
     root = Path("/checkout")

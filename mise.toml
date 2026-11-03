@@ -129,7 +129,7 @@ run = "uv run python python/scripts/parity_run.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.parity-bench]
-description = "Parity metric bench: plant faults, score metrics against recapture noise (mise run parity-bench -- run --film ctry [--render DIR] [--recapture ID] | plant --render DIR --out DIR --fault shift_x:4@500-599 | errors-make --film ctry [--calibrate] [--batch] | errors-disputes --film ctry | errors-score --film ctry [--against FILE] [--batch] | errors-example --film ctry --tick T --category ID)"
+description = "Parity metric bench: plant faults, score metrics against recapture noise (mise run parity-bench -- run --film ctry [--render DIR] [--recapture ID] | plant --render DIR --out DIR --fault shift_x:4@500-599 | errors-make --film ctry [--calibrate] [--batch] | errors-disputes --film ctry | errors-score --film ctry [--against FILE] [--batch] | errors-example --film ctry --tick T --category ID | errors-table --films vault-ctry,vault-land)"
 run = "uv run python python/scripts/parity_bench.py"
 
 [tasks.parity-probe]
@@ -225,8 +225,14 @@ run = [
 ]
 
 [tasks.typecheck]
-description = "Run Python static type checking (mypy)"
-run = "uv run mypy"
+description = "Run Python static type checking (mypy), once as Windows and once as Linux"
+# mypy prunes `sys.platform` branches for the platform it analyses, so a check on one OS
+# passes code the other reports as unreachable; CI typechecks on Linux, most work happens on
+# Windows. Each platform keeps its own cache so neither run invalidates the other.
+run = [
+  "uv run mypy --platform win32 --cache-dir .mypy_cache/win32",
+  "uv run mypy --platform linux --cache-dir .mypy_cache/linux",
+]
 
 [tasks.test-rust]
 description = "Run Rust unit and integration tests"
@@ -244,7 +250,7 @@ run = "cargo llvm-cov --locked -p stunt-core -p stunt-gltf --all-features --summ
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.test-py]
-description = "Run Python pytest suite"
+description = "Run Python pytest suite; `mise run test-py -- <path> [-k <expr>]` runs part of it"
 run = "uv run pytest"
 
 [tasks.test]
@@ -318,10 +324,11 @@ depends = ["fmt-check", "lint", "typecheck", "test"]
 # The Windows-only behaviour is all in the Python tree — junctions, reparse points, the
 # .cache link, the pytest basetemp workaround, Cargo's build locks and robocopy in the target
 # seed — so the pull-request job runs this instead of the whole check-windows; the full task
-# stays on main. A test that starts depending on Windows path semantics belongs in this list too.
+# stays on main. A module carries the `windows` marker to run here, and
+# tests/test_windows_marker.py fails one that checks the platform without it.
 [tasks.check-windows-smoke]
-description = "Windows-only smoke: the tests that exercise junctions, reparse points and .cache links"
-run = "uv run pytest tests/test_dataroot.py tests/test_worktree_layout.py tests/test_worktree_reap.py tests/test_pytest_basetemp.py tests/test_target_seed.py"
+description = "Windows-only smoke: the tests marked `windows` (junctions, reparse points, .cache links, build locks)"
+run = "uv run pytest -m windows"
 
 [tasks.verify-corpus]
 description = "Compile research/formats/**/*.ksy and check them against local corpus/ files (opt-in; corpus is gitignored)"

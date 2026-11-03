@@ -44,7 +44,7 @@ rather than tick, keep their PNGs and write no planes.
 
 One module per language knows the layout: `stunt-cli/src/render_store.rs` (the `zstd` and `png`
 crates; `stunt-cli` is not bound by [I7]'s pure-Rust clause, which covers `stunt-core`) and
-`RenderStore`/`RenderStoreWriter` in `python/stunt_reel/parity_artifacts.py`, on the standard
+`RenderStore`/`RenderStoreWriter` in `python/stunt_reel/parity_artifacts/`, on the standard
 library's `compression.zstd` (Python 3.14+; the project requires 3.15). `stunt_reel` keeps
 `dependencies = []`, so [ADR 0010](0010-python-scripts-may-take-well-established-dependencies.md)
 is not engaged.

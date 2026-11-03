@@ -31,7 +31,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use stunt_core::contracts::palette::PaletteControls;
 use stunt_core::contracts::trajectory::{
-    ActorTransform, AudioCue, CameraTransform, TrajectoryRecord,
+    ActorTransform, AudioCue, CameraTransform, PLAYONE_FOV_Y_DEGREES, TrajectoryRecord,
 };
 use stunt_core::flm::{
     FilmTimeline, FlmError, GATE_G04_RMSE_THRESHOLD_METERS, SIF_ANIMATES, SIF_DRAW, SIF_EXISTS,
@@ -545,7 +545,7 @@ fn synthetic_minimal_fixture_evaluates_two_ticks() {
     assert_eq!(slice0.tick, 1);
     assert_eq!(slice0.camera.eye, [0.0, 10.0, 50.0]);
     assert_eq!(slice0.camera.target, [0.0, 0.0, 0.0]);
-    assert_eq!(slice0.camera.fov_degrees, 45.0);
+    assert_eq!(slice0.camera.fov_degrees, PLAYONE_FOV_Y_DEGREES);
     assert!(!slice0.camera.cut_from_previous);
     assert!(slice0.actors.is_empty());
     assert!(slice0.audio_cues.is_empty());

@@ -28,7 +28,7 @@ dev = [
     "pillow>=13",
     "pytest>=8.3.0",
     "pytest-cov>=6.0.0",
-    "ruff>=0.12.0",
+    "ruff>=0.17.1",  # TC001-TC003 write `lazy` imports at py315 (extend-safe-fixes below)
 ]
 
 [tool.hatch.version]
@@ -87,7 +87,7 @@ select = [
     "PTH",    # flake8-use-pathlib
     "RET",    # flake8-return
     "RSE",    # flake8-raise
-    "TC",     # flake8-type-checking: typing-only imports under TYPE_CHECKING
+    "TC",     # flake8-type-checking: typing-only imports become `lazy` imports
     "TID",    # flake8-tidy-imports
     "TRY300", # try-consider-else
     "TRY301", # raise-within-try
@@ -110,6 +110,12 @@ select = [
 ignore = [
     "E501",  # line length violations handled by ruff format
 ]
+# A typing-only import is written `lazy from x import y` (PEP 810), the fix ruff offers at
+# py315, so `mise run fix` applies it instead of the gate failing on it. Ruff marks the fix
+# unsafe because the import's side effects move to first use, which nothing here relies on.
+# A lazy import still resolves if something evaluates the annotation at runtime, where a
+# name under `if TYPE_CHECKING:` raises NameError; existing blocks convert when touched.
+extend-safe-fixes = ["TC001", "TC002", "TC003"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [
@@ -154,6 +160,9 @@ addopts = "-ra -q --strict-markers --strict-config"
 filterwarnings = ["error"]
 testpaths = ["tests"]
 pythonpath = ["python"]
+markers = [
+    "windows: behaves differently on Windows; the pull-request Windows job runs only these (check-windows-smoke)",
+]
 
 [tool.uv]
 # A floor, not an exact pin. `mise.toml` pins the exact uv for local and CI runs; this

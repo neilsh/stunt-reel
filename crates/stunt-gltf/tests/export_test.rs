@@ -512,7 +512,7 @@ fn assert_camera_matches(glb: &Glb, camera: &ViewCamera) {
     let perspective = &cam["perspective"];
     let expected = camera.fov_degrees.clamp(1.0, 160.0).to_radians();
     assert!((perspective["yfov"].as_f64().unwrap() as f32 - expected).abs() < 1e-6);
-    assert!((perspective["aspectRatio"].as_f64().unwrap() - 4.0 / 3.0).abs() < 1e-6);
+    assert!((perspective["aspectRatio"].as_f64().unwrap() - 320.0 / 200.0).abs() < 1e-6);
     assert!((perspective["znear"].as_f64().unwrap() - 0.1).abs() < 1e-6);
     assert!((perspective["zfar"].as_f64().unwrap() - 20_000.0).abs() < 1e-3);
 

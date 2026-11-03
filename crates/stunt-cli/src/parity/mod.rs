@@ -99,6 +99,13 @@ fn warn_on_film_mismatch(capture: &FilmId, render: &FilmId) {
             render.flm_bytes.unwrap_or(0)
         );
     }
+    if capture.archives_conflict(render) {
+        println!(
+            "[parity] warning: the capture played .ALL {} but the render read {}",
+            capture.all_sha256.as_deref().unwrap_or("?"),
+            render.all_sha256.as_deref().unwrap_or("?")
+        );
+    }
 }
 
 /// A per-class loss array as the report's name-to-value map.

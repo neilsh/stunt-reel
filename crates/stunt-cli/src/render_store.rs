@@ -5,7 +5,7 @@
 //! a run of independent zstd frames, one per film second, holding that second's ticks back to
 //! back; `render.json`, written last, is their table of contents. `preview/sec_NNNN.png` shows
 //! each second's first tick for people. The Python mirror is `RenderStore` in
-//! `python/stunt_reel/parity_artifacts.py`.
+//! `python/stunt_reel/parity_artifacts/`.
 
 use std::collections::HashMap;
 use std::fs::{self, File};

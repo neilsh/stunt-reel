@@ -40,7 +40,8 @@ pub struct GpuNode {
 pub struct GpuMeshSlice {
     /// Chunk (vertex/index buffer pair) of [`GpuModel::chunks`] the slice is drawn from.
     pub chunk: u32,
-    /// First vertex of the slice within the consolidated vertex buffer.
+    /// Base vertex `draw_indexed` adds to each index: 0 for an unsplit model, whose indices
+    /// already address the whole vertex buffer, or a run's first vertex in its chunk.
     pub vertex_offset: i32,
     /// First index of the slice within the consolidated index buffer.
     pub index_offset: u32,
@@ -93,7 +94,6 @@ impl GpuModel {
             .map(|node| {
                 let mesh = meshes.next_if(|mesh| std::ptr::eq(mesh.node, node))?;
                 Some(SourceSlice {
-                    vertex_offset: mesh.vertex_offset,
                     index_offset: mesh.index_offset,
                     index_count: mesh.indices.len() as u32,
                     is_decal: mesh.is_decal(),
@@ -307,10 +307,9 @@ impl GpuChunk {
     }
 }
 
-/// A mesh node's slice as the IR stores it: an index plus `vertex_offset` is a vertex.
+/// A mesh node's slice as the IR stores it: its indices address the whole vertex buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SourceSlice {
-    pub vertex_offset: u32,
     pub index_offset: u32,
     pub index_count: u32,
     pub is_decal: bool,
@@ -369,9 +368,10 @@ pub(crate) fn plan_upload(
         let slices = sources
             .iter()
             .map(|s| {
+                // The IR's indices are absolute, so the whole buffer is drawn from vertex 0.
                 vec![GpuMeshSlice {
                     chunk: 0,
-                    vertex_offset: s.vertex_offset as i32,
+                    vertex_offset: 0,
                     index_offset: s.index_offset,
                     index_count: s.index_count,
                     is_decal: s.is_decal,
@@ -397,7 +397,6 @@ pub(crate) fn plan_upload(
         // and every slice is whole triangles, so no triangle needs checking or dropping.
         let start = source.index_offset as usize;
         let end = start + source.index_count as usize;
-        let base = source.vertex_offset as usize;
         // The open run: its source vertex window and its triangles as source vertices.
         let mut run: Option<(Range<usize>, Vec<[usize; 3]>)> = None;
         #[expect(
@@ -406,7 +405,7 @@ pub(crate) fn plan_upload(
         )]
         let window = &indices[start..end];
         for tri in window.as_chunks::<3>().0 {
-            let tri = tri.map(|v| base + v as usize);
+            let tri = tri.map(|v| v as usize);
             let lo = tri.into_iter().min().unwrap_or(0);
             let hi = tri.into_iter().max().unwrap_or(0) + 1;
             let last = chunks.last().expect("a split plan starts with a chunk");
@@ -474,9 +473,8 @@ fn flush_run(
 mod tests {
     use super::*;
 
-    fn source(vertex_offset: u32, index_offset: u32, index_count: u32) -> SourceSlice {
+    fn source(index_offset: u32, index_count: u32) -> SourceSlice {
         SourceSlice {
-            vertex_offset,
             index_offset,
             index_count,
             is_decal: false,
@@ -506,11 +504,11 @@ mod tests {
     #[test]
     fn model_within_budget_is_one_unchanged_chunk() {
         let indices = [0, 1, 2, 0, 2, 3];
-        let plan = plan_upload(4, &indices, &[source(0, 0, 3), source(1, 3, 3)], 4, 6);
+        let plan = plan_upload(4, &indices, &[source(0, 3), source(3, 3)], 4, 6);
         assert_eq!(plan.chunks.len(), 1);
         assert_eq!(plan.chunks[0].vertex_ranges.first(), Some(&(0..4)));
         assert_eq!(plan.chunks[0].indices, None);
-        assert_eq!(plan.slices[1][0].vertex_offset, 1);
+        assert_eq!(plan.slices[1][0].vertex_offset, 0);
         assert_eq!(plan.slices[1][0].index_offset, 3);
     }
 
@@ -526,10 +524,10 @@ mod tests {
         let base_count = indices.len() as u32;
         indices.extend([40, 41, 42]);
         let sources = [
-            source(0, 0, base_count),
+            source(0, base_count),
             SourceSlice {
                 is_decal: true,
-                ..source(0, base_count, 3)
+                ..source(base_count, 3)
             },
         ];
         let plan = plan_upload(43, &indices, &sources, 6, 9);
@@ -548,11 +546,43 @@ mod tests {
     }
 
     #[test]
-    fn split_honours_vertex_offset_and_keeps_whole_triangles() {
-        let indices = [0, 1, 2, 2, 3, 4];
-        let plan = plan_upload(10, &indices, &[source(5, 0, 6)], 6, 9);
-        // Every index addresses the vertex window from offset 5 onward; the run copies the
-        // contiguous window 5..10 and rebases the indices into it.
+    fn split_reads_absolute_indices_and_keeps_whole_triangles() {
+        let indices = [5, 6, 7, 7, 8, 9];
+        let plan = plan_upload(10, &indices, &[source(0, 6)], 6, 9);
+        // The IR's indices are already absolute, so `vertex_offset` is not added; the run
+        // copies the contiguous window 5..10 and rebases the indices into it.
         assert_eq!(drawn(&plan, &plan.slices[0]), vec![5, 6, 7, 7, 8, 9]);
+        for range in &plan.chunks[0].vertex_ranges {
+            assert!(range.end <= 10, "vertex range {range:?} leaves the buffer");
+        }
+    }
+
+    /// Resolves an unsplit plan's draw the way `draw_indexed` does: index plus base vertex.
+    fn drawn_whole(indices: &[u32], slice: &GpuMeshSlice) -> Vec<usize> {
+        let start = slice.index_offset as usize;
+        indices[start..start + slice.index_count as usize]
+            .iter()
+            .map(|&i| (slice.vertex_offset + i as i32) as usize)
+            .collect()
+    }
+
+    #[test]
+    fn two_nodes_draw_the_vertices_their_absolute_indices_name() {
+        // A second mesh at vertex_offset 3 whose indices, as `stunt-core` stores them,
+        // address the shape's whole vertex buffer.
+        let indices = [0, 1, 2, 3, 4, 5];
+        let sources = [source(0, 3), source(3, 3)];
+
+        let whole = plan_upload(6, &indices, &sources, 6, 9);
+        assert_eq!(drawn_whole(&indices, &whole.slices[1][0]), vec![3, 4, 5]);
+
+        let split = plan_upload(6, &indices, &sources, 3, 3);
+        assert_eq!(drawn(&split, &split.slices[0]), vec![0, 1, 2]);
+        assert_eq!(drawn(&split, &split.slices[1]), vec![3, 4, 5]);
+        for chunk in &split.chunks {
+            for range in &chunk.vertex_ranges {
+                assert!(range.end <= 6, "vertex range {range:?} leaves the buffer");
+            }
+        }
     }
 }
