@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use crate::anchor::{AnchorPoint, parse_anchor_table};
 use crate::contracts::trajectory::PLAYONE_FOV_Y_DEGREES;
-use crate::contracts::{CameraTransform, PaletteControls, ShapeExtent, SodModelIr};
+use crate::contracts::{ActorTransform, CameraTransform, PaletteControls, ShapeExtent, SodModelIr};
 use crate::credits::CreditLines;
 use crate::flm::{FilmTimeline, FlmError};
 use crate::font::PFont;
@@ -384,10 +384,10 @@ impl FilmScene {
         let mut actors: Vec<ActorDraw> = record
             .actors
             .iter()
-            .filter(|a| self.shapes.contains_key(&a.shape_id))
-            .map(|a| ActorDraw {
+            .filter_map(|a| self.shapes.get(&a.shape_id).map(|shape| (a, shape)))
+            .map(|(a, shape)| ActorDraw {
                 shape_id: a.shape_id,
-                world_matrix: a.compute_world_matrix(),
+                world_matrix: actor_world_matrix(a, shape),
                 state_mask: a.state_mask,
                 distance: distance(eye, a.position_meters),
             })
@@ -409,6 +409,27 @@ impl FilmScene {
             credits: self.timeline.credits_at(tick).cloned(),
         }
     }
+}
+
+/// An actor's model-to-world matrix, with its shape's ground offset taken back out.
+///
+/// The decoder lifts every vertex by the header's `ground_y_offset`, which stands a world
+/// prop on the ground it is placed at. Heuristic: a film actor's position is taken as its
+/// model origin, so the lift is undone along the actor's own +Y. Drawing actors with the
+/// lift put them about 10 rows above the capture on `CTRY.FLM`, and a sweep of the removed
+/// fraction peaks at exactly one offset on both films, but where `PLAYONE.EXE` reads header
+/// word +4, and for which objects, is not yet known (research/parity/framing-and-actors.md
+/// section 1).
+fn actor_world_matrix(actor: &ActorTransform, shape: &SodModelIr) -> [f32; 16] {
+    let mut matrix = actor.compute_world_matrix();
+    if let Some(header) = shape.decode().map(|record| record.header) {
+        let lift = -f32::from(header.ground_y_offset) * header.scale_factor;
+        let [_, _, _, _, ux, uy, uz, _, _, _, _, _, tx, ty, tz, _] = &mut matrix;
+        *tx += *ux * lift;
+        *ty += *uy * lift;
+        *tz += *uz * lift;
+    }
+    matrix
 }
 
 fn distance(a: [f32; 3], b: [f32; 3]) -> f32 {
