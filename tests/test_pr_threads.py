@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -103,6 +104,7 @@ def test_a_stalled_gh_is_reported_as_a_gh_error(monkeypatch: pytest.MonkeyPatch)
     def stall(command: list[str], **kwargs: float) -> None:
         raise subprocess.TimeoutExpired(cmd=command, timeout=kwargs["timeout"])
 
+    monkeypatch.setattr(shutil, "which", lambda _name: "gh")
     monkeypatch.setattr(subprocess, "run", stall)
     with pytest.raises(pr_threads.GhError, match="no answer"):
         pr_threads._gh("repo", "view")
