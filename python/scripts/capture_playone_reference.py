@@ -60,8 +60,8 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "new directory receiving tick_*.idx, palettes_*.json, and meta.json; an existing "
-            f"non-empty one is refused (default {parity_layout.capture_root().as_posix()}/"
-            "<film>/frames/<next run number>)"
+            "non-empty one is refused and no stored capture is replaced (default: replace the "
+            f"film's capture, {parity_layout.capture_root().as_posix()}/<film>/frames, by swap)"
         ),
     )
     parser.add_argument(

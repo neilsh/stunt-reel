@@ -58,8 +58,8 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "new directory receiving capture.avi and meta.json; an existing non-empty one is "
-            f"refused (default {parity_layout.capture_root().as_posix()}/<film>/video/"
-            "<next run number>)"
+            "refused and no stored capture is replaced (default: replace the film's capture, "
+            f"{parity_layout.capture_root().as_posix()}/<film>/video, by swap)"
         ),
     )
     parser.add_argument(

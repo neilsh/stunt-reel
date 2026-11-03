@@ -102,3 +102,11 @@ def test_pins_come_from_references_toml(script: Any, tmp_path: Path) -> None:
     path = tmp_path / "references.toml"
     path.write_text('[ctry]\nfilm = "vault-ctry"\nsha256 = "ab"\nnoise_sigma = 0.1\n', "utf-8")
     assert script.read_pins(path) == {"vault-ctry": "ab"}
+
+
+def test_an_interrupted_migration_stops_and_names_the_held_run(script: Any, tmp_path: Path) -> None:
+    root, pins = _root(tmp_path)
+    frames = root / "captures/vault-ctry/frames"
+    frames.rename(frames.with_name("frames.migrating"))
+    with pytest.raises(script.MigrationError, match=r"frames\.migrating.*by hand"):
+        script.migrate(root, pins, apply=False)

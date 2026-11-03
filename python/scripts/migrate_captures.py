@@ -29,6 +29,8 @@ if TYPE_CHECKING:
 
 #: The kinds a film's directory holds, one each (ADR 0028).
 KINDS = ("frames", "video", "archives")
+#: The suffix a kind directory carries while its pinned run moves up out of it.
+_HELD = ".migrating"
 #: A run directory of the numbered layout, and its ``.lock`` / ``.partial`` siblings.
 _RUN = re.compile(r"\d+(?:\..*)?")
 
@@ -71,6 +73,11 @@ def migrate(root: Path, pins: Mapping[str, str], *, apply: bool) -> list[str]:
     for film in films:
         for name in sorted(item.name for item in film.iterdir()):
             kind = film / name
+            if name.endswith(_HELD):
+                raise MigrationError(
+                    f"{kind} is left from an interrupted migration and holds the pinned run; "
+                    f"move that run to {film / name.removesuffix(_HELD)} by hand, then rerun"
+                )
             if name not in KINDS or not kind.is_dir():
                 notes.append(f"skip {kind.relative_to(root).as_posix()}: not a capture kind")
             elif capture_store.current(kind) is None:
@@ -90,7 +97,7 @@ def migrate(root: Path, pins: Mapping[str, str], *, apply: bool) -> list[str]:
     lines += [f"{verb}delete {kind.relative_to(root).as_posix()}" for kind in drop]
     if apply:
         for run, kind in keep:
-            held = kind.with_name(f"{kind.name}.migrating")
+            held = kind.with_name(f"{kind.name}{_HELD}")
             kind.rename(held)
             (held / run.name).rename(kind)
             shutil.rmtree(held)

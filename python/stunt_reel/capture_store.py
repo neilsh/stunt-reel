@@ -43,7 +43,9 @@ def publish(staged: Path, directory: Path) -> Path:
     """Swap the complete capture *staged* into *directory*, replacing any capture there.
 
     A ``ValueError`` when *staged* has no ``meta.json``: an incomplete capture never replaces a
-    complete one. If the second rename fails, the old capture is put back.
+    complete one. If the second rename fails, the old capture is put back. Removing the old
+    capture is best effort: once the new one is in place the publish has succeeded, and a
+    locked file only leaves a ``.old-*`` sibling that no reader looks at.
     """
     if current(staged) is None:
         raise ValueError(f"{staged} has no {META_FILE}; an incomplete capture is never published")
@@ -58,7 +60,7 @@ def publish(staged: Path, directory: Path) -> Path:
             old.rename(directory)
         raise
     if old is not None:
-        shutil.rmtree(old)
+        shutil.rmtree(old, ignore_errors=True)
     return directory
 
 

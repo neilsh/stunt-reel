@@ -37,7 +37,7 @@ Pinned versions live in [`mise.toml`](../mise.toml); `mise run init` links the s
 Several agents can work at once, each in its own `git worktree`: beside the checkout (`<checkout>.wt\<slug>` on Windows) or under a gitignored directory inside it (`.claude/worktrees/`, `.agents/worktrees/`). The game files and the captures are gitignored, so they live once per machine instead of once per checkout:
 
 ```text
-<parent-of-checkout>\stunt-reel.data\   corpus\{stisldem,siarchive,stuntisl,patches}, captures\<film>\{frames,archives}\<run>\
+<parent-of-checkout>\stunt-reel.data\   corpus\{stisldem,siarchive,stuntisl,patches}, captures\<film>\{frames,video,archives}\
 ```
 
 Each corpus folder is its own link, because `corpus/README.md` and `corpus/siarchive.md` are tracked and `corpus/` cannot itself be one; `captures\` is linked as `build/parity/captures/`. `LINK_TARGETS` in `python/stunt_reel/dataroot.py` is the one place that names them.
@@ -173,7 +173,7 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | `cov-py` | `pytest` with `--cov=stunt_reel` term-missing report (no fail-under) |
 | `deny` | `cargo deny check` — advisories, license allow-list, wildcard bans, and registry sources |
 | `capture-digest` | a capture's `sha256` as `references.toml` pins it, and the entry that would promote it (`mise run capture-digest -- vault-ctry`) |
-| `capture-ref` | new capture into `build/parity/captures/<film>/frames/<next run>`, never over an existing one (`--max-frames` defaults to 140) |
+| `capture-ref` | the film's frame capture, `build/parity/captures/<film>/frames`, replaced by swap once a capture succeeds; `--out` writes elsewhere and replaces nothing (`--max-frames` defaults to 140) |
 | `verify-corpus` | `.ksy` catalog check against `corpus/` |
 | `play` | play a film in `PLAYONE.EXE` on dosbox-automation |
 | `frame` | render a list of film ticks in one process and write each beside its reference capture frame (`mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N] [--no-build]`); PNGs and the render store go to `build/scratch/frame/<film>/`. `stuntreel --at-ticks T,T,... --out-dir DIR` is the underlying flag |
