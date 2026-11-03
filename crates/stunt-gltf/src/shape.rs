@@ -18,7 +18,7 @@ use stunt_core::contracts::{
 use crate::GltfError;
 use crate::glb::{
     AccessorSpec, COMPONENT_FLOAT, COMPONENT_UNSIGNED_INT, GlbBuilder, TARGET_ARRAY_BUFFER,
-    TARGET_ELEMENT_ARRAY_BUFFER, num_array,
+    TARGET_ELEMENT_ARRAY_BUFFER, num_array, object,
 };
 
 /// glTF mesh index for each node of a model, `None` for nodes that draw nothing.
@@ -44,7 +44,7 @@ pub fn export_shape(model: &SodModelIr) -> Result<Vec<u8>, GltfError> {
         return Err(GltfError::EmptyModel);
     }
     let mut builder = GlbBuilder::new();
-    let assets = add_shape_assets(&mut builder, model);
+    let assets = add_shape_assets(&mut builder, model)?;
     let roots = instantiate(&mut builder, model, &assets)?;
     builder.finish(&roots)
 }
@@ -52,10 +52,16 @@ pub fn export_shape(model: &SodModelIr) -> Result<Vec<u8>, GltfError> {
 /// Writes `model`'s vertex/index data and meshes once; returns the node-to-mesh table.
 ///
 /// A model without vertices yields no meshes (its nodes can still be instantiated).
-pub(crate) fn add_shape_assets(builder: &mut GlbBuilder, model: &SodModelIr) -> ShapeAssets {
+///
+/// # Errors
+/// [`GltfError::InvalidNodeReference`] if a mesh names a node that is not in the arena.
+pub(crate) fn add_shape_assets(
+    builder: &mut GlbBuilder,
+    model: &SodModelIr,
+) -> Result<ShapeAssets, GltfError> {
     let mut mesh_of_node = vec![None; model.nodes.len()];
     let Some(extent) = model.extent() else {
-        return ShapeAssets { mesh_of_node };
+        return Ok(ShapeAssets { mesh_of_node });
     };
     let vertex_count = model.vertices.len();
 
@@ -63,9 +69,9 @@ pub(crate) fn add_shape_assets(builder: &mut GlbBuilder, model: &SodModelIr) -> 
     let mut normals = Vec::with_capacity(vertex_count * 12);
     let mut colors = Vec::with_capacity(vertex_count * 16);
     for v in &model.vertices {
-        for axis in 0..3 {
-            positions.extend_from_slice(&v.position[axis].to_le_bytes());
-            normals.extend_from_slice(&v.normal[axis].to_le_bytes());
+        for (p, n) in v.position.iter().zip(&v.normal) {
+            positions.extend_from_slice(&p.to_le_bytes());
+            normals.extend_from_slice(&n.to_le_bytes());
         }
         let (r, g, b) = get_palette_rgb_float(v.palette_index);
         for c in [r, g, b, 1.0] {
@@ -108,7 +114,10 @@ pub(crate) fn add_shape_assets(builder: &mut GlbBuilder, model: &SodModelIr) -> 
             kind: "SCALAR",
             bounds: None,
         });
-        mesh_of_node[mesh.node.id.0 as usize] = Some(builder.meshes.len());
+        let node_id = mesh.node.id.0;
+        *mesh_of_node
+            .get_mut(node_id as usize)
+            .ok_or(GltfError::InvalidNodeReference(node_id))? = Some(builder.meshes.len());
         builder.meshes.push(json!({
             "name": mesh.node.name,
             "primitives": [{
@@ -118,7 +127,7 @@ pub(crate) fn add_shape_assets(builder: &mut GlbBuilder, model: &SodModelIr) -> 
             }],
         }));
     }
-    ShapeAssets { mesh_of_node }
+    Ok(ShapeAssets { mesh_of_node })
 }
 
 /// Emits one glTF node per model node (an instance of the shared assets); returns the glTF
@@ -151,32 +160,34 @@ fn emit_node(
         .iter()
         .map(|&child| emit_node(builder, model, assets, child))
         .collect::<Result<Vec<_>, _>>()?;
-    builder.nodes[index] = node_json(node, assets, &children);
+    *builder
+        .nodes
+        .get_mut(index)
+        .ok_or(GltfError::InvalidNodeReference(id.0))? = node_json(node, assets, &children);
     Ok(index)
 }
 
 fn node_json(node: &SodNode, assets: &ShapeAssets, children: &[usize]) -> Value {
-    let mut extras = json!({ "visibility": visibility_text(node.visibility) });
-    if let NodeKind::ArticulatedJoint { joint_tag, .. } = &node.kind {
-        extras["joint_tag"] = json!(joint_tag);
-    }
-    let mut out = json!({
-        "name": node.name,
-        "matrix": num_array(&node.local_matrix),
-        "extras": extras,
-    });
-    if let Some(mesh) = assets
+    let joint_tag = match &node.kind {
+        NodeKind::ArticulatedJoint { joint_tag, .. } => Some(json!(joint_tag)),
+        _ => None,
+    };
+    let extras = object([
+        ("visibility", Some(json!(visibility_text(node.visibility)))),
+        ("joint_tag", joint_tag),
+    ]);
+    let mesh = assets
         .mesh_of_node
         .get(node.id.0 as usize)
         .copied()
-        .flatten()
-    {
-        out["mesh"] = json!(mesh);
-    }
-    if !children.is_empty() {
-        out["children"] = json!(children);
-    }
-    out
+        .flatten();
+    object([
+        ("name", Some(json!(node.name))),
+        ("matrix", Some(num_array(&node.local_matrix))),
+        ("extras", Some(extras)),
+        ("mesh", mesh.map(|mesh| json!(mesh))),
+        ("children", (!children.is_empty()).then(|| json!(children))),
+    ])
 }
 
 fn visibility_text(visibility: VisibilityCondition) -> String {
