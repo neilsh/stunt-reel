@@ -44,7 +44,7 @@ The tables are checked: `report_doc.rs` in `crates/stunt-cli/src/parity/` runs `
 |---|---|---|
 | `reference_frames` | number | Frames the capture holds. Equals `frames` + `unmatched`. |
 | `frames` | number | Frames matched to a render (a count, not the list). |
-| `unmatched` | number | Captured frames with no render of that `film_tick`. |
+| `unmatched` | number | Captured frames skipped: no render of that `film_tick`, or the capture's frame or palette file is missing. |
 | `sky_indices` | list | `[low, high]`, the inclusive palette-index range counted as sky (227, 238). |
 | `mean_ssim` | number | Mean SSIM over every matched frame. |
 | `min_ssim` | number | Lowest SSIM of any matched frame. |
@@ -163,7 +163,7 @@ The tables are checked: `report_doc.rs` in `crates/stunt-cli/src/parity/` runs `
 | `changed_luma` | number | Fraction whose luminance changed. |
 | `changed_by_layer` | object | Changed fraction (index or luminance) by the fresh render's layer; keys are the layers below. |
 | `before_after_ssim` | number or null | SSIM of the previous render against the fresh one (stretched, unmasked); null for a missing tick. |
-| `delta` | number or null | Capture SSIM of *after* minus *before* over the windows holding a changed pixel; null when none changed or the tick is missing. |
+| `delta` | number or null | Capture SSIM of *after* minus *before* over the scored windows holding a changed pixel; null when no scored window holds one (including when nothing changed) or the tick is missing. |
 | `class` | string | The frame's class: one of the keys of `counts`. |
 <!-- /fields -->
 
@@ -172,8 +172,8 @@ The tables are checked: `report_doc.rs` in `crates/stunt-cli/src/parity/` runs `
 <!-- fields: compare.verdict.counts -->
 | Key | Type | Meaning |
 |---|---|---|
-| `unchanged` | number | No pixel changed, or every change sits under the overlay. |
-| `build_noise` | number | At most `--build-floor` pixels changed. |
+| `unchanged` | number | No changed pixel lies in a scored window: nothing changed, or every change sits under the overlay or outside the windows. |
+| `build_noise` | number | `delta` is present and at most `--build-floor` pixels changed. |
 | `within_noise` | number | The change on the touched windows is below `--noise-sigma` (or exactly zero). |
 | `closer` | number | The touched windows moved closer to the capture. |
 | `further` | number | The touched windows moved away from the capture. |
