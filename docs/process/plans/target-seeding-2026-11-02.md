@@ -186,6 +186,23 @@ the five workspace crates and no dependency (`cargo test --no-run`, 9 s).
   ReFS, `CARGO_TARGET_DIR` is honoured, and the workspace crates restore or a second worktree's
   cold Rust lanes beat this seed's 40 s.
 
+  Probed 2026-11-02 (mbx 1.29.1, Cargo 1.99.1, store on `E:`, two `git archive` exports, plain
+  `mbx test --workspace --all-features --locked --no-run`, no `mbx setup`):
+
+  | measure | mbx | this seed |
+  | --- | --- | --- |
+  | `mbx doctor`: restores clone on `E:` | yes | n/a |
+  | first export, filling the store | 57 s, 0.97 GiB stored | n/a |
+  | second export | 33 s: 221 hits, 17 misses | 9 s (the five workspace crates rebuilt) |
+  | second export's added physical disk | about 0.1 GB | 0.7–0.9 GB after a whole gate |
+  | no-op rebuild | 1 s | n/a |
+  | `CARGO_TARGET_DIR=target/check` | honoured, inside the managed `target` symlink | n/a |
+
+  The 17 misses were test crates that read `CARGO_MANIFEST_DIR`, which mbx keys to their checkout,
+  so it does not repeat the hazard in section 2; the workspace libraries hit. mbx wins on disk and
+  loses on time, about 0.1 s of wrapper per restored crate. Other sessions were building on the
+  machine. Not adopted now; the Cargo 1.100 trial above still decides, measuring the whole gate.
+
 ## 8. Open questions
 
 - Does a worktree on a different commit than its donor still compile few enough workspace units
