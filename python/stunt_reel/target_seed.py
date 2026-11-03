@@ -187,48 +187,52 @@ class SeedOutcome:
 
 def clones_on(path: Path) -> bool:
     """Whether *path*'s volume clones blocks on copy: ReFS, on Windows only."""
-    if sys.platform != "win32":
-        return False
-    import ctypes  # noqa: PLC0415 - only needed on Windows
+    # The Windows code sits in a platform branch that returns nothing, so mypy analysing for
+    # either platform finds no unreachable statement.
+    refs = False
+    if sys.platform == "win32":
+        import ctypes  # noqa: PLC0415 - only needed on Windows
 
-    drive, _ = os.path.splitdrive(str(path.resolve()))
-    name = ctypes.create_unicode_buffer(64)
-    ok = ctypes.windll.kernel32.GetVolumeInformationW(
-        drive + "\\", None, 0, None, None, None, name, len(name)
-    )
-    return bool(ok) and name.value == "ReFS"
+        drive, _ = os.path.splitdrive(str(path.resolve()))
+        name = ctypes.create_unicode_buffer(64)
+        ok = ctypes.windll.kernel32.GetVolumeInformationW(
+            drive + "\\", None, 0, None, None, None, name, len(name)
+        )
+        refs = bool(ok) and name.value == "ReFS"
+    return refs
 
 
 @contextlib.contextmanager
 def build_locks_free(target: Path) -> Iterator[bool]:
     """Hold every Cargo build lock under *target* for the copy; yield false if one is taken."""
-    if sys.platform != "win32":
-        yield True
-        return
-    import msvcrt  # noqa: PLC0415 - only needed on Windows
+    if sys.platform == "win32":
+        import msvcrt  # noqa: PLC0415 - only needed on Windows
 
-    with contextlib.ExitStack() as held:
-        for seeded in SEEDED_DIRS:
-            for profile, name in ((p, n) for p in _LOCK_DIRS for n in _BUILD_LOCKS):
-                lock = target / seeded / profile / name
-                if not lock.is_file():
-                    continue
-                handle = held.enter_context(lock.open("r+b"))
-                try:
-                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-                except OSError:
-                    yield False
-                    return
-                held.callback(_unlock, handle)
+        with contextlib.ExitStack() as held:
+            for seeded in SEEDED_DIRS:
+                for profile, name in ((p, n) for p in _LOCK_DIRS for n in _BUILD_LOCKS):
+                    lock = target / seeded / profile / name
+                    if not lock.is_file():
+                        continue
+                    handle = held.enter_context(lock.open("r+b"))
+                    try:
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    except OSError:
+                        yield False
+                        return
+                    held.callback(_unlock, handle)
+            yield True
+    else:
         yield True
 
 
 def _unlock(handle: BinaryIO) -> None:
     """Release the one-byte lock ``build_locks_free`` took at the start of *handle*."""
-    import msvcrt  # noqa: PLC0415 - only needed on Windows
+    if sys.platform == "win32":
+        import msvcrt  # noqa: PLC0415 - only needed on Windows
 
-    handle.seek(0)
-    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
 
 
 def robocopy(source: Path, destination: Path) -> None:

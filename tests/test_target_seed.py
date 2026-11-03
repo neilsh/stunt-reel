@@ -8,6 +8,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
+from typing import BinaryIO
 
 import pytest
 
@@ -195,14 +196,10 @@ def test_seed_failure_removes_partial_copy(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Cargo's build locks are byte locks on Windows")
 def test_seed_skips_a_donor_that_is_building(tmp_path: Path) -> None:
-    import msvcrt  # noqa: PLC0415 - Windows-only module
-
     here = _fresh(tmp_path / "here")
     donor = _donor(tmp_path / "d")
-    lock = donor / "target" / "debug" / ".cargo-lock"
-    lock.write_bytes(b"")
-    with lock.open("r+b") as held:
-        msvcrt.locking(held.fileno(), msvcrt.LK_NBLCK, 1)
+    held = _hold(donor / "target" / "debug" / ".cargo-lock")
+    try:
         out = seed(
             here,
             checkouts=[donor],
@@ -211,19 +208,21 @@ def test_seed_skips_a_donor_that_is_building(tmp_path: Path) -> None:
             copy=_never,
             volume_clones=_clones,
         )
-        held.seek(0)
-        msvcrt.locking(held.fileno(), msvcrt.LK_UNLCK, 1)
+    finally:
+        held.close()
     assert out == SeedOutcome("skipped", f"donor {donor} is building")
 
 
-def _hold(lock: Path) -> object:
-    """Open and byte-lock *lock* the way a running Cargo build holds it; the caller closes it."""
-    import msvcrt  # noqa: PLC0415 - Windows-only module
-
+def _hold(lock: Path) -> BinaryIO:
+    """Open and byte-lock *lock* the way a running Cargo build holds it; closing releases it."""
     lock.parent.mkdir(parents=True, exist_ok=True)
     lock.write_bytes(b"")
     handle = lock.open("r+b")
-    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+    # In a platform branch, so mypy analysing for Linux skips the Windows-only module.
+    if sys.platform == "win32":
+        import msvcrt  # noqa: PLC0415 - Windows-only module
+
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
     return handle
 
 
@@ -244,7 +243,7 @@ def test_seed_skips_a_donor_whose_clippy_lane_is_building(tmp_path: Path) -> Non
             volume_clones=_clones,
         )
     finally:
-        held.close()  # type: ignore[attr-defined]
+        held.close()
     assert out == SeedOutcome("skipped", f"donor {donor} is building")
 
 
@@ -270,7 +269,7 @@ def test_seed_falls_back_to_an_idle_donor(tmp_path: Path) -> None:
             volume_clones=_clones,
         )
     finally:
-        held.close()  # type: ignore[attr-defined]
+        held.close()
     assert out == SeedOutcome("seeded", f"from {idle}")
     assert copied == [idle / "target" / "debug"]
 
