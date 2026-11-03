@@ -31,7 +31,10 @@ pub(crate) fn radians_to_bam(rad: f32) -> u16 {
 /// Convert Stunt Island integer focal distance scalar to vertical FOV in degrees.
 ///
 /// Uses aspect-corrected half-height `H_half` = 120.0 for 320x240 (4:3) Mode 13h:
-/// `FOV_y = 2 * arctan(120.0 / focal_dist) * (180.0 / pi)`.
+/// `FOV_y = 2 * arctan(120.0 / focal_dist) * (180.0 / pi)`. This follows the unverified
+/// camera-rig mock and no film sets `focal_dist`; films use
+/// [`PLAYONE_FOV_Y_DEGREES`](crate::contracts::trajectory::PLAYONE_FOV_Y_DEGREES), measured
+/// on square raster pixels.
 pub(crate) fn focal_to_fov_y(focal_dist: f32) -> f32 {
     if focal_dist <= 0.0 {
         return 45.0;

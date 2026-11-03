@@ -1,13 +1,16 @@
-//! Camera Controller & 4:3 Aspect Presentation Architecture.
+//! Camera Controller: projection on the Mode 13h raster, 4:3 presentation.
 //!
 //! Complies with Architectural Invariants:
 //! - `[I1]` Metric right-handed coordinate basis (+X right, +Y up, -Z forward, +Z backward).
-//! - `[I6]` VGA 4:3 physical aspect ratio correction ($320 \times 240$ base).
+//! - `[I6]` VGA 4:3 physical aspect ratio ($320 \times 240$ base), applied after a
+//!   square-pixel projection on the $320 \times 200$ raster.
 
 use glam::{Mat4, Vec3, camera::rh};
+use stunt_core::contracts::trajectory::PLAYONE_FOV_Y_DEGREES;
 use stunt_core::scene::ViewCamera;
 
-/// Standard 4:3 physical aspect ratio for VGA Mode 13h ($320 \times 240$).
+/// Standard 4:3 physical aspect ratio for VGA Mode 13h ($320 \times 240$): the window's
+/// letterbox, not the projection (see [`MODE13H_PROJECTION_ASPECT`]).
 pub const ASPECT_4_3: f32 = 4.0 / 3.0;
 
 /// Aspect ratio of PLAYONE's projection: square pixels on the $320 \times 200$ raster, so
@@ -16,8 +19,8 @@ pub const ASPECT_4_3: f32 = 4.0 / 3.0;
 /// section 2).
 pub const MODE13H_PROJECTION_ASPECT: f32 = 320.0 / 200.0;
 
-/// Default field of view in degrees.
-pub const DEFAULT_FOV_DEGREES: f32 = 45.0;
+/// Free-Cam vertical field of view in degrees: PLAYONE's default lens, as authored cameras.
+pub const DEFAULT_FOV_DEGREES: f32 = PLAYONE_FOV_Y_DEGREES;
 
 /// Near clipping plane distance in meters.
 pub const DEFAULT_NEAR_CLIP: f32 = 0.5;

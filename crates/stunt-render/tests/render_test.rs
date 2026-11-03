@@ -12,6 +12,7 @@
 //! The offscreen render tests moved to `renderer_test.rs`, where they cross the Renderer entry
 //! point and assert on `RenderedPage`: the plane is the test seam.
 
+use stunt_core::contracts::trajectory::PLAYONE_FOV_Y_DEGREES;
 use stunt_core::scene::ViewCamera;
 use stunt_render::{
     ASPECT_CORRECTED_HEIGHT, CameraController, CameraMode, MODE13H_PROJECTION_ASPECT,
@@ -65,6 +66,20 @@ fn test_camera_controller_and_aspect_ratio() {
     let fx_px = proj.x_axis.x * 160.0;
     let fy_px = proj.y_axis.y * 100.0;
     assert!((fx_px - fy_px).abs() < 1e-3, "fx {fx_px} fy {fy_px}");
+
+    // The parity path: PLAYONE's default lens drawn into a 185-row viewport of the 200-row
+    // page keeps 256 raster pixels of focal length on both axes.
+    let mut parity = CameraController::default();
+    parity.set_authored_transform(ViewCamera {
+        fov_degrees: PLAYONE_FOV_Y_DEGREES,
+        ..authored
+    });
+    parity.projection_y_scale = 200.0 / 185.0;
+    let squeezed = parity.compute_proj_matrix();
+    let fx_256 = squeezed.x_axis.x * 160.0;
+    let fy_256 = squeezed.y_axis.y * 185.0 / 2.0;
+    assert!((fx_256 - 256.0).abs() < 1e-2, "fx {fx_256}");
+    assert!((fy_256 - 256.0).abs() < 1e-2, "fy {fy_256}");
     let uniform = cam.build_uniform();
 
     assert_eq!(uniform.camera_pos, [10.0, 20.0, 30.0]);

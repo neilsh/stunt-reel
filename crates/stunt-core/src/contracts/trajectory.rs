@@ -269,6 +269,12 @@ mod tests {
     }
 
     #[test]
+    fn playone_fov_is_a_256_pixel_focal_length_over_100_rows() {
+        let focal_px = 100.0 / (PLAYONE_FOV_Y_DEGREES.to_radians() / 2.0).tan();
+        assert!((focal_px - 256.0).abs() < 1e-3, "focal {focal_px}");
+    }
+
+    #[test]
     fn test_compute_world_matrix_identity() {
         let actor = ActorTransform {
             actor_id: 0,

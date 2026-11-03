@@ -45,9 +45,9 @@ pub struct WorldInputs<'a> {
     pub view_eyes: &'a [[f32; 3]],
 }
 
-/// Horizontal focal length in pixels of the 320-wide 4:3 presentation at a 45 degree vertical
-/// field of view: `160 / (tan(22.5 deg) * 4 / 3)`.
-const FOCAL_PIXELS: f32 = 290.0;
+/// PLAYONE's focal length in raster pixels at the default lens, equal on both axes
+/// (square raster pixels; see `PLAYONE_FOV_Y_DEGREES` in `contracts::trajectory`).
+const FOCAL_PIXELS: f32 = 256.0;
 
 /// A prop whose bounding radius never covers more than this many pixels along the camera
 /// path is dropped from the world. Without the cut `INTRO.FLM` carries 11 million vertices,
