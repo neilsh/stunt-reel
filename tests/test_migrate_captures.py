@@ -131,3 +131,15 @@ def test_a_pinned_film_without_frames_stops_before_anything_changes(
     with pytest.raises(script.MigrationError, match="no frames directory"):
         script.migrate(root, pins, apply=True)
     assert _tree(root) == before
+
+
+def test_a_migrated_reference_that_no_longer_matches_its_pin_stops(
+    script: Any, tmp_path: Path
+) -> None:
+    root, pins = _root(tmp_path)
+    script.migrate(root, pins, apply=True)
+    _run(root, "vault-ctry", "video", "002", b"new")
+    before = _tree(root)
+    with pytest.raises(script.MigrationError, match="does not hash to its pin"):
+        script.migrate(root, {"vault-ctry": "0" * 64}, apply=True)
+    assert _tree(root) == before

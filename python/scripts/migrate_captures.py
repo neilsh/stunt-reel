@@ -96,10 +96,20 @@ def migrate(root: Path, pins: Mapping[str, str], *, apply: bool) -> list[str]:
                 else:
                     drop.append(kind)
     for film in films:
-        if film.name in pins and not (film / "frames").is_dir():
+        if film.name not in pins:
+            continue
+        frames = film / "frames"
+        if not frames.is_dir():
             raise MigrationError(
                 f"{film} has no frames directory, so its pinned reference is not on this machine; "
                 "nothing was changed"
+            )
+        if (
+            capture_store.current(frames) is not None
+            and references.capture_digest(frames) != pins[film.name]
+        ):
+            raise MigrationError(
+                f"{frames} does not hash to its pin in references.toml; nothing was changed"
             )
     for film_name in sorted(set(pins) - {film.name for film in films}):
         notes.append(f"pinned film {film_name} has no captures on this machine")

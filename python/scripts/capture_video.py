@@ -84,6 +84,10 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.max_frames < 1:
         parser.error("--max-frames must be at least 1")
+    if args.out is None and args.max_frames != video.VIDEO_MAX_FRAMES:
+        parser.error(
+            "a non-default --max-frames needs --out: only default parameters fill the store (ADR 0028)"
+        )
     return args
 
 

@@ -36,6 +36,10 @@ from stunt_reel.tac.plan import PlanError
 DEFAULT_FILM: Path = Path("corpus/stisldem/VAULT/CTRY.FLM")
 
 
+#: The frame cap of a capture that may fill the store; another needs --out (ADR 0028).
+DEFAULT_MAX_FRAMES = 2000
+
+
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -78,7 +82,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-frames",
         type=int,
-        default=2000,
+        default=DEFAULT_MAX_FRAMES,
         help="cap on captured film frames; the film's end stops the trace by itself",
     )
     parser.add_argument(
@@ -90,6 +94,12 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.max_frames < 1:
         parser.error("--max-frames must be at least 1")
+    if args.out is None and (
+        args.max_frames != DEFAULT_MAX_FRAMES or args.stride != FILM_STRIDE_TICKS
+    ):
+        parser.error(
+            "a non-default --max-frames or --stride needs --out: only default parameters fill the store (ADR 0028)"
+        )
     return args
 
 
