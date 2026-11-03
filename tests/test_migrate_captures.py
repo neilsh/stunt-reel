@@ -152,3 +152,13 @@ def test_a_file_named_like_a_run_stops_before_anything_changes(script: Any, tmp_
     with pytest.raises(script.MigrationError, match=r"004.*not a numbered run"):
         script.migrate(root, pins, apply=True)
     assert _tree(root) == before
+
+
+@pytest.mark.parametrize("entry", ["007.lock", "007.partial"])
+def test_an_active_old_writer_stops_the_migration(script: Any, tmp_path: Path, entry: str) -> None:
+    root, pins = _root(tmp_path)
+    (root / "captures/flmonly-act1/archives" / entry).mkdir(parents=True)
+    before = _tree(root)
+    with pytest.raises(script.MigrationError, match="may still be writing"):
+        script.migrate(root, pins, apply=True)
+    assert _tree(root) == before

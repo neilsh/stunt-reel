@@ -89,6 +89,17 @@ def migrate(root: Path, pins: Mapping[str, str], *, apply: bool) -> list[str]:
                     for item in kind.iterdir()
                     if not item.is_dir() or not _RUN.fullmatch(item.name)
                 ]
+                active = [
+                    item.name
+                    for item in kind.iterdir()
+                    if _RUN.fullmatch(item.name) and "." in item.name
+                ]
+                if active:
+                    raise MigrationError(
+                        f"{kind} holds {', '.join(sorted(active))}: a capture or make-all on the "
+                        "old code may still be writing; wait for it, or delete the entry if its "
+                        "process is gone; nothing was changed"
+                    )
                 if strays:
                     raise MigrationError(
                         f"{kind} holds {', '.join(sorted(strays))}, which is not a numbered run; "

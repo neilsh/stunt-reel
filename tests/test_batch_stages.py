@@ -263,6 +263,17 @@ def test_render_without_a_capture_is_an_error_naming_capture(tmp_path: Path) -> 
     assert runner.calls == []
 
 
+def test_score_without_a_complete_capture_does_not_run_the_command(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    (tmp_path / parity_layout.frames_path(film.slug)).mkdir(parents=True)
+    runner = FakeRunner()
+    record = batch_stages.run_score(film, tmp_path, runner, 600.0)
+    assert record.status == "error"
+    assert record.stage == "score"
+    assert "capture" in record.message
+    assert runner.calls == []
+
+
 def test_score_record_carries_ssim_and_iou(tmp_path: Path) -> None:
     film = _film(tmp_path)
     capture = tmp_path / "build" / "parity" / "captures" / "vault-ctry" / "frames"

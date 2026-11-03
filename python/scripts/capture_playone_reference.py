@@ -158,7 +158,13 @@ def run(args: argparse.Namespace) -> int:
         all_sha256=all_sha256,
     )
     if args.out is not None:
-        return _capture_into(args, resolve(args.out), film, archive, film_id)
+        out = resolve(args.out)
+        try:
+            capture_store.check_outside(out, dataroot.REPO_ROOT / parity_layout.capture_root())
+        except ValueError as exc:
+            print(f"[capture] {exc}", file=sys.stderr)
+            return 2
+        return _capture_into(args, out, film, archive, film_id)
     # The film's one capture of this kind is replaced only by a complete, successful one.
     target = dataroot.REPO_ROOT / parity_layout.frames_path(slug)
     try:
