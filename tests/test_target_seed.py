@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
 import sys
 import time
 from pathlib import Path
-from typing import BinaryIO
+from typing import TYPE_CHECKING, BinaryIO
 
 import pytest
 
+from stunt_reel import target_seed
 from stunt_reel.target_seed import (
     SeedOutcome,
     built_by,
@@ -22,6 +24,9 @@ from stunt_reel.target_seed import (
     uses_cargo_home,
     workspace_members,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 RUSTC = "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nhost: x86_64-pc-windows-msvc\n"
 HOME = r"E:\git\stunt-reel\.cache\cargo"
@@ -588,6 +593,45 @@ def test_workspace_members_follow_path_dependencies(tmp_path: Path) -> None:
     assert workspace_members(root) == frozenset(
         {"root", "core", "helper", "shared", "win", "serde"}
     )
+
+
+def test_seed_passes_over_a_donor_rebuilt_after_it_was_ranked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A donor whose build changes rustc between ranking and locking is not copied."""
+    here = _fresh(tmp_path / "here")
+    first = _donor(tmp_path / "first", age=1)
+    second = _donor(tmp_path / "second", age=600)
+    locks_free = target_seed.build_locks_free
+
+    @contextlib.contextmanager
+    def rebuilt_first(target: Path) -> Iterator[bool]:
+        if target == first / "target":
+            _built(target, rustc="rustc 1.100.0")
+        with locks_free(target) as free:
+            yield free
+
+    monkeypatch.setattr(target_seed, "build_locks_free", rebuilt_first)
+    copied: list[Path] = []
+
+    def fake_copy(source: Path, destination: Path) -> None:
+        copied.append(source)
+        destination.mkdir(parents=True)
+
+    def run(checkouts: list[Path]) -> SeedOutcome:
+        return seed(
+            here,
+            checkouts=checkouts,
+            rustc_vv=RUSTC,
+            cargo_home=Path(HOME),
+            copy=fake_copy,
+            volume_clones=_clones,
+        )
+
+    assert run([first]) == SeedOutcome("skipped", "no donor: 0 building, 1 rebuilt since ranked")
+    _built(first / "target")
+    assert run([first, second]) == SeedOutcome("seeded", f"from {second}")
+    assert copied == [second / "target" / "debug"]
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Cargo's build locks are byte locks on Windows")

@@ -358,10 +358,16 @@ def seed(
     if not members:
         return SeedOutcome("skipped", "cannot read the workspace members: none found")
     busy: list[Path] = []
+    rebuilt = 0
     for donor in donors:
         with build_locks_free(donor / "target") as free:
             if not free:
                 busy.append(donor)
+                continue
+            # Ranking read the donor before its locks were held; a build in between may have
+            # changed its rustc or cargo home, so check again now that none can start.
+            if donor_problem(donor, rustc_vv=rustc_vv, cargo_home=cargo_home) is not None:
+                rebuilt += 1
                 continue
             lanes = [
                 name
@@ -377,6 +383,10 @@ def seed(
             if outcome.status == "seeded" and stale:
                 return SeedOutcome("seeded", f"{outcome.detail} (not its stale {', '.join(stale)})")
             return outcome
+    if rebuilt:
+        return SeedOutcome(
+            "skipped", f"no donor: {len(busy)} building, {rebuilt} rebuilt since ranked"
+        )
     if len(busy) == 1:
         return SeedOutcome("skipped", f"donor {busy[0]} is building")
     return SeedOutcome("skipped", f"all {len(busy)} donors are building")
