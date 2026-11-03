@@ -276,8 +276,23 @@ def _cargo_home() -> Path:
     return Path(named) if named else cache_root() / "cargo"
 
 
+def _cargo_home_warning(cargo_home: Path) -> str | None:
+    """A line for a CARGO_HOME that names the shared cache by another path than the primary's.
+
+    mise falls back to the checkout's own ``.cache/cargo`` where git cannot name the primary
+    checkout; that is the same cache through this checkout's link, but Cargo fingerprints the
+    path, so every dependency builds again here and no donor qualifies (ADR 0030).
+    """
+    shared = cache_root() / "cargo"
+    if os.path.normcase(os.path.normpath(cargo_home)) == os.path.normcase(os.path.normpath(shared)):
+        return None
+    return f"  ! CARGO_HOME {cargo_home} is not {shared}: every dependency rebuilds here"
+
+
 def _seed_target() -> str:
-    """Seed this checkout's empty target/ from another checkout; one line saying what happened."""
+    """Seed this checkout's empty target/ from another checkout; a line saying what happened,
+    and a second when the cargo home differs from the shared one."""
+    cargo_home = _cargo_home()
     try:
         rustc_vv = _rustc_vv()
         if rustc_vv is None:
@@ -287,15 +302,18 @@ def _seed_target() -> str:
                 REPO_ROOT,
                 checkouts=[worktree.path for worktree in _worktrees(REPO_ROOT)],
                 rustc_vv=rustc_vv,
-                cargo_home=_cargo_home(),
+                cargo_home=cargo_home,
             )
     except Exception as error:
         outcome = SeedOutcome("failed", str(error))
     if outcome.status == "seeded":
-        return f"  + target/ seeded {outcome.detail}"
-    if outcome.status == "skipped":
-        return f"  - target/ not seeded: {outcome.detail}"
-    return f"{_SEED_FAILED}{outcome.detail}"
+        line = f"  + target/ seeded {outcome.detail}"
+    elif outcome.status == "skipped":
+        line = f"  - target/ not seeded: {outcome.detail}"
+    else:
+        line = f"{_SEED_FAILED}{outcome.detail}"
+    warning = _cargo_home_warning(cargo_home)
+    return line if warning is None else f"{line}\n{warning}"
 
 
 def _tree_footprint(path: Path) -> tuple[int, int]:

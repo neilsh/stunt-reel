@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from stunt_reel.dataroot import cache_root
 from stunt_reel.target_seed import SeedOutcome
 
 if TYPE_CHECKING:
@@ -87,3 +88,19 @@ def test_seed_command_fails_when_the_seed_fails(
         monkeypatch.setattr(worktree_init, "seed", lambda *_args, o=outcome, **_kwargs: o)
         assert worktree_init.main(["seed"]) == status, outcome
     assert "! seed: robocopy exit 8" in capsys.readouterr().out
+
+
+def test_seed_warns_when_the_cargo_home_is_not_the_shared_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """mise's fallback names the cache through this checkout's link: same files, other path."""
+    monkeypatch.setattr(worktree_init, "_rustc_vv", lambda: None)
+    shared = cache_root() / "cargo"
+    monkeypatch.setenv("STUNT_CARGO_HOME", str(shared).replace("\\", "/"))
+    assert worktree_init._seed_target() == "  - target/ not seeded: rustc not on PATH"
+    monkeypatch.setenv("STUNT_CARGO_HOME", str(tmp_path / ".cache" / "cargo"))
+    lines = worktree_init._seed_target().splitlines()
+    assert lines[1] == (
+        f"  ! CARGO_HOME {tmp_path / '.cache' / 'cargo'} is not {shared}: "
+        "every dependency rebuilds here"
+    )
