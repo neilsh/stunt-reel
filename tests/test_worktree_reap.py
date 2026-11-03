@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -729,3 +730,20 @@ def test_clean_parity_skips_a_linked_render_tree(
     assert dataroot.is_link(linked)
     assert (elsewhere / "tick_00000.idx").is_file()
     dataroot.remove_link(linked)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX directory permissions")
+def test_remove_tree_keeps_a_file_mode_when_its_directory_refuses(tmp_path: Path) -> None:
+    """On POSIX a refused unlink is the parent directory's mode, so the file keeps its own."""
+    locked = tmp_path / "tree" / "locked"
+    locked.mkdir(parents=True)
+    blob = locked / "blob"
+    blob.write_bytes(b"blob")
+    blob.chmod(0o444)
+    locked.chmod(0o555)
+    try:
+        with pytest.raises(PermissionError):
+            worktree_init._remove_tree(tmp_path / "tree")
+        assert stat.S_IMODE(blob.stat().st_mode) == 0o444
+    finally:
+        locked.chmod(0o755)

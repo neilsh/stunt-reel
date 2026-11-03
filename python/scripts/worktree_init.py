@@ -387,14 +387,16 @@ def _prune_render_trees(confirmed: bool, keep: int) -> int:
 def _remove_tree(path: Path) -> None:
     """Delete ``path`` whole, read-only files included: git marks its objects read-only,
     so a test's scratch repository under ``.pytest_cache`` stops ``rmtree`` on Windows.
-    Any other failure, a link at ``path`` among them, is raised: ``chmod`` follows a link,
-    so clearing the bit there would change the target instead."""
+    Any other failure is raised: a link at ``path``, since ``chmod`` follows it and would
+    change the target, and any POSIX failure, where a refused unlink means the parent
+    directory is not writable and the file's own mode is not the cause."""
 
     def _clear_read_only(
         function: Callable[[str], object], name: str, error: BaseException
     ) -> None:
         if (
-            not isinstance(error, PermissionError)
+            os.name != "nt"
+            or not isinstance(error, PermissionError)
             or function not in (os.unlink, os.rmdir)
             or is_link(Path(name))
         ):
