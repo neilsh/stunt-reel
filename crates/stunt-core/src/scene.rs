@@ -315,7 +315,7 @@ impl FilmScene {
         // Magnification of the field of view drawn (base and lens) over PLAYONE's default
         // lens, so a caller-built timeline with a narrow base is covered too. Base and lens
         // interpolate separately between slices, so each interval is bounded by its
-        // narrower base under its stronger lens.
+        // narrower base under either endpoint's lens.
         let default_half = (PLAYONE_FOV_Y_DEGREES.to_radians() / 2.0).tan();
         let cameras: Vec<&CameraTransform> = timeline
             .slices()
@@ -325,14 +325,18 @@ impl FilmScene {
         let max_zoom = cameras
             .iter()
             .zip(cameras.iter().skip(1).chain(cameras.last()))
-            .map(|(a, b)| {
-                let lens = if a.lens_zoom() >= b.lens_zoom() { a } else { b };
-                let bound = CameraTransform {
-                    fov_degrees: a.fov_degrees.min(b.fov_degrees),
-                    ..**lens
-                };
-                let fov = ViewCamera::from_authored(&bound).fov_degrees;
-                default_half / (fov.to_radians() / 2.0).tan()
+            .flat_map(|(a, b)| {
+                // Both lenses at the narrower base: a zero lens keeps the base field of
+                // view, so the stronger lens is not always the larger `lens_zoom()`.
+                let base = a.fov_degrees.min(b.fov_degrees);
+                [a, b].map(|lens| {
+                    let bound = CameraTransform {
+                        fov_degrees: base,
+                        ..**lens
+                    };
+                    let fov = ViewCamera::from_authored(&bound).fov_degrees;
+                    default_half / (fov.to_radians() / 2.0).tan()
+                })
             })
             .filter(|zoom| zoom.is_finite())
             .fold(1.0, f32::max);
