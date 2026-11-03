@@ -101,7 +101,7 @@ def test_a_second_run_replaces_the_archive(
 
     assert _archives() == [directory]
     assert (directory / "CTRY.ALL").read_bytes() == other
-    assert [p.name for p in directory.parent.iterdir()] == ["archives"]
+    assert [p.name for p in directory.parent.iterdir() if p.suffix != ".lock"] == ["archives"]
 
 
 def test_name_overrides_the_derived_slug_and_a_bad_one_is_refused(
