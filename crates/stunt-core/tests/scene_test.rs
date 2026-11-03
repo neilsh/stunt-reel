@@ -126,6 +126,39 @@ fn actors_sharing_a_shape_get_separate_draws() {
 }
 
 #[test]
+fn actor_is_drawn_without_its_shapes_ground_offset() {
+    // The decoder lifts every vertex by `ground_y_offset`; an actor's film position is
+    // already its model origin, so the draw takes the lift back out along the actor's +Y.
+    let mut sod = fixture("synthetic_minimal.sod");
+    sod[4..6].copy_from_slice(&40i16.to_le_bytes());
+    let film = film([0.0, 0.0, 10.0], &[(7, [3.0, 2.0, 0.0])]);
+    let all = archive(&[(7, &sod)]);
+    let (scene, _) = FilmScene::load(&SceneInputs {
+        archive: Some(&all),
+        ..scene_inputs(&film)
+    })
+    .expect("load");
+    let header = scene
+        .shape(7)
+        .and_then(SodModelIr::decode)
+        .expect("decoded shape")
+        .header;
+    let lift = f32::from(header.ground_y_offset) * header.scale_factor;
+    assert!(lift > 0.0);
+
+    let frame = scene.frame(0.0);
+    let m = frame.actors[0].world_matrix;
+    let expected = [3.0 - m[4] * lift, 2.0 - m[5] * lift, -m[6] * lift];
+    for (got, want) in m[12..15].iter().zip(expected) {
+        assert!(
+            (got - want).abs() < 1e-5,
+            "{:?} != {expected:?}",
+            &m[12..15]
+        );
+    }
+}
+
+#[test]
 fn distance_is_eye_to_actor_position() {
     let film = film(
         [0.0, 0.0, 10.0],
