@@ -17,8 +17,9 @@ use crate::GltfError;
 use crate::glb::{GlbBuilder, num, num_array};
 use crate::shape::{ShapeAssets, add_shape_assets, instantiate};
 
-/// 4:3 physical aspect ratio of the Mode 13h raster (`[I6]`).
-const ASPECT_RATIO: f32 = 4.0 / 3.0;
+/// Projection aspect of the 320 x 200 raster: square raster pixels, as `PLAYONE.EXE`
+/// projects; the 4:3 CRT presentation (`[I6]`) stretches the result afterwards.
+const ASPECT_RATIO: f32 = 320.0 / 200.0;
 const ZNEAR: f32 = 0.1;
 const ZFAR: f32 = 20_000.0;
 

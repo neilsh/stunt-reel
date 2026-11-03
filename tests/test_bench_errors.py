@@ -13,12 +13,15 @@ import pytest
 
 from render_helpers import flip_byte, rewrite_store
 from stunt_reel.bench.errors import (
+    TABLE_HEADER,
     Calibration,
+    CategoryReadout,
     FilmWindow,
     Readout,
     Sheet,
     Taxonomy,
     add_example,
+    batch_row,
     build_sheet,
     calibrate,
     compare,
@@ -34,6 +37,7 @@ from stunt_reel.bench.errors import (
     render_brief,
     score_run,
     sheet_id,
+    table_row,
     write_disputes,
     write_example,
 )
@@ -757,3 +761,87 @@ def test_score_refuses_an_against_file_that_is_not_json(
     garbled.write_text("{not json", encoding="utf-8")
     with pytest.raises(BenchError, match="not a readout document"):
         score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], garbled)
+
+
+def _table_readout() -> Readout:
+    return Readout(
+        film="vault-ctry",
+        ticks=(4, 300, 700, 1001),
+        categories_digest="c" * 64,
+        render_digest="r" * 64,
+        categories=(
+            CategoryReadout("aircraft-absent", (4, 300), 1.5, 0),
+            CategoryReadout("scenery-missing", (4, 300, 700), 2.0, 0),
+            CategoryReadout("shadow-missing", (4,), 0.5, 0),
+        ),
+        other={300: "tents drawn as cones"},
+        missing=1,
+        unknown=(),
+    )
+
+
+def test_table_row_lists_the_leads_by_count_and_the_scored_ssim() -> None:
+    report = Report(per_frame=(), reference_frames=0, mean_ssim_scored=0.7764, scored_frames=113)
+    row = table_row(_table_readout(), report, lead=2)
+    assert row == (
+        "| `vault-ctry` | 4–1001 | 3 | `scenery-missing` 3, `aircraft-absent` 2 | 1 "  # noqa: RUF001
+        "| 0.776 (113) |"
+    )
+    assert TABLE_HEADER.splitlines()[0].count("|") == row.count("|")
+
+
+def test_table_row_says_none_and_n_a_when_nothing_qualifies() -> None:
+    row = table_row(_table_readout(), None, lead=4)
+    assert row.endswith("| 3 | none | 1 | n/a |")
+
+
+def test_table_row_marks_categories_the_grader_left_ungraded() -> None:
+    result = replace(
+        _table_readout(),
+        categories=(*_table_readout().categories, CategoryReadout("sun-missing", (), None, 3)),
+    )
+    row = table_row(result, None, lead=2)
+    assert "`aircraft-absent` 2; ungraded `sun-missing` 3 |" in row
+
+
+def test_table_header_names_no_fixed_frame_count() -> None:
+    assert "of 12" not in TABLE_HEADER
+
+
+def test_batch_row_reads_the_report_the_run_was_made_from(run_inputs: dict[str, Path]) -> None:
+    _make(run_inputs)
+    _grade_all(run_inputs)
+    score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], None)
+    assert batch_row(run_inputs["out"], run_inputs["report"]).endswith("| 0.900 (2) |")
+
+
+def test_batch_row_refuses_a_report_replaced_after_the_run(run_inputs: dict[str, Path]) -> None:
+    _make(run_inputs)
+    _grade_all(run_inputs)
+    score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], None)
+    frames = [FrameReport(film_tick=t, ssim=0.5, iou=0.0, scored=True) for t in (10, 20)]
+    write_report(run_inputs["report"], _report(frames))
+    with pytest.raises(BenchError, match="changed since errors-make"):
+        batch_row(run_inputs["out"], run_inputs["report"])
+
+
+def test_batch_row_leaves_ssim_out_for_a_run_without_a_report_digest(
+    run_inputs: dict[str, Path],
+) -> None:
+    _make(run_inputs)
+    _grade_all(run_inputs)
+    score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], None)
+    run_path = run_inputs["out"] / "run.json"
+    run = json.loads(run_path.read_text(encoding="utf-8"))
+    del run["report_digest"]
+    run_path.write_text(json.dumps(run), encoding="utf-8")
+    assert batch_row(run_inputs["out"], run_inputs["report"]).endswith("| n/a |")
+
+
+def test_batch_row_refuses_a_run_whose_report_is_gone(run_inputs: dict[str, Path]) -> None:
+    _make(run_inputs)
+    _grade_all(run_inputs)
+    score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], None)
+    run_inputs["report"].unlink()
+    with pytest.raises(BenchError, match="is missing"):
+        batch_row(run_inputs["out"], run_inputs["report"])

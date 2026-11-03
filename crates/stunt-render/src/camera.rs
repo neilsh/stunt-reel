@@ -1,17 +1,26 @@
-//! Camera Controller & 4:3 Aspect Presentation Architecture.
+//! Camera Controller: projection on the Mode 13h raster, 4:3 presentation.
 //!
 //! Complies with Architectural Invariants:
 //! - `[I1]` Metric right-handed coordinate basis (+X right, +Y up, -Z forward, +Z backward).
-//! - `[I6]` VGA 4:3 physical aspect ratio correction ($320 \times 240$ base).
+//! - `[I6]` VGA 4:3 physical aspect ratio ($320 \times 240$ base), applied after a
+//!   square-pixel projection on the $320 \times 200$ raster.
 
 use glam::{Mat4, Vec3, camera::rh};
+use stunt_core::contracts::trajectory::PLAYONE_FOV_Y_DEGREES;
 use stunt_core::scene::ViewCamera;
 
-/// Standard 4:3 physical aspect ratio for VGA Mode 13h ($320 \times 240$).
+/// Standard 4:3 physical aspect ratio for VGA Mode 13h ($320 \times 240$): the window's
+/// letterbox, not the projection (see [`MODE13H_PROJECTION_ASPECT`]).
 pub const ASPECT_4_3: f32 = 4.0 / 3.0;
 
-/// Default field of view in degrees.
-pub const DEFAULT_FOV_DEGREES: f32 = 45.0;
+/// Aspect ratio of PLAYONE's projection: square pixels on the $320 \times 200$ raster, so
+/// equal horizontal and vertical focal lengths in raster pixels. The CRT's 1.2x vertical
+/// stretch happens after projection, at presentation (research/parity/framing-and-actors.md
+/// section 2).
+pub const MODE13H_PROJECTION_ASPECT: f32 = 320.0 / 200.0;
+
+/// Free-Cam vertical field of view in degrees: PLAYONE's default lens, as authored cameras.
+pub const DEFAULT_FOV_DEGREES: f32 = PLAYONE_FOV_Y_DEGREES;
 
 /// Near clipping plane distance in meters.
 pub const DEFAULT_NEAR_CLIP: f32 = 0.5;
@@ -134,7 +143,8 @@ pub struct CameraController {
     pub authored: ViewCamera,
     /// Detached Free-Cam navigation state.
     pub free_cam: FreeCamState,
-    /// Physical viewport aspect ratio (defaults to 4:3 = 1.3333333 per `[I6]`).
+    /// Projection aspect ratio (defaults to [`MODE13H_PROJECTION_ASPECT`]; the 4:3
+    /// presentation of `[I6]` is applied after projection).
     pub aspect_ratio: f32,
     /// Factor applied to the projection's vertical focal scale; above 1.0 squeezes the same
     /// view into a shorter viewport (see `Offscreen::viewport_rows`).
@@ -155,7 +165,7 @@ impl Default for CameraController {
             mode: CameraMode::Authored,
             authored: ViewCamera::default(),
             free_cam: FreeCamState::default(),
-            aspect_ratio: ASPECT_4_3,
+            aspect_ratio: MODE13H_PROJECTION_ASPECT,
             projection_y_scale: 1.0,
             near_clip: DEFAULT_NEAR_CLIP,
             far_clip: DEFAULT_FAR_CLIP,
@@ -212,7 +222,7 @@ impl CameraController {
         }
     }
 
-    /// Computes the 4x4 perspective projection matrix with 4:3 aspect correction.
+    /// Computes the 4x4 perspective projection matrix at [`Self::aspect_ratio`].
     pub fn compute_proj_matrix(&self) -> Mat4 {
         let fov_deg = match self.mode {
             CameraMode::Authored => self.authored.fov_degrees.clamp(1.0, 160.0),

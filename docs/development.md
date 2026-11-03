@@ -164,11 +164,11 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | `fmt-check` / `fmt` | `cargo fmt` and `ruff format` check/apply |
 | `fix` | every automatic fix the gate's lint and format steps can apply: `ruff check --fix`, `ruff format`, `cargo fmt`. The gate names it when `lint-py`, `fmt-check-py` or `fmt-check-rust` fails; it changes nothing on a clean tree |
 | `lint` | `cargo clippy -- -D warnings` and `ruff check .` |
-| `typecheck` | `uv run mypy` (strict) |
+| `typecheck` | `uv run mypy` (strict), once with `--platform win32` and once with `--platform linux` |
 | `doc` | rustdoc with `RUSTDOCFLAGS=-D warnings` |
 | `check-rust-matrix` | `stunt-core` without the `serde`/`bytemuck` features |
 | `test` | `cargo test --workspace --all-features` and `uv run pytest` |
-| `fmt-rust`, `fmt-py`, `fmt-check-rust`, `fmt-check-py`, `lint-rust`, `lint-py`, `test-rust`, `test-py` | single-language halves of the tasks above |
+| `fmt-rust`, `fmt-py`, `fmt-check-rust`, `fmt-check-py`, `lint-rust`, `lint-py`, `test-rust`, `test-py` | single-language halves of the tasks above. Arguments after `--` reach the tool, so `mise run test-py -- tests/test_target_seed.py` runs one file |
 | `cov-rust` | `cargo llvm-cov` line-coverage summary for `stunt-core` and `stunt-gltf` (not part of `check`) |
 | `cov-py` | `pytest` with `--cov=stunt_reel` term-missing report (no fail-under) |
 | `deny` | `cargo deny check` — advisories, license allow-list, wildcard bans, and registry sources |
