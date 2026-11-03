@@ -37,8 +37,10 @@ more expensive:
    and the mapping from failures to exit codes. Replacing a capture must also drop
    `references.capture_digest`'s path-keyed `lru_cache` entry (or remove the cache), or a process
    that digested the old capture validates a stale pin after the swap. Frame capture, video capture and `make-all` run
-   through it. The light probe and `play` write no capture, so they use only its build choice (the same `playone`
-   resolution, which an explicit `--game-root` overrides), staging and failure mapping; they never fall back. Tests go
+   through it. `play` writes no capture, so it uses only its build choice (the same `playone`
+   resolution, which an explicit `--game-root` overrides), staging and failure mapping, and never
+   falls back. The light probe reads the unpatched `PLAYONE.EXE` only and refuses any other layout,
+   so it takes only staging and failure mapping. Tests go
    through the `ScriptRunner` seam with `MockAutomation` and a temporary data root, and replace the
    monkeypatch tests rather than sit beside them. `UNPATCHED_CAPTURES` is deleted.
 4. **Film parity operation.** One module renders a film over a tick range, checks the render and
