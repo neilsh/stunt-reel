@@ -268,14 +268,18 @@ pub const MODE_13H_PALETTE: [(u8, u8, u8); 256] = [
 
 /// Returns the 8-bit integer `(R, G, B)` tuple for a Mode 13h palette index (`0..=255`).
 #[inline]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "a u8 index cannot leave the 256-entry table"
+)]
 pub fn get_palette_rgb(index: u8) -> (u8, u8, u8) {
-    MODE_13H_PALETTE[index as usize]
+    MODE_13H_PALETTE[usize::from(index)]
 }
 
 /// Returns the normalized floating-point `(R, G, B)` tuple in `[0.0, 1.0]`.
 #[inline]
 pub fn get_palette_rgb_float(index: u8) -> (f32, f32, f32) {
-    let (r, g, b) = MODE_13H_PALETTE[index as usize];
+    let (r, g, b) = get_palette_rgb(index);
     (
         f32::from(r) / 255.0,
         f32::from(g) / 255.0,
@@ -340,10 +344,8 @@ impl PaletteControls {
     /// are returned unchanged. Output keeps the table's `level * 4` expansion.
     #[must_use]
     pub fn film_palette(&self) -> [(u8, u8, u8); 256] {
-        let mut base: [[i32; 3]; 256] = std::array::from_fn(|i| {
-            let (r, g, b) = MODE_13H_PALETTE[i];
-            [i32::from(r >> 2), i32::from(g >> 2), i32::from(b >> 2)]
-        });
+        let mut base: [[i32; 3]; 256] = MODE_13H_PALETTE
+            .map(|(r, g, b)| [i32::from(r >> 2), i32::from(g >> 2), i32::from(b >> 2)]);
 
         // Night term: |var13| - 0x2000 clamped to 0..=0x4000; its high byte is 0..=64.
         let night_term = (i32::from(self.sky as i16).abs() - 0x2000).clamp(0, 0x4000);
@@ -351,23 +353,25 @@ impl PaletteControls {
 
         // Zenith and horizon colours, then the 15-step gradient between them. `/` on
         // `i32` truncates toward zero like `idiv`; `>> 6` floors like `imul; shl; ah`.
-        let sky: Vec<i32> = SKY_COLOUR_PAIRS
-            .iter()
-            .map(|&[day, night_colour]| {
-                let day = i32::from(day);
-                day + (((i32::from(night_colour) - day) * night) >> 6)
-            })
-            .collect();
-        for step in 1..=15 {
-            for channel in 0..3 {
-                let (zenith, horizon) = (sky[channel], sky[3 + channel]);
-                base[SKY_GRADIENT_FIRST + step - 1][channel] =
-                    zenith + (horizon - zenith) * step as i32 / 15;
+        let [zr, zg, zb, hr, hg, hb] = SKY_COLOUR_PAIRS.map(|[day, night_colour]| {
+            let day = i32::from(day);
+            day + (((i32::from(night_colour) - day) * night) >> 6)
+        });
+        let (zenith, horizon) = ([zr, zg, zb], [hr, hg, hb]);
+        let gradient = base.iter_mut().skip(SKY_GRADIENT_FIRST).take(15);
+        for (entry, step) in gradient.zip(1..=15) {
+            for ((value, z), h) in entry.iter_mut().zip(zenith).zip(horizon) {
+                *value = z + (h - z) * step / 15;
             }
         }
-        let lights = &LIGHT_ENTRIES[usize::from(night >= 0x20)];
-        for (offset, colour) in lights.iter().enumerate() {
-            base[LIGHT_ENTRY_FIRST + offset] = colour.map(i32::from);
+        let [day_lights, night_lights] = LIGHT_ENTRIES;
+        let lights = if night >= 0x20 {
+            night_lights
+        } else {
+            day_lights
+        };
+        for (entry, colour) in base.iter_mut().skip(LIGHT_ENTRY_FIRST).zip(lights) {
+            *entry = colour.map(i32::from);
         }
 
         // Brightness and saturation: high byte halved, rounding up, so 0x8000 is 64.
@@ -379,7 +383,8 @@ impl PaletteControls {
         let split = if night >= 0x20 { 209 } else { 215 };
 
         let mut out = MODE_13H_PALETTE;
-        for (index, [r, g, b]) in base.iter().copied().enumerate().take(FILM_PALETTE_ENTRIES) {
+        let entries = out.iter_mut().zip(base).enumerate();
+        for (index, (entry, [r, g, b])) in entries.take(FILM_PALETTE_ENTRIES) {
             let bright = if index < split {
                 scene_brightness
             } else {
@@ -390,7 +395,7 @@ impl PaletteControls {
                 let level = ((grey + (((c - grey) * saturation) >> 6)) * bright) >> 6;
                 (level.clamp(0, 63) << 2) as u8
             };
-            out[index] = (tone(r), tone(g), tone(b));
+            *entry = (tone(r), tone(g), tone(b));
         }
         out
     }

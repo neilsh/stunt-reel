@@ -89,6 +89,10 @@ run = "uv run python python/scripts/worktree_init.py clean"
 description = "Remove worktrees whose branch is already in main or was squash-merged (a merged PR whose head is the branch tip, read with gh), unlinking their data-root junctions first (mise run reap -- --yes [--cherry] [--prune] [--stash-dirty] [--discard-untracked])"
 run = "uv run python python/scripts/worktree_init.py reap"
 
+[tasks.pr-threads]
+description = "A pull request's unresolved review threads, one line each with the comment id to reply to (mise run pr-threads -- <number> [--all])"
+run = "uv run python python/scripts/pr_threads.py"
+
 [tasks.build-at]
 description = "Build stunt-cli from a git revision with an isolated target dir (mise run build-at -- <rev> <out>)"
 run = "uv run python python/scripts/build_at.py"

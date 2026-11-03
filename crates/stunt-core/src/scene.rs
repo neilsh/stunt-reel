@@ -312,30 +312,12 @@ impl FilmScene {
             .iter()
             .map(|slice| slice.record.camera.eye)
             .collect();
-        // Magnification of the field of view drawn (base and lens) over PLAYONE's default
-        // lens, so a caller-built timeline with a narrow base is covered too. Base and lens
-        // interpolate separately between slices, so each interval is bounded by its
-        // narrower base under its stronger lens.
-        let default_half = (PLAYONE_FOV_Y_DEGREES.to_radians() / 2.0).tan();
-        let cameras: Vec<&CameraTransform> = timeline
+        let cameras: Vec<CameraTransform> = timeline
             .slices()
             .iter()
-            .map(|slice| &slice.record.camera)
+            .map(|slice| slice.record.camera)
             .collect();
-        let max_zoom = cameras
-            .iter()
-            .zip(cameras.iter().skip(1).chain(cameras.last()))
-            .map(|(a, b)| {
-                let lens = if a.lens_zoom() >= b.lens_zoom() { a } else { b };
-                let bound = CameraTransform {
-                    fov_degrees: a.fov_degrees.min(b.fov_degrees),
-                    ..**lens
-                };
-                let fov = ViewCamera::from_authored(&bound).fov_degrees;
-                default_half / (fov.to_radians() / 2.0).tan()
-            })
-            .filter(|zoom| zoom.is_finite())
-            .fold(1.0, f32::max);
+        let max_zoom = max_magnification(&cameras);
         let world = build_world(
             &WorldInputs {
                 anchors: &anchors,
@@ -432,4 +414,72 @@ impl FilmScene {
 fn distance(a: [f32; 3], b: [f32; 3]) -> f32 {
     let d = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
     (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+}
+
+/// Largest magnification over PLAYONE's default lens that `cameras` draw, at least 1.0,
+/// so a caller-built timeline with a narrow base is covered too. Base and lens interpolate
+/// separately between slices, so each interval is bounded by its narrower base under
+/// either endpoint's lens: a zero lens keeps the base field of view, so the stronger lens
+/// is not always the larger `lens_zoom()`.
+fn max_magnification(cameras: &[CameraTransform]) -> f32 {
+    let default_half = (PLAYONE_FOV_Y_DEGREES.to_radians() / 2.0).tan();
+    cameras
+        .iter()
+        .zip(cameras.iter().skip(1).chain(cameras.last()))
+        .flat_map(|(a, b)| {
+            let base = a.fov_degrees.min(b.fov_degrees);
+            [a, b].map(|lens| {
+                let bound = CameraTransform {
+                    fov_degrees: base,
+                    ..*lens
+                };
+                let fov = ViewCamera::from_authored(&bound).fov_degrees;
+                default_half / (fov.to_radians() / 2.0).tan()
+            })
+        })
+        .filter(|zoom| zoom.is_finite())
+        .fold(1.0, f32::max)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::contracts::trajectory::DEFAULT_CAMERA_LENS;
+
+    fn camera(fov_degrees: f32, lens: u16) -> CameraTransform {
+        CameraTransform {
+            fov_degrees,
+            lens,
+            ..CameraTransform::default()
+        }
+    }
+
+    fn drawn_magnification(camera: &CameraTransform) -> f32 {
+        let fov = ViewCamera::from_authored(camera).fov_degrees;
+        (PLAYONE_FOV_Y_DEGREES.to_radians() / 2.0).tan() / (fov.to_radians() / 2.0).tan()
+    }
+
+    #[test]
+    fn a_zero_lens_beside_a_nonzero_lens_bounds_at_its_full_base() {
+        // Lens 0 draws at the full 20 degree base (about 2.22x); lens 4096 widens it.
+        let cameras = [camera(20.0, 0), camera(20.0, 4096)];
+        let zero = drawn_magnification(&cameras[0]);
+        assert!(zero > 2.0, "zero-lens magnification {zero}");
+        let bound = max_magnification(&cameras);
+        assert!(bound >= zero - 1e-4, "bound {bound} below {zero}");
+    }
+
+    #[test]
+    fn an_interval_takes_its_narrower_base_under_its_stronger_lens() {
+        let cameras = [camera(50.0, DEFAULT_CAMERA_LENS), camera(140.0, u16::MAX)];
+        let mixed = drawn_magnification(&camera(50.0, u16::MAX));
+        assert!(max_magnification(&cameras) >= mixed - 1e-4);
+    }
+
+    #[test]
+    fn the_default_lens_bounds_at_one() {
+        let cameras = [camera(PLAYONE_FOV_Y_DEGREES, DEFAULT_CAMERA_LENS)];
+        assert!((max_magnification(&cameras) - 1.0).abs() < 1e-4);
+        assert_eq!(max_magnification(&[]), 1.0);
+    }
 }

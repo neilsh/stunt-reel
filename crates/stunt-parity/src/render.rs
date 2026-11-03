@@ -165,8 +165,9 @@ impl RenderRecord {
             });
         }
         self.geometry.validate()?;
-        for (index, pair) in self.ticks.windows(2).enumerate() {
-            match pair[0].tick.cmp(&pair[1].tick) {
+        let pairs = self.ticks.iter().zip(self.ticks.iter().skip(1));
+        for (index, (prev, next)) in pairs.enumerate() {
+            match prev.tick.cmp(&next.tick) {
                 std::cmp::Ordering::Less => {}
                 std::cmp::Ordering::Equal => {
                     return Err(ArtifactError::TickDuplicate { index: index + 1 });

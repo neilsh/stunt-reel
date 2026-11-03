@@ -53,6 +53,11 @@ pub(super) fn attribute_loss(
     }
     for window in windows {
         let mut counts = [0usize; LOSS_CLASSES.len()];
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "windows were scored over the same 320x240 plane as `classes`, and \
+                      every class code comes from `loss_class`, below `LOSS_CLASSES.len()`"
+        )]
         for row in window.y..window.y + window_size {
             let start = row * MODE13H_WIDTH + window.x;
             for &class in &classes[start..start + window_size] {

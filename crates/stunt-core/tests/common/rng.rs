@@ -58,14 +58,19 @@ pub(crate) fn mutate(rng: &mut XorShift64, mutated: &mut Vec<u8>, max_mutations:
                 if !mutated.is_empty() {
                     let idx = rng.next_range(0, mutated.len());
                     let bit = 1 << rng.next_range(0, 8);
-                    mutated[idx] ^= bit;
+                    if let Some(byte) = mutated.get_mut(idx) {
+                        *byte ^= bit;
+                    }
                 }
             }
             1 => {
                 // Byte overwrite
                 if !mutated.is_empty() {
                     let idx = rng.next_range(0, mutated.len());
-                    mutated[idx] = rng.next_u8();
+                    let value = rng.next_u8();
+                    if let Some(byte) = mutated.get_mut(idx) {
+                        *byte = value;
+                    }
                 }
             }
             2 => {

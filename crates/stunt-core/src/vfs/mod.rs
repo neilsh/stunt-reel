@@ -69,11 +69,28 @@ pub fn detect_and_parse(data: &[u8]) -> Result<VfsArchive, VfsError> {
         });
     }
 
-    if &data[0..2] == b"RS" {
+    if data.starts_with(b"RS") {
         parse_res(data)
     } else {
         parse_all(data)
     }
+}
+
+/// Fails with [`VfsError::InvalidOffsetTable`] at the first offset smaller than the one before it.
+fn check_non_decreasing(offsets: &[usize]) -> Result<(), VfsError> {
+    for (i, pair) in offsets.windows(2).enumerate() {
+        if let &[prev, next] = pair
+            && next < prev
+        {
+            return Err(VfsError::InvalidOffsetTable {
+                reason: format!(
+                    "offset at index {} ({next}) is less than previous offset at index {i} ({prev})",
+                    i + 1
+                ),
+            });
+        }
+    }
+    Ok(())
 }
 
 impl From<crate::reader::Eof> for VfsError {

@@ -14,7 +14,7 @@ use serde_json::json;
 use stunt_core::scene::{FilmScene, ViewCamera};
 
 use crate::GltfError;
-use crate::glb::{GlbBuilder, num, num_array};
+use crate::glb::{GlbBuilder, num, num_array, object};
 use crate::shape::{ShapeAssets, add_shape_assets, instantiate};
 
 /// Projection aspect of the 320 x 200 raster: square raster pixels, as `PLAYONE.EXE`
@@ -61,7 +61,7 @@ pub fn export_scene_frame(scene: &FilmScene, tick: f32) -> Result<Vec<u8>, GltfE
     if frame.world
         && let Some(world) = scene.world()
     {
-        let assets = add_shape_assets(&mut builder, &world.ir);
+        let assets = add_shape_assets(&mut builder, &world.ir)?;
         let children = instantiate(&mut builder, &world.ir, &assets)?;
         roots.push(builder.nodes.len());
         builder
@@ -76,21 +76,23 @@ pub fn export_scene_frame(scene: &FilmScene, tick: f32) -> Result<Vec<u8>, GltfE
             .ok_or(GltfError::MissingShape(actor.shape_id))?;
         let assets = match shared.entry(actor.shape_id) {
             Entry::Occupied(e) => e.into_mut(),
-            Entry::Vacant(e) => e.insert(add_shape_assets(&mut builder, model)),
+            Entry::Vacant(e) => e.insert(add_shape_assets(&mut builder, model)?),
         };
         let children = instantiate(&mut builder, model, assets)?;
-        let mut node = json!({
-            "name": format!("actor_{index}_shape_{}", actor.shape_id),
-            "matrix": num_array(&actor.world_matrix),
-            "extras": {
-                "state_mask": actor.state_mask,
-                "distance": num(actor.distance),
-                "shape_id": actor.shape_id,
-            },
+        let extras = json!({
+            "state_mask": actor.state_mask,
+            "distance": num(actor.distance),
+            "shape_id": actor.shape_id,
         });
-        if !children.is_empty() {
-            node["children"] = json!(children);
-        }
+        let node = object([
+            (
+                "name",
+                Some(json!(format!("actor_{index}_shape_{}", actor.shape_id))),
+            ),
+            ("matrix", Some(num_array(&actor.world_matrix))),
+            ("extras", Some(extras)),
+            ("children", (!children.is_empty()).then(|| json!(children))),
+        ]);
         roots.push(builder.nodes.len());
         builder.nodes.push(node);
     }

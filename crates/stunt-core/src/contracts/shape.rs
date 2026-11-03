@@ -407,9 +407,9 @@ impl SodModelIr {
         let mut max = [f32::NEG_INFINITY; 3];
         let mut radius = 0.0f32;
         for v in &self.vertices {
-            for axis in 0..3 {
-                min[axis] = min[axis].min(v.position[axis]);
-                max[axis] = max[axis].max(v.position[axis]);
+            for ((lo, hi), p) in min.iter_mut().zip(&mut max).zip(v.position) {
+                *lo = lo.min(p);
+                *hi = hi.max(p);
             }
             let [x, y, z] = v.position;
             radius = radius.max((x * x + y * y + z * z).sqrt());

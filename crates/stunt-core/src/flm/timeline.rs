@@ -155,7 +155,8 @@ impl FilmTimeline {
         let shown = self
             .credits
             .partition_point(|change| change.tick as f32 <= tick);
-        self.credits[..shown].last()?.lines.as_ref()
+        let last = shown.checked_sub(1)?;
+        self.credits.get(last)?.lines.as_ref()
     }
 
     /// Total authored length in seconds.
@@ -207,13 +208,16 @@ impl FilmTimeline {
         let index = self
             .slices
             .partition_point(|slice| slice.tick as f32 <= tick);
-        let previous = &self.slices[index - 1];
+        // `first.tick <= tick < last.tick`, so the keyframe pair always exists.
+        let [previous, next] = index
+            .checked_sub(1)
+            .and_then(|i| self.slices.get(i..))
+            .and_then(<[_]>::first_chunk::<2>)?;
         if tick == previous.tick as f32 {
             // An exact keyframe hit is that slice's own state, keeping its camera cut
             // flag and audio cues rather than blending toward the next slice.
             return Some(previous.record.clone());
         }
-        let next = &self.slices[index];
 
         let span = (next.tick - previous.tick) as f32;
         let alpha = if span > 0.0 {

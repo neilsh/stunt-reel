@@ -536,3 +536,22 @@ def test_summary_rows_show_a_dash_for_an_absent_mean(
     args = ["--summary", "--only", "a-film", "--data-root", str(tmp_path)]
     assert batch_parity.main(args) == 0
     assert capsys.readouterr().out.splitlines()[1] == "a-film  2  0  -  -  -  -"
+
+
+def test_a_forced_stage_marks_later_stages_left_out_of_stages_stale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _install(monkeypatch)
+    _process([_film("a-film")], tmp_path)
+    sheet = tmp_path / parity_layout.batch_film_dir("a-film") / "frames" / "contact_0001.png"
+    sheet.parent.mkdir(parents=True, exist_ok=True)
+    sheet.write_bytes(b"png")
+    fake.calls.clear()
+
+    _process([_film("a-film")], tmp_path, stages=("render",), force=frozenset({"render"}))
+
+    assert fake.calls == [("a-film", "render")]
+    score = batch_ledger.latest(batch_ledger.read(tmp_path / "ledger.jsonl"), "a-film", "score")
+    assert score is not None
+    assert (score.status, score.message) == ("error", "stale: render was forced")
+    assert not sheet.exists()

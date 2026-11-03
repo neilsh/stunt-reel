@@ -139,11 +139,33 @@ pub const SOD_SCALE_TABLE: [f32; 18] = [
     5.0 / 65536.0,
 ];
 
+/// A VM table addressed modulo its length, as `PLAYONE` masks register and shade offsets.
+#[derive(Debug)]
+struct WrapTable<T, const N: usize>([T; N]);
+
+impl<T: Copy, const N: usize> WrapTable<T, N> {
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "`index % N` is always inside the N-entry table"
+    )]
+    fn get(&self, index: usize) -> T {
+        self.0[index % N]
+    }
+
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "`index % N` is always inside the N-entry table"
+    )]
+    fn set(&mut self, index: usize, value: T) {
+        self.0[index % N] = value;
+    }
+}
+
 /// Computes the metric scale multiplier (meters per integer unit).
 #[must_use]
 pub fn compute_scale_factor(scale_index: usize) -> f32 {
-    let scale_raw = if scale_index < SOD_SCALE_TABLE.len() {
-        SOD_SCALE_TABLE[scale_index]
+    let scale_raw = if let Some(&scale) = SOD_SCALE_TABLE.get(scale_index) {
+        scale
     } else if scale_index > 0 {
         5.0 / 2.0f32.powi((scale_index - 1) as i32)
     } else {
@@ -238,6 +260,10 @@ fn sphere_polygons(
     FACES
         .iter()
         .map(|face| {
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "FACES holds only the corner indices 0..12"
+            )]
             let vertices: Vec<[f32; 3]> = face.iter().map(|&i| metric(corners[i])).collect();
             let normal = compute_polygon_normal(&vertices);
             RawPolygon {
@@ -336,8 +362,7 @@ fn dot_polygons(
         v(0.0, 0.0, -1.0),
     ];
     let mut out = Vec::with_capacity(8);
-    for i in 0..4 {
-        let (p, q) = (ring[i], ring[(i + 1) % 4]);
+    for (&p, &q) in ring.iter().zip(ring.iter().cycle().skip(1)) {
         for tri in [[top, q, p], [bot, p, q]] {
             let verts = tri.to_vec();
             let normal = compute_polygon_normal(&verts);
@@ -359,14 +384,10 @@ fn dot_polygons(
 /// Attempts edge cross product from first three vertices, falling back to Newell's method.
 #[must_use]
 pub(crate) fn compute_polygon_normal(vertices: &[[f32; 3]]) -> [f32; 3] {
-    if vertices.len() < 3 {
-        return [0.0, 1.0, 0.0];
-    }
-
     // Edge cross product from first three vertices
-    let v0 = vertices[0];
-    let v1 = vertices[1];
-    let v2 = vertices[2];
+    let &[v0, v1, v2, ..] = vertices else {
+        return [0.0, 1.0, 0.0];
+    };
 
     let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
     let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
@@ -386,10 +407,7 @@ pub(crate) fn compute_polygon_normal(vertices: &[[f32; 3]]) -> [f32; 3] {
     let mut nx = 0.0f32;
     let mut ny = 0.0f32;
     let mut nz = 0.0f32;
-    let n_v = vertices.len();
-    for i in 0..n_v {
-        let curr = vertices[i];
-        let nxt = vertices[(i + 1) % n_v];
+    for (curr, nxt) in vertices.iter().zip(vertices.iter().cycle().skip(1)) {
         nx += (curr[1] - nxt[1]) * (curr[2] + nxt[2]);
         ny += (curr[2] - nxt[2]) * (curr[0] + nxt[0]);
         nz += (curr[0] - nxt[0]) * (curr[1] + nxt[1]);
@@ -519,11 +537,11 @@ pub(crate) fn run_vm(
     };
 
     // 1024 3D vector registers per specification
-    let mut regs = [[0.0f32; 3]; 1024];
+    let mut regs = WrapTable([[0.0f32; 3]; 1024]);
     let mut cur_vert = [0.0f32; 3];
     let mut cur_color = 0u8;
     // Per-normal shade words (`PLAYONE` `work:0x7468`), indexed by byte offset / 2.
-    let mut shade_words = [0i32; 2048];
+    let mut shade_words = WrapTable([0i32; 2048]);
     // Line colour (`OP_LINECOL`); falls back to the fill colour until first set.
     let mut line_color: Option<u8> = None;
     // Pen position in metres for `OP_MOVETO` / `OP_ZLINETO`.
@@ -571,17 +589,17 @@ pub(crate) fn run_vm(
             OP_GETV => {
                 let reg_off = r.read_u16_le()?;
                 let reg_idx = ((reg_off / 12) & 1023) as usize;
-                cur_vert = regs[reg_idx];
+                cur_vert = regs.get(reg_idx);
             }
             OP_PUTV => {
                 let reg_off = r.read_u16_le()?;
                 let reg_idx = ((reg_off / 12) & 1023) as usize;
-                regs[reg_idx] = cur_vert;
+                regs.set(reg_idx, cur_vert);
             }
             OP_INTV => {
                 let reg_off = r.read_u16_le()?;
                 let reg_idx = ((reg_off / 12) & 1023) as usize;
-                let target = regs[reg_idx];
+                let target = regs.get(reg_idx);
                 cur_vert = [
                     f32::midpoint(cur_vert[0], target[0]),
                     f32::midpoint(cur_vert[1], target[1]),
@@ -591,7 +609,7 @@ pub(crate) fn run_vm(
             OP_ADDV => {
                 let reg_off = r.read_u16_le()?;
                 let reg_idx = ((reg_off / 12) & 1023) as usize;
-                let target = regs[reg_idx];
+                let target = regs.get(reg_idx);
                 cur_vert = [
                     cur_vert[0] + target[0],
                     cur_vert[1] + target[1],
@@ -601,7 +619,7 @@ pub(crate) fn run_vm(
             OP_SUBV => {
                 let reg_off = r.read_u16_le()?;
                 let reg_idx = ((reg_off / 12) & 1023) as usize;
-                let target = regs[reg_idx];
+                let target = regs.get(reg_idx);
                 cur_vert = [
                     cur_vert[0] - target[0],
                     cur_vert[1] - target[1],
@@ -640,14 +658,14 @@ pub(crate) fn run_vm(
                         let start_off = r.read_u16_le()?;
                         let start_reg = ((start_off / 12) & 1023) as usize;
 
-                        regs[(start_reg) & 1023] = [-dx, -dy, -dz];
-                        regs[(start_reg + 1) & 1023] = [-dx, -dy, dz];
-                        regs[(start_reg + 2) & 1023] = [dx, -dy, dz];
-                        regs[(start_reg + 3) & 1023] = [dx, -dy, -dz];
-                        regs[(start_reg + 4) & 1023] = [-dx, dy, -dz];
-                        regs[(start_reg + 5) & 1023] = [-dx, dy, dz];
-                        regs[(start_reg + 6) & 1023] = [dx, dy, dz];
-                        regs[(start_reg + 7) & 1023] = [dx, dy, -dz];
+                        regs.set((start_reg) & 1023, [-dx, -dy, -dz]);
+                        regs.set((start_reg + 1) & 1023, [-dx, -dy, dz]);
+                        regs.set((start_reg + 2) & 1023, [dx, -dy, dz]);
+                        regs.set((start_reg + 3) & 1023, [dx, -dy, -dz]);
+                        regs.set((start_reg + 4) & 1023, [-dx, dy, -dz]);
+                        regs.set((start_reg + 5) & 1023, [-dx, dy, dz]);
+                        regs.set((start_reg + 6) & 1023, [dx, dy, dz]);
+                        regs.set((start_reg + 7) & 1023, [dx, dy, -dz]);
                     }
                     2 => {
                         // Ground Quad
@@ -656,10 +674,10 @@ pub(crate) fn run_vm(
                         let start_off = r.read_u16_le()?;
                         let start_reg = ((start_off / 12) & 1023) as usize;
 
-                        regs[(start_reg) & 1023] = [-dx, 0.0, -dz];
-                        regs[(start_reg + 1) & 1023] = [-dx, 0.0, dz];
-                        regs[(start_reg + 2) & 1023] = [dx, 0.0, dz];
-                        regs[(start_reg + 3) & 1023] = [dx, 0.0, -dz];
+                        regs.set((start_reg) & 1023, [-dx, 0.0, -dz]);
+                        regs.set((start_reg + 1) & 1023, [-dx, 0.0, dz]);
+                        regs.set((start_reg + 2) & 1023, [dx, 0.0, dz]);
+                        regs.set((start_reg + 3) & 1023, [dx, 0.0, -dz]);
                     }
                     8 => {
                         // Flat Vertical Quad
@@ -668,10 +686,10 @@ pub(crate) fn run_vm(
                         let start_off = r.read_u16_le()?;
                         let start_reg = ((start_off / 12) & 1023) as usize;
 
-                        regs[(start_reg) & 1023] = [-dx, -dy, 0.0];
-                        regs[(start_reg + 1) & 1023] = [-dx, dy, 0.0];
-                        regs[(start_reg + 2) & 1023] = [dx, dy, 0.0];
-                        regs[(start_reg + 3) & 1023] = [dx, -dy, 0.0];
+                        regs.set((start_reg) & 1023, [-dx, -dy, 0.0]);
+                        regs.set((start_reg + 1) & 1023, [-dx, dy, 0.0]);
+                        regs.set((start_reg + 2) & 1023, [dx, dy, 0.0]);
+                        regs.set((start_reg + 3) & 1023, [dx, -dy, 0.0]);
                     }
                     4 => {
                         // Subobject template (`subobjs`): a single operand word.
@@ -695,7 +713,7 @@ pub(crate) fn run_vm(
                     let vx = f32::from(r.read_i16_le()?);
                     let vy = f32::from(r.read_i16_le()?);
                     let vz = f32::from(r.read_i16_le()?);
-                    regs[(start_reg + (i as usize)) & 1023] = [vx, vy, vz];
+                    regs.set((start_reg + (i as usize)) & 1023, [vx, vy, vz]);
                 }
             }
             OP_COLOR => {
@@ -708,7 +726,7 @@ pub(crate) fn run_vm(
             OP_MOVETO | OP_ZLINETO | OP_DOT => {
                 // [Hypothesis] one word: register byte offset (`/12` = register).
                 let reg_off = r.read_u16_le()?;
-                let raw_v = add3(regs[((reg_off / 12) & 1023) as usize], relpos);
+                let raw_v = add3(regs.get(((reg_off / 12) & 1023) as usize), relpos);
                 let p = [
                     raw_v[0] * scale_factor,
                     (raw_v[1] + f32::from(ground_y_offset)) * scale_factor,
@@ -740,7 +758,7 @@ pub(crate) fn run_vm(
                     for _ in 0..count {
                         let reg_off = r.read_u16_le()?;
                         let reg_idx = ((reg_off / 12) & 1023) as usize;
-                        let raw_v = add3(regs[reg_idx], relpos);
+                        let raw_v = add3(regs.get(reg_idx), relpos);
 
                         // Convert to metric coordinates per Invariant [I1]
                         let mx = raw_v[0] * scale_factor;
@@ -789,7 +807,7 @@ pub(crate) fn run_vm(
 
                     let mut poly_verts = Vec::with_capacity(count as usize);
                     for &r_idx in &reg_indices {
-                        let raw_v = add3(regs[r_idx], relpos);
+                        let raw_v = add3(regs.get(r_idx), relpos);
                         let mx = raw_v[0] * scale_factor;
                         let my = (raw_v[1] + f32::from(ground_y_offset)) * scale_factor;
                         let mz = raw_v[2] * scale_factor;
@@ -803,7 +821,7 @@ pub(crate) fn run_vm(
                     let level_sum: i32 = vertex_shades
                         .iter()
                         .map(|&off| {
-                            let mut s = shade_words[(off / 2) & 2047];
+                            let mut s = shade_words.get((off / 2) & 2047);
                             if sixteen {
                                 s >>= 1;
                             }
@@ -863,7 +881,7 @@ pub(crate) fn run_vm(
             }
             OP_MOVECENTRE => {
                 let reg_off = r.read_u16_le()?;
-                relpos = add3(relpos, regs[((reg_off / 12) & 1023) as usize]);
+                relpos = add3(relpos, regs.get(((reg_off / 12) & 1023) as usize));
             }
             OP_GOTO | OP_GOSUB => {
                 // Target = address of the operand word + signed byte offset (`siobj.cpp`).
@@ -914,7 +932,7 @@ pub(crate) fn run_vm(
             OP_SPHERE => {
                 let center_off = r.read_u16_le()?;
                 let radius = f32::from(r.read_u16_le()?);
-                let center = add3(regs[((center_off / 12) & 1023) as usize], relpos);
+                let center = add3(regs.get(((center_off / 12) & 1023) as usize), relpos);
                 polygons.extend(sphere_polygons(
                     center,
                     radius,
@@ -1020,7 +1038,7 @@ pub(crate) fn run_vm(
                         }
                     };
 
-                    regs[(start_reg + i) & 1023] = anchor.register_position();
+                    regs.set((start_reg + i) & 1023, anchor.register_position());
                 }
             }
             OP_SHADES => {
@@ -1038,7 +1056,7 @@ pub(crate) fn run_vm(
                     let dot =
                         (n[0] * SHADE_LIGHT[0] + n[1] * SHADE_LIGHT[1] + n[2] * SHADE_LIGHT[2])
                             >> 16;
-                    shade_words[(first / 2 + i) & 2047] = -(dot.clamp(-0x3FFF, 0x3FFF) as i32);
+                    shade_words.set((first / 2 + i) & 2047, -(dot.clamp(-0x3FFF, 0x3FFF) as i32));
                 }
             }
             OP_SHADE1 | OP_SHADE2 | OP_SHADE16 | OP_SHADE216 => {
@@ -1047,7 +1065,7 @@ pub(crate) fn run_vm(
                 // + adj)`, `adj = -2` when `base == 0x10`; the SHADE2 forms negate `s`.
                 let norm = r.read_u16_le()? as usize;
                 let base = i32::from(r.read_u16_le()? as u8);
-                let mut s = shade_words[(norm / 2) & 2047];
+                let mut s = shade_words.get((norm / 2) & 2047);
                 if matches!(opcode, OP_SHADE2 | OP_SHADE216) {
                     s = -s;
                 }
