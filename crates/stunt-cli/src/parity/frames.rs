@@ -5,11 +5,10 @@ use std::path::Path;
 
 use stunt_parity::Geometry;
 
-use stunt_render::{
-    ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH, rescale_mode13h_frame, rgb_to_luminance,
-};
+use stunt_render::{ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH};
 
 use super::score::RenderFrame;
+use super::ssim::{rescale_mode13h_frame, rgb_to_luminance};
 use crate::render_store::RenderStore;
 
 /// A 256-entry RGB palette.
