@@ -560,3 +560,30 @@ def test_seed_says_why_no_checkout_could_donate(tmp_path: Path) -> None:
         volume_clones=_clones,
     )
     assert alone == SeedOutcome("skipped", "no donor: no other checkout")
+
+
+def test_workspace_members_follow_path_dependencies(tmp_path: Path) -> None:
+    """Cargo trusts a path dependency's build by its sources' times too, listed member or not."""
+    root = tmp_path / "ws"
+    root.mkdir()
+    (root / "Cargo.toml").write_text(
+        '[package]\nname = "root"\n[workspace]\nmembers = ["crates/core"]\n'
+        '[workspace.dependencies]\nshared = { path = "shared" }\n'
+        '[patch.crates-io]\nserde = { path = "../vendor/serde" }\n',
+        encoding="utf-8",
+    )
+    manifests = {
+        "crates/core": '[package]\nname = "core"\n[dependencies]\nhelper = { path = "../helper" }\n'
+        '[target."cfg(windows)".dev-dependencies]\nwin = { path = "../../win" }\n'
+        'serde = "1"\n',
+        "crates/helper": '[package]\nname = "helper"\n[dependencies]\ncore = { path = "../core" }\n',
+        "shared": '[package]\nname = "shared"\n',
+        "win": '[package]\nname = "win"\n',
+        "../vendor/serde": '[package]\nname = "serde"\n',
+    }
+    for where, text in manifests.items():
+        (root / where).mkdir(parents=True)
+        (root / where / "Cargo.toml").write_text(text, encoding="utf-8")
+    assert workspace_members(root) == frozenset(
+        {"root", "core", "helper", "shared", "win", "serde"}
+    )

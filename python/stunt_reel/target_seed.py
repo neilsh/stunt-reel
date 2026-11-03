@@ -88,32 +88,72 @@ def uses_cargo_home(target: Path, cargo_home: Path) -> bool:
     return False
 
 
+#: The manifest tables, at the top level or under ``[target.<cfg>]``, that name dependencies.
+_DEPENDENCY_TABLES = ("dependencies", "dev-dependencies", "build-dependencies")
+
+
+def _path_dependencies(manifest: dict[str, object]) -> Iterator[str]:
+    """The ``path`` of every dependency, workspace dependency and patch *manifest* declares."""
+    tables = [manifest.get(name) for name in _DEPENDENCY_TABLES]
+    platforms = manifest.get("target")
+    if isinstance(platforms, dict):
+        tables += [
+            platform.get(name)
+            for platform in platforms.values()
+            if isinstance(platform, dict)
+            for name in _DEPENDENCY_TABLES
+        ]
+    workspace = manifest.get("workspace")
+    if isinstance(workspace, dict):
+        tables.append(workspace.get("dependencies"))
+    patches = manifest.get("patch")
+    if isinstance(patches, dict):
+        tables += patches.values()
+    for table in tables:
+        if isinstance(table, dict):
+            for spec in table.values():
+                if isinstance(spec, dict) and isinstance(spec.get("path"), str):
+                    yield spec["path"]
+
+
 def workspace_members(checkout: Path) -> frozenset[str]:
-    """The package names of *checkout*'s Cargo workspace.
+    """The package names of *checkout*'s Cargo workspace and every path dependency it reaches.
+
+    Cargo fingerprints a path dependency the way it does a member, by its sources' times, and
+    makes one under the workspace root a member without listing it; so both count.
 
     Raises ``OSError`` or ``ValueError`` (``tomllib.TOMLDecodeError`` is one) when a manifest
     cannot be read or names no package: a seed that missed a member would keep its fingerprints.
     """
     names: set[str] = set()
+    seen: set[str] = set()
+    pending: list[Path] = []
 
-    def add_package(manifest: dict[str, object], path: Path) -> None:
-        package = manifest.get("package")
-        name = package.get("name") if isinstance(package, dict) else None
-        if not isinstance(name, str) or not name:
-            raise ValueError(f"{path} names no package")
-        names.add(name)
+    def visit(path: Path, *, package: bool) -> dict[str, object]:
+        manifest = tomllib.loads(path.read_text(encoding="utf-8"))
+        if package or "package" in manifest:
+            table = manifest.get("package")
+            name = table.get("name") if isinstance(table, dict) else None
+            if not isinstance(name, str) or not name:
+                raise ValueError(f"{path} names no package")
+            names.add(name)
+        pending.extend(path.parent / found / "Cargo.toml" for found in _path_dependencies(manifest))
+        return manifest
 
     root = checkout / "Cargo.toml"
-    manifest = tomllib.loads(root.read_text(encoding="utf-8"))
-    if "package" in manifest:
-        add_package(manifest, root)
-    workspace = manifest.get("workspace", {})
+    seen.add(_norm(root.resolve()))
+    workspace = visit(root, package=False).get("workspace", {})
     patterns = workspace.get("members", []) if isinstance(workspace, dict) else None
     if not isinstance(patterns, list):
         raise ValueError(f"{root}: workspace.members is not a list")
-    for pattern in patterns:
-        for member in checkout.glob(f"{pattern}/Cargo.toml"):
-            add_package(tomllib.loads(member.read_text(encoding="utf-8")), member)
+    pending.extend(
+        member for pattern in patterns for member in checkout.glob(f"{pattern}/Cargo.toml")
+    )
+    while pending:
+        manifest = pending.pop()
+        if _norm(manifest.resolve()) not in seen:
+            seen.add(_norm(manifest.resolve()))
+            visit(manifest, package=True)
     return frozenset(names)
 
 
