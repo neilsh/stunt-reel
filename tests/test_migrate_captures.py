@@ -143,3 +143,12 @@ def test_a_migrated_reference_that_no_longer_matches_its_pin_stops(
     with pytest.raises(script.MigrationError, match="does not hash to its pin"):
         script.migrate(root, {"vault-ctry": "0" * 64}, apply=True)
     assert _tree(root) == before
+
+
+def test_a_file_named_like_a_run_stops_before_anything_changes(script: Any, tmp_path: Path) -> None:
+    root, pins = _root(tmp_path)
+    (root / "captures/flmonly-act1/frames/004").write_text("not a run", encoding="utf-8")
+    before = _tree(root)
+    with pytest.raises(script.MigrationError, match=r"004.*not a numbered run"):
+        script.migrate(root, pins, apply=True)
+    assert _tree(root) == before

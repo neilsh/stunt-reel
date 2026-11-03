@@ -84,7 +84,11 @@ def migrate(root: Path, pins: Mapping[str, str], *, apply: bool) -> list[str]:
             if name not in KINDS or not kind.is_dir():
                 notes.append(f"skip {kind.relative_to(root).as_posix()}: not a capture kind")
             elif capture_store.current(kind) is None:
-                strays = [item.name for item in kind.iterdir() if not _RUN.fullmatch(item.name)]
+                strays = [
+                    item.name
+                    for item in kind.iterdir()
+                    if not item.is_dir() or not _RUN.fullmatch(item.name)
+                ]
                 if strays:
                     raise MigrationError(
                         f"{kind} holds {', '.join(sorted(strays))}, which is not a numbered run; "
