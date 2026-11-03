@@ -742,6 +742,8 @@ def test_remove_tree_keeps_a_file_mode_when_its_directory_refuses(tmp_path: Path
     blob.chmod(0o444)
     locked.chmod(0o555)
     try:
+        if os.access(locked, os.W_OK):
+            pytest.skip("this process can write a 0555 directory (root or CAP_DAC_OVERRIDE)")
         with pytest.raises(PermissionError):
             worktree_init._remove_tree(tmp_path / "tree")
         assert stat.S_IMODE(blob.stat().st_mode) == 0o444
