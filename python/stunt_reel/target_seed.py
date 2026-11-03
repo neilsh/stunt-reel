@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
+from collections import Counter
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, BinaryIO, Literal
 
@@ -135,6 +136,18 @@ def drop_member_fingerprints(seeded: Path, members: frozenset[str]) -> None:
                 shutil.rmtree(entry)
 
 
+def donor_problem(checkout: Path, *, rustc_vv: str, cargo_home: Path) -> str | None:
+    """Why *checkout*'s target/ cannot seed another, or ``None`` when it can."""
+    target = checkout / "target"
+    if not (target / "debug" / ".fingerprint").is_dir():
+        return "not built"
+    if not built_by(target, rustc_vv):
+        return "built by another rustc"
+    if not uses_cargo_home(target, cargo_home):
+        return "built against another cargo home"
+    return None
+
+
 def rank_donors(
     checkouts: Sequence[Path], *, here: Path, rustc_vv: str, cargo_home: Path
 ) -> list[Path]:
@@ -151,13 +164,10 @@ def rank_donors(
         lock = None
     ranked: list[tuple[bool, float, Path]] = []
     for checkout in checkouts:
-        target = checkout / "target"
-        fingerprint = target / "debug" / ".fingerprint"
-        if not checkout.is_dir() or _norm(checkout.resolve()) == own:
+        fingerprint = checkout / "target" / "debug" / ".fingerprint"
+        if _norm(checkout.resolve()) == own:
             continue
-        if not fingerprint.is_dir():
-            continue
-        if not built_by(target, rustc_vv) or not uses_cargo_home(target, cargo_home):
+        if donor_problem(checkout, rustc_vv=rustc_vv, cargo_home=cargo_home) is not None:
             continue
         try:
             same_lock = lock is not None and (checkout / "Cargo.lock").read_bytes() == lock
@@ -289,7 +299,16 @@ def seed(
     local = [other for other in checkouts if os.path.splitdrive(str(other))[0].casefold() == drive]
     donors = rank_donors(local, here=checkout, rustc_vv=rustc_vv, cargo_home=cargo_home)
     if not donors:
-        return SeedOutcome("skipped", "no donor with this rustc and cargo home")
+        own = _norm(checkout.resolve())
+        reasons = Counter(
+            "on another drive"
+            if other not in local
+            else donor_problem(other, rustc_vv=rustc_vv, cargo_home=cargo_home) or "usable"
+            for other in checkouts
+            if _norm(other.resolve()) != own
+        )
+        why = ", ".join(f"{count} {reason}" for reason, count in sorted(reasons.items()))
+        return SeedOutcome("skipped", f"no donor: {why or 'no other checkout'}")
     try:
         members = workspace_members(checkout)
     except (OSError, ValueError) as error:

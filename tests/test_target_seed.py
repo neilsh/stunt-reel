@@ -526,3 +526,37 @@ def test_robocopy_keeps_timestamps_and_raises_on_failure(tmp_path: Path) -> None
     assert (tmp_path / "dst" / "deps" / "a.rlib").stat().st_mtime_ns == stamp
     with pytest.raises(OSError, match="exited"):
         robocopy(tmp_path / "absent", tmp_path / "dst2")
+
+
+def test_seed_says_why_no_checkout_could_donate(tmp_path: Path) -> None:
+    """One skip line per cause, so a check that rejects every donor shows which one."""
+    here = _fresh(tmp_path / "here")
+    others = [
+        _donor(tmp_path / "r1", rustc="rustc 1.98.0\n"),
+        _donor(tmp_path / "r2", rustc="rustc 1.98.0\n"),
+        _donor(tmp_path / "h", home=r"E:\packages\cargo"),
+        tmp_path / "unbuilt",
+    ]
+    expected = "no donor: 1 built against another cargo home, 2 built by another rustc, 1 not built"
+    if sys.platform == "win32":
+        drive = os.path.splitdrive(str(tmp_path))[0].upper()
+        others.append(Path(("Y:" if drive == "Z:" else "Z:") + r"\elsewhere"))
+        expected = expected.replace("not built", "not built, 1 on another drive")
+    out = seed(
+        here,
+        checkouts=[here, *others],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=_never,
+        volume_clones=_clones,
+    )
+    assert out == SeedOutcome("skipped", expected)
+    alone = seed(
+        here,
+        checkouts=[here],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=_never,
+        volume_clones=_clones,
+    )
+    assert alone == SeedOutcome("skipped", "no donor: no other checkout")
