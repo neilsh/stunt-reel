@@ -20,6 +20,11 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 File issues only into the user's own repo. Never file into `mattpocock/skills` (the repo these skills come from) unless the user owns it. In a fork, `gh` can default to the upstream parent, so before the first `gh issue create` of a session, check the target with `gh repo view --json nameWithOwner` and confirm it with the user if it is not their repo.
 
+## Review threads on a pull request
+
+- **List open threads**: `mise run pr-threads -- <number>` prints one line per unresolved thread (path, line, severity, title) and the comment id to reply to; `--all` keeps resolved ones. Reach for it before `gh pr view --comments`, whose CodeRabbit bodies run to tens of KB. Findings a bot puts in a review body instead of a thread ("Outside diff") are not threads: read those with `gh api repos/<owner>/<repo>/pulls/<n>/reviews --jq '.[-1].body'`.
+- **Reply in a thread**: `gh api -X POST repos/<owner>/<repo>/pulls/<n>/comments/<id>/replies -f body="..."`, with the id `pr-threads` printed.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
