@@ -30,6 +30,7 @@ and scored (``mise run batch-parity``) instead of a pinned reference; a film wit
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import subprocess
 import sys
@@ -93,12 +94,12 @@ def run(args: argparse.Namespace) -> int:
     """Run the metric bench, write ``bench.json``, and print the results."""
     film = args.film
     root = Path(args.data_root).resolve()
-    reference = references.reference_dir(root, film)
     recapture = args.recapture
     render = args.render or REPO_ROOT / parity_layout.render_dir(film)
     report = args.report or REPO_ROOT / parity_layout.report_dir(film) / "report.json"
     out = args.out or REPO_ROOT / "build" / "parity" / "bench" / film
-    document = run_bench(reference, recapture, render, report, args.seed, args.floor_render)
+    with references.open_reference(root, film) as reference:
+        document = run_bench(reference, recapture, render, report, args.seed, args.floor_render)
     out.mkdir(parents=True, exist_ok=True)
     (out / "bench.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     _print_rows(document)
@@ -160,23 +161,34 @@ def errors_make(args: argparse.Namespace) -> int:
     film = args.film
     root = Path(args.data_root).resolve()
     recapture = None
-    if args.batch:
-        if args.calibrate:
-            raise BenchError("--calibrate needs a pinned reference and recapture, not --batch")
-        reference = _batch_capture(root, film)
-        report_dir = REPO_ROOT / parity_layout.batch_film_dir(film) / "report"
-    else:
-        reference = references.reference_dir(root, film)
-        if args.calibrate:
-            if args.recapture is None:
-                raise BenchError("--calibrate needs --recapture DIR, a second capture of the film")
-            recapture = args.recapture
-        report_dir = REPO_ROOT / parity_layout.report_dir(film)
-    report = args.report or report_dir / "report.json"
-    out = _errors_out(args)
-    count = make_run(
-        film, reference, recapture, _render(args), report, out, CATEGORIES, args.seed, _revision()
-    )
+    with contextlib.ExitStack() as stack:
+        if args.batch:
+            if args.calibrate:
+                raise BenchError("--calibrate needs a pinned reference and recapture, not --batch")
+            reference = _batch_capture(root, film)
+            report_dir = REPO_ROOT / parity_layout.batch_film_dir(film) / "report"
+        else:
+            reference = stack.enter_context(references.open_reference(root, film))
+            if args.calibrate:
+                if args.recapture is None:
+                    raise BenchError(
+                        "--calibrate needs --recapture DIR, a second capture of the film"
+                    )
+                recapture = args.recapture
+            report_dir = REPO_ROOT / parity_layout.report_dir(film)
+        report = args.report or report_dir / "report.json"
+        out = _errors_out(args)
+        count = make_run(
+            film,
+            reference,
+            recapture,
+            _render(args),
+            report,
+            out,
+            CATEGORIES,
+            args.seed,
+            _revision(),
+        )
     print(f"[bench] wrote {count} sheets and brief.md into {out}", file=sys.stderr)
     return 0
 
@@ -237,11 +249,14 @@ def errors_score(args: argparse.Namespace) -> int:
 def errors_example(args: argparse.Namespace) -> int:
     """Write a category example sheet for the requested film tick."""
     root = Path(args.data_root).resolve()
-    if args.batch:
-        reference = _batch_capture(root, args.film)
-    else:
-        reference = references.reference_dir(root, args.film)
-    path = write_example(args.film, args.tick, args.category, reference, _render(args), CATEGORIES)
+    with contextlib.ExitStack() as stack:
+        if args.batch:
+            reference = _batch_capture(root, args.film)
+        else:
+            reference = stack.enter_context(references.open_reference(root, args.film))
+        path = write_example(
+            args.film, args.tick, args.category, reference, _render(args), CATEGORIES
+        )
     print(f"[bench] {path.name} is an example of {args.category}", file=sys.stderr)
     return 0
 

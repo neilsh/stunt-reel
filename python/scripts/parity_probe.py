@@ -24,6 +24,7 @@ cursor; the index ranges default to ``CTRY.FLM`` and are per film.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import struct
 import sys
 import zlib
@@ -329,13 +330,14 @@ def main() -> int:
             p.add_argument("--every", type=int, default=2, help="use every Nth scored frame")
             p.add_argument("--pad", type=int, default=25)
     args = parser.parse_args()
-    if args.reference is None and args.func is not cmd_summary:
-        try:
-            args.reference = references.reference_dir(REPO_ROOT, "ctry")
-        except references.ReferenceCaptureError as err:
-            print(f"parity_probe: {err}", file=sys.stderr)
-            return 1
-    result = args.func(args)
+    with contextlib.ExitStack() as stack:
+        if args.reference is None and args.func is not cmd_summary:
+            try:
+                args.reference = stack.enter_context(references.open_reference(REPO_ROOT, "ctry"))
+            except references.ReferenceCaptureError as err:
+                print(f"parity_probe: {err}", file=sys.stderr)
+                return 1
+        result = args.func(args)
     return 0 if result is None else int(result)
 
 

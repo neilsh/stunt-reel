@@ -28,7 +28,7 @@ import shutil
 import signal
 import subprocess
 import sys
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -108,19 +108,22 @@ class FilmJob:
     root: Path
 
 
-def reference_job(root: Path, name: str) -> FilmJob:
-    """The job for the ``references.toml`` row *name*: its verified reference capture.
+@contextlib.contextmanager
+def reference_job(root: Path, name: str) -> Iterator[FilmJob]:
+    """The job for the ``references.toml`` row *name*, holding its verified reference capture.
 
-    Raises :class:`references.ReferenceCaptureError` when the row, the capture or its hash is
-    wrong, and :class:`FilmInputError` when the corpus holds no ``.FLM`` of the row's film.
+    The job's ``capture`` is a snapshot that lasts as long as the block, so a render and its
+    score read the one capture whose hash was checked (ADR 0031). Raises
+    :class:`references.ReferenceCaptureError` when the row, the capture or its hash is wrong,
+    and :class:`FilmInputError` when the corpus holds no ``.FLM`` of the row's film.
     """
     pointer = references.read_reference(root, name)
     corpus = root / "corpus"
     film = batch_films.find(corpus, pointer.slug)
     if film is None:
         raise FilmInputError(f"no .FLM of {pointer.slug} under {corpus} (try --data-root)")
-    capture = references.reference_dir(root, name)
-    return FilmJob(pointer.film, pointer.slug, film.flm, capture, root)
+    with references.open_reference(root, name) as capture:
+        yield FilmJob(pointer.film, pointer.slug, film.flm, capture, root)
 
 
 def current_job(film: BatchFilm, root: Path) -> FilmJob | None:
@@ -349,8 +352,8 @@ def preflight(
         problems.append(f"missing input {root / SIDATA} (try --data-root)")
     for name in films:
         try:
-            job = reference_job(root, name)
-            all_archive.resolve_all(job.flm, root, job.slug)
+            with reference_job(root, name) as job:
+                all_archive.resolve_all(job.flm, root, job.slug)
         except (references.ReferenceCaptureError, FilmInputError, all_archive.ArchiveError) as err:
             problems.append(str(err))
     if build_required and locked(binary_path()):
@@ -527,16 +530,16 @@ def run_films(
     attempts: list[FilmScore | FilmFailure] = []
     for film in films:
         try:
-            job = reference_job(root, film)
-            if render:
-                attempts.append(run_film(job, workdir, env=env, retime=retime, run=run))
-            else:
-                request = None if retime is None else Retime(retime, workdir / f"{film}_retime")
-                attempts.append(
-                    score_film(
-                        job, workdir / film, workdir / f"{film}_report", retime=request, run=run
+            with reference_job(root, film) as job:
+                if render:
+                    attempts.append(run_film(job, workdir, env=env, retime=retime, run=run))
+                else:
+                    request = None if retime is None else Retime(retime, workdir / f"{film}_retime")
+                    attempts.append(
+                        score_film(
+                            job, workdir / film, workdir / f"{film}_report", retime=request, run=run
+                        )
                     )
-                )
         except (RuntimeError, ValueError, OSError, KeyError) as error:
             attempts.append(FilmFailure(film, error))
     return attempts

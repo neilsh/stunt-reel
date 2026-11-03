@@ -105,7 +105,8 @@ def test_render_film_asks_for_the_captured_tick_range(tmp_path: Path) -> None:
     vault = root / "corpus" / "stisldem" / "VAULT"
     out = tmp_path / "work" / "ctry"
     fake = FakeRun()
-    parity_pipeline.render_film(parity_pipeline.reference_job(root, "ctry"), out, run=fake)
+    with parity_pipeline.reference_job(root, "ctry") as job:
+        parity_pipeline.render_film(job, out, run=fake)
     assert fake.calls == [
         [
             str(parity_pipeline.binary_path()),
@@ -128,13 +129,8 @@ def test_render_film_asks_for_the_captured_tick_range(tmp_path: Path) -> None:
 def test_render_film_passes_the_environment_and_timeout_to_the_adapter(tmp_path: Path) -> None:
     root = reference_tree(tmp_path, [7, 9])
     fake = FakeRun()
-    parity_pipeline.render_film(
-        parity_pipeline.reference_job(root, "ctry"),
-        tmp_path / "out",
-        {"DBG_X": "1"},
-        timeout=60.0,
-        run=fake,
-    )
+    with parity_pipeline.reference_job(root, "ctry") as job:
+        parity_pipeline.render_film(job, tmp_path / "out", {"DBG_X": "1"}, timeout=60.0, run=fake)
     assert (fake.envs, fake.timeouts) == ([{"DBG_X": "1"}], [60.0])
 
 
@@ -158,15 +154,18 @@ def test_score_film_runs_parity_and_reads_the_report(tmp_path: Path) -> None:
     render, report = tmp_path / "ours", tmp_path / "report"
     _write_render(render)
     fake = FakeRun()
-    result = parity_pipeline.score_film(
-        parity_pipeline.reference_job(root, "ctry"), render, report, run=fake
-    )
+    with parity_pipeline.reference_job(root, "ctry") as job:
+        result = parity_pipeline.score_film(job, render, report, run=fake)
+    # The score reads the job's snapshot of the capture, never the store's path (ADR 0031).
+    assert job.capture.parent == (root / parity_layout.frames_path("vault-ctry")).parent
+    assert job.capture.name.startswith("frames.read-")
+    assert not job.capture.exists()
     assert fake.calls == [
         [
             str(parity_pipeline.binary_path()),
             "parity",
             "--reference",
-            str(root / parity_layout.frames_path("vault-ctry")),
+            str(job.capture),
             "--test",
             str(render),
             "--output",
@@ -179,8 +178,10 @@ def test_score_film_runs_parity_and_reads_the_report(tmp_path: Path) -> None:
 
 def test_score_film_refuses_a_missing_render_directory(tmp_path: Path) -> None:
     root = reference_tree(tmp_path, [])
-    job = parity_pipeline.reference_job(root, "ctry")
-    with pytest.raises(ValueError, match="not a render directory"):
+    with (
+        parity_pipeline.reference_job(root, "ctry") as job,
+        pytest.raises(ValueError, match="not a render directory"),
+    ):
         parity_pipeline.score_film(job, tmp_path / "missing", tmp_path / "report")
 
 
@@ -189,8 +190,10 @@ def test_score_film_refuses_a_render_that_misses_a_captured_tick(tmp_path: Path)
     render = tmp_path / "ours"
     _write_render(render, [7])
     fake = FakeRun()
-    job = parity_pipeline.reference_job(root, "ctry")
-    with pytest.raises(ValueError, match="no render planes"):
+    with (
+        parity_pipeline.reference_job(root, "ctry") as job,
+        pytest.raises(ValueError, match="no render planes"),
+    ):
         parity_pipeline.score_film(job, render, tmp_path / "report", run=fake)
     assert fake.calls == []
 

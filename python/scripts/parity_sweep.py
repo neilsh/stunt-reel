@@ -180,7 +180,7 @@ def write_crops(
     written: list[Path] = []
     for name in films:
         report_json = workdir / f"{name}_report" / "report.json"
-        reference, render = references.reference_dir(root, name), renders[name]
+        render = renders[name]
         store = RenderStore(render)
         geometry = store.record.geometry
         best: tuple[int, int, int, list[int]] | None = None
@@ -196,7 +196,8 @@ def write_crops(
         _, ordinal, film_tick, pixels = best
         out = workdir / f"crop_{name}.png"
         box = padded_box(pixels, CROP_PAD, geometry)
-        parity_probe.make_crop(reference, render, ordinal, film_tick, box, 3, out)
+        with references.open_reference(root, name) as reference:
+            parity_probe.make_crop(reference, render, ordinal, film_tick, box, 3, out)
         written.append(out)
     return written
 
@@ -243,11 +244,8 @@ def _first_line(error: Exception, limit: int) -> str:
 
 def with_actor_iou(attempt: FilmScore, root: Path) -> Score:
     """Adds ``parity_probe``'s actor-window IoU to one pipeline score."""
-    actor, _ = parity_probe.actor_iou(
-        attempt.report / "report.json",
-        references.reference_dir(root, attempt.film),
-        attempt.render,
-    )
+    with references.open_reference(root, attempt.film) as reference:
+        actor, _ = parity_probe.actor_iou(attempt.report / "report.json", reference, attempt.render)
     return Score(attempt.score.ssim, attempt.score.iou, actor)
 
 

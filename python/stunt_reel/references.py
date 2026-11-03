@@ -4,15 +4,18 @@ A film has one frame capture, ``captures/<slug>/frames/``, and a new capture rep
 (ADR 0028).  Whether that capture is the film's *reference* is not a property of the data
 root: the committed ``research/parity/references.toml`` pins it by content hash (ADR 0029), so
 a replaced reference is a loud mismatch in every worktree until a reviewed commit repins it.
-This module reads that file and hands the capture directory back, or says in one sentence why
-it cannot: the file names no reference, the capture is absent on this machine, or its content
-is not what the file recorded.  Nothing here prints, chooses an exit code, or writes.
+This module reads that file and holds a snapshot of the capture for the caller, or says in one
+sentence why it cannot: the file names no reference, the capture is absent on this machine, or
+its content is not what the file recorded.  The hash is checked on the snapshot, which a later
+swap cannot change, so a caller that reads for minutes reads the capture it validated
+(ADR 0031).  Nothing here prints or chooses an exit code; the snapshot is the only write.
 """
 
 from __future__ import annotations
 
 import hashlib
 import tomllib
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -20,14 +23,15 @@ from stunt_reel import capture_store, parity_layout
 from stunt_reel.dataroot import REPO_ROOT
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 __all__ = [
     "Reference",
     "ReferenceCaptureError",
     "capture_digest",
+    "open_reference",
     "read_reference",
-    "reference_dir",
     "reference_films",
 ]
 
@@ -108,21 +112,29 @@ def read_reference(root: Path, film: str) -> Reference:
     return Reference(name, slug, entry["sha256"])
 
 
-def reference_dir(root: Path, film: str) -> Path:
-    """The verified directory of *film*'s reference capture under *root*."""
+@contextmanager
+def open_reference(root: Path, film: str) -> Iterator[Path]:
+    """Hold a verified snapshot of *film*'s reference capture under *root* for the block.
+
+    Read the capture through the yielded directory, never through the store's path: a
+    ``mise run capture-ref`` may swap a new capture there while the block runs.
+    """
     pointer = read_reference(root, film)
     directory = root / parity_layout.frames_path(pointer.slug)
-    if capture_store.current(directory) is None:
-        raise ReferenceCaptureError(
-            f"the reference capture of {pointer.film} is absent on this machine ({directory}); "
-            f"run `mise run capture-ref` and promote it in "
-            f"{parity_layout.REFERENCES_FILE.as_posix()}, or restore it"
-        )
-    found = capture_digest(directory)
-    if found != pointer.sha256:
-        raise ReferenceCaptureError(
-            f"the capture of {pointer.film} has hash {found[:12]}, but "
-            f"{parity_layout.REFERENCES_FILE.as_posix()} records {pointer.sha256[:12]}; "
-            "it was replaced, so repin it in a reviewed commit or restore it"
-        )
-    return directory
+    with ExitStack() as stack:
+        try:
+            held = stack.enter_context(capture_store.snapshot(directory))
+        except ValueError as err:
+            raise ReferenceCaptureError(
+                f"the reference capture of {pointer.film} is absent on this machine "
+                f"({directory}); run `mise run capture-ref` and promote it in "
+                f"{parity_layout.REFERENCES_FILE.as_posix()}, or restore it"
+            ) from err
+        found = capture_digest(held)
+        if found != pointer.sha256:
+            raise ReferenceCaptureError(
+                f"the capture of {pointer.film} has hash {found[:12]}, but "
+                f"{parity_layout.REFERENCES_FILE.as_posix()} records {pointer.sha256[:12]}; "
+                "it was replaced, so repin it in a reviewed commit or restore it"
+            )
+        yield held
