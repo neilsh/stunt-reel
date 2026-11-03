@@ -13,7 +13,7 @@ use super::score::RenderFrame;
 use crate::render_store::RenderStore;
 
 /// A 256-entry RGB palette.
-type Palette = Vec<(u8, u8, u8)>;
+use crate::render_store::{Palette, palette_rgb};
 
 /// Loads a captured frame: its palette-index plane and its captured palette.
 pub(super) fn load_reference(
@@ -27,10 +27,10 @@ pub(super) fn load_reference(
 }
 
 /// Aspect-corrected luminance of an index plane seen through `palette`.
-pub(super) fn reference_luminance(indices: &[u8], palette: &[(u8, u8, u8)]) -> Vec<f32> {
+pub(super) fn reference_luminance(indices: &[u8], palette: &Palette) -> Vec<f32> {
     let mut reference_rgb = Vec::with_capacity(MODE13H_WIDTH * MODE13H_HEIGHT * 3);
     for &index in indices {
-        let (r, g, b) = palette[index as usize];
+        let (r, g, b) = palette_rgb(palette, index);
         reference_rgb.extend_from_slice(&[r, g, b]);
     }
     rescale_mode13h_frame(
@@ -96,15 +96,12 @@ fn read_palette(path: &Path) -> Result<Palette, String> {
     let text = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let raw: Vec<[i64; 3]> =
         serde_json::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
-    if raw.len() != 256 {
-        return Err(format!(
+    let raw: [[i64; 3]; 256] = raw.try_into().map_err(|raw: Vec<_>| {
+        format!(
             "{} holds {} palette entries, expected 256",
             path.display(),
             raw.len()
-        ));
-    }
-    Ok(raw
-        .into_iter()
-        .map(|entry| (entry[0] as u8, entry[1] as u8, entry[2] as u8))
-        .collect())
+        )
+    })?;
+    Ok(raw.map(|[r, g, b]| (r as u8, g as u8, b as u8)))
 }

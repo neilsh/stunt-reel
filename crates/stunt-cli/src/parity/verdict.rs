@@ -122,19 +122,30 @@ pub(super) fn frame_verdict(
     let mut luma_changed = 0usize;
     let mut changed = vec![false; pixels];
     let mut by_layer: BTreeMap<&'static str, usize> = LAYER_KEYS.iter().map(|k| (*k, 0)).collect();
-    for (i, flag) in changed.iter_mut().enumerate() {
-        let idx = before.indices[i] != after.indices[i];
+    for plane in [
+        before.indices.len(),
+        before.luminance.len(),
+        after.luminance.len(),
+        after.layers.len(),
+    ] {
+        assert_eq!(plane, pixels, "both renders' planes cover the same pixels");
+    }
+    let pairs = (before.indices.iter().zip(&after.indices))
+        .zip(before.luminance.iter().zip(&after.luminance))
+        .zip(&after.layers);
+    for (flag, (((b_idx, a_idx), (b_luma, a_luma)), &layer)) in changed.iter_mut().zip(pairs) {
+        let idx = b_idx != a_idx;
         // Exact inequality on purpose: the numpy copy compares its float32 planes with `!=`.
         #[allow(
             clippy::float_cmp,
             reason = "bit-for-bit parity with the numpy float32 compare"
         )]
-        let luma = before.luminance[i] != after.luminance[i];
+        let luma = b_luma != a_luma;
         idx_changed += usize::from(idx);
         luma_changed += usize::from(luma);
         if idx || luma {
             *flag = true;
-            *by_layer.entry(layer_key(after.layers[i])).or_default() += 1;
+            *by_layer.entry(layer_key(layer)).or_default() += 1;
         }
     }
     let total = pixels as f32;
@@ -170,6 +181,10 @@ pub(super) fn frame_verdict(
         )
     };
     let (before_windows, after_windows) = (scores(&before_rescaled), scores(&after_rescaled));
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "windows were scored over the same 320x240 plane `changed_plane` covers"
+    )]
     let touched = |x: usize, y: usize| {
         (y..y + SSIM_WINDOW).any(|row| {
             let start = row * MODE13H_WIDTH + x;
@@ -330,7 +345,7 @@ mod tests {
     fn reference() -> ReferenceFrame {
         ReferenceFrame {
             indices: (0..PIXELS).map(plane_index).collect(),
-            palette: (0..=255u8).map(get_palette_rgb).collect(),
+            palette: std::array::from_fn(|i| get_palette_rgb(i as u8)),
         }
     }
 

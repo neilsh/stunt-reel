@@ -382,7 +382,7 @@ fn credits_frames(
         indices: (0..pixels)
             .map(|i| if ink_at(i) { ink } else { background })
             .collect(),
-        palette: (0..=255u8).map(get_palette_rgb).collect(),
+        palette: std::array::from_fn(|i| get_palette_rgb(i as u8)),
     };
     let (r, g, b) = get_palette_rgb(background);
     let luminance = stunt_render::rgb_to_luminance(&[r, g, b])[0];
