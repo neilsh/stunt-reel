@@ -20,22 +20,34 @@ _PLATFORM_READS = frozenset({("sys", "platform"), ("os", "name"), ("platform", "
 _WINDOWS_MODULES = frozenset({"msvcrt", "winreg", "_winapi"})
 
 
-def _is_platform_check(node: ast.Attribute | ast.Import | ast.ImportFrom) -> bool:
-    if isinstance(node, ast.Attribute):
-        return isinstance(node.value, ast.Name) and (node.value.id, node.attr) in _PLATFORM_READS
-    if isinstance(node, ast.Import):
-        return any(alias.name in _WINDOWS_MODULES for alias in node.names)
-    return node.module in _WINDOWS_MODULES
-
-
 def _platform_checks(tree: ast.Module) -> list[int]:
-    """Lines where *tree* reads the platform or imports a Windows-only module."""
-    return sorted(
+    """Lines where *tree* reads the platform or imports a Windows-only module.
+
+    A read goes through whatever name the module was imported as, so ``import sys as
+    system`` makes ``system.platform`` a check, and ``from os import name`` is one itself.
+    """
+    modules: dict[str, str] = {}
+    lines: list[int] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in _WINDOWS_MODULES:
+                    lines.append(node.lineno)
+                root = alias.name.split(".")[0]
+                modules[alias.asname or root] = alias.name if alias.asname else root
+        elif isinstance(node, ast.ImportFrom) and (
+            node.module in _WINDOWS_MODULES
+            or any((node.module, alias.name) in _PLATFORM_READS for alias in node.names)
+        ):
+            lines.append(node.lineno)
+    lines.extend(
         node.lineno
         for node in ast.walk(tree)
-        if isinstance(node, (ast.Attribute, ast.Import, ast.ImportFrom))
-        and _is_platform_check(node)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and (modules.get(node.value.id), node.attr) in _PLATFORM_READS
     )
+    return sorted(lines)
 
 
 def _is_windows_mark(node: ast.AST) -> bool:
@@ -66,12 +78,16 @@ def test_the_detector_sees_each_kind_of_platform_check() -> None:
         "import msvcrt\n"
         "from winreg import HKEY_CURRENT_USER\n"
         "import os, platform, sys\n"
+        "import sys as system\n"
+        "from os import name as os_name\n"
         "A = sys.platform == 'win32'\n"
         "B = os.name == 'nt'\n"
         "C = platform.system()\n"
-        "D = 'sys.platform in a string is not a check'\n"
+        "D = system.platform\n"
+        "E = 'sys.platform in a string is not a check'\n"
+        "F = system.path\n"
     )
-    assert _platform_checks(ast.parse(source)) == [1, 2, 4, 5, 6]
+    assert _platform_checks(ast.parse(source)) == [1, 2, 5, 6, 7, 8, 9]
 
 
 def test_only_a_module_level_mark_counts() -> None:
