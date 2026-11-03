@@ -2,7 +2,8 @@
 
 ## Status
 
-accepted; implemented
+accepted; implemented. Amended 2026-11-02: `doc` moved from the `rust-build` lane to `rust-lint`
+(below).
 
 ## Context
 
@@ -31,11 +32,16 @@ under its own `target/`, and die with it.
 worker per CPU. A lane is the unit of an exclusively held resource:
 
 - `rust-lint` owns `target/check` ([mise.toml](../../mise.toml)), so the check-profile compile runs
-  beside the build-profile one instead of after it.
+  beside the build-profile one instead of after it. `doc` follows `lint-rust` there: rustdoc reads
+  its dependencies' metadata, the very units clippy has just built, where in `target/` it built a
+  second copy (192 MB). Measured cold on 2026-11-02, `doc` took 3.6 s after clippy's 49 s, and
+  the lane still finished well inside `test-rust`'s 78 s. The rendered docs move with it, from
+  `target/doc` to `target/check/doc`; a `target/doc` left by an older gate is no longer written
+  and can be deleted.
 - `check-rust-matrix` owns `target/matrix`, so the no-default-features variant neither waits for
   nor invalidates the all-features artifacts under `target/`.
-- `test-rust` then `doc` share the `rust-build` lane: both need the build-profile artifacts in
-  `target/`.
+- `test-rust` owns the `rust-build` lane and `target/`.
+- A test holds the rule: cargo steps share a lane exactly when they share a target directory.
 - `fmt-check-rust` and each Python step own a lane; none of them touches a cargo target directory.
 - `STEPS` remains the only step list, so `check`, `check-rust` and `check-py` still cannot run
   different gates ([ADR 0014](0014-the-gate-is-one-ordered-script.md)).

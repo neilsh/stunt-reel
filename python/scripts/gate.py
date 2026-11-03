@@ -51,13 +51,13 @@ STEPS: dict[str, list[str]] = {
 # Each step belongs to one lane. Steps in the same lane run in order, one at a time; lanes run
 # concurrently. The lane is the unit of an exclusively held resource, so a cargo step shares its
 # lane with every other step that builds into the same target directory: cargo holds an exclusive
-# lock there, and two lanes on one directory would only serialise on it. A task that sets its own
-# CARGO_TARGET_DIR in mise.toml (lint-rust, check-rust-matrix) therefore owns its lane.
+# lock there, and two lanes on one directory would only serialise on it. lint-rust and doc share
+# target/check and so one lane; check-rust-matrix alone builds target/matrix and owns its lane.
 STEP_LANES: dict[str, str] = {
     "fmt-check-rust": "rust-fmt",
     "lint-rust": "rust-lint",
     "test-rust": "rust-build",
-    "doc": "rust-build",
+    "doc": "rust-lint",
     "check-rust-matrix": "rust-matrix",
     "fmt-check-py": "py-fmt",
     "lint-py": "py-lint",
