@@ -16,6 +16,8 @@ import subprocess
 import tomllib
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "python" / "scripts"
 
@@ -152,3 +154,105 @@ def test_the_shared_tool_cache_is_ignored_and_excluded() -> None:
     assert _excluded(".cache", _ruff_excludes()), (
         ".cache is a shared tool cache; ruff's exclude must cover it"
     )
+
+
+def test_cargo_home_is_one_absolute_path() -> None:
+    """Every cargo task names the shared cache alike, so a cloned target/ stays fresh (ADR 0030)."""
+    config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert "--git-common-dir" in config["vars"]["cargo_home"]
+    homes = {
+        name: task["env"]["CARGO_HOME"]
+        for name, task in config["tasks"].items()
+        if "CARGO_HOME" in task.get("env", {})
+    }
+    assert homes, "no task sets CARGO_HOME"
+    assert set(homes.values()) == {"{{vars.cargo_home}}"}, homes
+
+
+def test_seeding_tasks_pass_the_cargo_home() -> None:
+    """init and seed judge donors by the CARGO_HOME every cargo task uses (ADR 0030)."""
+    config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
+    for name in ("init", "seed"):
+        assert config["tasks"][name]["env"]["STUNT_CARGO_HOME"] == "{{vars.cargo_home}}", name
+
+
+def test_every_task_that_builds_names_the_shared_cargo_home() -> None:
+    """A script that runs cargo, itself or through parity_pipeline, gets the shared cache.
+
+    Without it cargo falls back to the user's CARGO_HOME and builds a second copy of every
+    dependency (ADR 0030).
+    """
+    config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
+    builds = {
+        path.name
+        for path in SCRIPTS.glob("*.py")
+        if path.name != "worktree_init.py"
+        and any(
+            needle in path.read_text(encoding="utf-8") for needle in ('"cargo"', "parity_pipeline")
+        )
+    }
+    missing = [
+        name
+        for name, task in config["tasks"].items()
+        if any(script in str(task.get("run", "")) for script in builds)
+        and task.get("env", {}).get("CARGO_HOME") != "{{vars.cargo_home}}"
+    ]
+    assert not missing, missing
+
+
+def test_build_at_sets_cargo_home() -> None:
+    """build-at builds into its own target dir but must still name the shared cache."""
+    config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert config["tasks"]["build-at"]["env"]["CARGO_HOME"] == "{{vars.cargo_home}}"
+
+
+def test_mise_config_renders_outside_a_git_checkout() -> None:
+    """A checkout without git (a source archive, git's dubious-ownership refusal) still runs mise."""
+    mise = shutil.which("mise")
+    if mise is None:
+        pytest.skip("mise is not on PATH")
+    env = {**os.environ, "GIT_DIR": str(REPO_ROOT / "no-such-git-dir")}
+    result = subprocess.run(  # noqa: S603 - fixed argv, mise resolved from PATH
+        [mise, "vars"],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    homes = [
+        line.split()[1] for line in result.stdout.splitlines() if line.startswith("cargo_home")
+    ]
+    assert homes == [f"{REPO_ROOT}/.cache/cargo"], result.stdout
+
+
+@pytest.mark.parametrize("with_git", [True, False])
+def test_cargo_home_renders_in_a_checkout_whose_path_has_an_ampersand(
+    tmp_path: Path, *, with_git: bool
+) -> None:
+    """The shell runs a `&` in a path it is handed, so the checkout path never reaches it."""
+    mise = shutil.which("mise")
+    git = shutil.which("git")
+    if mise is None or git is None:
+        pytest.skip("mise or git is not on PATH")
+    checkout = tmp_path / "r&d"
+    checkout.mkdir()
+    config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
+    template = config["vars"]["cargo_home"].replace("\\", "\\\\").replace('"', '\\"')
+    (checkout / "mise.toml").write_text(f'[vars]\ncargo_home = "{template}"\n', encoding="utf-8")
+    env = {**os.environ, "MISE_TRUSTED_CONFIG_PATHS": str(checkout)}
+    if with_git:
+        subprocess.run([git, "init", "-q", str(checkout)], check=True)  # noqa: S603 - fixed argv
+    else:
+        env["GIT_DIR"] = str(checkout / "no-such-git-dir")
+    result = subprocess.run(  # noqa: S603 - fixed argv, mise resolved from PATH
+        [mise, "vars"], cwd=checkout, env=env, capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    homes = [
+        Path(line.split(None, 1)[1].rsplit(None, 1)[0])
+        for line in result.stdout.splitlines()
+        if line.startswith("cargo_home")
+    ]
+    assert homes == [checkout / ".cache" / "cargo"], result.stdout

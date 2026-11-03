@@ -13,6 +13,11 @@ builds on one artifact directory took 26.6 s against 13.4 s on separate ones.
 The shared cache is writable, unlike the data root, because downloaded crates
 and uv artifacts are disposable; `rm -rf .cache` is the reset.
 
+Amended by [ADR 0030](0030-new-worktrees-seed-target-by-block-clone.md): the cargo tasks name
+that cache by the primary checkout's absolute path rather than through each checkout's `.cache`
+junction, so a `target/` cloned from another checkout keeps its dependencies fresh. `UV_CACHE_DIR`
+and the junction are unchanged.
+
 ## What enforces this
 
 - **The link.** [`ensure_cache_link`](../../python/stunt_reel/dataroot.py) runs

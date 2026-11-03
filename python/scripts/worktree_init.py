@@ -14,6 +14,8 @@ need selective rotation.  ``reap`` removes merged worktrees, including branches 
 request was squash-merged (found with ``gh``): it unlinks every link
 into the data root, proves none remain, and only then lets git delete the checkout,
 because git's worktree removal has recursed through Windows junctions on some builds.
+``init`` (and ``seed`` on its own) also clones another checkout's built ``target/`` into an
+empty one on a ReFS volume, so the first build compiles only the workspace crates (ADR 0030).
 """
 
 from __future__ import annotations
@@ -53,6 +55,7 @@ from stunt_reel.dataroot import (
     shared_target,
     sweep_orphan_envs,
 )
+from stunt_reel.target_seed import SeedOutcome, seed
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -231,6 +234,7 @@ def _init(migrate: bool) -> int:
     stale = sweep_orphan_envs()
     if stale:
         print(f"  - {len(stale)} environment(s) whose checkout is gone")
+    print(_seed_target())
     environment = env_target(REPO_ROOT) if venv is not None else None
     if environment is not None and _uv_venv(environment):
         return 1
@@ -249,6 +253,67 @@ def _init(migrate: bool) -> int:
         print(f"\n{problems} path(s) unresolved; see corpus/README.md for the archive layout")
         return 1
     return 0
+
+
+def _rustc_vv() -> str | None:
+    """``rustc -vV``, or ``None`` when rustc is not on PATH or fails."""
+    rustc = shutil.which("rustc")
+    if rustc is None:
+        return None
+    result = subprocess.run(  # noqa: S603 - fixed argv, rustc resolved from PATH
+        [rustc, "-vV"], capture_output=True, text=True, check=False
+    )
+    return result.stdout if result.returncode == 0 else None
+
+
+#: How a failed seed's line starts; ``mise run seed`` exits nonzero on it, init carries on.
+_SEED_FAILED = "  ! seed: "
+
+
+def _cargo_home() -> Path:
+    """The CARGO_HOME cargo tasks use: mise passes it in; run directly, the shared cache."""
+    named = os.environ.get("STUNT_CARGO_HOME")
+    return Path(named) if named else cache_root() / "cargo"
+
+
+def _cargo_home_warning(cargo_home: Path) -> str | None:
+    """A line for a CARGO_HOME that names the shared cache by another path than the primary's.
+
+    mise falls back to the checkout's own ``.cache/cargo`` where git cannot name the primary
+    checkout; that is the same cache through this checkout's link, but Cargo fingerprints the
+    path, so every dependency builds again here and no donor qualifies (ADR 0030).
+    """
+    shared = cache_root() / "cargo"
+    if os.path.normcase(os.path.normpath(cargo_home)) == os.path.normcase(os.path.normpath(shared)):
+        return None
+    return f"  ! CARGO_HOME {cargo_home} is not {shared}: every dependency rebuilds here"
+
+
+def _seed_target() -> str:
+    """Seed this checkout's empty target/ from another checkout; a line saying what happened,
+    and a second when the cargo home differs from the shared one."""
+    cargo_home = _cargo_home()
+    try:
+        rustc_vv = _rustc_vv()
+        if rustc_vv is None:
+            outcome = SeedOutcome("skipped", "rustc not on PATH")
+        else:
+            outcome = seed(
+                REPO_ROOT,
+                checkouts=[worktree.path for worktree in _worktrees(REPO_ROOT)],
+                rustc_vv=rustc_vv,
+                cargo_home=cargo_home,
+            )
+    except Exception as error:
+        outcome = SeedOutcome("failed", f"{type(error).__name__}: {error}")
+    if outcome.status == "seeded":
+        line = f"  + target/ seeded {outcome.detail}"
+    elif outcome.status == "skipped":
+        line = f"  - target/ not seeded: {outcome.detail}"
+    else:
+        line = f"{_SEED_FAILED}{outcome.detail}"
+    warning = _cargo_home_warning(cargo_home)
+    return line if warning is None else f"{line}\n{warning}"
 
 
 def _tree_footprint(path: Path) -> tuple[int, int]:
@@ -881,6 +946,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="convert an old-layout shared root, then move existing in-checkout data into it before linking",
     )
+    commands.add_parser("seed", help="clone another checkout's built target/ into an empty one")
     clean = commands.add_parser("clean", help="report or remove per-worktree build outputs")
     clean.add_argument("--yes", action="store_true", help="actually remove them")
     clean.add_argument(
@@ -917,6 +983,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "init":
         return _init(bool(args.migrate))
+    if args.command == "seed":
+        line = _seed_target()
+        print(line)
+        return 1 if line.startswith(_SEED_FAILED) else 0
     if args.command == "reap":
         return _reap(
             bool(args.yes),

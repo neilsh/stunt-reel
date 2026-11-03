@@ -40,7 +40,7 @@ checksum = "sha256:6835621f4731235651a886ef67c4fc40693454a6386f0e5ab5c0570965a18
 # as venvs/<checkout> (ADR 0019) so uv hardlinks the packages out of the cache
 # instead of copying 68 MiB into the checkout at every fresh worktree. Build
 # outputs and the Python tool caches stay per worktree. CARGO_HOME is set per
-# cargo task
+# cargo task, to vars.cargo_home below,
 # instead of here: mise installs its rustup shim into $CARGO_HOME, and a rustup
 # inside this tree would run at the tree's low integrity and fail to reach the
 # user's RUSTUP_HOME (ADR 0013).
@@ -54,6 +54,14 @@ PYTHONUTF8 = "1"
 TMP = "{{config_root}}/.cache/tmp"
 TEMP = "{{config_root}}/.cache/tmp"
 
+[vars]
+# One absolute path in every checkout: Cargo fingerprints a dependency by its CARGO_HOME path,
+# so a target/ cloned from another checkout is fresh only if both name the cache alike (ADR 0030).
+# git's common directory is the primary checkout's .git from any worktree. Where git refuses (no
+# .git, dubious ownership) the checkout's own cache stands in; config_root stays out of the shell
+# command, which would run a `&` in the path.
+cargo_home = "{% set common = exec(command='git rev-parse --path-format=absolute --git-common-dir || echo -') %}{% if common == \"-\" %}{{ config_root }}{% else %}{{ common | dirname }}{% endif %}/.cache/cargo"
+
 [tasks.play]
 description = "Play a film in PLAYONE.EXE on dosbox-automation (mise run play -- --film corpus/stisldem/VAULT/INTRO.FLM)"
 run = "uv run python python/scripts/play.py"
@@ -64,8 +72,14 @@ description = "Link the shared data root and the cached Python environment into 
 # runs uv sync, so the environment is hardlinked out of the shared cache rather than
 # copied; uv run would create one in the checkout before the link exists (ADR 0019).
 # PYTHONPATH names the package source, which is all the linker imports.
+# STUNT_CARGO_HOME is the cache path the seed judges donors by: the one cargo tasks use.
 run = "python python/scripts/worktree_init.py init"
-env = { PYTHONPATH = "{{config_root}}/python" }
+env = { PYTHONPATH = "{{config_root}}/python", STUNT_CARGO_HOME = "{{vars.cargo_home}}" }
+
+[tasks.seed]
+description = "Clone a built target/ from another checkout into this one's empty target/ (ADR 0030)"
+run = "python python/scripts/worktree_init.py seed"
+env = { PYTHONPATH = "{{config_root}}/python", STUNT_CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.clean]
 description = "Report this worktree's build outputs; remove them with --yes (mise run clean -- --yes), or rotate parity render trees only (mise run clean -- --parity --keep 3 --yes)"
@@ -78,6 +92,7 @@ run = "uv run python python/scripts/worktree_init.py reap"
 [tasks.build-at]
 description = "Build stunt-cli from a git revision with an isolated target dir (mise run build-at -- <rev> <out>)"
 run = "uv run python python/scripts/build_at.py"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.capture-ref]
 description = "Capture PLAYONE.EXE Mode 13h frames for visual parity into captures/<film>/frames/ (default CTRY; mise run capture-ref -- --film corpus/stisldem/VAULT/INTRO.FLM)"
@@ -106,12 +121,12 @@ run = "uv run python python/scripts/migrate_captures.py"
 [tasks.sweep]
 description = "Candidate sweep: render and score DBG_* variants on CTRY and INTRO (mise run sweep -- --var DBG_X=0,1 [--films ctry] [--probe iou] [--keep-best] [--no-build] [--reuse DIR] [--retime N])"
 run = "uv run python python/scripts/parity_sweep.py"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.parity]
 description = "Parity baseline: render both films with the current binary and print the headline scores (mise run parity -- [--films ctry,intro] [--no-build] [--no-render] [--reuse DIR] [--retime N])"
 run = "uv run python python/scripts/parity_run.py"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.parity-bench]
 description = "Parity metric bench: plant faults, score metrics against recapture noise (mise run parity-bench -- run --film ctry [--render DIR] [--recapture ID] | plant --render DIR --out DIR --fault shift_x:4@500-599 | errors-make --film ctry [--calibrate] [--batch] | errors-disputes --film ctry | errors-score --film ctry [--against FILE] [--batch] | errors-example --film ctry --tick T --category ID | errors-table --films vault-ctry,vault-land)"
@@ -120,15 +135,17 @@ run = "uv run python python/scripts/parity_bench.py"
 [tasks.parity-probe]
 description = "Diagnostic probes on one capture/render pair (mise run parity-probe -- crop|shift|iou|retime ... ; summary prints the rows the parity log needs)"
 run = "uv run python python/scripts/parity_probe.py"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.frame]
 description = "Render film ticks in one process and write each beside its reference capture frame (mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N] [--no-build])"
 run = "uv run python python/scripts/parity_frame.py"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.batch-parity]
 description = "Batch parity survey: every distinct corpus film through archive, capture, render and score, resumable from a ledger (mise run batch-parity -- [--only SLUG,...] [--limit N] [--stages archive,capture,render,score] [--retry-errors] [--summary] [--skip SLUG,...] [--jobs N] [--max-renders N] [--min-free-gb GB] [--archive-timeout S] [--capture-timeout S] [--data-root DIR])"
 run = "uv run python python/scripts/batch_parity.py"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.verify-docs]
 description = "Verify the formats catalog: structure, evidentiary tiers, links, asset isolation"
@@ -156,7 +173,9 @@ description = "Run Rust Clippy lints across all crates"
 run = "cargo clippy --locked --workspace --all-targets --all-features -- -D warnings"
 # Check-profile artifacts live in their own target directory so the clippy lane and the
 # build-profile test lane can compile at the same time instead of queueing on one lock.
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo", CARGO_TARGET_DIR = "{{config_root}}/target/check" }
+# No incremental state here, in doc or in the matrix lane: it held 278 MB after a dozen edits and
+# saves under a second per re-check (ADR 0030). The test lane in target/ keeps it.
+env = { CARGO_HOME = "{{vars.cargo_home}}", CARGO_TARGET_DIR = "{{config_root}}/target/check", CARGO_INCREMENTAL = "0" }
 
 [tasks.lint-py]
 description = "Run Ruff linter on Python codebase"
@@ -169,7 +188,7 @@ depends = ["lint-rust", "lint-py"]
 [tasks.fmt-rust]
 description = "Format Rust source files"
 run = "cargo fmt"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.fmt-py]
 description = "Format Python source files"
@@ -182,7 +201,7 @@ depends = ["fmt-rust", "fmt-py"]
 [tasks.fmt-check-rust]
 description = "Check Rust formatting"
 run = "cargo fmt --check"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.fmt-check-py]
 description = "Check Python formatting"
@@ -212,17 +231,17 @@ run = "uv run mypy"
 [tasks.test-rust]
 description = "Run Rust unit and integration tests"
 run = "cargo test --locked --workspace --all-features"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.test-render]
 description = "Run stunt-render's GPU integration tests with a bounded hang watchdog (detects hangs instead of waiting forever)"
 run = "uv run python python/scripts/watch_render_test.py"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.cov-rust]
 description = "Line coverage for the Rust format crates (stunt-core, stunt-gltf)"
 run = "cargo llvm-cov --locked -p stunt-core -p stunt-gltf --all-features --summary-only"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.test-py]
 description = "Run Python pytest suite"
@@ -235,12 +254,15 @@ depends = ["test-rust", "test-py"]
 [tasks.deny]
 description = "Check dependency advisories, licenses, and sources"
 run = "cargo deny check"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.doc]
 description = "Build rustdoc with warnings denied"
 run = "cargo doc --workspace --no-deps --all-features"
-env = { RUSTDOCFLAGS = "-D warnings", CARGO_HOME = "{{config_root}}/.cache/cargo" }
+# rustdoc reads its dependencies' metadata, the same units clippy builds in target/check; in
+# target/ it would build a second copy of them (192 MB) beside the test lane's. It turns off
+# incremental state like clippy, whose units it reuses.
+env = { RUSTDOCFLAGS = "-D warnings", CARGO_HOME = "{{vars.cargo_home}}", CARGO_TARGET_DIR = "{{config_root}}/target/check", CARGO_INCREMENTAL = "0" }
 
 [tasks.check-rust-matrix]
 description = "Test stunt-core without optional features, in a target directory of its own"
@@ -249,7 +271,7 @@ description = "Test stunt-core without optional features, in a target directory 
 # coverage. The private directory keeps this build from invalidating the all-features
 # artifacts in target/ and lets it run beside the other lanes.
 run = "cargo test -p stunt-core --no-default-features"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo", CARGO_TARGET_DIR = "{{config_root}}/target/matrix" }
+env = { CARGO_HOME = "{{vars.cargo_home}}", CARGO_TARGET_DIR = "{{config_root}}/target/matrix", CARGO_INCREMENTAL = "0" }
 
 [tasks.cov-py]
 description = "Run Python test suite with coverage reporting"
@@ -261,7 +283,7 @@ run = "uv run pytest --cov=stunt_reel --cov-report=term-missing"
 [tasks.check-rust]
 description = "Rust half of the gate (fmt, clippy, test, doc, no-default-features matrix), one line per step"
 run = "python python/scripts/gate.py rust"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.check-py]
 description = "Python half of the gate (fmt, lint, mypy, pytest), one line per step"
@@ -294,12 +316,12 @@ description = "Windows non-GPU half of the gate (fmt, lint, typecheck, Rust and 
 depends = ["fmt-check", "lint", "typecheck", "test"]
 
 # The Windows-only behaviour is all in the Python tree — junctions, reparse points, the
-# .cache link, the pytest basetemp workaround — so the pull-request job runs this instead of
-# the whole check-windows; the full task stays on main. A test that starts depending on
-# Windows path semantics belongs in this list too.
+# .cache link, the pytest basetemp workaround, Cargo's build locks and robocopy in the target
+# seed — so the pull-request job runs this instead of the whole check-windows; the full task
+# stays on main. A test that starts depending on Windows path semantics belongs in this list too.
 [tasks.check-windows-smoke]
 description = "Windows-only smoke: the tests that exercise junctions, reparse points and .cache links"
-run = "uv run pytest tests/test_dataroot.py tests/test_worktree_layout.py tests/test_worktree_reap.py tests/test_pytest_basetemp.py"
+run = "uv run pytest tests/test_dataroot.py tests/test_worktree_layout.py tests/test_worktree_reap.py tests/test_pytest_basetemp.py tests/test_target_seed.py"
 
 [tasks.verify-corpus]
 description = "Compile research/formats/**/*.ksy and check them against local corpus/ files (opt-in; corpus is gitignored)"
@@ -308,4 +330,4 @@ run = "uv run python python/scripts/verify_schemas_corpus.py"
 [tasks.sod-census]
 description = "Census of corpus .SOD models that stop on unimplemented opcodes, joined to the films placing them (opt-in; corpus is gitignored; mise run sod-census -- [--format markdown])"
 run = "cargo run --release --locked -p stunt-cli --bin stuntreel -- sod-census"
-env = { CARGO_HOME = "{{config_root}}/.cache/cargo" }
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
