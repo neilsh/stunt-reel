@@ -51,10 +51,15 @@ query($owner: String!, $name: String!, $number: Int!) {
 #: Severity words CodeRabbit sets in bold at the top of a finding.
 SEVERITIES = ("Critical", "Major", "Minor", "Trivial", "Nitpick")
 TITLE_LIMIT = 160
+#: Seconds either gh call may take before the task gives up.
+GH_TIMEOUT = 60
 
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _DETAILS = re.compile(r"<details>.*?</details>", re.DOTALL | re.IGNORECASE)
 _TAG = re.compile(r"<[^>]+>")
+#: C0 and C1 control characters: a comment or path holding an escape sequence could drive the
+#: terminal it is printed to.
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 _SEVERITY = re.compile(r"\*\*\s*(" + "|".join(SEVERITIES) + r")\s*\*\*")
 #: A line that is one bold span: ``**...**`` with no ``**`` inside.
 _BOLD_LINE = re.compile(r"^\*\*((?:(?!\*\*).)+)\*\*$")
@@ -82,13 +87,19 @@ def summarize(body: str) -> tuple[str | None, str]:
     return severity, title
 
 
+def _printable(text: str) -> str:
+    """*text* with every control character replaced by ``?``."""
+    return _CONTROL.sub("?", text)
+
+
 def thread_line(thread: dict[str, Any]) -> str:
     """One thread as ``path:line [severity] title (id N, R replies, last by L)``."""
     comments = thread["comments"]["nodes"]
     first = comments[0]
     severity, title = summarize(first["body"])
+    title = _printable(title)
     line = thread["line"] if thread["line"] is not None else thread["originalLine"]
-    where = f"{thread['path']}:{line if line is not None else '?'}"
+    where = f"{_printable(thread['path'])}:{line if line is not None else '?'}"
     marks = [
         m
         for m in (
@@ -117,7 +128,12 @@ def _gh(*args: str) -> Any:
     gh = shutil.which("gh")
     if gh is None:
         raise GhError("gh is not on PATH")
-    result = subprocess.run([gh, *args], capture_output=True, text=True, check=False)  # noqa: S603
+    try:
+        result = subprocess.run(  # noqa: S603 - gh with fixed arguments
+            [gh, *args], capture_output=True, text=True, check=False, timeout=GH_TIMEOUT
+        )
+    except subprocess.TimeoutExpired as err:
+        raise GhError(f"gh {args[0]} gave no answer in {GH_TIMEOUT} s") from err
     if result.returncode != 0:
         raise GhError(result.stderr.strip() or f"gh {args[0]} exited {result.returncode}")
     try:

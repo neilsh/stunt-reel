@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -85,3 +88,21 @@ def test_resolved_threads_are_left_out_unless_asked_for() -> None:
     kept = pr_threads.thread_lines(threads, include_resolved=True)
     assert len(kept) == 2
     assert "(resolved)" in kept[1]
+
+
+def test_control_characters_in_the_title_and_path_are_masked() -> None:
+    thread = _thread("**Look \x1b[2Jhere**")
+    thread["path"] = "a\x1b]0;x\x07.py"
+    line = pr_threads.thread_line(thread)
+    assert "\x1b" not in line
+    assert "\x07" not in line
+    assert line.startswith("a?]0;x?.py:22 Look ?[2Jhere")
+
+
+def test_a_stalled_gh_is_reported_as_a_gh_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def stall(command: list[str], **kwargs: float) -> None:
+        raise subprocess.TimeoutExpired(cmd=command, timeout=kwargs["timeout"])
+
+    monkeypatch.setattr(subprocess, "run", stall)
+    with pytest.raises(pr_threads.GhError, match="no answer"):
+        pr_threads._gh("repo", "view")

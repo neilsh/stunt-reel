@@ -22,7 +22,7 @@ File issues only into the user's own repo. Never file into `mattpocock/skills` (
 
 ## Review threads on a pull request
 
-- **List open threads**: `mise run pr-threads -- <number>` prints one line per unresolved thread (path, line, severity, title) and the comment id to reply to; `--all` keeps resolved ones. Reach for it before `gh pr view --comments`, whose CodeRabbit bodies run to tens of KB. Findings a bot puts in a review body instead of a thread ("Outside diff") are not threads: read those with `gh api repos/<owner>/<repo>/pulls/<n>/reviews --jq '.[-1].body'`.
+- **List open threads**: `mise run pr-threads -- <number>` prints one line per unresolved thread (path, line, severity, title) and the comment id to reply to; `--all` keeps resolved ones. Reach for it before `gh pr view --comments`, whose CodeRabbit bodies run to tens of KB. Findings a bot puts in a review body instead of a thread ("Outside diff") are not threads: list the reviews that carry them with `gh api --paginate repos/<owner>/<repo>/pulls/<n>/reviews --jq '.[] | select(.body | test("Outside diff")) | {id, submitted_at}'`, then read one with `gh api repos/<owner>/<repo>/pulls/<n>/reviews/<id> --jq .body`.
 - **Reply in a thread**: `gh api -X POST repos/<owner>/<repo>/pulls/<n>/comments/<id>/replies -f body="..."`, with the id `pr-threads` printed.
 
 ## Pull requests as a triage surface
