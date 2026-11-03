@@ -35,7 +35,9 @@ worker per CPU. A lane is the unit of an exclusively held resource:
   beside the build-profile one instead of after it. `doc` follows `lint-rust` there: rustdoc reads
   its dependencies' metadata, the very units clippy has just built, where in `target/` it built a
   second copy (192 MB). Measured cold on 2026-11-02, `doc` took 3.6 s after clippy's 49 s, and
-  the lane still finished well inside `test-rust`'s 78 s.
+  the lane still finished well inside `test-rust`'s 78 s. The rendered docs move with it, from
+  `target/doc` to `target/check/doc`; a `target/doc` left by an older gate is no longer written
+  and can be deleted.
 - `check-rust-matrix` owns `target/matrix`, so the no-default-features variant neither waits for
   nor invalidates the all-features artifacts under `target/`.
 - `test-rust` owns the `rust-build` lane and `target/`.

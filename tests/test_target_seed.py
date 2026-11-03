@@ -115,8 +115,9 @@ def _clones(_: Path) -> bool:
     return True
 
 
-def _fresh(root: Path) -> Path:
-    root.mkdir()
+def _fresh(root: Path, *members: str) -> Path:
+    """An unbuilt checkout: a workspace of *members* (one crate by default) and a lockfile."""
+    _workspace(root, *(members or ("stunt-core",)))
     (root / "Cargo.lock").write_text("a", encoding="utf-8")
     return root
 
@@ -290,14 +291,60 @@ def _workspace(root: Path, *members: str) -> None:
 def test_workspace_members_reads_member_package_names(tmp_path: Path) -> None:
     _workspace(tmp_path, "stunt-core", "stunt-cli")
     assert workspace_members(tmp_path) == frozenset({"stunt-core", "stunt-cli"})
-    assert workspace_members(tmp_path / "missing") == frozenset()
+    with pytest.raises(FileNotFoundError):
+        workspace_members(tmp_path / "missing")
+
+
+def test_seed_skips_when_a_member_manifest_cannot_be_read(tmp_path: Path) -> None:
+    """Without every member's name the seed could not drop their fingerprints: copy nothing."""
+    here = _fresh(tmp_path / "here", "stunt-core", "stunt-cli")
+    (here / "crates" / "cli" / "Cargo.toml").write_text("[package\n", encoding="utf-8")
+    donor = _donor(tmp_path / "d")
+    out = seed(
+        here,
+        checkouts=[donor],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=_never,
+        volume_clones=_clones,
+    )
+    assert out.status == "skipped"
+    assert out.detail.startswith("cannot read the workspace members:"), out.detail
+    assert not (here / "target").exists()
+
+
+def test_seed_skips_a_workspace_with_no_members(tmp_path: Path) -> None:
+    here = tmp_path / "here"
+    here.mkdir()
+    (here / "Cargo.toml").write_text("[workspace]\nmembers = []\n", encoding="utf-8")
+    out = seed(
+        here,
+        checkouts=[_donor(tmp_path / "d")],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=_never,
+        volume_clones=_clones,
+    )
+    assert out == SeedOutcome("skipped", "cannot read the workspace members: none found")
+
+
+def test_uses_cargo_home_keeps_escaped_spaces(tmp_path: Path) -> None:
+    """rustc writes a space in a dep-info path as a backslash-space."""
+    home = r"E:\my repo\.cache\cargo"
+    a = _donor(tmp_path / "a", home=home)
+    deps = a / "target" / "debug" / "deps"
+    for dep_info in deps.glob("*.d"):
+        dep_info.unlink()
+    escaped = home.replace(" ", "\\ ") + r"\registry\src\index\serde\src\lib.rs"
+    (deps / "serde-0123456789abcdef.d").write_text(f"{deps}\\x.d: {escaped}\n", encoding="utf-8")
+    assert uses_cargo_home(a / "target", Path(home))
+    assert not uses_cargo_home(a / "target", Path(r"E:\my"))
 
 
 def test_seed_drops_workspace_fingerprints(tmp_path: Path) -> None:
     """Cargo trusts a workspace unit whose sources are older than its outputs, whatever they
     hold; a seed must never hand B the donor's build of B's own crates."""
-    here = _fresh(tmp_path / "here")
-    _workspace(here, "stunt-core", "stunt-cli")
+    here = _fresh(tmp_path / "here", "stunt-core", "stunt-cli")
     donor = _donor(tmp_path / "d")
     kept = ("serde-0123456789abcdef", "stunt-core-extra-0123456789abcdef")
     dropped = ("stunt-core-0123456789abcdef", "stunt-cli-fedcba9876543210")

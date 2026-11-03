@@ -266,6 +266,10 @@ def _rustc_vv() -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
+#: How a failed seed's line starts; ``mise run seed`` exits nonzero on it, init carries on.
+_SEED_FAILED = "  ! seed: "
+
+
 def _cargo_home() -> Path:
     """The CARGO_HOME cargo tasks use: mise passes it in; run directly, the shared cache."""
     named = os.environ.get("STUNT_CARGO_HOME")
@@ -291,7 +295,7 @@ def _seed_target() -> str:
         return f"  + target/ seeded {outcome.detail}"
     if outcome.status == "skipped":
         return f"  - target/ not seeded: {outcome.detail}"
-    return f"  ! seed: {outcome.detail}"
+    return f"{_SEED_FAILED}{outcome.detail}"
 
 
 def _tree_footprint(path: Path) -> tuple[int, int]:
@@ -962,8 +966,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "init":
         return _init(bool(args.migrate))
     if args.command == "seed":
-        print(_seed_target())
-        return 0
+        line = _seed_target()
+        print(line)
+        return 1 if line.startswith(_SEED_FAILED) else 0
     if args.command == "reap":
         return _reap(
             bool(args.yes),

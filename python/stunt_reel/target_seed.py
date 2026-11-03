@@ -76,7 +76,9 @@ def uses_cargo_home(target: Path, cargo_home: Path) -> bool:
                 head = handle.read(_DEP_INFO_BYTES)
         except OSError:
             continue
-        for token in head.split():
+        # rustc writes a space inside a dep-info path as a backslash-space.
+        for escaped in head.replace("\\ ", "\0").split():
+            token = escaped.replace("\0", " ")
             for marker in _REGISTRY_MARKERS:
                 if marker in token:
                     return _norm(token.split(marker, 1)[0]) == wanted
@@ -84,23 +86,31 @@ def uses_cargo_home(target: Path, cargo_home: Path) -> bool:
 
 
 def workspace_members(checkout: Path) -> frozenset[str]:
-    """The package names of *checkout*'s Cargo workspace; empty when it has none."""
-    try:
-        manifest = tomllib.loads((checkout / "Cargo.toml").read_text(encoding="utf-8"))
-    except OSError, tomllib.TOMLDecodeError:
-        return frozenset()
+    """The package names of *checkout*'s Cargo workspace.
+
+    Raises ``OSError`` or ``ValueError`` (``tomllib.TOMLDecodeError`` is one) when a manifest
+    cannot be read or names no package: a seed that missed a member would keep its fingerprints.
+    """
     names: set[str] = set()
-    if isinstance(manifest.get("package"), dict):
-        names.add(str(manifest["package"].get("name", "")))
-    patterns = manifest.get("workspace", {}).get("members", [])
-    for pattern in patterns if isinstance(patterns, list) else []:
+
+    def add_package(manifest: dict[str, object], path: Path) -> None:
+        package = manifest.get("package")
+        name = package.get("name") if isinstance(package, dict) else None
+        if not isinstance(name, str) or not name:
+            raise ValueError(f"{path} names no package")
+        names.add(name)
+
+    root = checkout / "Cargo.toml"
+    manifest = tomllib.loads(root.read_text(encoding="utf-8"))
+    if "package" in manifest:
+        add_package(manifest, root)
+    workspace = manifest.get("workspace", {})
+    patterns = workspace.get("members", []) if isinstance(workspace, dict) else None
+    if not isinstance(patterns, list):
+        raise ValueError(f"{root}: workspace.members is not a list")
+    for pattern in patterns:
         for member in checkout.glob(f"{pattern}/Cargo.toml"):
-            try:
-                package = tomllib.loads(member.read_text(encoding="utf-8")).get("package", {})
-            except OSError, tomllib.TOMLDecodeError:
-                continue
-            names.add(str(package.get("name", "")))
-    names.discard("")
+            add_package(tomllib.loads(member.read_text(encoding="utf-8")), member)
     return frozenset(names)
 
 
@@ -274,13 +284,19 @@ def seed(
     donors = rank_donors(local, here=checkout, rustc_vv=rustc_vv, cargo_home=cargo_home)
     if not donors:
         return SeedOutcome("skipped", "no donor with this rustc and cargo home")
+    try:
+        members = workspace_members(checkout)
+    except (OSError, ValueError) as error:
+        return SeedOutcome("skipped", f"cannot read the workspace members: {error}")
+    if not members:
+        return SeedOutcome("skipped", "cannot read the workspace members: none found")
     busy: list[Path] = []
     for donor in donors:
         with build_locks_free(donor / "target") as free:
             if not free:
                 busy.append(donor)
                 continue
-            return _copy_from(donor, target, copy, workspace_members(checkout))
+            return _copy_from(donor, target, copy, members)
     if len(busy) == 1:
         return SeedOutcome("skipped", f"donor {busy[0]} is building")
     return SeedOutcome("skipped", f"all {len(busy)} donors are building")

@@ -71,3 +71,19 @@ def test_seed_uses_the_cargo_home_mise_names(
     monkeypatch.setenv("STUNT_CARGO_HOME", str(tmp_path / "home"))
     worktree_init._seed_target()
     assert seen == [tmp_path / "home"]
+
+
+def test_seed_command_fails_when_the_seed_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """init carries on after a failed seed; ``mise run seed`` on its own reports it by status."""
+    monkeypatch.setattr(worktree_init, "_rustc_vv", lambda: "rustc 1.99.1\n")
+    monkeypatch.setattr(worktree_init, "_worktrees", lambda _repo: [])
+    for outcome, status in [
+        (SeedOutcome("failed", "robocopy exit 8"), 1),
+        (SeedOutcome("skipped", "volume does not clone blocks"), 0),
+        (SeedOutcome("seeded", "from E:/a"), 0),
+    ]:
+        monkeypatch.setattr(worktree_init, "seed", lambda *_args, o=outcome, **_kwargs: o)
+        assert worktree_init.main(["seed"]) == status, outcome
+    assert "! seed: robocopy exit 8" in capsys.readouterr().out
