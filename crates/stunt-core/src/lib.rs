@@ -10,6 +10,8 @@ pub mod credits;
 pub mod flm;
 pub mod font;
 pub mod link;
+#[cfg(test)]
+mod props;
 pub mod reader;
 pub mod scene;
 pub mod sod;
