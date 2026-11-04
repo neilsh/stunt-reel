@@ -23,8 +23,8 @@ use crate::vfs::{VfsError, check_non_decreasing, offset_u32};
 /// # Errors
 /// - [`VfsError::UnexpectedEof`] if `data` is shorter than the 2-byte count or the
 ///   `2 + 6*num`-byte header, or an offset points past the end of `data`.
-/// - [`VfsError::InvalidOffsetTable`] if the first offset lies inside the header or the
-///   offsets are not non-decreasing.
+/// - [`VfsError::InvalidOffsetTable`] if the first offset lies inside the header, the
+///   offsets are not non-decreasing, or a payload starts past `u32::MAX`.
 pub fn parse_all(data: &[u8]) -> Result<VfsArchive, VfsError> {
     let chunks = all_chunks(data)?;
     // Payloads are contiguous and the last runs to the end of `data`.

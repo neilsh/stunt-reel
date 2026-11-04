@@ -391,9 +391,14 @@ impl PaletteControls {
                 brightness
             };
             let grey = (((3 * r + b) >> 2) + g) >> 1;
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "clamped to 0..=63, so `<< 2` is at most 252"
+            )]
             let tone = |c: i32| {
                 let level = ((grey + (((c - grey) * saturation) >> 6)) * bright) >> 6;
-                u8::try_from(level.clamp(0, 63) << 2).unwrap_or(u8::MAX)
+                (level.clamp(0, 63) << 2) as u8
             };
             *entry = (tone(r), tone(g), tone(b));
         }

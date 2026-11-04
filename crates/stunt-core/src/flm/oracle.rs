@@ -16,10 +16,6 @@ pub const GATE_G04_RMSE_THRESHOLD_METERS: f32 = 0.01;
 /// that tick with [`FilmTimeline::sample`] (an empty timeline contributes no samples).
 ///
 /// Evaluates Euclidean distance squared for camera eye positions and all matching actor positions.
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "the mean is summed in f64 for accuracy and reported in the f32 the inputs use"
-)]
 pub fn compute_position_rmse(timeline: &FilmTimeline, oracle: &[TrajectoryRecord]) -> f32 {
     let mut sq_errors = Vec::new();
 
@@ -55,5 +51,10 @@ pub fn compute_position_rmse(timeline: &FilmTimeline, oracle: &[TrajectoryRecord
 
     let mean_sq: f64 =
         sq_errors.iter().map(|&e| f64::from(e)).sum::<f64>() / (sq_errors.len() as f64);
-    mean_sq.sqrt() as f32
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the mean is summed in f64 for accuracy and reported in the f32 the inputs use"
+    )]
+    let rmse = mean_sq.sqrt() as f32;
+    rmse
 }

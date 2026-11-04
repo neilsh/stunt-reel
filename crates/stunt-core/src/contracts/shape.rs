@@ -296,6 +296,7 @@ pub struct SodModelIr {
               GPU index format"
 )]
 pub const fn arena_index(len: usize) -> u32 {
+    debug_assert!(len <= u32::MAX as usize, "arena passes the u32 index range");
     len as u32
 }
 

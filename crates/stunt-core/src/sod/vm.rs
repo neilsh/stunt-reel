@@ -164,7 +164,7 @@ impl<T: Copy, const N: usize> WrapTable<T, N> {
 /// `OP_SHLV` and `OP_SHRV`: applies `shift` to each coordinate of `v` as a 32-bit integer.
 #[expect(
     clippy::cast_possible_truncation,
-    reason = "vertex coordinates are whole numbers built from 16-bit operands"
+    reason = "the shift works on the integer part: `as` truncates toward zero (OP_INTV can \n              leave a half) and saturates past i32, as the cast it replaces did"
 )]
 fn shift_vertex(v: [f32; 3], shift: impl Fn(i32) -> i32) -> [f32; 3] {
     v.map(|c| shift(c as i32) as f32)
