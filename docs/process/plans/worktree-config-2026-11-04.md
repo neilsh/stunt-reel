@@ -1,6 +1,7 @@
 # Worktrees reach shared state by configuration, not links (2026-11-04)
 
-Status: **design agreed 2026-11-04; implementation plan not written yet**. Source: a session of
+Status: **design agreed 2026-11-04; corrected the same day while planning (sections 3, 4.1, 4.3)**.
+Tasks: [`worktree-config-implementation-2026-11-04.md`](worktree-config-implementation-2026-11-04.md). Source: a session of
 2026-11-04 that started from "should we use a `.worktreeinclude` for Claude", surveyed the 32
 worktrees under `.claude/worktrees/` (16 never provisioned, including the session's own) and
 settled on removing the per-worktree links rather than automating their creation. The decision
@@ -45,7 +46,7 @@ holds and no code reads.
 | --- | --- | --- |
 | `.worktreeinclude` | Not used. | It copies gitignored files. Everything gitignored here is data or cache that must be shared, not copied; a copied `target/` would also keep the workspace crates' fingerprints that the seed drops (ADR 0030). |
 | Claude Code hooks | None: no `WorktreeCreate`, no `SessionStart`. | The first gives up Claude Code's own worktree safety for a speed-up; the second saves only the seed and a `uv sync` at the first task, on undocumented firing. Revisit if first-task latency becomes a nuisance. |
-| Data root | Code resolves `corpus/` and `captures/` through `data_root()` instead of junctions. | `data_root()` already honours `STUNT_DATA_ROOT` and the `<primary>.data` default, and falls back to the checkout itself on a fresh clone. |
+| Data root | Code resolves `corpus/` and `captures/` through `data_root()` instead of junctions; a relative `corpus/...` argument on the command line resolves the same way. | `data_root()` already honours `STUNT_DATA_ROOT` and the `<primary>.data` default; it gains a fallback to the primary checkout when `<primary>.data` does not exist, so a clone that keeps its corpus in the checkout still reads it. |
 | Tool cache | `UV_CACHE_DIR` is an absolute path under the primary checkout's `.cache`, derived from `git rev-parse --git-common-dir` like `vars.cargo_home`. No `.cache` link. | One cache per machine, no link to make or break. |
 | Python environment | uv's default per-checkout `.venv`. | On the same volume uv hardlinks out of the shared cache; editors find `.venv`; removing a worktree removes its environment, so no orphan sweep. Orca worktrees on `C:` copy (about 68 MB, 3 s), accepted. |
 | Temporary files | The `TMP`/`TEMP` override in `[env]` goes; tasks use the OS temp directory. | It existed only for DSH's sandbox ([harness.md](../../harness.md#temporary-directories)). The Windows `mkdir` mode shim in `tests/conftest.py` and `scratch.py` stays. |
@@ -64,7 +65,15 @@ holds and no code reads.
   `game_builds`, `make_all`, `play`, `probe_playone_light`, `unlzexe`, `verify_formats_docs`,
   `verify_schemas_corpus`) and `python/stunt_reel/` (`parity_layout`, `parity_pipeline`,
   `tac/staging`).
-- `ensure_links_or_report` and its 12 call sites go; `ensure_links` and `LINK_TARGETS` stay only
+- Captures move from the checkout path `build/parity/captures` (a link) to
+  `data_root() / "captures"`, so `parity_layout.capture_root()` returns an absolute path;
+  `/captures/` joins `.gitignore` for a checkout that is its own data root.
+- Command-line arguments naming `corpus/...` or `captures/...`, the form every task description
+  and research note uses, resolve against the data root through an argparse `type`.
+- Two Rust readers spell `corpus` relative to the checkout: the `sod-census` task passes
+  `--corpus` from a mise var naming the data root, and the ignored `flm_camera_test` reads
+  `STUNT_DATA_ROOT`.
+- `ensure_links_or_report` and its 15 call sites go; `ensure_links` and `LINK_TARGETS` stay only
   where `reap` needs them to recognise and unlink old links.
 - Command-line defaults and messages that print a `corpus\...` path print the resolved path.
 - `mise run check` stays corpus-free: a test that exercises a data-root path points
@@ -88,8 +97,9 @@ holds and no code reads.
   works before any environment exists. Stdlib only at import time.
 - Every task that runs cargo, directly or through `parity_pipeline`, lists `ensure` in `depends`;
   [`tests/test_worktree_layout.py`](../../../tests/test_worktree_layout.py) fails the gate when one
-  does not. mise runs a shared dependency once per invocation, so the gate's parallel lanes seed
-  once.
+  does not. The gate runs each step as its own `mise run` ([`gate.py`](../../../python/scripts/gate.py)),
+  so four lanes start `ensure` at once: it holds an exclusive lock on `target/.ensure.lock`, and
+  the first holder seeds while the rest find `target/` built.
 - `init` becomes `ensure` plus its report: hooks path, seed result, and a line naming any old links
   still in the checkout.
 
