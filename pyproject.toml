@@ -90,12 +90,18 @@ select = [
     "RSE",    # flake8-raise
     "TC",     # flake8-type-checking: typing-only imports become `lazy` imports
     "TID",    # flake8-tidy-imports
-    "TRY300", # try-consider-else
-    "TRY301", # raise-within-try
+    "TRY",    # tryceratops: exception handling (TRY003 is out, below)
     "YTT",    # flake8-2020
     "PLC",    # pylint conventions
     "PLE",    # pylint errors
     "PLW",    # pylint warnings
+    "PYI",    # flake8-pyi: typing idioms that also apply outside stubs
+    "ERA",    # eradicate: commented-out code
+    "FLY",    # flynt: `str.join` of literals as an f-string
+    "EXE",    # flake8-executable: shebangs match the executable bit
+    "ASYNC",  # flake8-async
+    "SLOT",   # flake8-slots: `__slots__` on str, tuple and namedtuple subclasses
+    "TD",     # flake8-todos: a TODO names its author and links its issue
 ]
 # Deliberately NOT selected (checked 2026-10-29; counts are violations at the time):
 #   D       pydocstyle: ~370 hits (248 undocumented public functions, 98 imperative-mood);
@@ -108,8 +114,13 @@ select = [
 #   COM812  conflicts with `ruff format`.
 #   INP001  scripts are not packages.
 #   SLF001  tests and tools reach into private members on purpose.
+# Checked 2026-11-03 (#161) and also left out:
+#   FBT     boolean positional arguments: 21 hits, mostly test helpers and CLI flags.
+#   C90     McCabe complexity: 26 hits in byte-format dispatch that reads best as one match.
+#   FIX     forbids TODO outright; TD keeps them but makes each one traceable.
 ignore = [
     "E501",  # line length violations handled by ruff format
+    "TRY003", # long exception messages: ~250 hits, see EM above
 ]
 # A typing-only import is written `lazy from x import y` (PEP 810), the fix ruff offers at
 # py315, so `mise run fix` applies it instead of the gate failing on it. Ruff marks the fix
@@ -151,6 +162,19 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_unreachable = true
 extra_checks = true
+# Optional error codes from the 2026-11-03 survey (#161); `deprecated` and `exhaustive-match`
+# catch real drift, the rest keep narrowing and overrides honest.
+enable_error_code = [
+    "ignore-without-code",
+    "redundant-expr",
+    "truthy-bool",
+    "truthy-iterable",
+    "possibly-undefined",
+    "explicit-override",
+    "mutable-override",
+    "exhaustive-match",
+    "deprecated",
+]
 mypy_path = "python"
 files = ["python", "tests"]
 exclude = ["corpus"]

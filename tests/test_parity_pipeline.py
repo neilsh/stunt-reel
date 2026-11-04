@@ -373,7 +373,7 @@ def test_check_render_refuses_a_render_without_planes(tmp_path: Path) -> None:
         parity_pipeline.check_render(reference, render, [7, 9])
 
 
-def _report(tmp_path: Path, **fields: float | int | None) -> Path:
+def _report(tmp_path: Path, **fields: float | None) -> Path:
     report = tmp_path / "report"
     report.mkdir()
     document: dict[str, object] = {"per_frame": []}

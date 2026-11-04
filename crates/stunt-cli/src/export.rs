@@ -205,39 +205,35 @@ mod tests {
     fn shape_ids_parse_as_hex_or_decimal() {
         assert_eq!(parse_shape_id("0x1F"), Ok(31));
         assert_eq!(parse_shape_id("31"), Ok(31));
-        assert!(parse_shape_id("0x10000").is_err());
-        assert!(parse_shape_id("zz").is_err());
+        parse_shape_id("0x10000").unwrap_err();
+        parse_shape_id("zz").unwrap_err();
     }
 
     #[test]
     fn arguments_are_validated() {
-        assert!(Args::try_parse_args(strings(&["--archive", "a.all", "--out", "o.glb"])).is_err());
-        assert!(
-            Args::try_parse_args(strings(&[
-                "--archive",
-                "a.all",
-                "--shape",
-                "1",
-                "--film",
-                "f.flm",
-                "--out",
-                "o.glb"
-            ]))
-            .is_err()
-        );
-        assert!(
-            Args::try_parse_args(strings(&[
-                "--archive",
-                "a.all",
-                "--shape",
-                "1",
-                "--tick",
-                "3",
-                "--out",
-                "o.glb"
-            ]))
-            .is_err()
-        );
+        Args::try_parse_args(strings(&["--archive", "a.all", "--out", "o.glb"])).unwrap_err();
+        Args::try_parse_args(strings(&[
+            "--archive",
+            "a.all",
+            "--shape",
+            "1",
+            "--film",
+            "f.flm",
+            "--out",
+            "o.glb",
+        ]))
+        .unwrap_err();
+        Args::try_parse_args(strings(&[
+            "--archive",
+            "a.all",
+            "--shape",
+            "1",
+            "--tick",
+            "3",
+            "--out",
+            "o.glb",
+        ]))
+        .unwrap_err();
         let args = Args::try_parse_args(strings(&[
             "--archive",
             "a.all",

@@ -1151,8 +1151,8 @@ mod tests {
         let split = RenderedPage::new(size, vec![7; 16], &[word; 4]).expect("page");
         assert_eq!(split.indices(), [40; 4].as_slice());
         assert_eq!(split.layers(), [0x10; 4].as_slice());
-        assert!(RenderedPage::new(size, vec![0; 15], &[0; 4]).is_err());
-        assert!(RenderedPage::new(size, vec![0; 16], &[0; 3]).is_err());
+        RenderedPage::new(size, vec![0; 15], &[0; 4]).unwrap_err();
+        RenderedPage::new(size, vec![0; 16], &[0; 3]).unwrap_err();
     }
 
     #[test]

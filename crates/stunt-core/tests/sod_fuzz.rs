@@ -241,7 +241,7 @@ fn matrix_register_offsets_wrap_and_unaligned() {
 
         let res = catch_unwind(AssertUnwindSafe(|| decode(&buf, "REG_TEST", None)));
         assert!(res.is_ok(), "Panic on register offset {off}");
-        assert!(res.unwrap().is_ok());
+        res.unwrap().unwrap();
     }
 }
 
@@ -282,7 +282,7 @@ fn matrix_ipg_start_registers_near_1023() {
                 res.is_ok(),
                 "Panic on IPG type {ipg_type} at start_reg {start_reg}"
             );
-            assert!(res.unwrap().is_ok());
+            res.unwrap().unwrap();
         }
     }
 }
@@ -307,7 +307,7 @@ fn matrix_vectors_wrap_past_register_1023() {
 
         let res = catch_unwind(AssertUnwindSafe(|| decode(&buf, "VEC_WRAP", None)));
         assert!(res.is_ok(), "Panic on OP_VECTORS wrapping from {start_reg}");
-        assert!(res.unwrap().is_ok());
+        res.unwrap().unwrap();
     }
 }
 
@@ -564,7 +564,7 @@ fn fuzz_mutated_valid_sod() {
     // OP_RETURN
     baseline.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-    assert!(decode(&baseline, "BASELINE", None).is_ok());
+    decode(&baseline, "BASELINE", None).unwrap();
 
     let mut rng = XorShift64::new(0xABCD_EF01_2345_6789);
 

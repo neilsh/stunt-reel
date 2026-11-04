@@ -462,7 +462,7 @@ mod crosscheck_tests {
         // `compute_frame_ssim` fixes the production constants; rebuild the same non-overlapping
         // tiling with a custom `C2` through the window scorer instead.
         let (fa, fb) = (to_f32(a), to_f32(b));
-        if c2 == C2_CONSTANT {
+        if c2.to_bits() == C2_CONSTANT.to_bits() {
             return compute_frame_ssim(&fa, &fb, WIDTH as usize, HEIGHT as usize, WINDOW, WINDOW);
         }
         let mut scores = Vec::new();

@@ -37,7 +37,7 @@ pub const SIF_ANIMATES: u8 = 0x20;
 pub const SIFILM_MAX_OBJ: usize = 64;
 
 /// Internal simulation state for an entity slot in the `.FLM` timeline.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SlotState {
     /// Whether the slot currently holds a live object.
     pub active: bool,

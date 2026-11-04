@@ -687,7 +687,7 @@ def test_workspace_members_refuses_a_member_without_a_package(tmp_path: Path) ->
 
 def test_workspace_members_refuses_members_that_are_not_a_list(tmp_path: Path) -> None:
     (tmp_path / "Cargo.toml").write_text('[workspace]\nmembers = "crates/*"\n', encoding="utf-8")
-    with pytest.raises(ValueError, match="not a list"):
+    with pytest.raises(TypeError, match="not a list"):
         workspace_members(tmp_path)
 
 

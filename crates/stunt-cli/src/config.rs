@@ -210,7 +210,7 @@ impl CliConfig {
             }
         }
 
-        let clear_index = clear_index.unwrap_or(if all_path.is_some() { 233 } else { 180 });
+        let clear_index = clear_index.unwrap_or_else(|| if all_path.is_some() { 233 } else { 180 });
 
         Ok(Self {
             flm_path,
@@ -362,25 +362,25 @@ mod tests {
         assert!(err.to_string().contains("--viewport-rows"), "{err}");
         let config = parse(&["--viewport-rows", "185", "--headless"]).expect("headless takes it");
         assert_eq!(config.viewport_rows, Some(185));
-        assert!(parse(&["--viewport-rows", "185", "-o", "f.png"]).is_ok());
+        parse(&["--viewport-rows", "185", "-o", "f.png"]).unwrap();
     }
 
     #[test]
     fn test_sample_count_needs_out_dir_and_no_video() {
-        assert!(parse(&["--sample-count", "5"]).is_err());
-        assert!(parse(&["--sample-count", "5", "--out-dir", "o", "--video", "v.mp4"]).is_err());
-        assert!(parse(&["--sample-count", "0", "--out-dir", "o"]).is_err());
-        assert!(parse(&["--fps", "0"]).is_err());
-        assert!(parse(&["--tick-range", "5..5"]).is_err());
+        parse(&["--sample-count", "5"]).unwrap_err();
+        parse(&["--sample-count", "5", "--out-dir", "o", "--video", "v.mp4"]).unwrap_err();
+        parse(&["--sample-count", "0", "--out-dir", "o"]).unwrap_err();
+        parse(&["--fps", "0"]).unwrap_err();
+        parse(&["--tick-range", "5..5"]).unwrap_err();
     }
 
     #[test]
     fn test_ticks_parse_sorted_and_need_out_dir() {
         let config = parse(&["--at-ticks", "92, 48,92,1009", "--out-dir", "o"]).expect("parses");
         assert_eq!(config.tick_list, Some(vec![48, 92, 1009]));
-        assert!(parse(&["--at-ticks", "48"]).is_err());
-        assert!(parse(&["--at-ticks", "4x", "--out-dir", "o"]).is_err());
-        assert!(parse(&["--at-ticks", "4", "--out-dir", "o", "--tick-range", "0..=2"]).is_err());
+        parse(&["--at-ticks", "48"]).unwrap_err();
+        parse(&["--at-ticks", "4x", "--out-dir", "o"]).unwrap_err();
+        parse(&["--at-ticks", "4", "--out-dir", "o", "--tick-range", "0..=2"]).unwrap_err();
     }
 
     #[test]
@@ -436,7 +436,7 @@ mod tests {
     fn test_any_nonzero_width_parses() {
         let config = parse(&["--width", "100", "--headless"]).expect("unaligned width is fine");
         assert_eq!(config.width, 100);
-        assert!(parse(&["--width", "0", "--headless"]).is_err());
+        parse(&["--width", "0", "--headless"]).unwrap_err();
     }
 
     #[test]
@@ -464,14 +464,12 @@ mod tests {
         assert_eq!(config.fps, 50.0);
         assert_eq!(config.sidata_dir, Some(PathBuf::from("data/SIDATA")));
 
-        assert!(
-            CliConfig::parse_from(vec![
-                "film.flm".to_string(),
-                "--sample-count".to_string(),
-                "5".to_string()
-            ])
-            .is_err()
-        );
+        CliConfig::parse_from(vec![
+            "film.flm".to_string(),
+            "--sample-count".to_string(),
+            "5".to_string(),
+        ])
+        .unwrap_err();
     }
 
     #[test]

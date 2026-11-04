@@ -91,7 +91,7 @@ fn fuzz_mutated_valid_res_never_panic() {
     baseline.extend_from_slice(&[0x22; 10]);
     baseline.extend_from_slice(&[0x33; 10]);
 
-    assert!(parse_res(&baseline).is_ok());
+    parse_res(&baseline).unwrap();
 
     let mut rng = XorShift64::new(0xABCD_EF01_2345_6789);
 
@@ -145,7 +145,7 @@ fn fuzz_mutated_valid_all_never_panic() {
     let p2 = vec![0x77u8; 12];
     baseline.extend_from_slice(&p2);
 
-    assert!(parse_all(&baseline).is_ok());
+    parse_all(&baseline).unwrap();
 
     let mut rng = XorShift64::new(0x9876_5432_10FE_DCBA);
 

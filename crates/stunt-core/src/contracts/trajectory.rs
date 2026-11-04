@@ -263,7 +263,7 @@ mod tests {
         let cam = CameraTransform::default();
         assert_eq!(cam.eye, [0.0, 10.0, 50.0]);
         assert_eq!(cam.target, [0.0, 0.0, 0.0]);
-        assert_eq!(cam.fov_degrees, PLAYONE_FOV_Y_DEGREES);
+        assert_eq!(cam.fov_degrees.to_bits(), PLAYONE_FOV_Y_DEGREES.to_bits());
         assert_eq!(cam.roll_radians, 0.0);
         assert!(!cam.cut_from_previous);
     }

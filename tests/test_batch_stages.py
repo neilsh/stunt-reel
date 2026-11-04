@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import pytest
 
@@ -332,6 +332,7 @@ def _write_render(tmp_path: Path, film: BatchFilm, ticks: list[int]) -> None:
 class ReportWriter(FakeRunner):
     """A score adapter that writes the ``report.json`` the binary would."""
 
+    @override
     def __call__(
         self, command: list[str], env: dict[str, str] | None, timeout: float | None
     ) -> tuple[int, str]:

@@ -380,8 +380,8 @@ mod tests {
             Decoder::new(u32::MAX, u32::MAX).unwrap_err(),
             ZmbvError::Dimensions(u32::MAX, u32::MAX)
         );
-        assert!(Decoder::new(0, 10).is_err());
-        assert!(Decoder::new(4096, 4096).is_ok());
+        Decoder::new(0, 10).unwrap_err();
+        Decoder::new(4096, 4096).unwrap();
     }
 
     #[test]

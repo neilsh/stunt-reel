@@ -549,7 +549,10 @@ fn synthetic_minimal_fixture_evaluates_two_ticks() {
     assert_eq!(slice0.tick, 1);
     assert_eq!(slice0.camera.eye, [0.0, 10.0, 50.0]);
     assert_eq!(slice0.camera.target, [0.0, 0.0, 0.0]);
-    assert_eq!(slice0.camera.fov_degrees, PLAYONE_FOV_Y_DEGREES);
+    assert_eq!(
+        slice0.camera.fov_degrees.to_bits(),
+        PLAYONE_FOV_Y_DEGREES.to_bits()
+    );
     assert!(!slice0.camera.cut_from_previous);
     assert!(slice0.actors.is_empty());
     assert!(slice0.audio_cues.is_empty());
@@ -934,7 +937,7 @@ fn camera_cut_holds_prior_pose_until_the_cut_tick() {
         audio_cues: Vec::new(),
         palette: PaletteControls::default(),
     };
-    let timeline = timeline_of(vec![frame_a.clone(), frame_b.clone(), frame_c.clone()]);
+    let timeline = timeline_of(vec![frame_a.clone(), frame_b.clone(), frame_c]);
 
     // At continuous tick 50.5 (midpoint between 50 and 51 cut), pose must hold frame_a
     let eval_50_5 = timeline.sample(50.5).unwrap();

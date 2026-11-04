@@ -6,7 +6,7 @@ import os
 import shutil
 import threading
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -95,12 +95,12 @@ def test_the_old_capture_is_removed_after_the_lock_is_released(
     seen: list[bool] = []
     real_rmtree = shutil.rmtree
 
-    def rmtree(path: Path, **kwargs: Any) -> None:
+    def rmtree(path: Path, *, ignore_errors: bool = False) -> None:
         if path.name.startswith("frames.old-"):
             monkeypatch.setattr(capture_store, "_SWAP_WAIT_SECONDS", 0.0)
             with capture_store._swap_lock(target):
                 seen.append(True)
-        real_rmtree(path, **kwargs)
+        real_rmtree(path, ignore_errors=ignore_errors)
 
     monkeypatch.setattr("stunt_reel.capture_store.shutil.rmtree", rmtree)
     capture_store.publish(_fill(capture_store.stage(target), "two"), target)

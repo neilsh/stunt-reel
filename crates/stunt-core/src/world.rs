@@ -288,7 +288,7 @@ pub(crate) fn approx_dist(x1: i32, y1: i32, x2: i32, y2: i32) -> i32 {
 }
 
 /// Traverses `SCENERY.scn` hierarchical BSP tree to collect prop placements.
-#[allow(
+#[expect(
     clippy::too_many_arguments,
     reason = "the traversal threads its whole state explicitly"
 )]

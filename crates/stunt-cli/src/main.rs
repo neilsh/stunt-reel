@@ -1,4 +1,3 @@
-#![deny(unsafe_code)]
 #![allow(
     clippy::print_stdout,
     clippy::print_stderr,
@@ -20,7 +19,7 @@
 //! - `[I5]` Dual-pipeline hardware depth bias pass for coplanar decals.
 //! - `[I6]` Strict 4:3 physical aspect ratio letterbox presentation.
 
-#[allow(
+#[expect(
     dead_code,
     reason = "only tests read video captures until a video scorer is merged (method.md § 4.4)"
 )]
@@ -36,7 +35,7 @@ mod render_store;
 mod scene;
 mod sod_census;
 mod window;
-#[allow(
+#[expect(
     dead_code,
     reason = "only tests read video captures until a video scorer is merged (method.md § 4.4)"
 )]

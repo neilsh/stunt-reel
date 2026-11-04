@@ -43,14 +43,14 @@ pub struct SodVertex {
 // Manual bytemuck trait implementations to eliminate mandatory crate dependencies
 // while preserving compile-time safety and GPU buffer alignment.
 #[cfg(feature = "bytemuck")]
-#[allow(
+#[expect(
     unsafe_code,
     reason = "bytemuck is an optional feature, so the trait is implemented by hand"
 )]
 // SAFETY: `SodVertex` is `#[repr(C)]`, and its explicit `u8` padding leaves no implicit padding bytes.
 unsafe impl bytemuck::Pod for SodVertex {}
 #[cfg(feature = "bytemuck")]
-#[allow(
+#[expect(
     unsafe_code,
     reason = "bytemuck is an optional feature, so the trait is implemented by hand"
 )]
@@ -655,7 +655,7 @@ mod tests {
             returned_at: Some(52),
         };
         let mut ir = SodModelIr::new("DECODED");
-        ir.set_decode(record.clone());
+        ir.set_decode(record);
         let attached = ir.decode().expect("decoded shape keeps its record");
         assert_eq!(attached.header, header);
         assert_eq!(attached.stop, Some(stop));

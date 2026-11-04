@@ -21,8 +21,8 @@ pub enum ArchiveFormat {
 impl fmt::Display for ArchiveFormat {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ArchiveFormat::Res => write!(f, "RES"),
-            ArchiveFormat::All => write!(f, "ALL"),
+            Self::Res => write!(f, "RES"),
+            Self::All => write!(f, "ALL"),
         }
     }
 }

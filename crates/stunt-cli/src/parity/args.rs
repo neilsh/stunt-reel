@@ -98,7 +98,7 @@ mod tests {
             let error = parse(&["--min-fade-level", bad]).unwrap_err();
             assert!(error.contains("--min-fade-level"), "{bad}: {error}");
         }
-        assert!(parse(&["--min-fade-level"]).is_err());
+        parse(&["--min-fade-level"]).unwrap_err();
     }
 
     #[test]

@@ -118,6 +118,10 @@ fn sod_vertex_size_alignment_and_field_offsets() {
 }
 
 /// Gate G03: `SodVertex` roundtrips through its raw 28 bytes.
+#[expect(
+    unsafe_code,
+    reason = "the test reads the vertex's layout through `transmute`"
+)]
 #[test]
 fn sod_vertex_pod_roundtrip() {
     let original = SodVertex {
@@ -270,7 +274,10 @@ fn scale_table_lookup_and_fallback_formula() {
     assert_eq!(compute_scale_factor(4), 0.0625);
 
     // Verify 18th element
-    assert_eq!(compute_scale_factor(17), SOD_SCALE_TABLE[17] / 10.0);
+    assert_eq!(
+        compute_scale_factor(17).to_bits(),
+        (SOD_SCALE_TABLE[17] / 10.0).to_bits()
+    );
 
     // Fallback formula when scale_index >= 18: scale_raw = 5.0 / 2^(index - 1)
     let fallback_18 = (5.0 / 2.0f32.powi(17)) / 10.0;
