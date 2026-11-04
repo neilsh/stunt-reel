@@ -25,10 +25,13 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import statistics
 import struct
 import sys
 import zlib
 from pathlib import Path
+
+import numpy as np
 
 from stunt_reel import parity_layout, references
 from stunt_reel.dataroot import REPO_ROOT
@@ -170,11 +173,39 @@ def cmd_crop(args: argparse.Namespace) -> None:
     make_crop(args.reference, args.ours, args.ordinal, args.tick, box, args.scale, args.out)
 
 
+def world_shift(
+    ours: bytes, capture: bytes, actor: list[int], width: int, rows: int, reach: int
+) -> tuple[int, int, float]:
+    """The ``(dx, dy)`` that best lands our non-actor pixels on equal capture indices.
+
+    Same sign as the actor shift: our pixel at ``(x, y)`` is compared with the capture's at
+    ``(x + dx, y + dy)``. Returns the shift and the fraction of compared pixels that agreed.
+    """
+    mine = np.frombuffer(ours, dtype=np.uint8)[: width * rows].reshape(rows, width)
+    theirs = np.frombuffer(capture, dtype=np.uint8)[: width * rows].reshape(rows, width)
+    flat = np.ones(width * rows, dtype=bool)
+    flat[actor] = False
+    keep = flat.reshape(rows, width)
+    best = (0, 0, -1.0)
+    for dy in range(-reach, reach + 1, 2):
+        for dx in range(-reach, reach + 1, 2):
+            ys, yt = slice(max(0, -dy), rows - max(0, dy)), slice(max(0, dy), rows - max(0, -dy))
+            xs, xt = slice(max(0, -dx), width - max(0, dx)), slice(max(0, dx), width - max(0, -dx))
+            mask = keep[ys, xs]
+            agree = float(np.count_nonzero((mine[ys, xs] == theirs[yt, xt]) & mask))
+            fraction = agree / max(1, int(np.count_nonzero(mask)))
+            if fraction > best[2]:
+                best = (dx, dy, fraction)
+    return best
+
+
 def cmd_shift(args: argparse.Namespace) -> None:
     capture = read_capture(args.reference)
     store = RenderStore(args.ours)
     geometry = store.record.geometry
     width, rows = geometry.width, geometry.plane_rows()
+    print("film_tick actor_px dx dy hit world_dx world_dy world_agree")
+    shifts: list[tuple[int, int, int, int]] = []
     for frame in read_report(args.report).per_frame:
         if frame.scored is not True:
             continue
@@ -200,7 +231,34 @@ def cmd_shift(args: argparse.Namespace) -> None:
                         hit += 1
                 if hit > best[0]:
                     best = (hit, dx, dy)
-        print(frame.film_tick, len(pixels), best[1], best[2], round(best[0] / len(sample), 2))
+        world = world_shift(page.indices, capture_index, pixels, width, rows, args.world_reach)
+        shifts.append((best[1], best[2], world[0], world[1]))
+        print(
+            frame.film_tick,
+            len(pixels),
+            best[1],
+            best[2],
+            round(best[0] / len(sample), 2),
+            world[0],
+            world[1],
+            round(world[2], 2),
+        )
+    print(shift_summary(shifts))
+
+
+def shift_summary(shifts: list[tuple[int, int, int, int]]) -> str:
+    """Median actor, world and actor-minus-world shifts over ``(dx, dy, world_dx, world_dy)``."""
+    if not shifts:
+        return "no frame had enough actor pixels"
+    adx, ady, wdx, wdy = (list(column) for column in zip(*shifts, strict=True))
+    rdx = [a - w for a, w in zip(adx, wdx, strict=True)]
+    rdy = [a - w for a, w in zip(ady, wdy, strict=True)]
+    med = statistics.median
+    return (
+        f"frames {len(shifts)}: median actor dx {med(adx):g} dy {med(ady):g}; "
+        f"world dx {med(wdx):g} dy {med(wdy):g}; "
+        f"actor minus world dx {med(rdx):g} dy {med(rdy):g}"
+    )
 
 
 def actor_iou(
@@ -326,6 +384,9 @@ def main() -> int:
             p.add_argument("--min-pixels", type=int, default=100)
         if name == "shift":
             p.add_argument("--reach", type=int, default=40)
+            p.add_argument(
+                "--world-reach", type=int, default=12, help="largest whole-frame shift tried"
+            )
         if name == "iou":
             p.add_argument("--every", type=int, default=2, help="use every Nth scored frame")
             p.add_argument("--pad", type=int, default=25)

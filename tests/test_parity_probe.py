@@ -54,3 +54,34 @@ def test_summary_prints_the_headline_the_worst_frames_and_the_log_row(
     assert "loss by class: props 0.0200  terrain 0.0100" in out
     assert "worst scored frames: tick 10 0.500" in out
     assert "| 2/3 | 0.700 | 0.925 |" in out
+
+
+def test_world_shift_finds_how_far_the_capture_scene_is_moved() -> None:
+    width, rows = 16, 12
+    ours = bytes((x * 7 + y * 13) % 251 for y in range(rows) for x in range(width))
+    # The capture holds the same scene two columns right and four rows down.
+    capture = bytes(((x - 2) * 7 + (y - 4) * 13) % 251 for y in range(rows) for x in range(width))
+    dx, dy, agree = parity_probe.world_shift(ours, capture, [], width, rows, reach=6)
+    assert (dx, dy, agree) == (2, 4, 1.0)
+
+
+def test_world_shift_ignores_actor_pixels() -> None:
+    width, rows = 8, 6
+    ours = bytearray(range(width * rows))
+    capture = bytes(ours)
+    actor = [0, 1, 2]
+    for pixel in actor:
+        ours[pixel] = 255  # an actor the capture does not hold
+    assert parity_probe.world_shift(bytes(ours), capture, actor, width, rows, reach=2) == (
+        0,
+        0,
+        1.0,
+    )
+
+
+def test_shift_summary_reports_the_actor_relative_to_the_world() -> None:
+    line = parity_probe.shift_summary([(2, -4, 0, 0), (4, -2, 2, 2), (2, -4, 0, 0)])
+    assert line == (
+        "frames 3: median actor dx 2 dy -4; world dx 0 dy 0; actor minus world dx 2 dy -4"
+    )
+    assert parity_probe.shift_summary([]) == "no frame had enough actor pixels"

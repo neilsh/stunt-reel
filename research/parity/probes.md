@@ -16,6 +16,8 @@ Capture on top, ours below, one frame region, nearest-neighbour scaled. Use it o
 
 Slides our actor silhouette (layer id 16 and up) over the capture's object pixels and prints, per scored frame, `film_tick`, silhouette size, best `dx`, `dy` and the hit fraction. A consistent `dy` across frames with a stable silhouette size means a placement error rather than a shape error. It showed the CTRY hero aircraft 10 to 14 rows low ([`framing-and-actors.md`](framing-and-actors.md)).
 
+Each row also gives the world's own shift in the same frame: the whole-frame `dx`, `dy` (up to `--world-reach`, default 12) that makes the most of our non-actor pixels equal the capture's index, and that fraction (`world_agree`). The closing line gives the medians of the actor shift, the world shift and actor minus world. Read the actor residual against that difference, not against a world baseline copied from an older note: the world's own shift moves whenever the camera or projection changes (it went from about -4 rows to 0 with the 256 px projection). `world_agree` is an index-equality proxy, so it is low where the palette or terrain shading differs; the SSIM capture-shift scores in [`attribution.md`](attribution.md#ruled-out) remain the authority for the world's framing.
+
 ## 3. Actor-window IoU (`iou`)
 
 IoU of our actor pixels against capture object pixels inside the actor's bounding box padded by 25 px, averaged over every second scored frame. Whole-film SSIM could not rank 48 model orientations (0.770 to 0.777); this can.
