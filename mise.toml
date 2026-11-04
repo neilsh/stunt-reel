@@ -142,7 +142,7 @@ run = "uv run python python/scripts/parity_probe.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.frame]
-description = "Render film ticks in one process and write each beside its reference capture frame (mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N] [--no-build])"
+description = "Render film ticks in one process and write each beside its reference capture frame (mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N] [--no-build] [--var DBG_X=0,1]; --var draws one panel per value after the capture)"
 run = "uv run python python/scripts/parity_frame.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 

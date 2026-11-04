@@ -29,6 +29,7 @@ import struct
 import sys
 import zlib
 from pathlib import Path
+lazy from collections.abc import Sequence
 
 from stunt_reel import parity_layout, references
 from stunt_reel.dataroot import REPO_ROOT
@@ -163,10 +164,36 @@ def make_side_by_side(
     out: Path,
 ) -> None:
     """Writes capture ordinal `ordinal` left of our film tick `tick` for `box`, magenta between."""
-    left, right = _regions(reference, ours, ordinal, tick, box, scale)
+    make_strip(reference, [ours], ordinal, tick, box, scale, out)
+
+
+def make_strip(
+    reference: Path,
+    stores: Sequence[Path],
+    ordinal: int,
+    tick: int,
+    box: tuple[int, int, int, int],
+    scale: int,
+    out: Path,
+) -> None:
+    """Writes capture ordinal `ordinal`, then film tick `tick` of each store, left to right.
+
+    Panels show `box` at `scale` in the capture's palette, with a magenta divider between them.
+    """
+    panels: list[list[list[int]]] = []
+    for store in stores:
+        theirs, mine = _regions(reference, store, ordinal, tick, box, scale)
+        if not panels:
+            panels.append(theirs)
+        panels.append(mine)
     divider = [255, 0, 255] * 2
-    rows = [a + divider + b for a, b in zip(left, right, strict=True)]
-    write_png(out, (box[2] - box[0]) * scale * 2 + 2, rows)
+    rows = []
+    for parts in zip(*panels, strict=True):
+        row: list[int] = []
+        for i, part in enumerate(parts):
+            row += (divider if i else []) + part
+        rows.append(row)
+    write_png(out, ((box[2] - box[0]) * scale + 2) * len(panels) - 2, rows)
 
 
 def cmd_crop(args: argparse.Namespace) -> None:
