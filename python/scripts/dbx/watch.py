@@ -88,11 +88,24 @@ def _decode(code: bytes, at: int, ip: int) -> ix.Instruction | None:
     return None if insn.is_invalid else insn
 
 
+def _rep_in_segment(insn: ix.Instruction, regs: Regs, watch: range) -> bool:
+    """Whether a `rep` store's segment holds *watch* (its chunk may have moved `DI` anywhere)."""
+    if not insn.is_string_instruction:
+        return False
+    values = _values(regs)
+    for mem in _INFO.info(insn).used_memory():
+        base = values.get(int(mem.segment), 0) * 16
+        if int(mem.access) in _WRITES and base <= watch.start and watch.stop <= base + 0x10000:
+            return True
+    return False
+
+
 def resolve_writer(code: bytes, ip: int, regs: Regs, watch: range) -> Verdict:
     """Decide what wrote *watch*; *code* runs from `max(ip - 6, 0)` to `ip + 8`."""
     first = max(ip - BACK, 0)
     stop_at = ip - first
     found: list[Candidate] = []
+    loose: list[Candidate] = []
     for at in range(stop_at + 1):
         insn = _decode(code, at, first + at)
         if insn is None:
@@ -107,6 +120,14 @@ def resolve_writer(code: bytes, ip: int, regs: Regs, watch: range) -> Verdict:
         linear = _hit(_writes(insn, regs), watch)
         if linear is not None:
             found.append(Candidate(first + at, insn.len, str(insn), linear))
+        elif at_stop and _rep_in_segment(insn, regs, watch):
+            # DOSBox runs a rep in chunks, so the chunk that wrote the watch may have left DI
+            # anywhere in the segment: a candidate, but not a named writer.
+            loose.append(
+                Candidate(first + at, insn.len, f"{insn} (rep, span unknown)", watch.start)
+            )
+    if not found and loose:
+        return Verdict("ambiguous", None, tuple(loose))
     if len(found) == 1:
         return Verdict("write", found[0], tuple(found))
     return Verdict("ambiguous" if found else "spurious", None, tuple(found))

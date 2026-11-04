@@ -74,3 +74,18 @@ def test_to_patched_data() -> None:
     assert to_patched_data(p, 0x49EC) == 0x4372
     with pytest.raises(Unmappable, match="unmapped"):
         to_patched_data(p, 0x0100)
+
+
+def test_code_site_uses_each_code_segment() -> None:
+    # A relocated far call (9A off seg) at 0x100 names a code segment at paragraph 0x950.
+    img = dbx_stubs.put(IMG, 0x100, bytes.fromhex("9a00005009"))
+    img = type(img)(img.data, img.relocs | {0x103}, 0, 0, 0)
+    rt = Runtime(img, load=0x0824, dgroup_paragraph=0xD51, vm=0x824)
+    assert rt.code_site(0x9600) == (0x0824 + 0x950, 0x0100)
+    assert rt.code_site(0x9100) == (0x1048, 0x0EC0)
+    assert rt.code_site(0x2350) == (0x0824, 0x2350)
+
+
+def test_code_site_outside_image_raises() -> None:
+    with pytest.raises(ValueError, match="outside"):
+        RT.code_site(0x10000)

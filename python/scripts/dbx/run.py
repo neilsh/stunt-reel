@@ -17,7 +17,7 @@ from dbx.link import LinkError
 from dbx.watch import BACK, resolve_writer
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
     from typing import TextIO
 
     from dbx.addr import Runtime
@@ -25,12 +25,14 @@ if TYPE_CHECKING:
     from dbx.plan import Capture, Plan, Probe
     from dbx.watch import Candidate, Verdict
 
-Reason = Literal["spent", "stop_tick", "timeout", "link_lost", "refused"]
+Reason = Literal["spent", "stop_tick", "timeout", "link_lost", "refused", "error"]
 
 #: Bytes read at a break site before arming, compared with the image.
 SITE_BYTES: int = 8
 #: Bytes read from the stop onwards for the watch filter.
 AHEAD: int = 8
+#: Spurious stops written out in full; later ones are only counted.
+SPURIOUS_RECORDS: int = 50
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,8 +54,9 @@ class RunResult:
     ignored: dict[str, int]
 
 
-def _segment(name: str, rt: Runtime, regs: Regs) -> int:
-    return rt.ds if name == "DS" else int(getattr(regs, name.lower()))
+def _segment(name: str, rt: Runtime, regs: Regs, *, literal: bool = True) -> int:
+    """A segment's value: `DS` with a literal offset means DGROUP; otherwise the live register."""
+    return rt.ds if name == "DS" and literal else int(getattr(regs, name.lower()))
 
 
 def arm_probe(link: Link, rt: Runtime, probe: Probe) -> Armed:
@@ -106,7 +109,8 @@ class _State:
 
 
 def _capture(link: Link, rt: Runtime, regs: Regs, cap: Capture) -> bytes:
-    seg = _segment(cap.seg, rt, regs)
+    literal = isinstance(cap.off, int)
+    seg = _segment(cap.seg, rt, regs, literal=literal)
     off = cap.off if isinstance(cap.off, int) else int(getattr(regs, cap.off.lower()))
     return link.dump(seg, off & 0xFFFF, cap.length)
 
@@ -152,8 +156,9 @@ def _classify(
     """The probe a stop counts for (with its watch verdict), "ignored", or None for spurious."""
     live = [a for a in state.armed if a.probe.name not in state.spent]
     at = (regs.cs, regs.ip)
+    linear = regs.cs * 16 + regs.ip
     for a in live:
-        if a.probe.kind == "break" and at in a.sites:
+        if a.probe.kind == "break" and linear in {seg * 16 + off for seg, off in a.sites}:
             return a.probe, None
     ints = [a for a in live if a.probe.kind == "int"]
     if ints:
@@ -194,8 +199,13 @@ def run_plan(
     poll: float = 0.05,
     tick_poll: float = 0.1,
     hit_timeout: float = 120.0,
+    start: Callable[[], None] | None = None,
 ) -> RunResult:
-    """Run *plan* on the booted film behind *link*, writing JSONL records to *out*."""
+    """Run *plan* on the booted film behind *link*, writing JSONL records to *out*.
+
+    *start* (the boot's last key, Enter) is called once the `dialog` probes are armed, so they
+    see the film from its first instruction.
+    """
 
     def write(record: Mapping[str, object]) -> None:
         out.write(json.dumps(record) + "\n")
@@ -207,7 +217,7 @@ def run_plan(
     state = _State(hits={p.name: 0 for p in plan.probes}, ignored={p.name: 0 for p in plan.probes})
     pending = [p for p in plan.probes if p.arm != "dialog"]
     write({"type": "run", **header, "load": rt.load, "plan": plan.name, "plan_sha256": plan.sha256})
-    reason: Reason = "timeout"
+    reason: Reason = "error"
     arming: str | None = None
     detail = ""
 
@@ -221,6 +231,8 @@ def run_plan(
     try:
         try:
             state.armed = [arm(p) for p in plan.probes if p.arm == "dialog"]
+            if start is not None:
+                start()
             if state.armed:
                 link.ex("RUN")
             last_counted = time.monotonic()
@@ -252,12 +264,26 @@ def run_plan(
                 if first != regs:
                     last_stop = None
                     continue
-                if not state.armed or regs == last_stop:
+                if not state.armed:
+                    continue
+                if regs == last_stop:
+                    # Still the stop just handled: the last RUN has not resumed the guest yet.
+                    link.ex("RUN")
                     continue
                 last_stop = regs
                 found = _classify(link, rt, state, regs)
                 if found is None:
                     state.spurious += 1
+                    if state.spurious <= SPURIOUS_RECORDS:
+                        lo = max(regs.ip - BACK, 0)
+                        code = link.dump(regs.cs, lo, regs.ip - lo + AHEAD)
+                        write({
+                            "type": "spurious",
+                            "film_tick": clock(),
+                            "regs": regs.as_dict(),
+                            "cs_ip_image": rt.to_image(regs.cs, regs.ip),
+                            "code": code.hex(),
+                        })  # fmt: skip
                 elif found == "ignored":
                     last_counted = time.monotonic()
                 elif isinstance(found, tuple):
@@ -278,6 +304,8 @@ def run_plan(
             reason, detail = "refused", str(exc)
         except LinkError as exc:
             reason, detail = "link_lost", str(exc)
+        except Exception as exc:
+            reason, detail = "error", repr(exc)
     finally:
         write({
             "type": "end",

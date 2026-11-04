@@ -103,6 +103,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"debug-x: {exc}", file=sys.stderr)
             return 2
     vm = vm_paragraph(image)
+    unloaded = Runtime(image, 0, layout.dgroup_paragraph, vm)
+    for probe in plan.probes:
+        if probe.kind == "break" and probe.at is not None:
+            try:
+                unloaded.code_site(probe.at, probe.cs)
+            except ValueError as exc:
+                print(f'debug-x: probe "{probe.name}": {exc}', file=sys.stderr)
+                return 2
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     path = args.out / args.film.stem / f"{plan.name}-{args.build}-{stamp}.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -120,14 +128,16 @@ def main(argv: list[str] | None = None) -> int:
             path.open("w", encoding="utf-8", newline="\n") as out,
         ):
             rt = Runtime(image, boot.load, layout.dgroup_paragraph, vm)
-            result = run_plan(boot.link, rt, plan, layout.film_clock, out, header=header)
+            result = run_plan(
+                boot.link, rt, plan, layout.film_clock, out, header=header, start=boot.start
+            )
     except (EmulatorUnavailable, GuestTimeout, LinkError) as exc:
         print(f"debug-x: {exc}", file=sys.stderr)
         return 1
     records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     print(path)
     print("\n".join(summary(records)))
-    return {"refused": 2, "link_lost": 1}.get(result.reason, 0)
+    return {"refused": 2, "link_lost": 1, "error": 1}.get(result.reason, 0)
 
 
 if __name__ == "__main__":

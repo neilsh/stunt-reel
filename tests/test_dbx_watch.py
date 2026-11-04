@@ -85,3 +85,15 @@ def test_stop_near_segment_start() -> None:
         bytes.fromhex("8907") + b"\x90" * 8, 2, replace(R0, ip=2), range(0x15750, 0x15752)
     )
     assert verdict.kind == "write"
+
+
+def test_rep_chunk_far_from_di_is_ambiguous() -> None:
+    # DOSBox runs a rep in chunks, so DI can be well past the watched word at the stop.
+    ip = 0x1000
+    watch = range(0x67E70 + 0x0300, 0x67E70 + 0x0302)
+    regs = replace(R0, ip=ip, di=0x0340, cx=5)
+    verdict = resolve_writer(code("", "f3ab"), ip, regs, watch)
+    assert verdict.kind == "ambiguous"
+    assert "rep" in verdict.candidates[0].text
+    other_segment = replace(regs, es=0x1000)
+    assert resolve_writer(code("", "f3ab"), ip, other_segment, watch).kind == "spurious"

@@ -69,3 +69,12 @@ def test_summary_rows() -> None:
     assert "spurious 3" in text
     assert "spent" in text
     assert len(debug_x.summary(records)) <= debug_x.SUMMARY_LINES
+
+
+def test_unaddressable_site_exits_2(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(debug_x, "ensure_links_or_report", lambda _p: True)
+    monkeypatch.setattr(debug_x, "load_image", lambda _p: dbx_stubs.image())
+    monkeypatch.setattr(debug_x, "booted", _no_boot)
+    plan = tmp_path / "far.toml"
+    plan.write_text('[[probe]]\nname = "far"\nkind = "break"\nat = 0x10000\n', encoding="utf-8")
+    assert debug_x.main(["--plan", str(plan)]) == 2
