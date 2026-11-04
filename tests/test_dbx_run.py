@@ -100,10 +100,22 @@ def connect(tmp_path: Path) -> Iterator[object]:
     listener.close()
 
 
-def go(link: Link, plan: Plan, **kw: float) -> tuple[RunResult, list[dict[str, object]]]:
+def go(
+    link: Link, plan: Plan, hit_timeout: float = 0.4
+) -> tuple[RunResult, list[dict[str, object]]]:
     out = io.StringIO()
-    opts = {"poll": 0.005, "tick_poll": 0.005, "hit_timeout": 0.4} | kw
-    result = run_plan(link, RT, plan, CLOCK, out, header={"build": "unpatched"}, **opts)
+    header = {"build": "unpatched"}
+    result = run_plan(
+        link,
+        RT,
+        plan,
+        CLOCK,
+        out,
+        header=header,
+        poll=0.005,
+        tick_poll=0.005,
+        hit_timeout=hit_timeout,
+    )
     return result, [json.loads(line) for line in out.getvalue().splitlines()]
 
 
@@ -146,7 +158,11 @@ def test_watch_spurious_counted(connect) -> None:  # type: ignore[no-untyped-def
     stop = replace(STOP, cs=0x0824, ip=0x759C)
     guest = Guest([stop], memory=mirrored())
     result, records = go(connect(guest), parse_plan(WATCH.format(where='mem = "DS:0x4896"'), "w"))
-    assert [r["type"] for r in records] == ["run", "end"]
+    assert [r["type"] for r in records] == ["run", "spurious", "end"]
+    assert records[1]["cs_ip_image"] == 0x759C
+    assert str(records[1]["code"]).startswith(
+        "909090908bc8"
+    )  # six bytes before the stop, then eight
     assert result.spurious == 1
     assert result.reason == "timeout"
 
@@ -252,3 +268,39 @@ def test_mismatch_mid_run_is_refused(connect) -> None:  # type: ignore[no-untype
     result, records = go(connect(Guest([], clock=[12])), parse_plan(text, "m"))
     assert result.reason == "refused"
     assert records[-1]["probe"] == "light"
+
+
+def test_dialog_probes_arm_before_start(connect) -> None:  # type: ignore[no-untyped-def]
+    guest = Guest([STOP], memory=mirrored())
+    started: list[int] = []
+    out = io.StringIO()
+    run_plan(connect(guest), RT, parse_plan(BREAK.format(hits=1), "d"), CLOCK, out, header={},
+             poll=0.005, tick_poll=0.005, hit_timeout=0.4, start=lambda: started.append(len(guest.log)))  # fmt: skip
+    first_bp = next(i for i, c in enumerate(guest.log) if c.startswith("EXEC BP "))
+    assert started
+    assert first_bp < started[0]
+
+
+def test_identical_repeat_stop_resumes(connect) -> None:  # type: ignore[no-untyped-def]
+    # The first RUN after a hit leaves the guest where it was; the loop must RUN again.
+    second = replace(STOP, es=0x6B72)
+    guest = Guest([STOP, STOP, second], memory=mirrored())
+    result, _ = go(connect(guest), parse_plan(BREAK.format(hits=2), "r"))
+    assert result.reason == "spent"
+    assert result.hits == {"light": 2}
+
+
+def test_unexpected_error_is_recorded(connect) -> None:  # type: ignore[no-untyped-def]
+    text = BREAK.format(hits=1).replace("0x9100", "0x10000")
+    result, records = go(connect(Guest([], memory=mirrored())), parse_plan(text, "e"))
+    assert result.reason == "error"
+    assert "0x10000" in str(records[-1]["detail"])
+
+
+def test_register_ds_capture_reads_live_ds(connect) -> None:  # type: ignore[no-untyped-def]
+    stop = replace(STOP, ds=0x2000, dx=0x0010)
+    text = BREAK.format(hits=1).replace('["stack:4"]', '["mem:DS:DX:2", "mem:DS:0x49EC:2"]')
+    memory = mirrored() | {0x20010: 0xAB, 0x20011: 0xCD, RT.ds * 16 + 0x49EC: 0x63}
+    _, records = go(connect(Guest([stop], memory=memory)), parse_plan(text, "c"))
+    mem = records[1]["mem"]
+    assert mem == {"mem:DS:DX:2": "abcd", "mem:DS:0x49EC:2": "6300"}  # literal offsets read DGROUP

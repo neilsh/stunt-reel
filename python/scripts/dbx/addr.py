@@ -1,8 +1,9 @@
 """Where an image offset runs, for either PLAYONE build, and how a plan offset maps to Patch #3.
 
-Image offset `x` sits at linear `load * 16 + x`. Module code runs with `CS = load`; the
-display-list VM's handlers run with `CS = load + vm`, where `vm` is the paragraph of the build's
-dispatch-slot run (`research/playone-exe/world-scene.md` section 4).
+Image offset `x` sits at linear `load * 16 + x`. Code runs with `CS = load + p`, where `p` is the
+code segment holding it: the image's code paragraphs (the targets of its relocated far calls and
+jumps, `LoadImage.code_paragraphs`) plus `vm`, the paragraph of the build's dispatch-slot run
+(`research/playone-exe/world-scene.md` section 4), where the display-list handlers live.
 """
 
 from __future__ import annotations
@@ -71,11 +72,22 @@ class Runtime:
         start = self.vm * 16
         return range(start, start + SLOT_BYTES * len(dispatch_slots(self.image, self.vm)))
 
+    @property
+    def code_paragraphs(self) -> list[int]:
+        """The image paragraphs code segments start at, the VM's included."""
+        return sorted({0, self.vm, *self.image.code_paragraphs()})
+
     def code_site(self, offset: int, cs: CodeSegment = "auto") -> tuple[int, int]:
-        """The `seg:off` image *offset* runs at; `auto` takes the VM segment from `vm * 16` up."""
-        in_vm = offset >= self.vm * 16 if cs == "auto" else cs == "vm"
-        seg = self.load + self.vm if in_vm else self.load
-        off = offset - (seg - self.load) * 16
+        """The `seg:off` image *offset* runs at: `auto` takes the nearest code segment below it."""
+        if not 0 <= offset < len(self.image.data):
+            msg = f"image offset {offset:#x} is outside the {len(self.image.data):#x}-byte image"
+            raise ValueError(msg)
+        if cs == "auto":
+            paragraph = max(p for p in self.code_paragraphs if p * 16 <= offset)
+        else:
+            paragraph = self.vm if cs == "vm" else 0
+        seg = self.load + paragraph
+        off = offset - paragraph * 16
         if not 0 <= off <= 0xFFFF:
             msg = f"image offset {offset:#x} is not addressable from CS={seg:04X}"
             raise ValueError(msg)
