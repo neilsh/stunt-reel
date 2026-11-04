@@ -25,11 +25,14 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import statistics
 import struct
 import sys
 import zlib
 from pathlib import Path
 lazy from collections.abc import Sequence
+
+import numpy as np
 
 from stunt_reel import parity_layout, references
 from stunt_reel.dataroot import REPO_ROOT
@@ -201,11 +204,91 @@ def cmd_crop(args: argparse.Namespace) -> None:
     make_crop(args.reference, args.ours, args.ordinal, args.tick, box, args.scale, args.out)
 
 
+def shifted_pixels(pixels: list[int], dx: int, dy: int, width: int, rows: int) -> list[int]:
+    """``pixels`` moved by ``(dx, dy)``, dropping any that leave the ``width`` x ``rows`` frame."""
+    return [
+        (p // width + dy) * width + p % width + dx
+        for p in pixels
+        if 0 <= p % width + dx < width and 0 <= p // width + dy < rows
+    ]
+
+
+def capture_actor_pixels(
+    capture: bytes, silhouette: list[int], width: int, rows: int, pad: int = 8
+) -> list[int]:
+    """The capture's object pixels near ``silhouette``, so the capture's aircraft is left out whole.
+
+    The capture's aircraft can be larger than our silhouette moved onto it, so every capture
+    object pixel within ``pad`` pixels (in x and in y) of a silhouette pixel is taken as aircraft.
+    Scenery away from every silhouette pixel stays in, even between two separated actors.
+    """
+    near = np.zeros(width * rows, dtype=bool)
+    near[silhouette] = True
+    grown = near.reshape(rows, width)
+    for axis, size in ((0, rows), (1, width)):
+        spread = grown.copy()
+        for step in range(1, pad + 1):
+            if step >= size:
+                break
+            if axis == 0:
+                spread[step:, :] |= grown[:-step, :]
+                spread[:-step, :] |= grown[step:, :]
+            else:
+                spread[:, step:] |= grown[:, :-step]
+                spread[:, :-step] |= grown[:, step:]
+        grown = spread
+    return [
+        int(p) for p in np.flatnonzero(grown.reshape(-1)) if is_object(capture[p], CTRY_BACKGROUND)
+    ]
+
+
+def world_shift(
+    ours: bytes,
+    capture: bytes,
+    actor: list[int],
+    width: int,
+    rows: int,
+    reach: int,
+    capture_actor: list[int] | None = None,
+) -> tuple[int, int, float]:
+    """The ``(dx, dy)`` that best lands our non-actor pixels on equal capture indices.
+
+    Same sign as the actor shift: our pixel at ``(x, y)`` is compared with the capture's at
+    ``(x + dx, y + dy)``. Every even offset from -``reach`` to ``reach`` is tried, zero
+    included; a tie goes to the smaller displacement. ``actor`` (our pixels) and
+    ``capture_actor`` (capture pixels) are left out, so the aircraft does not pull the world.
+    Returns the shift and the fraction of compared pixels whose indices agreed.
+    """
+    mine = np.frombuffer(ours, dtype=np.uint8)[: width * rows].reshape(rows, width)
+    theirs = np.frombuffer(capture, dtype=np.uint8)[: width * rows].reshape(rows, width)
+    flat = np.ones(width * rows, dtype=bool)
+    flat[actor] = False
+    keep = flat.reshape(rows, width)
+    flat_theirs = np.ones(width * rows, dtype=bool)
+    flat_theirs[capture_actor or []] = False
+    keep_theirs = flat_theirs.reshape(rows, width)
+    offsets = [2 * k for k in range(-(reach // 2), reach // 2 + 1)]
+    best = (0, 0, -1.0)
+    for dy in (d for d in offsets if abs(d) < rows):
+        for dx in (d for d in offsets if abs(d) < width):
+            ys, yt = slice(max(0, -dy), rows - max(0, dy)), slice(max(0, dy), rows - max(0, -dy))
+            xs, xt = slice(max(0, -dx), width - max(0, dx)), slice(max(0, dx), width - max(0, -dx))
+            mask = keep[ys, xs] & keep_theirs[yt, xt]
+            agree = float(np.count_nonzero((mine[ys, xs] == theirs[yt, xt]) & mask))
+            fraction = agree / max(1, int(np.count_nonzero(mask)))
+            closer = abs(dx) + abs(dy) < abs(best[0]) + abs(best[1])
+            if fraction > best[2] or (fraction == best[2] and closer):
+                best = (dx, dy, fraction)
+    return best
+
+
 def cmd_shift(args: argparse.Namespace) -> None:
     capture = read_capture(args.reference)
     store = RenderStore(args.ours)
     geometry = store.record.geometry
     width, rows = geometry.width, geometry.plane_rows()
+    print("film_tick actor_px dx dy hit world_dx world_dy world_agree")
+    shifts: list[tuple[int, int, int, int]] = []
     for frame in read_report(args.report).per_frame:
         if frame.scored is not True:
             continue
@@ -231,7 +314,39 @@ def cmd_shift(args: argparse.Namespace) -> None:
                         hit += 1
                 if hit > best[0]:
                     best = (hit, dx, dy)
-        print(frame.film_tick, len(pixels), best[1], best[2], round(best[0] / len(sample), 2))
+        capture_actor = capture_actor_pixels(
+            capture_index, shifted_pixels(pixels, best[1], best[2], width, rows), width, rows
+        )
+        world = world_shift(
+            page.indices, capture_index, pixels, width, rows, args.world_reach, capture_actor
+        )
+        shifts.append((best[1], best[2], world[0], world[1]))
+        print(
+            frame.film_tick,
+            len(pixels),
+            best[1],
+            best[2],
+            round(best[0] / len(sample), 2),
+            world[0],
+            world[1],
+            round(world[2], 2),
+        )
+    print(shift_summary(shifts))
+
+
+def shift_summary(shifts: list[tuple[int, int, int, int]]) -> str:
+    """Median actor, world and actor-minus-world shifts over ``(dx, dy, world_dx, world_dy)``."""
+    if not shifts:
+        return "no frame had enough actor pixels"
+    adx, ady, wdx, wdy = (list(column) for column in zip(*shifts, strict=True))
+    rdx = [a - w for a, w in zip(adx, wdx, strict=True)]
+    rdy = [a - w for a, w in zip(ady, wdy, strict=True)]
+    med = statistics.median
+    return (
+        f"frames {len(shifts)}: median actor dx {med(adx):g} dy {med(ady):g}; "
+        f"world dx {med(wdx):g} dy {med(wdy):g}; "
+        f"actor minus world dx {med(rdx):g} dy {med(rdy):g}"
+    )
 
 
 def actor_iou(
@@ -359,6 +474,9 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--min-pixels", type=int, default=100)
         if name == "shift":
             p.add_argument("--reach", type=int, default=40)
+            p.add_argument(
+                "--world-reach", type=int, default=12, help="largest whole-frame shift tried"
+            )
         if name == "iou":
             p.add_argument("--every", type=int, default=2, help="use every Nth scored frame")
             p.add_argument("--pad", type=int, default=25)
