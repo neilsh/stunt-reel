@@ -13,7 +13,8 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import parity_probe  # noqa: E402
 
-from stunt_reel import parity_artifacts  # noqa: E402
+from stunt_reel import parity_artifacts, parity_layout  # noqa: E402
+from stunt_reel.dataroot import REPO_ROOT  # noqa: E402
 
 if TYPE_CHECKING:
     import pytest
@@ -54,3 +55,11 @@ def test_summary_prints_the_headline_the_worst_frames_and_the_log_row(
     assert "loss by class: props 0.0200  terrain 0.0100" in out
     assert "worst scored frames: tick 10 0.500" in out
     assert "| 2/3 | 0.700 | 0.925 |" in out
+
+
+def test_report_defaults_to_the_one_parity_run_writes() -> None:
+    """`shift`, `iou` and `summary` read the report `mise run parity` last wrote, not a hand-run one."""
+    written = REPO_ROOT / parity_layout.report_dir("ctry") / "report.json"
+    parser = parity_probe.build_parser()
+    for argv in (["shift", "--ours", "x"], ["iou", "--ours", "x"], ["summary"]):
+        assert parser.parse_args(argv).report == written
