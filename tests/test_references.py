@@ -191,12 +191,53 @@ def _archive(directory: Path, makeone: str) -> Path:
 
 def test_the_makeone_build_comes_from_the_archives_meta(tmp_path: Path) -> None:
     by_build = {build: sha for sha, build in references.MAKEONE_BUILDS.items()}
+    build = references.archive_makeone_build
     patch3 = _archive(tmp_path / "a", by_build["patch3"])
-    assert references.archive_makeone_build(patch3) == "patch3"
+    assert build(tmp_path, "vault-ctry", patch3) == "patch3"
     unpatched = _archive(tmp_path / "b", by_build["unpatched"])
-    assert references.archive_makeone_build(unpatched) == "unpatched"
-    assert references.archive_makeone_build(_archive(tmp_path / "c", "0" * 64)) is None
-    assert references.archive_makeone_build(tmp_path / "none" / "CTRY.ALL") is None
+    assert build(tmp_path, "vault-ctry", unpatched) == "unpatched"
+    unknown = references.UNKNOWN_BUILD
+    assert build(tmp_path, "vault-ctry", _archive(tmp_path / "c", "0" * 64)) == unknown
+    assert build(tmp_path, "vault-ctry", tmp_path / "none" / "CTRY.ALL") == unknown
+
+
+def test_a_linked_archive_takes_its_build_from_the_manifest(tmp_path: Path) -> None:
+    by_build = {build: sha for sha, build in references.MAKEONE_BUILDS.items()}
+    manifest = tmp_path / parity_layout.manifest_path("vault-ctry")
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(f'makeone_sha256 = "{by_build["patch3"]}"\n', encoding="utf-8")
+    linked = tmp_path / parity_layout.linked_path("vault-ctry", "CTRY.FLM")
+    assert references.archive_makeone_build(tmp_path, "vault-ctry", linked) == "patch3"
+    # The same manifest says nothing about an archive that was not rebuilt from it.
+    other = tmp_path / "elsewhere" / "CTRY.ALL"
+    assert references.archive_makeone_build(tmp_path, "vault-ctry", other) == "unknown"
+
+
+def test_a_shipped_archive_of_the_demo_or_retail_game_is_unpatched(tmp_path: Path) -> None:
+    build = references.archive_makeone_build
+    for tree in ("stisldem", "stuntisl"):
+        shipped = tmp_path / "corpus" / tree / "VAULT" / "CTRY.ALL"
+        assert build(tmp_path, "vault-ctry", shipped) == "unpatched"
+    community = tmp_path / "corpus" / "siarchive" / "Films" / "NewPLAY" / "TOD.ALL"
+    assert build(tmp_path, "vault-tod", community) == "unknown"
+
+
+def test_the_committed_ctry_and_intro_rows_accept_their_shipped_demo_archives() -> None:
+    for film in ("ctry", "intro"):
+        shipped = REPO_ROOT / "corpus" / "stisldem" / "VAULT" / f"{film.upper()}.ALL"
+        references.require_builds(
+            REPO_ROOT,
+            f"vault-{film}",
+            playone="unpatched",
+            makeone=references.archive_makeone_build(REPO_ROOT, f"vault-{film}", shipped),
+        )
+
+
+def test_an_archive_of_unknown_build_is_refused_when_the_row_names_one(tmp_path: Path) -> None:
+    _row(tmp_path, 'makeone = "unpatched"', 'reason = "x"')
+    with pytest.raises(references.ReferenceCaptureError, match="cannot be determined"):
+        references.require_builds(tmp_path, "vault-ctry", makeone=references.UNKNOWN_BUILD)
+    references.require_builds(tmp_path, "vault-other", makeone=references.UNKNOWN_BUILD)
 
 
 def test_a_matching_pair_is_accepted(tmp_path: Path) -> None:
@@ -214,5 +255,7 @@ def test_a_mismatched_pair_is_refused(tmp_path: Path) -> None:
     archive = _archive(tmp_path / "arch", by_build["unpatched"])
     with pytest.raises(references.ReferenceCaptureError, match=r"unpatched MAKEONE.*names patch3"):
         references.require_builds(
-            tmp_path, "vault-ctry", makeone=references.archive_makeone_build(archive)
+            tmp_path,
+            "vault-ctry",
+            makeone=references.archive_makeone_build(tmp_path, "vault-ctry", archive),
         )

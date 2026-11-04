@@ -175,11 +175,12 @@ def _record_into(
     try:
         layout = playone.layout_for(staged.mount / "PLAYONE.EXE")
         # The film's row names the builds its reference is made with (ADR 0029).
+        slug = parity_layout.slug_for(film, args.name)
         references.require_builds(
             dataroot.REPO_ROOT,
-            parity_layout.slug_for(film, args.name),
+            slug,
             playone=layout.name,
-            makeone=references.archive_makeone_build(archive),
+            makeone=references.archive_makeone_build(dataroot.REPO_ROOT, slug, archive),
         )
     except (playone.UnknownBuild, references.ReferenceCaptureError, OSError) as exc:
         staging.unstage(staged)

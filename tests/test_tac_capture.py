@@ -829,6 +829,7 @@ def test_a_capture_refuses_a_build_its_films_row_does_not_name(
         sys, "argv", [f"{script}.py", *_capture_argv(staged_repo, tmp_path / "out")[1:]]
     )
     monkeypatch.setattr(module.playone, "layout_for", lambda _exe: playone.UNPATCHED)
+    monkeypatch.setattr(references, "archive_makeone_build", lambda *_a: "patch3")
     for hook in ("capture", "record_video"):
         target = module if hasattr(module, hook) else getattr(module, "video", None)
         if target is not None and hasattr(target, hook):
@@ -850,9 +851,29 @@ def test_a_capture_accepts_the_build_its_films_row_names(
     monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, tmp_path / "out"))
     monkeypatch.setattr(module.playone, "layout_for", lambda _exe: playone.UNPATCHED)
+    monkeypatch.setattr(references, "archive_makeone_build", lambda *_a: "patch3")
     monkeypatch.setattr(module, "capture", lambda *_a, **_k: {"frames": [{"ordinal": 1}]})
     _name_builds(rows, playone_build="unpatched")
     assert module.run(module.parse_args()) == 0
+
+
+def test_a_capture_refuses_an_archive_whose_build_cannot_be_determined(
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    rows: Path,
+) -> None:
+    """An archive with no record cannot satisfy a row that names a MAKEONE build (ADR 0029)."""
+    module = _load_script("capture_playone_reference")
+    monkeypatch.setattr(references, "archive_makeone_build", lambda *_a: references.UNKNOWN_BUILD)
+    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
+    monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, tmp_path / "out"))
+    monkeypatch.setattr(module.playone, "layout_for", lambda _exe: playone.UNPATCHED)
+    monkeypatch.setattr(module, "capture", lambda *_a, **_k: pytest.fail("the emulator ran"))
+    _name_builds(rows, playone_build="unpatched")
+    assert module.run(module.parse_args()) == 2
+    assert "cannot be determined" in capsys.readouterr().err
 
 
 def _engine_layouts(

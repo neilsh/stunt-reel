@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 __all__ = [
     "BUILD_NAMES",
     "MAKEONE_BUILDS",
+    "UNKNOWN_BUILD",
     "Builds",
     "Reference",
     "ReferenceCaptureError",
@@ -179,16 +180,42 @@ def read_builds(root: Path, slug: str) -> tuple[str, Builds] | None:
     return None
 
 
-def archive_makeone_build(archive: Path) -> str | None:
-    """The build of the ``MAKEONE`` that wrote *archive*, from the ``meta.json`` beside it.
+#: Stands for a ``MAKEONE`` build that cannot be determined; :func:`require_builds` refuses it
+#: whenever the film's row names a ``makeone`` build.
+UNKNOWN_BUILD = "unknown"
 
-    ``None`` for an archive with no such record (a shipped ``.ALL``) or an unknown hash.
-    """
+#: Game trees whose shipped ``.ALL`` files the unpatched ``MAKEONE`` wrote: the demo and the
+#: retail game, which ship the unpatched executables (``patch3.md`` section 1).
+_UNPATCHED_TREES = ("stisldem", "stuntisl")
+
+
+def _recorded_makeone(path: Path, key_file: str) -> str | None:
+    """The build for the ``makeone_sha256`` in *path* (JSON or TOML by *key_file*), else None."""
     try:
-        meta = json.loads((archive.parent / capture_store.META_FILE).read_text("utf-8"))
-        return MAKEONE_BUILDS.get(str(meta.get("makeone_sha256", "")))
+        text = path.read_text("utf-8")
+        record = json.loads(text) if key_file == "json" else tomllib.loads(text)
+        return MAKEONE_BUILDS.get(str(record.get("makeone_sha256", "")))
     except OSError, ValueError, AttributeError:
         return None
+
+
+def archive_makeone_build(root: Path, slug: str, archive: Path) -> str:
+    """The build of the ``MAKEONE`` that wrote *archive* for film *slug*, else ``UNKNOWN_BUILD``.
+
+    Three kinds of archive are known: a stored one (``meta.json`` beside it records
+    ``makeone_sha256``), one rebuilt under ``target/linked/<slug>`` (the film's committed
+    manifest, ``manifests/all/<slug>.toml``, records it), and a shipped ``.ALL`` in the demo's or
+    the retail game's tree, which the unpatched ``MAKEONE`` wrote. Any other archive, such as a
+    community film's, has no record, so its build cannot be determined.
+    """
+    found = _recorded_makeone(archive.parent / capture_store.META_FILE, "json")
+    if found is None and archive.parent == (root / parity_layout.linked_path(slug, "x")).parent:
+        found = _recorded_makeone(root / parity_layout.manifest_path(slug), "toml")
+    if found is None:
+        shipped = root / "corpus"
+        if any(archive.is_relative_to(shipped / tree) for tree in _UNPATCHED_TREES):
+            found = "unpatched"
+    return found or UNKNOWN_BUILD
 
 
 def require_builds(
@@ -196,13 +223,22 @@ def require_builds(
 ) -> None:
     """Refuse a run whose builds differ from the ones the film's row names.
 
-    *playone* and *makeone* are build names, or ``None`` for an executable the run does not use
-    or whose build is unknown. A film with no row passes: the row is what names a pair.
+    *playone* and *makeone* are build names, or ``None`` for an executable the run does not use.
+    *makeone* may be ``UNKNOWN_BUILD`` for an archive whose build cannot be determined; that is
+    refused when the row names a ``makeone``, because it might be the other build. Only the row
+    for the directory *slug* is checked: a film with no row, or run under another ``--name``
+    slug, passes unchecked until #140's fallback chooses its builds.
     """
     found = read_builds(root, slug)
     if found is None:
         return
     name, named = found
+    if makeone == UNKNOWN_BUILD:
+        raise ReferenceCaptureError(
+            f"the MAKEONE build of the {slug} archive cannot be determined, but the row [{name}] "
+            f"of {parity_layout.REFERENCES_FILE.as_posix()} names {named.makeone}; "
+            "make the archive with make-all, or restore its manifest"
+        )
     for field, used in (("playone", playone), ("makeone", makeone)):
         wanted = getattr(named, field)
         if used is not None and used != wanted:

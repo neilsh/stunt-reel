@@ -24,7 +24,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from stunt_reel import capture_store, dataroot, link, parity_layout
+from stunt_reel import capture_store, dataroot, link, parity_layout, references
 from stunt_reel.all_archive import (
     META_FILE,
     ArchiveError,
@@ -189,6 +189,19 @@ def run(
     try:
         capture_store.check_replaceable(dataroot.REPO_ROOT / parity_layout.archive_path(slug))
     except ValueError as exc:
+        print(f"[make-all] {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        # The film's row names the MAKEONE build its archive is made with (ADR 0029).
+        references.require_builds(
+            dataroot.REPO_ROOT,
+            slug,
+            makeone=references.MAKEONE_BUILDS.get(
+                file_sha256(game_root / "MAKEONE.EXE"), references.UNKNOWN_BUILD
+            ),
+        )
+    except (references.ReferenceCaptureError, OSError) as exc:
         print(f"[make-all] {exc}", file=sys.stderr)
         return 2
 

@@ -6,12 +6,12 @@ import importlib.util
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from stunt_reel import dataroot, parity_layout
+import pytest
+
+from stunt_reel import dataroot, parity_layout, references
 from stunt_reel.tac import automation
 
 if TYPE_CHECKING:
-    import pytest
-
     from tac_mock import StagedRepo
 
 SCRIPT = Path(__file__).resolve().parent.parent / "python" / "scripts" / "play.py"
@@ -71,6 +71,48 @@ def test_play_presses_the_film_keys_waits_and_leaves_no_stage(
     assert emulator.events == ["wait", "stop"]
     stage_root = dataroot.data_root() / parity_layout.stage_root()
     assert not stage_root.exists() or not any(stage_root.iterdir())
+
+
+@pytest.fixture
+def rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An empty references.toml in a stand-in checkout, so the committed rows are not read."""
+    checkout = tmp_path / "references-checkout"
+    pointers = checkout / parity_layout.REFERENCES_FILE
+    pointers.parent.mkdir(parents=True)
+    pointers.write_text("", encoding="utf-8")
+    monkeypatch.setattr(references, "REPO_ROOT", checkout)
+    return pointers
+
+
+def test_play_refuses_a_build_the_films_row_does_not_name(
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    rows: Path,
+) -> None:
+    """The staged engine is the unpatched build; the row names patch3 (ADR 0029)."""
+    module = _play()
+    _Emulator.instances = []
+    monkeypatch.setattr(automation, "DosboxAutomation", _Emulator)
+    rows.write_text('[ctry]\nfilm = "vault-ctry"\n', encoding="utf-8")
+
+    assert module.run(module.parse_args(["--film", str(staged_repo.film)])) == 1
+    assert _Emulator.instances == []
+    assert "names patch3" in capsys.readouterr().err
+    stage_root = dataroot.data_root() / parity_layout.stage_root()
+    assert not stage_root.exists() or not any(stage_root.iterdir())
+
+
+def test_play_runs_a_film_with_no_row_on_any_build(
+    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch, rows: Path
+) -> None:
+    module = _play()
+    _Emulator.instances = []
+    monkeypatch.setattr(automation, "DosboxAutomation", _Emulator)
+    assert rows.read_text(encoding="utf-8") == ""
+
+    assert module.run(module.parse_args(["--film", str(staged_repo.film)])) == 0
+    assert len(_Emulator.instances) == 1
 
 
 def test_play_without_an_archive_fails_before_any_emulator(
