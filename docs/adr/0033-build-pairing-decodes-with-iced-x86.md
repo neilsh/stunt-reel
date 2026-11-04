@@ -42,3 +42,12 @@ ADR 0010's checks:
   code of `0x0000..0xD510` identically).
 - **A hand-written decoder for the few forms the pairing needs.** Rejected: the pairing must decode
   every instruction to align functions, and the breakpoint tool needs memory-access reporting.
+
+## Consequences
+
+- `iced-x86` stays in the dev group, so the shipped `stunt_reel` wheel keeps no runtime
+  dependencies; only a development checkout installs it.
+- The lock holds wheels for Linux (x86-64 and aarch64 glibc, x86-64 musl), macOS (universal2) and
+  Windows (x86 and x64). Any other platform, such as Windows on ARM64, falls back to the locked
+  sdist, which builds from Rust source and needs a Rust toolchain; this project's gate needs one
+  anyway.
