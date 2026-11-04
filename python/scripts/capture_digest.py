@@ -14,6 +14,7 @@ Usage: ``mise run capture-digest -- vault-ctry`` (film slug), or
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import tomllib
 from pathlib import Path
@@ -34,12 +35,43 @@ def _entries() -> dict[str, dict[str, object]]:
     return {name: entry for name, entry in document.items() if isinstance(entry, dict)}
 
 
-def report(slug: str, digest: str, *, promotable: bool = True) -> list[str]:
+def recorded_builds(root: Path, slug: str, directory: Path) -> dict[str, str]:
+    """The builds the film's capture and stored archive record, as ``references.toml`` names them.
+
+    ``playone`` comes from the capture's ``meta.json`` (``playone_build``) and ``makeone`` from
+    the archive's ``makeone_sha256``; a field whose record is absent or unknown is left out.
+    """
+    found: dict[str, str] = {}
+    try:
+        meta = json.loads((directory / capture_store.META_FILE).read_text(encoding="utf-8"))
+        build = meta.get("playone_build")
+        if build in references.BUILD_NAMES:
+            found["playone"] = build
+    except OSError, ValueError, AttributeError:
+        pass
+    stored = capture_store.current(root / parity_layout.archive_path(slug))
+    if stored is not None:
+        try:
+            archive = json.loads((stored / capture_store.META_FILE).read_text(encoding="utf-8"))
+            build = references.MAKEONE_BUILDS.get(str(archive.get("makeone_sha256", "")))
+        except OSError, ValueError, AttributeError:
+            build = None
+        if build is not None:
+            found["makeone"] = build
+    return found
+
+
+def report(
+    slug: str, digest: str, *, promotable: bool = True, builds: dict[str, str] | None = None
+) -> list[str]:
     """The lines printed for the capture of *slug* hashing to *digest*.
 
     *promotable* is false for a directory that is not where parity reads the film's capture: an
-    entry pinning it would point parity at a different directory, so none is printed.
+    entry pinning it would point parity at a different directory, so none is printed. *builds*
+    are the builds the capture records; for a field it lacks, the row's own value is kept, and
+    when neither names one the line says so, because a row must name both (ADR 0029).
     """
+    builds = builds or {}
     lines = [f"{parity_layout.frames_path(slug).as_posix()}", f'sha256 = "{digest}"']
     if not promotable:
         return [
@@ -59,6 +91,17 @@ def report(slug: str, digest: str, *, promotable: bool = True) -> list[str]:
             f'film = "{slug}"',
             f'sha256 = "{digest}"',
         ]
+        chosen = {f: builds.get(f) or entry.get(f) for f in ("makeone", "playone")}
+        for field, build in chosen.items():
+            lines.append(
+                f'{field} = "{build}"'
+                if build in references.BUILD_NAMES
+                else f"# {field} = ?  (the capture does not record it; name unpatched or patch3)"
+            )
+        if "unpatched" in chosen.values():
+            lines.append(
+                f'reason = "{entry.get("reason", "why this film needs the unpatched build")}"'
+            )
     return lines
 
 
@@ -90,7 +133,10 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     if capture_store.current(directory) is None:
         print(f"{directory} is not a capture (no meta.json)", file=sys.stderr)
         return 1
-    for line in report(slug, references.capture_digest(directory), promotable=promotable):
+    builds = recorded_builds(root, slug, directory)
+    for line in report(
+        slug, references.capture_digest(directory), promotable=promotable, builds=builds
+    ):
         print(line)
     return 0
 

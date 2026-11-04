@@ -13,7 +13,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from stunt_reel import dataroot
+from stunt_reel import dataroot, parity_layout, references
 from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.tac import automation, luagen, playone, staging
 
@@ -44,6 +44,17 @@ def run(args: argparse.Namespace) -> int:
     try:
         staged = staging.stage_film(film, root)
     except OSError as exc:
+        print(f"[play] {exc}", file=sys.stderr)
+        return 1
+    try:
+        # The film's row in references.toml names the builds it may play on (ADR 0029).
+        references.require_builds(
+            dataroot.REPO_ROOT,
+            parity_layout.slug_for(film),
+            playone=playone.layout_for(staged.mount / "PLAYONE.EXE").name,
+        )
+    except (references.ReferenceCaptureError, playone.UnknownBuild, ValueError, OSError) as exc:
+        staging.unstage(staged)
         print(f"[play] {exc}", file=sys.stderr)
         return 1
     emulator = automation.DosboxAutomation(staged.write_conf)

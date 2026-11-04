@@ -22,7 +22,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from stunt_reel import capture_store, dataroot, parity_layout
+from stunt_reel import capture_store, dataroot, parity_layout, references
 from stunt_reel.all_archive import ArchiveError, resolve_all
 from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.parity_artifacts import FilmId
@@ -174,7 +174,14 @@ def _record_into(
         return 1
     try:
         layout = playone.layout_for(staged.mount / "PLAYONE.EXE")
-    except (playone.UnknownBuild, OSError) as exc:
+        # The film's row names the builds its reference is made with (ADR 0029).
+        references.require_builds(
+            dataroot.REPO_ROOT,
+            parity_layout.slug_for(film, args.name),
+            playone=layout.name,
+            makeone=references.archive_makeone_build(archive),
+        )
+    except (playone.UnknownBuild, references.ReferenceCaptureError, OSError) as exc:
         staging.unstage(staged)
         print(f"[capture-video] {exc}", file=sys.stderr)
         return 2

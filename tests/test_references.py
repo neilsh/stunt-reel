@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 import pytest
 
 from stunt_reel import capture_store, parity_layout, references
+from stunt_reel.dataroot import REPO_ROOT
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+PATCH3 = 'makeone = "patch3"\nplayone = "patch3"\n'
 
 
 def _capture(root: Path, film: str, text: str = "{}") -> Path:
@@ -23,7 +28,7 @@ def _capture(root: Path, film: str, text: str = "{}") -> Path:
 def _point(root: Path, film: str, sha256: str) -> None:
     pointers = root / parity_layout.REFERENCES_FILE
     pointers.parent.mkdir(parents=True, exist_ok=True)
-    pointers.write_text(f'[{film}]\nfilm = "vault-{film}"\nsha256 = "{sha256}"\n', "utf-8")
+    pointers.write_text(f'[{film}]\nfilm = "vault-{film}"\nsha256 = "{sha256}"\n{PATCH3}', "utf-8")
 
 
 def _open(root: Path, film: str) -> Path:
@@ -131,3 +136,76 @@ def test_the_loops_films_are_the_rows_that_pin_a_capture(tmp_path: Path) -> None
     text = "\n\n".join("\n".join(row) for row in rows) + "\n"
     pointers.write_text(text, encoding="utf-8")
     assert references.reference_films(tmp_path) == ("ctry", "intro")
+
+
+def _row(root: Path, *fields: str) -> None:
+    pointers = root / parity_layout.REFERENCES_FILE
+    pointers.parent.mkdir(parents=True, exist_ok=True)
+    body = "\n".join(["[ctry]", 'film = "vault-ctry"', 'sha256 = "0"', *fields])
+    pointers.write_text(body + "\n", encoding="utf-8")
+
+
+def test_the_committed_rows_name_valid_builds() -> None:
+    for film in references.reference_films(REPO_ROOT):
+        builds = references.read_reference(REPO_ROOT, film).builds
+        assert {builds.makeone, builds.playone} <= set(references.BUILD_NAMES)
+
+
+def test_a_row_names_its_builds(tmp_path: Path) -> None:
+    _row(tmp_path, 'makeone = "unpatched"', 'playone = "patch3"', 'reason = "EXIT hangs"')
+    assert references.read_reference(tmp_path, "ctry").builds == references.Builds(
+        "unpatched", "patch3", "EXIT hangs"
+    )
+
+
+@pytest.mark.parametrize(
+    ("fields", "match"),
+    [
+        (['playone = "patch3"'], "does not name its makeone"),
+        (['makeone = "patch3"'], "does not name its playone"),
+        (['makeone = "patch3"', 'playone = "patched"'], "playone build 'patched'"),
+        (['makeone = "patch3"', "playone = 3"], "playone build 3"),
+        (['makeone = "unpatched"', 'playone = "patch3"'], "needs a reason"),
+    ],
+)
+def test_a_row_without_valid_builds_is_refused(
+    tmp_path: Path, fields: list[str], match: str
+) -> None:
+    _row(tmp_path, *fields)
+    with pytest.raises(references.ReferenceCaptureError, match=match):
+        references.read_reference(tmp_path, "ctry")
+
+
+def _archive(directory: Path, makeone: str) -> Path:
+    directory.mkdir(parents=True)
+    (directory / "meta.json").write_text(json.dumps({"makeone_sha256": makeone}), "utf-8")
+    return directory / "CTRY.ALL"
+
+
+def test_the_makeone_build_comes_from_the_archives_meta(tmp_path: Path) -> None:
+    by_build = {build: sha for sha, build in references.MAKEONE_BUILDS.items()}
+    patch3 = _archive(tmp_path / "a", by_build["patch3"])
+    assert references.archive_makeone_build(patch3) == "patch3"
+    unpatched = _archive(tmp_path / "b", by_build["unpatched"])
+    assert references.archive_makeone_build(unpatched) == "unpatched"
+    assert references.archive_makeone_build(_archive(tmp_path / "c", "0" * 64)) is None
+    assert references.archive_makeone_build(tmp_path / "none" / "CTRY.ALL") is None
+
+
+def test_a_matching_pair_is_accepted(tmp_path: Path) -> None:
+    _row(tmp_path, 'makeone = "unpatched"', 'playone = "patch3"', 'reason = "x"')
+    references.require_builds(tmp_path, "vault-ctry", playone="patch3", makeone="unpatched")
+    references.require_builds(tmp_path, "vault-ctry", playone="patch3")  # makeone not used
+    references.require_builds(tmp_path, "vault-other", playone="unpatched")  # no row, no pair
+
+
+def test_a_mismatched_pair_is_refused(tmp_path: Path) -> None:
+    by_build = {build: sha for sha, build in references.MAKEONE_BUILDS.items()}
+    _row(tmp_path, 'makeone = "patch3"', 'playone = "patch3"')
+    with pytest.raises(references.ReferenceCaptureError, match=r"unpatched PLAYONE.*names patch3"):
+        references.require_builds(tmp_path, "vault-ctry", playone="unpatched")
+    archive = _archive(tmp_path / "arch", by_build["unpatched"])
+    with pytest.raises(references.ReferenceCaptureError, match=r"unpatched MAKEONE.*names patch3"):
+        references.require_builds(
+            tmp_path, "vault-ctry", makeone=references.archive_makeone_build(archive)
+        )
