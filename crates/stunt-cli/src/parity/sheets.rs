@@ -23,8 +23,6 @@ pub(super) fn write_contact_sheet(
     write_panel_sheet(&path, &[reference, test, &abs_difference(reference, test)])
 }
 
-/// Writes aspect-corrected luminance panels side by side, separated by
-/// [`CONTACT_SHEET_GAP`] pixels, as one grayscale PNG.
 /// A sheet value as a grey level, clamped to 0..=255.
 #[expect(
     clippy::cast_possible_truncation,
@@ -35,6 +33,8 @@ fn grey_level(value: f32) -> u8 {
     value.clamp(0.0, 255.0) as u8
 }
 
+/// Writes aspect-corrected luminance panels side by side, separated by
+/// [`CONTACT_SHEET_GAP`] pixels, as one grayscale PNG.
 pub(super) fn write_panel_sheet(path: &Path, panels: &[&[f32]]) -> Result<(), String> {
     let width = MODE13H_WIDTH;
     let height = ASPECT_CORRECTED_HEIGHT;

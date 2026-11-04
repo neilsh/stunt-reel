@@ -533,8 +533,21 @@ impl RenderStore {
             let path = self.dir.join(name);
             let mut file = File::open(&path).map_err(io(&path))?;
             file.seek(SeekFrom::Start(span.offset)).map_err(io(&path))?;
-            let length = usize::try_from(span.length)
-                .map_err(|_| corrupt(&path, format!("a chunk of {} bytes", span.length)))?;
+            let file_len = file.metadata().map_err(io(&path))?.len();
+            let length = span
+                .offset
+                .checked_add(span.length)
+                .filter(|&end| end <= file_len)
+                .and_then(|_| usize::try_from(span.length).ok())
+                .ok_or_else(|| {
+                    corrupt(
+                        &path,
+                        format!(
+                            "a chunk of {} bytes at offset {} runs past the file's {file_len} bytes",
+                            span.length, span.offset
+                        ),
+                    )
+                })?;
             let mut packed = vec![0u8; length];
             file.read_exact(&mut packed).map_err(io(&path))?;
             let raw = zstd::decode_all(packed.as_slice()).map_err(|error| {
