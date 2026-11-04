@@ -1,0 +1,13 @@
+# #65: the terrain polygon routine at image 0xBF23 (VM 0x3CE3, far, entered with ES:SI on a
+# record: colour word, vertex count, count vertex pointers into the work segment). Its callers
+# and its records, in the airfield shot; plus one dump of the work segment's vertex area.
+[run]
+stop_tick = 900
+
+[[probe]]
+name = "terrain-poly"
+kind = "break"
+at = 0xBF23
+arm = { tick = 290 }
+hits = 200
+capture = ["stack:4", "mem:ES:SI:24"]
