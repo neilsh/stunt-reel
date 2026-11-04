@@ -1,0 +1,20 @@
+# #66: the world light's source. The film-variable-13 handler 0x196C turns the variable (AX at
+# entry) into DS:0x49EC..F0; the first light-setup call after it shows the light every scenery
+# object receives.
+[run]
+stop_tick = 600
+
+[[probe]]
+name = "var13-handler"
+kind = "break"
+at = 0x196C
+hits = 3
+capture = ["stack:4"]
+
+[[probe]]
+name = "light-entry"
+kind = "break"
+at = 0x9100
+arm = { tick = 200 }
+hits = 2
+capture = ["stack:4", "mem:DS:0x49EC:6"]
