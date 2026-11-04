@@ -20,6 +20,7 @@ value, in the order given (the before-and-after picture for a candidate change).
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import sys
@@ -86,6 +87,11 @@ def clear_previous(out: Path, film: str) -> None:
         png.unlink()
     for store in out.glob("store*"):
         shutil.rmtree(store, ignore_errors=True)
+
+
+def render_env(override: dict[str, str] | None) -> dict[str, str] | None:
+    """The renderer's environment: ours plus ``override``, since a given one replaces ours."""
+    return None if override is None else {**os.environ, **override}
 
 
 def variant_stores(out: Path, var: str | None) -> list[tuple[str, dict[str, str] | None, Path]]:
@@ -164,7 +170,7 @@ def _draw(
     out = root / FRAME_DIR / args.film
     clear_previous(out, args.film)
     for _, env, variant_dir in variants:
-        parity_pipeline.render_film(job, variant_dir, env, ticks=ticks)
+        parity_pipeline.render_film(job, variant_dir, render_env(env), ticks=ticks)
     store_dir = variants[0][2]
     stores = [variant_dir for _, _, variant_dir in variants]
 

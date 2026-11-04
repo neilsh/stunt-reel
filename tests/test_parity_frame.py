@@ -211,3 +211,11 @@ def test_values_that_sanitise_alike_get_their_own_stores(tmp_path: Path) -> None
 def test_variant_stores_refuse_a_malformed_var(tmp_path: Path, spec: str) -> None:
     with pytest.raises(ValueError, match="--var"):
         parity_frame.variant_stores(tmp_path, spec)
+
+
+def test_render_env_keeps_the_inherited_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PATH_FOR_TEST", "kept")
+    env = parity_frame.render_env({"DBG_LIFT": "1"})
+    assert env is not None
+    assert (env["PATH_FOR_TEST"], env["DBG_LIFT"]) == ("kept", "1")
+    assert parity_frame.render_env(None) is None
