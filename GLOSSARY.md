@@ -191,7 +191,7 @@ _Avoid_: version, patch level, base or retail build (for unpatched)
 
 **MAKEONE hang**:
 A `MAKEONE` run that writes its archive but never returns to DOS. Distinct from a capture stall, where `PLAYONE` never reaches its film.
-_Avoid_: stall (for MAKEONE)
+_Avoid_: stall, timeout (for MAKEONE)
 
 **Control port**:
 The TCP port of the emulator's REST server. Each run picks a free one at launch and writes it into that run's conf, so two captures never collide ([ADR 0025](docs/adr/0025-capture-runs-are-plans-not-sessions.md)).
