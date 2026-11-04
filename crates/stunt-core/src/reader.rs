@@ -145,12 +145,20 @@ impl<'a> ByteReader<'a> {
         let head = parts.next().unwrap_or(&[]);
         if parts.next().is_some() {
             // `head` and its terminator lie inside `data`, so the sum is at most `data.len()`.
-            self.pos = self.pos.saturating_add(head.len()).saturating_add(1);
+            let end = self
+                .pos
+                .checked_add(head.len())
+                .and_then(|p| p.checked_add(1))
+                .ok_or(Eof {
+                    expected: usize::MAX,
+                    actual: self.data.len(),
+                })?;
+            self.pos = end;
             Ok(head.to_vec())
         } else {
             self.pos = self.pos.max(self.data.len());
             Err(Eof {
-                expected: self.pos.saturating_add(1),
+                expected: self.pos.saturating_add(1), // pos <= len here, so this never clamps
                 actual: self.data.len(),
             })
         }

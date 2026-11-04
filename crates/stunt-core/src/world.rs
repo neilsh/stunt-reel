@@ -314,6 +314,8 @@ pub(crate) fn traverse_scn(
     if depth > 128 {
         return;
     }
+    // A recursion counter, bounded by the guard above, so it never clamps.
+    let deeper = depth.saturating_add(1);
     while ni != 0
         && let Some(&op) = words.get(ni)
     {
@@ -323,9 +325,14 @@ pub(crate) fn traverse_scn(
                 let Some([x, y, z, next]) = scn_operands(words, ni) else {
                     break;
                 };
-                cx = cx.saturating_add(scn_i16(x));
-                cy = cy.saturating_add(scn_i16(y));
-                cz = cz.saturating_add(scn_i16(z));
+                let (Some(nx), Some(ny), Some(nz)) = (
+                    cx.checked_add(scn_i16(x)),
+                    cy.checked_add(scn_i16(y)),
+                    cz.checked_add(scn_i16(z)),
+                ) else {
+                    break;
+                };
+                (cx, cy, cz) = (nx, ny, nz);
                 ni = scn_pointer(next);
             }
             22 => {
@@ -333,8 +340,11 @@ pub(crate) fn traverse_scn(
                 let Some([x, z, next]) = scn_operands(words, ni) else {
                     break;
                 };
-                cx = cx.saturating_add(scn_i16(x));
-                cz = cz.saturating_add(scn_i16(z));
+                let (Some(nx), Some(nz)) = (cx.checked_add(scn_i16(x)), cz.checked_add(scn_i16(z)))
+                else {
+                    break;
+                };
+                (cx, cz) = (nx, nz);
                 ni = scn_pointer(next);
             }
             2 => {
@@ -370,7 +380,7 @@ pub(crate) fn traverse_scn(
                     instances,
                     available_models,
                     near,
-                    depth.saturating_add(1),
+                    deeper,
                 );
                 ni = scn_pointer(next);
             }
@@ -398,7 +408,7 @@ pub(crate) fn traverse_scn(
                     instances,
                     available_models,
                     near,
-                    depth.saturating_add(1),
+                    deeper,
                 );
                 ni = scn_pointer(next);
             }
@@ -411,7 +421,9 @@ pub(crate) fn traverse_scn(
             }
             20 => {
                 // SP_LIST
-                let mut curr = ni.saturating_add(1);
+                let Some(mut curr) = ni.checked_add(1) else {
+                    break;
+                };
                 while let Some(&child) = words.get(curr)
                     && child != 0
                 {
@@ -424,11 +436,17 @@ pub(crate) fn traverse_scn(
                         instances,
                         available_models,
                         near,
-                        depth.saturating_add(1),
+                        deeper,
                     );
-                    curr = curr.saturating_add(1);
+                    let Some(next) = curr.checked_add(1) else {
+                        return;
+                    };
+                    curr = next;
                 }
-                ni = curr.saturating_add(1);
+                let Some(after) = curr.checked_add(1) else {
+                    break;
+                };
+                ni = after;
             }
             _ => break,
         }
@@ -437,7 +455,7 @@ pub(crate) fn traverse_scn(
 
 /// The `N` operand words after the `SCENERY.scn` opcode at `ni`, or `None` past the end.
 fn scn_operands<const N: usize>(words: &[i32], ni: usize) -> Option<[i32; N]> {
-    words.get(ni.saturating_add(1)..)?.first_chunk().copied()
+    words.get(ni.checked_add(1)?..)?.first_chunk().copied()
 }
 
 /// A `SCENERY.scn` byte pointer operand as a word index.

@@ -171,6 +171,7 @@ fn process_polygon_batch(
         }
     }
 
+    // The lists only grow after the offsets were taken, so neither subtraction clamps.
     let vertex_count = arena_index(ir.vertices.len()).saturating_sub(vertex_offset);
     let index_count = arena_index(ir.indices.len()).saturating_sub(index_offset);
 

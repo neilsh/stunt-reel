@@ -508,7 +508,14 @@ impl<'a> FlmPlayer<'a> {
             }
         }
 
-        self.last_slice_len = Some(self.reader.pos().saturating_sub(slice_start));
+        let slice_len =
+            self.reader
+                .pos()
+                .checked_sub(slice_start)
+                .ok_or_else(|| FlmError::InvalidSlice {
+                    reason: "reader moved before the slice start".to_string(),
+                })?;
+        self.last_slice_len = Some(slice_len);
 
         Ok(Some(DecodedSlice {
             tick_duration,

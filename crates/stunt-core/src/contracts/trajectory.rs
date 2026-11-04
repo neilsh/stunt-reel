@@ -61,7 +61,7 @@ impl CameraTransform {
     #[must_use]
     #[expect(
         clippy::arithmetic_side_effects,
-        reason = "`lens` is a u16, so `lens * 0x7FFF` is below 2^31, and the shift count is guarded to 1..=3"
+        reason = "`lens` is a u16, so `lens * 0x7FFF` is below 2^31, and `shifts_left` starts at 3 and is only decremented while above 0, so it stays in 0..=3"
     )]
     pub fn lens_zoom(&self) -> f32 {
         let mut product = u32::from(self.lens) * 0x7FFF;
