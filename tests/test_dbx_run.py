@@ -304,3 +304,10 @@ def test_register_ds_capture_reads_live_ds(connect) -> None:  # type: ignore[no-
     _, records = go(connect(Guest([stop], memory=memory)), parse_plan(text, "c"))
     mem = records[1]["mem"]
     assert mem == {"mem:DS:DX:2": "abcd", "mem:DS:0x49EC:2": "6300"}  # literal offsets read DGROUP
+
+
+def test_linear_capture_reads_linear(connect) -> None:  # type: ignore[no-untyped-def]
+    text = BREAK.format(hits=1).replace('["stack:4"]', '["lin:0x25FF2:2"]')
+    memory = mirrored() | {0x25FF2: 0x12, 0x25FF3: 0x34}
+    _, records = go(connect(Guest([STOP], memory=memory)), parse_plan(text, "l"))
+    assert records[1]["mem"] == {"lin:0x25FF2:2": "1234"}
