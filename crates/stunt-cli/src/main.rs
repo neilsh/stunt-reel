@@ -9,7 +9,8 @@
 //!
 //! The CLI parses arguments, locates input files ([`scene`]), owns the winit window, and
 //! writes outputs (PNG, ffmpeg video, the `parity` subcommand). `sod-census` reports the corpus
-//! models that stop on an unimplemented `.SOD` opcode. Every film-to-frame
+//! models that stop on an unimplemented `.SOD` opcode; `link` records a film's `.ALL` as a
+//! manifest and rebuilds it. Every film-to-frame
 //! decision goes through [`stunt_core::scene::FilmScene`] and
 //! [`stunt_render::Renderer`], the same path for headless and windowed playback.
 //!
@@ -27,6 +28,7 @@ mod avi;
 mod config;
 mod export;
 mod headless;
+mod link;
 mod parity;
 mod parity_artifacts;
 mod playback;
@@ -60,6 +62,13 @@ fn main() {
             if let Err(e) = sod_census::run(subcommand_args) {
                 eprintln!("[stuntreel error] {e}");
                 std::process::exit(1);
+            }
+            return;
+        }
+        Some("link") => {
+            if let Err(e) = link::run(subcommand_args) {
+                eprintln!("[stuntreel error] {e}");
+                std::process::exit(e.exit_code());
             }
             return;
         }

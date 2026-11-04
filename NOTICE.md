@@ -26,6 +26,14 @@ are game-derived and are not relicensed by this project:
   `SODParse/SOD.H` (Dave Palmowski), matching the historical `DECODE.C` implementation.
   It is committed once, in `crates/stunt-core/src/sod/vm.rs`.
 
+## Archive manifests
+
+`manifests/all/*.toml` record, for a film, which items of which game files make up the `.ALL`
+archive that `MAKEONE.EXE` wrote for it: file names, item numbers and SHA-256 hashes of the game
+files and the archive. They hold no game bytes. `stuntreel link build` rebuilds the archive from
+the user's own copy of the game, and refuses when a file's hash differs
+([ADR 0032](docs/adr/0032-a-films-archive-is-committed-as-a-manifest.md)).
+
 ## Illustrative comparison images
 
 Research notes may commit a few still images that set a frame captured from the game's own replay

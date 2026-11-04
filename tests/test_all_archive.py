@@ -9,13 +9,14 @@ from pathlib import Path
 import pytest
 
 from archive_helpers import build_all
-from stunt_reel import parity_layout
+from stunt_reel import link, parity_layout
 from stunt_reel.all_archive import (
     META_FILE,
     ArchiveError,
     ArchiveMeta,
     ArchiveMissing,
     check_archive,
+    no_link,
     publish_archive,
     resolve_all,
 )
@@ -203,3 +204,180 @@ def test_nothing_found_names_make_all(tmp_path: Path) -> None:
     film = _film(tmp_path)
     with pytest.raises(ArchiveMissing, match=r"mise run make-all -- --film"):
         resolve_all(film, tmp_path)
+
+
+def _manifest(
+    root: Path,
+    slug: str,
+    flm_bytes: bytes,
+    game_root: str = "game",
+    all_sha256: str = "a" * 64,
+    flm_sha256: str | None = None,
+) -> Path:
+    path = root / parity_layout.manifest_path(slug)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        'film = "BALLOON.FLM"',
+        flm_sha256 or f'flm_sha256 = "{hashlib.sha256(flm_bytes).hexdigest()}"',
+        f'game_root = "{game_root}"',
+        f'makeone_sha256 = "{"0" * 64}"',
+        "all_bytes = 6",
+        f'all_sha256 = "{all_sha256}"',
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+class FakeLinkBuild:
+    """Stands in for ``stuntreel link build``: records its arguments and writes ``LINKED``."""
+
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
+        self.calls: list[tuple[Path, Path, Path]] = []
+
+    def __call__(self, manifest: Path, game: Path, out: Path) -> None:
+        self.calls.append((manifest, game, out))
+        if self.error is not None:
+            raise self.error
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(b"LINKED")
+
+
+def test_a_sibling_wins_over_a_manifest(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    sibling = film.with_suffix(".ALL")
+    sibling.write_bytes(build_all([b"sibling"]))
+    _manifest(tmp_path, SLUG, FLM_BYTES)
+    (tmp_path / "game").mkdir()
+    fake = FakeLinkBuild()
+    assert resolve_all(film, tmp_path, link_build=fake) == sibling
+    assert fake.calls == []
+
+
+def test_a_matching_manifest_wins_over_a_stored_archive(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    _store(tmp_path, FLM_BYTES, build_all([b"stored"]))
+    manifest = _manifest(tmp_path, SLUG, FLM_BYTES)
+    (tmp_path / "game").mkdir()
+    fake = FakeLinkBuild()
+
+    linked = tmp_path / "target" / "linked" / SLUG / "BALLOON.ALL"
+    assert resolve_all(film, tmp_path, link_build=fake) == linked
+    assert fake.calls == [(manifest, tmp_path / "game", linked)]
+    assert linked.read_bytes() == b"LINKED"
+
+
+def test_an_absolute_game_root_is_used_as_it_is(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    game = tmp_path / "elsewhere" / "stuntisl"
+    game.mkdir(parents=True)
+    _manifest(tmp_path, SLUG, FLM_BYTES, game_root=game.as_posix())
+    fake = FakeLinkBuild()
+    resolve_all(film, tmp_path, link_build=fake)
+    assert fake.calls[0][1] == game
+
+
+def test_a_manifest_for_another_film_falls_through_to_the_stored_archive(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    stored = _store(tmp_path, FLM_BYTES, build_all([b"stored"]))
+    _manifest(tmp_path, SLUG, b"another film")
+    fake = FakeLinkBuild()
+    assert resolve_all(film, tmp_path, link_build=fake) == stored / "BALLOON.ALL"
+    assert fake.calls == []
+
+
+def test_a_failing_manifest_build_is_an_error_not_a_fall_back(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    _store(tmp_path, FLM_BYTES, build_all([b"stored"]))
+    _manifest(tmp_path, SLUG, FLM_BYTES)
+    (tmp_path / "game").mkdir()
+    fake = FakeLinkBuild(link.LinkError("boom"))
+    with pytest.raises(ArchiveError, match=r"vault-balloon\.toml.*boom"):
+        resolve_all(film, tmp_path, link_build=fake)
+
+
+def test_a_missing_game_tree_names_mise_run_init(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    _manifest(tmp_path, SLUG, FLM_BYTES)
+    fake = FakeLinkBuild()
+    with pytest.raises(ArchiveError, match=r"mise run init") as caught:
+        resolve_all(film, tmp_path, link_build=fake)
+    assert str(tmp_path / "game") in str(caught.value)
+    assert fake.calls == []
+
+
+def test_a_malformed_manifest_is_an_error_naming_it(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    _store(tmp_path, FLM_BYTES, build_all([b"stored"]))
+    path = tmp_path / parity_layout.manifest_path(SLUG)
+    path.parent.mkdir(parents=True)
+    path.write_text("film = [unterminated", encoding="utf-8")
+    with pytest.raises(ArchiveError, match=r"vault-balloon\.toml"):
+        resolve_all(film, tmp_path, link_build=FakeLinkBuild())
+
+
+def test_a_missing_absolute_game_tree_says_it_is_machine_local(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    elsewhere = tmp_path / "other-machine" / "builds" / "patched"
+    _manifest(tmp_path, SLUG, FLM_BYTES, game_root=elsewhere.as_posix())
+    with pytest.raises(ArchiveError, match=r"outside the checkout") as caught:
+        resolve_all(film, tmp_path, link_build=FakeLinkBuild())
+    message = str(caught.value)
+    assert "mise run init" not in message
+    assert "mise run make-all" in message
+
+
+def test_a_current_linked_archive_is_reused_without_linking(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    _manifest(tmp_path, SLUG, FLM_BYTES, all_sha256=hashlib.sha256(b"LINKED").hexdigest())
+    (tmp_path / "game").mkdir()
+    linked = tmp_path / parity_layout.linked_path(SLUG, film.name)
+    linked.parent.mkdir(parents=True)
+    linked.write_bytes(b"LINKED")
+    fake = FakeLinkBuild()
+    assert resolve_all(film, tmp_path, link_build=fake) == linked
+    assert fake.calls == []
+
+
+def test_a_stale_linked_archive_is_rebuilt(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    _manifest(tmp_path, SLUG, FLM_BYTES, all_sha256=hashlib.sha256(b"LINKED").hexdigest())
+    (tmp_path / "game").mkdir()
+    linked = tmp_path / parity_layout.linked_path(SLUG, film.name)
+    linked.parent.mkdir(parents=True)
+    linked.write_bytes(b"an older build")
+    fake = FakeLinkBuild()
+    assert resolve_all(film, tmp_path, link_build=fake) == linked
+    assert len(fake.calls) == 1
+    assert linked.read_bytes() == b"LINKED"
+
+
+@pytest.mark.parametrize("field", ["flm_sha256 = 5", 'flm_sha256 = ["not", "a", "hash"]'])
+def test_a_manifest_field_of_the_wrong_type_is_an_error_not_a_fall_back(
+    tmp_path: Path, field: str
+) -> None:
+    film = _film(tmp_path)
+    _store(tmp_path, FLM_BYTES, build_all([b"stored"]))
+    _manifest(tmp_path, SLUG, FLM_BYTES, flm_sha256=field)
+    with pytest.raises(ArchiveError, match=r"vault-balloon\.toml"):
+        resolve_all(film, tmp_path, link_build=FakeLinkBuild())
+
+
+def test_a_game_root_of_the_wrong_type_is_an_error(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    path = _manifest(tmp_path, SLUG, FLM_BYTES)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace('game_root = "game"', "game_root = 1"),
+        encoding="utf-8",
+    )
+    with pytest.raises(ArchiveError, match=r"vault-balloon\.toml"):
+        resolve_all(film, tmp_path, link_build=FakeLinkBuild())
+
+
+def test_no_link_checks_a_manifest_without_building_it(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    _manifest(tmp_path, SLUG, FLM_BYTES)
+    (tmp_path / "game").mkdir()
+    linked = resolve_all(film, tmp_path, link_build=no_link)
+    assert linked == tmp_path / parity_layout.linked_path(SLUG, film.name)
+    assert not linked.exists()

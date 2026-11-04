@@ -10,6 +10,7 @@ pub mod contracts;
 pub mod credits;
 pub mod flm;
 pub mod font;
+pub mod link;
 pub mod reader;
 pub mod scene;
 pub mod sod;

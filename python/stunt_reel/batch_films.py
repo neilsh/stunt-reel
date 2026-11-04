@@ -9,12 +9,12 @@ runs a stage or writes a file: it reads the corpus and reports what is there.
 
 from __future__ import annotations
 
-import hashlib
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from stunt_reel import parity_layout
+from stunt_reel.hashing import file_sha256
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -48,7 +48,7 @@ def discover(corpus: Path) -> list[BatchFilm]:
     used_slugs: set[str] = set()
     films: list[BatchFilm] = []
     for flm in paths:
-        digest = hashlib.sha256(flm.read_bytes()).hexdigest()
+        digest = file_sha256(flm)
         if digest in seen_hashes:
             continue
         seen_hashes.add(digest)
@@ -87,20 +87,15 @@ def find(corpus: Path, slug: str) -> BatchFilm | None:
     for index, flm in enumerate(paths):
         if parity_layout.slug_for(flm) != slug:
             continue
-        digest = _digest(flm)
+        digest = file_sha256(flm)
         size = flm.stat().st_size
         earlier = (path for path in paths[:index] if path.stat().st_size == size)
-        if any(_digest(path) == digest for path in earlier):
+        if any(file_sha256(path) == digest for path in earlier):
             continue
         return BatchFilm(
             slug=slug, name=None, flm=flm, sha256=digest, has_sibling_all=_has_sibling_all(flm)
         )
     return next((film for film in discover(corpus) if film.slug == slug), None)
-
-
-def _digest(path: Path) -> str:
-    """The SHA-256 of *path*'s bytes, the identity :func:`discover` gives a film."""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _has_sibling_all(flm: Path) -> bool:

@@ -54,8 +54,12 @@ _Avoid_: joint angle, frame counter
 ## Assets and models
 
 **Archive**:
-A `.ALL` container of numbered model and auxiliary resource chunks, paired with a film. SOD model chunks are addressed by `shape_id`. `MAKEONE.EXE` writes one from a film; `mise run make-all` runs it and stores the result as `captures/<film>/archives/`. A film has at most one stored archive; a new one replaces it. An archive is not a capture.
+A `.ALL` container of numbered model and auxiliary resource chunks, paired with a film. SOD model chunks are addressed by `shape_id`. `MAKEONE.EXE` writes one from a film; `mise run make-all` runs it and stores the result as `captures/<film>/archives/`. A film with an archive manifest has its archive rebuilt from the game's resources instead. A film has at most one stored archive; a new one replaces it. An archive is not a capture.
 _Avoid_: bundle, resource file
+
+**Archive manifest**:
+The committed record of which item of which game resource file makes each chunk of a film's archive, from which the archive is rebuilt byte for byte. A film whose archive holds content the game's resources lack has none.
+_Avoid_: manifest (alone; the render record and capture set are not manifests)
 
 **Shape**:
 A 3D `.SOD` model chunk in an archive, identified by `shape_id`. One shape may be bound to several slots.
