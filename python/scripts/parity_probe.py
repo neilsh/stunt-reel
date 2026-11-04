@@ -174,27 +174,41 @@ def cmd_crop(args: argparse.Namespace) -> None:
 
 
 def world_shift(
-    ours: bytes, capture: bytes, actor: list[int], width: int, rows: int, reach: int
+    ours: bytes,
+    capture: bytes,
+    actor: list[int],
+    width: int,
+    rows: int,
+    reach: int,
+    capture_actor: list[int] | None = None,
 ) -> tuple[int, int, float]:
     """The ``(dx, dy)`` that best lands our non-actor pixels on equal capture indices.
 
     Same sign as the actor shift: our pixel at ``(x, y)`` is compared with the capture's at
-    ``(x + dx, y + dy)``. Returns the shift and the fraction of compared pixels that agreed.
+    ``(x + dx, y + dy)``. Every even offset from -``reach`` to ``reach`` is tried, zero
+    included; a tie goes to the smaller displacement. ``actor`` (our pixels) and
+    ``capture_actor`` (capture pixels) are left out, so the aircraft does not pull the world.
+    Returns the shift and the fraction of compared pixels whose indices agreed.
     """
     mine = np.frombuffer(ours, dtype=np.uint8)[: width * rows].reshape(rows, width)
     theirs = np.frombuffer(capture, dtype=np.uint8)[: width * rows].reshape(rows, width)
     flat = np.ones(width * rows, dtype=bool)
     flat[actor] = False
     keep = flat.reshape(rows, width)
+    flat_theirs = np.ones(width * rows, dtype=bool)
+    flat_theirs[capture_actor or []] = False
+    keep_theirs = flat_theirs.reshape(rows, width)
+    offsets = [2 * k for k in range(-(reach // 2), reach // 2 + 1)]
     best = (0, 0, -1.0)
-    for dy in range(-reach, reach + 1, 2):
-        for dx in range(-reach, reach + 1, 2):
+    for dy in offsets:
+        for dx in offsets:
             ys, yt = slice(max(0, -dy), rows - max(0, dy)), slice(max(0, dy), rows - max(0, -dy))
             xs, xt = slice(max(0, -dx), width - max(0, dx)), slice(max(0, dx), width - max(0, -dx))
-            mask = keep[ys, xs]
+            mask = keep[ys, xs] & keep_theirs[yt, xt]
             agree = float(np.count_nonzero((mine[ys, xs] == theirs[yt, xt]) & mask))
             fraction = agree / max(1, int(np.count_nonzero(mask)))
-            if fraction > best[2]:
+            closer = abs(dx) + abs(dy) < abs(best[0]) + abs(best[1])
+            if fraction > best[2] or (fraction == best[2] and closer):
                 best = (dx, dy, fraction)
     return best
 
@@ -231,7 +245,14 @@ def cmd_shift(args: argparse.Namespace) -> None:
                         hit += 1
                 if hit > best[0]:
                     best = (hit, dx, dy)
-        world = world_shift(page.indices, capture_index, pixels, width, rows, args.world_reach)
+        capture_actor = [
+            (p // width + best[2]) * width + p % width + best[1]
+            for p in pixels
+            if 0 <= p % width + best[1] < width and 0 <= p // width + best[2] < rows
+        ]
+        world = world_shift(
+            page.indices, capture_index, pixels, width, rows, args.world_reach, capture_actor
+        )
         shifts.append((best[1], best[2], world[0], world[1]))
         print(
             frame.film_tick,

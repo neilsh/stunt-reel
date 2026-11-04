@@ -85,3 +85,25 @@ def test_shift_summary_reports_the_actor_relative_to_the_world() -> None:
         "frames 3: median actor dx 2 dy -4; world dx 0 dy 0; actor minus world dx 2 dy -4"
     )
     assert parity_probe.shift_summary([]) == "no frame had enough actor pixels"
+
+
+def test_world_shift_keeps_zero_for_an_odd_reach_and_prefers_the_smaller_tie() -> None:
+    width, rows = 8, 6
+    flat = bytes([3] * (width * rows))  # every offset agrees fully
+    assert parity_probe.world_shift(flat, flat, [], width, rows, reach=1) == (0, 0, 1.0)
+    assert parity_probe.world_shift(flat, flat, [], width, rows, reach=4) == (0, 0, 1.0)
+
+
+def test_world_shift_is_not_pulled_by_the_captures_actor() -> None:
+    width, rows = 16, 12
+    scene = bytes((x * 7 + y * 13) % 251 for y in range(rows) for x in range(width))
+    capture = bytearray(scene)
+    # The capture's aircraft sits four columns right of where ours is drawn.
+    ours_actor = [y * width + x for y in range(3, 6) for x in range(2, 6)]
+    capture_actor = [p + 4 for p in ours_actor]
+    for p in capture_actor:
+        capture[p] = 250
+    result = parity_probe.world_shift(
+        scene, bytes(capture), ours_actor, width, rows, reach=6, capture_actor=capture_actor
+    )
+    assert result == (0, 0, 1.0)
