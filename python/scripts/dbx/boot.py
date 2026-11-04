@@ -141,12 +141,13 @@ def key_writes(head: int, tail: int, keys: Sequence[tuple[int, int]]) -> list[tu
 
 
 def send_keys(link: Link, keys: Sequence[tuple[int, int]], gap: float = KEY_GAP) -> None:
-    """Queue *keys* one at a time, *gap* seconds apart, as a typist would."""
+    """Queue *keys* one at a time, *gap* seconds apart; each SM byte gets a leading 0, since SM
+    reads a bare `AF` or `DF` as a flag name (dosbox-x-legacy.md section 2)."""
     for key in keys:
         head = int.from_bytes(link.dump(BDA_SEGMENT, BDA_HEAD, 2), "little")
         tail = int.from_bytes(link.dump(BDA_SEGMENT, BDA_TAIL, 2), "little")
         for off, data in key_writes(head, tail, [key]):
-            link.ex(f"SM {BDA_SEGMENT:04X}:{off:04X} " + " ".join(f"{b:02X}" for b in data))
+            link.ex(f"SM {BDA_SEGMENT:04X}:{off:04X} " + " ".join(f"0{b:02X}" for b in data))
         time.sleep(gap)
 
 

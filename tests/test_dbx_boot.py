@@ -12,8 +12,11 @@ from dbx.boot import (
     key_writes,
     parse_mcbs,
     render_conf,
+    send_keys,
 )
+from dbx.link import Link, Listener
 
+from dbx_peer import FakePeer
 from stunt_reel.tac.playone import film_selection_names
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -73,3 +76,16 @@ def test_parse_mcbs_fixture() -> None:
 def test_parse_mcbs_missing_raises() -> None:
     with pytest.raises(ValueError, match="PLAYONE"):
         parse_mcbs([line for line in MCBS if "PLAYONE" not in line])
+
+
+def test_send_keys_writes_bytes_sm_cannot_misread(tmp_path: Path) -> None:
+    # SM parses its byte tokens as expressions: a bare AF or DF is a flag name.
+    listener = Listener()
+    peer = FakePeer(listener.port, lambda _c: [])
+    peer.memory = {0x41A: 0x1E, 0x41C: 0x1E}
+    link = Link(listener.accept(5.0), tmp_path)
+    send_keys(link, [(0xAF, 0xDF)], gap=0)
+    assert "EXEC SM 0040:001E 0AF 0DF" in peer.seen
+    assert "EXEC SM 0040:001C 020 000" in peer.seen
+    link.close()
+    listener.close()
