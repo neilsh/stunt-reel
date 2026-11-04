@@ -28,6 +28,12 @@ def test_session_basetemp_is_per_run_and_under_the_cache(pytestconfig: pytest.Co
     given = pytestconfig.option.basetemp
     assert given is not None
     path = Path(given)
+    # An xdist worker (the gate runs pytest with -n auto) is handed a directory of its own
+    # inside the run's root, named after the worker.
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if worker is not None:
+        assert path.name == f"popen-{worker}"
+        path = path.parent
     assert path.parent == pytestconfig.rootpath / pytest_helpers.CACHE_DIRNAME
     assert path.parent.is_dir()
     assert path.name.startswith(pytest_helpers.BASETEMP_PREFIX)

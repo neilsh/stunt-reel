@@ -15,9 +15,12 @@ its own, gets a lane of its own. See [ADR 0016](../docs/adr/0016-the-gate-runs-i
 The gate reports every failing step, not just the first: lanes keep running so one run names all
 of them. The plan is one step list for the whole gate and for each half.
 
-Steps that can silently skip are listed in ``REQUIRED_ENV``. The Python test step sets
-``STUNT_REQUIRE_KSC=1``, so a missing Kaitai compiler fails the gate instead of skipping the
+``STEP_ENV`` holds the environment a step runs with only inside the gate. The Python test step
+sets ``STUNT_REQUIRE_KSC=1``, so a missing Kaitai compiler fails the gate instead of skipping the
 schema contract test, and ``STUNT_REQUIRE_PREK=1`` does the same for the commit hooks' prek test.
+It also runs pytest across every core (``-n auto``), the gate's longest lane; a scoped
+``mise run test-py -- <file>`` stays in one process, where starting workers would cost more than
+it saves.
 
 Usage: ``python python/scripts/gate.py {all|rust|py} [--tail N]``
 """
@@ -74,8 +77,12 @@ SCOPED_TASKS: dict[str, str] = {"rust": "check-rust", "py": "check-py"}
 FIX_TASK = "fix"
 FIXABLE_STEPS = frozenset({"fmt-check-rust", "fmt-check-py", "lint-py"})
 
-REQUIRED_ENV: dict[str, dict[str, str]] = {
-    "test-py": {"STUNT_REQUIRE_KSC": "1", "STUNT_REQUIRE_PREK": "1"}
+STEP_ENV: dict[str, dict[str, str]] = {
+    "test-py": {
+        "STUNT_REQUIRE_KSC": "1",
+        "STUNT_REQUIRE_PREK": "1",
+        "PYTEST_ADDOPTS": "-n auto",
+    }
 }
 
 
@@ -138,7 +145,7 @@ def _step(mise: str, task: str) -> tuple[int, str, float]:
     """Run one mise task, returning its exit code, combined output and duration."""
     # MISE_QUIET silences the child mise's own tool-resolution chatter, which would
     # otherwise repeat once per step in the log.
-    env = {**os.environ, "MISE_QUIET": "1", **REQUIRED_ENV.get(task, {})}
+    env = {**os.environ, "MISE_QUIET": "1", **STEP_ENV.get(task, {})}
     started = time.monotonic()
     proc = subprocess.run(  # noqa: S603 - fixed task names from STEPS, mise resolved from PATH
         [mise, "run", task],
