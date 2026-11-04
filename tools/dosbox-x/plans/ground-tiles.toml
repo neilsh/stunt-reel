@@ -1,0 +1,13 @@
+# #65: the scenery objects that draw the CTRY airfield, dumped whole once in the airfield shot so
+# they can be matched with RES shapes. Their segments (0x67EA..0x6BF0 under DOSBox-X, unpatched)
+# come from the ground-writer run; the lin capture is valid only for that build and emulator.
+[run]
+stop_tick = 400
+
+[[probe]]
+name = "tiles-300"
+kind = "break"
+at = 0x9100
+arm = { tick = 300 }
+hits = 1
+capture = ["lin:0x60000:0xC000"]
