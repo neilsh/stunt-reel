@@ -363,3 +363,41 @@ def test_manifest_only_not_linkable_exits_1(
     _publish(script, monkeypatch, staged_repo.film, game_root)
     args = _args(script, monkeypatch, staged_repo.film, game_root, "--manifest-only")
     assert script.run(args, None, FakeExtract(link.NotLinkable("chunk 0x7E01"))) == 1
+
+
+def test_a_not_linkable_rerun_removes_the_old_manifest(
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_repo: StagedRepo,
+    game_root: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = dataroot.REPO_ROOT / parity_layout.manifest_path("vault-ctry")
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text("# from an earlier run\n", encoding="utf-8")
+    launch, _state = makeone_launcher(text_after=1, archive=ARCHIVE)
+    args = _args(script, monkeypatch, staged_repo.film, game_root)
+
+    assert script.run(args, launch, FakeExtract(link.NotLinkable("chunk 0x7E01"))) == 0
+
+    assert not manifest.exists()
+    assert "removed" in capsys.readouterr().out
+
+
+def test_a_link_error_says_an_old_manifest_is_stale(
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_repo: StagedRepo,
+    game_root: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = dataroot.REPO_ROOT / parity_layout.manifest_path("vault-ctry")
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text("# from an earlier run\n", encoding="utf-8")
+    launch, _state = makeone_launcher(text_after=1, archive=ARCHIVE)
+    args = _args(script, monkeypatch, staged_repo.film, game_root)
+
+    assert script.run(args, launch, FakeExtract(link.LinkError("boom"))) == 0
+
+    assert manifest.exists()
+    assert "stale" in capsys.readouterr().err

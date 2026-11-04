@@ -40,9 +40,12 @@ class NotLinkable(LinkError):  # noqa: N818 - a verdict on the archive, not a fa
 
 
 def _run(argv: Sequence[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603 - argv built here: the release binary or cargo
-        list(argv), cwd=cwd, capture_output=True, text=True, check=False
-    )
+    try:
+        return subprocess.run(  # noqa: S603 - argv built here: the release binary or cargo
+            list(argv), cwd=cwd, capture_output=True, text=True, check=False
+        )
+    except OSError as exc:
+        raise LinkError(f"cannot run {argv[0]}: {exc}") from exc
 
 
 def binary_path() -> Path:

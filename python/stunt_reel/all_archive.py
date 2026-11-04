@@ -143,8 +143,13 @@ def _from_manifest(flm: Path, root: Path, slug: str, link_build: LinkBuild) -> P
     if flm_sha256 != hashlib.sha256(flm.read_bytes()).hexdigest():
         return None
     game = Path(game_root)
-    if not game.is_absolute():
-        game = root / game
+    if game.is_absolute() and not game.is_dir():
+        raise ArchiveError(
+            f"manifest {manifest} names the game tree {game}, outside the checkout, which "
+            f"exists only on the machine that wrote it; record it against a tree here with: "
+            f"mise run make-all -- --film {flm} --game-root <tree>"
+        )
+    game = root / game
     if not game.is_dir():
         raise ArchiveError(
             f"manifest {manifest} needs the game tree {game}, which is missing; "

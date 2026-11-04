@@ -105,3 +105,9 @@ def test_layout_paths() -> None:
 def test_parity_pipeline_still_exports_the_binary_helpers() -> None:
     assert parity_pipeline.binary_path is link.binary_path
     assert parity_pipeline.binary_locked is link.binary_locked
+
+
+def test_a_missing_program_is_a_link_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(link, "binary_path", lambda: tmp_path / "no-such-stuntreel.exe")
+    with pytest.raises(link.LinkError, match="no-such-stuntreel"):
+        link.build_archive(tmp_path / "m.toml", tmp_path, tmp_path / "X.ALL", cwd=tmp_path)

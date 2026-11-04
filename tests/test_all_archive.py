@@ -306,3 +306,14 @@ def test_a_malformed_manifest_is_an_error_naming_it(tmp_path: Path) -> None:
     path.write_text("film = [unterminated", encoding="utf-8")
     with pytest.raises(ArchiveError, match=r"vault-balloon\.toml"):
         resolve_all(film, tmp_path, link_build=FakeLinkBuild())
+
+
+def test_a_missing_absolute_game_tree_says_it_is_machine_local(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    elsewhere = tmp_path / "other-machine" / "builds" / "patched"
+    _manifest(tmp_path, SLUG, FLM_BYTES, game_root=elsewhere.as_posix())
+    with pytest.raises(ArchiveError, match=r"outside the checkout") as caught:
+        resolve_all(film, tmp_path, link_build=FakeLinkBuild())
+    message = str(caught.value)
+    assert "mise run init" not in message
+    assert "mise run make-all" in message

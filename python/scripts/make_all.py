@@ -104,9 +104,19 @@ def write_manifest(
         extract(archive, film, game_arg(game_root), makeone_sha256, out)
     except link.NotLinkable as exc:
         report(f"no manifest: {exc}; the stored archive stays the record")
+        if out.is_file():
+            # An earlier manifest describes another archive and would win over this one.
+            out.unlink()
+            report(f"removed the earlier {parity_layout.manifest_path(slug).as_posix()}")
         return 3
     except link.LinkError as exc:
         print(f"[make-all] warning: no manifest written: {exc}", file=sys.stderr)
+        if out.is_file():
+            print(
+                f"[make-all] warning: {parity_layout.manifest_path(slug).as_posix()} is stale: "
+                f"it describes an earlier archive and still wins over the stored one",
+                file=sys.stderr,
+            )
         return 1
     report(f"wrote manifest {parity_layout.manifest_path(slug).as_posix()}")
     return 0
