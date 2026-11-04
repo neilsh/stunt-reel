@@ -10,7 +10,7 @@ the resulting map are in ``research/playone-exe/patch3.md`` section 4 and
 Usage::
 
     mise run pair-builds                          # segment and function summary, DGROUP shift runs
-    mise run pair-builds -- --ds 0x0542,0x49EC    # DGROUP offsets (segment 0's DS)
+    mise run pair-builds -- --ds 0x0542,0x49EC    # DGROUP offsets (the entry segment's DS)
     mise run pair-builds -- --ds 0x8072@0x824     # DS offsets as segment 0x824's code reads them
     mise run pair-builds -- --ds 0x8078@0:es      # ES-relative offsets read by segment 0
     mise run pair-builds -- --code 0x196C,0x9100  # load-image code addresses
@@ -106,10 +106,11 @@ def _search(pairing: Pairing, offset: int) -> str:
 
 
 def report_data(pairing: Pairing, spec: str) -> None:
-    """Print one ``OFF[@SEGMENT][:OVERRIDE]`` query."""
+    """Print one ``OFF[@SEGMENT][:OVERRIDE]`` query; SEGMENT defaults to the entry segment."""
     head, _, override = spec.partition(":")
     off_text, _, seg_text = head.partition("@")
-    offset, paragraph = int(off_text, 16), int(seg_text or "0", 16)
+    offset = int(off_text, 16)
+    paragraph = int(seg_text, 16) if seg_text else pairing.left.entry_cs
     found = map_data(pairing, offset, paragraph, override)
     dgroup = paragraph == pairing.left.entry_cs and not override
     line = f"{override or 'ds'}:{offset:#06x} (segment {paragraph:#06x} code)"
