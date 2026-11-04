@@ -97,17 +97,20 @@ impl Default for FreeCamState {
 
 impl FreeCamState {
     /// Computes the normalized forward view direction vector (-Z forward at yaw=0).
+    #[must_use]
     pub fn forward(&self) -> Vec3 {
         let cp = self.pitch.cos();
         Vec3::new(self.yaw.sin() * cp, self.pitch.sin(), -self.yaw.cos() * cp).normalize()
     }
 
     /// Computes the normalized right vector (+X right at yaw=0).
+    #[must_use]
     pub fn right(&self) -> Vec3 {
         self.forward().cross(Vec3::Y).normalize()
     }
 
     /// Computes the normalized up vector (+Y up).
+    #[must_use]
     pub fn up(&self) -> Vec3 {
         self.right().cross(self.forward()).normalize()
     }
@@ -198,6 +201,7 @@ impl CameraController {
     }
 
     /// Computes the 4x4 view matrix for the active camera state.
+    #[must_use]
     pub fn compute_view_matrix(&self) -> Mat4 {
         match self.mode {
             CameraMode::Authored => {
@@ -223,6 +227,7 @@ impl CameraController {
     }
 
     /// Computes the 4x4 perspective projection matrix at [`Self::aspect_ratio`].
+    #[must_use]
     pub fn compute_proj_matrix(&self) -> Mat4 {
         let fov_deg = match self.mode {
             CameraMode::Authored => self.authored.fov_degrees.clamp(1.0, 160.0),
@@ -241,6 +246,7 @@ impl CameraController {
     }
 
     /// Returns the active eye position in world meters.
+    #[must_use]
     pub fn eye_position(&self) -> Vec3 {
         match self.mode {
             CameraMode::Authored => Vec3::from(self.authored.eye),
@@ -249,6 +255,7 @@ impl CameraController {
     }
 
     /// Builds the `CameraUniform` data ready for GPU buffer upload.
+    #[must_use]
     pub fn build_uniform(&self) -> CameraUniform {
         let view = self.compute_view_matrix();
         let proj = self.compute_proj_matrix();
