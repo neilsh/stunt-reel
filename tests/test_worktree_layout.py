@@ -307,7 +307,8 @@ def test_tasks_use_the_os_temp_directory() -> None:
 def test_sod_census_reads_the_data_roots_corpus() -> None:
     """The census reads ``corpus/`` relative to its working directory unless told (ADR 0033)."""
     config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
-    assert "--corpus {{vars.data_root}}/corpus" in config["tasks"]["sod-census"]["run"]
+    run = config["tasks"]["sod-census"]["run"]
+    assert "--corpus {{ get_env(name='STUNT_DATA_ROOT', default=vars.data_root) }}/corpus" in run
 
 
 def test_the_data_root_var_sits_beside_the_primary() -> None:
@@ -350,3 +351,18 @@ def test_cargo_home_renders_in_a_checkout_whose_path_has_an_ampersand(
     assert rendered == {"primary": checkout, "cargo_home": checkout / ".cache" / "cargo"}, (
         result.stdout
     )
+
+
+def test_no_reference_capture_is_opened_under_the_checkout() -> None:
+    """A capture is in the data root; ``open_reference(REPO_ROOT, ...)`` reads a path no checkout has."""
+    readers = {"open_reference", "reference_job", "read_reference"}
+    offenders = [
+        f"{path.relative_to(REPO_ROOT).as_posix()}:{node.lineno}"
+        for path in PYTHON_FILES
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Call)
+        and _call_name(node.func) in readers
+        and node.args
+        and _call_name(node.args[0]) == "REPO_ROOT"
+    ]
+    assert offenders == []

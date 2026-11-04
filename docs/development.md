@@ -83,9 +83,9 @@ mise run play        # CTRY.FLM; mise run play -- --film corpus/stisldem/VAULT/I
 
 ```bash
 mise run capture-ref
-cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
-    --all corpus/stisldem/VAULT/CTRY.ALL --tick-range 0..=1342 \
-    --sidata corpus/siarchive/Developer/FreeFlight/SIDATA \
+cargo run -p stunt-cli -- --headless <data root>/corpus/stisldem/VAULT/CTRY.FLM \
+    --all <data root>/corpus/stisldem/VAULT/CTRY.ALL --tick-range 0..=1342 \
+    --sidata <data root>/corpus/siarchive/Developer/FreeFlight/SIDATA \
     --out-dir build/parity/ours/ctry --width 320 --height 200 --viewport-rows 185
 cargo run -p stunt-cli -- parity --reference <data root>/captures/vault-ctry/frames \
     --test build/parity/ours/ctry --output build/parity/report/ctry
@@ -102,7 +102,7 @@ Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`. No port needs to
 ### Render in the native engine
 
 ```powershell
-cargo run -p stunt-cli -- corpus/stisldem/VAULT/CTRY.FLM --all corpus/stisldem/VAULT/CTRY.ALL
+cargo run -p stunt-cli -- <data root>/corpus/stisldem/VAULT/CTRY.FLM --all <data root>/corpus/stisldem/VAULT/CTRY.ALL
 ```
 
 Opens the interactive presentation (Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits). Interactive playback follows the authored 50 Hz timeline and interpolates between slices. `--help` lists the headless flags, `--tick-range <A..=B>` (0-based, inclusive 50 Hz ticks), `--at-ticks`, and the `parity` subcommand. `ANCHORPT.DAT`, `MAP.BIN`, and `SCENERY.scn` are searched for in `--sidata <dir>` first, then the archive's directory, its parent and grandparent, then `sidata/` or `SIDATA/` inside the parent (filename case ignored); the demo's `corpus/siarchive/Developer/FreeFlight/SIDATA` needs an explicit `--sidata`.
@@ -111,16 +111,16 @@ Opens the interactive presentation (Space pauses, C toggles authored/free camera
 
 ```powershell
 # Export film sequence to an MP4 video sampled at 30 fps
-cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
-    --all corpus/stisldem/VAULT/CTRY.ALL --video build/ctry.mp4
+cargo run -p stunt-cli -- --headless <data root>/corpus/stisldem/VAULT/CTRY.FLM \
+    --all <data root>/corpus/stisldem/VAULT/CTRY.ALL --video build/ctry.mp4
 ```
 
 Export a shape, or one frame of a film, to glTF 2.0 for viewing in Blender or any glTF viewer:
 
 ```powershell
-cargo run -p stunt-cli -- export-gltf --archive corpus/stisldem/VAULT/CTRY.ALL \
+cargo run -p stunt-cli -- export-gltf --archive <data root>/corpus/stisldem/VAULT/CTRY.ALL \
     --film corpus/stisldem/VAULT/CTRY.FLM --tick 400 --out build/gltf_output/CTRY_t400.glb
-cargo run -p stunt-cli -- export-gltf --archive corpus/stisldem/VAULT/CTRY.ALL --shape 0x0408 --out build/gltf_output/shape.glb
+cargo run -p stunt-cli -- export-gltf --archive <data root>/corpus/stisldem/VAULT/CTRY.ALL --shape 0x0408 --out build/gltf_output/shape.glb
 ```
 
 Headless video export samples the authored 50 Hz timeline at `--fps` (default 30), interpolates between slices, and encodes directly into a standard video container (`.mp4`, `.webm`, `.mkv`, or `.avi`) via `ffmpeg`, with physical $4:3$ aspect ratio correction ($320 \times 240$, `[I6]`). `--tick-range <A..=B>` limits the export to a 0-based, inclusive range of ticks. `CTRY.FLM` spans 1,342 ticks (26.84 s), producing 806 sampled frames at 30 fps; the container is trimmed to the authored span, so ffmpeg encodes 805 frames and ffprobe reports 26.833 s (nearest whole frame; 26.84 s exactly at `--fps 50`). Requires `ffmpeg` on `PATH`.
@@ -129,8 +129,8 @@ Headless video export samples the authored 50 Hz timeline at `--fps` (default 30
 
 ```powershell
 # Capture one frame every 25 ticks (0.5 s) across the full 1,342-tick film
-cargo run -p stunt-cli -- --headless corpus/stisldem/VAULT/CTRY.FLM \
-    --all corpus/stisldem/VAULT/CTRY.ALL --tick-range 0..=1341 --frame-step 25 \
+cargo run -p stunt-cli -- --headless <data root>/corpus/stisldem/VAULT/CTRY.FLM \
+    --all <data root>/corpus/stisldem/VAULT/CTRY.ALL --tick-range 0..=1341 --frame-step 25 \
     --out-dir build/parity/ours/ctry_sparse
 ```
 

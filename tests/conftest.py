@@ -30,13 +30,14 @@ pytest_plugins = ["tac_mock"]
 
 
 @pytest.fixture(autouse=True)
-def _no_machine_data_root(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Hide the machine's ``STUNT_DATA_ROOT``, and undo any a test's ``--data-root`` sets.
+def _no_machine_data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Give every test an empty data root of its own, and undo any a test's ``--data-root`` sets.
 
-    ``dataroot.use_data_root`` writes the variable for the process, so without this one test's
-    flag would become the next test's data root.
+    Without it a test that does not name one reads the machine's ``<primary>.data``, and passes
+    only while that holds nothing the test did not expect. ``dataroot.use_data_root`` writes the
+    variable for the process, so one test's flag would also become the next test's data root.
     """
-    monkeypatch.delenv(dataroot.DATA_ENV, raising=False)
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path / "no-data-root"))
     dataroot.data_root.cache_clear()
     yield
     dataroot.data_root.cache_clear()

@@ -378,3 +378,12 @@ def test_score_without_a_capture_is_an_error_naming_capture(tmp_path: Path) -> N
     assert (record.stage, record.status) == ("score", "error")
     assert "capture" in record.message
     assert runner.calls == []
+
+
+def test_stage_scripts_come_from_this_checkout_not_the_survey_root(tmp_path: Path) -> None:
+    """``batch_parity --data-root DIR`` writes under DIR, which holds no python/scripts."""
+    runner = FakeRunner()
+    _write_capture(tmp_path, "x-y", [0, 10])
+    batch_stages.run_capture(_film(tmp_path, name="x-y"), tmp_path, runner, 900.0)
+    command, _ = runner.calls[0]
+    assert Path(command[1]) == dataroot.REPO_ROOT / "python/scripts/capture_playone_reference.py"

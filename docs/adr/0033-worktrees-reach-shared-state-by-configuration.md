@@ -34,8 +34,10 @@ inside the primary checkout on the same Dev Drive, and a DSH session runs these 
 A new worktree holds no links. Each piece of shared state is named where it is used:
 
 - Code reads the corpus and the captures through `dataroot.data_root()`, which honours
-  `STUNT_DATA_ROOT`, then `<primary>.data`, then the primary checkout itself. A relative
-  `corpus/...` or `captures/...` path on the command line resolves the same way.
+  `STUNT_DATA_ROOT`, then `<primary>.data`. Only the corpus falls back further, to the primary
+  checkout's own `corpus/` when the data root has none, because the captures and the stage are
+  written and the stage must sit outside every checkout. A relative `corpus/...` or
+  `captures/...` path on the command line resolves the same way.
 - `mise.toml` names the uv and Cargo caches by absolute path under the primary checkout's
   `.cache`, from `git rev-parse --git-common-dir`.
 - Each worktree keeps uv's default `.venv`; on the same volume uv hardlinks it out of the cache.

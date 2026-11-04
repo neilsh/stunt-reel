@@ -354,5 +354,5 @@ run = "uv run python python/scripts/verify_schemas_corpus.py"
 [tasks.sod-census]
 depends = ["ensure"]
 description = "Census of corpus .SOD models that stop on unimplemented opcodes, joined to the films placing them (opt-in; corpus is gitignored; mise run sod-census -- [--format markdown])"
-run = "cargo run --release --locked -p stunt-cli --bin stuntreel -- sod-census --corpus {{vars.data_root}}/corpus"
+run = "cargo run --release --locked -p stunt-cli --bin stuntreel -- sod-census --corpus {{ get_env(name='STUNT_DATA_ROOT', default=vars.data_root) }}/corpus"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }

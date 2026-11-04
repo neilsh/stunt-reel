@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -77,3 +78,11 @@ def test_the_films_come_from_the_selected_data_root(tmp_path: Path) -> None:
     assert options.films == ("balloon",)
     with pytest.raises(UsageError, match="must be from balloon"):
         _options(parity_run, ["--data-root", str(tmp_path), "--films", "ctry"])
+
+
+def test_the_default_data_root_leaves_the_corpus_fallback_alone() -> None:
+    """Only an explicit --data-root sets STUNT_DATA_ROOT; the default keeps the clone fallback."""
+    before = os.environ.get(dataroot.DATA_ENV)
+    options = _options(parity_run, [])
+    assert os.environ.get(dataroot.DATA_ENV) == before
+    assert options.data_root == dataroot.data_root()

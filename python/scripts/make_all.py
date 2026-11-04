@@ -53,7 +53,7 @@ def extract_with_binary(
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--film", type=Path, required=True, help="the film's .FLM file")
+    parser.add_argument("--film", type=data_path_arg, required=True, help="the film's .FLM file")
     parser.add_argument(
         "--name",
         help="the film's directory under captures/ (default: its parent folder and stem)",

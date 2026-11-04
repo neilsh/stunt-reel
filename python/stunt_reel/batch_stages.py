@@ -8,8 +8,9 @@ the render and score stages are the film parity operation of :mod:`parity_pipeli
 is the only thing that starts a process, so tests pass a fake and nothing here launches
 dosbox-automation, MAKEONE or the stuntreel binary.
 
-The ``root`` argument is the checkout whose layout paths and scripts a stage uses; captures and
-archives are read from ``dataroot.data_root()`` (ADR 0033).
+The ``root`` argument is where a stage writes its outputs (this checkout, or ``batch_parity
+--data-root``); its scripts are always this checkout's, and captures and archives are read from
+``dataroot.data_root()`` (ADR 0033).
 """
 
 from __future__ import annotations
@@ -72,14 +73,17 @@ _TAIL_WIDTH = 400
 _TEARDOWN_MARGIN = 90
 
 
-def run_archive(film: BatchFilm, root: Path, run: Run, timeout: float) -> Record:
-    """Generate the film's ``.ALL`` with ``make_all.py``, or skip it when a sibling archive exists."""
+def run_archive(film: BatchFilm, _root: Path, run: Run, timeout: float) -> Record:
+    """Generate the film's ``.ALL`` with ``make_all.py``, or skip it when a sibling archive exists.
+
+    The script stores the archive in the data root, so the survey's output root is unused.
+    """
     started = time.perf_counter()
     if film.has_sibling_all:
         return _record(film, "archive", "skipped", "a sibling .ALL exists", started)
     command = [
         sys.executable,
-        str(root / _MAKE_ALL),
+        str(dataroot.REPO_ROOT / _MAKE_ALL),
         "--film",
         str(film.flm),
         "--timeout",
@@ -95,10 +99,13 @@ def skip_stalled_capture(film: BatchFilm) -> Record:
     return _record(film, "capture", "skipped", KNOWN_STALL_MESSAGE, time.perf_counter())
 
 
-def run_capture(film: BatchFilm, root: Path, run: Run, timeout: float) -> Record:
-    """Capture the reference frames of the film with ``capture_playone_reference.py``."""
+def run_capture(film: BatchFilm, _root: Path, run: Run, timeout: float) -> Record:
+    """Capture the reference frames of the film with ``capture_playone_reference.py``.
+
+    The script writes the capture into the data root, so the survey's output root is unused.
+    """
     started = time.perf_counter()
-    command = [sys.executable, str(root / _CAPTURE), "--film", str(film.flm)]
+    command = [sys.executable, str(dataroot.REPO_ROOT / _CAPTURE), "--film", str(film.flm)]
     if film.name is not None:
         command += ["--name", film.name]
     if film.slug in UNPATCHED_CAPTURES and _PATCHED_FOLDER in film.flm.parts:

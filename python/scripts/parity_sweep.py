@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING
 import parity_probe
 from cli import add_parity_options, parity_options
 
-from stunt_reel import dataroot, parity_layout, references
+from stunt_reel import parity_layout, references
 from stunt_reel.parity_artifacts import (
     Geometry,
     RenderStore,
@@ -271,7 +271,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--var", action="append", default=None, metavar="DBG_NAME=v1,v2", help="repeatable"
     )
-    add_parity_options(parser, data_root=dataroot.data_root())
+    add_parity_options(parser)
     parser.add_argument("--probe", choices=("film", "iou"), default="film")
     parser.add_argument("--keep-best", action="store_true", help="keep the winner's render dirs")
     return parser.parse_args(argv)

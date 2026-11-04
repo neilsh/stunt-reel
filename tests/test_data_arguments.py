@@ -72,3 +72,10 @@ def test_flm_events_reads_a_relative_film_from_the_data_root(
     shutil.copyfile(FIXTURES / "synthetic_timeline.flm", film)
     assert _load("flm_events").main(["flm_events", FILM]) == 0
     assert capsys.readouterr().out.startswith("total ticks")
+
+
+def test_make_all_reads_a_relative_film_from_the_data_root(
+    data_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["make_all", "--film", "corpus/stuntisl/VAULT/BALLOON.FLM"])
+    assert _load("make_all").parse_args().film == data_root / "corpus/stuntisl/VAULT/BALLOON.FLM"

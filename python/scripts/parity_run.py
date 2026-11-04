@@ -28,7 +28,7 @@ from pathlib import Path
 
 from cli import ParityOptions, UsageError, add_parity_options, parity_options
 
-from stunt_reel import dataroot, parity_layout
+from stunt_reel import parity_layout
 from stunt_reel.parity_pipeline import (
     REPO_ROOT,
     FilmJob,
@@ -82,7 +82,7 @@ def prepare_source(job: FilmJob, options: ParityOptions, *, no_render: bool) -> 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    add_parity_options(parser, data_root=dataroot.data_root())
+    add_parity_options(parser)
     parser.add_argument("--no-render", action="store_true", help="score the existing _current dirs")
     return parser.parse_args(argv)
 

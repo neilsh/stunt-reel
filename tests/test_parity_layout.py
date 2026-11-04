@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from stunt_reel import parity_layout
+from stunt_reel import dataroot, parity_layout
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "python" / "scripts"
@@ -132,3 +132,11 @@ def test_a_film_has_one_capture_of_each_kind() -> None:
     assert parity_layout.frames_path("vault-ctry") == film / "frames"
     assert parity_layout.video_path("vault-ctry") == film / "video"
     assert parity_layout.archive_path("vault-ctry") == film / "archives"
+
+
+def test_the_suite_never_reads_the_machines_data_root() -> None:
+    """conftest points STUNT_DATA_ROOT at an empty scratch directory for every test."""
+    dataroot.data_root.cache_clear()
+    primary = dataroot.primary_checkout()
+    assert primary is not None
+    assert dataroot.data_root() != primary.with_name(primary.name + ".data")

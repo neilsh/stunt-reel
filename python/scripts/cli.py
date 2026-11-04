@@ -43,11 +43,13 @@ class ParityOptions:
     retime: int | None
 
 
-def add_parity_options(parser: argparse.ArgumentParser, *, data_root: Path) -> None:
+def add_parity_options(parser: argparse.ArgumentParser, *, data_root: Path | None = None) -> None:
     """Add ``--films``, ``--data-root``, ``--no-build``, ``--reuse`` and ``--retime``.
 
     ``--films`` defaults to every film the data root's ``references.toml`` pins, resolved by
-    :func:`parity_options` once ``--data-root`` is known.
+    :func:`parity_options` once ``--data-root`` is known. *data_root* is the flag's default;
+    without one the configured data root is read, with the primary checkout's ``corpus/`` as
+    its fallback (ADR 0033).
     """
     parser.add_argument(
         "--films", default=None, help="comma list; default: every film references.toml pins"
@@ -69,7 +71,10 @@ def add_parity_options(parser: argparse.ArgumentParser, *, data_root: Path) -> N
 
 def parity_options(args: argparse.Namespace) -> ParityOptions:
     """Validate the shared flags against the films the resolved data root pins."""
-    root = dataroot.use_data_root(Path(args.data_root))
+    if args.data_root is None:
+        root = dataroot.data_root()
+    else:
+        root = dataroot.use_data_root(Path(args.data_root))
     films = references.reference_films(root)
     if args.films is None:
         names = list(films)
