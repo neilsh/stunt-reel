@@ -8,20 +8,19 @@ lazy from pathlib import Path
 
 import gvpoly_stream as cli
 
-from stunt_reel.gvpoly_stream import Polygon, decode_record, follow
+from stunt_reel.gvpoly_stream import Polygon, decode_record
 
 G168, G2BE = 0x995C, 0x9A24
-IPS = {0x171C: G168, 0x17E4: G2BE}
 
 
-def record(colour: int, shades: list[int], next_ip: int) -> bytes:
-    return struct.pack(f"<H{len(shades)}HH", colour << 8 | len(shades), *shades, next_ip)
+def record(base: int, shades: list[int], next_ip: int) -> bytes:
+    return struct.pack(f"<H{len(shades)}HH", base << 8 | len(shades), *shades, next_ip)
 
 
 def test_count_low_nibble_only() -> None:
     poly = decode_record(struct.pack("<H", 0xC32D) + bytes(30), 0x1000, G168)
     assert poly is not None
-    assert (poly.colour, poly.count) == (0xC3, 13)
+    assert (poly.base, poly.count) == (0xC3, 13)
 
 
 def test_record_shades_and_next_ip() -> None:
@@ -31,41 +30,6 @@ def test_record_shades_and_next_ip() -> None:
 
 def test_short_record_is_none() -> None:
     assert decode_record(record(0xC4, [1, 2, 3], 0x17E4)[:-1], 0, G168) is None
-
-
-def stream() -> bytes:
-    # w0 of the first record at offset 2 (the opcode word at 0 is already the handler IP).
-    return (
-        struct.pack("<H", 0x171C)
-        + record(0xC1, [4, 5], 0x17E4)
-        + record(0xC2, [6], 0x171C)
-        + record(0xC3, [7, 8, 9], 0x1241)
-        + bytes(4)
-    )
-
-
-def test_follow_two_records() -> None:
-    data = stream()
-    first = decode_record(data[2:], 0x1002, G168)
-    assert first is not None
-    chain = follow(first, data, 0x1000, IPS)
-    assert [p.colour for p in chain] == [0xC2, 0xC3]
-    assert chain[0].handler == G2BE
-    assert chain[0].linear == 0x1000 + 2 + 8  # just past the first record's next-IP word
-
-
-def test_follow_stops_on_other_ip() -> None:
-    data = stream()
-    first = decode_record(data[2:], 0x1002, G168)
-    assert first is not None
-    assert follow(first, data, 0x1000, IPS)[-1].next_ip == 0x1241
-
-
-def test_follow_stops_at_dump_end() -> None:
-    data = stream()[:20]
-    first = decode_record(stream()[2:], 0x1002, G168)
-    assert first is not None
-    assert [p.colour for p in follow(first, data, 0x1000, IPS)] == [0xC2]
 
 
 def hit(es: int, si: int, ip: int, image: int, data: bytes) -> dict[str, object]:
@@ -94,3 +58,12 @@ def test_cli_groups_by_es(tmp_path: Path, capsys) -> None:  # type: ignore[no-un
     assert "6B71: 2 polygons" in out
     assert "6BC2: 1 polygons" in out
     assert "0xc4 x2" in out
+
+
+def test_cli_counts_a_record_hit_twice_once(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+    # The same record is drawn every frame; a second hit at the same ES:SI is not a new polygon.
+    again = hit(0x6B71, 0x000E, 0x171C, G168, record(0xC4, [1, 2], 0x1241))
+    path = tmp_path / "g.jsonl"
+    path.write_text(json.dumps(again) + "\n" + json.dumps(again) + "\n", encoding="utf-8")
+    assert cli.main([str(path)]) == 0
+    assert "6B71: 1 polygons; 0xc4 x1" in capsys.readouterr().out
