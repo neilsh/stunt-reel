@@ -107,3 +107,16 @@ def test_world_shift_is_not_pulled_by_the_captures_actor() -> None:
         scene, bytes(capture), ours_actor, width, rows, reach=6, capture_actor=capture_actor
     )
     assert result == (0, 0, 1.0)
+
+
+def test_shifted_pixels_moves_the_silhouette_and_drops_what_leaves_the_frame() -> None:
+    width, rows = 4, 3
+    # (0, 0), (3, 0) and (1, 2), moved one column right and one row down.
+    assert parity_probe.shifted_pixels([0, 3, 9], 1, 1, width, rows) == [5]
+    assert parity_probe.shifted_pixels([5], -1, -1, width, rows) == [0]
+
+
+def test_world_shift_skips_offsets_as_large_as_the_frame() -> None:
+    width, rows = 8, 6
+    flat = bytes([3] * (width * rows))
+    assert parity_probe.world_shift(flat, flat, [], width, rows, reach=8) == (0, 0, 1.0)

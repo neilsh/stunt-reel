@@ -173,6 +173,15 @@ def cmd_crop(args: argparse.Namespace) -> None:
     make_crop(args.reference, args.ours, args.ordinal, args.tick, box, args.scale, args.out)
 
 
+def shifted_pixels(pixels: list[int], dx: int, dy: int, width: int, rows: int) -> list[int]:
+    """``pixels`` moved by ``(dx, dy)``, dropping any that leave the ``width`` x ``rows`` frame."""
+    return [
+        (p // width + dy) * width + p % width + dx
+        for p in pixels
+        if 0 <= p % width + dx < width and 0 <= p // width + dy < rows
+    ]
+
+
 def world_shift(
     ours: bytes,
     capture: bytes,
@@ -200,8 +209,8 @@ def world_shift(
     keep_theirs = flat_theirs.reshape(rows, width)
     offsets = [2 * k for k in range(-(reach // 2), reach // 2 + 1)]
     best = (0, 0, -1.0)
-    for dy in offsets:
-        for dx in offsets:
+    for dy in (d for d in offsets if abs(d) < rows):
+        for dx in (d for d in offsets if abs(d) < width):
             ys, yt = slice(max(0, -dy), rows - max(0, dy)), slice(max(0, dy), rows - max(0, -dy))
             xs, xt = slice(max(0, -dx), width - max(0, dx)), slice(max(0, dx), width - max(0, -dx))
             mask = keep[ys, xs] & keep_theirs[yt, xt]
@@ -245,11 +254,7 @@ def cmd_shift(args: argparse.Namespace) -> None:
                         hit += 1
                 if hit > best[0]:
                     best = (hit, dx, dy)
-        capture_actor = [
-            (p // width + best[2]) * width + p % width + best[1]
-            for p in pixels
-            if 0 <= p % width + best[1] < width and 0 <= p // width + best[2] < rows
-        ]
+        capture_actor = shifted_pixels(pixels, best[1], best[2], width, rows)
         world = world_shift(
             page.indices, capture_index, pixels, width, rows, args.world_reach, capture_actor
         )
