@@ -151,3 +151,8 @@ A made-up film archive and the three source files it is linked from ([`linking.m
 
 - `crates/stunt-core/tests/it/link_spec.rs` checks that `extract` picks the `.ESS` file because only it supplies `0xC002`, that `build` inverts it, and the not-linkable and malformed-manifest errors built from these bytes.
 - `crates/stunt-cli/src/link.rs` copies them into a temporary tree to run `stuntreel link extract` and `build` end to end.
+
+### 18. `dbx/mcbs.txt` (DOSBox-X `DOS MCBS` output)
+The body of DOSBox-X v2026.10.01's `DOS MCBS` debugger command, read over the debugger link while `PLAYONE.EXE` (unpatched) waited at its film dialog on 2026-11-04 (`core = normal`, `memsize = 16`). It is emulator output listing memory blocks and their owners, not game bytes. `PLAYONE`'s PSP is `0x0814`, so its image loads at paragraph `0x0824`.
+
+- `tests/test_dbx_boot.py` checks that `parse_mcbs` finds that PSP.
