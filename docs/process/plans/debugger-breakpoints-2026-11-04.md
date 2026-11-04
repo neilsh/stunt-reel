@@ -1,7 +1,7 @@
 # Breakpoints on DOSBox-X for the Ground and Light Questions (2026-11-04)
 
-Status: **design approved in conversation 2026-11-04; spec awaiting review**. Implementation
-plan: `debugger-breakpoints-implementation-2026-11-04.md` (not written yet). Issues:
+Status: **approved 2026-11-04; sections 3.2 to 3.4 revised with the plan review**.
+Implementation plan: [`debugger-breakpoints-implementation-2026-11-04.md`](debugger-breakpoints-implementation-2026-11-04.md). Issues:
 [#65](https://github.com/neilsh/stunt-reel/issues/65) (where `PLAYONE` draws its ground polygons
 and their colours from) and [#66](https://github.com/neilsh/stunt-reel/issues/66) (what sets its
 per-shot terrain light), both blocking [#69](https://github.com/neilsh/stunt-reel/issues/69).
@@ -101,8 +101,7 @@ kind = "watch"
 mem = "DS:0x49EC"        # or linear = 0x6BC2C
 size = 6
 arm = "dialog"
-hits = 50
-ignore_ip = [[0x8240, 0x860B]]   # image ranges whose writes are dropped (the slot run)
+hits = 50                # writes from the build's dispatch-slot run are always dropped
 
 [[probe]]
 name = "file-reads"
@@ -133,7 +132,9 @@ adds `stack:<words>` and `mem:<seg>:<off>:<len>`, where `seg` and `off` may name
   written as an image offset.
 - **Patched build.** An unpatched offset maps through #78's function pairing (function start plus
   offset within it, accepted only where the pairing marks the function identical in shape);
-  otherwise the probe is refused with the reason.
+  otherwise the probe is refused with the reason. Literal DS offsets in `mem` and in
+  `mem:DS:<offset>:<len>` captures map through the pairing's data mapping (`map_data`) the same
+  way, since Patch #3 moved DGROUP's contents.
 
 ### 3.4 Watch stops
 
@@ -143,7 +144,9 @@ whose `used_memory()` includes a write or conditional write resolving (effective
 from the stopped registers, base, index, displacement) to an address inside the watched range. The
 hit is recorded with `writer` set when exactly one candidate survives, `writer = null` with the
 candidate list when several do, and is dropped and counted as `spurious` when none does, or as
-`ignored` when the writer lies in `ignore_ip`. The spike's `0x43EA` stop resolves to `adc [0x4896], ax` at
+`ignored` when the writer lies in the build's dispatch-slot run (found by the slot signature,
+so it is right on both builds). `BPM` fires on a changed value, so a write of the same value is
+never seen. The spike's `0x43EA` stop resolves to `adc [0x4896], ax` at
 `0x43E6`; its `0x759C` stop resolves to nothing.
 
 ### 3.5 Hit loop and halting
