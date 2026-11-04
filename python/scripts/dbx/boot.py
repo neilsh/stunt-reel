@@ -163,16 +163,27 @@ def parse_mcbs(lines: Sequence[str], program: str = "PLAYONE") -> int:
 
 @dataclass
 class Booted:
-    """A running film: the link, the image's load paragraph and the stage it runs from."""
+    """PLAYONE at its film dialog with the film selected: the link, load paragraph and stage.
+
+    The last selection key (Enter) is held back until `start`, so probes armed first see the
+    film load.
+    """
 
     link: Link
     load: int
     stage: Path
+    held: tuple[tuple[int, int], ...] = ()
+
+    def start(self) -> None:
+        """Send the held key(s): the film starts loading."""
+        send_keys(self.link, self.held)
+        self.held = ()
 
 
 @contextmanager
 def booted(film: Path, build: Literal["unpatched", "patched"], *, cycles: int) -> Iterator[Booted]:
-    """Stage *film* on *build*, boot PLAYONE in DOSBox-X and select the film; clean up on exit."""
+    """Stage *film* on *build*, boot PLAYONE in DOSBox-X and select the film, holding back Enter
+    (`Booted.start`); clean up on exit."""
     exe = dosbox_x_exe()
     engine = dataroot.data_root() / game_builds.BUILDS_DIR / build
     staged = staging.stage_film(film, engine_root=engine)
@@ -211,8 +222,9 @@ def booted(film: Path, build: Literal["unpatched", "patched"], *, cycles: int) -
             msg = f"PLAYONE's film dialog did not settle within {DIALOG_DUMPS} page dumps"
             raise GuestTimeout(msg)
         load = parse_mcbs(link.ex("DOS MCBS")) + 0x10
-        send_keys(link, bios_keys(film_selection_names(film.name)))
-        yield Booted(link, load, staged.root)
+        keys = bios_keys(film_selection_names(film.name))
+        send_keys(link, keys[:-1])
+        yield Booted(link, load, staged.root, tuple(keys[-1:]))
     finally:
         if link is not None:
             with contextlib.suppress(LinkError, OSError):
