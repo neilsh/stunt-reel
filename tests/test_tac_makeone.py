@@ -159,3 +159,75 @@ def test_a_failure_before_the_archive_is_still_an_error(
         makeone.make_all(
             staged_repo.film, game_root=game_root, poll=0.0, launch=launch, warn=lambda _m: None
         )
+
+
+def _hang(
+    staged_repo: StagedRepo,
+    game_root: Path,
+    archive: bytes | None,
+    *,
+    change: bool = False,
+    warnings: list[str] | None = None,
+    hangs: list[bool] | None = None,
+) -> bytes:
+    """A run whose guest never leaves graphics mode; *change* keeps rewriting the archive."""
+    launch, state = makeone_launcher(text_after=None, archive=archive)
+    clock = FakeClock()
+
+    def sleep(seconds: float) -> None:
+        clock.sleep(seconds)
+        if change and state.vault is not None:
+            with (state.vault / "CTRY.ALL").open("ab") as out:
+                out.write(b"x")
+
+    return makeone.make_all(
+        staged_repo.film,
+        game_root=game_root,
+        timeout=10,
+        poll=2,
+        stable=60,
+        launch=launch,
+        clock=clock,
+        sleep=sleep,
+        warn=(warnings if warnings is not None else []).append,
+        on_hang=lambda: (hangs if hangs is not None else []).append(True),
+    )
+
+
+def test_a_makeone_hang_with_a_stable_archive_is_accepted(
+    staged_repo: StagedRepo, game_root: Path
+) -> None:
+    warnings: list[str] = []
+    hangs: list[bool] = []
+
+    data = _hang(staged_repo, game_root, ARCHIVE, warnings=warnings, hangs=hangs)
+
+    assert data == ARCHIVE
+    assert hangs == [True]
+    assert len(warnings) == 1
+    assert "MAKEONE hang" in warnings[0]
+    assert _stage_dirs() == []
+
+
+def test_a_makeone_hang_with_a_changing_archive_is_refused(
+    staged_repo: StagedRepo, game_root: Path
+) -> None:
+    hangs: list[bool] = []
+    with pytest.raises(makeone.MakeOneTimeout, match="still changing"):
+        _hang(staged_repo, game_root, ARCHIVE, change=True, hangs=hangs)
+    assert hangs == []
+    assert _stage_dirs() == []
+
+
+def test_a_makeone_hang_with_no_archive_is_refused(
+    staged_repo: StagedRepo, game_root: Path
+) -> None:
+    with pytest.raises(makeone.MakeOneTimeout, match="no archive"):
+        _hang(staged_repo, game_root, None)
+
+
+def test_a_makeone_hang_with_an_empty_archive_is_refused(
+    staged_repo: StagedRepo, game_root: Path
+) -> None:
+    with pytest.raises(makeone.MakeOneTimeout, match="empty"):
+        _hang(staged_repo, game_root, b"")

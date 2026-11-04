@@ -197,6 +197,7 @@ def run(
     created = datetime.now(UTC).date()
 
     started = time.monotonic()
+    hung: list[bool] = []
     try:
         data = makeone.make_all(
             film,
@@ -204,6 +205,7 @@ def run(
             launch=launch,
             timeout=args.timeout,
             progress=report,
+            on_hang=lambda: hung.append(True),
             warn=lambda message: print(f"[make-all] warning: {message}", file=sys.stderr),
         )
         check_archive(data)
@@ -227,6 +229,7 @@ def run(
             ),
             wall_seconds=round(time.monotonic() - started, 1),
             created=created.isoformat(),
+            returned_to_dos=not hung,
         )
         written = publish_archive(dataroot.REPO_ROOT, data, meta, slug=slug, film=film.name)
     except (OSError, ValueError) as exc:

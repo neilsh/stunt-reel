@@ -61,6 +61,8 @@ class ArchiveMeta:
     game_files: tuple[tuple[str, int], ...] = ()
     wall_seconds: float = 0.0
     created: str = ""
+    #: False when MAKEONE wrote the archive but never returned to DOS and was killed.
+    returned_to_dos: bool = True
 
     def to_json(self) -> str:
         """The ``meta.json`` text."""

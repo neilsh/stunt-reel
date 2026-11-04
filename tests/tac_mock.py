@@ -237,6 +237,8 @@ class MakeOneState:
     polls: int = 0
     #: Raised when the emulator is stopped, to model a failing teardown.
     stop_error: Exception | None = None
+    #: The staged VAULT, set once a hung guest has written its archive.
+    vault: Path | None = None
 
 
 def makeone_launcher(
@@ -256,6 +258,10 @@ def makeone_launcher(
         def is_text_mode(self) -> bool:
             state.polls += 1
             if text_after is None or state.polls <= text_after:
+                if text_after is None and archive is not None and state.vault is None:
+                    # A MAKEONE hang: the archive is written and the guest stays in graphics.
+                    state.vault = self._staged.mount / "VAULT"
+                    (state.vault / "CTRY.ALL").write_bytes(archive)
                 return False
             if archive is not None:
                 (self._staged.mount / "VAULT" / "CTRY.ALL").write_bytes(archive)
