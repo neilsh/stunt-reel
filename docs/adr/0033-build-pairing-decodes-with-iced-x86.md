@@ -4,13 +4,13 @@
 
 accepted 2026-11-04. The admitting record that
 [ADR 0010](0010-python-scripts-may-take-well-established-dependencies.md) asks for, for the
-`iced-x86` dev dependency of `python/scripts/build_pairing.py`
+`iced-x86` dev dependency of [`build_pairing.py`](../../python/scripts/build_pairing.py)
 (`mise run pair-builds`, [#78](https://github.com/neilsh/stunt-reel/issues/78)).
 
 ## Context
 
 Mapping the Patch #3 `PLAYONE.EXE` onto the unpatched one means decoding both 16-bit images and
-pairing their instructions.
+pairing their instructions ([`patch3.md` § 4](../../research/playone-exe/patch3.md#4-function-pairing-the-whole-map)).
 The standard library has no x86 decoder, and writing one for real-mode code (ModRM and SIB forms,
 prefixes, segment overrides, far pointers) is a project of its own that would need its own tests.
 A breakpoint tool for [#65](https://github.com/neilsh/stunt-reel/issues/65) and
