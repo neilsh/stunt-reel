@@ -72,6 +72,13 @@ description = "Link the shared data root and the cached Python environment into 
 run = "python python/scripts/worktree_init.py init"
 env = { PYTHONPATH = "{{config_root}}/python", STUNT_CARGO_HOME = "{{vars.cargo_home}}" }
 
+[tasks.ensure]
+description = "Seed an empty target/ and set core.hooksPath, under a lock; every task that builds Rust runs it first (ADR 0033)"
+hide = true
+quiet = true
+run = "python python/scripts/worktree_init.py ensure"
+env = { PYTHONPATH = "{{config_root}}/python", STUNT_CARGO_HOME = "{{vars.cargo_home}}" }
+
 [tasks.seed]
 description = "Clone a built target/ from another checkout into this one's empty target/ (ADR 0030)"
 run = "python python/scripts/worktree_init.py seed"
@@ -90,6 +97,7 @@ description = "A pull request's unresolved review threads, one line each with th
 run = "uv run python python/scripts/pr_threads.py"
 
 [tasks.build-at]
+depends = ["ensure"]
 description = "Build stunt-cli from a git revision with an isolated target dir (mise run build-at -- <rev> <out>)"
 run = "uv run python python/scripts/build_at.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
@@ -119,11 +127,13 @@ description = "One-time move to one capture of each kind per film (ADR 0028): ke
 run = "uv run python python/scripts/migrate_captures.py"
 
 [tasks.sweep]
+depends = ["ensure"]
 description = "Candidate sweep: render and score DBG_* variants on CTRY and INTRO (mise run sweep -- --var DBG_X=0,1 [--films ctry] [--probe iou] [--keep-best] [--no-build] [--reuse DIR] [--retime N])"
 run = "uv run python python/scripts/parity_sweep.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.parity]
+depends = ["ensure"]
 description = "Parity baseline: render both films with the current binary and print the headline scores (mise run parity -- [--films ctry,intro] [--no-build] [--no-render] [--reuse DIR] [--retime N])"
 run = "uv run python python/scripts/parity_run.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
@@ -133,16 +143,19 @@ description = "Parity metric bench: plant faults, score metrics against recaptur
 run = "uv run python python/scripts/parity_bench.py"
 
 [tasks.parity-probe]
+depends = ["ensure"]
 description = "Diagnostic probes on one capture/render pair (mise run parity-probe -- crop|shift|iou|retime ... ; summary prints the rows the parity log needs)"
 run = "uv run python python/scripts/parity_probe.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.frame]
+depends = ["ensure"]
 description = "Render film ticks in one process and write each beside its reference capture frame (mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N] [--no-build] [--var DBG_X=0,1]; --var draws one panel per value after the capture)"
 run = "uv run python python/scripts/parity_frame.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.batch-parity]
+depends = ["ensure"]
 description = "Batch parity survey: every distinct corpus film through archive, capture, render and score, resumable from a ledger (mise run batch-parity -- [--only SLUG,...] [--limit N] [--stages archive,capture,render,score] [--retry-errors] [--summary] [--skip SLUG,...] [--jobs N] [--max-renders N] [--min-free-gb GB] [--archive-timeout S] [--capture-timeout S] [--data-root DIR])"
 run = "uv run python python/scripts/batch_parity.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
@@ -169,6 +182,7 @@ run = "uv run python python/scripts/adversarial_formats_challenge.py"
 
 # Development & Quality Assurance Tasks
 [tasks.lint-rust]
+depends = ["ensure"]
 description = "Run Rust Clippy lints across all crates"
 run = "cargo clippy --locked --workspace --all-targets --all-features -- -D warnings"
 # Check-profile artifacts live in their own target directory so the clippy lane and the
@@ -235,16 +249,19 @@ run = [
 ]
 
 [tasks.test-rust]
+depends = ["ensure"]
 description = "Run Rust unit and integration tests"
 run = "cargo test --locked --workspace --all-features"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.test-render]
+depends = ["ensure"]
 description = "Run stunt-render's GPU integration tests with a bounded hang watchdog (detects hangs instead of waiting forever)"
 run = "uv run python python/scripts/watch_render_test.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.cov-rust]
+depends = ["ensure"]
 description = "Line coverage for the Rust format crates (stunt-core, stunt-gltf)"
 run = "cargo llvm-cov --locked -p stunt-core -p stunt-gltf --all-features --summary-only"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
@@ -263,6 +280,7 @@ run = "cargo deny check"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.doc]
+depends = ["ensure"]
 description = "Build rustdoc with warnings denied"
 run = "cargo doc --workspace --no-deps --all-features"
 # rustdoc reads its dependencies' metadata, the same units clippy builds in target/check; in
@@ -271,6 +289,7 @@ run = "cargo doc --workspace --no-deps --all-features"
 env = { RUSTDOCFLAGS = "-D warnings", CARGO_HOME = "{{vars.cargo_home}}", CARGO_TARGET_DIR = "{{config_root}}/target/check", CARGO_INCREMENTAL = "0" }
 
 [tasks.check-rust-matrix]
+depends = ["ensure"]
 description = "Test stunt-core without optional features, in a target directory of its own"
 # cargo test also builds the plain library for the integration tests, so the old
 # `cargo check` prefix compiled the same no-default-features library a second time for no extra
@@ -335,6 +354,7 @@ description = "Compile research/formats/**/*.ksy and check them against local co
 run = "uv run python python/scripts/verify_schemas_corpus.py"
 
 [tasks.sod-census]
+depends = ["ensure"]
 description = "Census of corpus .SOD models that stop on unimplemented opcodes, joined to the films placing them (opt-in; corpus is gitignored; mise run sod-census -- [--format markdown])"
 run = "cargo run --release --locked -p stunt-cli --bin stuntreel -- sod-census --corpus {{vars.data_root}}/corpus"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }

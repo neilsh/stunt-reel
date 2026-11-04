@@ -273,6 +273,24 @@ def test_mise_config_renders_outside_a_git_checkout() -> None:
     assert homes == [f"{REPO_ROOT}/.cache/cargo"], result.stdout
 
 
+def test_every_task_that_builds_depends_on_ensure() -> None:
+    """A new worktree's first cargo task seeds target/ first, with no init (ADR 0033)."""
+    config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
+    # Formatting and the advisory check build nothing; check-rust runs tasks that do; init
+    # and seed call ensure's code themselves.
+    exempt = {"fmt-rust", "fmt-check-rust", "deny", "check-rust", "init", "seed"}
+    missing = [
+        name
+        for name, task in config["tasks"].items()
+        if "CARGO_HOME" in task.get("env", {})
+        and name not in exempt
+        and "ensure" not in task.get("depends", [])
+    ]
+    assert missing == []
+    assert config["tasks"]["ensure"]["hide"] is True
+    assert config["tasks"]["ensure"]["env"] == config["tasks"]["init"]["env"]
+
+
 def test_the_uv_cache_is_the_primarys_by_absolute_path() -> None:
     """No .cache link: every checkout names the primary's uv cache directly (ADR 0033)."""
     config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))

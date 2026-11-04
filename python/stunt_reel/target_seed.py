@@ -293,6 +293,41 @@ def build_locks_free(target: Path) -> Iterator[bool]:
         yield True
 
 
+@contextlib.contextmanager
+def exclusive(path: Path) -> Iterator[None]:
+    """Hold an exclusive OS lock on the file *path*, created if missing, for the block.
+
+    Blocks until the lock is free. Each call opens its own handle, so two threads of one
+    process exclude each other as two processes do: the gate starts its cargo lanes, and so
+    their ``ensure`` steps, at once (ADR 0033).
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+b") as handle:
+        if sys.platform == "win32":
+            import msvcrt  # noqa: PLC0415 - only needed on Windows
+
+            while True:
+                handle.seek(0)
+                try:
+                    # LK_LOCK gives up after ten one-second tries; a seed takes longer.
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    continue
+            try:
+                yield
+            finally:
+                _unlock(handle)
+        else:
+            import fcntl  # noqa: PLC0415 - only needed off Windows
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
 def _unlock(handle: BinaryIO) -> None:
     """Release the one-byte lock ``build_locks_free`` took at the start of *handle*."""
     if sys.platform == "win32":

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -104,3 +106,59 @@ def test_seed_warns_when_the_cargo_home_is_not_the_shared_path(
         f"  ! CARGO_HOME {tmp_path / '.cache' / 'cargo'} is not {shared}: "
         "every dependency rebuilds here"
     )
+
+
+def test_concurrent_ensures_seed_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The gate starts four cargo lanes at once; only the first seeds, the rest find it built."""
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(worktree_init, "ensure_hooks_path", lambda _repo: [])
+    monkeypatch.setattr(worktree_init, "_rustc_vv", lambda: "rustc 1.99.1\n")
+    monkeypatch.setattr(worktree_init, "_worktrees", lambda _repo: [])
+    calls: list[Path] = []
+
+    def slow_seed(checkout: Path, **_kwargs: object) -> SeedOutcome:
+        calls.append(checkout)
+        time.sleep(0.2)
+        (checkout / "target" / "debug").mkdir(parents=True)
+        return SeedOutcome("seeded", "from elsewhere")
+
+    monkeypatch.setattr(worktree_init, "seed", slow_seed)
+    threads = [threading.Thread(target=worktree_init._ensure) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert calls == [tmp_path]
+
+
+def test_ensure_is_quiet_when_nothing_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A built target/ and a set hooks path cost a few stats and print nothing."""
+    (tmp_path / "target" / "debug").mkdir(parents=True)
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        worktree_init, "ensure_hooks_path", lambda _repo: ["  = core.hooksPath .githooks"]
+    )
+
+    def no_seed() -> str:
+        raise AssertionError("a built target/ is never seeded")
+
+    monkeypatch.setattr(worktree_init, "_seed_target", no_seed)
+    assert worktree_init._ensure() == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_ensure_reports_what_it_changed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        worktree_init, "ensure_hooks_path", lambda _repo: ["  + core.hooksPath -> .githooks"]
+    )
+    monkeypatch.setattr(worktree_init, "_seed_target", lambda: "  + target/ seeded from E:\a")
+    assert worktree_init.main(["ensure"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "  + core.hooksPath -> .githooks",
+        "  + target/ seeded from E:\a",
+    ]

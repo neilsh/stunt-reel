@@ -56,7 +56,7 @@ from stunt_reel.dataroot import (
     shared_target,
     sweep_orphan_envs,
 )
-from stunt_reel.target_seed import SeedOutcome, seed
+from stunt_reel.target_seed import SeedOutcome, exclusive, needs_seed, seed
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -315,6 +315,35 @@ def _seed_target() -> str:
         line = f"{_SEED_FAILED}{outcome.detail}"
     warning = _cargo_home_warning(cargo_home)
     return line if warning is None else f"{line}\n{warning}"
+
+
+#: The lock file under target/ that orders concurrent ``ensure`` runs; no seed copies it.
+ENSURE_LOCK = ".ensure.lock"
+
+
+def _reports(lines: list[str]) -> list[str]:
+    """The lines of *lines* worth printing from ``ensure``: a change (``+``) or a problem (``!``)."""
+    return [line for line in lines if line.startswith(("  +", "  !"))]
+
+
+def _ensure() -> int:
+    """Seed an empty target/ and set ``core.hooksPath``; quiet when neither needed doing.
+
+    Every task that builds Rust depends on this (ADR 0033), so it is the step a new worktree
+    used to need ``init`` for. A failed seed is a slower first build, not an error, so it
+    returns 0 whatever happened.
+    """
+    target = REPO_ROOT / "target"
+    # The first holder seeds; the others wait, then find target/ built.
+    with exclusive(target / ENSURE_LOCK):
+        hooks = ensure_hooks_path(REPO_ROOT)
+        # Only a hooks path this call set, or failed to set, is news; the rest is init's report.
+        lines = hooks if any(line.startswith(("  +", "  ! could not")) for line in hooks) else []
+        if needs_seed(target):
+            lines += _reports(_seed_target().splitlines())
+    for line in lines:
+        print(line)
+    return 0
 
 
 def _tree_footprint(path: Path) -> tuple[int, int]:
@@ -975,6 +1004,7 @@ def main(argv: list[str] | None = None) -> int:
         help="convert an old-layout shared root, then move existing in-checkout data into it before linking",
     )
     commands.add_parser("seed", help="clone another checkout's built target/ into an empty one")
+    commands.add_parser("ensure", help="seed an empty target/ and set core.hooksPath, quietly")
     clean = commands.add_parser("clean", help="report or remove per-worktree build outputs")
     clean.add_argument("--yes", action="store_true", help="actually remove them")
     clean.add_argument(
@@ -1011,6 +1041,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "init":
         return _init(bool(args.migrate))
+    if args.command == "ensure":
+        return _ensure()
     if args.command == "seed":
         line = _seed_target()
         print(line)
