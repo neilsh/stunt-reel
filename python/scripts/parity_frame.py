@@ -3,7 +3,7 @@
 Usage::
 
     mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N]
-        [--no-build]
+        [--no-build] [--var DBG_NAME=v1,v2]
 
 One ``stuntreel --at-ticks`` process renders every tick (process startup is almost all of a
 single frame's cost), into the render store ``build/scratch/frame/<film>/store``. For each tick
@@ -11,16 +11,22 @@ the capture holds, ``build/scratch/frame/<film>/<film>_<tick>.png`` is the captu
 of ours with a magenta divider; the path is printed. A tick the capture lacks is still
 rendered and its nearest captured ticks are printed instead; one past the film's end is
 named as not rendered. Each run replaces the store and the film's earlier PNGs.
+
+With ``--var DBG_NAME=v1,v2`` the film is rendered once per value, with that variable in the
+environment, into ``store_<value>``; each PNG is then the capture followed by one panel per
+value, in the order given (the before-and-after picture for a candidate change).
 """
 
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import sys
 from pathlib import Path
 
 import parity_probe
+import parity_sweep
 
 from stunt_reel import parity_pipeline, references
 from stunt_reel.dataroot import REPO_ROOT, ensure_links_or_report
@@ -75,9 +81,24 @@ def check_crop(box: tuple[int, int, int, int], scale: int, *, width: int, height
 
 
 def clear_previous(out: Path, film: str) -> None:
-    """Deletes ``film``'s side-by-side PNGs from an earlier run, so none outlives its store."""
+    """Deletes ``film``'s PNGs and render stores from an earlier run, so none outlives its store."""
     for png in out.glob(f"{film}_*.png"):
         png.unlink()
+    for store in out.glob("store*"):
+        shutil.rmtree(store, ignore_errors=True)
+
+
+def variant_stores(out: Path, var: str | None) -> list[tuple[str, dict[str, str] | None, Path]]:
+    """Label, environment and store directory of each render: one per ``--var`` value, or one."""
+    if var is None:
+        return [("ours", None, out / "store")]
+    name, values = parity_sweep.parse_var(var)
+    if len(set(values)) != len(values):
+        raise ValueError(f"--var {name} repeats a value")
+    return [
+        (f"{name}={value}", {name: value}, out / f"store_{re.sub(r'[^0-9A-Za-z.-]', '_', value)}")
+        for value in values
+    ]
 
 
 def describe_missing(tick: int, nearest: tuple[int | None, int | None], *, rendered: bool) -> str:
@@ -96,6 +117,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--crop", default=None, help="x0,y0,x1,y1 (default: the whole viewport)")
     parser.add_argument("--scale", type=int, default=1)
     parser.add_argument("--no-build", action="store_true", help="reuse the release binary")
+    parser.add_argument(
+        "--var", default=None, help="DBG_NAME=v1,v2: one panel per value after the capture"
+    )
     return parser.parse_args(argv)
 
 
@@ -104,6 +128,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         ticks = parse_ticks(args.ticks)
         box = parse_box(args.crop) if args.crop else None
+        variants = variant_stores(REPO_ROOT / FRAME_DIR / args.film, args.var)
     except ValueError as err:
         print(f"parity_frame: {err}", file=sys.stderr)
         return 2
@@ -117,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.no_build:
         parity_pipeline.build_release()
     with parity_pipeline.reference_job(root, args.film) as job:
-        return _draw(job, args, ticks, box)
+        return _draw(job, args, ticks, box, variants)
 
 
 def _draw(
@@ -125,17 +150,19 @@ def _draw(
     args: argparse.Namespace,
     ticks: list[int],
     box: tuple[int, int, int, int] | None,
+    variants: list[tuple[str, dict[str, str] | None, Path]],
 ) -> int:
-    """Render the job's ticks and write each side-by-side sheet; the exit code."""
+    """Render the job's ticks once per variant and write each tick's sheet; the exit code."""
     root = job.root
     reference = job.capture
     found, missing = locate(read_capture(reference), ticks)
 
     out = root / FRAME_DIR / args.film
-    store_dir = out / "store"
-    shutil.rmtree(store_dir, ignore_errors=True)
     clear_previous(out, args.film)
-    parity_pipeline.render_film(job, store_dir, ticks=ticks)
+    for _, env, variant_dir in variants:
+        parity_pipeline.render_film(job, variant_dir, env, ticks=ticks)
+    store_dir = variants[0][2]
+    stores = [variant_dir for _, _, variant_dir in variants]
 
     if not (store_dir / "render.json").exists():
         # Every tick was past the film's end, so the renderer wrote no store.
@@ -155,11 +182,12 @@ def _draw(
             print(describe_missing(tick, (None, None), rendered=False))
             continue
         png = out / f"{args.film}_{tick}.png"
-        parity_probe.make_side_by_side(reference, store_dir, ordinal, tick, box, args.scale, png)
+        parity_probe.make_strip(reference, stores, ordinal, tick, box, args.scale, png)
         print(png)
     for tick, nearest in missing.items():
         print(describe_missing(tick, nearest, rendered=store.holds(tick)))
-    print(f"render store: {store_dir}")
+    print("panels: capture | " + " | ".join(label for label, _, _ in variants))
+    print("render stores: " + ", ".join(str(path) for path in stores))
     return 0
 
 

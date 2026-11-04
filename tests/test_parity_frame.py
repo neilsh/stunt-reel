@@ -159,3 +159,47 @@ def test_clear_previous_removes_only_this_films_pictures(tmp_path: Path) -> None
         (tmp_path / name).write_bytes(b"x")
     parity_frame.clear_previous(tmp_path, "intro")
     assert sorted(p.name for p in tmp_path.iterdir()) == ["ctry_48.png", "notes.txt"]
+
+
+def test_strip_puts_the_capture_first_then_each_store_in_order(tmp_path: Path) -> None:
+    reference = tmp_path / "ref"
+    reference.mkdir()
+    pixels = TINY.width * TINY.height
+    (reference / "f.idx").write_bytes(bytes([1] * pixels))
+    (reference / "p.json").write_text(json.dumps([[i, i, 0] for i in range(256)]), encoding="utf-8")
+    (reference / "meta.json").write_text(
+        json.dumps(
+            {
+                "frames": [
+                    {"ordinal": 1, "film_tick": 5, "frame_file": "f.idx", "palette_file": "p.json"}
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    before, after = tmp_path / "before", tmp_path / "after"
+    write_store(before, [5], geometry=TINY)
+    write_store(after, [5], geometry=TINY)
+    out = tmp_path / "strip.png"
+    parity_probe.make_strip(reference, [before, after], 1, 5, (0, 0, 4, 2), 1, out)
+    width, rows = _png_rows(out)
+    assert (width, len(rows)) == (4 + 2 + 4 + 2 + 4, 2)
+    assert rows[0][:3] == bytes([1, 1, 0])  # the capture first
+    ours = bytes([5, 5, 0, 6, 6, 0, 7, 7, 0, 8, 8, 0])
+    assert rows[0][6 * 3 : 10 * 3] == ours
+    assert rows[0][10 * 3 : 12 * 3] == bytes([255, 0, 255] * 2)
+    assert rows[0][12 * 3 :] == ours
+
+
+def test_variant_stores_render_once_per_value_in_order(tmp_path: Path) -> None:
+    assert parity_frame.variant_stores(tmp_path, None) == [("ours", None, tmp_path / "store")]
+    assert parity_frame.variant_stores(tmp_path, "DBG_LIFT=0,-0.5") == [
+        ("DBG_LIFT=0", {"DBG_LIFT": "0"}, tmp_path / "store_0"),
+        ("DBG_LIFT=-0.5", {"DBG_LIFT": "-0.5"}, tmp_path / "store_-0.5"),
+    ]
+
+
+@pytest.mark.parametrize("spec", ["LIFT=0,1", "DBG_LIFT=", "DBG_LIFT=1,1"])
+def test_variant_stores_refuse_a_malformed_var(tmp_path: Path, spec: str) -> None:
+    with pytest.raises(ValueError, match="--var"):
+        parity_frame.variant_stores(tmp_path, spec)
