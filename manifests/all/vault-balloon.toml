@@ -1,0 +1,67 @@
+# Rebuilds BALLOON.ALL from the game's RES tree with `stuntreel link build` (ADR 0032).
+film = "BALLOON.FLM"
+flm_sha256 = "e09ef7b1e8c4c5d522b2ed15d285898730f77de33aae2142c29840ca41bf7b65"
+game_root = "corpus/stuntisl"
+makeone_sha256 = "2963e0889851287f4d4bfe3fbfb96542e61058ff4511b9783f4d289913e0fc9f"
+all_bytes = 46702
+all_sha256 = "86628c55cb0126f3c9bc0f5f2ec5fe28351ba5e30caca9fe465dca6b99c1874d"
+
+[[source]]
+file = "RES/SCENERY1.RES"
+index = 2
+sha256 = "f5b588f40411619060e0966d817df2af992d2b14cf04e8fb4c249a51a6cef859"
+items = [81, 170, 172, 174, 176]
+
+[[source]]
+file = "RES/SCENERY2.RES"
+index = 3
+sha256 = "d319d03e1fbc2d63ffcd375fcd5a73525761bedab481a0716f3f4d9c64e86036"
+items = [60, 94, 96, 97, 99, 100, 102, 116, 190, 191, 192, 193, 194, 195, 233]
+
+[[source]]
+file = "RES/SCENERY3.RES"
+index = 4
+sha256 = "5e018beb5413fdb4b95bf5bdd1ee728dd95c37ff35e976c08af292c83387dbfb"
+items = [1, 2, 3, 4, 5, 6, 7, 8, 85]
+
+[[source]]
+file = "RES/SCENERY4.RES"
+index = 5
+sha256 = "8402fa11c47f672efa458d0022b87d3b35e1c542cb439f8955641a6f262a6dc4"
+items = [1, 3, 4, 6, 7, 9, 82, 96, 97, 98, 99, 105, 106, 112, 113, 121, 140, 142, 144, 161, 173, 175, 177, 182, 183, 184]
+
+[[source]]
+file = "RES/SCENERY5.RES"
+index = 6
+sha256 = "2133515b6b1ab3d2e100af57a98b1dd56155e62cab83a4e7daf68a773aef102f"
+items = [199]
+
+[[source]]
+file = "RES/VEHICLES.RES"
+index = 65
+sha256 = "1d1a08fd4526b6b03b7c8cd871f173091104e7784fb1c4a4b343aac48a4ce4de"
+items = [45]
+
+[[source]]
+file = "RES/PLANES.RES"
+index = 127
+sha256 = "e51dd4440da3723129e76602a65e5eb6c8d612007e18a4a83c1b452e60e843d2"
+items = [8]
+
+[[source]]
+file = "RES/SPRITES.RES"
+index = 128
+sha256 = "95d3e3c4b32eb77b197640caad0b983864d27830aa38add1b10d9f3c21e9a96a"
+items = [30, 66]
+
+[[source]]
+file = "RES/COMMNSND.SMP"
+index = 195
+sha256 = "a3192e465badc13fd8421fbbbd118036e4d64528d1d296566f91e6f71699a01f"
+items = [7]
+
+[[source]]
+file = "RES/SNDFX2.SMP"
+index = 197
+sha256 = "3c8e9d32cc6f0932ec1a31718b3e482a27a488948116df574ca4273b69b84429"
+items = [101]

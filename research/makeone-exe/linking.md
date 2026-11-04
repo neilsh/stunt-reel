@@ -35,9 +35,11 @@ The two palette chunks, `0x801E` (48 bytes) and `0x8042` (720 bytes), are items 
 |---|---|---|
 | Only shipped resources | 83 | Byte-identical to the original |
 | Holding add-on chunks | 205 | Not attempted; the add-on files were not looked for |
-| `BRIEFING.ALL` | 1 | Its own header does not match its length |
+| `BRIEFING.ALL` | 1 | Its own header does not match its length, and it holds an add-on chunk (`0x1F01`) |
 
 So an id list, the sound variant of section 5 and the game's `RES\` determine the archive exactly.
+
+**The writer agrees.** `stuntreel link extract` ([ADR 0032](../../docs/adr/0032-a-films-archive-is-committed-as-a-manifest.md)), run on 2026-11-03 over the same 289 archives with `corpus/stuntisl` as the game tree, wrote a manifest that rebuilds its archive byte for byte for the same 83, and exited 3 (not linkable) for the other 206: the 205 with add-on chunks and `BRIEFING.ALL`, whose `0x1F01` is reported before its truncation. It also holds for an archive `make-all` wrote: `BALLOON.FLM`'s (46,702 bytes, 10 source files, no music chunk) extracts to `manifests/all/vault-balloon.toml`, the `--manifest-only` backfill writes the same file, and the archive `resolve_all` rebuilds from it into `target/linked/` hashes to the `all_sha256` of `MAKEONE`'s output.
 
 ## 4. Which Items a Film Gets
 
@@ -94,10 +96,9 @@ Some `res_index` values belong to several files, one per sound setting, and the 
 
 1. Is the selection the set of resources loaded during playback? Comparing the scenery ids of `CTRY.ALL` and `INTRO.ALL` with the shapes our renderer draws, or finding where `MAKEONE` marks a resource as used, would settle it.
 2. Can a film's actor shapes, sounds and the fixed items (palettes, `FASTSPR`, `GAME` sprites) be listed from the `.FLM` alone?
-3. Does the rebuild of section 3 reproduce archives made by `mise run make-all` (`BALLOON`, `747LAND`)? Only corpus archives were tested.
-4. Which sound setting matches each music extension (`.ESS`, `.XMA`, `.XMM`, `.XMP`, `.XMI`), and does the setting change which ids are included or only their source?
-5. Does Patch #3 change any file in `RES\`, or only the selection?
-6. Does `PLAYONE` play an archive padded with unused chunks, and up to what size?
-7. Do the 205 archives with add-on chunks rebuild once their add-on `.RES` files are found?
+3. Which sound setting matches each music extension (`.ESS`, `.XMA`, `.XMM`, `.XMP`, `.XMI`), and does the setting change which ids are included or only their source? `BALLOON`'s archive from our fixed emulator profile has no music chunk at all.
+4. Does Patch #3 change any file in `RES\`, or only the selection?
+5. Does `PLAYONE` play an archive padded with unused chunks, and up to what size?
+6. Do the 205 archives with add-on chunks rebuild once their add-on `.RES` files are found?
 
 _Found 2026-11-03; see the [parity log](../parity/log.md)._
