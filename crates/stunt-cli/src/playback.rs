@@ -210,6 +210,11 @@ impl SamplePlan {
                 .map(|(index, tick)| (SampleKey::Index(index + 1), tick))
                 .collect(),
             Self::Video { fps } => {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "the float-to-int cast saturates, and the loop below stops at the film's end"
+                )]
                 let count = (range.span_seconds() * fps).ceil() as usize;
                 let tick_step = TIMELINE_HZ / fps;
                 let mut samples = Vec::new();

@@ -199,9 +199,9 @@ impl Decoder {
         for by in 0..rows {
             for bx in 0..cols {
                 let &[e0, e1] = entries.get(by * cols + bx).ok_or(ZmbvError::Truncated)?;
-                let dx = i64::from((e0 as i8) >> 1);
+                let dx = isize::from(e0.cast_signed() >> 1);
                 let use_xor = e0 & 1 != 0;
-                let dy = i64::from((e1 as i8) >> 1);
+                let dy = isize::from(e1.cast_signed() >> 1);
                 let (x0, y0) = (bx * bw, by * bh);
                 let (cw, ch) = (bw.min(w - x0), bh.min(h - y0));
                 let xor_block = if use_xor {
@@ -217,15 +217,14 @@ impl Decoder {
                 };
                 for row in 0..ch {
                     let y = y0 + row;
-                    let sy = y as i64 + dy;
+                    let sy = y.checked_add_signed(dy).filter(|&sy| sy < h);
                     for col in 0..cw {
                         let x = x0 + col;
-                        let sx = x as i64 + dx;
+                        let sx = x.checked_add_signed(dx).filter(|&sx| sx < w);
                         let dst = (y * w + x) * 4;
-                        let inside = sx >= 0 && sy >= 0 && sx < w as i64 && sy < h as i64;
                         let mut pixel = [0u8; 4];
-                        if inside {
-                            let src = (sy as usize * w + sx as usize) * 4;
+                        if let (Some(sx), Some(sy)) = (sx, sy) {
+                            let src = (sy * w + sx) * 4;
                             pixel.copy_from_slice(prev.get(src..src + 4).ok_or_else(size_error)?);
                         }
                         if let Some(block) = xor_block {
@@ -269,9 +268,9 @@ mod tests {
                     out.extend_from_slice(&[255, 255, 255, 0]);
                 } else {
                     out.extend_from_slice(&[
-                        ((x * 4 + n * 3) & 255) as u8,
-                        ((y * 5) & 255) as u8,
-                        (((x + y + n * 7) * 2) & 255) as u8,
+                        u8::try_from((x * 4 + n * 3) & 255).unwrap(),
+                        u8::try_from((y * 5) & 255).unwrap(),
+                        u8::try_from(((x + y + n * 7) * 2) & 255).unwrap(),
                         0,
                     ]);
                 }
@@ -359,7 +358,7 @@ mod tests {
         let mut delta = vec![0u8];
         // Block (0,0): dx = -1 (reads 0 off the left edge); (1,0): unmoved; (2,0): unmoved with
         // XOR over its 1x2 area; the bottom row is unmoved, with an XOR on its last (1x1) block.
-        let mut table = vec![(-1i8 << 1) as u8, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0];
+        let mut table = vec![(-1i8 << 1).cast_unsigned(), 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0];
         assert_eq!(table.len() % 4, 0);
         delta.append(&mut table);
         delta.extend(std::iter::repeat_n(0x0F, 2 * 4 + 4));

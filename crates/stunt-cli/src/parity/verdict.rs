@@ -203,6 +203,10 @@ pub(super) fn frame_verdict(
             count += 1;
         }
     }
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "summed in f64, reported in the f32 the scores use"
+    )]
     let delta = (count > 0).then(|| ((after_sum - before_sum) / count as f64) as f32);
 
     let class = match delta {
@@ -349,7 +353,7 @@ mod tests {
     fn reference() -> ReferenceFrame {
         ReferenceFrame {
             indices: (0..PIXELS).map(plane_index).collect(),
-            palette: std::array::from_fn(|i| get_palette_rgb(i as u8)),
+            palette: std::array::from_fn(|i| get_palette_rgb(u8::try_from(i).unwrap())),
         }
     }
 
@@ -365,7 +369,7 @@ mod tests {
                 })
                 .collect(),
             indices: reference.indices,
-            layers: vec![LAYER_TERRAIN as u16; PIXELS],
+            layers: vec![u16::try_from(LAYER_TERRAIN).unwrap(); PIXELS],
             controls: None,
             credits: false,
         }

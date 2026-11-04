@@ -114,6 +114,11 @@ pub(super) fn score_frame(
         .zip(&render.layers)
         .map(|(&index, &layer)| f32::from(loss_class(layer, !is_capture_sky(index))))
         .collect();
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "rescaling picks among the source codes, loss classes 0..=9"
+    )]
     let classes: Vec<u8> = rescale_mode13h_frame(
         &codes,
         MODE13H_WIDTH,
@@ -169,9 +174,9 @@ mod tests {
             .iter()
             .map(|&index| {
                 if is_capture_sky(index) {
-                    LAYER_NONE as u16
+                    u16::try_from(LAYER_NONE).unwrap()
                 } else {
-                    LAYER_TERRAIN as u16
+                    u16::try_from(LAYER_TERRAIN).unwrap()
                 }
             })
             .collect();
@@ -245,7 +250,7 @@ mod tests {
         let matching = score(&capture(1.0), &matching_render());
         assert_eq!(matching.iou, 1.0);
         let mut filled = matching_render();
-        filled.layers[..MODE13H_WIDTH * 2].fill(LAYER_TERRAIN as u16);
+        filled.layers[..MODE13H_WIDTH * 2].fill(u16::try_from(LAYER_TERRAIN).unwrap());
         assert!(score(&capture(1.0), &filled).iou < 1.0);
     }
 

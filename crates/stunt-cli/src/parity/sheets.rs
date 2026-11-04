@@ -23,6 +23,16 @@ pub(super) fn write_contact_sheet(
     write_panel_sheet(&path, &[reference, test, &abs_difference(reference, test)])
 }
 
+/// A sheet value as a grey level, clamped to 0..=255.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "clamped to 0..=255"
+)]
+fn grey_level(value: f32) -> u8 {
+    value.clamp(0.0, 255.0) as u8
+}
+
 /// Writes aspect-corrected luminance panels side by side, separated by
 /// [`CONTACT_SHEET_GAP`] pixels, as one grayscale PNG.
 pub(super) fn write_panel_sheet(path: &Path, panels: &[&[f32]]) -> Result<(), String> {
@@ -42,13 +52,18 @@ pub(super) fn write_panel_sheet(path: &Path, panels: &[&[f32]]) -> Result<(), St
         for (sheet_row, panel_row) in sheet_rows.zip(panel.chunks_exact(width)) {
             let cells = sheet_row.iter_mut().skip(panel_index * panel_stride);
             for (cell, &value) in cells.zip(panel_row) {
-                *cell = value.clamp(0.0, 255.0) as u8;
+                *cell = grey_level(value);
             }
         }
     }
 
-    let image = image::GrayImage::from_raw(sheet_width as u32, height as u32, buffer)
-        .ok_or("failed to build contact sheet buffer")?;
+    let too_large = |_| "contact sheet is too large for an image";
+    let image = image::GrayImage::from_raw(
+        u32::try_from(sheet_width).map_err(too_large)?,
+        u32::try_from(height).map_err(too_large)?,
+        buffer,
+    )
+    .ok_or("failed to build contact sheet buffer")?;
     image
         .save(path)
         .map_err(|e| format!("write {}: {e}", path.display()))
