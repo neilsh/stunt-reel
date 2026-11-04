@@ -92,7 +92,7 @@
   - `pub enum LinkError { NoSource { id: u16 }, Mixed { index: u8 }, ItemOutOfRange { file: String, item: u8, count: usize }, DuplicateIndex { index: u8 }, Unsorted { file: String }, Vfs(#[from] VfsError) }` (`thiserror`)
   - `impl LinkError { pub fn not_linkable(&self) -> bool }`: true for `NoSource` and `Mixed`.
   - `pub fn extract(all: &[u8], candidates: &[(&str, ResRegions<'_>)]) -> Result<Vec<Source>, LinkError>`: `sha256` left empty, sources ordered by `index`.
-  - `pub fn build(sources: &[Source], files: &BTreeMap<u8, ResRegions<'_>>) -> Result<Vec<u8>, LinkError>`: validates order and ranges, then calls `write_all`.
+  - `pub fn build(sources, files) -> Result<Vec<u8>, LinkError>`, where `sources` is a slice of `Source` and `files` a `&BTreeMap<u8, ResRegions<'_>>`: validates order and ranges, then calls `write_all`.
 
 - [ ] **Step 1: Write the failing tests** in `link_spec.rs` (load fixtures with `include_bytes!("../../../tests/fixtures/…")`):
   - `extract_picks_the_file_that_covers_every_chunk`: with candidates `SCEN.RES`, `MUS.XMA`, `MUS.ESS`, `extract(link_film.all)` gives `[Source{file:"SCEN.RES",index:2,items:[1,3]}, Source{file:"MUS.ESS",index:0xC0,items:[2]}]`.
