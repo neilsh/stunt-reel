@@ -6,8 +6,8 @@
 mod all;
 mod res;
 
-pub use all::parse_all;
-pub use res::parse_res;
+pub use all::{all_chunks, parse_all, write_all};
+pub use res::{ResRegions, parse_res, res_regions};
 
 use crate::contracts::vfs::VfsArchive;
 
@@ -51,6 +51,12 @@ pub enum VfsError {
         offset: usize,
         /// Payload length in bytes.
         len: usize,
+    },
+    /// Two chunks given to [`write_all`] share an id.
+    #[error("duplicate chunk id 0x{id:04X}")]
+    DuplicateId {
+        /// The repeated chunk id.
+        id: u16,
     },
 }
 

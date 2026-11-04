@@ -26,9 +26,13 @@
 //! - Structured errors: empty/sub-header buffers, bad magic, first-offset bounds and alignment,
 //!   non-monotonic or out-of-bounds offsets, and oversized `.ALL` entry counts.
 //! - `detect_and_parse` dispatch and the `VfsError` display/trait contract.
+//! - Raw splits (`res_regions` keeps region 0, `all_chunks`) and the `.ALL` writer
+//!   (`write_all`: sorted, unpadded, duplicate ids refused, inverted by `all_chunks`).
 
 use stunt_core::contracts::ArchiveFormat;
-use stunt_core::vfs::{VfsError, detect_and_parse, parse_all, parse_res};
+use stunt_core::vfs::{
+    VfsError, all_chunks, detect_and_parse, parse_all, parse_res, res_regions, write_all,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1490,4 +1494,95 @@ fn vfs_error_display_and_traits() {
 
     let std_err: &dyn std::error::Error = &err1;
     assert_eq!(std_err.to_string(), err1.to_string());
+}
+
+// ---------------------------------------------------------------------------
+// Raw splits and the `.ALL` writer (`stuntreel link`)
+// ---------------------------------------------------------------------------
+
+fn fixture(name: &str) -> Vec<u8> {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
+    std::fs::read(root.join("tests").join("fixtures").join(name)).expect("read fixture")
+}
+
+#[test]
+fn res_regions_keeps_region_zero() {
+    let data = fixture("synthetic_minimal.res");
+    let split = res_regions(&data).expect("res_regions on the minimal fixture");
+    let entries = parse_res(&data).unwrap().entries.len();
+
+    assert_eq!(split.index, data[2]);
+    assert_eq!(split.regions.len(), entries + 1);
+    // ofs[0] = 20 and ofs[1] = 40: region 0 is the name table.
+    assert_eq!(split.regions[0], &data[20..40]);
+    assert!(split.regions[0].starts_with(b"PLANE.SOD "));
+    assert_eq!(split.regions[1], &data[40..56]);
+    assert_eq!(split.regions[2], &data[56..72]);
+}
+
+#[test]
+fn write_all_packs_sorted_without_padding() {
+    let bytes = write_all(&[(0x0203, b"cc"), (0x0201, b"a")]).unwrap();
+    let expected: Vec<u8> = vec![
+        2, 0, // count
+        0x01, 0x02, 0x03, 0x02, // ids, ascending
+        18, 0, 0, 0, 19, 0, 0, 0, 21, 0, 0, 0, // offsets, then the sentinel
+        b'a', b'c', b'c',
+    ];
+    assert_eq!(bytes, expected);
+}
+
+#[test]
+fn write_all_rejects_a_duplicate_id() {
+    let result = write_all(&[(0x0201, b"a"), (0x0201, b"b")]);
+    assert_eq!(result, Err(VfsError::DuplicateId { id: 0x0201 }));
+}
+
+#[test]
+fn all_chunks_inverts_write_all() {
+    let mut rng = SimpleRng::new(0x0A11_0A11);
+    for _ in 0..200 {
+        let count = (rng.next_u32() % 40) as usize;
+        let mut ids: Vec<u16> = Vec::new();
+        while ids.len() < count {
+            let id = rng.next_u32() as u16;
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+        let payloads: Vec<Vec<u8>> = ids
+            .iter()
+            .map(|_| {
+                let len = (rng.next_u32() % 64) as usize;
+                rng.next_bytes(len)
+            })
+            .collect();
+        let chunks: Vec<(u16, &[u8])> = ids
+            .iter()
+            .zip(&payloads)
+            .map(|(&id, p)| (id, p.as_slice()))
+            .collect();
+
+        let bytes = write_all(&chunks).unwrap();
+        let mut sorted = chunks.clone();
+        sorted.sort_by_key(|&(id, _)| id);
+        assert_eq!(all_chunks(&bytes).unwrap(), sorted);
+    }
+}
+
+#[test]
+fn parse_all_unchanged_on_fixture() {
+    let data = fixture("synthetic_minimal.all");
+    let archive = parse_all(&data).unwrap();
+
+    assert_eq!(archive.entries.len(), 1);
+    let model = archive.get("MODEL_0001.SOD").expect("MODEL_0001.SOD");
+    assert_eq!(model.source_offset, 8);
+    assert_eq!(model.data, &data[8..]);
+    assert_eq!(model.data.len(), 76);
+    assert_eq!(all_chunks(&data).unwrap(), vec![(0x0001, &data[8..])]);
 }
