@@ -23,7 +23,7 @@ The two palette chunks, `0x801E` (48 bytes) and `0x8042` (720 bytes), are items 
 
 ## 2. The Chunk Id
 
-`[Bounded Observation]`, every matched chunk. A chunk's id is `(res_index << 8) | (segment + 1)`, where `res_index` is byte `0x0002` of the source archive and `segment` counts the data regions of [`res.ksy`](../formats/res.ksy) from 0, so the name-table region of a prop archive is item 0 and its first payload item 1. The few matches that break the rule are payloads stored twice in the game (the same bytes as an item of another archive), not a second rule.
+`[Bounded Observation]`, every matched chunk. A chunk's id is `(res_index << 8) | (segment + 1)`, where `res_index` is byte `0x0002` of the source archive and `segment` counts the data regions of [`res.ksy`](../formats/res.ksy) from 0, so the name-table region of a prop archive (region 0) is item 1 and its first payload (region 1) is item 2. The few matches that break the rule are payloads stored twice in the game (the same bytes as an item of another archive), not a second rule.
 
 ## 3. Layout
 
