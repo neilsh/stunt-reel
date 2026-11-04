@@ -32,13 +32,11 @@ from stunt_reel.all_archive import (
     check_archive,
     publish_archive,
 )
-from stunt_reel.dataroot import ensure_links_or_report
+from stunt_reel.dataroot import data_path_arg
 from stunt_reel.hashing import file_sha256
 from stunt_reel.tac import makeone, staging
 from stunt_reel.tac.automation import ScriptError
 from stunt_reel.tac.emulator import EmulatorUnavailable
-
-DEFAULT_GAME_ROOT: Path = Path("corpus/stuntisl")
 
 #: Writes an archive's manifest: ``(archive, flm, game, makeone_sha256, out)``.
 Extract = Callable[[Path, Path, str, str, Path], None]
@@ -62,9 +60,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--game-root",
-        type=Path,
-        default=DEFAULT_GAME_ROOT,
-        help=f"full-game tree holding MAKEONE.EXE, its engine files and RES (default {DEFAULT_GAME_ROOT})",
+        type=data_path_arg,
+        default="corpus/stuntisl",
+        help="full-game tree holding MAKEONE.EXE, its engine files and RES (default %(default)s)",
     )
     parser.add_argument(
         "--timeout",
@@ -91,9 +89,16 @@ def report(line: str) -> None:
 
 
 def game_arg(game_root: Path) -> str:
-    """*game_root* as the manifest records it: relative to the checkout when inside it."""
-    # normpath, not resolve: corpus/ is a link to the data root, and must stay relative.
+    """*game_root* as the manifest records it: ``corpus/...`` when in the data root's corpus.
+
+    A tree elsewhere in the checkout is recorded relative to it, and any other tree as it is.
+    """
+    # normpath, not resolve: a primary checkout's corpus folders may be links.
     tree = Path(os.path.normpath(game_root.absolute()))
+    corpus = Path(os.path.normpath(dataroot.corpus_root().absolute()))
+    if tree.is_relative_to(corpus):
+        # Named as resolve_data_path reads it back: corpus/<tree>.
+        return (Path(corpus.name) / tree.relative_to(corpus)).as_posix()
     repo = Path(os.path.normpath(dataroot.REPO_ROOT.absolute()))
     return tree.relative_to(repo).as_posix() if tree.is_relative_to(repo) else tree.as_posix()
 
@@ -181,8 +186,6 @@ def run(
         slug = parity_layout.slug_for(film, args.name)
     except ValueError as exc:
         print(f"[make-all] {exc}", file=sys.stderr)
-        return 2
-    if not ensure_links_or_report("mise run make-all"):
         return 2
     if args.manifest_only:
         return manifest_only(film, game_root, slug, extract)

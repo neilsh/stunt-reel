@@ -33,7 +33,6 @@ def _load() -> Any:
 @pytest.fixture
 def script(monkeypatch: pytest.MonkeyPatch) -> Any:
     module = _load()
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     # The real poll interval is 2 s per wait; the mock guest answers at once.
     monkeypatch.setattr(
         module.makeone, "make_all", functools.partial(module.makeone.make_all, poll=0.0)
@@ -425,6 +424,16 @@ def test_a_link_error_removes_the_old_manifest_too(
     captured = capsys.readouterr()
     assert "boom" in captured.err
     assert "removed" in captured.out
+
+
+def test_game_arg_records_a_tree_in_the_data_root_by_its_corpus_path(
+    script: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default game root is the data root's, so a manifest stays valid on every machine."""
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    dataroot.data_root.cache_clear()
+    (tmp_path / "corpus" / "stuntisl").mkdir(parents=True)
+    assert script.game_arg(tmp_path / "corpus" / "stuntisl") == "corpus/stuntisl"
 
 
 def test_game_arg_records_a_dotted_path_inside_the_checkout_relative(

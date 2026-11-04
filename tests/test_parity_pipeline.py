@@ -118,7 +118,7 @@ def test_render_film_asks_for_the_captured_tick_range(tmp_path: Path) -> None:
             "--tick-range",
             "7..=9",
             "--sidata",
-            str(root / parity_pipeline.SIDATA),
+            str(root / "corpus" / parity_pipeline.SIDATA),
             "--out-dir",
             str(out),
             *parity_pipeline.RENDER_FLAGS,
@@ -431,12 +431,12 @@ def test_preflight_names_a_missing_flm_archive_and_sidata(tmp_path: Path) -> Non
     vault = root / "corpus" / "stisldem" / "VAULT"
     (vault / "CTRY.FLM").unlink()
     (vault / "INTRO.ALL").unlink()
-    (root / parity_pipeline.SIDATA).rmdir()
+    (root / "corpus" / parity_pipeline.SIDATA).rmdir()
     problems = parity_pipeline.preflight(
         root, ["ctry", "intro"], build_required=False, locked=lambda _path: False
     )
     assert len(problems) == 3
-    assert f"missing input {root / parity_pipeline.SIDATA}" in problems[0]
+    assert f"missing input {root / 'corpus' / parity_pipeline.SIDATA}" in problems[0]
     assert "no .FLM of vault-ctry" in problems[1]
     assert "no .ALL for" in problems[2]
 

@@ -290,7 +290,9 @@ def test_render_asks_the_binary_for_the_captured_ticks_into_the_batch_directory(
     assert command[0] == str(link.binary_path())
     assert command[command.index("--all") + 1] == str(film.flm.parent / "CTRY.ALL")
     assert command[command.index("--tick-range") + 1] == "7..=9"
-    assert command[command.index("--sidata") + 1] == str(tmp_path / parity_pipeline.SIDATA)
+    assert command[command.index("--sidata") + 1] == str(
+        tmp_path / "corpus" / parity_pipeline.SIDATA
+    )
     out = tmp_path / parity_layout.batch_film_dir(film.slug) / "render"
     assert command[command.index("--out-dir") + 1] == str(out)
     assert command[-6:] == list(parity_pipeline.RENDER_FLAGS)

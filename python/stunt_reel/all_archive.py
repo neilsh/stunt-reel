@@ -169,11 +169,14 @@ def _from_manifest(flm: Path, root: Path, slug: str, link_build: LinkBuild) -> P
             f"exists only on the machine that wrote it; record it against a tree here with: "
             f"mise run make-all -- --film {flm} --game-root <tree>"
         )
-    game = root / game
+    # A corpus/... tree is the data root's (ADR 0033); any other relative tree is the checkout's.
+    game = dataroot.resolve_data_path(game)
+    if not game.is_absolute():
+        game = root / game
     if not game.is_dir():
         raise ArchiveError(
             f"manifest {manifest} needs the game tree {game}, which is missing; "
-            f"run: mise run init (it links the data root's game files into this checkout)"
+            f"check the data root ({dataroot.DATA_ENV}, or <primary checkout>.data)"
         )
     out = root / parity_layout.linked_path(slug, flm.name)
     if out.is_file() and file_sha256(out) == all_sha256:

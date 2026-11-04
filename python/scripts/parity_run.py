@@ -29,7 +29,6 @@ from pathlib import Path
 from cli import ParityOptions, UsageError, add_parity_options, parity_options
 
 from stunt_reel import dataroot, parity_layout
-from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.parity_pipeline import (
     REPO_ROOT,
     FilmJob,
@@ -96,8 +95,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"parity_run: {err}", file=sys.stderr)
         return 2
     root = options.data_root
-    if root == REPO_ROOT and not ensure_links_or_report("parity_run"):
-        return 2
     problems = preflight(root, list(options.films), build_required=not options.no_build)
     if problems:
         print("parity_run: " + "\n  ".join(problems), file=sys.stderr)

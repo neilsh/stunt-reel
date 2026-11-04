@@ -26,15 +26,12 @@ from typing import Any
 
 from stunt_reel import capture_store, dataroot, parity_layout
 from stunt_reel.all_archive import ArchiveError, resolve_all
-from stunt_reel.dataroot import ensure_links_or_report
+from stunt_reel.dataroot import data_path_arg
 from stunt_reel.parity_artifacts import CAPTURE_FRAMES_DIR, FilmId
 from stunt_reel.tac import automation, playone, staging
 from stunt_reel.tac.emulator import EmulatorUnavailable
 from stunt_reel.tac.framebuffer import FILM_STRIDE_TICKS, capture
 from stunt_reel.tac.plan import PlanError
-
-DEFAULT_FILM: Path = Path("corpus/stisldem/VAULT/CTRY.FLM")
-
 
 #: The frame cap of a capture that may fill the store; another needs --out (ADR 0028).
 DEFAULT_MAX_FRAMES = 2000
@@ -45,13 +42,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--film",
-        type=Path,
-        default=DEFAULT_FILM,
+        type=data_path_arg,
+        default="corpus/stisldem/VAULT/CTRY.FLM",
         help=(
             "the film's .FLM file; its .ALL is the sibling or one stored by make-all (a film "
             "with neither is refused); it is staged alone into "
             f"<data root>/{parity_layout.stage_root().as_posix()}/<name>-<session>/ so the dialog "
-            f"needs one prefix key (default {DEFAULT_FILM})"
+            f"needs one prefix key (default %(default)s)"
         ),
     )
     parser.add_argument(
@@ -142,8 +139,6 @@ def run(args: argparse.Namespace) -> int:
         slug = parity_layout.slug_for(film, args.name)
     except ValueError as exc:
         print(f"[capture] {exc}", file=sys.stderr)
-        return 2
-    if not ensure_links_or_report("mise run capture-ref"):
         return 2
     try:
         archive = resolve_all(film, dataroot.REPO_ROOT, slug)

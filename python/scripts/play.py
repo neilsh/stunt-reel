@@ -14,10 +14,9 @@ import sys
 from pathlib import Path
 
 from stunt_reel import dataroot
-from stunt_reel.dataroot import ensure_links_or_report
+from stunt_reel.dataroot import data_path_arg
 from stunt_reel.tac import automation, luagen, playone, staging
 
-DEFAULT_FILM: Path = Path("corpus/stisldem/VAULT/CTRY.FLM")
 #: Seconds the key script may take (boot to the film dialog, then the key presses).
 KEYS_TIMEOUT: float = 120.0
 
@@ -25,7 +24,12 @@ KEYS_TIMEOUT: float = 120.0
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--film", type=Path, default=DEFAULT_FILM, help="film to play")
+    parser.add_argument(
+        "--film",
+        type=data_path_arg,
+        default="corpus/stisldem/VAULT/CTRY.FLM",
+        help="film to play",
+    )
     parser.add_argument(
         "--game-root",
         type=Path,
@@ -64,8 +68,6 @@ def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     """Run the player."""
-    if not ensure_links_or_report("play"):
-        return 2
     return run(parse_args())
 
 

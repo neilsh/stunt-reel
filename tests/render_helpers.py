@@ -117,7 +117,7 @@ def reference_tree(
     """A data root holding each film's ``.FLM``, ``.ALL`` and SIDATA, and its pinned capture."""
     vault = root / "corpus" / "stisldem" / "VAULT"
     vault.mkdir(parents=True, exist_ok=True)
-    (root / parity_pipeline.SIDATA).mkdir(parents=True, exist_ok=True)
+    (root / "corpus" / parity_pipeline.SIDATA).mkdir(parents=True, exist_ok=True)
     for name in films:
         (vault / f"{name.upper()}.FLM").write_bytes(
             name.encode()

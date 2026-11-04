@@ -232,35 +232,6 @@ def test_shared_target_derives_both_names_from_the_link_table(
         dataroot.shared_target("corpus/elsewhere")
 
 
-def test_ensure_links_or_report_renders_the_outcomes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    root = tmp_path / "stunt-reel.data"
-    (root / "corpus" / "stisldem").mkdir(parents=True)
-    _worktree(monkeypatch, _primary(tmp_path))
-    assert dataroot.ensure_links_or_report("reader")
-    assert capsys.readouterr().err == "".join(
-        f"reader: linked {relative}\n" for _shared, relative in dataroot.LINK_TARGETS
-    )
-    assert dataroot.ensure_links_or_report("reader")
-    assert capsys.readouterr().err == ""
-
-
-def test_ensure_links_or_report_names_a_refusal(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    root = tmp_path / "stunt-reel.data"
-    (root / "corpus" / "siarchive").mkdir(parents=True)
-    worktree = _worktree(monkeypatch, _primary(tmp_path))
-    populated = worktree / "corpus" / "siarchive"
-    populated.mkdir(parents=True)
-    (populated / "SITools.zip").write_bytes(b"PK\x03\x04")
-    assert not dataroot.ensure_links_or_report("reader")
-    err = capsys.readouterr().err
-    assert err.startswith("reader: corpus/siarchive holds data of its own")
-    assert "migrate" in err
-
-
 def test_cache_link_points_a_worktree_at_the_primary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from stunt_reel import flm_walk
-from stunt_reel.dataroot import ensure_links_or_report
+from stunt_reel.dataroot import data_path_arg
 from stunt_reel.kaitai import (
     REQUIRED_KSC_VERSION,
     compile_schemas,
@@ -493,7 +493,7 @@ def _run(args: argparse.Namespace, specs: Sequence[SchemaSpec]) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--corpus", default=Path("corpus"), type=Path)
+    parser.add_argument("--corpus", default="corpus", type=data_path_arg)
     parser.add_argument(
         "--schema", action="append", dest="schemas", help="limit the sweep to one schema id"
     )
@@ -502,8 +502,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     corpus_dir: Path = args.corpus
-    if corpus_dir == Path("corpus") and not ensure_links_or_report("verify_schemas_corpus"):
-        return 2
     if not corpus_dir.is_dir():
         print(f"corpus directory not found: {corpus_dir} (local sweep skipped)")
         return 0

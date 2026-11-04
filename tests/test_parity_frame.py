@@ -90,7 +90,7 @@ def test_render_film_with_ticks_asks_the_binary_once_for_the_exact_list(tmp_path
     (cmd,) = calls
     assert cmd[cmd.index("--at-ticks") + 1] == "48,92"
     assert "--tick-range" not in cmd
-    assert cmd[cmd.index("--sidata") + 1] == str(root / parity_pipeline.SIDATA)
+    assert cmd[cmd.index("--sidata") + 1] == str(root / "corpus" / parity_pipeline.SIDATA)
 
 
 def test_side_by_side_puts_the_capture_left_of_ours(tmp_path: Path) -> None:

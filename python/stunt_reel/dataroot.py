@@ -22,7 +22,6 @@ import hashlib
 import os
 import shutil
 import subprocess
-import sys
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -43,6 +42,7 @@ __all__ = [
     "SharedDataError",
     "cache_root",
     "convert_layout",
+    "corpus_of",
     "corpus_root",
     "create_link",
     "data_path_arg",
@@ -50,7 +50,6 @@ __all__ = [
     "discard_env",
     "ensure_cache_link",
     "ensure_links",
-    "ensure_links_or_report",
     "ensure_venv_link",
     "env_marker",
     "env_root",
@@ -184,6 +183,16 @@ def corpus_root() -> Path:
 
 #: The first part of a relative path that names something in the data root.
 _DATA_PARTS = ("corpus", parity_layout.capture_root().as_posix())
+
+
+def corpus_of(root: Path) -> Path:
+    """The corpus under the data root *root*: :func:`corpus_root` when *root* is this one.
+
+    A caller handed a root explicitly (``--data-root``, or a test's directory) reads that
+    root's ``corpus/``; the configured root keeps :func:`corpus_root`'s fallback to the
+    primary checkout.
+    """
+    return corpus_root() if root == data_root() else root / "corpus"
 
 
 def resolve_data_path(path: Path) -> Path:
@@ -643,21 +652,3 @@ def ensure_links() -> list[LinkOutcome]:
             LinkOutcome(relative, "created-empty" if created_empty else "repaired", target)
         )
     return outcomes
-
-
-def ensure_links_or_report(program: str) -> bool:
-    """``ensure_links`` for a command's first lines: say what it did, or why it refused."""
-    try:
-        outcomes = ensure_links()
-    except SharedDataError as err:
-        sys.stderr.write(f"{program}: {err}\n")
-        return False
-    refused = [outcome for outcome in outcomes if outcome.status == "refused"]
-    for outcome in refused:
-        sys.stderr.write(f"{program}: {outcome.reason or outcome.relative}\n")
-    if refused:
-        return False
-    for outcome in outcomes:
-        if outcome.status != "ok":
-            sys.stderr.write(f"{program}: linked {outcome.relative}\n")
-    return True

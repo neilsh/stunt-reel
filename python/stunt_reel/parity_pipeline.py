@@ -32,7 +32,7 @@ from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from stunt_reel import all_archive, batch_films, capture_store, parity_layout, references
+from stunt_reel import all_archive, batch_films, capture_store, dataroot, parity_layout, references
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.link import BUILD_ARGV, binary_locked, binary_path
 from stunt_reel.parity_artifacts import (
@@ -78,8 +78,8 @@ __all__ = [
 
 #: Render geometry for parity: captures are 320x200 with a 185-row viewport.
 RENDER_FLAGS = ("--width", "320", "--height", "200", "--viewport-rows", "185")
-#: The sprite data directory every render reads, relative to the data root.
-SIDATA = Path("corpus/siarchive/Developer/FreeFlight/SIDATA")
+#: The sprite data directory every render reads, relative to the corpus.
+SIDATA = Path("siarchive/Developer/FreeFlight/SIDATA")
 #: The exit code :func:`run_command` reports for a command it killed on its timeout.
 TIMEOUT_EXIT = 124
 #: How much of a command's combined output :func:`run_command` keeps, from the end.
@@ -117,7 +117,7 @@ def reference_job(root: Path, name: str) -> Iterator[FilmJob]:
     and :class:`FilmInputError` when the corpus holds no ``.FLM`` of the row's film.
     """
     pointer = references.read_reference(root, name)
-    corpus = root / "corpus"
+    corpus = dataroot.corpus_of(root)
     film = batch_films.find(corpus, pointer.slug)
     if film is None:
         raise FilmInputError(f"no .FLM of {pointer.slug} under {corpus} (try --data-root)")
@@ -331,8 +331,9 @@ def preflight(
     """Problems that stop a run before any build or render starts."""
     problems: list[str] = []
     films = list(films)
-    if films and not (root / SIDATA).exists():
-        problems.append(f"missing input {root / SIDATA} (try --data-root)")
+    sidata = dataroot.corpus_of(root) / SIDATA
+    if films and not sidata.exists():
+        problems.append(f"missing input {sidata} (try --data-root)")
     for name in films:
         try:
             with reference_job(root, name) as job:
@@ -414,7 +415,7 @@ def render_film(
         str(archive),
         *selection,
         "--sidata",
-        str(job.root / SIDATA),
+        str(dataroot.corpus_of(job.root) / SIDATA),
         "--out-dir",
         str(out),
         *RENDER_FLAGS,

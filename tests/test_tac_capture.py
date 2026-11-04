@@ -347,7 +347,7 @@ def test_capture_script_keeps_its_flags_and_progress_lines(
     monkeypatch.setattr(sys, "argv", ["capture_playone_reference.py"])
     args = module.parse_args()
 
-    assert args.film == Path("corpus/stisldem/VAULT/CTRY.FLM")
+    assert args.film == dataroot.resolve_data_path(Path("corpus/stisldem/VAULT/CTRY.FLM"))
     assert args.out is None
     assert args.max_frames == 2000
     assert args.stride == framebuffer.FILM_STRIDE_TICKS
@@ -364,7 +364,6 @@ def test_capture_script_never_writes_over_a_capture(
 ) -> None:
     """An --out that already holds a capture is refused before any emulator starts (ADR 0022)."""
     module = _load_script("capture_playone_reference")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     out = tmp_path / "out"
     out.mkdir()
     (out / "meta.json").write_text("{}", encoding="utf-8")
@@ -405,7 +404,6 @@ def test_capture_script_failure_lines_and_exit_codes(
     tmp_path: Path,
 ) -> None:
     module = _load_script("capture_playone_reference")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     out = tmp_path / "out"
     monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, out))
     args = module.parse_args()
@@ -442,7 +440,6 @@ def test_a_failed_run_leaves_no_stage_behind(
     staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     module = _load_script("capture_playone_reference")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, tmp_path / "out"))
 
     def boom(*_a: Any, **_k: Any) -> dict[str, Any]:
@@ -474,7 +471,6 @@ def test_capture_script_stages_the_stored_archive_and_records_its_hash(
 ) -> None:
     """capture-ref stages the archive make-all stored, and the capture can be traced to it."""
     module = _load_script("capture_playone_reference")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     stored = build_all([b"stored"])
     _stored_archive(staged_repo, stored)
     monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, tmp_path / "out"))
@@ -507,7 +503,6 @@ def test_capture_script_without_any_archive_names_make_all(
     tmp_path: Path,
 ) -> None:
     module = _load_script("capture_playone_reference")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     staged_repo.film.with_suffix(".ALL").unlink()
     monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, tmp_path / "out"))
     monkeypatch.setattr(module, "capture", lambda *_a, **_k: pytest.fail("no archive, no run"))
@@ -521,7 +516,6 @@ def _default_run(
 ) -> tuple[Any, dict[str, Any]]:
     """The capture script with no ``--out`` and ``capture`` stubbed; returns it and the kwargs seen."""
     module = _load_script("capture_playone_reference")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     argv = _capture_argv(staged_repo, Path("unused"))
     del argv[argv.index("--out") : argv.index("--out") + 2]
     monkeypatch.setattr(sys, "argv", [*argv, *extra])
@@ -599,7 +593,7 @@ def test_probe_script_keeps_its_flags_and_shot_line(
     monkeypatch.setattr(sys, "argv", ["probe_playone_light.py"])
     args = module.parse_args()
 
-    assert args.film == Path("corpus/stisldem/VAULT/CTRY.FLM")
+    assert args.film == dataroot.resolve_data_path(Path("corpus/stisldem/VAULT/CTRY.FLM"))
     assert args.ticks == "10,150,273,448,700,900,1100"
     assert args.out == Path("build/scratch/round5")
     assert args.dump_all_segments is False
@@ -718,7 +712,6 @@ def test_probe_script_failure_lines_and_exit_codes(
     tmp_path: Path,
 ) -> None:
     module = _load_script("probe_playone_light")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -758,7 +751,6 @@ def test_capture_script_runs_the_game_root_build_with_its_layout(
 ) -> None:
     """--game-root stages that tree's engine files and reads the offsets of its PLAYONE build."""
     module = _load_script("capture_playone_reference")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     tree = tmp_path / "patched"
     tree.mkdir()
     for name in staging.ENGINE_FILES:
@@ -831,7 +823,6 @@ def test_a_script_capture_names_the_engine_it_ran_in_meta_json(
 ) -> None:
     """The recorded build is the staged PLAYONE.EXE's, from the film's tree or from --game-root."""
     module = _load_script("capture_playone_reference")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     layouts = _engine_layouts(staged_repo, monkeypatch)
     argv = _capture_argv(staged_repo, tmp_path / "out")
     if from_game_root:
@@ -859,7 +850,6 @@ def test_a_video_script_capture_records_with_the_engine_it_staged(
     record_video writing layout.sha256 into meta.json is covered in test_tac_video.py.
     """
     module = _load_script("capture_video")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     layouts = _engine_layouts(staged_repo, monkeypatch)
     argv = ["capture_video.py", "--film", str(staged_repo.film), "--out", str(tmp_path / "out")]
     if from_game_root:

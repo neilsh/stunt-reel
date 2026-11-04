@@ -23,9 +23,10 @@ pytestmark = pytest.mark.windows
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "python" / "scripts"
 
-#: Scripts that name corpus paths without reading the corpus: the linker itself,
-#: and the doc checker, which only asserts that other pages cite the archive.
-_NOT_READERS = frozenset({"worktree_init.py", "verify_formats_docs.py"})
+#: The doc checker matches ``corpus/`` in the text of other pages; it reads no corpus file.
+_NOT_READERS = frozenset({"verify_formats_docs.py"})
+#: Calls whose arguments are read against the data root rather than the working directory.
+_RESOLVERS = frozenset({"resolve_data_path", "data_path_arg", "corpus_root", "corpus_of"})
 
 #: Never walked: build output, caches, and the git directory itself.
 _PRUNED = frozenset(
@@ -106,31 +107,73 @@ def test_the_detector_finds_a_linked_worktree(tmp_path: Path) -> None:
     assert _nested_worktrees(tmp_path) == [worktree]
 
 
-def _corpus_scripts() -> set[str]:
-    """Scripts holding a ``corpus/`` path literal, docstring usage examples included."""
-    found: set[str] = set()
-    for path in sorted(SCRIPTS.glob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Constant)
-                and isinstance(node.value, str)
-                and ("corpus/" in node.value or node.value == "corpus")
-            ):
-                found.add(path.name)
-                break
+def _call_name(node: ast.expr) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    return node.attr if isinstance(node, ast.Attribute) else ""
+
+
+def _names_corpus(value: object) -> bool:
+    return isinstance(value, str) and (value == "corpus" or value.startswith("corpus/"))
+
+
+def _docstrings(tree: ast.Module) -> set[ast.AST]:
+    found: set[ast.AST] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            first = node.body[0] if node.body else None
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
+                found.add(first.value)
     return found
 
 
-def test_every_script_that_reads_the_corpus_links_it() -> None:
-    readers = _corpus_scripts() - _NOT_READERS
-    assert "capture_playone_reference.py" in readers, "the detector missed a known corpus reader"
-    for name in sorted(readers):
-        text = (SCRIPTS / name).read_text(encoding="utf-8")
-        assert "ensure_links_or_report(" in text, (
-            f"{name} names corpus paths but never links the data root; in a worktree that "
-            "skipped mise run init it reads an empty corpus"
-        )
+def _resolved(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
+    """True when the ``corpus`` literal *node* is read against the data root, or not read."""
+    parent = parents.get(node)
+    while parent is not None and not isinstance(parent, ast.stmt):
+        if isinstance(parent, ast.Call) and _call_name(parent.func) in _RESOLVERS:
+            return True
+        if isinstance(parent, ast.keyword) and parent.arg == "help":
+            return True
+        if isinstance(parent, ast.keyword) and parent.arg == "default":
+            call = parents[parent]
+            assert isinstance(call, ast.Call)
+            return any(
+                k.arg == "type" and _call_name(k.value) == "data_path_arg" for k in call.keywords
+            )
+        parent = parents.get(parent)
+    return False
+
+
+def _unresolved_corpus_literals(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    docstrings = _docstrings(tree)
+    return [
+        f"{path.relative_to(REPO_ROOT).as_posix()}:{node.lineno}: {node.value!r}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and _names_corpus(node.value)
+        and node not in docstrings
+        and not _resolved(node, parents)
+    ]
+
+
+PYTHON_FILES = sorted(
+    path
+    for path in (*SCRIPTS.glob("*.py"), *(REPO_ROOT / "python" / "stunt_reel").rglob("*.py"))
+    if path.name != "dataroot.py" and path.name not in _NOT_READERS
+)
+
+
+def test_no_module_reads_a_data_path_relative_to_the_working_directory() -> None:
+    """A ``corpus`` literal outside a resolver reads the checkout, which holds no corpus (ADR 0033)."""
+    offenders = [line for path in PYTHON_FILES for line in _unresolved_corpus_literals(path)]
+    assert offenders == [], "read it through dataroot.resolve_data_path or corpus_root"
+
+
+def test_nothing_calls_the_retired_link_repair() -> None:
+    assert not any("ensure_links_or_report" in p.read_text(encoding="utf-8") for p in PYTHON_FILES)
 
 
 def test_a_worktree_inside_the_checkout_is_ignored_and_excluded() -> None:

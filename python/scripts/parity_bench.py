@@ -49,7 +49,7 @@ from stunt_reel.bench.errors import (
 from stunt_reel.bench.faults import ALL_FAULTS, Fault
 from stunt_reel.bench.planes import BenchError
 from stunt_reel.bench.run import plant_tree, run_bench
-from stunt_reel.dataroot import REPO_ROOT, ensure_links_or_report
+from stunt_reel.dataroot import REPO_ROOT
 
 DEFAULT_SEED = 1
 CATEGORIES = REPO_ROOT / "research" / "parity" / "error-categories.toml"
@@ -361,14 +361,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run a subcommand; return 1 for handled errors and 2 if data links cannot be prepared."""
+    """Run a subcommand; return 1 for handled errors."""
     args = parse_args(argv)
-    if (
-        args.command in ("run", "errors-make", "errors-example")
-        and args.data_root is None
-        and not ensure_links_or_report("parity_bench")
-    ):
-        return 2
     try:
         return int(args.handler(args))
     except (BenchError, references.ReferenceCaptureError, OSError) as err:

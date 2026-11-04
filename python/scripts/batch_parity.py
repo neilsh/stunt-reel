@@ -32,7 +32,6 @@ from typing import TYPE_CHECKING
 from stunt_reel import batch_stages, dataroot, parity_layout
 from stunt_reel.batch_films import discover
 from stunt_reel.batch_ledger import STAGES, Record, append, latest, read, summarize
-from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.parity_pipeline import REPO_ROOT, build_release, run_command
 
 if TYPE_CHECKING:
@@ -410,8 +409,6 @@ def main(argv: list[str] | None = None) -> int:
             f"batch_parity: --stages and --force take names from {', '.join(STAGES)}",
             file=sys.stderr,
         )
-        return 2
-    if root == REPO_ROOT and not ensure_links_or_report("batch_parity"):
         return 2
     films = discover(dataroot.corpus_root())
     wanted = set(_names(args.only))

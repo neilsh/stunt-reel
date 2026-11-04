@@ -83,18 +83,13 @@ def test_a_directory_without_meta_is_refused(
     assert "not a capture" in capsys.readouterr().err
 
 
-def test_the_links_are_repaired_before_any_capture_is_read(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_without_a_root_the_capture_is_read_from_the_data_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Like parity, repair the data-root link first, for --dir as well as a film slug."""
+    """No checkout link is read: a film slug and --dir both resolve in the data root (ADR 0033)."""
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    dataroot.data_root.cache_clear()
     directory = _capture(tmp_path, "vault-intro")
-    calls: list[str] = []
-
-    def refuse(program: str) -> bool:
-        calls.append(program)
-        return False
-
-    monkeypatch.setattr(dataroot, "ensure_links_or_report", refuse)
-    assert capture_digest.main(["--dir", str(directory)]) == 1
-    assert capture_digest.main(["vault-intro"]) == 1
-    assert calls == ["capture_digest", "capture_digest"]
+    assert capture_digest.main(["vault-intro"]) == 0
+    assert capture_digest.main(["--dir", str(directory)]) == 0
+    assert "no references.toml entry" not in capsys.readouterr().out

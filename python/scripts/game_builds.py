@@ -16,10 +16,10 @@ import sys
 from pathlib import Path
 
 from stunt_reel import dataroot, game_builds
-from stunt_reel.dataroot import ensure_links_or_report
 
-GAME: Path = Path("corpus/stuntisl")
-PATCHES: Path = Path("corpus/patches")
+#: The full game and the patch archives, relative to the corpus.
+GAME: Path = Path("stuntisl")
+PATCHES: Path = Path("patches")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -39,7 +39,7 @@ def run(args: argparse.Namespace) -> int:
     out = args.out if args.out is not None else dataroot.data_root() / game_builds.BUILDS_DIR
     try:
         manifest = game_builds.build_trees(
-            dataroot.REPO_ROOT / GAME, dataroot.REPO_ROOT / PATCHES, out
+            dataroot.corpus_root() / GAME, dataroot.corpus_root() / PATCHES, out
         )
     except (game_builds.BuildError, OSError) as exc:
         print(f"[game-builds] {exc}", file=sys.stderr)
@@ -55,9 +55,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    """Link the corpus if needed, then build."""
-    if not ensure_links_or_report("mise run game-builds"):
-        return 2
+    """Build both trees from the data root's corpus."""
     return run(parse_args())
 
 
