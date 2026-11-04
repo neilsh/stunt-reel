@@ -158,7 +158,7 @@ impl<'a> ByteReader<'a> {
         } else {
             self.pos = self.pos.max(self.data.len());
             Err(Eof {
-                expected: self.pos.saturating_add(1), // pos <= len here, so this never clamps
+                expected: self.pos.saturating_add(1), // pos is at most one past the end here (it was just raised to len), so +1 never clamps
                 actual: self.data.len(),
             })
         }

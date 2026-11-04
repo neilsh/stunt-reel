@@ -164,6 +164,7 @@ pub fn write_all(chunks: &[(u16, &[u8])]) -> Result<Vec<u8>, VfsError> {
     let count = u16::try_from(sorted.len()).map_err(|_| VfsError::InvalidOffsetTable {
         reason: format!("{} chunks exceed the u16 count", sorted.len()),
     })?;
+    // `sorted.len()` fits u16 (checked above), so the product never clamps.
     let header = offset_add(sorted.len().saturating_mul(6), 6)?;
     let total = offset_add(header, sorted.iter().map(|(_, p)| p.len()).sum::<usize>())?;
     if u32::try_from(total).is_err() {
