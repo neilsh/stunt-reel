@@ -187,6 +187,10 @@ run = "uv run python python/scripts/unlzexe.py"
 description = "Run a breakpoint plan on DOSBox-X's debugger (mise run debug-x -- --plan tools/dosbox-x/plans/smoke.toml [--film F] [--build patched])"
 run = "uv run python python/scripts/debug_x.py"
 
+[tasks.gvpoly-stream]
+description = "List the GVPOLY polygons in a debug-x JSONL by object and colour (mise run gvpoly-stream -- <jsonl> [--handlers 0x995C,0x9A24] [--json out.json])"
+run = "uv run python python/scripts/gvpoly_stream.py"
+
 [tasks.pair-builds]
 description = "Pair two builds' functions with an iced-x86 decode and map offsets (mise run pair-builds -- [--ds 0x0542,0x8072@0x824] [--code 0x196C] [--unpaired])"
 run = "uv run python python/scripts/pair_builds.py"
