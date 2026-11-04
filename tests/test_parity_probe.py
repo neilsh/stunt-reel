@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
@@ -153,3 +154,40 @@ def test_scenery_between_two_separated_actors_stays_in_the_world_match() -> None
     masked = set(parity_probe.capture_actor_pixels(bytes(capture), left + right, width, rows))
     assert set(left + right) <= masked
     assert not masked & set(tree)
+
+
+def test_cmd_shift_leaves_the_captures_displaced_aircraft_out_of_the_world_match(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    width, rows = 24, 12
+    # Backdrop indices only, so nothing in the scene counts as an object; period 19 > reach.
+    backdrop = [*range(192, 200), *range(228, 239)]
+    scene = bytes(backdrop[(x * 7 + y * 13) % 19] for y in range(rows) for x in range(width))
+    ours = bytearray(scene)
+    capture = bytearray(scene)
+    actor = [y * width + x for y in range(4, 8) for x in range(4, 9)]
+    for p in actor:
+        ours[p] = 40
+        capture[p + 6] = 40  # the capture's aircraft sits six columns right of ours
+    (tmp_path / "f0.idx").write_bytes(bytes(capture))
+    frame = SimpleNamespace(ordinal=0, frame_file="f0.idx")
+    geometry = SimpleNamespace(width=width, plane_rows=lambda: rows)
+    page = SimpleNamespace(indices=bytes(ours), actor_pixels=lambda: actor)
+    report = SimpleNamespace(per_frame=[SimpleNamespace(scored=True, film_tick=5, ordinal=0)])
+    monkeypatch.setattr(parity_probe, "read_capture", lambda _: SimpleNamespace(frames=[frame]))
+    monkeypatch.setattr(
+        parity_probe,
+        "RenderStore",
+        lambda _: SimpleNamespace(record=SimpleNamespace(geometry=geometry)),
+    )
+    monkeypatch.setattr(parity_probe, "read_report", lambda _: report)
+    monkeypatch.setattr(parity_probe, "read_page", lambda _store, _tick: page)
+    args = argparse.Namespace(
+        reference=tmp_path, ours=tmp_path, report=tmp_path, min_pixels=1, reach=8, world_reach=6
+    )
+
+    parity_probe.cmd_shift(args)
+
+    # Agreement 1.0 holds only if the capture's aircraft, found through the actor shift, is
+    # masked: left in, it disagrees with our scenery at the zero offset.
+    assert capsys.readouterr().out.splitlines()[1] == "5 20 6 0 1.0 0 0 1.0"
