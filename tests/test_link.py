@@ -102,9 +102,17 @@ def test_layout_paths() -> None:
     )
 
 
-def test_parity_pipeline_still_exports_the_binary_helpers() -> None:
-    assert parity_pipeline.binary_path is link.binary_path
-    assert parity_pipeline.binary_locked is link.binary_locked
+def test_build_release_and_ensure_binary_run_one_command() -> None:
+    calls: list[list[str]] = []
+
+    def fake(
+        cmd: list[str], _env: dict[str, str] | None, _timeout: float | None
+    ) -> tuple[int, str]:
+        calls.append(cmd)
+        return 0, ""
+
+    parity_pipeline.build_release(run=fake)
+    assert calls == [list(link.BUILD_ARGV)]
 
 
 def test_a_missing_program_is_a_link_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

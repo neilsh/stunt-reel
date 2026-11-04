@@ -16,6 +16,7 @@ from stunt_reel.all_archive import (
     ArchiveMeta,
     ArchiveMissing,
     check_archive,
+    no_link,
     publish_archive,
     resolve_all,
 )
@@ -205,16 +206,23 @@ def test_nothing_found_names_make_all(tmp_path: Path) -> None:
         resolve_all(film, tmp_path)
 
 
-def _manifest(root: Path, slug: str, flm_bytes: bytes, game_root: str = "game") -> Path:
+def _manifest(
+    root: Path,
+    slug: str,
+    flm_bytes: bytes,
+    game_root: str = "game",
+    all_sha256: str = "a" * 64,
+    flm_sha256: str | None = None,
+) -> Path:
     path = root / parity_layout.manifest_path(slug)
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
         'film = "BALLOON.FLM"',
-        f'flm_sha256 = "{hashlib.sha256(flm_bytes).hexdigest()}"',
+        flm_sha256 or f'flm_sha256 = "{hashlib.sha256(flm_bytes).hexdigest()}"',
         f'game_root = "{game_root}"',
         f'makeone_sha256 = "{"0" * 64}"',
         "all_bytes = 6",
-        f'all_sha256 = "{"a" * 64}"',
+        f'all_sha256 = "{all_sha256}"',
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
@@ -317,3 +325,59 @@ def test_a_missing_absolute_game_tree_says_it_is_machine_local(tmp_path: Path) -
     message = str(caught.value)
     assert "mise run init" not in message
     assert "mise run make-all" in message
+
+
+def test_a_current_linked_archive_is_reused_without_linking(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    _manifest(tmp_path, SLUG, FLM_BYTES, all_sha256=hashlib.sha256(b"LINKED").hexdigest())
+    (tmp_path / "game").mkdir()
+    linked = tmp_path / parity_layout.linked_path(SLUG, film.name)
+    linked.parent.mkdir(parents=True)
+    linked.write_bytes(b"LINKED")
+    fake = FakeLinkBuild()
+    assert resolve_all(film, tmp_path, link_build=fake) == linked
+    assert fake.calls == []
+
+
+def test_a_stale_linked_archive_is_rebuilt(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    _manifest(tmp_path, SLUG, FLM_BYTES, all_sha256=hashlib.sha256(b"LINKED").hexdigest())
+    (tmp_path / "game").mkdir()
+    linked = tmp_path / parity_layout.linked_path(SLUG, film.name)
+    linked.parent.mkdir(parents=True)
+    linked.write_bytes(b"an older build")
+    fake = FakeLinkBuild()
+    assert resolve_all(film, tmp_path, link_build=fake) == linked
+    assert len(fake.calls) == 1
+    assert linked.read_bytes() == b"LINKED"
+
+
+@pytest.mark.parametrize("field", ["flm_sha256 = 5", 'flm_sha256 = ["not", "a", "hash"]'])
+def test_a_manifest_field_of_the_wrong_type_is_an_error_not_a_fall_back(
+    tmp_path: Path, field: str
+) -> None:
+    film = _film(tmp_path)
+    _store(tmp_path, FLM_BYTES, build_all([b"stored"]))
+    _manifest(tmp_path, SLUG, FLM_BYTES, flm_sha256=field)
+    with pytest.raises(ArchiveError, match=r"vault-balloon\.toml"):
+        resolve_all(film, tmp_path, link_build=FakeLinkBuild())
+
+
+def test_a_game_root_of_the_wrong_type_is_an_error(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    path = _manifest(tmp_path, SLUG, FLM_BYTES)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace('game_root = "game"', "game_root = 1"),
+        encoding="utf-8",
+    )
+    with pytest.raises(ArchiveError, match=r"vault-balloon\.toml"):
+        resolve_all(film, tmp_path, link_build=FakeLinkBuild())
+
+
+def test_no_link_checks_a_manifest_without_building_it(tmp_path: Path) -> None:
+    film = _film(tmp_path)
+    _manifest(tmp_path, SLUG, FLM_BYTES)
+    (tmp_path / "game").mkdir()
+    linked = resolve_all(film, tmp_path, link_build=no_link)
+    assert linked == tmp_path / parity_layout.linked_path(SLUG, film.name)
+    assert not linked.exists()

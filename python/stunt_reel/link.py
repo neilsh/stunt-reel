@@ -3,8 +3,8 @@
 The linking is Rust (``crates/stunt-cli/src/link.rs``); this module only builds the argv,
 runs the release binary and turns its exit code into an exception: 0 returns, 3 raises
 :class:`NotLinkable` (the archive holds content the game's ``RES/`` lacks), anything else
-raises :class:`LinkError`. It also owns the binary's location, which ``parity_pipeline``
-re-exports. It must not import ``all_archive``, which imports it.
+raises :class:`LinkError`. It also owns the binary's location and the command that builds it.
+It must not import ``all_archive`` or ``parity_pipeline``, which import it.
 """
 
 from __future__ import annotations
@@ -17,6 +17,8 @@ from pathlib import Path
 from stunt_reel.dataroot import REPO_ROOT
 
 __all__ = [
+    "BUILD_ARGV",
+    "EXIT_NOT_LINKABLE",
     "LinkError",
     "NotLinkable",
     "Runner",
@@ -26,6 +28,12 @@ __all__ = [
     "ensure_binary",
     "extract_manifest",
 ]
+
+#: Builds the release binary; ``parity_pipeline.build_release`` runs the same command.
+BUILD_ARGV: tuple[str, ...] = ("cargo", "build", "--release", "-p", "stunt-cli")
+
+#: ``stuntreel link``'s exit code for an archive with no manifest (``EXIT_NOT_LINKABLE`` in Rust).
+EXIT_NOT_LINKABLE = 3
 
 #: Runs an argv in a directory to completion, capturing text output.
 Runner = Callable[[Sequence[str], Path], subprocess.CompletedProcess[str]]
@@ -73,7 +81,7 @@ def ensure_binary(*, run: Runner = _run) -> Path:
     """
     path = binary_path()
     if not binary_locked(path):
-        _check(run(["cargo", "build", "--release", "-p", "stunt-cli"], REPO_ROOT))
+        _check(run(BUILD_ARGV, REPO_ROOT))
     return path
 
 
@@ -115,6 +123,6 @@ def _check(result: subprocess.CompletedProcess[str]) -> None:
     if result.returncode == 0:
         return
     message = result.stderr.strip() or f"{result.args[0]} exited {result.returncode}"
-    if result.returncode == 3:
+    if result.returncode == EXIT_NOT_LINKABLE:
         raise NotLinkable(message)
     raise LinkError(message)

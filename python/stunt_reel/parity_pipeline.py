@@ -34,7 +34,7 @@ from pathlib import Path
 
 from stunt_reel import all_archive, batch_films, capture_store, parity_layout, references
 from stunt_reel.dataroot import REPO_ROOT
-from stunt_reel.link import binary_locked, binary_path
+from stunt_reel.link import BUILD_ARGV, binary_locked, binary_path
 from stunt_reel.parity_artifacts import (
     RenderStore,
     open_render,
@@ -60,8 +60,6 @@ __all__ = [
     "RetimeResult",
     "Run",
     "Score",
-    "binary_locked",
-    "binary_path",
     "build_release",
     "check_film",
     "check_render",
@@ -320,7 +318,7 @@ class FilmFailure:
 
 def build_release(*, run: Run = run_command) -> None:
     """Builds the release binary once, since every render and score runs it."""
-    _execute(run, ["cargo", "build", "--release", "-p", "stunt-cli"], None, None)
+    _execute(run, list(BUILD_ARGV), None, None)
 
 
 def preflight(
@@ -338,7 +336,7 @@ def preflight(
     for name in films:
         try:
             with reference_job(root, name) as job:
-                all_archive.resolve_all(job.flm, root, job.slug)
+                all_archive.resolve_all(job.flm, root, job.slug, link_build=all_archive.no_link)
         except (references.ReferenceCaptureError, FilmInputError, all_archive.ArchiveError) as err:
             problems.append(str(err))
     if build_required and locked(binary_path()):
@@ -391,9 +389,11 @@ def render_film(
     """Renders the job's film into ``out`` with ``env`` in the environment.
 
     By default the ticks the job's capture holds; with ``ticks`` exactly those film ticks, in
-    one process. The film plays its archive from :func:`all_archive.resolve_all`.
+    one process. The film plays its archive from :func:`all_archive.resolve_all`, linked with
+    the release binary as it is: the caller builds it, or was told not to.
     """
-    archive = all_archive.resolve_all(job.flm, job.root, job.slug)
+    link_build = all_archive.link_build_in(job.root, build=False)
+    archive = all_archive.resolve_all(job.flm, job.root, job.slug, link_build=link_build)
     selection = (
         ("--at-ticks", ",".join(str(tick) for tick in ticks))
         if ticks is not None

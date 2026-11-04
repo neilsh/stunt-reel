@@ -384,7 +384,7 @@ def test_a_not_linkable_rerun_removes_the_old_manifest(
     assert "removed" in capsys.readouterr().out
 
 
-def test_a_link_error_says_an_old_manifest_is_stale(
+def test_a_link_error_removes_the_old_manifest_too(
     script: Any,
     monkeypatch: pytest.MonkeyPatch,
     staged_repo: StagedRepo,
@@ -399,5 +399,14 @@ def test_a_link_error_says_an_old_manifest_is_stale(
 
     assert script.run(args, launch, FakeExtract(link.LinkError("boom"))) == 0
 
-    assert manifest.exists()
-    assert "stale" in capsys.readouterr().err
+    assert not manifest.exists()
+    captured = capsys.readouterr()
+    assert "boom" in captured.err
+    assert "removed" in captured.out
+
+
+def test_game_arg_records_a_dotted_path_inside_the_checkout_relative(
+    script: Any,
+) -> None:
+    dotted = dataroot.REPO_ROOT / "corpus" / ".." / "corpus" / "stuntisl"
+    assert script.game_arg(dotted) == "corpus/stuntisl"

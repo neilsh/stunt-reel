@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import logging
+import os
 import sys
 import time
 from collections.abc import Callable
@@ -32,6 +33,7 @@ from stunt_reel.all_archive import (
     publish_archive,
 )
 from stunt_reel.dataroot import ensure_links_or_report
+from stunt_reel.hashing import file_sha256
 from stunt_reel.tac import makeone, staging
 from stunt_reel.tac.automation import ScriptError
 from stunt_reel.tac.emulator import EmulatorUnavailable
@@ -90,36 +92,37 @@ def report(line: str) -> None:
 
 def game_arg(game_root: Path) -> str:
     """*game_root* as the manifest records it: relative to the checkout when inside it."""
-    if game_root.is_relative_to(dataroot.REPO_ROOT):
-        return game_root.relative_to(dataroot.REPO_ROOT).as_posix()
-    return game_root.as_posix()
+    # normpath, not resolve: corpus/ is a link to the data root, and must stay relative.
+    tree = Path(os.path.normpath(game_root.absolute()))
+    repo = Path(os.path.normpath(dataroot.REPO_ROOT.absolute()))
+    return tree.relative_to(repo).as_posix() if tree.is_relative_to(repo) else tree.as_posix()
 
 
 def write_manifest(
     archive: Path, film: Path, game_root: Path, makeone_sha256: str, slug: str, extract: Extract
 ) -> int:
-    """Write the film's manifest from *archive*; 0 written, 3 not linkable, 1 an error."""
-    out = dataroot.REPO_ROOT / parity_layout.manifest_path(slug)
+    """Write the film's manifest from *archive*; 0 written, 3 not linkable, 1 an error.
+
+    When none is written, an earlier manifest is removed: it describes the archive this one
+    replaced, and would still win over it.
+    """
+    manifest = parity_layout.manifest_path(slug)
+    out = dataroot.REPO_ROOT / manifest
     try:
         extract(archive, film, game_arg(game_root), makeone_sha256, out)
     except link.NotLinkable as exc:
         report(f"no manifest: {exc}; the stored archive stays the record")
-        if out.is_file():
-            # An earlier manifest describes another archive and would win over this one.
-            out.unlink()
-            report(f"removed the earlier {parity_layout.manifest_path(slug).as_posix()}")
-        return 3
+        code = 3
     except link.LinkError as exc:
         print(f"[make-all] warning: no manifest written: {exc}", file=sys.stderr)
-        if out.is_file():
-            print(
-                f"[make-all] warning: {parity_layout.manifest_path(slug).as_posix()} is stale: "
-                f"it describes an earlier archive and still wins over the stored one",
-                file=sys.stderr,
-            )
-        return 1
-    report(f"wrote manifest {parity_layout.manifest_path(slug).as_posix()}")
-    return 0
+        code = 1
+    else:
+        report(f"wrote manifest {manifest.as_posix()}")
+        return 0
+    if out.is_file():
+        out.unlink()
+        report(f"removed the earlier {manifest.as_posix()}")
+    return code
 
 
 def manifest_only(film: Path, game_root: Path, slug: str, extract: Extract) -> int:
@@ -134,10 +137,10 @@ def manifest_only(film: Path, game_root: Path, slug: str, extract: Extract) -> i
     except (ValueError, TypeError, AttributeError, OSError) as exc:
         print(f"[make-all] {stored} has an unreadable meta.json: {exc}", file=sys.stderr)
         return 1
-    if meta.flm_sha256 != hashlib.sha256(film.read_bytes()).hexdigest():
+    if meta.flm_sha256 != file_sha256(film):
         print(f"[make-all] the stored archive was made from another .FLM; {make}", file=sys.stderr)
         return 2
-    archive = stored / f"{film.stem.upper()}.ALL"
+    archive = stored / parity_layout.all_name(film.name)
     return (
         0
         if write_manifest(archive, film, game_root, meta.makeone_sha256, slug, extract) == 0
@@ -204,7 +207,7 @@ def run(
             flm_sha256=flm_sha256,
             all_bytes=len(data),
             all_sha256=hashlib.sha256(data).hexdigest(),
-            makeone_sha256=hashlib.sha256((game_root / "MAKEONE.EXE").read_bytes()).hexdigest(),
+            makeone_sha256=file_sha256(game_root / "MAKEONE.EXE"),
             game_files=tuple(
                 (name, (game_root / name).stat().st_size) for name in staging.MAKEONE_FILES
             ),
@@ -216,7 +219,7 @@ def run(
         print(f"[make-all] could not store the archive: {exc}", file=sys.stderr)
         return 1
     print(f"[make-all] wrote {written} ({len(data)} bytes in {meta.wall_seconds} s)", flush=True)
-    archive = written / f"{film.stem.upper()}.ALL"
+    archive = written / parity_layout.all_name(film.name)
     write_manifest(archive, film, game_root, meta.makeone_sha256, slug, extract)
     return 0
 

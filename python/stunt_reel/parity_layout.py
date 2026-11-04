@@ -23,6 +23,7 @@ __all__ = [
     "PROTECTED_SUFFIXES",
     "REFERENCES_FILE",
     "RENDER_ROOTS",
+    "all_name",
     "archive_path",
     "batch_film_dir",
     "batch_root",
@@ -150,7 +151,12 @@ def manifest_path(slug: str) -> Path:
 
 def linked_path(slug: str, film: str) -> Path:
     """Where the film *slug*'s ``.ALL`` is rebuilt from its manifest, relative to the checkout."""
-    return Path("target/linked") / slug / f"{Path(film).stem.upper()}.ALL"
+    return Path("target/linked") / slug / all_name(film)
+
+
+def all_name(film: str) -> str:
+    """The ``.ALL`` file name that goes with the film named *film*: its stem in upper case."""
+    return f"{Path(film).stem.upper()}.ALL"
 
 
 def render_dir(film: str) -> Path:

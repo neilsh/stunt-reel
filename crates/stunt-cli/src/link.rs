@@ -79,11 +79,14 @@ pub(crate) enum LinkFailure {
     Error(String),
 }
 
+/// The exit code for an archive with no manifest; `python/stunt_reel/link.py` reads it.
+pub(crate) const EXIT_NOT_LINKABLE: i32 = 3;
+
 impl LinkFailure {
-    /// The process exit code: 3 for not linkable, 1 otherwise.
+    /// The process exit code: [`EXIT_NOT_LINKABLE`], or 1 for any other failure.
     pub(crate) fn exit_code(&self) -> i32 {
         match self {
-            Self::NotLinkable(_) => 3,
+            Self::NotLinkable(_) => EXIT_NOT_LINKABLE,
             Self::Error(_) => 1,
         }
     }
@@ -144,10 +147,7 @@ fn extract_cmd(args: &ExtractArgs, cwd: &Path) -> Result<(), LinkFailure> {
     for path in entries {
         let bytes = read(&path)?;
         if bytes.starts_with(b"RS") {
-            let name = path
-                .file_name()
-                .map_or_else(String::new, |n| n.to_string_lossy().to_ascii_uppercase());
-            files.push((format!("RES/{name}"), bytes));
+            files.push((format!("RES/{}", dos_name(&path)), bytes));
         }
     }
     // A file that starts `RS` but does not split is not a `.RES`; it cannot be a source.
@@ -173,11 +173,8 @@ fn extract_cmd(args: &ExtractArgs, cwd: &Path) -> Result<(), LinkFailure> {
         )));
     }
 
-    let film = flm_path
-        .file_name()
-        .map_or_else(String::new, |n| n.to_string_lossy().to_ascii_uppercase());
     let manifest = Manifest {
-        film,
+        film: dos_name(&flm_path),
         flm_sha256: sha256(&flm),
         game_root: args.game.clone(),
         makeone_sha256: args.makeone_sha256.clone(),
@@ -216,10 +213,18 @@ fn build_cmd(args: &BuildArgs, cwd: &Path) -> Result<(), LinkFailure> {
 
     let mut files = Vec::with_capacity(manifest.sources.len());
     for source in &manifest.sources {
-        let mut path = tree.clone();
-        for part in source.file.split('/') {
-            path = find_ci(&path, part)?;
-        }
+        let path = source
+            .file
+            .split('/')
+            .try_fold(tree.clone(), |dir, part| find_ci(&dir, part))
+            .map_err(|_| {
+                LinkFailure::Error(format!(
+                    "{} is missing from {}; the manifest expects sha256 {}",
+                    source.file,
+                    tree.display(),
+                    source.sha256
+                ))
+            })?;
         let bytes = read(&path)?;
         let actual = sha256(&bytes);
         if actual != source.sha256 {
@@ -273,6 +278,12 @@ fn find_ci(dir: &Path, name: &str) -> Result<PathBuf, LinkFailure> {
                 .is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(name))
         })
         .ok_or_else(missing)
+}
+
+/// `path`'s file name in upper case, as the manifest records it (`[I8]`).
+fn dos_name(path: &Path) -> String {
+    path.file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().to_ascii_uppercase())
 }
 
 fn read(path: &Path) -> Result<Vec<u8>, LinkFailure> {
@@ -447,6 +458,33 @@ mod tests {
         );
         assert_eq!(err.exit_code(), 1);
         assert!(listing(&out_dir).is_empty());
+    }
+
+    #[test]
+    fn a_missing_source_names_the_file_its_hash_and_the_tree() {
+        let root = dos_tree("missing");
+        fs::remove_file(root.join("game/RES/MUS.ESS")).unwrap();
+        let out = root.join("FILM.ALL");
+
+        let err =
+            build_cmd(&build_args(fixture("link_film.toml"), out.clone()), &root).unwrap_err();
+        let LinkFailure::Error(message) = &err else {
+            panic!("expected an error, got {err:?}");
+        };
+        let expected = manifest_at(&fixture("link_film.toml"))
+            .sources
+            .into_iter()
+            .find(|s| s.file == "RES/MUS.ESS")
+            .expect("ESS source")
+            .sha256;
+        assert!(message.contains("RES/MUS.ESS"), "{message}");
+        assert!(message.contains(&expected), "{message}");
+        assert!(
+            message.contains(&root.join("game").display().to_string()),
+            "{message}"
+        );
+        assert_eq!(err.exit_code(), 1);
+        assert!(!out.exists());
     }
 
     #[test]
