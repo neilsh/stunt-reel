@@ -372,16 +372,19 @@ def test_manifest_only_keeps_the_old_manifest_when_extraction_fails(
     staged_repo: StagedRepo,
     game_root: Path,
     error: link.LinkError,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     _publish(script, monkeypatch, staged_repo.film, game_root)
     manifest = dataroot.REPO_ROOT / parity_layout.manifest_path("vault-ctry")
     manifest.parent.mkdir(parents=True, exist_ok=True)
     manifest.write_text("# reviewed and committed\n", encoding="utf-8")
     args = _args(script, monkeypatch, staged_repo.film, game_root, "--manifest-only")
+    capsys.readouterr()
 
     assert script.run(args, None, FakeExtract(error)) == 1
 
     assert manifest.read_text(encoding="utf-8") == "# reviewed and committed\n"
+    assert "still takes precedence" in capsys.readouterr().out
 
 
 def test_a_not_linkable_rerun_removes_the_old_manifest(

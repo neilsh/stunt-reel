@@ -127,9 +127,12 @@ def write_manifest(
     else:
         report(f"wrote manifest {manifest.as_posix()}")
         return 0
-    if replaced and out.is_file():
-        out.unlink()
-        report(f"removed the earlier {manifest.as_posix()}")
+    if out.is_file():
+        if replaced:
+            out.unlink()
+            report(f"removed the earlier {manifest.as_posix()}")
+        else:
+            report(f"kept {manifest.as_posix()}; it still takes precedence over the stored archive")
     return code
 
 
