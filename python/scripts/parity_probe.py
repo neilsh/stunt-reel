@@ -188,19 +188,26 @@ def capture_actor_pixels(
     """The capture's object pixels near ``silhouette``, so the capture's aircraft is left out whole.
 
     The capture's aircraft can be larger than our silhouette moved onto it, so every capture
-    object pixel inside the silhouette's box, grown by ``pad`` on each side, is taken as aircraft.
+    object pixel within ``pad`` pixels (in x and in y) of a silhouette pixel is taken as aircraft.
+    Scenery away from every silhouette pixel stays in, even between two separated actors.
     """
-    if not silhouette:
-        return []
-    xs = [p % width for p in silhouette]
-    ys = [p // width for p in silhouette]
-    x0, x1 = max(0, min(xs) - pad), min(width - 1, max(xs) + pad)
-    y0, y1 = max(0, min(ys) - pad), min(rows - 1, max(ys) + pad)
+    near = np.zeros(width * rows, dtype=bool)
+    near[silhouette] = True
+    grown = near.reshape(rows, width)
+    for axis, size in ((0, rows), (1, width)):
+        spread = grown.copy()
+        for step in range(1, pad + 1):
+            if step >= size:
+                break
+            if axis == 0:
+                spread[step:, :] |= grown[:-step, :]
+                spread[:-step, :] |= grown[step:, :]
+            else:
+                spread[:, step:] |= grown[:, :-step]
+                spread[:, :-step] |= grown[:, step:]
+        grown = spread
     return [
-        y * width + x
-        for y in range(y0, y1 + 1)
-        for x in range(x0, x1 + 1)
-        if is_object(capture[y * width + x], CTRY_BACKGROUND)
+        int(p) for p in np.flatnonzero(grown.reshape(-1)) if is_object(capture[p], CTRY_BACKGROUND)
     ]
 
 

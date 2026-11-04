@@ -139,3 +139,17 @@ def test_a_wider_capture_aircraft_does_not_move_the_world() -> None:
         bytes(ours), bytes(capture), silhouette, width, rows, reach=4, capture_actor=capture_actor
     )
     assert result == (0, 0, 1.0)
+
+
+def test_scenery_between_two_separated_actors_stays_in_the_world_match() -> None:
+    width, rows = 60, 10
+    sky = 230
+    capture = bytearray([sky] * (width * rows))
+    left = [y * width + x for y in range(4, 6) for x in range(2, 4)]
+    right = [y * width + x for y in range(4, 6) for x in range(56, 58)]
+    tree = [y * width + x for y in range(3, 7) for x in range(29, 31)]
+    for p in left + right + tree:
+        capture[p] = 40
+    masked = set(parity_probe.capture_actor_pixels(bytes(capture), left + right, width, rows))
+    assert set(left + right) <= masked
+    assert not masked & set(tree)
