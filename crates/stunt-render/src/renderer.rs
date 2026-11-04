@@ -264,6 +264,11 @@ impl RenderedPage {
 /// view: the top `viewport_rows` page rows when set, else the whole page. Each Mode 13h pixel
 /// covers the page pixels it scales to; they take the palette index, its unlit `palette`
 /// colour and [`LAYER_OVERLAY`].
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    reason = "page and Mode 13h sizes are a few thousand pixels, far inside i32"
+)]
 fn paint_credits(
     page: &mut RenderedPage,
     font: &PFont,
@@ -291,8 +296,10 @@ fn paint_credits(
         let (r, g, b) = palette[usize::from(index)];
         for py in scaled_span(y, mode_h, height) {
             for px in scaled_span(x, mode_w, width) {
-                let at = (py * width + px) as usize;
                 // A pixel outside the page is clipped, like a glyph outside the mode raster.
+                let Ok(at) = usize::try_from(py * width + px) else {
+                    continue;
+                };
                 if let (Some(slot), Some(layer), Some(rgb)) = (
                     page.indices.get_mut(at),
                     page.layers.get_mut(at),
@@ -311,6 +318,16 @@ fn paint_credits(
 /// pixels long.
 fn scaled_span(at: i32, from: i32, to: i32) -> std::ops::Range<i32> {
     at * to / from..(at + 1) * to / from
+}
+
+/// A viewport edge or size in window pixels as the `u32` a scissor rect takes.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "edges lie inside the window; `as` saturates, so a negative or NaN edge is 0"
+)]
+fn viewport_px(v: f32) -> u32 {
+    v as u32
 }
 
 /// Consumes the pages an offscreen Renderer reads back.
@@ -623,13 +640,13 @@ impl Renderer {
 
         let width = target.config.width;
         let height = target.config.height;
-        let sc_x = vp_x.max(0.0) as u32;
-        let sc_y = vp_y.max(0.0) as u32;
-        let sc_w = (vp_w as u32).clamp(1, width.saturating_sub(sc_x).max(1));
-        let sc_h = (vp_h as u32).clamp(1, height.saturating_sub(sc_y).max(1));
+        let sc_x = viewport_px(vp_x.max(0.0));
+        let sc_y = viewport_px(vp_y.max(0.0));
+        let sc_w = viewport_px(vp_w).clamp(1, width.saturating_sub(sc_x).max(1));
+        let sc_h = viewport_px(vp_h).clamp(1, height.saturating_sub(sc_y).max(1));
 
-        let right_edge = (vp_x + vp_w).min(win_w) as u32;
-        let bottom_edge = (vp_y + vp_h).min(win_h) as u32;
+        let right_edge = viewport_px((vp_x + vp_w).min(win_w));
+        let bottom_edge = viewport_px((vp_y + vp_h).min(win_h));
         let bars: [(u32, u32, u32, u32); 2] = if cur_aspect > aspect {
             [
                 (0, 0, sc_x, height),
