@@ -114,15 +114,10 @@ def _read_document(root: Path) -> tuple[Path, dict[str, object]]:
 
 
 def _builds(path: Path, name: str, entry: dict[str, object]) -> Builds:
-    """The builds row *name* of *path* names; a missing or unknown one is an error."""
+    """The builds row *name* of *path* names; an omitted one is patch3 and an unknown one is an error."""
     found: dict[str, str] = {}
     for field in ("makeone", "playone"):
-        value = entry.get(field)
-        if value is None:
-            raise ReferenceCaptureError(
-                f"{path}: the row [{name}] does not name its {field} build "
-                f"({' or '.join(BUILD_NAMES)}); ADR 0029"
-            )
+        value = entry.get(field, "patch3")  # an omitted build is patch3 (ADR 0029)
         if not isinstance(value, str) or value not in BUILD_NAMES:
             raise ReferenceCaptureError(
                 f"{path}: the row [{name}] names {field} build {value!r}, "

@@ -151,6 +151,15 @@ def test_the_committed_rows_name_valid_builds() -> None:
         assert {builds.makeone, builds.playone} <= set(references.BUILD_NAMES)
 
 
+def test_an_omitted_build_is_patch3(tmp_path: Path) -> None:
+    _row(tmp_path)
+    assert references.read_reference(tmp_path, "ctry").builds == references.Builds(
+        "patch3", "patch3"
+    )
+    _row(tmp_path, 'makeone = "unpatched"', 'reason = "EXIT hangs"')
+    assert references.read_reference(tmp_path, "ctry").builds.playone == "patch3"
+
+
 def test_a_row_names_its_builds(tmp_path: Path) -> None:
     _row(tmp_path, 'makeone = "unpatched"', 'playone = "patch3"', 'reason = "EXIT hangs"')
     assert references.read_reference(tmp_path, "ctry").builds == references.Builds(
@@ -161,8 +170,6 @@ def test_a_row_names_its_builds(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("fields", "match"),
     [
-        (['playone = "patch3"'], "does not name its makeone"),
-        (['makeone = "patch3"'], "does not name its playone"),
         (['makeone = "patch3"', 'playone = "patched"'], "playone build 'patched'"),
         (['makeone = "patch3"', "playone = 3"], "playone build 3"),
         (['makeone = "unpatched"', 'playone = "patch3"'], "needs a reason"),
