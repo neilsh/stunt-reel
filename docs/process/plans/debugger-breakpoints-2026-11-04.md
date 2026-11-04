@@ -255,8 +255,9 @@ entries for what the runs exclude. A row in the parity log.
 
 ## 6. Delivery
 
-1. #78's branch merges first, with iced-x86.
-2. Three PRs stacked with `gh-stack` on `main`:
+1. #78's branch, with the iced-x86 switch, is the bottom PR of the stack (against `main`).
+2. Three PRs stacked with `gh-stack` on top of it; this spec and the implementation plan ride
+   in A:
    - **A, the tool:** `dbx/`, the CLI and task, `tools/dosbox-x/`, the DOSBox-X pin, ADR 0033,
      `debugger-plans.md`, offline tests.
    - **B, #66:** the light plans, the `probe-light` words, `terrain-shade.md` and `memory-map.md`,
