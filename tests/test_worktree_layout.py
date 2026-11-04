@@ -273,6 +273,19 @@ def test_mise_config_renders_outside_a_git_checkout() -> None:
     assert homes == [f"{REPO_ROOT}/.cache/cargo"], result.stdout
 
 
+def test_the_uv_cache_is_the_primarys_by_absolute_path() -> None:
+    """No .cache link: every checkout names the primary's uv cache directly (ADR 0033)."""
+    config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert config["env"]["UV_CACHE_DIR"] == "{{vars.primary}}/.cache/uv"
+
+
+def test_tasks_use_the_os_temp_directory() -> None:
+    """The temp override existed only for DSH's sandbox (ADR 0033)."""
+    config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert "TMP" not in config["env"]
+    assert "TEMP" not in config["env"]
+
+
 def test_sod_census_reads_the_data_roots_corpus() -> None:
     """The census reads ``corpus/`` relative to its working directory unless told (ADR 0033)."""
     config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))

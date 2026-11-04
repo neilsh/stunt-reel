@@ -35,24 +35,16 @@ asset_pattern = "dosbox-automation-*-windows-x64.zip"
 checksum = "sha256:6835621f4731235651a886ef67c4fc40693454a6386f0e5ab5c0570965a186ee"
 
 [env]
-# One shared, writable tool cache per primary checkout: mise run init links each
-# worktree's .cache to it (ADR 0013), and parks the worktree's virtualenv inside it
-# as venvs/<checkout> (ADR 0019) so uv hardlinks the packages out of the cache
-# instead of copying 68 MiB into the checkout at every fresh worktree. Build
-# outputs and the Python tool caches stay per worktree. CARGO_HOME is set per
-# cargo task, to vars.cargo_home below,
-# instead of here: mise installs its rustup shim into $CARGO_HOME, and a rustup
-# inside this tree would run at the tree's low integrity and fail to reach the
-# user's RUSTUP_HOME (ADR 0013).
-UV_CACHE_DIR = "{{config_root}}/.cache/uv"
+# One shared, writable tool cache per primary checkout, named by absolute path from every
+# checkout, so a worktree needs no .cache link (ADR 0013, ADR 0033). Each worktree keeps uv's
+# own .venv; on the same volume uv hardlinks its packages out of this cache. Build outputs
+# and the Python tool caches stay per worktree. CARGO_HOME is set per cargo task, to
+# vars.cargo_home below, instead of here: mise installs its rustup shim into $CARGO_HOME,
+# and a rustup inside this tree would run at the tree's low integrity and fail to reach the
+# user's RUSTUP_HOME (ADR 0013). Tasks use the OS temp directory.
+UV_CACHE_DIR = "{{vars.primary}}/.cache/uv"
 # Python on Windows defaults text I/O to cp1252; scripts and docs here are UTF-8.
 PYTHONUTF8 = "1"
-# The sandbox denies the OS temp directory to the processes a task spawns, so every task
-# points at one path inside the shared cache; mise run init creates it (ADR 0013,
-# docs/harness.md). Set here rather than per test task so a new test-bearing task cannot
-# forget it, and so mise exec applies it too.
-TMP = "{{config_root}}/.cache/tmp"
-TEMP = "{{config_root}}/.cache/tmp"
 
 [vars]
 # One absolute path in every checkout: Cargo fingerprints a dependency by its CARGO_HOME path,
