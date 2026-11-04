@@ -33,7 +33,7 @@ def test_prints_the_digest_and_the_entry_that_promotes_it(
     digest = references.capture_digest(directory)
     assert capture_digest.main(["vault-ctry"], root=tmp_path) == 0
     out = capsys.readouterr().out.splitlines()
-    assert out[0] == "build/parity/captures/vault-ctry/frames"
+    assert out[0] == "captures/vault-ctry/frames"
     assert out[1] == f'sha256 = "{digest}"'
     # The committed references.toml has a [ctry] entry for vault-ctry, so the block follows.
     block = out[out.index("[ctry]") :]

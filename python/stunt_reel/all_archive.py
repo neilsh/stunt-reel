@@ -17,7 +17,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
-from stunt_reel import capture_store, link, parity_layout
+from stunt_reel import capture_store, dataroot, link, parity_layout
 from stunt_reel.hashing import file_sha256
 
 __all__ = [
@@ -104,7 +104,9 @@ def check_archive(data: bytes) -> int:
 
 
 def publish_archive(root: Path, data: bytes, meta: ArchiveMeta, *, slug: str, film: str) -> Path:
-    """Write *data* as ``<root>/captures/<slug>/archives/<FILM>.ALL``, replacing the old archive.
+    """Write *data* as ``<root>/captures/<slug>/archives/<FILM>.ALL`` in the data root *root*.
+
+    It replaces the old archive.
 
     The files go to a staged sibling, ``meta.json`` last, and the sibling is swapped into place,
     so a reader never sees half an archive. A failed write removes the sibling and leaves the
@@ -198,7 +200,8 @@ def resolve_all(
     error, never a fall back. Last, the film's stored archive, when it was made from *flm*'s
     bytes; its own bytes must still hash to the recorded ``all_sha256``, and a mismatch is an
     error. *slug* names the film's directory; it defaults to the one
-    :func:`parity_layout.film_slug` derives.
+    :func:`parity_layout.film_slug` derives. *root* is the checkout holding the manifests and
+    ``target/``; the stored archive is read from the data root (ADR 0033).
     """
     stem = flm.stem.lower()
     for sibling in sorted(flm.parent.iterdir()):
@@ -209,7 +212,7 @@ def resolve_all(
     if linked is not None:
         return linked
     make = f"run: mise run make-all -- --film {flm}"
-    directory = capture_store.current(root / parity_layout.archive_path(slug))
+    directory = capture_store.current(dataroot.data_root() / parity_layout.archive_path(slug))
     if directory is None:
         raise ArchiveMissing(f"no .ALL for {flm}; {make}")
     try:

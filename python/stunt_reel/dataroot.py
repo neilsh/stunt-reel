@@ -43,7 +43,9 @@ __all__ = [
     "SharedDataError",
     "cache_root",
     "convert_layout",
+    "corpus_root",
     "create_link",
+    "data_path_arg",
     "data_root",
     "discard_env",
     "ensure_cache_link",
@@ -59,8 +61,10 @@ __all__ = [
     "orphan_envs",
     "primary_checkout",
     "remove_link",
+    "resolve_data_path",
     "shared_target",
     "sweep_orphan_envs",
+    "use_data_root",
 ]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -88,7 +92,7 @@ LINK_TARGETS: tuple[tuple[str, str], ...] = (
     ("corpus/siarchive", "corpus/siarchive"),
     ("corpus/stuntisl", "corpus/stuntisl"),
     ("corpus/patches", "corpus/patches"),
-    ("captures", parity_layout.capture_root().as_posix()),
+    ("captures", parity_layout.LEGACY_CAPTURE_LINK.as_posix()),
 )
 
 #: Top-level names of the old layout (ADR 0008); ``reference`` held ``<film>/`` directly.
@@ -150,6 +154,55 @@ def data_root() -> Path:
     if primary is None:
         return REPO_ROOT
     return primary.with_name(primary.name + DATA_SUFFIX)
+
+
+def use_data_root(path: Path) -> Path:
+    """Make *path* this process's data root, and its children's, as ``STUNT_DATA_ROOT`` would.
+
+    A ``--data-root`` flag calls this, so code that asks :func:`data_root` and the scripts a
+    run starts agree with the root the flag named.  Returns the resolved root.
+    """
+    root = path.expanduser().resolve()
+    os.environ[DATA_ENV] = str(root)
+    data_root.cache_clear()
+    return root
+
+
+def corpus_root() -> Path:
+    """The directory holding the game files: ``corpus/`` under the data root.
+
+    A clone that keeps its game files in the primary checkout's own ``corpus/`` has no
+    ``corpus/`` in the data root, so that one is read instead.  Only the corpus falls back:
+    the captures and the stage are written, and the stage must sit outside every checkout.
+    """
+    shared = data_root() / "corpus"
+    if shared.is_dir() or os.environ.get(DATA_ENV):
+        return shared
+    primary = primary_checkout()
+    return primary / "corpus" if primary is not None else shared
+
+
+#: The first part of a relative path that names something in the data root.
+_DATA_PARTS = ("corpus", parity_layout.capture_root().as_posix())
+
+
+def resolve_data_path(path: Path) -> Path:
+    """*path* read against the data root when it is a relative ``corpus/`` or ``captures/`` path.
+
+    Every task description and note spells a film ``corpus/stisldem/VAULT/CTRY.FLM``, relative
+    to a checkout that no longer links the data root in (ADR 0033).  Any other path, absolute
+    or relative, is returned unchanged.
+    """
+    if path.is_absolute() or not path.parts or path.parts[0] not in _DATA_PARTS:
+        return path
+    if path.parts[0] == "corpus":
+        return corpus_root().joinpath(*path.parts[1:])
+    return data_root() / path
+
+
+def data_path_arg(text: str) -> Path:
+    """:func:`resolve_data_path` for an ``argparse`` ``type=``; it applies to string defaults too."""
+    return resolve_data_path(Path(text))
 
 
 def cache_root() -> Path:
@@ -458,8 +511,7 @@ def _holds_files(path: Path) -> bool:
 
 def _legacy_destination(film: str) -> Path:
     """Where an old ``reference/<film>`` goes, relative to the data root."""
-    capture = parity_layout.frames_path(f"vault-{film}")
-    return capture.relative_to(parity_layout.capture_root().parent)
+    return parity_layout.frames_path(f"vault-{film}")
 
 
 def convert_layout(root: Path) -> list[str]:

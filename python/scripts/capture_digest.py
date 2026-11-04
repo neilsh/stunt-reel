@@ -74,7 +74,7 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     if root is None:
         if not dataroot.ensure_links_or_report("capture_digest"):
             return 1
-        root = dataroot.REPO_ROOT
+        root = dataroot.data_root()
     if args.dir is not None:
         directory = args.dir.resolve()
         slug = directory.parent.name

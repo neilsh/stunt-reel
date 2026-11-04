@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from stunt_reel import batch_stages, parity_layout
+from stunt_reel import batch_stages, dataroot, parity_layout
 from stunt_reel.batch_films import discover
 from stunt_reel.batch_ledger import STAGES, Record, append, latest, read, summarize
 from stunt_reel.dataroot import ensure_links_or_report
@@ -383,14 +383,21 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="a render waits (polling every 30 s) while less than this is free under the batch root",
     )
     parser.add_argument(
-        "--data-root", type=Path, default=REPO_ROOT, help="checkout holding corpus/ and captures"
+        "--data-root",
+        type=Path,
+        default=None,
+        help="read the corpus and captures from DIR, as STUNT_DATA_ROOT=DIR would, and write there",
     )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    root = Path(args.data_root).resolve()
+    # The survey writes under this checkout, or under --data-root when one is named; the films
+    # and captures are read from the data root either way.
+    root = REPO_ROOT
+    if args.data_root is not None:
+        root = dataroot.use_data_root(Path(args.data_root))
     ledger = root / parity_layout.batch_root() / _LEDGER_NAME
     if args.summary:
         slugs = _names(args.only)
@@ -406,7 +413,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if root == REPO_ROOT and not ensure_links_or_report("batch_parity"):
         return 2
-    films = discover(root / "corpus")
+    films = discover(dataroot.corpus_root())
     wanted = set(_names(args.only))
     if wanted:
         missing = sorted(wanted - {film.slug for film in films})

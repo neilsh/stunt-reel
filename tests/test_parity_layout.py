@@ -43,7 +43,7 @@ def _layout_literals(path: Path) -> list[str]:
 
 def test_the_layout_answers_every_artifact_location() -> None:
     """One accessor per location; a film name is normalised to lower case."""
-    assert parity_layout.capture_root() == Path("build/parity/captures")
+    assert parity_layout.capture_root() == Path("captures")
     assert Path("research/parity/references.toml") == parity_layout.REFERENCES_FILE
     assert parity_layout.render_dir("ctry") == Path("build/parity/ours/ctry_current")
     assert parity_layout.previous_dir("ctry") == Path("build/parity/previous/ctry")
@@ -128,7 +128,7 @@ def test_require_slug() -> None:
 
 def test_a_film_has_one_capture_of_each_kind() -> None:
     """Frame captures, video captures and archives share a film directory and differ by kind."""
-    film = Path("build/parity/captures/vault-ctry")
+    film = Path("captures/vault-ctry")
     assert parity_layout.frames_path("vault-ctry") == film / "frames"
     assert parity_layout.video_path("vault-ctry") == film / "video"
     assert parity_layout.archive_path("vault-ctry") == film / "archives"

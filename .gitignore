@@ -36,6 +36,8 @@ corpus/**
 
 # Local capture output (dosbox-automation default)
 capture/
+# Captures of a checkout that is its own data root (outside git, ADR 0033)
+/captures/
 !tests/fixtures/parity/bench/capture/
 
 # OS junk

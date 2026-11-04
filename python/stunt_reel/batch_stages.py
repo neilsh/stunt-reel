@@ -8,8 +8,8 @@ the render and score stages are the film parity operation of :mod:`parity_pipeli
 is the only thing that starts a process, so tests pass a fake and nothing here launches
 dosbox-automation, MAKEONE or the stuntreel binary.
 
-The ``root`` argument is the checkout whose layout paths and scripts a stage uses; the data root
-is linked into it, so captures and archives resolve through it.
+The ``root`` argument is the checkout whose layout paths and scripts a stage uses; captures and
+archives are read from ``dataroot.data_root()`` (ADR 0033).
 """
 
 from __future__ import annotations
@@ -110,13 +110,13 @@ def run_capture(film: BatchFilm, root: Path, run: Run, timeout: float) -> Record
     outcome = _execute(film, "capture", command, timeout, run, started)
     if outcome.status != "ok":
         return outcome
-    problem = _capture_problem(root, film.slug)
+    problem = _capture_problem(film.slug)
     if problem is not None:
         return _record(film, "capture", "error", f"capture invalid: {problem}", started)
     return outcome
 
 
-def _capture_problem(root: Path, slug: str) -> str | None:
+def _capture_problem(slug: str) -> str | None:
     """Why the capture of *slug* cannot be parity evidence, or ``None`` when it can.
 
     A capture is unusable when its film clock never advanced (the first and last ``film_tick``
@@ -124,7 +124,7 @@ def _capture_problem(root: Path, slug: str) -> str | None:
     :data:`MIN_CAPTURE_FRAMES` frames.
     """
     try:
-        capture = capture_store.current(root / parity_layout.frames_path(slug))
+        capture = capture_store.current(dataroot.data_root() / parity_layout.frames_path(slug))
         if capture is None:
             return "no complete capture was written"
         ticks = [frame.film_tick for frame in parity_artifacts.read_capture(capture).frames]
@@ -141,7 +141,7 @@ def run_render(film: BatchFilm, root: Path, run: Run, timeout: float) -> Record:
     """Render the film over the captured ticks, using its capture and its archive."""
     started = time.perf_counter()
     try:
-        job = current_job(film, root)
+        job = current_job(film, dataroot.data_root())
         if job is None:
             return _record(
                 film, "render", "error", "no capture yet; run the capture stage", started
@@ -161,7 +161,7 @@ def run_score(film: BatchFilm, root: Path, run: Run, timeout: float) -> Record:
     started = time.perf_counter()
     film_dir = root / parity_layout.batch_film_dir(film.slug)
     try:
-        job = current_job(film, root)
+        job = current_job(film, dataroot.data_root())
         if job is None:
             return _record(film, "score", "error", "no capture yet; run the capture stage", started)
         scored = score_film(job, film_dir / "render", film_dir / "report", run=run, timeout=timeout)

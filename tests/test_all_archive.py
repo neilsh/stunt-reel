@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from archive_helpers import build_all
-from stunt_reel import link, parity_layout
+from stunt_reel import dataroot, link, parity_layout
 from stunt_reel.all_archive import (
     META_FILE,
     ArchiveError,
@@ -123,6 +123,13 @@ def test_a_failed_write_keeps_the_old_archive_and_leaves_nothing_behind(
 
 
 FLM_BYTES = b"FILM-balloon"
+
+
+@pytest.fixture(autouse=True)
+def _data_root_is_the_test_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The stored archive is read from the data root; make it the test's own directory."""
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    dataroot.data_root.cache_clear()
 
 
 def _store(root: Path, flm: bytes, archive: bytes) -> Path:

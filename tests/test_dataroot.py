@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
-from stunt_reel import dataroot
+from stunt_reel import dataroot, parity_layout
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
 pytestmark = pytest.mark.windows
 
@@ -31,9 +31,12 @@ def _checkout(monkeypatch: pytest.MonkeyPatch, root: Path) -> Path:
     return root
 
 
-def _primary(tmp_path: Path) -> Path:
+def _primary(tmp_path: Path, *, data: bool = False) -> Path:
+    """A primary checkout, with an empty data root beside it when *data* is true."""
     primary = tmp_path / "stunt-reel"
     (primary / ".git").mkdir(parents=True)
+    if data:
+        (tmp_path / "stunt-reel.data").mkdir()
     return primary
 
 
@@ -49,7 +52,7 @@ def _worktree(monkeypatch: pytest.MonkeyPatch, primary: Path, slug: str = "slug"
 def test_primary_checkout_owns_the_git_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    primary = _checkout(monkeypatch, _primary(tmp_path))
+    primary = _checkout(monkeypatch, _primary(tmp_path, data=True))
     assert dataroot.primary_checkout() == primary
     assert dataroot.data_root() == tmp_path / "stunt-reel.data"
 
@@ -57,7 +60,7 @@ def test_primary_checkout_owns_the_git_directory(
 def test_linked_worktree_resolves_to_the_primary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    primary = _primary(tmp_path)
+    primary = _primary(tmp_path, data=True)
     gitdir = primary / ".git" / "worktrees" / "slug"
     gitdir.mkdir(parents=True)
     # Inside the primary, as the desktop app and .agents/worktrees place them.
@@ -73,6 +76,57 @@ def test_outside_git_the_checkout_is_its_own_root(
     root = _checkout(monkeypatch, tmp_path / "export")
     assert dataroot.primary_checkout() is None
     assert dataroot.data_root() == root
+
+
+def test_a_missing_data_root_falls_back_to_the_primary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A clone that keeps its corpus in the checkout has no <primary>.data beside it.
+    primary = _primary(tmp_path)
+    _worktree(monkeypatch, primary)
+    film = Path("corpus/stisldem/VAULT/CTRY.FLM")
+    assert dataroot.corpus_root() == primary / "corpus"
+    assert dataroot.resolve_data_path(film) == primary / film
+    # The captures and the stage are written, so they stay beside the primary.
+    assert dataroot.data_root() == tmp_path / "stunt-reel.data"
+
+
+def test_a_data_root_with_a_corpus_wins_over_the_primarys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    primary = _primary(tmp_path)
+    (tmp_path / "stunt-reel.data" / "corpus").mkdir(parents=True)
+    _worktree(monkeypatch, primary)
+    assert dataroot.corpus_root() == tmp_path / "stunt-reel.data" / "corpus"
+
+
+def test_corpus_root_is_under_the_data_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    assert dataroot.corpus_root() == tmp_path.resolve() / "corpus"
+
+
+def test_a_relative_corpus_path_resolves_against_the_data_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    film = Path("corpus/stisldem/VAULT/CTRY.FLM")
+    assert dataroot.resolve_data_path(film) == tmp_path.resolve() / film
+    assert dataroot.resolve_data_path(Path("captures/x")) == tmp_path.resolve() / "captures/x"
+    assert dataroot.data_path_arg(film.as_posix()) == tmp_path.resolve() / film
+
+
+def test_other_paths_resolve_to_themselves(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    for path in (Path("build/re/playone.img"), tmp_path / "corpus" / "x", Path("corpusx/a")):
+        assert dataroot.resolve_data_path(path) == path
+
+
+def test_the_override_moves_captures_too(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    frames = parity_layout.frames_path("vault-ctry")
+    assert dataroot.resolve_data_path(frames) == tmp_path.resolve() / "captures/vault-ctry/frames"
 
 
 def test_environment_overrides_the_derived_root(

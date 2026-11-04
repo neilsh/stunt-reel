@@ -11,6 +11,7 @@ pytest never resets it.  On Windows the mkdir mode shim keeps pytest's own
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -20,8 +21,25 @@ from pytest_helpers import (
     per_run_basetemp,
     prune_old_basetemps,
 )
+from stunt_reel import dataroot
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 pytest_plugins = ["tac_mock"]
+
+
+@pytest.fixture(autouse=True)
+def _no_machine_data_root(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Hide the machine's ``STUNT_DATA_ROOT``, and undo any a test's ``--data-root`` sets.
+
+    ``dataroot.use_data_root`` writes the variable for the process, so without this one test's
+    flag would become the next test's data root.
+    """
+    monkeypatch.delenv(dataroot.DATA_ENV, raising=False)
+    dataroot.data_root.cache_clear()
+    yield
+    dataroot.data_root.cache_clear()
 
 
 def pytest_configure(config: pytest.Config) -> None:

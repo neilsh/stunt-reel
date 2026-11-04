@@ -466,7 +466,7 @@ def _stored_archive(staged_repo: StagedRepo, data: bytes, slug: str = "vault-ctr
         all_bytes=len(data),
         all_sha256=hashlib.sha256(data).hexdigest(),
     )
-    publish_archive(dataroot.REPO_ROOT, data, meta, slug=slug, film=staged_repo.film.name)
+    publish_archive(dataroot.data_root(), data, meta, slug=slug, film=staged_repo.film.name)
 
 
 def test_capture_script_stages_the_stored_archive_and_records_its_hash(
@@ -541,7 +541,7 @@ def test_a_default_capture_replaces_the_films_frame_capture(
     staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module, seen = _default_run(staged_repo, monkeypatch)
-    frames = dataroot.REPO_ROOT / parity_layout.frames_path("vault-ctry")
+    frames = dataroot.data_root() / parity_layout.frames_path("vault-ctry")
     assert module.run(module.parse_args()) == 0
     assert module.run(module.parse_args()) == 0
     assert capture_store.current(frames) == frames
@@ -554,7 +554,7 @@ def test_name_overrides_the_slug_and_a_bad_one_is_refused(
 ) -> None:
     module, _seen = _default_run(staged_repo, monkeypatch, "--name", "my-ctry")
     assert module.run(module.parse_args()) == 0
-    assert (dataroot.REPO_ROOT / parity_layout.frames_path("my-ctry") / "meta.json").is_file()
+    assert (dataroot.data_root() / parity_layout.frames_path("my-ctry") / "meta.json").is_file()
     module, _seen = _default_run(staged_repo, monkeypatch, "--name", "Bad Name")
     assert module.run(module.parse_args()) == 2
 
@@ -574,7 +574,7 @@ def test_a_failed_default_capture_keeps_the_old_one_and_leaves_nothing_behind(
 ) -> None:
     module, _seen = _default_run(staged_repo, monkeypatch)
     assert module.run(module.parse_args()) == 0
-    frames = dataroot.REPO_ROOT / parity_layout.frames_path("vault-ctry")
+    frames = dataroot.data_root() / parity_layout.frames_path("vault-ctry")
     before = (frames / "meta.json").stat().st_mtime_ns
 
     def no_frames(_open: object, out_dir: Path, **_kwargs: Any) -> dict[str, Any]:

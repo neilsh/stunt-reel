@@ -139,7 +139,7 @@ def write_manifest(
 def manifest_only(film: Path, game_root: Path, slug: str, extract: Extract) -> int:
     """Write the manifest from the film's stored archive; 0, 1 when it fails, 2 when refused."""
     make = f"run: mise run make-all -- --film {film}"
-    stored = capture_store.current(dataroot.REPO_ROOT / parity_layout.archive_path(slug))
+    stored = capture_store.current(dataroot.data_root() / parity_layout.archive_path(slug))
     if stored is None:
         print(f"[make-all] no stored archive for {film}; {make}", file=sys.stderr)
         return 2
@@ -187,7 +187,7 @@ def run(
     if args.manifest_only:
         return manifest_only(film, game_root, slug, extract)
     try:
-        capture_store.check_replaceable(dataroot.REPO_ROOT / parity_layout.archive_path(slug))
+        capture_store.check_replaceable(dataroot.data_root() / parity_layout.archive_path(slug))
     except ValueError as exc:
         print(f"[make-all] {exc}", file=sys.stderr)
         return 2
@@ -228,7 +228,7 @@ def run(
             wall_seconds=round(time.monotonic() - started, 1),
             created=created.isoformat(),
         )
-        written = publish_archive(dataroot.REPO_ROOT, data, meta, slug=slug, film=film.name)
+        written = publish_archive(dataroot.data_root(), data, meta, slug=slug, film=film.name)
     except (OSError, ValueError) as exc:
         print(f"[make-all] could not store the archive: {exc}", file=sys.stderr)
         return 1

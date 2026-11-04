@@ -79,7 +79,7 @@ def _args(
 
 def _archives(slug: str = "vault-ctry") -> list[Path]:
     """The film's stored archive, as a list so a test can say there is exactly one or none."""
-    stored = capture_store.current(dataroot.REPO_ROOT / parity_layout.archive_path(slug))
+    stored = capture_store.current(dataroot.data_root() / parity_layout.archive_path(slug))
     return [] if stored is None else [stored]
 
 
@@ -214,7 +214,7 @@ def test_an_archives_directory_of_numbered_runs_is_refused_before_makeone(
     staged_repo: StagedRepo,
     game_root: Path,
 ) -> None:
-    run = dataroot.REPO_ROOT / parity_layout.archive_path("vault-ctry") / "001"
+    run = dataroot.data_root() / parity_layout.archive_path("vault-ctry") / "001"
     run.mkdir(parents=True)
     (run / "meta.json").write_text("{}", encoding="utf-8")
     launch, state = makeone_launcher(text_after=1, archive=ARCHIVE)

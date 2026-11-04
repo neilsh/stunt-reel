@@ -336,7 +336,9 @@ def preflight(
     for name in films:
         try:
             with reference_job(root, name) as job:
-                all_archive.resolve_all(job.flm, root, job.slug, link_build=all_archive.no_link)
+                all_archive.resolve_all(
+                    job.flm, REPO_ROOT, job.slug, link_build=all_archive.no_link
+                )
         except (references.ReferenceCaptureError, FilmInputError, all_archive.ArchiveError) as err:
             problems.append(str(err))
     if build_required and locked(binary_path()):
@@ -392,8 +394,8 @@ def render_film(
     one process. The film plays its archive from :func:`all_archive.resolve_all`, linked with
     the release binary as it is: the caller builds it, or was told not to.
     """
-    link_build = all_archive.link_build_in(job.root, build=False)
-    archive = all_archive.resolve_all(job.flm, job.root, job.slug, link_build=link_build)
+    link_build = all_archive.link_build_in(REPO_ROOT, build=False)
+    archive = all_archive.resolve_all(job.flm, REPO_ROOT, job.slug, link_build=link_build)
     selection = (
         ("--at-ticks", ",".join(str(tick) for tick in ticks))
         if ticks is not None

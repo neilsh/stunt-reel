@@ -66,7 +66,7 @@ def parse_args() -> argparse.Namespace:
             "new directory receiving tick_*.idx, palettes_*.json, and meta.json; one holding a "
             "capture or other files is refused, but rasters and palettes left by a run that died "
             "before meta.json are cleared first; no stored capture is replaced (default: replace the "
-            f"film's capture, {parity_layout.capture_root().as_posix()}/<film>/frames, by swap)"
+            f"film's capture, <data root>/{parity_layout.capture_root().as_posix()}/<film>/frames, by swap)"
         ),
     )
     parser.add_argument(
@@ -160,13 +160,13 @@ def run(args: argparse.Namespace) -> int:
     if args.out is not None:
         out = resolve(args.out)
         try:
-            capture_store.check_outside(out, dataroot.REPO_ROOT / parity_layout.capture_root())
+            capture_store.check_outside(out, dataroot.data_root() / parity_layout.capture_root())
         except ValueError as exc:
             print(f"[capture] {exc}", file=sys.stderr)
             return 2
         return _capture_into(args, out, film, archive, film_id)
     # The film's one capture of this kind is replaced only by a complete, successful one.
-    target = dataroot.REPO_ROOT / parity_layout.frames_path(slug)
+    target = dataroot.data_root() / parity_layout.frames_path(slug)
     try:
         capture_store.check_replaceable(target)
     except ValueError as exc:

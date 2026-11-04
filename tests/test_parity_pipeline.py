@@ -442,7 +442,11 @@ def test_preflight_names_a_missing_flm_archive_and_sidata(tmp_path: Path) -> Non
 
 
 def _intro_from_a_manifest(root: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Replaces INTRO's sibling .ALL with a matching manifest; returns the link calls made."""
+    """Replaces INTRO's sibling .ALL with a matching manifest; returns the link calls made.
+
+    The manifests are the checkout's, so *root* stands in for this checkout too.
+    """
+    monkeypatch.setattr(parity_pipeline, "REPO_ROOT", root)
     vault = root / "corpus" / "stisldem" / "VAULT"
     (vault / "INTRO.ALL").unlink()
     flm_sha256 = hashlib.sha256((vault / "INTRO.FLM").read_bytes()).hexdigest()

@@ -436,7 +436,7 @@ def _clean(confirmed: bool, parity: bool = False, keep: int = 1) -> int:
         print("\ndry run; re-run with --yes to remove them")
         return 0
 
-    reference = REPO_ROOT / parity_layout.capture_root()
+    reference = REPO_ROOT / parity_layout.LEGACY_CAPTURE_LINK
     restore = is_link(reference)
     if restore:
         remove_link(reference)
@@ -446,7 +446,7 @@ def _clean(confirmed: bool, parity: bool = False, keep: int = 1) -> int:
     for path in files:
         path.unlink(missing_ok=True)
     if restore:
-        create_link(reference, shared_target(parity_layout.capture_root().as_posix()))
+        create_link(reference, shared_target(parity_layout.LEGACY_CAPTURE_LINK.as_posix()))
     print("\nremoved; the shared data root is untouched")
     return 0
 

@@ -182,10 +182,10 @@ def test_capture_runs_the_films_own_build_by_default(tmp_path: Path) -> None:
     assert "--game-root" not in command
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    """A data root of the test's own, so nothing reads the machine's (``data_root`` is cached)."""
-    root = tmp_path / "data"
+    """The test's directory as its data root too, so its captures are the ones a stage reads."""
+    root = tmp_path
     monkeypatch.setenv(dataroot.DATA_ENV, str(root))
     dataroot.data_root.cache_clear()
     yield root.resolve()

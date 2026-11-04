@@ -59,7 +59,7 @@ def parse_args() -> argparse.Namespace:
         help=(
             "new directory receiving capture.avi and meta.json; an existing non-empty one is "
             "refused and no stored capture is replaced (default: replace the film's capture, "
-            f"{parity_layout.capture_root().as_posix()}/<film>/video, by swap)"
+            f"<data root>/{parity_layout.capture_root().as_posix()}/<film>/video, by swap)"
         ),
     )
     parser.add_argument(
@@ -129,13 +129,13 @@ def run(args: argparse.Namespace) -> int:
     if args.out is not None:
         out = resolve(args.out)
         try:
-            capture_store.check_outside(out, dataroot.REPO_ROOT / parity_layout.capture_root())
+            capture_store.check_outside(out, dataroot.data_root() / parity_layout.capture_root())
         except ValueError as exc:
             print(f"[capture-video] {exc}", file=sys.stderr)
             return 2
         return _record_into(args, out, film, archive, film_id)
     # The film's one capture of this kind is replaced only by a complete, successful one.
-    target = dataroot.REPO_ROOT / parity_layout.video_path(slug)
+    target = dataroot.data_root() / parity_layout.video_path(slug)
     try:
         capture_store.check_replaceable(target)
     except ValueError as exc:

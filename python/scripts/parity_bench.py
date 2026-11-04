@@ -37,7 +37,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from stunt_reel import capture_store, parity_layout, references
+from stunt_reel import capture_store, dataroot, parity_layout, references
 from stunt_reel.bench.errors import (
     TABLE_HEADER,
     batch_row,
@@ -53,6 +53,14 @@ from stunt_reel.dataroot import REPO_ROOT, ensure_links_or_report
 
 DEFAULT_SEED = 1
 CATEGORIES = REPO_ROOT / "research" / "parity" / "error-categories.toml"
+_DATA_ROOT_HELP = "read the corpus and captures from DIR, as STUNT_DATA_ROOT=DIR would"
+
+
+def _data_root(args: argparse.Namespace) -> Path:
+    """The data root a subcommand reads: ``--data-root`` when given, else the configured one."""
+    if args.data_root is None:
+        return dataroot.data_root()
+    return dataroot.use_data_root(Path(args.data_root))
 
 
 def parse_plant(text: str) -> tuple[Fault, range]:
@@ -93,7 +101,7 @@ def _print_rows(document: dict[str, Any]) -> None:
 def run(args: argparse.Namespace) -> int:
     """Run the metric bench, write ``bench.json``, and print the results."""
     film = args.film
-    root = Path(args.data_root).resolve()
+    root = _data_root(args)
     recapture = args.recapture
     render = args.render or REPO_ROOT / parity_layout.render_dir(film)
     report = args.report or REPO_ROOT / parity_layout.report_dir(film) / "report.json"
@@ -159,7 +167,7 @@ def _revision() -> str:
 def errors_make(args: argparse.Namespace) -> int:
     """Create sheets and grading briefs, optionally including calibration controls and faults."""
     film = args.film
-    root = Path(args.data_root).resolve()
+    root = _data_root(args)
     recapture = None
     with contextlib.ExitStack() as stack:
         if args.batch:
@@ -248,7 +256,7 @@ def errors_score(args: argparse.Namespace) -> int:
 
 def errors_example(args: argparse.Namespace) -> int:
     """Write a category example sheet for the requested film tick."""
-    root = Path(args.data_root).resolve()
+    root = _data_root(args)
     with contextlib.ExitStack() as stack:
         if args.batch:
             reference = _batch_capture(root, args.film)
@@ -292,7 +300,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     run_p.add_argument("--seed", type=int, default=DEFAULT_SEED)
     run_p.add_argument("--floor-render", type=Path, default=None)
     run_p.add_argument("--out", type=Path, default=None)
-    run_p.add_argument("--data-root", type=Path, default=REPO_ROOT)
+    run_p.add_argument("--data-root", type=Path, default=None, help=_DATA_ROOT_HELP)
     run_p.set_defaults(handler=run)
     plant_p = sub.add_parser("plant", help="write known faults into a copy of a render")
     plant_p.add_argument("--render", type=Path, required=True)
@@ -316,7 +324,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     make_p.add_argument("--render", type=Path, default=None)
     make_p.add_argument("--report", type=Path, default=None)
     make_p.add_argument("--out", type=Path, default=None)
-    make_p.add_argument("--data-root", type=Path, default=REPO_ROOT)
+    make_p.add_argument("--data-root", type=Path, default=None, help=_DATA_ROOT_HELP)
     make_p.add_argument(
         "--batch", action="store_true", help="the batch survey's capture, render and report"
     )
@@ -341,7 +349,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     example_p.add_argument("--tick", type=int, required=True)
     example_p.add_argument("--category", required=True)
     example_p.add_argument("--render", type=Path, default=None)
-    example_p.add_argument("--data-root", type=Path, default=REPO_ROOT)
+    example_p.add_argument("--data-root", type=Path, default=None, help=_DATA_ROOT_HELP)
     example_p.add_argument(
         "--batch", action="store_true", help="the batch survey's capture, render and report"
     )
@@ -357,7 +365,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if (
         args.command in ("run", "errors-make", "errors-example")
-        and Path(args.data_root).resolve() == REPO_ROOT
+        and args.data_root is None
         and not ensure_links_or_report("parity_bench")
     ):
         return 2
