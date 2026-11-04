@@ -63,11 +63,9 @@ description = "Play a film in PLAYONE.EXE on dosbox-automation (mise run play --
 run = "uv run python python/scripts/play.py"
 
 [tasks.init]
-description = "Link the shared data root and the cached Python environment into this worktree, then sync it (mise run init -- --migrate adopts an existing corpus)"
-# Plain python, not "uv run": the script links .cache and .venv first and only then
-# runs uv sync, so the environment is hardlinked out of the shared cache rather than
-# copied; uv run would create one in the checkout before the link exists (ADR 0019).
-# PYTHONPATH names the package source, which is all the linker imports.
+description = "Seed target/, set core.hooksPath and sync .venv now, rather than at the first task; links nothing (mise run init -- --migrate moves an in-checkout corpus into the data root)"
+# Plain python, not "uv run": init runs uv sync itself, and works before any environment
+# exists. PYTHONPATH names the package source, which is all it imports.
 # STUNT_CARGO_HOME is the cache path the seed judges donors by: the one cargo tasks use.
 run = "python python/scripts/worktree_init.py init"
 env = { PYTHONPATH = "{{config_root}}/python", STUNT_CARGO_HOME = "{{vars.cargo_home}}" }

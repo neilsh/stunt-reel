@@ -8,10 +8,13 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from stunt_reel import dataroot
 from stunt_reel.dataroot import cache_root
 from stunt_reel.target_seed import SeedOutcome
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import pytest
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
@@ -162,3 +165,48 @@ def test_ensure_reports_what_it_changed(
         "  + core.hooksPath -> .githooks",
         "  + target/ seeded from E:\a",
     ]
+
+
+def _bare_init(monkeypatch: pytest.MonkeyPatch, checkout: Path) -> list[str]:
+    """Point init at *checkout* with ensure and uv stubbed; returns the calls made."""
+    calls: list[str] = []
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", checkout)
+    monkeypatch.setattr(dataroot, "REPO_ROOT", checkout)
+    monkeypatch.setenv(dataroot.DATA_ENV, str(checkout.parent / "data"))
+    dataroot.data_root.cache_clear()
+
+    def record(name: str) -> Callable[..., int]:
+        def call(*_args: object, **_kwargs: object) -> int:
+            calls.append(name)
+            return 0
+
+        return call
+
+    monkeypatch.setattr(worktree_init, "_ensure", record("ensure"))
+    monkeypatch.setattr(worktree_init, "_uv_sync", record("sync"))
+    return calls
+
+
+def test_init_reports_legacy_links_and_keeps_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An old linked worktree keeps its links until reap unlinks them (ADR 0018, ADR 0033)."""
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    dataroot.create_link(checkout / ".cache", shared)
+    calls = _bare_init(monkeypatch, checkout)
+    assert worktree_init._init(migrate=False) == 0
+    assert calls == ["ensure", "sync"]
+    assert dataroot.is_link(checkout / ".cache")
+    assert "  ~ .cache is a link from the old layout; reap unlinks it" in capsys.readouterr().out
+    dataroot.remove_link(checkout / ".cache")
+
+
+def test_init_creates_no_links(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    checkout = tmp_path / "checkout"
+    (checkout / "corpus").mkdir(parents=True)
+    _bare_init(monkeypatch, checkout)
+    assert worktree_init._init(migrate=False) == 0
+    assert worktree_init._reparse_points(checkout) == []

@@ -4,16 +4,14 @@ The original game files (``corpus/``) and the captures are gitignored, so each
 checkout would otherwise need its own copy.  They live once per machine, outside
 every checkout: ``<parent-of-primary>/<repo-name>.data`` unless ``STUNT_DATA_ROOT``
 names another place.  Nothing this project runs writes ``corpus/`` (ADR 0022), and a new
-capture of a film replaces its old one by swap (ADR 0028).  ``mise run init`` links them in, and ``ensure_links`` links
-them in again wherever the corpus is read, so a checkout made by any tool works on
-first use rather than reading an empty placeholder.  ``ensure_links`` is the one
-policy for those links: it returns one outcome per target, and its callers only
-render them.
+capture of a film replaces its old one by swap (ADR 0028).  Code reads both through
+:func:`data_root`, :func:`corpus_root` and :func:`resolve_data_path`, so a checkout made
+by any tool works on first use with no link in it (ADR 0033).
 
-The shared tool cache works the same way, and so does the Python environment: a
-worktree's ``.venv`` is a junction at ``<cache>/venvs/<checkout>-<digest>``, because uv
-can only hardlink an environment out of the cache when both sit on one volume, and
-a checkout usually does not (ADR 0019).
+Older worktrees still hold the junctions an earlier ``mise run init`` made, including a
+``.venv`` parked at ``<cache>/venvs/<checkout>-<digest>`` (ADR 0019, superseded).
+``LINK_TARGETS``, ``ensure_links`` and the environment sweep stay so that ``reap`` can
+recognise and unlink them (ADR 0018).
 """
 
 from __future__ import annotations
@@ -48,9 +46,7 @@ __all__ = [
     "data_path_arg",
     "data_root",
     "discard_env",
-    "ensure_cache_link",
     "ensure_links",
-    "ensure_venv_link",
     "env_marker",
     "env_root",
     "env_target",
@@ -220,52 +216,6 @@ def cache_root() -> Path:
     return (primary if primary is not None else REPO_ROOT) / CACHE_DIRNAME
 
 
-def ensure_cache_link() -> LinkOutcome:
-    """Make this checkout's .cache resolve to the primary checkout's tool cache.
-
-    A fresh worktree runs uv sync before mise run init, so a cache that
-    directory collected is moved into the shared one before the link replaces
-    it.  Returns the outcome init renders: ok when the link was already correct,
-    repaired when this call made it.
-    """
-    target = cache_root()
-    target.mkdir(parents=True, exist_ok=True)
-    (target / "tmp").mkdir(exist_ok=True)
-    link = REPO_ROOT / CACHE_DIRNAME
-    if link == target:
-        return LinkOutcome(CACHE_DIRNAME, "ok", target)
-    if is_link(link):
-        if link_points_at(link, target):
-            return LinkOutcome(CACHE_DIRNAME, "ok", target)
-        remove_link(link)
-    elif link.exists():
-        if link.is_dir():
-            _adopt_partial_cache(link, target)
-            link.rmdir()
-        else:
-            link.unlink()
-    create_link(link, target)
-    return LinkOutcome(CACHE_DIRNAME, "repaired", target)
-
-
-def _adopt_partial_cache(partial: Path, target: Path) -> None:
-    """Move a not-yet-linked cache's entries into the shared cache; the shared copy wins."""
-    for entry in partial.iterdir():
-        destination = target / entry.name
-        if destination.exists():
-            _discard(entry)
-            continue
-        shutil.move(str(entry), str(destination))
-
-
-def _discard(path: Path) -> None:
-    """Remove one cache entry: a directory tree, a link, or a file."""
-    if is_link(path) or path.is_file():
-        path.unlink()
-    else:
-        shutil.rmtree(path)
-
-
 def env_root() -> Path:
     """The shared cache's directory of per-checkout Python environments."""
     return cache_root() / ENV_DIRNAME
@@ -280,48 +230,6 @@ def env_target(checkout: Path) -> Path:
 def env_marker(target: Path) -> Path:
     """The file beside environment *target* naming the checkout it serves."""
     return target.with_name(target.name + ENV_MARKER)
-
-
-def ensure_venv_link() -> str | None:
-    """Point this checkout's ``.venv`` at its environment inside the shared cache.
-
-    A worktree usually sits on another volume from the primary checkout, so uv
-    cannot hardlink its packages out of the shared cache: a per-checkout ``.venv``
-    copies them instead -- 68 MiB, 3.1 s at every fresh ``mise run init``.  The
-    environment stays per checkout, because uv installs this checkout's project into
-    it, but it can live in the cache, with ``.venv`` a junction at
-    ``<cache>/venvs/<checkout>-<digest>`` (ADR 0019).
-
-    Returns the line ``init`` prints.  The primary checkout, whose ``.venv`` already
-    sits beside the cache, and a checkout outside git, which owns no shared cache,
-    return ``None``.
-    """
-    primary = primary_checkout()
-    if primary is None or primary == REPO_ROOT:
-        return None
-    target = env_target(REPO_ROOT)
-    target.mkdir(parents=True, exist_ok=True)
-    marker = env_marker(target)
-    checkout = str(REPO_ROOT)
-    if _read_marker(marker) != checkout:
-        marker.write_text(checkout + "\n", encoding="utf-8")
-    link = REPO_ROOT / VENV_DIRNAME
-    discarded = False
-    if is_link(link):
-        if link_points_at(link, target):
-            return "= .venv"
-        remove_link(link)
-    elif link.is_dir():
-        # A directory here is the copy uv made before this link existed; its absolute
-        # paths cannot be moved into the cache, so it is disposable, not adopted.
-        shutil.rmtree(link)
-        discarded = True
-    elif link.exists():
-        link.unlink()
-        discarded = True
-    create_link(link, target)
-    suffix = " (per-checkout copy discarded)" if discarded else ""
-    return f"+ .venv -> {target}{suffix}"
 
 
 def discard_env(checkout: Path) -> bool:

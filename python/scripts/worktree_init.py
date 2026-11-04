@@ -1,11 +1,10 @@
 """Prepare or clean one git worktree.
 
-``mise run init`` links the machine-wide data root into this checkout, so the
-relative ``corpus/`` and capture paths keep working in every
-worktree, and links ``.cache`` to the primary checkout's shared tool
-cache (ADR 0013).  It parks this checkout's ``.venv`` inside that cache too
-(ADR 0019) and then runs ``uv sync``, so the environment is hardlinked out of the
-cache instead of copied into the checkout, which is 3 s per worktree.  ``mise run
+A worktree needs no provisioning (ADR 0033): code reads the data root directly, mise
+names the shared caches by absolute path, and ``ensure``, a dependency of every task
+that builds Rust, seeds an empty ``target/`` and sets ``core.hooksPath`` under a lock.
+``mise run init`` does the same eagerly with a full report, runs ``uv sync``, and names
+any link an older ``init`` left, which ``reap`` unlinks.  ``mise run
 clean`` reports the per-worktree build outputs and
 removes them only with ``--yes``; the shared cache is reported, never removed.
 ``clean -- --parity --keep N`` narrows the same command to the parity render trees,
@@ -14,8 +13,8 @@ need selective rotation.  ``reap`` removes merged worktrees, including branches 
 request was squash-merged (found with ``gh``): it unlinks every link
 into the data root, proves none remain, and only then lets git delete the checkout,
 because git's worktree removal has recursed through Windows junctions on some builds.
-``init`` (and ``seed`` on its own) also clones another checkout's built ``target/`` into an
-empty one on a ReFS volume, so the first build compiles only the workspace crates (ADR 0030).
+The seed clones another checkout's built ``target/`` into an empty one on a ReFS volume, so
+the first build compiles only the workspace crates (ADR 0030).
 """
 
 from __future__ import annotations
@@ -34,26 +33,21 @@ from typing import TYPE_CHECKING
 
 from stunt_reel import parity_layout
 from stunt_reel.dataroot import (
+    CACHE_DIRNAME,
     DATA_ENV,
     LINK_TARGETS,
     REPO_ROOT,
     VENV_DIRNAME,
-    LinkOutcome,
     SharedDataError,
     cache_root,
     convert_layout,
-    create_link,
     data_root,
     discard_env,
-    ensure_cache_link,
-    ensure_links,
-    ensure_venv_link,
     env_target,
     is_link,
     is_placeholder,
     orphan_envs,
     remove_link,
-    shared_target,
     sweep_orphan_envs,
 )
 from stunt_reel.target_seed import SeedOutcome, exclusive, needs_seed, seed
@@ -95,63 +89,20 @@ def _migrate(relative: str, target: Path) -> None:
     print(f"  > {relative} -> {target}")
 
 
-def _uv_venv(environment: Path) -> int:
-    """Seed a linked environment, which uv will not create through a link itself.
-
-    ``uv sync`` refuses a project environment that exists but holds no interpreter,
-    and the junction cannot point at a directory that does not exist yet, so the
-    first init of a worktree asks ``uv venv`` for the interpreter before syncing.
-    """
-    if (environment / "pyvenv.cfg").is_file():
-        return 0
+def _uv_sync() -> int:
+    """Run ``uv sync`` for this checkout into its own ``.venv`` (ADR 0033)."""
     uv = shutil.which("uv")
     if uv is None:
         print("  ! uv is not on PATH; run this through mise")
         return 1
-    result = subprocess.run(  # noqa: S603
-        [uv, "venv", "--allow-existing", str(environment)],
-        check=False,
-    )
-    return int(result.returncode)
-
-
-def _uv_sync(environment: Path | None) -> int:
-    """Run ``uv sync`` for this checkout, installing into *environment* when it is linked.
-
-    The links must exist first: uv resolves its cache through ``.cache``, and an
-    environment created before the link would be a copy on the checkout's own volume
-    (ADR 0019).
-    """
-    uv = shutil.which("uv")
-    if uv is None:
-        print("  ! uv is not on PATH; run this through mise")
-        return 1
-    child = dict(os.environ)
-    if environment is not None:
-        child["UV_PROJECT_ENVIRONMENT"] = str(environment)
     print("  uv sync --locked --all-groups")
     result = subprocess.run(  # noqa: S603
         [uv, "sync", "--locked", "--all-groups"],
-        env=child,
         check=False,
     )
     if result.returncode != 0:
         print(f"  ! uv sync failed (exit {result.returncode})")
     return int(result.returncode)
-
-
-def _render_link(outcome: LinkOutcome) -> list[str]:
-    """The lines ``init`` prints for one link outcome, indentation included."""
-    if outcome.status == "refused":
-        return [f"  ! {outcome.reason or outcome.relative}"]
-    if outcome.status == "created-empty":
-        return [
-            f"  ! {outcome.target} was missing; created it empty",
-            f"  + {outcome.relative} -> {outcome.target}",
-        ]
-    if outcome.status == "repaired":
-        return [f"  + {outcome.relative} -> {outcome.target}"]
-    return [f"  = {outcome.relative}"]
 
 
 #: The committed hooks directory ``init`` points ``core.hooksPath`` at, relative to the worktree.
@@ -187,16 +138,24 @@ def ensure_hooks_path(repo: Path) -> list[str]:
     return lines
 
 
+#: The checkout paths the old layout linked (ADR 0008, ADR 0013, ADR 0019); init reports them.
+_LEGACY_LINKS: tuple[str, ...] = (
+    *(relative for _, relative in LINK_TARGETS),
+    CACHE_DIRNAME,
+    VENV_DIRNAME,
+)
+
+
 def _init(migrate: bool) -> int:
+    """``ensure`` with its full report, then ``uv sync``; links nothing (ADR 0033).
+
+    ``--migrate`` still moves an in-checkout corpus into the data root, which code reads
+    directly now. Links an older ``init`` made are reported and left for ``reap``.
+    """
     root = data_root()
     source = DATA_ENV if DATA_ENV in os.environ else "derived"
     print(f"worktree   {REPO_ROOT}")
     print(f"data root  {root} ({source})")
-    try:
-        for line in ensure_hooks_path(REPO_ROOT):
-            print(line)
-    except SharedDataError as err:
-        print(f"  ! hooks: {err}")
     if migrate:
         if root != REPO_ROOT and root.is_dir():
             try:
@@ -207,52 +166,13 @@ def _init(migrate: bool) -> int:
                 return 1
         for shared, relative in LINK_TARGETS:
             _migrate(relative, root / shared)
-    if root != REPO_ROOT:
-        # A fresh machine has no data root yet, and provisioning it is init's job:
-        # that is why ensure_links, the read path, refuses one that is missing.
-        root.mkdir(parents=True, exist_ok=True)
-    try:
-        outcomes = ensure_links()
-    except SharedDataError as err:
-        print(f"  ! {err}")
-        print(
-            "    the target is outside this session's writable workspace; "
-            "provision the worktree from a session with wider file access "
-            "(see docs/harness-setup.md)",
-        )
-        return 1
-
-    # The links come before the sync, so uv hardlinks its packages out of the shared
-    # cache instead of copying them, and so the environment is not born in the checkout.
-    venv: str | None = None
-    try:
-        print(f"  {ensure_cache_link()}")
-        venv = ensure_venv_link()
-    except (SharedDataError, OSError) as err:
-        print(f"  ! .cache: {err}")
-    if venv is not None:
-        print(f"  {venv}")
-    stale = sweep_orphan_envs()
-    if stale:
-        print(f"  - {len(stale)} environment(s) whose checkout is gone")
-    print(_seed_target())
-    environment = env_target(REPO_ROOT) if venv is not None else None
-    if environment is not None and _uv_venv(environment):
-        return 1
-    code = _uv_sync(environment)
+    _ensure(report=True)
+    code = _uv_sync()
     if code:
         return code
-
-    problems = 0
-    for outcome in outcomes:
-        if outcome.status == "refused":
-            problems += 1
-        for line in _render_link(outcome):
-            print(line)
-
-    if problems:
-        print(f"\n{problems} path(s) unresolved; see corpus/README.md for the archive layout")
-        return 1
+    for relative in _LEGACY_LINKS:
+        if is_link(REPO_ROOT / relative):
+            print(f"  ~ {relative} is a link from the old layout; reap unlinks it")
     return 0
 
 
@@ -326,21 +246,25 @@ def _reports(lines: list[str]) -> list[str]:
     return [line for line in lines if line.startswith(("  +", "  !"))]
 
 
-def _ensure() -> int:
+def _ensure(*, report: bool = False) -> int:
     """Seed an empty target/ and set ``core.hooksPath``; quiet when neither needed doing.
 
     Every task that builds Rust depends on this (ADR 0033), so it is the step a new worktree
-    used to need ``init`` for. A failed seed is a slower first build, not an error, so it
-    returns 0 whatever happened.
+    used to need ``init`` for; *report* prints every line, as ``init`` does. A failed seed is
+    a slower first build, not an error, so it returns 0 whatever happened.
     """
     target = REPO_ROOT / "target"
     # The first holder seeds; the others wait, then find target/ built.
     with exclusive(target / ENSURE_LOCK):
         hooks = ensure_hooks_path(REPO_ROOT)
         # Only a hooks path this call set, or failed to set, is news; the rest is init's report.
-        lines = hooks if any(line.startswith(("  +", "  ! could not")) for line in hooks) else []
+        changed = any(line.startswith(("  +", "  ! could not")) for line in hooks)
+        lines = hooks if report or changed else []
         if needs_seed(target):
-            lines += _reports(_seed_target().splitlines())
+            seeded = _seed_target().splitlines()
+            lines += seeded if report else _reports(seeded)
+        elif report:
+            lines.append("  = target/ already built")
     for line in lines:
         print(line)
     return 0
@@ -465,17 +389,16 @@ def _clean(confirmed: bool, parity: bool = False, keep: int = 1) -> int:
         print("\ndry run; re-run with --yes to remove them")
         return 0
 
+    # An old worktree's capture link sits inside build/; unlink it first, so removing build/
+    # never reaches the data root through it. Nothing reads through it any more (ADR 0033).
     reference = REPO_ROOT / parity_layout.LEGACY_CAPTURE_LINK
-    restore = is_link(reference)
-    if restore:
+    if is_link(reference):
         remove_link(reference)
     for path in targets:
         if path.exists() and not is_link(path):
             _remove_tree(path)
     for path in files:
         path.unlink(missing_ok=True)
-    if restore:
-        create_link(reference, shared_target(parity_layout.LEGACY_CAPTURE_LINK.as_posix()))
     print("\nremoved; the shared data root is untouched")
     return 0
 

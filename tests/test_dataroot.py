@@ -232,74 +232,12 @@ def test_shared_target_derives_both_names_from_the_link_table(
         dataroot.shared_target("corpus/elsewhere")
 
 
-def test_cache_link_points_a_worktree_at_the_primary(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    primary = _primary(tmp_path)
-    worktree = _worktree(monkeypatch, primary)
-    outcome = dataroot.ensure_cache_link()
-    assert (outcome.relative, outcome.status, outcome.target) == (
-        ".cache",
-        "repaired",
-        primary / ".cache",
-    )
-    assert dataroot.cache_root() == primary / ".cache"
-    assert dataroot.link_points_at(worktree / ".cache", primary / ".cache")
-    assert dataroot.ensure_cache_link().status == "ok"
-
-
-def test_cache_link_is_a_real_directory_in_the_primary(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    primary = _checkout(monkeypatch, _primary(tmp_path))
-    outcome = dataroot.ensure_cache_link()
-    assert (outcome.relative, outcome.status) == (".cache", "ok")
-    assert (primary / ".cache").is_dir()
-    assert not dataroot.is_link(primary / ".cache")
-
-
-def test_env_link_parks_a_worktrees_environment_in_the_cache(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # A checkout's volume usually differs from the primary's, so uv can only hardlink
-    # the packages out of the cache when the environment itself sits in the cache.
-    primary = _primary(tmp_path)
-    worktree = _worktree(monkeypatch, primary)
+def _legacy_env(worktree: Path) -> Path:
+    """An environment an older init parked in the cache for *worktree*, with its marker."""
     target = dataroot.env_target(worktree)
-    assert dataroot.ensure_venv_link() == f"+ .venv -> {target}"
-    assert target.parent == primary / ".cache" / dataroot.ENV_DIRNAME
-    assert dataroot.link_points_at(worktree / ".venv", target)
-    marker = dataroot.env_marker(target)
-    assert marker.parent == target.parent
-    assert marker.read_text(encoding="utf-8").strip() == str(worktree)
-    assert dataroot.ensure_venv_link() == "= .venv"
-
-
-def test_env_link_discards_a_per_checkout_copy(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # A worktree that synced before running init holds a copy on its own volume; its
-    # absolute paths cannot move, so init throws the copy away instead of adopting it.
-    primary = _primary(tmp_path)
-    worktree = _worktree(monkeypatch, primary)
-    copy = worktree / ".venv"
-    (copy / "Lib" / "site-packages").mkdir(parents=True)
-    (copy / "pyvenv.cfg").write_text("home = C:/Python311\n", encoding="utf-8")
-    line = dataroot.ensure_venv_link()
-    assert line is not None
-    assert line.endswith("(per-checkout copy discarded)")
-    assert dataroot.link_points_at(copy, dataroot.env_target(worktree))
-    assert not (dataroot.env_target(worktree) / "pyvenv.cfg").exists()
-
-
-def test_env_link_leaves_the_primary_checkout_alone(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # The primary's .venv already sits beside the cache and needs no junction.
-    primary = _checkout(monkeypatch, _primary(tmp_path))
-    (primary / ".venv").mkdir()
-    assert dataroot.ensure_venv_link() is None
-    assert not dataroot.is_link(primary / ".venv")
+    target.mkdir(parents=True)
+    dataroot.env_marker(target).write_text(f"{worktree}\n", encoding="utf-8")
+    return target
 
 
 def test_env_target_is_stable_and_per_checkout(
@@ -318,8 +256,7 @@ def test_orphan_envs_are_the_ones_whose_checkout_is_gone(
 ) -> None:
     primary = _primary(tmp_path)
     worktree = _worktree(monkeypatch, primary)
-    dataroot.ensure_venv_link()
-    target = dataroot.env_target(worktree)
+    target = _legacy_env(worktree)
     assert dataroot.orphan_envs() == []
     shutil.rmtree(worktree)
     _checkout(monkeypatch, primary)
@@ -337,8 +274,7 @@ def test_env_marker_survives_uv_replacing_the_environment(
     # swept the live environment as an orphan.
     primary = _primary(tmp_path)
     worktree = _worktree(monkeypatch, primary)
-    dataroot.ensure_venv_link()
-    target = dataroot.env_target(worktree)
+    target = _legacy_env(worktree)
     shutil.rmtree(target)
     target.mkdir()
     _checkout(monkeypatch, primary)
@@ -374,19 +310,6 @@ def test_an_unreadable_marker_is_an_unknown_owner(
     assert unknown.is_dir()
 
 
-def test_env_link_rewrites_an_undecodable_marker(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # init links .venv before it sweeps, so a garbled marker of its own must not stop it.
-    primary = _primary(tmp_path)
-    worktree = _worktree(monkeypatch, primary)
-    marker = dataroot.env_marker(dataroot.env_target(worktree))
-    marker.parent.mkdir(parents=True)
-    marker.write_bytes(b"\xff\xfe\x80")
-    assert dataroot.ensure_venv_link() is not None
-    assert marker.read_text(encoding="utf-8").strip() == str(worktree)
-
-
 def test_a_marker_inside_the_environment_still_names_its_checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -417,21 +340,6 @@ def test_a_marker_without_its_environment_is_swept(
     marker.write_text(str(gone), encoding="utf-8")
     assert dataroot.discard_env(gone) is False
     assert not marker.exists()
-
-
-def test_cache_link_adopts_a_cache_made_before_the_link(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # The first uv sync of a worktree runs before mise run init links the cache.
-    primary = _primary(tmp_path)
-    worktree = _worktree(monkeypatch, primary)
-    partial = worktree / ".cache" / "uv"
-    partial.mkdir(parents=True)
-    (partial / "artifact").write_bytes(b"cache")
-    outcome = dataroot.ensure_cache_link()
-    assert (outcome.status, outcome.target) == ("repaired", primary / ".cache")
-    assert (primary / ".cache" / "uv" / "artifact").read_bytes() == b"cache"
-    assert dataroot.link_points_at(worktree / ".cache", primary / ".cache")
 
 
 def _old_layout(root: Path) -> None:
