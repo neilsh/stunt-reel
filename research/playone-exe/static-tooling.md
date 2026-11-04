@@ -32,7 +32,7 @@ The trial record (timings, the Windows refusal, the load-image attestation) is o
 
 One instruction has several names. Convert to the image offset before comparing addresses from different sources; a breakpoint copied without converting lands on the wrong bytes ([`capture.md`](capture.md) section 2).
 
-| Coordinate system | Image offset `0x995C` (ground handler) | Conversion from image offset | Where it's used |
+| Coordinate system | Image offset `0x995C` (`GVPOLY` handler) | Conversion from image offset | Where it's used |
 |---|---|---|---|
 | Image offset | `0x995C` | — | All of `research/playone-exe/` unless stated otherwise |
 | Notebook `CS = 0x0F17` | `0x2A2C` | `- 0x6F30` | Older notes, e.g. the `CS:0x1316` dispatch-table address in [`sod-vm.md`](sod-vm.md) |

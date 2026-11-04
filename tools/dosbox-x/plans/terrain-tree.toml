@@ -1,0 +1,14 @@
+# #65: one dump of the segment that holds PLAYONE's scenery tree (SS at the terrain routine
+# 0xBF23, runtime 0x2AAA under DOSBox-X, unpatched) and of the work segment's anchor table, to
+# walk every ground leaf (node type 14) offline. The lin captures are valid only for that build
+# and emulator.
+[run]
+stop_tick = 400
+
+[[probe]]
+name = "tree-300"
+kind = "break"
+at = 0xBF23
+arm = { tick = 300 }
+hits = 1
+capture = ["lin:0x2AAA0:0x10000", "lin:0x1DF80:0x10000"]

@@ -19,7 +19,7 @@ Method, for every section below: a throwaway script (not committed) parsed all 2
 
 Every unmatched chunk has an id whose high byte no shipped archive uses as its `res_index` (`0x1D`-`0x1F` beyond `FASTSPR`, `0x5B`-`0x7E`, `0xC8`-`0xCC`), apart from 117 under `0xC0`, 107 under `0xC1`, 387 under `0xC5` and 14 under `0xC3`. The first group is the community's add-on shapes and sounds; the second is most likely sound data from other releases or add-on sound packs, unchecked. No chunk is a transformed resource: when `MAKEONE` includes a shipped resource it copies it unchanged.
 
-The two palette chunks, `0x801E` (48 bytes) and `0x8042` (720 bytes), are items `0x1E` and `0x42` of `SPRITES.RES`, whose `res_index` is `0x80`. The ground scene records found in `CTRY.ALL` ([`../formats/all.md`](../formats/all.md) § 3.6) sit inside copied shape chunks.
+The two palette chunks, `0x801E` (48 bytes) and `0x8042` (720 bytes), are items `0x1E` and `0x42` of `SPRITES.RES`, whose `res_index` is `0x80`. The `GVPOLY` records once read as ground scene records in `CTRY.ALL` ([`../formats/all.md`](../formats/all.md) § 3.6) sit inside copied shape chunks.
 
 ## 2. The Chunk Id
 
