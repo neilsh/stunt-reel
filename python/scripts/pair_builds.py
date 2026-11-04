@@ -87,7 +87,8 @@ def _content(pairing: Pairing, offset: int, mapped: int) -> str:
     left = pairing.left.data[lbase + offset : lbase + offset + CONTENT_BYTES]
     right = pairing.right.data[rbase + mapped : rbase + mapped + CONTENT_BYTES]
     same = next((i for i, (a, b) in enumerate(zip(left, right, strict=False)) if a != b), None)
-    return f"{CONTENT_BYTES if same is None else same}/{CONTENT_BYTES} bytes equal"
+    compared = min(len(left), len(right))  # shorter near the end of an image
+    return f"{compared if same is None else same}/{CONTENT_BYTES} bytes equal"
 
 
 def _search(pairing: Pairing, offset: int) -> str:
