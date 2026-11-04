@@ -25,6 +25,14 @@ Nothing here is a fact about Stunt Island.
   current `HEAD`, commits only on its own branch, and at most two writers plus the Lead work
   at once; the Lead integrates in the same session, in dependency order, with the full gate at
   the tip. The contract is [the retro-hardening plan](process/plans/retro-hardening-2026-10-25.md).
+* **Subagents take the cheapest model that does the job; reviews take the strongest.** Surveys,
+  mapping tables and mechanical edits go to the smallest model first (Haiku), then a mid-tier one
+  (Sonnet) when the result is thin. Any review subagent (a standards or spec axis, a whole-branch
+  review before a PR) runs on the most capable model: on #160 a Sonnet review missed four real
+  bugs that an Opus review then found, among them a preflight that built despite `--no-build`.
+* **Glob and search from a named folder.** Claude Code's Glob ignores `.gitignore` and `.ignore`,
+  so from the root it walks every worktree under `.claude/worktrees/` (about 200,000 files each
+  through their data-root links) and can time out. Pass `path`, or `ls` the root.
 * No harness enforces any of this for you: `mise.toml` and `gate.py` enforce the gate, and the
   rest is reviewed.
 
