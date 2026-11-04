@@ -185,7 +185,7 @@ minversion = "8.0"
 addopts = "-ra -q --strict-markers --strict-config"
 filterwarnings = ["error"]
 testpaths = ["tests"]
-pythonpath = ["python"]
+pythonpath = ["python", "python/scripts"]
 markers = [
     "windows: behaves differently on Windows; the pull-request Windows job runs only these (check-windows-smoke)",
 ]
