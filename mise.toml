@@ -173,7 +173,7 @@ description = "Run a breakpoint plan on DOSBox-X's debugger (mise run debug-x --
 run = "uv run python python/scripts/debug_x.py"
 
 [tasks.gvpoly-stream]
-description = "List the GVPOLY polygons in a debug-x JSONL by object and colour (mise run gvpoly-stream -- <jsonl> [--handlers 0x995C,0x9A24] [--json out.json])"
+description = "List the GVPOLY polygons in a debug-x JSONL by object and ramp base (mise run gvpoly-stream -- <jsonl> [--handlers 0x995C,0x9A24] [--json out.json])"
 run = "uv run python python/scripts/gvpoly_stream.py"
 
 [tasks.pair-builds]

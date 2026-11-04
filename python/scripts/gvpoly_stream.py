@@ -1,4 +1,4 @@
-"""List the `GVPOLY` polygons in a `mise run debug-x` JSONL, by object and colour.
+"""List the `GVPOLY` polygons in a `mise run debug-x` JSONL, by object and ramp base.
 
 `mise run gvpoly-stream -- <jsonl> [--handlers 0x995C,0x9A24] [--json out.json]` decodes the
 `mem:ES:SI:40` capture of every hit whose `cs_ip_image` is a `GVPOLY` handler. The defaults are
@@ -48,7 +48,7 @@ def polygons(rows: list[dict[str, object]], handlers: set[int]) -> dict[int, lis
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Print a per-object, per-colour count of `GVPOLY` polygons."""
+    """Print a per-object, per-base count of `GVPOLY` polygons."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
     handlers = {int(h, 0) for h in args.handlers.split(",")}
     rows = [
@@ -57,11 +57,11 @@ def main(argv: list[str] | None = None) -> int:
     found = polygons(rows, handlers)
     total: Counter[int] = Counter()
     for es, polys in sorted(found.items()):
-        colours = Counter(p.colour for p in polys)
-        total.update(colours)
+        bases = Counter(p.base for p in polys)
+        total.update(bases)
         print(
             f"{es:04X}: {len(polys)} polygons; "
-            + ", ".join(f"{c:#04x} x{n}" for c, n in sorted(colours.items()))
+            + ", ".join(f"{c:#04x} x{n}" for c, n in sorted(bases.items()))
         )
     print("all: " + ", ".join(f"{c:#04x} x{n}" for c, n in sorted(total.items())))
     if args.json is not None:
