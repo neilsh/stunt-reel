@@ -21,17 +21,15 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import cast
 
-import unlzexe
 from build_pairing import (
     DISPLACEMENT,
     FAR_CALL,
     IMMEDIATE,
     REFERENCED,
-    LoadImage,
     Pairing,
     dispatch_slots,
+    load_image,
     map_code,
     map_data,
     pair_images,
@@ -51,14 +49,6 @@ NOUNS: dict[str, str] = {
 }
 #: The bytes compared at a mapped DGROUP offset to corroborate it.
 CONTENT_BYTES: int = 16
-
-
-def load(path: Path) -> LoadImage:
-    """Unpack an LZEXE 0.91 executable into a load image."""
-    image, meta = unlzexe.unpack(path.read_bytes())
-    entry = cast("dict[str, int]", meta["entry"])
-    relocs = cast("list[int]", meta["relocs"])
-    return LoadImage(bytes(image), frozenset(relocs), entry["cs"], entry["ip"], entry["ss"])
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -192,7 +182,7 @@ def report_slots(pairing: Pairing, paragraph: int) -> None:
 def main(argv: list[str]) -> int:
     """Pair the two builds and print the summary or the requested mappings."""
     args = parse_args(argv)
-    pairing = pair_images(load(args.left), load(args.right))
+    pairing = pair_images(load_image(args.left), load_image(args.right))
     if not args.ds and not args.code and args.slots is None:
         report_summary(pairing, args.unpaired)
     if args.slots is not None:

@@ -34,6 +34,15 @@ os = ["windows"]
 asset_pattern = "dosbox-automation-*-windows-x64.zip"
 checksum = "sha256:6835621f4731235651a886ef67c4fc40693454a6386f0e5ab5c0570965a186ee"
 
+# DOSBox-X, for its built-in debugger link only: `mise run debug-x` runs breakpoint plans on it
+# (ADR 0034); capture stays on dosbox-automation. The SDL1 build is the one the 2026-11-04 spike
+# ran; the old pin chose SDL2 for OpenGL output, which this tool never uses.
+[tools."github:joncampbell123/dosbox-x"]
+version = "dosbox-x-v2026.10.01"
+os = ["windows"]
+asset_pattern = "dosbox-x-vsbuild-win64-*.zip"
+bin_path = "bin/x64/Release"
+
 [env]
 # One shared, writable tool cache per primary checkout: mise run init links each
 # worktree's .cache to it (ADR 0013), and parks the worktree's virtualenv inside it
@@ -158,6 +167,10 @@ run = "uv run python python/scripts/verify_formats_docs.py"
 [tasks.unlzexe]
 description = "Unpack PLAYONE.EXE with LZEXE 0.91 (mise run unlzexe -- corpus/stuntisl/PLAYONE.EXE build/re/playone.img [--mz])"
 run = "uv run python python/scripts/unlzexe.py"
+
+[tasks.debug-x]
+description = "Run a breakpoint plan on DOSBox-X's debugger (mise run debug-x -- --plan tools/dosbox-x/plans/smoke.toml [--film F] [--build patched])"
+run = "uv run python python/scripts/debug_x.py"
 
 [tasks.pair-builds]
 description = "Pair two builds' functions with an iced-x86 decode and map offsets (mise run pair-builds -- [--ds 0x0542,0x8072@0x824] [--code 0x196C] [--unpaired])"

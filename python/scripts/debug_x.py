@@ -1,0 +1,134 @@
+"""Run one breakpoint plan on DOSBox-X's debugger link and record its hits as JSON lines.
+
+`mise run debug-x -- --plan tools/dosbox-x/plans/smoke.toml [--film F] [--build patched]`
+boots the film, arms the plan's probes, writes
+`<data root>/debug/<film stem>/<plan>-<build>-<UTC stamp>.jsonl`, prints a summary of at most
+40 lines and exits: 0 when the run ended normally (spent, stop_tick or timeout), 1 when the
+emulator or link failed, 2 when the plan or a probe site was refused. Plan offsets are unpatched
+image and DS offsets; `--build patched` maps them through #78's pairing
+(`docs/process/plans/debugger-breakpoints-2026-11-04.md`).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from collections import Counter
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from build_pairing import load_image, pair_images
+from dbx.addr import Runtime, vm_paragraph
+from dbx.boot import DOSBOX_X_VERSION, booted
+from dbx.link import LinkError
+from dbx.plan import PlanError, for_patched, load_plan
+from dbx.run import run_plan
+
+from stunt_reel import dataroot, game_builds
+from stunt_reel.dataroot import ensure_links_or_report
+from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout
+from stunt_reel.tac.playone import PATCH3, UNPATCHED
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
+
+SUMMARY_LINES: int = 40
+DISTINCT: int = 8
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    """Parse command-line arguments."""
+    root = dataroot.data_root()
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
+    parser.add_argument(
+        "--plan", type=Path, required=True, help="plan TOML (tools/dosbox-x/plans/)"
+    )
+    parser.add_argument("--film", type=Path, default=root / "corpus/stisldem/VAULT/CTRY.FLM")
+    parser.add_argument("--build", choices=("unpatched", "patched"), default="unpatched")
+    parser.add_argument("--out", type=Path, default=root / "debug", help="output root")
+    return parser.parse_args(argv)
+
+
+def _top(values: Iterable[int]) -> str:
+    counts = Counter(values)
+    return ", ".join(f"{v:#x} x{n}" for v, n in counts.most_common(DISTINCT)) or "-"
+
+
+def summary(records: Iterable[Mapping[str, Any]]) -> list[str]:
+    """At most `SUMMARY_LINES` lines: per probe its hits, ignored, callers and writers."""
+    rows = list(records)
+    end = next((r for r in rows if r.get("type") == "end"), {})
+    hits = [r for r in rows if r.get("type") == "hit"]
+    lines = [f"end: {end.get('reason', '?')}, spurious {end.get('spurious', 0)}"]
+    if end.get("detail"):
+        lines.append(f"  {end['detail']}"[:200])
+    for name, count in dict(end.get("hits", {})).items():
+        mine = [h for h in hits if h.get("probe") == name]
+        lines.append(f"{name}: hits {count}, ignored {end.get('ignored', {}).get(name, 0)}")
+        callers = [h["return_far_image"] for h in mine if h.get("return_far_image") is not None]
+        writers = [
+            h["writer"]["image"]
+            for h in mine
+            if h.get("writer") and h["writer"].get("image") is not None
+        ]
+        if callers:
+            lines.append(f"  return_far_image: {_top(callers)}")
+        if writers:
+            lines.append(f"  writer image: {_top(writers)}")
+    return lines[:SUMMARY_LINES]
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the plan; see the module docstring for the exit codes."""
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    if not ensure_links_or_report("debug_x"):
+        return 1
+    try:
+        plan = load_plan(args.plan)
+    except (PlanError, OSError) as exc:
+        print(f"debug-x: {exc}", file=sys.stderr)
+        return 2
+    builds = dataroot.data_root() / game_builds.BUILDS_DIR
+    image = load_image(builds / args.build / "PLAYONE.EXE")
+    layout = UNPATCHED if args.build == "unpatched" else PATCH3
+    notes: dict[str, str] = {}
+    if args.build == "patched":
+        try:
+            plan, notes = for_patched(
+                plan, pair_images(load_image(builds / "unpatched" / "PLAYONE.EXE"), image)
+            )
+        except PlanError as exc:
+            print(f"debug-x: {exc}", file=sys.stderr)
+            return 2
+    vm = vm_paragraph(image)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    path = args.out / args.film.stem / f"{plan.name}-{args.build}-{stamp}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = {
+        "build": args.build,
+        "film": args.film.name,
+        "emulator": f"dosbox-x {DOSBOX_X_VERSION}",
+        "vm": vm,
+        "dgroup_paragraph": layout.dgroup_paragraph,
+        "patched_mapping": notes,
+    }
+    try:
+        with (
+            booted(args.film, args.build, cycles=plan.cycles) as boot,
+            path.open("w", encoding="utf-8", newline="\n") as out,
+        ):
+            rt = Runtime(image, boot.load, layout.dgroup_paragraph, vm)
+            result = run_plan(boot.link, rt, plan, layout.film_clock, out, header=header)
+    except (EmulatorUnavailable, GuestTimeout, LinkError) as exc:
+        print(f"debug-x: {exc}", file=sys.stderr)
+        return 1
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    print(path)
+    print("\n".join(summary(records)))
+    return {"refused": 2, "link_lost": 1}.get(result.reason, 0)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
