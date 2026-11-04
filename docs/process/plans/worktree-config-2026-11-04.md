@@ -1,6 +1,6 @@
 # Worktrees reach shared state by configuration, not links (2026-11-04)
 
-Status: **design agreed 2026-11-04; corrected the same day while planning (sections 3, 4.1, 4.3)**.
+Status: **design agreed 2026-11-04; corrected the same day while planning (sections 3, 4.1, 4.3); implemented on branch `claude/worktreeinclude-brainstorm-b409c5` as ADR 0033, not ADR 0032, which another decision had taken**.
 Tasks: [`worktree-config-implementation-2026-11-04.md`](worktree-config-implementation-2026-11-04.md). Source: a session of
 2026-11-04 that started from "should we use a `.worktreeinclude` for Claude", surveyed the 32
 worktrees under `.claude/worktrees/` (16 never provisioned, including the session's own) and

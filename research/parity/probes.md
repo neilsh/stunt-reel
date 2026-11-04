@@ -2,7 +2,7 @@
 
 Procedures for finding out *what* is wrong once [`method.md`](method.md) says *where* the loss is. Terms are those of [`GLOSSARY.md`](../../GLOSSARY.md). Dated outcomes are in [`log.md`](log.md) and the notes it links; the helpers are [`python/scripts/parity_probe.py`](../../python/scripts/parity_probe.py) and [`parity_sweep.py`](../../python/scripts/parity_sweep.py).
 
-All probes read a capture directory (`build/parity/captures/<film>/<id>`, `tick_NNNN.idx` by ordinal) and a render store (index and layer planes by film tick, read through `RenderStore`). "Object pixels" are capture pixels that are not sky, ground ramp, button bar or cursor; the index ranges in the script are `CTRY.FLM`'s and must be changed per film.
+All probes read a capture directory (`<data root>/captures/<film>/<id>`, `tick_NNNN.idx` by ordinal) and a render store (index and layer planes by film tick, read through `RenderStore`). "Object pixels" are capture pixels that are not sky, ground ramp, button bar or cursor; the index ranges in the script are `CTRY.FLM`'s and must be changed per film.
 
 ## 1. Side-by-side crop (`crop`)
 
@@ -59,7 +59,7 @@ The page timing is modelled in the renderer: `--headless` samples the scene at `
 
 ```bash
 python python/scripts/parity_probe.py retime \
-    --ours build/parity/ours/ctry_current --reference build/parity/captures/ctry/<id> \
+    --ours build/parity/ours/ctry_current --reference <data root>/captures/ctry/<id> \
     --out build/scratch/retime/ctry --by -1 [--allow-missing] [--force]
 mise run sweep -- --reuse build/scratch/retime --films ctry,intro --no-build
 # or, scoring the existing _current renders in one command:

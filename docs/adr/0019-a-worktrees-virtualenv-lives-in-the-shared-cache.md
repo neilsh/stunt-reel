@@ -1,5 +1,9 @@
 # A worktree's virtualenv lives in the shared cache
 
+## Status
+
+superseded 2026-11-04 by [ADR 0033](0033-worktrees-reach-shared-state-by-configuration.md): each worktree keeps uv's own `.venv`.
+
 A worktree is usually on another volume from the primary checkout, and uv can only
 hardlink a package out of ``.cache`` when the environment receiving it is on that same
 volume.  A per-checkout ``.venv`` therefore copies every package: 68 MiB at 3.15 s, paid

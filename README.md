@@ -31,7 +31,7 @@ You can build and test everything without any game files:
 
 ```powershell
 mise trust && mise install   # pinned toolchains (Rust, Python, uv, Java, dosbox-automation, Kaitai)
-mise run init                # shared data root, cached Python environment
+mise run init                # optional: seed target/ and sync .venv now
 mise run check               # format, lint, typecheck and tests, Rust and Python
 ```
 
