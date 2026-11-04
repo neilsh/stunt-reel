@@ -58,7 +58,7 @@ Disassembler: iced-x86 over Capstone (comparison 2026-11-04: identical decoding 
 in `0x0000..0xD510`, effective segments and implicit stack and string accesses in
 `used_memory()`, typed, about 12x faster). #78's branch switches to it before merging.
 
-## 3. The tool: `python/stunt_reel/dbx/`
+## 3. The tool: `python/scripts/dbx/`
 
 One `mise run debug-x` call boots a film in DOSBox-X, arms the probes of one plan, records the
 hits as JSON lines and exits. A subagent explores by rerunning with another plan, about a minute
@@ -184,7 +184,7 @@ Live runs stay outside the gate (`mise run debug-x`).
 
 ### 3.8 Records
 
-- ADR 0033 (to be written in PR A): breakpoints run on DOSBox-X, capture and per-frame sampling on
+- ADR 0034 (to be written in PR A): breakpoints run on DOSBox-X, capture and per-frame sampling on
   dosbox-automation; guest time is not halted at a stop.
 - `research/playone-exe/debugger-plans.md`: the mechanics (link, boot, addresses, the watch
   filter, measured costs), reusing `dosbox-x-legacy.md` § 2-3; `dosbox-x-legacy.md` points to it.
@@ -261,7 +261,7 @@ entries for what the runs exclude. A row in the parity log.
 1. #78's branch, with the iced-x86 switch, is the bottom PR of the stack (against `main`).
 2. Three PRs stacked with `gh-stack` on top of it; this spec and the implementation plan ride
    in A:
-   - **A, the tool:** `dbx/`, the CLI and task, `tools/dosbox-x/`, the DOSBox-X pin, ADR 0033,
+   - **A, the tool:** `dbx/`, the CLI and task, `tools/dosbox-x/`, the DOSBox-X pin, ADR 0034,
      `debugger-plans.md`, offline tests.
    - **B, #66:** the light plans, the `probe-light` words, `terrain-shade.md` and `memory-map.md`,
      a parity-log row. Closes #66.
