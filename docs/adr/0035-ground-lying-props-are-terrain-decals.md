@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted 2026-11-04. Implements the change that
+proposed 2026-11-04. Implements the change that
 [`world-scene.md` section 6](../../research/playone-exe/world-scene.md#6-what-the-renderer-gets-wrong-and-the-change-it-licenses)
 licenses, for [#69](https://github.com/neilsh/stunt-reel/issues/69); answers
 [#176](https://github.com/neilsh/stunt-reel/issues/176). Applies `[I5]` to a class of props that
