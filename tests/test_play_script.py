@@ -103,6 +103,25 @@ def test_play_refuses_a_build_the_films_row_does_not_name(
     assert not stage_root.exists() or not any(stage_root.iterdir())
 
 
+def test_play_refuses_an_archive_made_by_a_makeone_the_row_does_not_name(
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    rows: Path,
+) -> None:
+    module = _play()
+    _Emulator.instances = []
+    monkeypatch.setattr(automation, "DosboxAutomation", _Emulator)
+    monkeypatch.setattr(references, "archive_makeone_build", lambda *_a: "unpatched")
+    rows.write_text(
+        '[ctry]\nfilm = "vault-ctry"\nplayone = "unpatched"\nreason = "x"\n', encoding="utf-8"
+    )
+
+    assert module.run(module.parse_args(["--film", str(staged_repo.film)])) == 1
+    assert _Emulator.instances == []
+    assert "unpatched MAKEONE" in capsys.readouterr().err
+
+
 def test_play_runs_a_film_with_no_row_on_any_build(
     staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch, rows: Path
 ) -> None:
