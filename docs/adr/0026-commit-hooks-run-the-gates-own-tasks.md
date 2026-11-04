@@ -120,7 +120,8 @@ prek runs the commit-time checks; `gate.py` stays the gate.
 - A commit runs the checks that match its staged files, against the staged content, with the
   gate's tool versions. Untracked files are not stashed, so a whole-tree step such as ruff still
   sees untracked `.py` files, as before.
-- The hook's output is prek's pass/fail list; #32's one-line-per-step report and
+- The hook runs prek with `--quiet`, so a passing commit prints nothing past mise's task line
+  and a failing hook prints its id, exit code and output; #32's one-line-per-step report and
   `target/pre-commit.log` go away with `gate.py staged`.
 - prek is a required tool for every checkout that runs `mise run init`, and for CI.
 - `git commit --no-verify` skips the hooks. The gate covers the gate-step hooks and the CI step
