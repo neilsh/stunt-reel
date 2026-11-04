@@ -18,7 +18,7 @@ A source card records a *document* rather than a subject; these live beside this
 
 ## Routing rule
 
-1. **A fact about the original goes to the note for its subject.** "The player Gouraud-shades the ground index" belongs in `playone-exe/terrain-shade.md`; "the ground scene is stored in `CTRY.ALL`" belongs in `formats/all.md`. It does not stay in the log of the experiment that found it.
+1. **A fact about the original goes to the note for its subject.** "The player Gouraud-shades a `GVPOLY` polygon's index" belongs in `playone-exe/terrain-shade.md`; "a `.ALL` chunk is a copy of a `RES` item" belongs in `formats/all.md`. It does not stay in the log of the experiment that found it.
 2. **A fact about our render's residual goes to `parity/`,** in the note for that residual (where the loss sits, framing and actors, mismatched film segments).
 3. **Every experiment leaves one row in [`parity/log.md`](parity/log.md):** date, commit, score, adopted or not, and a link to where its finding now lives. The finding carries a provenance line pointing back at the row.
 4. **Tooling lives with what it studies.** A tool or tool evaluation for `PLAYONE.EXE` goes in `playone-exe/static-tooling.md`.
