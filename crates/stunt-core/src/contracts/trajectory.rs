@@ -372,6 +372,10 @@ mod tests {
     fn compute_world_matrix_matches_shared_goldens() {
         let text = include_str!("../../../../tests/fixtures/dos_math_goldens.json");
         let goldens: serde_json::Value = serde_json::from_str(text).expect("valid golden json");
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "the goldens are f32 values written out as JSON numbers"
+        )]
         let floats = |v: &serde_json::Value| -> Vec<f32> {
             v.as_array()
                 .expect("array")

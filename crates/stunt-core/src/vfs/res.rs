@@ -6,7 +6,7 @@
 
 use crate::contracts::vfs::{ArchiveFormat, VfsArchive, VfsEntry};
 use crate::reader::ByteReader;
-use crate::vfs::{VfsError, check_non_decreasing};
+use crate::vfs::{VfsError, check_non_decreasing, offset_u32};
 
 /// The raw split of a `.RES` container: its `res_index` and every data region.
 ///
@@ -190,7 +190,7 @@ pub fn parse_res(data: &[u8]) -> Result<VfsArchive, VfsError> {
         let entry = VfsEntry {
             name,
             data: payload.to_vec(),
-            source_offset: start as u32,
+            source_offset: offset_u32(start)?,
             was_compressed: false,
         };
         start += payload.len();

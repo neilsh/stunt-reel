@@ -56,7 +56,7 @@ fn map_patch(color: u8, verts: &[u16]) -> Vec<u8> {
     rec.extend(0x01FFi16.to_le_bytes());
     rec.resize(12, 0);
     rec.extend([color, 0]);
-    rec.extend((verts.len() as i16).to_le_bytes());
+    rec.extend(i16::try_from(verts.len()).unwrap().to_le_bytes());
     for v in verts {
         rec.extend(v.to_le_bytes());
     }

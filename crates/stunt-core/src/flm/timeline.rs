@@ -227,7 +227,13 @@ impl FilmTimeline {
         };
 
         let mut record = interpolate_trajectory(&previous.record, &next.record, alpha);
-        record.tick = tick.round() as u32;
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "`tick` lies between two keyframe ticks, both u32"
+        )]
+        let tick = tick.round() as u32;
+        record.tick = tick;
         Some(record)
     }
 

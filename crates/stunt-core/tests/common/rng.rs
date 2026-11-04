@@ -27,7 +27,8 @@ impl XorShift64 {
     }
 
     pub(crate) fn next_u8(&mut self) -> u8 {
-        self.next_u64() as u8
+        let [byte, ..] = self.next_u64().to_le_bytes();
+        byte
     }
 
     pub(crate) fn next_range(&mut self, min: usize, max: usize) -> usize {
@@ -35,7 +36,7 @@ impl XorShift64 {
             return min;
         }
         let span = (max - min) as u64;
-        min + (self.next_u64() % span) as usize
+        min + usize::try_from(self.next_u64() % span).unwrap()
     }
 
     pub(crate) fn fill_bytes(&mut self, buf: &mut [u8]) {

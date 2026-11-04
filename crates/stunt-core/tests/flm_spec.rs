@@ -7,6 +7,10 @@
     clippy::items_after_statements,
     reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
 )]
+#![expect(
+    clippy::cast_possible_truncation,
+    reason = "these tests pack synthetic values into the fixed-width fields of fixture bytes"
+)]
 //! Behavioural specification of the `.FLM` choreography evaluator ([`FilmTimeline`]).
 //!
 //! Each test names one behaviour and asserts specific expected results. Inputs that are

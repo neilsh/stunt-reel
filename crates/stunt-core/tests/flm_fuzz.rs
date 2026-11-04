@@ -7,6 +7,12 @@
     clippy::items_after_statements,
     reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
 )]
+#![expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    reason = "these tests pack synthetic values into the fixed-width fields of fixture bytes"
+)]
 //! Robustness matrices and fuzzing for the `.FLM` parser and `FilmTimeline` evaluator.
 //!
 //! Every test here feeds generated, mutated or exhaustively enumerated byte streams (or

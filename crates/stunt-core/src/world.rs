@@ -22,7 +22,7 @@ use std::collections::{HashMap, HashSet};
 use crate::anchor::AnchorPoint;
 use crate::contracts::{
     NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, ShapeExtent, SodModelIr, SodVertex,
-    VisibilityCondition,
+    VisibilityCondition, arena_index,
 };
 
 /// Column-major identity `local_matrix` for every world node (the world is drawn untransformed).
@@ -258,8 +258,9 @@ pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
             continue;
         }
         let color = record[12];
-        let num_verts = i16::from_le_bytes([record[14], record[15]]) as usize;
-        let nverts = num_verts.min(7);
+        // A negative count reads as more than seven, as the sign-extending cast it replaces did.
+        let num_verts = i16::from_le_bytes([record[14], record[15]]);
+        let nverts = usize::try_from(num_verts).map_or(7, |n| n.min(7));
         if nverts < 3 {
             continue;
         }
@@ -314,9 +315,9 @@ pub(crate) fn traverse_scn(
                 let Some([x, y, z, next]) = scn_operands(words, ni) else {
                     break;
                 };
-                cx += i32::from(x as u16 as i16);
-                cy += i32::from(y as u16 as i16);
-                cz += i32::from(z as u16 as i16);
+                cx += scn_i16(x);
+                cy += scn_i16(y);
+                cz += scn_i16(z);
                 ni = scn_pointer(next);
             }
             22 => {
@@ -324,8 +325,8 @@ pub(crate) fn traverse_scn(
                 let Some([x, z, next]) = scn_operands(words, ni) else {
                     break;
                 };
-                cx += i32::from(x as u16 as i16);
-                cz += i32::from(z as u16 as i16);
+                cx += scn_i16(x);
+                cz += scn_i16(z);
                 ni = scn_pointer(next);
             }
             2 => {
@@ -335,12 +336,12 @@ pub(crate) fn traverse_scn(
                 let Some([obj, ext, splitdist, next]) = scn_operands(words, ni) else {
                     break;
                 };
-                let ext = i32::from(ext as u16);
-                let splitdist = i32::from(splitdist as u16 as i16);
+                let ext = i32::from(scn_u16(ext));
+                let splitdist = scn_i16(splitdist);
                 if near([-(cx as f32), -(cy as f32), cz as f32], ext, splitdist) {
                     ni = scn_pointer(next);
                 } else {
-                    let obj = obj as u16;
+                    let obj = scn_u16(obj);
                     if obj != 0 && available_models.contains(&obj) {
                         instances.push((obj, [-(cx as f32), -(cy as f32), cz as f32]));
                     }
@@ -368,7 +369,7 @@ pub(crate) fn traverse_scn(
             10 => {
                 // SP_LEAF: obj
                 if let Some([obj]) = scn_operands(words, ni) {
-                    let obj = obj as u16;
+                    let obj = scn_u16(obj);
                     if available_models.contains(&obj) {
                         instances.push((obj, [-(cx as f32), -(cy as f32), cz as f32]));
                     }
@@ -433,7 +434,18 @@ fn scn_operands<const N: usize>(words: &[i32], ni: usize) -> Option<[i32; N]> {
 
 /// A `SCENERY.scn` byte pointer operand as a word index.
 fn scn_pointer(word: i32) -> usize {
-    (word as u32 as usize) / 2
+    (word.cast_unsigned() as usize) / 2
+}
+
+/// The low half of a `SCENERY.scn` word, where the format keeps a 16-bit operand.
+fn scn_u16(word: i32) -> u16 {
+    let [lo, hi, ..] = word.to_le_bytes();
+    u16::from_le_bytes([lo, hi])
+}
+
+/// The low half of a `SCENERY.scn` word read as a signed 16-bit operand.
+fn scn_i16(word: i32) -> i32 {
+    i32::from(scn_u16(word).cast_signed())
 }
 
 /// Half-width of the ocean and fallback ground quads, in metres.
@@ -469,11 +481,11 @@ pub(crate) fn build_world_ir(
     }
     push_props(&mut ir, instances, ir_models, base_y, false);
 
-    let base_indices = ir.indices.len() as u32;
-    let base_vertices = ir.vertices.len() as u32;
+    let base_indices = arena_index(ir.indices.len());
+    let base_vertices = arena_index(ir.vertices.len());
     push_props(&mut ir, instances, ir_models, base_y, true);
-    let decal_indices = ir.indices.len() as u32 - base_indices;
-    let decal_vertices = ir.vertices.len() as u32 - base_vertices;
+    let decal_indices = arena_index(ir.indices.len()) - base_indices;
+    let decal_vertices = arena_index(ir.vertices.len()) - base_vertices;
 
     let root_base = ir.allocate_node(
         "WORLD_BASE",
@@ -508,7 +520,7 @@ pub(crate) fn build_world_ir(
 
 /// Appends an unshaded, upward-facing quad spanning the world at height `y`.
 fn push_flat_quad(ir: &mut SodModelIr, y: f32, color: u8, scenery_class: u8) {
-    let start = ir.vertices.len() as u32;
+    let start = arena_index(ir.vertices.len());
     let e = WORLD_EXTENT;
     for [x, z] in [[-e, -e], [e, -e], [e, e], [-e, e]] {
         ir.vertices.push(SodVertex {
@@ -563,7 +575,7 @@ fn push_terrain(ir: &mut SodModelIr, anchors: &[AnchorPoint], map_areas: &[MapAr
             UP
         };
 
-        let start = ir.vertices.len() as u32;
+        let start = arena_index(ir.vertices.len());
         for p in corners {
             ir.vertices.push(SodVertex {
                 position: [p[0], p[1] + base_y, p[2]],
@@ -574,7 +586,7 @@ fn push_terrain(ir: &mut SodModelIr, anchors: &[AnchorPoint], map_areas: &[MapAr
                 _padding: 0,
             });
         }
-        for k in 1..(area.verts.len() as u32 - 1) {
+        for k in 1..(arena_index(area.verts.len()) - 1) {
             ir.indices
                 .extend_from_slice(&[start, start + k, start + k + 1]);
         }
@@ -598,7 +610,7 @@ fn push_props(
             if mesh.is_decal() != decals || mesh.indices.is_empty() {
                 continue;
             }
-            let start = ir.vertices.len() as u32;
+            let start = arena_index(ir.vertices.len());
             for v in mesh.vertices {
                 ir.vertices.push(SodVertex {
                     position: [

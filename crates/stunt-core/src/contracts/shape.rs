@@ -287,6 +287,18 @@ pub struct SodModelIr {
     decode: Option<DecodeRecord>,
 }
 
+/// A length or position in a shape's node, vertex or index arena, as the `u32` that
+/// [`NodeId`], [`NodeKind::Mesh`] and the GPU index buffer store.
+#[must_use]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "shape and world arenas stay far below u32::MAX entries; the u32 is the \
+              GPU index format"
+)]
+pub const fn arena_index(len: usize) -> u32 {
+    len as u32
+}
+
 impl SodModelIr {
     /// Instantiates an empty model intermediate representation.
     pub fn new(name: impl Into<String>) -> Self {
@@ -323,7 +335,7 @@ impl SodModelIr {
         visibility: VisibilityCondition,
         kind: NodeKind,
     ) -> NodeId {
-        let id = NodeId(self.nodes.len() as u32);
+        let id = NodeId(arena_index(self.nodes.len()));
         let node = SodNode {
             id,
             name: name.into(),
@@ -574,7 +586,7 @@ mod tests {
         assert_eq!(mesh.vertex_offset, 0);
         assert_eq!(mesh.index_offset, 0);
         assert!(!mesh.is_decal());
-        let window = mesh.vertex_offset..mesh.vertex_offset + mesh.vertices.len() as u32;
+        let window = mesh.vertex_offset..mesh.vertex_offset + arena_index(mesh.vertices.len());
         assert!(mesh.indices.iter().all(|index| window.contains(index)));
         assert_eq!(mesh.indices.len() % 3, 0);
     }

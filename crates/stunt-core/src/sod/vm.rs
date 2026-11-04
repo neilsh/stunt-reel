@@ -161,13 +161,23 @@ impl<T: Copy, const N: usize> WrapTable<T, N> {
     }
 }
 
+/// `OP_SHLV` and `OP_SHRV`: applies `shift` to each coordinate of `v` as a 32-bit integer.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "vertex coordinates are whole numbers built from 16-bit operands"
+)]
+fn shift_vertex(v: [f32; 3], shift: impl Fn(i32) -> i32) -> [f32; 3] {
+    v.map(|c| shift(c as i32) as f32)
+}
+
 /// Computes the metric scale multiplier (meters per integer unit).
 #[must_use]
 pub fn compute_scale_factor(scale_index: usize) -> f32 {
     let scale_raw = if let Some(&scale) = SOD_SCALE_TABLE.get(scale_index) {
         scale
     } else if scale_index > 0 {
-        5.0 / 2.0f32.powi((scale_index - 1) as i32)
+        // An index past `i32::MAX` gives the zero scale that any past 128 already does.
+        5.0 / 2.0f32.powi(i32::try_from(scale_index - 1).unwrap_or(i32::MAX))
     } else {
         10.0
     };
@@ -632,20 +642,12 @@ pub(crate) fn run_vm(
             OP_SHLV => {
                 let shift = r.read_u16_le()?;
                 let s = u32::from(shift) & 31;
-                cur_vert = [
-                    ((cur_vert[0] as i32).wrapping_shl(s)) as f32,
-                    ((cur_vert[1] as i32).wrapping_shl(s)) as f32,
-                    ((cur_vert[2] as i32).wrapping_shl(s)) as f32,
-                ];
+                cur_vert = shift_vertex(cur_vert, |c| c.wrapping_shl(s));
             }
             OP_SHRV => {
                 let shift = r.read_u16_le()?;
                 let s = u32::from(shift) & 31;
-                cur_vert = [
-                    ((cur_vert[0] as i32).wrapping_shr(s)) as f32,
-                    ((cur_vert[1] as i32).wrapping_shr(s)) as f32,
-                    ((cur_vert[2] as i32).wrapping_shr(s)) as f32,
-                ];
+                cur_vert = shift_vertex(cur_vert, |c| c.wrapping_shr(s));
             }
             OP_IPG => {
                 let ipg_type = r.read_u16_le()?;
@@ -829,6 +831,7 @@ pub(crate) fn run_vm(
                         })
                         .sum();
                     let level = level_sum / i32::try_from(vertex_shades.len()).unwrap_or(1);
+                    #[expect(clippy::cast_sign_loss, reason = "clamped to the palette's 0..=255")]
                     let palette_index = (base + level.max(0)).clamp(0, 255) as u8;
 
                     polygons.push(RawPolygon {
@@ -887,15 +890,19 @@ pub(crate) fn run_vm(
                 // Target = address of the operand word + signed byte offset (`siobj.cpp`).
                 let operand_at = r.pos();
                 let rel = r.read_i16_le()?;
-                let target = operand_at as i64 + i64::from(rel);
+                let target = operand_at
+                    .checked_add_signed(isize::from(rel))
+                    .filter(|target| (10..total_len).contains(target));
                 subs_run += 1;
-                if target < 10 || target as usize >= total_len || subs_run > MAX_BRANCHES {
-                    malformed = Some(SodStopReason::MalformedBranch);
-                } else {
+                if let Some(target) = target
+                    && subs_run <= MAX_BRANCHES
+                {
                     if opcode == OP_GOSUB {
                         branch_resume.push((r.pos(), current_visibility, visibility_scope_end));
                     }
-                    r.set_pos(target as usize);
+                    r.set_pos(target);
+                } else {
+                    malformed = Some(SodStopReason::MalformedBranch);
                 }
             }
             OP_ID | OP_PUSHRELMAT | OP_POPRELMAT => {
@@ -1049,14 +1056,16 @@ pub(crate) fn run_vm(
                 let count = r.read_u16_le()? as usize;
                 for i in 0..count {
                     let n = [
-                        i64::from(r.read_u16_le()? as i16),
-                        i64::from(r.read_u16_le()? as i16),
-                        i64::from(r.read_u16_le()? as i16),
+                        i64::from(r.read_i16_le()?),
+                        i64::from(r.read_i16_le()?),
+                        i64::from(r.read_i16_le()?),
                     ];
                     let dot =
                         (n[0] * SHADE_LIGHT[0] + n[1] * SHADE_LIGHT[1] + n[2] * SHADE_LIGHT[2])
                             >> 16;
-                    shade_words.set((first / 2 + i) & 2047, -(dot.clamp(-0x3FFF, 0x3FFF) as i32));
+                    #[expect(clippy::cast_possible_truncation, reason = "clamped to +-0x3FFF")]
+                    let shade = dot.clamp(-0x3FFF, 0x3FFF) as i32;
+                    shade_words.set((first / 2 + i) & 2047, -shade);
                 }
             }
             OP_SHADE1 | OP_SHADE2 | OP_SHADE16 | OP_SHADE216 => {
@@ -1064,7 +1073,8 @@ pub(crate) fn run_vm(
                 // polygon colour is `base + max(0, (s >> 1 [>> 1 for the 16-level forms]) >> 8
                 // + adj)`, `adj = -2` when `base == 0x10`; the SHADE2 forms negate `s`.
                 let norm = r.read_u16_le()? as usize;
-                let base = i32::from(r.read_u16_le()? as u8);
+                let [base, _] = r.read_u16_le()?.to_le_bytes();
+                let base = i32::from(base);
                 let mut s = shade_words.get((norm / 2) & 2047);
                 if matches!(opcode, OP_SHADE2 | OP_SHADE216) {
                     s = -s;
@@ -1073,7 +1083,8 @@ pub(crate) fn run_vm(
                     s >>= 1;
                 }
                 let level = ((s >> 1) >> 8) - if base == 0x10 { 2 } else { 0 };
-                cur_color = (base + level.max(0)).clamp(0, 255) as u8;
+                // `base` is a byte and `level.max(0)` is not negative, so only the top clamps.
+                cur_color = u8::try_from(base + level.max(0)).unwrap_or(u8::MAX);
             }
             OP_RETURN => {
                 returned_at = Some(op_offset);

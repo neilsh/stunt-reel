@@ -7,6 +7,11 @@
     clippy::items_after_statements,
     reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
 )]
+#![expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "these tests pack synthetic values into the fixed-width fields of fixture bytes"
+)]
 //! Behavioral specification of the VFS archive parsers (Seam 1): `.RES`, `.ALL` and
 //! `detect_and_parse`.
 //!

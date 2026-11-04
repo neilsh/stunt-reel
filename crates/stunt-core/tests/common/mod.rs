@@ -55,7 +55,12 @@ pub(crate) fn push_interp_dos(
 ) {
     body.push(opcode);
     for meters in pos_dos {
-        body.extend_from_slice(&((meters * 65536.0) as i32).to_le_bytes());
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "16.16 fixed point, as the film stores it"
+        )]
+        let fixed = (meters * 65536.0) as i32;
+        body.extend_from_slice(&fixed.to_le_bytes());
     }
     for bam in rot_bam {
         body.extend_from_slice(&bam.to_le_bytes());
@@ -183,7 +188,7 @@ pub(crate) fn build_synthetic_intro_flm(ticks: usize) -> Vec<u8> {
         film.extend_from_slice(&prev_slice_len.to_le_bytes());
         film.push(u8::from(t > 0));
         film.extend_from_slice(&slice_body);
-        prev_slice_len = (3 + slice_body.len()) as u16;
+        prev_slice_len = u16::try_from(3 + slice_body.len()).unwrap();
     }
 
     film

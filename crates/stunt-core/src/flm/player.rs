@@ -565,12 +565,11 @@ impl<'a> FlmPlayer<'a> {
 
         // Active actors evaluation (all active slots except the view_obj camera slot)
         let mut actors = Vec::new();
-        for (idx, slot) in self.slots.iter().enumerate() {
+        for (actor_id, (idx, slot)) in (0u32..).zip(self.slots.iter().enumerate()) {
             if !slot.active || idx == view_idx {
                 continue;
             }
 
-            let actor_id = idx as u32;
             let model_name = slot.model_name.clone().unwrap_or_else(|| {
                 if slot.shape_id == 1 || idx == 1 {
                     "FOKKER".to_string()
@@ -657,7 +656,7 @@ mod tests {
     /// Append one slice with a 3-byte header whose width is all the walk needs here.
     fn push_slice(film: &mut Vec<u8>, body: &[u8]) {
         film.push(1);
-        film.extend_from_slice(&(body.len() as u16).to_le_bytes());
+        film.extend_from_slice(&u16::try_from(body.len()).unwrap().to_le_bytes());
         film.extend_from_slice(body);
     }
 
@@ -734,7 +733,12 @@ mod tests {
         body.push(0xFF);
         push_slice_with_duration(&mut film, 1, 5, &body);
         // Slice 2 at tick 9: clear.
-        push_slice_with_duration(&mut film, body.len() as u16, 4, &[0x98, 0xFF]);
+        push_slice_with_duration(
+            &mut film,
+            u16::try_from(body.len()).unwrap(),
+            4,
+            &[0x98, 0xFF],
+        );
         push_slice_with_duration(&mut film, 2, 1, &[0xFF]);
 
         let timeline = FilmTimeline::from_bytes(&film).unwrap();
@@ -783,7 +787,7 @@ mod tests {
         let mut player = FlmPlayer::new(&film).unwrap();
         let _t = player.step_slice().unwrap();
         for (var_idx, value) in player.variables.iter().enumerate() {
-            assert_eq!(*value, (var_idx as u16 + 1) * 100);
+            assert_eq!(*value, (u16::try_from(var_idx).unwrap() + 1) * 100);
         }
     }
 
