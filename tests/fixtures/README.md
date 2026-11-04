@@ -136,3 +136,18 @@ A made-up font in the `PFONT.BIN` layout ([`pfont.ksy`](../../research/formats/a
 - `'L'` (`0x4C`): width 4, rows 0..5 `0x80`, row 6 `0xE0`.
 - Row 7 is empty in every glyph. None of these glyphs is `PLAYONE`'s.
 - Used by `crates/stunt-core/tests/font_spec.rs` (parsing, advance, credits layout), the renderer's `credits_paint_index_layer_and_colour_in_mode13h_pixels` and the CLI's font lookup tests.
+
+### 17. `link_*` (`.ALL` linker set)
+A made-up film archive and the three source files it is linked from ([`linking.md`](../../research/makeone-exe/linking.md)). Each `.res` is `RS`, `res_index`, item count, then `ofs[0] = 4 * (count + 2)`, the rest of the offset table, and the regions; item `n` is region `n - 1`. No byte is the game's.
+
+| File | Bytes | Holds |
+|---|---|---|
+| `link_scen.res` | 32 | Index `0x02`, a scenery-style file with no name table: items `0C 00 61 31`, `0C 00 61 32`, `0C 00 61 33`. |
+| `link_mus_xma.res` | 24 | Index `0xC0`: items `78 31 78 31`, `78 32 78 32`. |
+| `link_mus_ess.res` | 24 | Index `0xC0`, the same index for another sound setting: items `65 31 65 31`, `65 32 65 32`. |
+| `link_film.all` | 36 | Chunks `0x0201` (scenery item 1), `0x0203` (scenery item 3) and `0xC002` (`.ESS` item 2): a 24-byte header with the sentinel offset, then the payloads unpadded. |
+| `link_film.flm` | 4 | `FILM`, standing in for the film the archive was made for. |
+| `link_film.toml` | | The manifest `stuntreel link extract` writes for `link_film.all` with the three files in a tree as `RES/SCEN.RES`, `RES/MUS.XMA` and `RES/MUS.ESS`: `game_root = "game"`, a zero `makeone_sha256`, and the real SHA-256 of each file. |
+
+- `crates/stunt-core/tests/link_spec.rs` checks that `extract` picks the `.ESS` file because only it supplies `0xC002`, that `build` inverts it, and the not-linkable and malformed-manifest errors built from these bytes.
+- `crates/stunt-cli/src/link.rs` copies them into a temporary tree to run `stuntreel link extract` and `build` end to end.
