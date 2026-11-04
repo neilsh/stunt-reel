@@ -38,9 +38,12 @@ class PlanError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class Capture:
-    """`stack:<words>` or `mem:<seg>:<off>:<len>` read at each hit; `off` may name a register."""
+    """`stack:<words>`, `mem:<seg>:<off>:<len>` (`off` may name a register) or `lin:<addr>:<len>`.
 
-    kind: Literal["stack", "mem"]
+    A `lin` capture is a linear address, valid only for the build and emulator that produced it.
+    """
+
+    kind: Literal["stack", "mem", "lin"]
     seg: str
     off: str | int
     length: int
@@ -92,12 +95,18 @@ def _capture(key: str, fail: Any) -> Capture:
     parts = key.split(":")
     if parts[0] == "stack" and len(parts) == 2 and (words := _number(parts[1])) and words > 0:
         return Capture("stack", "", 0, words, key)
+    if parts[0] == "lin" and len(parts) == 3:
+        addr, length = _number(parts[1]), _number(parts[2])
+        if addr is not None and length is not None and length > 0:
+            return Capture("lin", "", addr, length, key)
     if parts[0] == "mem" and len(parts) == 4 and parts[1] in SEGMENTS:
         off: str | int | None = parts[2] if parts[2] in REGISTERS else _number(parts[2])
         length = _number(parts[3])
         if off is not None and length is not None and length > 0:
             return Capture("mem", parts[1], off, length, key)
-    raise fail(f"bad capture {key!r} (stack:<n> or mem:<CS|DS|ES|SS>:<reg|int>:<len>)")
+    raise fail(
+        f"bad capture {key!r} (stack:<n>, mem:<CS|DS|ES|SS>:<reg|int>:<len> or lin:<addr>:<len>)"
+    )
 
 
 def _probe(raw: dict[str, Any]) -> Probe:

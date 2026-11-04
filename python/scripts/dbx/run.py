@@ -109,6 +109,8 @@ class _State:
 
 
 def _capture(link: Link, rt: Runtime, regs: Regs, cap: Capture) -> bytes:
+    if cap.kind == "lin" and isinstance(cap.off, int):
+        return link.dump(cap.off >> 4, cap.off & 0xF, cap.length)
     literal = isinstance(cap.off, int)
     seg = _segment(cap.seg, rt, regs, literal=literal)
     off = cap.off if isinstance(cap.off, int) else int(getattr(regs, cap.off.lower()))
@@ -128,7 +130,7 @@ def _hit_record(link: Link, rt: Runtime, probe: Probe, n: int, regs: Regs, tick:
     words = max((c.length for c in probe.capture if c.kind == "stack"), default=0)
     raw = link.dump(regs.ss, regs.sp, 2 * words) if words else b""
     stack = [int.from_bytes(raw[i : i + 2], "little") for i in range(0, len(raw), 2)]
-    mem = {c.key: _capture(link, rt, regs, c).hex() for c in probe.capture if c.kind == "mem"}
+    mem = {c.key: _capture(link, rt, regs, c).hex() for c in probe.capture if c.kind != "stack"}
     return {
         "type": "hit",
         "probe": probe.name,
