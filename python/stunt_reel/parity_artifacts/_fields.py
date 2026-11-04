@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, cast, override
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -37,6 +37,7 @@ class ArtifactError(ValueError):
         self.message = message
         self.path = path
 
+    @override
     def __str__(self) -> str:
         if self.path is None:
             return self.message

@@ -465,7 +465,10 @@ mod tests {
             detect_camera_cut(eye_base, Some(eye_base), 1, Some(0)),
             "view_obj slot change from 0 to 1 MUST trigger camera cut"
         );
-        assert_eq!(CAMERA_CUT_DISPLACEMENT_THRESHOLD_METERS, 50.0);
+        assert_eq!(
+            CAMERA_CUT_DISPLACEMENT_THRESHOLD_METERS.to_bits(),
+            50.0f32.to_bits()
+        );
 
         // Exact boundary behaviour at the origin
         let eye0 = [0.0, 10.0, 0.0];

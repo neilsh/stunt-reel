@@ -93,7 +93,10 @@ fn test_oracle_intro_trajectory_fixture() {
     assert_eq!(records[0].tick, 0);
     assert_eq!(records[0].camera.eye, [0.0, 10.0, 50.0]);
     assert_eq!(records[0].camera.target, [0.0, 10.0, 1050.0]);
-    assert_eq!(records[0].camera.fov_degrees, PLAYONE_FOV_Y_DEGREES);
+    assert_eq!(
+        records[0].camera.fov_degrees.to_bits(),
+        PLAYONE_FOV_Y_DEGREES.to_bits()
+    );
     assert_eq!(records[0].actors.len(), 1);
     assert_eq!(records[0].actors[0].model_name, "FOKKER");
     assert_eq!(records[0].actors[0].shape_id, 1);

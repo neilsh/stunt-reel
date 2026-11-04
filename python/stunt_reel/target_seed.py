@@ -125,7 +125,8 @@ def workspace_members(checkout: Path) -> frozenset[str]:
     makes one under the workspace root a member without listing it; so both count.
 
     Raises ``OSError`` or ``ValueError`` (``tomllib.TOMLDecodeError`` is one) when a manifest
-    cannot be read or names no package: a seed that missed a member would keep its fingerprints.
+    cannot be read or names no package, and ``TypeError`` when ``workspace.members`` is not a
+    list: a seed that missed a member would keep its fingerprints.
     """
     names: set[str] = set()
     seen: set[str] = set()
@@ -147,7 +148,7 @@ def workspace_members(checkout: Path) -> frozenset[str]:
     workspace = visit(root, package=False).get("workspace", {})
     patterns = workspace.get("members", []) if isinstance(workspace, dict) else None
     if not isinstance(patterns, list):
-        raise ValueError(f"{root}: workspace.members is not a list")
+        raise TypeError(f"{root}: workspace.members is not a list")
     pending.extend(
         member for pattern in patterns for member in checkout.glob(f"{pattern}/Cargo.toml")
     )
@@ -353,7 +354,7 @@ def seed(
         return SeedOutcome("skipped", f"no donor: {why or 'no other checkout'}")
     try:
         members = workspace_members(checkout)
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, TypeError) as error:
         return SeedOutcome("skipped", f"cannot read the workspace members: {error}")
     if not members:
         return SeedOutcome("skipped", "cannot read the workspace members: none found")

@@ -56,7 +56,7 @@ pub enum SceneError {
 }
 
 /// An archive `MODEL_*.SOD` chunk that could not be decoded at all.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkippedChunk {
     /// Archive entry name, e.g. `MODEL_0042.SOD`.
     pub name: String,

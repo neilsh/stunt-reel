@@ -300,9 +300,12 @@ pub(crate) fn load_capture(dir: &Path) -> Result<CaptureSet, AdapterError> {
 }
 
 /// Reads a video capture directory's `meta.json` into the port's video document.
-#[allow(
-    dead_code,
-    reason = "only tests read video captures until a video scorer is merged (method.md § 4.4)"
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "only tests read video captures until a video scorer is merged (method.md § 4.4)"
+    )
 )]
 pub(crate) fn load_video_capture(dir: &Path) -> Result<VideoCapture, AdapterError> {
     let path = dir.join(CAPTURE_META);
@@ -804,7 +807,7 @@ mod tests {
             "a reader must not take the previous render for this run's"
         );
         second.finish().expect("finish");
-        assert!(read_render_record(&dir).is_err());
+        read_render_record(&dir).unwrap_err();
     }
 
     #[test]

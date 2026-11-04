@@ -690,7 +690,7 @@ def _detected(planted: SheetGrades | None, real: SheetGrades | None, named: Sequ
     if planted is None or real is None:
         return False
     for name in named:
-        value, base = planted.grades.get(name), None if real is None else real.grades.get(name)
+        value, base = planted.grades.get(name), real.grades.get(name)
         if value is not None and base is not None and value > base:
             return True
     note = _note(planted)

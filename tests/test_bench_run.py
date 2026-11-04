@@ -7,7 +7,7 @@ import json
 import shutil
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, override
 
 import numpy as np
 import pytest
@@ -95,6 +95,7 @@ NUDGED_PIXELS = 4
 class NudgedSource(LazySource):
     """The film with four pixels of row 0 one level brighter on even ticks."""
 
+    @override
     def load(self, tick: int) -> RenderPlanes:
         planes = super().load(tick)
         rgb = planes.rgb.copy()
@@ -258,6 +259,7 @@ def test_plant_tree_leaves_the_source_alone(tmp_path: Path, bench_fixture: Path)
 class NoOceanSource(LazySource):
     """A film whose layer plane never holds the ocean, so ``index_ocean`` is n/a everywhere."""
 
+    @override
     def load(self, tick: int) -> RenderPlanes:
         planes = super().load(tick)
         return RenderPlanes(

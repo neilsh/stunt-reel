@@ -185,4 +185,5 @@ def plant(fault: Fault, tick: int, source: RenderSource, rng_seed: int) -> Rende
             return _wrong_tick(tick, source, rng_seed)
         case "grey":
             return _grey(planes)
-    raise ValueError(f"unknown fault {fault.name!r}")
+        case _:
+            raise ValueError(f"unknown fault {fault.name!r}")

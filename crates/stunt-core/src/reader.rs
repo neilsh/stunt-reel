@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn take_does_not_overflow() {
         let mut r = ByteReader::new(&[0; 4]);
-        assert!(r.take(usize::MAX).is_err());
+        r.take(usize::MAX).unwrap_err();
         assert_eq!(r.pos(), 0);
     }
 

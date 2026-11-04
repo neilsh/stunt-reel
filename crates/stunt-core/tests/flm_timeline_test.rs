@@ -40,7 +40,7 @@ fn test_cumulative_tick_timestamps() {
     assert_eq!(ticks, vec![0, 2, 12]);
     assert_eq!(timeline.total_ticks(), 12);
     assert!((timeline.duration_seconds() - 0.24).abs() < 1e-6);
-    assert_eq!(TIMELINE_HZ, 50.0);
+    assert_eq!(TIMELINE_HZ.to_bits(), 50.0f32.to_bits());
 }
 
 #[test]

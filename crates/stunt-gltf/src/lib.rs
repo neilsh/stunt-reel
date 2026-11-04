@@ -23,7 +23,6 @@
 //! - [`export_scene_frame`]: camera, optional `WORLD`, and one node per actor, with each
 //!   distinct shape's meshes and accessors written once and shared by every instance.
 //! - [`summarize`]: counts read back from `.glb` bytes.
-#![deny(unsafe_code)]
 
 mod error;
 mod glb;

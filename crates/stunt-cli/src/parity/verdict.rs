@@ -140,7 +140,7 @@ pub(super) fn frame_verdict(
     for (flag, (((b_idx, a_idx), (b_luma, a_luma)), &layer)) in changed.iter_mut().zip(pairs) {
         let idx = b_idx != a_idx;
         // Exact inequality on purpose: the numpy copy compares its float32 planes with `!=`.
-        #[allow(
+        #[expect(
             clippy::float_cmp,
             reason = "bit-for-bit parity with the numpy float32 compare"
         )]

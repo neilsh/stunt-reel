@@ -100,6 +100,10 @@ impl RecordingSink {
 }
 
 impl PageSink for RecordingSink {
+    #[expect(
+        clippy::unwrap_in_result,
+        reason = "a poisoned lock is a bug in the test"
+    )]
     fn accept(&mut self, page: RenderedPage) -> Result<(), SinkError> {
         self.pages
             .lock()

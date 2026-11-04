@@ -304,7 +304,7 @@ mod tests {
             set.validate(),
             Err(ArtifactError::Geometry { .. })
         ));
-        assert!(serde_json::to_string(&set).is_err());
+        serde_json::to_string(&set).unwrap_err();
     }
 
     #[test]
@@ -346,7 +346,7 @@ mod tests {
         let mut set = capture();
         set.frames[0].frame_file = "frames/tick_0001.idx".to_string();
         set.frames[0].palette_file = "frames/palettes_0001.json".to_string();
-        assert!(set.validate().is_ok());
+        set.validate().unwrap();
     }
 
     #[test]

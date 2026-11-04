@@ -12,7 +12,6 @@
 //! Renderer is the entry point for both destinations: offscreen readback into a `PageSink` and a
 //! presented window surface. Everything behind it - the pipelines, palette LUT, camera resources,
 //! scene renderer and GPU mesh arena - is crate-private; the plane is the test seam.
-#![deny(unsafe_code)]
 
 pub mod camera;
 pub mod renderer;
@@ -20,8 +19,8 @@ pub mod video;
 
 // Renderer plumbing: crate-private, so no GPU handle type is reachable from outside the crate.
 // The decoded-shape landing still owns mesh.rs, whose items stay pub and unused outside the
-// renderer; the two allows keep that module untouched while the seam is closed.
-#[allow(
+// renderer; the two expectations keep that module untouched while the seam is closed.
+#[expect(
     unreachable_pub,
     dead_code,
     reason = "the renderer does not use mesh.rs yet, so its pub items are unreachable and unused"

@@ -15,8 +15,8 @@ homepage = "https://github.com/neilsh/stunt-reel"
 readme = "README.md"
 publish = false
 
-# Lint levels are `warn` (except `unused_must_use`): editors show warnings and the gate
-# (`-D warnings`) is the hard stop.
+# Lint levels are `warn` (except `unused_must_use` and `unsafe_code`): editors show warnings and
+# the gate (`-D warnings`) is the hard stop.
 [workspace.lints.rust]
 rust_2018_idioms = { level = "warn", priority = -1 }
 missing_debug_implementations = "warn"
@@ -26,6 +26,9 @@ unused_qualifications = "warn"
 trivial_casts = "warn"
 unused_lifetimes = "warn"
 let_underscore_drop = "warn"
+# Covers tests too; bytemuck's two `unsafe impl`s for `SodVertex` and the `sod_spec.rs` transmute
+# round-trip carry `#[expect]`.
+unsafe_code = "deny"
 # Not a good fit: `unused_crate_dependencies` fires per target, so every integration test file
 # reports the package dependencies it does not use. Use `cargo machete` or `cargo udeps` instead.
 unused_crate_dependencies = "allow"
@@ -48,6 +51,19 @@ print_stderr = "warn"
 allow_attributes_without_reason = "warn"
 undocumented_unsafe_blocks = "warn"
 clone_on_ref_ptr = "warn"
+# Correctness picks from the 2026-11-03 survey (#161).
+iter_over_hash_type = "warn" # hash order differs run to run; output must be reproducible
+allow_attributes = "warn" # `#[expect]` fails once stale; `#[allow]` rots
+assertions_on_result_states = "warn" # `assert!(r.is_ok())` hides the error `unwrap` would show
+float_cmp_const = "warn"
+unwrap_in_result = "warn"
+panic_in_result_fn = "warn"
+# Cheap nursery picks (#161).
+redundant_clone = "warn"
+or_fun_call = "warn"
+use_self = "warn"
+needless_collect = "warn"
+derive_partial_eq_without_eq = "warn"
 # Style picks outside the groups above.
 match_wildcard_for_single_variants = "warn"
 uninlined_format_args = "warn"
@@ -61,6 +77,18 @@ too_many_lines = "allow" # opcode dispatch and table-driven decoders are long ma
 assert_is_empty = "allow" # its `assert_eq!(x, [])` rewrite needs a type annotation for empty arrays
 pub_underscore_fields = "allow" # `_pad` fields keep `#[repr(C)]` GPU and Pod layouts explicit
 cast_precision_loss = "allow" # integer to f32 in pixel and coordinate maths is intended
+
+# Considered in the 2026-11-03 survey (#161) and left off, so nobody re-litigates them:
+#   suboptimal_flops        its `mul_add` rewrite changes float rounding, so the render drifts
+#   as_conversions          every cast, including the ones kept with `#[expect]` on purpose
+#   arithmetic_side_effects 334 hits; tracked on its own in #162
+#   map_err_ignore          fires on every `try_from(..).map_err(|_| ..)`, whose error holds nothing
+#   let_underscore_must_use its hits were `writeln!` into a `String`, which cannot fail
+#   wildcard_enum_match_arm its hits picked one variant or matched a foreign non-exhaustive
+#                           enum; `if let` does the same unflagged
+#   implicit_return, question_mark_used, min_ident_chars, shadow_*, str_to_string,
+#   missing_const_for_fn, exhaustive_structs, exhaustive_enums, std_instead_of_core,
+#   tests_outside_test_module   style rules that fight idiomatic Rust or this layout
 
 # Full debug info put 14.4 GB in `target/debug`, paid once per worktree.
 # Line tables still symbolise a backtrace down to the line.
