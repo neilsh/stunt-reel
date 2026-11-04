@@ -181,10 +181,6 @@ _Avoid_: slot (unqualified)
 One of the two releases of the `PLAYONE.EXE`/`MAKEONE.EXE` pair: **unpatched**, the 1992 release that the retail game and the demo ship, or **patch3**, the Patch #3 release that replaced every executable. An archive belongs to the build whose `MAKEONE` wrote it, and a capture to the build whose `PLAYONE` played it.
 _Avoid_: version, patch level, base or retail build (for unpatched)
 
-**MAKEONE hang**:
-A `MAKEONE` run that writes its archive but never returns to DOS. `make-all` accepts the archive once it has stayed unchanged for 60 s, kills `MAKEONE` and records `returned_to_dos: false` in `meta.json`. Distinct from a capture stall, where `PLAYONE` never reaches its film.
-_Avoid_: timeout (for this), stall
-
 **Control port**:
 The TCP port of the emulator's REST server. Each run picks a free one at launch and writes it into that run's conf, so two captures never collide ([ADR 0025](docs/adr/0025-capture-runs-are-plans-not-sessions.md)).
 _Avoid_: MCP port, debugger port, capture lock

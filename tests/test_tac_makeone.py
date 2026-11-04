@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 import pytest
@@ -167,6 +168,7 @@ def _hang(
     archive: bytes | None,
     *,
     change: bool = False,
+    touch: bool = False,
     warnings: list[str] | None = None,
     hangs: list[bool] | None = None,
 ) -> bytes:
@@ -179,6 +181,10 @@ def _hang(
         if change and state.vault is not None:
             with (state.vault / "CTRY.ALL").open("ab") as out:
                 out.write(b"x")
+        if touch and state.vault is not None:
+            path = state.vault / "CTRY.ALL"
+            stamp = path.stat().st_mtime_ns + 1_000_000_000
+            os.utime(path, ns=(stamp, stamp))
 
     return makeone.make_all(
         staged_repo.film,
@@ -222,12 +228,19 @@ def test_a_makeone_hang_with_a_changing_archive_is_refused(
 def test_a_makeone_hang_with_no_archive_is_refused(
     staged_repo: StagedRepo, game_root: Path
 ) -> None:
-    with pytest.raises(makeone.MakeOneTimeout, match="no archive"):
+    with pytest.raises(makeone.MakeOneTimeout, match="no archive was written"):
         _hang(staged_repo, game_root, None)
 
 
 def test_a_makeone_hang_with_an_empty_archive_is_refused(
     staged_repo: StagedRepo, game_root: Path
 ) -> None:
-    with pytest.raises(makeone.MakeOneTimeout, match="empty"):
+    with pytest.raises(makeone.MakeOneTimeout, match="archive is empty"):
         _hang(staged_repo, game_root, b"")
+
+
+def test_a_makeone_hang_whose_mtime_alone_changes_is_refused(
+    staged_repo: StagedRepo, game_root: Path
+) -> None:
+    with pytest.raises(makeone.MakeOneTimeout, match="still changing"):
+        _hang(staged_repo, game_root, ARCHIVE, touch=True)

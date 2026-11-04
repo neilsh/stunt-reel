@@ -113,12 +113,14 @@ def _archive_path(vault: Path, film: Path) -> Path | None:
 
 
 def _signature(path: Path | None) -> tuple[int, int] | None:
-    """``(size, mtime_ns)`` of a non-empty file, or None when it is missing or empty."""
-    try:
-        info = path.stat() if path is not None else None
-    except OSError:
+    """``(size, mtime_ns)`` of a file, or None when it does not exist."""
+    if path is None:
         return None
-    return (info.st_size, info.st_mtime_ns) if info is not None and info.st_size > 0 else None
+    try:
+        info = path.stat()
+    except FileNotFoundError:
+        return None
+    return (info.st_size, info.st_mtime_ns)
 
 
 def wait_for_stable_archive(
@@ -138,7 +140,9 @@ def wait_for_stable_archive(
     """
     first = _signature(_archive_path(vault, film))
     if first is None:
-        raise MakeOneTimeout("no archive was written, or it is empty")
+        raise MakeOneTimeout("no archive was written")
+    if first[0] == 0:
+        raise MakeOneTimeout("the archive is empty")
     start = clock()
     while clock() - start < stable:
         sleep(poll)
