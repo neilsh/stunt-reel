@@ -113,3 +113,10 @@ def test_for_patched_prefers_patched_at() -> None:
 def test_for_patched_unmappable_is_plan_error() -> None:
     with pytest.raises(PlanError, match="light-entry"):
         for_patched(parse_plan(spec_example(), "example"), dbx_stubs.pairing())
+
+
+def test_linear_capture() -> None:
+    text = '[[probe]]\nname = "p"\nkind = "break"\nat = 1\ncapture = ["lin:0x25FF2:6"]\n'
+    assert parse_plan(text, "l").probes[0].capture == (
+        Capture("lin", "", 0x25FF2, 6, "lin:0x25FF2:6"),
+    )
