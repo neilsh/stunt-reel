@@ -167,22 +167,27 @@ Rules, checked by both `extract` and `build`:
 - [`link.py`](../../../python/stunt_reel/link.py) runs the binary: `build_archive`,
   `extract_manifest`, `NotLinkable` (exit 3) and `LinkError`, and `ensure_binary`, which runs
   `cargo build --release -p stunt-cli` (a no-op when current; an older binary has no `link`)
-  unless the binary is running. `binary_path` and `binary_locked` moved here from
-  `parity_pipeline`, which re-exports them; a separate module avoids an import cycle with
-  `all_archive`.
+  unless the binary is running. `binary_path`, `binary_locked` and the cargo command
+  (`BUILD_ARGV`, which `parity_pipeline.build_release` also runs) moved here from
+  `parity_pipeline`; a separate module avoids an import cycle with `all_archive`.
 - [`parity_layout.py`](../../../python/stunt_reel/parity_layout.py): `manifest_path(slug)`
   (`manifests/all/<slug>.toml`) and `linked_path(slug, film)` (`target/linked/<slug>/<FILM>.ALL`).
 - [`all_archive.py`](../../../python/stunt_reel/all_archive.py):
   - `resolve_all(flm, root, slug=None, *, link_build=None)` follows D6. It reads the manifest
     with `tomllib` and compares `flm_sha256` itself, so a manifest for another `.FLM` costs no
-    process launch. `link_build` is an injected `(manifest, game, out)` callable; its default
-    calls `ensure_binary()` and then `build_archive`. A missing game tree is an error naming
-    `mise run init`. Tests inject a fake.
+    process launch. `link_build` is an injected `(manifest, game, out)` callable; its default,
+    `link_build_in(root)`, calls `ensure_binary()` and then `build_archive`. The parity
+    pipeline builds the binary itself (or was told `--no-build`), so it renders with
+    `link_build_in(root, build=False)`, and its preflight passes `no_link`, which checks the
+    manifest without building anything. An earlier build in `target/linked/` whose hash is
+    still `all_sha256` is reused, so the file is rewritten only when it changes. A missing
+    game tree is an error naming `mise run init`. Tests inject a fake.
 - [`make_all.py`](../../../python/scripts/make_all.py): after `publish_archive`, it runs
   `stuntreel link extract` on the published `.ALL` with the same `--game-root`. On exit 0 it
   prints the manifest path; on exit 3 it says the archive holds add-on content and stays the
-  record. `make-all`'s exit code does not depend on the manifest, because the archive is
-  already stored.
+  record. When no manifest is written, for either reason, an earlier one is removed: it
+  describes the archive just replaced and would still win over it. `make-all`'s exit code
+  does not depend on the manifest, because the archive is already stored.
 - Backfill: `make-all --manifest-only --film X.FLM [--game-root <tree>]` extracts the
   manifest from the film's stored archive without running `MAKEONE`. `meta.json` does not
   record the game root, so it takes the same default as a normal run. The byte-identical
@@ -209,8 +214,8 @@ Rules, checked by both `extract` and `build`:
   `extract` then `build` is the identity; a duplicate id, an out-of-range item, a mixed
   `res_index` and an add-on chunk each give their error.
 - **`stunt-cli` tests:** `link extract` and `link build` on the fixtures; a changed source
-  byte gives `SourceMismatch` with exit 1, an add-on chunk gives exit 3, and neither leaves an
-  output file.
+  byte or a missing source file gives an error naming the file, its expected hash and the
+  tree, with exit 1; an add-on chunk gives exit 3; and none leaves an output file.
 - **Python tests:** the resolve order (sibling, manifest, stored archive) with a fake `link`;
   a matching manifest that fails to build is an error, not a fall back; `make-all` writes a
   manifest on success and none on a `NoSource` refusal (fake binary).
@@ -227,7 +232,9 @@ Rules, checked by both `extract` and `build`:
 4. `stuntreel link extract|build` and their tests.
 5. `resolve_all` order and the `make-all` hook and `--manifest-only`, with Python tests.
 6. Backfill manifests for the films we use (`vault-*` films without a sibling, the batch
-   survey's films) and commit them; run the outside-the-gate check of section 7.
+   survey's films) and commit them; run the outside-the-gate check of section 7. Done
+   2026-11-03 for the one film with a stored archive on the machine that ran it, `BALLOON`;
+   `747LAND` and the rest wait for their archives to be made.
 7. Update [`docs/ARCHITECTURE.md`](../../ARCHITECTURE.md),
    [`docs/development.md`](../../development.md) (the `manifests/` directory), and
    [`linking.md`](../../../research/makeone-exe/linking.md)'s open question 3.
@@ -243,9 +250,7 @@ Rules, checked by both `extract` and `build`:
 
 ## 10. Open questions
 
-1. Does `toml` serialise a long `items` array readably, or does `stunt-cli` need its own line
-   wrapping? Answered in step 4. The file stays valid TOML either way.
-2. When ADR 0029's per-film builds land, should `game_root` become a build name
+1. When ADR 0029's per-film builds land, should `game_root` become a build name
    (`"patch3"`, `"unpatched"`)? The hashes already pin the files, so this only changes where
    `build` looks by default.
 
@@ -269,3 +274,14 @@ Self-review on 2026-11-03, against the code on `main` (`69facb3`) and a corpus c
   with the normal default.
 - `game_root` is now a hint, not an authority, so an absolute path does not break the
   manifest elsewhere.
+
+Branch review on 2026-11-03 (Opus, standards and spec):
+
+- `toml` writes each `items` array on one line; `vault-balloon.toml`'s longest is about
+  125 characters. That is readable enough, so `stunt-cli` does no wrapping (was open
+  question 1).
+- The parity preflight ran `cargo build` and `link build` through `resolve_all`'s default,
+  ignoring `--no-build`. Preflight now passes `no_link` and the render
+  `link_build_in(root, build=False)`.
+- A manifest whose `flm_sha256` was not a string fell through to the stored archive. A
+  manifest field of the wrong type is now an error.
