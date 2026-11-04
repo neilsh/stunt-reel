@@ -55,8 +55,8 @@ fn vertex(x: f32, y: f32, palette_index: u8, flags: u8) -> SodVertex {
 )]
 fn model(vertices: Vec<SodVertex>, indices: Vec<u32>, is_decal: bool) -> SodModelIr {
     let mut ir = SodModelIr::new("TEST_MODEL");
-    let vertex_count = vertices.len() as u32;
-    let index_count = indices.len() as u32;
+    let vertex_count = u32::try_from(vertices.len()).unwrap();
+    let index_count = u32::try_from(indices.len()).unwrap();
     ir.vertices = vertices;
     ir.indices = indices;
     ir.allocate_node(
@@ -305,9 +305,13 @@ fn unaligned_width_reads_back_unpadded_rows() {
         false,
     );
     let scene = scene_with_model(ir);
-    let Some(mut test) =
-        common::gpu_or_skip_with(&scene, PageSize::new(width as u32, height as u32))
-    else {
+    let Some(mut test) = common::gpu_or_skip_with(
+        &scene,
+        PageSize::new(
+            u32::try_from(width).unwrap(),
+            u32::try_from(height).unwrap(),
+        ),
+    ) else {
         return;
     };
 

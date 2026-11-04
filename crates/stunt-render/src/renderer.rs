@@ -271,9 +271,19 @@ fn paint_credits(
     viewport_rows: Option<u32>,
     palette: &[(u8, u8, u8); 256],
 ) {
+    #[expect(
+        clippy::cast_possible_wrap,
+        reason = "page sizes are bounded by the GPU texture limit, far inside i32"
+    )]
     let (width, height) = (page.width() as i32, page.height() as i32);
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_possible_wrap,
+        reason = "the 320x200 Mode 13h constants"
+    )]
     let (mode_w, mode_h) = (MODE13H_WIDTH as i32, MODE13H_HEIGHT as i32);
-    let view_rows = viewport_rows.map_or(height, |rows| rows as i32);
+    // A row count past i32::MAX wraps negative and draws nothing, as it always has.
+    let view_rows = viewport_rows.map_or(height, u32::cast_signed);
     let rect = ClipRect {
         left: 0,
         top: 0,
@@ -291,7 +301,10 @@ fn paint_credits(
         let (r, g, b) = palette[usize::from(index)];
         for py in scaled_span(y, mode_h, height) {
             for px in scaled_span(x, mode_w, width) {
-                let at = (py * width + px) as usize;
+                // Glyph coordinates are not negative, so neither is the index; skip one if so.
+                let Ok(at) = usize::try_from(py * width + px) else {
+                    continue;
+                };
                 // A pixel outside the page is clipped, like a glyph outside the mode raster.
                 if let (Some(slot), Some(layer), Some(rgb)) = (
                     page.indices.get_mut(at),
@@ -311,6 +324,16 @@ fn paint_credits(
 /// pixels long.
 fn scaled_span(at: i32, from: i32, to: i32) -> std::ops::Range<i32> {
     at * to / from..(at + 1) * to / from
+}
+
+/// A viewport edge or size in window pixels as the `u32` a scissor rect takes.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "edges lie inside the window; `as` saturates, so a negative or NaN edge is 0"
+)]
+fn viewport_px(v: f32) -> u32 {
+    v as u32
 }
 
 /// Consumes the pages an offscreen Renderer reads back.
@@ -623,13 +646,13 @@ impl Renderer {
 
         let width = target.config.width;
         let height = target.config.height;
-        let sc_x = vp_x.max(0.0) as u32;
-        let sc_y = vp_y.max(0.0) as u32;
-        let sc_w = (vp_w as u32).clamp(1, width.saturating_sub(sc_x).max(1));
-        let sc_h = (vp_h as u32).clamp(1, height.saturating_sub(sc_y).max(1));
+        let sc_x = viewport_px(vp_x.max(0.0));
+        let sc_y = viewport_px(vp_y.max(0.0));
+        let sc_w = viewport_px(vp_w).clamp(1, width.saturating_sub(sc_x).max(1));
+        let sc_h = viewport_px(vp_h).clamp(1, height.saturating_sub(sc_y).max(1));
 
-        let right_edge = (vp_x + vp_w).min(win_w) as u32;
-        let bottom_edge = (vp_y + vp_h).min(win_h) as u32;
+        let right_edge = viewport_px((vp_x + vp_w).min(win_w));
+        let bottom_edge = viewport_px((vp_y + vp_h).min(win_h));
         let bars: [(u32, u32, u32, u32); 2] = if cur_aspect > aspect {
             [
                 (0, 0, sc_x, height),

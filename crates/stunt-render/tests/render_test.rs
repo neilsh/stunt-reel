@@ -42,6 +42,11 @@ fn test_palette_lut_data_integrity() {
 
     // Verify row 0 (ambient floor factor 0.2)
     let idx_40_amb = 40 * 4;
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a fifth of a byte channel, rounded"
+    )]
     let expected_r = (f32::from(r40) * 0.2).round() as u8;
     assert_eq!(bytes[idx_40_amb], expected_r);
 }

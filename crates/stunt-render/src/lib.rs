@@ -13,6 +13,12 @@
 //! presented window surface. Everything behind it - the pipelines, palette LUT, camera resources,
 //! scene renderer and GPU mesh arena - is crate-private; the plane is the test seam.
 #![deny(unsafe_code)]
+// Until the workspace lint table turns these on for every crate (#102).
+#![warn(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap
+)]
 
 pub mod camera;
 pub mod renderer;

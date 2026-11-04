@@ -96,10 +96,11 @@ impl Glb {
     /// Raw bytes of accessor `index`, plus its element count.
     fn accessor_bytes(&self, index: usize) -> (&[u8], usize) {
         let accessor = &self.array("accessors")[index];
-        let view = &self.array("bufferViews")[accessor["bufferView"].as_u64().unwrap() as usize];
-        let start = view["byteOffset"].as_u64().unwrap() as usize
-            + accessor["byteOffset"].as_u64().unwrap_or(0) as usize;
-        let count = accessor["count"].as_u64().unwrap() as usize;
+        let view =
+            &self.array("bufferViews")[accessor["bufferView"].as_u64().map(to_usize).unwrap()];
+        let start = view["byteOffset"].as_u64().map(to_usize).unwrap()
+            + accessor["byteOffset"].as_u64().map_or(0, to_usize);
+        let count = accessor["count"].as_u64().map(to_usize).unwrap();
         let width = match accessor["type"].as_str().unwrap() {
             "SCALAR" => 1,
             "VEC3" => 3,
@@ -132,13 +133,9 @@ impl Glb {
     /// Mesh indices referenced by node `index` and its descendants, in tree order.
     fn meshes_under(&self, index: usize) -> Vec<usize> {
         let node = &self.array("nodes")[index];
-        let mut out: Vec<usize> = node["mesh"]
-            .as_u64()
-            .map(|m| m as usize)
-            .into_iter()
-            .collect();
+        let mut out: Vec<usize> = node["mesh"].as_u64().map(to_usize).into_iter().collect();
         for child in node["children"].as_array().into_iter().flatten() {
-            out.extend(self.meshes_under(child.as_u64().unwrap() as usize));
+            out.extend(self.meshes_under(child.as_u64().map(to_usize).unwrap()));
         }
         out
     }
@@ -150,7 +147,8 @@ impl Glb {
     fn primitive_accessor(&self, mesh: usize, attribute: &str) -> usize {
         self.array("meshes")[mesh]["primitives"][0]["attributes"][attribute]
             .as_u64()
-            .unwrap() as usize
+            .map(to_usize)
+            .unwrap()
     }
 }
 
@@ -203,7 +201,10 @@ fn container_is_well_formed_and_aligned() {
     assert_eq!(glb.json["asset"]["generator"], "stunt-reel stunt-gltf");
     assert_eq!(glb.json["extensionsUsed"][0], "KHR_materials_unlit");
     assert_eq!(
-        glb.json["buffers"][0]["byteLength"].as_u64().unwrap() as usize,
+        glb.json["buffers"][0]["byteLength"]
+            .as_u64()
+            .map(to_usize)
+            .unwrap(),
         glb.bin_len
     );
 
@@ -257,7 +258,7 @@ fn accessors_match_the_model_and_bounds_are_exact() {
         v.as_array()
             .unwrap()
             .iter()
-            .map(|x| x.as_f64().unwrap() as f32)
+            .map(|x| x.as_f64().map(to_f32).unwrap())
             .collect()
     };
     let accessor = &glb.array("accessors")[position];
@@ -279,7 +280,8 @@ fn accessors_match_the_model_and_bounds_are_exact() {
         let indices = glb.indices(
             glb.array("meshes")[mesh_index]["primitives"][0]["indices"]
                 .as_u64()
-                .unwrap() as usize,
+                .map(to_usize)
+                .unwrap(),
         );
         let start = *index_offset as usize;
         assert_eq!(indices, ir.indices[start..start + *index_count as usize]);
@@ -347,7 +349,8 @@ fn tap_model_exports_non_degenerate_triangles() {
     let indices = glb.indices(
         glb.array("meshes")[0]["primitives"][0]["indices"]
             .as_u64()
-            .unwrap() as usize,
+            .map(to_usize)
+            .unwrap(),
     );
     assert!(!indices.is_empty());
     assert_eq!(indices.len() % 3, 0);
@@ -442,7 +445,12 @@ fn an_empty_model_is_an_error() {
 fn push_interp(body: &mut Vec<u8>, opcode: u8, pos_i1: [f32; 3], rz_bam: u16) {
     body.push(opcode);
     for meters in [-pos_i1[0], -pos_i1[1], pos_i1[2]] {
-        body.extend_from_slice(&((meters * 65536.0) as i32).to_le_bytes());
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "fixture positions are a few metres; truncating to 16.16 is the encoding"
+        )]
+        let fixed = (meters * 65536.0) as i32;
+        body.extend_from_slice(&fixed.to_le_bytes());
     }
     for bam in [rz_bam, 0, 0] {
         body.extend_from_slice(&bam.to_le_bytes());
@@ -451,16 +459,16 @@ fn push_interp(body: &mut Vec<u8>, opcode: u8, pos_i1: [f32; 3], rz_bam: u16) {
 
 /// A one-slice film: camera at `eye` in slot 0, then one actor per `(shape_id, position)`.
 fn film(eye: [f32; 3], actors: &[(u16, [f32; 3])]) -> Vec<u8> {
-    let mut body = vec![0x9B, (actors.len() + 1) as u8];
+    let mut body = vec![0x9B, u8::try_from(actors.len() + 1).unwrap()];
     body.extend_from_slice(&[0x00, SIF_EXISTS | SIF_MOVES | SIF_ROTATES, 0x90]);
     for (i, (shape_id, _)) in actors.iter().enumerate() {
-        body.push(1 + i as u8);
+        body.push(1 + u8::try_from(i).unwrap());
         body.push(SIF_EXISTS | SIF_DRAW | SIF_MOVES | SIF_ROTATES);
         body.extend_from_slice(&shape_id.to_le_bytes());
     }
     push_interp(&mut body, 0x40, eye, 0);
     for (i, (_, pos)) in actors.iter().enumerate() {
-        push_interp(&mut body, 0x41 + i as u8, *pos, 0x8000);
+        push_interp(&mut body, 0x41 + u8::try_from(i).unwrap(), *pos, 0x8000);
     }
     body.push(0xFF);
 
@@ -471,16 +479,30 @@ fn film(eye: [f32; 3], actors: &[(u16, [f32; 3])]) -> Vec<u8> {
     bytes
 }
 
+/// A JSON integer the exporter wrote, as an index.
+fn to_usize(n: u64) -> usize {
+    usize::try_from(n).unwrap()
+}
+
+/// A JSON number the exporter wrote from an `f32`.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "glTF stores these values as f32"
+)]
+fn to_f32(x: f64) -> f32 {
+    x as f32
+}
+
 /// An `.ALL` archive of `(resource id, payload)` chunks.
 fn archive(chunks: &[(u16, &[u8])]) -> Vec<u8> {
     let n = chunks.len();
-    let mut out = (n as u16).to_le_bytes().to_vec();
+    let mut out = u16::try_from(n).unwrap().to_le_bytes().to_vec();
     for (id, _) in chunks {
         out.extend_from_slice(&id.to_le_bytes());
     }
     let mut offset = 2 + n * 6;
     for (_, data) in chunks {
-        out.extend_from_slice(&(offset as u32).to_le_bytes());
+        out.extend_from_slice(&u32::try_from(offset).unwrap().to_le_bytes());
         offset += data.len();
     }
     for (_, data) in chunks {
@@ -507,11 +529,11 @@ fn load(film: &[u8], all: &[u8]) -> FilmScene {
 )]
 fn assert_camera_matches(glb: &Glb, camera: &ViewCamera) {
     let cam_node = glb.node_named("Camera").expect("camera node");
-    let cam = &glb.array("cameras")[cam_node["camera"].as_u64().unwrap() as usize];
+    let cam = &glb.array("cameras")[cam_node["camera"].as_u64().map(to_usize).unwrap()];
     assert_eq!(cam["type"], "perspective");
     let perspective = &cam["perspective"];
     let expected = camera.fov_degrees.clamp(1.0, 160.0).to_radians();
-    assert!((perspective["yfov"].as_f64().unwrap() as f32 - expected).abs() < 1e-6);
+    assert!((perspective["yfov"].as_f64().map(to_f32).unwrap() - expected).abs() < 1e-6);
     assert!((perspective["aspectRatio"].as_f64().unwrap() - 320.0 / 200.0).abs() < 1e-6);
     assert!((perspective["znear"].as_f64().unwrap() - 0.1).abs() < 1e-6);
     assert!((perspective["zfar"].as_f64().unwrap() - 20_000.0).abs() < 1e-3);
@@ -520,7 +542,7 @@ fn assert_camera_matches(glb: &Glb, camera: &ViewCamera) {
         .as_array()
         .unwrap()
         .iter()
-        .map(|v| v.as_f64().unwrap() as f32)
+        .map(|v| v.as_f64().map(to_f32).unwrap())
         .collect();
     assert_eq!(translation, camera.eye);
 
@@ -528,7 +550,7 @@ fn assert_camera_matches(glb: &Glb, camera: &ViewCamera) {
         .as_array()
         .unwrap()
         .iter()
-        .map(|v| v.as_f64().unwrap() as f32)
+        .map(|v| v.as_f64().map(to_f32).unwrap())
         .collect();
     let rotation = Quat::from_xyzw(q[0], q[1], q[2], q[3]);
     let view = (Vec3::from(camera.target) - Vec3::from(camera.eye)).normalize();
@@ -550,13 +572,14 @@ fn assert_actors_match(glb: &Glb, scene: &FilmScene, tick: f32) {
             .as_array()
             .unwrap()
             .iter()
-            .map(|v| v.as_f64().unwrap() as f32)
+            .map(|v| v.as_f64().map(to_f32).unwrap())
             .collect();
         assert_eq!(matrix, actor.world_matrix);
         assert_eq!(node["extras"]["state_mask"], actor.state_mask);
         assert_eq!(node["extras"]["shape_id"], actor.shape_id);
         assert!(
-            (node["extras"]["distance"].as_f64().unwrap() as f32 - actor.distance).abs() < 1e-4
+            (node["extras"]["distance"].as_f64().map(to_f32).unwrap() - actor.distance).abs()
+                < 1e-4
         );
         assert!(node["children"].as_array().is_some_and(|c| !c.is_empty()));
     }
@@ -621,7 +644,7 @@ fn actors_sharing_a_shape_share_meshes_and_accessors() {
     let find = |name: &str| {
         roots
             .iter()
-            .map(|r| r.as_u64().unwrap() as usize)
+            .map(|r| r.as_u64().map(to_usize).unwrap())
             .find(|&i| glb.array("nodes")[i]["name"] == name)
             .unwrap()
     };
@@ -651,7 +674,7 @@ fn actors_with_different_shapes_get_separate_meshes() {
     .expect("load");
     let glb = parse_glb(&export_scene_frame(&scene, 0.0).expect("export"));
     let roots = glb.json["scenes"][0]["nodes"].as_array().unwrap();
-    let under = |i: usize| glb.meshes_under(roots[i].as_u64().unwrap() as usize);
+    let under = |i: usize| glb.meshes_under(roots[i].as_u64().map(to_usize).unwrap());
     let (a, b) = (under(1), under(2));
     assert!(a.iter().all(|m| !b.contains(m)));
 }
