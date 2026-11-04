@@ -32,7 +32,7 @@
 //! header, random sequences of valid opcodes with random operands, and bit-flipped /
 //! overwritten / truncated / extended copies of a valid model.
 
-mod common;
+use crate::common;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 

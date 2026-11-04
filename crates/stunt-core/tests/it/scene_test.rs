@@ -16,7 +16,7 @@
 //! Everything is synthetic: fixture SODs and anchors from `tests/fixtures/`, plus
 //! hand-built `.FLM` and `.ALL` bytes, so nothing depends on `corpus/`.
 
-mod common;
+use crate::common;
 
 use std::collections::HashMap;
 use std::path::PathBuf;

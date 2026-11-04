@@ -78,7 +78,7 @@ Golden vectors for the shared DOS math helpers, generated from the Python implem
 ### 11. `synthetic_empty.flm` (4 bytes)
 A film that is only the `FILM` magic: its header parses, but it holds zero slices. `crates/stunt-cli/src/scene.rs` and `export.rs` tests check that naming it is an error rather than a fall back to the synthetic orbit. The same tests cover a named path that does not exist and a named film with the wrong magic (`synthetic_minimal.sod`), which need no fixture of their own; the no-input case needs no file.
 
-`crates/stunt-gltf/tests/export_test.rs` reuses `synthetic_minimal.all`, `synthetic_minimal.sod`, `synthetic_tap.sod` with `synthetic_anchors.bin`, and `synthetic_timeline.flm` to check exported `.glb` structure; it adds no fixtures of its own.
+`crates/stunt-gltf/tests/it/export_test.rs` reuses `synthetic_minimal.all`, `synthetic_minimal.sod`, `synthetic_tap.sod` with `synthetic_anchors.bin`, and `synthetic_timeline.flm` to check exported `.glb` structure; it adds no fixtures of its own.
 
 ### 12. `synthetic_minimal.set` (282 bytes)
 A synthetic scene exercising the three-record layout of `[FMT-SET-HEADER]`:
@@ -135,7 +135,7 @@ A made-up font in the `PFONT.BIN` layout ([`pfont.ksy`](../../research/formats/a
 - `'I'` (`0x49`): width 2, rows 0..6 `0x80`.
 - `'L'` (`0x4C`): width 4, rows 0..5 `0x80`, row 6 `0xE0`.
 - Row 7 is empty in every glyph. None of these glyphs is `PLAYONE`'s.
-- Used by `crates/stunt-core/tests/font_spec.rs` (parsing, advance, credits layout), the renderer's `credits_paint_index_layer_and_colour_in_mode13h_pixels` and the CLI's font lookup tests.
+- Used by `crates/stunt-core/tests/it/font_spec.rs` (parsing, advance, credits layout), the renderer's `credits_paint_index_layer_and_colour_in_mode13h_pixels` and the CLI's font lookup tests.
 
 ### 17. `link_*` (`.ALL` linker set)
 A made-up film archive and the three source files it is linked from ([`linking.md`](../../research/makeone-exe/linking.md)). Each `.res` is `RS`, `res_index`, item count, then `ofs[0] = 4 * (count + 2)`, the rest of the offset table, and the regions; item `n` is region `n - 1`. No byte is the game's.
@@ -149,5 +149,5 @@ A made-up film archive and the three source files it is linked from ([`linking.m
 | `link_film.flm` | 4 | `FILM`, standing in for the film the archive was made for. |
 | `link_film.toml` | | The manifest `stuntreel link extract` writes for `link_film.all` with the three files in a tree as `RES/SCEN.RES`, `RES/MUS.XMA` and `RES/MUS.ESS`: `game_root = "game"`, a zero `makeone_sha256`, and the real SHA-256 of each file. |
 
-- `crates/stunt-core/tests/link_spec.rs` checks that `extract` picks the `.ESS` file because only it supplies `0xC002`, that `build` inverts it, and the not-linkable and malformed-manifest errors built from these bytes.
+- `crates/stunt-core/tests/it/link_spec.rs` checks that `extract` picks the `.ESS` file because only it supplies `0xC002`, that `build` inverts it, and the not-linkable and malformed-manifest errors built from these bytes.
 - `crates/stunt-cli/src/link.rs` copies them into a temporary tree to run `stuntreel link extract` and `build` end to end.

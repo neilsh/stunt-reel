@@ -29,7 +29,7 @@
 //! - Gate G04 parity against `tests/fixtures/oracle_intro_trajectory.json` (needs `serde`):
 //!   positional RMSE <= 0.01 m, checked independently in `f64`, plus tamper rejection
 
-mod common;
+use crate::common;
 
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -13,7 +13,7 @@
 //! Stunt Island demo archive:
 //!
 //! ```text
-//! cargo test -p stunt-core --test flm_camera_test -- --ignored
+//! cargo test -p stunt-core --test it -- flm_camera_test:: --ignored
 //! ```
 
 use std::fs;

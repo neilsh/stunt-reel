@@ -14,7 +14,7 @@
 //! `q' = q_z180 * q` with `q_z180 = [0, 0, 1, 0]`, and actor orientations the conjugate
 //! `q_z180 * q * q_z180^-1`, because decoded shapes are already `[I1]` (+Y up).
 
-mod common;
+use crate::common;
 
 use common::push_interp_dos;
 use stunt_core::contracts::trajectory::ActorTransform;

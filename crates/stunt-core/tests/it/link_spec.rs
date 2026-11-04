@@ -16,10 +16,10 @@ use std::collections::BTreeMap;
 use stunt_core::link::{LinkError, Source, build, extract};
 use stunt_core::vfs::{ResRegions, res_regions, write_all};
 
-const SCEN: &[u8] = include_bytes!("../../../tests/fixtures/link_scen.res");
-const XMA: &[u8] = include_bytes!("../../../tests/fixtures/link_mus_xma.res");
-const ESS: &[u8] = include_bytes!("../../../tests/fixtures/link_mus_ess.res");
-const FILM_ALL: &[u8] = include_bytes!("../../../tests/fixtures/link_film.all");
+const SCEN: &[u8] = include_bytes!("../../../../tests/fixtures/link_scen.res");
+const XMA: &[u8] = include_bytes!("../../../../tests/fixtures/link_mus_xma.res");
+const ESS: &[u8] = include_bytes!("../../../../tests/fixtures/link_mus_ess.res");
+const FILM_ALL: &[u8] = include_bytes!("../../../../tests/fixtures/link_film.all");
 
 fn candidates() -> Vec<(&'static str, ResRegions<'static>)> {
     vec![

@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use stunt_core::credits::{ClipRect, CreditLines, draw_credits};
 use stunt_core::font::{FontError, PFONT_BYTES, PFont};
 
-const SYNTHETIC_PFONT: &[u8] = include_bytes!("../../../tests/fixtures/synthetic_pfont.bin");
+const SYNTHETIC_PFONT: &[u8] = include_bytes!("../../../../tests/fixtures/synthetic_pfont.bin");
 
 fn font() -> PFont {
     PFont::parse(SYNTHETIC_PFONT).expect("synthetic font parses")

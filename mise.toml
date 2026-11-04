@@ -244,7 +244,7 @@ run = "cargo test --locked --workspace --all-features"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.test-render]
-description = "Run stunt-render's GPU integration tests with a bounded hang watchdog (detects hangs instead of waiting forever)"
+description = "Run stunt-render's GPU test binary (`gpu`) with a bounded hang watchdog (detects hangs instead of waiting forever)"
 run = "uv run python python/scripts/watch_render_test.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 

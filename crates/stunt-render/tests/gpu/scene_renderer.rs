@@ -13,7 +13,7 @@
 //! Skips when no GPU adapter is available, like the other render tests (see common); fails
 //! instead of skipping under `STUNT_REQUIRE_GPU=1` (ADR 0006).
 
-mod common;
+use crate::common;
 
 use std::collections::HashMap;
 

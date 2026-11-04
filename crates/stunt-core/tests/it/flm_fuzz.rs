@@ -30,7 +30,7 @@
 //!
 //! Named, deterministic behaviour with specific expected results lives in `flm_spec.rs`.
 
-mod common;
+use crate::common;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 

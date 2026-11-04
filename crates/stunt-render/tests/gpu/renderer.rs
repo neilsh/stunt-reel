@@ -13,7 +13,7 @@
 //! Every GPU test skips when no adapter is available and fails instead of skipping when
 //! `STUNT_REQUIRE_GPU=1` (ADR 0006). The window surface path stays untested here.
 
-mod common;
+use crate::common;
 
 use stunt_core::contracts::{
     CameraTransform, NodeKind, SodModelIr, SodVertex, VisibilityCondition,

@@ -22,7 +22,7 @@
 //!
 //! Tests with specific expected results (exact errors, exact payloads) live in `vfs_spec.rs`.
 
-mod common;
+use crate::common;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
