@@ -39,7 +39,7 @@ prek runs the commit-time checks; `gate.py` stays the gate.
 
 - **Installation is unchanged.** `.githooks/pre-commit` still chains to an untracked hook and then
   runs `mise run pre-commit`; `mise run init` still sets `core.hooksPath`. The `pre-commit` task
-  now runs `prek run --config prek.toml`. No `prek install`: the committed hook is the shim, and
+  now runs `prek run --quiet --config prek.toml`. No `prek install`: the committed hook is the shim, and
   because `core.hooksPath` is relative, a checkout of an older branch runs that branch's own
   `.githooks/`.
 - **`prek.toml` holds the plan.** Every local hook is exactly `mise run <task>` for a leaf task of
@@ -120,7 +120,8 @@ prek runs the commit-time checks; `gate.py` stays the gate.
 - A commit runs the checks that match its staged files, against the staged content, with the
   gate's tool versions. Untracked files are not stashed, so a whole-tree step such as ruff still
   sees untracked `.py` files, as before.
-- The hook's output is prek's pass/fail list; #32's one-line-per-step report and
+- The hook runs prek with `--quiet`, so a passing commit prints nothing past mise's task line
+  and a failing hook prints its id, exit code and output; #32's one-line-per-step report and
   `target/pre-commit.log` go away with `gate.py staged`.
 - prek is a required tool for every checkout that runs `mise run init`, and for CI.
 - `git commit --no-verify` skips the hooks. The gate covers the gate-step hooks and the CI step
