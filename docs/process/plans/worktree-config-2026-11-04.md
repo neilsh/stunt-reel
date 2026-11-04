@@ -1,6 +1,6 @@
 # Worktrees reach shared state by configuration, not links (2026-11-04)
 
-Status: **design agreed 2026-11-04; corrected the same day while planning (sections 3, 4.1, 4.3); implemented on branch `claude/worktreeinclude-brainstorm-b409c5` as ADR 0033, not ADR 0032, which another decision had taken**.
+Status: **implemented 2026-11-04 (results in section 6); design agreed 2026-11-04 and corrected the same day while planning (sections 3, 4.1, 4.3); on branch `claude/worktreeinclude-brainstorm-b409c5` as ADR 0033, not ADR 0032, which another decision had taken**.
 Tasks: [`worktree-config-implementation-2026-11-04.md`](worktree-config-implementation-2026-11-04.md). Source: a session of
 2026-11-04 that started from "should we use a `.worktreeinclude` for Claude", surveyed the 32
 worktrees under `.claude/worktrees/` (16 never provisioned, including the session's own) and
@@ -134,6 +134,19 @@ The implementation plan goes in `worktree-config-implementation-2026-11-04.md` b
 - Removing that worktree through Claude Code's exit prompt leaves the data root and the shared
   cache untouched (size and file count before and after).
 - `mise run reap -- --yes` still unlinks and removes an old linked worktree.
+
+Results, 2026-11-04, on the implementing branch. The worktree was made with `git worktree add`
+under `.claude/worktrees/` from the branch, because Claude Code's `EnterWorktree` branches from
+`origin/main` and refuses a session already in a worktree; it was removed with
+`git worktree remove --force` and a branch delete, which is what Claude Code's removal runs.
+
+| Check | Result |
+| --- | --- |
+| No `init`: `mise run lint-py`; `.venv`; links | passed; `.venv` a real directory; 0 reparse points; no `.cache` in the checkout |
+| First cargo task (`mise run lint-rust`) | `ensure` printed `+ target/ seeded from` the implementing worktree; clippy then finished in 4.8 s |
+| Data reads with no links | `mise run capture-digest -- vault-ctry` read the data root's capture and matched its pinned hash; `mise run flm-events -- corpus/stisldem/VAULT/CTRY.FLM` printed 1342 ticks (layer-1 probe). `mise run frame` was not run: it needs a release build |
+| Removal | data root 5,834 files / 770,825,445 bytes and `<primary>/.cache` 221,313 files / 7,085,671,222 bytes, identical before and after. Git left the empty top directory, because a shell still had its working directory there |
+| `reap` | not run live: it runs only from the primary checkout, which holds `main`'s code, and would reap other sessions' worktrees. `tests/test_worktree_reap.py`, unchanged, passes; `mise run init` in a linked worktree lists its seven links and keeps them |
 
 ## 7. Open questions
 
