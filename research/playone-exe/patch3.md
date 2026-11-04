@@ -45,7 +45,7 @@ The patch's own notes (`README.TXT`, `SINEW.TXT`) say what the new executables d
 | Runtime `DS` under dosbox-automation (load paragraph `0x01F5` + `DGROUP`) | `0x0F46` | `0x0E66` |
 | Stored PSP (`mov [imm], es` at entry + `0x1A`) | `DS:0x22C4` | `DS:0x1C4A` |
 
-The first `0xA4` bytes of the two entry routines are the same instructions; only operands differ. Data at `DS:0x2200` and above moved down by `0x67A` (`0x22C4`, `0x22CE`, `0x22D0`, `0x2263` to `0x2268`, `0x56A2`, `0x5786`), the strings near `0x0600` moved up by `0x7C` (`game.cfg` `0x05AC` → `0x0628`, `install.exe` `0x05BE` → `0x063A`), and one word moved by `0x67E` (`0x14CC` → `0x0E4E`), so the data segment was not shifted as a whole. For each instruction of the unpatched image that names `DS:0x4896`, `0x22B8`, `0x2768` or `0x22C4`, the bytes on each side (up to 12, address wildcarded) were searched in the patched image and kept when exactly one place matched. Every unique match gave the same shift, `-0x67A`: `0x4896` → `0x421C` (2 of 17 references matched uniquely), `0x22B8` → `0x1C3E` (2 of 4), `0x2768` → `0x20EE` (7 of 10), `0x22C4` → `0x1C4A` (1 of 3, and the entry routine itself). References that did not match uniquely sit beside other shifted addresses, so a byte match cannot see them; none matched elsewhere. The rows are in [`memory-map.md` § 1.1](memory-map.md#11-patch-3-build).
+The first `0xA4` bytes of the two entry routines are the same instructions; only operands differ. Data at `DS:0x2200` and above moved down by `0x67A` (`0x22C4`, `0x22CE`, `0x22D0`, `0x2263` to `0x2268`, `0x56A2`, `0x5786`), the strings near `0x0600` moved up by `0x7C` (`game.cfg` `0x05AC` → `0x0628`, `install.exe` `0x05BE` → `0x063A`), and one word moved by `0x67E` (`0x14CC` → `0x0E4E`), so the data segment was not shifted as a whole. For each instruction of the unpatched image that names `DS:0x4896`, `0x22B8`, `0x2768` or `0x22C4`, the bytes on each side (up to 12, address wildcarded) were searched in the patched image and kept when exactly one place matched. Every unique match gave the same shift, `-0x67A`: `0x4896` → `0x421C` (2 of 17 references matched uniquely), `0x22B8` → `0x1C3E` (2 of 4), `0x2768` → `0x20EE` (7 of 10), `0x22C4` → `0x1C4A` (1 of 3, and the entry routine itself). References that did not match uniquely sit beside other shifted addresses, so a byte match cannot see them; none matched elsewhere. The rows are in [`memory-map.md` § 1.1](memory-map.md#11-patch-3-build). § 4 pairs the instructions by function instead, maps every row, and agrees with each of these.
 
 Live check: `CTRY.FLM` with its shipped `.ALL` on the patched tree, `mise run capture-ref -- --game-root <data root>/builds/patched` (the harness picks the offsets by the executable's hash, [`playone.py`](../../python/stunt_reel/tac/playone.py) `layout_for`). The film clock at `0x0E66:0x421C` and the global tick at `0x0E66:0x1C3E` rose together from 27 (one kept frame per 11 ticks, film tick equal to global tick, as on the unpatched build), and at the three film ticks shared with the unpatched reference `captures/vault-ctry/frames/002` the working palette read at `0x20EE` was identical to the unpatched one at `0x2768`.
 
@@ -79,17 +79,86 @@ SI Central's advice that some older films play only on the unpatched `PLAYONE` a
 
 `[Bounded Observation]`, 2026-10-31. The patched build's composed-page words were taken as `0x1C50` and `0x1C52`, the unpatched `0x22CA`/`0x22CC` less `0x67A`. A `CTRY.FLM` capture on the patched tree (`mise run capture-ref -- --game-root <data root>/builds/patched`) traced 1,906 frames and flagged 72 torn (3.8%), against 66 of 1,908 on the unpatched build; a torn flag needs bands that match only one buffer and others only the other, which words naming other memory could not produce. See [`capture-dosbox-automation.md` § 4.5](capture-dosbox-automation.md#45-torn-pages-and-the-dac-lag).
 
+## 4. Function Pairing: the Whole Map
+
+`[Supported Inference]`, static, 2026-11-03, the tier § 2 gave its byte match: each patched offset is an operand in the patched machine code, and the inference is that it names the same variable as the paired unpatched operand. Identical initialised bytes corroborate the data rows, and live captures confirm `0x1C3E`, `0x1C50`/`0x1C52`, `0x20EE` and `0x421C` (§ 2, § 3.1). `mise run pair-builds` ([`pair_builds.py`](../../python/scripts/pair_builds.py), [`build_pairing.py`](../../python/scripts/build_pairing.py)) pairs the two images' instructions function by function. It maps every row of [`memory-map.md`](memory-map.md), not only the four that § 2's byte match reached; the rows are in [`memory-map.md` § 1.1](memory-map.md#11-patch-3-build). Every offset § 2 found comes out the same.
+
+The map was produced by these three runs, which print the summary and shift runs, the dispatch slots, and one line per row:
+
+```bash
+mise run pair-builds
+mise run pair-builds -- --slots 0x824
+mise run pair-builds -- --ds 0x0542,0x05AC,0x05B5,0x05BE,0x05CA,0x05D4,0x05DB,0x065D,0x069B,0x09DE,0x09EA,0x09F0,0x09F6,0x0A58,0x0A62,0x0AAB,0x0C10,0x0C50,0x0CA0,0x0C60,0x10A4,0x2240,0x225A,0x2263,0x2264,0x2265,0x2272,0x2275,0x227A,0x227B,0x227C,0x227D,0x2294,0x2296,0x2298,0x229A,0x229C,0x229E,0x22A4,0x22B6,0x22B8,0x22BC,0x22C4,0x22CA,0x22CC,0x22CE,0x22D0,0x2468,0x2768,0x474A,0x47C8,0x47E2,0x47E4,0x47E6,0x4758,0x4764,0x4778,0x4888,0x4896,0x48A2,0x48B6,0x4906,0x49C6,0x49EC,0x49EE,0x49F0,0x4F02,0x19A8@0x824,0x41B8@0x824,0x41C8@0x824,0x41CA@0x824,0x41D4@0x824,0x41D8@0x824,0x4450@0x824,0x7468@0x824,0x806C@0x824,0x806E@0x824,0x806F@0x824,0x8070@0x824,0x8072@0x824,0x8078@0x824,0x8082@0x824,0x8084@0x824,0x8086@0x824,0x8088@0x824,0x80C0@0x824,0x80CA@0x824,0x8108@0x824,0x810A@0x824,0x810C@0x824,0x8120@0x824,0x8126@0x824,0x8108@0:es,0x8120@0:es,0x8122@0:es,0x8126@0:es,0x8128@0:es,0x8078@0:es --code 0x0C5E,0x0C78,0x0C90,0x0C94,0x0C98,0x0CBD,0x0CC4,0x0CC8,0x0CD2,0x0CF2,0x0CFA,0x0EE6,0x0EE9,0x0F84,0x58D0,0x0FD2,0x11F8,0x11FC,0x122E,0x1238,0x123D,0x12DC,0x12E3,0x12F8,0x136F,0x196C,0x1D96,0x39B0,0x39D0,0x3D54,0x3D7F,0x42F5,0x4A29,0x4A32,0x4A35,0x6E1B,0x737B,0x7B70,0x7B79,0x843E,0x8A1C,0x8C45,0x908E,0x9100,0x9106,0xA9DC,0xAD88,0xAE66,0xB85D,0x1E451,0x995C,0x9481,0x965F,0xA56C
+```
+
+**Method.**
+
+1. Unpack both images with [`unlzexe.py`](../../python/scripts/unlzexe.py). A code segment is one that a relocated far call lands in, or the entry segment; it ends where the next segment named by a relocation (or the stack segment) begins.
+2. Decode each code segment with iced-x86 in 16-bit mode, as a linear sweep in which an invalid encoding counts as one instruction, and split it into functions at every near and far call target. The first run used Capstone with `skipdata`; iced-x86 gives the same offset for every row.
+3. Reduce each instruction to a shape: mnemonic, registers, and constants and displacements below `0x100`. Addresses, larger immediates and branch targets become wildcards, and their values are kept.
+4. Pair functions. Shape sequences unique in both builds, and in the same order (the longest increasing run), anchor the pairing; the functions between two anchors are aligned in order by shape similarity (`difflib` ratio at least 0.5).
+5. Align the instructions of each pair (`difflib`). Every aligned pair maps a code address, and every wildcard in it is a vote on what that value became. Where two paired functions differ, a run of four or more repeats of a pattern up to four instructions long is left out: the aligner cannot tell which repeat is missing (§ 4.1).
+6. Map a data offset by the absolute memory operands that name it; failing those, by displacements equal to it (`[bx + 0x4F02]`, a table base); failing those, by the immediates equal to it (`mov si, 0x2768`); failing those, by the shift its nearest named neighbours share ("bracketed"). An operand formed from `BP` without a prefix is in the stack segment and votes there, not in `DS`.
+
+**Segments.** Both builds have four code segments, paired in order. Relocated immediates (`mov ax, seg`) pair the data segments: `DGROUP` `0x0D51` → `0x0C71` (37 immediates), the work segment `0x15D4` → `0x14BF` (22), `0x1DE7` → `0x1CD2`, and the mixer's data, inside `0x1DEA` before, has its own segment `0x1F57`.
+
+| Code segment | Bytes | Functions | Identical | Paired | Instructions aligned |
+|---|---|---|---|---|---|
+| `0x0000` → `0x0000` (main program; `DS` is `DGROUP`) | `0x8240` → `0x7540` | 247 → 240 | 207 | 235 | 11,619 |
+| `0x0824` → `0x0754` (display-list VM; `DS` is the work segment) | `0x52D0` → `0x51D0` | 72 → 72 | 69 | 72 | 8,435 |
+| `0x1DEA` → `0x1CD5` (resident PCM mixer) | `0x30C0` → `0x0F20` | 30 → 28 | 0 | 2 | 27 |
+| `0x20F6` → `0x1DC7` (far-called, `CS`-relative data) | `0x1900` → `0x1900` | 49 → 49 | 38 | 49 | 2,161 |
+
+* **The main program pairs but for the dropped display drivers.** The 12 unpaired unpatched functions are `0x0568` and eleven at `0x6326..0x6DCB`, which write the VGA sequencer and graphics controller (`0x3C4`, `0x3CE`) and hold the alternate video-mode path at `0x6E1B`; the patch notes say Tandy and CGA graphics were dropped (§ 1). Five patched functions are new: `0x00DC`, `0x05DF`, `0x061A`, `0x06F2`, `0x4C4D`.
+* **The votes never disagree.** Segment-0 memory operands name 371 distinct `DS` offsets, the VM segment 165 and segment-0 `ES` operands 50; each offset gets one answer from all its references. All 17 references to the film clock `0x4896` pair (§ 2's byte match found 2).
+* **`DGROUP` moved by 11 different shifts, not one.** From the summary of `mise run pair-builds`:
+
+  | Unpatched `DS` offsets | Shift | Offsets |
+  |---|---|---|
+  | `0x0000..0x0008` | `0` | 4 |
+  | `0x018C..0x0250` | `-0x170` | 5 |
+  | `0x02E5..0x052A` | `-0x1E6` (`0x02E5`: `-0x1E7`; `0x0300`: `0`) | 18 |
+  | `0x0542..0x072A` | `+0x7C` | 26 |
+  | `0x07F8..0x0A36` | `+0x84` | 27 |
+  | `0x0BD4..0x0D98` | `+0x74`; `0x0C10`, named only by immediates, moved `+0x112` | 47 |
+  | `0x10C6..0x10CA` | `-0x27E` | 3 |
+  | `0x210C..0x2235` | `-0x67E` | 24 |
+  | `0x2237..0x223B` | `-0x67C` | 3 |
+  | `0x223D..0x8044` | `-0x67A` | 205 |
+
+  The rest are not `DGROUP` data: `0x8830..0x8832` (`-0x350`) is the work segment's start seen through `DGROUP` (`0x15D4 - 0x0D51` paragraphs, `0x14BF - 0x0C71` patched), and `0x1952`, `0x41E8`/`0x41EA`, `0x806C` and `0x8CC0..0xF600` (shift 0) are read while `DS` is another segment. Objects are interleaved even inside a run: `0x0C10` moved `+0x112` among `+0x74` neighbours. A bracketed offset is therefore the weakest answer, and the map marks it.
+* **The work segment did not change.** All 164 offsets the VM segment names through `DS` while `DS` is the work segment, and all 50 the main program names through `ES`, pair with themselves. The segment is `0x8130` bytes in both images, and its initial bytes are identical except 12 at `0x1952..0x195D`.
+* **The lighting rows the #65/#66 probes read** pair instruction for instruction: the work-segment pointer `DS:0x0542` → `0x05BE` (13 of 13 references), the light copy `DS:0x49EC..0x49F0` → `0x4372..0x4376` (4 each), the var-13 handler `0x196C` → `0x1A7F`, the sun projection `0x908E` → `0x8385`, and the light setup entries `0x9100`/`0x9106` → `0x83F7`/`0x83FD`, whose work-segment stores (`0x8072`..) are unchanged.
+
+### 4.1 The Patched Build Has One Dispatch Slot Fewer
+
+`[Supported Inference]`, static. `mise run pair-builds -- --slots 0x824` reads the 9-byte dispatch slots at the start of each VM segment ([`sod-vm.md`](sod-vm.md) section 1) and pairs them through their handlers. The unpatched image has 108 slots (opcodes `0x0000..0x03C3`), the patched 107 (`0x0000..0x03BA`). Slots 0–91 (opcodes up to `0x0333`) jump to paired handlers at the same index. Unpatched slot 92, opcode `0x033C`, jumps to `0x988F` (`cmp byte [0x806B], 0` / `cmp byte [0x806C], 0` / `call [0x8080]`), and no patched slot jumps to code paired with it. Every later unpatched slot `k` pairs with patched slot `k - 1`. So an opcode word from `0x0345` up names a different handler on each build: unpatched `0x0345 + 9k` is patched `0x033C + 9k`.
+
+[`sod-opcodes.md`](../formats/sod-opcodes.md) lists 107 opcodes, the patched count, and names `0x033C` `OP_VECELLIPSE` and `0x0345` `OP_VECELLSL`. Its names come from `SOD.H`, not from either binary, so neither build is known to be the one it numbers. Below `0x033C` it holds for both builds. From `0x033C` up, the unpatched build's opcode `n` is the patched build's `n - 9`, and which names belong to which build is Open question 1. The opcodes from `0x033C` up are the 2D ones (ellipses, letters, 2D vectors, circles). `SPRITES.RES` is the shape resource the patch replaced (§ 1); whether it re-encodes those opcodes is untested.
+
+A jump table defeats instruction alignment: every slot has the same shape, so a missing slot can be placed anywhere in the run. Before step 5 left periodic runs out, the aligner paired unpatched slot 56 (`0x843E`) with patched slot 55. The slot rows of the map come from the handler pairing instead.
+
+### 4.2 The Mixer Was Rewritten
+
+`[Supported Inference]`, static. Two of the mixer segment's 30 functions pair, consistent with the patch's EMS sound fix (§ 1). The one far call from the main program into the mixer that pairs is the var-11 setter call at `0x0F3A` → `0x104B`. Unpatched, it loads `DX` from the film variable (`[bx + 0x94]`, `0x7E + 2 × 11`), sets `AX = 1` and calls `0x1DEA:0x05B1`, which stores `DX` in `cs:[0x49]` ([`memory-map.md`](memory-map.md) `[MEM-PALETTE]`). Patched, it loads `AX` from the same variable, sets `BX = 0` and calls `0x1CD5:0x0B67`, which stores `AX` at `+0x12` of the record that `0x1F57:[0x11B6 + 2 × BX]` points to: a per-channel record replaces the code-segment field.
+
+---
+
 ## Ruled out
 
 - **Running `PATSI.BAT` itself.** It ends in the interactive `SETUP`, and writing the corpus is not allowed (ADR 0022); the build applies the same deletions and extractions to a copy.
 - **A patched tree without `GAME.CFG`.** `PLAYONE` would try to run `install.exe` at start (§ 1.1).
+- **The byte match of § 2 for the other rows.** A reference whose neighbouring bytes hold other shifted addresses matches nowhere; it reached 2 of the film clock's 17 references, where function pairing reaches all 17 (§ 4).
+- **One shift, or a shift per region, for `DGROUP`.** It moved by 11 shifts, and objects are interleaved inside a region: `0x0C10` moved `+0x112` among `+0x74` neighbours (§ 4).
+- **Aligning a jump table instruction by instruction.** Every dispatch slot has one shape, so the aligner placed the dropped slot wrongly; slots pair through their handlers (§ 4.1).
 
 ## Open questions
 
-1. The other `DGROUP` rows of [`memory-map.md`](memory-map.md) (camera rig, actor table, sound flags, the work-segment pointer `probe-light` reads) are not mapped for the patched build. A Capstone decode of both images that pairs instructions by function, rather than the byte match of § 2, would map them all. ([#78](https://github.com/neilsh/stunt-reel/issues/78))
+1. Which opcode numbering do the shipped shapes use above `0x0333`? Unpatched `PLAYONE` has a slot at `0x033C` that the patched build dropped, so opcode words from `0x0345` up dispatch differently (§ 4.1). Counting the opcode words of every `.SOD` stream in the unpatched and patched `SPRITES.RES`, and in the resources the patch did not replace, would show whether the patch re-encoded them and which numbering [`sod-opcodes.md`](../formats/sod-opcodes.md) and the renderer follow.
 2. Why does `BIGMAN` replay a tick apart from boot to boot, when `CTRY` does not? Candidates: its size (900 KB of `.FLM`, 1.4 MB of `.ALL`) makes `PLAYONE` read the disk mid-film, or its sounds. A survey of more films on both builds would show whether long films in general jitter. ([#77](https://github.com/neilsh/stunt-reel/issues/77))
 3. Which films, if any, play on one `PLAYONE` build only when given the archive that build's `MAKEONE` writes? Generating both archives for the films whose resources the patch replaced (sprites, the two sound banks) would test SI Central's claim directly.
 4. What `MAKEONE` waits for when it stays in graphics mode after writing the archive (`COUNT`, `EXIT` patched). A screen read at that point would show whether it is a prompt; `make-all` now accepts an archive unchanged for 60 s after the timeout (a MAKEONE hang) and records `returned_to_dos: false`, so the cause no longer blocks it. ([#76](https://github.com/neilsh/stunt-reel/issues/76))
 5. Does the Easy/Hard flight model change how a film plays back? `SINEW.TXT` describes it as a flying change; whether `PLAYONE` replays recorded positions (no effect) or re-simulates (an effect) decides whether film choice by build is about physics or about something else.
 6. The batch survey runs the patched build for every `siarchive/Films/NewPLAY/` film, whose folder ships Patch #3's `PLAYONE.EXE` (`staging._engine_root` takes a film's own tree), except the films in `UNPATCHED_CAPTURES` (`vault-intro`, `vault-tod`), which it captures with `--game-root builds/unpatched` ([`capture-dosbox-automation.md`](capture-dosbox-automation.md) § 4.7). Which other films need that awaits a survey on both builds. The list of capture stalls (`KNOWN_CAPTURE_STALLS`) is answered: on either build only `flmonly-bigman` still fails ([#29](https://github.com/neilsh/stunt-reel/pull/29), [#45](https://github.com/neilsh/stunt-reel/pull/45), [#77](https://github.com/neilsh/stunt-reel/issues/77)).
 7. `captures/<film>/archives/<run>` and `frames/<run>` record the build only in `meta.json`, so a run name says nothing about which `PLAYONE` or `MAKEONE` made it. Whether the store should file runs by build is open. ([#79](https://github.com/neilsh/stunt-reel/issues/79))
+8. What are the 12 work-segment bytes at `0x1952..0x195D` that differ between the builds' initial images (§ 4)? Patched VM code reads a word there (`mov si, [0x1952]` at `0x8B52`).
