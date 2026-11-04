@@ -6,7 +6,7 @@
 debugger link, and use it to answer #66 (what sets the per-shot light) and #65 (who produces the
 ground records and their colours) on both `PLAYONE.EXE` builds.
 
-**Architecture:** A `python/stunt_reel/dbx/` package. `link` speaks the TCP protocol, `boot`
+**Architecture:** A `python/scripts/dbx/` package. `link` speaks the TCP protocol, `boot`
 stages and starts a film, `addr` translates between image offsets and runtime addresses (patched
 offsets come from #78's pairing), `watch` turns a memory-breakpoint stop into a writer with
 iced-x86, `plan` parses TOML plans, and `run` drives the hit loop and writes JSONL. A CLI script
@@ -66,18 +66,18 @@ first: section numbers below (S3.2 and so on) point into it.
 
 | Path | Task | Responsibility |
 |---|---|---|
-| `python/stunt_reel/dbx/__init__.py` | 1 | package docstring, re-exports |
-| `python/stunt_reel/dbx/link.py` | 1 | TCP protocol, dumps, register reads |
+| `python/scripts/dbx/__init__.py` | 1 | package docstring, re-exports |
+| `python/scripts/dbx/link.py` | 1 | TCP protocol, dumps, register reads |
 | `tests/dbx_peer.py` | 1 | scripted fake DOSBox-X peer for tests |
-| `python/stunt_reel/dbx/addr.py` | 2 | image/runtime translation, site check, patched mapping |
+| `python/scripts/dbx/addr.py` | 2 | image/runtime translation, site check, patched mapping |
 | `tests/dbx_stubs.py` | 2 | synthetic `LoadImage` and `Pairing` builders shared by Tasks 2, 4 and 6 |
-| `python/stunt_reel/dbx/watch.py` | 3 | watch-stop writer resolution with iced-x86 |
-| `python/stunt_reel/dbx/plan.py` | 4 | plan TOML parsing and validation |
-| `python/stunt_reel/dbx/boot.py` | 5 | conf, staging, dialog settle, BIOS keys, load paragraph, launch |
+| `python/scripts/dbx/watch.py` | 3 | watch-stop writer resolution with iced-x86 |
+| `python/scripts/dbx/plan.py` | 4 | plan TOML parsing and validation |
+| `python/scripts/dbx/boot.py` | 5 | conf, staging, dialog settle, BIOS keys, load paragraph, launch |
 | `tools/dosbox-x/dosbox-x.conf` | 5 | conf template |
-| `python/stunt_reel/dbx/run.py` | 6 | arming, hit loop, JSONL |
+| `python/scripts/dbx/run.py` | 6 | arming, hit loop, JSONL |
 | `python/scripts/debug_x.py`, `mise.toml` | 7 | CLI, task, DOSBox-X pin |
-| `docs/adr/0033-...md`, `research/playone-exe/debugger-plans.md` | 8 | records |
+| `docs/adr/0034-...md`, `research/playone-exe/debugger-plans.md` | 8 | records |
 | `tools/dosbox-x/plans/light-*.toml` | 9 | #66 plans |
 | `python/stunt_reel/ground_stream.py`, `python/scripts/ground_stream.py` | 12 | ground-record decoder |
 | `tools/dosbox-x/plans/ground-*.toml` | 13 | #65 plans |
@@ -102,11 +102,11 @@ Departures from the spec (S3.2 to S3.4 were revised to match):
   `git merge-base --is-ancestor refs/heads/claude/sad-khorana-d54142 HEAD`. If review fixes on
   #170 moved it, rebase this branch onto the new tip.
 - [ ] **Step 2:** `mise exec -- uv sync --locked --all-groups`, then
-  `mise exec -- uv run python -c "import iced_x86, stunt_reel.build_pairing"` prints nothing.
+  `mise exec -- uv run python -c "import iced_x86, build_pairing"` prints nothing.
 
 ### Task 1: `link.py` and the fake peer
 
-**Files:** Create `python/stunt_reel/dbx/__init__.py`, `python/stunt_reel/dbx/link.py`,
+**Files:** Create `python/scripts/dbx/__init__.py`, `python/scripts/dbx/link.py`,
 `tests/dbx_peer.py`, `tests/test_dbx_link.py`.
 
 **Interfaces:**
@@ -154,10 +154,10 @@ Departures from the spec (S3.2 to S3.4 were revised to match):
 
 ### Task 2: `addr.py`
 
-**Files:** Create `python/stunt_reel/dbx/addr.py`, `tests/dbx_stubs.py`, `tests/test_dbx_addr.py`.
+**Files:** Create `python/scripts/dbx/addr.py`, `tests/dbx_stubs.py`, `tests/test_dbx_addr.py`.
 
 **Interfaces:**
-- Consumes: `stunt_reel.build_pairing`: `LoadImage` (`data`, `relocs: frozenset[int]`), `Pairing`,
+- Consumes: `build_pairing`: `LoadImage` (`data`, `relocs: frozenset[int]`), `Pairing`,
   `Function`, `Insn`, `map_code`, `map_data`, `dispatch_slots`, `SLOT_BYTES`, `ALIGNED`, `MEM`.
 - Produces:
   - `class Unmappable(ValueError)`, `class SiteMismatch(ValueError)`
@@ -212,7 +212,7 @@ Departures from the spec (S3.2 to S3.4 were revised to match):
 
 ### Task 3: `watch.py`
 
-**Files:** Create `python/stunt_reel/dbx/watch.py`, `tests/test_dbx_watch.py`.
+**Files:** Create `python/scripts/dbx/watch.py`, `tests/test_dbx_watch.py`.
 
 **Interfaces:**
 - Consumes: `Regs` (Task 1).
@@ -262,7 +262,7 @@ Rule (spec S3.4, made exact):
 
 ### Task 4: `plan.py`
 
-**Files:** Create `python/stunt_reel/dbx/plan.py`, `tests/test_dbx_plan.py`.
+**Files:** Create `python/scripts/dbx/plan.py`, `tests/test_dbx_plan.py`.
 
 **Interfaces:**
 - Consumes: `addr.to_patched`, `addr.to_patched_data`, `addr.Unmappable` (Task 2).
@@ -323,7 +323,7 @@ Defaults: `cycles = 8000`, `stop_tick = None`, `cs = "auto"`, `size = 1`, `arm =
 
 ### Task 5: `boot.py` and the conf template
 
-**Files:** Create `python/stunt_reel/dbx/boot.py`, `tools/dosbox-x/dosbox-x.conf`,
+**Files:** Create `python/scripts/dbx/boot.py`, `tools/dosbox-x/dosbox-x.conf`,
 `tests/test_dbx_boot.py`, `tests/fixtures/dbx/mcbs.txt`; modify `tests/fixtures/README.md`.
 
 **Interfaces:**
@@ -392,7 +392,7 @@ Template `tools/dosbox-x/dosbox-x.conf`: `[dosbox] memsize = 16`; `[sdl] output 
 
 ### Task 6: `run.py`
 
-**Files:** Create `python/stunt_reel/dbx/run.py`, `tests/test_dbx_run.py`.
+**Files:** Create `python/scripts/dbx/run.py`, `tests/test_dbx_run.py`.
 
 **Interfaces:**
 - Consumes: Tasks 1 to 4; `playone.PlayoneLayout` (`film_clock`).
@@ -468,7 +468,7 @@ Loop (spec S3.5):
 ### Task 7: CLI, task, pin, live check
 
 **Files:** Create `python/scripts/debug_x.py`, `tools/dosbox-x/plans/smoke.toml`,
-`tests/test_debug_x_script.py`; modify `mise.toml`, `python/stunt_reel/build_pairing.py`
+`tests/test_debug_x_script.py`; modify `mise.toml`, `python/scripts/build_pairing.py`
 (gains `load_image`) and `python/scripts/pair_builds.py` (imports it).
 
 **Interfaces:**
@@ -522,9 +522,9 @@ Loop (spec S3.5):
 
 ### Task 8: Records, then PR A
 
-**Files:** Create `docs/adr/0033-breakpoints-run-on-dosbox-x.md` and
+**Files:** Create `docs/adr/0034-breakpoints-run-on-dosbox-x.md` and
 `research/playone-exe/debugger-plans.md`. Modify `research/playone-exe/dosbox-x-legacy.md` (a
-pointer line), `docs/ARCHITECTURE.md` (route `python/stunt_reel/dbx/` to the note and the ADR),
+pointer line), `docs/ARCHITECTURE.md` (route `python/scripts/dbx/` to the note and the ADR),
 and `AGENTS.md` (add `debugger-plans.md` to the Binary Disassembly row, using the
 `writing-for-agents` skill).
 
