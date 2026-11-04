@@ -104,7 +104,7 @@ def test_only_local_and_builtin_repositories() -> None:
 def test_pre_commit_task_runs_prek() -> None:
     mise = _mise()
     tasks = mise["tasks"]
-    assert tasks["pre-commit"]["run"] == "prek run --config prek.toml"
+    assert tasks["pre-commit"]["run"] == "prek run --quiet --config prek.toml"
     assert tasks["diff-check"]["run"] == "git diff --cached --check"
     assert "hooks" not in tasks, "nothing installs prek's own shim (ADR 0026)"
     assert re.fullmatch(r"\d+\.\d+\.\d+", mise["tools"]["prek"])

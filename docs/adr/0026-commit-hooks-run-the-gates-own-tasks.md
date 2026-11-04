@@ -39,7 +39,7 @@ prek runs the commit-time checks; `gate.py` stays the gate.
 
 - **Installation is unchanged.** `.githooks/pre-commit` still chains to an untracked hook and then
   runs `mise run pre-commit`; `mise run init` still sets `core.hooksPath`. The `pre-commit` task
-  now runs `prek run --config prek.toml`. No `prek install`: the committed hook is the shim, and
+  now runs `prek run --quiet --config prek.toml`. No `prek install`: the committed hook is the shim, and
   because `core.hooksPath` is relative, a checkout of an older branch runs that branch's own
   `.githooks/`.
 - **`prek.toml` holds the plan.** Every local hook is exactly `mise run <task>` for a leaf task of

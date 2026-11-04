@@ -155,7 +155,7 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | Task | Runs |
 | --- | --- |
 | `check` / `check-rust` / `check-py` | `gate.py` over every step (format, lint, strict typing, rustdoc, both test suites, the no-default-features matrix), one line per step, log in `target/check.log` |
-| `pre-commit` | what the committed pre-commit hook runs: `prek run --config prek.toml` over the staged content ([ADR 0026](adr/0026-commit-hooks-run-the-gates-own-tasks.md)). A fast subset, not the gate |
+| `pre-commit` | what the committed pre-commit hook runs: `prek run --quiet --config prek.toml` over the staged content, printing only the hooks that fail ([ADR 0026](adr/0026-commit-hooks-run-the-gates-own-tasks.md)). A fast subset, not the gate |
 | `diff-check` | `git diff --cached --check`: staged conflict markers and whitespace errors; a pre-commit hook |
 | `crlf-check` | [check_crlf.py](../python/scripts/check_crlf.py): staged text files whose working copy has CRLF line endings, named per file; `*.bat`, `*.cmd` (`eol=crlf` in `.gitattributes`) and binary files are skipped; a pre-commit hook on every commit |
 | `test-docs` | `tests/test_doc_invariants.py` alone: anchors, Markdown links, cited paths, no source of truth linking into `docs/process/`; a pre-commit hook on every commit |
