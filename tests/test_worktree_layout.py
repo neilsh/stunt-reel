@@ -204,7 +204,8 @@ def test_the_shared_tool_cache_is_ignored_and_excluded() -> None:
 def test_cargo_home_is_one_absolute_path() -> None:
     """Every cargo task names the shared cache alike, so a cloned target/ stays fresh (ADR 0030)."""
     config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
-    assert "--git-common-dir" in config["vars"]["cargo_home"]
+    assert "--git-common-dir" in config["vars"]["primary"]
+    assert config["vars"]["cargo_home"].startswith("{{vars.primary}}/")
     homes = {
         name: task["env"]["CARGO_HOME"]
         for name, task in config["tasks"].items()
@@ -272,6 +273,18 @@ def test_mise_config_renders_outside_a_git_checkout() -> None:
     assert homes == [f"{REPO_ROOT}/.cache/cargo"], result.stdout
 
 
+def test_sod_census_reads_the_data_roots_corpus() -> None:
+    """The census reads ``corpus/`` relative to its working directory unless told (ADR 0033)."""
+    config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert "--corpus {{vars.data_root}}/corpus" in config["tasks"]["sod-census"]["run"]
+
+
+def test_the_data_root_var_sits_beside_the_primary() -> None:
+    config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert config["vars"]["data_root"] == "{{vars.primary}}.data"
+    assert config["vars"]["cargo_home"] == "{{vars.primary}}/.cache/cargo"
+
+
 @pytest.mark.parametrize("with_git", [True, False])
 def test_cargo_home_renders_in_a_checkout_whose_path_has_an_ampersand(
     tmp_path: Path, *, with_git: bool
@@ -284,8 +297,11 @@ def test_cargo_home_renders_in_a_checkout_whose_path_has_an_ampersand(
     checkout = tmp_path / "r&d"
     checkout.mkdir()
     config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
-    template = config["vars"]["cargo_home"].replace("\\", "\\\\").replace('"', '\\"')
-    (checkout / "mise.toml").write_text(f'[vars]\ncargo_home = "{template}"\n', encoding="utf-8")
+    lines = ["[vars]"]
+    for name in ("primary", "cargo_home"):
+        template = config["vars"][name].replace("\\", "\\\\").replace('"', '\\"')
+        lines.append(f'{name} = "{template}"')
+    (checkout / "mise.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
     env = {**os.environ, "MISE_TRUSTED_CONFIG_PATHS": str(checkout)}
     if with_git:
         subprocess.run([git, "init", "-q", str(checkout)], check=True)  # noqa: S603 - fixed argv
@@ -295,9 +311,11 @@ def test_cargo_home_renders_in_a_checkout_whose_path_has_an_ampersand(
         [mise, "vars"], cwd=checkout, env=env, capture_output=True, text=True, check=False
     )
     assert result.returncode == 0, result.stderr
-    homes = [
-        Path(line.split(None, 1)[1].rsplit(None, 1)[0])
+    rendered = {
+        line.split(None, 1)[0]: Path(line.split(None, 1)[1].rsplit(None, 1)[0])
         for line in result.stdout.splitlines()
-        if line.startswith("cargo_home")
-    ]
-    assert homes == [checkout / ".cache" / "cargo"], result.stdout
+        if line.startswith(("primary", "cargo_home"))
+    }
+    assert rendered == {"primary": checkout, "cargo_home": checkout / ".cache" / "cargo"}, (
+        result.stdout
+    )
