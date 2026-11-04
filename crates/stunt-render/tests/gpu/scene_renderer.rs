@@ -1,12 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::print_stderr,
-    clippy::default_trait_access,
-    clippy::items_after_statements,
-    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
-)]
 //! Verifies the scene renderer through the Renderer entry point: per-draw matrices,
 //! state-mask visibility, and the world draw, all read from `RenderedPage`.
 //!

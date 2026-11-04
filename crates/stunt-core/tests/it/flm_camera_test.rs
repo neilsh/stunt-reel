@@ -1,12 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::print_stderr,
-    clippy::default_trait_access,
-    clippy::items_after_statements,
-    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
-)]
 //! Camera orientation for a real film: the view slot drives the look direction.
 //!
 //! Corpus-gated: `corpus/` is gitignored, so this runs only on a machine carrying the

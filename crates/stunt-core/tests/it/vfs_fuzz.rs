@@ -1,12 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::print_stderr,
-    clippy::default_trait_access,
-    clippy::items_after_statements,
-    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
-)]
 //! Panic-freedom fuzz and matrix tests for the VFS archive parsers (Seam 1).
 //!
 //! Every test here passes when `parse_res`, `parse_all` and `detect_and_parse` never panic on

@@ -14,7 +14,7 @@
 //! - `[I6]` 4:3 physical display aspect ratio presentation.
 //! - `[I7]` Synthetic fixture execution.
 //!
-//! The interval frame-capture test moved to `renderer_test.rs`, where it drives the Renderer
+//! The interval frame-capture test moved to `gpu/renderer.rs`, where it drives the Renderer
 //! entry point with a counting sink instead of constructing GPU state.
 
 use std::fs;
