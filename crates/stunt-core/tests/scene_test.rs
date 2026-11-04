@@ -7,6 +7,10 @@
     clippy::items_after_statements,
     reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
 )]
+#![expect(
+    clippy::cast_possible_truncation,
+    reason = "these tests pack synthetic values into the fixed-width fields of fixture bytes"
+)]
 //! Film scene assembly and frame sampling through the public [`stunt_core::scene`] interface.
 //!
 //! Everything is synthetic: fixture SODs and anchors from `tests/fixtures/`, plus

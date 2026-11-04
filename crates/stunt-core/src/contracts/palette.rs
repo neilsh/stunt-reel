@@ -348,7 +348,7 @@ impl PaletteControls {
             .map(|(r, g, b)| [i32::from(r >> 2), i32::from(g >> 2), i32::from(b >> 2)]);
 
         // Night term: |var13| - 0x2000 clamped to 0..=0x4000; its high byte is 0..=64.
-        let night_term = (i32::from(self.sky as i16).abs() - 0x2000).clamp(0, 0x4000);
+        let night_term = (i32::from(self.sky.cast_signed()).abs() - 0x2000).clamp(0, 0x4000);
         let night = night_term >> 8;
 
         // Zenith and horizon colours, then the 15-step gradient between them. `/` on
@@ -391,6 +391,11 @@ impl PaletteControls {
                 brightness
             };
             let grey = (((3 * r + b) >> 2) + g) >> 1;
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "clamped to 0..=63, so `<< 2` is at most 252"
+            )]
             let tone = |c: i32| {
                 let level = ((grey + (((c - grey) * saturation) >> 6)) * bright) >> 6;
                 (level.clamp(0, 63) << 2) as u8

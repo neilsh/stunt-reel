@@ -82,6 +82,18 @@ pub fn detect_and_parse(data: &[u8]) -> Result<VfsArchive, VfsError> {
     }
 }
 
+/// A byte offset into an archive as the `u32` its offset table and [`VfsEntry`] store.
+///
+/// [`VfsEntry`]: crate::contracts::VfsEntry
+///
+/// # Errors
+/// [`VfsError::InvalidOffsetTable`] when the offset passes the `u32` range.
+fn offset_u32(offset: usize) -> Result<u32, VfsError> {
+    u32::try_from(offset).map_err(|_| VfsError::InvalidOffsetTable {
+        reason: format!("offset {offset} passes the u32 range"),
+    })
+}
+
 /// Fails with [`VfsError::InvalidOffsetTable`] at the first offset smaller than the one before it.
 fn check_non_decreasing(offsets: &[usize]) -> Result<(), VfsError> {
     for (i, pair) in offsets.windows(2).enumerate() {

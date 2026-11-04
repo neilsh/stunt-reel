@@ -126,7 +126,7 @@ pub fn extract(
     ordered.sort_by_key(|(name, _)| *name);
 
     let supplies = |regions: &ResRegions<'_>, &(id, payload): &(u16, &[u8])| {
-        item_region(regions, id as u8) == Some(payload)
+        item_region(regions, item_of(id)) == Some(payload)
     };
 
     let mut sources = Vec::with_capacity(by_index.len());
@@ -141,7 +141,7 @@ pub fn extract(
                 file: (*name).to_string(),
                 index,
                 sha256: String::new(),
-                items: chunks.iter().map(|&(id, _)| id as u8).collect(),
+                items: chunks.iter().map(|&(id, _)| item_of(id)).collect(),
             });
             continue;
         }
@@ -207,6 +207,12 @@ pub fn build(
         }
     }
     Ok(write_all(&chunks)?)
+}
+
+/// The item number of a `.ALL` chunk id: its low byte. The high byte is the source index.
+fn item_of(id: u16) -> u8 {
+    let [item, _] = id.to_le_bytes();
+    item
 }
 
 /// Item `n` of a file is region `n - 1`; there is no item 0.

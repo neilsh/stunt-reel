@@ -526,7 +526,7 @@ fn flat_arena_node_allocation_and_buffer_slices() {
         bytes.extend_from_slice(&OP_POLYZ.to_le_bytes());
         bytes.extend_from_slice(&4u16.to_le_bytes());
         for &reg_id in face {
-            bytes.extend_from_slice(&((reg_id as u16) * 12).to_le_bytes());
+            bytes.extend_from_slice(&(u16::try_from(reg_id).unwrap() * 12).to_le_bytes());
         }
     }
 

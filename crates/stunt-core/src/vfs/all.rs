@@ -6,7 +6,7 @@
 
 use crate::contracts::vfs::{ArchiveFormat, VfsArchive, VfsEntry};
 use crate::reader::ByteReader;
-use crate::vfs::{VfsError, check_non_decreasing};
+use crate::vfs::{VfsError, check_non_decreasing, offset_u32};
 
 /// Unpacks a `.ALL` container archive into an in-memory [`VfsArchive`].
 ///
@@ -23,8 +23,8 @@ use crate::vfs::{VfsError, check_non_decreasing};
 /// # Errors
 /// - [`VfsError::UnexpectedEof`] if `data` is shorter than the 2-byte count or the
 ///   `2 + 6*num`-byte header, or an offset points past the end of `data`.
-/// - [`VfsError::InvalidOffsetTable`] if the first offset lies inside the header or the
-///   offsets are not non-decreasing.
+/// - [`VfsError::InvalidOffsetTable`] if the first offset lies inside the header, the
+///   offsets are not non-decreasing, or a payload starts past `u32::MAX`.
 pub fn parse_all(data: &[u8]) -> Result<VfsArchive, VfsError> {
     let chunks = all_chunks(data)?;
     // Payloads are contiguous and the last runs to the end of `data`.
@@ -45,7 +45,7 @@ pub fn parse_all(data: &[u8]) -> Result<VfsArchive, VfsError> {
         let entry = VfsEntry {
             name: name.to_ascii_uppercase(),
             data: payload.to_vec(),
-            source_offset: start as u32,
+            source_offset: offset_u32(start)?,
             was_compressed: false,
         };
         start += payload.len();
@@ -171,10 +171,10 @@ pub fn write_all(chunks: &[(u16, &[u8])]) -> Result<Vec<u8>, VfsError> {
     }
     let mut offset = header;
     for &(_, payload) in &sorted {
-        out.extend_from_slice(&(offset as u32).to_le_bytes());
+        out.extend_from_slice(&offset_u32(offset)?.to_le_bytes());
         offset += payload.len();
     }
-    out.extend_from_slice(&(offset as u32).to_le_bytes());
+    out.extend_from_slice(&offset_u32(offset)?.to_le_bytes());
     for &(_, payload) in &sorted {
         out.extend_from_slice(payload);
     }

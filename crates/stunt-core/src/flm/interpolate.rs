@@ -20,6 +20,11 @@ pub(crate) fn bam_to_radians(raw_u16: u16) -> f32 {
 /// Convert an angle in radians to a 16-bit BAM value.
 #[cfg(test)]
 #[inline]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "`norm` is in 0..TAU, and a full turn rounds to 65536, which wraps to BAM 0"
+)]
 pub(crate) fn radians_to_bam(rad: f32) -> u16 {
     let mut norm = rad % TAU;
     if norm < 0.0 {
@@ -317,6 +322,11 @@ pub(crate) fn interpolate_trajectory(
 
 /// Interpolates a film variable as `PLAYONE` does (`CS:0x136F`): an unsigned `u16` lerp
 /// whose step is rounded toward negative infinity.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "a lerp between two u16 values with `alpha` in 0..=1 stays in the u16 range"
+)]
 fn lerp_variable(from: u16, to: u16, alpha: f32) -> u16 {
     let from = f32::from(from);
     (from + (f32::from(to) - from) * alpha).floor() as u16
@@ -667,6 +677,10 @@ mod tests {
         let _ = radians_to_bam(f32::NEG_INFINITY);
     }
 
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the goldens are f32 values written out as JSON numbers"
+    )]
     fn golden_f32s(value: &serde_json::Value) -> Vec<f32> {
         match value {
             serde_json::Value::Array(items) => items
@@ -693,7 +707,7 @@ mod tests {
         let goldens: serde_json::Value = serde_json::from_str(text).expect("valid golden json");
 
         for case in goldens["bam_to_radians"].as_array().expect("section") {
-            let raw = case["input"].as_u64().expect("u16 input") as u16;
+            let raw = u16::try_from(case["input"].as_u64().expect("u16 input")).expect("u16 input");
             let expected = golden_f32s(&case["expected"]);
             assert_close(&[bam_to_radians(raw)], &expected, &format!("bam {raw}"));
         }

@@ -7,6 +7,11 @@
     clippy::items_after_statements,
     reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
 )]
+#![expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    reason = "these tests pack synthetic values into the fixed-width fields of fixture bytes"
+)]
 //! Never-panics and structured-error coverage for the `.SOD` transpiler (Seam 3).
 //!
 //! `decode_sod` consumes untrusted bytes, so these tests assert that it never panics and

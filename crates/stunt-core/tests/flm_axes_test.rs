@@ -111,8 +111,13 @@ fn test_rotated_actor_world_matrix_is_rz180_conjugate_of_raw_matrix() {
     let timeline = FilmTimeline::from_bytes(&film).expect("film evaluates");
     let actor = &timeline.slices()[0].record.actors[0];
 
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "16.16 fixed point, as the film stores it"
+    )]
+    let pos_fixed = actor_pos.map(|m| (m * 65536.0) as i32);
     let raw = raw_matrix_for(&SlotState {
-        pos_fixed: actor_pos.map(|m| (m * 65536.0) as i32),
+        pos_fixed,
         rot_bam: actor_bam,
         ..Default::default()
     });
