@@ -255,7 +255,7 @@ pub(crate) struct MapArea {
 pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
     let (records, _partial) = data.as_chunks::<30>();
     let mut areas = Vec::new();
-    for record in records {
+    for (index, record) in records.iter().enumerate() {
         // Constant indices into the fixed 30-byte record, so none can fall outside it.
         let pos = i16::from_le_bytes([record[2], record[3]]);
         if pos.trailing_zeros() >= 8 {
@@ -264,17 +264,24 @@ pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
         let color = record[12];
         // A negative count reads as more than seven, as the sign-extending cast it replaces did.
         let num_verts = i16::from_le_bytes([record[14], record[15]]);
-        let nverts = usize::try_from(num_verts).map_or(7, |n| n.min(7));
+        let nverts = usize::try_from(num_verts).map_or(7, |n| n.min(8));
         if nverts < 3 {
             continue;
         }
-        // Bytes 16..30 hold up to seven little-endian anchor indices.
+        // Bytes 16..30 hold seven little-endian anchor indices. An eighth (patch 131 counts 8)
+        // is the next record's first word, where PLAYONE's own leaf for that patch has it
+        // (research/playone-exe/world-scene.md section 2); the last record keeps seven.
         let (vert_words, _) = record.as_chunks::<2>();
+        let eighth = records
+            .get(index + 1)
+            .map(|next| u16::from_le_bytes([next[0], next[1]]));
         let verts: Vec<usize> = vert_words
             .iter()
             .skip(8)
+            .map(|&word| u16::from_le_bytes(word))
+            .chain(eighth)
             .take(nverts)
-            .map(|&word| usize::from(u16::from_le_bytes(word)))
+            .map(usize::from)
             .collect();
         if verts.iter().all(|&v_idx| v_idx < anchor_count) {
             areas.push(MapArea { color, verts });
@@ -728,6 +735,28 @@ mod tests {
         // If anchor_count is too low, the polygon is rejected
         let areas_low = parse_map_bin(&data, 3);
         assert_eq!(areas_low.len(), 0);
+    }
+
+    #[test]
+    fn an_eight_vertex_patch_takes_its_last_anchor_from_the_next_record() {
+        // MAP.BIN patch 131 counts 8 vertices in a record with 7 slots; PLAYONE's own leaf for
+        // it has all 8, the eighth being the next record's `num` word (world-scene.md section 2).
+        let mut data = vec![0u8; 60];
+        data[2..4].copy_from_slice(&0x01FFi16.to_le_bytes());
+        data[14..16].copy_from_slice(&8i16.to_le_bytes());
+        for (slot, word) in data[16..30].as_chunks_mut::<2>().0.iter_mut().zip(0u16..) {
+            slot.copy_from_slice(&word.to_le_bytes());
+        }
+        data[30..32].copy_from_slice(&7i16.to_le_bytes()); // next record's num = anchor 7
+        let areas = parse_map_bin(&data, 10);
+        assert_eq!(areas.len(), 1);
+        assert_eq!(areas[0].verts, vec![0, 1, 2, 3, 4, 5, 6, 7]);
+
+        // As the file's last record there is no next word, so the patch keeps its 7 slots.
+        assert_eq!(
+            parse_map_bin(&data[..30], 10)[0].verts,
+            vec![0, 1, 2, 3, 4, 5, 6]
+        );
     }
 
     #[test]
