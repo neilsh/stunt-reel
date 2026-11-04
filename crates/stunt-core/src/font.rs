@@ -71,6 +71,10 @@ impl PFont {
     /// Calls `put(x, y)` for each set pixel of `text` with its top-left at `(x, y)`.
     ///
     /// Glyphs advance by their width; pixels are not clipped, so the caller bounds them.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "pen position is a screen-space i32 advanced by u8 glyph widths over a short string"
+    )]
     pub fn draw_text(&self, text: &[u8], x: i32, y: i32, put: &mut dyn FnMut(i32, i32)) {
         let mut pen = x;
         for &byte in text {

@@ -80,7 +80,7 @@ cast_precision_loss = "allow" # integer to f32 in pixel and coordinate maths is 
 # Considered in the 2026-11-03 survey (#161) and left off, so nobody re-litigates them:
 #   suboptimal_flops        its `mul_add` rewrite changes float rounding, so the render drifts
 #   as_conversions          every cast, including the ones kept with `#[expect]` on purpose
-#   arithmetic_side_effects 334 hits; tracked on its own in #162
+#   arithmetic_side_effects on in stunt-core only (see below), tracked in #162
 #   map_err_ignore          fires on every `try_from(..).map_err(|_| ..)`, whose error holds nothing
 #   let_underscore_must_use its hits were `writeln!` into a `String`, which cannot fail
 #   wildcard_enum_match_arm its hits picked one variant or matched a foreign non-exhaustive
@@ -88,6 +88,14 @@ cast_precision_loss = "allow" # integer to f32 in pixel and coordinate maths is 
 #   implicit_return, question_mark_used, min_ident_chars, shadow_*, str_to_string,
 #   missing_const_for_fn, exhaustive_structs, exhaustive_enums, std_instead_of_core,
 #   tests_outside_test_module   style rules that fight idiomatic Rust or this layout
+
+# Rejected (#162): `clippy::arithmetic_side_effects` stays off in stunt-cli, stunt-render,
+# stunt-parity and stunt-gltf. Their 250-odd hits are bounded maths (the ZMBV video decoder,
+# parity scoring, rendering and glTF export), not offsets or counts read from game files, and
+# a `checked_*` on every pixel index would bury the maths. stunt-core opts in with a crate-root
+# `#![warn(clippy::arithmetic_side_effects)]` in `lib.rs`, because a crate that sets
+# `[lints] workspace = true` cannot also add or override a single lint in its own manifest.
+# Release builds trap overflow instead (`overflow-checks`, below).
 
 # Full debug info put 14.4 GB in `target/debug`, paid once per worktree.
 # Line tables still symbolise a backtrace down to the line.
@@ -103,3 +111,8 @@ debug = false
 # the panic's file and line and names every frame of its backtrace; the frames lose their lines.
 [profile.test]
 debug = false
+
+# Release builds trap integer overflow too, so arithmetic on untrusted bytes that no lint covers
+# panics rather than wrapping silently (#162).
+[profile.release]
+overflow-checks = true

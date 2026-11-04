@@ -219,7 +219,7 @@ impl FilmTimeline {
             return Some(previous.record.clone());
         }
 
-        let span = (next.tick - previous.tick) as f32;
+        let span = next.tick.saturating_sub(previous.tick) as f32;
         let alpha = if span > 0.0 {
             ((tick - previous.tick as f32) / span).clamp(0.0, 1.0)
         } else {

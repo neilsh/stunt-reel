@@ -171,8 +171,8 @@ fn process_polygon_batch(
         }
     }
 
-    let vertex_count = arena_index(ir.vertices.len()) - vertex_offset;
-    let index_count = arena_index(ir.indices.len()) - index_offset;
+    let vertex_count = arena_index(ir.vertices.len()).saturating_sub(vertex_offset);
+    let index_count = arena_index(ir.indices.len()).saturating_sub(index_offset);
 
     if index_count > 0 {
         ir.allocate_node(

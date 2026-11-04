@@ -6,7 +6,7 @@
 
 use crate::contracts::vfs::{ArchiveFormat, VfsArchive, VfsEntry};
 use crate::reader::ByteReader;
-use crate::vfs::{VfsError, check_non_decreasing, offset_u32};
+use crate::vfs::{VfsError, check_non_decreasing, offset_add, offset_sub, offset_u32};
 
 /// Unpacks a `.ALL` container archive into an in-memory [`VfsArchive`].
 ///
@@ -28,7 +28,10 @@ use crate::vfs::{VfsError, check_non_decreasing, offset_u32};
 pub fn parse_all(data: &[u8]) -> Result<VfsArchive, VfsError> {
     let chunks = all_chunks(data)?;
     // Payloads are contiguous and the last runs to the end of `data`.
-    let mut start = data.len() - chunks.iter().map(|(_, p)| p.len()).sum::<usize>();
+    let mut start = offset_sub(
+        data.len(),
+        chunks.iter().map(|(_, p)| p.len()).sum::<usize>(),
+    )?;
 
     let mut archive = VfsArchive::new(ArchiveFormat::All);
     for (id, payload) in chunks {
@@ -48,7 +51,7 @@ pub fn parse_all(data: &[u8]) -> Result<VfsArchive, VfsError> {
             source_offset: offset_u32(start)?,
             was_compressed: false,
         };
-        start += payload.len();
+        start = offset_add(start, payload.len())?;
         archive.insert(entry);
     }
 
@@ -77,7 +80,12 @@ pub fn all_chunks(data: &[u8]) -> Result<Vec<(u16, &[u8])>, VfsError> {
         return Ok(Vec::new());
     }
 
-    let header_size = 2 + num * 6;
+    let header_size = num
+        .checked_mul(6)
+        .and_then(|n| n.checked_add(2))
+        .ok_or_else(|| VfsError::InvalidOffsetTable {
+            reason: format!("header of {num} entries overflows"),
+        })?;
     if data.len() < header_size {
         return Err(VfsError::UnexpectedEof {
             expected: header_size,
@@ -156,8 +164,8 @@ pub fn write_all(chunks: &[(u16, &[u8])]) -> Result<Vec<u8>, VfsError> {
     let count = u16::try_from(sorted.len()).map_err(|_| VfsError::InvalidOffsetTable {
         reason: format!("{} chunks exceed the u16 count", sorted.len()),
     })?;
-    let header = 6 * sorted.len() + 6;
-    let total = header + sorted.iter().map(|(_, p)| p.len()).sum::<usize>();
+    let header = offset_add(sorted.len().saturating_mul(6), 6)?;
+    let total = offset_add(header, sorted.iter().map(|(_, p)| p.len()).sum::<usize>())?;
     if u32::try_from(total).is_err() {
         return Err(VfsError::InvalidOffsetTable {
             reason: format!("archive of {total} bytes passes the u32 offset range"),
@@ -172,7 +180,7 @@ pub fn write_all(chunks: &[(u16, &[u8])]) -> Result<Vec<u8>, VfsError> {
     let mut offset = header;
     for &(_, payload) in &sorted {
         out.extend_from_slice(&offset_u32(offset)?.to_le_bytes());
-        offset += payload.len();
+        offset = offset_add(offset, payload.len())?;
     }
     out.extend_from_slice(&offset_u32(offset)?.to_le_bytes());
     for &(_, payload) in &sorted {

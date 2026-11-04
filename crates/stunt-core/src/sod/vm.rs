@@ -146,7 +146,8 @@ struct WrapTable<T, const N: usize>([T; N]);
 impl<T: Copy, const N: usize> WrapTable<T, N> {
     #[expect(
         clippy::indexing_slicing,
-        reason = "`index % N` is always inside the N-entry table"
+        clippy::arithmetic_side_effects,
+        reason = "`index % N` is always inside the N-entry table, and every instantiation has N > 0"
     )]
     fn get(&self, index: usize) -> T {
         self.0[index % N]
@@ -154,7 +155,8 @@ impl<T: Copy, const N: usize> WrapTable<T, N> {
 
     #[expect(
         clippy::indexing_slicing,
-        reason = "`index % N` is always inside the N-entry table"
+        clippy::arithmetic_side_effects,
+        reason = "`index % N` is always inside the N-entry table, and every instantiation has N > 0"
     )]
     fn set(&mut self, index: usize, value: T) {
         self.0[index % N] = value;
@@ -177,7 +179,7 @@ pub fn compute_scale_factor(scale_index: usize) -> f32 {
         scale
     } else if scale_index > 0 {
         // An index past `i32::MAX` gives the zero scale that any past 128 already does.
-        5.0 / 2.0f32.powi(i32::try_from(scale_index - 1).unwrap_or(i32::MAX))
+        5.0 / 2.0f32.powi(i32::try_from(scale_index.saturating_sub(1)).unwrap_or(i32::MAX))
     } else {
         10.0
     };
@@ -578,9 +580,9 @@ pub(crate) fn run_vm(
             current_visibility = VisibilityCondition::Always;
         }
 
-        if r.pos() + 2 > total_len {
+        if r.pos().saturating_add(2) > total_len {
             return Err(SodError::UnexpectedEof {
-                expected: r.pos() + 2,
+                expected: r.pos().saturating_add(2),
                 actual: total_len,
             });
         }
@@ -715,7 +717,7 @@ pub(crate) fn run_vm(
                     let vx = f32::from(r.read_i16_le()?);
                     let vy = f32::from(r.read_i16_le()?);
                     let vz = f32::from(r.read_i16_le()?);
-                    regs.set((start_reg + (i as usize)) & 1023, [vx, vy, vz]);
+                    regs.set(start_reg.saturating_add(i as usize) & 1023, [vx, vy, vz]);
                 }
             }
             OP_COLOR => {
@@ -827,12 +829,14 @@ pub(crate) fn run_vm(
                             if sixteen {
                                 s >>= 1;
                             }
-                            ((s >> 1) >> 8) - if base == 0x10 { 2 } else { 0 }
+                            ((s >> 1) >> 8).saturating_sub(if base == 0x10 { 2 } else { 0 })
                         })
                         .sum();
-                    let level = level_sum / i32::try_from(vertex_shades.len()).unwrap_or(1);
+                    let level = level_sum
+                        .checked_div(i32::try_from(vertex_shades.len()).unwrap_or(1))
+                        .unwrap_or(0);
                     #[expect(clippy::cast_sign_loss, reason = "clamped to the palette's 0..=255")]
-                    let palette_index = (base + level.max(0)).clamp(0, 255) as u8;
+                    let palette_index = base.saturating_add(level.max(0)).clamp(0, 255) as u8;
 
                     polygons.push(RawPolygon {
                         normal: compute_polygon_normal(&poly_verts),
@@ -847,12 +851,12 @@ pub(crate) fn run_vm(
             OP_IFVIS => {
                 let cond_code = r.read_u16_le()?;
                 let sec_len = r.read_u16_le()? as usize;
-                if r.pos() + sec_len > total_len {
+                if r.pos().saturating_add(sec_len) > total_len {
                     // Clamped beyond EOF
                     break;
                 }
                 current_visibility = parse_visibility_condition(cond_code);
-                visibility_scope_end = r.pos() + sec_len;
+                visibility_scope_end = r.pos().saturating_add(sec_len);
             }
             OP_SORT => {
                 // `siobj.cpp` `case 0x18c`: the three words are byte offsets from the
@@ -862,11 +866,11 @@ pub(crate) fn run_vm(
                 let first = usize::from(r.read_u16_le()?);
                 let second = usize::from(r.read_u16_le()?);
                 r.read_u16_le()?;
-                let second_at = op_offset + 4 + second;
-                let after_at = op_offset + 2 + first;
+                let second_at = op_offset.saturating_add(4).saturating_add(second);
+                let after_at = op_offset.saturating_add(2).saturating_add(first);
                 let in_range = |at: usize| at > r.pos() && at < total_len;
                 if in_range(second_at) && in_range(after_at) {
-                    subs_run += 1;
+                    subs_run = subs_run.saturating_add(1);
                     if subs_run > MAX_BRANCHES {
                         malformed = Some(SodStopReason::MalformedBranch);
                     } else {
@@ -893,7 +897,7 @@ pub(crate) fn run_vm(
                 let target = operand_at
                     .checked_add_signed(isize::from(rel))
                     .filter(|target| (10..total_len).contains(target));
-                subs_run += 1;
+                subs_run = subs_run.saturating_add(1);
                 if let Some(target) = target
                     && subs_run <= MAX_BRANCHES
                 {
@@ -923,7 +927,7 @@ pub(crate) fn run_vm(
                 let rel = r.read_u16_le()?;
                 let taken = val == 0;
                 if taken {
-                    let target = operand_at + usize::from(rel);
+                    let target = operand_at.saturating_add(usize::from(rel));
                     if target >= total_len {
                         malformed = Some(SodStopReason::MalformedBranch);
                     } else {
@@ -1045,7 +1049,10 @@ pub(crate) fn run_vm(
                         }
                     };
 
-                    regs.set((start_reg + i) & 1023, anchor.register_position());
+                    regs.set(
+                        start_reg.saturating_add(i) & 1023,
+                        anchor.register_position(),
+                    );
                 }
             }
             OP_SHADES => {
@@ -1060,12 +1067,16 @@ pub(crate) fn run_vm(
                         i64::from(r.read_i16_le()?),
                         i64::from(r.read_i16_le()?),
                     ];
+                    #[expect(
+                        clippy::arithmetic_side_effects,
+                        reason = "each n[k] is an i16 and each SHADE_LIGHT[k] is at most 32767, so the i64 sum cannot overflow"
+                    )]
                     let dot =
                         (n[0] * SHADE_LIGHT[0] + n[1] * SHADE_LIGHT[1] + n[2] * SHADE_LIGHT[2])
                             >> 16;
                     #[expect(clippy::cast_possible_truncation, reason = "clamped to +-0x3FFF")]
                     let shade = dot.clamp(-0x3FFF, 0x3FFF) as i32;
-                    shade_words.set((first / 2 + i) & 2047, -shade);
+                    shade_words.set((first / 2).saturating_add(i) & 2047, shade.saturating_neg());
                 }
             }
             OP_SHADE1 | OP_SHADE2 | OP_SHADE16 | OP_SHADE216 => {
@@ -1077,14 +1088,14 @@ pub(crate) fn run_vm(
                 let base = i32::from(base);
                 let mut s = shade_words.get((norm / 2) & 2047);
                 if matches!(opcode, OP_SHADE2 | OP_SHADE216) {
-                    s = -s;
+                    s = s.saturating_neg();
                 }
                 if matches!(opcode, OP_SHADE16 | OP_SHADE216) {
                     s >>= 1;
                 }
-                let level = ((s >> 1) >> 8) - if base == 0x10 { 2 } else { 0 };
+                let level = ((s >> 1) >> 8).saturating_sub(if base == 0x10 { 2 } else { 0 });
                 // `base` is a byte and `level.max(0)` is not negative, so only the top clamps.
-                cur_color = u8::try_from(base + level.max(0)).unwrap_or(u8::MAX);
+                cur_color = u8::try_from(base.saturating_add(level.max(0))).unwrap_or(u8::MAX);
             }
             OP_RETURN => {
                 returned_at = Some(op_offset);
@@ -1122,7 +1133,7 @@ pub(crate) fn run_vm(
                         for i in 0..skip.fixed_words {
                             let word = r.read_u16_le()?;
                             if skip.count_word == Some(i) {
-                                words += usize::from(word);
+                                words = words.saturating_add(usize::from(word));
                             }
                         }
                         for _ in usize::from(skip.fixed_words)..words {

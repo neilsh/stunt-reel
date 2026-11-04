@@ -504,6 +504,10 @@ fn sort_prelude() -> Vec<u8> {
 }
 
 /// `COLOR colour; POLYZ 3 regs; RETURN`: 16 bytes.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "test helper: register offsets are small"
+)]
 fn sort_branch(bytes: &mut Vec<u8>, colour: u16, regs: [u16; 3]) {
     bytes.extend_from_slice(&OP_COLOR.to_le_bytes());
     bytes.extend_from_slice(&colour.to_le_bytes());

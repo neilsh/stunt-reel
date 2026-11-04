@@ -59,6 +59,10 @@ impl CameraTransform {
     /// shifts its depth row right (research/playone-exe/lod.md section 2.2). The zoom is
     /// therefore `0x229C / 0x8000 * 2^0x229E`, about `lens / 8192`.
     #[must_use]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "`lens` is a u16, so `lens * 0x7FFF` is below 2^31, and the shift count is guarded to 1..=3"
+    )]
     pub fn lens_zoom(&self) -> f32 {
         let mut product = u32::from(self.lens) * 0x7FFF;
         let mut shifts_left = 3;

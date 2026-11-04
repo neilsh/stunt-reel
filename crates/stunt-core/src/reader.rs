@@ -144,12 +144,13 @@ impl<'a> ByteReader<'a> {
         let mut parts = rest.splitn(2, |&b| b == 0);
         let head = parts.next().unwrap_or(&[]);
         if parts.next().is_some() {
-            self.pos += head.len() + 1;
+            // `head` and its terminator lie inside `data`, so the sum is at most `data.len()`.
+            self.pos = self.pos.saturating_add(head.len()).saturating_add(1);
             Ok(head.to_vec())
         } else {
             self.pos = self.pos.max(self.data.len());
             Err(Eof {
-                expected: self.pos + 1,
+                expected: self.pos.saturating_add(1),
                 actual: self.data.len(),
             })
         }

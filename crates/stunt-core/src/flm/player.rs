@@ -508,7 +508,7 @@ impl<'a> FlmPlayer<'a> {
             }
         }
 
-        self.last_slice_len = Some(self.reader.pos() - slice_start);
+        self.last_slice_len = Some(self.reader.pos().saturating_sub(slice_start));
 
         Ok(Some(DecodedSlice {
             tick_duration,
