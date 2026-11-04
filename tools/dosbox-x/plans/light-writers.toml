@@ -1,0 +1,19 @@
+# #66: every changing write to the light words DS:0x49EC..F0 over the whole film, and the
+# film-variable-13 handler 0x196C that terrain-shade.md section 4 names as one writer.
+[run]
+stop_tick = 1300
+
+[[probe]]
+name = "light-words"
+kind = "watch"
+mem = "DS:0x49EC"
+size = 6
+hits = 200
+capture = ["stack:8", "mem:DS:0x49EC:6"]
+
+[[probe]]
+name = "var13-handler"
+kind = "break"
+at = 0x196C
+hits = 50
+capture = ["stack:8", "mem:DS:0x49EC:6"]
