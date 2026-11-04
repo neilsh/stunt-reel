@@ -101,5 +101,17 @@ fn read_palette(path: &Path) -> Result<Palette, String> {
             raw.len()
         )
     })?;
-    Ok(raw.map(|[r, g, b]| (r as u8, g as u8, b as u8)))
+    let channel = |v: i64| {
+        u8::try_from(v).map_err(|_| {
+            format!(
+                "{} holds palette value {v}, outside 0..=255",
+                path.display()
+            )
+        })
+    };
+    let mut palette = [(0, 0, 0); 256];
+    for (entry, [r, g, b]) in palette.iter_mut().zip(raw) {
+        *entry = (channel(r)?, channel(g)?, channel(b)?);
+    }
+    Ok(palette)
 }

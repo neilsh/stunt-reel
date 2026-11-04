@@ -83,8 +83,9 @@ mod tests {
 
     #[test]
     fn loss_classes_follow_the_render_layer_and_the_capture() {
-        let class =
-            |layer: u32, filled: bool| LOSS_CLASSES[usize::from(loss_class(layer as u16, filled))];
+        let class = |layer: u32, filled: bool| {
+            LOSS_CLASSES[usize::from(loss_class(u16::try_from(layer).unwrap(), filled))]
+        };
         assert_eq!(class(LAYER_NONE, false), "sky");
         assert_eq!(class(LAYER_NONE, true), "reference_only");
         assert_eq!(class(LAYER_OCEAN, true), "ocean");

@@ -398,7 +398,7 @@ mod conformance {
 
     /// Every other tick is tick 7 with its indices raised by `tick - 7`.
     fn v3_planes(tick: u32) -> (Vec<u8>, Vec<u32>) {
-        let shift = (tick - 7) as u8;
+        let shift = u8::try_from(tick - 7).unwrap();
         TICK_7_ROWS
             .iter()
             .flat_map(|(indices, layers)| indices.iter().zip(layers))
@@ -409,7 +409,7 @@ mod conformance {
     /// Ticks 30 and 149 use the second palette, entry i = (255 - i, i, 0); the rest a grey ramp.
     fn v3_palette(tick: u32) -> Palette {
         std::array::from_fn(|i| {
-            let i = i as u8;
+            let i = u8::try_from(i).unwrap();
             if tick == 30 || tick == 149 {
                 (255 - i, i, 0)
             } else {
@@ -515,7 +515,10 @@ mod conformance {
             let frame = store.frame(tick).expect("frame");
             let (indices, layers) = v3_planes(tick);
             assert_eq!(frame.indices, indices, "tick {tick} indices");
-            let layers: Vec<u16> = layers.iter().map(|&layer| layer as u16).collect();
+            let layers: Vec<u16> = layers
+                .iter()
+                .map(|&layer| u16::try_from(layer).unwrap())
+                .collect();
             // Row 2 lies outside the 2-row viewport but the reader still returns it.
             assert_eq!(frame.layers, layers, "tick {tick} layers");
             assert_eq!(frame.palette, v3_palette(tick), "tick {tick} palette");

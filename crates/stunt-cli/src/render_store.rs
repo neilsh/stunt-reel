@@ -533,7 +533,9 @@ impl RenderStore {
             let path = self.dir.join(name);
             let mut file = File::open(&path).map_err(io(&path))?;
             file.seek(SeekFrom::Start(span.offset)).map_err(io(&path))?;
-            let mut packed = vec![0u8; span.length as usize];
+            let length = usize::try_from(span.length)
+                .map_err(|_| corrupt(&path, format!("a chunk of {} bytes", span.length)))?;
+            let mut packed = vec![0u8; length];
             file.read_exact(&mut packed).map_err(io(&path))?;
             let raw = zstd::decode_all(packed.as_slice()).map_err(|error| {
                 corrupt(
@@ -621,7 +623,7 @@ mod tests {
     fn grey(level: u8) -> Palette {
         let mut palette = [(0, 0, 0); 256];
         for (index, entry) in palette.iter_mut().enumerate() {
-            let value = (index as u8).saturating_add(level);
+            let value = u8::try_from(index).unwrap().saturating_add(level);
             *entry = (value, value, value);
         }
         palette
@@ -629,9 +631,8 @@ mod tests {
 
     /// Planes for `tick`: indices and layers that differ per tick and per pixel.
     fn planes(tick: u32) -> (Vec<u8>, Vec<u32>) {
-        let indices = (0..12)
-            .map(|pixel| (tick as u8).wrapping_add(pixel))
-            .collect();
+        let [low, ..] = tick.to_le_bytes();
+        let indices = (0..12).map(|pixel| low.wrapping_add(pixel)).collect();
         let layers = (0..12).map(|pixel| tick * 100 + pixel).collect();
         (indices, layers)
     }
@@ -698,7 +699,10 @@ mod tests {
             assert_eq!(frame.indices, indices);
             assert_eq!(
                 frame.layers,
-                layers.iter().map(|&l| l as u16).collect::<Vec<_>>()
+                layers
+                    .iter()
+                    .map(|&l| u16::try_from(l).unwrap())
+                    .collect::<Vec<_>>()
             );
             let row = ticks.iter().position(|&t| t == tick).unwrap();
             assert_eq!(frame.palette, grey(if row % 2 == 0 { 0 } else { 10 }));
@@ -784,7 +788,8 @@ mod tests {
         let span = store.record().chunks[1].index;
         let path = dir.join(INDEX_FILE);
         let mut bytes = fs::read(&path).unwrap();
-        for byte in &mut bytes[span.offset as usize..(span.offset + span.length) as usize] {
+        let (start, end) = (span.offset, span.offset + span.length);
+        for byte in &mut bytes[usize::try_from(start).unwrap()..usize::try_from(end).unwrap()] {
             *byte = 0xAA;
         }
         fs::write(&path, bytes).unwrap();
@@ -801,7 +806,7 @@ mod tests {
         let mut record = RenderStore::open(&dir).expect("open").record().clone();
         let path = dir.join(INDEX_FILE);
         let mut bytes = fs::read(&path).unwrap();
-        bytes.truncate(record.chunks[1].index.offset as usize);
+        bytes.truncate(usize::try_from(record.chunks[1].index.offset).unwrap());
         // Second 2 holds two 12-pixel ticks; store one byte too many.
         let packed = zstd::bulk::compress(&[0u8; 25], 3).unwrap();
         bytes.extend_from_slice(&packed);

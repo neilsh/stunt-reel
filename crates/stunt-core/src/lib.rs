@@ -4,12 +4,6 @@
 //! binary parsers for the `.res`, `.flm`, and `.sod` formats. Every type obeys the system
 //! invariants `[I1]`-`[I8]` documented in [`contracts`].
 #![deny(unsafe_code)]
-// Until the workspace lint table turns these on for every crate (#102).
-#![warn(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::cast_possible_wrap
-)]
 
 pub mod anchor;
 pub mod contracts;

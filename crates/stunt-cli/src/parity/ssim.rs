@@ -74,6 +74,11 @@ pub(super) fn rescale_mode13h_frame(
     let rows_in: Vec<&[f32]> = src.chunks_exact(width).take(height).collect();
 
     for (y_out, row_out) in target.chunks_exact_mut(width).enumerate() {
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "a row of a frame of a few hundred rows, floored"
+        )]
         let y_in = ((y_out as f32 * scale_y) as usize).min(height.saturating_sub(1));
         if let Some(row_in) = rows_in.get(y_in) {
             row_out.copy_from_slice(row_in);
@@ -433,9 +438,11 @@ mod crosscheck_tests {
             .iter()
             .enumerate()
             .map(|(i, &v)| {
-                let i = i as u32;
+                let i = u32::try_from(i).unwrap();
                 let noise = (i.wrapping_mul(2_654_435_761) >> 24) % (2 * amplitude + 1);
-                (i32::from(v) + noise as i32 - amplitude as i32).clamp(0, 255) as u8
+                let noisy = i32::from(v) + i32::try_from(noise).unwrap()
+                    - i32::try_from(amplitude).unwrap();
+                u8::try_from(noisy.clamp(0, 255)).unwrap()
             })
             .collect()
     }

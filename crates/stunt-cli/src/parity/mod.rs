@@ -280,7 +280,10 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         let score = score_frame(
             &ReferenceFrame { indices, palette },
             &RenderFrame {
-                controls: render_palettes.get(&(film_tick as u32)).copied(),
+                controls: u32::try_from(film_tick)
+                    .ok()
+                    .and_then(|tick| render_palettes.get(&tick))
+                    .copied(),
                 ..render_frame
             },
             &policy,

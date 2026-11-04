@@ -256,9 +256,12 @@ impl ApplicationHandler for WindowApp {
 
         if let DeviceEvent::MouseMotion { delta: (dx, dy) } = event {
             let sens = self.camera.free_cam.look_sensitivity;
-            self.camera
-                .free_cam
-                .rotate(dx as f32 * sens, -dy as f32 * sens);
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "mouse deltas are a few pixels"
+            )]
+            let (dx, dy) = (dx as f32, dy as f32);
+            self.camera.free_cam.rotate(dx * sens, -dy * sens);
         }
     }
 }

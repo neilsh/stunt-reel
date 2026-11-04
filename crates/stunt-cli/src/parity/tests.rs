@@ -382,14 +382,14 @@ fn credits_frames(
         indices: (0..pixels)
             .map(|i| if ink_at(i) { ink } else { background })
             .collect(),
-        palette: std::array::from_fn(|i| get_palette_rgb(i as u8)),
+        palette: std::array::from_fn(|i| get_palette_rgb(u8::try_from(i).unwrap())),
     };
     let (r, g, b) = get_palette_rgb(background);
     let luminance = super::ssim::rgb_to_luminance(&[r, g, b])[0];
-    let mut layers = vec![LAYER_NONE as u16; pixels];
+    let mut layers = vec![u16::try_from(LAYER_NONE).unwrap(); pixels];
     if credits_in_render {
         // Credits drawn elsewhere on the page: the tick has credits, this ink is missing.
-        layers[10 * MODE13H_WIDTH + 10] = LAYER_OVERLAY as u16;
+        layers[10 * MODE13H_WIDTH + 10] = u16::try_from(LAYER_OVERLAY).unwrap();
     }
     let render = super::score::RenderFrame {
         luminance: vec![luminance; pixels],
@@ -432,7 +432,7 @@ fn a_verdict_keeps_the_ink_when_only_the_previous_render_drew_credits() {
         if index == 255 {
             before.luminance[i] = ink_luminance;
             before.indices[i] = 255;
-            before.layers[i] = stunt_render::LAYER_OVERLAY as u16;
+            before.layers[i] = u16::try_from(stunt_render::LAYER_OVERLAY).unwrap();
         }
     }
     let (_, after) = credits_frames(false);
