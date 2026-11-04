@@ -86,7 +86,7 @@ $$\mathbf{q}'_{t+1} = -\mathbf{q}_{t+1}$$
 This guarantees interpolation takes the shortest geodesic path on $S^3$, preventing unnatural $360^\circ$ spins across tick boundaries.
 
 #### Sampling Interface & Record Tick Semantics
-`FilmTimeline` (`crates/stunt-core/src/flm/timeline.rs`) is the single public interface for turning a `.FLM` film into `TrajectoryRecord`s: `from_bytes`, `sample(tick)`, `sample_at_seconds`, `cues_between`, `total_ticks`, `duration_seconds`, `slices()`, `truncated_to_ticks`, `warnings`, and `stop_reason`. It places slice $i$ at the cumulative tick $\sum_{k \le i}\text{tick\_duration}_k$ and applies the lerp/slerp and cut suppression described here. The earlier ordinal-based path (`FlmPlayer::step_tick`, `evaluate_all`, `evaluate_film`, `evaluate_sub_tick`) is removed, and `FlmPlayer` and the interpolation helpers are crate-private.
+`FilmTimeline` (`crates/stunt-core/src/flm/timeline.rs`) is the single public interface for turning a `.FLM` film into `TrajectoryRecord`s: `from_bytes`, `sample(tick)`, `sample_at_seconds`, `cues_between`, `total_ticks`, `duration_seconds`, `slices()`, `warnings`, and `stop_reason`. It places slice $i$ at the cumulative tick $\sum_{k \le i}\text{tick\_duration}_k$ and applies the lerp/slerp and cut suppression described here. The earlier ordinal-based path (`FlmPlayer::step_tick`, `evaluate_all`, `evaluate_film`, `evaluate_sub_tick`) is removed, and `FlmPlayer` and the interpolation helpers are crate-private.
 
 `TrajectoryRecord.tick` (and `AudioCue.tick`) is always the cumulative 50 Hz authored tick, never a slice ordinal; a slice's ordinal is only its index in the timeline. Zero-duration slices share a tick with their predecessor, so ordinals and ticks diverge for real films.
 
