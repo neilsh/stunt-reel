@@ -4,7 +4,7 @@
 (``research/makeone-exe/driving.md``). A film has one generated archive, in
 ``captures/<slug>/archives/``, filed beside its captures under the same rule (ADR 0028): a new
 archive is written beside the old one and swapped in by :mod:`capture_store`. A film with a
-committed manifest has its archive rebuilt from the game files instead (ADR 0030).
+committed manifest has its archive rebuilt from the game files instead (ADR 0032).
 """
 
 from __future__ import annotations
@@ -165,7 +165,7 @@ def resolve_all(
 
     A sibling with the film's stem wins (matched case-insensitively, so ``x.All`` beside
     ``x.flm`` counts). Next, the film's committed manifest (``manifests/all/<slug>.toml``,
-    ADR 0030) when its ``flm_sha256`` is *flm*'s: the archive is rebuilt from the game tree it
+    ADR 0032) when its ``flm_sha256`` is *flm*'s: the archive is rebuilt from the game tree it
     names into ``target/linked/<slug>/`` by *link_build*, which defaults to running
     ``stuntreel link build``. A manifest that matches the film but cannot be read or built is an
     error, never a fall back. Last, the film's stored archive, when it was made from *flm*'s

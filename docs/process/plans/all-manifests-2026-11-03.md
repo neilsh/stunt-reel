@@ -1,11 +1,12 @@
 # `.ALL` manifests: rebuild a film's archive from a committed id list (2026-11-03)
 
-Status: **design approved in chat 2026-11-03; spec revised after a self-review (section 11),
-awaiting review, not implemented**. Source:
+Status: **implemented on branch `feat/all-manifests`
+([plan](all-manifests-implementation-2026-11-03.md)); ADR 0032 accepted 2026-11-03**. Section 5
+names the components as built. Source:
 a brainstorming session that started from "how difficult would a Rust version of
 `MAKEONE.EXE` be", and the probe recorded in
 [`research/makeone-exe/linking.md`](../../../research/makeone-exe/linking.md). The durable
-decision, once accepted, is ADR 0030 (step 1). Builds on
+decision, once accepted, is ADR 0032 (step 1). Builds on
 [ADR 0023](../../adr/0023-make-all-generates-archives-with-makeone.md) and
 [ADR 0028](../../adr/0028-a-film-has-one-capture-of-each-kind.md).
 
@@ -78,7 +79,7 @@ From [`linking.md`](../../../research/makeone-exe/linking.md), 289 corpus archiv
 ## 4. The manifest
 
 ```toml
-# Rebuilds BALLOON.ALL from the game's RES tree (docs/adr/0030-…).
+# Rebuilds BALLOON.ALL from the game's RES tree (ADR 0032).
 film = "BALLOON.FLM"
 flm_sha256 = "…"
 game_root = "corpus/stuntisl"     # the tree make-all ran MAKEONE from, repo-relative
@@ -118,19 +119,20 @@ Rules, checked by both `extract` and `build`:
 
 ### 5.1 `stunt-core`
 
-- `vfs::all::write_all(chunks: &[(u16, &[u8])]) -> Result<Vec<u8>, VfsError>`. It sorts by
-  id, rejects duplicates and a count above `u16::MAX`, writes the `6n + 6` header, then the
-  payloads. It is the inverse of `parse_all` for an intact archive: a property test checks
-  that `parse_all(write_all(x))` gives back `x`.
-- `vfs::res::regions(data) -> Result<ResRegions<'_>, VfsError>`, where `ResRegions { index:
+- `vfs::write_all(chunks: &[(u16, &[u8])]) -> Result<Vec<u8>, VfsError>`. It sorts by
+  id, rejects duplicates (`VfsError::DuplicateId`) and a count above `u16::MAX` or an offset past
+  `u32` (`InvalidOffsetTable`), writes the `6n + 6` header, then the payloads. Its inverse is
+  `vfs::all_chunks`, the raw `(id, payload)` split `parse_all` now names entries from; a
+  property test checks that `all_chunks(write_all(x))` gives back `x` sorted.
+- `vfs::res_regions(data) -> Result<ResRegions<'_>, VfsError>`, where `ResRegions { index:
   u8, regions: Vec<&[u8]> }` is the raw split: byte `0x0002` and every region, region 0
   included. `parse_res` drops region 0 as a name table, so the linker cannot use it as it
-  stands. `parse_res` is refactored onto `regions` so the header checks live in one place,
+  stands. `parse_res` is refactored onto `res_regions` so the header checks live in one place,
   and its behaviour is unchanged.
 - A new module, `link`, with the manifest types behind the existing `serde` feature:
   - `Manifest`, `Source` (the TOML of section 4). Digests are opaque strings to the core.
-  - `build(manifest, sources: &BTreeMap<u8, ResRegions>) -> Result<Vec<u8>, LinkError>`.
-    The caller has already loaded and hash-checked the files the manifest names.
+  - `build(sources, files: &BTreeMap<u8, ResRegions>) -> Result<Vec<u8>, LinkError>`, over
+    the manifest's sources. The caller has already loaded and hash-checked the files they name.
   - `extract(all: &[u8], candidates: &[(&str, ResRegions)]) -> Result<Vec<Source>,
     LinkError>`. For each `res_index` in the archive, it keeps the candidate files with that
     index in which item `(id & 0xFF)` equals the payload for every chunk with that index. If
@@ -138,21 +140,23 @@ Rules, checked by both `extract` and `build`:
     and the corpus has no such case. Hashes are left empty for the CLI to fill.
   - `LinkError` (structural only): `NoSource { id }` when a chunk matches no candidate
     (add-on content); `Mixed { index }` when every chunk of an index has a source but no
-    single file covers them all; `ItemOutOfRange`; `DuplicateId`; `Unsorted` (a manifest
-    breaking section 4's rules); `TooLarge` (offsets past `u32`).
+    single file covers them all; `ItemOutOfRange`; `DuplicateIndex` and `Unsorted` (a manifest
+    breaking section 4's rules); `Vfs` (the writer's `DuplicateId` and offset errors).
 - Hashing stays out of `stunt-core`, which gains no dependency. The CLI computes digests and
   owns the hash errors.
 
 ### 5.2 `stunt-cli`: `stuntreel link`
 
-- `stuntreel link extract <X.ALL> --flm <X.FLM> --game <tree> [--makeone <exe>] -o
-  <manifest>`. Every file in `<tree>/RES/` that starts with `RS` is a candidate, not just
+- `stuntreel link extract <X.ALL> --flm <X.FLM> --game <tree> --makeone-sha256 <hex> -o
+  <manifest>`. It takes the hash rather than the executable because a backfill has only the
+  hash, from `meta.json`; `--game` is recorded verbatim as `game_root`. Every file in `<tree>/RES/` that starts with `RS` is a candidate, not just
   `*.RES` and `*.SMP`: the music files and `COMMNSND.ZCR` carry `0xC0`, `0xC1` and `0xC3`. It
   runs `extract`, fills the hashes, rebuilds in memory, and writes the TOML only if the
   rebuild equals the input.
 - `stuntreel link build <manifest> [--game <tree>] -o <X.ALL>`. It checks every source hash
-  (`SourceMismatch`: file, expected, actual, tree), builds, checks `all_sha256`
-  (`ArchiveMismatch`), and writes the file atomically (a temporary name, then a rename).
+  (an error naming the file, the expected and actual hash, and the tree), builds, checks
+  `all_bytes` and `all_sha256`, and writes the file atomically (`<out>.<pid>.tmp`, then a
+  rename). Game files are found in any case (`[I8]`).
 - Exit codes, so callers need not parse messages: 0 written; 1 an error (I/O, a hash, a
   malformed manifest, a rebuild that differs); 3 not linkable, meaning `NoSource` or `Mixed`
   (the archive holds content the game's `RES\` lacks).
@@ -160,14 +164,20 @@ Rules, checked by both `extract` and `build`:
 
 ### 5.3 Python
 
+- [`link.py`](../../../python/stunt_reel/link.py) runs the binary: `build_archive`,
+  `extract_manifest`, `NotLinkable` (exit 3) and `LinkError`, and `ensure_binary`, which runs
+  `cargo build --release -p stunt-cli` (a no-op when current; an older binary has no `link`)
+  unless the binary is running. `binary_path` and `binary_locked` moved here from
+  `parity_pipeline`, which re-exports them; a separate module avoids an import cycle with
+  `all_archive`.
+- [`parity_layout.py`](../../../python/stunt_reel/parity_layout.py): `manifest_path(slug)`
+  (`manifests/all/<slug>.toml`) and `linked_path(slug, film)` (`target/linked/<slug>/<FILM>.ALL`).
 - [`all_archive.py`](../../../python/stunt_reel/all_archive.py):
-  - `manifest_path(slug) -> Path` (`manifests/all/<slug>.toml`).
-  - `resolve_all(flm, root, slug=None, *, link=...)` follows D6. It reads the manifest with
-    `tomllib` and compares `flm_sha256` itself, so a manifest for another `.FLM` costs no
-    process launch. `link` is an injected callable that runs `stuntreel link build`. Its
-    default first calls `parity_pipeline.build_release()`, a no-op when the binary is current,
-    because an older binary has no `link` subcommand. Then it runs `binary_path()`. Tests
-    inject a fake.
+  - `resolve_all(flm, root, slug=None, *, link_build=None)` follows D6. It reads the manifest
+    with `tomllib` and compares `flm_sha256` itself, so a manifest for another `.FLM` costs no
+    process launch. `link_build` is an injected `(manifest, game, out)` callable; its default
+    calls `ensure_binary()` and then `build_archive`. A missing game tree is an error naming
+    `mise run init`. Tests inject a fake.
 - [`make_all.py`](../../../python/scripts/make_all.py): after `publish_archive`, it runs
   `stuntreel link extract` on the published `.ALL` with the same `--game-root`. On exit 0 it
   prints the manifest path; on exit 3 it says the archive holds add-on content and stays the
@@ -210,7 +220,7 @@ Rules, checked by both `extract` and `build`:
 
 ## 8. Steps
 
-1. ADR 0030 (manifests are the committed record of a film's archive; amends ADR 0023's resolve
+1. ADR 0032 (manifests are the committed record of a film's archive; amends ADR 0023's resolve
    order) and the `NOTICE.md` section.
 2. `write_all`, `vfs::res::regions` with `parse_res` moved onto it, and their tests.
 3. The `link` module, fixtures and tests.

@@ -7,7 +7,7 @@ stores it as the film's one archive, captures/<film>/archives/ (ADR 0028), repla
 A film then needs no extra flags for capture-ref, which checks the stored archive against the film's hash.
 
 After storing the archive it writes the film's manifest, manifests/all/<film>.toml, for review and
-commit (ADR 0030); an archive holding content the game's RES lacks gets none, and the stored
+commit (ADR 0032); an archive holding content the game's RES lacks gets none, and the stored
 archive stays the record. --manifest-only writes the manifest from the stored archive without
 running MAKEONE.
 """

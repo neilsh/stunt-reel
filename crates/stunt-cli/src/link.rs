@@ -190,7 +190,7 @@ fn extract_cmd(args: &ExtractArgs, cwd: &Path) -> Result<(), LinkFailure> {
     let stem = Path::new(&manifest.film).with_extension("ALL");
     let text = format!(
         "# Rebuilds {} from the game's RES tree with `stuntreel link build` \
-         (ADR 0030).\n{body}",
+         (ADR 0032).\n{body}",
         stem.display()
     );
     write_atomic(&cwd.join(&args.output), text.as_bytes())

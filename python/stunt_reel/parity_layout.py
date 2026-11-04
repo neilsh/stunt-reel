@@ -144,7 +144,7 @@ def archive_path(slug: str) -> Path:
 
 
 def manifest_path(slug: str) -> Path:
-    """The film *slug*'s committed ``.ALL`` manifest, relative to the checkout (ADR 0030)."""
+    """The film *slug*'s committed ``.ALL`` manifest, relative to the checkout (ADR 0032)."""
     return Path("manifests/all") / f"{slug}.toml"
 
 

@@ -105,7 +105,7 @@ _Found 2026-10-23 at `6ae7b31`; see the [parity log](../parity/log.md)._
 
 ### 3.7 Chunk Provenance (`[Bounded Observation]`)
 
-Every chunk drawn from the shipped game is a byte-identical copy of one `.RES` or `.SMP` item, with id `(res_index << 8) | (segment + 1)`; the palettes `0x801E` and `0x8042` are `SPRITES.RES` items. Ids are ascending and payloads packed without padding, so an id list and the game's `RES\` rebuild 83 of 83 corpus archives byte for byte. Evidence, the selection of items and the sound-setting variants: [`../makeone-exe/linking.md`](../makeone-exe/linking.md).
+Every chunk drawn from the shipped game is a byte-identical copy of one `.RES` or `.SMP` item, with id `(res_index << 8) | (segment + 1)`; the palettes `0x801E` and `0x8042` are `SPRITES.RES` items. Ids are ascending and payloads packed without padding, so an id list and the game's `RES\` rebuild 83 of 83 corpus archives byte for byte. Evidence, the selection of items and the sound-setting variants: [`../makeone-exe/linking.md`](../makeone-exe/linking.md). The writer is `write_all` in [`crates/stunt-core/src/vfs/all.rs`](../../crates/stunt-core/src/vfs/all.rs); `stuntreel link` records and rebuilds a film's archive from its items ([ADR 0032](../../docs/adr/0032-a-films-archive-is-committed-as-a-manifest.md)).
 
 ### 3.5 Entry Naming Policy (`[I8]`)
 

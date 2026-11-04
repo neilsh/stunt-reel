@@ -235,7 +235,7 @@ Order: a sibling `.ALL`; then `root / manifest_path(slug)` if it exists. Read it
 ### Task 7: Decision record, docs and the full gate
 
 **Files:**
-- Create: `docs/adr/0030-a-films-archive-is-committed-as-a-manifest.md` (context, decision D1–D9 from the spec, considered options: our own selection rejected for now, stored archive only, manifest replacing the store; it amends ADR 0023's resolve order)
+- Create: `docs/adr/0032-a-films-archive-is-committed-as-a-manifest.md` (context, decision D1–D9 from the spec, considered options: our own selection rejected for now, stored archive only, manifest replacing the store; it amends ADR 0023's resolve order)
 - Modify: `NOTICE.md` (an "Archive manifests" section: item numbers and hashes of game files, no game bytes, rebuilt from the user's own copy)
 - Modify: `docs/ARCHITECTURE.md` (route `crates/stunt-core/src/link.rs`, `crates/stunt-cli/src/link.rs` and `python/stunt_reel/link.py` to the ADR and `linking.md`)
 - Modify: `docs/development.md` (project structure: `manifests/all/`)
