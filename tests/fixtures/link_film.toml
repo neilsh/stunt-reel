@@ -1,0 +1,20 @@
+# Synthetic manifest: what `stuntreel link extract` writes for link_film.all when the
+# three link_*.res fixtures sit in a tree as RES/SCEN.RES, RES/MUS.XMA and RES/MUS.ESS.
+film = "LINK_FILM.FLM"
+flm_sha256 = "da9d4f1a96d44b29aba8fb37cb8058642902fe838398294f6ec66573849a6c9d"
+game_root = "game"
+makeone_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+all_bytes = 36
+all_sha256 = "b1719559d6d72f067662bbad6fc18b73df2501838086032fc969ad60fb58aa44"
+
+[[source]]
+file = "RES/SCEN.RES"
+index = 2
+sha256 = "a7bba023e7059ed8fbf4da3d820ad6a4e385b576273b5ef7f8cad789812e610d"
+items = [1, 3]
+
+[[source]]
+file = "RES/MUS.ESS"
+index = 192
+sha256 = "ebbf60047ba8fb7025e0702e4b0114b4f7cf79bd7463a5677e597a4731f9eeb8"
+items = [2]

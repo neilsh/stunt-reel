@@ -3,7 +3,8 @@
 ## Status
 
 accepted; implemented. Amended 2026-11-02: `doc` moved from the `rust-build` lane to `rust-lint`
-(below).
+(below). Amended 2026-11-03 by [ADR 0031](0031-the-gate-runs-pytest-across-every-core.md): the
+`py-test` lane runs pytest across every core.
 
 ## Context
 
@@ -93,6 +94,7 @@ through the restricted token, which is a property of the harness, not of the gat
   orthogonal to it either way.
 - **`pytest-xdist`.** Not taken: the Python suite is now the warm critical path (about 15 s), but a
   new dependency for it would have to clear [ADR 0010](0010-python-scripts-may-take-well-established-dependencies.md).
+  Taken up by [ADR 0031](0031-the-gate-runs-pytest-across-every-core.md) once the suite reached 91 s.
 
 ## Consequences
 

@@ -30,6 +30,7 @@ import struct
 import sys
 import zlib
 from pathlib import Path
+lazy from collections.abc import Sequence
 
 import numpy as np
 
@@ -152,6 +153,10 @@ def make_crop(
     write_png(out, width, top + divider + bottom)
 
 
+#: The report `mise run parity` writes for ctry, so a probe reads the render it just scored.
+DEFAULT_REPORT = REPO_ROOT / parity_layout.report_dir("ctry") / "report.json"
+
+
 def make_side_by_side(
     reference: Path,
     ours: Path,
@@ -162,10 +167,36 @@ def make_side_by_side(
     out: Path,
 ) -> None:
     """Writes capture ordinal `ordinal` left of our film tick `tick` for `box`, magenta between."""
-    left, right = _regions(reference, ours, ordinal, tick, box, scale)
+    make_strip(reference, [ours], ordinal, tick, box, scale, out)
+
+
+def make_strip(
+    reference: Path,
+    stores: Sequence[Path],
+    ordinal: int,
+    tick: int,
+    box: tuple[int, int, int, int],
+    scale: int,
+    out: Path,
+) -> None:
+    """Writes capture ordinal `ordinal`, then film tick `tick` of each store, left to right.
+
+    Panels show `box` at `scale` in the capture's palette, with a magenta divider between them.
+    """
+    panels: list[list[list[int]]] = []
+    for store in stores:
+        theirs, mine = _regions(reference, store, ordinal, tick, box, scale)
+        if not panels:
+            panels.append(theirs)
+        panels.append(mine)
     divider = [255, 0, 255] * 2
-    rows = [a + divider + b for a, b in zip(left, right, strict=True)]
-    write_png(out, (box[2] - box[0]) * scale * 2 + 2, rows)
+    rows = []
+    for parts in zip(*panels, strict=True):
+        row: list[int] = []
+        for i, part in enumerate(parts):
+            row += (divider if i else []) + part
+        rows.append(row)
+    write_png(out, ((box[2] - box[0]) * scale + 2) * len(panels) - 2, rows)
 
 
 def cmd_crop(args: argparse.Namespace) -> None:
@@ -392,7 +423,7 @@ def cmd_summary(args: argparse.Namespace) -> None:
         print(line)
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(required=True)
     commands = (
@@ -415,7 +446,8 @@ def main() -> int:
             p.add_argument(
                 "--report",
                 type=Path,
-                default=parity_layout.manual_report_dir("ctry") / "report.json",
+                default=DEFAULT_REPORT,
+                help="report.json (default: the one mise run parity last wrote for ctry)",
             )
             p.add_argument("--worst", type=int, default=5, help="low-scoring frames to list")
             continue
@@ -436,7 +468,8 @@ def main() -> int:
             p.add_argument(
                 "--report",
                 type=Path,
-                default=parity_layout.manual_report_dir("ctry") / "report.json",
+                default=DEFAULT_REPORT,
+                help="report.json (default: the one mise run parity last wrote for ctry)",
             )
             p.add_argument("--min-pixels", type=int, default=100)
         if name == "shift":
@@ -447,7 +480,11 @@ def main() -> int:
         if name == "iou":
             p.add_argument("--every", type=int, default=2, help="use every Nth scored frame")
             p.add_argument("--pad", type=int, default=25)
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
     with contextlib.ExitStack() as stack:
         if args.reference is None and args.func is not cmd_summary:
             try:

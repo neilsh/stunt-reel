@@ -9,13 +9,14 @@ unscorable render.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
 
 from render_helpers import pin_reference, reference_tree, write_store
-from stunt_reel import parity_artifacts, parity_layout, parity_pipeline
+from stunt_reel import link, parity_artifacts, parity_layout, parity_pipeline
 from stunt_reel.batch_films import BatchFilm
 from stunt_reel.parity_artifacts import (
     FilmId,
@@ -109,7 +110,7 @@ def test_render_film_asks_for_the_captured_tick_range(tmp_path: Path) -> None:
         parity_pipeline.render_film(job, out, run=fake)
     assert fake.calls == [
         [
-            str(parity_pipeline.binary_path()),
+            str(link.binary_path()),
             "--headless",
             str(vault / "CTRY.FLM"),
             "--all",
@@ -162,7 +163,7 @@ def test_score_film_runs_parity_and_reads_the_report(tmp_path: Path) -> None:
     assert not job.capture.exists()
     assert fake.calls == [
         [
-            str(parity_pipeline.binary_path()),
+            str(link.binary_path()),
             "parity",
             "--reference",
             str(job.capture),
@@ -438,3 +439,56 @@ def test_preflight_names_a_missing_flm_archive_and_sidata(tmp_path: Path) -> Non
     assert f"missing input {root / parity_pipeline.SIDATA}" in problems[0]
     assert "no .FLM of vault-ctry" in problems[1]
     assert "no .ALL for" in problems[2]
+
+
+def _intro_from_a_manifest(root: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Replaces INTRO's sibling .ALL with a matching manifest; returns the link calls made."""
+    vault = root / "corpus" / "stisldem" / "VAULT"
+    (vault / "INTRO.ALL").unlink()
+    flm_sha256 = hashlib.sha256((vault / "INTRO.FLM").read_bytes()).hexdigest()
+    manifest = root / parity_layout.manifest_path("vault-intro")
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        f'flm_sha256 = "{flm_sha256}"\ngame_root = "game"\nall_sha256 = "{"a" * 64}"\n',
+        encoding="utf-8",
+    )
+    (root / "game").mkdir()
+    calls: list[str] = []
+
+    def ensure_binary() -> Path:
+        calls.append("cargo")
+        return link.binary_path()
+
+    def build_archive(_manifest: Path, _game: Path, out: Path, *, cwd: Path) -> None:  # noqa: ARG001 - link.build_archive passes cwd by keyword
+        calls.append("link")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(b"LINKED")
+
+    monkeypatch.setattr(link, "ensure_binary", ensure_binary)
+    monkeypatch.setattr(link, "build_archive", build_archive)
+    return calls
+
+
+def test_preflight_checks_a_manifest_without_building_or_linking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = reference_tree(tmp_path, [])
+    calls = _intro_from_a_manifest(root, monkeypatch)
+    problems = parity_pipeline.preflight(
+        root, ["intro"], build_required=False, locked=lambda _path: False
+    )
+    assert problems == []
+    assert calls == []
+
+
+def test_render_film_links_a_manifest_without_running_cargo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = reference_tree(tmp_path, [7, 9])
+    calls = _intro_from_a_manifest(root, monkeypatch)
+    fake = FakeRun()
+    with parity_pipeline.reference_job(root, "intro") as job:
+        parity_pipeline.render_film(job, tmp_path / "work" / "intro", run=fake)
+    assert calls == ["link"]
+    linked = root / parity_layout.linked_path("vault-intro", "INTRO.FLM")
+    assert _after(fake.calls[0], "--all") == str(linked)

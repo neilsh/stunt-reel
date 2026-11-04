@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from render_helpers import write_store
-from stunt_reel import batch_stages, dataroot, parity_layout, parity_pipeline
+from stunt_reel import batch_stages, dataroot, link, parity_layout, parity_pipeline
 from stunt_reel.batch_films import BatchFilm
 
 if TYPE_CHECKING:
@@ -287,7 +287,7 @@ def test_render_asks_the_binary_for_the_captured_ticks_into_the_batch_directory(
     assert (record.stage, record.status) == ("render", "ok")
     ((command, timeout),) = runner.calls
     assert timeout == 600.0
-    assert command[0] == str(parity_pipeline.binary_path())
+    assert command[0] == str(link.binary_path())
     assert command[command.index("--all") + 1] == str(film.flm.parent / "CTRY.ALL")
     assert command[command.index("--tick-range") + 1] == "7..=9"
     assert command[command.index("--sidata") + 1] == str(tmp_path / parity_pipeline.SIDATA)

@@ -14,7 +14,8 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import parity_probe  # noqa: E402
 
-from stunt_reel import parity_artifacts  # noqa: E402
+from stunt_reel import parity_artifacts, parity_layout  # noqa: E402
+from stunt_reel.dataroot import REPO_ROOT  # noqa: E402
 
 if TYPE_CHECKING:
     import pytest
@@ -191,3 +192,11 @@ def test_cmd_shift_leaves_the_captures_displaced_aircraft_out_of_the_world_match
     # Agreement 1.0 holds only if the capture's aircraft, found through the actor shift, is
     # masked: left in, it disagrees with our scenery at the zero offset.
     assert capsys.readouterr().out.splitlines()[1] == "5 20 6 0 1.0 0 0 1.0"
+
+
+def test_report_defaults_to_the_one_parity_run_writes() -> None:
+    """`shift`, `iou` and `summary` read the report `mise run parity` last wrote, not a hand-run one."""
+    written = REPO_ROOT / parity_layout.report_dir("ctry") / "report.json"
+    parser = parity_probe.build_parser()
+    for argv in (["shift", "--ours", "x"], ["iou", "--ours", "x"], ["summary"]):
+        assert parser.parse_args(argv).report == written
