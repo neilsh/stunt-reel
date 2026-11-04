@@ -26,7 +26,8 @@ unused_qualifications = "warn"
 trivial_casts = "warn"
 unused_lifetimes = "warn"
 let_underscore_drop = "warn"
-# Covers tests too; the one `unsafe impl` (bytemuck's `Pod` for `SodVertex`) carries `#[expect]`.
+# Covers tests too; bytemuck's two `unsafe impl`s for `SodVertex` and the `sod_spec.rs` transmute
+# round-trip carry `#[expect]`.
 unsafe_code = "deny"
 # Not a good fit: `unused_crate_dependencies` fires per target, so every integration test file
 # reports the package dependencies it does not use. Use `cargo machete` or `cargo udeps` instead.
@@ -57,6 +58,7 @@ assertions_on_result_states = "warn" # `assert!(r.is_ok())` hides the error `unw
 float_cmp_const = "warn"
 unwrap_in_result = "warn"
 panic_in_result_fn = "warn"
+# Cheap nursery picks (#161).
 redundant_clone = "warn"
 or_fun_call = "warn"
 use_self = "warn"

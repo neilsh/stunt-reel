@@ -19,7 +19,7 @@ pub mod video;
 
 // Renderer plumbing: crate-private, so no GPU handle type is reachable from outside the crate.
 // The decoded-shape landing still owns mesh.rs, whose items stay pub and unused outside the
-// renderer; the two allows keep that module untouched while the seam is closed.
+// renderer; the two expectations keep that module untouched while the seam is closed.
 #[expect(
     unreachable_pub,
     dead_code,

@@ -120,7 +120,7 @@ select = [
 #   FIX     forbids TODO outright; TD keeps them but makes each one traceable.
 ignore = [
     "E501",  # line length violations handled by ruff format
-    "TRY003", # long exception messages: ~250 hits, see EM above
+    "TRY003", # long exception messages: ~240 hits, see EM above
 ]
 # A typing-only import is written `lazy from x import y` (PEP 810), the fix ruff offers at
 # py315, so `mise run fix` applies it instead of the gate failing on it. Ruff marks the fix

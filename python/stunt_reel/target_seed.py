@@ -125,7 +125,8 @@ def workspace_members(checkout: Path) -> frozenset[str]:
     makes one under the workspace root a member without listing it; so both count.
 
     Raises ``OSError`` or ``ValueError`` (``tomllib.TOMLDecodeError`` is one) when a manifest
-    cannot be read or names no package: a seed that missed a member would keep its fingerprints.
+    cannot be read or names no package, and ``TypeError`` when ``workspace.members`` is not a
+    list: a seed that missed a member would keep its fingerprints.
     """
     names: set[str] = set()
     seen: set[str] = set()
