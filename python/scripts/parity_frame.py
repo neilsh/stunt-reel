@@ -13,7 +13,7 @@ rendered and its nearest captured ticks are printed instead; one past the film's
 named as not rendered. Each run replaces the store and the film's earlier PNGs.
 
 With ``--var DBG_NAME=v1,v2`` the film is rendered once per value, with that variable in the
-environment, into ``store_<value>``; each PNG is then the capture followed by one panel per
+environment, into ``store_<n>_<value>`` (``n`` its position, so two values never share one); each PNG is then the capture followed by one panel per
 value, in the order given (the before-and-after picture for a candidate change).
 """
 
@@ -96,8 +96,12 @@ def variant_stores(out: Path, var: str | None) -> list[tuple[str, dict[str, str]
     if len(set(values)) != len(values):
         raise ValueError(f"--var {name} repeats a value")
     return [
-        (f"{name}={value}", {name: value}, out / f"store_{re.sub(r'[^0-9A-Za-z.-]', '_', value)}")
-        for value in values
+        (
+            f"{name}={value}",
+            {name: value},
+            out / f"store_{i}_{re.sub(r'[^0-9A-Za-z.-]', '_', value)}",
+        )
+        for i, value in enumerate(values)
     ]
 
 
