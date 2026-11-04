@@ -264,11 +264,6 @@ impl RenderedPage {
 /// view: the top `viewport_rows` page rows when set, else the whole page. Each Mode 13h pixel
 /// covers the page pixels it scales to; they take the palette index, its unlit `palette`
 /// colour and [`LAYER_OVERLAY`].
-#[expect(
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    reason = "page and Mode 13h sizes are a few thousand pixels, far inside i32"
-)]
 fn paint_credits(
     page: &mut RenderedPage,
     font: &PFont,
@@ -276,9 +271,19 @@ fn paint_credits(
     viewport_rows: Option<u32>,
     palette: &[(u8, u8, u8); 256],
 ) {
+    #[expect(
+        clippy::cast_possible_wrap,
+        reason = "page sizes are bounded by the GPU texture limit, far inside i32"
+    )]
     let (width, height) = (page.width() as i32, page.height() as i32);
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_possible_wrap,
+        reason = "the 320x200 Mode 13h constants"
+    )]
     let (mode_w, mode_h) = (MODE13H_WIDTH as i32, MODE13H_HEIGHT as i32);
-    let view_rows = viewport_rows.map_or(height, |rows| rows as i32);
+    // A row count past i32::MAX wraps negative and draws nothing, as it always has.
+    let view_rows = viewport_rows.map_or(height, u32::cast_signed);
     let rect = ClipRect {
         left: 0,
         top: 0,
@@ -296,10 +301,11 @@ fn paint_credits(
         let (r, g, b) = palette[usize::from(index)];
         for py in scaled_span(y, mode_h, height) {
             for px in scaled_span(x, mode_w, width) {
-                // A pixel outside the page is clipped, like a glyph outside the mode raster.
+                // Glyph coordinates are not negative, so neither is the index; skip one if so.
                 let Ok(at) = usize::try_from(py * width + px) else {
                     continue;
                 };
+                // A pixel outside the page is clipped, like a glyph outside the mode raster.
                 if let (Some(slot), Some(layer), Some(rgb)) = (
                     page.indices.get_mut(at),
                     page.layers.get_mut(at),

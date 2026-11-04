@@ -447,7 +447,7 @@ fn push_interp(body: &mut Vec<u8>, opcode: u8, pos_i1: [f32; 3], rz_bam: u16) {
     for meters in [-pos_i1[0], -pos_i1[1], pos_i1[2]] {
         #[expect(
             clippy::cast_possible_truncation,
-            reason = "16.16 fixed point, as the film stores it"
+            reason = "fixture positions are a few metres; truncating to 16.16 is the encoding"
         )]
         let fixed = (meters * 65536.0) as i32;
         body.extend_from_slice(&fixed.to_le_bytes());
