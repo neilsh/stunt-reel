@@ -105,7 +105,7 @@ Each turn re-sends the whole conversation, so cost is roughly turns times contex
 
 ### Issue tracker
 
-Issues live in GitHub Issues for `neilsh/stunt-reel`, via the `gh` CLI. See [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md).
+Issues live in GitHub Issues for `neilsh/stunt-reel`, via the `gh` CLI; read a pull request's review comments with `mise run pr-threads -- <number>`. See [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md).
 
 ### Triage labels
 

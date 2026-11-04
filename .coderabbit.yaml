@@ -48,7 +48,9 @@ reviews:
     - path: "python/**"
       instructions: |
         Linting and typing are the gate's job (`ruff check`, `ruff format --check`, strict
-        `mypy`); do not restate them as review comments. Prefer the standard library and
+        `mypy`); do not restate them as review comments. The project requires Python 3.15
+        (`requires-python` in pyproject.toml), so `lazy import x` and `lazy from x import y`
+        (PEP 810 lazy imports) are valid syntax, not errors. Prefer the standard library and
         the dependencies already declared in pyproject.toml. A script under python/scripts/
         reaches people through `mise run`, so a new one needs a task in mise.toml.
 
