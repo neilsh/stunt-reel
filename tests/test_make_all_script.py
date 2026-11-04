@@ -365,6 +365,25 @@ def test_manifest_only_not_linkable_exits_1(
     assert script.run(args, None, FakeExtract(link.NotLinkable("chunk 0x7E01"))) == 1
 
 
+@pytest.mark.parametrize("error", [link.NotLinkable("chunk 0x7E01"), link.LinkError("boom")])
+def test_manifest_only_keeps_the_old_manifest_when_extraction_fails(
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_repo: StagedRepo,
+    game_root: Path,
+    error: link.LinkError,
+) -> None:
+    _publish(script, monkeypatch, staged_repo.film, game_root)
+    manifest = dataroot.REPO_ROOT / parity_layout.manifest_path("vault-ctry")
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text("# reviewed and committed\n", encoding="utf-8")
+    args = _args(script, monkeypatch, staged_repo.film, game_root, "--manifest-only")
+
+    assert script.run(args, None, FakeExtract(error)) == 1
+
+    assert manifest.read_text(encoding="utf-8") == "# reviewed and committed\n"
+
+
 def test_a_not_linkable_rerun_removes_the_old_manifest(
     script: Any,
     monkeypatch: pytest.MonkeyPatch,

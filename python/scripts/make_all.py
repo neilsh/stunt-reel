@@ -99,12 +99,20 @@ def game_arg(game_root: Path) -> str:
 
 
 def write_manifest(
-    archive: Path, film: Path, game_root: Path, makeone_sha256: str, slug: str, extract: Extract
+    archive: Path,
+    film: Path,
+    game_root: Path,
+    makeone_sha256: str,
+    slug: str,
+    extract: Extract,
+    *,
+    replaced: bool = True,
 ) -> int:
     """Write the film's manifest from *archive*; 0 written, 3 not linkable, 1 an error.
 
-    When none is written, an earlier manifest is removed: it describes the archive this one
-    replaced, and would still win over it.
+    When none is written after a run that *replaced* the archive, an earlier manifest is
+    removed: it describes the replaced archive, and would still win over it. A backfill
+    replaced nothing, so a failed one leaves the committed manifest alone.
     """
     manifest = parity_layout.manifest_path(slug)
     out = dataroot.REPO_ROOT / manifest
@@ -119,7 +127,7 @@ def write_manifest(
     else:
         report(f"wrote manifest {manifest.as_posix()}")
         return 0
-    if out.is_file():
+    if replaced and out.is_file():
         out.unlink()
         report(f"removed the earlier {manifest.as_posix()}")
     return code
@@ -143,7 +151,10 @@ def manifest_only(film: Path, game_root: Path, slug: str, extract: Extract) -> i
     archive = stored / parity_layout.all_name(film.name)
     return (
         0
-        if write_manifest(archive, film, game_root, meta.makeone_sha256, slug, extract) == 0
+        if write_manifest(
+            archive, film, game_root, meta.makeone_sha256, slug, extract, replaced=False
+        )
+        == 0
         else 1
     )
 

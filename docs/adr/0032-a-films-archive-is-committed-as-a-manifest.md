@@ -38,7 +38,8 @@ share an index (`MUSIC1.XMA` and `MUSIC1.ESS` are both `0xC0`).
 - **Pure core, I/O in the CLI.** `stunt_core::link` and the `.ALL` writer see only bytes (`[I7]`);
   `stuntreel link extract|build` reads, hashes and writes. Exit 3 means not linkable.
 - **Resolve order: sibling, manifest, stored archive.** A manifest whose `flm_sha256` is the film's
-  is rebuilt into `target/linked/<slug>/` on each resolve. One that matches but fails to build is an
+  is rebuilt into `target/linked/<slug>/`, unless the build there still hashes to its
+  `all_sha256`. One that matches but fails to build is an
   error, never a silent fall back to a stale stored archive.
 - **An archive with add-on content gets no manifest.** Its stored archive stays the record, and
   `make-all` says why.
@@ -64,3 +65,8 @@ share an index (`MUSIC1.XMA` and `MUSIC1.ESS` are both `0xC0`).
   tree with another file fails its hash check.
 - A manifest's `game_root` is a hint. It is written relative to the checkout when the tree is inside
   it, and `stuntreel link build --game` overrides it.
+- A matching manifest whose game tree is missing or changed stops the run rather than falling back,
+  so a checkout without the game files needs `mise run init` before it can use one.
+- Coverage is partial. Of the corpus's 289 archives, 83 rebuild from manifests; 205 hold add-on
+  content and `BRIEFING.ALL` is truncated. Those rely on a stored archive, and making or replacing
+  one still runs `MAKEONE` under the emulator.
