@@ -99,6 +99,7 @@ pub(crate) fn dos_to_i1_actor_quat(q: [f32; 4]) -> [f32; 4] {
 impl SlotState {
     /// Slot position as 16.16 fixed-point converted to meters, still in DOS axes.
     #[inline]
+    #[must_use]
     pub fn position_dos_meters(&self) -> [f32; 3] {
         [
             self.pos_fixed[0] as f32 / 65536.0,
@@ -114,6 +115,7 @@ impl SlotState {
     /// (`CTRY.FLM` tick 1 lands 1.4° off the actor bearing; research/formats/concepts/coordinates-and-units.md). Whether
     /// the raw convention differs in handedness more broadly is an open question
     /// (research/formats/concepts/coordinates-and-units.md § 1.2).
+    #[must_use]
     pub fn rotation_quat_dos(&self) -> [f32; 4] {
         if self.rot_bam == [0, 0, 0] {
             [0.0, 0.0, 0.0, 1.0]
@@ -128,6 +130,7 @@ impl SlotState {
     /// Slot position in right-handed metric meters `[I1]`: the DOS-axes position through
     /// `dos_to_i1_position`. This is the single place the evaluator converts positions.
     #[inline]
+    #[must_use]
     pub fn position_meters(&self) -> [f32; 3] {
         dos_to_i1_position(self.position_dos_meters())
     }
@@ -136,12 +139,14 @@ impl SlotState {
     /// `dos_to_i1_quat`. This is the single place the evaluator converts orientations.
     ///
     /// A zero rotation evaluates to `q_z180 = [0, 0, 1, 0]`, not the identity.
+    #[must_use]
     pub fn rotation_quat(&self) -> [f32; 4] {
         dos_to_i1_quat(self.rotation_quat_dos())
     }
 
     /// Orientation of the shape this slot draws, in `[I1]`: the DOS-axes rotation through
     /// `dos_to_i1_actor_quat`. A zero rotation evaluates to the identity.
+    #[must_use]
     pub fn actor_rotation_quat(&self) -> [f32; 4] {
         dos_to_i1_actor_quat(self.rotation_quat_dos())
     }

@@ -360,6 +360,7 @@ impl SodModelIr {
     }
 
     /// Looks up a node by its handle.
+    #[must_use]
     pub fn get_node(&self, id: NodeId) -> Option<&SodNode> {
         self.nodes.get(id.0 as usize)
     }

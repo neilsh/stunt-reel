@@ -24,17 +24,20 @@ pub struct ByteReader<'a> {
 
 impl<'a> ByteReader<'a> {
     /// Create a reader positioned at the start of `data`.
+    #[must_use]
     pub fn new(data: &'a [u8]) -> Self {
         Self { data, pos: 0 }
     }
 
     /// Create a reader positioned at `pos` (which may lie past the end).
+    #[must_use]
     pub fn at(data: &'a [u8], pos: usize) -> Self {
         Self { data, pos }
     }
 
     /// Current cursor offset.
     #[inline]
+    #[must_use]
     pub fn pos(&self) -> usize {
         self.pos
     }
@@ -47,18 +50,21 @@ impl<'a> ByteReader<'a> {
 
     /// Total length of the underlying buffer.
     #[inline]
+    #[must_use]
     pub fn len(&self) -> usize {
         self.data.len()
     }
 
     /// True if the underlying buffer is empty.
     #[inline]
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
     /// True if at least one byte remains after the cursor.
     #[inline]
+    #[must_use]
     pub fn has_more(&self) -> bool {
         self.pos < self.data.len()
     }

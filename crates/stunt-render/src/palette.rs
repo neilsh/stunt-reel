@@ -19,6 +19,7 @@ pub(crate) const PALETTE_LUT_BYTE_SIZE: usize =
 /// - X coordinate (`0..=255`): Authentic VGA Mode 13h palette index.
 /// - Y coordinate (`0..=31`): Discrete directional lighting / ambient level,
 ///   where row 0 is ambient floor (0.2) and row 31 is full direct sunlight (1.0).
+#[must_use]
 pub fn build_palette_lut_bytes() -> [u8; PALETTE_LUT_BYTE_SIZE] {
     build_palette_lut_bytes_from(&MODE_13H_PALETTE)
 }
@@ -39,6 +40,7 @@ fn shade(channel: u8, factor: f32) -> u8 {
     clippy::large_stack_arrays,
     reason = "32 KiB, built once per palette upload and returned as the fixed-size table callers index"
 )]
+#[must_use]
 pub fn build_palette_lut_bytes_from(palette: &[(u8, u8, u8); 256]) -> [u8; PALETTE_LUT_BYTE_SIZE] {
     let mut lut_bytes = [0u8; PALETTE_LUT_BYTE_SIZE];
 

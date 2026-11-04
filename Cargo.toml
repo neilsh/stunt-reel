@@ -70,7 +70,6 @@ uninlined_format_args = "warn"
 
 # Not a good fit for this project: allowed for good.
 module_name_repetitions = "allow" # file-format types repeat their module name by design
-must_use_candidate = "allow" # noise on pure accessors
 similar_names = "allow" # paired names (x/y, lo/hi, src/dst) are the vocabulary of the format code
 many_single_char_names = "allow" # coordinate and matrix maths
 too_many_lines = "allow" # opcode dispatch and table-driven decoders are long matches

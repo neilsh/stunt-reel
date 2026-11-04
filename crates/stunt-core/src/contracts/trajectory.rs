@@ -126,6 +126,7 @@ pub struct ActorTransform {
 impl ActorTransform {
     /// Computes the canonical column-major 4x4 world transformation matrix
     /// from `position_meters` (x, y, z) and unit `rotation_quat` [x, y, z, w].
+    #[must_use]
     pub fn compute_world_matrix(&self) -> [f32; 16] {
         let [qx, qy, qz, qw] = self.rotation_quat;
         let [tx, ty, tz] = self.position_meters;

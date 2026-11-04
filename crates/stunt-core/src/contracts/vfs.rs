@@ -53,6 +53,7 @@ pub struct VfsArchive {
 
 impl VfsArchive {
     /// Creates an empty archive container.
+    #[must_use]
     pub fn new(format: ArchiveFormat) -> Self {
         Self {
             format,
@@ -61,12 +62,14 @@ impl VfsArchive {
     }
 
     /// Retrieves an entry by its case-insensitive filename per `[I8]`.
+    #[must_use]
     pub fn get(&self, filename: &str) -> Option<&VfsEntry> {
         let key = filename.to_ascii_uppercase();
         self.entries.get(&key)
     }
 
     /// Retrieves the raw byte slice for a file, if present.
+    #[must_use]
     pub fn get_bytes(&self, filename: &str) -> Option<&[u8]> {
         self.get(filename).map(|e| e.data.as_slice())
     }

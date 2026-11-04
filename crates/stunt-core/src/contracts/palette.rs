@@ -272,12 +272,14 @@ pub const MODE_13H_PALETTE: [(u8, u8, u8); 256] = [
     clippy::indexing_slicing,
     reason = "a u8 index cannot leave the 256-entry table"
 )]
+#[must_use]
 pub fn get_palette_rgb(index: u8) -> (u8, u8, u8) {
     MODE_13H_PALETTE[usize::from(index)]
 }
 
 /// Returns the normalized floating-point `(R, G, B)` tuple in `[0.0, 1.0]`.
 #[inline]
+#[must_use]
 pub fn get_palette_rgb_float(index: u8) -> (f32, f32, f32) {
     let (r, g, b) = get_palette_rgb(index);
     (
