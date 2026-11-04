@@ -27,8 +27,14 @@ first: section numbers below (S3.2 and so on) point into it.
   Commit subjects; bodies per AGENTS.md "Commit Messages"; end with
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - `stunt-core` is untouched (`[I7]`); everything here is Python.
+- Commit only after reading the gate's own PASS/FAIL summary; never chain `git commit` behind a
+  pipe of the gate's output (a `| tail` hides its exit code).
 - DOSBox-X conf: `core = normal`, `output = surface`; never send `VRT`; before the dialog settles,
-  send only `MEMDUMPBIN A000:0000 FA00` (legacy S3).
+  send only `PING` and `MEMDUMPBIN A000:0000 FA00` (legacy S3).
+- The binary is `bin/x64/Release/dosbox-x.exe` (the SDL1 build the spike ran). The old pin chose
+  `Release SDL2` for OpenGL output, which this tool never uses.
+- `BPM`/`BPLM` fire when a watched byte's value changes, so a write of the value already there is
+  not seen. Findings say "every changing write", never "every write".
 - `MEMDUMPBIN` takes a literal `seg:off`, a hex length, and an unquoted forward-slash host path
   whose parent exists; the file name is upper-case 8.3 (`[I8]`).
 - The listener binds port 0 on `127.0.0.1`; conf, stage and dump directory are per run (ADR 0021).
@@ -46,10 +52,15 @@ first: section numbers below (S3.2 and so on) point into it.
 3. **A watch stop on bytes that do not decode cleanly** (data, a `rep` prefix, an instruction that
    moves its own address register): the verdict is `ambiguous` or `spurious`, never an exception.
    Test in Task 3.
-4. **Two runs side by side**: distinct ports, stage roots and dump paths. Test in Task 1 (dump
-   names are per link) and Task 5 (stage root per run).
-5. **A probe that never fires or arms at a tick the film never reaches**: the run ends with
-   `stop_tick` or `timeout` and an `end` record, not a hang. Test in Task 6.
+4. **Two runs side by side**: distinct ports, stage roots and dump paths. Dump names count per
+   link (test in Task 1). The stage comes from `staging.stage_film`, which labels every call with
+   pid and counter, and `booted` keeps its conf and dump directory inside that stage.
+5. **A probe that never fires, arms at a tick the film never reaches, or a guest that keeps
+   "stopping" in a busy-wait**: the run ends with `stop_tick` or `timeout` and an `end` record,
+   not a hang. `hit_timeout` counts from the last counted stop, so a stream of spurious stops
+   cannot hold the run open. Test in Task 6.
+6. **A plan offset that does not exist on the patched build** (code or DS data): the probe is
+   refused with the pairing's reason and the CLI exits 2 before launch. Tests in Tasks 2, 4 and 7.
 
 ## File Map
 
@@ -59,6 +70,7 @@ first: section numbers below (S3.2 and so on) point into it.
 | `python/stunt_reel/dbx/link.py` | 1 | TCP protocol, dumps, register reads |
 | `tests/dbx_peer.py` | 1 | scripted fake DOSBox-X peer for tests |
 | `python/stunt_reel/dbx/addr.py` | 2 | image/runtime translation, site check, patched mapping |
+| `tests/dbx_stubs.py` | 2 | synthetic `LoadImage` and `Pairing` builders shared by Tasks 2, 4 and 6 |
 | `python/stunt_reel/dbx/watch.py` | 3 | watch-stop writer resolution with iced-x86 |
 | `python/stunt_reel/dbx/plan.py` | 4 | plan TOML parsing and validation |
 | `python/stunt_reel/dbx/boot.py` | 5 | conf, staging, dialog settle, BIOS keys, load paragraph, launch |
@@ -67,11 +79,17 @@ first: section numbers below (S3.2 and so on) point into it.
 | `python/scripts/debug_x.py`, `mise.toml` | 7 | CLI, task, DOSBox-X pin |
 | `docs/adr/0033-...md`, `research/playone-exe/debugger-plans.md` | 8 | records |
 | `tools/dosbox-x/plans/light-*.toml` | 9 | #66 plans |
-| `python/stunt_reel/ground_stream.py`, `python/scripts/ground_stream.py` | 11 | stream decoder |
-| `tools/dosbox-x/plans/ground-*.toml` | 12-13 | #65 plans |
+| `python/stunt_reel/ground_stream.py`, `python/scripts/ground_stream.py` | 12 | ground-record decoder |
+| `tools/dosbox-x/plans/ground-*.toml` | 13 | #65 plans |
 
-The spec gives `plan.py` both parsing and the hit loop; this plan splits the loop into `run.py`
-so each file has one job. Nothing else departs from the spec.
+Departures from the spec (S3.2 to S3.4 were revised to match):
+- The hit loop moves out of `plan.py` into `run.py`, so each file has one job.
+- `ignore_ip` is dropped. Every watch ignores writes from the build's own dispatch-slot run,
+  found by the slot signature on each build. A hand range of unpatched offsets would be wrong
+  on the patched build.
+- On `--build patched`, literal DS offsets (`mem = "DS:..."` and `mem:DS:<int>:<len>` captures)
+  map through #78's `map_data`, as code offsets map through `map_code`. The spec mapped code
+  only, so a patched `DS:0x49EC` watch would have watched the wrong word.
 
 ---
 
@@ -79,8 +97,10 @@ so each file has one job. Nothing else departs from the spec.
 
 ### Task 0: Base the branch on #78
 
-- [ ] **Step 1:** Confirm `HEAD~1` is `3e147ee` (#78's iced-x86 commit) or its successor on the
-  #78 PR branch; `git log --oneline -3`.
+- [ ] **Step 1:** Confirm that the tip of #78's branch (`refs/heads/claude/sad-khorana-d54142`,
+  [PR #170](https://github.com/neilsh/stunt-reel/pull/170)) is an ancestor of `HEAD`:
+  `git merge-base --is-ancestor refs/heads/claude/sad-khorana-d54142 HEAD`. If review fixes on
+  #170 moved it, rebase this branch onto the new tip.
 - [ ] **Step 2:** `mise exec -- uv sync --locked --all-groups`, then
   `mise exec -- uv run python -c "import iced_x86, stunt_reel.build_pairing"` prints nothing.
 
@@ -134,19 +154,23 @@ so each file has one job. Nothing else departs from the spec.
 
 ### Task 2: `addr.py`
 
-**Files:** Create `python/stunt_reel/dbx/addr.py`, `tests/test_dbx_addr.py`.
+**Files:** Create `python/stunt_reel/dbx/addr.py`, `tests/dbx_stubs.py`, `tests/test_dbx_addr.py`.
 
 **Interfaces:**
-- Consumes: `stunt_reel.build_pairing.LoadImage`, `Pairing`, `map_code`, `ALIGNED`.
+- Consumes: `stunt_reel.build_pairing`: `LoadImage` (`data`, `relocs: frozenset[int]`), `Pairing`,
+  `Function`, `Insn`, `map_code`, `map_data`, `dispatch_slots`, `SLOT_BYTES`, `ALIGNED`, `MEM`.
 - Produces:
   - `class Unmappable(ValueError)`, `class SiteMismatch(ValueError)`
-  - `def vm_paragraph(image: LoadImage) -> int`: the paragraph of the dispatch-slot run, the first
-    offset where 100 consecutive 9-byte slots `26 C7 44 FE ?? ?? E9 ?? ??` start, divided by 16.
-    Raises `ValueError` when none is found.
+  - `MIN_SLOTS: int = 100`. `def vm_paragraph(image: LoadImage) -> int`: the first paragraph `p`
+    (scanning `0 .. len(data) // 16`) where `len(dispatch_slots(image, p)) >= MIN_SLOTS`. Raises
+    `ValueError` when there is none. It reuses #78's slot reader rather than a second signature.
   - `@dataclass(frozen=True, slots=True) class Runtime`, fields `image: LoadImage`, `load: int`,
-    `dgroup_paragraph: int`, `vm: int`. Properties `ds -> int` (`load + dgroup_paragraph`) and
-    `end -> int` (`load * 16 + len(image.data)`). Methods:
-    `code_site(self, offset: int, cs: Literal["auto", "module", "vm"] = "auto") -> tuple[int, int]`
+    `dgroup_paragraph: int`, `vm: int`. Properties:
+    - `ds -> int`: `load + dgroup_paragraph`;
+    - `end -> int`: `load * 16 + len(image.data)`;
+    - `slot_run -> range`: image offsets `vm*16 .. vm*16 + SLOT_BYTES * len(dispatch_slots(image, vm))`.
+
+    Methods: `code_site(self, offset: int, cs: Literal["auto", "module", "vm"] = "auto") -> tuple[int, int]`
     and `to_image(self, seg: int, off: int) -> int | None` (`None` outside the image).
   - `def site_matches(image: LoadImage, offset: int, live: bytes) -> bool`: compares `live` with
     `image.data[offset:offset + len(live)]`, skipping both bytes of every word in `image.relocs`
@@ -154,19 +178,31 @@ so each file has one job. Nothing else departs from the spec.
   - `def to_patched(pairing: Pairing, offset: int) -> int`: `map_code(...)` must be `ALIGNED` and
     `pairing.function_at(offset)` must have ratio `1.0`, else `Unmappable` naming `how` and the
     ratio.
+  - `def to_patched_data(pairing: Pairing, offset: int) -> int`: `map_data(pairing, offset).mapped`,
+    or `Unmappable` naming `how` when it is `None`.
+  - `tests/dbx_stubs.py`: `def image(size: int = 0xA000, *, slots_at: int = 0x8240, slots: int = 108, relocs: Iterable[int] = ()) -> LoadImage`
+    writes real slots (`26 C7 44 FE <imm16> E9 <rel16>`). `def pairing(*, code: Mapping[int, int] = {}, functions: Sequence[tuple[int, int, float]] = (), data: Mapping[int, int] = {}) -> Pairing`:
+    each function is `(start, end, ratio)`, built as two `Function`s whose `insns` are `Insn(start)`
+    and `Insn(end)`. Each data entry becomes `votes[(0, MEM, "", left)] = Counter({right: 3})`. The
+    other fields stay empty.
 
-- [ ] **Step 1: Write the failing tests.** They use a synthetic `LoadImage`: 0x9000 bytes of
-  zeros, 100 slots written at `0x8240`, `relocs = {0x9102}`.
-  - `test_vm_paragraph_finds_slot_run == 0x824`
+- [ ] **Step 1: Write the failing tests** on `dbx_stubs.image(relocs={0x9102})`:
+  - `test_vm_paragraph_finds_slot_run == 0x824`, and `vm_paragraph(image(slots=99))` raises.
+  - `test_slot_run`: `slot_run == range(0x8240, 0x8240 + 9 * 108)`, i.e. it ends at `0x860C`, the
+    end of `world-scene.md` S4's `0x8240..0x860B`.
   - `test_code_site_auto`: with `Runtime(img, load=0x0824, dgroup_paragraph=0xD51, vm=0x824)`,
     `code_site(0x9100) == (0x1048, 0x0EC0)` and `code_site(0x2350) == (0x0824, 0x2350)`.
   - `test_to_image_round_trip`: `to_image(0x1048, 0x0EC0) == 0x9100`; `to_image(0x2AAA, 0xEE94) is None`.
   - `test_ds`: `ds == 0x1575`.
   - `test_site_matches_masks_relocs`: image bytes `1e bf d4 15 8e df` at `0x9100`, live
     `1e bf f8 1d 8e df` gives True; live `1e bf f8 1d 8e de` gives False.
-  - `test_to_patched_refuses_estimated`: a `Pairing` stub whose `map_code` result is `ESTIMATED`
-    raises `Unmappable`. Build the minimal `Pairing` with empty `functions` and one `code` entry,
-    then ask for an address outside it.
+  - `test_to_patched_aligned`: `pairing(code={0x9100: 0x83F7}, functions=[(0x9100, 0x9120, 1.0)])`
+    maps `0x9100` to `0x83F7`.
+  - `test_to_patched_refuses` (parametrized): the same with ratio `0.9`; `0x9104` (not in `code`,
+    so `ESTIMATED`); an empty pairing (`UNMAPPED`). Each raises `Unmappable`, and the message names
+    the reason.
+  - `test_to_patched_data`: `pairing(data={0x49EC: 0x4372})` maps `0x49EC` to `0x4372`.
+    `0x0100`, with no votes on either side, raises `Unmappable`.
 - [ ] **Step 2:** `mise run test-py -- tests/test_dbx_addr.py`: FAIL.
 - [ ] **Step 3:** Implement. `code_site` auto picks VM when `offset >= vm * 16`. The VM segment is
   `load + vm` and the module segment is `load`, with `off = offset - (seg - load) * 16`. Raise
@@ -186,8 +222,9 @@ so each file has one job. Nothing else departs from the spec.
   - `@dataclass(frozen=True, slots=True) class Verdict`: `kind: Literal["write", "ambiguous", "spurious"]`,
     `writer: Candidate | None`, `candidates: tuple[Candidate, ...]`
   - `def resolve_writer(code: bytes, ip: int, regs: Regs, watch: range) -> Verdict`. `code` holds
-    the 6 bytes before the stop `ip` and 8 bytes from it (`ip - 6 .. ip + 8`), `regs` are the
-    registers at the stop, and `watch` is a range of linear addresses.
+    the 6 bytes before the stop `ip` and 8 bytes from it (`ip - 6 .. ip + 8`; fewer before when
+    `ip < 6`, with starts below 0 skipped), `regs` are the registers at the stop, and `watch` is a
+    range of linear addresses.
 
 Rule (spec S3.4, made exact):
 
@@ -228,6 +265,7 @@ Rule (spec S3.4, made exact):
 **Files:** Create `python/stunt_reel/dbx/plan.py`, `tests/test_dbx_plan.py`.
 
 **Interfaces:**
+- Consumes: `addr.to_patched`, `addr.to_patched_data`, `addr.Unmappable` (Task 2).
 - Produces:
   - `class PlanError(ValueError)`
   - `@dataclass(frozen=True, slots=True) class Capture`: `kind: Literal["stack", "mem"]`,
@@ -237,11 +275,19 @@ Rule (spec S3.4, made exact):
     `kind: Literal["break", "watch", "int"]`, `at: int | None`, `patched_at: int | None`,
     `cs: Literal["auto", "module", "vm"]`, `mem: tuple[str, int] | None`, `linear: int | None`,
     `size: int`, `int_no: int | None`, `ah: int | None`, `arm: Literal["dialog"] | int`
-    (an int is a film tick), `hits: int`, `capture: tuple[Capture, ...]`,
-    `ignore_ip: tuple[tuple[int, int], ...]`
+    (TOML `arm = "dialog"` or `arm = { tick = N }`; an int here is that film tick), `hits: int`,
+    `capture: tuple[Capture, ...]`
   - `@dataclass(frozen=True, slots=True) class Plan`: `name: str`, `cycles: int`,
     `stop_tick: int | None`, `probes: tuple[Probe, ...]`, `sha256: str`
   - `def parse_plan(text: str, name: str) -> Plan`, `def load_plan(path: Path) -> Plan`
+  - `def for_patched(plan: Plan, pairing: Pairing) -> tuple[Plan, dict[str, str]]`: a copy whose
+    offsets are patched-build offsets, plus a `probe name -> how` note for the run record:
+    - each break's `at` becomes `patched_at` when given, else `addr.to_patched(at)`;
+    - a watch's `mem` offset, when it is an int, goes through `addr.to_patched_data`;
+    - each `mem:DS:<int>:<len>` capture goes through `addr.to_patched_data` too.
+
+    Register offsets and `linear` addresses pass unchanged, since a linear address comes from a
+    run on the same build. `Unmappable` propagates as `PlanError` naming the probe.
 
 Defaults: `cycles = 8000`, `stop_tick = None`, `cs = "auto"`, `size = 1`, `arm = "dialog"`,
 `hits = 1`, `capture = ()`. Validation (each raises `PlanError` naming the probe):
@@ -253,18 +299,25 @@ Defaults: `cycles = 8000`, `stop_tick = None`, `cs = "auto"`, `size = 1`, `arm =
 - `hits >= 1`;
 - capture keys match `stack:<n>` or `mem:<SEG>:<OFF>:<LEN>`, where `SEG` is in
   `CS DS ES SS` and `OFF` is a register or a hex or decimal int;
-- `ignore_ip` is a list of `[lo, hi]` pairs.
+- unknown keys in `[run]` or a probe are refused, so a misspelt key fails loudly.
 
 - [ ] **Step 1: Write the failing tests:**
   - `test_spec_example_parses`: the three probes of spec S3.2 verbatim. Check
     `probes[0].arm == 10`, `probes[1].mem == ("DS", 0x49EC)`, `probes[1].size == 6`,
-    `probes[1].ignore_ip == ((0x8240, 0x860B),)`, `probes[2].ah == 0x3F`,
+    `probes[2].ah == 0x3F`,
     `probes[0].capture[1] == Capture("mem", "ES", "SI", 64, "mem:ES:SI:64")`.
   - `test_defaults`: a one-probe plan gives `cycles == 8000`, `hits == 1`, `arm == "dialog"`.
   - `test_rejects` (parametrized): break without `at`; watch with both `mem` and `linear`;
-    `size = 17`; duplicate names; `capture = ["mem:FS:SI:4"]`; `hits = 0`. Each raises
-    `PlanError`.
+    `size = 17`; duplicate names; `capture = ["mem:FS:SI:4"]`; `hits = 0`; an unknown key
+    `ignore_ip`. Each raises `PlanError`.
   - `test_sha256_is_of_text`: the same text gives the same `sha256`, and a changed byte changes it.
+  - `test_for_patched_maps_code_and_ds`: on
+    `dbx_stubs.pairing(code={0x9100: 0x83F7}, functions=[(0x9100, 0x9120, 1.0)], data={0x49EC: 0x4372})`,
+    the spec example gives `probes[0].at == 0x83F7`, `probes[1].mem == ("DS", 0x4372)`, the
+    capture `mem:DS:0x49EC:6` is now offset `0x4372`, and `mem:ES:SI:64` is unchanged.
+  - `test_for_patched_prefers_patched_at`: `patched_at = 0x1234` wins over the pairing.
+  - `test_for_patched_unmappable_is_plan_error`: an empty pairing raises `PlanError` naming the
+    probe.
 - [ ] **Step 2:** FAIL. **Step 3:** Implement with `tomllib`. **Step 4:** PASS, lint, typecheck.
 - [ ] **Step 5:** Commit `feat(dbx): parse breakpoint plans`.
 
@@ -274,12 +327,17 @@ Defaults: `cycles = 8000`, `stop_tick = None`, `cs = "auto"`, `size = 1`, `arm =
 `tests/test_dbx_boot.py`, `tests/fixtures/dbx/mcbs.txt`; modify `tests/fixtures/README.md`.
 
 **Interfaces:**
-- Consumes: `Listener`, `Link` (Task 1); `staging.stage_film`, `staging.unstage`;
-  `game_builds.BUILDS_DIR`; `dataroot.data_root`; `playone.film_selection_names`.
+- Consumes: `Listener`, `Link` (Task 1); `tac.staging.stage_film(film, engine_root)` (returns a
+  `StagedMount` whose `root` is unique per call) and `tac.staging.unstage`;
+  `game_builds.BUILDS_DIR`; `dataroot.data_root`; `tac.playone.film_selection_names` (it returns
+  dosbox-automation key names, `KBD_<letter>`, `KBD_down`, `KBD_enter`);
+  `tac.emulator.EmulatorUnavailable` and `GuestTimeout`.
 - Produces:
   - `DOSBOX_X_VERSION: str = "2026.10.01"`
   - `def dosbox_x_exe() -> Path` (`mise where github:joncampbell123/dosbox-x` plus
-    `bin/x64/Release SDL2/dosbox-x.exe`; raises `tac.emulator.EmulatorUnavailable`)
+    `bin/x64/Release/dosbox-x.exe`; raises `tac.emulator.EmulatorUnavailable`)
+  - `def bios_keys(names: Sequence[str]) -> list[tuple[int, int]]`: `KBD_down` maps to `KEY_DOWN`,
+    `KBD_enter` to `KEY_ENTER`, and `KBD_<c>` to `char_key(c)`. Any other name raises `ValueError`.
   - `def render_conf(template: str, *, mount: Path, cycles: int) -> str`
   - `class DialogSettle` with `feed(self, page: bytes) -> bool`: True once 5 consecutive identical
     pages each have exactly 6 distinct bytes
@@ -292,11 +350,17 @@ Defaults: `cycles = 8000`, `stop_tick = None`, `cs = "auto"`, `size = 1`, `arm =
   - `def parse_mcbs(lines: Sequence[str], program: str = "PLAYONE") -> int`: the PSP segment of the
     block owned by `program`; the load paragraph is that plus `0x10`
   - `@contextmanager def booted(film: Path, build: Literal["unpatched", "patched"], *, cycles: int)`,
-    a generator yielding one `Booted`, with `@dataclass class Booted`: `link: Link`, `load: int`, `stage: Path`. It stages from
-    `<data root>/builds/<build>`, renders the conf into the stage root, launches with
-    `-conf <conf> -fastlaunch -set "dosbox mcp_server=<port>"`, accepts within 60 s, waits for the
-    dialog (at most 600 dumps, 0.1 s apart, `GuestTimeout` otherwise), sends the film's keys 1 s
-    apart, reads `DOS MCBS` and yields. On exit it sends `BREAK`, kills the process and unstages.
+    a generator yielding one `Booted`, with `@dataclass class Booted`: `link: Link`, `load: int`, `stage: Path`.
+    It works in this order:
+    1. `stage_film(film, engine_root=data_root() / BUILDS_DIR / build)`, then renders the conf to
+       `<stage root>/dosbox-x.conf` and makes `<stage root>/dump/`;
+    2. launches with `-conf <conf> -fastlaunch -set "dosbox mcp_server=<port>"` and accepts
+       within 60 s;
+    3. sends `PING`, then waits for the dialog: at most 600 dumps 0.1 s apart, else `GuestTimeout`;
+    4. reads `DOS MCBS` while the dialog is up, before the film loads;
+    5. sends `bios_keys(film_selection_names(film.name))` 1 s apart and yields.
+
+    On exit it sends `BREAK` (errors ignored), kills the process and unstages.
 
 Template `tools/dosbox-x/dosbox-x.conf`: `[dosbox] memsize = 16`; `[sdl] output = surface`,
 `autolock = false`; `[cpu] core = normal`, `cycles = {cycles}`; `[sblaster]` as the retired
@@ -318,6 +382,8 @@ Template `tools/dosbox-x/dosbox-x.conf`: `[dosbox] memsize = 16`; `[sdl] output 
     word becomes `0x20`.
   - `test_key_writes_overrun_raises`.
   - `test_char_key`: `char_key("c") == (0x63, 0x2E)`.
+  - `test_bios_keys_for_ctry`: `bios_keys(film_selection_names("CTRY.FLM")) == [(0x63, 0x2E), (0x00, 0x50), (0x0D, 0x1C)]`,
+    the spike's three keys; `bios_keys(["KBD_f1"])` raises.
   - `test_parse_mcbs_fixture`: `parse_mcbs(fixture) + 0x10 == 0x0824`.
   - `test_parse_mcbs_missing_raises`: `ValueError`.
 - [ ] **Step 3:** FAIL. **Step 4:** Implement. `booted` is not unit-tested; Task 7 runs it live.
@@ -333,13 +399,15 @@ Template `tools/dosbox-x/dosbox-x.conf`: `[dosbox] memsize = 16`; `[sdl] output 
 - Produces:
   - `@dataclass(frozen=True, slots=True) class Armed`: `probe: Probe`, `sites: tuple[tuple[int, int], ...]`
     (break sites `seg:off`, or watch byte addresses as linear), `watch: range | None`
-  - `def arm_probe(link: Link, rt: Runtime, probe: Probe, *, at: int) -> Armed`: `at` is the
-    build-specific image offset the caller resolved. It reads 8 live bytes at the site and raises
-    `SiteMismatch` unless `site_matches`, then sends `BP`, `BPM` per byte, `BPLM`, or
-    `BPINT <nn> <ah>`.
-  - `@dataclass(frozen=True, slots=True) class RunResult`: `reason: Literal["spent", "stop_tick", "timeout", "link_lost"]`,
+  - `def arm_probe(link: Link, rt: Runtime, probe: Probe) -> Armed`: the plan is already
+    build-specific (`plan.for_patched` ran for `patched`), so `probe.at` is an image offset of
+    `rt.image`. For a break, it reads 8 live bytes at the site and raises `SiteMismatch` unless
+    `site_matches`, then sends `BP`. A watch sends one `BPM` per byte (`mem`) or one `BPLM` per
+    byte (`linear`). An int probe reads the interrupt vector at `0000:<4*int_no>` into `sites`,
+    then sends `BPINT <nn> <ah>`.
+  - `@dataclass(frozen=True, slots=True) class RunResult`: `reason: Literal["spent", "stop_tick", "timeout", "link_lost", "refused"]`,
     `hits: dict[str, int]`, `spurious: int`, `ignored: dict[str, int]`
-  - `def run_plan(link: Link, rt: Runtime, plan: Plan, sites: Mapping[str, int], film_clock: int, out: TextIO, *, header: Mapping[str, object], poll: float = 0.05, tick_poll: float = 0.1, hit_timeout: float = 120.0) -> RunResult`
+  - `def run_plan(link: Link, rt: Runtime, plan: Plan, film_clock: int, out: TextIO, *, header: Mapping[str, object], poll: float = 0.05, tick_poll: float = 0.1, hit_timeout: float = 120.0) -> RunResult`
 
 JSONL records, written as each happens and flushed:
 - `{"type": "run", **header, "load": rt.load, "plan": plan.name, "plan_sha256": plan.sha256}`
@@ -352,17 +420,22 @@ Loop (spec S3.5):
 - Probes with `arm = "dialog"` are armed at once. Tick-armed probes wait until a 2-byte dump of
   `ds:film_clock` taken every `tick_poll` s reads at least their tick.
 - After `RUN`, poll `regs()` every `poll` s until two snapshots in a row are equal. That is a
-  stop.
-  - A stop whose `cs:ip` is an armed break site counts for that probe.
-  - Otherwise, if the bytes at `cs:ip` are `CD <int_no>` and `ah` matches, it counts for that
-    `int` probe.
-  - Otherwise it is resolved with `resolve_writer` against each armed watch. A writer inside a
-    probe's `ignore_ip` counts as `ignored` for that probe. A `write` or `ambiguous` verdict counts
-    for the watch it hits. A `spurious` verdict raises the global count.
+  stop. Each stop is classified in this order, then `RUN` is sent again:
+  1. If `cs:ip` is an armed break site, it counts for the first armed, unspent probe at that site
+     in plan order. Two probes may share a site with different `arm` ticks.
+  2. Otherwise, if an int probe is armed and `ah` matches, it counts for that probe when the bytes
+     at `cs:ip` are `CD <int_no>` or `cs:ip` is the vector read at arming. DOSBox's normal core
+     returns to the debugger before it saves IP, so the stop should sit on the `CD`. Task 13's
+     first live run confirms which of the two it is and records it in `debugger-plans.md`.
+  3. Otherwise it goes to `resolve_writer` against each armed watch. A writer whose image offset
+     lies in `rt.slot_run` counts as `ignored` for that probe. A `write` or `ambiguous` verdict
+     counts for the watch it hits. A `spurious` verdict raises the global count.
 - A probe that reaches `hits` is spent: send `BPDEL *`, then re-arm the others.
 - The run ends `spent` when every probe is spent, `stop_tick` when the clock reaches
-  `plan.stop_tick`, `timeout` when no stop comes within `hit_timeout`, and `link_lost` on
-  `LinkLost`. It always writes the `end` record.
+  `plan.stop_tick`, `timeout` when `hit_timeout` passes with no counted stop (a hit or an
+  ignored write; spurious stops do not reset it), `link_lost` on `LinkLost`, and `refused` on
+  `SiteMismatch` (the CLI then exits 2). It always writes the `end` record, naming the refused
+  probe when there is one.
 
 - [ ] **Step 1: Write the failing tests** with `FakePeer`. The script answers `EV` from a register
   sequence, `MEMDUMPBIN` from `memory`, and every other command `OK`.
@@ -373,12 +446,20 @@ Loop (spec S3.5):
   - `test_site_mismatch_refuses`: live bytes differ, so `arm_probe` raises `SiteMismatch`.
   - `test_watch_spurious_counted`: a watch stop at the `0x759C` bytes leaves no `hit` record and
     gives `RunResult.spurious == 1`.
-  - `test_watch_ignored_in_slot_run`: the writer sits inside `ignore_ip`, so `ignored[name] == 1`
-    and there is no hit.
+  - `test_watch_ignored_in_slot_run`: the writer is a slot's `mov word es:[si-2], imm16`
+    inside `rt.slot_run`, so `ignored[name] == 1` and there is no hit.
+  - `test_shared_site_goes_to_first_unspent`: two break probes at `0x9100`, both at `arm = "dialog"`
+    with `hits = 1`. The first stop counts for the first probe and the second stop for the second.
+  - `test_int_stop_on_cd`: an int probe `0x21`/`0x3F` with the stop on bytes `cd 21` and
+    `ax = 0x3F00` gives a hit. The same stop with `ax = 0x4200` is spurious.
   - `test_link_lost_writes_end`: the peer closes after the first hit. The result is `link_lost`,
     and the file has one `hit` and an `end`.
   - `test_timeout_ends_run`: registers never repeat. With `hit_timeout = 0.3` the result is
     `timeout`.
+  - `test_spurious_stream_still_times_out`: registers repeat forever at an address that is not a
+    site, so every stop is spurious. The result is `timeout`.
+  - `test_mismatch_mid_run_is_refused`: a tick-armed break whose live bytes differ. The result is
+    `refused`, with an `end` record naming the probe.
   - `test_tick_arm_waits`: the clock word reads 5, then 9, then 12, and `arm = 10`. `BP` is sent
     only after the read of 12.
 - [ ] **Step 2:** FAIL. **Step 3:** Implement. **Step 4:** PASS, lint, typecheck.
@@ -387,11 +468,14 @@ Loop (spec S3.5):
 ### Task 7: CLI, task, pin, live check
 
 **Files:** Create `python/scripts/debug_x.py`, `tools/dosbox-x/plans/smoke.toml`,
-`tests/test_debug_x_script.py`; modify `mise.toml`.
+`tests/test_debug_x_script.py`; modify `mise.toml`, `python/stunt_reel/build_pairing.py`
+(gains `load_image`) and `python/scripts/pair_builds.py` (imports it).
 
 **Interfaces:**
-- Consumes: everything above; `unlzexe.unpack` and the pairing loader as in
-  `python/scripts/pair_builds.py:load`; `playone.UNPATCHED` and `playone.PATCH3`.
+- Consumes: everything above; the image loader `load(path) -> LoadImage` from
+  `python/scripts/pair_builds.py` (move it to `build_pairing.load_image` and import it from both
+  scripts, rather than copy it); `build_pairing.pair_images`; `tac.playone.UNPATCHED` and
+  `PATCH3` (`dgroup_paragraph`, `film_clock`).
 - Produces: `def parse_args(argv: list[str]) -> argparse.Namespace` with `--plan` (required),
   `--film` (default `corpus/stisldem/VAULT/CTRY.FLM`), `--build` (`unpatched` or `patched`,
   default `unpatched`), and `--out` (default `<data root>/debug`). `def main(argv: list[str]) -> int`
@@ -399,16 +483,18 @@ Loop (spec S3.5):
 
 - [ ] **Step 1: Write the failing tests:** `test_parse_args_defaults`;
   `test_unknown_build_rejected`; `test_patched_unmappable_exits_2`. For the last, monkeypatch the
-  pairing so that `to_patched` raises; `main` returns 2 before any launch, asserted by a
-  `booted` that fails if it is called.
+  image loader and `pair_images` to return `dbx_stubs` objects with an empty pairing. `main`
+  returns 2 before any launch, asserted by a `booted` that fails if it is called.
 - [ ] **Step 2:** FAIL. **Step 3:** Implement `debug_x.py`:
   1. Load the plan.
   2. Load the build's unpacked image from `<data root>/builds/<build>/PLAYONE.EXE`.
-  3. For `patched`, load both and pair them, then resolve every probe's `at` through
-     `patched_at` or `to_patched`.
-  4. Boot, build the `Runtime` from `booted.load`, `vm_paragraph` and the layout's
-     `dgroup_paragraph`.
-  5. Run, writing to `<out>/<film stem>/<plan>-<build>-<UTC stamp>.jsonl`.
+  3. For `patched`, load both and pair them, then replace the plan with `for_patched(plan, pairing)`.
+     A `PlanError` returns 2 before launch.
+  4. Boot, then build the `Runtime` from `booted.load`, `vm_paragraph` and the layout's
+     `dgroup_paragraph` (`UNPATCHED` or `PATCH3`).
+  5. Run with the layout's `film_clock`, writing to `<out>/<film stem>/<plan>-<build>-<UTC stamp>.jsonl`.
+     The header carries `build`, `film`, `emulator = DOSBOX_X_VERSION`, `vm` and the
+     `for_patched` notes.
   6. Print the summary: one row per probe (hits, ignored), the spurious count, and the distinct
      `return_far_image` and writer image offsets, at most 40 lines.
 - [ ] **Step 4:** `mise.toml`: add the tool block below (the old pin from `01a1ae4^`, version
@@ -418,7 +504,8 @@ Loop (spec S3.5):
   version = "dosbox-x-v2026.10.01"
   os = ["windows"]
   asset_pattern = "dosbox-x-vsbuild-win64-*.zip"
-  bin_path = "bin/x64/Release SDL2"
+  # The SDL1 build: the one the 2026-11-04 spike ran; SDL2 was chosen for OpenGL, unused here.
+  bin_path = "bin/x64/Release"
 
   [tasks.debug-x]
   description = "Run a breakpoint plan on DOSBox-X's debugger (mise run debug-x -- --plan tools/dosbox-x/plans/smoke.toml [--build patched])"
@@ -428,8 +515,9 @@ Loop (spec S3.5):
   `capture = ["stack:4", "mem:DS:0x49EC:6"]`, `stop_tick = 600`.
 - [ ] **Step 6 (live):** `mise run debug-x -- --plan tools/dosbox-x/plans/smoke.toml`. Expected:
   two hits, `return_far_image` `0x2350`, `mem DS:0x49EC:6` equal to the hit's `AX BX DX`, exit 0.
-  Repeat with `--build patched`. Expected: two hits, with the return mapped through the pairing.
-  Record both summaries in the commit body.
+  Repeat with `--build patched`. Expected: two hits at patched `0x83F7`, `return_far_image ==
+  map_code(pairing, 0x2350).mapped`, and `mem DS:<mapped 0x49EC>:6` equal to `AX BX DX`. That last
+  check proves the data mapping live. Record both summaries in the commit body.
 - [ ] **Step 7:** `mise run check`, then commit `feat(dbx): mise run debug-x runs a breakpoint plan`.
 
 ### Task 8: Records, then PR A
@@ -450,8 +538,11 @@ and `AGENTS.md` (add `debugger-plans.md` to the Binary Disassembly row, using th
   - **Ruled out**: the hook probe and the MCP server for agents;
   - **Open questions**.
 - [ ] **Step 3:** `mise run check` (doc-invariant tests cover new anchors and links).
-- [ ] **Step 4:** Commit `docs(dbx): record why breakpoints run on DOSBox-X`. Then open PR A with
-  `gh-stack` on top of the #78 PR, body from the `pr` skill. Confirm with the user before pushing.
+- [ ] **Step 4:** Commit `docs(dbx): record why breakpoints run on DOSBox-X`.
+- [ ] **Step 5:** Review the branch since `refs/heads/claude/sad-khorana-d54142` with one reviewer
+  on the strongest model (`superpowers:requesting-code-review`), and fix what it confirms.
+- [ ] **Step 6:** Confirm with the user before pushing. Then open PR A with `gh-stack` on top of
+  [PR #170](https://github.com/neilsh/stunt-reel/pull/170), body from the `pr` skill.
 
 ---
 
@@ -462,16 +553,17 @@ and `AGENTS.md` (add `debugger-plans.md` to the Binary Disassembly row, using th
 **Files:** Create `tools/dosbox-x/plans/light-caller.toml` and `light-writers.toml`.
 
 - [ ] **Step 1:** `light-caller.toml`: two break probes at `0x9100`, named `light-entry-10`
-  (`arm = 10`) and `light-entry-448` (`arm = 448`), `hits = 3` each, `capture =
-  ["stack:8", "mem:DS:0x49EC:6", "mem:DS:0x22EC:2"]`, `stop_tick = 600`.
+  (`arm = { tick = 10 }`) and `light-entry-448` (`arm = { tick = 448 }`), `hits = 3` each,
+  `capture = ["stack:8", "mem:DS:0x49EC:6", "mem:DS:0x22EC:2"]`, `stop_tick = 600`.
 - [ ] **Step 2:** `light-writers.toml`: a watch with `mem = "DS:0x49EC"`, `size = 6`,
-  `arm = "dialog"`, `hits = 200`, and `ignore_ip = [[0x8240, 0x860B]]`; a break at `0x196C`
-  (`hits = 50`, `capture = ["stack:8"]`); `stop_tick = 1300`.
+  `arm = "dialog"`, `hits = 200`; a break at `0x196C` (`hits = 50`, `capture = ["stack:8"]`);
+  `stop_tick` at the film's last tick (read `CTRY.FLM`'s length with the project's film parser,
+  not a guess).
 - [ ] **Step 3 (live):** Run both plans on both builds. Expected for `light-caller`: every hit has
   `return_far_image == 0x2350` (the patched mapping of it on `patched`) and
   `mem DS:0x49EC:6 == AX BX DX`. A different caller is a finding: keep it and record it.
 - [ ] **Step 4:** From `light-writers`, list each distinct writer's image offset with the ticks it
-  fired at. Read the variable-13 value at the `0x196C` hits from the registers and stack, and find
+  fired at. These are changing writes only (Global Constraints). Read the variable-13 value at the `0x196C` hits from the registers and stack, and find
   where variable 13 is stored (static decode of `0x196C`'s entry with iced-x86).
 
 ### Task 10: Static decode and per-frame comparison
@@ -506,7 +598,8 @@ only through `python/stunt_reel/doc_anchors.py`), and `research/parity/log.md` (
   offsets, the per-shot table, and whether variable 13 alone reproduces `L`. Tier
   `[Bounded Observation]` or better, with the plan files and JSONL names cited.
 - [ ] **Step 2:** `mise run check`. Commit `docs(research): name what sets PLAYONE's terrain light (#66)`.
-  Then stack PR B on A, with `Closes #66`. Confirm with the user before pushing.
+- [ ] **Step 3:** Review PR B's commits with one reviewer on the strongest model. Then, with the
+  user's yes, stack PR B on A with `Closes #66`.
 
 ---
 
@@ -517,22 +610,37 @@ only through `python/stunt_reel/doc_anchors.py`), and `research/parity/log.md` (
 **Files:** Create `python/stunt_reel/ground_stream.py`, `python/scripts/ground_stream.py`,
 `tests/test_ground_stream.py`; modify `mise.toml`.
 
+A ground handler is entered with `ES:SI` on the record's `w0`, because the slot has already
+consumed the opcode word at `SI-2` (`world-scene.md` S2, S4). The decoder therefore reads records
+from the ground-handler break hits, which locate every record exactly. It does not scan the
+4096-byte object dumps: other ops' record lengths are unknown, so a scan cannot step over them.
+
 **Interfaces:**
 - Produces:
-  - `@dataclass(frozen=True, slots=True) class Polygon`: `offset: int`, `op: int` (handler image
-    offset), `colour: int`, `count: int`, `shades: tuple[int, ...]`, `next_ip: int`
-  - `@dataclass(frozen=True, slots=True) class Walk`: `polygons: tuple[Polygon, ...]`,
-    `stopped_at: int`, `reason: str`
-  - `def walk(stream: bytes, start: int, handlers: Mapping[int, str], vm: int) -> Walk`:
-    `handlers` maps VM-space handler IPs to names (`0x171C` is `ground168` and `0x17E4` is
-    `ground2BE`, from `world-scene.md` § 4, plus `OP_IPG 0x141F`, `SHADES 0x1241`). The walk
-    follows `next_ip` while it names a ground handler and stops with a reason otherwise.
-  - CLI `ground_stream.py <jsonl> [--probe ground-objects]` decodes every `mem:ES:SI:4096`
-    capture in a debug-x JSONL and prints polygons by colour; the mise task is `ground-stream`.
+  - `@dataclass(frozen=True, slots=True) class Polygon`: `linear: int` (of `w0`), `handler: int`
+    (the handler's image offset), `colour: int`, `count: int`, `shades: tuple[int, ...]`,
+    `next_ip: int`
+  - `def decode_record(data: bytes, linear: int, handler: int) -> Polygon | None`: `w0`, then
+    `count = w0 & 0x0F` shade words, then the next IP. `None` when `data` is too short.
+  - `def follow(poly: Polygon, dump: bytes, base: int, handler_ips: Mapping[int, int]) -> list`
+    of `Polygon`:
+    while `poly.next_ip` is a ground handler's VM-space IP (`handler_ips` maps IP to handler image
+    offset), it decodes the next record from `dump`, the object dump whose linear start is `base`.
+    The next record starts 2 bytes after the next-IP word. It stops cleanly at the end of `dump`.
+  - CLI `ground_stream.py <jsonl>`: it reads the hits of the probes whose `cs_ip_image` is a
+    ground handler. It builds `handler_ips` from those hits, as the stopped `ip` paired with
+    `cs_ip_image`, so no build-specific constant is needed. It decodes each hit's
+    `mem:ES:SI:40` capture, groups the polygons by `ES` (one object each), and prints a count
+    table per colour. With `--json` it writes every polygon. The mise task is `ground-stream`.
 
-- [ ] **Step 1: Write the failing tests** on synthetic streams: `test_walks_two_records`,
-  `test_count_low_nibble_only` (`w0 = 0xC32D` gives colour `0xC3`, count 13),
-  `test_stops_on_unknown_ip`, `test_truncated_stream_stops_cleanly`.
+- [ ] **Step 1: Write the failing tests** on synthetic bytes:
+  - `test_count_low_nibble_only`: `w0 = 0xC32D` gives colour `0xC3` and count 13.
+  - `test_record_shades_and_next_ip`: count 3 gives three shade words, then the next IP.
+  - `test_short_record_is_none`.
+  - `test_follow_two_records`.
+  - `test_follow_stops_on_other_ip`.
+  - `test_follow_stops_at_dump_end`.
+  - `test_cli_groups_by_es`: on a two-hit JSONL fixture written by the test.
 - [ ] **Step 2:** FAIL. **Step 3:** Implement to `world-scene.md` § 2's layout.
   **Step 4:** PASS, lint, typecheck. **Step 5:** Commit `feat(re): decode PLAYONE's live ground stream`.
 
@@ -540,16 +648,17 @@ only through `python/stunt_reel/doc_anchors.py`), and `research/parity/log.md` (
 
 **Files:** Create `tools/dosbox-x/plans/ground-objects.toml` and `ground-writer.toml`.
 
-- [ ] **Step 1:** `ground-objects.toml`: three break probes at `0x9100` armed at ticks 10, 273 and
-  448 (`hits = 40` each, more than one frame's objects; `capture = ["mem:ES:0:16",
-  "mem:ES:SI:4096"]`); breaks at `0x995C` and `0x9A24` (`hits = 300`,
-  `capture = ["mem:ES:SI:40"]`).
+- [ ] **Step 1:** `ground-objects.toml`: three break probes at `0x9100` armed at
+  `{ tick = 10 }`, `{ tick = 273 }` and `{ tick = 448 }`. Each has `hits = 40`, more than one
+  frame's objects, and `capture = ["mem:ES:0:16", "mem:ES:SI:4096"]`. Add breaks at `0x995C` and
+  `0x9A24` with `hits = 300` and `capture = ["mem:ES:SI:40"]`.
 - [ ] **Step 2 (live):** Run it on `CTRY.FLM` (unpatched) and once on `INTRO.FLM`.
   `mise run ground-stream` over the JSONL lists the polygons per object. Pick one airfield record
-  with a colour in 192 to 199 and note its linear address (`ES * 16 + offset + 1`).
+  with a colour in 192 to 199 and note its colour byte's linear address, `Polygon.linear + 1`.
 - [ ] **Step 3:** `ground-writer.toml`: a watch with `linear = <that address>`, `size = 1`,
-  `arm = "dialog"`, `hits = 20`, `ignore_ip = [[0x8240, 0x860B]]`; and an `int` probe, `int = 0x21`,
-  `ah = 0x3F`, `hits = 200`, `capture = ["mem:DS:DX:16"]`, plus one with `ah = 0x42`.
+  `arm = "dialog"` and `hits = 20` (slot-run writes are ignored by default). Add an `int` probe
+  with `int = 0x21`, `ah = 0x3F`, `hits = 200` and `capture = ["mem:DS:DX:16"]`, and a second
+  with `ah = 0x42`.
 - [ ] **Step 4 (live):** Run it. If the watch catches a writer, record its image offset and, for a
   copy loop, the source `DS:SI`. Match the source buffer to an `INT 21h/3Fh` read to get the file
   and offset. If the watch catches nothing because the address moved, take the spec's fallback
@@ -576,4 +685,6 @@ only through `python/stunt_reel/doc_anchors.py`), and `research/parity/log.md` (
 
   Add a parity-log row.
 - [ ] **Step 5:** `mise run check`. Commit `docs(research): name the producer of PLAYONE's ground records (#65)`.
-  Stack PR C on B with `Closes #65`. Ask the user before posting the renderer change on #69.
+- [ ] **Step 6:** Review PR C's commits with one reviewer on the strongest model. Then, with the
+  user's yes, stack PR C on B with `Closes #65`. Ask the user before posting the renderer change
+  on #69.
