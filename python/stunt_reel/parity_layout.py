@@ -30,6 +30,8 @@ __all__ = [
     "film_slug",
     "frames_path",
     "is_protected_render",
+    "linked_path",
+    "manifest_path",
     "manual_report_dir",
     "previous_dir",
     "render_dir",
@@ -139,6 +141,16 @@ def video_path(slug: str) -> Path:
 def archive_path(slug: str) -> Path:
     """The film *slug*'s one generated ``.ALL`` archive, filed beside its captures (ADR 0028)."""
     return _CAPTURE / slug / "archives"
+
+
+def manifest_path(slug: str) -> Path:
+    """The film *slug*'s committed ``.ALL`` manifest, relative to the checkout (ADR 0030)."""
+    return Path("manifests/all") / f"{slug}.toml"
+
+
+def linked_path(slug: str, film: str) -> Path:
+    """Where the film *slug*'s ``.ALL`` is rebuilt from its manifest, relative to the checkout."""
+    return Path("target/linked") / slug / f"{Path(film).stem.upper()}.ALL"
 
 
 def render_dir(film: str) -> Path:

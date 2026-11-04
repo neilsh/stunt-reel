@@ -34,6 +34,7 @@ from pathlib import Path
 
 from stunt_reel import all_archive, batch_films, capture_store, parity_layout, references
 from stunt_reel.dataroot import REPO_ROOT
+from stunt_reel.link import binary_locked, binary_path
 from stunt_reel.parity_artifacts import (
     RenderStore,
     open_render,
@@ -315,22 +316,6 @@ class FilmFailure:
 
     film: str
     error: Exception
-
-
-def binary_path() -> Path:
-    """The release binary every render and score runs."""
-    return REPO_ROOT / "target" / "release" / ("stuntreel.exe" if os.name == "nt" else "stuntreel")
-
-
-def binary_locked(path: Path) -> bool:
-    """Whether a process holds ``path`` open for writing (Windows refuses that on a running exe)."""
-    if os.name != "nt" or not path.is_file():
-        return False
-    try:
-        with path.open("r+b"):
-            return False
-    except PermissionError:
-        return True
 
 
 def build_release(*, run: Run = run_command) -> None:
