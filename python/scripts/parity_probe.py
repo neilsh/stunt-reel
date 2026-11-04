@@ -182,6 +182,28 @@ def shifted_pixels(pixels: list[int], dx: int, dy: int, width: int, rows: int) -
     ]
 
 
+def capture_actor_pixels(
+    capture: bytes, silhouette: list[int], width: int, rows: int, pad: int = 8
+) -> list[int]:
+    """The capture's object pixels near ``silhouette``, so the capture's aircraft is left out whole.
+
+    The capture's aircraft can be larger than our silhouette moved onto it, so every capture
+    object pixel inside the silhouette's box, grown by ``pad`` on each side, is taken as aircraft.
+    """
+    if not silhouette:
+        return []
+    xs = [p % width for p in silhouette]
+    ys = [p // width for p in silhouette]
+    x0, x1 = max(0, min(xs) - pad), min(width - 1, max(xs) + pad)
+    y0, y1 = max(0, min(ys) - pad), min(rows - 1, max(ys) + pad)
+    return [
+        y * width + x
+        for y in range(y0, y1 + 1)
+        for x in range(x0, x1 + 1)
+        if is_object(capture[y * width + x], CTRY_BACKGROUND)
+    ]
+
+
 def world_shift(
     ours: bytes,
     capture: bytes,
@@ -254,7 +276,9 @@ def cmd_shift(args: argparse.Namespace) -> None:
                         hit += 1
                 if hit > best[0]:
                     best = (hit, dx, dy)
-        capture_actor = shifted_pixels(pixels, best[1], best[2], width, rows)
+        capture_actor = capture_actor_pixels(
+            capture_index, shifted_pixels(pixels, best[1], best[2], width, rows), width, rows
+        )
         world = world_shift(
             page.indices, capture_index, pixels, width, rows, args.world_reach, capture_actor
         )

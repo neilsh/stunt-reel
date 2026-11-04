@@ -120,3 +120,22 @@ def test_world_shift_skips_offsets_as_large_as_the_frame() -> None:
     width, rows = 8, 6
     flat = bytes([3] * (width * rows))
     assert parity_probe.world_shift(flat, flat, [], width, rows, reach=8) == (0, 0, 1.0)
+
+
+def test_a_wider_capture_aircraft_does_not_move_the_world() -> None:
+    width, rows = 24, 12
+    sky = 230  # a CTRY background index, so never an object
+    ours = bytearray([sky] * (width * rows))
+    capture = bytearray(ours)
+    silhouette = [y * width + x for y in range(4, 7) for x in range(8, 12)]
+    for p in silhouette:
+        ours[p] = 40
+    # The capture's aircraft is two columns wider on the right.
+    for p in [y * width + x for y in range(4, 7) for x in range(8, 14)]:
+        capture[p] = 40
+    capture_actor = parity_probe.capture_actor_pixels(bytes(capture), silhouette, width, rows)
+    assert set(capture_actor) == {y * width + x for y in range(4, 7) for x in range(8, 14)}
+    result = parity_probe.world_shift(
+        bytes(ours), bytes(capture), silhouette, width, rows, reach=4, capture_actor=capture_actor
+    )
+    assert result == (0, 0, 1.0)
