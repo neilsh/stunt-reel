@@ -333,15 +333,47 @@ def test_require_corpus_names_the_missing_data_root(
     with pytest.raises(dataroot.SharedDataError, match="no game files") as caught:
         dataroot.require_corpus()
     assert str((tmp_path / "data").resolve() / "corpus") in str(caught.value)
-    (tmp_path / "data" / "corpus").mkdir(parents=True)
+    _game_file(tmp_path / "data" / "corpus")
     assert dataroot.require_corpus() == (tmp_path / "data").resolve() / "corpus"
 
 
 def test_require_corpus_of_a_named_root(tmp_path: Path) -> None:
     with pytest.raises(dataroot.SharedDataError, match="no game files"):
         dataroot.require_corpus(tmp_path)
-    (tmp_path / "corpus").mkdir()
+    _game_file(tmp_path / "corpus")
     assert dataroot.require_corpus(tmp_path) == tmp_path / "corpus"
+
+
+def _game_file(corpus: Path) -> None:
+    (corpus / "stisldem").mkdir(parents=True)
+    (corpus / "stisldem" / "PLAYONE.EXE").write_bytes(b"MZ")
+
+
+def test_require_corpus_refuses_the_empty_folders_an_old_layout_left(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The old links created ``corpus/<name>`` empty; folders with no file in them are no corpus."""
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    for name in ("stisldem", "siarchive", "stuntisl", "patches"):
+        (tmp_path / "corpus" / name).mkdir(parents=True)
+    with pytest.raises(dataroot.SharedDataError, match="holds no game files"):
+        dataroot.require_corpus()
+
+
+def test_an_unreadable_primary_corpus_is_raised_not_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Falling back past it would send the user to look for the game files in the wrong place."""
+    primary = _primary(tmp_path)
+    (primary / "corpus").mkdir()
+    _worktree(monkeypatch, primary)
+
+    def refused(_self: Path) -> None:
+        raise PermissionError("access denied")
+
+    monkeypatch.setattr(Path, "iterdir", refused)
+    with pytest.raises(PermissionError):
+        dataroot.corpus_root()
 
 
 def test_a_capitalised_corpus_path_resolves_too(

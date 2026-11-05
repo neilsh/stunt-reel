@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import errno
 import sys
 import threading
 import time
@@ -174,7 +175,9 @@ def _bare_init(
     """Point init at *checkout* with ensure and uv stubbed; returns the calls made."""
     calls: list[str] = []
     if corpus:
-        (checkout.parent / "data" / "corpus").mkdir(parents=True, exist_ok=True)
+        game = checkout.parent / "data" / "corpus" / "stisldem"
+        game.mkdir(parents=True, exist_ok=True)
+        (game / "PLAYONE.EXE").write_bytes(b"MZ")
     monkeypatch.setattr(worktree_init, "REPO_ROOT", checkout)
     monkeypatch.setattr(dataroot, "REPO_ROOT", checkout)
     monkeypatch.setenv(dataroot.DATA_ENV, str(checkout.parent / "data"))
@@ -267,7 +270,9 @@ def test_ensure_carries_on_when_the_lock_times_out(
 
     monkeypatch.setattr(worktree_init, "exclusive", stuck)
     assert worktree_init._ensure() == 0
-    assert "  ! ensure: " in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "  ! ensure: " in out
+    assert "core.hooksPath not checked" in out
 
 
 def test_seed_command_takes_the_ensure_lock(
@@ -316,3 +321,44 @@ def test_init_warns_about_data_at_an_old_link_path(
     assert worktree_init._init(migrate=False) == 0
     out = capsys.readouterr().out
     assert "build/parity/captures holds data the data root does not read" in out
+
+
+def test_ensure_tags_a_target_another_lane_just_made(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gate's cargo lanes run ensure at once, so target/ can appear between check and create."""
+    (tmp_path / "target").mkdir()
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(worktree_init, "ensure_hooks_path", lambda _repo: [])
+    monkeypatch.setattr(worktree_init, "_seed_target", lambda: "  - target/ not seeded: x")
+    assert worktree_init._ensure() == 0
+    assert (tmp_path / "target" / "CACHEDIR.TAG").is_file()
+    assert worktree_init._ensure() == 0
+
+
+def test_ensure_survives_a_lock_that_cannot_be_taken(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+
+    def no_locks(_path: Path) -> contextlib.AbstractContextManager[None]:
+        raise OSError(errno.ENOLCK, "No locks available")
+
+    monkeypatch.setattr(worktree_init, "exclusive", no_locks)
+    assert worktree_init._ensure() == 0
+    assert "  ! ensure: " in capsys.readouterr().out
+
+
+def test_ensure_survives_a_git_that_will_not_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "target" / "debug").mkdir(parents=True)
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+
+    def broken(_repo: Path) -> list[str]:
+        raise PermissionError("git.exe: access denied")
+
+    monkeypatch.setattr(worktree_init, "primary_checkout", lambda: tmp_path)
+    monkeypatch.setattr(worktree_init, "ensure_hooks_path", broken)
+    assert worktree_init._ensure() == 0
+    assert "  ! hooks: git.exe: access denied" in capsys.readouterr().out

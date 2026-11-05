@@ -271,7 +271,8 @@ def _seed_target() -> str:
 ENSURE_LOCK = ".ensure.lock"
 
 #: The tag that tells backup and indexing tools a directory is a cache (bford.info/cachedir).
-#: Cargo writes it only into a target/ it creates, and ``ensure`` creates target/ first.
+#: Cargo writes it only into a target/ it creates, and ``ensure`` creates target/ first, so
+#: ``ensure`` writes it into any target/ that lacks it.
 CACHEDIR_TAG = (
     "Signature: 8a477f597d28d172789f06886806bc55\n"
     "# This file is a cache directory tag created by stunt-reel's ensure task.\n"
@@ -293,10 +294,10 @@ def _ensure(*, report: bool = False) -> int:
     hooks path, not a reason to stop the task, so it returns 0 whatever happened.
     """
     target = REPO_ROOT / "target"
-    if not target.exists():
-        target.mkdir(parents=True)
-        (target / "CACHEDIR.TAG").write_text(CACHEDIR_TAG, encoding="utf-8", newline="\n")
     try:
+        # The gate's cargo lanes run this at once, so another may make target/ or the tag first.
+        target.mkdir(parents=True, exist_ok=True)
+        _tag_cache(target)
         # The first holder seeds; the others wait, then find target/ built.
         with exclusive(target / ENSURE_LOCK):
             lines = _hooks(report=report)
@@ -305,11 +306,24 @@ def _ensure(*, report: bool = False) -> int:
                 lines += seeded if report else _reports(seeded)
             elif report:
                 lines.append("  = target/ already built")
-    except TimeoutError as err:
-        lines = [f"  ! ensure: {err}; target/ not seeded"]
+    except OSError as err:
+        # TimeoutError is an OSError: a stuck holder, as much as a lock this volume refuses.
+        lines = [f"  ! ensure: {err}; target/ not seeded, core.hooksPath not checked"]
     for line in lines:
         print(line)
     return 0
+
+
+def _tag_cache(target: Path) -> None:
+    """Write ``CACHEDIR.TAG`` into *target* unless it has one; a concurrent writer may win."""
+    tag = target / "CACHEDIR.TAG"
+    if tag.exists():
+        return
+    try:
+        with tag.open("x", encoding="utf-8", newline="\n") as handle:
+            handle.write(CACHEDIR_TAG)
+    except FileExistsError:
+        pass
 
 
 def _hooks(*, report: bool) -> list[str]:
@@ -318,7 +332,7 @@ def _hooks(*, report: bool) -> list[str]:
         return []
     try:
         hooks = ensure_hooks_path(REPO_ROOT)
-    except SharedDataError as err:
+    except (SharedDataError, OSError) as err:
         return [f"  ! hooks: {err}"]
     # Only a hooks path this call set, or failed to set, is news; the rest is init's report.
     changed = any(line.startswith(("  +", "  ! could not")) for line in hooks)

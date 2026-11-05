@@ -162,10 +162,14 @@ def corpus_root() -> Path:
 
 
 def _holds_folders(path: Path) -> bool:
-    """True when directory *path* holds at least one directory."""
+    """True when directory *path* holds at least one directory; false when it is absent.
+
+    Any other error is raised: falling back past an unreadable ``corpus/`` would send the
+    user to look for the game files in the wrong place.
+    """
     try:
         return any(entry.is_dir() for entry in path.iterdir())
-    except OSError:
+    except FileNotFoundError, NotADirectoryError:
         return False
 
 
@@ -173,12 +177,17 @@ def require_corpus(root: Path | None = None) -> Path:
     """The corpus of data root *root* (the configured one by default), which must exist.
 
     A reader of the game files calls this first, so a machine without them is told where
-    they were looked for instead of finding no films and reporting success.
+    they were looked for instead of finding no films and reporting success.  The old links
+    created ``corpus/<name>`` folders empty, so a corpus must hold a file, not only a folder.
     """
     corpus = corpus_root() if root is None else corpus_of(root)
     if not corpus.is_dir():
         raise SharedDataError(
             f"no game files: {corpus} is missing; set {DATA_ENV} or see corpus/README.md"
+        )
+    if not _holds_files(corpus):
+        raise SharedDataError(
+            f"no game files: {corpus} holds no game files; set {DATA_ENV} or see corpus/README.md"
         )
     return corpus
 
