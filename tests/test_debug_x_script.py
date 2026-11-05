@@ -79,3 +79,35 @@ def test_unaddressable_site_exits_2(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     plan = tmp_path / "far.toml"
     plan.write_text('[[probe]]\nname = "far"\nkind = "break"\nat = 0x10000\n', encoding="utf-8")
     assert debug_x.main(["--plan", str(plan)]) == 2
+
+
+def _missing(_p: Path) -> Any:
+    raise FileNotFoundError("PLAYONE.EXE")
+
+
+def test_missing_build_exits_1(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(dataroot, "require_corpus_or_report", lambda _p: Path())
+    monkeypatch.setattr(debug_x, "load_image", _missing)
+    monkeypatch.setattr(debug_x, "booted", _no_boot)
+    assert debug_x.main(["--plan", str(PLANS / "smoke.toml")]) == 1
+
+
+def _unpairable(_a: object, _b: object) -> Any:
+    raise ValueError("code segment counts differ")
+
+
+def test_unpairable_builds_exit_2(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(dataroot, "require_corpus_or_report", lambda _p: Path())
+    monkeypatch.setattr(debug_x, "load_image", lambda _p: dbx_stubs.image())
+    monkeypatch.setattr(debug_x, "pair_images", _unpairable)
+    monkeypatch.setattr(debug_x, "booted", _no_boot)
+    assert debug_x.main(["--plan", str(PLANS / "smoke.toml"), "--build", "patched"]) == 2
+
+
+def test_runs_in_the_same_second_get_their_own_files(tmp_path: Path) -> None:
+    first = debug_x.reserve_output(tmp_path / "CTRY", "smoke-unpatched-20261104T000000Z")
+    second = debug_x.reserve_output(tmp_path / "CTRY", "smoke-unpatched-20261104T000000Z")
+    assert first != second
+    assert first.exists()
+    assert second.exists()
+    assert first.name == "smoke-unpatched-20261104T000000Z.jsonl"
