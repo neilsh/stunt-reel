@@ -1,6 +1,6 @@
 # #65: the terrain polygon routine at image 0xBF23 (VM 0x3CE3, far, entered with ES:SI on a
 # record: colour word, vertex count, count vertex pointers into the work segment). Its callers
-# and its records, in the airfield shot; plus one dump of the work segment's vertex area.
+# and its records, in the airfield shot.
 [run]
 stop_tick = 900
 
