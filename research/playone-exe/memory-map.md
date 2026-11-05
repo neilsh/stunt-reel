@@ -196,7 +196,7 @@ The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the
 | `0x41C8`, `0x41CA` | `[Established]` | `u16` | Screen-projection center offsets; live `CTRY` session reads 160 and 92 (3D viewport is 185 rows; see `capture.md` § 4) | |
 | `0x41D4..0x41DA` | `[Established]` | `i32[3]` | Model→view translation | |
 | `0x4450 + n*12` | `[Established]` | 12-byte vertex | Vertex register arena (1024 entries): `x/y/z` and projection/flag fields | `# [MEM-SOD-VM]` |
-| `0x806C` | `[Bounded Observation]` | `u8` | `OP_ANIMATE` mode gate; nonzero takes the variable-width skip path | `# [FMT-SOD-ANIMATE]` |
+| `0x806C` | `[Supported Inference]` | `u8` | Shadow-draw mode, set to `0xFF` only by `0x1CE7` around the actor shadow draw: nonzero makes polygon gateways draw in index 0, `GVPOLY`/`GVPOLY16` go flat, and `OP_ANIMATE` take its variable-width skip path ([`sod-vm.md` § 9.1](sod-vm.md#91-the-actor-shadow-draw)) | `# [FMT-SOD-ANIMATE]` |
 | `0x806E` | `[Established]` | `u8` | Fixed-point arithmetic shift applied by `OP_TAP` | |
 | `0x806F` | `[Bounded Observation]` | `u8` | High-byte shift count used to derive the `OP_ANIMATE` projection-scale term | `# [FMT-SOD-ANIMATE]` |
 | `0x8070` | `[Bounded Observation]` | `u16` | Projection-scale term consumed by `OP_ANIMATE`; derived from `0x8108` shifted by `0x806F` | `# [FMT-SOD-ANIMATE]` |
