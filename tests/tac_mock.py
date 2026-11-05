@@ -242,9 +242,13 @@ class MakeOneState:
 
 
 def makeone_launcher(
-    *, text_after: int | None, archive: bytes | None
+    *, text_after: int | None, archive: bytes | None, early_archive: bool = False
 ) -> tuple[Callable[[StagedMount], Any], MakeOneState]:
-    """A MAKEONE guest: graphics until *text_after* polls, then text mode with *archive* written."""
+    """A MAKEONE guest: graphics until *text_after* polls, then text mode with *archive* written.
+
+    *early_archive* writes the archive on the first graphics poll, as a hang does, even when
+    the guest returns to text mode later.
+    """
     state = MakeOneState()
 
     class Client:
@@ -258,7 +262,11 @@ def makeone_launcher(
         def is_text_mode(self) -> bool:
             state.polls += 1
             if text_after is None or state.polls <= text_after:
-                if text_after is None and archive is not None and state.vault is None:
+                if (
+                    (text_after is None or early_archive)
+                    and archive is not None
+                    and state.vault is None
+                ):
                     # A MAKEONE hang: the archive is written and the guest stays in graphics.
                     state.vault = self._staged.mount / "VAULT"
                     (state.vault / "CTRY.ALL").write_bytes(archive)

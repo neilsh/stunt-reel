@@ -188,8 +188,9 @@ def make_all(
     dosbox-automation on the archive profile.
 
     When MAKEONE does not return to text mode within *timeout* but its archive has stayed
-    non-empty and unchanged for *stable* seconds, the run is a MAKEONE hang: the archive is
-    accepted, the emulator is stopped as usual, *on_hang* is called and *warn* names the hang.
+    non-empty and unchanged for *stable* seconds, the archive is accepted and the emulator is
+    stopped as usual. If the guest is still not in text mode after that wait, the run is a
+    MAKEONE hang: *on_hang* is called and *warn* names the hang.
     An archive that is missing, empty or still changing raises MakeOneTimeout.
     """
     start = launch or _launch
@@ -214,14 +215,16 @@ def make_all(
                     )
                 except MakeOneTimeout as why:
                     raise MakeOneTimeout(f"{exc}; {why}") from None
-                if warn is not None:
-                    warn(
-                        f"MAKEONE hang: it did not return to DOS within {timeout:g} s, but "
-                        f"{film.stem}.ALL was unchanged for {stable:g} s; accepting it and "
-                        "stopping MAKEONE"
-                    )
-                if on_hang is not None:
-                    on_hang()
+                # A return to DOS during the stability wait is a late return, not a hang.
+                if not client.is_text_mode():
+                    if warn is not None:
+                        warn(
+                            f"MAKEONE hang: it did not return to DOS within {timeout:g} s, but "
+                            f"{film.stem}.ALL was unchanged for {stable:g} s; accepting it and "
+                            "stopping MAKEONE"
+                        )
+                    if on_hang is not None:
+                        on_hang()
             kept.append(_read_archive(vault, film))
     except Exception as exc:
         if not kept:

@@ -171,9 +171,13 @@ def _hang(
     touch: bool = False,
     warnings: list[str] | None = None,
     hangs: list[bool] | None = None,
+    text_after: int | None = None,
 ) -> bytes:
-    """A run whose guest never leaves graphics mode; *change* keeps rewriting the archive."""
-    launch, state = makeone_launcher(text_after=None, archive=archive)
+    """A run whose guest stays in graphics past *timeout*; *change* keeps rewriting the archive.
+
+    *text_after* returns the guest to text mode after that many polls instead of never.
+    """
+    launch, state = makeone_launcher(text_after=text_after, archive=archive, early_archive=True)
     clock = FakeClock()
 
     def sleep(seconds: float) -> None:
@@ -213,6 +217,21 @@ def test_a_makeone_hang_with_a_stable_archive_is_accepted(
     assert len(warnings) == 1
     assert "MAKEONE hang" in warnings[0]
     assert _stage_dirs() == []
+
+
+def test_a_return_to_dos_during_the_stability_wait_is_not_a_hang(
+    staged_repo: StagedRepo, game_root: Path
+) -> None:
+    warnings: list[str] = []
+    hangs: list[bool] = []
+
+    # wait_for_text polls 7 times before its 10 s timeout; the 8th poll, after the
+    # stability wait, finds the guest back in text mode.
+    data = _hang(staged_repo, game_root, ARCHIVE, warnings=warnings, hangs=hangs, text_after=7)
+
+    assert data == ARCHIVE
+    assert hangs == []
+    assert warnings == []
 
 
 def test_a_makeone_hang_with_a_changing_archive_is_refused(
