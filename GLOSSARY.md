@@ -40,7 +40,7 @@ _Avoid_: trailer, final slice
 An instantaneous camera reposition between consecutive trajectory records, exempt from interpolation.
 
 **Slot re-creation**:
-A create on a slot that an earlier slice destroyed, starting a new actor rather than continuing the old one. INTRO.FLM's montage re-creates a pool of slots every few ticks; a trajectory record without the slot always separates the destroy from the create.
+A create on a slot that an earlier slice destroyed, starting a new actor rather than continuing the old one. INTRO.FLM's montage re-creates a pool of slots every few ticks; across its 538 slices a trajectory record without the slot separates each destroy from the following create, so the lerp never pairs the two actors ([film segments](research/parity/film-segments.md) § 2.3).
 _Avoid_: respawn, slot reuse
 
 **Palette controls**:
