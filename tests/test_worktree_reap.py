@@ -404,7 +404,41 @@ def test_a_fresh_worktree_is_skipped_and_a_fast_forwarded_branch_is_reaped(
     )
 
     assert [candidate.worktree.branch for candidate in candidates] == ["done"]
-    assert skipped == ["new: no commits since it was created"]
+    assert skipped == ["new: no commits in its reflog"]
+
+
+def test_a_fresh_worktree_that_synced_with_base_is_still_skipped(tmp_path: Path) -> None:
+    """A fast-forward onto main is a reflog entry but not a commit of the branch's own."""
+    repo = _init_repo(tmp_path)
+    _commit(repo, "second.txt")
+    pool = repo / ".agents" / "worktrees"
+    pool.mkdir(parents=True)
+    _run_git(repo, "worktree", "add", "-q", str(pool / "new"), "-b", "new", "main~1")
+    _run_git(pool / "new", "merge", "-q", "--ff-only", "main")
+    assert len(_run_git(repo, "reflog", "show", "refs/heads/new").splitlines()) >= 2
+
+    candidates, skipped = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False
+    )
+
+    assert candidates == []
+    assert skipped == ["new: no commits in its reflog"]
+
+
+def test_a_branch_without_a_reflog_is_skipped(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    pool = repo / ".agents" / "worktrees"
+    pool.mkdir(parents=True)
+    _run_git(repo, "worktree", "add", "-q", str(pool / "old"), "-b", "old", "main")
+    _merge_into_main(repo, pool / "old", "o.txt")
+    (repo / ".git" / "logs" / "refs" / "heads" / "old").unlink()
+
+    candidates, skipped = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False
+    )
+
+    assert candidates == []
+    assert skipped == ["old: no commits in its reflog"]
 
 
 def test_a_fresh_branch_named_by_a_merged_pr_is_still_reaped(tmp_path: Path) -> None:

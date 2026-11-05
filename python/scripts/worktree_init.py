@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -571,17 +572,24 @@ def _is_ancestor(repo: Path, branch: str) -> bool:
     return _git(repo, "merge-base", "--is-ancestor", branch, "main").returncode == 0
 
 
-def _never_committed(repo: Path, branch: str) -> bool:
-    """True when *branch* has only its creation in the reflog, so nothing was ever made on it.
+#: Reflog subjects that record work done on a branch: a commit (also amend, merge, initial), a
+#: cherry-pick, revert, rebase or am, or a merge that made a merge commit.
+_WORK_SUBJECT = re.compile(r"(commit|cherry-pick|revert|rebase|am)(:| \()|merge .*: Merge made")
 
-    A branch cut from ``main`` is an ancestor of ``main`` from birth, which ancestry cannot tell
-    from a merged one. A missing or empty reflog counts as fresh: keeping a worktree is the safe
-    mistake, removing one a session is working in is not.
+
+def _never_committed(repo: Path, branch: str) -> bool:
+    """True when no entry in *branch*'s reflog records work made on it.
+
+    A branch cut from ``main`` is an ancestor of ``main`` from birth, and one that then syncs with
+    base (fast-forward merge, ``reset --hard``) stays one, so ancestry cannot tell it from a merged
+    branch. Creation, ``reset:`` and ``Fast-forward`` entries are not work. A missing, empty or
+    unreadable reflog also counts as fresh, which means a very old merged branch whose reflog
+    expired is kept until removed by hand: keeping a worktree is the safe mistake.
     """
-    result = _git(repo, "reflog", "show", "--format=%H", f"refs/heads/{branch}")
+    result = _git(repo, "reflog", "show", "--format=%gs", f"refs/heads/{branch}")
     if result.returncode != 0:
         return True
-    return len(result.stdout.split()) <= 1
+    return not any(_WORK_SUBJECT.match(line) for line in result.stdout.splitlines())
 
 
 def _unmerged_patch_count(repo: Path, branch: str) -> int:
@@ -747,7 +755,7 @@ def _candidates(
             and _never_committed(repo, worktree.branch)
             and (merged_prs is None or merged_prs.find(worktree.branch, worktree.head) is None)
         ):
-            skipped.append(f"{label}: no commits since it was created")
+            skipped.append(f"{label}: no commits in its reflog")
             continue
         if not merged:
             if merged_prs is not None:
