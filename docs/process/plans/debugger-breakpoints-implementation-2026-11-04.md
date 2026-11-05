@@ -408,16 +408,20 @@ Template `tools/dosbox-x/dosbox-x.conf`: `[dosbox] memsize = 16`; `[sdl] output 
     `site_matches`, then sends `BP`. A watch sends one `BPM` per byte (`mem`) or one `BPLM` per
     byte (`linear`). An int probe reads the interrupt vector at `0000:<4*int_no>` into `sites`,
     then sends `BPINT <nn> <ah>`.
-  - `@dataclass(frozen=True, slots=True) class RunResult`: `reason: Literal["spent", "stop_tick", "timeout", "link_lost", "refused"]`,
+  - `@dataclass(frozen=True, slots=True) class RunResult`: `reason: Literal["spent", "stop_tick", "timeout", "link_lost", "refused", "error"]` (`error`: any other exception during the run),
     `hits: dict[str, int]`, `spurious: int`, `ignored: dict[str, int]`
-  - `def run_plan(link: Link, rt: Runtime, plan: Plan, film_clock: int, out: TextIO, *, header: Mapping[str, object], poll: float = 0.05, tick_poll: float = 0.1, hit_timeout: float = 120.0) -> RunResult`
+  - `def run_plan(link: Link, rt: Runtime, plan: Plan, film_clock: int, out: TextIO, *, header: Mapping[str, object], poll: float = 0.05, tick_poll: float = 0.1, hit_timeout: float = 120.0, start: Callable[[], None] | None = None) -> RunResult`
+    - *start* (the boot's last key, Enter) is called once, after the `dialog` probes are armed
+      and before the first `RUN`, so those probes see the film from its first instruction.
 
 JSONL records, written as each happens and flushed:
 - `{"type": "run", **header, "load": rt.load, "plan": plan.name, "plan_sha256": plan.sha256}`
 - `{"type": "hit", "probe": str, "n": int, "film_tick": int, "regs": {...}, "cs_ip_image": int|null, "return_far_image": int|null, "return_near_image": int|null, "stack": [int...], "mem": {capture.key: hex}, "verdict": str|null, "writer": {"start": int, "image": int|null, "text": str}|null, "candidates": [...]}`
   - `return_far_image` reads `stack[0..1]` as `ip, cs`; `return_near_image` reads `stack[0]`
     with the stopped `cs`. Both are `null` outside the image.
-- `{"type": "end", "reason": str, "hits": {...}, "spurious": int, "ignored": {...}}`
+- `{"type": "end", "reason": str, "hits": {...}, "spurious": int, "ignored": {...}, "probe": str|null, "detail": str}`
+  - `probe` names the probe being armed when `reason` is `refused`, else `null`; `detail` is the
+    exception text for `refused` and `link_lost` and its `repr` for `error`, else `""`.
 
 Loop (spec S3.5):
 - Probes with `arm = "dialog"` are armed at once. Tick-armed probes wait until a 2-byte dump of

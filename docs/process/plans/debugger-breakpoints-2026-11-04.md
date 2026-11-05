@@ -70,7 +70,8 @@ per boot. Nothing holds a session across commands.
 |---|---|---|
 | `link.py` | TCP listener on port 0 ([ADR 0021](../../adr/0021-capture-chooses-its-control-port.md)); `req(cmd)` with exact id match and a per-request timeout; `dump(addr, len)` as `MEMDUMPBIN` to a run-scoped scratch file read back; `regs()` parsing `EV CS IP SS SP DS ES AX BX CX DX SI DI BP` | stdlib only |
 | `boot.py` | stages the build's tree with one film under the data root's `stage/` through `staging.py`'s film-tree staging; writes its own `dosbox-x-<port>.conf`; launches DOSBox-X; waits for the six-index dialog by `A000` dumps; sends the film's keys through the BIOS keyboard buffer (`0040:001A..003D`); finds the load paragraph | `link`, `staging.py` where it fits, `game_builds` |
-| `plan.py` | parses a plan; arms probes; runs the hit loop; writes the JSONL | `link`, `boot`, `addr`, `watch` |
+| `plan.py` | parses and validates a plan; `for_patched` rewrites its offsets for the patched build | `addr` |
+| `run.py` | arms the probes; runs the hit loop; writes the JSONL | `link`, `addr`, `watch` |
 | `addr.py` | image offset to runtime `seg:off` and back for a build; patched offsets through #78's pairing | `build_pairing` |
 | `watch.py` | decides whether a watch stop is a write to the watched address (section 3.4) | iced-x86 |
 
@@ -101,7 +102,7 @@ kind = "watch"
 mem = "DS:0x49EC"        # or linear = 0x6BC2C
 size = 6
 arm = "dialog"
-hits = 50                # writes from the build's dispatch-slot run are always dropped
+hits = 50                # a stop whose every writer candidate is in the dispatch-slot run is not counted
 
 [[probe]]
 name = "file-reads"
@@ -130,8 +131,9 @@ adds `stack:<words>` and `mem:<seg>:<off>:<len>`, where `seg` and `off` may name
   `cs = "module"` or `cs = "vm"`.
 - **Before arming**, the tool reads 8 bytes at each code site and compares them with the image,
   relocated words masked by the build's relocation table. A mismatch refuses the probe.
-- **Output.** Every `CS:IP`, return address and stack word that falls inside the image is also
-  written as an image offset.
+- **Output.** The stopped `CS:IP` (`cs_ip_image`), the near and far return addresses read from
+  the stack, and each writer candidate are also written as image offsets where they fall inside
+  the image. The `stack` field keeps the captured stack as raw 16-bit words, unmapped.
 - **Patched build.** An unpatched offset maps through #78's function pairing (function start plus
   offset within it, accepted only where the pairing marks the function identical in shape);
   otherwise the probe is refused with the reason. Literal DS offsets in `mem` and in
@@ -143,11 +145,15 @@ adds `stack:<words>` and `mem:<seg>:<off>:<len>`, where `seg` and `off` may name
 A `BPM`/`BPLM` stop leaves `IP` after the writing instruction. For each start point `IP-1` to
 `IP-6`, decode one instruction with iced-x86; keep the candidates that end exactly at `IP` and
 whose `used_memory()` includes a write or conditional write resolving (effective segment
-from the stopped registers, base, index, displacement) to an address inside the watched range. The
-hit is recorded with `writer` set when exactly one candidate survives, `writer = null` with the
-candidate list when several do, and is dropped and counted as `spurious` when none does, or as
-`ignored` when the writer lies in the build's dispatch-slot run (found by the slot signature,
-so it is right on both builds). `BPM` fires on a changed value, so a write of the same value is
+from the stopped registers, base, index, displacement) to an address inside the watched range.
+The instruction at `IP` itself is also a candidate when it is a `rep`-prefixed string
+instruction, since DOSBox-X stops between a `rep`'s chunks with `IP` still on it; if its
+current `DI` misses the range but its segment holds it, it is kept as a candidate with an
+unknown span. The hit is recorded with `writer` set when exactly one candidate survives,
+`writer = null` with the candidate list when several do, and is dropped and counted as
+`spurious` when none does. It is counted as `ignored` instead of a hit only when every
+candidate lies in the build's dispatch-slot run (found by the slot signature, so it is right on
+both builds); a stop with candidates both in and outside the run stays an ambiguous hit. `BPM` fires on a changed value, so a write of the same value is
 never seen. The spike's `0x43EA` stop resolves to `adc [0x4896], ax` at
 `0x43E6`; its `0x759C` stop resolves to nothing.
 
@@ -169,7 +175,10 @@ about 50 ticks per second, so arming lands within a few ticks of `N`, and each h
   40 lines: probe, hits, spurious, distinct callers and writers by image offset.
 - Once `run_plan` starts, a link timeout or a lost connection writes the `end` record, kills the
   emulator and exits 1; hits already written stay. A failure while booting, before the JSONL is
-  opened, exits 1 without one. A refused probe exits 2 before boot finishes.
+  opened, exits 1 without one. A plan that fails validation, a probe the patched mapping
+  refuses, or a site outside every code segment exits 2 before boot. A break site whose live
+  bytes do not match the image (`SiteMismatch`) is found only after boot, when it is armed: the
+  run writes an `end` record with `reason = "refused"` and the probe's name, then exits 2.
 - The conf and stage are per run, so runs can go side by side.
 
 ### 3.7 Tests
@@ -187,7 +196,7 @@ Live runs stay outside the gate (`mise run debug-x`).
 
 ### 3.8 Records
 
-- ADR 0034 (to be written in PR A): breakpoints run on DOSBox-X, capture and per-frame sampling on
+- ADR 0034 (written and accepted in PR A): breakpoints run on DOSBox-X, capture and per-frame sampling on
   dosbox-automation; guest time is not halted at a stop.
 - `research/playone-exe/debugger-plans.md`: the mechanics (link, boot, addresses, the watch
   filter, measured costs), reusing `dosbox-x-legacy.md` § 2-3; `dosbox-x-legacy.md` points to it.
@@ -274,8 +283,9 @@ entries for what the runs exclude. A row in the parity log.
 4. A is written in the main session. The live runs and decodes of B and C can go to cheaper
    subagents, each briefed with the plan file, the command and the expected JSONL shape; reviews
    use the strongest model ([`docs/harness.md`](../../harness.md)).
-5. The spike's findings (section 2) reach the research notes only once B and C reproduce them
-   with the committed tool.
+5. The tool's mechanics measured in the spike (the link, boot, addresses, the watch filter)
+   are recorded in `debugger-plans.md` with PR A. Only the spike's answers to #65 and #66
+   (section 2) wait until B and C reproduce them with the committed tool.
 
 ## 7. Risks
 
