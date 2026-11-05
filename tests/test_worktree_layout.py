@@ -196,7 +196,9 @@ def test_the_shared_tool_cache_is_ignored_and_excluded() -> None:
     # walk of it is the same mistake test_doc_invariants.py lost 61 seconds to.
     git = shutil.which("git")
     assert git, "git must be on PATH: check-ignore is the only authority on .gitignore"
-    assert _ignored(".cache", git), ".cache is a shared tool cache; .gitignore must cover it"
+    # The trailing slash asks about a directory: .gitignore's `/.cache/` is directory-only,
+    # and a fresh worktree has no `.cache/` on disk to tell git so (ADR 0036).
+    assert _ignored(".cache/", git), ".cache is a shared tool cache; .gitignore must cover it"
     assert _excluded(".cache", _ruff_excludes()), (
         ".cache is a shared tool cache; ruff's exclude must cover it"
     )
