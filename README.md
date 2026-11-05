@@ -38,7 +38,7 @@ mise run check               # format, lint, typecheck and tests, Rust and Pytho
 To render a film you need the *Stunt Island* demo (`stisldem`) in the shared data root, `<data root>/corpus/stisldem/` (`<data root>` is `STUNT_DATA_ROOT`, or `stunt-reel.data` beside the primary checkout), described in [`corpus/README.md`](corpus/README.md):
 
 ```powershell
-cargo run -p stunt-cli -- <data root>/corpus/stisldem/VAULT/CTRY.FLM --all <data root>/corpus/stisldem/VAULT/CTRY.ALL
+cargo run -p stunt-cli -- "<data root>/corpus/stisldem/VAULT/CTRY.FLM" --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL"
 ```
 
 Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits. Headless rendering, video and glTF export, reference capture and the parity loop are in the [development guide](docs/development.md).

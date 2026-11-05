@@ -309,8 +309,14 @@ def test_sod_census_reads_the_data_roots_corpus() -> None:
     config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
     run = config["tasks"]["sod-census"]["run"]
     # Quoted: the run line is a shell command, and the path may hold a space or a `&`.
-    path = "{{ get_env(name='STUNT_DATA_ROOT', default=vars.data_root) }}/corpus"
-    assert f'--corpus "{path}"' in run
+    assert (
+        "--corpus \"{% set root = get_env(name='STUNT_DATA_ROOT', default=vars.data_root) %}" in run
+    )
+    assert run.endswith('/corpus"')
+    # A leading ~ expands as dataroot.data_root() expands it: USERPROFILE on Windows, else HOME;
+    # the quotes would otherwise stop the shell from expanding it.
+    assert "get_env(name='USERPROFILE', default=home)" in run
+    assert "trim_start_matches(pat='~')" in run
 
 
 def test_the_data_root_var_sits_beside_the_primary() -> None:

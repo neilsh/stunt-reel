@@ -83,14 +83,14 @@ mise run play        # CTRY.FLM; mise run play -- --film corpus/stisldem/VAULT/I
 
 ```bash
 mise run capture-ref
-cargo run -p stunt-cli -- --headless <data root>/corpus/stisldem/VAULT/CTRY.FLM \
-    --all <data root>/corpus/stisldem/VAULT/CTRY.ALL --tick-range 0..=1342 \
-    --sidata <data root>/corpus/siarchive/Developer/FreeFlight/SIDATA \
+cargo run -p stunt-cli -- --headless "<data root>/corpus/stisldem/VAULT/CTRY.FLM" \
+    --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL" --tick-range 0..=1342 \
+    --sidata "<data root>/corpus/siarchive/Developer/FreeFlight/SIDATA" \
     --out-dir build/parity/ours/ctry --width 320 --height 200 --viewport-rows 185
-cargo run -p stunt-cli -- parity --reference <data root>/captures/vault-ctry/frames \
+cargo run -p stunt-cli -- parity --reference "<data root>/captures/vault-ctry/frames" \
     --test build/parity/ours/ctry --output build/parity/report/ctry
 # after a change: re-render, then score against the previous report (before/after sheets need its render dir)
-cargo run -p stunt-cli -- parity --reference <data root>/captures/vault-ctry/frames     --test build/parity/ours/ctry --output build/parity/report/ctry_new     --compare build/parity/report/ctry/report.json --compare-test build/parity/ours/ctry_prev
+cargo run -p stunt-cli -- parity --reference "<data root>/captures/vault-ctry/frames"     --test build/parity/ours/ctry --output build/parity/report/ctry_new     --compare build/parity/report/ctry/report.json --compare-test build/parity/ours/ctry_prev
 ```
 
 `capture-ref` stores 140 reference frames, each tagged in `meta.json` with the film clock (`film_tick`) it was captured at. `--tick-range 0..=1342` (also the default range) renders ticks 0 through 1,342, the film's last tick included (the end-hold captures sit at tick 1,342), into a render store ([ADR 0027](adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)): `frames.zst` and `layers.zst` (index and layer planes in one zstd frame per film second), `palettes.zst`, a `preview/sec_NNNN.png` per second, and `render.json` (schema version 2, written last: film identity, raster geometry, each tick's palette variables, palette index and camera, and the chunk table). Parity refuses a render from before the store with the re-render action. The comparator pairs each capture with the render at its `film_tick` (captures made before film-clock tagging must be recaptured). The comparator writes `report.json` (per-frame `ssim`/`iou`, `fade_level`, `scored`; run-level `sky_indices`, `unmatched`, `mean_ssim`, `min_ssim`, `mean_iou`, `mean_ssim_scored`, `mean_iou_scored`, `min_fade_level`, `scored_frames`, `excluded_frames`) and `contact_NNNN.png` sheets under `build/parity/report/ctry/`. `--min-fade-level <F>` (default 0.25) sets the floor for the end-of-film palette fade: the film's authored brightness decides whether a frame is scored and the measured level stays a cross-check, frames below the floor are reported but not scored, and the headline is `mean_ssim_scored` with its scored-frame count (see [`research/parity/method.md`](../research/parity/method.md#21-fade-floor)).
@@ -102,7 +102,7 @@ Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`. No port needs to
 ### Render in the native engine
 
 ```powershell
-cargo run -p stunt-cli -- <data root>/corpus/stisldem/VAULT/CTRY.FLM --all <data root>/corpus/stisldem/VAULT/CTRY.ALL
+cargo run -p stunt-cli -- "<data root>/corpus/stisldem/VAULT/CTRY.FLM" --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL"
 ```
 
 Opens the interactive presentation (Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits). Interactive playback follows the authored 50 Hz timeline and interpolates between slices. `--help` lists the headless flags, `--tick-range <A..=B>` (0-based, inclusive 50 Hz ticks), `--at-ticks`, and the `parity` subcommand. `ANCHORPT.DAT`, `MAP.BIN`, and `SCENERY.scn` are searched for in `--sidata <dir>` first, then the archive's directory, its parent and grandparent, then `sidata/` or `SIDATA/` inside the parent (filename case ignored); the demo's `corpus/siarchive/Developer/FreeFlight/SIDATA` needs an explicit `--sidata`.
@@ -111,16 +111,16 @@ Opens the interactive presentation (Space pauses, C toggles authored/free camera
 
 ```powershell
 # Export film sequence to an MP4 video sampled at 30 fps
-cargo run -p stunt-cli -- --headless <data root>/corpus/stisldem/VAULT/CTRY.FLM \
-    --all <data root>/corpus/stisldem/VAULT/CTRY.ALL --video build/ctry.mp4
+cargo run -p stunt-cli -- --headless "<data root>/corpus/stisldem/VAULT/CTRY.FLM" \
+    --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL" --video build/ctry.mp4
 ```
 
 Export a shape, or one frame of a film, to glTF 2.0 for viewing in Blender or any glTF viewer:
 
 ```powershell
-cargo run -p stunt-cli -- export-gltf --archive <data root>/corpus/stisldem/VAULT/CTRY.ALL \
-    --film <data root>/corpus/stisldem/VAULT/CTRY.FLM --tick 400 --out build/gltf_output/CTRY_t400.glb
-cargo run -p stunt-cli -- export-gltf --archive <data root>/corpus/stisldem/VAULT/CTRY.ALL --shape 0x0408 --out build/gltf_output/shape.glb
+cargo run -p stunt-cli -- export-gltf --archive "<data root>/corpus/stisldem/VAULT/CTRY.ALL" \
+    --film "<data root>/corpus/stisldem/VAULT/CTRY.FLM" --tick 400 --out build/gltf_output/CTRY_t400.glb
+cargo run -p stunt-cli -- export-gltf --archive "<data root>/corpus/stisldem/VAULT/CTRY.ALL" --shape 0x0408 --out build/gltf_output/shape.glb
 ```
 
 Headless video export samples the authored 50 Hz timeline at `--fps` (default 30), interpolates between slices, and encodes directly into a standard video container (`.mp4`, `.webm`, `.mkv`, or `.avi`) via `ffmpeg`, with physical $4:3$ aspect ratio correction ($320 \times 240$, `[I6]`). `--tick-range <A..=B>` limits the export to a 0-based, inclusive range of ticks. `CTRY.FLM` spans 1,342 ticks (26.84 s), producing 806 sampled frames at 30 fps; the container is trimmed to the authored span, so ffmpeg encodes 805 frames and ffprobe reports 26.833 s (nearest whole frame; 26.84 s exactly at `--fps 50`). Requires `ffmpeg` on `PATH`.
@@ -129,8 +129,8 @@ Headless video export samples the authored 50 Hz timeline at `--fps` (default 30
 
 ```powershell
 # Capture one frame every 25 ticks (0.5 s) across the full 1,342-tick film
-cargo run -p stunt-cli -- --headless <data root>/corpus/stisldem/VAULT/CTRY.FLM \
-    --all <data root>/corpus/stisldem/VAULT/CTRY.ALL --tick-range 0..=1341 --frame-step 25 \
+cargo run -p stunt-cli -- --headless "<data root>/corpus/stisldem/VAULT/CTRY.FLM" \
+    --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL" --tick-range 0..=1341 --frame-step 25 \
     --out-dir build/parity/ours/ctry_sparse
 ```
 
