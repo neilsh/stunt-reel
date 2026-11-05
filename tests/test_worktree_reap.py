@@ -47,12 +47,22 @@ detached
 """
 
 
+#: Every git call that can create a commit (rebase, merge) needs an identity; CI has no global one.
+_IDENTITY = {
+    "GIT_AUTHOR_NAME": "t",
+    "GIT_AUTHOR_EMAIL": "t@example.invalid",
+    "GIT_COMMITTER_NAME": "t",
+    "GIT_COMMITTER_EMAIL": "t@example.invalid",
+}
+
+
 def _run_git(cwd: Path, *args: str) -> str:
     git = shutil.which("git")
     assert git is not None, "git is not on PATH"
     result = subprocess.run(  # noqa: S603
         [git, *args],
         cwd=cwd,
+        env={**os.environ, **_IDENTITY},
         capture_output=True,
         text=True,
         check=True,
