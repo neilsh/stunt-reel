@@ -200,6 +200,10 @@ const LOD_SCALE: f32 = 0.5;
 ///
 /// Mirrors image `0x2121..0x2147`: with `half = ext / 2`, the threshold is `splitdist` when
 /// `splitdist < half`, else `half + (splitdist - half) * scale`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "ext is a 16-bit extent and splitdist a 16-bit signed distance, so the i32 maths cannot overflow"
+)]
 pub(crate) fn lod_threshold(ext: i32, splitdist: i32, scale: f32) -> f32 {
     let half = ext >> 1;
     if splitdist < half {
@@ -281,6 +285,10 @@ pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
 
 /// Fast approximate distance metric matching original engine and `simap.cpp`.
 #[cfg(test)]
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "test-only distance metric over small test coordinates"
+)]
 pub(crate) fn approx_dist(x1: i32, y1: i32, x2: i32, y2: i32) -> i32 {
     let dx = (x2 - x1).abs();
     let dy = (y2 - y1).abs();
@@ -306,6 +314,8 @@ pub(crate) fn traverse_scn(
     if depth > 128 {
         return;
     }
+    // A recursion counter, bounded by the guard above, so it never clamps.
+    let deeper = depth.saturating_add(1);
     while ni != 0
         && let Some(&op) = words.get(ni)
     {
@@ -315,9 +325,14 @@ pub(crate) fn traverse_scn(
                 let Some([x, y, z, next]) = scn_operands(words, ni) else {
                     break;
                 };
-                cx += scn_i16(x);
-                cy += scn_i16(y);
-                cz += scn_i16(z);
+                let (Some(nx), Some(ny), Some(nz)) = (
+                    cx.checked_add(scn_i16(x)),
+                    cy.checked_add(scn_i16(y)),
+                    cz.checked_add(scn_i16(z)),
+                ) else {
+                    break;
+                };
+                (cx, cy, cz) = (nx, ny, nz);
                 ni = scn_pointer(next);
             }
             22 => {
@@ -325,8 +340,11 @@ pub(crate) fn traverse_scn(
                 let Some([x, z, next]) = scn_operands(words, ni) else {
                     break;
                 };
-                cx += scn_i16(x);
-                cz += scn_i16(z);
+                let (Some(nx), Some(nz)) = (cx.checked_add(scn_i16(x)), cz.checked_add(scn_i16(z)))
+                else {
+                    break;
+                };
+                (cx, cz) = (nx, nz);
                 ni = scn_pointer(next);
             }
             2 => {
@@ -362,7 +380,7 @@ pub(crate) fn traverse_scn(
                     instances,
                     available_models,
                     near,
-                    depth + 1,
+                    deeper,
                 );
                 ni = scn_pointer(next);
             }
@@ -390,7 +408,7 @@ pub(crate) fn traverse_scn(
                     instances,
                     available_models,
                     near,
-                    depth + 1,
+                    deeper,
                 );
                 ni = scn_pointer(next);
             }
@@ -403,7 +421,9 @@ pub(crate) fn traverse_scn(
             }
             20 => {
                 // SP_LIST
-                let mut curr = ni + 1;
+                let Some(mut curr) = ni.checked_add(1) else {
+                    break;
+                };
                 while let Some(&child) = words.get(curr)
                     && child != 0
                 {
@@ -416,11 +436,17 @@ pub(crate) fn traverse_scn(
                         instances,
                         available_models,
                         near,
-                        depth + 1,
+                        deeper,
                     );
-                    curr += 1;
+                    let Some(next) = curr.checked_add(1) else {
+                        return;
+                    };
+                    curr = next;
                 }
-                ni = curr + 1;
+                let Some(after) = curr.checked_add(1) else {
+                    break;
+                };
+                ni = after;
             }
             _ => break,
         }
@@ -429,7 +455,7 @@ pub(crate) fn traverse_scn(
 
 /// The `N` operand words after the `SCENERY.scn` opcode at `ni`, or `None` past the end.
 fn scn_operands<const N: usize>(words: &[i32], ni: usize) -> Option<[i32; N]> {
-    words.get(ni + 1..)?.first_chunk().copied()
+    words.get(ni.checked_add(1)?..)?.first_chunk().copied()
 }
 
 /// A `SCENERY.scn` byte pointer operand as a word index.
@@ -463,6 +489,10 @@ const UP: [f32; 3] = [0.0, 1.0, 0.0];
 /// Vertices are laid out ocean, then terrain, then props (base batch, then decal batch),
 /// each tagged with its scenery class. The props' coplanar decals get their own node so
 /// renderers can depth-bias them (`[I5]`).
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX; the decal counts are growth since the base counts"
+)]
 pub(crate) fn build_world_ir(
     anchors: &[AnchorPoint],
     map_areas: &[MapArea],
@@ -519,6 +549,10 @@ pub(crate) fn build_world_ir(
 }
 
 /// Appends an unshaded, upward-facing quad spanning the world at height `y`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"
+)]
 fn push_flat_quad(ir: &mut SodModelIr, y: f32, color: u8, scenery_class: u8) {
     let start = arena_index(ir.vertices.len());
     let e = WORLD_EXTENT;
@@ -538,6 +572,10 @@ fn push_flat_quad(ir: &mut SodModelIr, y: f32, color: u8, scenery_class: u8) {
 
 /// Appends one fan-triangulated polygon per `MAP.BIN` patch whose corners are all valid
 /// anchor points, lifted by `base_y`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"
+)]
 fn push_terrain(ir: &mut SodModelIr, anchors: &[AnchorPoint], map_areas: &[MapArea], base_y: f32) {
     let pts: Vec<[f32; 3]> = anchors.iter().map(AnchorPoint::register_position).collect();
     for area in map_areas {
@@ -595,6 +633,10 @@ fn push_terrain(ir: &mut SodModelIr, anchors: &[AnchorPoint], map_areas: &[MapAr
 
 /// Appends every placed prop's mesh slices whose `is_decal` equals `decals`, translated
 /// to its placement and lifted by `base_y`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX; each mesh index is at least its mesh's vertex_offset"
+)]
 fn push_props(
     ir: &mut SodModelIr,
     instances: &[(u16, [f32; 3])],
