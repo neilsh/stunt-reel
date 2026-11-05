@@ -2,7 +2,7 @@
 
 Every promotion of a reference capture needs the ``sha256`` that
 :func:`stunt_reel.references.capture_digest` computes, and there was no command for it. This
-prints that hash for a film's capture, read through this checkout's link to the data root, and,
+prints that hash for a film's capture, read from the data root (ADR 0036), and,
 when ``references.toml`` has an entry for the capture's film, the replacement entry to paste
 in a reviewed commit, with the capture the entry names now. It writes nothing; promoting
 stays an edit of ``research/parity/references.toml`` (ADR 0029).
@@ -17,8 +17,8 @@ import argparse
 import json
 import sys
 import tomllib
-from pathlib import Path
 from typing import TYPE_CHECKING
+lazy from pathlib import Path
 
 from stunt_reel import capture_store, dataroot, parity_layout, references
 
@@ -76,7 +76,7 @@ def report(
     if not promotable:
         return [
             *lines,
-            "# not this checkout's capture directory for that film, so no references.toml entry",
+            "# not the data root's capture directory for that film, so no references.toml entry",
         ]
     for name, entry in _entries().items():
         if entry.get("film") != slug:
@@ -108,21 +108,19 @@ def report(
 def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("film", nargs="?", help="film slug, e.g. vault-ctry")
-    parser.add_argument("--dir", type=Path, help="a capture directory instead of a film slug")
+    parser.add_argument(
+        "--dir", type=dataroot.data_path_arg, help="a capture directory instead of a film slug"
+    )
     args = parser.parse_args(argv)
 
     promotable = True
-    # Parity repairs a missing or stale data-root link before it reads a capture, so do the same
-    # first: the --dir comparison and the film path both go through that link.
     if root is None:
-        if not dataroot.ensure_links_or_report("capture_digest"):
-            return 1
-        root = dataroot.REPO_ROOT
+        root = dataroot.data_root()
     if args.dir is not None:
         directory = args.dir.resolve()
         slug = directory.parent.name
-        # Parity reads captures through the checkout's data-root link; a copy elsewhere is not
-        # the directory a references.toml entry would pin.
+        # Parity reads captures from the data root; a copy elsewhere is not the directory a
+        # references.toml entry would pin.
         promotable = directory == (root / parity_layout.frames_path(slug)).resolve()
     elif args.film:
         slug = parity_layout.require_slug(args.film)

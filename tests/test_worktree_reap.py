@@ -751,3 +751,24 @@ def test_remove_tree_keeps_a_file_mode_when_its_directory_refuses(tmp_path: Path
         assert stat.S_IMODE(blob.stat().st_mode) == 0o444
     finally:
         locked.chmod(0o755)
+
+
+def test_clean_unlinks_the_legacy_capture_link_and_keeps_the_data_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """build/ of an old worktree holds a junction into the data root's captures (ADR 0018)."""
+    checkout = tmp_path / "checkout"
+    meta = tmp_path / "data" / "captures" / "vault-ctry" / "frames" / "meta.json"
+    meta.parent.mkdir(parents=True)
+    meta.write_text("{}", encoding="utf-8")
+    legacy = checkout / "build" / "parity" / "captures"
+    dataroot.create_link(legacy, tmp_path / "data" / "captures")
+    (checkout / "build" / "scratch").mkdir(parents=True)
+    (checkout / "build" / "scratch" / "x.png").write_bytes(b"png")
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", checkout)
+
+    assert worktree_init._clean(confirmed=True) == 0
+
+    assert meta.is_file()
+    assert not dataroot.is_link(legacy)
+    assert not (checkout / "build").exists()

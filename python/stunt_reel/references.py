@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from stunt_reel import capture_store, parity_layout
-from stunt_reel.dataroot import REPO_ROOT
+from stunt_reel.dataroot import REPO_ROOT, corpus_root
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -205,14 +205,14 @@ def archive_makeone_build(root: Path, slug: str, archive: Path) -> str:
     Three kinds of archive are known: a stored one (``meta.json`` beside it records
     ``makeone_sha256``), one rebuilt under ``target/linked/<slug>`` (the film's committed
     manifest, ``manifests/all/<slug>.toml``, records it), and a shipped ``.ALL`` in the demo's or
-    the retail game's tree, which the unpatched ``MAKEONE`` wrote. Any other archive, such as a
+    the retail game's tree under the data root's corpus, which the unpatched ``MAKEONE`` wrote. Any other archive, such as a
     community film's, has no record, so its build cannot be determined.
     """
     found = _recorded_makeone(archive.parent / capture_store.META_FILE, "json")
     if found is None and archive.parent == (root / parity_layout.linked_path(slug, "x")).parent:
         found = _recorded_makeone(root / parity_layout.manifest_path(slug), "toml")
     if found is None:
-        shipped = root / "corpus"
+        shipped = corpus_root()
         if any(archive.is_relative_to(shipped / tree) for tree in _UNPATCHED_TREES):
             found = "unpatched"
     return found or UNKNOWN_BUILD

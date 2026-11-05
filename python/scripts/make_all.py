@@ -32,13 +32,11 @@ from stunt_reel.all_archive import (
     check_archive,
     publish_archive,
 )
-from stunt_reel.dataroot import ensure_links_or_report
+from stunt_reel.dataroot import data_path_arg
 from stunt_reel.hashing import file_sha256
 from stunt_reel.tac import makeone, staging
 from stunt_reel.tac.automation import ScriptError
 from stunt_reel.tac.emulator import EmulatorUnavailable
-
-DEFAULT_GAME_ROOT: Path = Path("corpus/stuntisl")
 
 #: Writes an archive's manifest: ``(archive, flm, game, makeone_sha256, out)``.
 Extract = Callable[[Path, Path, str, str, Path], None]
@@ -55,16 +53,16 @@ def extract_with_binary(
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--film", type=Path, required=True, help="the film's .FLM file")
+    parser.add_argument("--film", type=data_path_arg, required=True, help="the film's .FLM file")
     parser.add_argument(
         "--name",
         help="the film's directory under captures/ (default: its parent folder and stem)",
     )
     parser.add_argument(
         "--game-root",
-        type=Path,
-        default=DEFAULT_GAME_ROOT,
-        help=f"full-game tree holding MAKEONE.EXE, its engine files and RES (default {DEFAULT_GAME_ROOT})",
+        type=data_path_arg,
+        default="corpus/stuntisl",
+        help="full-game tree holding MAKEONE.EXE, its engine files and RES (default %(default)s)",
     )
     parser.add_argument(
         "--timeout",
@@ -91,9 +89,16 @@ def report(line: str) -> None:
 
 
 def game_arg(game_root: Path) -> str:
-    """*game_root* as the manifest records it: relative to the checkout when inside it."""
-    # normpath, not resolve: corpus/ is a link to the data root, and must stay relative.
+    """*game_root* as the manifest records it: ``corpus/...`` when in the data root's corpus.
+
+    A tree elsewhere in the checkout is recorded relative to it, and any other tree as it is.
+    """
+    # normpath, not resolve: a primary checkout's corpus folders may be links.
     tree = Path(os.path.normpath(game_root.absolute()))
+    corpus = Path(os.path.normpath(dataroot.corpus_root().absolute()))
+    if tree.is_relative_to(corpus):
+        # Named as resolve_data_path reads it back: corpus/<tree>.
+        return (Path(corpus.name) / tree.relative_to(corpus)).as_posix()
     repo = Path(os.path.normpath(dataroot.REPO_ROOT.absolute()))
     return tree.relative_to(repo).as_posix() if tree.is_relative_to(repo) else tree.as_posix()
 
@@ -139,7 +144,7 @@ def write_manifest(
 def manifest_only(film: Path, game_root: Path, slug: str, extract: Extract) -> int:
     """Write the manifest from the film's stored archive; 0, 1 when it fails, 2 when refused."""
     make = f"run: mise run make-all -- --film {film}"
-    stored = capture_store.current(dataroot.REPO_ROOT / parity_layout.archive_path(slug))
+    stored = capture_store.current(dataroot.data_root() / parity_layout.archive_path(slug))
     if stored is None:
         print(f"[make-all] no stored archive for {film}; {make}", file=sys.stderr)
         return 2
@@ -182,12 +187,10 @@ def run(
     except ValueError as exc:
         print(f"[make-all] {exc}", file=sys.stderr)
         return 2
-    if not ensure_links_or_report("mise run make-all"):
-        return 2
     if args.manifest_only:
         return manifest_only(film, game_root, slug, extract)
     try:
-        capture_store.check_replaceable(dataroot.REPO_ROOT / parity_layout.archive_path(slug))
+        capture_store.check_replaceable(dataroot.data_root() / parity_layout.archive_path(slug))
     except ValueError as exc:
         print(f"[make-all] {exc}", file=sys.stderr)
         return 2
@@ -210,6 +213,7 @@ def run(
     created = datetime.now(UTC).date()
 
     started = time.monotonic()
+    hung: list[bool] = []
     try:
         data = makeone.make_all(
             film,
@@ -217,6 +221,7 @@ def run(
             launch=launch,
             timeout=args.timeout,
             progress=report,
+            on_hang=lambda: hung.append(True),
             warn=lambda message: print(f"[make-all] warning: {message}", file=sys.stderr),
         )
         check_archive(data)
@@ -240,8 +245,9 @@ def run(
             ),
             wall_seconds=round(time.monotonic() - started, 1),
             created=created.isoformat(),
+            returned_to_dos=not hung,
         )
-        written = publish_archive(dataroot.REPO_ROOT, data, meta, slug=slug, film=film.name)
+        written = publish_archive(dataroot.data_root(), data, meta, slug=slug, film=film.name)
     except (OSError, ValueError) as exc:
         print(f"[make-all] could not store the archive: {exc}", file=sys.stderr)
         return 1
@@ -254,7 +260,10 @@ def run(
 def main() -> int:
     """Run one make-all and terminate the emulator."""
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
-    return run(parse_args())
+    args = parse_args()
+    if dataroot.require_corpus_or_report("mise run make-all") is None:
+        return 2
+    return run(args)
 
 
 if __name__ == "__main__":

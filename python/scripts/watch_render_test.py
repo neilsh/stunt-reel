@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the stunt-render renderer_test binary under a bounded hang watchdog.
+"""Run the stunt-render gpu binary under a bounded hang watchdog.
 
 The GPU integration tests can deadlock inside the graphics driver/loader on some machines: the
 process stays alive forever, libtest never prints its final ``test result:`` line, and a plain
@@ -11,7 +11,7 @@ Usage::
 
     uv run python python/scripts/watch_render_test.py --runs 3
     uv run python python/scripts/watch_render_test.py --timeout-s 120 --require-gpu
-    uv run python python/scripts/watch_render_test.py --bin target/debug/deps/renderer_test.exe
+    uv run python python/scripts/watch_render_test.py --bin target/debug/deps/gpu.exe
 
 Exit status: ``0`` when every attempt completed with a passing libtest summary, ``1`` when any
 attempt hung or its tests failed, ``2`` for usage or build errors.
@@ -35,7 +35,7 @@ from typing import Literal
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEST_PACKAGE = "stunt-render"
-TEST_TARGET = "renderer_test"
+TEST_TARGET = "gpu"
 DEFAULT_RUNS = 1
 DEFAULT_TIMEOUT_S = 60.0
 DIAGNOSTIC_LINE_LIMIT = 20
@@ -115,7 +115,7 @@ def summary_exit_code(*, failed: int, hung: int) -> int:
 
 
 def find_test_executable(cargo_json: str) -> Path | None:
-    """Find the ``renderer_test`` artifact executable in Cargo's JSON message stream."""
+    """Find the ``gpu`` artifact executable in Cargo's JSON message stream."""
     for line in cargo_json.splitlines():
         stripped = line.strip()
         if not stripped.startswith("{"):
@@ -138,7 +138,7 @@ def find_test_executable(cargo_json: str) -> Path | None:
 
 
 def build_test_binary() -> Path:
-    """Build ``renderer_test`` once and return the executable Cargo reports."""
+    """Build ``gpu`` once and return the executable Cargo reports."""
     command = [
         tool("cargo"),
         "test",
@@ -161,7 +161,7 @@ def build_test_binary() -> Path:
         raise WatchError(f"cargo build failed (exit {completed.returncode}):\n{tail}")
     executable = find_test_executable(completed.stdout)
     if executable is None:
-        raise WatchError("cargo did not report an executable for renderer_test")
+        raise WatchError("cargo did not report an executable for gpu")
     return executable
 
 
@@ -365,7 +365,7 @@ def _parser() -> argparse.ArgumentParser:
         "--bin",
         type=Path,
         default=None,
-        help="run this renderer_test binary instead of building it",
+        help="run this gpu binary instead of building it",
     )
     parser.add_argument(
         "--test-threads",

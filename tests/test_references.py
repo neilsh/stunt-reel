@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from stunt_reel import capture_store, parity_layout, references
+from stunt_reel import capture_store, dataroot, parity_layout, references
 from stunt_reel.dataroot import REPO_ROOT
 
 if TYPE_CHECKING:
@@ -216,15 +216,15 @@ def test_a_linked_archive_takes_its_build_from_the_manifest(tmp_path: Path) -> N
 def test_a_shipped_archive_of_the_demo_or_retail_game_is_unpatched(tmp_path: Path) -> None:
     build = references.archive_makeone_build
     for tree in ("stisldem", "stuntisl"):
-        shipped = tmp_path / "corpus" / tree / "VAULT" / "CTRY.ALL"
+        shipped = dataroot.corpus_root() / tree / "VAULT" / "CTRY.ALL"
         assert build(tmp_path, "vault-ctry", shipped) == "unpatched"
-    community = tmp_path / "corpus" / "siarchive" / "Films" / "NewPLAY" / "TOD.ALL"
+    community = dataroot.corpus_root() / "siarchive" / "Films" / "NewPLAY" / "TOD.ALL"
     assert build(tmp_path, "vault-tod", community) == "unknown"
 
 
 def test_the_committed_ctry_and_intro_rows_accept_their_shipped_demo_archives() -> None:
     for film in ("ctry", "intro"):
-        shipped = REPO_ROOT / "corpus" / "stisldem" / "VAULT" / f"{film.upper()}.ALL"
+        shipped = dataroot.corpus_root() / "stisldem" / "VAULT" / f"{film.upper()}.ALL"
         references.require_builds(
             REPO_ROOT,
             f"vault-{film}",

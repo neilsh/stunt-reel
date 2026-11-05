@@ -381,6 +381,10 @@ mod tests {
     }
 
     /// Independent oracle to verify a 4x4 column-major matrix is a rigid transform.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "test helper: column indices 0..=2 into a 16-element matrix"
+    )]
     fn assert_rigid_transform(mat: &[f32; 16], pos: [f32; 3]) {
         let col = |c: usize| [mat[c * 4], mat[c * 4 + 1], mat[c * 4 + 2]];
         let dot = |a: [f32; 3], b: [f32; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];

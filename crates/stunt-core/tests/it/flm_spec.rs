@@ -1,12 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::print_stderr,
-    clippy::default_trait_access,
-    clippy::items_after_statements,
-    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
-)]
 #![expect(
     clippy::cast_possible_truncation,
     reason = "these tests pack synthetic values into the fixed-width fields of fixture bytes"
@@ -29,7 +20,7 @@
 //! - Gate G04 parity against `tests/fixtures/oracle_intro_trajectory.json` (needs `serde`):
 //!   positional RMSE <= 0.01 m, checked independently in `f64`, plus tamper rejection
 
-mod common;
+use crate::common;
 
 use std::fs;
 use std::path::{Path, PathBuf};

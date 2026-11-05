@@ -1,4 +1,4 @@
-"""Pure-function tests for the renderer_test hang watchdog."""
+"""Pure-function tests for the GPU-test hang watchdog."""
 
 from __future__ import annotations
 
@@ -77,13 +77,13 @@ def test_find_test_executable_uses_the_compiler_artifact() -> None:
         json.dumps(
             {
                 "reason": "compiler-artifact",
-                "target": {"name": "renderer_test", "kind": ["test"]},
-                "executable": "/opt/renderer_test",
+                "target": {"name": "gpu", "kind": ["test"]},
+                "executable": "/opt/gpu",
             }
         ),
         "a cargo line that is not JSON",
     ]
-    assert find_test_executable("\n".join(messages)) == Path("/opt/renderer_test")
+    assert find_test_executable("\n".join(messages)) == Path("/opt/gpu")
 
 
 def test_find_test_executable_returns_none_without_an_artifact() -> None:

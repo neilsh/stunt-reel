@@ -9,7 +9,7 @@
 )]
 //! Palette LUT and camera tests that need no GPU adapter.
 //!
-//! The offscreen render tests moved to `renderer_test.rs`, where they cross the Renderer entry
+//! The offscreen render tests moved to `gpu/renderer.rs`, where they cross the Renderer entry
 //! point and assert on `RenderedPage`: the plane is the test seam.
 
 use stunt_core::contracts::trajectory::PLAYONE_FOV_Y_DEGREES;

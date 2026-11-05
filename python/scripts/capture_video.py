@@ -24,12 +24,11 @@ from pathlib import Path
 
 from stunt_reel import capture_store, dataroot, parity_layout, references
 from stunt_reel.all_archive import ArchiveError, resolve_all
-from stunt_reel.dataroot import ensure_links_or_report
+from stunt_reel.dataroot import data_path_arg
 from stunt_reel.parity_artifacts import FilmId
 from stunt_reel.tac import automation, playone, staging, video
 from stunt_reel.tac.emulator import EmulatorUnavailable
 
-DEFAULT_FILM: Path = Path("corpus/stisldem/VAULT/CTRY.FLM")
 #: Beside the stage's mount, so ``unstage`` deletes the raw (audio-carrying) recording.
 RECORDING_DIR = "recording"
 
@@ -39,13 +38,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--film",
-        type=Path,
-        default=DEFAULT_FILM,
+        type=data_path_arg,
+        default=dataroot.DEFAULT_FILM,
         help=(
             "the film's .FLM file; its .ALL is the sibling or one stored by make-all (a film "
             "with neither is refused); it is staged alone into "
             f"<data root>/{parity_layout.stage_root().as_posix()}/<name>-<session>/ "
-            f"(default {DEFAULT_FILM})"
+            f"(default %(default)s)"
         ),
     )
     parser.add_argument(
@@ -59,12 +58,12 @@ def parse_args() -> argparse.Namespace:
         help=(
             "new directory receiving capture.avi and meta.json; an existing non-empty one is "
             "refused and no stored capture is replaced (default: replace the film's capture, "
-            f"{parity_layout.capture_root().as_posix()}/<film>/video, by swap)"
+            f"<data root>/{parity_layout.capture_root().as_posix()}/<film>/video, by swap)"
         ),
     )
     parser.add_argument(
         "--game-root",
-        type=Path,
+        type=data_path_arg,
         default=None,
         help=(
             "game tree whose PLAYONE.EXE and engine files to run, such as "
@@ -112,8 +111,6 @@ def run(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"[capture-video] {exc}", file=sys.stderr)
         return 2
-    if not ensure_links_or_report("mise run capture-video"):
-        return 2
     try:
         archive = resolve_all(film, dataroot.REPO_ROOT, slug)
         all_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
@@ -129,13 +126,13 @@ def run(args: argparse.Namespace) -> int:
     if args.out is not None:
         out = resolve(args.out)
         try:
-            capture_store.check_outside(out, dataroot.REPO_ROOT / parity_layout.capture_root())
+            capture_store.check_outside(out, dataroot.data_root() / parity_layout.capture_root())
         except ValueError as exc:
             print(f"[capture-video] {exc}", file=sys.stderr)
             return 2
         return _record_into(args, out, film, archive, film_id)
     # The film's one capture of this kind is replaced only by a complete, successful one.
-    target = dataroot.REPO_ROOT / parity_layout.video_path(slug)
+    target = dataroot.data_root() / parity_layout.video_path(slug)
     try:
         capture_store.check_replaceable(target)
     except ValueError as exc:
@@ -226,7 +223,10 @@ def _record_into(
 def main() -> int:
     """Record the film and terminate the emulator."""
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
-    return run(parse_args())
+    args = parse_args()
+    if dataroot.require_corpus_or_report("mise run capture-video") is None:
+        return 2
+    return run(args)
 
 
 if __name__ == "__main__":
