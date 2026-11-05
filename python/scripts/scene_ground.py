@@ -64,6 +64,7 @@ def _needs_corpus(*paths: Path) -> bool:
     target = link.resolve()
 
     def under(path: Path) -> bool:
+        """True when ``path``, as spelled or resolved, lies under the link."""
         spelled = Path(os.path.normpath(path.absolute()))
         resolved = path.resolve()
         return link in (spelled, *spelled.parents) or target in (resolved, *resolved.parents)

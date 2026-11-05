@@ -71,6 +71,7 @@ class Comparison:
 
 
 def _word(seg: bytes, off: int) -> int:
+    """Read the little-endian word at ``off``; ``ValueError`` outside the segment."""
     if off < 0 or off + 2 > len(seg):
         raise ValueError(f"tree read at 0x{off:04X} outside the segment")
     value: int = struct.unpack_from("<H", seg, off)[0]
@@ -78,6 +79,7 @@ def _word(seg: bytes, off: int) -> int:
 
 
 def _polygon(seg: bytes, off: int, kind: str) -> GroundPolygon:
+    """Decode the colour word, vertex count and anchor pointers of the polygon at ``off``."""
     colour = _word(seg, off)
     count = _word(seg, off + 2)
     pointers = [_word(seg, off + 4 + 2 * i) for i in range(count)]
