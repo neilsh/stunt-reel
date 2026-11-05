@@ -46,6 +46,13 @@ more expensive:
    so it takes only staging and failure mapping. Tests go
    through the `ScriptRunner` seam with `MockAutomation` and a temporary data root, and replace the
    monkeypatch tests rather than sit beside them. `UNPATCHED_CAPTURES` is deleted.
+   Implemented in [`capture_run.py`](../../../python/stunt_reel/capture_run.py)
+   ([#140](https://github.com/neilsh/stunt-reel/issues/140)): `capture_playone_reference.py`,
+   `capture_video.py` and `make_all.py` are plans run through `execute`; the probe and `play` use
+   `staged_play`/`staged_film` and `report_failure`. Two points differ from the text above.
+   `references.capture_digest` has had no cache since ADR 0028, so there was nothing to drop, and a
+   test holds that a swap leaves no stale digest. `play` still takes its engine from the film's
+   tree (or `--game-root`) and keeps its row check; choosing the row's pair for it is left open.
 4. **Film parity operation** ([#141](https://github.com/neilsh/stunt-reel/issues/141), implemented in `parity_pipeline`, which the loop already imported). One module renders a film over a tick range, checks the render and
    scores it against a capture: the reference capture or the film's current one. It owns the
    `stuntreel` command lines, the SIDATA path and the `report.json` location. Run it through a

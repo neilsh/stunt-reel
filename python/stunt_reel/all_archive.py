@@ -31,6 +31,7 @@ __all__ = [
     "no_link",
     "publish_archive",
     "resolve_all",
+    "write_archive",
 ]
 
 #: The file inside an archive directory that says it is complete; it is written last.
@@ -105,6 +106,12 @@ def check_archive(data: bytes) -> int:
     return count
 
 
+def write_archive(directory: Path, data: bytes, meta: ArchiveMeta, *, film: str) -> None:
+    """Write *data* as ``<FILM>.ALL`` into *directory*, ``meta.json`` last (the capture is complete then)."""
+    (directory / parity_layout.all_name(film)).write_bytes(data)
+    (directory / META_FILE).write_text(meta.to_json(), encoding="utf-8")
+
+
 def publish_archive(root: Path, data: bytes, meta: ArchiveMeta, *, slug: str, film: str) -> Path:
     """Write *data* as ``<root>/captures/<slug>/archives/<FILM>.ALL`` in the data root *root*.
 
@@ -117,8 +124,7 @@ def publish_archive(root: Path, data: bytes, meta: ArchiveMeta, *, slug: str, fi
     target = root / parity_layout.archive_path(slug)
     staged = capture_store.stage(target)
     try:
-        (staged / parity_layout.all_name(film)).write_bytes(data)
-        (staged / META_FILE).write_text(meta.to_json(), encoding="utf-8")
+        write_archive(staged, data, meta, film=film)
         return capture_store.publish(staged, target)
     except BaseException:
         capture_store.discard(staged)

@@ -7,9 +7,11 @@ MAKEONE launcher whose guest returns to text mode on cue. No emulator starts.
 
 from __future__ import annotations
 
+import importlib.util
 import re
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -21,7 +23,6 @@ from stunt_reel.tac.staging import ENGINE_FILES, MAKEONE_FILES
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
-    from pathlib import Path
 
     from stunt_reel.tac.staging import StagedMount
 
@@ -175,6 +176,19 @@ class FakeFilm:
         return open_runner
 
 
+SCRIPTS = Path(__file__).resolve().parent.parent / "python" / "scripts"
+
+
+def load_script(name: str) -> Any:
+    """Import one python/scripts module by path, without putting scripts on sys.path."""
+    spec = importlib.util.spec_from_file_location(name, SCRIPTS / f"{name}.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 @dataclass(frozen=True)
 class StagedRepo:
     """A synthetic checkout with a film tree and an output directory."""
@@ -206,6 +220,13 @@ def staged_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Sta
     # The synthetic PLAYONE.EXE matches no build's hash; read it as the unpatched one.
     monkeypatch.setattr(playone, "layout_for", lambda _exe: playone.UNPATCHED)
     dataroot.data_root.cache_clear()
+    # The data root's game trees (mise run game-builds), each file stamped with its build's name.
+    for build in ("patch3", "unpatched"):
+        tree = dataroot.data_root() / "builds" / build
+        tree.mkdir(parents=True)
+        for name in {*ENGINE_FILES, *MAKEONE_FILES}:
+            (tree / name).write_bytes(f"{build} {name}".encode())
+        (tree / "RES").mkdir()
     try:
         yield StagedRepo(root=root, film=film, out=out)
     finally:

@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from stunt_reel import capture_store, dataroot, game_builds, parity_artifacts, parity_layout
+from stunt_reel import capture_store, dataroot, parity_artifacts, parity_layout
 from stunt_reel.batch_ledger import Record
 from stunt_reel.parity_pipeline import (
     CommandError,
@@ -38,7 +38,6 @@ __all__ = [
     "KNOWN_CAPTURE_STALLS",
     "KNOWN_STALL_MESSAGE",
     "MIN_CAPTURE_FRAMES",
-    "UNPATCHED_CAPTURES",
     "run_archive",
     "run_capture",
     "run_render",
@@ -55,14 +54,6 @@ _CAPTURE = Path("python/scripts/capture_playone_reference.py")
 #: from boot to boot on both builds, so a dump pass disagrees with the trace
 #: (research/playone-exe/patch3.md section 3).
 KNOWN_CAPTURE_STALLS: tuple[str, ...] = ("flmonly-bigman",)
-#: Films captured on the unpatched build instead of their folder's own PLAYONE.EXE. Their
-#: siarchive NewPLAY folder ships Patch #3's, which stalls on these two retail archives while the
-#: unpatched build plays them (research/playone-exe/capture-dosbox-automation.md section 4.7).
-#: Only these, and only their NewPLAY copies: other NewPLAY films capture on the patched build, and
-#: the demo's INTRO.FLM (the same slug in a demo-only corpus) plays on the demo engine.
-UNPATCHED_CAPTURES: tuple[str, ...] = ("vault-intro", "vault-tod")
-#: The siarchive folder whose films run its own Patch #3 PLAYONE.EXE.
-_PATCH3_FOLDER = "NewPLAY"
 #: The message of the ``skipped`` capture record a known stall gets.
 KNOWN_STALL_MESSAGE = "known capture stall"
 #: A capture needs at least this many frames: a film short enough to yield 2 or 3 legitimately
@@ -108,12 +99,6 @@ def run_capture(film: BatchFilm, _root: Path, run: Run, timeout: float) -> Recor
     command = [sys.executable, str(dataroot.REPO_ROOT / _CAPTURE), "--film", str(film.flm)]
     if film.name is not None:
         command += ["--name", film.name]
-    if film.slug in UNPATCHED_CAPTURES and _PATCH3_FOLDER in film.flm.parts:
-        unpatched = dataroot.data_root() / game_builds.BUILDS_DIR / "unpatched"
-        if not (unpatched / "PLAYONE.EXE").is_file():
-            message = f"{unpatched} has no PLAYONE.EXE; run mise run game-builds"
-            return _record(film, "capture", "error", message, started)
-        command += ["--game-root", str(unpatched)]
     outcome = _execute(film, "capture", command, timeout, run, started)
     if outcome.status != "ok":
         return outcome

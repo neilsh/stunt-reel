@@ -231,12 +231,12 @@ def test_a_publish_failure_is_a_make_all_line_and_exit_1(
     def full_disk(*_args: object, **_kwargs: object) -> Path:
         raise OSError("disk full")
 
-    monkeypatch.setattr(script, "publish_archive", full_disk)
+    monkeypatch.setattr(script, "write_archive", full_disk)
     launch, _state = makeone_launcher(text_after=1, archive=ARCHIVE)
     args = _args(script, monkeypatch, staged_repo.film, game_root)
 
     assert script.run(args, launch) == 1
-    assert "[make-all] could not store the archive: disk full" in capsys.readouterr().err
+    assert "[make-all] disk full" in capsys.readouterr().err
 
 
 def test_a_missing_game_file_is_a_make_all_line_and_exit_1(
