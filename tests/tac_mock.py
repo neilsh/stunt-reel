@@ -7,9 +7,11 @@ MAKEONE launcher whose guest returns to text mode on cue. No emulator starts.
 
 from __future__ import annotations
 
+import importlib.util
 import re
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -21,7 +23,6 @@ from stunt_reel.tac.staging import ENGINE_FILES, MAKEONE_FILES
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
-    from pathlib import Path
 
     from stunt_reel.tac.staging import StagedMount
 
@@ -175,6 +176,19 @@ class FakeFilm:
         return open_runner
 
 
+SCRIPTS = Path(__file__).resolve().parent.parent / "python" / "scripts"
+
+
+def load_script(name: str) -> Any:
+    """Import one python/scripts module by path, without putting scripts on sys.path."""
+    spec = importlib.util.spec_from_file_location(name, SCRIPTS / f"{name}.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 @dataclass(frozen=True)
 class StagedRepo:
     """A synthetic checkout with a film tree and an output directory."""
@@ -200,9 +214,19 @@ def staged_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Sta
     out = tmp_path / "out"
 
     monkeypatch.setattr(dataroot, "REPO_ROOT", root)
+    # A clone that keeps its game files in its own corpus/: no override, so corpus_root() falls
+    # back to the checkout's, and the stage goes beside it in <root>.data (ADR 0036).
+    monkeypatch.delenv(dataroot.DATA_ENV, raising=False)
     # The synthetic PLAYONE.EXE matches no build's hash; read it as the unpatched one.
     monkeypatch.setattr(playone, "layout_for", lambda _exe: playone.UNPATCHED)
     dataroot.data_root.cache_clear()
+    # The data root's game trees (mise run game-builds), each file stamped with its build's name.
+    for build in ("patch3", "unpatched"):
+        tree = dataroot.data_root() / "builds" / build
+        tree.mkdir(parents=True)
+        for name in {*ENGINE_FILES, *MAKEONE_FILES}:
+            (tree / name).write_bytes(f"{build} {name}".encode())
+        (tree / "RES").mkdir()
     try:
         yield StagedRepo(root=root, film=film, out=out)
     finally:
@@ -237,12 +261,18 @@ class MakeOneState:
     polls: int = 0
     #: Raised when the emulator is stopped, to model a failing teardown.
     stop_error: Exception | None = None
+    #: The staged VAULT, set once a hung guest has written its archive.
+    vault: Path | None = None
 
 
 def makeone_launcher(
-    *, text_after: int | None, archive: bytes | None
+    *, text_after: int | None, archive: bytes | None, early_archive: bool = False
 ) -> tuple[Callable[[StagedMount], Any], MakeOneState]:
-    """A MAKEONE guest: graphics until *text_after* polls, then text mode with *archive* written."""
+    """A MAKEONE guest: graphics until *text_after* polls, then text mode with *archive* written.
+
+    *early_archive* writes the archive on the first graphics poll, as a hang does, even when
+    the guest returns to text mode later.
+    """
     state = MakeOneState()
 
     class Client:
@@ -256,6 +286,14 @@ def makeone_launcher(
         def is_text_mode(self) -> bool:
             state.polls += 1
             if text_after is None or state.polls <= text_after:
+                if (
+                    (text_after is None or early_archive)
+                    and archive is not None
+                    and state.vault is None
+                ):
+                    # A MAKEONE hang: the archive is written and the guest stays in graphics.
+                    state.vault = self._staged.mount / "VAULT"
+                    (state.vault / "CTRY.ALL").write_bytes(archive)
                 return False
             if archive is not None:
                 (self._staged.mount / "VAULT" / "CTRY.ALL").write_bytes(archive)

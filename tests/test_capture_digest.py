@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import sys
+import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -33,11 +35,68 @@ def test_prints_the_digest_and_the_entry_that_promotes_it(
     digest = references.capture_digest(directory)
     assert capture_digest.main(["vault-ctry"], root=tmp_path) == 0
     out = capsys.readouterr().out.splitlines()
-    assert out[0] == "build/parity/captures/vault-ctry/frames"
+    assert out[0] == "captures/vault-ctry/frames"
     assert out[1] == f'sha256 = "{digest}"'
     # The committed references.toml has a [ctry] entry for vault-ctry, so the block follows.
     block = out[out.index("[ctry]") :]
-    assert block == ["[ctry]", 'film = "vault-ctry"', f'sha256 = "{digest}"']
+    assert block[:4] == [
+        "[ctry]",
+        'film = "vault-ctry"',
+        f'sha256 = "{digest}"',
+        'makeone = "unpatched"',
+    ]
+    assert 'playone = "unpatched"' in block
+    assert any(line.startswith("reason = ") for line in block)
+    assert tomllib.loads("\n".join(block))["ctry"]["reason"]
+
+
+def test_the_suggested_row_takes_the_builds_the_capture_records(tmp_path: Path) -> None:
+    """playone from the capture's meta.json, makeone from the stored archive's hash (ADR 0029)."""
+    directory = _capture(tmp_path, "vault-ctry")
+    (directory / "meta.json").write_text('{"playone_build": "patch3"}', encoding="utf-8")
+    archive = tmp_path / parity_layout.archive_path("vault-ctry")
+    archive.mkdir(parents=True)
+    makeone = next(h for h, b in references.MAKEONE_BUILDS.items() if b == "patch3")
+    (archive / "meta.json").write_text(json.dumps({"makeone_sha256": makeone}), encoding="utf-8")
+    builds = capture_digest.recorded_builds(tmp_path, "vault-ctry", directory)
+    assert builds == {"playone": "patch3", "makeone": "patch3"}
+    lines = capture_digest.report("vault-ctry", "0" * 64, builds=builds)
+    assert 'makeone = "patch3"' in lines
+    assert 'playone = "patch3"' in lines
+    assert not any(line.startswith("reason") for line in lines)
+
+
+def test_a_build_the_capture_does_not_record_is_not_invented(tmp_path: Path) -> None:
+    directory = _capture(tmp_path, "vault-intro")
+    assert capture_digest.recorded_builds(tmp_path, "vault-intro", directory) == {}
+
+
+def _stored_archive(root: Path, slug: str, **meta: str) -> None:
+    archive = root / parity_layout.archive_path(slug)
+    archive.mkdir(parents=True)
+    (archive / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def test_an_unknown_recorded_build_stays_unknown_in_the_suggested_row(tmp_path: Path) -> None:
+    """The row's own build must not stand in for one the capture records but cannot name."""
+    directory = _capture(tmp_path, "vault-ctry")
+    (directory / "meta.json").write_text('{"playone_build": "beta"}', encoding="utf-8")
+    _stored_archive(tmp_path, "vault-ctry", makeone_sha256="0" * 64)
+    builds = capture_digest.recorded_builds(tmp_path, "vault-ctry", directory)
+    assert builds == {"playone": "?", "makeone": "?"}
+    lines = capture_digest.report("vault-ctry", "0" * 64, builds=builds)
+    assert any(line.startswith('playone = "?"') for line in lines)
+    assert any(line.startswith('makeone = "?"') for line in lines)
+
+
+def test_a_capture_of_another_archive_does_not_take_the_stored_archives_build(
+    tmp_path: Path,
+) -> None:
+    directory = _capture(tmp_path, "vault-ctry")
+    (directory / "meta.json").write_text(json.dumps({"all_sha256": "a" * 64}), encoding="utf-8")
+    makeone = next(h for h, b in references.MAKEONE_BUILDS.items() if b == "patch3")
+    _stored_archive(tmp_path, "vault-ctry", makeone_sha256=makeone, all_sha256="b" * 64)
+    assert capture_digest.recorded_builds(tmp_path, "vault-ctry", directory) == {"makeone": "?"}
 
 
 def test_the_dir_form_hashes_the_same(
@@ -83,18 +142,23 @@ def test_a_directory_without_meta_is_refused(
     assert "not a capture" in capsys.readouterr().err
 
 
-def test_the_links_are_repaired_before_any_capture_is_read(
+def test_without_a_root_the_capture_is_read_from_the_data_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """No checkout link is read: a film slug and --dir both resolve in the data root (ADR 0036)."""
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    dataroot.data_root.cache_clear()
+    directory = _capture(tmp_path, "vault-intro")
+    assert capture_digest.main(["vault-intro"]) == 0
+    assert capture_digest.main(["--dir", str(directory)]) == 0
+    assert "no references.toml entry" not in capsys.readouterr().out
+
+
+def test_a_relative_capture_directory_reads_the_data_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Like parity, repair the data-root link first, for --dir as well as a film slug."""
-    directory = _capture(tmp_path, "vault-intro")
-    calls: list[str] = []
-
-    def refuse(program: str) -> bool:
-        calls.append(program)
-        return False
-
-    monkeypatch.setattr(dataroot, "ensure_links_or_report", refuse)
-    assert capture_digest.main(["--dir", str(directory)]) == 1
-    assert capture_digest.main(["vault-intro"]) == 1
-    assert calls == ["capture_digest", "capture_digest"]
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path / "data"))
+    dataroot.data_root.cache_clear()
+    monkeypatch.chdir(tmp_path)
+    _capture(tmp_path / "data", "vault-intro")
+    assert capture_digest.main(["--dir", "captures/vault-intro/frames"]) == 0

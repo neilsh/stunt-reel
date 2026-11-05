@@ -22,3 +22,6 @@ bytemuck = { version = "1.14", optional = true }
 
 [dev-dependencies]
 serde_json = "1.0"
+# Property tests: strategies compose and shrink through `prop_map` (quickcheck needs a
+# newtype and hand-written shrinker per constrained input). No `fork`/`timeout` stack.
+proptest = { version = "1.12", default-features = false, features = ["std"] }

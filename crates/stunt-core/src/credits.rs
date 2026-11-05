@@ -76,6 +76,10 @@ pub struct ClipRect {
 /// that writes them in order gets `PLAYONE`'s page. Nothing is drawn when the first byte has
 /// its sign bit set (`0x0F7F`). The first line is drawn even when empty (it draws nothing);
 /// an empty second line is skipped, as at `0x0FB0`. Pixels are not clipped to `rect`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "screen-space i32 coordinates: rect and block sizes are at most a few hundred pixels"
+)]
 pub fn draw_credits(
     font: &PFont,
     lines: &CreditLines,
@@ -92,6 +96,10 @@ pub fn draw_credits(
     }
 }
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "screen-space i32 coordinates: rect and string widths are at most a few hundred pixels"
+)]
 fn draw_line(font: &PFont, text: &[u8], rect: ClipRect, y: i32, put: &mut dyn FnMut(i32, i32, u8)) {
     let x = rect.left + ((rect.right - rect.left - font.text_width(text)) >> 1);
     font.draw_text(text, x + 1, y, &mut |px, py| put(px, py, CREDITS_SHADOW));

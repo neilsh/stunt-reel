@@ -108,3 +108,31 @@ through the restricted token, which is a property of the harness, not of the gat
   four-core runner from over-subscribing three concurrent cargo builds.
 - `check-windows` is still a mise `depends` chain; it now builds clippy into `target/check`, so a
   cold Windows CI run pays that build once.
+
+## Amendment 2026-11-03: the GPU tests open one adapter per process
+
+Once pytest ran across every core, a warm gate was bound by `test-py` (33-34 s) and `test-rust`
+(29-33 s) together. Of `test-rust`, `renderer_test` took 11.2 s for 9 tests and
+`scene_renderer_test` 6.6 s for 4: every test paid about 2.4 s to open a renderer, and
+`GPU_TEST_LOCK` runs them one at a time. Timed inside `Renderer::offscreen`, about 1.0 s was
+creating the `wgpu::Instance` and 1.2 s enumerating adapters (the Vulkan loader and driver
+start-up, not wgpu validation: turning off `VALIDATION` and `DEBUG`, or limiting the instance to
+Vulkan, made no consistent difference). Opening the device took 0.13 s and compiling the pipelines 0.04 s.
+
+`Renderer::offscreen` now chooses its adapter once per process and opens a fresh device from it
+for each renderer (`offscreen_adapter` in
+[renderer.rs](../../crates/stunt-render/src/renderer.rs)). The lanes do not change. Re-measured
+warm on 2026-11-04, after #187 built the GPU tests as one `gpu` binary; three runs of the binary,
+one of the workspace's tests, two gates:
+
+| | `gpu` binary (16 tests) | `cargo test --workspace` | `test-rust` in the gate |
+| --- | --- | --- | --- |
+| before | 13.3-14.1 s | 17.1 s | 32-33 s |
+| after | 3.2-3.6 s | 7.1 s | 12-19 s |
+
+The gate is now bound by `test-py` (39-50 s) alone, with `test-rust` well behind it. Twenty runs of
+`mise run test-render -- --runs 20 --require-gpu` passed with no hang, so the shared adapter does
+not bring back the driver deadlock that `GPU_TEST_LOCK` guards against. Rejected: a
+`rust-render` lane with its own target directory, which would build wgpu a second time to overlap
+work that now takes about 3 s; and `cargo-nextest`, a new tool that runs each test in its own process,
+so every GPU test would pay the 2.2 s again.

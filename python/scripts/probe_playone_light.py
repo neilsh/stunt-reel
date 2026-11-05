@@ -24,10 +24,9 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from stunt_reel import dataroot
-from stunt_reel.dataroot import ensure_links_or_report
-from stunt_reel.tac import automation, luagen, plan, playone, staging
-from stunt_reel.tac.emulator import EmulatorUnavailable
+from stunt_reel import capture_run, dataroot
+from stunt_reel.dataroot import data_path_arg
+from stunt_reel.tac import automation, luagen, plan, playone
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -35,7 +34,6 @@ if TYPE_CHECKING:
 
     from stunt_reel.tac.automation import ScriptRunner
 
-DEFAULT_FILM: Path = Path("corpus/stisldem/VAULT/CTRY.FLM")
 DEFAULT_TICKS: tuple[int, ...] = (10, 150, 273, 448, 700, 900, 1100)
 #: Work-segment offsets: light vector, sun-billboard vector, shade array (terrain-shade.md).
 LIGHT_OFFSET: int = 0x8072
@@ -52,7 +50,12 @@ MAX_TRACE_FRAMES: int = 12000
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--film", type=Path, default=DEFAULT_FILM, help="film to play")
+    parser.add_argument(
+        "--film",
+        type=data_path_arg,
+        default=dataroot.DEFAULT_FILM,
+        help="film to play",
+    )
     parser.add_argument(
         "--ticks",
         default=",".join(str(t) for t in DEFAULT_TICKS),
@@ -181,50 +184,33 @@ def run(args: argparse.Namespace) -> int:
     out = resolve(args.out)
     ticks = [int(part) for part in args.ticks.split(",")]
     try:
-        staged = staging.stage_film(film)
-    except OSError as exc:
-        print(f"[probe] {exc}", file=sys.stderr)
-        return 1
-    try:
-        layout = playone.layout_for(staged.mount / "PLAYONE.EXE")
-    except (playone.UnknownBuild, OSError) as exc:
-        staging.unstage(staged)
-        print(f"[probe] {exc}", file=sys.stderr)
-        return 2
-    if layout is not playone.UNPATCHED:
-        # The work segment and the DGROUP ranges the probe reads are mapped for 0D51 only.
-        staging.unstage(staged)
-        print(
-            f"[probe] the probe reads the unpatched PLAYONE.EXE only, not {layout.name}",
-            file=sys.stderr,
-        )
-        return 2
-    try:
-        probe(
-            lambda: automation.launched(staged.write_conf),
-            playone.film_selection_names(film.stem),
-            ticks,
-            out,
-            dump_all=args.dump_all_segments,
-            layout=layout,
-        )
-    except EmulatorUnavailable as exc:
-        print(f"[probe] {exc}; run via mise exec", file=sys.stderr)
-        return 1
-    except (automation.ScriptError, plan.PlanError, RuntimeError, TimeoutError, OSError) as exc:
-        print(f"[probe] {exc}", file=sys.stderr)
-        return 1
-    finally:
-        staging.unstage(staged)
+        with capture_run.staged_film(film) as staged:
+            layout = playone.layout_for(staged.mount / "PLAYONE.EXE")
+            if layout is not playone.UNPATCHED:
+                # The work segment and the DGROUP ranges the probe reads are mapped for 0D51 only.
+                raise capture_run.Refused(  # noqa: TRY301
+                    f"the probe reads the unpatched PLAYONE.EXE only, not {layout.name}"
+                )
+            probe(
+                lambda: automation.launched(staged.write_conf),
+                playone.film_selection_names(film.stem),
+                ticks,
+                out,
+                dump_all=args.dump_all_segments,
+                layout=layout,
+            )
+    except (capture_run.Refused, playone.UnknownBuild, RuntimeError, TimeoutError, OSError) as exc:
+        return capture_run.report_failure("probe", exc, task="probe-light")
     return 0
 
 
 def main() -> int:
     """Run the probe and terminate the emulator."""
-    if not ensure_links_or_report("probe_playone_light"):
-        return 2
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
-    return run(parse_args())
+    args = parse_args()
+    if dataroot.require_corpus_or_report("probe_playone_light") is None:
+        return 2
+    return run(args)
 
 
 if __name__ == "__main__":

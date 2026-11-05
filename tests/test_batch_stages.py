@@ -182,10 +182,10 @@ def test_capture_runs_the_films_own_build_by_default(tmp_path: Path) -> None:
     assert "--game-root" not in command
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    """A data root of the test's own, so nothing reads the machine's (``data_root`` is cached)."""
-    root = tmp_path / "data"
+    """The test's directory as its data root too, so its captures are the ones a stage reads."""
+    root = tmp_path
     monkeypatch.setenv(dataroot.DATA_ENV, str(root))
     dataroot.data_root.cache_clear()
     yield root.resolve()
@@ -203,53 +203,16 @@ def _newplay_film(tmp_path: Path, slug: str) -> BatchFilm:
     )
 
 
-def _unpatched_build(data_root: Path) -> Path:
-    tree = data_root / "builds" / "unpatched"
-    tree.mkdir(parents=True)
-    (tree / "PLAYONE.EXE").write_bytes(b"MZ")
-    return tree
-
-
 @pytest.mark.parametrize("slug", ["vault-intro", "vault-tod"])
-def test_a_film_that_stalls_on_the_patched_build_captures_on_the_unpatched_one(
-    tmp_path: Path, data_root: Path, slug: str
-) -> None:
-    tree = _unpatched_build(data_root)
+def test_the_capture_command_chooses_no_build(tmp_path: Path, slug: str) -> None:
+    """Which build a film runs on is the capture lifecycle's choice (references.toml row, else
+    patch3, else the unpatched fallback), never the survey's."""
     runner = FakeRunner()
     _write_capture(tmp_path, slug, [0, 10])
-    batch_stages.run_capture(_newplay_film(tmp_path, slug), tmp_path, runner, 900.0)
-    command, _ = runner.calls[0]
-    assert Path(command[command.index("--game-root") + 1]) == tree
-
-
-@pytest.mark.usefixtures("data_root")
-def test_the_demo_copy_of_a_film_keeps_its_own_engine(tmp_path: Path) -> None:
-    # In a demo-only corpus vault-intro is stisldem's INTRO.FLM, which plays on the demo engine;
-    # only the NewPLAY copy ships the patched PLAYONE.EXE that stalls.
-    runner = FakeRunner()
-    _write_capture(tmp_path, "vault-intro", [0, 10])
-    demo = BatchFilm(
-        slug="vault-intro",
-        name="vault-intro",
-        flm=tmp_path / "corpus" / "stisldem" / "VAULT" / "INTRO.FLM",
-        sha256="0" * 64,
-        has_sibling_all=True,
-    )
-    record = batch_stages.run_capture(demo, tmp_path, runner, 900.0)
+    record = batch_stages.run_capture(_newplay_film(tmp_path, slug), tmp_path, runner, 900.0)
     assert record.status == "ok"
     command, _ = runner.calls[0]
     assert "--game-root" not in command
-
-
-def test_a_missing_unpatched_build_is_an_error_naming_game_builds(
-    tmp_path: Path, data_root: Path
-) -> None:
-    runner = FakeRunner()
-    record = batch_stages.run_capture(_newplay_film(tmp_path, "vault-tod"), tmp_path, runner, 900.0)
-    assert runner.calls == []
-    assert (record.stage, record.status) == ("capture", "error")
-    assert "mise run game-builds" in record.message
-    assert str(data_root / "builds" / "unpatched") in record.message
 
 
 def test_a_known_stall_is_a_skipped_capture_record(tmp_path: Path) -> None:
@@ -290,7 +253,9 @@ def test_render_asks_the_binary_for_the_captured_ticks_into_the_batch_directory(
     assert command[0] == str(link.binary_path())
     assert command[command.index("--all") + 1] == str(film.flm.parent / "CTRY.ALL")
     assert command[command.index("--tick-range") + 1] == "7..=9"
-    assert command[command.index("--sidata") + 1] == str(tmp_path / parity_pipeline.SIDATA)
+    assert command[command.index("--sidata") + 1] == str(
+        tmp_path / "corpus" / parity_pipeline.SIDATA
+    )
     out = tmp_path / parity_layout.batch_film_dir(film.slug) / "render"
     assert command[command.index("--out-dir") + 1] == str(out)
     assert command[-6:] == list(parity_pipeline.RENDER_FLAGS)
@@ -376,3 +341,12 @@ def test_score_without_a_capture_is_an_error_naming_capture(tmp_path: Path) -> N
     assert (record.stage, record.status) == ("score", "error")
     assert "capture" in record.message
     assert runner.calls == []
+
+
+def test_stage_scripts_come_from_this_checkout_not_the_survey_root(tmp_path: Path) -> None:
+    """``batch_parity --data-root DIR`` writes under DIR, which holds no python/scripts."""
+    runner = FakeRunner()
+    _write_capture(tmp_path, "x-y", [0, 10])
+    batch_stages.run_capture(_film(tmp_path, name="x-y"), tmp_path, runner, 900.0)
+    command, _ = runner.calls[0]
+    assert Path(command[1]) == dataroot.REPO_ROOT / "python/scripts/capture_playone_reference.py"

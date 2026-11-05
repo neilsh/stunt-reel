@@ -2,6 +2,8 @@
 
 Capture moved to dosbox-automation ([`capture-dosbox-automation.md`](capture-dosbox-automation.md), plan [`dosbox-automation-switch-2026-10-30.md`](../../docs/process/plans/dosbox-automation-switch-2026-10-30.md)). This note keeps what is specific to DOSBox-X `2026.10.01` and `dosbox-x-mcp-server` `0.1.2`, so a reader of an old log row, a `references.toml` pin or a capture made before the switch can interpret it. The harness code (`transport.py`, `session.py`, `vsync.py`, `client.py`, `ensure_dosbox.py`, the `mcp` and `ensure-dosbox` tasks) exists through commit `81724a6`; the removal commit deletes it, and `git show 81724a6:python/stunt_reel/tac/transport.py` recovers it.
 
+DOSBox-X is back for one job: breakpoint plans (`mise run debug-x`), whose mechanics and costs are in [`debugger-plans.md`](debugger-plans.md).
+
 Findings about `PLAYONE.EXE` itself (clock words, palette upload, render path) are not DOSBox-X specific and stay in [`memory.md`](memory.md), [`palette-fade.md`](palette-fade.md) and [`capture-dosbox-automation.md`](capture-dosbox-automation.md). One correction applies: `0F17:0C5E` is the `ret` of `set_palette` (image `0x7B8E`), not a post-retrace loop boundary ([`capture-dosbox-automation.md` § 4.3](capture-dosbox-automation.md)). Whether the debugger's `0D51:0C5E` breakpoint named the same bytes is unresolved: its linear address `0xE16E` maps to another image offset under each recorded load base. The trap below stopped at "the next slice" in practice, not at that address.
 
 ---

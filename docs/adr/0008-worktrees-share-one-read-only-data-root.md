@@ -2,6 +2,8 @@
 
 ## Status
 
+amended 2026-11-04 by [ADR 0036](0036-worktrees-reach-shared-state-by-configuration.md): code reads the data root directly; no link.
+
 superseded in part by [ADR 0021](0021-capture-chooses-its-control-port.md): the data
 root stays read-only as described here; captures no longer serialise machine-wide,
 because each session binds its own control port. Its write guard is superseded by
@@ -30,7 +32,7 @@ instance, so two captures share the machine without sharing a port.
 
 ## What enforces this
 
-- **The write guard.** [`require_shared_write`](../../python/stunt_reel/dataroot.py) is called by both writers: [`capture-ref`](../../python/scripts/capture_playone_reference.py) when `--out` resolves into the root, and oracle generation per destination in [`models.py`](../../python/stunt_reel/tac/models.py). [`test_dataroot.py`](../../tests/test_dataroot.py) covers the opt-in and the resolution through a real junction.
+- **The write guard.** [`require_shared_write`](../../python/stunt_reel/dataroot.py) is called by both writers: [`capture-ref`](../../python/scripts/capture_playone_reference.py) when `--out` resolves into the root, and oracle generation per destination in `models.py` (both since removed). [`test_dataroot.py`](../../tests/test_dataroot.py) covers the opt-in and the resolution through a real junction.
 - **The capture lock (superseded by [ADR 0021](0021-capture-chooses-its-control-port.md)).** The bind in `transport.py` used to serialise captures through a fixed port; each session now binds port 0 and reports what it got, so a second capture no longer fails at the bind. Oracle generation was never exclusive.
 - **`init` on first use.** [`ensure_links`](../../python/stunt_reel/dataroot.py) is the one link policy: it repairs a worktree that never ran `mise run init` at the point the corpus is read — `capture-ref`, `parity` and `sweep` — replacing a `.gitkeep` placeholder with the junction and creating a shared directory that is still empty. It returns one outcome per target (`ok`, `repaired`, `created-empty` or `refused`), and [`mise run init`](../../python/scripts/worktree_init.py) renders those outcomes instead of walking `LINK_TARGETS` again, with `--migrate` as a pre-step. Its refusal stays all-or-nothing and happens before anything is touched: a checkout holding data of its own is left exactly as it was, because a half-repaired checkout reads as a worktree whose corpus is half present, which is worse than the empty placeholder. Moving that data remains `mise run init -- --migrate`'s decision, so `init` without `--migrate` now refuses instead of partially linking. Covered by [`test_dataroot.py`](../../tests/test_dataroot.py). A worktree made by any tool therefore works on first read; the `stuntreel` census takes its corpus path from the caller, so it fails loudly instead.
 

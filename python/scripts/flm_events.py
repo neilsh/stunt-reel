@@ -17,7 +17,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from stunt_reel.dataroot import ensure_links_or_report
+from stunt_reel.dataroot import read_data_file_or_report
 from stunt_reel.flm_walk import (
     SIF_ANIMATES,
     SIF_DRAW,
@@ -92,9 +92,10 @@ def main(argv: list[str]) -> int:
     if len(paths) != 1:
         print(__doc__)
         return 2
-    if not ensure_links_or_report("flm_events"):
+    data = read_data_file_or_report("flm_events", Path(paths[0]))
+    if data is None:
         return 2
-    total, events = film_events(Path(paths[0]).read_bytes(), sounds="--sounds" in argv)
+    total, events = film_events(data, sounds="--sounds" in argv)
     print("total ticks", total)
     for tick, description in events:
         print(tick, description)

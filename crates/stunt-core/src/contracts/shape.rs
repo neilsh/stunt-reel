@@ -365,11 +365,6 @@ impl SodModelIr {
         self.nodes.get(id.0 as usize)
     }
 
-    /// Looks up a mutable node by its handle.
-    pub fn get_node_mut(&mut self, id: NodeId) -> Option<&mut SodNode> {
-        self.nodes.get_mut(id.0 as usize)
-    }
-
     /// Every mesh slice of the shape, in arena order.
     ///
     /// One item per mesh node, empty slices included. A node whose windows leave the
@@ -487,14 +482,8 @@ mod tests {
         assert_eq!(child_node.parent, Some(root_id));
         assert!(child_node.children.is_empty());
 
-        // Test mutable lookup
-        let child_mut = ir.get_node_mut(child_id).expect("child mut exists");
-        child_mut.name = "WING_LEFT_MODIFIED".to_string();
-        assert_eq!(ir.get_node(child_id).unwrap().name, "WING_LEFT_MODIFIED");
-
         // Non-existent node lookup
         assert!(ir.get_node(NodeId(999)).is_none());
-        assert!(ir.get_node_mut(NodeId(999)).is_none());
     }
 
     #[test]

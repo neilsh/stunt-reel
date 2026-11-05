@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, override
 import pytest
 
 from stunt_reel.tac import automation
-from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout
+from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout, LaunchFailed
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -213,7 +213,7 @@ def test_a_server_that_never_answers_is_a_guest_timeout(tmp_path: Path) -> None:
         launch_timeout=1,
     )
 
-    with pytest.raises(GuestTimeout):
+    with pytest.raises(LaunchFailed):
         wrapper.start()
     assert process.killed
 

@@ -36,13 +36,16 @@ corpus/**
 
 # Local capture output (dosbox-automation default)
 capture/
+# Captures of a checkout that is its own data root (outside git, ADR 0036)
+/captures/
 !tests/fixtures/parity/bench/capture/
 
 # OS junk
 Thumbs.db
 .DS_Store
 
-# Shared tool cache, one per primary checkout and linked into every worktree (ADR 0013)
+# Shared tool cache, one per primary checkout, named by absolute path from every worktree
+# (ADR 0013, ADR 0036)
 /.cache/
 
 # Environment / local tool overrides

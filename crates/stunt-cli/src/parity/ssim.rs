@@ -20,23 +20,6 @@ pub(super) fn compute_luminance(r: f32, g: f32, b: f32) -> f32 {
     0.299 * r + 0.587 * g + 0.114 * b
 }
 
-/// Converts a contiguous RGBA8 buffer to a flat luminance float slice.
-///
-/// Only the tests read RGBA pages; the scorer works from RGB planes ([`rgb_to_luminance`]).
-#[cfg(test)]
-pub(super) fn rgba_to_luminance(rgba: &[u8]) -> Vec<f32> {
-    let pixel_count = rgba.len() / 4;
-    let mut lum = Vec::with_capacity(pixel_count);
-    for chunk in rgba.as_chunks::<4>().0 {
-        lum.push(compute_luminance(
-            f32::from(chunk[0]),
-            f32::from(chunk[1]),
-            f32::from(chunk[2]),
-        ));
-    }
-    lum
-}
-
 /// Converts a contiguous RGB8 buffer to a flat luminance float slice.
 pub(super) fn rgb_to_luminance(rgb: &[u8]) -> Vec<f32> {
     let mut lum = Vec::with_capacity(rgb.len() / 3);
@@ -387,8 +370,8 @@ mod tests {
 
     #[test]
     fn test_blank_page_luminance_is_flat() {
-        let rgba = vec![255u8; MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT * 4];
-        let lum = rgba_to_luminance(&rgba);
+        let rgb = vec![255u8; MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT * 3];
+        let lum = rgb_to_luminance(&rgb);
         assert_eq!(lum.len(), MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT);
         assert!(lum.iter().all(|&value| (value - 255.0).abs() < 1e-3));
     }

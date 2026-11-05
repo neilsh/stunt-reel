@@ -48,7 +48,7 @@ The G04 oracle and the Python mirror move in the same change: the two-record
 [`tests/fixtures/oracle_intro_trajectory.json`](../../tests/fixtures/oracle_intro_trajectory.json)
 is re-serialized without `world_matrix`,
 [`tests/fixtures/README.md`](../../tests/fixtures/README.md) stops listing it, and
-[`python/stunt_reel/tac/models.py`](../../python/stunt_reel/tac/models.py) /
+`python/stunt_reel/tac/models.py` (since removed) /
 `streamer.py` drop the stored field while
 keeping their `compute_world_matrix()`. Rust serde ignores the unknown field when
 reading an older record, and the Python reader ignores a legacy `world_matrix` key; no

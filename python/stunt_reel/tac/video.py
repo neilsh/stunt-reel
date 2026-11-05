@@ -63,6 +63,10 @@ class VideoCaptureError(RuntimeError):
     """A recording or its log cannot be a capture."""
 
 
+class FilmClockStuck(VideoCaptureError):  # noqa: N818 - the agreed interface name
+    """The film clock never moved: the signature of a stalled build, not a bad recording."""
+
+
 @dataclass(frozen=True)
 class VideoLog:
     """What one recording script logged, decoded."""
@@ -173,7 +177,7 @@ def film_start_frame(log: TickLog) -> int:
     for index in range(1, len(log.frame)):
         if log.film_tick[index] != log.film_tick[index - 1]:
             return log.frame[index]
-    raise VideoCaptureError("the film clock never moved")
+    raise FilmClockStuck("the film clock never moved")
 
 
 def record_video(

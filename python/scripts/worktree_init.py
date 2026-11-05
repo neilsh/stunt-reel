@@ -1,11 +1,10 @@
 """Prepare or clean one git worktree.
 
-``mise run init`` links the machine-wide data root into this checkout, so the
-relative ``corpus/`` and capture paths keep working in every
-worktree, and links ``.cache`` to the primary checkout's shared tool
-cache (ADR 0013).  It parks this checkout's ``.venv`` inside that cache too
-(ADR 0019) and then runs ``uv sync``, so the environment is hardlinked out of the
-cache instead of copied into the checkout, which is 3 s per worktree.  ``mise run
+A worktree needs no provisioning (ADR 0036): code reads the data root directly, mise
+names the shared caches by absolute path, and ``ensure``, a dependency of every task
+that builds Rust, seeds an empty ``target/`` and sets ``core.hooksPath`` under a lock.
+``mise run init`` does the same eagerly with a full report, runs ``uv sync``, and names
+any link an older ``init`` left, which ``reap`` unlinks.  ``mise run
 clean`` reports the per-worktree build outputs and
 removes them only with ``--yes``; the shared cache is reported, never removed.
 ``clean -- --parity --keep N`` narrows the same command to the parity render trees,
@@ -14,8 +13,8 @@ need selective rotation.  ``reap`` removes merged worktrees, including branches 
 request was squash-merged (found with ``gh``): it unlinks every link
 into the data root, proves none remain, and only then lets git delete the checkout,
 because git's worktree removal has recursed through Windows junctions on some builds.
-``init`` (and ``seed`` on its own) also clones another checkout's built ``target/`` into an
-empty one on a ReFS volume, so the first build compiles only the workspace crates (ADR 0030).
+The seed clones another checkout's built ``target/`` into an empty one on a ReFS volume, so
+the first build compiles only the workspace crates (ADR 0030).
 """
 
 from __future__ import annotations
@@ -23,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -30,33 +30,31 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, override
 
 from stunt_reel import parity_layout
 from stunt_reel.dataroot import (
+    CACHE_DIRNAME,
     DATA_ENV,
     LINK_TARGETS,
     REPO_ROOT,
     VENV_DIRNAME,
-    LinkOutcome,
     SharedDataError,
     cache_root,
     convert_layout,
-    create_link,
+    corpus_root,
     data_root,
     discard_env,
-    ensure_cache_link,
-    ensure_links,
-    ensure_venv_link,
     env_target,
     is_link,
     is_placeholder,
     orphan_envs,
+    primary_checkout,
     remove_link,
-    shared_target,
+    require_corpus,
     sweep_orphan_envs,
 )
-from stunt_reel.target_seed import SeedOutcome, seed
+from stunt_reel.target_seed import SeedOutcome, exclusive, needs_seed, seed
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -67,6 +65,24 @@ CLEAN_FILES: tuple[str, ...] = (".coverage",)
 
 #: Directories inside the primary checkout where linked worktrees live (SOP 6).
 POOL_DIRS: tuple[str, ...] = (".agents/worktrees", ".claude/worktrees")
+
+
+@dataclass(frozen=True)
+class Line:
+    """One line of ``init``'s report, printed as ``  <mark> <text>``.
+
+    *mark* is ``+`` (changed), ``-`` (skipped), ``=`` (already so) or ``!`` (a problem).
+    *news* marks a line ``ensure`` prints even when quiet: a change this run made, or one it
+    failed to make. A standing warning, such as a hooks path someone else chose, is not news.
+    """
+
+    mark: Literal["+", "-", "=", "!"]
+    text: str
+    news: bool = False
+
+    @override
+    def __str__(self) -> str:
+        return f"  {self.mark} {self.text}"
 
 
 def _size(path: Path) -> int:
@@ -95,44 +111,15 @@ def _migrate(relative: str, target: Path) -> None:
     print(f"  > {relative} -> {target}")
 
 
-def _uv_venv(environment: Path) -> int:
-    """Seed a linked environment, which uv will not create through a link itself.
-
-    ``uv sync`` refuses a project environment that exists but holds no interpreter,
-    and the junction cannot point at a directory that does not exist yet, so the
-    first init of a worktree asks ``uv venv`` for the interpreter before syncing.
-    """
-    if (environment / "pyvenv.cfg").is_file():
-        return 0
+def _uv_sync() -> int:
+    """Run ``uv sync`` for this checkout into its own ``.venv`` (ADR 0036)."""
     uv = shutil.which("uv")
     if uv is None:
         print("  ! uv is not on PATH; run this through mise")
         return 1
-    result = subprocess.run(  # noqa: S603
-        [uv, "venv", "--allow-existing", str(environment)],
-        check=False,
-    )
-    return int(result.returncode)
-
-
-def _uv_sync(environment: Path | None) -> int:
-    """Run ``uv sync`` for this checkout, installing into *environment* when it is linked.
-
-    The links must exist first: uv resolves its cache through ``.cache``, and an
-    environment created before the link would be a copy on the checkout's own volume
-    (ADR 0019).
-    """
-    uv = shutil.which("uv")
-    if uv is None:
-        print("  ! uv is not on PATH; run this through mise")
-        return 1
-    child = dict(os.environ)
-    if environment is not None:
-        child["UV_PROJECT_ENVIRONMENT"] = str(environment)
     print("  uv sync --locked --all-groups")
     result = subprocess.run(  # noqa: S603
         [uv, "sync", "--locked", "--all-groups"],
-        env=child,
         check=False,
     )
     if result.returncode != 0:
@@ -140,25 +127,11 @@ def _uv_sync(environment: Path | None) -> int:
     return int(result.returncode)
 
 
-def _render_link(outcome: LinkOutcome) -> list[str]:
-    """The lines ``init`` prints for one link outcome, indentation included."""
-    if outcome.status == "refused":
-        return [f"  ! {outcome.reason or outcome.relative}"]
-    if outcome.status == "created-empty":
-        return [
-            f"  ! {outcome.target} was missing; created it empty",
-            f"  + {outcome.relative} -> {outcome.target}",
-        ]
-    if outcome.status == "repaired":
-        return [f"  + {outcome.relative} -> {outcome.target}"]
-    return [f"  = {outcome.relative}"]
-
-
 #: The committed hooks directory ``init`` points ``core.hooksPath`` at, relative to the worktree.
 HOOKS_DIR = ".githooks"
 
 
-def ensure_hooks_path(repo: Path) -> list[str]:
+def ensure_hooks_path(repo: Path) -> list[Line]:
     """Point *repo*'s ``core.hooksPath`` at the committed hooks; the lines ``init`` prints.
 
     The setting is in the shared repository config, so one ``init`` covers every worktree,
@@ -168,13 +141,15 @@ def ensure_hooks_path(repo: Path) -> list[str]:
     """
     current = _git(repo, "config", "--get", "core.hooksPath").stdout.strip()
     if current and current != HOOKS_DIR:
-        return [f"  ! core.hooksPath is {current!r}; left alone, so {HOOKS_DIR}/ does not run"]
-    lines = [f"  = core.hooksPath {HOOKS_DIR}"]
+        return [
+            Line("!", f"core.hooksPath is {current!r}; left alone, so {HOOKS_DIR}/ does not run")
+        ]
+    lines = [Line("=", f"core.hooksPath {HOOKS_DIR}")]
     if not current:
         result = _git(repo, "config", "core.hooksPath", HOOKS_DIR)
         if result.returncode != 0:
-            return [f"  ! could not set core.hooksPath: {result.stderr.strip()}"]
-        lines = [f"  + core.hooksPath -> {HOOKS_DIR}"]
+            return [Line("!", f"could not set core.hooksPath: {result.stderr.strip()}", news=True)]
+        lines = [Line("+", f"core.hooksPath -> {HOOKS_DIR}", news=True)]
     common = _git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").stdout.strip()
     local = Path(common) / "hooks"
     if not common or not local.is_dir():
@@ -183,20 +158,32 @@ def ensure_hooks_path(repo: Path) -> list[str]:
     committed = {path.name for path in hooks.iterdir()} if hooks.is_dir() else set()
     for hook in sorted(local.iterdir()):
         if hook.suffix != ".sample" and hook.is_file() and hook.name not in committed:
-            lines.append(f"  ! {hook} no longer runs: core.hooksPath replaces the hooks there")
+            lines.append(
+                Line("!", f"{hook} no longer runs: core.hooksPath replaces the hooks there")
+            )
     return lines
 
 
+#: The checkout paths the old layout linked (ADR 0008, ADR 0013, ADR 0019); init reports them.
+_LEGACY_LINKS: tuple[str, ...] = (
+    *(relative for _, relative in LINK_TARGETS),
+    CACHE_DIRNAME,
+    VENV_DIRNAME,
+)
+
+
 def _init(migrate: bool) -> int:
+    """``ensure`` with its full report, then ``uv sync``; links nothing (ADR 0036).
+
+    ``--migrate`` still moves an in-checkout corpus into the data root, which code reads
+    directly now. Links an older ``init`` made are reported and left for ``reap``, and real
+    data at one of their paths is named, because nothing reads it there any more. A machine
+    with no game files fails here, not at its first capture.
+    """
     root = data_root()
     source = DATA_ENV if DATA_ENV in os.environ else "derived"
     print(f"worktree   {REPO_ROOT}")
     print(f"data root  {root} ({source})")
-    try:
-        for line in ensure_hooks_path(REPO_ROOT):
-            print(line)
-    except SharedDataError as err:
-        print(f"  ! hooks: {err}")
     if migrate:
         if root != REPO_ROOT and root.is_dir():
             try:
@@ -207,53 +194,38 @@ def _init(migrate: bool) -> int:
                 return 1
         for shared, relative in LINK_TARGETS:
             _migrate(relative, root / shared)
-    if root != REPO_ROOT:
-        # A fresh machine has no data root yet, and provisioning it is init's job:
-        # that is why ensure_links, the read path, refuses one that is missing.
-        root.mkdir(parents=True, exist_ok=True)
-    try:
-        outcomes = ensure_links()
-    except SharedDataError as err:
-        print(f"  ! {err}")
-        print(
-            "    the target is outside this session's writable workspace; "
-            "provision the worktree from a session with wider file access "
-            "(see docs/harness-setup.md)",
-        )
-        return 1
-
-    # The links come before the sync, so uv hardlinks its packages out of the shared
-    # cache instead of copying them, and so the environment is not born in the checkout.
-    venv: str | None = None
-    try:
-        print(f"  {ensure_cache_link()}")
-        venv = ensure_venv_link()
-    except (SharedDataError, OSError) as err:
-        print(f"  ! .cache: {err}")
-    if venv is not None:
-        print(f"  {venv}")
-    stale = sweep_orphan_envs()
-    if stale:
-        print(f"  - {len(stale)} environment(s) whose checkout is gone")
-    print(_seed_target())
-    environment = env_target(REPO_ROOT) if venv is not None else None
-    if environment is not None and _uv_venv(environment):
-        return 1
-    code = _uv_sync(environment)
+    _ensure(report=True)
+    code = _uv_sync()
     if code:
         return code
-
-    problems = 0
-    for outcome in outcomes:
-        if outcome.status == "refused":
-            problems += 1
-        for line in _render_link(outcome):
-            print(line)
-
-    if problems:
-        print(f"\n{problems} path(s) unresolved; see corpus/README.md for the archive layout")
+    for relative in _LEGACY_LINKS:
+        if is_link(REPO_ROOT / relative):
+            print(f"  ~ {relative} is a link from the old layout; reap unlinks it")
+    for relative in _stranded_data():
+        print(
+            f"  ! {relative} holds data the data root does not read; run mise run init -- --migrate"
+        )
+    try:
+        require_corpus()
+    except SharedDataError as err:
+        print(f"  ! {err}")
         return 1
     return 0
+
+
+def _stranded_data() -> list[str]:
+    """The old link paths that hold real data in this checkout, which no code reads now."""
+    corpus = corpus_root()
+    stranded: list[str] = []
+    for _, relative in LINK_TARGETS:
+        path = REPO_ROOT / relative
+        if is_link(path) or not path.is_dir() or is_placeholder(path):
+            continue
+        # The primary checkout's own corpus is read when the data root has none.
+        if path.resolve().is_relative_to(corpus.resolve()):
+            continue
+        stranded.append(relative)
+    return stranded
 
 
 def _rustc_vv() -> str | None:
@@ -267,30 +239,28 @@ def _rustc_vv() -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
-#: How a failed seed's line starts; ``mise run seed`` exits nonzero on it, init carries on.
-_SEED_FAILED = "  ! seed: "
-
-
 def _cargo_home() -> Path:
     """The CARGO_HOME cargo tasks use: mise passes it in; run directly, the shared cache."""
     named = os.environ.get("STUNT_CARGO_HOME")
     return Path(named) if named else cache_root() / "cargo"
 
 
-def _cargo_home_warning(cargo_home: Path) -> str | None:
-    """A line for a CARGO_HOME that names the shared cache by another path than the primary's.
+def _cargo_home_warning(cargo_home: Path) -> Line | None:
+    """A line for a CARGO_HOME that names another cache than the primary checkout's.
 
     mise falls back to the checkout's own ``.cache/cargo`` where git cannot name the primary
-    checkout; that is the same cache through this checkout's link, but Cargo fingerprints the
-    path, so every dependency builds again here and no donor qualifies (ADR 0030).
+    checkout. Cargo fingerprints that path, so every dependency builds again here and no
+    donor qualifies (ADR 0030).
     """
     shared = cache_root() / "cargo"
     if os.path.normcase(os.path.normpath(cargo_home)) == os.path.normcase(os.path.normpath(shared)):
         return None
-    return f"  ! CARGO_HOME {cargo_home} is not {shared}: every dependency rebuilds here"
+    return Line(
+        "!", f"CARGO_HOME {cargo_home} is not {shared}: every dependency rebuilds here", news=True
+    )
 
 
-def _seed_target() -> str:
+def _seed_target() -> list[Line]:
     """Seed this checkout's empty target/ from another checkout; a line saying what happened,
     and a second when the cargo home differs from the shared one."""
     cargo_home = _cargo_home()
@@ -308,13 +278,93 @@ def _seed_target() -> str:
     except Exception as error:
         outcome = SeedOutcome("failed", f"{type(error).__name__}: {error}")
     if outcome.status == "seeded":
-        line = f"  + target/ seeded {outcome.detail}"
+        line = Line("+", f"target/ seeded {outcome.detail}", news=True)
     elif outcome.status == "skipped":
-        line = f"  - target/ not seeded: {outcome.detail}"
+        line = Line("-", f"target/ not seeded: {outcome.detail}")
     else:
-        line = f"{_SEED_FAILED}{outcome.detail}"
+        line = Line("!", f"seed: {outcome.detail}", news=True)
     warning = _cargo_home_warning(cargo_home)
-    return line if warning is None else f"{line}\n{warning}"
+    return [line] if warning is None else [line, warning]
+
+
+#: The lock file under target/ that orders concurrent ``ensure`` and ``seed`` runs; no seed
+#: copies it.
+ENSURE_LOCK = ".ensure.lock"
+
+#: The file under target/ saying ``ensure`` has checked ``core.hooksPath`` for this target/, so a
+#: later run costs a few stats and no git; ``cargo clean`` or ``clean`` removes it with target/.
+HOOKS_CHECKED = ".hooks-checked"
+
+#: The tag that tells backup and indexing tools a directory is a cache (bford.info/cachedir).
+#: Cargo writes it only into a target/ it creates, and ``ensure`` creates target/ first, so
+#: ``ensure`` writes it into any target/ that lacks it.
+CACHEDIR_TAG = (
+    "Signature: 8a477f597d28d172789f06886806bc55\n"
+    "# This file is a cache directory tag created by stunt-reel's ensure task.\n"
+    "# For information about cache directory tags see https://bford.info/cachedir/\n"
+)
+
+
+def _ensure(*, report: bool = False) -> int:
+    """Seed an empty target/ and set ``core.hooksPath``; quiet when neither needed doing.
+
+    Every task that builds Rust depends on this (ADR 0036), so it is the step a new worktree
+    used to need ``init`` for; *report* prints every line, as ``init`` does. A failed seed, a
+    git that will not run or a lock held past its timeout is a slower first build or an unset
+    hooks path, not a reason to stop the task, so it returns 0 whatever happened.
+    """
+    target = REPO_ROOT / "target"
+    try:
+        # The gate's cargo lanes run this at once, so another may make target/ or the tag first.
+        target.mkdir(parents=True, exist_ok=True)
+        _tag_cache(target)
+        # The first holder seeds; the others wait, then find target/ built.
+        with exclusive(target / ENSURE_LOCK):
+            lines = _hooks(target, report=report)
+            if needs_seed(target):
+                seeded = _seed_target()
+                lines += seeded if report else [line for line in seeded if line.news]
+            elif report:
+                lines.append(Line("=", "target/ already built"))
+    except OSError as err:
+        # TimeoutError is an OSError: a stuck holder, as much as a lock this volume refuses.
+        lines = [
+            Line("!", f"ensure: {err}; target/ not seeded, core.hooksPath not checked", news=True)
+        ]
+    for line in lines:
+        print(line)
+    return 0
+
+
+def _tag_cache(target: Path) -> None:
+    """Write ``CACHEDIR.TAG`` into *target* unless it has one; a concurrent writer may win."""
+    tag = target / "CACHEDIR.TAG"
+    if tag.exists():
+        return
+    try:
+        with tag.open("x", encoding="utf-8", newline="\n") as handle:
+            handle.write(CACHEDIR_TAG)
+    except FileExistsError:
+        pass
+
+
+def _hooks(target: Path, *, report: bool) -> list[Line]:
+    """``ensure_hooks_path``'s lines worth printing; none outside a git checkout.
+
+    The shared setting rarely changes, so a quiet run checks it once per *target*: the stamp
+    :data:`HOOKS_CHECKED` there skips git until target/ goes. A failed check leaves no stamp.
+    """
+    stamp = target / HOOKS_CHECKED
+    if (not report and stamp.exists()) or primary_checkout() is None:
+        return []
+    try:
+        hooks = ensure_hooks_path(REPO_ROOT)
+    except (SharedDataError, OSError) as err:
+        return [Line("!", f"hooks: {err}", news=True)]
+    if not any(line.news and line.mark == "!" for line in hooks):
+        stamp.touch()
+    # Only a hooks path this call set, or failed to set, is news; the rest is init's report.
+    return hooks if report or any(line.news for line in hooks) else []
 
 
 def _tree_footprint(path: Path) -> tuple[int, int]:
@@ -436,17 +486,16 @@ def _clean(confirmed: bool, parity: bool = False, keep: int = 1) -> int:
         print("\ndry run; re-run with --yes to remove them")
         return 0
 
-    reference = REPO_ROOT / parity_layout.capture_root()
-    restore = is_link(reference)
-    if restore:
+    # An old worktree's capture link sits inside build/; unlink it first, so removing build/
+    # never reaches the data root through it. Nothing reads through it any more (ADR 0036).
+    reference = REPO_ROOT / parity_layout.LEGACY_CAPTURE_LINK
+    if is_link(reference):
         remove_link(reference)
     for path in targets:
         if path.exists() and not is_link(path):
             _remove_tree(path)
     for path in files:
         path.unlink(missing_ok=True)
-    if restore:
-        create_link(reference, shared_target(parity_layout.capture_root().as_posix()))
     print("\nremoved; the shared data root is untouched")
     return 0
 
@@ -521,6 +570,29 @@ def _worktrees(repo: Path) -> list[_Worktree]:
 def _is_ancestor(repo: Path, branch: str) -> bool:
     """True when ``main`` already contains every commit of *branch*."""
     return _git(repo, "merge-base", "--is-ancestor", branch, "main").returncode == 0
+
+
+#: Reflog subjects that record work done on a branch: a commit (also amend, merge, initial), a
+#: cherry-pick, revert or am, or a merge or pull that made a merge commit. A rebase is not listed: onto
+#: ``main`` it writes ``rebase (finish)`` even with nothing of the branch's own to replay, and
+#: commits that were rebased already left a ``commit:``, ``am:`` or ``cherry-pick:`` entry.
+#: "Merge made" is git's English message; another locale fails to match and errs toward keeping.
+_WORK_SUBJECT = re.compile(r"(commit|cherry-pick|revert|am)(:| \()|(merge|pull)\b[^:]*: Merge made")
+
+
+def _never_committed(repo: Path, branch: str) -> bool:
+    """True when no entry in *branch*'s reflog records work made on it.
+
+    A branch cut from ``main`` is an ancestor of ``main`` from birth, and one that then syncs with
+    base (fast-forward merge, ``reset --hard``) stays one, so ancestry cannot tell it from a merged
+    branch. Creation, ``reset:`` and ``Fast-forward`` entries are not work. A missing, empty or
+    unreadable reflog also counts as fresh, which means a very old merged branch whose reflog
+    expired is kept until removed by hand: keeping a worktree is the safe mistake.
+    """
+    result = _git(repo, "reflog", "show", "--format=%gs", f"refs/heads/{branch}")
+    if result.returncode != 0:
+        return True
+    return not any(_WORK_SUBJECT.match(line) for line in result.stdout.splitlines())
 
 
 def _unmerged_patch_count(repo: Path, branch: str) -> int:
@@ -681,6 +753,13 @@ def _candidates(
             continue
         merged = _is_ancestor(repo, worktree.branch)
         pr: int | None = None
+        if (
+            merged
+            and _never_committed(repo, worktree.branch)
+            and (merged_prs is None or merged_prs.find(worktree.branch, worktree.head) is None)
+        ):
+            skipped.append(f"{label}: no commits in its reflog")
+            continue
         if not merged:
             if merged_prs is not None:
                 pr = merged_prs.find(worktree.branch, worktree.head)
@@ -968,13 +1047,16 @@ def main(argv: list[str] | None = None) -> int:
     """Run ``init``, ``clean`` or ``reap``."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
-    init = commands.add_parser("init", help="link the shared data root into this checkout")
+    init = commands.add_parser(
+        "init", help="seed target/, set core.hooksPath and uv sync now, and report old links"
+    )
     init.add_argument(
         "--migrate",
         action="store_true",
-        help="convert an old-layout shared root, then move existing in-checkout data into it before linking",
+        help="convert an old-layout shared root, then move existing in-checkout data into it",
     )
     commands.add_parser("seed", help="clone another checkout's built target/ into an empty one")
+    commands.add_parser("ensure", help="seed an empty target/ and set core.hooksPath, quietly")
     clean = commands.add_parser("clean", help="report or remove per-worktree build outputs")
     clean.add_argument("--yes", action="store_true", help="actually remove them")
     clean.add_argument(
@@ -1011,10 +1093,20 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "init":
         return _init(bool(args.migrate))
+    if args.command == "ensure":
+        return _ensure()
     if args.command == "seed":
-        line = _seed_target()
-        print(line)
-        return 1 if line.startswith(_SEED_FAILED) else 0
+        try:
+            # The same lock as ensure: two seeds would share one staging directory.
+            with exclusive(REPO_ROOT / "target" / ENSURE_LOCK):
+                lines = _seed_target()
+        except OSError as err:
+            # TimeoutError is an OSError, as is a lock this volume refuses.
+            lines = [Line("!", f"seed: {err}", news=True)]
+        for line in lines:
+            print(line)
+        # The first line is the seed's outcome; a second only warns about the cargo home.
+        return 1 if lines[0].mark == "!" else 0
     if args.command == "reap":
         return _reap(
             bool(args.yes),
