@@ -1,0 +1,13 @@
+# #65: every caller of the Gouraud span filler 0:75DB in the airfield shot. The ground ops call
+# it directly, not through the gateway 0:8010, so the gateway tally (ground-colours) cannot see
+# them. The vertex list it reads is at work:[0x1952] (SI at entry); its 8.8 colours are at +2.
+[run]
+stop_tick = 900
+
+[[probe]]
+name = "filler-290"
+kind = "break"
+at = 0x75DB
+arm = { tick = 290 }
+hits = 300
+capture = ["stack:2", "mem:DS:SI:32"]

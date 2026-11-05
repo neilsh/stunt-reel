@@ -1,0 +1,31 @@
+# #65: which display-list op hands each polygon colour to the driver. Every flat fill goes
+# through one of the three gateway entries 0:8010, 0:8040 (no vertex list reload) and 0:8069
+# (raw, CX from the caller), each calling the driver through DGROUP:[0x2246]. 0x8010/0x8040 read
+# CX = work:0x41E8, its low byte the colour; the work segment is 0x1DF8 under DOSBox-X, so
+# work:0x41E8 is linear 0x22168 (unpatched only). Armed at tick 290, in the airfield shot.
+[run]
+stop_tick = 900
+
+[[probe]]
+name = "gateway-8010"
+kind = "break"
+at = 0x8010
+arm = { tick = 290 }
+hits = 300
+capture = ["stack:2", "lin:0x22168:2", "mem:DS:0x2246:2"]
+
+[[probe]]
+name = "gateway-8040"
+kind = "break"
+at = 0x8040
+arm = { tick = 290 }
+hits = 300
+capture = ["stack:2", "lin:0x22168:2"]
+
+[[probe]]
+name = "gateway-8069"
+kind = "break"
+at = 0x8069
+arm = { tick = 290 }
+hits = 300
+capture = ["stack:2"]

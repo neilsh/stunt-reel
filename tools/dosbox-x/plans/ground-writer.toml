@@ -1,0 +1,14 @@
+# #65: which op sets the polygon colour that OP_POLYZ (0x00F3, handler 0x9B78) hands the gateway
+# 0x8010. The colour is the low byte of work:0x41E8; the work segment is 0x1DF8 under DOSBox-X,
+# so the byte is linear 0x22168 (unpatched only). Armed at tick 290, inside the airfield shot.
+[run]
+stop_tick = 900
+
+[[probe]]
+name = "colour-writes"
+kind = "watch"
+linear = 0x22168
+size = 1
+arm = { tick = 290 }
+hits = 300
+capture = ["stack:2", "mem:ES:SI:12", "lin:0x22168:2"]
