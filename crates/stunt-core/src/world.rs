@@ -114,7 +114,8 @@ impl std::fmt::Display for ScnStopReason {
 /// first skipped subtree or malformed node (depth, malformed) is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScnStop {
-    /// Byte offset in `SCENERY.scn` of the node whose visit was refused.
+    /// Byte offset in `SCENERY.scn` of the node the stop is charged to: the one whose visit was
+    /// refused, or, for [`ScnStopReason::Malformed`], the one holding the bad operand or pointer.
     pub offset: usize,
     /// That node's opcode word.
     pub opcode: i32,
@@ -420,8 +421,8 @@ pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
 
 /// Traverses `SCENERY.scn` hierarchical BSP tree to collect prop placements.
 ///
-/// Returns why the walk stopped early (a pointer cycle, the node budget, or nesting past
-/// `SCN_MAX_DEPTH`), or `None` when it ran to the end of the tree.
+/// Returns why the walk stopped early (a pointer cycle, the node budget, nesting past
+/// `SCN_MAX_DEPTH`, or a malformed node), or `None` when it ran to the end of the tree.
 #[expect(
     clippy::too_many_arguments,
     reason = "the traversal threads its whole state explicitly"

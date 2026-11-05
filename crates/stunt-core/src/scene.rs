@@ -73,8 +73,8 @@ pub struct WorldStats {
     pub props_placed: usize,
     /// Extent of the world mesh in `[I1]` metres.
     pub bounds: ShapeExtent,
-    /// Why the `SCENERY.scn` walk ended early (cycle, budget or depth); `None` when it ran
-    /// to the end or there was no scenery.
+    /// Why the `SCENERY.scn` walk ended early (cycle, budget, depth or a malformed node);
+    /// `None` when it ran to the end or there was no scenery.
     pub scenery_stop: Option<ScnStop>,
 }
 
