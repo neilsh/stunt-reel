@@ -7,8 +7,8 @@ from dbx.addr import (
     Runtime,
     Unmappable,
     site_matches,
-    to_patched,
-    to_patched_data,
+    to_patch3,
+    to_patch3_data,
     vm_paragraph,
 )
 
@@ -51,9 +51,9 @@ def test_site_matches_masks_relocs() -> None:
     assert not site_matches(IMG, 0x9100, bytes.fromhex("1ebff81d8ede"))
 
 
-def test_to_patched_aligned() -> None:
+def test_to_patch3_aligned() -> None:
     p = dbx_stubs.pairing(code={0x9100: 0x83F7}, functions=[(0x9100, 0x9120, 1.0)])
-    assert to_patched(p, 0x9100) == 0x83F7
+    assert to_patch3(p, 0x9100) == 0x83F7
 
 
 @pytest.mark.parametrize(
@@ -64,16 +64,16 @@ def test_to_patched_aligned() -> None:
         (dbx_stubs.pairing(), 0x9100, "unmapped"),
     ],
 )  # fmt: skip
-def test_to_patched_refuses(pairing: object, offset: int, reason: str) -> None:
+def test_to_patch3_refuses(pairing: object, offset: int, reason: str) -> None:
     with pytest.raises(Unmappable, match=reason):
-        to_patched(pairing, offset)  # type: ignore[arg-type]
+        to_patch3(pairing, offset)  # type: ignore[arg-type]
 
 
-def test_to_patched_data() -> None:
+def test_to_patch3_data() -> None:
     p = dbx_stubs.pairing(data={0x49EC: 0x4372})
-    assert to_patched_data(p, 0x49EC) == 0x4372
+    assert to_patch3_data(p, 0x49EC) == 0x4372
     with pytest.raises(Unmappable, match="unmapped"):
-        to_patched_data(p, 0x0100)
+        to_patch3_data(p, 0x0100)
 
 
 def test_code_site_uses_each_code_segment() -> None:

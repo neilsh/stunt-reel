@@ -1,6 +1,6 @@
 # `PLAYONE.EXE`: Breakpoint Plans on DOSBox-X's Debugger
 
-* **Tool**: `mise run debug-x -- --plan <toml> [--film F] [--build unpatched|patched]`
+* **Tool**: `mise run debug-x -- --plan <toml> [--film F] [--build unpatched|patch3]`
   ([`debug_x.py`](../../python/scripts/debug_x.py), [`dbx/`](../../python/scripts/dbx/), plans in
   `tools/dosbox-x/plans/`), [ADR 0034](../../docs/adr/0034-breakpoints-run-on-dosbox-x.md).
   The stage lives under the data root and `MEMDUMPBIN` takes its path unquoted, so a data root

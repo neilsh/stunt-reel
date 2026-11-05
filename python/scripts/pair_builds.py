@@ -56,7 +56,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--left", type=Path, default=builds / "unpatched" / "PLAYONE.EXE")
     parser.add_argument(
-        "--right", type=Path, default=game_builds.build_tree(builds, "patch3") / "PLAYONE.EXE"
+        "--right", type=Path, default=None, help="default: the patch3 tree's PLAYONE.EXE"
     )
     parser.add_argument(
         "--ds", default="", help="comma-separated data offsets, each OFF[@SEGMENT][:OVERRIDE]"
@@ -70,6 +70,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="pair the display-list dispatch slots at the start of this left code segment",
     )
     args = parser.parse_args(argv)
+    if args.right is None:
+        args.right = game_builds.build_tree(builds, "patch3") / "PLAYONE.EXE"
     # Check every hex value here, so a typo exits 2 with a usage message before the builds load.
     for spec in filter(None, args.ds.split(",")):
         off_text, _, seg_text = spec.partition(":")[0].partition("@")

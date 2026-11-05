@@ -70,13 +70,13 @@ per boot. Nothing holds a session across commands.
 |---|---|---|
 | `link.py` | TCP listener on port 0 ([ADR 0021](../../adr/0021-capture-chooses-its-control-port.md)); `req(cmd)` with exact id match and a per-request timeout; `dump(addr, len)` as `MEMDUMPBIN` to a run-scoped scratch file read back; `regs()` parsing `EV CS IP SS SP DS ES AX BX CX DX SI DI BP` | stdlib only |
 | `boot.py` | stages the build's tree with one film under the data root's `stage/` through `staging.py`'s film-tree staging; writes its own `dosbox-x-<port>.conf`; launches DOSBox-X; waits for the six-index dialog by `A000` dumps; sends the film's keys through the BIOS keyboard buffer (`0040:001A..003D`); finds the load paragraph | `link`, `staging.py` where it fits, `game_builds` |
-| `plan.py` | parses and validates a plan; `for_patched` rewrites its offsets for the patched build | `addr` |
+| `plan.py` | parses and validates a plan; `for_patch3` rewrites its offsets for the patched build | `addr` |
 | `run.py` | arms the probes; runs the hit loop; writes the JSONL | `link`, `addr`, `watch` |
 | `addr.py` | image offset to runtime `seg:off` and back for a build; patched offsets through #78's pairing | `build_pairing` |
 | `watch.py` | decides whether a watch stop is a write to the watched address (section 3.4) | iced-x86 |
 
 `python/scripts/debug_x.py` is the CLI; `mise run debug-x -- --plan <toml> --film <path>
---build unpatched|patched [--out <dir>]`.
+--build unpatched|patch3 [--out <dir>]`.
 
 ### 3.2 Plan format
 

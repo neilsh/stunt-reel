@@ -110,7 +110,7 @@ def site_matches(image: LoadImage, offset: int, live: bytes) -> bool:
     return all(i in masked or a == b for i, (a, b) in enumerate(zip(live, expected, strict=True)))
 
 
-def to_patched(pairing: Pairing, offset: int) -> int:
+def to_patch3(pairing: Pairing, offset: int) -> int:
     """The Patch #3 image offset of unpatched code *offset*, from an identical function only."""
     mapping = map_code(pairing, offset)
     pair = pairing.function_at(offset)
@@ -121,7 +121,7 @@ def to_patched(pairing: Pairing, offset: int) -> int:
     return mapping.mapped
 
 
-def to_patched_data(pairing: Pairing, offset: int) -> int:
+def to_patch3_data(pairing: Pairing, offset: int) -> int:
     """The Patch #3 DS offset of unpatched DS *offset*."""
     mapping = map_data(pairing, offset)
     if mapping.mapped is None:

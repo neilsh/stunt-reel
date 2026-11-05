@@ -206,7 +206,7 @@ def build_tree(builds: Path, name: BuildName) -> Path:
     old = builds / _OLD_PATCH3_DIR
     if name == "patch3" and not tree.exists() and old.is_dir():
         sys.stderr.write(
-            f"[game-builds] using the old {old}; run mise run game-builds again to create {tree}\n"
+            f"[builds] using the old {old}; run mise run game-builds again to create {tree}\n"
         )
         return old
     return tree

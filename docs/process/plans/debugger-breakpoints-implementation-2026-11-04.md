@@ -175,10 +175,10 @@ Departures from the spec (S3.2 to S3.4 were revised to match):
   - `def site_matches(image: LoadImage, offset: int, live: bytes) -> bool`: compares `live` with
     `image.data[offset:offset + len(live)]`, skipping both bytes of every word in `image.relocs`
     that overlaps the range.
-  - `def to_patched(pairing: Pairing, offset: int) -> int`: `map_code(...)` must be `ALIGNED` and
+  - `def to_patch3(pairing: Pairing, offset: int) -> int`: `map_code(...)` must be `ALIGNED` and
     `pairing.function_at(offset)` must have ratio `1.0`, else `Unmappable` naming `how` and the
     ratio.
-  - `def to_patched_data(pairing: Pairing, offset: int) -> int`: `map_data(pairing, offset).mapped`,
+  - `def to_patch3_data(pairing: Pairing, offset: int) -> int`: `map_data(pairing, offset).mapped`,
     or `Unmappable` naming `how` when it is `None`.
   - `tests/dbx_stubs.py`: `def image(size: int = 0xA000, *, slots_at: int = 0x8240, slots: int = 108, relocs: Iterable[int] = ()) -> LoadImage`
     writes real slots (`26 C7 44 FE <imm16> E9 <rel16>`). `def pairing(*, code: Mapping[int, int] = {}, functions: Sequence[tuple[int, int, float]] = (), data: Mapping[int, int] = {}) -> Pairing`:
@@ -196,12 +196,12 @@ Departures from the spec (S3.2 to S3.4 were revised to match):
   - `test_ds`: `ds == 0x1575`.
   - `test_site_matches_masks_relocs`: image bytes `1e bf d4 15 8e df` at `0x9100`, live
     `1e bf f8 1d 8e df` gives True; live `1e bf f8 1d 8e de` gives False.
-  - `test_to_patched_aligned`: `pairing(code={0x9100: 0x83F7}, functions=[(0x9100, 0x9120, 1.0)])`
+  - `test_to_patch3_aligned`: `pairing(code={0x9100: 0x83F7}, functions=[(0x9100, 0x9120, 1.0)])`
     maps `0x9100` to `0x83F7`.
-  - `test_to_patched_refuses` (parametrized): the same with ratio `0.9`; `0x9104` (not in `code`,
+  - `test_to_patch3_refuses` (parametrized): the same with ratio `0.9`; `0x9104` (not in `code`,
     so `ESTIMATED`); an empty pairing (`UNMAPPED`). Each raises `Unmappable`, and the message names
     the reason.
-  - `test_to_patched_data`: `pairing(data={0x49EC: 0x4372})` maps `0x49EC` to `0x4372`.
+  - `test_to_patch3_data`: `pairing(data={0x49EC: 0x4372})` maps `0x49EC` to `0x4372`.
     `0x0100`, with no votes on either side, raises `Unmappable`.
 - [ ] **Step 2:** `mise run test-py -- tests/test_dbx_addr.py`: FAIL.
 - [ ] **Step 3:** Implement. `code_site` auto picks VM when `offset >= vm * 16`. The VM segment is
@@ -265,7 +265,7 @@ Rule (spec S3.4, made exact):
 **Files:** Create `python/scripts/dbx/plan.py`, `tests/test_dbx_plan.py`.
 
 **Interfaces:**
-- Consumes: `addr.to_patched`, `addr.to_patched_data`, `addr.Unmappable` (Task 2).
+- Consumes: `addr.to_patch3`, `addr.to_patch3_data`, `addr.Unmappable` (Task 2).
 - Produces:
   - `class PlanError(ValueError)`
   - `@dataclass(frozen=True, slots=True) class Capture`: `kind: Literal["stack", "mem"]`,
@@ -280,11 +280,11 @@ Rule (spec S3.4, made exact):
   - `@dataclass(frozen=True, slots=True) class Plan`: `name: str`, `cycles: int`,
     `stop_tick: int | None`, `probes: tuple[Probe, ...]`, `sha256: str`
   - `def parse_plan(text: str, name: str) -> Plan`, `def load_plan(path: Path) -> Plan`
-  - `def for_patched(plan: Plan, pairing: Pairing) -> tuple[Plan, dict[str, str]]`: a copy whose
+  - `def for_patch3(plan: Plan, pairing: Pairing) -> tuple[Plan, dict[str, str]]`: a copy whose
     offsets are patched-build offsets, plus a `probe name -> how` note for the run record:
-    - each break's `at` becomes `patched_at` when given, else `addr.to_patched(at)`;
-    - a watch's `mem` offset, when it is an int, goes through `addr.to_patched_data`;
-    - each `mem:DS:<int>:<len>` capture goes through `addr.to_patched_data` too.
+    - each break's `at` becomes `patched_at` when given, else `addr.to_patch3(at)`;
+    - a watch's `mem` offset, when it is an int, goes through `addr.to_patch3_data`;
+    - each `mem:DS:<int>:<len>` capture goes through `addr.to_patch3_data` too.
 
     Register offsets and `linear` addresses pass unchanged, since a linear address comes from a
     run on the same build. `Unmappable` propagates as `PlanError` naming the probe.
@@ -311,12 +311,12 @@ Defaults: `cycles = 8000`, `stop_tick = None`, `cs = "auto"`, `size = 1`, `arm =
     `size = 17`; duplicate names; `capture = ["mem:FS:SI:4"]`; `hits = 0`; an unknown key
     `ignore_ip`. Each raises `PlanError`.
   - `test_sha256_is_of_text`: the same text gives the same `sha256`, and a changed byte changes it.
-  - `test_for_patched_maps_code_and_ds`: on
+  - `test_for_patch3_maps_code_and_ds`: on
     `dbx_stubs.pairing(code={0x9100: 0x83F7}, functions=[(0x9100, 0x9120, 1.0)], data={0x49EC: 0x4372})`,
     the spec example gives `probes[0].at == 0x83F7`, `probes[1].mem == ("DS", 0x4372)`, the
     capture `mem:DS:0x49EC:6` is now offset `0x4372`, and `mem:ES:SI:64` is unchanged.
-  - `test_for_patched_prefers_patched_at`: `patched_at = 0x1234` wins over the pairing.
-  - `test_for_patched_unmappable_is_plan_error`: an empty pairing raises `PlanError` naming the
+  - `test_for_patch3_prefers_patched_at`: `patched_at = 0x1234` wins over the pairing.
+  - `test_for_patch3_unmappable_is_plan_error`: an empty pairing raises `PlanError` naming the
     probe.
 - [ ] **Step 2:** FAIL. **Step 3:** Implement with `tomllib`. **Step 4:** PASS, lint, typecheck.
 - [ ] **Step 5:** Commit `feat(dbx): parse breakpoint plans`.
@@ -349,7 +349,7 @@ Defaults: `cycles = 8000`, `stop_tick = None`, `cs = "auto"`, `size = 1`, `arm =
     `git show e8bc1b3^:python/stunt_reel/tac/bda.py`
   - `def parse_mcbs(lines: Sequence[str], program: str = "PLAYONE") -> int`: the PSP segment of the
     block owned by `program`; the load paragraph is that plus `0x10`
-  - `@contextmanager def booted(film: Path, build: Literal["unpatched", "patched"], *, cycles: int)`,
+  - `@contextmanager def booted(film: Path, build: Literal["unpatched", "patch3"], *, cycles: int)`,
     a generator yielding one `Booted`, with `@dataclass class Booted`: `link: Link`, `load: int`, `stage: Path`.
     It works in this order:
     1. `stage_film(film, engine_root=data_root() / BUILDS_DIR / build)`, then renders the conf to
@@ -403,7 +403,7 @@ Template `tools/dosbox-x/dosbox-x.conf`: `[dosbox] memsize = 16`; `[sdl] output 
     (break and interrupt sites `seg:off`; empty for a watch probe), `watch: range | None` (the
     watched linear byte range, on both the `linear` and `mem` paths)
   - `def arm_probe(link: Link, rt: Runtime, probe: Probe) -> Armed`: the plan is already
-    build-specific (`plan.for_patched` ran for `patched`), so `probe.at` is an image offset of
+    build-specific (`plan.for_patch3` ran for `patch3`), so `probe.at` is an image offset of
     `rt.image`. For a break, it reads 8 live bytes at the site and raises `SiteMismatch` unless
     `site_matches`, then sends `BP`. A watch sends one `BPM` per byte (`mem`) or one `BPLM` per
     byte (`linear`). An int probe reads the interrupt vector at `0000:<4*int_no>` into `sites`,
@@ -484,24 +484,24 @@ Loop (spec S3.5):
   scripts, rather than copy it); `build_pairing.pair_images`; `tac.playone.UNPATCHED` and
   `PATCH3` (`dgroup_paragraph`, `film_clock`).
 - Produces: `def parse_args(argv: list[str]) -> argparse.Namespace` with `--plan` (required),
-  `--film` (default `corpus/stisldem/VAULT/CTRY.FLM`), `--build` (`unpatched` or `patched`,
+  `--film` (default `corpus/stisldem/VAULT/CTRY.FLM`), `--build` (`unpatched` or `patch3`,
   default `unpatched`), and `--out` (default `<data root>/debug`). `def main(argv: list[str]) -> int`
   returns 0, 1 (run failed) or 2 (plan or site refused).
 
 - [ ] **Step 1: Write the failing tests:** `test_parse_args_defaults`;
-  `test_unknown_build_rejected`; `test_patched_unmappable_exits_2`. For the last, monkeypatch the
+  `test_unknown_build_rejected`; `test_patch3_unmappable_exits_2`. For the last, monkeypatch the
   image loader and `pair_images` to return `dbx_stubs` objects with an empty pairing. `main`
   returns 2 before any launch, asserted by a `booted` that fails if it is called.
 - [ ] **Step 2:** FAIL. **Step 3:** Implement `debug_x.py`:
   1. Load the plan.
   2. Load the build's unpacked image from `<data root>/builds/<build>/PLAYONE.EXE`.
-  3. For `patched`, load both and pair them, then replace the plan with `for_patched(plan, pairing)`.
+  3. For `patch3`, load both and pair them, then replace the plan with `for_patch3(plan, pairing)`.
      A `PlanError` returns 2 before launch.
   4. Boot, then build the `Runtime` from `booted.load`, `vm_paragraph` and the layout's
      `dgroup_paragraph` (`UNPATCHED` or `PATCH3`).
   5. Run with the layout's `film_clock`, writing to `<out>/<film stem>/<plan>-<build>-<UTC stamp>.jsonl`.
      The header carries `build`, `film`, `emulator = DOSBOX_X_VERSION`, `vm` and the
-     `for_patched` notes.
+     `for_patch3` notes.
   6. Print the summary: one row per probe (hits, ignored), the spurious count, and the distinct
      `return_far_image` and writer image offsets, at most 40 lines.
 - [ ] **Step 4:** `mise.toml`: add the tool block below (the old pin from `01a1ae4^`, version
@@ -567,7 +567,7 @@ and `AGENTS.md` (add `debugger-plans.md` to the Binary Disassembly row, using th
   `stop_tick` at the film's last tick (read `CTRY.FLM`'s length with the project's film parser,
   not a guess).
 - [ ] **Step 3 (live):** Run both plans on both builds. Expected for `light-caller`: every hit has
-  `return_far_image == 0x2350` (the patched mapping of it on `patched`) and
+  `return_far_image == 0x2350` (the patched mapping of it on `patch3`) and
   `mem DS:0x49EC:6 == AX BX DX`. A different caller is a finding: keep it and record it.
 - [ ] **Step 4:** From `light-writers`, list each distinct writer's image offset with the ticks it
   fired at. These are changing writes only (Global Constraints). Read the variable-13 value at the `0x196C` hits from the registers and stack, and find

@@ -49,7 +49,7 @@ __all__ = [
 ]
 
 #: The two game builds a row may name; ``patch3`` is the name :mod:`stunt_reel.tac.playone` gives
-#: its layout (``game_builds`` calls the same tree ``patch3``).
+#: its layout and the name of the ``builds/`` tree.
 BUILD_NAMES: tuple[str, ...] = ("unpatched", "patch3")
 
 #: SHA-256 of each known ``MAKEONE.EXE`` and the build it belongs to (an archive's

@@ -1,6 +1,6 @@
 """Breakpoint plans: the TOML format of `tools/dosbox-x/plans/`, parsed and checked.
 
-Offsets in a plan are unpatched image offsets and unpatched DS offsets; `for_patched` rewrites a
+Offsets in a plan are unpatched image offsets and unpatched DS offsets; `for_patch3` rewrites a
 plan for the Patch #3 build through #78's pairing. The format is spec section 3.2 of
 `docs/process/plans/debugger-breakpoints-2026-11-04.md`.
 """
@@ -13,7 +13,7 @@ import tomllib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from dbx.addr import CodeSegment, Unmappable, to_patched, to_patched_data
+from dbx.addr import CodeSegment, Unmappable, to_patch3, to_patch3_data
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -222,7 +222,7 @@ def load_plan(path: Path) -> Plan:
     return parse_plan(path.read_text(encoding="utf-8"), path.stem)
 
 
-def for_patched(plan: Plan, pairing: Pairing) -> tuple[Plan, dict[str, str]]:
+def for_patch3(plan: Plan, pairing: Pairing) -> tuple[Plan, dict[str, str]]:
     """The plan with code and DS offsets moved to Patch #3, and a note per probe of what moved."""
     notes: dict[str, str] = {}
     probes: list[Probe] = []
@@ -234,7 +234,7 @@ def for_patched(plan: Plan, pairing: Pairing) -> tuple[Plan, dict[str, str]]:
                 at = (
                     probe.patched_at
                     if probe.patched_at is not None
-                    else to_patched(pairing, probe.at)
+                    else to_patch3(pairing, probe.at)
                 )
                 moved.append(
                     f"at {probe.at:#x}->{at:#x}"
@@ -242,13 +242,13 @@ def for_patched(plan: Plan, pairing: Pairing) -> tuple[Plan, dict[str, str]]:
                 )
                 changes["at"] = at
             if probe.mem is not None and probe.mem[0] == "DS":
-                off = to_patched_data(pairing, probe.mem[1])
+                off = to_patch3_data(pairing, probe.mem[1])
                 moved.append(f"DS:{probe.mem[1]:#x}->{off:#x}")
                 changes["mem"] = ("DS", off)
             captures: list[Capture] = []
             for cap in probe.capture:
                 if cap.kind == "mem" and cap.seg == "DS" and isinstance(cap.off, int):
-                    off = to_patched_data(pairing, cap.off)
+                    off = to_patch3_data(pairing, cap.off)
                     moved.append(f"{cap.key}->{off:#x}")
                     cap = dataclasses.replace(cap, off=off)  # noqa: PLW2901
                 captures.append(cap)

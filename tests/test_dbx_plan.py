@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 import pytest
-from dbx.plan import Capture, PlanError, for_patched, parse_plan
+from dbx.plan import Capture, PlanError, for_patch3, parse_plan
 
 import dbx_stubs
 
@@ -93,8 +93,8 @@ PAIRING = dbx_stubs.pairing(
 )
 
 
-def test_for_patched_maps_code_and_ds() -> None:
-    plan, notes = for_patched(parse_plan(spec_example(), "example"), PAIRING)
+def test_for_patch3_maps_code_and_ds() -> None:
+    plan, notes = for_patch3(parse_plan(spec_example(), "example"), PAIRING)
     assert plan.probes[0].at == 0x83F7
     assert plan.probes[1].mem == ("DS", 0x4372)
     caps = {c.key: c for c in plan.probes[0].capture}
@@ -104,15 +104,15 @@ def test_for_patched_maps_code_and_ds() -> None:
     assert "0x83f7" in notes["light-entry"]
 
 
-def test_for_patched_prefers_patched_at() -> None:
+def test_for_patch3_prefers_patched_at() -> None:
     text = '[[probe]]\nname = "p"\nkind = "break"\nat = 0x9100\npatched_at = 0x1234\n'
-    plan, _ = for_patched(parse_plan(text, "x"), dbx_stubs.pairing())
+    plan, _ = for_patch3(parse_plan(text, "x"), dbx_stubs.pairing())
     assert plan.probes[0].at == 0x1234
 
 
-def test_for_patched_unmappable_is_plan_error() -> None:
+def test_for_patch3_unmappable_is_plan_error() -> None:
     with pytest.raises(PlanError, match="light-entry"):
-        for_patched(parse_plan(spec_example(), "example"), dbx_stubs.pairing())
+        for_patch3(parse_plan(spec_example(), "example"), dbx_stubs.pairing())
 
 
 def test_linear_capture() -> None:

@@ -24,7 +24,7 @@ from build_pairing import load_image, pair_images
 from dbx.addr import Runtime, vm_paragraph
 from dbx.boot import DOSBOX_X_VERSION, booted
 from dbx.link import LinkError
-from dbx.plan import PlanError, for_patched, load_plan
+from dbx.plan import PlanError, for_patch3, load_plan
 from dbx.run import run_plan
 
 from stunt_reel import dataroot, game_builds
@@ -122,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     notes: dict[str, str] = {}
     if unpatched is not None:
         try:
-            plan, notes = for_patched(plan, pair_images(unpatched, image))
+            plan, notes = for_patch3(plan, pair_images(unpatched, image))
         except (PlanError, ValueError) as exc:  # unmappable probe, or unpairable builds
             print(f"debug-x: {exc}", file=sys.stderr)
             return 2

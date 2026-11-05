@@ -10,7 +10,7 @@ import debug_x
 import pytest
 
 import dbx_stubs
-from stunt_reel import dataroot
+from stunt_reel import dataroot, game_builds
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -39,8 +39,9 @@ def _no_boot(*_a: object, **_k: object) -> Iterator[None]:
     yield
 
 
-def test_patched_unmappable_exits_2(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_patch3_unmappable_exits_2(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(dataroot, "require_corpus_or_report", lambda _p: Path())
+    monkeypatch.setattr(game_builds, "build_tree", lambda b, n: b / n)
     monkeypatch.setattr(debug_x, "load_image", lambda _p: dbx_stubs.image())
     monkeypatch.setattr(debug_x, "pair_images", lambda _a, _b: dbx_stubs.pairing())
     monkeypatch.setattr(debug_x, "booted", _no_boot)
@@ -98,6 +99,7 @@ def _unpairable(_a: object, _b: object) -> Any:
 
 def test_unpairable_builds_exit_2(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(dataroot, "require_corpus_or_report", lambda _p: Path())
+    monkeypatch.setattr(game_builds, "build_tree", lambda b, n: b / n)
     monkeypatch.setattr(debug_x, "load_image", lambda _p: dbx_stubs.image())
     monkeypatch.setattr(debug_x, "pair_images", _unpairable)
     monkeypatch.setattr(debug_x, "booted", _no_boot)
