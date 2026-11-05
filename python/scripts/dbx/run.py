@@ -181,9 +181,10 @@ def _classify(
             verdict = resolve_writer(code, regs.ip, regs, a.watch)
             if verdict.kind == "spurious":
                 continue
-            writer = verdict.writer or verdict.candidates[0]
-            image = rt.to_image(regs.cs, writer.start)
-            if image is not None and image in rt.slot_run:
+            # An ambiguous hit is dropped only if every candidate sits in the slot run.
+            writers = verdict.candidates if verdict.writer is None else (verdict.writer,)
+            images = [rt.to_image(regs.cs, w.start) for w in writers]
+            if all(image is not None and image in rt.slot_run for image in images):
                 state.ignored[a.probe.name] += 1
                 return "ignored"
             return a.probe, verdict

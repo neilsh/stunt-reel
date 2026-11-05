@@ -358,7 +358,9 @@ Defaults: `cycles = 8000`, `stop_tick = None`, `cs = "auto"`, `size = 1`, `arm =
        within 60 s;
     3. sends `PING`, then waits for the dialog: at most 600 dumps 0.1 s apart, else `GuestTimeout`;
     4. reads `DOS MCBS` while the dialog is up, before the film loads;
-    5. sends `bios_keys(film_selection_names(film.name))` 1 s apart and yields.
+    5. sends `bios_keys(film_selection_names(film.name))` 1 s apart, all but the final Enter,
+       and yields; `run_plan` arms the probes and only then calls `Booted.start`, which sends
+       Enter, so no early breakpoint is missed.
 
     On exit it sends `BREAK` (errors ignored), kills the process and unstages.
 
