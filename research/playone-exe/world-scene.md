@@ -93,7 +93,7 @@ _Found 2026-10-23 at `6ae7b31`; see the [parity log](../parity/log.md)._
 
 ## 5. The ground ops are in `CTRY.ALL`
 
-Superseded by sections 2 and 4.1. The op `0x0168` and `0x02BE` records at `CTRY.ALL` offsets `0x13FC` and `0xEFE4` are `GVPOLY` records of the film's shapes, which are `RES` items, not ground. The 110-word table at `0x79` is a ramp directory (`(index << 8) | length`, first entries `193`/3, `194`/3, `195`/3), not a colour list. `CTRY.FLM` holds no ground either. The ground is in `PLAYONE.EXE`.
+Superseded by sections 2 and 4.1. The op `0x0168` and `0x02BE` records at `CTRY.ALL` offsets `0x13FC` and `0xEFE4` are `GVPOLY` records of the film's shapes, which are `RES` items, not ground. The 110-word table at `0x79` is neither a colour list nor a ramp directory: it is the chunk-id table at `0x7A` read one byte off (section 2.1). `CTRY.FLM` holds no ground either. The ground is in `PLAYONE.EXE`.
 
 _Found 2026-10-23 at `6ae7b31`; superseded 2026-11-04._
 
