@@ -137,12 +137,19 @@ def tree_segment(image: bytes) -> bytes:
 
 
 def parse_map_bin(data: bytes) -> list[MapPatch]:
-    """Active ``MAP.BIN`` records, vertex count capped at the seven slots."""
+    """Active ``MAP.BIN`` records, read as the engine reads them.
+
+    A record has seven vertex slots; a count of eight (patch 131) takes its eighth vertex from
+    the next record's first word, as ``v[7]`` overflows into it (``map.md`` ``[BK-MAP-05]``).
+    """
     patches = []
     for index in range(min(MAP_RECORDS, len(data) // MAP_RECORD)):
         r = struct.unpack_from("<15h", data, MAP_RECORD * index)
-        pos, colour, count = r[1], r[6], min(max(r[7], 0), MAP_SLOTS)
-        anchors = tuple(v & 0xFFFF for v in r[8 : 8 + count])
+        pos, colour, count = r[1], r[6], max(r[7], 0)
+        anchors = tuple(v & 0xFFFF for v in r[8 : 8 + min(count, MAP_SLOTS)])
+        overflow = MAP_RECORD * (index + 1)
+        if count > MAP_SLOTS and overflow + 2 <= len(data):
+            anchors += (struct.unpack_from("<H", data, overflow)[0],)
         if pos & 0xFF and all(a < ANCHORS for a in anchors):
             patches.append(MapPatch(index, colour, anchors))
     return patches

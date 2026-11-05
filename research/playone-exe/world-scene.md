@@ -46,7 +46,7 @@ So `MAP.BIN`'s colours are the player's ground colours. What a per-polygon colou
 
 The tree can be walked from the image alone. `python/stunt_reel/scene_tree.py` starts at `SS:0000` and follows the node types of [`map.md`](../formats/auxiliary/map.md), and `mise run scene-ground -- build/re/playone.img <MAP.BIN>` prints the result. It visits 7,009 nodes, with no node of an unknown type, and finds 158 Ground polygons: 146 `SP_GLEAF` leaves and 12 coarse `SP_GROUND` polygons. A type-12 node jumps into the leaf code at `0x23BC`, three bytes before the type-14 entry at `0x23BF`, so it draws through the same routine.
 
-157 of the 158 match a `MAP.BIN` record's vertices and colour. The other, a leaf at tree offset `0x060E`, is record 131 with its eighth vertex (anchor `50`) kept, which the record itself loses (section 2). `MAP.BIN` records 52 to 55 and 62 to 65, eight sand patches, have no polygon in the tree.
+All 158 match a `MAP.BIN` record's vertices and colour once the records are read as the engine reads them: the leaf at tree offset `0x060E` is record 131, whose eighth vertex (anchor `50`) is the next record's first word (section 2). `MAP.BIN` records 52 to 55 and 62 to 65, eight sand patches, have no polygon in the tree.
 
 That accounts for the 20 active records with no leaf in open question 1 ([#175](https://github.com/neilsh/stunt-reel/issues/175)): the 12 coarse `SP_GROUND` polygons, which that scan did not look for, and these 8 patches. Whether `PLAYONE` draws the 8 patches another way, or only FreeFlight has them, is not settled.
 

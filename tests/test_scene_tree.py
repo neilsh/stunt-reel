@@ -94,6 +94,16 @@ def test_walk_keeps_all_eight_anchors_of_a_leaf() -> None:
     assert poly.anchors == (1, 2, 3, 4, 5, 6, 7, 8)
 
 
+def test_parse_map_bin_reads_an_eighth_vertex_from_the_next_record() -> None:
+    """A count of 8 takes the next record's first word as its eighth anchor (patch 131)."""
+    eight = struct.pack("<8h7H", 0, 1, -1, -1, 0, -1, 14, 8, *range(1, 8))
+    nxt = struct.pack("<H", 50) + _map_record(1, 15, [9, 10, 11])[2:]
+    (first, _) = scene_tree.parse_map_bin(eight + nxt)
+    assert first.anchors == (1, 2, 3, 4, 5, 6, 7, 50)
+    (last,) = scene_tree.parse_map_bin(eight)
+    assert last.anchors == (1, 2, 3, 4, 5, 6, 7)
+
+
 def test_compare_matches_each_record_at_most_once() -> None:
     """Two records sharing an anchor set are each matched at most once."""
     twin = scene_tree.GroundPolygon("gleaf", 0, 195, (1, 2, 3))
