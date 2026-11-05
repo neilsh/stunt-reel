@@ -356,7 +356,9 @@ run = "uv run python python/scripts/verify_schemas_corpus.py"
 # has; a clone keeping its game files there passes `-- --corpus <primary checkout>/corpus`,
 # which wins. The path travels in STUNT_CENSUS_CORPUS, never the shell command line, where
 # a `$(...)` or a quote in it would run; a leading ~ expands as dataroot.data_root() expands it.
+# `env`, not get_env, also sees a STUNT_DATA_ROOT from an [env] table, and `$$` keeps a `$` in
+# the path from mise's own expansion of env values.
 depends = ["ensure"]
 description = "Census of corpus .SOD models that stop on unimplemented opcodes, joined to the films placing them (opt-in; corpus is gitignored; mise run sod-census -- [--format markdown])"
 run = "cargo run --release --locked -p stunt-cli --bin stuntreel -- sod-census"
-env = { CARGO_HOME = "{{vars.cargo_home}}", STUNT_CENSUS_CORPUS = "{% set root = get_env(name='STUNT_DATA_ROOT', default=vars.data_root) %}{% set home = get_env(name='HOME', default='~') %}{% set home = get_env(name='USERPROFILE', default=home) %}{% if root | truncate(length=1, end='') == '~' %}{{ home }}{{ root | trim_start_matches(pat='~') }}{% else %}{{ root }}{% endif %}/corpus" }
+env = { CARGO_HOME = "{{vars.cargo_home}}", STUNT_CENSUS_CORPUS = "{% set root = env.STUNT_DATA_ROOT | default(value=vars.data_root) %}{% set home = env.HOME | default(value='~') %}{% set home = env.USERPROFILE | default(value=home) %}{% if root | truncate(length=1, end='') == '~' %}{% set root = home ~ root | trim_start_matches(pat='~') %}{% endif %}{{ root | replace(from='$', to='$$') }}/corpus" }

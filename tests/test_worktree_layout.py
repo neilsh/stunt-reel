@@ -313,12 +313,12 @@ def test_sod_census_reads_the_data_roots_corpus() -> None:
     assert "{{" not in task["run"]
     assert "--corpus" not in task["run"]
     corpus = task["env"]["STUNT_CENSUS_CORPUS"]
-    assert corpus.startswith(
-        "{% set root = get_env(name='STUNT_DATA_ROOT', default=vars.data_root) %}"
-    )
-    assert corpus.endswith("/corpus")
+    # env, not get_env: a STUNT_DATA_ROOT set in a mise [env] table is in env alone.
+    assert corpus.startswith("{% set root = env.STUNT_DATA_ROOT | default(value=vars.data_root) %}")
+    # mise shell-expands an env value after rendering it; $$ keeps a $ in the path literal.
+    assert corpus.endswith("{{ root | replace(from='$', to='$$') }}/corpus")
     # A leading ~ expands as dataroot.data_root() expands it: USERPROFILE on Windows, else HOME.
-    assert "get_env(name='USERPROFILE', default=home)" in corpus
+    assert "env.USERPROFILE | default(value=home)" in corpus
     assert "trim_start_matches(pat='~')" in corpus
 
 
