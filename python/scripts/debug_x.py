@@ -27,7 +27,6 @@ from dbx.plan import PlanError, for_patched, load_plan
 from dbx.run import run_plan
 
 from stunt_reel import dataroot, game_builds
-from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout
 from stunt_reel.tac.playone import PATCH3, UNPATCHED
 
@@ -45,7 +44,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--plan", type=Path, required=True, help="plan TOML (tools/dosbox-x/plans/)"
     )
-    parser.add_argument("--film", type=Path, default=root / "corpus/stisldem/VAULT/CTRY.FLM")
+    parser.add_argument(
+        "--film", type=dataroot.data_path_arg, default="corpus/stisldem/VAULT/CTRY.FLM"
+    )
     parser.add_argument("--build", choices=("unpatched", "patched"), default="unpatched")
     parser.add_argument("--out", type=Path, default=root / "debug", help="output root")
     return parser.parse_args(argv)
@@ -83,7 +84,7 @@ def summary(records: Iterable[Mapping[str, Any]]) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     """Run the plan; see the module docstring for the exit codes."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    if not ensure_links_or_report("debug_x"):
+    if dataroot.require_corpus_or_report("mise run debug-x") is None:
         return 1
     try:
         plan = load_plan(args.plan)

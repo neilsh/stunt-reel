@@ -10,6 +10,7 @@ import debug_x
 import pytest
 
 import dbx_stubs
+from stunt_reel import dataroot
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -39,7 +40,7 @@ def _no_boot(*_a: object, **_k: object) -> Iterator[None]:
 
 
 def test_patched_unmappable_exits_2(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(debug_x, "ensure_links_or_report", lambda _p: True)
+    monkeypatch.setattr(dataroot, "require_corpus_or_report", lambda _p: Path())
     monkeypatch.setattr(debug_x, "load_image", lambda _p: dbx_stubs.image())
     monkeypatch.setattr(debug_x, "pair_images", lambda _a, _b: dbx_stubs.pairing())
     monkeypatch.setattr(debug_x, "booted", _no_boot)
@@ -47,7 +48,7 @@ def test_patched_unmappable_exits_2(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_bad_plan_exits_2(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(debug_x, "ensure_links_or_report", lambda _p: True)
+    monkeypatch.setattr(dataroot, "require_corpus_or_report", lambda _p: Path())
     monkeypatch.setattr(debug_x, "booted", _no_boot)
     bad = tmp_path / "bad.toml"
     bad.write_text('[[probe]]\nname = "p"\nkind = "break"\n', encoding="utf-8")
@@ -72,7 +73,7 @@ def test_summary_rows() -> None:
 
 
 def test_unaddressable_site_exits_2(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(debug_x, "ensure_links_or_report", lambda _p: True)
+    monkeypatch.setattr(dataroot, "require_corpus_or_report", lambda _p: Path())
     monkeypatch.setattr(debug_x, "load_image", lambda _p: dbx_stubs.image())
     monkeypatch.setattr(debug_x, "booted", _no_boot)
     plan = tmp_path / "far.toml"
