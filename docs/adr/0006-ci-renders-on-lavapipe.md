@@ -10,7 +10,7 @@ The GPU integration tests in `stunt-render` need a Vulkan adapter. Before this d
 
 ## Decision
 
-The ubuntu quality job installs Mesa's software Vulkan driver (lavapipe, `mesa-vulkan-drivers`) and sets `STUNT_REQUIRE_GPU=1` in [`ci.yml`](../../.github/workflows/ci.yml). With that variable set, a missing adapter panics instead of skipping. All adapter setup goes through one helper, `gpu_or_skip()` and `gpu_or_skip_with()`, in [`crates/stunt-render/tests/common/mod.rs`](../../crates/stunt-render/tests/common/mod.rs). The render, export and scene-renderer test files use it. The windows runner does not install a driver and does not set the variable, so its GPU tests still skip.
+The ubuntu quality job installs Mesa's software Vulkan driver (lavapipe, `mesa-vulkan-drivers`) and sets `STUNT_REQUIRE_GPU=1` in [`ci.yml`](../../.github/workflows/ci.yml). With that variable set, a missing adapter panics instead of skipping. All adapter setup goes through one helper, `gpu_or_skip()` and `gpu_or_skip_with()`, in [`crates/stunt-render/tests/gpu/common/mod.rs`](../../crates/stunt-render/tests/gpu/common/mod.rs). The `renderer` and `scene_renderer` test modules of the `gpu` binary use it. The windows runner does not install a driver and does not set the variable, so its GPU tests still skip.
 
 ## Considered Options
 

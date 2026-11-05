@@ -91,7 +91,7 @@ description = "Remove worktrees whose branch is already in main or was squash-me
 run = "uv run python python/scripts/worktree_init.py reap"
 
 [tasks.pr-threads]
-description = "A pull request's unresolved review threads, one line each with the comment id to reply to (mise run pr-threads -- <number> [--all])"
+description = "A pull request's unresolved review threads, one line each with the comment id to reply to, then its outside-diff findings (mise run pr-threads -- <number> [--all])"
 run = "uv run python python/scripts/pr_threads.py"
 
 [tasks.build-at]
@@ -262,7 +262,7 @@ env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.test-render]
 depends = ["ensure"]
-description = "Run stunt-render's GPU integration tests with a bounded hang watchdog (detects hangs instead of waiting forever)"
+description = "Run stunt-render's GPU test binary (`gpu`) with a bounded hang watchdog (detects hangs instead of waiting forever)"
 run = "uv run python python/scripts/watch_render_test.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 

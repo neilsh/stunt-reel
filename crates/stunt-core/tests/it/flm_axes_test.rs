@@ -1,12 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::print_stderr,
-    clippy::default_trait_access,
-    clippy::items_after_statements,
-    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
-)]
 //! DOS axes to `[I1]` conversion in the `.FLM` evaluator (GLOSSARY.md "DOS axes").
 //!
 //! Slots are authored in DOS axes; every evaluated `TrajectoryRecord` is `[I1]`. The map is
@@ -14,7 +5,7 @@
 //! `q' = q_z180 * q` with `q_z180 = [0, 0, 1, 0]`, and actor orientations the conjugate
 //! `q_z180 * q * q_z180^-1`, because decoded shapes are already `[I1]` (+Y up).
 
-mod common;
+use crate::common;
 
 use common::push_interp_dos;
 use stunt_core::contracts::trajectory::ActorTransform;

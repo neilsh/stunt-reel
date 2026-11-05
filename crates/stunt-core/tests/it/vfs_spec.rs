@@ -1,12 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::print_stderr,
-    clippy::default_trait_access,
-    clippy::items_after_statements,
-    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
-)]
 #![expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -892,7 +883,7 @@ fn all_classification_requires_full_magic_length() {
         &0x000Cu16.to_le_bytes()
     );
     assert_eq!(archive.get("RES_0004.BIN").unwrap().data, &[0x0C]);
-    assert_eq!(archive.get("RES_0005.BIN").unwrap().data, &[]);
+    assert!(archive.get("RES_0005.BIN").unwrap().data.is_empty());
 }
 
 #[test]
