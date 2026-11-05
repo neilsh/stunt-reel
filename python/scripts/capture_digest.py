@@ -35,29 +35,44 @@ def _entries() -> dict[str, dict[str, object]]:
     return {name: entry for name, entry in document.items() if isinstance(entry, dict)}
 
 
+#: Stands for a build that a record names but that is not a known one, or that the record cannot
+#: vouch for; ``references.toml`` refuses it, so a pasted row fails until a person names one.
+UNKNOWN = "?"
+
+
+def _read_meta(path: Path) -> dict[str, object]:
+    try:
+        meta = json.loads(path.read_text(encoding="utf-8"))
+    except OSError, ValueError:
+        return {}
+    return meta if isinstance(meta, dict) else {}
+
+
 def recorded_builds(root: Path, slug: str, directory: Path) -> dict[str, str]:
     """The builds the film's capture and stored archive record, as ``references.toml`` names them.
 
     ``playone`` comes from the capture's ``meta.json`` (``playone_build``) and ``makeone`` from
-    the archive's ``makeone_sha256``; a field whose record is absent or unknown is left out.
+    the stored archive's ``makeone_sha256``. A field with no record is left out. A record that
+    names no known build is ``UNKNOWN``, and so is ``makeone`` when the capture played another
+    archive than the stored one (their ``all_sha256`` differ).
     """
     found: dict[str, str] = {}
-    try:
-        meta = json.loads((directory / capture_store.META_FILE).read_text(encoding="utf-8"))
-        build = meta.get("playone_build")
-        if build in references.BUILD_NAMES:
-            found["playone"] = build
-    except OSError, ValueError, AttributeError:
-        pass
+    meta = _read_meta(directory / capture_store.META_FILE)
+    if "playone_build" in meta:
+        build = meta["playone_build"]
+        found["playone"] = (
+            build if isinstance(build, str) and build in references.BUILD_NAMES else UNKNOWN
+        )
     stored = capture_store.current(root / parity_layout.archive_path(slug))
     if stored is not None:
-        try:
-            archive = json.loads((stored / capture_store.META_FILE).read_text(encoding="utf-8"))
-            build = references.MAKEONE_BUILDS.get(str(archive.get("makeone_sha256", "")))
-        except OSError, ValueError, AttributeError:
-            build = None
-        if build is not None:
-            found["makeone"] = build
+        archive = _read_meta(stored / capture_store.META_FILE)
+        if "makeone_sha256" in archive:
+            played, kept = meta.get("all_sha256"), archive.get("all_sha256")
+            if played and kept and played != kept:
+                found["makeone"] = UNKNOWN
+            else:
+                build = references.MAKEONE_BUILDS.get(str(archive["makeone_sha256"]))
+                found["makeone"] = build or UNKNOWN
     return found
 
 
@@ -69,7 +84,8 @@ def report(
     *promotable* is false for a directory that is not where parity reads the film's capture: an
     entry pinning it would point parity at a different directory, so none is printed. *builds*
     are the builds the capture records; for a field it lacks, the row's own value is kept, and
-    when neither names one the line says so, because a row must name both (ADR 0029).
+    when neither names a known one the line holds ``"?"``, which ``references.toml`` refuses until
+    a person names the build, because an omitted one would be read as patch3 (ADR 0029).
     """
     builds = builds or {}
     lines = [f"{parity_layout.frames_path(slug).as_posix()}", f'sha256 = "{digest}"']
@@ -91,13 +107,14 @@ def report(
             f'film = "{slug}"',
             f'sha256 = "{digest}"',
         ]
-        chosen = {f: builds.get(f) or entry.get(f) for f in ("makeone", "playone")}
+        chosen = {f: builds[f] if f in builds else entry.get(f) for f in ("makeone", "playone")}
         for field, build in chosen.items():
-            lines.append(
-                f'{field} = "{build}"'
-                if build in references.BUILD_NAMES
-                else f"# {field} = ?  (the capture does not record it; name unpatched or patch3)"
-            )
+            if build in references.BUILD_NAMES:
+                lines.append(f'{field} = "{build}"')
+            else:
+                # An active "?", not a comment: an omitted build would be read as patch3.
+                why = "its record names no known build" if field in builds else "nothing records it"
+                lines.append(f'{field} = "{UNKNOWN}"  # {why}; name unpatched or patch3')
         if "unpatched" in chosen.values():
             reason = str(entry.get("reason", "why this film needs the unpatched build"))
             # A JSON string is a valid TOML basic string, so quotes and backslashes survive.
