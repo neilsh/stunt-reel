@@ -308,7 +308,9 @@ def test_sod_census_reads_the_data_roots_corpus() -> None:
     """The census reads ``corpus/`` relative to its working directory unless told (ADR 0033)."""
     config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
     run = config["tasks"]["sod-census"]["run"]
-    assert "--corpus {{ get_env(name='STUNT_DATA_ROOT', default=vars.data_root) }}/corpus" in run
+    # Quoted: the run line is a shell command, and the path may hold a space or a `&`.
+    path = "{{ get_env(name='STUNT_DATA_ROOT', default=vars.data_root) }}/corpus"
+    assert f'--corpus "{path}"' in run
 
 
 def test_the_data_root_var_sits_beside_the_primary() -> None:

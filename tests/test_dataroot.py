@@ -383,3 +383,14 @@ def test_a_capitalised_corpus_path_resolves_too(
     monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
     resolved = dataroot.resolve_data_path(Path("Corpus/stisldem/X.FLM"))
     assert resolved == tmp_path.resolve() / "corpus" / "stisldem" / "X.FLM"
+
+
+def test_require_corpus_refuses_a_corpus_holding_only_its_readmes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A checkout that is its own data root has a tracked ``corpus/README.md`` and no game files."""
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    (tmp_path / "corpus").mkdir()
+    (tmp_path / "corpus" / "README.md").write_text("readme", encoding="utf-8")
+    with pytest.raises(dataroot.SharedDataError, match="holds no game files"):
+        dataroot.require_corpus()

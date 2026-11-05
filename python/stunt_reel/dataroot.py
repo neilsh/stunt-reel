@@ -177,15 +177,17 @@ def require_corpus(root: Path | None = None) -> Path:
     """The corpus of data root *root* (the configured one by default), which must exist.
 
     A reader of the game files calls this first, so a machine without them is told where
-    they were looked for instead of finding no films and reporting success.  The old links
-    created ``corpus/<name>`` folders empty, so a corpus must hold a file, not only a folder.
+    they were looked for instead of finding no films and reporting success.  The game files
+    sit in folders (``corpus/stisldem`` and its siblings), so a corpus must hold a folder with a
+    file in it: the old links created those folders empty, and ``corpus/README.md`` is tracked in
+    every checkout, which is its own data root outside git.
     """
     corpus = corpus_root() if root is None else corpus_of(root)
     if not corpus.is_dir():
         raise SharedDataError(
             f"no game files: {corpus} is missing; set {DATA_ENV} or see corpus/README.md"
         )
-    if not _holds_files(corpus):
+    if not any(_holds_files(child) for child in corpus.iterdir() if child.is_dir()):
         raise SharedDataError(
             f"no game files: {corpus} holds no game files; set {DATA_ENV} or see corpus/README.md"
         )

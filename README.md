@@ -31,14 +31,14 @@ You can build and test everything without any game files:
 
 ```powershell
 mise trust && mise install   # pinned toolchains (Rust, Python, uv, Java, dosbox-automation, Kaitai)
-mise run init                # optional: seed target/ and sync .venv now
+mise run init                # optional: seed target/ and sync .venv now; exits 1 until the game files are in place
 mise run check               # format, lint, typecheck and tests, Rust and Python
 ```
 
-To render a film you need the *Stunt Island* demo (`stisldem`) in `corpus/stisldem/`, described in [`corpus/README.md`](corpus/README.md):
+To render a film you need the *Stunt Island* demo (`stisldem`) in the shared data root, `<data root>/corpus/stisldem/` (`<data root>` is `STUNT_DATA_ROOT`, or `stunt-reel.data` beside the primary checkout), described in [`corpus/README.md`](corpus/README.md):
 
 ```powershell
-cargo run -p stunt-cli -- corpus/stisldem/VAULT/CTRY.FLM --all corpus/stisldem/VAULT/CTRY.ALL
+cargo run -p stunt-cli -- <data root>/corpus/stisldem/VAULT/CTRY.FLM --all <data root>/corpus/stisldem/VAULT/CTRY.ALL
 ```
 
 Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits. Headless rendering, video and glTF export, reference capture and the parity loop are in the [development guide](docs/development.md).

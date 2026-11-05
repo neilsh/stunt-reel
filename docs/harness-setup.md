@@ -61,7 +61,8 @@ Run these in a normal terminal, outside an agent sandbox.
    `mise run init -- --migrate`, or keep them there: when `STUNT_DATA_ROOT` is unset and the
    data root has no `corpus/`, Python code reads the primary checkout's `corpus/` if it holds a
    folder of game files. `mise run sod-census` reads only `<data root>/corpus`; such a clone
-   passes `mise run sod-census -- --corpus corpus`.
+   passes the primary checkout's corpus by absolute path, which works from any worktree:
+   `mise run sod-census -- --corpus <primary checkout>/corpus`.
 
 ## A new worktree
 

@@ -296,7 +296,8 @@ def build_locks_free(target: Path) -> Iterator[bool]:
 
 
 #: The errors a lock call raises because another handle holds the lock; any other is raised.
-_CONTENTION = frozenset({errno.EDEADLOCK, errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK})
+# EDEADLK, not its alias EDEADLOCK, which macOS does not define; msvcrt raises the same value.
+_CONTENTION = frozenset({errno.EDEADLK, errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK})
 
 
 @contextlib.contextmanager
