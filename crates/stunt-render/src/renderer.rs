@@ -18,7 +18,7 @@
 //! the raw-window-handle windowing traits, the recorded exception.
 
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use stunt_core::credits::{ClipRect, CreditLines, draw_credits};
 use stunt_core::font::PFont;
@@ -406,8 +406,7 @@ impl Renderer {
         sink: Box<dyn PageSink>,
         options: RenderOptions,
     ) -> Result<Self, RenderError> {
-        let instance = create_instance();
-        let (_adapter, device, queue) = acquire(&instance, None, options)?;
+        let (device, queue) = open_device(&offscreen_adapter(options)?)?;
         let camera_resources = CameraGpuResources::new(&device);
         let palette_lut = PaletteLut::new(&device, &queue);
         let pipelines = RenderPipelines::new_with_plane(
@@ -987,21 +986,54 @@ fn acquire(
     surface: Option<&wgpu::Surface<'static>>,
     options: RenderOptions,
 ) -> Result<(wgpu::Adapter, wgpu::Device, wgpu::Queue), RenderError> {
-    let adapter = if options.software_only {
-        request_fallback_adapter(instance, surface).ok_or(RenderError::NoGpuAdapter)?
-    } else {
-        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: surface,
-            force_fallback_adapter: false,
-            apply_limit_buckets: false,
-        }))
-        .ok()
-        .or_else(|| request_fallback_adapter(instance, surface))
-        .ok_or(RenderError::NoGpuAdapter)?
-    };
+    let adapter = select_adapter(instance, surface, options).ok_or(RenderError::NoGpuAdapter)?;
+    let (device, queue) = open_device(&adapter)?;
+    Ok((adapter, device, queue))
+}
 
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+/// The offscreen adapter of the acquisition policy, chosen once per process.
+///
+/// Creating the instance and enumerating its adapters costs about 2 s on a Windows workstation
+/// (the Vulkan loader and driver start-up), against about 0.1 s for a device. A process that opens
+/// several offscreen renderers, as the GPU integration tests do, pays that once: the adapter keeps
+/// its instance alive, and each renderer still opens a device of its own. A process that found
+/// no adapter keeps finding none.
+fn offscreen_adapter(options: RenderOptions) -> Result<wgpu::Adapter, RenderError> {
+    static PREFERRED: OnceLock<Option<wgpu::Adapter>> = OnceLock::new();
+    static SOFTWARE: OnceLock<Option<wgpu::Adapter>> = OnceLock::new();
+    let chosen = if options.software_only {
+        &SOFTWARE
+    } else {
+        &PREFERRED
+    };
+    chosen
+        .get_or_init(|| select_adapter(&create_instance(), None, options))
+        .clone()
+        .ok_or(RenderError::NoGpuAdapter)
+}
+
+/// The adapter step of the acquisition policy: high-performance first, then the fallback.
+fn select_adapter(
+    instance: &wgpu::Instance,
+    surface: Option<&wgpu::Surface<'static>>,
+    options: RenderOptions,
+) -> Option<wgpu::Adapter> {
+    if options.software_only {
+        return request_fallback_adapter(instance, surface);
+    }
+    pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        compatible_surface: surface,
+        force_fallback_adapter: false,
+        apply_limit_buckets: false,
+    }))
+    .ok()
+    .or_else(|| request_fallback_adapter(instance, surface))
+}
+
+/// The device step of the acquisition policy: downlevel defaults raised to the adapter's limits.
+fn open_device(adapter: &wgpu::Adapter) -> Result<(wgpu::Device, wgpu::Queue), RenderError> {
+    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("stunt_renderer_device"),
         required_features: wgpu::Features::empty(),
         required_limits: wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()),
@@ -1009,8 +1041,7 @@ fn acquire(
         experimental_features: wgpu::ExperimentalFeatures::disabled(),
         trace: wgpu::Trace::Off,
     }))
-    .map_err(|error| RenderError::DeviceRequest(error.to_string()))?;
-    Ok((adapter, device, queue))
+    .map_err(|error| RenderError::DeviceRequest(error.to_string()))
 }
 
 /// The low-power fallback attempt of the acquisition policy.

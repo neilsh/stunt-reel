@@ -92,6 +92,10 @@ pub enum ScnStopReason {
     Budget,
     /// Subtrees nested deeper than `SCN_MAX_DEPTH`.
     Depth,
+    /// A node the walk could not follow: a pointer outside the file, operands cut off by the
+    /// end of the file, an unknown opcode, or a position that overflows. The chain ends there
+    /// and the walk goes on with later siblings.
+    Malformed,
 }
 
 impl std::fmt::Display for ScnStopReason {
@@ -100,16 +104,18 @@ impl std::fmt::Display for ScnStopReason {
             Self::Cycle => f.write_str("pointer cycle"),
             Self::Budget => f.write_str("node budget"),
             Self::Depth => f.write_str("nesting too deep"),
+            Self::Malformed => f.write_str("malformed node"),
         }
     }
 }
 
 /// Where and why a `SCENERY.scn` walk stopped early, modelled on the shape decode record's
 /// `SodStop`. A stop that ends the walk (cycle, budget) is the one reported; otherwise the
-/// first skipped subtree (depth) is.
+/// first skipped subtree or malformed node (depth, malformed) is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScnStop {
-    /// Byte offset in `SCENERY.scn` of the node whose visit was refused.
+    /// Byte offset in `SCENERY.scn` of the node the stop is charged to: the one whose visit was
+    /// refused, or, for [`ScnStopReason::Malformed`], the one holding the bad operand or pointer.
     pub offset: usize,
     /// That node's opcode word.
     pub opcode: i32,
@@ -415,8 +421,8 @@ pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
 
 /// Traverses `SCENERY.scn` hierarchical BSP tree to collect prop placements.
 ///
-/// Returns why the walk stopped early (a pointer cycle, the node budget, or nesting past
-/// `SCN_MAX_DEPTH`), or `None` when it ran to the end of the tree.
+/// Returns why the walk stopped early (a pointer cycle, the node budget, nesting past
+/// `SCN_MAX_DEPTH`, or a malformed node), or `None` when it ran to the end of the tree.
 #[expect(
     clippy::too_many_arguments,
     reason = "the traversal threads its whole state explicitly"
@@ -511,6 +517,8 @@ fn walk_chain(
 ) {
     // A recursion counter, bounded by the guard in `walk_scn`, so it never clamps.
     let deeper = depth.saturating_add(1);
+    // The last node visited, which holds the `next` pointer if the loop ends on a bad one.
+    let mut last = ni;
     while ni != 0
         && let Some(&op) = words.get(ni)
     {
@@ -518,10 +526,12 @@ fn walk_chain(
             return;
         }
         entered.push(ni);
+        last = ni;
         match op {
             0 => {
                 // SP_POS: x, y, z, next
                 let Some([x, y, z, next]) = scn_operands(words, ni) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                     break;
                 };
                 let (Some(nx), Some(ny), Some(nz)) = (
@@ -529,6 +539,7 @@ fn walk_chain(
                     cy.checked_add(scn_i16(y)),
                     cz.checked_add(scn_i16(z)),
                 ) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                     break;
                 };
                 (cx, cy, cz) = (nx, ny, nz);
@@ -537,10 +548,12 @@ fn walk_chain(
             22 => {
                 // SP_POSXZ: x, z, next
                 let Some([x, z, next]) = scn_operands(words, ni) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                     break;
                 };
                 let (Some(nx), Some(nz)) = (cx.checked_add(scn_i16(x)), cz.checked_add(scn_i16(z)))
                 else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                     break;
                 };
                 (cx, cz) = (nx, nz);
@@ -551,6 +564,7 @@ fn walk_chain(
                 // is near and otherwise draws `obj` as a stand-in for the whole subtree
                 // (image `0x2121`, research/playone-exe/lod.md section 1).
                 let Some([obj, ext, splitdist, next]) = scn_operands(words, ni) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                     break;
                 };
                 let ext = i32::from(scn_u16(ext));
@@ -568,8 +582,10 @@ fn walk_chain(
             4 | 6 | 8 | 16 | 18 => {
                 // SP_2NODE, SP_XPLANE, SP_ZPLANE, SP_HSLOPE, SP_VSLOPE
                 let Some([ptr, next]) = scn_operands(words, ni) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                     break;
                 };
+                note_dangling(walk, words, ni, scn_pointer(ptr));
                 walk_scn(
                     walk,
                     words,
@@ -591,14 +607,18 @@ fn walk_chain(
                     if available_models.contains(&obj) {
                         instances.push((obj, [-(cx as f32), -(cy as f32), cz as f32]));
                     }
+                } else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                 }
                 break;
             }
             12 => {
                 // SP_GROUND
                 let Some([_, _, _, _, _, ptr, next]) = scn_operands(words, ni) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                     break;
                 };
+                note_dangling(walk, words, ni, scn_pointer(ptr));
                 walk_scn(
                     walk,
                     words,
@@ -616,6 +636,7 @@ fn walk_chain(
             14 => {
                 // SP_GLEAF
                 let Some([next]) = scn_operands(words, ni) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                     break;
                 };
                 ni = scn_pointer(next);
@@ -623,11 +644,13 @@ fn walk_chain(
             20 => {
                 // SP_LIST
                 let Some(mut curr) = ni.checked_add(1) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                     break;
                 };
                 while let Some(&child) = words.get(curr)
                     && child != 0
                 {
+                    note_dangling(walk, words, ni, scn_pointer(child));
                     walk_scn(
                         walk,
                         words,
@@ -649,12 +672,27 @@ fn walk_chain(
                     curr = next;
                 }
                 let Some(after) = curr.checked_add(1) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                     break;
                 };
                 ni = after;
             }
-            _ => break,
+            _ => {
+                walk.note(words, ni, ScnStopReason::Malformed);
+                break;
+            }
         }
+    }
+    // A `next` pointer that left the file ended the loop; a null one is the normal end.
+    note_dangling(walk, words, last, ni);
+}
+
+/// Records [`ScnStopReason::Malformed`] against the node at `holder` when `target` is a
+/// non-null pointer outside the file. A null pointer is the normal end of a chain and records
+/// nothing.
+fn note_dangling(walk: &mut ScnWalk, words: &[i32], holder: usize, target: usize) {
+    if target != 0 && words.get(target).is_none() {
+        walk.note(words, holder, ScnStopReason::Malformed);
     }
 }
 
@@ -1270,6 +1308,116 @@ mod tests {
             );
             assert!(walk.stop.is_none(), "pointer {ni} is not a node");
         }
+    }
+
+    /// A list whose first child is the node `bad` placed at word `MALFORMED_AT`, and whose
+    /// second child is a leaf of shape 0x0105 at word 7.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "a fixture builder over small constants"
+    )]
+    fn list_with_bad_child(bad: &[i32]) -> Vec<i32> {
+        let ptr = |word: usize| i32::try_from(word * 2).unwrap();
+        let mut words = vec![0i32; MALFORMED_AT];
+        words[1] = 20;
+        words[2] = ptr(MALFORMED_AT);
+        words[3] = ptr(7);
+        // words[4] ends the list; its continuation at word 5 is a chain that ends at once.
+        words[5] = 14;
+        words[7] = 10;
+        words[8] = 0x0105;
+        words.extend_from_slice(bad);
+        words
+    }
+
+    /// Word index where [`list_with_bad_child`] puts the bad node.
+    const MALFORMED_AT: usize = 10;
+
+    /// Walks `words` from word 1 starting at `cx`, returning the stop and the shapes placed.
+    fn walk_from(words: &[i32], cx: i32) -> (Option<ScnStop>, Vec<u16>) {
+        let mut instances = Vec::new();
+        let stop = traverse_scn(
+            words,
+            1,
+            cx,
+            0,
+            0,
+            &mut instances,
+            &HashSet::from([0x0105]),
+            &|_, _, _| true,
+            0,
+        );
+        (
+            stop,
+            instances.into_iter().map(|(shape, _)| shape).collect(),
+        )
+    }
+
+    /// Asserts a malformed node at `MALFORMED_AT` with opcode `opcode`, and that the leaf
+    /// after it was still placed.
+    fn assert_malformed(bad: &[i32], cx: i32, opcode: i32) {
+        let (stop, placed) = walk_from(&list_with_bad_child(bad), cx);
+        let stop = stop.expect("a malformed node is reported");
+        assert_eq!(
+            (stop.reason, stop.offset, stop.opcode),
+            (ScnStopReason::Malformed, MALFORMED_AT * 4, opcode)
+        );
+        assert!(placed.contains(&0x0105), "the later sibling is placed");
+    }
+
+    #[test]
+    fn test_traverse_scn_reports_a_node_truncated_before_its_operands() {
+        // SP_1NODE needs four operands and the file ends after its opcode.
+        assert_malformed(&[2], 0, 2);
+        // SP_LEAF needs one.
+        assert_malformed(&[10], 0, 10);
+    }
+
+    #[test]
+    fn test_traverse_scn_reports_an_unknown_opcode() {
+        assert_malformed(&[99, 0], 0, 99);
+    }
+
+    #[test]
+    fn test_traverse_scn_reports_a_position_delta_that_overflows() {
+        // SP_POS adding 1 to an x already at the limit.
+        assert_malformed(&[0, 1, 0, 0, 0], i32::MAX, 0);
+    }
+
+    #[test]
+    fn test_traverse_scn_reports_a_next_pointer_outside_the_file() {
+        // SP_GLEAF whose next lies far past the end.
+        assert_malformed(&[14, 20_000], 0, 14);
+    }
+
+    #[test]
+    fn test_traverse_scn_reports_a_list_continuation_outside_the_file() {
+        // SP_LIST whose child list (the leaf at word 7) ends at the file's last word, so the
+        // node after the terminator is past the end. The leaf is placed before the stop.
+        assert_malformed(&[20, 14, 0], 0, 20);
+    }
+
+    #[test]
+    fn test_traverse_scn_reports_a_child_pointer_outside_the_file() {
+        // SP_2NODE whose child lies far past the end; its next is null.
+        assert_malformed(&[4, 20_000, 0], 0, 4);
+    }
+
+    #[test]
+    fn test_traverse_scn_null_next_pointer_is_not_a_stop() {
+        let (stop, placed) = walk_from(&list_with_bad_child(&[14, 0]), 0);
+        assert!(stop.is_none(), "a null next is the normal end");
+        assert!(placed.contains(&0x0105));
+    }
+
+    #[test]
+    fn test_traverse_scn_malformed_stop_does_not_outrank_a_halt() {
+        let mut words = list_with_bad_child(&[99, 0]);
+        // Make the list's continuation a cycle so a halting stop follows the malformed node.
+        words[5] = 20;
+        words[6] = 10;
+        let (stop, _) = walk_from(&words, 0);
+        assert_eq!(stop.expect("a stop").reason, ScnStopReason::Cycle);
     }
 
     #[test]
