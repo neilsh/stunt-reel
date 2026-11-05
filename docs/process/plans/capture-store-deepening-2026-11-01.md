@@ -53,6 +53,10 @@ more expensive:
    `references.capture_digest` has had no cache since ADR 0028, so there was nothing to drop, and a
    test holds that a swap leaves no stale digest. `play` still takes its engine from the film's
    tree (or `--game-root`) and keeps its row check; choosing the row's pair for it is left open.
+   Not implemented: ADR 0029's "if the unpatched `PLAYONE` then fails on a patch3 archive, both move"
+   (the fallback moves one executable). The fallback retries only a real stall (the instruction
+   budget, a film clock that never advances, a dead guest, MAKEONE writing no archive), so a stalling
+   film now runs twice within the one stage timeout of the batch survey.
 4. **Film parity operation** ([#141](https://github.com/neilsh/stunt-reel/issues/141), implemented in `parity_pipeline`, which the loop already imported). One module renders a film over a tick range, checks the render and
    scores it against a capture: the reference capture or the film's current one. It owns the
    `stuntreel` command lines, the SIDATA path and the `report.json` location. Run it through a

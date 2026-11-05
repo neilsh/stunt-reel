@@ -7,11 +7,13 @@ root (``staged_repo``), so no emulator starts and the corpus is never read.
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import hashlib
 import json
 import re
 import sys
+import tomllib
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -23,7 +25,7 @@ from pytest_helpers import build_avi
 from stunt_reel import capture_run, capture_store, dataroot, parity_layout, references
 from stunt_reel.all_archive import ArchiveMeta, publish_archive
 from stunt_reel.tac import automation, makeone, plan, playone
-from stunt_reel.tac.emulator import EmulatorUnavailable
+from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout
 from tac_mock import FakeFilm, StagedRepo, load_script, makeone_launcher
 
 if TYPE_CHECKING:
@@ -216,23 +218,28 @@ def test_a_failed_run_keeps_the_old_capture_and_leaves_nothing_beside_it(
     assert [p.name for p in store.parent.iterdir() if p.suffix != ".lock"] == [store.name]
 
 
-def test_replacing_a_capture_leaves_no_stale_digest(
+def test_a_replaced_capture_fails_the_pin_of_the_one_it_replaced(
     staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A process that digested the old capture must not validate the old pin after the swap."""
+    """A pin of the old digest must refuse the new capture, in the process that digested the old."""
     store = _store("frames")
     assert _run(FRAMES, staged_repo, monkeypatch, Emulator(FRAMES)) == 0
-    old = references.capture_digest(store)
+    pinned = references.capture_digest(store)
+    root = dataroot.data_root()
+    pointers = root / parity_layout.REFERENCES_FILE
+    pointers.parent.mkdir(parents=True, exist_ok=True)
+    pointers.write_text(f'[ctry]\nfilm = "vault-ctry"\nsha256 = "{pinned}"\n', encoding="utf-8")
+    with references.open_reference(root, "ctry") as held:
+        assert references.capture_digest(held) == pinned
 
-    assert (
-        _run(
-            FRAMES, staged_repo, monkeypatch, Emulator(FRAMES, FakeFilm(moving_frames=300).handler)
-        )
-        == 0
-    )
+    replacement = Emulator(FRAMES, FakeFilm(moving_frames=300).handler)
+    assert _run(FRAMES, staged_repo, monkeypatch, replacement) == 0
 
-    assert references.capture_digest(store) != old
-    assert references.capture_digest(store) == references.capture_digest(store)
+    with (
+        pytest.raises(references.ReferenceCaptureError, match="was replaced"),
+        references.open_reference(root, "ctry"),
+    ):
+        pass
 
 
 @BOTH
@@ -459,22 +466,30 @@ def test_game_root_overrides_the_chosen_build(
 
 
 @BOTH
+@pytest.mark.parametrize(
+    ("error", "said"),
+    [
+        (automation.ScriptError("instruction limit exceeded"), "instruction limit exceeded"),
+        (GuestTimeout("dosbox-automation exited at launch 3 times"), "exited at launch"),
+    ],
+)
 def test_a_stall_on_patch3_retries_on_unpatched_and_suggests_the_row(
     script: str,
+    error: BaseException,
+    said: str,
     staged_repo: StagedRepo,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     emulator = Emulator(script)
-    emulator.fail_first = [automation.ScriptError("instruction limit exceeded")]
+    emulator.fail_first = [error]
 
     assert _run(script, staged_repo, monkeypatch, emulator) == 0
 
     assert emulator.builds() == [b"patch3 PLAYONE.EXE", b"unpatched PLAYONE.EXE"]
     captured = capsys.readouterr()
-    assert "patch3 stalled (instruction limit exceeded); retrying on the unpatched build" in (
-        captured.err
-    )
+    assert f"patch3 stalled ({error}); retrying on the unpatched build" in captured.err
+    assert said in captured.err
     assert '[vault-ctry]\nfilm = "vault-ctry"\nplayone = "unpatched"\nreason = "' in captured.out
     assert "makeone" not in captured.out.split("[vault-ctry]")[1]
     assert capture_store.current(_store(_kind(script))) is not None
@@ -486,7 +501,10 @@ def test_a_stall_on_both_builds_fails_and_stores_nothing(
     script: str, staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     emulator = Emulator(script)
-    emulator.fail_first = [RuntimeError("stalled"), RuntimeError("stalled again")]
+    emulator.fail_first = [
+        automation.ScriptError("instruction limit exceeded"),
+        automation.ScriptError("instruction limit exceeded"),
+    ]
 
     assert _run(script, staged_repo, monkeypatch, emulator) == 1
 
@@ -497,13 +515,13 @@ def test_a_stall_on_both_builds_fails_and_stores_nothing(
 
 @pytest.mark.parametrize(
     "why",
-    ["row", "game-root", "out", "drift", "no-emulator"],
+    ["row", "game-root", "out", "drift", "no-emulator", "plain-runtime", "disk", "broken-script"],
 )
 def test_the_fallback_is_only_for_a_stall_of_a_default_run_of_a_film_with_no_row(
     why: str, staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch, rows: Path, tmp_path: Path
 ) -> None:
     emulator = Emulator(FRAMES)
-    emulator.fail_first = [RuntimeError("stalled")]
+    emulator.fail_first = [automation.ScriptError("instruction limit exceeded")]
     extra: list[str] = []
     out: Path | None = None
     if why == "row":
@@ -516,6 +534,12 @@ def test_the_fallback_is_only_for_a_stall_of_a_default_run_of_a_film_with_no_row
         out = tmp_path / "out"
     elif why == "drift":
         emulator.fail_first = [plan.PlanDivergence("drifted")]
+    elif why == "plain-runtime":
+        emulator.fail_first = [RuntimeError("boom")]
+    elif why == "disk":
+        emulator.fail_first = [OSError("no space left")]
+    elif why == "broken-script":
+        emulator.fail_first = [automation.ScriptError("attempt to index a nil value")]
     else:
         emulator.fail_first = [EmulatorUnavailable("not installed")]
 
@@ -585,6 +609,50 @@ def test_a_frame_run_that_captures_no_frames_fails_and_replaces_nothing(
 
     assert capsys.readouterr().err.startswith("[capture] ")
     assert not _store("frames").exists()
+
+
+def test_a_film_whose_clock_never_runs_stalls_on_both_builds(
+    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    emulator = Emulator(FRAMES, FakeFilm(tick_step=0).handler)
+
+    assert _run(FRAMES, staged_repo, monkeypatch, emulator) == 1
+
+    assert emulator.builds() == [b"patch3 PLAYONE.EXE", b"unpatched PLAYONE.EXE"]
+    assert not _store("frames").exists()
+    assert _stage_is_empty()
+
+
+_REAL_LAYOUT_FOR = playone.layout_for  # before staged_repo replaces it
+
+
+def test_a_capture_after_the_fallback_records_the_build_that_ran(
+    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Provenance names the unpatched engine the retry staged, not the patch3 one that stalled."""
+    layouts = tuple(
+        dataclasses.replace(
+            playone.UNPATCHED,
+            name=build,
+            sha256=hashlib.sha256(f"{build} PLAYONE.EXE".encode()).hexdigest(),
+        )
+        for build in ("patch3", "unpatched")
+    )
+    monkeypatch.setattr(playone, "layout_for", _REAL_LAYOUT_FOR)
+    monkeypatch.setattr(playone, "LAYOUTS", layouts)
+    emulator = Emulator(FRAMES)
+    emulator.fail_first = [automation.ScriptError("instruction limit exceeded")]
+
+    assert _run(FRAMES, staged_repo, monkeypatch, emulator) == 0
+
+    meta = json.loads((_store("frames") / "meta.json").read_text(encoding="utf-8"))
+    assert (meta["playone_build"], meta["playone_sha256"]) == (layouts[1].name, layouts[1].sha256)
+
+
+def test_the_suggested_row_is_valid_toml_whatever_the_reason_says() -> None:
+    job = capture_run.Job(tag="t", task="t", kind="frames", film=Path("x"))
+    row = capture_run._suggested_row("vault-ctry", job, 'C:\\data\\"quoted"')
+    assert tomllib.loads(row)["vault-ctry"]["playone"] == "unpatched"
 
 
 # ==============================================================================

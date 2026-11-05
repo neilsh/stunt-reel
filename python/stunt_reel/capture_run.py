@@ -27,6 +27,7 @@ Tests drive a whole run through the ``launch`` seam, which returns a
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sys
 from collections.abc import Callable
@@ -40,9 +41,8 @@ from stunt_reel import capture_store, dataroot, game_builds, parity_layout, refe
 from stunt_reel.all_archive import ArchiveError, resolve_all
 from stunt_reel.hashing import file_sha256
 from stunt_reel.parity_artifacts import CAPTURE_FRAMES_DIR, FilmId
-from stunt_reel.tac import automation, playone, staging
-from stunt_reel.tac import plan as tac_plan
-from stunt_reel.tac.emulator import EmulatorUnavailable
+from stunt_reel.tac import automation, makeone, playone, staging, video
+from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -58,6 +58,7 @@ __all__ = [
     "Launch",
     "Plan",
     "Refused",
+    "Stalled",
     "build_root",
     "execute",
     "is_taken",
@@ -83,6 +84,10 @@ class Refused(RuntimeError):  # noqa: N818 - the agreed interface name
 
 class Failed(RuntimeError):  # noqa: N818 - the agreed interface name
     """The run started and produced no usable capture (exit 1); the message says why."""
+
+
+class Stalled(Failed):
+    """The film ran but its clock never advanced, so no frame was captured (a stalled build)."""
 
 
 @dataclass(frozen=True)
@@ -257,13 +262,14 @@ def _film_id(film: Path, archive: Path | None) -> FilmId:
 
 
 def build_root(build: str) -> Path:
-    return game_builds.build_tree(
-        dataroot.data_root() / game_builds.BUILDS_DIR,
-        build,  # type: ignore[arg-type]
-    )
+    """The game tree of build *build* under the data root's ``builds`` directory."""
+    for name in game_builds.BUILD_NAMES:
+        if name == build:
+            return game_builds.build_tree(dataroot.data_root() / game_builds.BUILDS_DIR, name)
+    raise Refused(f"{build!r} is none of {', '.join(game_builds.BUILD_NAMES)}")
 
 
-def _builds_to_try(job: Job, slug: str) -> list[str]:
+def _builds_to_try(job: Job, slug: str) -> list[game_builds.BuildName]:
     """The builds to try, in order, for the executable *job* runs.
 
     The film's row names one build. With no row the default is patch3, and, only when the run
@@ -277,18 +283,24 @@ def _builds_to_try(job: Job, slug: str) -> list[str]:
     return ["patch3", "unpatched"] if default_run else ["patch3"]
 
 
-# Stalls the fallback may retry. A dump pass that drifts from its trace is boot-to-boot drift
-# (BIGMAN), not a build problem, and a missing emulator no build can fix (ADR 0029).
 def _is_stall(exc: BaseException) -> bool:
-    return isinstance(exc, _RUN_ERRORS) and not isinstance(
-        exc, (tac_plan.PlanDivergence, EmulatorUnavailable, Refused, *_REFUSALS)
-    )
+    """True for the failures ADR 0029 lets the fallback retry on the unpatched build.
+
+    The trace budget running out (``instruction limit exceeded``), a film clock that never
+    advances (:class:`Stalled`, :class:`~stunt_reel.tac.video.FilmClockStuck`) and a guest that
+    died or hung (:class:`~stunt_reel.tac.emulator.GuestTimeout`, MAKEONE writing no archive).
+    Nothing else: a dump pass that drifts from its trace is boot-to-boot drift (BIGMAN), a
+    missing emulator no build can fix, and a corrupt archive or a full disk is not the build's.
+    """
+    if isinstance(exc, automation.ScriptError):
+        return "instruction limit" in str(exc).lower()
+    return isinstance(exc, (Stalled, GuestTimeout, makeone.MakeOneError, video.FilmClockStuck))
 
 
 def _suggested_row(slug: str, job: Job, why: str) -> str:
     field = "makeone" if job.kind == "archive" else "playone"
-    reason = f"patch3 stalled ({why[:80]}); the unpatched build ran it"
-    return f'[{slug}]\nfilm = "{slug}"\n{field} = "unpatched"\nreason = "{reason}"\n'
+    reason = json.dumps(f"patch3 stalled ({why[:80]}); the unpatched build ran it")
+    return f'[{slug}]\nfilm = "{slug}"\n{field} = "unpatched"\nreason = {reason}\n'
 
 
 # ==============================================================================
@@ -366,7 +378,9 @@ def execute(job: Job, plan_: Plan, *, launch: Launch = automation.launched) -> i
     raise AssertionError("builds_to_try is never empty")  # pragma: no cover
 
 
-def _attempt(base: Attempt, film: Path, build: str, plan_: Plan, target: Path) -> str:
+def _attempt(
+    base: Attempt, film: Path, build: game_builds.BuildName, plan_: Plan, target: Path
+) -> str:
     """One try on *build*: stage, run the plan into a fresh directory, swap it in."""
     job = base.job
     explicit = job.out is not None
@@ -397,7 +411,7 @@ def _taken(kind: Kind, out: Path) -> bool:
     return out.is_dir() and any(out.iterdir())
 
 
-def _run_play(attempt: Attempt, film: Path, build: str, plan_: Plan) -> str:
+def _run_play(attempt: Attempt, film: Path, build: game_builds.BuildName, plan_: Plan) -> str:
     """Stage the film on the engine of *build* (or ``--game-root``), check it, run the plan."""
     job = attempt.job
     if attempt.archive is None:
@@ -419,7 +433,7 @@ def _run_play(attempt: Attempt, film: Path, build: str, plan_: Plan) -> str:
         return plan_(replace(attempt, staged=staged, layout=layout))
 
 
-def _run_archive(attempt: Attempt, build: str, plan_: Plan) -> str:
+def _run_archive(attempt: Attempt, build: game_builds.BuildName, plan_: Plan) -> str:
     """Choose MAKEONE's game tree, check its build against the row, run the plan."""
     job = attempt.job
     game_root = _resolve(job.game_root) if job.game_root is not None else build_root(build)

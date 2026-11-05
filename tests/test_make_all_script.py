@@ -435,6 +435,26 @@ def test_manifest_only_extracts_from_the_stored_archive_without_makeone(
     assert out == dataroot.REPO_ROOT / parity_layout.manifest_path("vault-ctry")
 
 
+def test_manifest_only_for_an_archive_of_an_unknown_makeone_asks_for_a_game_root(
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_repo: StagedRepo,
+    game_root: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The synthetic MAKEONE matches no known build, so no tree can be guessed for the manifest."""
+    _publish(script, monkeypatch, staged_repo.film, game_root)
+    extract = FakeExtract()
+    monkeypatch.setattr(
+        sys, "argv", ["make_all.py", "--film", str(staged_repo.film), "--manifest-only"]
+    )
+
+    assert script.run(script.parse_args(), None, extract) == 2
+
+    assert "pass --game-root" in capsys.readouterr().err
+    assert extract.calls == []
+
+
 def test_manifest_only_without_a_stored_archive_exits_2(
     script: Any,
     monkeypatch: pytest.MonkeyPatch,

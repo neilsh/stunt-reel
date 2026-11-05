@@ -115,7 +115,7 @@ def plan_frames(args: argparse.Namespace) -> capture_run.Plan:
             layout=attempt.engine,
         )
         if not meta["frames"]:
-            raise capture_run.Failed("no frames captured")
+            raise capture_run.Stalled("no frames captured")
         return f"captured {len(meta['frames'])} frames into {attempt.out}"
 
     return plan

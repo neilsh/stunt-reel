@@ -168,7 +168,14 @@ def manifest_only(film: Path, game_root: Path | None, slug: str, extract: Extrac
     archive = stored / parity_layout.all_name(film.name)
     if game_root is None:
         # The tree of the build whose MAKEONE wrote the archive.
-        build = references.MAKEONE_BUILDS.get(meta.makeone_sha256, "patch3")
+        build = references.MAKEONE_BUILDS.get(meta.makeone_sha256)
+        if build is None:
+            print(
+                "[make-all] the stored archive's MAKEONE build is unknown; pass --game-root "
+                "with the tree that wrote it",
+                file=sys.stderr,
+            )
+            return 2
         game_root = capture_run.build_root(build)
     return (
         0
