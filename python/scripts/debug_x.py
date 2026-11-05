@@ -2,9 +2,10 @@
 
 `mise run debug-x -- --plan tools/dosbox-x/plans/smoke.toml [--film F] [--build patched]`
 boots the film, arms the plan's probes, writes
-`<data root>/debug/<film stem>/<plan>-<build>-<UTC stamp>.jsonl`, prints a summary of at most
-40 lines and exits: 0 when the run ended normally (spent, stop_tick or timeout), 1 when the
-emulator or link failed, 2 when the plan or a probe site was refused. Plan offsets are unpatched
+`<data root>/debug/<film stem>/<plan>-<build>-<UTC stamp>[-<n>].jsonl` (`-<n>` only when a run
+in the same second took the name), prints a summary of at most 40 lines and exits: 0 when the
+run ended normally (spent, stop_tick or timeout), 1 when a build's `PLAYONE.EXE`, the emulator
+or the link failed, 2 when the plan, the patched mapping or a probe site was refused. Plan offsets are unpatched
 image and DS offsets; `--build patched` maps them through #78's pairing
 (`docs/process/plans/debugger-breakpoints-2026-11-04.md`).
 """
@@ -81,6 +82,23 @@ def summary(records: Iterable[Mapping[str, Any]]) -> list[str]:
     return lines[:SUMMARY_LINES]
 
 
+def reserve_output(directory: Path, stem: str) -> Path:
+    """Create and return `<stem>.jsonl` in *directory*, or `<stem>-<n>.jsonl` if it exists.
+
+    Creation is exclusive, so two runs started in the same second never share a file.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    n = 1
+    while True:
+        path = directory / (f"{stem}.jsonl" if n == 1 else f"{stem}-{n}.jsonl")
+        try:
+            path.open("x", encoding="utf-8").close()
+        except FileExistsError:
+            n += 1
+            continue
+        return path
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the plan; see the module docstring for the exit codes."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
@@ -92,15 +110,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"debug-x: {exc}", file=sys.stderr)
         return 2
     builds = dataroot.data_root() / game_builds.BUILDS_DIR
-    image = load_image(builds / args.build / "PLAYONE.EXE")
+    try:
+        image = load_image(builds / args.build / "PLAYONE.EXE")
+        unpatched = (
+            load_image(builds / "unpatched" / "PLAYONE.EXE") if args.build == "patched" else None
+        )
+    except (OSError, ValueError) as exc:  # no build there, or not LZEXE
+        print(f"debug-x: {exc}", file=sys.stderr)
+        return 1
     layout = UNPATCHED if args.build == "unpatched" else PATCH3
     notes: dict[str, str] = {}
-    if args.build == "patched":
+    if unpatched is not None:
         try:
-            plan, notes = for_patched(
-                plan, pair_images(load_image(builds / "unpatched" / "PLAYONE.EXE"), image)
-            )
-        except PlanError as exc:
+            plan, notes = for_patched(plan, pair_images(unpatched, image))
+        except (PlanError, ValueError) as exc:  # unmappable probe, or unpairable builds
             print(f"debug-x: {exc}", file=sys.stderr)
             return 2
     vm = vm_paragraph(image)
@@ -113,8 +136,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f'debug-x: probe "{probe.name}": {exc}', file=sys.stderr)
                 return 2
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    path = args.out / args.film.stem / f"{plan.name}-{args.build}-{stamp}.jsonl"
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path = reserve_output(args.out / args.film.stem, f"{plan.name}-{args.build}-{stamp}")
     header = {
         "build": args.build,
         "film": args.film.name,
