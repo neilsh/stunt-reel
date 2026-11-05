@@ -37,8 +37,6 @@ if TYPE_CHECKING:
 
 DEFAULT_FILM: Path = Path("corpus/stisldem/VAULT/CTRY.FLM")
 DEFAULT_TICKS: tuple[int, ...] = (10, 150, 273, 448, 700, 900, 1100)
-#: DS offset of the far pointer to the display-list work segment (written by the VM setup).
-WORK_SEGMENT_POINTER: int = 0x0542
 #: Work-segment offsets: light vector, sun-billboard vector, shade array (terrain-shade.md).
 LIGHT_OFFSET: int = 0x8072
 SUN_BILLBOARD_OFFSET: int = 0x8078
@@ -127,7 +125,7 @@ def probe(
     """Run the plan and print and dump a sample at each requested film clock."""
     out.mkdir(parents=True, exist_ok=True)
     first = luagen.boot_end(len(keys))
-    pointer = (layout.ds, WORK_SEGMENT_POINTER)
+    pointer = (layout.ds, layout.work_segment_pointer)
     planned: list[int] = []
 
     def ranges(trace: plan.Trace, frames: Sequence[int]) -> list[luagen.MemRange]:
