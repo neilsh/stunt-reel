@@ -12,13 +12,12 @@ Usage: mise run scene-ground -- build/re/playone.img corpus/siarchive/Developer/
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from collections import Counter
 from pathlib import Path
 
 from stunt_reel import scene_tree
-from stunt_reel.dataroot import REPO_ROOT, ensure_links_or_report
+from stunt_reel.dataroot import read_data_file_or_report
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -54,34 +53,16 @@ def report(walked: scene_tree.TreeWalk, result: scene_tree.Comparison) -> str:
     return "\n".join(lines)
 
 
-def _needs_corpus(*paths: Path) -> bool:
-    """True when any path lies under the repository's ``corpus/`` link.
-
-    The link points into the data root, outside the checkout, so a path spelled through it is
-    compared before resolving, and a resolved path is compared with the link's target.
-    """
-    link = (REPO_ROOT / "corpus").absolute()
-    target = link.resolve()
-
-    def under(path: Path) -> bool:
-        """True when ``path``, as spelled or resolved, lies under the link."""
-        spelled = Path(os.path.normpath(path.absolute()))
-        resolved = path.resolve()
-        return link in (spelled, *spelled.parents) or target in (resolved, *resolved.parents)
-
-    return any(under(p) for p in paths)
-
-
 def run(args: argparse.Namespace) -> int:
     """Print the report; 0 on success."""
-    if _needs_corpus(args.image, args.map_bin) and not ensure_links_or_report("scene_ground"):
+    image = read_data_file_or_report("scene_ground", args.image)
+    map_bin = read_data_file_or_report("scene_ground", args.map_bin)
+    if image is None or map_bin is None:
         return 2
     try:
-        image = args.image.read_bytes()
-        map_bin = args.map_bin.read_bytes()
         scene_tree.check_map_bin(map_bin)
         walked = scene_tree.walk(scene_tree.tree_segment(image))
-    except (OSError, ValueError) as exc:
+    except ValueError as exc:
         print(f"[scene-ground] {exc}", file=sys.stderr)
         return 1
     if walked.unknown:

@@ -9,7 +9,6 @@ import pytest
 import scene_ground
 
 from stunt_reel import scene_tree
-from stunt_reel.dataroot import REPO_ROOT
 
 
 def _segment(words: dict[int, list[int]], size: int = 0x100) -> bytes:
@@ -122,14 +121,6 @@ def test_compare_pairs_same_colour_before_recolouring() -> None:
     assert result.map_only == []
 
 
-def test_needs_corpus_sees_a_path_through_the_link(tmp_path: Path) -> None:
-    """Paths through corpus/ need the links; other paths, and corpus/.., do not."""
-    corpus = REPO_ROOT / "corpus"
-    assert scene_ground._needs_corpus(corpus / "stisldem" / "MAP.BIN")
-    assert not scene_ground._needs_corpus(tmp_path / "MAP.BIN")
-    assert not scene_ground._needs_corpus(corpus / ".." / "build" / "playone.img")
-
-
 def test_check_map_bin_rejects_empty_and_truncated() -> None:
     """Empty, short or unterminated MAP.BIN data is refused."""
     whole = b"\0" * (scene_tree.MAP_RECORDS * scene_tree.MAP_RECORD + 2)
@@ -149,3 +140,4 @@ def test_cli_stops_on_unknown_nodes(tmp_path: Path, capsys: pytest.CaptureFixtur
     assert "unknown node type 7 at 0x0000" in capsys.readouterr().err
     map_path.write_bytes(b"")
     assert scene_ground.main([str(image), str(map_path)]) == 1
+    assert scene_ground.main([str(image), str(tmp_path / "missing.bin")]) == 2
