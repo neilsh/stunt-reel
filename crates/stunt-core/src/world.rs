@@ -1391,6 +1391,13 @@ mod tests {
     }
 
     #[test]
+    fn test_traverse_scn_reports_a_list_continuation_outside_the_file() {
+        // SP_LIST whose child list (the leaf at word 7) ends at the file's last word, so the
+        // node after the terminator is past the end. The leaf is placed before the stop.
+        assert_malformed(&[20, 14, 0], 0, 20);
+    }
+
+    #[test]
     fn test_traverse_scn_reports_a_child_pointer_outside_the_file() {
         // SP_2NODE whose child lies far past the end; its next is null.
         assert_malformed(&[4, 20_000, 0], 0, 4);
