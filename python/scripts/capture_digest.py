@@ -99,9 +99,9 @@ def report(
                 else f"# {field} = ?  (the capture does not record it; name unpatched or patch3)"
             )
         if "unpatched" in chosen.values():
-            lines.append(
-                f'reason = "{entry.get("reason", "why this film needs the unpatched build")}"'
-            )
+            reason = str(entry.get("reason", "why this film needs the unpatched build"))
+            # A JSON string is a valid TOML basic string, so quotes and backslashes survive.
+            lines.append(f"reason = {json.dumps(reason, ensure_ascii=False)}")
     return lines
 
 

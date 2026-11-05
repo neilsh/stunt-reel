@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -46,6 +47,7 @@ def test_prints_the_digest_and_the_entry_that_promotes_it(
     ]
     assert 'playone = "unpatched"' in block
     assert any(line.startswith("reason = ") for line in block)
+    assert tomllib.loads("\n".join(block))["ctry"]["reason"]
 
 
 def test_the_suggested_row_takes_the_builds_the_capture_records(tmp_path: Path) -> None:

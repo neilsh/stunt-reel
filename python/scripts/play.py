@@ -47,16 +47,18 @@ def run(args: argparse.Namespace) -> int:
         print(f"[play] {exc}", file=sys.stderr)
         return 1
     try:
-        # The film's row in references.toml names the builds it may play on (ADR 0029).
+        # The film's row in references.toml names the builds it may play on (ADR 0029); a
+        # film with no row is not checked, so its PLAYONE need not be a known build.
         slug = parity_layout.slug_for(film)
-        references.require_builds(
-            dataroot.REPO_ROOT,
-            slug,
-            playone=playone.layout_for(staged.mount / "PLAYONE.EXE").name,
-            makeone=references.archive_makeone_build(
-                dataroot.REPO_ROOT, slug, film.with_suffix(".ALL")
-            ),
-        )
+        if references.read_builds(dataroot.REPO_ROOT, slug) is not None:
+            references.require_builds(
+                dataroot.REPO_ROOT,
+                slug,
+                playone=playone.layout_for(staged.mount / "PLAYONE.EXE").name,
+                makeone=references.archive_makeone_build(
+                    dataroot.REPO_ROOT, slug, film.with_suffix(".ALL")
+                ),
+            )
     except (references.ReferenceCaptureError, playone.UnknownBuild, ValueError, OSError) as exc:
         staging.unstage(staged)
         print(f"[play] {exc}", file=sys.stderr)

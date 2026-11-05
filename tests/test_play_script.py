@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from stunt_reel import dataroot, parity_layout, references
-from stunt_reel.tac import automation
+from stunt_reel.tac import automation, playone
 
 if TYPE_CHECKING:
     from tac_mock import StagedRepo
@@ -128,6 +128,24 @@ def test_play_runs_a_film_with_no_row_on_any_build(
     module = _play()
     _Emulator.instances = []
     monkeypatch.setattr(automation, "DosboxAutomation", _Emulator)
+    assert rows.read_text(encoding="utf-8") == ""
+
+    assert module.run(module.parse_args(["--film", str(staged_repo.film)])) == 0
+    assert len(_Emulator.instances) == 1
+
+
+def test_play_runs_a_film_with_no_row_on_an_unknown_playone(
+    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch, rows: Path
+) -> None:
+    """A film with no row is unchecked, so a PLAYONE.EXE that matches no build still plays."""
+    module = _play()
+    _Emulator.instances = []
+    monkeypatch.setattr(automation, "DosboxAutomation", _Emulator)
+
+    def unknown(_exe: Path) -> playone.PlayoneLayout:
+        raise playone.UnknownBuild("no known build")
+
+    monkeypatch.setattr(playone, "layout_for", unknown)
     assert rows.read_text(encoding="utf-8") == ""
 
     assert module.run(module.parse_args(["--film", str(staged_repo.film)])) == 0
