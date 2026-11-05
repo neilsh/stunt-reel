@@ -2,23 +2,23 @@
 
 * **Binary**: `PLAYONE.EXE` (LZEXE 0.91), unpacked with [`unlzexe.py`](../../python/scripts/unlzexe.py) to the 200,524-byte load image (`build/re/playone.img`)
 * **Method**: Capstone 16-bit disassembly of the unpacked image, cross-checked against the notebook addresses in [`sod-vm.md`](sod-vm.md) (`image_offset = notebook_address + 0x6F30`)
-* **Scope**: the ground/terrain polygon path: where the base colour comes from, how a per-vertex shade is computed, and how the filler writes the framebuffer
-* **Anchors**: none new; where the ground records come from is in [`world-scene.md`](world-scene.md)
-* **Evidence tier**: `[Established]` for the instruction sequences, addresses and formulas below; `[Supported Inference]` for the light vector being the sun; `[Unknown]` for the caller that sets the light vector per shot (see [`world-scene.md`](world-scene.md))
+* **Scope**: the Gouraud polygon path of the display-list VM (`GVPOLY`, `GVPOLY16`): where the base colour comes from, how a per-vertex shade is computed, how the filler writes the framebuffer, and the light it uses
+* **Anchors**: none new; how the ground itself is drawn is in [`world-scene.md`](world-scene.md)
+* **Evidence tier**: `[Established]` for the instruction sequences, addresses and formulas below; `[Bounded Observation]` for the light's callers (section 4.2)
+
+**Correction, 2026-11-04.** The ground is not drawn by this path. `PLAYONE` draws each ground polygon flat at its `MAP.BIN` colour from a leaf of the scenery tree in its own image, and paints the airfield's scenery tiles (`SCENERY2.RES`, `SCENERY3.RES`) over it ([`world-scene.md`](world-scene.md) sections 2, 3). Sections 3 to 6 stand as the rule for `GVPOLY` objects; in the airfield shot only the hero aircraft uses it. The readings in sections 1, 2, 7 and 9 that a ground polygon is a Gouraud ramp, or that `MAP.BIN`'s colour is not the player's, are superseded. The 193/194/196 on patch 4, and their straight screen-space boundaries, are the edges and colours of the tiles drawn over it.
 
 ---
 
-## 1. The terrain is not flat-filled at its data colour
+## 1. A `GVPOLY` polygon is a ramp on the palette index
 
-PLAYONE draws each ground polygon as a **Gouraud ramp on the palette index itself**: 8.8 fixed point, 1/256-index resolution, high byte written per pixel. There is no per-pixel depth term and no depth buffer.
+PLAYONE draws each `GVPOLY` polygon as a **Gouraud ramp on the palette index itself**: 8.8 fixed point, 1/256-index resolution, high byte written per pixel. There is no per-pixel depth term and no depth buffer.
 
-For the parity loop this is the missing law behind "the airfield's flat colour is drawn one or two ramp entries away, per shot, split by a straight boundary": the boundary is an iso-index line of a linear function of *screen* position, not a world-space plane or a depth threshold.
-
-## 2. The colour is a display-list byte, not `MAP.BIN + 0x0C`
+## 2. No `MAP.BIN` in the image (superseded reading of the colour)
 
 * No file-name literal `MAP.BIN` exists in the image (the only file literals are `game.cfg`, `game.var`, `pfont.bin`, `pilots`, `res\*.res`, `res\*.xmp|.xma|.xmm|.ess|.smp|.zcr`, `driver1..3.bin`, `vdata.bin`, `VAULT\*.FLM`, `VAULT\*.TKE`, `VAULT\*.*`, `VAULT\SPOOL.$$$`).
 * The immediate `0x1E` (30, the `MAP_AREA` stride) occurs **zero** times in the code region `0x0000..0xD510`, so this binary never walks 30-byte patch records. The demo build streams/embeds its ground geometry instead (see [`sod-vm.md`](sod-vm.md)).
-* The airfield's `195` is one operand byte of the ground display list, read at `0x9988: mov ch, byte ptr es:[si+1]`.
+* Superseded: `0x9988: mov ch, byte ptr es:[si+1]` reads a `GVPOLY` base, not the ground's colour. The ground's `195` is the colour word of a leaf in the image's scenery tree, equal to `MAP.BIN`'s byte ([`world-scene.md`](world-scene.md) section 2).
 
 ## 3. Per-vertex shade: `SHADES` (opcode `0x0156`)
 
@@ -45,14 +45,14 @@ Dispatch `0x839C` -> handler `0x9481`. Operand stream: `di_off, count, (nx, ny, 
 
 | Item | Address | Notes |
 |---|---|---|
-| Light vector `L` | `work:0x8072/0x8074/0x8076` | only writer `0x9106` inside the per-frame setup entry `0x9100` (which also sets the model shift `0x806E` and projection scale `0x8070`); `L` arrives in `AX/BX/DX` |
+| Light vector `L` | `work:0x8072/0x8074/0x8076` | set by `0x9106` inside the per-object setup entry `0x9100` (which also sets the model shift `0x806E` and projection scale `0x8070`) from `AX/BX/DX`; rotated in place by the display-list rotation op at `0xA8BC` and restored by `0xA9B8` (section 4.2) |
 | Sun-billboard direction | `work:0x8078/0x807A/0x807C` | written by the film-variable-13 handler at `0x196C` (angle = var13 - 0x4000, trig at `0x824:0x05D2`, also stored at `DS:0x49EC`), read by the sun-disc drawer `0x908E` |
 
-`L` is three words in the same layout as the negated sun vector six bytes later, and only the shading opcode reads it, so it is the scene light direction. **Its caller is unknown**: there is no direct `call`/`jmp`, no `lcall 0,0x9100` and no `mov ax,0x9100`; the entry is reached indirectly.
+`L` is three words in the same layout as the negated sun vector six bytes later, and only the shading opcode reads it, so it is the scene light direction. A static search finds no `lcall 0,0x9100` because the three callers address it as `lcall 0824:0EC0`, in the VM segment (section 4.2).
 
 ### 4.1 The entry decodes, but it is handed its light
 
-`[Established]` for the instruction sequence, `[Unknown]` for the caller. Disassembled at image `0x9100`, the routine is a per-frame setup that fills a 0x2E-byte state block at `work:0x806E` and then runs the display list:
+`[Established]` for the instruction sequence. Disassembled at image `0x9100`, the routine is a per-object setup that fills a 0x2E-byte state block at `work:0x806E` and then runs the display list:
 
 ```asm
 9100  push ds / mov di,0x15d4 / mov ds,di   ; work segment: 0x15D4 here, 0x1DF8 at runtime (+0x824)
@@ -66,7 +66,25 @@ Dispatch `0x839C` -> handler `0x9481`. Operand stream: `di_off, count, (nx, ny, 
 9161  lodsw ax,es:[si] / call ax           ; the first word of the stream is a code offset
 ```
 
-So the light is not computed here: it arrives in registers from a caller the binary does not reference directly, which is why no static search finds it. What the routine does own is the block layout and the fact that `0x806E` is a **shift count, not a model origin**: its low byte is the exponent used at `0xADAC`, where a model coordinate pair `([si+0x0A],[si+0x0C])` becomes `((hi >> (0x10 - cl)) + (lo << cl)) - [0x8084]`. The 0x17 words at `0x806E` are copied to the stack, passed through `0x1B75` and copied back at `0xB568`-`0xB585`, so that block is the walker's per-frame input.
+So the light is not computed here: it arrives in registers from the caller (section 4.2). What the routine does own is the block layout and the fact that `0x806E` is a **shift count, not a model origin**: its low byte is the exponent used at `0xADAC`, where a model coordinate pair `([si+0x0A],[si+0x0C])` becomes `((hi >> (0x10 - cl)) + (lo << cl)) - [0x8084]`. The 0x17 words at `0x806E` are copied to the stack, passed through `0x1B75` and copied back at `0xB568`-`0xB585`, so that block is the walker's per-frame input.
+
+### 4.2 Who hands it the light
+
+*[Bounded Observation]* for the calls (DOSBox-X breakpoint plans `light-caller`, `light-callers-tilt`, `light-source`, `light-work` and `light-writers` in `tools/dosbox-x/plans/`, [`debugger-plans.md`](debugger-plans.md); `CTRY.FLM` and `INTRO.FLM`, both builds, 2026-11-04); *[Established]* for the instruction sequences. `0x9100` is called once per drawn object, each with its own object segment in `ES` (the stream at `ES:0x000C`, `es:[2]` to `SI`, `es:[4]` to `BP`, `es:[8]` to `CH`, `[0x22EC]` pushed), from three sites:
+
+| Call site (return) | Patch #3 return | Passes | Share of 40 calls, ticks 169-173 |
+|---|---|---|---|
+| `0x21F9` (`0x21FE`) in function `0x1DD5` | `0x2311` | `DS:0x49EC..0x49F0` unchanged | 24 |
+| `0x234B` (`0x2350`) in function `0x1DD5` | `0x2463` | `DS:0x49EC..0x49F0` unchanged | 14 |
+| `0x1D8D` (`0x1D92`) in function `0x1D5F` | `0x1EA5` | the world light rotated into the object's frame | 2 (one object, `ES = 0x608A`) |
+
+The third caller is reached through `0x1CFB`. Unless the object's flag `[si+0x0F] & 1` selects a stored matrix, it builds the object's rotation matrix from its three angles `[bx+0x10]`, `[bx+0x12]`, `[bx+0x14]` (`0824:04E5`, into `work:0x80D2`), multiplies it with the view matrix `0x80C0` into `0x808A` (`0824:060A`), transforms `DS:0x49EC` by it (`0824:071D`) and doubles the result into `AX/BX/DX`. Inside the display list, the rotation op at `0xA8BC..0xA8EB` rotates `L` (and the vector at `0x8096`) by the op's cosine and sine for a sub-model, and the ops at `0xA99A` and `0xA9B8` save and restore the matrix and `L` around it.
+
+`DS:0x49EC..0x49F0` is the world light, written only by the variable-13 handler `0x196C` (Patch #3 `0x1A7F`): `angle = var 13 - 0x4000`, a fixed second angle `0x71C` (about 10 degrees), trig at `0824:05D2`, stored at `DS:0x49EC` and negated at `work:0x8078` for the sun disc. Its caller `0x0F50`, in the frame step `0x0EE9`, passes `[0x4888 + 0x98]`, variable 13's copy in the film-state snapshot. It is entered with `var 13 = 0x002D` on `CTRY.FLM` on both builds (first at tick 74 unpatched and 53 patched) and on `INTRO.FLM` unpatched (ticks 48, 159 and 204; no patched `INTRO` run), and the world light it stores is `(99, 32766, -17)`. `DS:0x49EC` held that value at every sample: ticks 59, 160-587 (`light-work`), 204 and 462. The memory watch `light-writers` saw no changing write, but both of its runs ended on the 120 s timeout soon after tick 75, so it does not cover the film.
+
+So every object set up through `0x9100` without a rotation is lit by the world light, a function of variable 13 alone, and a rotated object by that light in its own frame. The ground takes no light: its leaves are drawn flat and never pass through `0x9100` ([`world-scene.md`](world-scene.md) section 2). The per-shot tilts of section 8 are the light of rotated objects and sub-models, sampled at `work:0x8072` after the last object of the frame was set up. A renderer reproduces `L` from variable 13; at every sampled tick of both films it was `(99, 32766, -17) / 32767`, and whether it stays there for the rest of either film is not observed.
+
+_Found 2026-11-04; see the [parity log](../parity/log.md)._
 
 ## 5. Index composition
 
@@ -114,12 +132,12 @@ Edge entries are prepared at `0xC65A` and clipped by the Cohen-Sutherland clippe
 
 * Inside one polygon the written index is `base + floor(k)` for a continuously varying `k`, so pixels fall into two to four adjacent ramp entries with **hard boundaries along straight lines**: the level sets of a linear function of screen position. For ground seen by a pitched camera a constant-screen-`y` iso-line is approximately a constant-world-`z` line (the 18-20 m boundary measured from the captures), but it is not a plane in world `(x, z)`, which is why a world-space plane fit and a per-patch lookup both fail (section 9, [Ruled out](#ruled-out)).
 * Per-shot movement can only come from `L` or from a different ground polygon with different vertex normals. The scale is `idx = base + (s >> 9)`, so **one ramp step is 512 units of `s`**: a small change of `N . L`. A faithful reconstruction needs `L` exactly, not merely "a sun".
-* A flat polygon whose vertex normals are all equal produces no ramp. The three shades seen inside `MAP.BIN` patch 4 therefore mean PLAYONE's ground polygons are not `MAP.BIN`'s 179 records: the player draws a different set, with its own per-vertex normals and colour bytes (where that set comes from: [`world-scene.md`](world-scene.md)).
+* A flat polygon whose vertex normals are all equal produces no ramp. The three shades inside `MAP.BIN` patch 4 are scenery tiles drawn over it, not a ramp (see the correction above).
 * An exact implementation needs per-vertex `s`, `idx = base + (s >> 9)`, 8.8 interpolation with `@interpolate(linear)` on the shade varying, quantised per fragment.
 
 ## 8. Measured inputs: the light and the additive-only rule
 
-*[Bounded Observation] for the samples, [Supported Inference] for the consequence.* The light vector was measured live with [`probe_playone_light.py`](../../python/scripts/probe_playone_light.py) (DOSBox-X TAC harness, film `CTRY.FLM`). At the post-retrace trap the display-list work segment is `0x1DF8` (far pointer at `DS:0x0542`); `work:0x8072` holds `L`, `work:0x8078` holds `-L`, and `DS:0x49EC` holds `L` in its first three words. `L` is a unit vector at 1.0 = 32767 (magnitudes 32761-32766):
+*[Bounded Observation] for the samples, [Supported Inference] for the consequence.* These samples read `work:0x8072` once per frame, so they show the light of the last object set up in that frame: the world light after scenery, a rotated copy after a rotated object (section 4.2). The light vector was measured live with [`probe_playone_light.py`](../../python/scripts/probe_playone_light.py) (DOSBox-X TAC harness, film `CTRY.FLM`). At the post-retrace trap the display-list work segment is `0x1DF8` (far pointer at `DS:0x0542`); `work:0x8072` holds the light of the last object set up (the world light for an unrotated one, a rotated copy otherwise), `DS:0x49EC` holds the world light in its first three words, and `work:0x8078` holds the world light negated. `L` is a unit vector at 1.0 = 32767 (magnitudes 32761-32766):
 
 | Film clock | `L` at `work:0x8072` |
 |---|---|
@@ -131,7 +149,7 @@ Edge entries are prepared at `0xC65A` and clipped by the Cohen-Sutherland clippe
 
 `N` is scaled the same way, so `(N . L) >> 16` peaks at `0x4000`, exactly the clamp constant. The shade array (`work:0x7468`) changes with the tilt (negative entries at clock 564), so the harness observes a real per-frame lighting state.
 
-The index composition adds a non-negative offset (`G = 0`) to a per-polygon base byte, so **a polygon can never be drawn darker than its own base colour**. The captures draw the airfield at 193, 194, 195 and 196, values on both sides of `MAP.BIN`'s 195, which one base cannot produce. So the player's ground polygons carry their own base colours (read from `es:[si+1]` at `0x9988`), and the apparent per-shot shade level is mostly that base, with the light adding a small brightening on top. This is why no per-frame light fit ever worked. That the colour is stored per polygon is confirmed in [`world-scene.md`](world-scene.md) section 3.
+The index composition adds a non-negative offset (`G = 0`) to a per-polygon base byte, so **a polygon can never be drawn darker than its own base colour**. The captures draw the airfield at 193, 194, 195 and 196, values on both sides of `MAP.BIN`'s 195, which one base cannot produce. The answer is not a base per ground polygon: the airfield is patch 4 at 195 with tiles of 193, 194 and 196 on top ([`world-scene.md`](world-scene.md) section 3). This is why no per-frame light fit ever worked.
 
 _Found 2026-10-23 at `b44c6bc`; see the [parity log](../parity/log.md)._
 
@@ -172,10 +190,10 @@ The data-side and renderer-side explanations for the ground shade, all negative 
 * **Fixed-distance depth cue** (`DBG_TERRAIN_CUE`, +1 inside / -1 outside a threshold): 15 m 0.7574 / 0.6667, 25 m 0.7572 / 0.6677, 40 m 0.7586 / 0.6689, 80 m 0.7625 / 0.6689; restricted to ramp 192-199 at 15 m 0.7601 / 0.6727. The single-frame fit (tick 273: +1 at 10-19 m, -1 beyond 40 m) averaged +0.36 in the 0-19 m bin over 114 frames. There is no per-pixel depth term in the player.
 * **Coplanar draw order** (`DBG_DEPTH_LE`, `LessEqual` instead of `Less`): both films identical to four decimals, so no tie at equal depth.
 * **Geometry:** all 12 colour-195 patches are flat and convex; fan triangulation area equals polygon area for all 166 active patches.
+* **A per-shot terrain light.** The ground is drawn flat and takes no light ([`world-scene.md`](world-scene.md) section 2); the world light `DS:0x49EC` held one value at every sample (section 4.2), and the tilted values in section 8 belong to rotated objects.
 * **"The ground shade is world-fixed, not Gouraud."** An earlier reading was wrong: the player interpolates the index per vertex in screen space (sections 3-6).
 
 ## Open questions
 
-1. Recover the per-shot light's caller: breakpoint `0x9106` at the post-retrace trap in DOSBox-X, dump `AX/BX/DX` and the return address across film ticks 10 and 448 of `CTRY.FLM`, compare with `DS:0x49EC` and the variable-13 value. With the harness, `L` can already be sampled per frame. ([#66](https://github.com/neilsh/stunt-reel/issues/66))
-2. Decode the ground polygons (colour byte, vertex registers, `SHADES` normal blocks) and compare their colours with `MAP.BIN`'s: [`world-scene.md`](world-scene.md) section 6 holds the route. ([#65](https://github.com/neilsh/stunt-reel/issues/65))
-3. Only then a renderer round (re-bake terrain colours or build terrain from the player's records), under the [parity skill](../../.agents/skills/improving-render-parity/SKILL.md)'s adoption rule. ([#69](https://github.com/neilsh/stunt-reel/issues/69))
+1. The trig at `0824:05D2`: `(99, 32766, -17)` has a horizontal part of about 100, where `32767 cos(var 13 - 0x4000)` would give about 141. Whether the table, a scale or the second angle accounts for it decides whether a renderer computes `L` from variable 13 or tabulates it; a film with another variable-13 value would test the formula.
+2. The renderer round for the ground is the terrain-under-props change of [`world-scene.md`](world-scene.md) section 6. ([#69](https://github.com/neilsh/stunt-reel/issues/69))

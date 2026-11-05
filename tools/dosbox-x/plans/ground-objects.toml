@@ -1,0 +1,30 @@
+# #65: the records read at the two GVPOLY handlers (op 0x168 at 0x995C, op 0x2BE at 0x9A24),
+# which are entered with ES:SI on a record's first word; plus the object headers of the frames
+# around them, from the light setup 0x9100. Armed at tick 270, in the airfield shot (tick 273).
+# Only the hero aircraft drew with them; the ground is drawn elsewhere (world-scene.md section 2).
+[run]
+stop_tick = 900
+
+[[probe]]
+name = "ground168"
+kind = "break"
+at = 0x995C
+arm = { tick = 270 }
+hits = 300
+capture = ["mem:ES:SI:40"]
+
+[[probe]]
+name = "ground2BE"
+kind = "break"
+at = 0x9A24
+arm = { tick = 270 }
+hits = 300
+capture = ["mem:ES:SI:40"]
+
+[[probe]]
+name = "objects-270"
+kind = "break"
+at = 0x9100
+arm = { tick = 270 }
+hits = 60
+capture = ["mem:ES:0:16"]
