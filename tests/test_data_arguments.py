@@ -6,6 +6,7 @@ worktree no longer links the data root in, so each script resolves such an argum
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import shutil
 import sys
@@ -107,4 +108,34 @@ def test_the_adversarial_harness_refuses_a_missing_corpus(
 ) -> None:
     del data_root
     assert _load("adversarial_formats_challenge").main() == 2
+    assert "no game files" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "play",
+        "capture_playone_reference",
+        "capture_video",
+        "make_all",
+        "game_builds",
+        "probe_playone_light",
+    ],
+)
+def test_a_reader_refuses_a_missing_corpus_before_it_starts(
+    script: str,
+    data_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Each of these once stopped at the link check; without it they failed deep in a run."""
+    del data_root
+    module = _load(script)
+    monkeypatch.setattr(module, "parse_args", argparse.Namespace)
+
+    def never(_args: argparse.Namespace) -> int:
+        raise AssertionError("ran without game files")
+
+    monkeypatch.setattr(module, "run", never)
+    assert module.main() == 2
     assert "no game files" in capsys.readouterr().err

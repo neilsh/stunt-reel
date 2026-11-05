@@ -1042,7 +1042,8 @@ def main(argv: list[str] | None = None) -> int:
             # The same lock as ensure: two seeds would share one staging directory.
             with exclusive(REPO_ROOT / "target" / ENSURE_LOCK):
                 line = _seed_target()
-        except TimeoutError as err:
+        except OSError as err:
+            # TimeoutError is an OSError, as is a lock this volume refuses.
             line = f"{_SEED_FAILED}{err}"
         print(line)
         return 1 if line.startswith(_SEED_FAILED) else 0

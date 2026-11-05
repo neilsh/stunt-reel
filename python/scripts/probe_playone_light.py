@@ -228,7 +228,10 @@ def run(args: argparse.Namespace) -> int:
 def main() -> int:
     """Run the probe and terminate the emulator."""
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
-    return run(parse_args())
+    args = parse_args()
+    if dataroot.require_corpus_or_report("probe_playone_light") is None:
+        return 2
+    return run(args)
 
 
 if __name__ == "__main__":

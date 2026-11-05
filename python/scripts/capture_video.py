@@ -215,7 +215,10 @@ def _record_into(
 def main() -> int:
     """Record the film and terminate the emulator."""
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
-    return run(parse_args())
+    args = parse_args()
+    if dataroot.require_corpus_or_report("mise run capture-video") is None:
+        return 2
+    return run(args)
 
 
 if __name__ == "__main__":

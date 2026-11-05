@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from stunt_reel import flm_walk
-from stunt_reel.dataroot import SharedDataError, data_path_arg, require_corpus
+from stunt_reel.dataroot import data_path_arg, require_corpus_or_report
 from stunt_reel.kaitai import (
     REQUIRED_KSC_VERSION,
     compile_schemas,
@@ -507,10 +507,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.corpus is None:
         # The data root's corpus is the one the task promises to sweep; its absence is an error.
-        try:
-            args.corpus = require_corpus()
-        except SharedDataError as err:
-            print(f"verify_schemas_corpus: {err}", file=sys.stderr)
+        args.corpus = require_corpus_or_report("verify_schemas_corpus")
+        if args.corpus is None:
             return 2
     corpus_dir: Path = args.corpus
     if not corpus_dir.is_dir():

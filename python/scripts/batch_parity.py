@@ -410,10 +410,8 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    try:
-        corpus = dataroot.require_corpus()
-    except dataroot.SharedDataError as err:
-        print(f"batch_parity: {err}", file=sys.stderr)
+    corpus = dataroot.require_corpus_or_report("batch_parity")
+    if corpus is None:
         return 2
     films = discover(corpus)
     if not films:

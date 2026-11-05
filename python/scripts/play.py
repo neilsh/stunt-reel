@@ -68,7 +68,10 @@ def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     """Run the player."""
-    return run(parse_args())
+    args = parse_args()
+    if dataroot.require_corpus_or_report("play") is None:
+        return 2
+    return run(args)
 
 
 if __name__ == "__main__":

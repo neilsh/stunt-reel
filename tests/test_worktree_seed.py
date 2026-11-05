@@ -362,3 +362,17 @@ def test_ensure_survives_a_git_that_will_not_start(
     monkeypatch.setattr(worktree_init, "ensure_hooks_path", broken)
     assert worktree_init._ensure() == 0
     assert "  ! hooks: git.exe: access denied" in capsys.readouterr().out
+
+
+def test_seed_reports_a_lock_that_cannot_be_taken(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``exclusive`` raises any lock failure but contention; seed reports it, as ensure does."""
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+
+    def no_locks(_path: Path) -> contextlib.AbstractContextManager[None]:
+        raise OSError(errno.ENOLCK, "No locks available")
+
+    monkeypatch.setattr(worktree_init, "exclusive", no_locks)
+    assert worktree_init.main(["seed"]) == 1
+    assert "  ! seed: " in capsys.readouterr().out

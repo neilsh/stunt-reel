@@ -5,7 +5,7 @@ Tasks: [`worktree-config-implementation-2026-11-04.md`](worktree-config-implemen
 2026-11-04 that started from "should we use a `.worktreeinclude` for Claude", surveyed the 32
 worktrees under `.claude/worktrees/` (16 never provisioned, including the session's own) and
 settled on removing the per-worktree links rather than automating their creation. The decision
-will be recorded as ADR 0032 (layer 1, below); this note owns the design and the delivery.
+will be recorded as ADR 0033 (layer 1, below); this note owns the design and the delivery.
 
 ## 1. Goal
 
@@ -46,7 +46,7 @@ holds and no code reads.
 | --- | --- | --- |
 | `.worktreeinclude` | Not used. | It copies gitignored files. Everything gitignored here is data or cache that must be shared, not copied; a copied `target/` would also keep the workspace crates' fingerprints that the seed drops (ADR 0030). |
 | Claude Code hooks | None: no `WorktreeCreate`, no `SessionStart`. | The first gives up Claude Code's own worktree safety for a speed-up; the second saves only the seed and a `uv sync` at the first task, on undocumented firing. Revisit if first-task latency becomes a nuisance. |
-| Data root | Code resolves `corpus/` and `captures/` through `data_root()` instead of junctions; a relative `corpus/...` argument on the command line resolves the same way. | `data_root()` already honours `STUNT_DATA_ROOT` and the `<primary>.data` default; it gains a fallback to the primary checkout when `<primary>.data` does not exist, so a clone that keeps its corpus in the checkout still reads it. |
+| Data root | Code resolves `corpus/` and `captures/` through `data_root()` instead of junctions; a relative `corpus/...` argument on the command line resolves the same way. | `data_root()` honours `STUNT_DATA_ROOT`, then the `<primary>.data` default. Only `corpus_root()` falls back, to the primary checkout's `corpus/`, and only when `STUNT_DATA_ROOT` is unset, the data root has no `corpus/` and that `corpus/` holds a folder of game files, so a clone that keeps its corpus in the checkout still reads it. A reader that finds no game files exits 2 naming where it looked. |
 | Tool cache | `UV_CACHE_DIR` is an absolute path under the primary checkout's `.cache`, derived from `git rev-parse --git-common-dir` like `vars.cargo_home`. No `.cache` link. | One cache per machine, no link to make or break. |
 | Python environment | uv's default per-checkout `.venv`. | On the same volume uv hardlinks out of the shared cache; editors find `.venv`; removing a worktree removes its environment, so no orphan sweep. Orca worktrees on `C:` copy (about 68 MB, 3 s), accepted. |
 | Temporary files | The `TMP`/`TEMP` override in `[env]` goes; tasks use the OS temp directory. | It existed only for DSH's sandbox ([harness.md](../../harness.md#temporary-directories)). The Windows `mkdir` mode shim in `tests/conftest.py` and `scratch.py` stays. |
@@ -66,7 +66,9 @@ holds and no code reads.
   `verify_schemas_corpus`) and `python/stunt_reel/` (`parity_layout`, `parity_pipeline`,
   `tac/staging`).
 - Captures move from the checkout path `build/parity/captures` (a link) to
-  `data_root() / "captures"`, so `parity_layout.capture_root()` returns an absolute path;
+  `data_root() / "captures"`; `parity_layout.capture_root()` stays the relative `captures`, and
+  every caller joins it to `data_root()` (changed while implementing: `parity_layout` stays free
+  of `dataroot`);
   `/captures/` joins `.gitignore` for a checkout that is its own data root.
 - Command-line arguments naming `corpus/...` or `captures/...`, the form every task description
   and research note uses, resolve against the data root through an argparse `type`.
@@ -82,8 +84,8 @@ holds and no code reads.
 
 ### 4.2 Tool paths in configuration
 
-- [`mise.toml`](../../../mise.toml) gains `vars.shared_cache` (the `cargo_home` expression without
-  its `/cargo` suffix, same git fallback); `cargo_home` and `UV_CACHE_DIR` derive from it.
+- [`mise.toml`](../../../mise.toml) gains `vars.primary` (the primary checkout, same git fallback);
+  `cargo_home` and `UV_CACHE_DIR` name `{{vars.primary}}/.cache/...`.
 - `TMP` and `TEMP` leave `[env]`; [harness.md](../../harness.md) keeps the DSH symptom and the
   one-line workaround for a DSH session.
 - `dataroot.py` loses `ensure_cache_link` and `ensure_venv_link`, and `worktree_init.py` loses
@@ -111,16 +113,16 @@ holds and no code reads.
   sections. The DSH section says its sessions need `danger-full-access` for `mise run` tasks.
 - [AGENTS.md](../../../AGENTS.md) SOP 6: drop "`mise run init` once per worktree"; removal is
   `reap` for linked worktrees and any tool's own removal for the rest.
-- ADR 0032 records the decision. ADR 0019 gets "superseded by ADR 0032"; ADRs 0008, 0013, 0018 and
-  0030 get dated "amended by ADR 0032" lines (repo convention: ADRs 0008, 0015, 0016).
+- ADR 0033 records the decision. ADR 0019 gets "superseded by ADR 0033"; ADRs 0008, 0013, 0018 and
+  0030 get dated "amended by ADR 0033" lines (repo convention: ADRs 0008, 0015, 0016).
 
 ## 5. Delivery
 
 One `gh stack`, three layers, each passing `mise run check`:
 
-1. ADR 0032 and section 4.1 (data-root paths in code).
+1. ADR 0033 and section 4.1 (data-root paths in code).
 2. Sections 4.2 and 4.3 (configuration, `ensure`, the `init` and `dataroot.py` removals).
-3. Section 4.4 except ADR 0032 (harness-setup, harness.md, SOP 6, ADR status lines).
+3. Section 4.4 except ADR 0033 (harness-setup, harness.md, SOP 6, ADR status lines).
 
 The implementation plan goes in `worktree-config-implementation-2026-11-04.md` beside this note.
 

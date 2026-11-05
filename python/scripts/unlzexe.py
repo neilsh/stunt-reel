@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from stunt_reel.dataroot import SharedDataError, require_corpus, resolve_data_path
+from stunt_reel.dataroot import SharedDataError, read_data_file
 
 
 def _relocations(d: bytes, loader: int) -> list[int]:
@@ -156,12 +156,8 @@ def main(argv: list[str]) -> int:
         print(__doc__)
         return 2
     # A corpus/... input is read from the data root; any other file reads as it is.
-    source = Path(argv[1])
-    resolved = resolve_data_path(source)
     try:
-        if resolved != source:
-            require_corpus()
-        data = resolved.read_bytes()
+        data = read_data_file(Path(argv[1]))
     except (SharedDataError, OSError) as err:
         print(f"unlzexe: {err}", file=sys.stderr)
         return 2

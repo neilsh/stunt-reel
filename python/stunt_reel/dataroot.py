@@ -21,6 +21,7 @@ import hashlib
 import os
 import shutil
 import subprocess
+import sys
 from functools import lru_cache
 from pathlib import Path
 
@@ -51,8 +52,10 @@ __all__ = [
     "link_points_at",
     "orphan_envs",
     "primary_checkout",
+    "read_data_file",
     "remove_link",
     "require_corpus",
+    "require_corpus_or_report",
     "resolve_data_path",
     "sweep_orphan_envs",
     "use_data_root",
@@ -194,6 +197,19 @@ def require_corpus(root: Path | None = None) -> Path:
     return corpus
 
 
+def require_corpus_or_report(program: str, root: Path | None = None) -> Path | None:
+    """:func:`require_corpus`, but print ``<program>: <reason>`` to stderr and return ``None``.
+
+    The one check every script that reads the game files makes before it starts; the caller
+    exits 2 on ``None``.
+    """
+    try:
+        return require_corpus(root)
+    except SharedDataError as err:
+        sys.stderr.write(f"{program}: {err}\n")
+        return None
+
+
 #: The first part of a relative path that names something in the data root.
 _DATA_PARTS = ("corpus", parity_layout.capture_root().as_posix())
 
@@ -224,6 +240,18 @@ def resolve_data_path(path: Path) -> Path:
     if first == "corpus":
         return corpus_root().joinpath(*path.parts[1:])
     return data_root().joinpath(first, *path.parts[1:])
+
+
+def read_data_file(path: Path) -> bytes:
+    """The bytes of *path*; a relative ``corpus/...`` path is read from the data root's corpus.
+
+    Such a path needs the corpus, so its absence raises :class:`SharedDataError` naming where
+    it was looked for; any other path reads as it is, and a missing file raises ``OSError``.
+    """
+    resolved = resolve_data_path(path)
+    if resolved != path and path.parts[0].lower() == "corpus":
+        require_corpus()
+    return resolved.read_bytes()
 
 
 def data_path_arg(text: str) -> Path:

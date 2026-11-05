@@ -53,10 +53,10 @@ argues from its sections 3 and 4.
 
 ## Layer 1: data-root paths in code
 
-### Task 1: ADR 0032 and the data-root resolvers
+### Task 1: ADR 0033 and the data-root resolvers
 
 **Files:**
-- Create: `docs/adr/0032-worktrees-reach-shared-state-by-configuration.md`
+- Create: `docs/adr/0033-worktrees-reach-shared-state-by-configuration.md`
 - Modify: `python/stunt_reel/dataroot.py:144-153` (`data_root`), add two functions after it
 - Modify: `python/stunt_reel/parity_layout.py:56,101-103` (`capture_root`)
 - Modify: `.gitignore` (add `/captures/` beside `capture/`)
@@ -64,17 +64,20 @@ argues from its sections 3 and 4.
 
 **Interfaces:**
 - Produces:
-  - `data_root() -> Path`. Order: `STUNT_DATA_ROOT`; else `<primary>.data` **if it is a
-    directory**; else the primary checkout; outside git, `REPO_ROOT`. Still `lru_cache`d.
-  - `corpus_root() -> Path`: `data_root() / "corpus"`.
+  - `data_root() -> Path`. Order: `STUNT_DATA_ROOT`; else `<primary>.data`; outside git,
+    `REPO_ROOT`. Still `lru_cache`d. (Planned with a fallback to the primary checkout; that
+    broke the stages, which must write outside every checkout, so only the corpus falls back.)
+  - `corpus_root() -> Path`: `data_root() / "corpus"`, else the primary checkout's `corpus/` when
+    `STUNT_DATA_ROOT` is unset, the data root has no `corpus/` and that one holds a game folder.
   - `resolve_data_path(path: Path) -> Path`: a relative path whose first part is `corpus` or
     `captures` becomes `data_root() / path`; any other path is returned unchanged.
   - `data_path_arg(text: str) -> Path`: `resolve_data_path(Path(text))`, for argparse `type=`.
     argparse applies `type` to string defaults too, so `default="corpus/..."` resolves alike.
-  - `parity_layout.capture_root() -> Path`: `dataroot.data_root() / "captures"`, absolute. Import
-    `dataroot` inside the function: `dataroot` imports `parity_layout` at module level.
+  - `parity_layout.capture_root() -> Path`: planned as `dataroot.data_root() / "captures"`; it
+    stayed the relative `captures`, joined to `data_root()` by each caller, so `parity_layout`
+    keeps no import of `dataroot`.
 
-- [ ] **Step 1: Write ADR 0032.** One page, the repo's ADR shape (Status, Context, Decision,
+- [ ] **Step 1: Write ADR 0033.** One page, the repo's ADR shape (Status, Context, Decision,
   Considered Options, Consequences). Status `accepted 2026-11-04`. Content is spec sections 2 and
   3; Considered Options are `.worktreeinclude`, a `WorktreeCreate` hook, a `SessionStart` hook,
   automating `init` while keeping the links, and per-worktree `UV_PROJECT_ENVIRONMENT`.
@@ -262,7 +265,7 @@ def test_tasks_use_the_os_temp_directory():
     assert "TMP" not in config["env"] and "TEMP" not in config["env"]
 ```
 
-- [ ] **Step 2: Run** → FAIL. **Step 3: Implement**, rewriting the `[env]` comment to cite ADR 0032.
+- [ ] **Step 2: Run** → FAIL. **Step 3: Implement**, rewriting the `[env]` comment to cite ADR 0033.
   `[vars]` is defined after `[env]` in the file; check `mise env` renders `UV_CACHE_DIR` absolute
   from this worktree (mise resolves vars before env; if not, move `[vars]` above `[env]`).
 - [ ] **Step 4: Run** `mise env | Select-String UV_CACHE_DIR` → `E:/git/stunt-reel/.cache/uv`;
@@ -279,9 +282,11 @@ def test_tasks_use_the_os_temp_directory():
 
 **Interfaces:**
 - Produces:
-  - `target_seed.exclusive(path: Path)`, a `contextlib.contextmanager` yielding nothing: blocks until
-    it holds an OS lock on the file `path` (created if missing): `msvcrt.locking(LK_LOCK)` on
-    Windows, `fcntl.flock(LOCK_EX)` elsewhere, retrying `LK_LOCK`'s 10-second timeout until held.
+  - `target_seed.exclusive(path: Path, *, timeout: float = 600.0)`, a `contextlib.contextmanager`
+    yielding nothing: waits for an OS lock on the file `path` (created if missing),
+    `msvcrt.locking(LK_LOCK)` on Windows, `fcntl.flock(LOCK_EX | LOCK_NB)` elsewhere. It retries
+    only while another handle holds the lock, raises any other failure at once, and raises
+    `TimeoutError` after *timeout* seconds (changed in review: it first retried forever).
   - `worktree_init._ensure() -> int`: under `exclusive(REPO_ROOT / "target" / ".ensure.lock")`,
     runs `ensure_hooks_path(REPO_ROOT)` and `_seed_target()`; prints their lines only when either
     did something (`+`) or failed (`!`); returns 0 (a seed failure is a slower build, not an error).
@@ -393,15 +398,15 @@ def test_init_creates_no_links(tmp_path, monkeypatch):
 - [ ] **Step 2: Edit** `docs/harness.md` "Temporary directories" to say tasks now use the OS temp
   directory and DSH needs `danger-full-access` (link to harness-setup's DSH section); SOP 6:
   item 2 becomes "nothing to provision: the first building task seeds `target/`
-  (ADR 0032); `mise run init` does it eagerly", item 5 keeps `reap` for linked worktrees and
+  (ADR 0033); `mise run init` does it eagerly", item 5 keeps `reap` for linked worktrees and
   allows any tool's removal otherwise.
 - [ ] **Step 3: Add the ADR status lines**, dated 2026-11-04, in the form ADR 0008 line 5 uses:
-  0019 "superseded by ADR 0032"; 0008 "amended by ADR 0032: code reads the data root directly; no
-  link"; 0013 "amended by ADR 0032: no `.cache` link; the cache is named by absolute path"; 0018
-  "amended by ADR 0032: new worktrees hold no links; this applies to old ones until reaped"; 0030
-  "amended by ADR 0032: seeding runs from `ensure`, a dependency of every building task".
+  0019 "superseded by ADR 0033"; 0008 "amended by ADR 0033: code reads the data root directly; no
+  link"; 0013 "amended by ADR 0033: no `.cache` link; the cache is named by absolute path"; 0018
+  "amended by ADR 0033: new worktrees hold no links; this applies to old ones until reaped"; 0030
+  "amended by ADR 0033: seeding runs from `ensure`, a dependency of every building task".
 - [ ] **Step 4: Run** `mise run test-py -- tests/test_doc_invariants.py` → PASS.
-- [ ] **Step 5: Commit** `docs: worktrees need no provisioning step (ADR 0032)`.
+- [ ] **Step 5: Commit** `docs: worktrees need no provisioning step (ADR 0033)`.
 
 ### Task 9: End-to-end verification (spec section 6)
 
@@ -418,3 +423,24 @@ def test_init_creates_no_links(tmp_path, monkeypatch):
 - [ ] **Step 5:** Add a dated row with the four results to the spec's section 6 and set its Status
   to implemented; `mise run check` → PASS; commit `docs(plans): record the worktree verification`;
   create layer 3 with gh-stack.
+
+## Changes after review
+
+Three review passes and CodeRabbit changed the design after these tasks; the code and
+[ADR 0033](../../adr/0033-worktrees-reach-shared-state-by-configuration.md) hold the result.
+
+- **No game files is an error.** `dataroot.require_corpus()` refuses a corpus that is missing or
+  has no folder holding a file; `require_corpus_or_report(program)` prints why, and every script
+  that reads the game files exits 2 on it, as each once did at the link check. `init` fails the
+  same way, and names real data still sitting at an old link path. The parity preflight reports
+  it as a problem.
+- **`ensure` never stops a task.** It skips the hooks path outside git, reports a git or lock
+  failure in one line, and tags a `target/` lacking `CACHEDIR.TAG`; `mise run seed` takes the
+  same lock.
+- **Dead link code went.** `ensure_links` and `shared_target` had no caller; `reap` finds old
+  links as reparse points.
+- **`frame` writes into the checkout.** Its sheets go under this checkout's `build/scratch`, not
+  the data root.
+- **The census corpus travels in the environment.** `sod-census` reads `STUNT_CENSUS_CORPUS`, set
+  by the task from the effective `STUNT_DATA_ROOT` with `~` expanded and `$` kept, so no path is
+  shell source; a `--corpus` flag still wins.

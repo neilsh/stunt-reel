@@ -394,3 +394,24 @@ def test_require_corpus_refuses_a_corpus_holding_only_its_readmes(
     (tmp_path / "corpus" / "README.md").write_text("readme", encoding="utf-8")
     with pytest.raises(dataroot.SharedDataError, match="holds no game files"):
         dataroot.require_corpus()
+
+
+def test_require_corpus_or_report_names_the_program(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    assert dataroot.require_corpus_or_report("mise run capture-ref") is None
+    assert capsys.readouterr().err.startswith("mise run capture-ref: no game files")
+    _game_file(tmp_path / "corpus")
+    assert dataroot.require_corpus_or_report("x") == tmp_path.resolve() / "corpus"
+
+
+def test_read_data_file_needs_the_corpus_only_for_a_corpus_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path / "data"))
+    with pytest.raises(dataroot.SharedDataError, match="no game files"):
+        dataroot.read_data_file(Path("corpus/stisldem/X.FLM"))
+    loose = tmp_path / "loose.FLM"
+    loose.write_bytes(b"film")
+    assert dataroot.read_data_file(loose) == b"film"

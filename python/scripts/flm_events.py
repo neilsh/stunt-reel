@@ -17,7 +17,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from stunt_reel.dataroot import SharedDataError, require_corpus, resolve_data_path
+from stunt_reel.dataroot import SharedDataError, read_data_file
 from stunt_reel.flm_walk import (
     SIF_ANIMATES,
     SIF_DRAW,
@@ -87,21 +87,13 @@ def film_events(data: bytes, *, sounds: bool = False) -> tuple[int, list[tuple[i
     return tick, events
 
 
-def read_input(path: Path) -> bytes:
-    """The bytes of *path*; a ``corpus/...`` path is read from the data root, which must exist."""
-    resolved = resolve_data_path(path)
-    if resolved != path:
-        require_corpus()
-    return resolved.read_bytes()
-
-
 def main(argv: list[str]) -> int:
     paths = [arg for arg in argv[1:] if not arg.startswith("--")]
     if len(paths) != 1:
         print(__doc__)
         return 2
     try:
-        data = read_input(Path(paths[0]))
+        data = read_data_file(Path(paths[0]))
     except (SharedDataError, OSError) as err:
         print(f"flm_events: {err}", file=sys.stderr)
         return 2

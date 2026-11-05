@@ -56,7 +56,10 @@ def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     """Build both trees from the data root's corpus."""
-    return run(parse_args())
+    args = parse_args()
+    if dataroot.require_corpus_or_report("mise run game-builds") is None:
+        return 2
+    return run(args)
 
 
 if __name__ == "__main__":
