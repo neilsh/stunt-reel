@@ -382,3 +382,178 @@ fn interval_samples_are_accepted_once_each() {
     assert_eq!(expected, 5);
     assert_eq!(test.pages(), 5, "one page per draw");
 }
+
+// Ground decals: a prop lying on the terrain is drawn in the decal batch after the terrain,
+// as PLAYONE paints a scenery tile over the leaf under it (research/playone-exe/world-scene.md
+// sections 3 and 6). The tile's vertices are snapped to the terrain plane by `stunt-core`, so
+// the two tie in depth and only the decal pass's bias separates them.
+
+const TERRAIN: u8 = 40;
+const TILE: u8 = 220;
+
+fn ground_vertex(x: f32, y: f32, z: f32, palette_index: u8) -> SodVertex {
+    SodVertex {
+        position: [x, y, z],
+        normal: [0.0, 1.0, 0.0],
+        palette_index,
+        flags: 0,
+        scenery_class: 0,
+        _padding: 0,
+    }
+}
+
+/// A mesh node over the shape's vertices `first..first + count` and indices from `index_start`.
+fn mesh_node(
+    ir: &mut SodModelIr,
+    name: &str,
+    parent: Option<stunt_core::contracts::NodeId>,
+    (first, count): (u32, u32),
+    (index_start, index_count): (u32, u32),
+    is_decal: bool,
+) -> stunt_core::contracts::NodeId {
+    ir.allocate_node(
+        name,
+        parent,
+        glam::Mat4::IDENTITY.to_cols_array(),
+        VisibilityCondition::Always,
+        NodeKind::Mesh {
+            vertex_offset: first,
+            vertex_count: count,
+            index_offset: index_start,
+            index_count,
+            is_decal,
+        },
+    )
+}
+
+/// Flat terrain at y = 0 and a tile on it, `tile_depth` metres deep, centred `distance`
+/// metres in front of a camera `height` metres up that looks at it. A wall of terrain
+/// stands across the view at `wall_z` when given. `terrain_y` is the terrain's height: the
+/// tile lies at 0, so a deep `terrain_y` shows the tile alone.
+fn ground_scene(
+    distance: f32,
+    height: f32,
+    tile_depth: f32,
+    wall_z: Option<f32>,
+    terrain_y: f32,
+) -> FilmScene {
+    let reach = distance + 4000.0;
+    let mut vertices = vec![
+        ground_vertex(-reach, terrain_y, 100.0, TERRAIN),
+        ground_vertex(reach, terrain_y, 100.0, TERRAIN),
+        ground_vertex(reach, terrain_y, -reach, TERRAIN),
+        ground_vertex(-reach, terrain_y, -reach, TERRAIN),
+    ];
+    // Seen from above, a quad is clockwise when it runs far-left, far-right, near-right.
+    let mut indices = vec![3, 2, 1, 3, 1, 0];
+    let mut base_vertices = 4;
+    if let Some(z) = wall_z {
+        vertices.extend([
+            ground_vertex(-reach, 0.0, z, TERRAIN),
+            ground_vertex(-reach, 400.0, z, TERRAIN),
+            ground_vertex(reach, 400.0, z, TERRAIN),
+            ground_vertex(reach, 0.0, z, TERRAIN),
+        ]);
+        indices.extend([4, 5, 6, 4, 6, 7]);
+        base_vertices = 8;
+    }
+    let base_indices = u32::try_from(indices.len()).unwrap();
+    let half = tile_depth / 2.0;
+    let (near, far) = (-distance + tile_depth / 2.0, -distance - tile_depth / 2.0);
+    vertices.extend([
+        ground_vertex(-half, 0.0, far, TILE),
+        ground_vertex(half, 0.0, far, TILE),
+        ground_vertex(half, 0.0, near, TILE),
+        ground_vertex(-half, 0.0, near, TILE),
+    ]);
+    let first = base_vertices;
+    indices.extend([first, first + 1, first + 2, first, first + 2, first + 3]);
+
+    let mut ir = SodModelIr::new("GROUND");
+    ir.vertices = vertices;
+    ir.indices = indices;
+    let base = mesh_node(
+        &mut ir,
+        "BASE",
+        None,
+        (0, base_vertices),
+        (0, base_indices),
+        false,
+    );
+    mesh_node(
+        &mut ir,
+        "DECAL",
+        Some(base),
+        (first, 4),
+        (base_indices, 6),
+        true,
+    );
+    ir.root_nodes = vec![base];
+    let camera = CameraTransform {
+        eye: [0.0, height, 0.0],
+        target: [0.0, 0.0, -distance],
+        fov_degrees: 45.0,
+        roll_radians: 0.0,
+        cut_from_previous: false,
+        ..Default::default()
+    };
+    FilmScene::with_single_model(common::still_timeline(camera), ir)
+}
+
+/// Pixels of the actor layer drawn with `index`.
+fn pixels_of(page: &RenderedPage, index: u8) -> usize {
+    page.indices()
+        .iter()
+        .copied()
+        .zip(page.layers().iter().copied())
+        .filter(|&(i, layer)| i == index && layer == LAYER_FIRST_ACTOR)
+        .count()
+}
+
+#[test]
+fn a_ground_decal_shows_over_the_terrain_it_lies_on() {
+    let scene = ground_scene(80.0, 12.0, 100.0, None, 0.0);
+    let Some(mut test) = common::gpu_or_skip(&scene) else {
+        return;
+    };
+    let page = test.draw(&scene.frame(0.0));
+    let (tile, terrain) = (pixels_of(&page, TILE), pixels_of(&page, TERRAIN));
+    assert!(tile > 500, "tile hidden by the terrain under it: {tile}");
+    assert!(terrain > 500, "terrain missing: {terrain}");
+}
+
+#[test]
+fn a_ground_decal_a_kilometre_and_a_half_away_still_shows() {
+    // Depth24Plus resolves about 27 cm at this range. The tile ties the terrain exactly, at a
+    // grazing 2 degrees, so the bias must cover the quantisation: the tile shows as many
+    // pixels over the terrain as it does alone.
+    for distance in [1000.0, 1500.0, 2000.0, 4000.0, 8000.0] {
+        let counts = [0.0, -10_000.0].map(|terrain_y| {
+            let scene = ground_scene(distance, distance / 10.0, distance / 2.0, None, terrain_y);
+            let mut test = common::gpu_or_skip(&scene)?;
+            Some(pixels_of(&test.draw(&scene.frame(0.0)), TILE))
+        });
+        let [Some(over), Some(alone)] = counts else {
+            return;
+        };
+        assert!(
+            alone > 100,
+            "tile alone too small to test at {distance} m: {alone}"
+        );
+        assert!(
+            over * 10 >= alone * 9,
+            "tile over the terrain at {distance} m: {over} of {alone} pixels"
+        );
+    }
+}
+
+#[test]
+fn terrain_in_front_of_a_ground_decal_still_hides_it() {
+    let scene = ground_scene(300.0, 60.0, 100.0, Some(-100.0), 0.0);
+    let Some(mut test) = common::gpu_or_skip(&scene) else {
+        return;
+    };
+    let page = test.draw(&scene.frame(0.0));
+    assert!(pixels_of(&page, TERRAIN) > 500, "the wall is missing");
+    assert_eq!(pixels_of(&page, TILE), 0, "the tile shows through the wall");
+}
