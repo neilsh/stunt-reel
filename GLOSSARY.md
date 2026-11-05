@@ -39,6 +39,10 @@ _Avoid_: trailer, final slice
 **Camera cut**:
 An instantaneous camera reposition between consecutive trajectory records, exempt from interpolation.
 
+**Slot re-creation**:
+A create on a slot that an earlier slice destroyed, starting a new actor rather than continuing the old one. INTRO.FLM's montage re-creates a pool of slots every few ticks; across its 538 slices a trajectory record without the slot separates each destroy from the following create, so the lerp never pairs the two actors ([film segments](research/parity/film-segments.md) § 2.3).
+_Avoid_: respawn, slot reuse
+
 **Palette controls**:
 Film variables 13 (night term), 14 (brightness) and 15 (saturation), from which `PLAYONE.EXE` rebuilds palette entries 0–239 every frame. Fades, desaturation and dusk are authored through them: the editor's **Fade** effect sets brightness and its **Color** effect sets saturation, each as a ramp from the start to the end of a marked segment. All three start at zero, so a film that has not yet faded in plays black.
 _Avoid_: tone, palette fade (for the variables themselves)
@@ -84,6 +88,10 @@ _Avoid_: legacy coordinates
 **World**:
 The static scenery of an island: ocean, terrain patches built from `MAP.BIN` over anchor points, and props placed by `SCENERY.scn`. It is drawn with an identity transform.
 _Avoid_: level, map (for the whole)
+
+**Ground**:
+The island's surface, the handbook's "the ground". `MAP.BIN` terrain patches are one known source of it; what supplies the rest, such as the sand flats, is not established (#65).
+_Avoid_: terrain (for the whole surface), floor
 
 **Prop**:
 A shape placed in the world by a `SCENERY.scn` leaf. A prop has a position and no orientation; a rotated variant is a separate shape.
@@ -180,6 +188,10 @@ _Avoid_: slot (unqualified)
 **Game build**:
 One of the two releases of the `PLAYONE.EXE`/`MAKEONE.EXE` pair: **unpatched**, the 1992 release that the retail game and the demo ship, or **patch3**, the Patch #3 release that replaced every executable. An archive belongs to the build whose `MAKEONE` wrote it, and a capture to the build whose `PLAYONE` played it.
 _Avoid_: version, patch level, base or retail build (for unpatched)
+
+**MAKEONE hang**:
+A `MAKEONE` run that writes its archive but never returns to DOS. Distinct from a capture stall, where `PLAYONE` never reaches its film.
+_Avoid_: stall, timeout (for MAKEONE)
 
 **Control port**:
 The TCP port of the emulator's REST server. Each run picks a free one at launch and writes it into that run's conf, so two captures never collide ([ADR 0025](docs/adr/0025-capture-runs-are-plans-not-sessions.md)).
