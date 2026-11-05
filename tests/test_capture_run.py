@@ -649,6 +649,22 @@ def test_a_capture_after_the_fallback_records_the_build_that_ran(
     assert (meta["playone_build"], meta["playone_sha256"]) == (layouts[1].name, layouts[1].sha256)
 
 
+@BOTH
+def test_a_failed_publish_after_a_good_capture_is_never_a_stall(
+    script: str, staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def full_disk(*_args: object) -> Path:
+        raise PermissionError("the old capture is locked")
+
+    monkeypatch.setattr(capture_store, "publish", full_disk)
+    emulator = Emulator(script)
+
+    assert _run(script, staged_repo, monkeypatch, emulator) == 1
+
+    assert emulator.builds() == [b"patch3 PLAYONE.EXE"]
+    assert _stage_is_empty()
+
+
 def test_the_suggested_row_is_valid_toml_whatever_the_reason_says() -> None:
     job = capture_run.Job(tag="t", task="t", kind="frames", film=Path("x"))
     row = capture_run._suggested_row("vault-ctry", job, 'C:\\data\\"quoted"')
