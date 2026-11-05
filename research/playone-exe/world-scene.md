@@ -1,7 +1,7 @@
 # `PLAYONE.EXE`: How the Ground Is Drawn and Where Its Colours Come From
 
 * **Binary**: `PLAYONE.EXE`, unpacked load image, unpatched and Patch #3 builds; film `CTRY.FLM` (and `INTRO.FLM` for the renderer check)
-* **Method**: DOSBox-X breakpoint plans in `tools/dosbox-x/plans/` (`ground-colours`, `ground-writer`, `ground-tiles`, `ground-filler`, `terrain-records`, `terrain-tree`, `ground-objects`; tool in [`debugger-plans.md`](debugger-plans.md)), iced-x86 disassembly of the unpacked image, byte comparison of the image with `MAP.BIN` and the `RES` shapes, and renderer probes (`DBG_NO_TERRAIN`, `DBG_TERRAIN_DROP`, a biased terrain pass; none committed) and the ground-decal prototype
+* **Method**: DOSBox-X breakpoint plans in `tools/dosbox-x/plans/` (`ground-colours`, `ground-writer`, `ground-tiles`, `ground-filler`, `terrain-records`, `terrain-tree`, `ground-objects`, `ground-driver`; tool in [`debugger-plans.md`](debugger-plans.md)), iced-x86 disassembly of the unpacked image, byte comparison of the image with `MAP.BIN` and the `RES` shapes, and renderer probes (`DBG_NO_TERRAIN`, `DBG_TERRAIN_DROP`, a biased terrain pass; none committed) and the ground-decal prototype
 * **Scope**: the code that draws the ground, where each ground colour is stored, how the airfield's scenery tiles reach the screen, and the dispatch slots of the display-list VM. How SOD polygons are *shaded* is in [`terrain-shade.md`](terrain-shade.md)
 * **Anchors**: none new; the slot table is summarised in [`sod-vm.md`](sod-vm.md) section 1, the anchor table in [`memory-map.md`](memory-map.md) section 3
 * **Evidence tier**: `[Established]` for the instruction sequences, the tree's place in the image and its identity with `MAP.BIN`; `[Bounded Observation]` for what the live runs drew (one emulator, `CTRY.FLM`, unpatched; each run's ticks are given where it is cited)
@@ -51,6 +51,25 @@ All 158 match a `MAP.BIN` record's vertices and colour once the records are read
 That accounts for the 20 active records with no leaf in open question 1 ([#175](https://github.com/neilsh/stunt-reel/issues/175)): the 12 coarse `SP_GROUND` polygons, which that scan did not look for, and these 8 patches. Whether `PLAYONE` draws the 8 patches another way, or only FreeFlight has them, is not settled.
 
 Two older readings this walk corrects. `OP_FRACTAL` (image `0xA56C`) is dead code: it pushes 14 words against a `ret 0x1A`, which leaves `ES` at `0x50`, so a stream cannot have run it. The 110-word "ramp directory" at `CTRY.ALL` offset `0x79` ([`all.md`](../formats/all.md) section 3.6) is the archive's chunk-id table at `0x7A` read one byte off.
+
+### 2.2 The driver slot, live
+
+*[Bounded Observation]* (`ground-driver`, `CTRY.FLM`, unpatched, DOSBox-X, 2026-11-05). The plan breaks on `0x7571`, the flat span filler that `DS:0x2246` points at, from tick 273, and records `CX`, three stack words and the slot's two bytes at each hit. The 300 hits it allows were spent by tick 293 (the first was at 280).
+
+* **The slot holds `0x7571` at every hit.** `driver1..3.bin` have loaded by then, so the static reading of section 2 stands at runtime.
+* **Two callers, told apart by the near return address.** `0x8072` is the Ground drawer's call to the gateway `0:8069` (91 hits). `0x802B` is the VM polygon path (209 hits), the same gateway reached from `0:8010`.
+* **Ground colours.** The 91 hits from `0x8072` carry `CL` = `161`, `162`, `163`, `164` (4, 8, 4, 4), `192` (5), `193`, `194` (4 each), `195` (27), `205` (19) and `231` (12). Every one is a colour the static walk finds on a Ground polygon (section 2.1: 161-165, 192-198, 204, 205, 231), and none is a ramp neighbour of another (no `195 +/- n` run), so the stored word reaches the filler unchanged. The VM path carries 28 other values, including every `229..238` and `136` (43), `39` (31), `47` (16).
+* **The airfield's 193, 194 and 196.** In this window `196` came only from the VM path (4 hits) and `193` and `194` from both (5 and 4 from the VM, 4 and 4 from the Ground). The Ground leaves do carry `196` (3 of them), but none was drawn before the 300 hits ran out, so the 196 pixels of the shot are the scenery tiles of section 3, as the capture shows, and not the terrain. The hit counts are polygon calls, not pixels.
+
+What the run does not show: one frame in full (the hits cover ticks 280-293), a pixel-level join of a call to a capture pixel, or Patch #3 (`--build patch3` was not run; the plan holds unpatched offsets and the pairing maps `0x7571` only if it is in a function of similarity 1.0).
+
+### 2.3 The change this licenses
+
+*[Hypothesis]* for the sign; it was not built.
+
+* **Drop `MAP.BIN` patches 52 to 55 and 62 to 65 from `push_terrain`/`parse_map_bin`** (`crates/stunt-core/src/world.rs`). The engine's tree has no polygon for them, so `PLAYONE` never draws them; we draw patches 54 (colour 87) and 55 (colour 91). Predicted sign: zero on any shot where the patches are off screen (as patch 131 was, section 6.3), and positive where they cover pixels `PLAYONE` leaves to the ground behind or to a tile; the size is unmeasured. On `CTRY` the airfield shot shows 91 and 87 only through tiles (section 3, `0x5B`, `0x58`), so a drop there can only move our render towards the capture. On `INTRO` the capture has 91 on 11% of its terrain pixels, which section 3 gives to `SCENERY2` tiles; the same reasoning holds, the sign is non-negative, and a drop that uncovers a tile's depth tie would be resolved by the decal pass.
+* **Keep patch 131's eighth vertex** (done in `8b36b79`; no frame of either film changes).
+* **Keep colours as stored.** The 157 matching leaves (158 with 131) already agree with `MAP.BIN`; no re-baking or shade is licensed (Ruled out).
 
 ## 3. Scenery tiles drawn over the ground
 
@@ -167,7 +186,7 @@ _Found 2026-11-04; see the [parity log](../parity/log.md)._
 ## Ruled out
 
 * **Re-baking `MAP.BIN`'s colours** (section 2): all 146 leaves in the image carry `MAP.BIN`'s colour byte, on both builds.
-* **A shaded or Gouraud ground** (section 2): the leaf routine `0xBF23` hands its stored colour word to `0:8069` unchanged; the Gouraud filler `0:75DB` was called only for the aircraft in the airfield shot.
+* **A shaded or Gouraud ground** (section 2): the leaf routine `0xBF23` hands its stored colour word to `0:8069` unchanged, and a break on the driver filler `0x7571` saw only stored colours from the Ground caller (section 2.2); the Gouraud filler `0:75DB` was called only for the aircraft in the airfield shot.
 * **Ops `0x0168`/`0x02BE` as the ground** (section 4.1): they are `GVPOLY`/`GVPOLY16`, used there only by object `608A`.
 * **The ground in `CTRY.ALL` or `VDATA.BIN`** (sections 2, 5): the tree is in the image; no 8-byte window of a live leaf polygon occurs in `VDATA.BIN` or any other file of the install (`PLAYONE.EXE` itself is LZEXE-packed on disk; the tree is in its unpacked image).
 * **The tiles sit below the terrain** (section 6.1): they are on its plane to a millimetre; the 5 cm drop removes a depth tie. The earlier reading came from the `LessEqual` probe.

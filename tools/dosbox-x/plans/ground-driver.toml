@@ -1,0 +1,13 @@
+# #65: the flat span filler behind driver slot DS:0x2246 (0x7571). Every call carries CX (colour in
+# CL for the raw gateway 0x8069) and the near return address: 0x8072 is the Ground drawer's call
+# to the gateway, 0x802B and 0x8056 are the VM polygons'. Armed from tick 273 on CTRY.FLM.
+[run]
+stop_tick = 330
+
+[[probe]]
+name = "driver-7571"
+kind = "break"
+at = 0x7571
+arm = { tick = 273 }
+hits = 300
+capture = ["stack:3", "mem:DS:0x2246:2"]
