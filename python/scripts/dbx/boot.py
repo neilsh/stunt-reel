@@ -198,6 +198,10 @@ def booted(film: Path, build: Literal["unpatched", "patched"], *, cycles: int) -
             newline="\n",
         )
         dump_dir = staged.root / "dump"
+        if " " in dump_dir.as_posix():
+            # MEMDUMPBIN takes the path unquoted (Link refuses it too); fail before DOSBox-X starts.
+            msg = f"dump directory {dump_dir} contains a space"
+            raise LinkError(msg)
         dump_dir.mkdir()
         listener = Listener()
         proc = subprocess.Popen(  # noqa: S603 - the pinned emulator and our own conf

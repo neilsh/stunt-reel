@@ -51,5 +51,8 @@ offsets onto Patch #3 and whose iced-x86 decoder names a watch stop's writer
 - The debugger does not halt guest time while the controller reads a stop, so every hit records
   its own film tick and no finding rests on the order or spacing of hits.
 - `BPM` fires on a changed value, so a watch sees every changing write, not every write.
+- `BPM` arms with a stored value of `00`, so each watched byte that is not zero stops once,
+  spuriously, right after arming. The runner's writer filter drops these, but they count in a
+  probe's `spurious` total and its spurious records.
 - The layout differs from dosbox-automation's (load paragraph `0x0824` against `0x01F5`); the
   tool reads it from `DOS MCBS` each run.
