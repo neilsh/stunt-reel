@@ -34,7 +34,7 @@ lazy from collections.abc import Sequence
 
 import numpy as np
 
-from stunt_reel import parity_layout, references
+from stunt_reel import dataroot, parity_layout, references
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.parity_artifacts import (
     CapturedFrame,
@@ -438,7 +438,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.set_defaults(func=fn)
         p.add_argument(
             "--reference",
-            type=Path,
+            type=dataroot.data_path_arg,
             default=None,
             help="a capture directory (default: ctry's reference from references.toml)",
         )
@@ -488,7 +488,9 @@ def main() -> int:
     with contextlib.ExitStack() as stack:
         if args.reference is None and args.func is not cmd_summary:
             try:
-                args.reference = stack.enter_context(references.open_reference(REPO_ROOT, "ctry"))
+                args.reference = stack.enter_context(
+                    references.open_reference(dataroot.data_root(), "ctry")
+                )
             except references.ReferenceCaptureError as err:
                 print(f"parity_probe: {err}", file=sys.stderr)
                 return 1

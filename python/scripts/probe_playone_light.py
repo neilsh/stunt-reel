@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from stunt_reel import dataroot
-from stunt_reel.dataroot import ensure_links_or_report
+from stunt_reel.dataroot import data_path_arg
 from stunt_reel.tac import automation, luagen, plan, playone, staging
 from stunt_reel.tac.emulator import EmulatorUnavailable
 
@@ -35,7 +35,6 @@ if TYPE_CHECKING:
 
     from stunt_reel.tac.automation import ScriptRunner
 
-DEFAULT_FILM: Path = Path("corpus/stisldem/VAULT/CTRY.FLM")
 DEFAULT_TICKS: tuple[int, ...] = (10, 150, 273, 448, 700, 900, 1100)
 #: Work-segment offsets: light vector, sun-billboard vector, shade array (terrain-shade.md).
 LIGHT_OFFSET: int = 0x8072
@@ -52,7 +51,12 @@ MAX_TRACE_FRAMES: int = 12000
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--film", type=Path, default=DEFAULT_FILM, help="film to play")
+    parser.add_argument(
+        "--film",
+        type=data_path_arg,
+        default=dataroot.DEFAULT_FILM,
+        help="film to play",
+    )
     parser.add_argument(
         "--ticks",
         default=",".join(str(t) for t in DEFAULT_TICKS),
@@ -221,10 +225,11 @@ def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     """Run the probe and terminate the emulator."""
-    if not ensure_links_or_report("probe_playone_light"):
-        return 2
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
-    return run(parse_args())
+    args = parse_args()
+    if dataroot.require_corpus_or_report("probe_playone_light") is None:
+        return 2
+    return run(args)
 
 
 if __name__ == "__main__":

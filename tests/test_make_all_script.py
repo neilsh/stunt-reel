@@ -46,7 +46,6 @@ def _load() -> Any:
 @pytest.fixture
 def script(monkeypatch: pytest.MonkeyPatch) -> Any:
     module = _load()
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     # The real poll interval is 2 s per wait; the mock guest answers at once.
     monkeypatch.setattr(
         module.makeone, "make_all", functools.partial(module.makeone.make_all, poll=0.0)
@@ -92,7 +91,7 @@ def _args(
 
 def _archives(slug: str = "vault-ctry") -> list[Path]:
     """The film's stored archive, as a list so a test can say there is exactly one or none."""
-    stored = capture_store.current(dataroot.REPO_ROOT / parity_layout.archive_path(slug))
+    stored = capture_store.current(dataroot.data_root() / parity_layout.archive_path(slug))
     return [] if stored is None else [stored]
 
 
@@ -270,7 +269,7 @@ def test_an_archives_directory_of_numbered_runs_is_refused_before_makeone(
     staged_repo: StagedRepo,
     game_root: Path,
 ) -> None:
-    run = dataroot.REPO_ROOT / parity_layout.archive_path("vault-ctry") / "001"
+    run = dataroot.data_root() / parity_layout.archive_path("vault-ctry") / "001"
     run.mkdir(parents=True)
     (run / "meta.json").write_text("{}", encoding="utf-8")
     launch, state = makeone_launcher(text_after=1, archive=ARCHIVE)
@@ -481,6 +480,16 @@ def test_a_link_error_removes_the_old_manifest_too(
     captured = capsys.readouterr()
     assert "boom" in captured.err
     assert "removed" in captured.out
+
+
+def test_game_arg_records_a_tree_in_the_data_root_by_its_corpus_path(
+    script: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default game root is the data root's, so a manifest stays valid on every machine."""
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    dataroot.data_root.cache_clear()
+    (tmp_path / "corpus" / "stuntisl").mkdir(parents=True)
+    assert script.game_arg(tmp_path / "corpus" / "stuntisl") == "corpus/stuntisl"
 
 
 def test_game_arg_records_a_dotted_path_inside_the_checkout_relative(

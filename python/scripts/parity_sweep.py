@@ -39,7 +39,6 @@ import parity_probe
 from cli import add_parity_options, parity_options
 
 from stunt_reel import parity_layout, references
-from stunt_reel.dataroot import ensure_links_or_report
 from stunt_reel.parity_artifacts import (
     Geometry,
     RenderStore,
@@ -272,7 +271,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--var", action="append", default=None, metavar="DBG_NAME=v1,v2", help="repeatable"
     )
-    add_parity_options(parser, data_root=REPO_ROOT)
+    add_parity_options(parser)
     parser.add_argument("--probe", choices=("film", "iou"), default="film")
     parser.add_argument("--keep-best", action="store_true", help="keep the winner's render dirs")
     return parser.parse_args(argv)
@@ -291,8 +290,6 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     films = list(options.films)
     root = options.data_root
-    if root == REPO_ROOT and not ensure_links_or_report("parity_sweep"):
-        return 2
     problems = preflight(root, films, build_required=not options.no_build)
     if problems:
         print("parity_sweep: " + "\n  ".join(problems), file=sys.stderr)

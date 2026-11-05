@@ -121,7 +121,7 @@ def _engine_root(film: Path) -> Path:
     beside = film.parent.parent
     if (beside / "PLAYONE.EXE").is_file():
         return beside
-    return dataroot.REPO_ROOT / "corpus" / "stisldem"
+    return dataroot.corpus_root() / "stisldem"
 
 
 def _stage(film: Path, populate: Callable[[Path], None]) -> StagedMount:
