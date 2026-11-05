@@ -166,7 +166,9 @@ pub fn write_all(chunks: &[(u16, &[u8])]) -> Result<Vec<u8>, VfsError> {
     })?;
     // `sorted.len()` fits u16 (checked above), so the product never clamps.
     let header = offset_add(sorted.len().saturating_mul(6), 6)?;
-    let total = offset_add(header, sorted.iter().map(|(_, p)| p.len()).sum::<usize>())?;
+    let total = sorted
+        .iter()
+        .try_fold(header, |sum, (_, payload)| offset_add(sum, payload.len()))?;
     if u32::try_from(total).is_err() {
         return Err(VfsError::InvalidOffsetTable {
             reason: format!("archive of {total} bytes passes the u32 offset range"),

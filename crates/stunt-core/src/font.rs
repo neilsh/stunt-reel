@@ -63,18 +63,19 @@ impl PFont {
     }
 
     /// Advance of a whole string: the sum of its glyph widths (`0x58D0`).
+    ///
+    /// Saturates at `i32::MAX`, so a film string too long for any screen cannot overflow.
     #[must_use]
     pub fn text_width(&self, text: &[u8]) -> i32 {
-        text.iter().map(|&byte| i32::from(self.width(byte))).sum()
+        text.iter().fold(0_i32, |sum, &byte| {
+            sum.saturating_add(i32::from(self.width(byte)))
+        })
     }
 
     /// Calls `put(x, y)` for each set pixel of `text` with its top-left at `(x, y)`.
     ///
     /// Glyphs advance by their width; pixels are not clipped, so the caller bounds them.
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "pen position is a screen-space i32 advanced by u8 glyph widths over a short string"
-    )]
+    /// Coordinates saturate, so a film string too long for any screen cannot overflow.
     pub fn draw_text(&self, text: &[u8], x: i32, y: i32, put: &mut dyn FnMut(i32, i32)) {
         let mut pen = x;
         for &byte in text {
@@ -82,12 +83,12 @@ impl PFont {
                 for (row, bits) in (0..).zip(rows) {
                     for column in 0..8 {
                         if bits & (0x80 >> column) != 0 {
-                            put(pen + column, y + row);
+                            put(pen.saturating_add(column), y.saturating_add(row));
                         }
                     }
                 }
             }
-            pen += i32::from(self.width(byte));
+            pen = pen.saturating_add(i32::from(self.width(byte)));
         }
     }
 }
