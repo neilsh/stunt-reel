@@ -107,7 +107,10 @@ def pin_reference(root: Path, film: str, frames: list[dict[str, int]]) -> Path:
     pointers.parent.mkdir(parents=True, exist_ok=True)
     digest = references.capture_digest(reference)
     with pointers.open("a", encoding="utf-8") as handle:
-        handle.write(f'[{film}]\nfilm = "vault-{film}"\nsha256 = "{digest}"\n')
+        handle.write(
+            f'[{film}]\nfilm = "vault-{film}"\nsha256 = "{digest}"\n'
+            'makeone = "patch3"\nplayone = "patch3"\n'
+        )
     return reference
 
 

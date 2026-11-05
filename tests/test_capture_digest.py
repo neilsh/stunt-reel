@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import sys
+import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -37,7 +39,64 @@ def test_prints_the_digest_and_the_entry_that_promotes_it(
     assert out[1] == f'sha256 = "{digest}"'
     # The committed references.toml has a [ctry] entry for vault-ctry, so the block follows.
     block = out[out.index("[ctry]") :]
-    assert block == ["[ctry]", 'film = "vault-ctry"', f'sha256 = "{digest}"']
+    assert block[:4] == [
+        "[ctry]",
+        'film = "vault-ctry"',
+        f'sha256 = "{digest}"',
+        'makeone = "unpatched"',
+    ]
+    assert 'playone = "unpatched"' in block
+    assert any(line.startswith("reason = ") for line in block)
+    assert tomllib.loads("\n".join(block))["ctry"]["reason"]
+
+
+def test_the_suggested_row_takes_the_builds_the_capture_records(tmp_path: Path) -> None:
+    """playone from the capture's meta.json, makeone from the stored archive's hash (ADR 0029)."""
+    directory = _capture(tmp_path, "vault-ctry")
+    (directory / "meta.json").write_text('{"playone_build": "patch3"}', encoding="utf-8")
+    archive = tmp_path / parity_layout.archive_path("vault-ctry")
+    archive.mkdir(parents=True)
+    makeone = next(h for h, b in references.MAKEONE_BUILDS.items() if b == "patch3")
+    (archive / "meta.json").write_text(json.dumps({"makeone_sha256": makeone}), encoding="utf-8")
+    builds = capture_digest.recorded_builds(tmp_path, "vault-ctry", directory)
+    assert builds == {"playone": "patch3", "makeone": "patch3"}
+    lines = capture_digest.report("vault-ctry", "0" * 64, builds=builds)
+    assert 'makeone = "patch3"' in lines
+    assert 'playone = "patch3"' in lines
+    assert not any(line.startswith("reason") for line in lines)
+
+
+def test_a_build_the_capture_does_not_record_is_not_invented(tmp_path: Path) -> None:
+    directory = _capture(tmp_path, "vault-intro")
+    assert capture_digest.recorded_builds(tmp_path, "vault-intro", directory) == {}
+
+
+def _stored_archive(root: Path, slug: str, **meta: str) -> None:
+    archive = root / parity_layout.archive_path(slug)
+    archive.mkdir(parents=True)
+    (archive / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def test_an_unknown_recorded_build_stays_unknown_in_the_suggested_row(tmp_path: Path) -> None:
+    """The row's own build must not stand in for one the capture records but cannot name."""
+    directory = _capture(tmp_path, "vault-ctry")
+    (directory / "meta.json").write_text('{"playone_build": "beta"}', encoding="utf-8")
+    _stored_archive(tmp_path, "vault-ctry", makeone_sha256="0" * 64)
+    builds = capture_digest.recorded_builds(tmp_path, "vault-ctry", directory)
+    assert builds == {"playone": "?", "makeone": "?"}
+    lines = capture_digest.report("vault-ctry", "0" * 64, builds=builds)
+    assert any(line.startswith('playone = "?"') for line in lines)
+    assert any(line.startswith('makeone = "?"') for line in lines)
+
+
+def test_a_capture_of_another_archive_does_not_take_the_stored_archives_build(
+    tmp_path: Path,
+) -> None:
+    directory = _capture(tmp_path, "vault-ctry")
+    (directory / "meta.json").write_text(json.dumps({"all_sha256": "a" * 64}), encoding="utf-8")
+    makeone = next(h for h, b in references.MAKEONE_BUILDS.items() if b == "patch3")
+    _stored_archive(tmp_path, "vault-ctry", makeone_sha256=makeone, all_sha256="b" * 64)
+    assert capture_digest.recorded_builds(tmp_path, "vault-ctry", directory) == {"makeone": "?"}
 
 
 def test_the_dir_form_hashes_the_same(

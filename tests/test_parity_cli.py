@@ -77,7 +77,10 @@ def test_the_films_come_from_the_selected_data_root(tmp_path: Path) -> None:
     """Another root's references.toml decides the default set and what --films accepts."""
     pointers = tmp_path / "research" / "parity" / "references.toml"
     pointers.parent.mkdir(parents=True)
-    pointers.write_text('[balloon]\nfilm = "vault-balloon"\nsha256 = "ab"\n', encoding="utf-8")
+    pointers.write_text(
+        '[balloon]\nfilm = "vault-balloon"\nsha256 = "ab"\nmakeone = "patch3"\nplayone = "patch3"\n',
+        encoding="utf-8",
+    )
     options = _options(parity_run, ["--data-root", str(tmp_path)])
     assert options.films == ("balloon",)
     with pytest.raises(UsageError, match="must be from balloon"):

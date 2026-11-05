@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from archive_helpers import build_all
-from stunt_reel import capture_store, dataroot, parity_artifacts, parity_layout
+from stunt_reel import capture_store, dataroot, parity_artifacts, parity_layout, references
 from stunt_reel.all_archive import ArchiveMeta, publish_archive
 from stunt_reel.parity_artifacts import CaptureSet, FilmId, Geometry
 from stunt_reel.tac import automation, framebuffer, luagen, plan, playone, staging
@@ -29,6 +29,26 @@ from tac_mock import FILM_COLORS, FakeFilm, StagedRepo
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+
+@pytest.fixture(autouse=True)
+def rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An empty references.toml for the scripts' build check, not the committed rows' pairs."""
+    checkout = tmp_path / "references-checkout"
+    pointers = checkout / parity_layout.REFERENCES_FILE
+    pointers.parent.mkdir(parents=True)
+    pointers.write_text("", encoding="utf-8")
+    monkeypatch.setattr(references, "REPO_ROOT", checkout)
+    return pointers
+
+
+def _name_builds(pointers: Path, *, playone_build: str) -> None:
+    pointers.write_text(
+        f'[ctry]\nfilm = "vault-ctry"\nmakeone = "patch3"\nplayone = "{playone_build}"\n'
+        + ('reason = "x"\n' if "unpatched" in playone_build else ""),
+        encoding="utf-8",
+    )
+
 
 _REAL_LAYOUT_FOR = playone.layout_for  # before staged_repo replaces it
 KEYS = playone.film_selection_names("CTRY")
@@ -783,6 +803,66 @@ def test_capture_script_runs_the_game_root_build_with_its_layout(
     assert "no known PLAYONE.EXE build" in capsys.readouterr().err
     stage_root = dataroot.data_root() / parity_layout.stage_root()
     assert not stage_root.exists() or not any(stage_root.iterdir())
+
+
+@pytest.mark.parametrize("script", ["capture_playone_reference", "capture_video"])
+def test_a_capture_refuses_a_build_its_films_row_does_not_name(
+    script: str,
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    rows: Path,
+) -> None:
+    """The row names patch3; the film folder's engine is unpatched, so no emulator may start (ADR 0029)."""
+    module = _load_script(script)
+    monkeypatch.setattr(
+        sys, "argv", [f"{script}.py", *_capture_argv(staged_repo, tmp_path / "out")[1:]]
+    )
+    monkeypatch.setattr(module.playone, "layout_for", lambda _exe: playone.UNPATCHED)
+    monkeypatch.setattr(references, "archive_makeone_build", lambda *_a: "patch3")
+    for hook in ("capture", "record_video"):
+        target = module if hasattr(module, hook) else getattr(module, "video", None)
+        if target is not None and hasattr(target, hook):
+            monkeypatch.setattr(target, hook, lambda *_a, **_k: pytest.fail("the emulator ran"))
+    _name_builds(rows, playone_build="patch3")
+    assert module.run(module.parse_args()) == 2
+    assert "names patch3" in capsys.readouterr().err
+    stage_root = dataroot.data_root() / parity_layout.stage_root()
+    assert not stage_root.exists() or not any(stage_root.iterdir())
+
+
+def test_a_capture_accepts_the_build_its_films_row_names(
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    rows: Path,
+) -> None:
+    module = _load_script("capture_playone_reference")
+    monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, tmp_path / "out"))
+    monkeypatch.setattr(module.playone, "layout_for", lambda _exe: playone.UNPATCHED)
+    monkeypatch.setattr(references, "archive_makeone_build", lambda *_a: "patch3")
+    monkeypatch.setattr(module, "capture", lambda *_a, **_k: {"frames": [{"ordinal": 1}]})
+    _name_builds(rows, playone_build="unpatched")
+    assert module.run(module.parse_args()) == 0
+
+
+def test_a_capture_refuses_an_archive_whose_build_cannot_be_determined(
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    rows: Path,
+) -> None:
+    """An archive with no record cannot satisfy a row that names a MAKEONE build (ADR 0029)."""
+    module = _load_script("capture_playone_reference")
+    monkeypatch.setattr(references, "archive_makeone_build", lambda *_a: references.UNKNOWN_BUILD)
+    monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, tmp_path / "out"))
+    monkeypatch.setattr(module.playone, "layout_for", lambda _exe: playone.UNPATCHED)
+    monkeypatch.setattr(module, "capture", lambda *_a, **_k: pytest.fail("the emulator ran"))
+    _name_builds(rows, playone_build="unpatched")
+    assert module.run(module.parse_args()) == 2
+    assert "cannot be determined" in capsys.readouterr().err
 
 
 def _engine_layouts(

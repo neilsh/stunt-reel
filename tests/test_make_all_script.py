@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from archive_helpers import build_all
-from stunt_reel import capture_store, dataroot, link, parity_layout
+from stunt_reel import capture_store, dataroot, link, parity_layout, references
 from stunt_reel.all_archive import ArchiveMeta
 from tac_mock import StagedRepo, makeone_launcher
 
@@ -53,6 +53,63 @@ def script(monkeypatch: pytest.MonkeyPatch) -> Any:
     # The real extract builds and runs the release binary; tests that need it pass a fake.
     monkeypatch.setattr(module, "extract_with_binary", FakeExtract())
     return module
+
+
+@pytest.fixture(autouse=True)
+def rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An empty references.toml in a stand-in checkout, so the committed rows are not read."""
+    checkout = tmp_path / "references-checkout"
+    pointers = checkout / parity_layout.REFERENCES_FILE
+    pointers.parent.mkdir(parents=True)
+    pointers.write_text("", encoding="utf-8")
+    monkeypatch.setattr(references, "REPO_ROOT", checkout)
+    return pointers
+
+
+def _row(pointers: Path, makeone: str) -> None:
+    reason = 'reason = "x"\n' if makeone == "unpatched" else ""
+    pointers.write_text(
+        f'[ctry]\nfilm = "vault-ctry"\nmakeone = "{makeone}"\n{reason}', encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize(
+    ("row", "build", "refused"),
+    [
+        ("patch3", "unpatched", True),
+        ("unpatched", "unpatched", False),
+        ("patch3", None, True),  # an executable of no known build
+    ],
+)
+def test_make_all_refuses_a_makeone_build_its_films_row_does_not_name(
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_repo: StagedRepo,
+    game_root: Path,
+    capsys: pytest.CaptureFixture[str],
+    rows: Path,
+    row: str,
+    build: str | None,
+    refused: bool,
+) -> None:
+    """The check runs before the emulator, so a refused run launches nothing (ADR 0029)."""
+    if build is not None:
+        digest = hashlib.sha256((game_root / "MAKEONE.EXE").read_bytes()).hexdigest()
+        monkeypatch.setitem(references.MAKEONE_BUILDS, digest, build)
+    _row(rows, row)
+    launch, _state = makeone_launcher(text_after=1, archive=ARCHIVE)
+    args = _args(script, monkeypatch, staged_repo.film, game_root, "--timeout", "30")
+
+    code = script.run(args, launch)
+
+    if refused:
+        assert code == 2
+        assert _archives() == []
+        error = capsys.readouterr().err
+        assert "names patch3" in error or "cannot be determined" in error
+    else:
+        assert code == 0
+        assert len(_archives()) == 1
 
 
 class FakeExtract:
