@@ -68,8 +68,8 @@ Run these in a normal terminal, outside an agent sandbox.
    that old directory keeps working in `debug-x` and `pair-builds`, the callers of
    `game_builds.build_tree`: they use it and print a message to run `mise run game-builds`
    again, which creates `builds/patch3`. An explicit `--game-root <data root>/builds/patch3`
-   for `capture-ref`, `play` or `make-all` is a plain path and fails until `mise run
-   game-builds` has run (or pass the old `builds/patched` path). Nothing renames the old
+   for `capture-ref`, `capture-video`, `play` or `make-all` is a plain path and fails until
+   `mise run game-builds` has run (or pass the old `builds/patched` path). Nothing renames the old
    directory, and keep it until the worktrees that use it and the `make-all` manifests that
    record it as their game root are migrated: `all_archive` rejects a manifest whose recorded
    directory is missing. The fallback is transitional,
