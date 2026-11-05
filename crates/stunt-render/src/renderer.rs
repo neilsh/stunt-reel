@@ -252,12 +252,6 @@ impl RenderedPage {
     pub fn layers(&self) -> &[u32] {
         &self.layers
     }
-
-    /// The page's parts, for a sink that takes ownership of the buffers.
-    #[must_use]
-    pub fn into_parts(self) -> (PageSize, Vec<u8>, Vec<u8>, Vec<u32>) {
-        (self.size, self.rgba, self.indices, self.layers)
-    }
 }
 
 /// Draws `lines` over `page` as `PLAYONE.EXE` draws them over its 320x200 page, centred in the

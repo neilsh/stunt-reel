@@ -205,12 +205,6 @@ impl FilmTimeline {
         Some(record)
     }
 
-    /// Sample the interpolated state at an authored wall-clock time.
-    #[must_use]
-    pub fn sample_at_seconds(&self, seconds: f32) -> Option<TrajectoryRecord> {
-        self.sample(seconds * TIMELINE_HZ)
-    }
-
     /// Audio cues authored at ticks in the half-open interval `[start_tick, end_tick)`.
     ///
     /// Cues from same-tick slices are returned in film order.
