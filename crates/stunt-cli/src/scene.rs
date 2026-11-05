@@ -249,7 +249,7 @@ fn print_report(scene: &FilmScene, report: &SceneReport, anchor_file_found: bool
     }
     if let Some(stop) = report.world.and_then(|stats| stats.scenery_stop) {
         eprintln!(
-            "[stuntreel] scenery stopped at byte {} opcode {} ({})",
+            "[stuntreel] scenery stopped at byte {:#x} opcode {} ({})",
             stop.offset, stop.opcode, stop.reason
         );
     }
