@@ -55,7 +55,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     builds = dataroot.data_root() / game_builds.BUILDS_DIR
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--left", type=Path, default=builds / "unpatched" / "PLAYONE.EXE")
-    parser.add_argument("--right", type=Path, default=builds / "patched" / "PLAYONE.EXE")
+    parser.add_argument(
+        "--right", type=Path, default=game_builds.build_tree(builds, "patch3") / "PLAYONE.EXE"
+    )
     parser.add_argument(
         "--ds", default="", help="comma-separated data offsets, each OFF[@SEGMENT][:OVERRIDE]"
     )

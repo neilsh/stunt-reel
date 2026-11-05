@@ -771,7 +771,7 @@ def test_capture_script_runs_the_game_root_build_with_its_layout(
 ) -> None:
     """--game-root stages that tree's engine files and reads the offsets of its PLAYONE build."""
     module = _load_script("capture_playone_reference")
-    tree = tmp_path / "patched"
+    tree = tmp_path / "patch3"
     tree.mkdir()
     for name in staging.ENGINE_FILES:
         (tree / name).write_bytes(b"patched " + name.encode())
@@ -887,7 +887,7 @@ def _engine_layouts(
 
 def _game_root_argv(tmp_path: Path) -> list[str]:
     """--game-root naming a synthetic engine tree whose PLAYONE.EXE is the "given" one."""
-    tree = tmp_path / "patched"
+    tree = tmp_path / "patch3"
     tree.mkdir()
     for name in staging.ENGINE_FILES:
         (tree / name).write_bytes(b"patched " + name.encode())

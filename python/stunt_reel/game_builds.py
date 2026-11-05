@@ -8,8 +8,8 @@ whole in a temporary directory and only then moved into place, with a manifest o
 the patch added, replaced or deleted.
 
 ``PATSI.BAT`` deletes ``GAME.CFG`` and then runs ``SETUP`` (``install -s``) to write a new
-one; the patched ``INSTALL.EXE`` writes the same seven-byte layout as the original
-(``research/playone-exe/patch3.md``), so the patched tree keeps the shipped ``GAME.CFG``
+one; the Patch #3 ``INSTALL.EXE`` writes the same seven-byte layout as the original
+(``research/playone-exe/patch3.md``), so the ``patch3`` tree keeps the shipped ``GAME.CFG``
 instead of running the installer, and the manifest says so.
 """
 
@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import sys
 import zipfile
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
@@ -33,6 +34,7 @@ __all__ = [
     "BuildError",
     "Change",
     "apply_patch3",
+    "build_tree",
     "build_trees",
     "diff_trees",
     "tree_files",
@@ -41,8 +43,10 @@ __all__ = [
 #: Data-root directory holding one game tree per build and the manifest.
 BUILDS_DIR = "builds"
 MANIFEST_NAME = "patch3-manifest.json"
-BuildName = Literal["unpatched", "patched"]
-BUILD_NAMES: tuple[BuildName, ...] = ("unpatched", "patched")
+BuildName = Literal["unpatched", "patch3"]
+BUILD_NAMES: tuple[BuildName, ...] = ("unpatched", "patch3")
+#: What ``builds/patch3`` was called before issue #181 renamed it.
+_OLD_PATCH3_DIR = "patched"
 
 #: What ``PATSI.BAT`` deletes, in its order (``DEL`` at the root, then ``CD RES``).
 PATCH3_DELETES: tuple[str, ...] = (
@@ -78,7 +82,7 @@ class BuildError(RuntimeError):
 
 @dataclass(frozen=True)
 class Change:
-    """One file the patched tree differs in from the unpatched one (DOS path, ``/``-separated)."""
+    """One file the ``patch3`` tree differs in from the unpatched one (DOS path, ``/``-separated)."""
 
     path: str
     action: Action
@@ -191,6 +195,23 @@ def diff_trees(before: Path, after: Path) -> list[Change]:
     return changes
 
 
+def build_tree(builds: Path, name: BuildName) -> Path:
+    """Return the directory of build *name* under the data root's *builds* directory.
+
+    Transitional (issue #181): ``patch3`` was called ``patched``. A data root that still has
+    only ``builds/patched`` keeps working, with a message on stderr; delete this fallback and
+    the ``_OLD_PATCH3_DIR`` constant once every data root has run ``mise run game-builds``.
+    """
+    tree = builds / name
+    old = builds / _OLD_PATCH3_DIR
+    if name == "patch3" and not tree.exists() and old.is_dir():
+        sys.stderr.write(
+            f"[game-builds] using the old {old}; run mise run game-builds again to create {tree}\n"
+        )
+        return old
+    return tree
+
+
 def _replace_dir(staging: Path, final: Path) -> None:
     """Move the finished *staging* tree to *final*, dropping whatever build was there."""
     if final.exists():
@@ -199,7 +220,7 @@ def _replace_dir(staging: Path, final: Path) -> None:
 
 
 def build_trees(game: Path, patch_dir: Path, out: Path) -> dict[str, Any]:
-    """Build ``out/unpatched`` and ``out/patched`` from *game* and *patch_dir*; return the manifest.
+    """Build ``out/unpatched`` and ``out/patch3`` from *game* and *patch_dir*; return the manifest.
 
     *game* and *patch_dir* are only read. Each tree is assembled under ``out/.<name>.partial``
     and renamed into place, so an interrupted run never leaves a half-built tree under its
@@ -219,9 +240,9 @@ def build_trees(game: Path, patch_dir: Path, out: Path) -> dict[str, Any]:
         shutil.rmtree(path, ignore_errors=True)
     try:
         shutil.copytree(game, partial["unpatched"])
-        shutil.copytree(game, partial["patched"])
-        apply_patch3(partial["patched"], patch_dir)
-        changes = diff_trees(partial["unpatched"], partial["patched"])
+        shutil.copytree(game, partial["patch3"])
+        apply_patch3(partial["patch3"], patch_dir)
+        changes = diff_trees(partial["unpatched"], partial["patch3"])
     except BaseException:
         for path in partial.values():
             shutil.rmtree(path, ignore_errors=True)

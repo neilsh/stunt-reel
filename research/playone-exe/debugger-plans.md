@@ -53,7 +53,7 @@ generated conf, then:
   address, so the segment DOSBox-X reports does not matter.
 * Before a break is armed, its 8 live bytes are compared with the image, with relocated words
   masked; a mismatch refuses the probe (exit 2).
-* Plans hold unpatched offsets. On `--build patched` a code offset maps through #78's pairing
+* Plans hold unpatched offsets. On `--build patch3` a code offset maps through #78's pairing
   only where it is aligned inside a function of similarity 1.0 ([`patch3.md`](patch3.md) § 4);
   literal DS offsets map through its data mapping. The smoke plan's `0x9100` became `0x83F7` and
   `DS:0x49EC` became `DS:0x4372`, which read the same light vector as the registers: the data

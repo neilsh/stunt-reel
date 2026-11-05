@@ -87,7 +87,7 @@ Departures from the spec (S3.2 to S3.4 were revised to match):
 - `ignore_ip` is dropped. Every watch ignores writes from the build's own dispatch-slot run,
   found by the slot signature on each build. A hand range of unpatched offsets would be wrong
   on the patched build.
-- On `--build patched`, literal DS offsets (`mem = "DS:..."` and `mem:DS:<int>:<len>` captures)
+- On `--build patch3`, literal DS offsets (`mem = "DS:..."` and `mem:DS:<int>:<len>` captures)
   map through #78's `map_data`, as code offsets map through `map_code`. The spec mapped code
   only, so a patched `DS:0x49EC` watch would have watched the wrong word.
 
@@ -515,14 +515,14 @@ Loop (spec S3.5):
   bin_path = "bin/x64/Release"
 
   [tasks.debug-x]
-  description = "Run a breakpoint plan on DOSBox-X's debugger (mise run debug-x -- --plan tools/dosbox-x/plans/smoke.toml [--build patched])"
+  description = "Run a breakpoint plan on DOSBox-X's debugger (mise run debug-x -- --plan tools/dosbox-x/plans/smoke.toml [--build patch3])"
   run = "uv run python python/scripts/debug_x.py"
   ```
 - [ ] **Step 5:** PASS. Then `smoke.toml` gets one break probe at `0x9100`, `hits = 2`,
   `capture = ["stack:4", "mem:DS:0x49EC:6"]`, `stop_tick = 600`.
 - [ ] **Step 6 (live):** `mise run debug-x -- --plan tools/dosbox-x/plans/smoke.toml`. Expected:
   two hits, `return_far_image` `0x2350`, `mem DS:0x49EC:6` equal to the hit's `AX BX DX`, exit 0.
-  Repeat with `--build patched`. Expected: two hits at patched `0x83F7`, `return_far_image ==
+  Repeat with `--build patch3`. Expected: two hits at patched `0x83F7`, `return_far_image ==
   map_code(pairing, 0x2350).mapped`, and `mem DS:<mapped 0x49EC>:6` equal to `AX BX DX`. That last
   check proves the data mapping live. Record both summaries in the commit body.
 - [ ] **Step 7:** `mise run check`, then commit `feat(dbx): mise run debug-x runs a breakpoint plan`.
@@ -670,7 +670,7 @@ from the ground-handler break hits, which locate every record exactly. It does n
   copy loop, the source `DS:SI`. Match the source buffer to an `INT 21h/3Fh` read to get the file
   and offset. If the watch catches nothing because the address moved, take the spec's fallback
   (S5 step 3): re-target the watch at the buffer of the `CTRY.ALL` read.
-- [ ] **Step 5:** Repeat steps 2 and 4 with `--build patched`.
+- [ ] **Step 5:** Repeat steps 2 and 4 with `--build patch3`.
 
 ### Task 14: Cross-check, compare, write-up, then PR C
 

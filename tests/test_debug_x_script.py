@@ -44,7 +44,7 @@ def test_patched_unmappable_exits_2(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(debug_x, "load_image", lambda _p: dbx_stubs.image())
     monkeypatch.setattr(debug_x, "pair_images", lambda _a, _b: dbx_stubs.pairing())
     monkeypatch.setattr(debug_x, "booted", _no_boot)
-    assert debug_x.main(["--plan", str(PLANS / "smoke.toml"), "--build", "patched"]) == 2
+    assert debug_x.main(["--plan", str(PLANS / "smoke.toml"), "--build", "patch3"]) == 2
 
 
 def test_bad_plan_exits_2(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -101,7 +101,7 @@ def test_unpairable_builds_exit_2(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(debug_x, "load_image", lambda _p: dbx_stubs.image())
     monkeypatch.setattr(debug_x, "pair_images", _unpairable)
     monkeypatch.setattr(debug_x, "booted", _no_boot)
-    assert debug_x.main(["--plan", str(PLANS / "smoke.toml"), "--build", "patched"]) == 2
+    assert debug_x.main(["--plan", str(PLANS / "smoke.toml"), "--build", "patch3"]) == 2
 
 
 def test_runs_in_the_same_second_get_their_own_files(tmp_path: Path) -> None:

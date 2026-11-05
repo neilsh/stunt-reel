@@ -14,7 +14,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 from dbx.link import Link, LinkError, Listener
 from stunt_reel import dataroot, game_builds
@@ -181,11 +181,11 @@ class Booted:
 
 
 @contextmanager
-def booted(film: Path, build: Literal["unpatched", "patched"], *, cycles: int) -> Iterator[Booted]:
+def booted(film: Path, build: game_builds.BuildName, *, cycles: int) -> Iterator[Booted]:
     """Stage *film* on *build*, boot PLAYONE in DOSBox-X and select the film, holding back Enter
     (`Booted.start`); clean up on exit."""
     exe = dosbox_x_exe()
-    engine = dataroot.data_root() / game_builds.BUILDS_DIR / build
+    engine = game_builds.build_tree(dataroot.data_root() / game_builds.BUILDS_DIR, build)
     staged = staging.stage_film(film, engine_root=engine)
     listener: Listener | None = None
     proc: subprocess.Popen[bytes] | None = None

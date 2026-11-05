@@ -89,7 +89,7 @@ UNPATCHED = PlayoneLayout(
     composed_pages=(0x22CA, 0x22CC),
     work_segment_pointer=0x0542,
 )
-#: Patch #3's PLAYONE.EXE (97,790 bytes; ``mise run game-builds`` puts it in the patched tree).
+#: Patch #3's PLAYONE.EXE (97,790 bytes; ``mise run game-builds`` puts it in the ``patch3`` tree).
 PATCH3 = PlayoneLayout(
     name="patch3",
     sha256="fc532c94e4ff3e70bffdc3c51b72cce5f5a20e5d502256bb9fb58c3c4f411769",

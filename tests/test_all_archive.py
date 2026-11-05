@@ -341,7 +341,7 @@ def test_a_malformed_manifest_is_an_error_naming_it(tmp_path: Path) -> None:
 
 def test_a_missing_absolute_game_tree_says_it_is_machine_local(tmp_path: Path) -> None:
     film = _film(tmp_path)
-    elsewhere = tmp_path / "other-machine" / "builds" / "patched"
+    elsewhere = tmp_path / "other-machine" / "builds" / "patch3"
     _manifest(tmp_path, SLUG, FLM_BYTES, game_root=elsewhere.as_posix())
     with pytest.raises(ArchiveError, match=r"outside the checkout") as caught:
         resolve_all(film, tmp_path, link_build=FakeLinkBuild())

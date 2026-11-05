@@ -1,7 +1,7 @@
 """Build the unpatched and the Patch #3 game trees under the data root, with a manifest.
 
 Copies ``corpus/stuntisl`` twice into ``<data root>/builds/``: ``unpatched`` as shipped and
-``patched`` with ``corpus/patches`` applied as ``PATSI.BAT`` applies it, then writes
+``patch3`` with ``corpus/patches`` applied as ``PATSI.BAT`` applies it, then writes
 ``builds/patch3-manifest.json`` listing every file added, replaced, deleted or restored, with
 sizes and SHA-256. The corpus is only read (ADR 0022); a second run rebuilds both trees.
 Reads proprietary files from the local, gitignored corpus; nothing it writes is committed.

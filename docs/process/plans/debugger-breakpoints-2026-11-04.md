@@ -81,7 +81,7 @@ per boot. Nothing holds a session across commands.
 ### 3.2 Plan format
 
 Plans live in `tools/dosbox-x/plans/`, beside the conf template `tools/dosbox-x/dosbox-x.conf`.
-Offsets are unpatched image offsets; `--build patched` maps them.
+Offsets are unpatched image offsets; `--build patch3` maps them.
 
 ```toml
 [run]
@@ -220,7 +220,7 @@ Live runs stay outside the gate (`mise run debug-x`).
 4. Per frame, on dosbox-automation: add `DS:0x49EC..0x49F0` and the variable-13 value to
    `probe-light`'s sampled words and run every frame of `CTRY.FLM`. The note gets a per-shot
    table (tick range, var 13, `DS:0x49EC`, `L`, agree?); the raw output stays in the data root.
-5. Steps 1 and 2 again with `--build patched`.
+5. Steps 1 and 2 again with `--build patch3`.
 
 Write-up: `terrain-shade.md` § 4 gains the caller, its inputs and the writers at image offsets on
 both builds, at `[Bounded Observation]` or better, and says whether a renderer can reproduce `L`
@@ -262,7 +262,7 @@ none. A row in [`log.md`](../../../research/parity/log.md).
    bounds (shade law alone +0.0105 CTRY, +0.0029 INTRO; more where the capture draws sand). One
    `ground-objects` dump of `INTRO.FLM` checks that its stream carries the sand the capture shows
    ([#70](https://github.com/neilsh/stunt-reel/issues/70)).
-7. Steps 1 and 3 again with `--build patched`.
+7. Steps 1 and 3 again with `--build patch3`.
 
 Write-up: `world-scene.md` gains the producer and colour source at image offsets on both builds,
 tiers promoted from `[Unknown]`, open questions 1 to 4 closed or narrowed, and **Ruled out**
