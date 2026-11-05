@@ -86,16 +86,18 @@ def test_the_hooks_are_executable_in_the_index() -> None:
 def test_init_sets_the_hooks_path_once(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     (repo / ".githooks").mkdir()
-    assert worktree_init.ensure_hooks_path(repo) == ["  + core.hooksPath -> .githooks"]
+    assert list(map(str, worktree_init.ensure_hooks_path(repo))) == [
+        "  + core.hooksPath -> .githooks"
+    ]
     assert _git(repo, "config", "--get", "core.hooksPath").stdout.strip() == ".githooks"
-    assert worktree_init.ensure_hooks_path(repo) == ["  = core.hooksPath .githooks"]
+    assert list(map(str, worktree_init.ensure_hooks_path(repo))) == ["  = core.hooksPath .githooks"]
 
 
 @needs_git
 def test_init_leaves_a_hooks_path_someone_chose(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     _git(repo, "config", "core.hooksPath", ".husky")
-    lines = worktree_init.ensure_hooks_path(repo)
+    lines = list(map(str, worktree_init.ensure_hooks_path(repo)))
     assert len(lines) == 1
     assert lines[0].startswith("  ! core.hooksPath is '.husky'")
     assert _git(repo, "config", "--get", "core.hooksPath").stdout.strip() == ".husky"
@@ -111,7 +113,7 @@ def test_init_names_local_hooks_the_setting_turns_off(tmp_path: Path) -> None:
     (hooks / "pre-push").write_text("#!/bin/sh\n", encoding="utf-8")
     (hooks / "commit-msg").write_text("#!/bin/sh\n", encoding="utf-8")
     (hooks / "commit-msg.sample").write_text("#!/bin/sh\n", encoding="utf-8")
-    lines = worktree_init.ensure_hooks_path(repo)
+    lines = list(map(str, worktree_init.ensure_hooks_path(repo)))
     named = [line for line in lines if "no longer runs" in line]
     assert len(named) == 1
     assert "commit-msg" in named[0]

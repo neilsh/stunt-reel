@@ -1,19 +1,10 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::print_stderr,
-    clippy::default_trait_access,
-    clippy::items_after_statements,
-    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
-)]
 //! Camera orientation for a real film: the view slot drives the look direction.
 //!
 //! Corpus-gated: `corpus/` is gitignored, so this runs only on a machine carrying the
 //! Stunt Island demo archive:
 //!
 //! ```text
-//! cargo test -p stunt-core --test flm_camera_test -- --ignored
+//! cargo test -p stunt-core --test it -- flm_camera_test:: --ignored
 //! ```
 
 use std::fs;
@@ -24,11 +15,20 @@ use stunt_core::flm::{CAMERA_LOOKAHEAD_METERS, FilmTimeline};
 /// Resource ID of the `.SOD` chunk `CTRY.FLM` draws on its opening ticks.
 const CTRY_ACTOR_SHAPE: u16 = 0x7F37;
 
+/// `CTRY.FLM` in the corpus `STUNT_CORPUS` names, else in this checkout's `corpus/`.
+/// `mise run test-corpus` sets the variable to the corpus the Python `dataroot` resolves, the
+/// one rule for where the game files are (ADR 0036).
 fn corpus_film() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("corpus")
+    std::env::var_os("STUNT_CORPUS")
+        .map_or_else(
+            || {
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("..")
+                    .join("..")
+                    .join("corpus")
+            },
+            PathBuf::from,
+        )
         .join("stisldem")
         .join("VAULT")
         .join("CTRY.FLM")

@@ -38,8 +38,7 @@ from build_pairing import (
     signed,
 )
 
-from stunt_reel import dataroot
-from stunt_reel.dataroot import ensure_links_or_report
+from stunt_reel import dataroot, game_builds
 
 #: What each kind of direct evidence counts.
 NOUNS: dict[str, str] = {
@@ -53,7 +52,7 @@ CONTENT_BYTES: int = 16
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     """Parse command-line arguments."""
-    builds = dataroot.data_root() / "builds"
+    builds = dataroot.data_root() / game_builds.BUILDS_DIR
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--left", type=Path, default=builds / "unpatched" / "PLAYONE.EXE")
     parser.add_argument("--right", type=Path, default=builds / "patched" / "PLAYONE.EXE")
@@ -68,7 +67,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         metavar="SEGMENT",
         help="pair the display-list dispatch slots at the start of this left code segment",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    # Check every hex value here, so a typo exits 2 with a usage message before the builds load.
+    for spec in filter(None, args.ds.split(",")):
+        off_text, _, seg_text = spec.partition(":")[0].partition("@")
+        _hex_or_exit(parser, "--ds", off_text, seg_text)
+    _hex_or_exit(parser, "--code", *filter(None, args.code.split(",")))
+    return args
+
+
+def _hex_or_exit(parser: argparse.ArgumentParser, flag: str, *values: str) -> None:
+    """Exit through *parser* when a non-empty value among *values* is not hexadecimal."""
+    for value in filter(None, values):
+        try:
+            int(value, 16)
+        except ValueError:
+            parser.error(f"{flag}: {value!r} is not a hexadecimal number")
 
 
 def _content(pairing: Pairing, offset: int, mapped: int) -> str:
@@ -182,7 +196,11 @@ def report_slots(pairing: Pairing, paragraph: int) -> None:
 def main(argv: list[str]) -> int:
     """Pair the two builds and print the summary or the requested mappings."""
     args = parse_args(argv)
-    pairing = pair_images(load_image(args.left), load_image(args.right))
+    try:
+        pairing = pair_images(load_image(args.left), load_image(args.right))
+    except (OSError, ValueError) as err:  # no build there, not LZEXE, or unpairable code
+        print(f"pair-builds: {err}", file=sys.stderr)
+        return 2
     if not args.ds and not args.code and args.slots is None:
         report_summary(pairing, args.unpaired)
     if args.slots is not None:
@@ -195,6 +213,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    if not ensure_links_or_report("mise run pair-builds"):
-        sys.exit(2)
     sys.exit(main(sys.argv[1:]))

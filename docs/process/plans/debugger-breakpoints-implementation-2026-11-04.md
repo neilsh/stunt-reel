@@ -358,7 +358,9 @@ Defaults: `cycles = 8000`, `stop_tick = None`, `cs = "auto"`, `size = 1`, `arm =
        within 60 s;
     3. sends `PING`, then waits for the dialog: at most 600 dumps 0.1 s apart, else `GuestTimeout`;
     4. reads `DOS MCBS` while the dialog is up, before the film loads;
-    5. sends `bios_keys(film_selection_names(film.name))` 1 s apart and yields.
+    5. sends `bios_keys(film_selection_names(film.name))` 1 s apart, all but the final Enter,
+       and yields; `run_plan` arms the probes and only then calls `Booted.start`, which sends
+       Enter, so no early breakpoint is missed.
 
     On exit it sends `BREAK` (errors ignored), kills the process and unstages.
 
@@ -398,7 +400,8 @@ Template `tools/dosbox-x/dosbox-x.conf`: `[dosbox] memsize = 16`; `[sdl] output 
 - Consumes: Tasks 1 to 4; `playone.PlayoneLayout` (`film_clock`).
 - Produces:
   - `@dataclass(frozen=True, slots=True) class Armed`: `probe: Probe`, `sites: tuple[tuple[int, int], ...]`
-    (break sites `seg:off`, or watch byte addresses as linear), `watch: range | None`
+    (break and interrupt sites `seg:off`; empty for a watch probe), `watch: range | None` (the
+    watched linear byte range, on both the `linear` and `mem` paths)
   - `def arm_probe(link: Link, rt: Runtime, probe: Probe) -> Armed`: the plan is already
     build-specific (`plan.for_patched` ran for `patched`), so `probe.at` is an image offset of
     `rt.image`. For a break, it reads 8 live bytes at the site and raises `SiteMismatch` unless

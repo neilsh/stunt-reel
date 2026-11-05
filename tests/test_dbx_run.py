@@ -8,11 +8,13 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 lazy from collections.abc import Iterator
 
+import dbx.run
 import pytest
 from dbx.addr import Runtime, SiteMismatch
 from dbx.link import REGS_EV, Link, Listener, Regs
 from dbx.plan import Plan, parse_plan
 from dbx.run import RunResult, arm_probe, run_plan
+from dbx.watch import Candidate, Verdict
 
 import dbx_stubs
 from dbx_peer import FakePeer
@@ -175,6 +177,25 @@ def test_watch_ignored_in_slot_run(connect) -> None:  # type: ignore[no-untyped-
     result, records = go(connect(guest), plan)
     assert result.ignored == {"clock": 1}
     assert "hit" not in [r["type"] for r in records]
+
+
+def test_ambiguous_watch_with_a_writer_outside_the_slot_run_is_a_hit(  # type: ignore[no-untyped-def]
+    connect, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One slot-run candidate does not hide a candidate that writes from elsewhere."""
+    stop = replace(STOP, cs=0x1048, ip=0x0006, es=0x6B71, si=0x000E)
+    slot, other = Candidate(0, 4, "slot", 0x6B71C), Candidate(0x2000, 2, "other", 0x6B71C)
+    assert RT.to_image(stop.cs, slot.start) in RT.slot_run
+    assert RT.to_image(stop.cs, other.start) not in RT.slot_run
+    verdict = Verdict("ambiguous", None, (slot, other))
+    monkeypatch.setattr(dbx.run, "resolve_writer", lambda *_a: verdict)
+    guest = Guest([stop], memory=mirrored())
+    plan = parse_plan(WATCH.format(where="linear = 0x6B71C"), "w")
+    result, records = go(connect(guest), plan)
+    assert result.ignored.get("clock", 0) == 0
+    hits = [r for r in records if r["type"] == "hit"]
+    assert len(hits) == 1
+    assert hits[0]["verdict"] == "ambiguous"
 
 
 def test_watch_write_is_a_hit(connect) -> None:  # type: ignore[no-untyped-def]

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from stunt_reel import references
+from stunt_reel import dataroot, references
 
 if TYPE_CHECKING:
     import argparse
@@ -43,11 +43,12 @@ class ParityOptions:
     retime: int | None
 
 
-def add_parity_options(parser: argparse.ArgumentParser, *, data_root: Path) -> None:
+def add_parity_options(parser: argparse.ArgumentParser) -> None:
     """Add ``--films``, ``--data-root``, ``--no-build``, ``--reuse`` and ``--retime``.
 
     ``--films`` defaults to every film the data root's ``references.toml`` pins, resolved by
-    :func:`parity_options` once ``--data-root`` is known.
+    :func:`parity_options` once ``--data-root`` is known; without the flag the configured data
+    root is read, with the primary checkout's ``corpus/`` as its fallback (ADR 0036).
     """
     parser.add_argument(
         "--films", default=None, help="comma list; default: every film references.toml pins"
@@ -55,8 +56,8 @@ def add_parity_options(parser: argparse.ArgumentParser, *, data_root: Path) -> N
     parser.add_argument(
         "--data-root",
         type=Path,
-        default=data_root,
-        help="score another checkout's corpus and captures; this one is linked on first read",
+        default=None,
+        help="read the corpus and captures from DIR, as STUNT_DATA_ROOT=DIR would",
     )
     parser.add_argument("--no-build", action="store_true", help="reuse the release binary")
     parser.add_argument(
@@ -69,7 +70,7 @@ def add_parity_options(parser: argparse.ArgumentParser, *, data_root: Path) -> N
 
 def parity_options(args: argparse.Namespace) -> ParityOptions:
     """Validate the shared flags against the films the resolved data root pins."""
-    root = Path(args.data_root).resolve()
+    root = dataroot.data_root_flag(args.data_root)
     films = references.reference_films(root)
     if args.films is None:
         names = list(films)

@@ -555,3 +555,13 @@ def test_a_forced_stage_marks_later_stages_left_out_of_stages_stale(
     assert score is not None
     assert (score.status, score.message) == ("error", "stale: render was forced")
     assert not sheet.exists()
+
+
+def test_a_missing_corpus_is_refused_before_any_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """No films because no corpus is not an empty survey: say so, and build nothing."""
+    fake = _install(monkeypatch)
+    assert batch_parity.main(["--data-root", str(tmp_path / "nothing")]) == 2
+    assert "no game files" in capsys.readouterr().err
+    assert fake.calls == []

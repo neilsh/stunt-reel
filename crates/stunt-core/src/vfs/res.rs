@@ -6,7 +6,7 @@
 
 use crate::contracts::vfs::{ArchiveFormat, VfsArchive, VfsEntry};
 use crate::reader::ByteReader;
-use crate::vfs::{VfsError, check_non_decreasing, offset_u32};
+use crate::vfs::{VfsError, check_non_decreasing, offset_add, offset_u32};
 
 /// The raw split of a `.RES` container: its `res_index` and every data region.
 ///
@@ -68,7 +68,8 @@ pub fn res_regions(data: &[u8]) -> Result<ResRegions<'_>, VfsError> {
         });
     }
 
-    let n = (ofs0 / 4) - 1;
+    // `ofs0 >= 8`, so the quotient is at least 2.
+    let n = (ofs0 / 4).saturating_sub(1);
     if n < 2 {
         // Table does not have enough offsets to bound a single region
         return Ok(ResRegions {
@@ -137,7 +138,10 @@ pub fn parse_res(data: &[u8]) -> Result<VfsArchive, VfsError> {
     let Some((&name_slice, payloads)) = split.regions.split_first() else {
         return Ok(VfsArchive::new(ArchiveFormat::Res));
     };
-    let mut start = ByteReader::at(data, 4).read_u32_le()? as usize + name_slice.len();
+    let mut start = offset_add(
+        ByteReader::at(data, 4).read_u32_le()? as usize,
+        name_slice.len(),
+    )?;
 
     let mut names = Vec::new();
     let mut current_name = Vec::new();
@@ -193,7 +197,7 @@ pub fn parse_res(data: &[u8]) -> Result<VfsArchive, VfsError> {
             source_offset: offset_u32(start)?,
             was_compressed: false,
         };
-        start += payload.len();
+        start = offset_add(start, payload.len())?;
         archive.insert(entry);
     }
 

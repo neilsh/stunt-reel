@@ -18,7 +18,7 @@ The trial record (timings, the Windows refusal, the load-image attestation) is o
 | Who reads or writes a fixed DGROUP offset? | Ghidra | Works for absolute `[disp16]` accesses once `DS` is known. The `0x22C4` writer in `entry` shows up in the listing and the pseudocode. |
 | The same questions, asked by an agent over MCP, with results that record their inputs | rea, with `--snapshot` | Each result carries the target SHA-256, tool versions and analysis profile. Without a snapshot every call re-imports (about 12 s); with one, about 1.4 s. |
 | What value does it hold at tick *n*? Which handler actually runs? What's in the EMS page frame? | dosbox-automation capture ([`capture-dosbox-automation.md`](capture-dosbox-automation.md); retired DOSBox-X harness: [`dosbox-x-legacy.md`](dosbox-x-legacy.md)) | Static tools don't execute or emulate anything. |
-| Which instruction calls this, or writes this byte, and with what registers? | `mise run debug-x` breakpoint plans on DOSBox-X ([`debugger-plans.md`](debugger-plans.md)) | Code, memory and interrupt breakpoints; each hit records registers, stack and captures at image offsets. |
+| Which instruction calls this, or writes this byte, and with what registers? | `mise run debug-x` breakpoint plans on DOSBox-X ([`debugger-plans.md`](debugger-plans.md)) | Code, memory and interrupt breakpoints; each hit records registers, raw stack words and captures (live `seg:off` or `lin:` addresses), with the stop (`cs_ip_image`), return sites and a watch's writer also given as image offsets. |
 
 ## 2. What Ghidra Cannot See Here
 

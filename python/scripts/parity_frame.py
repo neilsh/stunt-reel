@@ -29,8 +29,8 @@ from pathlib import Path
 import parity_probe
 import parity_sweep
 
-from stunt_reel import parity_pipeline, references
-from stunt_reel.dataroot import REPO_ROOT, ensure_links_or_report
+from stunt_reel import dataroot, parity_pipeline, references
+from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.parity_artifacts import CaptureSet, RenderStore, read_capture
 
 #: Where renders and their side-by-side PNGs go, relative to the checkout.
@@ -142,9 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as err:
         print(f"parity_frame: {err}", file=sys.stderr)
         return 2
-    root = REPO_ROOT
-    if not ensure_links_or_report("parity_frame"):
-        return 2
+    root = dataroot.data_root()
     problems = parity_pipeline.preflight(root, [args.film], build_required=not args.no_build)
     if problems:
         print("parity_frame: " + "\n  ".join(problems), file=sys.stderr)
@@ -162,12 +160,15 @@ def _draw(
     box: tuple[int, int, int, int] | None,
     variants: list[tuple[str, dict[str, str] | None, Path]],
 ) -> int:
-    """Render the job's ticks once per variant and write each tick's sheet; the exit code."""
-    root = job.root
+    """Render the job's ticks once per variant and write each tick's sheet; the exit code.
+
+    The sheets are this checkout's scratch output, so they go under its ``build/`` even when
+    the films and captures come from a data root elsewhere.
+    """
     reference = job.capture
     found, missing = locate(read_capture(reference), ticks)
 
-    out = root / FRAME_DIR / args.film
+    out = REPO_ROOT / FRAME_DIR / args.film
     clear_previous(out, args.film)
     for _, env, variant_dir in variants:
         parity_pipeline.render_film(job, variant_dir, render_env(env), ticks=ticks)

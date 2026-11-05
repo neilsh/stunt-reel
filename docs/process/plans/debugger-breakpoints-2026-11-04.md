@@ -124,8 +124,10 @@ adds `stack:<words>` and `mem:<seg>:<off>:<len>`, where `seg` and `off` may name
 - **Code sites.** Image offset `x` becomes linear `load * 16 + x`. A breakpoint is set as
   `<seg>:<off>` with the segment the code runs in: module code runs at `CS = load`, the VM
   handlers at `CS = load + vm`, where `vm` is the build's VM paragraph (the slot run's image
-  paragraph: `0x824` unpatched, `0x754` patched, found by the slot-run signature). A site at or
-  above `vm * 16` takes the VM segment; a probe may override with `cs = "module"`.
+  paragraph: `0x824` unpatched, `0x754` patched, found by the slot-run signature). By default
+  (`cs = "auto"`) a site takes the nearest known code paragraph at or below it, which may be a
+  later module paragraph such as `0x1DEA` rather than the VM's; a probe may override with
+  `cs = "module"` or `cs = "vm"`.
 - **Before arming**, the tool reads 8 bytes at each code site and compares them with the image,
   relocated words masked by the build's relocation table. A mismatch refuses the probe.
 - **Output.** Every `CS:IP`, return address and stack word that falls inside the image is also
@@ -163,10 +165,11 @@ about 50 ticks per second, so arming lands within a few ticks of `N`, and each h
 
 - JSONL under `<data root>/debug/<film>/<plan>-<build>-<stamp>.jsonl`: one `run` record (build,
   load paragraph, emulator version, plan hash), one record per hit, one `end` record (reason:
-  `spent`, `stop_tick`, `timeout`, `link_lost`). Stdout prints a summary table of at most
+  `spent`, `stop_tick`, `timeout`, `link_lost`, `refused`, `error`). Stdout prints a summary table of at most
   40 lines: probe, hits, spurious, distinct callers and writers by image offset.
-- A link timeout or a lost connection writes the `end` record, kills the emulator and exits 1;
-  hits already written stay. A refused probe exits 2 before boot finishes.
+- Once `run_plan` starts, a link timeout or a lost connection writes the `end` record, kills the
+  emulator and exits 1; hits already written stay. A failure while booting, before the JSONL is
+  opened, exits 1 without one. A refused probe exits 2 before boot finishes.
 - The conf and stage are per run, so runs can go side by side.
 
 ### 3.7 Tests

@@ -2,7 +2,9 @@
 
 * **Tool**: `mise run debug-x -- --plan <toml> [--film F] [--build unpatched|patched]`
   ([`debug_x.py`](../../python/scripts/debug_x.py), [`dbx/`](../../python/scripts/dbx/), plans in
-  `tools/dosbox-x/plans/`), [ADR 0034](../../docs/adr/0034-breakpoints-run-on-dosbox-x.md)
+  `tools/dosbox-x/plans/`), [ADR 0034](../../docs/adr/0034-breakpoints-run-on-dosbox-x.md).
+  The stage lives under the data root and `MEMDUMPBIN` takes its path unquoted, so a data root
+  whose path holds a space is refused before boot: set `STUNT_DATA_ROOT` to a path without one.
 * **Emulator**: DOSBox-X v2026.10.01, SDL1 build, `core = normal`, `output = surface`,
   `cycles = 8000`, `memsize = 16`
 * **Scope**: how a plan reaches a breakpoint and back (link, boot, addresses, the watch filter,
@@ -80,7 +82,8 @@ filter drops these; in the `light-writers` run all five such stops sat on the `r
 
 A `mem:DS:<offset>` capture or watch with a literal offset reads DGROUP (`load + dgroup`); with
 a register offset (`mem:DS:DX:16`) it reads the live `DS`, since a caller such as an `INT 21h`
-buffer need not be in DGROUP.
+buffer need not be in DGROUP. A `lin:<addr>:<len>` capture reads a linear address; it is valid
+only for the build and emulator that produced the address.
 
 On the unpacked image the spike's two film-clock stops resolve as expected: the stop at `0x43EA`
 to `adc ds:[4896h], ax` at `0x43E6`, and the stop at `0x759C` (after `mov cx, ax`) to nothing.

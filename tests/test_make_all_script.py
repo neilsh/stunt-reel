@@ -13,12 +13,25 @@ from typing import Any
 import pytest
 
 from archive_helpers import build_all
-from stunt_reel import capture_store, dataroot, link, parity_layout
+from stunt_reel import capture_store, dataroot, link, parity_layout, references
 from stunt_reel.all_archive import ArchiveMeta
 from tac_mock import StagedRepo, makeone_launcher
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "python" / "scripts"
 ARCHIVE = build_all([b"one", b"two"])
+
+
+class FakeClock:
+    """A clock that sleeping advances, so the hang window does not wait."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
 
 
 def _load() -> Any:
@@ -33,7 +46,6 @@ def _load() -> Any:
 @pytest.fixture
 def script(monkeypatch: pytest.MonkeyPatch) -> Any:
     module = _load()
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     # The real poll interval is 2 s per wait; the mock guest answers at once.
     monkeypatch.setattr(
         module.makeone, "make_all", functools.partial(module.makeone.make_all, poll=0.0)
@@ -41,6 +53,63 @@ def script(monkeypatch: pytest.MonkeyPatch) -> Any:
     # The real extract builds and runs the release binary; tests that need it pass a fake.
     monkeypatch.setattr(module, "extract_with_binary", FakeExtract())
     return module
+
+
+@pytest.fixture(autouse=True)
+def rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An empty references.toml in a stand-in checkout, so the committed rows are not read."""
+    checkout = tmp_path / "references-checkout"
+    pointers = checkout / parity_layout.REFERENCES_FILE
+    pointers.parent.mkdir(parents=True)
+    pointers.write_text("", encoding="utf-8")
+    monkeypatch.setattr(references, "REPO_ROOT", checkout)
+    return pointers
+
+
+def _row(pointers: Path, makeone: str) -> None:
+    reason = 'reason = "x"\n' if makeone == "unpatched" else ""
+    pointers.write_text(
+        f'[ctry]\nfilm = "vault-ctry"\nmakeone = "{makeone}"\n{reason}', encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize(
+    ("row", "build", "refused"),
+    [
+        ("patch3", "unpatched", True),
+        ("unpatched", "unpatched", False),
+        ("patch3", None, True),  # an executable of no known build
+    ],
+)
+def test_make_all_refuses_a_makeone_build_its_films_row_does_not_name(
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_repo: StagedRepo,
+    game_root: Path,
+    capsys: pytest.CaptureFixture[str],
+    rows: Path,
+    row: str,
+    build: str | None,
+    refused: bool,
+) -> None:
+    """The check runs before the emulator, so a refused run launches nothing (ADR 0029)."""
+    if build is not None:
+        digest = hashlib.sha256((game_root / "MAKEONE.EXE").read_bytes()).hexdigest()
+        monkeypatch.setitem(references.MAKEONE_BUILDS, digest, build)
+    _row(rows, row)
+    launch, _state = makeone_launcher(text_after=1, archive=ARCHIVE)
+    args = _args(script, monkeypatch, staged_repo.film, game_root, "--timeout", "30")
+
+    code = script.run(args, launch)
+
+    if refused:
+        assert code == 2
+        assert _archives() == []
+        error = capsys.readouterr().err
+        assert "names patch3" in error or "cannot be determined" in error
+    else:
+        assert code == 0
+        assert len(_archives()) == 1
 
 
 class FakeExtract:
@@ -79,7 +148,7 @@ def _args(
 
 def _archives(slug: str = "vault-ctry") -> list[Path]:
     """The film's stored archive, as a list so a test can say there is exactly one or none."""
-    stored = capture_store.current(dataroot.REPO_ROOT / parity_layout.archive_path(slug))
+    stored = capture_store.current(dataroot.data_root() / parity_layout.archive_path(slug))
     return [] if stored is None else [stored]
 
 
@@ -208,13 +277,56 @@ def test_a_timeout_exits_1_and_leaves_no_mount(
     assert not stage_root.exists() or not any(stage_root.iterdir())
 
 
+def test_a_makeone_hang_stores_the_archive_and_records_it(
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_repo: StagedRepo,
+    game_root: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    clock = FakeClock()
+    monkeypatch.setattr(
+        script.makeone,
+        "make_all",
+        functools.partial(
+            script.makeone.make_all, poll=2.0, stable=60.0, clock=clock, sleep=clock.sleep
+        ),
+    )
+    launch, _state = makeone_launcher(text_after=None, archive=ARCHIVE)
+    args = _args(script, monkeypatch, staged_repo.film, game_root, "--timeout", "10")
+
+    assert script.run(args, launch) == 0
+
+    (directory,) = _archives()
+    assert (directory / "CTRY.ALL").read_bytes() == ARCHIVE
+    assert _stored_meta().returned_to_dos is False
+    assert "MAKEONE hang" in capsys.readouterr().err
+
+
+def test_a_normal_run_records_that_makeone_returned(
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_repo: StagedRepo,
+    game_root: Path,
+) -> None:
+    _publish(script, monkeypatch, staged_repo.film, game_root)
+    assert _stored_meta().returned_to_dos is True
+
+
+def test_a_meta_without_the_field_reads_as_returned() -> None:
+    meta = ArchiveMeta.from_json(
+        '{"film": "A.FLM", "flm_bytes": 1, "flm_sha256": "a", "all_bytes": 1, "all_sha256": "b"}'
+    )
+    assert meta.returned_to_dos is True
+
+
 def test_an_archives_directory_of_numbered_runs_is_refused_before_makeone(
     script: Any,
     monkeypatch: pytest.MonkeyPatch,
     staged_repo: StagedRepo,
     game_root: Path,
 ) -> None:
-    run = dataroot.REPO_ROOT / parity_layout.archive_path("vault-ctry") / "001"
+    run = dataroot.data_root() / parity_layout.archive_path("vault-ctry") / "001"
     run.mkdir(parents=True)
     (run / "meta.json").write_text("{}", encoding="utf-8")
     launch, state = makeone_launcher(text_after=1, archive=ARCHIVE)
@@ -425,6 +537,16 @@ def test_a_link_error_removes_the_old_manifest_too(
     captured = capsys.readouterr()
     assert "boom" in captured.err
     assert "removed" in captured.out
+
+
+def test_game_arg_records_a_tree_in_the_data_root_by_its_corpus_path(
+    script: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default game root is the data root's, so a manifest stays valid on every machine."""
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    dataroot.data_root.cache_clear()
+    (tmp_path / "corpus" / "stuntisl").mkdir(parents=True)
+    assert script.game_arg(tmp_path / "corpus" / "stuntisl") == "corpus/stuntisl"
 
 
 def test_game_arg_records_a_dotted_path_inside_the_checkout_relative(

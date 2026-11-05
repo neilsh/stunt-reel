@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from archive_helpers import build_all
-from stunt_reel import capture_store, dataroot, parity_artifacts, parity_layout
+from stunt_reel import capture_store, dataroot, parity_artifacts, parity_layout, references
 from stunt_reel.all_archive import ArchiveMeta, publish_archive
 from stunt_reel.parity_artifacts import CaptureSet, FilmId, Geometry
 from stunt_reel.tac import automation, framebuffer, luagen, plan, playone, staging
@@ -29,6 +29,26 @@ from tac_mock import FILM_COLORS, FakeFilm, StagedRepo
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+
+@pytest.fixture(autouse=True)
+def rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An empty references.toml for the scripts' build check, not the committed rows' pairs."""
+    checkout = tmp_path / "references-checkout"
+    pointers = checkout / parity_layout.REFERENCES_FILE
+    pointers.parent.mkdir(parents=True)
+    pointers.write_text("", encoding="utf-8")
+    monkeypatch.setattr(references, "REPO_ROOT", checkout)
+    return pointers
+
+
+def _name_builds(pointers: Path, *, playone_build: str) -> None:
+    pointers.write_text(
+        f'[ctry]\nfilm = "vault-ctry"\nmakeone = "patch3"\nplayone = "{playone_build}"\n'
+        + ('reason = "x"\n' if "unpatched" in playone_build else ""),
+        encoding="utf-8",
+    )
+
 
 _REAL_LAYOUT_FOR = playone.layout_for  # before staged_repo replaces it
 KEYS = playone.film_selection_names("CTRY")
@@ -347,7 +367,7 @@ def test_capture_script_keeps_its_flags_and_progress_lines(
     monkeypatch.setattr(sys, "argv", ["capture_playone_reference.py"])
     args = module.parse_args()
 
-    assert args.film == Path("corpus/stisldem/VAULT/CTRY.FLM")
+    assert args.film == dataroot.resolve_data_path(Path("corpus/stisldem/VAULT/CTRY.FLM"))
     assert args.out is None
     assert args.max_frames == 2000
     assert args.stride == framebuffer.FILM_STRIDE_TICKS
@@ -364,7 +384,6 @@ def test_capture_script_never_writes_over_a_capture(
 ) -> None:
     """An --out that already holds a capture is refused before any emulator starts (ADR 0022)."""
     module = _load_script("capture_playone_reference")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     out = tmp_path / "out"
     out.mkdir()
     (out / "meta.json").write_text("{}", encoding="utf-8")
@@ -405,7 +424,6 @@ def test_capture_script_failure_lines_and_exit_codes(
     tmp_path: Path,
 ) -> None:
     module = _load_script("capture_playone_reference")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     out = tmp_path / "out"
     monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, out))
     args = module.parse_args()
@@ -442,7 +460,6 @@ def test_a_failed_run_leaves_no_stage_behind(
     staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     module = _load_script("capture_playone_reference")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, tmp_path / "out"))
 
     def boom(*_a: Any, **_k: Any) -> dict[str, Any]:
@@ -466,7 +483,7 @@ def _stored_archive(staged_repo: StagedRepo, data: bytes, slug: str = "vault-ctr
         all_bytes=len(data),
         all_sha256=hashlib.sha256(data).hexdigest(),
     )
-    publish_archive(dataroot.REPO_ROOT, data, meta, slug=slug, film=staged_repo.film.name)
+    publish_archive(dataroot.data_root(), data, meta, slug=slug, film=staged_repo.film.name)
 
 
 def test_capture_script_stages_the_stored_archive_and_records_its_hash(
@@ -474,7 +491,6 @@ def test_capture_script_stages_the_stored_archive_and_records_its_hash(
 ) -> None:
     """capture-ref stages the archive make-all stored, and the capture can be traced to it."""
     module = _load_script("capture_playone_reference")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     stored = build_all([b"stored"])
     _stored_archive(staged_repo, stored)
     monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, tmp_path / "out"))
@@ -507,7 +523,6 @@ def test_capture_script_without_any_archive_names_make_all(
     tmp_path: Path,
 ) -> None:
     module = _load_script("capture_playone_reference")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     staged_repo.film.with_suffix(".ALL").unlink()
     monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, tmp_path / "out"))
     monkeypatch.setattr(module, "capture", lambda *_a, **_k: pytest.fail("no archive, no run"))
@@ -521,7 +536,6 @@ def _default_run(
 ) -> tuple[Any, dict[str, Any]]:
     """The capture script with no ``--out`` and ``capture`` stubbed; returns it and the kwargs seen."""
     module = _load_script("capture_playone_reference")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     argv = _capture_argv(staged_repo, Path("unused"))
     del argv[argv.index("--out") : argv.index("--out") + 2]
     monkeypatch.setattr(sys, "argv", [*argv, *extra])
@@ -541,7 +555,7 @@ def test_a_default_capture_replaces_the_films_frame_capture(
     staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module, seen = _default_run(staged_repo, monkeypatch)
-    frames = dataroot.REPO_ROOT / parity_layout.frames_path("vault-ctry")
+    frames = dataroot.data_root() / parity_layout.frames_path("vault-ctry")
     assert module.run(module.parse_args()) == 0
     assert module.run(module.parse_args()) == 0
     assert capture_store.current(frames) == frames
@@ -554,7 +568,7 @@ def test_name_overrides_the_slug_and_a_bad_one_is_refused(
 ) -> None:
     module, _seen = _default_run(staged_repo, monkeypatch, "--name", "my-ctry")
     assert module.run(module.parse_args()) == 0
-    assert (dataroot.REPO_ROOT / parity_layout.frames_path("my-ctry") / "meta.json").is_file()
+    assert (dataroot.data_root() / parity_layout.frames_path("my-ctry") / "meta.json").is_file()
     module, _seen = _default_run(staged_repo, monkeypatch, "--name", "Bad Name")
     assert module.run(module.parse_args()) == 2
 
@@ -574,7 +588,7 @@ def test_a_failed_default_capture_keeps_the_old_one_and_leaves_nothing_behind(
 ) -> None:
     module, _seen = _default_run(staged_repo, monkeypatch)
     assert module.run(module.parse_args()) == 0
-    frames = dataroot.REPO_ROOT / parity_layout.frames_path("vault-ctry")
+    frames = dataroot.data_root() / parity_layout.frames_path("vault-ctry")
     before = (frames / "meta.json").stat().st_mtime_ns
 
     def no_frames(_open: object, out_dir: Path, **_kwargs: Any) -> dict[str, Any]:
@@ -599,7 +613,7 @@ def test_probe_script_keeps_its_flags_and_shot_line(
     monkeypatch.setattr(sys, "argv", ["probe_playone_light.py"])
     args = module.parse_args()
 
-    assert args.film == Path("corpus/stisldem/VAULT/CTRY.FLM")
+    assert args.film == dataroot.resolve_data_path(Path("corpus/stisldem/VAULT/CTRY.FLM"))
     assert args.ticks == "10,150,273,448,700,900,1100"
     assert args.out == Path("build/scratch/round5")
     assert args.dump_all_segments is False
@@ -718,7 +732,6 @@ def test_probe_script_failure_lines_and_exit_codes(
     tmp_path: Path,
 ) -> None:
     module = _load_script("probe_playone_light")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -758,7 +771,6 @@ def test_capture_script_runs_the_game_root_build_with_its_layout(
 ) -> None:
     """--game-root stages that tree's engine files and reads the offsets of its PLAYONE build."""
     module = _load_script("capture_playone_reference")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     tree = tmp_path / "patched"
     tree.mkdir()
     for name in staging.ENGINE_FILES:
@@ -791,6 +803,66 @@ def test_capture_script_runs_the_game_root_build_with_its_layout(
     assert "no known PLAYONE.EXE build" in capsys.readouterr().err
     stage_root = dataroot.data_root() / parity_layout.stage_root()
     assert not stage_root.exists() or not any(stage_root.iterdir())
+
+
+@pytest.mark.parametrize("script", ["capture_playone_reference", "capture_video"])
+def test_a_capture_refuses_a_build_its_films_row_does_not_name(
+    script: str,
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    rows: Path,
+) -> None:
+    """The row names patch3; the film folder's engine is unpatched, so no emulator may start (ADR 0029)."""
+    module = _load_script(script)
+    monkeypatch.setattr(
+        sys, "argv", [f"{script}.py", *_capture_argv(staged_repo, tmp_path / "out")[1:]]
+    )
+    monkeypatch.setattr(module.playone, "layout_for", lambda _exe: playone.UNPATCHED)
+    monkeypatch.setattr(references, "archive_makeone_build", lambda *_a: "patch3")
+    for hook in ("capture", "record_video"):
+        target = module if hasattr(module, hook) else getattr(module, "video", None)
+        if target is not None and hasattr(target, hook):
+            monkeypatch.setattr(target, hook, lambda *_a, **_k: pytest.fail("the emulator ran"))
+    _name_builds(rows, playone_build="patch3")
+    assert module.run(module.parse_args()) == 2
+    assert "names patch3" in capsys.readouterr().err
+    stage_root = dataroot.data_root() / parity_layout.stage_root()
+    assert not stage_root.exists() or not any(stage_root.iterdir())
+
+
+def test_a_capture_accepts_the_build_its_films_row_names(
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    rows: Path,
+) -> None:
+    module = _load_script("capture_playone_reference")
+    monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, tmp_path / "out"))
+    monkeypatch.setattr(module.playone, "layout_for", lambda _exe: playone.UNPATCHED)
+    monkeypatch.setattr(references, "archive_makeone_build", lambda *_a: "patch3")
+    monkeypatch.setattr(module, "capture", lambda *_a, **_k: {"frames": [{"ordinal": 1}]})
+    _name_builds(rows, playone_build="unpatched")
+    assert module.run(module.parse_args()) == 0
+
+
+def test_a_capture_refuses_an_archive_whose_build_cannot_be_determined(
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    rows: Path,
+) -> None:
+    """An archive with no record cannot satisfy a row that names a MAKEONE build (ADR 0029)."""
+    module = _load_script("capture_playone_reference")
+    monkeypatch.setattr(references, "archive_makeone_build", lambda *_a: references.UNKNOWN_BUILD)
+    monkeypatch.setattr(sys, "argv", _capture_argv(staged_repo, tmp_path / "out"))
+    monkeypatch.setattr(module.playone, "layout_for", lambda _exe: playone.UNPATCHED)
+    monkeypatch.setattr(module, "capture", lambda *_a, **_k: pytest.fail("the emulator ran"))
+    _name_builds(rows, playone_build="unpatched")
+    assert module.run(module.parse_args()) == 2
+    assert "cannot be determined" in capsys.readouterr().err
 
 
 def _engine_layouts(
@@ -831,7 +903,6 @@ def test_a_script_capture_names_the_engine_it_ran_in_meta_json(
 ) -> None:
     """The recorded build is the staged PLAYONE.EXE's, from the film's tree or from --game-root."""
     module = _load_script("capture_playone_reference")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     layouts = _engine_layouts(staged_repo, monkeypatch)
     argv = _capture_argv(staged_repo, tmp_path / "out")
     if from_game_root:
@@ -859,7 +930,6 @@ def test_a_video_script_capture_records_with_the_engine_it_staged(
     record_video writing layout.sha256 into meta.json is covered in test_tac_video.py.
     """
     module = _load_script("capture_video")
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     layouts = _engine_layouts(staged_repo, monkeypatch)
     argv = ["capture_video.py", "--film", str(staged_repo.film), "--out", str(tmp_path / "out")]
     if from_game_root:

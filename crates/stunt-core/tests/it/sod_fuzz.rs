@@ -1,12 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::print_stderr,
-    clippy::default_trait_access,
-    clippy::items_after_statements,
-    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
-)]
 #![expect(
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
@@ -32,7 +23,7 @@
 //! header, random sequences of valid opcodes with random operands, and bit-flipped /
 //! overwritten / truncated / extended copies of a valid model.
 
-mod common;
+use crate::common;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 

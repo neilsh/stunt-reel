@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 import pytest
@@ -159,3 +160,106 @@ def test_a_failure_before_the_archive_is_still_an_error(
         makeone.make_all(
             staged_repo.film, game_root=game_root, poll=0.0, launch=launch, warn=lambda _m: None
         )
+
+
+def _hang(
+    staged_repo: StagedRepo,
+    game_root: Path,
+    archive: bytes | None,
+    *,
+    change: bool = False,
+    touch: bool = False,
+    warnings: list[str] | None = None,
+    hangs: list[bool] | None = None,
+    text_after: int | None = None,
+) -> bytes:
+    """A run whose guest stays in graphics past *timeout*; *change* keeps rewriting the archive.
+
+    *text_after* returns the guest to text mode after that many polls instead of never.
+    """
+    launch, state = makeone_launcher(text_after=text_after, archive=archive, early_archive=True)
+    clock = FakeClock()
+
+    def sleep(seconds: float) -> None:
+        clock.sleep(seconds)
+        if change and state.vault is not None:
+            with (state.vault / "CTRY.ALL").open("ab") as out:
+                out.write(b"x")
+        if touch and state.vault is not None:
+            path = state.vault / "CTRY.ALL"
+            stamp = path.stat().st_mtime_ns + 1_000_000_000
+            os.utime(path, ns=(stamp, stamp))
+
+    return makeone.make_all(
+        staged_repo.film,
+        game_root=game_root,
+        timeout=10,
+        poll=2,
+        stable=60,
+        launch=launch,
+        clock=clock,
+        sleep=sleep,
+        warn=(warnings if warnings is not None else []).append,
+        on_hang=lambda: (hangs if hangs is not None else []).append(True),
+    )
+
+
+def test_a_makeone_hang_with_a_stable_archive_is_accepted(
+    staged_repo: StagedRepo, game_root: Path
+) -> None:
+    warnings: list[str] = []
+    hangs: list[bool] = []
+
+    data = _hang(staged_repo, game_root, ARCHIVE, warnings=warnings, hangs=hangs)
+
+    assert data == ARCHIVE
+    assert hangs == [True]
+    assert len(warnings) == 1
+    assert "MAKEONE hang" in warnings[0]
+    assert _stage_dirs() == []
+
+
+def test_a_return_to_dos_during_the_stability_wait_is_not_a_hang(
+    staged_repo: StagedRepo, game_root: Path
+) -> None:
+    warnings: list[str] = []
+    hangs: list[bool] = []
+
+    # wait_for_text polls 7 times before its 10 s timeout; the 8th poll, after the
+    # stability wait, finds the guest back in text mode.
+    data = _hang(staged_repo, game_root, ARCHIVE, warnings=warnings, hangs=hangs, text_after=7)
+
+    assert data == ARCHIVE
+    assert hangs == []
+    assert warnings == []
+
+
+def test_a_makeone_hang_with_a_changing_archive_is_refused(
+    staged_repo: StagedRepo, game_root: Path
+) -> None:
+    hangs: list[bool] = []
+    with pytest.raises(makeone.MakeOneTimeout, match="still changing"):
+        _hang(staged_repo, game_root, ARCHIVE, change=True, hangs=hangs)
+    assert hangs == []
+    assert _stage_dirs() == []
+
+
+def test_a_makeone_hang_with_no_archive_is_refused(
+    staged_repo: StagedRepo, game_root: Path
+) -> None:
+    with pytest.raises(makeone.MakeOneTimeout, match="no archive was written"):
+        _hang(staged_repo, game_root, None)
+
+
+def test_a_makeone_hang_with_an_empty_archive_is_refused(
+    staged_repo: StagedRepo, game_root: Path
+) -> None:
+    with pytest.raises(makeone.MakeOneTimeout, match="archive is empty"):
+        _hang(staged_repo, game_root, b"")
+
+
+def test_a_makeone_hang_whose_mtime_alone_changes_is_refused(
+    staged_repo: StagedRepo, game_root: Path
+) -> None:
+    with pytest.raises(makeone.MakeOneTimeout, match="still changing"):
+        _hang(staged_repo, game_root, ARCHIVE, touch=True)

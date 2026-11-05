@@ -1,12 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::print_stderr,
-    clippy::default_trait_access,
-    clippy::items_after_statements,
-    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
-)]
 //! Timeline sampling tests for authored `tick_duration` values.
 //!
 //! Covers cumulative 50 Hz timestamps, sub-tick interpolation, same-tick slices,

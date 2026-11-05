@@ -1,12 +1,3 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::print_stderr,
-    clippy::default_trait_access,
-    clippy::items_after_statements,
-    reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
-)]
 #![expect(
     clippy::cast_possible_truncation,
     reason = "these tests pack synthetic values into the fixed-width fields of fixture bytes"
@@ -16,7 +7,7 @@
 //! Everything is synthetic: fixture SODs and anchors from `tests/fixtures/`, plus
 //! hand-built `.FLM` and `.ALL` bytes, so nothing depends on `corpus/`.
 
-mod common;
+use crate::common;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
