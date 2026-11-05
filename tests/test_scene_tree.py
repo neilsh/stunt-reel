@@ -21,6 +21,7 @@ def _segment(words: dict[int, list[int]], size: int = 0x100) -> bytes:
 
 
 def _map_record(pos: int, colour: int, anchors: list[int]) -> bytes:
+    """Build one 30-byte MAP.BIN record with the given colour and anchors."""
     slots = (anchors + [0xFFFF] * 7)[:7]
     return struct.pack("<8h7H", 0, pos, -1, -1, 0, -1, colour, len(anchors), *slots)
 
@@ -40,6 +41,7 @@ TREE = _segment(
 
 
 def test_walk_collects_polygons_and_leaves() -> None:
+    """The walk returns each leaf and coarse polygon with its colour and anchors."""
     walked = scene_tree.walk(TREE)
     assert walked.unknown == []
     assert sum(walked.node_types.values()) == 6
@@ -51,16 +53,19 @@ def test_walk_collects_polygons_and_leaves() -> None:
 
 
 def test_walk_rejects_a_pointer_off_the_anchor_stride() -> None:
+    """An anchor pointer off the 28-byte stride is refused."""
     bad = _segment({0x00: [14, 0, 0, 0, 0, 0, 0, 195, 1, 30]})
     with pytest.raises(ValueError, match="28-byte stride"):
         scene_tree.walk(bad)
 
 
 def test_walk_reports_unknown_node_types() -> None:
+    """A node of an unknown type is reported, not skipped silently."""
     assert scene_tree.walk(_segment({0x00: [7]})).unknown == [(0, 7)]
 
 
 def test_compare_against_map_bin() -> None:
+    """Polygons pair with MAP.BIN records by anchor set, and colours compare."""
     map_bin = (
         _map_record(1, 195, [3, 2, 1])  # same polygon, other vertex order
         + _map_record(1, 15, [4, 5, 6])  # recoloured
@@ -77,18 +82,21 @@ def test_compare_against_map_bin() -> None:
 
 
 def test_tree_segment_needs_the_offset() -> None:
+    """An image shorter than the tree offset is refused."""
     with pytest.raises(ValueError, match="shorter than the scene tree"):
         scene_tree.tree_segment(b"\0" * 16)
     assert scene_tree.tree_segment(b"\0" * scene_tree.TREE_IMAGE_OFFSET + b"ab") == b"ab"
 
 
 def test_walk_keeps_all_eight_anchors_of_a_leaf() -> None:
+    """A leaf with eight anchors keeps all eight (record 131's case)."""
     seg = _segment({0x00: [14, 0, 0, 0, 0, 0, 0, 14, 8, 28, 56, 84, 112, 140, 168, 196, 224]})
     (poly,) = scene_tree.walk(seg).polygons
     assert poly.anchors == (1, 2, 3, 4, 5, 6, 7, 8)
 
 
 def test_compare_matches_each_record_at_most_once() -> None:
+    """Two records sharing an anchor set are each matched at most once."""
     twin = scene_tree.GroundPolygon("gleaf", 0, 195, (1, 2, 3))
     patches = scene_tree.parse_map_bin(_map_record(1, 195, [1, 2, 3]) * 2)
     one = scene_tree.compare([twin], patches)
@@ -102,6 +110,7 @@ def test_compare_matches_each_record_at_most_once() -> None:
 
 
 def test_compare_pairs_same_colour_before_recolouring() -> None:
+    """A recoloured fallback never takes the record another polygon matches exactly."""
     patches = scene_tree.parse_map_bin(
         _map_record(1, 14, [1, 2, 3]) + _map_record(1, 195, [1, 2, 3])
     )
@@ -114,6 +123,7 @@ def test_compare_pairs_same_colour_before_recolouring() -> None:
 
 
 def test_needs_corpus_sees_a_path_through_the_link(tmp_path: Path) -> None:
+    """Paths through corpus/ need the links; other paths, and corpus/.., do not."""
     corpus = REPO_ROOT / "corpus"
     assert scene_ground._needs_corpus(corpus / "stisldem" / "MAP.BIN")
     assert not scene_ground._needs_corpus(tmp_path / "MAP.BIN")
@@ -121,6 +131,7 @@ def test_needs_corpus_sees_a_path_through_the_link(tmp_path: Path) -> None:
 
 
 def test_check_map_bin_rejects_empty_and_truncated() -> None:
+    """Empty, short or unterminated MAP.BIN data is refused."""
     whole = b"\0" * (scene_tree.MAP_RECORDS * scene_tree.MAP_RECORD + 2)
     scene_tree.check_map_bin(whole)
     for bad in (b"", whole[:-1], whole[:-2] + b"\0"):
@@ -129,6 +140,7 @@ def test_check_map_bin_rejects_empty_and_truncated() -> None:
 
 
 def test_cli_stops_on_unknown_nodes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The CLI fails before comparing when the walk meets an unknown node."""
     image = tmp_path / "img.bin"
     image.write_bytes(b"\0" * scene_tree.TREE_IMAGE_OFFSET + _segment({0x00: [7]}))
     map_path = tmp_path / "MAP.BIN"
