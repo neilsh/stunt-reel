@@ -40,6 +40,18 @@ The tree segment is the stack segment while it is walked: `SS = 0x2AAA` in the D
 
 So `MAP.BIN`'s colours are the player's ground colours. What a per-polygon colour does not explain is the subject of section 3.
 
+### 2.1 Walking the tree statically
+
+*[Bounded Observation]* (the unpacked image of the unpatched build and FreeFlight's `MAP.BIN`; `mise run scene-ground`).
+
+The tree can be walked from the image alone. `python/stunt_reel/scene_tree.py` starts at `SS:0000` and follows the node types of [`map.md`](../formats/auxiliary/map.md), and `mise run scene-ground -- build/re/playone.img <MAP.BIN>` prints the result. It visits 7,009 nodes, with no node of an unknown type, and finds 158 Ground polygons: 146 `SP_GLEAF` leaves and 12 coarse `SP_GROUND` polygons. A type-12 node jumps into the leaf code at `0x23BC`, three bytes before the type-14 entry at `0x23BF`, so it draws through the same routine.
+
+All 158 match a `MAP.BIN` record's vertices and colour once the records are read as the engine reads them: the leaf at tree offset `0x060E` is record 131, whose eighth vertex (anchor `50`) is the next record's first word (section 2). `MAP.BIN` records 52 to 55 and 62 to 65, eight sand patches, have no polygon in the tree.
+
+That accounts for the 20 active records with no leaf in open question 1 ([#175](https://github.com/neilsh/stunt-reel/issues/175)): the 12 coarse `SP_GROUND` polygons, which that scan did not look for, and these 8 patches. Whether `PLAYONE` draws the 8 patches another way, or only FreeFlight has them, is not settled.
+
+Two older readings this walk corrects. `OP_FRACTAL` (image `0xA56C`) is dead code: it pushes 14 words against a `ret 0x1A`, which leaves `ES` at `0x50`, so a stream cannot have run it. The 110-word "ramp directory" at `CTRY.ALL` offset `0x79` ([`all.md`](../formats/all.md) section 3.6) is the archive's chunk-id table at `0x7A` read one byte off.
+
 ## 3. Scenery tiles drawn over the ground
 
 *[Bounded Observation]*, `ground-colours`, `ground-writer`, `ground-tiles` (2026-11-04).
@@ -81,7 +93,7 @@ _Found 2026-10-23 at `6ae7b31`; see the [parity log](../parity/log.md)._
 
 ## 5. The ground ops are in `CTRY.ALL`
 
-Superseded by sections 2 and 4.1. The op `0x0168` and `0x02BE` records at `CTRY.ALL` offsets `0x13FC` and `0xEFE4` are `GVPOLY` records of the film's shapes, which are `RES` items, not ground. The 110-word table at `0x79` is a ramp directory (`(index << 8) | length`, first entries `193`/3, `194`/3, `195`/3), not a colour list. `CTRY.FLM` holds no ground either. The ground is in `PLAYONE.EXE`.
+Superseded by sections 2 and 4.1. The op `0x0168` and `0x02BE` records at `CTRY.ALL` offsets `0x13FC` and `0xEFE4` are `GVPOLY` records of the film's shapes, which are `RES` items, not ground. The 110-word table at `0x79` is neither a colour list nor a ramp directory: it is the chunk-id table at `0x7A` read one byte off (section 2.1). `CTRY.FLM` holds no ground either. The ground is in `PLAYONE.EXE`.
 
 _Found 2026-10-23 at `6ae7b31`; superseded 2026-11-04._
 
@@ -148,6 +160,7 @@ _Found 2026-11-04; see the [parity log](../parity/log.md)._
 ## Tools
 
 * `mise run debug-x -- --plan tools/dosbox-x/plans/<plan>.toml` runs the plans named above ([`debugger-plans.md`](debugger-plans.md)). `terrain-tree` dumps the tree segment and the work segment once; the ground leaves are walked offline from that dump or from the image.
+* `mise run scene-ground -- build/re/playone.img <MAP.BIN>` walks the tree from the image and compares its Ground with `MAP.BIN` (section 2.1); `mise run unlzexe` writes the image.
 * `mise run gvpoly-stream -- <jsonl>` decodes `GVPOLY` records captured at `0x995C`/`0x9A24` (section 4.1).
 * `mise run frame -- --film ctry --ticks 356 --var DBG_X=0,1` and `mise run sweep` for the renderer side; see [`method.md`](../parity/method.md).
 
@@ -164,7 +177,7 @@ _Found 2026-11-04; see the [parity log](../parity/log.md)._
 
 ## Open questions
 
-1. **The 20 active `MAP.BIN` polygons with no leaf in the image** ([#175](https://github.com/neilsh/stunt-reel/issues/175)). The scan already takes up to 12 vertices and anchor 0, so they are not filtered out; they are FreeFlight additions or polygons `PLAYONE` draws another way. Comparing FreeFlight's `SCENERY.scn` `SP_GLEAF` positions with the image's tree would settle it.
+1. **The 8 sand patches with no polygon in the image** ([#175](https://github.com/neilsh/stunt-reel/issues/175)). Section 2.1 accounts for 12 of the 20 active `MAP.BIN` records without a leaf: they are the coarse `SP_GROUND` polygons. `MAP.BIN` patches 52 to 55 and 62 to 65 are in no node the walk reaches. Do they exist only in FreeFlight's map, or does `PLAYONE` draw them another way? Comparing FreeFlight's `SCENERY.scn` `SP_GLEAF` positions with the image's tree would settle it.
 2. **Leaves drawn after props** ([#176](https://github.com/neilsh/stunt-reel/issues/176)). The walk is back to front, so a mountain leaf in front of a prop is drawn after it and covers it. The renderer keeps that with its depth test: only flat props within 10 cm of the ground leave the base pass (section 6.2), and the decal pass still loses to nearer terrain (tested). What is open is whether `PLAYONE` ever draws a leaf *after* a tile lying on it, which would hide the tile again; the order of the airfield leaves in the tree, read from the image, would say. The tie was not a gap (section 6.1): the tiles are on the plane to a millimetre.
 3. **The four floating quads** `0x04A9..0x04AC` (colour 193, `y = 75.03`) have no `MAP.BIN` polygon under them in our parse. Either they cover a hole that the tree of `PLAYONE` fills with a leaf `MAP.BIN` lacks, or the polygon is among those our parse drops. It bears on [#175](https://github.com/neilsh/stunt-reel/issues/175).
 4. **`SCENERY3.RES` #1, 2, 5, 6 (`0x0402`, `0x0403`, `0x0406`, `0x0407`).** Section 3 names them by colour (`0xC1`..`0xC6`), but our decode makes them `OP_TAP` shapes standing 3 to 197 m high that miss the terrain by -13 to +233 m. Whether the anchors resolve the way `PLAYONE` resolves them is not checked.

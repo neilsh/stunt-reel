@@ -199,6 +199,10 @@ run = "uv run python python/scripts/pair_builds.py"
 description = "Probe PLAYONE per-shot light and shade arrays through dosbox-automation (mise run probe-light -- --ticks 10,150,273,448)"
 run = "uv run python python/scripts/probe_playone_light.py"
 
+[tasks.scene-ground]
+description = "Walk PLAYONE's embedded scene tree and compare its Ground polygons with MAP.BIN (mise run scene-ground -- build/re/playone.img corpus/siarchive/Developer/FreeFlight/SIDATA/MAP.BIN)"
+run = "uv run python python/scripts/scene_ground.py"
+
 [tasks.flm-events]
 description = "Dump the film-level events of one .FLM film (mise run flm-events -- corpus/.../CTRY.FLM [--sounds])"
 run = "uv run python python/scripts/flm_events.py"
