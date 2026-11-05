@@ -25,7 +25,10 @@ import itertools
 import struct
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from typing import cast
+lazy from pathlib import Path
 
+import unlzexe
 from iced_x86 import (
     Code,
     Decoder,
@@ -136,6 +139,14 @@ class LoadImage:
                 value: int = first.immediate(1)
                 return value
         raise ValueError("the entry routine does not load DS from an immediate")
+
+
+def load_image(path: Path) -> LoadImage:
+    """Unpack an LZEXE 0.91 executable into a load image."""
+    image, meta = unlzexe.unpack(path.read_bytes())
+    entry = cast("dict[str, int]", meta["entry"])
+    relocs = cast("list[int]", meta["relocs"])
+    return LoadImage(bytes(image), frozenset(relocs), entry["cs"], entry["ip"], entry["ss"])
 
 
 def _int(value: int) -> int:
