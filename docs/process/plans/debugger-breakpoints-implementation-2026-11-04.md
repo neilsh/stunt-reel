@@ -400,7 +400,8 @@ Template `tools/dosbox-x/dosbox-x.conf`: `[dosbox] memsize = 16`; `[sdl] output 
 - Consumes: Tasks 1 to 4; `playone.PlayoneLayout` (`film_clock`).
 - Produces:
   - `@dataclass(frozen=True, slots=True) class Armed`: `probe: Probe`, `sites: tuple[tuple[int, int], ...]`
-    (break sites `seg:off`, or watch byte addresses as linear), `watch: range | None`
+    (break and interrupt sites `seg:off`; empty for a watch probe), `watch: range | None` (the
+    watched linear byte range, on both the `linear` and `mem` paths)
   - `def arm_probe(link: Link, rt: Runtime, probe: Probe) -> Armed`: the plan is already
     build-specific (`plan.for_patched` ran for `patched`), so `probe.at` is an image offset of
     `rt.image`. For a break, it reads 8 live bytes at the site and raises `SiteMismatch` unless

@@ -167,8 +167,9 @@ about 50 ticks per second, so arming lands within a few ticks of `N`, and each h
   load paragraph, emulator version, plan hash), one record per hit, one `end` record (reason:
   `spent`, `stop_tick`, `timeout`, `link_lost`, `refused`, `error`). Stdout prints a summary table of at most
   40 lines: probe, hits, spurious, distinct callers and writers by image offset.
-- A link timeout or a lost connection writes the `end` record, kills the emulator and exits 1;
-  hits already written stay. A refused probe exits 2 before boot finishes.
+- Once `run_plan` starts, a link timeout or a lost connection writes the `end` record, kills the
+  emulator and exits 1; hits already written stay. A failure while booting, before the JSONL is
+  opened, exits 1 without one. A refused probe exits 2 before boot finishes.
 - The conf and stage are per run, so runs can go side by side.
 
 ### 3.7 Tests

@@ -2,7 +2,9 @@
 
 * **Tool**: `mise run debug-x -- --plan <toml> [--film F] [--build unpatched|patched]`
   ([`debug_x.py`](../../python/scripts/debug_x.py), [`dbx/`](../../python/scripts/dbx/), plans in
-  `tools/dosbox-x/plans/`), [ADR 0034](../../docs/adr/0034-breakpoints-run-on-dosbox-x.md)
+  `tools/dosbox-x/plans/`), [ADR 0034](../../docs/adr/0034-breakpoints-run-on-dosbox-x.md).
+  The stage lives under the data root and `MEMDUMPBIN` takes its path unquoted, so a data root
+  whose path holds a space is refused before boot: set `STUNT_DATA_ROOT` to a path without one.
 * **Emulator**: DOSBox-X v2026.10.01, SDL1 build, `core = normal`, `output = surface`,
   `cycles = 8000`, `memsize = 16`
 * **Scope**: how a plan reaches a breakpoint and back (link, boot, addresses, the watch filter,
