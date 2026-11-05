@@ -105,8 +105,12 @@ A PR that changes rendered output — anything that moves a pixel `stuntreel` dr
 - [ ] 3. Render before and after, and copy the PNGs from build/scratch/frame/<film>/ (the next run replaces them):
        behind a DBG_* switch, one picture holds both: mise run frame -- --film <film> --ticks <t,t> --var DBG_X=0,1, copied to build/scratch/pr/
        otherwise two pictures: mise run frame on the base commit (git switch --detach <base>) copied to build/scratch/pr/before/, then on the PR head copied to build/scratch/pr/after/
-- [ ] 4. Write the body to build/scratch/pr/body.md, referencing each picture by its path relative to that file: ![INTRO tick 48: capture, before, after](./intro_48.png), or ./before/intro_48.png and ./after/intro_48.png
-- [ ] 5. gh pr create (or gh pr edit <n>) --body-file build/scratch/pr/body.md --attach './build/scratch/pr/intro_48.png#INTRO tick 48: capture, before, after', one --attach per picture the body references
+- [ ] 4. Write the body to build/scratch/pr/body.md, referencing each picture by its path relative to that file:
+       DBG: ![INTRO tick 48: capture, before, after](./intro_48.png)
+       otherwise: ![INTRO tick 48 before](./before/intro_48.png) ![INTRO tick 48 after](./after/intro_48.png)
+- [ ] 5. gh pr create (or gh pr edit <n>) --body-file build/scratch/pr/body.md, then one --attach per picture the body references:
+       DBG: --attach build/scratch/pr/intro_48.png
+       otherwise: --attach build/scratch/pr/before/intro_48.png --attach build/scratch/pr/after/intro_48.png
 - [ ] 6. A non-zero exit that still printed the PR URL means the PR exists but some uploads failed: re-run as gh pr edit <n> with the same --body-file and --attach flags until it exits 0 (no URL printed means nothing was created). Then confirm gh pr view <n> --json body --jq .body holds no ](./ reference
 ```
 
