@@ -56,8 +56,8 @@ class PlayoneLayout:
     """Where one build of PLAYONE.EXE keeps what a capture reads, identified by its SHA-256.
 
     Offsets are DS-relative. Patch #3 relinked the program: its DGROUP starts 0xE0 paragraphs
-    lower and every data offset the harness reads moved down by 0x67A
-    (``research/playone-exe/patch3.md``).
+    lower. Data at DS:0x2200 and above moved down by 0x67A; ``work_segment_pointer``, below
+    0x0A00, moved up by 0x7C instead (``research/playone-exe/patch3.md``).
     """
 
     name: str
