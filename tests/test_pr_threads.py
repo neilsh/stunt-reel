@@ -141,3 +141,71 @@ def test_graphql_errors_are_a_gh_error(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     with pytest.raises(pr_threads.GhError, match="bad cursor"):
         pr_threads.read_threads("o", "r", 1)
+
+
+# The shape of a CodeRabbit review body with findings it could not anchor to a changed line.
+_REVIEW_BODY = """<!-- coderabbit-ai-generated:v1 -->
+
+> [!CAUTION]
+> Some comments are outside the diff and can't be posted inline due to GitHub limitations.
+>
+> **⚠️ Outside diff range comments (2)**
+>
+> <details>
+> <summary><strong><picture><img src="amber-16.svg" alt=""></picture> Minor</strong> · Fix the import. · <code>tests/test_x.py:17</code></summary><blockquote>
+> <summary>Suggested fix</summary>
+> </blockquote></details>
+> <details>
+> <summary><strong><picture></picture> Major</strong> · Count the \x1b[2Jbytes. · <code>pair.py:84-91</code></summary><blockquote>
+> </blockquote></details>
+
+<details>
+<summary><strong>Minor</strong> · Not an outside-diff finding. · <code>elsewhere.py:1</code></summary>
+</details>
+"""
+
+
+def test_a_review_body_yields_its_outside_diff_findings() -> None:
+    assert pr_threads.outside_diff(_REVIEW_BODY) == [
+        ("tests/test_x.py:17", "Minor", "Fix the import."),
+        ("pair.py:84-91", "Major", "Count the ?[2Jbytes."),
+    ]
+    assert pr_threads.outside_diff("**Actionable comments posted: 1**") == []
+
+
+def test_outside_diff_findings_come_from_reviews_after_the_head_commit() -> None:
+    reviews = [
+        {"databaseId": 1, "submittedAt": "2026-11-04T10:00:00Z", "body": _REVIEW_BODY},
+        {"databaseId": 2, "submittedAt": "2026-11-04T12:00:00Z", "body": _REVIEW_BODY},
+    ]
+    since = "2026-11-04T11:00:00Z"
+    lines = pr_threads.outside_lines(reviews, since, include_all=False)
+    assert lines == [
+        "tests/test_x.py:17 [Minor] Fix the import. | outside diff, review 2",
+        "pair.py:84-91 [Major] Count the ?[2Jbytes. | outside diff, review 2",
+    ]
+    assert len(pr_threads.outside_lines(reviews, since, include_all=True)) == 4
+
+
+def test_every_page_of_reviews_is_read_with_the_head_commit_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def page(n: int, cursor: str | None) -> dict[str, Any]:
+        reviews = {
+            "nodes": [{"databaseId": n, "submittedAt": None, "body": ""}],
+            "pageInfo": {"hasNextPage": cursor is not None, "endCursor": cursor},
+        }
+        commits = {"nodes": [{"commit": {"committedDate": f"date{n}"}}]}
+        return {"data": {"repository": {"pullRequest": {"commits": commits, "reviews": reviews}}}}
+
+    pages = {None: page(1, "c1"), "c1": page(2, None)}
+
+    def gh(*args: str) -> dict[str, Any]:
+        after = next((a.removeprefix("after=") for a in args if a.startswith("after=")), None)
+        return pages[after]
+
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    found = pr_threads.read_reviews("o", "r", 1)
+    assert found is not None
+    assert found[0] == "date1"
+    assert [r["databaseId"] for r in found[1]] == [1, 2]

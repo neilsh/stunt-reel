@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print a pull request's open review threads, one line each.
+"""Print a pull request's open review threads and outside-diff findings, one line each.
 
 ``gh pr view --comments`` and the REST comments endpoint return every comment whole, and a
 bot review (CodeRabbit) wraps each finding in HTML comments, ``<details>`` blocks of analysis
@@ -8,9 +8,14 @@ through GitHub's GraphQL API, keeps the unresolved ones, and prints for each its
 severity when the bot names one, its title, and the database id of its first comment, which is
 the id ``gh api repos/{owner}/{repo}/pulls/<n>/comments/<id>/replies`` answers.
 
+A finding CodeRabbit cannot anchor to a changed line ("Outside diff range") lives only in its
+review's body and has no thread to resolve, so it is answered with a PR comment. Those print
+after the threads, from every review submitted since the head commit; the commit date stands in
+for "not yet answered by a push".
+
 Usage: ``mise run pr-threads -- <number> [--all]``. ``--all`` keeps resolved threads, marked
-``resolved``. Every page of threads is read. Exit status: ``0`` on success, ``2`` when ``gh``
-fails or the query returns errors.
+``resolved``, and outside-diff findings from every review. Every page of threads and reviews
+is read. Exit status: ``0`` on success, ``2`` when ``gh`` fails or the query returns errors.
 """
 
 from __future__ import annotations
@@ -50,6 +55,20 @@ query($owner: String!, $name: String!, $number: Int!, $after: String) {
 }
 """
 
+REVIEWS_QUERY = """
+query($owner: String!, $name: String!, $number: Int!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      commits(last: 1) { nodes { commit { committedDate } } }
+      reviews(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes { databaseId submittedAt body }
+      }
+    }
+  }
+}
+"""
+
 #: Severity words CodeRabbit sets in bold at the top of a finding.
 SEVERITIES = ("Critical", "Major", "Minor", "Trivial", "Nitpick")
 TITLE_LIMIT = 160
@@ -65,6 +84,13 @@ _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 _SEVERITY = re.compile(r"\*\*\s*(" + "|".join(SEVERITIES) + r")\s*\*\*")
 #: A line that is one bold span: ``**...**`` with no ``**`` inside.
 _BOLD_LINE = re.compile(r"^\*\*((?:(?!\*\*).)+)\*\*$")
+#: The heading of the blockquote that holds a review's outside-diff findings.
+_OUTSIDE = re.compile(r"Outside diff range comments \(\d+\)")
+#: One outside-diff finding's summary line: severity, title and ``path:line``, split by ``·``.
+_OUTSIDE_FINDING = re.compile(
+    r"<summary><strong>.*?\b(" + "|".join(SEVERITIES) + r")</strong>\s*·\s*(.+?)\s*·\s*"
+    r"<code>([^<]+)</code></summary>"
+)
 
 
 class GhError(Exception):
@@ -128,6 +154,38 @@ def thread_lines(threads: Iterable[dict[str, Any]], *, include_resolved: bool) -
     ]
 
 
+def outside_diff(body: str) -> list[tuple[str, str, str]]:
+    """A review body's outside-diff findings as ``(where, severity, title)``."""
+    heading = _OUTSIDE.search(body)
+    if heading is None:
+        return []
+    block: list[str] = []
+    for line in body[heading.end() :].splitlines()[1:]:
+        if not line.startswith(">"):
+            break
+        block.append(line)
+    return [
+        (_printable(m.group(3)), m.group(1), _printable(_TAG.sub("", m.group(2))))
+        for m in _OUTSIDE_FINDING.finditer("\n".join(block))
+    ]
+
+
+def outside_lines(
+    reviews: Iterable[dict[str, Any]], since: str | None, *, include_all: bool
+) -> list[str]:
+    """One line per outside-diff finding of each review submitted after *since*.
+
+    *since* is an ISO 8601 UTC timestamp, so string order is time order; with *include_all*,
+    or when it is ``None``, every review counts.
+    """
+    return [
+        f"{where} [{severity}] {title} | outside diff, review {review['databaseId']}"
+        for review in reviews
+        if include_all or since is None or (review["submittedAt"] or "") > since
+        for where, severity, title in outside_diff(review["body"] or "")
+    ]
+
+
 def _gh(*args: str) -> Any:
     gh = shutil.which("gh")
     if gh is None:
@@ -148,10 +206,30 @@ def _gh(*args: str) -> Any:
 
 def read_threads(owner: str, name: str, number: int) -> list[dict[str, Any]] | None:
     """Every review thread of pull request *number*, page by page; ``None`` when it is absent."""
+    found = _read_pages(QUERY, "reviewThreads", owner, name, number)
+    return None if found is None else found[1]
+
+
+def read_reviews(
+    owner: str, name: str, number: int
+) -> tuple[str | None, list[dict[str, Any]]] | None:
+    """The head commit's date and every review of pull request *number*; ``None`` if absent."""
+    found = _read_pages(REVIEWS_QUERY, "reviews", owner, name, number)
+    if found is None:
+        return None
+    commits = found[0]["commits"]["nodes"]
+    return (commits[0]["commit"]["committedDate"] if commits else None), found[1]
+
+
+def _read_pages(
+    query: str, connection: str, owner: str, name: str, number: int
+) -> tuple[dict[str, Any], list[dict[str, Any]]] | None:
+    """The pull request's first page and every node of its *connection*, page by page."""
     nodes: list[dict[str, Any]] = []
+    first: dict[str, Any] | None = None
     after: str | None = None
     while True:
-        args = ["api", "graphql", "-f", f"query={QUERY}", "-F", f"owner={owner}"]
+        args = ["api", "graphql", "-f", f"query={query}", "-F", f"owner={owner}"]
         args += ["-F", f"name={name}", "-F", f"number={number}"]
         if after is not None:
             args += ["-f", f"after={after}"]
@@ -162,33 +240,45 @@ def read_threads(owner: str, name: str, number: int) -> list[dict[str, Any]] | N
         pull = data["data"]["repository"]["pullRequest"]
         if pull is None:
             return None
-        threads = pull["reviewThreads"]
-        nodes += threads["nodes"]
-        if not threads["pageInfo"]["hasNextPage"]:
-            return nodes
-        after = threads["pageInfo"]["endCursor"]
+        first = first or pull
+        page = pull[connection]
+        nodes += page["nodes"]
+        if not page["pageInfo"]["hasNextPage"]:
+            return first, nodes
+        after = page["pageInfo"]["endCursor"]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Print the open review threads of the pull request named on the command line."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("number", type=int, help="pull request number")
-    parser.add_argument("--all", action="store_true", help="include resolved threads")
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="include resolved threads and outside-diff findings from every review",
+    )
     args = parser.parse_args(argv)
     try:
         repo = _gh("repo", "view", "--json", "nameWithOwner")["nameWithOwner"]
         owner, name = repo.split("/", 1)
         nodes = read_threads(owner, name, args.number)
+        reviews = read_reviews(owner, name, args.number) if nodes is not None else None
     except GhError as err:
         print(f"pr-threads: {err}", file=sys.stderr)
         return 2
-    if nodes is None:
+    if nodes is None or reviews is None:
         print(f"pr-threads: {repo} has no pull request {args.number}", file=sys.stderr)
         return 2
     lines = thread_lines(nodes, include_resolved=args.all)
     print(f"{len(lines)} {'review' if args.all else 'open review'} threads on {repo}#{args.number}")
     for line in lines:
         print(line)
+    outside = outside_lines(reviews[1], reviews[0], include_all=args.all)
+    if outside:
+        scope = "every review" if args.all else "reviews since the head commit"
+        print(f"{len(outside)} outside-diff findings from {scope} (answer with gh pr comment)")
+        for line in outside:
+            print(line)
     return 0
 
 
