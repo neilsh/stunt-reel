@@ -111,7 +111,7 @@ mise run pair-builds -- --ds 0x0542,0x05AC,0x05B5,0x05BE,0x05CA,0x05D4,0x05DB,0x
 
 * **The main program pairs but for the dropped display drivers.** The 12 unpaired unpatched functions are `0x0568` and eleven at `0x6326..0x6DCB`, which write the VGA sequencer and graphics controller (`0x3C4`, `0x3CE`) and hold the alternate video-mode path at `0x6E1B`; the patch notes say Tandy and CGA graphics were dropped (§ 1). Five patched functions are new: `0x00DC`, `0x05DF`, `0x061A`, `0x06F2`, `0x4C4D`.
 * **The votes never disagree.** Segment-0 memory operands name 371 distinct `DS` offsets, the VM segment 165 and segment-0 `ES` operands 50; each offset gets one answer from all its references. All 17 references to the film clock `0x4896` pair (§ 2's byte match found 2).
-* **`DGROUP` moved by 11 different shifts, not one.** From the summary of `mise run pair-builds`:
+* **`DGROUP` moved by 12 different shifts, not one:** ten runs and two single offsets, `0x02E5` (`-0x1E7`) and `0x0C10` (`+0x112`). From the summary of `mise run pair-builds`:
 
   | Unpatched `DS` offsets | Shift | Offsets |
   |---|---|---|
@@ -127,7 +127,7 @@ mise run pair-builds -- --ds 0x0542,0x05AC,0x05B5,0x05BE,0x05CA,0x05D4,0x05DB,0x
   | `0x223D..0x8044` | `-0x67A` | 205 |
 
   The rest are not `DGROUP` data: `0x8830..0x8832` (`-0x350`) is the work segment's start seen through `DGROUP` (`0x15D4 - 0x0D51` paragraphs, `0x14BF - 0x0C71` patched), and `0x1952`, `0x41E8`/`0x41EA`, `0x806C` and `0x8CC0..0xF600` (shift 0) are read while `DS` is another segment. Objects are interleaved even inside a run: `0x0C10` moved `+0x112` among `+0x74` neighbours. A bracketed offset is therefore the weakest answer, and the map marks it.
-* **The work segment did not change.** All 164 offsets the VM segment names through `DS` while `DS` is the work segment, and all 50 the main program names through `ES`, pair with themselves. The segment is `0x8130` bytes in both images, and its initial bytes are identical except 12 at `0x1952..0x195D`.
+* **The work segment's offsets did not change**, though its paragraph did (`0x15D4` → `0x14BF`). All 164 offsets the VM segment names through `DS` while `DS` is the work segment, and all 50 the main program names through `ES`, pair with themselves. The segment is `0x8130` bytes in both images, and its initial bytes are identical except 12 at `0x1952..0x195D`.
 * **The lighting rows the #65/#66 probes read** pair instruction for instruction: the work-segment pointer `DS:0x0542` → `0x05BE` (13 of 13 references), the light copy `DS:0x49EC..0x49F0` → `0x4372..0x4376` (4 each), the var-13 handler `0x196C` → `0x1A7F`, the sun projection `0x908E` → `0x8385`, and the light setup entries `0x9100`/`0x9106` → `0x83F7`/`0x83FD`, whose work-segment stores (`0x8072`..) are unchanged.
 
 ### 4.1 The Patched Build Has One Dispatch Slot Fewer
@@ -149,7 +149,7 @@ A jump table defeats instruction alignment: every slot has the same shape, so a 
 - **Running `PATSI.BAT` itself.** It ends in the interactive `SETUP`, and writing the corpus is not allowed (ADR 0022); the build applies the same deletions and extractions to a copy.
 - **A patched tree without `GAME.CFG`.** `PLAYONE` would try to run `install.exe` at start (§ 1.1).
 - **The byte match of § 2 for the other rows.** A reference whose neighbouring bytes hold other shifted addresses matches nowhere; it reached 2 of the film clock's 17 references, where function pairing reaches all 17 (§ 4).
-- **One shift, or a shift per region, for `DGROUP`.** It moved by 11 shifts, and objects are interleaved inside a region: `0x0C10` moved `+0x112` among `+0x74` neighbours (§ 4).
+- **One shift, or a shift per region, for `DGROUP`.** It moved by 12 shifts, and objects are interleaved inside a region: `0x0C10` moved `+0x112` among `+0x74` neighbours (§ 4).
 - **Aligning a jump table instruction by instruction.** Every dispatch slot has one shape, so the aligner placed the dropped slot wrongly; slots pair through their handlers (§ 4.1).
 
 ## Open questions
