@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use stunt_core::anchor::{AnchorPoint, parse_anchor_table};
 use stunt_core::contracts::{NodeKind, SodModelIr};
 use stunt_core::sod::{DecodeMode, decode_sod};
-use stunt_core::world::{WorldInputs, build_world};
+use stunt_core::world::{ScnStopReason, WorldInputs, build_world};
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -381,4 +381,38 @@ fn bounds_cover_every_vertex() {
         }
     }
     assert_eq!(world.bounds.max[1], 500.0);
+}
+
+#[test]
+fn cyclic_scenery_list_stops_promptly_and_reports_it() {
+    let scenery = std::fs::read(fixtures_dir().join("synthetic_cyclic.scn")).unwrap();
+    let anchors = fixture_anchors();
+    let inputs = WorldInputs {
+        anchors: &anchors,
+        map: None,
+        scenery: Some(&scenery),
+        view_eyes: &[],
+        max_zoom: 1.0,
+    };
+    let world = build_world(&inputs, &fixture_shapes(0x0105)).expect("world");
+    // The prop listed before the back-reference is kept; the walk stops at the list that
+    // refers to itself (word 6, byte 24, opcode SP_LIST = 20).
+    assert_eq!(world.props_placed, 1);
+    let stop = world.scenery_stop.expect("a cycle is reported");
+    assert_eq!(stop.reason, ScnStopReason::Cycle);
+    assert_eq!((stop.offset, stop.opcode), (24, 20));
+}
+
+#[test]
+fn well_formed_scenery_reports_no_stop() {
+    let scenery = words_to_bytes(&[0i32; 8]);
+    let inputs = WorldInputs {
+        anchors: &[],
+        map: None,
+        scenery: Some(&scenery),
+        view_eyes: &[],
+        max_zoom: 1.0,
+    };
+    let world = build_world(&inputs, &HashMap::new()).expect("world");
+    assert!(world.scenery_stop.is_none());
 }

@@ -75,6 +75,126 @@ pub struct World {
     pub props_placed: usize,
     /// Extent of every vertex in [`Self::ir`].
     pub bounds: ShapeExtent,
+    /// Why the `SCENERY.scn` walk ended before it reached the end of the tree, if it did.
+    /// `None` for a tree that was walked in full or when no scenery was supplied; a stop
+    /// leaves the props gathered before it in the world.
+    pub scenery_stop: Option<ScnStop>,
+}
+
+/// Why a `SCENERY.scn` walk was cut short.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScnStopReason {
+    /// A pointer led back to a node the walk was still inside, so following it would never
+    /// end (a list that contains itself, or a chain that loops).
+    Cycle,
+    /// The walk visited more nodes than `SCN_NODE_BUDGET` allows without repeating an
+    /// ancestor, such as a heavily shared tree that fans out exponentially.
+    Budget,
+    /// Subtrees nested deeper than `SCN_MAX_DEPTH`.
+    Depth,
+}
+
+impl std::fmt::Display for ScnStopReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cycle => f.write_str("pointer cycle"),
+            Self::Budget => f.write_str("node budget"),
+            Self::Depth => f.write_str("nesting too deep"),
+        }
+    }
+}
+
+/// Where and why a `SCENERY.scn` walk stopped early, modelled on the shape decode record's
+/// `SodStop`. A stop that ends the walk (cycle, budget) is the one reported; otherwise the
+/// first skipped subtree (depth) is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScnStop {
+    /// Byte offset in `SCENERY.scn` of the node whose visit was refused.
+    pub offset: usize,
+    /// That node's opcode word.
+    pub opcode: i32,
+    /// Why the walk stopped.
+    pub reason: ScnStopReason,
+}
+
+/// Node visits one walk may make, per word of `SCENERY.scn`. A tree walked once visits at
+/// most one node per two words, so this leaves room for subtrees shared several times over
+/// while keeping the bound proportional to the input. A fixed ceiling would be too loose: a
+/// visit costs more than a constant (an `SP_1NODE` measures path distance against every
+/// camera eye), so a corrupt fan-out could otherwise run for minutes. The real
+/// `SCENERY.scn` (29,559 words) makes 367,365 visits with every node near, 12.4 per word, so
+/// 64 leaves about five times the headroom.
+const SCN_VISITS_PER_WORD: usize = 64;
+
+/// Deepest nesting of subtrees the walk follows.
+const SCN_MAX_DEPTH: usize = 128;
+
+/// Walk state shared by every frame of one traversal.
+struct ScnWalk {
+    /// Nodes the active frames are inside, to catch a pointer back to an ancestor. A node
+    /// reached again from a sibling branch is not an ancestor and is walked again.
+    on_path: HashSet<usize>,
+    /// Node visits so far.
+    visits: usize,
+    /// Visits allowed before the walk stops with [`ScnStopReason::Budget`].
+    budget: usize,
+    /// The stop to report, if any: the first skipped subtree, replaced by a stop that ends the
+    /// walk.
+    stop: Option<ScnStop>,
+    /// Set by a stop that ends the walk; a skipped subtree leaves it clear.
+    halted: bool,
+}
+
+impl ScnWalk {
+    /// A fresh walk that allows `budget` node visits.
+    fn new(budget: usize) -> Self {
+        Self {
+            on_path: HashSet::new(),
+            visits: 0,
+            budget,
+            stop: None,
+            halted: false,
+        }
+    }
+
+    /// Records the stop unless an earlier one already holds, without ending the walk.
+    fn note(&mut self, words: &[i32], ni: usize, reason: ScnStopReason) {
+        self.stop.get_or_insert_with(|| ScnStop {
+            offset: ni.saturating_mul(4),
+            opcode: words.get(ni).copied().unwrap_or_default(),
+            reason,
+        });
+    }
+
+    /// Records the stop and ends the walk: every frame unwinds at its next check. It
+    /// replaces a skipped-subtree stop, which did not end the walk, but not an earlier halt.
+    fn halt(&mut self, words: &[i32], ni: usize, reason: ScnStopReason) {
+        if !self.halted {
+            self.stop = Some(ScnStop {
+                offset: ni.saturating_mul(4),
+                opcode: words.get(ni).copied().unwrap_or_default(),
+                reason,
+            });
+        }
+        self.halted = true;
+    }
+
+    /// Admits a visit to the node at `ni`, or records why not.
+    fn enter(&mut self, words: &[i32], ni: usize) -> bool {
+        if self.halted {
+            return false;
+        }
+        self.visits = self.visits.saturating_add(1);
+        if self.visits > self.budget {
+            self.halt(words, ni, ScnStopReason::Budget);
+            return false;
+        }
+        if !self.on_path.insert(ni) {
+            self.halt(words, ni, ScnStopReason::Cycle);
+            return false;
+        }
+        true
+    }
 }
 
 /// Builds the static world from its raw inputs and the film archive's decoded shapes.
@@ -99,6 +219,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
     }
 
     let mut instances = Vec::new();
+    let mut scenery_stop = None;
     if let Some(scn_bytes) = inputs.scenery {
         let (chunks, _) = scn_bytes.as_chunks::<4>();
         let words: Vec<i32> = chunks.iter().map(|c| i32::from_le_bytes(*c)).collect();
@@ -110,7 +231,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
             inputs.view_eyes.is_empty()
                 || path_distance(pos, inputs.view_eyes) <= lod_threshold(ext, splitdist, LOD_SCALE)
         };
-        traverse_scn(
+        scenery_stop = traverse_scn(
             &words,
             1,
             0,
@@ -138,6 +259,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         terrain_patches: map_areas.len(),
         props_placed: unique_instances.len(),
         bounds,
+        scenery_stop,
     })
 }
 
@@ -292,29 +414,110 @@ pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
 }
 
 /// Traverses `SCENERY.scn` hierarchical BSP tree to collect prop placements.
+///
+/// Returns why the walk stopped early (a pointer cycle, the node budget, or nesting past
+/// `SCN_MAX_DEPTH`), or `None` when it ran to the end of the tree.
 #[expect(
     clippy::too_many_arguments,
     reason = "the traversal threads its whole state explicitly"
 )]
 pub(crate) fn traverse_scn(
     words: &[i32],
-    mut ni: usize,
-    mut cx: i32,
-    mut cy: i32,
-    mut cz: i32,
+    ni: usize,
+    cx: i32,
+    cy: i32,
+    cz: i32,
+    instances: &mut Vec<(u16, [f32; 3])>,
+    available_models: &HashSet<u16>,
+    near: &dyn Fn([f32; 3], i32, i32) -> bool,
+    depth: usize,
+) -> Option<ScnStop> {
+    let mut walk = ScnWalk::new(words.len().saturating_mul(SCN_VISITS_PER_WORD));
+    walk_scn(
+        &mut walk,
+        words,
+        ni,
+        cx,
+        cy,
+        cz,
+        instances,
+        available_models,
+        near,
+        depth,
+    );
+    walk.stop
+}
+
+/// One frame of the walk: follows the chain starting at `ni`, recursing into subtrees.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the traversal threads its whole state explicitly"
+)]
+fn walk_scn(
+    walk: &mut ScnWalk,
+    words: &[i32],
+    ni: usize,
+    cx: i32,
+    cy: i32,
+    cz: i32,
     instances: &mut Vec<(u16, [f32; 3])>,
     available_models: &HashSet<u16>,
     near: &dyn Fn([f32; 3], i32, i32) -> bool,
     depth: usize,
 ) {
-    if depth > 128 {
+    if ni == 0 || words.get(ni).is_none() {
+        // No node here (a null or out-of-range pointer): nothing to walk, so nothing to report.
         return;
     }
-    // A recursion counter, bounded by the guard above, so it never clamps.
+    if depth > SCN_MAX_DEPTH {
+        // Skip just this subtree and keep walking its siblings; the first one is recorded.
+        walk.note(words, ni, ScnStopReason::Depth);
+        return;
+    }
+    let mut entered = Vec::new();
+    walk_chain(
+        walk,
+        words,
+        ni,
+        (cx, cy, cz),
+        instances,
+        available_models,
+        near,
+        depth,
+        &mut entered,
+    );
+    // This frame is done, so its nodes stop being ancestors of whatever is walked next.
+    for node in entered {
+        walk.on_path.remove(&node);
+    }
+}
+
+/// Follows the nodes chained from `ni` in one frame, adding each to `entered` so
+/// [`walk_scn`] can drop them from the ancestor set when the frame ends.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the traversal threads its whole state explicitly"
+)]
+fn walk_chain(
+    walk: &mut ScnWalk,
+    words: &[i32],
+    mut ni: usize,
+    (mut cx, mut cy, mut cz): (i32, i32, i32),
+    instances: &mut Vec<(u16, [f32; 3])>,
+    available_models: &HashSet<u16>,
+    near: &dyn Fn([f32; 3], i32, i32) -> bool,
+    depth: usize,
+    entered: &mut Vec<usize>,
+) {
+    // A recursion counter, bounded by the guard in `walk_scn`, so it never clamps.
     let deeper = depth.saturating_add(1);
     while ni != 0
         && let Some(&op) = words.get(ni)
     {
+        if !walk.enter(words, ni) {
+            return;
+        }
+        entered.push(ni);
         match op {
             0 => {
                 // SP_POS: x, y, z, next
@@ -367,7 +570,8 @@ pub(crate) fn traverse_scn(
                 let Some([ptr, next]) = scn_operands(words, ni) else {
                     break;
                 };
-                traverse_scn(
+                walk_scn(
+                    walk,
                     words,
                     scn_pointer(ptr),
                     cx,
@@ -395,7 +599,8 @@ pub(crate) fn traverse_scn(
                 let Some([_, _, _, _, _, ptr, next]) = scn_operands(words, ni) else {
                     break;
                 };
-                traverse_scn(
+                walk_scn(
+                    walk,
                     words,
                     scn_pointer(ptr),
                     cx,
@@ -423,7 +628,8 @@ pub(crate) fn traverse_scn(
                 while let Some(&child) = words.get(curr)
                     && child != 0
                 {
-                    traverse_scn(
+                    walk_scn(
+                        walk,
                         words,
                         scn_pointer(child),
                         cx,
@@ -434,6 +640,9 @@ pub(crate) fn traverse_scn(
                         near,
                         deeper,
                     );
+                    if walk.halted {
+                        return;
+                    }
                     let Some(next) = curr.checked_add(1) else {
                         return;
                     };
@@ -950,6 +1159,161 @@ mod tests {
         assert_eq!(instances[0].0, 0x0105);
         // x=-10, y=-20, z=30
         assert_eq!(instances[0].1, [-10.0, -20.0, 30.0]);
+    }
+
+    #[test]
+    fn test_traverse_scn_stops_on_budget_in_a_shared_tree() {
+        // Each SP_2NODE sends both its subtree pointer and its continuation to the next
+        // node, so 40 levels would make 2^40 visits though no node is its own ancestor.
+        let levels = 40;
+        let mut words = vec![0i32; 2 + levels * 3];
+        for level in 0..levels {
+            let at = 1 + level * 3;
+            let target = i32::try_from((at + 3) * 2).unwrap();
+            words[at] = 4;
+            words[at + 1] = target;
+            words[at + 2] = target;
+        }
+        let mut walk = ScnWalk::new(1000);
+        let mut instances = Vec::new();
+        walk_scn(
+            &mut walk,
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut instances,
+            &HashSet::new(),
+            &|_, _, _| true,
+            0,
+        );
+        let stop = walk.stop.expect("the budget stops the walk");
+        assert!(walk.halted);
+        assert_eq!(stop.reason, ScnStopReason::Budget);
+        assert_eq!(walk.visits, 1001);
+    }
+
+    /// A list whose first child heads a chain nested past `SCN_MAX_DEPTH`, then `tail`:
+    /// either a leaf of shape 0x0105 or a list that contains itself.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "a fixture builder over small constants"
+    )]
+    fn deep_chain_then(tail_is_cycle: bool) -> Vec<i32> {
+        let ptr = |word: usize| i32::try_from(word * 2).unwrap();
+        let chain = 8;
+        let len = SCN_MAX_DEPTH + 12;
+        let mut words = vec![0i32; chain + len * 3];
+        words[1] = 20;
+        words[2] = ptr(chain);
+        words[3] = ptr(5);
+        if tail_is_cycle {
+            words[5] = 20;
+            words[6] = ptr(5);
+        } else {
+            words[5] = 10;
+            words[6] = 0x0105;
+        }
+        for k in 0..len {
+            let at = chain + k * 3;
+            words[at] = if k + 1 == len { 14 } else { 4 };
+            words[at + 1] = ptr(at + 3);
+        }
+        words[chain + (len - 1) * 3 + 1] = 0;
+        words
+    }
+
+    #[test]
+    fn test_traverse_scn_skips_a_too_deep_subtree_and_keeps_walking() {
+        let words = deep_chain_then(false);
+        let mut walk = ScnWalk::new(usize::MAX);
+        let mut instances = Vec::new();
+        walk_scn(
+            &mut walk,
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut instances,
+            &HashSet::from([0x0105]),
+            &|_, _, _| true,
+            0,
+        );
+        // The leaf is reached as a list child and again as the list continuation.
+        assert_eq!(
+            instances.len(),
+            2,
+            "the sibling after the deep chain is placed"
+        );
+        assert_eq!(walk.stop.map(|s| s.reason), Some(ScnStopReason::Depth));
+        assert!(!walk.halted);
+    }
+
+    #[test]
+    fn test_traverse_scn_null_pointer_past_the_depth_limit_is_not_a_stop() {
+        let words = [0i32; 4];
+        for ni in [0, 99] {
+            let mut walk = ScnWalk::new(usize::MAX);
+            walk_scn(
+                &mut walk,
+                &words,
+                ni,
+                0,
+                0,
+                0,
+                &mut Vec::new(),
+                &HashSet::new(),
+                &|_, _, _| true,
+                SCN_MAX_DEPTH + 1,
+            );
+            assert!(walk.stop.is_none(), "pointer {ni} is not a node");
+        }
+    }
+
+    #[test]
+    fn test_traverse_scn_halting_stop_outranks_an_earlier_depth_stop() {
+        let words = deep_chain_then(true);
+        let stop = traverse_scn(
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut Vec::new(),
+            &HashSet::new(),
+            &|_, _, _| true,
+            0,
+        )
+        .expect("a stop");
+        assert_eq!((stop.reason, stop.offset), (ScnStopReason::Cycle, 20));
+    }
+
+    #[test]
+    fn test_traverse_scn_reports_a_pointer_chain_that_loops() {
+        // SP_POS whose next points back at itself: a cycle with a non-zero delta.
+        let words = [0, 0, 1, 0, 0, 2];
+        let mut instances = Vec::new();
+        let stop = traverse_scn(
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut instances,
+            &HashSet::new(),
+            &|_, _, _| true,
+            0,
+        );
+        assert_eq!(
+            stop,
+            Some(ScnStop {
+                offset: 4,
+                opcode: 0,
+                reason: ScnStopReason::Cycle
+            })
+        );
     }
 
     #[test]
