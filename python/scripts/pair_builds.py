@@ -192,7 +192,11 @@ def report_slots(pairing: Pairing, paragraph: int) -> None:
 def main(argv: list[str]) -> int:
     """Pair the two builds and print the summary or the requested mappings."""
     args = parse_args(argv)
-    pairing = pair_images(load(args.left), load(args.right))
+    try:
+        pairing = pair_images(load(args.left), load(args.right))
+    except ValueError as err:  # not LZEXE, no DS load, or code segments that do not pair
+        print(f"pair-builds: {err}", file=sys.stderr)
+        return 2
     if not args.ds and not args.code and args.slots is None:
         report_summary(pairing, args.unpaired)
     if args.slots is not None:
