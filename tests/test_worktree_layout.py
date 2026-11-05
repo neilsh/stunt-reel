@@ -307,16 +307,19 @@ def test_tasks_use_the_os_temp_directory() -> None:
 def test_sod_census_reads_the_data_roots_corpus() -> None:
     """The census reads ``corpus/`` relative to its working directory unless told (ADR 0033)."""
     config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
-    run = config["tasks"]["sod-census"]["run"]
-    # Quoted: the run line is a shell command, and the path may hold a space or a `&`.
-    assert (
-        "--corpus \"{% set root = get_env(name='STUNT_DATA_ROOT', default=vars.data_root) %}" in run
+    task = config["tasks"]["sod-census"]
+    # The path reaches the census through the environment, never the shell command line, where
+    # a `$(...)`, a quote or an `&` in it would run as shell source.
+    assert "{{" not in task["run"]
+    assert "--corpus" not in task["run"]
+    corpus = task["env"]["STUNT_CENSUS_CORPUS"]
+    assert corpus.startswith(
+        "{% set root = get_env(name='STUNT_DATA_ROOT', default=vars.data_root) %}"
     )
-    assert run.endswith('/corpus"')
-    # A leading ~ expands as dataroot.data_root() expands it: USERPROFILE on Windows, else HOME;
-    # the quotes would otherwise stop the shell from expanding it.
-    assert "get_env(name='USERPROFILE', default=home)" in run
-    assert "trim_start_matches(pat='~')" in run
+    assert corpus.endswith("/corpus")
+    # A leading ~ expands as dataroot.data_root() expands it: USERPROFILE on Windows, else HOME.
+    assert "get_env(name='USERPROFILE', default=home)" in corpus
+    assert "trim_start_matches(pat='~')" in corpus
 
 
 def test_the_data_root_var_sits_beside_the_primary() -> None:

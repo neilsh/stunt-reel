@@ -354,9 +354,9 @@ run = "uv run python python/scripts/verify_schemas_corpus.py"
 [tasks.sod-census]
 # Reads <data root>/corpus only, with no fallback to the primary checkout's corpus/ as Python
 # has; a clone keeping its game files there passes `-- --corpus <primary checkout>/corpus`,
-# which wins. The path is quoted, because the run line is a shell command, so a leading ~ in
-# STUNT_DATA_ROOT is expanded here instead, as dataroot.data_root() expands it.
+# which wins. The path travels in STUNT_CENSUS_CORPUS, never the shell command line, where
+# a `$(...)` or a quote in it would run; a leading ~ expands as dataroot.data_root() expands it.
 depends = ["ensure"]
 description = "Census of corpus .SOD models that stop on unimplemented opcodes, joined to the films placing them (opt-in; corpus is gitignored; mise run sod-census -- [--format markdown])"
-run = "cargo run --release --locked -p stunt-cli --bin stuntreel -- sod-census --corpus \"{% set root = get_env(name='STUNT_DATA_ROOT', default=vars.data_root) %}{% set home = get_env(name='HOME', default='~') %}{% set home = get_env(name='USERPROFILE', default=home) %}{% if root | truncate(length=1, end='') == '~' %}{{ home }}{{ root | trim_start_matches(pat='~') }}{% else %}{{ root }}{% endif %}/corpus\""
-env = { CARGO_HOME = "{{vars.cargo_home}}" }
+run = "cargo run --release --locked -p stunt-cli --bin stuntreel -- sod-census"
+env = { CARGO_HOME = "{{vars.cargo_home}}", STUNT_CENSUS_CORPUS = "{% set root = get_env(name='STUNT_DATA_ROOT', default=vars.data_root) %}{% set home = get_env(name='HOME', default='~') %}{% set home = get_env(name='USERPROFILE', default=home) %}{% if root | truncate(length=1, end='') == '~' %}{{ home }}{{ root | trim_start_matches(pat='~') }}{% else %}{{ root }}{% endif %}/corpus" }
