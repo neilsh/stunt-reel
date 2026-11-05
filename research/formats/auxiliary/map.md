@@ -74,7 +74,7 @@ Executable layout: [`anchorpt.dat.ksy`](anchorpt.dat.ksy).
 | `+0x02` | 2 | `i16` (LE) | `pos` | Sector activity flag: `(pos & 0xFF) != 0` indicates active land polygon | `[Established]` |
 | `+0x04`–`+0x0B` | 8 | `i16[4]` (LE) | `a, b, c, d` | Spatial bounding box limits or neighboring patch graph linkages. Field `a` is a record byte offset (always `-1` or `30 × index`); see [`[BK-MAP-03]`](#4-open-questions--analysis-backlog) | `[Bounded Observation]` |
 | `+0x0C` | 2 | `i16` (LE) | `color` | Authentic 8-bit VGA Mode 13h palette index (`0..=255`) | `[Established]` |
-| `+0x0E` | 2 | `i16` (LE) | `num_verts` | Number of active vertices forming this terrain polygon ($3 \le N \le 7$, clamped to 7) | `[Established]` |
+| `+0x0E` | 2 | `i16` (LE) | `num_verts` | Number of vertices forming this terrain polygon. The record stores seven vertex slots; a count of 8 (patch 131) reads its eighth vertex from the next record's `num` word (`[BK-MAP-05]`) | `[Established]` |
 | `+0x10`–`+0x1D` | 14 | `u16[7]` (LE) | `v[7]` | Index words for this polygon referencing `ANCHORPT.DAT` anchor records (`0..1023`). 166 of 179 records decode cleanly; records with indices $\ge 1024$ or `(pos & 0xFF) == 0` are inactive/sentinels. | `[Established]` |
 | End of File | 2 | `u16` (LE) | `terminator` | Terminal null word `0x0000` | `[Established]` |
 
