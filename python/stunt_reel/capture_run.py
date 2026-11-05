@@ -283,17 +283,28 @@ def _builds_to_try(job: Job, slug: str) -> list[game_builds.BuildName]:
     return ["patch3", "unpatched"] if default_run else ["patch3"]
 
 
+#: What dosbox-automation's Lua host reports when a script exhausts its instruction budget
+#: (``instruction limit exceeded``); the text is the emulator's, not this repository's.
+BUDGET_MESSAGE = "instruction limit"
+
+
 def _is_stall(exc: BaseException) -> bool:
     """True for the failures ADR 0029 lets the fallback retry on the unpatched build.
 
-    The trace budget running out (``instruction limit exceeded``), a film clock that never
-    advances (:class:`Stalled`, :class:`~stunt_reel.tac.video.FilmClockStuck`) and a guest that
-    died or hung (:class:`~stunt_reel.tac.emulator.GuestTimeout`, MAKEONE writing no archive).
-    Nothing else: a dump pass that drifts from its trace is boot-to-boot drift (BIGMAN), a
-    missing emulator no build can fix, and a corrupt archive or a full disk is not the build's.
+    The trace budget running out (:data:`BUDGET_MESSAGE`), a film clock that never advances
+    (:class:`Stalled`, :class:`~stunt_reel.tac.video.FilmClockStuck`), a script that outran its
+    timeout on a running guest (:class:`~stunt_reel.tac.emulator.GuestTimeout`) and MAKEONE
+    writing no complete archive. Nothing else: an emulator that never launched
+    (:class:`~stunt_reel.tac.emulator.LaunchFailed`) says nothing about the build, a dump pass
+    that drifts from its trace is boot-to-boot drift (BIGMAN), a missing emulator no build can
+    fix, and a corrupt archive or a full disk is not the build's.
+
+    Known gap: the budget also runs out on a film that is only too long (LOCATION.FLM, 8,266
+    ticks), and the clock state is not available where the error surfaces, so such a film
+    would wrongly retry on the unpatched build and print a row blaming patch3.
     """
     if isinstance(exc, automation.ScriptError):
-        return "instruction limit" in str(exc).lower()
+        return BUDGET_MESSAGE in str(exc).lower()
     return isinstance(exc, (Stalled, GuestTimeout, makeone.MakeOneError, video.FilmClockStuck))
 
 

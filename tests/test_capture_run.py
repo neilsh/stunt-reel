@@ -25,7 +25,7 @@ from pytest_helpers import build_avi
 from stunt_reel import capture_run, capture_store, dataroot, parity_layout, references
 from stunt_reel.all_archive import ArchiveMeta, publish_archive
 from stunt_reel.tac import automation, makeone, plan, playone
-from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout
+from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout, LaunchFailed
 from tac_mock import FakeFilm, StagedRepo, load_script, makeone_launcher
 
 if TYPE_CHECKING:
@@ -470,7 +470,7 @@ def test_game_root_overrides_the_chosen_build(
     ("error", "said"),
     [
         (automation.ScriptError("instruction limit exceeded"), "instruction limit exceeded"),
-        (GuestTimeout("dosbox-automation exited at launch 3 times"), "exited at launch"),
+        (GuestTimeout("script still running after 120 s"), "still running"),
     ],
 )
 def test_a_stall_on_patch3_retries_on_unpatched_and_suggests_the_row(
@@ -515,7 +515,17 @@ def test_a_stall_on_both_builds_fails_and_stores_nothing(
 
 @pytest.mark.parametrize(
     "why",
-    ["row", "game-root", "out", "drift", "no-emulator", "plain-runtime", "disk", "broken-script"],
+    [
+        "row",
+        "game-root",
+        "out",
+        "drift",
+        "no-emulator",
+        "plain-runtime",
+        "disk",
+        "broken-script",
+        "launch-failed",
+    ],
 )
 def test_the_fallback_is_only_for_a_stall_of_a_default_run_of_a_film_with_no_row(
     why: str, staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch, rows: Path, tmp_path: Path
@@ -536,6 +546,8 @@ def test_the_fallback_is_only_for_a_stall_of_a_default_run_of_a_film_with_no_row
         emulator.fail_first = [plan.PlanDivergence("drifted")]
     elif why == "plain-runtime":
         emulator.fail_first = [RuntimeError("boom")]
+    elif why == "launch-failed":
+        emulator.fail_first = [LaunchFailed("dosbox-automation exited at launch 3 times in a row")]
     elif why == "disk":
         emulator.fail_first = [OSError("no space left")]
     elif why == "broken-script":
