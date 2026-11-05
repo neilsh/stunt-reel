@@ -52,8 +52,11 @@ def run(args: argparse.Namespace) -> int:
     try:
         # The film's row in references.toml names the builds it may play on (ADR 0029); a
         # film with no row is not checked, so its PLAYONE need not be a known build.
-        slug = parity_layout.slug_for(film)
-        if references.read_builds(dataroot.REPO_ROOT, slug) is not None:
+        try:
+            slug: str | None = parity_layout.slug_for(film)
+        except ValueError:
+            slug = None  # no valid slug, so no row can name this film
+        if slug is not None and references.read_builds(dataroot.REPO_ROOT, slug) is not None:
             references.require_builds(
                 dataroot.REPO_ROOT,
                 slug,
