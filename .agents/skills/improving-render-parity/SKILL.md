@@ -1,6 +1,6 @@
 ---
 name: improving-render-parity
-description: Runs stunt-reel's render-vs-PLAYONE parity loop (capture, render, score, probe, candidate sweep, record findings) in few turns with small output. Use for any parity, fidelity, SSIM or IoU, capture-ref, probe or candidate-sweep work on CTRY.FLM or INTRO.FLM.
+description: Runs stunt-reel's render-vs-PLAYONE parity loop (capture, render, score, probe, candidate sweep, record findings) in few turns with small output. Use for any parity, fidelity, SSIM or IoU, capture-ref, probe or candidate-sweep work on CTRY.FLM or INTRO.FLM, and for the comparison picture a rendering PR carries.
 ---
 
 # Improving render parity
@@ -55,7 +55,7 @@ Every turn re-sends the whole conversation, so the loop costs turns times contex
 3. **Use the tools.** `mise run parity` is the baseline; `mise run sweep -- --var DBG_X=a,b [--films ctry,intro] [--probe iou] [--keep-best]` builds once, scores the whole product on both films and prints one table plus the winner ([`probes.md`](../../../research/parity/probes.md) section 4); `retime` answers a timing question with no build (section 6). Do not hand-roll render-and-score loops (section 8 lists what has no tool yet).
 4. **Score both films.** CTRY-only gains have regressed INTRO three times ([`framing-and-actors.md`](../../../research/parity/framing-and-actors.md)).
 5. **Never print a whole `report.json`.** Extract the fields you need with `python -c "import json; ..."`.
-6. **Look at pixels sparingly.** Use `parity_probe.py crop` on one region instead of reading full contact sheets, and only after the numbers point somewhere. To see specific ticks, `mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N]` renders them in one process (about 3 s, not 3 s each) and prints a capture-left, ours-right PNG per tick under `build/scratch/frame/<film>/`; a tick the capture lacks is rendered and its nearest captured ticks are named. Add `--var DBG_X=0,1` for a before-and-after picture: the capture, then one panel per value. A PR or note may commit such a picture under [`NOTICE.md`](../../../NOTICE.md)'s comparison-image rule, cited by the note, and link it from the PR at its commit's `raw.githubusercontent.com` URL.
+6. **Look at pixels sparingly.** Use `parity_probe.py crop` on one region instead of reading full contact sheets, and only after the numbers point somewhere. To see specific ticks, `mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N]` renders them in one process (about 3 s, not 3 s each) and prints a capture-left, ours-right PNG per tick under `build/scratch/frame/<film>/`; a tick the capture lacks is rendered and its nearest captured ticks are named. Add `--var DBG_X=0,1` for a before-and-after picture: the capture, then one panel per value. A note may commit such a picture under [`NOTICE.md`](../../../NOTICE.md)'s comparison-image rule; a PR attaches one as in [Evidence for a rendering PR](#evidence-for-a-rendering-pr).
 7. **Scratch goes in `build/scratch/`** (gitignored), never `$TEMP`, whose Windows path breaks shell globs. Delete candidate render directories once scored. `PYTHONUTF8=1` is set for Python text I/O; committed scripts still pass `encoding="utf-8"`.
 8. **Never commit `DBG_*` switches.** `git checkout crates` removes them. Parse a switch's value with `std::env::var(...).ok().and_then(|v| v.parse().ok())`, never `is_ok()` (`"0"` counts as set; the sweep's identical-variant warning catches it, [`probes.md`](../../../research/parity/probes.md) section 8).
 
@@ -94,6 +94,28 @@ For batch films, print the `batch.md` readout table with `mise run parity-bench 
 Skip step 1 and `--against` when there is no previous readout or the previous run was a calibration: a calibration grades only ticks the recapture holds, so `compare` refuses it.
 
 Calibrate (`errors-make --calibrate`, 42 sheets, then `errors-score`) only when the categories, the sheet layout or the grading model change; it must print `calibration PASS`. When `other` names the same new kind of error on two or more frames, add a `[[category]]` block, give it an example with `errors-example --film <film> --tick <tick> --category <id>`, and calibrate.
+
+## Evidence for a rendering PR
+
+A PR that changes rendered output — anything that moves a pixel `stuntreel` draws, from `crates/stunt-render/`, the SOD VM, the world builder, the palette or the timeline — shows it: one picture per film it moves, the capture beside the render before and after, in the PR body's **Evidence** section with that film's `mise run parity` line before and after.
+
+```
+- [ ] 1. Pick the ticks where the change shows most (the frames the parity score moved, or the ones the PR is about); CTRY and INTRO at least, plus any batch film the PR targets
+- [ ] 2. Add --crop x0,y0,x1,y1 --scale 3 to every frame run below when the whole frame hides the change
+- [ ] 3. Render before and after, and copy the PNGs from build/scratch/frame/<film>/ (the next run replaces them):
+       behind a DBG_* switch, one picture holds both: mise run frame -- --film <film> --ticks <t,t> --var DBG_X=0,1, copied to build/scratch/pr/
+       otherwise two pictures: mise run frame on the base commit (git switch --detach <base>) copied to build/scratch/pr/before/, then on the PR head copied to build/scratch/pr/after/
+- [ ] 4. Score before and after on the same films: behind a DBG_* switch, mise run sweep -- --var DBG_X=0,1 prints both in one table; otherwise mise run parity on the base commit and on the PR head, keeping each [parity] line
+- [ ] 5. Write the body to build/scratch/pr/body.md: under ## Evidence, each film's two scores from step 4, then its pictures, referenced by path relative to that file:
+       DBG: ![INTRO tick 48: capture, before, after](./intro_48.png)
+       otherwise: ![INTRO tick 48 before](./before/intro_48.png) ![INTRO tick 48 after](./after/intro_48.png)
+- [ ] 6. gh pr create (or gh pr edit <n>) --body-file build/scratch/pr/body.md, then one --attach per picture the body references:
+       DBG: --attach build/scratch/pr/intro_48.png
+       otherwise: --attach build/scratch/pr/before/intro_48.png --attach build/scratch/pr/after/intro_48.png
+- [ ] 7. A non-zero exit that still printed the PR URL means the PR exists but some uploads failed: re-run as gh pr edit <n> with the same --body-file and --attach flags until it exits 0 (no URL printed means nothing was created). Then confirm gh pr view <n> --json body --jq .body holds no ](./ reference
+```
+
+`gh` uploads each `--attach` file and rewrites the body's reference to its hosted URL, so nothing is committed; attached pictures follow the limits of [`NOTICE.md`](../../../NOTICE.md)'s comparison-image rule (single screens or crops of one, never a run of frames or a video). A change meant to leave every pixel alone shows that instead: the `mise run parity` lines before and after, identical. Where the session has no data root, the PR says so under **Evidence** and the reviewer renders the picture.
 
 ## Finishing an item
 

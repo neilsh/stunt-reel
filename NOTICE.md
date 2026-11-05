@@ -46,7 +46,9 @@ The captured frames are game-derived and are not relicensed by this project. Eve
 - lives under `research/` and is named by the note or index that cites it, so each one has a stated
   purpose.
 
-All other captures stay in the external data root. The current set is
+A pull request that changes rendered output attaches comparison images of the same kind to its
+description, under the same first two limits; GitHub hosts them, and they are not committed. All
+other captures stay in the external data root. The current set is
 `research/parity/error-examples/`, indexed by `research/parity/error-categories.toml`.
 
 ## Third-party material and credits
