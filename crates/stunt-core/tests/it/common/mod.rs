@@ -194,4 +194,5 @@ pub(crate) fn build_synthetic_intro_flm(ticks: usize) -> Vec<u8> {
     film
 }
 
+pub(crate) mod props;
 pub(crate) mod rng;

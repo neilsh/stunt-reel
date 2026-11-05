@@ -291,18 +291,6 @@ pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
     areas
 }
 
-/// Fast approximate distance metric matching original engine and `simap.cpp`.
-#[cfg(test)]
-#[expect(
-    clippy::arithmetic_side_effects,
-    reason = "test-only distance metric over small test coordinates"
-)]
-pub(crate) fn approx_dist(x1: i32, y1: i32, x2: i32, y2: i32) -> i32 {
-    let dx = (x2 - x1).abs();
-    let dy = (y2 - y1).abs();
-    dx + dy - (dx.min(dy) / 2)
-}
-
 /// Traverses `SCENERY.scn` hierarchical BSP tree to collect prop placements.
 #[expect(
     clippy::too_many_arguments,
@@ -1165,12 +1153,6 @@ mod tests {
             && v.flags == FLAGS_UNSHADED
             && (v.position[1] - 2.0).abs() < f32::EPSILON));
         assert_eq!(ir.vertices[1].position, [10.0, 2.0, 0.0]);
-    }
-
-    #[test]
-    fn test_approx_dist() {
-        assert_eq!(approx_dist(0, 0, 3, 4), 3 + 4 - 3 / 2);
-        assert_eq!(approx_dist(10, 20, 10, 20), 0);
     }
 
     #[test]

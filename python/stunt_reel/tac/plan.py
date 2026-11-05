@@ -59,7 +59,6 @@ __all__ = [
     "decode_trace",
     "decode_window_trace",
     "palette_rgb",
-    "pick_every",
     "pick_ticks",
     "run_plan",
     "run_stride_plan",
@@ -224,24 +223,6 @@ def usable(trace: Trace, frame: int) -> bool:
     if entry.torn or entry.palette_changed:
         return False
     return frame == trace.first or not trace.entry(frame - 1).palette_changed
-
-
-def pick_every(trace: Trace, *, stride: int) -> list[int]:
-    """Usable frames whose page changed and whose film clock is *stride* or more past the last pick.
-
-    Clock zero is not film content (the dialog and load screens run with the clock at zero). An
-    unusable frame is passed over, so the next changed frame takes its place.
-    """
-    picked: list[int] = []
-    last_tick: int | None = None
-    for frame in trace.frames:
-        entry = trace.entry(frame)
-        if not entry.changed or entry.film_tick <= 0 or not usable(trace, frame):
-            continue
-        if last_tick is None or entry.film_tick - last_tick >= stride:
-            picked.append(frame)
-            last_tick = entry.film_tick
-    return picked
 
 
 def pick_ticks(trace: Trace, ticks: Sequence[int], *, skip_unusable: bool = True) -> list[int]:

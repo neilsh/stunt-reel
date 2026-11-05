@@ -165,12 +165,6 @@ impl GpuModel {
         }
     }
 
-    /// Updates the model-to-world transformation matrix in the GPU uniform buffer.
-    pub fn update_world_matrix(&self, queue: &wgpu::Queue, matrix: &[f32; 16]) {
-        let uniform = ModelUniform::new(*matrix, 0);
-        queue.write_buffer(&self.model_uniform_buffer, 0, bytemuck::bytes_of(&uniform));
-    }
-
     /// Evaluates visibility and collects visible mesh slices split by decal pass flag.
     pub fn collect_visible_meshes(
         &self,

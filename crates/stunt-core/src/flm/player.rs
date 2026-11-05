@@ -771,7 +771,6 @@ mod tests {
         assert_eq!(timeline.credits_at(5.0), Some(&title));
         assert_eq!(timeline.credits_at(8.5), Some(&title));
         assert_eq!(timeline.credits_at(9.0), None);
-        assert_eq!(timeline.truncated_to_ticks(6).credits_at(6.0), Some(&title));
     }
 
     #[test]

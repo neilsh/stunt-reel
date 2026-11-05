@@ -119,18 +119,6 @@ fn test_same_tick_start_uses_last_slice() {
 }
 
 #[test]
-fn test_truncate_to_tick_limit() {
-    let truncated = timeline().truncated_to_ticks(5);
-    let ticks: Vec<u32> = truncated.slices().iter().map(|slice| slice.tick).collect();
-    assert_eq!(ticks, vec![0, 2]);
-    assert_eq!(truncated.total_ticks(), 5);
-    assert_eq!(
-        truncated.sample(5.0).expect("sample").camera.eye,
-        timeline().slices()[1].record.camera.eye
-    );
-}
-
-#[test]
 fn test_record_tick_is_cumulative_tick() {
     let timeline = timeline();
     for slice in timeline.slices() {

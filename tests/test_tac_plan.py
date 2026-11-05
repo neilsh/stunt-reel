@@ -93,14 +93,6 @@ def test_chunk_balances_the_passes() -> None:
     assert [f for c in chunks for f in c] == list(range(121))
 
 
-def test_pick_new_film_ticks_takes_the_first_changed_frame_per_stride() -> None:
-    entries = [(0, 0, 1), (10, 1, 1), (10, 2, 0), (15, 3, 1), (21, 4, 1), (22, 5, 1), (40, 6, 0)]
-    trace = plan.decode_trace(_trace_text(entries), FIRST)
-
-    assert plan.pick_every(trace, stride=11) == [FIRST + 1, FIRST + 4]
-    assert plan.pick_every(trace, stride=1) == [FIRST + 1, FIRST + 3, FIRST + 4, FIRST + 5]
-
-
 def test_pick_ticks_takes_the_first_frame_at_or_after_each_requested_tick() -> None:
     entries = [(5, 0, 1), (9, 1, 1), (12, 2, 1), (30, 3, 1)]
     trace = plan.decode_trace(_trace_text(entries), FIRST)
@@ -111,19 +103,12 @@ def test_pick_ticks_takes_the_first_frame_at_or_after_each_requested_tick() -> N
 CHANGED, TORN, PALETTE = luagen.TRACE_CHANGED, luagen.TRACE_TORN, luagen.TRACE_PALETTE
 
 
-def test_pick_every_skips_a_torn_frame_for_the_next_change() -> None:
-    entries = [(1, 0, CHANGED), (2, 1, CHANGED | TORN), (3, 2, CHANGED)]
-    trace = plan.decode_trace(_trace_text(entries), FIRST)
-
-    assert plan.pick_every(trace, stride=1) == [FIRST, FIRST + 2]
-
-
-def test_pick_every_skips_the_two_frames_of_a_palette_step() -> None:
+def test_a_palette_step_spoils_its_frame_and_the_next() -> None:
     """The DAC shows W(f-1) low and W(f-2) high, so a step at c spoils c and c + 1."""
     entries = [(1, 0, CHANGED), (2, 1, CHANGED | PALETTE), (3, 2, CHANGED), (4, 3, CHANGED)]
     trace = plan.decode_trace(_trace_text(entries), FIRST)
 
-    assert plan.pick_every(trace, stride=1) == [FIRST, FIRST + 3]
+    assert [plan.usable(trace, FIRST + i) for i in range(4)] == [True, False, False, True]
 
 
 def test_pick_ticks_moves_past_an_unusable_frame() -> None:
@@ -253,6 +238,7 @@ def _open(mock: MockAutomation) -> Any:
 
 
 ENTRIES = [(t, t + 100, 1) for t in range(0, 400, 2)]
+FILM_TICKS = [t for t, _, _ in ENTRIES if t > 0]  # tick 0 is not a film frame
 
 
 def test_run_plan_traces_picks_then_dumps_in_chunks() -> None:
@@ -264,7 +250,7 @@ def test_run_plan_traces_picks_then_dumps_in_chunks() -> None:
         layout=playone.UNPATCHED,
         first=FIRST,
         last=FIRST + len(ENTRIES) - 1,
-        pick=lambda trace: plan.pick_every(trace, stride=2),
+        pick=lambda trace: plan.pick_ticks(trace, FILM_TICKS),
         ranges=[luagen.MemRange(0x17C9, 0, 2)],
         timeout=5,
     )
@@ -305,7 +291,7 @@ def test_dump_passes_run_side_by_side_up_to_the_limit() -> None:
         layout=playone.UNPATCHED,
         first=FIRST,
         last=FIRST + len(ENTRIES) - 1,
-        pick=lambda trace: plan.pick_every(trace, stride=2),
+        pick=lambda trace: plan.pick_ticks(trace, FILM_TICKS),
         timeout=5,
         parallel=3,
     )
@@ -325,7 +311,7 @@ def test_extra_ranges_shrink_each_pass_to_the_measured_byte_budget() -> None:
         layout=playone.UNPATCHED,
         first=FIRST,
         last=FIRST + len(ENTRIES) - 1,
-        pick=lambda trace: plan.pick_every(trace, stride=2)[:40],
+        pick=lambda trace: plan.pick_ticks(trace, FILM_TICKS)[:40],
         ranges=probe_ranges,
         timeout=5,
     )
