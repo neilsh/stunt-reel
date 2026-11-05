@@ -106,7 +106,7 @@ A PR that changes rendered output — anything that moves a pixel `stuntreel` dr
 - [ ] 3. Crop to the region that changed when the whole frame hides it (--crop x0,y0,x1,y1 --scale 3)
 - [ ] 4. Write the body to build/scratch/pr/body.md, referencing each picture by its path relative to that file: ![INTRO tick 48: capture, before, after](./intro_48.png)
 - [ ] 5. gh pr create (or gh pr edit <n>) --body-file build/scratch/pr/body.md --attach './build/scratch/pr/intro_48.png#INTRO tick 48: capture, before, after', one --attach per picture
-- [ ] 6. A non-zero exit means some uploads failed even though gh printed the PR URL: re-run the same command until it exits 0, then confirm gh pr view <n> --json body --jq .body holds no ](./ reference
+- [ ] 6. A non-zero exit that still printed the PR URL means the PR exists but some uploads failed: re-run as gh pr edit <n> with the same --body-file and --attach flags until it exits 0 (no URL printed means nothing was created). Then confirm gh pr view <n> --json body --jq .body holds no ](./ reference
 ```
 
 `gh` uploads each `--attach` file and rewrites the body's reference to its hosted URL, so nothing is committed; attached pictures follow the limits of [`NOTICE.md`](../../../NOTICE.md)'s comparison-image rule (single screens or crops of one, never a run of frames or a video). A change meant to leave every pixel alone shows that instead: the `mise run parity` lines before and after, identical. Where the session has no data root, the PR says so under **Evidence** and the reviewer renders the picture.
