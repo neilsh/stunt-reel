@@ -352,6 +352,8 @@ description = "Compile research/formats/**/*.ksy and check them against local co
 run = "uv run python python/scripts/verify_schemas_corpus.py"
 
 [tasks.sod-census]
+# Reads <data root>/corpus only, with no fallback to the primary checkout's corpus/ as Python
+# has; a clone keeping its game files there passes `-- --corpus corpus`, which wins.
 depends = ["ensure"]
 description = "Census of corpus .SOD models that stop on unimplemented opcodes, joined to the films placing them (opt-in; corpus is gitignored; mise run sod-census -- [--format markdown])"
 run = "cargo run --release --locked -p stunt-cli --bin stuntreel -- sod-census --corpus {{ get_env(name='STUNT_DATA_ROOT', default=vars.data_root) }}/corpus"

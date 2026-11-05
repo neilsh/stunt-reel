@@ -410,7 +410,15 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    films = discover(dataroot.corpus_root())
+    try:
+        corpus = dataroot.require_corpus()
+    except dataroot.SharedDataError as err:
+        print(f"batch_parity: {err}", file=sys.stderr)
+        return 2
+    films = discover(corpus)
+    if not films:
+        print(f"batch_parity: no .FLM film under {corpus}", file=sys.stderr)
+        return 2
     wanted = set(_names(args.only))
     if wanted:
         missing = sorted(wanted - {film.slug for film in films})

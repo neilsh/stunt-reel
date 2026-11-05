@@ -25,6 +25,8 @@ use stunt_core::vfs::detect_and_parse;
 /// `sod-census` options as clap parses them.
 #[derive(Debug, Parser)]
 #[command(
+    // mise passes --corpus; a second one on the command line replaces it.
+    args_override_self = true,
     bin_name = "stuntreel sod-census",
     about = "Census of corpus .SOD models that stop on an unimplemented opcode"
 )]
@@ -624,6 +626,13 @@ fn civil_date(days: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_second_corpus_flag_replaces_the_first() {
+        // mise run sod-census passes --corpus itself; `-- --corpus corpus` must win.
+        let args = Args::try_parse_from(["sod-census", "--corpus", "a", "--corpus", "b"]).unwrap();
+        assert_eq!(args.corpus, PathBuf::from("b"));
+    }
 
     fn model(words: &[u16]) -> Vec<u8> {
         let mut bytes = vec![0x0C, 0x00, 0, 0, 0, 0, 0, 0, 0, 0];

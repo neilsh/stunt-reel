@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import sys
 from pathlib import Path
@@ -18,7 +19,10 @@ import parity_run  # noqa: E402
 import parity_sweep  # noqa: E402
 from cli import ParityOptions, UsageError, add_parity_options, parity_options  # noqa: E402
 
-from stunt_reel import dataroot, references  # noqa: E402
+from archive_helpers import build_all  # noqa: E402
+from render_helpers import reference_tree  # noqa: E402
+from stunt_reel import dataroot, parity_pipeline, references  # noqa: E402
+from stunt_reel.all_archive import ArchiveMeta, publish_archive  # noqa: E402
 from stunt_reel.parity_pipeline import REPO_ROOT  # noqa: E402
 
 #: The films of the committed references.toml, which is what the parity loop covers.
@@ -86,3 +90,35 @@ def test_the_default_data_root_leaves_the_corpus_fallback_alone() -> None:
     options = _options(parity_run, [])
     assert os.environ.get(dataroot.DATA_ENV) == before
     assert options.data_root == dataroot.data_root()
+
+
+def test_a_named_data_root_supplies_the_archive_too(tmp_path: Path) -> None:
+    """--data-root DIR must move every read, the stored .ALL included, not only the films."""
+    root = reference_tree(tmp_path / "data", [0], films=("ctry",))
+    vault = root / "corpus" / "stisldem" / "VAULT"
+    (vault / "CTRY.ALL").unlink()
+    flm = (vault / "CTRY.FLM").read_bytes()
+    data = build_all([b"stored"])
+    meta = ArchiveMeta(
+        film="CTRY.FLM",
+        flm_bytes=len(flm),
+        flm_sha256=hashlib.sha256(flm).hexdigest(),
+        all_bytes=len(data),
+        all_sha256=hashlib.sha256(data).hexdigest(),
+    )
+    publish_archive(root, data, meta, slug="vault-ctry", film="CTRY.FLM")
+    options = _options(parity_run, ["--films", "ctry", "--data-root", str(root)])
+    assert dataroot.data_root() == root.resolve()
+    problems = parity_pipeline.preflight(
+        options.data_root, ["ctry"], build_required=False, locked=lambda _path: False
+    )
+    assert problems == []
+
+
+def test_the_bench_data_root_flag_moves_the_data_root(tmp_path: Path) -> None:
+    import parity_bench  # noqa: PLC0415 - a script, imported only here
+
+    assert (
+        parity_bench._data_root(argparse.Namespace(data_root=str(tmp_path))) == tmp_path.resolve()
+    )
+    assert dataroot.data_root() == tmp_path.resolve()

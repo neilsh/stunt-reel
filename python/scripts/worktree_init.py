@@ -41,13 +41,16 @@ from stunt_reel.dataroot import (
     SharedDataError,
     cache_root,
     convert_layout,
+    corpus_root,
     data_root,
     discard_env,
     env_target,
     is_link,
     is_placeholder,
     orphan_envs,
+    primary_checkout,
     remove_link,
+    require_corpus,
     sweep_orphan_envs,
 )
 from stunt_reel.target_seed import SeedOutcome, exclusive, needs_seed, seed
@@ -150,7 +153,9 @@ def _init(migrate: bool) -> int:
     """``ensure`` with its full report, then ``uv sync``; links nothing (ADR 0033).
 
     ``--migrate`` still moves an in-checkout corpus into the data root, which code reads
-    directly now. Links an older ``init`` made are reported and left for ``reap``.
+    directly now. Links an older ``init`` made are reported and left for ``reap``, and real
+    data at one of their paths is named, because nothing reads it there any more. A machine
+    with no game files fails here, not at its first capture.
     """
     root = data_root()
     source = DATA_ENV if DATA_ENV in os.environ else "derived"
@@ -173,7 +178,31 @@ def _init(migrate: bool) -> int:
     for relative in _LEGACY_LINKS:
         if is_link(REPO_ROOT / relative):
             print(f"  ~ {relative} is a link from the old layout; reap unlinks it")
+    for relative in _stranded_data():
+        print(
+            f"  ! {relative} holds data the data root does not read; run mise run init -- --migrate"
+        )
+    try:
+        require_corpus()
+    except SharedDataError as err:
+        print(f"  ! {err}")
+        return 1
     return 0
+
+
+def _stranded_data() -> list[str]:
+    """The old link paths that hold real data in this checkout, which no code reads now."""
+    corpus = corpus_root()
+    stranded: list[str] = []
+    for _, relative in LINK_TARGETS:
+        path = REPO_ROOT / relative
+        if is_link(path) or not path.is_dir() or is_placeholder(path):
+            continue
+        # The primary checkout's own corpus is read when the data root has none.
+        if path.resolve().is_relative_to(corpus.resolve()):
+            continue
+        stranded.append(relative)
+    return stranded
 
 
 def _rustc_vv() -> str | None:
@@ -198,11 +227,11 @@ def _cargo_home() -> Path:
 
 
 def _cargo_home_warning(cargo_home: Path) -> str | None:
-    """A line for a CARGO_HOME that names the shared cache by another path than the primary's.
+    """A line for a CARGO_HOME that names another cache than the primary checkout's.
 
     mise falls back to the checkout's own ``.cache/cargo`` where git cannot name the primary
-    checkout; that is the same cache through this checkout's link, but Cargo fingerprints the
-    path, so every dependency builds again here and no donor qualifies (ADR 0030).
+    checkout. Cargo fingerprints that path, so every dependency builds again here and no
+    donor qualifies (ADR 0030).
     """
     shared = cache_root() / "cargo"
     if os.path.normcase(os.path.normpath(cargo_home)) == os.path.normcase(os.path.normpath(shared)):
@@ -237,8 +266,17 @@ def _seed_target() -> str:
     return line if warning is None else f"{line}\n{warning}"
 
 
-#: The lock file under target/ that orders concurrent ``ensure`` runs; no seed copies it.
+#: The lock file under target/ that orders concurrent ``ensure`` and ``seed`` runs; no seed
+#: copies it.
 ENSURE_LOCK = ".ensure.lock"
+
+#: The tag that tells backup and indexing tools a directory is a cache (bford.info/cachedir).
+#: Cargo writes it only into a target/ it creates, and ``ensure`` creates target/ first.
+CACHEDIR_TAG = (
+    "Signature: 8a477f597d28d172789f06886806bc55\n"
+    "# This file is a cache directory tag created by stunt-reel's ensure task.\n"
+    "# For information about cache directory tags see https://bford.info/cachedir/\n"
+)
 
 
 def _reports(lines: list[str]) -> list[str]:
@@ -250,24 +288,41 @@ def _ensure(*, report: bool = False) -> int:
     """Seed an empty target/ and set ``core.hooksPath``; quiet when neither needed doing.
 
     Every task that builds Rust depends on this (ADR 0033), so it is the step a new worktree
-    used to need ``init`` for; *report* prints every line, as ``init`` does. A failed seed is
-    a slower first build, not an error, so it returns 0 whatever happened.
+    used to need ``init`` for; *report* prints every line, as ``init`` does. A failed seed, a
+    git that will not run or a lock held past its timeout is a slower first build or an unset
+    hooks path, not a reason to stop the task, so it returns 0 whatever happened.
     """
     target = REPO_ROOT / "target"
-    # The first holder seeds; the others wait, then find target/ built.
-    with exclusive(target / ENSURE_LOCK):
-        hooks = ensure_hooks_path(REPO_ROOT)
-        # Only a hooks path this call set, or failed to set, is news; the rest is init's report.
-        changed = any(line.startswith(("  +", "  ! could not")) for line in hooks)
-        lines = hooks if report or changed else []
-        if needs_seed(target):
-            seeded = _seed_target().splitlines()
-            lines += seeded if report else _reports(seeded)
-        elif report:
-            lines.append("  = target/ already built")
+    if not target.exists():
+        target.mkdir(parents=True)
+        (target / "CACHEDIR.TAG").write_text(CACHEDIR_TAG, encoding="utf-8", newline="\n")
+    try:
+        # The first holder seeds; the others wait, then find target/ built.
+        with exclusive(target / ENSURE_LOCK):
+            lines = _hooks(report=report)
+            if needs_seed(target):
+                seeded = _seed_target().splitlines()
+                lines += seeded if report else _reports(seeded)
+            elif report:
+                lines.append("  = target/ already built")
+    except TimeoutError as err:
+        lines = [f"  ! ensure: {err}; target/ not seeded"]
     for line in lines:
         print(line)
     return 0
+
+
+def _hooks(*, report: bool) -> list[str]:
+    """``ensure_hooks_path``'s lines worth printing; none outside a git checkout."""
+    if primary_checkout() is None:
+        return []
+    try:
+        hooks = ensure_hooks_path(REPO_ROOT)
+    except SharedDataError as err:
+        return [f"  ! hooks: {err}"]
+    # Only a hooks path this call set, or failed to set, is news; the rest is init's report.
+    changed = any(line.startswith(("  +", "  ! could not")) for line in hooks)
+    return hooks if report or changed else []
 
 
 def _tree_footprint(path: Path) -> tuple[int, int]:
@@ -920,11 +975,13 @@ def main(argv: list[str] | None = None) -> int:
     """Run ``init``, ``clean`` or ``reap``."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
-    init = commands.add_parser("init", help="link the shared data root into this checkout")
+    init = commands.add_parser(
+        "init", help="seed target/, set core.hooksPath and uv sync now, and report old links"
+    )
     init.add_argument(
         "--migrate",
         action="store_true",
-        help="convert an old-layout shared root, then move existing in-checkout data into it before linking",
+        help="convert an old-layout shared root, then move existing in-checkout data into it",
     )
     commands.add_parser("seed", help="clone another checkout's built target/ into an empty one")
     commands.add_parser("ensure", help="seed an empty target/ and set core.hooksPath, quietly")
@@ -967,7 +1024,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "ensure":
         return _ensure()
     if args.command == "seed":
-        line = _seed_target()
+        try:
+            # The same lock as ensure: two seeds would share one staging directory.
+            with exclusive(REPO_ROOT / "target" / ENSURE_LOCK):
+                line = _seed_target()
+        except TimeoutError as err:
+            line = f"{_SEED_FAILED}{err}"
         print(line)
         return 1 if line.startswith(_SEED_FAILED) else 0
     if args.command == "reap":

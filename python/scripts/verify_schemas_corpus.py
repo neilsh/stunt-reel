@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from stunt_reel import flm_walk
-from stunt_reel.dataroot import data_path_arg
+from stunt_reel.dataroot import SharedDataError, data_path_arg, require_corpus
 from stunt_reel.kaitai import (
     REQUIRED_KSC_VERSION,
     compile_schemas,
@@ -493,7 +493,11 @@ def _run(args: argparse.Namespace, specs: Sequence[SchemaSpec]) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--corpus", default="corpus", type=data_path_arg)
+    parser.add_argument(
+        "--corpus",
+        type=data_path_arg,
+        help="the corpus to sweep (default: the data root's, which must exist)",
+    )
     parser.add_argument(
         "--schema", action="append", dest="schemas", help="limit the sweep to one schema id"
     )
@@ -501,6 +505,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
+    if args.corpus is None:
+        # The data root's corpus is the one the task promises to sweep; its absence is an error.
+        try:
+            args.corpus = require_corpus()
+        except SharedDataError as err:
+            print(f"verify_schemas_corpus: {err}", file=sys.stderr)
+            return 2
     corpus_dir: Path = args.corpus
     if not corpus_dir.is_dir():
         print(f"corpus directory not found: {corpus_dir} (local sweep skipped)")

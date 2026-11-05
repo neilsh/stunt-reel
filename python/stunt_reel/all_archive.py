@@ -176,7 +176,8 @@ def _from_manifest(flm: Path, root: Path, slug: str, link_build: LinkBuild) -> P
     if not game.is_dir():
         raise ArchiveError(
             f"manifest {manifest} needs the game tree {game}, which is missing; "
-            f"check the data root ({dataroot.DATA_ENV}, or <primary checkout>.data)"
+            f"check the data root ({dataroot.DATA_ENV}, or <primary checkout>.data), or the primary "
+            "checkout's corpus/ when the data root has none"
         )
     out = root / parity_layout.linked_path(slug, flm.name)
     if out.is_file() and file_sha256(out) == all_sha256:

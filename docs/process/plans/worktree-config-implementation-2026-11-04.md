@@ -26,8 +26,9 @@ argues from its sections 3 and 4.
   (ADR 0018). New code never calls `create_link`.
 - `ensure` imports only the stdlib and `stunt_reel` modules that do, because it runs before any
   environment exists (`PYTHONPATH={{config_root}}/python`, plain `python`, like `init`).
-- `reap`'s unlink-and-prove step, `LINK_TARGETS`, `ensure_links`, `env_target` and the orphan sweep
-  stay; only their callers in `init` and the scripts go (spec section 3, "Existing worktrees").
+- `reap`'s unlink-and-prove step, `LINK_TARGETS`, `env_target` and the orphan sweep stay; only
+  their callers in `init` and the scripts go (spec section 3, "Existing worktrees").
+  `ensure_links` and `shared_target` went in the review fix pass: no caller was left.
 - Stage paths by name, Conventional Commit subjects, body that answers why (SOP 3).
 - Delivery is one `gh stack` (gh-stack skill): layer 1 = Tasks 1–4, layer 2 = Tasks 5–7,
   layer 3 = Tasks 8–9.

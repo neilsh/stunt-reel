@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import errno
 import json
 import os
 import shutil
@@ -695,3 +696,35 @@ def test_clones_on_says_no_for_an_ntfs_or_non_windows_volume() -> None:
     """ReFS clones blocks; NTFS (every Windows system drive) and other platforms do not."""
     system = Path(os.environ.get("SYSTEMROOT", "/"))
     assert clones_on(system) is False
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="msvcrt locking")
+def test_exclusive_raises_a_locking_error_that_is_not_contention(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only a held lock is worth waiting for; any other failure would spin forever."""
+    import msvcrt  # noqa: PLC0415 - Windows only
+
+    def bad(*_args: object) -> None:
+        raise OSError(errno.EBADF, "bad handle")
+
+    monkeypatch.setattr(msvcrt, "locking", bad)
+    with pytest.raises(OSError, match="bad handle"), target_seed.exclusive(tmp_path / "lock"):
+        pass
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="msvcrt locking")
+def test_exclusive_gives_up_after_its_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import msvcrt  # noqa: PLC0415 - Windows only
+
+    def held(*_args: object) -> None:
+        raise OSError(errno.EDEADLOCK, "Resource deadlock avoided")
+
+    monkeypatch.setattr(msvcrt, "locking", held)
+    with (
+        pytest.raises(TimeoutError, match="still locked"),
+        target_seed.exclusive(tmp_path / "lock", timeout=0.0),
+    ):
+        pass

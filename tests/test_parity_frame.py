@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import struct
 import sys
@@ -19,7 +20,7 @@ import parity_frame  # noqa: E402
 import parity_probe  # noqa: E402
 
 from render_helpers import TINY, reference_tree, rewrite_store, write_store  # noqa: E402
-from stunt_reel import parity_pipeline  # noqa: E402
+from stunt_reel import dataroot, parity_pipeline  # noqa: E402
 from stunt_reel.parity_artifacts import (  # noqa: E402
     CapturedFrame,
     CaptureSet,
@@ -219,3 +220,19 @@ def test_render_env_keeps_the_inherited_environment(monkeypatch: pytest.MonkeyPa
     assert env is not None
     assert (env["PATH_FOR_TEST"], env["DBG_LIFT"]) == ("kept", "1")
     assert parity_frame.render_env(None) is None
+
+
+def test_frame_pictures_stay_in_the_checkout_when_the_data_root_is_elsewhere(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scratch pictures are per checkout; the data root is shared by every worktree (SOP 6)."""
+    cleared: list[Path] = []
+    monkeypatch.setattr(parity_frame, "read_capture", lambda _path: _capture_set([10]))
+    monkeypatch.setattr(parity_pipeline, "render_film", lambda *_a, **_k: None)
+    monkeypatch.setattr(parity_frame, "clear_previous", lambda out, _film: cleared.append(out))
+    data = tmp_path / "data"
+    job = parity_pipeline.FilmJob("ctry", "vault-ctry", data / "CTRY.FLM", data / "cap", data)
+    args = argparse.Namespace(film="ctry")
+    variants = parity_frame.variant_stores(tmp_path / "stores", None)
+    parity_frame._draw(job, args, [10], None, variants)
+    assert cleared == [dataroot.REPO_ROOT / parity_frame.FRAME_DIR / "ctry"]

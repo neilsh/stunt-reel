@@ -78,7 +78,7 @@ directory, and a DSH session runs `mise run` tasks under `danger-full-access`
 still set the variables in the same call, because each `pwsh` call is a fresh process:
 
 ```powershell
-$env:TMP = "$PWD\target\tmp"; $env:TEMP = $env:TMP; cargo test --workspace --all-features
+New-Item -ItemType Directory -Force target\tmp | Out-Null; $env:TMP = "$PWD\target\tmp"; $env:TEMP = $env:TMP; cargo test --workspace --all-features
 ```
 
 ### Approvals

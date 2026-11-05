@@ -496,3 +496,11 @@ def test_render_film_links_a_manifest_without_running_cargo(
     assert calls == ["link"]
     linked = root / parity_layout.linked_path("vault-intro", "INTRO.FLM")
     assert _after(fake.calls[0], "--all") == str(linked)
+
+
+def test_preflight_names_the_missing_game_files(tmp_path: Path) -> None:
+    problems = parity_pipeline.preflight(
+        tmp_path / "nothing", ["ctry"], build_required=False, locked=lambda _path: False
+    )
+    assert len(problems) == 1
+    assert problems[0].startswith("no game files")

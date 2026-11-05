@@ -10,8 +10,9 @@ by any tool works on first use with no link in it (ADR 0033).
 
 Older worktrees still hold the junctions an earlier ``mise run init`` made, including a
 ``.venv`` parked at ``<cache>/venvs/<checkout>-<digest>`` (ADR 0019, superseded).
-``LINK_TARGETS``, ``ensure_links`` and the environment sweep stay so that ``reap`` can
-recognise and unlink them (ADR 0018).
+``LINK_TARGETS`` names them for ``init``'s report and ``--migrate``; ``reap`` finds and unlinks
+any reparse point under a checkout (ADR 0018), and the environment sweep clears the parked
+environments.
 """
 
 from __future__ import annotations
@@ -20,10 +21,8 @@ import hashlib
 import os
 import shutil
 import subprocess
-from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
 
 from stunt_reel import parity_layout
 
@@ -35,8 +34,6 @@ __all__ = [
     "LINK_TARGETS",
     "REPO_ROOT",
     "VENV_DIRNAME",
-    "LinkOutcome",
-    "LinkStatus",
     "SharedDataError",
     "cache_root",
     "convert_layout",
@@ -46,7 +43,6 @@ __all__ = [
     "data_path_arg",
     "data_root",
     "discard_env",
-    "ensure_links",
     "env_marker",
     "env_root",
     "env_target",
@@ -56,8 +52,8 @@ __all__ = [
     "orphan_envs",
     "primary_checkout",
     "remove_link",
+    "require_corpus",
     "resolve_data_path",
-    "shared_target",
     "sweep_orphan_envs",
     "use_data_root",
 ]
@@ -97,25 +93,7 @@ FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 
 class SharedDataError(RuntimeError):
-    """Raised when a checkout cannot be linked to the shared data root."""
-
-
-#: What one checkout-relative link came to.  ``ok`` and ``repaired`` describe a link
-#: that points at an existing shared target; ``created-empty`` says the target itself
-#: was missing and was created empty first, which is a valid starting point for the
-#: captures (ADR 0008); ``refused`` says this call left
-#: the target alone and ``reason`` says why.
-LinkStatus = Literal["ok", "repaired", "created-empty", "refused"]
-
-
-@dataclass(frozen=True)
-class LinkOutcome:
-    """One ``LINK_TARGETS`` entry after :func:`ensure_links`, for a caller to render."""
-
-    relative: str
-    status: LinkStatus
-    target: Path
-    reason: str | None = None
+    """Raised when the shared data root, or something in it, is missing or cannot be used."""
 
 
 def primary_checkout() -> Path | None:
@@ -167,14 +145,42 @@ def corpus_root() -> Path:
     """The directory holding the game files: ``corpus/`` under the data root.
 
     A clone that keeps its game files in the primary checkout's own ``corpus/`` has no
-    ``corpus/`` in the data root, so that one is read instead.  Only the corpus falls back:
-    the captures and the stage are written, and the stage must sit outside every checkout.
+    ``corpus/`` in the data root, so that one is read instead, but only when it holds a
+    folder of game files: ``corpus/README.md`` is tracked, so the folder itself exists in
+    every checkout, and falling back to it would name the wrong place in every error.  Only
+    the corpus falls back: the captures and the stage are written, and the stage must sit
+    outside every checkout.
     """
     shared = data_root() / "corpus"
     if shared.is_dir() or os.environ.get(DATA_ENV):
         return shared
     primary = primary_checkout()
-    return primary / "corpus" if primary is not None else shared
+    if primary is None:
+        return shared
+    local = primary / "corpus"
+    return local if _holds_folders(local) else shared
+
+
+def _holds_folders(path: Path) -> bool:
+    """True when directory *path* holds at least one directory."""
+    try:
+        return any(entry.is_dir() for entry in path.iterdir())
+    except OSError:
+        return False
+
+
+def require_corpus(root: Path | None = None) -> Path:
+    """The corpus of data root *root* (the configured one by default), which must exist.
+
+    A reader of the game files calls this first, so a machine without them is told where
+    they were looked for instead of finding no films and reporting success.
+    """
+    corpus = corpus_root() if root is None else corpus_of(root)
+    if not corpus.is_dir():
+        raise SharedDataError(
+            f"no game files: {corpus} is missing; set {DATA_ENV} or see corpus/README.md"
+        )
+    return corpus
 
 
 #: The first part of a relative path that names something in the data root.
@@ -196,13 +202,17 @@ def resolve_data_path(path: Path) -> Path:
 
     Every task description and note spells a film ``corpus/stisldem/VAULT/CTRY.FLM``, relative
     to a checkout that no longer links the data root in (ADR 0033).  Any other path, absolute
-    or relative, is returned unchanged.
+    or relative, is returned unchanged.  The first part matches without regard to case, as
+    a Windows path does.
     """
-    if path.is_absolute() or not path.parts or path.parts[0] not in _DATA_PARTS:
+    if path.is_absolute() or not path.parts:
         return path
-    if path.parts[0] == "corpus":
+    first = path.parts[0].lower()
+    if first not in _DATA_PARTS:
+        return path
+    if first == "corpus":
         return corpus_root().joinpath(*path.parts[1:])
-    return data_root() / path
+    return data_root().joinpath(first, *path.parts[1:])
 
 
 def data_path_arg(text: str) -> Path:
@@ -408,19 +418,6 @@ def create_link(link: Path, target: Path) -> None:
         raise SharedDataError(f"cannot link {link} -> {target}: {detail}")
 
 
-def shared_target(relative: str) -> Path:
-    """The data-root directory a checkout-relative link borrows.
-
-    The two names live only in :data:`LINK_TARGETS`, so a caller that needs the shared
-    side of one link (``mise run clean`` restores the capture link) asks here instead of
-    spelling it again.
-    """
-    for shared, subject in LINK_TARGETS:
-        if subject == relative:
-            return data_root() / shared
-    raise KeyError(f"{relative} is not one of LINK_TARGETS")
-
-
 def _holds_files(path: Path) -> bool:
     """True when *path* is a file or a directory tree containing one."""
     return path.is_file() or (path.is_dir() and any(item.is_file() for item in path.rglob("*")))
@@ -445,8 +442,8 @@ def convert_layout(root: Path) -> list[str]:
     old = [name for name in _OLD_NAMES if (root / name).exists()]
     if not old:
         return []
-    # A read before the migration (capture-ref, parity) makes ensure_links create the new
-    # directories empty; those are not data, so only a new name holding files is a conflict.
+    # An earlier layout's links created the new directories empty before a migration; those
+    # are not data, so only a new name holding files is a conflict.
     new = [name for name in ("corpus", "captures") if _holds_files(root / name)]
     if new:
         raise SharedDataError(
@@ -490,73 +487,3 @@ def convert_layout(root: Path) -> list[str]:
         elif directory.exists():
             moved.append(f"{name} still holds files this conversion does not know; left alone")
     return moved
-
-
-def ensure_links() -> list[LinkOutcome]:
-    """Link the shared data root into this checkout; this is the one link policy.
-
-    Called where the corpus is read rather than where the worktree is made, so a
-    checkout from any tool works on first use: a directory holding nothing but a
-    ``.gitkeep`` is a worktree whose ``mise run init`` never ran, and it is replaced
-    by the link.  A shared directory that does not exist yet is created empty first,
-    because the captures are populated later (ADR 0008).
-
-    Returns one outcome per :data:`LINK_TARGETS` entry, which is all a caller needs to
-    render what happened: a target already in place is ``ok``, not absent from the list.
-    The walk is two passes, and the first refuses before anything is touched when the
-    checkout holds real data of its own.  Moving that data is
-    ``mise run init -- --migrate``'s decision, not a read's, and a half-repaired checkout
-    reads as a worktree whose corpus is half present, which is worse than the empty
-    placeholder: a refused run returns only the refused outcomes and touched nothing.
-    """
-    root = data_root()
-    if root == REPO_ROOT:
-        return []
-    if not root.is_dir():
-        raise SharedDataError(
-            f"no shared data root at {root}; run `mise run init -- --migrate` in the "
-            f"primary checkout, or set {DATA_ENV}"
-        )
-    refused: list[LinkOutcome] = []
-    for shared, relative in LINK_TARGETS:
-        link = REPO_ROOT / relative
-        if not link.is_dir() or is_link(link) or is_placeholder(link):
-            continue
-        refused.append(
-            LinkOutcome(
-                relative=relative,
-                status="refused",
-                target=root / shared,
-                reason=(
-                    f"{relative} holds data of its own; run `mise run init -- --migrate` "
-                    "to move it into the shared root"
-                ),
-            )
-        )
-    if refused:
-        return refused
-    outcomes: list[LinkOutcome] = []
-    for shared, relative in LINK_TARGETS:
-        target = root / shared
-        link = REPO_ROOT / relative
-        created_empty = not target.exists()
-        if created_empty:
-            target.mkdir(parents=True, exist_ok=True)
-        if is_link(link) and link_points_at(link, target):
-            outcomes.append(
-                LinkOutcome(relative, "created-empty" if created_empty else "ok", target)
-            )
-            continue
-        if is_link(link):
-            remove_link(link)
-        elif link.is_dir():
-            for entry in link.iterdir():
-                entry.unlink()
-            link.rmdir()
-        elif link.exists():
-            link.unlink()
-        create_link(link, target)
-        outcomes.append(
-            LinkOutcome(relative, "created-empty" if created_empty else "repaired", target)
-        )
-    return outcomes

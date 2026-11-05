@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from stunt_reel.dataroot import resolve_data_path
+from stunt_reel.dataroot import SharedDataError, require_corpus, resolve_data_path
 
 
 def _relocations(d: bytes, loader: int) -> list[int]:
@@ -156,7 +156,16 @@ def main(argv: list[str]) -> int:
         print(__doc__)
         return 2
     # A corpus/... input is read from the data root; any other file reads as it is.
-    image, meta = unpack(resolve_data_path(Path(argv[1])).read_bytes())
+    source = Path(argv[1])
+    resolved = resolve_data_path(source)
+    try:
+        if resolved != source:
+            require_corpus()
+        data = resolved.read_bytes()
+    except (SharedDataError, OSError) as err:
+        print(f"unlzexe: {err}", file=sys.stderr)
+        return 2
+    image, meta = unpack(data)
     out = Path(argv[2])
     out.write_bytes(to_mz(image, meta) if mz else image)
     Path(f"{out}.json").write_text(json.dumps(meta), encoding="utf-8")

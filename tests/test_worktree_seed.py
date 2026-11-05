@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import sys
 import threading
 import time
@@ -13,7 +14,7 @@ from stunt_reel.dataroot import cache_root
 from stunt_reel.target_seed import SeedOutcome
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     import pytest
 
@@ -167,9 +168,13 @@ def test_ensure_reports_what_it_changed(
     ]
 
 
-def _bare_init(monkeypatch: pytest.MonkeyPatch, checkout: Path) -> list[str]:
+def _bare_init(
+    monkeypatch: pytest.MonkeyPatch, checkout: Path, *, corpus: bool = True
+) -> list[str]:
     """Point init at *checkout* with ensure and uv stubbed; returns the calls made."""
     calls: list[str] = []
+    if corpus:
+        (checkout.parent / "data" / "corpus").mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(worktree_init, "REPO_ROOT", checkout)
     monkeypatch.setattr(dataroot, "REPO_ROOT", checkout)
     monkeypatch.setenv(dataroot.DATA_ENV, str(checkout.parent / "data"))
@@ -210,3 +215,104 @@ def test_init_creates_no_links(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     _bare_init(monkeypatch, checkout)
     assert worktree_init._init(migrate=False) == 0
     assert worktree_init._reparse_points(checkout) == []
+
+
+def test_ensure_survives_a_hooks_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Every cargo task depends on ensure, so a git that will not run must not stop them."""
+    (tmp_path / "target" / "debug").mkdir(parents=True)
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+
+    def no_git(_repo: Path) -> list[str]:
+        raise dataroot.SharedDataError("git is not on PATH")
+
+    monkeypatch.setattr(worktree_init, "ensure_hooks_path", no_git)
+    assert worktree_init.main(["ensure"]) == 0
+    assert "  ! hooks: git is not on PATH" in capsys.readouterr().out
+
+
+def test_ensure_skips_the_hooks_path_outside_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "target" / "debug").mkdir(parents=True)
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(dataroot, "REPO_ROOT", tmp_path)
+
+    def never(_repo: Path) -> list[str]:
+        raise AssertionError("outside git there is no hooks path to set")
+
+    monkeypatch.setattr(worktree_init, "ensure_hooks_path", never)
+    assert worktree_init._ensure() == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_ensure_tags_a_target_it_creates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cargo writes CACHEDIR.TAG only into a target/ it creates, and ensure creates it first."""
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(worktree_init, "ensure_hooks_path", lambda _repo: [])
+    monkeypatch.setattr(worktree_init, "_seed_target", lambda: "  - target/ not seeded: x")
+    assert worktree_init._ensure() == 0
+    tag = (tmp_path / "target" / "CACHEDIR.TAG").read_text(encoding="utf-8")
+    assert tag.startswith("Signature: 8a477f597d28d172789f06886806bc55")
+
+
+def test_ensure_carries_on_when_the_lock_times_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+
+    def stuck(path: Path) -> contextlib.AbstractContextManager[None]:
+        raise TimeoutError(f"{path} still locked")
+
+    monkeypatch.setattr(worktree_init, "exclusive", stuck)
+    assert worktree_init._ensure() == 0
+    assert "  ! ensure: " in capsys.readouterr().out
+
+
+def test_seed_command_takes_the_ensure_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``mise run seed`` beside a cargo lane's ensure must not seed into one staging directory."""
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+    events: list[str] = []
+
+    @contextlib.contextmanager
+    def held(path: Path) -> Iterator[None]:
+        events.append(f"lock {path.name}")
+        yield
+        events.append("unlock")
+
+    monkeypatch.setattr(worktree_init, "exclusive", held)
+
+    def seed() -> str:
+        events.append("seed")
+        return "  - target/ not seeded: x"
+
+    monkeypatch.setattr(worktree_init, "_seed_target", seed)
+    assert worktree_init.main(["seed"]) == 0
+    assert events == ["lock .ensure.lock", "seed", "unlock"]
+
+
+def test_init_fails_without_game_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A fresh machine finds out at init, not at its first capture."""
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    _bare_init(monkeypatch, checkout, corpus=False)
+    assert worktree_init._init(migrate=False) == 1
+    assert "corpus is missing" in capsys.readouterr().out
+
+
+def test_init_warns_about_data_at_an_old_link_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    checkout = tmp_path / "checkout"
+    frames = checkout / "build" / "parity" / "captures" / "vault-ctry" / "frames"
+    frames.mkdir(parents=True)
+    (frames / "meta.json").write_text("{}", encoding="utf-8")
+    _bare_init(monkeypatch, checkout)
+    assert worktree_init._init(migrate=False) == 0
+    out = capsys.readouterr().out
+    assert "build/parity/captures holds data the data root does not read" in out

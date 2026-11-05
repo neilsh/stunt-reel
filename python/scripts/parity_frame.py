@@ -160,12 +160,15 @@ def _draw(
     box: tuple[int, int, int, int] | None,
     variants: list[tuple[str, dict[str, str] | None, Path]],
 ) -> int:
-    """Render the job's ticks once per variant and write each tick's sheet; the exit code."""
-    root = job.root
+    """Render the job's ticks once per variant and write each tick's sheet; the exit code.
+
+    The sheets are this checkout's scratch output, so they go under its ``build/`` even when
+    the films and captures come from a data root elsewhere.
+    """
     reference = job.capture
     found, missing = locate(read_capture(reference), ticks)
 
-    out = root / FRAME_DIR / args.film
+    out = REPO_ROOT / FRAME_DIR / args.film
     clear_previous(out, args.film)
     for _, env, variant_dir in variants:
         parity_pipeline.render_film(job, variant_dir, render_env(env), ticks=ticks)

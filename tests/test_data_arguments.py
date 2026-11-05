@@ -79,3 +79,32 @@ def test_make_all_reads_a_relative_film_from_the_data_root(
 ) -> None:
     monkeypatch.setattr(sys, "argv", ["make_all", "--film", "corpus/stuntisl/VAULT/BALLOON.FLM"])
     assert _load("make_all").parse_args().film == data_root / "corpus/stuntisl/VAULT/BALLOON.FLM"
+
+
+@pytest.mark.parametrize("script", ["flm_events", "unlzexe"])
+def test_a_film_in_a_missing_corpus_names_the_data_root(
+    script: str, data_root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    argv = [script, FILM] if script == "flm_events" else [script, FILM, str(data_root / "out")]
+    assert _load(script).main(argv) == 2
+    err = capsys.readouterr().err
+    assert "no game files" in err
+    assert str(data_root / "corpus") in err
+
+
+def test_verify_schemas_refuses_a_missing_default_corpus(
+    data_root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A corpus the user named may be absent and is skipped; the data root's may not."""
+    module = _load("verify_schemas_corpus")
+    assert module.main([]) == 2
+    assert "no game files" in capsys.readouterr().err
+    assert module.main(["--corpus", str(data_root / "elsewhere")]) == 0
+
+
+def test_the_adversarial_harness_refuses_a_missing_corpus(
+    data_root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    del data_root
+    assert _load("adversarial_formats_challenge").main() == 2
+    assert "no game files" in capsys.readouterr().err

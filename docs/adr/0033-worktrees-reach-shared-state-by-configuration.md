@@ -34,9 +34,11 @@ inside the primary checkout on the same Dev Drive, and a DSH session runs these 
 A new worktree holds no links. Each piece of shared state is named where it is used:
 
 - Code reads the corpus and the captures through `dataroot.data_root()`, which honours
-  `STUNT_DATA_ROOT`, then `<primary>.data`. Only the corpus falls back further, to the primary
-  checkout's own `corpus/` when the data root has none, because the captures and the stage are
-  written and the stage must sit outside every checkout. A relative `corpus/...` or
+  `STUNT_DATA_ROOT`, then `<primary>.data`. Only the corpus falls back further: when
+  `STUNT_DATA_ROOT` is unset and the data root has no `corpus/`, to the primary checkout's own
+  `corpus/` if it holds a folder of game files. The captures and the stage are written, and the
+  stage must sit outside every checkout. A reader that finds no corpus at all says where it
+  looked and exits nonzero, `init` included. A relative `corpus/...` or
   `captures/...` path on the command line resolves the same way.
 - `mise.toml` names the uv and Cargo caches by absolute path under the primary checkout's
   `.cache`, from `git rev-parse --git-common-dir`.
@@ -65,10 +67,11 @@ links keep working, and `mise run reap` keeps its unlink-and-prove step for them
 ## Consequences
 
 - ADR 0019 is superseded. ADRs 0008, 0013, 0018 and 0030 keep their decisions with a dated
-  amendment line each (the documentation task of the plan adds them).
-- `ensure_links_or_report`, `ensure_cache_link` and `ensure_venv_link` go. `LINK_TARGETS`,
-  `ensure_links`, `env_target` and the orphan sweep stay for `reap` until the last linked
-  worktree is reaped.
+  amendment line each.
+- `ensure_links_or_report`, `ensure_cache_link`, `ensure_venv_link` and `ensure_links` go.
+  `reap` finds old links as reparse points and unlinks them with `remove_link`; `env_target`,
+  `discard_env` and the orphan sweep stay for it until the last linked worktree is reaped.
+  `LINK_TARGETS` stays to name the old link paths for `init`'s report and `--migrate`.
 - A worktree on another volume (Orca's on `C:`) copies its environment instead of hardlinking it,
   about 68 MB and 3 s.
 - The first building task in a new worktree pays the seed, about 40 s, before Cargo starts.

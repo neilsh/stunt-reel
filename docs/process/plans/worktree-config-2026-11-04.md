@@ -73,8 +73,9 @@ holds and no code reads.
 - Two Rust readers spell `corpus` relative to the checkout: the `sod-census` task passes
   `--corpus` from a mise var naming the data root, and the ignored `flm_camera_test` reads
   `STUNT_DATA_ROOT`.
-- `ensure_links_or_report` and its 15 call sites go; `ensure_links` and `LINK_TARGETS` stay only
-  where `reap` needs them to recognise and unlink old links.
+- `ensure_links_or_report` and its 15 call sites go, and so does `ensure_links`: `reap` finds old
+  links as reparse points, not through it. `LINK_TARGETS` stays to name the old link paths for
+  `init`'s report and `--migrate`.
 - Command-line defaults and messages that print a `corpus\...` path print the resolved path.
 - `mise run check` stays corpus-free: a test that exercises a data-root path points
   `STUNT_DATA_ROOT` at a temporary directory or a fixture.

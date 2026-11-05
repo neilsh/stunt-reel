@@ -329,8 +329,13 @@ def preflight(
     locked: Callable[[Path], bool] = binary_locked,
 ) -> list[str]:
     """Problems that stop a run before any build or render starts."""
-    problems: list[str] = []
     films = list(films)
+    if films:
+        try:
+            dataroot.require_corpus(root)
+        except dataroot.SharedDataError as err:
+            return [str(err)]
+    problems: list[str] = []
     sidata = dataroot.corpus_of(root) / SIDATA
     if films and not sidata.exists():
         problems.append(f"missing input {sidata} (try --data-root)")

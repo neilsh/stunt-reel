@@ -58,8 +58,10 @@ Run these in a normal terminal, outside an agent sandbox.
 3. Put the game files in the data root, `<parent-of-primary>/<repo-name>.data/corpus/`, as
    [`corpus/README.md`](../corpus/README.md) lays them out; `STUNT_DATA_ROOT` names another
    place. A clone that already holds them in its own `corpus/` can move them with
-   `mise run init -- --migrate`, or keep them there: code reads the primary checkout's
-   `corpus/` when the data root has none.
+   `mise run init -- --migrate`, or keep them there: when `STUNT_DATA_ROOT` is unset and the
+   data root has no `corpus/`, Python code reads the primary checkout's `corpus/` if it holds a
+   folder of game files. `mise run sod-census` reads only `<data root>/corpus`; such a clone
+   passes `mise run sod-census -- --corpus corpus`.
 
 ## A new worktree
 

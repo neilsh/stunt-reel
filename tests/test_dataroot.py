@@ -83,6 +83,7 @@ def test_a_missing_data_root_falls_back_to_the_primary(
 ) -> None:
     # A clone that keeps its corpus in the checkout has no <primary>.data beside it.
     primary = _primary(tmp_path)
+    (primary / "corpus" / "stisldem").mkdir(parents=True)
     _worktree(monkeypatch, primary)
     film = Path("corpus/stisldem/VAULT/CTRY.FLM")
     assert dataroot.corpus_root() == primary / "corpus"
@@ -135,101 +136,6 @@ def test_environment_overrides_the_derived_root(
     _checkout(monkeypatch, _primary(tmp_path))
     monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path / "elsewhere"))
     assert dataroot.data_root() == (tmp_path / "elsewhere").resolve()
-
-
-def test_ensure_links_repairs_a_worktree_that_never_ran_init(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # The failure this exists for: a checkout made by an agent's own worktree tooling
-    # reads corpus/stisldem as an empty placeholder instead of failing at creation.
-    root = tmp_path / "stunt-reel.data"
-    (root / "corpus" / "stisldem").mkdir(parents=True)
-    worktree = _worktree(monkeypatch, _primary(tmp_path))
-    outcomes = dataroot.ensure_links()
-    assert [(outcome.relative, outcome.status) for outcome in outcomes] == [
-        ("corpus/stisldem", "repaired"),
-        ("corpus/siarchive", "created-empty"),
-        ("corpus/stuntisl", "created-empty"),
-        ("corpus/patches", "created-empty"),
-        ("build/parity/captures", "created-empty"),
-    ]
-    for outcome in outcomes:
-        assert dataroot.link_points_at(worktree / outcome.relative, outcome.target)
-    assert (root / "captures").is_dir()  # a shared directory that was still empty
-    assert {outcome.status for outcome in dataroot.ensure_links()} == {"ok"}
-
-
-def test_ensure_links_replaces_a_gitkeep_placeholder(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    root = tmp_path / "stunt-reel.data"
-    (root / "corpus" / "stisldem").mkdir(parents=True)
-    worktree = _worktree(monkeypatch, _primary(tmp_path))
-    placeholder = worktree / "corpus" / "stisldem"
-    placeholder.mkdir(parents=True)
-    (placeholder / ".gitkeep").write_text("", encoding="utf-8")
-    repaired = [outcome for outcome in dataroot.ensure_links() if outcome.status == "repaired"]
-    assert [outcome.relative for outcome in repaired] == ["corpus/stisldem"]
-    assert dataroot.link_points_at(worktree / "corpus" / "stisldem", root / "corpus" / "stisldem")
-
-
-def test_ensure_links_refuses_a_checkout_holding_real_data(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # Moving a populated corpus is --migrate's decision, and it must not be half-applied.
-    root = tmp_path / "stunt-reel.data"
-    (root / "corpus" / "siarchive").mkdir(parents=True)
-    worktree = _worktree(monkeypatch, _primary(tmp_path))
-    populated = worktree / "corpus" / "siarchive"
-    populated.mkdir(parents=True)
-    (populated / "SITools.zip").write_bytes(b"PK\x03\x04")
-    outcomes = dataroot.ensure_links()
-    assert [(outcome.relative, outcome.status) for outcome in outcomes] == [
-        ("corpus/siarchive", "refused")
-    ]
-    assert "migrate" in (outcomes[0].reason or "")
-    # The refusal is all-or-nothing: the other links were not touched either.
-    assert not (worktree / "corpus" / "stuntisl").exists()
-    assert not (root / "corpus" / "stisldem").exists()
-
-
-def test_ensure_links_replaces_a_link_that_points_elsewhere(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    root = tmp_path / "stunt-reel.data"
-    (root / "corpus" / "stisldem").mkdir(parents=True)
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    worktree = _worktree(monkeypatch, _primary(tmp_path))
-    dataroot.create_link(worktree / "corpus" / "stisldem", elsewhere)
-    outcome = next(item for item in dataroot.ensure_links() if item.relative == "corpus/stisldem")
-    assert (outcome.status, outcome.target) == ("repaired", root / "corpus" / "stisldem")
-    assert dataroot.link_points_at(worktree / "corpus" / "stisldem", root / "corpus" / "stisldem")
-
-
-def test_ensure_links_names_init_when_the_root_is_absent(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _worktree(monkeypatch, _primary(tmp_path))
-    with pytest.raises(dataroot.SharedDataError, match="mise run init"):
-        dataroot.ensure_links()
-
-
-def test_ensure_links_is_a_no_op_without_a_worktree(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _checkout(monkeypatch, tmp_path / "export")
-    assert dataroot.ensure_links() == []
-
-
-def test_shared_target_derives_both_names_from_the_link_table(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _checkout(monkeypatch, _primary(tmp_path))
-    for shared, relative in dataroot.LINK_TARGETS:
-        assert dataroot.shared_target(relative) == dataroot.data_root() / shared
-    with pytest.raises(KeyError):
-        dataroot.shared_target("corpus/elsewhere")
 
 
 def _legacy_env(worktree: Path) -> Path:
@@ -388,7 +294,7 @@ def test_convert_layout_refuses_a_root_holding_both_names(tmp_path: Path) -> Non
 
 
 def test_convert_layout_accepts_the_empty_directories_a_read_created(tmp_path: Path) -> None:
-    # ensure_links creates corpus/<name> and captures empty when a read precedes --migrate.
+    # An older layout's links created corpus/<name> and captures empty before a --migrate.
     root = tmp_path / "stunt-reel.data"
     _old_layout(root)
     (root / "corpus" / "stuntisl").mkdir(parents=True)
@@ -407,3 +313,41 @@ def test_convert_layout_keeps_foreign_files_in_the_old_oracle(tmp_path: Path) ->
     assert not (root / "oracle" / "intro_trajectory.json").exists()
     assert (root / "oracle" / "mine.json").is_file()
     assert any("oracle still holds" in line for line in moved)
+
+
+def test_a_primary_corpus_holding_only_its_readmes_is_no_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``corpus/README.md`` is tracked, so the folder exists in every checkout, game files or not."""
+    primary = _primary(tmp_path)
+    (primary / "corpus").mkdir()
+    (primary / "corpus" / "README.md").write_text("readme", encoding="utf-8")
+    _worktree(monkeypatch, primary)
+    assert dataroot.corpus_root() == tmp_path / "stunt-reel.data" / "corpus"
+
+
+def test_require_corpus_names_the_missing_data_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path / "data"))
+    with pytest.raises(dataroot.SharedDataError, match="no game files") as caught:
+        dataroot.require_corpus()
+    assert str((tmp_path / "data").resolve() / "corpus") in str(caught.value)
+    (tmp_path / "data" / "corpus").mkdir(parents=True)
+    assert dataroot.require_corpus() == (tmp_path / "data").resolve() / "corpus"
+
+
+def test_require_corpus_of_a_named_root(tmp_path: Path) -> None:
+    with pytest.raises(dataroot.SharedDataError, match="no game files"):
+        dataroot.require_corpus(tmp_path)
+    (tmp_path / "corpus").mkdir()
+    assert dataroot.require_corpus(tmp_path) == tmp_path / "corpus"
+
+
+def test_a_capitalised_corpus_path_resolves_too(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows paths are case-insensitive, so ``Corpus\\...`` names the same folder."""
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    resolved = dataroot.resolve_data_path(Path("Corpus/stisldem/X.FLM"))
+    assert resolved == tmp_path.resolve() / "corpus" / "stisldem" / "X.FLM"

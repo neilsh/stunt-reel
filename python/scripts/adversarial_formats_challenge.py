@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from stunt_reel.dataroot import corpus_root
+from stunt_reel.dataroot import SharedDataError, corpus_root, require_corpus
 
 
 def test_area1_bam_and_fixed_point() -> dict[str, Any]:
@@ -358,6 +358,11 @@ def test_area4_palette_and_lighting() -> dict[str, Any]:
 
 
 def main() -> int:
+    try:
+        require_corpus()
+    except SharedDataError as err:
+        print(f"adversarial_formats_challenge: {err}", file=sys.stderr)
+        return 2
     print("=" * 80)
     print("CHALLENGER 2 EMPIRICAL ADVERSARIAL VERIFICATION HARNESS")
     print("=" * 80)

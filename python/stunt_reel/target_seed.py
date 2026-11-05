@@ -13,12 +13,14 @@ seeded ``target/`` costs little disk. See
 from __future__ import annotations
 
 import contextlib
+import errno
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import time
 import tomllib
 from collections import Counter
 from dataclasses import dataclass
@@ -293,15 +295,22 @@ def build_locks_free(target: Path) -> Iterator[bool]:
         yield True
 
 
+#: The errors a lock call raises because another handle holds the lock; any other is raised.
+_CONTENTION = frozenset({errno.EDEADLOCK, errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK})
+
+
 @contextlib.contextmanager
-def exclusive(path: Path) -> Iterator[None]:
+def exclusive(path: Path, *, timeout: float = 600.0) -> Iterator[None]:
     """Hold an exclusive OS lock on the file *path*, created if missing, for the block.
 
-    Blocks until the lock is free. Each call opens its own handle, so two threads of one
-    process exclude each other as two processes do: the gate starts its cargo lanes, and so
-    their ``ensure`` steps, at once (ADR 0033).
+    Waits while another handle holds it, for *timeout* seconds, then raises ``TimeoutError``;
+    a seed takes about 40 s, so ten minutes means a holder that is stuck, not slow. Any
+    other failure to lock is raised at once. Each call opens its own handle, so two threads
+    of one process exclude each other as two processes do: the gate starts its cargo lanes,
+    and so their ``ensure`` steps, at once (ADR 0033).
     """
     path.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + timeout
     with path.open("a+b") as handle:
         if sys.platform == "win32":
             import msvcrt  # noqa: PLC0415 - only needed on Windows
@@ -312,8 +321,8 @@ def exclusive(path: Path) -> Iterator[None]:
                     # LK_LOCK gives up after ten one-second tries; a seed takes longer.
                     msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
                     break
-                except OSError:
-                    continue
+                except OSError as error:
+                    _still_waiting(error, path, deadline, timeout)
             try:
                 yield
             finally:
@@ -321,15 +330,29 @@ def exclusive(path: Path) -> Iterator[None]:
         else:
             import fcntl  # noqa: PLC0415 - only needed off Windows
 
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            while True:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError as error:
+                    _still_waiting(error, path, deadline, timeout)
+                    time.sleep(0.2)
             try:
                 yield
             finally:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
+def _still_waiting(error: OSError, path: Path, deadline: float, timeout: float) -> None:
+    """Return to retry a lock another handle holds; raise for any other failure, or at *deadline*."""
+    if error.errno not in _CONTENTION:
+        raise error
+    if time.monotonic() >= deadline:
+        raise TimeoutError(f"{path} still locked after {timeout:.0f} s") from error
+
+
 def _unlock(handle: BinaryIO) -> None:
-    """Release the one-byte lock ``build_locks_free`` took at the start of *handle*."""
+    """Release the one-byte lock taken at the start of *handle*."""
     if sys.platform == "win32":
         import msvcrt  # noqa: PLC0415 - only needed on Windows
 

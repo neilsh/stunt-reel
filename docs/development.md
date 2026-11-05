@@ -63,7 +63,7 @@ The corpus ships the unpatched 1992 executables. `mise run game-builds` copies `
 | `docs/` | Living spec, architecture routing, ADRs, and process documents (`process/`) |
 | `manifests/all/` | One committed TOML manifest per film whose `.ALL` `make-all` stored: the game items the archive is rebuilt from, with their hashes ([ADR 0032](adr/0032-a-films-archive-is-committed-as-a-manifest.md)) |
 | `research/` | Format specifications beside their `.ksy` layouts plus `PLAYONE.EXE` analysis notes — [`research/formats/INDEX.md`](../research/formats/INDEX.md) |
-| `corpus/` | Gitignored demo, full retail install (`stuntisl/`), patches and archive data, linked from the shared data root — [`corpus/README.md`](../corpus/README.md) |
+| `corpus/` | Gitignored demo, full retail install (`stuntisl/`), patches and archive data, kept in the shared data root (`<data root>/corpus/`) and read through `stunt_reel.dataroot`; the checkout's `corpus/` holds only the tracked READMEs — [`corpus/README.md`](../corpus/README.md) |
 | `build/` | Gitignored outputs: `build/parity/{ours,report}/` and `build/gltf_output/`; the captures live in the data root, `<data root>/captures/` (ADR 0033); `build/oracle/` holds the synthetic oracle trajectory |
 | `tools/dosbox/` | `dosbox-utils.conf`, a by-hand profile for the period utilities — [`tools/dosbox/README.md`](../tools/dosbox/README.md) |
 
@@ -159,7 +159,7 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | `crlf-check` | [check_crlf.py](../python/scripts/check_crlf.py): staged text files whose working copy has CRLF line endings, named per file; `*.bat`, `*.cmd` (`eol=crlf` in `.gitattributes`) and binary files are skipped; a pre-commit hook on every commit |
 | `test-docs` | `tests/test_doc_invariants.py` alone: anchors, Markdown links, cited paths, no source of truth linking into `docs/process/`; a pre-commit hook on every commit |
 | `check-windows` | the non-GPU half of the gate used by the Windows job on `main` (`fmt-check` + `lint` + `typecheck` + `test`)
-| `check-windows-smoke` | the Windows-only slice of the pytest suite, every module marked `windows` (junctions, reparse points, the `.cache` link, the pytest basetemp workaround, the target seed's build locks), used by the pull-request Windows job; `tests/test_windows_marker.py` fails a module that checks the platform without the marker
+| `check-windows-smoke` | the Windows-only slice of the pytest suite, every module marked `windows` (junctions, reparse points, the pytest basetemp workaround, the target seed's build locks), used by the pull-request Windows job; `tests/test_windows_marker.py` fails a module that checks the platform without the marker
 | `fmt-check` / `fmt` | `cargo fmt` and `ruff format` check/apply |
 | `fix` | every automatic fix the gate's lint and format steps can apply: `ruff check --fix`, `ruff format`, `cargo fmt`. The gate names it when `lint-py`, `fmt-check-py` or `fmt-check-rust` fails; it changes nothing on a clean tree |
 | `lint` | `cargo clippy -- -D warnings` and `ruff check .` |
