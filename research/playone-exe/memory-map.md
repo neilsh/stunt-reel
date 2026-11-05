@@ -108,7 +108,7 @@ The **Evidence** column says how each patched offset was found. *N refs* means N
 | `0x11F8`, `0x11FC`, `0x122E`, `0x1238`, `0x123D` | `0x130B`, `0x130F`, `0x1341`, `0x134B`, `0x1350` | View setup and its lens stores | `# [MEM-PALETTE]` |
 | `0x12DC`, `0x12E3`, `0x12F8` | `0x13EF`, `0x13F6`, `0x140B` | Lens zoom of the view matrix | `# [MEM-PALETTE]` |
 | `0x136F` | `0x1482` | Film-variable interpolation | `# [MEM-PALETTE]` |
-| `0x196C` | `0x1A7F` | Sun or moon direction from var 13 (the same 14 instructions) | `# [MEM-PALETTE]` |
+| `0x196C` | `0x1A7F` | World light from var 13 (the same 14 instructions) | `# [MEM-PALETTE]` |
 | `0x1D96` | `0x1EA9` | Vars 10 and 12 to the work segment | `# [MEM-PALETTE]` |
 | `0x39B0`, `0x39D0` | `0x3AC3`, `0x3AE3` | Film-state snapshot and its variable copy | `# [MEM-PALETTE]` |
 | `0x3D54`, `0x3D7F` | `0x3E67`, `0x3E92` | `var_set` and `view_obj` handlers | `# [MEM-PALETTE]` |
@@ -249,7 +249,8 @@ See [`research/playone-exe/sod-vm.md`](sod-vm.md) for `OP_TAP` and [`research/pl
 | `DS:0x4888` | `[Supported Inference]` | Snapshot of the `0x474A` film state taken at `CS:0x39B0` and read by the frame routine `CS:0x0EE9`; `+0x7E` (`DS:0x4906`) holds the 16 variable copies, `+0x1A` (`DS:0x48A2`) a copy of `0x474A + 0x1A`, the current `view_obj` (written by the `0x90..0x97` handler at `CS:0x3D7F`) |
 | `DS:0x4778 -> DS:0x48B6` | `[Supported Inference]` | Per-slot record pointers of the live and snapshot structs; `CS:0x39B0` copies 12 words per slot |
 | `CS:0x0EE9` | `[Supported Inference]` | Per-frame film render step (entered from `CS:0x4A35` with `BX = 0x4888`): sun vector, view matrix, one scene draw, credits string. `CS:0x0EE6` is the same step with `BX = 0x474A`; no static caller found |
-| `CS:0x196C` | `[Supported Inference]` | Sun or moon direction from var 13: `angle = var 13 - 0x4000`, stored at `DS:0x49EC..0x49F0` and negated at `[DS:0x542]:0x8078..0x807C`; `CS:0x908E` projects it through the camera matrix at `0x80C0` |
+| `CS:0x196C` | `[Established]` | World light from var 13: called from `CS:0x0F50` with `AX = [0x4888 + 0x98]` (var 13), `angle = var 13 - 0x4000`, stored at `DS:0x49EC..0x49F0` and negated at `[DS:0x542]:0x8078..0x807C`; `CS:0x908E` projects it through the camera matrix at `0x80C0`. Values observed live: [`terrain-shade.md`](terrain-shade.md) section 4.2 |
+| `CS:0x21F9`, `CS:0x234B`, `CS:0x1D8D` | `[Bounded Observation]` | The three calls of the per-object light setup `0824:0EC0` (image `0x9100`): the first two pass `DS:0x49EC..0x49F0` unchanged, the third (after `CS:0x1CFB`) the world light rotated into the object's frame ([`terrain-shade.md`](terrain-shade.md) section 4.2) |
 | `CS:0x11FC` | `[Established]` | View setup indexed by `AX = view_obj` (`[0x4888 + 0x1A]`, loaded at `CS:0x4A32`): film variable `view_obj` (`[BX + SI + 0x7E]`) times `DS:0x22B6` (set by `CS:0x11F8`, `0x7FFF` at `CS:0x4A29`), normalised into the mantissa `DS:0x229C`, the shift count `DS:0x229E` and `DS:0x22A4`; `[BX + SI + 0x2E]` is the camera's object pointer ([`lod.md`](lod.md) section 2.1) |
 | `CS:0x12DC` | `[Established]` | Lens zoom of the view matrix: rows 0-1 (screen X, Y) times `0x229C / 0x8000`, row 2 (depth) `sar` by `0x229E`, so focal length scales by about `lens / 8192` ([`lod.md`](lod.md) section 2.2) |
 | `CS:0x1D96` | `[Bounded Observation]` | Stores var 12 and its negation at `0x15D4:0x8126`/`0x8128`, var 10 (with change sign and low byte) at `0x15D4:0x8120`/`0x8122`; `DS:0x22BC` keeps the previous var 10 |

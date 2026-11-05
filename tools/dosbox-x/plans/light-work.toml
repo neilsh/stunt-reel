@@ -1,0 +1,24 @@
+# #66: every changing write to the light words the shading op reads, work:0x8072..0x8077, in two
+# windows that include ticks where terrain-shade.md section 8 saw L tilted (155, 564). Unpatched
+# only: the work segment is 0x1DF8 under DOSBox-X (far pointer DS:0x0542), so the words sit at
+# linear 0x25FF2; the capture of DS:0x0540 checks that pointer on every hit.
+[run]
+stop_tick = 700
+
+[[probe]]
+name = "work-L-140"
+kind = "watch"
+linear = 0x25FF2
+size = 6
+arm = { tick = 140 }
+hits = 80
+capture = ["stack:6", "lin:0x25FF2:6", "mem:DS:0x0540:4", "mem:DS:0x49EC:6"]
+
+[[probe]]
+name = "work-L-550"
+kind = "watch"
+linear = 0x25FF2
+size = 6
+arm = { tick = 550 }
+hits = 80
+capture = ["stack:6", "lin:0x25FF2:6", "mem:DS:0x0540:4", "mem:DS:0x49EC:6"]

@@ -45,14 +45,14 @@ Dispatch `0x839C` -> handler `0x9481`. Operand stream: `di_off, count, (nx, ny, 
 
 | Item | Address | Notes |
 |---|---|---|
-| Light vector `L` | `work:0x8072/0x8074/0x8076` | only writer `0x9106` inside the per-frame setup entry `0x9100` (which also sets the model shift `0x806E` and projection scale `0x8070`); `L` arrives in `AX/BX/DX` |
+| Light vector `L` | `work:0x8072/0x8074/0x8076` | set by `0x9106` inside the per-object setup entry `0x9100` (which also sets the model shift `0x806E` and projection scale `0x8070`) from `AX/BX/DX`; rotated in place by the display-list rotation op at `0xA8BC` and restored by `0xA9B8` (section 4.2) |
 | Sun-billboard direction | `work:0x8078/0x807A/0x807C` | written by the film-variable-13 handler at `0x196C` (angle = var13 - 0x4000, trig at `0x824:0x05D2`, also stored at `DS:0x49EC`), read by the sun-disc drawer `0x908E` |
 
-`L` is three words in the same layout as the negated sun vector six bytes later, and only the shading opcode reads it, so it is the scene light direction. **Its caller is unknown**: there is no direct `call`/`jmp`, no `lcall 0,0x9100` and no `mov ax,0x9100`; the entry is reached indirectly.
+`L` is three words in the same layout as the negated sun vector six bytes later, and only the shading opcode reads it, so it is the scene light direction. A static search finds no `lcall 0,0x9100` because the three callers address it as `lcall 0824:0EC0`, in the VM segment (section 4.2).
 
 ### 4.1 The entry decodes, but it is handed its light
 
-`[Established]` for the instruction sequence, `[Unknown]` for the caller. Disassembled at image `0x9100`, the routine is a per-frame setup that fills a 0x2E-byte state block at `work:0x806E` and then runs the display list:
+`[Established]` for the instruction sequence. Disassembled at image `0x9100`, the routine is a per-object setup that fills a 0x2E-byte state block at `work:0x806E` and then runs the display list:
 
 ```asm
 9100  push ds / mov di,0x15d4 / mov ds,di   ; work segment: 0x15D4 here, 0x1DF8 at runtime (+0x824)
@@ -66,7 +66,25 @@ Dispatch `0x839C` -> handler `0x9481`. Operand stream: `di_off, count, (nx, ny, 
 9161  lodsw ax,es:[si] / call ax           ; the first word of the stream is a code offset
 ```
 
-So the light is not computed here: it arrives in registers from a caller the binary does not reference directly, which is why no static search finds it. What the routine does own is the block layout and the fact that `0x806E` is a **shift count, not a model origin**: its low byte is the exponent used at `0xADAC`, where a model coordinate pair `([si+0x0A],[si+0x0C])` becomes `((hi >> (0x10 - cl)) + (lo << cl)) - [0x8084]`. The 0x17 words at `0x806E` are copied to the stack, passed through `0x1B75` and copied back at `0xB568`-`0xB585`, so that block is the walker's per-frame input.
+So the light is not computed here: it arrives in registers from the caller (section 4.2). What the routine does own is the block layout and the fact that `0x806E` is a **shift count, not a model origin**: its low byte is the exponent used at `0xADAC`, where a model coordinate pair `([si+0x0A],[si+0x0C])` becomes `((hi >> (0x10 - cl)) + (lo << cl)) - [0x8084]`. The 0x17 words at `0x806E` are copied to the stack, passed through `0x1B75` and copied back at `0xB568`-`0xB585`, so that block is the walker's per-frame input.
+
+### 4.2 Who hands it the light
+
+*[Bounded Observation]* for the calls (DOSBox-X breakpoint plans `light-caller`, `light-callers-tilt`, `light-source`, `light-work` and `light-writers` in `tools/dosbox-x/plans/`, [`debugger-plans.md`](debugger-plans.md); `CTRY.FLM` and `INTRO.FLM`, both builds, 2026-11-04); *[Established]* for the instruction sequences. `0x9100` is called once per drawn object, each with its own object segment in `ES` (the stream at `ES:0x000C`, `es:[2]` to `SI`, `es:[4]` to `BP`, `es:[8]` to `CH`, `[0x22EC]` pushed), from three sites:
+
+| Call site (return) | Patch #3 return | Passes | Share of 40 calls, ticks 169-173 |
+|---|---|---|---|
+| `0x21F9` (`0x21FE`) in function `0x1DD5` | `0x2311` | `DS:0x49EC..0x49F0` unchanged | 24 |
+| `0x234B` (`0x2350`) in function `0x1DD5` | `0x2463` | `DS:0x49EC..0x49F0` unchanged | 14 |
+| `0x1D8D` (`0x1D92`) in function `0x1D5F` | `0x1EA5` | the world light rotated into the object's frame | 2 (one object, `ES = 0x608A`) |
+
+The third caller is reached through `0x1CFB`. Unless the object's flag `[si+0x0F] & 1` selects a stored matrix, it builds the object's rotation matrix from its three angles `[bx+0x10]`, `[bx+0x12]`, `[bx+0x14]` (`0824:04E5`, into `work:0x80D2`), multiplies it with the view matrix `0x80C0` into `0x808A` (`0824:060A`), transforms `DS:0x49EC` by it (`0824:071D`) and doubles the result into `AX/BX/DX`. Inside the display list, the rotation op at `0xA8BC..0xA8EB` rotates `L` (and the vector at `0x8096`) by the op's cosine and sine for a sub-model, and the ops at `0xA99A` and `0xA9B8` save and restore the matrix and `L` around it.
+
+`DS:0x49EC..0x49F0` is the world light, written only by the variable-13 handler `0x196C` (Patch #3 `0x1A7F`): `angle = var 13 - 0x4000`, a fixed second angle `0x71C` (about 10 degrees), trig at `0824:05D2`, stored at `DS:0x49EC` and negated at `work:0x8078` for the sun disc. Its caller `0x0F50`, in the frame step `0x0EE9`, passes `[0x4888 + 0x98]`, variable 13's copy in the film-state snapshot. It is entered with `var 13 = 0x002D` on `CTRY.FLM` on both builds (first at tick 74 unpatched and 53 patched) and on `INTRO.FLM` unpatched (ticks 48, 159 and 204; no patched `INTRO` run), and the world light it stores is `(99, 32766, -17)`. `DS:0x49EC` held that value at every sample: ticks 59, 160-587 (`light-work`), 204 and 462. The memory watch `light-writers` saw no changing write, but both of its runs ended on the 120 s timeout soon after tick 75, so it does not cover the film.
+
+So every object set up through `0x9100` without a rotation is lit by the world light, a function of variable 13 alone, and a rotated object by that light in its own frame. The per-shot tilts of section 8 are the light of rotated objects and sub-models, sampled at `work:0x8072` after the last object of the frame was set up. A renderer reproduces `L` from variable 13; at every sampled tick of both films it was `(99, 32766, -17) / 32767`, and whether it stays there for the rest of either film is not observed.
+
+_Found 2026-11-04; see the [parity log](../parity/log.md)._
 
 ## 5. Index composition
 
@@ -119,7 +137,7 @@ Edge entries are prepared at `0xC65A` and clipped by the Cohen-Sutherland clippe
 
 ## 8. Measured inputs: the light and the additive-only rule
 
-*[Bounded Observation] for the samples, [Supported Inference] for the consequence.* The light vector was measured live with [`probe_playone_light.py`](../../python/scripts/probe_playone_light.py) (DOSBox-X TAC harness, film `CTRY.FLM`). At the post-retrace trap the display-list work segment is `0x1DF8` (far pointer at `DS:0x0542`); `work:0x8072` holds `L`, `work:0x8078` holds `-L`, and `DS:0x49EC` holds `L` in its first three words. `L` is a unit vector at 1.0 = 32767 (magnitudes 32761-32766):
+*[Bounded Observation] for the samples, [Supported Inference] for the consequence.* These samples read `work:0x8072` once per frame, so they show the light of the last object set up in that frame: the world light after scenery, a rotated copy after a rotated object (section 4.2). The light vector was measured live with [`probe_playone_light.py`](../../python/scripts/probe_playone_light.py) (DOSBox-X TAC harness, film `CTRY.FLM`). At the post-retrace trap the display-list work segment is `0x1DF8` (far pointer at `DS:0x0542`); `work:0x8072` holds the light of the last object set up (the world light for an unrotated one, a rotated copy otherwise), `DS:0x49EC` holds the world light in its first three words, and `work:0x8078` holds the world light negated. `L` is a unit vector at 1.0 = 32767 (magnitudes 32761-32766):
 
 | Film clock | `L` at `work:0x8072` |
 |---|---|
@@ -172,10 +190,11 @@ The data-side and renderer-side explanations for the ground shade, all negative 
 * **Fixed-distance depth cue** (`DBG_TERRAIN_CUE`, +1 inside / -1 outside a threshold): 15 m 0.7574 / 0.6667, 25 m 0.7572 / 0.6677, 40 m 0.7586 / 0.6689, 80 m 0.7625 / 0.6689; restricted to ramp 192-199 at 15 m 0.7601 / 0.6727. The single-frame fit (tick 273: +1 at 10-19 m, -1 beyond 40 m) averaged +0.36 in the 0-19 m bin over 114 frames. There is no per-pixel depth term in the player.
 * **Coplanar draw order** (`DBG_DEPTH_LE`, `LessEqual` instead of `Less`): both films identical to four decimals, so no tie at equal depth.
 * **Geometry:** all 12 colour-195 patches are flat and convex; fan triangulation area equals polygon area for all 166 active patches.
+* **A per-shot terrain light.** The world light `DS:0x49EC` held one value at every sample (section 4.2), and the tilted values in section 8 belong to rotated objects.
 * **"The ground shade is world-fixed, not Gouraud."** An earlier reading was wrong: the player interpolates the index per vertex in screen space (sections 3-6).
 
 ## Open questions
 
-1. Recover the per-shot light's caller: breakpoint `0x9106` at the post-retrace trap in DOSBox-X, dump `AX/BX/DX` and the return address across film ticks 10 and 448 of `CTRY.FLM`, compare with `DS:0x49EC` and the variable-13 value. With the harness, `L` can already be sampled per frame. ([#66](https://github.com/neilsh/stunt-reel/issues/66))
+1. The trig at `0824:05D2`: `(99, 32766, -17)` has a horizontal part of about 100, where `32767 cos(var 13 - 0x4000)` would give about 141. Whether the table, a scale or the second angle accounts for it decides whether a renderer computes `L` from variable 13 or tabulates it; a film with another variable-13 value would test the formula.
 2. Decode the ground polygons (colour byte, vertex registers, `SHADES` normal blocks) and compare their colours with `MAP.BIN`'s: [`world-scene.md`](world-scene.md) section 6 holds the route. ([#65](https://github.com/neilsh/stunt-reel/issues/65))
 3. Only then a renderer round (re-bake terrain colours or build terrain from the player's records), under the [parity skill](../../.agents/skills/improving-render-parity/SKILL.md)'s adoption rule. ([#69](https://github.com/neilsh/stunt-reel/issues/69))

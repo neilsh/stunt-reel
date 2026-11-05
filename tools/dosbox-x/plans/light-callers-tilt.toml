@@ -1,0 +1,13 @@
+# #66: who calls the light setup 0x9100 with a tilted light. light-work showed 0x9106 storing
+# tilted AX BX DX at ticks 160 to 170 although DS:0x49EC never changes; the callers 0x21FE and
+# 0x2350 both pass DS:0x49EC, so another caller exists.
+[run]
+stop_tick = 400
+
+[[probe]]
+name = "light-entry-155"
+kind = "break"
+at = 0x9100
+arm = { tick = 155 }
+hits = 40
+capture = ["stack:8", "mem:ES:0:16"]

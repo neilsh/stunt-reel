@@ -1,0 +1,21 @@
+# #66: who calls the light setup 0x9100, and with what. Two windows: early in the film and at
+# tick 448, three hits each. AX BX DX should equal DS:0x49EC..F0; ES:0 is the object header the
+# caller reads (es:[2] -> SI, es:[4] -> BP, es:[8] -> CH).
+[run]
+stop_tick = 600
+
+[[probe]]
+name = "light-entry-10"
+kind = "break"
+at = 0x9100
+arm = { tick = 10 }
+hits = 3
+capture = ["stack:8", "mem:DS:0x49EC:6", "mem:DS:0x22EC:2", "mem:ES:0:16"]
+
+[[probe]]
+name = "light-entry-448"
+kind = "break"
+at = 0x9100
+arm = { tick = 448 }
+hits = 3
+capture = ["stack:8", "mem:DS:0x49EC:6", "mem:DS:0x22EC:2", "mem:ES:0:16"]
