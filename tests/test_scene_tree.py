@@ -9,6 +9,7 @@ import pytest
 import scene_ground
 
 from stunt_reel import scene_tree
+from stunt_reel.dataroot import REPO_ROOT
 
 
 def _segment(words: dict[int, list[int]], size: int = 0x100) -> bytes:
@@ -98,6 +99,24 @@ def test_compare_matches_each_record_at_most_once() -> None:
     assert two.map_only == []
     three = scene_tree.compare([twin, twin, twin], patches)
     assert len(three.tree_only) == 1
+
+
+def test_compare_pairs_same_colour_before_recolouring() -> None:
+    patches = scene_tree.parse_map_bin(
+        _map_record(1, 14, [1, 2, 3]) + _map_record(1, 195, [1, 2, 3])
+    )
+    other = scene_tree.GroundPolygon("gleaf", 0, 195, (1, 2, 3))
+    exact = scene_tree.GroundPolygon("gleaf", 0, 14, (1, 2, 3))
+    result = scene_tree.compare([other, exact], patches)
+    assert result.same == 2
+    assert result.recoloured == []
+    assert result.map_only == []
+
+
+def test_needs_corpus_sees_a_path_through_the_link(tmp_path: Path) -> None:
+    corpus = REPO_ROOT / "corpus"
+    assert scene_ground._needs_corpus(corpus / "stisldem" / "MAP.BIN")
+    assert not scene_ground._needs_corpus(tmp_path / "MAP.BIN")
 
 
 def test_check_map_bin_rejects_empty_and_truncated() -> None:

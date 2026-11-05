@@ -164,19 +164,27 @@ def compare(polygons: list[GroundPolygon], patches: list[MapPatch]) -> Compariso
         by_set.setdefault(frozenset(patch.anchors), []).append(patch)
     matched: set[int] = set()
     same = 0
+    # Each record matches at most one polygon. Same-colour pairs are taken first, so a
+    # recoloured fallback cannot use up the record another polygon matches exactly.
+    leftover: list[GroundPolygon] = []
+    for poly in polygons:
+        candidates = by_set.get(frozenset(poly.anchors), [])
+        exact = next((p for p in candidates if p.colour == poly.colour & 0xFF), None)
+        if exact is None:
+            leftover.append(poly)
+            continue
+        candidates.remove(exact)
+        matched.add(exact.index)
+        same += 1
     recoloured: list[tuple[GroundPolygon, MapPatch]] = []
     tree_only: list[GroundPolygon] = []
-    for poly in polygons:
-        key = frozenset(poly.anchors)
-        candidates = by_set.get(key)
+    for poly in leftover:
+        candidates = by_set.get(frozenset(poly.anchors), [])
         if not candidates:
             tree_only.append(poly)
             continue
-        patch = candidates.pop(0)  # each record matches at most one polygon
+        patch = candidates.pop(0)
         matched.add(patch.index)
-        if patch.colour == poly.colour & 0xFF:
-            same += 1
-        else:
-            recoloured.append((poly, patch))
+        recoloured.append((poly, patch))
     map_only = [p for p in patches if p.index not in matched]
     return Comparison(same, recoloured, tree_only, map_only)

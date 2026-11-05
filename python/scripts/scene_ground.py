@@ -54,9 +54,20 @@ def report(walked: scene_tree.TreeWalk, result: scene_tree.Comparison) -> str:
 
 
 def _needs_corpus(*paths: Path) -> bool:
-    """True when any path lies under the repository's ``corpus/`` link."""
-    corpus = (REPO_ROOT / "corpus").resolve()
-    return any(corpus in (p.resolve(), *p.resolve().parents) for p in paths)
+    """True when any path lies under the repository's ``corpus/`` link.
+
+    The link points into the data root, outside the checkout, so a path spelled through it is
+    compared before resolving, and a resolved path is compared with the link's target.
+    """
+    link = (REPO_ROOT / "corpus").absolute()
+    target = link.resolve()
+
+    def under(path: Path) -> bool:
+        spelled = path.absolute()
+        resolved = path.resolve()
+        return link in (spelled, *spelled.parents) or target in (resolved, *resolved.parents)
+
+    return any(under(p) for p in paths)
 
 
 def run(args: argparse.Namespace) -> int:
