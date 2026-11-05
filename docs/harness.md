@@ -58,8 +58,8 @@ Confirmed by failure on 2026-10-25, not by reading the packaged sources:
   [`tests/conftest.py`](../tests/conftest.py) installs a Windows-only `os.mkdir` shim that drops
   the mode, so the gate's Python half runs under `workspace-write`.
 * `cargo` writes `target/` inside the checkout, so a warm build is fine once the toolchain
-  resolves. `uv`'s cache is redirected into the shared `.cache/` (ADR 0013), so it is inside
-  the workspace.
+  resolves. `uv`'s cache is the primary checkout's `.cache/uv` by absolute path (ADR 0013,
+  ADR 0036), which is outside a worktree's workspace.
 
 A denied gate is an environment symptom before it is a code symptom.
 
@@ -71,14 +71,14 @@ The sandbox also denies the OS temp directory to the processes the tests spawn: 
 `pytest` hit `PermissionError: [WinError 5]` under DSH's own per-session temp path — so that
 directory is not a dependable exception either.
 
-`mise.toml` sets `TMP` and `TEMP` to `.cache/tmp` in `[env]`, and `mise run init` creates
-it, so every `mise run` task writes temporary files inside the checkout. A command started
-directly gets none of that: `[env]` reaches `mise run` and `mise exec`, not a bare shell. When
-a direct run is unavoidable, set the variables in the same call, because each `pwsh` call is a
-fresh process:
+`mise.toml` used to point `TMP` and `TEMP` into the shared cache for this; since
+[ADR 0036](adr/0036-worktrees-reach-shared-state-by-configuration.md) tasks use the OS temp
+directory, and a DSH session runs `mise run` tasks under `danger-full-access`
+([harness-setup.md](harness-setup.md#dsh)). A `workspace-write` run that cannot avoid it can
+still set the variables in the same call, because each `pwsh` call is a fresh process:
 
 ```powershell
-$env:TMP = "$PWD\.cache\tmp"; $env:TEMP = $env:TMP; cargo test --workspace --all-features
+New-Item -ItemType Directory -Force target\tmp | Out-Null; $env:TMP = "$PWD\target\tmp"; $env:TEMP = $env:TMP; cargo test --workspace --all-features
 ```
 
 ### Approvals

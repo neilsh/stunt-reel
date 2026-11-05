@@ -17,13 +17,12 @@ tools such as Ghidra that load MZ files:
 from __future__ import annotations
 
 import json
-import os
 import struct
 import sys
 from pathlib import Path
 from typing import cast
 
-from stunt_reel.dataroot import REPO_ROOT, ensure_links_or_report
+from stunt_reel.dataroot import read_data_file_or_report
 
 
 def _relocations(d: bytes, loader: int) -> list[int]:
@@ -156,13 +155,11 @@ def main(argv: list[str]) -> int:
     if len(argv) != 3:
         print(__doc__)
         return 2
-    # Only a corpus input needs the data root linked; any other file reads as it is.
-    reads_corpus = Path(os.path.abspath(argv[1])).is_relative_to(  # noqa: PTH100 - lexical: collapse `..`, keep links
-        REPO_ROOT / "corpus"
-    )
-    if reads_corpus and not ensure_links_or_report("unlzexe"):
+    # A corpus/... input is read from the data root; any other file reads as it is.
+    data = read_data_file_or_report("unlzexe", Path(argv[1]))
+    if data is None:
         return 2
-    image, meta = unpack(Path(argv[1]).read_bytes())
+    image, meta = unpack(data)
     out = Path(argv[2])
     out.write_bytes(to_mz(image, meta) if mz else image)
     Path(f"{out}.json").write_text(json.dumps(meta), encoding="utf-8")

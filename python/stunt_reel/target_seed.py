@@ -13,12 +13,14 @@ seeded ``target/`` costs little disk. See
 from __future__ import annotations
 
 import contextlib
+import errno
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import time
 import tomllib
 from collections import Counter
 from dataclasses import dataclass
@@ -45,9 +47,14 @@ def _norm(path: str | Path) -> str:
     return str(path).replace("/", "\\").rstrip("\\").casefold()
 
 
+#: The build directories that mean *target* has been built: the seeded ones, and ``release``,
+#: which ``frame``, ``parity`` and ``sod-census`` build alone. No seed copies ``release``.
+_BUILT_DIRS: tuple[str, ...] = (*SEEDED_DIRS, "release")
+
+
 def needs_seed(target: Path) -> bool:
-    """Whether *target* holds none of the seeded build directories yet."""
-    return not any((target / name).exists() for name in SEEDED_DIRS)
+    """Whether *target* holds no build directory yet."""
+    return not any((target / name).exists() for name in _BUILT_DIRS)
 
 
 def built_by(target: Path, rustc_vv: str) -> bool:
@@ -270,36 +277,94 @@ def clones_on(path: Path) -> bool:
 @contextlib.contextmanager
 def build_locks_free(target: Path) -> Iterator[bool]:
     """Hold every Cargo build lock under *target* for the copy; yield false if one is taken."""
-    if sys.platform == "win32":
-        import msvcrt  # noqa: PLC0415 - only needed on Windows
-
-        with contextlib.ExitStack() as held:
-            for seeded in SEEDED_DIRS:
-                for profile, name in ((p, n) for p in _LOCK_DIRS for n in _BUILD_LOCKS):
-                    lock = target / seeded / profile / name
-                    if not lock.is_file():
-                        continue
-                    # A lock this session cannot open or take counts as held: the donor is
-                    # passed over, and the next one tried.
-                    try:
-                        handle = held.enter_context(lock.open("r+b"))
-                        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-                    except OSError:
-                        yield False
-                        return
-                    held.callback(_unlock, handle)
-            yield True
-    else:
+    with contextlib.ExitStack() as held:
+        for seeded in SEEDED_DIRS:
+            for profile, name in ((p, n) for p in _LOCK_DIRS for n in _BUILD_LOCKS):
+                lock = target / seeded / profile / name
+                if lock.is_file() and not _hold(held, lock):
+                    yield False
+                    return
         yield True
 
 
+def _hold(held: contextlib.ExitStack, lock: Path) -> bool:
+    """Take Cargo's lock file *lock* until *held* closes; false if it is held or cannot be opened.
+
+    A lock this session cannot open or take counts as held: the donor is passed over, and the
+    next one tried.
+    """
+    try:
+        handle = held.enter_context(lock.open("r+b"))
+        if not _try_lock(handle):
+            return False
+    except OSError:
+        return False
+    held.callback(_unlock, handle)
+    return True
+
+
+#: The errors a lock call raises because another handle holds the lock; any other is raised.
+# EDEADLK, not its alias EDEADLOCK, which macOS does not define; msvcrt raises the same value.
+_CONTENTION = frozenset({errno.EDEADLK, errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK})
+
+
+@contextlib.contextmanager
+def exclusive(path: Path, *, timeout: float = 600.0) -> Iterator[None]:
+    """Hold an exclusive OS lock on the file *path*, created if missing, for the block.
+
+    Waits while another handle holds it, for *timeout* seconds, then raises ``TimeoutError``;
+    a seed takes about 40 s, so ten minutes means a holder that is stuck, not slow. Any
+    other failure to lock is raised at once. Each call opens its own handle, so two threads
+    of one process exclude each other as two processes do: the gate starts its cargo lanes,
+    and so their ``ensure`` steps, at once (ADR 0036).
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + timeout
+    with path.open("a+b") as handle:
+        while not _try_lock(handle):
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"{path} still locked after {timeout:.0f} s")
+            time.sleep(0.2)
+        try:
+            yield
+        finally:
+            _unlock(handle)
+
+
+def _try_lock(handle: BinaryIO) -> bool:
+    """Take a one-byte lock at the start of *handle* without waiting; false while another holds it.
+
+    The one place that knows each platform's call: ``msvcrt`` on Windows, ``flock`` elsewhere.
+    Any failure but contention is raised.
+    """
+    try:
+        if sys.platform == "win32":
+            import msvcrt  # noqa: PLC0415 - only needed on Windows
+
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl  # noqa: PLC0415 - only needed off Windows
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as error:
+        if error.errno in _CONTENTION:
+            return False
+        raise
+    return True
+
+
 def _unlock(handle: BinaryIO) -> None:
-    """Release the one-byte lock ``build_locks_free`` took at the start of *handle*."""
+    """Release the lock :func:`_try_lock` took on *handle*."""
     if sys.platform == "win32":
         import msvcrt  # noqa: PLC0415 - only needed on Windows
 
         handle.seek(0)
         msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl  # noqa: PLC0415 - only needed off Windows
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def robocopy(source: Path, destination: Path) -> None:

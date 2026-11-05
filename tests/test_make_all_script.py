@@ -21,6 +21,19 @@ SCRIPTS = Path(__file__).resolve().parent.parent / "python" / "scripts"
 ARCHIVE = build_all([b"one", b"two"])
 
 
+class FakeClock:
+    """A clock that sleeping advances, so the hang window does not wait."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+
 def _load() -> Any:
     spec = importlib.util.spec_from_file_location("make_all", SCRIPTS / "make_all.py")
     assert spec is not None
@@ -33,7 +46,6 @@ def _load() -> Any:
 @pytest.fixture
 def script(monkeypatch: pytest.MonkeyPatch) -> Any:
     module = _load()
-    monkeypatch.setattr(module, "ensure_links_or_report", lambda _program: True)
     # The real poll interval is 2 s per wait; the mock guest answers at once.
     monkeypatch.setattr(
         module.makeone, "make_all", functools.partial(module.makeone.make_all, poll=0.0)
@@ -79,7 +91,7 @@ def _args(
 
 def _archives(slug: str = "vault-ctry") -> list[Path]:
     """The film's stored archive, as a list so a test can say there is exactly one or none."""
-    stored = capture_store.current(dataroot.REPO_ROOT / parity_layout.archive_path(slug))
+    stored = capture_store.current(dataroot.data_root() / parity_layout.archive_path(slug))
     return [] if stored is None else [stored]
 
 
@@ -208,13 +220,56 @@ def test_a_timeout_exits_1_and_leaves_no_mount(
     assert not stage_root.exists() or not any(stage_root.iterdir())
 
 
+def test_a_makeone_hang_stores_the_archive_and_records_it(
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_repo: StagedRepo,
+    game_root: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    clock = FakeClock()
+    monkeypatch.setattr(
+        script.makeone,
+        "make_all",
+        functools.partial(
+            script.makeone.make_all, poll=2.0, stable=60.0, clock=clock, sleep=clock.sleep
+        ),
+    )
+    launch, _state = makeone_launcher(text_after=None, archive=ARCHIVE)
+    args = _args(script, monkeypatch, staged_repo.film, game_root, "--timeout", "10")
+
+    assert script.run(args, launch) == 0
+
+    (directory,) = _archives()
+    assert (directory / "CTRY.ALL").read_bytes() == ARCHIVE
+    assert _stored_meta().returned_to_dos is False
+    assert "MAKEONE hang" in capsys.readouterr().err
+
+
+def test_a_normal_run_records_that_makeone_returned(
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_repo: StagedRepo,
+    game_root: Path,
+) -> None:
+    _publish(script, monkeypatch, staged_repo.film, game_root)
+    assert _stored_meta().returned_to_dos is True
+
+
+def test_a_meta_without_the_field_reads_as_returned() -> None:
+    meta = ArchiveMeta.from_json(
+        '{"film": "A.FLM", "flm_bytes": 1, "flm_sha256": "a", "all_bytes": 1, "all_sha256": "b"}'
+    )
+    assert meta.returned_to_dos is True
+
+
 def test_an_archives_directory_of_numbered_runs_is_refused_before_makeone(
     script: Any,
     monkeypatch: pytest.MonkeyPatch,
     staged_repo: StagedRepo,
     game_root: Path,
 ) -> None:
-    run = dataroot.REPO_ROOT / parity_layout.archive_path("vault-ctry") / "001"
+    run = dataroot.data_root() / parity_layout.archive_path("vault-ctry") / "001"
     run.mkdir(parents=True)
     (run / "meta.json").write_text("{}", encoding="utf-8")
     launch, state = makeone_launcher(text_after=1, archive=ARCHIVE)
@@ -425,6 +480,16 @@ def test_a_link_error_removes_the_old_manifest_too(
     captured = capsys.readouterr()
     assert "boom" in captured.err
     assert "removed" in captured.out
+
+
+def test_game_arg_records_a_tree_in_the_data_root_by_its_corpus_path(
+    script: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default game root is the data root's, so a manifest stays valid on every machine."""
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    dataroot.data_root.cache_clear()
+    (tmp_path / "corpus" / "stuntisl").mkdir(parents=True)
+    assert script.game_arg(tmp_path / "corpus" / "stuntisl") == "corpus/stuntisl"
 
 
 def test_game_arg_records_a_dotted_path_inside_the_checkout_relative(

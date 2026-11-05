@@ -33,7 +33,7 @@ def test_prints_the_digest_and_the_entry_that_promotes_it(
     digest = references.capture_digest(directory)
     assert capture_digest.main(["vault-ctry"], root=tmp_path) == 0
     out = capsys.readouterr().out.splitlines()
-    assert out[0] == "build/parity/captures/vault-ctry/frames"
+    assert out[0] == "captures/vault-ctry/frames"
     assert out[1] == f'sha256 = "{digest}"'
     # The committed references.toml has a [ctry] entry for vault-ctry, so the block follows.
     block = out[out.index("[ctry]") :]
@@ -83,18 +83,23 @@ def test_a_directory_without_meta_is_refused(
     assert "not a capture" in capsys.readouterr().err
 
 
-def test_the_links_are_repaired_before_any_capture_is_read(
+def test_without_a_root_the_capture_is_read_from_the_data_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """No checkout link is read: a film slug and --dir both resolve in the data root (ADR 0036)."""
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    dataroot.data_root.cache_clear()
+    directory = _capture(tmp_path, "vault-intro")
+    assert capture_digest.main(["vault-intro"]) == 0
+    assert capture_digest.main(["--dir", str(directory)]) == 0
+    assert "no references.toml entry" not in capsys.readouterr().out
+
+
+def test_a_relative_capture_directory_reads_the_data_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Like parity, repair the data-root link first, for --dir as well as a film slug."""
-    directory = _capture(tmp_path, "vault-intro")
-    calls: list[str] = []
-
-    def refuse(program: str) -> bool:
-        calls.append(program)
-        return False
-
-    monkeypatch.setattr(dataroot, "ensure_links_or_report", refuse)
-    assert capture_digest.main(["--dir", str(directory)]) == 1
-    assert capture_digest.main(["vault-intro"]) == 1
-    assert calls == ["capture_digest", "capture_digest"]
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path / "data"))
+    dataroot.data_root.cache_clear()
+    monkeypatch.chdir(tmp_path)
+    _capture(tmp_path / "data", "vault-intro")
+    assert capture_digest.main(["--dir", "captures/vault-intro/frames"]) == 0

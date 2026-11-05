@@ -182,10 +182,10 @@ def test_capture_runs_the_films_own_build_by_default(tmp_path: Path) -> None:
     assert "--game-root" not in command
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    """A data root of the test's own, so nothing reads the machine's (``data_root`` is cached)."""
-    root = tmp_path / "data"
+    """The test's directory as its data root too, so its captures are the ones a stage reads."""
+    root = tmp_path
     monkeypatch.setenv(dataroot.DATA_ENV, str(root))
     dataroot.data_root.cache_clear()
     yield root.resolve()
@@ -290,7 +290,9 @@ def test_render_asks_the_binary_for_the_captured_ticks_into_the_batch_directory(
     assert command[0] == str(link.binary_path())
     assert command[command.index("--all") + 1] == str(film.flm.parent / "CTRY.ALL")
     assert command[command.index("--tick-range") + 1] == "7..=9"
-    assert command[command.index("--sidata") + 1] == str(tmp_path / parity_pipeline.SIDATA)
+    assert command[command.index("--sidata") + 1] == str(
+        tmp_path / "corpus" / parity_pipeline.SIDATA
+    )
     out = tmp_path / parity_layout.batch_film_dir(film.slug) / "render"
     assert command[command.index("--out-dir") + 1] == str(out)
     assert command[-6:] == list(parity_pipeline.RENDER_FLAGS)
@@ -376,3 +378,12 @@ def test_score_without_a_capture_is_an_error_naming_capture(tmp_path: Path) -> N
     assert (record.stage, record.status) == ("score", "error")
     assert "capture" in record.message
     assert runner.calls == []
+
+
+def test_stage_scripts_come_from_this_checkout_not_the_survey_root(tmp_path: Path) -> None:
+    """``batch_parity --data-root DIR`` writes under DIR, which holds no python/scripts."""
+    runner = FakeRunner()
+    _write_capture(tmp_path, "x-y", [0, 10])
+    batch_stages.run_capture(_film(tmp_path, name="x-y"), tmp_path, runner, 900.0)
+    command, _ = runner.calls[0]
+    assert Path(command[1]) == dataroot.REPO_ROOT / "python/scripts/capture_playone_reference.py"
