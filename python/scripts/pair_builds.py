@@ -77,7 +77,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         metavar="SEGMENT",
         help="pair the display-list dispatch slots at the start of this left code segment",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    # Check every hex value here, so a typo exits 2 with a usage message before the builds load.
+    for spec in filter(None, args.ds.split(",")):
+        off_text, _, seg_text = spec.partition(":")[0].partition("@")
+        _hex_or_exit(parser, "--ds", off_text, seg_text)
+    _hex_or_exit(parser, "--code", *filter(None, args.code.split(",")))
+    return args
+
+
+def _hex_or_exit(parser: argparse.ArgumentParser, flag: str, *values: str) -> None:
+    """Exit through *parser* when a non-empty value among *values* is not hexadecimal."""
+    for value in filter(None, values):
+        try:
+            int(value, 16)
+        except ValueError:
+            parser.error(f"{flag}: {value!r} is not a hexadecimal number")
 
 
 def _content(pairing: Pairing, offset: int, mapped: int) -> str:
