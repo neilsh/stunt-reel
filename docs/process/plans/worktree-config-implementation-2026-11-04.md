@@ -441,6 +441,18 @@ Three review passes and CodeRabbit changed the design after these tasks; the cod
   links as reparse points.
 - **`frame` writes into the checkout.** Its sheets go under this checkout's `build/scratch`, not
   the data root.
-- **The census corpus travels in the environment.** `sod-census` reads `STUNT_CENSUS_CORPUS`, set
-  by the task from the effective `STUNT_DATA_ROOT` with `~` expanded and `$` kept, so no path is
-  shell source; a `--corpus` flag still wins.
+- **Rust is handed the corpus.** `run_with_corpus.py` sets `STUNT_CORPUS` to
+  `dataroot.corpus_root()` and runs the command, so `sod-census` and the corpus test
+  (`mise run test-corpus`) read the corpus Python finds, the rule is written once, and no path is
+  shell source; a `--corpus` flag still wins. (A mise template that re-derived the root went.)
+- **Every task that builds depends on `ensure`.** `capture-ref`, `capture-video` and `make-all`
+  build the release binary for `stuntreel link`; the layout test now finds a build through
+  `ensure_binary` and `resolve_all` too.
+- **`ensure` is cheap when there is nothing to do.** A `release`-only `target/` counts as built,
+  and the hooks path is checked once per `target/` (the stamp `target/.hooks-checked`).
+- **Every data path argument resolves.** `--game-root`, `parity-probe --reference`,
+  `parity-bench --recapture` and `capture-digest --dir` take `corpus/...` and `captures/...`
+  paths against the data root.
+- **The corpus fallback needs game files.** The primary's `corpus/` is read only when a folder
+  in it holds a file, the test `require_corpus` makes, so empty folders an old link left are
+  passed over.

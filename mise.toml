@@ -101,12 +101,18 @@ run = "uv run python python/scripts/build_at.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.capture-ref]
+# This and capture-video and make-all build the release binary that `stuntreel link` needs to
+# rebuild a film's .ALL.
+depends = ["ensure"]
 description = "Capture PLAYONE.EXE Mode 13h frames for visual parity into captures/<film>/frames/ (default CTRY; mise run capture-ref -- --film corpus/stisldem/VAULT/INTRO.FLM)"
 run = "uv run python python/scripts/capture_playone_reference.py"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.capture-video]
 description = "Record a film as one AVI with its tick and palette log into captures/<film>/video/ (mise run capture-video -- --film corpus/stisldem/VAULT/CTRY.FLM)"
+depends = ["ensure"]
 run = "uv run python python/scripts/capture_video.py"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.capture-digest]
 description = "Print a capture's content hash and the references.toml entry that would promote it (mise run capture-digest -- vault-ctry)"
@@ -114,7 +120,9 @@ run = "uv run python python/scripts/capture_digest.py"
 
 [tasks.make-all]
 description = "Generate a film's .ALL with MAKEONE.EXE on dosbox-automation into captures/<film>/archives/ (mise run make-all -- --film corpus/stuntisl/VAULT/BALLOON.FLM)"
+depends = ["ensure"]
 run = "uv run python python/scripts/make_all.py"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.game-builds]
 description = "Build the unpatched and the Patch #3 game trees under <data root>/builds/ with a manifest of what the patch changes (mise run game-builds)"
@@ -352,14 +360,15 @@ description = "Compile research/formats/**/*.ksy and check them against local co
 run = "uv run python python/scripts/verify_schemas_corpus.py"
 
 [tasks.sod-census]
-# Reads <data root>/corpus only, with no fallback to the primary checkout's corpus/ as Python
-# has; a clone keeping its game files there passes `-- --corpus <primary checkout>/corpus`,
-# which wins. The path travels in STUNT_CENSUS_CORPUS, never the shell command line, where
-# a `$(...)` or a quote in it would run; a leading ~ expands as dataroot.data_root() expands it.
-# `env`, not get_env, also sees a STUNT_DATA_ROOT from an [env] table, and `$$` keeps a `$` in
-# the path from mise's own expansion of env values, unless MISE_ENV_SHELL_EXPAND turns that
-# off (the same setting in a config file is not visible to a template).
+# The corpus is the one dataroot.corpus_root() finds, handed over in STUNT_CORPUS by
+# run_with_corpus.py rather than worked out again here; `-- --corpus DIR` names another.
 depends = ["ensure"]
 description = "Census of corpus .SOD models that stop on unimplemented opcodes, joined to the films placing them (opt-in; corpus is gitignored; mise run sod-census -- [--format markdown])"
-run = "cargo run --release --locked -p stunt-cli --bin stuntreel -- sod-census"
-env = { CARGO_HOME = "{{vars.cargo_home}}", STUNT_CENSUS_CORPUS = "{% set root = env.STUNT_DATA_ROOT | default(value=vars.data_root) %}{% set home = env.HOME | default(value='~') %}{% set home = env.USERPROFILE | default(value=home) %}{% if root | truncate(length=1, end='') == '~' %}{% set root = home ~ root | trim_start_matches(pat='~') %}{% endif %}{% if env.MISE_ENV_SHELL_EXPAND | default(value='true') | lower in ['false', '0', 'no', 'off'] %}{{ root }}{% else %}{{ root | replace(from='$', to='$$') }}{% endif %}/corpus" }
+run = "uv run python python/scripts/run_with_corpus.py cargo run --release --locked -p stunt-cli --bin stuntreel -- sod-census"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
+
+[tasks.test-corpus]
+depends = ["ensure"]
+description = "Run the Rust tests that read the game files, which test-rust skips (opt-in; corpus is gitignored)"
+run = "uv run python python/scripts/run_with_corpus.py cargo test --locked -p stunt-core -- --ignored"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }

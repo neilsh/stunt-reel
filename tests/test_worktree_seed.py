@@ -24,6 +24,12 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import worktree_init  # noqa: E402
+from worktree_init import Line  # noqa: E402
+
+
+def _text(lines: list[Line]) -> str:
+    """*lines* as ``init`` prints them."""
+    return "\n".join(map(str, lines))
 
 
 def test_seed_line_formats_each_outcome(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -38,12 +44,12 @@ def test_seed_line_formats_each_outcome(monkeypatch: pytest.MonkeyPatch) -> None
         (SeedOutcome("failed", "robocopy exit 8"), "  ! seed: robocopy exit 8"),
     ]:
         monkeypatch.setattr(worktree_init, "seed", lambda *_args, o=outcome, **_kwargs: o)
-        assert worktree_init._seed_target() == line
+        assert _text(worktree_init._seed_target()) == line
 
 
 def test_seed_line_without_rustc(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(worktree_init, "_rustc_vv", lambda: None)
-    assert worktree_init._seed_target() == "  - target/ not seeded: rustc not on PATH"
+    assert _text(worktree_init._seed_target()) == "  - target/ not seeded: rustc not on PATH"
 
 
 def test_seed_line_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -52,13 +58,13 @@ def test_seed_line_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(worktree_init, "_worktrees", boom)
     monkeypatch.setattr(worktree_init, "_rustc_vv", lambda: "rustc 1.99.1\n")
-    assert worktree_init._seed_target() == "  ! seed: RuntimeError: git missing"
+    assert _text(worktree_init._seed_target()) == "  ! seed: RuntimeError: git missing"
 
 
 def test_seed_command_is_wired(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(worktree_init, "_seed_target", lambda: "  - target/ not seeded: x")
+    monkeypatch.setattr(worktree_init, "_seed_target", lambda: [Line("-", "target/ not seeded: x")])
     assert worktree_init.main(["seed"]) == 0
     assert "not seeded: x" in capsys.readouterr().out
 
@@ -104,9 +110,9 @@ def test_seed_warns_when_the_cargo_home_is_not_the_shared_path(
     monkeypatch.setattr(worktree_init, "_rustc_vv", lambda: None)
     shared = cache_root() / "cargo"
     monkeypatch.setenv("STUNT_CARGO_HOME", str(shared).replace("\\", "/"))
-    assert worktree_init._seed_target() == "  - target/ not seeded: rustc not on PATH"
+    assert _text(worktree_init._seed_target()) == "  - target/ not seeded: rustc not on PATH"
     monkeypatch.setenv("STUNT_CARGO_HOME", str(tmp_path / ".cache" / "cargo"))
-    lines = worktree_init._seed_target().splitlines()
+    lines = _text(worktree_init._seed_target()).splitlines()
     assert lines[1] == (
         f"  ! CARGO_HOME {tmp_path / '.cache' / 'cargo'} is not {shared}: "
         "every dependency rebuilds here"
@@ -143,10 +149,10 @@ def test_ensure_is_quiet_when_nothing_changes(
     (tmp_path / "target" / "debug").mkdir(parents=True)
     monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(
-        worktree_init, "ensure_hooks_path", lambda _repo: ["  = core.hooksPath .githooks"]
+        worktree_init, "ensure_hooks_path", lambda _repo: [Line("=", "core.hooksPath .githooks")]
     )
 
-    def no_seed() -> str:
+    def no_seed() -> list[Line]:
         raise AssertionError("a built target/ is never seeded")
 
     monkeypatch.setattr(worktree_init, "_seed_target", no_seed)
@@ -159,9 +165,13 @@ def test_ensure_reports_what_it_changed(
 ) -> None:
     monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(
-        worktree_init, "ensure_hooks_path", lambda _repo: ["  + core.hooksPath -> .githooks"]
+        worktree_init,
+        "ensure_hooks_path",
+        lambda _repo: [Line("+", "core.hooksPath -> .githooks", news=True)],
     )
-    monkeypatch.setattr(worktree_init, "_seed_target", lambda: "  + target/ seeded from E:\a")
+    monkeypatch.setattr(
+        worktree_init, "_seed_target", lambda: [Line("+", "target/ seeded from E:\a", news=True)]
+    )
     assert worktree_init.main(["ensure"]) == 0
     assert capsys.readouterr().out.splitlines() == [
         "  + core.hooksPath -> .githooks",
@@ -254,7 +264,7 @@ def test_ensure_tags_a_target_it_creates(tmp_path: Path, monkeypatch: pytest.Mon
     """Cargo writes CACHEDIR.TAG only into a target/ it creates, and ensure creates it first."""
     monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(worktree_init, "ensure_hooks_path", lambda _repo: [])
-    monkeypatch.setattr(worktree_init, "_seed_target", lambda: "  - target/ not seeded: x")
+    monkeypatch.setattr(worktree_init, "_seed_target", lambda: [Line("-", "target/ not seeded: x")])
     assert worktree_init._ensure() == 0
     tag = (tmp_path / "target" / "CACHEDIR.TAG").read_text(encoding="utf-8")
     assert tag.startswith("Signature: 8a477f597d28d172789f06886806bc55")
@@ -290,9 +300,9 @@ def test_seed_command_takes_the_ensure_lock(
 
     monkeypatch.setattr(worktree_init, "exclusive", held)
 
-    def seed() -> str:
+    def seed() -> list[Line]:
         events.append("seed")
-        return "  - target/ not seeded: x"
+        return [Line("-", "target/ not seeded: x")]
 
     monkeypatch.setattr(worktree_init, "_seed_target", seed)
     assert worktree_init.main(["seed"]) == 0
@@ -330,7 +340,7 @@ def test_ensure_tags_a_target_another_lane_just_made(
     (tmp_path / "target").mkdir()
     monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(worktree_init, "ensure_hooks_path", lambda _repo: [])
-    monkeypatch.setattr(worktree_init, "_seed_target", lambda: "  - target/ not seeded: x")
+    monkeypatch.setattr(worktree_init, "_seed_target", lambda: [Line("-", "target/ not seeded: x")])
     assert worktree_init._ensure() == 0
     assert (tmp_path / "target" / "CACHEDIR.TAG").is_file()
     assert worktree_init._ensure() == 0
@@ -376,3 +386,40 @@ def test_seed_reports_a_lock_that_cannot_be_taken(
     monkeypatch.setattr(worktree_init, "exclusive", no_locks)
     assert worktree_init.main(["seed"]) == 1
     assert "  ! seed: " in capsys.readouterr().out
+
+
+def test_ensure_checks_the_hooks_path_once_per_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A no-op ensure costs a few stats: git runs again only after target/ goes (ADR 0033)."""
+    (tmp_path / "target" / "debug").mkdir(parents=True)
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+    calls: list[Path] = []
+
+    def hooks(repo: Path) -> list[Line]:
+        calls.append(repo)
+        return [Line("=", "core.hooksPath .githooks")]
+
+    monkeypatch.setattr(worktree_init, "ensure_hooks_path", hooks)
+    worktree_init._ensure()
+    worktree_init._ensure()
+    assert calls == [tmp_path]
+    worktree_init._ensure(report=True)
+    assert calls == [tmp_path, tmp_path]
+
+
+def test_ensure_checks_again_after_a_hooks_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "target" / "debug").mkdir(parents=True)
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+    calls: list[Path] = []
+
+    def hooks(repo: Path) -> list[Line]:
+        calls.append(repo)
+        return [Line("!", "could not set core.hooksPath: locked", news=True)]
+
+    monkeypatch.setattr(worktree_init, "ensure_hooks_path", hooks)
+    worktree_init._ensure()
+    worktree_init._ensure()
+    assert len(calls) == 2

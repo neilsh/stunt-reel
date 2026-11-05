@@ -79,6 +79,12 @@ def test_needs_seed_ignores_tmp_log_and_doc(tmp_path: Path) -> None:
     assert not needs_seed(tmp_path / "target")
 
 
+def test_a_release_build_needs_no_seed(tmp_path: Path) -> None:
+    """frame, parity and sod-census build only release; ensure must not reseed on every run."""
+    (tmp_path / "target" / "release").mkdir(parents=True)
+    assert not needs_seed(tmp_path / "target")
+
+
 def test_needs_seed_when_target_absent(tmp_path: Path) -> None:
     assert needs_seed(tmp_path / "target")
 

@@ -60,7 +60,7 @@ def test_an_unknown_film_is_refused_with_one_message() -> None:
 
 def test_the_shared_flags_are_defined_once() -> None:
     parser = argparse.ArgumentParser(prog="parity")
-    add_parity_options(parser, data_root=REPO_ROOT)
+    add_parity_options(parser)
     actions = {action.dest: action for action in parser._actions}
     assert set(actions) == {"help", "films", "data_root", "no_build", "reuse", "retime"}
     assert actions["films"].default is None
@@ -118,7 +118,8 @@ def test_a_named_data_root_supplies_the_archive_too(tmp_path: Path) -> None:
 def test_the_bench_data_root_flag_moves_the_data_root(tmp_path: Path) -> None:
     import parity_bench  # noqa: PLC0415 - a script, imported only here
 
-    assert (
-        parity_bench._data_root(argparse.Namespace(data_root=str(tmp_path))) == tmp_path.resolve()
+    args = parity_bench.parse_args(
+        ["run", "--film", "ctry", "--recapture", "x", "--data-root", str(tmp_path)]
     )
+    assert dataroot.data_root_flag(args.data_root) == tmp_path.resolve()
     assert dataroot.data_root() == tmp_path.resolve()

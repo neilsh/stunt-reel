@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -139,3 +140,50 @@ def test_a_reader_refuses_a_missing_corpus_before_it_starts(
     monkeypatch.setattr(module, "run", never)
     assert module.main() == 2
     assert "no game files" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("script", ["capture_playone_reference", "capture_video", "play"])
+def test_a_relative_game_root_reads_the_data_root(
+    script: str, data_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", [script, "--game-root", "corpus/stuntisl"])
+    assert _load(script).parse_args().game_root == data_root / "corpus/stuntisl"
+
+
+def test_the_probe_reference_reads_the_data_root(data_root: Path) -> None:
+    frames = "captures/vault-ctry/frames"
+    args = (
+        _load("parity_probe")
+        .build_parser()
+        .parse_args(["iou", "--ours", "x", "--reference", frames])
+    )
+    assert args.reference == data_root / frames
+
+
+def test_the_bench_recapture_reads_the_data_root(data_root: Path) -> None:
+    frames = "captures/vault-ctry/frames"
+    args = _load("parity_bench").parse_args(["run", "--film", "ctry", "--recapture", frames])
+    assert args.recapture == data_root / frames
+
+
+def test_run_with_corpus_hands_the_command_the_resolved_corpus(
+    data_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rust reads the corpus dataroot finds, so the rule is written once (ADR 0033)."""
+    module = _load("run_with_corpus")
+    seen: dict[str, object] = {}
+
+    def fake_run(
+        argv: list[str], *, env: dict[str, str], check: bool
+    ) -> subprocess.CompletedProcess[bytes]:
+        seen.update(argv=argv[1:], corpus=env[module.CORPUS_ENV], check=check)
+        return subprocess.CompletedProcess(argv, 3)
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    assert module.main(["python", "-V"]) == 3
+    assert seen == {"argv": ["-V"], "corpus": str(data_root / "corpus"), "check": False}
+
+
+def test_run_with_corpus_needs_a_command(capsys: pytest.CaptureFixture[str]) -> None:
+    assert _load("run_with_corpus").main([]) == 2
+    assert "usage" in capsys.readouterr().err

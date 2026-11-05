@@ -3,6 +3,7 @@
 ## Status
 
 amended 2026-11-04 by [ADR 0033](0033-worktrees-reach-shared-state-by-configuration.md): code reads the data root directly; no link.
+
 superseded in part by [ADR 0021](0021-capture-chooses-its-control-port.md): the data
 root stays read-only as described here; captures no longer serialise machine-wide,
 because each session binds its own control port. Its write guard is superseded by

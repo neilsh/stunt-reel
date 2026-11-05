@@ -24,15 +24,20 @@ use stunt_core::flm::{CAMERA_LOOKAHEAD_METERS, FilmTimeline};
 /// Resource ID of the `.SOD` chunk `CTRY.FLM` draws on its opening ticks.
 const CTRY_ACTOR_SHAPE: u16 = 0x7F37;
 
-/// `CTRY.FLM` in the data root `STUNT_DATA_ROOT` names, else in this checkout's `corpus/`
-/// (a worktree holds no corpus link, ADR 0033, so a worktree run sets the variable).
+/// `CTRY.FLM` in the corpus `STUNT_CORPUS` names, else in this checkout's `corpus/`.
+/// `mise run test-corpus` sets the variable to the corpus the Python `dataroot` resolves, the
+/// one rule for where the game files are (ADR 0033).
 fn corpus_film() -> PathBuf {
-    std::env::var_os("STUNT_DATA_ROOT")
+    std::env::var_os("STUNT_CORPUS")
         .map_or_else(
-            || Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join(".."),
+            || {
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("..")
+                    .join("..")
+                    .join("corpus")
+            },
             PathBuf::from,
         )
-        .join("corpus")
         .join("stisldem")
         .join("VAULT")
         .join("CTRY.FLM")

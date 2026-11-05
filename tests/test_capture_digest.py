@@ -93,3 +93,13 @@ def test_without_a_root_the_capture_is_read_from_the_data_root(
     assert capture_digest.main(["vault-intro"]) == 0
     assert capture_digest.main(["--dir", str(directory)]) == 0
     assert "no references.toml entry" not in capsys.readouterr().out
+
+
+def test_a_relative_capture_directory_reads_the_data_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path / "data"))
+    dataroot.data_root.cache_clear()
+    monkeypatch.chdir(tmp_path)
+    _capture(tmp_path / "data", "vault-intro")
+    assert capture_digest.main(["--dir", "captures/vault-intro/frames"]) == 0

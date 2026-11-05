@@ -60,9 +60,8 @@ Run these in a normal terminal, outside an agent sandbox.
    place. A clone that already holds them in its own `corpus/` can move them with
    `mise run init -- --migrate`, or keep them there: when `STUNT_DATA_ROOT` is unset and the
    data root has no `corpus/`, Python code reads the primary checkout's `corpus/` if it holds a
-   folder of game files. `mise run sod-census` reads only `<data root>/corpus`; such a clone
-   passes the primary checkout's corpus by absolute path, which works from any worktree:
-   `mise run sod-census -- --corpus <primary checkout>/corpus`.
+   folder of game files. The Rust readers, `mise run sod-census` and `mise run test-corpus`,
+   are handed the same corpus by `run_with_corpus.py`.
 
 ## A new worktree
 

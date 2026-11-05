@@ -56,13 +56,6 @@ CATEGORIES = REPO_ROOT / "research" / "parity" / "error-categories.toml"
 _DATA_ROOT_HELP = "read the corpus and captures from DIR, as STUNT_DATA_ROOT=DIR would"
 
 
-def _data_root(args: argparse.Namespace) -> Path:
-    """The data root a subcommand reads: ``--data-root`` when given, else the configured one."""
-    if args.data_root is None:
-        return dataroot.data_root()
-    return dataroot.use_data_root(Path(args.data_root))
-
-
 def parse_plant(text: str) -> tuple[Fault, range]:
     """``name[:magnitude]@FIRST-LAST`` (inclusive) as a fault and its tick range.
 
@@ -101,7 +94,7 @@ def _print_rows(document: dict[str, Any]) -> None:
 def run(args: argparse.Namespace) -> int:
     """Run the metric bench, write ``bench.json``, and print the results."""
     film = args.film
-    root = _data_root(args)
+    root = dataroot.data_root_flag(args.data_root)
     recapture = args.recapture
     render = args.render or REPO_ROOT / parity_layout.render_dir(film)
     report = args.report or REPO_ROOT / parity_layout.report_dir(film) / "report.json"
@@ -167,7 +160,7 @@ def _revision() -> str:
 def errors_make(args: argparse.Namespace) -> int:
     """Create sheets and grading briefs, optionally including calibration controls and faults."""
     film = args.film
-    root = _data_root(args)
+    root = dataroot.data_root_flag(args.data_root)
     recapture = None
     with contextlib.ExitStack() as stack:
         if args.batch:
@@ -256,7 +249,7 @@ def errors_score(args: argparse.Namespace) -> int:
 
 def errors_example(args: argparse.Namespace) -> int:
     """Write a category example sheet for the requested film tick."""
-    root = _data_root(args)
+    root = dataroot.data_root_flag(args.data_root)
     with contextlib.ExitStack() as stack:
         if args.batch:
             reference = _batch_capture(root, args.film)
@@ -295,7 +288,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     run_p.add_argument("--render", type=Path, default=None)
     run_p.add_argument("--report", type=Path, default=None)
     run_p.add_argument(
-        "--recapture", type=Path, required=True, help="a second capture of the film (its --out)"
+        "--recapture",
+        type=dataroot.data_path_arg,
+        required=True,
+        help="a second capture of the film (its --out)",
     )
     run_p.add_argument("--seed", type=int, default=DEFAULT_SEED)
     run_p.add_argument("--floor-render", type=Path, default=None)
@@ -318,7 +314,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     make_p.add_argument("--film", required=True)
     make_p.add_argument("--calibrate", action="store_true", help="add controls and planted faults")
     make_p.add_argument(
-        "--recapture", type=Path, default=None, help="a second capture of the film, for controls"
+        "--recapture",
+        type=dataroot.data_path_arg,
+        default=None,
+        help="a second capture of the film, for controls",
     )
     make_p.add_argument("--seed", type=int, default=DEFAULT_SEED)
     make_p.add_argument("--render", type=Path, default=None)

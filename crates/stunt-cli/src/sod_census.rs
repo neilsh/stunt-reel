@@ -22,15 +22,14 @@ use stunt_core::flm::FilmTimeline;
 use stunt_core::sod::{DecodeMode, DecodeRecord, OP_TAP, SodStopReason, census_skip, decode_sod};
 use stunt_core::vfs::detect_and_parse;
 
-/// The environment variable that names the corpus when `--corpus` is absent; `mise run
-/// sod-census` sets it to the data root's, so the path is never shell source.
-const CORPUS_ENV: &str = "STUNT_CENSUS_CORPUS";
+/// The environment variable that names the corpus when `--corpus` is absent. `mise run
+/// sod-census` sets it to the corpus the Python `dataroot` resolves, so the data-root rule is
+/// written once and the path is never shell source.
+const CORPUS_ENV: &str = "STUNT_CORPUS";
 
 /// `sod-census` options as clap parses them.
 #[derive(Debug, Parser)]
 #[command(
-    // mise passes --corpus; a second one on the command line replaces it.
-    args_override_self = true,
     bin_name = "stuntreel sod-census",
     about = "Census of corpus .SOD models that stop on an unimplemented opcode"
 )]
@@ -633,7 +632,7 @@ mod tests {
 
     #[test]
     fn the_corpus_default_comes_from_the_environment() {
-        // mise passes the data root's corpus here, never through the shell command line, so a
+        // mise passes the resolved corpus here, never through the shell command line, so a
         // path holding `$(...)` or a quote is data, not shell source.
         let command = Args::command();
         let corpus = command
@@ -641,13 +640,6 @@ mod tests {
             .find(|arg| arg.get_id() == "corpus")
             .unwrap();
         assert_eq!(corpus.get_env(), Some(std::ffi::OsStr::new(CORPUS_ENV)));
-    }
-
-    #[test]
-    fn a_second_corpus_flag_replaces_the_first() {
-        // mise run sod-census passes --corpus itself; `-- --corpus corpus` must win.
-        let args = Args::try_parse_from(["sod-census", "--corpus", "a", "--corpus", "b"]).unwrap();
-        assert_eq!(args.corpus, PathBuf::from("b"));
     }
 
     fn model(words: &[u16]) -> Vec<u8> {

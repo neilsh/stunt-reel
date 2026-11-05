@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import tomllib
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -229,21 +230,33 @@ def test_every_task_that_builds_names_the_shared_cargo_home() -> None:
     dependency (ADR 0030).
     """
     config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
-    builds = {
+    missing = [
+        name
+        for name in _tasks_that_build(config)
+        if config["tasks"][name].get("env", {}).get("CARGO_HOME") != "{{vars.cargo_home}}"
+    ]
+    assert not missing, missing
+
+
+#: What a script names when it runs cargo: itself, through the parity pipeline, or by building
+#: the release binary that ``stuntreel link`` needs before it rebuilds a film's ``.ALL``.
+_BUILDS = ('"cargo"', "parity_pipeline", "ensure_binary", "resolve_all")
+
+
+def _tasks_that_build(config: dict[str, Any]) -> list[str]:
+    """The tasks that run cargo, directly or through a script that does."""
+    scripts = {
         path.name
         for path in SCRIPTS.glob("*.py")
         if path.name != "worktree_init.py"
-        and any(
-            needle in path.read_text(encoding="utf-8") for needle in ('"cargo"', "parity_pipeline")
-        )
+        and any(needle in path.read_text(encoding="utf-8") for needle in _BUILDS)
     }
-    missing = [
+    return [
         name
         for name, task in config["tasks"].items()
-        if any(script in str(task.get("run", "")) for script in builds)
-        and task.get("env", {}).get("CARGO_HOME") != "{{vars.cargo_home}}"
+        if "CARGO_HOME" in task.get("env", {})
+        or any(script in str(task.get("run", "")) for script in scripts)
     ]
-    assert not missing, missing
 
 
 def test_build_at_sets_cargo_home() -> None:
@@ -281,10 +294,8 @@ def test_every_task_that_builds_depends_on_ensure() -> None:
     exempt = {"fmt-rust", "fmt-check-rust", "deny", "check-rust", "init", "seed"}
     missing = [
         name
-        for name, task in config["tasks"].items()
-        if "CARGO_HOME" in task.get("env", {})
-        and name not in exempt
-        and "ensure" not in task.get("depends", [])
+        for name in _tasks_that_build(config)
+        if name not in exempt and "ensure" not in config["tasks"][name].get("depends", [])
     ]
     assert missing == []
     assert config["tasks"]["ensure"]["hide"] is True
@@ -304,25 +315,19 @@ def test_tasks_use_the_os_temp_directory() -> None:
     assert "TEMP" not in config["env"]
 
 
-def test_sod_census_reads_the_data_roots_corpus() -> None:
-    """The census reads ``corpus/`` relative to its working directory unless told (ADR 0033)."""
+@pytest.mark.parametrize("name", ["sod-census", "test-corpus"])
+def test_rust_corpus_readers_take_the_corpus_python_resolves(name: str) -> None:
+    """dataroot is the one place that finds the corpus; Rust is handed it (ADR 0033).
+
+    The path travels in ``STUNT_CORPUS``, never a shell command line, where a ``$(...)``, a
+    quote or an ``&`` in it would run, and no template in mise.toml repeats the rule.
+    """
     config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
-    task = config["tasks"]["sod-census"]
-    # The path reaches the census through the environment, never the shell command line, where
-    # a `$(...)`, a quote or an `&` in it would run as shell source.
-    assert "{{" not in task["run"]
+    task = config["tasks"][name]
+    assert task["run"].startswith("uv run python python/scripts/run_with_corpus.py cargo ")
     assert "--corpus" not in task["run"]
-    corpus = task["env"]["STUNT_CENSUS_CORPUS"]
-    # env, not get_env: a STUNT_DATA_ROOT set in a mise [env] table is in env alone.
-    assert corpus.startswith("{% set root = env.STUNT_DATA_ROOT | default(value=vars.data_root) %}")
-    # mise shell-expands an env value after rendering it unless MISE_ENV_SHELL_EXPAND turns that
-    # off; $$ keeps a $ in the path literal only while the expansion runs to undo it.
-    assert "env.MISE_ENV_SHELL_EXPAND | default(value='true') | lower" in corpus
-    assert "{{ root | replace(from='$', to='$$') }}" in corpus
-    assert corpus.endswith("{% endif %}/corpus")
-    # A leading ~ expands as dataroot.data_root() expands it: USERPROFILE on Windows, else HOME.
-    assert "env.USERPROFILE | default(value=home)" in corpus
-    assert "trim_start_matches(pat='~')" in corpus
+    assert "{%" not in str(task["env"])
+    assert "ensure" in task["depends"]
 
 
 def test_the_data_root_var_sits_beside_the_primary() -> None:

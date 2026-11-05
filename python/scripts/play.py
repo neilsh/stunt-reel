@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
 from stunt_reel import dataroot
 from stunt_reel.dataroot import data_path_arg
@@ -27,12 +26,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--film",
         type=data_path_arg,
-        default="corpus/stisldem/VAULT/CTRY.FLM",
+        default=dataroot.DEFAULT_FILM,
         help="film to play",
     )
     parser.add_argument(
         "--game-root",
-        type=Path,
+        type=data_path_arg,
         default=None,
         help="game tree whose PLAYONE.EXE to run, such as <data root>/builds/patched",
     )

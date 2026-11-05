@@ -396,7 +396,7 @@ def main(argv: list[str] | None = None) -> int:
     # and captures are read from the data root either way.
     root = REPO_ROOT
     if args.data_root is not None:
-        root = dataroot.use_data_root(Path(args.data_root))
+        root = dataroot.use_data_root(args.data_root)
     ledger = root / parity_layout.batch_root() / _LEDGER_NAME
     if args.summary:
         slugs = _names(args.only)

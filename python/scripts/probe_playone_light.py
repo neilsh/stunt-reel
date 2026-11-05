@@ -56,7 +56,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--film",
         type=data_path_arg,
-        default="corpus/stisldem/VAULT/CTRY.FLM",
+        default=dataroot.DEFAULT_FILM,
         help="film to play",
     )
     parser.add_argument(

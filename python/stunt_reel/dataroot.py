@@ -30,6 +30,7 @@ from stunt_reel import parity_layout
 __all__ = [
     "CACHE_DIRNAME",
     "DATA_ENV",
+    "DEFAULT_FILM",
     "ENV_DIRNAME",
     "ENV_MARKER",
     "LINK_TARGETS",
@@ -43,6 +44,7 @@ __all__ = [
     "create_link",
     "data_path_arg",
     "data_root",
+    "data_root_flag",
     "discard_env",
     "env_marker",
     "env_root",
@@ -53,6 +55,7 @@ __all__ = [
     "orphan_envs",
     "primary_checkout",
     "read_data_file",
+    "read_data_file_or_report",
     "remove_link",
     "require_corpus",
     "require_corpus_or_report",
@@ -77,6 +80,9 @@ ENV_DIRNAME = "venvs"
 #: name of the legacy marker that older environments still carry inside them.
 ENV_MARKER = ".checkout"
 VENV_DIRNAME = ".venv"
+#: The film the PLAYONE drivers play unless told otherwise, spelled relative to the data root:
+#: an ``argparse`` default resolved through :func:`data_path_arg`.
+DEFAULT_FILM = "corpus/stisldem/VAULT/CTRY.FLM"
 
 #: (directory inside the data root, path inside the checkout that borrows it).
 #: Each corpus folder is its own link, because ``corpus/README.md`` and
@@ -144,6 +150,11 @@ def use_data_root(path: Path) -> Path:
     return root
 
 
+def data_root_flag(flag: Path | None) -> Path:
+    """The data root a ``--data-root`` flag selects: *flag* made current, else the configured one."""
+    return data_root() if flag is None else use_data_root(flag)
+
+
 def corpus_root() -> Path:
     """The directory holding the game files: ``corpus/`` under the data root.
 
@@ -161,17 +172,19 @@ def corpus_root() -> Path:
     if primary is None:
         return shared
     local = primary / "corpus"
-    return local if _holds_folders(local) else shared
+    return local if _holds_game_files(local) else shared
 
 
-def _holds_folders(path: Path) -> bool:
-    """True when directory *path* holds at least one directory; false when it is absent.
+def _holds_game_files(corpus: Path) -> bool:
+    """True when *corpus* holds a folder with a file in it; false when it is absent.
 
-    Any other error is raised: falling back past an unreadable ``corpus/`` would send the
-    user to look for the game files in the wrong place.
+    The game files sit in folders (``corpus/stisldem`` and its siblings); the old links left
+    those folders empty, and ``corpus/README.md`` is tracked, so neither is a corpus. Any other
+    error is raised: passing over an unreadable ``corpus/`` would send the user to look for the
+    game files in the wrong place.
     """
     try:
-        return any(entry.is_dir() for entry in path.iterdir())
+        return any(_holds_files(child) for child in corpus.iterdir() if child.is_dir())
     except FileNotFoundError, NotADirectoryError:
         return False
 
@@ -180,17 +193,15 @@ def require_corpus(root: Path | None = None) -> Path:
     """The corpus of data root *root* (the configured one by default), which must exist.
 
     A reader of the game files calls this first, so a machine without them is told where
-    they were looked for instead of finding no films and reporting success.  The game files
-    sit in folders (``corpus/stisldem`` and its siblings), so a corpus must hold a folder with a
-    file in it: the old links created those folders empty, and ``corpus/README.md`` is tracked in
-    every checkout, which is its own data root outside git.
+    they were looked for instead of finding no films and reporting success.  A checkout outside
+    git is its own data root, and its tracked ``corpus/README.md`` is no game file.
     """
     corpus = corpus_root() if root is None else corpus_of(root)
     if not corpus.is_dir():
         raise SharedDataError(
             f"no game files: {corpus} is missing; set {DATA_ENV} or see corpus/README.md"
         )
-    if not any(_holds_files(child) for child in corpus.iterdir() if child.is_dir()):
+    if not _holds_game_files(corpus):
         raise SharedDataError(
             f"no game files: {corpus} holds no game files; set {DATA_ENV} or see corpus/README.md"
         )
@@ -232,14 +243,20 @@ def resolve_data_path(path: Path) -> Path:
     or relative, is returned unchanged.  The first part matches without regard to case, as
     a Windows path does.
     """
-    if path.is_absolute() or not path.parts:
+    part = _data_part(path)
+    if part is None:
         return path
-    first = path.parts[0].lower()
-    if first not in _DATA_PARTS:
-        return path
-    if first == "corpus":
+    if part == "corpus":
         return corpus_root().joinpath(*path.parts[1:])
-    return data_root().joinpath(first, *path.parts[1:])
+    return data_root().joinpath(part, *path.parts[1:])
+
+
+def _data_part(path: Path) -> str | None:
+    """The data-root directory relative *path* starts in, lower-cased; ``None`` for any other."""
+    if path.is_absolute() or not path.parts:
+        return None
+    first = path.parts[0].lower()
+    return first if first in _DATA_PARTS else None
 
 
 def read_data_file(path: Path) -> bytes:
@@ -248,10 +265,18 @@ def read_data_file(path: Path) -> bytes:
     Such a path needs the corpus, so its absence raises :class:`SharedDataError` naming where
     it was looked for; any other path reads as it is, and a missing file raises ``OSError``.
     """
-    resolved = resolve_data_path(path)
-    if resolved != path and path.parts[0].lower() == "corpus":
+    if _data_part(path) == "corpus":
         require_corpus()
-    return resolved.read_bytes()
+    return resolve_data_path(path).read_bytes()
+
+
+def read_data_file_or_report(program: str, path: Path) -> bytes | None:
+    """:func:`read_data_file`, but print ``<program>: <reason>`` to stderr and return ``None``."""
+    try:
+        return read_data_file(path)
+    except (SharedDataError, OSError) as err:
+        sys.stderr.write(f"{program}: {err}\n")
+        return None
 
 
 def data_path_arg(text: str) -> Path:

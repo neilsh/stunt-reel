@@ -16,8 +16,8 @@ from __future__ import annotations
 import argparse
 import sys
 import tomllib
-from pathlib import Path
 from typing import TYPE_CHECKING
+lazy from pathlib import Path
 
 from stunt_reel import capture_store, dataroot, parity_layout, references
 
@@ -65,7 +65,9 @@ def report(slug: str, digest: str, *, promotable: bool = True) -> list[str]:
 def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("film", nargs="?", help="film slug, e.g. vault-ctry")
-    parser.add_argument("--dir", type=Path, help="a capture directory instead of a film slug")
+    parser.add_argument(
+        "--dir", type=dataroot.data_path_arg, help="a capture directory instead of a film slug"
+    )
     args = parser.parse_args(argv)
 
     promotable = True

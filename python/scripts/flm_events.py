@@ -17,7 +17,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from stunt_reel.dataroot import SharedDataError, read_data_file
+from stunt_reel.dataroot import read_data_file_or_report
 from stunt_reel.flm_walk import (
     SIF_ANIMATES,
     SIF_DRAW,
@@ -92,10 +92,8 @@ def main(argv: list[str]) -> int:
     if len(paths) != 1:
         print(__doc__)
         return 2
-    try:
-        data = read_data_file(Path(paths[0]))
-    except (SharedDataError, OSError) as err:
-        print(f"flm_events: {err}", file=sys.stderr)
+    data = read_data_file_or_report("flm_events", Path(paths[0]))
+    if data is None:
         return 2
     total, events = film_events(data, sounds="--sounds" in argv)
     print("total ticks", total)

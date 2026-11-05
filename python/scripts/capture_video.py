@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--film",
         type=data_path_arg,
-        default="corpus/stisldem/VAULT/CTRY.FLM",
+        default=dataroot.DEFAULT_FILM,
         help=(
             "the film's .FLM file; its .ALL is the sibling or one stored by make-all (a film "
             "with neither is refused); it is staged alone into "
@@ -63,7 +63,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--game-root",
-        type=Path,
+        type=data_path_arg,
         default=None,
         help=(
             "game tree whose PLAYONE.EXE and engine files to run, such as "

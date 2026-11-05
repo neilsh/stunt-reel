@@ -29,7 +29,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, override
 
 from stunt_reel import parity_layout
 from stunt_reel.dataroot import (
@@ -64,6 +64,24 @@ CLEAN_FILES: tuple[str, ...] = (".coverage",)
 
 #: Directories inside the primary checkout where linked worktrees live (SOP 6).
 POOL_DIRS: tuple[str, ...] = (".agents/worktrees", ".claude/worktrees")
+
+
+@dataclass(frozen=True)
+class Line:
+    """One line of ``init``'s report, printed as ``  <mark> <text>``.
+
+    *mark* is ``+`` (changed), ``-`` (skipped), ``=`` (already so) or ``!`` (a problem).
+    *news* marks a line ``ensure`` prints even when quiet: a change this run made, or one it
+    failed to make. A standing warning, such as a hooks path someone else chose, is not news.
+    """
+
+    mark: Literal["+", "-", "=", "!"]
+    text: str
+    news: bool = False
+
+    @override
+    def __str__(self) -> str:
+        return f"  {self.mark} {self.text}"
 
 
 def _size(path: Path) -> int:
@@ -112,7 +130,7 @@ def _uv_sync() -> int:
 HOOKS_DIR = ".githooks"
 
 
-def ensure_hooks_path(repo: Path) -> list[str]:
+def ensure_hooks_path(repo: Path) -> list[Line]:
     """Point *repo*'s ``core.hooksPath`` at the committed hooks; the lines ``init`` prints.
 
     The setting is in the shared repository config, so one ``init`` covers every worktree,
@@ -122,13 +140,15 @@ def ensure_hooks_path(repo: Path) -> list[str]:
     """
     current = _git(repo, "config", "--get", "core.hooksPath").stdout.strip()
     if current and current != HOOKS_DIR:
-        return [f"  ! core.hooksPath is {current!r}; left alone, so {HOOKS_DIR}/ does not run"]
-    lines = [f"  = core.hooksPath {HOOKS_DIR}"]
+        return [
+            Line("!", f"core.hooksPath is {current!r}; left alone, so {HOOKS_DIR}/ does not run")
+        ]
+    lines = [Line("=", f"core.hooksPath {HOOKS_DIR}")]
     if not current:
         result = _git(repo, "config", "core.hooksPath", HOOKS_DIR)
         if result.returncode != 0:
-            return [f"  ! could not set core.hooksPath: {result.stderr.strip()}"]
-        lines = [f"  + core.hooksPath -> {HOOKS_DIR}"]
+            return [Line("!", f"could not set core.hooksPath: {result.stderr.strip()}", news=True)]
+        lines = [Line("+", f"core.hooksPath -> {HOOKS_DIR}", news=True)]
     common = _git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").stdout.strip()
     local = Path(common) / "hooks"
     if not common or not local.is_dir():
@@ -137,7 +157,9 @@ def ensure_hooks_path(repo: Path) -> list[str]:
     committed = {path.name for path in hooks.iterdir()} if hooks.is_dir() else set()
     for hook in sorted(local.iterdir()):
         if hook.suffix != ".sample" and hook.is_file() and hook.name not in committed:
-            lines.append(f"  ! {hook} no longer runs: core.hooksPath replaces the hooks there")
+            lines.append(
+                Line("!", f"{hook} no longer runs: core.hooksPath replaces the hooks there")
+            )
     return lines
 
 
@@ -216,17 +238,13 @@ def _rustc_vv() -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
-#: How a failed seed's line starts; ``mise run seed`` exits nonzero on it, init carries on.
-_SEED_FAILED = "  ! seed: "
-
-
 def _cargo_home() -> Path:
     """The CARGO_HOME cargo tasks use: mise passes it in; run directly, the shared cache."""
     named = os.environ.get("STUNT_CARGO_HOME")
     return Path(named) if named else cache_root() / "cargo"
 
 
-def _cargo_home_warning(cargo_home: Path) -> str | None:
+def _cargo_home_warning(cargo_home: Path) -> Line | None:
     """A line for a CARGO_HOME that names another cache than the primary checkout's.
 
     mise falls back to the checkout's own ``.cache/cargo`` where git cannot name the primary
@@ -236,10 +254,12 @@ def _cargo_home_warning(cargo_home: Path) -> str | None:
     shared = cache_root() / "cargo"
     if os.path.normcase(os.path.normpath(cargo_home)) == os.path.normcase(os.path.normpath(shared)):
         return None
-    return f"  ! CARGO_HOME {cargo_home} is not {shared}: every dependency rebuilds here"
+    return Line(
+        "!", f"CARGO_HOME {cargo_home} is not {shared}: every dependency rebuilds here", news=True
+    )
 
 
-def _seed_target() -> str:
+def _seed_target() -> list[Line]:
     """Seed this checkout's empty target/ from another checkout; a line saying what happened,
     and a second when the cargo home differs from the shared one."""
     cargo_home = _cargo_home()
@@ -257,18 +277,22 @@ def _seed_target() -> str:
     except Exception as error:
         outcome = SeedOutcome("failed", f"{type(error).__name__}: {error}")
     if outcome.status == "seeded":
-        line = f"  + target/ seeded {outcome.detail}"
+        line = Line("+", f"target/ seeded {outcome.detail}", news=True)
     elif outcome.status == "skipped":
-        line = f"  - target/ not seeded: {outcome.detail}"
+        line = Line("-", f"target/ not seeded: {outcome.detail}")
     else:
-        line = f"{_SEED_FAILED}{outcome.detail}"
+        line = Line("!", f"seed: {outcome.detail}", news=True)
     warning = _cargo_home_warning(cargo_home)
-    return line if warning is None else f"{line}\n{warning}"
+    return [line] if warning is None else [line, warning]
 
 
 #: The lock file under target/ that orders concurrent ``ensure`` and ``seed`` runs; no seed
 #: copies it.
 ENSURE_LOCK = ".ensure.lock"
+
+#: The file under target/ saying ``ensure`` has checked ``core.hooksPath`` for this target/, so a
+#: later run costs a few stats and no git; ``cargo clean`` or ``clean`` removes it with target/.
+HOOKS_CHECKED = ".hooks-checked"
 
 #: The tag that tells backup and indexing tools a directory is a cache (bford.info/cachedir).
 #: Cargo writes it only into a target/ it creates, and ``ensure`` creates target/ first, so
@@ -278,11 +302,6 @@ CACHEDIR_TAG = (
     "# This file is a cache directory tag created by stunt-reel's ensure task.\n"
     "# For information about cache directory tags see https://bford.info/cachedir/\n"
 )
-
-
-def _reports(lines: list[str]) -> list[str]:
-    """The lines of *lines* worth printing from ``ensure``: a change (``+``) or a problem (``!``)."""
-    return [line for line in lines if line.startswith(("  +", "  !"))]
 
 
 def _ensure(*, report: bool = False) -> int:
@@ -300,15 +319,17 @@ def _ensure(*, report: bool = False) -> int:
         _tag_cache(target)
         # The first holder seeds; the others wait, then find target/ built.
         with exclusive(target / ENSURE_LOCK):
-            lines = _hooks(report=report)
+            lines = _hooks(target, report=report)
             if needs_seed(target):
-                seeded = _seed_target().splitlines()
-                lines += seeded if report else _reports(seeded)
+                seeded = _seed_target()
+                lines += seeded if report else [line for line in seeded if line.news]
             elif report:
-                lines.append("  = target/ already built")
+                lines.append(Line("=", "target/ already built"))
     except OSError as err:
         # TimeoutError is an OSError: a stuck holder, as much as a lock this volume refuses.
-        lines = [f"  ! ensure: {err}; target/ not seeded, core.hooksPath not checked"]
+        lines = [
+            Line("!", f"ensure: {err}; target/ not seeded, core.hooksPath not checked", news=True)
+        ]
     for line in lines:
         print(line)
     return 0
@@ -326,17 +347,23 @@ def _tag_cache(target: Path) -> None:
         pass
 
 
-def _hooks(*, report: bool) -> list[str]:
-    """``ensure_hooks_path``'s lines worth printing; none outside a git checkout."""
-    if primary_checkout() is None:
+def _hooks(target: Path, *, report: bool) -> list[Line]:
+    """``ensure_hooks_path``'s lines worth printing; none outside a git checkout.
+
+    The shared setting rarely changes, so a quiet run checks it once per *target*: the stamp
+    :data:`HOOKS_CHECKED` there skips git until target/ goes. A failed check leaves no stamp.
+    """
+    stamp = target / HOOKS_CHECKED
+    if (not report and stamp.exists()) or primary_checkout() is None:
         return []
     try:
         hooks = ensure_hooks_path(REPO_ROOT)
     except (SharedDataError, OSError) as err:
-        return [f"  ! hooks: {err}"]
+        return [Line("!", f"hooks: {err}", news=True)]
+    if not any(line.news and line.mark == "!" for line in hooks):
+        stamp.touch()
     # Only a hooks path this call set, or failed to set, is news; the rest is init's report.
-    changed = any(line.startswith(("  +", "  ! could not")) for line in hooks)
-    return hooks if report or changed else []
+    return hooks if report or any(line.news for line in hooks) else []
 
 
 def _tree_footprint(path: Path) -> tuple[int, int]:
@@ -1041,12 +1068,14 @@ def main(argv: list[str] | None = None) -> int:
         try:
             # The same lock as ensure: two seeds would share one staging directory.
             with exclusive(REPO_ROOT / "target" / ENSURE_LOCK):
-                line = _seed_target()
+                lines = _seed_target()
         except OSError as err:
             # TimeoutError is an OSError, as is a lock this volume refuses.
-            line = f"{_SEED_FAILED}{err}"
-        print(line)
-        return 1 if line.startswith(_SEED_FAILED) else 0
+            lines = [Line("!", f"seed: {err}", news=True)]
+        for line in lines:
+            print(line)
+        # The first line is the seed's outcome; a second only warns about the cargo home.
+        return 1 if lines[0].mark == "!" else 0
     if args.command == "reap":
         return _reap(
             bool(args.yes),

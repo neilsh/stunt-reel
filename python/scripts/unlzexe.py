@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from stunt_reel.dataroot import SharedDataError, read_data_file
+from stunt_reel.dataroot import read_data_file_or_report
 
 
 def _relocations(d: bytes, loader: int) -> list[int]:
@@ -156,10 +156,8 @@ def main(argv: list[str]) -> int:
         print(__doc__)
         return 2
     # A corpus/... input is read from the data root; any other file reads as it is.
-    try:
-        data = read_data_file(Path(argv[1]))
-    except (SharedDataError, OSError) as err:
-        print(f"unlzexe: {err}", file=sys.stderr)
+    data = read_data_file_or_report("unlzexe", Path(argv[1]))
+    if data is None:
         return 2
     image, meta = unpack(data)
     out = Path(argv[2])

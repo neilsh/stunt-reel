@@ -83,7 +83,7 @@ def test_a_missing_data_root_falls_back_to_the_primary(
 ) -> None:
     # A clone that keeps its corpus in the checkout has no <primary>.data beside it.
     primary = _primary(tmp_path)
-    (primary / "corpus" / "stisldem").mkdir(parents=True)
+    _game_file(primary / "corpus")
     _worktree(monkeypatch, primary)
     film = Path("corpus/stisldem/VAULT/CTRY.FLM")
     assert dataroot.corpus_root() == primary / "corpus"
@@ -415,3 +415,35 @@ def test_read_data_file_needs_the_corpus_only_for_a_corpus_path(
     loose = tmp_path / "loose.FLM"
     loose.write_bytes(b"film")
     assert dataroot.read_data_file(loose) == b"film"
+
+
+def test_empty_folders_in_the_primary_corpus_are_no_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The old links left ``corpus/<name>`` empty; such a corpus holds no game files (ADR 0033)."""
+    primary = _primary(tmp_path)
+    (primary / "corpus" / "stisldem").mkdir(parents=True)
+    _worktree(monkeypatch, primary)
+    assert dataroot.corpus_root() == tmp_path / "stunt-reel.data" / "corpus"
+
+
+def test_a_data_root_flag_moves_the_data_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path / "configured"))
+    assert dataroot.data_root_flag(None) == (tmp_path / "configured").resolve()
+    assert dataroot.data_root_flag(tmp_path / "named") == (tmp_path / "named").resolve()
+    assert dataroot.data_root() == (tmp_path / "named").resolve()
+
+
+def test_read_data_file_or_report_names_the_program(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path / "data"))
+    assert dataroot.read_data_file_or_report("unlzexe", Path("corpus/stisldem/X.EXE")) is None
+    assert capsys.readouterr().err.startswith("unlzexe: no game files")
+    assert dataroot.read_data_file_or_report("unlzexe", tmp_path / "absent") is None
+    assert capsys.readouterr().err.startswith("unlzexe: ")
+    loose = tmp_path / "loose.EXE"
+    loose.write_bytes(b"MZ")
+    assert dataroot.read_data_file_or_report("unlzexe", loose) == b"MZ"

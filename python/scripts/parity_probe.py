@@ -438,7 +438,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.set_defaults(func=fn)
         p.add_argument(
             "--reference",
-            type=Path,
+            type=dataroot.data_path_arg,
             default=None,
             help="a capture directory (default: ctry's reference from references.toml)",
         )
