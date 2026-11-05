@@ -101,11 +101,12 @@ A PR that changes rendered output — anything that moves a pixel `stuntreel` dr
 
 ```
 - [ ] 1. Pick the ticks where the change shows most (the frames the parity score moved, or the ones the PR is about); CTRY and INTRO at least, plus any batch film the PR targets
-- [ ] 2. Render before and after: while the change is still behind a DBG_* switch, one picture holds both (mise run frame -- --film <film> --ticks <t,t> --var DBG_X=0,1)
-       Otherwise run mise run frame on the base commit (git switch --detach <base>), copy its PNGs to build/scratch/pr/before/, switch back, run it again and copy those to build/scratch/pr/after/
-- [ ] 3. Crop to the region that changed when the whole frame hides it (--crop x0,y0,x1,y1 --scale 3)
-- [ ] 4. Write the body to build/scratch/pr/body.md, referencing each picture by its path relative to that file: ![INTRO tick 48: capture, before, after](./intro_48.png)
-- [ ] 5. gh pr create (or gh pr edit <n>) --body-file build/scratch/pr/body.md --attach './build/scratch/pr/intro_48.png#INTRO tick 48: capture, before, after', one --attach per picture
+- [ ] 2. Add --crop x0,y0,x1,y1 --scale 3 to every frame run below when the whole frame hides the change
+- [ ] 3. Render before and after, and copy the PNGs from build/scratch/frame/<film>/ (the next run replaces them):
+       behind a DBG_* switch, one picture holds both: mise run frame -- --film <film> --ticks <t,t> --var DBG_X=0,1, copied to build/scratch/pr/
+       otherwise two pictures: mise run frame on the base commit (git switch --detach <base>) copied to build/scratch/pr/before/, then on the PR head copied to build/scratch/pr/after/
+- [ ] 4. Write the body to build/scratch/pr/body.md, referencing each picture by its path relative to that file: ![INTRO tick 48: capture, before, after](./intro_48.png), or ./before/intro_48.png and ./after/intro_48.png
+- [ ] 5. gh pr create (or gh pr edit <n>) --body-file build/scratch/pr/body.md --attach './build/scratch/pr/intro_48.png#INTRO tick 48: capture, before, after', one --attach per picture the body references
 - [ ] 6. A non-zero exit that still printed the PR URL means the PR exists but some uploads failed: re-run as gh pr edit <n> with the same --body-file and --attach flags until it exits 0 (no URL printed means nothing was created). Then confirm gh pr view <n> --json body --jq .body holds no ](./ reference
 ```
 
