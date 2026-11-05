@@ -63,6 +63,18 @@ Run these in a normal terminal, outside an agent sandbox.
    folder of game files. The Rust readers, `mise run sod-census` and `mise run test-corpus`,
    are handed the same corpus by `run_with_corpus.py`.
 
+   The data root also holds `builds/`, which `mise run game-builds` writes: `builds/unpatched`
+   and `builds/patch3`. The Patch #3 tree was once `builds/patched`. A data root that has only
+   that old directory keeps working in `debug-x` and `pair-builds`, the callers of
+   `game_builds.build_tree`: they use it and print a message to run `mise run game-builds`
+   again, which creates `builds/patch3`. An explicit `--game-root <data root>/builds/patch3`
+   for `capture-ref`, `capture-video`, `play` or `make-all` is a plain path and fails until
+   `mise run game-builds` has run (or pass the old `builds/patched` path). Nothing renames the old
+   directory, and keep it until the worktrees that use it and the `make-all` manifests that
+   record it as their game root are migrated: `all_archive` rejects a manifest whose recorded
+   directory is missing. The fallback is transitional,
+   `game_builds.build_tree` in [`game_builds.py`](../python/stunt_reel/game_builds.py).
+
 ## A new worktree
 
 Nothing to do. Create it with any tool, inside the primary checkout or beside it:

@@ -70,18 +70,18 @@ per boot. Nothing holds a session across commands.
 |---|---|---|
 | `link.py` | TCP listener on port 0 ([ADR 0021](../../adr/0021-capture-chooses-its-control-port.md)); `req(cmd)` with exact id match and a per-request timeout; `dump(addr, len)` as `MEMDUMPBIN` to a run-scoped scratch file read back; `regs()` parsing `EV CS IP SS SP DS ES AX BX CX DX SI DI BP` | stdlib only |
 | `boot.py` | stages the build's tree with one film under the data root's `stage/` through `staging.py`'s film-tree staging; writes its own `dosbox-x-<port>.conf`; launches DOSBox-X; waits for the six-index dialog by `A000` dumps; sends the film's keys through the BIOS keyboard buffer (`0040:001A..003D`); finds the load paragraph | `link`, `staging.py` where it fits, `game_builds` |
-| `plan.py` | parses and validates a plan; `for_patched` rewrites its offsets for the patched build | `addr` |
+| `plan.py` | parses and validates a plan; `for_patch3` rewrites its offsets for the patched build | `addr` |
 | `run.py` | arms the probes; runs the hit loop; writes the JSONL | `link`, `addr`, `watch` |
 | `addr.py` | image offset to runtime `seg:off` and back for a build; patched offsets through #78's pairing | `build_pairing` |
 | `watch.py` | decides whether a watch stop is a write to the watched address (section 3.4) | iced-x86 |
 
 `python/scripts/debug_x.py` is the CLI; `mise run debug-x -- --plan <toml> --film <path>
---build unpatched|patched [--out <dir>]`.
+--build unpatched|patch3 [--out <dir>]`.
 
 ### 3.2 Plan format
 
 Plans live in `tools/dosbox-x/plans/`, beside the conf template `tools/dosbox-x/dosbox-x.conf`.
-Offsets are unpatched image offsets; `--build patched` maps them.
+Offsets are unpatched image offsets; `--build patch3` maps them.
 
 ```toml
 [run]
@@ -220,7 +220,7 @@ Live runs stay outside the gate (`mise run debug-x`).
 4. Per frame, on dosbox-automation: add `DS:0x49EC..0x49F0` and the variable-13 value to
    `probe-light`'s sampled words and run every frame of `CTRY.FLM`. The note gets a per-shot
    table (tick range, var 13, `DS:0x49EC`, `L`, agree?); the raw output stays in the data root.
-5. Steps 1 and 2 again with `--build patched`.
+5. Steps 1 and 2 again with `--build patch3`.
 
 Write-up: `terrain-shade.md` § 4 gains the caller, its inputs and the writers at image offsets on
 both builds, at `[Bounded Observation]` or better, and says whether a renderer can reproduce `L`
@@ -262,7 +262,7 @@ none. A row in [`log.md`](../../../research/parity/log.md).
    bounds (shade law alone +0.0105 CTRY, +0.0029 INTRO; more where the capture draws sand). One
    `ground-objects` dump of `INTRO.FLM` checks that its stream carries the sand the capture shows
    ([#70](https://github.com/neilsh/stunt-reel/issues/70)).
-7. Steps 1 and 3 again with `--build patched`.
+7. Steps 1 and 3 again with `--build patch3`.
 
 Write-up: `world-scene.md` gains the producer and colour source at image offsets on both builds,
 tiers promoted from `[Unknown]`, open questions 1 to 4 closed or narrowed, and **Ruled out**

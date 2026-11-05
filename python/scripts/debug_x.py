@@ -1,12 +1,12 @@
 """Run one breakpoint plan on DOSBox-X's debugger link and record its hits as JSON lines.
 
-`mise run debug-x -- --plan tools/dosbox-x/plans/smoke.toml [--film F] [--build patched]`
+`mise run debug-x -- --plan tools/dosbox-x/plans/smoke.toml [--film F] [--build patch3]`
 boots the film, arms the plan's probes, writes
 `<data root>/debug/<film stem>/<plan>-<build>-<UTC stamp>[-<n>].jsonl` (`-<n>` only when a run
 in the same second took the name), prints a summary of at most 40 lines and exits: 0 when the
 run ended normally (spent, stop_tick or timeout), 1 when a build's `PLAYONE.EXE`, the emulator
 or the link failed, 2 when the plan, the patched mapping or a probe site was refused. Plan offsets are unpatched
-image and DS offsets; `--build patched` maps them through #78's pairing
+image and DS offsets; `--build patch3` maps them through #78's pairing
 (`docs/process/plans/debugger-breakpoints-2026-11-04.md`).
 """
 
@@ -24,7 +24,7 @@ from build_pairing import load_image, pair_images
 from dbx.addr import Runtime, vm_paragraph
 from dbx.boot import DOSBOX_X_VERSION, booted
 from dbx.link import LinkError
-from dbx.plan import PlanError, for_patched, load_plan
+from dbx.plan import PlanError, for_patch3, load_plan
 from dbx.run import run_plan
 
 from stunt_reel import dataroot, game_builds
@@ -48,7 +48,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--film", type=dataroot.data_path_arg, default="corpus/stisldem/VAULT/CTRY.FLM"
     )
-    parser.add_argument("--build", choices=("unpatched", "patched"), default="unpatched")
+    parser.add_argument("--build", choices=game_builds.BUILD_NAMES, default="unpatched")
     parser.add_argument("--out", type=Path, default=root / "debug", help="output root")
     return parser.parse_args(argv)
 
@@ -111,9 +111,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     builds = dataroot.data_root() / game_builds.BUILDS_DIR
     try:
-        image = load_image(builds / args.build / "PLAYONE.EXE")
+        image = load_image(game_builds.build_tree(builds, args.build) / "PLAYONE.EXE")
         unpatched = (
-            load_image(builds / "unpatched" / "PLAYONE.EXE") if args.build == "patched" else None
+            load_image(builds / "unpatched" / "PLAYONE.EXE") if args.build == "patch3" else None
         )
     except (OSError, ValueError) as exc:  # no build there, or not LZEXE
         print(f"debug-x: {exc}", file=sys.stderr)
@@ -122,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     notes: dict[str, str] = {}
     if unpatched is not None:
         try:
-            plan, notes = for_patched(plan, pair_images(unpatched, image))
+            plan, notes = for_patch3(plan, pair_images(unpatched, image))
         except (PlanError, ValueError) as exc:  # unmappable probe, or unpairable builds
             print(f"debug-x: {exc}", file=sys.stderr)
             return 2

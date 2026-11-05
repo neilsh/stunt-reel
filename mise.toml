@@ -184,7 +184,7 @@ description = "Unpack PLAYONE.EXE with LZEXE 0.91 (mise run unlzexe -- corpus/st
 run = "uv run python python/scripts/unlzexe.py"
 
 [tasks.debug-x]
-description = "Run a breakpoint plan on DOSBox-X's debugger (mise run debug-x -- --plan tools/dosbox-x/plans/smoke.toml [--film F] [--build patched])"
+description = "Run a breakpoint plan on DOSBox-X's debugger (mise run debug-x -- --plan tools/dosbox-x/plans/smoke.toml [--film F] [--build patch3])"
 run = "uv run python python/scripts/debug_x.py"
 
 [tasks.gvpoly-stream]

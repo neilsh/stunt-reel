@@ -33,7 +33,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--game-root",
         type=data_path_arg,
         default=None,
-        help="game tree whose PLAYONE.EXE to run, such as <data root>/builds/patched",
+        help="game tree whose PLAYONE.EXE to run, such as <data root>/builds/patch3",
     )
     return parser.parse_args(argv)
 

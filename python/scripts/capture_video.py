@@ -67,7 +67,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "game tree whose PLAYONE.EXE and engine files to run, such as "
-            "<data root>/builds/patched from mise run game-builds (default: the film's own tree, "
+            "<data root>/builds/patch3 from mise run game-builds (default: the film's own tree, "
             "else the demo); the build is recognised by its hash"
         ),
     )
