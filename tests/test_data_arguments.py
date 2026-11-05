@@ -59,11 +59,18 @@ def test_the_default_film_reads_the_data_root(
     assert _load(script).parse_args().film == data_root / FILM
 
 
-def test_the_default_game_root_reads_the_data_root(
-    data_root: Path, monkeypatch: pytest.MonkeyPatch
+def test_make_all_takes_its_default_game_tree_from_the_build_choice(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(sys, "argv", ["make_all", "--film", FILM])
-    assert _load("make_all").parse_args().game_root == data_root / "corpus/stuntisl"
+    assert _load("make_all").parse_args().game_root is None
+
+
+def test_a_game_root_under_builds_reads_the_data_root(
+    data_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["make_all", "--film", FILM, "--game-root", "builds/patch3"])
+    assert _load("make_all").parse_args().game_root == data_root / "builds/patch3"
 
 
 def test_flm_events_reads_a_relative_film_from_the_data_root(

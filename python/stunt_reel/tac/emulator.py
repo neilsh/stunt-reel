@@ -13,5 +13,9 @@ class EmulatorUnavailable(RuntimeError):  # noqa: N818 - the agreed interface na
     """The emulator executable is not installed or not on PATH."""
 
 
+class LaunchFailed(RuntimeError):  # noqa: N818 - the agreed interface name
+    """The emulator process never came up (exited at launch, or never answered); no guest ran."""
+
+
 class GuestTimeout(RuntimeError):  # noqa: N818 - the agreed interface name
     """The guest did not come up or did not finish within its budget."""

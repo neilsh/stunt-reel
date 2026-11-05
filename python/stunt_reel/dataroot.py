@@ -221,8 +221,10 @@ def require_corpus_or_report(program: str, root: Path | None = None) -> Path | N
         return None
 
 
+#: The directory of the data root that holds one game tree per build (``game_builds.BUILDS_DIR``).
+BUILDS_DIRNAME = "builds"
 #: The first part of a relative path that names something in the data root.
-_DATA_PARTS = ("corpus", parity_layout.capture_root().as_posix())
+_DATA_PARTS = ("corpus", parity_layout.capture_root().as_posix(), BUILDS_DIRNAME)
 
 
 def corpus_of(root: Path) -> Path:

@@ -24,6 +24,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
+from stunt_reel import dataroot
+
 __all__ = [
     "BUILDS_DIR",
     "BUILD_NAMES",
@@ -41,7 +43,7 @@ __all__ = [
 ]
 
 #: Data-root directory holding one game tree per build and the manifest.
-BUILDS_DIR = "builds"
+BUILDS_DIR = dataroot.BUILDS_DIRNAME
 MANIFEST_NAME = "patch3-manifest.json"
 BuildName = Literal["unpatched", "patch3"]
 BUILD_NAMES: tuple[BuildName, ...] = ("unpatched", "patch3")

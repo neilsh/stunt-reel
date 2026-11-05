@@ -2,8 +2,11 @@
 
 ## Status
 
-accepted 2026-11-01, not yet implemented: the order of work is in
-[the capture store plan](../process/plans/capture-store-deepening-2026-11-01.md). Answers the
+accepted 2026-11-01. `stunt_reel.capture_run` (step 3 of
+[the capture store plan](../process/plans/capture-store-deepening-2026-11-01.md)) implements the
+build choice and the single-executable fallback; the pair retry ("if the unpatched `PLAYONE` then
+fails on a patch3 archive, both move") is not yet implemented. The parity loop's film list is
+step 4. Answers the
 decision [#80](https://github.com/neilsh/stunt-reel/issues/80) asks for. Builds on
 [ADR 0028](0028-a-film-has-one-capture-of-each-kind.md).
 

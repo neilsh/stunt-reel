@@ -25,7 +25,7 @@ import urllib.error
 import urllib.request
 from typing import TYPE_CHECKING, Any, Protocol
 
-from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout
+from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout, LaunchFailed
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -203,7 +203,7 @@ class DosboxAutomation:
                 self._client = client
                 return client
             self._reap()
-        raise GuestTimeout(f"dosbox-automation exited at launch {self._attempts} times in a row")
+        raise LaunchFailed(f"dosbox-automation exited at launch {self._attempts} times in a row")
 
     def _wait_ready(self, client: AutomationClient) -> bool:
         """True once the server answers, False if the process exited first (a lost port race)."""
@@ -219,7 +219,7 @@ class DosboxAutomation:
                 return True
             if self._clock() - started > self._launch_timeout:
                 self._reap()
-                raise GuestTimeout(
+                raise LaunchFailed(
                     f"dosbox-automation did not answer within {self._launch_timeout:.0f} s"
                 )
             self._sleep(_READY_POLL_SECONDS)

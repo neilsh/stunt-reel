@@ -231,12 +231,12 @@ def test_a_publish_failure_is_a_make_all_line_and_exit_1(
     def full_disk(*_args: object, **_kwargs: object) -> Path:
         raise OSError("disk full")
 
-    monkeypatch.setattr(script, "publish_archive", full_disk)
+    monkeypatch.setattr(script, "write_archive", full_disk)
     launch, _state = makeone_launcher(text_after=1, archive=ARCHIVE)
     args = _args(script, monkeypatch, staged_repo.film, game_root)
 
     assert script.run(args, launch) == 1
-    assert "[make-all] could not store the archive: disk full" in capsys.readouterr().err
+    assert "[make-all] disk full" in capsys.readouterr().err
 
 
 def test_a_missing_game_file_is_a_make_all_line_and_exit_1(
@@ -433,6 +433,26 @@ def test_manifest_only_extracts_from_the_stored_archive_without_makeone(
         _stored_meta().makeone_sha256,
     )
     assert out == dataroot.REPO_ROOT / parity_layout.manifest_path("vault-ctry")
+
+
+def test_manifest_only_for_an_archive_of_an_unknown_makeone_asks_for_a_game_root(
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_repo: StagedRepo,
+    game_root: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The synthetic MAKEONE matches no known build, so no tree can be guessed for the manifest."""
+    _publish(script, monkeypatch, staged_repo.film, game_root)
+    extract = FakeExtract()
+    monkeypatch.setattr(
+        sys, "argv", ["make_all.py", "--film", str(staged_repo.film), "--manifest-only"]
+    )
+
+    assert script.run(script.parse_args(), None, extract) == 2
+
+    assert "pass --game-root" in capsys.readouterr().err
+    assert extract.calls == []
 
 
 def test_manifest_only_without_a_stored_archive_exits_2(
