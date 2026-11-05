@@ -17,6 +17,7 @@ use stunt_core::contracts::{SodModelIr, SodStop, SodStopReason};
 use stunt_core::flm::{FilmTimeline, FlmError, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES};
 use stunt_core::scene::{FilmScene, SceneError, SceneInputs};
 use stunt_core::sod::{DecodeMode, OP_TAP, decode_sod};
+use stunt_core::world::ScnStopReason;
 
 fn fixture(name: &str) -> Vec<u8> {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -393,4 +394,17 @@ fn caller_supplied_timeline_keeps_archive_shapes() {
     assert!(report.skipped.is_empty());
     assert!(scene.shape(7).is_some());
     assert_eq!(scene.frame(0.0).actors.len(), 1);
+}
+
+#[test]
+fn cyclic_scenery_surfaces_its_stop_in_the_report() {
+    let film = film([0.0, 0.0, 10.0], &[]);
+    let scenery = fixture("synthetic_cyclic.scn");
+    let (_, report) = FilmScene::load(&SceneInputs {
+        scenery: Some(&scenery),
+        ..scene_inputs(&film)
+    })
+    .expect("load");
+    let stop = report.world.expect("a world").scenery_stop;
+    assert_eq!(stop.map(|s| s.reason), Some(ScnStopReason::Cycle));
 }

@@ -22,7 +22,7 @@ use crate::flm::{FilmTimeline, FlmError};
 use crate::font::PFont;
 use crate::sod::{DecodeMode, SodError, decode_sod};
 use crate::vfs::VfsError;
-use crate::world::{World, WorldInputs, build_world};
+use crate::world::{ScnStop, World, WorldInputs, build_world};
 
 /// Column-major identity matrix.
 const IDENTITY_MATRIX: [f32; 16] = [
@@ -73,6 +73,9 @@ pub struct WorldStats {
     pub props_placed: usize,
     /// Extent of the world mesh in `[I1]` metres.
     pub bounds: ShapeExtent,
+    /// Why the `SCENERY.scn` walk ended early (cycle, budget or depth); `None` when it ran
+    /// to the end or there was no scenery.
+    pub scenery_stop: Option<ScnStop>,
 }
 
 /// What happened while loading a scene: data for the caller to print or assert on.
@@ -336,6 +339,7 @@ impl FilmScene {
                 terrain_patches: w.terrain_patches,
                 props_placed: w.props_placed,
                 bounds: w.bounds,
+                scenery_stop: w.scenery_stop,
             }),
         };
         Ok((Self::new(timeline, decoded.shapes, world), report))

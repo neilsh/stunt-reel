@@ -94,6 +94,16 @@ pub enum ScnStopReason {
     Depth,
 }
 
+impl std::fmt::Display for ScnStopReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cycle => f.write_str("pointer cycle"),
+            Self::Budget => f.write_str("node budget exceeded"),
+            Self::Depth => f.write_str("subtrees nested too deeply"),
+        }
+    }
+}
+
 /// Where and why a `SCENERY.scn` walk stopped early, modelled on the shape decode record's
 /// `SodStop`. The first stop wins; later frames only unwind.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -106,9 +116,14 @@ pub struct ScnStop {
     pub reason: ScnStopReason,
 }
 
-/// Most node visits one walk may make; a real tree is far smaller, so this only bounds a
-/// corrupt one whose shared subtrees multiply.
-const SCN_NODE_BUDGET: usize = 1 << 22;
+/// Node visits one walk may make, per word of `SCENERY.scn`. A tree walked once visits at
+/// most one node per two words, so this leaves room for subtrees shared several times over
+/// while keeping the bound proportional to the input. A fixed ceiling would be too loose: a
+/// visit costs more than a constant (an `SP_1NODE` measures path distance against every
+/// camera eye), so a corrupt fan-out could otherwise run for minutes. The real
+/// `SCENERY.scn` (29,559 words) makes 367,365 visits with every node near, 12.4 per word, so
+/// 64 leaves about five times the headroom.
+const SCN_VISITS_PER_WORD: usize = 64;
 
 /// Deepest nesting of subtrees the walk follows.
 const SCN_MAX_DEPTH: usize = 128;
@@ -118,23 +133,30 @@ struct ScnWalk {
     /// Nodes the active frames are inside, to catch a pointer back to an ancestor. A node
     /// reached again from a sibling branch is not an ancestor and is walked again.
     on_path: HashSet<usize>,
+    /// Node visits so far.
     visits: usize,
+    /// Visits allowed before the walk stops with [`ScnStopReason::Budget`].
     budget: usize,
+    /// The first stop recorded, if any.
     stop: Option<ScnStop>,
+    /// Set by a stop that ends the walk; a skipped subtree leaves it clear.
+    halted: bool,
 }
 
 impl ScnWalk {
+    /// A fresh walk that allows `budget` node visits.
     fn new(budget: usize) -> Self {
         Self {
             on_path: HashSet::new(),
             visits: 0,
             budget,
             stop: None,
+            halted: false,
         }
     }
 
-    /// Records the stop unless an earlier one already holds.
-    fn halt(&mut self, words: &[i32], ni: usize, reason: ScnStopReason) {
+    /// Records the stop unless an earlier one already holds, without ending the walk.
+    fn note(&mut self, words: &[i32], ni: usize, reason: ScnStopReason) {
         self.stop.get_or_insert_with(|| ScnStop {
             offset: ni.saturating_mul(4),
             opcode: words.get(ni).copied().unwrap_or_default(),
@@ -142,9 +164,15 @@ impl ScnWalk {
         });
     }
 
+    /// Records the stop and ends the walk: every frame unwinds at its next check.
+    fn halt(&mut self, words: &[i32], ni: usize, reason: ScnStopReason) {
+        self.note(words, ni, reason);
+        self.halted = true;
+    }
+
     /// Admits a visit to the node at `ni`, or records why not.
     fn enter(&mut self, words: &[i32], ni: usize) -> bool {
-        if self.stop.is_some() {
+        if self.halted {
             return false;
         }
         self.visits = self.visits.saturating_add(1);
@@ -395,7 +423,7 @@ pub(crate) fn traverse_scn(
     near: &dyn Fn([f32; 3], i32, i32) -> bool,
     depth: usize,
 ) -> Option<ScnStop> {
-    let mut walk = ScnWalk::new(SCN_NODE_BUDGET);
+    let mut walk = ScnWalk::new(words.len().saturating_mul(SCN_VISITS_PER_WORD));
     walk_scn(
         &mut walk,
         words,
@@ -429,7 +457,8 @@ fn walk_scn(
     depth: usize,
 ) {
     if depth > SCN_MAX_DEPTH {
-        walk.halt(words, ni, ScnStopReason::Depth);
+        // Skip just this subtree and keep walking its siblings; the first one is recorded.
+        walk.note(words, ni, ScnStopReason::Depth);
         return;
     }
     let mut entered = Vec::new();
@@ -450,6 +479,8 @@ fn walk_scn(
     }
 }
 
+/// Follows the nodes chained from `ni` in one frame, adding each to `entered` so
+/// [`walk_scn`] can drop them from the ancestor set when the frame ends.
 #[expect(
     clippy::too_many_arguments,
     reason = "the traversal threads its whole state explicitly"
@@ -596,7 +627,7 @@ fn walk_chain(
                         near,
                         deeper,
                     );
-                    if walk.stop.is_some() {
+                    if walk.halted {
                         return;
                     }
                     let Some(next) = curr.checked_add(1) else {
@@ -1145,6 +1176,7 @@ mod tests {
             0,
         );
         let stop = walk.stop.expect("the budget stops the walk");
+        assert!(walk.halted);
         assert_eq!(stop.reason, ScnStopReason::Budget);
         assert_eq!(walk.visits, 1001);
     }
