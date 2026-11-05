@@ -571,6 +571,19 @@ def _is_ancestor(repo: Path, branch: str) -> bool:
     return _git(repo, "merge-base", "--is-ancestor", branch, "main").returncode == 0
 
 
+def _never_committed(repo: Path, branch: str) -> bool:
+    """True when *branch* has only its creation in the reflog, so nothing was ever made on it.
+
+    A branch cut from ``main`` is an ancestor of ``main`` from birth, which ancestry cannot tell
+    from a merged one. A missing or empty reflog counts as fresh: keeping a worktree is the safe
+    mistake, removing one a session is working in is not.
+    """
+    result = _git(repo, "reflog", "show", "--format=%H", f"refs/heads/{branch}")
+    if result.returncode != 0:
+        return True
+    return len(result.stdout.split()) <= 1
+
+
 def _unmerged_patch_count(repo: Path, branch: str) -> int:
     """Patches on *branch* that ``main`` does not already hold."""
     result = _git(repo, "cherry", "main", branch)
@@ -729,6 +742,13 @@ def _candidates(
             continue
         merged = _is_ancestor(repo, worktree.branch)
         pr: int | None = None
+        if (
+            merged
+            and _never_committed(repo, worktree.branch)
+            and (merged_prs is None or merged_prs.find(worktree.branch, worktree.head) is None)
+        ):
+            skipped.append(f"{label}: no commits since it was created")
+            continue
         if not merged:
             if merged_prs is not None:
                 pr = merged_prs.find(worktree.branch, worktree.head)

@@ -361,6 +361,7 @@ def test_candidates_keep_unmerged_and_outside_pool(tmp_path: Path) -> None:
     pool = repo / ".agents" / "worktrees"
     pool.mkdir(parents=True)
     _run_git(repo, "worktree", "add", "-q", str(pool / "merged"), "-b", "merged")
+    _merge_into_main(repo, pool / "merged", "m.txt")
     _run_git(repo, "worktree", "add", "-q", str(pool / "unmerged"), "-b", "unmerged")
     (pool / "unmerged" / "b.txt").write_text("b", encoding="utf-8")
     _run_git(pool / "unmerged", "add", "b.txt")
@@ -385,6 +386,42 @@ def test_candidates_keep_unmerged_and_outside_pool(tmp_path: Path) -> None:
     joined = "\n".join(skipped)
     assert "unmerged: 1 patch(es) not in main" in joined
     assert "outside: outside this checkout's worktree pool" in joined
+
+
+def test_a_fresh_worktree_is_skipped_and_a_fast_forwarded_branch_is_reaped(
+    tmp_path: Path,
+) -> None:
+    """A branch with no commits of its own is an ancestor of main from birth (issue #196)."""
+    repo = _init_repo(tmp_path)
+    pool = repo / ".agents" / "worktrees"
+    pool.mkdir(parents=True)
+    _run_git(repo, "worktree", "add", "-q", str(pool / "new"), "-b", "new", "main")
+    _run_git(repo, "worktree", "add", "-q", str(pool / "done"), "-b", "done", "main")
+    _merge_into_main(repo, pool / "done", "d.txt")
+
+    candidates, skipped = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False
+    )
+
+    assert [candidate.worktree.branch for candidate in candidates] == ["done"]
+    assert skipped == ["new: no commits since it was created"]
+
+
+def test_a_fresh_branch_named_by_a_merged_pr_is_still_reaped(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    pool = repo / ".agents" / "worktrees"
+    pool.mkdir(parents=True)
+    _run_git(repo, "worktree", "add", "-q", str(pool / "new"), "-b", "new", "main")
+    tip = _head(pool / "new")
+    prs: list[dict[str, object]] = [{"number": 5, "headRefName": "new", "headRefOid": tip}]
+    merged_prs = worktree_init._MergedPrs(repo, _gh_stub(prs))  # type: ignore[arg-type]
+
+    candidates, skipped = worktree_init._candidates(
+        repo, worktree_init._worktrees(repo), include_cherry=False, merged_prs=merged_prs
+    )
+
+    assert skipped == []
+    assert [candidate.worktree.branch for candidate in candidates] == ["new"]
 
 
 def test_clean_parity_keeps_the_baselines_and_removes_a_scratch_tree(
@@ -420,6 +457,13 @@ def _commit(cwd: Path, name: str) -> str:
         name,
     )
     return _run_git(cwd, "rev-parse", "HEAD").strip()
+
+
+def _merge_into_main(repo: Path, worktree: Path, name: str) -> None:
+    """Commit once on a worktree's branch, then fast-forward ``main`` onto it."""
+    _commit(worktree, name)
+    branch = _run_git(worktree, "branch", "--show-current").strip()
+    _run_git(repo, "merge", "-q", "--ff-only", branch)
 
 
 def _gh_stub(
@@ -672,6 +716,7 @@ def test_gh_is_not_asked_when_every_branch_is_already_in_main(tmp_path: Path) ->
     pool = repo / ".agents" / "worktrees"
     pool.mkdir(parents=True)
     _run_git(repo, "worktree", "add", "-q", str(pool / "merged"), "-b", "merged")
+    _merge_into_main(repo, pool / "merged", "m.txt")
     calls: list[tuple[str, ...]] = []
     merged_prs = worktree_init._MergedPrs(repo, _gh_stub(calls=calls))  # type: ignore[arg-type]
 
