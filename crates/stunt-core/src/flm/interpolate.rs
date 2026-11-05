@@ -381,6 +381,10 @@ mod tests {
     }
 
     /// Independent oracle to verify a 4x4 column-major matrix is a rigid transform.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "test helper: column indices 0..=2 into a 16-element matrix"
+    )]
     fn assert_rigid_transform(mat: &[f32; 16], pos: [f32; 3]) {
         let col = |c: usize| [mat[c * 4], mat[c * 4 + 1], mat[c * 4 + 2]];
         let dot = |a: [f32; 3], b: [f32; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -790,8 +794,11 @@ mod props {
                 joint_angles_bam: Vec::new(),
             };
             let m = actor.compute_world_matrix();
+            let [c0, c1, c2, _] = m.as_chunks::<4>().0 else {
+                unreachable!("a 4x4 matrix has four columns");
+            };
             let by_matrix: [f32; 3] =
-                std::array::from_fn(|row| m[row] * v[0] + m[4 + row] * v[1] + m[8 + row] * v[2]);
+                std::array::from_fn(|row| c0[row] * v[0] + c1[row] * v[1] + c2[row] * v[2]);
             let by_quat = rotate_quat(q, v);
             let tolerance = 1e-4 * length(v).max(1.0);
             for axis in 0..3 {

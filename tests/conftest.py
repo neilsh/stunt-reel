@@ -11,6 +11,7 @@ pytest never resets it.  On Windows the mkdir mode shim keeps pytest's own
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -20,8 +21,26 @@ from pytest_helpers import (
     per_run_basetemp,
     prune_old_basetemps,
 )
+from stunt_reel import dataroot
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 pytest_plugins = ["tac_mock"]
+
+
+@pytest.fixture(autouse=True)
+def _no_machine_data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Give every test an empty data root of its own, and undo any a test's ``--data-root`` sets.
+
+    Without it a test that does not name one reads the machine's ``<primary>.data``, and passes
+    only while that holds nothing the test did not expect. ``dataroot.use_data_root`` writes the
+    variable for the process, so one test's flag would also become the next test's data root.
+    """
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path / "no-data-root"))
+    dataroot.data_root.cache_clear()
+    yield
+    dataroot.data_root.cache_clear()
 
 
 def pytest_configure(config: pytest.Config) -> None:

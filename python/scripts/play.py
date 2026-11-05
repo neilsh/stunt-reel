@@ -11,13 +11,11 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
-from stunt_reel import dataroot
-from stunt_reel.dataroot import ensure_links_or_report
+from stunt_reel import dataroot, parity_layout, references
+from stunt_reel.dataroot import data_path_arg
 from stunt_reel.tac import automation, luagen, playone, staging
 
-DEFAULT_FILM: Path = Path("corpus/stisldem/VAULT/CTRY.FLM")
 #: Seconds the key script may take (boot to the film dialog, then the key presses).
 KEYS_TIMEOUT: float = 120.0
 
@@ -25,10 +23,15 @@ KEYS_TIMEOUT: float = 120.0
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--film", type=Path, default=DEFAULT_FILM, help="film to play")
+    parser.add_argument(
+        "--film",
+        type=data_path_arg,
+        default=dataroot.DEFAULT_FILM,
+        help="film to play",
+    )
     parser.add_argument(
         "--game-root",
-        type=Path,
+        type=data_path_arg,
         default=None,
         help="game tree whose PLAYONE.EXE to run, such as <data root>/builds/patched",
     )
@@ -44,6 +47,26 @@ def run(args: argparse.Namespace) -> int:
     try:
         staged = staging.stage_film(film, root)
     except OSError as exc:
+        print(f"[play] {exc}", file=sys.stderr)
+        return 1
+    try:
+        # The film's row in references.toml names the builds it may play on (ADR 0029); a
+        # film with no row is not checked, so its PLAYONE need not be a known build.
+        try:
+            slug: str | None = parity_layout.slug_for(film)
+        except ValueError:
+            slug = None  # no valid slug, so no row can name this film
+        if slug is not None and references.read_builds(dataroot.REPO_ROOT, slug) is not None:
+            references.require_builds(
+                dataroot.REPO_ROOT,
+                slug,
+                playone=playone.layout_for(staged.mount / "PLAYONE.EXE").name,
+                makeone=references.archive_makeone_build(
+                    dataroot.REPO_ROOT, slug, film.with_suffix(".ALL")
+                ),
+            )
+    except (references.ReferenceCaptureError, playone.UnknownBuild, ValueError, OSError) as exc:
+        staging.unstage(staged)
         print(f"[play] {exc}", file=sys.stderr)
         return 1
     emulator = automation.DosboxAutomation(staged.write_conf)
@@ -64,9 +87,10 @@ def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     """Run the player."""
-    if not ensure_links_or_report("play"):
+    args = parse_args()
+    if dataroot.require_corpus_or_report("play") is None:
         return 2
-    return run(parse_args())
+    return run(args)
 
 
 if __name__ == "__main__":

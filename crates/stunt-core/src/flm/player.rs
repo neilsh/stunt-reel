@@ -330,7 +330,12 @@ impl<'a> FlmPlayer<'a> {
         // The authored duration is the slice's distance from the previous one. Add it
         // once, before reading the opcodes, so every cue and the record it produces
         // carry the same cumulative tick.
-        self.current_tick = self.current_tick.saturating_add(u32::from(tick_duration));
+        self.current_tick = self
+            .current_tick
+            .checked_add(u32::from(tick_duration))
+            .ok_or_else(|| FlmError::InvalidSlice {
+                reason: "cumulative tick count overflows u32".to_string(),
+            })?;
 
         let mut sound_cues = Vec::new();
         let mut credits = Vec::new();
@@ -508,7 +513,14 @@ impl<'a> FlmPlayer<'a> {
             }
         }
 
-        self.last_slice_len = Some(self.reader.pos() - slice_start);
+        let slice_len =
+            self.reader
+                .pos()
+                .checked_sub(slice_start)
+                .ok_or_else(|| FlmError::InvalidSlice {
+                    reason: "reader moved before the slice start".to_string(),
+                })?;
+        self.last_slice_len = Some(slice_len);
 
         Ok(Some(DecodedSlice {
             tick_duration,

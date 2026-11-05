@@ -24,17 +24,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from stunt_reel import capture_store, dataroot, parity_layout
+from stunt_reel import capture_store, dataroot, parity_layout, references
 from stunt_reel.all_archive import ArchiveError, resolve_all
-from stunt_reel.dataroot import ensure_links_or_report
+from stunt_reel.dataroot import data_path_arg
 from stunt_reel.parity_artifacts import CAPTURE_FRAMES_DIR, FilmId
 from stunt_reel.tac import automation, playone, staging
 from stunt_reel.tac.emulator import EmulatorUnavailable
 from stunt_reel.tac.framebuffer import FILM_STRIDE_TICKS, capture
 from stunt_reel.tac.plan import PlanError
-
-DEFAULT_FILM: Path = Path("corpus/stisldem/VAULT/CTRY.FLM")
-
 
 #: The frame cap of a capture that may fill the store; another needs --out (ADR 0028).
 DEFAULT_MAX_FRAMES = 2000
@@ -45,13 +42,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--film",
-        type=Path,
-        default=DEFAULT_FILM,
+        type=data_path_arg,
+        default=dataroot.DEFAULT_FILM,
         help=(
             "the film's .FLM file; its .ALL is the sibling or one stored by make-all (a film "
             "with neither is refused); it is staged alone into "
             f"<data root>/{parity_layout.stage_root().as_posix()}/<name>-<session>/ so the dialog "
-            f"needs one prefix key (default {DEFAULT_FILM})"
+            f"needs one prefix key (default %(default)s)"
         ),
     )
     parser.add_argument(
@@ -66,12 +63,12 @@ def parse_args() -> argparse.Namespace:
             "new directory receiving tick_*.idx, palettes_*.json, and meta.json; one holding a "
             "capture or other files is refused, but rasters and palettes left by a run that died "
             "before meta.json are cleared first; no stored capture is replaced (default: replace the "
-            f"film's capture, {parity_layout.capture_root().as_posix()}/<film>/frames, by swap)"
+            f"film's capture, <data root>/{parity_layout.capture_root().as_posix()}/<film>/frames, by swap)"
         ),
     )
     parser.add_argument(
         "--game-root",
-        type=Path,
+        type=data_path_arg,
         default=None,
         help=(
             "game tree whose PLAYONE.EXE and engine files to run, such as "
@@ -143,8 +140,6 @@ def run(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"[capture] {exc}", file=sys.stderr)
         return 2
-    if not ensure_links_or_report("mise run capture-ref"):
-        return 2
     try:
         archive = resolve_all(film, dataroot.REPO_ROOT, slug)
         all_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
@@ -160,13 +155,13 @@ def run(args: argparse.Namespace) -> int:
     if args.out is not None:
         out = resolve(args.out)
         try:
-            capture_store.check_outside(out, dataroot.REPO_ROOT / parity_layout.capture_root())
+            capture_store.check_outside(out, dataroot.data_root() / parity_layout.capture_root())
         except ValueError as exc:
             print(f"[capture] {exc}", file=sys.stderr)
             return 2
         return _capture_into(args, out, film, archive, film_id)
     # The film's one capture of this kind is replaced only by a complete, successful one.
-    target = dataroot.REPO_ROOT / parity_layout.frames_path(slug)
+    target = dataroot.data_root() / parity_layout.frames_path(slug)
     try:
         capture_store.check_replaceable(target)
     except ValueError as exc:
@@ -206,7 +201,15 @@ def _capture_into(
         return 1
     try:
         layout = playone.layout_for(staged.mount / "PLAYONE.EXE")
-    except (playone.UnknownBuild, OSError) as exc:
+        # The film's row names the builds its reference is made with (ADR 0029).
+        slug = parity_layout.slug_for(film, args.name)
+        references.require_builds(
+            dataroot.REPO_ROOT,
+            slug,
+            playone=layout.name,
+            makeone=references.archive_makeone_build(dataroot.REPO_ROOT, slug, archive),
+        )
+    except (playone.UnknownBuild, references.ReferenceCaptureError, OSError) as exc:
         staging.unstage(staged)
         print(f"[capture] {exc}", file=sys.stderr)
         return 2
@@ -242,7 +245,10 @@ def _capture_into(
 def main() -> int:
     """Run the capture and terminate the emulator."""
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
-    return run(parse_args())
+    args = parse_args()
+    if dataroot.require_corpus_or_report("mise run capture-ref") is None:
+        return 2
+    return run(args)
 
 
 if __name__ == "__main__":

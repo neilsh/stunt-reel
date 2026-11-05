@@ -107,7 +107,10 @@ def pin_reference(root: Path, film: str, frames: list[dict[str, int]]) -> Path:
     pointers.parent.mkdir(parents=True, exist_ok=True)
     digest = references.capture_digest(reference)
     with pointers.open("a", encoding="utf-8") as handle:
-        handle.write(f'[{film}]\nfilm = "vault-{film}"\nsha256 = "{digest}"\n')
+        handle.write(
+            f'[{film}]\nfilm = "vault-{film}"\nsha256 = "{digest}"\n'
+            'makeone = "patch3"\nplayone = "patch3"\n'
+        )
     return reference
 
 
@@ -117,7 +120,7 @@ def reference_tree(
     """A data root holding each film's ``.FLM``, ``.ALL`` and SIDATA, and its pinned capture."""
     vault = root / "corpus" / "stisldem" / "VAULT"
     vault.mkdir(parents=True, exist_ok=True)
-    (root / parity_pipeline.SIDATA).mkdir(parents=True, exist_ok=True)
+    (root / "corpus" / parity_pipeline.SIDATA).mkdir(parents=True, exist_ok=True)
     for name in films:
         (vault / f"{name.upper()}.FLM").write_bytes(
             name.encode()

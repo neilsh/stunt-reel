@@ -194,7 +194,9 @@ def test_layout_for_names_each_build_by_hash(
     exe.write_bytes(b"not a known build")
     with pytest.raises(playone.UnknownBuild, match=r"no known PLAYONE\.EXE"):
         playone.layout_for(exe)
-    fake = playone.PlayoneLayout("fake", hashlib.sha256(b"x").hexdigest(), 0x100, 1, 2, 3, (4, 5))
+    fake = playone.PlayoneLayout(
+        "fake", hashlib.sha256(b"x").hexdigest(), 0x100, 1, 2, 3, (4, 5), 6
+    )
     monkeypatch.setattr(playone, "LAYOUTS", (*playone.LAYOUTS, fake))
     exe.write_bytes(b"x")
     assert playone.layout_for(exe) is fake
@@ -212,6 +214,12 @@ def test_layouts_name_both_composed_pages() -> None:
     """The patched pair is inferred from the uniform shift; a live tear rate checks it."""
     assert playone.UNPATCHED.composed_pages == (0x22CA, 0x22CC)
     assert playone.PATCH3.composed_pages == (0x22CA - 0x67A, 0x22CC - 0x67A)
+
+
+def test_layouts_name_the_work_segment_pointer() -> None:
+    """The pointer the lighting probe reads sits below 0x0A00, where Patch #3 moved data up by 0x7C."""
+    assert playone.UNPATCHED.work_segment_pointer == 0x0542
+    assert playone.PATCH3.work_segment_pointer == 0x0542 + 0x7C
 
 
 def _load_script() -> Any:

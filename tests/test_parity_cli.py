@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -17,7 +19,10 @@ import parity_run  # noqa: E402
 import parity_sweep  # noqa: E402
 from cli import ParityOptions, UsageError, add_parity_options, parity_options  # noqa: E402
 
-from stunt_reel import references  # noqa: E402
+from archive_helpers import build_all  # noqa: E402
+from render_helpers import reference_tree  # noqa: E402
+from stunt_reel import dataroot, parity_pipeline, references  # noqa: E402
+from stunt_reel.all_archive import ArchiveMeta, publish_archive  # noqa: E402
 from stunt_reel.parity_pipeline import REPO_ROOT  # noqa: E402
 
 #: The films of the committed references.toml, which is what the parity loop covers.
@@ -33,10 +38,10 @@ def test_both_entry_points_build_the_same_options() -> None:
     assert _options(parity_run, argv) == _options(parity_sweep, argv)
 
 
-def test_defaults_cover_every_film_and_this_checkout() -> None:
+def test_defaults_cover_every_film_and_the_data_root() -> None:
     options = _options(parity_run, [])
     assert options.films == FILMS
-    assert options.data_root == REPO_ROOT.resolve()
+    assert options.data_root == dataroot.data_root()
     assert (options.no_build, options.reuse, options.retime) == (False, None, None)
 
 
@@ -55,7 +60,7 @@ def test_an_unknown_film_is_refused_with_one_message() -> None:
 
 def test_the_shared_flags_are_defined_once() -> None:
     parser = argparse.ArgumentParser(prog="parity")
-    add_parity_options(parser, data_root=REPO_ROOT)
+    add_parity_options(parser)
     actions = {action.dest: action for action in parser._actions}
     assert set(actions) == {"help", "films", "data_root", "no_build", "reuse", "retime"}
     assert actions["films"].default is None
@@ -72,8 +77,52 @@ def test_the_films_come_from_the_selected_data_root(tmp_path: Path) -> None:
     """Another root's references.toml decides the default set and what --films accepts."""
     pointers = tmp_path / "research" / "parity" / "references.toml"
     pointers.parent.mkdir(parents=True)
-    pointers.write_text('[balloon]\nfilm = "vault-balloon"\nsha256 = "ab"\n', encoding="utf-8")
+    pointers.write_text(
+        '[balloon]\nfilm = "vault-balloon"\nsha256 = "ab"\nmakeone = "patch3"\nplayone = "patch3"\n',
+        encoding="utf-8",
+    )
     options = _options(parity_run, ["--data-root", str(tmp_path)])
     assert options.films == ("balloon",)
     with pytest.raises(UsageError, match="must be from balloon"):
         _options(parity_run, ["--data-root", str(tmp_path), "--films", "ctry"])
+
+
+def test_the_default_data_root_leaves_the_corpus_fallback_alone() -> None:
+    """Only an explicit --data-root sets STUNT_DATA_ROOT; the default keeps the clone fallback."""
+    before = os.environ.get(dataroot.DATA_ENV)
+    options = _options(parity_run, [])
+    assert os.environ.get(dataroot.DATA_ENV) == before
+    assert options.data_root == dataroot.data_root()
+
+
+def test_a_named_data_root_supplies_the_archive_too(tmp_path: Path) -> None:
+    """--data-root DIR must move every read, the stored .ALL included, not only the films."""
+    root = reference_tree(tmp_path / "data", [0], films=("ctry",))
+    vault = root / "corpus" / "stisldem" / "VAULT"
+    (vault / "CTRY.ALL").unlink()
+    flm = (vault / "CTRY.FLM").read_bytes()
+    data = build_all([b"stored"])
+    meta = ArchiveMeta(
+        film="CTRY.FLM",
+        flm_bytes=len(flm),
+        flm_sha256=hashlib.sha256(flm).hexdigest(),
+        all_bytes=len(data),
+        all_sha256=hashlib.sha256(data).hexdigest(),
+    )
+    publish_archive(root, data, meta, slug="vault-ctry", film="CTRY.FLM")
+    options = _options(parity_run, ["--films", "ctry", "--data-root", str(root)])
+    assert dataroot.data_root() == root.resolve()
+    problems = parity_pipeline.preflight(
+        options.data_root, ["ctry"], build_required=False, locked=lambda _path: False
+    )
+    assert problems == []
+
+
+def test_the_bench_data_root_flag_moves_the_data_root(tmp_path: Path) -> None:
+    import parity_bench  # noqa: PLC0415 - a script, imported only here
+
+    args = parity_bench.parse_args(
+        ["run", "--film", "ctry", "--recapture", "x", "--data-root", str(tmp_path)]
+    )
+    assert dataroot.data_root_flag(args.data_root) == tmp_path.resolve()
+    assert dataroot.data_root() == tmp_path.resolve()

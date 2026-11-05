@@ -1,10 +1,12 @@
 # Harness setup (host-local configuration)
 
-What a new machine needs before an agent session can provision a checkout here, and
+What a new machine needs before an agent session can work in a checkout here, and
 which settings cannot ship in Git. Nothing on this page is Stunt Island knowledge; it is
 a fact about the tools. Recorded from observed behaviour on 2026-10-25, mise 2026.10.12,
-Windows. Policy and per-harness capability notes live in [`harness.md`](harness.md); this
-page is the machine setup they assume.
+Windows, and revised on 2026-11-04 when worktrees stopped holding links
+([ADR 0036](adr/0036-worktrees-reach-shared-state-by-configuration.md)). Policy and
+per-harness capability notes live in [`harness.md`](harness.md); this page is the machine
+setup they assume.
 
 ## What lives where
 
@@ -14,13 +16,13 @@ page is the machine setup they assume.
 | Installed tools (Rust, Python, uv, Java, dosbox-automation, cargo tools) | `%LOCALAPPDATA%\mise\installs` | no |
 | mise trust and tracked-config records | `%USERPROFILE%\.local\state\mise` | no |
 | mise global settings | `%USERPROFILE%\.config\mise\config.toml` | no |
-| Shared data root | `<parent-of-primary>/<repo-name>.data`, see [ADR 0008](adr/0008-worktrees-share-one-read-only-data-root.md) | no |
-| Shared tool cache, with each worktree's virtualenv under `venvs/` | `<primary>/.cache`, linked per worktree, see [ADR 0013](adr/0013-worktrees-share-one-writable-tool-cache.md) and [ADR 0019](adr/0019-a-worktrees-virtualenv-lives-in-the-shared-cache.md) | no |
-| DSH permission mode and approvals | `~/.dsh` (host settings) | no |
-| Worktrees | `.agents/worktrees/` inside the primary checkout | no |
+| Shared data root (corpus, captures, stage) | `<parent-of-primary>/<repo-name>.data`, or `STUNT_DATA_ROOT`, read by code directly, see [ADR 0008](adr/0008-worktrees-share-one-read-only-data-root.md) | no |
+| Shared uv and Cargo caches | `<primary>/.cache/uv` and `<primary>/.cache/cargo`, named by absolute path in `mise.toml`, see [ADR 0013](adr/0013-worktrees-share-one-writable-tool-cache.md) | no |
+| A worktree's Python environment | its own `.venv`, made by uv on the first `uv run` | no |
+| Harness permission modes and approvals | each harness's host settings | no |
+| Worktrees | `.claude/worktrees/` or `.agents/worktrees/` inside the primary checkout | no |
 
-[`mise run init`](../mise.toml) links the data root into a worktree with junctions; every
-target in that table is host-local, and no checkout can carry any of it.
+Every location in that table except the first row is host-local, and no checkout can carry it.
 
 ## One-time setup
 
@@ -50,60 +52,81 @@ Run these in a normal terminal, outside an agent sandbox.
 
    This removes the trust *prompt* only. `mise run` still records trust for every
    non-global config it loads, once per checkout, under
-   `%USERPROFILE%\.local\state\mise\trusted-configs`; that write is outside a
-   `workspace-write` workspace. A sandboxed invocation that cannot write it may set
-   `CI=true`, which makes mise treat every config as trusted and record nothing; keep
-   that for automation over your own repository, not as a default.
+   `%USERPROFILE%\.local\state\mise\trusted-configs`; a sandbox that admits writes only inside
+   its workspace denies that write (see [DSH](#dsh)).
 
-3. Set the session permission preset (DSH host setting, cannot ship). `workspace-write`
-   is the default and the right mode for reading and editing the checkout. Provisioning a
-   worktree and the first mise trust record need writes outside the workspace, so switch
-   the session to `danger-full-access` for that step, then switch back (`/permission` in
-   the GUI). Host approval settings should pre-approve `mise run *` and use a short
-   timeout, so a blocked command returns a decision rather than a deadline.
+3. Put the game files in the data root, `<parent-of-primary>/<repo-name>.data/corpus/`, as
+   [`corpus/README.md`](../corpus/README.md) lays them out; `STUNT_DATA_ROOT` names another
+   place. A clone that already holds them in its own `corpus/` can move them with
+   `mise run init -- --migrate`, or keep them there: when `STUNT_DATA_ROOT` is unset and the
+   data root has no `corpus/`, Python code reads the primary checkout's `corpus/` if it holds a
+   folder of game files. The Rust readers, `mise run sod-census` and `mise run test-corpus`,
+   are handed the same corpus by `run_with_corpus.py`.
 
-4. Keep the worktree pool inside the checkout. For a `workspace-write` session, a
-   worktree must live under the session workspace (`.agents/worktrees/`). A pool beside
-   the checkout puts the checkout, its `.cache` and `.venv` junctions and every junction
-   target outside the sandbox.
+## A new worktree
 
-## Provisioning a worktree
+Nothing to do. Create it with any tool, inside the primary checkout or beside it:
 
-The scripted setup is `mise run init`; under DSH its link step needs the wider preset.
+- Python tasks find the corpus and captures through the data root and build `.venv` on the
+  first `uv run`, hardlinked out of the shared uv cache on the same volume.
+- The first task that builds Rust runs the hidden `ensure` task first, which seeds an empty
+  `target/` by block clone from another checkout on a ReFS volume
+  ([ADR 0030](adr/0030-new-worktrees-seed-target-by-block-clone.md)) and sets
+  `core.hooksPath`. Concurrent tasks wait on one lock, so the gate seeds once.
+- `mise run init` does both now instead of at the first task, runs `uv sync`, and names any
+  link an older `init` left in the checkout.
 
-1. Create the worktree: DSH's `create_worktree`, or `git worktree add` under
-   `.agents/worktrees/`.
-2. Switch the session to `danger-full-access`.
-3. Run `mise run init`; it creates the `.cache` and `.venv` junctions and the data-root
-   links, seeds an empty `target/` from another checkout on a ReFS volume
-   ([ADR 0030](adr/0030-new-worktrees-seed-target-by-block-clone.md)), then runs `uv sync` into
-   the cached environment.
-4. Verify the links and that the corpus reads (see below).
-5. Switch back to `workspace-write`; later `mise run` tasks in that worktree do not need
-   the state write, because an existing trust record is not rewritten.
-6. To retire the worktree later, run `mise run reap -- --yes` from the primary checkout;
-   it unlinks the junctions into the data root before `git worktree remove` runs. Never
-   call `git worktree remove` directly on a linked worktree: git 2.47.1 deleted the
-   junction targets, and 2.55.0 left the junction directories behind and deregistered the
-   worktree ([ADR 0018](adr/0018-reaping-unlinks-the-data-root-links-first.md)). Anything
-   else that deletes recursively needs the links unlinked first, and `robocopy /MIR` needs
-   `/XJ`.
+## Removing a worktree
 
-   On some Windows machines Python's directory removal fails on every junction with
-   `[WinError 5] Access is denied`, while `cmd /c rmdir <link>` removes the same junction
-   and leaves its target alone. The suspected cause is Windows Controlled Folder Access
-   (unconfirmed). `remove_link` in [`dataroot.py`](../python/stunt_reel/dataroot.py), which
-   `init`, `clean` and `reap` all use, therefore retries a refused removal once with the
-   shell's `rmdir`, never with `/s`, so a directory that still holds files is refused, not
-   emptied. The path reaches `cmd` in an environment variable expanded after parsing, never
-   on its command line, so `&`, `%` or `(` in a name is plain text. If the retry fails too, `reap` reports both errors and leaves the
-   worktree and its branch alone; after a successful retry it still proves no link remains
-   before it removes the worktree.
+- A worktree with no links (every one made since ADR 0036) can be removed by the tool that
+  made it, or by `git worktree remove`.
+- An older worktree that `init` linked keeps its junctions until reaped: run
+  `mise run reap -- --yes` from the primary checkout. It unlinks the junctions into the data
+  root and proves none remain before `git worktree remove` runs. Never call
+  `git worktree remove` directly on a linked worktree: git 2.47.1 deleted the junction
+  targets, and 2.55.0 left the junction directories behind and deregistered the worktree
+  ([ADR 0018](adr/0018-reaping-unlinks-the-data-root-links-first.md)). Anything else that
+  deletes recursively needs the links unlinked first, and `robocopy /MIR` needs `/XJ`.
+  `mise run init` in such a worktree lists its links (`~ <path> is a link from the old layout`).
 
-Why the split: [`worktree_init.py`](../python/scripts/worktree_init.py) creates junctions
-whose targets are in the shared data root, outside the workspace. DSH creates a junction
-whose target is inside the workspace and denies one whose target is outside it, and it
-has no settings for extra writable roots or a worktree setup hook.
+  On some Windows machines Python's directory removal fails on every junction with
+  `[WinError 5] Access is denied`, while `cmd /c rmdir <link>` removes the same junction
+  and leaves its target alone. The suspected cause is Windows Controlled Folder Access
+  (unconfirmed). `remove_link` in [`dataroot.py`](../python/stunt_reel/dataroot.py), which
+  `clean` and `reap` use, therefore retries a refused removal once with the shell's `rmdir`,
+  never with `/s`, so a directory that still holds files is refused, not emptied. The path
+  reaches `cmd` in an environment variable expanded after parsing, never on its command line,
+  so `&`, `%` or `(` in a name is plain text. If the retry fails too, `reap` reports both
+  errors and leaves the worktree and its branch alone; after a successful retry it still
+  proves no link remains before it removes the worktree.
+
+## Claude Code
+
+Desktop sessions, `claude --worktree` and subagents with `isolation: worktree` create
+worktrees under `.claude/worktrees/`, which `.gitignore` and ruff's `exclude` cover. No
+`.worktreeinclude` and no worktree hook: everything gitignored here is shared state that
+must not be copied, and the first task prepares the rest. Claude Code may remove the
+worktrees it creates; an older linked one goes through `reap`.
+
+## DSH
+
+DSH's `workspace-write` sandbox admits writes only inside the session workspace, and the
+shared caches, the data root and mise's trust records are outside a worktree. Run `mise run`
+tasks in a DSH session under `danger-full-access`. The OS temp directory is denied too: a
+gate run under `workspace-write` panicked in `test-rust` with
+`create temp dir: Os { code: 5, ... "Access is denied." }`, and `pytest` hit
+`PermissionError: [WinError 5]` under DSH's own per-session temp path
+([harness.md](harness.md#temporary-directories)). Approval settings should pre-approve
+`mise run *` and use a short timeout, so a blocked command returns a decision rather than a
+deadline.
+
+## Orca
+
+Orca places worktrees on `C:`, another volume from the shared uv cache, so uv copies each
+`.venv` (about 68 MB, 3 s) instead of hardlinking it, and `target/` is not seeded, because
+`C:` does not clone blocks. Both are slower, not wrong.
+
+## Toolchain drift
 
 Plain `mise run` relies on the toolchain already being installed; `mise install` in
 step 1 covers it. The `rust` pin used to name `llvm-tools-preview`, which rustup reports
@@ -117,23 +140,18 @@ once outside the sandbox.
 ```powershell
 mise settings ls | Select-String trusted
 mise trust --show
-Get-Item corpus\stisldem -Force | Select-Object Target   # junction into the data root
+mise env | Select-String UV_CACHE_DIR   # <primary>/.cache/uv from every checkout
 mise run lint-py
 mise doctor
 git worktree list
 ```
 
-A `mise WARN tracking config: Access is denied` line is expected under
-`workspace-write`: the per-config tracking record is host state, and mise continues
-without it.
+A `mise WARN tracking config: Access is denied` line is expected in a sandbox that denies
+writes outside the workspace: the per-config tracking record is host state, and mise
+continues without it.
 
 ## Known gaps
 
-- A junction to a target outside the workspace cannot be created under
-  `workspace-write`; DSH has no setting for additional writable roots and no worktree
-  setup hook, so provisioning keeps the `danger-full-access` step. The same run also writes
-  mise's per-checkout trust record. The data root stays outside the checkout by design
-  ([ADR 0008](adr/0008-worktrees-share-one-read-only-data-root.md)).
 - pytest's per-checkout cache and temporary root used to break `mise run check` under
   `workspace-write`: pytest deletes a `--basetemp` it finds and resets a cache directory it
   creates, and the sandbox denies both. [tests/conftest.py](../tests/conftest.py) now creates
@@ -142,4 +160,3 @@ without it.
   the mode from `os.mkdir`, because a directory created with `0o700` cannot be reopened even by
   the process that made it; [scratch.py](../python/stunt_reel/scratch.py) does the same for
   tooling that shells out.
-- Worktrees outside the session workspace are unsupported under `workspace-write`.

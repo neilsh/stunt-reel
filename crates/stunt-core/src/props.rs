@@ -1,6 +1,6 @@
 //! Shared proptest configuration for the crate's own property tests.
 //!
-//! Integration tests carry a copy in `tests/common/props.rs`: they cannot see `cfg(test)`
+//! Integration tests carry a copy in `tests/it/common/props.rs`: they cannot see `cfg(test)`
 //! items of the library.
 
 use proptest::test_runner::{Config, RngSeed};

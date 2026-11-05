@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from archive_helpers import build_all
-from stunt_reel import link, parity_layout
+from stunt_reel import dataroot, link, parity_layout
 from stunt_reel.all_archive import (
     META_FILE,
     ArchiveError,
@@ -123,6 +123,13 @@ def test_a_failed_write_keeps_the_old_archive_and_leaves_nothing_behind(
 
 
 FLM_BYTES = b"FILM-balloon"
+
+
+@pytest.fixture(autouse=True)
+def _data_root_is_the_test_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The stored archive is read from the data root; make it the test's own directory."""
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    dataroot.data_root.cache_clear()
 
 
 def _store(root: Path, flm: bytes, archive: bytes) -> Path:
@@ -277,6 +284,22 @@ def test_an_absolute_game_root_is_used_as_it_is(tmp_path: Path) -> None:
     assert fake.calls[0][1] == game
 
 
+def test_a_corpus_game_root_is_read_from_the_data_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A manifest's ``corpus/...`` tree is the data root's, not the checkout's (ADR 0036)."""
+    data = tmp_path / "data"
+    game = data / "corpus" / "stuntisl"
+    game.mkdir(parents=True)
+    monkeypatch.setenv(dataroot.DATA_ENV, str(data))
+    dataroot.data_root.cache_clear()
+    film = _film(tmp_path)
+    _manifest(tmp_path, SLUG, FLM_BYTES, game_root="corpus/stuntisl")
+    fake = FakeLinkBuild()
+    resolve_all(film, tmp_path, link_build=fake)
+    assert fake.calls[0][1] == game.resolve()
+
+
 def test_a_manifest_for_another_film_falls_through_to_the_stored_archive(tmp_path: Path) -> None:
     film = _film(tmp_path)
     stored = _store(tmp_path, FLM_BYTES, build_all([b"stored"]))
@@ -296,11 +319,11 @@ def test_a_failing_manifest_build_is_an_error_not_a_fall_back(tmp_path: Path) ->
         resolve_all(film, tmp_path, link_build=fake)
 
 
-def test_a_missing_game_tree_names_mise_run_init(tmp_path: Path) -> None:
+def test_a_missing_game_tree_names_the_data_root(tmp_path: Path) -> None:
     film = _film(tmp_path)
     _manifest(tmp_path, SLUG, FLM_BYTES)
     fake = FakeLinkBuild()
-    with pytest.raises(ArchiveError, match=r"mise run init") as caught:
+    with pytest.raises(ArchiveError, match=r"check the data root") as caught:
         resolve_all(film, tmp_path, link_build=fake)
     assert str(tmp_path / "game") in str(caught.value)
     assert fake.calls == []
