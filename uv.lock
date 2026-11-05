@@ -105,6 +105,20 @@ wheels = [
 ]
 
 [[package]]
+name = "iced-x86"
+version = "1.22.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/93/702bc9f013e27ae3e6d3e5f0357af620ebf839a3516fe1d1a68e889276f3/iced_x86-1.22.0.tar.gz", hash = "sha256:7ff8f71e2459e36f070a46165c1c10d0c8ad15456237726a8677d4ec7383493f", size = 231492, upload-time = "2026-10-31T21:43:58.79Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/1c/bd9d4f44c6cf57373918f88bd9005f65331f779275748811cbb9c6e0ee34/iced_x86-1.22.0-cp311-abi3-macosx_11_0_universal2.whl", hash = "sha256:eff1fd2eafa58f043eca49c8e6f57148e970845398b11f6d367671074ec7be27", size = 850588, upload-time = "2026-10-31T21:43:47.561Z" },
+    { url = "https://files.pythonhosted.org/packages/19/b5/4a3b8a8ce8c0dde2e549c7e93c8c6636dd114db429e90d02895861a46491/iced_x86-1.22.0-cp311-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:624ca54b92ea84541278719e35abde0f27a8093925923a7aec6b576978e33f1d", size = 891343, upload-time = "2026-10-31T21:43:49.172Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/0e/f11b276ce18eebcd91d943dda557026b53049a7f08470254508aee50f949/iced_x86-1.22.0-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:50b585b369cd3ff6539f7d02fa43376059481facee77eb34a5307a3f5f9eda62", size = 921202, upload-time = "2026-10-31T21:43:50.601Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/8b/75f383690606cfab58c8b4213d0d1b3055d502fbdff5d9d6bd474f8685a4/iced_x86-1.22.0-cp311-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:119b6329a0c6087d31fbd7117975d223615f59b8857a0bd3c40155f02385f29e", size = 1006070, upload-time = "2026-10-31T21:43:51.813Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/64/086fd822067fe43972ab08a1d9d928eb4126c6b7e3363033f0b781ba19da/iced_x86-1.22.0-cp311-abi3-win32.whl", hash = "sha256:642afbc96cc1b7056579abbeb0a80e7db9b822d0afea0865e275c1249b04e9be", size = 816091, upload-time = "2026-10-31T21:43:53.282Z" },
+    { url = "https://files.pythonhosted.org/packages/23/9d/680aa0aa5815a49bfcd6c3b1c2c70809af5bc84052768145234c87f0bfc9/iced_x86-1.22.0-cp311-abi3-win_amd64.whl", hash = "sha256:0c038ffb32220488f264f44b321d0062536e1290629a01008756e86669eb856d", size = 849660, upload-time = "2026-10-31T21:43:54.732Z" },
+]
+
+[[package]]
 name = "iniconfig"
 version = "2.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -368,6 +382,7 @@ source = { editable = "." }
 
 [package.dev-dependencies]
 dev = [
+    { name = "iced-x86" },
     { name = "kaitaistruct" },
     { name = "mypy" },
     { name = "numpy" },
@@ -382,6 +397,7 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "iced-x86", specifier = ">=1.22.0" },
     { name = "kaitaistruct", specifier = "==0.11" },
     { name = "mypy", specifier = ">=1.14.0" },
     { name = "numpy", specifier = ">=2.5" },
