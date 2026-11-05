@@ -471,6 +471,24 @@ def test_a_branch_with_its_own_commit_rebased_and_fast_forwarded_is_reaped(
     assert [candidate.worktree.branch for candidate in candidates] == ["work"]
 
 
+@pytest.mark.parametrize(
+    ("subject", "is_work"),
+    [
+        ("commit: x", True),
+        ("commit (merge): x", True),
+        ("merge main: Merge made by the 'ort' strategy.", True),
+        ("pull origin main: Merge made by the 'ort' strategy.", True),
+        ("pull: Fast-forward", False),
+        ("merge main: Fast-forward", False),
+        ("rebase (finish): refs/heads/b onto abc", False),
+        ("reset: moving to origin/main", False),
+        ("branch: Created from main", False),
+    ],
+)
+def test_work_subject_classification(subject: str, is_work: bool) -> None:
+    assert bool(worktree_init._WORK_SUBJECT.match(subject)) is is_work
+
+
 def test_a_branch_without_a_reflog_is_skipped(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     pool = repo / ".agents" / "worktrees"

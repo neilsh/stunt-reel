@@ -573,11 +573,11 @@ def _is_ancestor(repo: Path, branch: str) -> bool:
 
 
 #: Reflog subjects that record work done on a branch: a commit (also amend, merge, initial), a
-#: cherry-pick, revert or am, or a merge that made a merge commit. A rebase is not listed: onto
+#: cherry-pick, revert or am, or a merge or pull that made a merge commit. A rebase is not listed: onto
 #: ``main`` it writes ``rebase (finish)`` even with nothing of the branch's own to replay, and
 #: commits that were rebased already left a ``commit:``, ``am:`` or ``cherry-pick:`` entry.
 #: "Merge made" is git's English message; another locale fails to match and errs toward keeping.
-_WORK_SUBJECT = re.compile(r"(commit|cherry-pick|revert|am)(:| \()|merge .*: Merge made")
+_WORK_SUBJECT = re.compile(r"(commit|cherry-pick|revert|am)(:| \()|(merge|pull)\b[^:]*: Merge made")
 
 
 def _never_committed(repo: Path, branch: str) -> bool:
