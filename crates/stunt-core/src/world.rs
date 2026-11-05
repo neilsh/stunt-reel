@@ -138,7 +138,8 @@ struct ScnWalk {
     visits: usize,
     /// Visits allowed before the walk stops with [`ScnStopReason::Budget`].
     budget: usize,
-    /// The first stop recorded, if any.
+    /// The stop to report, if any: the first skipped subtree, replaced by a stop that ends the
+    /// walk.
     stop: Option<ScnStop>,
     /// Set by a stop that ends the walk; a skipped subtree leaves it clear.
     halted: bool,
@@ -1241,8 +1242,9 @@ mod tests {
             0,
         );
         // The leaf is reached as a list child and again as the list continuation.
-        assert!(
-            !instances.is_empty(),
+        assert_eq!(
+            instances.len(),
+            2,
             "the sibling after the deep chain is placed"
         );
         assert_eq!(walk.stop.map(|s| s.reason), Some(ScnStopReason::Depth));
