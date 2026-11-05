@@ -33,6 +33,8 @@ This is why the eye-height sweeps below found no consistent answer: a height off
 
 All scores `mean_ssim_scored`, CTRY / INTRO unless a single film is named. Baselines moved between rounds (0.771 / 0.676 on 2026-10-22, 0.7708 / 0.6762 at `d90a047`, 0.7732 / 0.6799 after page timing); each sweep is read against its own baseline. Nothing below was adopted.
 
+* **A montage tick-skipping rule** (2026-11-05, `[Bounded Observation]`, [#73](https://github.com/neilsh/stunt-reel/issues/73)). Offset search over -200..+10 on `captures/vault-intro`: the best-matching render tick follows the capture tick at slope 0.99 (largest deviation 7 ticks), so the 0.9-lag reading was a search saturating at -180. See [`film-segments.md`](film-segments.md#23-montage-frames).
+
 **Shadow as geometry or an airbrush op inside the hero shape** (2026-11-05, `[Bounded Observation]`). `CTRY.ALL` chunk `0x7F37` has no `0x0171` word; the shadow is drawn by the engine from the slot flag (section 1), not by the shape. `OP_ANIMATE` is skipped, not used, in shadow mode.
 
 **Vertical placement, CTRY-only gains** (2026-10-22, [log row](log.md)). Each helps CTRY and costs INTRO, so no global rule:
@@ -77,7 +79,7 @@ _Found 2026-10-22 and 2026-10-23 at `d90a047`; see the [parity log](log.md)._
 ## Open questions
 
 1. The hero's vertical residual (since #47 about 8 to 10 rows high, while since #132 the world needs no shift) was the shape's `ground_y_offset` applied to actors (section 1, adopted 2026-11-02); after it the `shift` residual is dy -4, dx +2 on current `main`, against a world optimum of 0, so about 4 rows remain (CTRY alone prefers half an offset). Still open: the `PLAYONE.EXE` rule behind it (where header word `+4` is read, and for which objects), which would move the change from the heuristic to the evidence-backed track, and the hero's attitude at ticks like 587. The fuselage question is answered in section 1 (`SORTON` subtrees); what it still needs is the colour work open in [`sod-vm.md` § 8.5](../playone-exe/sod-vm.md#85-polygon-colour-at-shade-time): the `SHADE` light vector and per-vertex shade interpolation. ([#67](https://github.com/neilsh/stunt-reel/issues/67))
-2. `INTRO.FLM` montage segments need the player's tick-skipping rule: their captures best-match our state at a lag that grows about 0.9 ticks per clock tick, the captures are all distinct, and no fixed page offset matches. ([#73](https://github.com/neilsh/stunt-reel/issues/73))
+2. Closed 2026-11-05: the montage needs no tick-skipping rule; see Ruled out. ([#73](https://github.com/neilsh/stunt-reel/issues/73))
 3. The montage's parked aircraft (four large airframes on a sand flat in the capture) are not where our slot data puts the actors; the placement rule in (1) may explain both. ([#72](https://github.com/neilsh/stunt-reel/issues/72))
 4. The coastline band (capture sand where we draw airfield green) remains; see [`attribution.md`](attribution.md#5-coastline-and-sea). ([#71](https://github.com/neilsh/stunt-reel/issues/71))
 5. Two things the projection change of § 2 leaves open. First, the projection centre: our 185-row viewport centres it at row 92.5, while the horizon fit gives 91.9 and `0x41CA` reads 92; half a row has not been swept. Second, the finite ground: at a 500 m eye height our sea edge sits about 5 px below PLAYONE's horizon, which is at infinity. That accounts for about half of the INTRO slot 4 offset.
