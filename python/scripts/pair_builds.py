@@ -40,7 +40,7 @@ from build_pairing import (
     signed,
 )
 
-from stunt_reel import dataroot
+from stunt_reel import dataroot, game_builds
 
 #: What each kind of direct evidence counts.
 NOUNS: dict[str, str] = {
@@ -62,7 +62,7 @@ def load(path: Path) -> LoadImage:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     """Parse command-line arguments."""
-    builds = dataroot.data_root() / "builds"
+    builds = dataroot.data_root() / game_builds.BUILDS_DIR
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--left", type=Path, default=builds / "unpatched" / "PLAYONE.EXE")
     parser.add_argument("--right", type=Path, default=builds / "patched" / "PLAYONE.EXE")
@@ -193,7 +193,7 @@ def main(argv: list[str]) -> int:
     args = parse_args(argv)
     try:
         pairing = pair_images(load(args.left), load(args.right))
-    except ValueError as err:  # not LZEXE, no DS load, or code segments that do not pair
+    except (OSError, ValueError) as err:  # no build there, not LZEXE, or unpairable code
         print(f"pair-builds: {err}", file=sys.stderr)
         return 2
     if not args.ds and not args.code and args.slots is None:
