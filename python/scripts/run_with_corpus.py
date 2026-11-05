@@ -3,7 +3,7 @@
 Usage: python python/scripts/run_with_corpus.py <command> [args...]
 
 ``dataroot`` is the one place that finds the game files: ``STUNT_DATA_ROOT``, else
-``<primary>.data``, else the primary checkout's own ``corpus/`` (ADR 0033). The Rust readers
+``<primary>.data``, else the primary checkout's own ``corpus/`` (ADR 0036). The Rust readers
 (``stuntreel sod-census`` and the corpus tests) take the result from this variable, so the
 rule is not written again in Rust or in a mise template, and the path never passes through
 a shell, where a ``$(...)`` or a quote in it would run.

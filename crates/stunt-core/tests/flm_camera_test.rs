@@ -26,7 +26,7 @@ const CTRY_ACTOR_SHAPE: u16 = 0x7F37;
 
 /// `CTRY.FLM` in the corpus `STUNT_CORPUS` names, else in this checkout's `corpus/`.
 /// `mise run test-corpus` sets the variable to the corpus the Python `dataroot` resolves, the
-/// one rule for where the game files are (ADR 0033).
+/// one rule for where the game files are (ADR 0036).
 fn corpus_film() -> PathBuf {
     std::env::var_os("STUNT_CORPUS")
         .map_or_else(

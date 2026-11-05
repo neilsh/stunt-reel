@@ -420,7 +420,7 @@ def test_read_data_file_needs_the_corpus_only_for_a_corpus_path(
 def test_empty_folders_in_the_primary_corpus_are_no_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The old links left ``corpus/<name>`` empty; such a corpus holds no game files (ADR 0033)."""
+    """The old links left ``corpus/<name>`` empty; such a corpus holds no game files (ADR 0036)."""
     primary = _primary(tmp_path)
     (primary / "corpus" / "stisldem").mkdir(parents=True)
     _worktree(monkeypatch, primary)

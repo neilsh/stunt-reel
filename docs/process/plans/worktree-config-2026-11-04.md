@@ -1,11 +1,11 @@
 # Worktrees reach shared state by configuration, not links (2026-11-04)
 
-Status: **implemented 2026-11-04 (results in section 6); design agreed 2026-11-04 and corrected the same day while planning (sections 3, 4.1, 4.3); on branch `claude/worktreeinclude-brainstorm-b409c5` as ADR 0033, not ADR 0032, which another decision had taken**.
+Status: **implemented 2026-11-04 (results in section 6); design agreed 2026-11-04 and corrected the same day while planning (sections 3, 4.1, 4.3); on branch `claude/worktreeinclude-brainstorm-b409c5` as ADR 0036; ADRs 0032 to 0035 were taken by other decisions**.
 Tasks: [`worktree-config-implementation-2026-11-04.md`](worktree-config-implementation-2026-11-04.md). Source: a session of
 2026-11-04 that started from "should we use a `.worktreeinclude` for Claude", surveyed the 32
 worktrees under `.claude/worktrees/` (16 never provisioned, including the session's own) and
 settled on removing the per-worktree links rather than automating their creation. The decision
-will be recorded as ADR 0033 (layer 1, below); this note owns the design and the delivery.
+will be recorded as ADR 0036 (layer 1, below); this note owns the design and the delivery.
 
 ## 1. Goal
 
@@ -113,16 +113,16 @@ holds and no code reads.
   sections. The DSH section says its sessions need `danger-full-access` for `mise run` tasks.
 - [AGENTS.md](../../../AGENTS.md) SOP 6: drop "`mise run init` once per worktree"; removal is
   `reap` for linked worktrees and any tool's own removal for the rest.
-- ADR 0033 records the decision. ADR 0019 gets "superseded by ADR 0033"; ADRs 0008, 0013, 0018 and
-  0030 get dated "amended by ADR 0033" lines (repo convention: ADRs 0008, 0015, 0016).
+- ADR 0036 records the decision. ADR 0019 gets "superseded by ADR 0036"; ADRs 0008, 0013, 0018 and
+  0030 get dated "amended by ADR 0036" lines (repo convention: ADRs 0008, 0015, 0016).
 
 ## 5. Delivery
 
 One `gh stack`, three layers, each passing `mise run check`:
 
-1. ADR 0033 and section 4.1 (data-root paths in code).
+1. ADR 0036 and section 4.1 (data-root paths in code).
 2. Sections 4.2 and 4.3 (configuration, `ensure`, the `init` and `dataroot.py` removals).
-3. Section 4.4 except ADR 0033 (harness-setup, harness.md, SOP 6, ADR status lines).
+3. Section 4.4 except ADR 0036 (harness-setup, harness.md, SOP 6, ADR status lines).
 
 The implementation plan goes in `worktree-config-implementation-2026-11-04.md` beside this note.
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-amended 2026-11-04 by [ADR 0033](0033-worktrees-reach-shared-state-by-configuration.md): new worktrees hold no links; this applies to old ones until
+amended 2026-11-04 by [ADR 0036](0036-worktrees-reach-shared-state-by-configuration.md): new worktrees hold no links; this applies to old ones until
 reaped.
 
 accepted; `mise run reap` is the only supported way to remove a linked worktree.

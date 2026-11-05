@@ -2,7 +2,7 @@
 
 ## Status
 
-amended 2026-11-04 by [ADR 0033](0033-worktrees-reach-shared-state-by-configuration.md): no `.cache` link; the cache is named by absolute path.
+amended 2026-11-04 by [ADR 0036](0036-worktrees-reach-shared-state-by-configuration.md): no `.cache` link; the cache is named by absolute path.
 
 `CARGO_HOME` and `UV_CACHE_DIR` point at `<checkout>/.cache`, and `mise run init`
 links that directory to the primary checkout's copy, so every worktree of this

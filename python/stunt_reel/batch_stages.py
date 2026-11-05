@@ -10,7 +10,7 @@ dosbox-automation, MAKEONE or the stuntreel binary.
 
 The ``root`` argument is where a stage writes its outputs (this checkout, or ``batch_parity
 --data-root``); its scripts are always this checkout's, and captures and archives are read from
-``dataroot.data_root()`` (ADR 0033).
+``dataroot.data_root()`` (ADR 0036).
 """
 
 from __future__ import annotations

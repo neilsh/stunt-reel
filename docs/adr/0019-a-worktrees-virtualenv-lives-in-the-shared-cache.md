@@ -2,7 +2,7 @@
 
 ## Status
 
-superseded 2026-11-04 by [ADR 0033](0033-worktrees-reach-shared-state-by-configuration.md): each worktree keeps uv's own `.venv`.
+superseded 2026-11-04 by [ADR 0036](0036-worktrees-reach-shared-state-by-configuration.md): each worktree keeps uv's own `.venv`.
 
 A worktree is usually on another volume from the primary checkout, and uv can only
 hardlink a package out of ``.cache`` when the environment receiving it is on that same

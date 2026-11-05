@@ -4,7 +4,7 @@ What a new machine needs before an agent session can work in a checkout here, an
 which settings cannot ship in Git. Nothing on this page is Stunt Island knowledge; it is
 a fact about the tools. Recorded from observed behaviour on 2026-10-25, mise 2026.10.12,
 Windows, and revised on 2026-11-04 when worktrees stopped holding links
-([ADR 0033](adr/0033-worktrees-reach-shared-state-by-configuration.md)). Policy and
+([ADR 0036](adr/0036-worktrees-reach-shared-state-by-configuration.md)). Policy and
 per-harness capability notes live in [`harness.md`](harness.md); this page is the machine
 setup they assume.
 
@@ -78,7 +78,7 @@ Nothing to do. Create it with any tool, inside the primary checkout or beside it
 
 ## Removing a worktree
 
-- A worktree with no links (every one made since ADR 0033) can be removed by the tool that
+- A worktree with no links (every one made since ADR 0036) can be removed by the tool that
   made it, or by `git worktree remove`.
 - An older worktree that `init` linked keeps its junctions until reaped: run
   `mise run reap -- --yes` from the primary checkout. It unlinks the junctions into the data

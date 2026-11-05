@@ -169,7 +169,7 @@ def _from_manifest(flm: Path, root: Path, slug: str, link_build: LinkBuild) -> P
             f"exists only on the machine that wrote it; record it against a tree here with: "
             f"mise run make-all -- --film {flm} --game-root <tree>"
         )
-    # A corpus/... tree is the data root's (ADR 0033); any other relative tree is the checkout's.
+    # A corpus/... tree is the data root's (ADR 0036); any other relative tree is the checkout's.
     game = dataroot.resolve_data_path(game)
     if not game.is_absolute():
         game = root / game
@@ -205,7 +205,7 @@ def resolve_all(
     bytes; its own bytes must still hash to the recorded ``all_sha256``, and a mismatch is an
     error. *slug* names the film's directory; it defaults to the one
     :func:`parity_layout.film_slug` derives. *root* is the checkout holding the manifests and
-    ``target/``; the stored archive is read from the data root (ADR 0033).
+    ``target/``; the stored archive is read from the data root (ADR 0036).
     """
     stem = flm.stem.lower()
     for sibling in sorted(flm.parent.iterdir()):

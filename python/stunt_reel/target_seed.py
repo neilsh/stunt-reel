@@ -316,7 +316,7 @@ def exclusive(path: Path, *, timeout: float = 600.0) -> Iterator[None]:
     a seed takes about 40 s, so ten minutes means a holder that is stuck, not slow. Any
     other failure to lock is raised at once. Each call opens its own handle, so two threads
     of one process exclude each other as two processes do: the gate starts its cargo lanes,
-    and so their ``ensure`` steps, at once (ADR 0033).
+    and so their ``ensure`` steps, at once (ADR 0036).
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + timeout

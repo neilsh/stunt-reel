@@ -48,7 +48,7 @@ def add_parity_options(parser: argparse.ArgumentParser) -> None:
 
     ``--films`` defaults to every film the data root's ``references.toml`` pins, resolved by
     :func:`parity_options` once ``--data-root`` is known; without the flag the configured data
-    root is read, with the primary checkout's ``corpus/`` as its fallback (ADR 0033).
+    root is read, with the primary checkout's ``corpus/`` as its fallback (ADR 0036).
     """
     parser.add_argument(
         "--films", default=None, help="comma list; default: every film references.toml pins"

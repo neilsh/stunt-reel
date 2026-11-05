@@ -53,10 +53,10 @@ argues from its sections 3 and 4.
 
 ## Layer 1: data-root paths in code
 
-### Task 1: ADR 0033 and the data-root resolvers
+### Task 1: ADR 0036 and the data-root resolvers
 
 **Files:**
-- Create: `docs/adr/0033-worktrees-reach-shared-state-by-configuration.md`
+- Create: `docs/adr/0036-worktrees-reach-shared-state-by-configuration.md`
 - Modify: `python/stunt_reel/dataroot.py:144-153` (`data_root`), add two functions after it
 - Modify: `python/stunt_reel/parity_layout.py:56,101-103` (`capture_root`)
 - Modify: `.gitignore` (add `/captures/` beside `capture/`)
@@ -77,7 +77,7 @@ argues from its sections 3 and 4.
     stayed the relative `captures`, joined to `data_root()` by each caller, so `parity_layout`
     keeps no import of `dataroot`.
 
-- [ ] **Step 1: Write ADR 0033.** One page, the repo's ADR shape (Status, Context, Decision,
+- [ ] **Step 1: Write ADR 0036.** One page, the repo's ADR shape (Status, Context, Decision,
   Considered Options, Consequences). Status `accepted 2026-11-04`. Content is spec sections 2 and
   3; Considered Options are `.worktreeinclude`, a `WorktreeCreate` hook, a `SessionStart` hook,
   automating `init` while keeping the links, and per-worktree `UV_PROJECT_ENVIRONMENT`.
@@ -265,7 +265,7 @@ def test_tasks_use_the_os_temp_directory():
     assert "TMP" not in config["env"] and "TEMP" not in config["env"]
 ```
 
-- [ ] **Step 2: Run** → FAIL. **Step 3: Implement**, rewriting the `[env]` comment to cite ADR 0033.
+- [ ] **Step 2: Run** → FAIL. **Step 3: Implement**, rewriting the `[env]` comment to cite ADR 0036.
   `[vars]` is defined after `[env]` in the file; check `mise env` renders `UV_CACHE_DIR` absolute
   from this worktree (mise resolves vars before env; if not, move `[vars]` above `[env]`).
 - [ ] **Step 4: Run** `mise env | Select-String UV_CACHE_DIR` → `E:/git/stunt-reel/.cache/uv`;
@@ -398,15 +398,15 @@ def test_init_creates_no_links(tmp_path, monkeypatch):
 - [ ] **Step 2: Edit** `docs/harness.md` "Temporary directories" to say tasks now use the OS temp
   directory and DSH needs `danger-full-access` (link to harness-setup's DSH section); SOP 6:
   item 2 becomes "nothing to provision: the first building task seeds `target/`
-  (ADR 0033); `mise run init` does it eagerly", item 5 keeps `reap` for linked worktrees and
+  (ADR 0036); `mise run init` does it eagerly", item 5 keeps `reap` for linked worktrees and
   allows any tool's removal otherwise.
 - [ ] **Step 3: Add the ADR status lines**, dated 2026-11-04, in the form ADR 0008 line 5 uses:
-  0019 "superseded by ADR 0033"; 0008 "amended by ADR 0033: code reads the data root directly; no
-  link"; 0013 "amended by ADR 0033: no `.cache` link; the cache is named by absolute path"; 0018
-  "amended by ADR 0033: new worktrees hold no links; this applies to old ones until reaped"; 0030
-  "amended by ADR 0033: seeding runs from `ensure`, a dependency of every building task".
+  0019 "superseded by ADR 0036"; 0008 "amended by ADR 0036: code reads the data root directly; no
+  link"; 0013 "amended by ADR 0036: no `.cache` link; the cache is named by absolute path"; 0018
+  "amended by ADR 0036: new worktrees hold no links; this applies to old ones until reaped"; 0030
+  "amended by ADR 0036: seeding runs from `ensure`, a dependency of every building task".
 - [ ] **Step 4: Run** `mise run test-py -- tests/test_doc_invariants.py` → PASS.
-- [ ] **Step 5: Commit** `docs: worktrees need no provisioning step (ADR 0033)`.
+- [ ] **Step 5: Commit** `docs: worktrees need no provisioning step (ADR 0036)`.
 
 ### Task 9: End-to-end verification (spec section 6)
 
@@ -427,7 +427,7 @@ def test_init_creates_no_links(tmp_path, monkeypatch):
 ## Changes after review
 
 Three review passes and CodeRabbit changed the design after these tasks; the code and
-[ADR 0033](../../adr/0033-worktrees-reach-shared-state-by-configuration.md) hold the result.
+[ADR 0036](../../adr/0036-worktrees-reach-shared-state-by-configuration.md) hold the result.
 
 - **No game files is an error.** `dataroot.require_corpus()` refuses a corpus that is missing or
   has no folder holding a file; `require_corpus_or_report(program)` prints why, and every script
