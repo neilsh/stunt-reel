@@ -14,9 +14,11 @@ _Found 2026-10-22; see the [loss attribution row](log.md)._
 
 ## 2. Current breakdown
 
-Loss by class, most recent run per film (2026-11-02, `main` at `793895e`: the whole-body, upright aircraft of [#47](https://github.com/neilsh/stunt-reel/pull/47), the `GVPOLY` ramp colour of [#48](https://github.com/neilsh/stunt-reel/pull/48) and the square-pixel, 256 px projection of [#132](https://github.com/neilsh/stunt-reel/pull/132)): CTRY 0.8291 over 114 scored frames (index agreement 0.587, IoU 0.9897): terrain 0.0783, props 0.0568, sky 0.0158, actors 0.0114, reference-only 0.0078, ocean 0.0008. INTRO 0.7154 over 209 (0.622, 0.9712): terrain 0.1281, props 0.0654, actors 0.0363, sky 0.0260, reference-only 0.0121, ocean 0.0109, props_and_actors_render_only 0.0058. Terrain is 46% of the loss on CTRY and 45% on INTRO. Against the 2026-10-24 breakdown below, with the same measure at `794daa5` (after #47 and #48, before #132) between them:
+Loss by class, most recent run per film (2026-11-04, the ground decals of [ADR 0035](../../docs/adr/0035-ground-lying-props-are-terrain-decals.md) for [#69](https://github.com/neilsh/stunt-reel/issues/69), against `8b36b79` just before them): CTRY 0.8298 -> **0.8645** over 114 scored frames (index agreement 0.587 -> 0.884, IoU 0.9897): terrain 0.0772 -> **0.0186**, props 0.0553 -> **0.0793**, sky 0.0158, actors 0.0133, reference-only 0.0078 -> 0.0076, ocean 0.0008 -> 0.0007. INTRO 0.7745 -> **0.7973** over 209 (0.663 -> 0.812, IoU 0.9856): terrain 0.0941 -> **0.0439**, props 0.0530 -> **0.0808**, actors 0.0441 -> 0.0439, sky 0.0199, reference-only 0.0072, ocean 0.0068, props_and_actors_render_only 0.0004. Terrain falls from 45% of the loss to 14% on CTRY and from 42% to 22% on INTRO, and props are now the largest class on both. The props class rises because the airfield and sand tiles that the terrain hid are now drawn, so their remaining error is attributed to props (section 1); the total loss still falls. The tile pixels were most of section 4's off-ramp ground.
 
-| Class | CTRY 10-24 | CTRY `794daa5` | CTRY now | INTRO 10-24 | INTRO `794daa5` | INTRO now |
+The run before that (2026-11-02, `main` at `793895e`: the whole-body, upright aircraft of [#47](https://github.com/neilsh/stunt-reel/pull/47), the `GVPOLY` ramp colour of [#48](https://github.com/neilsh/stunt-reel/pull/48) and the square-pixel, 256 px projection of [#132](https://github.com/neilsh/stunt-reel/pull/132)): CTRY 0.8291 over 114 scored frames (index agreement 0.587, IoU 0.9897): terrain 0.0783, props 0.0568, sky 0.0158, actors 0.0114, reference-only 0.0078, ocean 0.0008. INTRO 0.7154 over 209 (0.622, 0.9712): terrain 0.1281, props 0.0654, actors 0.0363, sky 0.0260, reference-only 0.0121, ocean 0.0109, props_and_actors_render_only 0.0058. Terrain is 46% of the loss on CTRY and 45% on INTRO. Against the 2026-10-24 breakdown below, with the same measure at `794daa5` (after #47 and #48, before #132) between them:
+
+| Class | CTRY 10-24 | CTRY `794daa5` | CTRY `793895e` | INTRO 10-24 | INTRO `794daa5` | INTRO `793895e` |
 |---|---|---|---|---|---|---|
 | props | 0.0779 | 0.0680 | **0.0568** | 0.0727 | 0.0698 | **0.0654** |
 | actors | 0.0035 | 0.0122 | **0.0114** | 0.0081 | 0.0381 | **0.0363** |
@@ -67,6 +69,8 @@ Split by what the capture draws there:
 The off-ramp capture indices on our CTRY flat ground are sand 88 (66,288 px), black 0 (28,328), the aircraft's dark blue 136 (24,058), sand 91 (11,653), then 63, the beach colours 161/163, 174 and 47, over 96 of the 114 scored frames: the missing beach surface plus the aircraft and its shadow, not colour. On INTRO it is dominated by the montage's sand flats (1.39 million pixels).
 
 Reading: the two large levers are the per-shot, depth-cued ground shade (+0.0105 CTRY / +0.0029 INTRO if a law reproduced it exactly; see [`terrain-shade.md`](../playone-exe/terrain-shade.md)) and the surfaces the capture draws where we draw airfield green (sand, aircraft, shadow on CTRY; the montage view on INTRO).
+
+Answered 2026-11-04: the green-ramp shade and much of the off-ramp ground are scenery tiles (`SCENERY2.RES` #144-159 and others) that `PLAYONE` paints over its flat ground leaves and that our depth test hid under the terrain. `PLAYONE` puts no shade law on the ground ([`world-scene.md`](../playone-exe/world-scene.md) sections 2, 3). Drawing them as terrain decals cut the terrain class to 0.0186 (CTRY) and 0.0439 (INTRO), section 2.
 
 _Found 2026-10-23; see the [parity log](log.md)._
 

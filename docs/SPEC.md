@@ -50,7 +50,7 @@ Delivery is sequential. This section records what each phase is for and whether 
 
 * **No Interactive Aerodynamics:** Real-time 6-DOF flight integration (Runge-Kutta/Euler), lift/drag polar lookup tables, stall physics, and joystick control loops (`STUNT.EXE`) are strictly excluded. The engine evaluates pre-recorded keyframe trajectories and discrete timeline events only.
 * **No Authoring GUI Systems & Timeline Scrubbing:** The Set Designer, Prop Placement, Sound Stage, and Editing Room 16-bit DOS user interfaces are excluded. In Milestone 2, immediate-mode GUI chrome and timeline scrubbing sliders are deferred; playback is launched via CLI argument with basic keyboard controls (Space=Pause/Resume, Esc=Quit).
-* **No CPU Software Rasterizer:** Software Mode 13h ($320 \times 200$) horizontal span filling, Sutherland-Hodgman CPU frustum clipping, and CPU-side Painter's Algorithm / BSP polygon sorting are superseded by modern GPU hardware rasterization and floating-point depth buffering.
+* **No CPU Software Rasterizer:** Software Mode 13h ($320 \times 200$) horizontal span filling, Sutherland-Hodgman CPU frustum clipping, and CPU-side Painter's Algorithm / BSP polygon sorting are superseded by modern GPU hardware rasterization and depth buffering (`Depth24Plus`). Where the two orders disagree, and the rules that imitate the painter at coplanar ties, are in [`research/parity/render-model.md`](../research/parity/render-model.md).
 * **No Direct Audio Hardware Output (Milestone 2 Deferral):** Sound output via hardware audio devices (WASAPI/CPAL/rodio) is deferred; `AudioCue` events are parsed and evaluated as data-only metadata in `TrajectoryRecord` (Seam 2).
 * **No Analog CRT Post-Processing Shaders (Milestone 2 Deferral):** Scanline emulation, phosphor bloom, CRT barrel curvature, and temporal dithering passes are deferred; authentic visual reproduction is accomplished via the $256 \times 32$ palette LUT and `@interpolate(flat)`.
 
@@ -89,7 +89,7 @@ Delivery is sequential. This section records what each phase is for and whether 
 
   * *Decoder / glTF 2.0 export:* Because core glTF 2.0 lacks pipeline depth-bias states, coplanar decal polygons (runway markings, aircraft insignias, wing roundels) are geometrically displaced along their outward surface normal $\hat{\mathbf{n}}$ by $\epsilon = 0.001\text{ m}$ by the SOD decoder, and `stunt-gltf` exports the displaced geometry unchanged:
     $$\mathbf{v}' = \mathbf{v} + 0.001\hat{\mathbf{n}}$$
-  * *Phase 2 (`wgpu` Engine):* Coplanar decal batches are rendered in a dedicated pipeline pass using hardware depth biasing (`DepthBiasState { constant: 2, slope_scale: 2.0, clamp: 0.0 }`).
+  * *Phase 2 (`wgpu` Engine):* Coplanar decal batches are rendered in a dedicated pipeline pass using hardware depth biasing (`DepthBiasState { constant: -2, slope_scale: -2.0, clamp: 0.0 }`, with `LessEqual`).
 
 #### [I6] Visual Parity Acceptance Thresholds & VGA 1:1.2 Aspect Ratio Correction
 

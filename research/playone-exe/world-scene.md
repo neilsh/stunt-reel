@@ -1,7 +1,7 @@
 # `PLAYONE.EXE`: How the Ground Is Drawn and Where Its Colours Come From
 
 * **Binary**: `PLAYONE.EXE`, unpacked load image, unpatched and Patch #3 builds; film `CTRY.FLM` (and `INTRO.FLM` for the renderer check)
-* **Method**: DOSBox-X breakpoint plans in `tools/dosbox-x/plans/` (`ground-colours`, `ground-writer`, `ground-tiles`, `ground-filler`, `terrain-records`, `terrain-tree`, `ground-objects`; tool in [`debugger-plans.md`](debugger-plans.md)), iced-x86 disassembly of the unpacked image, byte comparison of the image with `MAP.BIN` and the `RES` shapes, and one renderer probe (`DBG_NO_TERRAIN`, `DBG_TERRAIN_DROP`, not committed)
+* **Method**: DOSBox-X breakpoint plans in `tools/dosbox-x/plans/` (`ground-colours`, `ground-writer`, `ground-tiles`, `ground-filler`, `terrain-records`, `terrain-tree`, `ground-objects`; tool in [`debugger-plans.md`](debugger-plans.md)), iced-x86 disassembly of the unpacked image, byte comparison of the image with `MAP.BIN` and the `RES` shapes, and renderer probes (`DBG_NO_TERRAIN`, `DBG_TERRAIN_DROP`, a biased terrain pass; none committed) and the ground-decal prototype
 * **Scope**: the code that draws the ground, where each ground colour is stored, how the airfield's scenery tiles reach the screen, and the dispatch slots of the display-list VM. How SOD polygons are *shaded* is in [`terrain-shade.md`](terrain-shade.md)
 * **Anchors**: none new; the slot table is summarised in [`sod-vm.md`](sod-vm.md) section 1, the anchor table in [`memory-map.md`](memory-map.md) section 3
 * **Evidence tier**: `[Established]` for the instruction sequences, the tree's place in the image and its identity with `MAP.BIN`; `[Bounded Observation]` for what the live runs drew (one emulator, `CTRY.FLM`, unpatched; each run's ticks are given where it is cited)
@@ -12,7 +12,7 @@
 
 The ground is not a display-list stream. `PLAYONE` walks a BSP scenery tree that is static data in its own image (on the unpatched build paragraph `0x2286`, image `0x22860`; on the patched build its leaves start at image `0x20736`, section 2), and each ground leaf (node type 14) carries one flat polygon inline: a colour word, a vertex count and anchor-table references. Those 146 leaves are `MAP.BIN`'s polygons, the same vertices and the same colour, on both builds (section 2). The leaf routine draws them flat, with no shade.
 
-The airfield's other colours, 193, 194 and 196 where `MAP.BIN` says 195, and the sand 91 of `INTRO.FLM`, are scenery shapes from `SCENERY2.RES` and `SCENERY3.RES`. The tree places them on top of the ground, and `OP_COLOR` sets their colour from the shape's own bytecode (section 3). The player paints in walk order, with no depth buffer, so a tile always covers the leaf under it. Our renderer places the same tiles, but its depth test hides them under the coplanar `MAP.BIN` polygons. Lowering the terrain 5 cm under them raises `CTRY.FLM` from 0.8298 to 0.8649 and `INTRO.FLM` from 0.7745 to 0.7971 SSIM (section 6).
+The airfield's other colours, 193, 194 and 196 where `MAP.BIN` says 195, and the sand 91 of `INTRO.FLM`, are scenery shapes from `SCENERY2.RES` and `SCENERY3.RES`. The tree places them on top of the ground, and `OP_COLOR` sets their colour from the shape's own bytecode (section 3). The player paints in walk order, with no depth buffer, so a tile always covers the leaf under it. Our renderer places the same tiles, but its depth test hid them under the coplanar `MAP.BIN` polygons: they lie on the terrain plane to a millimetre and tie it in depth. It now snaps flat props that lie on the terrain onto it and draws them in the decal pass, which raises `CTRY.FLM` from 0.8298 to 0.8645 and `INTRO.FLM` from 0.7745 to 0.7973 SSIM (section 6).
 
 The ops `0x0168` and `0x02BE`, which this note used to call the ground handlers, are the Gouraud polygons `GVPOLY`/`GVPOLY16`. In the airfield shot only the hero aircraft's object draws with them (section 4.1).
 
@@ -105,7 +105,7 @@ On the pixels our render draws as terrain, it emits `195` on 71% (`CTRY`) and 54
 
 Rendering without terrain (`DBG_NO_TERRAIN=1`) puts our own tiles on those pixels with the capture's colours: tick 356 becomes 196 on 41.8k of its 54.0k terrain pixels (capture 40.4k), and tick 1517 becomes 91 on all 59.2k (capture 55.9k). So the tiles are placed and decoded; the depth test hides them under `MAP.BIN` polygons in the same plane.
 
-The rule from sections 2 and 3: a ground leaf never covers the scenery placed on it. The change it licenses is a depth bias that lets a prop lying on the terrain win over it, while the terrain still occludes what is behind it (open question 2). The sign was measured with a 5 cm drop of the terrain (`DBG_TERRAIN_DROP`), and it is up on both films:
+The rule from sections 2 and 3: a ground leaf never covers the scenery placed on it. The change it licenses lets a prop lying on the terrain win over it, while the terrain still occludes what is behind it (open question 2). The sign was first measured with a 5 cm drop of the terrain (`DBG_TERRAIN_DROP`), and it is up on both films:
 
 | `DBG_TERRAIN_DROP` (m) | `CTRY` SSIM | `INTRO` SSIM | `CTRY` / `INTRO` IoU |
 |---|---|---|---|
@@ -114,7 +114,46 @@ The rule from sections 2 and 3: a ground leaf never covers the scenery placed on
 | 0.2 | 0.8649 | 0.7969 | 0.9896 / 0.9855 |
 | 0.5 | 0.8648 | 0.7965 | 0.9896 / 0.9855 |
 
-Predicted sign of the real change: positive on both films, about +0.035 on `CTRY` and +0.023 on `INTRO`. It is not adopted here; it belongs to [#69](https://github.com/neilsh/stunt-reel/issues/69). Re-baking the terrain colours would be wrong: they already match.
+Predicted sign of the real change: positive on both films, about +0.035 on `CTRY` and +0.023 on `INTRO`. That prediction held (section 6.4); the terrain drop itself was not adopted.
+
+### 6.1 How far the tiles sit from the terrain
+
+*[Bounded Observation]*, answering [#176](https://github.com/neilsh/stunt-reel/issues/176): a throwaway test over `CTRY.ALL`, `INTRO.ALL` and the `FreeFlight` `SIDATA` (2026-11-04, `8b36b79`). For every placed instance (`SCENERY.scn`, `build_world` placement, de-duplicated, nothing culled), each vertex of a flat shape was set against the `MAP.BIN` triangle over its `x, z` (the fan `push_terrain` draws; where patches overlap in plan, the one nearest the vertex). Offset = tile `y` minus terrain `y`.
+
+* **The 16 known tiles** (`SCENERY2.RES` #144-159, ids `0x0391..0x03A0`, 41 instances in each film): offset `0.000` at the median for every shape, minimum `-0.001` for 8 shapes, `0.000` for 7, and `-0.008` for `0x0391` (one instance). Maximum `0.000`. None is above the ground and none is measurably below it.
+* **Where the offset comes from.** It does not come from the data. The tile geometry sits at local `y = 0` (`0.03125` for four quads) and the placement `y` is the terrain anchor height, so the tile is the terrain plane to within a millimetre. The earlier reading that the tiles sit a little below the terrain (the `LessEqual` probe, [`terrain-shade.md`](terrain-shade.md) Ruled out) is withdrawn: what the 5 cm drop of the terrain removes is a depth tie, not a gap. A tile quad and the fan triangles of its patch are different triangulations of one plane, and their interpolated depths differ by rounding, so each pixel goes to one or the other and `Less` or `LessEqual` makes no difference.
+* **Other flat props**, same method: the `0x03BE..0x03C3` markings (colour 174, 256 m) `-0.001` to `0.000`; `0x0370`, `0x02AA` (over terrain at 8 of its 37 vertices) and `0x06D5` (46 instances, colour 14) `-0.001` to `0.000`; the 751 m `0x064A` `-0.032` to `-0.030`; and `INTRO` shapes `0x05CB..0x05D7` (colour 205, 16-30 m, 416 instances) `0.000`.
+* **Flat props that hover.** `INTRO` shapes `0x0790..0x07B4` (12 shapes, colour 177, 128-640 m) sit `+2.0` m above the ground (a few vertices `+0.2` to `+1.5`; one shape has a vertex at `-1.5`). They are not on it, and a ground-lying rule must leave them in the base pass.
+* **Not over any terrain.** The four colour-193 quads `0x04A9..0x04AC` (SCENERY3 entries 168-171, 128-256 m, `y = 75.03`) have no `MAP.BIN` triangle under any vertex in either film.
+
+### 6.2 A rule for ground-lying props
+
+A prop is a ground decal when its shape is flat (all vertices within 5 cm of one height), at least one vertex has terrain below it, and every vertex that does is within 10 cm of it. On the two films it picks the 16 known tiles and nothing that stands up. It also picks, as the same kind of object, the markings and patches listed in 6.1 (`0x02AA`, `0x0370`, `0x03BE..0x03C3`, `0x064A`, `0x06D5`, and on `INTRO` `0x05CB..0x05D7`). The gap between the groups is wide: the largest offset of anything it picks is 3.2 cm, the smallest of anything it rejects is 22 cm. `ground_decal_vertices` in `crates/stunt-core/src/world.rs` implements it.
+
+The tile list in section 3 names `SCENERY3.RES` #1, 2, 5, 6. Those are ids `0x0402`, `0x0403`, `0x0406`, `0x0407`, and the rule does not pick them: they are `OP_TAP` shapes, six vertices each, that our decode stands up 3 to 197 m, with offsets from -13 m to +233 m against the ground (open question 4).
+
+### 6.3 Candidates
+
+*[Bounded Observation]*, `build/parity` renders, `8fa4e0c`, `8b36b79` and the prototype, 2026-11-04. Each row is the same two films, `mean_ssim_scored`, mask IoU in brackets (`CTRY` / `INTRO`).
+
+| Variant | `CTRY` | `INTRO` | Per-tick cost |
+|---|---|---|---|
+| `8fa4e0c` (before the eighth vertex of patch 131) | 0.8298 (0.9897) | 0.7745 (0.9856) | |
+| `8b36b79` (patch 131 fixed) | 0.8298 (0.9897) | 0.7745 (0.9856) | no frame of either film changes |
+| (a) Terrain sunk 0.02 m | 0.8649 | 0.7968 | `CTRY` none above 0.001; 6 `INTRO` ticks above 0.002, worst 1086 (-0.006); not checked far from the camera |
+| (a) Terrain sunk 0.05 m (0.10 m the same) | 0.8649 | 0.7971 | as above |
+| (b) Third pipeline, terrain with slope-scale bias 0.25 | 0.8640 | 0.7943 | 37 `INTRO` ticks above 0.002, ticks 2918-2973 down to -0.04; any constant term hurt, 256 or more lowered IoU |
+| **Prototype: ground decals** | **0.8645 (0.9897)** | **0.7973 (0.9856)** | `CTRY` none above 0.002 (worst 510, -0.0011); `INTRO` 2 ticks, 1086 (-0.0056) and 1317 (-0.0027); ticks 2918-2973 unchanged |
+
+Patch 131 has no effect on either film: the leaf is not in view. The sink moves every polygon by a constant, and the bias pass changes the depth of the terrain against its own neighbours. The prototype changes only the props that the rule picks, by exactly the amount that makes them tie, and leaves the depth test to the decal pass of `[I5]`.
+
+### 6.4 The prototype
+
+*[Bounded Observation]*. `build_world_ir` snaps each ground decal onto the terrain at its `x, z` and puts every mesh of it in the `WORLD_DECAL` batch, which `[I5]` draws after the base pass with `LessEqual` and a negative bias. Index agreement with the capture rises from 0.587 to 0.884 (`CTRY`) and from 0.663 to 0.812 (`INTRO`); IoU is unchanged. It matches the sink to within 0.0004 SSIM on `CTRY` and 0.0002 on `INTRO` (below the 0.002 noise floor), without moving any terrain, so it does not touch a mountain leaf. Unlike the sink, its tie does not depend on the depth step, which grows with distance; the renderer tests below hold it to 8 km. The subpixel cull in `build_world` still drops a far prop before `build_world_ir` sees it, ground decal or not.
+
+The renderer tests (`crates/stunt-render/tests/gpu/renderer.rs`) draw flat terrain with a tile built by hand at terrain height, as the snap would place it (they do not call `build_world_ir`). The tile shows over the terrain 80 m away, keeps at least 90% of the pixels it shows alone at 1, 1.5, 2, 4 and 8 km at a grazing angle of 5.7 degrees, and a wall of terrain in front of it hides it completely. `Depth24Plus` is enough for tiles snapped this way, so reversed-Z with `Depth32Float` was not built. It stays an option if a tile that is not exactly on the plane of its patch (a patch whose corners are not coplanar) is found to flicker far away; no such tile is in these films.
+
+`INTRO` tick 1086 loses 0.0056 with the prototype and with the sink alike. Its terrain loss falls (0.0425 to 0.0378) and its props loss rises (0.1259 to 0.1358): a tile now covers pixels that a base prop used to win. Which prop was not identified (open question 5).
 
 _Found 2026-11-04; see the [parity log](../parity/log.md)._
 
@@ -131,10 +170,15 @@ _Found 2026-11-04; see the [parity log](../parity/log.md)._
 * **A shaded or Gouraud ground** (section 2): the leaf routine `0xBF23` hands its stored colour word to `0:8069` unchanged; the Gouraud filler `0:75DB` was called only for the aircraft in the airfield shot.
 * **Ops `0x0168`/`0x02BE` as the ground** (section 4.1): they are `GVPOLY`/`GVPOLY16`, used there only by object `608A`.
 * **The ground in `CTRY.ALL` or `VDATA.BIN`** (sections 2, 5): the tree is in the image; no 8-byte window of a live leaf polygon occurs in `VDATA.BIN` or any other file of the install (`PLAYONE.EXE` itself is LZEXE-packed on disk; the tree is in its unpacked image).
+* **The tiles sit below the terrain** (section 6.1): they are on its plane to a millimetre; the 5 cm drop removes a depth tie. The earlier reading came from the `LessEqual` probe.
+* **Sinking the terrain, or a biased third terrain pass** (section 6.3): they score 0.8649 / 0.7971 and 0.8640 / 0.7943, but the first moves every polygon and the second loses 37 `INTRO` ticks; the ground-decal prototype matches the first with no range limit.
 * **Tiles missing from our world** (section 6): `CTRY.ALL` carries them and `SCENERY.scn` places them; removing the terrain shows them.
 * **The earlier memory scans** (2026-10-23/24): they looked for a display-list stream of `0x995C`/`0x9A24` words in conventional memory. The ground was never in that form, so "no resident list" was true but beside the point. The image region `0x23200-0x24E80` they flagged as "a serialised scenery program" is the tree.
 
 ## Open questions
 
 1. **The 8 sand patches with no polygon in the image** ([#175](https://github.com/neilsh/stunt-reel/issues/175)). Section 2.1 accounts for 12 of the 20 active `MAP.BIN` records without a leaf: they are the coarse `SP_GROUND` polygons. `MAP.BIN` patches 52 to 55 and 62 to 65 are in no node the walk reaches. Do they exist only in FreeFlight's map, or does `PLAYONE` draw them another way? Comparing FreeFlight's `SCENERY.scn` `SP_GLEAF` positions with the image's tree would settle it.
-2. **Leaves drawn after props** ([#176](https://github.com/neilsh/stunt-reel/issues/176)). The walk is back to front, so a mountain leaf in front of a prop is drawn after it and covers it. A depth bias keeps that occlusion; drawing all terrain first without depth writes would lose it. The #69 change should keep the depth test and bias only coplanar ties. The tie is not exact: `LessEqual` in place of `Less` changed neither film ([`terrain-shade.md`](terrain-shade.md) Ruled out), while a 5 cm drop does, so the bias has to exceed the tiles' small offset below the terrain.
+2. **Leaves drawn after props** ([#176](https://github.com/neilsh/stunt-reel/issues/176)). The walk is back to front, so a mountain leaf in front of a prop is drawn after it and covers it. The renderer keeps that with its depth test: only flat props within 10 cm of the ground leave the base pass (section 6.2), and the decal pass still loses to nearer terrain (tested). What is open is whether `PLAYONE` ever draws a leaf *after* a tile lying on it, which would hide the tile again; the order of the airfield leaves in the tree, read from the image, would say. The tie was not a gap (section 6.1): the tiles are on the plane to a millimetre.
+3. **The four floating quads** `0x04A9..0x04AC` (colour 193, `y = 75.03`) have no `MAP.BIN` polygon under them in our parse. Either they cover a hole that the tree of `PLAYONE` fills with a leaf `MAP.BIN` lacks, or the polygon is among those our parse drops. It bears on [#175](https://github.com/neilsh/stunt-reel/issues/175).
+4. **`SCENERY3.RES` #1, 2, 5, 6 (`0x0402`, `0x0403`, `0x0406`, `0x0407`).** Section 3 names them by colour (`0xC1`..`0xC6`), but our decode makes them `OP_TAP` shapes standing 3 to 197 m high that miss the terrain by -13 to +233 m. Whether the anchors resolve the way `PLAYONE` resolves them is not checked.
+5. **`INTRO` ticks 1086 (-0.0056) and 1317 (-0.0027)** lose with the prototype: the props loss rises where a tile now covers pixels that a base prop won. The prop was not identified; `mise run frame -- --film intro --ticks 1086` would show it.

@@ -255,7 +255,7 @@ pub(crate) struct MapArea {
 pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
     let (records, _partial) = data.as_chunks::<30>();
     let mut areas = Vec::new();
-    for record in records {
+    for (index, record) in records.iter().enumerate() {
         // Constant indices into the fixed 30-byte record, so none can fall outside it.
         let pos = i16::from_le_bytes([record[2], record[3]]);
         if pos.trailing_zeros() >= 8 {
@@ -264,17 +264,25 @@ pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
         let color = record[12];
         // A negative count reads as more than seven, as the sign-extending cast it replaces did.
         let num_verts = i16::from_le_bytes([record[14], record[15]]);
-        let nverts = usize::try_from(num_verts).map_or(7, |n| n.min(7));
+        let nverts = usize::try_from(num_verts).map_or(7, |n| n.min(8));
         if nverts < 3 {
             continue;
         }
-        // Bytes 16..30 hold up to seven little-endian anchor indices.
+        // Bytes 16..30 hold seven little-endian anchor indices. An eighth (patch 131 counts 8)
+        // is the next record's first word, where PLAYONE's own leaf for that patch has it
+        // (research/playone-exe/world-scene.md section 2); the last record keeps seven.
         let (vert_words, _) = record.as_chunks::<2>();
+        let eighth = index
+            .checked_add(1)
+            .and_then(|next| records.get(next))
+            .map(|next| u16::from_le_bytes([next[0], next[1]]));
         let verts: Vec<usize> = vert_words
             .iter()
             .skip(8)
+            .map(|&word| u16::from_le_bytes(word))
+            .chain(eighth)
             .take(nverts)
-            .map(|&word| usize::from(u16::from_le_bytes(word)))
+            .map(usize::from)
             .collect();
         if verts.iter().all(|&v_idx| v_idx < anchor_count) {
             areas.push(MapArea { color, verts });
@@ -509,11 +517,19 @@ pub(crate) fn build_world_ir(
     } else {
         push_terrain(&mut ir, anchors, map_areas, base_y);
     }
-    push_props(&mut ir, instances, ir_models, base_y, false);
+    let surface = TerrainSurface::new(anchors, map_areas, base_y);
+    let grounded: Vec<Option<Vec<[f32; 3]>>> = instances
+        .iter()
+        .map(|&(shape_id, pos)| {
+            let model = ir_models.get(&shape_id)?;
+            ground_decal_vertices(model, [pos[0], pos[1] + base_y, pos[2]], &surface)
+        })
+        .collect();
+    push_props(&mut ir, instances, &grounded, ir_models, base_y, false);
 
     let base_indices = arena_index(ir.indices.len());
     let base_vertices = arena_index(ir.vertices.len());
-    push_props(&mut ir, instances, ir_models, base_y, true);
+    push_props(&mut ir, instances, &grounded, ir_models, base_y, true);
     let decal_indices = arena_index(ir.indices.len()) - base_indices;
     let decal_vertices = arena_index(ir.vertices.len()) - base_vertices;
 
@@ -570,6 +586,27 @@ fn push_flat_quad(ir: &mut SodModelIr, y: f32, color: u8, scenery_class: u8) {
         .extend_from_slice(&[start, start + 1, start + 2, start, start + 2, start + 3]);
 }
 
+/// The corners of a `MAP.BIN` patch in `[I1]` metres, or `None` unless it has three or more
+/// corners that are all valid anchor points.
+fn patch_corners(
+    pts: &[[f32; 3]],
+    anchors: &[AnchorPoint],
+    area: &MapArea,
+) -> Option<Vec<[f32; 3]>> {
+    if area.verts.len() < 3
+        || !area
+            .verts
+            .iter()
+            .all(|&idx| anchors.get(idx).is_some_and(AnchorPoint::is_valid))
+    {
+        return None;
+    }
+    area.verts
+        .iter()
+        .map(|&idx| pts.get(idx).copied())
+        .collect()
+}
+
 /// Appends one fan-triangulated polygon per `MAP.BIN` patch whose corners are all valid
 /// anchor points, lifted by `base_y`.
 #[expect(
@@ -579,21 +616,7 @@ fn push_flat_quad(ir: &mut SodModelIr, y: f32, color: u8, scenery_class: u8) {
 fn push_terrain(ir: &mut SodModelIr, anchors: &[AnchorPoint], map_areas: &[MapArea], base_y: f32) {
     let pts: Vec<[f32; 3]> = anchors.iter().map(AnchorPoint::register_position).collect();
     for area in map_areas {
-        if area.verts.len() < 3
-            || !area
-                .verts
-                .iter()
-                .all(|&idx| anchors.get(idx).is_some_and(AnchorPoint::is_valid))
-        {
-            continue;
-        }
-
-        let Some(corners) = area
-            .verts
-            .iter()
-            .map(|&idx| pts.get(idx).copied())
-            .collect::<Option<Vec<[f32; 3]>>>()
-        else {
+        let Some(corners) = patch_corners(&pts, anchors, area) else {
             continue;
         };
         let &[p0, p1, p2, ..] = corners.as_slice() else {
@@ -631,8 +654,112 @@ fn push_terrain(ir: &mut SodModelIr, anchors: &[AnchorPoint], map_areas: &[MapAr
     }
 }
 
-/// Appends every placed prop's mesh slices whose `is_decal` equals `decals`, translated
-/// to its placement and lifted by `base_y`.
+/// A prop whose vertices all lie in one horizontal plane no more than this far apart (metres)
+/// can be a tile laid on the ground. The airfield tiles have none: their extent is 0.
+const GROUND_FLAT_TOLERANCE: f32 = 0.05;
+/// A flat prop whose every vertex over the terrain is within this many metres of it lies on
+/// the ground. The tiles and markings measure at most 3 cm off (`SCENERY2.RES` #144-159 at
+/// 8 mm, an apron at 3 cm); the nearest flat prop that hovers is 22 cm off.
+const GROUND_LIE_TOLERANCE: f32 = 0.1;
+
+/// The terrain as a set of triangles (each `MAP.BIN` patch fanned from its first corner, as
+/// [`push_terrain`] draws it), answering how high the ground is at a point.
+struct TerrainSurface {
+    triangles: Vec<[[f32; 3]; 3]>,
+}
+
+impl TerrainSurface {
+    fn new(anchors: &[AnchorPoint], map_areas: &[MapArea], base_y: f32) -> Self {
+        let pts: Vec<[f32; 3]> = anchors
+            .iter()
+            .map(|a| {
+                let [x, y, z] = a.register_position();
+                [x, y + base_y, z]
+            })
+            .collect();
+        let mut triangles = Vec::new();
+        for area in map_areas {
+            let Some(corners) = patch_corners(&pts, anchors, area) else {
+                continue;
+            };
+            let [first, rest @ ..] = corners.as_slice() else {
+                continue;
+            };
+            for (&b, &c) in rest.iter().zip(rest.iter().skip(1)) {
+                triangles.push([*first, b, c]);
+            }
+        }
+        Self { triangles }
+    }
+
+    /// The height of the terrain triangle over `(x, z)` that is nearest `y`, where several
+    /// patches overlap in plan (a hillside over a lower coast patch). `None` off the map.
+    fn height_near(&self, x: f32, z: f32, y: f32) -> Option<f32> {
+        // A point on a shared edge counts for both triangles.
+        const EDGE_SLACK: f32 = -1e-4;
+        self.triangles
+            .iter()
+            .filter_map(|t| {
+                let denom = (t[1][2] - t[2][2]) * (t[0][0] - t[2][0])
+                    + (t[2][0] - t[1][0]) * (t[0][2] - t[2][2]);
+                if denom.abs() < 1e-9 {
+                    return None;
+                }
+                let a = ((t[1][2] - t[2][2]) * (x - t[2][0]) + (t[2][0] - t[1][0]) * (z - t[2][2]))
+                    / denom;
+                let b = ((t[2][2] - t[0][2]) * (x - t[2][0]) + (t[0][0] - t[2][0]) * (z - t[2][2]))
+                    / denom;
+                let c = 1.0 - a - b;
+                (a >= EDGE_SLACK && b >= EDGE_SLACK && c >= EDGE_SLACK)
+                    .then(|| a * t[0][1] + b * t[1][1] + c * t[2][1])
+            })
+            .min_by(|p, q| (p - y).abs().total_cmp(&(q - y).abs()))
+    }
+}
+
+/// The world positions of the vertices of a prop, snapped onto the terrain, if it is
+/// a ground decal; `None` for every other prop.
+///
+/// PLAYONE has no depth buffer and paints a scenery tile after the ground leaf under it, so
+/// the tile always covers its leaf (`research/playone-exe/world-scene.md` sections 3, 6).
+/// The rule that picks such props out is geometric: the shape is flat (all vertices within
+/// [`GROUND_FLAT_TOLERANCE`] of one height), at least one vertex has terrain below it, and
+/// every vertex that does is within [`GROUND_LIE_TOLERANCE`] of it. Vertices over terrain take
+/// the height of the ground exactly, so the tile ties it instead of z-fighting it; any
+/// other vertex stays where the placement put it. `pos` includes `base_y`.
+fn ground_decal_vertices(
+    model: &SodModelIr,
+    pos: [f32; 3],
+    surface: &TerrainSurface,
+) -> Option<Vec<[f32; 3]>> {
+    let extent = model.extent()?;
+    if extent.max[1] - extent.min[1] > GROUND_FLAT_TOLERANCE {
+        return None;
+    }
+    let mut snapped = Vec::with_capacity(model.vertices.len());
+    let mut on_terrain = false;
+    for v in &model.vertices {
+        let p = [
+            v.position[0] + pos[0],
+            v.position[1] + pos[1],
+            v.position[2] + pos[2],
+        ];
+        match surface.height_near(p[0], p[2], p[1]) {
+            Some(h) if (h - p[1]).abs() <= GROUND_LIE_TOLERANCE => {
+                on_terrain = true;
+                snapped.push([p[0], h, p[2]]);
+            }
+            Some(_) => return None,
+            None => snapped.push(p),
+        }
+    }
+    on_terrain.then_some(snapped)
+}
+
+/// Appends every placed prop mesh slice, translated to its placement and lifted by
+/// `base_y`: those whose `is_decal` equals `decals`, except that every slice of a ground
+/// decal (`grounded` holds its snapped vertices, parallel to `instances`) goes in the decal
+/// batch.
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX; each mesh index is at least its mesh's vertex_offset"
@@ -640,26 +767,33 @@ fn push_terrain(ir: &mut SodModelIr, anchors: &[AnchorPoint], map_areas: &[MapAr
 fn push_props(
     ir: &mut SodModelIr,
     instances: &[(u16, [f32; 3])],
+    grounded: &[Option<Vec<[f32; 3]>>],
     ir_models: &HashMap<u16, SodModelIr>,
     base_y: f32,
     decals: bool,
 ) {
-    for &(shape_id, pos) in instances {
+    for (&(shape_id, pos), ground) in instances.iter().zip(grounded) {
         let Some(model) = ir_models.get(&shape_id) else {
             continue;
         };
         for mesh in model.meshes() {
-            if mesh.is_decal() != decals || mesh.indices.is_empty() {
+            let in_decal_batch = ground.is_some() || mesh.is_decal();
+            if in_decal_batch != decals || mesh.indices.is_empty() {
                 continue;
             }
             let start = arena_index(ir.vertices.len());
-            for v in mesh.vertices {
-                ir.vertices.push(SodVertex {
-                    position: [
+            for (i, v) in mesh.vertices.iter().enumerate() {
+                let position = ground
+                    .as_ref()
+                    .and_then(|snapped| snapped.get(mesh.vertex_offset as usize + i))
+                    .copied()
+                    .unwrap_or([
                         v.position[0] + pos[0],
                         v.position[1] + pos[1] + base_y,
                         v.position[2] + pos[2],
-                    ],
+                    ]);
+                ir.vertices.push(SodVertex {
+                    position,
                     normal: v.normal,
                     palette_index: v.palette_index,
                     flags: v.flags,
@@ -728,6 +862,28 @@ mod tests {
         // If anchor_count is too low, the polygon is rejected
         let areas_low = parse_map_bin(&data, 3);
         assert_eq!(areas_low.len(), 0);
+    }
+
+    #[test]
+    fn an_eight_vertex_patch_takes_its_last_anchor_from_the_next_record() {
+        // MAP.BIN patch 131 counts 8 vertices in a record with 7 slots; PLAYONE's own leaf for
+        // it has all 8, the eighth being the next record's `num` word (world-scene.md section 2).
+        let mut data = vec![0u8; 60];
+        data[2..4].copy_from_slice(&0x01FFi16.to_le_bytes());
+        data[14..16].copy_from_slice(&8i16.to_le_bytes());
+        for (slot, word) in data[16..30].as_chunks_mut::<2>().0.iter_mut().zip(0u16..) {
+            slot.copy_from_slice(&word.to_le_bytes());
+        }
+        data[30..32].copy_from_slice(&7i16.to_le_bytes()); // next record's num = anchor 7
+        let areas = parse_map_bin(&data, 10);
+        assert_eq!(areas.len(), 1);
+        assert_eq!(areas[0].verts, vec![0, 1, 2, 3, 4, 5, 6, 7]);
+
+        // As the file's last record there is no next word, so the patch keeps its 7 slots.
+        assert_eq!(
+            parse_map_bin(&data[..30], 10)[0].verts,
+            vec![0, 1, 2, 3, 4, 5, 6]
+        );
     }
 
     #[test]
@@ -1030,5 +1186,134 @@ mod tests {
         assert_eq!(unique.len(), 2);
         assert_eq!(unique[0].0, 0x0100);
         assert_eq!(unique[1].0, 0x0101);
+    }
+
+    /// Terrain with one triangle rising 1 cm per metre of X: world corners (0, 10, 0),
+    /// (100, 11, 0) and (100, 11, 100).
+    fn sloped_terrain() -> (Vec<AnchorPoint>, Vec<MapArea>) {
+        let pts = vec![
+            AnchorPoint { x: 0, y: -10, z: 0 },
+            AnchorPoint {
+                x: -100,
+                y: -11,
+                z: 0,
+            },
+            AnchorPoint {
+                x: -100,
+                y: -11,
+                z: 100,
+            },
+        ];
+        let areas = vec![MapArea {
+            color: 42,
+            verts: vec![0, 1, 2],
+        }];
+        (pts, areas)
+    }
+
+    /// A one-mesh prop: a square of half-width 2 m at local height 0, plus an optional
+    /// vertex `peak` metres up that makes it stand.
+    fn square_prop(peak: Option<f32>) -> SodModelIr {
+        let vertex = |x: f32, y: f32, z: f32| SodVertex {
+            position: [x, y, z],
+            normal: UP,
+            palette_index: 193,
+            flags: 0,
+            scenery_class: 0,
+            _padding: 0,
+        };
+        let mut ir = SodModelIr::new("TILE");
+        ir.vertices = vec![
+            vertex(-2.0, 0.0, -2.0),
+            vertex(2.0, 0.0, -2.0),
+            vertex(2.0, 0.0, 2.0),
+            vertex(-2.0, 0.0, 2.0),
+        ];
+        ir.indices = vec![0, 1, 2, 0, 2, 3];
+        if let Some(height) = peak {
+            ir.vertices.push(vertex(0.0, height, 0.0));
+            ir.indices.extend_from_slice(&[0, 1, 4]);
+        }
+        ir.allocate_node(
+            "BASE",
+            None,
+            IDENTITY_MATRIX,
+            VisibilityCondition::Always,
+            NodeKind::Mesh {
+                vertex_offset: 0,
+                vertex_count: arena_index(ir.vertices.len()),
+                index_offset: 0,
+                index_count: arena_index(ir.indices.len()),
+                is_decal: false,
+            },
+        );
+        ir
+    }
+
+    /// The prop vertices that the indices of the world node `node` reach.
+    fn prop_vertices(ir: &SodModelIr, node: &str) -> Vec<[f32; 3]> {
+        let Some(&NodeKind::Mesh {
+            index_offset,
+            index_count,
+            ..
+        }) = ir.nodes.iter().find(|n| n.name == node).map(|n| &n.kind)
+        else {
+            return Vec::new();
+        };
+        let mut found: Vec<[f32; 3]> = ir
+            .indices
+            .iter()
+            .skip(index_offset as usize)
+            .take(index_count as usize)
+            .map(|&i| &ir.vertices[i as usize])
+            .filter(|v| v.scenery_class == SCENERY_PROP)
+            .map(|v| v.position)
+            .collect();
+        found.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        found.dedup();
+        found
+    }
+
+    fn world_with(prop: SodModelIr, at: [f32; 3]) -> SodModelIr {
+        let (pts, areas) = sloped_terrain();
+        let models = HashMap::from([(0x0391, prop)]);
+        build_world_ir(&pts, &areas, &[(0x0391, at)], &models, 0.0)
+    }
+
+    #[test]
+    fn a_flat_prop_on_the_terrain_is_a_decal_snapped_to_its_height() {
+        // 4 mm off the plane at the centre: rasterised alone it would tie with the terrain.
+        let ir = world_with(square_prop(None), [60.0, 10.604, 20.0]);
+        let decal = prop_vertices(&ir, "WORLD_DECAL");
+        assert_eq!(decal.len(), 4, "the tile belongs to the decal batch");
+        assert!(prop_vertices(&ir, "WORLD_BASE").is_empty());
+        for [x, y, _] in decal {
+            let terrain = 10.0 + 0.01 * x;
+            assert!(
+                (y - terrain).abs() < 1e-3,
+                "vertex at x={x}: y={y}, terrain={terrain}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_flat_prop_above_the_terrain_stays_in_the_base_batch() {
+        let ir = world_with(square_prop(None), [60.0, 12.6, 20.0]);
+        assert_eq!(prop_vertices(&ir, "WORLD_BASE").len(), 4);
+        assert!(prop_vertices(&ir, "WORLD_DECAL").is_empty());
+    }
+
+    #[test]
+    fn a_standing_prop_stays_in_the_base_batch() {
+        let ir = world_with(square_prop(Some(5.0)), [60.0, 10.604, 20.0]);
+        assert_eq!(prop_vertices(&ir, "WORLD_BASE").len(), 5);
+        assert!(prop_vertices(&ir, "WORLD_DECAL").is_empty());
+    }
+
+    #[test]
+    fn a_flat_prop_with_no_terrain_below_stays_in_the_base_batch() {
+        let ir = world_with(square_prop(None), [500.0, 10.0, 20.0]);
+        assert_eq!(prop_vertices(&ir, "WORLD_BASE").len(), 4);
+        assert!(prop_vertices(&ir, "WORLD_DECAL").is_empty());
     }
 }
