@@ -179,6 +179,7 @@ fn world_is_drawn_when_present() {
             max: [1.0, 1.0, 0.0],
             radius: 1.0,
         },
+        scenery_stop: None,
     };
     let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world));
     let Some((w, h, drawn)) = render(&scene) else {

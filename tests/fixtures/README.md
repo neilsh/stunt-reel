@@ -156,3 +156,10 @@ A made-up film archive and the three source files it is linked from ([`linking.m
 The body of DOSBox-X v2026.10.01's `DOS MCBS` debugger command, read over the debugger link while `PLAYONE.EXE` (unpatched) waited at its film dialog on 2026-11-04 (`core = normal`, `memsize = 16`). It is emulator output listing memory blocks and their owners, not game bytes. `PLAYONE`'s PSP is `0x0814`, so its image loads at paragraph `0x0824`.
 
 - `tests/test_dbx_boot.py` checks that `parse_mcbs` finds that PSP.
+
+### 19. `synthetic_cyclic.scn` (48 bytes)
+A made-up `SCENERY.scn` of twelve little-endian 32-bit words whose list contains itself, for the walk's cycle stop. Pointers are byte offsets, so word `n` is pointed to by `2n`.
+- **Word 1**: `SP_POS` (`0`) with `x = 10`, `y = 20`, `z = 30`, `next = 12` (word 6).
+- **Word 6**: `SP_LIST` (`20`) with two children, `20` (word 10) and `12` (word 6 itself), then the `0` terminator at word 9.
+- **Word 10**: `SP_LEAF` (`10`) with object `0x0105`, the shape `synthetic_minimal.sod` stands in for.
+- Used by `cyclic_scenery_list_stops_promptly_and_reports_it` in `crates/stunt-core/tests/it/world_test.rs`: the leaf is placed once at `(-10, -20, 30)`, then the walk stops with `ScnStopReason::Cycle` at byte 24 (opcode 20) instead of recursing forever.
