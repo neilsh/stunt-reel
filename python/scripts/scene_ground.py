@@ -17,7 +17,7 @@ from collections import Counter
 from pathlib import Path
 
 from stunt_reel import scene_tree
-from stunt_reel.dataroot import ensure_links_or_report
+from stunt_reel.dataroot import REPO_ROOT, ensure_links_or_report
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -53,17 +53,28 @@ def report(walked: scene_tree.TreeWalk, result: scene_tree.Comparison) -> str:
     return "\n".join(lines)
 
 
+def _needs_corpus(*paths: Path) -> bool:
+    """True when any path lies under the repository's ``corpus/`` link."""
+    corpus = (REPO_ROOT / "corpus").resolve()
+    return any(corpus in (p.resolve(), *p.resolve().parents) for p in paths)
+
+
 def run(args: argparse.Namespace) -> int:
     """Print the report; 0 on success."""
-    if not ensure_links_or_report("scene_ground"):
+    if _needs_corpus(args.image, args.map_bin) and not ensure_links_or_report("scene_ground"):
         return 2
     try:
         image = args.image.read_bytes()
         map_bin = args.map_bin.read_bytes()
-    except OSError as exc:
+        scene_tree.check_map_bin(map_bin)
+        walked = scene_tree.walk(scene_tree.tree_segment(image))
+    except (OSError, ValueError) as exc:
         print(f"[scene-ground] {exc}", file=sys.stderr)
         return 1
-    walked = scene_tree.walk(scene_tree.tree_segment(image))
+    if walked.unknown:
+        for offset, kind in walked.unknown:
+            print(f"[scene-ground] unknown node type {kind} at 0x{offset:04X}", file=sys.stderr)
+        return 1
     print(report(walked, scene_tree.compare(walked.polygons, scene_tree.parse_map_bin(map_bin))))
     return 0
 

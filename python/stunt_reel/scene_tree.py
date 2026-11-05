@@ -146,23 +146,37 @@ def parse_map_bin(data: bytes) -> list[MapPatch]:
     return patches
 
 
+def check_map_bin(data: bytes) -> None:
+    """Raise ``ValueError`` unless ``data`` holds 179 records and the 2-byte null terminator."""
+    need = MAP_RECORDS * MAP_RECORD + 2
+    if len(data) < need:
+        raise ValueError(
+            f"MAP.BIN has {len(data)} bytes, expected {need} (179 records + terminator)"
+        )
+    if data[need - 2 : need] != b"\0\0":
+        raise ValueError("MAP.BIN terminator word is not zero")
+
+
 def compare(polygons: list[GroundPolygon], patches: list[MapPatch]) -> Comparison:
     """Match polygons to patches by anchor set; colours compare on the low byte."""
-    by_set = {frozenset(p.anchors): p for p in patches}
-    matched: set[frozenset[int]] = set()
+    by_set: dict[frozenset[int], list[MapPatch]] = {}
+    for patch in patches:
+        by_set.setdefault(frozenset(patch.anchors), []).append(patch)
+    matched: set[int] = set()
     same = 0
     recoloured: list[tuple[GroundPolygon, MapPatch]] = []
     tree_only: list[GroundPolygon] = []
     for poly in polygons:
         key = frozenset(poly.anchors)
-        patch = by_set.get(key)
-        if patch is None:
+        candidates = by_set.get(key)
+        if not candidates:
             tree_only.append(poly)
             continue
-        matched.add(key)
+        patch = candidates.pop(0)  # each record matches at most one polygon
+        matched.add(patch.index)
         if patch.colour == poly.colour & 0xFF:
             same += 1
         else:
             recoloured.append((poly, patch))
-    map_only = [p for p in patches if frozenset(p.anchors) not in matched]
+    map_only = [p for p in patches if p.index not in matched]
     return Comparison(same, recoloured, tree_only, map_only)

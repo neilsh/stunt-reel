@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import struct
+lazy from pathlib import Path
 
 import pytest
+import scene_ground
 
 from stunt_reel import scene_tree
 
@@ -77,3 +79,41 @@ def test_tree_segment_needs_the_offset() -> None:
     with pytest.raises(ValueError, match="shorter than the scene tree"):
         scene_tree.tree_segment(b"\0" * 16)
     assert scene_tree.tree_segment(b"\0" * scene_tree.TREE_IMAGE_OFFSET + b"ab") == b"ab"
+
+
+def test_walk_keeps_all_eight_anchors_of_a_leaf() -> None:
+    seg = _segment({0x00: [14, 0, 0, 0, 0, 0, 0, 14, 8, 28, 56, 84, 112, 140, 168, 196, 224]})
+    (poly,) = scene_tree.walk(seg).polygons
+    assert poly.anchors == (1, 2, 3, 4, 5, 6, 7, 8)
+
+
+def test_compare_matches_each_record_at_most_once() -> None:
+    twin = scene_tree.GroundPolygon("gleaf", 0, 195, (1, 2, 3))
+    patches = scene_tree.parse_map_bin(_map_record(1, 195, [1, 2, 3]) * 2)
+    one = scene_tree.compare([twin], patches)
+    assert one.same == 1
+    assert [m.index for m in one.map_only] == [1]
+    two = scene_tree.compare([twin, twin], patches)
+    assert two.same == 2
+    assert two.map_only == []
+    three = scene_tree.compare([twin, twin, twin], patches)
+    assert len(three.tree_only) == 1
+
+
+def test_check_map_bin_rejects_empty_and_truncated() -> None:
+    whole = b"\0" * (scene_tree.MAP_RECORDS * scene_tree.MAP_RECORD + 2)
+    scene_tree.check_map_bin(whole)
+    for bad in (b"", whole[:-1], whole[:-2] + b"\0"):
+        with pytest.raises(ValueError, match=r"MAP\.BIN"):
+            scene_tree.check_map_bin(bad)
+
+
+def test_cli_stops_on_unknown_nodes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    image = tmp_path / "img.bin"
+    image.write_bytes(b"\0" * scene_tree.TREE_IMAGE_OFFSET + _segment({0x00: [7]}))
+    map_path = tmp_path / "MAP.BIN"
+    map_path.write_bytes(b"\0" * (scene_tree.MAP_RECORDS * scene_tree.MAP_RECORD + 2))
+    assert scene_ground.main([str(image), str(map_path)]) == 1
+    assert "unknown node type 7 at 0x0000" in capsys.readouterr().err
+    map_path.write_bytes(b"")
+    assert scene_ground.main([str(image), str(map_path)]) == 1
