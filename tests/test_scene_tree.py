@@ -117,6 +117,7 @@ def test_needs_corpus_sees_a_path_through_the_link(tmp_path: Path) -> None:
     corpus = REPO_ROOT / "corpus"
     assert scene_ground._needs_corpus(corpus / "stisldem" / "MAP.BIN")
     assert not scene_ground._needs_corpus(tmp_path / "MAP.BIN")
+    assert not scene_ground._needs_corpus(corpus / ".." / "build" / "playone.img")
 
 
 def test_check_map_bin_rejects_empty_and_truncated() -> None:

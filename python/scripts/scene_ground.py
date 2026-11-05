@@ -12,6 +12,7 @@ Usage: mise run scene-ground -- build/re/playone.img corpus/siarchive/Developer/
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from collections import Counter
 from pathlib import Path
@@ -63,7 +64,7 @@ def _needs_corpus(*paths: Path) -> bool:
     target = link.resolve()
 
     def under(path: Path) -> bool:
-        spelled = path.absolute()
+        spelled = Path(os.path.normpath(path.absolute()))
         resolved = path.resolve()
         return link in (spelled, *spelled.parents) or target in (resolved, *resolved.parents)
 
