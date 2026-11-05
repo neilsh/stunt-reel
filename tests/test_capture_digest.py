@@ -86,7 +86,7 @@ def test_a_directory_without_meta_is_refused(
 def test_without_a_root_the_capture_is_read_from_the_data_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """No checkout link is read: a film slug and --dir both resolve in the data root (ADR 0033)."""
+    """No checkout link is read: a film slug and --dir both resolve in the data root (ADR 0036)."""
     monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
     dataroot.data_root.cache_clear()
     directory = _capture(tmp_path, "vault-intro")

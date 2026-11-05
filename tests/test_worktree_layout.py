@@ -168,7 +168,7 @@ PYTHON_FILES = sorted(
 
 
 def test_no_module_reads_a_data_path_relative_to_the_working_directory() -> None:
-    """A ``corpus`` literal outside a resolver reads the checkout, which holds no corpus (ADR 0033)."""
+    """A ``corpus`` literal outside a resolver reads the checkout, which holds no corpus (ADR 0036)."""
     offenders = [line for path in PYTHON_FILES for line in _unresolved_corpus_literals(path)]
     assert offenders == [], "read it through dataroot.resolve_data_path or corpus_root"
 
@@ -287,7 +287,7 @@ def test_mise_config_renders_outside_a_git_checkout() -> None:
 
 
 def test_every_task_that_builds_depends_on_ensure() -> None:
-    """A new worktree's first cargo task seeds target/ first, with no init (ADR 0033)."""
+    """A new worktree's first cargo task seeds target/ first, with no init (ADR 0036)."""
     config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
     # Formatting and the advisory check build nothing; check-rust runs tasks that do; init
     # and seed call ensure's code themselves.
@@ -303,13 +303,13 @@ def test_every_task_that_builds_depends_on_ensure() -> None:
 
 
 def test_the_uv_cache_is_the_primarys_by_absolute_path() -> None:
-    """No .cache link: every checkout names the primary's uv cache directly (ADR 0033)."""
+    """No .cache link: every checkout names the primary's uv cache directly (ADR 0036)."""
     config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
     assert config["env"]["UV_CACHE_DIR"] == "{{vars.primary}}/.cache/uv"
 
 
 def test_tasks_use_the_os_temp_directory() -> None:
-    """The temp override existed only for DSH's sandbox (ADR 0033)."""
+    """The temp override existed only for DSH's sandbox (ADR 0036)."""
     config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
     assert "TMP" not in config["env"]
     assert "TEMP" not in config["env"]
@@ -317,7 +317,7 @@ def test_tasks_use_the_os_temp_directory() -> None:
 
 @pytest.mark.parametrize("name", ["sod-census", "test-corpus"])
 def test_rust_corpus_readers_take_the_corpus_python_resolves(name: str) -> None:
-    """dataroot is the one place that finds the corpus; Rust is handed it (ADR 0033).
+    """dataroot is the one place that finds the corpus; Rust is handed it (ADR 0036).
 
     The path travels in ``STUNT_CORPUS``, never a shell command line, where a ``$(...)``, a
     quote or an ``&`` in it would run, and no template in mise.toml repeats the rule.

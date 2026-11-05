@@ -287,7 +287,7 @@ def test_an_absolute_game_root_is_used_as_it_is(tmp_path: Path) -> None:
 def test_a_corpus_game_root_is_read_from_the_data_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A manifest's ``corpus/...`` tree is the data root's, not the checkout's (ADR 0033)."""
+    """A manifest's ``corpus/...`` tree is the data root's, not the checkout's (ADR 0036)."""
     data = tmp_path / "data"
     game = data / "corpus" / "stuntisl"
     game.mkdir(parents=True)

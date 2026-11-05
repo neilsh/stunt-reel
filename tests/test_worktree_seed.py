@@ -208,7 +208,7 @@ def _bare_init(
 def test_init_reports_legacy_links_and_keeps_them(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """An old linked worktree keeps its links until reap unlinks them (ADR 0018, ADR 0033)."""
+    """An old linked worktree keeps its links until reap unlinks them (ADR 0018, ADR 0036)."""
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     shared = tmp_path / "shared"
@@ -391,7 +391,7 @@ def test_seed_reports_a_lock_that_cannot_be_taken(
 def test_ensure_checks_the_hooks_path_once_per_target(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A no-op ensure costs a few stats: git runs again only after target/ goes (ADR 0033)."""
+    """A no-op ensure costs a few stats: git runs again only after target/ goes (ADR 0036)."""
     (tmp_path / "target" / "debug").mkdir(parents=True)
     monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
     calls: list[Path] = []

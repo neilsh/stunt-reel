@@ -1,4 +1,4 @@
-"""A film named ``corpus/...`` on a command line is read from the data root (ADR 0033).
+"""A film named ``corpus/...`` on a command line is read from the data root (ADR 0036).
 
 Every task description and research note spells a film relative to the checkout, and a
 worktree no longer links the data root in, so each script resolves such an argument itself.
@@ -169,7 +169,7 @@ def test_the_bench_recapture_reads_the_data_root(data_root: Path) -> None:
 def test_run_with_corpus_hands_the_command_the_resolved_corpus(
     data_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Rust reads the corpus dataroot finds, so the rule is written once (ADR 0033)."""
+    """Rust reads the corpus dataroot finds, so the rule is written once (ADR 0036)."""
     module = _load("run_with_corpus")
     seen: dict[str, object] = {}
 

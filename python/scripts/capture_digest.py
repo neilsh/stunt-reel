@@ -2,7 +2,7 @@
 
 Every promotion of a reference capture needs the ``sha256`` that
 :func:`stunt_reel.references.capture_digest` computes, and there was no command for it. This
-prints that hash for a film's capture, read from the data root (ADR 0033), and,
+prints that hash for a film's capture, read from the data root (ADR 0036), and,
 when ``references.toml`` has an entry for the capture's film, the replacement entry to paste
 in a reviewed commit, with the capture the entry names now. It writes nothing; promoting
 stays an edit of ``research/parity/references.toml`` (ADR 0029).

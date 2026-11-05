@@ -1,6 +1,6 @@
 """Prepare or clean one git worktree.
 
-A worktree needs no provisioning (ADR 0033): code reads the data root directly, mise
+A worktree needs no provisioning (ADR 0036): code reads the data root directly, mise
 names the shared caches by absolute path, and ``ensure``, a dependency of every task
 that builds Rust, seeds an empty ``target/`` and sets ``core.hooksPath`` under a lock.
 ``mise run init`` does the same eagerly with a full report, runs ``uv sync``, and names
@@ -111,7 +111,7 @@ def _migrate(relative: str, target: Path) -> None:
 
 
 def _uv_sync() -> int:
-    """Run ``uv sync`` for this checkout into its own ``.venv`` (ADR 0033)."""
+    """Run ``uv sync`` for this checkout into its own ``.venv`` (ADR 0036)."""
     uv = shutil.which("uv")
     if uv is None:
         print("  ! uv is not on PATH; run this through mise")
@@ -172,7 +172,7 @@ _LEGACY_LINKS: tuple[str, ...] = (
 
 
 def _init(migrate: bool) -> int:
-    """``ensure`` with its full report, then ``uv sync``; links nothing (ADR 0033).
+    """``ensure`` with its full report, then ``uv sync``; links nothing (ADR 0036).
 
     ``--migrate`` still moves an in-checkout corpus into the data root, which code reads
     directly now. Links an older ``init`` made are reported and left for ``reap``, and real
@@ -307,7 +307,7 @@ CACHEDIR_TAG = (
 def _ensure(*, report: bool = False) -> int:
     """Seed an empty target/ and set ``core.hooksPath``; quiet when neither needed doing.
 
-    Every task that builds Rust depends on this (ADR 0033), so it is the step a new worktree
+    Every task that builds Rust depends on this (ADR 0036), so it is the step a new worktree
     used to need ``init`` for; *report* prints every line, as ``init`` does. A failed seed, a
     git that will not run or a lock held past its timeout is a slower first build or an unset
     hooks path, not a reason to stop the task, so it returns 0 whatever happened.
@@ -486,7 +486,7 @@ def _clean(confirmed: bool, parity: bool = False, keep: int = 1) -> int:
         return 0
 
     # An old worktree's capture link sits inside build/; unlink it first, so removing build/
-    # never reaches the data root through it. Nothing reads through it any more (ADR 0033).
+    # never reaches the data root through it. Nothing reads through it any more (ADR 0036).
     reference = REPO_ROOT / parity_layout.LEGACY_CAPTURE_LINK
     if is_link(reference):
         remove_link(reference)

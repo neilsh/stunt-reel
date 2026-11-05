@@ -59,7 +59,7 @@ Confirmed by failure on 2026-10-25, not by reading the packaged sources:
   the mode, so the gate's Python half runs under `workspace-write`.
 * `cargo` writes `target/` inside the checkout, so a warm build is fine once the toolchain
   resolves. `uv`'s cache is the primary checkout's `.cache/uv` by absolute path (ADR 0013,
-  ADR 0033), which is outside a worktree's workspace.
+  ADR 0036), which is outside a worktree's workspace.
 
 A denied gate is an environment symptom before it is a code symptom.
 
@@ -72,7 +72,7 @@ The sandbox also denies the OS temp directory to the processes the tests spawn: 
 directory is not a dependable exception either.
 
 `mise.toml` used to point `TMP` and `TEMP` into the shared cache for this; since
-[ADR 0033](adr/0033-worktrees-reach-shared-state-by-configuration.md) tasks use the OS temp
+[ADR 0036](adr/0036-worktrees-reach-shared-state-by-configuration.md) tasks use the OS temp
 directory, and a DSH session runs `mise run` tasks under `danger-full-access`
 ([harness-setup.md](harness-setup.md#dsh)). A `workspace-write` run that cannot avoid it can
 still set the variables in the same call, because each `pwsh` call is a fresh process:

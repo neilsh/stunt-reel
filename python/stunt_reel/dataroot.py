@@ -6,7 +6,7 @@ every checkout: ``<parent-of-primary>/<repo-name>.data`` unless ``STUNT_DATA_ROO
 names another place.  Nothing this project runs writes ``corpus/`` (ADR 0022), and a new
 capture of a film replaces its old one by swap (ADR 0028).  Code reads both through
 :func:`data_root`, :func:`corpus_root` and :func:`resolve_data_path`, so a checkout made
-by any tool works on first use with no link in it (ADR 0033).
+by any tool works on first use with no link in it (ADR 0036).
 
 Older worktrees still hold the junctions an earlier ``mise run init`` made, including a
 ``.venv`` parked at ``<cache>/venvs/<checkout>-<digest>`` (ADR 0019, superseded).
@@ -239,7 +239,7 @@ def resolve_data_path(path: Path) -> Path:
     """*path* read against the data root when it is a relative ``corpus/`` or ``captures/`` path.
 
     Every task description and note spells a film ``corpus/stisldem/VAULT/CTRY.FLM``, relative
-    to a checkout that no longer links the data root in (ADR 0033).  Any other path, absolute
+    to a checkout that no longer links the data root in (ADR 0036).  Any other path, absolute
     or relative, is returned unchanged.  The first part matches without regard to case, as
     a Windows path does.
     """

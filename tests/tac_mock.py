@@ -201,7 +201,7 @@ def staged_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Sta
 
     monkeypatch.setattr(dataroot, "REPO_ROOT", root)
     # A clone that keeps its game files in its own corpus/: no override, so corpus_root() falls
-    # back to the checkout's, and the stage goes beside it in <root>.data (ADR 0033).
+    # back to the checkout's, and the stage goes beside it in <root>.data (ADR 0036).
     monkeypatch.delenv(dataroot.DATA_ENV, raising=False)
     # The synthetic PLAYONE.EXE matches no build's hash; read it as the unpatched one.
     monkeypatch.setattr(playone, "layout_for", lambda _exe: playone.UNPATCHED)

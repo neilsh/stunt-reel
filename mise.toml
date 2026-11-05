@@ -36,7 +36,7 @@ checksum = "sha256:6835621f4731235651a886ef67c4fc40693454a6386f0e5ab5c0570965a18
 
 [env]
 # One shared, writable tool cache per primary checkout, named by absolute path from every
-# checkout, so a worktree needs no .cache link (ADR 0013, ADR 0033). Each worktree keeps uv's
+# checkout, so a worktree needs no .cache link (ADR 0013, ADR 0036). Each worktree keeps uv's
 # own .venv; on the same volume uv hardlinks its packages out of this cache. Build outputs
 # and the Python tool caches stay per worktree. CARGO_HOME is set per cargo task, to
 # vars.cargo_home below, instead of here: mise installs its rustup shim into $CARGO_HOME,
@@ -54,7 +54,7 @@ PYTHONUTF8 = "1"
 # config_root stays out of the shell command, which would run a `&` in the path.
 primary = "{% set common = exec(command='git rev-parse --path-format=absolute --git-common-dir || echo -') %}{% if common == \"-\" %}{{ config_root }}{% else %}{{ common | dirname }}{% endif %}"
 cargo_home = "{{vars.primary}}/.cache/cargo"
-# The shared data root's default (ADR 0008, ADR 0033), for the Rust readers that take a path;
+# The shared data root's default (ADR 0008, ADR 0036), for the Rust readers that take a path;
 # Python reads STUNT_DATA_ROOT and its fallbacks through stunt_reel.dataroot instead.
 data_root = "{{vars.primary}}.data"
 
@@ -71,7 +71,7 @@ run = "python python/scripts/worktree_init.py init"
 env = { PYTHONPATH = "{{config_root}}/python", STUNT_CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.ensure]
-description = "Seed an empty target/ and set core.hooksPath, under a lock; every task that builds Rust runs it first (ADR 0033)"
+description = "Seed an empty target/ and set core.hooksPath, under a lock; every task that builds Rust runs it first (ADR 0036)"
 hide = true
 quiet = true
 run = "python python/scripts/worktree_init.py ensure"

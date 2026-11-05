@@ -2,7 +2,7 @@
 
 Every path here is relative; callers join it with the root they mean: renders and reports are
 per checkout, while the captures and the stage are relative to the shared data root, which
-``dataroot.data_root()`` names (ADR 0033; ADR 0028 governs the one capture of each kind). Nothing here
+``dataroot.data_root()`` names (ADR 0036; ADR 0028 governs the one capture of each kind). Nothing here
 resolves a root, touches the filesystem, or decides how a capture runs; it answers "where", so no caller spells the
 layout again.
 
@@ -54,9 +54,9 @@ __all__ = [
 _PARITY = Path("build/parity")
 _SCRATCH = Path("build/scratch")
 
-#: Relative to the data root, like the stage (ADR 0033): a checkout no longer links it in.
+#: Relative to the data root, like the stage (ADR 0036): a checkout no longer links it in.
 _CAPTURE = Path("captures")
-#: Where a checkout linked the captures in before ADR 0033; ``reap`` still recognises the link.
+#: Where a checkout linked the captures in before ADR 0036; ``reap`` still recognises the link.
 LEGACY_CAPTURE_LINK = _PARITY / "captures"
 _RENDER = _PARITY / "ours"
 _REPORT = _PARITY / "report"
@@ -103,7 +103,7 @@ def batch_film_dir(slug: str) -> Path:
 
 
 def capture_root() -> Path:
-    """The directory holding every capture, relative to the data root (ADR 0033)."""
+    """The directory holding every capture, relative to the data root (ADR 0036)."""
     return _CAPTURE
 
 
