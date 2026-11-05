@@ -46,7 +46,9 @@ terrain:
   down by more than 0.002 and two `INTRO` ticks (1086 and 1317). It matches the terrain sink within
   0.0004 without that candidate range limit (a constant that shrinks as a fraction of the depth step
   the further the camera is) and without moving any mountain leaf. Ticks 2918-2973, which the biased
-  terrain pass lost, are unchanged.
+  terrain pass lost, are unchanged. At `INTRO` tick 1086 a decal now covers pixels that a base-pass
+  prop won; that prop is not identified (open question 5 of
+  [`world-scene.md`](../../research/playone-exe/world-scene.md#open-questions)).
 * The rule also takes flat markings and patches that lie on the ground (`0x03BE..0x03C3`, `0x064A`,
   `INTRO` `0x05CB..0x05D7` and others), which is the same kind of object. Flat props that hover
   (`INTRO` `0x0790..0x07B4`, 2 m up) stay in the base pass.
