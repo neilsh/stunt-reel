@@ -41,7 +41,6 @@ from build_pairing import (
 )
 
 from stunt_reel import dataroot
-from stunt_reel.dataroot import ensure_links_or_report
 
 #: What each kind of direct evidence counts.
 NOUNS: dict[str, str] = {
@@ -209,6 +208,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    if not ensure_links_or_report("mise run pair-builds"):
-        sys.exit(2)
     sys.exit(main(sys.argv[1:]))
