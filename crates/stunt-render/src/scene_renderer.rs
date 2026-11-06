@@ -86,7 +86,8 @@ impl SceneRenderer {
     /// Uploads the camera and per-draw matrices for `frame` and selects visible meshes.
     ///
     /// The camera is `frame.view` unless `camera` overrides it (e.g. a free camera);
-    /// an override does not change the per-actor LOD distances carried by the frame.
+    /// an override does not change the per-actor LOD distances carried by the frame, nor
+    /// the eye (`frame.view.eye`) that facing gates are tested against.
     /// Actors whose shape was not uploaded are skipped.
     pub(crate) fn prepare(
         &mut self,

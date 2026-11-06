@@ -146,6 +146,7 @@ fn two_actors_sharing_a_shape_both_render_at_their_own_matrix() {
     assert!(left.abs_diff(right) <= left / 20 + 4, "{left} vs {right}");
 }
 
+/// A `FacesEye` gate draws its mesh with the normal toward the eye and hides it when reversed.
 #[test]
 fn facing_gate_draws_only_while_its_face_points_at_the_eye() {
     // The eye is at +Z 8 m and the actor at the origin, so a +Z normal faces it.

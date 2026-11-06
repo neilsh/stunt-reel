@@ -1880,6 +1880,8 @@ mod tests {
         assert!(prop_vertices(&ir, "WORLD_DECAL").is_empty());
     }
 
+    /// A gated prop section leaves the base batch for a `WORLD_GATED` node whose gate is
+    /// moved by the prop's placement.
     #[test]
     fn a_facing_gated_prop_section_is_its_own_node_with_the_gate_in_world_space() {
         let mut prop = square_prop(Some(5.0));

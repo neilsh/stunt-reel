@@ -706,6 +706,7 @@ fn facing_gate(ir: &SodModelIr) -> Option<([f32; 3], [f32; 3])> {
     })
 }
 
+/// A `GOSUB` inside an `IFVIS` section leaves the caller's gate in force after `RETURN`.
 #[test]
 fn test_return_from_a_subroutine_restores_the_callers_ifvis_scope() {
     use crate::sod::vm::{OP_GOSUB, OP_IFVIS, OP_REJ};
@@ -731,6 +732,7 @@ fn test_return_from_a_subroutine_restores_the_callers_ifvis_scope() {
     assert_eq!(indices_with(&ir, VisibilityCondition::Always), 3);
 }
 
+/// An `OP_REJ` face becomes the `FacesEye` gate of the `IFVIS` section that names its flag.
 #[test]
 fn test_rej_face_gates_ifvis_by_the_cross_product_of_its_registers() {
     use crate::sod::vm::{OP_IFVIS, OP_REJ};
@@ -751,6 +753,7 @@ fn test_rej_face_gates_ifvis_by_the_cross_product_of_its_registers() {
     );
 }
 
+/// An `IFVIS` on a flag no `OP_REJ` in the shape set draws its section ungated.
 #[test]
 fn test_ifvis_on_a_flag_no_rej_set_is_ungated() {
     use crate::sod::vm::OP_IFVIS;

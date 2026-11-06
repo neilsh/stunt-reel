@@ -52,7 +52,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **39** | `0x015F` | 351 | `OP_GOURAUD` | `...` | Smooth Gouraud-shaded polygon |
 | **40** | `0x0168` | 360 | `OP_SHADEPOLY`| `count: u16, regs..., norm, shades...` | Normal-lit shaded polygon (`OP_GVPOLY`) |
 | **41** | `0x0171` | 369 | `OP_AIRBRUSH` | `...` | Dithered / airbrushed soft shadow polygon |
-| **42** | `0x017A` | 378 | `OP_BHID` | `flag: u16, size: u16` | Run the next `size` bytes only if facing flag `flag` is set, i.e. the face points at the eye (`OP_IFVIS`) |
+| **42** | `0x017A` | 378 | `OP_IFVIS` | `flag: u16, size: u16` | Run the next `size` bytes only if facing flag `flag` is set, i.e. the face points at the eye |
 | **43** | `0x0183` | 387 | `OP_BVIS` | `flag: u16, size: u16` | Run the next `size` bytes only if facing flag `flag` is clear |
 | **44** | `0x018C` | 396 | `OP_SORTON` | `plane: u16, left_off: i16, right_off: i16` † | BSP binary space partitioning branch |
 | **45** | `0x0195` | 405 | `OP_RETURN` | *none* | Return from subroutine / end display list (`OP_END`) |
@@ -187,7 +187,7 @@ The selected ID is resolved through the resource cache and passed to a screen-sp
 Because 1992 DOS real-mode software lacked hardware depth buffers:
 - `REJ` (`0x01B9`), `REJVEC` (`0x01B0`) and `REJ2D` (`0x01C2`) write one facing flag per face into `work:0x7C68`, starting at byte offset `first`: set when the face points at the eye.
 - `sorton <face>` (0x018C): Evaluates whether camera eye is in front of or behind separating plane `<face>` (its flag byte). Traverses front and back geometry subtrees in back-to-front order (Binary Space Partitioning for Painter's algorithm).
-- `ifvis <face>` (0x017A) / `ifhid <face>` (0x0183): run the next `size` bytes when flag `<face>` is set (`ifvis`) or clear (`ifhid`). The operand is a flag offset, not a condition code: there is no distance form.
+- `OP_IFVIS <face>` (0x017A) / `OP_BVIS <face>` (0x0183): run the next `size` bytes when flag `<face>` is set (`OP_IFVIS`) or clear (`OP_BVIS`). The operand is a flag offset, not a condition code: there is no distance form.
 
 ### 2.6 `OP_MOVETO` / `OP_ZLINETO` / `OP_LINECOL` / `OP_DOT` in the reconstruction
 

@@ -315,6 +315,7 @@ fn internal_defects_are_refused_loudly() {
     assert!(err.to_string().contains("vertex window"), "{err}");
 }
 
+/// An `IFVIS` section's polygons land in a batch node that carries the section's gate.
 #[test]
 fn test_sod_vm_ifvis_conditional_sections() {
     let mut bytes = make_sod_header(50, 0, 0, 0);
