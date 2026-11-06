@@ -14,9 +14,11 @@ use std::path::PathBuf;
 
 use common::{ACTOR_RZ_BAM, push_interp};
 use stunt_core::contracts::{SodModelIr, SodStop, SodStopReason};
-use stunt_core::flm::{FilmTimeline, FlmError, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES};
+use stunt_core::flm::{
+    FilmTimeline, FlmError, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW,
+};
 use stunt_core::scene::{FilmScene, SceneError, SceneInputs};
-use stunt_core::sod::{DecodeMode, OP_TAP, decode_sod};
+use stunt_core::sod::{DecodeMode, EPSILON_DISPLACEMENT, OP_TAP, decode_sod};
 use stunt_core::world::ScnStopReason;
 
 fn fixture(name: &str) -> Vec<u8> {
@@ -30,19 +32,24 @@ fn fixture(name: &str) -> Vec<u8> {
 
 /// A one-slice film: camera at `eye` in slot 0, then one actor per `(shape_id, position)`.
 fn film(eye: [f32; 3], actors: &[(u16, [f32; 3])]) -> Vec<u8> {
-    film_with_actor_rotation(eye, actors, ACTOR_RZ_BAM)
+    film_with_actor_rotation(eye, actors, ACTOR_RZ_BAM, ACTOR_FLAGS)
 }
 
+/// The create flags of every actor slot [`film`] writes.
+const ACTOR_FLAGS: u8 = SIF_EXISTS | SIF_DRAW | SIF_MOVES | SIF_ROTATES;
+
+/// Like [`film`], with every actor turned `actor_rz_bam` and created with `actor_flags`.
 fn film_with_actor_rotation(
     eye: [f32; 3],
     actors: &[(u16, [f32; 3])],
     actor_rz_bam: u16,
+    actor_flags: u8,
 ) -> Vec<u8> {
     let mut body = vec![0x9B, (actors.len() + 1) as u8];
     body.extend_from_slice(&[0x00, SIF_EXISTS | SIF_MOVES | SIF_ROTATES, 0x90]);
     for (i, (shape_id, _)) in actors.iter().enumerate() {
         body.push(1 + i as u8);
-        body.push(SIF_EXISTS | SIF_DRAW | SIF_MOVES | SIF_ROTATES);
+        body.push(actor_flags);
         body.extend_from_slice(&shape_id.to_le_bytes());
     }
     push_interp(&mut body, 0x40, eye, 0);
@@ -129,6 +136,42 @@ fn actors_sharing_a_shape_get_separate_draws() {
     assert_eq!(&frame.actors[1].world_matrix[12..15], &[0.0, 4.0, 10.0]);
 }
 
+/// A slot created with `SIF_SHADOW` gets a shadow matrix: its own x and z rows, every model
+/// height dropped, on `y = 0` (no world) lifted the `[I5]` 1 mm. A slot without it gets none.
+#[test]
+fn a_shadow_slot_gets_its_matrix_flattened_onto_the_ground() {
+    let all = archive(&[(7, &fixture("synthetic_minimal.sod"))]);
+    let draw = |flags: u8| {
+        let film = film_with_actor_rotation(
+            [0.0, 0.0, 10.0],
+            &[(7, [3.0, 2.0, 0.0])],
+            ACTOR_RZ_BAM,
+            flags,
+        );
+        let (scene, _) = FilmScene::load(&SceneInputs {
+            archive: Some(&all),
+            ..scene_inputs(&film)
+        })
+        .expect("load");
+        let actor = &scene.frame(0.0).actors[0];
+        (actor.world_matrix, actor.shadow_matrix)
+    };
+    assert_eq!(draw(ACTOR_FLAGS).1, None);
+
+    let (world, shadow) = draw(ACTOR_FLAGS | SIF_SHADOW);
+    let shadow = shadow.expect("a SIF_SHADOW slot casts a shadow");
+    // Column-major: row 1 (y) is elements 1, 5, 9, 13.
+    assert_eq!([shadow[1], shadow[5], shadow[9]], [0.0; 3]);
+    assert!(
+        (shadow[13] - EPSILON_DISPLACEMENT).abs() < 1e-7,
+        "{}",
+        shadow[13]
+    );
+    for i in [0, 2, 4, 6, 8, 10, 12, 14] {
+        assert_eq!(shadow[i], world[i], "x and z rows kept, element {i}");
+    }
+}
+
 #[test]
 fn actor_is_drawn_without_its_shapes_ground_offset() {
     // The decoder lifts every vertex by `ground_y_offset`; an actor's film position is
@@ -136,7 +179,12 @@ fn actor_is_drawn_without_its_shapes_ground_offset() {
     let mut sod = fixture("synthetic_minimal.sod");
     sod[4..6].copy_from_slice(&40i16.to_le_bytes());
     // A quarter turn, so the actor's +Y is not world +Y and the lift's axis is tested.
-    let film = film_with_actor_rotation([0.0, 0.0, 10.0], &[(7, [3.0, 2.0, 0.0])], 0x4000);
+    let film = film_with_actor_rotation(
+        [0.0, 0.0, 10.0],
+        &[(7, [3.0, 2.0, 0.0])],
+        0x4000,
+        ACTOR_FLAGS,
+    );
     let all = archive(&[(7, &sod)]);
     let (scene, _) = FilmScene::load(&SceneInputs {
         archive: Some(&all),

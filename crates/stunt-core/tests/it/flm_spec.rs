@@ -56,6 +56,7 @@ fn actor(actor_id: u32, model_name: &str, position_meters: [f32; 3]) -> ActorTra
         rotation_quat: [0.0, 0.0, 0.0, 1.0],
         position_meters,
         state_mask: 1,
+        casts_shadow: false,
         joint_angles_bam: Vec::new(),
     }
 }

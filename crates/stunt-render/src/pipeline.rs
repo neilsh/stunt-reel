@@ -29,7 +29,8 @@ pub(crate) struct ModelUniform {
     /// 4x4 column-major affine model-to-world transform matrix.
     pub(crate) model_matrix: [f32; 16],
     /// Base layer id (first word) written to the plane target, added to the vertex's scenery
-    /// class (zero except for world vertices); the rest is padding.
+    /// class (zero except for world vertices); the second word is nonzero for a shadow draw,
+    /// which fills every polygon with palette index 0; the rest is padding.
     pub(crate) layer: [u32; 4],
 }
 
@@ -40,6 +41,17 @@ impl ModelUniform {
         Self {
             model_matrix,
             layer: [layer, 0, 0, 0],
+        }
+    }
+
+    /// A uniform drawing a ground shadow with `model_matrix` into `layer`: every polygon
+    /// flat in palette index 0, as PLAYONE draws one with `work:0x806C` set
+    /// (`research/playone-exe/sod-vm.md` section 9.1).
+    #[must_use]
+    pub(crate) fn shadow(model_matrix: [f32; 16], layer: u32) -> Self {
+        Self {
+            model_matrix,
+            layer: [layer, 1, 0, 0],
         }
     }
 }
@@ -57,6 +69,11 @@ pub(crate) struct RenderPipelines {
     pub(crate) base_pipeline: wgpu::RenderPipeline,
     /// Decal mesh pipeline conforming to `[I5]` with hardware depth bias and `LessEqual` compare.
     pub(crate) decal_pipeline: wgpu::RenderPipeline,
+    /// The decal pipeline without back-face culling, for an actor's ground shadow: its
+    /// faces are flattened onto the ground, so a face's winding there no longer says whether
+    /// it faces the eye, and culling dropped every face wound downward (a wing's underside)
+    /// and broke the shadow into specks.
+    pub(crate) shadow_pipeline: wgpu::RenderPipeline,
     /// Fullscreen pipeline that paints the sky bands behind all geometry.
     pub(crate) sky_pipeline: wgpu::RenderPipeline,
     /// Solid-black fullscreen pipeline used to paint `[I6]` letterbox bars.
@@ -287,6 +304,28 @@ impl RenderPipelines {
                 targets: &targets,
             }),
             primitive: model_primitive,
+            depth_stencil: Some(decal_depth_stencil.clone()),
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        let shadow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("stunt_mode13h_shadow_pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader_module,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &vertex_buffers,
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader_module,
+                entry_point: Some(fragment_entry),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &targets,
+            }),
+            primitive,
             depth_stencil: Some(decal_depth_stencil),
             multisample: wgpu::MultisampleState::default(),
             multiview_mask: None,
@@ -365,6 +404,7 @@ impl RenderPipelines {
         Self {
             base_pipeline,
             decal_pipeline,
+            shadow_pipeline,
             sky_pipeline,
             bar_pipeline,
             model_bind_group_layout,

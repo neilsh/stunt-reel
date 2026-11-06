@@ -287,6 +287,11 @@ pub(crate) fn interpolate_trajectory(
                 rotation_quat: rot,
                 position_meters: pos,
                 state_mask,
+                casts_shadow: if eff_alpha < 0.5 {
+                    act_a.casts_shadow
+                } else {
+                    act_b.casts_shadow
+                },
                 joint_angles_bam: if eff_alpha < 0.5 {
                     act_a.joint_angles_bam.clone()
                 } else {
@@ -346,6 +351,7 @@ mod tests {
     use super::*;
     use std::f32::consts::{FRAC_PI_2, PI};
 
+    /// An unrotated, visible actor with no shadow at `position_meters`.
     fn actor(actor_id: u32, position_meters: [f32; 3]) -> ActorTransform {
         ActorTransform {
             actor_id,
@@ -354,6 +360,7 @@ mod tests {
             rotation_quat: [0.0, 0.0, 0.0, 1.0],
             position_meters,
             state_mask: 1,
+            casts_shadow: false,
             joint_angles_bam: Vec::new(),
         }
     }
@@ -791,6 +798,7 @@ mod props {
                 rotation_quat: q,
                 position_meters: [0.0; 3],
                 state_mask: 0,
+                casts_shadow: false,
                 joint_angles_bam: Vec::new(),
             };
             let m = actor.compute_world_matrix();
