@@ -20,7 +20,7 @@ setup they assume.
 | Shared uv and Cargo caches | `<primary>/.cache/uv` and `<primary>/.cache/cargo`, named by absolute path in `mise.toml`, see [ADR 0013](adr/0013-worktrees-share-one-writable-tool-cache.md) | no |
 | A worktree's Python environment | its own `.venv`, made by uv on the first `uv run` | no |
 | Harness permission modes and approvals | each harness's host settings | no |
-| Worktrees | `.claude/worktrees/` or `.agents/worktrees/` inside the primary checkout | no |
+| Worktrees | `.claude/worktrees/` or `.agents/worktrees/` inside the primary checkout, the only place `mise run reap` reaps from | no |
 
 Every location in that table except the first row is host-local, and no checkout can carry it.
 
@@ -136,7 +136,8 @@ deadline.
 
 Orca places worktrees on `C:`, another volume from the shared uv cache, so uv copies each
 `.venv` (about 68 MB, 3 s) instead of hardlinking it, and `target/` is not seeded, because
-`C:` does not clone blocks. Both are slower, not wrong.
+`C:` does not clone blocks. Both are slower, not wrong. They sit outside the primary
+checkout, so `mise run reap` skips them: remove them through Orca.
 
 ## Toolchain drift
 

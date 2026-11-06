@@ -34,7 +34,7 @@ Pinned versions live in [`mise.toml`](../mise.toml); `mise run init` runs `uv sy
 
 ### 3. Worktrees and the shared data root
 
-Several agents can work at once, each in its own `git worktree`: beside the checkout (`<checkout>.wt\<slug>` on Windows) or under a gitignored directory inside it (`.claude/worktrees/`, `.agents/worktrees/`). The game files and the captures are gitignored, so they live once per machine instead of once per checkout:
+Several agents can work at once, each in its own `git worktree` under a gitignored directory inside the primary checkout (`.claude/worktrees/`, `.agents/worktrees/`), the only place `mise run reap` reaps from. The game files and the captures are gitignored, so they live once per machine instead of once per checkout:
 
 ```text
 <parent-of-checkout>\stunt-reel.data\   corpus\{stisldem,siarchive,stuntisl,patches}, captures\<film>\{frames,video,archives}\
