@@ -1133,6 +1133,8 @@ mod tests {
         );
     }
 
+    /// `parse_map_bin` leaves out the `MAP.BIN` records in `PATCHES_PLAYONE_NEVER_DRAWS` and
+    /// keeps every record around and after them.
     #[test]
     fn the_sand_patches_playone_never_draws_are_left_out() {
         // 70 active triangles, each coloured by its record index; records 52-55 and 62-65 are
