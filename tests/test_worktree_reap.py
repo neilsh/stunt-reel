@@ -991,7 +991,9 @@ def test_unknown_free_space_removes_nothing_without_force(
 
     assert worktree_init._reap(True) == 0
     assert worktree.is_dir()
-    assert "free space unknown" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "free space unknown" in out
+    assert "plenty of space" not in out
 
 
 def test_force_reaps_when_free_space_is_unknown(

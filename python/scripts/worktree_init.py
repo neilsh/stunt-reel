@@ -1007,12 +1007,14 @@ def _reap(
     except OSError as err:
         print(f"  ! free space unknown ({err}); nothing removed without --force")
         short = False
+        hold_reason = "free space unknown"
     else:
         print(
             f"disk       {free / GIB:.1f} GB free; reaping waits for under"
             f" {min_free_gb:g} GB (--force skips)"
         )
         short = _space_is_short(free, min_free_gb)
+        hold_reason = "plenty of space"
     if merged_prs.unavailable is not None:
         print(
             f"  ! gh unavailable ({merged_prs.unavailable}); squash-merged branches are not"
@@ -1046,7 +1048,7 @@ def _reap(
             _prune_envs(confirmed=False)
             _prune_branches(repo, entries, include_cherry=include_cherry, confirmed=False)
         if held:
-            print("\nplenty of space: nothing removed; --force reaps anyway")
+            print(f"\n{hold_reason}: nothing removed; --force reaps anyway")
         else:
             print("\ndry run; re-run with --yes to reap")
         return 0
