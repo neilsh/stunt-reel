@@ -9,9 +9,14 @@ unscorable render.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
+import threading
+import time
+import zlib
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -24,6 +29,9 @@ from stunt_reel.parity_artifacts import (
     RenderStore,
     read_render,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
 
 
 def _geometry() -> Geometry:
@@ -504,3 +512,144 @@ def test_preflight_names_the_missing_game_files(tmp_path: Path) -> None:
     )
     assert len(problems) == 1
     assert problems[0].startswith("no game files")
+
+
+def _matrix_work(
+    sleep: bool = False,
+) -> Callable[[parity_pipeline.FilmJob, str], parity_pipeline.FilmScore]:
+    """A ``run_matrix`` work fake: a score whose render path names the variant and the film."""
+
+    def work(job: parity_pipeline.FilmJob, variant: str) -> parity_pipeline.FilmScore:
+        if sleep:
+            # Uneven but repeatable delays, so pairs finish out of submission order.
+            time.sleep(zlib.crc32(f"{variant}{job.name}".encode()) % 20 / 1000)
+        where = Path(variant) / job.name
+        return parity_pipeline.FilmScore(job.name, where, where, parity_pipeline.Score(0.5, 0.5))
+
+    return work
+
+
+def test_run_matrix_returns_results_in_input_order(tmp_path: Path) -> None:
+    root = reference_tree(tmp_path, [7])
+    out = parity_pipeline.run_matrix(
+        ["ctry", "intro"], root, ["v0", "v1", "v2"], _matrix_work(sleep=True), jobs=4
+    )
+    assert [[cell.film for cell in row] for row in out] == [["ctry", "intro"]] * 3
+    for index, row in enumerate(out):
+        for cell in row:
+            assert isinstance(cell, parity_pipeline.FilmScore)
+            assert cell.render == Path(f"v{index}") / cell.film
+
+
+def test_run_matrix_jobs_one_and_four_agree(tmp_path: Path) -> None:
+    root = reference_tree(tmp_path, [7])
+    args = (["ctry", "intro"], root, ["v0", "v1", "v2"], _matrix_work())
+    assert parity_pipeline.run_matrix(*args, jobs=1) == parity_pipeline.run_matrix(*args, jobs=4)
+
+
+def test_run_matrix_isolates_a_failing_pair(tmp_path: Path) -> None:
+    root = reference_tree(tmp_path, [7])
+    fine = _matrix_work()
+
+    def work(job: parity_pipeline.FilmJob, variant: str) -> parity_pipeline.FilmScore:
+        if (job.name, variant) == ("intro", "v1"):
+            raise RuntimeError("intro v1 exploded")
+        result: parity_pipeline.FilmScore = fine(job, variant)
+        return result
+
+    out = parity_pipeline.run_matrix(["ctry", "intro"], root, ["v0", "v1", "v2"], work, jobs=4)
+    failures = [
+        (i, j)
+        for i, row in enumerate(out)
+        for j, cell in enumerate(row)
+        if isinstance(cell, parity_pipeline.FilmFailure)
+    ]
+    assert failures == [(1, 1)]
+    failure = out[1][1]
+    assert isinstance(failure, parity_pipeline.FilmFailure)
+    assert "exploded" in str(failure.error)
+
+
+def test_run_matrix_fails_a_film_without_a_reference_in_every_variant(tmp_path: Path) -> None:
+    root = reference_tree(tmp_path, [7])
+    called: list[str] = []
+    fine = _matrix_work()
+
+    def work(job: parity_pipeline.FilmJob, variant: str) -> parity_pipeline.FilmScore:
+        called.append(job.name)
+        result: parity_pipeline.FilmScore = fine(job, variant)
+        return result
+
+    out = parity_pipeline.run_matrix(["ctry", "nope"], root, ["v0", "v1"], work, jobs=2)
+    assert all(isinstance(row[0], parity_pipeline.FilmScore) for row in out)
+    assert all(isinstance(row[1], parity_pipeline.FilmFailure) for row in out)
+    assert all(row[1].film == "nope" for row in out)
+    assert "nope" not in called
+
+
+def test_run_matrix_opens_each_reference_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = reference_tree(tmp_path, [7])
+    opened: list[str] = []
+    real = parity_pipeline.reference_job
+
+    @contextlib.contextmanager
+    def counting(root_: Path, name: str) -> Iterator[parity_pipeline.FilmJob]:
+        opened.append(name)
+        with real(root_, name) as job:
+            yield job
+
+    monkeypatch.setattr(parity_pipeline, "reference_job", counting)
+    parity_pipeline.run_matrix(
+        ["ctry", "intro"], root, ["v0", "v1", "v2", "v3"], _matrix_work(), jobs=3
+    )
+    assert sorted(opened) == ["ctry", "intro"]
+
+
+def test_run_matrix_calls_on_variant_on_the_calling_thread(tmp_path: Path) -> None:
+    root = reference_tree(tmp_path, [7])
+    seen: list[tuple[int, int, int]] = []
+
+    def on_variant(
+        index: int, row: list[parity_pipeline.FilmScore | parity_pipeline.FilmFailure]
+    ) -> None:
+        seen.append((index, len(row), threading.get_ident()))
+
+    parity_pipeline.run_matrix(
+        ["ctry", "intro"],
+        root,
+        ["v0", "v1", "v2"],
+        _matrix_work(sleep=True),
+        jobs=4,
+        on_variant=on_variant,
+    )
+    assert sorted(index for index, _, _ in seen) == [0, 1, 2]
+    assert all(size == 2 for _, size, _ in seen)
+    assert {ident for _, _, ident in seen} == {threading.get_ident()}
+
+
+def test_run_matrix_cancels_pending_pairs_on_interrupt(tmp_path: Path) -> None:
+    root = reference_tree(tmp_path, [7])
+    ran: list[str] = []
+    slow = _matrix_work()
+
+    def work(job: parity_pipeline.FilmJob, variant: str) -> parity_pipeline.FilmScore:
+        ran.append(variant)
+        time.sleep(0.05)
+        result: parity_pipeline.FilmScore = slow(job, variant)
+        return result
+
+    def interrupt(_index: int, _row: object) -> None:
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        parity_pipeline.run_matrix(
+            ["ctry", "intro"],
+            root,
+            [f"v{i}" for i in range(6)],
+            work,
+            jobs=2,
+            on_variant=interrupt,
+        )
+    assert len(ran) < 12

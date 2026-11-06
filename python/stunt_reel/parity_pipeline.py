@@ -29,6 +29,7 @@ import signal
 import subprocess
 import sys
 from collections.abc import Callable, Iterable, Iterator, Sequence
+from concurrent import futures
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -50,6 +51,7 @@ __all__ = [
     "REPO_ROOT",
     "SIDATA",
     "TIMEOUT_EXIT",
+    "Attempt",
     "CommandError",
     "FilmFailure",
     "FilmInputError",
@@ -73,6 +75,7 @@ __all__ = [
     "run_command",
     "run_film",
     "run_films",
+    "run_matrix",
     "score_film",
 ]
 
@@ -520,22 +523,107 @@ def run_films(
     ``--reuse`` run wants. Every film is attempted even after one fails; the callers word
     the failure and decide the exit code.
     """
-    attempts: list[FilmScore | FilmFailure] = []
-    for film in films:
-        try:
-            with reference_job(root, film) as job:
-                if render:
-                    attempts.append(run_film(job, workdir, env=env, retime=retime, run=run))
-                else:
-                    request = None if retime is None else Retime(retime, workdir / f"{film}_retime")
-                    attempts.append(
-                        score_film(
-                            job, workdir / film, workdir / f"{film}_report", retime=request, run=run
-                        )
-                    )
-        except (RuntimeError, ValueError, OSError, KeyError) as error:
-            attempts.append(FilmFailure(film, error))
-    return attempts
+
+    def work(job: FilmJob, _variant: None) -> FilmScore:
+        """Renders *job*'s film into *workdir* unless reusing it, then scores it."""
+        if render:
+            return run_film(job, workdir, env=env, retime=retime, run=run)
+        request = None if retime is None else Retime(retime, workdir / f"{job.name}_retime")
+        return score_film(
+            job, workdir / job.name, workdir / f"{job.name}_report", retime=request, run=run
+        )
+
+    return run_matrix(list(films), root, [None], work)[0]
+
+
+#: One cell of :func:`run_matrix`: a film's score, or why it has none.
+type Attempt = FilmScore | FilmFailure
+
+#: The errors a pair may raise that become a :class:`FilmFailure` rather than end the run.
+_PAIR_ERRORS = (RuntimeError, ValueError, OSError, KeyError)
+
+#: Seconds the calling thread waits between checks, so Ctrl+C reaches it on Windows too.
+_WAIT_SECONDS = 0.5
+
+
+def run_matrix[V](
+    films: Sequence[str],
+    root: Path,
+    variants: Sequence[V],
+    work: Callable[[FilmJob, V], FilmScore],
+    *,
+    jobs: int = 1,
+    on_variant: Callable[[int, list[Attempt]], None] | None = None,
+) -> list[list[Attempt]]:
+    """Runs *work* on every (variant, film) pair, *jobs* at a time, returning a failure per pair.
+
+    Each film's reference is opened once, on the calling thread, and every variant shares that
+    verified snapshot (ADR 0031); a film whose reference cannot be opened fails in every variant.
+    The result is ``[variant][film]`` in input order whatever order the pairs finish in.
+    *on_variant* is called on the calling thread, with the variant's index and row, once every
+    film of that variant has finished. With ``jobs <= 1`` the pairs run on the calling thread, in
+    order; otherwise in a thread pool, since the work runs in child processes. An interrupt, or
+    an error from *on_variant*, drops the pairs not yet started, lets running ones finish, and
+    propagates.
+    """
+    rows: list[list[Attempt | None]] = [[None] * len(films) for _ in variants]
+    with contextlib.ExitStack() as stack:
+        opened: list[FilmJob | FilmFailure] = []
+        for film in films:
+            try:
+                opened.append(stack.enter_context(reference_job(root, film)))
+            except _PAIR_ERRORS as error:
+                opened.append(FilmFailure(film, error))
+
+        def attempt(index: int, column: int) -> Attempt:
+            """Runs one pair, turning a pair error into its film's failure."""
+            job = opened[column]
+            if isinstance(job, FilmFailure):
+                return job
+            try:
+                return work(job, variants[index])
+            except _PAIR_ERRORS as error:
+                return FilmFailure(job.name, error)
+
+        def finish(index: int, column: int, result: Attempt) -> None:
+            """Records one pair's result, and reports its variant once its row is complete."""
+            row = rows[index]
+            row[column] = result
+            if on_variant is not None and all(cell is not None for cell in row):
+                on_variant(index, [cell for cell in row if cell is not None])
+
+        pairs = [(index, column) for index in range(len(variants)) for column in range(len(films))]
+        if jobs <= 1 or len(pairs) <= 1:
+            for index, column in pairs:
+                finish(index, column, attempt(index, column))
+        else:
+            _run_pool(pairs, attempt, finish, min(jobs, len(pairs)))
+    return [[cell for cell in row if cell is not None] for row in rows]
+
+
+def _run_pool(
+    pairs: list[tuple[int, int]],
+    attempt: Callable[[int, int], Attempt],
+    finish: Callable[[int, int, Attempt], None],
+    jobs: int,
+) -> None:
+    """Runs *attempt* on *pairs* in *jobs* threads, calling *finish* on this thread as each ends."""
+    pool = futures.ThreadPoolExecutor(max_workers=jobs)
+    try:
+        pending = {pool.submit(attempt, *pair): pair for pair in pairs}
+        while pending:
+            done, _ = futures.wait(
+                pending, timeout=_WAIT_SECONDS, return_when=futures.FIRST_COMPLETED
+            )
+            for future in done:
+                finish(*pending.pop(future), future.result())
+    except BaseException:
+        # Stop submitting: pairs not yet started are dropped; running ones finish, since their
+        # child processes sit in their own process groups and never see the interrupt.
+        pool.shutdown(wait=True, cancel_futures=True)
+        raise
+    finally:
+        pool.shutdown(wait=True)
 
 
 def format_summary(name: str, report: Path) -> str:
