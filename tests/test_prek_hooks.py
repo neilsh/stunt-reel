@@ -9,18 +9,28 @@ does, the way `STUNT_REQUIRE_KSC` guards the schema test.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shutil
+import signal
 import subprocess
+import sys
+import tempfile
+import textwrap
+import time
 import tomllib
 from pathlib import Path
+from typing import IO
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 GIT = shutil.which("git")
+
+#: `_run` kills a timed-out process tree differently on Windows.
+pytestmark = pytest.mark.windows
 
 #: Variables that point git at another repository. Git sets them while it runs a hook, so a
 #: suite started from one would otherwise configure and commit in the outer repository.
@@ -50,10 +60,132 @@ def prek() -> str:
     return found
 
 
-def _run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603 - fixed test arguments
-        list(args), cwd=repo, capture_output=True, text=True, check=False
-    )
+#: Seconds any one git or prek call may take; these fixtures finish in a few.
+_TIMEOUT = 60.0
+
+
+def _run(repo: Path, *args: str, timeout: float = _TIMEOUT) -> subprocess.CompletedProcess[str]:
+    """Run a command in `repo`; a hung one is killed and fails the test with its output.
+
+    Without a timeout a hung prek held its pytest worker until the gate killed the worker,
+    which orphaned prek with the scratch repository as its working directory (issue #220).
+    Output goes to files, not pipes: a process prek started that outlives the kill can hold
+    a pipe open and block its reader, and on Windows `subprocess.run` waits on it unbounded.
+    """
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        proc = subprocess.Popen(  # noqa: S603 - fixed test arguments
+            list(args),
+            cwd=repo,
+            stdin=subprocess.DEVNULL,
+            stdout=out,
+            stderr=err,
+            start_new_session=True,  # one process group to kill on POSIX; ignored on Windows
+        )
+        try:
+            proc.wait(timeout=timeout)
+        except BaseException as exc:  # an interrupted wait must not orphan the tree either
+            _kill_tree(proc)
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.wait(timeout=10)
+            if not isinstance(exc, subprocess.TimeoutExpired):
+                raise
+            pytest.fail(
+                f"{' '.join(args)} timed out after {timeout} s\n"
+                f"stdout:\n{_read(out)}\nstderr:\n{_read(err)}"
+            )
+        return subprocess.CompletedProcess(proc.args, proc.returncode, _read(out), _read(err))
+
+
+def _kill_tree(proc: subprocess.Popen[bytes]) -> None:
+    """Kill `proc` and every process it started that is still in its tree or group."""
+    if sys.platform == "win32":
+        _taskkill(proc.pid)
+    else:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+    proc.kill()
+
+
+def _taskkill(pid: int) -> None:
+    """Kill the Windows process `pid` and its descendants, ignoring one already gone.
+
+    A `taskkill` that cannot start or finish is ignored too: the caller still kills the direct
+    child, and a timeout's failure must not be masked by the cleanup's.
+    """
+    with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+        subprocess.run(  # noqa: S603 - fixed arguments
+            ["taskkill", "/F", "/T", "/PID", str(pid)],  # noqa: S607 - Windows built-in
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+
+
+def _read(file: IO[bytes]) -> str:
+    """Return everything written to `file` as text, replacing bytes that do not decode."""
+    file.seek(0)
+    return file.read().decode(errors="replace").replace("\r\n", "\n")
+
+
+#: A grandchild that appends a byte to the file named by its argument every 0.1 s for 60 s.
+_GRANDCHILD = """\
+import sys, time
+for _ in range(600):
+    with open(sys.argv[1], "ab") as beat:
+        beat.write(b".")
+    time.sleep(0.1)
+"""
+
+#: A child that starts the grandchild on its own stdout, records its pid, and hangs.
+_CHILD = """\
+import pathlib, subprocess, sys, time
+here = pathlib.Path(__file__).parent
+grand = subprocess.Popen(
+    [sys.executable, str(here / "grand.py"), str(here / "beat")],
+    stdout=sys.stdout,
+    stderr=sys.stderr,
+)
+(here / "grand.pid").write_text(str(grand.pid))
+while not (here / "beat").exists():
+    time.sleep(0.05)
+print("marker-220", flush=True)
+time.sleep(60)
+"""
+
+
+def test_run_kills_a_timed_out_tree_and_keeps_its_output(tmp_path: Path) -> None:
+    """A timed-out call fails within seconds with its output, and its grandchild is dead."""
+    (tmp_path / "grand.py").write_text(_GRANDCHILD, encoding="utf-8")
+    (tmp_path / "child.py").write_text(_CHILD, encoding="utf-8")
+    beat = tmp_path / "beat"
+    try:
+        start = time.monotonic()
+        with pytest.raises(pytest.fail.Exception, match="marker-220"):
+            # Two interpreter starts must fit in the timeout on a loaded xdist worker.
+            _run(tmp_path, sys.executable, str(tmp_path / "child.py"), timeout=5)
+        # A call that waited on the grandchild's output would take its whole 60 s.
+        assert time.monotonic() - start < 30
+        time.sleep(1)
+        size = beat.stat().st_size
+        time.sleep(1)
+        assert beat.stat().st_size == size, "the grandchild outlived the kill"
+    finally:
+        _kill_survivor(tmp_path / "grand.pid", beat)
+
+
+def _kill_survivor(pid_file: Path, beat: Path) -> None:
+    """Kill the grandchild if its heartbeat is still fresh, so a failing test leaks nothing.
+
+    A stale heartbeat means it is dead and its pid may already belong to another process.
+    """
+    with contextlib.suppress(OSError, ValueError):
+        if time.time() - beat.stat().st_mtime > 1:
+            return
+        pid = int(pid_file.read_text(encoding="utf-8"))
+        if sys.platform == "win32":
+            _taskkill(pid)
+        else:
+            os.kill(pid, signal.SIGKILL)
 
 
 def _repo(path: Path) -> Path:
@@ -136,3 +268,71 @@ def test_ci_skips_exactly_the_local_hooks() -> None:
     skips = re.findall(r"\bSKIP: (\S+)", ci)
     assert len(skips) == 1, "CI runs prek in exactly one step"
     assert skips[0].split(",") == local
+
+
+def test_ci_fails_an_empty_pull_request_before_installing() -> None:
+    """Issue #216: an empty pull request fails on git alone, before any toolchain installs."""
+    ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    diff = ci.index('git diff --quiet "origin/$BASE_REF...HEAD"')
+    step = ci[ci.rindex("- name:", 0, diff) : diff]
+    assert "if: github.event_name == 'pull_request'" in step
+    assert "BASE_REF: ${{ github.base_ref }}" in step
+    assert diff < ci.index("Install lavapipe"), "the check runs before the slow steps"
+
+
+def _empty_diff_script() -> str:
+    """The `run:` body of CI's empty-diff step, as the runner hands it to bash."""
+    lines = (
+        (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8").splitlines()
+    )
+    diff = next(i for i, line in enumerate(lines) if 'git diff --quiet "origin/' in line)
+    run = max(i for i in range(diff) if lines[i].strip() == "run: |")
+    indent = len(lines[run]) - len(lines[run].lstrip())
+    body: list[str] = []
+    for line in lines[run + 1 :]:
+        if line.strip() and len(line) - len(line.lstrip()) <= indent:
+            break
+        body.append(line)
+    return textwrap.dedent("\n".join(body)) + "\n"
+
+
+def _bash() -> str | None:
+    # Git for Windows' own bash first: the bash.exe on a Windows PATH may be WSL's launcher,
+    # which runs in another filesystem. Elsewhere no such file exists and PATH's bash serves.
+    if GIT is not None:
+        bundled = Path(GIT).resolve().parent.parent / "bin" / "bash.exe"
+        if bundled.is_file():
+            return str(bundled)
+    return shutil.which("bash")
+
+
+@pytest.mark.parametrize(
+    ("change", "fails"),
+    [("none", True), ("file", False), ("unrelated", True)],
+    ids=["empty-diff-fails", "a-change-passes", "no-merge-base-fails"],
+)
+def test_ci_empty_diff_step_judges_the_tree(tmp_path: Path, change: str, *, fails: bool) -> None:
+    """Issue #216: the step fails a pull request whose tree matches its base, and passes one
+    that changes a file; a branch with no merge base fails rather than passing unread."""
+    bash = _bash()
+    if bash is None or GIT is None:
+        pytest.skip("bash or git is not available")
+    repo = _repo(tmp_path)
+    _run(repo, GIT, "update-ref", "refs/remotes/origin/main", "HEAD")
+    if change == "file":
+        (repo / "b.txt").write_text("b\n", encoding="utf-8", newline="\n")
+        _run(repo, GIT, "add", "b.txt")
+    elif change == "unrelated":
+        _run(repo, GIT, "checkout", "-q", "--orphan", "unrelated")
+    # A squash-merged branch's commits stay ahead of the base while its tree adds nothing.
+    assert _run(repo, GIT, "commit", "-q", "--allow-empty", "-m", "two").returncode == 0
+    result = subprocess.run(  # noqa: S603 - fixed test arguments
+        [bash, "-e", "-c", _empty_diff_script()],
+        cwd=repo,
+        env={**os.environ, "BASE_REF": "main"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode != 0) is fails, result.stdout + result.stderr
+    assert ("changes no files" in result.stdout) is (change == "none"), result.stdout

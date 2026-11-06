@@ -348,14 +348,18 @@ fn create_default_aircraft_ir() -> SodModelIr {
         vertex([-4.0, 0.5, 0.0], 40, 0),  // left wing tip
         vertex([4.0, 0.5, 0.0], 40, 0),   // right wing tip
         vertex([0.0, 0.5, -4.0], 36, 0),  // tail
+        vertex([-4.0, 0.5, 0.0], 36, 0),  // left wing tip, tail colour
+        vertex([4.0, 0.5, 0.0], 36, 0),   // right wing tip, tail colour
         vertex([-2.0, 0.5, 0.2], 232, 1), // roundel
         vertex([-2.5, 0.5, -0.2], 232, 1),
         vertex([-1.5, 0.5, -0.2], 232, 1),
     ];
     ir.indices = vec![
         0, 1, 2, // main wing triangle
-        1, 3, 2, // fuselage tail triangle
-        4, 5, 6, // decal roundel triangle
+        // The tail triangle has its own vertices: the renderer interpolates the index
+        // across a polygon, so sharing the wing's corners would shade it 40 -> 36.
+        4, 3, 5, // fuselage tail triangle
+        6, 7, 8, // decal roundel triangle
     ];
 
     let root = ir.allocate_node(
@@ -365,7 +369,7 @@ fn create_default_aircraft_ir() -> SodModelIr {
         VisibilityCondition::Always,
         NodeKind::Mesh {
             vertex_offset: 0,
-            vertex_count: 4,
+            vertex_count: 6,
             index_offset: 0,
             index_count: 6,
             is_decal: false,
@@ -377,7 +381,7 @@ fn create_default_aircraft_ir() -> SodModelIr {
         Mat4::IDENTITY.to_cols_array(),
         VisibilityCondition::Always,
         NodeKind::Mesh {
-            vertex_offset: 4,
+            vertex_offset: 6,
             vertex_count: 3,
             index_offset: 6,
             index_count: 3,

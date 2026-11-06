@@ -187,7 +187,7 @@ The selected ID is resolved through the resource cache and passed to a screen-sp
 Because 1992 DOS real-mode software lacked hardware depth buffers:
 - `REJ` (`0x01B9`), `REJVEC` (`0x01B0`) and `REJ2D` (`0x01C2`) write one facing flag per face into `work:0x7C68`, starting at byte offset `first`: set when the face points at the eye.
 - `sorton <face>` (0x018C): Evaluates whether camera eye is in front of or behind separating plane `<face>` (its flag byte). Traverses front and back geometry subtrees in back-to-front order (Binary Space Partitioning for Painter's algorithm).
-- `OP_IFVIS <face>` (0x017A) / `OP_BVIS <face>` (0x0183): run the next `size` bytes when flag `<face>` is set (`OP_IFVIS`) or clear (`OP_BVIS`). The operand is a flag offset, not a condition code: there is no distance form.
+- `OP_IFVIS <face>` (0x017A) / `OP_BVIS <face>` (0x0183): run the section when flag `<face>` is set (`OP_IFVIS`) or clear (`OP_BVIS`); otherwise skip `size` bytes counted from the size word ([`sod-vm.md` § 8.6](../playone-exe/sod-vm.md#86-facing-flags-op_rej-and-op_ifvis)). The operand is a flag offset, not a condition code: there is no distance form.
 
 ### 2.6 `OP_MOVETO` / `OP_ZLINETO` / `OP_LINECOL` / `OP_DOT` in the reconstruction
 

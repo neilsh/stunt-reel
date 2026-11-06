@@ -209,3 +209,150 @@ def test_every_page_of_reviews_is_read_with_the_head_commit_date(
     assert found is not None
     assert found[0] == "date1"
     assert [r["databaseId"] for r in found[1]] == [1, 2]
+
+
+class _FakeGh:
+    """Stands in for ``pr_threads._gh``: records each call and answers from the thread list."""
+
+    def __init__(self, threads: list[dict[str, Any]], *, resolves: bool = True) -> None:
+        """Answer from *threads*; the mutation reports *resolves* as the thread's state."""
+        self.threads = threads
+        self.resolves = resolves
+        self.calls: list[tuple[str, ...]] = []
+
+    def __call__(self, *args: str) -> dict[str, Any]:
+        """Record *args* and give the answer gh would for that call."""
+        self.calls.append(args)
+        if args[:2] == ("repo", "view"):
+            return {"nameWithOwner": "o/r"}
+        if args[:3] == ("api", "-X", "POST"):
+            return {"id": 999, "html_url": "https://example.test/r/pull/7#discussion_r999"}
+        query = next(a for a in args if a.startswith("query="))
+        if "resolveReviewThread" in query:
+            return {"data": {"resolveReviewThread": {"thread": {"isResolved": self.resolves}}}}
+        return _page(self.threads, None)
+
+
+def _threads() -> list[dict[str, Any]]:
+    """An open thread headed by comment 111 and a resolved one headed by comment 222."""
+    first, second = _thread("Open."), _thread("Done.", resolved=True)
+    first["id"], second["id"] = "PRRT_open", "PRRT_done"
+    second["comments"]["nodes"][0]["databaseId"] = 222
+    return [first, second]
+
+
+def _is_mutation(call: tuple[str, ...]) -> bool:
+    """Whether *call* sends the ``resolveReviewThread`` mutation."""
+    return any("resolveReviewThread" in a for a in call)
+
+
+def test_reply_posts_the_body_to_the_comments_replies_endpoint(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``--reply`` posts once, to the replies endpoint of the named comment."""
+    gh = _FakeGh(_threads())
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    assert pr_threads.main(["7", "--reply", "111", "--body", "Fixed in abc123."]) == 0
+    assert gh.calls[1:] == [
+        (
+            "api",
+            "-X",
+            "POST",
+            "repos/o/r/pulls/7/comments/111/replies",
+            "-f",
+            "body=Fixed in abc123.",
+        )
+    ]
+    assert "discussion_r999" in capsys.readouterr().out
+
+
+def test_reply_reads_its_body_from_a_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``--body-file`` sends the file's text unchanged, newlines and all."""
+    body = tmp_path / "reply.md"
+    body.write_text("Line one.\n\nLine two.\n", encoding="utf-8")
+    gh = _FakeGh(_threads())
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    assert pr_threads.main(["7", "--reply", "111", "--body-file", str(body)]) == 0
+    assert gh.calls[1][-1] == "body=Line one.\n\nLine two.\n"
+
+
+def test_a_missing_body_file_fails_before_posting(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An unreadable ``--body-file`` exits 2 without posting anything."""
+    gh = _FakeGh(_threads())
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    assert pr_threads.main(["7", "--reply", "111", "--body-file", str(tmp_path / "no")]) == 2
+    assert len(gh.calls) == 1
+
+
+def test_resolve_maps_the_comment_id_to_its_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--resolve`` sends the mutation for the thread the comment heads."""
+    gh = _FakeGh(_threads())
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    assert pr_threads.main(["7", "--resolve", "111"]) == 0
+    assert _is_mutation(gh.calls[-1])
+    assert "thread=PRRT_open" in gh.calls[-1]
+
+
+def test_reply_comes_before_resolve_when_both_are_given(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With both actions, the reply is posted before the thread is resolved."""
+    gh = _FakeGh(_threads())
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    assert pr_threads.main(["7", "--reply", "111", "--body", "Done.", "--resolve", "111"]) == 0
+    assert gh.calls[1][:3] == ("api", "-X", "POST")
+    assert _is_mutation(gh.calls[-1])
+    assert "thread=PRRT_open" in gh.calls[-1]
+
+
+def test_an_already_resolved_thread_is_left_alone(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A thread that is already resolved gets no mutation, and the output says so."""
+    gh = _FakeGh(_threads())
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    assert pr_threads.main(["7", "--resolve", "222"]) == 0
+    assert not any(_is_mutation(call) for call in gh.calls)
+    assert "already resolved" in capsys.readouterr().out
+
+
+def test_resolving_a_comment_that_starts_no_thread_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A comment id that heads no thread exits 2 and names the id."""
+    monkeypatch.setattr(pr_threads, "_gh", _FakeGh(_threads()))
+    assert pr_threads.main(["7", "--resolve", "333"]) == 2
+    assert "starts with comment 333" in capsys.readouterr().err
+
+
+def test_a_comment_id_past_32_bits_round_trips_from_listing_to_resolve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An id above 2**31 comes from ``fullDatabaseId``, prints whole, and finds its thread."""
+    threads = _threads()
+    big = threads[0]["comments"]["nodes"][0]
+    big["databaseId"], big["fullDatabaseId"] = None, "4488219292"
+    assert "| id 4488219292," in pr_threads.thread_line(threads[0])
+    gh = _FakeGh(threads)
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    assert pr_threads.main(["7", "--resolve", "4488219292"]) == 0
+    assert "thread=PRRT_open" in gh.calls[-1]
+
+
+def test_a_mutation_that_leaves_the_thread_open_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A mutation whose answer shows the thread still open exits 2."""
+    monkeypatch.setattr(pr_threads, "_gh", _FakeGh(_threads(), resolves=False))
+    assert pr_threads.main(["7", "--resolve", "111"]) == 2
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["7", "--reply", "111"], ["7", "--body", "orphan"], ["7", "--resolve", "1", "--body", "x"]],
+)
+def test_reply_and_its_body_go_together(argv: list[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--reply`` without a body, or a body without ``--reply``, is a usage error."""
+    gh = _FakeGh(_threads())
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    with pytest.raises(SystemExit):
+        pr_threads.main(argv)
+    assert gh.calls == []
