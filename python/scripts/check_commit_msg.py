@@ -3,8 +3,8 @@
 
 The subject is ``type(scope)!: summary`` with one of the usual types. A message with a body
 (anything past the subject but git's trailers, such as ``Co-Authored-By:``) must also say what
-the gate did: a line naming ``mise run check``, as in ``mise run check passes.`` or ``mise run
-check-py passes; check-rust not run.`` A message with no body needs none, as SOP 3 lets a rename
+the gate did: a line naming ``mise run check`` and an outcome, ``passes`` or ``not run``, as in
+``mise run check passes.`` or ``mise run check-py passes; check-rust not run.`` A message with no body needs none, as SOP 3 lets a rename
 or a formatting commit go without one. Git's own subjects (a merge, a revert, ``fixup!``,
 ``squash!``, ``amend!``) are left alone.
 
@@ -40,6 +40,8 @@ GIT_SUBJECT = re.compile(r"^(?:Merge |Revert \"|fixup! |squash! |amend! )")
 TRAILER = re.compile(r"^[A-Za-z][A-Za-z-]*: \S")
 SCISSORS = "# ------------------------ >8 ------------------------"
 GATE = "mise run check"
+#: A gate line names the gate and its outcome: what passed, or what did not run.
+GATE_LINE = re.compile(rf"{GATE}.*\b(?:passes|not run)\b")
 
 
 def _lines(message: str) -> list[str]:
@@ -66,7 +68,7 @@ def problems(message: str) -> list[str]:
             f"with a type of {', '.join(TYPES)}"
         )
     body = [line for line in lines[lines.index(subject) + 1 :] if line] if subject else []
-    if any(not TRAILER.match(line) for line in body) and not any(GATE in line for line in body):
+    if any(not TRAILER.match(line) for line in body) and not any(map(GATE_LINE.search, body)):
         found.append(
             f"the body has no gate line: end it with '{GATE} passes.', or name the part of "
             f"the gate that did not run (AGENTS.md SOP 3)"

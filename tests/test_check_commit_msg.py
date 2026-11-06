@@ -57,6 +57,19 @@ def test_a_gate_line_naming_what_did_not_run_passes(hook: Any) -> None:
     assert hook.problems(message) == []
 
 
+def test_a_gate_line_that_does_not_run_the_gate_passes(hook: Any) -> None:
+    message = (
+        "fix: a mode bit\n\nWhy.\n\nmise run check not run: a mode-only change, checked by CI.\n"
+    )
+    assert hook.problems(message) == []
+
+
+@pytest.mark.parametrize("line", ["mise run check failed.", "Run mise run check before merging."])
+def test_a_gate_line_must_report_an_outcome(hook: Any, line: str) -> None:
+    [problem] = hook.problems(f"fix: a thing\n\nWhy it changed.\n\n{line}\n")
+    assert "gate line" in problem
+
+
 def test_a_body_without_a_gate_line_is_named(hook: Any) -> None:
     [problem] = hook.problems(f"fix: a thing\n\nWhy it changed.\n\n{TRAILER}\n")
     assert "mise run check" in problem
