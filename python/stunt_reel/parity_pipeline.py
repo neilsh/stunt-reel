@@ -23,6 +23,7 @@ nothing here prints or chooses an exit code (ADR 0010).
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import shutil
 import signal
@@ -100,7 +101,8 @@ class FilmJob:
 
     ``name`` is what the caller calls the film (a ``references.toml`` row, or a survey slug),
     ``root`` the data root holding ``corpus/`` and the captures, and ``capture`` the directory
-    that fixes the ticks to render and the frames to score.
+    that fixes the ticks to render and the frames to score. ``all_sha256`` is the archive the
+    row pins, when it pins one (ADR 0037); the render plays that archive and no other.
     """
 
     name: str
@@ -108,6 +110,7 @@ class FilmJob:
     flm: Path
     capture: Path
     root: Path
+    all_sha256: str | None = None
 
 
 @contextlib.contextmanager
@@ -117,7 +120,8 @@ def reference_job(root: Path, name: str) -> Iterator[FilmJob]:
     The job's ``capture`` is a snapshot that lasts as long as the block, so a render and its
     score read the one capture whose hash was checked (ADR 0031). Raises
     :class:`references.ReferenceCaptureError` when the row, the capture or its hash is wrong,
-    and :class:`FilmInputError` when the corpus holds no ``.FLM`` of the row's film.
+    and :class:`FilmInputError` when the corpus holds no ``.FLM`` of the row's film. A row that
+    pins its archive refuses a capture whose ``meta.json`` records another one (ADR 0037).
     """
     pointer = references.read_reference(root, name)
     corpus = dataroot.corpus_of(root)
@@ -125,7 +129,25 @@ def reference_job(root: Path, name: str) -> Iterator[FilmJob]:
     if film is None:
         raise FilmInputError(f"no .FLM of {pointer.slug} under {corpus} (try --data-root)")
     with references.open_reference(root, name) as capture:
-        yield FilmJob(pointer.film, pointer.slug, film.flm, capture, root)
+        if pointer.all_sha256 is not None:
+            try:
+                meta = json.loads((capture / capture_store.META_FILE).read_text(encoding="utf-8"))
+            except (OSError, ValueError) as err:
+                raise references.ReferenceCaptureError(
+                    f"the capture metadata of [{name}] is unreadable: {err}"
+                ) from err
+            if not isinstance(meta, dict):
+                raise references.ReferenceCaptureError(
+                    f"the capture metadata of [{name}] is not a JSON object"
+                )
+            recorded = meta.get("all_sha256")
+            if recorded != pointer.all_sha256:
+                raise references.ReferenceCaptureError(
+                    f"the row [{name}] pins the archive {pointer.all_sha256}, but its capture "
+                    f"recorded {recorded}; recapture with the pinned archive, or change the row "
+                    "in a reviewed commit"
+                )
+        yield FilmJob(pointer.film, pointer.slug, film.flm, capture, root, pointer.all_sha256)
 
 
 def current_job(film: BatchFilm, root: Path) -> FilmJob | None:
@@ -346,7 +368,12 @@ def preflight(
         try:
             with reference_job(root, name) as job:
                 all_archive.resolve_all(
-                    job.flm, REPO_ROOT, job.slug, link_build=all_archive.no_link
+                    job.flm,
+                    REPO_ROOT,
+                    job.slug,
+                    link_build=all_archive.no_link,
+                    pinned=job.all_sha256,
+                    data=job.root,
                 )
         except (references.ReferenceCaptureError, FilmInputError, all_archive.ArchiveError) as err:
             problems.append(str(err))
@@ -404,7 +431,9 @@ def render_film(
     the release binary as it is: the caller builds it, or was told not to.
     """
     link_build = all_archive.link_build_in(REPO_ROOT, build=False)
-    archive = all_archive.resolve_all(job.flm, REPO_ROOT, job.slug, link_build=link_build)
+    archive = all_archive.resolve_all(
+        job.flm, REPO_ROOT, job.slug, link_build=link_build, pinned=job.all_sha256, data=job.root
+    )
     selection = (
         ("--at-ticks", ",".join(str(tick) for tick in ticks))
         if ticks is not None

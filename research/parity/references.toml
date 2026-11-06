@@ -5,6 +5,8 @@
 [ctry]
 film = "vault-ctry"
 sha256 = "9869444de53c653214144b83c2bdbce4a686a16f5189a1f5a94f6eb19605ed49"
+# The archive the film plays (ADR 0037), as the capture's meta.json records it.
+all_sha256 = "9de1bc1e8dbe491a56edd899b7c333cb78e5251cbe1e4ed75610dbc081aeb9a9"
 # The builds the reference was made with (ADR 0029): `unpatched` or `patch3`. `reason` is
 # required while either is unpatched.
 makeone = "unpatched"
@@ -19,6 +21,7 @@ noise_sigma = 0.000303
 [intro]
 film = "vault-intro"
 sha256 = "ac93c3babb74c5380a0f1263d38a546b43979c8d4200fb0d2dfb58db482c0215"
+all_sha256 = "27935a3638950d4ec75fc1f84f4ac15aa7308f0975b2a9d2e0c5f8a0c843035d"
 makeone = "unpatched"
 playone = "unpatched"
 reason = "captured 2026-10-31 on the demo's unpatched PLAYONE with its shipped .ALL; recapture on patch3 is a later step (ADR 0029 Consequences)"

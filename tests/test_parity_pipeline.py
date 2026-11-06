@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import re
 import threading
 import time
 import zlib
@@ -21,7 +22,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from render_helpers import pin_reference, reference_tree, write_store
-from stunt_reel import link, parity_artifacts, parity_layout, parity_pipeline
+from stunt_reel import dataroot, link, parity_artifacts, parity_layout, parity_pipeline, references
 from stunt_reel.batch_films import BatchFilm
 from stunt_reel.parity_artifacts import (
     FilmId,
@@ -653,3 +654,66 @@ def test_run_matrix_cancels_pending_pairs_on_interrupt(tmp_path: Path) -> None:
             on_variant=interrupt,
         )
     assert len(ran) < 12
+
+
+def _pin_archive(root: Path, film: str, pin: str, recorded: str) -> None:
+    """Re-pin *film*'s capture so its meta.json records *recorded* and its row pins *pin*."""
+    capture = root / parity_layout.frames_path(f"vault-{film}")
+    meta = json.loads((capture / "meta.json").read_text(encoding="utf-8"))
+    meta["all_sha256"] = recorded
+    (capture / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    digest = references.capture_digest(capture)
+    pointers = root / parity_layout.REFERENCES_FILE
+    pointers.write_text(
+        f'[{film}]\nfilm = "vault-{film}"\nsha256 = "{digest}"\nall_sha256 = "{pin}"\n'
+        'makeone = "patch3"\nplayone = "patch3"\n',
+        encoding="utf-8",
+    )
+
+
+def test_reference_job_refuses_a_capture_recorded_with_another_archive(tmp_path: Path) -> None:
+    root = reference_tree(tmp_path, [7], films=("ctry",))
+    _pin_archive(root, "ctry", "1" * 64, "2" * 64)
+    with (
+        pytest.raises(
+            references.ReferenceCaptureError, match=r"1{64}, but its capture recorded 2{64}"
+        ),
+        parity_pipeline.reference_job(root, "ctry"),
+    ):
+        pass
+
+
+def test_render_film_plays_the_pinned_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = reference_tree(tmp_path, [7], films=("ctry",))
+    monkeypatch.setenv(dataroot.DATA_ENV, str(root))
+    dataroot.data_root.cache_clear()
+    copy = root / "corpus" / "zz" / "VAULT"
+    copy.mkdir(parents=True)
+    (copy / "CTRY.FLM").write_bytes(b"ctry")
+    (copy / "CTRY.ALL").write_bytes(b"pinned")
+    pin = hashlib.sha256(b"pinned").hexdigest()
+    _pin_archive(root, "ctry", pin, pin)
+    fake = FakeRun()
+    with parity_pipeline.reference_job(root, "ctry") as job:
+        assert job.all_sha256 == pin
+        parity_pipeline.render_film(job, tmp_path / "out", run=fake)
+    assert Path(_after(fake.calls[0], "--all") or "") == copy / "CTRY.ALL"
+
+
+@pytest.mark.parametrize("meta", ["{not json", "[]"])
+def test_reference_job_reports_unreadable_capture_metadata(tmp_path: Path, meta: str) -> None:
+    root = reference_tree(tmp_path, [7], films=("ctry",))
+    _pin_archive(root, "ctry", "1" * 64, "1" * 64)
+    capture = root / parity_layout.frames_path("vault-ctry")
+    (capture / "meta.json").write_text(meta, encoding="utf-8")
+    digest = references.capture_digest(capture)
+    pointers = root / parity_layout.REFERENCES_FILE
+    text = pointers.read_text(encoding="utf-8")
+    pointers.write_text(re.sub(r'\nsha256 = "[0-9a-f]+"', f'\nsha256 = "{digest}"', text))
+    with (
+        pytest.raises(references.ReferenceCaptureError, match="metadata"),
+        parity_pipeline.reference_job(root, "ctry"),
+    ):
+        pass
