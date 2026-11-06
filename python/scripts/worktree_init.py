@@ -1024,7 +1024,14 @@ def _script_is_stale(repo: Path) -> tuple[bool, list[str]]:
         return False, lines
     lines.append(f"  ! stale reap: HEAD:{SCRIPT_PATH} is {ours}")
     lines.append(f"    but origin/main:{SCRIPT_PATH} is {main};")
-    lines.append("    update the primary checkout to origin/main and run reap from it again")
+    if _git(repo, "merge-base", "--is-ancestor", "origin/main", "HEAD").returncode == 0:
+        # Ahead of main, not behind it: updating would not change the copy reap runs.
+        lines.append(
+            "    HEAD carries a reap change main lacks; merge it first,"
+            " or review it and pass --allow-stale-script to reap with it"
+        )
+    else:
+        lines.append("    update the primary checkout to origin/main and run reap from it again")
     return True, lines
 
 

@@ -1130,6 +1130,21 @@ def test_a_current_script_reaps_without_a_warning(
     assert "stale reap" not in capsys.readouterr().out
 
 
+def test_a_checkout_ahead_of_main_is_told_to_merge_not_update(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, worktree, _, main = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB, stale=False)
+    ours = _commit_script(repo, "unmerged rules")
+
+    assert worktree_init._reap(True) == 1
+    assert worktree.is_dir()
+    out = capsys.readouterr().out
+    assert ours in out
+    assert main in out
+    assert "merge it first" in out
+    assert "update the primary checkout" not in out
+
+
 def test_offline_reap_compares_with_the_last_fetched_main(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
