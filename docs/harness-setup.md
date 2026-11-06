@@ -149,8 +149,8 @@ own `init`):
 
 1. `cmd /c dir /AL /S /B` lists every reparse point. It follows junctions, so a listed path
    below another listed path lies inside that junction's target: leave it alone.
-2. `cmd /c rmdir <path>` each remaining one; it removes the junction and leaves its target
-   alone. Never add `/s`.
+2. `cmd /c rmdir "<path>"` each remaining one, pasting the path exactly as `dir /B` printed
+   it inside the quotes; it removes the junction and leaves its target alone. Never add `/s`.
 3. `cmd /c dir /AL /S /B` again must print `File Not Found`; only then run `orca worktree rm`.
 
 Orca workspaces live on `C:`, another volume from the shared uv cache, so uv copies each
