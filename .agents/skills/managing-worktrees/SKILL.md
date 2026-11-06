@@ -30,5 +30,5 @@ Game files and captures live outside every checkout, in one shared data root; a 
 
 ## Common mistakes
 
-- **Looking for captures under `corpus/` or in the worktree.** Nothing writes `corpus/`; captures are in the data root.
+- **Looking for captures under `corpus/` or in the worktree.** Captures are in the data root.
 - **Calling a capture complete from its frame count.** Completeness is `meta.json`, then the pin.
