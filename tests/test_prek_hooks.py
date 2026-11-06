@@ -136,3 +136,13 @@ def test_ci_skips_exactly_the_local_hooks() -> None:
     skips = re.findall(r"\bSKIP: (\S+)", ci)
     assert len(skips) == 1, "CI runs prek in exactly one step"
     assert skips[0].split(",") == local
+
+
+def test_ci_fails_an_empty_pull_request_before_installing() -> None:
+    """Issue #216: an empty pull request fails on git alone, before any toolchain installs."""
+    ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    diff = ci.index('git diff --quiet "origin/$BASE_REF...HEAD"')
+    step = ci[ci.rindex("- name:", 0, diff) : diff]
+    assert "if: github.event_name == 'pull_request'" in step
+    assert "BASE_REF: ${{ github.base_ref }}" in step
+    assert diff < ci.index("Install lavapipe"), "the check runs before the slow steps"
