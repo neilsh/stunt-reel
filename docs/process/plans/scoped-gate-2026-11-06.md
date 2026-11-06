@@ -1,6 +1,6 @@
 # The local gate runs what a change touches, faster (2026-11-06)
 
-Status: **design agreed 2026-11-06; not started**. Branch `claude/run-gate-performance-796b53`.
+Status: **design agreed and reviewed 2026-11-06; not started**. Branch `claude/run-gate-performance-796b53`.
 Tasks: `scoped-gate-implementation-2026-11-06.md` (to be written from this note). Source: a
 session of 2026-11-06 that started from "can the gate take less time, or check only what a change
 touches, or can prek help", measured the gate, and settled the design below. The scoping decision
@@ -67,8 +67,12 @@ Measured warm on the 16-logical, 8-physical-core Windows workstation on 2026-11-
 Rule 1 comes first because Rust code embeds fixtures (`stunt-render`'s renderer reads
 `tests/fixtures/synthetic_pfont.bin`) and Python tests read them too. A Markdown file under
 `crates/` is rust, since rustdoc can include it. No Rust code reads a `.ksy` or Markdown file outside
-`crates/` (checked 2026-11-06), so rule 4 is safe for the Rust half. A rename or deletion counts
-both old and new paths.
+`crates/` (checked 2026-11-06), so rule 4 is safe for the Rust half.
+
+`mise.toml` is the commonest other file (69 of the commits since 2026-10-01, then
+`.github/workflows/ci.yml` at 21). It stays other: it pins the Rust, Python and Kaitai toolchains
+and defines every step, so a change to it can break either half. Images are not given a rule: no
+commit since 2026-10-01 touched only Markdown and images.
 
 ### 3.2 What each category runs
 
@@ -83,7 +87,11 @@ A change in several categories runs the union. `test-py-docs` runs on every scop
 already run `test-py`, whatever the categories: a Rust or Python change can delete or rename a file
 that a document cites, and the documentation tests are what catch it.
 
-`test-py-docs` is a new leaf task, `uv run pytest -m docs`, in a lane of its own. The `docs`
+`test-py-docs` is a new leaf task, `uv run pytest -m docs`, in a lane of its own. Its `STEP_ENV`
+matches `test-py`'s: `STUNT_REQUIRE_KSC=1`, without which `test_schema_contract.py` skips the
+schema compile and a broken `.ksy` passes, and `-n auto`, since the three modules are about 30 s of
+CPU. It is a step of the docs half only, never of the full plan, where `test-py` already runs the
+same tests. The `docs`
 marker is set module-wide (`pytestmark`) on `test_doc_invariants.py`, `test_formats_catalog.py`
 and `test_schema_contract.py`; a new documentation test joins by taking the marker, not by an edit
 to `gate.py`. Other tests that happen to read a document, such as `test_check_commit_msg.py`
@@ -110,6 +118,8 @@ that is behind `origin/main` only widens the diff, which is the safe direction.
 - it is given `--full` (`mise run check -- --full`);
 - the `CI` environment variable is set, as on every GitHub Actions runner;
 - any changed path is in the other category;
+- there are no changed paths, as on `main` itself or a branch with nothing new: there is nothing
+  to scope by, and the run is a check of the tree;
 - the changed paths cannot be computed (section 3.3).
 
 `mise run check-rust` and `mise run check-py` keep running their whole half, unscoped. A new
@@ -126,23 +136,26 @@ accepts (`check_commit_msg.py`: each gate name followed by `passes` or `not run`
 - a full run: `mise run check passes.`;
 - a scoped run names every half: one that ran `passes`, one skipped `not run`, and `check-docs`
   only when `check-py` did not run, since `test-py` contains the documentation tests. For example
-  `mise run check-docs passes; check-rust not run; check-py not run.` or
-  `mise run check-rust passes; check-docs passes; check-py not run.`
+  `mise run check-docs passes; check-rust not run; check-py not run.`,
+  `mise run check-rust passes; check-docs passes; check-py not run.` or
+  `mise run check-py passes; check-rust not run.`
 
 A failing run prints the existing `FAIL` verdict and re-run hints; the hints gain `check-docs`.
 
 ### 3.6 pytest workers match physical cores
 
 `psutil` joins the dev dependency group, so xdist's `-n auto` counts physical cores: 8 on the
-workstation. Nothing else changes: the gate still sets `-n auto` through `PYTEST_ADDOPTS`. ADR 0031
+workstation. xdist 3.8 calls `psutil.cpu_count(logical=False)` for `auto` when `psutil` imports,
+and `os.cpu_count()` otherwise (`xdist/plugin.py`, read 2026-11-06). Nothing else changes: the
+gate still sets `-n auto` through `PYTEST_ADDOPTS`. ADR 0031
 is amended in place with the measurements in section 2, since its decision, pytest across every
 core, stands with "core" now meaning a physical one. The amendment also clears `psutil` against
 [ADR 0010](../../adr/0010-python-scripts-may-take-well-established-dependencies.md), as ADR 0031 did
 for xdist.
 
 GitHub's 4-vCPU Linux runner may report 2 physical cores. The pull request compares its `quality`
-job's "Run quality tasks" step with recent `main` runs; if CI is slower, the gate passes
-`-n logical` there, or the change is dropped for CI only.
+job's "Run quality tasks" step with recent `main` runs. If CI is slower, the gate's `test-py`
+and `test-py-docs` steps pass `-n logical` when `CI` is set, keeping CI on its logical-core count.
 
 ### 3.7 The reap tests
 
@@ -182,7 +195,8 @@ runners.
   [`docs/development.md`](../../development.md): a scoped `mise run check` that passes is enough
   before committing, and the verdict's gate line is the one to write.
 - `tests/test_gate_plan.py` covers the categories, the union, the forced-full triggers and the
-  verdict lines.
+  verdict lines. Its `test_halves_are_subsets_of_the_whole_plan` changes: the docs half's one step
+  is deliberately outside the full plan.
 
 ### Considered options
 
@@ -217,7 +231,8 @@ Each figure is recorded in the amended ADR 0031 or ADR 0037:
   the measurements in section 2 are pytest alone, and the whole gate also runs `test-rust` beside it;
 - the same after section 3.7;
 - a scoped run for a documentation-only change and for a Rust-only change, each timed, each
-  printing the expected plan and gate line;
+  printing the expected plan and gate line; a documentation-only run is expected to take about
+  10-15 s warm (worker startup plus the formats catalog), against about 45 s for the full gate today;
 - CI's "Run quality tasks" step on the pull request against the five most recent `main` runs.
 
 ## 8. Delivery
