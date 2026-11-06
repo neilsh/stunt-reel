@@ -31,11 +31,13 @@ _GIT_LOCATION_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_D
 
 @pytest.fixture(autouse=True)
 def _isolate_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unset git's location variables, so each test sees only its scratch repository."""
     for name in _GIT_LOCATION_ENV:
         monkeypatch.delenv(name, raising=False)
 
 
 def _git(repo: Path, *args: str) -> None:
+    """Run git in *repo* and fail the test if it fails."""
     assert GIT is not None
     done = subprocess.run(  # noqa: S603 - fixed test arguments
         [GIT, *args], cwd=repo, capture_output=True, text=True, check=False
@@ -44,6 +46,7 @@ def _git(repo: Path, *args: str) -> None:
 
 
 def _repo(path: Path) -> Path:
+    """Make *path* a repository with this checkout's ``.gitattributes`` and no autocrlf."""
     _git(path, "init", "-q")
     # The user's autocrlf would change what a staged CRLF file looks like to git.
     _git(path, "config", "core.autocrlf", "false")
@@ -52,6 +55,7 @@ def _repo(path: Path) -> Path:
 
 
 def _run(repo: Path) -> subprocess.CompletedProcess[str]:
+    """Run the hook in *repo* as a commit would."""
     return subprocess.run(  # noqa: S603 - the interpreter and the script under test
         [sys.executable, str(SCRIPT)],
         cwd=repo,
@@ -63,6 +67,7 @@ def _run(repo: Path) -> subprocess.CompletedProcess[str]:
 
 
 def _write(repo: Path, files: dict[str, bytes]) -> None:
+    """Write each file's bytes under *repo*, making parent directories."""
     for name, data in files.items():
         target = repo / name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -70,6 +75,7 @@ def _write(repo: Path, files: dict[str, bytes]) -> None:
 
 
 def _stage(repo: Path, files: dict[str, bytes]) -> None:
+    """Write each file under *repo* and stage it."""
     _write(repo, files)
     _git(repo, "add", "-f", *files)
 
@@ -80,6 +86,7 @@ def _rejected(stderr: str) -> str:
 
 
 def test_a_crlf_only_file_is_repaired_and_passes(tmp_path: Path) -> None:
+    """A file staged with CRLF is rewritten as LF, named, and the hook passes."""
     repo = _repo(tmp_path)
     _stage(repo, {"notes.md": b"one\r\ntwo\r\n", "pkg/mod.py": b"x = 1\r\n"})
     result = _run(repo)
@@ -92,6 +99,7 @@ def test_a_crlf_only_file_is_repaired_and_passes(tmp_path: Path) -> None:
 
 
 def test_a_crlf_copy_of_a_staged_lf_file_is_repaired(tmp_path: Path) -> None:
+    """A CRLF working copy of a staged LF file is rewritten as LF."""
     repo = _repo(tmp_path)
     _stage(repo, {"a.py": b"x = 1\n"})
     _write(repo, {"a.py": b"x = 1\r\n"})
@@ -102,6 +110,7 @@ def test_a_crlf_copy_of_a_staged_lf_file_is_repaired(tmp_path: Path) -> None:
 
 
 def test_mixed_line_endings_are_repaired(tmp_path: Path) -> None:
+    """A working copy with both LF and CRLF endings is rewritten as LF."""
     repo = _repo(tmp_path)
     _stage(repo, {"a.txt": b"one\ntwo\r\nthree"})
     assert _run(repo).returncode == 0
@@ -109,6 +118,7 @@ def test_mixed_line_endings_are_repaired(tmp_path: Path) -> None:
 
 
 def test_a_crlf_file_with_unstaged_edits_fails_and_is_unchanged(tmp_path: Path) -> None:
+    """CRLF plus unstaged edits fails the commit and leaves the file byte for byte."""
     repo = _repo(tmp_path)
     _stage(repo, {"a.py": b"x = 1\n"})
     edited = b"x = 2\r\ny = 3\r\n"
@@ -120,6 +130,7 @@ def test_a_crlf_file_with_unstaged_edits_fails_and_is_unchanged(tmp_path: Path) 
 
 
 def test_only_the_files_with_edits_are_rejected(tmp_path: Path) -> None:
+    """Repaired and rejected files are reported apart, and only edited ones fail."""
     repo = _repo(tmp_path)
     _stage(repo, {"good.txt": b"one\n", "fixed.txt": b"one\r\n", "edited.txt": b"one\n"})
     _write(repo, {"edited.txt": b"two\r\n"})
@@ -147,6 +158,7 @@ def _load_script() -> Any:
 def test_a_failed_checkout_puts_every_file_back(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A checkout that fails partway restores every removed file's bytes."""
     repo = _repo(tmp_path)
     files = {"a.txt": b"one\r\n", "b.txt": b"two\r\n", "c.txt": b"three\r\n"}
     _stage(repo, files)
@@ -154,6 +166,7 @@ def test_a_failed_checkout_puts_every_file_back(
     real_git = script._git
 
     def failing_git(root: Path, *args: str, stdin: bytes | None = None) -> bytes:
+        """Run git, except that checkout-index fails."""
         if args[0] != "checkout-index":
             output: bytes = real_git(root, *args, stdin=stdin)
             return output
@@ -174,6 +187,7 @@ def test_a_failed_checkout_puts_every_file_back(
 def test_a_failed_checkout_puts_back_the_executable_bit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A checkout that fails restores a removed file's permission bits with its bytes."""
     repo = _repo(tmp_path)
     _stage(repo, {"run.sh": b"echo hi\r\n"})
     (repo / "run.sh").chmod(0o755)
@@ -182,6 +196,7 @@ def test_a_failed_checkout_puts_back_the_executable_bit(
     real_git = script._git
 
     def failing_git(root: Path, *args: str, stdin: bytes | None = None) -> bytes:
+        """Run git, except that checkout-index fails."""
         if args[0] != "checkout-index":
             output: bytes = real_git(root, *args, stdin=stdin)
             return output
@@ -197,6 +212,7 @@ def test_a_failed_checkout_puts_back_the_executable_bit(
 def test_a_checkout_that_leaves_crlf_puts_the_file_back(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A file still holding CRLF after checkout gets its bytes back and is rejected."""
     repo = _repo(tmp_path)
     _stage(repo, {"a.txt": b"one\ntwo\n"})
     _write(repo, {"a.txt": b"one\r\ntwo\n"})
@@ -204,6 +220,7 @@ def test_a_checkout_that_leaves_crlf_puts_the_file_back(
     real_git = script._git
 
     def crlf_git(root: Path, *args: str, stdin: bytes | None = None) -> bytes:
+        """Run git, except that checkout-index writes CRLF."""
         if args[0] != "checkout-index":
             output: bytes = real_git(root, *args, stdin=stdin)
             return output
@@ -219,6 +236,7 @@ def test_a_checkout_that_leaves_crlf_puts_the_file_back(
 def test_a_reported_mode_change_is_rejected_and_unchanged(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A path git reports with a mode change is rejected, not rewritten."""
     repo = _repo(tmp_path)
     _stage(repo, {"a.txt": b"one\r\n"})
     script = _load_script()
@@ -226,6 +244,7 @@ def test_a_reported_mode_change_is_rejected_and_unchanged(
     zeros = "0" * 40
 
     def mode_git(root: Path, *args: str, stdin: bytes | None = None) -> bytes:
+        """Run git, except that diff-files reports a mode change on ``a.txt``."""
         if args[0] == "diff-files":
             return f":100644 100755 {zeros} {zeros} M\0a.txt\0".encode()
         output: bytes = real_git(root, *args, stdin=stdin)
@@ -240,6 +259,7 @@ def test_a_reported_mode_change_is_rejected_and_unchanged(
     sys.platform == "win32", reason="git on Windows sets core.filemode=false and ignores the bit"
 )
 def test_an_unstaged_executable_bit_is_rejected_and_unchanged(tmp_path: Path) -> None:
+    """An unstaged executable bit is rejected, and the bytes and the bit are kept."""
     repo = _repo(tmp_path)
     _stage(repo, {"run.sh": b"echo hi\n"})
     _write(repo, {"run.sh": b"echo hi\r\n"})
@@ -252,6 +272,7 @@ def test_an_unstaged_executable_bit_is_rejected_and_unchanged(tmp_path: Path) ->
 
 
 def test_an_extra_cr_before_a_crlf_in_the_blob_is_rejected_and_unchanged(tmp_path: Path) -> None:
+    """A working copy adding a CR to a CRLF blob is rejected and left as it is."""
     # The blob keeps its CRLF (staged before the LF rule), and the working copy adds a CR.
     repo = tmp_path
     _git(repo, "init", "-q")
@@ -266,6 +287,7 @@ def test_an_extra_cr_before_a_crlf_in_the_blob_is_rejected_and_unchanged(tmp_pat
 
 
 def test_a_blob_that_itself_holds_crlf_is_rejected_and_unchanged(tmp_path: Path) -> None:
+    """A CRLF working copy of a CRLF blob is rejected and left as it is."""
     # Staged before the LF rule existed, so the index blob keeps its CRLF.
     repo = tmp_path
     _git(repo, "init", "-q")
@@ -279,6 +301,7 @@ def test_a_blob_that_itself_holds_crlf_is_rejected_and_unchanged(tmp_path: Path)
 
 
 def test_lf_files_pass(tmp_path: Path) -> None:
+    """LF files, empty or without a final newline, pass silently."""
     repo = _repo(tmp_path)
     _stage(repo, {"a.py": b"x = 1\n", "b.txt": b"no newline at end", "c.md": b""})
     result = _run(repo)
@@ -287,6 +310,7 @@ def test_lf_files_pass(tmp_path: Path) -> None:
 
 
 def test_windows_launchers_keep_crlf(tmp_path: Path) -> None:
+    """``*.bat`` and ``*.cmd`` keep CRLF and are neither repaired nor rejected."""
     repo = _repo(tmp_path)
     _stage(repo, {"run.bat": b"@echo off\r\n", "tools/go.cmd": b"@echo on\r\n"})
     result = _run(repo)
@@ -296,6 +320,7 @@ def test_windows_launchers_keep_crlf(tmp_path: Path) -> None:
 
 
 def test_binary_files_pass_untouched(tmp_path: Path) -> None:
+    """Binary files, named by attribute or by a NUL byte, pass untouched."""
     repo = _repo(tmp_path)
     files = {
         # Named binary by .gitattributes.
@@ -311,6 +336,7 @@ def test_binary_files_pass_untouched(tmp_path: Path) -> None:
 
 
 def test_a_binary_attribute_exempts_a_file_without_a_nul_byte(tmp_path: Path) -> None:
+    """A binary attribute alone exempts a file from the check."""
     repo = _repo(tmp_path)
     _stage(repo, {"table.idx": b"plain\r\nbytes\r\n"})
     assert _run(repo).returncode == 0
@@ -318,6 +344,7 @@ def test_a_binary_attribute_exempts_a_file_without_a_nul_byte(tmp_path: Path) ->
 
 
 def test_the_exemption_follows_gitattributes(tmp_path: Path) -> None:
+    """The ``eol=crlf`` exemption is read from ``.gitattributes``, not a list."""
     repo = _repo(tmp_path)
     (repo / ".gitattributes").write_bytes(b"* text=auto eol=lf\n*.ps1 text eol=crlf\n")
     _stage(repo, {"x.ps1": b"a\r\n", "y.bat": b"b\r\n"})
@@ -330,6 +357,7 @@ def test_the_exemption_follows_gitattributes(tmp_path: Path) -> None:
 
 
 def test_an_unstaged_crlf_file_is_ignored(tmp_path: Path) -> None:
+    """A CRLF file that is not staged is neither checked nor touched."""
     repo = _repo(tmp_path)
     _stage(repo, {"a.py": b"x = 1\n"})
     _write(repo, {"loose.py": b"y = 2\r\n"})
@@ -338,6 +366,7 @@ def test_an_unstaged_crlf_file_is_ignored(tmp_path: Path) -> None:
 
 
 def test_a_deleted_staged_path_and_nothing_staged_pass(tmp_path: Path) -> None:
+    """An empty index and a staged path deleted from disk both pass."""
     repo = _repo(tmp_path)
     assert _run(repo).returncode == 0
     _stage(repo, {"gone.txt": b"x\n"})
@@ -346,6 +375,7 @@ def test_a_deleted_staged_path_and_nothing_staged_pass(tmp_path: Path) -> None:
 
 
 def test_names_with_spaces_and_non_ascii_are_found(tmp_path: Path) -> None:
+    """Paths with spaces and non-ASCII letters are repaired and rejected by name."""
     repo = _repo(tmp_path)
     _stage(repo, {"a dir/naïve file.txt": b"x\r\n", "a dir/édité.txt": b"x\n"})
     _write(repo, {"a dir/édité.txt": b"y\r\n"})
@@ -360,6 +390,7 @@ def test_names_with_spaces_and_non_ascii_are_found(tmp_path: Path) -> None:
 def test_a_directory_that_is_not_a_repository_is_an_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Outside a repository the hook exits 2 and says why."""
     # The scratch root is inside this checkout; the ceiling keeps git from finding it.
     monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
     result = _run(tmp_path)
