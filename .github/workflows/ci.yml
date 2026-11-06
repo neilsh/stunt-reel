@@ -97,6 +97,13 @@ jobs:
             set -- --all-files
           fi
           mise exec -- prek run --config prek.toml "$@"
+      - name: Commit messages on the pull request
+        # AGENTS.md SOP 3, for a commit made with --no-verify. Only a pull request's own commits:
+        # main's history holds GitHub squash merges, whose messages the hook never saw.
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: mise run commit-msg-check -- --range "origin/$BASE_REF..HEAD"
 
   windows-smoke:
     name: Windows smoke

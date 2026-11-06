@@ -365,6 +365,10 @@ run = "git diff --cached --check"
 description = "Staged text files whose working copy has CRLF line endings (python/scripts/check_crlf.py); a pre-commit hook"
 run = "uv run python python/scripts/check_crlf.py"
 
+[tasks.commit-msg-check]
+description = "A commit message's Conventional Commit subject and gate line (python/scripts/check_commit_msg.py, AGENTS.md SOP 3); the commit-msg hook"
+run = "uv run python python/scripts/check_commit_msg.py"
+
 # The committed hook (.githooks/pre-commit, installed by mise run init) runs this and nothing
 # else. prek.toml's local hooks are leaf tasks of this file like the gate's (ADR 0014): no second copy.
 [tasks.pre-commit]

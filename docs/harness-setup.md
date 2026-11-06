@@ -20,7 +20,7 @@ setup they assume.
 | Shared uv and Cargo caches | `<primary>/.cache/uv` and `<primary>/.cache/cargo`, named by absolute path in `mise.toml`, see [ADR 0013](adr/0013-worktrees-share-one-writable-tool-cache.md) | no |
 | A worktree's Python environment | its own `.venv`, made by uv on the first `uv run` | no |
 | Harness permission modes and approvals | each harness's host settings | no |
-| Worktrees | `.claude/worktrees/` or `.agents/worktrees/` inside the primary checkout | no |
+| Worktrees | `.claude/worktrees/` or `.agents/worktrees/` inside the primary checkout, where `mise run reap` looks | no |
 
 Every location in that table except the first row is host-local, and no checkout can carry it.
 
@@ -77,7 +77,7 @@ Run these in a normal terminal, outside an agent sandbox.
 
 ## A new worktree
 
-Nothing to do. Create it with any tool, inside the primary checkout or beside it:
+Nothing to do. Create it with any tool, under `.claude/worktrees/` or `.agents/worktrees/` inside the primary checkout, where `mise run reap` can reap it, except an Orca workspace, whose path Orca chooses (see [Orca](#orca)):
 
 - Python tasks find the corpus and captures through the data root and build `.venv` on the
   first `uv run`, hardlinked out of the shared uv cache on the same volume.
@@ -134,7 +134,29 @@ deadline.
 
 ## Orca
 
-Orca places worktrees on `C:`, another volume from the shared uv cache, so uv copies each
+Orca workspaces are the one exception to SOP 6's in-checkout rule. Orca chooses their path,
+`~/orca/workspaces/stunt-reel/<name>` on this machine; `orca --help` shows the base as a
+project host setting (`orca project setup-update --setup <id> --worktree-base-path <path>`).
+They sit outside the primary checkout, as do the worktrees nested in a workspace's own
+`.agents/worktrees/`, so `mise run reap` skips them all: retire a workspace with
+`orca worktree rm --worktree <selector>`.
+
+A workspace made before ADR 0036 may still hold junctions an older `init` made, and nothing shows
+that Orca's removal unlinks them first (see [Removing a worktree](#removing-a-worktree)). No task
+unlinks one worktree in place; `reap` does it only for the worktrees it removes. Before
+`orca worktree rm`, from the workspace root (read-only listing, whatever the workspace's
+own `init`):
+
+1. `cmd /c dir /AL /S /B` lists every reparse point. It follows junctions, so a listed path
+   below another listed path lies inside that junction's target: leave it alone.
+2. `cmd /c rmdir "<path>"` each remaining one, pasting the path exactly as `dir /B` printed
+   it inside the quotes; it removes the junction and leaves its target alone. Never add `/s`.
+   `cmd` expands `%NAME%` even inside quotes, so for a path containing `%` run
+   `[System.IO.Directory]::Delete('<path>')` in PowerShell instead, doubling any single quote
+   in the path: single quotes stop expansion, and the call is non-recursive and removes only the junction.
+3. `cmd /c dir /AL /S /B` again must print `File Not Found`; only then run `orca worktree rm`.
+
+Orca workspaces live on `C:`, another volume from the shared uv cache, so uv copies each
 `.venv` (about 68 MB, 3 s) instead of hardlinking it, and `target/` is not seeded, because
 `C:` does not clone blocks. Both are slower, not wrong.
 

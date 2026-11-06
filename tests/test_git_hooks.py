@@ -74,12 +74,19 @@ def test_the_pre_commit_hook_only_dispatches_the_mise_task() -> None:
     assert "pre-commit" in _mise_tasks()
 
 
+def test_the_commit_msg_hook_only_dispatches_the_mise_task() -> None:
+    commands = _commands(REPO_ROOT / ".githooks" / "commit-msg")
+    assert commands[-1] == 'exec mise run commit-msg-check -- "$1"'
+    assert "commit-msg-check" in _mise_tasks()
+
+
 @needs_git
 def test_the_hooks_are_executable_in_the_index() -> None:
     listed = _git(REPO_ROOT, "ls-files", "-s", ".githooks").stdout.splitlines()
     modes = {line.split("\t")[1]: line.split()[0] for line in listed}
     assert modes.get(".githooks/pre-commit") == "100755"
     assert modes.get(".githooks/pre-push") == "100755"
+    assert modes.get(".githooks/commit-msg") == "100755"
 
 
 @needs_git
