@@ -1,6 +1,6 @@
 # AGENTS.md split into project skills (2026-11-05)
 
-Status: **design agreed 2026-11-05; implementation not started**. Tasks: [`agents-md-split-implementation-2026-11-05.md`](agents-md-split-implementation-2026-11-05.md), on branch
+Status: **implemented 2026-11-05**. Tasks: [`agents-md-split-implementation-2026-11-05.md`](agents-md-split-implementation-2026-11-05.md), on branch
 `claude/agents-md-refactor-72199a`. Source: a brainstorming session of 2026-11-05 that started
 from "AGENTS.md and the other agent files are getting unwieldy; suggest splitting into project
 skills"; the same session added a disk-space gate on `mise run reap` (D7, 4.6). This note owns
@@ -211,7 +211,30 @@ Record the results in section 8 of this note.
 
 ## 8. Results
 
-Not started.
+Run 2026-11-05 with `mise run skill-eval`, three repetitions per row, about $13 in all. A run
+"loaded" the skill when it called Skill or read the skill's `SKILL.md`; no counted run read this
+spec or its plan.
+
+| Skill | Model | Baseline (no skill): misses in every run | With the skill |
+|---|---|---|---|
+| `changing-seam-contracts` | Opus | `serde(default)`; any fixture or `tests/fixtures/README.md` entry; a roundtrip test run with `--all-features` | 3/3 loaded; 3/3 cover the fixture README entry and a fixture test, and say why `serde(default)` does not apply |
+| `recording-binary-findings` | Opus | **Ruled out** (all three chose the note, the `memory-map.md` row and a tier unaided) | 3/3 loaded; 3/3 cover every item |
+| `managing-worktrees` | Opus | none: the `AGENTS.md` Worktrees rule and the `reap` task description already carry reap, the dry run, no `git worktree remove`, the 20 GB bar and `--force` | 3/3 loaded; 3/3 cover every item |
+| `managing-worktrees` | Haiku | one run missed the data root, `captures/vault-ctry/frames` and the `meta.json` rule; another found the `meta.json` rule only by grepping this spec (peeked) | 3/3 loaded; 3/3 cover every item |
+
+Findings that changed the design or the tooling:
+
+- **D2.** Claude Code does not list skills from `.agents/skills/`: no run's `init` skill list held
+  the new skills. The first with-skill runs found them only through untracked paths in git status,
+  so with-skill runs now start from a clean tree. `AGENTS.md` points at each skill instead.
+- **Reading is loading.** Haiku read `SKILL.md` with Read rather than calling Skill, so
+  `skill-eval` counts both.
+- **Peeking through results.** A Grep result can quote this spec; `skill-eval` marks that run
+  peeked.
+- **Tightening.** `changing-seam-contracts` first stated its serde rule for every field. All three
+  runs on the shape prompt rightly declined it, since `SodModelIr` and `DecodeRecord` do not derive
+  serde; the rule is now keyed to types that do, and the re-run passed. The table's must-cover item
+  for that row assumed a serde type, so the re-run is judged against the conditional rule.
 
 ## Out of scope
 
