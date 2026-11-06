@@ -456,3 +456,15 @@ def test_changed_paths_ignores_git_variables_naming_another_checkout(
     monkeypatch.setenv("GIT_WORK_TREE", str(other))
 
     assert gate.changed_paths(repo) == ["ours.rs"]
+
+
+def test_changed_paths_ignores_a_common_dir_naming_another_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _feature_repo(tmp_path / "ours")
+    _write(repo, "ours.rs")
+    other = _feature_repo(tmp_path / "theirs")
+    _write(other, "theirs.md")
+    monkeypatch.setenv("GIT_COMMON_DIR", str(other / ".git"))
+
+    assert gate.changed_paths(repo) == ["ours.rs"]
