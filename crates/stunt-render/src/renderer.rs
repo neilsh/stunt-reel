@@ -451,7 +451,9 @@ impl Renderer {
     where
         W: wgpu::rwh::HasWindowHandle + wgpu::rwh::HasDisplayHandle + Send + Sync + 'static,
     {
-        let instance = create_instance();
+        // A window keeps every backend: the start-up probe behind OFFSCREEN_BACKENDS did not cover
+        // presentation surfaces.
+        let instance = create_instance(wgpu::Backends::all());
         let surface = instance
             .create_surface(window)
             .map_err(|error| RenderError::SurfaceCreate(error.to_string()))?;
@@ -991,13 +993,30 @@ fn acquire(
     Ok((adapter, device, queue))
 }
 
+/// The instances the offscreen path tries, in order: Vulkan alone, then every backend.
+///
+/// An all-backends instance costs about 1.9 s on a Windows workstation with an RTX 4070: about
+/// 0.95 s in the Vulkan loader and 0.95 s more enumerating DX12 adapters, before it picks the same
+/// Vulkan adapter. Trying Vulkan alone first saves about 1 s and 80 MiB per process, with
+/// byte-identical output; CI's lavapipe is a Vulkan driver too. The second attempt keeps every
+/// other machine working, and gives the software path WARP where Vulkan has no software adapter.
+const OFFSCREEN_BACKENDS: [wgpu::Backends; 2] = [wgpu::Backends::VULKAN, wgpu::Backends::all()];
+
+/// The first adapter *request* finds over *attempts*, tried in order.
+fn first_adapter<A>(
+    attempts: &[wgpu::Backends],
+    mut request: impl FnMut(wgpu::Backends) -> Option<A>,
+) -> Option<A> {
+    attempts.iter().find_map(|&backends| request(backends))
+}
+
 /// The offscreen adapter of the acquisition policy, chosen once per process.
 ///
-/// Creating the instance and enumerating its adapters costs about 2 s on a Windows workstation
-/// (the Vulkan loader and driver start-up), against about 0.1 s for a device. A process that opens
-/// several offscreen renderers, as the GPU integration tests do, pays that once: the adapter keeps
-/// its instance alive, and each renderer still opens a device of its own. A process that found
-/// no adapter keeps finding none.
+/// Creating the instance and enumerating its adapters is the expensive part of start-up (see
+/// [`OFFSCREEN_BACKENDS`]), against about 30 ms for a device. A process that opens several
+/// offscreen renderers, as the GPU integration tests do, pays that once: the adapter keeps its
+/// instance alive, and each renderer still opens a device of its own. A process that found no
+/// adapter keeps finding none.
 fn offscreen_adapter(options: RenderOptions) -> Result<wgpu::Adapter, RenderError> {
     static PREFERRED: OnceLock<Option<wgpu::Adapter>> = OnceLock::new();
     static SOFTWARE: OnceLock<Option<wgpu::Adapter>> = OnceLock::new();
@@ -1007,7 +1026,11 @@ fn offscreen_adapter(options: RenderOptions) -> Result<wgpu::Adapter, RenderErro
         &PREFERRED
     };
     chosen
-        .get_or_init(|| select_adapter(&create_instance(), None, options))
+        .get_or_init(|| {
+            first_adapter(&OFFSCREEN_BACKENDS, |backends| {
+                select_adapter(&create_instance(backends), None, options)
+            })
+        })
         .clone()
         .ok_or(RenderError::NoGpuAdapter)
 }
@@ -1058,10 +1081,10 @@ fn request_fallback_adapter(
     .ok()
 }
 
-/// The renderer instance: every backend wgpu was built with.
-fn create_instance() -> wgpu::Instance {
+/// A renderer instance over *backends*: every backend for a window, [`OFFSCREEN_BACKENDS`] offscreen.
+fn create_instance(backends: wgpu::Backends) -> wgpu::Instance {
     wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
+        backends,
         ..wgpu::InstanceDescriptor::new_without_display_handle()
     })
 }
@@ -1248,5 +1271,32 @@ mod tests {
             Some(Bgra8UnormSrgb)
         );
         assert_eq!(pick_surface_format(&[]), None);
+    }
+
+    #[test]
+    fn first_adapter_stops_at_the_first_backend_that_finds_one() {
+        let mut tried = Vec::new();
+        let got = first_adapter(&OFFSCREEN_BACKENDS, |backends| {
+            tried.push(backends);
+            Some(backends)
+        });
+        assert_eq!(got, Some(wgpu::Backends::VULKAN));
+        assert_eq!(tried, vec![wgpu::Backends::VULKAN]);
+    }
+
+    #[test]
+    fn first_adapter_falls_back_to_all_backends() {
+        let mut tried = Vec::new();
+        let got = first_adapter(&OFFSCREEN_BACKENDS, |backends| {
+            tried.push(backends);
+            (backends == wgpu::Backends::all()).then_some(backends)
+        });
+        assert_eq!(got, Some(wgpu::Backends::all()));
+        assert_eq!(tried, vec![wgpu::Backends::VULKAN, wgpu::Backends::all()]);
+    }
+
+    #[test]
+    fn first_adapter_is_none_when_no_backend_finds_one() {
+        assert_eq!(first_adapter(&OFFSCREEN_BACKENDS, |_| None::<u8>), None);
     }
 }
