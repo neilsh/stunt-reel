@@ -64,7 +64,15 @@ def test_a_gate_line_that_does_not_run_the_gate_passes(hook: Any) -> None:
     assert hook.problems(message) == []
 
 
-@pytest.mark.parametrize("line", ["mise run check failed.", "Run mise run check before merging."])
+@pytest.mark.parametrize(
+    "line",
+    [
+        "mise run check failed.",
+        "Run mise run check before merging.",
+        "mise run check failed; CI passes.",
+        "mise run check failed, the fix is not run yet.",
+    ],
+)
 def test_a_gate_line_must_report_an_outcome(hook: Any, line: str) -> None:
     [problem] = hook.problems(f"fix: a thing\n\nWhy it changed.\n\n{line}\n")
     assert "gate line" in problem

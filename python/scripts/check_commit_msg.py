@@ -3,9 +3,11 @@
 
 The subject is ``type(scope)!: summary`` with one of the usual types. A message with a body
 (anything past the subject but git's trailers, such as ``Co-Authored-By:``) must also say what
-the gate did: a line naming ``mise run check`` and an outcome, ``passes`` or ``not run``, as in
-``mise run check passes.`` or ``mise run check-py passes; check-rust not run.`` A message with no body needs none, as SOP 3 lets a rename
-or a formatting commit go without one. Git's own subjects (a merge, a revert, ``fixup!``,
+the gate did: ``mise run check``, or one of its parts such as ``mise run check-py``, followed
+directly by its outcome, ``passes`` or ``not run``, as in ``mise run check passes.`` or
+``mise run check-py passes; check-rust not run.`` The outcome must follow the gate's name, so
+``mise run check failed; CI passes.`` is refused. A message with no body needs none, as SOP 3
+lets a rename or a formatting commit go without one. Git's own subjects (a merge, a revert, ``fixup!``,
 ``squash!``, ``amend!``) are left alone.
 
 Usage: ``mise run commit-msg-check -- <message file>`` (the commit-msg hook), or
@@ -40,8 +42,9 @@ GIT_SUBJECT = re.compile(r"^(?:Merge |Revert \"|fixup! |squash! |amend! )")
 TRAILER = re.compile(r"^[A-Za-z][A-Za-z-]*: \S")
 SCISSORS = "# ------------------------ >8 ------------------------"
 GATE = "mise run check"
-#: A gate line names the gate and its outcome: what passed, or what did not run.
-GATE_LINE = re.compile(rf"{GATE}.*\b(?:passes|not run)\b")
+#: A gate line names the gate, or one half of it, and then directly its outcome: ``mise run
+#: check passes``, ``mise run check-py passes``, ``mise run check not run``.
+GATE_LINE = re.compile(rf"{GATE}(?:-[a-z]+)? (?:passes|not run)\b")
 
 
 def _lines(message: str) -> list[str]:
