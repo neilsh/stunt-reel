@@ -69,7 +69,8 @@ pub struct World {
     /// Ocean, terrain, and props as one identity-transformed model (`WORLD_BASE` with an
     /// optional `WORLD_DECAL` child).
     pub ir: SodModelIr,
-    /// Terrain patches parsed from `MAP.BIN` whose vertices all index the anchor table.
+    /// Terrain patches parsed from `MAP.BIN` whose vertices all index the anchor table, less
+    /// the records `PLAYONE` never draws.
     pub terrain_patches: usize,
     /// Distinct `(shape, position)` prop placements after de-duplication.
     pub props_placed: usize,
@@ -379,11 +380,22 @@ pub(crate) struct MapArea {
     verts: Vec<usize>,
 }
 
-/// Parses 30-byte polygon patch records from `MAP.BIN`.
+/// `MAP.BIN` records `PLAYONE` never draws: eight sand patches with no polygon in its scene
+/// tree, its image, any game file or any `OP_TAP` operand
+/// (`research/playone-exe/world-scene.md` section 2.1). Ground leaf `0x00DA` (`MAP.BIN`
+/// record 7, flat at height 0) lies under 54 and 55, the two whose anchors are all valid and
+/// so were drawn; the other six already fail [`patch_corners`].
+const PATCHES_PLAYONE_NEVER_DRAWS: [usize; 8] = [52, 53, 54, 55, 62, 63, 64, 65];
+
+/// Parses 30-byte polygon patch records from `MAP.BIN`, leaving out the records in
+/// [`PATCHES_PLAYONE_NEVER_DRAWS`].
 pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
     let (records, _partial) = data.as_chunks::<30>();
     let mut areas = Vec::new();
     for (index, record) in records.iter().enumerate() {
+        if PATCHES_PLAYONE_NEVER_DRAWS.contains(&index) {
+            continue;
+        }
         // Constant indices into the fixed 30-byte record, so none can fall outside it.
         let pos = i16::from_le_bytes([record[2], record[3]]);
         if pos.trailing_zeros() >= 8 {
@@ -1119,6 +1131,25 @@ mod tests {
             parse_map_bin(&data[..30], 10)[0].verts,
             vec![0, 1, 2, 3, 4, 5, 6]
         );
+    }
+
+    #[test]
+    fn the_sand_patches_playone_never_draws_are_left_out() {
+        // 66 active triangles, each coloured by its record index; records 52-55 and 62-65 are
+        // the patches with no leaf in PLAYONE's scene tree (world-scene.md section 2.1).
+        let mut data = vec![0u8; 66 * 30];
+        for (index, record) in data.as_chunks_mut::<30>().0.iter_mut().enumerate() {
+            record[2..4].copy_from_slice(&0x00FFi16.to_le_bytes());
+            record[12] = u8::try_from(index).unwrap();
+            record[14..16].copy_from_slice(&3i16.to_le_bytes());
+            record[18..20].copy_from_slice(&1u16.to_le_bytes());
+            record[20..22].copy_from_slice(&2u16.to_le_bytes());
+        }
+        let colours: Vec<u8> = parse_map_bin(&data, 3).iter().map(|a| a.color).collect();
+        let expected: Vec<u8> = (0..66)
+            .filter(|i| !matches!(i, 52..=55 | 62..=65))
+            .collect();
+        assert_eq!(colours, expected);
     }
 
     #[test]
