@@ -20,6 +20,15 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 File issues only into the user's own repo. Never file into `mattpocock/skills` (the repo these skills come from) unless the user owns it. In a fork, `gh` can default to the upstream parent, so before the first `gh issue create` of a session, check the target with `gh repo view --json nameWithOwner` and confirm it with the user if it is not their repo.
 
+## Organizing issues
+
+- **Parents are goals.** A parent issue names an outcome and ends with a `Done when every sub-issue is closed.` line, e.g. #85 (terrain loss), #97 (actors and props). Every parent can close; there is no standing bucket parent. An issue has no parent by default: give it one when a goal fits, and file a short-lived parent only for a batch that has its own `Done when` (as #169 did for lints).
+- **An issue with open sub-issues is never startable**, whatever its labels: a spec that `/to-tickets` split keeps its `ready-for-agent` label. Skip it when choosing work.
+- **Closing the last child closes the parent.** Whoever closes a parent's last open sub-issue closes the parent too, as in **Close**.
+- **Title the problem, not the fix.** State the observed problem or the open question in present tense: "Props shade with a guessed light, not PLAYONE's world light", "Which 20 active MAP.BIN polygons have no ground leaf in PLAYONE's image?". The fix goes in the body.
+- **The filer labels the issue.** On `gh issue create`, apply one state label (`needs-triage` when unsure), `research` or `tooling` where either applies ([triage-labels.md](triage-labels.md)), and a parent where a goal fits.
+- No milestones or Project board: parents show progress.
+
 ## Review threads on a pull request
 
 - **List open threads**: `mise run pr-threads -- <number>` prints one line per unresolved thread (path, line, severity, title) and the comment id to reply to; `--all` keeps resolved ones. After the threads it lists the findings a bot put in a review body instead of a thread ("Outside diff"), from reviews submitted since the head commit (`--all`: every review); those have no thread, so answer them with `gh pr comment`. Reach for it before `gh pr view --comments` or `gh api .../reviews`, whose CodeRabbit bodies run to tens of KB.
