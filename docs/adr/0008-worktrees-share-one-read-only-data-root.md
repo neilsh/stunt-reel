@@ -58,7 +58,7 @@ instance, so two captures share the machine without sharing a port.
 debug profile drops to ``line-tables-only``: full debug info was 14.4 GB of the
 17 GB ``target/``, paid again by every worktree.
 
-The SOP 6 shared-write gate is applied once by the capture session's `run_session` for both `capture-ref` and the light probe; the listener bind inside the emulator adapter is no longer a lock, so two sessions bind two ports ([ADR 0021](0021-capture-chooses-its-control-port.md)).
+The shared-write gate ([`managing-worktrees`](../../.agents/skills/managing-worktrees/SKILL.md)) is applied once by the capture session's `run_session` for both `capture-ref` and the light probe; the listener bind inside the emulator adapter is no longer a lock, so two sessions bind two ports ([ADR 0021](0021-capture-chooses-its-control-port.md)).
 
 Two costs are visible in tooling. A worktree inside the checkout is read by every
 recursive tool unless it is both gitignored and ruff-excluded, which is what

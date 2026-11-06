@@ -16,7 +16,7 @@ Status: implementation complete on branch `wt-202610252029-retro-hardening` (bas
 |---|---|---|---|---|
 | `T16` | Verify the fresh-worktree `pytest` cache assumption | `tooling-worker` | **Done (no change needed)** | reproduction on 2026-10-25 passed in a fresh worktree; [salvage note](review-dsh-friction-salvage.md) corrected |
 | `T17` | Tier checker ignores nested bracket expressions | `tooling-worker` | **Done** | [`verify_formats_docs.py`](../../../python/scripts/verify_formats_docs.py), [`test_formats_catalog.py`](../../../tests/test_formats_catalog.py) |
-| `T18` | Writer policy for Agent Teams | `tooling-worker` | **Done** | [harness.md](../../harness.md), [AGENTS.md](../../../AGENTS.md#sop-6-working-in-a-worktree) |
+| `T18` | Writer policy for Agent Teams | `tooling-worker` | **Done** | [harness.md](../../harness.md), [AGENTS.md](../../../AGENTS.md#worktrees) |
 | `T19` | `mise run build-at` for a previous revision | `tooling-worker` | **Done** | [build_at.py](../../../python/scripts/build_at.py), [mise.toml](../../../mise.toml) |
 | `T20` | Commit-reference convention and programme pointer | `sentinel` | **Done** | [architecture-deepening README](architecture-deepening/README.md), [ARCHITECTURE.md](../../ARCHITECTURE.md) |
 

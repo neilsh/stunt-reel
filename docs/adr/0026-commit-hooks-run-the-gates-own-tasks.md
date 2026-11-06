@@ -66,7 +66,7 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   | --- | --- |
   | `check-added-large-files` | asset isolation `[I7]`: no game binaries in Git |
   | `check-illegal-windows-names`, `check-case-conflict` | the gate and the capture tooling run on Windows |
-  | `check-merge-conflict` | union-merged append-only files ([SOP 6.4](../../AGENTS.md)) must not keep markers |
+  | `check-merge-conflict` | union-merged append-only files ([AGENTS.md, Committing](../../AGENTS.md#committing)) must not keep markers |
   | `check-toml`, `check-yaml` | `mise.toml`, `pyproject.toml`, `.github/` and `.coderabbit.yaml` are configuration |
   | `detect-private-key` | the repository is public ([ADR 0015](0015-publication-with-a-documented-palette-exception.md)) |
 
@@ -86,7 +86,7 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   unchecked for the built-ins.
 - **prek is pinned in `mise.toml`** like every other tool; the hooks carry no versions.
 - **The commit message has its own hook, outside prek** (added 2026-11-04). Two commits on #160
-  lacked SOP 3's gate line and only a reviewer noticed. `.githooks/commit-msg` dispatches
+  lacked the gate line AGENTS.md's Committing rules ask for and only a reviewer noticed. `.githooks/commit-msg` dispatches
   `mise run commit-msg-check -- <file>`
   ([`check_commit_msg.py`](../../python/scripts/check_commit_msg.py)): a Conventional Commit
   subject, and a line naming `mise run check` in any body. It stays out of `prek.toml`, whose

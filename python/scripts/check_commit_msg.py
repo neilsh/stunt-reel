@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Fail a commit message that breaks AGENTS.md SOP 3: a Conventional Commit subject, and a gate line.
+"""Fail a commit message that breaks AGENTS.md, Committing: a Conventional Commit subject, and a gate line.
 
 The subject is ``type(scope)!: summary`` with one of the usual types. A message with a body
 (anything past the subject but git's trailers, such as ``Co-Authored-By:``) must also say what
 the gate did: ``mise run check``, or one of its parts such as ``mise run check-py``, followed
 directly by its outcome, ``passes`` or ``not run``, as in ``mise run check passes.`` or
 ``mise run check-py passes; check-rust not run.`` Every gate name on the line must be followed by its outcome, so
-``mise run check failed; CI passes.`` is refused. A message with no body needs none, as SOP 3
+``mise run check failed; CI passes.`` is refused. A message with no body needs none, as AGENTS.md, Committing,
 lets a rename or a formatting commit go without one. Git's own subjects (a merge, a revert, ``fixup!``,
 ``squash!``, ``amend!``) are left alone.
 
@@ -75,7 +75,7 @@ def _lines(message: str) -> list[str]:
 
 
 def problems(message: str) -> list[str]:
-    """What is wrong with *message*; empty when it follows SOP 3."""
+    """What is wrong with *message*; empty when it follows AGENTS.md, Committing."""
     lines = _lines(message)
     subject = next((line for line in lines if line), "")
     if GIT_SUBJECT.match(subject):
@@ -90,7 +90,7 @@ def problems(message: str) -> list[str]:
     if any(not TRAILER.match(line) for line in body) and not any(map(_is_gate_line, body)):
         found.append(
             f"the body has no gate line: end it with '{GATE} passes.', or name the part of "
-            f"the gate that did not run (AGENTS.md SOP 3)"
+            f"the gate that did not run (AGENTS.md, Committing)"
         )
     return found
 

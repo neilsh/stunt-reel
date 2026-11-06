@@ -921,3 +921,125 @@ def test_clean_unlinks_the_legacy_capture_link_and_keeps_the_data_root(
     assert meta.is_file()
     assert not dataroot.is_link(legacy)
     assert not (checkout / "build").exists()
+
+
+def _reap_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, free: int | OSError
+) -> tuple[Path, Path]:
+    """A squash-merged ``feat`` worktree that ``_reap`` will see, on a drive with *free* bytes."""
+    repo, worktree, tip = _squash_repo(tmp_path)
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", repo)
+    monkeypatch.setattr(dataroot, "REPO_ROOT", repo)
+    monkeypatch.setattr(
+        worktree_init,
+        "_gh",
+        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": tip}]),
+    )
+
+    def free_bytes(_path: Path) -> int:
+        if isinstance(free, OSError):
+            raise free
+        return free
+
+    monkeypatch.setattr(worktree_init, "_free_bytes", free_bytes)
+    return repo, worktree
+
+
+def test_space_is_short_only_below_the_bar() -> None:
+    gib = worktree_init.GIB
+    assert worktree_init._space_is_short(19 * gib, 20.0)
+    assert not worktree_init._space_is_short(20 * gib, 20.0)
+
+
+def test_reap_with_plenty_of_space_removes_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, worktree = _reap_env(monkeypatch, tmp_path, 50 * worktree_init.GIB)
+
+    assert worktree_init._reap(True) == 0
+    assert worktree.is_dir()
+    assert "nothing removed" in capsys.readouterr().out
+
+
+def test_reap_below_the_bar_removes_the_worktree(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, worktree = _reap_env(monkeypatch, tmp_path, 5 * worktree_init.GIB)
+
+    assert worktree_init._reap(True) == 0
+    assert not worktree.exists()
+
+
+def test_force_reaps_with_plenty_of_space(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _, worktree = _reap_env(monkeypatch, tmp_path, 50 * worktree_init.GIB)
+
+    assert worktree_init._reap(True, force=True) == 0
+    assert not worktree.exists()
+
+
+def test_min_free_gb_moves_the_bar(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _, worktree = _reap_env(monkeypatch, tmp_path, 50 * worktree_init.GIB)
+
+    assert worktree_init._reap(True, min_free_gb=100.0) == 0
+    assert not worktree.exists()
+
+
+def test_unknown_free_space_removes_nothing_without_force(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, worktree = _reap_env(monkeypatch, tmp_path, OSError("boom"))
+
+    assert worktree_init._reap(True) == 0
+    assert worktree.is_dir()
+    out = capsys.readouterr().out
+    assert "free space unknown" in out
+    assert "plenty of space" not in out
+
+
+def test_force_reaps_when_free_space_is_unknown(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, worktree = _reap_env(monkeypatch, tmp_path, OSError("boom"))
+
+    assert worktree_init._reap(True, force=True) == 0
+    assert not worktree.exists()
+
+
+def test_prune_with_plenty_of_space_prunes_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, worktree = _reap_env(monkeypatch, tmp_path, 50 * worktree_init.GIB)
+    seen: list[bool] = []
+
+    def spy(*_args: object, confirmed: bool, **_kwargs: object) -> tuple[int, int]:
+        seen.append(confirmed)
+        return 0, 0
+
+    for name in ("_prune_leftovers", "_prune_envs", "_prune_branches"):
+        monkeypatch.setattr(worktree_init, name, spy)
+
+    assert worktree_init._reap(True, prune=True) == 0
+    assert worktree.is_dir()
+    assert seen
+    assert True not in seen
+
+
+def test_reap_cli_defaults_and_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def spy(_confirmed: bool, **kwargs: object) -> int:
+        calls.append(kwargs)
+        return 0
+
+    monkeypatch.setattr(worktree_init, "_reap", spy)
+
+    worktree_init.main(["reap"])
+    worktree_init.main(["reap", "--force", "--min-free-gb", "5"])
+
+    assert (calls[0]["force"], calls[0]["min_free_gb"]) == (False, 20.0)
+    assert (calls[1]["force"], calls[1]["min_free_gb"]) == (True, 5.0)
+
+
+def test_negative_min_free_gb_is_refused() -> None:
+    with pytest.raises(SystemExit):
+        worktree_init.main(["reap", "--min-free-gb", "-1"])

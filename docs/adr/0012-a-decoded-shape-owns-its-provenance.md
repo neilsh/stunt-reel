@@ -49,7 +49,7 @@ cannot be corrupt. The world, renderer and glTF exporter read `meshes()` and
   built; consumers should not have to remember to validate.
 - **Give the IR and record serde derives for future wire use.** Rejected: neither
   is a wire type today; adding derives for a hypothetical consumer invites a
-  format nobody reads. The additive-field rule in SOP 4 applies when such a
+  format nobody reads. The additive-field rule in the [`changing-seam-contracts`](../../.agents/skills/changing-seam-contracts/SKILL.md) skill applies when such a
   wire form exists.
 
 ## Consequences

@@ -96,7 +96,7 @@ description = "Report this worktree's build outputs; remove them with --yes (mis
 run = "uv run python python/scripts/worktree_init.py clean"
 
 [tasks.reap]
-description = "Remove worktrees whose branch is already in main or was squash-merged (a merged PR whose head is the branch tip, read with gh), unlinking their data-root junctions first (mise run reap -- --yes [--cherry] [--prune] [--stash-dirty] [--discard-untracked])"
+description = "Remove worktrees whose branch is already in main or was squash-merged (a merged PR whose head is the branch tip, read with gh), unlinking their data-root junctions first; removes nothing while 20 GB or more is free unless --force (mise run reap -- --yes [--force] [--min-free-gb N] [--cherry] [--prune] [--stash-dirty] [--discard-untracked])"
 run = "uv run python python/scripts/worktree_init.py reap"
 
 [tasks.pr-threads]
@@ -178,6 +178,10 @@ env = { CARGO_HOME = "{{vars.cargo_home}}" }
 [tasks.verify-docs]
 description = "Verify the formats catalog: structure, evidentiary tiers, links, asset isolation"
 run = "uv run python python/scripts/verify_formats_docs.py"
+
+[tasks.skill-eval]
+description = "Dry-run a prompt through headless claude -p and report which skills each run loaded (mise run skill-eval -- --skill NAME --model opus|haiku --phase baseline|with --prompt-file PATH [--reps 3])"
+run = "uv run python python/scripts/skill_eval.py"
 
 [tasks.unlzexe]
 description = "Unpack PLAYONE.EXE with LZEXE 0.91 (mise run unlzexe -- corpus/stuntisl/PLAYONE.EXE build/re/playone.img [--mz])"
@@ -366,7 +370,7 @@ description = "Staged text files whose working copy has CRLF line endings (pytho
 run = "uv run python python/scripts/check_crlf.py"
 
 [tasks.commit-msg-check]
-description = "A commit message's Conventional Commit subject and gate line (python/scripts/check_commit_msg.py, AGENTS.md SOP 3); the commit-msg hook"
+description = "A commit message's Conventional Commit subject and gate line (python/scripts/check_commit_msg.py, AGENTS.md, Committing); the commit-msg hook"
 run = "uv run python python/scripts/check_commit_msg.py"
 
 # The committed hook (.githooks/pre-commit, installed by mise run init) runs this and nothing

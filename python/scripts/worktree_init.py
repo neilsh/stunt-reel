@@ -63,7 +63,7 @@ if TYPE_CHECKING:
 CLEAN_PATHS: tuple[str, ...] = ("target", "build", ".pytest_cache", ".mypy_cache", ".ruff_cache")
 CLEAN_FILES: tuple[str, ...] = (".coverage",)
 
-#: Directories inside the primary checkout where linked worktrees live (SOP 6).
+#: Directories inside the primary checkout where linked worktrees live (AGENTS.md, Worktrees).
 POOL_DIRS: tuple[str, ...] = (".agents/worktrees", ".claude/worktrees")
 
 
@@ -956,6 +956,20 @@ def _prune_branches(
     return removed, kept
 
 
+GIB = 1 << 30
+DEFAULT_MIN_FREE_GB = 20.0
+
+
+def _free_bytes(path: Path) -> int:
+    """Free bytes on the drive holding *path*."""
+    return shutil.disk_usage(path).free
+
+
+def _space_is_short(free: int, min_free_gb: float) -> bool:
+    """Whether *free* bytes is under the reaping bar of *min_free_gb* GiB."""
+    return free < min_free_gb * GIB
+
+
 def _reap(
     confirmed: bool,
     *,
@@ -963,8 +977,14 @@ def _reap(
     prune: bool = False,
     stash_dirty: bool = False,
     discard_untracked: bool = False,
+    force: bool = False,
+    min_free_gb: float = DEFAULT_MIN_FREE_GB,
 ) -> int:
-    """Remove merged worktrees, unlinking every data-root link first."""
+    """Remove merged worktrees, unlinking every data-root link first.
+
+    A confirmed reap still removes nothing while the drive has *min_free_gb* GiB
+    free or its free space cannot be read, unless *force* is set.
+    """
     repo = REPO_ROOT
     try:
         entries = _worktrees(repo)
@@ -982,6 +1002,19 @@ def _reap(
         repo, entries, include_cherry=include_cherry, merged_prs=merged_prs
     )
     print(f"worktree   {repo}")
+    try:
+        free = _free_bytes(repo)
+    except OSError as err:
+        print(f"  ! free space unknown ({err}); nothing removed without --force")
+        short = False
+        hold_reason = "free space unknown"
+    else:
+        print(
+            f"disk       {free / GIB:.1f} GB free; reaping waits for under"
+            f" {min_free_gb:g} GB (--force skips)"
+        )
+        short = _space_is_short(free, min_free_gb)
+        hold_reason = "plenty of space"
     if merged_prs.unavailable is not None:
         print(
             f"  ! gh unavailable ({merged_prs.unavailable}); squash-merged branches are not"
@@ -1006,12 +1039,18 @@ def _reap(
     if blocked:
         print("\nrefusing to remove anything until every candidate is clean or allowed")
         return 1
+    held = confirmed and not (short or force)
+    if held:
+        confirmed = False
     if not confirmed:
         if prune:
             _prune_leftovers(entries, confirmed=False)
             _prune_envs(confirmed=False)
             _prune_branches(repo, entries, include_cherry=include_cherry, confirmed=False)
-        print("\ndry run; re-run with --yes to reap")
+        if held:
+            print(f"\n{hold_reason}: nothing removed; --force reaps anyway")
+        else:
+            print("\ndry run; re-run with --yes to reap")
         return 0
     failed = 0
     reclaimed = 0
@@ -1090,6 +1129,13 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="delete a worktree's untracked files instead of refusing",
     )
+    reap.add_argument("--force", action="store_true", help="reap even when the drive has room")
+    reap.add_argument(
+        "--min-free-gb",
+        type=float,
+        default=DEFAULT_MIN_FREE_GB,
+        help="reap only when the drive has under this many GB free (default %(default)g)",
+    )
     args = parser.parse_args(argv)
     if args.command == "init":
         return _init(bool(args.migrate))
@@ -1108,12 +1154,16 @@ def main(argv: list[str] | None = None) -> int:
         # The first line is the seed's outcome; a second only warns about the cargo home.
         return 1 if lines[0].mark == "!" else 0
     if args.command == "reap":
+        if float(args.min_free_gb) < 0:
+            parser.error("--min-free-gb must not be negative")
         return _reap(
             bool(args.yes),
             include_cherry=bool(args.cherry),
             prune=bool(args.prune),
             stash_dirty=bool(args.stash_dirty),
             discard_untracked=bool(args.discard_untracked),
+            force=bool(args.force),
+            min_free_gb=float(args.min_free_gb),
         )
     if int(args.keep) < 0:
         parser.error("--keep must not be negative")

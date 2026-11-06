@@ -1,4 +1,4 @@
-"""The commit-msg hook: a Conventional Commit subject, and a gate line in any body (SOP 3)."""
+"""The commit-msg hook: a Conventional Commit subject, and a gate line in any body (AGENTS.md, Committing)."""
 
 from __future__ import annotations
 

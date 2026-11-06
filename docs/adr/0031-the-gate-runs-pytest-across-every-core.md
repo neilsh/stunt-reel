@@ -25,7 +25,7 @@ The gate's `test-py` step runs pytest with `-n auto` from `pytest-xdist`, set th
 `PYTEST_ADDOPTS` in the step's environment (`STEP_ENV` in
 [gate.py](../../python/scripts/gate.py), which also holds the variables that stop the step from
 silently skipping). `-n auto` is not in pytest's `addopts`: a scoped
-`mise run test-py -- <file>`, the inner loop of AGENTS.md SOP 5, stays in one process, where
+`mise run test-py -- <file>`, the inner loop of AGENTS.md, Working economically, stays in one process, where
 starting workers costs about 2 s against a file that runs in milliseconds. xdist's default `load`
 scheduling hands out single tests, so a module-scoped fixture is rebuilt on each worker that needs
 it; that spends CPU but not wall time, where `loadfile` would keep all of `test_worktree_reap.py`
