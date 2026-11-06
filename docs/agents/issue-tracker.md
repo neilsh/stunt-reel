@@ -23,7 +23,7 @@ File issues only into the user's own repo. Never file into `mattpocock/skills` (
 ## Organizing issues
 
 - **Parents are goals.** A parent issue names an outcome and ends with a `Done when every sub-issue is closed.` line, e.g. #85 (terrain loss), #97 (actors and props). Every parent can close; there is no standing bucket parent. An issue has no parent by default: give it one when a goal fits, and file a short-lived parent only for a batch that has its own `Done when` (as #169 did for lints).
-- **An issue with open sub-issues is never startable**, whatever its labels: a spec that `/to-tickets` split keeps its `ready-for-agent` label. Skip it when choosing work.
+- **An issue with open sub-issues is never startable**, whatever its labels: a spec that `/to-tickets` split keeps its `ready-for-agent` label. Skip it when choosing work. A `wayfinder:*` ticket is chosen by the **Frontier query** under **Wayfinding operations** instead.
 - **Closing the last child closes the parent.** Whoever closes a parent's last open sub-issue closes the parent too, as in **Close**.
 - **Title the problem, not the fix.** State the observed problem or the open question in present tense: "Props shade with a guessed light, not PLAYONE's world light", "Which 20 active MAP.BIN polygons have no ground leaf in PLAYONE's image?". The fix goes in the body.
 - **The filer labels the issue.** On `gh issue create`, apply one state label (`needs-triage` when unsure), `research` or `tooling` where either applies ([triage-labels.md](triage-labels.md)), and a parent where a goal fits. A `wayfinder:*` map or ticket takes only its `wayfinder:` label (see **Wayfinding operations**).
