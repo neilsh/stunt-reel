@@ -10,10 +10,10 @@ A seam contract is read back from saved JSON and checked against committed fixtu
 ## Steps
 
 1. **Types.** Add or change the type under `crates/stunt-core/src/contracts/` and re-export it from `contracts/mod.rs`. Done when the new item is reachable as `stunt_core::contracts::…`.
-2. **Backward-compatible fields.** If the type derives serde (`#[cfg_attr(feature = "serde", derive(...))]`), give every new field `#[cfg_attr(feature = "serde", serde(default))]`, as `trajectory.rs` does, so JSON written before the field existed still loads. If it does not, say so in the commit body. Done when every new field on a serde type has the attribute.
+2. **Backward-compatible fields.** If the type derives serde (`#[cfg_attr(feature = "serde", derive(...))]`), give every new field a serde default that reproduces the old behaviour: `serde(default)` when the type's default does, else `serde(default = "fn")` (`default_camera_lens` in `trajectory.rs`), so JSON written before the field existed still loads as before. If it does not, say so in the commit body. Done when every new field on a serde type has the attribute.
 3. **Synthetic fixture.** Build the bytes a test needs in `tests/fixtures/` (never from `corpus/`), and add or extend that fixture's entry in [`tests/fixtures/README.md`](../../../tests/fixtures/README.md) with its byte layout. Done when every new or changed fixture has a README entry that matches its bytes.
-4. **Tests.** Add unit tests that read the field from a decoded fixture; for a serde type, add a roundtrip test (`test_contracts_serde_roundtrip` in `trajectory.rs` is the pattern) that also loads JSON missing the new field. Run them with `--all-features`, which `mise run test-rust` and `mise run check-rust` do. Done when every new field has a test that passes with every feature on.
-5. **Format facts.** Record each new format fact in its spec or `.ksy` under [`research/formats/`](../../../research/formats/INDEX.md), by the `recording-findings` skill, in the same commit. Done when every byte the parser newly reads is documented there.
+4. **Tests.** Add unit tests that read the field from a decoded fixture; for a serde type, add a roundtrip test (`test_contracts_serde_roundtrip` in `trajectory.rs` is the pattern) that also loads JSON missing the new field and asserts the legacy value. Run them with `--all-features`, which `mise run test-rust` and `mise run check-rust` do. Done when every new field has a test that passes with every feature on.
+5. **Format facts.** Record each new byte layout in the format's `.ksy` where it has one (layouts live only there), and its meaning in the spec, under [`research/formats/`](../../../research/formats/INDEX.md), by the `recording-findings` skill, in the same commit. Done when every byte the parser newly reads is documented there.
 6. **Gate.** `mise run check-rust` while iterating, then the full `mise run check`.
 
 Done when every new field has a test (a roundtrip for a serde type) and every new fixture has a README entry.
@@ -30,6 +30,6 @@ Done when every new field has a test (a roundtrip for a serde type) and every ne
 
 ## Common mistakes
 
-- **Planning the field without `serde(default)`.** Every baseline plan added `pub resource: String` bare; old captures and oracle JSON would then fail to load.
+- **Planning the field without `serde(default)`.** Every baseline plan added the field bare; old captures and oracle JSON would fail to load.
 - **No fixture, no README entry.** Baseline plans extended a test by passing names through callers but never touched `tests/fixtures/` or its README. A contract change is proven against a synthetic fixture.
 - **No roundtrip test under `--all-features`.** Baseline plans ran `mise run check-rust` only as a gate step; name the roundtrip test and say it runs with the `serde` feature.
