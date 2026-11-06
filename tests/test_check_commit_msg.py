@@ -227,6 +227,37 @@ def test_a_commit_whose_patch_is_in_the_base_is_skipped_without_github(
     assert asked == []
 
 
+def test_an_empty_commit_is_not_skipped_for_an_empty_commit_in_the_base(
+    hook: Any, repo: Git, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo("switch", "-q", "-c", "stacked")
+    repo("commit", "-q", "--allow-empty", "-m", "not conventional")
+    repo("switch", "-q", "main")
+    repo("commit", "-q", "--allow-empty", "-m", "chore: an empty commit in the base")
+    _stub_github(hook, monkeypatch, [])
+    assert hook.main(["--range", "main..stacked"]) == 1
+    stderr = capsys.readouterr().err
+    assert "skip" not in stderr
+    assert "not conventional" in stderr
+
+
+def test_github_is_asked_only_for_pull_requests_into_this_repository(
+    hook: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    commands: list[list[str]] = []
+
+    def answer(command: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="[224]\n", stderr="")
+
+    monkeypatch.setattr(hook.shutil, "which", lambda _name: "gh")
+    monkeypatch.setattr(hook.subprocess, "run", answer)
+    assert hook._merged_pulls("a" * 40) == [224]
+    assert f"oid={'a' * 40}" in commands[0]
+    jq = commands[0][commands[0].index("--jq") + 1]
+    assert ".baseRepository.nameWithOwner == $r.nameWithOwner" in jq, "a fork's merge never counts"
+
+
 def test_without_github_every_failing_commit_counts(
     hook: Any, repo: Git, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

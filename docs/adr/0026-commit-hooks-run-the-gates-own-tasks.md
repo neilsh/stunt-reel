@@ -91,8 +91,9 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   subject, and a line naming `mise run check` in any body. It stays out of `prek.toml`, whose
   local hooks take no file and run at pre-commit. CI runs the same task over a pull request's own
   commits (`--range origin/<base>..HEAD`), not over `main`, whose squash merges GitHub writes.
-  Amended 2026-11-05: in a range it skips, with a line naming why, a failing commit whose patch
-  `git cherry` finds in the base or that `gh` lists in a merged pull request other than `--pr`,
+  Amended 2026-11-05: in a range it skips, with a line naming why, a failing commit whose
+  non-empty patch `git cherry` finds in the base or that `gh` lists in a merged pull request into
+  this repository other than `--pr` (not one merged inside a fork, which nothing here checked),
   since a branch stacked on a squash-merged parent keeps the parent's reviewed commits (#228
   failed on #224's); without `gh` it checks every commit, as before. Rejected: rewriting the
   branch, which needs a force-push the repository forbids; checking only first-parent commits,

@@ -13,8 +13,9 @@ lets a rename or a formatting commit go without one. Git's own subjects (a merge
 Usage: ``mise run commit-msg-check -- <message file>`` (the commit-msg hook), or
 ``mise run commit-msg-check -- --range <base>..<head> [--pr <number>]`` to check commits already
 made (CI). In a range, a failing commit that already landed elsewhere is skipped, with a line
-saying why: ``git cherry`` finds its patch in ``<base>``, or GitHub (through ``gh``) lists a
-merged pull request other than ``--pr`` that holds it. That is a branch stacked on a pull request
+saying why: ``git cherry`` finds its non-empty patch in ``<base>``, or GitHub (through ``gh``)
+lists a pull request into this repository, other than ``--pr``, that holds it and was merged.
+That is a branch stacked on a pull request
 that was then squash-merged: the parent's own commits stay on the branch with hashes ``<base>``
 lacks, though they were reviewed in the parent. When ``gh`` cannot answer, the script says so and
 counts every failing commit, as before.
@@ -118,7 +119,9 @@ def _in_base(revisions: str) -> set[str]:
     if not dots or head.startswith("."):
         return set()
     lines = _git("cherry", base or "HEAD", head or "HEAD").splitlines()
-    return {line[2:].strip() for line in lines if line.startswith("- ")}
+    marked = [line[2:].strip() for line in lines if line.startswith("- ")]
+    # An empty commit's patch matches any empty commit in the base, so it proves nothing.
+    return {sha for sha in marked if _git("diff-tree", "--no-commit-id", "--name-only", "-r", sha)}
 
 
 #: Seconds one ``gh api`` call may take before GitHub counts as unavailable.
@@ -129,8 +132,34 @@ class GitHubUnavailableError(Exception):
     """``gh`` is missing, or could not answer."""
 
 
+_MERGED_PULLS_QUERY = """
+query($owner: String!, $name: String!, $oid: GitObjectID!) {
+  repository(owner: $owner, name: $name) {
+    nameWithOwner
+    object(oid: $oid) {
+      ... on Commit {
+        associatedPullRequests(first: 100) {
+          nodes { number merged baseRepository { nameWithOwner } }
+        }
+      }
+    }
+  }
+}
+"""
+#: The merged pull requests whose base is the queried repository, as a JSON list of numbers.
+_MERGED_PULLS_JQ = (
+    ".data.repository as $r | [($r.object.associatedPullRequests.nodes // [])[]"
+    " | select(.merged and .baseRepository.nameWithOwner == $r.nameWithOwner) | .number]"
+)
+
+
 def _merged_pulls(sha: str) -> list[int]:
-    """The numbers of the merged pull requests that hold commit *sha*, as GitHub lists them."""
+    """The numbers of the merged pull requests into this repository that hold commit *sha*.
+
+    Only a pull request whose base is this repository counts: GitHub associates a commit with
+    pull requests across the fork network, and one merged inside a contributor's fork was never
+    checked here. A commit GitHub does not know has none.
+    """
     gh = shutil.which("gh")
     if gh is None:
         raise GitHubUnavailableError("gh is not on PATH")
@@ -139,9 +168,17 @@ def _merged_pulls(sha: str) -> list[int]:
             [
                 gh,
                 "api",
-                f"repos/{{owner}}/{{repo}}/commits/{sha}/pulls",
+                "graphql",
+                "-F",
+                "owner={owner}",
+                "-F",
+                "name={repo}",
+                "-f",
+                f"oid={sha}",
+                "-f",
+                f"query={_MERGED_PULLS_QUERY}",
                 "--jq",
-                "[.[] | select(.merged_at != null) | .number]",
+                _MERGED_PULLS_JQ,
             ],
             stdin=subprocess.DEVNULL,
             capture_output=True,
