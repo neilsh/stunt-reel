@@ -17,6 +17,7 @@
    - `[I6]` Visual parity thresholds (SSIM $\ge 0.88$ initial / $\ge 0.90$ sign-off).
    - `[I7]` Asset isolation (with the documented palette/scale-table exception) and a `stunt-core` limited to small, pure-Rust dependencies (no I/O, windowing, GPU, audio, or emulator).
    - `[I8]` DOS 8.3 uppercase path normalization in virtual filesystems.
+4. **Findings live in `research/`**: every new format, rendering or render-residual finding, ruled-out hypotheses included, lands in the note that owns it by [`research/README.md`](research/README.md), in the same commit as the code that relies on it. See [SOP 2](#sop-2-recording-findings).
 
 ---
 
@@ -57,12 +58,14 @@ Process documents, **not** sources of truth: [`docs/process/TEAM_SHEET.md`](docs
 1. Implement or modify types in [`crates/stunt-core/src/contracts/`](crates/stunt-core/src/contracts/) and re-export in [`contracts/mod.rs`](crates/stunt-core/src/contracts/mod.rs).
 2. Synthesize synthetic test bytes in [`tests/fixtures/`](tests/fixtures/) and document in [`tests/fixtures/README.md`](tests/fixtures/README.md).
 3. Add unit and roundtrip tests in `crates/stunt-core/tests/` (verifying with `--all-features`).
-4. Run `mise run check` to verify formatting, linter, typechecker, and test pass.
+4. Record each new format fact in its spec or `.ksy` under [`research/formats/`](research/formats/INDEX.md) (SOP 2).
+5. Run `mise run check` to verify formatting, linter, typechecker, and test pass.
 
-### SOP 2: Documenting Binary Analysis
-1. Put each finding in the note for its subject, by the routing rule in [`research/README.md`](research/README.md); follow the structure of [`research/playone-exe/startup.md`](research/playone-exe/startup.md).
-2. Document segment:offset addresses, register states, Mermaid flowcharts, and DGROUP tables.
-3. End the note with **Ruled out** and **Open questions**; keep evidentiary tiers out of headings.
+### SOP 2: Recording Findings
+A *finding* is a fact about how the original stores data (format), how it draws or behaves (rendering and runtime), or why our render differs from it (residual).
+1. Route each finding, and each ruled-out hypothesis, by [`research/README.md`](research/README.md): it names the owning note, the note shape, and the `parity/log.md` row a parity experiment leaves.
+2. Commit the note with the code that relies on the finding; a finding no code uses yet lands before the session ends.
+3. The note holds the finding. Commit bodies and the code that relies on it link the note, or its `# [MEM-*]` / `# [FMT-*]` anchor.
 
 ### SOP 3: Verification & Handoff
 1. Run `git status` before staging: stage the paths you changed by name, never `git add -A` or `git commit -a`, and never any file from `corpus/`. If the index holds another session's work, stop and ask.
@@ -77,7 +80,7 @@ The commit-msg hook (`mise run commit-msg-check`) checks the subject and the clo
 
 ### SOP 4: Living Specification Updates & Evidentiary Promotion
 1. When analysis uncovers new runtime offsets, opcodes, or binary realities:
-   - Update [`research/playone-exe/memory-map.md`](research/playone-exe/memory-map.md) (offsets) or the `research/` note that owns the finding immediately with verified discoveries; touch [`docs/SPEC.md`](docs/SPEC.md) only for goals, invariants or gates.
+   - Record them by SOP 2 (offsets also go in the [`memory-map.md`](research/playone-exe/memory-map.md) tables); touch [`docs/SPEC.md`](docs/SPEC.md) only for goals, invariants or gates.
    - Promote evidentiary tiers (`[Unknown]` $\rightarrow$ `[Hypothesis]` $\rightarrow$ `[Bounded Observation]` $\rightarrow$ `[Supported Inference]` $\rightarrow$ `[Established]`; the enum is owned by `EVIDENTIARY_TIERS` in [`python/scripts/verify_formats_docs.py`](python/scripts/verify_formats_docs.py)) and cite the linear address or research note.
 2. If extending Seam contracts in [`crates/stunt-core/src/contracts/`](crates/stunt-core/src/contracts/):
    - Add fields using backward-compatible defaults (`#[cfg_attr(feature = "serde", serde(default))]`).
