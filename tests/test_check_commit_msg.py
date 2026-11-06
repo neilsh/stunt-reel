@@ -71,6 +71,8 @@ def test_a_gate_line_that_does_not_run_the_gate_passes(hook: Any) -> None:
         "Run mise run check before merging.",
         "mise run check failed; CI passes.",
         "mise run check failed; check-rust passes.",
+        "mise run check failed; mise run check-py passes.",
+        "mise run check-py passes; check-rust failed.",
         "mise run check failed, the fix is not run yet.",
     ],
 )
