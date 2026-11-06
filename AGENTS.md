@@ -7,9 +7,9 @@
 ## 1. Non-Negotiable Directives
 
 1. **Asset isolation**: **NEVER** commit proprietary assets, executables, or original binary disks into Git (`corpus/` is strictly gitignored). All tests must run 100% offline using synthetic fixtures in [`tests/fixtures/`](tests/fixtures/README.md). Two small game-derived tables, and illustrative comparison images (a captured frame beside our render, cited by a research note), are documented exceptions under the rules in [`NOTICE.md`](NOTICE.md).
-2. **Quality Gate Requirement**: Before concluding any task or presenting code, **always verify that `mise run check` passes** (format check, lint, typecheck, test across both Rust and Python). See [`docs/development.md`](docs/development.md#development--quality-assurance) and [`mise.toml`](mise.toml).
+2. **Quality Gate Requirement**: Before concluding any task or presenting code, **always verify that `mise run check` passes** (format, lint, typecheck and tests, Rust and Python). See [`docs/development.md`](docs/development.md#development--quality-assurance) and [`mise.toml`](mise.toml).
 3. **Architectural Invariants**: All code conforms to `[I1]` coordinates, `[I2]` flat arena, `[I3]` VGA palette indices, `[I4]` 50 Hz ticks, `[I5]` coplanar decals, `[I6]` parity thresholds, `[I7]` asset isolation and a pure `stunt-core`, `[I8]` 8.3 paths, defined in [`docs/SPEC.md` § 2](docs/SPEC.md#2-system-architectural-invariants--guardrails) and summarized in [`contracts/mod.rs`](crates/stunt-core/src/contracts/mod.rs).
-4. **Findings live in `research/`**: every new format, rendering or render-residual finding, ruled-out hypotheses included, lands in the note that owns it by [`research/README.md`](research/README.md), in the same commit as the code that relies on it. See [`recording-binary-findings`](.agents/skills/recording-binary-findings/SKILL.md).
+4. **Findings live in `research/`**: every new format, rendering or render-residual finding, ruled-out hypotheses included, lands in the note that owns it by [`research/README.md`](research/README.md), in the same commit as the code that relies on it. Read the [`recording-findings`](.agents/skills/recording-findings/SKILL.md) skill first.
 
 ---
 
@@ -23,15 +23,15 @@ Refer directly to authoritative documents rather than duplicating definitions:
 | **System Specification** | [`docs/SPEC.md`](docs/SPEC.md) | Goals, invariants, evidentiary tiers, verification matrix; no binary-analysis findings. |
 | **Architecture & 1-Hop Routing** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Code path → governing anchors and research notes. |
 | **Anchor Registry** | [`python/stunt_reel/doc_anchors.py`](python/stunt_reel/doc_anchors.py) | Where each `[I*]`, `[FMT-*]` and `[MEM-*]` anchor is defined. |
-| **Runtime Memory Map** | [`research/playone-exe/memory-map.md`](research/playone-exe/memory-map.md) | `DGROUP` offset tables and memory anchors (`# [MEM-*]`). |
+| **Runtime Memory Map** | [`research/playone-exe/memory-map.md`](research/playone-exe/memory-map.md) | `DGROUP` offsets and `[MEM-*]` anchors. |
 | **Seam Contracts** | [`contracts/mod.rs`](crates/stunt-core/src/contracts/mod.rs) | Seams 1–4: VFS, trajectory, shape, capture and compare. |
 | **Project Setup & Tasks** | [`README.md`](README.md), [`docs/development.md`](docs/development.md) & [`mise.toml`](mise.toml) | Prerequisites and every task; `mise tasks` is the live list. |
-| **Reference Corpus** | [`corpus/README.md`](corpus/README.md) | Upstream demo archive and community package layout. |
+| **Reference Corpus** | [`corpus/README.md`](corpus/README.md) | Demo archive and community packages. |
 | **Binary Disassembly** | [`research/playone-exe/`](research/playone-exe/) | Evidence for `PLAYONE.EXE`, routed by [`research/README.md`](research/README.md). |
-| **Format Specs & Byte Layouts** | [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog; byte layouts live only in the `.ksy` schemas. |
+| **Format Specs & Byte Layouts** | [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog; byte layouts live only in `.ksy` schemas. |
 | **Parity** | [`research/parity/`](research/parity/) | Method, dated log, attribution and render-model notes. |
 | **Issues & skill configuration** | [`docs/agents/`](docs/agents/) | GitHub Issues via `gh`, triage labels, domain docs; review threads with `mise run pr-threads -- <number>`. |
-| **Decisions (ADRs)** | [`docs/adr/`](docs/adr/) | One file per accepted design decision. |
+| **Decisions (ADRs)** | [`docs/adr/`](docs/adr/) | Accepted design decisions. |
 | **Coding & Format Rules** | [`Cargo.toml`](Cargo.toml), [`pyproject.toml`](pyproject.toml), [`.editorconfig`](.editorconfig) | Clippy, Ruff and Mypy settings; LF, 4-space indent. |
 | **Agents & Harnesses** | [`docs/harness.md`](docs/harness.md) | Agent policy and per-harness notes. |
 | **Harness Setup** | [`docs/harness-setup.md`](docs/harness-setup.md) | Machine-local setup and the data root. |
@@ -61,10 +61,9 @@ Each turn re-sends the whole conversation, so cost is roughly turns times contex
 
 ### Skills
 
-Before work one of these covers, read its skill:
+Before work one covers, read its skill:
 
 - **Seam contracts**: a type, field or parser under `crates/stunt-core/src/contracts/`, or its fixtures: [`changing-seam-contracts`](.agents/skills/changing-seam-contracts/SKILL.md).
-- **Binary findings**: an offset, opcode, DGROUP field or format behaviour worth keeping in `research/`, or a tier promotion: [`recording-binary-findings`](.agents/skills/recording-binary-findings/SKILL.md).
 - **Worktrees and the data root**: making, removing or reaping a worktree, or finding the corpus or a capture: [`managing-worktrees`](.agents/skills/managing-worktrees/SKILL.md).
 - **Render parity**: parity, SSIM, IoU, capture, probe or sweep work: [`improving-render-parity`](.agents/skills/improving-render-parity/SKILL.md).
 

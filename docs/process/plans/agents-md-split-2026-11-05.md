@@ -235,6 +235,9 @@ Findings that changed the design or the tooling:
   runs on the shape prompt rightly declined it, since `SodModelIr` and `DecodeRecord` do not derive
   serde; the rule is now keyed to types that do, and the re-run passed. The table's must-cover item
   for that row assumed a serde type, so the re-run is judged against the conditional rule.
+- **Merging #238.** `main` widened SOP 2 to rendering and render-residual findings and added
+  Directive 4. The skill became `recording-findings` with that scope, Directive 4 points at it
+  (its `Skills` line went), and `changing-seam-contracts` records new format facts by it.
 
 ## Out of scope
 

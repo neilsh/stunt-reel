@@ -13,7 +13,8 @@ A seam contract is read back from saved JSON and checked against committed fixtu
 2. **Backward-compatible fields.** If the type derives serde (`#[cfg_attr(feature = "serde", derive(...))]`), give every new field `#[cfg_attr(feature = "serde", serde(default))]`, as `trajectory.rs` does, so JSON written before the field existed still loads. If it does not, say so in the commit body. Done when every new field on a serde type has the attribute.
 3. **Synthetic fixture.** Build the bytes a test needs in `tests/fixtures/` (never from `corpus/`), and add or extend that fixture's entry in [`tests/fixtures/README.md`](../../../tests/fixtures/README.md) with its byte layout. Done when every new or changed fixture has a README entry that matches its bytes.
 4. **Tests.** Add unit tests that read the field from a decoded fixture; for a serde type, add a roundtrip test (`test_contracts_serde_roundtrip` in `trajectory.rs` is the pattern) that also loads JSON missing the new field. Run them with `--all-features`, which `mise run test-rust` and `mise run check-rust` do. Done when every new field has a test that passes with every feature on.
-5. **Gate.** `mise run check-rust` while iterating, then the full `mise run check`.
+5. **Format facts.** Record each new format fact in its spec or `.ksy` under [`research/formats/`](../../../research/formats/INDEX.md), by the `recording-findings` skill, in the same commit. Done when every byte the parser newly reads is documented there.
+6. **Gate.** `mise run check-rust` while iterating, then the full `mise run check`.
 
 Done when every new field has a test (a roundtrip for a serde type) and every new fixture has a README entry.
 
