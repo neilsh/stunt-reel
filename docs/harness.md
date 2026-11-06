@@ -8,18 +8,8 @@ Nothing here is a fact about Stunt Island.
 
 ## Policy (any agent)
 
-* **The gate is `mise run check`** — one script, one line per step, a PASS/FAIL verdict and
-  `target/check.log` ([ADR 0014](adr/0014-the-gate-is-one-ordered-script.md),
-  [ADR 0016](adr/0016-the-gate-runs-independent-lanes.md)): independent steps run as concurrent
-  lanes, ordered only where they share a resource. `check-rust` and `check-py` run the same steps
-  for one language.
-* **Everything goes through `mise run`.** Every agent-facing script has a task, so `mise run *`
-  is the one command shape to pre-approve and `mise tasks` is the exhaustive list; a task name
-  that is not there does not exist ([AGENTS.md](../AGENTS.md) SOP 5.5).
-* **One writer per checkout path at any moment.** A *writer* is a session that mutates the
-  checkout during a turn; a read-only scout is not a writer. The Lead is the default writer;
-  teammates are read-only scouts, designers or reviewers and never write in the shared
-  checkout ([AGENTS.md](../AGENTS.md) SOP 6).
+* **The gate, `mise run` and the one-writer rule are in [AGENTS.md](../AGENTS.md#working-economically)**;
+  worktree placement and reaping are under [Worktrees](../AGENTS.md#worktrees).
 * **Worktree-per-writer is an opt-in mode** for at least two genuinely independent tickets:
   disjoint files, separately verifiable, no shared file. Each writer branches from the Lead's
   current `HEAD`, commits only on its own branch, and at most two writers plus the Lead work

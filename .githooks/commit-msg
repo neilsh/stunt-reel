@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installed by `mise run init`, which points core.hooksPath at .githooks. The check is
-# `mise run commit-msg-check` (python/scripts/check_commit_msg.py, AGENTS.md SOP 3); this file
+# `mise run commit-msg-check` (python/scripts/check_commit_msg.py, AGENTS.md, Committing); this file
 # only dispatches it. Skip once with `git commit --no-verify`.
 
 # core.hooksPath turns off the untracked hooks in the git directory, so chain to one if present.

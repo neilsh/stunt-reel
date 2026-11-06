@@ -25,7 +25,7 @@ architecture routing, and the research notes. Environment setup and the task lis
   request, so comment `@coderabbitai review` on your pull request to get one.
 - **Write the why.** Use a Conventional Commit subject and a body that explains the reason for
   the change, as described in
-  [`AGENTS.md` § Commit Messages](AGENTS.md#commit-messages).
+  [`AGENTS.md` § Committing](AGENTS.md#committing).
 - **Research findings** go in the note that owns their subject, with an evidentiary tier;
   [`research/README.md`](research/README.md) has the routing.
 - **Your email is published.** Commits land in the public history as written. If you would

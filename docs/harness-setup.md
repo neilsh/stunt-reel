@@ -136,7 +136,7 @@ deadline.
 
 ## Orca
 
-Orca workspaces are the one exception to SOP 6's in-checkout rule. Orca chooses their path,
+Orca workspaces are the one exception to the in-checkout rule in AGENTS.md, Worktrees. Orca chooses their path,
 `~/orca/workspaces/stunt-reel/<name>` on this machine; `orca --help` shows the base as a
 project host setting (`orca project setup-update --setup <id> --worktree-base-path <path>`).
 They sit outside the primary checkout, as do the worktrees nested in a workspace's own

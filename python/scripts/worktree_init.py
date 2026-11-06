@@ -63,7 +63,7 @@ if TYPE_CHECKING:
 CLEAN_PATHS: tuple[str, ...] = ("target", "build", ".pytest_cache", ".mypy_cache", ".ruff_cache")
 CLEAN_FILES: tuple[str, ...] = (".coverage",)
 
-#: Directories inside the primary checkout where linked worktrees live (SOP 6).
+#: Directories inside the primary checkout where linked worktrees live (AGENTS.md, Worktrees).
 POOL_DIRS: tuple[str, ...] = (".agents/worktrees", ".claude/worktrees")
 
 

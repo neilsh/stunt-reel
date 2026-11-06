@@ -3,7 +3,7 @@
 ``.agents/worktrees/`` and ``.claude/worktrees/`` hold live worktrees, each with its
 own ``target/``.  A directory there that is neither git-ignored nor ruff-excluded is
 read by every recursive tool in the repo: ``tests/test_doc_invariants.py`` lost 61
-seconds to exactly that before it learned to prune.  The rule lives in SOP 6; this
+seconds to exactly that before it learned to prune.  The rule lives in AGENTS.md, Worktrees; this
 is what enforces it.
 """
 
