@@ -24,6 +24,7 @@ the smallest cost in scoring logic and sweep time.
 | D5 | Engine build of the new references | `unpatched` for both `makeone` and `playone`, the same as CTRY and INTRO, so every reference comes from one engine build. A film that stalls on the unpatched build takes `patch3`, with the cause written in `reason`. |
 | D6 | Parallel scoring | `--jobs N` on `mise run parity` and `mise run sweep` runs (variant, film) render-and-score pairs at once. The default is `min(8, os.cpu_count(), pairs)`. There is no live RAM or VRAM probe; the cost per job (§ 3) is documented instead. |
 | D7 | Output under parallelism | Results print in the same fixed (variant, film) order as a sequential run, so the table, the winner line and the `[parity]` lines are unchanged. |
+| D8 | Render start-up | `create_instance` tries a Vulkan-only instance first and falls back to `Backends::all()` only when Vulkan yields no adapter. This saves about 1 s and 80 MiB per process with byte-identical output (§ 3). It belongs to the acquisition policy in [`renderer.rs`](../../../crates/stunt-render/src/renderer.rs), whose `offscreen_adapter` comment already records the 2 s cost. |
 
 ## 3. Evidence for D6
 
@@ -39,9 +40,33 @@ cores, 31 GiB of RAM and an RTX 4070 Laptop GPU with 8 GiB.
 * **Most of a render is start-up.** Drawing one tick takes 2.2 to 3.5 s wall, 0.8 to 0.9
   CPU-seconds and 256 to 283 MiB. The whole CTRY render takes 3.7 s, 2.1 CPU-seconds and 268 MiB;
   the whole INTRO render 6.7 s, 4.7 CPU-seconds and 270 MiB. So about 60% of a CTRY render and
-  35% of an INTRO render, and nearly all of the memory, is per process, not per frame. Where the
-  start-up time goes (wgpu instance and device creation, asset loading) is not measured; little
-  of it is CPU.
+  35% of an INTRO render, and nearly all of the memory, is per process, not per frame.
+* **Start-up is the GPU instance, not the film.** A throwaway timer patch on a one-tick CTRY
+  render, reverted after the probe, measured these phases:
+  * Building the scene takes about 9 ms.
+  * `create_instance()` with `Backends::all()` takes about 0.95 s, mostly the Vulkan loader.
+  * `select_adapter` takes another 0.95 s, enumerating DX12 adapters, and still picks the RTX's
+    Vulkan adapter.
+  * Opening the device takes about 30 ms.
+
+  An instance limited to Vulkan, picking the same adapter, cuts the process's wall time for a
+  one-tick render from 1.7 s to 0.63 to 0.74 s, and for the whole of CTRY from 3.13 s to 2.39 s.
+  Its peak RAM drops from 261 to 183 MiB, because the DX12 runtime is never loaded. A full CTRY
+  render is byte-identical either way (31 files, `render.json` included). A GL-only instance
+  starts in 0.26 s but picks the AMD integrated GPU, so it is not a candidate. CI already renders
+  through Vulkan (lavapipe, [ADR 0006](../../adr/0006-ci-renders-on-lavapipe.md)).
+
+  The parallel probe rerun with Vulkan only (render and score, CTRY and INTRO), against all
+  backends, both measured on the same build:
+
+  | Jobs | All backends | Vulkan only |
+  |---|---|---|
+  | 1 | 0.19 pairs/s, 261 MiB | 0.31 pairs/s, 183 MiB |
+  | 8 | 0.86 pairs/s, 2.0 GiB | 0.94 pairs/s, 1.5 GiB |
+  | 16 | 1.16 pairs/s, 4.1 GiB | 1.32 pairs/s, 2.9 GiB |
+
+  The saving is largest on a single sequential render (+60%) and smaller under parallel load
+  (+9 to 14%), where the GPU is the bottleneck.
 * **Render-and-score throughput**, CTRY and INTRO alternating:
 
   | Jobs | Pairs/s | Peak RAM | Peak VRAM | GPU load (mean / max) |
@@ -141,6 +166,13 @@ identically ([`method.md`](../../../research/parity/method.md) § 3).
 
 ## 6. Order of work
 
+0. The Vulkan-first instance (D8), in a PR of its own.
+   * Tests: the fallback path is taken when the Vulkan-only instance yields no adapter (a test
+     through `select_adapter`'s inputs, or `#[ignore]` with a reason if it cannot be driven
+     offline). The existing GPU tests still pass on lavapipe.
+   * Live check: `mise run parity` gives the same score lines before and after.
+   * Update the `offscreen_adapter` comment and
+     [`method.md`](../../../research/parity/method.md) with the § 3 start-up figures.
 1. `run_matrix`, its tests, and `--jobs` on both scripts. One commit. It changes no score, so it
    needs no log row.
 2. Docs and skill wording (§ 4.4), in the same PR as step 1.
@@ -156,13 +188,9 @@ identically ([`method.md`](../../../research/parity/method.md) § 3).
   neighbouring ticks, so it would have to be optional.
 * **`noise_sigma` for each new film.** Optional in `references.toml` (INTRO has none), and the
   adoption floor of 0.002 is a build-level bound, not this sigma.
-* **Cutting render start-up** (§ 3). This is the first probe: time instance creation, adapter and
-  device acquisition, pipeline creation and asset loading in one headless render. If one step
-  dominates (for example `Backends::all()` initialising every backend), fixing it speeds up every
-  render, sequential ones included, and needs no change to the pipeline.
-* **One process rendering several jobs.** It would share one GPU device and the loaded assets, so
-  it would save most of the roughly 300 MiB of RAM and 200 MiB of VRAM per job and the start-up
-  time per job. Rejected for now:
+* **One process rendering several jobs.** It would share one GPU instance and device, so it would
+  save the per-process start-up (about 0.7 s once D8 lands) and most of the roughly 180 MiB of RAM
+  per job. Rejected for now:
   * At the default of 8 jobs, memory is not a constraint.
   * The `DBG_*` switches a sweep varies are added for one round, never committed, and read from
     the process environment with `std::env::var` (the skill's cost rule 8). Variants could share a
@@ -170,6 +198,7 @@ identically ([`method.md`](../../../research/parity/method.md) § 3).
     ceremony the throwaway switches exist to avoid.
   * One panic would lose every job in the process, and per-job timeouts would move into Rust.
 
-  Revisit only if the start-up probe finds a cost that cannot be cut inside one render.
+  * Under parallel load the GPU, not start-up, limits throughput (§ 3), so sharing a process
+    would gain little speed.
 * **A live RAM or VRAM cap on `--jobs`.** At the default of 8, the § 3 figures leave ample room on
   this machine.
