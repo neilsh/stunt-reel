@@ -1,10 +1,10 @@
 # The local gate runs what a change touches, faster (2026-11-06)
 
-Status: **design agreed and reviewed 2026-11-06; not started**. Branch `claude/run-gate-performance-796b53`.
+Status: **implemented 2026-11-06**. Branch `claude/run-gate-performance-796b53`.
 Tasks: [`scoped-gate-implementation-2026-11-06.md`](scoped-gate-implementation-2026-11-06.md). Source: a
 session of 2026-11-06 that started from "can the gate take less time, or check only what a change
 touches, or can prek help", measured the gate, and settled the design below. The scoping decision
-will be recorded as ADR 0037 (or the next free number when it lands); the worker-count change
+is [ADR 0038](../../adr/0038-the-local-gate-runs-what-a-change-touches.md) (0037 was taken); the worker-count change
 amends [ADR 0031](../../adr/0031-the-gate-runs-pytest-across-every-core.md). This note owns the
 design and the delivery.
 
@@ -108,7 +108,8 @@ The changed paths are the union of:
   its deletion and its addition, so both paths are classified);
 - `git ls-files --others --exclude-standard`, the untracked files.
 
-When `main` is missing or either command fails, the gate runs in full and says why. A local `main`
+`--base REF` (`mise run check -- --base REF`) counts from another branch instead of `main`, for a
+stacked branch. When the base is missing or either command fails, the gate runs in full and says why. A local `main`
 that is behind `origin/main` only widens the diff, which is the safe direction.
 
 ### 3.4 When the full gate runs
@@ -172,9 +173,10 @@ the data-loss path of [ADR 0018](../../adr/0018-reaping-unlinks-the-data-root-li
 - **removal safety** (a commit or an edit after classification, unlink before remove, the link
   target kept, the dry run): unchanged, each with its own repository.
 
-Expected: about 132 s of CPU down to about 40 s, with the same assertions. It shortens a warm
-gate by only a few seconds under xdist, but cuts total test time, which matters on CI's smaller
-runners.
+Measured: the file's summed durations, one process on a quiet machine, 52 s before and 38 s after,
+with the same assertions (the 132 s in section 2 was CPU under 16-way contention). It shortens a
+warm gate by only a few seconds under xdist, but cuts total test time, which matters on CI's
+smaller runners.
 
 ## 4. What this does not change
 
@@ -188,7 +190,7 @@ runners.
 
 ## 5. Records
 
-- **ADR 0037**, "the local gate runs the categories a change touches": the decision, CI as the
+- **ADR 0038**, "the local gate runs what a change touches": the decision, CI as the
   backstop, the category table, and the options below.
 - **ADR 0031**, amended: physical cores, the new measurements, `psutil` against ADR 0010.
 - **AGENTS.md**, directive 2 and Committing step 2, and
@@ -225,7 +227,7 @@ then is a cap considered.
 
 ## 7. Verification
 
-Each figure is recorded in the amended ADR 0031 or ADR 0037:
+Each figure is recorded in the amended ADR 0031 or ADR 0038:
 
 - a warm full `mise run check` on the workstation, three runs before and three after section 3.6;
   the measurements in section 2 are pytest alone, and the whole gate also runs `test-rust` beside it;
@@ -237,9 +239,11 @@ Each figure is recorded in the amended ADR 0031 or ADR 0037:
 
 ## 8. Delivery
 
-One branch, one pull request, three commits, each passing the gate on its own:
+One branch, one pull request, each commit passing the gate on its own. As delivered:
 
-1. `psutil`, and ADR 0031 amended;
-2. the reap-test split;
-3. the scoped gate: the categories, `test-py-docs`, the `docs` marker, `check-docs`, ADR 0037,
-   AGENTS.md and `docs/development.md`.
+1. `build(py): count physical cores for pytest workers`: `psutil`, ADR 0031 amended;
+2. `test(tooling): stub git out of the reap free-space tests`: section 3.7;
+3. `feat(tooling): sort changed paths into gate categories`: the categories, the scope, the gate
+   line, and the docs half (`test-py-docs`, the `docs` marker, `check-docs`);
+4. `feat(tooling): run only the gate halves a branch touches`: changed paths, `--full`, `--base`;
+5. `docs(adr): record the scoped local gate`: ADR 0038, AGENTS.md, `docs/development.md`.
