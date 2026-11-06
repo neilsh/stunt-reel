@@ -134,10 +134,25 @@ deadline.
 
 ## Orca
 
-Orca places worktrees on `C:`, another volume from the shared uv cache, so uv copies each
+Orca workspaces are the one exception to SOP 6's in-checkout rule. Orca chooses their path,
+`~/orca/workspaces/stunt-reel/<name>` on this machine; `orca --help` shows the base as a
+project host setting (`orca project setup-update --setup <id> --worktree-base-path <path>`).
+They sit outside the primary checkout, as do the worktrees nested in a workspace's own
+`.agents/worktrees/`, so `mise run reap` skips them all: retire a workspace with
+`orca worktree rm --worktree <selector>`.
+
+A workspace made before ADR 0036 may still hold junctions an older `init` made, and nothing shows
+that Orca's removal unlinks them first (see [Removing a worktree](#removing-a-worktree)). No task
+unlinks one worktree in place; `reap` does it only for the worktrees it removes. Before
+`orca worktree rm`, inside the workspace:
+
+1. `mise run init` prints `~ <path> is a link from the old layout` for each junction.
+2. `cmd /c rmdir <path>` removes each one and leaves its target alone; never add `/s`.
+3. `cmd /c dir /AL /S /B` must then find no file: no reparse point remains.
+
+Orca workspaces live on `C:`, another volume from the shared uv cache, so uv copies each
 `.venv` (about 68 MB, 3 s) instead of hardlinking it, and `target/` is not seeded, because
-`C:` does not clone blocks. Both are slower, not wrong. They sit outside the primary
-checkout, so `mise run reap` skips them: remove them through Orca.
+`C:` does not clone blocks. Both are slower, not wrong.
 
 ## Toolchain drift
 
