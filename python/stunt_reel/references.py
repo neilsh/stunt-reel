@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import tomllib
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
@@ -43,6 +44,7 @@ __all__ = [
     "capture_digest",
     "open_reference",
     "read_builds",
+    "read_pin",
     "read_reference",
     "reference_films",
     "require_builds",
@@ -60,6 +62,10 @@ MAKEONE_BUILDS: dict[str, str] = {
 }
 
 
+#: A pinned archive hash: SHA-256 as ``file_sha256`` writes it.
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
 class ReferenceCaptureError(RuntimeError):
     """A film's reference capture cannot be used; the message names the film."""
 
@@ -75,12 +81,17 @@ class Builds:
 
 @dataclass(frozen=True)
 class Reference:
-    """One ``references.toml`` entry: the film's slug, the hash its capture must have, builds."""
+    """One ``references.toml`` entry: the film's slug, the hash its capture must have, builds.
+
+    ``all_sha256`` pins the archive the film plays, when the row names one (ADR 0037): parity
+    renders and captures with the archive of exactly those bytes.
+    """
 
     film: str
     slug: str
     sha256: str
     builds: Builds
+    all_sha256: str | None = None
 
 
 # Not cached: a capture is replaced in place (ADR 0028), so a digest keyed by path goes stale.
@@ -164,7 +175,31 @@ def read_reference(root: Path, film: str) -> Reference:
         raise ReferenceCaptureError(
             f"{path}: the film entry of {name} is not a slug: {err}"
         ) from err
-    return Reference(name, slug, entry["sha256"], _builds(path, name, entry))
+    return Reference(
+        name, slug, entry["sha256"], _builds(path, name, entry), _pin(path, name, entry)
+    )
+
+
+def _pin(path: Path, name: str, entry: dict[str, object]) -> str | None:
+    """The archive pin row *name* of *path* names: 64 lowercase hex digits, or ``None``."""
+    value = entry.get("all_sha256")
+    if value is None:
+        return None
+    if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
+        raise ReferenceCaptureError(
+            f"{path}: the row [{name}] names all_sha256 {value!r}, which is not a SHA-256 "
+            "(64 lowercase hex digits)"
+        )
+    return value
+
+
+def read_pin(root: Path, slug: str) -> str | None:
+    """The archive pin of the row for the film in directory *slug*, or ``None`` without one."""
+    path, document = _read_document(root)
+    for name, entry in document.items():
+        if isinstance(entry, dict) and entry.get("film") == slug:
+            return _pin(path, name, entry)
+    return None
 
 
 def read_builds(root: Path, slug: str) -> tuple[str, Builds] | None:

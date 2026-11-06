@@ -259,3 +259,29 @@ def test_a_mismatched_pair_is_refused(tmp_path: Path) -> None:
             "vault-ctry",
             makeone=references.archive_makeone_build(tmp_path, "vault-ctry", archive),
         )
+
+
+PIN = "9de1bc1e8dbe491a56edd899b7c333cb78e5251cbe1e4ed75610dbc081aeb9a9"
+
+
+def test_a_row_pins_its_archive(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3, f'all_sha256 = "{PIN}"')
+    assert references.read_reference(tmp_path, "ctry").all_sha256 == PIN
+
+
+def test_a_row_without_an_archive_pin_has_none(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3)
+    assert references.read_reference(tmp_path, "ctry").all_sha256 is None
+
+
+@pytest.mark.parametrize("value", ['"abc"', '"' + "G" * 64 + '"', "3"])
+def test_a_malformed_archive_pin_is_refused(tmp_path: Path, value: str) -> None:
+    _row(tmp_path, PATCH3, f"all_sha256 = {value}")
+    with pytest.raises(references.ReferenceCaptureError, match=r"\[ctry\].*all_sha256"):
+        references.read_reference(tmp_path, "ctry")
+
+
+def test_read_pin_finds_the_row_by_slug(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3, f'all_sha256 = "{PIN}"')
+    assert references.read_pin(tmp_path, "vault-ctry") == PIN
+    assert references.read_pin(tmp_path, "vault-land") is None
