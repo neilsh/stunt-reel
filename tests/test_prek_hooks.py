@@ -16,8 +16,11 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
+import time
 import tomllib
 from pathlib import Path
+from typing import IO
 
 import pytest
 
@@ -57,51 +60,40 @@ def prek() -> str:
 
 
 #: Seconds any one git or prek call may take; these fixtures finish in a few.
-_TIMEOUT = 60
-
-#: Seconds to collect what is left once a timed-out call's process tree is killed.
-_DRAIN = 10
+_TIMEOUT = 60.0
 
 
-def _run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def _run(repo: Path, *args: str, timeout: float = _TIMEOUT) -> subprocess.CompletedProcess[str]:
     """Run a command in `repo`; a hung one is killed and fails the test with its output.
 
     Without a timeout a hung prek held its pytest worker until the gate killed the worker,
     which orphaned prek with the scratch repository as its working directory (issue #220).
-    The whole tree is killed: on Windows `subprocess.run` kills only the child and then
-    waits without limit for the pipes, which a hook's process prek started can hold open.
+    Output goes to files, not pipes: a process prek started that outlives the kill can hold
+    a pipe open and block its reader, and on Windows `subprocess.run` waits on it unbounded.
     """
-    proc = subprocess.Popen(  # noqa: S603 - fixed test arguments
-        list(args),
-        cwd=repo,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,  # one process group to kill on POSIX; ignored on Windows
-    )
-    try:
-        stdout, stderr = proc.communicate(timeout=_TIMEOUT)
-    except subprocess.TimeoutExpired:
-        _kill_tree(proc)
-        try:
-            stdout, stderr = proc.communicate(timeout=_DRAIN)
-        except subprocess.TimeoutExpired as error:
-            # A process outside the tree still holds the pipes; report what arrived. On
-            # Windows a reader thread is blocked on them, and closing them waits for it.
-            stdout, stderr = _text(error.stdout), _text(error.stderr)
-            if sys.platform != "win32":
-                for pipe in (proc.stdout, proc.stderr):
-                    if pipe is not None:
-                        pipe.close()
-        pytest.fail(
-            f"{' '.join(args)} timed out after {_TIMEOUT} s\n"
-            f"stdout:\n{_text(stdout)}\nstderr:\n{_text(stderr)}"
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        proc = subprocess.Popen(  # noqa: S603 - fixed test arguments
+            list(args),
+            cwd=repo,
+            stdin=subprocess.DEVNULL,
+            stdout=out,
+            stderr=err,
+            start_new_session=True,  # one process group to kill on POSIX; ignored on Windows
         )
-    return subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _kill_tree(proc)
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.wait(timeout=10)
+            pytest.fail(
+                f"{' '.join(args)} timed out after {timeout} s\n"
+                f"stdout:\n{_read(out)}\nstderr:\n{_read(err)}"
+            )
+        return subprocess.CompletedProcess(proc.args, proc.returncode, _read(out), _read(err))
 
 
-def _kill_tree(proc: subprocess.Popen[str]) -> None:
+def _kill_tree(proc: subprocess.Popen[bytes]) -> None:
     """Kill `proc` and every process it started that is still in its tree or group."""
     if sys.platform == "win32":
         with contextlib.suppress(subprocess.TimeoutExpired):
@@ -117,11 +109,23 @@ def _kill_tree(proc: subprocess.Popen[str]) -> None:
     proc.kill()
 
 
-def _text(output: str | bytes | None) -> str:
-    """Return captured output as text; a timed-out read can give bytes or None."""
-    if isinstance(output, bytes):
-        return output.decode(errors="replace")
-    return output or ""
+def _read(file: IO[bytes]) -> str:
+    """Return everything written to `file` as text, replacing bytes that do not decode."""
+    file.seek(0)
+    return file.read().decode(errors="replace").replace("\r\n", "\n")
+
+
+def test_run_fails_promptly_when_a_grandchild_holds_the_output(tmp_path: Path) -> None:
+    """A timed-out call fails within seconds with its output, though a grandchild shares it."""
+    child = (
+        "import subprocess, sys, time; print('marker-220', flush=True); "
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'], "
+        "stdout=sys.stdout, stderr=sys.stderr); time.sleep(30)"
+    )
+    start = time.monotonic()
+    with pytest.raises(pytest.fail.Exception, match="marker-220"):
+        _run(tmp_path, sys.executable, "-c", child, timeout=2)
+    assert time.monotonic() - start < 15
 
 
 def _repo(path: Path) -> Path:
