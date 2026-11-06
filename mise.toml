@@ -203,6 +203,10 @@ run = "uv run python python/scripts/probe_playone_light.py"
 description = "Walk PLAYONE's embedded scene tree and compare its Ground polygons with MAP.BIN (mise run scene-ground -- build/re/playone.img corpus/siarchive/Developer/FreeFlight/SIDATA/MAP.BIN)"
 run = "uv run python python/scripts/scene_ground.py"
 
+[tasks.scene-patches]
+description = "For each MAP.BIN patch with no polygon in PLAYONE's scene tree, check SCENERY.scn, byte scans, OP_TAP operands and the polygons under it (mise run scene-patches -- build/re/playone.img <MAP.BIN> --scn <SCENERY.scn> --scan <dir>)"
+run = "uv run python python/scripts/scene_patches.py"
+
 [tasks.flm-events]
 description = "Dump the film-level events of one .FLM film (mise run flm-events -- corpus/.../CTRY.FLM [--sounds])"
 run = "uv run python python/scripts/flm_events.py"
