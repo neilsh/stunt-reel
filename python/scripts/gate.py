@@ -180,6 +180,9 @@ def ci_requested(env: Mapping[str, str]) -> bool:
     return env.get("CI", "").strip().lower() not in {"", "false", "0"}
 
 
+_GIT_LOCATION = frozenset({"GIT_DIR", "GIT_WORK_TREE"})
+
+
 class ChangedPathsError(Exception):
     """git could not say which paths the branch changed; the message is git's."""
 
@@ -189,8 +192,11 @@ def _git_paths(repo: Path, *args: str) -> list[str]:
     git = shutil.which("git")
     if git is None:
         raise ChangedPathsError("git is not on PATH")
+    # *repo* decides the repository: GIT_DIR or GIT_WORK_TREE left set by a hook or a shell could
+    # name another checkout and scope this run by that checkout's changes.
+    env = {key: value for key, value in os.environ.items() if key not in _GIT_LOCATION}
     proc = subprocess.run(  # noqa: S603 - fixed git arguments, git resolved from PATH
-        [git, *args], cwd=repo, capture_output=True, check=False
+        [git, *args], cwd=repo, env=env, capture_output=True, check=False
     )
     if proc.returncode != 0:
         message = proc.stderr.decode("utf-8", errors="replace").strip()

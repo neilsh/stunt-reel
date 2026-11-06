@@ -318,7 +318,7 @@ def _write(repo: Path, name: str) -> None:
 def _feature_repo(tmp_path: Path, trunk: str = "main") -> Path:
     """A repository with one commit on *trunk* and a ``feat`` branch checked out."""
     repo = tmp_path / "repo"
-    repo.mkdir()
+    repo.mkdir(parents=True)
     _git(repo, "init", "-q", "-b", trunk)
     _write(repo, "base.md")
     _git(repo, "add", "base.md")
@@ -436,3 +436,16 @@ def test_full_flag_runs_the_full_gate(
 
     assert set(ran) == set(gate._plan("all"))
     assert "[gate] scope: full (--full)" in capsys.readouterr().out
+
+
+def test_changed_paths_ignores_git_variables_naming_another_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _feature_repo(tmp_path / "ours")
+    _write(repo, "ours.rs")
+    other = _feature_repo(tmp_path / "theirs")
+    _write(other, "theirs.md")
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(other))
+
+    assert gate.changed_paths(repo) == ["ours.rs"]
