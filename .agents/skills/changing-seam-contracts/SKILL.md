@@ -10,12 +10,12 @@ A seam contract is read back from saved JSON and checked against committed fixtu
 ## Steps
 
 1. **Types.** Add or change the type under `crates/stunt-core/src/contracts/` and re-export it from `contracts/mod.rs`. Done when the new item is reachable as `stunt_core::contracts::…`.
-2. **Backward-compatible fields.** Give every new field `#[cfg_attr(feature = "serde", serde(default))]`, as `trajectory.rs` does, so JSON written before the field existed still loads. Done when no new field lacks it.
+2. **Backward-compatible fields.** If the type derives serde (`#[cfg_attr(feature = "serde", derive(...))]`), give every new field `#[cfg_attr(feature = "serde", serde(default))]`, as `trajectory.rs` does, so JSON written before the field existed still loads. If it does not, say so in the commit body. Done when every new field on a serde type has the attribute.
 3. **Synthetic fixture.** Build the bytes a test needs in `tests/fixtures/` (never from `corpus/`), and add or extend that fixture's entry in [`tests/fixtures/README.md`](../../../tests/fixtures/README.md) with its byte layout. Done when every new or changed fixture has a README entry that matches its bytes.
-4. **Tests.** Add unit tests, plus a serde roundtrip test (`test_contracts_serde_roundtrip` in `trajectory.rs` is the pattern) that also loads JSON missing the new field. Run them with `--all-features`, which `mise run test-rust` and `mise run check-rust` do. Done when every new field has a roundtrip test that passes with the `serde` feature on.
+4. **Tests.** Add unit tests that read the field from a decoded fixture; for a serde type, add a roundtrip test (`test_contracts_serde_roundtrip` in `trajectory.rs` is the pattern) that also loads JSON missing the new field. Run them with `--all-features`, which `mise run test-rust` and `mise run check-rust` do. Done when every new field has a test that passes with every feature on.
 5. **Gate.** `mise run check-rust` while iterating, then the full `mise run check`.
 
-Done when every new field has a roundtrip test and every new fixture has a README entry.
+Done when every new field has a test (a roundtrip for a serde type) and every new fixture has a README entry.
 
 ## Quick reference
 
