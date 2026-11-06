@@ -164,7 +164,13 @@ def _link_lock(out: Path) -> threading.Lock:
 
 
 def _from_manifest(
-    flm: Path, root: Path, slug: str, link_build: LinkBuild, *, want: str | None = None
+    flm: Path,
+    root: Path,
+    slug: str,
+    link_build: LinkBuild,
+    *,
+    want: str | None = None,
+    data: Path | None = None,
 ) -> Path | None:
     """The archive rebuilt from the film's manifest, or None when it has no matching one.
 
@@ -196,7 +202,7 @@ def _from_manifest(
             f"mise run make-all -- --film {flm} --game-root <tree>"
         )
     # A corpus/... tree is the data root's (ADR 0036); any other relative tree is the checkout's.
-    game = dataroot.resolve_data_path(game)
+    game = dataroot.resolve_data_path(game, data)
     if not game.is_absolute():
         game = root / game
     if not game.is_dir():
@@ -247,18 +253,20 @@ def resolve_all(
     bytes; its own bytes must still hash to the recorded ``all_sha256``, and a mismatch is an
     error. *slug* names the film's directory; it defaults to the one
     :func:`parity_layout.film_slug` derives. *root* is the checkout holding the manifests and
-    ``target/``; the stored archive and the corpus copies are read from the data root *data*, the
-    configured one by default (ADR 0036).
+    ``target/``; a manifest's ``corpus/...`` game tree, the stored archive and the corpus copies
+    are read from the data root *data*, the configured one by default (ADR 0036).
     """
     sibling = _sibling(flm)
     if sibling is not None and (pinned is None or file_sha256(sibling) == pinned):
         return sibling
     slug = slug or parity_layout.slug_for(flm)
-    linked = _from_manifest(flm, root, slug, link_build or link_build_in(root), want=pinned)
+    data = data or dataroot.data_root()
+    linked = _from_manifest(
+        flm, root, slug, link_build or link_build_in(root), want=pinned, data=data
+    )
     if linked is not None:
         return linked
     make = f"run: mise run make-all -- --film {flm}"
-    data = data or dataroot.data_root()
     stored = _stored(slug, data)
     if pinned is not None:
         if (

@@ -576,3 +576,16 @@ def test_a_pinned_stored_archive_is_read_from_the_given_data_root(tmp_path: Path
     pin = hashlib.sha256(archive).hexdigest()
     got = resolve_all(film, tmp_path, SLUG, link_build=no_link, pinned=pin, data=tmp_path / "data")
     assert got == stored / "BALLOON.ALL"
+
+
+def test_a_manifests_corpus_game_root_is_read_from_the_given_data_root(tmp_path: Path) -> None:
+    """A pin resolved for another data root rebuilds from that root's game tree."""
+    data = tmp_path / "data"
+    game = data / "corpus" / "stuntisl"
+    game.mkdir(parents=True)
+    film = _film(tmp_path)
+    linked_sha = hashlib.sha256(b"LINKED").hexdigest()
+    _manifest(tmp_path, SLUG, FLM_BYTES, game_root="corpus/stuntisl", all_sha256=linked_sha)
+    fake = FakeLinkBuild()
+    resolve_all(film, tmp_path, SLUG, link_build=fake, pinned=linked_sha, data=data)
+    assert fake.calls[0][1] == game
