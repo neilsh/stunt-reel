@@ -19,6 +19,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import gate  # noqa: E402
+import gate_record  # noqa: E402
 
 
 def test_lane_map_covers_every_step_exactly_once() -> None:
@@ -125,6 +126,7 @@ def test_failure_tail_header_carries_fix_hint_only_for_fixable_failures(
     monkeypatch.setattr(gate, "_mise", lambda: "mise")
     monkeypatch.setattr(gate, "_step", fake_step)
     monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
+    monkeypatch.setattr(gate_record, "working_tree", lambda: "tested-tree")
 
     assert gate.main(["all", "--tail", "1"]) == 1
     output = capsys.readouterr().out
@@ -150,3 +152,21 @@ def test_cargo_steps_share_a_lane_exactly_when_they_share_a_target_dir() -> None
         for other, other_target in target_dirs.items():
             same_lane = gate.STEP_LANES[step] == gate.STEP_LANES[other]
             assert same_lane == (target == other_target), (step, other)
+
+
+@pytest.mark.parametrize(("half", "code"), [("py", 0), ("rust", 0), ("all", 0), ("py", 1)])
+def test_a_passing_run_records_the_tree_it_started_on(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, half: str, code: int
+) -> None:
+    """The tree is taken before the steps run, so an edit made mid-run is never recorded."""
+    trees = iter(["started-tree", "edited-mid-run"])
+    recorded: list[tuple[str, str]] = []
+    monkeypatch.setattr(gate, "_mise", lambda: "mise")
+    monkeypatch.setattr(gate, "_step", lambda _mise, _task: (code, "", 0.0))
+    monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
+    monkeypatch.setattr(gate_record, "working_tree", lambda: next(trees))
+    monkeypatch.setattr(gate_record, "record", lambda *pair: recorded.append(pair))
+
+    assert gate.main([half]) == code
+    expected = [(gate_record.HALF_NAMES[half], "started-tree")] if code == 0 else []
+    assert recorded == expected

@@ -38,6 +38,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 
+import gate_record
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -189,6 +191,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     plan = _plan(str(args.half))
     lanes = _lane_plan(plan)
+    # The tree under test, taken before any step runs: a passing run records it for the
+    # commit-msg hook (gate_record), and an edit made while the steps run is never recorded.
+    try:
+        tested: str | None = gate_record.working_tree()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"[gate] cannot record the tree under test: {exc}", flush=True)
+        tested = None
     mise = _mise()
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     results: dict[str, tuple[int, str, float]] = {}
@@ -221,6 +230,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("\n".join(results[task][1].rstrip().splitlines()[-args.tail :]), flush=True)
 
         verdict = _verdict(failed, plan, str(args.half), total)
+        if not failed and tested is not None:
+            gate_record.record(gate_record.HALF_NAMES[str(args.half)], tested)
         print(verdict, flush=True)
         log.write(f"\n# {verdict.removeprefix('[gate] ')}\n")
 

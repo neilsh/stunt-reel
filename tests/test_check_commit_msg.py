@@ -9,6 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import gate_record
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -295,3 +296,80 @@ def test_a_gh_call_that_times_out_makes_github_unavailable(
         hook._merged_pulls("0" * 40)
     assert calls[0]["timeout"] == hook.GH_TIMEOUT
     assert calls[0]["stdin"] is subprocess.DEVNULL
+
+
+GATE_LINE = "mise run check passes."
+
+
+def _message(tmp_path: Path, gate_line: str = GATE_LINE) -> Path:
+    path = tmp_path.parent / f"{tmp_path.name}.msg"
+    path.write_text(f"fix: a thing\n\nWhy it changed.\n\n{gate_line}\n", encoding="utf-8")
+    return path
+
+
+def _stage(git: Git, tmp_path: Path, text: str) -> None:
+    (tmp_path / "notes.txt").write_text(text, encoding="utf-8")
+    git("add", "notes.txt")
+
+
+def test_a_passes_claim_with_no_recorded_run_is_refused(
+    hook: Any, repo: Git, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _stage(repo, tmp_path, "a change\n")
+    assert hook.main([str(_message(tmp_path))]) == 1
+    assert "no passing run of mise run check" in capsys.readouterr().err
+
+
+def test_a_recorded_run_of_the_staged_tree_proves_the_line(
+    hook: Any, repo: Git, tmp_path: Path
+) -> None:
+    _stage(repo, tmp_path, "a change\n")
+    gate_record.record("check", gate_record.working_tree())
+    assert hook.main([str(_message(tmp_path))]) == 0
+
+
+def test_a_run_of_another_tree_is_refused_naming_the_paths(
+    hook: Any, repo: Git, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _stage(repo, tmp_path, "what the gate saw\n")
+    gate_record.record("check", gate_record.working_tree())
+    _stage(repo, tmp_path, "edited after the gate\n")
+    assert hook.main([str(_message(tmp_path))]) == 1
+    assert "notes.txt" in capsys.readouterr().err
+
+
+def test_an_unstaged_file_the_gate_tested_is_refused(
+    hook: Any, repo: Git, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _stage(repo, tmp_path, "a change\n")
+    (tmp_path / "helper.txt").write_text("the gate needed this\n", encoding="utf-8")
+    gate_record.record("check", gate_record.working_tree())
+    assert hook.main([str(_message(tmp_path))]) == 1
+    assert "helper.txt" in capsys.readouterr().err
+
+
+def test_a_full_check_proves_a_half(hook: Any, repo: Git, tmp_path: Path) -> None:
+    _stage(repo, tmp_path, "a change\n")
+    gate_record.record("check", gate_record.working_tree())
+    line = "mise run check-py passes; check-rust not run."
+    assert hook.main([str(_message(tmp_path, line))]) == 0
+
+
+def test_a_half_does_not_prove_the_full_check(
+    hook: Any, repo: Git, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _stage(repo, tmp_path, "a change\n")
+    gate_record.record("check-py", gate_record.working_tree())
+    assert hook.main([str(_message(tmp_path))]) == 1
+    assert "no passing run of mise run check" in capsys.readouterr().err
+
+
+def test_a_gate_reported_not_run_needs_no_record(hook: Any, repo: Git, tmp_path: Path) -> None:
+    _stage(repo, tmp_path, "a change\n")
+    assert hook.main([str(_message(tmp_path, "mise run check not run."))]) == 0
+
+
+def test_recording_a_run_leaves_the_real_index_alone(repo: Git, tmp_path: Path) -> None:
+    (tmp_path / "unstaged.txt").write_text("not staged\n", encoding="utf-8")
+    gate_record.working_tree()
+    assert repo("status", "--porcelain") == "?? unstaged.txt"
