@@ -105,22 +105,31 @@
 **Interfaces:**
 - Produces:
   - `DRY_RUN: str`: the suffix `"\n\nThis is a dry run: list the files you would touch and the steps you would take; edit nothing."`
-  - `@dataclass(frozen=True) class RunOutcome: skills: list[str]; text: str | None; failed: bool`
-  - `outcome(lines: list[str], returncode: int) -> RunOutcome`
+  - `@dataclass(frozen=True) class RunOutcome: listed: bool; skills: list[str]; peeked: bool; cost: float; text: str | None; failed: bool`
+  - `outcome(lines: list[str], returncode: int, skill: str) -> RunOutcome`. The fields come from a real run's stream (observed 2026-11-05):
+    - `listed`: `skill` is in the `skills` list of the `{"type": "system", "subtype": "init"}` line, which settles spec D2 without waiting for the skill to load.
+    - `skills`: the `input["skill"]` of every `Skill` tool call.
+    - `peeked`: some `Read` or `Grep` tool call's input names `agents-md-split`. That run read this spec or plan, which give the answers away, so it is reported but doesn't count toward a pass.
+    - `cost`: `total_cost_usd` from the `result` line.
+    - `text`: that line's `result`.
+    - `failed`: the exit code is nonzero, the result line is missing, or `is_error` is true.
+  - Each run passes `--max-budget-usd` (default 2.00 for opus, 0.50 for haiku, overridable with `--budget`). Runs inherit the environment unchanged, since auth rides on it; nesting inside a Claude Code session was checked and works.
   - `main(argv: list[str] | None = None) -> int`
   - CLI: `mise run skill-eval -- --skill NAME --model {opus,haiku} --phase {baseline,with} --prompt-file PATH [--reps 3]`.
     - Each repetition runs `claude -p --model M --permission-mode plan --output-format stream-json --verbose <prompt + DRY_RUN>` with `cwd` at the repo root.
     - It writes `target/skill-eval/<skill>/<model>-<phase>-<n>.jsonl` and `.md` (the result text).
-    - It prints one line per run: `run <n>: skills <comma list or none>; exit <code>; <md path>`.
+    - It prints one line per run: `run <n>: listed <yes|no>; skills <comma list or none>; peeked <yes|no>; $<cost>; exit <code>; <md path>`, then the total cost.
     - It exits 1 if any run failed.
   - Tasks 4–6 consume this.
 
 - [ ] **Step 1: Write the failing tests** in `tests/test_skill_eval.py`. Import the script the way `tests/test_worktree_reap.py` imports `worktree_init`. Each line in these tests is a `json.dumps` of the stream-json shape:
   - `test_outcome_lists_skill_tool_calls`:
-    - Lines: an `{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "changing-seam-contracts"}}, {"type": "tool_use", "name": "Read", "input": {"file_path": "x"}}]}}` line, a non-JSON line `"not json"`, and `{"type": "result", "result": "the plan"}`.
-    - `outcome(lines, 0) == RunOutcome(["changing-seam-contracts"], "the plan", False)`.
-  - `test_a_run_without_a_result_line_failed`: `outcome([], 0).failed` is true and `.text` is `None`.
-  - `test_a_nonzero_exit_failed`: `outcome([<result line>], 1).failed` is true.
+    - Lines: `{"type": "system", "subtype": "init", "skills": ["changing-seam-contracts"]}`, an assistant line whose content holds a `tool_use` named `Skill` with input `{"skill": "changing-seam-contracts"}` and one named `Read` with input `{"file_path": "x"}`, a non-JSON line `"not json"`, and `{"type": "result", "subtype": "success", "is_error": false, "result": "the plan", "total_cost_usd": 0.5}`.
+    - `outcome(lines, 0, "changing-seam-contracts") == RunOutcome(True, ["changing-seam-contracts"], False, 0.5, "the plan", False)`.
+  - `test_reading_the_plan_is_peeking`: a `Read` input naming `docs/process/plans/agents-md-split-2026-11-05.md` sets `peeked`.
+  - `test_an_error_result_failed`: a result line with `"is_error": true, "subtype": "error_max_budget_usd"` sets `failed`.
+  - `test_a_run_without_a_result_line_failed`: `outcome([], 0, "x").failed` is true and `.text` is `None`.
+  - `test_a_nonzero_exit_failed`: `outcome([<result line>], 1, "x").failed` is true.
 
 - [ ] **Step 2: Run them and see them fail.** Run `mise run test-py -- tests/test_skill_eval.py`. Expected: `ModuleNotFoundError: skill_eval`.
 
@@ -162,7 +171,6 @@
   - `tests/test_check_commit_msg.py:1`
   - `python/scripts/worktree_init.py:66`
   - `tests/test_worktree_layout.py:6`
-  - `docs/harness.md:18,22`
   - `docs/harness-setup.md:137`
   - `docs/adr/0026-commit-hooks-run-the-gates-own-tasks.md:69,89`
   - `docs/adr/0031-the-gate-runs-pytest-across-every-core.md:28`
@@ -224,7 +232,7 @@ Each skill task runs these steps with its own values (the skill, its prompts, it
 4. **Check it.**
    - Run `wc -w .agents/skills/<skill>/SKILL.md`. Expected: under 500.
    - Run `mise run verify-docs`. Expected: PASS.
-5. **Run with the skill** (`--phase with`) for each model. Expected: every `run` line names the skill, and every `.md` covers every must-cover item.
+5. **Run with the skill** (`--phase with`) for each model. Expected: every `run` line says `listed yes`, names the skill and says `peeked no`, and every `.md` covers every must-cover item. A peeked run is rerun.
 6. **Tighten if needed.** On a miss, change the description's or the step's wording (not its length) and repeat step 5.
 7. **Record and commit.**
    - Record both phases in spec section 8: the runs that loaded the skill, the misses, and the wording changes.
@@ -248,7 +256,7 @@ Each skill task runs these steps with its own values (the skill, its prompts, it
 - Steps: spec 4.2.
 - Citation: ADR 0012's "the additive-field rule in SOP 4" becomes "the additive-field rule in the `changing-seam-contracts` skill", linked to `../../.agents/skills/changing-seam-contracts/SKILL.md`.
 
-**Stop condition (spec D2):** if no run in step 5 names the skill, Claude Code is not reading `.agents/skills/`. Stop, and report to the user before Tasks 5–7.
+**Stop condition (spec D2):** if a run line says `listed no`, Claude Code is not reading `.agents/skills/`. Stop, and report to the user before Tasks 5–7.
 
 ### Task 5: `recording-binary-findings`
 
@@ -288,7 +296,7 @@ Each skill task runs these steps with its own values (the skill, its prompts, it
 - Modify: spec status line and section 8
 
 - [ ] **Step 1: Delete the stub, and fix `CLAUDE.md`.** Run `git rm .claude/skills/improving-render-parity/SKILL.md`. In `CLAUDE.md`, the sentence becomes: *`AGENTS.md` is the canonical developer guide; this stub exists only so Claude Code loads it. Put repository rules in `AGENTS.md`, never here.*
-- [ ] **Step 2: Check the parity skill is still found.** Run `mise run skill-eval -- --skill improving-render-parity --model opus --phase with --reps 1 --prompt-file target/skill-eval/prompts/smoke.txt`. Expected: the run line names `improving-render-parity`.
+- [ ] **Step 2: Check the parity skill is still found.** Run `mise run skill-eval -- --skill improving-render-parity --model opus --phase with --reps 1 --prompt-file target/skill-eval/prompts/smoke.txt`. Expected: the run line says `listed yes` and names `improving-render-parity`.
 - [ ] **Step 3: Run the verification from spec section 7.**
   - `wc -c AGENTS.md` is 8,192 or fewer.
   - `git grep -n 'SOP [0-9]' -- ':!docs/process/plans'` prints nothing.
