@@ -522,3 +522,23 @@ def test_changed_paths_ignores_a_common_dir_naming_another_checkout(
     monkeypatch.setenv("GIT_COMMON_DIR", str(other / ".git"))
 
     assert gate.changed_paths(repo) == ["ours.rs"]
+
+
+def test_a_record_that_cannot_be_written_keeps_the_verdict(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A passing run still prints PASS and its gate line, and says the hook may refuse the line."""
+
+    def unwritable(_name: str, _tree: str) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(gate, "_mise", lambda: "mise")
+    monkeypatch.setattr(gate, "_step", lambda _mise, _task: (0, "", 0.0))
+    monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
+    monkeypatch.setattr(gate_record, "record", unwritable)
+
+    assert gate.main(["py"]) == 0
+    out = capsys.readouterr().out
+    assert "[gate] cannot record the passing run: disk full" in out
+    assert "[gate] PASS" in out
+    assert "[gate] gate line: mise run check-py passes; check-rust not run." in out

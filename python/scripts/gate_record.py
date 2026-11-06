@@ -61,10 +61,20 @@ def staged_tree() -> str:
 
 
 def record(name: str, tree: str) -> None:
-    """Record that a run of the gate *name* passed on *tree*."""
+    """Record that a run of the gate *name* passed on *tree*.
+
+    The record is replaced whole, so the hook never reads one half written.
+    """
     directory = _record_dir()
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / f"{name}.tree").write_text(f"{tree}\n", encoding="utf-8")
+    handle, scratch = tempfile.mkstemp(dir=directory, prefix=f"{name}.", suffix=".tmp")
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as out:
+            out.write(f"{tree}\n")
+        Path(scratch).replace(directory / f"{name}.tree")
+    except BaseException:
+        Path(scratch).unlink(missing_ok=True)
+        raise
 
 
 def recorded(name: str) -> str | None:

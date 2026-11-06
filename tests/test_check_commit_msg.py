@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 from collections.abc import Callable
@@ -385,3 +386,20 @@ def test_recording_a_run_leaves_the_real_index_alone(repo: Git, tmp_path: Path) 
     (tmp_path / "unstaged.txt").write_text("not staged\n", encoding="utf-8")
     gate_record.working_tree()
     assert repo("status", "--porcelain") == "?? unstaged.txt"
+
+
+@pytest.mark.usefixtures("repo")
+def test_a_failed_record_write_keeps_the_last_record_whole(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The hook may read a record while a gate rewrites it: replace a record, never truncate it."""
+    gate_record.record("check", "a" * 40)
+
+    def refuse(_source: object, _target: object) -> None:
+        raise OSError("record held open")
+
+    monkeypatch.setattr(os, "replace", refuse)
+    with pytest.raises(OSError, match="record held open"):
+        gate_record.record("check", "b" * 40)
+    assert gate_record.recorded("check") == "a" * 40
+    assert sorted(path.name for path in (tmp_path / "target" / "gate").iterdir()) == ["check.tree"]

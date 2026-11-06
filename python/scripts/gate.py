@@ -431,8 +431,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         verdict = _verdict(failed, plan, half, total)
         if not failed and tested is not None:
-            for name in recorded_names(halves):
-                gate_record.record(name, tested)
+            try:
+                for name in recorded_names(halves):
+                    gate_record.record(name, tested)
+            except OSError as exc:
+                print(
+                    f"[gate] cannot record the passing run: {exc}; the commit-msg hook will "
+                    "refuse a gate line it cannot match to a record",
+                    flush=True,
+                )
         print(verdict, flush=True)
         log.write(f"\n# {verdict.removeprefix('[gate] ')}\n")
         if not failed:
