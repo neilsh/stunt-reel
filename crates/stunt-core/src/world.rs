@@ -1135,9 +1135,10 @@ mod tests {
 
     #[test]
     fn the_sand_patches_playone_never_draws_are_left_out() {
-        // 66 active triangles, each coloured by its record index; records 52-55 and 62-65 are
-        // the patches with no leaf in PLAYONE's scene tree (world-scene.md section 2.1).
-        let mut data = vec![0u8; 66 * 30];
+        // 70 active triangles, each coloured by its record index; records 52-55 and 62-65 are
+        // the patches with no leaf in PLAYONE's scene tree (world-scene.md section 2.1). The
+        // records past 65 show the skip does not end the parse.
+        let mut data = vec![0u8; 70 * 30];
         for (index, record) in data.as_chunks_mut::<30>().0.iter_mut().enumerate() {
             record[2..4].copy_from_slice(&0x00FFi16.to_le_bytes());
             record[12] = u8::try_from(index).unwrap();
@@ -1146,7 +1147,7 @@ mod tests {
             record[20..22].copy_from_slice(&2u16.to_le_bytes());
         }
         let colours: Vec<u8> = parse_map_bin(&data, 3).iter().map(|a| a.color).collect();
-        let expected: Vec<u8> = (0..66)
+        let expected: Vec<u8> = (0..70)
             .filter(|i| !matches!(i, 52..=55 | 62..=65))
             .collect();
         assert_eq!(colours, expected);
