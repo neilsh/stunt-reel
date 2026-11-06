@@ -567,3 +567,12 @@ def test_a_pinned_corpus_copy_is_found_in_the_given_data_root(
     assert resolve_all(film, tmp_path, SLUG, pinned=pin, data=tmp_path / "data") == (
         vault / "BALLOON.ALL"
     )
+
+
+def test_a_pinned_stored_archive_is_read_from_the_given_data_root(tmp_path: Path) -> None:
+    film, _own, _other = _copies(tmp_path)  # the configured data root (tmp_path) stores none
+    archive = build_all([b"stored"])
+    stored = _store(tmp_path / "data", FLM_BYTES, archive)
+    pin = hashlib.sha256(archive).hexdigest()
+    got = resolve_all(film, tmp_path, SLUG, link_build=no_link, pinned=pin, data=tmp_path / "data")
+    assert got == stored / "BALLOON.ALL"

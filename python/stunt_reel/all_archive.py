@@ -247,7 +247,8 @@ def resolve_all(
     bytes; its own bytes must still hash to the recorded ``all_sha256``, and a mismatch is an
     error. *slug* names the film's directory; it defaults to the one
     :func:`parity_layout.film_slug` derives. *root* is the checkout holding the manifests and
-    ``target/``; the stored archive is read from the data root (ADR 0036).
+    ``target/``; the stored archive and the corpus copies are read from the data root *data*, the
+    configured one by default (ADR 0036).
     """
     sibling = _sibling(flm)
     if sibling is not None and (pinned is None or file_sha256(sibling) == pinned):
@@ -257,7 +258,8 @@ def resolve_all(
     if linked is not None:
         return linked
     make = f"run: mise run make-all -- --film {flm}"
-    stored = _stored(slug)
+    data = data or dataroot.data_root()
+    stored = _stored(slug, data)
     if pinned is not None:
         if (
             stored is not None
@@ -265,7 +267,7 @@ def resolve_all(
             and stored[1].flm_sha256 == file_sha256(flm)
         ):
             return _checked(flm, *stored)
-        copy = _corpus_copy(flm, pinned, data or dataroot.data_root())
+        copy = _corpus_copy(flm, pinned, data)
         if copy is not None:
             return copy
         raise ArchiveError(
@@ -288,12 +290,12 @@ def _sibling(flm: Path) -> Path | None:
     return None
 
 
-def _stored(slug: str) -> tuple[Path, ArchiveMeta] | None:
-    """The film directory's stored archive and its meta, or ``None`` when it has none.
+def _stored(slug: str, data: Path) -> tuple[Path, ArchiveMeta] | None:
+    """The film directory's stored archive under the data root *data*, and its meta, or ``None``.
 
     The meta may record another film's ``flm_sha256``; the caller decides what that means.
     """
-    directory = capture_store.current(dataroot.data_root() / parity_layout.archive_path(slug))
+    directory = capture_store.current(data / parity_layout.archive_path(slug))
     if directory is None:
         return None
     try:
