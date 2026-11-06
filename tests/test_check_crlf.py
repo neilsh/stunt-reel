@@ -22,7 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "python" / "scripts" / "check_crlf.py"
 GIT = shutil.which("git")
 
-pytestmark = pytest.mark.skipif(GIT is None, reason="git is not on PATH")
+pytestmark = [pytest.mark.windows, pytest.mark.skipif(GIT is None, reason="git is not on PATH")]
 
 #: Variables that point git at another repository. Git sets them while it runs a hook, so a
 #: suite started from one would otherwise stage files in the outer repository.
@@ -166,6 +166,77 @@ def test_a_failed_checkout_puts_every_file_back(
         script.repair(repo, list(files))
     for name, data in files.items():
         assert (repo / name).read_bytes() == data
+
+
+def test_a_checkout_that_leaves_crlf_puts_the_file_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repo(tmp_path)
+    _stage(repo, {"a.txt": b"one\ntwo\n"})
+    _write(repo, {"a.txt": b"one\r\ntwo\n"})
+    script = _load_script()
+    real_git = script._git
+
+    def crlf_git(root: Path, *args: str, stdin: bytes | None = None) -> bytes:
+        if args[0] != "checkout-index":
+            output: bytes = real_git(root, *args, stdin=stdin)
+            return output
+        # As git configured to write CRLF on checkout would.
+        (root / "a.txt").write_bytes(b"one\r\ntwo\r\n")
+        return b""
+
+    monkeypatch.setattr(script, "_git", crlf_git)
+    assert script.repair(repo, ["a.txt"]) == ([], ["a.txt"])
+    assert (repo / "a.txt").read_bytes() == b"one\r\ntwo\n"
+
+
+def test_a_reported_mode_change_is_rejected_and_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repo(tmp_path)
+    _stage(repo, {"a.txt": b"one\r\n"})
+    script = _load_script()
+    real_git = script._git
+    zeros = "0" * 40
+
+    def mode_git(root: Path, *args: str, stdin: bytes | None = None) -> bytes:
+        if args[0] == "diff-files":
+            return f":100644 100755 {zeros} {zeros} M\0a.txt\0".encode()
+        output: bytes = real_git(root, *args, stdin=stdin)
+        return output
+
+    monkeypatch.setattr(script, "_git", mode_git)
+    assert script.repair(repo, ["a.txt"]) == ([], ["a.txt"])
+    assert (repo / "a.txt").read_bytes() == b"one\r\n"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="git on Windows sets core.filemode=false and ignores the bit"
+)
+def test_an_unstaged_executable_bit_is_rejected_and_unchanged(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _stage(repo, {"run.sh": b"echo hi\n"})
+    _write(repo, {"run.sh": b"echo hi\r\n"})
+    (repo / "run.sh").chmod(0o755)
+    result = _run(repo)
+    assert result.returncode == 1
+    assert "run.sh" in _rejected(result.stderr)
+    assert (repo / "run.sh").read_bytes() == b"echo hi\r\n"
+    assert (repo / "run.sh").stat().st_mode & 0o111
+
+
+def test_an_extra_cr_before_a_crlf_in_the_blob_is_rejected_and_unchanged(tmp_path: Path) -> None:
+    # The blob keeps its CRLF (staged before the LF rule), and the working copy adds a CR.
+    repo = tmp_path
+    _git(repo, "init", "-q")
+    _git(repo, "config", "core.autocrlf", "false")
+    _stage(repo, {"old.txt": b"a\r\n"})
+    shutil.copyfile(REPO_ROOT / ".gitattributes", repo / ".gitattributes")
+    _write(repo, {"old.txt": b"a\r\r\n"})
+    result = _run(repo)
+    assert result.returncode == 1
+    assert "old.txt" in _rejected(result.stderr)
+    assert (repo / "old.txt").read_bytes() == b"a\r\r\n"
 
 
 def test_a_blob_that_itself_holds_crlf_is_rejected_and_unchanged(tmp_path: Path) -> None:

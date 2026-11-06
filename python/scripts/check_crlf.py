@@ -104,18 +104,43 @@ def offenders(root: Path) -> list[str]:
 def crlf_copy_of_index(root: Path, path: str) -> bytes | None:
     """The working copy of *path* when it is its index blob with some LFs written as CRLF.
 
-    ``None`` when it differs in anything else, or has no stage-0 blob (an unresolved conflict).
+    ``None`` when it differs in anything else, when the blob holds any CR (a CR the working copy
+    adds before a CRLF would then pass the comparison), or when there is no stage-0 blob (an
+    unresolved conflict).
     """
     try:
         blob = _git(root, "cat-file", "blob", f":{path}")
     except GitError:
         return None
+    if b"\r" in blob:
+        return None
     data = (root / path).read_bytes()
     return data if data.replace(CRLF, b"\n") == blob else None
 
 
+def mode_changes(root: Path) -> set[str]:
+    """Paths whose working-tree file mode differs from the index, as git sees it.
+
+    Git's own view, so ``core.filemode=false`` (the Windows default) reports none. One call
+    over the whole tree: ``diff-files`` compares stat data only, and a path list could outrun
+    the Windows command-line limit.
+    """
+    fields = _split(_git(root, "diff-files", "--raw", "-z"))
+    changed: set[str] = set()
+    for index in range(0, len(fields) - 1, 2):
+        header, path = fields[index : index + 2]
+        old_mode, new_mode = header.lstrip(":").split()[:2]
+        # A deleted file shows mode 000000; it has no working copy to repair anyway.
+        if old_mode != new_mode:
+            changed.add(path)
+    return changed
+
+
 def repair(root: Path, paths: Sequence[str]) -> tuple[list[str], list[str]]:
     """Rewrite from the index each of *paths* that differs from it only in line endings.
+
+    A path whose file mode also differs from the index (an unstaged executable bit) is left
+    alone, since checkout would reset the mode.
 
     ``git checkout-index -f`` leaves a file alone when its stat data matches the index entry,
     as it does straight after ``git add`` of a CRLF file, so each such file is removed first;
@@ -123,10 +148,14 @@ def repair(root: Path, paths: Sequence[str]) -> tuple[list[str], list[str]]:
     fails.
 
     Returns the repaired paths and the rest, each in the order given. A path whose rewritten
-    copy still holds a CRLF (git configured to write CRLF on checkout) counts with the rest.
+    copy still holds a CRLF (git configured to write CRLF on checkout) gets its saved bytes
+    back and counts with the rest, so no file the hook rejects is changed.
     """
     saved: dict[str, bytes] = {}
+    moved = mode_changes(root) if paths else set()
     for path in paths:
+        if path in moved:
+            continue
         data = crlf_copy_of_index(root, path)
         if data is None:
             continue
@@ -145,7 +174,12 @@ def repair(root: Path, paths: Sequence[str]) -> tuple[list[str], list[str]]:
             for path, data in saved.items():
                 (root / path).write_bytes(data)
             raise
-    repaired = [path for path in saved if CRLF not in (root / path).read_bytes()]
+    repaired: list[str] = []
+    for path, data in saved.items():
+        if CRLF in (root / path).read_bytes():
+            (root / path).write_bytes(data)
+        else:
+            repaired.append(path)
     rest = [path for path in paths if path not in repaired]
     return repaired, rest
 
