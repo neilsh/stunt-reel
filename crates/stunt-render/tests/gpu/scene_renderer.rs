@@ -14,9 +14,9 @@ use stunt_core::contracts::{
     TrajectoryRecord, VisibilityCondition,
 };
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
-use stunt_core::scene::FilmScene;
+use stunt_core::scene::{FilmScene, ViewCamera};
 use stunt_core::world::World;
-use stunt_render::{LAYER_NONE, Offscreen, RenderOptions};
+use stunt_render::{CameraController, LAYER_NONE, Offscreen, RenderOptions};
 
 const SHAPE_ID: u16 = 7;
 const CLEAR_INDEX: u8 = 180;
@@ -144,6 +144,62 @@ fn two_actors_sharing_a_shape_both_render_at_their_own_matrix() {
     assert_eq!(middle, 0, "nothing should be drawn between the actors");
     // Same shape, mirrored placement: equal coverage.
     assert!(left.abs_diff(right) <= left / 20 + 4, "{left} vs {right}");
+}
+
+/// A `FacesEye` gate draws its mesh with the normal toward the eye and hides it when reversed.
+#[test]
+fn facing_gate_draws_only_while_its_face_points_at_the_eye() {
+    // The eye is at +Z 8 m and the actor at the origin, so a +Z normal faces it.
+    let gate = |z: f32| VisibilityCondition::FacesEye {
+        point: [0.0, 0.0, 0.0],
+        normal: [0.0, 0.0, z],
+    };
+    let Some((w, h, toward)) = render(&scene(vec![actor_at(0.0, 0)], gate(1.0))) else {
+        return;
+    };
+    assert!(drawn_in_columns(&toward, w, h, 0..w) > 100);
+    let Some((w, h, away)) = render(&scene(vec![actor_at(0.0, 0)], gate(-1.0))) else {
+        return;
+    };
+    assert_eq!(drawn_in_columns(&away, w, h, 0..w), 0);
+}
+
+/// A camera override tests facing gates against its own eye, not the film's.
+#[test]
+fn facing_gate_follows_the_override_cameras_eye() {
+    // The gate's plane is at z = 4: the film eye (z = 8) is in front of it, an override eye
+    // at z = 2 behind it, while both still see the triangle's front face.
+    let gate = VisibilityCondition::FacesEye {
+        point: [0.0, 0.0, 4.0],
+        normal: [0.0, 0.0, 1.0],
+    };
+    let scene = scene(vec![actor_at(0.0, 0)], gate);
+    let Some(mut test) = common::gpu_or_skip(&scene) else {
+        return;
+    };
+    let frame = scene.frame(0.0);
+    let drawn = |page: &stunt_render::RenderedPage| {
+        page.layers()
+            .iter()
+            .filter(|&&layer| layer != LAYER_NONE)
+            .count()
+    };
+    assert!(
+        drawn(&test.draw(&frame)) > 100,
+        "the film eye opens the gate"
+    );
+    let mut camera = CameraController::default();
+    camera.set_authored_transform(ViewCamera {
+        eye: [0.0, 0.0, 2.0],
+        target: [0.0, 0.0, 0.0],
+        fov_degrees: 45.0,
+        roll_radians: 0.0,
+    });
+    assert_eq!(
+        drawn(&test.draw_with(&frame, Some(&camera))),
+        0,
+        "the override eye closes it"
+    );
 }
 
 #[test]

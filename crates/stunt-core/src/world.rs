@@ -21,8 +21,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::anchor::AnchorPoint;
 use crate::contracts::{
-    NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, ShapeExtent, SodModelIr, SodVertex,
-    VisibilityCondition, arena_index,
+    NodeId, NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, ShapeExtent, ShapeMesh,
+    SodModelIr, SodVertex, VisibilityCondition, arena_index,
 };
 
 /// Column-major identity `local_matrix` for every world node (the world is drawn untransformed).
@@ -796,6 +796,7 @@ pub(crate) fn build_world_ir(
             },
         );
     }
+    push_gated_props(&mut ir, root_base, instances, &grounded, ir_models, base_y);
     ir
 }
 
@@ -991,14 +992,10 @@ fn ground_decal_vertices(
     on_terrain.then_some(snapped)
 }
 
-/// Appends every placed prop mesh slice, translated to its placement and lifted by
+/// Appends every ungated placed prop mesh slice, translated to its placement and lifted by
 /// `base_y`: those whose `is_decal` equals `decals`, except that every slice of a ground
 /// decal (`grounded` holds its snapped vertices, parallel to `instances`) goes in the decal
-/// batch.
-#[expect(
-    clippy::arithmetic_side_effects,
-    reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX; each mesh index is at least its mesh's vertex_offset"
-)]
+/// batch. Slices behind a visibility gate go to [`push_gated_props`].
 fn push_props(
     ir: &mut SodModelIr,
     instances: &[(u16, [f32; 3])],
@@ -1013,33 +1010,105 @@ fn push_props(
         };
         for mesh in model.meshes() {
             let in_decal_batch = ground.is_some() || mesh.is_decal();
-            if in_decal_batch != decals || mesh.indices.is_empty() {
+            if in_decal_batch != decals
+                || mesh.indices.is_empty()
+                || mesh.node.visibility != VisibilityCondition::Always
+            {
                 continue;
             }
-            let start = arena_index(ir.vertices.len());
-            for (i, v) in mesh.vertices.iter().enumerate() {
-                let position = ground
-                    .as_ref()
-                    .and_then(|snapped| snapped.get(mesh.vertex_offset as usize + i))
-                    .copied()
-                    .unwrap_or([
-                        v.position[0] + pos[0],
-                        v.position[1] + pos[1] + base_y,
-                        v.position[2] + pos[2],
-                    ]);
-                ir.vertices.push(SodVertex {
-                    position,
-                    normal: v.normal,
-                    palette_index: v.palette_index,
-                    flags: v.flags,
-                    scenery_class: SCENERY_PROP,
-                    _padding: 0,
-                });
-            }
-            for &index in mesh.indices {
-                ir.indices.push(start + index - mesh.vertex_offset);
-            }
+            push_prop_mesh(ir, &mesh, pos, ground.as_deref(), base_y);
         }
+    }
+}
+
+/// Appends every prop mesh behind a visibility gate as a node of its own under `parent`,
+/// with the gate moved into world space, so the renderer evaluates it per frame against
+/// the eye like an actor's.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"
+)]
+fn push_gated_props(
+    ir: &mut SodModelIr,
+    parent: NodeId,
+    instances: &[(u16, [f32; 3])],
+    grounded: &[Option<Vec<[f32; 3]>>],
+    ir_models: &HashMap<u16, SodModelIr>,
+    base_y: f32,
+) {
+    for (&(shape_id, pos), ground) in instances.iter().zip(grounded) {
+        let Some(model) = ir_models.get(&shape_id) else {
+            continue;
+        };
+        let offset = [pos[0], pos[1] + base_y, pos[2]];
+        for mesh in model.meshes() {
+            if mesh.indices.is_empty() || mesh.node.visibility == VisibilityCondition::Always {
+                continue;
+            }
+            let visibility = match mesh.node.visibility {
+                VisibilityCondition::FacesEye { point, normal } => VisibilityCondition::FacesEye {
+                    point: [
+                        point[0] + offset[0],
+                        point[1] + offset[1],
+                        point[2] + offset[2],
+                    ],
+                    normal,
+                },
+                other => other,
+            };
+            let vertex_offset = arena_index(ir.vertices.len());
+            let index_offset = arena_index(ir.indices.len());
+            push_prop_mesh(ir, &mesh, pos, ground.as_deref(), base_y);
+            ir.allocate_node(
+                "WORLD_GATED",
+                Some(parent),
+                IDENTITY_MATRIX,
+                visibility,
+                NodeKind::Mesh {
+                    vertex_offset,
+                    vertex_count: arena_index(ir.vertices.len()) - vertex_offset,
+                    index_offset,
+                    index_count: arena_index(ir.indices.len()) - index_offset,
+                    is_decal: ground.is_some() || mesh.is_decal(),
+                },
+            );
+        }
+    }
+}
+
+/// Appends one prop mesh at `pos`, or at its ground-snapped vertices when it has them.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX; each mesh index is at least its mesh's vertex_offset"
+)]
+fn push_prop_mesh(
+    ir: &mut SodModelIr,
+    mesh: &ShapeMesh<'_>,
+    pos: [f32; 3],
+    ground: Option<&[[f32; 3]]>,
+    base_y: f32,
+) {
+    let start = arena_index(ir.vertices.len());
+    for (i, v) in mesh.vertices.iter().enumerate() {
+        let position = ground
+            .and_then(|snapped| snapped.get(mesh.vertex_offset as usize + i))
+            .copied()
+            .unwrap_or([
+                v.position[0] + pos[0],
+                v.position[1] + pos[1] + base_y,
+                v.position[2] + pos[2],
+            ]);
+        ir.vertices.push(SodVertex {
+            position,
+            normal: v.normal,
+            palette_index: v.palette_index,
+            flags: v.flags,
+            scenery_class: SCENERY_PROP,
+            _padding: 0,
+        });
+    }
+    for &index in mesh.indices {
+        ir.indices.push(start + index - mesh.vertex_offset);
     }
 }
 
@@ -1809,5 +1878,30 @@ mod tests {
         let ir = world_with(square_prop(None), [500.0, 10.0, 20.0]);
         assert_eq!(prop_vertices(&ir, "WORLD_BASE").len(), 4);
         assert!(prop_vertices(&ir, "WORLD_DECAL").is_empty());
+    }
+
+    /// A gated prop section leaves the base batch for a `WORLD_GATED` node whose gate is
+    /// moved by the prop's placement.
+    #[test]
+    fn a_facing_gated_prop_section_is_its_own_node_with_the_gate_in_world_space() {
+        let mut prop = square_prop(Some(5.0));
+        let gate = VisibilityCondition::FacesEye {
+            point: [0.0, 1.0, 0.0],
+            normal: [0.0, 0.0, 1.0],
+        };
+        if let Some(node) = prop.nodes.first_mut() {
+            node.visibility = gate;
+        }
+        let ir = world_with(prop, [60.0, 12.6, 20.0]);
+        assert!(prop_vertices(&ir, "WORLD_BASE").is_empty());
+        assert_eq!(prop_vertices(&ir, "WORLD_GATED").len(), 5);
+        let gated = ir.nodes.iter().find(|n| n.name == "WORLD_GATED");
+        assert_eq!(
+            gated.map(|n| n.visibility),
+            Some(VisibilityCondition::FacesEye {
+                point: [60.0, 13.6, 20.0],
+                normal: [0.0, 0.0, 1.0],
+            })
+        );
     }
 }

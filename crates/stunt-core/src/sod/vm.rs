@@ -11,6 +11,7 @@ use crate::anchor::AnchorPoint;
 use crate::contracts::shape::{SodHeader, SodStop, SodStopReason, VisibilityCondition};
 use crate::reader::ByteReader;
 use crate::sod::SodError;
+use std::collections::HashMap;
 
 // Standard .SOD Opcodes per historical SOD.H and specification
 /// Clear the accumulator vertex to `[0.0, 0.0, 0.0]` (no operands).
@@ -102,7 +103,8 @@ pub const OP_GOTO: u16 = 0x019E;
 pub const OP_GOSUB: u16 = 0x01A7;
 /// Alias for [`OP_RETURN`]: ends the display list (no operands).
 pub const OP_END: u16 = 0x0195;
-/// 3D bounding-box culling test (`box_reg, count, ...faces`).
+/// Facing test (`first_flag, count, count * (reg_a, reg_b, reg_c)`): face `i` sets flag
+/// `first_flag + i` when `(a - b) x (c - b)` points at the eye (`PLAYONE` `0x9567`).
 pub const OP_REJ: u16 = 0x01B9;
 /// Copy `count` anchor-table points into consecutive vertex registers
 /// (`reg_off, count, count * anchor_byte_offsets`).
@@ -460,13 +462,29 @@ pub(crate) fn compute_polygon_normal(vertices: &[[f32; 3]]) -> [f32; 3] {
     }
 }
 
-/// Evaluates dynamic `OP_IFVIS` condition code to [`VisibilityCondition`].
-fn parse_visibility_condition(code: u16) -> VisibilityCondition {
-    match code {
-        1 => VisibilityCondition::LodDistanceSq(1000.0),
-        // 0 is "always"; unknown values degrade to the same.
-        _ => VisibilityCondition::Always,
-    }
+/// The gate of an `OP_IFVIS` section: its operand is the byte offset of a facing flag.
+///
+/// `PLAYONE` (`0x9BCC`) runs the section while `work:0x7C68[flag]` is nonzero, which
+/// `OP_REJ` (`0x9567`) sets when its face points at the eye. A flag this shape never set
+/// holds whatever an earlier shape left there, so its section is drawn.
+fn parse_visibility_condition(
+    flag: u16,
+    faces: &HashMap<u16, VisibilityCondition>,
+) -> VisibilityCondition {
+    faces
+        .get(&flag)
+        .copied()
+        .unwrap_or(VisibilityCondition::Always)
+}
+
+/// A raw register point (rotation-centre origin included) in `[I1]` metres, converted as a
+/// polygon vertex is.
+fn metric_point(raw: [f32; 3], ground_y_offset: i16, scale_factor: f32) -> [f32; 3] {
+    [
+        raw[0] * scale_factor,
+        (raw[1] + f32::from(ground_y_offset)) * scale_factor,
+        raw[2] * scale_factor,
+    ]
 }
 
 /// How a VM pass treats an opcode it cannot execute.
@@ -590,6 +608,9 @@ pub(crate) fn run_vm(
     let mut returned_at: Option<usize> = None;
     let mut current_visibility = VisibilityCondition::Always;
     let mut visibility_scope_end = 0usize;
+    // Facing flags (`PLAYONE` `work:0x7C68`) that `OP_REJ` writes and `OP_IFVIS` tests,
+    // keyed by flag byte offset, each kept as the gate it opens.
+    let mut faces: HashMap<u16, VisibilityCondition> = HashMap::new();
     // Where each pending `RETURN` resumes, with the `IFVIS` scope to restore there: a SORT
     // pushes its second branch and its continuation, a GOSUB the instruction after it.
     let mut branch_resume: Vec<(usize, VisibilityCondition, usize)> = Vec::new();
@@ -888,7 +909,7 @@ pub(crate) fn run_vm(
                     // Clamped beyond EOF
                     break;
                 };
-                current_visibility = parse_visibility_condition(cond_code);
+                current_visibility = parse_visibility_condition(cond_code, &faces);
                 visibility_scope_end = scope_end;
             }
             OP_SORT => {
@@ -997,10 +1018,32 @@ pub(crate) fn run_vm(
                 r.read_u16_le()?;
             }
             OP_REJ => {
-                r.read_u16_le()?;
+                // `0x9567` (normal by `0xB621`): flag = sign of ((a - b) x (c - b)) . (b - eye),
+                // set while negative. The eye is known only per frame, so the face is kept as
+                // the gate the renderer evaluates.
+                let first = r.read_u16_le()?;
                 let num_faces = r.read_u16_le()?;
-                for _ in 0..(num_faces as usize) * 3 {
-                    r.read_u16_le()?;
+                for i in 0..num_faces {
+                    let mut corner = || -> Result<[f32; 3], SodError> {
+                        let reg_idx = ((r.read_u16_le()? / 12) & 1023) as usize;
+                        Ok(metric_point(
+                            add3(regs.get(reg_idx), relpos),
+                            ground_y_offset,
+                            scale_factor,
+                        ))
+                    };
+                    let (a, b, c) = (corner()?, corner()?, corner()?);
+                    let u = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+                    let v = [c[0] - b[0], c[1] - b[1], c[2] - b[2]];
+                    let normal = [
+                        u[1] * v[2] - u[2] * v[1],
+                        u[2] * v[0] - u[0] * v[2],
+                        u[0] * v[1] - u[1] * v[0],
+                    ];
+                    faces.insert(
+                        first.wrapping_add(i),
+                        VisibilityCondition::FacesEye { point: b, normal },
+                    );
                 }
             }
             OP_TAP => {
