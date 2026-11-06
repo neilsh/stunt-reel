@@ -82,7 +82,8 @@ both; the plan cites the spec's decisions as D1 to D9.
 - Produces:
   - `fn create_instance(backends: wgpu::Backends) -> wgpu::Instance`
   - `const OFFSCREEN_BACKENDS: [wgpu::Backends; 2] = [wgpu::Backends::VULKAN, wgpu::Backends::all()]`
-  - `fn first_adapter<A>(attempts: &[wgpu::Backends], request: impl FnMut(wgpu::Backends) -> Option<A>) -> Option<A>`
+  - `fn first_adapter<A>(attempts: &[wgpu::Backends], preferred: impl Fn(&A) -> bool, request: impl FnMut(wgpu::Backends) -> Option<A>) -> Option<A>`
+  - `fn preferred_adapter(adapter: &wgpu::Adapter, options: RenderOptions) -> bool`
 
 - [ ] **Step 1: Write the failing tests** in `renderer.rs` `mod tests`:
 
@@ -90,7 +91,7 @@ both; the plan cites the spec's decisions as D1 to D9.
 #[test]
 fn first_adapter_stops_at_the_first_backend_that_finds_one() {
     let mut tried = Vec::new();
-    let got = first_adapter(&OFFSCREEN_BACKENDS, |b| { tried.push(b); Some(b) });
+    let got = first_adapter(&OFFSCREEN_BACKENDS, |_| true, |b| { tried.push(b); Some(b) });
     assert_eq!(got, Some(wgpu::Backends::VULKAN));
     assert_eq!(tried, vec![wgpu::Backends::VULKAN]);
 }
@@ -98,7 +99,7 @@ fn first_adapter_stops_at_the_first_backend_that_finds_one() {
 #[test]
 fn first_adapter_falls_back_to_all_backends() {
     let mut tried = Vec::new();
-    let got = first_adapter(&OFFSCREEN_BACKENDS, |b| {
+    let got = first_adapter(&OFFSCREEN_BACKENDS, |_| true, |b| {
         tried.push(b);
         (b == wgpu::Backends::all()).then_some(b)
     });
@@ -108,11 +109,28 @@ fn first_adapter_falls_back_to_all_backends() {
 
 #[test]
 fn first_adapter_is_none_when_no_backend_finds_one() {
-    assert_eq!(first_adapter(&OFFSCREEN_BACKENDS, |_| None::<u8>), None);
+    assert_eq!(first_adapter(&OFFSCREEN_BACKENDS, |_| true, |_| None::<u8>), None);
+}
+
+/// A fake adapter: the backends that found it, and whether it is hardware.
+type Fake = (wgpu::Backends, bool);
+
+#[test]
+fn first_adapter_passes_over_a_software_vulkan_adapter_for_hardware() {
+    let got = first_adapter(&OFFSCREEN_BACKENDS, |&(_, hw): &Fake| hw, |b| {
+        Some((b, b == wgpu::Backends::all()))
+    });
+    assert_eq!(got, Some((wgpu::Backends::all(), true)));
+}
+
+#[test]
+fn first_adapter_keeps_the_first_software_adapter_when_no_backend_has_hardware() {
+    let got = first_adapter(&OFFSCREEN_BACKENDS, |&(_, hw): &Fake| hw, |b| Some((b, false)));
+    assert_eq!(got, Some((wgpu::Backends::VULKAN, false)));
 }
 ```
 
-- [ ] **Step 2: Run `mise run test-rust`.** Expected: the three tests fail to compile
+- [ ] **Step 2: Run `mise run test-rust`.** Expected: the five tests fail to compile
   (`first_adapter` and `OFFSCREEN_BACKENDS` are not defined).
 
 - [ ] **Step 3: Implement.**
