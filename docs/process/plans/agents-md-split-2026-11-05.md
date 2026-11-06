@@ -238,6 +238,7 @@ Findings that changed the design or the tooling:
 - **Merging #238.** `main` widened SOP 2 to rendering and render-residual findings and added
   Directive 4. The skill became `recording-findings` with that scope, Directive 4 points at it
   (its `Skills` line went), and `changing-seam-contracts` records new format facts by it.
+  Re-run with the same prompt: 3/3 loaded `recording-findings` and covered every item.
 
 ## Out of scope
 
