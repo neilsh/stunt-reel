@@ -116,10 +116,12 @@ fn first_adapter_is_none_when_no_backend_finds_one() {
   (`first_adapter` and `OFFSCREEN_BACKENDS` are not defined).
 
 - [ ] **Step 3: Implement.**
-  - `first_adapter`: the first `Some` over `attempts`, in order.
+  - `first_adapter`: the first `Some` over `attempts` that `preferred` accepts, else the first
+    `Some` at all. Offscreen prefers any adapter but a CPU one (a software Vulkan driver must
+    not hide DX12's GPU); `software_only` prefers any.
   - `create_instance`: takes its `backends`.
   - `offscreen_adapter`'s `get_or_init` closure: becomes
-    `first_adapter(&OFFSCREEN_BACKENDS, |b| select_adapter(&create_instance(b), None, options))`.
+    `first_adapter(&OFFSCREEN_BACKENDS, |a| preferred_adapter(a, options), |b| select_adapter(&create_instance(b), None, options))`.
     `select_adapter` already runs the low-power fallback inside each instance.
   - Every other caller of `create_instance` (the windowed `acquire` path) passes
     `wgpu::Backends::all()`, which fixes Review Focus 5.

@@ -24,7 +24,7 @@ the smallest cost in scoring logic and sweep time.
 | D5 | Engine build of the new references | `playone = "unpatched"`, as for CTRY and INTRO. `makeone = "unpatched"` too: the film plays an archive made with `mise run make-all` on the unpatched `MAKEONE`, committed as a manifest (ADR 0032) and pinned by D9, because the archives shipped under `siarchive/` have no known build (§ 4.1). A film that stalls on an unpatched executable takes that executable's `patch3` build, with the cause written in `reason`. |
 | D6 | Parallel scoring | `--jobs N` on `mise run parity` and `mise run sweep` runs (variant, film) render-and-score pairs at once. The default is `min(8, os.cpu_count() or 1, pairs)`. There is no live RAM or VRAM probe; the cost per job (§ 3.1) is documented instead. |
 | D7 | Output under parallelism | Results on stdout print in the same fixed (variant, film) order as a sequential run, so the table, the winner line and the film summary lines are unchanged. Progress lines on stderr (`[parity] rendering …`, `[i/n] …`) may interleave. |
-| D8 | Render start-up | The offscreen path tries a Vulkan-only instance first and falls back to `Backends::all()` only when Vulkan yields no adapter. This saves about 1 s and 80 MiB per process, with byte-identical output (§ 3.2). The windowed path is unchanged. |
+| D8 | Render start-up | The offscreen path tries a Vulkan-only instance first and falls back to `Backends::all()` when Vulkan yields no adapter, or only a CPU one, which it keeps if no backend has hardware. This saves about 1 s and 80 MiB per process, with byte-identical output (§ 3.2). The windowed path is unchanged. |
 | D9 | Which archive a film plays | The reference pins it. Each `references.toml` row gains `all_sha256`. Archive resolution (`all_archive.resolve_all`) takes a pinned hash and returns the archive with those bytes (a stored `make-all` archive, a linked rebuild, or a shipped copy), or refuses. `parity` and `capture-ref` both resolve this way, so a render and its capture play the same archive (§ 4.1). It changes what a reference pins, so it needs an ADR amending ADR 0029. |
 
 ## 3. Evidence
@@ -216,9 +216,10 @@ a tree.
 Offline only, except where a live check is named. The tests for each piece are listed here.
 
 **D8 (Rust).** The backend order is a pure step: a function takes the attempts
-(`[VULKAN, all()]`) and a request closure, and returns the first adapter. A unit test drives it
-with a fake request, covering the case where Vulkan finds an adapter and the case where it falls
-back, so the fallback is tested without a GPU. The existing GPU tests still pass, on lavapipe in
+(`[VULKAN, all()]`), a preference and a request closure, and returns the first preferred adapter,
+else the first found. A unit test drives it with a fake request, covering the case where Vulkan
+finds an adapter, the case where it falls back, and a software Vulkan adapter passed over for
+hardware but kept when nothing better exists, so the fallback is tested without a GPU. The existing GPU tests still pass, on lavapipe in
 CI and locally. Live check: `mise run parity` gives identical score lines before and after.
 
 **D9 (Python).** On a temporary data root holding two copies of a film with different `.ALL`
