@@ -9,10 +9,13 @@ does, the way `STUNT_REQUIRE_KSC` guards the schema test.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shutil
+import signal
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -21,6 +24,9 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 GIT = shutil.which("git")
+
+#: `_run` kills a timed-out process tree differently on Windows.
+pytestmark = pytest.mark.windows
 
 #: Variables that point git at another repository. Git sets them while it runs a hook, so a
 #: suite started from one would otherwise configure and commit in the outer repository.
@@ -53,32 +59,66 @@ def prek() -> str:
 #: Seconds any one git or prek call may take; these fixtures finish in a few.
 _TIMEOUT = 60
 
+#: Seconds to collect what is left once a timed-out call's process tree is killed.
+_DRAIN = 10
+
 
 def _run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     """Run a command in `repo`; a hung one is killed and fails the test with its output.
 
     Without a timeout a hung prek held its pytest worker until the gate killed the worker,
     which orphaned prek with the scratch repository as its working directory (issue #220).
+    The whole tree is killed: on Windows `subprocess.run` kills only the child and then
+    waits without limit for the pipes, which a hook's process prek started can hold open.
     """
+    proc = subprocess.Popen(  # noqa: S603 - fixed test arguments
+        list(args),
+        cwd=repo,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,  # one process group to kill on POSIX; ignored on Windows
+    )
     try:
-        return subprocess.run(  # noqa: S603 - fixed test arguments
-            list(args),
-            cwd=repo,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=_TIMEOUT,
-        )
-    except subprocess.TimeoutExpired as error:
+        stdout, stderr = proc.communicate(timeout=_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        _kill_tree(proc)
+        try:
+            stdout, stderr = proc.communicate(timeout=_DRAIN)
+        except subprocess.TimeoutExpired as error:
+            # A process outside the tree still holds the pipes; report what arrived. On
+            # Windows a reader thread is blocked on them, and closing them waits for it.
+            stdout, stderr = _text(error.stdout), _text(error.stderr)
+            if sys.platform != "win32":
+                for pipe in (proc.stdout, proc.stderr):
+                    if pipe is not None:
+                        pipe.close()
         pytest.fail(
             f"{' '.join(args)} timed out after {_TIMEOUT} s\n"
-            f"stdout:\n{_text(error.stdout)}\nstderr:\n{_text(error.stderr)}"
+            f"stdout:\n{_text(stdout)}\nstderr:\n{_text(stderr)}"
         )
+    return subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
+
+
+def _kill_tree(proc: subprocess.Popen[str]) -> None:
+    """Kill `proc` and every process it started that is still in its tree or group."""
+    if sys.platform == "win32":
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            subprocess.run(  # noqa: S603 - fixed arguments
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],  # noqa: S607 - Windows built-in
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+    else:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+    proc.kill()
 
 
 def _text(output: str | bytes | None) -> str:
-    # On POSIX a timed-out run hands back bytes even with text=True.
+    """Return captured output as text; a timed-out read can give bytes or None."""
     if isinstance(output, bytes):
         return output.decode(errors="replace")
     return output or ""
