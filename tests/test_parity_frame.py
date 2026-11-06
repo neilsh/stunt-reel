@@ -225,7 +225,7 @@ def test_render_env_keeps_the_inherited_environment(monkeypatch: pytest.MonkeyPa
 def test_frame_pictures_stay_in_the_checkout_when_the_data_root_is_elsewhere(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Scratch pictures are per checkout; the data root is shared by every worktree (SOP 6)."""
+    """Scratch pictures are per checkout; the data root is shared by every worktree (managing-worktrees skill)."""
     cleared: list[Path] = []
     monkeypatch.setattr(parity_frame, "read_capture", lambda _path: _capture_set([10]))
     monkeypatch.setattr(parity_pipeline, "render_film", lambda *_a, **_k: None)

@@ -35,7 +35,7 @@ Cut the guidance every turn pays for without hiding a rule every task needs:
 | # | Decision | Why |
 |---|---|---|
 | D1 | Only Claude Code needs to discover skills; other harnesses (DeepSeek, Orca/Codex) stay in use but read `AGENTS.md` only. | The session's answer; `AGENTS.md` needs no skill index. |
-| D2 | Skills live only in `.agents/skills/`; `.claude/skills/` is deleted. | The session's answer. Claude Code's skills page (code.claude.com/docs/en/skills, read 2026-11-05) lists only `.claude/skills/` for project skills, so this is verified in the first evaluation (section 6); if Claude Code does not list a skill from `.agents/skills/`, stop and decide again. |
+| D2 | Skills live only in `.agents/skills/`; `.claude/skills/` is deleted, and `AGENTS.md` points at each skill under `### Skills` with its trigger. | Revised 2026-11-05 after the first evaluation: Claude Code does not list `.agents/skills/` (every run's `init` skill list lacked the new skills). A `.claude/skills` symlink works where git checks out symlinks, but fails silently where it does not; pointers work in every harness, at about 700 bytes of `AGENTS.md`. |
 | D3 | Keep the rules every task needs in `AGENTS.md`, move procedures only some tasks need into skills, and remove the repeats. | Rejected: trim-only (pointers to docs carry no description to trigger on) and a pure router (every-task rules would depend on a trigger firing). |
 | D4 | SOP numbers become named headings; live citations name the heading or the skill. | A number breaks when a section moves; a name survives. |
 | D5 | Skill descriptions state only when to use the skill ("Use when …", one clause per distinct case), never the workflow. | superpowers:writing-skills: an agent follows a workflow summary in the description instead of reading the body. |
@@ -127,7 +127,7 @@ Each skill's steps and the condition that ends them:
   linking to `AGENTS.md`'s headings. The policies only it holds stay: worktree-per-writer mode,
   which model a subagent uses, globbing from a named folder, and the note that nothing enforces
   these for you.
-- **`.claude/skills/`:** deleted (D2). `CLAUDE.md`'s second sentence, which says the stub
+- **`.claude/skills/`:** deleted; `AGENTS.md` points at the skills instead (D2). `CLAUDE.md`'s second sentence, which says the stub
   works "the same way `.claude/skills/` points at `.agents/skills/`", loses that comparison.
 
 ### 4.4 Citations
@@ -223,6 +223,4 @@ Not started.
 
 ## Open questions
 
-- If Claude Code does not read `.agents/skills/` (D2), the fallback is generated
-  `.claude/skills/` stubs from a `mise run` task, with a test that each stub's description
-  matches its skill. That fallback needs its own decision.
+- None: D2 was settled by the first evaluation in favour of `AGENTS.md` pointers.

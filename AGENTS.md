@@ -21,22 +21,19 @@ Refer directly to authoritative documents rather than duplicating definitions:
 | **Domain Glossary** | [`GLOSSARY.md`](GLOSSARY.md) | Canonical project vocabulary. |
 | **System Specification** | [`docs/SPEC.md`](docs/SPEC.md) | Goals, invariants, evidentiary tiers, verification matrix; no binary-analysis findings. |
 | **Architecture & 1-Hop Routing** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Code path → governing anchors and research notes. |
-| **Anchor Registry** | [`python/stunt_reel/doc_anchors.py`](python/stunt_reel/doc_anchors.py) | Every `[I*]`, `# [FMT-*]` and `# [MEM-*]` token and the heading that defines it. |
+| **Anchor Registry** | [`python/stunt_reel/doc_anchors.py`](python/stunt_reel/doc_anchors.py) | Where each `[I*]`, `[FMT-*]` and `[MEM-*]` anchor is defined. |
 | **Runtime Memory Map** | [`research/playone-exe/memory-map.md`](research/playone-exe/memory-map.md) | `DGROUP` offset tables and memory anchors (`# [MEM-*]`). |
 | **Seam Contracts** | [`contracts/mod.rs`](crates/stunt-core/src/contracts/mod.rs) | Seams 1–4: VFS, trajectory, shape, capture and compare. |
 | **Project Setup & Tasks** | [`README.md`](README.md), [`docs/development.md`](docs/development.md) & [`mise.toml`](mise.toml) | Prerequisites and every task; `mise tasks` is the live list. |
-| **Repository Layout** | [`docs/development.md`](docs/development.md#project-structure) | Crates, tooling directories, asset storage rules. |
-| **Synthetic Fixtures** | [`tests/fixtures/README.md`](tests/fixtures/README.md) | Synthetic mock files and their byte specs. |
 | **Reference Corpus** | [`corpus/README.md`](corpus/README.md) | Upstream demo archive and community package layout. |
 | **Binary Disassembly** | [`research/playone-exe/`](research/playone-exe/) | Evidence for `PLAYONE.EXE`, routed by [`research/README.md`](research/README.md). |
 | **Format Specs & Byte Layouts** | [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog; byte layouts live only in the `.ksy` schemas. |
-| **Research Routing** | [`research/README.md`](research/README.md) | Where each kind of finding goes, and note shape. |
 | **Parity** | [`research/parity/`](research/parity/) | Method, dated log, attribution and render-model notes. |
 | **Issues & skill configuration** | [`docs/agents/`](docs/agents/) | GitHub Issues via `gh`, triage labels, domain docs; review threads with `mise run pr-threads -- <number>`. |
 | **Decisions (ADRs)** | [`docs/adr/`](docs/adr/) | One file per accepted design decision. |
 | **Coding & Format Rules** | [`Cargo.toml`](Cargo.toml), [`pyproject.toml`](pyproject.toml), [`.editorconfig`](.editorconfig) | Clippy, Ruff and Mypy settings; LF, 4-space indent. |
-| **Agents & Harnesses** | [`docs/harness.md`](docs/harness.md) | Agent policy, then per-harness sandbox, shell, approval and subagent notes. |
-| **Harness Setup** | [`docs/harness-setup.md`](docs/harness-setup.md) | Machine-local setup: tools, mise trust, data root, worktree placement. |
+| **Agents & Harnesses** | [`docs/harness.md`](docs/harness.md) | Agent policy and per-harness notes. |
+| **Harness Setup** | [`docs/harness-setup.md`](docs/harness-setup.md) | Machine-local setup and the data root. |
 
 Process documents, **not** sources of truth: [`docs/process/TEAM_SHEET.md`](docs/process/TEAM_SHEET.md) (roles, file blast radii, ticket status), under [`docs/process/`](docs/process/). Never cite them for a fact about the system.
 
@@ -56,12 +53,21 @@ Process documents, **not** sources of truth: [`docs/process/TEAM_SHEET.md`](docs
 
 Each turn re-sends the whole conversation, so cost is roughly turns times context size.
 
-1. **Fewer, fuller turns.** Batch independent reads and commands into one turn. Find the file through [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) before grepping, and read line ranges of files over about 20 KB. Reach a file with `read` and a string with `grep`/`glob`, not a shell.
+1. **Fewer, fuller turns.** Batch independent reads and commands into one turn. Find the file through [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) before grepping, and read line ranges of files over about 20 KB.
 2. **Scoped checks while iterating.** For Python, `mise run fix`, then `mise run lint-py` and `mise run typecheck`, then `mise run test-py -- <test file>`. For Rust, `mise run check-rust`. Run the full `mise run check` once, before you commit, hand off or call the task done, and `check-py` or `check-rust` to re-run a half that failed.
-3. **Scripts before subagents.** Mechanical checks belong in a script. Delegate only real chunks of work, at most about 8 subagents per task, each with a whole brief: goal, paths, output shape, stopping condition ([`docs/harness.md`](docs/harness.md)).
-4. **Drive everything through `mise run`.** `mise run *` is the one command shape the harness pre-approves and `mise tasks` the one list of what exists; a task name not there does not exist. For a one-off, `mise exec -- uv run …` runs the pinned uv (expect an approval prompt); a command needed twice earns a task. A bare `uv` may not be the pinned version.
+3. **Scripts before subagents.** Mechanical checks belong in a script. Delegate only real chunks of work, at most about 8 subagents per task, each with a whole brief: goal, paths, output shape, stopping condition.
+4. **Drive everything through `mise run`.** `mise run *` is the one command shape the harness pre-approves and `mise tasks` the one list of what exists; a task name not there does not exist. For a one-off, `mise exec -- uv run …` runs the pinned uv (expect an approval prompt); a command needed twice earns a task.
+
+### Skills
+
+Before work one of these covers, read its skill:
+
+- **Seam contracts**: a type, field or parser under `crates/stunt-core/src/contracts/`, or its fixtures: [`changing-seam-contracts`](.agents/skills/changing-seam-contracts/SKILL.md).
+- **Binary findings**: an offset, opcode, DGROUP field or format behaviour worth keeping in `research/`, or a tier promotion: [`recording-binary-findings`](.agents/skills/recording-binary-findings/SKILL.md).
+- **Worktrees and the data root**: making, removing or reaping a worktree, or finding the corpus or a capture: [`managing-worktrees`](.agents/skills/managing-worktrees/SKILL.md).
+- **Render parity**: parity, SSIM, IoU, capture, probe or sweep work: [`improving-render-parity`](.agents/skills/improving-render-parity/SKILL.md).
 
 ### Worktrees
 
 1. One writer per checkout path, one branch per worktree, made inside the primary checkout under `.claude/worktrees/` or `.agents/worktrees/` (Orca workspaces excepted). A read-only scout may share a path; two writers must not. Never work on a branch another worktree holds.
-2. A worktree the tool that made it cannot remove is reaped with `mise run reap -- --yes` from the primary checkout, which unlinks old data-root links first and waits for low disk space. Never call `git worktree remove` yourself on a worktree `mise run init` linked: it has deleted shared data through Windows junctions ([ADR 0018](docs/adr/0018-reaping-unlinks-the-data-root-links-first.md)).
+2. Remove a worktree an older `mise run init` linked only with `mise run reap -- --yes` from the primary checkout, never `git worktree remove`: git has deleted shared data through its junctions ([ADR 0018](docs/adr/0018-reaping-unlinks-the-data-root-links-first.md)).
