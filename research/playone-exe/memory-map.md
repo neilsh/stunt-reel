@@ -38,6 +38,9 @@
 | `0x22CA`, `0x22CC` | `[Supported Inference]` | `u16` x 2 | Segments of the two composed pages, swapped every render; after a finished copy, rows 0–191 of `A000` equal one of them (rows 192–199, the button bar, are drawn on `A000` directly). A page with bands from each is torn ([`capture-dosbox-automation.md` § 4.5](capture-dosbox-automation.md#45-torn-pages-and-the-dac-lag)) | |
 | `0x22CE` | `[Established]` | `u16` | Preserved `SS` register during `INSTALL.EXE` child execution: written at image `0x0C94`, restored at `0x0CC4` around the `int 21h AX=4B00h` EXEC of `DS:0x05BE` (`install.exe`) at `0x0CBD` | |
 | `0x22D0` | `[Established]` | `u16` | Preserved `SP` register during `INSTALL.EXE` child execution: written at image `0x0C98`, restored at `0x0CC8` around the same EXEC | |
+| `0x2285` | `[Supported Inference]` | `u8` | View-direction selector read by the view setup at `0x126F`: 1, 2 and 3 turn the camera's angle words a quarter or half turn (`0x1289..0x12A3`), other nonzero values call `0x4B03`. The only writer in a linear decode of the image is `mov byte [0x2285], 0` at `0x49F3`, so film playback draws with 0 | |
+| `0x22DE` | `[Established]` | `u16` | Near pointer to the view camera's slot record, `[0x4888 + 2 × view_obj + 0x2E]`, stored by the view setup at `0x1206`; the scene walk skips the actor draw for this slot (`0x1E26`). Live on `INTRO.FLM`: `0x3994` (slot 1) at ticks 2678-2766, `0x3AA2` (slot 4) at 2801 ([`film-segments.md` § 2.1](../parity/film-segments.md#21-held-sand-shots-at-ticks-2690-2850)) | |
+| `0x2A68` | `[Established]` | `i32[3]` | View eye, 16.16 fixed-point metres in `PLAYONE`'s axes (x and y negated against `[I1]`): `0x1251..0x125E` copy the slot record's `+0x04..+0x0F` here each frame; the ground-leaf back-face test (`0x23C8`) and the scene walk (`0x1DD9`, `0x1E43`) read it. The record's angle words `+0x10`, `+0x12`, `+0x14` (roll, pitch, yaw in binary angle units, `[Bounded Observation]` from matching our camera, [`film-segments.md` § 2.1](../parity/film-segments.md#21-held-sand-shots-at-ticks-2690-2850)) go to the rotation builder at `0x12A7` | |
 | `0x4758` | `[Established]` | `u16` | Field `+0x0E` of the sibling `0x474A` struct; reads 0 during playback — **not** the film clock | `# [MEM-FLM-TICK]` |
 | `0x4896` | `[Established]` | `u16` | Active film clock in 50 Hz ticks (struct base `0x4888` + `0x0E`); ends at the film's authored total and holds there; equals `0x22B8` on every frame-locked read until it holds, see below | `# [MEM-FLM-TICK]` |
 | `0x4F02` | `[Established]` | `u8[128]` | `PFONT.BIN` width table, indexed by character code at `0x58D0` ([`pfont.md`](../formats/auxiliary/pfont.md)) | |
@@ -73,6 +76,7 @@ The **Evidence** column says how each patched offset was found. *N refs* means N
 | `0x2272` | `0x1BF8` | 20 refs | Playback-active flag | `# [MEM-FLM-TICK]` |
 | `0x2275` | `0x1BFB` | 2 refs | Video-mode flag | `# [MEM-PALETTE]` |
 | `0x227A`, `0x227B`, `0x227C`, `0x227D` | `0x1C00`, `0x1C01`, `0x1C02`, `0x1C03` | 9, 3, 3, 2 refs | Screen-faded flag, cached palette inputs | `# [MEM-PALETTE]` |
+| `0x2285` | `0x1C0B` | 2 refs; bytes | View-direction selector | |
 | `0x2294`, `0x2296`, `0x2298`, `0x229A` | `0x1C1A`, `0x1C1C`, `0x1C1E`, `0x1C20` | 27, 16, 13, 9 refs | Credits clip rectangle | |
 | `0x229C`, `0x229E`, `0x22A4` | `0x1C22`, `0x1C24`, `0x1C2A` | 4, 4, 2 refs | Lens mantissa, lens shift count, `0x22A4` | `# [MEM-PALETTE]` |
 | `0x22B6` | `0x1C3C` | 2 refs | View-setup scale | `# [MEM-PALETTE]` |
@@ -81,6 +85,8 @@ The **Evidence** column says how each patched offset was found. *N refs* means N
 | `0x22C4` | `0x1C4A`, `[Established]` | 3 refs (`mov [0x1C4A], es` in the patched entry routine) | Stored PSP segment | |
 | `0x22CA`, `0x22CC` | `0x1C50`, `0x1C52`, `[Bounded Observation]` | 17, 6 refs; a live capture flagged 72 of 1,906 frames torn against 66 of 1,908 unpatched ([`patch3.md` § 3.1](patch3.md#31-composed-pages)) | Composed-page segments | |
 | `0x22CE`, `0x22D0` | `0x1C54`, `0x1C56` | 2 refs each | Saved `SS`, `SP` around the `INSTALL.EXE` EXEC | |
+| `0x22DE` | `0x1C64` | 2 refs; bytes | View camera's slot record pointer | |
+| `0x2A68` | `0x23EE` | 4 refs; bytes | View eye | |
 | `0x2468` | `0x1DEE` | 3 imm | Base palette | `# [MEM-PALETTE]` |
 | `0x2768` | `0x20EE` | 9 imm; a live capture read identical palettes ([`patch3.md` § 2](patch3.md#2-patched-playoneexe-offsets)) | Working palette | `# [MEM-PALETTE]` |
 | `0x474A` | `0x40D0` | 12 imm | Live film-state struct | `# [MEM-PALETTE]` |
@@ -106,6 +112,7 @@ The **Evidence** column says how each patched offset was found. *N refs* means N
 | `0x0F84`, `0x58D0` | `0x1097`, `0x5AC7` | Credits centring, string width | |
 | `0x0FD2` | `0x10E5` | Palette build | `# [MEM-PALETTE]` |
 | `0x11F8`, `0x11FC`, `0x122E`, `0x1238`, `0x123D` | `0x130B`, `0x130F`, `0x1341`, `0x134B`, `0x1350` | View setup and its lens stores | `# [MEM-PALETTE]` |
+| `0x1251` | `0x1364` | View setup: eye copy from the view slot record (the `view-slot` plan's break) | |
 | `0x12DC`, `0x12E3`, `0x12F8` | `0x13EF`, `0x13F6`, `0x140B` | Lens zoom of the view matrix | `# [MEM-PALETTE]` |
 | `0x136F` | `0x1482` | Film-variable interpolation | `# [MEM-PALETTE]` |
 | `0x196C` | `0x1A7F` | World light from var 13 (the same 14 instructions) | `# [MEM-PALETTE]` |
