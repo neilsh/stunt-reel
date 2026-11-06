@@ -57,7 +57,8 @@ impl FfmpegVideoWriter {
     /// Spawns an `ffmpeg` process ready to receive raw RGBA frames over standard input.
     ///
     /// Overwrites `path` (`-y`); `.webm` encodes VP9, any other extension H.264. `width` and
-    /// `height` are pixels; `fps` is the container rate (`[I4]`).
+    /// `height` are pixels; `fps` is the rate of the frames supplied, independent of the 50 Hz
+    /// film clock (`[I4]`).
     ///
     /// # Errors
     /// - [`VideoExportError::FfmpegNotFound`] if `ffmpeg` is not on `PATH`.

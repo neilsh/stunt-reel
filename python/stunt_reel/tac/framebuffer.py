@@ -95,7 +95,8 @@ def capture(
     ``playone_sha256``. Returns what :func:`write_capture` returns.
 
     Raises ValueError if *max_frames* is below 1, and PlanError if no window frame equals a
-    composed page (check the layout's offsets) or no window held a usable frame.
+    composed page (check the layout's offsets) or no window held a usable frame. A film whose
+    clock never runs gets no windows and writes a capture with no frames.
     """
     if max_frames < 1:
         # Otherwise the pick is empty and the capture fails as if the film had no usable frame.

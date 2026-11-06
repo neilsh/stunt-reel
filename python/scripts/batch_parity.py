@@ -100,8 +100,8 @@ def process(
     """Run the requested stages of each film; return how many stage errors this call recorded.
 
     A film in *skip* gets a ``skipped`` capture record and runs no later stage; outside *skip* such
-    a record is ignored. A film in *force* reruns each stage whatever its latest record says, and a
-    forced render or score first removes the earlier output. *jobs* films run at once (in the
+    a record is ignored. A stage in *force*, and every later stage of the film, runs whatever its
+    latest record says; a forced render or score first removes the earlier output. *jobs* films run at once (in the
     calling thread when 1), at most *max_renders* rendering at a time, each starting only while
     *min_free_gb* gigabytes are free under *root* (polled with *sleep*).
     """
