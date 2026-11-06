@@ -143,13 +143,13 @@ run = "uv run python python/scripts/migrate_captures.py"
 
 [tasks.sweep]
 depends = ["ensure"]
-description = "Candidate sweep: render and score DBG_* variants on CTRY and INTRO (mise run sweep -- --var DBG_X=0,1 [--films ctry] [--probe iou] [--keep-best] [--no-build] [--reuse DIR] [--retime N])"
+description = "Candidate sweep: render and score DBG_* variants on every reference film (mise run sweep -- --var DBG_X=0,1 [--films ctry] [--probe iou] [--keep-best] [--jobs N] [--no-build] [--reuse DIR] [--retime N])"
 run = "uv run python python/scripts/parity_sweep.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.parity]
 depends = ["ensure"]
-description = "Parity baseline: render both films with the current binary and print the headline scores (mise run parity -- [--films ctry,intro] [--no-build] [--no-render] [--reuse DIR] [--retime N])"
+description = "Parity baseline: render every reference film with the current binary and print the headline scores (mise run parity -- [--films ctry,intro] [--jobs N] [--no-build] [--no-render] [--reuse DIR] [--retime N])"
 run = "uv run python python/scripts/parity_run.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 

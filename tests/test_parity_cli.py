@@ -15,13 +15,14 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
+import cli  # noqa: E402
 import parity_run  # noqa: E402
 import parity_sweep  # noqa: E402
 from cli import ParityOptions, UsageError, add_parity_options, parity_options  # noqa: E402
 
 from archive_helpers import build_all  # noqa: E402
 from render_helpers import reference_tree  # noqa: E402
-from stunt_reel import dataroot, parity_pipeline, references  # noqa: E402
+from stunt_reel import dataroot, parity_layout, parity_pipeline, references  # noqa: E402
 from stunt_reel.all_archive import ArchiveMeta, publish_archive  # noqa: E402
 from stunt_reel.parity_pipeline import REPO_ROOT  # noqa: E402
 
@@ -62,7 +63,7 @@ def test_the_shared_flags_are_defined_once() -> None:
     parser = argparse.ArgumentParser(prog="parity")
     add_parity_options(parser)
     actions = {action.dest: action for action in parser._actions}
-    assert set(actions) == {"help", "films", "data_root", "no_build", "reuse", "retime"}
+    assert set(actions) == {"help", "films", "data_root", "no_build", "reuse", "retime", "jobs"}
     assert actions["films"].default is None
     assert actions["reuse"].help == "score DIR/<film> without rendering"
 
@@ -126,3 +127,64 @@ def test_the_bench_data_root_flag_moves_the_data_root(tmp_path: Path) -> None:
     )
     assert dataroot.data_root_flag(args.data_root) == tmp_path.resolve()
     assert dataroot.data_root() == tmp_path.resolve()
+
+
+def test_jobs_defaults_to_eight_capped_by_cores_and_pairs(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(os, "cpu_count", lambda: 16)
+    assert cli.resolve_jobs(None, 24) == 8
+    assert cli.resolve_jobs(None, 2) == 2
+    monkeypatch.setattr(os, "cpu_count", lambda: None)
+    assert cli.resolve_jobs(None, 24) == 1
+
+
+def test_jobs_above_pairs_is_clamped() -> None:
+    assert cli.resolve_jobs(32, 3) == 3
+    assert cli.resolve_jobs(1, 3) == 1
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "two"])
+def test_jobs_must_be_a_positive_integer(value: str) -> None:
+    for module in (parity_run, parity_sweep):
+        with pytest.raises(SystemExit):
+            module.parse_args(["--jobs", value])
+
+
+def test_jobs_reaches_the_options() -> None:
+    assert _options(parity_run, ["--jobs", "3"]).jobs == 3
+    assert _options(parity_sweep, []).jobs is None
+
+
+@pytest.mark.parametrize("jobs", ["1", "2"])
+def test_parity_run_rotates_trees_the_same_at_any_jobs(
+    jobs: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = reference_tree(tmp_path / "data", [7])
+    repo = tmp_path / "repo"
+    renders: list[str] = []
+
+    def fake_render(job: parity_pipeline.FilmJob, out: Path, *_a: object, **_k: object) -> None:
+        renders.append(job.name)
+        out.mkdir(parents=True)
+        (out / "marker").write_text(str(renders.count(job.name)), encoding="utf-8")
+
+    def fake_score(
+        job: parity_pipeline.FilmJob, render: Path, report: Path, **_k: object
+    ) -> parity_pipeline.FilmScore:
+        return parity_pipeline.FilmScore(job.name, render, report, parity_pipeline.Score(0.5, 0.5))
+
+    monkeypatch.setattr(parity_run, "REPO_ROOT", repo)
+    monkeypatch.setattr(parity_run, "render_film", fake_render)
+    monkeypatch.setattr(parity_run, "check_film", lambda *_a: None)
+    monkeypatch.setattr(parity_run, "score_film", fake_score)
+    monkeypatch.setattr(parity_run, "format_summary", lambda name, _report: f"{name} scored")
+    monkeypatch.setattr(parity_run, "preflight", lambda *_a, **_k: [])
+    argv = ["--no-build", "--data-root", str(root), "--jobs", jobs]
+    assert parity_run.main(argv) == 0
+    assert parity_run.main(argv) == 0
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.endswith("scored")]
+    assert lines == ["ctry scored", "intro scored"] * 2
+    for film in ("ctry", "intro"):
+        current = repo / parity_layout.render_dir(film) / "marker"
+        previous = repo / parity_layout.previous_dir(film) / "marker"
+        assert current.read_text(encoding="utf-8") == "2"
+        assert previous.read_text(encoding="utf-8") == "1"

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from render_helpers import tick_entry
+from render_helpers import reference_tree, tick_entry
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -18,7 +18,7 @@ import parity_probe  # noqa: E402
 import parity_sweep  # noqa: E402
 from parity_sweep import Variant  # noqa: E402
 
-from stunt_reel import parity_artifacts  # noqa: E402
+from stunt_reel import parity_artifacts, parity_layout, parity_pipeline  # noqa: E402
 from stunt_reel.parity_artifacts import FilmId, Geometry, StoredFrame  # noqa: E402
 from stunt_reel.parity_pipeline import Score  # noqa: E402
 
@@ -162,3 +162,67 @@ def test_validate_selector_requires_var_or_reuse() -> None:
         parity_sweep.validate_selector(Path("dir"), ["DBG_X=0,1"])
     with pytest.raises(ValueError, match="--var is required"):
         parity_sweep.validate_selector(None, [])
+
+
+def _sweep_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, interrupt_on: str | None = None
+) -> Path:
+    """Patch ``parity_sweep`` so ``main`` runs offline: fake renders scored by ``DBG_X``."""
+    root = reference_tree(tmp_path / "data", [7])
+    repo = tmp_path / "repo"
+    scores = {"a": 0.5, "b": 0.5, "c": 0.4}
+
+    def fake_run_film(
+        job: parity_pipeline.FilmJob,
+        workdir: Path,
+        *,
+        env: dict[str, str] | None = None,
+        retime: int | None = None,  # noqa: ARG001 - run_film's signature
+    ) -> parity_pipeline.FilmScore:
+        value = (env or {})["DBG_X"]
+        if value == interrupt_on:
+            raise KeyboardInterrupt
+        out = workdir / job.name
+        out.mkdir(parents=True, exist_ok=True)
+        score = parity_pipeline.Score(scores[value], scores[value])
+        return parity_pipeline.FilmScore(job.name, out, workdir / f"{job.name}_report", score)
+
+    monkeypatch.setattr(parity_sweep, "REPO_ROOT", repo)
+    monkeypatch.setattr(parity_sweep, "run_film", fake_run_film)
+    monkeypatch.setattr(parity_sweep, "preflight", lambda *_a, **_k: [])
+    monkeypatch.setattr(parity_sweep, "write_crops", lambda *_a, **_k: [])
+    return root
+
+
+@pytest.mark.parametrize("jobs", ["1", "4"])
+def test_sweep_keeps_the_same_best_at_any_jobs(
+    jobs: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _sweep_env(tmp_path, monkeypatch)
+    argv = ["--var", "DBG_X=a,b,c", "--keep-best", "--no-build", "--data-root", str(root)]
+    assert parity_sweep.main([*argv, "--jobs", jobs]) == 0
+    sweep = tmp_path / "repo" / parity_layout.sweep_root()
+    assert sorted(path.name for path in sweep.iterdir()) == ["v001"]
+
+
+def test_sweep_prints_the_same_table_at_any_jobs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _sweep_env(tmp_path, monkeypatch)
+    argv = ["--var", "DBG_X=c,a,b", "--no-build", "--data-root", str(root)]
+    assert parity_sweep.main([*argv, "--jobs", "1"]) == 0
+    sequential = capsys.readouterr().out
+    assert parity_sweep.main([*argv, "--jobs", "4"]) == 0
+    assert capsys.readouterr().out == sequential
+
+
+@pytest.mark.parametrize("jobs", ["1", "2"])
+def test_sweep_interrupt_leaves_no_work_directories(
+    jobs: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _sweep_env(tmp_path, monkeypatch, interrupt_on="b")
+    argv = ["--var", "DBG_X=a,b,c", "--no-build", "--data-root", str(root), "--jobs", jobs]
+    with pytest.raises(KeyboardInterrupt):
+        parity_sweep.main(argv)
+    sweep = tmp_path / "repo" / parity_layout.sweep_root()
+    assert not sweep.exists() or not any(sweep.glob("v*"))

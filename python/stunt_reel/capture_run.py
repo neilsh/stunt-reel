@@ -330,7 +330,13 @@ def execute(job: Job, plan_: Plan, *, launch: Launch = automation.launched) -> i
             slug = parity_layout.slug_for(film, job.name)
         except ValueError as exc:
             raise Refused(str(exc)) from exc
-        archive = None if job.kind == "archive" else resolve_all(film, dataroot.REPO_ROOT, slug)
+        archive = (
+            None
+            if job.kind == "archive"
+            else resolve_all(
+                film, dataroot.REPO_ROOT, slug, pinned=references.read_pin(dataroot.REPO_ROOT, slug)
+            )
+        )
         film_id = _film_id(film, archive)
         store = dataroot.data_root()
         target = _store_path(job.kind, slug)

@@ -162,3 +162,27 @@ def test_a_relative_capture_directory_reads_the_data_root(
     monkeypatch.chdir(tmp_path)
     _capture(tmp_path / "data", "vault-intro")
     assert capture_digest.main(["--dir", "captures/vault-intro/frames"]) == 0
+
+
+def test_the_suggested_row_pins_the_captures_archive() -> None:
+    pin = "a" * 64
+    lines = capture_digest.report("vault-ctry", "0" * 64, all_sha256=pin)
+    row = lines.index("[ctry]")
+    assert lines[row + 2] == f'sha256 = "{"0" * 64}"'
+    assert lines[row + 3] == f'all_sha256 = "{pin}"'
+
+
+def test_main_reads_the_archive_pin_from_the_capture(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    directory = _capture(tmp_path, "vault-ctry")
+    (directory / "meta.json").write_text(json.dumps({"all_sha256": "b" * 64}), encoding="utf-8")
+    assert capture_digest.main(["vault-ctry"], root=tmp_path) == 0
+    assert f'all_sha256 = "{"b" * 64}"' in capsys.readouterr().out.splitlines()
+
+
+def test_promoting_a_capture_with_no_archive_hash_warns_the_pin_goes() -> None:
+    lines = capture_digest.report("vault-ctry", "0" * 64)
+    row = lines.index("[ctry]")
+    assert any("removes the archive pin" in line for line in lines[:row])
+    assert not any(line.startswith("all_sha256") for line in lines)
