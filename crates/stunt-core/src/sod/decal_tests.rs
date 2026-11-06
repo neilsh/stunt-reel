@@ -5,6 +5,7 @@ use crate::sod::DECAL_FLAG_BIT;
 use crate::sod::decal::{bounds_overlap, is_coplanar_facet, polygon_bounds};
 use crate::sod::vm::RawPolygon;
 
+/// A decal on each of six planes moves exactly the displacement along its normal (`[I5]`).
 #[test]
 fn test_challenge_i5_exact_normal_displacement_across_multiple_planes() {
     // Test decal displacement distance across 6 canonical and oblique planes:
@@ -178,6 +179,7 @@ fn test_challenge_i5_exact_normal_displacement_across_multiple_planes() {
     }
 }
 
+/// A polygon that is disjoint from or not coplanar with an earlier one is not a decal (`[I5]`).
 #[test]
 fn test_challenge_i5_rejection_of_disjoint_and_noncoplanar_facets() {
     let base = RawPolygon {
@@ -256,6 +258,7 @@ fn test_challenge_i5_rejection_of_disjoint_and_noncoplanar_facets() {
     );
 }
 
+/// A later polygon coplanar with and overlapping an earlier one becomes a displaced decal.
 #[test]
 fn test_coplanar_decal_geometry_resolution() {
     let base = RawPolygon {
@@ -347,6 +350,7 @@ fn test_coplanar_decal_geometry_resolution() {
     assert!(!processed[3].is_decal, "skewed normal facet is not a decal");
 }
 
+/// Polygon bounds are the per-axis extremes, and overlap is their intersection.
 #[test]
 fn test_polygon_bounds_and_overlap() {
     let p = RawPolygon {

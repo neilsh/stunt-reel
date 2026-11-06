@@ -24,6 +24,7 @@ fn make_sod_header(
     header
 }
 
+/// Vertices weld only when position, normal, palette index and flags all agree (`[I1]`).
 #[test]
 fn test_challenge_i1_vertex_welding_full_attribute_tuple_oracle() {
     // Base triangle
@@ -93,6 +94,7 @@ fn test_challenge_i1_vertex_welding_full_attribute_tuple_oracle() {
     assert_eq!(ir.indices[5], 3); // new vertex
 }
 
+/// A decal never welds to the base polygon it shares an edge with (`[I5]`).
 #[test]
 fn test_challenge_i5_decal_edge_sharing_and_welding() {
     // Base quad at z=0 (Palette 10)
@@ -161,6 +163,7 @@ fn test_challenge_i5_decal_edge_sharing_and_welding() {
     }
 }
 
+/// Positions closer than the weld tolerance merge and farther ones stay apart (`[I1]`).
 #[test]
 fn test_challenge_i1_welding_distance_threshold_oracle() {
     // Sub-threshold separation (0.00004 m < 1e-4 tolerance) -> MUST WELD
@@ -222,6 +225,7 @@ fn test_challenge_i1_welding_distance_threshold_oracle() {
     );
 }
 
+/// Identical polygons weld; a different normal or palette index keeps vertices apart.
 #[test]
 fn test_attribute_preserving_vertex_welding() {
     let p1 = RawPolygon {
