@@ -52,6 +52,7 @@ fn raw_matrix_for(slot: &SlotState) -> [f32; 16] {
         rotation_quat: slot.rotation_quat_dos(),
         position_meters: slot.position_dos_meters(),
         state_mask: 1,
+        casts_shadow: false,
         joint_angles_bam: Vec::new(),
     }
     .compute_world_matrix()

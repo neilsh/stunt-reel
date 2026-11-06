@@ -92,6 +92,8 @@ fn test_oracle_intro_trajectory_fixture() {
     assert_eq!(records[0].actors[0].model_name, "FOKKER");
     assert_eq!(records[0].actors[0].shape_id, 1);
     assert_eq!(records[0].actors[0].position_meters, [0.0, 10.0, 0.0]);
+    // The fixture predates `casts_shadow`, so its serde default must fill it (SOP 4).
+    assert!(!records[0].actors[0].casts_shadow);
     assert_eq!(records[0].audio_cues.len(), 1);
     assert_eq!(records[0].audio_cues[0].sample_name, "ENGINE.VOC");
 

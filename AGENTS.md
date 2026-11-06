@@ -9,6 +9,7 @@
 1. **Asset isolation**: **NEVER** commit proprietary assets, executables, or original binary disks into Git (`corpus/` is strictly gitignored). All tests must run 100% offline using synthetic fixtures in [`tests/fixtures/`](tests/fixtures/README.md). Two small game-derived tables, and illustrative comparison images (a captured frame beside our render, cited by a research note), are documented exceptions under the rules in [`NOTICE.md`](NOTICE.md).
 2. **Quality Gate Requirement**: Before concluding any task or presenting code, **always verify that `mise run check` passes** (format check, lint, typecheck, test across both Rust and Python). See [`docs/development.md`](docs/development.md#development--quality-assurance) and [`mise.toml`](mise.toml).
 3. **Architectural Invariants**: All code conforms to `[I1]` coordinates, `[I2]` flat arena, `[I3]` VGA palette indices, `[I4]` 50 Hz ticks, `[I5]` coplanar decals, `[I6]` parity thresholds, `[I7]` asset isolation and a pure `stunt-core`, `[I8]` 8.3 paths, defined in [`docs/SPEC.md` § 2](docs/SPEC.md#2-system-architectural-invariants--guardrails) and summarized in [`contracts/mod.rs`](crates/stunt-core/src/contracts/mod.rs).
+4. **Findings live in `research/`**: every new format, rendering or render-residual finding, ruled-out hypotheses included, lands in the note that owns it by [`research/README.md`](research/README.md), in the same commit as the code that relies on it. See [`recording-binary-findings`](.agents/skills/recording-binary-findings/SKILL.md).
 
 ---
 

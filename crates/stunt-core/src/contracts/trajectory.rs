@@ -92,6 +92,7 @@ impl CameraTransform {
 }
 
 impl Default for CameraTransform {
+    /// The authored default: eye 50 m back and 10 m up, looking at the origin.
     fn default() -> Self {
         Self {
             eye: [0.0, 10.0, 50.0],
@@ -122,6 +123,11 @@ pub struct ActorTransform {
     pub position_meters: [f32; 3],
     /// Dynamic state bitmask (gear, smoke, visibility, damage state).
     pub state_mask: u16,
+    /// The slot casts a ground shadow: its create flags carry `SIF_SHADOW` (`0x04`), on
+    /// which PLAYONE's actor loop queues the flattened shadow draw (image `0x1E35`,
+    /// `research/playone-exe/sod-vm.md` section 9.1).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub casts_shadow: bool,
     /// Articulated subobject BAM rotation angles `(subobject_id, raw_bam_u16)`.
     #[cfg_attr(feature = "serde", serde(default))]
     pub joint_angles_bam: Vec<(u16, u16)>,
@@ -279,6 +285,7 @@ mod tests {
         assert!((focal_px - 256.0).abs() < 1e-3, "focal {focal_px}");
     }
 
+    /// An unrotated actor's world matrix is the identity rotation plus its position.
     #[test]
     fn test_compute_world_matrix_identity() {
         let actor = ActorTransform {
@@ -288,6 +295,7 @@ mod tests {
             rotation_quat: [0.0, 0.0, 0.0, 1.0], // Identity quaternion
             position_meters: [10.0, 20.0, 30.0],
             state_mask: 0,
+            casts_shadow: false,
             joint_angles_bam: Vec::new(),
         };
 
@@ -313,6 +321,7 @@ mod tests {
         assert_eq!(header.horizon_sky_palette, (12, 45));
     }
 
+    /// A trajectory record survives a JSON round trip unchanged.
     #[cfg(feature = "serde")]
     #[test]
     fn test_contracts_serde_roundtrip() {
@@ -333,6 +342,7 @@ mod tests {
                 rotation_quat: [0.0, 0.0, 0.0, 1.0],
                 position_meters: [10.0, 20.0, 30.0],
                 state_mask: 0x0001,
+                casts_shadow: false,
                 joint_angles_bam: vec![(0, 0x4000)],
             }],
             audio_cues: vec![AudioCue {
@@ -373,6 +383,7 @@ mod tests {
         assert_eq!(capture, cap_deserialized);
     }
 
+    /// World matrices match the DOS-math goldens in `tests/fixtures/dos_math_goldens.json`.
     #[test]
     fn compute_world_matrix_matches_shared_goldens() {
         let text = include_str!("../../../../tests/fixtures/dos_math_goldens.json");
@@ -405,6 +416,7 @@ mod tests {
                 rotation_quat: [quat[0], quat[1], quat[2], quat[3]],
                 position_meters: [pos[0], pos[1], pos[2]],
                 state_mask: 0,
+                casts_shadow: false,
                 joint_angles_bam: Vec::new(),
             };
             let actual = actor.compute_world_matrix();
