@@ -1,0 +1,190 @@
+# AGENTS.md split into project skills (2026-11-05)
+
+Status: **design agreed 2026-11-05; implementation not started**, on branch
+`claude/agents-md-refactor-72199a`. Source: a brainstorming session of 2026-11-05 that started
+from "AGENTS.md and the other agent files are getting unwieldy; suggest splitting into project
+skills". This note owns the design; the task list will be a sibling
+`agents-md-split-implementation-2026-11-05.md`.
+
+## 1. Goal
+
+Cut the guidance every turn pays for without hiding a rule every task needs:
+
+- `AGENTS.md` drops from 19,320 bytes to about 8 KB and keeps only the rules every task needs.
+- Each meaning has one home. A procedure only some tasks need lives in a skill under
+  `.agents/skills/`, reached by its description, or in an existing doc, reached by one pointer line.
+- `mise run check` passes, and every new skill passes its own evaluation (section 6).
+
+## 2. What forced it
+
+- `AGENTS.md` is loaded on every turn of every Claude Code session (through `CLAUDE.md`), about
+  5k tokens. SOP 1 (contracts), SOP 2 and SOP 4 (binary findings and tier promotion) and most of
+  SOP 6 (data root, captures, reaping) each serve one kind of task.
+- It caches material that lives elsewhere: the `[I1]`–`[I8]` bullets restate
+  [`docs/SPEC.md` § 2](../../SPEC.md); the "Binary Disassembly" and "Parity" rows of its table
+  index files that [`research/README.md`](../../../research/README.md) and the
+  `improving-render-parity` skill already route to; the gate details restate ADRs 0014 and 0016.
+- [`docs/harness.md`](../../harness.md) Policy restates SOP 5.5 and SOP 6 (one writer per
+  checkout), so the two drift.
+- `.claude/skills/improving-render-parity/SKILL.md` copies the real skill's description by hand
+  and nothing checks the copy.
+
+## 3. Decisions
+
+| # | Decision | Why |
+|---|---|---|
+| D1 | Only Claude Code needs to discover skills; other harnesses (DeepSeek, Orca/Codex) stay in use but read `AGENTS.md` only. | The session's answer; `AGENTS.md` needs no skill index. |
+| D2 | Skills live only in `.agents/skills/`; `.claude/skills/` is deleted. | The session's answer. Claude Code's skills page (code.claude.com/docs/en/skills, read 2026-11-05) lists only `.claude/skills/` for project skills, so this is verified in the first evaluation (section 6); if Claude Code does not list a skill from `.agents/skills/`, stop and decide again. |
+| D3 | Keep the rules every task needs in `AGENTS.md`, move procedures only some tasks need into skills, and remove the repeats. | Rejected: trim-only (pointers to docs carry no description to trigger on) and a pure router (every-task rules would depend on a trigger firing). |
+| D4 | SOP numbers become named headings; live citations name the heading or the skill. | A number breaks when a section moves; a name survives. |
+| D5 | Skill descriptions state only when to use the skill ("Use when …", one clause per distinct case), never the workflow. | superpowers:writing-skills: an agent follows a workflow summary in the description instead of reading the body. |
+| D6 | Each skill names the models expected to use it, and is evaluated on each. | A skill Haiku will use must be shown to work with Haiku. |
+
+## 4. Design
+
+### 4.1 What AGENTS.md keeps
+
+1. **One-line description of the project.**
+2. **Non-negotiables.** Asset isolation and the gate as today. The invariants become one line of
+   names (`[I1]` coordinates … `[I8]` 8.3 paths) linking to SPEC § 2; thresholds and detail stay
+   in SPEC.
+3. **Where things live**, a shorter routing table:
+   - "Binary Disassembly" becomes one line: `research/playone-exe/` holds the `PLAYONE.EXE`
+     evidence, and `research/README.md` routes to it.
+   - "Parity" points at `research/parity/`.
+   - "Project Setup" loses its gate details.
+   - "Agent Skills" is removed.
+   - "Skill Configuration" and the closing "Agent skills" section merge into one row.
+   - The "process docs are not sources of truth" line stays; `tests/test_doc_invariants.py`
+     enforces it.
+4. **Working rules**, under named headings:
+   - **Committing** (from SOP 3 and Commit Messages): stage files by name, Conventional Commit
+     subject, a body that answers why, the gate line. Handoffs go in the note that owns the work,
+     never only in agent memory, and append-only files such as `research/parity/log.md` take rows
+     only at the end (from SOP 6.4). The PR-picture rule is removed; the `improving-render-parity`
+     description already covers it.
+   - **Working economically** (SOP 5, same substance): fewer and fuller turns, scoped checks,
+     scripts before subagents, everything through `mise run`.
+   - **Worktrees**: one writer per checkout path, with worktrees under `.claude/worktrees/` or
+     `.agents/worktrees/`; remove worktrees with `mise run reap -- --yes` from the primary
+     checkout. This stays loaded every turn because a wrong removal can delete shared data.
+
+SOP 1, SOP 2 and SOP 4 leave `AGENTS.md` entirely.
+
+### 4.2 New skills
+
+Each is `.agents/skills/<name>/SKILL.md`, under 500 words: a one-line overview, steps each
+ending on a checkable done-condition, a quick-reference table, and **Common mistakes** filled
+only from the baseline failures the evaluation records. A fact another doc owns is linked, not
+copied.
+
+| Skill | Source | Models | Description |
+|---|---|---|---|
+| `changing-seam-contracts` | SOP 1, SOP 4.2 | Opus | Use when adding or changing a stunt-core seam contract or format parser (a type or field under `crates/stunt-core/src/contracts/`: vfs, trajectory, shape, palette), or the synthetic fixtures that test one. |
+| `recording-binary-findings` | SOP 2, SOP 4.1 | Opus | Use when disassembly, a debugger session or a capture turns up an offset, opcode, DGROUP field or behaviour of PLAYONE.EXE, MAKEONE.EXE, STUNT.EXE or a game file format worth keeping in `research/`, or when promoting a finding's evidentiary tier. |
+| `managing-worktrees` | SOP 6.1–6.3, 6.5 | Opus, Haiku | Use when creating, removing or reaping a stunt-reel worktree, running `mise run reap` or `clean`, or when a task in a worktree needs the corpus, a capture or the data root (`STUNT_DATA_ROOT`). |
+
+Each skill's steps and the condition that ends them:
+
+- **`changing-seam-contracts`:**
+  1. Add or change the types and re-export them from `contracts/mod.rs`.
+  2. Give each new field `#[cfg_attr(feature = "serde", serde(default))]`.
+  3. Write synthetic fixture bytes and their entry in `tests/fixtures/README.md`.
+  4. Add unit and roundtrip tests and run them with `--all-features`.
+  5. Run `mise run check-rust` while iterating, then the full gate.
+
+  Done when every new field has a roundtrip test and every new fixture has a README entry.
+- **`recording-binary-findings`:**
+  1. Choose the owning note by the routing rule in `research/README.md`; link the rule, don't
+     copy it.
+  2. Add every new offset to `research/playone-exe/memory-map.md`, and register every new
+     `# [MEM-*]`/`# [FMT-*]` anchor in `python/stunt_reel/doc_anchors.py`.
+  3. Raise the evidentiary tier. The ladder is owned by `EVIDENTIARY_TIERS` in
+     `python/scripts/verify_formats_docs.py`; each step up cites the linear address or the note
+     that proves it.
+  4. Change `docs/SPEC.md` only if the finding changes a goal, invariant or gate.
+
+  Done when the note ends with **Ruled out** and **Open questions**, and every offset and anchor
+  it introduces is registered.
+- **`managing-worktrees`:** where worktrees go and the Orca exception; that a new worktree needs
+  no setup (ADR 0036); the data root and its captures, the SOP 6.3 paragraph (ADRs 0022, 0024,
+  0028, `references.toml` pins); reaping and its flags. It links to
+  [`docs/harness-setup.md`](../../harness-setup.md) for the junction and robocopy details and
+  to [`docs/harness.md`](../../harness.md) for writer modes, without copying either.
+
+### 4.3 Removing the remaining repeats
+
+- **`docs/harness.md` Policy:** the gate, `mise run`, and one-writer bullets become a single line
+  linking to `AGENTS.md`'s headings. The policies only it holds stay: worktree-per-writer mode,
+  which model a subagent uses, globbing from a named folder, and the note that nothing enforces
+  these for you.
+- **`.claude/skills/`:** deleted (D2).
+
+### 4.4 Citations
+
+`SOP <n>` and `Directive <n>` citations in live files become the heading or skill name:
+
+- `.github/workflows/ci.yml`, `mise.toml`
+- `python/scripts/check_commit_msg.py` with `tests/test_check_commit_msg.py`
+- `python/scripts/worktree_init.py`, `tests/test_parity_frame.py`, `tests/test_worktree_layout.py`
+- `docs/harness.md`, `docs/harness-setup.md`
+- ADRs 0008, 0012, 0026 (its `SOP 6.4` link gets a heading anchor) and 0031
+
+Dated plans under `docs/process/plans/` are records of the past, so they keep their old
+citations. The directives stay numbered, so `Directive <n>` citations stay valid.
+
+### 4.5 New check
+
+`python/scripts/verify_formats_docs.py` adds `.agents/skills/*/SKILL.md` to `LINK_SCAN_GLOBS`,
+so a broken link in a skill fails the gate.
+
+## 5. Order
+
+1. Trim `AGENTS.md` (4.1) and fix the citations (4.4), leaving the SOP 1/2/4/6 material in a
+   scratch copy for the skills.
+2. For each skill in turn: run the baseline, write the skill, run the evaluation with the skill
+   (section 6). Only then start the next skill.
+3. `docs/harness.md` (4.3), the link check (4.5), delete `.claude/skills/`.
+4. Verification (section 7), then a pull request.
+
+## 6. Skill evaluation
+
+Each skill runs one realistic prompt for its case, as a dry run: "list the files you would
+touch and the steps you would take; edit nothing". Each run uses a fresh subagent in this
+worktree, three repetitions per model named in 4.2.
+
+- **Baseline (expected to fail):** trimmed `AGENTS.md`, skill absent. Record what the subagent
+  misses, word for word.
+- **With the skill (expected to pass):** skill present. A pass means the subagent loads the
+  skill on its own and covers every step. The first such run also settles D2.
+- **Tightening:** a miss in the second run changes the wording, not the length, and that skill is
+  tested again.
+- **Already-followed rules:** a rule the baseline already follows is one the model follows by
+  default; it is deleted rather than moved into the skill.
+
+Record the results in section 8 of this note.
+
+## 7. Verification
+
+- `mise run check` passes.
+- `AGENTS.md` is at most about 8 KB.
+- `grep -rn 'SOP [0-9]'` finds nothing outside `docs/process/plans/`.
+- Every skill passes section 6 on each model named for it.
+
+## 8. Results
+
+Not started.
+
+## Out of scope
+
+- Rewording `improving-render-parity`'s description into the "Use when …" form (D5); a
+  follow-up.
+- `docs/development.md` (35 KB) and `docs/ARCHITECTURE.md` (22 KB); neither is loaded every
+  turn.
+- Personal skills under `~/.claude/skills/`.
+
+## Open questions
+
+- If Claude Code does not read `.agents/skills/` (D2), the fallback is generated
+  `.claude/skills/` stubs from a `mise run` task, with a test that each stub's description
+  matches its skill. That fallback needs its own decision.
