@@ -1036,7 +1036,8 @@ fn preferred_adapter(adapter: &wgpu::Adapter, options: RenderOptions) -> bool {
 /// The offscreen adapter of the acquisition policy, chosen once per process.
 ///
 /// Creating the instance and enumerating its adapters is the expensive part of start-up (see
-/// [`OFFSCREEN_BACKENDS`]), against about 30 ms for a device. A process that opens several
+/// [`OFFSCREEN_BACKENDS`]: a median 1.39 s per one-tick render with Vulkan first, against 3.15 s
+/// with every backend), against about 30 ms for a device. A process that opens several
 /// offscreen renderers, as the GPU integration tests do, pays that once: the adapter keeps its
 /// instance alive, and each renderer still opens a device of its own. A process that found no
 /// adapter keeps finding none.
