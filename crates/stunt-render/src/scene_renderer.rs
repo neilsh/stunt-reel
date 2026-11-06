@@ -8,7 +8,9 @@
 //! Frame use is two-phase because a render pass borrows its bind groups: call
 //! [`SceneRenderer::prepare`] (uploads camera and matrices, may allocate slots), then
 //! [`SceneRenderer::draw`] inside the pass. Opaque base meshes of every draw precede the
-//! decal meshes of every draw per `[I5]`.
+//! decal meshes of every draw per `[I5]`. An actor that casts a shadow gets a second draw of
+//! its shape, flattened onto the ground and filled in palette index 0, which lies on the
+//! terrain and so goes in the decal pass whole.
 //!
 //! Complies with `[I1]` (frames arrive in right-handed metres) and `[I5]`.
 
@@ -132,30 +134,62 @@ impl SceneRenderer {
             if base.is_empty() && decals.is_empty() {
                 continue;
             }
-            if slot == self.slots.len() {
-                self.slots.push(Self::new_slot(device, &self.model_layout));
+            let layer = LAYER_FIRST_ACTOR + actor_index;
+            // The shadow lies on the terrain, so all of it is a decal [I5]. PLAYONE's entry
+            // sort (`0x1B88`) paints every shadow before every actor; here the depth test
+            // keeps the actor in front of its shadow where the two overlap
+            // (research/playone-exe/sod-vm.md section 9.1).
+            if let Some(shadow_matrix) = actor.shadow_matrix {
+                let uniform = ModelUniform::shadow(shadow_matrix, layer);
+                let shadow = base.iter().chain(&decals).copied().collect();
+                self.push_shape(
+                    device,
+                    queue,
+                    actor.shape_id,
+                    &mut slot,
+                    &uniform,
+                    (Vec::new(), shadow),
+                );
             }
-            let Some(model_slot) = self.slots.get(slot) else {
-                continue;
-            };
-            queue.write_buffer(
-                &model_slot.buffer,
-                0,
-                bytemuck::bytes_of(&ModelUniform::new(
-                    actor.world_matrix,
-                    LAYER_FIRST_ACTOR + actor_index,
-                )),
+            let uniform = ModelUniform::new(actor.world_matrix, layer);
+            self.push_shape(
+                device,
+                queue,
+                actor.shape_id,
+                &mut slot,
+                &uniform,
+                (base, decals),
             );
-            self.prepared.push(PreparedDraw {
-                target: Target::Shape {
-                    shape_id: actor.shape_id,
-                    slot,
-                },
-                base,
-                decals,
-            });
-            slot += 1;
         }
+    }
+
+    /// Queues a draw of `shape_id`'s `(base, decals)` slices through the next model-matrix
+    /// slot, filled with `uniform`.
+    fn push_shape(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        shape_id: u16,
+        slot: &mut usize,
+        uniform: &ModelUniform,
+        (base, decals): (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>),
+    ) {
+        if *slot == self.slots.len() {
+            self.slots.push(Self::new_slot(device, &self.model_layout));
+        }
+        let Some(model_slot) = self.slots.get(*slot) else {
+            return;
+        };
+        queue.write_buffer(&model_slot.buffer, 0, bytemuck::bytes_of(uniform));
+        self.prepared.push(PreparedDraw {
+            target: Target::Shape {
+                shape_id,
+                slot: *slot,
+            },
+            base,
+            decals,
+        });
+        *slot += 1;
     }
 
     /// Encodes the draws chosen by the last [`Self::prepare`] into `rpass`.

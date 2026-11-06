@@ -79,6 +79,93 @@ pub struct World {
     /// `None` for a tree that was walked in full or when no scenery was supplied; a stop
     /// leaves the props gathered before it in the world.
     pub scenery_stop: Option<ScnStop>,
+    /// The terrain's triangles, for the ground plane under a point ([`Self::ground_plane`]).
+    pub terrain: TerrainSurface,
+}
+
+impl World {
+    /// The plane of the terrain triangle under `(x, z)` nearest height `y`, or the level
+    /// plane `y = 0` off the map: PLAYONE's shadow queue `0x19FC` solves the height on one
+    /// plane and takes `y = 0` for a null plane (`0x1A12`)
+    /// (`research/playone-exe/sod-vm.md` section 9.1).
+    #[must_use]
+    pub fn ground_plane(&self, x: f32, z: f32, y: f32) -> GroundPlane {
+        self.terrain
+            .plane_near(x, z, y)
+            .unwrap_or(GroundPlane::LEVEL_ZERO)
+    }
+}
+
+/// The plane `normal . p = offset`, with a unit `normal` that points up (`normal[1] > 0`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GroundPlane {
+    /// Unit normal, `+Y` component positive per `[I1]`.
+    pub normal: [f32; 3],
+    /// `normal . p` for every point `p` of the plane.
+    pub offset: f32,
+}
+
+impl GroundPlane {
+    /// The level plane `y = 0`.
+    pub const LEVEL_ZERO: Self = Self {
+        normal: [0.0, 1.0, 0.0],
+        offset: 0.0,
+    };
+
+    /// The plane through three points; `None` when they are collinear or the plane is
+    /// vertical.
+    #[must_use]
+    pub fn through(p: [f32; 3], q: [f32; 3], r: [f32; 3]) -> Option<Self> {
+        let u = [q[0] - p[0], q[1] - p[1], q[2] - p[2]];
+        let v = [r[0] - p[0], r[1] - p[1], r[2] - p[2]];
+        let n = [
+            u[1] * v[2] - u[2] * v[1],
+            u[2] * v[0] - u[0] * v[2],
+            u[0] * v[1] - u[1] * v[0],
+        ];
+        let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        if len < 1e-12 || n[1].abs() < 1e-6 * len {
+            return None;
+        }
+        let s = len.copysign(n[1]);
+        let normal = [n[0] / s, n[1] / s, n[2] / s];
+        let offset = normal[0] * p[0] + normal[1] * p[1] + normal[2] * p[2];
+        Some(Self { normal, offset })
+    }
+
+    /// Height of the plane at `(x, z)`.
+    #[must_use]
+    pub fn height_at(&self, x: f32, z: f32) -> f32 {
+        let [nx, ny, nz] = self.normal;
+        (self.offset - nx * x - nz * z) / ny
+    }
+
+    /// Column-major matrix that moves each point straight down (along `-Y`) onto this plane
+    /// raised `lift` metres along its normal, keeping its `x` and `z`. PLAYONE's shadow draw
+    /// does the same to the object matrix: `0x1C0D` replaces its Y row with
+    /// `-(a*row0 + c*row2) / b` (`research/playone-exe/sod-vm.md` section 9.1).
+    #[must_use]
+    pub fn flatten_matrix(&self, lift: f32) -> [f32; 16] {
+        let [nx, ny, nz] = self.normal;
+        [
+            1.0,
+            -nx / ny,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -nz / ny,
+            1.0,
+            0.0,
+            0.0,
+            (self.offset + lift) / ny,
+            0.0,
+            1.0,
+        ]
+    }
 }
 
 /// Why a `SCENERY.scn` walk was cut short.
@@ -257,7 +344,8 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
     );
 
     let base_y = 0.0;
-    let ir = build_world_ir(pts, &map_areas, &unique_instances, shapes, base_y);
+    let terrain = TerrainSurface::new(pts, &map_areas, base_y);
+    let ir = build_world_ir(pts, &map_areas, &terrain, &unique_instances, shapes, base_y);
     // `build_world_ir` always emits the ocean quad, so the extent exists.
     let bounds = ir.extent()?;
     Some(World {
@@ -266,6 +354,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         props_placed: unique_instances.len(),
         bounds,
         scenery_stop,
+        terrain,
     })
 }
 
@@ -739,6 +828,7 @@ const UP: [f32; 3] = [0.0, 1.0, 0.0];
 pub(crate) fn build_world_ir(
     anchors: &[AnchorPoint],
     map_areas: &[MapArea],
+    surface: &TerrainSurface,
     instances: &[(u16, [f32; 3])],
     ir_models: &HashMap<u16, SodModelIr>,
     base_y: f32,
@@ -752,12 +842,11 @@ pub(crate) fn build_world_ir(
     } else {
         push_terrain(&mut ir, anchors, map_areas, base_y);
     }
-    let surface = TerrainSurface::new(anchors, map_areas, base_y);
     let grounded: Vec<Option<Vec<[f32; 3]>>> = instances
         .iter()
         .map(|&(shape_id, pos)| {
             let model = ir_models.get(&shape_id)?;
-            ground_decal_vertices(model, [pos[0], pos[1] + base_y, pos[2]], &surface)
+            ground_decal_vertices(model, [pos[0], pos[1] + base_y, pos[2]], surface)
         })
         .collect();
     push_props(&mut ir, instances, &grounded, ir_models, base_y, false);
@@ -899,13 +988,15 @@ const GROUND_FLAT_TOLERANCE: f32 = 0.05;
 const GROUND_LIE_TOLERANCE: f32 = 0.1;
 
 /// The terrain as a set of triangles (each `MAP.BIN` patch fanned from its first corner, as
-/// [`push_terrain`] draws it), answering how high the ground is at a point.
-struct TerrainSurface {
+/// `push_terrain` draws it), answering how high the ground is at a point. The default has
+/// no triangles, so no point is over terrain.
+#[derive(Clone, Debug, Default)]
+pub struct TerrainSurface {
     triangles: Vec<[[f32; 3]; 3]>,
 }
 
 impl TerrainSurface {
-    fn new(anchors: &[AnchorPoint], map_areas: &[MapArea], base_y: f32) -> Self {
+    pub(crate) fn new(anchors: &[AnchorPoint], map_areas: &[MapArea], base_y: f32) -> Self {
         let pts: Vec<[f32; 3]> = anchors
             .iter()
             .map(|a| {
@@ -931,6 +1022,19 @@ impl TerrainSurface {
     /// The height of the terrain triangle over `(x, z)` that is nearest `y`, where several
     /// patches overlap in plan (a hillside over a lower coast patch). `None` off the map.
     fn height_near(&self, x: f32, z: f32, y: f32) -> Option<f32> {
+        self.triangle_near(x, z, y).map(|(_, height)| height)
+    }
+
+    /// The plane of the terrain triangle over `(x, z)` whose height there is nearest `y`.
+    /// `None` off the map.
+    #[must_use]
+    pub fn plane_near(&self, x: f32, z: f32, y: f32) -> Option<GroundPlane> {
+        let (t, _) = self.triangle_near(x, z, y)?;
+        GroundPlane::through(t[0], t[1], t[2])
+    }
+
+    /// The triangle over `(x, z)` whose height there is nearest `y`, with that height.
+    fn triangle_near(&self, x: f32, z: f32, y: f32) -> Option<(&[[f32; 3]; 3], f32)> {
         // A point on a shared edge counts for both triangles.
         const EDGE_SLACK: f32 = -1e-4;
         self.triangles
@@ -947,9 +1051,9 @@ impl TerrainSurface {
                     / denom;
                 let c = 1.0 - a - b;
                 (a >= EDGE_SLACK && b >= EDGE_SLACK && c >= EDGE_SLACK)
-                    .then(|| a * t[0][1] + b * t[1][1] + c * t[2][1])
+                    .then(|| (t, a * t[0][1] + b * t[1][1] + c * t[2][1]))
             })
-            .min_by(|p, q| (p - y).abs().total_cmp(&(q - y).abs()))
+            .min_by(|(_, p), (_, q)| (p - y).abs().total_cmp(&(q - y).abs()))
     }
 }
 
@@ -1662,7 +1766,8 @@ mod tests {
         ir_models.insert(0x0100, prop_ir);
 
         let instances = vec![(0x0100, [100.0, 50.0, 200.0])];
-        let world_ir = build_world_ir(&pts, &map_areas, &instances, &ir_models, 0.0);
+        let surface = TerrainSurface::new(&pts, &map_areas, 0.0);
+        let world_ir = build_world_ir(&pts, &map_areas, &surface, &instances, &ir_models, 0.0);
 
         // Should contain ocean quad (4 verts), terrain triangle (3 verts), and prop base + decal
         assert!(world_ir.vertices.len() >= 7);
@@ -1677,7 +1782,14 @@ mod tests {
 
     #[test]
     fn test_build_world_ir_without_map_lays_ocean_then_ground() {
-        let world_ir = build_world_ir(&[], &[], &[], &HashMap::new(), 5.0);
+        let world_ir = build_world_ir(
+            &[],
+            &[],
+            &TerrainSurface::default(),
+            &[],
+            &HashMap::new(),
+            5.0,
+        );
         assert_eq!(world_ir.vertices.len(), 8);
         assert_eq!(world_ir.indices, [0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
         let (ocean, ground) = world_ir.vertices.split_at(4);
@@ -1774,6 +1886,34 @@ mod tests {
         (pts, areas)
     }
 
+    #[test]
+    fn the_ground_plane_is_the_terrain_triangle_under_the_point_and_level_off_the_map() {
+        let (pts, areas) = sloped_terrain();
+        let terrain = TerrainSurface::new(&pts, &areas, 0.0);
+        let (x, z) = (60.0, 20.0);
+        let plane = terrain.plane_near(x, z, 50.0).expect("over the triangle");
+        let height = terrain.height_near(x, z, 50.0).expect("over the triangle");
+        assert!((plane.height_at(x, z) - height).abs() < 1e-4);
+        assert!(plane.normal[1] > 0.0);
+        assert_eq!(terrain.plane_near(500.0, 500.0, 0.0), None);
+    }
+
+    #[test]
+    fn flatten_matrix_drops_a_point_straight_down_onto_the_lifted_plane() {
+        let plane = GroundPlane::through([0.0, 0.0, 0.0], [10.0, 1.0, 0.0], [0.0, 2.0, 10.0])
+            .expect("a sloped plane");
+        let m = plane.flatten_matrix(0.5);
+        let [x, y, z] = [3.0_f32, 40.0, 4.0];
+        let col = |c: usize| m.get(c * 4..c * 4 + 4).expect("4x4");
+        let out: Vec<f32> = (0..3)
+            .map(|r| col(0)[r] * x + col(1)[r] * y + col(2)[r] * z + col(3)[r])
+            .collect();
+        assert_eq!(out[0], x);
+        assert_eq!(out[2], z);
+        let lifted = plane.height_at(x, z) + 0.5 / plane.normal[1];
+        assert!((out[1] - lifted).abs() < 1e-4, "{} vs {lifted}", out[1]);
+    }
+
     /// A one-mesh prop: a square of half-width 2 m at local height 0, plus an optional
     /// vertex `peak` metres up that makes it stand.
     fn square_prop(peak: Option<f32>) -> SodModelIr {
@@ -1840,7 +1980,8 @@ mod tests {
     fn world_with(prop: SodModelIr, at: [f32; 3]) -> SodModelIr {
         let (pts, areas) = sloped_terrain();
         let models = HashMap::from([(0x0391, prop)]);
-        build_world_ir(&pts, &areas, &[(0x0391, at)], &models, 0.0)
+        let surface = TerrainSurface::new(&pts, &areas, 0.0);
+        build_world_ir(&pts, &areas, &surface, &[(0x0391, at)], &models, 0.0)
     }
 
     #[test]

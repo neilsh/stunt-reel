@@ -620,6 +620,7 @@ impl<'a> FlmPlayer<'a> {
                 rotation_quat,
                 position_meters,
                 state_mask,
+                casts_shadow: (slot.type_flags & SIF_SHADOW) != 0,
                 joint_angles_bam,
             });
         }

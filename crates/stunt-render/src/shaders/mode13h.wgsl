@@ -9,7 +9,7 @@ struct CameraUniform {
 
 struct ModelUniform {
     model_matrix: mat4x4<f32>,
-    layer: vec4<u32>, // x: layer id written to the plane target
+    layer: vec4<u32>, // x: layer id written to the plane target, y: nonzero for a shadow
 };
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
@@ -52,6 +52,11 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     let world_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
     out.clip_position = camera.view_proj * world_pos;
     out.palette_index = in.attr.x & 255u;
+    // A shadow draw fills every polygon flat in palette index 0, Gouraud ones included
+    // (research/playone-exe/sod-vm.md section 9.1).
+    if (model.layer.y != 0u) {
+        out.palette_index = 0u;
+    }
     out.shade = f32(out.palette_index);
     out.layer = model.layer.x + in.attr.z;
 

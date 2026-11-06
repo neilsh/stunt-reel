@@ -29,7 +29,8 @@ pub(crate) struct ModelUniform {
     /// 4x4 column-major affine model-to-world transform matrix.
     pub(crate) model_matrix: [f32; 16],
     /// Base layer id (first word) written to the plane target, added to the vertex's scenery
-    /// class (zero except for world vertices); the rest is padding.
+    /// class (zero except for world vertices); the second word is nonzero for a shadow draw,
+    /// which fills every polygon with palette index 0; the rest is padding.
     pub(crate) layer: [u32; 4],
 }
 
@@ -40,6 +41,17 @@ impl ModelUniform {
         Self {
             model_matrix,
             layer: [layer, 0, 0, 0],
+        }
+    }
+
+    /// A uniform drawing a ground shadow with `model_matrix` into `layer`: every polygon
+    /// flat in palette index 0, as PLAYONE draws one with `work:0x806C` set
+    /// (`research/playone-exe/sod-vm.md` section 9.1).
+    #[must_use]
+    pub(crate) fn shadow(model_matrix: [f32; 16], layer: u32) -> Self {
+        Self {
+            model_matrix,
+            layer: [layer, 1, 0, 0],
         }
     }
 }

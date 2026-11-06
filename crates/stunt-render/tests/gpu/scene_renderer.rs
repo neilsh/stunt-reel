@@ -15,7 +15,7 @@ use stunt_core::contracts::{
 };
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
 use stunt_core::scene::FilmScene;
-use stunt_core::world::World;
+use stunt_core::world::{TerrainSurface, World};
 use stunt_render::{LAYER_NONE, Offscreen, RenderOptions};
 
 const SHAPE_ID: u16 = 7;
@@ -64,6 +64,7 @@ fn actor_at(x: f32, state_mask: u16) -> ActorTransform {
         rotation_quat: [0.0, 0.0, 0.0, 1.0],
         position_meters: [x, 0.0, 0.0],
         state_mask,
+        casts_shadow: false,
         joint_angles_bam: Vec::new(),
     }
 }
@@ -198,6 +199,7 @@ fn world_is_drawn_when_present() {
             radius: 1.0,
         },
         scenery_stop: None,
+        terrain: TerrainSurface::default(),
     };
     let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world));
     let Some((w, h, drawn)) = render(&scene) else {

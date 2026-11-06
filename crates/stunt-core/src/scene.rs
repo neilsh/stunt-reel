@@ -20,9 +20,9 @@ use crate::contracts::{ActorTransform, CameraTransform, PaletteControls, ShapeEx
 use crate::credits::CreditLines;
 use crate::flm::{FilmTimeline, FlmError};
 use crate::font::PFont;
-use crate::sod::{DecodeMode, ShadeLight, SodError, decode_sod_lit};
+use crate::sod::{DecodeMode, EPSILON_DISPLACEMENT, ShadeLight, SodError, decode_sod_lit};
 use crate::vfs::VfsError;
-use crate::world::{ScnStop, World, WorldInputs, build_world};
+use crate::world::{GroundPlane, ScnStop, World, WorldInputs, build_world};
 
 /// Column-major identity matrix.
 const IDENTITY_MATRIX: [f32; 16] = [
@@ -162,6 +162,12 @@ pub struct ActorDraw {
     pub state_mask: u16,
     /// Distance in metres from the camera eye to the actor position.
     pub distance: f32,
+    /// Model-to-world matrix of the actor's ground shadow, when its slot casts one
+    /// (`SIF_SHADOW`): the actor flattened straight down onto the ground plane under its
+    /// origin and lifted by the `[I5]` decal displacement. The shadow is the same shape
+    /// drawn again through this matrix in palette index 0 (`research/playone-exe/sod-vm.md`
+    /// section 9.1).
+    pub shadow_matrix: Option<[f32; 16]>,
 }
 
 /// The lens-zoomed camera used to draw a [`SceneFrame`].
@@ -408,11 +414,17 @@ impl FilmScene {
             .actors
             .iter()
             .filter_map(|a| self.shapes.get(&a.shape_id).map(|shape| (a, shape)))
-            .map(|(a, shape)| ActorDraw {
-                shape_id: a.shape_id,
-                world_matrix: actor_world_matrix(a, shape),
-                state_mask: a.state_mask,
-                distance: distance(eye, a.position_meters),
+            .map(|(a, shape)| {
+                let world_matrix = actor_world_matrix(a, shape);
+                ActorDraw {
+                    shape_id: a.shape_id,
+                    world_matrix,
+                    state_mask: a.state_mask,
+                    distance: distance(eye, a.position_meters),
+                    shadow_matrix: a
+                        .casts_shadow
+                        .then(|| self.shadow_matrix(a.position_meters, &world_matrix)),
+                }
             })
             .collect();
         if let Some(shape_id) = self.origin_shape.filter(|_| record.actors.is_empty()) {
@@ -421,6 +433,7 @@ impl FilmScene {
                 world_matrix: IDENTITY_MATRIX,
                 state_mask: 0,
                 distance: distance(eye, [0.0; 3]),
+                shadow_matrix: None,
             });
         }
         SceneFrame {
@@ -432,6 +445,37 @@ impl FilmScene {
             credits: self.timeline.credits_at(tick).cloned(),
         }
     }
+
+    /// The shadow matrix of an actor at `position` drawn through `world_matrix`.
+    ///
+    /// PLAYONE solves one ground plane at the actor's x and z (`0x19FC`) and flattens the
+    /// whole object onto it (`0x1C0D`), so every vertex lands on that plane, not on the
+    /// terrain under its own x and z. The plane here is the terrain triangle under the
+    /// origin; with no world it is `y = 0`, as for PLAYONE's null plane (`0x1A12`).
+    fn shadow_matrix(&self, position: [f32; 3], world_matrix: &[f32; 16]) -> [f32; 16] {
+        let [x, y, z] = position;
+        let plane = self
+            .world
+            .as_ref()
+            .map_or(GroundPlane::LEVEL_ZERO, |w| w.ground_plane(x, z, y));
+        mat4_mul(&plane.flatten_matrix(EPSILON_DISPLACEMENT), world_matrix)
+    }
+}
+
+/// The column-major product `a * b`.
+fn mat4_mul(a: &[f32; 16], b: &[f32; 16]) -> [f32; 16] {
+    let (a_cols, _) = a.as_chunks::<4>();
+    let (b_cols, _) = b.as_chunks::<4>();
+    let mut out = [0.0; 16];
+    let (out_cols, _) = out.as_chunks_mut::<4>();
+    for (out_col, b_col) in out_cols.iter_mut().zip(b_cols) {
+        for (a_col, &weight) in a_cols.iter().zip(b_col) {
+            for (o, &v) in out_col.iter_mut().zip(a_col) {
+                *o += v * weight;
+            }
+        }
+    }
+    out
 }
 
 /// An actor's model-to-world matrix, with its shape's ground offset taken back out.
@@ -496,6 +540,18 @@ mod tests {
             lens,
             ..CameraTransform::default()
         }
+    }
+
+    #[test]
+    fn a_shadow_matrix_flattens_the_actor_matrix_onto_the_plane() {
+        let translate = [
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 5.0, 2.0, 1.0,
+        ];
+        let flat = GroundPlane::LEVEL_ZERO.flatten_matrix(EPSILON_DISPLACEMENT);
+        let shadow = mat4_mul(&flat, &translate);
+        assert_eq!(&shadow[12..], &[1.0, EPSILON_DISPLACEMENT, 2.0, 1.0]);
+        assert_eq!(&shadow[4..8], &[0.0; 4]);
+        assert_eq!(mat4_mul(&IDENTITY_MATRIX, &translate), translate);
     }
 
     fn drawn_magnification(camera: &CameraTransform) -> f32 {
