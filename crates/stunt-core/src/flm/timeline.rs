@@ -110,38 +110,6 @@ impl FilmTimeline {
         self.total_ticks
     }
 
-    /// Truncate the authored timeline to at most `limit` ticks.
-    ///
-    /// Keyframes after the limit are dropped; sampling beyond the limit clamps to the
-    /// last retained keyframe.
-    #[must_use]
-    pub fn truncated_to_ticks(&self, limit: u32) -> Self {
-        let total_ticks = self.total_ticks.min(limit);
-        let mut slices: Vec<SliceKeyframe> = self
-            .slices
-            .iter()
-            .filter(|slice| slice.tick <= total_ticks)
-            .cloned()
-            .collect();
-        if slices.is_empty()
-            && let Some(first) = self.slices.first()
-        {
-            slices.push(first.clone());
-        }
-        Self {
-            slices,
-            total_ticks,
-            warnings: self.warnings.clone(),
-            stop_reason: self.stop_reason.clone(),
-            credits: self
-                .credits
-                .iter()
-                .filter(|change| change.tick <= total_ticks)
-                .cloned()
-                .collect(),
-        }
-    }
-
     /// True when the film ever sets credits text (`0x99`).
     #[must_use]
     pub fn has_credits(&self) -> bool {
@@ -219,7 +187,7 @@ impl FilmTimeline {
             return Some(previous.record.clone());
         }
 
-        let span = (next.tick - previous.tick) as f32;
+        let span = next.tick.checked_sub(previous.tick)? as f32;
         let alpha = if span > 0.0 {
             ((tick - previous.tick as f32) / span).clamp(0.0, 1.0)
         } else {
@@ -227,14 +195,14 @@ impl FilmTimeline {
         };
 
         let mut record = interpolate_trajectory(&previous.record, &next.record, alpha);
-        record.tick = tick.round() as u32;
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "`tick` lies between two keyframe ticks, both u32"
+        )]
+        let tick = tick.round() as u32;
+        record.tick = tick;
         Some(record)
-    }
-
-    /// Sample the interpolated state at an authored wall-clock time.
-    #[must_use]
-    pub fn sample_at_seconds(&self, seconds: f32) -> Option<TrajectoryRecord> {
-        self.sample(seconds * TIMELINE_HZ)
     }
 
     /// Audio cues authored at ticks in the half-open interval `[start_tick, end_tick)`.

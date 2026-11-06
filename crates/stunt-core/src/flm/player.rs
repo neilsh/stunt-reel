@@ -37,7 +37,7 @@ pub const SIF_ANIMATES: u8 = 0x20;
 pub const SIFILM_MAX_OBJ: usize = 64;
 
 /// Internal simulation state for an entity slot in the `.FLM` timeline.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SlotState {
     /// Whether the slot currently holds a live object.
     pub active: bool,
@@ -99,6 +99,7 @@ pub(crate) fn dos_to_i1_actor_quat(q: [f32; 4]) -> [f32; 4] {
 impl SlotState {
     /// Slot position as 16.16 fixed-point converted to meters, still in DOS axes.
     #[inline]
+    #[must_use]
     pub fn position_dos_meters(&self) -> [f32; 3] {
         [
             self.pos_fixed[0] as f32 / 65536.0,
@@ -114,6 +115,7 @@ impl SlotState {
     /// (`CTRY.FLM` tick 1 lands 1.4° off the actor bearing; research/formats/concepts/coordinates-and-units.md). Whether
     /// the raw convention differs in handedness more broadly is an open question
     /// (research/formats/concepts/coordinates-and-units.md § 1.2).
+    #[must_use]
     pub fn rotation_quat_dos(&self) -> [f32; 4] {
         if self.rot_bam == [0, 0, 0] {
             [0.0, 0.0, 0.0, 1.0]
@@ -128,6 +130,7 @@ impl SlotState {
     /// Slot position in right-handed metric meters `[I1]`: the DOS-axes position through
     /// `dos_to_i1_position`. This is the single place the evaluator converts positions.
     #[inline]
+    #[must_use]
     pub fn position_meters(&self) -> [f32; 3] {
         dos_to_i1_position(self.position_dos_meters())
     }
@@ -136,12 +139,14 @@ impl SlotState {
     /// `dos_to_i1_quat`. This is the single place the evaluator converts orientations.
     ///
     /// A zero rotation evaluates to `q_z180 = [0, 0, 1, 0]`, not the identity.
+    #[must_use]
     pub fn rotation_quat(&self) -> [f32; 4] {
         dos_to_i1_quat(self.rotation_quat_dos())
     }
 
     /// Orientation of the shape this slot draws, in `[I1]`: the DOS-axes rotation through
     /// `dos_to_i1_actor_quat`. A zero rotation evaluates to the identity.
+    #[must_use]
     pub fn actor_rotation_quat(&self) -> [f32; 4] {
         dos_to_i1_actor_quat(self.rotation_quat_dos())
     }
@@ -325,7 +330,12 @@ impl<'a> FlmPlayer<'a> {
         // The authored duration is the slice's distance from the previous one. Add it
         // once, before reading the opcodes, so every cue and the record it produces
         // carry the same cumulative tick.
-        self.current_tick = self.current_tick.saturating_add(u32::from(tick_duration));
+        self.current_tick = self
+            .current_tick
+            .checked_add(u32::from(tick_duration))
+            .ok_or_else(|| FlmError::InvalidSlice {
+                reason: "cumulative tick count overflows u32".to_string(),
+            })?;
 
         let mut sound_cues = Vec::new();
         let mut credits = Vec::new();
@@ -503,7 +513,14 @@ impl<'a> FlmPlayer<'a> {
             }
         }
 
-        self.last_slice_len = Some(self.reader.pos() - slice_start);
+        let slice_len =
+            self.reader
+                .pos()
+                .checked_sub(slice_start)
+                .ok_or_else(|| FlmError::InvalidSlice {
+                    reason: "reader moved before the slice start".to_string(),
+                })?;
+        self.last_slice_len = Some(slice_len);
 
         Ok(Some(DecodedSlice {
             tick_duration,
@@ -565,12 +582,11 @@ impl<'a> FlmPlayer<'a> {
 
         // Active actors evaluation (all active slots except the view_obj camera slot)
         let mut actors = Vec::new();
-        for (idx, slot) in self.slots.iter().enumerate() {
+        for (actor_id, (idx, slot)) in (0u32..).zip(self.slots.iter().enumerate()) {
             if !slot.active || idx == view_idx {
                 continue;
             }
 
-            let actor_id = idx as u32;
             let model_name = slot.model_name.clone().unwrap_or_else(|| {
                 if slot.shape_id == 1 || idx == 1 {
                     "FOKKER".to_string()
@@ -657,7 +673,7 @@ mod tests {
     /// Append one slice with a 3-byte header whose width is all the walk needs here.
     fn push_slice(film: &mut Vec<u8>, body: &[u8]) {
         film.push(1);
-        film.extend_from_slice(&(body.len() as u16).to_le_bytes());
+        film.extend_from_slice(&u16::try_from(body.len()).unwrap().to_le_bytes());
         film.extend_from_slice(body);
     }
 
@@ -734,7 +750,12 @@ mod tests {
         body.push(0xFF);
         push_slice_with_duration(&mut film, 1, 5, &body);
         // Slice 2 at tick 9: clear.
-        push_slice_with_duration(&mut film, body.len() as u16, 4, &[0x98, 0xFF]);
+        push_slice_with_duration(
+            &mut film,
+            u16::try_from(body.len()).unwrap(),
+            4,
+            &[0x98, 0xFF],
+        );
         push_slice_with_duration(&mut film, 2, 1, &[0xFF]);
 
         let timeline = FilmTimeline::from_bytes(&film).unwrap();
@@ -750,7 +771,6 @@ mod tests {
         assert_eq!(timeline.credits_at(5.0), Some(&title));
         assert_eq!(timeline.credits_at(8.5), Some(&title));
         assert_eq!(timeline.credits_at(9.0), None);
-        assert_eq!(timeline.truncated_to_ticks(6).credits_at(6.0), Some(&title));
     }
 
     #[test]
@@ -783,7 +803,7 @@ mod tests {
         let mut player = FlmPlayer::new(&film).unwrap();
         let _t = player.step_slice().unwrap();
         for (var_idx, value) in player.variables.iter().enumerate() {
-            assert_eq!(*value, (var_idx as u16 + 1) * 100);
+            assert_eq!(*value, (u16::try_from(var_idx).unwrap() + 1) * 100);
         }
     }
 

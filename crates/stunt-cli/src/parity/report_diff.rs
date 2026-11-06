@@ -84,11 +84,13 @@ struct ReportScores {
 fn report_scores(report: &Report) -> ReportScores {
     let mut scores = BTreeMap::new();
     for frame in &report.per_frame {
-        scores.entry(frame.film_tick).or_insert(ReportFrame {
-            ssim: f64::from(frame.ssim),
-            iou: f64::from(frame.iou),
-            scored: frame.scored,
-        });
+        scores
+            .entry(frame.film_tick)
+            .or_insert_with(|| ReportFrame {
+                ssim: f64::from(frame.ssim),
+                iou: f64::from(frame.iou),
+                scored: frame.scored,
+            });
     }
     ReportScores {
         frames: scores,

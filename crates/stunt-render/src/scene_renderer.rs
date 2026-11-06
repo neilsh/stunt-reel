@@ -116,7 +116,7 @@ impl SceneRenderer {
         }
 
         let mut slot = 0;
-        for (actor_index, actor) in frame.actors.iter().enumerate() {
+        for (actor_index, actor) in (0u32..).zip(&frame.actors) {
             let Some(model) = self.shapes.get(&actor.shape_id) else {
                 continue;
             };
@@ -135,7 +135,7 @@ impl SceneRenderer {
                 0,
                 bytemuck::bytes_of(&ModelUniform::new(
                     actor.world_matrix,
-                    LAYER_FIRST_ACTOR + actor_index as u32,
+                    LAYER_FIRST_ACTOR + actor_index,
                 )),
             );
             self.prepared.push(PreparedDraw {

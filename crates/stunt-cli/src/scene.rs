@@ -247,6 +247,12 @@ fn print_report(scene: &FilmScene, report: &SceneReport, anchor_file_found: bool
         }
         _ => println!("[stuntreel] world: none"),
     }
+    if let Some(stop) = report.world.and_then(|stats| stats.scenery_stop) {
+        eprintln!(
+            "[stuntreel] scenery stopped at byte 0x{:04X} opcode 0x{:04X} ({})",
+            stop.offset, stop.opcode, stop.reason
+        );
+    }
     print_film(scene.timeline());
     if let Some(reason) = &report.film_stop {
         eprintln!(
@@ -296,12 +302,13 @@ fn load_or_create_model(path: Option<&Path>, sidata: Option<&Path>) -> Result<So
 /// A circular fly-by around the origin: one keyframe per 20 ms tick, 60 by default.
 fn synthetic_orbit(max_ticks: Option<usize>) -> FilmTimeline {
     let count = max_ticks.unwrap_or(60).max(1);
-    let slices = (0..count)
+    let slices = (0u32..)
+        .take(count)
         .map(|tick| {
             let t = tick as f32 * TIMELINE_TICK_SECONDS;
             SliceKeyframe {
                 record: TrajectoryRecord {
-                    tick: tick as u32,
+                    tick,
                     camera: CameraTransform {
                         eye: [40.0 * t.cos(), 15.0, 40.0 * t.sin()],
                         target: [0.0, 0.0, 0.0],
@@ -314,7 +321,7 @@ fn synthetic_orbit(max_ticks: Option<usize>) -> FilmTimeline {
                     audio_cues: Vec::new(),
                     palette: PaletteControls::default(),
                 },
-                tick: tick as u32,
+                tick,
                 tick_duration: u8::from(tick != 0),
             }
         })

@@ -13,7 +13,7 @@ use std::ops::Range;
 
 use crate::pipeline::ModelUniform;
 use glam::Mat4;
-use stunt_core::contracts::{NodeId, SodModelIr, SodVertex, VisibilityCondition};
+use stunt_core::contracts::{NodeId, SodModelIr, SodVertex, VisibilityCondition, arena_index};
 
 /// Cached node data inside GPU model representation.
 #[derive(Debug, Clone)]
@@ -81,8 +81,10 @@ impl GpuModel {
         ir: &SodModelIr,
     ) -> Self {
         let limit = device.limits().max_buffer_size;
-        let max_vertices = (limit / size_of::<SodVertex>() as u64) as usize;
-        let max_indices = (limit / size_of::<u32>() as u64) as usize;
+        // A buffer larger than the address space is capped at what it can address.
+        let max_vertices =
+            usize::try_from(limit / size_of::<SodVertex>() as u64).unwrap_or(usize::MAX);
+        let max_indices = usize::try_from(limit / size_of::<u32>() as u64).unwrap_or(usize::MAX);
         // One source per mesh slice, keyed by node so the planned slices can be handed
         // back to the same nodes. `meshes()` already skips a node whose window is unsafe.
         // `meshes()` walks the nodes in arena order, so each node takes the next mesh if
@@ -95,7 +97,7 @@ impl GpuModel {
                 let mesh = meshes.next_if(|mesh| std::ptr::eq(mesh.node, node))?;
                 Some(SourceSlice {
                     index_offset: mesh.index_offset,
-                    index_count: mesh.indices.len() as u32,
+                    index_count: arena_index(mesh.indices.len()),
                     is_decal: mesh.is_decal(),
                 })
             })
@@ -154,19 +156,13 @@ impl GpuModel {
         Self {
             name: ir.name.clone(),
             chunks,
-            vertex_count: ir.vertices.len() as u32,
-            index_count: ir.indices.len() as u32,
+            vertex_count: arena_index(ir.vertices.len()),
+            index_count: arena_index(ir.indices.len()),
             nodes,
             root_nodes: ir.root_nodes.clone(),
             model_uniform_buffer,
             model_bind_group,
         }
-    }
-
-    /// Updates the model-to-world transformation matrix in the GPU uniform buffer.
-    pub fn update_world_matrix(&self, queue: &wgpu::Queue, matrix: &[f32; 16]) {
-        let uniform = ModelUniform::new(*matrix, 0);
-        queue.write_buffer(&self.model_uniform_buffer, 0, bytemuck::bytes_of(&uniform));
     }
 
     /// Evaluates visibility and collects visible mesh slices split by decal pass flag.
@@ -439,6 +435,16 @@ pub(crate) fn plan_upload(
     UploadPlan { chunks, slices }
 }
 
+/// A chunk's vertex count as the `i32` base vertex `draw_indexed` takes.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    reason = "a chunk holds one vertex buffer's worth, far below i32::MAX vertices"
+)]
+const fn base_vertex(count: usize) -> i32 {
+    count as i32
+}
+
 /// Appends a run to the last chunk and returns its draw slice.
 #[expect(
     clippy::expect_used,
@@ -457,13 +463,17 @@ fn flush_run(
         .expect("a split plan starts with a chunk");
     let indices = chunk.indices.get_or_insert_with(Vec::new);
     let slice = GpuMeshSlice {
-        chunk: n as u32,
-        vertex_offset: chunk.vertex_count as i32,
-        index_offset: indices.len() as u32,
-        index_count: 3 * tris.len() as u32,
+        chunk: arena_index(n),
+        vertex_offset: base_vertex(chunk.vertex_count),
+        index_offset: arena_index(indices.len()),
+        index_count: arena_index(3 * tris.len()),
         is_decal,
     };
-    indices.extend(tris.iter().flatten().map(|&v| (v - window.start) as u32));
+    indices.extend(
+        tris.iter()
+            .flatten()
+            .map(|&v| arena_index(v - window.start)),
+    );
     chunk.vertex_count += window.len();
     chunk.vertex_ranges.push(window);
     slice
@@ -495,7 +505,7 @@ mod tests {
             let local: Vec<usize> = chunk.vertex_ranges.iter().flat_map(Clone::clone).collect();
             let start = slice.index_offset as usize;
             for &i in &indices[start..start + slice.index_count as usize] {
-                out.push(local[(slice.vertex_offset as u32 + i) as usize]);
+                out.push(local[(slice.vertex_offset.cast_unsigned() + i) as usize]);
             }
         }
         out
@@ -521,7 +531,7 @@ mod tests {
             let b = 4 * quad;
             indices.extend([b, b + 1, b + 2, b, b + 2, b + 3]);
         }
-        let base_count = indices.len() as u32;
+        let base_count = arena_index(indices.len());
         indices.extend([40, 41, 42]);
         let sources = [
             source(0, base_count),
@@ -562,7 +572,7 @@ mod tests {
         let start = slice.index_offset as usize;
         indices[start..start + slice.index_count as usize]
             .iter()
-            .map(|&i| (slice.vertex_offset + i as i32) as usize)
+            .map(|&i| usize::try_from(slice.vertex_offset + i32::try_from(i).unwrap()).unwrap())
             .collect()
     }
 

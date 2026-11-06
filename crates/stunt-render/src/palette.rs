@@ -19,8 +19,19 @@ pub(crate) const PALETTE_LUT_BYTE_SIZE: usize =
 /// - X coordinate (`0..=255`): Authentic VGA Mode 13h palette index.
 /// - Y coordinate (`0..=31`): Discrete directional lighting / ambient level,
 ///   where row 0 is ambient floor (0.2) and row 31 is full direct sunlight (1.0).
+#[must_use]
 pub fn build_palette_lut_bytes() -> [u8; PALETTE_LUT_BYTE_SIZE] {
     build_palette_lut_bytes_from(&MODE_13H_PALETTE)
+}
+
+/// One palette channel scaled by a shading `factor` in 0.2..=1.0, rounded to a byte.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "clamped to 0..=255"
+)]
+fn shade(channel: u8, factor: f32) -> u8 {
+    (f32::from(channel) * factor).round().clamp(0.0, 255.0) as u8
 }
 
 /// Generates the 256x32 RGBA8 lookup table texture bytes for `palette`, laid out as in
@@ -29,6 +40,7 @@ pub fn build_palette_lut_bytes() -> [u8; PALETTE_LUT_BYTE_SIZE] {
     clippy::large_stack_arrays,
     reason = "32 KiB, built once per palette upload and returned as the fixed-size table callers index"
 )]
+#[must_use]
 pub fn build_palette_lut_bytes_from(palette: &[(u8, u8, u8); 256]) -> [u8; PALETTE_LUT_BYTE_SIZE] {
     let mut lut_bytes = [0u8; PALETTE_LUT_BYTE_SIZE];
 
@@ -39,10 +51,7 @@ pub fn build_palette_lut_bytes_from(palette: &[(u8, u8, u8); 256]) -> [u8; PALET
         let factor = 0.2 + 0.8 * (level as f32 / 31.0);
 
         for (texel, &(r0, g0, b0)) in row.iter_mut().zip(palette) {
-            let r = (f32::from(r0) * factor).round().clamp(0.0, 255.0) as u8;
-            let g = (f32::from(g0) * factor).round().clamp(0.0, 255.0) as u8;
-            let b = (f32::from(b0) * factor).round().clamp(0.0, 255.0) as u8;
-            *texel = [r, g, b, 255];
+            *texel = [shade(r0, factor), shade(g0, factor), shade(b0, factor), 255];
         }
     }
 

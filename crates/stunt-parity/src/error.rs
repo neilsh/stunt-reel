@@ -29,12 +29,6 @@ pub enum ArtifactError {
         /// Index of the repeated tick.
         index: usize,
     },
-    /// Two sides of the same round disagree about the film.
-    #[error("film identity conflict: {reason}")]
-    FilmConflict {
-        /// Which identity disagreed.
-        reason: String,
-    },
     /// A captured frame is unusable.
     #[error("frame {ordinal}: {reason}")]
     Frame {

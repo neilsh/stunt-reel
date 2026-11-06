@@ -43,14 +43,14 @@ pub struct SodVertex {
 // Manual bytemuck trait implementations to eliminate mandatory crate dependencies
 // while preserving compile-time safety and GPU buffer alignment.
 #[cfg(feature = "bytemuck")]
-#[allow(
+#[expect(
     unsafe_code,
     reason = "bytemuck is an optional feature, so the trait is implemented by hand"
 )]
 // SAFETY: `SodVertex` is `#[repr(C)]`, and its explicit `u8` padding leaves no implicit padding bytes.
 unsafe impl bytemuck::Pod for SodVertex {}
 #[cfg(feature = "bytemuck")]
-#[allow(
+#[expect(
     unsafe_code,
     reason = "bytemuck is an optional feature, so the trait is implemented by hand"
 )]
@@ -287,6 +287,19 @@ pub struct SodModelIr {
     decode: Option<DecodeRecord>,
 }
 
+/// A length or position in a shape's node, vertex or index arena, as the `u32` that
+/// [`NodeId`], [`NodeKind::Mesh`] and the GPU index buffer store.
+#[must_use]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "shape and world arenas stay far below u32::MAX entries; the u32 is the \
+              GPU index format"
+)]
+pub const fn arena_index(len: usize) -> u32 {
+    debug_assert!(len <= u32::MAX as usize, "arena passes the u32 index range");
+    len as u32
+}
+
 impl SodModelIr {
     /// Instantiates an empty model intermediate representation.
     pub fn new(name: impl Into<String>) -> Self {
@@ -323,7 +336,7 @@ impl SodModelIr {
         visibility: VisibilityCondition,
         kind: NodeKind,
     ) -> NodeId {
-        let id = NodeId(self.nodes.len() as u32);
+        let id = NodeId(arena_index(self.nodes.len()));
         let node = SodNode {
             id,
             name: name.into(),
@@ -347,13 +360,9 @@ impl SodModelIr {
     }
 
     /// Looks up a node by its handle.
+    #[must_use]
     pub fn get_node(&self, id: NodeId) -> Option<&SodNode> {
         self.nodes.get(id.0 as usize)
-    }
-
-    /// Looks up a mutable node by its handle.
-    pub fn get_node_mut(&mut self, id: NodeId) -> Option<&mut SodNode> {
-        self.nodes.get_mut(id.0 as usize)
     }
 
     /// Every mesh slice of the shape, in arena order.
@@ -473,14 +482,8 @@ mod tests {
         assert_eq!(child_node.parent, Some(root_id));
         assert!(child_node.children.is_empty());
 
-        // Test mutable lookup
-        let child_mut = ir.get_node_mut(child_id).expect("child mut exists");
-        child_mut.name = "WING_LEFT_MODIFIED".to_string();
-        assert_eq!(ir.get_node(child_id).unwrap().name, "WING_LEFT_MODIFIED");
-
         // Non-existent node lookup
         assert!(ir.get_node(NodeId(999)).is_none());
-        assert!(ir.get_node_mut(NodeId(999)).is_none());
     }
 
     #[test]
@@ -574,7 +577,7 @@ mod tests {
         assert_eq!(mesh.vertex_offset, 0);
         assert_eq!(mesh.index_offset, 0);
         assert!(!mesh.is_decal());
-        let window = mesh.vertex_offset..mesh.vertex_offset + mesh.vertices.len() as u32;
+        let window = mesh.vertex_offset..mesh.vertex_offset + arena_index(mesh.vertices.len());
         assert!(mesh.indices.iter().all(|index| window.contains(index)));
         assert_eq!(mesh.indices.len() % 3, 0);
     }
@@ -642,7 +645,7 @@ mod tests {
             returned_at: Some(52),
         };
         let mut ir = SodModelIr::new("DECODED");
-        ir.set_decode(record.clone());
+        ir.set_decode(record);
         let attached = ir.decode().expect("decoded shape keeps its record");
         assert_eq!(attached.header, header);
         assert_eq!(attached.stop, Some(stop));

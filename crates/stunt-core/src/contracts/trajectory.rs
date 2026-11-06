@@ -59,6 +59,10 @@ impl CameraTransform {
     /// shifts its depth row right (research/playone-exe/lod.md section 2.2). The zoom is
     /// therefore `0x229C / 0x8000 * 2^0x229E`, about `lens / 8192`.
     #[must_use]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "`lens` is a u16, so `lens * 0x7FFF` is below 2^31, and `shifts_left` starts at 3 and is only decremented while above 0, so it stays in 0..=3"
+    )]
     pub fn lens_zoom(&self) -> f32 {
         let mut product = u32::from(self.lens) * 0x7FFF;
         let mut shifts_left = 3;
@@ -126,6 +130,7 @@ pub struct ActorTransform {
 impl ActorTransform {
     /// Computes the canonical column-major 4x4 world transformation matrix
     /// from `position_meters` (x, y, z) and unit `rotation_quat` [x, y, z, w].
+    #[must_use]
     pub fn compute_world_matrix(&self) -> [f32; 16] {
         let [qx, qy, qz, qw] = self.rotation_quat;
         let [tx, ty, tz] = self.position_meters;
@@ -263,7 +268,7 @@ mod tests {
         let cam = CameraTransform::default();
         assert_eq!(cam.eye, [0.0, 10.0, 50.0]);
         assert_eq!(cam.target, [0.0, 0.0, 0.0]);
-        assert_eq!(cam.fov_degrees, PLAYONE_FOV_Y_DEGREES);
+        assert_eq!(cam.fov_degrees.to_bits(), PLAYONE_FOV_Y_DEGREES.to_bits());
         assert_eq!(cam.roll_radians, 0.0);
         assert!(!cam.cut_from_previous);
     }
@@ -372,6 +377,10 @@ mod tests {
     fn compute_world_matrix_matches_shared_goldens() {
         let text = include_str!("../../../../tests/fixtures/dos_math_goldens.json");
         let goldens: serde_json::Value = serde_json::from_str(text).expect("valid golden json");
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "the goldens are f32 values written out as JSON numbers"
+        )]
         let floats = |v: &serde_json::Value| -> Vec<f32> {
             v.as_array()
                 .expect("array")

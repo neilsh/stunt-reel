@@ -272,12 +272,14 @@ pub const MODE_13H_PALETTE: [(u8, u8, u8); 256] = [
     clippy::indexing_slicing,
     reason = "a u8 index cannot leave the 256-entry table"
 )]
+#[must_use]
 pub fn get_palette_rgb(index: u8) -> (u8, u8, u8) {
     MODE_13H_PALETTE[usize::from(index)]
 }
 
 /// Returns the normalized floating-point `(R, G, B)` tuple in `[0.0, 1.0]`.
 #[inline]
+#[must_use]
 pub fn get_palette_rgb_float(index: u8) -> (f32, f32, f32) {
     let (r, g, b) = get_palette_rgb(index);
     (
@@ -343,12 +345,16 @@ impl PaletteControls {
     /// the sky gradient (224-238) and entries 213-214 replaced first; entries 240-255
     /// are returned unchanged. Output keeps the table's `level * 4` expansion.
     #[must_use]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "6-bit DAC levels (0..=63), night, brightness and saturation (each at most 64) and a 15-step ramp keep every product below 2^20 in i32"
+    )]
     pub fn film_palette(&self) -> [(u8, u8, u8); 256] {
         let mut base: [[i32; 3]; 256] = MODE_13H_PALETTE
             .map(|(r, g, b)| [i32::from(r >> 2), i32::from(g >> 2), i32::from(b >> 2)]);
 
         // Night term: |var13| - 0x2000 clamped to 0..=0x4000; its high byte is 0..=64.
-        let night_term = (i32::from(self.sky as i16).abs() - 0x2000).clamp(0, 0x4000);
+        let night_term = (i32::from(self.sky.cast_signed()).abs() - 0x2000).clamp(0, 0x4000);
         let night = night_term >> 8;
 
         // Zenith and horizon colours, then the 15-step gradient between them. `/` on
@@ -391,6 +397,11 @@ impl PaletteControls {
                 brightness
             };
             let grey = (((3 * r + b) >> 2) + g) >> 1;
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "clamped to 0..=63, so `<< 2` is at most 252"
+            )]
             let tone = |c: i32| {
                 let level = ((grey + (((c - grey) * saturation) >> 6)) * bright) >> 6;
                 (level.clamp(0, 63) << 2) as u8
@@ -423,6 +434,10 @@ mod tests {
     }
 
     /// `level * 4` expansion of a 6-bit DAC colour.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "test helper: 6-bit DAC levels times 4 fit in u8"
+    )]
     fn dac(r: u8, g: u8, b: u8) -> (u8, u8, u8) {
         (r * 4, g * 4, b * 4)
     }

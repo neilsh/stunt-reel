@@ -163,11 +163,15 @@ impl GlbBuilder {
         out.extend_from_slice(MAGIC);
         out.extend_from_slice(&2u32.to_le_bytes());
         out.extend_from_slice(&total32.to_le_bytes());
-        out.extend_from_slice(&(json_bytes.len() as u32).to_le_bytes());
+        // Each chunk is part of `total`, so these cannot fail once `total32` has fitted;
+        // `try_from` keeps that local.
+        let json_len = u32::try_from(json_bytes.len()).map_err(|_| GltfError::TooLarge)?;
+        out.extend_from_slice(&json_len.to_le_bytes());
         out.extend_from_slice(&CHUNK_JSON.to_le_bytes());
         out.extend_from_slice(&json_bytes);
         if !self.bin.is_empty() {
-            out.extend_from_slice(&(self.bin.len() as u32).to_le_bytes());
+            let bin_len = u32::try_from(self.bin.len()).map_err(|_| GltfError::TooLarge)?;
+            out.extend_from_slice(&bin_len.to_le_bytes());
             out.extend_from_slice(&CHUNK_BIN.to_le_bytes());
             out.extend_from_slice(&self.bin);
         }

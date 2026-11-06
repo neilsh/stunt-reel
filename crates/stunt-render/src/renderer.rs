@@ -18,7 +18,7 @@
 //! the raw-window-handle windowing traits, the recorded exception.
 
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use stunt_core::credits::{ClipRect, CreditLines, draw_credits};
 use stunt_core::font::PFont;
@@ -252,12 +252,6 @@ impl RenderedPage {
     pub fn layers(&self) -> &[u32] {
         &self.layers
     }
-
-    /// The page's parts, for a sink that takes ownership of the buffers.
-    #[must_use]
-    pub fn into_parts(self) -> (PageSize, Vec<u8>, Vec<u8>, Vec<u32>) {
-        (self.size, self.rgba, self.indices, self.layers)
-    }
 }
 
 /// Draws `lines` over `page` as `PLAYONE.EXE` draws them over its 320x200 page, centred in the
@@ -271,9 +265,19 @@ fn paint_credits(
     viewport_rows: Option<u32>,
     palette: &[(u8, u8, u8); 256],
 ) {
+    #[expect(
+        clippy::cast_possible_wrap,
+        reason = "page sizes are bounded by the GPU texture limit, far inside i32"
+    )]
     let (width, height) = (page.width() as i32, page.height() as i32);
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_possible_wrap,
+        reason = "the 320x200 Mode 13h constants"
+    )]
     let (mode_w, mode_h) = (MODE13H_WIDTH as i32, MODE13H_HEIGHT as i32);
-    let view_rows = viewport_rows.map_or(height, |rows| rows as i32);
+    // A row count past i32::MAX wraps negative and draws nothing, as it always has.
+    let view_rows = viewport_rows.map_or(height, u32::cast_signed);
     let rect = ClipRect {
         left: 0,
         top: 0,
@@ -291,7 +295,10 @@ fn paint_credits(
         let (r, g, b) = palette[usize::from(index)];
         for py in scaled_span(y, mode_h, height) {
             for px in scaled_span(x, mode_w, width) {
-                let at = (py * width + px) as usize;
+                // Glyph coordinates are not negative, so neither is the index; skip one if so.
+                let Ok(at) = usize::try_from(py * width + px) else {
+                    continue;
+                };
                 // A pixel outside the page is clipped, like a glyph outside the mode raster.
                 if let (Some(slot), Some(layer), Some(rgb)) = (
                     page.indices.get_mut(at),
@@ -311,6 +318,16 @@ fn paint_credits(
 /// pixels long.
 fn scaled_span(at: i32, from: i32, to: i32) -> std::ops::Range<i32> {
     at * to / from..(at + 1) * to / from
+}
+
+/// A viewport edge or size in window pixels as the `u32` a scissor rect takes.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "edges lie inside the window; `as` saturates, so a negative or NaN edge is 0"
+)]
+fn viewport_px(v: f32) -> u32 {
+    v as u32
 }
 
 /// Consumes the pages an offscreen Renderer reads back.
@@ -389,8 +406,7 @@ impl Renderer {
         sink: Box<dyn PageSink>,
         options: RenderOptions,
     ) -> Result<Self, RenderError> {
-        let instance = create_instance();
-        let (_adapter, device, queue) = acquire(&instance, None, options)?;
+        let (device, queue) = open_device(&offscreen_adapter(options)?)?;
         let camera_resources = CameraGpuResources::new(&device);
         let palette_lut = PaletteLut::new(&device, &queue);
         let pipelines = RenderPipelines::new_with_plane(
@@ -623,13 +639,13 @@ impl Renderer {
 
         let width = target.config.width;
         let height = target.config.height;
-        let sc_x = vp_x.max(0.0) as u32;
-        let sc_y = vp_y.max(0.0) as u32;
-        let sc_w = (vp_w as u32).clamp(1, width.saturating_sub(sc_x).max(1));
-        let sc_h = (vp_h as u32).clamp(1, height.saturating_sub(sc_y).max(1));
+        let sc_x = viewport_px(vp_x.max(0.0));
+        let sc_y = viewport_px(vp_y.max(0.0));
+        let sc_w = viewport_px(vp_w).clamp(1, width.saturating_sub(sc_x).max(1));
+        let sc_h = viewport_px(vp_h).clamp(1, height.saturating_sub(sc_y).max(1));
 
-        let right_edge = (vp_x + vp_w).min(win_w) as u32;
-        let bottom_edge = (vp_y + vp_h).min(win_h) as u32;
+        let right_edge = viewport_px((vp_x + vp_w).min(win_w));
+        let bottom_edge = viewport_px((vp_y + vp_h).min(win_h));
         let bars: [(u32, u32, u32, u32); 2] = if cur_aspect > aspect {
             [
                 (0, 0, sc_x, height),
@@ -970,21 +986,54 @@ fn acquire(
     surface: Option<&wgpu::Surface<'static>>,
     options: RenderOptions,
 ) -> Result<(wgpu::Adapter, wgpu::Device, wgpu::Queue), RenderError> {
-    let adapter = if options.software_only {
-        request_fallback_adapter(instance, surface).ok_or(RenderError::NoGpuAdapter)?
-    } else {
-        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: surface,
-            force_fallback_adapter: false,
-            apply_limit_buckets: false,
-        }))
-        .ok()
-        .or_else(|| request_fallback_adapter(instance, surface))
-        .ok_or(RenderError::NoGpuAdapter)?
-    };
+    let adapter = select_adapter(instance, surface, options).ok_or(RenderError::NoGpuAdapter)?;
+    let (device, queue) = open_device(&adapter)?;
+    Ok((adapter, device, queue))
+}
 
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+/// The offscreen adapter of the acquisition policy, chosen once per process.
+///
+/// Creating the instance and enumerating its adapters costs about 2 s on a Windows workstation
+/// (the Vulkan loader and driver start-up), against about 0.1 s for a device. A process that opens
+/// several offscreen renderers, as the GPU integration tests do, pays that once: the adapter keeps
+/// its instance alive, and each renderer still opens a device of its own. A process that found
+/// no adapter keeps finding none.
+fn offscreen_adapter(options: RenderOptions) -> Result<wgpu::Adapter, RenderError> {
+    static PREFERRED: OnceLock<Option<wgpu::Adapter>> = OnceLock::new();
+    static SOFTWARE: OnceLock<Option<wgpu::Adapter>> = OnceLock::new();
+    let chosen = if options.software_only {
+        &SOFTWARE
+    } else {
+        &PREFERRED
+    };
+    chosen
+        .get_or_init(|| select_adapter(&create_instance(), None, options))
+        .clone()
+        .ok_or(RenderError::NoGpuAdapter)
+}
+
+/// The adapter step of the acquisition policy: high-performance first, then the fallback.
+fn select_adapter(
+    instance: &wgpu::Instance,
+    surface: Option<&wgpu::Surface<'static>>,
+    options: RenderOptions,
+) -> Option<wgpu::Adapter> {
+    if options.software_only {
+        return request_fallback_adapter(instance, surface);
+    }
+    pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        compatible_surface: surface,
+        force_fallback_adapter: false,
+        apply_limit_buckets: false,
+    }))
+    .ok()
+    .or_else(|| request_fallback_adapter(instance, surface))
+}
+
+/// The device step of the acquisition policy: downlevel defaults raised to the adapter's limits.
+fn open_device(adapter: &wgpu::Adapter) -> Result<(wgpu::Device, wgpu::Queue), RenderError> {
+    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("stunt_renderer_device"),
         required_features: wgpu::Features::empty(),
         required_limits: wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()),
@@ -992,8 +1041,7 @@ fn acquire(
         experimental_features: wgpu::ExperimentalFeatures::disabled(),
         trace: wgpu::Trace::Off,
     }))
-    .map_err(|error| RenderError::DeviceRequest(error.to_string()))?;
-    Ok((adapter, device, queue))
+    .map_err(|error| RenderError::DeviceRequest(error.to_string()))
 }
 
 /// The low-power fallback attempt of the acquisition policy.
@@ -1128,8 +1176,8 @@ mod tests {
         let split = RenderedPage::new(size, vec![7; 16], &[word; 4]).expect("page");
         assert_eq!(split.indices(), [40; 4].as_slice());
         assert_eq!(split.layers(), [0x10; 4].as_slice());
-        assert!(RenderedPage::new(size, vec![0; 15], &[0; 4]).is_err());
-        assert!(RenderedPage::new(size, vec![0; 16], &[0; 3]).is_err());
+        RenderedPage::new(size, vec![0; 15], &[0; 4]).unwrap_err();
+        RenderedPage::new(size, vec![0; 16], &[0; 3]).unwrap_err();
     }
 
     #[test]

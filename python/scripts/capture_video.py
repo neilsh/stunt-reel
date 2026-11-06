@@ -15,21 +15,14 @@ else and replaces nothing.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import logging
-import re
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 
-from stunt_reel import capture_store, dataroot, parity_layout
-from stunt_reel.all_archive import ArchiveError, resolve_all
-from stunt_reel.dataroot import ensure_links_or_report
-from stunt_reel.parity_artifacts import FilmId
-from stunt_reel.tac import automation, playone, staging, video
-from stunt_reel.tac.emulator import EmulatorUnavailable
+from stunt_reel import capture_run, dataroot, parity_layout
+from stunt_reel.dataroot import data_path_arg
+from stunt_reel.tac import automation, video
 
-DEFAULT_FILM: Path = Path("corpus/stisldem/VAULT/CTRY.FLM")
 #: Beside the stage's mount, so ``unstage`` deletes the raw (audio-carrying) recording.
 RECORDING_DIR = "recording"
 
@@ -39,13 +32,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--film",
-        type=Path,
-        default=DEFAULT_FILM,
+        type=data_path_arg,
+        default=dataroot.DEFAULT_FILM,
         help=(
             "the film's .FLM file; its .ALL is the sibling or one stored by make-all (a film "
             "with neither is refused); it is staged alone into "
             f"<data root>/{parity_layout.stage_root().as_posix()}/<name>-<session>/ "
-            f"(default {DEFAULT_FILM})"
+            f"(default %(default)s)"
         ),
     )
     parser.add_argument(
@@ -59,17 +52,18 @@ def parse_args() -> argparse.Namespace:
         help=(
             "new directory receiving capture.avi and meta.json; an existing non-empty one is "
             "refused and no stored capture is replaced (default: replace the film's capture, "
-            f"{parity_layout.capture_root().as_posix()}/<film>/video, by swap)"
+            f"<data root>/{parity_layout.capture_root().as_posix()}/<film>/video, by swap)"
         ),
     )
     parser.add_argument(
         "--game-root",
-        type=Path,
+        type=data_path_arg,
         default=None,
         help=(
             "game tree whose PLAYONE.EXE and engine files to run, such as "
-            "<data root>/builds/patched from mise run game-builds (default: the film's own tree, "
-            "else the demo); the build is recognised by its hash"
+            "<data root>/builds/unpatched from mise run game-builds (default: the build the "
+            "film's references.toml row names, else patch3, falling back to unpatched when "
+            "patch3 stalls and the film has no row); the build is recognised by its hash"
         ),
     )
     parser.add_argument(
@@ -91,134 +85,57 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def resolve(path: Path) -> Path:
-    """Resolve a path against the repository root."""
-    return path if path.is_absolute() else dataroot.REPO_ROOT / path
-
-
 def report(line: str) -> None:
     """Print progress the way capture-ref does."""
     print(f"[capture-video] {line}", flush=True)
 
 
-def run(args: argparse.Namespace) -> int:
-    """Record one film and report where the capture landed."""
-    film = resolve(args.film)
-    if not film.is_file():
-        print(f"[capture-video] {film} not found", file=sys.stderr)
-        return 2
-    try:
-        slug = parity_layout.slug_for(film, args.name)
-    except ValueError as exc:
-        print(f"[capture-video] {exc}", file=sys.stderr)
-        return 2
-    if not ensure_links_or_report("mise run capture-video"):
-        return 2
-    try:
-        archive = resolve_all(film, dataroot.REPO_ROOT, slug)
-        all_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
-    except (ArchiveError, OSError) as exc:
-        print(f"[capture-video] {exc}", file=sys.stderr)
-        return 2
-    film_id = FilmId(
-        name=film.name,
-        flm_bytes=film.stat().st_size,
-        flm_sha256=hashlib.sha256(film.read_bytes()).hexdigest(),
-        all_sha256=all_sha256,
-    )
-    if args.out is not None:
-        out = resolve(args.out)
-        try:
-            capture_store.check_outside(out, dataroot.REPO_ROOT / parity_layout.capture_root())
-        except ValueError as exc:
-            print(f"[capture-video] {exc}", file=sys.stderr)
-            return 2
-        return _record_into(args, out, film, archive, film_id)
-    # The film's one capture of this kind is replaced only by a complete, successful one.
-    target = dataroot.REPO_ROOT / parity_layout.video_path(slug)
-    try:
-        capture_store.check_replaceable(target)
-    except ValueError as exc:
-        print(f"[capture-video] {exc}", file=sys.stderr)
-        return 2
-    out = capture_store.stage(target)
-    try:
-        code = _record_into(args, out, film, archive, film_id)
-        if code == 0:
-            capture_store.publish(out, target)
-            report(f"replaced the capture in {target}")
-        return code
-    finally:
-        capture_store.discard(out)
+def plan_video(args: argparse.Namespace) -> capture_run.Plan:
+    """The video capture's plan: record the film into the attempt's ``out``, audio stripped."""
 
-
-def _record_into(
-    args: argparse.Namespace, out: Path, film: Path, archive: Path, film_id: FilmId
-) -> int:
-    """Stage the film, record it and write the capture into *out*; 0 on success."""
-    if out.is_dir() and any(out.iterdir()):
-        print(
-            f"[capture-video] {out} already exists; a capture is never written over",
-            file=sys.stderr,
-        )
-        return 2
-    provenance = {
-        "captured_on": datetime.now(UTC).date().isoformat(),
-        "checkout": re.sub(r"[^A-Za-z0-9._-]", "-", dataroot.REPO_ROOT.name),
-    }
-    engine_root = resolve(args.game_root) if args.game_root is not None else None
-    try:
-        staged = staging.stage_play(film, archive, engine_root)
-    except OSError as exc:
-        print(f"[capture-video] {exc}", file=sys.stderr)
-        return 1
-    try:
-        layout = playone.layout_for(staged.mount / "PLAYONE.EXE")
-    except (playone.UnknownBuild, OSError) as exc:
-        staging.unstage(staged)
-        print(f"[capture-video] {exc}", file=sys.stderr)
-        return 2
-    recording = staged.root / RECORDING_DIR
-    try:
+    def plan(attempt: capture_run.Attempt) -> str:
+        recording = attempt.stage.root / RECORDING_DIR
         recording.mkdir()
-        capture = video.record_video(
-            lambda: automation.launched(
-                lambda port: staged.write_conf(port, capture_dir=recording)
-            ),
-            out,
+        recorded = video.record_video(
+            attempt.runner(capture_dir=recording),
+            attempt.out,
             recording,
-            keys=playone.film_selection_names(film.stem),
-            layout=layout,
-            film=film_id,
-            provenance=provenance,
+            keys=attempt.keys,
+            layout=attempt.engine,
+            film=attempt.film_id,
+            provenance=attempt.provenance,
             cap=args.max_frames,
         )
-    except EmulatorUnavailable as exc:
-        print(f"[capture-video] {exc}; run via mise run capture-video", file=sys.stderr)
-        return 1
-    except (
-        automation.ScriptError,
-        video.VideoCaptureError,
-        RuntimeError,
-        TimeoutError,
-        OSError,
-    ) as exc:
-        print(f"[capture-video] {exc}", file=sys.stderr)
-        return 1
-    finally:
-        staging.unstage(staged)
+        return (
+            f"recorded {len(recorded.log.frame)} frames ({recorded.end}), film starts at frame "
+            f"{recorded.film_start_frame}, {len(recorded.palettes.changes)} palette changes, "
+            f"into {attempt.out}"
+        )
 
-    report(
-        f"recorded {len(capture.log.frame)} frames ({capture.end}), film starts at frame "
-        f"{capture.film_start_frame}, {len(capture.palettes.changes)} palette changes, into {out}"
+    return plan
+
+
+def run(args: argparse.Namespace, launch: capture_run.Launch = automation.launched) -> int:
+    """Record one film through the shared lifecycle; 0, 1 failed, 2 refused."""
+    job = capture_run.Job(
+        tag="capture-video",
+        task="capture-video",
+        kind="video",
+        film=args.film,
+        name=args.name,
+        out=args.out,
+        game_root=args.game_root,
     )
-    return 0
+    return capture_run.execute(job, plan_video(args), launch=launch)
 
 
 def main() -> int:
     """Record the film and terminate the emulator."""
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
-    return run(parse_args())
+    args = parse_args()
+    if dataroot.require_corpus_or_report("mise run capture-video") is None:
+        return 2
+    return run(args)
 
 
 if __name__ == "__main__":

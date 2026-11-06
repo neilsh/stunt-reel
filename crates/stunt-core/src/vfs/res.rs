@@ -6,7 +6,7 @@
 
 use crate::contracts::vfs::{ArchiveFormat, VfsArchive, VfsEntry};
 use crate::reader::ByteReader;
-use crate::vfs::{VfsError, check_non_decreasing};
+use crate::vfs::{VfsError, check_non_decreasing, offset_add, offset_u32};
 
 /// The raw split of a `.RES` container: its `res_index` and every data region.
 ///
@@ -68,7 +68,8 @@ pub fn res_regions(data: &[u8]) -> Result<ResRegions<'_>, VfsError> {
         });
     }
 
-    let n = (ofs0 / 4) - 1;
+    // `ofs0 >= 8`, so the quotient is at least 2.
+    let n = (ofs0 / 4).saturating_sub(1);
     if n < 2 {
         // Table does not have enough offsets to bound a single region
         return Ok(ResRegions {
@@ -128,8 +129,8 @@ pub fn res_regions(data: &[u8]) -> Result<ResRegions<'_>, VfsError> {
 /// - [`VfsError::UnexpectedEof`] if `data` is shorter than 8 bytes, `ofs[0]` or any table
 ///   offset points past the end of `data`, or the offset table is cut short.
 /// - [`VfsError::InvalidMagic`] if `data` does not begin with `b"RS"`.
-/// - [`VfsError::InvalidOffsetTable`] if `ofs[0]` is below 8 or not 4-byte aligned, or the
-///   offsets are not non-decreasing.
+/// - [`VfsError::InvalidOffsetTable`] if `ofs[0]` is below 8 or not 4-byte aligned, the
+///   offsets are not non-decreasing, or a payload starts past `u32::MAX`.
 pub fn parse_res(data: &[u8]) -> Result<VfsArchive, VfsError> {
     let split = res_regions(data)?;
     // Region 0 is the name table; each later region is one payload. Regions are contiguous
@@ -137,7 +138,10 @@ pub fn parse_res(data: &[u8]) -> Result<VfsArchive, VfsError> {
     let Some((&name_slice, payloads)) = split.regions.split_first() else {
         return Ok(VfsArchive::new(ArchiveFormat::Res));
     };
-    let mut start = ByteReader::at(data, 4).read_u32_le()? as usize + name_slice.len();
+    let mut start = offset_add(
+        ByteReader::at(data, 4).read_u32_le()? as usize,
+        name_slice.len(),
+    )?;
 
     let mut names = Vec::new();
     let mut current_name = Vec::new();
@@ -190,10 +194,10 @@ pub fn parse_res(data: &[u8]) -> Result<VfsArchive, VfsError> {
         let entry = VfsEntry {
             name,
             data: payload.to_vec(),
-            source_offset: start as u32,
+            source_offset: offset_u32(start)?,
             was_compressed: false,
         };
-        start += payload.len();
+        start = offset_add(start, payload.len())?;
         archive.insert(entry);
     }
 

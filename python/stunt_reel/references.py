@@ -9,31 +9,55 @@ sentence why it cannot: the file names no reference, the capture is absent on th
 its content is not what the file recorded.  The hash is checked on the snapshot, which a later
 swap cannot change, so a caller that reads for minutes reads the capture it validated
 (ADR 0031).  Nothing here prints or chooses an exit code; the snapshot is the only write.
+
+A row also names the game builds its reference was made with, ``makeone`` and ``playone``, each
+``"unpatched"`` or ``"patch3"``, and a ``reason`` whenever either is unpatched (ADR 0029).
+:func:`require_builds` is the one check that a run's build pair is the pair its film's row
+names; ``play`` and the capture scripts call it before they launch the emulator.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import tomllib
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from stunt_reel import capture_store, parity_layout
-from stunt_reel.dataroot import REPO_ROOT
+from stunt_reel.dataroot import REPO_ROOT, corpus_root
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
 __all__ = [
+    "BUILD_NAMES",
+    "MAKEONE_BUILDS",
+    "UNKNOWN_BUILD",
+    "Builds",
     "Reference",
     "ReferenceCaptureError",
+    "archive_makeone_build",
     "capture_digest",
     "open_reference",
+    "read_builds",
     "read_reference",
     "reference_films",
+    "require_builds",
 ]
+
+#: The two game builds a row may name; ``patch3`` is the name :mod:`stunt_reel.tac.playone` gives
+#: its layout and the name of the ``builds/`` tree.
+BUILD_NAMES: tuple[str, ...] = ("unpatched", "patch3")
+
+#: SHA-256 of each known ``MAKEONE.EXE`` and the build it belongs to (an archive's
+#: ``meta.json`` records it as ``makeone_sha256``).
+MAKEONE_BUILDS: dict[str, str] = {
+    "2963e0889851287f4d4bfe3fbfb96542e61058ff4511b9783f4d289913e0fc9f": "unpatched",
+    "426111d9a42f12acf21cca693b283e1df2306035ad6215bb94ac163aebe67bb6": "patch3",
+}
 
 
 class ReferenceCaptureError(RuntimeError):
@@ -41,12 +65,22 @@ class ReferenceCaptureError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class Builds:
+    """The game builds a ``references.toml`` row names for its film (ADR 0029)."""
+
+    makeone: str
+    playone: str
+    reason: str = ""
+
+
+@dataclass(frozen=True)
 class Reference:
-    """One ``references.toml`` entry: the film's slug and the hash its capture must have."""
+    """One ``references.toml`` entry: the film's slug, the hash its capture must have, builds."""
 
     film: str
     slug: str
     sha256: str
+    builds: Builds
 
 
 # Not cached: a capture is replaced in place (ADR 0028), so a digest keyed by path goes stale.
@@ -80,6 +114,27 @@ def _read_document(root: Path) -> tuple[Path, dict[str, object]]:
         raise ReferenceCaptureError(f"{path} is not valid TOML: {err}") from err
 
 
+def _builds(path: Path, name: str, entry: dict[str, object]) -> Builds:
+    """The builds row *name* of *path* names; an omitted one is patch3 and an unknown one is an error."""
+    found: dict[str, str] = {}
+    for field in ("makeone", "playone"):
+        value = entry.get(field, "patch3")  # an omitted build is patch3 (ADR 0029)
+        if not isinstance(value, str) or value not in BUILD_NAMES:
+            raise ReferenceCaptureError(
+                f"{path}: the row [{name}] names {field} build {value!r}, "
+                f"which is none of {', '.join(BUILD_NAMES)}"
+            )
+        found[field] = value
+    reason = entry.get("reason", "")
+    if not isinstance(reason, str):
+        raise ReferenceCaptureError(f"{path}: the reason of [{name}] is not a string")
+    if "unpatched" in found.values() and not reason.strip():
+        raise ReferenceCaptureError(
+            f"{path}: the row [{name}] uses an unpatched build, so it needs a reason"
+        )
+    return Builds(found["makeone"], found["playone"], reason)
+
+
 def reference_films(root: Path) -> tuple[str, ...]:
     """The films the parity loop covers: *root*'s rows that pin a reference with ``sha256``."""
     _, document = _read_document(root)
@@ -109,7 +164,89 @@ def read_reference(root: Path, film: str) -> Reference:
         raise ReferenceCaptureError(
             f"{path}: the film entry of {name} is not a slug: {err}"
         ) from err
-    return Reference(name, slug, entry["sha256"])
+    return Reference(name, slug, entry["sha256"], _builds(path, name, entry))
+
+
+def read_builds(root: Path, slug: str) -> tuple[str, Builds] | None:
+    """The row of *root*'s ``references.toml`` for the film in directory *slug*, with its builds.
+
+    ``None`` when no row names the film: a film with no row has no pair to check against.
+    A row that does name it must name valid builds.
+    """
+    path, document = _read_document(root)
+    for name, entry in document.items():
+        if isinstance(entry, dict) and entry.get("film") == slug:
+            return name, _builds(path, name, entry)
+    return None
+
+
+#: Stands for a ``MAKEONE`` build that cannot be determined; :func:`require_builds` refuses it
+#: whenever the film's row names a ``makeone`` build.
+UNKNOWN_BUILD = "unknown"
+
+#: Game trees whose shipped ``.ALL`` files the unpatched ``MAKEONE`` wrote: the demo and the
+#: retail game, which ship the unpatched executables (``patch3.md`` section 1).
+_UNPATCHED_TREES = ("stisldem", "stuntisl")
+
+
+def _recorded_makeone(path: Path, key_file: str) -> str | None:
+    """The build for the ``makeone_sha256`` in *path* (JSON or TOML by *key_file*), else None."""
+    try:
+        text = path.read_text("utf-8")
+        record = json.loads(text) if key_file == "json" else tomllib.loads(text)
+        return MAKEONE_BUILDS.get(str(record.get("makeone_sha256", "")))
+    except OSError, ValueError, AttributeError:
+        return None
+
+
+def archive_makeone_build(root: Path, slug: str, archive: Path) -> str:
+    """The build of the ``MAKEONE`` that wrote *archive* for film *slug*, else ``UNKNOWN_BUILD``.
+
+    Three kinds of archive are known: a stored one (``meta.json`` beside it records
+    ``makeone_sha256``), one rebuilt under ``target/linked/<slug>`` (the film's committed
+    manifest, ``manifests/all/<slug>.toml``, records it), and a shipped ``.ALL`` in the demo's or
+    the retail game's tree under the data root's corpus, which the unpatched ``MAKEONE`` wrote. Any other archive, such as a
+    community film's, has no record, so its build cannot be determined.
+    """
+    found = _recorded_makeone(archive.parent / capture_store.META_FILE, "json")
+    if found is None and archive.parent == (root / parity_layout.linked_path(slug, "x")).parent:
+        found = _recorded_makeone(root / parity_layout.manifest_path(slug), "toml")
+    if found is None:
+        shipped = corpus_root()
+        if any(archive.is_relative_to(shipped / tree) for tree in _UNPATCHED_TREES):
+            found = "unpatched"
+    return found or UNKNOWN_BUILD
+
+
+def require_builds(
+    root: Path, slug: str, *, playone: str | None = None, makeone: str | None = None
+) -> None:
+    """Refuse a run whose builds differ from the ones the film's row names.
+
+    *playone* and *makeone* are build names, or ``None`` for an executable the run does not use.
+    *makeone* may be ``UNKNOWN_BUILD`` for an archive whose build cannot be determined; that is
+    refused when the row names a ``makeone``, because it might be the other build. Only the row
+    for the directory *slug* is checked: a film with no row, or run under another ``--name``
+    slug, passes unchecked until #140's fallback chooses its builds.
+    """
+    found = read_builds(root, slug)
+    if found is None:
+        return
+    name, named = found
+    if makeone == UNKNOWN_BUILD:
+        raise ReferenceCaptureError(
+            f"the MAKEONE build of the {slug} archive cannot be determined, but the row [{name}] "
+            f"of {parity_layout.REFERENCES_FILE.as_posix()} names {named.makeone}; "
+            "make the archive with make-all, or restore its manifest"
+        )
+    for field, used in (("playone", playone), ("makeone", makeone)):
+        wanted = getattr(named, field)
+        if used is not None and used != wanted:
+            raise ReferenceCaptureError(
+                f"{slug} would run on the {used} {field.upper()}, but the row [{name}] of "
+                f"{parity_layout.REFERENCES_FILE.as_posix()} names {wanted}; "
+                "use that build, or change the row in a reviewed commit"
+            )
 
 
 @contextmanager

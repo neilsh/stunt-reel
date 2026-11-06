@@ -20,23 +20,6 @@ pub(super) fn compute_luminance(r: f32, g: f32, b: f32) -> f32 {
     0.299 * r + 0.587 * g + 0.114 * b
 }
 
-/// Converts a contiguous RGBA8 buffer to a flat luminance float slice.
-///
-/// Only the tests read RGBA pages; the scorer works from RGB planes ([`rgb_to_luminance`]).
-#[cfg(test)]
-pub(super) fn rgba_to_luminance(rgba: &[u8]) -> Vec<f32> {
-    let pixel_count = rgba.len() / 4;
-    let mut lum = Vec::with_capacity(pixel_count);
-    for chunk in rgba.as_chunks::<4>().0 {
-        lum.push(compute_luminance(
-            f32::from(chunk[0]),
-            f32::from(chunk[1]),
-            f32::from(chunk[2]),
-        ));
-    }
-    lum
-}
-
 /// Converts a contiguous RGB8 buffer to a flat luminance float slice.
 pub(super) fn rgb_to_luminance(rgb: &[u8]) -> Vec<f32> {
     let mut lum = Vec::with_capacity(rgb.len() / 3);
@@ -74,6 +57,11 @@ pub(super) fn rescale_mode13h_frame(
     let rows_in: Vec<&[f32]> = src.chunks_exact(width).take(height).collect();
 
     for (y_out, row_out) in target.chunks_exact_mut(width).enumerate() {
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "a row of a frame of a few hundred rows, floored"
+        )]
         let y_in = ((y_out as f32 * scale_y) as usize).min(height.saturating_sub(1));
         if let Some(row_in) = rows_in.get(y_in) {
             row_out.copy_from_slice(row_in);
@@ -382,8 +370,8 @@ mod tests {
 
     #[test]
     fn test_blank_page_luminance_is_flat() {
-        let rgba = vec![255u8; MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT * 4];
-        let lum = rgba_to_luminance(&rgba);
+        let rgb = vec![255u8; MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT * 3];
+        let lum = rgb_to_luminance(&rgb);
         assert_eq!(lum.len(), MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT);
         assert!(lum.iter().all(|&value| (value - 255.0).abs() < 1e-3));
     }
@@ -433,9 +421,11 @@ mod crosscheck_tests {
             .iter()
             .enumerate()
             .map(|(i, &v)| {
-                let i = i as u32;
+                let i = u32::try_from(i).unwrap();
                 let noise = (i.wrapping_mul(2_654_435_761) >> 24) % (2 * amplitude + 1);
-                (i32::from(v) + noise as i32 - amplitude as i32).clamp(0, 255) as u8
+                let noisy = i32::from(v) + i32::try_from(noise).unwrap()
+                    - i32::try_from(amplitude).unwrap();
+                u8::try_from(noisy.clamp(0, 255)).unwrap()
             })
             .collect()
     }
@@ -455,7 +445,7 @@ mod crosscheck_tests {
         // `compute_frame_ssim` fixes the production constants; rebuild the same non-overlapping
         // tiling with a custom `C2` through the window scorer instead.
         let (fa, fb) = (to_f32(a), to_f32(b));
-        if c2 == C2_CONSTANT {
+        if c2.to_bits() == C2_CONSTANT.to_bits() {
             return compute_frame_ssim(&fa, &fb, WIDTH as usize, HEIGHT as usize, WINDOW, WINDOW);
         }
         let mut scores = Vec::new();

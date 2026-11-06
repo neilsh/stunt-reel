@@ -2,6 +2,9 @@
 
 ## Status
 
+amended 2026-11-04 by [ADR 0036](0036-worktrees-reach-shared-state-by-configuration.md): seeding runs from `ensure`, a dependency of every
+building task.
+
 accepted 2026-11-02, at the measured 40 s and 0.7–0.9 GB of own disk per new worktree rather than
 the 30 s and 0.5 GB [the seeding plan](../process/plans/target-seeding-2026-11-02.md) first set:
 the workspace crates rebuild by design, and less than half the unseeded 91 s is worth having now.

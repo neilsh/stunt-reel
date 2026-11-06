@@ -50,15 +50,20 @@ pub(super) fn plane_index(i: usize) -> u8 {
     } else if i < MODE13H_WIDTH * 4 {
         233
     } else {
-        (i % 7) as u8 + 200
+        u8::try_from(i % 7).unwrap() + 200
     }
 }
 
 /// The static palette with every channel scaled by `scale`.
 pub(super) fn scaled_palette(scale: f32) -> Palette {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "tests scale channels by factors in 0..=1"
+    )]
     let channel = |v: u8| (f32::from(v) * scale).round() as u8;
     std::array::from_fn(|i| {
-        let (r, g, b) = get_palette_rgb(i as u8);
+        let (r, g, b) = get_palette_rgb(u8::try_from(i).unwrap());
         (channel(r), channel(g), channel(b))
     })
 }
@@ -116,8 +121,8 @@ pub(super) enum Picture {
 pub(super) fn write_render_store(dir: &Path, ticks: &[(u32, u16, Picture)]) {
     fs::create_dir_all(dir).unwrap();
     let geometry = Geometry {
-        width: MODE13H_WIDTH as u32,
-        height: MODE13H_HEIGHT as u32,
+        width: u32::try_from(MODE13H_WIDTH).unwrap(),
+        height: u32::try_from(MODE13H_HEIGHT).unwrap(),
         viewport_rows: None,
     };
     let indices: Vec<u8> = (0..MODE13H_WIDTH * MODE13H_HEIGHT)
@@ -134,10 +139,10 @@ pub(super) fn write_render_store(dir: &Path, ticks: &[(u32, u16, Picture)]) {
         })
         .collect();
     let grey: Palette = std::array::from_fn(|i| {
-        let v = (i * 53 % 256) as u8;
+        let v = u8::try_from(i * 53 % 256).unwrap();
         (v, v, v)
     });
-    let matching: Palette = std::array::from_fn(|i| get_palette_rgb(i as u8));
+    let matching: Palette = std::array::from_fn(|i| get_palette_rgb(u8::try_from(i).unwrap()));
     let mut writer = StoreWriter::new(dir, &geometry);
     let mut entries = Vec::new();
     for &(tick, brightness, picture) in ticks {

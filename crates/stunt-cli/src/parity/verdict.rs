@@ -140,7 +140,7 @@ pub(super) fn frame_verdict(
     for (flag, (((b_idx, a_idx), (b_luma, a_luma)), &layer)) in changed.iter_mut().zip(pairs) {
         let idx = b_idx != a_idx;
         // Exact inequality on purpose: the numpy copy compares its float32 planes with `!=`.
-        #[allow(
+        #[expect(
             clippy::float_cmp,
             reason = "bit-for-bit parity with the numpy float32 compare"
         )]
@@ -203,6 +203,10 @@ pub(super) fn frame_verdict(
             count += 1;
         }
     }
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "summed in f64, reported in the f32 the scores use"
+    )]
     let delta = (count > 0).then(|| ((after_sum - before_sum) / count as f64) as f32);
 
     let class = match delta {
@@ -349,7 +353,7 @@ mod tests {
     fn reference() -> ReferenceFrame {
         ReferenceFrame {
             indices: (0..PIXELS).map(plane_index).collect(),
-            palette: std::array::from_fn(|i| get_palette_rgb(i as u8)),
+            palette: std::array::from_fn(|i| get_palette_rgb(u8::try_from(i).unwrap())),
         }
     }
 
@@ -365,7 +369,7 @@ mod tests {
                 })
                 .collect(),
             indices: reference.indices,
-            layers: vec![LAYER_TERRAIN as u16; PIXELS],
+            layers: vec![u16::try_from(LAYER_TERRAIN).unwrap(); PIXELS],
             controls: None,
             credits: false,
         }

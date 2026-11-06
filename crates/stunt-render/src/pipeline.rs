@@ -2,7 +2,7 @@
 //!
 //! Complies with Architectural Invariants:
 //! - `[I3]` VGA Mode 13h palette index color mapping and flat shading.
-//! - `[I5]` Hardware depth bias decal pass (`constant: 2, slope_scale: 2.0, clamp: 0.0`).
+//! - `[I5]` Hardware depth bias decal pass (`constant: -2, slope_scale: -2.0, clamp: 0.0`).
 
 use stunt_core::contracts::SodVertex;
 

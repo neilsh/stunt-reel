@@ -1,0 +1,13 @@
+# #66: the world light over the whole of CTRY.FLM. The film-variable-13 handler 0x196C (Patch #3
+# 0x1A7F) stores DS:0x49EC..F0 from variable 13 (AX at entry); every entry is logged with the
+# stored light read back on entry (the previous value) so a change shows on the next hit.
+[run]
+stop_tick = 1342
+
+[[probe]]
+name = "var13-handler"
+kind = "break"
+at = 0x196C
+patched_at = 0x1A7F
+hits = 4000
+capture = ["stack:2", "mem:DS:0x49EC:6"]

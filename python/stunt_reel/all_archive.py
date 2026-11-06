@@ -17,7 +17,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
-from stunt_reel import capture_store, link, parity_layout
+from stunt_reel import capture_store, dataroot, link, parity_layout
 from stunt_reel.hashing import file_sha256
 
 __all__ = [
@@ -31,6 +31,7 @@ __all__ = [
     "no_link",
     "publish_archive",
     "resolve_all",
+    "write_archive",
 ]
 
 #: The file inside an archive directory that says it is complete; it is written last.
@@ -61,6 +62,8 @@ class ArchiveMeta:
     game_files: tuple[tuple[str, int], ...] = ()
     wall_seconds: float = 0.0
     created: str = ""
+    #: False when MAKEONE wrote the archive but never returned to DOS and was killed.
+    returned_to_dos: bool = True
 
     def to_json(self) -> str:
         """The ``meta.json`` text."""
@@ -103,8 +106,16 @@ def check_archive(data: bytes) -> int:
     return count
 
 
+def write_archive(directory: Path, data: bytes, meta: ArchiveMeta, *, film: str) -> None:
+    """Write *data* as ``<FILM>.ALL`` into *directory*, ``meta.json`` last (the capture is complete then)."""
+    (directory / parity_layout.all_name(film)).write_bytes(data)
+    (directory / META_FILE).write_text(meta.to_json(), encoding="utf-8")
+
+
 def publish_archive(root: Path, data: bytes, meta: ArchiveMeta, *, slug: str, film: str) -> Path:
-    """Write *data* as ``<root>/captures/<slug>/archives/<FILM>.ALL``, replacing the old archive.
+    """Write *data* as ``<root>/captures/<slug>/archives/<FILM>.ALL`` in the data root *root*.
+
+    It replaces the old archive.
 
     The files go to a staged sibling, ``meta.json`` last, and the sibling is swapped into place,
     so a reader never sees half an archive. A failed write removes the sibling and leaves the
@@ -113,8 +124,7 @@ def publish_archive(root: Path, data: bytes, meta: ArchiveMeta, *, slug: str, fi
     target = root / parity_layout.archive_path(slug)
     staged = capture_store.stage(target)
     try:
-        (staged / parity_layout.all_name(film)).write_bytes(data)
-        (staged / META_FILE).write_text(meta.to_json(), encoding="utf-8")
+        write_archive(staged, data, meta, film=film)
         return capture_store.publish(staged, target)
     except BaseException:
         capture_store.discard(staged)
@@ -167,11 +177,15 @@ def _from_manifest(flm: Path, root: Path, slug: str, link_build: LinkBuild) -> P
             f"exists only on the machine that wrote it; record it against a tree here with: "
             f"mise run make-all -- --film {flm} --game-root <tree>"
         )
-    game = root / game
+    # A corpus/... tree is the data root's (ADR 0036); any other relative tree is the checkout's.
+    game = dataroot.resolve_data_path(game)
+    if not game.is_absolute():
+        game = root / game
     if not game.is_dir():
         raise ArchiveError(
             f"manifest {manifest} needs the game tree {game}, which is missing; "
-            f"run: mise run init (it links the data root's game files into this checkout)"
+            f"check the data root ({dataroot.DATA_ENV}, or <primary checkout>.data), or the primary "
+            "checkout's corpus/ when the data root has none"
         )
     out = root / parity_layout.linked_path(slug, flm.name)
     if out.is_file() and file_sha256(out) == all_sha256:
@@ -198,7 +212,8 @@ def resolve_all(
     error, never a fall back. Last, the film's stored archive, when it was made from *flm*'s
     bytes; its own bytes must still hash to the recorded ``all_sha256``, and a mismatch is an
     error. *slug* names the film's directory; it defaults to the one
-    :func:`parity_layout.film_slug` derives.
+    :func:`parity_layout.film_slug` derives. *root* is the checkout holding the manifests and
+    ``target/``; the stored archive is read from the data root (ADR 0036).
     """
     stem = flm.stem.lower()
     for sibling in sorted(flm.parent.iterdir()):
@@ -209,7 +224,7 @@ def resolve_all(
     if linked is not None:
         return linked
     make = f"run: mise run make-all -- --film {flm}"
-    directory = capture_store.current(root / parity_layout.archive_path(slug))
+    directory = capture_store.current(dataroot.data_root() / parity_layout.archive_path(slug))
     if directory is None:
         raise ArchiveMissing(f"no .ALL for {flm}; {make}")
     try:

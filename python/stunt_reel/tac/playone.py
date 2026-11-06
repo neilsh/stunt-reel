@@ -56,8 +56,8 @@ class PlayoneLayout:
     """Where one build of PLAYONE.EXE keeps what a capture reads, identified by its SHA-256.
 
     Offsets are DS-relative. Patch #3 relinked the program: its DGROUP starts 0xE0 paragraphs
-    lower and every data offset the harness reads moved down by 0x67A
-    (``research/playone-exe/patch3.md``).
+    lower. Data at DS:0x2200 and above moved down by 0x67A; ``work_segment_pointer``, below
+    0x0A00, moved up by 0x7C instead (``research/playone-exe/patch3.md``).
     """
 
     name: str
@@ -68,6 +68,9 @@ class PlayoneLayout:
     working_palette: int
     #: DS offsets of the two words holding the composed pages' segments (the tear test).
     composed_pages: tuple[int, int]
+    #: DS offset of the word holding the display-list work segment (``mov es,[...]``), which
+    #: the lighting probe reads to find the light vector.
+    work_segment_pointer: int
 
     @property
     def ds(self) -> int:
@@ -84,8 +87,9 @@ UNPATCHED = PlayoneLayout(
     global_tick=GLOBAL_TICK_OFFSET,
     working_palette=WORKING_PALETTE_OFFSET,
     composed_pages=(0x22CA, 0x22CC),
+    work_segment_pointer=0x0542,
 )
-#: Patch #3's PLAYONE.EXE (97,790 bytes; ``mise run game-builds`` puts it in the patched tree).
+#: Patch #3's PLAYONE.EXE (97,790 bytes; ``mise run game-builds`` puts it in the ``patch3`` tree).
 PATCH3 = PlayoneLayout(
     name="patch3",
     sha256="fc532c94e4ff3e70bffdc3c51b72cce5f5a20e5d502256bb9fb58c3c4f411769",
@@ -96,6 +100,9 @@ PATCH3 = PlayoneLayout(
     # Inferred from the uniform 0x67A shift, not read from code; a live tear rate checks it,
     # and a capture's composed_matches of zero would say the offsets read no real page.
     composed_pages=(0x1C50, 0x1C52),
+    # Patch #3 shifts DGROUP data below 0x0A00 by +0x7C; 13 instructions that read 0x0542 on the
+    # unpatched build read 0x05BE here (#170 pairs the same offset by function).
+    work_segment_pointer=0x05BE,
 )
 LAYOUTS: tuple[PlayoneLayout, ...] = (UNPATCHED, PATCH3)
 

@@ -118,7 +118,7 @@ def test_render_film_asks_for_the_captured_tick_range(tmp_path: Path) -> None:
             "--tick-range",
             "7..=9",
             "--sidata",
-            str(root / parity_pipeline.SIDATA),
+            str(root / "corpus" / parity_pipeline.SIDATA),
             "--out-dir",
             str(out),
             *parity_pipeline.RENDER_FLAGS,
@@ -373,7 +373,7 @@ def test_check_render_refuses_a_render_without_planes(tmp_path: Path) -> None:
         parity_pipeline.check_render(reference, render, [7, 9])
 
 
-def _report(tmp_path: Path, **fields: float | int | None) -> Path:
+def _report(tmp_path: Path, **fields: float | None) -> Path:
     report = tmp_path / "report"
     report.mkdir()
     document: dict[str, object] = {"per_frame": []}
@@ -431,18 +431,22 @@ def test_preflight_names_a_missing_flm_archive_and_sidata(tmp_path: Path) -> Non
     vault = root / "corpus" / "stisldem" / "VAULT"
     (vault / "CTRY.FLM").unlink()
     (vault / "INTRO.ALL").unlink()
-    (root / parity_pipeline.SIDATA).rmdir()
+    (root / "corpus" / parity_pipeline.SIDATA).rmdir()
     problems = parity_pipeline.preflight(
         root, ["ctry", "intro"], build_required=False, locked=lambda _path: False
     )
     assert len(problems) == 3
-    assert f"missing input {root / parity_pipeline.SIDATA}" in problems[0]
+    assert f"missing input {root / 'corpus' / parity_pipeline.SIDATA}" in problems[0]
     assert "no .FLM of vault-ctry" in problems[1]
     assert "no .ALL for" in problems[2]
 
 
 def _intro_from_a_manifest(root: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Replaces INTRO's sibling .ALL with a matching manifest; returns the link calls made."""
+    """Replaces INTRO's sibling .ALL with a matching manifest; returns the link calls made.
+
+    The manifests are the checkout's, so *root* stands in for this checkout too.
+    """
+    monkeypatch.setattr(parity_pipeline, "REPO_ROOT", root)
     vault = root / "corpus" / "stisldem" / "VAULT"
     (vault / "INTRO.ALL").unlink()
     flm_sha256 = hashlib.sha256((vault / "INTRO.FLM").read_bytes()).hexdigest()
@@ -492,3 +496,11 @@ def test_render_film_links_a_manifest_without_running_cargo(
     assert calls == ["link"]
     linked = root / parity_layout.linked_path("vault-intro", "INTRO.FLM")
     assert _after(fake.calls[0], "--all") == str(linked)
+
+
+def test_preflight_names_the_missing_game_files(tmp_path: Path) -> None:
+    problems = parity_pipeline.preflight(
+        tmp_path / "nothing", ["ctry"], build_required=False, locked=lambda _path: False
+    )
+    assert len(problems) == 1
+    assert problems[0].startswith("no game files")

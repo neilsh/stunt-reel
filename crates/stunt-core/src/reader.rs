@@ -24,17 +24,20 @@ pub struct ByteReader<'a> {
 
 impl<'a> ByteReader<'a> {
     /// Create a reader positioned at the start of `data`.
+    #[must_use]
     pub fn new(data: &'a [u8]) -> Self {
         Self { data, pos: 0 }
     }
 
     /// Create a reader positioned at `pos` (which may lie past the end).
+    #[must_use]
     pub fn at(data: &'a [u8], pos: usize) -> Self {
         Self { data, pos }
     }
 
     /// Current cursor offset.
     #[inline]
+    #[must_use]
     pub fn pos(&self) -> usize {
         self.pos
     }
@@ -47,18 +50,21 @@ impl<'a> ByteReader<'a> {
 
     /// Total length of the underlying buffer.
     #[inline]
+    #[must_use]
     pub fn len(&self) -> usize {
         self.data.len()
     }
 
     /// True if the underlying buffer is empty.
     #[inline]
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
     /// True if at least one byte remains after the cursor.
     #[inline]
+    #[must_use]
     pub fn has_more(&self) -> bool {
         self.pos < self.data.len()
     }
@@ -138,12 +144,21 @@ impl<'a> ByteReader<'a> {
         let mut parts = rest.splitn(2, |&b| b == 0);
         let head = parts.next().unwrap_or(&[]);
         if parts.next().is_some() {
-            self.pos += head.len() + 1;
+            // `head` and its terminator lie inside `data`, so the sum is at most `data.len()`.
+            let end = self
+                .pos
+                .checked_add(head.len())
+                .and_then(|p| p.checked_add(1))
+                .ok_or(Eof {
+                    expected: usize::MAX,
+                    actual: self.data.len(),
+                })?;
+            self.pos = end;
             Ok(head.to_vec())
         } else {
             self.pos = self.pos.max(self.data.len());
             Err(Eof {
-                expected: self.pos + 1,
+                expected: self.pos.saturating_add(1), // pos is at most one past the end here (it was just raised to len), so +1 never clamps
                 actual: self.data.len(),
             })
         }
@@ -183,7 +198,7 @@ mod tests {
     #[test]
     fn take_does_not_overflow() {
         let mut r = ByteReader::new(&[0; 4]);
-        assert!(r.take(usize::MAX).is_err());
+        r.take(usize::MAX).unwrap_err();
         assert_eq!(r.pos(), 0);
     }
 

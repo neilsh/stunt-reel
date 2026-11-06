@@ -2,7 +2,7 @@
 
 Procedures for finding out *what* is wrong once [`method.md`](method.md) says *where* the loss is. Terms are those of [`GLOSSARY.md`](../../GLOSSARY.md). Dated outcomes are in [`log.md`](log.md) and the notes it links; the helpers are [`python/scripts/parity_probe.py`](../../python/scripts/parity_probe.py) and [`parity_sweep.py`](../../python/scripts/parity_sweep.py).
 
-All probes read a capture directory (`build/parity/captures/<film>/<id>`, `tick_NNNN.idx` by ordinal) and a render store (index and layer planes by film tick, read through `RenderStore`). "Object pixels" are capture pixels that are not sky, ground ramp, button bar or cursor; the index ranges in the script are `CTRY.FLM`'s and must be changed per film.
+All probes read a capture directory (`<data root>/captures/<film>/<id>`, `tick_NNNN.idx` by ordinal) and a render store (index and layer planes by film tick, read through `RenderStore`). "Object pixels" are capture pixels that are not sky, ground ramp, button bar or cursor; the index ranges in the script are `CTRY.FLM`'s and must be changed per film.
 
 ## 1. Side-by-side crop (`crop`)
 
@@ -40,7 +40,7 @@ For a hypothesis with a few dozen variants (axis permutations, Euler order and s
 4. Re-run the winner against the other film if `--films` narrowed the sweep. Three CTRY-only gains (camera height, terrain base, hero lift) regressed `INTRO.FLM` and were not adopted.
 5. `git checkout crates` to remove the switch, and record the outcome, including a negative one, as a row in [`log.md`](log.md) and in the note that owns the residual.
 
-`--data-root <dir>` points the tool at another copy of `corpus/` and the reference captures. A worktree normally needs neither: `capture-ref`, `parity` and `sweep` link the shared data root on first read ([ADR 0008](../../docs/adr/0008-worktrees-share-one-read-only-data-root.md)). The flag is for CI, for a machine that keeps its data elsewhere, and for scoring one checkout's captures from another. Smoke check: with an eye-height switch, `DBG_EYE_DY=0,-0.3` reproduces the eye-height sweep in [`framing-and-actors.md`](framing-and-actors.md) (CTRY 0.771 and 0.782, INTRO 0.676 and 0.669).
+`--data-root <dir>` points the tool at another copy of `corpus/` and the reference captures. A worktree normally needs neither: `capture-ref`, `parity` and `sweep` read the corpus and captures from the configured data root, with no link in the checkout ([ADR 0036](../../docs/adr/0036-worktrees-reach-shared-state-by-configuration.md)). The flag is for CI, for a machine that keeps its data elsewhere, and for scoring one checkout's captures from another. Smoke check: with an eye-height switch, `DBG_EYE_DY=0,-0.3` reproduces the eye-height sweep in [`framing-and-actors.md`](framing-and-actors.md) (CTRY 0.771 and 0.782, INTRO 0.676 and 0.669).
 
    `--no-build` scores with the existing release binary (useful when another session holds it); `--reuse DIR` scores an existing `DIR/<film>` tree and renders nothing; `--retime N` relabels that tree by N ticks before scoring (section 6). Two variants whose per-film SSIM and IoU agree to four decimals print `warning: variants ... scored identically; the switch may not be wired` — that is the `is_ok()` trap of section 5 firing. A winner within 0.002 of the runner-up is marked `noise floor +/-0.002; winner is ~within noise`. Both entry points preflight before building: a missing capture is named with `mise run capture-ref`, and a held release binary fails with `release binary is in use; rerun with --no-build or wait`.
 
@@ -59,7 +59,7 @@ The page timing is modelled in the renderer: `--headless` samples the scene at `
 
 ```bash
 python python/scripts/parity_probe.py retime \
-    --ours build/parity/ours/ctry_current --reference build/parity/captures/ctry/<id> \
+    --ours build/parity/ours/ctry_current --reference <data root>/captures/ctry/<id> \
     --out build/scratch/retime/ctry --by -1 [--allow-missing] [--force]
 mise run sweep -- --reuse build/scratch/retime --films ctry,intro --no-build
 # or, scoring the existing _current renders in one command:

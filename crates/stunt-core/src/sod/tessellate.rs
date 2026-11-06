@@ -13,6 +13,7 @@ use std::collections::HashMap;
 
 use crate::contracts::shape::{
     DecodeMode, DecodeRecord, NodeId, NodeKind, SodModelIr, SodVertex, VisibilityCondition,
+    arena_index,
 };
 use crate::sod::SodError;
 use crate::sod::decal::identify_coplanar_decals;
@@ -35,6 +36,10 @@ pub(crate) type WeldKey = (i64, i64, i64, i32, i32, i32, u8, u8);
 /// Snaps positions within `1e-4 m` and normals within `1e-3` while strictly preserving
 /// distinct palette indices and decal flags to prevent normal/color bleeding.
 #[must_use]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "quantising to the weld grid is the point; `as` saturates a float past the key's range"
+)]
 pub(crate) fn quantize_weld_key(
     pos: &[f32; 3],
     normal: &[f32; 3],
@@ -129,8 +134,8 @@ fn process_polygon_batch(
     visibility: VisibilityCondition,
     weld_map: &mut HashMap<WeldKey, u32>,
 ) {
-    let vertex_offset = ir.vertices.len() as u32;
-    let index_offset = ir.indices.len() as u32;
+    let vertex_offset = arena_index(ir.vertices.len());
+    let index_offset = arena_index(ir.indices.len());
 
     for poly in polys {
         let num_v = poly.vertices.len();
@@ -144,7 +149,7 @@ fn process_polygon_batch(
             if let Some(&existing_idx) = weld_map.get(&weld_key) {
                 poly_indices.push(existing_idx);
             } else {
-                let new_idx = ir.vertices.len() as u32;
+                let new_idx = arena_index(ir.vertices.len());
                 ir.vertices.push(SodVertex {
                     position: *v_pos,
                     normal: poly.normal,
@@ -166,8 +171,9 @@ fn process_polygon_batch(
         }
     }
 
-    let vertex_count = ir.vertices.len() as u32 - vertex_offset;
-    let index_count = ir.indices.len() as u32 - index_offset;
+    // The lists only grow after the offsets were taken, so neither subtraction clamps.
+    let vertex_count = arena_index(ir.vertices.len()).saturating_sub(vertex_offset);
+    let index_count = arena_index(ir.indices.len()).saturating_sub(index_offset);
 
     if index_count > 0 {
         ir.allocate_node(
@@ -242,7 +248,7 @@ pub fn decode_sod(
 pub(crate) fn check_shape_invariants(ir: &SodModelIr) -> Result<(), SodError> {
     let defect = |reason: String| SodError::InvariantViolation { reason };
     for (index, node) in ir.nodes.iter().enumerate() {
-        if node.id != NodeId(index as u32) {
+        if node.id != NodeId(arena_index(index)) {
             return Err(defect(format!(
                 "node {index} carries id {}; the arena must be dense",
                 node.id

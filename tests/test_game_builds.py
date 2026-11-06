@@ -80,12 +80,12 @@ def test_build_trees_writes_both_trees_and_leaves_the_sources_alone(tmp_path: Pa
     assert (_snapshot(game), _snapshot(patches)) == before
     out = tmp_path / "builds"
     assert _snapshot(out / "unpatched") == _snapshot(game)
-    patched = out / "patched"
-    assert (patched / "PLAYONE.EXE").read_bytes() == b"new playone"
-    assert (patched / "RES" / "SNDFX2.SMP").read_bytes() == b"new fx2"
-    assert (patched / "WSTUNT.EXE").read_bytes() == b"launcher"
-    assert (patched / "DRIVER1.BIN").read_bytes() == b"driver"
-    assert (patched / "VAULT" / "CTRY.FLM").read_bytes() == b"film"
+    patch3 = out / "patch3"
+    assert (patch3 / "PLAYONE.EXE").read_bytes() == b"new playone"
+    assert (patch3 / "RES" / "SNDFX2.SMP").read_bytes() == b"new fx2"
+    assert (patch3 / "WSTUNT.EXE").read_bytes() == b"launcher"
+    assert (patch3 / "DRIVER1.BIN").read_bytes() == b"driver"
+    assert (patch3 / "VAULT" / "CTRY.FLM").read_bytes() == b"film"
     on_disk = json.loads((out / game_builds.MANIFEST_NAME).read_text(encoding="utf-8"))
     assert on_disk == manifest
     assert not list(out.glob(".*.partial"))
@@ -112,7 +112,7 @@ def test_game_cfg_survives_the_patch_that_deletes_it(tmp_path: Path) -> None:
     game = _game(tmp_path)
     (game / "GAME.CFG").write_bytes(bytes.fromhex("01012002070001"))
     game_builds.build_trees(game, _patches(tmp_path), tmp_path / "b")
-    assert (tmp_path / "b" / "patched" / "GAME.CFG").read_bytes() == bytes.fromhex("01012002070001")
+    assert (tmp_path / "b" / "patch3" / "GAME.CFG").read_bytes() == bytes.fromhex("01012002070001")
 
 
 def test_a_deleted_file_the_patch_does_not_replace_is_listed_as_deleted(tmp_path: Path) -> None:
@@ -122,7 +122,7 @@ def test_a_deleted_file_the_patch_does_not_replace_is_listed_as_deleted(tmp_path
     actions = {change["path"]: change["action"] for change in manifest["changes"]}
     assert actions["RES/MUSIC1.ESS"] == "deleted"
     assert actions["RES/OTHER.RES"] == "added"
-    assert not (tmp_path / "b" / "patched" / "RES" / "MUSIC1.ESS").exists()
+    assert not (tmp_path / "b" / "patch3" / "RES" / "MUSIC1.ESS").exists()
 
 
 def test_a_second_build_replaces_the_first(tmp_path: Path) -> None:
@@ -130,9 +130,9 @@ def test_a_second_build_replaces_the_first(tmp_path: Path) -> None:
     patches = _patches(tmp_path)
     out = tmp_path / "b"
     game_builds.build_trees(game, patches, out)
-    (out / "patched" / "STRAY.TXT").write_bytes(b"left over")
+    (out / "patch3" / "STRAY.TXT").write_bytes(b"left over")
     game_builds.build_trees(game, patches, out)
-    assert not (out / "patched" / "STRAY.TXT").exists()
+    assert not (out / "patch3" / "STRAY.TXT").exists()
 
 
 def test_a_failed_rebuild_leaves_no_manifest_of_the_old_trees(
@@ -154,7 +154,7 @@ def test_a_failed_rebuild_leaves_no_manifest_of_the_old_trees(
 def test_a_missing_archive_is_refused_like_patsi_bat(tmp_path: Path, missing: str) -> None:
     with pytest.raises(game_builds.BuildError, match=re.escape(missing)):
         game_builds.build_trees(_game(tmp_path), _patches(tmp_path, skip=missing), tmp_path / "b")
-    assert not (tmp_path / "b" / "patched").exists()
+    assert not (tmp_path / "b" / "patch3").exists()
 
 
 def test_a_tree_without_stunt_exe_is_refused(tmp_path: Path) -> None:
@@ -179,12 +179,10 @@ def test_a_member_lands_on_the_existing_file_whatever_its_case(tmp_path: Path) -
     _zip(patches / "p3-si3.exe", {"res/sprites.res": b"lower"})
     game_builds.build_trees(game, patches, tmp_path / "b")
     sprites = [
-        p.name
-        for p in (tmp_path / "b" / "patched" / "RES").iterdir()
-        if "SPRITES" in p.name.upper()
+        p.name for p in (tmp_path / "b" / "patch3" / "RES").iterdir() if "SPRITES" in p.name.upper()
     ]
     assert sprites == ["SPRITES.RES"]
-    assert (tmp_path / "b" / "patched" / "RES" / "SPRITES.RES").read_bytes() == b"lower"
+    assert (tmp_path / "b" / "patch3" / "RES" / "SPRITES.RES").read_bytes() == b"lower"
 
 
 def test_layout_for_names_each_build_by_hash(
@@ -194,7 +192,9 @@ def test_layout_for_names_each_build_by_hash(
     exe.write_bytes(b"not a known build")
     with pytest.raises(playone.UnknownBuild, match=r"no known PLAYONE\.EXE"):
         playone.layout_for(exe)
-    fake = playone.PlayoneLayout("fake", hashlib.sha256(b"x").hexdigest(), 0x100, 1, 2, 3, (4, 5))
+    fake = playone.PlayoneLayout(
+        "fake", hashlib.sha256(b"x").hexdigest(), 0x100, 1, 2, 3, (4, 5), 6
+    )
     monkeypatch.setattr(playone, "LAYOUTS", (*playone.LAYOUTS, fake))
     exe.write_bytes(b"x")
     assert playone.layout_for(exe) is fake
@@ -212,6 +212,12 @@ def test_layouts_name_both_composed_pages() -> None:
     """The patched pair is inferred from the uniform shift; a live tear rate checks it."""
     assert playone.UNPATCHED.composed_pages == (0x22CA, 0x22CC)
     assert playone.PATCH3.composed_pages == (0x22CA - 0x67A, 0x22CC - 0x67A)
+
+
+def test_layouts_name_the_work_segment_pointer() -> None:
+    """The pointer the lighting probe reads sits below 0x0A00, where Patch #3 moved data up by 0x7C."""
+    assert playone.UNPATCHED.work_segment_pointer == 0x0542
+    assert playone.PATCH3.work_segment_pointer == 0x0542 + 0x7C
 
 
 def _load_script() -> Any:
@@ -233,7 +239,7 @@ def test_the_script_prints_each_change_and_where_the_trees_are(
     assert module.run(module.parse_args()) == 0
     out = capsys.readouterr().out
     assert "[game-builds] added    WSTUNT.EXE" in out
-    assert f"[game-builds] patched: {tmp_path / 'b' / 'patched'}" in out
+    assert f"[game-builds] patch3: {tmp_path / 'b' / 'patch3'}" in out
 
     monkeypatch.setattr(module, "PATCHES", tmp_path / "nowhere")
     assert module.run(module.parse_args()) == 1
@@ -275,3 +281,37 @@ def test_an_output_holding_a_source_tree_is_refused(tmp_path: Path) -> None:
     with pytest.raises(game_builds.BuildError, match="only read"):
         game_builds.build_trees(game, _patches(tmp_path), out)
     assert (game / "STUNT.EXE").is_file()
+
+
+def test_build_tree_names_the_patch3_tree(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "patch3").mkdir()
+    assert game_builds.build_tree(tmp_path, "patch3") == tmp_path / "patch3"
+    assert capsys.readouterr().err == ""
+
+
+def test_build_tree_falls_back_to_the_old_patched_name_with_a_message(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "patched").mkdir()
+    assert game_builds.build_tree(tmp_path, "patch3") == tmp_path / "patched"
+    err = capsys.readouterr().err
+    assert str(tmp_path / "patched") in err
+    assert str(tmp_path / "patch3") in err
+    assert "mise run game-builds" in err
+    assert game_builds.build_tree(tmp_path, "unpatched") == tmp_path / "unpatched"
+    assert capsys.readouterr().err == ""
+
+
+def test_build_tree_prefers_patch3_over_patched(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "patched").mkdir()
+    (tmp_path / "patch3").mkdir()
+    assert game_builds.build_tree(tmp_path, "patch3") == tmp_path / "patch3"
+    assert capsys.readouterr().err == ""
+
+
+def test_build_tree_of_an_empty_directory_is_the_new_name(tmp_path: Path) -> None:
+    assert game_builds.build_tree(tmp_path, "patch3") == tmp_path / "patch3"

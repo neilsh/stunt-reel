@@ -22,6 +22,11 @@ use stunt_core::flm::FilmTimeline;
 use stunt_core::sod::{DecodeMode, DecodeRecord, OP_TAP, SodStopReason, census_skip, decode_sod};
 use stunt_core::vfs::detect_and_parse;
 
+/// The environment variable that names the corpus when `--corpus` is absent. `mise run
+/// sod-census` sets it to the corpus the Python `dataroot` resolves, so the data-root rule is
+/// written once and the path is never shell source.
+const CORPUS_ENV: &str = "STUNT_CORPUS";
+
 /// `sod-census` options as clap parses them.
 #[derive(Debug, Parser)]
 #[command(
@@ -30,7 +35,7 @@ use stunt_core::vfs::detect_and_parse;
 )]
 struct Args {
     /// Corpus root to scan
-    #[arg(long, value_name = "DIR", default_value = "corpus")]
+    #[arg(long, value_name = "DIR", env = CORPUS_ENV, default_value = "corpus")]
     corpus: PathBuf,
     /// Output format
     #[arg(long, value_enum, default_value_t = Format::Text)]
@@ -624,6 +629,18 @@ fn civil_date(days: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_corpus_default_comes_from_the_environment() {
+        // mise passes the resolved corpus here, never through the shell command line, so a
+        // path holding `$(...)` or a quote is data, not shell source.
+        let command = Args::command();
+        let corpus = command
+            .get_arguments()
+            .find(|arg| arg.get_id() == "corpus")
+            .unwrap();
+        assert_eq!(corpus.get_env(), Some(std::ffi::OsStr::new(CORPUS_ENV)));
+    }
 
     fn model(words: &[u16]) -> Vec<u8> {
         let mut bytes = vec![0x0C, 0x00, 0, 0, 0, 0, 0, 0, 0, 0];

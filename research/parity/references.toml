@@ -5,6 +5,11 @@
 [ctry]
 film = "vault-ctry"
 sha256 = "9869444de53c653214144b83c2bdbce4a686a16f5189a1f5a94f6eb19605ed49"
+# The builds the reference was made with (ADR 0029): `unpatched` or `patch3`. `reason` is
+# required while either is unpatched.
+makeone = "unpatched"
+playone = "unpatched"
+reason = "captured 2026-10-31 on the demo's unpatched PLAYONE with its shipped .ALL; recapture on patch3 is a later step (ADR 0029 Consequences)"
 # Recapture noise of the whole-frame SSIM (004 against 005), from the metric bench
 # (research/parity/method.md section 2.2); `stuntreel parity --noise-sigma` takes it. It is a
 # lower bound for the noise of the verdict's delta on a few touched windows, so "within noise"
@@ -14,3 +19,6 @@ noise_sigma = 0.000303
 [intro]
 film = "vault-intro"
 sha256 = "ac93c3babb74c5380a0f1263d38a546b43979c8d4200fb0d2dfb58db482c0215"
+makeone = "unpatched"
+playone = "unpatched"
+reason = "captured 2026-10-31 on the demo's unpatched PLAYONE with its shipped .ALL; recapture on patch3 is a later step (ADR 0029 Consequences)"

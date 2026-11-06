@@ -8,12 +8,12 @@ import threading
 import tomllib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 import pytest
 
 from stunt_reel.tac import automation
-from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout
+from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout, LaunchFailed
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -58,6 +58,7 @@ def fake() -> Iterator[Fake]:
 
         do_GET = do_POST = do_PUT = _serve  # noqa: N815
 
+        @override
         def log_message(self, *args: object) -> None:
             pass
 
@@ -212,7 +213,7 @@ def test_a_server_that_never_answers_is_a_guest_timeout(tmp_path: Path) -> None:
         launch_timeout=1,
     )
 
-    with pytest.raises(GuestTimeout):
+    with pytest.raises(LaunchFailed):
         wrapper.start()
     assert process.killed
 
@@ -231,6 +232,7 @@ def test_stop_shuts_down_then_waits(tmp_path: Path, fake: Fake) -> None:
 
 def test_stop_kills_a_process_that_ignores_shutdown(tmp_path: Path, fake: Fake) -> None:
     class Stubborn(FakeProcess):
+        @override
         def wait(self, timeout: float | None = None) -> int:
             if not self.killed:
                 raise subprocess.TimeoutExpired("dosbox", timeout or 0)

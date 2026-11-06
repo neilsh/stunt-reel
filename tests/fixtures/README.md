@@ -26,7 +26,7 @@ A minimal film stream conforming to `[fmt flm]`:
 ### 3. `oracle_intro_trajectory.json`
 Golden oracle trajectory snapshot conforming to `Seam 2: TrajectoryRecord` (`crates/stunt-core/src/contracts/trajectory.rs`):
 - Holds evaluated `[I1]` records, not raw DOS axes. `build_synthetic_intro_flm` authors its slots in DOS axes to match: every `INTERP` stores the negated `x` and `y` of the position listed here, and both slots store `rz = 0`: an actor's rotation converts by conjugation with `q_z180`, so a zero rotation evaluates to the identity `rotation_quat` `[0, 0, 0, 1]` recorded below, and the camera's look direction is unaffected because `q_z180` fixes `+Z`.
-- Contains a sequence of discrete simulation ticks (ticks 0 and 1). The ticks are 50 Hz cumulative ticks (slice $i$ at the sum of `tick_duration` over slices `0..=i`), not slice ordinals, of the film produced by `build_synthetic_intro_flm(2)` in `crates/stunt-core/tests/common/mod.rs` (test-only, not part of the library). Its slices are authored with `tick_duration` 0 and then 1, so slice $t$ lands on tick $t$. `compute_position_rmse` samples `FilmTimeline` at each oracle tick.
+- Contains a sequence of discrete simulation ticks (ticks 0 and 1). The ticks are 50 Hz cumulative ticks (slice $i$ at the sum of `tick_duration` over slices `0..=i`), not slice ordinals, of the film produced by `build_synthetic_intro_flm(2)` in `crates/stunt-core/tests/it/common/mod.rs` (test-only, not part of the library). Its slices are authored with `tick_duration` 0 and then 1, so slice $t$ lands on tick $t$. `compute_position_rmse` samples `FilmTimeline` at each oracle tick.
 - Evaluates `CameraTransform` (`eye`, `target`, `fov_degrees`, `roll_radians`).
 - Evaluates `ActorTransform` (`actor_id`, `model_name`, `rotation_quat`, `position_meters`, `state_mask`).
 - Evaluates `AudioCue` events (`tick`, `sample_name`, `volume`, `pan`).
@@ -67,18 +67,18 @@ A three-slice film exercising authored `tick_duration` and timeline sampling:
 - **Slice 0** at tick 0 (`tick_duration = 0`): `max_obj = 2`, camera slot 0 (`view_obj 0`), actor slot 1 (`shape_id 1`), `ENGINE.VOC` cue, camera at `(0, 10, 50)` and actor at `(0, 10, 0)`.
 - **Slice 1** at tick 2 (`tick_duration = 2`): camera to `(0, 10, 48)`, actor to `(0, 10, 2)`.
 - **Slice 2** at tick 12 (`tick_duration = 10`): `view_obj 1` (camera cut), `WIND.VOC` cue, camera slot to `(0, 10, 40)`, actor remains at `(0, 10, 2)`.
-- **Axes**: the coordinates above are the evaluated `[I1]` positions. The bytes are authored in DOS axes, so each `INTERP` opcode stores the negated `x` and `y` (`y = -10.0` is `0xFFF60000`, `x = 0` is unchanged) and the unchanged `z`. All rotations are zero; a zero DOS rotation evaluates to `q_z180 = [0, 0, 1, 0]`, which the timeline tests do not inspect and which fixes the `+Z` camera look axis.- Used by `crates/stunt-core/tests/flm_timeline_test.rs` to verify cumulative timestamps, interpolation, cut suppression, and audio-cue intervals.
+- **Axes**: the coordinates above are the evaluated `[I1]` positions. The bytes are authored in DOS axes, so each `INTERP` opcode stores the negated `x` and `y` (`y = -10.0` is `0xFFF60000`, `x = 0` is unchanged) and the unchanged `z`. All rotations are zero; a zero DOS rotation evaluates to `q_z180 = [0, 0, 1, 0]`, which the timeline tests do not inspect and which fixes the `+Z` camera look axis.- Used by `crates/stunt-core/tests/it/flm_timeline_test.rs` to verify cumulative timestamps, interpolation, cut suppression, and audio-cue intervals.
 
 ### 9. `mode13h_palette.json`
 A JSON array of 256 `[r, g, b]` triples: a dump of the Stunt Island master palette (`[I3]`) — 240 scene entries plus 16 UI entries, game-derived (see `crates/stunt-core/src/contracts/palette.rs`) — not a synthetic construction. `crates/stunt-core/src/contracts/palette.rs` asserts `MODE_13H_PALETTE` equals it exactly and `tests/test_goldens.py` asserts `stunt_reel.tac.palette` equals it, so the Rust and Python copies cannot drift.
 
 ### 10. `dos_math_goldens.json`
-Golden vectors for the shared DOS math helpers, generated from the Python implementations at full float precision: `bam_to_radians`, `focal_to_fov_y`, `quat_from_euler` (`[yaw, pitch, roll]` -> `[x, y, z, w]`) and `world_matrix` (`position` + `quat` -> 16 column-major floats). Rust (`flm/interpolate.rs`, `contracts/trajectory.rs` tests) and Python (`tests/test_goldens.py`) both assert agreement within `1e-5`.
+Golden vectors for the DOS math helpers, generated at full float precision from the Python implementations that have since been removed: `bam_to_radians`, `focal_to_fov_y`, `quat_from_euler` (`[yaw, pitch, roll]` -> `[x, y, z, w]`) and `world_matrix` (`position` + `quat` -> 16 column-major floats). The Rust tests in `flm/interpolate.rs` and `contracts/trajectory.rs` assert agreement within `1e-5`.
 
 ### 11. `synthetic_empty.flm` (4 bytes)
 A film that is only the `FILM` magic: its header parses, but it holds zero slices. `crates/stunt-cli/src/scene.rs` and `export.rs` tests check that naming it is an error rather than a fall back to the synthetic orbit. The same tests cover a named path that does not exist and a named film with the wrong magic (`synthetic_minimal.sod`), which need no fixture of their own; the no-input case needs no file.
 
-`crates/stunt-gltf/tests/export_test.rs` reuses `synthetic_minimal.all`, `synthetic_minimal.sod`, `synthetic_tap.sod` with `synthetic_anchors.bin`, and `synthetic_timeline.flm` to check exported `.glb` structure; it adds no fixtures of its own.
+`crates/stunt-gltf/tests/it/export_test.rs` reuses `synthetic_minimal.all`, `synthetic_minimal.sod`, `synthetic_tap.sod` with `synthetic_anchors.bin`, and `synthetic_timeline.flm` to check exported `.glb` structure; it adds no fixtures of its own.
 
 ### 12. `synthetic_minimal.set` (282 bytes)
 A synthetic scene exercising the three-record layout of `[FMT-SET-HEADER]`:
@@ -135,7 +135,7 @@ A made-up font in the `PFONT.BIN` layout ([`pfont.ksy`](../../research/formats/a
 - `'I'` (`0x49`): width 2, rows 0..6 `0x80`.
 - `'L'` (`0x4C`): width 4, rows 0..5 `0x80`, row 6 `0xE0`.
 - Row 7 is empty in every glyph. None of these glyphs is `PLAYONE`'s.
-- Used by `crates/stunt-core/tests/font_spec.rs` (parsing, advance, credits layout), the renderer's `credits_paint_index_layer_and_colour_in_mode13h_pixels` and the CLI's font lookup tests.
+- Used by `crates/stunt-core/tests/it/font_spec.rs` (parsing, advance, credits layout), the renderer's `credits_paint_index_layer_and_colour_in_mode13h_pixels` and the CLI's font lookup tests.
 
 ### 17. `link_*` (`.ALL` linker set)
 A made-up film archive and the three source files it is linked from ([`linking.md`](../../research/makeone-exe/linking.md)). Each `.res` is `RS`, `res_index`, item count, then `ofs[0] = 4 * (count + 2)`, the rest of the offset table, and the regions; item `n` is region `n - 1`. No byte is the game's.
@@ -149,5 +149,18 @@ A made-up film archive and the three source files it is linked from ([`linking.m
 | `link_film.flm` | 4 | `FILM`, standing in for the film the archive was made for. |
 | `link_film.toml` | | The manifest `stuntreel link extract` writes for `link_film.all` with the three files in a tree as `RES/SCEN.RES`, `RES/MUS.XMA` and `RES/MUS.ESS`: `game_root = "game"`, a zero `makeone_sha256`, and the real SHA-256 of each file. |
 
-- `crates/stunt-core/tests/link_spec.rs` checks that `extract` picks the `.ESS` file because only it supplies `0xC002`, that `build` inverts it, and the not-linkable and malformed-manifest errors built from these bytes.
+- `crates/stunt-core/tests/it/link_spec.rs` checks that `extract` picks the `.ESS` file because only it supplies `0xC002`, that `build` inverts it, and the not-linkable and malformed-manifest errors built from these bytes.
 - `crates/stunt-cli/src/link.rs` copies them into a temporary tree to run `stuntreel link extract` and `build` end to end.
+
+### 18. `dbx/mcbs.txt` (DOSBox-X `DOS MCBS` output)
+The body of DOSBox-X v2026.10.01's `DOS MCBS` debugger command, read over the debugger link while `PLAYONE.EXE` (unpatched) waited at its film dialog on 2026-11-04 (`core = normal`, `memsize = 16`). It is emulator output listing memory blocks and their owners, not game bytes. `PLAYONE`'s PSP is `0x0814`, so its image loads at paragraph `0x0824`.
+
+- `tests/test_dbx_boot.py` checks that `parse_mcbs` finds that PSP.
+
+### 19. `synthetic_cyclic.scn` (48 bytes)
+A made-up `SCENERY.scn` of twelve little-endian 32-bit words whose list contains itself, for the walk's cycle stop. Pointers are byte offsets, so word `n` is pointed to by `2n`. No byte is the game's.
+
+- **Word 1**: `SP_POS` (`0`) with `x = 10`, `y = 20`, `z = 30`, `next = 12` (word 6).
+- **Word 6**: `SP_LIST` (`20`) with two children, `20` (word 10) and `12` (word 6 itself), then the `0` terminator at word 9.
+- **Word 10**: `SP_LEAF` (`10`) with object `0x0105`, the shape `synthetic_minimal.sod` stands in for.
+- Used by `cyclic_scenery_list_stops_promptly_and_reports_it` in `crates/stunt-core/tests/it/world_test.rs`: the leaf is placed once at `(-10, -20, 30)`, then the walk stops with `ScnStopReason::Cycle` at byte 24 (opcode 20) instead of recursing forever.

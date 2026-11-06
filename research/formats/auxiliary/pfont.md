@@ -7,7 +7,7 @@
 - **File name:** `PFONT.BIN`, at the engine root beside `PLAYONE.EXE` and the `VAULT` directory.
 - **Magic bytes:** none. The file is exactly 1,152 bytes.
 - **Byte order:** single bytes only.
-- **Where it ships:** every `PLAYONE` tree in the corpus holds one: the demo `stisldem/`, the full game, `builds/patched` and `builds/unpatched`, and each film folder under `siarchive/Films/` ([`patch3.md`](../../playone-exe/patch3.md): Patch #3 leaves it unchanged).
+- **Where it ships:** every `PLAYONE` tree in the corpus holds one: the demo `stisldem/`, the full game, `builds/patch3` and `builds/unpatched`, and each film folder under `siarchive/Films/` ([`patch3.md`](../../playone-exe/patch3.md): Patch #3 leaves it unchanged).
 
 **Governing invariants:** [`[I3]`](../../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading) (the glyphs carry no colour; the caller picks palette indices) and [`[I7]`](../../../docs/SPEC.md#i7-asset-isolation--small-pure-rust-core-dependencies) (the file is game data, read from the corpus at run time, never committed). **Code:** [`font.rs`](../../../crates/stunt-core/src/font.rs) parses it, [`credits.rs`](../../../crates/stunt-core/src/credits.rs) lays out the credits; the synthetic fixture is `synthetic_pfont.bin` ([`tests/fixtures/README.md`](../../../tests/fixtures/README.md)).
 

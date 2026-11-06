@@ -146,7 +146,8 @@ struct WrapTable<T, const N: usize>([T; N]);
 impl<T: Copy, const N: usize> WrapTable<T, N> {
     #[expect(
         clippy::indexing_slicing,
-        reason = "`index % N` is always inside the N-entry table"
+        clippy::arithmetic_side_effects,
+        reason = "`index % N` is always inside the N-entry table, and every instantiation has N > 0"
     )]
     fn get(&self, index: usize) -> T {
         self.0[index % N]
@@ -154,11 +155,48 @@ impl<T: Copy, const N: usize> WrapTable<T, N> {
 
     #[expect(
         clippy::indexing_slicing,
-        reason = "`index % N` is always inside the N-entry table"
+        clippy::arithmetic_side_effects,
+        reason = "`index % N` is always inside the N-entry table, and every instantiation has N > 0"
     )]
     fn set(&mut self, index: usize, value: T) {
         self.0[index % N] = value;
     }
+}
+
+/// `OP_SHLV` and `OP_SHRV`: applies `shift` to each coordinate of `v` as a 32-bit integer.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "the shift works on the integer part: `as` truncates toward zero (OP_INTV can \n              leave a half) and saturates past i32, as the cast it replaces did"
+)]
+fn shift_vertex(v: [f32; 3], shift: impl Fn(i32) -> i32) -> [f32; 3] {
+    v.map(|c| shift(c as i32) as f32)
+}
+
+/// Negates a shade word.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "shade words are clamped to +-0x3FFF, so negation cannot overflow"
+)]
+fn neg_shade(s: i32) -> i32 {
+    -s
+}
+
+/// The ramp step of a shade word: `(s >> 1 >> 8)`, minus 2 when `base == 0x10`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "a shade word within +-0x3FFF shifted right 9 is tiny, so subtracting 2 cannot overflow"
+)]
+fn shade_level(s: i32, base: i32) -> i32 {
+    ((s >> 1) >> 8) - if base == 0x10 { 2 } else { 0 }
+}
+
+/// The colour index `base + max(0, level)` before clamping.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "`base` is a byte and `level` is a few dozen at most, so the sum cannot overflow"
+)]
+fn shade_colour(base: i32, level: i32) -> i32 {
+    base + level.max(0)
 }
 
 /// Computes the metric scale multiplier (meters per integer unit).
@@ -166,8 +204,9 @@ impl<T: Copy, const N: usize> WrapTable<T, N> {
 pub fn compute_scale_factor(scale_index: usize) -> f32 {
     let scale_raw = if let Some(&scale) = SOD_SCALE_TABLE.get(scale_index) {
         scale
-    } else if scale_index > 0 {
-        5.0 / 2.0f32.powi((scale_index - 1) as i32)
+    } else if let Some(exponent) = scale_index.checked_sub(1) {
+        // An index past `i32::MAX` gives the zero scale that any past 128 already does.
+        5.0 / 2.0f32.powi(i32::try_from(exponent).unwrap_or(i32::MAX))
     } else {
         10.0
     };
@@ -568,9 +607,13 @@ pub(crate) fn run_vm(
             current_visibility = VisibilityCondition::Always;
         }
 
-        if r.pos() + 2 > total_len {
+        let opcode_end = r.pos().checked_add(2).ok_or(SodError::UnexpectedEof {
+            expected: usize::MAX,
+            actual: total_len,
+        })?;
+        if opcode_end > total_len {
             return Err(SodError::UnexpectedEof {
-                expected: r.pos() + 2,
+                expected: opcode_end,
                 actual: total_len,
             });
         }
@@ -632,20 +675,12 @@ pub(crate) fn run_vm(
             OP_SHLV => {
                 let shift = r.read_u16_le()?;
                 let s = u32::from(shift) & 31;
-                cur_vert = [
-                    ((cur_vert[0] as i32).wrapping_shl(s)) as f32,
-                    ((cur_vert[1] as i32).wrapping_shl(s)) as f32,
-                    ((cur_vert[2] as i32).wrapping_shl(s)) as f32,
-                ];
+                cur_vert = shift_vertex(cur_vert, |c| c.wrapping_shl(s));
             }
             OP_SHRV => {
                 let shift = r.read_u16_le()?;
                 let s = u32::from(shift) & 31;
-                cur_vert = [
-                    ((cur_vert[0] as i32).wrapping_shr(s)) as f32,
-                    ((cur_vert[1] as i32).wrapping_shr(s)) as f32,
-                    ((cur_vert[2] as i32).wrapping_shr(s)) as f32,
-                ];
+                cur_vert = shift_vertex(cur_vert, |c| c.wrapping_shr(s));
             }
             OP_IPG => {
                 let ipg_type = r.read_u16_le()?;
@@ -713,7 +748,8 @@ pub(crate) fn run_vm(
                     let vx = f32::from(r.read_i16_le()?);
                     let vy = f32::from(r.read_i16_le()?);
                     let vz = f32::from(r.read_i16_le()?);
-                    regs.set((start_reg + (i as usize)) & 1023, [vx, vy, vz]);
+                    // Register numbers wrap modulo 1024, as `PLAYONE` masks them.
+                    regs.set(start_reg.wrapping_add(i as usize) & 1023, [vx, vy, vz]);
                 }
             }
             OP_COLOR => {
@@ -825,11 +861,14 @@ pub(crate) fn run_vm(
                             if sixteen {
                                 s >>= 1;
                             }
-                            ((s >> 1) >> 8) - if base == 0x10 { 2 } else { 0 }
+                            shade_level(s, base)
                         })
                         .sum();
-                    let level = level_sum / i32::try_from(vertex_shades.len()).unwrap_or(1);
-                    let palette_index = (base + level.max(0)).clamp(0, 255) as u8;
+                    let level = level_sum
+                        .checked_div(i32::try_from(vertex_shades.len()).unwrap_or(1))
+                        .unwrap_or(0);
+                    #[expect(clippy::cast_sign_loss, reason = "clamped to the palette's 0..=255")]
+                    let palette_index = shade_colour(base, level).clamp(0, 255) as u8;
 
                     polygons.push(RawPolygon {
                         normal: compute_polygon_normal(&poly_verts),
@@ -844,12 +883,13 @@ pub(crate) fn run_vm(
             OP_IFVIS => {
                 let cond_code = r.read_u16_le()?;
                 let sec_len = r.read_u16_le()? as usize;
-                if r.pos() + sec_len > total_len {
+                let Some(scope_end) = r.pos().checked_add(sec_len).filter(|&end| end <= total_len)
+                else {
                     // Clamped beyond EOF
                     break;
-                }
+                };
                 current_visibility = parse_visibility_condition(cond_code);
-                visibility_scope_end = r.pos() + sec_len;
+                visibility_scope_end = scope_end;
             }
             OP_SORT => {
                 // `siobj.cpp` `case 0x18c`: the three words are byte offsets from the
@@ -859,11 +899,15 @@ pub(crate) fn run_vm(
                 let first = usize::from(r.read_u16_le()?);
                 let second = usize::from(r.read_u16_le()?);
                 r.read_u16_le()?;
-                let second_at = op_offset + 4 + second;
-                let after_at = op_offset + 2 + first;
-                let in_range = |at: usize| at > r.pos() && at < total_len;
-                if in_range(second_at) && in_range(after_at) {
-                    subs_run += 1;
+                let target = |skip: usize, delta: usize| {
+                    op_offset
+                        .checked_add(skip)
+                        .and_then(|p| p.checked_add(delta))
+                        .filter(|&at| at > r.pos() && at < total_len)
+                };
+                if let (Some(second_at), Some(after_at)) = (target(4, second), target(2, first)) {
+                    // A counter: the branch below stops the stream once it passes MAX_BRANCHES.
+                    subs_run = subs_run.saturating_add(1);
                     if subs_run > MAX_BRANCHES {
                         malformed = Some(SodStopReason::MalformedBranch);
                     } else {
@@ -887,15 +931,20 @@ pub(crate) fn run_vm(
                 // Target = address of the operand word + signed byte offset (`siobj.cpp`).
                 let operand_at = r.pos();
                 let rel = r.read_i16_le()?;
-                let target = operand_at as i64 + i64::from(rel);
-                subs_run += 1;
-                if target < 10 || target as usize >= total_len || subs_run > MAX_BRANCHES {
-                    malformed = Some(SodStopReason::MalformedBranch);
-                } else {
+                let target = operand_at
+                    .checked_add_signed(isize::from(rel))
+                    .filter(|target| (10..total_len).contains(target));
+                // A counter: the branch below stops the stream once it passes MAX_BRANCHES.
+                subs_run = subs_run.saturating_add(1);
+                if let Some(target) = target
+                    && subs_run <= MAX_BRANCHES
+                {
                     if opcode == OP_GOSUB {
                         branch_resume.push((r.pos(), current_visibility, visibility_scope_end));
                     }
-                    r.set_pos(target as usize);
+                    r.set_pos(target);
+                } else {
+                    malformed = Some(SodStopReason::MalformedBranch);
                 }
             }
             OP_ID | OP_PUSHRELMAT | OP_POPRELMAT => {
@@ -916,11 +965,12 @@ pub(crate) fn run_vm(
                 let rel = r.read_u16_le()?;
                 let taken = val == 0;
                 if taken {
-                    let target = operand_at + usize::from(rel);
-                    if target >= total_len {
-                        malformed = Some(SodStopReason::MalformedBranch);
-                    } else {
-                        r.set_pos(target);
+                    match operand_at
+                        .checked_add(usize::from(rel))
+                        .filter(|&target| target < total_len)
+                    {
+                        Some(target) => r.set_pos(target),
+                        None => malformed = Some(SodStopReason::MalformedBranch),
                     }
                 }
             }
@@ -1038,7 +1088,10 @@ pub(crate) fn run_vm(
                         }
                     };
 
-                    regs.set((start_reg + i) & 1023, anchor.register_position());
+                    regs.set(
+                        start_reg.wrapping_add(i) & 1023, // register numbers wrap modulo 1024
+                        anchor.register_position(),
+                    );
                 }
             }
             OP_SHADES => {
@@ -1049,14 +1102,21 @@ pub(crate) fn run_vm(
                 let count = r.read_u16_le()? as usize;
                 for i in 0..count {
                     let n = [
-                        i64::from(r.read_u16_le()? as i16),
-                        i64::from(r.read_u16_le()? as i16),
-                        i64::from(r.read_u16_le()? as i16),
+                        i64::from(r.read_i16_le()?),
+                        i64::from(r.read_i16_le()?),
+                        i64::from(r.read_i16_le()?),
                     ];
+                    #[expect(
+                        clippy::arithmetic_side_effects,
+                        reason = "each n[k] is an i16 and each SHADE_LIGHT[k] is at most 32767, so the i64 sum cannot overflow"
+                    )]
                     let dot =
                         (n[0] * SHADE_LIGHT[0] + n[1] * SHADE_LIGHT[1] + n[2] * SHADE_LIGHT[2])
                             >> 16;
-                    shade_words.set((first / 2 + i) & 2047, -(dot.clamp(-0x3FFF, 0x3FFF) as i32));
+                    #[expect(clippy::cast_possible_truncation, reason = "clamped to +-0x3FFF")]
+                    let shade = dot.clamp(-0x3FFF, 0x3FFF) as i32;
+                    // Shade offsets wrap modulo 2048, as `PLAYONE` masks them.
+                    shade_words.set((first / 2).wrapping_add(i) & 2047, neg_shade(shade));
                 }
             }
             OP_SHADE1 | OP_SHADE2 | OP_SHADE16 | OP_SHADE216 => {
@@ -1064,16 +1124,18 @@ pub(crate) fn run_vm(
                 // polygon colour is `base + max(0, (s >> 1 [>> 1 for the 16-level forms]) >> 8
                 // + adj)`, `adj = -2` when `base == 0x10`; the SHADE2 forms negate `s`.
                 let norm = r.read_u16_le()? as usize;
-                let base = i32::from(r.read_u16_le()? as u8);
+                let [base, _] = r.read_u16_le()?.to_le_bytes();
+                let base = i32::from(base);
                 let mut s = shade_words.get((norm / 2) & 2047);
                 if matches!(opcode, OP_SHADE2 | OP_SHADE216) {
-                    s = -s;
+                    s = neg_shade(s);
                 }
                 if matches!(opcode, OP_SHADE16 | OP_SHADE216) {
                     s >>= 1;
                 }
-                let level = ((s >> 1) >> 8) - if base == 0x10 { 2 } else { 0 };
-                cur_color = (base + level.max(0)).clamp(0, 255) as u8;
+                let level = shade_level(s, base);
+                // `base` is a byte and `level.max(0)` is not negative, so only the top clamps.
+                cur_color = u8::try_from(shade_colour(base, level)).unwrap_or(u8::MAX);
             }
             OP_RETURN => {
                 returned_at = Some(op_offset);
@@ -1111,7 +1173,13 @@ pub(crate) fn run_vm(
                         for i in 0..skip.fixed_words {
                             let word = r.read_u16_le()?;
                             if skip.count_word == Some(i) {
-                                words += usize::from(word);
+                                words = words.checked_add(usize::from(word)).ok_or_else(|| {
+                                    SodError::MalformedOpcode {
+                                        opcode,
+                                        offset: op_offset,
+                                        reason: "skipped operand count overflows".to_string(),
+                                    }
+                                })?;
                             }
                         }
                         for _ in usize::from(skip.fixed_words)..words {

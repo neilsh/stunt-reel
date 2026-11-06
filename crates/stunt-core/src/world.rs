@@ -22,7 +22,7 @@ use std::collections::{HashMap, HashSet};
 use crate::anchor::AnchorPoint;
 use crate::contracts::{
     NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, ShapeExtent, SodModelIr, SodVertex,
-    VisibilityCondition,
+    VisibilityCondition, arena_index,
 };
 
 /// Column-major identity `local_matrix` for every world node (the world is drawn untransformed).
@@ -75,6 +75,132 @@ pub struct World {
     pub props_placed: usize,
     /// Extent of every vertex in [`Self::ir`].
     pub bounds: ShapeExtent,
+    /// Why the `SCENERY.scn` walk ended before it reached the end of the tree, if it did.
+    /// `None` for a tree that was walked in full or when no scenery was supplied; a stop
+    /// leaves the props gathered before it in the world.
+    pub scenery_stop: Option<ScnStop>,
+}
+
+/// Why a `SCENERY.scn` walk was cut short.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScnStopReason {
+    /// A pointer led back to a node the walk was still inside, so following it would never
+    /// end (a list that contains itself, or a chain that loops).
+    Cycle,
+    /// The walk visited more nodes than `SCN_NODE_BUDGET` allows without repeating an
+    /// ancestor, such as a heavily shared tree that fans out exponentially.
+    Budget,
+    /// Subtrees nested deeper than `SCN_MAX_DEPTH`.
+    Depth,
+    /// A node the walk could not follow: a pointer outside the file, operands cut off by the
+    /// end of the file, an unknown opcode, or a position that overflows. The chain ends there
+    /// and the walk goes on with later siblings.
+    Malformed,
+}
+
+impl std::fmt::Display for ScnStopReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cycle => f.write_str("pointer cycle"),
+            Self::Budget => f.write_str("node budget"),
+            Self::Depth => f.write_str("nesting too deep"),
+            Self::Malformed => f.write_str("malformed node"),
+        }
+    }
+}
+
+/// Where and why a `SCENERY.scn` walk stopped early, modelled on the shape decode record's
+/// `SodStop`. A stop that ends the walk (cycle, budget) is the one reported; otherwise the
+/// first skipped subtree or malformed node (depth, malformed) is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScnStop {
+    /// Byte offset in `SCENERY.scn` of the node the stop is charged to: the one whose visit was
+    /// refused, or, for [`ScnStopReason::Malformed`], the one holding the bad operand or pointer.
+    pub offset: usize,
+    /// That node's opcode word.
+    pub opcode: i32,
+    /// Why the walk stopped.
+    pub reason: ScnStopReason,
+}
+
+/// Node visits one walk may make, per word of `SCENERY.scn`. A tree walked once visits at
+/// most one node per two words, so this leaves room for subtrees shared several times over
+/// while keeping the bound proportional to the input. A fixed ceiling would be too loose: a
+/// visit costs more than a constant (an `SP_1NODE` measures path distance against every
+/// camera eye), so a corrupt fan-out could otherwise run for minutes. The real
+/// `SCENERY.scn` (29,559 words) makes 367,365 visits with every node near, 12.4 per word, so
+/// 64 leaves about five times the headroom.
+const SCN_VISITS_PER_WORD: usize = 64;
+
+/// Deepest nesting of subtrees the walk follows.
+const SCN_MAX_DEPTH: usize = 128;
+
+/// Walk state shared by every frame of one traversal.
+struct ScnWalk {
+    /// Nodes the active frames are inside, to catch a pointer back to an ancestor. A node
+    /// reached again from a sibling branch is not an ancestor and is walked again.
+    on_path: HashSet<usize>,
+    /// Node visits so far.
+    visits: usize,
+    /// Visits allowed before the walk stops with [`ScnStopReason::Budget`].
+    budget: usize,
+    /// The stop to report, if any: the first skipped subtree, replaced by a stop that ends the
+    /// walk.
+    stop: Option<ScnStop>,
+    /// Set by a stop that ends the walk; a skipped subtree leaves it clear.
+    halted: bool,
+}
+
+impl ScnWalk {
+    /// A fresh walk that allows `budget` node visits.
+    fn new(budget: usize) -> Self {
+        Self {
+            on_path: HashSet::new(),
+            visits: 0,
+            budget,
+            stop: None,
+            halted: false,
+        }
+    }
+
+    /// Records the stop unless an earlier one already holds, without ending the walk.
+    fn note(&mut self, words: &[i32], ni: usize, reason: ScnStopReason) {
+        self.stop.get_or_insert_with(|| ScnStop {
+            offset: ni.saturating_mul(4),
+            opcode: words.get(ni).copied().unwrap_or_default(),
+            reason,
+        });
+    }
+
+    /// Records the stop and ends the walk: every frame unwinds at its next check. It
+    /// replaces a skipped-subtree stop, which did not end the walk, but not an earlier halt.
+    fn halt(&mut self, words: &[i32], ni: usize, reason: ScnStopReason) {
+        if !self.halted {
+            self.stop = Some(ScnStop {
+                offset: ni.saturating_mul(4),
+                opcode: words.get(ni).copied().unwrap_or_default(),
+                reason,
+            });
+        }
+        self.halted = true;
+    }
+
+    /// Admits a visit to the node at `ni`, or records why not.
+    fn enter(&mut self, words: &[i32], ni: usize) -> bool {
+        if self.halted {
+            return false;
+        }
+        self.visits = self.visits.saturating_add(1);
+        if self.visits > self.budget {
+            self.halt(words, ni, ScnStopReason::Budget);
+            return false;
+        }
+        if !self.on_path.insert(ni) {
+            self.halt(words, ni, ScnStopReason::Cycle);
+            return false;
+        }
+        true
+    }
 }
 
 /// Builds the static world from its raw inputs and the film archive's decoded shapes.
@@ -99,6 +225,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
     }
 
     let mut instances = Vec::new();
+    let mut scenery_stop = None;
     if let Some(scn_bytes) = inputs.scenery {
         let (chunks, _) = scn_bytes.as_chunks::<4>();
         let words: Vec<i32> = chunks.iter().map(|c| i32::from_le_bytes(*c)).collect();
@@ -110,7 +237,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
             inputs.view_eyes.is_empty()
                 || path_distance(pos, inputs.view_eyes) <= lod_threshold(ext, splitdist, LOD_SCALE)
         };
-        traverse_scn(
+        scenery_stop = traverse_scn(
             &words,
             1,
             0,
@@ -138,6 +265,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         terrain_patches: map_areas.len(),
         props_placed: unique_instances.len(),
         bounds,
+        scenery_stop,
     })
 }
 
@@ -200,6 +328,10 @@ const LOD_SCALE: f32 = 0.5;
 ///
 /// Mirrors image `0x2121..0x2147`: with `half = ext / 2`, the threshold is `splitdist` when
 /// `splitdist < half`, else `half + (splitdist - half) * scale`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "ext is a 16-bit extent and splitdist a 16-bit signed distance, so the i32 maths cannot overflow"
+)]
 pub(crate) fn lod_threshold(ext: i32, splitdist: i32, scale: f32) -> f32 {
     let half = ext >> 1;
     if splitdist < half {
@@ -251,25 +383,34 @@ pub(crate) struct MapArea {
 pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
     let (records, _partial) = data.as_chunks::<30>();
     let mut areas = Vec::new();
-    for record in records {
+    for (index, record) in records.iter().enumerate() {
         // Constant indices into the fixed 30-byte record, so none can fall outside it.
         let pos = i16::from_le_bytes([record[2], record[3]]);
         if pos.trailing_zeros() >= 8 {
             continue;
         }
         let color = record[12];
-        let num_verts = i16::from_le_bytes([record[14], record[15]]) as usize;
-        let nverts = num_verts.min(7);
+        // A negative count reads as more than seven, as the sign-extending cast it replaces did.
+        let num_verts = i16::from_le_bytes([record[14], record[15]]);
+        let nverts = usize::try_from(num_verts).map_or(7, |n| n.min(8));
         if nverts < 3 {
             continue;
         }
-        // Bytes 16..30 hold up to seven little-endian anchor indices.
+        // Bytes 16..30 hold seven little-endian anchor indices. An eighth (patch 131 counts 8)
+        // is the next record's first word, where PLAYONE's own leaf for that patch has it
+        // (research/playone-exe/world-scene.md section 2); the last record keeps seven.
         let (vert_words, _) = record.as_chunks::<2>();
+        let eighth = index
+            .checked_add(1)
+            .and_then(|next| records.get(next))
+            .map(|next| u16::from_le_bytes([next[0], next[1]]));
         let verts: Vec<usize> = vert_words
             .iter()
             .skip(8)
+            .map(|&word| u16::from_le_bytes(word))
+            .chain(eighth)
             .take(nverts)
-            .map(|&word| usize::from(u16::from_le_bytes(word)))
+            .map(usize::from)
             .collect();
         if verts.iter().all(|&v_idx| v_idx < anchor_count) {
             areas.push(MapArea { color, verts });
@@ -278,54 +419,144 @@ pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
     areas
 }
 
-/// Fast approximate distance metric matching original engine and `simap.cpp`.
-#[cfg(test)]
-pub(crate) fn approx_dist(x1: i32, y1: i32, x2: i32, y2: i32) -> i32 {
-    let dx = (x2 - x1).abs();
-    let dy = (y2 - y1).abs();
-    dx + dy - (dx.min(dy) / 2)
-}
-
 /// Traverses `SCENERY.scn` hierarchical BSP tree to collect prop placements.
-#[allow(
+///
+/// Returns why the walk stopped early (a pointer cycle, the node budget, nesting past
+/// `SCN_MAX_DEPTH`, or a malformed node), or `None` when it ran to the end of the tree.
+#[expect(
     clippy::too_many_arguments,
     reason = "the traversal threads its whole state explicitly"
 )]
 pub(crate) fn traverse_scn(
     words: &[i32],
-    mut ni: usize,
-    mut cx: i32,
-    mut cy: i32,
-    mut cz: i32,
+    ni: usize,
+    cx: i32,
+    cy: i32,
+    cz: i32,
+    instances: &mut Vec<(u16, [f32; 3])>,
+    available_models: &HashSet<u16>,
+    near: &dyn Fn([f32; 3], i32, i32) -> bool,
+    depth: usize,
+) -> Option<ScnStop> {
+    let mut walk = ScnWalk::new(words.len().saturating_mul(SCN_VISITS_PER_WORD));
+    walk_scn(
+        &mut walk,
+        words,
+        ni,
+        cx,
+        cy,
+        cz,
+        instances,
+        available_models,
+        near,
+        depth,
+    );
+    walk.stop
+}
+
+/// One frame of the walk: follows the chain starting at `ni`, recursing into subtrees.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the traversal threads its whole state explicitly"
+)]
+fn walk_scn(
+    walk: &mut ScnWalk,
+    words: &[i32],
+    ni: usize,
+    cx: i32,
+    cy: i32,
+    cz: i32,
     instances: &mut Vec<(u16, [f32; 3])>,
     available_models: &HashSet<u16>,
     near: &dyn Fn([f32; 3], i32, i32) -> bool,
     depth: usize,
 ) {
-    if depth > 128 {
+    if ni == 0 || words.get(ni).is_none() {
+        // No node here (a null or out-of-range pointer): nothing to walk, so nothing to report.
         return;
     }
+    if depth > SCN_MAX_DEPTH {
+        // Skip just this subtree and keep walking its siblings; the first one is recorded.
+        walk.note(words, ni, ScnStopReason::Depth);
+        return;
+    }
+    let mut entered = Vec::new();
+    walk_chain(
+        walk,
+        words,
+        ni,
+        (cx, cy, cz),
+        instances,
+        available_models,
+        near,
+        depth,
+        &mut entered,
+    );
+    // This frame is done, so its nodes stop being ancestors of whatever is walked next.
+    for node in entered {
+        walk.on_path.remove(&node);
+    }
+}
+
+/// Follows the nodes chained from `ni` in one frame, adding each to `entered` so
+/// [`walk_scn`] can drop them from the ancestor set when the frame ends.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the traversal threads its whole state explicitly"
+)]
+fn walk_chain(
+    walk: &mut ScnWalk,
+    words: &[i32],
+    mut ni: usize,
+    (mut cx, mut cy, mut cz): (i32, i32, i32),
+    instances: &mut Vec<(u16, [f32; 3])>,
+    available_models: &HashSet<u16>,
+    near: &dyn Fn([f32; 3], i32, i32) -> bool,
+    depth: usize,
+    entered: &mut Vec<usize>,
+) {
+    // A recursion counter, bounded by the guard in `walk_scn`, so it never clamps.
+    let deeper = depth.saturating_add(1);
+    // The last node visited, which holds the `next` pointer if the loop ends on a bad one.
+    let mut last = ni;
     while ni != 0
         && let Some(&op) = words.get(ni)
     {
+        if !walk.enter(words, ni) {
+            return;
+        }
+        entered.push(ni);
+        last = ni;
         match op {
             0 => {
                 // SP_POS: x, y, z, next
                 let Some([x, y, z, next]) = scn_operands(words, ni) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                     break;
                 };
-                cx += i32::from(x as u16 as i16);
-                cy += i32::from(y as u16 as i16);
-                cz += i32::from(z as u16 as i16);
+                let (Some(nx), Some(ny), Some(nz)) = (
+                    cx.checked_add(scn_i16(x)),
+                    cy.checked_add(scn_i16(y)),
+                    cz.checked_add(scn_i16(z)),
+                ) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
+                    break;
+                };
+                (cx, cy, cz) = (nx, ny, nz);
                 ni = scn_pointer(next);
             }
             22 => {
                 // SP_POSXZ: x, z, next
                 let Some([x, z, next]) = scn_operands(words, ni) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                     break;
                 };
-                cx += i32::from(x as u16 as i16);
-                cz += i32::from(z as u16 as i16);
+                let (Some(nx), Some(nz)) = (cx.checked_add(scn_i16(x)), cz.checked_add(scn_i16(z)))
+                else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
+                    break;
+                };
+                (cx, cz) = (nx, nz);
                 ni = scn_pointer(next);
             }
             2 => {
@@ -333,14 +564,15 @@ pub(crate) fn traverse_scn(
                 // is near and otherwise draws `obj` as a stand-in for the whole subtree
                 // (image `0x2121`, research/playone-exe/lod.md section 1).
                 let Some([obj, ext, splitdist, next]) = scn_operands(words, ni) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                     break;
                 };
-                let ext = i32::from(ext as u16);
-                let splitdist = i32::from(splitdist as u16 as i16);
+                let ext = i32::from(scn_u16(ext));
+                let splitdist = scn_i16(splitdist);
                 if near([-(cx as f32), -(cy as f32), cz as f32], ext, splitdist) {
                     ni = scn_pointer(next);
                 } else {
-                    let obj = obj as u16;
+                    let obj = scn_u16(obj);
                     if obj != 0 && available_models.contains(&obj) {
                         instances.push((obj, [-(cx as f32), -(cy as f32), cz as f32]));
                     }
@@ -350,9 +582,12 @@ pub(crate) fn traverse_scn(
             4 | 6 | 8 | 16 | 18 => {
                 // SP_2NODE, SP_XPLANE, SP_ZPLANE, SP_HSLOPE, SP_VSLOPE
                 let Some([ptr, next]) = scn_operands(words, ni) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                     break;
                 };
-                traverse_scn(
+                note_dangling(walk, words, ni, scn_pointer(ptr));
+                walk_scn(
+                    walk,
                     words,
                     scn_pointer(ptr),
                     cx,
@@ -361,26 +596,31 @@ pub(crate) fn traverse_scn(
                     instances,
                     available_models,
                     near,
-                    depth + 1,
+                    deeper,
                 );
                 ni = scn_pointer(next);
             }
             10 => {
                 // SP_LEAF: obj
                 if let Some([obj]) = scn_operands(words, ni) {
-                    let obj = obj as u16;
+                    let obj = scn_u16(obj);
                     if available_models.contains(&obj) {
                         instances.push((obj, [-(cx as f32), -(cy as f32), cz as f32]));
                     }
+                } else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                 }
                 break;
             }
             12 => {
                 // SP_GROUND
                 let Some([_, _, _, _, _, ptr, next]) = scn_operands(words, ni) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                     break;
                 };
-                traverse_scn(
+                note_dangling(walk, words, ni, scn_pointer(ptr));
+                walk_scn(
+                    walk,
                     words,
                     scn_pointer(ptr),
                     cx,
@@ -389,24 +629,30 @@ pub(crate) fn traverse_scn(
                     instances,
                     available_models,
                     near,
-                    depth + 1,
+                    deeper,
                 );
                 ni = scn_pointer(next);
             }
             14 => {
                 // SP_GLEAF
                 let Some([next]) = scn_operands(words, ni) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
                     break;
                 };
                 ni = scn_pointer(next);
             }
             20 => {
                 // SP_LIST
-                let mut curr = ni + 1;
+                let Some(mut curr) = ni.checked_add(1) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
+                    break;
+                };
                 while let Some(&child) = words.get(curr)
                     && child != 0
                 {
-                    traverse_scn(
+                    note_dangling(walk, words, ni, scn_pointer(child));
+                    walk_scn(
+                        walk,
                         words,
                         scn_pointer(child),
                         cx,
@@ -415,25 +661,60 @@ pub(crate) fn traverse_scn(
                         instances,
                         available_models,
                         near,
-                        depth + 1,
+                        deeper,
                     );
-                    curr += 1;
+                    if walk.halted {
+                        return;
+                    }
+                    let Some(next) = curr.checked_add(1) else {
+                        return;
+                    };
+                    curr = next;
                 }
-                ni = curr + 1;
+                let Some(after) = curr.checked_add(1) else {
+                    walk.note(words, ni, ScnStopReason::Malformed);
+                    break;
+                };
+                ni = after;
             }
-            _ => break,
+            _ => {
+                walk.note(words, ni, ScnStopReason::Malformed);
+                break;
+            }
         }
+    }
+    // A `next` pointer that left the file ended the loop; a null one is the normal end.
+    note_dangling(walk, words, last, ni);
+}
+
+/// Records [`ScnStopReason::Malformed`] against the node at `holder` when `target` is a
+/// non-null pointer outside the file. A null pointer is the normal end of a chain and records
+/// nothing.
+fn note_dangling(walk: &mut ScnWalk, words: &[i32], holder: usize, target: usize) {
+    if target != 0 && words.get(target).is_none() {
+        walk.note(words, holder, ScnStopReason::Malformed);
     }
 }
 
 /// The `N` operand words after the `SCENERY.scn` opcode at `ni`, or `None` past the end.
 fn scn_operands<const N: usize>(words: &[i32], ni: usize) -> Option<[i32; N]> {
-    words.get(ni + 1..)?.first_chunk().copied()
+    words.get(ni.checked_add(1)?..)?.first_chunk().copied()
 }
 
 /// A `SCENERY.scn` byte pointer operand as a word index.
 fn scn_pointer(word: i32) -> usize {
-    (word as u32 as usize) / 2
+    (word.cast_unsigned() as usize) / 2
+}
+
+/// The low half of a `SCENERY.scn` word, where the format keeps a 16-bit operand.
+fn scn_u16(word: i32) -> u16 {
+    let [lo, hi, ..] = word.to_le_bytes();
+    u16::from_le_bytes([lo, hi])
+}
+
+/// The low half of a `SCENERY.scn` word read as a signed 16-bit operand.
+fn scn_i16(word: i32) -> i32 {
+    i32::from(scn_u16(word).cast_signed())
 }
 
 /// Half-width of the ocean and fallback ground quads, in metres.
@@ -451,6 +732,10 @@ const UP: [f32; 3] = [0.0, 1.0, 0.0];
 /// Vertices are laid out ocean, then terrain, then props (base batch, then decal batch),
 /// each tagged with its scenery class. The props' coplanar decals get their own node so
 /// renderers can depth-bias them (`[I5]`).
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX; the decal counts are growth since the base counts"
+)]
 pub(crate) fn build_world_ir(
     anchors: &[AnchorPoint],
     map_areas: &[MapArea],
@@ -467,13 +752,21 @@ pub(crate) fn build_world_ir(
     } else {
         push_terrain(&mut ir, anchors, map_areas, base_y);
     }
-    push_props(&mut ir, instances, ir_models, base_y, false);
+    let surface = TerrainSurface::new(anchors, map_areas, base_y);
+    let grounded: Vec<Option<Vec<[f32; 3]>>> = instances
+        .iter()
+        .map(|&(shape_id, pos)| {
+            let model = ir_models.get(&shape_id)?;
+            ground_decal_vertices(model, [pos[0], pos[1] + base_y, pos[2]], &surface)
+        })
+        .collect();
+    push_props(&mut ir, instances, &grounded, ir_models, base_y, false);
 
-    let base_indices = ir.indices.len() as u32;
-    let base_vertices = ir.vertices.len() as u32;
-    push_props(&mut ir, instances, ir_models, base_y, true);
-    let decal_indices = ir.indices.len() as u32 - base_indices;
-    let decal_vertices = ir.vertices.len() as u32 - base_vertices;
+    let base_indices = arena_index(ir.indices.len());
+    let base_vertices = arena_index(ir.vertices.len());
+    push_props(&mut ir, instances, &grounded, ir_models, base_y, true);
+    let decal_indices = arena_index(ir.indices.len()) - base_indices;
+    let decal_vertices = arena_index(ir.vertices.len()) - base_vertices;
 
     let root_base = ir.allocate_node(
         "WORLD_BASE",
@@ -507,8 +800,12 @@ pub(crate) fn build_world_ir(
 }
 
 /// Appends an unshaded, upward-facing quad spanning the world at height `y`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"
+)]
 fn push_flat_quad(ir: &mut SodModelIr, y: f32, color: u8, scenery_class: u8) {
-    let start = ir.vertices.len() as u32;
+    let start = arena_index(ir.vertices.len());
     let e = WORLD_EXTENT;
     for [x, z] in [[-e, -e], [e, -e], [e, e], [-e, e]] {
         ir.vertices.push(SodVertex {
@@ -524,26 +821,37 @@ fn push_flat_quad(ir: &mut SodModelIr, y: f32, color: u8, scenery_class: u8) {
         .extend_from_slice(&[start, start + 1, start + 2, start, start + 2, start + 3]);
 }
 
+/// The corners of a `MAP.BIN` patch in `[I1]` metres, or `None` unless it has three or more
+/// corners that are all valid anchor points.
+fn patch_corners(
+    pts: &[[f32; 3]],
+    anchors: &[AnchorPoint],
+    area: &MapArea,
+) -> Option<Vec<[f32; 3]>> {
+    if area.verts.len() < 3
+        || !area
+            .verts
+            .iter()
+            .all(|&idx| anchors.get(idx).is_some_and(AnchorPoint::is_valid))
+    {
+        return None;
+    }
+    area.verts
+        .iter()
+        .map(|&idx| pts.get(idx).copied())
+        .collect()
+}
+
 /// Appends one fan-triangulated polygon per `MAP.BIN` patch whose corners are all valid
 /// anchor points, lifted by `base_y`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"
+)]
 fn push_terrain(ir: &mut SodModelIr, anchors: &[AnchorPoint], map_areas: &[MapArea], base_y: f32) {
     let pts: Vec<[f32; 3]> = anchors.iter().map(AnchorPoint::register_position).collect();
     for area in map_areas {
-        if area.verts.len() < 3
-            || !area
-                .verts
-                .iter()
-                .all(|&idx| anchors.get(idx).is_some_and(AnchorPoint::is_valid))
-        {
-            continue;
-        }
-
-        let Some(corners) = area
-            .verts
-            .iter()
-            .map(|&idx| pts.get(idx).copied())
-            .collect::<Option<Vec<[f32; 3]>>>()
-        else {
+        let Some(corners) = patch_corners(&pts, anchors, area) else {
             continue;
         };
         let &[p0, p1, p2, ..] = corners.as_slice() else {
@@ -563,7 +871,7 @@ fn push_terrain(ir: &mut SodModelIr, anchors: &[AnchorPoint], map_areas: &[MapAr
             UP
         };
 
-        let start = ir.vertices.len() as u32;
+        let start = arena_index(ir.vertices.len());
         for p in corners {
             ir.vertices.push(SodVertex {
                 position: [p[0], p[1] + base_y, p[2]],
@@ -574,38 +882,153 @@ fn push_terrain(ir: &mut SodModelIr, anchors: &[AnchorPoint], map_areas: &[MapAr
                 _padding: 0,
             });
         }
-        for k in 1..(area.verts.len() as u32 - 1) {
+        for k in 1..(arena_index(area.verts.len()) - 1) {
             ir.indices
                 .extend_from_slice(&[start, start + k, start + k + 1]);
         }
     }
 }
 
-/// Appends every placed prop's mesh slices whose `is_decal` equals `decals`, translated
-/// to its placement and lifted by `base_y`.
+/// A prop whose vertices all lie in one horizontal plane no more than this far apart (metres)
+/// can be a tile laid on the ground. The airfield tiles have none: their extent is 0.
+const GROUND_FLAT_TOLERANCE: f32 = 0.05;
+/// A flat prop whose every vertex over the terrain is within this many metres of it lies on
+/// the ground. The tiles and markings measure at most 3 cm off (`SCENERY2.RES` #144-159 at
+/// 8 mm, an apron at 3 cm); the nearest flat prop that hovers is 22 cm off.
+const GROUND_LIE_TOLERANCE: f32 = 0.1;
+
+/// The terrain as a set of triangles (each `MAP.BIN` patch fanned from its first corner, as
+/// [`push_terrain`] draws it), answering how high the ground is at a point.
+struct TerrainSurface {
+    triangles: Vec<[[f32; 3]; 3]>,
+}
+
+impl TerrainSurface {
+    fn new(anchors: &[AnchorPoint], map_areas: &[MapArea], base_y: f32) -> Self {
+        let pts: Vec<[f32; 3]> = anchors
+            .iter()
+            .map(|a| {
+                let [x, y, z] = a.register_position();
+                [x, y + base_y, z]
+            })
+            .collect();
+        let mut triangles = Vec::new();
+        for area in map_areas {
+            let Some(corners) = patch_corners(&pts, anchors, area) else {
+                continue;
+            };
+            let [first, rest @ ..] = corners.as_slice() else {
+                continue;
+            };
+            for (&b, &c) in rest.iter().zip(rest.iter().skip(1)) {
+                triangles.push([*first, b, c]);
+            }
+        }
+        Self { triangles }
+    }
+
+    /// The height of the terrain triangle over `(x, z)` that is nearest `y`, where several
+    /// patches overlap in plan (a hillside over a lower coast patch). `None` off the map.
+    fn height_near(&self, x: f32, z: f32, y: f32) -> Option<f32> {
+        // A point on a shared edge counts for both triangles.
+        const EDGE_SLACK: f32 = -1e-4;
+        self.triangles
+            .iter()
+            .filter_map(|t| {
+                let denom = (t[1][2] - t[2][2]) * (t[0][0] - t[2][0])
+                    + (t[2][0] - t[1][0]) * (t[0][2] - t[2][2]);
+                if denom.abs() < 1e-9 {
+                    return None;
+                }
+                let a = ((t[1][2] - t[2][2]) * (x - t[2][0]) + (t[2][0] - t[1][0]) * (z - t[2][2]))
+                    / denom;
+                let b = ((t[2][2] - t[0][2]) * (x - t[2][0]) + (t[0][0] - t[2][0]) * (z - t[2][2]))
+                    / denom;
+                let c = 1.0 - a - b;
+                (a >= EDGE_SLACK && b >= EDGE_SLACK && c >= EDGE_SLACK)
+                    .then(|| a * t[0][1] + b * t[1][1] + c * t[2][1])
+            })
+            .min_by(|p, q| (p - y).abs().total_cmp(&(q - y).abs()))
+    }
+}
+
+/// The world positions of the vertices of a prop, snapped onto the terrain, if it is
+/// a ground decal; `None` for every other prop.
+///
+/// PLAYONE has no depth buffer and paints a scenery tile after the ground leaf under it, so
+/// the tile always covers its leaf (`research/playone-exe/world-scene.md` sections 3, 6).
+/// The rule that picks such props out is geometric: the shape is flat (all vertices within
+/// [`GROUND_FLAT_TOLERANCE`] of one height), at least one vertex has terrain below it, and
+/// every vertex that does is within [`GROUND_LIE_TOLERANCE`] of it. Vertices over terrain take
+/// the height of the ground exactly, so the tile ties it instead of z-fighting it; any
+/// other vertex stays where the placement put it. `pos` includes `base_y`.
+fn ground_decal_vertices(
+    model: &SodModelIr,
+    pos: [f32; 3],
+    surface: &TerrainSurface,
+) -> Option<Vec<[f32; 3]>> {
+    let extent = model.extent()?;
+    if extent.max[1] - extent.min[1] > GROUND_FLAT_TOLERANCE {
+        return None;
+    }
+    let mut snapped = Vec::with_capacity(model.vertices.len());
+    let mut on_terrain = false;
+    for v in &model.vertices {
+        let p = [
+            v.position[0] + pos[0],
+            v.position[1] + pos[1],
+            v.position[2] + pos[2],
+        ];
+        match surface.height_near(p[0], p[2], p[1]) {
+            Some(h) if (h - p[1]).abs() <= GROUND_LIE_TOLERANCE => {
+                on_terrain = true;
+                snapped.push([p[0], h, p[2]]);
+            }
+            Some(_) => return None,
+            None => snapped.push(p),
+        }
+    }
+    on_terrain.then_some(snapped)
+}
+
+/// Appends every placed prop mesh slice, translated to its placement and lifted by
+/// `base_y`: those whose `is_decal` equals `decals`, except that every slice of a ground
+/// decal (`grounded` holds its snapped vertices, parallel to `instances`) goes in the decal
+/// batch.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX; each mesh index is at least its mesh's vertex_offset"
+)]
 fn push_props(
     ir: &mut SodModelIr,
     instances: &[(u16, [f32; 3])],
+    grounded: &[Option<Vec<[f32; 3]>>],
     ir_models: &HashMap<u16, SodModelIr>,
     base_y: f32,
     decals: bool,
 ) {
-    for &(shape_id, pos) in instances {
+    for (&(shape_id, pos), ground) in instances.iter().zip(grounded) {
         let Some(model) = ir_models.get(&shape_id) else {
             continue;
         };
         for mesh in model.meshes() {
-            if mesh.is_decal() != decals || mesh.indices.is_empty() {
+            let in_decal_batch = ground.is_some() || mesh.is_decal();
+            if in_decal_batch != decals || mesh.indices.is_empty() {
                 continue;
             }
-            let start = ir.vertices.len() as u32;
-            for v in mesh.vertices {
-                ir.vertices.push(SodVertex {
-                    position: [
+            let start = arena_index(ir.vertices.len());
+            for (i, v) in mesh.vertices.iter().enumerate() {
+                let position = ground
+                    .as_ref()
+                    .and_then(|snapped| snapped.get(mesh.vertex_offset as usize + i))
+                    .copied()
+                    .unwrap_or([
                         v.position[0] + pos[0],
                         v.position[1] + pos[1] + base_y,
                         v.position[2] + pos[2],
-                    ],
+                    ]);
+                ir.vertices.push(SodVertex {
+                    position,
                     normal: v.normal,
                     palette_index: v.palette_index,
                     flags: v.flags,
@@ -674,6 +1097,28 @@ mod tests {
         // If anchor_count is too low, the polygon is rejected
         let areas_low = parse_map_bin(&data, 3);
         assert_eq!(areas_low.len(), 0);
+    }
+
+    #[test]
+    fn an_eight_vertex_patch_takes_its_last_anchor_from_the_next_record() {
+        // MAP.BIN patch 131 counts 8 vertices in a record with 7 slots; PLAYONE's own leaf for
+        // it has all 8, the eighth being the next record's `num` word (world-scene.md section 2).
+        let mut data = vec![0u8; 60];
+        data[2..4].copy_from_slice(&0x01FFi16.to_le_bytes());
+        data[14..16].copy_from_slice(&8i16.to_le_bytes());
+        for (slot, word) in data[16..30].as_chunks_mut::<2>().0.iter_mut().zip(0u16..) {
+            slot.copy_from_slice(&word.to_le_bytes());
+        }
+        data[30..32].copy_from_slice(&7i16.to_le_bytes()); // next record's num = anchor 7
+        let areas = parse_map_bin(&data, 10);
+        assert_eq!(areas.len(), 1);
+        assert_eq!(areas[0].verts, vec![0, 1, 2, 3, 4, 5, 6, 7]);
+
+        // As the file's last record there is no next word, so the patch keeps its 7 slots.
+        assert_eq!(
+            parse_map_bin(&data[..30], 10)[0].verts,
+            vec![0, 1, 2, 3, 4, 5, 6]
+        );
     }
 
     #[test]
@@ -752,6 +1197,271 @@ mod tests {
         assert_eq!(instances[0].0, 0x0105);
         // x=-10, y=-20, z=30
         assert_eq!(instances[0].1, [-10.0, -20.0, 30.0]);
+    }
+
+    #[test]
+    fn test_traverse_scn_stops_on_budget_in_a_shared_tree() {
+        // Each SP_2NODE sends both its subtree pointer and its continuation to the next
+        // node, so 40 levels would make 2^40 visits though no node is its own ancestor.
+        let levels = 40;
+        let mut words = vec![0i32; 2 + levels * 3];
+        for level in 0..levels {
+            let at = 1 + level * 3;
+            let target = i32::try_from((at + 3) * 2).unwrap();
+            words[at] = 4;
+            words[at + 1] = target;
+            words[at + 2] = target;
+        }
+        let mut walk = ScnWalk::new(1000);
+        let mut instances = Vec::new();
+        walk_scn(
+            &mut walk,
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut instances,
+            &HashSet::new(),
+            &|_, _, _| true,
+            0,
+        );
+        let stop = walk.stop.expect("the budget stops the walk");
+        assert!(walk.halted);
+        assert_eq!(stop.reason, ScnStopReason::Budget);
+        assert_eq!(walk.visits, 1001);
+    }
+
+    /// A list whose first child heads a chain nested past `SCN_MAX_DEPTH`, then `tail`:
+    /// either a leaf of shape 0x0105 or a list that contains itself.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "a fixture builder over small constants"
+    )]
+    fn deep_chain_then(tail_is_cycle: bool) -> Vec<i32> {
+        let ptr = |word: usize| i32::try_from(word * 2).unwrap();
+        let chain = 8;
+        let len = SCN_MAX_DEPTH + 12;
+        let mut words = vec![0i32; chain + len * 3];
+        words[1] = 20;
+        words[2] = ptr(chain);
+        words[3] = ptr(5);
+        if tail_is_cycle {
+            words[5] = 20;
+            words[6] = ptr(5);
+        } else {
+            words[5] = 10;
+            words[6] = 0x0105;
+        }
+        for k in 0..len {
+            let at = chain + k * 3;
+            words[at] = if k + 1 == len { 14 } else { 4 };
+            words[at + 1] = ptr(at + 3);
+        }
+        words[chain + (len - 1) * 3 + 1] = 0;
+        words
+    }
+
+    #[test]
+    fn test_traverse_scn_skips_a_too_deep_subtree_and_keeps_walking() {
+        let words = deep_chain_then(false);
+        let mut walk = ScnWalk::new(usize::MAX);
+        let mut instances = Vec::new();
+        walk_scn(
+            &mut walk,
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut instances,
+            &HashSet::from([0x0105]),
+            &|_, _, _| true,
+            0,
+        );
+        // The leaf is reached as a list child and again as the list continuation.
+        assert_eq!(
+            instances.len(),
+            2,
+            "the sibling after the deep chain is placed"
+        );
+        assert_eq!(walk.stop.map(|s| s.reason), Some(ScnStopReason::Depth));
+        assert!(!walk.halted);
+    }
+
+    #[test]
+    fn test_traverse_scn_null_pointer_past_the_depth_limit_is_not_a_stop() {
+        let words = [0i32; 4];
+        for ni in [0, 99] {
+            let mut walk = ScnWalk::new(usize::MAX);
+            walk_scn(
+                &mut walk,
+                &words,
+                ni,
+                0,
+                0,
+                0,
+                &mut Vec::new(),
+                &HashSet::new(),
+                &|_, _, _| true,
+                SCN_MAX_DEPTH + 1,
+            );
+            assert!(walk.stop.is_none(), "pointer {ni} is not a node");
+        }
+    }
+
+    /// A list whose first child is the node `bad` placed at word `MALFORMED_AT`, and whose
+    /// second child is a leaf of shape 0x0105 at word 7.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "a fixture builder over small constants"
+    )]
+    fn list_with_bad_child(bad: &[i32]) -> Vec<i32> {
+        let ptr = |word: usize| i32::try_from(word * 2).unwrap();
+        let mut words = vec![0i32; MALFORMED_AT];
+        words[1] = 20;
+        words[2] = ptr(MALFORMED_AT);
+        words[3] = ptr(7);
+        // words[4] ends the list; its continuation at word 5 is a chain that ends at once.
+        words[5] = 14;
+        words[7] = 10;
+        words[8] = 0x0105;
+        words.extend_from_slice(bad);
+        words
+    }
+
+    /// Word index where [`list_with_bad_child`] puts the bad node.
+    const MALFORMED_AT: usize = 10;
+
+    /// Walks `words` from word 1 starting at `cx`, returning the stop and the shapes placed.
+    fn walk_from(words: &[i32], cx: i32) -> (Option<ScnStop>, Vec<u16>) {
+        let mut instances = Vec::new();
+        let stop = traverse_scn(
+            words,
+            1,
+            cx,
+            0,
+            0,
+            &mut instances,
+            &HashSet::from([0x0105]),
+            &|_, _, _| true,
+            0,
+        );
+        (
+            stop,
+            instances.into_iter().map(|(shape, _)| shape).collect(),
+        )
+    }
+
+    /// Asserts a malformed node at `MALFORMED_AT` with opcode `opcode`, and that the leaf
+    /// after it was still placed.
+    fn assert_malformed(bad: &[i32], cx: i32, opcode: i32) {
+        let (stop, placed) = walk_from(&list_with_bad_child(bad), cx);
+        let stop = stop.expect("a malformed node is reported");
+        assert_eq!(
+            (stop.reason, stop.offset, stop.opcode),
+            (ScnStopReason::Malformed, MALFORMED_AT * 4, opcode)
+        );
+        assert!(placed.contains(&0x0105), "the later sibling is placed");
+    }
+
+    #[test]
+    fn test_traverse_scn_reports_a_node_truncated_before_its_operands() {
+        // SP_1NODE needs four operands and the file ends after its opcode.
+        assert_malformed(&[2], 0, 2);
+        // SP_LEAF needs one.
+        assert_malformed(&[10], 0, 10);
+    }
+
+    #[test]
+    fn test_traverse_scn_reports_an_unknown_opcode() {
+        assert_malformed(&[99, 0], 0, 99);
+    }
+
+    #[test]
+    fn test_traverse_scn_reports_a_position_delta_that_overflows() {
+        // SP_POS adding 1 to an x already at the limit.
+        assert_malformed(&[0, 1, 0, 0, 0], i32::MAX, 0);
+    }
+
+    #[test]
+    fn test_traverse_scn_reports_a_next_pointer_outside_the_file() {
+        // SP_GLEAF whose next lies far past the end.
+        assert_malformed(&[14, 20_000], 0, 14);
+    }
+
+    #[test]
+    fn test_traverse_scn_reports_a_list_continuation_outside_the_file() {
+        // SP_LIST whose child list (the leaf at word 7) ends at the file's last word, so the
+        // node after the terminator is past the end. The leaf is placed before the stop.
+        assert_malformed(&[20, 14, 0], 0, 20);
+    }
+
+    #[test]
+    fn test_traverse_scn_reports_a_child_pointer_outside_the_file() {
+        // SP_2NODE whose child lies far past the end; its next is null.
+        assert_malformed(&[4, 20_000, 0], 0, 4);
+    }
+
+    #[test]
+    fn test_traverse_scn_null_next_pointer_is_not_a_stop() {
+        let (stop, placed) = walk_from(&list_with_bad_child(&[14, 0]), 0);
+        assert!(stop.is_none(), "a null next is the normal end");
+        assert!(placed.contains(&0x0105));
+    }
+
+    #[test]
+    fn test_traverse_scn_malformed_stop_does_not_outrank_a_halt() {
+        let mut words = list_with_bad_child(&[99, 0]);
+        // Make the list's continuation a cycle so a halting stop follows the malformed node.
+        words[5] = 20;
+        words[6] = 10;
+        let (stop, _) = walk_from(&words, 0);
+        assert_eq!(stop.expect("a stop").reason, ScnStopReason::Cycle);
+    }
+
+    #[test]
+    fn test_traverse_scn_halting_stop_outranks_an_earlier_depth_stop() {
+        let words = deep_chain_then(true);
+        let stop = traverse_scn(
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut Vec::new(),
+            &HashSet::new(),
+            &|_, _, _| true,
+            0,
+        )
+        .expect("a stop");
+        assert_eq!((stop.reason, stop.offset), (ScnStopReason::Cycle, 20));
+    }
+
+    #[test]
+    fn test_traverse_scn_reports_a_pointer_chain_that_loops() {
+        // SP_POS whose next points back at itself: a cycle with a non-zero delta.
+        let words = [0, 0, 1, 0, 0, 2];
+        let mut instances = Vec::new();
+        let stop = traverse_scn(
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut instances,
+            &HashSet::new(),
+            &|_, _, _| true,
+            0,
+        );
+        assert_eq!(
+            stop,
+            Some(ScnStop {
+                offset: 4,
+                opcode: 0,
+                reason: ScnStopReason::Cycle
+            })
+        );
     }
 
     #[test]
@@ -958,12 +1668,6 @@ mod tests {
     }
 
     #[test]
-    fn test_approx_dist() {
-        assert_eq!(approx_dist(0, 0, 3, 4), 3 + 4 - 3 / 2);
-        assert_eq!(approx_dist(10, 20, 10, 20), 0);
-    }
-
-    #[test]
     fn test_prop_deduplication_signed_zero() {
         let instances = vec![
             (0x0100u16, [0.0f32, 0.0f32, 10.0f32]),
@@ -976,5 +1680,134 @@ mod tests {
         assert_eq!(unique.len(), 2);
         assert_eq!(unique[0].0, 0x0100);
         assert_eq!(unique[1].0, 0x0101);
+    }
+
+    /// Terrain with one triangle rising 1 cm per metre of X: world corners (0, 10, 0),
+    /// (100, 11, 0) and (100, 11, 100).
+    fn sloped_terrain() -> (Vec<AnchorPoint>, Vec<MapArea>) {
+        let pts = vec![
+            AnchorPoint { x: 0, y: -10, z: 0 },
+            AnchorPoint {
+                x: -100,
+                y: -11,
+                z: 0,
+            },
+            AnchorPoint {
+                x: -100,
+                y: -11,
+                z: 100,
+            },
+        ];
+        let areas = vec![MapArea {
+            color: 42,
+            verts: vec![0, 1, 2],
+        }];
+        (pts, areas)
+    }
+
+    /// A one-mesh prop: a square of half-width 2 m at local height 0, plus an optional
+    /// vertex `peak` metres up that makes it stand.
+    fn square_prop(peak: Option<f32>) -> SodModelIr {
+        let vertex = |x: f32, y: f32, z: f32| SodVertex {
+            position: [x, y, z],
+            normal: UP,
+            palette_index: 193,
+            flags: 0,
+            scenery_class: 0,
+            _padding: 0,
+        };
+        let mut ir = SodModelIr::new("TILE");
+        ir.vertices = vec![
+            vertex(-2.0, 0.0, -2.0),
+            vertex(2.0, 0.0, -2.0),
+            vertex(2.0, 0.0, 2.0),
+            vertex(-2.0, 0.0, 2.0),
+        ];
+        ir.indices = vec![0, 1, 2, 0, 2, 3];
+        if let Some(height) = peak {
+            ir.vertices.push(vertex(0.0, height, 0.0));
+            ir.indices.extend_from_slice(&[0, 1, 4]);
+        }
+        ir.allocate_node(
+            "BASE",
+            None,
+            IDENTITY_MATRIX,
+            VisibilityCondition::Always,
+            NodeKind::Mesh {
+                vertex_offset: 0,
+                vertex_count: arena_index(ir.vertices.len()),
+                index_offset: 0,
+                index_count: arena_index(ir.indices.len()),
+                is_decal: false,
+            },
+        );
+        ir
+    }
+
+    /// The prop vertices that the indices of the world node `node` reach.
+    fn prop_vertices(ir: &SodModelIr, node: &str) -> Vec<[f32; 3]> {
+        let Some(&NodeKind::Mesh {
+            index_offset,
+            index_count,
+            ..
+        }) = ir.nodes.iter().find(|n| n.name == node).map(|n| &n.kind)
+        else {
+            return Vec::new();
+        };
+        let mut found: Vec<[f32; 3]> = ir
+            .indices
+            .iter()
+            .skip(index_offset as usize)
+            .take(index_count as usize)
+            .map(|&i| &ir.vertices[i as usize])
+            .filter(|v| v.scenery_class == SCENERY_PROP)
+            .map(|v| v.position)
+            .collect();
+        found.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        found.dedup();
+        found
+    }
+
+    fn world_with(prop: SodModelIr, at: [f32; 3]) -> SodModelIr {
+        let (pts, areas) = sloped_terrain();
+        let models = HashMap::from([(0x0391, prop)]);
+        build_world_ir(&pts, &areas, &[(0x0391, at)], &models, 0.0)
+    }
+
+    #[test]
+    fn a_flat_prop_on_the_terrain_is_a_decal_snapped_to_its_height() {
+        // 4 mm off the plane at the centre: rasterised alone it would tie with the terrain.
+        let ir = world_with(square_prop(None), [60.0, 10.604, 20.0]);
+        let decal = prop_vertices(&ir, "WORLD_DECAL");
+        assert_eq!(decal.len(), 4, "the tile belongs to the decal batch");
+        assert!(prop_vertices(&ir, "WORLD_BASE").is_empty());
+        for [x, y, _] in decal {
+            let terrain = 10.0 + 0.01 * x;
+            assert!(
+                (y - terrain).abs() < 1e-3,
+                "vertex at x={x}: y={y}, terrain={terrain}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_flat_prop_above_the_terrain_stays_in_the_base_batch() {
+        let ir = world_with(square_prop(None), [60.0, 12.6, 20.0]);
+        assert_eq!(prop_vertices(&ir, "WORLD_BASE").len(), 4);
+        assert!(prop_vertices(&ir, "WORLD_DECAL").is_empty());
+    }
+
+    #[test]
+    fn a_standing_prop_stays_in_the_base_batch() {
+        let ir = world_with(square_prop(Some(5.0)), [60.0, 10.604, 20.0]);
+        assert_eq!(prop_vertices(&ir, "WORLD_BASE").len(), 5);
+        assert!(prop_vertices(&ir, "WORLD_DECAL").is_empty());
+    }
+
+    #[test]
+    fn a_flat_prop_with_no_terrain_below_stays_in_the_base_batch() {
+        let ir = world_with(square_prop(None), [500.0, 10.0, 20.0]);
+        assert_eq!(prop_vertices(&ir, "WORLD_BASE").len(), 4);
+        assert!(prop_vertices(&ir, "WORLD_DECAL").is_empty());
     }
 }

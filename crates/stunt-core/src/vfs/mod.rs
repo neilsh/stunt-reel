@@ -82,6 +82,34 @@ pub fn detect_and_parse(data: &[u8]) -> Result<VfsArchive, VfsError> {
     }
 }
 
+/// A byte offset into an archive as the `u32` its offset table and [`VfsEntry`] store.
+///
+/// [`VfsEntry`]: crate::contracts::VfsEntry
+///
+/// # Errors
+/// [`VfsError::InvalidOffsetTable`] when the offset passes the `u32` range.
+fn offset_u32(offset: usize) -> Result<u32, VfsError> {
+    u32::try_from(offset).map_err(|_| VfsError::InvalidOffsetTable {
+        reason: format!("offset {offset} passes the u32 range"),
+    })
+}
+
+/// Adds two byte counts, failing with [`VfsError::InvalidOffsetTable`] on `usize` overflow.
+fn offset_add(a: usize, b: usize) -> Result<usize, VfsError> {
+    a.checked_add(b)
+        .ok_or_else(|| VfsError::InvalidOffsetTable {
+            reason: format!("offset {a} + {b} overflows"),
+        })
+}
+
+/// Subtracts two byte counts, failing with [`VfsError::InvalidOffsetTable`] on underflow.
+fn offset_sub(a: usize, b: usize) -> Result<usize, VfsError> {
+    a.checked_sub(b)
+        .ok_or_else(|| VfsError::InvalidOffsetTable {
+            reason: format!("offset {a} - {b} underflows"),
+        })
+}
+
 /// Fails with [`VfsError::InvalidOffsetTable`] at the first offset smaller than the one before it.
 fn check_non_decreasing(offsets: &[usize]) -> Result<(), VfsError> {
     for (i, pair) in offsets.windows(2).enumerate() {
@@ -91,7 +119,7 @@ fn check_non_decreasing(offsets: &[usize]) -> Result<(), VfsError> {
             return Err(VfsError::InvalidOffsetTable {
                 reason: format!(
                     "offset at index {} ({next}) is less than previous offset at index {i} ({prev})",
-                    i + 1
+                    i.saturating_add(1)
                 ),
             });
         }
