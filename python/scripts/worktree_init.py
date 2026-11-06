@@ -970,6 +970,64 @@ def _space_is_short(free: int, min_free_gb: float) -> bool:
     return free < min_free_gb * GIB
 
 
+#: This script, as a checkout's tree names it; reap compares its copy with main's (issue #218).
+SCRIPT_PATH = "python/scripts/worktree_init.py"
+FETCH_TIMEOUT = 30
+
+
+def _fetch_main(repo: Path) -> str | None:
+    """Fetch ``origin``'s ``main`` quietly; return why it failed, or ``None``."""
+    git = shutil.which("git")
+    if git is None:
+        return "git is not on PATH"
+    try:
+        result = subprocess.run(  # noqa: S603
+            [git, "fetch", "--quiet", "origin", "main"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=FETCH_TIMEOUT,
+            # Offline or signed out, git must fail rather than wait at a credential prompt.
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+    except (OSError, subprocess.TimeoutExpired) as err:
+        return str(err)
+    if result.returncode == 0:
+        return None
+    lines = result.stderr.strip().splitlines()
+    return lines[0] if lines else f"exit {result.returncode}"
+
+
+def _script_is_stale(repo: Path) -> tuple[bool, list[str]]:
+    """Whether *repo*'s committed reap script differs from ``origin/main``'s, and what to print.
+
+    The primary checkout runs its own copy, so a checkout left on an old branch reaps with
+    rules main has since fixed (issue #218). A failed fetch compares with the last fetched
+    ``origin/main``; a side that cannot be read is reported and does not count as stale.
+    """
+    lines: list[str] = []
+    fetch_error = _fetch_main(repo)
+    if fetch_error is not None:
+        lines.append(
+            f"  ! cannot fetch origin main ({fetch_error}); comparing with the last fetched copy"
+        )
+    blobs: list[str] = []
+    for rev in ("HEAD", "origin/main"):
+        result = _git(repo, "rev-parse", "--verify", "--quiet", f"{rev}:{SCRIPT_PATH}")
+        if result.returncode != 0:
+            lines.append(f"  ! {rev}:{SCRIPT_PATH} is unreadable; cannot tell if reap is current")
+            return False, lines
+        blobs.append(result.stdout.strip())
+    ours, main = blobs
+    if ours == main:
+        return False, lines
+    lines.append(f"  ! stale reap: HEAD:{SCRIPT_PATH} is {ours}")
+    lines.append(f"    but origin/main:{SCRIPT_PATH} is {main};")
+    lines.append("    update the primary checkout to origin/main and run reap from it again")
+    return True, lines
+
+
 def _reap(
     confirmed: bool,
     *,
@@ -979,11 +1037,14 @@ def _reap(
     discard_untracked: bool = False,
     force: bool = False,
     min_free_gb: float = DEFAULT_MIN_FREE_GB,
+    allow_stale_script: bool = False,
 ) -> int:
     """Remove merged worktrees, unlinking every data-root link first.
 
-    A confirmed reap still removes nothing while the drive has *min_free_gb* GiB
-    free or its free space cannot be read, unless *force* is set.
+    A confirmed reap refuses when this checkout's copy of the script differs from
+    ``origin/main``'s, unless *allow_stale_script* is set; *force* does not lift that.
+    It still removes nothing while the drive has *min_free_gb* GiB free or its free
+    space cannot be read, unless *force* is set.
     """
     repo = REPO_ROOT
     try:
@@ -996,6 +1057,12 @@ def _reap(
         return 0
     if entries[0].path != repo:
         print("reap must run from the primary checkout")
+        return 1
+    stale, notes = _script_is_stale(repo)
+    for line in notes:
+        print(line)
+    if stale and confirmed and not allow_stale_script:
+        print("\nrefusing to reap with a stale script; --allow-stale-script reaps anyway")
         return 1
     merged_prs = _MergedPrs(repo, _gh)
     candidates, skipped = _candidates(
@@ -1131,6 +1198,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     reap.add_argument("--force", action="store_true", help="reap even when the drive has room")
     reap.add_argument(
+        "--allow-stale-script",
+        action="store_true",
+        help="reap even when this checkout's worktree_init.py differs from origin/main's",
+    )
+    reap.add_argument(
         "--min-free-gb",
         type=float,
         default=DEFAULT_MIN_FREE_GB,
@@ -1164,6 +1236,7 @@ def main(argv: list[str] | None = None) -> int:
             discard_untracked=bool(args.discard_untracked),
             force=bool(args.force),
             min_free_gb=float(args.min_free_gb),
+            allow_stale_script=bool(args.allow_stale_script),
         )
     if int(args.keep) < 0:
         parser.error("--keep must not be negative")
