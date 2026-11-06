@@ -6,7 +6,7 @@ bot review (CodeRabbit) wraps each finding in HTML comments, ``<details>`` block
 scripts and agent prompts: one PR's comments ran past 60 KB. This reads the review threads
 through GitHub's GraphQL API, keeps the unresolved ones, and prints for each its location, its
 severity when the bot names one, its title, and the database id of its first comment, which is
-the id ``gh api repos/{owner}/{repo}/pulls/<n>/comments/<id>/replies`` answers.
+the id ``--reply`` and ``--resolve`` take.
 
 A finding CodeRabbit cannot anchor to a changed line ("Outside diff range") lives only in its
 review's body and has no thread to resolve, so it is answered with a PR comment. Those print
@@ -15,7 +15,15 @@ for "not yet answered by a push".
 
 Usage: ``mise run pr-threads -- <number> [--all]``. ``--all`` keeps resolved threads, marked
 ``resolved``, and outside-diff findings from every review. Every page of threads and reviews
-is read. Exit status: ``0`` on success, ``2`` when ``gh`` fails or the query returns errors.
+is read.
+
+To answer a thread: ``mise run pr-threads -- <number> --reply <id> --body <text>`` (or
+``--body-file <path>``, ``-`` for stdin) posts a reply in the thread whose first comment has
+database id *id*, and ``--resolve <id>`` resolves that thread. Given together, the reply is
+posted first. Either one replaces the listing.
+
+Exit status: ``0`` on success, ``2`` when ``gh`` fails, the query returns errors, or no thread
+starts with the comment ``--resolve`` names.
 """
 
 from __future__ import annotations
@@ -26,6 +34,7 @@ import re
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -38,6 +47,7 @@ query($owner: String!, $name: String!, $number: Int!, $after: String) {
       reviewThreads(first: 100, after: $after) {
         pageInfo { hasNextPage endCursor }
         nodes {
+          id
           isResolved
           isOutdated
           path
@@ -66,6 +76,12 @@ query($owner: String!, $name: String!, $number: Int!, $after: String) {
       }
     }
   }
+}
+"""
+
+RESOLVE_MUTATION = """
+mutation($thread: ID!) {
+  resolveReviewThread(input: {threadId: $thread}) { thread { isResolved } }
 }
 """
 
@@ -233,11 +249,7 @@ def _read_pages(
         args += ["-F", f"name={name}", "-F", f"number={number}"]
         if after is not None:
             args += ["-f", f"after={after}"]
-        data = _gh(*args)
-        if data.get("errors"):
-            messages = "; ".join(str(e.get("message", e)) for e in data["errors"])
-            raise GhError(f"graphql: {messages}")
-        pull = data["data"]["repository"]["pullRequest"]
+        pull = _graphql_data(_gh(*args))["repository"]["pullRequest"]
         if pull is None:
             return None
         first = first or pull
@@ -248,8 +260,88 @@ def _read_pages(
         after = page["pageInfo"]["endCursor"]
 
 
+def _graphql_data(answer: dict[str, Any]) -> dict[str, Any]:
+    """The ``data`` of a GraphQL *answer*; a :class:`GhError` when it carries errors."""
+    if answer.get("errors"):
+        messages = "; ".join(str(e.get("message", e)) for e in answer["errors"])
+        raise GhError(f"graphql: {messages}")
+    data: dict[str, Any] = answer["data"]
+    return data
+
+
+def reply(owner: str, name: str, number: int, comment_id: int, body: str) -> str:
+    """Post *body* as a reply in the thread of review comment *comment_id*; the reply's URL."""
+    answer = _gh(
+        "api",
+        "-X",
+        "POST",
+        f"repos/{owner}/{name}/pulls/{number}/comments/{comment_id}/replies",
+        "-f",
+        f"body={body}",
+    )
+    return str(answer.get("html_url") or f"comment {answer.get('id', '?')}")
+
+
+def thread_of(threads: Iterable[dict[str, Any]], comment_id: int) -> dict[str, Any] | None:
+    """The thread whose first comment has database id *comment_id*, or ``None``."""
+    return next(
+        (
+            t
+            for t in threads
+            if t["comments"]["nodes"] and t["comments"]["nodes"][0]["databaseId"] == comment_id
+        ),
+        None,
+    )
+
+
+def resolve(owner: str, name: str, number: int, comment_id: int) -> bool | None:
+    """Resolve the thread comment *comment_id* starts.
+
+    ``True`` when this call resolved it, ``False`` when it already was, ``None`` when no thread
+    of the pull request starts with that comment or the pull request is absent.
+    """
+    thread = thread_of(read_threads(owner, name, number) or [], comment_id)
+    if thread is None:
+        return None
+    if thread["isResolved"]:
+        return False
+    data = _graphql_data(
+        _gh("api", "graphql", "-f", f"query={RESOLVE_MUTATION}", "-f", f"thread={thread['id']}")
+    )
+    if not data["resolveReviewThread"]["thread"]["isResolved"]:
+        raise GhError(f"the thread of comment {comment_id} is still unresolved")
+    return True
+
+
+def _reply_body(args: argparse.Namespace) -> str:
+    """The reply text from ``--body`` or ``--body-file`` (``-`` reads stdin)."""
+    if args.body is not None:
+        return str(args.body)
+    if args.body_file == "-":
+        return sys.stdin.read()
+    return Path(args.body_file).read_text(encoding="utf-8")
+
+
+def _answer(args: argparse.Namespace, owner: str, name: str) -> int:
+    """Post ``--reply``, then apply ``--resolve``; the exit status."""
+    if args.reply is not None:
+        url = reply(owner, name, args.number, args.reply, _reply_body(args))
+        print(f"replied to comment {args.reply}: {url}")
+    if args.resolve is not None:
+        done = resolve(owner, name, args.number, args.resolve)
+        if done is None:
+            where = f"{owner}/{name}#{args.number}"
+            print(
+                f"pr-threads: no thread on {where} starts with comment {args.resolve}",
+                file=sys.stderr,
+            )
+            return 2
+        print(f"thread of comment {args.resolve} {'resolved' if done else 'was already resolved'}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    """Print the open review threads of the pull request named on the command line."""
+    """List, answer or resolve the review threads of the pull request on the command line."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("number", type=int, help="pull request number")
     parser.add_argument(
@@ -257,13 +349,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="include resolved threads and outside-diff findings from every review",
     )
+    parser.add_argument(
+        "--reply", type=int, metavar="COMMENT_ID", help="reply in the thread this comment starts"
+    )
+    text = parser.add_mutually_exclusive_group()
+    text.add_argument("--body", help="the reply text")
+    text.add_argument(
+        "--body-file", metavar="PATH", help="read the reply text from PATH (- for stdin)"
+    )
+    parser.add_argument(
+        "--resolve", type=int, metavar="COMMENT_ID", help="resolve the thread this comment starts"
+    )
     args = parser.parse_args(argv)
+    if (args.reply is None) != (args.body is None and args.body_file is None):
+        parser.error("--reply and --body (or --body-file) go together")
     try:
         repo = _gh("repo", "view", "--json", "nameWithOwner")["nameWithOwner"]
         owner, name = repo.split("/", 1)
+        if args.reply is not None or args.resolve is not None:
+            return _answer(args, owner, name)
         nodes = read_threads(owner, name, args.number)
         reviews = read_reviews(owner, name, args.number) if nodes is not None else None
-    except GhError as err:
+    except (GhError, OSError) as err:
         print(f"pr-threads: {err}", file=sys.stderr)
         return 2
     if nodes is None or reviews is None:

@@ -34,7 +34,8 @@ These rules cover every issue except a `wayfinder:*` map or ticket, which `/wayf
 ## Review threads on a pull request
 
 - **List open threads**: `mise run pr-threads -- <number>` prints one line per unresolved thread (path, line, severity, title) and the comment id to reply to; `--all` keeps resolved ones. After the threads it lists the findings a bot put in a review body instead of a thread ("Outside diff"), from reviews submitted since the head commit (`--all`: every review); those have no thread, so answer them with `gh pr comment`. Reach for it before `gh pr view --comments` or `gh api .../reviews`, whose CodeRabbit bodies run to tens of KB.
-- **Reply in a thread**: `gh api -X POST repos/<owner>/<repo>/pulls/<n>/comments/<id>/replies -f body="..."`, with the id `pr-threads` printed.
+- **Reply in a thread**: `mise run pr-threads -- <number> --reply <id> --body "..."`, with the id `pr-threads` printed; `--body-file <path>` (`-` for stdin) takes a longer reply.
+- **Resolve a thread**: `mise run pr-threads -- <number> --resolve <id>` resolves the thread that comment starts. Give it with `--reply` to answer and resolve in one call; the reply goes first.
 
 ## Pull requests as a triage surface
 
