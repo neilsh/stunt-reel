@@ -18,25 +18,31 @@ SCRIPTS_DIR = ROOT / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
+import check_commit_msg  # noqa: E402
 import gate  # noqa: E402
 
 
 def test_lane_map_covers_every_step_exactly_once() -> None:
-    steps = [*gate.STEPS["rust"], *gate.STEPS["py"]]
+    steps = [step for half in gate.STEPS.values() for step in half]
     assert len(steps) == len(set(steps)), "a step is listed twice in STEPS"
     assert sorted(gate.STEP_LANES) == sorted(steps), (
         "STEP_LANES must name every step, and only steps"
     )
 
 
-def test_halves_are_subsets_of_the_whole_plan() -> None:
+def test_the_rust_and_python_halves_make_the_whole_plan() -> None:
     assert gate._plan("all") == [*gate.STEPS["rust"], *gate.STEPS["py"]]
     assert gate._plan("rust") == gate.STEPS["rust"]
     assert gate._plan("py") == gate.STEPS["py"]
 
 
+def test_the_docs_half_shares_no_step_with_the_whole_plan() -> None:
+    assert gate._plan("docs") == gate.STEPS["docs"]
+    assert not set(gate._plan("docs")) & set(gate._plan("all"))
+
+
 def test_lanes_keep_plan_order_and_drop_no_step() -> None:
-    for half in ("all", "rust", "py"):
+    for half in ("all", "rust", "py", "docs"):
         plan = gate._plan(half)
         lanes = gate._lane_plan(plan)
         scheduled = [task for _, tasks in lanes for task in tasks]
@@ -150,3 +156,113 @@ def test_cargo_steps_share_a_lane_exactly_when_they_share_a_target_dir() -> None
         for other, other_target in target_dirs.items():
             same_lane = gate.STEP_LANES[step] == gate.STEP_LANES[other]
             assert same_lane == (target == other_target), (step, other)
+
+
+@pytest.mark.parametrize(
+    ("path", "category"),
+    [
+        ("tests/fixtures/synthetic_pfont.bin", "other"),
+        ("tests/fixtures/README.md", "other"),
+        ("crates/stunt-core/src/lib.rs", "rust"),
+        ("crates/stunt-core/README.md", "rust"),
+        ("Cargo.lock", "rust"),
+        ("deny.toml", "rust"),
+        ("python/scripts/gate.py", "python"),
+        ("uv.lock", "python"),
+        ("pyproject.toml", "python"),
+        ("research/formats/x.ksy", "docs"),
+        ("AGENTS.md", "docs"),
+        ("ä/ä.md", "docs"),
+        ("mise.toml", "other"),
+        (".github/workflows/ci.yml", "other"),
+        ("tools/x/Cargo.toml", "other"),
+    ],
+)
+def test_classify(path: str, category: str) -> None:
+    assert gate.classify(path) == category
+
+
+def test_docs_only_runs_the_docs_half() -> None:
+    assert gate.scope_for(["a.md"], full_flag=False, ci=False).halves == ("docs",)
+
+
+def test_rust_change_runs_rust_and_docs() -> None:
+    assert gate.scope_for(["crates/a.rs"], full_flag=False, ci=False).halves == ("rust", "docs")
+
+
+def test_python_change_needs_no_docs_half() -> None:
+    assert gate.scope_for(["a.py", "b.md"], full_flag=False, ci=False).halves == ("py",)
+
+
+@pytest.mark.parametrize(
+    ("paths", "full_flag", "ci", "error", "reason"),
+    [
+        (["a.md"], True, False, "", "--full"),
+        (["a.md"], False, True, "", "CI is set"),
+        (["a.md", "mise.toml"], False, False, "", "unclassified path: mise.toml"),
+        ([], False, False, "", "no changes against main"),
+        (None, False, False, "no main", "changed paths unknown: no main"),
+    ],
+)
+def test_full_gate_triggers(
+    paths: list[str] | None, full_flag: bool, ci: bool, error: str, reason: str
+) -> None:
+    scope = gate.scope_for(paths, full_flag=full_flag, ci=ci, error=error)
+    assert (scope.full, scope.halves, scope.reason) == (True, ("rust", "py"), reason)
+
+
+@pytest.mark.parametrize(
+    ("env", "expected"),
+    [
+        ({}, False),
+        ({"CI": "true"}, True),
+        ({"CI": "1"}, True),
+        ({"CI": "false"}, False),
+        ({"CI": "FALSE"}, False),
+        ({"CI": "0"}, False),
+        ({"CI": ""}, False),
+    ],
+)
+def test_ci_requested(env: dict[str, str], expected: bool) -> None:
+    assert gate.ci_requested(env) is expected
+
+
+@pytest.mark.parametrize(
+    ("halves", "line"),
+    [
+        (("rust", "py"), "mise run check passes."),
+        (("docs",), "mise run check-docs passes; check-rust not run; check-py not run."),
+        (("rust", "docs"), "mise run check-rust passes; check-docs passes; check-py not run."),
+        (("py",), "mise run check-py passes; check-rust not run."),
+        (("rust",), "mise run check-rust passes; check-py not run; check-docs not run."),
+    ],
+)
+def test_gate_line(halves: tuple[str, ...], line: str) -> None:
+    assert gate.gate_line(halves) == line
+    assert check_commit_msg._is_gate_line(line)
+
+
+def test_a_docs_failure_names_the_docs_rerun() -> None:
+    assert "re-run: mise run check-docs" in _verdict(["test-py-docs"], "all")
+
+
+def test_no_changes_names_the_base() -> None:
+    assert (
+        gate.scope_for([], full_flag=False, ci=False, base="HEAD").reason
+        == "no changes against HEAD"
+    )
+
+
+def test_docs_step_requires_the_kaitai_compiler() -> None:
+    assert gate.STEP_ENV["test-py-docs"]["STUNT_REQUIRE_KSC"] == "1"
+    assert (
+        gate.STEP_ENV["test-py-docs"]["PYTEST_ADDOPTS"]
+        == gate.STEP_ENV["test-py"]["PYTEST_ADDOPTS"]
+    )
+
+
+@pytest.mark.parametrize(
+    "module", ["test_doc_invariants.py", "test_formats_catalog.py", "test_schema_contract.py"]
+)
+def test_docs_marker_is_on_the_documentation_modules(module: str) -> None:
+    assert "pytest.mark.docs" in (ROOT / "tests" / module).read_text(encoding="utf-8")

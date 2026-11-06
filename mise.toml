@@ -353,13 +353,21 @@ env = { CARGO_HOME = "{{vars.cargo_home}}" }
 description = "Python half of the gate (fmt, lint, mypy, pytest), one line per step"
 run = "python python/scripts/gate.py py"
 
+[tasks.check-docs]
+description = "Documentation half of the gate (the documentation tests, test-py-docs), one line per step"
+run = "python python/scripts/gate.py docs"
+
 [tasks.check]
-description = "Full quality gate: one line per step, PASS/FAIL verdict, full log in target/check.log"
+description = "Quality gate for what the branch changes (`mise run check -- --full` runs everything): one line per step, PASS/FAIL verdict, full log in target/check.log"
 run = "python python/scripts/gate.py all"
 
 [tasks.test-docs]
 description = "Documentation invariants only: anchors, Markdown links, cited paths (part of test-py; the pre-commit hook runs it on every commit)"
 run = "uv run pytest tests/test_doc_invariants.py -q"
+
+[tasks.test-py-docs]
+description = "Documentation tests only (`pytest -m docs`: anchors and links, the formats catalog, the schema contract); the gate's docs step"
+run = "uv run pytest -m docs"
 
 [tasks.diff-check]
 description = "Staged conflict markers and whitespace errors (git diff --cached --check); a pre-commit hook"

@@ -189,6 +189,7 @@ testpaths = ["tests"]
 pythonpath = ["python", "python/scripts"]
 markers = [
     "windows: behaves differently on Windows; the pull-request Windows job runs only these (check-windows-smoke)",
+    "docs: documentation tests; the gate's docs step runs them (test-py-docs)",
 ]
 
 [tool.uv]

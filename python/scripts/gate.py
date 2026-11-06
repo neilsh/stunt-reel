@@ -15,6 +15,12 @@ its own, gets a lane of its own. See [ADR 0016](../docs/adr/0016-the-gate-runs-i
 The gate reports every failing step, not just the first: lanes keep running so one run names all
 of them. The plan is one step list for the whole gate and for each half.
 
+The ``docs`` half runs only the documentation tests (``test-py-docs``, ``pytest -m docs``): a
+change that touches no Python still runs them, since a Rust or Markdown change can break a cited
+path. ``classify`` sorts a changed path into a category, and ``scope_for`` turns the categories into
+the halves a run needs, or the full gate with a reason. See the scoped-gate plan,
+``docs/process/plans/scoped-gate-2026-11-06.md``.
+
 ``STEP_ENV`` holds the environment a step runs with only inside the gate. The Python test step
 sets ``STUNT_REQUIRE_KSC=1``, so a missing Kaitai compiler fails the gate instead of skipping the
 schema contract test, and ``STUNT_REQUIRE_PREK=1`` does the same for the commit hooks' prek test.
@@ -22,7 +28,7 @@ It also runs pytest across every core (``-n auto``), the gate's longest lane; a 
 ``mise run test-py -- <file>`` stays in one process, where starting workers would cost more than
 it saves.
 
-Usage: ``python python/scripts/gate.py {all|rust|py} [--tail N]``
+Usage: ``python python/scripts/gate.py {all|rust|py|docs} [--tail N]``
 """
 
 from __future__ import annotations
@@ -35,11 +41,12 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, TextIO
+from typing import TYPE_CHECKING, Literal, TextIO
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
 LOG_PATH = Path("target") / "check.log"
 
@@ -49,6 +56,7 @@ LOG_PATH = Path("target") / "check.log"
 STEPS: dict[str, list[str]] = {
     "rust": ["fmt-check-rust", "lint-rust", "test-rust", "doc", "check-rust-matrix"],
     "py": ["fmt-check-py", "lint-py", "typecheck", "test-py"],
+    "docs": ["test-py-docs"],
 }
 
 # Each step belongs to one lane. Steps in the same lane run in order, one at a time; lanes run
@@ -66,24 +74,119 @@ STEP_LANES: dict[str, str] = {
     "lint-py": "py-lint",
     "typecheck": "py-typecheck",
     "test-py": "py-test",
+    "test-py-docs": "py-docs",
 }
 
 # The scoped task that runs each half of STEPS (mise.toml: check-rust, check-py). A failing step
 # names the task for its own half, so membership comes from STEPS and cannot drift from the plan.
-SCOPED_TASKS: dict[str, str] = {"rust": "check-rust", "py": "check-py"}
+SCOPED_TASKS: dict[str, str] = {"rust": "check-rust", "py": "check-py", "docs": "check-docs"}
 
 # Steps whose failure `mise run fix` repairs mechanically: ruff's fixable lint findings, ruff
 # format and rustfmt. The task itself is defined in mise.toml beside the steps it mirrors.
 FIX_TASK = "fix"
 FIXABLE_STEPS = frozenset({"fmt-check-rust", "fmt-check-py", "lint-py"})
 
-STEP_ENV: dict[str, dict[str, str]] = {
-    "test-py": {
-        "STUNT_REQUIRE_KSC": "1",
-        "STUNT_REQUIRE_PREK": "1",
-        "PYTEST_ADDOPTS": "-n auto",
-    }
+_PYTEST_ENV = {
+    "STUNT_REQUIRE_KSC": "1",
+    "STUNT_REQUIRE_PREK": "1",
+    "PYTEST_ADDOPTS": "-n auto",
 }
+STEP_ENV: dict[str, dict[str, str]] = {"test-py": _PYTEST_ENV, "test-py-docs": dict(_PYTEST_ENV)}
+
+Category = Literal["rust", "python", "docs", "other"]
+
+# The full gate's halves; every other run is a subset of these plus ``docs``.
+_FULL = ("rust", "py")
+_RUST_FILES = frozenset({"Cargo.toml", "Cargo.lock", "deny.toml"})
+_PYTHON_FILES = frozenset({"pyproject.toml", "uv.lock"})
+
+
+def classify(path: str) -> Category:
+    """Sort one changed path (git's: ``/``-separated, from the root) into a gate category.
+
+    The first rule that matches wins. Fixtures feed both languages' tests, so they are ``other``
+    and run the full gate; a Markdown file under ``crates/`` is Rust, because rustdoc reads it.
+    """
+    if path.startswith("tests/fixtures/"):
+        return "other"
+    if path.startswith("crates/") or path in _RUST_FILES:
+        return "rust"
+    if path.endswith(".py") or path in _PYTHON_FILES:
+        return "python"
+    if path.endswith((".md", ".ksy")):
+        return "docs"
+    return "other"
+
+
+@dataclass(frozen=True)
+class Scope:
+    """The halves one ``gate.py all`` run executes, and why it is the full gate when it is."""
+
+    halves: tuple[str, ...]
+    full: bool
+    reason: str = ""
+    paths: dict[Category, list[str]] = field(default_factory=dict)
+
+
+def scope_for(
+    paths: list[str] | None,
+    *,
+    full_flag: bool,
+    ci: bool,
+    error: str = "",
+    base: str = "main",
+) -> Scope:
+    """Choose the halves for *paths*, or the full gate with the first reason that applies.
+
+    *paths* is ``None`` when they could not be read, and *error* says why. A Rust change runs the
+    docs half too; a Python change does not need it, since ``test-py`` runs every test.
+    """
+    grouped: dict[Category, list[str]] = {}
+    for path in paths or []:
+        grouped.setdefault(classify(path), []).append(path)
+    unclassified = grouped.get("other", [])
+    if full_flag:
+        reason = "--full"
+    elif ci:
+        reason = "CI is set"
+    elif paths is None:
+        reason = f"changed paths unknown: {error}"
+    elif unclassified:
+        reason = f"unclassified path: {unclassified[0]}"
+    elif not paths:
+        reason = f"no changes against {base}"
+    else:
+        reason = ""
+    if reason:
+        return Scope(_FULL, full=True, reason=reason, paths=grouped)
+    halves = [
+        half for half, category in (("rust", "rust"), ("py", "python")) if category in grouped
+    ]
+    if "py" not in halves:
+        halves.append("docs")
+    return Scope(tuple(halves), full=False, paths=grouped)
+
+
+def ci_requested(env: Mapping[str, str]) -> bool:
+    """Whether ``CI`` asks for the full gate: set, and neither ``false`` nor ``0``."""
+    return env.get("CI", "").strip().lower() not in {"", "false", "0"}
+
+
+def gate_line(halves: Sequence[str]) -> str:
+    """The commit body's closing line for a passing run of *halves* (AGENTS.md, Committing).
+
+    The first half names its task in full and the rest by name; a half that did not run is
+    named as not run, except ``docs`` after ``py``, whose ``test-py`` already ran those tests.
+    """
+    if set(_FULL) <= set(halves):
+        return "mise run check passes."
+    ran = [f"{SCOPED_TASKS[half]} passes" for half in halves]
+    skipped = [
+        f"{SCOPED_TASKS[half]} not run"
+        for half in ("rust", "py", "docs")
+        if half not in halves and not (half == "docs" and "py" in halves)
+    ]
+    return f"mise run {'; '.join([*ran, *skipped])}."
 
 
 def _plan(half: str) -> list[str]:
@@ -183,7 +286,9 @@ def _run_lane(
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("half", choices=("all", "rust", "py"), help="which half of the gate")
+    parser.add_argument(
+        "half", choices=("all", "rust", "py", "docs"), help="which half of the gate"
+    )
     parser.add_argument("--tail", type=int, default=40, help="lines shown of a failing step")
     args = parser.parse_args(argv)
 
