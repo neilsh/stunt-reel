@@ -72,6 +72,9 @@ def outcome(lines: list[str], returncode: int, skill: str) -> RunOutcome:
                     skills.append(read.group(1))
                 if name in ("Read", "Grep") and PEEK_MARKER in json.dumps(data):
                     peeked = True
+        elif kind == "user" and PEEK_MARKER in json.dumps(event.get("message")):
+            # A search can surface the plan in its results without naming it in its input.
+            peeked = True
         elif kind == "result":
             text = event.get("result")
             cost = float(event.get("total_cost_usd") or 0.0)

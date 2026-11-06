@@ -62,6 +62,18 @@ def test_reading_the_plan_is_peeking() -> None:
     assert outcome(lines, 0, "x").peeked
 
 
+def test_a_tool_result_quoting_the_plan_is_peeking() -> None:
+    hit = "docs/process/plans/agents-md-split-2026-11-05.md:190: complete once meta.json exists"
+    tool_result = {"type": "tool_result", "tool_use_id": "t1", "content": hit}
+    lines = [
+        _tool_calls(("Grep", {"pattern": "meta.json"})),
+        json.dumps({"type": "user", "message": {"content": [tool_result]}}),
+        _result(),
+    ]
+
+    assert outcome(lines, 0, "x").peeked
+
+
 def test_an_error_result_failed() -> None:
     lines = [_result(is_error=True, subtype="error_max_budget_usd")]
 
