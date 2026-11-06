@@ -79,7 +79,8 @@ def shape_files(res_dir: Path) -> list[ShapeFile]:
     """Every `.RES` file in *res_dir* whose `res_index` is below `0x80`, by index.
 
     Raises:
-        SupersetError: no such file, or two files with the same index.
+        SupersetError: no such file, two files with the same index, or a file whose header
+            names a shape index but whose offsets do not parse.
     """
     found: dict[int, ShapeFile] = {}
     for path in sorted(res_dir.iterdir()):
@@ -87,7 +88,12 @@ def shape_files(res_dir: Path) -> list[ShapeFile]:
             continue
         data = path.read_bytes()
         parsed = res_items(data)
-        if parsed is None or parsed[0] >= SHAPE_INDEX_LIMIT:
+        if parsed is None:
+            # A shape file that does not parse would leave its shapes out silently.
+            if data[:2] == b"RS" and len(data) > 2 and data[2] < SHAPE_INDEX_LIMIT:
+                raise SupersetError(f"{path.name} has shape index {data[2]:#04x} but is malformed")
+            continue
+        if parsed[0] >= SHAPE_INDEX_LIMIT:
             continue
         index, items = parsed
         if index in found:
@@ -143,9 +149,12 @@ def build(game: Path, out: Path, *, run: link.Runner | None = None) -> tuple[int
     """Writes the superset of *game* to *out* and its manifest beside it; `(chunks, bytes)`.
 
     Raises:
-        SupersetError: as :func:`shape_files`, or *game* has no `RES` folder.
+        SupersetError: as :func:`shape_files`, *game* has no `RES` folder, or *out* ends in
+            `.toml`, where the manifest goes.
         link.LinkError: ``stuntreel link build`` failed or wrote other bytes.
     """
+    if out.suffix.lower() == ".toml":
+        raise SupersetError(f"{out} would overwrite its own manifest; name the archive .ALL")
     res_dirs = [p for p in game.iterdir() if p.is_dir() and p.name.upper() == "RES"]
     if not res_dirs:
         raise SupersetError(f"no RES folder in {game}")

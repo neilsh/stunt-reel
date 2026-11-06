@@ -95,6 +95,24 @@ def test_shape_files_refuse_a_repeated_index(game: Path) -> None:
         superset_all.shape_files(game / "res")
 
 
+def test_shape_files_refuse_a_malformed_shape_file(game: Path) -> None:
+    (game / "res" / "TORN.RES").write_bytes(b"RS\x05\x01" + struct.pack("<2I", 12, 99))
+    with pytest.raises(superset_all.SupersetError, match=r"TORN\.RES has shape index 0x05"):
+        superset_all.shape_files(game / "res")
+
+
+def test_shape_files_skip_a_malformed_file_without_shapes(game: Path) -> None:
+    (game / "res" / "TORNSPR.RES").write_bytes(b"RS\x80\x01" + struct.pack("<2I", 12, 99))
+    assert [f.index for f in superset_all.shape_files(game / "res")] == [0x01, 0x7F]
+
+
+def test_build_refuses_an_output_named_like_its_manifest(game: Path, tmp_path: Path) -> None:
+    run = FakeRunner()
+    with pytest.raises(superset_all.SupersetError, match="own manifest"):
+        superset_all.build(game, tmp_path / "SUPERSET.TOML", run=run)
+    assert run.calls == []
+
+
 def test_shape_files_refuse_a_tree_without_shapes(tmp_path: Path) -> None:
     (tmp_path / "SPRITES.RES").write_bytes(_res(0x80, [b"palette"]))
     with pytest.raises(superset_all.SupersetError, match=r"no \.RES file"):
