@@ -39,6 +39,7 @@ fn unit_quat() -> impl Strategy<Value = [f32; 4]> {
         })
 }
 
+/// Any actor with this id: arbitrary rotation, position and state mask, no shadow.
 fn actor(actor_id: u32) -> impl Strategy<Value = ActorTransform> {
     (unit_quat(), uniform3(-500.0f32..500.0), any::<u16>()).prop_map(
         move |(rotation_quat, position_meters, state_mask)| ActorTransform {

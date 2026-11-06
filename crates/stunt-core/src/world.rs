@@ -996,6 +996,7 @@ pub struct TerrainSurface {
 }
 
 impl TerrainSurface {
+    /// The triangles of every `MAP.BIN` patch over `anchors`, lifted by `base_y`.
     pub(crate) fn new(anchors: &[AnchorPoint], map_areas: &[MapArea], base_y: f32) -> Self {
         let pts: Vec<[f32; 3]> = anchors
             .iter()
@@ -1702,6 +1703,7 @@ mod tests {
         assert_eq!(lod_threshold(400, 50, 0.5), 50.0);
     }
 
+    /// A world with terrain and a prop has the ocean, the terrain, and base and decal nodes.
     #[test]
     fn test_build_world_ir_structure() {
         // Raw records whose `[I1]` positions are (0, 10, 0), (10, 10, 0) and (10, 10, 10).
@@ -1780,6 +1782,7 @@ mod tests {
         assert!(decal_node.is_some());
     }
 
+    /// Without `MAP.BIN` the world is the ocean quad, then a flat ground quad.
     #[test]
     fn test_build_world_ir_without_map_lays_ocean_then_ground() {
         let world_ir = build_world_ir(
@@ -1886,6 +1889,7 @@ mod tests {
         (pts, areas)
     }
 
+    /// The ground plane over the terrain is its triangle's plane; off the map there is none.
     #[test]
     fn the_ground_plane_is_the_terrain_triangle_under_the_point_and_level_off_the_map() {
         let (pts, areas) = sloped_terrain();
@@ -1898,6 +1902,7 @@ mod tests {
         assert_eq!(terrain.plane_near(500.0, 500.0, 0.0), None);
     }
 
+    /// A flattened point keeps its x and z and lands on the plane raised by the lift.
     #[test]
     fn flatten_matrix_drops_a_point_straight_down_onto_the_lifted_plane() {
         let plane = GroundPlane::through([0.0, 0.0, 0.0], [10.0, 1.0, 0.0], [0.0, 2.0, 10.0])
@@ -1977,6 +1982,7 @@ mod tests {
         found
     }
 
+    /// The world IR of the sloped terrain with `prop` placed at `at`.
     fn world_with(prop: SodModelIr, at: [f32; 3]) -> SodModelIr {
         let (pts, areas) = sloped_terrain();
         let models = HashMap::from([(0x0391, prop)]);

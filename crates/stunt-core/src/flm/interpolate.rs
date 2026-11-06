@@ -351,6 +351,7 @@ mod tests {
     use super::*;
     use std::f32::consts::{FRAC_PI_2, PI};
 
+    /// An unrotated, visible actor with no shadow at `position_meters`.
     fn actor(actor_id: u32, position_meters: [f32; 3]) -> ActorTransform {
         ActorTransform {
             actor_id,

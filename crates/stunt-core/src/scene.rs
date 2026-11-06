@@ -534,6 +534,7 @@ mod tests {
     use super::*;
     use crate::contracts::trajectory::DEFAULT_CAMERA_LENS;
 
+    /// The default authored camera with this field of view and lens.
     fn camera(fov_degrees: f32, lens: u16) -> CameraTransform {
         CameraTransform {
             fov_degrees,
@@ -542,6 +543,8 @@ mod tests {
         }
     }
 
+    /// The shadow matrix keeps the actor's x and z, puts it on `y = 0` lifted by the
+    /// `[I5]` displacement, and drops every model height.
     #[test]
     fn a_shadow_matrix_flattens_the_actor_matrix_onto_the_plane() {
         let translate = [

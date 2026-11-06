@@ -56,6 +56,7 @@ fn triangle(name: &str, visibility: VisibilityCondition) -> SodModelIr {
     ir
 }
 
+/// An unrotated actor of the test shape at `x` on the X axis, casting no shadow.
 fn actor_at(x: f32, state_mask: u16) -> ActorTransform {
     ActorTransform {
         actor_id: 0,
@@ -220,6 +221,7 @@ fn state_mask_that_hides_geometry_draws_nothing() {
     assert!(drawn_in_columns(&drawn, w, h, 0..w) > 100);
 }
 
+/// A scene with a world draws it even with no actors.
 #[test]
 fn world_is_drawn_when_present() {
     let mut ir = triangle("WORLD_BASE", VisibilityCondition::Always);

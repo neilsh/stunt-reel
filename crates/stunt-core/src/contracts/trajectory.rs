@@ -92,6 +92,7 @@ impl CameraTransform {
 }
 
 impl Default for CameraTransform {
+    /// The authored default: eye 50 m back and 10 m up, looking at the origin.
     fn default() -> Self {
         Self {
             eye: [0.0, 10.0, 50.0],
@@ -284,6 +285,7 @@ mod tests {
         assert!((focal_px - 256.0).abs() < 1e-3, "focal {focal_px}");
     }
 
+    /// An unrotated actor's world matrix is the identity rotation plus its position.
     #[test]
     fn test_compute_world_matrix_identity() {
         let actor = ActorTransform {
@@ -319,6 +321,7 @@ mod tests {
         assert_eq!(header.horizon_sky_palette, (12, 45));
     }
 
+    /// A trajectory record survives a JSON round trip unchanged.
     #[cfg(feature = "serde")]
     #[test]
     fn test_contracts_serde_roundtrip() {
@@ -380,6 +383,7 @@ mod tests {
         assert_eq!(capture, cap_deserialized);
     }
 
+    /// World matrices match the DOS-math goldens in `tests/fixtures/dos_math_goldens.json`.
     #[test]
     fn compute_world_matrix_matches_shared_goldens() {
         let text = include_str!("../../../../tests/fixtures/dos_math_goldens.json");
