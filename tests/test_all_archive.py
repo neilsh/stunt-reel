@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import struct
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -492,3 +495,26 @@ def test_a_corpus_archive_of_another_film_is_not_taken(tmp_path: Path) -> None:
     (other.parent / "BALLOON.FLM").write_bytes(b"a different film")
     with pytest.raises(ArchiveError, match="pinned"):
         resolve_all(film, tmp_path, SLUG, link_build=no_link, pinned=_sha(other))
+
+
+def test_parallel_resolves_build_a_manifest_archive_once(tmp_path: Path) -> None:
+    film, _own, _other = _copies(tmp_path)
+    linked_sha = hashlib.sha256(b"LINKED").hexdigest()
+    _manifest(tmp_path, SLUG, FLM_BYTES, all_sha256=linked_sha)
+    (tmp_path / "game").mkdir()
+    fake = FakeLinkBuild()
+
+    def slow_link(manifest: Path, game: Path, out: Path) -> None:
+        time.sleep(0.2)  # every thread checks for the archive before the first build lands
+        fake(manifest, game, out)
+
+    start = threading.Barrier(4)
+
+    def resolve() -> Path:
+        start.wait()
+        return resolve_all(film, tmp_path, SLUG, link_build=slow_link, pinned=linked_sha)
+
+    with ThreadPoolExecutor(4) as pool:
+        results = list(pool.map(lambda _i: resolve(), range(4)))
+    assert set(results) == {tmp_path / parity_layout.linked_path(SLUG, film.name)}
+    assert len(fake.calls) == 1

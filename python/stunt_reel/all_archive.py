@@ -12,6 +12,7 @@ from __future__ import annotations
 import itertools
 import json
 import struct
+import threading
 import tomllib
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, fields
@@ -150,6 +151,10 @@ def no_link(_manifest: Path, _game: Path, _out: Path) -> None:
     """A :data:`LinkBuild` that builds nothing: a preflight checks a manifest without ``link``."""
 
 
+#: Serializes the check-and-build of a linked archive across the threads of one parity run.
+_LINK_LOCK = threading.Lock()
+
+
 def _from_manifest(
     flm: Path, root: Path, slug: str, link_build: LinkBuild, *, want: str | None = None
 ) -> Path | None:
@@ -193,13 +198,17 @@ def _from_manifest(
             "checkout's corpus/ when the data root has none"
         )
     out = root / parity_layout.linked_path(slug, flm.name)
-    if out.is_file() and file_sha256(out) == all_sha256:
-        # Already built from this manifest; rewriting it would race a reader on Windows.
-        return out
-    try:
-        link_build(manifest, game, out)
-    except link.LinkError as exc:
-        raise ArchiveError(f"cannot rebuild {flm.name} from manifest {manifest}: {exc}") from exc
+    # Parallel renders resolve the same film at once; one builds, the rest find its archive.
+    with _LINK_LOCK:
+        if out.is_file() and file_sha256(out) == all_sha256:
+            # Already built from this manifest; rewriting it would race a reader on Windows.
+            return out
+        try:
+            link_build(manifest, game, out)
+        except link.LinkError as exc:
+            raise ArchiveError(
+                f"cannot rebuild {flm.name} from manifest {manifest}: {exc}"
+            ) from exc
     return out
 
 
