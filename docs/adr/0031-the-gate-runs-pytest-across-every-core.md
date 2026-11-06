@@ -111,3 +111,15 @@ leave cores free for `test-rust` and for a cold cargo build in another worktree.
   (x86-64, aarch64), so every CI platform installs it without a build; BSD-3-Clause; released
   2026-01. It ships no `py.typed`. Nothing imports it: xdist looks for it at startup, so mypy
   never resolves it and the check has nothing to apply to.
+
+### The reap tests (2026-11-06)
+
+`tests/test_worktree_reap.py` built a real repository for each of its 41 tests. The seven
+free-space tests now stub `_worktrees`, `_candidates`, `_free_bytes` and `_reap_one`, since they
+decide whether `_reap` removes, not how. Summed test durations, one process: 52 s before, 38 s
+after.
+
+Sharing one module-scoped repository among the eleven tests that only classify was tried and
+dropped. It cut another 2-5 s of CPU but made one 12 s chain of git calls on a single worker
+(`--dist loadgroup`), which took 62 s in a full run while other sessions loaded the machine, longer
+than the whole suite. Eleven 1-2 s tests spread across workers bound nothing.

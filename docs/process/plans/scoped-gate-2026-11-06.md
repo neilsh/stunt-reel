@@ -166,9 +166,9 @@ the data-loss path of [ADR 0018](../../adr/0018-reaping-unlinks-the-data-root-li
   `test_prune_with_plenty_of_space_prunes_nothing`, seven tests): `_candidates` and `_reap_one`
   are stubbed; each test asserts what `_reap` decides and prints. No git.
 - **classification** (fresh, fast-forwarded, rebased, squash-merged, no reflog, moved on, cherry):
-  tests that only classify share one module-scoped repository holding a branch in every state.
-  A test that changes the repository keeps its own; the line is drawn test by test, by whether it
-  mutates.
+  unchanged, each with its own repository. One shared module-scoped repository was tried
+  (amendment to ADR 0031): it saved 2-5 s of CPU but became a single 62 s unit under load, so
+  the tests stay spread across workers.
 - **removal safety** (a commit or an edit after classification, unlink before remove, the link
   target kept, the dry run): unchanged, each with its own repository.
 

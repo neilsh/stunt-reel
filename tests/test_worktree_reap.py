@@ -923,18 +923,25 @@ def test_clean_unlinks_the_legacy_capture_link_and_keeps_the_data_root(
     assert not (checkout / "build").exists()
 
 
-def _reap_env(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, free: int | OSError
-) -> tuple[Path, Path]:
-    """A squash-merged ``feat`` worktree that ``_reap`` will see, on a drive with *free* bytes."""
-    repo, worktree, tip = _squash_repo(tmp_path)
-    monkeypatch.setattr(worktree_init, "REPO_ROOT", repo)
-    monkeypatch.setattr(dataroot, "REPO_ROOT", repo)
+def _stub_reap(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, free: int | OSError) -> list[Path]:
+    """``_reap`` over one squash-merged ``feat`` candidate on a drive with *free* bytes.
+
+    Nothing touches git: these tests decide whether ``_reap`` removes, not how. The returned
+    list records each worktree ``_reap_one`` was asked to remove.
+    """
+    feat = worktree_init._Worktree(tmp_path / ".agents" / "worktrees" / "feat", "1" * 40, "feat")
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(dataroot, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(worktree_init, "_gh", _gh_stub())
     monkeypatch.setattr(
         worktree_init,
-        "_gh",
-        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": tip}]),
+        "_worktrees",
+        lambda _repo: [worktree_init._Worktree(tmp_path, "0" * 40, "main"), feat],
     )
+    candidate = worktree_init._Candidate(
+        worktree=feat, merged=True, dirty=[], untracked=[], links=[], size=0, pr=89
+    )
+    monkeypatch.setattr(worktree_init, "_candidates", lambda *_a, **_k: ([candidate], []))
 
     def free_bytes(_path: Path) -> int:
         if isinstance(free, OSError):
@@ -942,7 +949,17 @@ def _reap_env(
         return free
 
     monkeypatch.setattr(worktree_init, "_free_bytes", free_bytes)
-    return repo, worktree
+    removed: list[Path] = []
+
+    def reap_one(_repo: Path, chosen: worktree_init._Candidate, **_kwargs: object) -> None:
+        removed.append(chosen.worktree.path)
+
+    monkeypatch.setattr(worktree_init, "_reap_one", reap_one)
+    return removed
+
+
+def _feat(tmp_path: Path) -> Path:
+    return tmp_path / ".agents" / "worktrees" / "feat"
 
 
 def test_space_is_short_only_below_the_bar() -> None:
@@ -954,43 +971,43 @@ def test_space_is_short_only_below_the_bar() -> None:
 def test_reap_with_plenty_of_space_removes_nothing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _, worktree = _reap_env(monkeypatch, tmp_path, 50 * worktree_init.GIB)
+    removed = _stub_reap(monkeypatch, tmp_path, 50 * worktree_init.GIB)
 
     assert worktree_init._reap(True) == 0
-    assert worktree.is_dir()
+    assert removed == []
     assert "nothing removed" in capsys.readouterr().out
 
 
 def test_reap_below_the_bar_removes_the_worktree(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _, worktree = _reap_env(monkeypatch, tmp_path, 5 * worktree_init.GIB)
+    removed = _stub_reap(monkeypatch, tmp_path, 5 * worktree_init.GIB)
 
     assert worktree_init._reap(True) == 0
-    assert not worktree.exists()
+    assert removed == [_feat(tmp_path)]
 
 
 def test_force_reaps_with_plenty_of_space(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _, worktree = _reap_env(monkeypatch, tmp_path, 50 * worktree_init.GIB)
+    removed = _stub_reap(monkeypatch, tmp_path, 50 * worktree_init.GIB)
 
     assert worktree_init._reap(True, force=True) == 0
-    assert not worktree.exists()
+    assert removed == [_feat(tmp_path)]
 
 
 def test_min_free_gb_moves_the_bar(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _, worktree = _reap_env(monkeypatch, tmp_path, 50 * worktree_init.GIB)
+    removed = _stub_reap(monkeypatch, tmp_path, 50 * worktree_init.GIB)
 
     assert worktree_init._reap(True, min_free_gb=100.0) == 0
-    assert not worktree.exists()
+    assert removed == [_feat(tmp_path)]
 
 
 def test_unknown_free_space_removes_nothing_without_force(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _, worktree = _reap_env(monkeypatch, tmp_path, OSError("boom"))
+    removed = _stub_reap(monkeypatch, tmp_path, OSError("boom"))
 
     assert worktree_init._reap(True) == 0
-    assert worktree.is_dir()
+    assert removed == []
     out = capsys.readouterr().out
     assert "free space unknown" in out
     assert "plenty of space" not in out
@@ -999,16 +1016,16 @@ def test_unknown_free_space_removes_nothing_without_force(
 def test_force_reaps_when_free_space_is_unknown(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _, worktree = _reap_env(monkeypatch, tmp_path, OSError("boom"))
+    removed = _stub_reap(monkeypatch, tmp_path, OSError("boom"))
 
     assert worktree_init._reap(True, force=True) == 0
-    assert not worktree.exists()
+    assert removed == [_feat(tmp_path)]
 
 
 def test_prune_with_plenty_of_space_prunes_nothing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _, worktree = _reap_env(monkeypatch, tmp_path, 50 * worktree_init.GIB)
+    removed = _stub_reap(monkeypatch, tmp_path, 50 * worktree_init.GIB)
     seen: list[bool] = []
 
     def spy(*_args: object, confirmed: bool, **_kwargs: object) -> tuple[int, int]:
@@ -1019,7 +1036,7 @@ def test_prune_with_plenty_of_space_prunes_nothing(
         monkeypatch.setattr(worktree_init, name, spy)
 
     assert worktree_init._reap(True, prune=True) == 0
-    assert worktree.is_dir()
+    assert removed == []
     assert seen
     assert True not in seen
 
