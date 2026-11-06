@@ -110,6 +110,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     def work(job: FilmJob, _variant: None) -> FilmScore:
+        """Renders (or reuses) *job*'s film and scores it, printing nothing."""
         source = prepare_source(job, options, no_render=args.no_render)
         suffix = ""
         request = None

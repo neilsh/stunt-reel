@@ -525,6 +525,7 @@ def run_films(
     """
 
     def work(job: FilmJob, _variant: None) -> FilmScore:
+        """Renders *job*'s film into *workdir* unless reusing it, then scores it."""
         if render:
             return run_film(job, workdir, env=env, retime=retime, run=run)
         request = None if retime is None else Retime(retime, workdir / f"{job.name}_retime")
@@ -575,6 +576,7 @@ def run_matrix[V](
                 opened.append(FilmFailure(film, error))
 
         def attempt(index: int, column: int) -> Attempt:
+            """Runs one pair, turning a pair error into its film's failure."""
             job = opened[column]
             if isinstance(job, FilmFailure):
                 return job
@@ -584,6 +586,7 @@ def run_matrix[V](
                 return FilmFailure(job.name, error)
 
         def finish(index: int, column: int, result: Attempt) -> None:
+            """Records one pair's result, and reports its variant once its row is complete."""
             row = rows[index]
             row[column] = result
             if on_variant is not None and all(cell is not None for cell in row):

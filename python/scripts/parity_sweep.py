@@ -335,11 +335,15 @@ def main(argv: list[str] | None = None) -> int:
     started = time.monotonic()
 
     def work(job: FilmJob, plan: SweepPlan) -> FilmScore:
+        """Renders and scores *job*'s film in *plan*'s work directory and environment."""
         return run_film(job, plan.workdir, env=plan.env, retime=options.retime)
 
     def on_variant(position: int, row: list[FilmScore | FilmFailure]) -> None:
-        # Called on this thread as each variant's last film finishes, in completion order; rank
-        # breaks ties by index, so the best kept does not depend on that order.
+        """Reports a finished variant and keeps the best one's work directory so far.
+
+        Called on this thread as each variant's last film finishes, in completion order; rank
+        breaks ties by index, so the best kept does not depend on that order.
+        """
         nonlocal best
         plan = plans[position]
         variant = plan.variant
