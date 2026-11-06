@@ -151,6 +151,9 @@ own `init`):
    below another listed path lies inside that junction's target: leave it alone.
 2. `cmd /c rmdir "<path>"` each remaining one, pasting the path exactly as `dir /B` printed
    it inside the quotes; it removes the junction and leaves its target alone. Never add `/s`.
+   `cmd` expands `%NAME%` even inside quotes, so for a path containing `%` run
+   `[System.IO.Directory]::Delete('<path>')` in PowerShell instead: single quotes stop
+   expansion, and the call is non-recursive and removes only the junction.
 3. `cmd /c dir /AL /S /B` again must print `File Not Found`; only then run `orca worktree rm`.
 
 Orca workspaces live on `C:`, another volume from the shared uv cache, so uv copies each
