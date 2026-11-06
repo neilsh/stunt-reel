@@ -63,7 +63,7 @@ Process documents, **not** sources of truth: [`docs/process/TEAM_SHEET.md`](docs
 
 ### SOP 2: Recording Findings
 A *finding* is a fact about how the original stores data (format), how it draws or behaves (rendering and runtime), or why our render differs from it (residual).
-1. Route each finding, and each ruled-out hypothesis, by [`research/README.md`](research/README.md): it names the owning note, the note shape, and the `parity/log.md` row an experiment leaves.
+1. Route each finding, and each ruled-out hypothesis, by [`research/README.md`](research/README.md): it names the owning note, the note shape, and the `parity/log.md` row a parity experiment leaves.
 2. Commit the note with the code that relies on the finding; a finding no code uses yet lands before the session ends.
 3. The note holds the finding. Commit bodies and the code that relies on it link the note, or its `# [MEM-*]` / `# [FMT-*]` anchor.
 
