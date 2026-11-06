@@ -121,6 +121,10 @@ def _in_base(revisions: str) -> set[str]:
     return {line[2:].strip() for line in lines if line.startswith("- ")}
 
 
+#: Seconds one ``gh api`` call may take before GitHub counts as unavailable.
+GH_TIMEOUT = 30
+
+
 class GitHubUnavailableError(Exception):
     """``gh`` is missing, or could not answer."""
 
@@ -139,15 +143,17 @@ def _merged_pulls(sha: str) -> list[int]:
                 "--jq",
                 "[.[] | select(.merged_at != null) | .number]",
             ],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",
             check=True,
+            timeout=GH_TIMEOUT,
         )
         numbers = json.loads(done.stdout)
     except subprocess.CalledProcessError as error:
         raise GitHubUnavailableError(error.stderr.strip() or str(error)) from error
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
         raise GitHubUnavailableError(str(error)) from error
     if not isinstance(numbers, list) or not all(isinstance(n, int) for n in numbers):
         raise GitHubUnavailableError(f"unexpected answer {done.stdout.strip()!r}")

@@ -94,7 +94,12 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   Amended 2026-11-05: in a range it skips, with a line naming why, a failing commit whose patch
   `git cherry` finds in the base or that `gh` lists in a merged pull request other than `--pr`,
   since a branch stacked on a squash-merged parent keeps the parent's reviewed commits (#228
-  failed on #224's); without `gh` it checks every commit, as before.
+  failed on #224's); without `gh` it checks every commit, as before. Rejected: rewriting the
+  branch, which needs a force-push the repository forbids; checking only first-parent commits,
+  which still include the parent's; and `git cherry` alone, since a squash of several commits is
+  patch-equivalent to none of them. Consequences: CI calls the GitHub API only for a failing
+  commit; offline, or after a 30-second `gh` timeout, it checks every remaining commit; and a
+  commit merged in another pull request is trusted to have been checked there.
 
 ## What enforces this
 

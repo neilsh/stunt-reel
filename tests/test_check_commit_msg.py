@@ -247,3 +247,20 @@ def test_github_is_unavailable_without_gh(hook: Any, monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(hook.shutil, "which", lambda _name: None)
     with pytest.raises(hook.GitHubUnavailableError, match="gh"):
         hook._merged_pulls("0" * 40)
+
+
+def test_a_gh_call_that_times_out_makes_github_unavailable(
+    hook: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def hang(command: list[str], **kwargs: Any) -> None:
+        calls.append(kwargs)
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(hook.shutil, "which", lambda _name: "gh")
+    monkeypatch.setattr(hook.subprocess, "run", hang)
+    with pytest.raises(hook.GitHubUnavailableError, match="timed out"):
+        hook._merged_pulls("0" * 40)
+    assert calls[0]["timeout"] == hook.GH_TIMEOUT
+    assert calls[0]["stdin"] is subprocess.DEVNULL
