@@ -518,3 +518,52 @@ def test_parallel_resolves_build_a_manifest_archive_once(tmp_path: Path) -> None
         results = list(pool.map(lambda _i: resolve(), range(4)))
     assert set(results) == {tmp_path / parity_layout.linked_path(SLUG, film.name)}
     assert len(fake.calls) == 1
+
+
+def test_parallel_resolves_of_different_archives_build_at_once(tmp_path: Path) -> None:
+    film, _own, _other = _copies(tmp_path)
+    linked_sha = hashlib.sha256(b"LINKED").hexdigest()
+    slugs = (SLUG, "vault-kite")
+    for slug in slugs:
+        _manifest(tmp_path, slug, FLM_BYTES, all_sha256=linked_sha)
+    (tmp_path / "game").mkdir()
+    fake = FakeLinkBuild()
+    guard = threading.Lock()
+    active = [0, 0]  # building now, most at once
+
+    def slow_link(manifest: Path, game: Path, out: Path) -> None:
+        with guard:
+            active[0] += 1
+            active[1] = max(active)
+        time.sleep(0.2)
+        fake(manifest, game, out)
+        with guard:
+            active[0] -= 1
+
+    start = threading.Barrier(2)
+
+    def resolve(slug: str) -> Path:
+        start.wait()
+        return resolve_all(film, tmp_path, slug, link_build=slow_link, pinned=linked_sha)
+
+    with ThreadPoolExecutor(2) as pool:
+        list(pool.map(resolve, slugs))
+    assert active[1] == 2
+
+
+def test_a_pinned_corpus_copy_is_found_in_the_given_data_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    configured = tmp_path / "configured"
+    (configured / "corpus").mkdir(parents=True)
+    monkeypatch.setenv(dataroot.DATA_ENV, str(configured))
+    dataroot.data_root.cache_clear()
+    film = _film(tmp_path)
+    vault = tmp_path / "data" / "corpus" / "x" / "VAULT"
+    vault.mkdir(parents=True)
+    (vault / film.name).write_bytes(FLM_BYTES)
+    (vault / "BALLOON.ALL").write_bytes(b"pinned")
+    pin = hashlib.sha256(b"pinned").hexdigest()
+    assert resolve_all(film, tmp_path, SLUG, pinned=pin, data=tmp_path / "data") == (
+        vault / "BALLOON.ALL"
+    )

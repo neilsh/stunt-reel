@@ -179,3 +179,10 @@ def test_main_reads_the_archive_pin_from_the_capture(
     (directory / "meta.json").write_text(json.dumps({"all_sha256": "b" * 64}), encoding="utf-8")
     assert capture_digest.main(["vault-ctry"], root=tmp_path) == 0
     assert f'all_sha256 = "{"b" * 64}"' in capsys.readouterr().out.splitlines()
+
+
+def test_promoting_a_capture_with_no_archive_hash_warns_the_pin_goes() -> None:
+    lines = capture_digest.report("vault-ctry", "0" * 64)
+    row = lines.index("[ctry]")
+    assert any("removes the archive pin" in line for line in lines[:row])
+    assert not any(line.startswith("all_sha256") for line in lines)

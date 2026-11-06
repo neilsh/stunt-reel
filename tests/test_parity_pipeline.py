@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import re
 import threading
 import time
 import zlib
@@ -699,3 +700,20 @@ def test_render_film_plays_the_pinned_archive(
         assert job.all_sha256 == pin
         parity_pipeline.render_film(job, tmp_path / "out", run=fake)
     assert Path(_after(fake.calls[0], "--all") or "") == copy / "CTRY.ALL"
+
+
+@pytest.mark.parametrize("meta", ["{not json", "[]"])
+def test_reference_job_reports_unreadable_capture_metadata(tmp_path: Path, meta: str) -> None:
+    root = reference_tree(tmp_path, [7], films=("ctry",))
+    _pin_archive(root, "ctry", "1" * 64, "1" * 64)
+    capture = root / parity_layout.frames_path("vault-ctry")
+    (capture / "meta.json").write_text(meta, encoding="utf-8")
+    digest = references.capture_digest(capture)
+    pointers = root / parity_layout.REFERENCES_FILE
+    text = pointers.read_text(encoding="utf-8")
+    pointers.write_text(re.sub(r'\nsha256 = "[0-9a-f]+"', f'\nsha256 = "{digest}"', text))
+    with (
+        pytest.raises(references.ReferenceCaptureError, match="metadata"),
+        parity_pipeline.reference_job(root, "ctry"),
+    ):
+        pass

@@ -105,6 +105,11 @@ def report(
         if entry.get("sha256") == digest:
             lines.append(f"[{name}] already pins this capture")
             continue
+        if all_sha256 is None and entry.get("all_sha256") is not None:
+            lines.append(
+                f"# WARNING: this capture records no archive hash, so promoting it removes the "
+                f"archive pin of [{name}] (ADR 0037)"
+            )
         lines += [
             "",
             f"# references.toml pins another capture for [{name}]; to promote this one:",

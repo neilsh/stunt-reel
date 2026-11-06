@@ -130,7 +130,16 @@ def reference_job(root: Path, name: str) -> Iterator[FilmJob]:
         raise FilmInputError(f"no .FLM of {pointer.slug} under {corpus} (try --data-root)")
     with references.open_reference(root, name) as capture:
         if pointer.all_sha256 is not None:
-            meta = json.loads((capture / capture_store.META_FILE).read_text(encoding="utf-8"))
+            try:
+                meta = json.loads((capture / capture_store.META_FILE).read_text(encoding="utf-8"))
+            except (OSError, ValueError) as err:
+                raise references.ReferenceCaptureError(
+                    f"the capture metadata of [{name}] is unreadable: {err}"
+                ) from err
+            if not isinstance(meta, dict):
+                raise references.ReferenceCaptureError(
+                    f"the capture metadata of [{name}] is not a JSON object"
+                )
             recorded = meta.get("all_sha256")
             if recorded != pointer.all_sha256:
                 raise references.ReferenceCaptureError(
@@ -364,6 +373,7 @@ def preflight(
                     job.slug,
                     link_build=all_archive.no_link,
                     pinned=job.all_sha256,
+                    data=job.root,
                 )
         except (references.ReferenceCaptureError, FilmInputError, all_archive.ArchiveError) as err:
             problems.append(str(err))
@@ -422,7 +432,7 @@ def render_film(
     """
     link_build = all_archive.link_build_in(REPO_ROOT, build=False)
     archive = all_archive.resolve_all(
-        job.flm, REPO_ROOT, job.slug, link_build=link_build, pinned=job.all_sha256
+        job.flm, REPO_ROOT, job.slug, link_build=link_build, pinned=job.all_sha256, data=job.root
     )
     selection = (
         ("--at-ticks", ",".join(str(tick) for tick in ticks))

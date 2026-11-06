@@ -151,8 +151,16 @@ def no_link(_manifest: Path, _game: Path, _out: Path) -> None:
     """A :data:`LinkBuild` that builds nothing: a preflight checks a manifest without ``link``."""
 
 
-#: Serializes the check-and-build of a linked archive across the threads of one parity run.
-_LINK_LOCK = threading.Lock()
+#: One lock per linked archive, so the threads of one parity run build each archive once while
+#: different archives build at the same time.
+_LINK_LOCKS: dict[Path, threading.Lock] = {}
+_LINK_LOCKS_GUARD = threading.Lock()
+
+
+def _link_lock(out: Path) -> threading.Lock:
+    """The lock that serializes the check-and-build of the linked archive *out*."""
+    with _LINK_LOCKS_GUARD:
+        return _LINK_LOCKS.setdefault(out.resolve(), threading.Lock())
 
 
 def _from_manifest(
@@ -199,7 +207,7 @@ def _from_manifest(
         )
     out = root / parity_layout.linked_path(slug, flm.name)
     # Parallel renders resolve the same film at once; one builds, the rest find its archive.
-    with _LINK_LOCK:
+    with _link_lock(out):
         if out.is_file() and file_sha256(out) == all_sha256:
             # Already built from this manifest; rewriting it would race a reader on Windows.
             return out
@@ -219,12 +227,14 @@ def resolve_all(
     *,
     link_build: LinkBuild | None = None,
     pinned: str | None = None,
+    data: Path | None = None,
 ) -> Path:
     """Return the ``.ALL`` that goes with *flm*, or raise ArchiveMissing.
 
     With *pinned*, the SHA-256 a ``references.toml`` row pins (ADR 0037), the archive is the
     first of these whose bytes hash to it: the sibling, the manifest rebuild, the stored archive,
-    then a sibling of any corpus copy of the film. If none does, :class:`ArchiveError` names the
+    then a sibling of any copy of the film in the corpus of *data*, the data root the caller
+    reads (the configured one by default). If none does, :class:`ArchiveError` names the
     pin. The order below, and its errors, hold for each candidate the pin can name.
 
     A sibling with the film's stem wins (matched case-insensitively, so ``x.All`` beside
@@ -255,7 +265,7 @@ def resolve_all(
             and stored[1].flm_sha256 == file_sha256(flm)
         ):
             return _checked(flm, *stored)
-        copy = _corpus_copy(flm, pinned)
+        copy = _corpus_copy(flm, pinned, data or dataroot.data_root())
         if copy is not None:
             return copy
         raise ArchiveError(
@@ -306,10 +316,10 @@ def _checked(flm: Path, directory: Path, meta: ArchiveMeta) -> Path:
     return archive
 
 
-def _corpus_copy(flm: Path, pinned: str) -> Path | None:
-    """A ``.ALL`` beside any corpus copy of *flm* (same name, same bytes) that hashes to *pinned*."""
+def _corpus_copy(flm: Path, pinned: str, data: Path) -> Path | None:
+    """A ``.ALL`` beside a copy of *flm* (same name, same bytes) in *data*'s corpus, hashing to *pinned*."""
     film_sha = file_sha256(flm)
-    corpus = dataroot.corpus_of(dataroot.data_root())
+    corpus = dataroot.corpus_of(data)
     for archive in sorted(corpus.rglob(f"{flm.stem}.all", case_sensitive=False)):
         film = _film_beside(archive, flm.stem)
         if film is not None and file_sha256(film) == film_sha and file_sha256(archive) == pinned:
