@@ -11,10 +11,14 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from stunt_reel.doc_anchors import ANCHORS, BY_ID, CITATION_REGEX
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+pytestmark = pytest.mark.docs
 
 REPO_ROOT = Path(__file__).parent.parent
 
