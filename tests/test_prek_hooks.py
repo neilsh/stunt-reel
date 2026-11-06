@@ -106,8 +106,12 @@ def _kill_tree(proc: subprocess.Popen[bytes]) -> None:
 
 
 def _taskkill(pid: int) -> None:
-    """Kill the Windows process `pid` and its descendants, ignoring one already gone."""
-    with contextlib.suppress(subprocess.TimeoutExpired):
+    """Kill the Windows process `pid` and its descendants, ignoring one already gone.
+
+    A `taskkill` that cannot start or finish is ignored too: the caller still kills the direct
+    child, and a timeout's failure must not be masked by the cleanup's.
+    """
+    with contextlib.suppress(OSError, subprocess.TimeoutExpired):
         subprocess.run(  # noqa: S603 - fixed arguments
             ["taskkill", "/F", "/T", "/PID", str(pid)],  # noqa: S607 - Windows built-in
             capture_output=True,
