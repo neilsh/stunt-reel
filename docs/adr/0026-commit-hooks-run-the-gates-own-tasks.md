@@ -2,7 +2,8 @@
 
 ## Status
 
-accepted. Supersedes the `staged` plan that
+accepted. Amended 2026-11-05: `crlf-check` repairs a CRLF-only working copy (below). Supersedes
+the `staged` plan that
 [#32](https://github.com/neilsh/stunt-reel/pull/32) added to
 [`gate.py`](../../python/scripts/gate.py); keeps that change's committed `.githooks/` and its
 installation by `mise run init`. Reverses the deletion of `.pre-commit-config.yaml` recorded in
@@ -145,3 +146,29 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   covers the built-ins.
 - Adding a hook means adding a leaf task or choosing a built-in, then updating this record and
   the hook test.
+
+## Amendment 2026-11-05: `crlf-check` repairs a CRLF-only working copy
+
+`crlf-check` is the single exception to "No hook rewrites files". When a staged text file's
+working copy equals its index blob apart from line endings, the hook rewrites it from the index
+with `git checkout-index` and lets the commit through, so no content the commit carries changes.
+A working copy that differs in anything else (unstaged edits) is still rejected and left
+untouched. Rejecting a commit that was already correct cost four writers a convert-and-recommit
+on 2026-11-05 ([#219](https://github.com/neilsh/stunt-reel/issues/219)).
+
+Considered and rejected:
+
+- **Keep rejecting.** It cost four rejected commits overnight on 2026-11-05, each for a file
+  the commit already held correctly.
+- **Rewrite any CRLF file to LF.** It would touch a file with unstaged edits.
+- **Rely on `.gitattributes` alone.** It normalises the index, not the working copy that
+  `ruff format --check` reads.
+- **Write the LF bytes from Python instead of `git checkout-index`.** The result is git's own
+  checkout only while no filter or attribute changes it; `checkout-index` writes what git would.
+
+Consequences:
+
+- The hook can now change a working copy, but only to a copy equal to the index blob, so the
+  content of the commit never changes.
+- A file with unstaged edits, an unstaged mode change, or a CR in its index blob is still
+  rejected and left untouched.
