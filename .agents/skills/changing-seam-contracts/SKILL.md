@@ -30,6 +30,6 @@ Done when every new field has a test (a roundtrip for a serde type) and every ne
 
 ## Common mistakes
 
-- **Planning the field without `serde(default)`.** Every baseline plan added the field bare; old captures and oracle JSON would fail to load.
+- **Planning the field without `serde(default)`.** Baseline plans added the field bare; old JSON would fail to load.
 - **No fixture, no README entry.** Baseline plans extended a test by passing names through callers but never touched `tests/fixtures/` or its README. A contract change is proven against a synthetic fixture.
 - **No roundtrip test under `--all-features`.** Baseline plans ran `mise run check-rust` only as a gate step; name the roundtrip test and say it runs with the `serde` feature.
