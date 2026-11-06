@@ -10,7 +10,7 @@
 //! [`SceneRenderer::draw`] inside the pass. Opaque base meshes of every draw precede the
 //! decal meshes of every draw per `[I5]`. An actor that casts a shadow gets a second draw of
 //! its shape, flattened onto the ground and filled in palette index 0, which lies on the
-//! terrain and so goes in the decal pass whole.
+//! terrain and so goes in the decal pass whole, through a pipeline that culls no faces.
 //!
 //! Complies with `[I1]` (frames arrive in right-handed metres) and `[I5]`.
 
@@ -40,6 +40,8 @@ struct PreparedDraw {
     target: Target,
     base: Vec<GpuMeshSlice>,
     decals: Vec<GpuMeshSlice>,
+    /// A ground shadow, drawn through the shadow pipeline, which culls no faces.
+    shadow: bool,
 }
 
 /// A per-draw model matrix: uniform buffer plus its bind group.
@@ -122,6 +124,7 @@ impl SceneRenderer {
                 target: Target::World,
                 base,
                 decals,
+                shadow: false,
             });
         }
 
@@ -185,6 +188,7 @@ impl SceneRenderer {
             return;
         };
         queue.write_buffer(&model_slot.buffer, 0, bytemuck::bytes_of(uniform));
+        let [_, shadow, ..] = uniform.layer;
         self.prepared.push(PreparedDraw {
             target: Target::Shape {
                 shape_id,
@@ -192,6 +196,7 @@ impl SceneRenderer {
             },
             base,
             decals,
+            shadow: shadow != 0,
         });
         *slot += 1;
     }
@@ -223,6 +228,14 @@ impl SceneRenderer {
                 let meshes = if decal_pass { &draw.decals } else { &draw.base };
                 if meshes.is_empty() {
                     continue;
+                }
+                // A shadow is all decal, so only the decal pass switches pipelines.
+                if decal_pass {
+                    rpass.set_pipeline(if draw.shadow {
+                        &pipelines.shadow_pipeline
+                    } else {
+                        &pipelines.decal_pipeline
+                    });
                 }
                 let (model, bind_group) = match draw.target {
                     Target::World => match &self.world {

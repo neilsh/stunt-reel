@@ -16,7 +16,7 @@ use stunt_core::contracts::{
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
 use stunt_core::scene::{FilmScene, ViewCamera};
 use stunt_core::world::{TerrainSurface, World};
-use stunt_render::{CameraController, LAYER_NONE, Offscreen, RenderOptions};
+use stunt_render::{CameraController, LAYER_FIRST_ACTOR, LAYER_NONE, Offscreen, RenderOptions};
 
 const SHAPE_ID: u16 = 7;
 const CLEAR_INDEX: u8 = 180;
@@ -219,6 +219,72 @@ fn state_mask_that_hides_geometry_draws_nothing() {
     let shown = scene(vec![actor_at(0.0, 1)], gated);
     let (w, h, drawn) = render(&shown).expect("adapter was available");
     assert!(drawn_in_columns(&drawn, w, h, 0..w) > 100);
+}
+
+/// A `SIF_SHADOW` actor 3 m up draws its shape again on `y = 0` in palette index 0, with its
+/// own layer, whichever way its face is wound; an actor without the flag draws no shadow.
+#[test]
+fn a_shadow_casting_actor_draws_its_flattened_shape_in_index_0() {
+    // A 2 m floor triangle in the XZ plane, in both windings: one faces up, one down.
+    let floor = |indices: Vec<u32>| {
+        let mut ir = triangle("FLOOR", VisibilityCondition::Always);
+        for (vertex, [x, z]) in ir
+            .vertices
+            .iter_mut()
+            .zip([[-1.0, 1.0], [1.0, 1.0], [0.0, -1.0]])
+        {
+            vertex.position = [x, 0.0, z];
+            vertex.normal = [0.0, 1.0, 0.0];
+        }
+        ir.indices = indices;
+        ir
+    };
+    let shadow_pixels = |indices: Vec<u32>, casts_shadow: bool| {
+        let actor = ActorTransform {
+            position_meters: [0.0, 3.0, 0.0],
+            casts_shadow,
+            ..actor_at(0.0, 0)
+        };
+        // Looking down at 45 degrees, so the actor and its shadow land on different rows.
+        let record = TrajectoryRecord {
+            tick: 0,
+            camera: CameraTransform {
+                eye: [0.0, 10.0, 10.0],
+                target: [0.0, 0.0, 0.0],
+                fov_degrees: 45.0,
+                ..Default::default()
+            },
+            actors: vec![actor],
+            audio_cues: Vec::new(),
+            palette: PaletteControls::default(),
+        };
+        let timeline = FilmTimeline::new(
+            vec![SliceKeyframe {
+                record,
+                tick: 0,
+                tick_duration: 1,
+            }],
+            Vec::new(),
+        );
+        let shapes = HashMap::from([(SHAPE_ID, floor(indices))]);
+        let scene = FilmScene::new(timeline, shapes, None);
+        let mut test = common::gpu_or_skip(&scene)?;
+        let page = test.draw(&scene.frame(0.0));
+        Some(
+            page.indices()
+                .iter()
+                .zip(page.layers())
+                .filter(|&(&index, &layer)| index == 0 && layer == LAYER_FIRST_ACTOR)
+                .count(),
+        )
+    };
+    for indices in [vec![0, 1, 2], vec![0, 2, 1]] {
+        let Some(shadow) = shadow_pixels(indices.clone(), true) else {
+            return;
+        };
+        assert!(shadow > 100, "winding {indices:?}: shadow {shadow}");
+        assert_eq!(shadow_pixels(indices, false), Some(0));
+    }
 }
 
 /// A scene with a world draws it even with no actors.
