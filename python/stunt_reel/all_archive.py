@@ -150,8 +150,13 @@ def no_link(_manifest: Path, _game: Path, _out: Path) -> None:
     """A :data:`LinkBuild` that builds nothing: a preflight checks a manifest without ``link``."""
 
 
-def _from_manifest(flm: Path, root: Path, slug: str, link_build: LinkBuild) -> Path | None:
-    """The archive rebuilt from the film's manifest, or None when it has no matching one."""
+def _from_manifest(
+    flm: Path, root: Path, slug: str, link_build: LinkBuild, *, want: str | None = None
+) -> Path | None:
+    """The archive rebuilt from the film's manifest, or None when it has no matching one.
+
+    With *want*, a manifest whose ``all_sha256`` is not *want* does not match, and is not built.
+    """
     manifest = root / parity_layout.manifest_path(slug)
     if not manifest.is_file():
         return None
@@ -168,7 +173,7 @@ def _from_manifest(flm: Path, root: Path, slug: str, link_build: LinkBuild) -> P
                 f"manifest {manifest} is malformed: flm_sha256, game_root and all_sha256 "
                 f"must be strings"
             )
-    if flm_sha256 != file_sha256(flm):
+    if flm_sha256 != file_sha256(flm) or (want is not None and all_sha256 != want):
         return None
     game = Path(game_root)
     if game.is_absolute() and not game.is_dir():
@@ -199,9 +204,19 @@ def _from_manifest(flm: Path, root: Path, slug: str, link_build: LinkBuild) -> P
 
 
 def resolve_all(
-    flm: Path, root: Path, slug: str | None = None, *, link_build: LinkBuild | None = None
+    flm: Path,
+    root: Path,
+    slug: str | None = None,
+    *,
+    link_build: LinkBuild | None = None,
+    pinned: str | None = None,
 ) -> Path:
     """Return the ``.ALL`` that goes with *flm*, or raise ArchiveMissing.
+
+    With *pinned*, the SHA-256 a ``references.toml`` row pins (ADR 0037), the archive is the
+    first of these whose bytes hash to it: the sibling, the manifest rebuild, the stored archive,
+    then a sibling of any corpus copy of the film. If none does, :class:`ArchiveError` names the
+    pin. The order below, and its errors, hold for each candidate the pin can name.
 
     A sibling with the film's stem wins (matched case-insensitively, so ``x.All`` beside
     ``x.flm`` counts). Next, the film's committed manifest (``manifests/all/<slug>.toml``,
@@ -215,26 +230,64 @@ def resolve_all(
     :func:`parity_layout.film_slug` derives. *root* is the checkout holding the manifests and
     ``target/``; the stored archive is read from the data root (ADR 0036).
     """
+    sibling = _sibling(flm)
+    if sibling is not None and (pinned is None or file_sha256(sibling) == pinned):
+        return sibling
+    slug = slug or parity_layout.slug_for(flm)
+    linked = _from_manifest(flm, root, slug, link_build or link_build_in(root), want=pinned)
+    if linked is not None:
+        return linked
+    make = f"run: mise run make-all -- --film {flm}"
+    stored = _stored(slug)
+    if pinned is not None:
+        if (
+            stored is not None
+            and stored[1].all_sha256 == pinned
+            and stored[1].flm_sha256 == file_sha256(flm)
+        ):
+            return _checked(flm, *stored)
+        copy = _corpus_copy(flm, pinned)
+        if copy is not None:
+            return copy
+        raise ArchiveError(
+            f"no archive of {flm.name} hashes to the pinned all_sha256 {pinned}; {make} "
+            "and repin, or restore the archive the row names"
+        )
+    if stored is None:
+        raise ArchiveMissing(f"no .ALL for {flm}; {make}")
+    if stored[1].flm_sha256 != file_sha256(flm):
+        raise ArchiveMissing(f"the stored archive of {flm} was made from another .FLM; {make}")
+    return _checked(flm, *stored)
+
+
+def _sibling(flm: Path) -> Path | None:
+    """The ``.ALL`` beside *flm* with its stem, matched case-insensitively, else ``None``."""
     stem = flm.stem.lower()
     for sibling in sorted(flm.parent.iterdir()):
         if sibling.is_file() and sibling.suffix.lower() == ".all" and sibling.stem.lower() == stem:
             return sibling
-    slug = slug or parity_layout.slug_for(flm)
-    linked = _from_manifest(flm, root, slug, link_build or link_build_in(root))
-    if linked is not None:
-        return linked
-    make = f"run: mise run make-all -- --film {flm}"
+    return None
+
+
+def _stored(slug: str) -> tuple[Path, ArchiveMeta] | None:
+    """The film directory's stored archive and its meta, or ``None`` when it has none.
+
+    The meta may record another film's ``flm_sha256``; the caller decides what that means.
+    """
     directory = capture_store.current(dataroot.data_root() / parity_layout.archive_path(slug))
     if directory is None:
-        raise ArchiveMissing(f"no .ALL for {flm}; {make}")
+        return None
     try:
         meta = ArchiveMeta.from_json((directory / META_FILE).read_text(encoding="utf-8"))
     except (ValueError, TypeError, AttributeError, OSError) as exc:
         raise ArchiveError(
             f"stored archive {directory} has an unreadable meta.json: {exc}"
         ) from exc
-    if meta.flm_sha256 != file_sha256(flm):
-        raise ArchiveMissing(f"the stored archive of {flm} was made from another .FLM; {make}")
+    return directory, meta
+
+
+def _checked(flm: Path, directory: Path, meta: ArchiveMeta) -> Path:
+    """The stored archive, whose bytes must still hash to its meta's ``all_sha256``."""
     archive = directory / parity_layout.all_name(flm.name)
     if not archive.is_file() or file_sha256(archive) != meta.all_sha256:
         raise ArchiveError(
@@ -242,3 +295,22 @@ def resolve_all(
             f"delete it and rerun make-all"
         )
     return archive
+
+
+def _corpus_copy(flm: Path, pinned: str) -> Path | None:
+    """A ``.ALL`` beside any corpus copy of *flm* (same name, same bytes) that hashes to *pinned*."""
+    film_sha = file_sha256(flm)
+    corpus = dataroot.corpus_of(dataroot.data_root())
+    for archive in sorted(corpus.rglob(f"{flm.stem}.all", case_sensitive=False)):
+        film = _film_beside(archive, flm.stem)
+        if film is not None and file_sha256(film) == film_sha and file_sha256(archive) == pinned:
+            return archive
+    return None
+
+
+def _film_beside(archive: Path, stem: str) -> Path | None:
+    """The ``.FLM`` named *stem* beside *archive*, matched case-insensitively, else ``None``."""
+    for path in archive.parent.iterdir():
+        if path.is_file() and path.suffix.lower() == ".flm" and path.stem.lower() == stem.lower():
+            return path
+    return None
