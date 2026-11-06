@@ -96,17 +96,22 @@ def _run(repo: Path, *args: str, timeout: float = _TIMEOUT) -> subprocess.Comple
 def _kill_tree(proc: subprocess.Popen[bytes]) -> None:
     """Kill `proc` and every process it started that is still in its tree or group."""
     if sys.platform == "win32":
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            subprocess.run(  # noqa: S603 - fixed arguments
-                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],  # noqa: S607 - Windows built-in
-                capture_output=True,
-                timeout=10,
-                check=False,
-            )
+        _taskkill(proc.pid)
     else:
         with contextlib.suppress(ProcessLookupError):
             os.killpg(proc.pid, signal.SIGKILL)
     proc.kill()
+
+
+def _taskkill(pid: int) -> None:
+    """Kill the Windows process `pid` and its descendants, ignoring one already gone."""
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        subprocess.run(  # noqa: S603 - fixed arguments
+            ["taskkill", "/F", "/T", "/PID", str(pid)],  # noqa: S607 - Windows built-in
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
 
 
 def _read(file: IO[bytes]) -> str:
@@ -115,17 +120,63 @@ def _read(file: IO[bytes]) -> str:
     return file.read().decode(errors="replace").replace("\r\n", "\n")
 
 
-def test_run_fails_promptly_when_a_grandchild_holds_the_output(tmp_path: Path) -> None:
-    """A timed-out call fails within seconds with its output, though a grandchild shares it."""
-    child = (
-        "import subprocess, sys, time; print('marker-220', flush=True); "
-        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'], "
-        "stdout=sys.stdout, stderr=sys.stderr); time.sleep(30)"
-    )
-    start = time.monotonic()
-    with pytest.raises(pytest.fail.Exception, match="marker-220"):
-        _run(tmp_path, sys.executable, "-c", child, timeout=2)
-    assert time.monotonic() - start < 15
+#: A grandchild that appends a byte to the file named by its argument every 0.1 s for 30 s.
+_GRANDCHILD = """\
+import sys, time
+for _ in range(300):
+    with open(sys.argv[1], "ab") as beat:
+        beat.write(b".")
+    time.sleep(0.1)
+"""
+
+#: A child that starts the grandchild on its own stdout, records its pid, and hangs.
+_CHILD = """\
+import pathlib, subprocess, sys, time
+here = pathlib.Path(__file__).parent
+grand = subprocess.Popen(
+    [sys.executable, str(here / "grand.py"), str(here / "beat")],
+    stdout=sys.stdout,
+    stderr=sys.stderr,
+)
+(here / "grand.pid").write_text(str(grand.pid))
+while not (here / "beat").exists():
+    time.sleep(0.05)
+print("marker-220", flush=True)
+time.sleep(30)
+"""
+
+
+def test_run_kills_a_timed_out_tree_and_keeps_its_output(tmp_path: Path) -> None:
+    """A timed-out call fails within seconds with its output, and its grandchild is dead."""
+    (tmp_path / "grand.py").write_text(_GRANDCHILD, encoding="utf-8")
+    (tmp_path / "child.py").write_text(_CHILD, encoding="utf-8")
+    beat = tmp_path / "beat"
+    try:
+        start = time.monotonic()
+        with pytest.raises(pytest.fail.Exception, match="marker-220"):
+            _run(tmp_path, sys.executable, str(tmp_path / "child.py"), timeout=2)
+        assert time.monotonic() - start < 15
+        time.sleep(1)
+        size = beat.stat().st_size
+        time.sleep(1)
+        assert beat.stat().st_size == size, "the grandchild outlived the kill"
+    finally:
+        _kill_survivor(tmp_path / "grand.pid", beat)
+
+
+def _kill_survivor(pid_file: Path, beat: Path) -> None:
+    """Kill the grandchild if its heartbeat is still fresh, so a failing test leaks nothing.
+
+    A stale heartbeat means it is dead and its pid may already belong to another process.
+    """
+    with contextlib.suppress(OSError, ValueError):
+        if time.time() - beat.stat().st_mtime > 1:
+            return
+        pid = int(pid_file.read_text(encoding="utf-8"))
+        if sys.platform == "win32":
+            _taskkill(pid)
+        else:
+            os.kill(pid, signal.SIGKILL)
 
 
 def _repo(path: Path) -> Path:
