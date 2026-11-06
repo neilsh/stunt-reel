@@ -215,6 +215,12 @@ run = "uv run python python/scripts/scene_patches.py"
 description = "Dump the film-level events of one .FLM film (mise run flm-events -- corpus/.../CTRY.FLM [--sounds])"
 run = "uv run python python/scripts/flm_events.py"
 
+[tasks.superset-all]
+description = "Build one .ALL holding every stock shape in the game's RES/, for rendering a film without its own archive (mise run superset-all -- [--game corpus/stuntisl] [-o target/linked/superset/SUPERSET.ALL])"
+depends = ["ensure"]
+run = "uv run python python/scripts/superset_all.py"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
+
 [tasks.adversarial]
 description = "Adversarial stress suite over the formats catalog's constraints and claims"
 run = "uv run python python/scripts/adversarial_formats_challenge.py"
