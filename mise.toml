@@ -203,6 +203,10 @@ run = "uv run python python/scripts/probe_playone_light.py"
 description = "Walk PLAYONE's embedded scene tree and compare its Ground polygons with MAP.BIN (mise run scene-ground -- build/re/playone.img corpus/siarchive/Developer/FreeFlight/SIDATA/MAP.BIN)"
 run = "uv run python python/scripts/scene_ground.py"
 
+[tasks.scene-patches]
+description = "For each MAP.BIN patch with no polygon in PLAYONE's scene tree, check SCENERY.scn, byte scans, OP_TAP operands and the polygons under it (mise run scene-patches -- build/re/playone.img <MAP.BIN> --scn <SCENERY.scn> --scan <dir>)"
+run = "uv run python python/scripts/scene_patches.py"
+
 [tasks.flm-events]
 description = "Dump the film-level events of one .FLM film (mise run flm-events -- corpus/.../CTRY.FLM [--sounds])"
 run = "uv run python python/scripts/flm_events.py"
@@ -360,6 +364,10 @@ run = "git diff --cached --check"
 [tasks.crlf-check]
 description = "Staged text files whose working copy has CRLF line endings (python/scripts/check_crlf.py); a pre-commit hook"
 run = "uv run python python/scripts/check_crlf.py"
+
+[tasks.commit-msg-check]
+description = "A commit message's Conventional Commit subject and gate line (python/scripts/check_commit_msg.py, AGENTS.md SOP 3); the commit-msg hook"
+run = "uv run python python/scripts/check_commit_msg.py"
 
 # The committed hook (.githooks/pre-commit, installed by mise run init) runs this and nothing
 # else. prek.toml's local hooks are leaf tasks of this file like the gate's (ADR 0014): no second copy.

@@ -25,6 +25,16 @@ Nothing here is a fact about Stunt Island.
   current `HEAD`, commits only on its own branch, and at most two writers plus the Lead work
   at once; the Lead integrates in the same session, in dependency order, with the full gate at
   the tip. The contract is [the retro-hardening plan](process/plans/retro-hardening-2026-10-25.md).
+* **Subagents take Haiku for simple work and Opus for everything else.** Haiku only where the
+  brief fully specifies the work and the result is easy to check: surveys, mapping tables,
+  mechanical edits, grading against a calibrated rubric. Diagnosis, design, implementation and
+  every review subagent (a standards or spec axis, a whole-branch review before a PR) run on Opus;
+  Sonnet only where a calibrated workflow names it, such as the parity readout's tie-break. On
+  #160 a Sonnet review missed four real bugs that an Opus review then found, among them a
+  preflight that built despite `--no-build`.
+* **Glob and search from a named folder.** Claude Code's Glob ignores `.gitignore` and `.ignore`,
+  so from the root it walks every worktree under `.claude/worktrees/` (about 200,000 files each
+  through their data-root links) and can time out. Pass `path`, or `ls` the root.
 * No harness enforces any of this for you: `mise.toml` and `gate.py` enforce the gate, and the
   rest is reviewed.
 

@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import subprocess
+import textwrap
 import tomllib
 from pathlib import Path
 
@@ -136,3 +137,71 @@ def test_ci_skips_exactly_the_local_hooks() -> None:
     skips = re.findall(r"\bSKIP: (\S+)", ci)
     assert len(skips) == 1, "CI runs prek in exactly one step"
     assert skips[0].split(",") == local
+
+
+def test_ci_fails_an_empty_pull_request_before_installing() -> None:
+    """Issue #216: an empty pull request fails on git alone, before any toolchain installs."""
+    ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    diff = ci.index('git diff --quiet "origin/$BASE_REF...HEAD"')
+    step = ci[ci.rindex("- name:", 0, diff) : diff]
+    assert "if: github.event_name == 'pull_request'" in step
+    assert "BASE_REF: ${{ github.base_ref }}" in step
+    assert diff < ci.index("Install lavapipe"), "the check runs before the slow steps"
+
+
+def _empty_diff_script() -> str:
+    """The `run:` body of CI's empty-diff step, as the runner hands it to bash."""
+    lines = (
+        (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8").splitlines()
+    )
+    diff = next(i for i, line in enumerate(lines) if 'git diff --quiet "origin/' in line)
+    run = max(i for i in range(diff) if lines[i].strip() == "run: |")
+    indent = len(lines[run]) - len(lines[run].lstrip())
+    body: list[str] = []
+    for line in lines[run + 1 :]:
+        if line.strip() and len(line) - len(line.lstrip()) <= indent:
+            break
+        body.append(line)
+    return textwrap.dedent("\n".join(body)) + "\n"
+
+
+def _bash() -> str | None:
+    # Git for Windows' own bash first: the bash.exe on a Windows PATH may be WSL's launcher,
+    # which runs in another filesystem. Elsewhere no such file exists and PATH's bash serves.
+    if GIT is not None:
+        bundled = Path(GIT).resolve().parent.parent / "bin" / "bash.exe"
+        if bundled.is_file():
+            return str(bundled)
+    return shutil.which("bash")
+
+
+@pytest.mark.parametrize(
+    ("change", "fails"),
+    [("none", True), ("file", False), ("unrelated", True)],
+    ids=["empty-diff-fails", "a-change-passes", "no-merge-base-fails"],
+)
+def test_ci_empty_diff_step_judges_the_tree(tmp_path: Path, change: str, *, fails: bool) -> None:
+    """Issue #216: the step fails a pull request whose tree matches its base, and passes one
+    that changes a file; a branch with no merge base fails rather than passing unread."""
+    bash = _bash()
+    if bash is None or GIT is None:
+        pytest.skip("bash or git is not available")
+    repo = _repo(tmp_path)
+    _run(repo, GIT, "update-ref", "refs/remotes/origin/main", "HEAD")
+    if change == "file":
+        (repo / "b.txt").write_text("b\n", encoding="utf-8", newline="\n")
+        _run(repo, GIT, "add", "b.txt")
+    elif change == "unrelated":
+        _run(repo, GIT, "checkout", "-q", "--orphan", "unrelated")
+    # A squash-merged branch's commits stay ahead of the base while its tree adds nothing.
+    assert _run(repo, GIT, "commit", "-q", "--allow-empty", "-m", "two").returncode == 0
+    result = subprocess.run(  # noqa: S603 - fixed test arguments
+        [bash, "-e", "-c", _empty_diff_script()],
+        cwd=repo,
+        env={**os.environ, "BASE_REF": "main"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode != 0) is fails, result.stdout + result.stderr
+    assert ("changes no files" in result.stdout) is (change == "none"), result.stdout

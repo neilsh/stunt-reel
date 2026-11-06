@@ -29,6 +29,10 @@ jobs:
     # the GPU tests, so it installs a software Vulkan driver; see ADR 0006.
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      # The commit-message step asks which pull requests hold a commit.
+      pull-requests: read
     env:
       # mise installs every tool mise.toml declares on the first `mise run` unless this is
       # off. Inside CI that compiled cargo-deny and cargo-llvm-cov from source on every job
@@ -39,8 +43,26 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The commit-hook step below diffs against the base branch or the previous tip.
+          # The empty-diff and commit-hook steps below diff against the base branch (the hooks,
+          # on a push, against the previous tip), so they need its history and origin/<base>.
           fetch-depth: 0
+      - name: The pull request changes files
+        # Issue #216: a branch whose commits already merged as a squash still lists them ahead
+        # of the base, so PR #214 was reviewed before anyone saw it was #192 again. The tree
+        # diff from the merge base says so. It needs only git, so it runs before the toolchain
+        # installs and an empty pull request fails in seconds. `git diff --quiet` exits 1 on a
+        # change and 0 on none; any other status (no merge base, say) fails the step too.
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          status=0
+          git diff --quiet "origin/$BASE_REF...HEAD" || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "::error::this pull request changes no files against $BASE_REF; its commits may already be merged (squash)"
+            exit 1
+          fi
+          [ "$status" -eq 1 ] || exit "$status"
       - name: Install lavapipe (software Vulkan)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
@@ -97,6 +119,19 @@ jobs:
             set -- --all-files
           fi
           mise exec -- prek run --config prek.toml "$@"
+      - name: Commit messages on the pull request
+        # AGENTS.md SOP 3, for a commit made with --no-verify. Only a pull request's own commits:
+        # main's history holds GitHub squash merges, whose messages the hook never saw. A branch
+        # stacked on a since squash-merged pull request still carries that parent's commits;
+        # the script skips a failing commit that a merged pull request other than this one
+        # holds (asked through gh, hence the token and pull-requests: read), and says so.
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: mise run commit-msg-check -- --range "origin/$BASE_REF..HEAD" --pr "$PR_NUMBER"
 
   windows-smoke:
     name: Windows smoke
