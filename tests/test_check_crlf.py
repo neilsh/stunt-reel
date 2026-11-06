@@ -9,10 +9,12 @@ after staging makes the unstaged edits the hook must not touch.
 
 from __future__ import annotations
 
+import importlib.util
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -130,6 +132,40 @@ def test_only_the_files_with_edits_are_rejected(tmp_path: Path) -> None:
     assert "good.txt" not in result.stderr
     assert (repo / "fixed.txt").read_bytes() == b"one\n"
     assert (repo / "edited.txt").read_bytes() == b"two\r\n"
+
+
+def _load_script() -> Any:
+    """Import ``check_crlf.py`` by path, without putting python/scripts on sys.path."""
+    spec = importlib.util.spec_from_file_location("check_crlf", SCRIPT)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_failed_checkout_puts_every_file_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repo(tmp_path)
+    files = {"a.txt": b"one\r\n", "b.txt": b"two\r\n", "c.txt": b"three\r\n"}
+    _stage(repo, files)
+    script = _load_script()
+    real_git = script._git
+
+    def failing_git(root: Path, *args: str, stdin: bytes | None = None) -> bytes:
+        if args[0] != "checkout-index":
+            output: bytes = real_git(root, *args, stdin=stdin)
+            return output
+        # Git rewrote the first path, then a filter failed on a later one.
+        (root / "a.txt").write_bytes(b"one\n")
+        raise script.GitError("git checkout-index failed: smudge filter failed")
+
+    monkeypatch.setattr(script, "_git", failing_git)
+    with pytest.raises(script.GitError):
+        script.repair(repo, list(files))
+    for name, data in files.items():
+        assert (repo / name).read_bytes() == data
 
 
 def test_a_blob_that_itself_holds_crlf_is_rejected_and_unchanged(tmp_path: Path) -> None:

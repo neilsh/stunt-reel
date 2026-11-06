@@ -119,7 +119,8 @@ def repair(root: Path, paths: Sequence[str]) -> tuple[list[str], list[str]]:
 
     ``git checkout-index -f`` leaves a file alone when its stat data matches the index entry,
     as it does straight after ``git add`` of a CRLF file, so each such file is removed first;
-    its content is all in the index, and the bytes are kept to put back if git fails.
+    its content is all in the index, and the bytes are kept to put back, for every path, if git
+    fails.
 
     Returns the repaired paths and the rest, each in the order given. A path whose rewritten
     copy still holds a CRLF (git configured to write CRLF on checkout) counts with the rest.
@@ -135,12 +136,15 @@ def repair(root: Path, paths: Sequence[str]) -> tuple[list[str], list[str]]:
             continue
         saved[path] = data
     if saved:
+        # On stdin, so no number of paths can outrun the Windows command-line limit.
+        stdin = b"".join(path.encode("utf-8", "surrogateescape") + b"\0" for path in saved)
         try:
-            _git(root, "checkout-index", "-f", "--", *saved)
-        finally:
+            _git(root, "checkout-index", "-f", "-z", "--stdin", stdin=stdin)
+        except BaseException:
+            # Git may have rewritten some paths before it failed: put every one back as it was.
             for path, data in saved.items():
-                if not (root / path).exists():
-                    (root / path).write_bytes(data)
+                (root / path).write_bytes(data)
+            raise
     repaired = [path for path in saved if CRLF not in (root / path).read_bytes()]
     rest = [path for path in paths if path not in repaired]
     return repaired, rest
