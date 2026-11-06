@@ -30,7 +30,7 @@ Refer directly to authoritative documents rather than duplicating definitions:
 | **Binary Disassembly** | [`research/playone-exe/`](research/playone-exe/) | Evidence for `PLAYONE.EXE`, routed by [`research/README.md`](research/README.md). |
 | **Format Specs & Byte Layouts** | [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog; byte layouts live only in `.ksy` schemas. |
 | **Parity** | [`research/parity/`](research/parity/) | Method, dated log, attribution and render-model notes. |
-| **Issues & skill configuration** | [`docs/agents/`](docs/agents/) | GitHub Issues via `gh`, triage labels, domain docs; review threads with `mise run pr-threads -- <number>`. |
+| **Issues & skill configuration** | [`docs/agents/`](docs/agents/) | GitHub Issues via `gh`, triage labels, domain docs; review threads: `mise run pr-threads -- <number>` lists them, `--reply`/`--resolve` answer them, `--all` adds outside-diff findings. |
 | **Decisions (ADRs)** | [`docs/adr/`](docs/adr/) | Accepted design decisions. |
 | **Coding & Format Rules** | [`Cargo.toml`](Cargo.toml), [`pyproject.toml`](pyproject.toml), [`.editorconfig`](.editorconfig) | Clippy, Ruff and Mypy settings; LF, 4-space indent. |
 | **Agents & Harnesses** | [`docs/harness.md`](docs/harness.md) | Agent policy and per-harness notes. |
@@ -46,9 +46,10 @@ Process documents, **not** sources of truth: [`docs/process/TEAM_SHEET.md`](docs
 
 1. Run `git status` before staging: stage the paths you changed by name, never `git add -A` or `git commit -a`, and never any file from `corpus/`. If the index holds another session's work, stop and ask.
 2. Run `mise run check` and see it pass with zero warnings or errors.
-3. Commit with a Conventional Commit subject, e.g. `feat(core): add a parser`. The commit-msg hook (`mise run commit-msg-check`) checks the subject and the closing gate line. Write the body whenever a reviewer would have to ask "why this way?": what forced the change, the cause with the offset, measurement or log row that proves it, and what you rejected. One paragraph, then a bullet per file when several move together; never retell the diff. Renames, formatting and generated files need none. Longer reasoning belongs in the owning note or an ADR, cited from the body. Close with `mise run check passes.` when the whole gate ran, naming any part that did not.
+3. Commit with a Conventional Commit subject, e.g. `feat(core): add a parser`. The commit-msg hook (`mise run commit-msg-check`) checks the subject, and holds the closing gate line to a passing run on the staged tree ([how](docs/development.md#the-gate-line-is-checked)). Write the body whenever a reviewer would have to ask "why this way?": what forced the change, the cause with the offset, measurement or log row that proves it, and what you rejected. One paragraph, then a bullet per file when several move together; never retell the diff. Renames, formatting and generated files need none. Longer reasoning belongs in the owning note or an ADR, cited from the body. Close with `mise run check passes.` when the whole gate ran, naming any part that did not.
 4. Write the handoff into the plan or `research/` note that owns the work item, never only in agent memory, which another worktree never sees. Shared append-only files such as [`research/parity/log.md`](research/parity/log.md) take rows at the end only.
 5. A PR that changes rendered output carries a capture-beside-render picture, before and after: [Evidence for a rendering PR](.agents/skills/improving-render-parity/SKILL.md#evidence-for-a-rendering-pr).
+6. Work that ships as two or more dependent PRs is a `gh stack` from its first branch: `gh stack init <bottom> <next>…`, then `gh stack submit --auto`.
 
 ### Working economically
 
