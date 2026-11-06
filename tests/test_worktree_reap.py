@@ -14,6 +14,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -1172,3 +1173,40 @@ def test_a_narrowed_fetch_refspec_still_updates_origin_main(
     assert worktree_init._reap(True) == 1
     assert worktree.is_dir()
     assert newer in capsys.readouterr().out
+
+
+def test_an_uncommitted_script_edit_refuses_until_allowed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, worktree, _, main = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB, stale=False)
+    # HEAD matches main; reap runs the working-tree file, which has an edit.
+    (repo / worktree_init.SCRIPT_PATH).write_text("edited rules", encoding="utf-8")
+
+    assert worktree_init._reap(True) == 1
+    assert worktree.is_dir()
+    out = capsys.readouterr().out
+    assert "uncommitted changes" in out
+    assert main in out
+
+    assert worktree_init._reap(True, allow_stale_script=True) == 0
+    assert not worktree.exists()
+
+
+def test_a_bounded_run_does_not_wait_for_a_child_holding_stderr(tmp_path: Path) -> None:
+    # A grandchild that keeps the stderr handle, as git's ssh can after git is killed. Read
+    # through a pipe, the timeout would wait the grandchild's full 8 s.
+    child = (
+        "import subprocess, sys, time; "
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(8)'], stderr=sys.stderr); "
+        "time.sleep(8)"
+    )
+    start = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired):
+        worktree_init._run_bounded([sys.executable, "-c", child], tmp_path, 1)
+    assert time.monotonic() - start < 5
+
+
+def test_a_bounded_run_returns_the_exit_code_and_stderr(tmp_path: Path) -> None:
+    code = "import sys; sys.stderr.write('fatal: nope\\n'); sys.exit(3)"
+    returncode, stderr = worktree_init._run_bounded([sys.executable, "-c", code], tmp_path, 30)
+    assert (returncode, stderr.strip()) == (3, "fatal: nope")

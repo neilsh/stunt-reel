@@ -27,6 +27,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -975,6 +976,31 @@ SCRIPT_PATH = "python/scripts/worktree_init.py"
 FETCH_TIMEOUT = 30
 
 
+def _run_bounded(
+    args: list[str], cwd: Path, timeout: float, env: dict[str, str] | None = None
+) -> tuple[int, str]:
+    """Run *args* for at most *timeout* seconds; return its exit code and stderr.
+
+    No output goes through a pipe. On a timeout ``subprocess.run`` kills the process and
+    then reads its pipes to the end, which never comes while a child it started (git's
+    ssh, say) still holds them open. A temporary file has no end to wait for. Raises
+    ``subprocess.TimeoutExpired`` and ``OSError`` as ``subprocess.run`` does.
+    """
+    with tempfile.TemporaryFile() as err:
+        result = subprocess.run(  # noqa: S603
+            args,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=err,
+            check=False,
+            timeout=timeout,
+            env=env,
+        )
+        err.seek(0)
+        return result.returncode, err.read().decode("utf-8", errors="replace")
+
+
 def _fetch_main(repo: Path) -> str | None:
     """Fetch ``origin``'s ``main`` quietly; return why it failed, or ``None``.
 
@@ -986,29 +1012,27 @@ def _fetch_main(repo: Path) -> str | None:
     if git is None:
         return "git is not on PATH"
     try:
-        result = subprocess.run(  # noqa: S603
+        returncode, stderr = _run_bounded(
             [git, "fetch", "--quiet", "origin", "+refs/heads/main:refs/remotes/origin/main"],
-            cwd=repo,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=FETCH_TIMEOUT,
+            repo,
+            FETCH_TIMEOUT,
             # Offline or signed out, git must fail rather than wait at a credential prompt.
             env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
         )
     except (OSError, subprocess.TimeoutExpired) as err:
         return str(err)
-    if result.returncode == 0:
+    if returncode == 0:
         return None
-    lines = result.stderr.strip().splitlines()
-    return lines[0] if lines else f"exit {result.returncode}"
+    lines = stderr.strip().splitlines()
+    return lines[0] if lines else f"exit {returncode}"
 
 
 def _script_is_stale(repo: Path) -> tuple[bool, list[str]]:
-    """Whether *repo*'s committed reap script differs from ``origin/main``'s, and what to print.
+    """Whether *repo*'s reap script differs from ``origin/main``'s, and what to print.
 
     The primary checkout runs its own copy, so a checkout left on an old branch reaps with
-    rules main has since fixed (issue #218). A failed fetch compares with the last fetched
+    rules main has since fixed (issue #218). Both the committed copy and the working-tree
+    file reap actually runs must match. A failed fetch compares with the last fetched
     ``origin/main``; a side that cannot be read is reported and does not count as stale.
     """
     lines: list[str] = []
@@ -1026,7 +1050,21 @@ def _script_is_stale(repo: Path) -> tuple[bool, list[str]]:
         blobs.append(result.stdout.strip())
     ours, main = blobs
     if ours == main:
-        return False, lines
+        # HEAD matches, but reap runs the working-tree file, edits included.
+        hashed = _git(repo, "hash-object", "--", SCRIPT_PATH)
+        if hashed.returncode != 0:
+            lines.append(f"  ! {SCRIPT_PATH} is unreadable; cannot tell if reap is current")
+            return False, lines
+        local = hashed.stdout.strip()
+        if local == main:
+            return False, lines
+        lines.append(f"  ! stale reap: the working-tree {SCRIPT_PATH} is {local}")
+        lines.append(f"    but origin/main:{SCRIPT_PATH} is {main};")
+        lines.append(
+            "    the working-tree copy has uncommitted changes; merge or discard them,"
+            " or review them and pass --allow-stale-script to reap with them"
+        )
+        return True, lines
     lines.append(f"  ! stale reap: HEAD:{SCRIPT_PATH} is {ours}")
     lines.append(f"    but origin/main:{SCRIPT_PATH} is {main};")
     if _git(repo, "merge-base", "--is-ancestor", "origin/main", "HEAD").returncode == 0:
