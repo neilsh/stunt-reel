@@ -7,6 +7,10 @@ gate refuses to start at run time, and a lane must never reorder or drop a step 
 
 from __future__ import annotations
 
+import os
+import re
+import shutil
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
@@ -18,26 +22,32 @@ SCRIPTS_DIR = ROOT / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
+import check_commit_msg  # noqa: E402
 import gate  # noqa: E402
 import gate_record  # noqa: E402
 
 
 def test_lane_map_covers_every_step_exactly_once() -> None:
-    steps = [*gate.STEPS["rust"], *gate.STEPS["py"]]
+    steps = [step for half in gate.STEPS.values() for step in half]
     assert len(steps) == len(set(steps)), "a step is listed twice in STEPS"
     assert sorted(gate.STEP_LANES) == sorted(steps), (
         "STEP_LANES must name every step, and only steps"
     )
 
 
-def test_halves_are_subsets_of_the_whole_plan() -> None:
+def test_the_rust_and_python_halves_make_the_whole_plan() -> None:
     assert gate._plan("all") == [*gate.STEPS["rust"], *gate.STEPS["py"]]
     assert gate._plan("rust") == gate.STEPS["rust"]
     assert gate._plan("py") == gate.STEPS["py"]
 
 
+def test_the_docs_half_shares_no_step_with_the_whole_plan() -> None:
+    assert gate._plan("docs") == gate.STEPS["docs"]
+    assert not set(gate._plan("docs")) & set(gate._plan("all"))
+
+
 def test_lanes_keep_plan_order_and_drop_no_step() -> None:
-    for half in ("all", "rust", "py"):
+    for half in ("all", "rust", "py", "docs"):
         plan = gate._plan(half)
         lanes = gate._lane_plan(plan)
         scheduled = [task for _, tasks in lanes for task in tasks]
@@ -154,9 +164,18 @@ def test_cargo_steps_share_a_lane_exactly_when_they_share_a_target_dir() -> None
             assert same_lane == (target == other_target), (step, other)
 
 
-@pytest.mark.parametrize(("half", "code"), [("py", 0), ("rust", 0), ("all", 0), ("py", 1)])
+@pytest.mark.parametrize(
+    ("args", "code", "names"),
+    [
+        (["py"], 0, ["check-py"]),
+        (["rust"], 0, ["check-rust"]),
+        (["docs"], 0, ["check-docs"]),
+        (["all", "--full"], 0, ["check-rust", "check-py", "check"]),
+        (["py"], 1, []),
+    ],
+)
 def test_a_passing_run_records_the_tree_it_started_on(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, half: str, code: int
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, args: list[str], code: int, names: list[str]
 ) -> None:
     """The tree is taken before the steps run, so an edit made mid-run is never recorded."""
     trees = iter(["started-tree", "edited-mid-run"])
@@ -167,9 +186,8 @@ def test_a_passing_run_records_the_tree_it_started_on(
     monkeypatch.setattr(gate_record, "working_tree", lambda: next(trees))
     monkeypatch.setattr(gate_record, "record", lambda *pair: recorded.append(pair))
 
-    assert gate.main([half]) == code
-    expected = [(gate_record.HALF_NAMES[half], "started-tree")] if code == 0 else []
-    assert recorded == expected
+    assert gate.main(args) == code
+    assert recorded == [(name, "started-tree") for name in names]
 
 
 def test_a_tree_that_cannot_be_taken_records_nothing_and_still_runs(
@@ -189,3 +207,318 @@ def test_a_tree_that_cannot_be_taken_records_nothing_and_still_runs(
 
     assert gate.main(["py"]) == 0
     assert recorded == []
+
+
+@pytest.mark.parametrize(
+    ("path", "category"),
+    [
+        ("tests/fixtures/synthetic_pfont.bin", "other"),
+        ("tests/fixtures/README.md", "other"),
+        ("crates/stunt-core/src/lib.rs", "rust"),
+        ("crates/stunt-core/README.md", "rust"),
+        ("research/parity/method.md", "rust"),
+        ("Cargo.lock", "rust"),
+        ("deny.toml", "rust"),
+        ("python/scripts/gate.py", "python"),
+        ("uv.lock", "python"),
+        ("pyproject.toml", "python"),
+        ("research/formats/x.ksy", "docs"),
+        ("AGENTS.md", "docs"),
+        ("ä/ä.md", "docs"),
+        ("mise.toml", "other"),
+        (".github/workflows/ci.yml", "other"),
+        ("tools/x/Cargo.toml", "other"),
+    ],
+)
+def test_classify(path: str, category: str) -> None:
+    assert gate.classify(path) == category
+
+
+def test_every_file_rust_reads_outside_crates_runs_the_rust_half() -> None:
+    """A document a Rust test reads is a Rust input, or editing it alone would skip that test."""
+    reads = {
+        match
+        for source in (ROOT / "crates").rglob("*.rs")
+        for match in re.findall(r'"\.\./\.\./([^"]+)"', source.read_text(encoding="utf-8"))
+        if not match.startswith("tests/fixtures/")
+    }
+    assert "research/parity/method.md" in reads
+    for path in reads:
+        assert gate.classify(path) in {"rust", "other"}, path
+
+
+def test_docs_only_runs_the_docs_half() -> None:
+    assert gate.scope_for(["a.md"], full_flag=False, ci=False).halves == ("docs",)
+
+
+def test_rust_change_runs_rust_and_docs() -> None:
+    assert gate.scope_for(["crates/a.rs"], full_flag=False, ci=False).halves == ("rust", "docs")
+
+
+def test_python_change_needs_no_docs_half() -> None:
+    assert gate.scope_for(["a.py", "b.md"], full_flag=False, ci=False).halves == ("py",)
+
+
+@pytest.mark.parametrize(
+    ("paths", "full_flag", "ci", "error", "reason"),
+    [
+        (["a.md"], True, False, "", "--full"),
+        (["a.md"], False, True, "", "CI is set"),
+        (["a.md", "mise.toml"], False, False, "", "unclassified path: mise.toml"),
+        ([], False, False, "", "no changes against main"),
+        (None, False, False, "no main", "changed paths unknown: no main"),
+    ],
+)
+def test_full_gate_triggers(
+    paths: list[str] | None, full_flag: bool, ci: bool, error: str, reason: str
+) -> None:
+    scope = gate.scope_for(paths, full_flag=full_flag, ci=ci, error=error)
+    assert (scope.full, scope.halves, scope.reason) == (True, ("rust", "py"), reason)
+
+
+@pytest.mark.parametrize(
+    ("env", "expected"),
+    [
+        ({}, False),
+        ({"CI": "true"}, True),
+        ({"CI": "1"}, True),
+        ({"CI": "false"}, False),
+        ({"CI": "FALSE"}, False),
+        ({"CI": "0"}, False),
+        ({"CI": ""}, False),
+    ],
+)
+def test_ci_requested(env: dict[str, str], expected: bool) -> None:
+    assert gate.ci_requested(env) is expected
+
+
+@pytest.mark.parametrize(
+    ("halves", "line"),
+    [
+        (("rust", "py"), "mise run check passes."),
+        (("docs",), "mise run check-docs passes; check-rust not run; check-py not run."),
+        (("rust", "docs"), "mise run check-rust passes; check-docs passes; check-py not run."),
+        (("py",), "mise run check-py passes; check-rust not run."),
+        (("rust",), "mise run check-rust passes; check-py not run; check-docs not run."),
+    ],
+)
+def test_gate_line(halves: tuple[str, ...], line: str) -> None:
+    assert gate.gate_line(halves) == line
+    assert check_commit_msg._is_gate_line(line)
+
+
+def test_a_docs_failure_names_the_docs_rerun() -> None:
+    assert "re-run: mise run check-docs" in _verdict(["test-py-docs"], "all")
+
+
+def test_no_changes_names_the_base() -> None:
+    assert (
+        gate.scope_for([], full_flag=False, ci=False, base="HEAD").reason
+        == "no changes against HEAD"
+    )
+
+
+def test_docs_step_requires_the_kaitai_compiler() -> None:
+    assert gate.STEP_ENV["test-py-docs"]["STUNT_REQUIRE_KSC"] == "1"
+    assert (
+        gate.STEP_ENV["test-py-docs"]["PYTEST_ADDOPTS"]
+        == gate.STEP_ENV["test-py"]["PYTEST_ADDOPTS"]
+    )
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "test_doc_invariants.py",
+        "test_formats_catalog.py",
+        "test_schema_contract.py",
+        "test_set_schema.py",
+        "test_dbx_plan.py",
+    ],
+)
+def test_docs_marker_is_on_the_documentation_modules(module: str) -> None:
+    assert "pytest.mark.docs" in (ROOT / "tests" / module).read_text(encoding="utf-8")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A faked passing run must never write ``target/gate``, or it would prove a real commit."""
+    monkeypatch.setattr(gate_record, "working_tree", lambda: "fake-tree")
+    monkeypatch.setattr(gate_record, "record", lambda *_pair: None)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep git in these tests on their own repositories when pytest runs under a git hook."""
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
+        monkeypatch.delenv(name, raising=False)
+
+
+_GIT_ENV = {
+    "GIT_AUTHOR_NAME": "t",
+    "GIT_AUTHOR_EMAIL": "t@example.invalid",
+    "GIT_COMMITTER_NAME": "t",
+    "GIT_COMMITTER_EMAIL": "t@example.invalid",
+}
+
+
+def _git(repo: Path, *args: str) -> None:
+    git = shutil.which("git")
+    assert git is not None, "git is not on PATH"
+    subprocess.run(  # noqa: S603
+        [git, *args], cwd=repo, env={**os.environ, **_GIT_ENV}, capture_output=True, check=True
+    )
+
+
+def _write(repo: Path, name: str) -> None:
+    path = repo / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(name, encoding="utf-8")
+
+
+def _feature_repo(tmp_path: Path, trunk: str = "main") -> Path:
+    """A repository with one commit on *trunk* and a ``feat`` branch checked out."""
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True)
+    _git(repo, "init", "-q", "-b", trunk)
+    _write(repo, "base.md")
+    _git(repo, "add", "base.md")
+    _git(repo, "commit", "-qm", "base")
+    _git(repo, "switch", "-q", "-c", "feat")
+    return repo
+
+
+def test_changed_paths_lists_committed_staged_unstaged_and_untracked(tmp_path: Path) -> None:
+    repo = _feature_repo(tmp_path)
+    for name in ("committed.md", "staged.py", "untracked.ksy"):
+        _write(repo, name)
+    _git(repo, "add", "committed.md")
+    _git(repo, "commit", "-qm", "work")
+    _git(repo, "add", "staged.py")
+    (repo / "base.md").write_text("edited", encoding="utf-8")
+
+    assert sorted(gate.changed_paths(repo)) == [
+        "base.md",
+        "committed.md",
+        "staged.py",
+        "untracked.ksy",
+    ]
+
+
+def test_changed_paths_lists_only_an_untracked_file(tmp_path: Path) -> None:
+    repo = _feature_repo(tmp_path)
+    _write(repo, "new.md")
+
+    assert gate.changed_paths(repo) == ["new.md"]
+
+
+def test_changed_paths_lists_both_sides_of_a_rename(tmp_path: Path) -> None:
+    repo = _feature_repo(tmp_path)
+    _git(repo, "mv", "base.md", "base.py")
+    _git(repo, "commit", "-qm", "rename")
+
+    assert sorted(gate.changed_paths(repo)) == ["base.md", "base.py"]
+
+
+def test_changed_paths_keeps_a_non_ascii_name(tmp_path: Path) -> None:
+    repo = _feature_repo(tmp_path)
+    _write(repo, "notes/ä.md")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "umlaut")
+
+    assert gate.changed_paths(repo) == ["notes/ä.md"]
+
+
+def test_changed_paths_without_main_raises(tmp_path: Path) -> None:
+    repo = _feature_repo(tmp_path, trunk="trunk")
+
+    with pytest.raises(gate.ChangedPathsError):
+        gate.changed_paths(repo)
+
+
+def _run_main(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    paths: list[str] | Exception,
+    *args: str,
+) -> tuple[list[str], str]:
+    """Run ``gate.main`` with every step passing; return the steps it ran and what it printed."""
+    ran: list[str] = []
+
+    def step(_mise: str, task: str) -> tuple[int, str, float]:
+        ran.append(task)
+        return 0, "", 0.0
+
+    def changed(_repo: Path, base: str = "main") -> list[str]:
+        assert base == "main"
+        if isinstance(paths, Exception):
+            raise paths
+        return paths
+
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "check.log")
+    monkeypatch.setattr(gate, "_mise", lambda: "mise")
+    monkeypatch.setattr(gate, "_step", step)
+    monkeypatch.setattr(gate, "changed_paths", changed)
+    assert gate.main(["all", *args]) == 0
+    return ran, (tmp_path / "check.log").read_text(encoding="utf-8")
+
+
+def test_a_documentation_change_runs_only_the_docs_half(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ran, log = _run_main(monkeypatch, tmp_path, ["a.md", "b.md", "c.md", "d.ksy"])
+
+    out = capsys.readouterr().out
+    assert ran == ["test-py-docs"]
+    assert "[gate] scope: docs; not run: check-rust, check-py" in out
+    assert "[gate]   docs: a.md, b.md, c.md (+1 more)" in out
+    assert "# scope: docs; not run: check-rust, check-py" in log
+    assert out.rstrip().endswith(
+        "[gate] gate line: mise run check-docs passes; check-rust not run; check-py not run."
+    )
+
+
+def test_unknown_changed_paths_run_the_full_gate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ran, _ = _run_main(monkeypatch, tmp_path, gate.ChangedPathsError("no main"))
+
+    out = capsys.readouterr().out
+    assert sorted(ran) == sorted(gate._plan("all"))
+    assert "[gate] scope: full (changed paths unknown: no main)" in out
+    assert out.rstrip().endswith("[gate] gate line: mise run check passes.")
+
+
+def test_full_flag_runs_the_full_gate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ran, _ = _run_main(monkeypatch, tmp_path, ["a.md"], "--full")
+
+    assert set(ran) == set(gate._plan("all"))
+    assert "[gate] scope: full (--full)" in capsys.readouterr().out
+
+
+def test_changed_paths_ignores_git_variables_naming_another_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _feature_repo(tmp_path / "ours")
+    _write(repo, "ours.rs")
+    other = _feature_repo(tmp_path / "theirs")
+    _write(other, "theirs.md")
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(other))
+
+    assert gate.changed_paths(repo) == ["ours.rs"]
+
+
+def test_changed_paths_ignores_a_common_dir_naming_another_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _feature_repo(tmp_path / "ours")
+    _write(repo, "ours.rs")
+    other = _feature_repo(tmp_path / "theirs")
+    _write(other, "theirs.md")
+    monkeypatch.setenv("GIT_COMMON_DIR", str(other / ".git"))
+
+    assert gate.changed_paths(repo) == ["ours.rs"]

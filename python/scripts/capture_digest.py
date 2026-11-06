@@ -86,11 +86,10 @@ def report(
 ) -> list[str]:
     """The lines printed for the capture of *slug* hashing to *digest*.
 
-    *promotable* is false for a directory that is not where parity reads the film's capture: an
-    entry pinning it would point parity at a different directory, so none is printed. *builds*
-    are the builds the capture records; for a field it lacks, the row's own value is kept, and
-    when neither names a known one the line holds ``"?"``, which ``references.toml`` refuses until
-    a person names the build, because an omitted one would be read as patch3 (ADR 0029).
+    No ``references.toml`` entry is printed when *promotable* is false (not the directory parity
+    reads). *builds* are the builds the capture records; a field it lacks keeps the row's own
+    value, and when neither names a known build the line holds ``"?"``, which ``references.toml``
+    refuses until a person names it (ADR 0029).
     """
     builds = builds or {}
     lines = [f"{parity_layout.frames_path(slug).as_posix()}", f'sha256 = "{digest}"']

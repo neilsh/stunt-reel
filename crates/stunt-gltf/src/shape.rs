@@ -29,11 +29,9 @@ pub(crate) struct ShapeAssets {
 
 /// Exports one model as a `.glb`.
 ///
-/// The scene's root nodes are the model's root nodes; every [`SodNode`] becomes a glTF node
-/// with its `local_matrix`, and carries its visibility condition in `extras` (visibility is
-/// recorded, not evaluated). Returns [`GltfError::EmptyModel`] when the model has no
-/// vertices or indices. The shape IR owns its slices and bounds, so nothing here
-/// re-validates or re-measures them.
+/// The scene's roots are the model's root nodes; every [`SodNode`] becomes a glTF node with its
+/// `local_matrix`, and its visibility condition goes in `extras` (recorded, not evaluated).
+/// Slices and bounds are taken from the IR unchecked.
 ///
 /// # Errors
 /// - [`GltfError::EmptyModel`] if the model has no vertices or no indices.

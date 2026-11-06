@@ -14,6 +14,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -923,10 +924,174 @@ def test_clean_unlinks_the_legacy_capture_link_and_keeps_the_data_root(
     assert not (checkout / "build").exists()
 
 
+def _stub_reap(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, free: int | OSError) -> list[Path]:
+    """``_reap`` over one squash-merged ``feat`` candidate on a drive with *free* bytes.
+
+    Nothing touches git, and a call to ``_git`` fails the test: these tests decide whether
+    ``_reap`` removes, not how. The returned list records each worktree ``_reap_one`` was asked
+    to remove.
+    """
+    feat = worktree_init._Worktree(tmp_path / ".agents" / "worktrees" / "feat", "1" * 40, "feat")
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(dataroot, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(worktree_init, "_gh", _gh_stub())
+    monkeypatch.setattr(
+        worktree_init,
+        "_worktrees",
+        lambda _repo: [worktree_init._Worktree(tmp_path, "0" * 40, "main"), feat],
+    )
+    candidate = worktree_init._Candidate(
+        worktree=feat, merged=True, dirty=[], untracked=[], links=[], size=0, pr=89
+    )
+    monkeypatch.setattr(worktree_init, "_candidates", lambda *_a, **_k: ([candidate], []))
+
+    def free_bytes(_path: Path) -> int:
+        if isinstance(free, OSError):
+            raise free
+        return free
+
+    monkeypatch.setattr(worktree_init, "_free_bytes", free_bytes)
+    removed: list[Path] = []
+
+    def reap_one(_repo: Path, chosen: worktree_init._Candidate, **_kwargs: object) -> None:
+        removed.append(chosen.worktree.path)
+
+    monkeypatch.setattr(worktree_init, "_reap_one", reap_one)
+
+    def no_git(_repo: Path, *args: str) -> object:
+        pytest.fail(f"a stubbed reap ran git {' '.join(args)}")
+
+    monkeypatch.setattr(worktree_init, "_git", no_git)
+    # The stale-script check fetches origin; tmp_path sits inside this checkout, so it would
+    # compare this branch's script with the real origin/main.
+    monkeypatch.setattr(worktree_init, "_script_is_stale", lambda _repo: (False, []))
+    return removed
+
+
+def _feat(tmp_path: Path) -> Path:
+    return tmp_path / ".agents" / "worktrees" / "feat"
+
+
+def test_space_is_short_only_below_the_bar() -> None:
+    gib = worktree_init.GIB
+    assert worktree_init._space_is_short(19 * gib, 20.0)
+    assert not worktree_init._space_is_short(20 * gib, 20.0)
+
+
+def test_reap_with_plenty_of_space_removes_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    removed = _stub_reap(monkeypatch, tmp_path, 50 * worktree_init.GIB)
+
+    assert worktree_init._reap(True) == 0
+    assert removed == []
+    assert "nothing removed" in capsys.readouterr().out
+
+
+def test_reap_below_the_bar_removes_the_worktree(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    removed = _stub_reap(monkeypatch, tmp_path, 5 * worktree_init.GIB)
+
+    assert worktree_init._reap(True) == 0
+    assert removed == [_feat(tmp_path)]
+
+
+def test_force_reaps_with_plenty_of_space(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    removed = _stub_reap(monkeypatch, tmp_path, 50 * worktree_init.GIB)
+
+    assert worktree_init._reap(True, force=True) == 0
+    assert removed == [_feat(tmp_path)]
+
+
+def test_min_free_gb_moves_the_bar(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    removed = _stub_reap(monkeypatch, tmp_path, 50 * worktree_init.GIB)
+
+    assert worktree_init._reap(True, min_free_gb=100.0) == 0
+    assert removed == [_feat(tmp_path)]
+
+
+def test_unknown_free_space_removes_nothing_without_force(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    removed = _stub_reap(monkeypatch, tmp_path, OSError("boom"))
+
+    assert worktree_init._reap(True) == 0
+    assert removed == []
+    out = capsys.readouterr().out
+    assert "free space unknown" in out
+    assert "plenty of space" not in out
+
+
+def test_force_reaps_when_free_space_is_unknown(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    removed = _stub_reap(monkeypatch, tmp_path, OSError("boom"))
+
+    assert worktree_init._reap(True, force=True) == 0
+    assert removed == [_feat(tmp_path)]
+
+
+def test_prune_with_plenty_of_space_prunes_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    removed = _stub_reap(monkeypatch, tmp_path, 50 * worktree_init.GIB)
+    seen: list[bool] = []
+
+    def spy(*_args: object, confirmed: bool, **_kwargs: object) -> tuple[int, int]:
+        seen.append(confirmed)
+        return 0, 0
+
+    for name in ("_prune_leftovers", "_prune_envs", "_prune_branches"):
+        monkeypatch.setattr(worktree_init, name, spy)
+
+    assert worktree_init._reap(True, prune=True) == 0
+    assert removed == []
+    assert seen
+    assert True not in seen
+
+
+def test_reap_cli_defaults_and_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def spy(_confirmed: bool, **kwargs: object) -> int:
+        calls.append(kwargs)
+        return 0
+
+    monkeypatch.setattr(worktree_init, "_reap", spy)
+
+    worktree_init.main(["reap"])
+    worktree_init.main(["reap", "--force", "--min-free-gb", "5"])
+    worktree_init.main(["reap", "--allow-stale-script"])
+
+    assert (calls[0]["force"], calls[0]["min_free_gb"]) == (False, 20.0)
+    assert (calls[1]["force"], calls[1]["min_free_gb"]) == (True, 5.0)
+    assert [call["allow_stale_script"] for call in calls] == [False, False, True]
+
+
+def test_negative_min_free_gb_is_refused() -> None:
+    with pytest.raises(SystemExit):
+        worktree_init.main(["reap", "--min-free-gb", "-1"])
+
+
+def _commit_script(repo: Path, text: str) -> str:
+    """Commit *text* as the repo's reap script; return its blob."""
+    script = repo / worktree_init.SCRIPT_PATH
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text(text, encoding="utf-8")
+    _run_git(repo, "add", worktree_init.SCRIPT_PATH)
+    _run_git(repo, "commit", "-qm", text)
+    return _run_git(repo, "rev-parse", f"HEAD:{worktree_init.SCRIPT_PATH}").strip()
+
+
 def _reap_env(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, free: int | OSError
 ) -> tuple[Path, Path]:
-    """A squash-merged ``feat`` worktree that ``_reap`` will see, on a drive with *free* bytes."""
+    """A squash-merged ``feat`` worktree that ``_reap`` will see, on a drive with *free* bytes.
+
+    Real git, for the stale-script checks, which compare blobs with ``origin``; the free-space
+    tests use :func:`_stub_reap` instead.
+    """
     repo, worktree, tip = _squash_repo(tmp_path)
     monkeypatch.setattr(worktree_init, "REPO_ROOT", repo)
     monkeypatch.setattr(dataroot, "REPO_ROOT", repo)
@@ -945,101 +1110,155 @@ def _reap_env(
     return repo, worktree
 
 
-def test_space_is_short_only_below_the_bar() -> None:
-    gib = worktree_init.GIB
-    assert worktree_init._space_is_short(19 * gib, 20.0)
-    assert not worktree_init._space_is_short(20 * gib, 20.0)
+def _stale_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, free: int, *, stale: bool = True
+) -> tuple[Path, Path, str, str]:
+    """``_reap_env`` plus a local ``origin`` whose main holds a newer reap script when *stale*.
+
+    Returns the repo, the squash-merged worktree, and the blobs of HEAD's and main's script.
+    """
+    repo, worktree = _reap_env(monkeypatch, tmp_path, free)
+    ours = _commit_script(repo, "old rules")
+    main = _commit_script(repo, "new rules") if stale else ours
+    origin = tmp_path / "origin.git"
+    _run_git(tmp_path, "clone", "-q", "--bare", str(repo), str(origin))
+    _run_git(repo, "remote", "add", "origin", str(origin))
+    _run_git(repo, "fetch", "-q", "origin")
+    if stale:
+        # The primary checkout sits one commit behind the main it fetched (issue #218).
+        _run_git(repo, "reset", "-q", "--hard", "HEAD~1")
+    return repo, worktree, ours, main
 
 
-def test_reap_with_plenty_of_space_removes_nothing(
+def test_a_stale_script_refuses_a_confirmed_reap_and_names_both_blobs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _, worktree = _reap_env(monkeypatch, tmp_path, 50 * worktree_init.GIB)
+    _, worktree, ours, main = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB)
 
-    assert worktree_init._reap(True) == 0
-    assert worktree.is_dir()
-    assert "nothing removed" in capsys.readouterr().out
-
-
-def test_reap_below_the_bar_removes_the_worktree(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _, worktree = _reap_env(monkeypatch, tmp_path, 5 * worktree_init.GIB)
-
-    assert worktree_init._reap(True) == 0
-    assert not worktree.exists()
-
-
-def test_force_reaps_with_plenty_of_space(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _, worktree = _reap_env(monkeypatch, tmp_path, 50 * worktree_init.GIB)
-
-    assert worktree_init._reap(True, force=True) == 0
-    assert not worktree.exists()
-
-
-def test_min_free_gb_moves_the_bar(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _, worktree = _reap_env(monkeypatch, tmp_path, 50 * worktree_init.GIB)
-
-    assert worktree_init._reap(True, min_free_gb=100.0) == 0
-    assert not worktree.exists()
-
-
-def test_unknown_free_space_removes_nothing_without_force(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    _, worktree = _reap_env(monkeypatch, tmp_path, OSError("boom"))
-
-    assert worktree_init._reap(True) == 0
+    assert worktree_init._reap(True) == 1
     assert worktree.is_dir()
     out = capsys.readouterr().out
-    assert "free space unknown" in out
-    assert "plenty of space" not in out
+    assert ours in out
+    assert main in out
+    assert "update the primary checkout" in out
+    assert "--allow-stale-script" in out
 
 
-def test_force_reaps_when_free_space_is_unknown(
+def test_force_does_not_lift_the_stale_script_refusal(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _, worktree = _reap_env(monkeypatch, tmp_path, OSError("boom"))
+    _, worktree, _, _ = _stale_env(monkeypatch, tmp_path, 50 * worktree_init.GIB)
 
-    assert worktree_init._reap(True, force=True) == 0
+    assert worktree_init._reap(True, force=True) == 1
+    assert worktree.is_dir()
+
+
+def test_allow_stale_script_reaps_anyway(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _, worktree, _, _ = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB)
+
+    assert worktree_init._reap(True, allow_stale_script=True) == 0
     assert not worktree.exists()
 
 
-def test_prune_with_plenty_of_space_prunes_nothing(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_a_dry_run_warns_about_a_stale_script_and_still_lists_candidates(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _, worktree = _reap_env(monkeypatch, tmp_path, 50 * worktree_init.GIB)
-    seen: list[bool] = []
+    _, worktree, ours, _ = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB)
 
-    def spy(*_args: object, confirmed: bool, **_kwargs: object) -> tuple[int, int]:
-        seen.append(confirmed)
-        return 0, 0
-
-    for name in ("_prune_leftovers", "_prune_envs", "_prune_branches"):
-        monkeypatch.setattr(worktree_init, name, spy)
-
-    assert worktree_init._reap(True, prune=True) == 0
+    assert worktree_init._reap(False) == 0
     assert worktree.is_dir()
-    assert seen
-    assert True not in seen
+    out = capsys.readouterr().out
+    assert f"stale reap: HEAD:{worktree_init.SCRIPT_PATH} is {ours}" in out
+    assert "merged as #89" in out
+    assert "dry run" in out
 
 
-def test_reap_cli_defaults_and_flags(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[dict[str, object]] = []
+def test_a_current_script_reaps_without_a_warning(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, worktree, _, _ = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB, stale=False)
 
-    def spy(_confirmed: bool, **kwargs: object) -> int:
-        calls.append(kwargs)
-        return 0
-
-    monkeypatch.setattr(worktree_init, "_reap", spy)
-
-    worktree_init.main(["reap"])
-    worktree_init.main(["reap", "--force", "--min-free-gb", "5"])
-
-    assert (calls[0]["force"], calls[0]["min_free_gb"]) == (False, 20.0)
-    assert (calls[1]["force"], calls[1]["min_free_gb"]) == (True, 5.0)
+    assert worktree_init._reap(True) == 0
+    assert not worktree.exists()
+    assert "stale reap" not in capsys.readouterr().out
 
 
-def test_negative_min_free_gb_is_refused() -> None:
-    with pytest.raises(SystemExit):
-        worktree_init.main(["reap", "--min-free-gb", "-1"])
+def test_a_checkout_ahead_of_main_is_told_to_merge_not_update(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, worktree, _, main = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB, stale=False)
+    ours = _commit_script(repo, "unmerged rules")
+
+    assert worktree_init._reap(True) == 1
+    assert worktree.is_dir()
+    out = capsys.readouterr().out
+    assert ours in out
+    assert main in out
+    assert "merge it first" in out
+    assert "update the primary checkout" not in out
+
+
+def test_offline_reap_compares_with_the_last_fetched_main(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, worktree, _, main = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB)
+    _run_git(repo, "remote", "set-url", "origin", str(tmp_path / "gone.git"))
+
+    assert worktree_init._reap(True) == 1
+    assert worktree.is_dir()
+    out = capsys.readouterr().out
+    assert "cannot fetch origin main" in out
+    assert main in out
+
+
+def test_a_narrowed_fetch_refspec_still_updates_origin_main(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, worktree, _, _ = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB, stale=False)
+    # A single-branch clone: a bare `git fetch origin main` would move only FETCH_HEAD.
+    _run_git(repo, "config", "remote.origin.fetch", "+refs/heads/other:refs/remotes/origin/other")
+    pusher = tmp_path / "pusher"
+    _run_git(tmp_path, "clone", "-q", str(tmp_path / "origin.git"), str(pusher))
+    newer = _commit_script(pusher, "new rules")
+    _run_git(pusher, "push", "-q", "origin", "HEAD:main")
+
+    assert worktree_init._reap(True) == 1
+    assert worktree.is_dir()
+    assert newer in capsys.readouterr().out
+
+
+def test_an_uncommitted_script_edit_refuses_until_allowed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, worktree, _, main = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB, stale=False)
+    # HEAD matches main; reap runs the working-tree file, which has an edit.
+    (repo / worktree_init.SCRIPT_PATH).write_text("edited rules", encoding="utf-8")
+
+    assert worktree_init._reap(True) == 1
+    assert worktree.is_dir()
+    out = capsys.readouterr().out
+    assert "uncommitted changes" in out
+    assert main in out
+
+    assert worktree_init._reap(True, allow_stale_script=True) == 0
+    assert not worktree.exists()
+
+
+def test_a_bounded_run_does_not_wait_for_a_child_holding_stderr(tmp_path: Path) -> None:
+    # A grandchild that keeps the stderr handle, as git's ssh can after git is killed. Read
+    # through a pipe, the timeout would wait the grandchild's full 8 s.
+    child = (
+        "import subprocess, sys, time; "
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(8)'], stderr=sys.stderr); "
+        "time.sleep(8)"
+    )
+    start = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired):
+        worktree_init._run_bounded([sys.executable, "-c", child], tmp_path, 1)
+    assert time.monotonic() - start < 5
+
+
+def test_a_bounded_run_returns_the_exit_code_and_stderr(tmp_path: Path) -> None:
+    code = "import sys; sys.stderr.write('fatal: nope\\n'); sys.exit(3)"
+    returncode, stderr = worktree_init._run_bounded([sys.executable, "-c", code], tmp_path, 30)
+    assert (returncode, stderr.strip()) == (3, "fatal: nope")

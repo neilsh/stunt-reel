@@ -182,17 +182,17 @@ def make_all(
 ) -> bytes:
     """Run MAKEONE on *film* in a private mount and return the bytes of the ``.ALL`` it wrote.
 
-    The archive is read inside the run, because teardown removes the mount. If the emulator
-    then fails to stop, the run still produced a good archive: it is returned and the failure
-    goes to *warn*, instead of discarding a run that takes minutes. *launch* defaults to
-    dosbox-automation on the archive profile.
+    *launch* defaults to dosbox-automation on the archive profile. If the emulator fails to stop
+    after the archive was read, the archive is still returned and the failure goes to *warn*.
 
-    When MAKEONE does not return to text mode within *timeout* but its archive has stayed
-    non-empty and unchanged for *stable* seconds, the archive is accepted and the emulator is
-    stopped as usual. If the guest is still not in text mode after that wait, the run is a
-    MAKEONE hang: *on_hang* is called and *warn* names the hang.
-    An archive that is missing, empty or still changing raises MakeOneTimeout.
+    If the guest is not back in text mode within *timeout* but the archive has stayed non-empty
+    and unchanged for *stable* seconds, it is accepted; if the guest is still not in text mode
+    after that, the run is a MAKEONE hang: *on_hang* is called and *warn* names it.
+
+    Raises MakeOneTimeout when that archive is missing, empty or still changing, and NoArchive
+    when the guest returned to DOS with no ``.ALL`` written.
     """
+    # The archive is read inside the run, because teardown removes the mount.
     start = launch or _launch
     source = game_root if game_root.is_absolute() else dataroot.REPO_ROOT / game_root
     staged = staging.stage_makeone(film, source)

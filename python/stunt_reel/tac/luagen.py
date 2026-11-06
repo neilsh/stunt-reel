@@ -169,16 +169,13 @@ def script(
     """The Lua for one run: boot with *keys*, trace frames *first* to *last*, dump *dump_frames*.
 
     The trace entry for frame *f* is ``film_tick:global_tick[:word...]:mask``, the mask the sum
-    of :data:`TRACE_CHANGED` (the A000 page differs from frame *f* - 1's), :data:`TRACE_TORN`
-    (rows 0..191 match neither composed page, and some bands match only one and others only
-    the other), :data:`TRACE_PALETTE` (the working palette differs from frame *f* - 1's) and
-    :data:`TRACE_COMPOSED` (rows 0..191 equal one composed page).
-    Dumps are ``p<f>`` (page),
+    of :data:`TRACE_CHANGED`, :data:`TRACE_TORN`, :data:`TRACE_PALETTE` and
+    :data:`TRACE_COMPOSED` (each defined beside its constant). Dumps are ``p<f>`` (page),
     ``c<f>`` (the DS working palette, 6-bit units) and ``m<f>_<n>`` per range, all hex.
 
     With *end_hold* the trace also stops once the film clock (above zero) has not moved for that
-    many frames, so *last* is only a cap on a film of unknown length. *layout* says where the
-    PLAYONE.EXE build being run keeps the clocks and the palette.
+    many frames, so *last* is only a cap. *layout* gives the build's clock and palette offsets.
+    Raises ValueError for bad frame numbers, *end_hold* below 1 or too many dump frames.
     """
     if end_hold is not None and end_hold < 1:
         raise ValueError(f"end_hold must be at least 1, got {end_hold}")
@@ -323,14 +320,15 @@ def window_script(
 ) -> str:
     """The Lua for a window pass: boot with *keys*, then dump one usable page per window.
 
-    Each window also reads the palette at ``start - 2`` and the page and palette at
-    ``start - 1``, then frames ``start`` onward until one is usable: its film clock is at least
-    the window's goal, its page changed, rows 0..191 equal a composed page, and the working
-    palette changed neither at that frame nor the one before (``plan.usable``'s rule). That
-    frame's page and palette are dumped as ``p<f>`` and ``c<f>``. Every frame read from
-    ``start`` on is logged in ``trace`` as ``frame:film_tick:global_tick:mask``, where a page that
-    equals no composed page carries :data:`TRACE_TORN`: the band test is not run, so such a page
-    is treated as torn. Windows must ascend without overlapping, lead frames included.
+    From each window's ``start`` the script reads frames until one is usable: film clock at
+    least the window's goal, page changed, rows 0..191 equal a composed page, and the working
+    palette changed neither at that frame nor the one before (:func:`~stunt_reel.tac.plan.usable`'s
+    rule). That frame's page and palette are dumped as ``p<f>`` and ``c<f>``. Every frame read is
+    logged in ``trace`` as ``frame:film_tick:global_tick:mask``; a page equal to no composed page
+    carries :data:`TRACE_TORN` (no band test is run). Each window also reads :data:`WINDOW_LEAD`
+    frames before ``start``, and windows must ascend without overlapping, lead frames included.
+    Raises ValueError for no windows, more than :data:`MAX_DUMPS`, a window starting before the
+    boot keys plus lead, or a goal below 1.
     """
     if not windows:
         raise ValueError("a window pass needs at least one window")
@@ -401,13 +399,13 @@ def video_script(
 ) -> str:
     """The Lua for a video capture: boot with *keys*, record the screen, log clocks and palette.
 
-    ``dosbox.capture_start()`` begins the AVI once the boot keys are done; then, one emulated
-    frame at a time for at most *cap* frames, the script logs ``frame:film_tick:global_tick``
-    and, when the working palette changed, ``frame:band:hex`` for each of the
-    :data:`PALETTE_BANDS` bands that differ (whole-palette compares per frame, never per byte).
-    The loop ends when the film clock (above zero) has held for *end_hold* frames. Outputs:
-    ``cs`` (the frame recording began), ``pal0`` (the palette then), ``log``, ``pal`` and
-    ``end`` (``hold`` or ``capped``), every string behind an ``x`` so it stays a string.
+    The AVI starts once the boot keys are done. For at most *cap* frames the script logs
+    ``frame:film_tick:global_tick`` and, when the working palette changed, ``frame:band:hex``
+    for each of the :data:`PALETTE_BANDS` bands that differ; it stops early once the film clock
+    (above zero) has held for *end_hold* frames. Outputs: ``cs`` (the frame recording began),
+    ``pal0`` (the palette then), ``log``, ``pal`` and ``end`` (``hold`` or ``capped``), each
+    string behind an ``x`` so it stays a string. Raises ValueError if *cap* or *end_hold* is
+    below 1.
     """
     if cap < 1:
         raise ValueError(f"cap must be at least 1, got {cap}")

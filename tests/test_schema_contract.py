@@ -26,6 +26,8 @@ from stunt_reel.kaitai import compile_schemas, ksc_command
 if TYPE_CHECKING:
     from types import ModuleType
 
+pytestmark = pytest.mark.docs
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_ROOT = REPO_ROOT / "research" / "formats"
 VERIFIER = REPO_ROOT / "python" / "scripts" / "verify_schemas_corpus.py"

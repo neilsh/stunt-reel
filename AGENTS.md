@@ -7,7 +7,7 @@
 ## 1. Non-Negotiable Directives
 
 1. **Asset isolation**: **NEVER** commit proprietary assets, executables, or original binary disks into Git (`corpus/` is strictly gitignored). All tests must run 100% offline using synthetic fixtures in [`tests/fixtures/`](tests/fixtures/README.md). Two small game-derived tables, and illustrative comparison images (a captured frame beside our render, cited by a research note), are documented exceptions under the rules in [`NOTICE.md`](NOTICE.md).
-2. **Quality Gate Requirement**: Before concluding any task or presenting code, **always verify that `mise run check` passes** (format, lint, typecheck and tests, Rust and Python). See [`docs/development.md`](docs/development.md#development--quality-assurance) and [`mise.toml`](mise.toml).
+2. **Quality Gate Requirement**: Before concluding any task or presenting code, **always verify that `mise run check` passes**. It runs format, lint, typecheck and tests for the halves your branch touches, and everything on `mise run check -- --full`; CI runs everything on every pull request ([ADR 0038](docs/adr/0038-the-local-gate-runs-what-a-change-touches.md)). See [`docs/development.md`](docs/development.md#development--quality-assurance) and [`mise.toml`](mise.toml).
 3. **Architectural Invariants**: All code conforms to `[I1]` coordinates, `[I2]` flat arena, `[I3]` VGA palette indices, `[I4]` 50 Hz ticks, `[I5]` coplanar decals, `[I6]` parity thresholds, `[I7]` asset isolation and a pure `stunt-core`, `[I8]` 8.3 paths, defined in [`docs/SPEC.md` § 2](docs/SPEC.md#2-system-architectural-invariants--guardrails) and summarized in [`contracts/mod.rs`](crates/stunt-core/src/contracts/mod.rs).
 4. **Findings live in `research/`**: every new format, rendering or render-residual finding, ruled-out hypotheses included, lands in the note that owns it by [`research/README.md`](research/README.md), in the same commit as the code that relies on it. Read the [`recording-findings`](.agents/skills/recording-findings/SKILL.md) skill first.
 
@@ -46,7 +46,7 @@ Process documents, **not** sources of truth: [`docs/process/TEAM_SHEET.md`](docs
 
 1. Run `git status` before staging: stage the paths you changed by name, never `git add -A` or `git commit -a`, and never any file from `corpus/`. If the index holds another session's work, stop and ask.
 2. Run `mise run check` and see it pass with zero warnings or errors.
-3. Commit with a Conventional Commit subject, e.g. `feat(core): add a parser`. The commit-msg hook (`mise run commit-msg-check`) checks the subject, and holds the closing gate line to a passing run on the staged tree ([how](docs/development.md#the-gate-line-is-checked)). Write the body whenever a reviewer would have to ask "why this way?": what forced the change, the cause with the offset, measurement or log row that proves it, and what you rejected. One paragraph, then a bullet per file when several move together; never retell the diff. Renames, formatting and generated files need none. Longer reasoning belongs in the owning note or an ADR, cited from the body. Close with `mise run check passes.` when the whole gate ran, naming any part that did not.
+3. Commit with a Conventional Commit subject, e.g. `feat(core): add a parser`. The commit-msg hook (`mise run commit-msg-check`) checks the subject, and holds the closing gate line to a passing run on the staged tree ([how](docs/development.md#the-gate-line-is-checked)). Write the body whenever a reviewer would have to ask "why this way?": what forced the change, the cause with the offset, measurement or log row that proves it, and what you rejected. One paragraph, then a bullet per file when several move together; never retell the diff. Renames, formatting and generated files need none. Longer reasoning belongs in the owning note or an ADR, cited from the body. Close with the gate line a passing `mise run check` prints last, such as `mise run check passes.` or `mise run check-docs passes; check-rust not run; check-py not run.`
 4. Write the handoff into the plan or `research/` note that owns the work item, never only in agent memory, which another worktree never sees. Shared append-only files such as [`research/parity/log.md`](research/parity/log.md) take rows at the end only.
 5. A PR that changes rendered output carries a capture-beside-render picture, before and after: [Evidence for a rendering PR](.agents/skills/improving-render-parity/SKILL.md#evidence-for-a-rendering-pr).
 6. Work that ships as two or more dependent PRs is a `gh stack` from its first branch: `gh stack init <bottom> <next>…`, then `gh stack submit --auto`.
@@ -56,9 +56,13 @@ Process documents, **not** sources of truth: [`docs/process/TEAM_SHEET.md`](docs
 Each turn re-sends the whole conversation, so cost is roughly turns times context size.
 
 1. **Fewer, fuller turns.** Batch independent reads and commands into one turn. Find the file through [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) before grepping, and read line ranges of files over about 20 KB.
-2. **Scoped checks while iterating.** For Python, `mise run fix`, then `mise run lint-py` and `mise run typecheck`, then `mise run test-py -- <test file>`. For Rust, `mise run check-rust`. Run the full `mise run check` once, before you commit, hand off or call the task done, and `check-py` or `check-rust` to re-run a half that failed.
+2. **Scoped checks while iterating.** For Python, `mise run fix`, then `mise run lint-py` and `mise run typecheck`, then `mise run test-py -- <test file>`. For Rust, `mise run check-rust`. Run `mise run check` once, before you commit, hand off or call the task done, and the `check-py`, `check-rust` or `check-docs` it names to re-run a half that failed.
 3. **Scripts before subagents.** Mechanical checks belong in a script. Delegate only real chunks of work, at most about 8 subagents per task, each with a whole brief: goal, paths, output shape, stopping condition.
 4. **Drive everything through `mise run`.** `mise run *` is the one command shape the harness pre-approves and `mise tasks` the one list of what exists; a task name not there does not exist. For a one-off, `mise exec -- uv run …` runs the pinned uv (expect an approval prompt); a command needed twice earns a task.
+
+### Docstrings
+
+Writing or editing a docstring or `///` comment: state the caller's contract in the fewest words, by [Docstrings and doc comments](docs/development.md#docstrings-and-doc-comments).
 
 ### Skills
 

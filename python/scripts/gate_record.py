@@ -1,8 +1,8 @@
 """Which tree each passing gate run tested, so a commit's gate line can be held to it.
 
 ``gate.py`` captures the working copy's tree when a run starts and, if the run passes, records it
-under ``target/gate/<name>.tree``, one file per gate name (``check``, ``check-py``,
-``check-rust``). The commit-msg hook (``check_commit_msg.py``) then refuses a gate line claiming
+under ``target/gate/<name>.tree``, one file per gate name it proves
+(``check``, ``check-rust``, ``check-py``, ``check-docs``). The commit-msg hook (``check_commit_msg.py``) then refuses a gate line claiming
 ``<name> passes`` unless the staged tree is the one a passing run of that name, or of the full
 ``check``, tested. See docs/development.md, "The gate line is checked".
 
@@ -19,11 +19,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-#: The gate name each ``gate.py`` half records under, as a gate line spells it.
-HALF_NAMES = {"all": "check", "rust": "check-rust", "py": "check-py"}
-
-#: The names the hook holds to a record; any other gate name on a gate line is not checked.
-RECORDED = frozenset(HALF_NAMES.values())
+#: The names a passing run records under (``gate.recorded_names``) and the hook holds to a record;
+#: any other gate name on a gate line is not checked.
+RECORDED = frozenset({"check", "check-rust", "check-py", "check-docs"})
 
 
 def _git(*args: str, env: dict[str, str] | None = None) -> str:

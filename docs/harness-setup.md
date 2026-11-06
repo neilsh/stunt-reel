@@ -113,6 +113,9 @@ Nothing to do. Create it with any tool, under `.claude/worktrees/` or `.agents/w
   proves no link remains before it removes the worktree.
 - `reap` removes nothing while the primary checkout's drive has 20 GB or more free
   (`--min-free-gb N` moves the bar, `--force` skips it); a dry run still lists the candidates.
+- `reap -- --yes` refuses when the primary checkout's committed `worktree_init.py` differs
+  from `origin/main`'s (fetched quietly first), since it would reap by rules main has since
+  changed; a dry run only warns. Update the primary checkout, or pass `--allow-stale-script`.
 
 ## Claude Code
 

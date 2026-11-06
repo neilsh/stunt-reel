@@ -87,14 +87,16 @@ def capture(
 ) -> dict[str, Any]:
     """Plan and run a capture of the film *keys* selects, and write the reference artifacts.
 
-    Frames are numbered from one in emulated-frame order (frames/tick_{ordinal:04d}.idx); that
-    ordinal is only a file name. meta.json is the port's capture document: each frame carries
-    film_tick (the film clock, which is what parity matches on), and the diagnostics ride beside
-    it through the writer. meta.json is written last. *provenance* (when and by which checkout)
-    joins the diagnostics in meta.json; it is not part of the capture's identity, which is the
-    film and its frames. *layout* is the PLAYONE.EXE build being run (identified by the hash of the
-    staged executable); its name is recorded as ``playone_build`` and that hash as
-    ``playone_sha256``.
+    Writes ``frames/tick_{ordinal:04d}.idx`` and ``frames/palettes_{ordinal:04d}.json`` under
+    *out_dir*, ordinals from one in emulated-frame order (a file name only), then ``meta.json`` last; each
+    frame carries ``film_tick``, which parity matches on. *provenance* (when and by which
+    checkout) joins the diagnostics in meta.json, not the capture's identity. *layout* is the
+    PLAYONE.EXE build run; its name and hash are recorded as ``playone_build`` and
+    ``playone_sha256``. Returns what :func:`write_capture` returns.
+
+    Raises ValueError if *max_frames* is below 1, and PlanError if no window frame equals a
+    composed page (check the layout's offsets) or no window held a usable frame. A film whose
+    clock never runs gets no windows and writes a capture with no frames.
     """
     if max_frames < 1:
         # Otherwise the pick is empty and the capture fails as if the film had no usable frame.

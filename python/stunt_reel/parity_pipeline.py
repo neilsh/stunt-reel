@@ -117,11 +117,10 @@ class FilmJob:
 def reference_job(root: Path, name: str) -> Iterator[FilmJob]:
     """The job for the ``references.toml`` row *name*, holding its verified reference capture.
 
-    The job's ``capture`` is a snapshot that lasts as long as the block, so a render and its
-    score read the one capture whose hash was checked (ADR 0031). Raises
+    The job's ``capture`` is a snapshot that lasts as long as the block (ADR 0031). Raises
     :class:`references.ReferenceCaptureError` when the row, the capture or its hash is wrong,
-    and :class:`FilmInputError` when the corpus holds no ``.FLM`` of the row's film. A row that
-    pins its archive refuses a capture whose ``meta.json`` records another one (ADR 0037).
+    or when a row pinning its archive meets a capture whose ``meta.json`` records another
+    (ADR 0037); :class:`FilmInputError` when the corpus holds no ``.FLM`` of the row's film.
     """
     pointer = references.read_reference(root, name)
     corpus = dataroot.corpus_of(root)
@@ -588,12 +587,10 @@ def run_matrix[V](
 
     Each film's reference is opened once, on the calling thread, and every variant shares that
     verified snapshot (ADR 0031); a film whose reference cannot be opened fails in every variant.
-    The result is ``[variant][film]`` in input order whatever order the pairs finish in.
-    *on_variant* is called on the calling thread, with the variant's index and row, once every
-    film of that variant has finished. With ``jobs <= 1`` the pairs run on the calling thread, in
-    order; otherwise in a thread pool, since the work runs in child processes. An interrupt, or
-    an error from *on_variant*, drops the pairs not yet started, lets running ones finish, and
-    propagates.
+    The result is ``[variant][film]`` in input order. *on_variant* is called on the calling
+    thread with the variant's index and row once all its films finish. ``jobs <= 1`` runs the
+    pairs in order on the calling thread, else in a thread pool. An interrupt, or an error from
+    *on_variant*, drops pairs not yet started, lets running ones finish, and propagates.
     """
     rows: list[list[Attempt | None]] = [[None] * len(films) for _ in variants]
     with contextlib.ExitStack() as stack:

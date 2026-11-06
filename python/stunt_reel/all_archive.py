@@ -237,24 +237,20 @@ def resolve_all(
 ) -> Path:
     """Return the ``.ALL`` that goes with *flm*, or raise ArchiveMissing.
 
-    With *pinned*, the SHA-256 a ``references.toml`` row pins (ADR 0037), the archive is the
-    first of these whose bytes hash to it: the sibling, the manifest rebuild, the stored archive,
-    then a sibling of any copy of the film in the corpus of *data*, the data root the caller
-    reads (the configured one by default). If none does, :class:`ArchiveError` names the
-    pin. The order below, and its errors, hold for each candidate the pin can name.
+    First match wins: a sibling ``.ALL`` with the film's stem (case-insensitive); the film's
+    committed manifest (``manifests/all/<slug>.toml``, ADR 0032) when its ``flm_sha256`` is
+    *flm*'s, rebuilt by *link_build* (default: ``stuntreel link build``) into
+    ``target/linked/<slug>/`` and reused while it matches the manifest's ``all_sha256``; the
+    stored archive made from *flm*'s bytes. A manifest that matches but cannot be read or built
+    is an :class:`ArchiveError`, never a fall back, as is a stored archive whose bytes no longer
+    hash to its ``all_sha256``.
 
-    A sibling with the film's stem wins (matched case-insensitively, so ``x.All`` beside
-    ``x.flm`` counts). Next, the film's committed manifest (``manifests/all/<slug>.toml``,
-    ADR 0032) when its ``flm_sha256`` is *flm*'s: the archive is rebuilt from the game tree it
-    names into ``target/linked/<slug>/`` by *link_build*, which defaults to building the release
-    binary and running ``stuntreel link build``; an earlier build that still matches the
-    manifest's ``all_sha256`` is reused. A manifest that matches the film but cannot be read or built is an
-    error, never a fall back. Last, the film's stored archive, when it was made from *flm*'s
-    bytes; its own bytes must still hash to the recorded ``all_sha256``, and a mismatch is an
-    error. *slug* names the film's directory; it defaults to the one
-    :func:`parity_layout.film_slug` derives. *root* is the checkout holding the manifests and
-    ``target/``; a manifest's ``corpus/...`` game tree, the stored archive and the corpus copies
-    are read from the data root *data*, the configured one by default (ADR 0036).
+    With *pinned*, a ``references.toml`` SHA-256 (ADR 0037), a candidate counts only if its
+    bytes hash to it, and a sibling of a corpus copy of the film is tried last; if none
+    matches, :class:`ArchiveError` names the pin. *slug* defaults to ``parity_layout.slug_for``.
+    *root* is the checkout holding the manifests and ``target/``; the manifest's ``corpus/...``
+    game tree, the stored archive and the corpus copies come from the data root *data* (the
+    configured one by default, ADR 0036).
     """
     sibling = _sibling(flm)
     if sibling is not None:

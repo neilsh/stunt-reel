@@ -379,18 +379,14 @@ mod tests {
 
 /// Cross-check of the hand-written SSIM above against `image-compare`.
 ///
-/// The in-tree SSIM is intentional (`[I6]` thresholds are tied to its exact variant, and it adds
-/// masks and fade compensation); `image-compare` is a dev-dependency used only as an independent
-/// witness. Frames are synthetic gradients, so the test needs no `corpus/` data (`[I7]`).
+/// The in-tree SSIM stays hand-written (`[I6]` thresholds are tied to its variant);
+/// `image-compare` is a dev-dependency used only as an independent witness, on synthetic
+/// gradients (`[I7]`).
 ///
-/// Both implementations use uniform 8x8 windows over `[0, 255]` with `C1 = (0.01 * 255)^2` and
-/// `C2 = (0.03 * 255)^2`, but they differ in one normalisation: `image-compare` uses the *sum* of
-/// squared deviations as "variance"/"covariance", while this module divides by `n - 1` (= 63).
-/// At the production constants the two scores therefore differ (only identical frames agree), so:
-///
-/// 1. with `C2` rescaled to `C2 / 63` the two formulas are algebraically identical and must
-///    agree to float precision, which checks the window arithmetic and the tiling;
-/// 2. at the production constants only identity (`1.0`) and monotonic ordering are asserted.
+/// `image-compare` takes variance as the *sum* of squared deviations, this module divides by
+/// `n - 1` (= 63), so scores differ at the production constants. The test therefore asserts
+/// agreement to float precision with `C2` rescaled to `C2 / 63`, and at the production constants
+/// only identity (`1.0`) and monotonic ordering.
 #[cfg(test)]
 mod crosscheck_tests {
     use super::{C1_CONSTANT, C2_CONSTANT, compute_frame_ssim, compute_window_ssim};

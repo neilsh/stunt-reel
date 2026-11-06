@@ -155,8 +155,8 @@ impl RenderRecord {
     ///   ticks carry the same film clock or descend.
     /// - [`ArtifactError::RenderStore`] if a tick's `palette_index` is not below `palette_count`,
     ///   or the chunk table does not cover the ticks second by second with contiguous spans of
-    ///   both plane files. The plane files themselves are not read, so checking their lengths
-    ///   against the last span stays with the caller.
+    ///   both plane files. The plane files are not read; checking their lengths against the last
+    ///   span is the caller's.
     pub fn validate(&self) -> Result<(), ArtifactError> {
         if self.schema_version != crate::RENDER_SCHEMA_VERSION {
             return Err(ArtifactError::UnsupportedVersion {

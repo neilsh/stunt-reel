@@ -149,14 +149,17 @@ Compiles `research/formats/**/*.ksy` and checks documented headers, offsets, and
 
 ## Development & Quality Assurance
 
-The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), [ADR 0014](adr/0014-the-gate-is-one-ordered-script.md) and [ADR 0016](adr/0016-the-gate-runs-independent-lanes.md)) that prints one line per step, quotes the tail of every failing step, writes the whole output to `target/check.log`, and ends with PASS or FAIL. Independent steps run as concurrent lanes — cargo steps that share a target directory stay in one ordered lane, everything else runs beside them — so one run also reports every failing step, not only the first. `mise run check-rust` and `mise run check-py` run the same step list for one language. A failing run's last line says what to run next: `fix: mise run fix` when a format or `lint-py` step failed, and `re-run: mise run check-rust` / `mise run check-py` for the half that failed (a scoped run never names itself). Individual tasks:
+The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), [ADR 0014](adr/0014-the-gate-is-one-ordered-script.md) and [ADR 0016](adr/0016-the-gate-runs-independent-lanes.md)) that prints one line per step, quotes the tail of every failing step, writes the whole output to `target/check.log`, and ends with PASS or FAIL. Independent steps run as concurrent lanes — cargo steps that share a target directory stay in one ordered lane, everything else runs beside them — so one run also reports every failing step, not only the first. `mise run check-rust` and `mise run check-py` run the same step list for one language, and `mise run check-docs` runs only the documentation tests (`test-py-docs`, the modules marked `docs`). A failing run's last line says what to run next: `fix: mise run fix` when a format or `lint-py` step failed, and `re-run: mise run check-rust` / `check-py` / `check-docs` for the half that failed (a scoped run never names itself).
+
+`mise run check` runs only what the branch touches ([ADR 0038](adr/0038-the-local-gate-runs-what-a-change-touches.md)). It reads the paths changed since the merge base with `main`, untracked files included, and sorts each one: `tests/fixtures/**` is other; `crates/**`, `Cargo.toml`, `Cargo.lock`, `deny.toml` and `research/parity/method.md` (a Rust test reads it) are Rust; `*.py`, `pyproject.toml` and `uv.lock` are Python; `*.md` and `*.ksy` are docs; anything else is other. Rust paths run the Rust half, Python paths the Python half, and a run without the Python half adds the docs half. It runs the full gate, and prints why, on `mise run check -- --full`, when `CI` is set, for any other path, when nothing changed, and when git cannot say (no local `main`); `-- --base <ref>` counts from another branch. The gate prints its scope and the paths behind it first and, on PASS, the gate line the commit body closes with. CI's `quality` job always runs the full gate. Individual tasks:
 
 | Task | Runs |
 | --- | --- |
-| `check` / `check-rust` / `check-py` | `gate.py` over every step (format, lint, strict typing, rustdoc, both test suites, the no-default-features matrix), one line per step, log in `target/check.log` |
+| `check` / `check-rust` / `check-py` / `check-docs` | `gate.py` over the steps the branch touches (`check`; `-- --full` for every step) or one half (format, lint, strict typing, rustdoc, both test suites, the no-default-features matrix), one line per step, log in `target/check.log` |
 | `pre-commit` | what the committed pre-commit hook runs: `prek run --quiet --config prek.toml` over the staged content, printing only the hooks that fail ([ADR 0026](adr/0026-commit-hooks-run-the-gates-own-tasks.md)). A fast subset, not the gate |
 | `diff-check` | `git diff --cached --check`: staged conflict markers and whitespace errors; a pre-commit hook |
 | `crlf-check` | [check_crlf.py](../python/scripts/check_crlf.py): staged text files whose working copy has CRLF line endings: one that differs from its index blob only in line endings is rewritten from the index (`git checkout-index`) and named as repaired, one with unstaged edits is named and fails the commit, left untouched; `*.bat`, `*.cmd` (`eol=crlf` in `.gitattributes`) and binary files are skipped; a pre-commit hook on every commit |
+| `test-py-docs` | every test module marked `docs` (`pytest -m docs`: the documentation invariants, the formats catalog, the schema contract); the docs half of the gate, run by `check-docs` and by a scoped `check` without the Python half |
 | `test-docs` | `tests/test_doc_invariants.py` alone: anchors, Markdown links, cited paths, no source of truth linking into `docs/process/`; a pre-commit hook on every commit |
 | `check-windows` | the non-GPU half of the gate used by the Windows job on `main` (`fmt-check` + `lint` + `typecheck` + `test`)
 | `check-windows-smoke` | the Windows-only slice of the pytest suite, every module marked `windows` (junctions, reparse points, the pytest basetemp workaround, the target seed's build locks), used by the pull-request Windows job; `tests/test_windows_marker.py` fails a module that checks the platform without the marker
@@ -191,9 +194,21 @@ The `gpu` test binary (`crates/stunt-render/tests/gpu/`, kept apart from the mer
 
 ### The gate line is checked
 
-A commit body ends with its gate line, `mise run check passes.` or the parts that did not run (AGENTS.md, Committing). The commit-msg hook ([check_commit_msg.py](../python/scripts/check_commit_msg.py)) holds each `<name> passes` claim for `check`, `check-py` or `check-rust` to a run that passed. When a gate run starts, [gate_record.py](../python/scripts/gate_record.py) takes the tree of the working copy, written through a copy of the index so the real one is untouched: every tracked file and every unignored untracked one, as `git add -A` would stage them. When the run passes, it is recorded in `target/gate/<name>.tree`. The hook refuses the line unless the staged tree is the tree a passing run of that name, or of the full `check`, recorded, and it names the paths that differ.
+A commit body ends with the gate line a passing `mise run check` prints (AGENTS.md, Committing). The commit-msg hook ([check_commit_msg.py](../python/scripts/check_commit_msg.py)) holds each `<name> passes` claim for `check`, `check-rust`, `check-py` or `check-docs` to a run that passed. When a gate run starts, [gate_record.py](../python/scripts/gate_record.py) takes the tree of the working copy, written through a copy of the index so the real one is untouched: every tracked file and every unignored untracked one, as `git add -A` would stage them. When the run passes, it is recorded in `target/gate/<name>.tree` under the task of each half it ran, and under `check` too when it ran both `check-rust` and `check-py`. The hook refuses the line unless the staged tree is the tree a passing run of that name, or of the full `check`, recorded, and it names the paths that differ.
 
 So stage exactly what the gate tested. A commit of some of the changed files, with other edits left in the working copy, is refused, because the gate passed with those edits present. Move them aside (a WIP commit on another branch, or `git stash push -u -m <tag>`) and rerun the gate, or write `not run` for the part you did not run. CI checks the line's wording only (`commit-msg-check -- --range`), since it never saw your run.
+
+### Docstrings and doc comments
+
+A Python docstring or Rust `///` comment states the contract a caller needs, in the fewest words that carry it:
+
+- The first line says what the item returns or does, in one sentence.
+- Further lines carry only what the signature hides: units and coordinate frame, constraints on inputs, what is raised or returned on failure, side effects (files written, processes started, caches reused), and the anchor, ADR or research note that owns the reasoning.
+- Parameters are named inline (*flm*, `data`); their types live in the annotations.
+- The why, the history and the alternatives ruled out live in the owning research note or ADR, cited by name.
+- Rust keeps the `# Errors` and `# Panics` sections clippy's pedantic lints require, one line per case.
+
+Most land under 60 words. A longer one usually narrates the body; move the narration into a comment beside the code it explains, or drop it.
 
 ### Shared tool cache
 

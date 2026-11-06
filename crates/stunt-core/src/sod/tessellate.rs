@@ -200,15 +200,14 @@ fn process_polygon_batch(
 
 /// Decodes one `.SOD` bytecode stream into a shape (Seam 3).
 ///
-/// This is the only entry point: `mode` selects the stop policy over one VM run.
+/// `mode` selects the stop policy:
 /// - [`DecodeMode::Strict`]: a blocked stream is an error.
-/// - [`DecodeMode::Lenient`]: a blocked stream stops the decode, the geometry decoded so
-///   far is kept, and the model's [`DecodeRecord`] carries the stop (a partial shape).
-/// - [`DecodeMode::Census`]: anchors are ignored, blocking opcodes with a known width are
-///   stepped over and recorded in [`DecodeRecord::stepped_over`], and the returned shape
-///   carries no geometry (its vertices and indices are empty).
+/// - [`DecodeMode::Lenient`]: a blocked stream stops the decode and keeps the geometry so far;
+///   the [`DecodeRecord`] carries the stop.
+/// - [`DecodeMode::Census`]: `anchors` is ignored, known-width blocking opcodes are stepped over
+///   ([`DecodeRecord::stepped_over`]), and the shape has no vertices or indices.
 ///
-/// `anchors` supplies the global anchor table `OP_TAP` resolves against.
+/// `anchors` is the global anchor table `OP_TAP` resolves against.
 ///
 /// # Errors
 ///

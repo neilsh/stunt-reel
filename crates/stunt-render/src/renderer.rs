@@ -182,10 +182,10 @@ pub struct RenderedPage {
 impl RenderedPage {
     /// Builds a page, refusing buffers that do not match the size.
     ///
-    /// The RGBA buffer holds exactly `size.pixel_count()` * 4 bytes and the plane one
-    /// little-endian u32 per pixel: layer << 8 | unlit palette index, where uncovered pixels are
-    /// the clear index on `LAYER_NONE`. The index byte and the layer word are kept apart; the
-    /// render store keeps a u16 layer, so its writer checks the narrowing instead of truncating.
+    /// `rgba` is `size.pixel_count() * 4` bytes; `plane` is one `layer << 8 | unlit palette index`
+    /// word per pixel (uncovered pixels: the clear index on `LAYER_NONE`), split here into
+    /// [`RenderedPage::indices`] and [`RenderedPage::layers`]. Layers stay u32; the render
+    /// store's writer checks the narrowing to u16.
     ///
     /// # Errors
     /// Returns [`RenderError::Readback`] if `rgba` is not `size.pixel_count() * 4` bytes or
@@ -434,9 +434,9 @@ impl Renderer {
 
     /// Opens a renderer that presents every drawn frame to the window.
     ///
-    /// The surface starts configured at 1x1; call `Renderer::resize` with the window's inner size
-    /// before drawing. The window is bounded by the raw-window-handle traits, the recorded
-    /// exception to the no-GPU-types-in-signatures rule.
+    /// The surface starts at 1x1; call `Renderer::resize` with the window's inner size before
+    /// drawing. `W` is bounded by the raw-window-handle traits, the recorded exception to the
+    /// no-GPU-types-in-signatures rule.
     ///
     /// # Errors
     /// - [`RenderError::SurfaceCreate`] if `window` cannot back a surface.
@@ -485,15 +485,13 @@ impl Renderer {
 
     /// Draws the frame, exactly once, to the destination fixed at open.
     ///
-    /// Uploads the frame palette into the LUT first, then prepares the camera and per-draw
-    /// matrices; a camera override does not change the frame's LOD distances. Offscreen reads the
-    /// page back and hands it to the sink; a surface presents it.
+    /// A `camera` override replaces the frame's view but not its per-actor LOD distances.
+    /// Offscreen reads the page back and hands it to the sink; a surface presents it, and a lost,
+    /// outdated, timed-out or occluded surface skips the frame without error.
     ///
     /// # Errors
     /// - [`RenderError::Readback`] if an offscreen page cannot be read back from the GPU.
     /// - [`RenderError::Sink`] if the sink rejects the page.
-    ///
-    /// A surface draw never fails: a lost, outdated, timed-out or occluded surface skips the frame.
     pub fn draw(
         &mut self,
         frame: &SceneFrame,

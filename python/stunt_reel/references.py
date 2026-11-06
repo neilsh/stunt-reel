@@ -254,13 +254,11 @@ def _sha256_or_none(path: Path) -> str | None:
 def archive_makeone_build(root: Path, slug: str, archive: Path) -> str:
     """The build of the ``MAKEONE`` that wrote *archive* for film *slug*, else ``UNKNOWN_BUILD``.
 
-    Three kinds of archive are known: a stored one (``meta.json`` beside it records
-    ``makeone_sha256``), one rebuilt under ``target/linked/<slug>`` (the film's committed
-    manifest, ``manifests/all/<slug>.toml``, records it) or any copy whose bytes hash to that
-    manifest's ``all_sha256`` (a pinned sibling, ADR 0037), and a shipped ``.ALL`` in the demo's
-    or the retail game's tree under the data root's corpus, which the unpatched ``MAKEONE`` wrote.
-    Any other archive, such as a community film's, has no record, so its build cannot be
-    determined.
+    Known archives: a stored one (the ``meta.json`` beside it records ``makeone_sha256``); one
+    rebuilt under ``target/linked/<slug>``, or any copy hashing to the manifest's ``all_sha256``
+    (a pinned sibling, ADR 0037), both recorded by ``manifests/all/<slug>.toml``; and a shipped
+    ``.ALL`` in the demo's or retail game's corpus tree, written by the unpatched ``MAKEONE``.
+    Any other archive, such as a community film's, is ``UNKNOWN_BUILD``.
     """
     found = _recorded_makeone(archive.parent / capture_store.META_FILE, "json")
     manifest = root / parity_layout.manifest_path(slug)
@@ -280,13 +278,12 @@ def archive_makeone_build(root: Path, slug: str, archive: Path) -> str:
 def require_builds(
     root: Path, slug: str, *, playone: str | None = None, makeone: str | None = None
 ) -> None:
-    """Refuse a run whose builds differ from the ones the film's row names.
+    """Raise :class:`ReferenceCaptureError` when a run's builds differ from the film's row.
 
-    *playone* and *makeone* are build names, or ``None`` for an executable the run does not use.
-    *makeone* may be ``UNKNOWN_BUILD`` for an archive whose build cannot be determined; that is
-    refused when the row names a ``makeone``, because it might be the other build. Only the row
-    for the directory *slug* is checked: a film with no row, or run under another ``--name``
-    slug, passes unchecked until #140's fallback chooses its builds.
+    *playone* and *makeone* are build names, or ``None`` for an executable the run does not use;
+    ``UNKNOWN_BUILD`` for *makeone* is refused when the row names one. Only the row for the
+    directory *slug* is checked: a film with no row, or run under another ``--name`` slug,
+    passes unchecked until #140's fallback chooses its builds.
     """
     found = read_builds(root, slug)
     if found is None:

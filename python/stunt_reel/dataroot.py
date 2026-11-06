@@ -158,12 +158,10 @@ def data_root_flag(flag: Path | None) -> Path:
 def corpus_root() -> Path:
     """The directory holding the game files: ``corpus/`` under the data root.
 
-    A clone that keeps its game files in the primary checkout's own ``corpus/`` has no
-    ``corpus/`` in the data root, so that one is read instead, but only when it holds a
-    folder of game files: ``corpus/README.md`` is tracked, so the folder itself exists in
-    every checkout, and falling back to it would name the wrong place in every error.  Only
-    the corpus falls back: the captures and the stage are written, and the stage must sit
-    outside every checkout.
+    When the data root has no ``corpus/`` (and the data-root variable is unset), the primary
+    checkout's own ``corpus/`` is read instead, but only if it holds a folder with game files;
+    the tracked ``corpus/README.md`` makes the folder exist everywhere. Only the corpus falls
+    back: captures and the stage are written, so they stay outside every checkout.
     """
     shared = data_root() / "corpus"
     if shared.is_dir() or os.environ.get(DATA_ENV):
@@ -500,13 +498,13 @@ def _legacy_destination(film: str) -> Path:
 def convert_layout(root: Path) -> list[str]:
     """Convert an old-layout data root to the corpus/captures layout (ADR 0022); say what moved.
 
-    ``stisldem`` and ``si_archive`` move under ``corpus/`` (the second as ``siarchive``),
-    ``target_bin/StuntIsl`` becomes ``corpus/stuntisl`` and ``target_bin/patch`` becomes
-    ``corpus/patches``.  The top-level ``target_bin/PLAYONE.EXE`` is dropped when it is
-    byte-identical to ``StuntIsl``'s, and ``oracle`` is deleted: it was generated, not
-    evidence.  ``reference/<film>`` becomes ``captures/vault-<film>/frames`` (ADR 0028).
-    A root already in the new layout is left alone; one holding both an old name and a new
-    name with files in it is refused before anything moves, because merging them would guess which side is right.
+    Moves ``stisldem`` and ``si_archive`` under ``corpus/`` (the second as ``siarchive``),
+    ``target_bin/StuntIsl`` to ``corpus/stuntisl``, ``target_bin/patch`` to ``corpus/patches``
+    and ``reference/<film>`` to ``captures/vault-<film>/frames`` (ADR 0028). Drops
+    ``target_bin/PLAYONE.EXE`` when byte-identical to ``StuntIsl``'s, deletes the generated
+    ``oracle/intro_trajectory.json``, and removes emptied old directories. A root already in
+    the new layout returns ``[]``; one holding an old name and a new name with files raises
+    :class:`SharedDataError` before anything moves.
     """
     old = [name for name in _OLD_NAMES if (root / name).exists()]
     if not old:

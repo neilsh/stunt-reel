@@ -194,16 +194,13 @@ def render_conf(
 def stage_play(film: Path, archive: Path, engine_root: Path | None = None) -> StagedMount:
     """Stage *film* and its *archive* alone in a mount for PLAYONE.EXE.
 
-    The engine files come from *engine_root* when given (a game tree such as a
-    ``game-builds`` tree, to run another PLAYONE.EXE build), else from the film's own tree or
-    the demo.
+    The engine files come from *engine_root* when given (a game tree, to run another PLAYONE.EXE
+    build), else from the film's own tree or the demo. The film is copied into the mount's VAULT
+    under its own name and the archive as ``<film stem>.ALL``. Every call gets its own mount,
+    so concurrent captures of one film do not share files.
 
-    PLAYONE finds both in the mount's VAULT directory, so they are copied just in time: the film under its own
-    name and the archive as ``<film stem>.ALL`` whatever the source spelled. Two captures of
-    one film must not share a mount: each session used to rewrite one directory under the
-    stage root, so a second session deleted the tree the first was still emulating from.
-
-    Returns the stage; its conf is written at launch (``StagedMount.write_conf``).
+    Raises FileNotFoundError if the film or archive is missing. Returns the stage; its conf is
+    written at launch (``StagedMount.write_conf``).
     """
     for needed in (film, archive):
         if not needed.is_file():
