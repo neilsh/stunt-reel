@@ -325,6 +325,20 @@ def test_resolving_a_comment_that_starts_no_thread_fails(
     assert "starts with comment 333" in capsys.readouterr().err
 
 
+def test_a_comment_id_past_32_bits_round_trips_from_listing_to_resolve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An id above 2**31 comes from ``fullDatabaseId``, prints whole, and finds its thread."""
+    threads = _threads()
+    big = threads[0]["comments"]["nodes"][0]
+    big["databaseId"], big["fullDatabaseId"] = None, "4488219292"
+    assert "| id 4488219292," in pr_threads.thread_line(threads[0])
+    gh = _FakeGh(threads)
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    assert pr_threads.main(["7", "--resolve", "4488219292"]) == 0
+    assert "thread=PRRT_open" in gh.calls[-1]
+
+
 def test_a_mutation_that_leaves_the_thread_open_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     """A mutation whose answer shows the thread still open exits 2."""
     monkeypatch.setattr(pr_threads, "_gh", _FakeGh(_threads(), resolves=False))

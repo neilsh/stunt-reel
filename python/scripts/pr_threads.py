@@ -55,7 +55,7 @@ query($owner: String!, $name: String!, $number: Int!, $after: String) {
           originalLine
           comments(first: 1) {
             totalCount
-            nodes { databaseId author { login } body }
+            nodes { databaseId fullDatabaseId author { login } body }
           }
           latest: comments(last: 1) { nodes { author { login } } }
         }
@@ -156,9 +156,20 @@ def thread_line(thread: dict[str, Any]) -> str:
     replies = thread["comments"]["totalCount"] - 1
     latest = thread["latest"]["nodes"]
     last = ((latest[0]["author"] if latest else None) or {}).get("login", "?")
-    return (
-        f"{where}{tag} {title}{flags} | id {first['databaseId']}, {replies} replies, last by {last}"
-    )
+    return f"{where}{tag} {title}{flags} | id {comment_db_id(first)}, {replies} replies, last by {last}"
+
+
+def comment_db_id(comment: dict[str, Any]) -> int | None:
+    """A comment's REST id: ``fullDatabaseId``, else the 32-bit ``databaseId``.
+
+    Review comment ids have passed 2**31, past GraphQL's ``Int``, so ``databaseId`` can be null
+    or wrong; ``fullDatabaseId`` is a ``BigInt`` sent as a string.
+    """
+    full = comment.get("fullDatabaseId")
+    if full is not None:
+        return int(full)
+    short = comment.get("databaseId")
+    return None if short is None else int(short)
 
 
 def thread_lines(threads: Iterable[dict[str, Any]], *, include_resolved: bool) -> list[str]:
@@ -288,7 +299,7 @@ def thread_of(threads: Iterable[dict[str, Any]], comment_id: int) -> dict[str, A
         (
             t
             for t in threads
-            if t["comments"]["nodes"] and t["comments"]["nodes"][0]["databaseId"] == comment_id
+            if t["comments"]["nodes"] and comment_db_id(t["comments"]["nodes"][0]) == comment_id
         ),
         None,
     )
