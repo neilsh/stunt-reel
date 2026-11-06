@@ -77,7 +77,12 @@ def recorded_builds(root: Path, slug: str, directory: Path) -> dict[str, str]:
 
 
 def report(
-    slug: str, digest: str, *, promotable: bool = True, builds: dict[str, str] | None = None
+    slug: str,
+    digest: str,
+    *,
+    promotable: bool = True,
+    builds: dict[str, str] | None = None,
+    all_sha256: str | None = None,
 ) -> list[str]:
     """The lines printed for the capture of *slug* hashing to *digest*.
 
@@ -100,6 +105,11 @@ def report(
         if entry.get("sha256") == digest:
             lines.append(f"[{name}] already pins this capture")
             continue
+        if all_sha256 is None and entry.get("all_sha256") is not None:
+            lines.append(
+                f"# WARNING: this capture records no archive hash, so promoting it removes the "
+                f"archive pin of [{name}] (ADR 0037)"
+            )
         lines += [
             "",
             f"# references.toml pins another capture for [{name}]; to promote this one:",
@@ -107,6 +117,9 @@ def report(
             f'film = "{slug}"',
             f'sha256 = "{digest}"',
         ]
+        if all_sha256 is not None:
+            # The archive the capture played: parity and capture-ref resolve it by this pin.
+            lines.append(f'all_sha256 = "{all_sha256}"')
         chosen = {f: builds[f] if f in builds else entry.get(f) for f in ("makeone", "playone")}
         for field, build in chosen.items():
             if build in references.BUILD_NAMES:
@@ -149,8 +162,13 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
         print(f"{directory} is not a capture (no meta.json)", file=sys.stderr)
         return 1
     builds = recorded_builds(root, slug, directory)
+    pin = _read_meta(directory / "meta.json").get("all_sha256")
     for line in report(
-        slug, references.capture_digest(directory), promotable=promotable, builds=builds
+        slug,
+        references.capture_digest(directory),
+        promotable=promotable,
+        builds=builds,
+        all_sha256=pin if isinstance(pin, str) else None,
     ):
         print(line)
     return 0

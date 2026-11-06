@@ -237,8 +237,10 @@ def corpus_of(root: Path) -> Path:
     return corpus_root() if root == data_root() else root / "corpus"
 
 
-def resolve_data_path(path: Path) -> Path:
+def resolve_data_path(path: Path, root: Path | None = None) -> Path:
     """*path* read against the data root when it is a relative ``corpus/`` or ``captures/`` path.
+
+    *root* is that data root, the configured one by default; its corpus is :func:`corpus_of`'s.
 
     Every task description and note spells a film ``corpus/stisldem/VAULT/CTRY.FLM``, relative
     to a checkout that no longer links the data root in (ADR 0036).  Any other path, absolute
@@ -248,9 +250,10 @@ def resolve_data_path(path: Path) -> Path:
     part = _data_part(path)
     if part is None:
         return path
+    root = data_root() if root is None else root
     if part == "corpus":
-        return corpus_root().joinpath(*path.parts[1:])
-    return data_root().joinpath(part, *path.parts[1:])
+        return corpus_of(root).joinpath(*path.parts[1:])
+    return root.joinpath(part, *path.parts[1:])
 
 
 def _data_part(path: Path) -> str | None:
