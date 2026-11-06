@@ -20,7 +20,7 @@ setup they assume.
 | Shared uv and Cargo caches | `<primary>/.cache/uv` and `<primary>/.cache/cargo`, named by absolute path in `mise.toml`, see [ADR 0013](adr/0013-worktrees-share-one-writable-tool-cache.md) | no |
 | A worktree's Python environment | its own `.venv`, made by uv on the first `uv run` | no |
 | Harness permission modes and approvals | each harness's host settings | no |
-| Worktrees | `.claude/worktrees/` or `.agents/worktrees/` inside the primary checkout, the only place `mise run reap` reaps from | no |
+| Worktrees | `.claude/worktrees/` or `.agents/worktrees/` inside the primary checkout, where `mise run reap` looks | no |
 
 Every location in that table except the first row is host-local, and no checkout can carry it.
 
@@ -152,8 +152,8 @@ own `init`):
 2. `cmd /c rmdir "<path>"` each remaining one, pasting the path exactly as `dir /B` printed
    it inside the quotes; it removes the junction and leaves its target alone. Never add `/s`.
    `cmd` expands `%NAME%` even inside quotes, so for a path containing `%` run
-   `[System.IO.Directory]::Delete('<path>')` in PowerShell instead: single quotes stop
-   expansion, and the call is non-recursive and removes only the junction.
+   `[System.IO.Directory]::Delete('<path>')` in PowerShell instead, doubling any single quote
+   in the path: single quotes stop expansion, and the call is non-recursive and removes only the junction.
 3. `cmd /c dir /AL /S /B` again must print `File Not Found`; only then run `orca worktree rm`.
 
 Orca workspaces live on `C:`, another volume from the shared uv cache, so uv copies each
