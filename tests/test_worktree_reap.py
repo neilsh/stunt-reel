@@ -927,8 +927,9 @@ def test_clean_unlinks_the_legacy_capture_link_and_keeps_the_data_root(
 def _stub_reap(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, free: int | OSError) -> list[Path]:
     """``_reap`` over one squash-merged ``feat`` candidate on a drive with *free* bytes.
 
-    Nothing touches git: these tests decide whether ``_reap`` removes, not how. The returned
-    list records each worktree ``_reap_one`` was asked to remove.
+    Nothing touches git, and a call to ``_git`` fails the test: these tests decide whether
+    ``_reap`` removes, not how. The returned list records each worktree ``_reap_one`` was asked
+    to remove.
     """
     feat = worktree_init._Worktree(tmp_path / ".agents" / "worktrees" / "feat", "1" * 40, "feat")
     monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
@@ -956,6 +957,14 @@ def _stub_reap(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, free: int | OSEr
         removed.append(chosen.worktree.path)
 
     monkeypatch.setattr(worktree_init, "_reap_one", reap_one)
+
+    def no_git(_repo: Path, *args: str) -> object:
+        pytest.fail(f"a stubbed reap ran git {' '.join(args)}")
+
+    monkeypatch.setattr(worktree_init, "_git", no_git)
+    # The stale-script check fetches origin; tmp_path sits inside this checkout, so it would
+    # compare this branch's script with the real origin/main.
+    monkeypatch.setattr(worktree_init, "_script_is_stale", lambda _repo: (False, []))
     return removed
 
 
@@ -1073,6 +1082,32 @@ def _commit_script(repo: Path, text: str) -> str:
     _run_git(repo, "add", worktree_init.SCRIPT_PATH)
     _run_git(repo, "commit", "-qm", text)
     return _run_git(repo, "rev-parse", f"HEAD:{worktree_init.SCRIPT_PATH}").strip()
+
+
+def _reap_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, free: int | OSError
+) -> tuple[Path, Path]:
+    """A squash-merged ``feat`` worktree that ``_reap`` will see, on a drive with *free* bytes.
+
+    Real git, for the stale-script checks, which compare blobs with ``origin``; the free-space
+    tests use :func:`_stub_reap` instead.
+    """
+    repo, worktree, tip = _squash_repo(tmp_path)
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", repo)
+    monkeypatch.setattr(dataroot, "REPO_ROOT", repo)
+    monkeypatch.setattr(
+        worktree_init,
+        "_gh",
+        _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": tip}]),
+    )
+
+    def free_bytes(_path: Path) -> int:
+        if isinstance(free, OSError):
+            raise free
+        return free
+
+    monkeypatch.setattr(worktree_init, "_free_bytes", free_bytes)
+    return repo, worktree
 
 
 def _stale_env(
