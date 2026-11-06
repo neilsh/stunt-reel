@@ -337,6 +337,42 @@ def tree_segment(image: bytes) -> bytes:
     return image[TREE_IMAGE_OFFSET:]
 
 
+def map_links(data: bytes) -> dict[int, tuple[int, int]]:
+    """Every record's ``pos`` word and the record its ``a`` field names (``-1`` for none).
+
+    ``a`` is ``-1`` or ``30 * index`` in every corpus copy (``map.md`` ``[BK-MAP-03]``).
+    """
+    links = {}
+    for index in range(min(MAP_RECORDS, len(data) // MAP_RECORD)):
+        pos, a = struct.unpack_from("<Hh", data, MAP_RECORD * index + 2)
+        links[index] = (pos, a // MAP_RECORD if a >= 0 else -1)
+    return links
+
+
+def link_chains(links: dict[int, tuple[int, int]]) -> list[list[int]]:
+    """The ``a`` chains that start at a record no other record names, in index order."""
+    named = {a for _, a in links.values() if a >= 0}
+    chains = []
+    for head in sorted(set(links) - named):
+        chain = [head]
+        while (nxt := links[chain[-1]][1]) >= 0 and nxt in links and nxt not in chain:
+            chain.append(nxt)
+        chains.append(chain)
+    return chains
+
+
+def matched_records(
+    polygons: list[GroundPolygon], patches: list[MapPatch]
+) -> list[tuple[GroundPolygon, list[int]]]:
+    """Each polygon with the records of the same anchor set and colour."""
+    by_key: dict[tuple[frozenset[int], int], list[int]] = {}
+    for patch in patches:
+        by_key.setdefault((frozenset(patch.anchors), patch.colour), []).append(patch.index)
+    return [
+        (poly, by_key.get((frozenset(poly.anchors), poly.colour & 0xFF), [])) for poly in polygons
+    ]
+
+
 def parse_map_bin(data: bytes) -> list[MapPatch]:
     """Active ``MAP.BIN`` records, read as the engine reads them.
 

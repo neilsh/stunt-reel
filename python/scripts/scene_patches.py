@@ -5,8 +5,9 @@ the record's anchors and their heights in the image's own anchor table; whether 
 ``SCENERY.scn`` is the image's tree (word for word, links aside) and has a polygon for it; every
 byte match of its polygon, in tree or ``MAP.BIN`` form and any vertex order, in the image and in
 the ``--scan`` files; any ``OP_TAP`` operand in those files naming one of its anchors; the
-tree polygons under its centroid; and the shapes the tree places inside its outline. A control line counts the matched records whose polygon the
-same byte search finds in the image. Reads proprietary files from the gitignored ``build/`` and
+tree polygons under its centroid; the shapes the tree places inside its outline; and whether
+the records' ``pos`` word or ``a`` chain sets them apart from the drawn ones. A control line
+counts the matched records whose polygon the same byte search finds in the image. Reads proprietary files from the gitignored ``build/`` and
 ``corpus/``; it prints counts, offsets, indices and colour numbers only (see ``NOTICE.md``).
 Evidence: ``research/playone-exe/world-scene.md`` section 2.1.
 
@@ -69,6 +70,23 @@ def control(image: bytes, matched: list[scene_tree.MapPatch]) -> str:
         )
     )
     return f"control: polygon bytes of {found} of {len(matched)} matched records found in the image"
+
+
+def record_fields(map_bin: bytes, lost: set[int]) -> list[str]:
+    """Whether a record's ``pos`` word or its ``a`` chain sets the lost records apart."""
+    links = scene_tree.map_links(map_bin)
+    drawn = {p.index for p in scene_tree.parse_map_bin(map_bin)} - lost
+    lines = []
+    for pos in sorted({links[i][0] for i in lost}):
+        same = [i for i in sorted(drawn) if links[i][0] == pos]
+        lines.append(f"pos 0x{pos:04X}: on {len(same)} drawn records {same}")
+    chains = [
+        "->".join(map(str, c)) + (" (no polygon)" if lost & set(c) else "")
+        for c in scene_tree.link_chains(links)
+        if len(c) < 10
+    ]
+    lines.append("a chains no record links into (under 10 long): " + ", ".join(chains))
+    return lines
 
 
 def polygon_hits(name: str, data: bytes, patch: scene_tree.MapPatch) -> list[str]:
@@ -172,6 +190,7 @@ def run(args: argparse.Namespace) -> int:
     )
     lost = {m.index for m in result.map_only}
     lines.append(control(image, [p for p in patches if p.index not in lost]))
+    lines += record_fields(map_bin, lost)
     for patch in result.map_only:
         lines += describe(patch, image, walked.polygons, hits[patch.index], tapped, placed)
     print("\n".join(lines))

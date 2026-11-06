@@ -282,3 +282,32 @@ def test_placements_carry_the_position_above_them() -> None:
         scene_tree.placements(
             _segment({0x00: [0, 0, 0, 0, 0x10], 0x10: [0, 0, 0, 0, 0x10]}), max_steps=100
         )
+
+
+def test_map_links_and_chains() -> None:
+    """``a`` names a record by byte offset; chains start where nothing links in."""
+    records = [
+        struct.pack("<8h7H", 0, 0x00FF, 30, -1, 0, -1, 1, 3, 1, 2, 3, 0, 0, 0, 0),
+        struct.pack("<8h7H", 0, 0x00FF, -1, -1, 0, -1, 1, 3, 1, 2, 3, 0, 0, 0, 0),
+        struct.pack("<8h7H", 0, 0x07FF, -1, -1, 0, -1, 1, 3, 1, 2, 3, 0, 0, 0, 0),
+    ]
+    links = scene_tree.map_links(b"".join(records))
+    assert links == {0: (0x00FF, 1), 1: (0x00FF, -1), 2: (0x07FF, -1)}
+    assert scene_tree.link_chains(links) == [[0, 1], [2]]
+    lines = scene_patches.record_fields(b"".join(records), {1})
+    assert lines == [
+        "pos 0x00FF: on 1 drawn records [0]",
+        "a chains no record links into (under 10 long): 0->1 (no polygon), 2",
+    ]
+
+
+def test_matched_records_and_scene_ground_report() -> None:
+    """Each coarse polygon is reported with the record it matches."""
+    patches = scene_tree.parse_map_bin(
+        _map_record(1, 195, [1, 2, 3]) + _map_record(1, 14, [6, 5, 4])
+    )
+    walked = scene_tree.walk(TREE)
+    pairs = scene_tree.matched_records(walked.polygons, patches)
+    assert sorted((p.colour, r) for p, r in pairs) == [(14, [1]), (195, [0])]
+    text = scene_ground.report(walked, scene_tree.compare(walked.polygons, patches), patches)
+    assert "coarse SP_GROUND polygons (1): record 1 at 0x007A colour 14" in text
