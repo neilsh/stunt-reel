@@ -29,6 +29,10 @@ jobs:
     # the GPU tests, so it installs a software Vulkan driver; see ADR 0006.
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      # The commit-message step asks which pull requests hold a commit.
+      pull-requests: read
     env:
       # mise installs every tool mise.toml declares on the first `mise run` unless this is
       # off. Inside CI that compiled cargo-deny and cargo-llvm-cov from source on every job
@@ -99,11 +103,17 @@ jobs:
           mise exec -- prek run --config prek.toml "$@"
       - name: Commit messages on the pull request
         # AGENTS.md SOP 3, for a commit made with --no-verify. Only a pull request's own commits:
-        # main's history holds GitHub squash merges, whose messages the hook never saw.
+        # main's history holds GitHub squash merges, whose messages the hook never saw. A branch
+        # stacked on a since squash-merged pull request still carries that parent's commits;
+        # the script skips a failing commit that a merged pull request other than this one
+        # holds (asked through gh, hence the token and pull-requests: read), and says so.
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: mise run commit-msg-check -- --range "origin/$BASE_REF..HEAD"
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: mise run commit-msg-check -- --range "origin/$BASE_REF..HEAD" --pr "$PR_NUMBER"
 
   windows-smoke:
     name: Windows smoke
