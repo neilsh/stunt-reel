@@ -50,10 +50,38 @@ def prek() -> str:
     return found
 
 
+#: Seconds any one git or prek call may take; these fixtures finish in a few.
+_TIMEOUT = 60
+
+
 def _run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603 - fixed test arguments
-        list(args), cwd=repo, capture_output=True, text=True, check=False
-    )
+    """Run a command in `repo`; a hung one is killed and fails the test with its output.
+
+    Without a timeout a hung prek held its pytest worker until the gate killed the worker,
+    which orphaned prek with the scratch repository as its working directory (issue #220).
+    """
+    try:
+        return subprocess.run(  # noqa: S603 - fixed test arguments
+            list(args),
+            cwd=repo,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired as error:
+        pytest.fail(
+            f"{' '.join(args)} timed out after {_TIMEOUT} s\n"
+            f"stdout:\n{_text(error.stdout)}\nstderr:\n{_text(error.stderr)}"
+        )
+
+
+def _text(output: str | bytes | None) -> str:
+    # On POSIX a timed-out run hands back bytes even with text=True.
+    if isinstance(output, bytes):
+        return output.decode(errors="replace")
+    return output or ""
 
 
 def _repo(path: Path) -> Path:
