@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use clap::{ArgGroup, CommandFactory, Parser};
 use stunt_core::anchor::parse_anchor_table;
 use stunt_core::scene::decode_archive_shapes;
+use stunt_core::sod::ShadeLight;
 use stunt_gltf::{export_scene_frame, export_shape, summarize};
 
 use crate::scene::{SceneSources, build_scene, find_scenery_file};
@@ -120,7 +121,7 @@ fn glb_for_shape(archive: &Path, sidata: Option<&Path>, shape_id: u16) -> Result
         .and_then(|path| fs::read(path).ok())
         .map(|data| parse_anchor_table(&data))
         .unwrap_or_default();
-    let decoded = decode_archive_shapes(&bytes, &anchors)
+    let decoded = decode_archive_shapes(&bytes, &anchors, ShadeLight::default())
         .map_err(|e| format!("parse {}: {e}", archive.display()))?;
     let Some(model) = decoded.shapes.get(&shape_id) else {
         let skipped = decoded

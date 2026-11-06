@@ -4,6 +4,7 @@
 //! instances adhering to Seam 3 and Invariants `[I1]`, `[I2]`, `[I3]`, `[I5]`.
 
 mod decal;
+mod light;
 mod tessellate;
 mod vm;
 
@@ -16,7 +17,8 @@ mod vm_tests;
 
 pub use crate::contracts::shape::{DecodeMode, DecodeRecord, SodHeader, SodStop, SodStopReason};
 pub use decal::{DECAL_FLAG_BIT, EPSILON_DISPLACEMENT};
-pub use tessellate::{IDENTITY_MATRIX, decode_sod};
+pub use light::ShadeLight;
+pub use tessellate::{IDENTITY_MATRIX, decode_sod, decode_sod_lit};
 pub use vm::{
     CENSUS_SKIPS, CensusSkip, OP_ADDV, OP_BLOCK, OP_BVGT, OP_CLRV, OP_COLOR, OP_DOT, OP_END,
     OP_GETV, OP_GOSUB, OP_GOTO, OP_GVPOLY, OP_GVPOLY16, OP_ID, OP_IFVIS, OP_INTV, OP_IPG,

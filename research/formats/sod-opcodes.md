@@ -48,7 +48,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **35** | `0x013B` | 315 | `OP_MISTY` | `...` | Distance fog / atmospheric haze attenuation |
 | **36** | `0x0144` | 324 | `OP_SHADE1` | `normal_reg: u16, ramp: u16` | Front-facing directional lighting ramp |
 | **37** | `0x014D` | 333 | `OP_SHADE2` | `normal_reg: u16, ramp: u16` | Back-facing directional lighting ramp |
-| **38** | `0x0156` | 342 | `OP_SHADES` | `count: u16, ...triplets` | Batch upload lighting normal vectors. Parsed and deliberately not applied; per-vertex shade words observed 4 to 68 in `CTRY.ALL`, and `siobj.cpp` discards them too (`[Bounded Observation]`). The props loss is structural, not tonal: 79% of prop-layer pixels already matched in the first index comparison |
+| **38** | `0x0156` | 342 | `OP_SHADES` | `count: u16, ...triplets` | Batch upload lighting normal vectors: each writes the shade word `s = -clamp((N . L) >> 16, +-0x3FFF)` (`PLAYONE` `0x9481`) that the `SHADE*` and `GVPOLY*` opcodes read. Applied with the world light `L = (99, 32766, -17)` in the raw model frame (`[Supported Inference]`, [`sod-vm.md` § 8.5](../playone-exe/sod-vm.md#85-polygon-colour-at-shade-time)); `siobj.cpp` discards them |
 | **39** | `0x015F` | 351 | `OP_GOURAUD` | `...` | Smooth Gouraud-shaded polygon |
 | **40** | `0x0168` | 360 | `OP_SHADEPOLY`| `count: u16, regs..., norm, shades...` | Normal-lit shaded polygon (`OP_GVPOLY`) |
 | **41** | `0x0171` | 369 | `OP_AIRBRUSH` | `...` | Dithered / airbrushed soft shadow polygon |
@@ -187,7 +187,7 @@ The selected ID is resolved through the resource cache and passed to a screen-sp
 Because 1992 DOS real-mode software lacked hardware depth buffers:
 - `REJ` (`0x01B9`), `REJVEC` (`0x01B0`) and `REJ2D` (`0x01C2`) write one facing flag per face into `work:0x7C68`, starting at byte offset `first`: set when the face points at the eye.
 - `sorton <face>` (0x018C): Evaluates whether camera eye is in front of or behind separating plane `<face>` (its flag byte). Traverses front and back geometry subtrees in back-to-front order (Binary Space Partitioning for Painter's algorithm).
-- `OP_IFVIS <face>` (0x017A) / `OP_BVIS <face>` (0x0183): run the next `size` bytes when flag `<face>` is set (`OP_IFVIS`) or clear (`OP_BVIS`). The operand is a flag offset, not a condition code: there is no distance form.
+- `OP_IFVIS <face>` (0x017A) / `OP_BVIS <face>` (0x0183): run the section when flag `<face>` is set (`OP_IFVIS`) or clear (`OP_BVIS`); otherwise skip `size` bytes counted from the size word ([`sod-vm.md` § 8.6](../playone-exe/sod-vm.md#86-facing-flags-op_rej-and-op_ifvis)). The operand is a flag offset, not a condition code: there is no distance form.
 
 ### 2.6 `OP_MOVETO` / `OP_ZLINETO` / `OP_LINECOL` / `OP_DOT` in the reconstruction
 

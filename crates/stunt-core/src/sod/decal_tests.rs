@@ -5,6 +5,7 @@ use crate::sod::DECAL_FLAG_BIT;
 use crate::sod::decal::{bounds_overlap, is_coplanar_facet, polygon_bounds};
 use crate::sod::vm::RawPolygon;
 
+/// A decal on each of six planes moves exactly the displacement along its normal (`[I5]`).
 #[test]
 fn test_challenge_i5_exact_normal_displacement_across_multiple_planes() {
     // Test decal displacement distance across 6 canonical and oblique planes:
@@ -81,6 +82,7 @@ fn test_challenge_i5_exact_normal_displacement_across_multiple_planes() {
 
     for (case_idx, (expected_normal, base_verts)) in test_cases.into_iter().enumerate() {
         let base_poly = RawPolygon {
+            vertex_palette: Vec::new(),
             vertices: base_verts.clone(),
             palette_index: 30,
             normal: expected_normal,
@@ -111,6 +113,7 @@ fn test_challenge_i5_exact_normal_displacement_across_multiple_planes() {
             .collect();
 
         let decal_poly = RawPolygon {
+            vertex_palette: Vec::new(),
             vertices: decal_verts.clone(),
             palette_index: 15,
             normal: expected_normal,
@@ -176,9 +179,11 @@ fn test_challenge_i5_exact_normal_displacement_across_multiple_planes() {
     }
 }
 
+/// A polygon that is disjoint from or not coplanar with an earlier one is not a decal (`[I5]`).
 #[test]
 fn test_challenge_i5_rejection_of_disjoint_and_noncoplanar_facets() {
     let base = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![
             [0.0, 0.0, 0.0],
             [10.0, 0.0, 0.0],
@@ -194,6 +199,7 @@ fn test_challenge_i5_rejection_of_disjoint_and_noncoplanar_facets() {
 
     // 1. Same plane y=0, but spatially disjoint (x in [50, 60], z in [50, 60])
     let disjoint = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![
             [50.0, 0.0, 50.0],
             [60.0, 0.0, 50.0],
@@ -213,6 +219,7 @@ fn test_challenge_i5_rejection_of_disjoint_and_noncoplanar_facets() {
 
     // 2. Parallel normal [0, 1, 0], overlapping in x-z, but offset in y by 0.01m (> plane_tol 1e-4)
     let parallel_offset = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![
             [2.0, 0.01, 2.0],
             [4.0, 0.01, 2.0],
@@ -232,6 +239,7 @@ fn test_challenge_i5_rejection_of_disjoint_and_noncoplanar_facets() {
 
     // 3. Tilted normal by 5 degrees (~0.087 rad)
     let tilted = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![
             [2.0, 0.0, 2.0],
             [4.0, 0.0, 2.0],
@@ -250,9 +258,11 @@ fn test_challenge_i5_rejection_of_disjoint_and_noncoplanar_facets() {
     );
 }
 
+/// A later polygon coplanar with and overlapping an earlier one becomes a displaced decal.
 #[test]
 fn test_coplanar_decal_geometry_resolution() {
     let base = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![
             [-10.0, 0.0, -10.0],
             [10.0, 0.0, -10.0],
@@ -268,6 +278,7 @@ fn test_coplanar_decal_geometry_resolution() {
 
     // Overlapping decal on y=0 plane
     let decal = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![
             [-2.0, 0.0, -2.0],
             [2.0, 0.0, -2.0],
@@ -283,6 +294,7 @@ fn test_coplanar_decal_geometry_resolution() {
 
     // Disjoint polygon outside base bounds
     let disjoint = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![
             [50.0, 0.0, 50.0],
             [60.0, 0.0, 50.0],
@@ -298,6 +310,7 @@ fn test_coplanar_decal_geometry_resolution() {
 
     // Skewed normal polygon
     let skewed = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![
             [-2.0, 0.0, -2.0],
             [2.0, 0.0, -2.0],
@@ -337,9 +350,11 @@ fn test_coplanar_decal_geometry_resolution() {
     assert!(!processed[3].is_decal, "skewed normal facet is not a decal");
 }
 
+/// Polygon bounds are the per-axis extremes, and overlap is their intersection.
 #[test]
 fn test_polygon_bounds_and_overlap() {
     let p = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![[1.0, -2.0, 3.0], [5.0, 10.0, -1.0], [-4.0, 2.0, 8.0]],
         palette_index: 0,
         normal: [0.0, 1.0, 0.0],

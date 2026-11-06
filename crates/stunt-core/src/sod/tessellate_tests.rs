@@ -24,10 +24,12 @@ fn make_sod_header(
     header
 }
 
+/// Vertices weld only when position, normal, palette index and flags all agree (`[I1]`).
 #[test]
 fn test_challenge_i1_vertex_welding_full_attribute_tuple_oracle() {
     // Base triangle
     let tri1 = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 2.0, 0.0]],
         palette_index: 10,
         normal: [0.0, 0.0, 1.0],
@@ -38,6 +40,7 @@ fn test_challenge_i1_vertex_welding_full_attribute_tuple_oracle() {
 
     // tri2 shares vertices 0 and 1 with tri1, identical normal and palette -> those 2 MUST weld
     let tri2 = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [2.0, 2.0, 0.0]],
         palette_index: 10,
         normal: [0.0, 0.0, 1.0],
@@ -48,6 +51,7 @@ fn test_challenge_i1_vertex_welding_full_attribute_tuple_oracle() {
 
     // tri3 shares vertices [0.0, 0.0, 0.0] and [2.0, 0.0, 0.0], but different palette index 20 -> MUST NOT weld
     let tri3 = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, -2.0, 0.0]],
         palette_index: 20,
         normal: [0.0, 0.0, 1.0],
@@ -58,6 +62,7 @@ fn test_challenge_i1_vertex_welding_full_attribute_tuple_oracle() {
 
     // tri4 shares vertex [0.0, 0.0, 0.0], but normal is [0, 1, 0] -> MUST NOT weld
     let tri4 = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![[0.0, 0.0, 0.0], [0.0, 0.0, 2.0], [2.0, 0.0, 0.0]],
         palette_index: 10,
         normal: [0.0, 1.0, 0.0],
@@ -89,10 +94,12 @@ fn test_challenge_i1_vertex_welding_full_attribute_tuple_oracle() {
     assert_eq!(ir.indices[5], 3); // new vertex
 }
 
+/// A decal never welds to the base polygon it shares an edge with (`[I5]`).
 #[test]
 fn test_challenge_i5_decal_edge_sharing_and_welding() {
     // Base quad at z=0 (Palette 10)
     let base = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![
             [-10.0, -10.0, 0.0],
             [10.0, -10.0, 0.0],
@@ -108,6 +115,7 @@ fn test_challenge_i5_decal_edge_sharing_and_welding() {
 
     // Decal triangle 1: vertices (0,0), (2,0), (0,2) at z=0
     let decal1 = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 2.0, 0.0]],
         palette_index: 15,
         normal: [0.0, 0.0, 1.0],
@@ -118,6 +126,7 @@ fn test_challenge_i5_decal_edge_sharing_and_welding() {
 
     // Decal triangle 2: vertices (2,0), (2,2), (0,2) at z=0 (shares edge with decal1)
     let decal2 = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![[2.0, 0.0, 0.0], [2.0, 2.0, 0.0], [0.0, 2.0, 0.0]],
         palette_index: 15,
         normal: [0.0, 0.0, 1.0],
@@ -154,10 +163,12 @@ fn test_challenge_i5_decal_edge_sharing_and_welding() {
     }
 }
 
+/// Positions closer than the weld tolerance merge and farther ones stay apart (`[I1]`).
 #[test]
 fn test_challenge_i1_welding_distance_threshold_oracle() {
     // Sub-threshold separation (0.00004 m < 1e-4 tolerance) -> MUST WELD
     let poly_a = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
         palette_index: 10,
         normal: [0.0, 0.0, 1.0],
@@ -166,6 +177,7 @@ fn test_challenge_i1_welding_distance_threshold_oracle() {
         visibility: VisibilityCondition::Always,
     };
     let poly_b = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![
             [0.00004, 0.0, 0.0],
             [1.00004, 0.0, 0.0],
@@ -187,6 +199,7 @@ fn test_challenge_i1_welding_distance_threshold_oracle() {
 
     // Super-threshold separation (0.0003 m > 1e-4 tolerance) -> MUST NOT WELD
     let poly_c = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
         palette_index: 10,
         normal: [0.0, 0.0, 1.0],
@@ -195,6 +208,7 @@ fn test_challenge_i1_welding_distance_threshold_oracle() {
         visibility: VisibilityCondition::Always,
     };
     let poly_d = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![[0.0003, 0.0, 0.0], [1.0003, 0.0, 0.0], [0.0, 1.0003, 0.0]],
         palette_index: 10,
         normal: [0.0, 0.0, 1.0],
@@ -211,9 +225,11 @@ fn test_challenge_i1_welding_distance_threshold_oracle() {
     );
 }
 
+/// Identical polygons weld; a different normal or palette index keeps vertices apart.
 #[test]
 fn test_attribute_preserving_vertex_welding() {
     let p1 = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
         palette_index: 10,
         normal: [0.0, 0.0, 1.0],
@@ -226,6 +242,7 @@ fn test_attribute_preserving_vertex_welding() {
 
     // p3: same positions, but different normal -> distinct vertices
     let p3 = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
         palette_index: 10,
         normal: [0.0, 1.0, 0.0],
@@ -236,6 +253,7 @@ fn test_attribute_preserving_vertex_welding() {
 
     // p4: same positions, but different palette index -> distinct vertices
     let p4 = RawPolygon {
+        vertex_palette: Vec::new(),
         vertices: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
         palette_index: 25,
         normal: [0.0, 0.0, 1.0],

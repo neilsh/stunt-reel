@@ -103,6 +103,7 @@ pub(crate) fn displace_decal_polygon(poly: &RawPolygon, eps: f32) -> RawPolygon 
         .collect();
 
     RawPolygon {
+        vertex_palette: poly.vertex_palette.clone(),
         vertices: displaced_vertices,
         palette_index: poly.palette_index,
         normal: poly.normal,

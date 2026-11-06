@@ -11,6 +11,7 @@ use crate::anchor::AnchorPoint;
 use crate::contracts::shape::{SodHeader, SodStop, SodStopReason, VisibilityCondition};
 use crate::reader::ByteReader;
 use crate::sod::SodError;
+use crate::sod::light::ShadeLight;
 use std::collections::HashMap;
 
 // Standard .SOD Opcodes per historical SOD.H and specification
@@ -54,11 +55,6 @@ pub const OP_POLYZ: u16 = 0x00F3;
 pub const OP_SPHERE: u16 = 0x00FC;
 /// Emit a perforated disc ring (`center_reg, r_in, r_out`).
 pub const OP_PERFDISK: u16 = 0x010E;
-/// Model-space light for `OP_SHADES` (1.0 = 32767; decoded model space is +Y up, so this
-/// points down); `[Hypothesis]`, and its sign was chosen before actors were stood upright
-/// (`research/playone-exe/sod-vm.md` § 8.5).
-const SHADE_LIGHT: [i64; 3] = [0, -32767, 0];
-
 /// Branches (SORT pushes, `GOTO`, `GOSUB`) one walk may take before it is malformed.
 const MAX_BRANCHES: usize = 4096;
 /// Set the active polygon fill palette index (`color: u16`, `0..=255`).
@@ -222,6 +218,10 @@ pub(crate) struct RawPolygon {
     pub vertices: Vec<[f32; 3]>,
     /// VGA Mode 13h palette index `0..=255` per `[I3]`.
     pub palette_index: u8,
+    /// Palette index at each vertex of a Gouraud polygon (`GVPOLY`), one per entry of
+    /// `vertices`, which the renderer interpolates across it; empty for a flat polygon,
+    /// which is drawn at `palette_index` throughout.
+    pub vertex_palette: Vec<u8>,
     /// Outward unit surface normal `[nx, ny, nz]`.
     pub normal: [f32; 3],
     /// Bitflags (e.g. `0x01` for coplanar decal `[I5]`).
@@ -308,6 +308,7 @@ fn sphere_polygons(
             let vertices: Vec<[f32; 3]> = face.iter().map(|&i| metric(corners[i])).collect();
             let normal = compute_polygon_normal(&vertices);
             RawPolygon {
+                vertex_palette: Vec::new(),
                 vertices,
                 palette_index,
                 normal,
@@ -366,6 +367,7 @@ fn line_polygons(
         ];
         let n = compute_polygon_normal(&quad);
         out.push(RawPolygon {
+            vertex_palette: Vec::new(),
             vertices: quad.to_vec(),
             palette_index,
             normal: n,
@@ -375,6 +377,7 @@ fn line_polygons(
         });
         let rev: Vec<[f32; 3]> = quad.iter().rev().copied().collect();
         out.push(RawPolygon {
+            vertex_palette: Vec::new(),
             vertices: rev,
             palette_index,
             normal: [-n[0], -n[1], -n[2]],
@@ -408,6 +411,7 @@ fn dot_polygons(
             let verts = tri.to_vec();
             let normal = compute_polygon_normal(&verts);
             out.push(RawPolygon {
+                vertex_palette: Vec::new(),
                 vertices: verts,
                 palette_index,
                 normal,
@@ -558,7 +562,9 @@ pub(crate) fn run_vm(
     data: &[u8],
     policy: Policy,
     anchors: Option<&[AnchorPoint]>,
+    light: ShadeLight,
 ) -> Result<VmRun, SodError> {
+    let light = light.0.map(i64::from);
     if data.len() < 10 {
         return Err(SodError::UnexpectedEof {
             expected: 10,
@@ -826,6 +832,7 @@ pub(crate) fn run_vm(
 
                     let norm = compute_polygon_normal(&poly_verts);
                     polygons.push(RawPolygon {
+                        vertex_palette: Vec::new(),
                         vertices: poly_verts,
                         palette_index: cur_color,
                         normal: norm,
@@ -871,11 +878,13 @@ pub(crate) fn run_vm(
                         poly_verts.push([mx, my, mz]);
                     }
 
-                    // Flat approximation of the per-vertex ramp index: the mean of the vertices'
-                    // `SHADE16` levels (`[Hypothesis]`: the player interpolates them, section 8.5).
+                    // Each vertex gets its own ramp index, which the renderer interpolates in
+                    // screen space as the filler `0x75DB` does (`research/playone-exe/
+                    // terrain-shade.md` sections 5-6); the vertex fraction is dropped. The mean
+                    // level is the polygon's own index, which decal detection compares.
                     let base = i32::from((ramp >> 8) as u8);
                     let sixteen = opcode == OP_GVPOLY16;
-                    let level_sum: i32 = vertex_shades
+                    let levels: Vec<i32> = vertex_shades
                         .iter()
                         .map(|&off| {
                             let mut s = shade_words.get((off / 2) & 2047);
@@ -884,14 +893,21 @@ pub(crate) fn run_vm(
                             }
                             shade_level(s, base)
                         })
-                        .sum();
+                        .collect();
+                    let level_sum: i32 = levels.iter().sum();
                     let level = level_sum
                         .checked_div(i32::try_from(vertex_shades.len()).unwrap_or(1))
                         .unwrap_or(0);
                     #[expect(clippy::cast_sign_loss, reason = "clamped to the palette's 0..=255")]
                     let palette_index = shade_colour(base, level).clamp(0, 255) as u8;
 
+                    #[expect(clippy::cast_sign_loss, reason = "clamped to the palette's 0..=255")]
+                    let vertex_palette: Vec<u8> = levels
+                        .iter()
+                        .map(|&l| shade_colour(base, l).clamp(0, 255) as u8)
+                        .collect();
                     polygons.push(RawPolygon {
+                        vertex_palette,
                         normal: compute_polygon_normal(&poly_verts),
                         vertices: poly_verts,
                         palette_index,
@@ -1139,8 +1155,8 @@ pub(crate) fn run_vm(
             }
             OP_SHADES => {
                 // `PLAYONE` 0x9481: `s = -clamp((N . L) >> 16, +-0x3FFF)` with `N`, `L` at
-                // 1.0 = 32767. `L` is handed to the display-list entry per object, so the
-                // renderer's constant `SHADE_LIGHT` (model up) and its sign are `[Hypothesis]`.
+                // 1.0 = 32767, both in the shape's raw model frame. `L` is the light the
+                // caller handed this object (`ShadeLight`).
                 let first = r.read_u16_le()? as usize;
                 let count = r.read_u16_le()? as usize;
                 for i in 0..count {
@@ -1151,11 +1167,9 @@ pub(crate) fn run_vm(
                     ];
                     #[expect(
                         clippy::arithmetic_side_effects,
-                        reason = "each n[k] is an i16 and each SHADE_LIGHT[k] is at most 32767, so the i64 sum cannot overflow"
+                        reason = "each n[k] and light[k] is an i16, so the i64 sum cannot overflow"
                     )]
-                    let dot =
-                        (n[0] * SHADE_LIGHT[0] + n[1] * SHADE_LIGHT[1] + n[2] * SHADE_LIGHT[2])
-                            >> 16;
+                    let dot = (n[0] * light[0] + n[1] * light[1] + n[2] * light[2]) >> 16;
                     #[expect(clippy::cast_possible_truncation, reason = "clamped to +-0x3FFF")]
                     let shade = dot.clamp(-0x3FFF, 0x3FFF) as i32;
                     // Shade offsets wrap modulo 2048, as `PLAYONE` masks them.

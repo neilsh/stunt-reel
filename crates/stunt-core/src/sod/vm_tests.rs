@@ -561,15 +561,17 @@ fn test_sort_with_a_backward_target_ends_at_the_first_return() {
     assert_eq!(ir.decode().expect("record").returned_at, Some(op + 22));
 }
 
+/// `SHADE16` colours a polygon from its ramp base and the shade of the normal it names.
 #[test]
 fn test_shade16_picks_the_ramp_entry_from_the_normal() {
-    // `SHADES 0 2 (0,-32767,0) (0,32767,0)`, then `SHADE16 norm base; POLYZ` per polygon.
+    // `SHADES 0 2 (0,32767,0) (0,-32767,0)`, then `SHADE16 norm base; POLYZ` per polygon, under
+    // the world light `(99, 32766, -17)`, which lights the second normal.
     // `PLAYONE` 0xA550: colour = base + max(0, (s >> 2) >> 8 [- 2 when base is 0x10]).
     let mut bytes = sort_prelude();
     bytes.extend_from_slice(&0x0156u16.to_le_bytes());
     bytes.extend_from_slice(&0u16.to_le_bytes());
     bytes.extend_from_slice(&2u16.to_le_bytes());
-    for n in [[0i16, -32767, 0], [0, 32767, 0]] {
+    for n in [[0i16, 32767, 0], [0, -32767, 0]] {
         for c in n {
             bytes.extend_from_slice(&c.to_le_bytes());
         }
@@ -599,15 +601,16 @@ fn test_shade16_picks_the_ramp_entry_from_the_normal() {
     assert_eq!(colours, vec![0x30, 29, 63]);
 }
 
+/// `GVPOLY16` takes its ramp base from the word after its registers, not the running colour.
 #[test]
 fn test_gvpoly16_takes_its_ramp_from_the_word_after_the_registers() {
     use crate::sod::vm::OP_GVPOLY16;
-    // `SHADES 0 2 (0,-32767,0) (0,32767,0)`, `COLOR 7`, then `GVPOLY16 3 regs, 0x3003, 3 shade
+    // `SHADES 0 2 (0,32767,0) (0,-32767,0)`, `COLOR 7`, then `GVPOLY16 3 regs, 0x3003, 3 shade
     // offsets`. The word after the registers is `(ramp_base << 8) | count`, so the polygon is
     // painted on the grey ramp (0x30 + 15 for a fully lit vertex), not the running colour 7.
     let mut bytes = sort_prelude();
     push_words(&mut bytes, &[0x0156, 0, 2]);
-    for n in [[0i16, -32767, 0], [0, 32767, 0]] {
+    for n in [[0i16, 32767, 0], [0, -32767, 0]] {
         for c in n {
             bytes.extend_from_slice(&c.to_le_bytes());
         }
@@ -616,6 +619,66 @@ fn test_gvpoly16_takes_its_ramp_from_the_word_after_the_registers() {
     push_words(&mut bytes, &[0x3003, 2, 2, 2, OP_RETURN]);
     let ir = decode(&bytes, "GVPOLY16").expect("decode gvpoly16");
     assert_eq!(ir.vertices[0].palette_index, 63);
+}
+
+/// `SHADES 0 1 (0,32767,0)`, then `SHADE16 0 0x30; POLYZ`: one upward normal on the grey ramp.
+fn shade16_up_normal() -> Vec<u8> {
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[0x0156, 0, 1, 0, 32767, 0]);
+    push_words(
+        &mut bytes,
+        &[0x02B5, 0, 0x30, OP_POLYZ, 3, 0, 12, 24, OP_RETURN],
+    );
+    bytes
+}
+
+/// `SHADES` shades against the light passed to the decode, not a constant.
+#[test]
+fn test_shades_dots_the_normal_with_the_light_it_is_given() {
+    use crate::sod::{DecodeMode, ShadeLight, decode_sod_lit};
+    let bytes = shade16_up_normal();
+    let colour = |light| {
+        let ir =
+            decode_sod_lit(&bytes, "LIGHT", None, DecodeMode::Strict, light).expect("decode lit");
+        ir.vertices[0].palette_index
+    };
+    // `s = -((N . L) >> 16)`: the world light points along +Y like the normal, so `s` is
+    // negative and the face stays at its base; a light along -Y gives `s = 0x3FFF`, and the
+    // 16-level ramp step `(s >> 2) >> 8` is 15.
+    assert_eq!(colour(ShadeLight::default()), 0x30);
+    assert_eq!(colour(ShadeLight::WORLD_0X2D), 0x30);
+    assert_eq!(colour(ShadeLight([0, -32767, 0])), 0x30 + 15);
+}
+
+/// Film variable 13 = `0x2D` gives the world light observed on both films.
+#[test]
+fn test_world_light_for_film_variable_13() {
+    use crate::sod::ShadeLight;
+    // Both films set variable 13 to 0x2D; that value's light is the one observed.
+    assert_eq!(ShadeLight::world(0x2D), ShadeLight([99, 32766, -17]));
+}
+
+/// `GVPOLY16` gives each vertex its own ramp index for the renderer to interpolate.
+#[test]
+fn test_gvpoly16_gives_each_vertex_its_own_ramp_index() {
+    use crate::sod::vm::OP_GVPOLY16;
+    // As above, but the first vertex takes the unlit normal: its index is the ramp base and
+    // the other two are fully lit, for the renderer to interpolate between.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[0x0156, 0, 2]);
+    for n in [[0i16, 32767, 0], [0, -32767, 0]] {
+        for c in n {
+            bytes.extend_from_slice(&c.to_le_bytes());
+        }
+    }
+    push_words(&mut bytes, &[OP_GVPOLY16, 3, 0, 12, 24]);
+    push_words(&mut bytes, &[0x3003, 0, 2, 2, OP_RETURN]);
+    let ir = decode(&bytes, "GVPOLY16-VERTEX").expect("decode gvpoly16");
+    let corners: Vec<u8> = ir.indices[..3]
+        .iter()
+        .map(|&i| ir.vertices[i as usize].palette_index)
+        .collect();
+    assert_eq!(corners, vec![0x30, 63, 63]);
 }
 
 fn push_words(bytes: &mut Vec<u8>, words: &[u16]) {
