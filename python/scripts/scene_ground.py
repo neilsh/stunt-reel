@@ -28,7 +28,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def report(walked: scene_tree.TreeWalk, result: scene_tree.Comparison) -> str:
+def report(
+    walked: scene_tree.TreeWalk,
+    result: scene_tree.Comparison,
+    patches: list[scene_tree.MapPatch] | None = None,
+) -> str:
     """The printed summary."""
     nodes = sum(walked.node_types.values())
     colours = Counter(p.colour & 0xFF for p in walked.polygons)
@@ -38,6 +42,13 @@ def report(walked: scene_tree.TreeWalk, result: scene_tree.Comparison) -> str:
         + ", ".join(f"{c}x{n}" for c, n in sorted(colours.items())),
         f"same anchors and colour as MAP.BIN: {result.same}",
     ]
+    coarse = [
+        f"record {'/'.join(map(str, records)) or '-'} at 0x{poly.offset:04X} colour {poly.colour}"
+        for poly, records in scene_tree.matched_records(walked.polygons, patches or [])
+        if poly.kind == "ground-coarse"
+    ]
+    if coarse:
+        lines.append(f"coarse SP_GROUND polygons ({len(coarse)}): " + ", ".join(coarse))
     lines += [
         f"recoloured: tree {p.colour} vs patch {m.index} colour {m.colour}"
         for p, m in result.recoloured
@@ -69,7 +80,8 @@ def run(args: argparse.Namespace) -> int:
         for offset, kind in walked.unknown:
             print(f"[scene-ground] unknown node type {kind} at 0x{offset:04X}", file=sys.stderr)
         return 1
-    print(report(walked, scene_tree.compare(walked.polygons, scene_tree.parse_map_bin(map_bin))))
+    patches = scene_tree.parse_map_bin(map_bin)
+    print(report(walked, scene_tree.compare(walked.polygons, patches), patches))
     return 0
 
 
