@@ -238,25 +238,6 @@ identically ([`method.md`](../../../research/parity/method.md) § 3).
 4. **Phase-1 reference rows (§ 4.1)**, one commit per film, each with its `log.md` row. These need
    DOSBox and `MAKEONE`, are the only steps that do, and wait for step 3.
 
-## 8. Tickets
-
-Filed 2026-11-06. One parent and five tickets; T5 is labelled `research` and has no parent, because `vault-tod` is out of this note's scope. Each ticket is one PR; blocking is a native issue dependency
-([`docs/agents/issue-tracker.md`](../../agents/issue-tracker.md)).
-
-| # | Title | Labels | Covers | Blocked by |
-|---|---|---|---|---|
-| P [#242](https://github.com/neilsh/stunt-reel/issues/242) | VAULT films are not parity targets | none (parent) | this note | — |
-| T1 [#243](https://github.com/neilsh/stunt-reel/issues/243) | Headless renders spend a second enumerating graphics backends they never use | `ready-for-agent` | D8, step 0 | — |
-| T2 [#244](https://github.com/neilsh/stunt-reel/issues/244) | `parity` and `sweep` render one film at a time | `ready-for-agent` | D6, D7, § 4.2 to § 4.4, steps 1 and 2 | — |
-| T3 [#245](https://github.com/neilsh/stunt-reel/issues/245) | Parity renders don't play the archive their reference capture recorded | `ready-for-agent` | D9, step 3 | — |
-| T4 [#246](https://github.com/neilsh/stunt-reel/issues/246) | `SPLANES.FLM` and `LAND.FLM` are not parity references | `ready-for-human` (DOSBox, `MAKEONE`) | D3, D5, step 4 | T3 |
-| T5 [#247](https://github.com/neilsh/stunt-reel/issues/247) | The fade floor drops most frames of a night film | `needs-triage`, `research` | § 7, a prerequisite for `vault-tod` | — |
-
-T3 also fits under the existing parent #87 (films archived and captured reliably on both builds).
-Phase 2 (`vault-balloon`, `vault-traintnl`) gets its own ticket when D3's trigger fires, not now.
-Drawing only the captured ticks (§ 7) stays a note here until a sweep's render time is the
-bottleneck again.
-
 ## 7. Out of scope (later specs or later steps)
 
 * **A fade floor for night films**, which `vault-tod` needs. The fade floor drops most frames of a
@@ -280,3 +261,22 @@ bottleneck again.
 * **A live RAM or VRAM cap on `--jobs`.** At the default of 8, § 3 leaves ample room on this
   machine.
 * **D8 on the windowed path.** Presentation surfaces are not covered by the probe.
+
+## 8. Tickets
+
+Filed 2026-11-06. One parent and five tickets; T5 is labelled `research` and has no parent, because `vault-tod` is out of this note's scope. Each ticket is one PR; blocking is a native issue dependency
+([`docs/agents/issue-tracker.md`](../../agents/issue-tracker.md)).
+
+| # | Title | Labels | Covers | Blocked by |
+|---|---|---|---|---|
+| P [#242](https://github.com/neilsh/stunt-reel/issues/242) | VAULT films are not parity targets | none (parent) | this note | — |
+| T1 [#243](https://github.com/neilsh/stunt-reel/issues/243) | Headless renders spend a second enumerating graphics backends they never use | `ready-for-agent` | D8, step 0 | — |
+| T2 [#244](https://github.com/neilsh/stunt-reel/issues/244) | `parity` and `sweep` render one film at a time | `ready-for-agent` | D6, D7, § 4.2 to § 4.4, steps 1 and 2 | — |
+| T3 [#245](https://github.com/neilsh/stunt-reel/issues/245) | Parity renders don't play the archive their reference capture recorded | `ready-for-agent` | D9, step 3 | — |
+| T4 [#246](https://github.com/neilsh/stunt-reel/issues/246) | `SPLANES.FLM` and `LAND.FLM` are not parity references | `ready-for-human` (DOSBox, `MAKEONE`) | D3, D5, step 4 | T3 |
+| T5 [#247](https://github.com/neilsh/stunt-reel/issues/247) | The fade floor drops most frames of a night film | `needs-triage`, `research` | § 7, a prerequisite for `vault-tod` | — |
+
+T3 also fits under the existing parent #87 (films archived and captured reliably on both builds).
+Phase 2 (`vault-balloon`, `vault-traintnl`) gets its own ticket when D3's trigger fires, not now.
+Drawing only the captured ticks (§ 7) stays a note here until a sweep's render time is the
+bottleneck again.
