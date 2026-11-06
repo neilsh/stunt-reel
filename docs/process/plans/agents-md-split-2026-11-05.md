@@ -1,6 +1,6 @@
 # AGENTS.md split into project skills (2026-11-05)
 
-Status: **design agreed 2026-11-05; implementation not started**, on branch
+Status: **design agreed 2026-11-05; implementation not started**. Tasks: [`agents-md-split-implementation-2026-11-05.md`](agents-md-split-implementation-2026-11-05.md), on branch
 `claude/agents-md-refactor-72199a`. Source: a brainstorming session of 2026-11-05 that started
 from "AGENTS.md and the other agent files are getting unwieldy; suggest splitting into project
 skills"; the same session added a disk-space gate on `mise run reap` (D7, 4.6). This note owns
@@ -40,7 +40,7 @@ Cut the guidance every turn pays for without hiding a rule every task needs:
 | D4 | SOP numbers become named headings; live citations name the heading or the skill. | A number breaks when a section moves; a name survives. |
 | D5 | Skill descriptions state only when to use the skill ("Use when …", one clause per distinct case), never the workflow. | superpowers:writing-skills: an agent follows a workflow summary in the description instead of reading the body. |
 | D6 | Each skill names the models expected to use it, and is evaluated on each. | A skill Haiku will use must be shown to work with Haiku. |
-| D7 | `mise run reap` removes nothing while the drive holding the primary checkout has 10 GB or more free; `--min-free-gb N` changes the bar and `--force` skips it. | The session's request: reaping only earns its risk when space is short. Gating the tool holds for every agent and harness, which wording in a skill would not. |
+| D7 | `mise run reap` removes nothing while the drive holding the primary checkout has 20 GB or more free; `--min-free-gb N` changes the bar and `--force` skips it. | The session's request: reaping only earns its risk when space is short. Gating the tool holds for every agent and harness, which wording in a skill would not. |
 
 ## 4. Design
 
@@ -153,7 +153,7 @@ so a broken link in a skill fails the gate.
 In `python/scripts/worktree_init.py`, `reap` first reads the free space on the drive holding the
 primary checkout (`shutil.disk_usage`).
 
-- **At or above the bar** (default 10 GB, set by `--min-free-gb`): it prints the free space, the
+- **At or above the bar** (default 20 GB, set by `--min-free-gb`): it prints the free space, the
   bar and what it would reap, then exits 0 without removing anything, `--yes` or not.
 - **Below the bar, or with `--force`:** it reaps as it does today.
 - **A dry run** (no `--yes`) prints the free space and the bar before its usual list.
@@ -175,21 +175,18 @@ covering above the bar, below it, and `--force`.
 ## 6. Skill evaluation
 
 Each run is a dry run in this worktree: the prompt below, then "list the files you would touch
-and the steps you would take; edit nothing". Three repetitions per model, each in the context
-that model is used in:
-
-- **Opus** as a top-level session:
-  `claude -p --model opus --permission-mode plan --output-format stream-json --verbose "<prompt>"`.
-  A real session sees the real skill listing, and plan mode keeps it read-only. This command is
-  not pre-approved, so each run asks.
-- **Haiku** as a subagent (the Agent tool with `model: haiku`). If the subagent's skill listing
-  lacks the new skill, rerun Haiku with `claude -p --model haiku` and record the fact.
+and the steps you would take; edit nothing". Three repetitions per model, each a headless
+session: `claude -p --model <opus|haiku> --permission-mode plan --output-format stream-json
+--verbose "<prompt>"`. A real session sees the real skill listing, plan mode keeps it read-only,
+and the stream shows whether it called the Skill tool, which a subagent's final report would
+hide. The command is not pre-approved, so each batch of repetitions runs as one shell command
+and asks once.
 
 | Skill | Model | Prompt | Must cover |
 |---|---|---|---|
 | `changing-seam-contracts` | Opus | Add a field to the shape contract (`crates/stunt-core/src/contracts/shape.rs`) recording the name of the resource the shape came from. | `serde(default)` on the field; a synthetic fixture and its `tests/fixtures/README.md` entry; a roundtrip test run with `--all-features` |
 | `recording-binary-findings` | Opus | A debugger session found that `PLAYONE.EXE` keeps the camera's lens index at `DGROUP:0x1A2C` and reads it at `1A2F:0042` (a made-up example). Record it. | the owning note chosen by `research/README.md`; a `memory-map.md` row; a `doc_anchors.py` entry for any new anchor; a tier that cites the address; **Ruled out** and **Open questions** |
-| `managing-worktrees` | Opus | Remove the worktree `.claude/worktrees/old-branch`, made before ADR 0036, whose pull request was squash-merged. | `mise run reap -- --yes` from the primary checkout, after its dry run; no `git worktree remove` by hand; the 10 GB bar and `--force` (D7) |
+| `managing-worktrees` | Opus | Remove the worktree `.claude/worktrees/old-branch`, made before ADR 0036, whose pull request was squash-merged. | `mise run reap -- --yes` from the primary checkout, after its dry run; no `git worktree remove` by hand; the 20 GB bar and `--force` (D7) |
 | `managing-worktrees` | Haiku | From this worktree, find the reference capture for `CTRY.FLM` and say whether it is complete. | the data root (`STUNT_DATA_ROOT` or the sibling `.data` directory); `captures/<film slug>/frames` (here `vault-ctry`), complete only once its `meta.json` exists; the pin in `research/parity/references.toml` |
 
 - **Baseline (expected to fail):** trimmed `AGENTS.md`, skill absent. Record what each run
