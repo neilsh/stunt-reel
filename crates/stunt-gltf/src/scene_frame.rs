@@ -25,10 +25,10 @@ const ZFAR: f32 = 20_000.0;
 
 /// Exports `scene.frame(tick)` as a `.glb`.
 ///
-/// The glTF scene holds, in order: a perspective camera node, a `WORLD` node at identity
-/// when the frame draws the world, and one `actor_{index}_shape_{shape_id}` node per
-/// [`stunt_core::scene::ActorDraw`] with `matrix` set to its world matrix and
-/// `state_mask`, `distance` and `shape_id` in `extras`.
+/// The glTF scene holds, in order: a perspective camera node, a `WORLD` node at identity when the
+/// frame draws the world, and one `actor_{index}_shape_{shape_id}` node per
+/// [`stunt_core::scene::ActorDraw`] (`matrix` = world matrix; `state_mask`, `distance`,
+/// `shape_id` in `extras`).
 ///
 /// # Errors
 /// - [`GltfError::MissingShape`] if an actor names a shape the scene does not hold.

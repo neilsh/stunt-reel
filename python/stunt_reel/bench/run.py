@@ -277,10 +277,9 @@ def plant_tree(render: Path, out: Path, plants: list[tuple[Fault, range]]) -> No
     """Write *out* as *render*'s store with each fault's ticks replaced by the frame it makes.
 
     Ticks absent from the source and faults without a frame are skipped. A planted frame is
-    stored as its index plane under a palette that reproduces its picture, so a colour-only
-    fault such as ``flicker`` shifts that tick's palette. Raises ``BenchError`` for the grey
-    fault, which has no index plane, and for a frame whose picture no palette over its index
-    plane can carry; file errors propagate.
+    stored as its index plane under a palette reproducing its picture (so ``flicker`` shifts
+    that tick's palette). Raises ``BenchError`` for the ``grey`` fault, which has no index
+    plane, and for a picture no palette over its index plane can carry; file errors propagate.
     """
     for fault, _ in plants:
         if fault.name == "grey":

@@ -1070,16 +1070,12 @@ impl TerrainSurface {
     }
 }
 
-/// The world positions of the vertices of a prop, snapped onto the terrain, if it is
-/// a ground decal; `None` for every other prop.
+/// The world vertices of a ground-decal prop snapped onto the terrain; `None` for any other prop.
 ///
-/// PLAYONE has no depth buffer and paints a scenery tile after the ground leaf under it, so
-/// the tile always covers its leaf (`research/playone-exe/world-scene.md` sections 3, 6).
-/// The rule that picks such props out is geometric: the shape is flat (all vertices within
-/// [`GROUND_FLAT_TOLERANCE`] of one height), at least one vertex has terrain below it, and
-/// every vertex that does is within [`GROUND_LIE_TOLERANCE`] of it. Vertices over terrain take
-/// the height of the ground exactly, so the tile ties it instead of z-fighting it; any
-/// other vertex stays where the placement put it. `pos` includes `base_y`.
+/// A ground decal is flat (within [`GROUND_FLAT_TOLERANCE`]), has terrain under at least one
+/// vertex, and every such vertex lies within [`GROUND_LIE_TOLERANCE`] of it. Those vertices take
+/// the ground height exactly; the rest stay at the placement. `pos` includes `base_y`. Why:
+/// `research/playone-exe/world-scene.md` sections 3, 6.
 fn ground_decal_vertices(
     model: &SodModelIr,
     pos: [f32; 3],

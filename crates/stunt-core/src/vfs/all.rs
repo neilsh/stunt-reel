@@ -10,15 +10,9 @@ use crate::vfs::{VfsError, check_non_decreasing, offset_add, offset_sub, offset_
 
 /// Unpacks a `.ALL` container archive into an in-memory [`VfsArchive`].
 ///
-/// # Layout (`# [FMT-ALL-CHUNKS]`)
-/// - Bytes 0..2: 16-bit item count `num: u16` (little-endian)
-/// - Bytes 2..(2 + 2*num): Array of `num` 16-bit resource IDs
-/// - Bytes (2 + 2*num)..(2 + 6*num): Array of `num` 32-bit byte offsets
-/// - Payload data: Entry $i$ bounded by `offsets[i]..offsets[i+1]` (or buffer length for final entry)
-/// - Names generated based on payload header:
-///   - `b"FILM"` -> `"CHOREO.FLM"`
-///   - `0x000C` -> `format!("MODEL_{:04X}.SOD", id)`
-///   - Otherwise -> `format!("RES_{:04X}.BIN", id)`
+/// Layout: `research/formats/all.ksy` (`[FMT-ALL-CHUNKS]`); the last payload runs to the end of
+/// `data`. Names come from the payload: `b"FILM"` is `CHOREO.FLM`, a leading `0x000C` is
+/// `MODEL_{id:04X}.SOD`, anything else `RES_{id:04X}.BIN`.
 ///
 /// # Errors
 /// - [`VfsError::UnexpectedEof`] if `data` is shorter than the 2-byte count or the

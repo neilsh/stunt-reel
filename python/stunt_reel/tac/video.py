@@ -193,14 +193,15 @@ def record_video(
 ) -> VideoCapture:
     """Run the recording script, then file its AVI and log into *out_dir*.
 
-    The emulator writes ``*.avi`` into *recording_dir* (its ``capture_dir``) and finishes the
-    file when the runner's context closes, so the AVI is read after that. Its audio is stripped
-    into ``out_dir / capture.avi``, the frame count must match the log's rows to within one,
-    and ``meta.json`` is written last. A failure can leave the stripped AVI in *out_dir*.
+    The emulator writes one ``*.avi`` into *recording_dir* (its ``capture_dir``); it is read
+    after the runner closes. Its audio is stripped into ``out_dir / capture.avi``, whose frame
+    count must match the log's rows to within one, and ``meta.json`` is written last. A failure
+    can leave the stripped AVI in *out_dir*.
 
-    Raises ``VideoCaptureError`` for an unusable recording, including an AVI parsing error or
-    a log the capture document refuses (frames that skip, a film clock that falls) or a failed
-    ``meta.json`` write; runner and other filesystem errors propagate.
+    Raises ``VideoCaptureError`` for an unusable recording: no or several ``.avi``, an AVI
+    parsing error, a frame-count mismatch, a log the capture document refuses (frames that
+    skip, a film clock that falls) or a failed ``meta.json`` write. Runner and other filesystem
+    errors propagate.
     """
     script = luagen.video_script(keys=keys, cap=cap, end_hold=END_HOLD_FRAMES, layout=layout)
     with open_runner() as runner:

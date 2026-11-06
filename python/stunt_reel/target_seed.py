@@ -312,11 +312,10 @@ _CONTENTION = frozenset({errno.EDEADLK, errno.EACCES, errno.EAGAIN, errno.EWOULD
 def exclusive(path: Path, *, timeout: float = 600.0) -> Iterator[None]:
     """Hold an exclusive OS lock on the file *path*, created if missing, for the block.
 
-    Waits while another handle holds it, for *timeout* seconds, then raises ``TimeoutError``;
-    a seed takes about 40 s, so ten minutes means a holder that is stuck, not slow. Any
-    other failure to lock is raised at once. Each call opens its own handle, so two threads
-    of one process exclude each other as two processes do: the gate starts its cargo lanes,
-    and so their ``ensure`` steps, at once (ADR 0036).
+    Waits up to *timeout* seconds while another handle holds it, then raises ``TimeoutError``
+    (a seed takes about 40 s, so the default means a stuck holder); any other lock failure is
+    raised at once. Each call opens its own handle, so threads of one process exclude each
+    other as processes do (ADR 0036).
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + timeout
