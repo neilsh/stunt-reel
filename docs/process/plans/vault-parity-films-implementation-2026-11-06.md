@@ -419,6 +419,13 @@ def run_matrix[V](
 
   If none matches, raise
   `ArchiveError(f"no archive of {flm.name} hashes to the pinned all_sha256 {pinned}")`.
+
+  A pinned sibling outside `target/linked/` must keep its `MAKEONE` provenance: when the
+  manifest rebuild is byte-identical to a `siarchive` sibling, the sibling wins, and
+  `references.archive_makeone_build`, which judged by path, would call it `unknown` and
+  `require_builds` would refuse the capture. So `archive_makeone_build` also takes the
+  manifest's `makeone_sha256` for any archive whose SHA-256 is the manifest's `all_sha256`
+  (`test_an_archive_with_the_manifests_bytes_takes_its_build_from_the_manifest`).
 - [ ] **Step 4: Run the tests.** Expected: pass.
 - [ ] **Step 5: Commit** `feat(archive): resolve a film's archive by its pinned hash`.
 
