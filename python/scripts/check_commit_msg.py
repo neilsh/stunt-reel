@@ -129,7 +129,15 @@ def unproven(message: str) -> list[str]:
                 "recorded; run it on the tree you are committing"
             )
             continue
-        paths = ", ".join(gate_record.differing(tested, staged)[:8])
+        try:
+            paths = ", ".join(gate_record.differing(tested, staged)[:8])
+        except subprocess.CalledProcessError:
+            # Nothing references a recorded tree, so ``git gc`` may have pruned it.
+            found.append(
+                f"the gate line says '{name} passes', but the tree its last passing run tested "
+                f"is no longer in the repository; rerun mise run {name}"
+            )
+            continue
         found.append(
             f"the gate line says '{name} passes', but its last passing run tested another tree "
             f"(differs in {paths}); stage exactly what it tested, or rerun it"

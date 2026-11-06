@@ -17,7 +17,7 @@ LIBRARY = Path(__file__).resolve().parent.parent / "python" / "stunt_reel"
 #: The implicit reads of the configured data root: ``data_root()`` and ``corpus_root()``.
 READS = frozenset({"data_root", "corpus_root"})
 
-#: (module, enclosing function) -> why that function may read the configured root itself.
+#: (module path under ``stunt_reel``, enclosing function) -> why that function may read the configured root itself.
 ALLOWED: dict[tuple[str, str], str] = {
     ("all_archive", "resolve_all"): "the default when the caller passes no data root",
     ("batch_stages", "_capture_problem"): "the batch survey runs on the configured root",
@@ -35,11 +35,17 @@ ALLOWED: dict[tuple[str, str], str] = {
     ("references", "archive_makeone_build"): (
         "callers pass the checkout, not a data root; the shipped trees are the configured corpus's"
     ),
+    (
+        "tac.staging",
+        "_engine_root",
+    ): "a film outside a game tree takes the configured demo's engine",
+    ("tac.staging", "_stage"): "a capture stages its DOSBox mount under the configured store",
 }
 
 
 def _reads(path: Path) -> set[tuple[str, str]]:
-    """The (module, enclosing function) of every call to a READS function in *path*."""
+    """The (module path, enclosing function) of every call to a READS function in *path*."""
+    module = ".".join(path.relative_to(LIBRARY).with_suffix("").parts)
     found: set[tuple[str, str]] = set()
 
     def visit(node: ast.AST, scope: str) -> None:
@@ -51,7 +57,7 @@ def _reads(path: Path) -> set[tuple[str, str]]:
                 func = child.func
                 name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
                 if name in READS:
-                    found.add((path.stem, scope or "<module>"))
+                    found.add((module, scope or "<module>"))
             visit(child, inner)
 
     visit(ast.parse(path.read_text(encoding="utf-8")), "")
@@ -60,8 +66,8 @@ def _reads(path: Path) -> set[tuple[str, str]]:
 
 def test_every_implicit_data_root_read_is_listed() -> None:
     found: set[tuple[str, str]] = set()
-    for path in sorted(LIBRARY.glob("*.py")):
-        if path.name != "dataroot.py":
+    for path in sorted(LIBRARY.rglob("*.py")):
+        if path != LIBRARY / "dataroot.py":
             found |= _reads(path)
     unlisted = sorted(found - ALLOWED.keys())
     stale = sorted(ALLOWED.keys() - found)

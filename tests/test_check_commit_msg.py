@@ -348,6 +348,18 @@ def test_an_unstaged_file_the_gate_tested_is_refused(
     assert "helper.txt" in capsys.readouterr().err
 
 
+def test_a_recorded_tree_git_no_longer_has_asks_for_a_rerun(
+    hook: Any, repo: Git, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A recorded tree is a loose object nothing references, so ``git gc`` may prune it."""
+    _stage(repo, tmp_path, "a change\n")
+    gate_record.record("check", "1" * 40)
+    assert hook.main([str(_message(tmp_path))]) == 1
+    error = capsys.readouterr().err
+    assert "is no longer in the repository" in error
+    assert "rerun mise run check" in error
+
+
 def test_a_full_check_proves_a_half(hook: Any, repo: Git, tmp_path: Path) -> None:
     _stage(repo, tmp_path, "a change\n")
     gate_record.record("check", gate_record.working_tree())

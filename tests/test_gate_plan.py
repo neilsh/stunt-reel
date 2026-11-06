@@ -170,3 +170,22 @@ def test_a_passing_run_records_the_tree_it_started_on(
     assert gate.main([half]) == code
     expected = [(gate_record.HALF_NAMES[half], "started-tree")] if code == 0 else []
     assert recorded == expected
+
+
+def test_a_tree_that_cannot_be_taken_records_nothing_and_still_runs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Failing to read the tree costs the record, never the run's own verdict."""
+    recorded: list[tuple[str, str]] = []
+
+    def unreadable() -> str:
+        raise OSError("index locked")
+
+    monkeypatch.setattr(gate, "_mise", lambda: "mise")
+    monkeypatch.setattr(gate, "_step", lambda _mise, _task: (0, "", 0.0))
+    monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
+    monkeypatch.setattr(gate_record, "working_tree", unreadable)
+    monkeypatch.setattr(gate_record, "record", lambda *pair: recorded.append(pair))
+
+    assert gate.main(["py"]) == 0
+    assert recorded == []
