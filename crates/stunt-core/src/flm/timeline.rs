@@ -71,13 +71,8 @@ impl FilmTimeline {
 
     /// Parse and evaluate a `.FLM` buffer into a sampled timeline.
     ///
-    /// The player walks the stream and yields keyframes already stamped with their
-    /// cumulative tick, so a slice's tick is assigned once rather than rewritten after
-    /// evaluation.
-    ///
-    /// Only an unreadable film header is an error. A slice that fails to decode stops
-    /// the walk: the slices decoded before it are kept and [`Self::stop_reason`] reports
-    /// why, so callers decide whether a partial film is acceptable.
+    /// Only an unreadable film header is an error. A slice that fails to decode stops the walk:
+    /// the slices before it are kept and [`Self::stop_reason`] reports why.
     ///
     /// # Errors
     /// Returns [`FlmError::UnexpectedEof`] if `data` is shorter than the 4-byte signature, and

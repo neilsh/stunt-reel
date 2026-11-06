@@ -158,19 +158,15 @@ def _put_back(target: Path, data: bytes, mode: int) -> None:
 def repair(root: Path, paths: Sequence[str]) -> tuple[list[str], list[str]]:
     """Rewrite from the index each of *paths* that differs from it only in line endings.
 
-    A path whose file mode also differs from the index (an unstaged executable bit) is left
-    alone, since checkout would reset the mode.
-
-    ``git checkout-index -f`` would leave a file alone when its stat data matches the index
-    entry, as it does straight after ``git add`` of a CRLF file, so each such file is removed
-    instead; its content is all in the index, and its bytes are kept to put back if git fails.
-    Each file is read again just before it is removed, and git runs without ``-f``, so a file
-    another process writes meanwhile is neither removed nor overwritten.
-
-    Returns the repaired paths and the rest, each in the order given. A path whose rewritten
-    copy is missing or still holds a CRLF (git configured to write CRLF on checkout) gets its
-    saved bytes back and counts with the rest, so no file the hook rejects is changed.
+    Returns ``(repaired, rest)``, each in the order given. A path whose file mode differs from
+    the index is left in *rest*; so is one whose rewritten copy is missing or still holds a CRLF
+    (git set to write CRLF), which gets its old bytes back. A file written by another process
+    meanwhile is neither removed nor overwritten. Raises :class:`GitError` if git fails, after
+    putting every removed file back.
     """
+    # ``git checkout-index -f`` skips a file whose stat data matches the index entry, as it does
+    # right after ``git add`` of a CRLF file, so each file is removed first (its bytes kept to
+    # put back) and git runs without ``-f``.
     candidates: dict[str, tuple[bytes, int]] = {}
     moved = mode_changes(root) if paths else set()
     for path in paths:

@@ -99,12 +99,10 @@ impl LinkError {
     }
 }
 
-/// Finds, for each index in the archive, the one candidate file that supplies all of its
-/// chunks, and lists the items taken from it.
+/// Finds, for each index in the archive, the candidate file that supplies all of its chunks.
 ///
-/// Candidates are `(file name, split)` pairs. When several files qualify for an index, the
-/// first by name wins: the archive's bytes are the same either way. Sources come back ordered
-/// by index, with `sha256` empty.
+/// Candidates are `(file name, split)` pairs; of several that qualify, the first by name wins
+/// (the bytes are the same). Sources come back ordered by index, with `sha256` empty.
 ///
 /// # Errors
 /// - [`LinkError::NoSource`] for the first chunk of an index that no candidate item matches.

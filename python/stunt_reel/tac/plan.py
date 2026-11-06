@@ -322,10 +322,12 @@ def run_plan(
 ) -> PlanResult:
     """Run the trace pass, let *pick* choose frames from it, then dump them in chunks.
 
-    *open_runner* opens a fresh emulator for each pass (every pass reboots the film), and up to
-    *parallel* dump passes run at once. *ranges* may be a function of the trace and the picked
-    frames, for memory whose segment the trace reads. With *skip_unusable* off, a dump whose own
-    pass reads its page as torn or in a palette step is kept: for a plan that samples memory.
+    *open_runner* opens a fresh emulator per pass; up to *parallel* dump passes run at once.
+    *ranges* may be a function of the trace and the picked frames, for memory whose segment the
+    trace reads. A dump whose own pass reads its page as torn or in a palette step is dropped
+    (reported in ``dropped``) unless *skip_unusable* is off, for a plan that samples memory.
+    Raises PlanDivergence if a dump pass strays from the trace pass by more than
+    :data:`MAX_SKEW_TICKS`.
     """
     common: dict[str, Any] = {
         "keys": keys,
@@ -425,10 +427,9 @@ def choose_windows(
     """One window per *stride* film ticks, where the sampled clock first reaches each goal.
 
     Goals run 1, 1 + *stride*, ... (clock zero is the dialog and load screens). A window starts
-    the frame after the last sample below its goal, so the frame the clock reaches the goal on
-    lies inside it. A goal the clock jumps past is skipped to the next one above the sample, and a
-    window that would start before *floor* or overlap the previous one (lead frames included) is
-    left out. At most *limit* windows.
+    the frame after the last sample below its goal. A goal the clock jumps past moves to the
+    next one above the sample; a window that would start before *floor* or overlap the previous
+    one (lead frames included) is left out. At most *limit* windows.
     """
     windows: list[Window] = []
     goal = 1
@@ -494,14 +495,16 @@ def run_stride_plan(
 ) -> PlanResult:
     """Sample the film clock, then dump one usable page per *stride* film ticks, in windows.
 
-    The frame-by-frame trace of :func:`run_plan` costs Lua instructions on every frame and runs
-    out of the one-million budget about 7,800 ticks into a film
-    (research/playone-exe/capture-dosbox-automation.md § 4.7). Here pass 1 reads only the clock,
-    every *every* frames, ending on a clock held for *end_hold* frames or at *stop_tick*;
-    :func:`choose_windows` places at most *limit* windows; and window passes, at most
-    :data:`~stunt_reel.tac.luagen.MAX_DUMPS` windows each, read only those frames and dump the
-    first usable page in each. Usability is decided in Lua by ``window_script``'s rule; a page
-    that equals no composed page counts as torn. The result's trace holds the window frames.
+    Unlike :func:`run_plan`, whose per-frame trace exhausts the Lua budget about 7,800 ticks into
+    a film (research/playone-exe/capture-dosbox-automation.md § 4.7), pass 1 reads only the
+    clock, every *every* frames, until it has held for *end_hold* frames or reaches *stop_tick*.
+    :func:`choose_windows` places at most *limit* windows; window passes (at most
+    :data:`~stunt_reel.tac.luagen.MAX_DUMPS` windows each) dump the first usable page of each
+    by :func:`~stunt_reel.tac.luagen.window_script`'s rule. The result's trace holds only the
+    window frames and ``dropped`` the starts of windows with no usable page.
+
+    Raises ValueError if *every* exceeds :data:`~stunt_reel.tac.luagen.WINDOW_SPAN`, and
+    PlanDivergence if a window pass's clock drifts too far from the clock pass.
     """
     # _check_window needs a clock sample inside every window to measure drift.
     if every > WINDOW_SPAN:

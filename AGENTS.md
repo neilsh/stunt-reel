@@ -59,6 +59,10 @@ Each turn re-sends the whole conversation, so cost is roughly turns times contex
 3. **Scripts before subagents.** Mechanical checks belong in a script. Delegate only real chunks of work, at most about 8 subagents per task, each with a whole brief: goal, paths, output shape, stopping condition.
 4. **Drive everything through `mise run`.** `mise run *` is the one command shape the harness pre-approves and `mise tasks` the one list of what exists; a task name not there does not exist. For a one-off, `mise exec -- uv run …` runs the pinned uv (expect an approval prompt); a command needed twice earns a task.
 
+### Docstrings
+
+Writing or editing a docstring or `///` comment: state the caller's contract in the fewest words, by [Docstrings and doc comments](docs/development.md#docstrings-and-doc-comments).
+
 ### Skills
 
 Before work one covers, read its skill:

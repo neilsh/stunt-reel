@@ -73,14 +73,13 @@ def discover(corpus: Path) -> list[BatchFilm]:
 def find(corpus: Path, slug: str) -> BatchFilm | None:
     """The film :func:`discover` files under *slug*, or ``None``, hashing as few files as it can.
 
-    This is the parity loop's lookup of one pinned film, and reading all 579 films to find one
-    would cost seconds. :func:`discover` gives a path's own slug to the first path that spells it
-    and is not a copy of an earlier path, so only earlier paths of the same size are hashed to
-    rule a candidate a copy. A slug shaped like the hash-suffixed name a collision gets is
-    looked up in the full manifest, because a path could spell the same name.
+    The parity loop's lookup of one pinned film. A slug shaped like a collision's hash-suffixed
+    name, or one no direct match finds, falls back to the full :func:`discover` manifest.
     """
     if _COLLISION_SLUG.fullmatch(slug):
         return next((film for film in discover(corpus) if film.slug == slug), None)
+    # discover() gives a slug to the first path spelling it that is not a copy of an earlier
+    # path, so only earlier paths of the same size are hashed to rule a candidate a copy.
     paths = sorted(
         path for path in corpus.rglob("*") if path.is_file() and path.suffix.lower() == ".flm"
     )

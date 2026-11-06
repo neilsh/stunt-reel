@@ -56,11 +56,8 @@ impl FfmpegVideoWriter {
 
     /// Spawns an `ffmpeg` process ready to receive raw RGBA frames over standard input.
     ///
-    /// # Parameters
-    /// - `path`: Destination video file path (`.mp4`, `.webm`, `.mkv`, `.avi`).
-    /// - `width`: Frame width in pixels (e.g. 320).
-    /// - `height`: Frame height in pixels (e.g. 240).
-    /// - `fps`: Container framerate matching simulation tick frequency (Invariant `[I4]`, e.g. 30.0).
+    /// Overwrites `path` (`-y`); `.webm` encodes VP9, any other extension H.264. `width` and
+    /// `height` are pixels; `fps` is the container rate (`[I4]`).
     ///
     /// # Errors
     /// - [`VideoExportError::FfmpegNotFound`] if `ffmpeg` is not on `PATH`.

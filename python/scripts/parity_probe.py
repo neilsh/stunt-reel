@@ -251,13 +251,12 @@ def world_shift(
     reach: int,
     capture_actor: list[int] | None = None,
 ) -> tuple[int, int, float]:
-    """The ``(dx, dy)`` that best lands our non-actor pixels on equal capture indices.
+    """The ``(dx, dy, agreement)`` that best lands our non-actor pixels on equal capture indices.
 
-    Same sign as the actor shift: our pixel at ``(x, y)`` is compared with the capture's at
-    ``(x + dx, y + dy)``. Every even offset from -``reach`` to ``reach`` is tried, zero
-    included; a tie goes to the smaller displacement. ``actor`` (our pixels) and
-    ``capture_actor`` (capture pixels) are left out, so the aircraft does not pull the world.
-    Returns the shift and the fraction of compared pixels whose indices agreed.
+    Our pixel at ``(x, y)`` is compared with the capture's at ``(x + dx, y + dy)``, as for the
+    actor shift. Every even offset in ±``reach`` is tried; a tie goes to the smaller displacement.
+    ``actor`` (our pixels) and ``capture_actor`` (capture pixels) are excluded. *agreement* is the
+    fraction of compared pixels whose indices matched.
     """
     mine = np.frombuffer(ours, dtype=np.uint8)[: width * rows].reshape(rows, width)
     theirs = np.frombuffer(capture, dtype=np.uint8)[: width * rows].reshape(rows, width)

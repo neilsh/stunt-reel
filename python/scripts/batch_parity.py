@@ -99,15 +99,11 @@ def process(
 ) -> int:
     """Run the requested stages of each film; return how many stage errors this call recorded.
 
-    A film in *skip* gets a ``skipped`` capture record in place of its capture and runs no later
-    stage; a film outside it ignores such a record, so leaving the list lets it capture. A stage in
-    *force* runs whatever its latest record says, and so does every later stage of that film; a
-    forced render or score first removes the output the earlier run left.
-
-    *jobs* films run at once, each worker taking one film's stages in order; at most *max_renders*
-    of them render at a time, and a render starts only while *min_free_gb* gigabytes are free under
-    the batch root (it polls with *sleep* until they are). One lock orders ledger appends, the
-    resume records and the progress lines. ``jobs=1`` runs the films in the calling thread.
+    A film in *skip* gets a ``skipped`` capture record and runs no later stage; outside *skip* such
+    a record is ignored. A film in *force* reruns each stage whatever its latest record says, and a
+    forced render or score first removes the earlier output. *jobs* films run at once (in the
+    calling thread when 1), at most *max_renders* rendering at a time, each starting only while
+    *min_free_gb* gigabytes are free under *root* (polled with *sleep*).
     """
     shared = _Shared(
         root=root,

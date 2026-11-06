@@ -292,9 +292,8 @@ impl FilmScene {
 
     /// Parses `inputs` into a scene plus a report of what loaded.
     ///
-    /// Only an unreadable film header or archive container is an error; per-chunk decode
-    /// failures, partial shapes, and a truncated film are reported, not fatal. The world is
-    /// built from the decoded shapes and whichever of anchors, map and scenery were given.
+    /// Per-chunk decode failures, partial shapes and a truncated film are reported in the
+    /// [`SceneReport`], not fatal. Anchors, map and scenery are optional.
     ///
     /// # Errors
     /// Returns [`SceneError::Film`] if `inputs.film` fails [`FilmTimeline::from_bytes`], and

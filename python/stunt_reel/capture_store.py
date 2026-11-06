@@ -90,11 +90,9 @@ def publish(staged: Path, directory: Path) -> Path:
     """Swap the complete capture *staged* into *directory*, replacing any capture there.
 
     A ``ValueError`` when *staged* has no ``meta.json`` (an incomplete capture never replaces a
-    complete one) or when *directory* fails :func:`check_replaceable`. If the second rename
-    fails, the old capture is put back. Two publishers of one capture swap one at a time, under
-    a lock beside it; captures themselves still run side by side. Removing the old capture
-    happens after the lock is released and is best effort: once the new one is in place the
-    publish has succeeded, and a locked file only leaves a ``.old-*`` sibling no reader looks at.
+    complete one) or *directory* fails :func:`check_replaceable`. Swaps of one capture
+    serialise under a lock beside it; a failed second rename restores the old capture. Removing
+    the old one is best effort, after the lock: a locked file leaves an ignored ``.old-*`` sibling.
     """
     if current(staged) is None:
         raise ValueError(f"{staged} has no {META_FILE}; an incomplete capture is never published")
@@ -169,13 +167,10 @@ else:
 def snapshot(directory: Path) -> Iterator[Path]:
     """Hold a copy of the complete capture in *directory* that no later swap changes.
 
-    The copy is a sibling of hard links, so it costs no space and stays on the store's volume;
-    a file system without hard links gets a real copy. The links are made under the swap lock,
-    so no :func:`publish` lands while they are made, and a writer never changes a published
-    file, only swaps the whole directory, so the linked files stay the capture as it was. The
-    lock is held for the linking only, not while the caller reads. A ``ValueError`` when
-    *directory* holds no complete capture. The copy is removed when the block ends; one a
-    killed reader left behind is removed by a later snapshot of the same capture.
+    Yields a sibling tree of hard links (a real copy where the file system has none), made under
+    the swap lock so no :func:`publish` lands meanwhile; the lock is not held while the caller
+    reads. A ``ValueError`` when *directory* holds no complete capture. The tree is removed when
+    the block ends; a killed reader's is removed by a later snapshot of the same capture.
     """
     if not directory.parent.is_dir():
         raise ValueError(f"{directory} holds no complete capture")

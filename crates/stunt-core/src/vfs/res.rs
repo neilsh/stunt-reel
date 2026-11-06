@@ -113,17 +113,14 @@ pub fn res_regions(data: &[u8]) -> Result<ResRegions<'_>, VfsError> {
 
 /// Unpacks a `.RES` container archive into an in-memory [`VfsArchive`].
 ///
-/// # Layout (`# [FMT-RES-HEADER]`)
-/// The byte layout is defined by `research/formats/res.ksy` (magic `b"RS"`, `res_index: u8`,
-/// `item_count: u8`, `ofs[0]: u32`, offset table); this comment does not restate it.
+/// Layout: `research/formats/res.ksy` (`[FMT-RES-HEADER]`).
 ///
 /// # Parser policy
-/// - Only `ofs[0]` and the offset table are trusted: it must be at least 8, 4-byte aligned,
-///   and the table holds $N = (ofs\[0\] / 4) - 1$ non-decreasing offsets, checked by [`res_regions`]. The
-///   header bytes at `0x0002..0x0004` (`res_index`, `item_count`) are not used.
-/// - Region 0 (`data[ofs[0]..ofs[1]]`) is treated as the null-separated ASCII name table.
-/// - Entry $i$ payload: `data[ofs[i+1]..ofs[i+2]]`
-/// - If the name table is omitted or not ASCII, names default to `format!("{:04X}.BIN", i)`
+/// - Only `ofs[0]` and the offset table are trusted, as checked by [`res_regions`]; `item_count`
+///   is ignored (`res_index` is not used here).
+/// - Region 0 is the null-separated ASCII name table; entry $i$ is region $i + 1$.
+/// - Names are trimmed and upper-cased. An entry with no name, an empty one, or any non-ASCII
+///   name table gets `format!("{i:04X}.BIN")`.
 ///
 /// # Errors
 /// - [`VfsError::UnexpectedEof`] if `data` is shorter than 8 bytes, `ofs[0]` or any table

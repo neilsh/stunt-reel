@@ -189,6 +189,18 @@ The `gpu` test binary (`crates/stunt-render/tests/gpu/`, kept apart from the mer
 
 `stunt-core` tests come in three kinds. Named single inputs with exact expected results go in the `*_spec.rs` and `*_test.rs` files. Never-panics checks over random or mutated bytes are the fixed-seed `XorShift64` loops in the `*_fuzz.rs` files. A property that must hold for every valid input goes in a `*_props.rs` file, or in a `props` module beside the crate-private code it tests: write then read gives back the input, two implementations of one rotation agree, sampling at a keyframe returns that keyframe. These use [proptest](https://docs.rs/proptest), which builds constrained inputs (unit quaternions, timelines with same-tick slices) from composable strategies and shrinks a failure to a minimal case. Each runs 256 cases from a fixed seed, so the gate sees the same cases every run; setting `PROPTEST_CASES=10000` or `PROPTEST_RNG_SEED=<n>` for a `mise run test-rust` explores further without an edit. No regression files are written: when a property fails, add its shrunk input to the matching spec file as a named test, then fix the code or the property.
 
+### Docstrings and doc comments
+
+A Python docstring or Rust `///` comment states the contract a caller needs, in the fewest words that carry it:
+
+- The first line says what the item returns or does, in one sentence.
+- Further lines carry only what the signature hides: units and coordinate frame, constraints on inputs, what is raised or returned on failure, side effects (files written, processes started, caches reused), and the anchor, ADR or research note that owns the reasoning.
+- Parameters are named inline (*flm*, `data`); their types live in the annotations.
+- The why, the history and the alternatives ruled out live in the owning research note or ADR, cited by name.
+- Rust keeps the `# Errors` and `# Panics` sections clippy's pedantic lints require, one line per case.
+
+Most land under 60 words. A longer one usually narrates the body; move the narration into a comment beside the code it explains, or drop it.
+
 ### Shared tool cache
 
 `mise.toml` points `UV_CACHE_DIR` at the primary checkout's `.cache/uv`, and the cargo tasks' `CARGO_HOME` at its `.cache/cargo`, both by absolute path, so every worktree reuses one set of downloaded crates and uv artifacts with no link. Build outputs (`target/`) and the Python tool caches stay per worktree, because they are revision-specific or not relocatable.
