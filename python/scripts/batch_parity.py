@@ -103,7 +103,7 @@ def process(
     a record is ignored. A stage in *force*, and every later stage of the film, runs whatever its
     latest record says; a forced render or score first removes the earlier output. A later stage
     the force leaves unrun (left out of *stages*, or after the forced stage fails) has its output
-    removed and, if it had a record, an error recorded as stale. *jobs* films run at once (in the
+    removed and a stale error recorded, when its latest record is not already an error. *jobs* films run at once (in the
     calling thread when 1), at most *max_renders* rendering at a time, each starting only while
     *min_free_gb* gigabytes are free under *root* (polled with *sleep*).
     """
