@@ -77,7 +77,7 @@ Run these in a normal terminal, outside an agent sandbox.
 
 ## A new worktree
 
-Nothing to do. Create it with any tool, inside the primary checkout or beside it:
+Nothing to do. Create it with any tool, under `.claude/worktrees/` or `.agents/worktrees/` inside the primary checkout, where `mise run reap` can reap it:
 
 - Python tasks find the corpus and captures through the data root and build `.venv` on the
   first `uv run`, hardlinked out of the shared uv cache on the same volume.
