@@ -103,6 +103,10 @@ took 49-50 s at 8 workers and 51-53 s at 16, alternating runs. Three warm whole 
 seconds, so the whole-gate figures show the noise rather than the change. Eight workers also
 leave cores free for `test-rust` and for a cold cargo build in another worktree.
 
+On CI's 4-vCPU Ubuntu runner, which may count 2 physical cores, the pull request's quality step
+took 49 s (`test-py` 39 s) against 33-61 s (`test-py` 25-49 s) over the five `main` runs before
+it, so CI keeps `-n auto` rather than falling back to `-n logical`.
+
 ### The dependency, against ADR 0010
 
 - **Job.** Count physical cores for xdist's `-n auto`. The standard library reports logical
