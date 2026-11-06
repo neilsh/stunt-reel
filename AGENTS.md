@@ -73,7 +73,7 @@ Process documents, **not** sources of truth: [`docs/process/TEAM_SHEET.md`](docs
 6. A PR that changes rendered output carries a capture-beside-render comparison picture, before and after: [Evidence for a rendering PR](.agents/skills/improving-render-parity/SKILL.md#evidence-for-a-rendering-pr).
 
 ### Commit Messages
-Write the body whenever a reviewer would have to ask "why this way?": what forced the change, the cause with the offset, measurement or log row that proves it, and what you rejected. One paragraph, then a bullet per file when several move together; never retell the diff. Renames, formatting and generated files need none. Longer reasoning belongs in the owning note or an ADR, cited from the body. Close with `mise run check passes.` when the whole gate ran, naming any part that did not.
+The commit-msg hook (`mise run commit-msg-check`) checks the subject and the closing gate line. Write the body whenever a reviewer would have to ask "why this way?": what forced the change, the cause with the offset, measurement or log row that proves it, and what you rejected. One paragraph, then a bullet per file when several move together; never retell the diff. Renames, formatting and generated files need none. Longer reasoning belongs in the owning note or an ADR, cited from the body. Close with `mise run check passes.` when the whole gate ran, naming any part that did not.
 
 ### SOP 4: Living Specification Updates & Evidentiary Promotion
 1. When analysis uncovers new runtime offsets, opcodes, or binary realities:
