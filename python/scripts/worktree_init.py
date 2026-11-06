@@ -976,13 +976,18 @@ FETCH_TIMEOUT = 30
 
 
 def _fetch_main(repo: Path) -> str | None:
-    """Fetch ``origin``'s ``main`` quietly; return why it failed, or ``None``."""
+    """Fetch ``origin``'s ``main`` quietly; return why it failed, or ``None``.
+
+    The refspec names the destination, so ``origin/main`` moves even when
+    ``remote.origin.fetch`` does not cover ``main`` (a single-branch clone), where a bare
+    ``git fetch origin main`` would update only ``FETCH_HEAD``.
+    """
     git = shutil.which("git")
     if git is None:
         return "git is not on PATH"
     try:
         result = subprocess.run(  # noqa: S603
-            [git, "fetch", "--quiet", "origin", "main"],
+            [git, "fetch", "--quiet", "origin", "+refs/heads/main:refs/remotes/origin/main"],
             cwd=repo,
             capture_output=True,
             text=True,

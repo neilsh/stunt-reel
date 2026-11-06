@@ -1156,3 +1156,19 @@ def test_offline_reap_compares_with_the_last_fetched_main(
     out = capsys.readouterr().out
     assert "cannot fetch origin main" in out
     assert main in out
+
+
+def test_a_narrowed_fetch_refspec_still_updates_origin_main(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, worktree, _, _ = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB, stale=False)
+    # A single-branch clone: a bare `git fetch origin main` would move only FETCH_HEAD.
+    _run_git(repo, "config", "remote.origin.fetch", "+refs/heads/other:refs/remotes/origin/other")
+    pusher = tmp_path / "pusher"
+    _run_git(tmp_path, "clone", "-q", str(tmp_path / "origin.git"), str(pusher))
+    newer = _commit_script(pusher, "new rules")
+    _run_git(pusher, "push", "-q", "origin", "HEAD:main")
+
+    assert worktree_init._reap(True) == 1
+    assert worktree.is_dir()
+    assert newer in capsys.readouterr().out
