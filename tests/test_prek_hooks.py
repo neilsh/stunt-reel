@@ -82,10 +82,12 @@ def _run(repo: Path, *args: str, timeout: float = _TIMEOUT) -> subprocess.Comple
         )
         try:
             proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
+        except BaseException as exc:  # an interrupted wait must not orphan the tree either
             _kill_tree(proc)
             with contextlib.suppress(subprocess.TimeoutExpired):
                 proc.wait(timeout=10)
+            if not isinstance(exc, subprocess.TimeoutExpired):
+                raise
             pytest.fail(
                 f"{' '.join(args)} timed out after {timeout} s\n"
                 f"stdout:\n{_read(out)}\nstderr:\n{_read(err)}"
@@ -120,10 +122,10 @@ def _read(file: IO[bytes]) -> str:
     return file.read().decode(errors="replace").replace("\r\n", "\n")
 
 
-#: A grandchild that appends a byte to the file named by its argument every 0.1 s for 30 s.
+#: A grandchild that appends a byte to the file named by its argument every 0.1 s for 60 s.
 _GRANDCHILD = """\
 import sys, time
-for _ in range(300):
+for _ in range(600):
     with open(sys.argv[1], "ab") as beat:
         beat.write(b".")
     time.sleep(0.1)
@@ -142,7 +144,7 @@ grand = subprocess.Popen(
 while not (here / "beat").exists():
     time.sleep(0.05)
 print("marker-220", flush=True)
-time.sleep(30)
+time.sleep(60)
 """
 
 
@@ -154,8 +156,10 @@ def test_run_kills_a_timed_out_tree_and_keeps_its_output(tmp_path: Path) -> None
     try:
         start = time.monotonic()
         with pytest.raises(pytest.fail.Exception, match="marker-220"):
-            _run(tmp_path, sys.executable, str(tmp_path / "child.py"), timeout=2)
-        assert time.monotonic() - start < 15
+            # Two interpreter starts must fit in the timeout on a loaded xdist worker.
+            _run(tmp_path, sys.executable, str(tmp_path / "child.py"), timeout=5)
+        # A call that waited on the grandchild's output would take its whole 60 s.
+        assert time.monotonic() - start < 30
         time.sleep(1)
         size = beat.stat().st_size
         time.sleep(1)
