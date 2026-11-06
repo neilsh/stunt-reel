@@ -24,6 +24,7 @@ Game files and captures live outside every checkout, in one shared data root; a 
 | `--film corpus/...` argument | resolves against the data root |
 | Reap dry run, then real | `mise run reap`, `mise run reap -- --yes` |
 | Reap with room on the drive | add `--force` (it waits for under 20 GB free; `--min-free-gb N`) |
+| Reap refuses: "stale reap" | the primary checkout's `worktree_init.py` is not `origin/main`'s; update the primary checkout (`--allow-stale-script` overrides, `--force` does not) |
 | Squash-merged, cherry-picked, leftovers | `gh` recognises merged PRs; `--cherry`; `--prune` |
 | Work at risk | `--stash-dirty`, `--discard-untracked` |
 | Clear build outputs of a kept checkout | `mise run clean -- --yes` |

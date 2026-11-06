@@ -14,6 +14,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -1035,11 +1036,177 @@ def test_reap_cli_defaults_and_flags(monkeypatch: pytest.MonkeyPatch) -> None:
 
     worktree_init.main(["reap"])
     worktree_init.main(["reap", "--force", "--min-free-gb", "5"])
+    worktree_init.main(["reap", "--allow-stale-script"])
 
     assert (calls[0]["force"], calls[0]["min_free_gb"]) == (False, 20.0)
     assert (calls[1]["force"], calls[1]["min_free_gb"]) == (True, 5.0)
+    assert [call["allow_stale_script"] for call in calls] == [False, False, True]
 
 
 def test_negative_min_free_gb_is_refused() -> None:
     with pytest.raises(SystemExit):
         worktree_init.main(["reap", "--min-free-gb", "-1"])
+
+
+def _commit_script(repo: Path, text: str) -> str:
+    """Commit *text* as the repo's reap script; return its blob."""
+    script = repo / worktree_init.SCRIPT_PATH
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text(text, encoding="utf-8")
+    _run_git(repo, "add", worktree_init.SCRIPT_PATH)
+    _run_git(repo, "commit", "-qm", text)
+    return _run_git(repo, "rev-parse", f"HEAD:{worktree_init.SCRIPT_PATH}").strip()
+
+
+def _stale_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, free: int, *, stale: bool = True
+) -> tuple[Path, Path, str, str]:
+    """``_reap_env`` plus a local ``origin`` whose main holds a newer reap script when *stale*.
+
+    Returns the repo, the squash-merged worktree, and the blobs of HEAD's and main's script.
+    """
+    repo, worktree = _reap_env(monkeypatch, tmp_path, free)
+    ours = _commit_script(repo, "old rules")
+    main = _commit_script(repo, "new rules") if stale else ours
+    origin = tmp_path / "origin.git"
+    _run_git(tmp_path, "clone", "-q", "--bare", str(repo), str(origin))
+    _run_git(repo, "remote", "add", "origin", str(origin))
+    _run_git(repo, "fetch", "-q", "origin")
+    if stale:
+        # The primary checkout sits one commit behind the main it fetched (issue #218).
+        _run_git(repo, "reset", "-q", "--hard", "HEAD~1")
+    return repo, worktree, ours, main
+
+
+def test_a_stale_script_refuses_a_confirmed_reap_and_names_both_blobs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, worktree, ours, main = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB)
+
+    assert worktree_init._reap(True) == 1
+    assert worktree.is_dir()
+    out = capsys.readouterr().out
+    assert ours in out
+    assert main in out
+    assert "update the primary checkout" in out
+    assert "--allow-stale-script" in out
+
+
+def test_force_does_not_lift_the_stale_script_refusal(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, worktree, _, _ = _stale_env(monkeypatch, tmp_path, 50 * worktree_init.GIB)
+
+    assert worktree_init._reap(True, force=True) == 1
+    assert worktree.is_dir()
+
+
+def test_allow_stale_script_reaps_anyway(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _, worktree, _, _ = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB)
+
+    assert worktree_init._reap(True, allow_stale_script=True) == 0
+    assert not worktree.exists()
+
+
+def test_a_dry_run_warns_about_a_stale_script_and_still_lists_candidates(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, worktree, ours, _ = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB)
+
+    assert worktree_init._reap(False) == 0
+    assert worktree.is_dir()
+    out = capsys.readouterr().out
+    assert f"stale reap: HEAD:{worktree_init.SCRIPT_PATH} is {ours}" in out
+    assert "merged as #89" in out
+    assert "dry run" in out
+
+
+def test_a_current_script_reaps_without_a_warning(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, worktree, _, _ = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB, stale=False)
+
+    assert worktree_init._reap(True) == 0
+    assert not worktree.exists()
+    assert "stale reap" not in capsys.readouterr().out
+
+
+def test_a_checkout_ahead_of_main_is_told_to_merge_not_update(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, worktree, _, main = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB, stale=False)
+    ours = _commit_script(repo, "unmerged rules")
+
+    assert worktree_init._reap(True) == 1
+    assert worktree.is_dir()
+    out = capsys.readouterr().out
+    assert ours in out
+    assert main in out
+    assert "merge it first" in out
+    assert "update the primary checkout" not in out
+
+
+def test_offline_reap_compares_with_the_last_fetched_main(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, worktree, _, main = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB)
+    _run_git(repo, "remote", "set-url", "origin", str(tmp_path / "gone.git"))
+
+    assert worktree_init._reap(True) == 1
+    assert worktree.is_dir()
+    out = capsys.readouterr().out
+    assert "cannot fetch origin main" in out
+    assert main in out
+
+
+def test_a_narrowed_fetch_refspec_still_updates_origin_main(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, worktree, _, _ = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB, stale=False)
+    # A single-branch clone: a bare `git fetch origin main` would move only FETCH_HEAD.
+    _run_git(repo, "config", "remote.origin.fetch", "+refs/heads/other:refs/remotes/origin/other")
+    pusher = tmp_path / "pusher"
+    _run_git(tmp_path, "clone", "-q", str(tmp_path / "origin.git"), str(pusher))
+    newer = _commit_script(pusher, "new rules")
+    _run_git(pusher, "push", "-q", "origin", "HEAD:main")
+
+    assert worktree_init._reap(True) == 1
+    assert worktree.is_dir()
+    assert newer in capsys.readouterr().out
+
+
+def test_an_uncommitted_script_edit_refuses_until_allowed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, worktree, _, main = _stale_env(monkeypatch, tmp_path, 5 * worktree_init.GIB, stale=False)
+    # HEAD matches main; reap runs the working-tree file, which has an edit.
+    (repo / worktree_init.SCRIPT_PATH).write_text("edited rules", encoding="utf-8")
+
+    assert worktree_init._reap(True) == 1
+    assert worktree.is_dir()
+    out = capsys.readouterr().out
+    assert "uncommitted changes" in out
+    assert main in out
+
+    assert worktree_init._reap(True, allow_stale_script=True) == 0
+    assert not worktree.exists()
+
+
+def test_a_bounded_run_does_not_wait_for_a_child_holding_stderr(tmp_path: Path) -> None:
+    # A grandchild that keeps the stderr handle, as git's ssh can after git is killed. Read
+    # through a pipe, the timeout would wait the grandchild's full 8 s.
+    child = (
+        "import subprocess, sys, time; "
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(8)'], stderr=sys.stderr); "
+        "time.sleep(8)"
+    )
+    start = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired):
+        worktree_init._run_bounded([sys.executable, "-c", child], tmp_path, 1)
+    assert time.monotonic() - start < 5
+
+
+def test_a_bounded_run_returns_the_exit_code_and_stderr(tmp_path: Path) -> None:
+    code = "import sys; sys.stderr.write('fatal: nope\\n'); sys.exit(3)"
+    returncode, stderr = worktree_init._run_bounded([sys.executable, "-c", code], tmp_path, 30)
+    assert (returncode, stderr.strip()) == (3, "fatal: nope")
