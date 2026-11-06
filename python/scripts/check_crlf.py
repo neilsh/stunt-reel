@@ -9,8 +9,8 @@ normalised, so it cannot show the problem) and finds every file that has a CRLF,
 time.
 
 A file whose working copy equals its index blob once each CRLF is replaced by LF holds nothing
-the commit does not already have, so the hook repairs it: ``git checkout-index -f`` writes git's
-own LF copy over it, the file is named as repaired, and the commit goes on. Any other file with
+the commit does not already have, so the hook repairs it: it removes the file and ``git checkout-index``
+writes git's own LF copy in its place, the file is named as repaired, and the commit goes on. Any other file with
 a CRLF (one with unstaged edits, or whose index blob itself holds a CRLF) is named and rejects
 the commit, and its working copy is left untouched.
 
@@ -106,16 +106,18 @@ def crlf_copy_of_index(root: Path, path: str) -> bytes | None:
     """The working copy of *path* when it is its index blob with some LFs written as CRLF.
 
     ``None`` when it differs in anything else, when the blob holds any CR (a CR the working copy
-    adds before a CRLF would then pass the comparison), or when there is no stage-0 blob (an
+    adds before a CRLF would then pass the comparison), when there is no stage-0 blob (an
     unresolved conflict).
     """
+    target = root / path
     try:
-        blob = _git(root, "cat-file", "blob", f":{path}")
+        # Stage 0 named outright: for a file named ``0:x``, ``:0:x`` is stage 0 of ``x``.
+        blob = _git(root, "cat-file", "blob", f":0:{path}")
     except GitError:
         return None
     if b"\r" in blob:
         return None
-    data = (root / path).read_bytes()
+    data = target.read_bytes()
     return data if data.replace(CRLF, b"\n") == blob else None
 
 
@@ -137,8 +139,18 @@ def mode_changes(root: Path) -> set[str]:
     return changed
 
 
-def _restore(target: Path, data: bytes, mode: int) -> None:
-    """Put back a removed working copy: its bytes, then its permission bits."""
+def _put_back(target: Path, data: bytes, mode: int) -> None:
+    """Put back a removed working copy's bytes and permission bits, unless another writer's are there.
+
+    The file is missing, holds git's copy (the same text in other line endings), or holds what
+    some other process wrote since the hook removed it, which is kept.
+    """
+    try:
+        current = target.read_bytes()
+    except FileNotFoundError:
+        current = None
+    if current is not None and current.replace(CRLF, b"\n") != data.replace(CRLF, b"\n"):
+        return
     target.write_bytes(data)
     target.chmod(mode)
 
@@ -149,16 +161,17 @@ def repair(root: Path, paths: Sequence[str]) -> tuple[list[str], list[str]]:
     A path whose file mode also differs from the index (an unstaged executable bit) is left
     alone, since checkout would reset the mode.
 
-    ``git checkout-index -f`` leaves a file alone when its stat data matches the index entry,
-    as it does straight after ``git add`` of a CRLF file, so each such file is removed first;
-    its content is all in the index, and the bytes are kept to put back, for every path, if git
-    fails.
+    ``git checkout-index -f`` would leave a file alone when its stat data matches the index
+    entry, as it does straight after ``git add`` of a CRLF file, so each such file is removed
+    instead; its content is all in the index, and its bytes are kept to put back if git fails.
+    Each file is read again just before it is removed, and git runs without ``-f``, so a file
+    another process writes meanwhile is neither removed nor overwritten.
 
     Returns the repaired paths and the rest, each in the order given. A path whose rewritten
-    copy still holds a CRLF (git configured to write CRLF on checkout) gets its saved bytes
-    back and counts with the rest, so no file the hook rejects is changed.
+    copy is missing or still holds a CRLF (git configured to write CRLF on checkout) gets its
+    saved bytes back and counts with the rest, so no file the hook rejects is changed.
     """
-    saved: dict[str, tuple[bytes, int]] = {}
+    candidates: dict[str, tuple[bytes, int]] = {}
     moved = mode_changes(root) if paths else set()
     for path in paths:
         if path in moved:
@@ -167,25 +180,38 @@ def repair(root: Path, paths: Sequence[str]) -> tuple[list[str], list[str]]:
         if data is None:
             continue
         try:
-            mode = stat.S_IMODE((root / path).stat().st_mode)
-            (root / path).unlink()
-        except OSError:  # held open on Windows: leave it to be reported
+            candidates[path] = (data, stat.S_IMODE((root / path).stat().st_mode))
+        except OSError:
             continue
-        saved[path] = (data, mode)
-    if saved:
-        # On stdin, so no number of paths can outrun the Windows command-line limit.
-        stdin = b"".join(path.encode("utf-8", "surrogateescape") + b"\0" for path in saved)
-        try:
-            _git(root, "checkout-index", "-f", "-z", "--stdin", stdin=stdin)
-        except BaseException:
-            # Git may have rewritten some paths before it failed: put every one back as it was.
-            for path, (data, mode) in saved.items():
-                _restore(root / path, data, mode)
-            raise
+    saved: dict[str, tuple[bytes, int]] = {}
+    try:
+        # Removed together, just before git writes them, so each is missing only briefly.
+        for path, (data, mode) in candidates.items():
+            target = root / path
+            try:
+                if target.read_bytes() != data:  # written since it was compared
+                    continue
+                target.unlink()
+            except OSError:  # held open on Windows: leave it to be reported
+                continue
+            saved[path] = (data, mode)
+        if saved:
+            # On stdin, so no number of paths can outrun the Windows command-line limit.
+            stdin = b"".join(path.encode("utf-8", "surrogateescape") + b"\0" for path in saved)
+            _git(root, "checkout-index", "-z", "--stdin", stdin=stdin)
+    except BaseException:
+        # Git may have rewritten some paths before it failed: put every one back as it was.
+        for path, (data, mode) in saved.items():
+            _put_back(root / path, data, mode)
+        raise
     repaired: list[str] = []
     for path, (data, mode) in saved.items():
-        if CRLF in (root / path).read_bytes():
-            _restore(root / path, data, mode)
+        try:
+            written = (root / path).read_bytes()
+        except FileNotFoundError:
+            written = CRLF
+        if CRLF in written:
+            _put_back(root / path, data, mode)
         else:
             repaired.append(path)
     rest = [path for path in paths if path not in repaired]

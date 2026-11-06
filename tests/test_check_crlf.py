@@ -233,6 +233,84 @@ def test_a_checkout_that_leaves_crlf_puts_the_file_back(
     assert (repo / "a.txt").read_bytes() == b"one\r\ntwo\n"
 
 
+def test_a_file_written_after_its_comparison_is_not_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file another process writes between the comparison and the removal is kept."""
+    repo = _repo(tmp_path)
+    _stage(repo, {"a.txt": b"one\r\n"})
+    script = _load_script()
+    real_compare = script.crlf_copy_of_index
+
+    def compare_then_edit(root: Path, path: str) -> bytes | None:
+        """Compare, then let an editor save new text, as it could at any moment."""
+        data: bytes | None = real_compare(root, path)
+        (root / path).write_bytes(b"edited\r\n")
+        return data
+
+    monkeypatch.setattr(script, "crlf_copy_of_index", compare_then_edit)
+    assert script.repair(repo, ["a.txt"]) == ([], ["a.txt"])
+    assert (repo / "a.txt").read_bytes() == b"edited\r\n"
+
+
+def test_a_file_written_after_its_removal_is_not_overwritten(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file another process writes after the hook removed it keeps that process's bytes."""
+    repo = _repo(tmp_path)
+    _stage(repo, {"a.txt": b"one\r\n", "b.txt": b"two\r\n"})
+    script = _load_script()
+    real_git = script._git
+
+    def save_then_git(root: Path, *args: str, stdin: bytes | None = None) -> bytes:
+        """Let an editor save ``a.txt`` just before git checks the files out."""
+        if args[0] == "checkout-index":
+            (root / "a.txt").write_bytes(b"edited\r\n")
+        output: bytes = real_git(root, *args, stdin=stdin)
+        return output
+
+    monkeypatch.setattr(script, "_git", save_then_git)
+    with pytest.raises(script.GitError, match="already exists"):
+        script.repair(repo, ["a.txt", "b.txt"])
+    assert (repo / "a.txt").read_bytes() == b"edited\r\n"
+    assert (repo / "b.txt").read_bytes() == b"two\r\n"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a colon in a Windows name opens a stream")
+def test_a_name_that_reads_as_a_stage_is_compared_with_its_own_blob(tmp_path: Path) -> None:
+    """``0:x`` is compared with its own blob, not with stage 0 of ``x``."""
+    repo = _repo(tmp_path)
+    _stage(repo, {"x": b"a\n", "0:x": b"b\n"})
+    _write(repo, {"0:x": b"a\r\n"})
+    result = _run(repo)
+    assert result.returncode == 1
+    assert "0:x" in _rejected(result.stderr)
+    assert (repo / "0:x").read_bytes() == b"a\r\n"
+
+
+def test_a_file_reached_through_a_linked_directory_is_not_touched(tmp_path: Path) -> None:
+    """A staged path whose directory is now a link to elsewhere is rejected, not rewritten.
+
+    Git reports a path beyond a link as deleted, so the hook's mode check excludes it.
+    """
+    (tmp_path / "repo").mkdir()
+    repo = _repo(tmp_path / "repo")
+    _stage(repo, {"d/f.txt": b"a\n"})
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "f.txt").write_bytes(b"a\r\n")
+    (repo / "d" / "f.txt").unlink()
+    (repo / "d").rmdir()
+    try:
+        (repo / "d").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("this account cannot make symbolic links")
+    result = _run(repo)
+    assert result.returncode == 1
+    assert "d/f.txt" in _rejected(result.stderr)
+    assert (outside / "f.txt").read_bytes() == b"a\r\n"
+
+
 def test_a_reported_mode_change_is_rejected_and_unchanged(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
