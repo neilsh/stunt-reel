@@ -1,4 +1,4 @@
-"""One-command parity baseline: render both films and print the headline scores.
+"""One-command parity baseline: render every reference film and print the headline scores.
 
 Runs the release binary over every captured tick of each film, scores the render against its
 capture with ``stuntreel parity``, and prints one line per film plus the adoption noise note.
@@ -90,6 +90,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Renders and scores the chosen films, *jobs* at a time; 0 when every film scored, else 1.
+
+    A refused invocation or a failed preflight exits 2 before any render.
+    """
     args = parse_args(argv)
     try:
         options = parity_options(args)

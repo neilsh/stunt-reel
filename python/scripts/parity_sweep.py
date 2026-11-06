@@ -290,6 +290,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Renders and scores every variant on every chosen film, then ranks the variants.
+
+    Exits 2 on a refused invocation or a failed preflight. Every variant's work directory is
+    removed on the way out, interrupted or not, except the winner's under ``--keep-best``.
+    """
     args = parse_args(argv)
     try:
         validate_selector(args.reuse, args.var or [])
