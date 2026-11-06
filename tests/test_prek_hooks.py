@@ -9,19 +9,28 @@ does, the way `STUNT_REQUIRE_KSC` guards the schema test.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shutil
+import signal
 import subprocess
+import sys
+import tempfile
 import textwrap
+import time
 import tomllib
 from pathlib import Path
+from typing import IO
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 GIT = shutil.which("git")
+
+#: `_run` kills a timed-out process tree differently on Windows.
+pytestmark = pytest.mark.windows
 
 #: Variables that point git at another repository. Git sets them while it runs a hook, so a
 #: suite started from one would otherwise configure and commit in the outer repository.
@@ -51,10 +60,132 @@ def prek() -> str:
     return found
 
 
-def _run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603 - fixed test arguments
-        list(args), cwd=repo, capture_output=True, text=True, check=False
-    )
+#: Seconds any one git or prek call may take; these fixtures finish in a few.
+_TIMEOUT = 60.0
+
+
+def _run(repo: Path, *args: str, timeout: float = _TIMEOUT) -> subprocess.CompletedProcess[str]:
+    """Run a command in `repo`; a hung one is killed and fails the test with its output.
+
+    Without a timeout a hung prek held its pytest worker until the gate killed the worker,
+    which orphaned prek with the scratch repository as its working directory (issue #220).
+    Output goes to files, not pipes: a process prek started that outlives the kill can hold
+    a pipe open and block its reader, and on Windows `subprocess.run` waits on it unbounded.
+    """
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        proc = subprocess.Popen(  # noqa: S603 - fixed test arguments
+            list(args),
+            cwd=repo,
+            stdin=subprocess.DEVNULL,
+            stdout=out,
+            stderr=err,
+            start_new_session=True,  # one process group to kill on POSIX; ignored on Windows
+        )
+        try:
+            proc.wait(timeout=timeout)
+        except BaseException as exc:  # an interrupted wait must not orphan the tree either
+            _kill_tree(proc)
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.wait(timeout=10)
+            if not isinstance(exc, subprocess.TimeoutExpired):
+                raise
+            pytest.fail(
+                f"{' '.join(args)} timed out after {timeout} s\n"
+                f"stdout:\n{_read(out)}\nstderr:\n{_read(err)}"
+            )
+        return subprocess.CompletedProcess(proc.args, proc.returncode, _read(out), _read(err))
+
+
+def _kill_tree(proc: subprocess.Popen[bytes]) -> None:
+    """Kill `proc` and every process it started that is still in its tree or group."""
+    if sys.platform == "win32":
+        _taskkill(proc.pid)
+    else:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+    proc.kill()
+
+
+def _taskkill(pid: int) -> None:
+    """Kill the Windows process `pid` and its descendants, ignoring one already gone.
+
+    A `taskkill` that cannot start or finish is ignored too: the caller still kills the direct
+    child, and a timeout's failure must not be masked by the cleanup's.
+    """
+    with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+        subprocess.run(  # noqa: S603 - fixed arguments
+            ["taskkill", "/F", "/T", "/PID", str(pid)],  # noqa: S607 - Windows built-in
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+
+
+def _read(file: IO[bytes]) -> str:
+    """Return everything written to `file` as text, replacing bytes that do not decode."""
+    file.seek(0)
+    return file.read().decode(errors="replace").replace("\r\n", "\n")
+
+
+#: A grandchild that appends a byte to the file named by its argument every 0.1 s for 60 s.
+_GRANDCHILD = """\
+import sys, time
+for _ in range(600):
+    with open(sys.argv[1], "ab") as beat:
+        beat.write(b".")
+    time.sleep(0.1)
+"""
+
+#: A child that starts the grandchild on its own stdout, records its pid, and hangs.
+_CHILD = """\
+import pathlib, subprocess, sys, time
+here = pathlib.Path(__file__).parent
+grand = subprocess.Popen(
+    [sys.executable, str(here / "grand.py"), str(here / "beat")],
+    stdout=sys.stdout,
+    stderr=sys.stderr,
+)
+(here / "grand.pid").write_text(str(grand.pid))
+while not (here / "beat").exists():
+    time.sleep(0.05)
+print("marker-220", flush=True)
+time.sleep(60)
+"""
+
+
+def test_run_kills_a_timed_out_tree_and_keeps_its_output(tmp_path: Path) -> None:
+    """A timed-out call fails within seconds with its output, and its grandchild is dead."""
+    (tmp_path / "grand.py").write_text(_GRANDCHILD, encoding="utf-8")
+    (tmp_path / "child.py").write_text(_CHILD, encoding="utf-8")
+    beat = tmp_path / "beat"
+    try:
+        start = time.monotonic()
+        with pytest.raises(pytest.fail.Exception, match="marker-220"):
+            # Two interpreter starts must fit in the timeout on a loaded xdist worker.
+            _run(tmp_path, sys.executable, str(tmp_path / "child.py"), timeout=5)
+        # A call that waited on the grandchild's output would take its whole 60 s.
+        assert time.monotonic() - start < 30
+        time.sleep(1)
+        size = beat.stat().st_size
+        time.sleep(1)
+        assert beat.stat().st_size == size, "the grandchild outlived the kill"
+    finally:
+        _kill_survivor(tmp_path / "grand.pid", beat)
+
+
+def _kill_survivor(pid_file: Path, beat: Path) -> None:
+    """Kill the grandchild if its heartbeat is still fresh, so a failing test leaks nothing.
+
+    A stale heartbeat means it is dead and its pid may already belong to another process.
+    """
+    with contextlib.suppress(OSError, ValueError):
+        if time.time() - beat.stat().st_mtime > 1:
+            return
+        pid = int(pid_file.read_text(encoding="utf-8"))
+        if sys.platform == "win32":
+            _taskkill(pid)
+        else:
+            os.kill(pid, signal.SIGKILL)
 
 
 def _repo(path: Path) -> Path:
