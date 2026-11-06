@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from stunt_reel import link
-from stunt_reel.dataroot import REPO_ROOT, SharedDataError, require_corpus
+from stunt_reel.dataroot import REPO_ROOT, SharedDataError, corpus_root, require_corpus
 
 #: `res_index` values below this hold shapes; `SPRITES.RES` (0x80) and the sound files above.
 SHAPE_INDEX_LIMIT = 0x80
@@ -149,12 +149,17 @@ def build(game: Path, out: Path, *, run: link.Runner | None = None) -> tuple[int
     """Writes the superset of *game* to *out* and its manifest beside it; `(chunks, bytes)`.
 
     Raises:
-        SupersetError: as :func:`shape_files`, *game* has no `RES` folder, or *out* ends in
-            `.toml`, where the manifest goes.
+        SupersetError: as :func:`shape_files`, *game* has no `RES` folder, *out* ends in
+            `.toml`, where the manifest goes, or *out* lies in the game tree or ``corpus/``,
+            which nothing this project runs writes (ADR 0022).
         link.LinkError: ``stuntreel link build`` failed or wrote other bytes.
     """
     if out.suffix.lower() == ".toml":
         raise SupersetError(f"{out} would overwrite its own manifest; name the archive .ALL")
+    target = out.resolve()
+    for protected in (game.resolve(), corpus_root().resolve()):
+        if target.is_relative_to(protected):
+            raise SupersetError(f"{out} is inside {protected}, which is read-only (ADR 0022)")
     res_dirs = [p for p in game.iterdir() if p.is_dir() and p.name.upper() == "RES"]
     if not res_dirs:
         raise SupersetError(f"no RES folder in {game}")

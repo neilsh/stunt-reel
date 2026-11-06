@@ -113,6 +113,28 @@ def test_build_refuses_an_output_named_like_its_manifest(game: Path, tmp_path: P
     assert run.calls == []
 
 
+def test_build_refuses_an_output_inside_the_game_tree(game: Path) -> None:
+    run = FakeRunner()
+    planes = game / "res" / "planes.res"
+    before = planes.read_bytes()
+    with pytest.raises(superset_all.SupersetError, match="read-only"):
+        superset_all.build(game, planes, run=run)
+    assert run.calls == []
+    assert planes.read_bytes() == before
+    assert not planes.with_suffix(".toml").exists()
+
+
+def test_build_refuses_an_output_inside_the_corpus(
+    game: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    corpus = tmp_path / "corpus"
+    monkeypatch.setattr(superset_all, "corpus_root", lambda: corpus)
+    run = FakeRunner()
+    with pytest.raises(superset_all.SupersetError, match="read-only"):
+        superset_all.build(game, corpus / "stisldem" / "SUPERSET.ALL", run=run)
+    assert run.calls == []
+
+
 def test_shape_files_refuse_a_tree_without_shapes(tmp_path: Path) -> None:
     (tmp_path / "SPRITES.RES").write_bytes(_res(0x80, [b"palette"]))
     with pytest.raises(superset_all.SupersetError, match=r"no \.RES file"):
@@ -174,12 +196,15 @@ def test_build_reports_a_rebuild_that_differs(game: Path, tmp_path: Path) -> Non
 
 
 def test_build_refuses_a_tree_without_res(tmp_path: Path) -> None:
+    (tmp_path / "game").mkdir()
     with pytest.raises(superset_all.SupersetError, match="no RES folder"):
-        superset_all.build(tmp_path, tmp_path / "SUPERSET.ALL", run=FakeRunner())
+        superset_all.build(tmp_path / "game", tmp_path / "out" / "SUPERSET.ALL", run=FakeRunner())
 
 
 def test_main_reports_a_failure_and_exits_1(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert superset_all.main(["--game", str(tmp_path), "-o", str(tmp_path / "X.ALL")]) == 1
+    (tmp_path / "game").mkdir()
+    argv = ["--game", str(tmp_path / "game"), "-o", str(tmp_path / "out" / "X.ALL")]
+    assert superset_all.main(argv) == 1
     assert "superset-all: no RES folder" in capsys.readouterr().err
