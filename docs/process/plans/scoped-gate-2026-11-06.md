@@ -1,7 +1,7 @@
 # The local gate runs what a change touches, faster (2026-11-06)
 
 Status: **design agreed and reviewed 2026-11-06; not started**. Branch `claude/run-gate-performance-796b53`.
-Tasks: `scoped-gate-implementation-2026-11-06.md` (to be written from this note). Source: a
+Tasks: [`scoped-gate-implementation-2026-11-06.md`](scoped-gate-implementation-2026-11-06.md). Source: a
 session of 2026-11-06 that started from "can the gate take less time, or check only what a change
 touches, or can prek help", measured the gate, and settled the design below. The scoping decision
 will be recorded as ADR 0037 (or the next free number when it lands); the worker-count change
