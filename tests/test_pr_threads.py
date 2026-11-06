@@ -215,11 +215,13 @@ class _FakeGh:
     """Stands in for ``pr_threads._gh``: records each call and answers from the thread list."""
 
     def __init__(self, threads: list[dict[str, Any]], *, resolves: bool = True) -> None:
+        """Answer from *threads*; the mutation reports *resolves* as the thread's state."""
         self.threads = threads
         self.resolves = resolves
         self.calls: list[tuple[str, ...]] = []
 
     def __call__(self, *args: str) -> dict[str, Any]:
+        """Record *args* and give the answer gh would for that call."""
         self.calls.append(args)
         if args[:2] == ("repo", "view"):
             return {"nameWithOwner": "o/r"}
@@ -232,6 +234,7 @@ class _FakeGh:
 
 
 def _threads() -> list[dict[str, Any]]:
+    """An open thread headed by comment 111 and a resolved one headed by comment 222."""
     first, second = _thread("Open."), _thread("Done.", resolved=True)
     first["id"], second["id"] = "PRRT_open", "PRRT_done"
     second["comments"]["nodes"][0]["databaseId"] = 222
@@ -239,12 +242,14 @@ def _threads() -> list[dict[str, Any]]:
 
 
 def _is_mutation(call: tuple[str, ...]) -> bool:
+    """Whether *call* sends the ``resolveReviewThread`` mutation."""
     return any("resolveReviewThread" in a for a in call)
 
 
 def test_reply_posts_the_body_to_the_comments_replies_endpoint(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """``--reply`` posts once, to the replies endpoint of the named comment."""
     gh = _FakeGh(_threads())
     monkeypatch.setattr(pr_threads, "_gh", gh)
     assert pr_threads.main(["7", "--reply", "111", "--body", "Fixed in abc123."]) == 0
@@ -262,6 +267,7 @@ def test_reply_posts_the_body_to_the_comments_replies_endpoint(
 
 
 def test_reply_reads_its_body_from_a_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``--body-file`` sends the file's text unchanged, newlines and all."""
     body = tmp_path / "reply.md"
     body.write_text("Line one.\n\nLine two.\n", encoding="utf-8")
     gh = _FakeGh(_threads())
@@ -273,6 +279,7 @@ def test_reply_reads_its_body_from_a_file(monkeypatch: pytest.MonkeyPatch, tmp_p
 def test_a_missing_body_file_fails_before_posting(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """An unreadable ``--body-file`` exits 2 without posting anything."""
     gh = _FakeGh(_threads())
     monkeypatch.setattr(pr_threads, "_gh", gh)
     assert pr_threads.main(["7", "--reply", "111", "--body-file", str(tmp_path / "no")]) == 2
@@ -280,6 +287,7 @@ def test_a_missing_body_file_fails_before_posting(
 
 
 def test_resolve_maps_the_comment_id_to_its_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--resolve`` sends the mutation for the thread the comment heads."""
     gh = _FakeGh(_threads())
     monkeypatch.setattr(pr_threads, "_gh", gh)
     assert pr_threads.main(["7", "--resolve", "111"]) == 0
@@ -288,6 +296,7 @@ def test_resolve_maps_the_comment_id_to_its_thread(monkeypatch: pytest.MonkeyPat
 
 
 def test_reply_comes_before_resolve_when_both_are_given(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With both actions, the reply is posted before the thread is resolved."""
     gh = _FakeGh(_threads())
     monkeypatch.setattr(pr_threads, "_gh", gh)
     assert pr_threads.main(["7", "--reply", "111", "--body", "Done.", "--resolve", "111"]) == 0
@@ -299,6 +308,7 @@ def test_reply_comes_before_resolve_when_both_are_given(monkeypatch: pytest.Monk
 def test_an_already_resolved_thread_is_left_alone(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """A thread that is already resolved gets no mutation, and the output says so."""
     gh = _FakeGh(_threads())
     monkeypatch.setattr(pr_threads, "_gh", gh)
     assert pr_threads.main(["7", "--resolve", "222"]) == 0
@@ -309,12 +319,14 @@ def test_an_already_resolved_thread_is_left_alone(
 def test_resolving_a_comment_that_starts_no_thread_fails(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """A comment id that heads no thread exits 2 and names the id."""
     monkeypatch.setattr(pr_threads, "_gh", _FakeGh(_threads()))
     assert pr_threads.main(["7", "--resolve", "333"]) == 2
     assert "starts with comment 333" in capsys.readouterr().err
 
 
 def test_a_mutation_that_leaves_the_thread_open_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A mutation whose answer shows the thread still open exits 2."""
     monkeypatch.setattr(pr_threads, "_gh", _FakeGh(_threads(), resolves=False))
     assert pr_threads.main(["7", "--resolve", "111"]) == 2
 
@@ -324,6 +336,7 @@ def test_a_mutation_that_leaves_the_thread_open_fails(monkeypatch: pytest.Monkey
     [["7", "--reply", "111"], ["7", "--body", "orphan"], ["7", "--resolve", "1", "--body", "x"]],
 )
 def test_reply_and_its_body_go_together(argv: list[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--reply`` without a body, or a body without ``--reply``, is a usage error."""
     gh = _FakeGh(_threads())
     monkeypatch.setattr(pr_threads, "_gh", gh)
     with pytest.raises(SystemExit):
