@@ -257,8 +257,12 @@ def resolve_all(
     are read from the data root *data*, the configured one by default (ADR 0036).
     """
     sibling = _sibling(flm)
-    if sibling is not None and (pinned is None or file_sha256(sibling) == pinned):
-        return sibling
+    if sibling is not None:
+        try:
+            if pinned is None or file_sha256(sibling) == pinned:
+                return sibling
+        except OSError as exc:
+            raise ArchiveError(f"cannot read the sibling archive {sibling}: {exc}") from exc
     slug = slug or parity_layout.slug_for(flm)
     data = data or dataroot.data_root()
     linked = _from_manifest(
@@ -275,12 +279,13 @@ def resolve_all(
             and stored[1].flm_sha256 == file_sha256(flm)
         ):
             return _checked(flm, *stored)
-        copy = _corpus_copy(flm, pinned, data)
+        copy, unreadable = _corpus_copy(flm, pinned, data)
         if copy is not None:
             return copy
+        skipped = f"; unreadable copies passed over: {'; '.join(unreadable)}" if unreadable else ""
         raise ArchiveError(
             f"no archive of {flm.name} hashes to the pinned all_sha256 {pinned}; {make} "
-            "and repin, or restore the archive the row names"
+            f"and repin, or restore the archive the row names{skipped}"
         )
     if stored is None:
         raise ArchiveMissing(f"no .ALL for {flm}; {make}")
@@ -326,15 +331,25 @@ def _checked(flm: Path, directory: Path, meta: ArchiveMeta) -> Path:
     return archive
 
 
-def _corpus_copy(flm: Path, pinned: str, data: Path) -> Path | None:
-    """A ``.ALL`` beside a copy of *flm* (same name, same bytes) in *data*'s corpus, hashing to *pinned*."""
+def _corpus_copy(flm: Path, pinned: str, data: Path) -> tuple[Path | None, list[str]]:
+    """A ``.ALL`` beside a copy of *flm* (same name, same bytes) in *data*'s corpus, hashing to
+    *pinned*, or ``None``; and the read errors of the candidates passed over on the way.
+    """
     film_sha = file_sha256(flm)
     corpus = dataroot.corpus_of(data)
+    unreadable: list[str] = []
     for archive in sorted(corpus.rglob(f"{flm.stem}.all", case_sensitive=False)):
         film = _film_beside(archive, flm.stem)
-        if film is not None and file_sha256(film) == film_sha and file_sha256(archive) == pinned:
-            return archive
-    return None
+        try:
+            if (
+                film is not None
+                and file_sha256(film) == film_sha
+                and file_sha256(archive) == pinned
+            ):
+                return archive, unreadable
+        except OSError as exc:
+            unreadable.append(str(exc))
+    return None, unreadable
 
 
 def _film_beside(archive: Path, stem: str) -> Path | None:

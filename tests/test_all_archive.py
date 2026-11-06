@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from archive_helpers import build_all
-from stunt_reel import dataroot, link, parity_layout
+from stunt_reel import all_archive, dataroot, link, parity_layout
 from stunt_reel.all_archive import (
     META_FILE,
     ArchiveError,
@@ -23,6 +23,7 @@ from stunt_reel.all_archive import (
     publish_archive,
     resolve_all,
 )
+from stunt_reel.hashing import file_sha256
 
 CHUNKS = [b"alpha", b"bb", b"c" * 9]
 
@@ -589,3 +590,46 @@ def test_a_manifests_corpus_game_root_is_read_from_the_given_data_root(tmp_path:
     fake = FakeLinkBuild()
     resolve_all(film, tmp_path, SLUG, link_build=fake, pinned=linked_sha, data=data)
     assert fake.calls[0][1] == game
+
+
+def _unreadable(monkeypatch: pytest.MonkeyPatch, *bad: Path) -> None:
+    """Make hashing any of *bad* fail as an unreadable file does."""
+    real = file_sha256
+
+    def hashing(path: Path) -> str:
+        if path in bad:
+            raise PermissionError(13, "denied", str(path))
+        return real(path)
+
+    monkeypatch.setattr(all_archive, "file_sha256", hashing)
+
+
+def test_an_unreadable_sibling_is_an_archive_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    film, own, _other = _copies(tmp_path)
+    _unreadable(monkeypatch, own)
+    with pytest.raises(ArchiveError, match=r"BALLOON\.ALL"):
+        resolve_all(film, tmp_path, SLUG, link_build=no_link, pinned="f" * 64)
+
+
+def test_a_pin_passes_over_an_unreadable_corpus_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    film, _own, other = _copies(tmp_path)
+    first = tmp_path / "corpus" / "0" / "VAULT"
+    first.mkdir(parents=True)
+    (first / "BALLOON.FLM").write_bytes(FLM_BYTES)
+    (first / "BALLOON.ALL").write_bytes(b"locked")
+    _unreadable(monkeypatch, first / "BALLOON.ALL")
+    pin = hashlib.sha256(other.read_bytes()).hexdigest()
+    assert resolve_all(film, tmp_path, SLUG, link_build=no_link, pinned=pin) == other
+
+
+def test_an_unreadable_corpus_copy_is_named_when_nothing_matches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    film, _own, other = _copies(tmp_path)
+    _unreadable(monkeypatch, other)
+    with pytest.raises(ArchiveError, match=r"(?s)f{64}.*denied"):
+        resolve_all(film, tmp_path, SLUG, link_build=no_link, pinned="f" * 64)
