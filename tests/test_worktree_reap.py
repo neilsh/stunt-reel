@@ -48,11 +48,17 @@ detached
 
 
 #: Every git call that can create a commit (rebase, merge) needs an identity; CI has no global one.
-_IDENTITY = {
+#: ``core.longpaths`` because the repos sit under the checkout's per-run basetemp: in a worktree
+#: under ``.claude/worktrees/<slug>`` with xdist's ``popen-gwN`` level, ``git rebase`` stats an
+#: 81-character ``<sha>...<sha>`` range past Windows' 260-character limit ("Filename too long").
+_GIT_ENV = {
     "GIT_AUTHOR_NAME": "t",
     "GIT_AUTHOR_EMAIL": "t@example.invalid",
     "GIT_COMMITTER_NAME": "t",
     "GIT_COMMITTER_EMAIL": "t@example.invalid",
+    "GIT_CONFIG_COUNT": "1",
+    "GIT_CONFIG_KEY_0": "core.longpaths",
+    "GIT_CONFIG_VALUE_0": "true",
 }
 
 
@@ -62,7 +68,7 @@ def _run_git(cwd: Path, *args: str) -> str:
     result = subprocess.run(  # noqa: S603
         [git, *args],
         cwd=cwd,
-        env={**os.environ, **_IDENTITY},
+        env={**os.environ, **_GIT_ENV},
         capture_output=True,
         text=True,
         check=True,
