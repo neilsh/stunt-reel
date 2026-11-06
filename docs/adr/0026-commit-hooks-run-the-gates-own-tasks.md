@@ -85,6 +85,13 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   `--no-verify` or without hooks no longer reaches `main`
   unchecked for the built-ins.
 - **prek is pinned in `mise.toml`** like every other tool; the hooks carry no versions.
+- **The commit message has its own hook, outside prek** (added 2026-11-04). Two commits on #160
+  lacked SOP 3's gate line and only a reviewer noticed. `.githooks/commit-msg` dispatches
+  `mise run commit-msg-check -- <file>`
+  ([`check_commit_msg.py`](../../python/scripts/check_commit_msg.py)): a Conventional Commit
+  subject, and a line naming `mise run check` in any body. It stays out of `prek.toml`, whose
+  local hooks take no file and run at pre-commit. CI runs the same task over a pull request's own
+  commits (`--range origin/<base>..HEAD`), not over `main`, whose squash merges GitHub writes.
 
 ## What enforces this
 
