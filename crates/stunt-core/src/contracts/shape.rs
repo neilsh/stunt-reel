@@ -80,7 +80,20 @@ pub enum VisibilityCondition {
     /// Unconditionally visible.
     Always,
     /// Level-of-Detail threshold: visible only if squared distance to camera <= `max_distance_sq`.
+    ///
+    /// The SOD decoder no longer emits it: `OP_IFVIS` is a facing gate ([`Self::FacesEye`]).
     LodDistanceSq(f32),
+    /// Facing gate of `OP_IFVIS`: visible only while the eye is on the side of the plane
+    /// through `point` that `normal` points to, i.e. `normal · (point - eye) < 0`.
+    ///
+    /// Both vectors are in the space of the model that owns the node; `normal` need not be
+    /// unit length.
+    FacesEye {
+        /// A point on the face's plane.
+        point: [f32; 3],
+        /// The face normal; the gate opens when it points toward the eye.
+        normal: [f32; 3],
+    },
     /// Actor state bitmask gate: visible if `(state_mask & mask) == expected`.
     ActorState {
         /// Bitmask selecting the actor state bits this gate observes.
