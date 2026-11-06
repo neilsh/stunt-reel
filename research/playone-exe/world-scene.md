@@ -36,7 +36,7 @@ The scenery walker dispatches on a node's first word through the DGROUP table at
 
 The tree segment is the stack segment while it is walked: `SS = 0x2AAA` in the DOSBox-X session, which is load paragraph `0x0824` plus image paragraph `0x2286`. A 64 KB dump of it at tick 312 (the first leaf call after the plan armed at 300) matches the image at `0x22860` in 118 of 128 sampled 32-byte windows, one every `0x200` bytes; the other 10 hold the stack and other mutable words. So nothing builds or loads the tree: it is part of `PLAYONE.EXE`.
 
-**Against `MAP.BIN`.** A scan for type-14 nodes whose polygon has a byte colour, 3 to 12 vertices and vertex words that are multiples of `0x1C` (anchor 0 included) finds 146 leaves in the unpatched image (`0x22866..0x30760`), 146 in the patched one (`0x20736..0x2E630`) and 146 in the live tree at tick 312. Every one has the vertex set of a `MAP.BIN` record (FreeFlight's `SIDATA`) and that record's colour byte, and together they reach 146 of its 179 records: records 99 and 100 share one vertex set and colour, and two leaves carry it. One leaf has 8 vertices. It is record 131, whose eighth anchor `50` is the word `MAP.BIN` stores as the next record's `num` ([`map.md`](../formats/auxiliary/map.md) `[BK-MAP-05]`). The 33 records with no leaf are the 13 inactive ones (`pos & 0xFF == 0`, anchor indices past 1023) and 20 active ones (open question 1). An earlier scan that stopped at 7 vertices and skipped anchor 0 found 143. The colours are `205` (28 leaves), `162` to `165` (53), `195` (12), `193`, `194` (8 each), `161` (6), `197` (5), `192`, `204` (4 each), and a few others. On the live run the gateway `0x8069` drew `0xA1..0xA4`, `0xC0..0xC4`, `0xCD` and `0xE7` from this routine alone, 300 calls over ticks 310-337.
+**Against `MAP.BIN`.** A scan for type-14 nodes whose polygon has a byte colour, 3 to 12 vertices and vertex words that are multiples of `0x1C` (anchor 0 included) finds 146 leaves in the unpatched image (`0x22866..0x30760`), 146 in the patched one (`0x20736..0x2E630`) and 146 in the live tree at tick 312. Every one has the vertex set of a `MAP.BIN` record (FreeFlight's `SIDATA`) and that record's colour byte, and together they reach 146 of its 179 records: records 99 and 100 share one vertex set and colour, and two leaves carry it. One leaf has 8 vertices. It is record 131, whose eighth anchor `50` is the word `MAP.BIN` stores as the next record's `num` ([`map.md`](../formats/auxiliary/map.md) `[BK-MAP-05]`). The 33 records with no leaf are the 13 inactive ones (`pos & 0xFF == 0`, anchor indices past 1023) and 20 active ones (section 2.1). An earlier scan that stopped at 7 vertices and skipped anchor 0 found 143. The colours are `205` (28 leaves), `162` to `165` (53), `195` (12), `193`, `194` (8 each), `161` (6), `197` (5), `192`, `204` (4 each), and a few others. On the live run the gateway `0x8069` drew `0xA1..0xA4`, `0xC0..0xC4`, `0xCD` and `0xE7` from this routine alone, 300 calls over ticks 310-337.
 
 So `MAP.BIN`'s colours are the player's ground colours. What a per-polygon colour does not explain is the subject of section 3.
 
@@ -48,27 +48,36 @@ The tree can be walked from the image alone. `python/stunt_reel/scene_tree.py` s
 
 All 158 match a `MAP.BIN` record's vertices and colour once the records are read as the engine reads them: the leaf at tree offset `0x060E` is record 131, whose eighth vertex (anchor `50`) is the next record's first word (section 2). `MAP.BIN` records 52 to 55 and 62 to 65, eight sand patches, have no polygon in the tree.
 
-That accounts for the 20 active records with no leaf that section 2 counted: the 12 coarse `SP_GROUND` polygons, which that scan did not look for, and these 8 patches.
+That accounts for the 20 active records with no leaf that section 2 counted: the 12 coarse `SP_GROUND` polygons, which that scan did not look for, and these 8 patches. `mise run scene-ground` lists the 12 as record and tree offset of the polygon, each with the record's colour:
+
+| Records | Colour | Tree offsets (in record order) |
+|---|---|---|
+| 0 | 14 | `0x00A6` |
+| 56, 68, 70, 71, 72, 82 | 205 | `0x0126`, `0x0100`, `0x014C`, `0x0172`, `0x0198`, `0x01BE` |
+| 157, 158, 159 | 163, 162, 161 | `0x18E6`, `0x18C0`, `0x190A` |
+| 160, 163 | 204 | `0x1948`, `0x196E` |
 
 **The 8 patches: `PLAYONE` draws none of them** ([#175](https://github.com/neilsh/stunt-reel/issues/175)). *[Established]* for each comparison below; *[Supported Inference]* for the conclusion that no route draws them (`mise run scene-patches`, unpatched image, 2026-11-05). `mise run scene-patches -- build/re/playone.img corpus/siarchive/Developer/FreeFlight/SIDATA/MAP.BIN --scn <each SCENERY.scn> --scan corpus/stuntisl --scan corpus/stisldem --scan corpus/siarchive/Films --scan corpus/siarchive/Developer/FreeFlight/SIDATA` reproduces it.
 
-* **FreeFlight's tree is `PLAYONE`'s.** The two copies of `SCENERY.scn` (`Developer/FreeFlight/SIDATA` and `Developer/SIRes/SiData`) are byte-identical. Read as 16-bit words without the leading `0`, the file's 29,558 words equal the image's tree except 8,979 links, each exactly 2 higher, and walked with that bias it gives the same 158 Ground polygons at the same offsets. FreeFlight's tree has no leaf the image lacks: FreeFlight shows the patches only because `sisland.cpp` draws every `MAP.BIN` record and never reads the leaves' polygons.
+* **FreeFlight's tree is `PLAYONE`'s.** The two copies of `SCENERY.scn` (`Developer/FreeFlight/SIDATA` and `Developer/SIRes/SiData`) are byte-identical. Read as 16-bit words without the leading `0`, the file's 29,558 words equal the image's tree except at 8,979 of the 9,033 link fields the walk reads, each exactly 2 higher (the other 54 are equal in both); no word outside a link field differs, and walked with that bias it gives the same 158 Ground polygons at the same offsets. FreeFlight's tree has no leaf the image lacks: FreeFlight shows the patches only because `sisland.cpp` draws every `MAP.BIN` record and never reads the leaves' polygons.
 * **Their polygon is in no file but `MAP.BIN`.** A byte search for each patch's polygon in the tree's form (`[count][28 * k ...]`) and in `MAP.BIN`'s (`[count][k ...]`), in every vertex order, finds none in the unpacked image, which rules out an unreachable node or another table. The same search finds all 158 drawn records there, so the search itself works. It finds none in the 1,047 files under `corpus/stuntisl`, `corpus/stisldem`, `corpus/siarchive/Films` and FreeFlight's `SIDATA` (every `RES` and `.ALL` among them) either; its only hits are the 8 records in `MAP.BIN` itself. The image names no `MAP.BIN` file ([`terrain-shade.md`](terrain-shade.md) section 2).
 * **No shape taps their anchors.** A display-list shape reaches the anchor table only through `OP_TAP` ([`sod-vm.md`](sod-vm.md) section 2). The same files hold 4,739 `OP_TAP`-shaped anchor operands (anchors 14 to 201), and none names 19, 20, 21, 22, 69, 72, 73 or 92, the only anchors the patches use.
 * **What `PLAYONE` draws there instead.** Under the centroid of every patch but 64 lies the leaf at tree offset `0x00DA`, `MAP.BIN` record 7, colour 195, a quad about 4 km across. Colour-205 leaves (`0x0420` and others) cross it. The centroid of 64 has no Ground polygon over it. No shape the tree places inside a patch has the patch's outline. The four large patches each contain hundreds of placements, and 54 and 55 hold only rows of `0x056D`..`0x0572` 4 m apart, a few of `0x03A1`..`0x03A8` and `0x05CB`..`0x05D1`.
 
 | Patch | Colour | Anchors | Under its centroid in `PLAYONE` | Note | Verdict |
 |---|---|---|---|---|---|
-| 52 | 69 | 73, 21, 22 | leaf `0x00DA` (195) | 22 is `-32768` high in `ANCHORPT.DAT`, 0 in the image | ruled out |
+| 52 | 69 | 73, 21, 22 | leaf `0x00DA` (195) | 22 is `-32768` high in `ANCHORPT.DAT`, 0 in the image's table | ruled out |
 | 53 | 64 | 73, 22, 92 | `0x00DA` | 92 is `-32768` high in the image's own table too, so not a ground point | ruled out |
 | 54 | 87 | 73, 69, 20 | `0x00DA` | drawn by our renderer | ruled out |
 | 55 | 91 | 73, 20, 21 | `0x00DA`, `0x0420` (205) | drawn by our renderer; 2.1 km long, 10 m wide at one end | ruled out |
-| 62 | 82 | 22, 19, 72 | `0x00DA` | 19 and 22 as for 52 | ruled out |
+| 62 | 82 | 22, 19, 72 | `0x00DA` | 22 as for 52; 19 is likewise `-32768` high in `ANCHORPT.DAT` and 0 in the image's table (`map.md` `[BK-MAP-08]`; `scene-patches` prints the image's value) | ruled out |
 | 63 | 77 | 22, 72, 92 | `0x00DA` | 92 as for 53 | ruled out |
-| 64 | 79 | 69, 72, 19 | none | 19 as for 52 | ruled out |
-| 65 | 82 | 69, 19, 20 | `0x00DA` | 19 as for 52 | ruled out |
+| 64 | 79 | 69, 72, 19 | none | 19 as for 62 | ruled out |
+| 65 | 82 | 69, 19, 20 | `0x00DA` | 19 as for 62 | ruled out |
 
 The colours, 64 to 91, are steps of the palette's sand ramp. The live Ground calls of section 2.2 carried none of them, which agrees but proves little: that shot looks away from them. Where FreeFlight's `MAP.BIN` got them is open question 1.
+
+**Nothing in their records marks them either.** *[Bounded Observation]* (FreeFlight's `MAP.BIN`; `mise run scene-patches` prints both comparisons). All 8 have `pos = 0x00FF`, and so do 26 drawn records (29, 83 to 97, 169 to 178). Their `a` words (`+0x04`, a record offset or `-1`, [`map.md`](../formats/auxiliary/map.md) `[BK-MAP-03]`) form two chains that no other record links into, 52 to 55 and 62 to 65. Drawn records form chains like that too: 83 to 85, 87 to 89 then 86, and 166 to 164.
 
 Two older readings this walk corrects. `OP_FRACTAL` (image `0xA56C`) is dead code: it pushes 14 words against a `ret 0x1A`, which leaves `ES` at `0x50`, so a stream cannot have run it. The 110-word "ramp directory" at `CTRY.ALL` offset `0x79` ([`all.md`](../formats/all.md) section 3.6) is the archive's chunk-id table at `0x7A` read one byte off.
 
@@ -215,7 +224,7 @@ _Found 2026-11-04; see the [parity log](../parity/log.md)._
 * **Tiles missing from our world** (section 6): `CTRY.ALL` carries them and `SCENERY.scn` places them; removing the terrain shows them.
 * **A leaf for patches 52 to 55 and 62 to 65 in FreeFlight's tree** (section 2.1): both copies of `SCENERY.scn` are the image's tree, links aside, with the same 158 Ground polygons.
 * **Another node, table or shape that draws those patches** (section 2.1): their polygon occurs in no file but `MAP.BIN`, the image included, while the same search finds all 158 drawn records there; no `OP_TAP` operand in the image, the `RES` files or any `.ALL` names one of their anchors.
-* **A field of the record that marks those patches** (section 2.1): their `pos` is `0x00FF`, as it is for 26 drawn records, and their `a` links form two chains of their own (52 to 55, 62 to 65), as drawn records 83 to 85 and 164 to 166 do.
+* **A field of the record that marks those patches** (section 2.1, "Nothing in their records marks them either", `[Bounded Observation]`): their `pos` is `0x00FF`, as it is for 26 drawn records, and their `a` links form two chains of their own (52 to 55, 62 to 65), as drawn records 83 to 85 and 166 to 164 do.
 * **A leaf of `PLAYONE`'s tree that `MAP.BIN` lacks** (section 2.1, open question 3): `mise run scene-ground` finds no tree-only polygon; all 158 are `MAP.BIN` records.
 * **The earlier memory scans** (2026-10-23/24): they looked for a display-list stream of `0x995C`/`0x9A24` words in conventional memory. The ground was never in that form, so "no resident list" was true but beside the point. The image region `0x23200-0x24E80` they flagged as "a serialised scenery program" is the tree.
 

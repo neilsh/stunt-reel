@@ -168,13 +168,25 @@ TREE_LINKS = {0x02, 0x04, 0x42, 0x44, 0x6C}
 def test_scn_segment_walks_like_the_image_tree() -> None:
     """A converted SCENERY.scn walks to the same polygons, and only its links differ."""
     converted = scene_tree.scn_segment(_scn(TREE, TREE_LINKS))
-    diff = scene_tree.diff_segments(converted, TREE)
+    fields = scene_tree.walk(TREE).link_fields
+    assert fields >= TREE_LINKS
+    diff = scene_tree.diff_segments(converted, TREE, fields)
     assert (diff.words, diff.link_words, diff.other) == (len(TREE) // 2, 5, [])
     own = scene_tree.walk(converted, link_bias=scene_tree.SCN_LINK_BIAS)
     assert own.polygons == scene_tree.walk(TREE).polygons
     changed = bytearray(converted)
     changed[0x1E] = 91  # the GLEAF's colour
-    assert scene_tree.diff_segments(bytes(changed), TREE).other == [0x1E]
+    assert scene_tree.diff_segments(bytes(changed), TREE, fields).other == [0x1E]
+
+
+def test_diff_segments_reports_a_non_link_word_two_higher() -> None:
+    """A position word 2 higher is a real difference, not a link."""
+    converted = bytearray(scene_tree.scn_segment(_scn(TREE, TREE_LINKS)))
+    struct.pack_into("<H", converted, 0x92, 5 + scene_tree.SCN_LINK_BIAS)  # POSXZ x
+    fields = scene_tree.walk(TREE).link_fields
+    assert 0x92 not in fields
+    diff = scene_tree.diff_segments(bytes(converted), TREE, fields)
+    assert (diff.link_words, diff.other) == (5, [0x92])
 
 
 def test_scn_segment_rejects_malformed_files() -> None:
@@ -187,7 +199,7 @@ def test_scn_segment_rejects_malformed_files() -> None:
         with pytest.raises(ValueError, match=message):
             scene_tree.scn_segment(bad)
     with pytest.raises(ValueError, match="shorter"):
-        scene_tree.diff_segments(b"\0" * 8, b"\0" * 4)
+        scene_tree.diff_segments(b"\0" * 8, b"\0" * 4, set())
 
 
 def test_polygon_bodies_cover_every_vertex_order() -> None:
@@ -250,7 +262,7 @@ def test_scene_patches_reports_a_patch_with_no_polygon(
     assert scene_patches.main(argv) == 0
     out = capsys.readouterr().out
     assert "1 active MAP.BIN records without one" in out
-    assert "5 links 2 higher, 0 other differences; 2 ground polygons, the same" in out
+    assert "5 of 8 link fields 2 higher, 0 other differences []; 2 ground polygons, the same" in out
     assert "control: polygon bytes of 2 of 2 matched records found in the image" in out
     assert "patch 2 colour 91" in out
     assert "OP_TAP operands naming its anchors: {4: 1, 5: 1}" in out
@@ -282,3 +294,32 @@ def test_placements_carry_the_position_above_them() -> None:
         scene_tree.placements(
             _segment({0x00: [0, 0, 0, 0, 0x10], 0x10: [0, 0, 0, 0, 0x10]}), max_steps=100
         )
+
+
+def test_map_links_and_chains() -> None:
+    """``a`` names a record by byte offset; chains start where nothing links in."""
+    records = [
+        struct.pack("<8h7H", 0, 0x00FF, 30, -1, 0, -1, 1, 3, 1, 2, 3, 0, 0, 0, 0),
+        struct.pack("<8h7H", 0, 0x00FF, -1, -1, 0, -1, 1, 3, 1, 2, 3, 0, 0, 0, 0),
+        struct.pack("<8h7H", 0, 0x07FF, -1, -1, 0, -1, 1, 3, 1, 2, 3, 0, 0, 0, 0),
+    ]
+    links = scene_tree.map_links(b"".join(records))
+    assert links == {0: (0x00FF, 1), 1: (0x00FF, -1), 2: (0x07FF, -1)}
+    assert scene_tree.link_chains(links) == [[0, 1], [2]]
+    lines = scene_patches.record_fields(b"".join(records), {1})
+    assert lines == [
+        "pos 0x00FF: on 1 drawn records [0]",
+        "a chains no record links into (under 10 long): 0->1 (no polygon), 2",
+    ]
+
+
+def test_matched_records_and_scene_ground_report() -> None:
+    """Each coarse polygon is reported with the record it matches."""
+    patches = scene_tree.parse_map_bin(
+        _map_record(1, 195, [1, 2, 3]) + _map_record(1, 14, [6, 5, 4])
+    )
+    walked = scene_tree.walk(TREE)
+    pairs = scene_tree.matched_records(walked.polygons, patches)
+    assert sorted((p.colour, r) for p, r in pairs) == [(14, [1]), (195, [0])]
+    text = scene_ground.report(walked, scene_tree.compare(walked.polygons, patches), patches)
+    assert "coarse SP_GROUND polygons (1): record 1 at 0x007A colour 14" in text

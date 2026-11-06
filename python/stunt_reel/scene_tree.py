@@ -61,6 +61,7 @@ class TreeWalk:
     polygons: list[GroundPolygon] = field(default_factory=list)
     leaves: Counter[int] = field(default_factory=Counter)
     unknown: list[tuple[int, int]] = field(default_factory=list)  # (offset, type)
+    link_fields: set[int] = field(default_factory=set)  # byte offsets of every link word read
 
 
 @dataclass(frozen=True)
@@ -116,31 +117,33 @@ def walk(seg: bytes, root: int = 0, link_bias: int = 0) -> TreeWalk:
         seen.add(node)
         kind = _word(seg, node)
         result.node_types[kind] += 1
-        links: list[int] = []
+        fields: list[int] = []
         if kind in (SP_POS, SP_1NODE):
-            links = [_word(seg, node + 8)]
+            fields = [node + 8]
         elif kind == SP_POSXZ:
-            links = [_word(seg, node + 6)]
+            fields = [node + 6]
         elif kind in (SP_2NODE, SP_XPLANE, SP_ZPLANE, SP_HSLOPE, SP_VSLOPE):
-            links = [_word(seg, node + 2), _word(seg, node + 4)]
+            fields = [node + 2, node + 4]
         elif kind == SP_LEAF:
             result.leaves[_word(seg, node + 2)] += 1
         elif kind == SP_GROUND:
-            links = [_word(seg, node + 0x0C), _word(seg, node + 0x0E)]
+            fields = [node + 0x0C, node + 0x0E]
             coarse = node + GROUND_COARSE_LEAF + GLEAF_POLYGON
             if _word(seg, coarse):
                 result.polygons.append(_polygon(seg, coarse, "ground-coarse"))
         elif kind == SP_GLEAF:
-            links = [_word(seg, node + 2)]
+            fields = [node + 2]
             if _word(seg, node + GLEAF_POLYGON):
                 result.polygons.append(_polygon(seg, node + GLEAF_POLYGON, "gleaf"))
         elif kind == SP_LIST:
             cursor = node + 2
-            while (child := _word(seg, cursor)) != 0:
-                links.append(child)
+            while _word(seg, cursor) != 0:
+                fields.append(cursor)
                 cursor += 2
         else:
             result.unknown.append((node, kind))
+        result.link_fields.update(fields)
+        links = [_word(seg, f) for f in fields]
         stack.extend(link - link_bias for link in links if link)
     return result
 
@@ -235,12 +238,16 @@ class SegmentDiff:
     """Word-by-word comparison of a converted ``SCENERY.scn`` with the image's tree."""
 
     words: int
-    link_words: int  # words exactly SCN_LINK_BIAS higher in the file
-    other: list[int]  # byte offsets of any other differing word
+    link_words: int  # link fields exactly SCN_LINK_BIAS higher in the file
+    other: list[int]  # byte offsets of every other differing word, link field or not
 
 
-def diff_segments(scn_seg: bytes, image_seg: bytes) -> SegmentDiff:
-    """Compare the converted file with the image tree over the file's length."""
+def diff_segments(scn_seg: bytes, image_seg: bytes, link_fields: set[int]) -> SegmentDiff:
+    """Compare the converted file with the image tree over the file's length.
+
+    Only a word at a byte offset in ``link_fields`` (``TreeWalk.link_fields`` of the image's
+    walk) may differ by ``SCN_LINK_BIAS`` as a link; any other difference is reported.
+    """
     count = len(scn_seg) // 2
     if len(image_seg) < 2 * count:
         raise ValueError("image tree is shorter than SCENERY.scn")
@@ -251,7 +258,7 @@ def diff_segments(scn_seg: bytes, image_seg: bytes) -> SegmentDiff:
     for i, (a, b) in enumerate(zip(ours, theirs, strict=True)):
         if a == b:
             continue
-        if (a - b) & 0xFFFF == SCN_LINK_BIAS:
+        if 2 * i in link_fields and (a - b) & 0xFFFF == SCN_LINK_BIAS:
             links += 1
         else:
             other.append(2 * i)
@@ -335,6 +342,42 @@ def tree_segment(image: bytes) -> bytes:
     if len(image) <= TREE_IMAGE_OFFSET:
         raise ValueError("image is shorter than the scene tree offset")
     return image[TREE_IMAGE_OFFSET:]
+
+
+def map_links(data: bytes) -> dict[int, tuple[int, int]]:
+    """Every record's ``pos`` word and the record its ``a`` field names (``-1`` for none).
+
+    ``a`` is ``-1`` or ``30 * index`` in every corpus copy (``map.md`` ``[BK-MAP-03]``).
+    """
+    links = {}
+    for index in range(min(MAP_RECORDS, len(data) // MAP_RECORD)):
+        pos, a = struct.unpack_from("<Hh", data, MAP_RECORD * index + 2)
+        links[index] = (pos, a // MAP_RECORD if a >= 0 else -1)
+    return links
+
+
+def link_chains(links: dict[int, tuple[int, int]]) -> list[list[int]]:
+    """The ``a`` chains that start at a record no other record names, in index order."""
+    named = {a for _, a in links.values() if a >= 0}
+    chains = []
+    for head in sorted(set(links) - named):
+        chain = [head]
+        while (nxt := links[chain[-1]][1]) >= 0 and nxt in links and nxt not in chain:
+            chain.append(nxt)
+        chains.append(chain)
+    return chains
+
+
+def matched_records(
+    polygons: list[GroundPolygon], patches: list[MapPatch]
+) -> list[tuple[GroundPolygon, list[int]]]:
+    """Each polygon with the records of the same anchor set and colour."""
+    by_key: dict[tuple[frozenset[int], int], list[int]] = {}
+    for patch in patches:
+        by_key.setdefault((frozenset(patch.anchors), patch.colour), []).append(patch.index)
+    return [
+        (poly, by_key.get((frozenset(poly.anchors), poly.colour & 0xFF), [])) for poly in polygons
+    ]
 
 
 def parse_map_bin(data: bytes) -> list[MapPatch]:
