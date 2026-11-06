@@ -168,6 +168,32 @@ def test_a_failed_checkout_puts_every_file_back(
         assert (repo / name).read_bytes() == data
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows has no executable bit to lose or restore"
+)
+def test_a_failed_checkout_puts_back_the_executable_bit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repo(tmp_path)
+    _stage(repo, {"run.sh": b"echo hi\r\n"})
+    (repo / "run.sh").chmod(0o755)
+    _git(repo, "add", "run.sh")
+    script = _load_script()
+    real_git = script._git
+
+    def failing_git(root: Path, *args: str, stdin: bytes | None = None) -> bytes:
+        if args[0] != "checkout-index":
+            output: bytes = real_git(root, *args, stdin=stdin)
+            return output
+        raise script.GitError("git checkout-index failed")
+
+    monkeypatch.setattr(script, "_git", failing_git)
+    with pytest.raises(script.GitError):
+        script.repair(repo, ["run.sh"])
+    assert (repo / "run.sh").read_bytes() == b"echo hi\r\n"
+    assert (repo / "run.sh").stat().st_mode & 0o777 == 0o755
+
+
 def test_a_checkout_that_leaves_crlf_puts_the_file_back(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

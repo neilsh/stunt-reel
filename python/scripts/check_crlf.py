@@ -27,6 +27,7 @@ when git cannot be run.
 
 from __future__ import annotations
 
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -136,6 +137,12 @@ def mode_changes(root: Path) -> set[str]:
     return changed
 
 
+def _restore(target: Path, data: bytes, mode: int) -> None:
+    """Put back a removed working copy: its bytes, then its permission bits."""
+    target.write_bytes(data)
+    target.chmod(mode)
+
+
 def repair(root: Path, paths: Sequence[str]) -> tuple[list[str], list[str]]:
     """Rewrite from the index each of *paths* that differs from it only in line endings.
 
@@ -151,7 +158,7 @@ def repair(root: Path, paths: Sequence[str]) -> tuple[list[str], list[str]]:
     copy still holds a CRLF (git configured to write CRLF on checkout) gets its saved bytes
     back and counts with the rest, so no file the hook rejects is changed.
     """
-    saved: dict[str, bytes] = {}
+    saved: dict[str, tuple[bytes, int]] = {}
     moved = mode_changes(root) if paths else set()
     for path in paths:
         if path in moved:
@@ -160,10 +167,11 @@ def repair(root: Path, paths: Sequence[str]) -> tuple[list[str], list[str]]:
         if data is None:
             continue
         try:
+            mode = stat.S_IMODE((root / path).stat().st_mode)
             (root / path).unlink()
         except OSError:  # held open on Windows: leave it to be reported
             continue
-        saved[path] = data
+        saved[path] = (data, mode)
     if saved:
         # On stdin, so no number of paths can outrun the Windows command-line limit.
         stdin = b"".join(path.encode("utf-8", "surrogateescape") + b"\0" for path in saved)
@@ -171,13 +179,13 @@ def repair(root: Path, paths: Sequence[str]) -> tuple[list[str], list[str]]:
             _git(root, "checkout-index", "-f", "-z", "--stdin", stdin=stdin)
         except BaseException:
             # Git may have rewritten some paths before it failed: put every one back as it was.
-            for path, data in saved.items():
-                (root / path).write_bytes(data)
+            for path, (data, mode) in saved.items():
+                _restore(root / path, data, mode)
             raise
     repaired: list[str] = []
-    for path, data in saved.items():
+    for path, (data, mode) in saved.items():
         if CRLF in (root / path).read_bytes():
-            (root / path).write_bytes(data)
+            _restore(root / path, data, mode)
         else:
             repaired.append(path)
     rest = [path for path in paths if path not in repaired]
