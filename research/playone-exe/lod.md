@@ -117,7 +117,7 @@ The detail scale matches the article: `0xFFFF` is 100%, and the in-game slider w
 ## 4. Consequences For The Renderer
 
 * PLAYONE at 100% detail still switches to coarser nodes with distance. Its threshold is the node's size term scaled by `0x22A4`, not a fixed distance. A renderer that always draws the finest representation will over-draw distant objects compared with the captures.
-* This gate is separate from the model bytecode's own `iftrue complex1..3` branches and from `OP_IFVIS` condition 1, whose `D^2 >= 1000 m^2` reading is still a `[Supported Inference]` ([`sod.md`](../formats/sod.md) section 4, Q-SOD-01 and Q-SOD-05).
+* This gate is separate from the model bytecode's own `iftrue complex1..3` branches and from its `BZLT` depth branches. `OP_IFVIS` is not a distance gate: it tests a facing flag ([`sod-vm.md`](sod-vm.md) section 8.6; [`sod.md`](../formats/sod.md) section 4, Q-SOD-01 and Q-SOD-05).
 
 ### 4.1 Static `SP_1NODE` Stand-Ins (adopted)
 

@@ -4,7 +4,7 @@ use crate::contracts::shape::{NodeId, NodeKind, SodModelIr, SodVertex, Visibilit
 use crate::sod::tessellate::{check_shape_invariants, quantize_weld_key};
 use crate::sod::vm::RawPolygon;
 use crate::sod::{
-    DECAL_FLAG_BIT, DecodeMode, OP_COLOR, OP_ID, OP_IFVIS, OP_POLYZ, OP_RETURN, OP_VECTORS,
+    DECAL_FLAG_BIT, DecodeMode, OP_COLOR, OP_ID, OP_IFVIS, OP_POLYZ, OP_REJ, OP_RETURN, OP_VECTORS,
     SodError, decode_sod,
 };
 
@@ -315,6 +315,7 @@ fn internal_defects_are_refused_loudly() {
     assert!(err.to_string().contains("vertex window"), "{err}");
 }
 
+/// An `IFVIS` section's polygons land in a batch node that carries the section's gate.
 #[test]
 fn test_sod_vm_ifvis_conditional_sections() {
     let mut bytes = make_sod_header(50, 0, 0, 0);
@@ -341,7 +342,11 @@ fn test_sod_vm_ifvis_conditional_sections() {
     bytes.extend_from_slice(&12u16.to_le_bytes());
     bytes.extend_from_slice(&24u16.to_le_bytes());
 
-    // Section 2: OP_IFVIS (code 1 -> LodDistanceSq(1000.0), length 24 bytes)
+    // Section 2: OP_REJ sets facing flag 1 from registers (1, 0, 2), then OP_IFVIS 1 gates
+    // the next 14 bytes on it.
+    for word in [OP_REJ, 1, 1, 12, 0, 24] {
+        bytes.extend_from_slice(&word.to_le_bytes());
+    }
     bytes.extend_from_slice(&OP_IFVIS.to_le_bytes());
     bytes.extend_from_slice(&1u16.to_le_bytes()); // cond code
     bytes.extend_from_slice(&14u16.to_le_bytes()); // section length 14 bytes
@@ -363,8 +368,12 @@ fn test_sod_vm_ifvis_conditional_sections() {
     assert_eq!(ir.nodes[1].name, "IFVIS_MODEL_BASE");
     assert_eq!(ir.nodes[1].visibility, VisibilityCondition::Always);
     assert_eq!(ir.nodes[2].name, "IFVIS_MODEL_DECAL");
-    assert_eq!(
-        ir.nodes[2].visibility,
-        VisibilityCondition::LodDistanceSq(1000.0)
+    assert!(
+        matches!(
+            ir.nodes[2].visibility,
+            VisibilityCondition::FacesEye { point: [0.0, 0.0, 0.0], normal: [0.0, 0.0, z] } if z > 0.0
+        ),
+        "{:?}",
+        ir.nodes[2].visibility
     );
 }
