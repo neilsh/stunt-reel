@@ -9,6 +9,7 @@ fails on a patch3 archive, both move") is not yet implemented. The parity loop's
 step 4. Answers the
 decision [#80](https://github.com/neilsh/stunt-reel/issues/80) asks for. Builds on
 [ADR 0028](0028-a-film-has-one-capture-of-each-kind.md).
+amended 2026-11-06 by [ADR 0037](0037-a-reference-pins-its-archive.md): a row may pin its archive by `all_sha256`.
 
 ## Context
 

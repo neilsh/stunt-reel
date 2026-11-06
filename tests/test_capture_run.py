@@ -738,3 +738,29 @@ def test_make_all_retries_a_makeone_that_wrote_no_archive_on_the_unpatched_build
     captured = capsys.readouterr()
     assert 'makeone = "unpatched"' in captured.out
     assert "playone" not in captured.out.split("[vault-ctry]")[1]
+
+
+def test_a_capture_plays_the_archive_its_row_pins(
+    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch, rows: Path
+) -> None:
+    pinned = build_all([b"pinned"])
+    _stored_archive(staged_repo, pinned)
+    staged_repo.film.with_suffix(".ALL").write_bytes(b"ALL")  # a sibling the pin passes over
+    _row(rows, playone_build="unpatched")
+    monkeypatch.setattr(references, "archive_makeone_build", lambda *_a: "patch3")
+    with rows.open("a", encoding="utf-8") as handle:
+        handle.write(f'all_sha256 = "{hashlib.sha256(pinned).hexdigest()}"\n')
+    played: list[bytes] = []
+    emulator = Emulator(FRAMES)
+    real = emulator.launch
+
+    @contextmanager
+    def launch(write_conf: Callable[[int], Path]) -> Iterator[automation.MockAutomation]:
+        played.append((write_conf(1).parent / "mount" / "VAULT" / "CTRY.ALL").read_bytes())
+        with real(write_conf) as runner:
+            yield runner
+
+    emulator.launch = launch  # type: ignore[method-assign]
+
+    assert _run(FRAMES, staged_repo, monkeypatch, emulator) == 0
+    assert set(played) == {pinned}
