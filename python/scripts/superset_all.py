@@ -156,17 +156,18 @@ def build(game: Path, out: Path, *, run: link.Runner | None = None) -> tuple[int
     """
     if out.suffix.lower() == ".toml":
         raise SupersetError(f"{out} would overwrite its own manifest; name the archive .ALL")
-    target = out.resolve()
-    for protected in (game.resolve(), corpus_root().resolve()):
-        if target.is_relative_to(protected):
-            raise SupersetError(f"{out} is inside {protected}, which is read-only (ADR 0022)")
+    manifest = out.with_suffix(".toml")
+    # Each path is resolved on its own: the manifest may be a link even where the archive is not.
+    for path in (out, manifest):
+        for protected in (game.resolve(), corpus_root().resolve()):
+            if path.resolve().is_relative_to(protected):
+                raise SupersetError(f"{path} is inside {protected}, which is read-only (ADR 0022)")
     res_dirs = [p for p in game.iterdir() if p.is_dir() and p.name.upper() == "RES"]
     if not res_dirs:
         raise SupersetError(f"no RES folder in {game}")
     files = shape_files(res_dirs[0])
     archive = pack(files)
     out.parent.mkdir(parents=True, exist_ok=True)
-    manifest = out.with_suffix(".toml")
     manifest.write_text(manifest_text(files, archive, game.as_posix()), encoding="utf-8")
     if run is None:
         link.ensure_binary()

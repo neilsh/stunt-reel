@@ -124,6 +124,22 @@ def test_build_refuses_an_output_inside_the_game_tree(game: Path) -> None:
     assert not planes.with_suffix(".toml").exists()
 
 
+def test_build_refuses_a_manifest_that_links_into_the_game_tree(game: Path, tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    out.mkdir()
+    planes = game / "res" / "planes.res"
+    try:
+        (out / "SUPERSET.toml").symlink_to(planes)
+    except OSError:
+        pytest.skip("this machine cannot create symlinks")
+    run = FakeRunner()
+    before = planes.read_bytes()
+    with pytest.raises(superset_all.SupersetError, match=r"SUPERSET\.toml is inside"):
+        superset_all.build(game, out / "SUPERSET.ALL", run=run)
+    assert run.calls == []
+    assert planes.read_bytes() == before
+
+
 def test_build_refuses_an_output_inside_the_corpus(
     game: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
