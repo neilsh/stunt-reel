@@ -11,7 +11,13 @@ lets a rename or a formatting commit go without one. Git's own subjects (a merge
 ``squash!``, ``amend!``) are left alone.
 
 Usage: ``mise run commit-msg-check -- <message file>`` (the commit-msg hook), or
-``mise run commit-msg-check -- --range <base>..<head>`` to check commits already made (CI).
+``mise run commit-msg-check -- --range <base>..<head> [--pr <number>]`` to check commits already
+made (CI). In a range, a failing commit that already landed elsewhere is skipped, with a line
+saying why: ``git cherry`` finds its patch in ``<base>``, or GitHub (through ``gh``) lists a
+merged pull request other than ``--pr`` that holds it. That is a branch stacked on a pull request
+that was then squash-merged: the parent's own commits stay on the branch with hashes ``<base>``
+lacks, though they were reviewed in the parent. When ``gh`` cannot answer, the script says so and
+counts every failing commit, as before.
 Exit status: ``0`` when every message passes, ``1`` when one does not, ``2`` when git cannot be
 run.
 """
@@ -19,7 +25,9 @@ run.
 from __future__ import annotations
 
 import argparse
+import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -86,17 +94,90 @@ def problems(message: str) -> list[str]:
     return found
 
 
-def _messages(revisions: str) -> list[tuple[str, str]]:
-    """``(short hash, message)`` for each commit in *revisions*, oldest first."""
+def _git(*args: str) -> str:
+    """The output of ``git <args>``."""
     done = subprocess.run(  # noqa: S603 - fixed git arguments
-        ["git", "log", "--reverse", "--format=%h%x00%B%x00", revisions],  # noqa: S607 - git from PATH
+        ["git", *args],  # noqa: S607 - git from PATH
         capture_output=True,
         text=True,
         encoding="utf-8",
         check=True,
     )
-    fields = done.stdout.split("\0")
-    return [(fields[i].strip(), fields[i + 1]) for i in range(0, len(fields) - 1, 2)]
+    return done.stdout
+
+
+def _messages(revisions: str) -> list[tuple[str, str, str]]:
+    """``(full hash, short hash, message)`` for each commit in *revisions*, oldest first."""
+    fields = _git("log", "--reverse", "--format=%H%x00%h%x00%B%x00", revisions).split("\0")
+    return [(fields[i].strip(), fields[i + 1], fields[i + 2]) for i in range(0, len(fields) - 2, 3)]
+
+
+def _in_base(revisions: str) -> set[str]:
+    """Full hashes of the commits in ``<base>..<head>`` whose patch ``<base>`` already holds."""
+    base, dots, head = revisions.partition("..")
+    if not dots or head.startswith("."):
+        return set()
+    lines = _git("cherry", base or "HEAD", head or "HEAD").splitlines()
+    return {line[2:].strip() for line in lines if line.startswith("- ")}
+
+
+class GitHubUnavailableError(Exception):
+    """``gh`` is missing, or could not answer."""
+
+
+def _merged_pulls(sha: str) -> list[int]:
+    """The numbers of the merged pull requests that hold commit *sha*, as GitHub lists them."""
+    gh = shutil.which("gh")
+    if gh is None:
+        raise GitHubUnavailableError("gh is not on PATH")
+    try:
+        done = subprocess.run(  # noqa: S603 - gh from PATH, fixed arguments
+            [
+                gh,
+                "api",
+                f"repos/{{owner}}/{{repo}}/commits/{sha}/pulls",
+                "--jq",
+                "[.[] | select(.merged_at != null) | .number]",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+        numbers = json.loads(done.stdout)
+    except subprocess.CalledProcessError as error:
+        raise GitHubUnavailableError(error.stderr.strip() or str(error)) from error
+    except (OSError, ValueError) as error:
+        raise GitHubUnavailableError(str(error)) from error
+    if not isinstance(numbers, list) or not all(isinstance(n, int) for n in numbers):
+        raise GitHubUnavailableError(f"unexpected answer {done.stdout.strip()!r}")
+    return numbers
+
+
+def _landed_elsewhere(
+    revisions: str, failing: list[tuple[str, str]], pr: int | None
+) -> dict[str, str]:
+    """Why each failing ``(full hash, short hash)`` commit already landed, keyed by full hash.
+
+    git answers first; GitHub is asked, one call per commit, only about the rest. Once GitHub
+    cannot answer, the remaining commits count as this pull request's own, and a line says so.
+    """
+    reasons = dict.fromkeys(_in_base(revisions), "its patch is already in the base")
+    for full, short in failing:
+        if full in reasons:
+            continue
+        try:
+            merged = [number for number in _merged_pulls(full) if number != pr]
+        except GitHubUnavailableError as error:
+            print(
+                f"[commit-msg] cannot ask GitHub which pull requests hold {short} ({error}); "
+                "checking every remaining commit",
+                file=sys.stderr,
+            )
+            break
+        if merged:
+            reasons[full] = "merged in " + ", ".join(f"#{number}" for number in merged)
+    return reasons
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -105,18 +186,33 @@ def main(argv: list[str] | None = None) -> int:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("message", nargs="?", type=Path, help="the commit message file")
     group.add_argument("--range", help="the commits to check, as <base>..<head>")
+    parser.add_argument(
+        "--pr",
+        type=int,
+        help="with --range, the pull request being checked: never a reason to skip",
+    )
     args = parser.parse_args(argv)
     if args.message is not None:
-        checked = [("this commit", args.message.read_text(encoding="utf-8"))]
+        found = [("this commit", problems(args.message.read_text(encoding="utf-8")))]
     else:
         try:
-            checked = _messages(args.range)
+            commits = [
+                (full, short, problems(message)) for full, short, message in _messages(args.range)
+            ]
+            failing = [(full, short) for full, short, listed in commits if listed]
+            skipped = _landed_elsewhere(args.range, failing, args.pr) if failing else {}
         except (OSError, subprocess.CalledProcessError) as error:
             print(f"[commit-msg] cannot read {args.range}: {error}", file=sys.stderr)
             return 2
+        found = []
+        for full, short, listed in commits:
+            if listed and full in skipped:
+                print(f"[commit-msg] skip {short}: {skipped[full]}", file=sys.stderr)
+            else:
+                found.append((short, listed))
     failed = False
-    for name, message in checked:
-        for problem in problems(message):
+    for name, listed in found:
+        for problem in listed:
             print(f"[commit-msg] {name}: {problem}", file=sys.stderr)
             failed = True
     return 1 if failed else 0

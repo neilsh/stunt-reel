@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -126,7 +127,13 @@ def test_the_script_checks_a_message_file(tmp_path: Path) -> None:
     assert "Conventional Commit" in failed.stderr
 
 
-def test_the_script_checks_a_commit_range(tmp_path: Path) -> None:
+Git = Callable[..., str]
+
+
+@pytest.fixture
+def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Git:
+    """A scratch repository as the working directory, holding one commit; returns its git."""
+
     def git(*args: str) -> str:
         done = subprocess.run(  # noqa: S603
             ["git", *args],  # noqa: S607
@@ -137,20 +144,106 @@ def test_the_script_checks_a_commit_range(tmp_path: Path) -> None:
         )
         return done.stdout.strip()
 
-    git("init", "-q")
+    git("init", "-q", "-b", "main")
     git("config", "user.name", "Test")
     git("config", "user.email", "test@example.com")
     git("commit", "-q", "--allow-empty", "-m", "chore: start")
-    base = git("rev-parse", "HEAD")
-    git("commit", "-q", "--allow-empty", "-m", "feat: fine")
-    git("commit", "-q", "--allow-empty", "-m", "not conventional")
-    done = subprocess.run(  # noqa: S603
-        [sys.executable, str(SCRIPT), "--range", f"{base}..HEAD"],
-        cwd=tmp_path,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert done.returncode == 1
-    assert "not conventional" in done.stderr
-    assert "feat: fine" not in done.stderr
+    monkeypatch.chdir(tmp_path)
+    return git
+
+
+def _stub_github(
+    hook: Any, monkeypatch: pytest.MonkeyPatch, merged: list[int] | Exception
+) -> list[str]:
+    """Answer every ``_merged_pulls`` call with *merged*, or raise it; returns the hashes asked."""
+    asked: list[str] = []
+
+    def merged_pulls(sha: str) -> list[int]:
+        asked.append(sha)
+        if isinstance(merged, Exception):
+            raise merged
+        return merged
+
+    monkeypatch.setattr(hook, "_merged_pulls", merged_pulls)
+    return asked
+
+
+def test_the_script_checks_a_commit_range(
+    hook: Any, repo: Git, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = repo("rev-parse", "HEAD")
+    repo("commit", "-q", "--allow-empty", "-m", "feat: fine")
+    repo("commit", "-q", "--allow-empty", "-m", "not conventional")
+    asked = _stub_github(hook, monkeypatch, [])
+    assert hook.main(["--range", f"{base}..HEAD"]) == 1
+    stderr = capsys.readouterr().err
+    assert "not conventional" in stderr
+    assert "feat: fine" not in stderr
+    assert asked == [repo("rev-parse", "HEAD")], "GitHub is asked only about failing commits"
+
+
+def test_a_commit_merged_in_another_pull_request_is_skipped(
+    hook: Any, repo: Git, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = repo("rev-parse", "HEAD")
+    repo("commit", "-q", "--allow-empty", "-m", "the stacked parent's commit")
+    _stub_github(hook, monkeypatch, [224, 228])
+    assert hook.main(["--range", f"{base}..HEAD", "--pr", "228"]) == 0
+    stderr = capsys.readouterr().err
+    assert f"skip {repo('rev-parse', '--short', 'HEAD')}: merged in #224" in stderr
+    assert "Conventional Commit" not in stderr
+
+
+def test_a_commit_only_in_this_pull_request_is_checked(
+    hook: Any, repo: Git, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = repo("rev-parse", "HEAD")
+    repo("commit", "-q", "--allow-empty", "-m", "not conventional")
+    _stub_github(hook, monkeypatch, [228])
+    assert hook.main(["--range", f"{base}..HEAD", "--pr", "228"]) == 1
+    stderr = capsys.readouterr().err
+    assert "skip" not in stderr
+    assert "not conventional" in stderr
+
+
+def test_a_commit_whose_patch_is_in_the_base_is_skipped_without_github(
+    hook: Any,
+    repo: Git,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo("switch", "-q", "-c", "stacked")
+    (tmp_path / "notes.txt").write_text("a change\n", encoding="utf-8")
+    repo("add", "notes.txt")
+    repo("commit", "-q", "-m", "not conventional")
+    repo("switch", "-q", "main")
+    (tmp_path / "notes.txt").write_text("a change\n", encoding="utf-8")
+    repo("add", "notes.txt")
+    repo("commit", "-q", "-m", "docs: the same change, squash-merged")
+    asked = _stub_github(hook, monkeypatch, RuntimeError("GitHub must not be asked"))
+    assert hook.main(["--range", "main..stacked"]) == 0
+    assert "its patch is already in the base" in capsys.readouterr().err
+    assert asked == []
+
+
+def test_without_github_every_failing_commit_counts(
+    hook: Any, repo: Git, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = repo("rev-parse", "HEAD")
+    repo("commit", "-q", "--allow-empty", "-m", "not conventional")
+    repo("commit", "-q", "--allow-empty", "-m", "also not conventional")
+    asked = _stub_github(hook, monkeypatch, hook.GitHubUnavailableError("offline"))
+    assert hook.main(["--range", f"{base}..HEAD", "--pr", "228"]) == 1
+    stderr = capsys.readouterr().err
+    assert "cannot ask GitHub" in stderr
+    assert "offline" in stderr
+    assert "not conventional" in stderr
+    assert "also not conventional" in stderr
+    assert len(asked) == 1, "a failed call is not repeated for every commit"
+
+
+def test_github_is_unavailable_without_gh(hook: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(hook.shutil, "which", lambda _name: None)
+    with pytest.raises(hook.GitHubUnavailableError, match="gh"):
+        hook._merged_pulls("0" * 40)
