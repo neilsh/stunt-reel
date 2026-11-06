@@ -28,7 +28,11 @@ It also runs pytest across every core (``-n auto``), the gate's longest lane; a 
 ``mise run test-py -- <file>`` stays in one process, where starting workers would cost more than
 it saves.
 
-Usage: ``python python/scripts/gate.py {all|rust|py|docs} [--tail N]``
+``gate.py all`` reads the branch's changed paths from git and runs only the halves they need;
+``--full``, a set ``CI``, an unclassified path, no changes, or paths git cannot give run the full
+gate. A passing run prints the commit body's closing gate line.
+
+Usage: ``python python/scripts/gate.py {all|rust|py|docs} [--full] [--base REF] [--tail N]``
 """
 
 from __future__ import annotations
@@ -172,6 +176,60 @@ def ci_requested(env: Mapping[str, str]) -> bool:
     return env.get("CI", "").strip().lower() not in {"", "false", "0"}
 
 
+class ChangedPathsError(Exception):
+    """git could not say which paths the branch changed; the message is git's."""
+
+
+def _git_paths(repo: Path, *args: str) -> list[str]:
+    """Run one git command that prints NUL-separated paths, and return them."""
+    git = shutil.which("git")
+    if git is None:
+        raise ChangedPathsError("git is not on PATH")
+    proc = subprocess.run(  # noqa: S603 - fixed git arguments, git resolved from PATH
+        [git, *args], cwd=repo, capture_output=True, check=False
+    )
+    if proc.returncode != 0:
+        message = proc.stderr.decode("utf-8", errors="replace").strip()
+        raise ChangedPathsError(message or f"git {args[0]} exited {proc.returncode}")
+    return [path for path in proc.stdout.decode("utf-8").split("\0") if path]
+
+
+def changed_paths(repo: Path, base: str = "main") -> list[str]:
+    """Every path the branch changed since it left *base*: committed, staged, unstaged, untracked.
+
+    ``--no-renames`` lists both sides of a rename, so a file moved across categories counts in
+    both. ``-z`` keeps a non-ASCII name as itself instead of git's quoted octal.
+    """
+    merge_base = _git_paths(repo, "merge-base", "HEAD", base)
+    if not merge_base:
+        raise ChangedPathsError(f"no merge base between HEAD and {base}")
+    changed = _git_paths(repo, "diff", "--name-only", "--no-renames", "-z", merge_base[0].strip())
+    untracked = _git_paths(repo, "ls-files", "--others", "--exclude-standard", "-z")
+    return sorted({*changed, *untracked})
+
+
+def _not_run(halves: Sequence[str]) -> list[str]:
+    """The scoped tasks of the halves a run skipped; ``docs`` is covered whenever ``py`` ran."""
+    return [
+        SCOPED_TASKS[half]
+        for half in ("rust", "py", "docs")
+        if half not in halves and not (half == "docs" and "py" in halves)
+    ]
+
+
+def _scope_lines(scope: Scope) -> list[str]:
+    """What the run decided and from which paths, printed before the steps and logged."""
+    if scope.full:
+        lines = [f"[gate] scope: full ({scope.reason})"]
+    else:
+        halves, skipped = ", ".join(scope.halves), ", ".join(_not_run(scope.halves))
+        lines = [f"[gate] scope: {halves}; not run: {skipped}"]
+    for category, paths in scope.paths.items():
+        more = f" (+{len(paths) - 3} more)" if len(paths) > 3 else ""
+        lines.append(f"[gate]   {category}: {', '.join(paths[:3])}{more}")
+    return lines
+
+
 def gate_line(halves: Sequence[str]) -> str:
     """The commit body's closing line for a passing run of *halves* (AGENTS.md, Committing).
 
@@ -181,11 +239,7 @@ def gate_line(halves: Sequence[str]) -> str:
     if set(_FULL) <= set(halves):
         return "mise run check passes."
     ran = [f"{SCOPED_TASKS[half]} passes" for half in halves]
-    skipped = [
-        f"{SCOPED_TASKS[half]} not run"
-        for half in ("rust", "py", "docs")
-        if half not in halves and not (half == "docs" and "py" in halves)
-    ]
+    skipped = [f"{task} not run" for task in _not_run(halves)]
     return f"mise run {'; '.join([*ran, *skipped])}."
 
 
@@ -290,9 +344,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         "half", choices=("all", "rust", "py", "docs"), help="which half of the gate"
     )
     parser.add_argument("--tail", type=int, default=40, help="lines shown of a failing step")
+    parser.add_argument("--full", action="store_true", help="run every half whatever changed")
+    parser.add_argument(
+        "--base", default="main", help="the branch changes are counted from (default: main)"
+    )
     args = parser.parse_args(argv)
 
-    plan = _plan(str(args.half))
+    half = str(args.half)
+    scope_lines: list[str] = []
+    if half == "all":
+        full_flag, ci = bool(args.full), ci_requested(os.environ)
+        paths: list[str] | None = None
+        error = ""
+        if not (full_flag or ci):
+            try:
+                paths = changed_paths(Path.cwd(), str(args.base))
+            except ChangedPathsError as err:
+                error = str(err)
+        scope = scope_for(paths, full_flag=full_flag, ci=ci, error=error, base=str(args.base))
+        halves = scope.halves
+        plan = [step for scoped in halves for step in STEPS[scoped]]
+        scope_lines = _scope_lines(scope)
+    else:
+        halves = (half,)
+        plan = _plan(half)
+    for line in scope_lines:
+        print(line, flush=True)
     lanes = _lane_plan(plan)
     mise = _mise()
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -302,6 +379,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     with LOG_PATH.open("w", encoding="utf-8", errors="replace") as log:
         log.write(f"# gate {args.half} started {time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
+        for line in scope_lines:
+            log.write(f"# {line.removeprefix('[gate] ')}\n")
         for lane, tasks in lanes:
             log.write(f"# lane {lane:<12} {' -> '.join(tasks)}\n")
         log.flush()
@@ -325,9 +404,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"\n---- {task} output tail{note} ----", flush=True)
             print("\n".join(results[task][1].rstrip().splitlines()[-args.tail :]), flush=True)
 
-        verdict = _verdict(failed, plan, str(args.half), total)
+        verdict = _verdict(failed, plan, half, total)
         print(verdict, flush=True)
         log.write(f"\n# {verdict.removeprefix('[gate] ')}\n")
+        if not failed:
+            print(f"[gate] gate line: {gate_line(halves)}", flush=True)
 
     return 0 if not failed else 1
 

@@ -7,6 +7,9 @@ gate refuses to start at run time, and a lane must never reorder or drop a step 
 
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
@@ -266,3 +269,148 @@ def test_docs_step_requires_the_kaitai_compiler() -> None:
 )
 def test_docs_marker_is_on_the_documentation_modules(module: str) -> None:
     assert "pytest.mark.docs" in (ROOT / "tests" / module).read_text(encoding="utf-8")
+
+
+_GIT_ENV = {
+    "GIT_AUTHOR_NAME": "t",
+    "GIT_AUTHOR_EMAIL": "t@example.invalid",
+    "GIT_COMMITTER_NAME": "t",
+    "GIT_COMMITTER_EMAIL": "t@example.invalid",
+}
+
+
+def _git(repo: Path, *args: str) -> None:
+    git = shutil.which("git")
+    assert git is not None, "git is not on PATH"
+    subprocess.run(  # noqa: S603
+        [git, *args], cwd=repo, env={**os.environ, **_GIT_ENV}, capture_output=True, check=True
+    )
+
+
+def _write(repo: Path, name: str) -> None:
+    path = repo / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(name, encoding="utf-8")
+
+
+def _feature_repo(tmp_path: Path, trunk: str = "main") -> Path:
+    """A repository with one commit on *trunk* and a ``feat`` branch checked out."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", trunk)
+    _write(repo, "base.md")
+    _git(repo, "add", "base.md")
+    _git(repo, "commit", "-qm", "base")
+    _git(repo, "switch", "-q", "-c", "feat")
+    return repo
+
+
+def test_changed_paths_lists_committed_staged_unstaged_and_untracked(tmp_path: Path) -> None:
+    repo = _feature_repo(tmp_path)
+    for name in ("committed.md", "staged.py", "untracked.ksy"):
+        _write(repo, name)
+    _git(repo, "add", "committed.md")
+    _git(repo, "commit", "-qm", "work")
+    _git(repo, "add", "staged.py")
+    (repo / "base.md").write_text("edited", encoding="utf-8")
+
+    assert sorted(gate.changed_paths(repo)) == [
+        "base.md",
+        "committed.md",
+        "staged.py",
+        "untracked.ksy",
+    ]
+
+
+def test_changed_paths_lists_only_an_untracked_file(tmp_path: Path) -> None:
+    repo = _feature_repo(tmp_path)
+    _write(repo, "new.md")
+
+    assert gate.changed_paths(repo) == ["new.md"]
+
+
+def test_changed_paths_lists_both_sides_of_a_rename(tmp_path: Path) -> None:
+    repo = _feature_repo(tmp_path)
+    _git(repo, "mv", "base.md", "base.py")
+    _git(repo, "commit", "-qm", "rename")
+
+    assert sorted(gate.changed_paths(repo)) == ["base.md", "base.py"]
+
+
+def test_changed_paths_keeps_a_non_ascii_name(tmp_path: Path) -> None:
+    repo = _feature_repo(tmp_path)
+    _write(repo, "notes/ä.md")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "umlaut")
+
+    assert gate.changed_paths(repo) == ["notes/ä.md"]
+
+
+def test_changed_paths_without_main_raises(tmp_path: Path) -> None:
+    repo = _feature_repo(tmp_path, trunk="trunk")
+
+    with pytest.raises(gate.ChangedPathsError):
+        gate.changed_paths(repo)
+
+
+def _run_main(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    paths: list[str] | Exception,
+    *args: str,
+) -> tuple[list[str], str]:
+    """Run ``gate.main`` with every step passing; return the steps it ran and what it printed."""
+    ran: list[str] = []
+
+    def step(_mise: str, task: str) -> tuple[int, str, float]:
+        ran.append(task)
+        return 0, "", 0.0
+
+    def changed(_repo: Path, base: str = "main") -> list[str]:
+        assert base == "main"
+        if isinstance(paths, Exception):
+            raise paths
+        return paths
+
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "check.log")
+    monkeypatch.setattr(gate, "_mise", lambda: "mise")
+    monkeypatch.setattr(gate, "_step", step)
+    monkeypatch.setattr(gate, "changed_paths", changed)
+    assert gate.main(["all", *args]) == 0
+    return ran, (tmp_path / "check.log").read_text(encoding="utf-8")
+
+
+def test_a_documentation_change_runs_only_the_docs_half(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ran, log = _run_main(monkeypatch, tmp_path, ["a.md", "b.md", "c.md", "d.ksy"])
+
+    out = capsys.readouterr().out
+    assert ran == ["test-py-docs"]
+    assert "[gate] scope: docs; not run: check-rust, check-py" in out
+    assert "[gate]   docs: a.md, b.md, c.md (+1 more)" in out
+    assert "# scope: docs; not run: check-rust, check-py" in log
+    assert out.rstrip().endswith(
+        "[gate] gate line: mise run check-docs passes; check-rust not run; check-py not run."
+    )
+
+
+def test_unknown_changed_paths_run_the_full_gate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ran, _ = _run_main(monkeypatch, tmp_path, gate.ChangedPathsError("no main"))
+
+    out = capsys.readouterr().out
+    assert sorted(ran) == sorted(gate._plan("all"))
+    assert "[gate] scope: full (changed paths unknown: no main)" in out
+    assert out.rstrip().endswith("[gate] gate line: mise run check passes.")
+
+
+def test_full_flag_runs_the_full_gate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ran, _ = _run_main(monkeypatch, tmp_path, ["a.md"], "--full")
+
+    assert set(ran) == set(gate._plan("all"))
+    assert "[gate] scope: full (--full)" in capsys.readouterr().out
