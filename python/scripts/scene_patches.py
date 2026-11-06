@@ -162,15 +162,16 @@ def run(args: argparse.Namespace) -> int:
             if scn is None:
                 continue
             converted = scene_tree.scn_segment(scn)
-            diff = scene_tree.diff_segments(converted, segment)
+            diff = scene_tree.diff_segments(converted, segment, walked.link_fields)
             own = scene_tree.walk(converted, link_bias=scene_tree.SCN_LINK_BIAS)
             same = [(p.offset, p.colour, p.anchors) for p in own.polygons] == [
                 (p.offset, p.colour, p.anchors) for p in walked.polygons
             ]
             missing = scene_tree.compare(own.polygons, patches).map_only
             lines.append(
-                f"{path.as_posix()}: {diff.words} words, {diff.link_words} links {scene_tree.SCN_LINK_BIAS} "
-                f"higher, {len(diff.other)} other differences; {len(own.polygons)} ground "
+                f"{path.as_posix()}: {diff.words} words, {diff.link_words} of "
+                f"{len(walked.link_fields)} link fields {scene_tree.SCN_LINK_BIAS} higher, "
+                f"{len(diff.other)} other differences {[hex(o) for o in diff.other[:8]]}; {len(own.polygons)} ground "
                 f"polygons, {'the same' if same else 'NOT the same'} as the image's; "
                 f"records without one: {[m.index for m in missing]}"
             )
