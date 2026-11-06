@@ -111,6 +111,8 @@ Nothing to do. Create it with any tool, under `.claude/worktrees/` or `.agents/w
   so `&`, `%` or `(` in a name is plain text. If the retry fails too, `reap` reports both
   errors and leaves the worktree and its branch alone; after a successful retry it still
   proves no link remains before it removes the worktree.
+- `reap` removes nothing while the primary checkout's drive has 20 GB or more free
+  (`--min-free-gb N` moves the bar, `--force` skips it); a dry run still lists the candidates.
 
 ## Claude Code
 
