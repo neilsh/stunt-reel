@@ -137,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
             f" skills {', '.join(result.skills) or 'none'};"
             f" peeked {'yes' if result.peeked else 'no'}; ${result.cost:.2f};"
             f" exit {proc.returncode}; {md.relative_to(REPO_ROOT).as_posix()}"
+            + ("; FAILED" if result.failed else "")
         )
     print(f"total ${total:.2f}")
     return 1 if any_failed else 0

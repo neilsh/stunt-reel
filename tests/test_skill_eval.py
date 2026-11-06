@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
+
+lazy import pytest
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
+import skill_eval  # noqa: E402
 from skill_eval import RunOutcome, outcome  # noqa: E402
 
 
@@ -89,3 +93,21 @@ def test_a_run_without_a_result_line_failed() -> None:
 
 def test_a_nonzero_exit_failed() -> None:
     assert outcome([_result()], 1, "x").failed
+
+
+def test_a_run_without_a_result_line_prints_failed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("do the thing", encoding="utf-8")
+    monkeypatch.setattr(skill_eval, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr("skill_eval.shutil.which", lambda _name: "claude")
+
+    def truncated(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+    monkeypatch.setattr("skill_eval.subprocess.run", truncated)
+    argv = ["--skill", "x", "--model", "haiku", "--phase", "with", "--reps", "1"]
+
+    assert skill_eval.main([*argv, "--prompt-file", str(prompt)]) == 1
+    assert "FAILED" in capsys.readouterr().out
