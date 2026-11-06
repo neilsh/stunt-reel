@@ -21,7 +21,9 @@ REPO_ROOT = Path(__file__).parent.parent
 CITATION_ROOTS = ("crates", "python", "tests", "docs", "research")
 CITATION_TOP_LEVEL = ("AGENTS.md", "README.md", "GLOSSARY.md")
 CITATION_SUFFIXES = frozenset({".rs", ".py", ".md", ".ksy", ".toml"})
-SKIPPED_DIRS = frozenset({".cache", "target", ".venv", "__pycache__", "node_modules", "build"})
+SKIPPED_DIRS = frozenset(
+    {".cache", ".pytest_cache", "target", ".venv", "__pycache__", "node_modules", "build"}
+)
 
 
 def _walk(root: Path, skipped: frozenset[str]) -> Iterator[Path]:
@@ -252,3 +254,11 @@ def test_reference_style_definitions_are_read_as_links() -> None:
         "../../docs/process/TEAM_SHEET.md#tickets"
     ]
     assert not MARKDOWN_LINK_REGEX.search("[p]: ../../docs/process/TEAM_SHEET.md")
+
+
+def test_the_walk_skips_pytests_own_temporary_files(tmp_path: Path) -> None:
+    """Another xdist worker's basetemp under .pytest_cache vanishes mid-walk (a gate flake)."""
+    (tmp_path / ".pytest_cache" / "basetemp-1" / "case0").mkdir(parents=True)
+    (tmp_path / ".pytest_cache" / "basetemp-1" / "case0" / "notes.md").write_text("x")
+    (tmp_path / "kept.md").write_text("x")
+    assert [p.name for p in _walk(tmp_path, SKIPPED_DIRS)] == ["kept.md"]
