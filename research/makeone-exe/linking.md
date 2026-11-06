@@ -84,6 +84,21 @@ Some `res_index` values belong to several files, one per sound setting, and the 
 
 `[Bounded Observation]`. The largest archives are `FLAGDAY1.ALL` (4,276,872 bytes, 1,066 chunks) and `ID5.ALL` (4,260,719 bytes); the most chunks are 1,151 (`SIDEM1S.ALL`, `SIDEM1D.ALL`). `CTRY.ALL` is 135 chunks. Whether `PLAYONE` plays an archive padded with chunks the film never asks for is untested; lookups are by id, so the extra chunks should only cost memory and load time.
 
+## 7. A Superset Renders Like a Film's Own Archive
+
+`[Bounded Observation]`, CTRY and INTRO, run 2026-11-06 at `48f5d49`.
+
+Our renderer takes nothing from a `.ALL` but its shapes ([`scene.rs`](../../crates/stunt-core/src/scene.rs) `decode_archive_shapes`). It builds the palette from film variables, and it reads the scenery, anchors and font from loose files. So the item selection of section 4 matters to `PLAYONE`, not to us. [`superset_all.py`](../../python/scripts/superset_all.py) (`mise run superset-all`) builds one archive holding every item of every `RES\` file with `res_index` below `0x80`: 17 files, 2,669 chunks, 4,193,452 bytes, about 1.28 MB with zstd -19. Both demo archives are subsets of it: `stuntreel link extract` of `CTRY.ALL` and `INTRO.ALL` against `corpus/stuntisl` succeeds.
+
+We rendered each film with its demo archive and again with the superset, then scored both against the reference captures:
+
+| Film | Own archive SSIM / IoU / idx | Superset SSIM / IoU / idx |
+|---|---|---|
+| CTRY | 0.8725 / 0.9897 / 0.890 | 0.8726 / 0.9899 / 0.890 |
+| INTRO | 0.8273 / 0.9856 / 0.830 | 0.8282 / 0.9856 / 0.831 |
+
+Both films stay within the 0.002 noise floor. The one thing the archive changes is which scenery props get placed. `build_world` places a scenery leaf only when the archive holds its shape (`available_models` in [`world.rs`](../../crates/stunt-core/src/world.rs)). With the superset, CTRY places 69 static props instead of 68 and INTRO 1,114 instead of 1,103. That changes 125 of 1,343 CTRY frames and 440 of 3,823 INTRO frames, by at most 164 and 373 of 64,000 pixels. `palettes.zst` is byte-identical. The extra props are most likely ones that `PLAYONE`'s per-frame level of detail never loaded and our once-per-film path-distance level of detail keeps (`[Supported Inference]`). Decoding 2,669 chunks instead of 127 or 250 adds about 0.2 s at startup.
+
 ---
 
 ## Ruled out
@@ -91,10 +106,11 @@ Some `res_index` values belong to several files, one per sound setting, and the 
 - **Transformed chunks.** Every chunk from a shipped archive is a byte-identical copy (section 1); none is generated or re-encoded.
 - **The film inside its archive.** No chunk is the `.FLM` or starts `FILM` (section 1), although [`../formats/all.md`](../formats/all.md) § 3.1 allows for one.
 - **Whole archives as the unit of selection.** No film takes all the items of any source archive (section 4).
+- **Our renderer needing a film's own selection.** A superset of every stock shape scores within noise of the film's own archive on CTRY and INTRO (section 7).
 
 ## Open questions
 
-1. Is the selection the set of resources loaded during playback? Comparing the scenery ids of `CTRY.ALL` and `INTRO.ALL` with the shapes our renderer draws, or finding where `MAKEONE` marks a resource as used, would settle it.
+1. Is the selection the set of resources loaded during playback? Comparing the scenery ids of `CTRY.ALL` and `INTRO.ALL` with the shapes our renderer draws, or finding where `MAKEONE` marks a resource as used, would settle it. Section 7 is a first step: the superset adds 1 and 11 props that the archives leave out, consistent with level-of-detail selection.
 2. Can a film's actor shapes, sounds and the fixed items (palettes, `FASTSPR`, `GAME` sprites) be listed from the `.FLM` alone?
 3. Which sound setting matches each music extension (`.ESS`, `.XMA`, `.XMM`, `.XMP`, `.XMI`), and does the setting change which ids are included or only their source? `BALLOON`'s archive from our fixed emulator profile has no music chunk at all.
 4. Does Patch #3 change any file in `RES\`, or only the selection?

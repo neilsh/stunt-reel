@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import struct
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
 from archive_helpers import build_all
-from stunt_reel import dataroot, link, parity_layout
+from stunt_reel import all_archive, dataroot, link, parity_layout
 from stunt_reel.all_archive import (
     META_FILE,
     ArchiveError,
@@ -20,6 +23,7 @@ from stunt_reel.all_archive import (
     publish_archive,
     resolve_all,
 )
+from stunt_reel.hashing import file_sha256
 
 CHUNKS = [b"alpha", b"bb", b"c" * 9]
 
@@ -404,3 +408,228 @@ def test_no_link_checks_a_manifest_without_building_it(tmp_path: Path) -> None:
     linked = resolve_all(film, tmp_path, link_build=no_link)
     assert linked == tmp_path / parity_layout.linked_path(SLUG, film.name)
     assert not linked.exists()
+
+
+def _copies(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """One film in two corpus folders with different sibling archives: (film a, ALL a, ALL b)."""
+    corpus = tmp_path / "corpus"
+    paths = []
+    for folder, payload in (("a", b"archive a"), ("b", b"archive b")):
+        vault = corpus / folder / "VAULT"
+        vault.mkdir(parents=True)
+        (vault / "BALLOON.FLM").write_bytes(FLM_BYTES)
+        (vault / "BALLOON.ALL").write_bytes(build_all([payload]))
+        paths.append(vault)
+    return paths[0] / "BALLOON.FLM", paths[0] / "BALLOON.ALL", paths[1] / "BALLOON.ALL"
+
+
+def _sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_a_pin_the_sibling_meets_resolves_without_a_corpus_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    film, own, _other = _copies(tmp_path)
+
+    def no_scan(*_a: object, **_k: object) -> object:
+        raise AssertionError("the corpus was scanned")
+
+    monkeypatch.setattr(Path, "rglob", no_scan)
+    assert resolve_all(film, tmp_path, link_build=no_link, pinned=_sha(own)) == own
+
+
+def test_a_pin_finds_another_copys_sibling(tmp_path: Path) -> None:
+    film, _own, other = _copies(tmp_path)
+    assert resolve_all(film, tmp_path, link_build=no_link, pinned=_sha(other)) == other
+
+
+def test_a_pin_can_name_a_manifest_rebuild(tmp_path: Path) -> None:
+    film, _own, _other = _copies(tmp_path)
+    linked_sha = hashlib.sha256(b"LINKED").hexdigest()
+    manifest = _manifest(tmp_path, SLUG, FLM_BYTES, all_sha256=linked_sha)
+    (tmp_path / "game").mkdir()
+    fake = FakeLinkBuild()
+    linked = tmp_path / parity_layout.linked_path(SLUG, film.name)
+    assert resolve_all(film, tmp_path, SLUG, link_build=fake, pinned=linked_sha) == linked
+    assert fake.calls == [(manifest, tmp_path / "game", linked)]
+
+
+def test_a_manifest_the_pin_does_not_name_is_not_built(tmp_path: Path) -> None:
+    film, _own, other = _copies(tmp_path)
+    _manifest(tmp_path, SLUG, FLM_BYTES)
+    (tmp_path / "game").mkdir()
+    fake = FakeLinkBuild()
+    assert resolve_all(film, tmp_path, SLUG, link_build=fake, pinned=_sha(other)) == other
+    assert fake.calls == []
+
+
+def test_a_pin_can_name_the_stored_archive(tmp_path: Path) -> None:
+    film, _own, _other = _copies(tmp_path)
+    data = build_all([b"stored"])
+    stored = _store(tmp_path, FLM_BYTES, data)
+    pin = hashlib.sha256(data).hexdigest()
+    assert (
+        resolve_all(film, tmp_path, SLUG, link_build=no_link, pinned=pin) == stored / "BALLOON.ALL"
+    )
+
+
+def test_a_pin_nothing_matches_is_refused_naming_it(tmp_path: Path) -> None:
+    film, _own, _other = _copies(tmp_path)
+    with pytest.raises(ArchiveError, match="f" * 64):
+        resolve_all(film, tmp_path, SLUG, link_build=no_link, pinned="f" * 64)
+
+
+def test_a_drifted_stored_archive_is_an_error_not_skipped(tmp_path: Path) -> None:
+    film, _own, _other = _copies(tmp_path)
+    data = build_all([b"stored"])
+    stored = _store(tmp_path, FLM_BYTES, data)
+    (stored / "BALLOON.ALL").write_bytes(b"tampered")
+    with pytest.raises(ArchiveError, match="no longer matches"):
+        resolve_all(
+            film, tmp_path, SLUG, link_build=no_link, pinned=hashlib.sha256(data).hexdigest()
+        )
+
+
+def test_a_corpus_archive_of_another_film_is_not_taken(tmp_path: Path) -> None:
+    film, _own, other = _copies(tmp_path)
+    (other.parent / "BALLOON.FLM").write_bytes(b"a different film")
+    with pytest.raises(ArchiveError, match="pinned"):
+        resolve_all(film, tmp_path, SLUG, link_build=no_link, pinned=_sha(other))
+
+
+def test_parallel_resolves_build_a_manifest_archive_once(tmp_path: Path) -> None:
+    film, _own, _other = _copies(tmp_path)
+    linked_sha = hashlib.sha256(b"LINKED").hexdigest()
+    _manifest(tmp_path, SLUG, FLM_BYTES, all_sha256=linked_sha)
+    (tmp_path / "game").mkdir()
+    fake = FakeLinkBuild()
+
+    def slow_link(manifest: Path, game: Path, out: Path) -> None:
+        time.sleep(0.2)  # every thread checks for the archive before the first build lands
+        fake(manifest, game, out)
+
+    start = threading.Barrier(4)
+
+    def resolve() -> Path:
+        start.wait()
+        return resolve_all(film, tmp_path, SLUG, link_build=slow_link, pinned=linked_sha)
+
+    with ThreadPoolExecutor(4) as pool:
+        results = list(pool.map(lambda _i: resolve(), range(4)))
+    assert set(results) == {tmp_path / parity_layout.linked_path(SLUG, film.name)}
+    assert len(fake.calls) == 1
+
+
+def test_parallel_resolves_of_different_archives_build_at_once(tmp_path: Path) -> None:
+    film, _own, _other = _copies(tmp_path)
+    linked_sha = hashlib.sha256(b"LINKED").hexdigest()
+    slugs = (SLUG, "vault-kite")
+    for slug in slugs:
+        _manifest(tmp_path, slug, FLM_BYTES, all_sha256=linked_sha)
+    (tmp_path / "game").mkdir()
+    fake = FakeLinkBuild()
+    guard = threading.Lock()
+    active = [0, 0]  # building now, most at once
+
+    def slow_link(manifest: Path, game: Path, out: Path) -> None:
+        with guard:
+            active[0] += 1
+            active[1] = max(active)
+        time.sleep(0.2)
+        fake(manifest, game, out)
+        with guard:
+            active[0] -= 1
+
+    start = threading.Barrier(2)
+
+    def resolve(slug: str) -> Path:
+        start.wait()
+        return resolve_all(film, tmp_path, slug, link_build=slow_link, pinned=linked_sha)
+
+    with ThreadPoolExecutor(2) as pool:
+        list(pool.map(resolve, slugs))
+    assert active[1] == 2
+
+
+def test_a_pinned_corpus_copy_is_found_in_the_given_data_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    configured = tmp_path / "configured"
+    (configured / "corpus").mkdir(parents=True)
+    monkeypatch.setenv(dataroot.DATA_ENV, str(configured))
+    dataroot.data_root.cache_clear()
+    film = _film(tmp_path)
+    vault = tmp_path / "data" / "corpus" / "x" / "VAULT"
+    vault.mkdir(parents=True)
+    (vault / film.name).write_bytes(FLM_BYTES)
+    (vault / "BALLOON.ALL").write_bytes(b"pinned")
+    pin = hashlib.sha256(b"pinned").hexdigest()
+    assert resolve_all(film, tmp_path, SLUG, pinned=pin, data=tmp_path / "data") == (
+        vault / "BALLOON.ALL"
+    )
+
+
+def test_a_pinned_stored_archive_is_read_from_the_given_data_root(tmp_path: Path) -> None:
+    film, _own, _other = _copies(tmp_path)  # the configured data root (tmp_path) stores none
+    archive = build_all([b"stored"])
+    stored = _store(tmp_path / "data", FLM_BYTES, archive)
+    pin = hashlib.sha256(archive).hexdigest()
+    got = resolve_all(film, tmp_path, SLUG, link_build=no_link, pinned=pin, data=tmp_path / "data")
+    assert got == stored / "BALLOON.ALL"
+
+
+def test_a_manifests_corpus_game_root_is_read_from_the_given_data_root(tmp_path: Path) -> None:
+    """A pin resolved for another data root rebuilds from that root's game tree."""
+    data = tmp_path / "data"
+    game = data / "corpus" / "stuntisl"
+    game.mkdir(parents=True)
+    film = _film(tmp_path)
+    linked_sha = hashlib.sha256(b"LINKED").hexdigest()
+    _manifest(tmp_path, SLUG, FLM_BYTES, game_root="corpus/stuntisl", all_sha256=linked_sha)
+    fake = FakeLinkBuild()
+    resolve_all(film, tmp_path, SLUG, link_build=fake, pinned=linked_sha, data=data)
+    assert fake.calls[0][1] == game
+
+
+def _unreadable(monkeypatch: pytest.MonkeyPatch, *bad: Path) -> None:
+    """Make hashing any of *bad* fail as an unreadable file does."""
+    real = file_sha256
+
+    def hashing(path: Path) -> str:
+        if path in bad:
+            raise PermissionError(13, "denied", str(path))
+        return real(path)
+
+    monkeypatch.setattr(all_archive, "file_sha256", hashing)
+
+
+def test_an_unreadable_sibling_is_an_archive_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    film, own, _other = _copies(tmp_path)
+    _unreadable(monkeypatch, own)
+    with pytest.raises(ArchiveError, match=r"BALLOON\.ALL"):
+        resolve_all(film, tmp_path, SLUG, link_build=no_link, pinned="f" * 64)
+
+
+def test_a_pin_passes_over_an_unreadable_corpus_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    film, _own, other = _copies(tmp_path)
+    first = tmp_path / "corpus" / "0" / "VAULT"
+    first.mkdir(parents=True)
+    (first / "BALLOON.FLM").write_bytes(FLM_BYTES)
+    (first / "BALLOON.ALL").write_bytes(b"locked")
+    _unreadable(monkeypatch, first / "BALLOON.ALL")
+    pin = hashlib.sha256(other.read_bytes()).hexdigest()
+    assert resolve_all(film, tmp_path, SLUG, link_build=no_link, pinned=pin) == other
+
+
+def test_an_unreadable_corpus_copy_is_named_when_nothing_matches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    film, _own, other = _copies(tmp_path)
+    _unreadable(monkeypatch, other)
+    with pytest.raises(ArchiveError, match=r"(?s)f{64}.*denied"):
+        resolve_all(film, tmp_path, SLUG, link_build=no_link, pinned="f" * 64)

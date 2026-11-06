@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import TYPE_CHECKING
 
@@ -213,6 +214,26 @@ def test_a_linked_archive_takes_its_build_from_the_manifest(tmp_path: Path) -> N
     assert references.archive_makeone_build(tmp_path, "vault-ctry", other) == "unknown"
 
 
+def test_an_archive_with_the_manifests_bytes_takes_its_build_from_the_manifest(
+    tmp_path: Path,
+) -> None:
+    """A copy elsewhere, such as a pinned sibling, is the manifest's archive by its hash."""
+    by_build = {build: sha for sha, build in references.MAKEONE_BUILDS.items()}
+    copy = tmp_path / "siarchive" / "CTRY.ALL"
+    copy.parent.mkdir(parents=True)
+    copy.write_bytes(b"built")
+    manifest = tmp_path / parity_layout.manifest_path("vault-ctry")
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        f'all_sha256 = "{hashlib.sha256(b"built").hexdigest()}"\n'
+        f'makeone_sha256 = "{by_build["patch3"]}"\n',
+        encoding="utf-8",
+    )
+    assert references.archive_makeone_build(tmp_path, "vault-ctry", copy) == "patch3"
+    copy.write_bytes(b"other bytes")
+    assert references.archive_makeone_build(tmp_path, "vault-ctry", copy) == "unknown"
+
+
 def test_a_shipped_archive_of_the_demo_or_retail_game_is_unpatched(tmp_path: Path) -> None:
     build = references.archive_makeone_build
     for tree in ("stisldem", "stuntisl"):
@@ -259,3 +280,29 @@ def test_a_mismatched_pair_is_refused(tmp_path: Path) -> None:
             "vault-ctry",
             makeone=references.archive_makeone_build(tmp_path, "vault-ctry", archive),
         )
+
+
+PIN = "9de1bc1e8dbe491a56edd899b7c333cb78e5251cbe1e4ed75610dbc081aeb9a9"
+
+
+def test_a_row_pins_its_archive(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3, f'all_sha256 = "{PIN}"')
+    assert references.read_reference(tmp_path, "ctry").all_sha256 == PIN
+
+
+def test_a_row_without_an_archive_pin_has_none(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3)
+    assert references.read_reference(tmp_path, "ctry").all_sha256 is None
+
+
+@pytest.mark.parametrize("value", ['"abc"', '"' + "G" * 64 + '"', "3"])
+def test_a_malformed_archive_pin_is_refused(tmp_path: Path, value: str) -> None:
+    _row(tmp_path, PATCH3, f"all_sha256 = {value}")
+    with pytest.raises(references.ReferenceCaptureError, match=r"\[ctry\].*all_sha256"):
+        references.read_reference(tmp_path, "ctry")
+
+
+def test_read_pin_finds_the_row_by_slug(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3, f'all_sha256 = "{PIN}"')
+    assert references.read_pin(tmp_path, "vault-ctry") == PIN
+    assert references.read_pin(tmp_path, "vault-land") is None

@@ -12,6 +12,7 @@ from __future__ import annotations
 import itertools
 import json
 import struct
+import threading
 import tomllib
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, fields
@@ -150,8 +151,31 @@ def no_link(_manifest: Path, _game: Path, _out: Path) -> None:
     """A :data:`LinkBuild` that builds nothing: a preflight checks a manifest without ``link``."""
 
 
-def _from_manifest(flm: Path, root: Path, slug: str, link_build: LinkBuild) -> Path | None:
-    """The archive rebuilt from the film's manifest, or None when it has no matching one."""
+#: One lock per linked archive, so the threads of one parity run build each archive once while
+#: different archives build at the same time.
+_LINK_LOCKS: dict[Path, threading.Lock] = {}
+_LINK_LOCKS_GUARD = threading.Lock()
+
+
+def _link_lock(out: Path) -> threading.Lock:
+    """The lock that serializes the check-and-build of the linked archive *out*."""
+    with _LINK_LOCKS_GUARD:
+        return _LINK_LOCKS.setdefault(out.resolve(), threading.Lock())
+
+
+def _from_manifest(
+    flm: Path,
+    root: Path,
+    slug: str,
+    link_build: LinkBuild,
+    *,
+    want: str | None = None,
+    data: Path | None = None,
+) -> Path | None:
+    """The archive rebuilt from the film's manifest, or None when it has no matching one.
+
+    With *want*, a manifest whose ``all_sha256`` is not *want* does not match, and is not built.
+    """
     manifest = root / parity_layout.manifest_path(slug)
     if not manifest.is_file():
         return None
@@ -168,7 +192,7 @@ def _from_manifest(flm: Path, root: Path, slug: str, link_build: LinkBuild) -> P
                 f"manifest {manifest} is malformed: flm_sha256, game_root and all_sha256 "
                 f"must be strings"
             )
-    if flm_sha256 != file_sha256(flm):
+    if flm_sha256 != file_sha256(flm) or (want is not None and all_sha256 != want):
         return None
     game = Path(game_root)
     if game.is_absolute() and not game.is_dir():
@@ -178,7 +202,7 @@ def _from_manifest(flm: Path, root: Path, slug: str, link_build: LinkBuild) -> P
             f"mise run make-all -- --film {flm} --game-root <tree>"
         )
     # A corpus/... tree is the data root's (ADR 0036); any other relative tree is the checkout's.
-    game = dataroot.resolve_data_path(game)
+    game = dataroot.resolve_data_path(game, data)
     if not game.is_absolute():
         game = root / game
     if not game.is_dir():
@@ -188,20 +212,36 @@ def _from_manifest(flm: Path, root: Path, slug: str, link_build: LinkBuild) -> P
             "checkout's corpus/ when the data root has none"
         )
     out = root / parity_layout.linked_path(slug, flm.name)
-    if out.is_file() and file_sha256(out) == all_sha256:
-        # Already built from this manifest; rewriting it would race a reader on Windows.
-        return out
-    try:
-        link_build(manifest, game, out)
-    except link.LinkError as exc:
-        raise ArchiveError(f"cannot rebuild {flm.name} from manifest {manifest}: {exc}") from exc
+    # Parallel renders resolve the same film at once; one builds, the rest find its archive.
+    with _link_lock(out):
+        if out.is_file() and file_sha256(out) == all_sha256:
+            # Already built from this manifest; rewriting it would race a reader on Windows.
+            return out
+        try:
+            link_build(manifest, game, out)
+        except link.LinkError as exc:
+            raise ArchiveError(
+                f"cannot rebuild {flm.name} from manifest {manifest}: {exc}"
+            ) from exc
     return out
 
 
 def resolve_all(
-    flm: Path, root: Path, slug: str | None = None, *, link_build: LinkBuild | None = None
+    flm: Path,
+    root: Path,
+    slug: str | None = None,
+    *,
+    link_build: LinkBuild | None = None,
+    pinned: str | None = None,
+    data: Path | None = None,
 ) -> Path:
     """Return the ``.ALL`` that goes with *flm*, or raise ArchiveMissing.
+
+    With *pinned*, the SHA-256 a ``references.toml`` row pins (ADR 0037), the archive is the
+    first of these whose bytes hash to it: the sibling, the manifest rebuild, the stored archive,
+    then a sibling of any copy of the film in the corpus of *data*, the data root the caller
+    reads (the configured one by default). If none does, :class:`ArchiveError` names the
+    pin. The order below, and its errors, hold for each candidate the pin can name.
 
     A sibling with the film's stem wins (matched case-insensitively, so ``x.All`` beside
     ``x.flm`` counts). Next, the film's committed manifest (``manifests/all/<slug>.toml``,
@@ -213,28 +253,75 @@ def resolve_all(
     bytes; its own bytes must still hash to the recorded ``all_sha256``, and a mismatch is an
     error. *slug* names the film's directory; it defaults to the one
     :func:`parity_layout.film_slug` derives. *root* is the checkout holding the manifests and
-    ``target/``; the stored archive is read from the data root (ADR 0036).
+    ``target/``; a manifest's ``corpus/...`` game tree, the stored archive and the corpus copies
+    are read from the data root *data*, the configured one by default (ADR 0036).
     """
+    sibling = _sibling(flm)
+    if sibling is not None:
+        try:
+            if pinned is None or file_sha256(sibling) == pinned:
+                return sibling
+        except OSError as exc:
+            raise ArchiveError(f"cannot read the sibling archive {sibling}: {exc}") from exc
+    slug = slug or parity_layout.slug_for(flm)
+    data = data or dataroot.data_root()
+    linked = _from_manifest(
+        flm, root, slug, link_build or link_build_in(root), want=pinned, data=data
+    )
+    if linked is not None:
+        return linked
+    make = f"run: mise run make-all -- --film {flm}"
+    stored = _stored(slug, data)
+    if pinned is not None:
+        if (
+            stored is not None
+            and stored[1].all_sha256 == pinned
+            and stored[1].flm_sha256 == file_sha256(flm)
+        ):
+            return _checked(flm, *stored)
+        copy, unreadable = _corpus_copy(flm, pinned, data)
+        if copy is not None:
+            return copy
+        skipped = f"; unreadable copies passed over: {'; '.join(unreadable)}" if unreadable else ""
+        raise ArchiveError(
+            f"no archive of {flm.name} hashes to the pinned all_sha256 {pinned}; {make} "
+            f"and repin, or restore the archive the row names{skipped}"
+        )
+    if stored is None:
+        raise ArchiveMissing(f"no .ALL for {flm}; {make}")
+    if stored[1].flm_sha256 != file_sha256(flm):
+        raise ArchiveMissing(f"the stored archive of {flm} was made from another .FLM; {make}")
+    return _checked(flm, *stored)
+
+
+def _sibling(flm: Path) -> Path | None:
+    """The ``.ALL`` beside *flm* with its stem, matched case-insensitively, else ``None``."""
     stem = flm.stem.lower()
     for sibling in sorted(flm.parent.iterdir()):
         if sibling.is_file() and sibling.suffix.lower() == ".all" and sibling.stem.lower() == stem:
             return sibling
-    slug = slug or parity_layout.slug_for(flm)
-    linked = _from_manifest(flm, root, slug, link_build or link_build_in(root))
-    if linked is not None:
-        return linked
-    make = f"run: mise run make-all -- --film {flm}"
-    directory = capture_store.current(dataroot.data_root() / parity_layout.archive_path(slug))
+    return None
+
+
+def _stored(slug: str, data: Path) -> tuple[Path, ArchiveMeta] | None:
+    """The film directory's stored archive under the data root *data*, and its meta, or ``None``.
+
+    The meta may record another film's ``flm_sha256``; the caller decides what that means.
+    """
+    directory = capture_store.current(data / parity_layout.archive_path(slug))
     if directory is None:
-        raise ArchiveMissing(f"no .ALL for {flm}; {make}")
+        return None
     try:
         meta = ArchiveMeta.from_json((directory / META_FILE).read_text(encoding="utf-8"))
     except (ValueError, TypeError, AttributeError, OSError) as exc:
         raise ArchiveError(
             f"stored archive {directory} has an unreadable meta.json: {exc}"
         ) from exc
-    if meta.flm_sha256 != file_sha256(flm):
-        raise ArchiveMissing(f"the stored archive of {flm} was made from another .FLM; {make}")
+    return directory, meta
+
+
+def _checked(flm: Path, directory: Path, meta: ArchiveMeta) -> Path:
+    """The stored archive, whose bytes must still hash to its meta's ``all_sha256``."""
     archive = directory / parity_layout.all_name(flm.name)
     if not archive.is_file() or file_sha256(archive) != meta.all_sha256:
         raise ArchiveError(
@@ -242,3 +329,32 @@ def resolve_all(
             f"delete it and rerun make-all"
         )
     return archive
+
+
+def _corpus_copy(flm: Path, pinned: str, data: Path) -> tuple[Path | None, list[str]]:
+    """A ``.ALL`` beside a copy of *flm* (same name, same bytes) in *data*'s corpus, hashing to
+    *pinned*, or ``None``; and the read errors of the candidates passed over on the way.
+    """
+    film_sha = file_sha256(flm)
+    corpus = dataroot.corpus_of(data)
+    unreadable: list[str] = []
+    for archive in sorted(corpus.rglob(f"{flm.stem}.all", case_sensitive=False)):
+        film = _film_beside(archive, flm.stem)
+        try:
+            if (
+                film is not None
+                and file_sha256(film) == film_sha
+                and file_sha256(archive) == pinned
+            ):
+                return archive, unreadable
+        except OSError as exc:
+            unreadable.append(str(exc))
+    return None, unreadable
+
+
+def _film_beside(archive: Path, stem: str) -> Path | None:
+    """The ``.FLM`` named *stem* beside *archive*, matched case-insensitively, else ``None``."""
+    for path in archive.parent.iterdir():
+        if path.is_file() and path.suffix.lower() == ".flm" and path.stem.lower() == stem.lower():
+            return path
+    return None

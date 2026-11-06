@@ -96,7 +96,7 @@ description = "Report this worktree's build outputs; remove them with --yes (mis
 run = "uv run python python/scripts/worktree_init.py clean"
 
 [tasks.reap]
-description = "Remove worktrees whose branch is already in main or was squash-merged (a merged PR whose head is the branch tip, read with gh), unlinking their data-root junctions first; removes nothing while 20 GB or more is free unless --force (mise run reap -- --yes [--force] [--min-free-gb N] [--cherry] [--prune] [--stash-dirty] [--discard-untracked])"
+description = "Remove worktrees whose branch is already in main or was squash-merged (a merged PR whose head is the branch tip, read with gh), unlinking their data-root junctions first; removes nothing while 20 GB or more is free unless --force, or while its worktree_init.py differs from origin/main's unless --allow-stale-script (mise run reap -- --yes [--force] [--min-free-gb N] [--allow-stale-script] [--cherry] [--prune] [--stash-dirty] [--discard-untracked])"
 run = "uv run python python/scripts/worktree_init.py reap"
 
 [tasks.pr-threads]
@@ -143,13 +143,13 @@ run = "uv run python python/scripts/migrate_captures.py"
 
 [tasks.sweep]
 depends = ["ensure"]
-description = "Candidate sweep: render and score DBG_* variants on CTRY and INTRO (mise run sweep -- --var DBG_X=0,1 [--films ctry] [--probe iou] [--keep-best] [--no-build] [--reuse DIR] [--retime N])"
+description = "Candidate sweep: render and score DBG_* variants on every reference film (mise run sweep -- --var DBG_X=0,1 [--films ctry] [--probe iou] [--keep-best] [--jobs N] [--no-build] [--reuse DIR] [--retime N])"
 run = "uv run python python/scripts/parity_sweep.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.parity]
 depends = ["ensure"]
-description = "Parity baseline: render both films with the current binary and print the headline scores (mise run parity -- [--films ctry,intro] [--no-build] [--no-render] [--reuse DIR] [--retime N])"
+description = "Parity baseline: render every reference film with the current binary and print the headline scores (mise run parity -- [--films ctry,intro] [--jobs N] [--no-build] [--no-render] [--reuse DIR] [--retime N])"
 run = "uv run python python/scripts/parity_run.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
@@ -214,6 +214,12 @@ run = "uv run python python/scripts/scene_patches.py"
 [tasks.flm-events]
 description = "Dump the film-level events of one .FLM film (mise run flm-events -- corpus/.../CTRY.FLM [--sounds])"
 run = "uv run python python/scripts/flm_events.py"
+
+[tasks.superset-all]
+description = "Build one .ALL holding every stock shape in the game's RES/, for rendering a film without its own archive (mise run superset-all -- [--game corpus/stuntisl] [-o target/linked/superset/SUPERSET.ALL])"
+depends = ["ensure"]
+run = "uv run python python/scripts/superset_all.py"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.adversarial]
 description = "Adversarial stress suite over the formats catalog's constraints and claims"
