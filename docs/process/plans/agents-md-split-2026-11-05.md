@@ -3,7 +3,8 @@
 Status: **design agreed 2026-11-05; implementation not started**, on branch
 `claude/agents-md-refactor-72199a`. Source: a brainstorming session of 2026-11-05 that started
 from "AGENTS.md and the other agent files are getting unwieldy; suggest splitting into project
-skills". This note owns the design; the task list will be a sibling
+skills"; the same session added a disk-space gate on `mise run reap` (D7, 4.6). This note owns
+the design; the task list will be a sibling
 `agents-md-split-implementation-2026-11-05.md`.
 
 ## 1. Goal
@@ -39,6 +40,7 @@ Cut the guidance every turn pays for without hiding a rule every task needs:
 | D4 | SOP numbers become named headings; live citations name the heading or the skill. | A number breaks when a section moves; a name survives. |
 | D5 | Skill descriptions state only when to use the skill ("Use when …", one clause per distinct case), never the workflow. | superpowers:writing-skills: an agent follows a workflow summary in the description instead of reading the body. |
 | D6 | Each skill names the models expected to use it, and is evaluated on each. | A skill Haiku will use must be shown to work with Haiku. |
+| D7 | `mise run reap` removes nothing while the drive holding the primary checkout has 10 GB or more free; `--min-free-gb N` changes the bar and `--force` skips it. | The session's request: reaping only earns its risk when space is short. Gating the tool holds for every agent and harness, which wording in a skill would not. |
 
 ## 4. Design
 
@@ -61,15 +63,22 @@ Cut the guidance every turn pays for without hiding a rule every task needs:
    - **Committing** (from SOP 3 and Commit Messages): stage files by name, Conventional Commit
      subject, a body that answers why, the gate line. Handoffs go in the note that owns the work,
      never only in agent memory, and append-only files such as `research/parity/log.md` take rows
-     only at the end (from SOP 6.4). The PR-picture rule is removed; the `improving-render-parity`
-     description already covers it.
+     only at the end (from SOP 6.4). A pull request that changes rendered output carries a
+     capture-beside-render picture, one line linking the `improving-render-parity` section. That
+     line stays loaded because an agent changing the renderer outside parity work would never
+     trigger the skill.
    - **Working economically** (SOP 5, same substance): fewer and fuller turns, scoped checks,
      scripts before subagents, everything through `mise run`.
    - **Worktrees**: one writer per checkout path, with worktrees under `.claude/worktrees/` or
-     `.agents/worktrees/`; remove worktrees with `mise run reap -- --yes` from the primary
-     checkout. This stays loaded every turn because a wrong removal can delete shared data.
+     `.agents/worktrees/`; a worktree the tool that made it cannot remove is reaped with
+     `mise run reap -- --yes` from the primary checkout. This stays loaded every turn because a
+     wrong removal of an old linked worktree can delete shared data.
 
-SOP 1, SOP 2 and SOP 4 leave `AGENTS.md` entirely.
+SOP 1, SOP 2 and SOP 4 leave `AGENTS.md` entirely. Three lines go with nothing in their place:
+SOP 3.3 (link modified symbols in markdown, which Claude Code already does), SOP 5.4 (parity
+work follows its skill, which the skill's description already triggers), and SOP 6.1's note
+that `tests/test_worktree_layout.py` requires the worktree directories in `.gitignore` and
+ruff's `exclude` (the test enforces it).
 
 ### 4.2 New skills
 
@@ -97,7 +106,7 @@ Each skill's steps and the condition that ends them:
 - **`recording-binary-findings`:**
   1. Choose the owning note by the routing rule in `research/README.md`; link the rule, don't
      copy it.
-  2. Add every new offset to `research/playone-exe/memory-map.md`, and register every new
+  2. Add every new `PLAYONE.EXE` offset to `research/playone-exe/memory-map.md`, and register every new
      `# [MEM-*]`/`# [FMT-*]` anchor in `python/stunt_reel/doc_anchors.py`.
   3. Raise the evidentiary tier. The ladder is owned by `EVIDENTIARY_TIERS` in
      `python/scripts/verify_formats_docs.py`; each step up cites the linear address or the note
@@ -118,7 +127,8 @@ Each skill's steps and the condition that ends them:
   linking to `AGENTS.md`'s headings. The policies only it holds stay: worktree-per-writer mode,
   which model a subagent uses, globbing from a named folder, and the note that nothing enforces
   these for you.
-- **`.claude/skills/`:** deleted (D2).
+- **`.claude/skills/`:** deleted (D2). `CLAUDE.md`'s second sentence, which says the stub
+  works "the same way `.claude/skills/` points at `.agents/skills/`", loses that comparison.
 
 ### 4.4 Citations
 
@@ -138,25 +148,55 @@ citations. The directives stay numbered, so `Directive <n>` citations stay valid
 `python/scripts/verify_formats_docs.py` adds `.agents/skills/*/SKILL.md` to `LINK_SCAN_GLOBS`,
 so a broken link in a skill fails the gate.
 
+### 4.6 Reaping waits for low disk space (D7)
+
+In `python/scripts/worktree_init.py`, `reap` first reads the free space on the drive holding the
+primary checkout (`shutil.disk_usage`).
+
+- **At or above the bar** (default 10 GB, set by `--min-free-gb`): it prints the free space, the
+  bar and what it would reap, then exits 0 without removing anything, `--yes` or not.
+- **Below the bar, or with `--force`:** it reaps as it does today.
+- **A dry run** (no `--yes`) prints the free space and the bar before its usual list.
+
+The `mise.toml` task description names both flags, and the `managing-worktrees` skill says to
+reap when space is short. Tests in `tests/` drive the gate through a stubbed `disk_usage`,
+covering above the bar, below it, and `--force`.
+
 ## 5. Order
 
-1. Trim `AGENTS.md` (4.1) and fix the citations (4.4), leaving the SOP 1/2/4/6 material in a
-   scratch copy for the skills.
+1. Trim `AGENTS.md` (4.1) and fix the citations (4.4). The skills draw the removed SOP text
+   from `git show main:AGENTS.md`.
 2. For each skill in turn: run the baseline, write the skill, run the evaluation with the skill
    (section 6). Only then start the next skill.
 3. `docs/harness.md` (4.3), the link check (4.5), delete `.claude/skills/`.
-4. Verification (section 7), then a pull request.
+4. The reap gate (4.6), test-first. It is independent of steps 1–3 and lands in its own commit.
+5. Verification (section 7), then a pull request.
 
 ## 6. Skill evaluation
 
-Each skill runs one realistic prompt for its case, as a dry run: "list the files you would
-touch and the steps you would take; edit nothing". Each run uses a fresh subagent in this
-worktree, three repetitions per model named in 4.2.
+Each run is a dry run in this worktree: the prompt below, then "list the files you would touch
+and the steps you would take; edit nothing". Three repetitions per model, each in the context
+that model is used in:
 
-- **Baseline (expected to fail):** trimmed `AGENTS.md`, skill absent. Record what the subagent
+- **Opus** as a top-level session:
+  `claude -p --model opus --permission-mode plan --output-format stream-json --verbose "<prompt>"`.
+  A real session sees the real skill listing, and plan mode keeps it read-only. This command is
+  not pre-approved, so each run asks.
+- **Haiku** as a subagent (the Agent tool with `model: haiku`). If the subagent's skill listing
+  lacks the new skill, rerun Haiku with `claude -p --model haiku` and record the fact.
+
+| Skill | Model | Prompt | Must cover |
+|---|---|---|---|
+| `changing-seam-contracts` | Opus | Add a field to the shape contract (`crates/stunt-core/src/contracts/shape.rs`) recording the name of the resource the shape came from. | `serde(default)` on the field; a synthetic fixture and its `tests/fixtures/README.md` entry; a roundtrip test run with `--all-features` |
+| `recording-binary-findings` | Opus | A debugger session found that `PLAYONE.EXE` keeps the camera's lens index at `DGROUP:0x1A2C` and reads it at `1A2F:0042` (a made-up example). Record it. | the owning note chosen by `research/README.md`; a `memory-map.md` row; a `doc_anchors.py` entry for any new anchor; a tier that cites the address; **Ruled out** and **Open questions** |
+| `managing-worktrees` | Opus | Remove the worktree `.claude/worktrees/old-branch`, made before ADR 0036, whose pull request was squash-merged. | `mise run reap -- --yes` from the primary checkout, after its dry run; no `git worktree remove` by hand; the 10 GB bar and `--force` (D7) |
+| `managing-worktrees` | Haiku | From this worktree, find the reference capture for `CTRY.FLM` and say whether it is complete. | the data root (`STUNT_DATA_ROOT` or the sibling `.data` directory); `captures/<film slug>/frames` (here `vault-ctry`), complete only once its `meta.json` exists; the pin in `research/parity/references.toml` |
+
+- **Baseline (expected to fail):** trimmed `AGENTS.md`, skill absent. Record what each run
   misses, word for word.
-- **With the skill (expected to pass):** skill present. A pass means the subagent loads the
-  skill on its own and covers every step. The first such run also settles D2.
+- **With the skill (expected to pass):** skill present. A pass means the transcript shows the
+  skill loaded without being named in the prompt, and the answer covers every item in its
+  row. The first such run also settles D2.
 - **Tightening:** a miss in the second run changes the wording, not the length, and that skill is
   tested again.
 - **Already-followed rules:** a rule the baseline already follows is one the model follows by
@@ -168,7 +208,8 @@ Record the results in section 8 of this note.
 
 - `mise run check` passes.
 - `AGENTS.md` is at most about 8 KB.
-- `grep -rn 'SOP [0-9]'` finds nothing outside `docs/process/plans/`.
+- `git grep -n 'SOP [0-9]' -- ':!docs/process/plans'` finds nothing. (`git grep` keeps out
+  the other worktrees under `.claude/worktrees/`, which a plain recursive grep walks.)
 - Every skill passes section 6 on each model named for it.
 
 ## 8. Results
