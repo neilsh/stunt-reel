@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted 2026-11-03. Takes up the `pytest-xdist` option
+accepted 2026-11-03, amended 2026-11-06. Takes up the `pytest-xdist` option
 [ADR 0016](0016-the-gate-runs-independent-lanes.md) left for
 [ADR 0010](0010-python-scripts-may-take-well-established-dependencies.md) to clear, and is the
 admitting record that ADR asks for.
@@ -80,3 +80,34 @@ instead of three (6 s to 2 s), since each refused loopback connect on Windows re
   port or working directory with another, and one that reads pytest's session layout must allow
   for a worker's `<run root>/popen-gw<N>` temporary root, as
   [`test_pytest_basetemp.py`](../../tests/test_pytest_basetemp.py) does.
+
+## Amendment: physical cores (2026-11-06)
+
+`-n auto` started 16 workers on the workstation, one per logical core, because xdist counts
+physical cores only when `psutil` is installed and falls back to `os.cpu_count()` otherwise. The
+dev group now carries `psutil`, so `-n auto` starts 8. The decision stands with "core" meaning a
+physical one; the gate still passes `-n auto` through `PYTEST_ADDOPTS`.
+
+pytest alone, warm, on the 8-physical, 16-logical-core workstation
+([scoped-gate plan](../process/plans/scoped-gate-2026-11-06.md), section 2):
+
+| workers | wall |
+| --- | --- |
+| `-n auto` (16) | 39-45 s |
+| `-n 12` | 34 s |
+| `-n 8` | 30-33 s (three runs) |
+
+On the day the dependency landed, with other sessions holding 15-20 % of the CPU, pytest alone
+took 49-50 s at 8 workers and 51-53 s at 16, alternating runs. Three warm whole gates took
+53, 53 and 48 s before and 49, 55 and 67 s after; that background load swamps a gain of a few
+seconds, so the whole-gate figures show the noise rather than the change. Eight workers also
+leave cores free for `test-rust` and for a cold cargo build in another worktree.
+
+### The dependency, against ADR 0010
+
+- **Job.** Count physical cores for xdist's `-n auto`. The standard library reports logical
+  cores only; the alternative, a hand-written count per platform, is what psutil already is.
+- **psutil 7.2.2**: `abi3` wheels for Windows (x86-64, ARM64), macOS and manylinux/musllinux
+  (x86-64, aarch64), so every CI platform installs it without a build; BSD-3-Clause; released
+  2026-01. It ships no `py.typed`. Nothing imports it: xdist looks for it at startup, so mypy
+  never resolves it and the check has nothing to apply to.
