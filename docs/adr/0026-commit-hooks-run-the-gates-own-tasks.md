@@ -145,3 +145,20 @@ with `git checkout-index` and lets the commit through, so no content the commit 
 A working copy that differs in anything else (unstaged edits) is still rejected and left
 untouched. Rejecting a commit that was already correct cost four writers a convert-and-recommit
 on 2026-11-05 ([#219](https://github.com/neilsh/stunt-reel/issues/219)).
+
+Considered and rejected:
+
+- **Keep rejecting.** It cost four rejected commits overnight on 2026-11-05, each for a file
+  the commit already held correctly.
+- **Rewrite any CRLF file to LF.** It would touch a file with unstaged edits.
+- **Rely on `.gitattributes` alone.** It normalises the index, not the working copy that
+  `ruff format --check` reads.
+- **Write the LF bytes from Python instead of `git checkout-index`.** The result is git's own
+  checkout only while no filter or attribute changes it; `checkout-index` writes what git would.
+
+Consequences:
+
+- The hook can now change a working copy, but only to a copy equal to the index blob, so the
+  content of the commit never changes.
+- A file with unstaged edits, an unstaged mode change, or a CR in its index blob is still
+  rejected and left untouched.
