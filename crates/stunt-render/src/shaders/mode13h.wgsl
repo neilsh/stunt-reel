@@ -27,7 +27,16 @@ struct VertexOutput {
     @location(0) @interpolate(flat) palette_index: u32,
     @location(1) @interpolate(flat) light_level: u32,
     @location(2) @interpolate(flat) layer: u32,
+    // The palette index again, interpolated linearly in screen space as PLAYONE's polygon
+    // filler interpolates a Gouraud polygon's index (research/playone-exe/terrain-shade.md
+    // section 6). A flat polygon has one index at every vertex, so it is unchanged.
+    @location(3) @interpolate(linear) shade: f32,
 };
+
+// The whole palette index a fragment draws [I3].
+fn fragment_index(in: VertexOutput) -> u32 {
+    return u32(clamp(floor(in.shade + 0.5), 0.0, 255.0));
+}
 
 struct PlaneOutput {
     @location(0) color: vec4<f32>,
@@ -43,6 +52,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     let world_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
     out.clip_position = camera.view_proj * world_pos;
     out.palette_index = in.attr.x & 255u;
+    out.shade = f32(out.palette_index);
     out.layer = model.layer.x + in.attr.z;
 
     // Polygons are drawn at their palette index with no directional lighting: against
@@ -57,16 +67,17 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Mode 13h flat-shaded pixel lookup with zero bilinear bleed [I3]
-    let coords = vec2<i32>(i32(in.palette_index & 255u), i32(in.light_level & 31u));
+    let coords = vec2<i32>(i32(fragment_index(in)), i32(in.light_level & 31u));
     return textureLoad(palette_lut, coords, 0);
 }
 
 @fragment
 fn fs_main_plane(in: VertexOutput) -> PlaneOutput {
     var out: PlaneOutput;
-    let coords = vec2<i32>(i32(in.palette_index & 255u), i32(in.light_level & 31u));
+    let index = fragment_index(in);
+    let coords = vec2<i32>(i32(index), i32(in.light_level & 31u));
     out.color = textureLoad(palette_lut, coords, 0);
-    out.plane = (in.layer << 8u) | (in.palette_index & 255u);
+    out.plane = (in.layer << 8u) | index;
     return out;
 }
 

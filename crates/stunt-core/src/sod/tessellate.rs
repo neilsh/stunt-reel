@@ -15,6 +15,7 @@ use crate::contracts::shape::{
     DecodeMode, DecodeRecord, NodeId, NodeKind, SodModelIr, SodVertex, VisibilityCondition,
     arena_index,
 };
+use crate::sod::ShadeLight;
 use crate::sod::SodError;
 use crate::sod::decal::identify_coplanar_decals;
 use crate::sod::vm::{Policy, RawPolygon, run_vm};
@@ -144,8 +145,13 @@ fn process_polygon_batch(
         }
 
         let mut poly_indices = Vec::with_capacity(num_v);
-        for v_pos in &poly.vertices {
-            let weld_key = quantize_weld_key(v_pos, &poly.normal, poly.palette_index, poly.flags);
+        for (corner, v_pos) in poly.vertices.iter().enumerate() {
+            let palette_index = poly
+                .vertex_palette
+                .get(corner)
+                .copied()
+                .unwrap_or(poly.palette_index);
+            let weld_key = quantize_weld_key(v_pos, &poly.normal, palette_index, poly.flags);
             if let Some(&existing_idx) = weld_map.get(&weld_key) {
                 poly_indices.push(existing_idx);
             } else {
@@ -153,7 +159,7 @@ fn process_polygon_batch(
                 ir.vertices.push(SodVertex {
                     position: *v_pos,
                     normal: poly.normal,
-                    palette_index: poly.palette_index,
+                    palette_index,
                     flags: poly.flags,
                     scenery_class: 0,
                     _padding: 0,
@@ -215,12 +221,30 @@ pub fn decode_sod(
     anchors: Option<&[AnchorPoint]>,
     mode: DecodeMode,
 ) -> Result<SodModelIr, SodError> {
+    decode_sod_lit(data, name, anchors, mode, ShadeLight::default())
+}
+
+/// [`decode_sod`] with the light `OP_SHADES` shades the shape's normals against.
+///
+/// `PLAYONE` hands each object its own light; [`decode_sod`] uses the observed world light,
+/// which is what scenery gets.
+///
+/// # Errors
+///
+/// As [`decode_sod`].
+pub fn decode_sod_lit(
+    data: &[u8],
+    name: &str,
+    anchors: Option<&[AnchorPoint]>,
+    mode: DecodeMode,
+    light: ShadeLight,
+) -> Result<SodModelIr, SodError> {
     let (policy, anchors, geometry) = match mode {
         DecodeMode::Strict => (Policy::Strict, anchors, true),
         DecodeMode::Lenient => (Policy::Lenient, anchors, true),
         DecodeMode::Census => (Policy::Census, None, false),
     };
-    let run = run_vm(data, policy, anchors)?;
+    let run = run_vm(data, policy, anchors, light)?;
     let polygons = if geometry {
         identify_coplanar_decals(&run.polygons, 0.001, 1e-4, 1e-4)
     } else {

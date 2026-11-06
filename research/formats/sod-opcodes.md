@@ -48,7 +48,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **35** | `0x013B` | 315 | `OP_MISTY` | `...` | Distance fog / atmospheric haze attenuation |
 | **36** | `0x0144` | 324 | `OP_SHADE1` | `normal_reg: u16, ramp: u16` | Front-facing directional lighting ramp |
 | **37** | `0x014D` | 333 | `OP_SHADE2` | `normal_reg: u16, ramp: u16` | Back-facing directional lighting ramp |
-| **38** | `0x0156` | 342 | `OP_SHADES` | `count: u16, ...triplets` | Batch upload lighting normal vectors. Parsed and deliberately not applied; per-vertex shade words observed 4 to 68 in `CTRY.ALL`, and `siobj.cpp` discards them too (`[Bounded Observation]`). The props loss is structural, not tonal: 79% of prop-layer pixels already matched in the first index comparison |
+| **38** | `0x0156` | 342 | `OP_SHADES` | `count: u16, ...triplets` | Batch upload lighting normal vectors: each writes the shade word `s = -clamp((N . L) >> 16, +-0x3FFF)` (`PLAYONE` `0x9481`) that the `SHADE*` and `GVPOLY*` opcodes read. Applied with the world light `L = (99, 32766, -17)` in the raw model frame (`[Supported Inference]`, [`sod-vm.md` § 8.5](../playone-exe/sod-vm.md#85-polygon-colour-at-shade-time)); `siobj.cpp` discards them |
 | **39** | `0x015F` | 351 | `OP_GOURAUD` | `...` | Smooth Gouraud-shaded polygon |
 | **40** | `0x0168` | 360 | `OP_SHADEPOLY`| `count: u16, regs..., norm, shades...` | Normal-lit shaded polygon (`OP_GVPOLY`) |
 | **41** | `0x0171` | 369 | `OP_AIRBRUSH` | `...` | Dithered / airbrushed soft shadow polygon |

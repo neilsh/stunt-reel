@@ -20,7 +20,7 @@ use crate::contracts::{ActorTransform, CameraTransform, PaletteControls, ShapeEx
 use crate::credits::CreditLines;
 use crate::flm::{FilmTimeline, FlmError};
 use crate::font::PFont;
-use crate::sod::{DecodeMode, SodError, decode_sod};
+use crate::sod::{DecodeMode, ShadeLight, SodError, decode_sod_lit};
 use crate::vfs::VfsError;
 use crate::world::{ScnStop, World, WorldInputs, build_world};
 
@@ -104,7 +104,8 @@ pub struct ArchiveShapes {
     pub skipped: Vec<SkippedChunk>,
 }
 
-/// Decodes every `MODEL_%04X.SOD` chunk of `.ALL` bytes, resolving `OP_TAP` against `anchors`.
+/// Decodes every `MODEL_%04X.SOD` chunk of `.ALL` bytes, resolving `OP_TAP` against `anchors`
+/// and shading `OP_SHADES` normals against `light`.
 ///
 /// Other chunks are ignored. An empty `anchors` table is treated as absent.
 ///
@@ -115,6 +116,7 @@ pub struct ArchiveShapes {
 pub fn decode_archive_shapes(
     archive: &[u8],
     anchors: &[AnchorPoint],
+    light: ShadeLight,
 ) -> Result<ArchiveShapes, VfsError> {
     let archive = crate::vfs::parse_all(archive)?;
     let anchor_slice = (!anchors.is_empty()).then_some(anchors);
@@ -124,7 +126,13 @@ pub fn decode_archive_shapes(
         let Some(shape_id) = model_shape_id(&entry.name) else {
             continue;
         };
-        match decode_sod(&entry.data, &entry.name, anchor_slice, DecodeMode::Lenient) {
+        match decode_sod_lit(
+            &entry.data,
+            &entry.name,
+            anchor_slice,
+            DecodeMode::Lenient,
+            light,
+        ) {
             Ok(ir) => {
                 out.shapes.insert(shape_id, ir);
             }
@@ -305,8 +313,19 @@ impl FilmScene {
     ) -> Result<(Self, SceneReport), SceneError> {
         let anchors = inputs.anchors.map(parse_anchor_table).unwrap_or_default();
 
+        // `PLAYONE` lights every object from film variable 13 (`0x196C`); the light the
+        // first slice sets is the film's. Actors get it unrotated: their own light is the
+        // world light turned by their rotation and the view, which changes every frame.
+        let light = ShadeLight::world(
+            timeline
+                .slices()
+                .first()
+                .map_or(0, |slice| slice.record.palette.sky),
+        );
         let decoded = match inputs.archive {
-            Some(bytes) => decode_archive_shapes(bytes, &anchors).map_err(SceneError::Archive)?,
+            Some(bytes) => {
+                decode_archive_shapes(bytes, &anchors, light).map_err(SceneError::Archive)?
+            }
             None => ArchiveShapes::default(),
         };
 
