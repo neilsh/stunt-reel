@@ -2,7 +2,8 @@
 
 ## Status
 
-accepted. Supersedes the `staged` plan that
+accepted. Amended 2026-11-05: `crlf-check` repairs a CRLF-only working copy (below). Supersedes
+the `staged` plan that
 [#32](https://github.com/neilsh/stunt-reel/pull/32) added to
 [`gate.py`](../../python/scripts/gate.py); keeps that change's committed `.githooks/` and its
 installation by `mise run init`. Reverses the deletion of `.pre-commit-config.yaml` recorded in
@@ -128,3 +129,12 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   covers the built-ins.
 - Adding a hook means adding a leaf task or choosing a built-in, then updating this record and
   the hook test.
+
+## Amendment 2026-11-05: `crlf-check` repairs a CRLF-only working copy
+
+`crlf-check` is the single exception to "No hook rewrites files". When a staged text file's
+working copy equals its index blob apart from line endings, the hook rewrites it from the index
+with `git checkout-index` and lets the commit through, so no content the commit carries changes.
+A working copy that differs in anything else (unstaged edits) is still rejected and left
+untouched. Rejecting a commit that was already correct cost four writers a convert-and-recommit
+on 2026-11-05 ([#219](https://github.com/neilsh/stunt-reel/issues/219)).
