@@ -144,11 +144,14 @@ They sit outside the primary checkout, as do the worktrees nested in a workspace
 A workspace made before ADR 0036 may still hold junctions an older `init` made, and nothing shows
 that Orca's removal unlinks them first (see [Removing a worktree](#removing-a-worktree)). No task
 unlinks one worktree in place; `reap` does it only for the worktrees it removes. Before
-`orca worktree rm`, inside the workspace:
+`orca worktree rm`, from the workspace root (read-only listing, whatever the workspace's
+own `init`):
 
-1. `mise run init` prints `~ <path> is a link from the old layout` for each junction.
-2. `cmd /c rmdir <path>` removes each one and leaves its target alone; never add `/s`.
-3. `cmd /c dir /AL /S /B` must then find no file: no reparse point remains.
+1. `cmd /c dir /AL /S /B` lists every reparse point. It follows junctions, so a listed path
+   below another listed path lies inside that junction's target: leave it alone.
+2. `cmd /c rmdir <path>` each remaining one; it removes the junction and leaves its target
+   alone. Never add `/s`.
+3. `cmd /c dir /AL /S /B` again must print `File Not Found`; only then run `orca worktree rm`.
 
 Orca workspaces live on `C:`, another volume from the shared uv cache, so uv copies each
 `.venv` (about 68 MB, 3 s) instead of hardlinking it, and `target/` is not seeded, because
