@@ -1,6 +1,6 @@
 # VAULT Films in the Parity Corpus (design note)
 
-Status: design under review; tickets filed (#242, § 8); no code yet. Owner: unassigned.
+Status: design under review; tickets filed (#242, § 8); implementation plan in [`vault-parity-films-implementation-2026-11-06.md`](vault-parity-films-implementation-2026-11-06.md); no code yet. Owner: unassigned.
 
 ## 1. Why
 
