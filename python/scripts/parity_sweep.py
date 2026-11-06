@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import parity_probe
-from cli import add_parity_options, parity_options
+from cli import add_parity_options, parity_options, resolve_jobs
 
 from stunt_reel import parity_layout, references
 from stunt_reel.parity_artifacts import (
@@ -48,12 +48,15 @@ from stunt_reel.parity_artifacts import (
 from stunt_reel.parity_pipeline import (
     REPO_ROOT,
     FilmFailure,
+    FilmJob,
     FilmScore,
     Score,
     build_release,
     format_summary,
     preflight,
+    run_film,
     run_films,
+    run_matrix,
 )
 
 if TYPE_CHECKING:
@@ -84,6 +87,15 @@ class Variant:
         if not values or any(v is None for v in values):
             return None
         return sum(v for v in values if v is not None) / len(values)
+
+
+@dataclass(frozen=True)
+class SweepPlan:
+    """One variant to run: its score record, its work directory and the environment it renders in."""
+
+    variant: Variant
+    workdir: Path
+    env: dict[str, str]
 
 
 def parse_var(spec: str) -> tuple[str, list[str]]:
@@ -308,53 +320,70 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"[sweep] {len(combos)} variant(s)", file=sys.stderr)
     scratch = REPO_ROOT / parity_layout.sweep_root()
+    plans = [
+        SweepPlan(
+            Variant(index, values, {}),
+            scratch / f"v{index:03d}",
+            {**os.environ, **dict(zip(names, values, strict=True))},
+        )
+        for index, values in enumerate(combos, start=1)
+    ]
+    for plan in plans:
+        shutil.rmtree(plan.workdir, ignore_errors=True)
     variants: list[Variant] = []
     best: Variant | None = None
+    started = time.monotonic()
+
+    def work(job: FilmJob, plan: SweepPlan) -> FilmScore:
+        return run_film(job, plan.workdir, env=plan.env, retime=options.retime)
+
+    def on_variant(position: int, row: list[FilmScore | FilmFailure]) -> None:
+        # Called on this thread as each variant's last film finishes, in completion order; rank
+        # breaks ties by index, so the best kept does not depend on that order.
+        nonlocal best
+        plan = plans[position]
+        variant = plan.variant
+        notes = []
+        for attempt in row:
+            if isinstance(attempt, FilmFailure):
+                variant.scores[attempt.film] = None
+                notes.append(f"{attempt.film} FAILED ({_first_line(attempt.error, 80)})")
+                continue
+            try:
+                measured = with_actor_iou(attempt, root) if args.probe == "iou" else attempt.score
+            except (RuntimeError, ValueError, OSError, KeyError) as err:
+                variant.scores[attempt.film] = None
+                notes.append(f"{attempt.film} FAILED ({_first_line(err, 80)})")
+                continue
+            variant.renders[attempt.film] = attempt.render
+            variant.scores[attempt.film] = measured
+            notes.append(f"{attempt.film} {measured.ssim:.4f}")
+        variants.append(variant)
+        mean = variant.mean_ssim()
+        if (
+            args.keep_best
+            and mean is not None
+            and (best is None or rank([best, variant])[0] is variant)
+        ):
+            if best is not None:
+                shutil.rmtree(scratch / f"v{best.index:03d}", ignore_errors=True)
+            best = variant
+        else:
+            shutil.rmtree(plan.workdir, ignore_errors=True)
+        print(
+            f"[{variant.index}/{len(combos)}] {label(names, variant.values)}: {', '.join(notes)}"
+            f" ({time.monotonic() - started:.0f}s)",
+            file=sys.stderr,
+        )
+
+    jobs = resolve_jobs(options.jobs, len(plans) * len(films))
     try:
-        for index, values in enumerate(combos, start=1):
-            started = time.monotonic()
-            workdir = scratch / f"v{index:03d}"
-            shutil.rmtree(workdir, ignore_errors=True)
-            env = {**os.environ, **dict(zip(names, values, strict=True))}
-            variant = Variant(index, values, {})
-            notes = []
-            for attempt in run_films(films, root, workdir, env=env, retime=options.retime):
-                if isinstance(attempt, FilmFailure):
-                    variant.scores[attempt.film] = None
-                    notes.append(f"{attempt.film} FAILED ({_first_line(attempt.error, 80)})")
-                    continue
-                try:
-                    measured = (
-                        with_actor_iou(attempt, root) if args.probe == "iou" else attempt.score
-                    )
-                except (RuntimeError, ValueError, OSError, KeyError) as err:
-                    variant.scores[attempt.film] = None
-                    notes.append(f"{attempt.film} FAILED ({_first_line(err, 80)})")
-                    continue
-                variant.renders[attempt.film] = attempt.render
-                variant.scores[attempt.film] = measured
-                notes.append(f"{attempt.film} {measured.ssim:.4f}")
-            variants.append(variant)
-            mean = variant.mean_ssim()
-            if (
-                args.keep_best
-                and mean is not None
-                and (best is None or rank([best, variant])[0] is variant)
-            ):
-                if best is not None:
-                    shutil.rmtree(scratch / f"v{best.index:03d}", ignore_errors=True)
-                best = variant
-            else:
-                shutil.rmtree(workdir, ignore_errors=True)
-            print(
-                f"[{index}/{len(combos)}] {label(names, values)}: {', '.join(notes)}"
-                f" ({time.monotonic() - started:.0f}s)",
-                file=sys.stderr,
-            )
+        run_matrix(films, root, plans, work, jobs=jobs, on_variant=on_variant)
     finally:
-        for v in variants:
-            if best is None or v is not best:
-                shutil.rmtree(scratch / f"v{v.index:03d}", ignore_errors=True)
+        # Every variant's directory, finished or not, except the best kept so far.
+        for plan in plans:
+            if best is None or plan.variant is not best:
+                shutil.rmtree(plan.workdir, ignore_errors=True)
 
     ordered = rank(variants)
     print(format_table(names, films, ordered, args.probe))
