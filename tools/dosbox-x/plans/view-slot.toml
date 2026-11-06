@@ -1,0 +1,16 @@
+# #70: the view camera PLAYONE draws INTRO.FLM's held sand shots from (ticks 2690-2850). The view
+# setup 0x11FC takes the camera's object pointer from the film state's slot list
+# ([0x4888 + 2 * view_obj + 0x2E], kept at DS:0x22DE); at 0x1251 SI holds it, and 0x1251..0x125E
+# copy its six words at +0x04 (the eye) to DS:0x2A68, then 0x1260..0x126C take the three angle
+# words at +0x10/+0x12/+0x14 for the camera matrix. Capture the object record, the snapshot film
+# state (view_obj at +0x1A, slot pointers at +0x2E) and the eye of the previous frame.
+[run]
+stop_tick = 2870
+
+[[probe]]
+name = "view-setup"
+kind = "break"
+at = 0x1251
+arm = { tick = 2660 }
+hits = 40
+capture = ["mem:DS:SI:48", "mem:DS:0x4888:0x60", "mem:DS:0x2A68:12"]
