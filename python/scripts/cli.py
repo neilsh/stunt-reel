@@ -7,20 +7,20 @@ that only one of the two takes stays in that script.
 
 from __future__ import annotations
 
+import argparse
+import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from stunt_reel import dataroot, references
 
-if TYPE_CHECKING:
-    import argparse
-
 __all__ = [
+    "DEFAULT_JOBS",
     "ParityOptions",
     "UsageError",
     "add_parity_options",
     "parity_options",
+    "resolve_jobs",
 ]
 
 
@@ -41,10 +41,33 @@ class ParityOptions:
     no_build: bool
     reuse: Path | None
     retime: int | None
+    jobs: int | None
+
+
+#: The most pairs run at once by default: about 3x one job's throughput on an 8-core machine with
+#: an RTX 4070, at about 300 MiB of RAM and 200 MiB of VRAM per job (research/parity/method.md).
+DEFAULT_JOBS = 8
+
+
+def resolve_jobs(requested: int | None, pairs: int) -> int:
+    """How many (variant, film) pairs run at once: *requested*, else the default, never above *pairs*."""
+    wanted = requested if requested is not None else min(DEFAULT_JOBS, os.cpu_count() or 1)
+    return max(1, min(wanted, pairs))
+
+
+def _positive_int(text: str) -> int:
+    """``--jobs``: a whole number of at least 1."""
+    try:
+        value = int(text)
+    except ValueError:
+        value = 0
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"must be a whole number of at least 1, got {text!r}")
+    return value
 
 
 def add_parity_options(parser: argparse.ArgumentParser) -> None:
-    """Add ``--films``, ``--data-root``, ``--no-build``, ``--reuse`` and ``--retime``.
+    """Add ``--films``, ``--data-root``, ``--no-build``, ``--reuse``, ``--retime`` and ``--jobs``.
 
     ``--films`` defaults to every film the data root's ``references.toml`` pins, resolved by
     :func:`parity_options` once ``--data-root`` is known; without the flag the configured data
@@ -66,6 +89,16 @@ def add_parity_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--retime", type=int, default=None, metavar="N", help="relabel each film by N ticks"
     )
+    parser.add_argument(
+        "--jobs",
+        type=_positive_int,
+        default=None,
+        metavar="N",
+        help=(
+            f"render and score N (variant, film) pairs at once; default {DEFAULT_JOBS}, capped by "
+            "cores and pairs; each job takes about 300 MiB of RAM and 200 MiB of VRAM"
+        ),
+    )
 
 
 def parity_options(args: argparse.Namespace) -> ParityOptions:
@@ -85,4 +118,5 @@ def parity_options(args: argparse.Namespace) -> ParityOptions:
         no_build=bool(args.no_build),
         reuse=args.reuse,
         retime=args.retime,
+        jobs=args.jobs,
     )

@@ -26,19 +26,21 @@ import shutil
 import sys
 from pathlib import Path
 
-from cli import ParityOptions, UsageError, add_parity_options, parity_options
+from cli import ParityOptions, UsageError, add_parity_options, parity_options, resolve_jobs
 
 from stunt_reel import parity_layout
 from stunt_reel.parity_pipeline import (
     REPO_ROOT,
+    FilmFailure,
     FilmJob,
+    FilmScore,
     Retime,
     build_release,
     check_film,
     format_summary,
     preflight,
-    reference_job,
     render_film,
+    run_matrix,
     score_film,
 )
 
@@ -107,33 +109,37 @@ def main(argv: list[str] | None = None) -> int:
             print(f"parity_run: build failed: {err}", file=sys.stderr)
             return 1
 
-    failures = 0
-    for film in options.films:
-        try:
-            with reference_job(root, film) as job:
-                source = prepare_source(job, options, no_render=args.no_render)
-                suffix = ""
-                request = None
-                if options.retime is not None:
-                    suffix = f"_retime{options.retime:+d}"
-                    request = Retime(
-                        options.retime, REPO_ROOT / parity_layout.retime_dir(film, suffix)
-                    )
-                report = REPO_ROOT / parity_layout.report_dir(film, suffix)
-                result = score_film(job, source, report, retime=request)
-                if result.retime is not None:
-                    print(
-                        f"[parity] {film}: copied {result.retime.copied} frames; "
-                        f"missing {len(result.retime.missing)} ticks",
-                        file=sys.stderr,
-                    )
-                print(format_summary(film, result.report), flush=True)
-        except (RuntimeError, ValueError, OSError, KeyError) as err:
-            failures += 1
+    def work(job: FilmJob, _variant: None) -> FilmScore:
+        source = prepare_source(job, options, no_render=args.no_render)
+        suffix = ""
+        request = None
+        if options.retime is not None:
+            suffix = f"_retime{options.retime:+d}"
+            request = Retime(options.retime, REPO_ROOT / parity_layout.retime_dir(job.name, suffix))
+        report = REPO_ROOT / parity_layout.report_dir(job.name, suffix)
+        result = score_film(job, source, report, retime=request)
+        if result.retime is not None:
             print(
-                f"parity_run: {film} FAILED ({str(err).splitlines()[0][:120]})",
+                f"[parity] {job.name}: copied {result.retime.copied} frames; "
+                f"missing {len(result.retime.missing)} ticks",
                 file=sys.stderr,
             )
+        return result
+
+    films = options.films
+    jobs = resolve_jobs(options.jobs, len(films))
+    # Each film has its own scratch, _current and _previous trees, so films never share one.
+    attempts = run_matrix(films, root, (None,), work, jobs=jobs)[0]
+    failures = 0
+    for attempt in attempts:
+        if isinstance(attempt, FilmFailure):
+            failures += 1
+            print(
+                f"parity_run: {attempt.film} FAILED ({str(attempt.error).splitlines()[0][:120]})",
+                file=sys.stderr,
+            )
+        else:
+            print(format_summary(attempt.film, attempt.report), flush=True)
     print(NOISE_NOTE)
     return 0 if failures == 0 else 1
 
