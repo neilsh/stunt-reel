@@ -698,13 +698,23 @@ fn indices_with(ir: &SodModelIr, vis: VisibilityCondition) -> u32 {
         .sum()
 }
 
+/// The first facing gate among `ir`'s nodes, as `(point, normal)`.
+fn facing_gate(ir: &SodModelIr) -> Option<([f32; 3], [f32; 3])> {
+    ir.nodes.iter().find_map(|n| match n.visibility {
+        VisibilityCondition::FacesEye { point, normal } => Some((point, normal)),
+        _ => None,
+    })
+}
+
 #[test]
 fn test_return_from_a_subroutine_restores_the_callers_ifvis_scope() {
-    use crate::sod::vm::{OP_GOSUB, OP_IFVIS};
-    // p: IFVIS 1 over 18 bytes { GOSUB +18 (-> p + 24); COLOR 5; POLYZ A }, RETURN at p + 24 - 2;
-    // the subroutine (COLOR 9; POLYZ B; RETURN) sits past the section, so B is ungated and A,
-    // drawn after the call returns, is still gated.
+    use crate::sod::vm::{OP_GOSUB, OP_IFVIS, OP_REJ};
+    // REJ sets facing flag 1 from registers (1, 0, 2); then p: IFVIS 1 over 18 bytes
+    // { GOSUB +18 (-> p + 24); COLOR 5; POLYZ A }, RETURN at p + 24 - 2; the subroutine
+    // (COLOR 9; POLYZ B; RETURN) sits past the section, so B is ungated and A, drawn after
+    // the call returns, is still gated.
     let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_REJ, 1, 1, 12, 0, 24]);
     push_words(&mut bytes, &[OP_IFVIS, 1, 18, OP_GOSUB, 18]);
     push_words(
         &mut bytes,
@@ -713,10 +723,45 @@ fn test_return_from_a_subroutine_restores_the_callers_ifvis_scope() {
     sort_branch(&mut bytes, 9, [0, 1, 3]);
 
     let ir = decode(&bytes, "IFVIS-GOSUB").expect("decode ifvis gosub");
+    let (point, normal) = facing_gate(&ir).expect("a facing gate");
     assert_eq!(
-        indices_with(&ir, VisibilityCondition::LodDistanceSq(1000.0)),
+        indices_with(&ir, VisibilityCondition::FacesEye { point, normal }),
         3
     );
+    assert_eq!(indices_with(&ir, VisibilityCondition::Always), 3);
+}
+
+#[test]
+fn test_rej_face_gates_ifvis_by_the_cross_product_of_its_registers() {
+    use crate::sod::vm::{OP_IFVIS, OP_REJ};
+    // PLAYONE `0x9567`: the flag is the sign of ((r1 - r0) x (r2 - r0)) . (r0 - eye) for the
+    // triple (r1, r0, r2), and IFVIS (`0x9BCC`) runs its section while the flag is set.
+    // Registers 0, 1 and 2 are the origin, +X and +Y, so the normal is +Z through the origin.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_REJ, 4, 1, 12, 0, 24]);
+    push_words(&mut bytes, &[OP_IFVIS, 4, 10, OP_POLYZ, 3, 0, 12, 24]);
+    push_words(&mut bytes, &[OP_RETURN]);
+
+    let ir = decode(&bytes, "REJ-IFVIS").expect("decode rej ifvis");
+    let (point, normal) = facing_gate(&ir).expect("a facing gate");
+    assert_eq!(point, [0.0, 0.0, 0.0]);
+    assert!(
+        normal[0] == 0.0 && normal[1] == 0.0 && normal[2] > 0.0,
+        "{normal:?}"
+    );
+}
+
+#[test]
+fn test_ifvis_on_a_flag_no_rej_set_is_ungated() {
+    use crate::sod::vm::OP_IFVIS;
+    // PLAYONE's flag table outlives a shape, so a flag this shape never set holds an unknown
+    // value; the section is drawn.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_IFVIS, 1, 10, OP_POLYZ, 3, 0, 12, 24]);
+    push_words(&mut bytes, &[OP_RETURN]);
+
+    let ir = decode(&bytes, "IFVIS-UNSET").expect("decode unset ifvis");
+    assert_eq!(facing_gate(&ir), None);
     assert_eq!(indices_with(&ir, VisibilityCondition::Always), 3);
 }
 

@@ -233,6 +233,24 @@ _Found 2026-11-01 by the aircraft render round 2; see the [parity log](../parity
 
 ---
 
+### 8.6 Facing Flags: `OP_REJ` and `OP_IFVIS`
+
+`[Established]` for the instruction sequences, static, read from `build/re/playone.img` with iced-x86 (2026-11-05, [#74](https://github.com/neilsh/stunt-reel/issues/74)); nothing observed live. `OP_IFVIS` is not a level-of-detail gate. Its first operand is the byte offset of a facing flag in `work:0x7C68`, one byte per face, which three earlier opcodes write from the vertex registers. The section runs while its face points at the eye.
+
+| Opcode | Handler | Reads | Does |
+|---|---|---|---|
+| `0x017A` `BHID` (`OP_IFVIS`) | `0x9BCC` | `flag, size` | `cmp byte [flag + 0x7C68], 0`: nonzero runs the section, zero skips `size` bytes from the size word. |
+| `0x0183` `BVIS` | `0x9BB3` | `flag, size` | The inverse: zero runs the section. |
+| `0x01B9` `REJ` | `0x9567` | `first, count, count × (a, b, c)` | Normal `n = (a - b) × (c - b)` (`0xB621`, registers at `work:0x4450 + reg`), then `n · (b + o)`, `o` the words at `work:0x8084..0x8088` (read as the object's origin relative to the eye, `[Supported Inference]`: the sign measurement below fits it); flag `first + i` = `0xFF` when negative (`shl dx, 1; sbb al, al`), else 0. |
+| `0x01B0` `REJVEC` | `0x94D8` | `first, count, count × (p, b, e)` | The same flag from `(e - b) · (p + o)`, the normal given as two registers; the z term is scaled by `work:0x810A` and the x, y terms shifted by `work:0x810C`. |
+| `0x01C2` `REJ2D` | `0x95C0` | `first, count, count × (a, b, c)` | The flag from the sign of the 2D cross product of the projected points (`+6`, `+8` of each register): the screen winding. |
+
+`SORTON` (`0x9183`) reads the same table (`js` on the flag byte) to order its two branches. The renderer keeps each `REJ` face as `VisibilityCondition::FacesEye { point: b, normal: n }` in model space and draws the section while `n · (b - eye) < 0`, with the eye taken into each actor's space, and into the world's for scenery props, every frame. Measured 2026-11-05 ([parity log](../parity/log.md)): CTRY 0.8645 -> 0.8646, INTRO 0.7973 -> 0.7986; the opposite sign gives 0.8061 / 0.7366, which fixes the sign. The old reading (condition 1 as `D^2 <= 1000 m^2`, everything else drawn) had no binary basis.
+
+The in-shape depth gate is `BZLT` (`0x0318`, handler `0x9BE5`), not `IFVIS`: it reads `reg, val, rel` and skips `rel` bytes when the register's view depth `z + work:0x8088` is at most `val >> work:0x806F`, so the section after it is the far form. Its census skip width of 2 words in `vm.rs` is one short.
+
+_Found 2026-11-05 for [#74](https://github.com/neilsh/stunt-reel/issues/74); see the [parity log](../parity/log.md)._
+
 ## 9. Per-Frame Routine and Scene Composition
 
 `[Supported Inference]`, static. The per-frame routine at `0x0EE9` (entered from `0x4A35` with `BX = 0x4888`, the snapshot copy of the film state made at `0x39B0`) builds the sun vector (`0x196C`), sets the view matrix (`0x11FC`), makes one 3D scene draw through `0x824:0x0A05`, then draws the credits string at `+0xFE` with `0x58BD`. There is no second view or window pass, so a scene the evaluator does not place has no extra layer to supply it.
@@ -261,6 +279,8 @@ _Found 2026-11-01 for [#75](https://github.com/neilsh/stunt-reel/issues/75); see
 _Found 2026-11-05 for [#99](https://github.com/neilsh/stunt-reel/issues/99); see the [parity log](../parity/log.md)._
 
 ## 10. Open questions
+
+* **Facing flags** (section 8.6, [#74](https://github.com/neilsh/stunt-reel/issues/74)). Ruled out: `OP_IFVIS` as a distance gate. Open: `vm.rs` implements only `REJ`, so a shape that uses `REJVEC`, `REJ2D` or `BVIS` still stops there in a lenient decode; nested `IFVIS` sections keep only the inner gate; an `IFVIS` on a flag its shape never set is drawn, where PLAYONE reads a stale byte. `BZLT`, the real in-shape depth gate, is unimplemented. The `INTRO.FLM` tick 3295 "conifers drawn as round bushes" is not an `IFVIS` effect: the facing gate leaves those trees as they were.
 
 * **The actor shadow draw** (section 9.1, [#99](https://github.com/neilsh/stunt-reel/issues/99)). Ruled out: `OP_AIRBRUSH` in the hero shape (`CTRY.ALL` `0x7F37` has no `0x0171` word). Open: who writes slot `+0x1E` (the plane pointer) and `+0x20/+0x22`; what `[0x22DE]` holds (its slot is not drawn but still casts a shadow); whether any altitude test hides the shadow of a high object (`0x19FC` has none; the handbook says there is a cutoff); the sort direction at `0x1B9F`; a live check that `0x1C0D`'s matrix replacement projects straight down; what the other `0x806C` readers do; the create handler that fills slot byte `+1` from `type_flags`. See [`framing-and-actors.md`](../parity/framing-and-actors.md) section 1 for the measured shadow and the renderer change this licenses.
 * **Who sets `SodVertex::flags` bit 1 (two-sided).** The field is documented as bit 1 in [`SodVertex`](../../crates/stunt-core/src/contracts/shape.rs), but nothing is known to write it: the decal path sets bit 0, and no handler or SOD stream field is known to carry bit 1. The renderer now culls back faces on a clockwise winding, so a facet the player draws two-sided would be dropped. The only frame identified as affected is `CTRY.FLM` tick 832, worth about 0.0003 of the film mean, so this is a correctness question about a contract field rather than a parity lever.

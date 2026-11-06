@@ -14,6 +14,8 @@
 
 use std::collections::HashMap;
 
+use glam::{Mat4, Vec3};
+
 use stunt_core::scene::{FilmScene, SceneFrame};
 
 use crate::camera::{CameraController, CameraGpuResources};
@@ -104,10 +106,11 @@ impl SceneRenderer {
         camera_resources.upload(queue, &uniform);
 
         self.prepared.clear();
+        let eye = Vec3::from_array(frame.view.eye);
         if frame.world
             && let Some(world) = &self.world
         {
-            let (base, decals) = world.collect_visible_meshes(0, 0.0);
+            let (base, decals) = world.collect_visible_meshes(0, 0.0, eye);
             self.prepared.push(PreparedDraw {
                 target: Target::World,
                 base,
@@ -120,7 +123,11 @@ impl SceneRenderer {
             let Some(model) = self.shapes.get(&actor.shape_id) else {
                 continue;
             };
-            let (base, decals) = model.collect_visible_meshes(actor.state_mask, actor.distance);
+            let local_eye = Mat4::from_cols_array(&actor.world_matrix)
+                .inverse()
+                .transform_point3(eye);
+            let (base, decals) =
+                model.collect_visible_meshes(actor.state_mask, actor.distance, local_eye);
             if base.is_empty() && decals.is_empty() {
                 continue;
             }

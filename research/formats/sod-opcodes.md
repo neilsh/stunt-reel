@@ -52,15 +52,15 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **39** | `0x015F` | 351 | `OP_GOURAUD` | `...` | Smooth Gouraud-shaded polygon |
 | **40** | `0x0168` | 360 | `OP_SHADEPOLY`| `count: u16, regs..., norm, shades...` | Normal-lit shaded polygon (`OP_GVPOLY`) |
 | **41** | `0x0171` | 369 | `OP_AIRBRUSH` | `...` | Dithered / airbrushed soft shadow polygon |
-| **42** | `0x017A` | 378 | `OP_BHID` | `cond: u16, size: u16` | Branch / hide section if condition met (`OP_IFVIS`) |
-| **43** | `0x0183` | 387 | `OP_BVIS` | `cond: u16, size: u16` | Branch if facet is visible |
+| **42** | `0x017A` | 378 | `OP_BHID` | `flag: u16, size: u16` | Run the next `size` bytes only if facing flag `flag` is set, i.e. the face points at the eye (`OP_IFVIS`) |
+| **43** | `0x0183` | 387 | `OP_BVIS` | `flag: u16, size: u16` | Run the next `size` bytes only if facing flag `flag` is clear |
 | **44** | `0x018C` | 396 | `OP_SORTON` | `plane: u16, left_off: i16, right_off: i16` † | BSP binary space partitioning branch |
 | **45** | `0x0195` | 405 | `OP_RETURN` | *none* | Return from subroutine / end display list (`OP_END`) |
 | **46** | `0x019E` | 414 | `OP_GOTO` | `rel_offset: i16` | Unconditional relative jump: $PC += \text{offset}/2 - 1$ |
 | **47** | `0x01A7` | 423 | `OP_GOSUB` | `rel_offset: i16` | Call subroutine: push return PC, jump to target |
-| **48** | `0x01B0` | 432 | `OP_REJVEC` | `...` | Vector bounding rejection |
-| **49** | `0x01B9` | 441 | `OP_REJ3D` | `box_reg: u16, count: u16, ...faces` | 3D bounding box culling test (`OP_REJ`) |
-| **50** | `0x01C2` | 450 | `OP_REJ2D` | `...` | 2D screen bounding box culling test |
+| **48** | `0x01B0` | 432 | `OP_REJVEC` | `first: u16, count: u16, count × (p, b, e)` | Facing flags from a normal given as two registers |
+| **49** | `0x01B9` | 441 | `OP_REJ3D` | `first: u16, count: u16, count × (a, b, c)` | Facing flags from the cross product of three registers (`OP_REJ`) |
+| **50** | `0x01C2` | 450 | `OP_REJ2D` | `first: u16, count: u16, count × (a, b, c)` | Facing flags from the screen winding of three projected registers |
 | **51** | `0x01CB` | 459 | `OP_HUGEREJ3D`| `...` | Large-scale scenery bounding box culling |
 | **52** | `0x01D4` | 468 | `OP_FRACTAL` | `...` | Procedural fractal terrain generator |
 | **53** | `0x01DD` | 477 | `OP_ROTY` | `angle_bam: u16` | Rotate around Y axis by 16-bit BAM angle |
@@ -182,13 +182,12 @@ The selected ID is resolved through the resource cache and passed to a screen-sp
 
 ### 2.5 BSP Sorting & Two-Sided Visibility Logic (`# [FMT-SOD-IFVIS]`)
 
-`[Supported Inference]` — from the assembler macro sources and `SODParse`; not traced in the binary (open question Q-SOD-01 in [`sod.md`](sod.md#4-open-questions--analysis-backlog)).
+`[Established]` for the handlers, static ([`playone-exe/sod-vm.md`](../playone-exe/sod-vm.md) section 8.6, Q-SOD-01 in [`sod.md`](sod.md#4-open-questions--analysis-backlog)); the macro-source reading below agrees with them.
 
 Because 1992 DOS real-mode software lacked hardware depth buffers:
-- `sorton <face>` (0x018C): Evaluates whether camera eye is in front of or behind separating plane `<face>`. Traverses front and back geometry subtrees in back-to-front order (Binary Space Partitioning for Painter's algorithm).
-- `ifvis <face>` (0x017A) / `ifhid <face>`: Evaluates whether `<face>` is front-facing (dot product $\mathbf{n} \cdot \mathbf{v}_{\text{cam}} > 0$).
-  - If visible: renders front facet using `shade1` lighting ramp.
-  - If hidden: renders reverse-winding rear facet using `shade2` lighting ramp.
+- `REJ` (`0x01B9`), `REJVEC` (`0x01B0`) and `REJ2D` (`0x01C2`) write one facing flag per face into `work:0x7C68`, starting at byte offset `first`: set when the face points at the eye.
+- `sorton <face>` (0x018C): Evaluates whether camera eye is in front of or behind separating plane `<face>` (its flag byte). Traverses front and back geometry subtrees in back-to-front order (Binary Space Partitioning for Painter's algorithm).
+- `ifvis <face>` (0x017A) / `ifhid <face>` (0x0183): run the next `size` bytes when flag `<face>` is set (`ifvis`) or clear (`ifhid`). The operand is a flag offset, not a condition code: there is no distance form.
 
 ### 2.6 `OP_MOVETO` / `OP_ZLINETO` / `OP_LINECOL` / `OP_DOT` in the reconstruction
 

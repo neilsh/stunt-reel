@@ -147,6 +147,23 @@ fn two_actors_sharing_a_shape_both_render_at_their_own_matrix() {
 }
 
 #[test]
+fn facing_gate_draws_only_while_its_face_points_at_the_eye() {
+    // The eye is at +Z 8 m and the actor at the origin, so a +Z normal faces it.
+    let gate = |z: f32| VisibilityCondition::FacesEye {
+        point: [0.0, 0.0, 0.0],
+        normal: [0.0, 0.0, z],
+    };
+    let Some((w, h, toward)) = render(&scene(vec![actor_at(0.0, 0)], gate(1.0))) else {
+        return;
+    };
+    assert!(drawn_in_columns(&toward, w, h, 0..w) > 100);
+    let Some((w, h, away)) = render(&scene(vec![actor_at(0.0, 0)], gate(-1.0))) else {
+        return;
+    };
+    assert_eq!(drawn_in_columns(&away, w, h, 0..w), 0);
+}
+
+#[test]
 fn state_mask_that_hides_geometry_draws_nothing() {
     let gated = VisibilityCondition::ActorState {
         mask: 1,

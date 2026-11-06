@@ -12,7 +12,7 @@
 use std::ops::Range;
 
 use crate::pipeline::ModelUniform;
-use glam::Mat4;
+use glam::{Mat4, Vec3};
 use stunt_core::contracts::{NodeId, SodModelIr, SodVertex, VisibilityCondition, arena_index};
 
 /// Cached node data inside GPU model representation.
@@ -166,10 +166,14 @@ impl GpuModel {
     }
 
     /// Evaluates visibility and collects visible mesh slices split by decal pass flag.
+    ///
+    /// `eye` is the camera position in this model's space, for
+    /// [`VisibilityCondition::FacesEye`].
     pub fn collect_visible_meshes(
         &self,
         state_mask: u16,
         distance_to_cam: f32,
+        eye: Vec3,
     ) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
         let mut base_meshes = Vec::new();
         let mut decal_meshes = Vec::new();
@@ -192,6 +196,9 @@ impl GpuModel {
                 // An angle cone is not tested here, so it defaults to visible.
                 VisibilityCondition::Always | VisibilityCondition::AngleCone { .. } => true,
                 VisibilityCondition::LodDistanceSq(max_sq) => dist_sq <= max_sq,
+                VisibilityCondition::FacesEye { point, normal } => {
+                    Vec3::from_array(normal).dot(Vec3::from_array(point) - eye) < 0.0
+                }
                 VisibilityCondition::ActorState { mask, expected } => {
                     (state_mask & mask) == expected
                 }
