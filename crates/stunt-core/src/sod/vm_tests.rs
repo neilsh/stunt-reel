@@ -561,6 +561,7 @@ fn test_sort_with_a_backward_target_ends_at_the_first_return() {
     assert_eq!(ir.decode().expect("record").returned_at, Some(op + 22));
 }
 
+/// `SHADE16` colours a polygon from its ramp base and the shade of the normal it names.
 #[test]
 fn test_shade16_picks_the_ramp_entry_from_the_normal() {
     // `SHADES 0 2 (0,32767,0) (0,-32767,0)`, then `SHADE16 norm base; POLYZ` per polygon, under
@@ -600,6 +601,7 @@ fn test_shade16_picks_the_ramp_entry_from_the_normal() {
     assert_eq!(colours, vec![0x30, 29, 63]);
 }
 
+/// `GVPOLY16` takes its ramp base from the word after its registers, not the running colour.
 #[test]
 fn test_gvpoly16_takes_its_ramp_from_the_word_after_the_registers() {
     use crate::sod::vm::OP_GVPOLY16;
@@ -630,6 +632,7 @@ fn shade16_up_normal() -> Vec<u8> {
     bytes
 }
 
+/// `SHADES` shades against the light passed to the decode, not a constant.
 #[test]
 fn test_shades_dots_the_normal_with_the_light_it_is_given() {
     use crate::sod::{DecodeMode, ShadeLight, decode_sod_lit};
@@ -647,6 +650,7 @@ fn test_shades_dots_the_normal_with_the_light_it_is_given() {
     assert_eq!(colour(ShadeLight([0, -32767, 0])), 0x30 + 15);
 }
 
+/// Film variable 13 = `0x2D` gives the world light observed on both films.
 #[test]
 fn test_world_light_for_film_variable_13() {
     use crate::sod::ShadeLight;
@@ -654,6 +658,7 @@ fn test_world_light_for_film_variable_13() {
     assert_eq!(ShadeLight::world(0x2D), ShadeLight([99, 32766, -17]));
 }
 
+/// `GVPOLY16` gives each vertex its own ramp index for the renderer to interpolate.
 #[test]
 fn test_gvpoly16_gives_each_vertex_its_own_ramp_index() {
     use crate::sod::vm::OP_GVPOLY16;

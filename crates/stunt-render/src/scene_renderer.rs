@@ -88,8 +88,9 @@ impl SceneRenderer {
     /// Uploads the camera and per-draw matrices for `frame` and selects visible meshes.
     ///
     /// The camera is `frame.view` unless `camera` overrides it (e.g. a free camera);
-    /// an override does not change the per-actor LOD distances carried by the frame, nor
-    /// the eye (`frame.view.eye`) that facing gates are tested against.
+    /// an override does not change the per-actor LOD distances carried by the frame. Facing
+    /// gates are tested against the eye of the camera that renders: the override's when
+    /// there is one, otherwise `frame.view.eye`.
     /// Actors whose shape was not uploaded are skipped.
     pub(crate) fn prepare(
         &mut self,
@@ -109,7 +110,10 @@ impl SceneRenderer {
         camera_resources.upload(queue, &uniform);
 
         self.prepared.clear();
-        let eye = Vec3::from_array(frame.view.eye);
+        let eye = camera.map_or_else(
+            || Vec3::from_array(frame.view.eye),
+            CameraController::eye_position,
+        );
         if frame.world
             && let Some(world) = &self.world
         {
