@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""Fail when a staged text file has CRLF line endings in the working copy.
+"""Repair, or else reject, staged text files that have CRLF line endings in the working copy.
 
 ``.gitattributes`` stores every text file with LF, so the index and the repository never hold
 CRLF; but ``ruff format --check`` and the other tools read the working copy, and a Python
 text-mode write on Windows leaves CRLF there. The format check then fails only after a full
 gate run. This hook reads the working-tree bytes of each staged file (the index is already
-normalised, so it cannot show the problem) and names every file that has a CRLF, at commit
+normalised, so it cannot show the problem) and finds every file that has a CRLF, at commit
 time.
+
+A file whose working copy equals its index blob once each CRLF is replaced by LF holds nothing
+the commit does not already have, so the hook repairs it: ``git checkout-index -f`` writes git's
+own LF copy over it, the file is named as repaired, and the commit goes on. Any other file with
+a CRLF (one with unstaged edits, or whose index blob itself holds a CRLF) is named and rejects
+the commit, and its working copy is left untouched.
 
 What is checked follows ``.gitattributes`` rather than a list kept here. A file is skipped when
 git attributes mark it binary (``text`` unset), when its ``eol`` attribute is ``crlf`` (the
@@ -15,8 +21,8 @@ binary files the attributes do not name. Deleted files, symlinks and submodules 
 to read and are skipped.
 
 Usage: ``mise run crlf-check`` (a pre-commit hook; it takes no arguments and reads the staged
-paths from git). Exit status: ``0`` when no file has CRLF, ``1`` when one does, ``2`` when git
-cannot be run.
+paths from git). Exit status: ``0`` when no file is left with CRLF, ``1`` when one is, ``2``
+when git cannot be run.
 """
 
 from __future__ import annotations
@@ -95,23 +101,77 @@ def offenders(root: Path) -> list[str]:
     return [path for path in paths if has_crlf(root / path, attrs[path])]
 
 
+def crlf_copy_of_index(root: Path, path: str) -> bytes | None:
+    """The working copy of *path* when it is its index blob with some LFs written as CRLF.
+
+    ``None`` when it differs in anything else, or has no stage-0 blob (an unresolved conflict).
+    """
+    try:
+        blob = _git(root, "cat-file", "blob", f":{path}")
+    except GitError:
+        return None
+    data = (root / path).read_bytes()
+    return data if data.replace(CRLF, b"\n") == blob else None
+
+
+def repair(root: Path, paths: Sequence[str]) -> tuple[list[str], list[str]]:
+    """Rewrite from the index each of *paths* that differs from it only in line endings.
+
+    ``git checkout-index -f`` leaves a file alone when its stat data matches the index entry,
+    as it does straight after ``git add`` of a CRLF file, so each such file is removed first;
+    its content is all in the index, and the bytes are kept to put back if git fails.
+
+    Returns the repaired paths and the rest, each in the order given. A path whose rewritten
+    copy still holds a CRLF (git configured to write CRLF on checkout) counts with the rest.
+    """
+    saved: dict[str, bytes] = {}
+    for path in paths:
+        data = crlf_copy_of_index(root, path)
+        if data is None:
+            continue
+        try:
+            (root / path).unlink()
+        except OSError:  # held open on Windows: leave it to be reported
+            continue
+        saved[path] = data
+    if saved:
+        try:
+            _git(root, "checkout-index", "-f", "--", *saved)
+        finally:
+            for path, data in saved.items():
+                if not (root / path).exists():
+                    (root / path).write_bytes(data)
+    repaired = [path for path in saved if CRLF not in (root / path).read_bytes()]
+    rest = [path for path in paths if path not in repaired]
+    return repaired, rest
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the hook from the repository (or any directory in it)."""
     del argv
     try:
         root = Path(_git(None, "rev-parse", "--show-toplevel").decode("utf-8").strip())
-        bad = offenders(root)
+        repaired, bad = repair(root, offenders(root))
     except GitError as error:
         print(f"crlf-check: {error}", file=sys.stderr)
         return 2
+    if repaired:
+        print("crlf-check: rewrote these working copies from the index as LF:", file=sys.stderr)
+        for path in repaired:
+            print(f"  {path}", file=sys.stderr)
     if not bad:
         return 0
-    print("crlf-check: staged files with CRLF line endings in the working copy:", file=sys.stderr)
+    print(
+        "crlf-check: staged files with CRLF line endings in a working copy that differs from the\n"
+        "index beyond line endings (unstaged edits), so not repaired:",
+        file=sys.stderr,
+    )
     for path in bad:
         print(f"  {path}", file=sys.stderr)
     print(
         "The repository stores LF (.gitattributes), but the format checks read the working copy.\n"
-        "Convert each file to LF (an editor setting, or `dos2unix <file>`) and stage it again.\n"
+        "Convert each file to LF (an editor setting, or `dos2unix <file>`), or stage the edits\n"
+        "too, after which the hook rewrites the file as LF from the index itself.\n"
         "From Python, write with newline='\\n' or Path.write_bytes.",
         file=sys.stderr,
     )
