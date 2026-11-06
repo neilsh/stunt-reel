@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import TYPE_CHECKING
 
@@ -211,6 +212,26 @@ def test_a_linked_archive_takes_its_build_from_the_manifest(tmp_path: Path) -> N
     # The same manifest says nothing about an archive that was not rebuilt from it.
     other = tmp_path / "elsewhere" / "CTRY.ALL"
     assert references.archive_makeone_build(tmp_path, "vault-ctry", other) == "unknown"
+
+
+def test_an_archive_with_the_manifests_bytes_takes_its_build_from_the_manifest(
+    tmp_path: Path,
+) -> None:
+    """A copy elsewhere, such as a pinned sibling, is the manifest's archive by its hash."""
+    by_build = {build: sha for sha, build in references.MAKEONE_BUILDS.items()}
+    copy = tmp_path / "siarchive" / "CTRY.ALL"
+    copy.parent.mkdir(parents=True)
+    copy.write_bytes(b"built")
+    manifest = tmp_path / parity_layout.manifest_path("vault-ctry")
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        f'all_sha256 = "{hashlib.sha256(b"built").hexdigest()}"\n'
+        f'makeone_sha256 = "{by_build["patch3"]}"\n',
+        encoding="utf-8",
+    )
+    assert references.archive_makeone_build(tmp_path, "vault-ctry", copy) == "patch3"
+    copy.write_bytes(b"other bytes")
+    assert references.archive_makeone_build(tmp_path, "vault-ctry", copy) == "unknown"
 
 
 def test_a_shipped_archive_of_the_demo_or_retail_game_is_unpatched(tmp_path: Path) -> None:

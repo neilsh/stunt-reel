@@ -234,18 +234,42 @@ def _recorded_makeone(path: Path, key_file: str) -> str | None:
         return None
 
 
+def _manifest_archive(manifest: Path) -> str | None:
+    """The ``all_sha256`` a film's manifest records, else ``None``."""
+    try:
+        value = tomllib.loads(manifest.read_text("utf-8")).get("all_sha256")
+    except OSError, ValueError:
+        return None
+    return value if isinstance(value, str) else None
+
+
+def _sha256_or_none(path: Path) -> str | None:
+    """The SHA-256 of *path*'s bytes, or ``None`` when it cannot be read."""
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
 def archive_makeone_build(root: Path, slug: str, archive: Path) -> str:
     """The build of the ``MAKEONE`` that wrote *archive* for film *slug*, else ``UNKNOWN_BUILD``.
 
     Three kinds of archive are known: a stored one (``meta.json`` beside it records
     ``makeone_sha256``), one rebuilt under ``target/linked/<slug>`` (the film's committed
-    manifest, ``manifests/all/<slug>.toml``, records it), and a shipped ``.ALL`` in the demo's or
-    the retail game's tree under the data root's corpus, which the unpatched ``MAKEONE`` wrote. Any other archive, such as a
-    community film's, has no record, so its build cannot be determined.
+    manifest, ``manifests/all/<slug>.toml``, records it) or any copy whose bytes hash to that
+    manifest's ``all_sha256`` (a pinned sibling, ADR 0037), and a shipped ``.ALL`` in the demo's
+    or the retail game's tree under the data root's corpus, which the unpatched ``MAKEONE`` wrote.
+    Any other archive, such as a community film's, has no record, so its build cannot be
+    determined.
     """
     found = _recorded_makeone(archive.parent / capture_store.META_FILE, "json")
+    manifest = root / parity_layout.manifest_path(slug)
     if found is None and archive.parent == (root / parity_layout.linked_path(slug, "x")).parent:
-        found = _recorded_makeone(root / parity_layout.manifest_path(slug), "toml")
+        found = _recorded_makeone(manifest, "toml")
+    if found is None:
+        pinned = _manifest_archive(manifest)
+        if pinned is not None and pinned == _sha256_or_none(archive):
+            found = _recorded_makeone(manifest, "toml")
     if found is None:
         shipped = corpus_root()
         if any(archive.is_relative_to(shipped / tree) for tree in _UNPATCHED_TREES):
