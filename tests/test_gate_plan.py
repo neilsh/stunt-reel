@@ -293,6 +293,13 @@ def test_docs_marker_is_on_the_documentation_modules(module: str) -> None:
     assert "pytest.mark.docs" in (ROOT / "tests" / module).read_text(encoding="utf-8")
 
 
+@pytest.fixture(autouse=True)
+def _isolate_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep git in these tests on their own repositories when pytest runs under a git hook."""
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
+        monkeypatch.delenv(name, raising=False)
+
+
 _GIT_ENV = {
     "GIT_AUTHOR_NAME": "t",
     "GIT_AUTHOR_EMAIL": "t@example.invalid",
