@@ -10,6 +10,8 @@ from dbx.plan import Capture, PlanError, for_patch3, parse_plan
 
 import dbx_stubs
 
+pytestmark = pytest.mark.docs
+
 SPEC = (
     Path(__file__).resolve().parent.parent / "docs/process/plans/debugger-breakpoints-2026-11-04.md"
 )

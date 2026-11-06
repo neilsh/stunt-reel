@@ -27,15 +27,16 @@ first category whose rule matches:
 | order | paths | category |
 | --- | --- | --- |
 | 1 | `tests/fixtures/**` | other |
-| 2 | `crates/**`, `Cargo.toml`, `Cargo.lock`, `deny.toml` | rust |
+| 2 | `crates/**`, `Cargo.toml`, `Cargo.lock`, `deny.toml`, `research/parity/method.md` | rust |
 | 3 | `*.py`, `pyproject.toml`, `uv.lock` | python |
 | 4 | `*.md`, `*.ksy` | docs |
 | 5 | anything else | other |
 
-Fixtures come first because both languages' tests read them. A rust path runs the Rust half; a
+Fixtures come first because both languages' tests read them; `method.md` is rust because
+`stunt-cli`'s `report_doc.rs` test checks the parity report against it. A rust path runs the Rust half; a
 python path the Python half; and every scoped run without the Python half runs the docs half,
-`test-py-docs` (`pytest -m docs`: the documentation invariants, the formats catalog and the schema
-contract), since a Rust or Markdown change can break a cited path. A test joins the docs half by
+`test-py-docs` (`pytest -m docs`: the documentation invariants, the formats catalog, the schema
+contract, and the tests that read one schema or plan), since a Rust or Markdown change can break a cited path. A test joins the docs half by
 taking the `docs` marker.
 
 The full gate runs, and says why, on `--full` (`mise run check -- --full`), when `CI` is set to

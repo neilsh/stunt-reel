@@ -8,6 +8,7 @@ gate refuses to start at run time, and a lane must never reorder or drop a step 
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -168,6 +169,7 @@ def test_cargo_steps_share_a_lane_exactly_when_they_share_a_target_dir() -> None
         ("tests/fixtures/README.md", "other"),
         ("crates/stunt-core/src/lib.rs", "rust"),
         ("crates/stunt-core/README.md", "rust"),
+        ("research/parity/method.md", "rust"),
         ("Cargo.lock", "rust"),
         ("deny.toml", "rust"),
         ("python/scripts/gate.py", "python"),
@@ -183,6 +185,19 @@ def test_cargo_steps_share_a_lane_exactly_when_they_share_a_target_dir() -> None
 )
 def test_classify(path: str, category: str) -> None:
     assert gate.classify(path) == category
+
+
+def test_every_file_rust_reads_outside_crates_runs_the_rust_half() -> None:
+    """A document a Rust test reads is a Rust input, or editing it alone would skip that test."""
+    reads = {
+        match
+        for source in (ROOT / "crates").rglob("*.rs")
+        for match in re.findall(r'"\.\./\.\./([^"]+)"', source.read_text(encoding="utf-8"))
+        if not match.startswith("tests/fixtures/")
+    }
+    assert "research/parity/method.md" in reads
+    for path in reads:
+        assert gate.classify(path) in {"rust", "other"}, path
 
 
 def test_docs_only_runs_the_docs_half() -> None:
@@ -265,7 +280,14 @@ def test_docs_step_requires_the_kaitai_compiler() -> None:
 
 
 @pytest.mark.parametrize(
-    "module", ["test_doc_invariants.py", "test_formats_catalog.py", "test_schema_contract.py"]
+    "module",
+    [
+        "test_doc_invariants.py",
+        "test_formats_catalog.py",
+        "test_schema_contract.py",
+        "test_set_schema.py",
+        "test_dbx_plan.py",
+    ],
 )
 def test_docs_marker_is_on_the_documentation_modules(module: str) -> None:
     assert "pytest.mark.docs" in (ROOT / "tests" / module).read_text(encoding="utf-8")

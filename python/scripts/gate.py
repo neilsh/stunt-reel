@@ -103,17 +103,21 @@ Category = Literal["rust", "python", "docs", "other"]
 _FULL = ("rust", "py")
 _RUST_FILES = frozenset({"Cargo.toml", "Cargo.lock", "deny.toml"})
 _PYTHON_FILES = frozenset({"pyproject.toml", "uv.lock"})
+# Documents a Rust test reads from outside crates/ (report_doc.rs checks the parity report's
+# field tables). tests/test_gate_plan.py finds every such read, so this set cannot fall behind.
+_RUST_READS = frozenset({"research/parity/method.md"})
 
 
 def classify(path: str) -> Category:
     """Sort one changed path (git's: ``/``-separated, from the root) into a gate category.
 
     The first rule that matches wins. Fixtures feed both languages' tests, so they are ``other``
-    and run the full gate; a Markdown file under ``crates/`` is Rust, because rustdoc reads it.
+    and run the full gate; a Markdown file under ``crates/`` is Rust, because rustdoc reads it, and so is a document a Rust
+    test reads (``_RUST_READS``).
     """
     if path.startswith("tests/fixtures/"):
         return "other"
-    if path.startswith("crates/") or path in _RUST_FILES:
+    if path.startswith("crates/") or path in _RUST_FILES or path in _RUST_READS:
         return "rust"
     if path.endswith(".py") or path in _PYTHON_FILES:
         return "python"

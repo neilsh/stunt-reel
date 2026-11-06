@@ -12,6 +12,8 @@ import pytest
 
 from stunt_reel.kaitai import compile_schemas, ksc_command, load_generated_module
 
+pytestmark = pytest.mark.docs
+
 SCHEMA = Path(__file__).resolve().parent.parent / "research/formats/auxiliary/set.ksy"
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "synthetic_minimal.set"
 _KAITAISTRUCT: Any = importlib.import_module("kaitaistruct")

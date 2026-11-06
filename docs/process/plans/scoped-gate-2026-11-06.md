@@ -66,8 +66,11 @@ Measured warm on the 16-logical, 8-physical-core Windows workstation on 2026-11-
 
 Rule 1 comes first because Rust code embeds fixtures (`stunt-render`'s renderer reads
 `tests/fixtures/synthetic_pfont.bin`) and Python tests read them too. A Markdown file under
-`crates/` is rust, since rustdoc can include it. No Rust code reads a `.ksy` or Markdown file outside
-`crates/` (checked 2026-11-06), so rule 4 is safe for the Rust half.
+`crates/` is rust, since rustdoc can include it. One Rust test reads a Markdown file outside
+`crates/`: `stunt-cli`'s `report_doc.rs` checks the parity report's fields against
+`research/parity/method.md`, so that file is rust too (found in the final review; an earlier check
+missed it). `tests/test_gate_plan.py` finds every `../../` read in `crates/` and fails if one would
+classify as docs.
 
 `mise.toml` is the commonest other file (69 of the commits since 2026-10-01, then
 `.github/workflows/ci.yml` at 21). It stays other: it pins the Rust, Python and Kaitai toolchains
@@ -92,8 +95,9 @@ matches `test-py`'s: `STUNT_REQUIRE_KSC=1`, without which `test_schema_contract.
 schema compile and a broken `.ksy` passes, and `-n auto`, since the three modules are about 30 s of
 CPU. It is a step of the docs half only, never of the full plan, where `test-py` already runs the
 same tests. The `docs`
-marker is set module-wide (`pytestmark`) on `test_doc_invariants.py`, `test_formats_catalog.py`
-and `test_schema_contract.py`; a new documentation test joins by taking the marker, not by an edit
+marker is set module-wide (`pytestmark`) on `test_doc_invariants.py`, `test_formats_catalog.py`,
+`test_schema_contract.py`, `test_set_schema.py` (compiles `set.ksy`) and `test_dbx_plan.py` (parses
+a plan's TOML block); a new documentation test joins by taking the marker, not by an edit
 to `gate.py`. Other tests that happen to read a document, such as `test_check_commit_msg.py`
 reading AGENTS.md, run only with the Python half; CI catches what they would have.
 `test-docs`, the commit hook's documentation step (ADR 0026), is unchanged: widening it to the
