@@ -71,8 +71,13 @@ in it, the agent included, can read.
   or resume fetches the archives still absent.
 - A live session that wants a newer pin deletes the folder and fetches again. A stale `captures/`
   is caught anyway: parity refuses a capture whose digest differs from its row.
-- Unverified until the first cloud run: that the proxy attaches the Bearer secret to the
-  SessionStart hook's requests (a REST read with a Bearer token returned the pinned bytes from
-  the primary machine), whether lavapipe
-  ([ADR 0006](0006-ci-renders-on-lavapipe.md)) scores CTRY and INTRO as the primary machine's GPU
-  does, and how long the setup script takes.
+- A cloud session renders on lavapipe ([ADR 0006](0006-ci-renders-on-lavapipe.md)), which
+  scored CTRY and INTRO far below the primary machine's GPU at the same commit; its scores are
+  not comparable with GPU rows until the cause is found, so an adoption decision needs a GPU
+  run (measurements in
+  [`research/parity/method.md`](../../research/parity/method.md) section 3).
+- Verified in a cloud session (2026-11-07): with the key pair in environment variables, `fetch`
+  downloaded and unpacked `corpus-stisldem` in 0.76 s, byte-identical file by file to the
+  primary machine's. Unverified: that the proxy attaches the Bearer secret to the SessionStart
+  hook's requests (a REST read with a Bearer token returned the pinned bytes from the primary
+  machine), and how long the setup script takes.
