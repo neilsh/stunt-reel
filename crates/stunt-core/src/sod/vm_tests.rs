@@ -910,3 +910,77 @@ fn test_lenient_decode_keeps_geometry_before_a_two_vertex_polygon() {
         Err(SodError::MalformedPolygon { .. })
     ));
 }
+
+#[test]
+fn test_trace_records_operands_and_the_branches_taken() {
+    use crate::sod::vm::{OP_BVGT, OP_GOSUB, OP_GOTO};
+    use crate::sod::{ShadeLight, TraceStep, trace_sod};
+    // Main at 46: GOSUB to 60, then GOTO over a COLOR to the final RETURN. The subroutine's
+    // BVGT (val 0, so taken) skips a COLOR, draws one triangle and returns to 50.
+    let mut bytes = sort_prelude();
+    assert_eq!(bytes.len(), 46);
+    push_words(
+        &mut bytes,
+        &[OP_GOSUB, 12, OP_GOTO, 6, OP_COLOR, 99, OP_RETURN],
+    );
+    push_words(&mut bytes, &[OP_BVGT, 0, 0, 6, OP_COLOR, 1]);
+    push_words(
+        &mut bytes,
+        &[OP_COLOR, 5, OP_POLYZ, 3, 0, 12, 24, OP_RETURN],
+    );
+
+    let trace = trace_sod(&bytes, None, ShadeLight::default());
+    assert_eq!((trace.stop, trace.error.clone()), (None, None));
+    let step = |offset, opcode, operands: &[u16], branch| TraceStep {
+        offset,
+        opcode,
+        operands: operands.to_vec(),
+        branch,
+    };
+    let vectors = trace.steps.first().expect("VECTORS step");
+    assert_eq!((vectors.offset, vectors.opcode), (10, OP_VECTORS));
+    assert_eq!(
+        vectors.operands.len(),
+        17,
+        "count, register and 5 * 3 coordinates"
+    );
+    assert_eq!(
+        trace.steps.get(1..),
+        Some(
+            &[
+                step(46, OP_GOSUB, &[12], Some(60)),
+                step(60, OP_BVGT, &[0, 0, 6], Some(72)),
+                step(72, OP_COLOR, &[5], None),
+                step(76, OP_POLYZ, &[3, 0, 12, 24], None),
+                step(86, OP_RETURN, &[], Some(50)),
+                step(50, OP_GOTO, &[6], Some(58)),
+                step(58, OP_RETURN, &[], None),
+            ][..]
+        )
+    );
+}
+
+#[test]
+fn test_trace_keeps_the_steps_before_a_decode_error() {
+    use crate::sod::{ShadeLight, trace_sod};
+    // A POLYZ whose register list runs past the end of the stream.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_COLOR, 5, OP_POLYZ, 3, 0]);
+
+    let trace = trace_sod(&bytes, None, ShadeLight::default());
+    assert!(matches!(trace.error, Some(SodError::UnexpectedEof { .. })));
+    let opcodes: Vec<u16> = trace.steps.iter().map(|s| s.opcode).collect();
+    assert_eq!(opcodes, vec![OP_VECTORS, OP_COLOR]);
+}
+
+#[test]
+fn test_every_opcode_the_vm_names_has_a_mnemonic() {
+    use crate::sod::opcode_mnemonic;
+    assert_eq!(opcode_mnemonic(OP_POLYZ), Some("POLYZ"));
+    assert_eq!(
+        opcode_mnemonic(0x01F8),
+        Some("ANIMATE"),
+        "census names fill the gaps"
+    );
+    assert_eq!(opcode_mnemonic(0x0002), None);
+}
