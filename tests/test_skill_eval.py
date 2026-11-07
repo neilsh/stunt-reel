@@ -111,3 +111,46 @@ def test_a_run_without_a_result_line_prints_failed(
 
     assert skill_eval.main([*argv, "--prompt-file", str(prompt)]) == 1
     assert "FAILED" in capsys.readouterr().out
+
+
+def _git(root: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)  # noqa: S603, S607
+
+
+def test_uncommitted_skill_files_names_untracked_and_modified(tmp_path: Path) -> None:
+    _git(tmp_path, "init", "-q")
+    (tmp_path / "AGENTS.md").write_text("rules\n", encoding="utf-8")
+    (tmp_path / "other.md").write_text("x\n", encoding="utf-8")
+    _git(tmp_path, "add", "AGENTS.md", "other.md")
+    _git(tmp_path, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base")
+    assert skill_eval.uncommitted_skill_files(tmp_path) == []
+
+    (tmp_path / "AGENTS.md").write_text("changed\n", encoding="utf-8")
+    (tmp_path / ".agents" / "skills" / "new").mkdir(parents=True)
+    (tmp_path / ".agents" / "skills" / "new" / "SKILL.md").write_text("x\n", encoding="utf-8")
+    (tmp_path / "other.md").write_text("ignored\n", encoding="utf-8")
+
+    assert skill_eval.uncommitted_skill_files(tmp_path) == [
+        ".agents/skills/new/SKILL.md",
+        "AGENTS.md",
+    ]
+
+
+def test_a_dirty_skill_tree_refuses_before_any_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("do the thing", encoding="utf-8")
+    monkeypatch.setattr("skill_eval.shutil.which", lambda _name: "claude")
+    monkeypatch.setattr(skill_eval, "uncommitted_skill_files", lambda _root: ["AGENTS.md"])
+
+    def never(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("claude ran on a dirty tree")
+
+    monkeypatch.setattr("skill_eval.subprocess.run", never)
+    argv = ["--skill", "x", "--model", "haiku", "--phase", "with", "--reps", "1"]
+
+    assert skill_eval.main([*argv, "--prompt-file", str(prompt)]) == 1
+    out = capsys.readouterr().out
+    assert "AGENTS.md" in out
+    assert "commit or stash" in out

@@ -1,0 +1,14 @@
+# Cost rules for the parity loop
+
+Part of the [`improving-render-parity`](SKILL.md) skill.
+
+Every turn re-sends the whole conversation, so the loop costs turns times context.
+
+1. **Build once, call the binary.** Run `target/release/stuntreel.exe`, never `cargo run` per render. `--no-build` on every tool reuses it.
+2. **One command per batch.** Loop render plus score over every candidate in one shell command that prints one line per candidate: the `[parity]` summary line, or the probe's single number. Run it in the background when it will take more than about 2 minutes.
+3. **Use the tools.** `mise run parity` is the baseline; `mise run sweep -- --var DBG_X=a,b [--films ctry,intro] [--probe iou] [--keep-best] [--jobs N]` builds once, scores the whole product on every film and prints one table plus the winner ([`probes.md`](../../../research/parity/probes.md) section 4); `retime` answers a timing question with no build (section 6). Do not hand-roll render-and-score loops (section 8 lists what has no tool yet).
+4. **Score every film.** `--jobs N` (default 8) renders N pairs at once; each takes about 200 MiB of VRAM and 300 MiB of RAM. CTRY-only gains have regressed INTRO three times ([`framing-and-actors.md`](../../../research/parity/framing-and-actors.md)).
+5. **Never print a whole `report.json`.** Extract the fields you need with `python -c "import json; ..."`.
+6. **Look at pixels sparingly.** Use `parity_probe.py crop` on one region instead of reading full contact sheets, and only after the numbers point somewhere. To see specific ticks, `mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N]` renders them in one process (about 3 s, not 3 s each) and prints a capture-left, ours-right PNG per tick under `build/scratch/frame/<film>/`; a tick the capture lacks is rendered and its nearest captured ticks are named. Add `--var DBG_X=0,1` for a before-and-after picture: the capture, then one panel per value. A note may commit such a picture under [`NOTICE.md`](../../../NOTICE.md)'s comparison-image rule; a PR attaches one as in [Evidence for a rendering PR](pr-evidence.md).
+7. **Scratch goes in `build/scratch/`** (gitignored), never `$TEMP`, whose Windows path breaks shell globs. Delete candidate render directories once scored. `PYTHONUTF8=1` is set for Python text I/O; committed scripts still pass `encoding="utf-8"`.
+8. **Never commit `DBG_*` switches.** `git restore <paths>` removes them. Parse a switch's value with `std::env::var(...).ok().and_then(|v| v.parse().ok())`, never `is_ok()` (`"0"` counts as set; the sweep's identical-variant warning catches it, [`probes.md`](../../../research/parity/probes.md) section 8).

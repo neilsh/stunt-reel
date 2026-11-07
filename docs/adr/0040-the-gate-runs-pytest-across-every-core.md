@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted 2026-11-03, amended 2026-11-06. Takes up the `pytest-xdist` option
+accepted 2026-11-03, amended 2026-11-06; numbered 0031 until 2026-11-07, when a second 0031 was found. Takes up the `pytest-xdist` option
 [ADR 0016](0016-the-gate-runs-independent-lanes.md) left for
 [ADR 0010](0010-python-scripts-may-take-well-established-dependencies.md) to clear, and is the
 admitting record that ADR asks for.

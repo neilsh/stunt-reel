@@ -266,3 +266,38 @@ def test_the_walk_skips_pytests_own_temporary_files(tmp_path: Path) -> None:
     (tmp_path / ".pytest_cache" / "basetemp-1" / "case0" / "notes.md").write_text("x")
     (tmp_path / "kept.md").write_text("x")
     assert [p.name for p in _walk(tmp_path, SKIPPED_DIRS)] == ["kept.md"]
+
+
+AGENTS_MD_MAX_BYTES = 8192
+SKILL_MAX_WORDS = 500
+
+
+def test_adr_numbers_are_unique() -> None:
+    """Two ADRs never share a number; a branch that collides with main takes the next free one."""
+    by_number: dict[str, list[str]] = {}
+    for path in sorted((REPO_ROOT / "docs" / "adr").glob("[0-9][0-9][0-9][0-9]-*.md")):
+        by_number.setdefault(path.name[:4], []).append(path.name)
+    clashes = {number: names for number, names in by_number.items() if len(names) > 1}
+    assert not clashes, f"ADR numbers used twice; renumber the later one: {clashes}"
+
+
+def test_agents_md_fits_its_budget() -> None:
+    """AGENTS.md loads on every turn, so it stays within 8 KiB; move detail to the doc it routes to."""
+    size = len((REPO_ROOT / "AGENTS.md").read_bytes())
+    assert size <= AGENTS_MD_MAX_BYTES, (
+        f"AGENTS.md is {size} bytes, over {AGENTS_MD_MAX_BYTES}; move detail to the document "
+        "that owns it and leave a pointer"
+    )
+
+
+def test_skills_fit_their_budget() -> None:
+    """A SKILL.md stays under 500 words (``wc -w``); longer procedures go in files beside it."""
+    over = {
+        path.relative_to(REPO_ROOT).as_posix(): words
+        for path in sorted((REPO_ROOT / ".agents" / "skills").glob("*/SKILL.md"))
+        if (words := len(path.read_text(encoding="utf-8").split())) >= SKILL_MAX_WORDS
+    }
+    assert not over, (
+        f"Skills at or over {SKILL_MAX_WORDS} words; move detail into a file beside SKILL.md "
+        f"and link it: {over}"
+    )

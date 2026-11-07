@@ -11,28 +11,9 @@ The research notes own the procedure. This skill says which note to read and how
 - **What is wrong** (crop, shift, actor IoU, candidate sweeps, timing retime, environment pitfalls): [`research/parity/probes.md`](../../../research/parity/probes.md).
 - **What was already tried**, dead ends included: read [`research/parity/log.md`](../../../research/parity/log.md) (one row per attempt, linking to the note that holds the finding), then the note for the residual: [`attribution.md`](../../../research/parity/attribution.md), [`framing-and-actors.md`](../../../research/parity/framing-and-actors.md) or [`film-segments.md`](../../../research/parity/film-segments.md). Do this before starting a hypothesis.
 
-## Goal contract
-
-One goal, four rounds at most:
-
-> Raise the reference films' `mean_ssim_scored` with changes observable in the renderer. A round may begin by reading one `PLAYONE.EXE` rule (static disassembly or the capture harness) when no renderer-only lever fits; that rule lands in the note under `research/playone-exe/` with its image offset before the round's sweep runs. Record every attempt, including negatives, as a row in `research/parity/log.md`, with the finding in the note that owns it. Scope: `CTRY` and `INTRO` only (`COL3-2` excluded). Stop after 4 rounds, after two consecutive rounds with no adoption, or when the round's hypothesis would need evidence the session cannot obtain, and write the handoff.
-
-One hypothesis class per round; all variants batched in one command; the round ends at the sweep result.
-
-## Adoption rule
-
-Two tracks, because what backs a change decides what the score is allowed to say. State the track, and the image offset if there is one, on the log row.
-
-- **Evidence-backed** — the change reproduces a rule read out of `PLAYONE.EXE`, cited at an image offset: adopt when no film falls by more than 0.002 SSIM and at least one rises. The rule is the criterion; the score is a guard against the rule being misapplied.
-- **Heuristic** — no such rule behind it: adopt when no film falls by 0.002 SSIM or more, and either **every** film gains more than 0.002 or **one** gains more than 0.004. With four or more films the second branch is the usual one.
-
-Anything else is recorded as a negative and the change is reverted.
-
-0.002 is a policy bound derived from build-level noise ([`method.md`](../../../research/parity/method.md) section 3). A margin under 0.002 is unattributable; the sweep marks it on the winner line.
-
 ## Workflow
 
-Copy this checklist into your task list and tick items off:
+Read [`loop-rules.md`](loop-rules.md) first: one goal, at most four rounds, and the adoption rule step 5 applies. Copy this checklist into your task list and tick items off:
 
 ```
 - [ ] 1. Baseline: mise run parity (one line per film)
@@ -46,76 +27,14 @@ Copy this checklist into your task list and tick items off:
 
 If step 5 rejects the change, record the negative and end the round; do not chain a second hypothesis class onto a failed sweep.
 
-## Cost rules
+## Files beside this skill
 
-Every turn re-sends the whole conversation, so the loop costs turns times context.
+Read each when its step comes up:
 
-1. **Build once, call the binary.** Run `target/release/stuntreel.exe`, never `cargo run` per render. `--no-build` on every tool reuses it.
-2. **One command per batch.** Loop render plus score over every candidate in one shell command that prints one line per candidate: the `[parity]` summary line, or the probe's single number. Run it in the background when it will take more than about 2 minutes.
-3. **Use the tools.** `mise run parity` is the baseline; `mise run sweep -- --var DBG_X=a,b [--films ctry,intro] [--probe iou] [--keep-best] [--jobs N]` builds once, scores the whole product on every film and prints one table plus the winner ([`probes.md`](../../../research/parity/probes.md) section 4); `retime` answers a timing question with no build (section 6). Do not hand-roll render-and-score loops (section 8 lists what has no tool yet).
-4. **Score every film.** `--jobs N` (default 8) renders N pairs at once; each takes about 200 MiB of VRAM and 300 MiB of RAM. CTRY-only gains have regressed INTRO three times ([`framing-and-actors.md`](../../../research/parity/framing-and-actors.md)).
-5. **Never print a whole `report.json`.** Extract the fields you need with `python -c "import json; ..."`.
-6. **Look at pixels sparingly.** Use `parity_probe.py crop` on one region instead of reading full contact sheets, and only after the numbers point somewhere. To see specific ticks, `mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N]` renders them in one process (about 3 s, not 3 s each) and prints a capture-left, ours-right PNG per tick under `build/scratch/frame/<film>/`; a tick the capture lacks is rendered and its nearest captured ticks are named. Add `--var DBG_X=0,1` for a before-and-after picture: the capture, then one panel per value. A note may commit such a picture under [`NOTICE.md`](../../../NOTICE.md)'s comparison-image rule; a PR attaches one as in [Evidence for a rendering PR](#evidence-for-a-rendering-pr).
-7. **Scratch goes in `build/scratch/`** (gitignored), never `$TEMP`, whose Windows path breaks shell globs. Delete candidate render directories once scored. `PYTHONUTF8=1` is set for Python text I/O; committed scripts still pass `encoding="utf-8"`.
-8. **Never commit `DBG_*` switches.** `git restore <paths>` removes them. Parse a switch's value with `std::env::var(...).ok().and_then(|v| v.parse().ok())`, never `is_ok()` (`"0"` counts as set; the sweep's identical-variant warning catches it, [`probes.md`](../../../research/parity/probes.md) section 8).
-
-## Comparing a candidate reference
-
-A new capture becomes a film's reference only through a reviewed commit of `research/parity/references.toml` plus a `log.md` row. To decide whether to promote one, score the candidate and the current reference with the same binary:
-
-```
-- [ ] 1. mise run capture-digest -- <slug> <run>   (prints sha256 and the [film] entry to paste)
-- [ ] 2. Copy research/parity/references.toml to build/scratch/references.toml, then paste the entry into the working tree's copy
-- [ ] 3. mise run parity -- --films <film> --no-build   (renders and scores the candidate)
-- [ ] 4. Copy build/scratch/references.toml back over research/parity/references.toml
-- [ ] 5. mise run parity -- --films <film> --no-build   (renders and scores the current reference)
-- [ ] 6. Compare the two scored lines; promote only in a commit of its own, with the log row
-```
-
-Restore from the copy rather than with `git checkout`, which would also discard any edit to the file that was there before step 2. Leave out `--no-render` on the second run. A render covers only the ticks its own capture tagged, so the `_current` tree from step 3 has no frames at the other reference's ticks. `--no-build` is what keeps the binary the same, so the two scores differ only by the reference.
-
-## Error readout
-
-Run it on every film after adopting a render change. It says which kinds of error the render makes and on how many frames; it cannot see misregistration, which the metrics cover. The categories are `research/parity/error-categories.toml`.
-
-```
-- [ ] 1. Copy build/parity/bench/<film>/errors/readout.json to build/scratch/<film>-readout.json (the previous readout)
-- [ ] 2. mise run parity-bench -- errors-make --film <film>   (12 sheets, brief.md and brief-2.md)
-- [ ] 3. Dispatch two Haiku subagents at once, one per brief; each one's whole prompt: "Read build/parity/bench/<film>/errors/<brief>: it is your whole instruction"
-- [ ] 4. mise run parity-bench -- errors-disputes --film <film>
-- [ ] 5. If it names disputed sheets, dispatch one Sonnet subagent the same way on brief-tiebreak.md
-- [ ] 6. mise run parity-bench -- errors-score --film <film> --against build/scratch/<film>-readout.json
-```
-
-Haiku misreads a frame now and then, a different frame each pass, so two passes that agree are trusted and Sonnet grades only the sheets where they disagree whether some category is clear (2 or more).
-
-For batch films, print the `batch.md` readout table with `mise run parity-bench -- errors-table --films <slugs>` and paste it whole; write the prose under it from that table.
-
-Skip step 1 and `--against` when there is no previous readout or the previous run was a calibration: a calibration grades only ticks the recapture holds, so `compare` refuses it.
-
-Calibrate (`errors-make --calibrate`, 42 sheets, then `errors-score`) only when the categories, the sheet layout or the grading model change; it must print `calibration PASS`. When `other` names the same new kind of error on two or more frames, add a `[[category]]` block, give it an example with `errors-example --film <film> --tick <tick> --category <id>`, and calibrate.
-
-## Evidence for a rendering PR
-
-A PR that changes rendered output — anything that moves a pixel `stuntreel` draws, from `crates/stunt-render/`, the SOD VM, the world builder, the palette or the timeline — shows it: one picture per film it moves, the capture beside the render before and after, in the PR body's **Evidence** section with that film's `mise run parity` line before and after.
-
-```
-- [ ] 1. Pick the ticks where the change shows most (the frames the parity score moved, or the ones the PR is about); CTRY and INTRO at least, plus any batch film the PR targets
-- [ ] 2. Add --crop x0,y0,x1,y1 --scale 3 to every frame run below when the whole frame hides the change
-- [ ] 3. Render before and after, and copy the PNGs from build/scratch/frame/<film>/ (the next run replaces them):
-       behind a DBG_* switch, one picture holds both: mise run frame -- --film <film> --ticks <t,t> --var DBG_X=0,1, copied to build/scratch/pr/; render every film's pictures this way while the switch still exists, and remove it only after step 4
-       otherwise two pictures: mise run frame on the base commit (git switch --detach <base>) copied to build/scratch/pr/before/, then on the PR head copied to build/scratch/pr/after/
-- [ ] 4. Score before and after on the same films: behind a DBG_* switch, mise run sweep -- --var DBG_X=0,1 prints both in one table; otherwise mise run parity on the base commit and on the PR head, keeping each [parity] line
-- [ ] 5. Write the body to build/scratch/pr/body.md: under ## Evidence, each film's two scores from step 4, then its pictures, referenced by path relative to that file:
-       DBG: ![INTRO tick 48: capture, before, after](./intro_48.png)
-       otherwise: ![INTRO tick 48 before](./before/intro_48.png) ![INTRO tick 48 after](./after/intro_48.png)
-- [ ] 6. gh pr create (or gh pr edit <n>) --body-file build/scratch/pr/body.md, then one --attach per picture the body references:
-       DBG: --attach build/scratch/pr/intro_48.png
-       otherwise: --attach build/scratch/pr/before/intro_48.png --attach build/scratch/pr/after/intro_48.png
-- [ ] 7. A non-zero exit that still printed the PR URL means the PR exists but some uploads failed: re-run as gh pr edit <n> with the same --body-file and --attach flags until it exits 0 (no URL printed means nothing was created). Then confirm gh pr view <n> --json body --jq .body holds no ](./ reference
-```
-
-`gh` uploads each `--attach` file and rewrites the body's reference to its hosted URL, so nothing is committed; attached pictures follow the limits of [`NOTICE.md`](../../../NOTICE.md)'s comparison-image rule (single screens or crops of one, never a run of frames or a video). A change meant to leave every pixel alone shows that instead: the `mise run parity` lines before and after, identical. Where the session has no data root, the PR says so under **Evidence** and the reviewer renders the picture.
+- [`cost-rules.md`](cost-rules.md): before the first render or sweep of a session.
+- [`comparing-references.md`](comparing-references.md): deciding whether to promote a new capture to reference.
+- [`error-readout.md`](error-readout.md): after adopting a render change, on every film.
+- [`pr-evidence.md`](pr-evidence.md): opening a PR that changes rendered output.
 
 ## Finishing an item
 

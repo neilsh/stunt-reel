@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted; implemented in [`improving-render-parity`](../../.agents/skills/improving-render-parity/SKILL.md)'s adoption rule
+accepted; implemented in the [adoption rule](../../.agents/skills/improving-render-parity/loop-rules.md#adoption-rule) of the `improving-render-parity` skill
 
 ## Context
 
