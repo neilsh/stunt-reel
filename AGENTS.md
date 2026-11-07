@@ -50,7 +50,7 @@ Process documents, **not** sources of truth: [`docs/process/TEAM_SHEET.md`](docs
 4. Write the handoff into the plan or `research/` note that owns the work item, never only in agent memory, which another worktree never sees. Shared append-only files such as [`research/parity/log.md`](research/parity/log.md) take rows at the end only.
 5. A PR that changes rendered output carries a capture-beside-render picture, before and after: [Evidence for a rendering PR](.agents/skills/improving-render-parity/SKILL.md#evidence-for-a-rendering-pr).
 6. Work that ships as two or more dependent PRs is a `gh stack` from its first branch: `gh stack init <bottom> <next>…`, then `gh stack submit --auto`.
-7. A commit taken from another session's branch (a cloud session's) keeps that session's author, which the pre-push hook rejects: `git cherry-pick <sha>`, then `git commit --amend --no-edit --reset-author`, so the commit hooks run on it too.
+7. A commit taken from another session's branch (a cloud session's) keeps that session's author, which the pre-push hook rejects: `git cherry-pick --no-commit <sha>`, then `git commit -C <sha> --reset-author`, so the commit hooks check the picked changes too.
 
 ### Working economically
 
