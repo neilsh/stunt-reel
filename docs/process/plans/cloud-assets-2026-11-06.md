@@ -1,6 +1,6 @@
 # Cloud assets: game data for Claude Code cloud sessions from a private R2 bucket (2026-11-06)
 
-Status: **design, awaiting review**. Source: a brainstorming session that followed the superset
+Status: **accepted** as [ADR 0039](../../adr/0039-cloud-sessions-fetch-pinned-game-archives.md). Source: a brainstorming session that followed the superset
 probe ([`research/makeone-exe/linking.md`](../../../research/makeone-exe/linking.md) § 7) and
 `mise run superset-all` (#256). Builds on
 [ADR 0006](../../adr/0006-ci-renders-on-lavapipe.md) (rendering on lavapipe),
