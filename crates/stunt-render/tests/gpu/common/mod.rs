@@ -34,7 +34,7 @@ pub(crate) fn require_gpu() -> bool {
 static GPU_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 /// Locks the process-wide GPU test lock, recovering from any poison left by a panicking test.
-fn lock_gpu() -> MutexGuard<'static, ()> {
+pub(crate) fn lock_gpu() -> MutexGuard<'static, ()> {
     GPU_TEST_LOCK
         .get_or_init(|| Mutex::new(()))
         .lock()
