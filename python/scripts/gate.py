@@ -45,6 +45,7 @@ Usage: ``python python/scripts/gate.py {all|rust|py|docs} [--full] [--base REF] 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import shutil
 import signal
@@ -53,7 +54,7 @@ import sys
 import threading
 import time
 import tomllib
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TextIO
@@ -389,6 +390,24 @@ def _kill_tree(proc: subprocess.Popen[str]) -> None:
         os.killpg(proc.pid, signal.SIGKILL)
 
 
+# The steps running now, so an interrupted gate can kill them: on POSIX each leads its own
+# session, which Ctrl-C at the terminal never reaches. _CANCEL stops lanes starting more.
+_ACTIVE: set[subprocess.Popen[str]] = set()
+_ACTIVE_LOCK = threading.Lock()
+_CANCEL = threading.Event()
+
+
+def cancel_steps() -> None:
+    """Start no further step, and kill every running one with its children."""
+    _CANCEL.set()
+    with _ACTIVE_LOCK:
+        running = list(_ACTIVE)
+    for proc in running:
+        # A step that exited between the snapshot and the kill raises; it is gone either way.
+        with contextlib.suppress(OSError):
+            _kill_tree(proc)
+
+
 def run_bounded(
     argv: Sequence[str], env: Mapping[str, str] | None, timeout: float
 ) -> tuple[int, str]:
@@ -396,6 +415,7 @@ def run_bounded(
 
     Past *timeout* seconds it kills the process tree and returns ``TIMEOUT_EXIT``, with a closing
     line saying so: a grandchild holding the output pipes cannot keep the read waiting.
+    ``cancel_steps`` kills it the same way, and it returns the code the kill left.
     """
     proc = subprocess.Popen(  # noqa: S603 - callers pass fixed commands
         list(argv),
@@ -407,17 +427,23 @@ def run_bounded(
         env=None if env is None else dict(env),
         start_new_session=os.name != "nt",
     )
+    with _ACTIVE_LOCK:
+        _ACTIVE.add(proc)
     try:
-        output, _ = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        _kill_tree(proc)
         try:
-            output, _ = proc.communicate(timeout=30)
+            output, _ = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
-            output = ""
-        note = f"[gate] timed out after {timeout:.0f}s; killed the step and its children"
-        return TIMEOUT_EXIT, f"{output or ''}\n{note}\n"
-    return proc.returncode, output
+            _kill_tree(proc)
+            try:
+                output, _ = proc.communicate(timeout=30)
+            except subprocess.TimeoutExpired:
+                output = ""
+            note = f"[gate] timed out after {timeout:.0f}s; killed the step and its children"
+            return TIMEOUT_EXIT, f"{output or ''}\n{note}\n"
+        return proc.returncode, output
+    finally:
+        with _ACTIVE_LOCK:
+            _ACTIVE.discard(proc)
 
 
 def _step(mise: str, task: str, timeout: float) -> tuple[int, str, float]:
@@ -438,8 +464,10 @@ def _run_lane(
     results: dict[str, tuple[int, str, float]],
     timeout: float,
 ) -> None:
-    """Run one lane's steps in order, reporting each as it finishes."""
+    """Run one lane's steps in order, reporting each as it finishes, until cancelled."""
     for task in tasks:
+        if _CANCEL.is_set():
+            return
         try:
             code, output, elapsed = _step(mise, task, timeout)
         except Exception as exc:
@@ -506,6 +534,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"[gate] FAIL before any step: {problem}", flush=True)
             return 1
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _CANCEL.clear()
     results: dict[str, tuple[int, str, float]] = {}
     lock = threading.Lock()
     started = time.monotonic()
@@ -526,6 +555,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 pool.submit(_run_lane, mise, tasks, log, lock, results, args.step_timeout)
                 for _, tasks in lanes
             ]
+            try:
+                # Waiting in short slices keeps Ctrl-C deliverable on every platform.
+                while not all(future.done() for future in futures):
+                    wait(futures, timeout=0.5)
+            except KeyboardInterrupt:
+                cancel_steps()
+                print("\n[gate] interrupted: killed the running steps", flush=True)
+                log.write("\n# interrupted\n")
+                return 130
             for future in futures:
                 future.result()
 

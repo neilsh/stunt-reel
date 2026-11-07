@@ -12,6 +12,7 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -159,3 +160,46 @@ def test_the_rust_half_needs_no_uv(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     monkeypatch.setattr(gate_record, "record", lambda *_pair: None)
     monkeypatch.setattr(gate, "_step", lambda _m, _t, _s: (0, "", 0.0))
     assert gate.main(["rust"]) == 0
+
+
+def test_cancel_kills_a_running_step(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Steps run in their own session on POSIX, where Ctrl-C does not reach them: an interrupted
+    # gate must kill them itself rather than wait out the step timeout.
+    monkeypatch.setattr(gate, "_CANCEL", threading.Event())
+    done: list[tuple[int, str]] = []
+    worker = threading.Thread(
+        target=lambda: done.append(
+            gate.run_bounded([sys.executable, "-c", "import time; time.sleep(60)"], None, 600.0)
+        )
+    )
+    worker.start()
+    deadline = time.monotonic() + 10
+    while not gate._ACTIVE and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert gate._ACTIVE, "the step never registered as running"
+    gate.cancel_steps()
+    worker.join(timeout=15)
+    assert not worker.is_alive()
+    assert done
+    assert done[0][0] != 0
+    assert not gate._ACTIVE
+
+
+def test_a_cancelled_lane_starts_no_further_step(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    ran: list[str] = []
+
+    def step(_mise: str, task: str, _timeout: float) -> tuple[int, str, float]:
+        ran.append(task)
+        return 0, "", 0.0
+
+    cancel = threading.Event()
+    cancel.set()
+    monkeypatch.setattr(gate, "_CANCEL", cancel)
+    monkeypatch.setattr(gate, "_step", step)
+    results: dict[str, tuple[int, str, float]] = {}
+    with (tmp_path / "log").open("w", encoding="utf-8") as log:
+        gate._run_lane("mise", ["lint-rust", "doc"], log, threading.Lock(), results, 600.0)
+    assert ran == []
+    assert results == {}
