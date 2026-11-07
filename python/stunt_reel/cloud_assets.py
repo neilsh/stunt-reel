@@ -35,6 +35,7 @@ __all__ = [
     "KEY_PAIR_ENV",
     "MANIFEST_PATH",
     "REQUIRED_ENV",
+    "REST_HOST",
     "WRANGLER_VERSION",
     "Archive",
     "CloudAssetsError",
@@ -64,9 +65,12 @@ CAPTURES = "captures"
 #: The cloud environment variable a download needs (docs/harness-setup.md, "Cloud sessions").
 REQUIRED_ENV = ("R2_ACCOUNT_ID",)
 
-#: The R2 key pair: both set, curl signs; neither, the requests go unsigned for a network
-#: secret on the cloud environment to sign at Anthropic's proxy.
+#: The R2 key pair: both set, curl signs S3 requests; neither, fetch reads R2's REST API at
+#: :data:`REST_HOST` and the cloud environment's Bearer network secret authorizes it.
 KEY_PAIR_ENV = ("R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
+
+#: Cloudflare's REST API host, which serves R2 objects to an Admin Read token.
+REST_HOST = "api.cloudflare.com"
 
 #: curl reads the whole request, the key pair included, from the config on standard input.
 CURL_ARGV = ("curl", "--silent", "--show-error", "--fail", "--config", "-")
@@ -408,15 +412,20 @@ def _download(
     account, key_pair = _credentials(env)
     part = data_root / DOWNLOAD_DIRNAME / f"{PurePosixPath(key).name}.part"
     part.parent.mkdir(parents=True, exist_ok=True)
-    host = f"{account}.r2.cloudflarestorage.com"
-    url = f"https://{host}/{manifest.bucket}/{key}"
+    if key_pair is None:
+        # The proxy signs no SigV4 for a host outside amazonaws.com, so this mode reads R2's
+        # REST API, whose Bearer token the proxy attaches (docs/harness-setup.md).
+        url = f"https://{REST_HOST}/client/v4/accounts/{account}/r2/buckets/{manifest.bucket}/"
+        url += f"objects/{key}"
+    else:
+        url = f"https://{account}.r2.cloudflarestorage.com/{manifest.bucket}/{key}"
     try:
         result = run(CURL_ARGV, curl_config(url, part, key_pair))
         if result.returncode != 0:
             detail = _redacted(result.stderr.strip(), key_pair or ()) or "no message"
             hint = ""
             if "403" in detail and key_pair is None:
-                hint = f"; check the cloud environment's network secret for {host}"
+                hint = f"; check the cloud environment's Bearer network secret for {REST_HOST}"
             elif "403" in detail:
                 hint = f"; check that the token can read the bucket {manifest.bucket}"
             raise CloudAssetsError(

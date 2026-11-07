@@ -127,36 +127,40 @@ worktrees it creates; an older linked one goes through `reap`.
 
 ## Cloud sessions
 
-A Claude Code cloud session has no data root. Its setup script fetches four archives from the
+A Claude Code cloud session has no data root. Its SessionStart hook fetches four archives from the
 private R2 bucket `stunt-reel-internal-assets`, each pinned by key and sha256 in
 [`manifests/cloud-assets.toml`](../manifests/cloud-assets.toml)
 ([ADR 0039](adr/0039-cloud-sessions-fetch-pinned-game-archives.md)).
 
 ### The read token
 
-In the Cloudflare dashboard, R2, Manage API tokens, create an API token with **Object Read
-only** permission, applied to the bucket `stunt-reel-internal-assets` only. Keep its S3 access
-key id and secret access key, and the account id. Check the scope before saving: a broader
-token works just as well, so nothing would flag it, and a leaked one reads the whole account.
+In the Cloudflare dashboard, R2, Manage API tokens, create an API token with **Admin Read
+only** permission and keep its token value and the account id. It reads every bucket in the
+account, which holds only `stunt-reel-internal-assets`; recheck that before adding a bucket.
+The bucket-scoped **Object Read only** permission would be narrower, but R2's REST API refuses
+it, and the cloud proxy can attach only a REST token: its AWS SigV4 secret signs for hosts
+under `amazonaws.com` alone, and answers every request to `<account_id>.r2.cloudflarestorage.com`
+with a 502 (`injection failed (...): the hostname is not under amazonaws.com`, 2026-11-07).
 
 ### The cloud environment
 
 In claude.ai, the cloud environment for this repo:
 
-- **Network secret** (preferred): type **AWS SigV4**, with the token's access key id and
-  secret access key, region `auto`, service `s3`, allowed website
-  `<account_id>.r2.cloudflarestorage.com`. Anthropic's proxy signs each request to that host
-  as it leaves the session, so the key never enters it. Alternatively, set
-  `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` as environment variables and curl signs;
-  anyone who uses the environment can read those.
+- **Network secret:** type **Bearer**, allowed website `api.cloudflare.com`, header
+  `Authorization`, prefix `Bearer`, the token value as value. Anthropic's proxy adds it to each
+  request to that host as it leaves the session, so the token never enters it, though anything
+  in a session can use it through the proxy. With no `R2_ACCESS_KEY_ID` and
+  `R2_SECRET_ACCESS_KEY` set, `fetch` reads R2's REST API there. Setting both instead makes
+  `fetch` sign S3 requests itself with an Object Read only token's key pair; anyone who uses
+  the environment can read those variables.
 - **Environment variables:** `R2_ACCOUNT_ID`, not a secret, and `STUNT_DATA_ROOT`, an absolute
   path outside the checkout, such as `/root/stunt-reel.data`. Also `MISE_AUTO_INSTALL=false`
   and `MISE_USE_VERSIONS_HOST=false`, as CI sets them: otherwise the first `mise run` in a
   session installs every tool `mise.toml` declares, compiling the cargo ones from source.
 - **Network access:** the default trusted list. The setup script downloads from GitHub
-  releases, `static.rust-lang.org`, PyPI and the Ubuntu mirror, all on it. A network secret's
-  host needs no entry; with the key pair in environment variables instead, add
-  `<account_id>.r2.cloudflarestorage.com`.
+  releases, `static.rust-lang.org`, PyPI and the Ubuntu mirror, all on it. The network
+  secret's host needs no entry; with the key pair in environment variables instead, add
+  `<account_id>.r2.cloudflarestorage.com`, and keep no network secret on that host.
 - **Setup script.** It installs mise at a pinned, checksum-checked release, then from the
   checkout's `mise.lock` the tools the gate needs (not the DOSBox tool), then lavapipe as CI
   does ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)). It fetches nothing: it runs before the
@@ -203,9 +207,9 @@ pins of the commit it starts from. The hook prints one line to the session, `rea
 `fetch` skips an archive whose folder already exists, so a resumed session downloads nothing
 and keeps the pins it fetched first. To take a newer pin there, delete that folder under
 `$STUNT_DATA_ROOT` and fetch again.
-`mise run cloud-assets -- status` shows each pin and folder. Exit 2 means `R2_ACCOUNT_ID`, or
-one half of the key pair, is unset; a 403 means the network secret or the token cannot read the
-bucket.
+`mise run cloud-assets -- status` shows each pin and folder, reading nothing remote. From
+`fetch`, exit 2 means `R2_ACCOUNT_ID`, or one half of the key pair, is unset, and a 403 means
+the network secret or the key pair cannot read the bucket.
 
 ### Publishing new archives (owner, primary machine)
 
@@ -220,8 +224,7 @@ bucket.
 
 Rotate on any sighting of the secret in a log, transcript or commit: create a new token as
 above, replace the network secret (delete it and add it again) or the two key variables in the
-cloud environment, then delete the old token in
-the dashboard.
+cloud environment, then delete the old token in the dashboard.
 
 ## DSH
 

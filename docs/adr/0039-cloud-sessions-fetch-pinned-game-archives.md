@@ -26,12 +26,12 @@ in it, the agent included, can read.
   include and exclude globs, key, sha256 and size, and, for `captures`, the capture digest of
   every `references.toml` row it holds. An offline test fails when those digests disagree with
   `references.toml`, so promoting a reference repacks `captures` in the same PR.
-- **A scoped read token, fetched with curl.** Cloud sessions hold an R2 token with Object Read
-  only, scoped to the bucket, preferably as an AWS SigV4 network secret of the cloud
-  environment, which Anthropic's proxy attaches outside the session; as environment variables
-  it works too. `mise run cloud-assets -- fetch` downloads with curl against R2's S3 API,
-  unsigned for the proxy to sign, or with `--aws-sigv4` and the key pair on standard input when
-  the variables hold it, and checks size and sha256 before unpacking. The owner uploads from
+- **A read token the session never holds, fetched with curl.** The cloud environment keeps an
+  R2 Admin Read only token as a Bearer network secret for `api.cloudflare.com`, which
+  Anthropic's proxy attaches outside the session. `mise run cloud-assets -- fetch` downloads
+  with curl from R2's REST API there, and checks size and sha256 before unpacking. With an
+  Object Read only key pair in the environment variables instead, it signs S3 requests with
+  `--aws-sigv4`, the pair on standard input. The owner uploads from
   the primary machine with a pinned `wrangler` and their `wrangler login`; no long-lived write
   key exists.
 - **Fetch writes only an absent folder.** Each archive fills one folder of the data root. Fetch
@@ -42,8 +42,15 @@ in it, the agent included, can read.
 
 ## Considered Options
 
-- **`wrangler r2 object get` for fetch.** It uses Cloudflare's REST API, which bucket-scoped
-  object tokens cannot use, so the cloud token would read every bucket in the account.
+- **`wrangler r2 object get` for fetch.** The REST API it calls is the one fetch uses, at the
+  cost of Node.js in every session.
+- **An AWS SigV4 network secret on R2's S3 host.** The bucket-scoped token works only there,
+  but the proxy signs SigV4 for hosts under `amazonaws.com` alone and answered every request to
+  the R2 host with a 502: `injection failed (...): the hostname is not under amazonaws.com`
+  (2026-11-07). R2's REST API refuses bucket-scoped tokens, so the network secret is an Admin
+  Read only token.
+- **The key pair in environment variables.** It works, and stays as the fallback, but anyone
+  who uses the environment can read the variables, and so can any session through them.
 - **A public bucket, an `r2.dev` URL or presigned URLs.** The first two distribute game data;
   presigned URLs last at most seven days.
 - **A Worker behind Cloudflare Access.** More infrastructure for the same exposure.
@@ -55,13 +62,17 @@ in it, the agent included, can read.
 
 ## Consequences
 
-- A leaked cloud token reads about 7 MB of game data and nothing else; rotate it on any sighting
-  in a log or transcript.
+- The token reads every bucket in the account, today only `stunt-reel-internal-assets`, with
+  every archive version ever uploaded, since none is deleted. A session never sees it, but can
+  use it through the proxy for any request to `api.cloudflare.com`. A new bucket widens what it
+  reads; rotate the token on any sighting in a log or transcript.
 - A failed fetch still lets the session start: the hook exits 0 and tells Claude, in one
   `FAILED` line, that archives may be missing, and `SUPERSET.ALL` is not built. The next start
   or resume fetches the archives still absent.
 - A live session that wants a newer pin deletes the folder and fetches again. A stale `captures/`
   is caught anyway: parity refuses a capture whose digest differs from its row.
-- Unverified until the first cloud run: the exact network allowlist entry, whether lavapipe
+- Unverified until the first cloud run: that the proxy attaches the Bearer secret to the
+  SessionStart hook's requests (a REST read with a Bearer token returned the pinned bytes from
+  the primary machine), whether lavapipe
   ([ADR 0006](0006-ci-renders-on-lavapipe.md)) scores CTRY and INTRO as the primary machine's GPU
   does, and how long the setup script takes.

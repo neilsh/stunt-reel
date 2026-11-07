@@ -370,7 +370,7 @@ def test_fetch_refuses_half_a_key_pair(tmp_path: Path, present: str) -> None:
     assert run.calls == []
 
 
-def test_fetch_without_a_key_pair_leaves_signing_to_the_proxy(tmp_path: Path) -> None:
+def test_fetch_without_a_key_pair_uses_the_rest_api_for_the_proxy_token(tmp_path: Path) -> None:
     m, data = _packed(tmp_path, {"RES/GAME.RES": b"game"})
     run = FakeCurl(data)
     lines = fetch(m, ["corpus-stuntisl"], tmp_path / "data", {"R2_ACCOUNT_ID": "ACCT"}, run=run)
@@ -378,8 +378,10 @@ def test_fetch_without_a_key_pair_leaves_signing_to_the_proxy(tmp_path: Path) ->
     key = m.archives["corpus-stuntisl"].key
     assert lines == [f"fetched corpus-stuntisl -> {tmp_path / 'data' / 'corpus/stuntisl'}"]
     assert (
-        f'url = "https://ACCT.r2.cloudflarestorage.com/stunt-reel-internal-assets/{key}"' in stdin
-    )
+        'url = "https://api.cloudflare.com/client/v4/accounts/ACCT/r2/buckets/'
+        f'stunt-reel-internal-assets/objects/{key}"'
+    ) in stdin
+    assert "Authorization" not in stdin
     assert "aws-sigv4" not in stdin
     assert "user =" not in stdin
     assert "x-amz-content-sha256" not in stdin
@@ -388,9 +390,7 @@ def test_fetch_without_a_key_pair_leaves_signing_to_the_proxy(tmp_path: Path) ->
 def test_fetch_without_a_key_pair_points_a_403_at_the_network_secret(tmp_path: Path) -> None:
     m, _ = _packed(tmp_path, {"RES/GAME.RES": b"game"})
     stderr = "curl: (22) The requested URL returned error: 403"
-    with pytest.raises(
-        CloudAssetsError, match=r"network secret for ACCT\.r2\.cloudflarestorage\.com"
-    ):
+    with pytest.raises(CloudAssetsError, match=r"Bearer network secret for api\.cloudflare\.com"):
         fetch(
             m,
             ["corpus-stuntisl"],
