@@ -134,33 +134,29 @@ private R2 bucket `stunt-reel-internal-assets`, each pinned by key and sha256 in
 
 ### The read token
 
-In the Cloudflare dashboard, R2, Manage API tokens, create an API token with **Admin Read
-only** permission and keep its token value and the account id. It reads every bucket in the
-account, which holds only `stunt-reel-internal-assets`; recheck that before adding a bucket.
-The bucket-scoped **Object Read only** permission would be narrower, but R2's REST API refuses
-it, and the cloud proxy can attach only a REST token: its AWS SigV4 secret signs for hosts
-under `amazonaws.com` alone, and answers every request to `<account_id>.r2.cloudflarestorage.com`
-with a 502 (`injection failed (...): the hostname is not under amazonaws.com`, 2026-11-07).
+In the Cloudflare dashboard, R2, Manage API tokens, create an API token with **Object Read
+only** permission on `stunt-reel-internal-assets` alone, and keep its Access Key ID, Secret
+Access Key and the account id. `fetch` signs S3 requests to
+`<account_id>.r2.cloudflarestorage.com` with that pair (`curl --aws-sigv4`, the pair on
+standard input, never on argv).
 
 ### The cloud environment
 
 In claude.ai, the cloud environment for this repo:
 
-- **Network secret:** type **Bearer**, allowed website `api.cloudflare.com`, header
-  `Authorization`, prefix `Bearer`, the token value as value. Anthropic's proxy adds it to each
-  request to that host as it leaves the session, so the token never enters it, though anything
-  in a session can use it through the proxy. With no `R2_ACCESS_KEY_ID` and
-  `R2_SECRET_ACCESS_KEY` set, `fetch` reads R2's REST API there. Setting both instead makes
-  `fetch` sign S3 requests itself with an Object Read only token's key pair; anyone who uses
-  the environment can read those variables.
-- **Environment variables:** `R2_ACCOUNT_ID`, not a secret, and `STUNT_DATA_ROOT`, an absolute
-  path outside the checkout, such as `/root/stunt-reel.data`. Also `MISE_AUTO_INSTALL=false`
-  and `MISE_USE_VERSIONS_HOST=false`, as CI sets them: otherwise the first `mise run` in a
-  session installs every tool `mise.toml` declares, compiling the cargo ones from source.
-- **Network access:** the default trusted list. The setup script downloads from GitHub
-  releases, `static.rust-lang.org`, PyPI and the Ubuntu mirror, all on it. The network
-  secret's host needs no entry; with the key pair in environment variables instead, add
-  `<account_id>.r2.cloudflarestorage.com`, and keep no network secret on that host.
+- **Environment variables:** `R2_ACCOUNT_ID`, not a secret; `R2_ACCESS_KEY_ID` and
+  `R2_SECRET_ACCESS_KEY`, the token's key pair; and `STUNT_DATA_ROOT`, an absolute path
+  outside the checkout, such as `/root/stunt-reel.data`. Anyone who uses the environment, and
+  anything in a session, can read the key pair; it reads only the one bucket. Also
+  `MISE_AUTO_INSTALL=false` and `MISE_USE_VERSIONS_HOST=false`, as CI sets them: otherwise the
+  first `mise run` in a session installs every tool `mise.toml` declares, compiling the cargo
+  ones from source.
+- **Network access:** the default trusted list, plus `<account_id>.r2.cloudflarestorage.com`.
+  The setup script downloads from GitHub releases, `static.rust-lang.org`, PyPI and the Ubuntu
+  mirror, all on the list.
+- **Network secrets:** none on the R2 host. The proxy's AWS SigV4 secret signs for hosts under
+  `amazonaws.com` alone, and while one is set it answers every request to the R2 host with a
+  502 (`injection failed (...): the hostname is not under amazonaws.com`, 2026-11-07).
 - **Setup script.** It installs mise at a pinned, checksum-checked release, then from the
   checkout's `mise.lock` the tools the gate needs (not the DOSBox tool), then lavapipe as CI
   does ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)). It fetches nothing: it runs before the
@@ -208,12 +204,26 @@ The hook does not run where Claude Code loads no repo settings: a cloud session 
 repositories, or a cloud thread of a project. Nothing is fetched there and no line is printed;
 run `CLAUDE_CODE_REMOTE=true mise run cloud-session-start` from the checkout instead.
 
+### Without the key pair: a Bearer network secret (unverified)
+
+To keep the token out of the session, leave `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` unset
+and add a network secret instead: type **Bearer**, allowed website `api.cloudflare.com`, header
+`Authorization`, prefix `Bearer`, the token value as value. `fetch` then reads R2's REST API on
+that host, and the proxy adds the token as each request leaves the session; anything in a
+session can still use it through the proxy. R2's REST API refuses bucket-scoped tokens, so this
+token needs **Admin Read only**, which reads every bucket in the account; recheck that the
+account holds only `stunt-reel-internal-assets` before adding a bucket. A REST read with such a
+token returned the pinned bytes from the primary machine, but no cloud session has fetched this
+way yet.
+
+### Fetching
+
 `fetch` skips an archive whose folder already exists, so a resumed session downloads nothing
 and keeps the pins it fetched first. To take a newer pin there, delete that folder under
 `$STUNT_DATA_ROOT` and fetch again.
 `mise run cloud-assets -- status` shows each pin and folder, reading nothing remote. From
 `fetch`, exit 2 means `R2_ACCOUNT_ID`, or one half of the key pair, is unset, and a 403 means
-the network secret or the key pair cannot read the bucket.
+the key pair or the network secret cannot read the bucket.
 
 ### Publishing new archives (owner, primary machine)
 
@@ -227,8 +237,8 @@ the network secret or the key pair cannot read the bucket.
 ### Rotating the token
 
 Rotate on any sighting of the secret in a log, transcript or commit: create a new token as
-above, replace the network secret (delete it and add it again) or the two key variables in the
-cloud environment, then delete the old token in the dashboard.
+above, replace the two key variables (or the network secret: delete it and add it again) in
+the cloud environment, then delete the old token in the dashboard.
 
 ## DSH
 
