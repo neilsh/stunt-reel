@@ -45,7 +45,7 @@ On 2026-11-06, zstd level 19 over one tar of each set (throwaway script, not com
 | `corpus/stisldem/VAULT/{CTRY,INTRO}.ALL` | 2 | 0.29 MB | 0.08 MB |
 | `captures/` (CTRY and INTRO frames, BALLOON's stored archive; no `*.lock`) | 938 | 33.3 MB | 0.64 MB |
 
-So the `corpus` archive of decision 2 (everything but music) is about 5.8 MB and both archives
+So the `corpus-stuntisl` archive of decision 2 (everything but music) is about 5.8 MB and both archives
 about 6.4 MB. These add up per-set measurements; `pack` reports the real figure.
 
 Findings that shaped the design:
@@ -76,7 +76,7 @@ Findings that shaped the design:
    `--game corpus/stuntisl` and `--sidata` resolve unchanged. A cloud data root is a sparse
    copy of the primary machine's.
 2. **Two archives.**
-   - `corpus`, extracted into `$STUNT_DATA_ROOT/corpus/`:
+   - `corpus-stuntisl` (the stock game set; a community-films corpus would get its own name), extracted into `$STUNT_DATA_ROOT/corpus/`:
      - `stuntisl/**`, except the music files `RES/MUSIC1.*` and `RES/MUSIC2.*`;
      - `siarchive/Developer/FreeFlight/SIDATA/**`;
      - `stisldem/VAULT/{CTRY,INTRO}.{ALL,FLM}`: the pinned archives, each beside its film,
@@ -92,7 +92,7 @@ Findings that shaped the design:
    keep fetching theirs; storage is negligible.
    ```
    stunt-reel-internal-assets/
-     v1/corpus-<sha16>.tar.zst
+     v1/corpus-stuntisl-<sha16>.tar.zst
      v1/captures-<sha16>.tar.zst
    ```
 4. **The repo pins the archives.** `manifests/cloud-assets.toml` holds the version, each archive's
@@ -149,12 +149,12 @@ Findings that shaped the design:
 bucket = "stunt-reel-internal-assets"
 version = "v1"
 
-[corpus]
+[corpus-stuntisl]
 into = "corpus"
 include = ["stuntisl/**", "siarchive/Developer/FreeFlight/SIDATA/**",
            "stisldem/VAULT/CTRY.*", "stisldem/VAULT/INTRO.*"]
 exclude = ["stuntisl/RES/MUSIC1.*", "stuntisl/RES/MUSIC2.*"]
-key = "v1/corpus-<sha16>.tar.zst"
+key = "v1/corpus-stuntisl-<sha16>.tar.zst"
 sha256 = "<64 hex>"
 bytes = 0
 

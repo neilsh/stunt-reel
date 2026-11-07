@@ -22,8 +22,8 @@ provisioning exception to ADR 0022.
 
 ## Global Constraints
 
-- Bucket `stunt-reel-internal-assets`; version prefix `v1`; key `v1/<archive>-<sha256[:16]>.tar.zst`, the hash being of the `.tar.zst` bytes.
-- Archives: `corpus` into `$STUNT_DATA_ROOT/corpus/`, include `stuntisl/**`, `siarchive/Developer/FreeFlight/SIDATA/**`, `stisldem/VAULT/CTRY.*`, `stisldem/VAULT/INTRO.*` (each pinned `.ALL` beside its `.FLM`), exclude `stuntisl/RES/MUSIC1.*`, `stuntisl/RES/MUSIC2.*`; `captures` into `$STUNT_DATA_ROOT/captures/`, include `*/frames/**`, `*/archives/**`, exclude `**/*.lock`.
+- Bucket `stunt-reel-internal-assets`; version prefix `v1`; key `v1/<archive>-<sha256[:16]>.tar.zst` (archives `corpus-stuntisl` and `captures`), the hash being of the `.tar.zst` bytes.
+- Archives: `corpus-stuntisl` into `$STUNT_DATA_ROOT/corpus/`, include `stuntisl/**`, `siarchive/Developer/FreeFlight/SIDATA/**`, `stisldem/VAULT/CTRY.*`, `stisldem/VAULT/INTRO.*` (each pinned `.ALL` beside its `.FLM`), exclude `stuntisl/RES/MUSIC1.*`, `stuntisl/RES/MUSIC2.*`; `captures` into `$STUNT_DATA_ROOT/captures/`, include `*/frames/**`, `*/archives/**`, exclude `**/*.lock`.
 - Globs match case-insensitively (`[I8]`) and `**` spans folders.
 - Tar: members are files only, sorted by POSIX relative path, `mtime=0`, `uid=gid=0`, `uname=gname=""`, `mode=0o644`. zstd level 19.
 - Fetch writes `<into>/` only when absent: extract into `<into>.new/`, then rename; an existing `<into>/` is skipped without a download (exit 0).
@@ -80,7 +80,7 @@ provisioning exception to ADR 0022.
 def test_select_files_applies_include_and_exclude_case_insensitively(tmp_path): ...
     # tmp_path/stuntisl/RES/{GAME.RES, music1.xmi, MUSIC2.ESS}, stuntisl/VAULT/CTRY.FLM,
     # siarchive/Developer/FreeFlight/SIDATA/MAP.BIN, stisldem/VAULT/{CTRY.ALL, ctry.flm,
-    # INTRO.ALL, INTRO.FLM, SCENE01.ALL}; the corpus Archive of manifests/cloud-assets.toml
+    # INTRO.ALL, INTRO.FLM, SCENE01.ALL}; the corpus-stuntisl Archive of manifests/cloud-assets.toml
     assert select_files(tmp_path, corpus) == [
         "siarchive/Developer/FreeFlight/SIDATA/MAP.BIN", "stisldem/VAULT/CTRY.ALL",
         "stisldem/VAULT/INTRO.ALL", "stisldem/VAULT/INTRO.FLM", "stisldem/VAULT/ctry.flm",
@@ -102,7 +102,7 @@ def test_manifest_round_trips_through_its_text(): ...
 def test_committed_manifest_names_the_spec_archives():
     m = read_manifest()
     assert (m.bucket, m.version, sorted(m.archives)) == (
-        "stunt-reel-internal-assets", "v1", ["captures", "corpus"])
+        "stunt-reel-internal-assets", "v1", ["captures", "corpus-stuntisl"])
 ```
 
 - [ ] **Step 2: Run** `mise run test-py -- tests/test_cloud_assets.py`. Expected: FAIL, `ModuleNotFoundError: stunt_reel.cloud_assets`.
@@ -127,10 +127,10 @@ def test_committed_manifest_names_the_spec_archives():
 
 ```python
 def test_pack_names_the_key_after_the_compressed_hash(tmp_path): ...
-    a = pack(m, "corpus", data_root, out)
+    a = pack(m, "corpus-stuntisl", data_root, out)
     data = (out / Path(a.key).name).read_bytes()
     assert a.sha256 == hashlib.sha256(data).hexdigest()
-    assert a.key == f"v1/corpus-{a.sha256[:16]}.tar.zst" and a.bytes == len(data)
+    assert a.key == f"v1/corpus-stuntisl-{a.sha256[:16]}.tar.zst" and a.bytes == len(data)
     assert compression.zstd.decompress(data) == tar_bytes(data_root / "corpus", select_files(...))
 
 def test_pack_captures_records_each_reference_digest(tmp_path): ...
@@ -175,7 +175,7 @@ def test_fetch_extracts_a_matching_archive_into_place(tmp_path): ...
     assert not (data_root / "corpus.new").exists()
 
 def test_fetch_skips_an_existing_destination_without_a_request(tmp_path):
-    assert run.calls == [] and lines == ["skipped corpus: ... exists"]
+    assert run.calls == [] and lines == ["skipped corpus-stuntisl: ... exists"]
 
 def test_fetch_removes_a_leftover_new_folder_first(tmp_path): ...
 
