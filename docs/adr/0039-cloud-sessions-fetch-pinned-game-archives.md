@@ -27,9 +27,11 @@ in it, the agent included, can read.
   every `references.toml` row it holds. An offline test fails when those digests disagree with
   `references.toml`, so promoting a reference repacks `captures` in the same PR.
 - **A scoped read token, fetched with curl.** Cloud sessions hold an R2 token with Object Read
-  only, scoped to the bucket, as environment variables of the cloud environment. `mise run
-  cloud-assets -- fetch` downloads with `curl --aws-sigv4` against R2's S3 API, passing the key
-  pair on standard input, and checks size and sha256 before unpacking. The owner uploads from
+  only, scoped to the bucket, preferably as an AWS SigV4 network secret of the cloud
+  environment, which Anthropic's proxy attaches outside the session; as environment variables
+  it works too. `mise run cloud-assets -- fetch` downloads with curl against R2's S3 API,
+  unsigned for the proxy to sign, or with `--aws-sigv4` and the key pair on standard input when
+  the variables hold it, and checks size and sha256 before unpacking. The owner uploads from
   the primary machine with a pinned `wrangler` and their `wrangler login`; no long-lived write
   key exists.
 - **Fetch writes only an absent folder.** Each archive fills one folder of the data root. Fetch

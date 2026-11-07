@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "CURL_ARGV",
+    "KEY_PAIR_ENV",
     "MANIFEST_PATH",
     "REQUIRED_ENV",
     "WRANGLER_VERSION",
@@ -60,8 +61,12 @@ ZSTD_LEVEL = 19
 #: The archive whose `references` table pins the reference captures it holds.
 CAPTURES = "captures"
 
-#: The cloud environment variables a download needs (docs/harness-setup.md, "Cloud sessions").
-REQUIRED_ENV = ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
+#: The cloud environment variable a download needs (docs/harness-setup.md, "Cloud sessions").
+REQUIRED_ENV = ("R2_ACCOUNT_ID",)
+
+#: The R2 key pair: both set, curl signs; neither, the requests go unsigned for a network
+#: secret on the cloud environment to sign at Anthropic's proxy.
+KEY_PAIR_ENV = ("R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
 
 #: curl reads the whole request, the key pair included, from the config on standard input.
 CURL_ARGV = ("curl", "--silent", "--show-error", "--fail", "--config", "-")
@@ -326,7 +331,7 @@ def check_references(manifest: Manifest, repo: Path = REPO_ROOT) -> list[str]:
 
 
 class MissingCredentials(CloudAssetsError):  # noqa: N818 - names what is unset, as the CLI says
-    """A variable of :data:`REQUIRED_ENV` is unset; the command line exits 2."""
+    """:data:`REQUIRED_ENV` or half of :data:`KEY_PAIR_ENV` is unset; the command line exits 2."""
 
 
 #: Runs curl's argv with the given standard input to completion, capturing text output.
@@ -347,19 +352,19 @@ def _quoted(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def curl_config(url: str, key_id: str, secret: str, output: Path) -> str:
-    """The curl config that downloads *url* to *output*, signed with R2's S3 key pair."""
-    return "".join(
-        f"{name} = {_quoted(value)}\n"
-        for name, value in (
-            ("url", url),
+def curl_config(url: str, output: Path, key_pair: tuple[str, str] | None) -> str:
+    """The curl config that downloads *url* to *output*, signed with *key_pair* when given."""
+    options = [("url", url)]
+    if key_pair is not None:
+        key_id, secret = key_pair
+        options += [
             ("aws-sigv4", "aws:amz:auto:s3"),
             ("user", f"{key_id}:{secret}"),
             # R2 rejects a signed request without it; curl signs the header it is given.
             ("header", "x-amz-content-sha256: UNSIGNED-PAYLOAD"),
-            ("output", str(output)),
-        )
-    )
+        ]
+    options.append(("output", str(output)))
+    return "".join(f"{name} = {_quoted(value)}\n" for name, value in options)
 
 
 def _redacted(text: str, secrets: Sequence[str]) -> str:
@@ -369,15 +374,19 @@ def _redacted(text: str, secrets: Sequence[str]) -> str:
     return text
 
 
-def _credentials(env: Mapping[str, str]) -> tuple[str, str, str]:
+def _credentials(env: Mapping[str, str]) -> tuple[str, tuple[str, str] | None]:
+    """The account id, and the key pair or ``None`` when a network secret signs instead."""
+    pair = [name for name in KEY_PAIR_ENV if env.get(name)]
     missing = [name for name in REQUIRED_ENV if not env.get(name)]
+    if len(pair) == 1:
+        missing += [name for name in KEY_PAIR_ENV if name not in pair]
     if missing:
         raise MissingCredentials(
             f"{', '.join(missing)} not set; set them in the cloud environment "
             '(docs/harness-setup.md, "Cloud sessions")'
         )
-    account, key_id, secret = (env[name] for name in REQUIRED_ENV)
-    return account, key_id, secret
+    key_id, secret = (env.get(name, "") for name in KEY_PAIR_ENV)
+    return env[REQUIRED_ENV[0]], ((key_id, secret) if pair else None)
 
 
 def _download(
@@ -389,16 +398,19 @@ def _download(
     run: CurlRunner,
 ) -> bytes:
     """The bytes at *key*, checked against *archive*'s size and sha256."""
-    account, key_id, secret = _credentials(env)
+    account, key_pair = _credentials(env)
     part = data_root / DOWNLOAD_DIRNAME / f"{PurePosixPath(key).name}.part"
     part.parent.mkdir(parents=True, exist_ok=True)
-    url = f"https://{account}.r2.cloudflarestorage.com/{manifest.bucket}/{key}"
+    host = f"{account}.r2.cloudflarestorage.com"
+    url = f"https://{host}/{manifest.bucket}/{key}"
     try:
-        result = run(CURL_ARGV, curl_config(url, key_id, secret, part))
+        result = run(CURL_ARGV, curl_config(url, part, key_pair))
         if result.returncode != 0:
-            detail = _redacted(result.stderr.strip(), (secret, key_id)) or "no message"
+            detail = _redacted(result.stderr.strip(), key_pair or ()) or "no message"
             hint = ""
-            if "403" in detail:
+            if "403" in detail and key_pair is None:
+                hint = f"; check the cloud environment's network secret for {host}"
+            elif "403" in detail:
                 hint = f"; check that the token can read the bucket {manifest.bucket}"
             raise CloudAssetsError(
                 f"{archive.name}: curl could not download {key} "
@@ -447,8 +459,8 @@ def fetch(
     ``skipped <name>: <folder> exists``. An existing folder is never touched (ADR 0039).
 
     Raises:
-        MissingCredentials: a download is needed and a variable of :data:`REQUIRED_ENV` is
-            unset.
+        MissingCredentials: a download is needed and :data:`REQUIRED_ENV` or half of
+            :data:`KEY_PAIR_ENV` is unset.
         CloudAssetsError: no such archive, one not packed yet, curl failed, the bytes differ
             from the pin, or a member would land outside its folder.
     """

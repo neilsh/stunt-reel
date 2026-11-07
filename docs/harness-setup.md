@@ -143,14 +143,20 @@ token works just as well, so nothing would flag it, and a leaked one reads the w
 
 In claude.ai, the cloud environment for this repo:
 
-- **Environment variables:** `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` from
-  the token, and `STUNT_DATA_ROOT`, an absolute path outside the checkout, such as
-  `/root/stunt-reel.data`. Also `MISE_AUTO_INSTALL=false` and `MISE_USE_VERSIONS_HOST=false`,
-  as CI sets them: otherwise the first `mise run` in a session installs every tool `mise.toml`
-  declares, compiling the cargo ones from source.
-- **Network access:** the default trusted list plus `<account_id>.r2.cloudflarestorage.com`.
-  The setup script downloads from GitHub releases, `static.rust-lang.org`, PyPI and the Ubuntu
-  mirror, all on the default list.
+- **Network secret** (preferred): type **AWS SigV4**, with the token's access key id and
+  secret access key, region `auto`, service `s3`, allowed website
+  `<account_id>.r2.cloudflarestorage.com`. Anthropic's proxy signs each request to that host
+  as it leaves the session, so the key never enters it. Alternatively, set
+  `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` as environment variables and curl signs;
+  anyone who uses the environment can read those.
+- **Environment variables:** `R2_ACCOUNT_ID`, not a secret, and `STUNT_DATA_ROOT`, an absolute
+  path outside the checkout, such as `/root/stunt-reel.data`. Also `MISE_AUTO_INSTALL=false`
+  and `MISE_USE_VERSIONS_HOST=false`, as CI sets them: otherwise the first `mise run` in a
+  session installs every tool `mise.toml` declares, compiling the cargo ones from source.
+- **Network access:** the default trusted list. The setup script downloads from GitHub
+  releases, `static.rust-lang.org`, PyPI and the Ubuntu mirror, all on it. A network secret's
+  host needs no entry; with the key pair in environment variables instead, add
+  `<account_id>.r2.cloudflarestorage.com`.
 - **Setup script.** It installs mise at a pinned, checksum-checked release, then from the
   checkout's `mise.lock` the tools the gate needs (not the DOSBox tool), then lavapipe as CI
   does ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)). It fetches nothing: it runs before the
@@ -197,8 +203,9 @@ pins of the commit it starts from. The hook prints one line to the session, `rea
 `fetch` skips an archive whose folder already exists, so a resumed session downloads nothing
 and keeps the pins it fetched first. To take a newer pin there, delete that folder under
 `$STUNT_DATA_ROOT` and fetch again.
-`mise run cloud-assets -- status` shows each pin and folder. Exit 2 means an `R2_*` variable is
-unset; a 403 means the token cannot read the bucket.
+`mise run cloud-assets -- status` shows each pin and folder. Exit 2 means `R2_ACCOUNT_ID`, or
+one half of the key pair, is unset; a 403 means the network secret or the token cannot read the
+bucket.
 
 ### Publishing new archives (owner, primary machine)
 
@@ -212,7 +219,8 @@ unset; a 403 means the token cannot read the bucket.
 ### Rotating the token
 
 Rotate on any sighting of the secret in a log, transcript or commit: create a new token as
-above, replace the two key variables in the cloud environment, then delete the old token in
+above, replace the network secret (delete it and add it again) or the two key variables in the
+cloud environment, then delete the old token in
 the dashboard.
 
 ## DSH

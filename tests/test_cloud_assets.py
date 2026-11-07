@@ -18,6 +18,7 @@ import pytest
 
 from stunt_reel import cloud_assets
 from stunt_reel.cloud_assets import (
+    KEY_PAIR_ENV,
     MANIFEST_PATH,
     REQUIRED_ENV,
     WRANGLER_VERSION,
@@ -351,11 +352,52 @@ def test_fetch_refuses_an_archive_not_yet_packed(tmp_path: Path) -> None:
     assert run.calls == []
 
 
-def test_fetch_names_missing_credentials(tmp_path: Path) -> None:
+def test_fetch_needs_the_account_id(tmp_path: Path) -> None:
     m, data = _packed(tmp_path, {"RES/GAME.RES": b"game"})
-    env = {"R2_ACCOUNT_ID": "ACCT"}
-    with pytest.raises(MissingCredentials, match="R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY"):
+    env = {"R2_ACCESS_KEY_ID": "KEYID", "R2_SECRET_ACCESS_KEY": "SECRET"}
+    with pytest.raises(MissingCredentials, match="R2_ACCOUNT_ID"):
         fetch(m, ["corpus-stuntisl"], tmp_path / "data", env, run=FakeCurl(data))
+
+
+@pytest.mark.parametrize("present", ["R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"])
+def test_fetch_refuses_half_a_key_pair(tmp_path: Path, present: str) -> None:
+    m, data = _packed(tmp_path, {"RES/GAME.RES": b"game"})
+    env = {"R2_ACCOUNT_ID": "ACCT", present: "X"}
+    (absent,) = {"R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"} - {present}
+    run = FakeCurl(data)
+    with pytest.raises(MissingCredentials, match=absent):
+        fetch(m, ["corpus-stuntisl"], tmp_path / "data", env, run=run)
+    assert run.calls == []
+
+
+def test_fetch_without_a_key_pair_leaves_signing_to_the_proxy(tmp_path: Path) -> None:
+    m, data = _packed(tmp_path, {"RES/GAME.RES": b"game"})
+    run = FakeCurl(data)
+    lines = fetch(m, ["corpus-stuntisl"], tmp_path / "data", {"R2_ACCOUNT_ID": "ACCT"}, run=run)
+    [(_, stdin)] = run.calls
+    key = m.archives["corpus-stuntisl"].key
+    assert lines == [f"fetched corpus-stuntisl -> {tmp_path / 'data' / 'corpus/stuntisl'}"]
+    assert (
+        f'url = "https://ACCT.r2.cloudflarestorage.com/stunt-reel-internal-assets/{key}"' in stdin
+    )
+    assert "aws-sigv4" not in stdin
+    assert "user =" not in stdin
+    assert "x-amz-content-sha256" not in stdin
+
+
+def test_fetch_without_a_key_pair_points_a_403_at_the_network_secret(tmp_path: Path) -> None:
+    m, _ = _packed(tmp_path, {"RES/GAME.RES": b"game"})
+    stderr = "curl: (22) The requested URL returned error: 403"
+    with pytest.raises(
+        CloudAssetsError, match=r"network secret for ACCT\.r2\.cloudflarestorage\.com"
+    ):
+        fetch(
+            m,
+            ["corpus-stuntisl"],
+            tmp_path / "data",
+            {"R2_ACCOUNT_ID": "ACCT"},
+            run=FakeCurl(returncode=22, stderr=stderr),
+        )
 
 
 def test_fetch_passes_the_key_pair_only_on_standard_input(tmp_path: Path) -> None:
@@ -392,7 +434,7 @@ def test_fetch_reports_a_403_without_the_secret(tmp_path: Path) -> None:
 
 
 def test_curl_config_escapes_quotes_and_backslashes() -> None:
-    text = curl_config("https://x/y", "id", r'se"c\ret', Path("out.part"))
+    text = curl_config("https://x/y", Path("out.part"), ("id", r'se"c\ret'))
     assert r'user = "id:se\"c\\ret"' in text
 
 
@@ -501,7 +543,7 @@ def _script() -> Any:
 def test_main_exits_2_without_credentials(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    for name in REQUIRED_ENV:
+    for name in (*REQUIRED_ENV, *KEY_PAIR_ENV):
         monkeypatch.delenv(name, raising=False)
     script = _script()
     m, _ = _packed(tmp_path, {"RES/GAME.RES": b"game"})
