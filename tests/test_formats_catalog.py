@@ -23,10 +23,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_formats_catalog_file_presence() -> None:
-    """Verify that all 14 documentation catalog files exist and are non-empty."""
+    """Verify that all 16 documentation catalog files exist and are non-empty."""
     result = verify_formats_docs.verify_file_presence(REPO_ROOT)
     assert result.passed, f"File presence check failed: {result.errors}"
-    assert len(result.details) == 14
+    assert len(result.details) == 16
 
 
 def test_formats_catalog_schema_conformance() -> None:

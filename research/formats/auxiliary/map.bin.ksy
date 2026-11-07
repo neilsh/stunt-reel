@@ -1,9 +1,9 @@
 # Executable structural layout of `MAP.BIN`.
 # Format anchor: [FMT-MAP-AREA] in map.md.
 #
-# 179 patches of 30 bytes plus a two-byte null terminator (5,372 bytes)
-# across the six corpus copies. Field semantics for `num`, `bounds`, and
-# `vertex_indices` remain unresolved; only their width is encoded.
+# The file is the list-head word and the record pool of `SITools/SD.EXE`'s
+# terrain editor, saved up to the last record in use (map.md section 2.3):
+# 2 + 179 x 30 = 5,372 bytes in every corpus copy.
 meta:
   id: map_area
   title: Stunt Island terrain patch table (`MAP.BIN`)
@@ -11,51 +11,63 @@ meta:
   ks-version: 0.11
   endian: le
 doc: |
-  The `MAP_AREA` terrain patch table and its two-byte terminator.
+  `SD.EXE`'s terrain patch pool: a list head, then 30-byte patch records.
   Meaning is in `map.md`.
 seq:
+  - id: head
+    type: s2
+    doc: |
+      `30 * index` of the first top-level patch, or -1 for none. The build
+      walks the patch lists from here.
   - id: patches
     type: patch
-    repeat: expr
-    repeat-expr: 179
-  - id: terminator
-    type: u2
-    valid:
-      expr: _ == 0
-    doc: Null word marking the end of the patch table.
+    repeat: eos
 types:
   patch:
     seq:
-      - id: num
+      - id: in_use
+        type: u1
+        doc: |
+          Non-zero for a record in use. Free records keep the in-memory forms
+          of their links (`2 + 30 * index`, 0 for none) and vertices
+          (`4 + 28 * index`).
+      - id: block
+        type: u1
+        doc: |
+          Leaf of the `REGIONS.BIN` block tree a top-level patch is compiled
+          under; 0 on child patches.
+      - id: next
+        -orig-id: a
+        type: s2
+        doc: "`30 * index` of the next patch in the same list, or -1."
+      - id: first_child
+        -orig-id: b
         type: s2
         doc: |
-          Observed values are not a 0..178 sequence (the first record is
-          540). Kept raw until the field is decoded; see BK-MAP-03.
-      - id: pos
+          `30 * index` of the first of the finer patches that replace this one
+          within its split distance, or -1.
+      - id: split_distance_x2
+        -orig-id: c
         type: s2
-        doc: Sector activity word; low byte non-zero marks an active patch.
-      - id: bounds
-        -orig-id: "a, b, c, d"
+        doc: Twice the `SP_GROUND` split distance; read only when `first_child` is set.
+      - id: parent
+        -orig-id: d
         type: s2
-        repeat: expr
-        repeat-expr: 4
-        doc: Bounding box limits or neighboring patch links; unresolved.
+        doc: "`30 * index` of the patch whose `first_child` list holds this one, or -1."
       - id: color
         type: s2
         doc: Mode 13h palette index for flat terrain shading.
       - id: num_verts
         type: s2
         doc: |
-          Active vertex count of this terrain polygon. 178 of 179 records carry
-          3..7; patch 131 reads 8 in every corpus copy and patch 22 of one copy
-          reads 2, so the field is not constrained here (BK-MAP-05).
-          `verify-corpus` reports those records as anomalies.
+          Vertex count, 3..8 in every record in use except patch 22 of one
+          community copy, which reads 2; `verify-corpus` reports it.
       - id: vertex_indices
-        -orig-id: "v[7]"
+        -orig-id: "v[8]"
         type: u2
         repeat: expr
-        repeat-expr: 7
+        repeat-expr: 8
         doc: |
-          Index words for this polygon. Corpus values exceed the 1023 range
-          of ANCHORPT point indices, so the indexing rule is unresolved.
+          `ANCHORPT.DAT` record indices; only the first `num_verts` are
+          meaningful.
     doc: One 30-byte terrain patch record.

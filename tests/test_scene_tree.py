@@ -20,10 +20,15 @@ def _segment(words: dict[int, list[int]], size: int = 0x100) -> bytes:
     return bytes(buf)
 
 
-def _map_record(pos: int, colour: int, anchors: list[int]) -> bytes:
-    """Build one 30-byte MAP.BIN record with the given colour and anchors."""
-    slots = (anchors + [0xFFFF] * 7)[:7]
-    return struct.pack("<8h7H", 0, pos, -1, -1, 0, -1, colour, len(anchors), *slots)
+def _map_record(pos: int, colour: int, anchors: list[int], nxt: int = -1) -> bytes:
+    """Build one 30-byte MAP.BIN record with the given colour, anchors and next link."""
+    slots = (anchors + [0xFFFF] * 8)[:8]
+    return struct.pack("<7h8H", pos, nxt, -1, 100, -1, colour, len(anchors), *slots)
+
+
+def _map_bin(*records: bytes) -> bytes:
+    """A MAP.BIN of ``records`` behind a list head naming the first."""
+    return struct.pack("<h", 0) + b"".join(records)
 
 
 # Root 2NODE -> GLEAF (195, anchors 1,2,3) and a LIST holding a LEAF and a GROUND whose coarse
@@ -66,11 +71,11 @@ def test_walk_reports_unknown_node_types() -> None:
 
 def test_compare_against_map_bin() -> None:
     """Polygons pair with MAP.BIN records by anchor set, and colours compare."""
-    map_bin = (
-        _map_record(1, 195, [3, 2, 1])  # same polygon, other vertex order
-        + _map_record(1, 15, [4, 5, 6])  # recoloured
-        + _map_record(1, 91, [7, 8, 9])  # map only
-        + _map_record(0, 50, [10, 11, 12])  # inactive: ignored
+    map_bin = _map_bin(
+        _map_record(1, 195, [3, 2, 1]),  # same polygon, other vertex order
+        _map_record(1, 15, [4, 5, 6]),  # recoloured
+        _map_record(1, 91, [7, 8, 9]),  # map only
+        _map_record(0, 50, [10, 11, 12]),  # inactive: ignored
     )
     patches = scene_tree.parse_map_bin(map_bin)
     assert [p.index for p in patches] == [0, 1, 2]
@@ -95,20 +100,32 @@ def test_walk_keeps_all_eight_anchors_of_a_leaf() -> None:
     assert poly.anchors == (1, 2, 3, 4, 5, 6, 7, 8)
 
 
-def test_parse_map_bin_reads_an_eighth_vertex_from_the_next_record() -> None:
-    """A count of 8 takes the next record's first word as its eighth anchor (patch 131)."""
-    eight = struct.pack("<8h7H", 0, 1, -1, -1, 0, -1, 14, 8, *range(1, 8))
-    nxt = struct.pack("<H", 50) + _map_record(1, 15, [9, 10, 11])[2:]
-    (first, _) = scene_tree.parse_map_bin(eight + nxt)
-    assert first.anchors == (1, 2, 3, 4, 5, 6, 7, 50)
-    (last,) = scene_tree.parse_map_bin(eight)
-    assert last.anchors == (1, 2, 3, 4, 5, 6, 7)
+def test_parse_map_bin_reads_eight_vertex_slots_after_the_list_head() -> None:
+    """Records start after the 2-byte head and hold eight slots, so patch 131's last is its own."""
+    map_bin = _map_bin(
+        _map_record(1, 14, [1, 2, 3, 4, 5, 6, 7, 50]), _map_record(1, 15, [9, 10, 11])
+    )
+    (first, second) = scene_tree.parse_map_bin(map_bin)
+    assert (first.colour, first.anchors) == (14, (1, 2, 3, 4, 5, 6, 7, 50))
+    assert (second.index, second.anchors) == (1, (9, 10, 11))
+    (only,) = scene_tree.parse_map_bin(map_bin[:-1])  # a partial last record is not read
+    assert only.index == 0
+
+
+def test_parse_map_bin_counts_vertices_as_world_rs_does() -> None:
+    """Fewer than three vertices is no polygon; a negative count reads all eight slots."""
+    negative = bytearray(_map_record(1, 16, list(range(1, 9))))
+    struct.pack_into("<h", negative, 12, -1)
+    patches = scene_tree.parse_map_bin(
+        _map_bin(_map_record(1, 15, [1, 2]), bytes(negative), _map_record(1, 17, []))
+    )
+    assert [(p.index, p.anchors) for p in patches] == [(1, (1, 2, 3, 4, 5, 6, 7, 8))]
 
 
 def test_compare_matches_each_record_at_most_once() -> None:
     """Two records sharing an anchor set are each matched at most once."""
     twin = scene_tree.GroundPolygon("gleaf", 0, 195, (1, 2, 3))
-    patches = scene_tree.parse_map_bin(_map_record(1, 195, [1, 2, 3]) * 2)
+    patches = scene_tree.parse_map_bin(_map_bin(*[_map_record(1, 195, [1, 2, 3])] * 2))
     one = scene_tree.compare([twin], patches)
     assert one.same == 1
     assert [m.index for m in one.map_only] == [1]
@@ -122,7 +139,7 @@ def test_compare_matches_each_record_at_most_once() -> None:
 def test_compare_pairs_same_colour_before_recolouring() -> None:
     """A recoloured fallback never takes the record another polygon matches exactly."""
     patches = scene_tree.parse_map_bin(
-        _map_record(1, 14, [1, 2, 3]) + _map_record(1, 195, [1, 2, 3])
+        _map_bin(_map_record(1, 14, [1, 2, 3]), _map_record(1, 195, [1, 2, 3]))
     )
     other = scene_tree.GroundPolygon("gleaf", 0, 195, (1, 2, 3))
     exact = scene_tree.GroundPolygon("gleaf", 0, 14, (1, 2, 3))
@@ -133,10 +150,10 @@ def test_compare_pairs_same_colour_before_recolouring() -> None:
 
 
 def test_check_map_bin_rejects_empty_and_truncated() -> None:
-    """Empty, short or unterminated MAP.BIN data is refused."""
-    whole = b"\0" * (scene_tree.MAP_RECORDS * scene_tree.MAP_RECORD + 2)
+    """Empty, head-only or partial-record MAP.BIN data is refused."""
+    whole = b"\0" * (scene_tree.MAP_HEAD + scene_tree.MAP_RECORDS * scene_tree.MAP_RECORD)
     scene_tree.check_map_bin(whole)
-    for bad in (b"", whole[:-1], whole[:-2] + b"\0"):
+    for bad in (b"", whole[: scene_tree.MAP_HEAD], whole[:-1]):
         with pytest.raises(ValueError, match=r"MAP\.BIN"):
             scene_tree.check_map_bin(bad)
 
@@ -146,7 +163,9 @@ def test_cli_stops_on_unknown_nodes(tmp_path: Path, capsys: pytest.CaptureFixtur
     image = tmp_path / "img.bin"
     image.write_bytes(b"\0" * scene_tree.TREE_IMAGE_OFFSET + _segment({0x00: [7]}))
     map_path = tmp_path / "MAP.BIN"
-    map_path.write_bytes(b"\0" * (scene_tree.MAP_RECORDS * scene_tree.MAP_RECORD + 2))
+    map_path.write_bytes(
+        b"\0" * (scene_tree.MAP_HEAD + scene_tree.MAP_RECORDS * scene_tree.MAP_RECORD)
+    )
     assert scene_ground.main([str(image), str(map_path)]) == 1
     assert "unknown node type 7 at 0x0000" in capsys.readouterr().err
     map_path.write_bytes(b"")
@@ -245,14 +264,14 @@ def test_scene_patches_reports_a_patch_with_no_polygon(
         struct.pack_into("<3h", image, scene_tree.ANCHOR_TABLE_OFFSET + 28 * k, x, 0, z)
     image_path = tmp_path / "img.bin"
     image_path.write_bytes(bytes(image))
-    records = (
-        _map_record(1, 195, [1, 2, 3])
-        + _map_record(1, 14, [4, 5, 6])
-        + _map_record(1, 91, [4, 6, 5])
+    records = _map_bin(
+        _map_record(1, 195, [1, 2, 3]),
+        _map_record(1, 14, [4, 5, 6]),
+        _map_record(1, 91, [4, 6, 5]),
     )
-    pad = scene_tree.MAP_RECORDS * scene_tree.MAP_RECORD - len(records)
+    pad = scene_tree.MAP_HEAD + scene_tree.MAP_RECORDS * scene_tree.MAP_RECORD - len(records)
     map_path = tmp_path / "MAP.BIN"
-    map_path.write_bytes(records + b"\0" * (pad + 2))
+    map_path.write_bytes(records + b"\0" * pad)
     scn_path = tmp_path / "SCENERY.scn"
     scn_path.write_bytes(_scn(TREE, TREE_LINKS))
     scan = tmp_path / "scan"
@@ -298,15 +317,15 @@ def test_placements_carry_the_position_above_them() -> None:
 
 def test_map_links_and_chains() -> None:
     """``a`` names a record by byte offset; chains start where nothing links in."""
-    records = [
-        struct.pack("<8h7H", 0, 0x00FF, 30, -1, 0, -1, 1, 3, 1, 2, 3, 0, 0, 0, 0),
-        struct.pack("<8h7H", 0, 0x00FF, -1, -1, 0, -1, 1, 3, 1, 2, 3, 0, 0, 0, 0),
-        struct.pack("<8h7H", 0, 0x07FF, -1, -1, 0, -1, 1, 3, 1, 2, 3, 0, 0, 0, 0),
-    ]
-    links = scene_tree.map_links(b"".join(records))
+    map_bin = _map_bin(
+        _map_record(0x00FF, 1, [1, 2, 3], nxt=30),
+        _map_record(0x00FF, 1, [1, 2, 3]),
+        _map_record(0x07FF, 1, [1, 2, 3]),
+    )
+    links = scene_tree.map_links(map_bin)
     assert links == {0: (0x00FF, 1), 1: (0x00FF, -1), 2: (0x07FF, -1)}
     assert scene_tree.link_chains(links) == [[0, 1], [2]]
-    lines = scene_patches.record_fields(b"".join(records), {1})
+    lines = scene_patches.record_fields(map_bin, {1})
     assert lines == [
         "pos 0x00FF: on 1 drawn records [0]",
         "a chains no record links into (under 10 long): 0->1 (no polygon), 2",
@@ -316,7 +335,7 @@ def test_map_links_and_chains() -> None:
 def test_matched_records_and_scene_ground_report() -> None:
     """Each coarse polygon is reported with the record it matches."""
     patches = scene_tree.parse_map_bin(
-        _map_record(1, 195, [1, 2, 3]) + _map_record(1, 14, [6, 5, 4])
+        _map_bin(_map_record(1, 195, [1, 2, 3]), _map_record(1, 14, [6, 5, 4]))
     )
     walked = scene_tree.walk(TREE)
     pairs = scene_tree.matched_records(walked.polygons, patches)

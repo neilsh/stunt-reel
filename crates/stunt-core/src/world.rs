@@ -476,42 +476,39 @@ pub(crate) struct MapArea {
 /// so were drawn; the other six already fail [`patch_corners`].
 const PATCHES_PLAYONE_NEVER_DRAWS: [usize; 8] = [52, 53, 54, 55, 62, 63, 64, 65];
 
-/// Parses 30-byte polygon patch records from `MAP.BIN`, leaving out the records in
-/// [`PATCHES_PLAYONE_NEVER_DRAWS`].
+/// Bytes of `MAP.BIN`'s list head, before the first record (`research/formats/auxiliary/map.md`
+/// section 2.3).
+const MAP_HEAD: usize = 2;
+/// Vertex slots in a `MAP.BIN` record.
+const MAP_SLOTS: usize = 8;
+
+/// Parses the 30-byte polygon patch records that follow `MAP.BIN`'s 2-byte list head, leaving
+/// out the records in [`PATCHES_PLAYONE_NEVER_DRAWS`].
 pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
-    let (records, _partial) = data.as_chunks::<30>();
+    let (records, _partial) = data.get(MAP_HEAD..).unwrap_or_default().as_chunks::<30>();
     let mut areas = Vec::new();
     for (index, record) in records.iter().enumerate() {
         if PATCHES_PLAYONE_NEVER_DRAWS.contains(&index) {
             continue;
         }
         // Constant indices into the fixed 30-byte record, so none can fall outside it.
-        let pos = i16::from_le_bytes([record[2], record[3]]);
-        if pos.trailing_zeros() >= 8 {
-            continue;
+        if record[0] == 0 {
+            continue; // a free record
         }
-        let color = record[12];
-        // A negative count reads as more than seven, as the sign-extending cast it replaces did.
-        let num_verts = i16::from_le_bytes([record[14], record[15]]);
-        let nverts = usize::try_from(num_verts).map_or(7, |n| n.min(8));
+        let color = record[10];
+        // A negative count reads every slot, as the sign-extending cast it replaces did.
+        let num_verts = i16::from_le_bytes([record[12], record[13]]);
+        let nverts = usize::try_from(num_verts).map_or(MAP_SLOTS, |n| n.min(MAP_SLOTS));
         if nverts < 3 {
             continue;
         }
-        // Bytes 16..30 hold seven little-endian anchor indices. An eighth (patch 131 counts 8)
-        // is the next record's first word, where PLAYONE's own leaf for that patch has it
-        // (research/playone-exe/world-scene.md section 2); the last record keeps seven.
+        // Bytes 14..30 hold eight little-endian anchor indices.
         let (vert_words, _) = record.as_chunks::<2>();
-        let eighth = index
-            .checked_add(1)
-            .and_then(|next| records.get(next))
-            .map(|next| u16::from_le_bytes([next[0], next[1]]));
         let verts: Vec<usize> = vert_words
             .iter()
-            .skip(8)
-            .map(|&word| u16::from_le_bytes(word))
-            .chain(eighth)
+            .skip(7)
             .take(nverts)
-            .map(usize::from)
+            .map(|&word| usize::from(u16::from_le_bytes(word)))
             .collect();
         if verts.iter().all(|&v_idx| v_idx < anchor_count) {
             areas.push(MapArea { color, verts });
@@ -1252,25 +1249,31 @@ mod tests {
         assert!(!anchors[1].is_valid());
     }
 
+    /// One 30-byte `MAP.BIN` record: `flags` (in-use byte, block byte), `color`, and `verts`.
+    fn map_record(flags: u16, color: u8, verts: &[u16]) -> Vec<u8> {
+        let mut rec = Vec::with_capacity(30);
+        rec.extend(flags.to_le_bytes());
+        rec.extend([-1i16, -1, 100, -1].iter().flat_map(|w| w.to_le_bytes()));
+        rec.extend([color, 0]);
+        rec.extend(i16::try_from(verts.len()).unwrap().to_le_bytes());
+        rec.extend(verts.iter().flat_map(|v| v.to_le_bytes()));
+        rec.resize(30, 0);
+        rec
+    }
+
+    /// A `MAP.BIN` of `records` behind a list head naming the first.
+    fn map_bin(records: &[Vec<u8>]) -> Vec<u8> {
+        let mut data = 0i16.to_le_bytes().to_vec();
+        data.extend(records.concat());
+        data
+    }
+
     #[test]
     fn test_parse_map_bin_filtering() {
-        let mut data = vec![0u8; 60]; // 2 records of 30 bytes
-        // Record 0: valid active quad, color 150, 4 vertices (indices 0, 1, 2, 3)
-        data[0..2].copy_from_slice(&1i16.to_le_bytes()); // num
-        data[2..4].copy_from_slice(&0x01FFi16.to_le_bytes()); // pos (active)
-        data[12] = 150; // color
-        data[14..16].copy_from_slice(&4i16.to_le_bytes()); // num_verts = 4
-        data[16..18].copy_from_slice(&0u16.to_le_bytes());
-        data[18..20].copy_from_slice(&1u16.to_le_bytes());
-        data[20..22].copy_from_slice(&2u16.to_le_bytes());
-        data[22..24].copy_from_slice(&3u16.to_le_bytes());
-
-        // Record 1: inactive polygon (pos & 0xFF == 0)
-        data[30..32].copy_from_slice(&2i16.to_le_bytes());
-        data[32..34].copy_from_slice(&0x0100i16.to_le_bytes()); // pos & 0xFF == 0
-        data[42] = 160;
-        data[44..46].copy_from_slice(&3i16.to_le_bytes());
-
+        let data = map_bin(&[
+            map_record(0x01FF, 150, &[0, 1, 2, 3]), // in use: a quad
+            map_record(0x0100, 160, &[0, 1, 2]),    // free: in-use byte 0
+        ]);
         let areas = parse_map_bin(&data, 10);
         assert_eq!(areas.len(), 1);
         assert_eq!(areas[0].color, 150);
@@ -1282,25 +1285,17 @@ mod tests {
     }
 
     #[test]
-    fn an_eight_vertex_patch_takes_its_last_anchor_from_the_next_record() {
-        // MAP.BIN patch 131 counts 8 vertices in a record with 7 slots; PLAYONE's own leaf for
-        // it has all 8, the eighth being the next record's `num` word (world-scene.md section 2).
-        let mut data = vec![0u8; 60];
-        data[2..4].copy_from_slice(&0x01FFi16.to_le_bytes());
-        data[14..16].copy_from_slice(&8i16.to_le_bytes());
-        for (slot, word) in data[16..30].as_chunks_mut::<2>().0.iter_mut().zip(0u16..) {
-            slot.copy_from_slice(&word.to_le_bytes());
-        }
-        data[30..32].copy_from_slice(&7i16.to_le_bytes()); // next record's num = anchor 7
+    fn a_record_holds_eight_vertex_slots_after_the_list_head() {
+        // MAP.BIN patch 131 has 8 vertices, all in its own record once the 2-byte list head
+        // is accounted for (research/formats/auxiliary/map.md section 2).
+        let data = map_bin(&[
+            map_record(0x01FF, 14, &[0, 1, 2, 3, 4, 5, 6, 7]),
+            map_record(0x01FF, 15, &[7, 8, 9]),
+        ]);
         let areas = parse_map_bin(&data, 10);
-        assert_eq!(areas.len(), 1);
+        assert_eq!(areas.len(), 2);
         assert_eq!(areas[0].verts, vec![0, 1, 2, 3, 4, 5, 6, 7]);
-
-        // As the file's last record there is no next word, so the patch keeps its 7 slots.
-        assert_eq!(
-            parse_map_bin(&data[..30], 10)[0].verts,
-            vec![0, 1, 2, 3, 4, 5, 6]
-        );
+        assert_eq!(areas[1].verts, vec![7, 8, 9]);
     }
 
     /// `parse_map_bin` leaves out the `MAP.BIN` records in `PATCHES_PLAYONE_NEVER_DRAWS` and
@@ -1310,15 +1305,13 @@ mod tests {
         // 70 active triangles, each coloured by its record index; records 52-55 and 62-65 are
         // the patches with no leaf in PLAYONE's scene tree (world-scene.md section 2.1). The
         // records past 65 show the skip does not end the parse.
-        let mut data = vec![0u8; 70 * 30];
-        for (index, record) in data.as_chunks_mut::<30>().0.iter_mut().enumerate() {
-            record[2..4].copy_from_slice(&0x00FFi16.to_le_bytes());
-            record[12] = u8::try_from(index).unwrap();
-            record[14..16].copy_from_slice(&3i16.to_le_bytes());
-            record[18..20].copy_from_slice(&1u16.to_le_bytes());
-            record[20..22].copy_from_slice(&2u16.to_le_bytes());
-        }
-        let colours: Vec<u8> = parse_map_bin(&data, 3).iter().map(|a| a.color).collect();
+        let records: Vec<Vec<u8>> = (0..70u8)
+            .map(|index| map_record(0x00FF, index, &[0, 1, 2]))
+            .collect();
+        let colours: Vec<u8> = parse_map_bin(&map_bin(&records), 3)
+            .iter()
+            .map(|a| a.color)
+            .collect();
         let expected: Vec<u8> = (0..70)
             .filter(|i| !matches!(i, 52..=55 | 62..=65))
             .collect();
@@ -1332,13 +1325,14 @@ mod tests {
         anchors[0..2].copy_from_slice(&7i16.to_le_bytes());
         assert_eq!(parse_anchor_table(&anchors).len(), 1);
 
-        let mut map = vec![0u8; 30 + 20];
-        map[2..4].copy_from_slice(&0x01FFi16.to_le_bytes());
-        map[14..16].copy_from_slice(&3i16.to_le_bytes());
-        // The partial second record claims a patch too, but only the whole first one counts.
-        map[32..34].copy_from_slice(&0x01FFi16.to_le_bytes());
-        map[44..46].copy_from_slice(&3i16.to_le_bytes());
-        assert_eq!(parse_map_bin(&map, 10).len(), 1);
+        // The partial second record claims a patch too, but only the whole first one counts;
+        // a file shorter than its list head has no records.
+        let whole = map_bin(&[
+            map_record(0x01FF, 1, &[0, 1, 2]),
+            map_record(0x01FF, 1, &[0, 1, 2]),
+        ]);
+        assert_eq!(parse_map_bin(&whole[..whole.len() - 10], 10).len(), 1);
+        assert!(parse_map_bin(&whole[..1], 10).is_empty());
 
         // Every opcode cut off before its last operand ends the walk with nothing placed.
         let available = HashSet::from([0x0105]);

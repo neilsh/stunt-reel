@@ -24,14 +24,17 @@ ANCHOR_STRIDE: int = 28
 #: Offset of a ``SP_GLEAF`` polygon from its node, and of a ``SP_GROUND`` coarse leaf.
 GLEAF_POLYGON: int = 0x0E
 GROUND_COARSE_LEAF: int = 0x0C
+#: ``MAP.BIN``: a 2-byte list head, then 30-byte records with eight vertex slots
+#: (``map.md`` section 2.3); every corpus copy holds 179 records.
+MAP_HEAD: int = 2
 MAP_RECORD: int = 30
 MAP_RECORDS: int = 179
-MAP_SLOTS: int = 7
+MAP_SLOTS: int = 8
 ANCHORS: int = 1024
-#: The image's own anchor table: offset and record count (``map.md`` section 1).
+#: The image's own anchor table: offset and record count (``anchorpt.md`` section 1).
 ANCHOR_TABLE_OFFSET: int = 0x15D44
 IMAGE_ANCHORS: int = 231
-#: An anchor height that marks no point (``map.md`` ``[BK-MAP-08]``).
+#: An anchor height that marks no point (``anchorpt.md`` ``[BK-MAP-08]``).
 SENTINEL_Y: int = -32768
 #: ``SCENERY.scn`` links count its leading word, so they are this much higher than the image's.
 SCN_LINK_BIAS: int = 2
@@ -221,7 +224,7 @@ def scn_segment(scn: bytes) -> bytes:
     """``SCENERY.scn``'s 32-bit words as a 16-bit tree segment, without the leading ``0`` word.
 
     The image's tree is the file with 16-bit words; its links are 2 lower because the file's
-    leading word is absent (``map.md`` section 1), so walk the result with ``SCN_LINK_BIAS``.
+    leading word is absent (``scenery.md`` section 1), so walk the result with ``SCN_LINK_BIAS``.
     """
     if len(scn) % 4:
         raise ValueError("SCENERY.scn is not a whole number of 32-bit words")
@@ -344,14 +347,19 @@ def tree_segment(image: bytes) -> bytes:
     return image[TREE_IMAGE_OFFSET:]
 
 
-def map_links(data: bytes) -> dict[int, tuple[int, int]]:
-    """Every record's ``pos`` word and the record its ``a`` field names (``-1`` for none).
+def _map_record_count(data: bytes) -> int:
+    """Whole records after ``MAP.BIN``'s list head."""
+    return max(0, (len(data) - MAP_HEAD) // MAP_RECORD)
 
-    ``a`` is ``-1`` or ``30 * index`` in every corpus copy (``map.md`` ``[BK-MAP-03]``).
+
+def map_links(data: bytes) -> dict[int, tuple[int, int]]:
+    """Every record's ``pos`` word and the record its ``a`` (next) link names (``-1`` for none).
+
+    ``a`` is ``-1`` or ``30 * index`` on disk (``map.md`` section 2.2).
     """
     links = {}
-    for index in range(min(MAP_RECORDS, len(data) // MAP_RECORD)):
-        pos, a = struct.unpack_from("<Hh", data, MAP_RECORD * index + 2)
+    for index in range(_map_record_count(data)):
+        pos, a = struct.unpack_from("<Hh", data, MAP_HEAD + MAP_RECORD * index)
         links[index] = (pos, a // MAP_RECORD if a >= 0 else -1)
     return links
 
@@ -381,33 +389,27 @@ def matched_records(
 
 
 def parse_map_bin(data: bytes) -> list[MapPatch]:
-    """Active ``MAP.BIN`` records, read as the engine reads them.
+    """Active ``MAP.BIN`` records of three or more vertices that all index the 1,024-entry table.
 
-    A record has seven vertex slots; a count of eight (patch 131) takes its eighth vertex from
-    the next record's first word, as ``v[7]`` overflows into it (``map.md`` ``[BK-MAP-05]``).
+    A negative count reads all eight slots, as ``world.rs`` does.
     """
     patches = []
-    for index in range(min(MAP_RECORDS, len(data) // MAP_RECORD)):
-        r = struct.unpack_from("<15h", data, MAP_RECORD * index)
-        pos, colour, count = r[1], r[6], max(r[7], 0)
-        anchors = tuple(v & 0xFFFF for v in r[8 : 8 + min(count, MAP_SLOTS)])
-        overflow = MAP_RECORD * (index + 1)
-        if count > MAP_SLOTS and overflow + 2 <= len(data):
-            anchors += (struct.unpack_from("<H", data, overflow)[0],)
-        if pos & 0xFF and all(a < ANCHORS for a in anchors):
+    for index in range(_map_record_count(data)):
+        r = struct.unpack_from("<7h8H", data, MAP_HEAD + MAP_RECORD * index)
+        pos, colour, count = r[0], r[5], r[6]
+        slots = MAP_SLOTS if count < 0 else min(count, MAP_SLOTS)
+        anchors = tuple(r[7 : 7 + slots])
+        if pos & 0xFF and slots >= 3 and all(a < ANCHORS for a in anchors):
             patches.append(MapPatch(index, colour, anchors))
     return patches
 
 
 def check_map_bin(data: bytes) -> None:
-    """Raise ``ValueError`` unless ``data`` holds 179 records and the 2-byte null terminator."""
-    need = MAP_RECORDS * MAP_RECORD + 2
-    if len(data) < need:
+    """Raise ``ValueError`` unless ``data`` is a list head followed by whole 30-byte records."""
+    if len(data) < MAP_HEAD + MAP_RECORD or (len(data) - MAP_HEAD) % MAP_RECORD:
         raise ValueError(
-            f"MAP.BIN has {len(data)} bytes, expected {need} (179 records + terminator)"
+            f"MAP.BIN has {len(data)} bytes, not a 2-byte head and whole 30-byte records"
         )
-    if data[need - 2 : need] != b"\0\0":
-        raise ValueError("MAP.BIN terminator word is not zero")
 
 
 def compare(polygons: list[GroundPolygon], patches: list[MapPatch]) -> Comparison:

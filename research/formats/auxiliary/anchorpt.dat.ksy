@@ -1,5 +1,5 @@
 # Executable structural layout of `ANCHORPT.DAT`.
-# Format anchor: [FMT-MAP-ANCHORPT] in map.md.
+# Format anchor: [FMT-MAP-ANCHORPT] in anchorpt.md.
 #
 # Exactly 1024 records of 28 bytes (28,672 bytes) across the four corpus
 # copies; positions are followed by eleven raw scalars.
@@ -11,7 +11,7 @@ meta:
   endian: le
 doc: |
   The fixed 1,024-record `ANCHORPT.DAT` anchor table. Meaning is in
-  `map.md`.
+  `anchorpt.md`.
 seq:
   - id: points
     type: point

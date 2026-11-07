@@ -58,7 +58,9 @@ REQUIRED_DOCS: list[str] = [
     "research/formats/auxiliary/set.md",
     "research/formats/auxiliary/spr.md",
     "research/formats/auxiliary/sio.md",
+    "research/formats/auxiliary/anchorpt.md",
     "research/formats/auxiliary/map.md",
+    "research/formats/auxiliary/scenery.md",
     "research/formats/auxiliary/pfont.md",
 ]
 
@@ -70,7 +72,9 @@ FORMAT_SPECS: list[str] = [
     "research/formats/auxiliary/set.md",
     "research/formats/auxiliary/spr.md",
     "research/formats/auxiliary/sio.md",
+    "research/formats/auxiliary/anchorpt.md",
     "research/formats/auxiliary/map.md",
+    "research/formats/auxiliary/scenery.md",
     "research/formats/auxiliary/pfont.md",
 ]
 
@@ -124,11 +128,9 @@ KSY_SOURCES: dict[str, list[str]] = {
     "research/formats/auxiliary/set.md": ["set.ksy"],
     "research/formats/auxiliary/spr.md": ["spr.ksy"],
     "research/formats/auxiliary/sio.md": ["sio.ksy"],
-    "research/formats/auxiliary/map.md": [
-        "anchorpt.dat.ksy",
-        "map.bin.ksy",
-        "scenery.scn.ksy",
-    ],
+    "research/formats/auxiliary/anchorpt.md": ["anchorpt.dat.ksy"],
+    "research/formats/auxiliary/map.md": ["map.bin.ksy"],
+    "research/formats/auxiliary/scenery.md": ["scenery.scn.ksy"],
     "research/formats/auxiliary/pfont.md": ["pfont.bin.ksy"],
 }
 

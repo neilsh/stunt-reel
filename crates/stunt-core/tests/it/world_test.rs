@@ -36,16 +36,15 @@ fn fixture_shapes(shape_id: u16) -> HashMap<u16, SodModelIr> {
     HashMap::from([(shape_id, ir)])
 }
 
-/// One 30-byte `MAP.BIN` patch: active, `color`, indexing `verts` of the anchor table.
-fn map_patch(color: u8, verts: &[u16]) -> Vec<u8> {
+/// One 30-byte `MAP.BIN` record: in use, `color`, indexing `verts` of the anchor table.
+fn map_record(color: u8, verts: &[u16]) -> Vec<u8> {
     assert!(
-        verts.len() <= 7,
-        "a MAP.BIN patch holds at most seven corners"
+        verts.len() <= 8,
+        "a MAP.BIN patch holds at most eight corners"
     );
     let mut rec = Vec::with_capacity(30);
-    rec.extend(1i16.to_le_bytes());
-    rec.extend(0x01FFi16.to_le_bytes());
-    rec.resize(12, 0);
+    rec.extend(0x01FFu16.to_le_bytes());
+    rec.resize(10, 0);
     rec.extend([color, 0]);
     rec.extend(i16::try_from(verts.len()).unwrap().to_le_bytes());
     for v in verts {
@@ -53,6 +52,18 @@ fn map_patch(color: u8, verts: &[u16]) -> Vec<u8> {
     }
     rec.resize(30, 0);
     rec
+}
+
+/// A `MAP.BIN` of `records` behind its 2-byte list head.
+fn map_bin(records: &[Vec<u8>]) -> Vec<u8> {
+    let mut data = 0i16.to_le_bytes().to_vec();
+    data.extend(records.concat());
+    data
+}
+
+/// A `MAP.BIN` holding one patch (see [`map_record`]).
+fn map_patch(color: u8, verts: &[u16]) -> Vec<u8> {
+    map_bin(&[map_record(color, verts)])
 }
 
 fn anchor(x: i16, y: i16, z: i16) -> AnchorPoint {
@@ -134,11 +145,10 @@ fn terrain_patch_maps_anchors_into_i1() {
         anchor(300, -500, 200),
         anchor(100, -500, 400),
     ];
-    let mut map = map_patch(42, &[0, 1, 2]);
-    // Inactive patch (low byte of `pos` is zero) must be skipped.
-    let mut inactive = map_patch(43, &[0, 1, 2]);
-    inactive[2..4].copy_from_slice(&0x0100i16.to_le_bytes());
-    map.extend_from_slice(&inactive);
+    // A free record (in-use byte zero) must be skipped.
+    let mut inactive = map_record(43, &[0, 1, 2]);
+    inactive[0..2].copy_from_slice(&0x0100u16.to_le_bytes());
+    let map = map_bin(&[map_record(42, &[0, 1, 2]), inactive]);
 
     let inputs = WorldInputs {
         anchors: &anchors,

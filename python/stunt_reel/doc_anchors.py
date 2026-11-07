@@ -114,8 +114,8 @@ ANCHORS: tuple[Anchor, ...] = (
     ),
     Anchor(
         "FMT-MAP-ANCHORPT",
-        "research/formats/auxiliary/map.md",
-        "2.2 `ANCHORPT.DAT` Memory Layout (`# [FMT-MAP-ANCHORPT]`)",
+        "research/formats/auxiliary/anchorpt.md",
+        "2.1 `ANCHORPT.DAT` Memory Layout (`# [FMT-MAP-ANCHORPT]`)",
     ),
     Anchor(
         "FMT-MAP-AREA",
@@ -124,8 +124,8 @@ ANCHORS: tuple[Anchor, ...] = (
     ),
     Anchor(
         "FMT-MAP-SCENERY",
-        "research/formats/auxiliary/map.md",
-        "3.2 `SCENERY.scn` Node Opcode Table (`# [FMT-MAP-SCENERY]`)",
+        "research/formats/auxiliary/scenery.md",
+        "3.1 Node Opcode Table (`# [FMT-MAP-SCENERY]`)",
     ),
     # --- Runtime memory anchors: defined in the memory map (plus one evidence note) ---
     Anchor("MEM-VSYNC-03DA", MEMORY_MAP, "# [MEM-VSYNC-03DA]"),

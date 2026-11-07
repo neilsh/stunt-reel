@@ -736,10 +736,9 @@ fn camera_roll_rotates_up_about_the_view_axis() {
 fn world_is_exported_as_an_identity_node() {
     let film = film([0.0, 0.0, 10.0], &[(7, [3.0, 0.0, 0.0])]);
     let anchors = fixture("synthetic_anchors.bin");
-    // One 30-byte MAP.BIN patch: active, color 4, three vertices of the anchor table.
-    let mut patch = vec![0u8; 30];
-    patch[0..2].copy_from_slice(&1i16.to_le_bytes());
-    patch[2..4].copy_from_slice(&0x01FFi16.to_le_bytes());
+    // A MAP.BIN of one patch after the 2-byte list head: in use, color 4, anchors 0, 1, 2.
+    let mut patch = vec![0u8; 2 + 30];
+    patch[2..4].copy_from_slice(&0x01FFu16.to_le_bytes());
     patch[12] = 4;
     patch[14..16].copy_from_slice(&3i16.to_le_bytes());
     for (j, v) in [0u16, 1, 2].iter().enumerate() {
