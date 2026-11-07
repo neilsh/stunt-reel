@@ -258,7 +258,7 @@ env = { MISE_LOCKED = "1" }
 run = '''
 [ "${CLAUDE_CODE_REMOTE:-}" = true ] || exit 0
 log=/tmp/cloud-session-start.log
-if { bash .claude/cloud-setup.sh &&
+if { bash .claude/cloud-setup.sh --cloud &&
      mise run cloud-assets -- fetch && mise run superset-all; } >"$log" 2>&1; then
   echo "cloud-session-start: tools, game archives and SUPERSET.ALL ready (log: $log)"
 else

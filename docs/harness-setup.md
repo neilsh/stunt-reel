@@ -172,8 +172,9 @@ the DOSBox tool) and the Python environment, then lavapipe as CI does
 ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)). It fetches no game archives: the setup
 script runs before the environment variables are set, so the hook fetches them. Each step skips
 work already done, and it needs root only to replace mise or install the apt packages. It
-refuses to run outside a Linux x86_64 container with `dpkg`, since on a developer machine it
-would replace that machine's mise. CI's `install_args` is a separate list: CI also installs
+refuses to run without `--cloud`, which only the bootstrap and the hook pass, or outside a
+Linux x86_64 container with `dpkg`, since on a developer machine it would replace that
+machine's mise. CI's `install_args` is a separate list: CI also installs
 Java.
 
 The lockfile is what makes the install work: it holds each tool's download URL and checksum,
@@ -189,7 +190,7 @@ lock=$(find / -maxdepth 4 -path /proc -prune -o -path '*/stunt-reel/mise.lock' -
 [ -n "$lock" ] || { echo "setup: no stunt-reel checkout found" >&2; exit 1; }
 setup=${lock%/mise.lock}/.claude/cloud-setup.sh
 [ -f "$setup" ] || { echo "setup: this branch predates .claude/cloud-setup.sh; rebase on main" >&2; exit 1; }
-bash "$setup"
+bash "$setup" --cloud
 ```
 
 A branch older than the cloud setup fails the setup script rather than starting without mise:

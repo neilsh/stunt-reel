@@ -8,9 +8,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Cloud containers only: on a developer machine this would replace its mise with a linux-x64 one.
-# CLAUDE_CODE_REMOTE cannot tell, since the setup script runs before it is set.
-if [ "$(uname -sm)" != "Linux x86_64" ] || ! command -v dpkg >/dev/null; then
-    echo "cloud-setup: runs only in a Linux x86_64 cloud container with dpkg" >&2
+# CLAUDE_CODE_REMOTE cannot tell, since the setup script runs before it is set, so the two
+# callers (the claude.ai bootstrap and the hook) say so with --cloud.
+if [ "${1:-}" != --cloud ] || [ "$(uname -sm)" != "Linux x86_64" ] || ! command -v dpkg >/dev/null; then
+    echo "cloud-setup: runs only as 'cloud-setup.sh --cloud' in a Linux x86_64 cloud container with dpkg" >&2
     exit 1
 fi
 
