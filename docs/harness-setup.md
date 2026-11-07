@@ -151,7 +151,9 @@ In claude.ai, the cloud environment for this repo:
   `MISE_AUTO_INSTALL=false` and `MISE_USE_VERSIONS_HOST=false`, as CI sets them: otherwise the
   first `mise run` in a session installs every tool `mise.toml` declares, compiling the cargo
   ones from source.
-- **Network access:** the default trusted list, plus `<account_id>.r2.cloudflarestorage.com`.
+- **Network access:** the default trusted list, plus `<account_id>.r2.cloudflarestorage.com`,
+  and `gitlab.freedesktop.org` for reading Mesa's source and issues when a render differs on
+  lavapipe ([#265](https://github.com/neilsh/stunt-reel/issues/265)).
   The setup script downloads from GitHub releases, `static.rust-lang.org`, PyPI and the Ubuntu
   mirror, all on the list.
 - **Network secrets:** none on the R2 host. The proxy's AWS SigV4 secret signs for hosts under
@@ -233,6 +235,24 @@ the key pair or the network secret cannot read the bucket.
    `research/parity/references.toml` repacks `captures`; a test fails until it does.
 3. Commit `manifests/cloud-assets.toml`, then `mise run cloud-assets -- upload [ARCHIVE...]`.
    A key names its content, so old commits keep fetching theirs; never delete an object.
+
+### What a cloud session cannot do
+
+- **Attach a picture to a pull request.** The image's `gh` is older than the 2.103 that `--attach`
+  needs, and a cloud session has no `gh` login: GitHub goes through the session's own tools,
+  which upload no files. PR pictures are attached, not committed ([`NOTICE.md`](../NOTICE.md)),
+  and the PNG stays on the session's own machine, which no one else can reach. Describe each one
+  in the PR body with the revision it renders and the `mise run frame` command (film, ticks, crop,
+  never `--no-build`, so the recipient's binary is rebuilt for that revision); a before-and-after
+  made with a `DBG_*` switch gives the base and head revisions and a command for each, since the
+  switch is not committed. Someone with GitHub access and the data root regenerates it and
+  attaches it. Only a picture that a
+  research note cites as evidence for a finding is committed, under
+  [`research/images/`](../research/images/README.md); the PR body may then link it at its commit
+  (`https://github.com/<owner>/<repo>/blob/<commit>/<path>?raw=true`), as #264 did.
+- **Measure the GPU.** The renderer runs on lavapipe, whose scores are not yet shown to equal a
+  GPU's ([`research/parity/lavapipe.md`](../research/parity/lavapipe.md)). An adoption decision
+  still needs a GPU run.
 
 ### Rotating the token
 
