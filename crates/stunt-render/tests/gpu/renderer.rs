@@ -79,308 +79,326 @@ fn empty_scene() -> FilmScene {
 
 #[test]
 fn offscreen_draw_writes_page_lengths_alpha_and_planes() {
-    // Clockwise, like the SOD models: the pipeline culls back faces with FrontFace::Cw.
-    let ir = model(
-        vec![
-            vertex(-1.0, -1.0, 40, 0),
-            vertex(1.0, -1.0, 40, 0),
-            vertex(0.0, 1.0, 40, 0),
-        ],
-        vec![0, 2, 1],
-        false,
-    );
-    let scene = scene_with_model(ir);
-    let Some(mut test) = common::gpu_or_skip(&scene) else {
-        return;
-    };
+    common::gpu_test(|| {
+        // Clockwise, like the SOD models: the pipeline culls back faces with FrontFace::Cw.
+        let ir = model(
+            vec![
+                vertex(-1.0, -1.0, 40, 0),
+                vertex(1.0, -1.0, 40, 0),
+                vertex(0.0, 1.0, 40, 0),
+            ],
+            vec![0, 2, 1],
+            false,
+        );
+        let scene = scene_with_model(ir);
+        let Some(mut test) = common::gpu_or_skip(&scene) else {
+            return;
+        };
 
-    let page = test.draw(&scene.frame(0.0));
-    assert_eq!(page.size(), PageSize::new(320, 240));
-    assert_eq!(page.rgba().len(), 320 * 240 * 4);
-    assert_eq!(page.indices().len(), 320 * 240);
-    assert_eq!(page.layers().len(), 320 * 240);
-    assert!(
-        page.rgba()
-            .as_chunks::<4>()
-            .0
+        let page = test.draw(&scene.frame(0.0));
+        assert_eq!(page.size(), PageSize::new(320, 240));
+        assert_eq!(page.rgba().len(), 320 * 240 * 4);
+        assert_eq!(page.indices().len(), 320 * 240);
+        assert_eq!(page.layers().len(), 320 * 240);
+        assert!(
+            page.rgba()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|pixel| pixel[3] == 255),
+            "all pixels must have alpha 255"
+        );
+
+        let base_pixels = page
+            .indices()
             .iter()
-            .all(|pixel| pixel[3] == 255),
-        "all pixels must have alpha 255"
-    );
-
-    let base_pixels = page
-        .indices()
-        .iter()
-        .copied()
-        .zip(page.layers().iter().copied())
-        .filter(|&(index, layer)| index == 40 && layer == LAYER_FIRST_ACTOR)
-        .count();
-    assert!(base_pixels > 100, "base triangle missing: {base_pixels}");
+            .copied()
+            .zip(page.layers().iter().copied())
+            .filter(|&(index, layer)| index == 40 && layer == LAYER_FIRST_ACTOR)
+            .count();
+        assert!(base_pixels > 100, "base triangle missing: {base_pixels}");
+    });
 }
 
 #[test]
 fn coplanar_decal_wins_the_depth_tie() {
-    // The decal is coplanar with the base and painted last; the [I5] depth bias must let it
-    // win the tie, so its palette index covers the inner triangle.
-    let mut vertices = vec![
-        vertex(-1.0, -1.0, 40, 0),
-        vertex(1.0, -1.0, 40, 0),
-        vertex(0.0, 1.0, 40, 0),
-    ];
-    vertices.extend([
-        vertex(-0.5, -0.5, 220, 1),
-        vertex(0.5, -0.5, 220, 1),
-        vertex(0.0, 0.5, 220, 1),
-    ]);
-    let mut ir = SodModelIr::new("BASE_WITH_DECAL");
-    ir.vertices = vertices;
-    // Indices address the shape's whole vertex buffer, as `stunt-core` emits them.
-    ir.indices = vec![0, 2, 1, 3, 5, 4];
-    ir.allocate_node(
-        "BASE",
-        None,
-        glam::Mat4::IDENTITY.to_cols_array(),
-        VisibilityCondition::Always,
-        NodeKind::Mesh {
-            vertex_offset: 0,
-            vertex_count: 3,
-            index_offset: 0,
-            index_count: 3,
-            is_decal: false,
-        },
-    );
-    let base = ir.nodes[0].id;
-    ir.allocate_node(
-        "DECAL",
-        Some(base),
-        glam::Mat4::IDENTITY.to_cols_array(),
-        VisibilityCondition::Always,
-        NodeKind::Mesh {
-            vertex_offset: 3,
-            vertex_count: 3,
-            index_offset: 3,
-            index_count: 3,
-            is_decal: true,
-        },
-    );
-    ir.root_nodes = vec![base];
-    let scene = scene_with_model(ir);
-    let Some(mut test) = common::gpu_or_skip(&scene) else {
-        return;
-    };
+    common::gpu_test(|| {
+        // The decal is coplanar with the base and painted last; the [I5] depth bias must let it
+        // win the tie, so its palette index covers the inner triangle.
+        let mut vertices = vec![
+            vertex(-1.0, -1.0, 40, 0),
+            vertex(1.0, -1.0, 40, 0),
+            vertex(0.0, 1.0, 40, 0),
+        ];
+        vertices.extend([
+            vertex(-0.5, -0.5, 220, 1),
+            vertex(0.5, -0.5, 220, 1),
+            vertex(0.0, 0.5, 220, 1),
+        ]);
+        let mut ir = SodModelIr::new("BASE_WITH_DECAL");
+        ir.vertices = vertices;
+        // Indices address the shape's whole vertex buffer, as `stunt-core` emits them.
+        ir.indices = vec![0, 2, 1, 3, 5, 4];
+        ir.allocate_node(
+            "BASE",
+            None,
+            glam::Mat4::IDENTITY.to_cols_array(),
+            VisibilityCondition::Always,
+            NodeKind::Mesh {
+                vertex_offset: 0,
+                vertex_count: 3,
+                index_offset: 0,
+                index_count: 3,
+                is_decal: false,
+            },
+        );
+        let base = ir.nodes[0].id;
+        ir.allocate_node(
+            "DECAL",
+            Some(base),
+            glam::Mat4::IDENTITY.to_cols_array(),
+            VisibilityCondition::Always,
+            NodeKind::Mesh {
+                vertex_offset: 3,
+                vertex_count: 3,
+                index_offset: 3,
+                index_count: 3,
+                is_decal: true,
+            },
+        );
+        ir.root_nodes = vec![base];
+        let scene = scene_with_model(ir);
+        let Some(mut test) = common::gpu_or_skip(&scene) else {
+            return;
+        };
 
-    let page = test.draw(&scene.frame(0.0));
-    let decal_pixels = page
-        .indices()
-        .iter()
-        .copied()
-        .zip(page.layers().iter().copied())
-        .filter(|&(index, layer)| index == 220 && layer == LAYER_FIRST_ACTOR)
-        .count();
-    let base_pixels = page
-        .indices()
-        .iter()
-        .copied()
-        .zip(page.layers().iter().copied())
-        .filter(|&(index, layer)| index == 40 && layer == LAYER_FIRST_ACTOR)
-        .count();
-    assert!(decal_pixels > 100, "decal missing: {decal_pixels}");
-    assert!(base_pixels > 100, "base missing: {base_pixels}");
+        let page = test.draw(&scene.frame(0.0));
+        let decal_pixels = page
+            .indices()
+            .iter()
+            .copied()
+            .zip(page.layers().iter().copied())
+            .filter(|&(index, layer)| index == 220 && layer == LAYER_FIRST_ACTOR)
+            .count();
+        let base_pixels = page
+            .indices()
+            .iter()
+            .copied()
+            .zip(page.layers().iter().copied())
+            .filter(|&(index, layer)| index == 40 && layer == LAYER_FIRST_ACTOR)
+            .count();
+        assert!(decal_pixels > 100, "decal missing: {decal_pixels}");
+        assert!(base_pixels > 100, "base missing: {base_pixels}");
+    });
 }
 
 #[test]
 fn draw_accepts_exactly_one_page() {
-    let scene = empty_scene();
-    let Some(mut test) = common::gpu_or_skip(&scene) else {
-        return;
-    };
-    assert_eq!(test.pages(), 0);
-    for expected in 1..=2 {
-        let page = test.draw(&scene.frame(0.0));
-        assert_eq!(page.size(), PageSize::default());
-        assert_eq!(test.pages(), expected);
-    }
+    common::gpu_test(|| {
+        let scene = empty_scene();
+        let Some(mut test) = common::gpu_or_skip(&scene) else {
+            return;
+        };
+        assert_eq!(test.pages(), 0);
+        for expected in 1..=2 {
+            let page = test.draw(&scene.frame(0.0));
+            assert_eq!(page.size(), PageSize::default());
+            assert_eq!(test.pages(), expected);
+        }
+    });
 }
 
 #[test]
 fn sink_failure_surfaces_as_a_render_error() {
-    struct FailingSink;
+    common::gpu_test(|| {
+        struct FailingSink;
 
-    impl PageSink for FailingSink {
-        fn accept(&mut self, _page: RenderedPage) -> Result<(), SinkError> {
-            Err(SinkError::new("disk full"))
+        impl PageSink for FailingSink {
+            fn accept(&mut self, _page: RenderedPage) -> Result<(), SinkError> {
+                Err(SinkError::new("disk full"))
+            }
         }
-    }
 
-    let scene = empty_scene();
-    let Some(mut renderer) = common::open_or_skip(
-        &scene,
-        Offscreen::default(),
-        RenderOptions::default(),
-        Box::new(FailingSink),
-    ) else {
-        return;
-    };
-    let error = renderer
-        .draw(&scene.frame(0.0), None)
-        .expect_err("a sink failure must surface");
-    assert!(matches!(error, RenderError::Sink(_)), "{error}");
-    assert!(error.to_string().contains("disk full"), "{error}");
+        let scene = empty_scene();
+        let Some(mut renderer) = common::open_or_skip(
+            &scene,
+            Offscreen::default(),
+            RenderOptions::default(),
+            Box::new(FailingSink),
+        ) else {
+            return;
+        };
+        let error = renderer
+            .draw(&scene.frame(0.0), None)
+            .expect_err("a sink failure must surface");
+        assert!(matches!(error, RenderError::Sink(_)), "{error}");
+        assert!(error.to_string().contains("disk full"), "{error}");
+    });
 }
 
 #[test]
 fn viewport_rows_leaves_lower_rows_at_the_clear_index() {
-    const CLEAR: u8 = 180;
-    let target = Offscreen::new(320, 200).with_viewport_rows(185);
-    let scene = empty_scene();
-    let Some(mut test) = common::gpu_or_skip_offscreen(
-        &scene,
-        target,
-        RenderOptions {
-            clear_palette_index: CLEAR,
-            ..RenderOptions::default()
-        },
-    ) else {
-        return;
-    };
+    common::gpu_test(|| {
+        const CLEAR: u8 = 180;
+        let target = Offscreen::new(320, 200).with_viewport_rows(185);
+        let scene = empty_scene();
+        let Some(mut test) = common::gpu_or_skip_offscreen(
+            &scene,
+            target,
+            RenderOptions {
+                clear_palette_index: CLEAR,
+                ..RenderOptions::default()
+            },
+        ) else {
+            return;
+        };
 
-    let page = test.draw(&scene.frame(0.0));
-    assert_eq!(page.size(), PageSize::new(320, 200));
-    let width = page.width() as usize;
-    for row in 185..200 {
-        for x in 0..width {
-            assert_eq!(
-                (
-                    page.indices()[row * width + x],
-                    page.layers()[row * width + x]
-                ),
-                (CLEAR, LAYER_NONE),
-                "row {row} stays at the clear index"
-            );
+        let page = test.draw(&scene.frame(0.0));
+        assert_eq!(page.size(), PageSize::new(320, 200));
+        let width = page.width() as usize;
+        for row in 185..200 {
+            for x in 0..width {
+                assert_eq!(
+                    (
+                        page.indices()[row * width + x],
+                        page.layers()[row * width + x]
+                    ),
+                    (CLEAR, LAYER_NONE),
+                    "row {row} stays at the clear index"
+                );
+            }
         }
-    }
-    assert!(
-        page.indices()[..185 * width]
-            .iter()
-            .any(|&index| index != CLEAR),
-        "the scene area is not left at the clear index"
-    );
+        assert!(
+            page.indices()[..185 * width]
+                .iter()
+                .any(|&index| index != CLEAR),
+            "the scene area is not left at the clear index"
+        );
+    });
 }
 
 #[test]
 fn resize_is_a_no_op_offscreen() {
-    let scene = empty_scene();
-    let Some(mut test) = common::gpu_or_skip(&scene) else {
-        return;
-    };
-    assert_eq!(test.draw(&scene.frame(0.0)).size(), PageSize::default());
-    test.renderer.resize(100, 100);
-    assert_eq!(
-        test.draw(&scene.frame(0.0)).size(),
-        PageSize::default(),
-        "an offscreen page size is fixed at open"
-    );
+    common::gpu_test(|| {
+        let scene = empty_scene();
+        let Some(mut test) = common::gpu_or_skip(&scene) else {
+            return;
+        };
+        assert_eq!(test.draw(&scene.frame(0.0)).size(), PageSize::default());
+        test.renderer.resize(100, 100);
+        assert_eq!(
+            test.draw(&scene.frame(0.0)).size(),
+            PageSize::default(),
+            "an offscreen page size is fixed at open"
+        );
+    });
 }
 
 #[test]
 fn unaligned_width_reads_back_unpadded_rows() {
-    // 100 * 4 = 400 bytes per row, not a multiple of the 256-byte copy pitch.
-    let (width, height) = (100usize, 75usize);
-    let ir = model(
-        vec![
-            vertex(-1.0, -1.0, 40, 0),
-            vertex(1.0, -1.0, 40, 0),
-            vertex(0.0, 1.0, 40, 0),
-        ],
-        vec![0, 2, 1],
-        false,
-    );
-    let scene = scene_with_model(ir);
-    let Some(mut test) = common::gpu_or_skip_with(
-        &scene,
-        PageSize::new(
-            u32::try_from(width).unwrap(),
-            u32::try_from(height).unwrap(),
-        ),
-    ) else {
-        return;
-    };
-
-    let page = test.draw(&scene.frame(0.0));
-    assert_eq!(page.rgba().len(), width * height * 4);
-    assert_eq!(page.indices().len(), width * height);
-    assert_eq!(page.layers().len(), width * height);
-    // The centred triangle is left-right symmetric in every row; a wrong row pitch on
-    // readback would shear it sideways.
-    let mut rows_drawn = 0;
-    for row in page.layers().chunks_exact(width) {
-        let cols: Vec<usize> = (0..width).filter(|&x| row[x] != LAYER_NONE).collect();
-        if cols.is_empty() {
-            continue;
-        }
-        rows_drawn += 1;
-        let centre = (cols[0] + cols[cols.len() - 1]) as f32 / 2.0;
-        assert!(
-            (centre - (width - 1) as f32 / 2.0).abs() <= 1.0,
-            "row centred at {centre}"
+    common::gpu_test(|| {
+        // 100 * 4 = 400 bytes per row, not a multiple of the 256-byte copy pitch.
+        let (width, height) = (100usize, 75usize);
+        let ir = model(
+            vec![
+                vertex(-1.0, -1.0, 40, 0),
+                vertex(1.0, -1.0, 40, 0),
+                vertex(0.0, 1.0, 40, 0),
+            ],
+            vec![0, 2, 1],
+            false,
         );
-    }
-    assert!(
-        rows_drawn > height / 4,
-        "triangle covers only {rows_drawn} rows"
-    );
+        let scene = scene_with_model(ir);
+        let Some(mut test) = common::gpu_or_skip_with(
+            &scene,
+            PageSize::new(
+                u32::try_from(width).unwrap(),
+                u32::try_from(height).unwrap(),
+            ),
+        ) else {
+            return;
+        };
+
+        let page = test.draw(&scene.frame(0.0));
+        assert_eq!(page.rgba().len(), width * height * 4);
+        assert_eq!(page.indices().len(), width * height);
+        assert_eq!(page.layers().len(), width * height);
+        // The centred triangle is left-right symmetric in every row; a wrong row pitch on
+        // readback would shear it sideways.
+        let mut rows_drawn = 0;
+        for row in page.layers().chunks_exact(width) {
+            let cols: Vec<usize> = (0..width).filter(|&x| row[x] != LAYER_NONE).collect();
+            if cols.is_empty() {
+                continue;
+            }
+            rows_drawn += 1;
+            let centre = (cols[0] + cols[cols.len() - 1]) as f32 / 2.0;
+            assert!(
+                (centre - (width - 1) as f32 / 2.0).abs() <= 1.0,
+                "row centred at {centre}"
+            );
+        }
+        assert!(
+            rows_drawn > height / 4,
+            "triangle covers only {rows_drawn} rows"
+        );
+    });
 }
 
 #[test]
 fn software_only_opens_the_fallback_adapter() {
-    let scene = empty_scene();
-    let Some(mut test) = common::gpu_or_skip_software(&scene) else {
-        return;
-    };
-    let page = test.draw(&scene.frame(0.0));
-    assert_eq!(page.size(), PageSize::default());
-    assert_eq!(page.indices().len(), 320 * 240);
-    assert_eq!(page.layers().len(), 320 * 240);
+    common::gpu_test(|| {
+        let scene = empty_scene();
+        let Some(mut test) = common::gpu_or_skip_software(&scene) else {
+            return;
+        };
+        let page = test.draw(&scene.frame(0.0));
+        assert_eq!(page.size(), PageSize::default());
+        assert_eq!(page.indices().len(), 320 * 240);
+        assert_eq!(page.layers().len(), 320 * 240);
+    });
 }
 
 #[test]
 fn interval_samples_are_accepted_once_each() {
-    let scene = FilmScene::new(
-        common::still_timeline(CameraTransform {
-            eye: [0.0, 10.0, 50.0],
-            target: [0.0, 0.0, 0.0],
-            fov_degrees: 45.0,
-            roll_radians: 0.0,
-            cut_from_previous: true,
-            ..Default::default()
-        }),
-        Default::default(),
-        None,
-    );
-    let Some(mut test) = common::gpu_or_skip(&scene) else {
-        return;
-    };
+    common::gpu_test(|| {
+        let scene = FilmScene::new(
+            common::still_timeline(CameraTransform {
+                eye: [0.0, 10.0, 50.0],
+                target: [0.0, 0.0, 0.0],
+                fov_degrees: 45.0,
+                roll_radians: 0.0,
+                cut_from_previous: true,
+                ..Default::default()
+            }),
+            Default::default(),
+            None,
+        );
+        let Some(mut test) = common::gpu_or_skip(&scene) else {
+            return;
+        };
 
-    // Ten ticks, interval step two: exactly five pages, one per drawn sample.
-    let mut camera = CameraController::default();
-    let mut expected = 0;
-    for tick in 0..10u32 {
-        if tick % 2 != 0 {
-            continue;
+        // Ten ticks, interval step two: exactly five pages, one per drawn sample.
+        let mut camera = CameraController::default();
+        let mut expected = 0;
+        for tick in 0..10u32 {
+            if tick % 2 != 0 {
+                continue;
+            }
+            expected += 1;
+            camera.set_authored_transform(ViewCamera {
+                eye: [0.0, 10.0, 50.0 - (tick as f32 * 0.5)],
+                target: [0.0, 0.0, 0.0],
+                fov_degrees: 45.0,
+                roll_radians: 0.0,
+            });
+            let page = test.draw_with(&scene.frame(tick as f32), Some(&camera));
+            assert_eq!(page.size(), PageSize::default());
+            assert_eq!(page.rgba().len(), 320 * 240 * 4);
         }
-        expected += 1;
-        camera.set_authored_transform(ViewCamera {
-            eye: [0.0, 10.0, 50.0 - (tick as f32 * 0.5)],
-            target: [0.0, 0.0, 0.0],
-            fov_degrees: 45.0,
-            roll_radians: 0.0,
-        });
-        let page = test.draw_with(&scene.frame(tick as f32), Some(&camera));
-        assert_eq!(page.size(), PageSize::default());
-        assert_eq!(page.rgba().len(), 320 * 240 * 4);
-    }
-    assert_eq!(expected, 5);
-    assert_eq!(test.pages(), 5, "one page per draw");
+        assert_eq!(expected, 5);
+        assert_eq!(test.pages(), 5, "one page per draw");
+    });
 }
 
 // Ground decals: a prop lying on the terrain is drawn in the decal batch after the terrain,
@@ -512,48 +530,55 @@ fn pixels_of(page: &RenderedPage, index: u8) -> usize {
 
 #[test]
 fn a_ground_decal_shows_over_the_terrain_it_lies_on() {
-    let scene = ground_scene(80.0, 12.0, 100.0, None, 0.0);
-    let Some(mut test) = common::gpu_or_skip(&scene) else {
-        return;
-    };
-    let page = test.draw(&scene.frame(0.0));
-    let (tile, terrain) = (pixels_of(&page, TILE), pixels_of(&page, TERRAIN));
-    assert!(tile > 500, "tile hidden by the terrain under it: {tile}");
-    assert!(terrain > 500, "terrain missing: {terrain}");
+    common::gpu_test(|| {
+        let scene = ground_scene(80.0, 12.0, 100.0, None, 0.0);
+        let Some(mut test) = common::gpu_or_skip(&scene) else {
+            return;
+        };
+        let page = test.draw(&scene.frame(0.0));
+        let (tile, terrain) = (pixels_of(&page, TILE), pixels_of(&page, TERRAIN));
+        assert!(tile > 500, "tile hidden by the terrain under it: {tile}");
+        assert!(terrain > 500, "terrain missing: {terrain}");
+    });
 }
 
 #[test]
 fn a_ground_decal_a_kilometre_and_a_half_away_still_shows() {
-    // Depth24Plus resolves about 27 cm at this range. The tile ties the terrain exactly, at a
-    // grazing 2 degrees, so the bias must cover the quantisation: the tile shows as many
-    // pixels over the terrain as it does alone.
-    for distance in [1000.0, 1500.0, 2000.0, 4000.0, 8000.0] {
-        let counts = [0.0, -10_000.0].map(|terrain_y| {
-            let scene = ground_scene(distance, distance / 10.0, distance / 2.0, None, terrain_y);
-            let mut test = common::gpu_or_skip(&scene)?;
-            Some(pixels_of(&test.draw(&scene.frame(0.0)), TILE))
-        });
-        let [Some(over), Some(alone)] = counts else {
-            return;
-        };
-        assert!(
-            alone > 100,
-            "tile alone too small to test at {distance} m: {alone}"
-        );
-        assert!(
-            over * 10 >= alone * 9,
-            "tile over the terrain at {distance} m: {over} of {alone} pixels"
-        );
-    }
+    common::gpu_test(|| {
+        // Depth24Plus resolves about 27 cm at this range. The tile ties the terrain exactly, at a
+        // grazing 2 degrees, so the bias must cover the quantisation: the tile shows as many
+        // pixels over the terrain as it does alone.
+        for distance in [1000.0, 1500.0, 2000.0, 4000.0, 8000.0] {
+            let counts = [0.0, -10_000.0].map(|terrain_y| {
+                let scene =
+                    ground_scene(distance, distance / 10.0, distance / 2.0, None, terrain_y);
+                let mut test = common::gpu_or_skip(&scene)?;
+                Some(pixels_of(&test.draw(&scene.frame(0.0)), TILE))
+            });
+            let [Some(over), Some(alone)] = counts else {
+                return;
+            };
+            assert!(
+                alone > 100,
+                "tile alone too small to test at {distance} m: {alone}"
+            );
+            assert!(
+                over * 10 >= alone * 9,
+                "tile over the terrain at {distance} m: {over} of {alone} pixels"
+            );
+        }
+    });
 }
 
 #[test]
 fn terrain_in_front_of_a_ground_decal_still_hides_it() {
-    let scene = ground_scene(300.0, 60.0, 100.0, Some(-100.0), 0.0);
-    let Some(mut test) = common::gpu_or_skip(&scene) else {
-        return;
-    };
-    let page = test.draw(&scene.frame(0.0));
-    assert!(pixels_of(&page, TERRAIN) > 500, "the wall is missing");
-    assert_eq!(pixels_of(&page, TILE), 0, "the tile shows through the wall");
+    common::gpu_test(|| {
+        let scene = ground_scene(300.0, 60.0, 100.0, Some(-100.0), 0.0);
+        let Some(mut test) = common::gpu_or_skip(&scene) else {
+            return;
+        };
+        let page = test.draw(&scene.frame(0.0));
+        assert!(pixels_of(&page, TERRAIN) > 500, "the wall is missing");
+        assert_eq!(pixels_of(&page, TILE), 0, "the tile shows through the wall");
+    });
 }

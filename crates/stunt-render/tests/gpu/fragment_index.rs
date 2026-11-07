@@ -5,8 +5,13 @@ use wgpu::util::DeviceExt;
 
 /// Runs the actual WGSL function; storage inputs prevent constant folding of NaNs.
 fn check_indices(cases: &[(u32, u32, u32)]) {
-    let _guard = common::lock_gpu();
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    common::assert_in_gpu_test();
+    // No GL: dropping a GL instance ends its WGL thread later, outside the GPU test lock, and
+    // that thread's exit deadlocks NVIDIA's driver against the next test (see `common`).
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::all() - wgpu::Backends::GL,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
     let adapter = match pollster::block_on(instance.request_adapter(&Default::default())) {
         Ok(adapter) => adapter,
         Err(error) => {
@@ -122,48 +127,52 @@ fn test_fragment_index(@builtin(global_invocation_id) id: vec3<u32>) {
 
 #[test]
 fn fragment_index_non_finite_shades_use_the_flat_palette_index() {
-    let mut cases = Vec::new();
-    // Both infinities, quiet/signaling NaNs, both signs, and distinct NaN payloads.
-    for bits in [
-        0x7f80_0000,
-        0xff80_0000,
-        0x7fc0_0000,
-        0xffc0_0000,
-        0x7f80_0001,
-        0xff80_0001,
-        0x7fff_ffff,
-        0xffff_ffff,
-    ] {
-        for index in [0, 1, 40, 255] {
-            cases.push((bits, index, index));
+    common::gpu_test(|| {
+        let mut cases = Vec::new();
+        // Both infinities, quiet/signaling NaNs, both signs, and distinct NaN payloads.
+        for bits in [
+            0x7f80_0000,
+            0xff80_0000,
+            0x7fc0_0000,
+            0xffc0_0000,
+            0x7f80_0001,
+            0xff80_0001,
+            0x7fff_ffff,
+            0xffff_ffff,
+        ] {
+            for index in [0, 1, 40, 255] {
+                cases.push((bits, index, index));
+            }
         }
-    }
-    check_indices(&cases);
+        check_indices(&cases);
+    });
 }
 
 #[test]
 fn fragment_index_finite_shades_round_and_clamp_without_using_the_fallback() {
-    let cases: Vec<_> = [
-        (-f32::MAX, 0),
-        (-1.0, 0),
-        (-0.0, 0),
-        (0.0, 0),
-        (f32::MIN_POSITIVE, 0),
-        (0.49, 0),
-        (0.5, 1),
-        (0.51, 1),
-        (39.49, 39),
-        (39.5, 40),
-        (40.0, 40),
-        (40.5, 41),
-        (254.49, 254),
-        (254.5, 255),
-        (255.0, 255),
-        (256.0, 255),
-        (f32::MAX, 255),
-    ]
-    .into_iter()
-    .map(|(shade, expected)| (shade.to_bits(), 123, expected))
-    .collect();
-    check_indices(&cases);
+    common::gpu_test(|| {
+        let cases: Vec<_> = [
+            (-f32::MAX, 0),
+            (-1.0, 0),
+            (-0.0, 0),
+            (0.0, 0),
+            (f32::MIN_POSITIVE, 0),
+            (0.49, 0),
+            (0.5, 1),
+            (0.51, 1),
+            (39.49, 39),
+            (39.5, 40),
+            (40.0, 40),
+            (40.5, 41),
+            (254.49, 254),
+            (254.5, 255),
+            (255.0, 255),
+            (256.0, 255),
+            (f32::MAX, 255),
+        ]
+        .into_iter()
+        .map(|(shade, expected)| (shade.to_bits(), 123, expected))
+        .collect();
+        check_indices(&cases);
+    });
 }
