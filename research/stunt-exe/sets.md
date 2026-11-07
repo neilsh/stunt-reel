@@ -7,7 +7,7 @@
 | File | Size | Unpacks to |
 |---|---|---|
 | `corpus/siarchive/Films/OldPLAY/STUNT.EXE` | 137,240 | `stunt.img` 248,460 |
-| `corpus/stuntisl/STUNT.EXE` | 138,318 | `stunt.img`, the same image behind an entry stub (section 5) |
+| `corpus/stuntisl/STUNT.EXE` | 138,318 | `stunt.img`, the same image behind a crack's entry stub (section 5) |
 | `corpus/siarchive/Films/OldPLAY/MAKEONE.EXE` | 103,247 | `makeone.img` 201,884 |
 | `corpus/siarchive/Films/OldPLAY/PLAYONE.EXE` | 102,703 | `playone.img` 200,524 |
 | `corpus/siarchive/Films/MultiFLM/*/PLAYONE.EXE` | 97,790 | not yet unpacked |
@@ -55,9 +55,19 @@ The templates are fed from the record, so the code that formats a rule is the co
 
 ## 5. The retail install and TYPESET.EXE
 
-`corpus/stuntisl/` is a full retail install, and it settles two things.
+`corpus/stuntisl/` is a full install of the retail game as a 1992 cracked release, and it settles two things.
 
-**Its STUNT.EXE is the OldPLAY build with a resident stub appended** (`[Established]`, byte comparison, 2026-11-06). The 138,318-byte file is the 137,240-byte one with three header words changed (page count, IP and CS), zero padding to file offset `0x21A00`, and 590 bytes of code there that take the entry point. Both unpack to the same 248,460-byte image, so a `STUNT.EXE` address holds in either copy. The stub hooks INT 21h (vector `0:0084`), lowers the BIOS memory size at `0:0413`, copies itself to the top of memory, and jumps to the original entry `2152:000E`, which it keeps at stub offset `0x0C`. That is how a DOS file infector behaves. `unlzexe.py` finds the LZEXE loader by its code, so it unpacks this copy and reports the stub. `MAKEONE.EXE` and `PLAYONE.EXE` are identical either side.
+**Its STUNT.EXE is the OldPLAY build with a crack's patch stub appended** (`[Established]`, byte comparison 2026-11-06, stub read by hand 2026-11-07). The 138,318-byte file is the 137,240-byte one with three header words changed (page count, IP and CS), zero padding to file offset `0x21A00`, and 590 bytes of code there that take the entry point. Both unpack to the same 248,460-byte image, so a `STUNT.EXE` address holds in either copy. `unlzexe.py` finds the LZEXE loader by its code, so it unpacks this copy and reports the stub. `NEV_001/STUNT.EXE` in the same install is the unmodified file, and `MAKEONE.EXE` and `PLAYONE.EXE` are identical to OldPLAY's.
+
+The stub is a one-shot memory patcher; it writes no file:
+
+1. At entry it copies its first `0x1A2` bytes to the top of memory, saves and lowers the BIOS memory size at `0:0413`, points INT 21h (vector `0:0084`) at the copy, and far-returns to the original entry `2152:000E`, kept at stub offset `0x0C`.
+2. Its INT 21h handler passes every call through until the first close-file call (AH=`3Eh`, the function byte at stub offset `0x09`), by which time LZEXE has unpacked the program.
+3. On that call it scans the program from its load segment for a 21-byte pattern under a wildcard mask (pattern at stub offset `0x12`, mask at `0x3C`). In the unpacked image the pattern matches once, at image offset `0x6163`: `mov si,…; call …; jb …; cmp ax,[2D4E]; je +9`.
+4. It writes `90 90 90 90 90 90 EB` at match + 6, which removes the `jb` and the `cmp` and turns the `je` into a `jmp`, so the failure branch never runs.
+5. It restores INT 21h and `0:0413` and chains to DOS, leaving nothing hooked.
+
+The install's `CRACK.EXE` (1,134 bytes) carries the strings `Stunt Island Loader done by The Terminator on the 92/10/30` and `Look for other [FLT] Releases`, so the stub is that group's crack. The patched branch is presumably the copy-protection check; that rests on the release, not on reading the check, since the strings it loads were not resolved (`[Supported Inference]`).
 
 **It holds `TYPESET.EXE`, the tool that produced every printed set dump.** The install ships the wrapper: `SETINFO.BAT` is `TYPESET %1.SET > %1.TXT` and `PRINTSET.BAT` is `TYPESET %1.SET > PRN:`. Every `.TXT` in `Misc/Sets/` is therefore TYPESET's output, and its wording ("Event#1 One Shot", "If … And … Then …") is that program's, not the handbook's.
 
@@ -83,6 +93,7 @@ That makes a byte-to-field map mechanical in principle — flip one byte, dump a
 ## Ruled out
 
 - *A second `STUNT.EXE` build in `corpus/stuntisl/`*: the extra 1,078 bytes are a stub and padding, and the unpacked images are identical (section 5).
+- *The stub as a DOS file infector*: it issues no DOS call of its own, unhooks INT 21h after one patch, and no other executable in the data root (`corpus/`, `builds/`, `stage/`) carries its handler code; only the three copies of this `STUNT.EXE` do (section 5).
 - *PLAYONE or MAKEONE reading `.SET`*: neither image contains the string, and both reference only the `VAULT` trio.
 - *A fixed field map for the event record*: the same template set is rendered from records whose index marker sits at different offsets, so the record is a union keyed by rule shape.
 
