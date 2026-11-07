@@ -108,17 +108,37 @@ def test_discovery_refuses_suffix_selection_of_a_shared_suffix(
         verifier.discover_schemas()
 
 
+def test_discovery_refuses_two_schemas_selecting_one_suffix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Outside `.bin` and `.dat`, a suffix two schemas declare is shared too."""
+    verifier = _verifier()
+    for name in ("alpha", "beta"):
+        (tmp_path / f"{name}.ksy").write_text(
+            f"meta:\n  id: {name}\n  file-extension: xyz\n", encoding="utf-8"
+        )
+    monkeypatch.setattr(verifier, "SCHEMA_ROOT", tmp_path)
+    with pytest.raises(SystemExit, match="hold several formats"):
+        verifier.discover_schemas()
+
+
 def test_discovery_selects_a_shared_suffix_by_filename(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Naming the schema for its file (`font.bin.ksy`) selects that one filename."""
+    """Naming the schema for its file (`font.bin.ksy`) sweeps that one filename."""
     verifier = _verifier()
-    (tmp_path / "font.bin.ksy").write_text(
+    schemas, corpus = tmp_path / "schemas", tmp_path / "corpus"
+    schemas.mkdir()
+    (corpus / "sub").mkdir(parents=True)
+    (schemas / "font.bin.ksy").write_text(
         "meta:\n  id: font\n  file-extension: bin\n", encoding="utf-8"
     )
-    monkeypatch.setattr(verifier, "SCHEMA_ROOT", tmp_path)
+    (corpus / "sub" / "FONT.BIN").write_bytes(b"\0")
+    (corpus / "SPRITE.BIN").write_bytes(b"\0")
+    monkeypatch.setattr(verifier, "SCHEMA_ROOT", schemas)
     (spec,) = verifier.discover_schemas()
     assert spec.filename == "FONT.BIN"
+    assert verifier._corpus_files(spec, corpus) == [corpus / "sub" / "FONT.BIN"]
 
 
 @pytest.mark.skipif(
