@@ -66,7 +66,7 @@ The file is the list head (`30 × index` of the first top-level patch: 540, reco
 | `split_distance_x2` (`c`) | Twice the `SP_GROUND` split distance; 100 or 0 where unused |
 | `parent` (`d`) | Patch whose `first_child` list holds this one |
 | `color` | Mode 13h palette index, emitted as the leaf polygon's colour |
-| `num_verts` | Vertex count, 3 to 8; the loop count of both converters |
+| `num_verts` | Vertex count, the loop count of both converters: 3 to 8 in every record in use, except patch 22 of the community edit `SITools/OBJECTS/Dean/MAP.BIN`, which counts 2 and is not drawn (`[BK-MAP-05]`) |
 | `vertex_indices[8]` | `ANCHORPT.DAT` indices; the first `num_verts` are used |
 
 Until 2026-11-06 this project and FreeFlight's `sisland.cpp` read the file 2 bytes off. They took a `num` word at the front of each record, seven vertex slots, and a null terminator. Under that reading, patch 131's eighth vertex appeared to overflow into the next record. Record indices and the fields the renderer reads are the same under both readings.
