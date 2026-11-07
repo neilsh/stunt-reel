@@ -5,7 +5,7 @@ Tasks: [`scoped-gate-implementation-2026-11-06.md`](scoped-gate-implementation-2
 session of 2026-11-06 that started from "can the gate take less time, or check only what a change
 touches, or can prek help", measured the gate, and settled the design below. The scoping decision
 is [ADR 0038](../../adr/0038-the-local-gate-runs-what-a-change-touches.md) (0037 was taken); the worker-count change
-amends [ADR 0031](../../adr/0031-the-gate-runs-pytest-across-every-core.md). This note owns the
+amends [ADR 0040](../../adr/0040-the-gate-runs-pytest-across-every-core.md) (numbered 0031 until 2026-11-07). This note owns the
 design and the delivery.
 
 ## 1. Goal

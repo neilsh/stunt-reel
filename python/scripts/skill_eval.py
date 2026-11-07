@@ -83,6 +83,31 @@ def outcome(lines: list[str], returncode: int, skill: str) -> RunOutcome:
     return RunOutcome(listed, skills, peeked, cost, text, failed)
 
 
+def uncommitted_skill_files(root: Path) -> list[str]:
+    """Paths under ``.agents/skills/`` or ``AGENTS.md`` that differ from ``HEAD``, untracked included.
+
+    A run finds a skill through the files git status shows, not through discovery, when either
+    is dirty, so its result would not say what a fresh checkout does.
+    """
+    status = subprocess.run(
+        [  # noqa: S607 - git resolved from PATH
+            "git",
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+            "--",
+            ".agents/skills",
+            "AGENTS.md",
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    return sorted(line[3:] for line in status.stdout.splitlines() if line)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the repetitions and print one line per run, then the total cost."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -96,6 +121,9 @@ def main(argv: list[str] | None = None) -> int:
     claude = shutil.which("claude")
     if claude is None:
         print("claude not found on PATH")
+        return 1
+    if dirty := uncommitted_skill_files(REPO_ROOT):
+        print("refusing: commit or stash these first, or the run sees them:", ", ".join(dirty))
         return 1
     prompt = args.prompt_file.read_text(encoding="utf-8").strip() + DRY_RUN
     budget = args.budget if args.budget is not None else DEFAULT_BUDGET[args.model]
