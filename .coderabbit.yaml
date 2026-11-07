@@ -23,6 +23,14 @@ reviews:
     docstrings:
       mode: "off"
 
+  # Generated unit tests landed as a commit on the pull request's branch (#264, 2026-11-07),
+  # failed clippy and the commit-message check, and could be fixed only by rewriting the
+  # branch. Tests come from whoever owns the pull request
+  # (docs/process/plans/retro-2026-11-07.md). Off.
+  finishing_touches:
+    unit_tests:
+      enabled: false
+
   # The message posted while a review runs woke an agent watching the pull request with
   # nothing to do (four times on 2026-11-06).
   in_progress_fortune: false

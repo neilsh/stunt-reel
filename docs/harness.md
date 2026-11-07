@@ -22,6 +22,10 @@ Nothing here is a fact about Stunt Island.
   Sonnet only where a calibrated workflow names it, such as the parity readout's tie-break. On
   #160 a Sonnet review missed four real bugs that an Opus review then found, among them a
   preflight that built despite `--no-build`.
+* **A subagent that edits code works in its own worktree**, temporary diagnostic edits included:
+  in the shared checkout its edit leaves the Lead's tree dirty, and the stop hook then asks the
+  Lead to commit and push it (2026-11-07). It hands back research notes or a branch; the Lead
+  integrates them.
 * **Glob and search from a named folder.** Claude Code's Glob ignores `.gitignore` and `.ignore`,
   so from the root it walks every worktree under `.claude/worktrees/` (about 200,000 files each
   through their data-root links) and can time out. Pass `path`, or `ls` the root.
