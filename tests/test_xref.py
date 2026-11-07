@@ -7,7 +7,7 @@ import struct
 from pathlib import Path
 from typing import Any
 
-lazy import pytest
+import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "python" / "scripts" / "xref.py"
 
@@ -70,3 +70,28 @@ def test_the_instruction_start_is_the_one_straight_line_decode_reaches() -> None
     code = bytes.fromhex("9090902ea11200c3")
     (ref,) = _load().find_references(code, 0x12, len(code), context=0)
     assert ref.start == 3
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [(["--context", "-1", "--string", "x"], "--context"), (["--string", "☃"], "Latin-1")],
+)
+def test_bad_arguments_are_usage_errors(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], args: list[str], message: str
+) -> None:
+    exe = tmp_path / "SD.EXE"
+    exe.write_bytes(_mz(IMAGE))
+    with pytest.raises(SystemExit) as exit_info:
+        _load().main([str(exe), *args])
+    assert exit_info.value.code == 2
+    assert message in capsys.readouterr().err
+
+
+def test_a_latin_1_string_folds_case_as_the_image_does(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`bytes.lower()` folds only ASCII, so byte `0xC9` must be searched as `0xC9`, not `0xE9`."""
+    exe = tmp_path / "SD.EXE"
+    exe.write_bytes(_mz(CODE.ljust(0x22, b"\0") + b"CAF\xc9\0"))
+    assert _load().main([str(exe), "--string", "cafÉ"]) == 0
+    assert "at image 0x22" in capsys.readouterr().out

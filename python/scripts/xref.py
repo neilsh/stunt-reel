@@ -220,6 +220,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--context", type=int, default=4, help="instructions shown each side")
     parser.add_argument("--code-end", type=_int, help="search code below this image offset")
     args = parser.parse_args(argv)
+    if args.context < 0:
+        parser.error("--context must be zero or more")
 
     raw = read_data_file_or_report("xref", args.file)
     if raw is None:
@@ -231,7 +233,10 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--offset needs --ds")
         targets.append((f"DS:0x{args.offset:04X}", None, args.offset))
     else:
-        needle = args.string.lower().encode("latin-1")
+        try:
+            needle = args.string.encode("latin-1").lower()
+        except UnicodeEncodeError:
+            parser.error("--string must be Latin-1 text")
         haystack = image.data.lower()
         at = haystack.find(needle)
         while at != -1:
