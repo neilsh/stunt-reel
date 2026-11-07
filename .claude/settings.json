@@ -3,5 +3,19 @@
   "disableClaudeAiConnectors": true,
   "env": {
     "PYTHONUTF8": "1"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mise run cloud-session-start",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
   }
 }

@@ -145,20 +145,33 @@ In claude.ai, the cloud environment for this repo:
 
 - **Environment variables:** `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` from
   the token, and `STUNT_DATA_ROOT`, an absolute path outside the checkout, such as
-  `/root/stunt-reel.data`.
+  `/root/stunt-reel.data`. Also `MISE_AUTO_INSTALL=false` and `MISE_USE_VERSIONS_HOST=false`,
+  as CI sets them: otherwise the first `mise run` in a session installs every tool `mise.toml`
+  declares, compiling the cargo ones from source.
 - **Network access:** the default trusted list plus `<account_id>.r2.cloudflarestorage.com`.
-  The setup script also downloads from GitHub releases, `static.rust-lang.org`, PyPI and the
-  Ubuntu mirror; whether the default list covers them is still unverified.
-- **Setup script**, run from the checkout. It installs mise at a pinned, checksum-checked
-  release, the tools the gate needs (not the DOSBox tool), lavapipe as CI does
-  ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)), then fetches the archives and builds
-  `SUPERSET.ALL`:
+  The setup script downloads from GitHub releases, `static.rust-lang.org`, PyPI and the Ubuntu
+  mirror, all on the default list.
+- **Setup script.** It installs mise at a pinned, checksum-checked release, then from the
+  checkout's `mise.lock` the tools the gate needs (not the DOSBox tool), then lavapipe as CI
+  does ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)). It fetches nothing: it runs before the
+  environment variables are set.
+
+The lockfile is what makes the install work: it holds each tool's download URL and checksum,
+so mise reads no GitHub API. Without it mise asks the API three or four times per tool, and
+cloud sessions share an address whose 60 anonymous requests an hour are gone. Java is the
+image's OpenJDK 21: mise's Java reads `mise-java.jdx.dev`, which the default list lacks. The
+setup script belongs to the environment, not the repo, and does not start in the checkout, so
+it looks for it.
 
 ```bash
 set -euo pipefail
+lock=$(find / -maxdepth 4 -path /proc -prune -o -path '*/stunt-reel/mise.lock' -print -quit)
+[ -n "$lock" ] || { echo "setup: no stunt-reel checkout found" >&2; exit 1; }
+cd "${lock%/mise.lock}"
 # As CI does: install only the tools named below, not every tool mise.toml declares (the
-# cargo ones compile from source), and read tool releases from GitHub.
-export MISE_AUTO_INSTALL=false MISE_USE_VERSIONS_HOST=false
+# cargo ones compile from source). MISE_LOCKED fails a tool missing from mise.lock instead of
+# asking the GitHub API for it.
+export MISE_AUTO_INSTALL=false MISE_USE_VERSIONS_HOST=false MISE_LOCKED=1
 MISE_VERSION=2026.10.12
 MISE_SHA256=aa5f8fbbb942296bbeea3769abf56c6f4ee37da4d203f0044b227cac4d929a87
 curl -fsSL -o /tmp/mise.tar.gz \
@@ -167,14 +180,20 @@ echo "${MISE_SHA256}  /tmp/mise.tar.gz" | sha256sum -c -
 tar -xzf /tmp/mise.tar.gz -C /tmp
 install -m 0755 /tmp/mise/bin/mise /usr/local/bin/mise
 mise trust
-mise install rust python uv prek java github:kaitai-io/kaitai_struct_compiler
+mise install rust python uv prek github:kaitai-io/kaitai_struct_compiler
 mise exec -- uv sync --locked --all-groups
 apt-get update && apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
-mise run cloud-assets -- fetch && mise run superset-all
 ```
 
-`fetch` skips an archive whose folder already exists, so a rerun downloads nothing. To take a
-newer pin in a live session, delete that folder under `$STUNT_DATA_ROOT` and fetch again.
+The repo's SessionStart hook (`.claude/settings.json`) runs `mise run cloud-session-start` on
+every session start and resume. Outside a cloud session (`CLAUDE_CODE_REMOTE` unset) it does
+nothing; in one it runs `mise run cloud-assets -- fetch`, then `mise run superset-all`, with the
+environment variables set. The setup script's cache holds no archives, so each new session
+fetches the pins of the commit it starts from.
+
+`fetch` skips an archive whose folder already exists, so a resumed session downloads nothing
+and keeps the pins it fetched first. To take a newer pin there, delete that folder under
+`$STUNT_DATA_ROOT` and fetch again.
 `mise run cloud-assets -- status` shows each pin and folder. Exit 2 means an `R2_*` variable is
 unset; a 403 means the token cannot read the bucket.
 

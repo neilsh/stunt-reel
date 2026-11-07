@@ -53,6 +53,8 @@ in it, the agent included, can read.
 
 - A leaked cloud token reads about 7 MB of game data and nothing else; rotate it on any sighting
   in a log or transcript.
+- A SessionStart hook fetches, not the setup script: the setup script runs before the cloud
+  environment's variables are set, so it never holds the token.
 - A live session that wants a newer pin deletes the folder and fetches again. A stale `captures/`
   is caught anyway: parity refuses a capture whose digest differs from its row.
 - Unverified until the first cloud run: the exact network allowlist entry, whether lavapipe
