@@ -240,9 +240,12 @@ the key pair or the network secret cannot read the bucket.
 
 - **Attach a picture to a pull request.** The image's `gh` is older than the 2.103 that `--attach`
   needs, and a cloud session has no `gh` login: GitHub goes through the session's own tools,
-  which upload no files. Commit the picture under [`research/images/`](../research/images/README.md)
-  with a research note citing it, and link it from the PR body at its commit
-  (`https://github.com/<owner>/<repo>/blob/<commit>/<path>?raw=true`), as #264 did.
+  which upload no files. PR pictures are attached, not committed ([`NOTICE.md`](../NOTICE.md)),
+  so describe each one in the PR body and leave its path in the session for someone with GitHub
+  access to attach. Only a picture that a research note cites as evidence for a finding is
+  committed, under [`research/images/`](../research/images/README.md); the PR body may then link
+  it at its commit (`https://github.com/<owner>/<repo>/blob/<commit>/<path>?raw=true`), as #264
+  did.
 - **Measure the GPU.** The renderer runs on lavapipe, whose scores are not yet shown to equal a
   GPU's ([`research/parity/lavapipe.md`](../research/parity/lavapipe.md)). An adoption decision
   still needs a GPU run.
