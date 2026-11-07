@@ -139,9 +139,13 @@ fn extract_cmd(args: &ExtractArgs, cwd: &Path) -> Result<(), LinkFailure> {
     let mut entries = fs::read_dir(&res_dir)
         .map_err(|e| LinkFailure::Error(format!("cannot list {}: {e}", res_dir.display())))?
         .filter_map(Result::ok)
-        // `!is_dir()` keeps a symlinked file, which `read` follows or reports.
-        .filter(|entry| entry.file_type().is_ok_and(|t| !t.is_dir()))
         .map(|entry| entry.path())
+        // `fs::metadata` follows a symlink, so a link to a file is kept and a link to a directory
+        // is not; a broken link is kept for `read` to report.
+        .filter(|path| match fs::metadata(path) {
+            Ok(metadata) => metadata.is_file(),
+            Err(_) => true,
+        })
         .collect::<Vec<_>>();
     entries.sort();
     let mut files = Vec::new();
