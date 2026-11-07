@@ -129,10 +129,11 @@ def test_failure_tail_header_carries_fix_hint_only_for_fixable_failures(
     """The output-tail header is printed by main alone, so exercise it there."""
     failed = {*gate.FIXABLE_STEPS, "test-rust"}
 
-    def fake_step(_mise: str, task: str) -> tuple[int, str, float]:
+    def fake_step(_mise: str, task: str, _timeout: float) -> tuple[int, str, float]:
         return (1 if task in failed else 0, f"{task} output\n", 0.0)
 
     monkeypatch.setattr(gate, "_mise", lambda: "mise")
+    monkeypatch.setattr(gate, "_check_uv", lambda: None)
     monkeypatch.setattr(gate, "_step", fake_step)
     monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
 
@@ -391,7 +392,7 @@ def _run_main(
     """Run ``gate.main`` with every step passing; return the steps it ran and what it printed."""
     ran: list[str] = []
 
-    def step(_mise: str, task: str) -> tuple[int, str, float]:
+    def step(_mise: str, task: str, _timeout: float) -> tuple[int, str, float]:
         ran.append(task)
         return 0, "", 0.0
 
@@ -404,6 +405,7 @@ def _run_main(
     monkeypatch.delenv("CI", raising=False)
     monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "check.log")
     monkeypatch.setattr(gate, "_mise", lambda: "mise")
+    monkeypatch.setattr(gate, "_check_uv", lambda: None)
     monkeypatch.setattr(gate, "_step", step)
     monkeypatch.setattr(gate, "changed_paths", changed)
     assert gate.main(["all", *args]) == 0
