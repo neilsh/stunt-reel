@@ -216,7 +216,9 @@ def test_with_archive_replaces_one_archive_in_place() -> None:
 def test_check_references_reports_a_promoted_reference_not_repacked(tmp_path: Path) -> None:
     repo = _repo(tmp_path, "1" * 64)
     m = read_manifest()
-    captures = dataclasses.replace(m.archives["captures"], references={"ctry": "2" * 64})
+    captures = dataclasses.replace(
+        m.archives["captures"], key="v1/captures-0", references={"ctry": "2" * 64}
+    )
     [message] = check_references(with_archive(m, captures), repo)
     assert "ctry" in message
     assert "pack" in message
@@ -225,7 +227,9 @@ def test_check_references_reports_a_promoted_reference_not_repacked(tmp_path: Pa
 def test_check_references_reports_a_reference_the_archive_lacks(tmp_path: Path) -> None:
     repo = _repo(tmp_path, "1" * 64)
     m = read_manifest()
-    captures = dataclasses.replace(m.archives["captures"], references={"intro": "1" * 64})
+    captures = dataclasses.replace(
+        m.archives["captures"], key="v1/captures-0", references={"intro": "1" * 64}
+    )
     [message] = check_references(with_archive(m, captures), repo)
     assert "ctry" in message
 
@@ -503,3 +507,11 @@ def test_main_exits_1_on_an_unknown_archive(
 ) -> None:
     assert _script().main(["--data-root", str(tmp_path), "status", "no-such"]) == 1
     assert "no-such" in capsys.readouterr().err
+
+
+def test_check_references_reports_a_packed_captures_without_references(tmp_path: Path) -> None:
+    repo = _repo(tmp_path, "1" * 64)
+    m = read_manifest()
+    captures = dataclasses.replace(m.archives["captures"], key="v1/captures-0", references={})
+    [message] = check_references(with_archive(m, captures), repo)
+    assert "ctry" in message

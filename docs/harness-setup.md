@@ -156,6 +156,9 @@ In claude.ai, the cloud environment for this repo:
 
 ```bash
 set -euo pipefail
+# As CI does: install only the tools named below, not every tool mise.toml declares (the
+# cargo ones compile from source), and read tool releases from GitHub.
+export MISE_AUTO_INSTALL=false MISE_USE_VERSIONS_HOST=false
 MISE_VERSION=2026.10.12
 MISE_SHA256=aa5f8fbbb942296bbeea3769abf56c6f4ee37da4d203f0044b227cac4d929a87
 curl -fsSL -o /tmp/mise.tar.gz \

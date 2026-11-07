@@ -305,11 +305,13 @@ def pack(
 def check_references(manifest: Manifest, repo: Path = REPO_ROOT) -> list[str]:
     """One message per ``references.toml`` row the ``captures`` pin does not record as-is.
 
-    Empty while ``captures`` records no references, which is before its first pack.
+    Empty while ``captures`` has no key, which is before its first pack; once it has one, a
+    missing ``references`` table reports every row.
     """
-    recorded = manifest.archives[CAPTURES].references if CAPTURES in manifest.archives else {}
-    if not recorded:
+    captures = manifest.archives.get(CAPTURES)
+    if captures is None or captures.key is None:
         return []
+    recorded = captures.references
     messages = []
     for film in references.reference_films(repo):
         wanted = references.read_reference(repo, film).sha256
