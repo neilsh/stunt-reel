@@ -104,15 +104,21 @@ Findings that shaped the design:
    on the libzstd version as well; a repack under another version gives a new key, which is
    harmless.
 6. **Auth.**
-   - Cloud sessions: an R2 API token with **Object Read only**, scoped to this bucket. Its S3
-     key pair and the account id are environment variables of the Claude Code cloud
-     environment (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`), never in the
-     repo. Anything in the session, the agent included, can read them; the scope limits a leak
-     to reading about 6.4 MB of game data. Rotate on any sighting in a log or transcript.
-   - Uploads: from the primary machine through `wrangler` with the owner's Cloudflare login,
-     at a pinned version (`npx wrangler@<version> r2 object put ... --remote`); no long-lived
-     write key exists.
-   - Rejected: a public bucket or `r2.dev` URL (distributes game data), presigned URLs (7-day
+   - Both directions go through `wrangler` at a pinned version (`npx wrangler@<version> r2
+     object get|put ... --remote`), so we write no S3 client.
+   - Cloud sessions: an R2 API token with **Admin Read only**. `wrangler` uses Cloudflare's
+     REST API, and bucket-scoped Object tokens work only with the S3 API (Cloudflare's R2
+     troubleshooting page), so the token reads every bucket in the account. Today
+     `stunt-reel-internal-assets` is the account's only bucket; a bucket added later becomes
+     readable too. The token and the account id are environment variables of the Claude Code
+     cloud environment (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, which `wrangler`
+     reads), never in the repo. Anything in the session, the agent included, can read them; a
+     leak exposes reads only. Rotate on any sighting in a log or transcript.
+   - Uploads: from the primary machine with the owner's `wrangler login`; no long-lived write
+     key exists.
+   - Rejected: a bucket-scoped Object Read token over the S3 API (tighter scope, but needs our
+     own SigV4 signer or `curl --aws-sigv4`; worth revisiting if the account gains another
+     bucket), a public bucket or `r2.dev` URL (distributes game data), presigned URLs (7-day
      maximum life), a Worker behind Cloudflare Access (more infrastructure for the same
      exposure), and a mutable `latest` pointer in the bucket (a branch would get whatever is
      newest).
@@ -169,14 +175,12 @@ Globs match case-insensitively (`[I8]`).
 - `upload [ARCHIVE...]`: runs the pinned `wrangler r2 object put <bucket>/<key> --file <path>
   --remote` for each archive whose packed file matches its pin. A key names its content, so
   uploading one twice writes the same bytes.
-- `fetch [ARCHIVE...]` (default: all): downloads each pinned key with an S3 SigV4 GET (region
-  `auto`, `x-amz-content-sha256: UNSIGNED-PAYLOAD`, signed with `hmac` and `hashlib`, endpoint
-  `https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com`). It checks size and sha256, decompresses
-  with `compression.zstd`, extracts with `tarfile`'s `data` filter (no absolute paths, no `..`,
-  no links out), and renames the folder into place (decision 7). Skips, without downloading,
-  an archive whose destination exists. Never prints the credentials. Standard library only (no
-  boto3 or AWS CLI), but it needs Python 3.14 or later for `compression.zstd`, so it runs
-  under the pinned 3.15 through `mise run`.
+- `fetch [ARCHIVE...]` (default: all): downloads each pinned key with the pinned
+  `wrangler r2 object get <bucket>/<key> --file <tmp> --remote`. It checks size and sha256,
+  decompresses with `compression.zstd`, extracts with `tarfile`'s `data` filter (no absolute
+  paths, no `..`, no links out), and renames the folder into place (decision 7). Skips, without
+  downloading, an archive whose destination exists. Never prints the token. It needs Python
+  3.14 or later for `compression.zstd`, so it runs under the pinned 3.15 through `mise run`.
 - `status`: for each archive, the pinned key, whether its destination exists, and whether the
   local packed file matches.
 
@@ -184,9 +188,10 @@ The task needs no `ensure` dependency: it builds no binary.
 
 ### 4.3 Cloud environment (configured once by the owner in claude.ai)
 
-- Environment variables: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and
+- Environment variables: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and
   `STUNT_DATA_ROOT` pointing outside the checkout.
-- Network access: the default trusted list plus `<account_id>.r2.cloudflarestorage.com`.
+- Network access: the default trusted list plus `api.cloudflare.com` (and the npm registry, for
+  `npx wrangler`, if the default list lacks it). Node 22 is in the image.
 - Setup script. The default image has `uv`, `rustc`/`cargo`, Java 21 and an unpinned Python
   3.x, but not mise, and `compression.zstd` needs Python 3.14 or later. So, as CI's
   `install_args` does:
@@ -204,8 +209,8 @@ The task needs no `ensure` dependency: it builds no binary.
 
 | Case | Result |
 |---|---|
-| Credentials missing | `fetch` exits 2 naming the missing variables and the setup doc |
-| HTTP 403 / 404 | Exit 1 naming the key and the status; 403 says to check the token's bucket scope |
+| Token or account id missing | `fetch` exits 2 naming the missing variables and the setup doc |
+| `wrangler` fails (no access, no such key) | Exit 1 naming the key, with `wrangler`'s message and the token redacted |
 | Size or sha256 differs from the pin | Exit 1; nothing is extracted; the download is deleted |
 | Destination folder exists | Skipped with a note naming it, exit 0 (decision 7) |
 | A member escapes its folder | Exit 1 from the `data` filter; `<into>.new/` is removed and `<into>/` is not created |
@@ -217,13 +222,12 @@ The task needs no `ensure` dependency: it builds no binary.
 
 Offline, synthetic data only (`[I7]`):
 
-- SigV4: the signer reproduces the AWS documented GET-object example signature.
 - Packing: the same files packed twice, in different orders and with different mtimes, give
   an identical tar; include and exclude globs pick the expected members, case-insensitively.
-- Fetch, with a fake HTTP opener: a matching archive extracts into place; a hash mismatch
+- Fetch, with a fake runner standing in for `wrangler`: a matching archive extracts into place; a hash mismatch
   extracts nothing; an existing destination is skipped with no request made; a `../` member
   is refused and leaves no destination folder.
-- `upload`: the wrangler argv for a pinned archive, with a fake runner.
+- `upload` and `fetch`: the `wrangler` argv for a pinned archive, with a fake runner.
 - The committed `assets.toml` names, for every `references.toml` row, the same capture hash.
 
 Manual, once: pack and upload `v1`, then a cloud session runs the setup script, renders CTRY
@@ -253,10 +257,9 @@ and runs parity on CTRY and INTRO.
 
 ## 9. Open questions
 
-1. The cloud environment's network allowlist: the exact form of the R2 entry (one host or a
-   wildcard), and whether the default trusted list already covers what the setup script
-   downloads (GitHub releases for mise and Python, `static.rust-lang.org`, PyPI, the Ubuntu
-   mirror). To be confirmed in the claude.ai settings at step 5.
+1. The cloud environment's network allowlist: whether the default trusted list already covers what the setup script
+   downloads (GitHub releases for mise and Python, `static.rust-lang.org`, PyPI, the npm
+   registry, the Ubuntu mirror) and `api.cloudflare.com`. To be confirmed in the claude.ai settings at step 5.
 2. Whether lavapipe renders CTRY and INTRO to the same indices as the primary machine's GPU.
    ADR 0006 leaves it unverified; step 6 measures it. If it differs beyond noise, cloud parity
    rows are labelled with their adapter.
