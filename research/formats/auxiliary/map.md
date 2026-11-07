@@ -6,7 +6,7 @@
 
 ### 1.1 Origin: `SD.EXE`, the scenery compiler
 
-`SITools/SD.EXE` is a Borland-linked executable, not packed; load-image offsets below are its file offsets minus `0x600`. The evidence that it is the developers' tool is `[Established]` for the strings and code, `[Supported Inference]` for the claim that the shipped game was built with it:
+`SITools/SD.EXE` is a plain MZ executable; load-image offsets below are its file offsets minus `0x600`, and its header, segments and routine table are in [`sd-exe/image.md`](../../sd-exe/image.md). The evidence that it is the developers' tool is `[Established]` for the strings and code, `[Supported Inference]` for the claim that the shipped game was built with it:
 
 - **Strings** (file offsets `0x18A8A`–`0x1A1A6`): `anchorpt.dat`, `map.bin`, `scenery.bin`, `squished.bin`, `regions.bin` and `Anchor point height (ft) :`.
 - **Assembler output**: the paths `\stunt\landscape.asm` and `\stunt\anchor.asm`, the node directives `sp_pos` … `sp_posxz`, `include strucs.asm`, `public anchorpts,noanchpts`, `dseg3d segment` and `($-anchorpts)/aptlen`. So it writes the tree and the anchor table as assembler source, which the game assembles in.
@@ -27,7 +27,7 @@ flowchart LR
 ### 1.2 Copies
 
 - **Corpus.** Six `MAP.BIN` copies: `Developer/FreeFlight/SIDATA/`, `Developer/SIRes/SiData/`, `Developer/SODParse/`, `SITools/` and `SITools/OBJECTS/Dean/Egalloc/` are byte-identical. `SITools/OBJECTS/Dean/MAP.BIN` is a community edit: six records differ, and patch 22 counts 2 vertices. `REGIONS.BIN`, `SCENERY.BIN` and `SQUISHED.BIN` exist only in `SITools/`.
-- **Not in the game** (`[Established]` for the search, 2026-11-06). The unpacked `PLAYONE.EXE` (both builds) and `STUNT.EXE` (both builds) hold the compiled ground: 158 of the 166 active patches as polygons with `MAP.BIN`'s colours ([`world-scene.md`](../../playone-exe/world-scene.md) section 2.1). Patches 52–55 and 62–65 appear in neither pointer nor index form in those four images or in any of the 3,844 corpus files that are not a `MAP.BIN` copy. Neither do the 12-byte headers of records 0, 1, 52 and 62. The record fields and those eight patches exist only in `MAP.BIN`, so the file cannot be rebuilt from the game.
+- **Not in the game** (`[Established]` for the search, 2026-11-06). The unpacked `PLAYONE.EXE` (both builds) and `STUNT.EXE` (both copies, searched: the retail copy is the OldPLAY build with an entry stub appended, and both unpack to the same 248,460-byte image) hold the compiled ground: 158 of the 166 active patches as polygons with `MAP.BIN`'s colours ([`world-scene.md`](../../playone-exe/world-scene.md) section 2.1). Patches 52–55 and 62–65 appear in neither pointer nor index form in those four images or in any of the 3,844 corpus files that are not a `MAP.BIN` copy. Neither do the 12-byte headers of records 0, 1, 52 and 62. The record fields and those eight patches exist only in `MAP.BIN`, so the file cannot be rebuilt from the game.
 
 **Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I3]`](../../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../../crates/stunt-core/src/contracts/vfs.rs), [`world.rs`](../../../crates/stunt-core/src/world.rs) and [`scene_tree.py`](../../../python/stunt_reel/scene_tree.py). No synthetic terrain fixture exists yet.
 

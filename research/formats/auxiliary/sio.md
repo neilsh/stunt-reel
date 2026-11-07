@@ -10,7 +10,7 @@ The `.SIO` format is an intermediate 3D mesh and point-cloud authoring format cr
 - **Byte Endianness:** Little-endian (standard x86 16-bit integer formatting).
 - **Engine Lifecycle Role:**
   1. *Intermediate Geometric Modeling:* Serves as a high-level 3D point cloud and wireframe authoring format supporting geometric primitives (centralized cubes, circles, spheres, Bezier curves, and random point-cloud splats).
-  2. *Upstream Feed to Official Compiler (`SD.EXE`):* Generates point-cloud structures that are ingested into the official Stunt Island object compiler (`SD.EXE`) to assemble final procedural display-list `.SOD` / `.BIN` models.
+  2. *Upstream of the compiled shape:* the source of a display-list `.SOD` / `.BIN` model. The compiler is unidentified: `SD.EXE`, the scenery designer, names no `.SIO` or `.SOD` file and only places compiled `shapes\*.bin` ([`sd-exe/image.md`](../../sd-exe/image.md)).
   3. *Parametric Vertex Construction:* Implements explicit coordinates alongside parametric midpoint generator opcodes, reducing file size and enforcing geometric symmetry.
 
 **Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization). **Contract and code:** [`contracts/shape.rs`](../../../crates/stunt-core/src/contracts/shape.rs). No synthetic `.SIO` fixture exists yet.
@@ -135,7 +135,7 @@ Where $s = 0.005\text{ m}$ (standard $1:200$ editor scaling) or derived from the
 
 | Item ID | Topic | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- |
-| `[BK-SIO-01]` | Polygon Face Definitions in `.SIO` | Determining whether SLICE stored polygon face connectivity opcodes (e.g. quad/tri indices) in extended `.SIO` files or purely emitted point clouds for external polygon assembly in `SD.EXE`. | `[Supported Inference]` |
+| `[BK-SIO-01]` | Polygon Face Definitions in `.SIO` | Determining whether SLICE stored polygon face connectivity opcodes (e.g. quad/tri indices) in extended `.SIO` files or purely emitted point clouds for polygon assembly in a later tool, which is unidentified (`SD.EXE` names no `.SIO` or `.SOD` file). | `[Supported Inference]` |
 | `[BK-SIO-02]` | Extended Tag Opcodes | Investigating whether additional opcode tags ($0x01..0x05, 0x07..0x11$) existed for splat zones, rotation groups, or axis mirroring. | `[Bounded Observation]` |
 | `[BK-SIO-03]` | Visual Basic 5.0 Serialization Format | Confirming whether Visual Basic's random-access binary file IO (`Put #1, ...`) imposed any hidden record padding on non-standard Windows versions. | `[Established]` |
 
