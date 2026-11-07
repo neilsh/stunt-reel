@@ -4,12 +4,17 @@
 //! A chunk of a `.ALL` is a byte-identical copy of one item of a game `.RES` file, with id
 //! `(res_index << 8) | item`, where item `n` is region `n - 1` of the file
 //! (`research/makeone-exe/linking.md` §§ 1–3). [`extract`] recovers the list from an archive;
-//! [`build`] writes the archive back from the list. Reading files and hashing them is the
-//! caller's job (`stuntreel link`); this module only sees bytes (`[I7]`).
+//! [`build`] writes the archive back from the list, and [`shape_chunks`] lists every shape the
+//! game's files hold, as an archive of all of them would. Reading files and hashing them is the
+//! caller's job (`stuntreel link`, `stuntreel --game`); this module only sees bytes (`[I7]`).
 
 use std::collections::BTreeMap;
 
 use crate::vfs::{ResRegions, VfsError, all_chunks, write_all};
+
+/// `res_index` values below this hold shapes; `SPRITES.RES` (`0x80`) and the sound files sit
+/// at or above it (`research/makeone-exe/linking.md` § 7).
+pub const SHAPE_INDEX_LIMIT: u8 = 0x80;
 
 /// A film's committed manifest (`manifests/all/<slug>.toml`): enough to rebuild its `.ALL`.
 ///
@@ -73,11 +78,19 @@ pub enum LinkError {
         /// The file's item count (0 when the caller supplied no file for the index).
         count: usize,
     },
-    /// Two manifest sources share an index.
+    /// Two manifest sources, or two files given to [`shape_chunks`], share an index.
     #[error("two sources share index 0x{index:02X}")]
     DuplicateIndex {
         /// The repeated index.
         index: u8,
+    },
+    /// A file has more items than a chunk id's low byte can number (255).
+    #[error("index 0x{index:02X} has {count} items; a chunk id numbers at most 255")]
+    TooManyItems {
+        /// The file's `res_index`.
+        index: u8,
+        /// Its item count.
+        count: usize,
     },
     /// A manifest's sources are not in index order, or a source's items do not ascend.
     #[error("{file} is out of order: sources ascend by index, items ascend without repeats")]
@@ -201,10 +214,47 @@ pub fn build(
                     count: regions.map_or(0, |r| r.regions.len()),
                 }
             })?;
-            chunks.push((u16::from(source.index) << 8 | u16::from(item), payload));
+            chunks.push((chunk_id(source.index, item), payload));
         }
     }
     Ok(write_all(&chunks)?)
+}
+
+/// Every item of every shape file (`res_index` below [`SHAPE_INDEX_LIMIT`]) in `files`, keyed by
+/// the chunk id a `.ALL` gives it; other files are ignored.
+///
+/// # Errors
+/// - [`LinkError::DuplicateIndex`] when two shape files share an index.
+/// - [`LinkError::TooManyItems`] when a shape file has more than 255 items.
+pub fn shape_chunks<'a>(files: &[ResRegions<'a>]) -> Result<BTreeMap<u16, &'a [u8]>, LinkError> {
+    let mut seen = [false; SHAPE_INDEX_LIMIT as usize];
+    let mut chunks = BTreeMap::new();
+    for regions in files {
+        // A file at or above the limit has no slot: it holds no shapes.
+        let Some(slot) = seen.get_mut(usize::from(regions.index)) else {
+            continue;
+        };
+        if std::mem::replace(slot, true) {
+            return Err(LinkError::DuplicateIndex {
+                index: regions.index,
+            });
+        }
+        let count = u8::try_from(regions.regions.len()).map_err(|_| LinkError::TooManyItems {
+            index: regions.index,
+            count: regions.regions.len(),
+        })?;
+        for item in 1..=count {
+            if let Some(payload) = item_region(regions, item) {
+                chunks.insert(chunk_id(regions.index, item), payload);
+            }
+        }
+    }
+    Ok(chunks)
+}
+
+/// The `.ALL` chunk id of item `item` of the file with `res_index` `index`.
+fn chunk_id(index: u8, item: u8) -> u16 {
+    u16::from_le_bytes([item, index])
 }
 
 /// The item number of a `.ALL` chunk id: its low byte. The high byte is the source index.

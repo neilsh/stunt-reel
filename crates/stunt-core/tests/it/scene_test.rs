@@ -12,13 +12,15 @@ use crate::common;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use common::{ACTOR_RZ_BAM, push_interp};
+use common::{ACTOR_RZ_BAM, push_interp, res_file};
 use stunt_core::contracts::{SodModelIr, SodStop, SodStopReason};
 use stunt_core::flm::{
     FilmTimeline, FlmError, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW,
 };
-use stunt_core::scene::{FilmScene, SceneError, SceneInputs};
+use stunt_core::link::LinkError;
+use stunt_core::scene::{FilmScene, SceneError, SceneInputs, ShapeSource};
 use stunt_core::sod::{DecodeMode, EPSILON_DISPLACEMENT, OP_TAP, decode_sod};
+use stunt_core::vfs::{res_regions, write_all};
 use stunt_core::world::ScnStopReason;
 
 fn fixture(name: &str) -> Vec<u8> {
@@ -90,7 +92,7 @@ fn model(bytes: &[u8]) -> SodModelIr {
 fn scene_inputs(film: &[u8]) -> SceneInputs<'_> {
     SceneInputs {
         film,
-        archive: None,
+        shapes: None,
         anchors: None,
         map: None,
         scenery: None,
@@ -105,7 +107,7 @@ fn actors_sharing_a_shape_get_separate_draws() {
     );
     let all = archive(&[(7, &fixture("synthetic_minimal.sod"))]);
     let (scene, report) = FilmScene::load(&SceneInputs {
-        archive: Some(&all),
+        shapes: Some(ShapeSource::Archive(&all)),
         ..scene_inputs(&film)
     })
     .expect("load");
@@ -149,7 +151,7 @@ fn a_shadow_slot_gets_its_matrix_flattened_onto_the_ground() {
             flags,
         );
         let (scene, _) = FilmScene::load(&SceneInputs {
-            archive: Some(&all),
+            shapes: Some(ShapeSource::Archive(&all)),
             ..scene_inputs(&film)
         })
         .expect("load");
@@ -187,7 +189,7 @@ fn actor_is_drawn_without_its_shapes_ground_offset() {
     );
     let all = archive(&[(7, &sod)]);
     let (scene, _) = FilmScene::load(&SceneInputs {
-        archive: Some(&all),
+        shapes: Some(ShapeSource::Archive(&all)),
         ..scene_inputs(&film)
     })
     .expect("load");
@@ -224,7 +226,7 @@ fn distance_is_eye_to_actor_position() {
     );
     let all = archive(&[(7, &fixture("synthetic_minimal.sod"))]);
     let (scene, _) = FilmScene::load(&SceneInputs {
-        archive: Some(&all),
+        shapes: Some(ShapeSource::Archive(&all)),
         ..scene_inputs(&film)
     })
     .expect("load");
@@ -239,7 +241,7 @@ fn actor_without_a_shape_is_not_drawn() {
     let film = film([0.0, 0.0, 10.0], &[(7, [0.0; 3]), (9, [1.0, 0.0, 0.0])]);
     let all = archive(&[(7, &fixture("synthetic_minimal.sod"))]);
     let (scene, _) = FilmScene::load(&SceneInputs {
-        archive: Some(&all),
+        shapes: Some(ShapeSource::Archive(&all)),
         ..scene_inputs(&film)
     })
     .expect("load");
@@ -257,7 +259,7 @@ fn undecodable_chunk_is_skipped_and_reported() {
     let bad = [0x0C, 0x00, 0x01];
     let all = archive(&[(7, &fixture("synthetic_minimal.sod")), (8, &bad)]);
     let (scene, report) = FilmScene::load(&SceneInputs {
-        archive: Some(&all),
+        shapes: Some(ShapeSource::Archive(&all)),
         ..scene_inputs(&film)
     })
     .expect("load");
@@ -273,7 +275,7 @@ fn tap_shape_without_anchors_is_reported_partial() {
     let all = archive(&[(5, &fixture("synthetic_tap.sod"))]);
 
     let (scene, report) = FilmScene::load(&SceneInputs {
-        archive: Some(&all),
+        shapes: Some(ShapeSource::Archive(&all)),
         ..scene_inputs(&film)
     })
     .expect("load");
@@ -294,7 +296,7 @@ fn tap_shape_without_anchors_is_reported_partial() {
 
     let anchors = fixture("synthetic_anchors.bin");
     let (scene, report) = FilmScene::load(&SceneInputs {
-        archive: Some(&all),
+        shapes: Some(ShapeSource::Archive(&all)),
         anchors: Some(&anchors),
         ..scene_inputs(&film)
     })
@@ -334,7 +336,7 @@ fn unreadable_inputs_are_errors() {
 
     let film = film([0.0, 0.0, 10.0], &[]);
     let err = FilmScene::load(&SceneInputs {
-        archive: Some(&[0x05]),
+        shapes: Some(ShapeSource::Archive(&[0x05])),
         ..scene_inputs(&film)
     })
     .expect_err("bad archive");
@@ -432,7 +434,7 @@ fn caller_supplied_timeline_keeps_archive_shapes() {
     let film = film([0.0, 0.0, 10.0], &[(7, [3.0, 0.0, 0.0])]);
     let all = archive(&[(7, &fixture("synthetic_minimal.sod"))]);
     let inputs = SceneInputs {
-        archive: Some(&all),
+        shapes: Some(ShapeSource::Archive(&all)),
         ..scene_inputs(&[])
     };
     let timeline = FilmTimeline::from_bytes(&film).expect("film");
@@ -441,6 +443,77 @@ fn caller_supplied_timeline_keeps_archive_shapes() {
     assert!(report.skipped.is_empty());
     assert!(scene.shape(7).is_some());
     assert_eq!(scene.frame(0.0).actors.len(), 1);
+}
+
+/// Shapes from the game's `RES` files and from a `.ALL` copying the same items are the same:
+/// same ids, same decode (anchors and light included), same skipped items, same draws.
+#[test]
+fn res_files_give_the_shapes_of_an_archive_of_their_items() {
+    let minimal = fixture("synthetic_minimal.sod");
+    let tap = fixture("synthetic_tap.sod");
+    let anchors = fixture("synthetic_anchors.bin");
+    // Item 1 is a name table, not a shape; item 4 starts like a shape but does not decode.
+    let broken: &[u8] = &[0x0C, 0x00, 0x01];
+    let props = res_file(0x01, &[b"NAMES\0", &minimal, &tap, broken]);
+    let planes = res_file(0x7F, &[&minimal]);
+    let sound = res_file(0xC0, &[&minimal]);
+    let files = [&sound, &props, &planes].map(|bytes| res_regions(bytes).expect("split"));
+    let all = write_all(&[
+        (0x0101, b"NAMES\0"),
+        (0x0102, &minimal),
+        (0x0103, &tap),
+        (0x0104, broken),
+        (0x7F01, &minimal),
+    ])
+    .expect("archive");
+
+    let film = film(
+        [0.0, 0.0, 10.0],
+        &[(0x0103, [3.0, 0.0, 0.0]), (0x7F01, [0.0, 4.0, 10.0])],
+    );
+    let load = |shapes| {
+        FilmScene::load(&SceneInputs {
+            shapes: Some(shapes),
+            anchors: Some(&anchors),
+            ..scene_inputs(&film)
+        })
+        .expect("load")
+    };
+    let (from_res, res_report) = load(ShapeSource::Res(&files));
+    let (from_all, all_report) = load(ShapeSource::Archive(&all));
+
+    let sorted = |scene: &FilmScene| {
+        let mut shapes: Vec<(u16, SodModelIr)> =
+            scene.shapes().map(|(id, ir)| (id, ir.clone())).collect();
+        shapes.sort_by_key(|(id, _)| *id);
+        shapes
+    };
+    let ids: Vec<u16> = sorted(&from_res).iter().map(|(id, _)| *id).collect();
+    assert_eq!(ids, [0x0102, 0x0103, 0x7F01]);
+    assert_eq!(sorted(&from_res), sorted(&from_all));
+    assert_eq!(res_report, all_report);
+    assert_eq!(res_report.skipped.len(), 1);
+    assert_eq!(res_report.skipped[0].name, "MODEL_0104.SOD");
+    assert_eq!(from_res.frame(0.0), from_all.frame(0.0));
+    assert_eq!(from_res.frame(0.0).actors.len(), 2);
+}
+
+#[test]
+fn res_files_sharing_a_shape_index_are_an_error() {
+    let minimal = fixture("synthetic_minimal.sod");
+    let a = res_file(0x05, &[&minimal]);
+    let b = res_file(0x05, &[&minimal]);
+    let files = [&a, &b].map(|bytes| res_regions(bytes).expect("split"));
+    let film = film([0.0, 0.0, 10.0], &[]);
+    let err = FilmScene::load(&SceneInputs {
+        shapes: Some(ShapeSource::Res(&files)),
+        ..scene_inputs(&film)
+    })
+    .expect_err("duplicate index");
+    assert_eq!(
+        err,
+        SceneError::Res(LinkError::DuplicateIndex { index: 0x05 })
+    );
 }
 
 #[test]

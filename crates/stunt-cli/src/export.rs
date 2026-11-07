@@ -152,6 +152,7 @@ fn glb_for_frame(
     let scene = build_scene(&SceneSources {
         flm: Some(film),
         all: Some(archive),
+        game: None,
         sod: None,
         sidata,
         font: None,

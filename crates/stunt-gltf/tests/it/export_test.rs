@@ -21,7 +21,7 @@ use stunt_core::contracts::{
     NodeKind, SodModelIr, SodVertex, VisibilityCondition, get_palette_rgb_float,
 };
 use stunt_core::flm::{SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES};
-use stunt_core::scene::{FilmScene, SceneInputs, ViewCamera};
+use stunt_core::scene::{FilmScene, SceneInputs, ShapeSource, ViewCamera};
 use stunt_core::sod::{DecodeMode, EPSILON_DISPLACEMENT, decode_sod};
 use stunt_gltf::{GltfError, camera_rotation, export_scene_frame, export_shape, summarize};
 
@@ -514,7 +514,7 @@ fn archive(chunks: &[(u16, &[u8])]) -> Vec<u8> {
 fn load(film: &[u8], all: &[u8]) -> FilmScene {
     FilmScene::load(&SceneInputs {
         film,
-        archive: Some(all),
+        shapes: Some(ShapeSource::Archive(all)),
         anchors: None,
         map: None,
         scenery: None,
@@ -666,7 +666,7 @@ fn actors_with_different_shapes_get_separate_meshes() {
     let all = archive(&[(7, &minimal), (8, &tap)]);
     let (scene, _) = FilmScene::load(&SceneInputs {
         film: &film,
-        archive: Some(&all),
+        shapes: Some(ShapeSource::Archive(&all)),
         anchors: Some(&anchors),
         map: None,
         scenery: None,
@@ -747,7 +747,7 @@ fn world_is_exported_as_an_identity_node() {
     let all = archive(&[(7, &fixture("synthetic_minimal.sod"))]);
     let (scene, _) = FilmScene::load(&SceneInputs {
         film: &film,
-        archive: Some(&all),
+        shapes: Some(ShapeSource::Archive(&all)),
         anchors: Some(&anchors),
         map: Some(&patch),
         scenery: None,
@@ -774,7 +774,7 @@ fn frame_without_actors_still_has_a_camera() {
     let film = film([0.0, 0.0, 10.0], &[]);
     let (scene, _) = FilmScene::load(&SceneInputs {
         film: &film,
-        archive: None,
+        shapes: None,
         anchors: None,
         map: None,
         scenery: None,

@@ -6,7 +6,7 @@
 mod all;
 mod res;
 
-pub use all::{all_chunks, parse_all, write_all};
+pub use all::{all_chunks, chunk_name, parse_all, write_all};
 pub use res::{ResRegions, parse_res, res_regions};
 
 use crate::contracts::vfs::VfsArchive;

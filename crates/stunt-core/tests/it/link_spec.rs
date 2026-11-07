@@ -13,7 +13,8 @@
 
 use std::collections::BTreeMap;
 
-use stunt_core::link::{LinkError, Source, build, extract};
+use crate::common::res_file;
+use stunt_core::link::{LinkError, SHAPE_INDEX_LIMIT, Source, build, extract, shape_chunks};
 use stunt_core::vfs::{ResRegions, res_regions, write_all};
 
 const SCEN: &[u8] = include_bytes!("../../../../tests/fixtures/link_scen.res");
@@ -148,6 +149,65 @@ fn hand_edited_order_is_refused() {
         out_of_order,
         LinkError::Unsorted {
             file: "SCEN.RES".to_string()
+        }
+    );
+}
+
+#[test]
+fn shape_chunks_key_item_n_of_a_file_by_index_and_n() {
+    let planes = res_file(0x7F, &[b"p1", b"p2"]);
+    let files = [res_regions(SCEN).unwrap(), res_regions(&planes).unwrap()];
+    assert_eq!(
+        res_file(0x02, &[b"\x0C\x00a1", b"\x0C\x00a2", b"\x0C\x00a3"]),
+        SCEN,
+        "the helper lays a file out as the fixtures are"
+    );
+
+    let expected: BTreeMap<u16, &[u8]> = BTreeMap::from([
+        (0x0201, &b"\x0C\x00a1"[..]),
+        (0x0202, b"\x0C\x00a2"),
+        (0x0203, b"\x0C\x00a3"),
+        (0x7F01, b"p1"),
+        (0x7F02, b"p2"),
+    ]);
+    assert_eq!(shape_chunks(&files).unwrap(), expected);
+}
+
+#[test]
+fn shape_chunks_ignore_files_at_or_above_the_shape_limit() {
+    let sprites = res_file(SHAPE_INDEX_LIMIT, &[b"palette"]);
+    let files = [
+        res_regions(XMA).unwrap(),
+        res_regions(&sprites).unwrap(),
+        res_regions(SCEN).unwrap(),
+        res_regions(ESS).unwrap(),
+    ];
+    let ids: Vec<u16> = shape_chunks(&files).unwrap().into_keys().collect();
+    assert_eq!(ids, [0x0201, 0x0202, 0x0203]);
+    assert!(shape_chunks(&files[..2]).unwrap().is_empty());
+}
+
+#[test]
+fn shape_chunks_refuse_two_files_with_one_index() {
+    let other = res_file(0x02, &[b"other"]);
+    let files = [res_regions(SCEN).unwrap(), res_regions(&other).unwrap()];
+    assert_eq!(
+        shape_chunks(&files).unwrap_err(),
+        LinkError::DuplicateIndex { index: 0x02 }
+    );
+}
+
+#[test]
+fn shape_chunks_refuse_a_file_no_chunk_id_can_number() {
+    let regions = ResRegions {
+        index: 0x03,
+        regions: vec![&b"x"[..]; 256],
+    };
+    assert_eq!(
+        shape_chunks(&[regions]).unwrap_err(),
+        LinkError::TooManyItems {
+            index: 0x03,
+            count: 256
         }
     );
 }

@@ -86,6 +86,7 @@ fn main() {
     let scene = match build_scene(&SceneSources {
         flm: config.flm_path.as_deref(),
         all: config.all_path.as_deref(),
+        game: config.game_dir.as_deref(),
         sod: config.sod_path.as_deref(),
         sidata: config.sidata_dir.as_deref(),
         font: config.font_path.as_deref(),

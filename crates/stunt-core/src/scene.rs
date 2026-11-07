@@ -6,8 +6,11 @@
 //! `[I1]` metres. Nothing here touches the filesystem or a graphics API: callers locate the
 //! files and hand over their bytes ([`SceneInputs`]) or pre-built parts ([`FilmScene::new`]).
 //!
-//! Archive chunk names follow `# [FMT-ALL-CHUNKS]` (`MODEL_%04X.SOD`, `[I8]`): the hex in the
-//! name is the resource ID that `ActorTransform::shape_id` carries. Chunks that stop at an
+//! Shapes come from a film's `.ALL` archive or straight from the game's `RES` files
+//! ([`ShapeSource`]); a stock archive chunk is a copy of a `RES` item, so both give the same
+//! shape for an id (`research/makeone-exe/linking.md` §§ 2 and 7). Archive chunk names follow
+//! `# [FMT-ALL-CHUNKS]` (`MODEL_%04X.SOD`, `[I8]`): the hex in the name is the resource ID that
+//! `ActorTransform::shape_id` carries. Chunks that stop at an
 //! opcode outside the decoded table keep the geometry parsed so far and carry the stop in
 //! their decode record, so a partial shape is still a value with provenance. The anchor
 //! table follows ADR-0001.
@@ -20,8 +23,9 @@ use crate::contracts::{ActorTransform, CameraTransform, PaletteControls, ShapeEx
 use crate::credits::CreditLines;
 use crate::flm::{FilmTimeline, FlmError};
 use crate::font::PFont;
+use crate::link::{LinkError, shape_chunks};
 use crate::sod::{DecodeMode, EPSILON_DISPLACEMENT, ShadeLight, SodError, decode_sod_lit};
-use crate::vfs::VfsError;
+use crate::vfs::{ResRegions, VfsError};
 use crate::world::{GroundPlane, ScnStop, World, WorldInputs, build_world};
 
 /// Column-major identity matrix.
@@ -34,14 +38,24 @@ const IDENTITY_MATRIX: [f32; 16] = [
 pub struct SceneInputs<'a> {
     /// `.FLM` film bytes.
     pub film: &'a [u8],
-    /// `.ALL` archive bytes carrying the `MODEL_%04X.SOD` shapes, if any.
-    pub archive: Option<&'a [u8]>,
+    /// Where the shapes come from, if anywhere.
+    pub shapes: Option<ShapeSource<'a>>,
     /// `ANCHORPT.DAT` bytes: the table `OP_TAP` and the terrain resolve against.
     pub anchors: Option<&'a [u8]>,
     /// `MAP.BIN` bytes (terrain patches).
     pub map: Option<&'a [u8]>,
     /// `SCENERY.scn` bytes (prop placements).
     pub scenery: Option<&'a [u8]>,
+}
+
+/// Where a scene's shapes come from.
+#[derive(Clone, Copy, Debug)]
+pub enum ShapeSource<'a> {
+    /// `.ALL` archive bytes carrying the `MODEL_%04X.SOD` shapes.
+    Archive(&'a [u8]),
+    /// The game's `RES` files, split, read as [`decode_res_shapes`] reads them; files without
+    /// shapes are ignored.
+    Res(&'a [ResRegions<'a>]),
 }
 
 /// Why a film scene could not be built.
@@ -53,12 +67,16 @@ pub enum SceneError {
     /// The `.ALL` archive container was malformed.
     #[error("archive: {0}")]
     Archive(VfsError),
+    /// The `RES` files do not form one shape set: two share an index, or one has too many
+    /// items.
+    #[error("RES files: {0}")]
+    Res(LinkError),
 }
 
-/// An archive `MODEL_*.SOD` chunk that could not be decoded at all.
+/// A `MODEL_*.SOD` chunk that could not be decoded at all.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkippedChunk {
-    /// Archive entry name, e.g. `MODEL_0042.SOD`.
+    /// Archive entry name, e.g. `MODEL_0042.SOD`; a `RES` item is named as its chunk would be.
     pub name: String,
     /// The decode failure.
     pub error: SodError,
@@ -91,7 +109,7 @@ pub struct SceneReport {
     pub world: Option<WorldStats>,
 }
 
-/// Shapes decoded from one `.ALL` archive.
+/// Shapes decoded from one [`ShapeSource`].
 #[derive(Debug, Clone, Default)]
 pub struct ArchiveShapes {
     /// Decoded models keyed by the resource ID in their chunk name.
@@ -119,30 +137,51 @@ pub fn decode_archive_shapes(
     light: ShadeLight,
 ) -> Result<ArchiveShapes, VfsError> {
     let archive = crate::vfs::parse_all(archive)?;
-    let anchor_slice = (!anchors.is_empty()).then_some(anchors);
+    let chunks = archive.entries.values().filter_map(|entry| {
+        model_shape_id(&entry.name).map(|id| (id, entry.name.clone(), entry.data.as_slice()))
+    });
+    Ok(decode_chunks(chunks, anchors, light))
+}
 
+/// Decodes every item of the shape files among `files` as [`decode_archive_shapes`] decodes an
+/// archive's chunks: the same ids, names, anchors, light and lenient decoding, and only the
+/// items an archive would name `MODEL_%04X.SOD`.
+///
+/// # Errors
+/// Returns the [`LinkError`] from [`crate::link::shape_chunks`]: two shape files share an
+/// index, or one has more than 255 items. A single item that fails to decode is not an error:
+/// it is listed in [`ArchiveShapes::skipped`].
+pub fn decode_res_shapes(
+    files: &[ResRegions<'_>],
+    anchors: &[AnchorPoint],
+    light: ShadeLight,
+) -> Result<ArchiveShapes, LinkError> {
+    let chunks = shape_chunks(files)?
+        .into_iter()
+        .filter_map(|(id, payload)| {
+            let name = crate::vfs::chunk_name(id, payload);
+            model_shape_id(&name).map(|id| (id, name, payload))
+        });
+    Ok(decode_chunks(chunks, anchors, light))
+}
+
+/// Decodes `(shape id, chunk name, payload)` chunks leniently, keeping failures as skipped.
+fn decode_chunks<'a>(
+    chunks: impl Iterator<Item = (u16, String, &'a [u8])>,
+    anchors: &[AnchorPoint],
+    light: ShadeLight,
+) -> ArchiveShapes {
+    let anchor_slice = (!anchors.is_empty()).then_some(anchors);
     let mut out = ArchiveShapes::default();
-    for entry in archive.entries.values() {
-        let Some(shape_id) = model_shape_id(&entry.name) else {
-            continue;
-        };
-        match decode_sod_lit(
-            &entry.data,
-            &entry.name,
-            anchor_slice,
-            DecodeMode::Lenient,
-            light,
-        ) {
+    for (shape_id, name, data) in chunks {
+        match decode_sod_lit(data, &name, anchor_slice, DecodeMode::Lenient, light) {
             Ok(ir) => {
                 out.shapes.insert(shape_id, ir);
             }
-            Err(error) => out.skipped.push(SkippedChunk {
-                name: entry.name.clone(),
-                error,
-            }),
+            Err(error) => out.skipped.push(SkippedChunk { name, error }),
         }
     }
-    Ok(out)
+    out
 }
 
 /// Extracts the resource ID from a `MODEL_%04X.SOD` archive entry name.
@@ -297,8 +336,7 @@ impl FilmScene {
     ///
     /// # Errors
     /// Returns [`SceneError::Film`] if `inputs.film` fails [`FilmTimeline::from_bytes`], and
-    /// [`SceneError::Archive`] if `inputs.archive` is present but not a well-formed `.ALL`
-    /// container.
+    /// otherwise the errors of [`Self::load_with_timeline`].
     pub fn load(inputs: &SceneInputs<'_>) -> Result<(Self, SceneReport), SceneError> {
         let timeline = FilmTimeline::from_bytes(inputs.film).map_err(SceneError::Film)?;
         Self::load_with_timeline(timeline, inputs)
@@ -310,8 +348,10 @@ impl FilmScene {
     /// archive shapes and world.
     ///
     /// # Errors
-    /// Returns [`SceneError::Archive`] if `inputs.archive` is present but not a well-formed
-    /// `.ALL` container. Never returns [`SceneError::Film`], since `timeline` is already built.
+    /// Returns [`SceneError::Archive`] if `inputs.shapes` is an archive that is not a
+    /// well-formed `.ALL` container, and [`SceneError::Res`] if it is `RES` files that
+    /// [`decode_res_shapes`] refuses. Never returns [`SceneError::Film`], since `timeline` is
+    /// already built.
     pub fn load_with_timeline(
         timeline: FilmTimeline,
         inputs: &SceneInputs<'_>,
@@ -327,9 +367,12 @@ impl FilmScene {
                 .first()
                 .map_or(0, |slice| slice.record.palette.sky),
         );
-        let decoded = match inputs.archive {
-            Some(bytes) => {
+        let decoded = match inputs.shapes {
+            Some(ShapeSource::Archive(bytes)) => {
                 decode_archive_shapes(bytes, &anchors, light).map_err(SceneError::Archive)?
+            }
+            Some(ShapeSource::Res(files)) => {
+                decode_res_shapes(files, &anchors, light).map_err(SceneError::Res)?
             }
             None => ArchiveShapes::default(),
         };

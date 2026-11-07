@@ -267,7 +267,7 @@ fn build_cmd(args: &BuildArgs, cwd: &Path) -> Result<(), LinkFailure> {
 }
 
 /// The entry of `dir` named `name` in any case (`[I8]`).
-fn find_ci(dir: &Path, name: &str) -> Result<PathBuf, LinkFailure> {
+pub(crate) fn find_ci(dir: &Path, name: &str) -> Result<PathBuf, LinkFailure> {
     let missing = || LinkFailure::Error(format!("no {name} in {}", dir.display()));
     fs::read_dir(dir)
         .map_err(|_| missing())?
