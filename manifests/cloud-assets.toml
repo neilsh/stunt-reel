@@ -1,0 +1,37 @@
+# Game data for cloud sessions, in the private R2 bucket (docs/process/plans/cloud-assets-2026-11-06.md, ADR 0039).
+# `mise run cloud-assets -- pack` rewrites the key, sha256, bytes and references lines.
+bucket = "stunt-reel-internal-assets"
+version = "v1"
+
+[corpus-stuntisl]
+into = "corpus/stuntisl"
+include = ["**"]
+exclude = ["RES/MUSIC1.*", "RES/MUSIC2.*"]
+key = "v1/corpus-stuntisl-de6637716407214e.tar.zst"
+sha256 = "de6637716407214eb20b3fbddcf91507f1c78dc2a1be0b7699d934293cb90c01"
+bytes = 5263795
+
+[corpus-stisldem]
+into = "corpus/stisldem"
+include = ["**"]
+exclude = []
+key = "v1/corpus-stisldem-d17aa4015e23da13.tar.zst"
+sha256 = "d17aa4015e23da13a3fda793526b94774bacfaac6878ff012e48bc9844c128d6"
+bytes = 316372
+
+[corpus-freeflight]
+into = "corpus/siarchive/Developer/FreeFlight"
+include = ["**"]
+exclude = []
+key = "v1/corpus-freeflight-c22ecb5595cc6580.tar.zst"
+sha256 = "c22ecb5595cc658078c9638a64b331ac4e1864e168bc938a7ecd31b9067cc6e8"
+bytes = 548332
+
+[captures]
+into = "captures"
+include = ["*/frames/**", "*/archives/**"]
+exclude = ["**/*.lock"]
+key = "v1/captures-d6addc5166766286.tar.zst"
+sha256 = "d6addc5166766286883f1b7e6d801f9d114fd53e7141975b412721ca3b6279fd"
+bytes = 632316
+references = { ctry = "9869444de53c653214144b83c2bdbce4a686a16f5189a1f5a94f6eb19605ed49", intro = "ac93c3babb74c5380a0f1263d38a546b43979c8d4200fb0d2dfb58db482c0215" }
