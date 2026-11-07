@@ -5,19 +5,22 @@ from __future__ import annotations
 import compression.zstd
 import dataclasses
 import hashlib
+import importlib.util
 import io
 import itertools
 import os
 import subprocess
 import tarfile
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from stunt_reel import cloud_assets
 from stunt_reel.cloud_assets import (
     MANIFEST_PATH,
+    REQUIRED_ENV,
+    WRANGLER_VERSION,
     Archive,
     CloudAssetsError,
     Manifest,
@@ -29,7 +32,9 @@ from stunt_reel.cloud_assets import (
     pack,
     read_manifest,
     select_files,
+    status,
     tar_bytes,
+    upload,
     with_archive,
 )
 from stunt_reel.references import capture_digest
@@ -385,3 +390,116 @@ def test_fetch_reports_a_403_without_the_secret(tmp_path: Path) -> None:
 def test_curl_config_escapes_quotes_and_backslashes() -> None:
     text = curl_config("https://x/y", "id", r'se"c\ret', Path("out.part"))
     assert r'user = "id:se\"c\\ret"' in text
+
+
+class FakeRunner:
+    """Records each argv and succeeds or fails as told."""
+
+    def __init__(self, returncode: int = 0, stderr: str = "") -> None:
+        self.returncode = returncode
+        self.stderr = stderr
+        self.calls: list[list[str]] = []
+
+    def __call__(self, argv: Sequence[str], _cwd: Path) -> subprocess.CompletedProcess[str]:
+        self.calls.append(list(argv))
+        return subprocess.CompletedProcess(list(argv), self.returncode, "", self.stderr)
+
+
+def _packed_on_disk(tmp_path: Path) -> tuple[Manifest, Path]:
+    data_root, out = _data_root(tmp_path), tmp_path / "out"
+    m = read_manifest()
+    a = pack(m, "corpus-stuntisl", data_root, out)
+    return with_archive(m, a), out
+
+
+def test_upload_runs_the_pinned_wrangler_put(tmp_path: Path) -> None:
+    m, out = _packed_on_disk(tmp_path)
+    key = m.archives["corpus-stuntisl"].key
+    assert key is not None
+    path = out / PurePosixPath(key).name
+    run = FakeRunner()
+    lines = upload(m, ["corpus-stuntisl"], out, run=run)
+    assert run.calls == [
+        [
+            "npx",
+            "--yes",
+            f"wrangler@{WRANGLER_VERSION}",
+            "r2",
+            "object",
+            "put",
+            f"stunt-reel-internal-assets/{key}",
+            "--file",
+            str(path),
+            "--remote",
+        ]
+    ]
+    assert lines == [f"uploaded corpus-stuntisl -> stunt-reel-internal-assets/{key}"]
+
+
+def test_upload_refuses_an_unpacked_archive(tmp_path: Path) -> None:
+    run = FakeRunner()
+    with pytest.raises(CloudAssetsError, match="pack"):
+        upload(read_manifest(), ["corpus-stisldem"], tmp_path, run=run)
+    assert run.calls == []
+
+
+def test_upload_refuses_a_packed_file_that_differs_from_its_pin(tmp_path: Path) -> None:
+    m, out = _packed_on_disk(tmp_path)
+    key = m.archives["corpus-stuntisl"].key
+    assert key is not None
+    (out / PurePosixPath(key).name).write_bytes(b"repacked since")
+    run = FakeRunner()
+    with pytest.raises(CloudAssetsError, match="pack"):
+        upload(m, ["corpus-stuntisl"], out, run=run)
+    assert run.calls == []
+
+
+def test_upload_reports_a_failed_put(tmp_path: Path) -> None:
+    m, out = _packed_on_disk(tmp_path)
+    with pytest.raises(CloudAssetsError, match="not logged in"):
+        upload(m, ["corpus-stuntisl"], out, run=FakeRunner(1, "not logged in"))
+
+
+def test_status_reports_destination_and_packed_file(tmp_path: Path) -> None:
+    m, out = _packed_on_disk(tmp_path)
+    data_root = tmp_path / "data"
+    lines = status(m, data_root, out)
+    key = m.archives["corpus-stuntisl"].key
+    assert lines[0] == (
+        f"corpus-stuntisl: {key}; {data_root / 'corpus/stuntisl'} present; "
+        "packed file matches the pin"
+    )
+    stisldem = lines[1]
+    assert stisldem.startswith("corpus-stisldem: not packed;")
+    assert "absent" in stisldem
+
+
+def _script() -> Any:
+    path = Path(__file__).resolve().parent.parent / "python" / "scripts" / "cloud_assets.py"
+    spec = importlib.util.spec_from_file_location("cloud_assets_script", path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_main_exits_2_without_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    for name in REQUIRED_ENV:
+        monkeypatch.delenv(name, raising=False)
+    script = _script()
+    m, _ = _packed(tmp_path, {"RES/GAME.RES": b"game"})
+    monkeypatch.setattr(script.cloud_assets, "read_manifest", lambda: m)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert script.main(["--data-root", str(empty), "fetch", "corpus-stuntisl"]) == 2
+    assert "R2_ACCOUNT_ID" in capsys.readouterr().err
+
+
+def test_main_exits_1_on_an_unknown_archive(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert _script().main(["--data-root", str(tmp_path), "status", "no-such"]) == 1
+    assert "no-such" in capsys.readouterr().err

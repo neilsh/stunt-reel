@@ -221,6 +221,10 @@ depends = ["ensure"]
 run = "uv run python python/scripts/superset_all.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
+[tasks.cloud-assets]
+description = "Pack, upload or fetch the game archives cloud sessions use (mise run cloud-assets -- [--data-root DIR] pack|upload|fetch|status [ARCHIVE...]; ADR 0039)"
+run = "uv run python python/scripts/cloud_assets.py"
+
 [tasks.adversarial]
 description = "Adversarial stress suite over the formats catalog's constraints and claims"
 run = "uv run python python/scripts/adversarial_formats_challenge.py"

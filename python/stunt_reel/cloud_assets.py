@@ -28,15 +28,19 @@ from stunt_reel.dataroot import REPO_ROOT
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
+    from stunt_reel.link import Runner
+
 __all__ = [
     "CURL_ARGV",
     "MANIFEST_PATH",
     "REQUIRED_ENV",
+    "WRANGLER_VERSION",
     "Archive",
     "CloudAssetsError",
     "CurlRunner",
     "Manifest",
     "MissingCredentials",
+    "archive_named",
     "check_references",
     "curl_config",
     "fetch",
@@ -44,7 +48,9 @@ __all__ = [
     "pack",
     "read_manifest",
     "select_files",
+    "status",
     "tar_bytes",
+    "upload",
     "with_archive",
 ]
 
@@ -59,6 +65,9 @@ REQUIRED_ENV = ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
 
 #: curl reads the whole request, the key pair included, from the config on standard input.
 CURL_ARGV = ("curl", "--silent", "--show-error", "--fail", "--config", "-")
+
+#: The wrangler release upload runs: the newest 4.x at least two weeks old on 2026-11-06.
+WRANGLER_VERSION = "4.152.0"
 
 #: Where fetch downloads, under the data root, before it checks and unpacks.
 DOWNLOAD_DIRNAME = ".cloud-assets"
@@ -240,7 +249,7 @@ def with_archive(manifest: Manifest, archive: Archive) -> Manifest:
     return dataclasses.replace(manifest, archives=archives)
 
 
-def _archive_named(manifest: Manifest, name: str) -> Archive:
+def archive_named(manifest: Manifest, name: str) -> Archive:
     try:
         return manifest.archives[name]
     except KeyError:
@@ -280,7 +289,7 @@ def pack(
         CloudAssetsError: no such archive, its folder is missing, an include matches nothing,
             or a reference capture differs from its row.
     """
-    archive = _archive_named(manifest, name)
+    archive = archive_named(manifest, name)
     base = data_root / archive.into
     if not base.is_dir():
         raise CloudAssetsError(f"{name}: its folder {base} does not exist")
@@ -443,7 +452,7 @@ def fetch(
     """
     lines = []
     for name in names or list(manifest.archives):
-        archive = _archive_named(manifest, name)
+        archive = archive_named(manifest, name)
         into = data_root / archive.into
         if into.exists():
             lines.append(f"skipped {name}: {into} exists")
@@ -456,4 +465,72 @@ def fetch(
         data = _download(manifest, archive, archive.key, data_root, env, run)
         _extract(archive, data, into)
         lines.append(f"fetched {name} -> {into}")
+    return lines
+
+
+def _run(argv: Sequence[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    # `npx` is `npx.cmd` on Windows, which subprocess finds only by its full path.
+    program = shutil.which(argv[0])
+    if program is None:
+        raise CloudAssetsError(f"cannot find {argv[0]} on PATH; install Node.js")
+    return subprocess.run(  # noqa: S603 - argv is the pinned wrangler put built here
+        [program, *argv[1:]], cwd=cwd, capture_output=True, text=True, check=False
+    )
+
+
+def _packed_file(archive: Archive, out_dir: Path) -> tuple[str, Path]:
+    """*archive*'s key and its packed file, which must hash to the pin."""
+    stale = f"run `mise run cloud-assets -- pack {archive.name}` and commit the pin"
+    if archive.key is None or archive.sha256 is None:
+        raise CloudAssetsError(f"{archive.name} has no pin; {stale}")
+    path = out_dir / PurePosixPath(archive.key).name
+    if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != archive.sha256:
+        raise CloudAssetsError(
+            f"{path} is absent or differs from the pin of {archive.name}; {stale}"
+        )
+    return archive.key, path
+
+
+def upload(
+    manifest: Manifest, names: Sequence[str], out_dir: Path, *, run: Runner = _run
+) -> list[str]:
+    """Puts each packed archive of *names* (all when empty) at its key with the pinned wrangler.
+
+    Runs with the owner's ``wrangler login``; a key names its content, so a second upload
+    writes the same bytes.
+
+    Raises:
+        CloudAssetsError: no such archive, one unpacked or whose file differs from its pin,
+            or wrangler failed.
+    """
+    lines = []
+    for name in names or list(manifest.archives):
+        key, path = _packed_file(archive_named(manifest, name), out_dir)
+        target = f"{manifest.bucket}/{key}"
+        argv = ["npx", "--yes", f"wrangler@{WRANGLER_VERSION}", "r2", "object", "put", target]
+        result = run([*argv, "--file", str(path), "--remote"], REPO_ROOT)
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout).strip() or "no message"
+            raise CloudAssetsError(f"{name}: wrangler could not put {target}: {detail}")
+        lines.append(f"uploaded {name} -> {target}")
+    return lines
+
+
+def status(manifest: Manifest, data_root: Path, out_dir: Path) -> list[str]:
+    """One line per archive: its pinned key, whether its folder exists, and its packed file."""
+    lines = []
+    for archive in manifest.archives.values():
+        into = data_root / archive.into
+        folder = f"{into} {'present' if into.exists() else 'absent'}"
+        if archive.key is None:
+            lines.append(f"{archive.name}: not packed; {folder}")
+            continue
+        path = out_dir / PurePosixPath(archive.key).name
+        if not path.is_file():
+            packed = "no packed file"
+        elif hashlib.sha256(path.read_bytes()).hexdigest() == archive.sha256:
+            packed = "packed file matches the pin"
+        else:
+            packed = "packed file differs from the pin"
+        lines.append(f"{archive.name}: {archive.key}; {folder}; {packed}")
     return lines
