@@ -192,7 +192,7 @@ description = "Dry-run a prompt through headless claude -p and report which skil
 run = "uv run python python/scripts/skill_eval.py"
 
 [tasks.unlzexe]
-description = "Unpack PLAYONE.EXE with LZEXE 0.91 (mise run unlzexe -- corpus/stuntisl/PLAYONE.EXE build/re/playone.img [--mz])"
+description = "Unpack PLAYONE.EXE with LZEXE 0.91, by default the data root's corpus/stuntisl/PLAYONE.EXE to its build/re/playone.img (mise run unlzexe -- [<exe> <out>] [--mz])"
 run = "uv run python python/scripts/unlzexe.py"
 
 [tasks.debug-x]
@@ -208,8 +208,16 @@ description = "Pair two builds' functions with an iced-x86 decode and map offset
 run = "uv run python python/scripts/pair_builds.py"
 
 [tasks.xref]
-description = "Find the code that references a string or data offset in an MZ, LZEXE or image file (mise run xref -- <exe> --string map.bin | --offset 0x22C2 --ds 0x163D [--context N])"
-run = "uv run python python/scripts/xref.py"
+description = "Find the code whose 16-bit operand is a value in PLAYONE.EXE, or that references a string or data offset in any MZ, LZEXE or image file (mise run xref -- <imm16> [--code-end 0xD510] [--image F] | <exe> --string map.bin | <exe> --offset 0x22C2 --ds 0x163D [--context N])"
+run = "uv run python python/scripts/re_tool.py xref"
+
+[tasks.disasm]
+description = "Disassemble PLAYONE.EXE between two load-image offsets (mise run disasm -- <start> <end> [--image F])"
+run = "uv run python python/scripts/re_tool.py disasm"
+
+[tasks.vm-handler]
+description = "Follow a display-list opcode's dispatch slot to its PLAYONE.EXE handler and any subtype table (mise run vm-handler -- 0x0063 [--image F] [--vm-seg 0x824] [--work-seg 0x15D4])"
+run = "uv run python python/scripts/re_tool.py vm-handler"
 
 [tasks.probe-light]
 description = "Probe PLAYONE per-shot light and shade arrays through dosbox-automation (mise run probe-light -- --ticks 10,150,273,448)"

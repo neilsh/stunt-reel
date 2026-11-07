@@ -9,6 +9,8 @@ from typing import Any
 
 import pytest
 
+from stunt_reel import dataroot
+
 SCRIPT = Path(__file__).resolve().parents[1] / "python" / "scripts" / "unlzexe.py"
 IMAGE = b"HELLO"
 RELOCS = [5, 0x10003]
@@ -107,3 +109,15 @@ def test_refuses_a_file_without_the_loader() -> None:
     packed[packed.find(b"\x06\x0e\x1f") : packed.find(b"\x06\x0e\x1f") + 3] = b"\0\0\0"
     with pytest.raises(ValueError, match=r"no LZEXE 0\.91 loader"):
         _load().unpack(bytes(packed))
+
+
+def test_with_no_paths_unpacks_the_data_roots_playone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    exe = tmp_path / "corpus" / "stuntisl" / "PLAYONE.EXE"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(_packed())
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    dataroot.data_root.cache_clear()
+    assert _load().main(["unlzexe"]) == 0
+    assert (tmp_path / "build" / "re" / "playone.img").read_bytes() == IMAGE
