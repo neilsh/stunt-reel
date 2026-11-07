@@ -135,7 +135,7 @@ Where $s = 0.005\text{ m}$ (standard $1:200$ editor scaling) or derived from the
 
 | Item ID | Topic | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- |
-| `[BK-SIO-01]` | Polygon Face Definitions in `.SIO` | Determining whether SLICE stored polygon face connectivity opcodes (e.g. quad/tri indices) in extended `.SIO` files or purely emitted point clouds for external polygon assembly in `SD.EXE`. | `[Supported Inference]` |
+| `[BK-SIO-01]` | Polygon Face Definitions in `.SIO` | Determining whether SLICE stored polygon face connectivity opcodes (e.g. quad/tri indices) in extended `.SIO` files or purely emitted point clouds for polygon assembly in a later tool, which is unidentified (`SD.EXE` names no `.SIO` or `.SOD` file). | `[Supported Inference]` |
 | `[BK-SIO-02]` | Extended Tag Opcodes | Investigating whether additional opcode tags ($0x01..0x05, 0x07..0x11$) existed for splat zones, rotation groups, or axis mirroring. | `[Bounded Observation]` |
 | `[BK-SIO-03]` | Visual Basic 5.0 Serialization Format | Confirming whether Visual Basic's random-access binary file IO (`Put #1, ...`) imposed any hidden record padding on non-standard Windows versions. | `[Established]` |
 

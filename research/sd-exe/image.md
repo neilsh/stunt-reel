@@ -24,10 +24,11 @@ The relocated words name eight segment values (`[Established]`, counted from the
 |---|---|---|
 | `0x0000` | 41 | Code, including the entry |
 | `0x0F7F` | 102 | Code |
-| `0x14FE` | 5 | Code or data; loaded into `DS` twice |
+| `0x14FE` | 5 | Data: starts at the object table (load image `0x14FE0`, section 3). Loaded into `DS` twice |
 | `0x163D` | 37 | **DGROUP**: the file names and assembler templates below. Loaded into `DS` six times |
 | `0x259A` | 54 | Data; loaded into `DS` eight times |
-| `0x3319`, `0x3AEA` | 6, 1 | Past the load image: allocated at run time |
+| `0x3319` | 6 | Its first 14 bytes end the load image (`0x33190`–`0x3319D`); the rest is allocated at run time |
+| `0x3AEA` | 1 | Past the load image: allocated at run time |
 | `0x423E` | 1 | Stack (`SS`) |
 
 A `DS` offset in DGROUP is the load-image offset − `0x163D0`; `anchorpt.dat` is at `DS:0x20BA`.
@@ -39,7 +40,7 @@ A `DS` offset in DGROUP is the load-image offset − `0x163D0`; `anchorpt.dat` i
 | Offset | String | Used by |
 |---|---|---|
 | `0x16AAD`–`0x16ACD` | `pfont.bin`, `palette.lbm`, `night.lbm`, `res\*.res` | The editor's own display and resources |
-| `0x155E0`… | 255 slots `shapes\--------.bin` | The object table: compiled shapes it places |
+| `0x155E0`… | 255 slots `shapes\--------.bin` | The object table, segment `0x14FE`: compiled shapes it places |
 | `0x18181`, `0x18ACA`, `0x18AD7` | `Object dir:`, `Object Name:`, `Object height (ft):` | Object placement prompts |
 | `0x18A8A` | `anchorpt.dat` | Anchor load and save |
 | `0x18A97`, `0x18AAC` | `\stunt\landscape.asm`, `\stunt\anchor.asm` | The assembler output |
@@ -64,7 +65,7 @@ A `DS` offset in DGROUP is the load-image offset − `0x163D0`; `anchorpt.dat` i
 | `0xD43B` | Walk the `REGIONS.BIN` block tree | same |
 | `0xE9B6`–`0xED28` | Write `SCENERY.BIN` and `SQUISHED.BIN`; unread | [`map.md`](../formats/auxiliary/map.md) section 4.2 |
 
-To find the code behind another string, take its DGROUP offset (section 2) and search the code segments for that word as an immediate or displacement.
+To find the code behind another string, turn its file offset into a load-image offset (− `0x600`), take the segment from section 2 whose base (segment × 16) is the highest at or below it, subtract that base, and search the code segments for the result as a 16-bit immediate or displacement. The object table is in `0x14FE`; every other string above is in DGROUP.
 
 ## Ruled out
 
@@ -74,4 +75,4 @@ To find the code behind another string, take its DGROUP offset (section 2) and s
 
 1. **What `SCENERY.BIN` and `SQUISHED.BIN` encode**: [`map.md`](../formats/auxiliary/map.md) section 4.2.
 2. **Whether `SD.EXE` run on the corpus files rebuilds the shipped tree**: [`map.md`](../formats/auxiliary/map.md) section 4.2.
-3. **The roles of segments `0x0F7F`, `0x14FE` and `0x259A`.** Section 2 has only counts.
+3. **The roles of segments `0x0F7F` and `0x259A`.** Section 2 has only counts.
