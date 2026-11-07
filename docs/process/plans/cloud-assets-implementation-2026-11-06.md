@@ -239,15 +239,30 @@ def test_fetch_reports_a_403_without_the_secret(tmp_path):
 
 ```python
 def test_upload_runs_the_pinned_wrangler_put(tmp_path):
-    assert argv == ["npx", "--yes", f"wrangler@{WRANGLER_VERSION}", "r2", "object", "put",
-                    f"stunt-reel-internal-assets/{key}", "--file", str(path), "--remote"]
+    assert argv == [
+        "npx",
+        "--yes",
+        f"wrangler@{WRANGLER_VERSION}",
+        "r2",
+        "object",
+        "put",
+        f"stunt-reel-internal-assets/{key}",
+        "--file",
+        str(path),
+        "--remote",
+    ]
+
 
 def test_upload_refuses_an_unpacked_or_stale_archive(tmp_path):
-    with pytest.raises(CloudAssetsError, match="pack"): ...
+    with pytest.raises(CloudAssetsError, match="pack"):
+        ...
+
 
 def test_status_reports_destination_and_packed_file(tmp_path): ...
 
-def test_main_exits_2_without_credentials(tmp_path, monkeypatch, capsys): ...
+
+def test_main_exits_2_without_credentials(tmp_path, monkeypatch, capsys):
+    ...
     # STUNT_DATA_ROOT set to an empty tmp_path folder and the R2_* variables removed
 ```
 
