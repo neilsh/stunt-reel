@@ -55,7 +55,7 @@ The corpus ships the unpatched 1992 executables. `mise run game-builds` copies `
 | `crates/stunt-core/` | Seam contracts, `.RES`/`.ALL`/`.SOD`/`.FLM` parsers, and the `.SOD` bytecode VM |
 | `crates/stunt-render/` | `wgpu` pipelines, Mode 13h palette LUT, headless renderer |
 | `crates/stunt-parity/` | Parity artifact port: typed render, capture and report documents with a schema version and validation |
-| `crates/stunt-cli/` | `stuntreel` binary: interactive/headless presentation plus the `parity` (SSIM/IoU comparator) and `export-gltf` subcommands |
+| `crates/stunt-cli/` | `stuntreel` binary: interactive/headless presentation plus the `parity` (SSIM/IoU comparator), `export-gltf` and `shape-views` subcommands |
 | `python/stunt_reel/tac/` | dosbox-automation harness: Lua generator, REST client, capture plans, staging, MAKEONE driver — [`research/playone-exe/capture.md`](../research/playone-exe/capture.md) |
 | `crates/stunt-gltf/` | glTF 2.0 (`.glb`) exporter for shapes and single scene frames, driven by `stunt-cli export-gltf` |
 | `python/scripts/` | Entry points for capture, parity, format and documentation checks (e.g. `capture_playone_reference.py`, `parity_run.py`, `parity_sweep.py`, `verify_schemas_corpus.py`, `verify_formats_docs.py`) plus maintenance tools |
@@ -121,6 +121,12 @@ Export a shape, or one frame of a film, to glTF 2.0 for viewing in Blender or an
 cargo run -p stunt-cli -- export-gltf --archive "<data root>/corpus/stisldem/VAULT/CTRY.ALL" \
     --film "<data root>/corpus/stisldem/VAULT/CTRY.FLM" --tick 400 --out build/gltf_output/CTRY_t400.glb
 cargo run -p stunt-cli -- export-gltf --archive "<data root>/corpus/stisldem/VAULT/CTRY.ALL" --shape 0x0408 --out build/gltf_output/shape.glb
+```
+
+Draw orthographic top, side and front views of an archive's shapes, one `<ID>.png` each, with `manifest.json` recording each shape's geometry hash:
+
+```powershell
+cargo run --release -p stunt-cli -- shape-views --archive target/linked/superset/SUPERSET.ALL     --shapes 7F02..=7F38 --out build/scratch/views
 ```
 
 Headless video export samples the authored 50 Hz timeline at `--fps` (default 30), interpolates between slices, and encodes directly into a standard video container (`.mp4`, `.webm`, `.mkv`, or `.avi`) via `ffmpeg`, with physical $4:3$ aspect ratio correction ($320 \times 240$, `[I6]`). `--tick-range <A..=B>` limits the export to a 0-based, inclusive range of ticks. `CTRY.FLM` spans 1,342 ticks (26.84 s), producing 806 sampled frames at 30 fps; the container is trimmed to the authored span, so ffmpeg encodes 805 frames and ffprobe reports 26.833 s (nearest whole frame; 26.84 s exactly at `--fps 50`). Requires `ffmpeg` on `PATH`.
