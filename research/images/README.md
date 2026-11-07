@@ -4,14 +4,15 @@ Comparison images that research notes cite: a frame captured from the game's rep
 
 ## Paths
 
-`<YYYY-MM-DD>-<commit>/<film>-<tick>-<topic>.png`
+`<YYYY-MM-DD>-<commit>[-<run>]/<film>-<tick>-<topic>.png`
 
 - **`<YYYY-MM-DD>`** is the day the render was made.
 - **`<commit>`** is the short hash of the commit whose tree produced the newest render panel. When the panels come from several commits (a before and after), the folder names the newest, and the citing note names the others.
+- **`<run>`** is optional: a short label, such as `gpu` or `lavapipe`, for a second render made the same day from the same commit. The first render of a day and commit leaves it out.
 - **`<film>-<tick>`** is the film slug's short name and the 50 Hz film tick, for example `ctry-422`.
 - **`<topic>`** says what the image shows, in a few words.
 
-Panels run left to right: the capture first, then each render in the order the citing note describes. A folder is add-only. A new render of the same moment goes into a new folder, so a note's link always shows what the note describes.
+Panels run left to right: the capture first, then each render in the order the citing note describes. `NOTICE.md`'s limit of one screen, or a crop or enlargement of one, applies to each panel: an image sets one captured moment beside renders of that same moment, never a run of frames. A folder is add-only. A new render of the same moment goes into a new folder, so a note's link always shows what the note describes.
 
 ## Older sets
 
