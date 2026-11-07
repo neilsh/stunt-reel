@@ -272,16 +272,18 @@ fn game_search_base(tree: &Path) -> PathBuf {
 /// that names the path.
 fn read_res_tree(tree: &Path) -> Result<ShapeFiles, String> {
     let dir = find_ci(tree, "RES").map_err(|e| format!("--game: {e}"))?;
-    let mut paths = fs::read_dir(&dir)
-        .map_err(|e| format!("cannot list {}: {e}", dir.display()))?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("RES"))
-                && path.is_file()
-        })
-        .collect::<Vec<_>>();
+    let list_err = |e: std::io::Error| format!("cannot list {}: {e}", dir.display());
+    let mut paths = Vec::new();
+    for entry in fs::read_dir(&dir).map_err(list_err)? {
+        let path = entry.map_err(list_err)?.path();
+        if path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("RES"))
+            && path.is_file()
+        {
+            paths.push(path);
+        }
+    }
     paths.sort();
     if paths.is_empty() {
         return Err(format!("no .RES file in {}", dir.display()));
