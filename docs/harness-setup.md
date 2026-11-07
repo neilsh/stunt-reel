@@ -172,10 +172,10 @@ the DOSBox tool) and the Python environment, then lavapipe as CI does
 ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)). It fetches no game archives: the setup
 script runs before the environment variables are set, so the hook fetches them. Each step skips
 work already done, and it needs root only to replace mise or install the apt packages. It
-refuses to run without `--cloud`, which only the bootstrap and the hook pass, or outside a
-Linux x86_64 container with `dpkg`, since on a developer machine it would replace that
-machine's mise. CI's `install_args` is a separate list: CI also installs
-Java.
+refuses to run without `--cloud`, which only the bootstrap and the hook pass, or on anything
+but Linux x86_64 with `dpkg`; it does not detect a container, so `--cloud` on a developer
+machine would replace that machine's mise. CI's `install_args` is a separate list: CI also
+installs Java.
 
 The lockfile is what makes the install work: it holds each tool's download URL and checksum,
 so mise reads no GitHub API. Without it mise asks the API three or four times per tool, and
