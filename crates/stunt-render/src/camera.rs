@@ -137,6 +137,19 @@ impl FreeCamState {
     }
 }
 
+/// How a [`CameraController`] maps view space onto the target.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Projection {
+    /// Perspective at the active camera's vertical field of view.
+    Perspective,
+    /// Parallel projection spanning `half_height` metres above and below the view axis,
+    /// and `half_height * aspect_ratio` to either side; the field of view is ignored.
+    Orthographic {
+        /// Half the visible height in metres; must be positive.
+        half_height: f32,
+    },
+}
+
 /// Unified presentation camera controller.
 #[derive(Debug)]
 pub struct CameraController {
@@ -146,6 +159,8 @@ pub struct CameraController {
     pub authored: ViewCamera,
     /// Detached Free-Cam navigation state.
     pub free_cam: FreeCamState,
+    /// Perspective or orthographic projection (defaults to perspective).
+    pub projection: Projection,
     /// Projection aspect ratio (defaults to [`MODE13H_PROJECTION_ASPECT`]; the 4:3
     /// presentation of `[I6]` is applied after projection).
     pub aspect_ratio: f32,
@@ -168,6 +183,7 @@ impl Default for CameraController {
             mode: CameraMode::Authored,
             authored: ViewCamera::default(),
             free_cam: FreeCamState::default(),
+            projection: Projection::Perspective,
             aspect_ratio: MODE13H_PROJECTION_ASPECT,
             projection_y_scale: 1.0,
             near_clip: DEFAULT_NEAR_CLIP,
@@ -226,21 +242,34 @@ impl CameraController {
         }
     }
 
-    /// Computes the 4x4 perspective projection matrix at [`Self::aspect_ratio`].
+    /// Computes the 4x4 projection matrix of [`Self::projection`] at [`Self::aspect_ratio`].
     #[must_use]
     pub fn compute_proj_matrix(&self) -> Mat4 {
-        let fov_deg = match self.mode {
-            CameraMode::Authored => self.authored.fov_degrees.clamp(1.0, 160.0),
-            CameraMode::FreeCam => DEFAULT_FOV_DEGREES,
+        let mut proj = match self.projection {
+            Projection::Perspective => {
+                let fov_deg = match self.mode {
+                    CameraMode::Authored => self.authored.fov_degrees.clamp(1.0, 160.0),
+                    CameraMode::FreeCam => DEFAULT_FOV_DEGREES,
+                };
+                rh::proj::directx::perspective(
+                    fov_deg.to_radians(),
+                    self.aspect_ratio,
+                    self.near_clip,
+                    self.far_clip,
+                )
+            }
+            Projection::Orthographic { half_height } => {
+                let half_width = half_height * self.aspect_ratio;
+                rh::proj::directx::orthographic(
+                    -half_width,
+                    half_width,
+                    -half_height,
+                    half_height,
+                    self.near_clip,
+                    self.far_clip,
+                )
+            }
         };
-        let fov_rad = fov_deg.to_radians();
-
-        let mut proj = rh::proj::directx::perspective(
-            fov_rad,
-            self.aspect_ratio,
-            self.near_clip,
-            self.far_clip,
-        );
         proj.y_axis.y *= self.projection_y_scale;
         proj
     }
@@ -359,6 +388,23 @@ mod tests {
         .compute_proj_matrix();
         assert_eq!(squeezed.x_axis.x, base.x_axis.x);
         assert!((squeezed.y_axis.y / base.y_axis.y - 200.0 / 185.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn orthographic_projection_keeps_size_at_any_depth() {
+        let camera = CameraController {
+            projection: Projection::Orthographic { half_height: 2.0 },
+            aspect_ratio: 1.5,
+            near_clip: 1.0,
+            far_clip: 100.0,
+            ..CameraController::default()
+        };
+        let proj = camera.compute_proj_matrix();
+        for depth in [-2.0, -50.0, -99.0] {
+            let corner = proj.project_point3(Vec3::new(3.0, 2.0, depth));
+            assert!((corner.x - 1.0).abs() < 1e-6 && (corner.y - 1.0).abs() < 1e-6);
+            assert!((0.0..=1.0).contains(&corner.z), "{corner}");
+        }
     }
 
     #[test]

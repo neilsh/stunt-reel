@@ -131,221 +131,235 @@ fn drawn_in_columns(drawn: &[bool], w: usize, h: usize, cols: std::ops::Range<us
 
 #[test]
 fn two_actors_sharing_a_shape_both_render_at_their_own_matrix() {
-    let scene = scene(
-        vec![actor_at(-2.5, 0), actor_at(2.5, 0)],
-        VisibilityCondition::Always,
-    );
-    let Some((w, h, drawn)) = render(&scene) else {
-        return;
-    };
-    let left = drawn_in_columns(&drawn, w, h, 0..w * 2 / 5);
-    let middle = drawn_in_columns(&drawn, w, h, w * 2 / 5..w * 3 / 5);
-    let right = drawn_in_columns(&drawn, w, h, w * 3 / 5..w);
-    assert!(left > 100, "left actor missing: {left}");
-    assert!(right > 100, "right actor missing: {right}");
-    assert_eq!(middle, 0, "nothing should be drawn between the actors");
-    // Same shape, mirrored placement: equal coverage.
-    assert!(left.abs_diff(right) <= left / 20 + 4, "{left} vs {right}");
+    common::gpu_test(|| {
+        let scene = scene(
+            vec![actor_at(-2.5, 0), actor_at(2.5, 0)],
+            VisibilityCondition::Always,
+        );
+        let Some((w, h, drawn)) = render(&scene) else {
+            return;
+        };
+        let left = drawn_in_columns(&drawn, w, h, 0..w * 2 / 5);
+        let middle = drawn_in_columns(&drawn, w, h, w * 2 / 5..w * 3 / 5);
+        let right = drawn_in_columns(&drawn, w, h, w * 3 / 5..w);
+        assert!(left > 100, "left actor missing: {left}");
+        assert!(right > 100, "right actor missing: {right}");
+        assert_eq!(middle, 0, "nothing should be drawn between the actors");
+        // Same shape, mirrored placement: equal coverage.
+        assert!(left.abs_diff(right) <= left / 20 + 4, "{left} vs {right}");
+    });
 }
 
 /// A `FacesEye` gate draws its mesh with the normal toward the eye and hides it when reversed.
 #[test]
 fn facing_gate_draws_only_while_its_face_points_at_the_eye() {
-    // The eye is at +Z 8 m and the actor at the origin, so a +Z normal faces it.
-    let gate = |z: f32| VisibilityCondition::FacesEye {
-        point: [0.0, 0.0, 0.0],
-        normal: [0.0, 0.0, z],
-    };
-    let Some((w, h, toward)) = render(&scene(vec![actor_at(0.0, 0)], gate(1.0))) else {
-        return;
-    };
-    assert!(drawn_in_columns(&toward, w, h, 0..w) > 100);
-    let Some((w, h, away)) = render(&scene(vec![actor_at(0.0, 0)], gate(-1.0))) else {
-        return;
-    };
-    assert_eq!(drawn_in_columns(&away, w, h, 0..w), 0);
+    common::gpu_test(|| {
+        // The eye is at +Z 8 m and the actor at the origin, so a +Z normal faces it.
+        let gate = |z: f32| VisibilityCondition::FacesEye {
+            point: [0.0, 0.0, 0.0],
+            normal: [0.0, 0.0, z],
+        };
+        let Some((w, h, toward)) = render(&scene(vec![actor_at(0.0, 0)], gate(1.0))) else {
+            return;
+        };
+        assert!(drawn_in_columns(&toward, w, h, 0..w) > 100);
+        let Some((w, h, away)) = render(&scene(vec![actor_at(0.0, 0)], gate(-1.0))) else {
+            return;
+        };
+        assert_eq!(drawn_in_columns(&away, w, h, 0..w), 0);
+    });
 }
 
 /// A camera override tests facing gates against its own eye, not the film's.
 #[test]
 fn facing_gate_follows_the_override_cameras_eye() {
-    // The gate's plane is at z = 4: the film eye (z = 8) is in front of it, an override eye
-    // at z = 2 behind it, while both still see the triangle's front face.
-    let gate = VisibilityCondition::FacesEye {
-        point: [0.0, 0.0, 4.0],
-        normal: [0.0, 0.0, 1.0],
-    };
-    let scene = scene(vec![actor_at(0.0, 0)], gate);
-    let Some(mut test) = common::gpu_or_skip(&scene) else {
-        return;
-    };
-    let frame = scene.frame(0.0);
-    let drawn = |page: &stunt_render::RenderedPage| {
-        page.layers()
-            .iter()
-            .filter(|&&layer| layer != LAYER_NONE)
-            .count()
-    };
-    assert!(
-        drawn(&test.draw(&frame)) > 100,
-        "the film eye opens the gate"
-    );
-    let mut camera = CameraController::default();
-    camera.set_authored_transform(ViewCamera {
-        eye: [0.0, 0.0, 2.0],
-        target: [0.0, 0.0, 0.0],
-        fov_degrees: 45.0,
-        roll_radians: 0.0,
+    common::gpu_test(|| {
+        // The gate's plane is at z = 4: the film eye (z = 8) is in front of it, an override eye
+        // at z = 2 behind it, while both still see the triangle's front face.
+        let gate = VisibilityCondition::FacesEye {
+            point: [0.0, 0.0, 4.0],
+            normal: [0.0, 0.0, 1.0],
+        };
+        let scene = scene(vec![actor_at(0.0, 0)], gate);
+        let Some(mut test) = common::gpu_or_skip(&scene) else {
+            return;
+        };
+        let frame = scene.frame(0.0);
+        let drawn = |page: &stunt_render::RenderedPage| {
+            page.layers()
+                .iter()
+                .filter(|&&layer| layer != LAYER_NONE)
+                .count()
+        };
+        assert!(
+            drawn(&test.draw(&frame)) > 100,
+            "the film eye opens the gate"
+        );
+        let mut camera = CameraController::default();
+        camera.set_authored_transform(ViewCamera {
+            eye: [0.0, 0.0, 2.0],
+            target: [0.0, 0.0, 0.0],
+            fov_degrees: 45.0,
+            roll_radians: 0.0,
+        });
+        assert_eq!(
+            drawn(&test.draw_with(&frame, Some(&camera))),
+            0,
+            "the override eye closes it"
+        );
     });
-    assert_eq!(
-        drawn(&test.draw_with(&frame, Some(&camera))),
-        0,
-        "the override eye closes it"
-    );
 }
 
 #[test]
 fn state_mask_that_hides_geometry_draws_nothing() {
-    let gated = VisibilityCondition::ActorState {
-        mask: 1,
-        expected: 1,
-    };
-    let hidden = scene(vec![actor_at(0.0, 0)], gated);
-    let Some((w, h, drawn)) = render(&hidden) else {
-        return;
-    };
-    assert_eq!(drawn_in_columns(&drawn, w, h, 0..w), 0);
+    common::gpu_test(|| {
+        let gated = VisibilityCondition::ActorState {
+            mask: 1,
+            expected: 1,
+        };
+        let hidden = scene(vec![actor_at(0.0, 0)], gated);
+        let Some((w, h, drawn)) = render(&hidden) else {
+            return;
+        };
+        assert_eq!(drawn_in_columns(&drawn, w, h, 0..w), 0);
 
-    let shown = scene(vec![actor_at(0.0, 1)], gated);
-    let (w, h, drawn) = render(&shown).expect("adapter was available");
-    assert!(drawn_in_columns(&drawn, w, h, 0..w) > 100);
+        let shown = scene(vec![actor_at(0.0, 1)], gated);
+        let (w, h, drawn) = render(&shown).expect("adapter was available");
+        assert!(drawn_in_columns(&drawn, w, h, 0..w) > 100);
+    });
 }
 
 /// A `SIF_SHADOW` actor 3 m up draws its shape again on `y = 0` in palette index 0, with its
 /// own layer, whichever way its face is wound; an actor without the flag draws no shadow.
 #[test]
 fn a_shadow_casting_actor_draws_its_flattened_shape_in_index_0() {
-    // A 2 m floor triangle in the XZ plane, in both windings: one faces up, one down.
-    let floor = |indices: Vec<u32>| {
-        let mut ir = triangle("FLOOR", VisibilityCondition::Always);
-        for (vertex, [x, z]) in ir
-            .vertices
-            .iter_mut()
-            .zip([[-1.0, 1.0], [1.0, 1.0], [0.0, -1.0]])
-        {
-            vertex.position = [x, 0.0, z];
-            vertex.normal = [0.0, 1.0, 0.0];
-        }
-        ir.indices = indices;
-        ir
-    };
-    let shadow_pixels = |indices: Vec<u32>, casts_shadow: bool| {
-        let actor = ActorTransform {
-            position_meters: [0.0, 3.0, 0.0],
-            casts_shadow,
-            ..actor_at(0.0, 0)
+    common::gpu_test(|| {
+        // A 2 m floor triangle in the XZ plane, in both windings: one faces up, one down.
+        let floor = |indices: Vec<u32>| {
+            let mut ir = triangle("FLOOR", VisibilityCondition::Always);
+            for (vertex, [x, z]) in
+                ir.vertices
+                    .iter_mut()
+                    .zip([[-1.0, 1.0], [1.0, 1.0], [0.0, -1.0]])
+            {
+                vertex.position = [x, 0.0, z];
+                vertex.normal = [0.0, 1.0, 0.0];
+            }
+            ir.indices = indices;
+            ir
         };
-        // Looking down at 45 degrees, so the actor and its shadow land on different rows.
-        let record = TrajectoryRecord {
-            tick: 0,
-            camera: CameraTransform {
-                eye: [0.0, 10.0, 10.0],
-                target: [0.0, 0.0, 0.0],
-                fov_degrees: 45.0,
-                ..Default::default()
-            },
-            actors: vec![actor],
-            audio_cues: Vec::new(),
-            palette: PaletteControls::default(),
-        };
-        let timeline = FilmTimeline::new(
-            vec![SliceKeyframe {
-                record,
+        let shadow_pixels = |indices: Vec<u32>, casts_shadow: bool| {
+            let actor = ActorTransform {
+                position_meters: [0.0, 3.0, 0.0],
+                casts_shadow,
+                ..actor_at(0.0, 0)
+            };
+            // Looking down at 45 degrees, so the actor and its shadow land on different rows.
+            let record = TrajectoryRecord {
                 tick: 0,
-                tick_duration: 1,
-            }],
-            Vec::new(),
-        );
-        let shapes = HashMap::from([(SHAPE_ID, floor(indices))]);
-        let scene = FilmScene::new(timeline, shapes, None);
-        let mut test = common::gpu_or_skip(&scene)?;
-        let page = test.draw(&scene.frame(0.0));
-        Some(
-            page.indices()
-                .iter()
-                .zip(page.layers())
-                .filter(|&(&index, &layer)| index == 0 && layer == LAYER_FIRST_ACTOR)
-                .count(),
-        )
-    };
-    for indices in [vec![0, 1, 2], vec![0, 2, 1]] {
-        let Some(shadow) = shadow_pixels(indices.clone(), true) else {
-            return;
+                camera: CameraTransform {
+                    eye: [0.0, 10.0, 10.0],
+                    target: [0.0, 0.0, 0.0],
+                    fov_degrees: 45.0,
+                    ..Default::default()
+                },
+                actors: vec![actor],
+                audio_cues: Vec::new(),
+                palette: PaletteControls::default(),
+            };
+            let timeline = FilmTimeline::new(
+                vec![SliceKeyframe {
+                    record,
+                    tick: 0,
+                    tick_duration: 1,
+                }],
+                Vec::new(),
+            );
+            let shapes = HashMap::from([(SHAPE_ID, floor(indices))]);
+            let scene = FilmScene::new(timeline, shapes, None);
+            let mut test = common::gpu_or_skip(&scene)?;
+            let page = test.draw(&scene.frame(0.0));
+            Some(
+                page.indices()
+                    .iter()
+                    .zip(page.layers())
+                    .filter(|&(&index, &layer)| index == 0 && layer == LAYER_FIRST_ACTOR)
+                    .count(),
+            )
         };
-        assert!(shadow > 100, "winding {indices:?}: shadow {shadow}");
-        assert_eq!(shadow_pixels(indices, false), Some(0));
-    }
+        for indices in [vec![0, 1, 2], vec![0, 2, 1]] {
+            let Some(shadow) = shadow_pixels(indices.clone(), true) else {
+                return;
+            };
+            assert!(shadow > 100, "winding {indices:?}: shadow {shadow}");
+            assert_eq!(shadow_pixels(indices, false), Some(0));
+        }
+    });
 }
 
 /// A scene with a world draws it even with no actors.
 #[test]
 fn world_is_drawn_when_present() {
-    let mut ir = triangle("WORLD_BASE", VisibilityCondition::Always);
-    // World vertices carry their scenery class; the layer plane reads it.
-    for vertex in &mut ir.vertices {
-        vertex.scenery_class = stunt_core::contracts::SCENERY_TERRAIN;
-    }
-    let world = World {
-        ir,
-        terrain_patches: 0,
-        props_placed: 0,
-        bounds: ShapeExtent {
-            min: [-1.0, -1.0, 0.0],
-            max: [1.0, 1.0, 0.0],
-            radius: 1.0,
-        },
-        scenery_stop: None,
-        terrain: TerrainSurface::default(),
-    };
-    let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world));
-    let Some((w, h, drawn)) = render(&scene) else {
-        return;
-    };
-    assert!(drawn_in_columns(&drawn, w, h, w / 3..w * 2 / 3) > 100);
+    common::gpu_test(|| {
+        let mut ir = triangle("WORLD_BASE", VisibilityCondition::Always);
+        // World vertices carry their scenery class; the layer plane reads it.
+        for vertex in &mut ir.vertices {
+            vertex.scenery_class = stunt_core::contracts::SCENERY_TERRAIN;
+        }
+        let world = World {
+            ir,
+            terrain_patches: 0,
+            props_placed: 0,
+            bounds: ShapeExtent {
+                min: [-1.0, -1.0, 0.0],
+                max: [1.0, 1.0, 0.0],
+                radius: 1.0,
+            },
+            scenery_stop: None,
+            terrain: TerrainSurface::default(),
+        };
+        let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world));
+        let Some((w, h, drawn)) = render(&scene) else {
+            return;
+        };
+        assert!(drawn_in_columns(&drawn, w, h, w / 3..w * 2 / 3) > 100);
+    });
 }
 
 #[test]
 fn zero_brightness_frame_renders_black_including_the_clear_colour() {
-    let faded = PaletteControls {
-        brightness: 0,
-        ..PaletteControls::default()
-    };
-    let shapes = HashMap::from([(SHAPE_ID, triangle("TRI", VisibilityCondition::Always))]);
-    let scene = FilmScene::new(
-        timeline_with_palette(vec![actor_at(0.0, 0)], faded),
-        shapes,
-        None,
-    );
-    let frame = scene.frame(0.0);
-    assert_eq!(frame.palette, faded);
-    let Some(mut test) = common::gpu_or_skip_offscreen(
-        &scene,
-        Offscreen::default(),
-        RenderOptions {
-            clear_palette_index: CLEAR_INDEX,
-            ..RenderOptions::default()
-        },
-    ) else {
-        return;
-    };
-    let page = test.draw(&frame);
-    assert!(
-        page.rgba()
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .all(|p| p[..3] == [0, 0, 0])
-    );
+    common::gpu_test(|| {
+        let faded = PaletteControls {
+            brightness: 0,
+            ..PaletteControls::default()
+        };
+        let shapes = HashMap::from([(SHAPE_ID, triangle("TRI", VisibilityCondition::Always))]);
+        let scene = FilmScene::new(
+            timeline_with_palette(vec![actor_at(0.0, 0)], faded),
+            shapes,
+            None,
+        );
+        let frame = scene.frame(0.0);
+        assert_eq!(frame.palette, faded);
+        let Some(mut test) = common::gpu_or_skip_offscreen(
+            &scene,
+            Offscreen::default(),
+            RenderOptions {
+                clear_palette_index: CLEAR_INDEX,
+                ..RenderOptions::default()
+            },
+        ) else {
+            return;
+        };
+        let page = test.draw(&frame);
+        assert!(
+            page.rgba()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|p| p[..3] == [0, 0, 0])
+        );
+    });
 }
 
 /// A 1 km square on the ground plane at palette index `index`, wound both ways so no
@@ -394,55 +408,57 @@ fn ground_square(index: u8) -> SodModelIr {
 /// (`research/parity/method.md` section 3).
 #[test]
 fn a_ground_polygon_under_a_low_eye_keeps_its_index() {
-    const GROUND_INDEX: u8 = 40;
-    let record = TrajectoryRecord {
-        tick: 0,
-        camera: CameraTransform {
-            eye: [0.0, 3.0, 0.0],
-            target: [0.0, 0.0, -20.0],
-            fov_degrees: 45.0,
-            roll_radians: 0.0,
-            cut_from_previous: false,
-            ..Default::default()
-        },
-        actors: vec![actor_at(0.0, 0)],
-        audio_cues: Vec::new(),
-        palette: PaletteControls::default(),
-    };
-    let timeline = FilmTimeline::new(
-        vec![SliceKeyframe {
-            record,
+    common::gpu_test(|| {
+        const GROUND_INDEX: u8 = 40;
+        let record = TrajectoryRecord {
             tick: 0,
-            tick_duration: 1,
-        }],
-        Vec::new(),
-    );
-    let shapes = HashMap::from([(SHAPE_ID, ground_square(GROUND_INDEX))]);
-    let scene = FilmScene::new(timeline, shapes, None);
-    let Some(mut test) = common::gpu_or_skip_software(&scene) else {
-        return;
-    };
-    let page = test.draw(&scene.frame(0.0));
-    let ground: Vec<u8> = page
-        .layers()
-        .iter()
-        .zip(page.indices())
-        .filter(|&(&layer, _)| layer == LAYER_FIRST_ACTOR)
-        .map(|(_, &index)| index)
-        .collect();
-    assert!(
-        ground.len() > 10_000,
-        "ground covers {} pixels",
-        ground.len()
-    );
-    let wrong = ground
-        .iter()
-        .filter(|&&index| index != GROUND_INDEX)
-        .count();
-    assert_eq!(
-        wrong,
-        0,
-        "{wrong} of {} ground pixels lost their index",
-        ground.len()
-    );
+            camera: CameraTransform {
+                eye: [0.0, 3.0, 0.0],
+                target: [0.0, 0.0, -20.0],
+                fov_degrees: 45.0,
+                roll_radians: 0.0,
+                cut_from_previous: false,
+                ..Default::default()
+            },
+            actors: vec![actor_at(0.0, 0)],
+            audio_cues: Vec::new(),
+            palette: PaletteControls::default(),
+        };
+        let timeline = FilmTimeline::new(
+            vec![SliceKeyframe {
+                record,
+                tick: 0,
+                tick_duration: 1,
+            }],
+            Vec::new(),
+        );
+        let shapes = HashMap::from([(SHAPE_ID, ground_square(GROUND_INDEX))]);
+        let scene = FilmScene::new(timeline, shapes, None);
+        let Some(mut test) = common::gpu_or_skip_software(&scene) else {
+            return;
+        };
+        let page = test.draw(&scene.frame(0.0));
+        let ground: Vec<u8> = page
+            .layers()
+            .iter()
+            .zip(page.indices())
+            .filter(|&(&layer, _)| layer == LAYER_FIRST_ACTOR)
+            .map(|(_, &index)| index)
+            .collect();
+        assert!(
+            ground.len() > 10_000,
+            "ground covers {} pixels",
+            ground.len()
+        );
+        let wrong = ground
+            .iter()
+            .filter(|&&index| index != GROUND_INDEX)
+            .count();
+        assert_eq!(
+            wrong,
+            0,
+            "{wrong} of {} ground pixels lost their index",
+            ground.len()
+        );
+    });
 }
