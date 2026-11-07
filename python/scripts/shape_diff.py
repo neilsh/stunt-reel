@@ -9,7 +9,8 @@ Usage::
 ``build/scratch/shape-diff/views_<n>_<value>`` (``n`` its position). A shape whose geometry
 hash or decode failure differs from the first value's is listed, and
 ``build/scratch/shape-diff/sheet.png`` shows only those shapes, one row each: the first
-value's views, then each later value's, split by a magenta divider. The archive defaults to
+value's views, then each later value's, split by a magenta divider, under a strip naming each
+column's value. The archive defaults to
 ``target/linked/superset/SUPERSET.ALL``, every stock shape (``mise run superset-all``).
 """
 
@@ -25,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import parity_sweep
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from stunt_reel import parity_pipeline
 from stunt_reel.dataroot import REPO_ROOT
@@ -39,6 +40,8 @@ SUPERSET = Path("target") / "linked" / "superset" / "SUPERSET.ALL"
 DIVIDER = (255, 0, 255)
 #: Divider width in pixels.
 GAP = 2
+#: Height in pixels of the strip naming each column's value.
+HEADER = 14
 
 
 @dataclass(frozen=True)
@@ -106,10 +109,11 @@ def _load_rgb(png: Path) -> Image.Image:
         return image.convert("RGB")
 
 
-def draw_sheet(dirs: list[Path], ids: list[str], out: Path) -> None:
+def draw_sheet(dirs: list[Path], labels: list[str], ids: list[str], out: Path) -> None:
     """Writes one row per id: each directory's ``<id>.png`` left to right, magenta between.
 
-    A run that drew no image of the shape (it failed to decode, or has no vertices) gets a
+    A black strip ``HEADER`` pixels tall names each column by its entry in ``labels``. A
+    run that drew no image of the shape (it failed to decode, or has no vertices) gets a
     black panel the size of the others in its row.
     """
     rows: list[list[Image.Image | None]] = []
@@ -121,9 +125,14 @@ def draw_sheet(dirs: list[Path], ids: list[str], out: Path) -> None:
         rows.append(panels)
     sizes = [next((p.size for p in row if p is not None), (1, 1)) for row in rows]
     width = max(w for w, _ in sizes) * len(dirs) + GAP * (len(dirs) - 1)
-    height = sum(h for _, h in sizes) + GAP * (len(rows) - 1)
+    height = HEADER + sum(h for _, h in sizes) + GAP * (len(rows) - 1)
     sheet = Image.new("RGB", (width, height), DIVIDER)
-    top = 0
+    sheet.paste((0, 0, 0), (0, 0, width, HEADER))
+    draw = ImageDraw.Draw(sheet)
+    draw.fontmode = "1"
+    for column, label in enumerate(labels):
+        draw.text((column * (sizes[0][0] + GAP) + 2, 1), label, fill=(255, 255, 255))
+    top = HEADER
     for row, (panel_width, panel_height) in zip(rows, sizes, strict=True):
         for column, panel in enumerate(row):
             left = column * (panel_width + GAP)
@@ -175,7 +184,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{len(changed)} of {len(set().union(*manifests))} shapes changed{listed}")
     if changed:
         sheet = out / "sheet.png"
-        draw_sheet([run.out for run in runs], changed, sheet)
+        draw_sheet([run.out for run in runs], [run.label for run in runs], changed, sheet)
         print(sheet)
     print("panels: " + " | ".join(run.label for run in runs))
     return 0

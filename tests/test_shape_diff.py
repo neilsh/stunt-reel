@@ -74,14 +74,18 @@ def test_the_sheet_has_a_row_per_changed_shape_and_a_panel_per_value(tmp_path: P
     _write_views(before, [_shape("0001", "a"), _shape("0002", "b")], (255, 0, 0))
     _write_views(after, [_shape("0001", "a"), _shape("0002", error="stopped")], (0, 0, 255))
     sheet = tmp_path / "sheet.png"
-    shape_diff.draw_sheet([before, after], ["0001", "0002"], sheet)
+    shape_diff.draw_sheet([before, after], ["A=0", "A=1"], ["0001", "0002"], sheet)
     image = shape_diff._load_rgb(sheet)
-    assert image.size == (4 * 2 + shape_diff.GAP, 3 * 2 + shape_diff.GAP)
-    assert image.getpixel((0, 0)) == (255, 0, 0)
-    assert image.getpixel((4, 0)) == shape_diff.DIVIDER
-    assert image.getpixel((4 + shape_diff.GAP, 0)) == (0, 0, 255)
-    assert image.getpixel((0, 3)) == shape_diff.DIVIDER
-    assert image.getpixel((4 + shape_diff.GAP, 3 + shape_diff.GAP)) == (0, 0, 0), "no image"
+    head, gap = shape_diff.HEADER, shape_diff.GAP
+    assert image.size == (4 * 2 + gap, head + 3 * 2 + gap)
+    strip = {image.getpixel((x, y)) for x in range(image.width) for y in range(head)}
+    assert (255, 255, 255) in strip, "white labels"
+    assert shape_diff.DIVIDER not in strip, "on a black strip across every column"
+    assert image.getpixel((0, head)) == (255, 0, 0)
+    assert image.getpixel((4, head)) == shape_diff.DIVIDER
+    assert image.getpixel((4 + gap, head)) == (0, 0, 255)
+    assert image.getpixel((0, head + 3)) == shape_diff.DIVIDER
+    assert image.getpixel((4 + gap, head + 3 + gap)) == (0, 0, 0), "no image"
 
 
 def test_main_runs_shape_views_per_value_and_draws_only_the_changes(
@@ -120,7 +124,7 @@ def test_main_runs_shape_views_per_value_and_draws_only_the_changes(
     assert lines[0] == "1 of 2 shapes changed: 7F02"
     sheet = tmp_path / shape_diff.DIFF_DIR / "sheet.png"
     assert lines[1] == str(sheet)
-    assert shape_diff._load_rgb(sheet).size == (4 * 2 + shape_diff.GAP, 3)
+    assert shape_diff._load_rgb(sheet).size == (4 * 2 + shape_diff.GAP, shape_diff.HEADER + 3)
     assert lines[2] == "panels: DBG_FLIP=0 | DBG_FLIP=1"
 
 
