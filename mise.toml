@@ -177,6 +177,12 @@ description = "Render film ticks in one process and write each beside its refere
 run = "uv run python python/scripts/parity_frame.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
+[tasks.shape-diff]
+depends = ["ensure"]
+description = "Run stuntreel shape-views once per DBG_* value and draw only the shapes whose geometry hash changed (mise run shape-diff -- --var DBG_X=0,1 [--shapes IDS|FILE] [--archive X.ALL] [--views top,side,front] [--tile PX] [--no-build]; the archive defaults to SUPERSET.ALL)"
+run = "uv run python python/scripts/shape_diff.py"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
+
 [tasks.batch-parity]
 depends = ["ensure"]
 description = "Batch parity survey: every distinct corpus film through archive, capture, render and score, resumable from a ledger (mise run batch-parity -- [--only SLUG,...] [--limit N] [--stages archive,capture,render,score] [--retry-errors] [--summary] [--skip SLUG,...] [--jobs N] [--max-renders N] [--min-free-gb GB] [--archive-timeout S] [--capture-timeout S] [--data-root DIR])"
