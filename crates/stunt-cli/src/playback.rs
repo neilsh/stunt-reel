@@ -309,6 +309,7 @@ mod tests {
         let scene = build_scene(&SceneSources {
             flm: Some(&flm),
             all: None,
+            game: None,
             sod: None,
             sidata: None,
             max_ticks: None,

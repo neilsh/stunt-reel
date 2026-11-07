@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use gltf::Gltf;
 use stunt_core::anchor::parse_anchor_table;
 use stunt_core::contracts::NodeKind;
-use stunt_core::scene::{FilmScene, SceneInputs};
+use stunt_core::scene::{FilmScene, SceneInputs, ShapeSource};
 use stunt_core::sod::{DecodeMode, decode_sod};
 use stunt_gltf::{export_scene_frame, export_shape};
 
@@ -92,7 +92,7 @@ fn exported_scene_frame_imports_and_validates() {
     let all = fixture("synthetic_minimal.all");
     let (scene, _) = FilmScene::load(&SceneInputs {
         film: &film,
-        archive: Some(&all),
+        shapes: Some(ShapeSource::Archive(&all)),
         anchors: None,
         map: None,
         scenery: None,

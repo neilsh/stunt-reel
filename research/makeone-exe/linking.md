@@ -66,6 +66,8 @@ The selection looks like the set of resources the renderer loaded while `MAKEONE
 
 If that holds, the scenery subset can be predicted only by reproducing the original's culling and level-of-detail choices over every frame. Actor shapes and sounds can probably be read from the film statically; that is untested.
 
+The question matters only for an archive `PLAYONE` must accept. Our renderer does not need the selection: renders from every stock shape match renders from the film's own archive within noise, and the archive's one render effect is the prop filter of section 7. `stuntreel --game` reads the shapes from `RES\` with no archive (section 7.1).
+
 ## 5. The Sound Setting
 
 `[Bounded Observation]` for the sources; the link to `SETUP.BAT` is `[Supported Inference]` from community notes.
@@ -99,6 +101,23 @@ We rendered each film with its demo archive and again with the superset, then sc
 
 Both films stay within the 0.002 noise floor. The one thing the archive changes is which scenery props get placed. `build_world` places a scenery leaf only when the archive holds its shape (`available_models` in [`world.rs`](../../crates/stunt-core/src/world.rs)). With the superset, CTRY places 69 static props instead of 68 and INTRO 1,114 instead of 1,103. That changes 125 of 1,343 CTRY frames and 440 of 3,823 INTRO frames, by at most 164 and 373 of 64,000 pixels. `palettes.zst` is byte-identical. The extra props are most likely ones that `PLAYONE`'s per-frame level of detail never loaded and our once-per-film path-distance level of detail keeps (`[Supported Inference]`). Decoding 2,669 chunks instead of 127 or 250 adds about 0.2 s at startup.
 
+### 7.1 Rendering Straight from `RES\`
+
+`[Bounded Observation]`, CTRY, INTRO and BALLOON, run 2026-11-07 on `2e215fd` with `--game` added, in a cloud session on Mesa lavapipe (no GPU), so the scores below compare with each other, not with the GPU rows above.
+
+`stuntreel --game <TREE>` takes the shapes from `<TREE>/RES/*.RES` in place of an archive. [`link.rs`](../../crates/stunt-core/src/link.rs) `shape_chunks` keys every item of every file with `res_index` below `0x80` by the rule of section 2 and refuses two files with one index. [`scene.rs`](../../crates/stunt-core/src/scene.rs) `decode_res_shapes` decodes them as `decode_archive_shapes` decodes an archive's chunks, keeping only the items an archive would name `MODEL_%04X.SOD`. Both films were rendered whole with the demo archive and with `--game corpus/stuntisl`, then scored with `mise run parity -- --no-build --reuse`:
+
+| Film | `--all` (demo archive) SSIM / IoU / idx | `--game` SSIM / IoU / idx |
+|---|---|---|
+| CTRY | 0.6609 / 0.9897 / 0.674 | 0.6610 / 0.9899 / 0.674 |
+| INTRO | 0.6070 / 0.9856 / 0.613 | 0.6079 / 0.9857 / 0.614 |
+
+`--game` loads the superset's 2,516 models and places its 69 and 1,114 props. Against the `--all` render, 125 of 1,343 CTRY frames and 440 of 3,823 INTRO frames differ, by at most 164 and 377 pixels, and the actor layer is identical on every frame.
+
+The full game ships its `VAULT` films with no archive. `corpus/stuntisl/VAULT/BALLOON.FLM` renders with `--game` and no `make-all` run. It draws actors on 997 of its 1,193 frames, with an actor layer identical on every frame to a render from the archive `make-all` wrote (`captures/vault-balloon/archives/BALLOON.ALL`, 58 models). It places 25 static props against that archive's 18, and 139 frames differ by at most 6 pixels.
+
+Cost on this machine (4 cores, lavapipe): a one-tick render starts in 0.44 to 0.51 s, against 0.08 to 0.12 s with the archive. Whole films take about twice as long: CTRY 3.4 s to 5.3 s (one run each), INTRO 14.7 to 14.9 s to 28.4 to 28.9 s (two runs each). The spike measured about 6% on INTRO on a GPU. All 2,516 shapes are uploaded to the device, against 127 or 250, which is a likely cause of the per-frame cost on lavapipe but is untested.
+
 ---
 
 ## Ruled out
@@ -106,15 +125,16 @@ Both films stay within the 0.002 noise floor. The one thing the archive changes 
 - **Transformed chunks.** Every chunk from a shipped archive is a byte-identical copy (section 1); none is generated or re-encoded.
 - **The film inside its archive.** No chunk is the `.FLM` or starts `FILM` (section 1), although [`../formats/all.md`](../formats/all.md) § 3.1 allows for one.
 - **Whole archives as the unit of selection.** No film takes all the items of any source archive (section 4).
-- **Our renderer needing a film's own selection.** A superset of every stock shape scores within noise of the film's own archive on CTRY and INTRO (section 7).
+- **Our renderer needing a film's own selection.** A superset of every stock shape scores within noise of the film's own archive on CTRY and INTRO, as an archive on a GPU (section 7) and read straight from `RES\` on lavapipe (section 7.1). The selection's one render effect is the `available_models` prop filter.
 
 ## Open questions
 
-1. Is the selection the set of resources loaded during playback? Comparing the scenery ids of `CTRY.ALL` and `INTRO.ALL` with the shapes our renderer draws, or finding where `MAKEONE` marks a resource as used, would settle it. Section 7 is a first step: the superset adds 1 and 11 props that the archives leave out, consistent with level-of-detail selection.
+1. Is the selection the set of resources loaded during playback? Comparing the scenery ids of `CTRY.ALL` and `INTRO.ALL` with the shapes our renderer draws, or finding where `MAKEONE` marks a resource as used, would settle it. Section 7 is a first step: the superset adds 1 and 11 props that the archives leave out, consistent with level-of-detail selection. Our renders do not depend on the answer: they match the film's own archive within noise without it (sections 7 and 7.1).
 2. Can a film's actor shapes, sounds and the fixed items (palettes, `FASTSPR`, `GAME` sprites) be listed from the `.FLM` alone?
 3. Which sound setting matches each music extension (`.ESS`, `.XMA`, `.XMM`, `.XMP`, `.XMI`), and does the setting change which ids are included or only their source? `BALLOON`'s archive from our fixed emulator profile has no music chunk at all.
 4. Does Patch #3 change any file in `RES\`, or only the selection?
 5. Does `PLAYONE` play an archive padded with unused chunks, and up to what size?
 6. Do the 205 archives with add-on chunks rebuild once their add-on `.RES` files are found?
+7. Does `--game` cost less if the scene keeps only the shapes a film draws? Its startup decodes all 2,516 shapes, and its renders take about twice as long on lavapipe (section 7.1). After `build_world`, only the actors' shape ids are still needed, so dropping the rest before the device upload would test the cause. Decoding only the ids a film references is harder, since the scenery walk decides its props from the whole set.
 
 _Found 2026-11-03; see the [parity log](../parity/log.md)._

@@ -194,5 +194,24 @@ pub(crate) fn build_synthetic_intro_flm(ticks: usize) -> Vec<u8> {
     film
 }
 
+/// A synthetic `.RES` file with `res_index` `index` whose item `n` is `items[n - 1]`: `RS`,
+/// the index, the item count, then `ofs[0] = 4 * (count + 2)` and the rest of the offset
+/// table, then the items unpadded, as `tests/fixtures/link_*.res` are laid out.
+pub(crate) fn res_file(index: u8, items: &[&[u8]]) -> Vec<u8> {
+    let le = |offset: usize| u32::try_from(offset).expect("small file").to_le_bytes();
+    let count = u8::try_from(items.len()).expect("at most 255 items");
+    let mut offset = 4 * (items.len() + 2);
+    let mut out = vec![b'R', b'S', index, count];
+    for item in items {
+        out.extend_from_slice(&le(offset));
+        offset += item.len();
+    }
+    out.extend_from_slice(&le(offset));
+    for item in items {
+        out.extend_from_slice(item);
+    }
+    out
+}
+
 pub(crate) mod props;
 pub(crate) mod rng;

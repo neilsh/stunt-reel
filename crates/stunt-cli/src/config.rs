@@ -24,6 +24,10 @@ struct Options {
     /// Bind every actor `shape_id` to its .SOD chunk in the archive
     #[arg(long, value_name = "MOVIE.ALL")]
     all: Option<PathBuf>,
+    /// Instead of an archive, read every shape from the game tree's RES/*.RES files (names
+    /// match any case); scenery is then searched for from the film
+    #[arg(long, value_name = "TREE", conflicts_with = "all")]
+    game: Option<PathBuf>,
     /// Write the render store to DIR (`frames.zst`, `layers.zst`, `palettes.zst`,
     /// `preview/` and `render.json`, by 0-based 50 Hz tick); with --sample-count or
     /// --video, `DIR/sample_NNNN.png` instead
@@ -46,13 +50,13 @@ struct Options {
     )]
     ticks: Option<TickList>,
     /// Directory searched first for ANCHORPT.DAT, MAP.BIN and SCENERY.scn; then the archive's
-    /// directory, its parent and grandparent, then sidata/ or SIDATA/ inside the parent
-    /// (names match any case)
+    /// directory (the film's with --game), its parent and grandparent, then sidata/ or SIDATA/
+    /// inside the parent (names match any case)
     #[arg(long, value_name = "DIR")]
     sidata: Option<PathBuf>,
     /// PLAYONE's PFONT.BIN for the credits text; by default it is searched for in --sidata,
-    /// then beside the archive and the film, their parent and grandparent, and a sidata
-    /// directory there (the engine root holds it, beside VAULT)
+    /// then beside the archive, in the --game tree and beside the film, their parent and
+    /// grandparent, and a sidata directory there (the engine root holds it, beside VAULT)
     #[arg(long, value_name = "PFONT.BIN")]
     font: Option<PathBuf>,
     /// Render the film to a video container (.mp4, .webm, .mkv, .avi) via ffmpeg
@@ -82,8 +86,8 @@ struct Options {
     /// Offscreen only: draw the scene into the top N rows (PLAYONE uses 185 of 200)
     #[arg(long, value_name = "N")]
     viewport_rows: Option<u32>,
-    /// Mode 13h palette index used to clear the framebuffer (default: 233 with an archive,
-    /// else 180)
+    /// Mode 13h palette index used to clear the framebuffer (default: 233 with an archive or
+    /// --game, else 180)
     #[arg(long, value_name = "I")]
     clear_index: Option<u8>,
     /// Run offscreen without opening a window
@@ -103,6 +107,8 @@ pub(crate) struct CliConfig {
     pub flm_path: Option<PathBuf>,
     pub sod_path: Option<PathBuf>,
     pub all_path: Option<PathBuf>,
+    /// Game tree whose `RES` files supply the shapes (`--game`); never set with `all_path`.
+    pub game_dir: Option<PathBuf>,
     pub out_dir: Option<PathBuf>,
     /// The 0-based inclusive ticks from `--tick-range`, resolved against the film clock
     /// by [`crate::playback`]; `None` renders ticks `0..=total_ticks`.
@@ -146,6 +152,7 @@ impl CliConfig {
             inputs,
             sod: sod_path,
             all: mut all_path,
+            game: game_dir,
             out_dir,
             tick_span,
             frames,
@@ -198,7 +205,15 @@ impl CliConfig {
             );
         }
 
-        if sod_path.is_none() {
+        if let (Some(_), Some(all)) = (&game_dir, &all_path) {
+            return Err(format!(
+                "--game reads the shapes in place of an archive; drop {} or --game",
+                all.display()
+            ));
+        }
+
+        // With `--game` the shapes need no archive, so none is looked for beside the film.
+        if sod_path.is_none() && game_dir.is_none() {
             if let Some(flm) = &flm_path
                 && all_path.is_none()
             {
@@ -210,12 +225,14 @@ impl CliConfig {
             }
         }
 
-        let clear_index = clear_index.unwrap_or_else(|| if all_path.is_some() { 233 } else { 180 });
+        let has_shapes = all_path.is_some() || game_dir.is_some();
+        let clear_index = clear_index.unwrap_or(if has_shapes { 233 } else { 180 });
 
         Ok(Self {
             flm_path,
             sod_path,
             all_path,
+            game_dir,
             out_dir,
             tick_span,
             tick_list,
@@ -511,5 +528,36 @@ mod tests {
             fixture_flm.to_string_lossy().to_ascii_lowercase()
         );
         assert_eq!(cfg.clear_index, 233);
+    }
+
+    #[test]
+    fn test_game_conflicts_with_an_archive() {
+        let Err(err) = parse(&["film.flm", "--game", "game", "--all", "film.all"]) else {
+            panic!("--game with --all must be rejected");
+        };
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+        let Err(err) = parse(&["film.flm", "film.all", "--game", "game"]) else {
+            panic!("--game with a positional archive must be rejected");
+        };
+        assert!(err.to_string().contains("--game"), "{err}");
+    }
+
+    #[test]
+    fn test_game_plays_like_an_archive_without_looking_for_one() {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let fixture_flm = manifest_dir.join("../../tests/fixtures/synthetic_minimal.flm");
+        let cfg = parse(&[
+            fixture_flm.to_str().expect("utf-8 path"),
+            "--game",
+            "game",
+            "--headless",
+        ])
+        .expect("parse succeeds");
+        assert_eq!(cfg.game_dir, Some(PathBuf::from("game")));
+        assert_eq!(cfg.all_path, None, "the companion .ALL is not looked up");
+        assert_eq!(cfg.clear_index, 233);
+        let cfg = parse(&["--game", "game", "--clear-index", "7"]).expect("parse succeeds");
+        assert_eq!(cfg.clear_index, 7);
+        assert_eq!(parse(&[]).expect("default").clear_index, 180);
     }
 }

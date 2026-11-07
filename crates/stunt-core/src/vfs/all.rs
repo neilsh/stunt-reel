@@ -8,11 +8,26 @@ use crate::contracts::vfs::{ArchiveFormat, VfsArchive, VfsEntry};
 use crate::reader::ByteReader;
 use crate::vfs::{VfsError, check_non_decreasing, offset_add, offset_sub, offset_u32};
 
+/// The entry name [`parse_all`] gives chunk `id` holding `payload`: `CHOREO.FLM` for one that
+/// starts `b"FILM"`, `MODEL_{id:04X}.SOD` for a leading `0x000C`, anything else
+/// `RES_{id:04X}.BIN`.
+#[must_use]
+pub fn chunk_name(id: u16, payload: &[u8]) -> String {
+    if payload.starts_with(b"FILM") {
+        "CHOREO.FLM".to_string()
+    } else if let &[lo, hi, ..] = payload
+        && u16::from_le_bytes([lo, hi]) == 0x000C
+    {
+        format!("MODEL_{id:04X}.SOD")
+    } else {
+        format!("RES_{id:04X}.BIN")
+    }
+}
+
 /// Unpacks a `.ALL` container archive into an in-memory [`VfsArchive`].
 ///
 /// Layout: `research/formats/all.ksy` (`[FMT-ALL-CHUNKS]`); the last payload runs to the end of
-/// `data`. Names come from the payload: `b"FILM"` is `CHOREO.FLM`, a leading `0x000C` is
-/// `MODEL_{id:04X}.SOD`, anything else `RES_{id:04X}.BIN`.
+/// `data`. Names come from the payload, by [`chunk_name`].
 ///
 /// # Errors
 /// - [`VfsError::UnexpectedEof`] if `data` is shorter than the 2-byte count or the
@@ -29,18 +44,8 @@ pub fn parse_all(data: &[u8]) -> Result<VfsArchive, VfsError> {
 
     let mut archive = VfsArchive::new(ArchiveFormat::All);
     for (id, payload) in chunks {
-        let name = if payload.starts_with(b"FILM") {
-            "CHOREO.FLM".to_string()
-        } else if let &[lo, hi, ..] = payload
-            && u16::from_le_bytes([lo, hi]) == 0x000C
-        {
-            format!("MODEL_{id:04X}.SOD")
-        } else {
-            format!("RES_{id:04X}.BIN")
-        };
-
         let entry = VfsEntry {
-            name: name.to_ascii_uppercase(),
+            name: chunk_name(id, payload),
             data: payload.to_vec(),
             source_offset: offset_u32(start)?,
             was_compressed: false,

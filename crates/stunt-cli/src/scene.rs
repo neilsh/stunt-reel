@@ -10,7 +10,8 @@
 //! this order, taking the first directory that holds a case-insensitive filename match:
 //!
 //! 1. the directory given with `--sidata <dir>`;
-//! 2. the directory of the archive (or of the `--sod` model when there is no archive);
+//! 2. the directory of the archive (of the film with `--game`, or of the `--sod` model when
+//!    there is neither);
 //! 3. its parent directory;
 //! 4. its grandparent directory;
 //! 5. `sidata/` or `SIDATA/` inside the parent directory (a sibling of the archive's directory).
@@ -26,13 +27,17 @@ use stunt_core::contracts::{
 };
 use stunt_core::flm::{FilmTimeline, SliceKeyframe, TIMELINE_HZ, TIMELINE_TICK_SECONDS};
 use stunt_core::font::PFont;
-use stunt_core::scene::{FilmScene, SceneInputs, SceneReport};
+use stunt_core::link::{LinkError, SHAPE_INDEX_LIMIT};
+use stunt_core::scene::{FilmScene, SceneError, SceneInputs, SceneReport, ShapeSource};
 use stunt_core::sod::{DecodeMode, SodStop, decode_sod};
+use stunt_core::vfs::{ResRegions, res_regions};
+
+use crate::link::find_ci;
 
 /// Locates the scenery data file `filename` (see the module docs for the search order).
 ///
-/// `base` is the archive path (or `--sod` model path); `sidata` is the explicit
-/// `--sidata` directory, searched first.
+/// `base` is the archive path (the film with `--game`, or the `--sod` model); `sidata` is
+/// the explicit `--sidata` directory, searched first.
 pub(crate) fn find_scenery_file(
     sidata: Option<&Path>,
     base: &Path,
@@ -85,6 +90,8 @@ fn read_scenery_file(sidata: Option<&Path>, base: &Path, filename: &str) -> Opti
 pub(crate) struct SceneSources<'a> {
     pub(crate) flm: Option<&'a Path>,
     pub(crate) all: Option<&'a Path>,
+    /// Game tree whose `RES/*.RES` files supply the shapes when there is no archive.
+    pub(crate) game: Option<&'a Path>,
     pub(crate) sod: Option<&'a Path>,
     pub(crate) sidata: Option<&'a Path>,
     /// `PFONT.BIN` for the credits; `None` looks it up as a scenery file.
@@ -95,22 +102,22 @@ pub(crate) struct SceneSources<'a> {
 
 /// Builds the film scene once and prints its diagnostics.
 ///
-/// With an archive, every actor binds to its `MODEL_*.SOD` chunk and the world is built
-/// from the located scenery files. Without one, a single loose model (`--sod` or the
+/// With an archive or a game tree, every actor binds to its shape and the world is built
+/// from the located scenery files. Without either, a single loose model (`--sod` or the
 /// synthetic aircraft) is bound to the film's first actor.
 ///
-/// Every input that is named must load: an unreadable or unparseable film, archive or
-/// `--sod` model, or a film with no slices, is an error. The synthetic orbit stands in
-/// only when no film is named, and the synthetic aircraft only when no model is.
+/// Every input that is named must load: an unreadable or unparseable film, archive, game
+/// `RES` tree or `--sod` model, or a film with no slices, is an error. The synthetic orbit
+/// stands in only when no film is named, and the synthetic aircraft only when no model is.
 pub(crate) fn build_scene(src: &SceneSources<'_>) -> Result<FilmScene, String> {
     let scene = build_film_scene(src)?;
     attach_font(scene, src)
 }
 
 /// Gives the scene its credits font: the `--font` file, which must load, or else, for a
-/// film that sets credits, a `PFONT.BIN` found as a scenery file is, from the archive and
-/// then from the film (the engine root beside `VAULT` holds one). A film whose font is
-/// missing or does not load still plays, without its credits text.
+/// film that sets credits, a `PFONT.BIN` found as a scenery file is, from the archive, the
+/// game tree and then the film (the engine root beside `VAULT` holds one). A film whose font
+/// is missing or does not load still plays, without its credits text.
 fn attach_font(scene: FilmScene, src: &SceneSources<'_>) -> Result<FilmScene, String> {
     if let Some(path) = src.font {
         let font = load_font(path)?;
@@ -122,7 +129,8 @@ fn attach_font(scene: FilmScene, src: &SceneSources<'_>) -> Result<FilmScene, St
     }
     // A candidate that does not load leaves the next one, the film's, still to try.
     let mut error = "no PFONT.BIN was found".to_string();
-    let candidates = [src.all, src.flm]
+    let game = src.game.map(game_search_base);
+    let candidates = [src.all, game.as_deref(), src.flm]
         .into_iter()
         .flatten()
         .filter_map(|base| find_scenery_file(src.sidata, base, "PFONT.BIN"));
@@ -152,29 +160,137 @@ fn build_film_scene(src: &SceneSources<'_>) -> Result<FilmScene, String> {
         None => synthetic_orbit(src.max_ticks),
     };
 
-    let Some(all_path) = src.all else {
-        let model = load_or_create_model(src.sod, src.sidata)?;
-        println!("[stuntreel] scene: single model {}", model.name);
-        print_film(&timeline);
-        return Ok(FilmScene::with_single_model(timeline, model));
+    // Scenery is searched for from the archive, or from the film when the shapes come from a
+    // game tree, as `PLAYONE`'s own files sit beside `VAULT`.
+    let (files, base) = match (src.all, src.game) {
+        (Some(all), _) => (ShapeFiles::Archive(read_file(all)?), all.to_path_buf()),
+        (None, Some(tree)) => (
+            read_res_tree(tree)?,
+            src.flm
+                .map_or_else(|| game_search_base(tree), Path::to_path_buf),
+        ),
+        (None, None) => {
+            let model = load_or_create_model(src.sod, src.sidata)?;
+            println!("[stuntreel] scene: single model {}", model.name);
+            print_film(&timeline);
+            return Ok(FilmScene::with_single_model(timeline, model));
+        }
     };
 
-    let archive = fs::read(all_path).map_err(|e| format!("read {}: {e}", all_path.display()))?;
-    let anchors = read_scenery_file(src.sidata, all_path, "ANCHORPT.DAT");
-    let map = read_scenery_file(src.sidata, all_path, "MAP.BIN");
-    let scenery = read_scenery_file(src.sidata, all_path, "SCENERY.scn");
+    let anchors = read_scenery_file(src.sidata, &base, "ANCHORPT.DAT");
+    let map = read_scenery_file(src.sidata, &base, "MAP.BIN");
+    let scenery = read_scenery_file(src.sidata, &base, "SCENERY.scn");
+    let regions = files.split()?;
     let inputs = SceneInputs {
         film: &[],
-        archive: Some(&archive),
+        shapes: Some(match &files {
+            ShapeFiles::Archive(bytes) => ShapeSource::Archive(bytes),
+            ShapeFiles::Res { .. } => ShapeSource::Res(&regions),
+        }),
         anchors: anchors.as_deref(),
         map: map.as_deref(),
         scenery: scenery.as_deref(),
     };
 
     let (scene, report) = FilmScene::load_with_timeline(timeline, &inputs)
-        .map_err(|e| format!("parse {}: {e}", all_path.display()))?;
+        .map_err(|e| files.describe(&e, &regions, &base))?;
     print_report(&scene, &report, anchors.is_some());
     Ok(scene)
+}
+
+/// The files a scene's shapes are read from, with their bytes.
+enum ShapeFiles {
+    /// The `--all` archive.
+    Archive(Vec<u8>),
+    /// Every `*.RES` file of a `--game` tree's `RES` directory, sorted by path.
+    Res {
+        dir: PathBuf,
+        files: Vec<(PathBuf, Vec<u8>)>,
+    },
+}
+
+impl ShapeFiles {
+    /// Splits each `RES` file (none for an archive), refusing a file that does not split and
+    /// a set with no shape file, which would build a scene with nothing to draw.
+    fn split(&self) -> Result<Vec<ResRegions<'_>>, String> {
+        let Self::Res { dir, files } = self else {
+            return Ok(Vec::new());
+        };
+        let regions = files
+            .iter()
+            .map(|(path, bytes)| {
+                res_regions(bytes).map_err(|e| format!("parse {}: {e}", path.display()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let shape_files = regions
+            .iter()
+            .filter(|r| r.index < SHAPE_INDEX_LIMIT)
+            .count();
+        if shape_files == 0 {
+            return Err(format!(
+                "no .RES file in {} holds shapes (res_index below 0x{SHAPE_INDEX_LIMIT:02X})",
+                dir.display()
+            ));
+        }
+        println!(
+            "[stuntreel] scene: shapes from {shape_files} RES files in {}",
+            dir.display()
+        );
+        Ok(regions)
+    }
+
+    /// The message for a scene that would not load from these files; `base` is the archive.
+    fn describe(&self, error: &SceneError, regions: &[ResRegions<'_>], base: &Path) -> String {
+        let Self::Res { dir, files } = self else {
+            return format!("parse {}: {error}", base.display());
+        };
+        if let SceneError::Res(LinkError::DuplicateIndex { index }) = error {
+            let names: Vec<String> = files
+                .iter()
+                .zip(regions)
+                .filter(|(_, r)| r.index == *index)
+                .map(|((path, _), _)| path.display().to_string())
+                .collect();
+            return format!("{} share index 0x{index:02X}", names.join(" and "));
+        }
+        format!("{}: {error}", dir.display())
+    }
+}
+
+fn read_file(path: &Path) -> Result<Vec<u8>, String> {
+    fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))
+}
+
+/// A path inside `tree`, so that [`find_scenery_file`] searches the tree itself first.
+fn game_search_base(tree: &Path) -> PathBuf {
+    tree.join("RES")
+}
+
+/// Reads every `*.RES` file of `<tree>/RES`, both names in any case (`[I8]`).
+///
+/// A missing tree, `RES` directory or `.RES` file, or one that cannot be read, is an error
+/// that names the path.
+fn read_res_tree(tree: &Path) -> Result<ShapeFiles, String> {
+    let dir = find_ci(tree, "RES").map_err(|e| format!("--game: {e}"))?;
+    let mut paths = fs::read_dir(&dir)
+        .map_err(|e| format!("cannot list {}: {e}", dir.display()))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("RES"))
+                && path.is_file()
+        })
+        .collect::<Vec<_>>();
+    paths.sort();
+    if paths.is_empty() {
+        return Err(format!("no .RES file in {}", dir.display()));
+    }
+    let files = paths
+        .into_iter()
+        .map(|path| read_file(&path).map(|bytes| (path, bytes)))
+        .collect::<Result<_, _>>()?;
+    Ok(ShapeFiles::Res { dir, files })
 }
 
 /// Reads and parses the film at `path`; a film with no slices is an error too.
@@ -510,6 +626,7 @@ mod tests {
         SceneSources {
             flm,
             all,
+            game: None,
             sod,
             sidata: None,
             font: None,
@@ -663,5 +780,123 @@ mod tests {
         let missing = t.0.join("NOMOVIE.ALL");
         let err = scene_err(&sources(None, Some(&missing), None));
         assert!(err.contains("NOMOVIE.ALL"), "{err}");
+    }
+
+    /// A `.RES` file with `res_index` `index` whose item `n` is `items[n - 1]`, laid out as
+    /// `tests/fixtures/link_*.res` are.
+    fn res_file(index: u8, items: &[&[u8]]) -> Vec<u8> {
+        let le = |offset: usize| u32::try_from(offset).expect("small").to_le_bytes();
+        let mut offset = 4 * (items.len() + 2);
+        let count = u8::try_from(items.len()).expect("at most 255 items");
+        let mut out = vec![b'R', b'S', index, count];
+        for item in items {
+            out.extend_from_slice(&le(offset));
+            offset += item.len();
+        }
+        out.extend_from_slice(&le(offset));
+        for item in items {
+            out.extend_from_slice(item);
+        }
+        out
+    }
+
+    /// `<t>/<tree>/<res>/<name>` holding `bytes`; returns the tree.
+    fn res_in(t: &TempTree, tree: &str, res: &str, name: &str, bytes: &[u8]) -> PathBuf {
+        let dir = t.0.join(tree).join(res);
+        fs::create_dir_all(&dir).expect("dirs");
+        fs::write(dir.join(name), bytes).expect("write RES");
+        t.0.join(tree)
+    }
+
+    fn game_sources<'a>(flm: Option<&'a Path>, game: &'a Path) -> SceneSources<'a> {
+        SceneSources {
+            game: Some(game),
+            ..sources(flm, None, None)
+        }
+    }
+
+    #[test]
+    fn a_game_tree_gives_the_shapes_its_archive_would() {
+        let t = TempTree::new();
+        let model = fs::read(fixture("synthetic_minimal.sod")).expect("fixture");
+        // `synthetic_minimal.all` holds the model as chunk 0x0001: item 1 of index 0x00.
+        let tree = res_in(&t, "game", "res", "shapes.res", &res_file(0x00, &[&model]));
+        res_in(&t, "game", "res", "sprites.res", &res_file(0x80, &[b"x"]));
+        let film = fixture("synthetic_minimal.flm");
+        let archive = fixture("synthetic_minimal.all");
+
+        let from_game = build_scene(&game_sources(Some(&film), &tree)).expect("scene");
+        let from_all = build_scene(&sources(Some(&film), Some(&archive), None)).expect("scene");
+        let shapes = |scene: &FilmScene| {
+            let mut shapes: Vec<(u16, SodModelIr)> =
+                scene.shapes().map(|(id, ir)| (id, ir.clone())).collect();
+            shapes.sort_by_key(|(id, _)| *id);
+            shapes
+        };
+        assert_eq!(shapes(&from_game).len(), 1);
+        assert_eq!(shapes(&from_game), shapes(&from_all));
+    }
+
+    #[test]
+    fn the_credits_font_is_also_found_in_the_game_tree() {
+        let t = TempTree::new();
+        let model = fs::read(fixture("synthetic_minimal.sod")).expect("fixture");
+        let tree = res_in(&t, "game", "RES", "SHAPES.RES", &res_file(0x00, &[&model]));
+        let film = t.0.join("elsewhere/MINIMAL.FLM");
+        fs::create_dir_all(film.parent().expect("parent")).expect("dirs");
+        fs::write(&film, CREDITS_FILM).expect("write film");
+
+        let scene = build_scene(&game_sources(Some(&film), &tree)).expect("scene");
+        assert!(scene.font().is_none(), "no PFONT.BIN anywhere yet");
+        fs::copy(fixture("synthetic_pfont.bin"), tree.join("PFONT.BIN")).expect("font");
+        let scene = build_scene(&game_sources(Some(&film), &tree)).expect("scene");
+        assert!(scene.font().is_some(), "found in the game tree");
+    }
+
+    #[test]
+    fn a_missing_or_unreadable_res_tree_is_an_error_naming_it() {
+        let t = TempTree::new();
+        let missing = t.0.join("NOGAME");
+        let err = scene_err(&game_sources(None, &missing));
+        assert!(err.contains("NOGAME"), "{err}");
+
+        let no_res = t.0.join("EMPTYGAME");
+        fs::create_dir_all(&no_res).expect("dirs");
+        let err = scene_err(&game_sources(None, &no_res));
+        assert!(err.contains("EMPTYGAME") && err.contains("RES"), "{err}");
+
+        let tree = res_in(&t, "NOFILES", "RES", "README.TXT", b"not a RES file");
+        let err = scene_err(&game_sources(None, &tree));
+        assert!(err.contains("no .RES file"), "{err}");
+
+        let tree = res_in(&t, "BROKEN", "RES", "SHAPES.RES", b"RS\x01\x01");
+        let err = scene_err(&game_sources(None, &tree));
+        assert!(err.contains("SHAPES.RES"), "{err}");
+    }
+
+    #[test]
+    fn a_res_tree_without_shape_files_is_an_error_not_an_empty_scene() {
+        let t = TempTree::new();
+        let tree = res_in(&t, "game", "RES", "SPRITES.RES", &res_file(0x80, &[b"x"]));
+        res_in(&t, "game", "RES", "DIALOG.RES", &res_file(0xBF, &[b"y"]));
+        let err = scene_err(&game_sources(None, &tree));
+        assert!(err.contains("holds shapes"), "{err}");
+        assert!(
+            err.contains(&tree.join("RES").display().to_string()),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn two_shape_files_with_one_index_are_named() {
+        let t = TempTree::new();
+        let model = fs::read(fixture("synthetic_minimal.sod")).expect("fixture");
+        let tree = res_in(&t, "game", "RES", "A.RES", &res_file(0x05, &[&model]));
+        res_in(&t, "game", "RES", "B.RES", &res_file(0x05, &[&model]));
+        let err = scene_err(&game_sources(None, &tree));
+        assert!(
+            err.contains("A.RES") && err.contains("B.RES") && err.contains("0x05"),
+            "{err}"
+        );
     }
 }
