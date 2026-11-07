@@ -57,7 +57,7 @@ Every turn re-sends the whole conversation, so the loop costs turns times contex
 5. **Never print a whole `report.json`.** Extract the fields you need with `python -c "import json; ..."`.
 6. **Look at pixels sparingly.** Use `parity_probe.py crop` on one region instead of reading full contact sheets, and only after the numbers point somewhere. To see specific ticks, `mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N]` renders them in one process (about 3 s, not 3 s each) and prints a capture-left, ours-right PNG per tick under `build/scratch/frame/<film>/`; a tick the capture lacks is rendered and its nearest captured ticks are named. Add `--var DBG_X=0,1` for a before-and-after picture: the capture, then one panel per value. A note may commit such a picture under [`NOTICE.md`](../../../NOTICE.md)'s comparison-image rule; a PR attaches one as in [Evidence for a rendering PR](#evidence-for-a-rendering-pr).
 7. **Scratch goes in `build/scratch/`** (gitignored), never `$TEMP`, whose Windows path breaks shell globs. Delete candidate render directories once scored. `PYTHONUTF8=1` is set for Python text I/O; committed scripts still pass `encoding="utf-8"`.
-8. **Never commit `DBG_*` switches.** `git checkout crates` removes them. Parse a switch's value with `std::env::var(...).ok().and_then(|v| v.parse().ok())`, never `is_ok()` (`"0"` counts as set; the sweep's identical-variant warning catches it, [`probes.md`](../../../research/parity/probes.md) section 8).
+8. **Never commit `DBG_*` switches.** `git restore <paths>` removes them. Parse a switch's value with `std::env::var(...).ok().and_then(|v| v.parse().ok())`, never `is_ok()` (`"0"` counts as set; the sweep's identical-variant warning catches it, [`probes.md`](../../../research/parity/probes.md) section 8).
 
 ## Comparing a candidate reference
 
@@ -103,7 +103,7 @@ A PR that changes rendered output — anything that moves a pixel `stuntreel` dr
 - [ ] 1. Pick the ticks where the change shows most (the frames the parity score moved, or the ones the PR is about); CTRY and INTRO at least, plus any batch film the PR targets
 - [ ] 2. Add --crop x0,y0,x1,y1 --scale 3 to every frame run below when the whole frame hides the change
 - [ ] 3. Render before and after, and copy the PNGs from build/scratch/frame/<film>/ (the next run replaces them):
-       behind a DBG_* switch, one picture holds both: mise run frame -- --film <film> --ticks <t,t> --var DBG_X=0,1, copied to build/scratch/pr/
+       behind a DBG_* switch, one picture holds both: mise run frame -- --film <film> --ticks <t,t> --var DBG_X=0,1, copied to build/scratch/pr/; render every film's pictures this way while the switch still exists, and remove it only after
        otherwise two pictures: mise run frame on the base commit (git switch --detach <base>) copied to build/scratch/pr/before/, then on the PR head copied to build/scratch/pr/after/
 - [ ] 4. Score before and after on the same films: behind a DBG_* switch, mise run sweep -- --var DBG_X=0,1 prints both in one table; otherwise mise run parity on the base commit and on the PR head, keeping each [parity] line
 - [ ] 5. Write the body to build/scratch/pr/body.md: under ## Evidence, each film's two scores from step 4, then its pictures, referenced by path relative to that file:
