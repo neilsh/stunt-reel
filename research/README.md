@@ -13,6 +13,7 @@
 | [`makeone-exe/`](makeone-exe/) | Behaviour of `MAKEONE.EXE`, the film linker, as driven under an emulator (DOSBox-X at the time, see [`playone-exe/dosbox-x-legacy.md`](playone-exe/dosbox-x-legacy.md)) to produce a film's `.ALL`, and what that archive holds | [`driving.md`](makeone-exe/driving.md), [`linking.md`](makeone-exe/linking.md) |
 | [`stunt-exe/`](stunt-exe/) | Behaviour of `STUNT.EXE`, the authoring executable: sets, events, and the editor's file handling | [`sets.md`](stunt-exe/sets.md) |
 | [`parity/`](parity/) | How our render differs from the original's, and how we measure it | [`method.md`](parity/method.md), [`log.md`](parity/log.md) |
+| [`images/`](images/) | Comparison images the notes cite, one folder per render date and commit | [`README.md`](images/README.md) |
 
 A source card records a *document* rather than a subject; these live beside this file, e.g. [`handbook.md`](handbook.md) for the retail handbook.
 
