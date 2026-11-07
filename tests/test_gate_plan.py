@@ -130,15 +130,16 @@ def test_failure_tail_header_carries_fix_hint_only_for_fixable_failures(
     """The output-tail header is printed by main alone, so exercise it there."""
     failed = {*gate.FIXABLE_STEPS, "test-rust"}
 
-    def fake_step(_mise: str, task: str) -> tuple[int, str, float]:
+    def fake_step(_mise: str, task: str, _timeout: float) -> tuple[int, str, float]:
         return (1 if task in failed else 0, f"{task} output\n", 0.0)
 
     monkeypatch.setattr(gate, "_mise", lambda: "mise")
+    monkeypatch.setattr(gate, "_check_uv", lambda: None)
     monkeypatch.setattr(gate, "_step", fake_step)
     monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
     monkeypatch.setattr(gate_record, "working_tree", lambda: "tested-tree")
 
-    assert gate.main(["all", "--tail", "1"]) == 1
+    assert gate.main(["all", "--full", "--tail", "1"]) == 1
     output = capsys.readouterr().out
     for task in gate._plan("all"):
         if task not in failed:
@@ -181,7 +182,8 @@ def test_a_passing_run_records_the_tree_it_started_on(
     trees = iter(["started-tree", "edited-mid-run"])
     recorded: list[tuple[str, str]] = []
     monkeypatch.setattr(gate, "_mise", lambda: "mise")
-    monkeypatch.setattr(gate, "_step", lambda _mise, _task: (code, "", 0.0))
+    monkeypatch.setattr(gate, "_check_uv", lambda: None)
+    monkeypatch.setattr(gate, "_step", lambda _mise, _task, _timeout: (code, "", 0.0))
     monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
     monkeypatch.setattr(gate_record, "working_tree", lambda: next(trees))
     monkeypatch.setattr(gate_record, "record", lambda *pair: recorded.append(pair))
@@ -200,7 +202,8 @@ def test_a_tree_that_cannot_be_taken_records_nothing_and_still_runs(
         raise OSError("index locked")
 
     monkeypatch.setattr(gate, "_mise", lambda: "mise")
-    monkeypatch.setattr(gate, "_step", lambda _mise, _task: (0, "", 0.0))
+    monkeypatch.setattr(gate, "_check_uv", lambda: None)
+    monkeypatch.setattr(gate, "_step", lambda _mise, _task, _timeout: (0, "", 0.0))
     monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
     monkeypatch.setattr(gate_record, "working_tree", unreadable)
     monkeypatch.setattr(gate_record, "record", lambda *pair: recorded.append(pair))
@@ -445,7 +448,7 @@ def _run_main(
     """Run ``gate.main`` with every step passing; return the steps it ran and what it printed."""
     ran: list[str] = []
 
-    def step(_mise: str, task: str) -> tuple[int, str, float]:
+    def step(_mise: str, task: str, _timeout: float) -> tuple[int, str, float]:
         ran.append(task)
         return 0, "", 0.0
 
@@ -458,6 +461,7 @@ def _run_main(
     monkeypatch.delenv("CI", raising=False)
     monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "check.log")
     monkeypatch.setattr(gate, "_mise", lambda: "mise")
+    monkeypatch.setattr(gate, "_check_uv", lambda: None)
     monkeypatch.setattr(gate, "_step", step)
     monkeypatch.setattr(gate, "changed_paths", changed)
     assert gate.main(["all", *args]) == 0
@@ -533,7 +537,8 @@ def test_a_record_that_cannot_be_written_keeps_the_verdict(
         raise OSError("disk full")
 
     monkeypatch.setattr(gate, "_mise", lambda: "mise")
-    monkeypatch.setattr(gate, "_step", lambda _mise, _task: (0, "", 0.0))
+    monkeypatch.setattr(gate, "_check_uv", lambda: None)
+    monkeypatch.setattr(gate, "_step", lambda _mise, _task, _timeout: (0, "", 0.0))
     monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
     monkeypatch.setattr(gate_record, "record", unwritable)
 

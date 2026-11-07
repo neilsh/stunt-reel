@@ -32,7 +32,14 @@ it saves.
 ``--full``, a set ``CI``, an unclassified path, no changes, or paths git cannot give run the full
 gate. A passing run prints the commit body's closing gate line.
 
-Usage: ``python python/scripts/gate.py {all|rust|py|docs} [--full] [--base REF] [--tail N]``
+Two guards stop a run that could not pass. Before a Python or docs step, the ``uv`` on PATH must
+be the version ``mise.toml`` pins: a stale standalone uv ahead of mise's otherwise fails only in
+``test-py``, after every other step. And each step gets ``STEP_TIMEOUT_S`` (``--step-timeout``);
+a step past it is killed with its child processes and reported as failed, where a hung test
+would otherwise hold the gate until stopped by hand.
+
+Usage: ``python python/scripts/gate.py {all|rust|py|docs} [--full] [--base REF] [--tail N]
+[--step-timeout S]``
 """
 
 from __future__ import annotations
@@ -40,10 +47,12 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import threading
 import time
+import tomllib
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -55,6 +64,11 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 LOG_PATH = Path("target") / "check.log"
+
+# A whole step's limit: generous enough for a cold `cargo test` build on a CI runner.
+STEP_TIMEOUT_S = 1800.0
+# The exit code a timed-out step reports, as coreutils `timeout` does.
+TIMEOUT_EXIT = 124
 
 # The step list is every leaf task, in display order; a task that only aggregates others
 # (check, fmt-check, lint, test) must never appear here or the gate recurses. A step added here
@@ -316,22 +330,104 @@ def _mise() -> str:
     return executable
 
 
-def _step(mise: str, task: str) -> tuple[int, str, float]:
+def uv_pin(mise_toml: Path) -> str:
+    """The uv version ``mise.toml`` pins under ``[tools]``."""
+    with mise_toml.open("rb") as handle:
+        return str(tomllib.load(handle)["tools"]["uv"])
+
+
+def uv_problem(pin: str, found: str | None, version: str, every: Sequence[str]) -> str | None:
+    """Why the uv at *found* (``uv --version`` printed *version*) cannot run the gate, or None.
+
+    *every* is each uv on PATH, in order, so the message names what shadows mise's.
+    """
+    if found is None:
+        return f"uv is not on PATH; mise.toml pins {pin}: run the gate through 'mise run check'"
+    words = version.split()
+    if len(words) >= 2 and words[1] == pin:
+        return None
+    running = words[1] if len(words) >= 2 else repr(version.strip())
+    listed = "".join(f"\n  {path}" for path in every) or f"\n  {found}"
+    return (
+        f"uv {running} at {found} runs, but mise.toml pins {pin}. "
+        f"Every uv on PATH, first wins:{listed}\n"
+        "Remove the stale one, or run the gate from a shell where mise's comes first."
+    )
+
+
+def _uvs_on_path() -> list[str]:
+    """Every uv executable on PATH, in PATH order."""
+    found: list[str] = []
+    for folder in os.environ.get("PATH", "").split(os.pathsep):
+        hit = shutil.which("uv", path=folder) if folder else None
+        if hit and hit not in found:
+            found.append(hit)
+    return found
+
+
+def _check_uv() -> str | None:
+    """The ``uv_problem`` for this process's PATH, which every step inherits."""
+    found = shutil.which("uv")
+    version = ""
+    if found is not None:
+        proc = subprocess.run(  # noqa: S603 - the resolved uv, fixed arguments
+            [found, "--version"], capture_output=True, text=True, check=False
+        )
+        version = proc.stdout
+    return uv_problem(uv_pin(Path("mise.toml")), found, version, _uvs_on_path())
+
+
+def _kill_tree(proc: subprocess.Popen[str]) -> None:
+    """Kill *proc* and every process it started."""
+    if sys.platform == "win32":
+        taskkill = shutil.which("taskkill") or "taskkill"
+        subprocess.run(  # noqa: S603 - taskkill with a pid we own
+            [taskkill, "/T", "/F", "/PID", str(proc.pid)], capture_output=True, check=False
+        )
+    else:
+        # The child leads its own session (start_new_session), so its group is its pid.
+        os.killpg(proc.pid, signal.SIGKILL)
+
+
+def run_bounded(
+    argv: Sequence[str], env: Mapping[str, str] | None, timeout: float
+) -> tuple[int, str]:
+    """Run *argv*, returning its exit code and combined output.
+
+    Past *timeout* seconds it kills the process tree and returns ``TIMEOUT_EXIT``, with a closing
+    line saying so: a grandchild holding the output pipes cannot keep the read waiting.
+    """
+    proc = subprocess.Popen(  # noqa: S603 - callers pass fixed commands
+        list(argv),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=None if env is None else dict(env),
+        start_new_session=os.name != "nt",
+    )
+    try:
+        output, _ = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_tree(proc)
+        try:
+            output, _ = proc.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            output = ""
+        note = f"[gate] timed out after {timeout:.0f}s; killed the step and its children"
+        return TIMEOUT_EXIT, f"{output or ''}\n{note}\n"
+    return proc.returncode, output
+
+
+def _step(mise: str, task: str, timeout: float) -> tuple[int, str, float]:
     """Run one mise task, returning its exit code, combined output and duration."""
     # MISE_QUIET silences the child mise's own tool-resolution chatter, which would
     # otherwise repeat once per step in the log.
     env = {**os.environ, "MISE_QUIET": "1", **STEP_ENV.get(task, {})}
     started = time.monotonic()
-    proc = subprocess.run(  # noqa: S603 - fixed task names from STEPS, mise resolved from PATH
-        [mise, "run", task],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=env,
-        check=False,
-    )
-    return proc.returncode, f"{proc.stdout}{proc.stderr}", time.monotonic() - started
+    code, output = run_bounded([mise, "run", task], env, timeout)
+    return code, output, time.monotonic() - started
 
 
 def _run_lane(
@@ -340,11 +436,12 @@ def _run_lane(
     log: TextIO,
     lock: threading.Lock,
     results: dict[str, tuple[int, str, float]],
+    timeout: float,
 ) -> None:
     """Run one lane's steps in order, reporting each as it finishes."""
     for task in tasks:
         try:
-            code, output, elapsed = _step(mise, task)
+            code, output, elapsed = _step(mise, task, timeout)
         except Exception as exc:
             # A step that cannot even start must still name the failure in the verdict.
             code, output, elapsed = 1, f"gate could not run the step: {exc!r}", 0.0
@@ -365,6 +462,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--full", action="store_true", help="run every half whatever changed")
     parser.add_argument(
         "--base", default="main", help="the branch changes are counted from (default: main)"
+    )
+    parser.add_argument(
+        "--step-timeout",
+        type=float,
+        default=STEP_TIMEOUT_S,
+        help=f"seconds before a step is killed (default: {STEP_TIMEOUT_S:.0f})",
     )
     args = parser.parse_args(argv)
 
@@ -397,6 +500,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"[gate] cannot record the tree under test: {exc}", flush=True)
         tested = None
     mise = _mise()
+    if any(step in plan for half in ("py", "docs") for step in STEPS[half]):
+        problem = _check_uv()
+        if problem is not None:
+            print(f"[gate] FAIL before any step: {problem}", flush=True)
+            return 1
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     results: dict[str, tuple[int, str, float]] = {}
     lock = threading.Lock()
@@ -415,7 +523,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         workers = max(1, min(len(lanes), os.cpu_count() or 1))
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="gate") as pool:
             futures = [
-                pool.submit(_run_lane, mise, tasks, log, lock, results) for _, tasks in lanes
+                pool.submit(_run_lane, mise, tasks, log, lock, results, args.step_timeout)
+                for _, tasks in lanes
             ]
             for future in futures:
                 future.result()
