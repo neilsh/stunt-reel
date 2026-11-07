@@ -49,6 +49,7 @@ Process documents, **not** sources of truth: [`docs/process/TEAM_SHEET.md`](docs
 3. Commit with a Conventional Commit subject, e.g. `feat(core): add a parser`. The commit-msg hook (`mise run commit-msg-check`) checks the subject and the closing gate line. Write the body whenever a reviewer would have to ask "why this way?": what forced the change, the cause with the offset, measurement or log row that proves it, and what you rejected. One paragraph, then a bullet per file when several move together; never retell the diff. Renames, formatting and generated files need none. Longer reasoning belongs in the owning note or an ADR, cited from the body. Close with the gate line a passing `mise run check` prints last, such as `mise run check passes.` or `mise run check-docs passes; check-rust not run; check-py not run.`
 4. Write the handoff into the plan or `research/` note that owns the work item, never only in agent memory, which another worktree never sees. Shared append-only files such as [`research/parity/log.md`](research/parity/log.md) take rows at the end only.
 5. A PR that changes rendered output carries a capture-beside-render picture, before and after: [Evidence for a rendering PR](.agents/skills/improving-render-parity/SKILL.md#evidence-for-a-rendering-pr).
+6. A commit taken from another session's branch (a cloud session's) keeps that session's author, which the pre-push hook rejects: `git cherry-pick <sha>`, then `git commit --amend --no-edit --reset-author`, so the commit hooks run on it too.
 
 ### Working economically
 
