@@ -588,7 +588,7 @@ mod tests {
 
         assert!(quat_norm_diff(slerp_quat(q_ident, [0.0, 0.0, 0.0, -1.0], 0.5)) < 1e-4);
         assert!(!slerp_quat(q_ident, q_zero, 0.5)[3].is_nan());
-        let _ = slerp_quat(q_ident, q_nan, 0.5);
+        let _: [f32; 4] = slerp_quat(q_ident, q_nan, 0.5);
     }
 
     #[test]
@@ -685,10 +685,10 @@ mod tests {
 
         assert_eq!(radians_to_bam(0.0), 0);
         assert_eq!(radians_to_bam(-PI), 32768);
-        let _ = radians_to_bam(1e9);
-        let _ = radians_to_bam(f32::NAN);
-        let _ = radians_to_bam(f32::INFINITY);
-        let _ = radians_to_bam(f32::NEG_INFINITY);
+        let _: u16 = radians_to_bam(1e9);
+        let _: u16 = radians_to_bam(f32::NAN);
+        let _: u16 = radians_to_bam(f32::INFINITY);
+        let _: u16 = radians_to_bam(f32::NEG_INFINITY);
     }
 
     #[expect(

@@ -144,8 +144,10 @@ pub fn decode_archive_shapes(
 }
 
 /// Decodes every item of the shape files among `files` as [`decode_archive_shapes`] decodes an
-/// archive's chunks: the same ids, names, anchors, light and lenient decoding, and only the
-/// items an archive would name `MODEL_%04X.SOD`.
+/// archive's chunks.
+///
+/// The same ids, names, anchors, light and lenient decoding, and only the items an archive would
+/// name `MODEL_%04X.SOD`.
 ///
 /// # Errors
 /// Returns the [`LinkError`] from [`crate::link::shape_chunks`]: two shape files share an
@@ -191,7 +193,7 @@ fn model_shape_id(name: &str) -> Option<u16> {
 }
 
 /// One drawable actor in a [`SceneFrame`].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ActorDraw {
     /// Key of the shape to draw, as accepted by [`FilmScene::shape`].
     pub shape_id: u16,

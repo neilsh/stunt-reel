@@ -164,6 +164,8 @@ fn terrain_patch_maps_anchors_into_i1() {
     assert_eq!(world.ir.vertices.len(), 4 + 3);
     assert_eq!(world.ir.indices.len(), 6 + 3);
     let tri = &world.ir.vertices[4..];
+    assert_eq!(tri.len(), 3, "one triangle after the ocean quad");
+    assert_eq!(tri.len(), 3, "one triangle after the ocean quad");
     assert_eq!(tri[0].position, [-100.0, 500.0, 200.0]);
     assert_eq!(tri[1].position, [-300.0, 500.0, 200.0]);
     assert_eq!(tri[2].position, [-100.0, 500.0, 400.0]);

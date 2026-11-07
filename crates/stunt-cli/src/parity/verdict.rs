@@ -9,7 +9,7 @@
 //! "Luminance differs" is `f32` inequality, as the numpy copy compares its `float32` planes.
 
 use std::collections::BTreeMap;
-use std::fmt::Write;
+use std::fmt::Write as _;
 
 use serde_json::{Value, json};
 use stunt_render::{

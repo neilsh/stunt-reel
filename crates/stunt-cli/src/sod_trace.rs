@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use clap::{CommandFactory, Parser};
+use clap::{CommandFactory as _, Parser};
 use stunt_core::anchor::parse_anchor_table;
 use stunt_core::sod::{ShadeLight, SodTrace, TraceStep, opcode_mnemonic, trace_sod};
 use stunt_core::vfs::parse_all;

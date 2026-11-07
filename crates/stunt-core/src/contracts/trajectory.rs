@@ -39,9 +39,10 @@ pub struct CameraTransform {
 /// Lens word `CTRY.FLM` and `INTRO.FLM` give every camera before any zoom.
 pub const DEFAULT_CAMERA_LENS: u16 = 8192;
 
-/// PLAYONE's vertical field of view at [`DEFAULT_CAMERA_LENS`]: a focal length of 256
-/// raster pixels over the 200-row page's half-height, `2 * atan(100 / 256)`. Fitted to
-/// the capture's horizon and confirmed by sweep (research/parity/framing-and-actors.md,
+/// PLAYONE's vertical field of view at [`DEFAULT_CAMERA_LENS`].
+///
+/// A focal length of 256 raster pixels over the 200-row page's half-height, `2 * atan(100 / 256)`.
+/// Fitted to the capture's horizon and confirmed by sweep (research/parity/framing-and-actors.md,
 /// section 2); 256 matches the `x 256` screen slopes at `0x22A0`/`0x22A2`.
 pub const PLAYONE_FOV_Y_DEGREES: f32 = 42.673_717;
 

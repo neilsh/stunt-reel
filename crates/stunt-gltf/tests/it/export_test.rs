@@ -530,13 +530,25 @@ fn load(film: &[u8], all: &[u8]) -> FilmScene {
 fn assert_camera_matches(glb: &Glb, camera: &ViewCamera) {
     let cam_node = glb.node_named("Camera").expect("camera node");
     let cam = &glb.array("cameras")[cam_node["camera"].as_u64().map(to_usize).unwrap()];
-    assert_eq!(cam["type"], "perspective");
+    assert_eq!(cam["type"], "perspective", "camera type");
     let perspective = &cam["perspective"];
     let expected = camera.fov_degrees.clamp(1.0, 160.0).to_radians();
-    assert!((perspective["yfov"].as_f64().map(to_f32).unwrap() - expected).abs() < 1e-6);
-    assert!((perspective["aspectRatio"].as_f64().unwrap() - 320.0 / 200.0).abs() < 1e-6);
-    assert!((perspective["znear"].as_f64().unwrap() - 0.1).abs() < 1e-6);
-    assert!((perspective["zfar"].as_f64().unwrap() - 20_000.0).abs() < 1e-3);
+    assert!(
+        (perspective["yfov"].as_f64().map(to_f32).unwrap() - expected).abs() < 1e-6,
+        "yfov is the clamped lens angle"
+    );
+    assert!(
+        (perspective["aspectRatio"].as_f64().unwrap() - 320.0 / 200.0).abs() < 1e-6,
+        "aspect ratio is 320:200"
+    );
+    assert!(
+        (perspective["znear"].as_f64().unwrap() - 0.1).abs() < 1e-6,
+        "znear"
+    );
+    assert!(
+        (perspective["zfar"].as_f64().unwrap() - 20_000.0).abs() < 1e-3,
+        "zfar"
+    );
 
     let translation: Vec<f32> = cam_node["translation"]
         .as_array()
@@ -544,7 +556,7 @@ fn assert_camera_matches(glb: &Glb, camera: &ViewCamera) {
         .iter()
         .map(|v| v.as_f64().map(to_f32).unwrap())
         .collect();
-    assert_eq!(translation, camera.eye);
+    assert_eq!(translation, camera.eye, "camera node sits at the eye");
 
     let q: Vec<f32> = cam_node["rotation"]
         .as_array()
@@ -554,7 +566,10 @@ fn assert_camera_matches(glb: &Glb, camera: &ViewCamera) {
         .collect();
     let rotation = Quat::from_xyzw(q[0], q[1], q[2], q[3]);
     let view = (Vec3::from(camera.target) - Vec3::from(camera.eye)).normalize();
-    assert!((rotation * Vec3::NEG_Z - view).length() < 1e-4);
+    assert!(
+        (rotation * Vec3::NEG_Z - view).length() < 1e-4,
+        "camera node looks at the target"
+    );
 }
 
 #[expect(
@@ -563,7 +578,7 @@ fn assert_camera_matches(glb: &Glb, camera: &ViewCamera) {
 )]
 fn assert_actors_match(glb: &Glb, scene: &FilmScene, tick: f32) {
     let frame = scene.frame(tick);
-    assert!(!frame.actors.is_empty());
+    assert!(!frame.actors.is_empty(), "frame at tick {tick} has actors");
     for (i, actor) in frame.actors.iter().enumerate() {
         let node = glb
             .node_named(&format!("actor_{i}_shape_{}", actor.shape_id))
@@ -574,14 +589,24 @@ fn assert_actors_match(glb: &Glb, scene: &FilmScene, tick: f32) {
             .iter()
             .map(|v| v.as_f64().map(to_f32).unwrap())
             .collect();
-        assert_eq!(matrix, actor.world_matrix);
-        assert_eq!(node["extras"]["state_mask"], actor.state_mask);
-        assert_eq!(node["extras"]["shape_id"], actor.shape_id);
+        assert_eq!(matrix, actor.world_matrix, "actor {i} matrix");
+        assert_eq!(
+            node["extras"]["state_mask"], actor.state_mask,
+            "actor {i} state mask"
+        );
+        assert_eq!(
+            node["extras"]["shape_id"], actor.shape_id,
+            "actor {i} shape id"
+        );
         assert!(
             (node["extras"]["distance"].as_f64().map(to_f32).unwrap() - actor.distance).abs()
-                < 1e-4
+                < 1e-4,
+            "actor {i} distance"
         );
-        assert!(node["children"].as_array().is_some_and(|c| !c.is_empty()));
+        assert!(
+            node["children"].as_array().is_some_and(|c| !c.is_empty()),
+            "actor {i} has a mesh child"
+        );
     }
 }
 

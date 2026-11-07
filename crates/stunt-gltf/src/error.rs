@@ -1,7 +1,11 @@
 //! Export failure type.
 
 /// Why a model or scene frame could not be exported.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, Copy, thiserror::Error)]
+#[expect(
+    variant_size_differences,
+    reason = "a 24-byte error is returned once per export; boxing its message would cost more"
+)]
 pub enum GltfError {
     /// The model has no vertices or no indices, so there is nothing to export.
     #[error("model has no vertices or indices to export")]

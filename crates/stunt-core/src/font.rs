@@ -13,7 +13,7 @@ pub const GLYPH_ROWS: usize = 8;
 pub const PFONT_BYTES: usize = GLYPH_COUNT + GLYPH_COUNT * GLYPH_ROWS;
 
 /// Why font bytes could not be parsed.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum FontError {
     /// The file is not exactly [`PFONT_BYTES`] long.
     #[error("PFONT.BIN must be {PFONT_BYTES} bytes, found {actual}")]
@@ -67,7 +67,7 @@ impl PFont {
     /// Saturates at `i32::MAX`, so a film string too long for any screen cannot overflow.
     #[must_use]
     pub fn text_width(&self, text: &[u8]) -> i32 {
-        text.iter().fold(0_i32, |sum, &byte| {
+        text.iter().fold(0i32, |sum, &byte| {
             sum.saturating_add(i32::from(self.width(byte)))
         })
     }

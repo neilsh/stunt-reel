@@ -18,6 +18,7 @@ use crate::common;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use common::rng::{XorShift64, mutate};
+use stunt_core::contracts::VfsEntry;
 use stunt_core::vfs::{detect_and_parse, parse_all, parse_res};
 
 #[test]
@@ -93,12 +94,12 @@ fn fuzz_mutated_valid_res_never_panic() {
         let res = catch_unwind(AssertUnwindSafe(|| {
             if let Ok(archive) = parse_res(&mutated) {
                 // Exercise archive lookups
-                let _ = archive.get("FOO.SOD");
-                let _ = archive.get("nonexistent");
-                let _ = archive.get_bytes("FOO.SOD");
+                let _: Option<&VfsEntry> = archive.get("FOO.SOD");
+                let _: Option<&VfsEntry> = archive.get("nonexistent");
+                let _: Option<&[u8]> = archive.get_bytes("FOO.SOD");
             }
             if let Ok(archive) = detect_and_parse(&mutated) {
-                let _ = archive.get("FOO.SOD");
+                let _: Option<&VfsEntry> = archive.get("FOO.SOD");
             }
         }));
 
@@ -146,12 +147,12 @@ fn fuzz_mutated_valid_all_never_panic() {
 
         let res = catch_unwind(AssertUnwindSafe(|| {
             if let Ok(archive) = parse_all(&mutated) {
-                let _ = archive.get("CHOREO.FLM");
-                let _ = archive.get("MODEL_0002.SOD");
-                let _ = archive.get("nonexistent");
+                let _: Option<&VfsEntry> = archive.get("CHOREO.FLM");
+                let _: Option<&VfsEntry> = archive.get("MODEL_0002.SOD");
+                let _: Option<&VfsEntry> = archive.get("nonexistent");
             }
             if let Ok(archive) = detect_and_parse(&mutated) {
-                let _ = archive.get("CHOREO.FLM");
+                let _: Option<&VfsEntry> = archive.get("CHOREO.FLM");
             }
         }));
 

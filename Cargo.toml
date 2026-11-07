@@ -43,6 +43,8 @@ meta_variable_misuse = "warn"
 unnameable_types = "warn"
 unused_import_braces = "warn"
 non_ascii_idents = "warn"
+variant_size_differences = "warn"
+missing_copy_implementations = "warn"
 
 [workspace.lints.rustdoc]
 unescaped_backticks = "warn"
@@ -92,6 +94,19 @@ exit = "warn" # `process::exit` skips destructors; return an `ExitCode` instead
 verbose_file_reads = "warn"
 rest_pat_in_fully_bound_structs = "warn"
 self_named_module_files = "warn" # modules with children use `mod.rs`
+# Picks from the same survey that needed fixes first.
+missing_assert_message = "warn" # an assert on game bytes says which invariant broke
+missing_asserts_for_indexing = "warn"
+let_underscore_untyped = "warn" # `let _: Result<..> =` shows what is being dropped
+filetype_is_file = "warn" # `is_file()` is false for a symlink to a file
+unused_trait_names = "warn"
+separated_literal_suffix = "warn" # write `1.0f32`, as the code already does
+return_and_then = "warn"
+ref_patterns = "warn"
+needless_raw_strings = "warn"
+partial_pub_fields = "warn"
+renamed_function_params = "warn"
+map_with_unused_argument_over_ranges = "warn"
 # Cheap nursery picks (#161). The group stays off: its lints are unfinished, and a stable
 # group (`all`, `pedantic`) takes each one over once it is done.
 redundant_clone = "warn"
@@ -109,6 +124,7 @@ collection_is_never_read = "warn"
 debug_assert_with_mut_call = "warn"
 unused_peekable = "warn"
 while_float = "warn"
+too_long_first_doc_paragraph = "warn" # a doc comment opens with one short summary
 # Style picks outside the groups above.
 match_wildcard_for_single_variants = "warn"
 uninlined_format_args = "warn"

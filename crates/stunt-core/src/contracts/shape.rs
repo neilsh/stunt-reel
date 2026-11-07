@@ -285,6 +285,10 @@ impl ShapeMesh<'_> {
 /// Implements `Seam 3: SodModelIr` per `docs/ARCHITECTURE.md`.
 /// Emitted by `.SOD` bytecode interpreters and consumed by glTF export and `wgpu`.
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::partial_pub_fields,
+    reason = "`decode` is set only by the decoder and read through an accessor"
+)]
 pub struct SodModelIr {
     /// Model identifier (e.g. `"FOKKER"`, `"JENNY"`).
     pub name: String,

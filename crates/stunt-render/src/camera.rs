@@ -13,10 +13,11 @@ use stunt_core::scene::ViewCamera;
 /// letterbox, not the projection (see [`MODE13H_PROJECTION_ASPECT`]).
 pub const ASPECT_4_3: f32 = 4.0 / 3.0;
 
-/// Aspect ratio of PLAYONE's projection: square pixels on the $320 \times 200$ raster, so
-/// equal horizontal and vertical focal lengths in raster pixels. The CRT's 1.2x vertical
-/// stretch happens after projection, at presentation (research/parity/framing-and-actors.md
-/// section 2).
+/// Aspect ratio of PLAYONE's projection.
+///
+/// Square pixels on the $320 \times 200$ raster, so equal horizontal and vertical focal lengths in
+/// raster pixels. The CRT's 1.2x vertical stretch happens after projection, at presentation
+/// (research/parity/framing-and-actors.md section 2).
 pub const MODE13H_PROJECTION_ASPECT: f32 = 320.0 / 200.0;
 
 /// Free-Cam vertical field of view in degrees: PLAYONE's default lens, as authored cameras.
@@ -70,6 +71,10 @@ pub enum CameraMode {
 
 /// Dynamic 6-DOF Free-Cam orientation and position state.
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    missing_copy_implementations,
+    reason = "navigation state the controller mutates in place; an implicit copy would fork it"
+)]
 pub struct FreeCamState {
     /// World position in meters.
     pub position: Vec3,

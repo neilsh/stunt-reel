@@ -14,8 +14,8 @@ use std::fmt::{self, Write as _};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use clap::{CommandFactory, Parser, Subcommand};
-use sha2::{Digest, Sha256};
+use clap::{CommandFactory as _, Parser, Subcommand};
+use sha2::{Digest as _, Sha256};
 use stunt_core::link::{LinkError, Manifest, build, extract};
 use stunt_core::vfs::{ResRegions, res_regions};
 
@@ -139,7 +139,8 @@ fn extract_cmd(args: &ExtractArgs, cwd: &Path) -> Result<(), LinkFailure> {
     let mut entries = fs::read_dir(&res_dir)
         .map_err(|e| LinkFailure::Error(format!("cannot list {}: {e}", res_dir.display())))?
         .filter_map(Result::ok)
-        .filter(|entry| entry.file_type().is_ok_and(|t| t.is_file()))
+        // `!is_dir()` keeps a symlinked file, which `read` follows or reports.
+        .filter(|entry| entry.file_type().is_ok_and(|t| !t.is_dir()))
         .map(|entry| entry.path())
         .collect::<Vec<_>>();
     entries.sort();

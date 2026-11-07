@@ -136,7 +136,7 @@ fn build_res_container<S: AsRef<str>>(names: &[S], payloads: &[Vec<u8>]) -> (Vec
         current_offset += p.len() as u32;
         offsets.push(current_offset);
     }
-    assert_eq!(offsets.len(), n);
+    assert_eq!(offsets.len(), n, "one offset per entry");
 
     let mut container = res_header(&offsets);
     container.extend_from_slice(&name_table_bytes);
@@ -182,7 +182,7 @@ fn build_res_with_name_table(names_raw: &[u8]) -> Vec<u8> {
     let ofs3: u32 = ofs2 + 8; // payload 1 (8 bytes)
 
     let mut data = res_header(&[ofs0, ofs1, ofs2, ofs3]);
-    assert_eq!(data.len(), 20);
+    assert_eq!(data.len(), 20, "a four-entry RES header is 20 bytes");
 
     data.extend_from_slice(names_raw);
     data.extend_from_slice(&[0x11u8; 8]); // payload 0
@@ -652,6 +652,8 @@ fn res_rejects_bad_magic() {
             match res {
                 Err(VfsError::InvalidMagic { expected, actual }) => {
                     assert_eq!(expected, "RS");
+                    assert_eq!(magic.len(), 2, "each bad magic is two bytes");
+                    assert_eq!(magic.len(), 2, "each bad magic is two bytes");
                     assert_eq!(actual, [magic[0], magic[1]]);
                 }
                 other => panic!("Expected InvalidMagic for {magic:?}, got {other:?}"),
@@ -789,7 +791,7 @@ fn all_classifies_film_sod_and_raw_payloads() {
     data.extend_from_slice(&off0.to_le_bytes());
     data.extend_from_slice(&off1.to_le_bytes());
     data.extend_from_slice(&off2.to_le_bytes());
-    assert_eq!(data.len(), 20);
+    assert_eq!(data.len(), 20, "a four-entry RES header is 20 bytes");
 
     // Payload 0: FILM
     let mut p0 = vec![0u8; 12];
@@ -1369,7 +1371,9 @@ fn res_lookup_is_case_insensitive_and_exact_otherwise() {
     let mut rng = SimpleRng::new(0xABCD_1234);
 
     let names = ["FOKKER.SOD", "TEST.BIN", "CHOREO.FLM"];
-    let payloads: Vec<Vec<u8>> = (0..names.len()).map(|_| rng.next_bytes(64)).collect();
+    let payloads: Vec<Vec<u8>> = std::iter::repeat_with(|| rng.next_bytes(64))
+        .take(names.len())
+        .collect();
     let (container, _) = build_res_container(&names, &payloads);
 
     let archive = parse_res(&container).expect("parse_res");

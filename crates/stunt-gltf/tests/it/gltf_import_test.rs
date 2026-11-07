@@ -39,16 +39,23 @@ fn check_primitives(gltf: &Gltf) -> usize {
     for mesh in gltf.meshes() {
         for primitive in mesh.primitives() {
             primitives += 1;
-            assert_eq!(primitive.mode(), gltf::mesh::Mode::Triangles);
+            assert_eq!(
+                primitive.mode(),
+                gltf::mesh::Mode::Triangles,
+                "primitive mode"
+            );
             let reader = primitive.reader(|_| Some(blob));
             let positions: Vec<[f32; 3]> = reader.read_positions().expect("POSITION").collect();
             let normal_count = reader.read_normals().expect("NORMAL").count();
             let colors = reader.read_colors(0).expect("COLOR_0").into_rgba_f32();
-            assert_eq!(normal_count, positions.len());
-            assert_eq!(colors.count(), positions.len());
+            assert_eq!(normal_count, positions.len(), "one normal per position");
+            assert_eq!(colors.count(), positions.len(), "one colour per position");
             let indices: Vec<u32> = reader.read_indices().expect("indices").into_u32().collect();
-            assert_eq!(indices.len() % 3, 0);
-            assert!(indices.iter().all(|&i| (i as usize) < positions.len()));
+            assert_eq!(indices.len() % 3, 0, "indices form whole triangles");
+            assert!(
+                indices.iter().all(|&i| (i as usize) < positions.len()),
+                "every index names a position"
+            );
         }
     }
     primitives

@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{BufWriter, Read as _, Seek as _, SeekFrom, Write as _};
 use std::path::{Path, PathBuf};
 
 use stunt_parity::{
@@ -176,7 +176,7 @@ impl StoreWriter {
     pub(crate) fn new(dir: &Path, geometry: &Geometry) -> Self {
         Self {
             dir: dir.to_path_buf(),
-            geometry: geometry.clone(),
+            geometry: *geometry,
             files: None,
             index_end: 0,
             layer_end: 0,

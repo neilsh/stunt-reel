@@ -1160,7 +1160,8 @@ fn read_back(
     let buffer_slice = buffer.slice(..);
     let (sender, receiver) = std::sync::mpsc::channel();
     buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-        let _ = sender.send(result);
+        // A send fails only once `receiver` is gone, when nobody waits for the result.
+        let _: Result<(), _> = sender.send(result);
     });
 
     device

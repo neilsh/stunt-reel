@@ -72,10 +72,11 @@ pub struct ClipRect {
     pub bottom: i32,
 }
 
-/// Calls `put(x, y, index)` for every pixel of the credits, shadow before ink, so a caller
-/// that writes them in order gets `PLAYONE`'s page. Nothing is drawn when the first byte has
-/// its sign bit set (`0x0F7F`). The first line is drawn even when empty (it draws nothing);
-/// an empty second line is skipped, as at `0x0FB0`. Pixels are not clipped to `rect`.
+/// Calls `put(x, y, index)` for every pixel of the credits, shadow before ink.
+///
+/// A caller that writes them in order gets `PLAYONE`'s page. Nothing is drawn when the first byte
+/// has its sign bit set (`0x0F7F`). The first line is drawn even when empty (it draws nothing); an
+/// empty second line is skipped, as at `0x0FB0`. Pixels are not clipped to `rect`.
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "screen-space i32 coordinates: rect and block sizes are at most a few hundred pixels"

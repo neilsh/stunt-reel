@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use clap::{CommandFactory, Parser};
+use clap::{CommandFactory as _, Parser};
 
 /// Parsed `stuntreel parity` arguments.
 #[derive(Debug, Parser)]

@@ -4,7 +4,7 @@
 //! - `[I4]` Discrete simulation ticks (50 Hz) temporal authoring.
 //! - `[I6]` 4:3 physical display aspect ratio presentation.
 
-use std::io::Write;
+use std::io::Write as _;
 use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 
