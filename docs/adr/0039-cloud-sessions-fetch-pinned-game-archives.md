@@ -57,6 +57,9 @@ in it, the agent included, can read.
 
 - A leaked cloud token reads about 7 MB of game data and nothing else; rotate it on any sighting
   in a log or transcript.
+- A failed fetch still lets the session start: the hook exits 0 and tells Claude, in one
+  `FAILED` line, that archives may be missing, and `SUPERSET.ALL` is not built. The next start
+  or resume fetches the archives still absent.
 - A live session that wants a newer pin deletes the folder and fetches again. A stale `captures/`
   is caught anyway: parity refuses a capture whose digest differs from its row.
 - Unverified until the first cloud run: the exact network allowlist entry, whether lavapipe
