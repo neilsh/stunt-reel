@@ -23,12 +23,13 @@ provisioning exception to ADR 0022.
 ## Global Constraints
 
 - Bucket `stunt-reel-internal-assets`; version prefix `v1`; key `v1/<archive>-<sha256[:16]>.tar.zst`, the hash being of the `.tar.zst` bytes.
-- Archives: `corpus` into `$STUNT_DATA_ROOT/corpus/`, include `stuntisl/**`, `siarchive/Developer/FreeFlight/SIDATA/**`, `stisldem/VAULT/CTRY.ALL`, `stisldem/VAULT/INTRO.ALL`, exclude `stuntisl/RES/MUSIC1.*`, `stuntisl/RES/MUSIC2.*`; `captures` into `$STUNT_DATA_ROOT/captures/`, include `*/frames/**`, `*/archives/**`, exclude `**/*.lock`.
+- Archives: `corpus` into `$STUNT_DATA_ROOT/corpus/`, include `stuntisl/**`, `siarchive/Developer/FreeFlight/SIDATA/**`, `stisldem/VAULT/CTRY.*`, `stisldem/VAULT/INTRO.*` (each pinned `.ALL` beside its `.FLM`), exclude `stuntisl/RES/MUSIC1.*`, `stuntisl/RES/MUSIC2.*`; `captures` into `$STUNT_DATA_ROOT/captures/`, include `*/frames/**`, `*/archives/**`, exclude `**/*.lock`.
 - Globs match case-insensitively (`[I8]`) and `**` spans folders.
 - Tar: members are files only, sorted by POSIX relative path, `mtime=0`, `uid=gid=0`, `uname=gname=""`, `mode=0o644`. zstd level 19.
 - Fetch writes `<into>/` only when absent: extract into `<into>.new/`, then rename; an existing `<into>/` is skipped without a download (exit 0).
 - The R2 key pair reaches curl only through `--config -` on standard input; nothing prints `R2_SECRET_ACCESS_KEY` or `R2_ACCESS_KEY_ID`.
-- Cloud environment variables: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `STUNT_DATA_ROOT`. Endpoint `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com/<bucket>/<key>`, curl `--aws-sigv4 "aws:amz:auto:s3"`.
+- Cloud environment variables: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `STUNT_DATA_ROOT`. Endpoint `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com/<bucket>/<key>`, curl `--aws-sigv4 "aws:amz:auto:s3"` with an explicit `x-amz-content-sha256: UNSIGNED-PAYLOAD` header (R2 requires it; curl signs a header it is given rather than relying on its own default).
+- `DEFAULT_FILM` is not changed (spec decision 8).
 - Upload: `npx --yes wrangler@<pinned> r2 object put <bucket>/<key> --file <path> --remote`. Pin the newest wrangler 4.x release at least two weeks old as `WRANGLER_VERSION` in `cloud_assets.py`.
 - Tests use synthetic files only, never corpus bytes (`[I7]`, [`NOTICE.md`](../../../NOTICE.md)).
 - Iterate with `mise run fix`, `mise run lint-py`, `mise run typecheck`, `mise run test-py -- tests/test_cloud_assets.py`; full `mise run check` once in Task 6.
@@ -48,7 +49,8 @@ provisioning exception to ADR 0022.
 
 **Files:**
 - Create: `docs/adr/0039-cloud-sessions-fetch-pinned-game-archives.md`
-- Modify: `docs/adr/README.md` (index row, if the folder has one) and `docs/process/plans/cloud-assets-2026-11-06.md` (status line names the ADR)
+- Modify: `docs/process/plans/cloud-assets-2026-11-06.md` (status line names the ADR)
+- Take the next free number at commit time if another branch has claimed 0039 (`docs/adr/` has no index file)
 
 - [ ] **Step 1: Write the ADR** in the format of [`0037`](../../adr/0037-a-reference-pins-its-archive.md): context (cloud sessions have no data root; the bucket is private), decision (spec decisions 3, 4, 6 and 7: keys, committed pins, scoped read token through curl and owner uploads through wrangler, fetch writes only an absent folder as the one exception to ADR 0022), consequences (the open questions of spec § 9).
 - [ ] **Step 2: Run** `mise run check` (docs scope). Expected: PASS.
@@ -77,12 +79,16 @@ provisioning exception to ADR 0022.
 ```python
 def test_select_files_applies_include_and_exclude_case_insensitively(tmp_path): ...
     # tmp_path/stuntisl/RES/{GAME.RES, music1.xmi, MUSIC2.ESS}, stuntisl/VAULT/CTRY.FLM,
-    # stisldem/VAULT/{CTRY.ALL, SCENE01.ALL}; the corpus Archive of manifests/cloud-assets.toml
+    # siarchive/Developer/FreeFlight/SIDATA/MAP.BIN, stisldem/VAULT/{CTRY.ALL, ctry.flm,
+    # INTRO.ALL, INTRO.FLM, SCENE01.ALL}; the corpus Archive of manifests/cloud-assets.toml
     assert select_files(tmp_path, corpus) == [
-        "stisldem/VAULT/CTRY.ALL", "stuntisl/RES/GAME.RES", "stuntisl/VAULT/CTRY.FLM"]
+        "siarchive/Developer/FreeFlight/SIDATA/MAP.BIN", "stisldem/VAULT/CTRY.ALL",
+        "stisldem/VAULT/INTRO.ALL", "stisldem/VAULT/INTRO.FLM", "stisldem/VAULT/ctry.flm",
+        "stuntisl/RES/GAME.RES", "stuntisl/VAULT/CTRY.FLM"]
 
 def test_select_files_refuses_an_include_that_matches_nothing(tmp_path):
-    with pytest.raises(CloudAssetsError, match=r"stisldem/VAULT/INTRO\.ALL"): ...
+    # the fixture above without the two INTRO files
+    with pytest.raises(CloudAssetsError, match=r"stisldem/VAULT/INTRO\.\*"): ...
 
 def test_tar_bytes_is_independent_of_mtime_and_creation_order(tmp_path): ...
     # same files written in two orders with different os.utime; tar_bytes equal
@@ -181,6 +187,9 @@ def test_fetch_refuses_a_member_outside_its_folder(tmp_path):  # "../evil" membe
     with pytest.raises(CloudAssetsError): ...
     assert not (data_root / "corpus").exists() and not (data_root / "corpus.new").exists()
 
+def test_fetch_refuses_an_archive_not_yet_packed(tmp_path):  # no key/sha256 in the manifest
+    with pytest.raises(CloudAssetsError, match="pack"): ...
+
 def test_fetch_names_missing_credentials(tmp_path):
     with pytest.raises(MissingCredentials, match="R2_SECRET_ACCESS_KEY"): ...
 
@@ -189,6 +198,7 @@ def test_fetch_passes_the_key_pair_only_on_standard_input(tmp_path):
     assert "SECRET" not in " ".join(argv) and 'user = "ID:SECRET"' in stdin
     assert argv == ["curl", "--silent", "--show-error", "--fail", "--config", "-"]
     assert 'aws-sigv4 = "aws:amz:auto:s3"' in stdin
+    assert 'header = "x-amz-content-sha256: UNSIGNED-PAYLOAD"' in stdin
     assert f'url = "https://ACCT.r2.cloudflarestorage.com/stunt-reel-internal-assets/{key}"' in stdin
 
 def test_fetch_reports_a_403_without_the_secret(tmp_path):
@@ -231,6 +241,7 @@ def test_upload_refuses_an_unpacked_or_stale_archive(tmp_path):
 def test_status_reports_destination_and_packed_file(tmp_path): ...
 
 def test_main_exits_2_without_credentials(tmp_path, monkeypatch, capsys): ...
+    # STUNT_DATA_ROOT set to an empty tmp_path folder and the R2_* variables removed
 ```
 
 - [ ] **Step 2: Run** the tests. Expected: FAIL.
@@ -238,23 +249,21 @@ def test_main_exits_2_without_credentials(tmp_path, monkeypatch, capsys): ...
 - [ ] **Step 4: Run** the tests and `mise run test-py -- tests/test_worktree_layout.py`. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(tooling): add mise run cloud-assets`.
 
-### Task 6: Default film, cloud setup docs and the gate
+### Task 6: Cloud setup docs and the gate
 
 **Files:**
-- Modify: `python/stunt_reel/dataroot.py:85` and its docstring near line 243; any test asserting the old default
 - Modify: `docs/harness-setup.md` (new section "Cloud sessions")
 - Modify: `docs/process/plans/cloud-assets-2026-11-06.md` (status: implemented)
 
-- [ ] **Step 1: Change** `DEFAULT_FILM` to `"corpus/stuntisl/VAULT/CTRY.FLM"`. Leave research notes that cite the demo path alone; they describe what was run.
-- [ ] **Step 2: Write the "Cloud sessions" section**:
+- [ ] **Step 1: Write the "Cloud sessions" section**:
   - the R2 Object Read only token, scoped to the bucket;
   - the four environment variables;
   - the network allowlist entry `<account_id>.r2.cloudflarestorage.com`;
-  - the setup script of spec § 4.3, as one pasteable block, with the mise version pinned and its checksum checked;
+  - the setup script of spec § 4.3 (ending in `mise run cloud-assets -- fetch && mise run superset-all`), as one pasteable block, with the mise version pinned and its checksum checked;
   - the owner's upload steps (`wrangler login`, `mise run cloud-assets -- pack`, commit the pins, `upload`);
   - rotating the token.
-- [ ] **Step 3: Run** `mise run check`. Expected: PASS with zero warnings.
-- [ ] **Step 4: Commit** `feat(tooling): default to the full game's CTRY.FLM and document cloud setup`.
+- [ ] **Step 2: Run** `mise run check`. Expected: PASS with zero warnings.
+- [ ] **Step 3: Commit** `docs: set up cloud sessions with the cloud assets`.
 
 ### Task 7 (owner, manual): publish v1 and verify in the cloud
 
@@ -264,4 +273,4 @@ Not for an agent: it needs the owner's Cloudflare login and claude.ai settings.
 - [ ] `mise run cloud-assets -- pack`; review the sizes (expect about 5.8 MB and 0.64 MB); commit `manifests/cloud-assets.toml`.
 - [ ] `mise run cloud-assets -- upload`; `mise run cloud-assets -- status`.
 - [ ] Configure the cloud environment (variables, allowlist, setup script) from `docs/harness-setup.md`.
-- [ ] In a fresh cloud session: the setup script succeeds; render CTRY with `SUPERSET.ALL`; run `mise run parity` on CTRY and INTRO; record the lavapipe scores, curl's version and the setup time as a row at the end of `research/parity/log.md` (spec open questions 1–3).
+- [ ] In a fresh cloud session: the setup script succeeds; render CTRY with `SUPERSET.ALL`; run `mise run parity` on CTRY and INTRO (it must resolve the pinned `stisldem/VAULT/*.ALL`, not fail with `ArchiveError`); record the lavapipe scores, curl's version and the setup time as a row at the end of `research/parity/log.md` (spec open questions 1–3).

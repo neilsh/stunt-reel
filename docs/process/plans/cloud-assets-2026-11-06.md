@@ -79,7 +79,9 @@ Findings that shaped the design:
    - `corpus`, extracted into `$STUNT_DATA_ROOT/corpus/`:
      - `stuntisl/**`, except the music files `RES/MUSIC1.*` and `RES/MUSIC2.*`;
      - `siarchive/Developer/FreeFlight/SIDATA/**`;
-     - `stisldem/VAULT/CTRY.ALL` and `stisldem/VAULT/INTRO.ALL`.
+     - `stisldem/VAULT/{CTRY,INTRO}.{ALL,FLM}`: the pinned archives, each beside its film,
+       because `resolve_all` accepts a pinned `.ALL` only beside a copy of the film
+       (`_corpus_copy` in `all_archive.py`).
    - `captures`, extracted into `$STUNT_DATA_ROOT/captures/`: each capture's `frames/` and
      `archives/` (ADR 0028), without `*.lock` files. Video captures stay out: nothing scores
      them in the cloud, and they would dominate the size.
@@ -131,8 +133,10 @@ Findings that shaped the design:
    delete the folder and fetch again. A stale `captures/` is caught anyway: the parity
    pipeline refuses a capture whose content does not hash to its `references.toml` row. A new
    ADR records this exception.
-8. **`DEFAULT_FILM` becomes `corpus/stuntisl/VAULT/CTRY.FLM`** (same bytes as the demo's), so
-   tasks run with no film argument work on a cloud data root.
+8. **`DEFAULT_FILM` stays `corpus/stisldem/VAULT/CTRY.FLM`.** Its only users are the DOSBox
+   tools (`capture-ref`, `capture-video`, `play`, `probe-light`), which do not run in the
+   cloud, and the cloud corpus holds that file anyway. Changing it could change which game tree
+   a local capture runs.
 9. **The session builds `SUPERSET.ALL`** with `mise run superset-all` after fetching, until
    #252's `--game` makes it unnecessary.
 
@@ -148,7 +152,7 @@ version = "v1"
 [corpus]
 into = "corpus"
 include = ["stuntisl/**", "siarchive/Developer/FreeFlight/SIDATA/**",
-           "stisldem/VAULT/CTRY.ALL", "stisldem/VAULT/INTRO.ALL"]
+           "stisldem/VAULT/CTRY.*", "stisldem/VAULT/INTRO.*"]
 exclude = ["stuntisl/RES/MUSIC1.*", "stuntisl/RES/MUSIC2.*"]
 key = "v1/corpus-<sha16>.tar.zst"
 sha256 = "<64 hex>"
@@ -238,12 +242,11 @@ and runs parity on CTRY and INTRO.
 1. ADR: cloud sessions fetch pinned game archives from a private R2 bucket (decisions 3, 4, 6
    and 7).
 2. `cloud_assets.py`, `manifests/cloud-assets.toml` with empty pins, the `cloud-assets` task and tests.
-3. `DEFAULT_FILM` to `corpus/stuntisl/VAULT/CTRY.FLM`, with the docs that spell it.
-4. `docs/harness-setup.md`: the R2 tokens, the cloud environment's variables, network
+3. `docs/harness-setup.md`: the R2 tokens, the cloud environment's variables, network
    allowlist and setup script.
-5. Owner: create the read-only token, `wrangler login`, `mise run cloud-assets -- pack`, commit the
+4. Owner: create the read-only token, `wrangler login`, `mise run cloud-assets -- pack`, commit the
    pins, `mise run cloud-assets -- upload`, configure the cloud environment.
-6. Verify in a cloud session (section 6, manual), and record the lavapipe parity scores in
+5. Verify in a cloud session (section 6, manual), and record the lavapipe parity scores in
    [`research/parity/log.md`](../../../research/parity/log.md).
 
 ## 8. Out of scope
