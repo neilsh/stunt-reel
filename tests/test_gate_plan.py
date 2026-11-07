@@ -24,6 +24,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import check_commit_msg  # noqa: E402
 import gate  # noqa: E402
+import gate_record  # noqa: E402
 
 
 def test_lane_map_covers_every_step_exactly_once() -> None:
@@ -135,6 +136,7 @@ def test_failure_tail_header_carries_fix_hint_only_for_fixable_failures(
     monkeypatch.setattr(gate, "_mise", lambda: "mise")
     monkeypatch.setattr(gate, "_step", fake_step)
     monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
+    monkeypatch.setattr(gate_record, "working_tree", lambda: "tested-tree")
 
     assert gate.main(["all", "--tail", "1"]) == 1
     output = capsys.readouterr().out
@@ -160,6 +162,51 @@ def test_cargo_steps_share_a_lane_exactly_when_they_share_a_target_dir() -> None
         for other, other_target in target_dirs.items():
             same_lane = gate.STEP_LANES[step] == gate.STEP_LANES[other]
             assert same_lane == (target == other_target), (step, other)
+
+
+@pytest.mark.parametrize(
+    ("args", "code", "names"),
+    [
+        (["py"], 0, ["check-py"]),
+        (["rust"], 0, ["check-rust"]),
+        (["docs"], 0, ["check-docs"]),
+        (["all", "--full"], 0, ["check-rust", "check-py", "check"]),
+        (["py"], 1, []),
+    ],
+)
+def test_a_passing_run_records_the_tree_it_started_on(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, args: list[str], code: int, names: list[str]
+) -> None:
+    """The tree is taken before the steps run, so an edit made mid-run is never recorded."""
+    trees = iter(["started-tree", "edited-mid-run"])
+    recorded: list[tuple[str, str]] = []
+    monkeypatch.setattr(gate, "_mise", lambda: "mise")
+    monkeypatch.setattr(gate, "_step", lambda _mise, _task: (code, "", 0.0))
+    monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
+    monkeypatch.setattr(gate_record, "working_tree", lambda: next(trees))
+    monkeypatch.setattr(gate_record, "record", lambda *pair: recorded.append(pair))
+
+    assert gate.main(args) == code
+    assert recorded == [(name, "started-tree") for name in names]
+
+
+def test_a_tree_that_cannot_be_taken_records_nothing_and_still_runs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Failing to read the tree costs the record, never the run's own verdict."""
+    recorded: list[tuple[str, str]] = []
+
+    def unreadable() -> str:
+        raise OSError("index locked")
+
+    monkeypatch.setattr(gate, "_mise", lambda: "mise")
+    monkeypatch.setattr(gate, "_step", lambda _mise, _task: (0, "", 0.0))
+    monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
+    monkeypatch.setattr(gate_record, "working_tree", unreadable)
+    monkeypatch.setattr(gate_record, "record", lambda *pair: recorded.append(pair))
+
+    assert gate.main(["py"]) == 0
+    assert recorded == []
 
 
 @pytest.mark.parametrize(
@@ -291,6 +338,13 @@ def test_docs_step_requires_the_kaitai_compiler() -> None:
 )
 def test_docs_marker_is_on_the_documentation_modules(module: str) -> None:
     assert "pytest.mark.docs" in (ROOT / "tests" / module).read_text(encoding="utf-8")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A faked passing run must never write ``target/gate``, or it would prove a real commit."""
+    monkeypatch.setattr(gate_record, "working_tree", lambda: "fake-tree")
+    monkeypatch.setattr(gate_record, "record", lambda *_pair: None)
 
 
 @pytest.fixture(autouse=True)
@@ -468,3 +522,23 @@ def test_changed_paths_ignores_a_common_dir_naming_another_checkout(
     monkeypatch.setenv("GIT_COMMON_DIR", str(other / ".git"))
 
     assert gate.changed_paths(repo) == ["ours.rs"]
+
+
+def test_a_record_that_cannot_be_written_keeps_the_verdict(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A passing run still prints PASS and its gate line, and says the hook may refuse the line."""
+
+    def unwritable(_name: str, _tree: str) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(gate, "_mise", lambda: "mise")
+    monkeypatch.setattr(gate, "_step", lambda _mise, _task: (0, "", 0.0))
+    monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
+    monkeypatch.setattr(gate_record, "record", unwritable)
+
+    assert gate.main(["py"]) == 0
+    out = capsys.readouterr().out
+    assert "[gate] cannot record the passing run: disk full" in out
+    assert "[gate] PASS" in out
+    assert "[gate] gate line: mise run check-py passes; check-rust not run." in out

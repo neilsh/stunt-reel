@@ -33,6 +33,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import gate_record
+
 TYPES = (
     "build",
     "chore",
@@ -91,6 +93,54 @@ def problems(message: str) -> list[str]:
         found.append(
             f"the body has no gate line: end it with '{GATE} passes.', or name the part of "
             f"the gate that did not run (AGENTS.md, Committing)"
+        )
+    return found
+
+
+def unproven(message: str) -> list[str]:
+    """Each ``<name> passes`` claim on *message*'s gate line that no passing run proves.
+
+    A claim is proved when the staged tree is the tree a passing run of that gate name, or of
+    the full ``check``, recorded (``gate_record``). Only the commit-msg hook asks: a range of
+    commits already made has nothing recorded for it.
+    """
+    lines = _lines(message)
+    subject = next((line for line in lines if line), "")
+    if GIT_SUBJECT.match(subject):
+        return []
+    claimed: list[str] = []
+    for line in filter(_is_gate_line, lines):
+        for match in GATE_NAME.finditer(line):
+            name = match.group().removeprefix("mise run ")
+            if line.startswith(" passes", match.end()) and name in gate_record.RECORDED:
+                claimed.append(name)
+    if not claimed:
+        return []
+    staged = gate_record.staged_tree()
+    found: list[str] = []
+    for name in dict.fromkeys(claimed):
+        proofs = [gate_record.recorded(gate) for gate in dict.fromkeys((name, "check"))]
+        if staged in proofs:
+            continue
+        tested = proofs[0] or proofs[-1]
+        if tested is None:
+            found.append(
+                f"the gate line says '{name} passes', but no passing run of mise run {name} is "
+                "recorded; run it on the tree you are committing"
+            )
+            continue
+        try:
+            paths = ", ".join(gate_record.differing(tested, staged)[:8])
+        except subprocess.CalledProcessError:
+            # Nothing references a recorded tree, so ``git gc`` may have pruned it.
+            found.append(
+                f"the gate line says '{name} passes', but the tree its last passing run tested "
+                f"is no longer in the repository; rerun mise run {name}"
+            )
+            continue
+        found.append(
+            f"the gate line says '{name} passes', but its last passing run tested another tree "
+            f"(differs in {paths}); stage exactly what it tested, or rerun it"
         )
     return found
 
@@ -236,7 +286,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     if args.message is not None:
-        found = [("this commit", problems(args.message.read_text(encoding="utf-8")))]
+        message = args.message.read_text(encoding="utf-8")
+        try:
+            listed = problems(message) + unproven(message)
+        except (OSError, subprocess.CalledProcessError) as error:
+            print(f"[commit-msg] cannot read the staged tree: {error}", file=sys.stderr)
+            return 2
+        found = [("this commit", listed)]
     else:
         try:
             commits = [

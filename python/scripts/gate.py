@@ -49,6 +49,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TextIO
 
+import gate_record
+
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
@@ -253,6 +255,12 @@ def gate_line(halves: Sequence[str]) -> str:
     return f"mise run {'; '.join([*ran, *skipped])}."
 
 
+def recorded_names(halves: Sequence[str]) -> list[str]:
+    """The gate names a passing run of *halves* proves: each half's task, and ``check`` for both."""
+    names = [SCOPED_TASKS[half] for half in halves]
+    return [*names, "check"] if set(_FULL) <= set(halves) else names
+
+
 def _plan(half: str) -> list[str]:
     """Return the ordered steps for one half of the gate."""
     return [*STEPS["rust"], *STEPS["py"]] if half == "all" else STEPS[half]
@@ -381,6 +389,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     for line in scope_lines:
         print(line, flush=True)
     lanes = _lane_plan(plan)
+    # The tree under test, taken before any step runs: a passing run records it for the
+    # commit-msg hook (gate_record), and an edit made while the steps run is never recorded.
+    try:
+        tested: str | None = gate_record.working_tree()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"[gate] cannot record the tree under test: {exc}", flush=True)
+        tested = None
     mise = _mise()
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     results: dict[str, tuple[int, str, float]] = {}
@@ -415,6 +430,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("\n".join(results[task][1].rstrip().splitlines()[-args.tail :]), flush=True)
 
         verdict = _verdict(failed, plan, half, total)
+        if not failed and tested is not None:
+            try:
+                for name in recorded_names(halves):
+                    gate_record.record(name, tested)
+            except OSError as exc:
+                print(
+                    f"[gate] cannot record the passing run: {exc}; the commit-msg hook will "
+                    "refuse a gate line it cannot match to a record",
+                    flush=True,
+                )
         print(verdict, flush=True)
         log.write(f"\n# {verdict.removeprefix('[gate] ')}\n")
         if not failed:
