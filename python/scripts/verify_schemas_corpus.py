@@ -206,10 +206,10 @@ def _probe_map_area(root: Any, size: int) -> list[str]:
     outliers = [
         f"patch {index} num_verts {int(patch.num_verts)}"
         for index, patch in enumerate(root.patches)
-        if not 3 <= int(patch.num_verts) <= 7
+        if int(patch.in_use) and not 3 <= int(patch.num_verts) <= 8
     ]
     if outliers:
-        problems.append("vertex count outside 3..7 at " + ", ".join(outliers))
+        problems.append("vertex count outside 3..8 at " + ", ".join(outliers))
     return problems
 
 
@@ -240,11 +240,9 @@ PROBES: dict[str, Callable[[Any, int], list[str]]] = {
 # problem text)``. Every entry needs evidence for why the file, not the
 # schema, is wrong:
 #
-# - ``map_area``: ``sisland.cpp`` declares ``short num_verts; short v[7];`` and
-#   draws ``for (j = 0; j < num_verts; j++)``, so a count of 8 reads past
-#   ``v[7]`` into the next record's ``num`` word (0). Patch 131 carries that
-#   value in all six copies, and patch 22 of ``OBJECTS/Dean/MAP.BIN`` carries
-#   2. The field is a count; the geometry data is malformed.
+# - ``map_area``: patch 22 of ``OBJECTS/Dean/MAP.BIN`` counts 2 vertices, where
+#   the other five copies count 3; ``SD.EXE`` compiles the count as given
+#   (``map.md`` section 2.3), so the community edit, not the schema, is wrong.
 # - ``res``: the three ``SITools/GameReady/`` archives are community
 #   ``MAKERES`` output whose item tables decode as ``[label, SOD, ...]`` with
 #   ``item_count = N - 1``, matching retail archives, but whose files carry
@@ -280,34 +278,9 @@ KNOWN_ANOMALIES: dict[tuple[str, str, str], str] = {
     ): "truncated copy, final audio chunks 0xCA91..0xCA93 missing",
     (
         "map_area",
-        "siarchive/Developer/FreeFlight/SIDATA/MAP.BIN",
-        "vertex count outside 3..7 at patch 131 num_verts 8",
-    ): "patch 131 overruns v[7]; engine reads next record num 0",
-    (
-        "map_area",
-        "siarchive/Developer/SIRes/SiData/MAP.BIN",
-        "vertex count outside 3..7 at patch 131 num_verts 8",
-    ): "patch 131 overruns v[7]; engine reads next record num 0",
-    (
-        "map_area",
-        "siarchive/Developer/SODParse/MAP.BIN",
-        "vertex count outside 3..7 at patch 131 num_verts 8",
-    ): "patch 131 overruns v[7]; engine reads next record num 0",
-    (
-        "map_area",
-        "siarchive/SITools/MAP.BIN",
-        "vertex count outside 3..7 at patch 131 num_verts 8",
-    ): "patch 131 overruns v[7]; engine reads next record num 0",
-    (
-        "map_area",
-        "siarchive/SITools/OBJECTS/Dean/Egalloc/MAP.BIN",
-        "vertex count outside 3..7 at patch 131 num_verts 8",
-    ): "patch 131 overruns v[7]; engine reads next record num 0",
-    (
-        "map_area",
         "siarchive/SITools/OBJECTS/Dean/MAP.BIN",
-        "vertex count outside 3..7 at patch 22 num_verts 2, patch 131 num_verts 8",
-    ): "patch 22 underruns the 3-vertex minimum; patch 131 overruns v[7]",
+        "vertex count outside 3..8 at patch 22 num_verts 2",
+    ): "patch 22 underruns the 3-vertex minimum",
     (
         "flm_slice",
         "siarchive/Films/FLMOnly/CORSAIR.FLM",

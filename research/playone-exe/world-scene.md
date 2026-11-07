@@ -20,7 +20,7 @@ The ops `0x0168` and `0x02BE`, which this note used to call the ground handlers,
 
 *[Established]* for the code; *[Bounded Observation]* for the live calls (`terrain-records`, `terrain-tree`, 2026-11-04).
 
-The scenery walker dispatches on a node's first word through the DGROUP table at `0x554` (`jmp word [bx+0x554]` at image `0x2406`). Type 12 (`SP_GROUND` in [`map.md`](../formats/auxiliary/map.md)) is `0x2360`, type 14 (`SP_GLEAF`) `0x23BF`. A leaf is:
+The scenery walker dispatches on a node's first word through the DGROUP table at `0x554` (`jmp word [bx+0x554]` at image `0x2406`). Type 12 (`SP_GROUND` in [`scenery.md`](../formats/auxiliary/scenery.md)) is `0x2360`, type 14 (`SP_GLEAF`) `0x23BF`. A leaf is:
 
 | Offset | Content |
 |---|---|
@@ -36,7 +36,7 @@ The scenery walker dispatches on a node's first word through the DGROUP table at
 
 The tree segment is the stack segment while it is walked: `SS = 0x2AAA` in the DOSBox-X session, which is load paragraph `0x0824` plus image paragraph `0x2286`. A 64 KB dump of it at tick 312 (the first leaf call after the plan armed at 300) matches the image at `0x22860` in 118 of 128 sampled 32-byte windows, one every `0x200` bytes; the other 10 hold the stack and other mutable words. So nothing builds or loads the tree: it is part of `PLAYONE.EXE`.
 
-**Against `MAP.BIN`.** A scan for type-14 nodes whose polygon has a byte colour, 3 to 12 vertices and vertex words that are multiples of `0x1C` (anchor 0 included) finds 146 leaves in the unpatched image (`0x22866..0x30760`), 146 in the patched one (`0x20736..0x2E630`) and 146 in the live tree at tick 312. Every one has the vertex set of a `MAP.BIN` record (FreeFlight's `SIDATA`) and that record's colour byte, and together they reach 146 of its 179 records: records 99 and 100 share one vertex set and colour, and two leaves carry it. One leaf has 8 vertices. It is record 131, whose eighth anchor `50` is the word `MAP.BIN` stores as the next record's `num` ([`map.md`](../formats/auxiliary/map.md) `[BK-MAP-05]`). The 33 records with no leaf are the 13 inactive ones (`pos & 0xFF == 0`, anchor indices past 1023) and 20 active ones (section 2.1). An earlier scan that stopped at 7 vertices and skipped anchor 0 found 143. The colours are `205` (28 leaves), `162` to `165` (53), `195` (12), `193`, `194` (8 each), `161` (6), `197` (5), `192`, `204` (4 each), and a few others. On the live run the gateway `0x8069` drew `0xA1..0xA4`, `0xC0..0xC4`, `0xCD` and `0xE7` from this routine alone, 300 calls over ticks 310-337.
+**Against `MAP.BIN`.** A scan for type-14 nodes whose polygon has a byte colour, 3 to 12 vertices and vertex words that are multiples of `0x1C` (anchor 0 included) finds 146 leaves in the unpatched image (`0x22866..0x30760`), 146 in the patched one (`0x20736..0x2E630`) and 146 in the live tree at tick 312. Every one has the vertex set of a `MAP.BIN` record (FreeFlight's `SIDATA`) and that record's colour byte, and together they reach 146 of its 179 records: records 99 and 100 share one vertex set and colour, and two leaves carry it. One leaf has 8 vertices. It is record 131, whose eighth anchor `50` is the record's own eighth slot ([`map.md`](../formats/auxiliary/map.md) section 2.3). The 33 records with no leaf are the 13 inactive ones (`pos & 0xFF == 0`, anchor indices past 1023) and 20 active ones (section 2.1). An earlier scan that stopped at 7 vertices and skipped anchor 0 found 143. The colours are `205` (28 leaves), `162` to `165` (53), `195` (12), `193`, `194` (8 each), `161` (6), `197` (5), `192`, `204` (4 each), and a few others. On the live run the gateway `0x8069` drew `0xA1..0xA4`, `0xC0..0xC4`, `0xCD` and `0xE7` from this routine alone, 300 calls over ticks 310-337.
 
 So `MAP.BIN`'s colours are the player's ground colours. What a per-polygon colour does not explain is the subject of section 3.
 
@@ -44,9 +44,9 @@ So `MAP.BIN`'s colours are the player's ground colours. What a per-polygon colou
 
 *[Bounded Observation]* (the unpacked image of the unpatched build and FreeFlight's `MAP.BIN`; `mise run scene-ground`).
 
-The tree can be walked from the image alone. `python/stunt_reel/scene_tree.py` starts at `SS:0000` and follows the node types of [`map.md`](../formats/auxiliary/map.md), and `mise run scene-ground -- build/re/playone.img <MAP.BIN>` prints the result. It visits 7,009 nodes, with no node of an unknown type, and finds 158 Ground polygons: 146 `SP_GLEAF` leaves and 12 coarse `SP_GROUND` polygons. A type-12 node jumps into the leaf code at `0x23BC`, three bytes before the type-14 entry at `0x23BF`, so it draws through the same routine.
+The tree can be walked from the image alone. `python/stunt_reel/scene_tree.py` starts at `SS:0000` and follows the node types of [`scenery.md`](../formats/auxiliary/scenery.md), and `mise run scene-ground -- build/re/playone.img <MAP.BIN>` prints the result. It visits 7,009 nodes, with no node of an unknown type, and finds 158 Ground polygons: 146 `SP_GLEAF` leaves and 12 coarse `SP_GROUND` polygons. A type-12 node jumps into the leaf code at `0x23BC`, three bytes before the type-14 entry at `0x23BF`, so it draws through the same routine.
 
-All 158 match a `MAP.BIN` record's vertices and colour once the records are read as the engine reads them: the leaf at tree offset `0x060E` is record 131, whose eighth vertex (anchor `50`) is the next record's first word (section 2). `MAP.BIN` records 52 to 55 and 62 to 65, eight sand patches, have no polygon in the tree.
+All 158 match a `MAP.BIN` record's vertices and colour once the records are read as the engine reads them: the leaf at tree offset `0x060E` is record 131, whose eighth vertex is anchor `50` (section 2). `MAP.BIN` records 52 to 55 and 62 to 65, eight sand patches, have no polygon in the tree.
 
 That accounts for the 20 active records with no leaf that section 2 counted: the 12 coarse `SP_GROUND` polygons, which that scan did not look for, and these 8 patches. `mise run scene-ground` lists the 12 as record and tree offset of the polygon, each with the record's colour:
 
@@ -70,14 +70,14 @@ That accounts for the 20 active records with no leaf that section 2 counted: the
 | 53 | 64 | 73, 22, 92 | `0x00DA` | 92 is `-32768` high in the image's own table too, so not a ground point | ruled out |
 | 54 | 87 | 73, 69, 20 | `0x00DA` | drawn by our renderer | ruled out |
 | 55 | 91 | 73, 20, 21 | `0x00DA`, `0x0420` (205) | drawn by our renderer; 2.1 km long, 10 m wide at one end | ruled out |
-| 62 | 82 | 22, 19, 72 | `0x00DA` | 22 as for 52; 19 is likewise `-32768` high in `ANCHORPT.DAT` and 0 in the image's table (`map.md` `[BK-MAP-08]`; `scene-patches` prints the image's value) | ruled out |
+| 62 | 82 | 22, 19, 72 | `0x00DA` | 22 as for 52; 19 is likewise `-32768` high in `ANCHORPT.DAT` and 0 in the image's table (`anchorpt.md` `[BK-MAP-08]`; `scene-patches` prints the image's value) | ruled out |
 | 63 | 77 | 22, 72, 92 | `0x00DA` | 92 as for 53 | ruled out |
 | 64 | 79 | 69, 72, 19 | none | 19 as for 62 | ruled out |
 | 65 | 82 | 69, 19, 20 | `0x00DA` | 19 as for 62 | ruled out |
 
-The colours, 64 to 91, are steps of the palette's sand ramp. The live Ground calls of section 2.2 carried none of them, which agrees but proves little: that shot looks away from them. Where FreeFlight's `MAP.BIN` got them is open question 1.
+The colours, 64 to 91, are steps of the palette's sand ramp. The live Ground calls of section 2.2 carried none of them, which agrees but proves little: that shot looks away from them. They are sand-coloured triangles cut from four quads that are free records 133 to 136 of `MAP.BIN` ([`map.md`](../formats/auxiliary/map.md) section 2.3).
 
-**Nothing in their records marks them either.** *[Bounded Observation]* (FreeFlight's `MAP.BIN`; `mise run scene-patches` prints both comparisons). All 8 have `pos = 0x00FF`, and so do 26 drawn records (29, 83 to 97, 169 to 178). Their `a` words (`+0x04`, a record offset or `-1`, [`map.md`](../formats/auxiliary/map.md) `[BK-MAP-03]`) form two chains that no other record links into, 52 to 55 and 62 to 65. Drawn records form chains like that too: 83 to 85, 87 to 89 then 86, and 166 to 164.
+**Why the tree lacks them.** *[Established]*, `SITools/SD.EXE`, the scenery compiler that turns `MAP.BIN` into this tree ([`map.md`](../formats/auxiliary/map.md) section 3.2): every build route starts at the file's list head, and these two chains are linked from no record (`d` = `-1`, block 0), so they were never compiled. Drawn records 83 to 85, 87 to 89 then 86, and 166 to 164 chain the same way but hang from a parent through `b`. Earlier reading, *[Bounded Observation]*: (FreeFlight's `MAP.BIN`; `mise run scene-patches` prints both comparisons). All 8 have `pos = 0x00FF`, and so do 26 drawn records (29, 83 to 97, 169 to 178). Their `a` words (`+0x04`, a record offset or `-1`, [`map.md`](../formats/auxiliary/map.md) `[BK-MAP-03]`) form two chains that no other record links into, 52 to 55 and 62 to 65. Drawn records form chains like that too: 83 to 85, 87 to 89 then 86, and 166 to 164.
 
 Two older readings this walk corrects. `OP_FRACTAL` (image `0xA56C`) is dead code: it pushes 14 words against a `ret 0x1A`, which leaves `ES` at `0x50`, so a stream cannot have run it. The 110-word "ramp directory" at `CTRY.ALL` offset `0x79` ([`all.md`](../formats/all.md) section 3.6) is the archive's chunk-id table at `0x7A` read one byte off.
 
@@ -153,7 +153,7 @@ On the pixels our render draws as terrain, it emits `195` on 71% (`CTRY`) and 54
 
 Rendering without terrain (`DBG_NO_TERRAIN=1`) puts our own tiles on those pixels with the capture's colours: tick 356 becomes 196 on 41.8k of its 54.0k terrain pixels (capture 40.4k), and tick 1517 becomes 91 on all 59.2k (capture 55.9k). So the tiles are placed and decoded; the depth test hides them under `MAP.BIN` polygons in the same plane.
 
-The rule from sections 2 and 3: a ground leaf never covers the scenery placed on it. The change it licenses lets a prop lying on the terrain win over it, while the terrain still occludes what is behind it (open question 2). The sign was first measured with a 5 cm drop of the terrain (`DBG_TERRAIN_DROP`), and it is up on both films:
+The rule from sections 2 and 3: a ground leaf never covers the scenery placed on it. The change it licenses lets a prop lying on the terrain win over it, while the terrain still occludes what is behind it (open question 1). The sign was first measured with a 5 cm drop of the terrain (`DBG_TERRAIN_DROP`), and it is up on both films:
 
 | `DBG_TERRAIN_DROP` (m) | `CTRY` SSIM | `INTRO` SSIM | `CTRY` / `INTRO` IoU |
 |---|---|---|---|
@@ -178,7 +178,7 @@ Predicted sign of the real change: positive on both films, about +0.035 on `CTRY
 
 A prop is a ground decal when its shape is flat (all vertices within 5 cm of one height), at least one vertex has terrain below it, and every vertex that does is within 10 cm of it. On the two films it picks the 16 known tiles and nothing that stands up. It also picks, as the same kind of object, the markings and patches listed in 6.1 (`0x02AA`, `0x0370`, `0x03BE..0x03C3`, `0x064A`, `0x06D5`, and on `INTRO` `0x05CB..0x05D7`). The gap between the groups is wide: the largest offset of anything it picks is 3.2 cm, the smallest of anything it rejects is 22 cm. `ground_decal_vertices` in `crates/stunt-core/src/world.rs` implements it.
 
-The tile list in section 3 names `SCENERY3.RES` #1, 2, 5, 6. Those are ids `0x0402`, `0x0403`, `0x0406`, `0x0407`, and the rule does not pick them: they are `OP_TAP` shapes, six vertices each, that our decode stands up 3 to 197 m, with offsets from -13 m to +233 m against the ground (open question 4).
+The tile list in section 3 names `SCENERY3.RES` #1, 2, 5, 6. Those are ids `0x0402`, `0x0403`, `0x0406`, `0x0407`, and the rule does not pick them: they are `OP_TAP` shapes, six vertices each, that our decode stands up 3 to 197 m, with offsets from -13 m to +233 m against the ground (open question 3).
 
 ### 6.3 Candidates
 
@@ -201,7 +201,7 @@ Patch 131 has no effect on either film: the leaf is not in view. The sink moves 
 
 The renderer tests (`crates/stunt-render/tests/gpu/renderer.rs`) draw flat terrain with a tile built by hand at terrain height, as the snap would place it (they do not call `build_world_ir`). The tile shows over the terrain 80 m away, keeps at least 90% of the pixels it shows alone at 1, 1.5, 2, 4 and 8 km at a grazing angle of 5.7 degrees, and a wall of terrain in front of it hides it completely. `Depth24Plus` is enough for tiles snapped this way, so reversed-Z with `Depth32Float` was not built. It stays an option if a tile that is not exactly on the plane of its patch (a patch whose corners are not coplanar) is found to flicker far away; no such tile is in these films.
 
-`INTRO` tick 1086 loses 0.0056 with the prototype and with the sink alike. Its terrain loss falls (0.0425 to 0.0378) and its props loss rises (0.1259 to 0.1358): a tile now covers pixels that a base prop used to win. Which prop was not identified (open question 5).
+`INTRO` tick 1086 loses 0.0056 with the prototype and with the sink alike. Its terrain loss falls (0.0425 to 0.0378) and its props loss rises (0.1259 to 0.1358): a tile now covers pixels that a base prop used to win. Which prop was not identified (open question 4).
 
 _Found 2026-11-04; see the [parity log](../parity/log.md)._
 
@@ -224,14 +224,13 @@ _Found 2026-11-04; see the [parity log](../parity/log.md)._
 * **Tiles missing from our world** (section 6): `CTRY.ALL` carries them and `SCENERY.scn` places them; removing the terrain shows them.
 * **A leaf for patches 52 to 55 and 62 to 65 in FreeFlight's tree** (section 2.1): both copies of `SCENERY.scn` are the image's tree, links aside, with the same 158 Ground polygons.
 * **Another node, table or shape that draws those patches** (section 2.1): their polygon occurs in no file but `MAP.BIN`, the image included, while the same search finds all 158 drawn records there; no `OP_TAP` operand in the image, the `RES` files or any `.ALL` names one of their anchors.
-* **A field of the record that marks those patches** (section 2.1, "Nothing in their records marks them either", `[Bounded Observation]`): their `pos` is `0x00FF`, as it is for 26 drawn records, and their `a` links form two chains of their own (52 to 55, 62 to 65), as drawn records 83 to 85 and 166 to 164 do.
-* **A leaf of `PLAYONE`'s tree that `MAP.BIN` lacks** (section 2.1, open question 3): `mise run scene-ground` finds no tree-only polygon; all 158 are `MAP.BIN` records.
+* **A field of the record that marks those patches** (section 2.1): their `pos` is `0x00FF`, as it is for 26 drawn records. What sets them apart is that nothing links to their chains, not a field of their own.
+* **A leaf of `PLAYONE`'s tree that `MAP.BIN` lacks** (section 2.1, open question 2): `mise run scene-ground` finds no tree-only polygon; all 158 are `MAP.BIN` records.
 * **The earlier memory scans** (2026-10-23/24): they looked for a display-list stream of `0x995C`/`0x9A24` words in conventional memory. The ground was never in that form, so "no resident list" was true but beside the point. The image region `0x23200-0x24E80` they flagged as "a serialised scenery program" is the tree.
 
 ## Open questions
 
-1. **Where `MAP.BIN`'s patches 52 to 55 and 62 to 65 come from.** `PLAYONE` draws none of them (section 2.1, [#175](https://github.com/neilsh/stunt-reel/issues/175)), yet all six `MAP.BIN` copies in the corpus hold them. `STUNT.EXE`, the editor, is the one game file not searched in unpacked form: it is LZEXE-packed (`LZ91`) and `mise run unlzexe` stops on it with an `IndexError`. Low priority: the answer cannot change what `PLAYONE` draws.
-2. **Leaves drawn after props** ([#176](https://github.com/neilsh/stunt-reel/issues/176)). The walk is back to front, so a mountain leaf in front of a prop is drawn after it and covers it. The renderer keeps that with its depth test: only flat props within 10 cm of the ground leave the base pass (section 6.2), and the decal pass still loses to nearer terrain (tested). What is open is whether `PLAYONE` ever draws a leaf *after* a tile lying on it, which would hide the tile again; the order of the airfield leaves in the tree, read from the image, would say. The tie was not a gap (section 6.1): the tiles are on the plane to a millimetre.
-3. **The four floating quads** `0x04A9..0x04AC` (colour 193, `y = 75.03`) have no `MAP.BIN` polygon under them in our parse. The tree of `PLAYONE` has no leaf that `MAP.BIN` lacks (section 2.1, Ruled out), so either the polygon under them is among the records our parse drops, or nothing is.
-4. **`SCENERY3.RES` #1, 2, 5, 6 (`0x0402`, `0x0403`, `0x0406`, `0x0407`).** Section 3 names them by colour (`0xC1`..`0xC6`), but our decode makes them `OP_TAP` shapes standing 3 to 197 m high that miss the terrain by -13 to +233 m. Whether the anchors resolve the way `PLAYONE` resolves them is not checked.
-5. **`INTRO` ticks 1086 (-0.0056) and 1317 (-0.0027)** lose with the prototype: the props loss rises where a tile now covers pixels that a base prop won. The prop was not identified; `mise run frame -- --film intro --ticks 1086` would show it.
+1. **Leaves drawn after props** ([#176](https://github.com/neilsh/stunt-reel/issues/176)). The walk is back to front, so a mountain leaf in front of a prop is drawn after it and covers it. The renderer keeps that with its depth test: only flat props within 10 cm of the ground leave the base pass (section 6.2), and the decal pass still loses to nearer terrain (tested). What is open is whether `PLAYONE` ever draws a leaf *after* a tile lying on it, which would hide the tile again; the order of the airfield leaves in the tree, read from the image, would say. The tie was not a gap (section 6.1): the tiles are on the plane to a millimetre.
+2. **The four floating quads** `0x04A9..0x04AC` (colour 193, `y = 75.03`) have no `MAP.BIN` polygon under them in our parse. The tree of `PLAYONE` has no leaf that `MAP.BIN` lacks (section 2.1, Ruled out), so either the polygon under them is among the records our parse drops, or nothing is.
+3. **`SCENERY3.RES` #1, 2, 5, 6 (`0x0402`, `0x0403`, `0x0406`, `0x0407`).** Section 3 names them by colour (`0xC1`..`0xC6`), but our decode makes them `OP_TAP` shapes standing 3 to 197 m high that miss the terrain by -13 to +233 m. Whether the anchors resolve the way `PLAYONE` resolves them is not checked.
+4. **`INTRO` ticks 1086 (-0.0056) and 1317 (-0.0027)** lose with the prototype: the props loss rises where a tile now covers pixels that a base prop won. The prop was not identified; `mise run frame -- --film intro --ticks 1086` would show it.

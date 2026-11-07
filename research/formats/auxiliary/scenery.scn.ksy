@@ -1,5 +1,5 @@
 # Executable structural layout of `SCENERY.scn`.
-# Format anchor: [FMT-MAP-SCENERY] in map.md.
+# Format anchor: [FMT-MAP-SCENERY] in scenery.md.
 #
 # Both corpus copies are 118,236 bytes: 29,559 little-endian 32-bit words
 # addressed by word index. Node records live in this array and reference

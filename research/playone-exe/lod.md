@@ -38,7 +38,7 @@ The far branch (`0x2152`) takes the node's object word `[bp+2]`, stores it at `D
 
 ### 1.1 It Is The `SP_1NODE` Handler, And `obj` Is A Far Stand-In
 
-The scene walker dispatches on a node's type word through two jump tables in DGROUP, `DS:0x0554` (image `0xDA64`) and `DS:0x056C` (image `0xDA7C`). Both are indexed by the even type word of [`map.md`](../formats/auxiliary/map.md) section 3.2:
+The scene walker dispatches on a node's type word through two jump tables in DGROUP, `DS:0x0554` (image `0xDA64`) and `DS:0x056C` (image `0xDA7C`). Both are indexed by the even type word of [`scenery.md`](../formats/auxiliary/scenery.md) section 3.2:
 
 | Type | Node | `0x0554` entry | `0x056C` entry |
 |---|---|---|---|
@@ -51,7 +51,7 @@ The scene walker dispatches on a node's type word through two jump tables in DGR
 
 The two tables differ only for type 2. `SP_POS` (`0x1E89`) and `SP_POSXZ` (`0x1EA8`) add their offsets to the accumulated position `DS:0x49F4/0x49F8/0x49FC` and continue through `0x0554`. So an `SP_1NODE` reached after a position change enters at `0x20A7`. That path rotates the position into view space (`lcall 0x0824:0x06B0` with the matrix at `0x80C0`), culls the node's `ext` against the frustum (`0x20BF..0x211C`, scaled by `0x229C`, `0x22A0`, `0x22A2`; outside goes to `0x2149`, which skips the node), puts the view-space depth in `CX` and falls into `0x2121`. When a near `SP_1NODE` descends, it dispatches its `next` through `0x056C`. A chained `SP_1NODE` at the same position then enters at `0x2121` directly and reuses `CX`.
 
-At `0x2121` the node is `type, obj, ext, splitdist, next` at `[bp+0..8]`, matching `map.md`'s `SP_1NODE`. With `half = ext >> 1`:
+At `0x2121` the node is `type, obj, ext, splitdist, next` at `[bp+0..8]`, matching `scenery.md`'s `SP_1NODE`. With `half = ext >> 1`:
 
 * the threshold is `half + ((splitdist - half) × [0x22A4] >> 16)`, or `splitdist` itself when `splitdist < half` (`0x2141`);
 * **near** (`CX <= threshold`, `0x2137`): descend to `next` (`[bp+8]`); `obj` is not drawn;
