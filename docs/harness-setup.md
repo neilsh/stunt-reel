@@ -125,6 +125,71 @@ worktrees under `.claude/worktrees/`, which `.gitignore` and ruff's `exclude` co
 must not be copied, and the first task prepares the rest. Claude Code may remove the
 worktrees it creates; an older linked one goes through `reap`.
 
+## Cloud sessions
+
+A Claude Code cloud session has no data root. Its setup script fetches four archives from the
+private R2 bucket `stunt-reel-internal-assets`, each pinned by key and sha256 in
+[`manifests/cloud-assets.toml`](../manifests/cloud-assets.toml)
+([ADR 0039](adr/0039-cloud-sessions-fetch-pinned-game-archives.md)).
+
+### The read token
+
+In the Cloudflare dashboard, R2, Manage API tokens, create an API token with **Object Read
+only** permission, applied to the bucket `stunt-reel-internal-assets` only. Keep its S3 access
+key id and secret access key, and the account id. Check the scope before saving: a broader
+token works just as well, so nothing would flag it, and a leaked one reads the whole account.
+
+### The cloud environment
+
+In claude.ai, the cloud environment for this repo:
+
+- **Environment variables:** `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` from
+  the token, and `STUNT_DATA_ROOT`, an absolute path outside the checkout, such as
+  `/root/stunt-reel.data`.
+- **Network access:** the default trusted list plus `<account_id>.r2.cloudflarestorage.com`.
+  The setup script also downloads from GitHub releases, `static.rust-lang.org`, PyPI and the
+  Ubuntu mirror; whether the default list covers them is still unverified.
+- **Setup script**, run from the checkout. It installs mise at a pinned, checksum-checked
+  release, the tools the gate needs (not the DOSBox tool), lavapipe as CI does
+  ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)), then fetches the archives and builds
+  `SUPERSET.ALL`:
+
+```bash
+set -euo pipefail
+MISE_VERSION=2026.10.12
+MISE_SHA256=aa5f8fbbb942296bbeea3769abf56c6f4ee37da4d203f0044b227cac4d929a87
+curl -fsSL -o /tmp/mise.tar.gz \
+  "https://github.com/jdx/mise/releases/download/v${MISE_VERSION}/mise-v${MISE_VERSION}-linux-x64.tar.gz"
+echo "${MISE_SHA256}  /tmp/mise.tar.gz" | sha256sum -c -
+tar -xzf /tmp/mise.tar.gz -C /tmp
+install -m 0755 /tmp/mise/bin/mise /usr/local/bin/mise
+mise trust
+mise install rust python uv prek java github:kaitai-io/kaitai_struct_compiler
+mise exec -- uv sync --locked --all-groups
+apt-get update && apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
+mise run cloud-assets -- fetch && mise run superset-all
+```
+
+`fetch` skips an archive whose folder already exists, so a rerun downloads nothing. To take a
+newer pin in a live session, delete that folder under `$STUNT_DATA_ROOT` and fetch again.
+`mise run cloud-assets -- status` shows each pin and folder. Exit 2 means an `R2_*` variable is
+unset; a 403 means the token cannot read the bucket.
+
+### Publishing new archives (owner, primary machine)
+
+1. `npx wrangler login` once; uploads use that login, so no write key exists.
+2. `mise run cloud-assets -- pack [ARCHIVE...]` builds into `target/cloud-assets/` and rewrites
+   the pins in `manifests/cloud-assets.toml`. A PR that promotes a reference in
+   `research/parity/references.toml` repacks `captures`; a test fails until it does.
+3. Commit `manifests/cloud-assets.toml`, then `mise run cloud-assets -- upload [ARCHIVE...]`.
+   A key names its content, so old commits keep fetching theirs; never delete an object.
+
+### Rotating the token
+
+Rotate on any sighting of the secret in a log, transcript or commit: create a new token as
+above, replace the two key variables in the cloud environment, then delete the old token in
+the dashboard.
+
 ## DSH
 
 DSH's `workspace-write` sandbox admits writes only inside the session workspace, and the
