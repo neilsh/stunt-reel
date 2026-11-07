@@ -207,6 +207,10 @@ run = "uv run python python/scripts/gvpoly_stream.py"
 description = "Pair two builds' functions with an iced-x86 decode and map offsets (mise run pair-builds -- [--ds 0x0542,0x8072@0x824] [--code 0x196C] [--unpaired])"
 run = "uv run python python/scripts/pair_builds.py"
 
+[tasks.xref]
+description = "Find the code that references a string or data offset in an MZ, LZEXE or image file (mise run xref -- <exe> --string map.bin | --offset 0x22C2 --ds 0x163D [--context N])"
+run = "uv run python python/scripts/xref.py"
+
 [tasks.probe-light]
 description = "Probe PLAYONE per-shot light and shade arrays through dosbox-automation (mise run probe-light -- --ticks 10,150,273,448)"
 run = "uv run python python/scripts/probe_playone_light.py"
