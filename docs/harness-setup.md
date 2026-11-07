@@ -154,53 +154,59 @@ In claude.ai, the cloud environment for this repo:
 - **Network access:** the default trusted list, plus `<account_id>.r2.cloudflarestorage.com`,
   and `gitlab.freedesktop.org` for reading Mesa's source and issues when a render differs on
   lavapipe ([#265](https://github.com/neilsh/stunt-reel/issues/265)).
-  The setup script downloads from GitHub releases, `static.rust-lang.org`, PyPI and the Ubuntu
+  The cloud setup downloads from GitHub releases, `static.rust-lang.org`, PyPI and the Ubuntu
   mirror, all on the list.
 - **Network secrets:** none on the R2 host. The proxy's AWS SigV4 secret signs for hosts under
   `amazonaws.com` alone, and while one is set it answers every request to the R2 host with a
   502 (`injection failed (...): the hostname is not under amazonaws.com`, 2026-11-07).
-- **Setup script.** It installs mise at a pinned, checksum-checked release, then from the
-  checkout's `mise.lock` the tools the gate needs (not the DOSBox tool), then lavapipe as CI
-  does ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)). It fetches nothing: it runs before the
-  environment variables are set.
+- **Setup script:** the bootstrap below, which runs the repo's cloud setup.
+
+### The cloud setup
+
+The setup script is the claude.ai field; the *cloud setup* is
+[`.claude/cloud-setup.sh`](../.claude/cloud-setup.sh), the checkout's script that does the
+work. The field holds only a bootstrap, so a change to the setup is reviewed and versioned
+with the repo, and no copy here can drift from it. The cloud setup installs mise at a pinned,
+checksum-checked release, then from the checkout's `mise.lock` the tools the gate needs (not
+the DOSBox tool) and the Python environment, then lavapipe as CI does
+([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)). It fetches no game archives: the setup
+script runs before the environment variables are set, so the hook fetches them. Each step skips
+work already done, and it needs root only to replace mise or install the apt packages. It
+refuses to run outside a Linux x86_64 container with `dpkg`, since on a developer machine it
+would replace that machine's mise. CI's `install_args` is a separate list: CI also installs
+Java.
 
 The lockfile is what makes the install work: it holds each tool's download URL and checksum,
 so mise reads no GitHub API. Without it mise asks the API three or four times per tool, and
 cloud sessions share an address whose 60 anonymous requests an hour are gone. Java is the
-image's OpenJDK 21: mise's Java reads `mise-java.jdx.dev`, which the default list lacks. The
-setup script belongs to the environment, not the repo, and does not start in the checkout, so
-it looks for it.
+image's OpenJDK 21: mise's Java reads `mise-java.jdx.dev`, which the default list lacks.
+
+The setup script does not start in the checkout, so it looks for it:
 
 ```bash
 set -euo pipefail
 lock=$(find / -maxdepth 4 -path /proc -prune -o -path '*/stunt-reel/mise.lock' -print -quit)
 [ -n "$lock" ] || { echo "setup: no stunt-reel checkout found" >&2; exit 1; }
-cd "${lock%/mise.lock}"
-# As CI does: install only the tools named below, not every tool mise.toml declares (the
-# cargo ones compile from source). MISE_LOCKED fails a tool missing from mise.lock instead of
-# asking the GitHub API for it.
-export MISE_AUTO_INSTALL=false MISE_USE_VERSIONS_HOST=false MISE_LOCKED=1
-MISE_VERSION=2026.10.12
-MISE_SHA256=aa5f8fbbb942296bbeea3769abf56c6f4ee37da4d203f0044b227cac4d929a87
-curl -fsSL -o /tmp/mise.tar.gz \
-  "https://github.com/jdx/mise/releases/download/v${MISE_VERSION}/mise-v${MISE_VERSION}-linux-x64.tar.gz"
-echo "${MISE_SHA256}  /tmp/mise.tar.gz" | sha256sum -c -
-tar -xzf /tmp/mise.tar.gz -C /tmp
-install -m 0755 /tmp/mise/bin/mise /usr/local/bin/mise
-mise trust
-mise install rust python uv prek github:kaitai-io/kaitai_struct_compiler
-mise exec -- uv sync --locked --all-groups
-apt-get update && apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
+setup=${lock%/mise.lock}/.claude/cloud-setup.sh
+[ -f "$setup" ] || { echo "setup: this branch predates .claude/cloud-setup.sh; rebase on main" >&2; exit 1; }
+bash "$setup"
 ```
+
+A branch older than the cloud setup fails the setup script rather than starting without mise:
+the hook below runs through `mise`, so a session without it would fail every hook and tell
+Claude nothing. A failed setup script should also keep that environment out of the cache
+(unverified).
+
+### The SessionStart hook
 
 The repo's SessionStart hook (`.claude/settings.json`) runs `mise run cloud-session-start` on
 every session start and resume. Outside a cloud session (`CLAUDE_CODE_REMOTE` unset) it does
-nothing; in one it installs the setup script's tools from `mise.lock` again, then runs
-`mise run cloud-assets -- fetch` and `mise run superset-all`, with the environment variables
-set. The setup script's cache outlives a pin change, so the reinstall is what brings a new pin;
-an installed one costs nothing. The cache holds no archives, so each new session fetches the
-pins of the commit it starts from. The hook prints one line to the session, `ready` or
-`FAILED`, and logs the rest to `/tmp/cloud-session-start.log`.
+nothing; in one it runs the cloud setup again, then `mise run cloud-assets -- fetch` and
+`mise run superset-all`, with the environment variables set. The setup script's cache outlives
+a pin change, so the rerun is what brings a new pin; work already done costs nothing. The cache
+holds no archives, so each new session fetches the pins of the commit it starts from. The hook
+prints one line to the session, `ready` or `FAILED`, and logs the rest to
+`/tmp/cloud-session-start.log`.
 
 The hook does not run where Claude Code loads no repo settings: a cloud session with several
 repositories, or a cloud thread of a project. Nothing is fetched there and no line is printed;
