@@ -187,9 +187,12 @@ apt-get update && apt-get install -y --no-install-recommends mesa-vulkan-drivers
 
 The repo's SessionStart hook (`.claude/settings.json`) runs `mise run cloud-session-start` on
 every session start and resume. Outside a cloud session (`CLAUDE_CODE_REMOTE` unset) it does
-nothing; in one it runs `mise run cloud-assets -- fetch`, then `mise run superset-all`, with the
-environment variables set. The setup script's cache holds no archives, so each new session
-fetches the pins of the commit it starts from.
+nothing; in one it installs the setup script's tools from `mise.lock` again, then runs
+`mise run cloud-assets -- fetch` and `mise run superset-all`, with the environment variables
+set. The setup script's cache outlives a pin change, so the reinstall is what brings a new pin;
+an installed one costs nothing. The cache holds no archives, so each new session fetches the
+pins of the commit it starts from. The hook prints one line to the session, `ready` or
+`FAILED`, and logs the rest to `/tmp/cloud-session-start.log`.
 
 `fetch` skips an archive whose folder already exists, so a resumed session downloads nothing
 and keeps the pins it fetched first. To take a newer pin there, delete that folder under

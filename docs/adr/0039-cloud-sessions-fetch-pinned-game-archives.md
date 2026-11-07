@@ -45,6 +45,8 @@ in it, the agent included, can read.
 - **A public bucket, an `r2.dev` URL or presigned URLs.** The first two distribute game data;
   presigned URLs last at most seven days.
 - **A Worker behind Cloudflare Access.** More infrastructure for the same exposure.
+- **Fetching in the setup script.** It runs before the cloud environment's variables are set,
+  so it cannot read the token; the SessionStart hook runs after Claude Code starts and can.
 - **A mutable `latest` object.** A branch would fetch whatever is newest, not what it pins.
 - **Updating an existing folder in place.** It would let a fetch rewrite the read-only corpus
   and needs markers to know what a folder holds.
@@ -53,8 +55,6 @@ in it, the agent included, can read.
 
 - A leaked cloud token reads about 7 MB of game data and nothing else; rotate it on any sighting
   in a log or transcript.
-- A SessionStart hook fetches, not the setup script: the setup script runs before the cloud
-  environment's variables are set, so it never holds the token.
 - A live session that wants a newer pin deletes the folder and fetches again. A stale `captures/`
   is caught anyway: parity refuses a capture whose digest differs from its row.
 - Unverified until the first cloud run: the exact network allowlist entry, whether lavapipe

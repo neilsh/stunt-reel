@@ -234,12 +234,24 @@ description = "Pack, upload or fetch the game archives cloud sessions use (mise 
 run = "uv run python python/scripts/cloud_assets.py"
 
 [tasks.cloud-session-start]
-description = "The SessionStart hook: in a cloud session only, fetch the game archives and build SUPERSET.ALL (ADR 0039)"
+description = "The SessionStart hook: in a cloud session only, install the locked tools, fetch the game archives and build SUPERSET.ALL (ADR 0039)"
 hide = true
-# The hook runs on every session start; outside a cloud session it does nothing. It runs here,
-# not in the setup script, because the environment's R2_* and STUNT_DATA_ROOT are set only once
-# Claude Code starts.
-run = '[ "${CLAUDE_CODE_REMOTE:-}" = true ] || exit 0; mise run cloud-assets -- fetch && mise run superset-all'
+# The hook runs on every session start; outside a cloud session it does nothing. It fetches
+# here, not in the setup script, because the environment's R2_* and STUNT_DATA_ROOT are set only
+# once Claude Code starts. It reinstalls the tools because the setup script's cache outlives a
+# pin change; an installed pin costs nothing. It always exits 0 and prints one line: a hook's
+# stdout reaches Claude only on success, and Claude must know when the archives are missing.
+env = { MISE_LOCKED = "1" }
+run = '''
+[ "${CLAUDE_CODE_REMOTE:-}" = true ] || exit 0
+log=/tmp/cloud-session-start.log
+if { mise install rust python uv prek github:kaitai-io/kaitai_struct_compiler &&
+     mise run cloud-assets -- fetch && mise run superset-all; } >"$log" 2>&1; then
+  echo "cloud-session-start: tools, game archives and SUPERSET.ALL ready (log: $log)"
+else
+  echo "cloud-session-start FAILED: tools, game archives or SUPERSET.ALL may be missing; see $log and mise run cloud-assets -- status"
+fi
+'''
 run_windows = "exit 0"
 
 [tasks.adversarial]
