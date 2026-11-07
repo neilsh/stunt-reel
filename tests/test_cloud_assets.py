@@ -8,8 +8,10 @@ import hashlib
 import io
 import itertools
 import os
+import subprocess
 import tarfile
 from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -18,7 +20,11 @@ from stunt_reel.cloud_assets import (
     MANIFEST_PATH,
     Archive,
     CloudAssetsError,
+    Manifest,
+    MissingCredentials,
     check_references,
+    curl_config,
+    fetch,
     manifest_text,
     pack,
     read_manifest,
@@ -27,6 +33,9 @@ from stunt_reel.cloud_assets import (
     with_archive,
 )
 from stunt_reel.references import capture_digest
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 def _write(root: Path, files: dict[str, bytes]) -> None:
@@ -218,3 +227,161 @@ def test_check_references_reports_a_reference_the_archive_lacks(tmp_path: Path) 
 
 def test_committed_manifest_agrees_with_references_toml() -> None:
     assert check_references(read_manifest()) == []
+
+
+ENV = {"R2_ACCOUNT_ID": "ACCT", "R2_ACCESS_KEY_ID": "KEYID", "R2_SECRET_ACCESS_KEY": "SECRET"}
+
+
+def _packed(
+    tmp_path: Path, files: dict[str, bytes], *, sha256: str | None = None
+) -> tuple[Manifest, bytes]:
+    """The committed manifest with corpus-stuntisl pinned to a tar.zst of *files*."""
+    source = tmp_path / "source"
+    _write(source, files)
+    data = compression.zstd.compress(tar_bytes(source, sorted(files)))
+    digest = hashlib.sha256(data).hexdigest()
+    m = read_manifest()
+    pinned = dataclasses.replace(
+        m.archives["corpus-stuntisl"],
+        key=f"v1/corpus-stuntisl-{digest[:16]}.tar.zst",
+        sha256=sha256 or digest,
+        bytes=len(data),
+    )
+    return with_archive(m, pinned), data
+
+
+def _evil(tmp_path: Path) -> tuple[Manifest, bytes]:
+    out = io.BytesIO()
+    with tarfile.open(fileobj=out, mode="w") as tar:
+        info = tarfile.TarInfo("../evil")
+        info.size = 1
+        tar.addfile(info, io.BytesIO(b"x"))
+    data = compression.zstd.compress(out.getvalue())
+    m, _ = _packed(tmp_path, {"RES/GAME.RES": b"game"})
+    digest = hashlib.sha256(data).hexdigest()
+    pinned = dataclasses.replace(m.archives["corpus-stuntisl"], sha256=digest, bytes=len(data))
+    return with_archive(m, pinned), data
+
+
+class FakeCurl:
+    """Writes *payload* where the config's ``output`` names, or fails as told."""
+
+    def __init__(self, payload: bytes = b"", returncode: int = 0, stderr: str = "") -> None:
+        self.payload = payload
+        self.returncode = returncode
+        self.stderr = stderr
+        self.calls: list[tuple[list[str], str]] = []
+
+    def __call__(self, argv: Sequence[str], stdin: str) -> subprocess.CompletedProcess[str]:
+        self.calls.append((list(argv), stdin))
+        if self.returncode == 0:
+            [line] = [x for x in stdin.splitlines() if x.startswith("output = ")]
+            raw = line.removeprefix("output = ")[1:-1]
+            Path(raw.replace('\\"', '"').replace("\\\\", "\\")).write_bytes(self.payload)
+        return subprocess.CompletedProcess(list(argv), self.returncode, "", self.stderr)
+
+
+def test_fetch_extracts_a_matching_archive_into_place(tmp_path: Path) -> None:
+    m, data = _packed(tmp_path, {"RES/GAME.RES": b"game", "VAULT/CTRY.FLM": b"film"})
+    data_root = tmp_path / "data"
+    lines = fetch(m, ["corpus-stuntisl"], data_root, ENV, run=FakeCurl(data))
+    into = data_root / "corpus" / "stuntisl"
+    assert lines == [f"fetched corpus-stuntisl -> {into}"]
+    assert (into / "RES" / "GAME.RES").read_bytes() == b"game"
+    assert (into / "VAULT" / "CTRY.FLM").read_bytes() == b"film"
+    assert not (data_root / "corpus" / "stuntisl.new").exists()
+    assert not list(data_root.rglob("*.part"))
+
+
+def test_fetch_skips_an_existing_destination_without_a_request(tmp_path: Path) -> None:
+    m, data = _packed(tmp_path, {"RES/GAME.RES": b"game"})
+    data_root = tmp_path / "data"
+    into = data_root / "corpus" / "stuntisl"
+    _write(into, {"RES/GAME.RES": b"local"})
+    run = FakeCurl(data)
+    lines = fetch(m, ["corpus-stuntisl"], data_root, {}, run=run)
+    assert run.calls == []
+    assert lines == [f"skipped corpus-stuntisl: {into} exists"]
+    assert (into / "RES" / "GAME.RES").read_bytes() == b"local"
+
+
+def test_fetch_removes_a_leftover_new_folder_first(tmp_path: Path) -> None:
+    m, data = _packed(tmp_path, {"RES/GAME.RES": b"game"})
+    data_root = tmp_path / "data"
+    _write(data_root / "corpus" / "stuntisl.new", {"STALE.TXT": b"old"})
+    fetch(m, ["corpus-stuntisl"], data_root, ENV, run=FakeCurl(data))
+    into = data_root / "corpus" / "stuntisl"
+    assert sorted(p.name for p in into.iterdir()) == ["RES"]
+    assert not (data_root / "corpus" / "stuntisl.new").exists()
+
+
+def test_fetch_refuses_a_hash_mismatch_and_extracts_nothing(tmp_path: Path) -> None:
+    m, data = _packed(tmp_path, {"RES/GAME.RES": b"game"}, sha256="f" * 64)
+    data_root = tmp_path / "data"
+    with pytest.raises(CloudAssetsError, match="sha256"):
+        fetch(m, ["corpus-stuntisl"], data_root, ENV, run=FakeCurl(data))
+    assert not (data_root / "corpus" / "stuntisl").exists()
+    assert not (data_root / "corpus" / "stuntisl.new").exists()
+    assert not list(data_root.rglob("*.part"))
+
+
+def test_fetch_refuses_a_member_outside_its_folder(tmp_path: Path) -> None:
+    m, data = _evil(tmp_path)
+    data_root = tmp_path / "data"
+    with pytest.raises(CloudAssetsError, match="corpus-stuntisl"):
+        fetch(m, ["corpus-stuntisl"], data_root, ENV, run=FakeCurl(data))
+    assert not (data_root / "corpus" / "stuntisl").exists()
+    assert not (data_root / "corpus" / "stuntisl.new").exists()
+    assert not (data_root / "corpus" / "evil").exists()
+
+
+def test_fetch_refuses_an_archive_not_yet_packed(tmp_path: Path) -> None:
+    run = FakeCurl()
+    with pytest.raises(CloudAssetsError, match="pack"):
+        fetch(read_manifest(), ["corpus-stisldem"], tmp_path / "data", ENV, run=run)
+    assert run.calls == []
+
+
+def test_fetch_names_missing_credentials(tmp_path: Path) -> None:
+    m, data = _packed(tmp_path, {"RES/GAME.RES": b"game"})
+    env = {"R2_ACCOUNT_ID": "ACCT"}
+    with pytest.raises(MissingCredentials, match="R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY"):
+        fetch(m, ["corpus-stuntisl"], tmp_path / "data", env, run=FakeCurl(data))
+
+
+def test_fetch_passes_the_key_pair_only_on_standard_input(tmp_path: Path) -> None:
+    m, data = _packed(tmp_path, {"RES/GAME.RES": b"game"})
+    run = FakeCurl(data)
+    fetch(m, ["corpus-stuntisl"], tmp_path / "data", ENV, run=run)
+    [(argv, stdin)] = run.calls
+    key = m.archives["corpus-stuntisl"].key
+    assert argv == ["curl", "--silent", "--show-error", "--fail", "--config", "-"]
+    assert "SECRET" not in " ".join(argv)
+    assert 'user = "KEYID:SECRET"' in stdin
+    assert 'aws-sigv4 = "aws:amz:auto:s3"' in stdin
+    assert 'header = "x-amz-content-sha256: UNSIGNED-PAYLOAD"' in stdin
+    assert (
+        f'url = "https://ACCT.r2.cloudflarestorage.com/stunt-reel-internal-assets/{key}"' in stdin
+    )
+
+
+def test_fetch_reports_a_403_without_the_secret(tmp_path: Path) -> None:
+    m, _ = _packed(tmp_path, {"RES/GAME.RES": b"game"})
+    key = m.archives["corpus-stuntisl"].key
+    assert key is not None
+    stderr = 'curl: (22) The requested URL returned error: 403\nuser = "KEYID:SECRET"'
+    data_root = tmp_path / "data"
+    with pytest.raises(CloudAssetsError) as err:
+        fetch(m, ["corpus-stuntisl"], data_root, ENV, run=FakeCurl(returncode=22, stderr=stderr))
+    message = str(err.value)
+    assert key in message
+    assert "403" in message
+    assert "bucket" in message
+    assert "SECRET" not in message
+    assert "KEYID" not in message
+    assert not list(data_root.rglob("*.part"))
+
+
+def test_curl_config_escapes_quotes_and_backslashes() -> None:
+    text = curl_config("https://x/y", "id", r'se"c\ret', Path("out.part"))
+    assert r'user = "id:se\"c\\ret"' in text

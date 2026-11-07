@@ -9,10 +9,13 @@ the archives' tars so the same files give the same bytes on any machine.
 from __future__ import annotations
 
 import compression.zstd
+import contextlib
 import dataclasses
 import hashlib
 import io
 import json
+import shutil
+import subprocess
 import tarfile
 import tomllib
 from dataclasses import dataclass, field
@@ -23,14 +26,20 @@ from stunt_reel import parity_layout, references
 from stunt_reel.dataroot import REPO_ROOT
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 __all__ = [
+    "CURL_ARGV",
     "MANIFEST_PATH",
+    "REQUIRED_ENV",
     "Archive",
     "CloudAssetsError",
+    "CurlRunner",
     "Manifest",
+    "MissingCredentials",
     "check_references",
+    "curl_config",
+    "fetch",
     "manifest_text",
     "pack",
     "read_manifest",
@@ -44,6 +53,15 @@ ZSTD_LEVEL = 19
 
 #: The archive whose `references` table pins the reference captures it holds.
 CAPTURES = "captures"
+
+#: The cloud environment variables a download needs (docs/harness-setup.md, "Cloud sessions").
+REQUIRED_ENV = ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
+
+#: curl reads the whole request, the key pair included, from the config on standard input.
+CURL_ARGV = ("curl", "--silent", "--show-error", "--fail", "--config", "-")
+
+#: Where fetch downloads, under the data root, before it checks and unpacks.
+DOWNLOAD_DIRNAME = ".cloud-assets"
 
 #: The committed file that pins every archive.
 MANIFEST_PATH: Path = REPO_ROOT / "manifests" / "cloud-assets.toml"
@@ -294,3 +312,148 @@ def check_references(manifest: Manifest, repo: Path = REPO_ROOT) -> list[str]:
                 f"captures archive {state}; run `mise run cloud-assets -- pack captures`"
             )
     return messages
+
+
+class MissingCredentials(CloudAssetsError):  # noqa: N818 - names what is unset, as the CLI says
+    """A variable of :data:`REQUIRED_ENV` is unset; the command line exits 2."""
+
+
+#: Runs curl's argv with the given standard input to completion, capturing text output.
+type CurlRunner = Callable[[Sequence[str], str], subprocess.CompletedProcess[str]]
+
+
+def _curl(argv: Sequence[str], stdin: str) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(  # noqa: S603 - argv is CURL_ARGV; the request is on stdin
+            list(argv), input=stdin, capture_output=True, text=True, check=False
+        )
+    except OSError as err:
+        raise CloudAssetsError(f"cannot run {argv[0]}: {err}") from err
+
+
+def _quoted(value: str) -> str:
+    """*value* as a double-quoted curl config string."""
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def curl_config(url: str, key_id: str, secret: str, output: Path) -> str:
+    """The curl config that downloads *url* to *output*, signed with R2's S3 key pair."""
+    return "".join(
+        f"{name} = {_quoted(value)}\n"
+        for name, value in (
+            ("url", url),
+            ("aws-sigv4", "aws:amz:auto:s3"),
+            ("user", f"{key_id}:{secret}"),
+            # R2 rejects a signed request without it; curl signs the header it is given.
+            ("header", "x-amz-content-sha256: UNSIGNED-PAYLOAD"),
+            ("output", str(output)),
+        )
+    )
+
+
+def _redacted(text: str, secrets: Sequence[str]) -> str:
+    for secret in secrets:
+        if secret:
+            text = text.replace(secret, "***")
+    return text
+
+
+def _credentials(env: Mapping[str, str]) -> tuple[str, str, str]:
+    missing = [name for name in REQUIRED_ENV if not env.get(name)]
+    if missing:
+        raise MissingCredentials(
+            f"{', '.join(missing)} not set; set them in the cloud environment "
+            '(docs/harness-setup.md, "Cloud sessions")'
+        )
+    account, key_id, secret = (env[name] for name in REQUIRED_ENV)
+    return account, key_id, secret
+
+
+def _download(
+    manifest: Manifest,
+    archive: Archive,
+    key: str,
+    data_root: Path,
+    env: Mapping[str, str],
+    run: CurlRunner,
+) -> bytes:
+    """The bytes at *key*, checked against *archive*'s size and sha256."""
+    account, key_id, secret = _credentials(env)
+    part = data_root / DOWNLOAD_DIRNAME / f"{PurePosixPath(key).name}.part"
+    part.parent.mkdir(parents=True, exist_ok=True)
+    url = f"https://{account}.r2.cloudflarestorage.com/{manifest.bucket}/{key}"
+    try:
+        result = run(CURL_ARGV, curl_config(url, key_id, secret, part))
+        if result.returncode != 0:
+            detail = _redacted(result.stderr.strip(), (secret, key_id)) or "no message"
+            hint = ""
+            if "403" in detail:
+                hint = f"; check that the token can read the bucket {manifest.bucket}"
+            raise CloudAssetsError(
+                f"{archive.name}: curl could not download {key} "
+                f"(exit {result.returncode}): {detail}{hint}"
+            )
+        data = part.read_bytes()
+    finally:
+        part.unlink(missing_ok=True)
+        with contextlib.suppress(OSError):
+            part.parent.rmdir()
+    digest = hashlib.sha256(data).hexdigest()
+    if len(data) != archive.bytes or digest != archive.sha256:
+        raise CloudAssetsError(
+            f"{archive.name}: {key} has {len(data)} bytes and sha256 {digest[:12]}, but the "
+            f"pin is {archive.bytes} bytes and sha256 {(archive.sha256 or '')[:12]}"
+        )
+    return data
+
+
+def _extract(archive: Archive, data: bytes, into: Path) -> None:
+    """Unpacks *data* into ``<into>.new/`` and renames that to *into*, which is absent."""
+    new = into.with_name(f"{into.name}.new")
+    if new.exists():
+        shutil.rmtree(new)  # left by an interrupted earlier fetch
+    new.mkdir(parents=True)
+    try:
+        with tarfile.open(fileobj=io.BytesIO(compression.zstd.decompress(data))) as tar:
+            tar.extractall(new, filter="data")
+        new.rename(into)
+    except (tarfile.TarError, compression.zstd.ZstdError, OSError) as err:
+        shutil.rmtree(new, ignore_errors=True)
+        raise CloudAssetsError(f"{archive.name}: cannot unpack {archive.key}: {err}") from err
+
+
+def fetch(
+    manifest: Manifest,
+    names: Sequence[str],
+    data_root: Path,
+    env: Mapping[str, str],
+    *,
+    run: CurlRunner = _curl,
+) -> list[str]:
+    """Downloads and unpacks each archive of *names* (all when empty) whose folder is absent.
+
+    Returns one line per archive, ``fetched <name> -> <folder>`` or
+    ``skipped <name>: <folder> exists``. An existing folder is never touched (ADR 0039).
+
+    Raises:
+        MissingCredentials: a download is needed and a variable of :data:`REQUIRED_ENV` is
+            unset.
+        CloudAssetsError: no such archive, one not packed yet, curl failed, the bytes differ
+            from the pin, or a member would land outside its folder.
+    """
+    lines = []
+    for name in names or list(manifest.archives):
+        archive = _archive_named(manifest, name)
+        into = data_root / archive.into
+        if into.exists():
+            lines.append(f"skipped {name}: {into} exists")
+            continue
+        if archive.key is None or archive.sha256 is None or archive.bytes is None:
+            raise CloudAssetsError(
+                f"{name} has no pin in {MANIFEST_PATH.name}; run `mise run cloud-assets -- pack` "
+                "on the primary machine and commit it"
+            )
+        data = _download(manifest, archive, archive.key, data_root, env, run)
+        _extract(archive, data, into)
+        lines.append(f"fetched {name} -> {into}")
+    return lines
