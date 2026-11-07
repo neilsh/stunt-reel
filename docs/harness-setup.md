@@ -125,6 +125,121 @@ worktrees under `.claude/worktrees/`, which `.gitignore` and ruff's `exclude` co
 must not be copied, and the first task prepares the rest. Claude Code may remove the
 worktrees it creates; an older linked one goes through `reap`.
 
+## Cloud sessions
+
+A Claude Code cloud session has no data root. Its SessionStart hook fetches four archives from the
+private R2 bucket `stunt-reel-internal-assets`, each pinned by key and sha256 in
+[`manifests/cloud-assets.toml`](../manifests/cloud-assets.toml)
+([ADR 0039](adr/0039-cloud-sessions-fetch-pinned-game-archives.md)).
+
+### The read token
+
+In the Cloudflare dashboard, R2, Manage API tokens, create an API token with **Object Read
+only** permission on `stunt-reel-internal-assets` alone, and keep its Access Key ID, Secret
+Access Key and the account id. `fetch` signs S3 requests to
+`<account_id>.r2.cloudflarestorage.com` with that pair (`curl --aws-sigv4`, the pair on
+standard input, never on argv).
+
+### The cloud environment
+
+In claude.ai, the cloud environment for this repo:
+
+- **Environment variables:** `R2_ACCOUNT_ID`, not a secret; `R2_ACCESS_KEY_ID` and
+  `R2_SECRET_ACCESS_KEY`, the token's key pair; and `STUNT_DATA_ROOT`, an absolute path
+  outside the checkout, such as `/root/stunt-reel.data`. Anyone who uses the environment, and
+  anything in a session, can read the key pair; it reads only the one bucket. Also
+  `MISE_AUTO_INSTALL=false` and `MISE_USE_VERSIONS_HOST=false`, as CI sets them: otherwise the
+  first `mise run` in a session installs every tool `mise.toml` declares, compiling the cargo
+  ones from source.
+- **Network access:** the default trusted list, plus `<account_id>.r2.cloudflarestorage.com`.
+  The setup script downloads from GitHub releases, `static.rust-lang.org`, PyPI and the Ubuntu
+  mirror, all on the list.
+- **Network secrets:** none on the R2 host. The proxy's AWS SigV4 secret signs for hosts under
+  `amazonaws.com` alone, and while one is set it answers every request to the R2 host with a
+  502 (`injection failed (...): the hostname is not under amazonaws.com`, 2026-11-07).
+- **Setup script.** It installs mise at a pinned, checksum-checked release, then from the
+  checkout's `mise.lock` the tools the gate needs (not the DOSBox tool), then lavapipe as CI
+  does ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)). It fetches nothing: it runs before the
+  environment variables are set.
+
+The lockfile is what makes the install work: it holds each tool's download URL and checksum,
+so mise reads no GitHub API. Without it mise asks the API three or four times per tool, and
+cloud sessions share an address whose 60 anonymous requests an hour are gone. Java is the
+image's OpenJDK 21: mise's Java reads `mise-java.jdx.dev`, which the default list lacks. The
+setup script belongs to the environment, not the repo, and does not start in the checkout, so
+it looks for it.
+
+```bash
+set -euo pipefail
+lock=$(find / -maxdepth 4 -path /proc -prune -o -path '*/stunt-reel/mise.lock' -print -quit)
+[ -n "$lock" ] || { echo "setup: no stunt-reel checkout found" >&2; exit 1; }
+cd "${lock%/mise.lock}"
+# As CI does: install only the tools named below, not every tool mise.toml declares (the
+# cargo ones compile from source). MISE_LOCKED fails a tool missing from mise.lock instead of
+# asking the GitHub API for it.
+export MISE_AUTO_INSTALL=false MISE_USE_VERSIONS_HOST=false MISE_LOCKED=1
+MISE_VERSION=2026.10.12
+MISE_SHA256=aa5f8fbbb942296bbeea3769abf56c6f4ee37da4d203f0044b227cac4d929a87
+curl -fsSL -o /tmp/mise.tar.gz \
+  "https://github.com/jdx/mise/releases/download/v${MISE_VERSION}/mise-v${MISE_VERSION}-linux-x64.tar.gz"
+echo "${MISE_SHA256}  /tmp/mise.tar.gz" | sha256sum -c -
+tar -xzf /tmp/mise.tar.gz -C /tmp
+install -m 0755 /tmp/mise/bin/mise /usr/local/bin/mise
+mise trust
+mise install rust python uv prek github:kaitai-io/kaitai_struct_compiler
+mise exec -- uv sync --locked --all-groups
+apt-get update && apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
+```
+
+The repo's SessionStart hook (`.claude/settings.json`) runs `mise run cloud-session-start` on
+every session start and resume. Outside a cloud session (`CLAUDE_CODE_REMOTE` unset) it does
+nothing; in one it installs the setup script's tools from `mise.lock` again, then runs
+`mise run cloud-assets -- fetch` and `mise run superset-all`, with the environment variables
+set. The setup script's cache outlives a pin change, so the reinstall is what brings a new pin;
+an installed one costs nothing. The cache holds no archives, so each new session fetches the
+pins of the commit it starts from. The hook prints one line to the session, `ready` or
+`FAILED`, and logs the rest to `/tmp/cloud-session-start.log`.
+
+The hook does not run where Claude Code loads no repo settings: a cloud session with several
+repositories, or a cloud thread of a project. Nothing is fetched there and no line is printed;
+run `CLAUDE_CODE_REMOTE=true mise run cloud-session-start` from the checkout instead.
+
+### Without the key pair: a Bearer network secret (unverified)
+
+To keep the token out of the session, leave `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` unset
+and add a network secret instead: type **Bearer**, allowed website `api.cloudflare.com`, header
+`Authorization`, prefix `Bearer`, the token value as value. `fetch` then reads R2's REST API on
+that host, and the proxy adds the token as each request leaves the session; anything in a
+session can still use it through the proxy. R2's REST API refuses bucket-scoped tokens, so this
+token needs **Admin Read only**, which reads every bucket in the account; recheck that the
+account holds only `stunt-reel-internal-assets` before adding a bucket. A REST read with such a
+token returned the pinned bytes from the primary machine, but no cloud session has fetched this
+way yet.
+
+### Fetching
+
+`fetch` skips an archive whose folder already exists, so a resumed session downloads nothing
+and keeps the pins it fetched first. To take a newer pin there, delete that folder under
+`$STUNT_DATA_ROOT` and fetch again.
+`mise run cloud-assets -- status` shows each pin and folder, reading nothing remote. From
+`fetch`, exit 2 means `R2_ACCOUNT_ID`, or one half of the key pair, is unset, and a 403 means
+the key pair or the network secret cannot read the bucket.
+
+### Publishing new archives (owner, primary machine)
+
+1. `npx wrangler login` once; uploads use that login, so no write key exists.
+2. `mise run cloud-assets -- pack [ARCHIVE...]` builds into `target/cloud-assets/` and rewrites
+   the pins in `manifests/cloud-assets.toml`. A PR that promotes a reference in
+   `research/parity/references.toml` repacks `captures`; a test fails until it does.
+3. Commit `manifests/cloud-assets.toml`, then `mise run cloud-assets -- upload [ARCHIVE...]`.
+   A key names its content, so old commits keep fetching theirs; never delete an object.
+
+### Rotating the token
+
+Rotate on any sighting of the secret in a log, transcript or commit: create a new token as
+above, replace the two key variables (or the network secret: delete it and add it again) in
+the cloud environment, then delete the old token in the dashboard.
+
 ## DSH
 
 DSH's `workspace-write` sandbox admits writes only inside the session workspace, and the
