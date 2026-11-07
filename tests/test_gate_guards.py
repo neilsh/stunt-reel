@@ -102,6 +102,8 @@ def _alive(pid: int) -> bool:
         except ProcessLookupError:
             return False
         # A killed child of a dead parent may linger as a zombie until init reaps it.
+        if not Path("/proc/self").exists():
+            return True  # no procfs (macOS): the signal check is the whole answer
         try:
             stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
         except FileNotFoundError:
