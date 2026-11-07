@@ -11,7 +11,7 @@ meta:
   endian: le
 doc: |
   The fixed 1,024-record `ANCHORPT.DAT` anchor table. Meaning is in
-  `map.md`.
+  `anchorpt.md`.
 seq:
   - id: points
     type: point

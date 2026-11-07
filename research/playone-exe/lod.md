@@ -38,7 +38,7 @@ The far branch (`0x2152`) takes the node's object word `[bp+2]`, stores it at `D
 
 ### 1.1 It Is The `SP_1NODE` Handler, And `obj` Is A Far Stand-In
 
-The scene walker dispatches on a node's type word through two jump tables in DGROUP, `DS:0x0554` (image `0xDA64`) and `DS:0x056C` (image `0xDA7C`). Both are indexed by the even type word of [`scenery.md`](../formats/auxiliary/scenery.md) section 3.2:
+The scene walker dispatches on a node's type word through two jump tables in DGROUP, `DS:0x0554` (image `0xDA64`) and `DS:0x056C` (image `0xDA7C`). Both are indexed by the even type word of [`scenery.md`](../formats/auxiliary/scenery.md) section 3.1.2:
 
 | Type | Node | `0x0554` entry | `0x056C` entry |
 |---|---|---|---|

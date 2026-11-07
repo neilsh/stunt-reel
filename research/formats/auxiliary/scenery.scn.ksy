@@ -12,7 +12,7 @@ meta:
   endian: le
 doc: |
   The 32-bit word array of the `SCENERY.scn` BSP tree. Meaning is in
-  `map.md`.
+  `scenery.md`.
 seq:
   - id: words
     type: u4

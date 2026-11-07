@@ -55,19 +55,19 @@ The load converter at `0xB10D` and the save converter at `0xB17D` translate betw
 
 ### 2.3 `MAP.BIN` Memory Layout (`# [FMT-MAP-AREA]`)
 
-The file is the list head (`30 × index` of the first top-level patch: 540, record 18), then 30-byte records (`[Established]`, `SD.EXE` code above and the build in section 3.2). Offsets are from the start of a record, which begins at file offset `2 + 30 × index`:
+The file is the list head (`30 × index` of the first top-level patch: 540, record 18), then the records (`[Established]`, `SD.EXE` code above and the build in section 3.2). Their byte layout is in [`map.bin.ksy`](map.bin.ksy); what each field means:
 
-| Offset | Field | Meaning |
-| :--- | :--- | :--- |
-| `+0x00` | `in_use` (u8) | Non-zero for a record in use |
-| `+0x01` | `block` (u8) | `REGIONS.BIN` leaf a top-level patch is compiled under; 0 on child patches |
-| `+0x02` | `next` (`a`) | Next patch in the same list |
-| `+0x04` | `first_child` (`b`) | First of the finer patches that replace this one within its split distance |
-| `+0x06` | `split_distance_x2` (`c`) | Twice the `SP_GROUND` split distance; 100 or 0 where unused |
-| `+0x08` | `parent` (`d`) | Patch whose `first_child` list holds this one |
-| `+0x0A` | `color` | Mode 13h palette index, emitted as the leaf polygon's colour |
-| `+0x0C` | `num_verts` | Vertex count, 3 to 8; the loop count of both converters |
-| `+0x0E` | `vertex_indices[8]` | `ANCHORPT.DAT` indices; the first `num_verts` are used |
+| Field | Meaning |
+| :--- | :--- |
+| `in_use` | Non-zero for a record in use |
+| `block` | `REGIONS.BIN` leaf a top-level patch is compiled under; 0 on child patches |
+| `next` (`a`) | Next patch in the same list |
+| `first_child` (`b`) | First of the finer patches that replace this one within its split distance |
+| `split_distance_x2` (`c`) | Twice the `SP_GROUND` split distance; 100 or 0 where unused |
+| `parent` (`d`) | Patch whose `first_child` list holds this one |
+| `color` | Mode 13h palette index, emitted as the leaf polygon's colour |
+| `num_verts` | Vertex count, 3 to 8; the loop count of both converters |
+| `vertex_indices[8]` | `ANCHORPT.DAT` indices; the first `num_verts` are used |
 
 Until 2026-11-06 this project and FreeFlight's `sisland.cpp` read the file 2 bytes off. They took a `num` word at the front of each record, seven vertex slots, and a null terminator. Under that reading, patch 131's eighth vertex appeared to overflow into the next record. Record indices and the fields the renderer reads are the same under both readings.
 

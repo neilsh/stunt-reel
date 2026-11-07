@@ -19,12 +19,12 @@
 
 `ANCHORPT.DAT` has no header: exactly 1,024 contiguous 28-byte records ($1024 \times 28 = 28{,}672$ bytes). In memory, both `SD.EXE` and `PLAYONE.EXE` put a 4-byte header in front, so a vertex pointer is `4 + 28 × index` in `SD.EXE` and `28 × index` from the table's base in `PLAYONE`'s tree.
 
-| Relative Offset | Size (Bytes) | Type | Field Name | Description | Evidentiary Tier |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `+0x00` | 2 | `i16` (LE) | `x` | $X$ coordinate in island units | `[Established]` |
-| `+0x02` | 2 | `i16` (LE) | `y` | Elevation, stored negated; `-32768` marks no point | `[Established]` |
-| `+0x04` | 2 | `i16` (LE) | `z` | $Z$ coordinate in island units | `[Established]` |
-| `+0x06`–`+0x1B` | 22 | `i16[11]` (LE) | `f[11]` | Per-frame cache of the program that saved the file: zero in every game image, different in the two corpus files. The runtime fields are listed under `# [MEM-SOD-ANCHOR-TABLE]` | `[Supported Inference]` |
+| Field | Meaning | Evidentiary Tier |
+| :--- | :--- | :--- |
+| `x` | $X$ coordinate in island units | `[Established]` |
+| `y` | Elevation, stored negated; `-32768` marks no point | `[Established]` |
+| `z` | $Z$ coordinate in island units | `[Established]` |
+| `f[11]` | Per-frame cache of the program that saved the file: zero in every game image, different in the two corpus files. The runtime fields are listed under `# [MEM-SOD-ANCHOR-TABLE]` | `[Supported Inference]` |
 
 Executable layout: [`anchorpt.dat.ksy`](anchorpt.dat.ksy).
 

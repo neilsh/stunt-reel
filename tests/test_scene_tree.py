@@ -112,6 +112,16 @@ def test_parse_map_bin_reads_eight_vertex_slots_after_the_list_head() -> None:
     assert only.index == 0
 
 
+def test_parse_map_bin_counts_vertices_as_world_rs_does() -> None:
+    """Fewer than three vertices is no polygon; a negative count reads all eight slots."""
+    negative = bytearray(_map_record(1, 16, list(range(1, 9))))
+    struct.pack_into("<h", negative, 12, -1)
+    patches = scene_tree.parse_map_bin(
+        _map_bin(_map_record(1, 15, [1, 2]), bytes(negative), _map_record(1, 17, []))
+    )
+    assert [(p.index, p.anchors) for p in patches] == [(1, (1, 2, 3, 4, 5, 6, 7, 8))]
+
+
 def test_compare_matches_each_record_at_most_once() -> None:
     """Two records sharing an anchor set are each matched at most once."""
     twin = scene_tree.GroundPolygon("gleaf", 0, 195, (1, 2, 3))

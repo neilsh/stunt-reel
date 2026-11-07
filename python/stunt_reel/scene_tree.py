@@ -389,13 +389,17 @@ def matched_records(
 
 
 def parse_map_bin(data: bytes) -> list[MapPatch]:
-    """Active ``MAP.BIN`` records whose anchors all index the 1,024-entry table."""
+    """Active ``MAP.BIN`` records of three or more vertices that all index the 1,024-entry table.
+
+    A negative count reads all eight slots, as ``world.rs`` does.
+    """
     patches = []
     for index in range(_map_record_count(data)):
         r = struct.unpack_from("<7h8H", data, MAP_HEAD + MAP_RECORD * index)
-        pos, colour, count = r[0], r[5], max(r[6], 0)
-        anchors = tuple(r[7 : 7 + min(count, MAP_SLOTS)])
-        if pos & 0xFF and all(a < ANCHORS for a in anchors):
+        pos, colour, count = r[0], r[5], r[6]
+        slots = MAP_SLOTS if count < 0 else min(count, MAP_SLOTS)
+        anchors = tuple(r[7 : 7 + slots])
+        if pos & 0xFF and slots >= 3 and all(a < ANCHORS for a in anchors):
             patches.append(MapPatch(index, colour, anchors))
     return patches
 

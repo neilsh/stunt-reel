@@ -16,7 +16,8 @@ Router to the format specifications, shared concept notes and Kaitai schemas for
 | `.SPR` | none (`width: u16`, `height: u16`) | Raw 8-bit billboard sprite, colour 0 transparent | `[Established]` | [`auxiliary/spr.md`](auxiliary/spr.md) | [`spr.ksy`](auxiliary/spr.ksy) |
 | `.SIO` | `53 64 73 01 00 00 00 00` | SLICE modeller project; compiled to `.SOD` by `SD.EXE` | `[Established]` | [`auxiliary/sio.md`](auxiliary/sio.md) | [`sio.ksy`](auxiliary/sio.ksy) |
 | `ANCHORPT.DAT` | none (exactly 28,672 bytes) | Island anchor points: terrain corners and `OP_TAP` operands | `[Established]` | [`auxiliary/anchorpt.md`](auxiliary/anchorpt.md) | [`anchorpt.dat.ksy`](auxiliary/anchorpt.dat.ksy) |
-| `MAP.BIN`, `REGIONS.BIN` | none (list-head word, then 30-byte records) | `SD.EXE`'s terrain patch pool and block tree, compiled into the scenery tree | `[Established]` | [`auxiliary/map.md`](auxiliary/map.md) | [`map.bin.ksy`](auxiliary/map.bin.ksy) |
+| `MAP.BIN` | none (list-head word, then 30-byte records) | `SD.EXE`'s terrain patch pool, compiled into the scenery tree | `[Established]` | [`auxiliary/map.md`](auxiliary/map.md) | [`map.bin.ksy`](auxiliary/map.bin.ksy) |
+| `REGIONS.BIN` | none (head word, then 12-byte records) | `SD.EXE`'s block tree, the slope nodes above the ground patches | `[Established]` | [`auxiliary/map.md` § 2.4](auxiliary/map.md#24-regionsbin-memory-layout) | none (layout in the spec) |
 | `SCENERY.scn` | none (leading `0` word) | BSP scenery tree: props and ground, widened from `PLAYONE.EXE`'s copy | `[Established]` | [`auxiliary/scenery.md`](auxiliary/scenery.md) | [`scenery.scn.ksy`](auxiliary/scenery.scn.ksy) |
 | `PFONT.BIN` | none (exactly 1,152 bytes) | Proportional bitmap font: credits text and UI dialogs | `[Established]` | [`auxiliary/pfont.md`](auxiliary/pfont.md) | [`pfont.ksy`](auxiliary/pfont.ksy) |
 
