@@ -174,8 +174,9 @@ Globs match case-insensitively (`[I8]`).
   `https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com`). It checks size and sha256, decompresses
   with `compression.zstd`, extracts with `tarfile`'s `data` filter (no absolute paths, no `..`,
   no links out), and renames the folder into place (decision 7). Skips, without downloading,
-  an archive whose destination exists. Never prints the credentials. Standard library only, so it runs before
-  anything else is installed beyond Python.
+  an archive whose destination exists. Never prints the credentials. Standard library only (no
+  boto3 or AWS CLI), but it needs Python 3.14 or later for `compression.zstd`, so it runs
+  under the pinned 3.15 through `mise run`.
 - `status`: for each archive, the pinned key, whether its destination exists, and whether the
   local packed file matches.
 
@@ -186,10 +187,18 @@ The task needs no `ensure` dependency: it builds no binary.
 - Environment variables: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and
   `STUNT_DATA_ROOT` pointing outside the checkout.
 - Network access: the default trusted list plus `<account_id>.r2.cloudflarestorage.com`.
-- Setup script: install `mesa-vulkan-drivers` (lavapipe, as CI does), then
-  `mise run assets -- fetch && mise run superset-all`.
+- Setup script. The default image has `uv`, `rustc`/`cargo`, Java 21 and an unpinned Python
+  3.x, but not mise, and `compression.zstd` needs Python 3.14 or later. So, as CI's
+  `install_args` does:
+  1. install mise at a pinned version from its GitHub release, checksum-verified;
+  2. `mise install rust python uv prek java github:kaitai-io/kaitai_struct_compiler`
+     (the pinned 1.99.1 toolchain and Python 3.15.2; the DOSBox tool is left out);
+  3. `uv sync --locked --all-groups`;
+  4. install `mesa-vulkan-drivers` (lavapipe, as CI does);
+  5. `mise run assets -- fetch && mise run superset-all`.
 
-[`docs/harness-setup.md`](../../harness-setup.md) gets the steps.
+  The script lives in [`docs/harness-setup.md`](../../harness-setup.md), from which the owner
+  pastes it into the environment; no shell script is committed, as the repo has none.
 
 ## 5. Error handling
 
@@ -244,10 +253,12 @@ and runs parity on CTRY and INTRO.
 
 ## 9. Open questions
 
-1. The exact form of the cloud environment's custom network allowlist (one host or a
-   wildcard), to be confirmed in the claude.ai settings at step 5.
+1. The cloud environment's network allowlist: the exact form of the R2 entry (one host or a
+   wildcard), and whether the default trusted list already covers what the setup script
+   downloads (GitHub releases for mise and Python, `static.rust-lang.org`, PyPI, the Ubuntu
+   mirror). To be confirmed in the claude.ai settings at step 5.
 2. Whether lavapipe renders CTRY and INTRO to the same indices as the primary machine's GPU.
    ADR 0006 leaves it unverified; step 6 measures it. If it differs beyond noise, cloud parity
    rows are labelled with their adapter.
-3. Whether the cloud image already has mise, the Rust toolchain and Python 3.15, or the setup
-   script installs them; to be settled at step 4.
+3. How long the setup script takes (the Rust toolchain, Python and `uv sync`), and whether the
+   cloud environment caches its result between sessions.
