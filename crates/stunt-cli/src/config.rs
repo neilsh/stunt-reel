@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use clap::error::ErrorKind;
 use clap::{CommandFactory, FromArgMatches, Parser};
 
-use crate::{export, link, parity, sod_census};
+use crate::{export, link, parity, sod_census, sod_trace};
 
 /// Options as clap parses them, before cross-option rules and companion discovery.
 #[derive(Debug, Parser)]
@@ -347,7 +347,7 @@ fn parse_fps(text: &str) -> Result<f32, String> {
 fn after_help() -> String {
     let indent = |usage: &str| format!("  {}", usage.replace('\n', "\n  "));
     format!(
-        "Subcommands:\n{}\n\n{}\n\n{}\n\n{}\n\n\
+        "Subcommands:\n{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n\
          Interactive Keyboard Controls:\n  \
          Space   Pause / Resume timeline playback\n  \
          C       Toggle between Authored Camera and Free-Cam\n  \
@@ -358,6 +358,7 @@ fn after_help() -> String {
         indent(&parity::usage()),
         indent(&export::usage()),
         indent(&sod_census::usage()),
+        indent(&sod_trace::usage()),
         indent(&link::usage()),
     )
 }

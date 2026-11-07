@@ -551,10 +551,46 @@ pub(crate) struct VmRun {
     pub returned_at: Option<usize>,
 }
 
+/// One instruction a traced VM walk executed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceStep {
+    /// Byte offset of the opcode word within the shape.
+    pub offset: usize,
+    /// The opcode word.
+    pub opcode: u16,
+    /// The operand words the VM consumed, in stream order.
+    pub operands: Vec<u16>,
+    /// Where execution continued when the instruction moved it (`GOTO`, `GOSUB`, a taken
+    /// `BVGT`, a `RETURN` that resumes); `None` when it fell through.
+    pub branch: Option<usize>,
+}
+
+impl TraceStep {
+    /// The step for the instruction at `offset` whose operands end at `end`.
+    fn new(data: &[u8], offset: usize, opcode: u16, end: usize, branch: Option<usize>) -> Self {
+        let operands = data
+            .get(offset.saturating_add(2)..end)
+            .unwrap_or_default()
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&w| u16::from_le_bytes(w))
+            .collect();
+        Self {
+            offset,
+            opcode,
+            operands,
+            branch,
+        }
+    }
+}
+
 /// Runs one pass of the VM.
 ///
 /// The policy decides, at every blocking site, whether to fail, stop or step over;
 /// header parsing, register arithmetic and geometry emission are shared by every mode.
+/// With `trace`, every instruction the walk executes or steps over is appended to it, the
+/// steps before an error included.
 #[expect(
     clippy::expect_used,
     reason = "a steppable opcode always has a census width"
@@ -564,6 +600,7 @@ pub(crate) fn run_vm(
     policy: Policy,
     anchors: Option<&[AnchorPoint]>,
     light: ShadeLight,
+    mut trace: Option<&mut Vec<TraceStep>>,
 ) -> Result<VmRun, SodError> {
     let light = light.0.map(i64::from);
     if data.len() < 10 {
@@ -652,6 +689,10 @@ pub(crate) fn run_vm(
         // fewer than three vertices: strict fails, lenient and census keep the geometry so far
         // and report the stop.
         let mut malformed: Option<SodStopReason> = None;
+        // Where a branch sends the walk, applied once the instruction is traced.
+        let mut jump: Option<usize> = None;
+        // Set by the instruction that ends the walk.
+        let mut halt = false;
 
         match opcode {
             OP_CLRV => {
@@ -923,13 +964,15 @@ pub(crate) fn run_vm(
             OP_IFVIS => {
                 let cond_code = r.read_u16_le()?;
                 let sec_len = r.read_u16_le()? as usize;
-                let Some(scope_end) = r.pos().checked_add(sec_len).filter(|&end| end <= total_len)
-                else {
+                if let Some(scope_end) =
+                    r.pos().checked_add(sec_len).filter(|&end| end <= total_len)
+                {
+                    current_visibility = parse_visibility_condition(cond_code, &faces);
+                    visibility_scope_end = scope_end;
+                } else {
                     // Clamped beyond EOF
-                    break;
-                };
-                current_visibility = parse_visibility_condition(cond_code, &faces);
-                visibility_scope_end = scope_end;
+                    halt = true;
+                }
             }
             OP_SORT => {
                 // `siobj.cpp` `case 0x18c`: the three words are byte offsets from the
@@ -982,7 +1025,7 @@ pub(crate) fn run_vm(
                     if opcode == OP_GOSUB {
                         branch_resume.push((r.pos(), current_visibility, visibility_scope_end));
                     }
-                    r.set_pos(target);
+                    jump = Some(target);
                 } else {
                     malformed = Some(SodStopReason::MalformedBranch);
                 }
@@ -1009,7 +1052,7 @@ pub(crate) fn run_vm(
                         .checked_add(usize::from(rel))
                         .filter(|&target| target < total_len)
                     {
-                        Some(target) => r.set_pos(target),
+                        Some(target) => jump = Some(target),
                         None => malformed = Some(SodStopReason::MalformedBranch),
                     }
                 }
@@ -1085,7 +1128,7 @@ pub(crate) fn run_vm(
                 }
 
                 let table = match anchors {
-                    Some(points) if !points.is_empty() => points,
+                    Some(points) if !points.is_empty() => Some(points),
                     _ => match blocked(
                         policy,
                         op_offset,
@@ -1109,51 +1152,53 @@ pub(crate) fn run_vm(
                                 r.read_u16_le()?;
                             }
                             stepped_over.push(stop);
-                            continue;
+                            None
                         }
                     },
                 };
 
-                let start_reg = (reg_off / 12) & 1023;
-                for i in 0..count {
-                    let anchor_off = r.read_u16_le()? as usize;
-                    if !anchor_off.is_multiple_of(28) {
-                        return Err(SodError::MalformedOpcode {
-                            opcode,
-                            offset: op_offset,
-                            reason: format!(
-                                "TAP anchor offset 0x{anchor_off:04X} is not a multiple of 28"
-                            ),
-                        });
-                    }
-
-                    let Some(anchor) = table.get(anchor_off / 28) else {
-                        // Mid-operand, so there is no width to step over: every policy ends
-                        // the run here (strict fails, lenient and census report a stop).
-                        match blocked(
-                            policy,
-                            op_offset,
-                            opcode,
-                            SodStopReason::MissingAnchors,
-                            false,
-                        ) {
-                            Blockage::Fail(error) => return Err(error),
-                            Blockage::Stop(stop) | Blockage::StepOver(stop) => {
-                                return Ok(VmRun {
-                                    header,
-                                    polygons,
-                                    stop: Some(stop),
-                                    stepped_over,
-                                    returned_at,
-                                });
-                            }
+                if let Some(table) = table {
+                    let start_reg = (reg_off / 12) & 1023;
+                    for i in 0..count {
+                        let anchor_off = r.read_u16_le()? as usize;
+                        if !anchor_off.is_multiple_of(28) {
+                            return Err(SodError::MalformedOpcode {
+                                opcode,
+                                offset: op_offset,
+                                reason: format!(
+                                    "TAP anchor offset 0x{anchor_off:04X} is not a multiple of 28"
+                                ),
+                            });
                         }
-                    };
 
-                    regs.set(
-                        start_reg.wrapping_add(i) & 1023, // register numbers wrap modulo 1024
-                        anchor.register_position(),
-                    );
+                        let Some(anchor) = table.get(anchor_off / 28) else {
+                            // Mid-operand, so there is no width to step over: every policy ends
+                            // the run here (strict fails, lenient and census report a stop).
+                            match blocked(
+                                policy,
+                                op_offset,
+                                opcode,
+                                SodStopReason::MissingAnchors,
+                                false,
+                            ) {
+                                Blockage::Fail(error) => return Err(error),
+                                Blockage::Stop(stop) | Blockage::StepOver(stop) => {
+                                    return Ok(VmRun {
+                                        header,
+                                        polygons,
+                                        stop: Some(stop),
+                                        stepped_over,
+                                        returned_at,
+                                    });
+                                }
+                            }
+                        };
+
+                        regs.set(
+                            start_reg.wrapping_add(i) & 1023, // register numbers wrap modulo 1024
+                            anchor.register_position(),
+                        );
+                    }
                 }
             }
             OP_SHADES => {
@@ -1201,12 +1246,12 @@ pub(crate) fn run_vm(
                 returned_at = Some(op_offset);
                 // End of a SORT branch: run the next one; the last RETURN ends the stream.
                 if let Some((resume, visibility, scope_end)) = branch_resume.pop() {
-                    r.set_pos(resume);
+                    jump = Some(resume);
                     current_visibility = visibility;
                     visibility_scope_end = scope_end;
-                    continue;
+                } else {
+                    halt = true;
                 }
-                break;
             }
             _ => {
                 let skip = census_skip(opcode);
@@ -1246,10 +1291,18 @@ pub(crate) fn run_vm(
                             r.read_u16_le()?;
                         }
                         stepped_over.push(stop);
-                        continue;
                     }
                 }
             }
+        }
+        if let Some(steps) = trace.as_deref_mut() {
+            steps.push(TraceStep::new(data, op_offset, opcode, r.pos(), jump));
+        }
+        if let Some(target) = jump {
+            r.set_pos(target);
+        }
+        if halt {
+            break;
         }
         if let Some(reason) = malformed {
             match blocked(policy, op_offset, opcode, reason, false) {
@@ -1273,6 +1326,87 @@ pub(crate) fn run_vm(
         stop: None,
         stepped_over,
         returned_at,
+    })
+}
+
+/// A lenient VM walk of one shape, instruction by instruction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SodTrace {
+    /// Executed and stepped-over instructions in execution order; a jump shows as the next
+    /// step's offset.
+    pub steps: Vec<TraceStep>,
+    /// The blocking opcode the walk stopped on, as a lenient decode reports it.
+    pub stop: Option<SodStop>,
+    /// The decode error that ended the walk; the steps before it are kept.
+    pub error: Option<SodError>,
+}
+
+/// Walks `data` as a lenient [`crate::sod::decode_sod`] does and records every instruction.
+///
+/// `anchors` and `light` are as for [`crate::sod::decode_sod_lit`]. The trace never fails: a
+/// decode error ends it and is kept in [`SodTrace::error`].
+#[must_use]
+pub fn trace_sod(data: &[u8], anchors: Option<&[AnchorPoint]>, light: ShadeLight) -> SodTrace {
+    let mut steps = Vec::new();
+    let (stop, error) = match run_vm(data, Policy::Lenient, anchors, light, Some(&mut steps)) {
+        Ok(run) => (run.stop, None),
+        Err(error) => (None, Some(error)),
+    };
+    SodTrace { steps, stop, error }
+}
+
+/// The mnemonic of `opcode` without the `OP_` prefix: the VM's own name for an opcode it
+/// runs, the [`CENSUS_SKIPS`] name for one it steps over, else `None`.
+#[must_use]
+pub fn opcode_mnemonic(opcode: u16) -> Option<&'static str> {
+    Some(match opcode {
+        OP_CLRV => "CLRV",
+        OP_GETV => "GETV",
+        OP_ID => "ID",
+        OP_PUTV => "PUTV",
+        OP_INTV => "INTV",
+        OP_ADDV => "ADDV",
+        OP_SUBV => "SUBV",
+        OP_NEGV => "NEGV",
+        OP_SHLV => "SHLV",
+        OP_SHRV => "SHRV",
+        OP_VEC => "VEC",
+        OP_IPG => "IPG",
+        OP_VECTORS => "VECTORS",
+        OP_PERS => "PERS",
+        OP_MOVETO => "MOVETO",
+        OP_LINECOL => "LINECOL",
+        OP_ZLINETO => "ZLINETO",
+        OP_POLYZ => "POLYZ",
+        OP_SPHERE => "SPHERE",
+        OP_PERFDISK => "PERFDISK",
+        OP_COLOR => "COLOR",
+        OP_SHADES => "SHADES",
+        OP_SHADE1 => "SHADE1",
+        OP_SHADE2 => "SHADE2",
+        OP_SHADE216 => "SHADE216",
+        OP_GVPOLY => "GVPOLY",
+        OP_IFVIS => "IFVIS",
+        OP_SORT => "SORT",
+        OP_RETURN => "RETURN",
+        OP_PUSHCENTRE => "PUSHCENTRE",
+        OP_POPCENTRE => "POPCENTRE",
+        OP_MOVECENTRE => "MOVECENTRE",
+        OP_PUSHRELMAT => "PUSHRELMAT",
+        OP_POPRELMAT => "POPRELMAT",
+        OP_ROTY => "ROTY",
+        OP_ROTX => "ROTX",
+        OP_ROTZ => "ROTZ",
+        OP_BVGT => "BVGT",
+        OP_GOTO => "GOTO",
+        OP_GOSUB => "GOSUB",
+        OP_REJ => "REJ",
+        OP_TAP => "TAP",
+        OP_SHADE16 => "SHADE16",
+        OP_GVPOLY16 => "GVPOLY16",
+        OP_DOT => "DOT",
+        OP_BLOCK => "BLOCK",
+        _ => return census_skip(opcode).map(|skip| skip.mnemonic),
     })
 }
 

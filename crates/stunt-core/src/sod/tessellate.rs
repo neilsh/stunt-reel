@@ -243,7 +243,7 @@ pub fn decode_sod_lit(
         DecodeMode::Lenient => (Policy::Lenient, anchors, true),
         DecodeMode::Census => (Policy::Census, None, false),
     };
-    let run = run_vm(data, policy, anchors, light)?;
+    let run = run_vm(data, policy, anchors, light, None)?;
     let polygons = if geometry {
         identify_coplanar_decals(&run.polygons, 0.001, 1e-4, 1e-4)
     } else {
