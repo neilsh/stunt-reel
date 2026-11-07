@@ -232,8 +232,9 @@ fn synthetic_minimal_fixture_builds_base_and_decal_meshes() {
         assert_eq!(v.position[2], 0.0, "base vertices lie on z = 0");
     }
     assert_eq!(ir.vertices[0].position, [0.0, 0.0, 0.0]);
-    assert_eq!(ir.vertices[1].position, [5.0, 0.0, 0.0]);
-    assert_eq!(ir.vertices[2].position, [0.0, 5.0, 0.0]);
+    // `OP_VECTORS` turns x and y half a turn about z into `[I1]`.
+    assert_eq!(ir.vertices[1].position, [-5.0, 0.0, 0.0]);
+    assert_eq!(ir.vertices[2].position, [0.0, -5.0, 0.0]);
 
     // Decal face vertices (Palette 15, flags & 1 != 0, displaced along normal by 0.001 m)
     for v in &ir.vertices[3..6] {
@@ -250,9 +251,9 @@ fn synthetic_minimal_fixture_builds_base_and_decal_meshes() {
             "decal vertex z coordinate must be displaced by exactly 0.001 m"
         );
     }
-    assert_eq!(ir.vertices[3].position, [1.0, 1.0, 0.001]);
-    assert_eq!(ir.vertices[4].position, [3.0, 1.0, 0.001]);
-    assert_eq!(ir.vertices[5].position, [0.0, 5.0, 0.001]);
+    assert_eq!(ir.vertices[3].position, [-1.0, -1.0, 0.001]);
+    assert_eq!(ir.vertices[4].position, [-3.0, -1.0, 0.001]);
+    assert_eq!(ir.vertices[5].position, [0.0, -5.0, 0.001]);
 }
 
 /// Scale indices 0..=17 read `SOD_SCALE_TABLE`; indices >= 18 use `5 / 2^(index - 1)`.
@@ -397,23 +398,24 @@ fn ifvis_section_past_eof_clamps_safely() {
 // Coordinates, palette, arena and empty models
 // =============================================================================
 
-/// `[I1]`: positions are `(raw + ground_y_offset on Y) * scale_factor`.
+/// `[I1]`: positions are `(raw + ground_y_offset on Y) * scale_factor`, raw being the stream
+/// vector turned half a turn about z.
 #[test]
 fn scale_and_ground_offset_convert_to_metric_coordinates() {
     let mut bytes = make_sod_header(100, -20, 1, 0); // scale_index 1 = factor 0.5, ground_y_offset = -20
 
-    // Load vertex at reg 0: (10, 40, 60)
+    // Load vertex at reg 0: stream (-10, -40, 60) turns to raw (10, 40, 60)
     bytes.extend_from_slice(&OP_VECTORS.to_le_bytes());
     bytes.extend_from_slice(&3u16.to_le_bytes()); // 3 vertices
     bytes.extend_from_slice(&0u16.to_le_bytes()); // reg 0
-    bytes.extend_from_slice(&10i16.to_le_bytes());
-    bytes.extend_from_slice(&40i16.to_le_bytes());
+    bytes.extend_from_slice(&(-10i16).to_le_bytes());
+    bytes.extend_from_slice(&(-40i16).to_le_bytes());
     bytes.extend_from_slice(&60i16.to_le_bytes());
-    bytes.extend_from_slice(&20i16.to_le_bytes());
-    bytes.extend_from_slice(&40i16.to_le_bytes());
+    bytes.extend_from_slice(&(-20i16).to_le_bytes());
+    bytes.extend_from_slice(&(-40i16).to_le_bytes());
     bytes.extend_from_slice(&60i16.to_le_bytes());
-    bytes.extend_from_slice(&10i16.to_le_bytes());
-    bytes.extend_from_slice(&50i16.to_le_bytes());
+    bytes.extend_from_slice(&(-10i16).to_le_bytes());
+    bytes.extend_from_slice(&(-50i16).to_le_bytes());
     bytes.extend_from_slice(&60i16.to_le_bytes());
 
     bytes.extend_from_slice(&OP_COLOR.to_le_bytes());
