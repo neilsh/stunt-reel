@@ -28,6 +28,7 @@ OUT_DIR = REPO_ROOT / "target" / "cloud-assets"
 
 
 def _pack(manifest: cloud_assets.Manifest, names: list[str], root: Path) -> list[str]:
+    """Packs *names* (all when empty) into OUT_DIR, rewriting the manifest after each; one line each."""
     lines = []
     for name in names or list(manifest.archives):
         before = cloud_assets.archive_named(manifest, name).bytes

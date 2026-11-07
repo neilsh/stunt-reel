@@ -116,6 +116,7 @@ class Manifest:
 
 
 def _strings(path: Path, name: str, entry: dict[str, object], key: str) -> tuple[str, ...]:
+    """The list of strings at *key* in *entry*, empty when absent; raises CloudAssetsError otherwise."""
     value = entry.get(key, [])
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise CloudAssetsError(f"{path}: [{name}] {key} is not a list of strings")
@@ -123,6 +124,7 @@ def _strings(path: Path, name: str, entry: dict[str, object], key: str) -> tuple
 
 
 def _archive(path: Path, name: str, entry: dict[str, object]) -> Archive:
+    """*entry*, the manifest table [*name*], as an Archive; raises CloudAssetsError on a bad field."""
     into = entry.get("into")
     if not isinstance(into, str):
         raise CloudAssetsError(f"{path}: [{name}] names no into folder")
@@ -170,6 +172,7 @@ def read_manifest(path: Path = MANIFEST_PATH) -> Manifest:
 
 
 def _list(values: Sequence[str]) -> str:
+    """*values* as a TOML inline array of strings."""
     return "[" + ", ".join(json.dumps(v) for v in values) + "]"
 
 
@@ -201,6 +204,7 @@ def manifest_text(manifest: Manifest) -> str:
 
 
 def _matches(path: str, patterns: Sequence[str]) -> list[bool]:
+    """Whether the POSIX *path* matches each of *patterns*, ignoring case."""
     posix = PurePosixPath(path)
     return [posix.full_match(pattern, case_sensitive=False) for pattern in patterns]
 
@@ -255,6 +259,7 @@ def with_archive(manifest: Manifest, archive: Archive) -> Manifest:
 
 
 def archive_named(manifest: Manifest, name: str) -> Archive:
+    """*manifest*'s archive *name*; raises CloudAssetsError naming the known ones."""
     try:
         return manifest.archives[name]
     except KeyError:
@@ -339,6 +344,7 @@ type CurlRunner = Callable[[Sequence[str], str], subprocess.CompletedProcess[str
 
 
 def _curl(argv: Sequence[str], stdin: str) -> subprocess.CompletedProcess[str]:
+    """Runs curl's *argv* with *stdin*; raises CloudAssetsError when curl cannot start."""
     try:
         return subprocess.run(  # noqa: S603 - argv is CURL_ARGV; the request is on stdin
             list(argv), input=stdin, capture_output=True, text=True, check=False
@@ -368,6 +374,7 @@ def curl_config(url: str, output: Path, key_pair: tuple[str, str] | None) -> str
 
 
 def _redacted(text: str, secrets: Sequence[str]) -> str:
+    """*text* with each non-empty string of *secrets* replaced by ``***``."""
     for secret in secrets:
         if secret:
             text = text.replace(secret, "***")
@@ -483,6 +490,7 @@ def fetch(
 
 
 def _run(argv: Sequence[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    """Runs *argv* in *cwd*, its program found on PATH; raises CloudAssetsError when absent."""
     # `npx` is `npx.cmd` on Windows, which subprocess finds only by its full path.
     program = shutil.which(argv[0])
     if program is None:
