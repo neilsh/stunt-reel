@@ -43,13 +43,15 @@ The captured frames are game-derived and are not relicensed by this project. Eve
 - is a single 320x200 screen, or a crop or enlargement of one, never a run of frames or a video;
 - holds nothing extracted from game files (no shapes, textures, artwork or sound), only what the
   screen showed;
-- lives under `research/` and is named by the note or index that cites it, so each one has a stated
-  purpose.
+- lives under `research/` and is cited by a note or index, so each one has a stated purpose. New
+  images go in [`research/images/`](research/images/README.md), in a folder named by the render's
+  date and commit.
 
 A pull request that changes rendered output attaches comparison images of the same kind to its
 description, under the same first two limits; GitHub hosts them, and they are not committed. All
-other captures stay in the external data root. The current set is
-`research/parity/error-examples/`, indexed by `research/parity/error-categories.toml`.
+other captures stay in the external data root. The current sets are `research/images/`,
+`research/parity/aircraft/`, and `research/parity/error-examples/`; only the last is indexed, by
+`research/parity/error-categories.toml`.
 
 ## Third-party material and credits
 

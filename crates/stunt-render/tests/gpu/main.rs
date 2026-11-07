@@ -11,5 +11,6 @@
 )]
 
 mod common;
+mod fragment_index;
 mod renderer;
 mod scene_renderer;

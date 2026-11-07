@@ -33,8 +33,16 @@ struct VertexOutput {
     @location(3) @interpolate(linear) shade: f32,
 };
 
-// The whole palette index a fragment draws [I3].
+// The whole palette index a fragment draws [I3]. A non-finite `shade` falls back to the
+// provoking vertex's index: Mesa's software clipper (lavapipe) can interpolate a `linear`
+// varying to NaN on a polygon that reaches behind the eye past a side plane
+// (research/parity/method.md section 3). A GPU interpolates finite values to finite ones,
+// so there the branch never fires.
 fn fragment_index(in: VertexOutput) -> u32 {
+    // All exponent bits set is NaN or infinity; WGSL has no isNan, and `x != x` may be folded.
+    if ((bitcast<u32>(in.shade) & 0x7f800000u) == 0x7f800000u) {
+        return in.palette_index;
+    }
     return u32(clamp(floor(in.shade + 0.5), 0.0, 255.0));
 }
 

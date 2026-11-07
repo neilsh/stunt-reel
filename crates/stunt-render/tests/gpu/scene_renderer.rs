@@ -347,3 +347,102 @@ fn zero_brightness_frame_renders_black_including_the_clear_colour() {
             .all(|p| p[..3] == [0, 0, 0])
     );
 }
+
+/// A 1 km square on the ground plane at palette index `index`, wound both ways so no
+/// face is culled.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test helper outside #[test]: an out-of-range index is the assertion failure"
+)]
+fn ground_square(index: u8) -> SodModelIr {
+    let vertex = |x: f32, z: f32| SodVertex {
+        position: [x, 0.0, z],
+        normal: [0.0, 1.0, 0.0],
+        palette_index: index,
+        flags: 4,
+        scenery_class: 0,
+        _padding: 0,
+    };
+    let mut ir = SodModelIr::new("GROUND");
+    ir.vertices = vec![
+        vertex(-500.0, -500.0),
+        vertex(500.0, -500.0),
+        vertex(500.0, 500.0),
+        vertex(-500.0, 500.0),
+    ];
+    ir.indices = vec![0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2];
+    ir.allocate_node(
+        "GROUND",
+        None,
+        glam::Mat4::IDENTITY.to_cols_array(),
+        VisibilityCondition::Always,
+        NodeKind::Mesh {
+            vertex_offset: 0,
+            vertex_count: 4,
+            index_offset: 0,
+            index_count: 12,
+            is_decal: false,
+        },
+    );
+    ir.root_nodes = vec![ir.nodes[0].id];
+    ir
+}
+
+/// A ground polygon that reaches behind a low eye and past the side planes keeps its own
+/// index on every pixel. Mesa's software clipper (lavapipe, CI's adapter) can interpolate
+/// the `linear` shade varying of such a polygon to NaN, which used to draw index 0
+/// (`research/parity/method.md` section 3).
+#[test]
+fn a_ground_polygon_under_a_low_eye_keeps_its_index() {
+    const GROUND_INDEX: u8 = 40;
+    let record = TrajectoryRecord {
+        tick: 0,
+        camera: CameraTransform {
+            eye: [0.0, 3.0, 0.0],
+            target: [0.0, 0.0, -20.0],
+            fov_degrees: 45.0,
+            roll_radians: 0.0,
+            cut_from_previous: false,
+            ..Default::default()
+        },
+        actors: vec![actor_at(0.0, 0)],
+        audio_cues: Vec::new(),
+        palette: PaletteControls::default(),
+    };
+    let timeline = FilmTimeline::new(
+        vec![SliceKeyframe {
+            record,
+            tick: 0,
+            tick_duration: 1,
+        }],
+        Vec::new(),
+    );
+    let shapes = HashMap::from([(SHAPE_ID, ground_square(GROUND_INDEX))]);
+    let scene = FilmScene::new(timeline, shapes, None);
+    let Some(mut test) = common::gpu_or_skip_software(&scene) else {
+        return;
+    };
+    let page = test.draw(&scene.frame(0.0));
+    let ground: Vec<u8> = page
+        .layers()
+        .iter()
+        .zip(page.indices())
+        .filter(|&(&layer, _)| layer == LAYER_FIRST_ACTOR)
+        .map(|(_, &index)| index)
+        .collect();
+    assert!(
+        ground.len() > 10_000,
+        "ground covers {} pixels",
+        ground.len()
+    );
+    let wrong = ground
+        .iter()
+        .filter(|&&index| index != GROUND_INDEX)
+        .count();
+    assert_eq!(
+        wrong,
+        0,
+        "{wrong} of {} ground pixels lost their index",
+        ground.len()
+    );
+}
