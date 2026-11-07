@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import compression.zstd
+import dataclasses
+import hashlib
 import io
 import itertools
 import os
@@ -15,11 +18,15 @@ from stunt_reel.cloud_assets import (
     MANIFEST_PATH,
     Archive,
     CloudAssetsError,
+    check_references,
     manifest_text,
+    pack,
     read_manifest,
     select_files,
     tar_bytes,
+    with_archive,
 )
+from stunt_reel.references import capture_digest
 
 
 def _write(root: Path, files: dict[str, bytes]) -> None:
@@ -114,3 +121,100 @@ def test_no_archive_folder_contains_another() -> None:
 
 def test_module_exports_its_error() -> None:
     assert issubclass(cloud_assets.CloudAssetsError, RuntimeError)
+
+
+def _data_root(tmp_path: Path) -> Path:
+    root = tmp_path / "data"
+    _stuntisl_tree(root / "corpus" / "stuntisl")
+    _write(
+        root / "captures",
+        {
+            "vault-ctry/frames/frames/0001.png": b"png",
+            "vault-ctry/frames/meta.json": b"{}",
+            "vault-ctry/frames.lock": b"",
+            "vault-balloon/archives/BALLOON.ALL": b"all",
+        },
+    )
+    return root
+
+
+def _repo(tmp_path: Path, ctry_sha256: str) -> Path:
+    repo = tmp_path / "repo"
+    _write(
+        repo,
+        {
+            "research/parity/references.toml": (
+                f'[ctry]\nfilm = "vault-ctry"\nsha256 = "{ctry_sha256}"\n'
+            ).encode()
+        },
+    )
+    return repo
+
+
+def _frames_digest(data_root: Path) -> str:
+    return capture_digest(data_root / "captures" / "vault-ctry" / "frames")
+
+
+def test_pack_names_the_key_after_the_compressed_hash(tmp_path: Path) -> None:
+    data_root, out = _data_root(tmp_path), tmp_path / "out"
+    m = read_manifest()
+    a = pack(m, "corpus-stuntisl", data_root, out)
+    assert a.key is not None
+    data = (out / PurePosixPath(a.key).name).read_bytes()
+    assert a.sha256 == hashlib.sha256(data).hexdigest()
+    assert a.key == f"v1/corpus-stuntisl-{a.sha256[:16]}.tar.zst"
+    assert a.bytes == len(data)
+    base = data_root / "corpus" / "stuntisl"
+    stuntisl = m.archives["corpus-stuntisl"]
+    assert compression.zstd.decompress(data) == tar_bytes(base, select_files(base, stuntisl))
+
+
+def test_pack_captures_records_each_reference_digest(tmp_path: Path) -> None:
+    data_root = _data_root(tmp_path)
+    digest = _frames_digest(data_root)
+    repo = _repo(tmp_path, digest)
+    a = pack(read_manifest(), "captures", data_root, tmp_path / "out", repo=repo)
+    assert a.references == {"ctry": digest}
+
+
+def test_pack_captures_refuses_a_capture_that_differs_from_its_reference(tmp_path: Path) -> None:
+    data_root = _data_root(tmp_path)
+    repo = _repo(tmp_path, "0" * 64)
+    with pytest.raises(CloudAssetsError, match="ctry"):
+        pack(read_manifest(), "captures", data_root, tmp_path / "out", repo=repo)
+    assert not (tmp_path / "out").exists()
+
+
+def test_pack_refuses_an_unknown_archive(tmp_path: Path) -> None:
+    with pytest.raises(CloudAssetsError, match="no-such"):
+        pack(read_manifest(), "no-such", _data_root(tmp_path), tmp_path / "out")
+
+
+def test_with_archive_replaces_one_archive_in_place() -> None:
+    m = read_manifest()
+    packed = dataclasses.replace(m.archives["corpus-stisldem"], key="v1/k", sha256="s", bytes=1)
+    updated = with_archive(m, packed)
+    assert list(updated.archives) == list(m.archives)
+    assert updated.archives["corpus-stisldem"] == packed
+    assert updated.archives["captures"] == m.archives["captures"]
+
+
+def test_check_references_reports_a_promoted_reference_not_repacked(tmp_path: Path) -> None:
+    repo = _repo(tmp_path, "1" * 64)
+    m = read_manifest()
+    captures = dataclasses.replace(m.archives["captures"], references={"ctry": "2" * 64})
+    [message] = check_references(with_archive(m, captures), repo)
+    assert "ctry" in message
+    assert "pack" in message
+
+
+def test_check_references_reports_a_reference_the_archive_lacks(tmp_path: Path) -> None:
+    repo = _repo(tmp_path, "1" * 64)
+    m = read_manifest()
+    captures = dataclasses.replace(m.archives["captures"], references={"intro": "1" * 64})
+    [message] = check_references(with_archive(m, captures), repo)
+    assert "ctry" in message
+
+
+def test_committed_manifest_agrees_with_references_toml() -> None:
+    assert check_references(read_manifest()) == []

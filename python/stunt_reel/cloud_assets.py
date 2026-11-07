@@ -8,6 +8,9 @@ the archives' tars so the same files give the same bytes on any machine.
 
 from __future__ import annotations
 
+import compression.zstd
+import dataclasses
+import hashlib
 import io
 import json
 import tarfile
@@ -16,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
+from stunt_reel import parity_layout, references
 from stunt_reel.dataroot import REPO_ROOT
 
 if TYPE_CHECKING:
@@ -26,11 +30,20 @@ __all__ = [
     "Archive",
     "CloudAssetsError",
     "Manifest",
+    "check_references",
     "manifest_text",
+    "pack",
     "read_manifest",
     "select_files",
     "tar_bytes",
+    "with_archive",
 ]
+
+#: zstd level of every archive (spec decision 5).
+ZSTD_LEVEL = 19
+
+#: The archive whose `references` table pins the reference captures it holds.
+CAPTURES = "captures"
 
 #: The committed file that pins every archive.
 MANIFEST_PATH: Path = REPO_ROOT / "manifests" / "cloud-assets.toml"
@@ -199,3 +212,85 @@ def tar_bytes(base: Path, members: Sequence[str]) -> bytes:
             info.uname = info.gname = ""
             tar.addfile(info, io.BytesIO(data))
     return out.getvalue()
+
+
+def with_archive(manifest: Manifest, archive: Archive) -> Manifest:
+    """*manifest* with *archive* replacing the archive of its name, in the same position."""
+    archives = {
+        name: archive if name == archive.name else a for name, a in manifest.archives.items()
+    }
+    return dataclasses.replace(manifest, archives=archives)
+
+
+def _archive_named(manifest: Manifest, name: str) -> Archive:
+    try:
+        return manifest.archives[name]
+    except KeyError:
+        known = ", ".join(manifest.archives)
+        raise CloudAssetsError(f"no archive named {name}; the manifest has {known}") from None
+
+
+def _reference_digests(data_root: Path, repo: Path) -> dict[str, str]:
+    """The capture digest of every ``references.toml`` row, each checked against its row."""
+    found = {}
+    for film in references.reference_films(repo):
+        pointer = references.read_reference(repo, film)
+        # The folder open_reference hashes before parity trusts a capture.
+        frames = data_root / parity_layout.frames_path(pointer.slug)
+        if not frames.is_dir():
+            raise CloudAssetsError(f"{film}: its reference capture {frames} is absent")
+        digest = references.capture_digest(frames)
+        if digest != pointer.sha256:
+            raise CloudAssetsError(
+                f"{film}: the capture {frames} has hash {digest[:12]}, but "
+                f"{parity_layout.REFERENCES_FILE.as_posix()} records {pointer.sha256[:12]}; "
+                "restore the reference capture before packing"
+            )
+        found[film] = digest
+    return found
+
+
+def pack(
+    manifest: Manifest, name: str, data_root: Path, out_dir: Path, *, repo: Path = REPO_ROOT
+) -> Archive:
+    """Packs archive *name* from *data_root* into *out_dir*; the archive with its new pin.
+
+    The file is named after the key's last part. For ``captures``, every reference capture
+    must hash to its ``references.toml`` row, and the pin records those digests.
+
+    Raises:
+        CloudAssetsError: no such archive, its folder is missing, an include matches nothing,
+            or a reference capture differs from its row.
+    """
+    archive = _archive_named(manifest, name)
+    base = data_root / archive.into
+    if not base.is_dir():
+        raise CloudAssetsError(f"{name}: its folder {base} does not exist")
+    pinned = _reference_digests(data_root, repo) if name == CAPTURES else {}
+    data = compression.zstd.compress(tar_bytes(base, select_files(base, archive)), level=ZSTD_LEVEL)
+    digest = hashlib.sha256(data).hexdigest()
+    key = f"{manifest.version}/{name}-{digest[:16]}.tar.zst"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / PurePosixPath(key).name).write_bytes(data)
+    return dataclasses.replace(archive, key=key, sha256=digest, bytes=len(data), references=pinned)
+
+
+def check_references(manifest: Manifest, repo: Path = REPO_ROOT) -> list[str]:
+    """One message per ``references.toml`` row the ``captures`` pin does not record as-is.
+
+    Empty while ``captures`` records no references, which is before its first pack.
+    """
+    recorded = manifest.archives[CAPTURES].references if CAPTURES in manifest.archives else {}
+    if not recorded:
+        return []
+    messages = []
+    for film in references.reference_films(repo):
+        wanted = references.read_reference(repo, film).sha256
+        held = recorded.get(film)
+        if held != wanted:
+            state = "lacks it" if held is None else f"records {held[:12]}"
+            messages.append(
+                f"{film}: {parity_layout.REFERENCES_FILE.as_posix()} pins {wanted[:12]} but the "
+                f"captures archive {state}; run `mise run cloud-assets -- pack captures`"
+            )
+    return messages
