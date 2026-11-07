@@ -69,7 +69,7 @@ struct Args {
 }
 
 /// Parses a shape id written in decimal or as `0x`-prefixed hex.
-fn parse_shape_id(text: &str) -> Result<u16, String> {
+pub(crate) fn parse_shape_id(text: &str) -> Result<u16, String> {
     let parsed = match text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")) {
         Some(hex) => u16::from_str_radix(hex, 16),
         None => text.parse::<u16>(),

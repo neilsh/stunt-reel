@@ -34,6 +34,7 @@ mod playback;
 mod render_store;
 mod scene;
 mod sod_census;
+mod sod_trace;
 mod window;
 #[expect(
     dead_code,
@@ -59,6 +60,13 @@ fn main() {
         }
         Some("sod-census") => {
             if let Err(e) = sod_census::run(subcommand_args) {
+                eprintln!("[stuntreel error] {e}");
+                std::process::exit(1);
+            }
+            return;
+        }
+        Some("sod-trace") => {
+            if let Err(e) = sod_trace::run(subcommand_args) {
                 eprintln!("[stuntreel error] {e}");
                 std::process::exit(1);
             }
