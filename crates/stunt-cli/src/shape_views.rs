@@ -253,7 +253,8 @@ struct ShapeEntry {
     error: Option<String>,
 }
 
-/// A failure of the subcommand; no adapter is kept apart so tests can skip on it.
+/// A failure of the subcommand. `Render` (no adapter, say) is kept apart so tests can
+/// skip on it.
 #[derive(Debug)]
 enum ViewsError {
     Render(RenderError),
@@ -311,12 +312,7 @@ fn draw_views(options: &Options) -> Result<Manifest, ViewsError> {
     let path = options.out.join("manifest.json");
     let json =
         serde_json::to_string_pretty(&manifest).map_err(|e| format!("serialize manifest: {e}"))?;
-    fs::write(
-        &path,
-        json + "
-",
-    )
-    .map_err(|e| format!("write {}: {e}", path.display()))?;
+    fs::write(&path, json + "\n").map_err(|e| format!("write {}: {e}", path.display()))?;
     Ok(manifest)
 }
 
@@ -726,7 +722,8 @@ mod tests {
     }
 
     /// A 2 m wide, 4 m long body along z: its nose half (z > 0) in one colour and its tail
-    /// half in another, the tail 0.5 m taller so it stands above the nose like a fin.
+    /// half in another, the tail 0.5 m taller so it stands above the nose like a fin, and a
+    /// pod in a third colour on the nose's +x side, hidden behind the nose from -x.
     fn finned_body() -> SodModelIr {
         let mut model = SodModelIr::new("FINNED_BODY");
         add_box(
@@ -740,6 +737,12 @@ mod tests {
             Vec3::new(-1.0, -0.5, -2.0),
             Vec3::new(1.0, 1.0, 0.0),
             15,
+        );
+        add_box(
+            &mut model,
+            Vec3::new(1.0, -0.5, 0.5),
+            Vec3::new(1.5, 0.5, 1.5),
+            100,
         );
         let vertex_count = arena_index(model.vertices.len());
         let index_count = arena_index(model.indices.len());
@@ -853,6 +856,26 @@ mod tests {
         );
         assert!(near(size(nose_top), [2.0, 2.0]), "top: {nose_top:?}");
         assert!(near(size(fin_top), [2.0, 2.0]), "top: {fin_top:?}");
+
+        // The +x pod sits left of the nose seen from above and right of it seen from the
+        // front: a view from below, or a mirrored one, would swap a side.
+        let pod = |view: &[image::Rgba<u8>]| {
+            let colour = *view
+                .iter()
+                .find(|pixel| ![nose, fin, background].contains(pixel))
+                .expect("the pod shows");
+            footprint(view, TILE, colour)
+        };
+        let (pod_top, pod_front) = (pod(&top), pod(&front));
+        assert!(
+            pod_top[2] < nose_top[0] + 2,
+            "top: +x on the left, {pod_top:?} {nose_top:?}"
+        );
+        let nose_front = footprint(&front, TILE, nose);
+        assert!(
+            pod_front[0] + 2 > nose_front[2],
+            "front: +x on the right, {pod_front:?} {nose_front:?}"
+        );
 
         let (nose_side, fin_side) = (footprint(&side, TILE, nose), footprint(&side, TILE, fin));
         assert!(

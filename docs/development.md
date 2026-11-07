@@ -132,7 +132,7 @@ cargo run -p stunt-cli -- sod-trace --archive "<data root>/corpus/stisldem/VAULT
 Draw orthographic top, side and front views of an archive's shapes, one `<ID>.png` each, with `manifest.json` recording each shape's geometry hash:
 
 ```powershell
-cargo run --release -p stunt-cli -- shape-views --archive target/linked/superset/SUPERSET.ALL     --shapes 7F02..=7F38 --out build/scratch/views
+cargo run --release -p stunt-cli -- shape-views --archive target/linked/superset/SUPERSET.ALL --shapes 7F02..=7F38 --out build/scratch/views
 ```
 
 Headless video export samples the authored 50 Hz timeline at `--fps` (default 30), interpolates between slices, and encodes directly into a standard video container (`.mp4`, `.webm`, `.mkv`, or `.avi`) via `ffmpeg`, with physical $4:3$ aspect ratio correction ($320 \times 240$, `[I6]`). `--tick-range <A..=B>` limits the export to a 0-based, inclusive range of ticks. `CTRY.FLM` spans 1,342 ticks (26.84 s), producing 806 sampled frames at 30 fps; the container is trimmed to the authored span, so ffmpeg encodes 805 frames and ffprobe reports 26.833 s (nearest whole frame; 26.84 s exactly at `--fps 50`). Requires `ffmpeg` on `PATH`.
