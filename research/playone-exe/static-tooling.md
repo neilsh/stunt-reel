@@ -14,6 +14,7 @@ The trial record (timings, the Windows refusal, the load-image attestation) is o
 | Question | Tool | Why |
 |---|---|---|
 | Does this byte pattern or operand occur, and where? | Capstone script over `playone.img` | Seconds, no setup. The DGROUP writer scan for `0x22C4/0x22CE/0x22D0` and the slot-table decode were done this way. |
+| Which instructions reference this string or DGROUP offset? | `mise run xref -- <exe> --string TEXT` (any MZ, LZEXE or image file) | Under a second. It resolves the string's offset in each segment the code loads into `DS` or the relocation table names, then prints each 16-bit operand equal to it with its neighbours. |
 | What are the functions, their bodies, callers and callees? What does one decompile to? | Ghidra (headless or GUI) on the MZ file | 222 functions recovered, with decompilation and reference tracking. |
 | Who reads or writes a fixed DGROUP offset? | Ghidra | Works for absolute `[disp16]` accesses once `DS` is known. The `0x22C4` writer in `entry` shows up in the listing and the pseudocode. |
 | The same questions, asked by an agent over MCP, with results that record their inputs | rea, with `--snapshot` | Each result carries the target SHA-256, tool versions and analysis profile. Without a snapshot every call re-imports (about 12 s); with one, about 1.4 s. |

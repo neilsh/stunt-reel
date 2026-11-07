@@ -129,7 +129,7 @@ In both render stores tick 20 alone has `credits: true` (`CREDITS_TICK` in `make
 **Pinned by.** `bench_fixture_matches_its_golden_ssim` (Rust, within 1e-6) keeps the golden equal to the real scorer; `tests/test_bench_ssim.py::test_numpy_ssim_matches_the_rust_golden` (within 1e-4) keeps numpy equal to the golden; `tests/test_bench_metrics.py::test_differential_matches_its_golden` (within 1e-9) and `parity::tests::verdict_matches_the_numpy_golden` (Rust, within 1e-6 on the fractions and 1e-4 on `delta`) pin `differential["20"]` to the numpy and the Rust verdict. `.gitattributes` marks `*.idx`, `*.layer` and `*.zst` binary, since an index plane with no NUL byte would otherwise be treated as text and have its `0x0D 0x0A` pairs rewritten.
 
 ### 16. `synthetic_pfont.bin` (1,152 bytes)
-A made-up font in the `PFONT.BIN` layout ([`pfont.ksy`](../../research/formats/auxiliary/pfont.ksy)): 128 width bytes, then 128 glyphs of 8 one-byte rows, bit 7 leftmost. Four codes are defined and every other width is 0:
+A made-up font in the `PFONT.BIN` layout ([`pfont.bin.ksy`](../../research/formats/auxiliary/pfont.bin.ksy)): 128 width bytes, then 128 glyphs of 8 one-byte rows, bit 7 leftmost. Four codes are defined and every other width is 0:
 - `' '` (`0x20`): width 3, no ink.
 - `'1'` (`0x31`): width 3, rows 0..6 `0x40` (a stem one column in).
 - `'I'` (`0x49`): width 2, rows 0..6 `0x80`.

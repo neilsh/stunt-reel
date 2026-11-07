@@ -1,3 +1,11 @@
+[settings]
+# Pin each tool's download URL and checksum per platform in mise.lock, so an install reads no
+# GitHub API: cloud sessions share an IP whose anonymous API quota runs out (docs/harness-setup.md).
+# After changing a pin, delete mise.lock and regenerate it with a token, since `mise lock` drops,
+# with only a warning, any entry the API refuses:
+#   GITHUB_TOKEN=$(gh auth token) mise lock --platform linux-x64,windows-x64
+lockfile = true
+
 [tools]
 # Rust toolchain (provides rustc and cargo). Pinned: "latest" re-resolves whenever
 # this file changes, which silently gave two worktrees different compilers.
@@ -199,6 +207,10 @@ run = "uv run python python/scripts/gvpoly_stream.py"
 description = "Pair two builds' functions with an iced-x86 decode and map offsets (mise run pair-builds -- [--ds 0x0542,0x8072@0x824] [--code 0x196C] [--unpaired])"
 run = "uv run python python/scripts/pair_builds.py"
 
+[tasks.xref]
+description = "Find the code that references a string or data offset in an MZ, LZEXE or image file (mise run xref -- <exe> --string map.bin | --offset 0x22C2 --ds 0x163D [--context N])"
+run = "uv run python python/scripts/xref.py"
+
 [tasks.probe-light]
 description = "Probe PLAYONE per-shot light and shade arrays through dosbox-automation (mise run probe-light -- --ticks 10,150,273,448)"
 run = "uv run python python/scripts/probe_playone_light.py"
@@ -220,6 +232,31 @@ description = "Build one .ALL holding every stock shape in the game's RES/, for 
 depends = ["ensure"]
 run = "uv run python python/scripts/superset_all.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
+
+[tasks.cloud-assets]
+description = "Pack, upload or fetch the game archives cloud sessions use (mise run cloud-assets -- [--data-root DIR] pack|upload|fetch|status [ARCHIVE...]; ADR 0039)"
+run = "uv run python python/scripts/cloud_assets.py"
+
+[tasks.cloud-session-start]
+description = "The SessionStart hook: in a cloud session only, install the locked tools, fetch the game archives and build SUPERSET.ALL (ADR 0039)"
+hide = true
+# The hook runs on every session start; outside a cloud session it does nothing. It fetches
+# here, not in the setup script, because the environment's R2_* and STUNT_DATA_ROOT are set only
+# once Claude Code starts. It reinstalls the tools because the setup script's cache outlives a
+# pin change; an installed pin costs nothing. It always exits 0 and prints one line: a hook's
+# stdout reaches Claude only on success, and Claude must know when the archives are missing.
+env = { MISE_LOCKED = "1" }
+run = '''
+[ "${CLAUDE_CODE_REMOTE:-}" = true ] || exit 0
+log=/tmp/cloud-session-start.log
+if { mise install rust python uv prek github:kaitai-io/kaitai_struct_compiler &&
+     mise run cloud-assets -- fetch && mise run superset-all; } >"$log" 2>&1; then
+  echo "cloud-session-start: tools, game archives and SUPERSET.ALL ready (log: $log)"
+else
+  echo "cloud-session-start FAILED: tools, game archives or SUPERSET.ALL may be missing; see $log and mise run cloud-assets -- status"
+fi
+'''
+run_windows = "exit 0"
 
 [tasks.adversarial]
 description = "Adversarial stress suite over the formats catalog's constraints and claims"

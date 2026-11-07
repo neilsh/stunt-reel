@@ -255,6 +255,33 @@ The in-shape depth gate is `BZLT` (`0x0318`, handler `0x9BE5`), not `IFVIS`: it 
 
 _Found 2026-11-05 for [#74](https://github.com/neilsh/stunt-reel/issues/74); see the [parity log](../parity/log.md)._
 
+### 8.7 Model Frame: Cube Corners and `OP_VECTORS`
+
+`[Established]` for the instruction sequences, static, read from `build/re/playone.img` with Capstone (2026-11-06); nothing observed live. `[Supported Inference]` that this is why stock shapes decoded upside down, from the shape census and the sweep below.
+
+Both vertex loaders store `M · v` into a register, with `M` the 3×3 matrix at `work:0x808A` (three words a row) and the sum shifted right by `work:0x806F`:
+
+| Handler | Image offset | Stores |
+|---|---|---|
+| `OP_VECTORS` (`0x0075`) | `0x9C51` | `count` stream vectors into consecutive registers, each `M · (x, y, z)` with the stream's own signs. |
+| `OP_IPG` type 0, cube (`dx, dy, dz, reg`) | `0x965F` calls the word table at `work:0x1954` (type 0: VM `0x3035`, image `0xB275`) | Corners `reg + 0..7` = `M ·` `(+dx, +dy, −dz)`, `(+dx, +dy, +dz)`, `(−dx, +dy, +dz)`, `(−dx, +dy, −dz)`, `(+dx, −dy, −dz)`, `(+dx, −dy, +dz)`, `(−dx, −dy, +dz)`, `(−dx, −dy, −dz)`. It computes four and writes each one's negation as its antipode. |
+
+`vm.rs` writes the cube as PLAYONE's turned half a turn about z (every corner with x and y negated), and its `TAP` writes `(−x, −y, z)`. So the reconstruction's model frame is the raw frame turned 180 degrees about z, which puts the shapes' raw −y, up in their authoring, at `[I1]` +y. `OP_VECTORS` was the exception: it stored `(x, y, z)` unturned. A shape that adds `OP_VECTORS` deltas to cube corners then decodes with those parts turned over, and one built from `OP_VECTORS` alone decodes wholly upside down. That is the "construction delta" correlate in [`framing-and-actors.md`](../parity/framing-and-actors.md) section 1.
+
+**Adopted: `OP_VECTORS` turned the same way** (store `(−x, −y, z)`; measured first with the temporary switch `DBG_VECNEG`):
+
+* **Aircraft.** All 14 inverted stock `0x7Fxx` aircraft stand upright, as do the two unclear ones (`0x7F18`, `0x7F21`); the 9 that were upright, and the `OP_IPG`-led aircraft, are unchanged.
+* **Every other shape.** Of the 397 stock shapes holding the word `0x0075`, 229 export different geometry; the rest are unchanged, and 19 export nothing either way (terrain patches without anchors, empty shapes). In side views, none turns over and many are righted: the masts of the sailing ships `0x4114`..`0x4117`, `0x414D`, `0x414E` and `0x4153` (below the hull before), the conning tower of `0x3E19`, the antennas of `0x3D47`/`0x3D48`, the wheels of trucks and tanks, and the sign `0x063D`, which now reads "STUNT / ISLAND" top to bottom.
+* **Parity** (sweep, RTX 4070): `CTRY.FLM` 0.8725 → 0.8986, `INTRO.FLM` 0.8273 → 0.8337, IoU unchanged. At `CTRY` tick 499 the biplane matches the capture, wing stripes included, which the hand-picked mirror culled ([log row](../parity/log.md)).
+
+Section 8.5's light needs no change: `SHADES` dots the raw-frame light with the raw normal words, which this turn does not touch. `REJ` takes its points from registers, so it follows them.
+
+**Ruled out: a per-shape term in the draw path.** The actor entry (`0x1C00` → `0x1CFB`) builds its matrix from the slot's three angles at `+0x10/+0x12/+0x14` (`0x04E5`) and the view (`0x060A`) alone. `0x1D5F` hands the VM only slot `+0x16` (stored at `work:0x8124`) and the shape fetched by `0x4C41`, a cache lookup with no transform.
+
+**The `ROT*` angle bank.** `ROTZ` (`0xA807`), `ROTX` (`0xA8F3`) and `ROTY` (`0xA906`) take their angle from the word at `work:0x810E + operand` and skip a zero. The draw path fills that bank: operand `0x16` is slot `+0x16` (`0x1D5F`), and `0x10`..`0x1A` are the words `0x1D96` derives from film variables 10 and 12 ([`palette-fade.md`](palette-fade.md)). The stock aircraft use `0x14`, `(var 10 & 0xFF) << 8`, with `ROTZ` on propellers, and `0x18`/`0x1A`, `±var 12`, with `ROTX` and `ROTZ`. `PUSHRELMAT` (`0xA99A`) pushes the nine words at `0x808A` and the translation at `0x8072..0x8076`; `POPRELMAT` (`0xA9B8`) restores them. `vm.rs` holds every angle at zero ([#271](https://github.com/neilsh/stunt-reel/issues/271)).
+
+_Found 2026-11-06; see the [parity log](../parity/log.md)._
+
 ## 9. Per-Frame Routine and Scene Composition
 
 `[Supported Inference]`, static. The per-frame routine at `0x0EE9` (entered from `0x4A35` with `BX = 0x4888`, the snapshot copy of the film state made at `0x39B0`) builds the sun vector (`0x196C`), sets the view matrix (`0x11FC`), makes one 3D scene draw through `0x824:0x0A05`, then draws the credits string at `+0xFE` with `0x58BD`. There is no second view or window pass, so a scene the evaluator does not place has no extra layer to supply it.
@@ -283,6 +310,8 @@ _Found 2026-11-01 for [#75](https://github.com/neilsh/stunt-reel/issues/75); see
 _Found 2026-11-05 for [#99](https://github.com/neilsh/stunt-reel/issues/99); see the [parity log](../parity/log.md)._
 
 ## 10. Open questions
+
+* **The model frame of the other generators** (section 8.7, [#272](https://github.com/neilsh/stunt-reel/issues/272)). Turning `OP_VECTORS` half a turn about z is backed by the cube handler, but `OP_IPG` types 2 (ground quad) and 8 (vertical quad), `OP_SPHERE`, `OP_PERFDISK` and `OP_VEC` (`0x004B`) also write raw coordinates and are not checked against their handlers. A wrong corner order there shows up as a winding error, not an upside-down shape.
 
 * **Facing flags** (section 8.6, [#74](https://github.com/neilsh/stunt-reel/issues/74)). Ruled out: `OP_IFVIS` as a distance gate. Open: `vm.rs` implements only `REJ`, so a shape that uses `REJVEC`, `REJ2D` or `OP_BVIS` still stops there in a lenient decode; nested `IFVIS` sections keep only the inner gate; an `IFVIS` on a flag its shape never set is drawn, where PLAYONE reads a stale byte. `BZLT`, the real in-shape depth gate, is unimplemented. The `INTRO.FLM` tick 3295 "conifers drawn as round bushes" is not an `IFVIS` effect: the facing gate leaves those trees as they were.
 
