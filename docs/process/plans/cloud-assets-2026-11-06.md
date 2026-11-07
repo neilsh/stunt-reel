@@ -116,13 +116,15 @@ Findings that shaped the design:
      maximum life), a Worker behind Cloudflare Access (more infrastructure for the same
      exposure), and a mutable `latest` pointer in the bucket (a branch would get whatever is
      newest).
-7. **Fetch replaces only what it created.** ADR 0022 keeps `corpus/` read-only and captures
-   add-only. Fetching is provisioning, not a run. It extracts into `<into>.new/`, then swaps
-   that for `<into>/`, and only when `<into>/` is absent or carries the marker a previous fetch
-   left (`$STUNT_DATA_ROOT/.assets/<archive>.sha256`). The swap removes files a newer archive
-   dropped (a reference with fewer frames). It refuses a `corpus/` or `captures/` it did not
-   create, so the primary machine's data root is never touched. A new ADR records this
-   exception.
+7. **Fetch skips a destination that exists.** ADR 0022 keeps `corpus/` read-only and captures
+   add-only. Fetching is provisioning, not a run: it writes `<into>/` only when it is absent,
+   extracting into `<into>.new/` and renaming that into place, so an interrupted fetch leaves
+   nothing half-written. When `<into>/` exists, fetch skips that archive and says so; it never
+   updates or merges. So the primary machine's data root is never touched, and no marker files
+   are needed. A cloud session is normally fresh; to take a newer pin in a live session,
+   delete the folder and fetch again. A stale `captures/` is caught anyway: the parity
+   pipeline refuses a capture whose content does not hash to its `references.toml` row. A new
+   ADR records this exception.
 8. **`DEFAULT_FILM` becomes `corpus/stuntisl/VAULT/CTRY.FLM`** (same bytes as the demo's), so
    tasks run with no film argument work on a cloud data root.
 9. **The session builds `SUPERSET.ALL`** with `mise run superset-all` after fetching, until
@@ -171,10 +173,10 @@ Globs match case-insensitively (`[I8]`).
   `auto`, `x-amz-content-sha256: UNSIGNED-PAYLOAD`, signed with `hmac` and `hashlib`, endpoint
   `https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com`). It checks size and sha256, decompresses
   with `compression.zstd`, extracts with `tarfile`'s `data` filter (no absolute paths, no `..`,
-  no links out), and swaps the folder in (decision 7). Skips an archive whose marker already
-  names its sha256. Never prints the credentials. Standard library only, so it runs before
+  no links out), and renames the folder into place (decision 7). Skips, without downloading,
+  an archive whose destination exists. Never prints the credentials. Standard library only, so it runs before
   anything else is installed beyond Python.
-- `status`: for each archive, the pinned key, whether the marker matches, and whether the
+- `status`: for each archive, the pinned key, whether its destination exists, and whether the
   local packed file matches.
 
 The task needs no `ensure` dependency: it builds no binary.
@@ -196,8 +198,8 @@ The task needs no `ensure` dependency: it builds no binary.
 | Credentials missing | `fetch` exits 2 naming the missing variables and the setup doc |
 | HTTP 403 / 404 | Exit 1 naming the key and the status; 403 says to check the token's bucket scope |
 | Size or sha256 differs from the pin | Exit 1; nothing is extracted; the download is deleted |
-| Target folder exists without a fetch marker | Exit 1: refuses to replace a folder it did not create (decision 7) |
-| A member escapes its folder | Exit 1 from the `data` filter; `<into>.new/` is removed and `<into>/` is untouched |
+| Destination folder exists | Skipped with a note naming it, exit 0 (decision 7) |
+| A member escapes its folder | Exit 1 from the `data` filter; `<into>.new/` is removed and `<into>/` is not created |
 | `pack` finds no file for an include glob | Exit 1 naming the glob |
 | `upload` with an unpacked or stale archive | Exit 1 telling the owner to run `pack` |
 | `references.toml` and `assets.toml` disagree | The offline test fails, naming the row (decision 4) |
@@ -209,10 +211,9 @@ Offline, synthetic data only (`[I7]`):
 - SigV4: the signer reproduces the AWS documented GET-object example signature.
 - Packing: the same files packed twice, in different orders and with different mtimes, give
   an identical tar; include and exclude globs pick the expected members, case-insensitively.
-- Fetch, with a fake HTTP opener: a matching archive extracts and leaves its marker; a hash
-  mismatch extracts nothing; a second fetch is a no-op; a newer archive replaces the folder
-  and drops a file the old one had; a populated folder without a marker is refused; a `../`
-  member is refused and leaves the old folder intact.
+- Fetch, with a fake HTTP opener: a matching archive extracts into place; a hash mismatch
+  extracts nothing; an existing destination is skipped with no request made; a `../` member
+  is refused and leaves no destination folder.
 - `upload`: the wrangler argv for a pinned archive, with a fake runner.
 - The committed `assets.toml` names, for every `references.toml` row, the same capture hash.
 
