@@ -386,8 +386,10 @@ def _kill_tree(proc: subprocess.Popen[str]) -> None:
             [taskkill, "/T", "/F", "/PID", str(proc.pid)], capture_output=True, check=False
         )
     else:
-        # The child leads its own session (start_new_session), so its group is its pid.
-        os.killpg(proc.pid, signal.SIGKILL)
+        # The child leads its own session (start_new_session), so its group is its pid; a
+        # step that exited before the kill has nothing left to kill.
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
 
 
 # The steps running now, so an interrupted gate can kill them: on POSIX each leads its own
@@ -429,6 +431,11 @@ def run_bounded(
     )
     with _ACTIVE_LOCK:
         _ACTIVE.add(proc)
+        # cancel_steps sets _CANCEL before it reads _ACTIVE under this lock, so a step that
+        # registers after that read sees the flag here and is killed at once.
+        cancelled = _CANCEL.is_set()
+    if cancelled:
+        _kill_tree(proc)
     try:
         try:
             output, _ = proc.communicate(timeout=timeout)

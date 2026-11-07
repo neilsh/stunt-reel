@@ -208,3 +208,17 @@ def test_a_cancelled_lane_starts_no_further_step(
         gate._run_lane("mise", ["lint-rust", "doc"], log, threading.Lock(), results, 600.0)
     assert ran == []
     assert results == {}
+
+
+def test_a_step_started_after_a_cancel_is_killed_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A lane can pass its cancel check just before Ctrl-C lands; the step it then starts must
+    # not run on to the timeout.
+    cancel = threading.Event()
+    cancel.set()
+    monkeypatch.setattr(gate, "_CANCEL", cancel)
+    started = time.monotonic()
+    code, _ = gate.run_bounded([sys.executable, "-c", "import time; time.sleep(60)"], None, 600.0)
+    assert time.monotonic() - started < 30
+    assert code != 0
