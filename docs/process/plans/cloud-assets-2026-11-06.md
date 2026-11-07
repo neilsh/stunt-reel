@@ -20,6 +20,8 @@ Success:
 - A fresh cloud session's setup script fetches the archives and `mise run superset-all`
   succeeds; `stuntreel --headless corpus/stuntisl/VAULT/CTRY.FLM --all target/linked/superset/SUPERSET.ALL ...`
   renders, and `mise run parity` on CTRY and INTRO scores the same as on the primary machine.
+- A film whose archive is a committed manifest (`manifests/all/*.toml`) gets that archive
+  rebuilt in the cloud, so a future reference for another `VAULT` film needs no change here.
 - Every downloaded archive is checked against a hash committed in the repo before it is
   unpacked.
 - The cloud credential can read this one bucket and nothing else.
@@ -34,17 +36,30 @@ On 2026-11-06, zstd level 19 over one tar of each set (throwaway script, not com
 | `corpus/siarchive/Developer/FreeFlight/SIDATA` | 10 | 1.47 MB | 0.44 MB |
 | `corpus/stisldem/VAULT/{CTRY,INTRO}.ALL` | 2 | 0.29 MB | 0.08 MB |
 | `captures/` (CTRY, INTRO, BALLOON; no `*.lock`) | 938 | 33.3 MB | 0.64 MB |
+| Its sample files `RES/COMMNSND.{SMP,ZCR}`, `RES/SNDFX1.SMP`, `RES/SNDFX2.SMP` | 4 | 2.19 MB | 2.02 MB |
+| Its music files `RES/MUSIC{1,2}.{ESS,XMA,XMI,XMM,XMP}` | 10 | 1.79 MB | 1.59 MB |
 | For comparison: `corpus/stuntisl` with sound | 118 | 12.0 MB | 6.76 MB |
+
+The `corpus` archive of decision 2 (no music) is therefore about 5.8 MB, and both archives
+about 6.4 MB.
 
 Findings that shaped the design:
 
 - `stuntisl`'s `PFONT.BIN`, `VAULT/CTRY.FLM` and `VAULT/INTRO.FLM` are byte-identical to
   `stisldem`'s.
 - `CTRY.ALL` and `INTRO.ALL`, the archives `research/parity/references.toml` pins, exist only
-  in `corpus/stisldem/VAULT/`. They cannot be rebuilt from a sound-free `stuntisl`: `CTRY.ALL`
+  in `corpus/stisldem/VAULT/`. They cannot be rebuilt from a `stuntisl` without its music: `CTRY.ALL`
   holds one `0xC0` music chunk and three `0xC3` `COMMNSND` chunks, `INTRO.ALL` one `0xC1` and
   seventeen `0xC3`. `resolve_all` accepts only an archive hashing to the pin
   (`all_archive.py`), so they ship as files.
+- Every `MAKEONE` archive copies a few sound items: `manifests/all/vault-balloon.toml` lists
+  `RES/COMMNSND.SMP` and `RES/SNDFX2.SMP`. `resolve_all` tries a film's committed manifest
+  before its stored archive and raises, rather than falls back, when a matching manifest
+  cannot be built. So the sample files ship, and every manifest from our `make-all` profile
+  (which writes no music chunk, [`linking.md`](../../../research/makeone-exe/linking.md) § 5)
+  rebuilds in the cloud. The music files stay out.
+- A future reference for another `VAULT` film needs nothing new: its pinned archive is the
+  one `make-all` stores in `captures/<slug>/archives/`, which the `captures` archive carries.
 - `SUPERSET.ALL` and the 17 shape `.RES` files compress to the same size (1,279,254 against
   1,279,151 bytes), so the archive carries the `.RES` source and the session derives the
   superset.
@@ -57,9 +72,8 @@ Findings that shaped the design:
    copy of the primary machine's.
 2. **Two archives.**
    - `corpus`, extracted into `$STUNT_DATA_ROOT/corpus/`:
-     - `stuntisl/**`, except the sound files `RES/MUSIC1.*`, `RES/MUSIC2.*`,
-       `RES/COMMNSND.*` and `RES/SNDFX*.SMP` (the `mt32/` and `sb16/` `GAME.CFG` profiles
-       stay: 1 KB, and `MAKEONE` runs depend on them);
+     - `stuntisl/**`, except the music files `RES/MUSIC1.*` and `RES/MUSIC2.*` (the sample
+       files stay, see section 2; so do the 1 KB `mt32/` and `sb16/` `GAME.CFG` profiles);
      - `siarchive/Developer/FreeFlight/SIDATA/**`;
      - `stisldem/VAULT/CTRY.ALL` and `stisldem/VAULT/INTRO.ALL`.
    - `captures`, extracted into `$STUNT_DATA_ROOT/captures/`: every capture folder, without
@@ -84,7 +98,7 @@ Findings that shaped the design:
      key pair and the account id are environment variables of the Claude Code cloud
      environment (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`), never in the
      repo. Anything in the session, the agent included, can read them; the scope limits a leak
-     to reading about 4 MB of game data. Rotate on any sighting in a log or transcript.
+     to reading about 6.4 MB of game data. Rotate on any sighting in a log or transcript.
    - Uploads: from the primary machine through `wrangler` with the owner's Cloudflare login
      (`npx wrangler r2 object put ... --remote`); no long-lived write key exists.
    - Rejected: a public bucket or `r2.dev` URL (distributes game data), presigned URLs (7-day
@@ -115,8 +129,7 @@ version = "v1"
 into = "corpus"
 include = ["stuntisl/**", "siarchive/Developer/FreeFlight/SIDATA/**",
            "stisldem/VAULT/CTRY.ALL", "stisldem/VAULT/INTRO.ALL"]
-exclude = ["stuntisl/RES/MUSIC1.*", "stuntisl/RES/MUSIC2.*", "stuntisl/RES/COMMNSND.*",
-           "stuntisl/RES/SNDFX*.SMP"]
+exclude = ["stuntisl/RES/MUSIC1.*", "stuntisl/RES/MUSIC2.*"]
 key = "v1/corpus-<sha16>.tar.zst"
 sha256 = "<64 hex>"
 bytes = 0
@@ -201,7 +214,8 @@ and runs parity on CTRY and INTRO.
 
 ## 8. Out of scope
 
-- Sound files, and so `MAKEONE` archives with music, in the cloud.
+- Music files, and so rebuilding an archive with a music chunk (the demo's `CTRY.ALL` and
+  `INTRO.ALL`, which ship as files instead) in the cloud.
 - The 205 corpus archives with add-on shapes, and the rest of `siarchive/`.
 - `capture-ref` and `make-all` in the cloud (they need DOSBox-X).
 - Uploading from CI.
