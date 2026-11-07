@@ -138,7 +138,7 @@ def test_failure_tail_header_carries_fix_hint_only_for_fixable_failures(
     monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
     monkeypatch.setattr(gate_record, "working_tree", lambda: "tested-tree")
 
-    assert gate.main(["all", "--tail", "1"]) == 1
+    assert gate.main(["all", "--full", "--tail", "1"]) == 1
     output = capsys.readouterr().out
     for task in gate._plan("all"):
         if task not in failed:
