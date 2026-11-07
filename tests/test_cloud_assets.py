@@ -347,7 +347,7 @@ def test_fetch_refuses_a_member_outside_its_folder(tmp_path: Path) -> None:
 def test_fetch_refuses_an_archive_not_yet_packed(tmp_path: Path) -> None:
     run = FakeCurl()
     with pytest.raises(CloudAssetsError, match="pack"):
-        fetch(read_manifest(), ["corpus-stisldem"], tmp_path / "data", ENV, run=run)
+        fetch(_unpinned(), ["corpus-stisldem"], tmp_path / "data", ENV, run=run)
     assert run.calls == []
 
 
@@ -409,9 +409,19 @@ class FakeRunner:
         return subprocess.CompletedProcess(list(argv), self.returncode, "", self.stderr)
 
 
+def _unpinned() -> Manifest:
+    """The committed manifest with every pin cleared, as before the first pack."""
+    m = read_manifest()
+    archives = {
+        name: dataclasses.replace(a, key=None, sha256=None, bytes=None, references={})
+        for name, a in m.archives.items()
+    }
+    return dataclasses.replace(m, archives=archives)
+
+
 def _packed_on_disk(tmp_path: Path) -> tuple[Manifest, Path]:
     data_root, out = _data_root(tmp_path), tmp_path / "out"
-    m = read_manifest()
+    m = _unpinned()
     a = pack(m, "corpus-stuntisl", data_root, out)
     return with_archive(m, a), out
 
