@@ -93,7 +93,7 @@ Findings that shaped the design:
      v1/corpus-<sha16>.tar.zst
      v1/captures-<sha16>.tar.zst
    ```
-4. **The repo pins the archives.** `manifests/assets.toml` holds the version, each archive's
+4. **The repo pins the archives.** `manifests/cloud-assets.toml` holds the version, each archive's
    file list (include and exclude globs relative to its folder), and the current key, sha256
    and size. It holds paths and hashes, no game bytes. Changing an archive is one reviewed
    commit of that file. `pack` also records, under `[captures]`, the capture hash of every
@@ -138,7 +138,7 @@ Findings that shaped the design:
 
 ## 4. Components
 
-### 4.1 `manifests/assets.toml`
+### 4.1 `manifests/cloud-assets.toml`
 
 ```toml
 # Game data for cloud sessions, in the private R2 bucket (docs/process/plans/cloud-assets-2026-11-06.md).
@@ -167,11 +167,11 @@ references = { ctry = "<64 hex>", intro = "<64 hex>" }
 
 Globs match case-insensitively (`[I8]`).
 
-### 4.2 `python/stunt_reel/assets.py` and `mise run assets`
+### 4.2 `python/stunt_reel/cloud_assets.py` and `mise run cloud-assets`
 
 - `pack [ARCHIVE...]`: builds each archive from the local data root into `target/assets/`
   (decision 5, zstd level 19), and rewrites its `key`, `sha256`, `bytes` (and for `captures`,
-  `references`) in `assets.toml`. Prints the size and how it changed.
+  `references`) in `cloud-assets.toml`. Prints the size and how it changed.
 - `upload [ARCHIVE...]`: runs the pinned `wrangler r2 object put <bucket>/<key> --file <path>
   --remote` for each archive whose packed file matches its pin. A key names its content, so
   uploading one twice writes the same bytes.
@@ -200,7 +200,7 @@ The task needs no `ensure` dependency: it builds no binary.
      (the pinned 1.99.1 toolchain and Python 3.15.2; the DOSBox tool is left out);
   3. `uv sync --locked --all-groups`;
   4. install `mesa-vulkan-drivers` (lavapipe, as CI does);
-  5. `mise run assets -- fetch && mise run superset-all`.
+  5. `mise run cloud-assets -- fetch && mise run superset-all`.
 
   The script lives in [`docs/harness-setup.md`](../../harness-setup.md), from which the owner
   pastes it into the environment; no shell script is committed, as the repo has none.
@@ -216,7 +216,7 @@ The task needs no `ensure` dependency: it builds no binary.
 | A member escapes its folder | Exit 1 from the `data` filter; `<into>.new/` is removed and `<into>/` is not created |
 | `pack` finds no file for an include glob | Exit 1 naming the glob |
 | `upload` with an unpacked or stale archive | Exit 1 telling the owner to run `pack` |
-| `references.toml` and `assets.toml` disagree | The offline test fails, naming the row (decision 4) |
+| `references.toml` and `cloud-assets.toml` disagree | The offline test fails, naming the row (decision 4) |
 
 ## 6. Testing
 
@@ -228,7 +228,7 @@ Offline, synthetic data only (`[I7]`):
   extracts nothing; an existing destination is skipped with no request made; a `../` member
   is refused and leaves no destination folder.
 - `upload` and `fetch`: the `wrangler` argv for a pinned archive, with a fake runner.
-- The committed `assets.toml` names, for every `references.toml` row, the same capture hash.
+- The committed `cloud-assets.toml` names, for every `references.toml` row, the same capture hash.
 
 Manual, once: pack and upload `v1`, then a cloud session runs the setup script, renders CTRY
 and runs parity on CTRY and INTRO.
@@ -237,12 +237,12 @@ and runs parity on CTRY and INTRO.
 
 1. ADR: cloud sessions fetch pinned game archives from a private R2 bucket (decisions 3, 4, 6
    and 7).
-2. `assets.py`, `manifests/assets.toml` with empty pins, the `assets` task and tests.
+2. `cloud_assets.py`, `manifests/cloud-assets.toml` with empty pins, the `cloud-assets` task and tests.
 3. `DEFAULT_FILM` to `corpus/stuntisl/VAULT/CTRY.FLM`, with the docs that spell it.
 4. `docs/harness-setup.md`: the R2 tokens, the cloud environment's variables, network
    allowlist and setup script.
-5. Owner: create the read-only token, `wrangler login`, `mise run assets -- pack`, commit the
-   pins, `mise run assets -- upload`, configure the cloud environment.
+5. Owner: create the read-only token, `wrangler login`, `mise run cloud-assets -- pack`, commit the
+   pins, `mise run cloud-assets -- upload`, configure the cloud environment.
 6. Verify in a cloud session (section 6, manual), and record the lavapipe parity scores in
    [`research/parity/log.md`](../../../research/parity/log.md).
 
