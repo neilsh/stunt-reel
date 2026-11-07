@@ -103,7 +103,7 @@ A PR that changes rendered output — anything that moves a pixel `stuntreel` dr
 - [ ] 1. Pick the ticks where the change shows most (the frames the parity score moved, or the ones the PR is about); CTRY and INTRO at least, plus any batch film the PR targets
 - [ ] 2. Add --crop x0,y0,x1,y1 --scale 3 to every frame run below when the whole frame hides the change
 - [ ] 3. Render before and after, and copy the PNGs from build/scratch/frame/<film>/ (the next run replaces them):
-       behind a DBG_* switch, one picture holds both: mise run frame -- --film <film> --ticks <t,t> --var DBG_X=0,1, copied to build/scratch/pr/; render every film's pictures this way while the switch still exists, and remove it only after
+       behind a DBG_* switch, one picture holds both: mise run frame -- --film <film> --ticks <t,t> --var DBG_X=0,1, copied to build/scratch/pr/; render every film's pictures this way while the switch still exists, and remove it only after step 4
        otherwise two pictures: mise run frame on the base commit (git switch --detach <base>) copied to build/scratch/pr/before/, then on the PR head copied to build/scratch/pr/after/
 - [ ] 4. Score before and after on the same films: behind a DBG_* switch, mise run sweep -- --var DBG_X=0,1 prints both in one table; otherwise mise run parity on the base commit and on the PR head, keeping each [parity] line
 - [ ] 5. Write the body to build/scratch/pr/body.md: under ## Evidence, each film's two scores from step 4, then its pictures, referenced by path relative to that file:
