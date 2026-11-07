@@ -10,7 +10,7 @@ use crate::contracts::shape::{NodeId, NodeKind, SodModelIr, VisibilityCondition}
 use crate::sod::DECAL_FLAG_BIT;
 use crate::sod::vm::compute_polygon_normal;
 use crate::sod::{
-    CENSUS_SKIPS, DecodeMode, OP_ADDV, OP_CLRV, OP_COLOR, OP_DOT, OP_GETV, OP_ID, OP_INTV,
+    CENSUS_SKIPS, DecodeMode, OP_ADDV, OP_CLRV, OP_COLOR, OP_DOT, OP_GETV, OP_ID, OP_INTV, OP_IPG,
     OP_LINECOL, OP_MOVETO, OP_NEGV, OP_POLYZ, OP_PUTV, OP_RETURN, OP_SHLV, OP_SHRV, OP_SORT,
     OP_SPHERE, OP_SUBV, OP_TAP, OP_VECTORS, OP_ZLINETO, SodError, SodStop, SodStopReason,
     decode_sod,
@@ -150,10 +150,10 @@ fn test_challenge_synthetic_minimal_fixture_precision() {
         _ => panic!("Expected mesh"),
     }
 
-    // Decal vertex displacement check
-    assert_eq!(ir.vertices[3].position, [1.0, 1.0, 0.001]);
-    assert_eq!(ir.vertices[4].position, [3.0, 1.0, 0.001]);
-    assert_eq!(ir.vertices[5].position, [0.0, 5.0, 0.001]);
+    // Decal vertex displacement check; `OP_VECTORS` turns x and y into `[I1]`
+    assert_eq!(ir.vertices[3].position, [-1.0, -1.0, 0.001]);
+    assert_eq!(ir.vertices[4].position, [-3.0, -1.0, 0.001]);
+    assert_eq!(ir.vertices[5].position, [0.0, -5.0, 0.001]);
 
     // Palettes
     assert_eq!(ir.vertices[0].palette_index, 40);
@@ -170,7 +170,7 @@ fn test_sphere_emits_icosahedron_around_register_center() {
     bytes.extend_from_slice(&OP_VECTORS.to_le_bytes());
     bytes.extend_from_slice(&1u16.to_le_bytes()); // count 1
     bytes.extend_from_slice(&12u16.to_le_bytes()); // register 1
-    for coordinate in [100i16, 200, 300] {
+    for coordinate in [-100i16, -200, 300] {
         bytes.extend_from_slice(&coordinate.to_le_bytes());
     }
     bytes.extend_from_slice(&OP_COLOR.to_le_bytes());
@@ -192,15 +192,50 @@ fn test_sphere_emits_icosahedron_around_register_center() {
     }
 }
 
+/// `PLAYONE` stores `OP_VECTORS` (`0x9C51`) and the `OP_IPG` cube (`0xB275`) in one raw
+/// frame, so a stream vector equal to raw cube corner 6, `(-dx, -dy, +dz)`, must decode onto
+/// that corner; both are turned half a turn about z into `[I1]`.
+#[test]
+fn test_vectors_share_the_cube_model_frame() {
+    let mut bytes = make_sod_header(100, 0, 0, 0); // scale 1.0
+    bytes.extend_from_slice(&OP_IPG.to_le_bytes());
+    for word in [0u16, 100, 100, 100, 0] {
+        bytes.extend_from_slice(&word.to_le_bytes()); // cube, dx, dy, dz, register 0
+    }
+    bytes.extend_from_slice(&OP_VECTORS.to_le_bytes());
+    bytes.extend_from_slice(&1u16.to_le_bytes()); // count 1
+    bytes.extend_from_slice(&(8u16 * 12).to_le_bytes()); // register 8
+    for coordinate in [-100i16, -100, 100] {
+        bytes.extend_from_slice(&coordinate.to_le_bytes());
+    }
+    bytes.extend_from_slice(&OP_COLOR.to_le_bytes());
+    bytes.extend_from_slice(&45u16.to_le_bytes());
+    bytes.extend_from_slice(&OP_POLYZ.to_le_bytes());
+    bytes.extend_from_slice(&3u16.to_le_bytes());
+    for reg in [8u16, 6, 0] {
+        bytes.extend_from_slice(&(reg * 12).to_le_bytes());
+    }
+    bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+
+    let ir = decode(&bytes, "FRAME").expect("decode frame");
+    let mut positions: Vec<[f32; 3]> = ir.vertices.iter().map(|v| v.position).collect();
+    positions.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
+    // Register 8 welds onto corner 6, leaving two distinct vertices.
+    assert_eq!(
+        positions,
+        vec![[-100.0, -100.0, -100.0], [100.0, 100.0, 100.0]]
+    );
+}
+
 #[test]
 fn test_sod_vm_register_boundary_0_and_1023() {
     let mut bytes = make_sod_header(100, 0, 0, 0); // scale 1.0
-    // Load reg 0 via OP_VECTORS: [10, 20, 30]
+    // Load reg 0 via OP_VECTORS: stream [-10, -20, 30] turns to [10, 20, 30]
     bytes.extend_from_slice(&OP_VECTORS.to_le_bytes());
     bytes.extend_from_slice(&1u16.to_le_bytes()); // count 1
     bytes.extend_from_slice(&0u16.to_le_bytes()); // start offset 0
-    bytes.extend_from_slice(&10i16.to_le_bytes());
-    bytes.extend_from_slice(&20i16.to_le_bytes());
+    bytes.extend_from_slice(&(-10i16).to_le_bytes());
+    bytes.extend_from_slice(&(-20i16).to_le_bytes());
     bytes.extend_from_slice(&30i16.to_le_bytes());
 
     // Copy reg 0 -> cur_vert -> reg 1023 (offset 1023 * 12 = 12276)
@@ -260,15 +295,15 @@ fn test_sod_vm_out_of_bounds_and_unaligned_register_masking() {
 fn test_sod_vm_vector_arithmetic_operations() {
     let mut bytes = make_sod_header(50, 0, 0, 0); // scale 1.0
 
-    // Set reg 0 = [10.0, 20.0, 30.0], reg 1 = [4.0, 6.0, 8.0]
+    // Set reg 0 = [10.0, 20.0, 30.0], reg 1 = [4.0, 6.0, 8.0] (OP_VECTORS negates x and y)
     bytes.extend_from_slice(&OP_VECTORS.to_le_bytes());
     bytes.extend_from_slice(&2u16.to_le_bytes());
     bytes.extend_from_slice(&0u16.to_le_bytes());
-    bytes.extend_from_slice(&10i16.to_le_bytes());
-    bytes.extend_from_slice(&20i16.to_le_bytes());
+    bytes.extend_from_slice(&(-10i16).to_le_bytes());
+    bytes.extend_from_slice(&(-20i16).to_le_bytes());
     bytes.extend_from_slice(&30i16.to_le_bytes());
-    bytes.extend_from_slice(&4i16.to_le_bytes());
-    bytes.extend_from_slice(&6i16.to_le_bytes());
+    bytes.extend_from_slice(&(-4i16).to_le_bytes());
+    bytes.extend_from_slice(&(-6i16).to_le_bytes());
     bytes.extend_from_slice(&8i16.to_le_bytes());
 
     // cur_vert = reg 0
@@ -418,7 +453,7 @@ fn line_dot_bytes(ops: &[(u16, u16)]) -> Vec<u8> {
     bytes.extend_from_slice(&OP_VECTORS.to_le_bytes());
     bytes.extend_from_slice(&2u16.to_le_bytes());
     bytes.extend_from_slice(&0u16.to_le_bytes());
-    for coordinate in [0i16, 0, 0, 100, 0, 0] {
+    for coordinate in [0i16, 0, 0, -100, 0, 0] {
         bytes.extend_from_slice(&coordinate.to_le_bytes());
     }
     for (op, operand) in ops {

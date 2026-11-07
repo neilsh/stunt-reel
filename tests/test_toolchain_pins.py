@@ -188,3 +188,33 @@ def test_nothing_auto_merges() -> None:
     assert '"automerge":' not in json.dumps(_renovate_config()), (
         "the repository leaves merging to a human; no rule may enable automerge"
     )
+
+
+#: The tools the cloud setup script installs from `mise.lock` (docs/harness-setup.md). Rust is
+#: absent: rustup installs it from static.rust-lang.org, so its entry carries no URL.
+_CLOUD_DOWNLOADS = ("python", "uv", "prek", "github:kaitai-io/kaitai_struct_compiler")
+
+
+def _lock() -> dict[str, list[dict[str, Any]]]:
+    tools: dict[str, list[dict[str, Any]]] = _toml("mise.lock")["tools"]
+    return tools
+
+
+def test_the_lockfile_holds_every_pin() -> None:
+    """A pin moved without `mise lock` sends mise back to the GitHub API, which cloud sessions
+    cannot reach once the shared anonymous quota is spent."""
+    lock = _lock()
+    for name, tool in _mise_tools().items():
+        specifiers = [s for entry in lock.get(name, []) for s in entry["specifiers"]]
+        assert _pin(tool) in specifiers, (
+            f"mise.lock has no {name}@{_pin(tool)}; run "
+            "the `mise lock` that the mise.toml [settings] comment gives"
+        )
+
+
+@pytest.mark.parametrize("name", _CLOUD_DOWNLOADS)
+def test_the_lockfile_gives_the_cloud_a_download(name: str) -> None:
+    [entry] = _lock()[name]
+    linux = entry["platforms.linux-x64"]
+    assert linux["url"].startswith("https://github.com/")
+    assert linux["checksum"].startswith("sha256:")

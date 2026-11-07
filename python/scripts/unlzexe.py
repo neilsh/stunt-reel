@@ -12,6 +12,10 @@ Usage: ``python python/scripts/unlzexe.py corpus/stuntisl/PLAYONE.EXE build/re/p
 With ``--mz`` the output is instead a complete unpacked MZ executable (header plus image), for
 tools such as Ghidra that load MZ files:
 ``python python/scripts/unlzexe.py --mz corpus/stuntisl/PLAYONE.EXE build/re/playone_unpacked.exe``
+
+An executable whose entry point was moved off the loader, as by the resident stub appended to
+``corpus/stuntisl/STUNT.EXE``, unpacks to the program under it. The stub is dropped and its
+entry is recorded as ``stub`` in the metadata.
 """
 
 from __future__ import annotations
@@ -23,6 +27,24 @@ from pathlib import Path
 from typing import cast
 
 from stunt_reel.dataroot import read_data_file_or_report
+
+# The 0.91 loader's code at CS:000E (push es; push cs; pop ds; mov cx,[000C]; mov si,cx; ...).
+LOADER_CODE = bytes.fromhex("060e1f8b0e0c008bf14e89f78cdb031e0a008ec3fdf3a4")
+LOADER_ENTRY = 0x0E
+
+
+def _find_loader(d: bytes, hdr_par: int, cs: int) -> int:
+    """Return the loader's file offset: at the entry CS, else the one paragraph that holds it."""
+    at = (hdr_par + cs) * 16
+    if d[at + LOADER_ENTRY : at + LOADER_ENTRY + len(LOADER_CODE)] == LOADER_CODE:
+        return at
+    found = d.find(LOADER_CODE, hdr_par * 16)
+    while found != -1:
+        start = found - LOADER_ENTRY
+        if start >= hdr_par * 16 and (start - hdr_par * 16) % 16 == 0:
+            return start
+        found = d.find(LOADER_CODE, found + 1)
+    raise ValueError("no LZEXE 0.91 loader found")
 
 
 def _relocations(d: bytes, loader: int) -> list[int]:
@@ -98,10 +120,10 @@ def _decompress(d: bytes, start: int) -> bytearray:
 def unpack(d: bytes) -> tuple[bytearray, dict[str, object]]:
     """Return the unpacked image and its metadata."""
     h = struct.unpack_from("<14H", d, 0)
-    hdr_par, cs = h[4], h[11]
+    hdr_par, header_ip, cs = h[4], h[10], h[11]
     if d[0x1C:0x20] != b"LZ91":
         raise ValueError("not an LZEXE 0.91 executable")
-    loader = (hdr_par + cs) * 16
+    loader = _find_loader(d, hdr_par, cs)
     ip, entry_cs, sp, ss = struct.unpack_from("<4H", d, loader)
     image = _decompress(d, hdr_par * 16)
     meta: dict[str, object] = {
@@ -109,6 +131,8 @@ def unpack(d: bytes) -> tuple[bytearray, dict[str, object]]:
         "size": len(image),
         "relocs": _relocations(d, loader),
     }
+    if loader != (hdr_par + cs) * 16:
+        meta["stub"] = {"ip": header_ip, "cs": cs}
     return image, meta
 
 
@@ -164,6 +188,8 @@ def main(argv: list[str]) -> int:
     out.write_bytes(to_mz(image, meta) if mz else image)
     Path(f"{out}.json").write_text(json.dumps(meta), encoding="utf-8")
     print(len(image), meta["entry"])
+    if "stub" in meta:
+        print(f"entry {meta['stub']} is a stub ahead of the loader; it is not unpacked")
     return 0
 
 

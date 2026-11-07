@@ -131,7 +131,7 @@ KSY_SOURCES: dict[str, list[str]] = {
     "research/formats/auxiliary/anchorpt.md": ["anchorpt.dat.ksy"],
     "research/formats/auxiliary/map.md": ["map.bin.ksy"],
     "research/formats/auxiliary/scenery.md": ["scenery.scn.ksy"],
-    "research/formats/auxiliary/pfont.md": ["pfont.ksy"],
+    "research/formats/auxiliary/pfont.md": ["pfont.bin.ksy"],
 }
 
 # Single owner of the evidentiary tier vocabulary. Prose definitions live in

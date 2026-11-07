@@ -39,7 +39,8 @@ pub const OP_SHRV: u16 = 0x0048;
 pub const OP_VEC: u16 = 0x004B;
 /// Procedural primitive generator: cube, ground plane, or quad (`type, dims, reg`).
 pub const OP_IPG: u16 = 0x0063;
-/// Batch-upload vectors into consecutive registers (`count, reg, count*3 words`).
+/// Batch-upload vectors into consecutive registers (`count, reg, count*3 words`), each stored as
+/// `(-x, -y, z)`, the frame the `OP_IPG` cube and `OP_TAP` write.
 pub const OP_VECTORS: u16 = 0x0075;
 /// Perspective-divide a register range into screen space (`start_reg, count`).
 pub const OP_PERS: u16 = 0x0099;
@@ -775,8 +776,10 @@ pub(crate) fn run_vm(
                     let vx = f32::from(r.read_i16_le()?);
                     let vy = f32::from(r.read_i16_le()?);
                     let vz = f32::from(r.read_i16_le()?);
+                    // Turned half a turn about z, as the `OP_IPG` cube and `TAP` are: `PLAYONE`
+                    // stores both loaders in one raw frame (`0x9C51`, `0xB275`).
                     // Register numbers wrap modulo 1024, as `PLAYONE` masks them.
-                    regs.set(start_reg.wrapping_add(i as usize) & 1023, [vx, vy, vz]);
+                    regs.set(start_reg.wrapping_add(i as usize) & 1023, [-vx, -vy, vz]);
                 }
             }
             OP_COLOR => {
