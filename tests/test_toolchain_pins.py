@@ -190,9 +190,16 @@ def test_nothing_auto_merges() -> None:
     )
 
 
-#: The tools the cloud setup script installs from `mise.lock` (docs/harness-setup.md). Rust is
+#: The tools the cloud setup (`.claude/cloud-setup.sh`) installs from `mise.lock`. Rust is
 #: absent: rustup installs it from static.rust-lang.org, so its entry carries no URL.
 _CLOUD_DOWNLOADS = ("python", "uv", "prek", "github:kaitai-io/kaitai_struct_compiler")
+
+
+def test_the_cloud_setup_installs_the_checked_tools() -> None:
+    """The lockfile checks below cover exactly what the cloud setup installs."""
+    script = (REPO_ROOT / ".claude" / "cloud-setup.sh").read_text(encoding="utf-8")
+    [line] = re.findall(r'^"\$MISE_BIN" install (.+)$', script, re.MULTILINE)
+    assert sorted(line.split()) == sorted(["rust", *_CLOUD_DOWNLOADS])
 
 
 def _lock() -> dict[str, list[dict[str, Any]]]:
