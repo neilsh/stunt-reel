@@ -10,7 +10,7 @@ The `.SIO` format is an intermediate 3D mesh and point-cloud authoring format cr
 - **Byte Endianness:** Little-endian (standard x86 16-bit integer formatting).
 - **Engine Lifecycle Role:**
   1. *Intermediate Geometric Modeling:* Serves as a high-level 3D point cloud and wireframe authoring format supporting geometric primitives (centralized cubes, circles, spheres, Bezier curves, and random point-cloud splats).
-  2. *Upstream Feed to Official Compiler (`SD.EXE`):* Generates point-cloud structures that are ingested into the official Stunt Island object compiler (`SD.EXE`) to assemble final procedural display-list `.SOD` / `.BIN` models.
+  2. *Upstream of the compiled shape:* the source of a display-list `.SOD` / `.BIN` model. The compiler is unidentified: `SD.EXE`, the scenery designer, names no `.SIO` or `.SOD` file and only places compiled `shapes\*.bin` ([`sd-exe/image.md`](../../sd-exe/image.md)).
   3. *Parametric Vertex Construction:* Implements explicit coordinates alongside parametric midpoint generator opcodes, reducing file size and enforcing geometric symmetry.
 
 **Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization). **Contract and code:** [`contracts/shape.rs`](../../../crates/stunt-core/src/contracts/shape.rs). No synthetic `.SIO` fixture exists yet.

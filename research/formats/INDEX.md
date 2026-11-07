@@ -14,7 +14,7 @@ Router to the format specifications, shared concept notes and Kaitai schemas for
 | `.FLM` | `b"FILM"` at `0x0000` | 50 Hz choreography: actor and camera trajectories, cuts, credits, sound cues | `[Established]` | [`flm.md`](flm.md) | [`flm_slice.ksy`](flm_slice.ksy) (one slice, given slot masks) |
 | `.SET` | none (30-byte stunt name; `0x08` at `0x52`) | Set Designer stage: environment, props, actor starts, event triggers | `[Established]` | [`auxiliary/set.md`](auxiliary/set.md) | [`set.ksy`](auxiliary/set.ksy) |
 | `.SPR` | none (`width: u16`, `height: u16`) | Raw 8-bit billboard sprite, colour 0 transparent | `[Established]` | [`auxiliary/spr.md`](auxiliary/spr.md) | [`spr.ksy`](auxiliary/spr.ksy) |
-| `.SIO` | `53 64 73 01 00 00 00 00` | SLICE modeller project; compiled to `.SOD` by `SD.EXE` | `[Established]` | [`auxiliary/sio.md`](auxiliary/sio.md) | [`sio.ksy`](auxiliary/sio.ksy) |
+| `.SIO` | `53 64 73 01 00 00 00 00` | SLICE modeller project; the tool that compiles it to `.SOD` is unidentified | `[Established]` | [`auxiliary/sio.md`](auxiliary/sio.md) | [`sio.ksy`](auxiliary/sio.ksy) |
 | `ANCHORPT.DAT` | none (exactly 28,672 bytes) | Island anchor points: terrain corners and `OP_TAP` operands | `[Established]` | [`auxiliary/anchorpt.md`](auxiliary/anchorpt.md) | [`anchorpt.dat.ksy`](auxiliary/anchorpt.dat.ksy) |
 | `MAP.BIN` | none (list-head word, then 30-byte records) | `SD.EXE`'s terrain patch pool, compiled into the scenery tree | `[Established]` | [`auxiliary/map.md`](auxiliary/map.md) | [`map.bin.ksy`](auxiliary/map.bin.ksy) |
 | `REGIONS.BIN` | none (head word, then 12-byte records) | `SD.EXE`'s block tree, the slope nodes above the ground patches | `[Established]` | [`auxiliary/map.md` § 2.4](auxiliary/map.md#24-regionsbin-memory-layout) | none (layout in the spec) |
@@ -39,7 +39,7 @@ flowchart TD
     VFS --> SOD["SOD display-list VM (Seam 3)"]
     VFS --> PAL["Palettes 0x8042 / 0x801E (I3)"]
     VFS --> AUDIO["Sound clips 0xC000..0xCFFF"]
-    SIO["*.SIO"] -->|SD.EXE| SOD
+    SIO["*.SIO"] -->|"compiler unidentified"| SOD
     SPR["*.SPR"] -->|MAKERES| RES
     TL -->|poses| SOD
     TL -->|0x9C cues| AUDIO
