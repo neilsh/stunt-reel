@@ -7,6 +7,7 @@ the gate until the whole task was stopped by hand.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import signal
@@ -101,8 +102,11 @@ def _alive(pid: int) -> bool:
         except ProcessLookupError:
             return False
         # A killed child of a dead parent may linger as a zombie until init reaps it.
-        status = Path(f"/proc/{pid}/stat")
-        alive = not (status.is_file() and ") Z " in status.read_text(encoding="utf-8"))
+        try:
+            stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return False  # it exited after the signal check
+        alive = ") Z " not in stat
     return alive
 
 
@@ -115,7 +119,8 @@ def _kill(pid: int) -> None:
             check=False,
         )
     else:
-        os.kill(pid, signal.SIGKILL)
+        with contextlib.suppress(ProcessLookupError):  # it exited after the liveness check
+            os.kill(pid, signal.SIGKILL)
 
 
 def test_a_finished_command_keeps_its_exit_code_and_output() -> None:
