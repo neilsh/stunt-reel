@@ -204,6 +204,10 @@ an installed one costs nothing. The cache holds no archives, so each new session
 pins of the commit it starts from. The hook prints one line to the session, `ready` or
 `FAILED`, and logs the rest to `/tmp/cloud-session-start.log`.
 
+The hook does not run where Claude Code loads no repo settings: a cloud session with several
+repositories, or a cloud thread of a project. Nothing is fetched there and no line is printed;
+run `CLAUDE_CODE_REMOTE=true mise run cloud-session-start` from the checkout instead.
+
 `fetch` skips an archive whose folder already exists, so a resumed session downloads nothing
 and keeps the pins it fetched first. To take a newer pin there, delete that folder under
 `$STUNT_DATA_ROOT` and fetch again.

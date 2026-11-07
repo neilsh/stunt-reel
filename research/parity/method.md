@@ -348,3 +348,11 @@ How to read the rows of [`log.md`](log.md), which holds only dated figures.
 * **Reading the `5799a53` row.** The overall mean fell only because 18 end-hold captures entered the average; over the 122 animated ticks the score equals the earlier rows. Compare rows over the same frame set (`--compare` reports the delta over the frames present in both).
 * **Frames per `film_tick`.** All 18 end-hold captures share tick 1342; `--compare` keeps the first per tick, so a comparison covers 123 distinct ticks for this capture set (122 animated plus 1342).
 * **Which headline a row quotes.** Rows before 2026-10-22 are over all frames. Until the renderer modelled the fade (`5bf6afe`) rows headline `mean_ssim_compensated`; from the retire-compensation row the headline is `mean_ssim_scored` over frames above the fade floor (section 2.1), always quoted with its scored-frame count. Every row is `[Bounded Observation]` (section 3).
+
+## Ruled out
+
+* **Renderer commits after `48f5d49` as the cause of the lavapipe drop.** The RTX 4070 machine scores the logged figures at `aa76d1e`, the commit lavapipe scored 0.23 lower (section 3).
+
+## Open questions
+
+1. Why lavapipe writes other palette indices than a GPU inside the same silhouettes (section 3). Until that is answered, no score rendered on lavapipe, in a cloud session or in CI, is comparable with a GPU row.
