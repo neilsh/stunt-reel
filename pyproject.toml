@@ -129,7 +129,9 @@ ignore = [
 # unsafe because the import's side effects move to first use, which nothing here relies on.
 # A lazy import still resolves if something evaluates the annotation at runtime, where a
 # name under `if TYPE_CHECKING:` raises NameError; existing blocks convert when touched.
-extend-safe-fixes = ["TC001", "TC002", "TC003"]
+# TID255 undoes one: an import made lazy that a later edit uses at module level turns eager
+# again, which `fix` would otherwise leave for lint to fail on.
+extend-safe-fixes = ["TC001", "TC002", "TC003", "TID255"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [
