@@ -7,7 +7,7 @@
 | File | Size | Unpacks to |
 |---|---|---|
 | `corpus/siarchive/Films/OldPLAY/STUNT.EXE` | 137,240 | `stunt.img` 248,460 |
-| `corpus/stuntisl/STUNT.EXE` | 138,318 | not yet unpacked |
+| `corpus/stuntisl/STUNT.EXE` | 138,318 | `stunt.img`, the same image behind an entry stub (section 5) |
 | `corpus/siarchive/Films/OldPLAY/MAKEONE.EXE` | 103,247 | `makeone.img` 201,884 |
 | `corpus/siarchive/Films/OldPLAY/PLAYONE.EXE` | 102,703 | `playone.img` 200,524 |
 | `corpus/siarchive/Films/MultiFLM/*/PLAYONE.EXE` | 97,790 | not yet unpacked |
@@ -57,7 +57,7 @@ The templates are fed from the record, so the code that formats a rule is the co
 
 `corpus/stuntisl/` is a full retail install, and it settles two things.
 
-**It holds a second STUNT.EXE build**: 138,318 bytes against the corpus copy's 137,240, with `MAKEONE.EXE` and `PLAYONE.EXE` identical either side. As with `PLAYONE`, an address must name its build.
+**Its STUNT.EXE is the OldPLAY build with a resident stub appended** (`[Established]`, byte comparison, 2026-11-06). The 138,318-byte file is the 137,240-byte one with three header words changed (page count, IP and CS), zero padding to file offset `0x21A00`, and 590 bytes of code there that take the entry point. Both unpack to the same 248,460-byte image, so a `STUNT.EXE` address holds in either copy. The stub hooks INT 21h (vector `0:0084`), lowers the BIOS memory size at `0:0413`, copies itself to the top of memory, and jumps to the original entry `2152:000E`, which it keeps at stub offset `0x0C`. That is how a DOS file infector behaves. `unlzexe.py` finds the LZEXE loader by its code, so it unpacks this copy and reports the stub. `MAKEONE.EXE` and `PLAYONE.EXE` are identical either side.
 
 **It holds `TYPESET.EXE`, the tool that produced every printed set dump.** The install ships the wrapper: `SETINFO.BAT` is `TYPESET %1.SET > %1.TXT` and `PRINTSET.BAT` is `TYPESET %1.SET > PRN:`. Every `.TXT` in `Misc/Sets/` is therefore TYPESET's output, and its wording ("Event#1 One Shot", "If … And … Then …") is that program's, not the handbook's.
 
@@ -82,6 +82,7 @@ That makes a byte-to-field map mechanical in principle — flip one byte, dump a
 
 ## Ruled out
 
+- *A second `STUNT.EXE` build in `corpus/stuntisl/`*: the extra 1,078 bytes are a stub and padding, and the unpacked images are identical (section 5).
 - *PLAYONE or MAKEONE reading `.SET`*: neither image contains the string, and both reference only the `VAULT` trio.
 - *A fixed field map for the event record*: the same template set is rendered from records whose index marker sits at different offsets, so the record is a union keyed by rule shape.
 
