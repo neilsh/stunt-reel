@@ -2,8 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A Claude Code cloud session gets the game data it needs (a music-free corpus plus the
-reference captures) from the private R2 bucket `stunt-reel-internal-assets`, checked against
+**Goal:** A Claude Code cloud session gets the game data it needs (the full game without its music,
+the demo, FreeFlight's scenery files, and the reference captures) from the private R2 bucket `stunt-reel-internal-assets`, checked against
 hashes committed in the repo.
 
 **Architecture:** `python/stunt_reel/cloud_assets.py` reads `manifests/cloud-assets.toml`,
@@ -22,8 +22,12 @@ provisioning exception to ADR 0022.
 
 ## Global Constraints
 
-- Bucket `stunt-reel-internal-assets`; version prefix `v1`; key `v1/<archive>-<sha256[:16]>.tar.zst` (archives `corpus-stuntisl` and `captures`), the hash being of the `.tar.zst` bytes.
-- Archives: `corpus-stuntisl` into `$STUNT_DATA_ROOT/corpus/`, include `stuntisl/**`, `siarchive/Developer/FreeFlight/SIDATA/**`, `stisldem/VAULT/CTRY.*`, `stisldem/VAULT/INTRO.*` (each pinned `.ALL` beside its `.FLM`), exclude `stuntisl/RES/MUSIC1.*`, `stuntisl/RES/MUSIC2.*`; `captures` into `$STUNT_DATA_ROOT/captures/`, include `*/frames/**`, `*/archives/**`, exclude `**/*.lock`.
+- Bucket `stunt-reel-internal-assets`; version prefix `v1`; key `v1/<archive>-<sha256[:16]>.tar.zst` (archives `corpus-stuntisl`, `corpus-stisldem`, `corpus-freeflight` and `captures`), the hash being of the `.tar.zst` bytes.
+- Archives, each holding one folder (`into`) of the data root with members relative to it; no `into` contains another:
+  - `corpus-stuntisl`: `into` `corpus/stuntisl`, include `**`, exclude `RES/MUSIC1.*`, `RES/MUSIC2.*`;
+  - `corpus-stisldem`: `into` `corpus/stisldem`, include `**`;
+  - `corpus-freeflight`: `into` `corpus/siarchive/Developer/FreeFlight`, include `**`;
+  - `captures`: `into` `captures`, include `*/frames/**`, `*/archives/**`, exclude `**/*.lock`.
 - Globs match case-insensitively (`[I8]`) and `**` spans folders.
 - Tar: members are files only, sorted by POSIX relative path, `mtime=0`, `uid=gid=0`, `uname=gname=""`, `mode=0o644`. zstd level 19.
 - Fetch writes `<into>/` only when absent: extract into `<into>.new/`, then rename; an existing `<into>/` is skipped without a download (exit 0).
@@ -38,7 +42,7 @@ provisioning exception to ADR 0022.
 ## Review Focus
 
 1. **Mixed-case corpus names** (`stuntisl/res/music1.xmi` on a case-preserving disk): the music exclude still drops it. Test in Task 2.
-2. **An interrupted earlier fetch** left `corpus.new/` behind: the next fetch removes it and extracts cleanly, rather than failing or merging. Test in Task 4.
+2. **An interrupted earlier fetch** left `corpus/stuntisl.new/` behind: the next fetch removes it and extracts cleanly, rather than failing or merging. Test in Task 4.
 3. **A promoted reference not repacked:** packing `captures` refuses when a local capture's digest differs from its `references.toml` row, and the committed-manifest test fails when the recorded digests disagree with `references.toml`. Tests in Task 3.
 4. **curl failure output**: a 403 from a wrongly scoped token reports the key and curl's message, and the message never contains the secret even if curl echoes its config. Test in Task 4.
 5. **Packing on Windows** (the owner's machine): member names use `/`, not `\`, so the archive extracts on Linux. Test in Task 2.
@@ -78,17 +82,13 @@ provisioning exception to ADR 0022.
 
 ```python
 def test_select_files_applies_include_and_exclude_case_insensitively(tmp_path): ...
-    # tmp_path/stuntisl/RES/{GAME.RES, music1.xmi, MUSIC2.ESS}, stuntisl/VAULT/CTRY.FLM,
-    # siarchive/Developer/FreeFlight/SIDATA/MAP.BIN, stisldem/VAULT/{CTRY.ALL, ctry.flm,
-    # INTRO.ALL, INTRO.FLM, SCENE01.ALL}; the corpus-stuntisl Archive of manifests/cloud-assets.toml
-    assert select_files(tmp_path, corpus) == [
-        "siarchive/Developer/FreeFlight/SIDATA/MAP.BIN", "stisldem/VAULT/CTRY.ALL",
-        "stisldem/VAULT/INTRO.ALL", "stisldem/VAULT/INTRO.FLM", "stisldem/VAULT/ctry.flm",
-        "stuntisl/RES/GAME.RES", "stuntisl/VAULT/CTRY.FLM"]
+    # tmp_path = a stuntisl tree: RES/{GAME.RES, music1.xmi, MUSIC2.ESS}, res/Music1.Xmp,
+    # VAULT/CTRY.FLM; the corpus-stuntisl Archive of manifests/cloud-assets.toml
+    assert select_files(tmp_path, stuntisl) == ["RES/GAME.RES", "VAULT/CTRY.FLM"]
 
 def test_select_files_refuses_an_include_that_matches_nothing(tmp_path):
-    # the fixture above without the two INTRO files
-    with pytest.raises(CloudAssetsError, match=r"stisldem/VAULT/INTRO\.\*"): ...
+    # an Archive with include ["VAULT/*.FLM"] over a tree without VAULT/
+    with pytest.raises(CloudAssetsError, match=r"VAULT/\*\.FLM"): ...
 
 def test_tar_bytes_is_independent_of_mtime_and_creation_order(tmp_path): ...
     # same files written in two orders with different os.utime; tar_bytes equal
@@ -102,7 +102,13 @@ def test_manifest_round_trips_through_its_text(): ...
 def test_committed_manifest_names_the_spec_archives():
     m = read_manifest()
     assert (m.bucket, m.version, sorted(m.archives)) == (
-        "stunt-reel-internal-assets", "v1", ["captures", "corpus-stuntisl"])
+        "stunt-reel-internal-assets", "v1",
+        ["captures", "corpus-freeflight", "corpus-stisldem", "corpus-stuntisl"])
+    assert m.archives["corpus-freeflight"].into == "corpus/siarchive/Developer/FreeFlight"
+
+def test_no_archive_folder_contains_another(): ...
+    # for every pair of archives in read_manifest(), neither `into` is a prefix folder of the
+    # other, so skipping a present folder never skips a second archive (spec decision 1)
 ```
 
 - [ ] **Step 2: Run** `mise run test-py -- tests/test_cloud_assets.py`. Expected: FAIL, `ModuleNotFoundError: stunt_reel.cloud_assets`.
@@ -131,7 +137,7 @@ def test_pack_names_the_key_after_the_compressed_hash(tmp_path): ...
     data = (out / Path(a.key).name).read_bytes()
     assert a.sha256 == hashlib.sha256(data).hexdigest()
     assert a.key == f"v1/corpus-stuntisl-{a.sha256[:16]}.tar.zst" and a.bytes == len(data)
-    assert compression.zstd.decompress(data) == tar_bytes(data_root / "corpus", select_files(...))
+    assert compression.zstd.decompress(data) == tar_bytes(data_root / "corpus/stuntisl", select_files(...))
 
 def test_pack_captures_records_each_reference_digest(tmp_path): ...
     # synthetic repo with research/parity/references.toml row ctry -> film "vault-ctry",
@@ -172,7 +178,7 @@ def test_committed_manifest_agrees_with_references_toml():
 ```python
 def test_fetch_extracts_a_matching_archive_into_place(tmp_path): ...
     assert (data_root / "corpus/stuntisl/RES/GAME.RES").read_bytes() == b"..."
-    assert not (data_root / "corpus.new").exists()
+    assert not (data_root / "corpus/stuntisl.new").exists()
 
 def test_fetch_skips_an_existing_destination_without_a_request(tmp_path):
     assert run.calls == [] and lines == ["skipped corpus-stuntisl: ... exists"]
@@ -181,11 +187,12 @@ def test_fetch_removes_a_leftover_new_folder_first(tmp_path): ...
 
 def test_fetch_refuses_a_hash_mismatch_and_extracts_nothing(tmp_path):
     with pytest.raises(CloudAssetsError, match="sha256"): ...
-    assert not (data_root / "corpus").exists() and no download file remains
+    assert not (data_root / "corpus/stuntisl").exists() and no download file remains
 
 def test_fetch_refuses_a_member_outside_its_folder(tmp_path):  # "../evil" member
     with pytest.raises(CloudAssetsError): ...
-    assert not (data_root / "corpus").exists() and not (data_root / "corpus.new").exists()
+    assert not (data_root / "corpus/stuntisl").exists()
+    assert not (data_root / "corpus/stuntisl.new").exists()
 
 def test_fetch_refuses_an_archive_not_yet_packed(tmp_path):  # no key/sha256 in the manifest
     with pytest.raises(CloudAssetsError, match="pack"): ...
@@ -270,7 +277,7 @@ def test_main_exits_2_without_credentials(tmp_path, monkeypatch, capsys): ...
 Not for an agent: it needs the owner's Cloudflare login and claude.ai settings.
 
 - [ ] Create the R2 Object Read only token scoped to `stunt-reel-internal-assets`; `npx wrangler login`.
-- [ ] `mise run cloud-assets -- pack`; review the sizes (expect about 5.8 MB and 0.64 MB); commit `manifests/cloud-assets.toml`.
+- [ ] `mise run cloud-assets -- pack`; review the sizes (expect about 5.3, 0.32, 0.55 and 0.64 MB); commit `manifests/cloud-assets.toml`.
 - [ ] `mise run cloud-assets -- upload`; `mise run cloud-assets -- status`.
 - [ ] Configure the cloud environment (variables, allowlist, setup script) from `docs/harness-setup.md`.
 - [ ] In a fresh cloud session: the setup script succeeds; render CTRY with `SUPERSET.ALL`; run `mise run parity` on CTRY and INTRO (it must resolve the pinned `stisldem/VAULT/*.ALL`, not fail with `ArchiveError`); record the lavapipe scores, curl's version and the setup time as a row at the end of `research/parity/log.md` (spec open questions 1–3).

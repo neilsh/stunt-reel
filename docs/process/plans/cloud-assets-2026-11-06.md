@@ -13,13 +13,13 @@ its archive).
 ## 1. Goal
 
 A Claude Code cloud session can render films and run parity with no game files in git. It
-downloads two archives from the private Cloudflare R2 bucket `stunt-reel-internal-assets`
+downloads four archives from the private Cloudflare R2 bucket `stunt-reel-internal-assets`
 (location WNAM) into its data root, and every tool then finds its files where it finds them on
 the primary machine.
 
 Success:
 
-- A fresh cloud session's setup script fetches both archives and `mise run superset-all`
+- A fresh cloud session's setup script fetches all four archives and `mise run superset-all`
   succeeds; `stuntreel --headless corpus/stuntisl/VAULT/CTRY.FLM --all
   target/linked/superset/SUPERSET.ALL ...` renders.
 - `mise run parity` on CTRY and INTRO resolves the pinned archives and scores within the
@@ -41,12 +41,13 @@ On 2026-11-06, zstd level 19 over one tar of each set (throwaway script, not com
 | `corpus/stuntisl` without its 14 sound files | 102 | 7.96 MB | 3.27 MB |
 | `corpus/stuntisl` sample files: `RES/COMMNSND.{SMP,ZCR}`, `RES/SNDFX{1,2}.SMP` | 4 | 2.19 MB | 2.02 MB |
 | `corpus/stuntisl` music files: `RES/MUSIC{1,2}.{ESS,XMA,XMI,XMM,XMP}` | 10 | 1.79 MB | 1.59 MB |
-| `corpus/siarchive/Developer/FreeFlight/SIDATA` | 10 | 1.47 MB | 0.44 MB |
-| `corpus/stisldem/VAULT/{CTRY,INTRO}.ALL` | 2 | 0.29 MB | 0.08 MB |
+| `corpus/stisldem` (the whole demo) | 18 | 0.83 MB | 0.32 MB |
+| `corpus/siarchive/Developer/FreeFlight` (`SIDATA`, `src`, `Play.exe`) | 32 | 1.90 MB | 0.55 MB |
 | `captures/` (CTRY and INTRO frames, BALLOON's stored archive; no `*.lock`) | 938 | 33.3 MB | 0.64 MB |
 
-So the `corpus-stuntisl` archive of decision 2 (everything but music) is about 5.8 MB and both archives
-about 6.4 MB. These add up per-set measurements; `pack` reports the real figure.
+So the four archives of decision 2 are about 5.3 MB (`corpus-stuntisl`, everything but
+music), 0.32 MB, 0.55 MB and 0.64 MB: about 6.8 MB in all. These add up per-set measurements;
+`pack` reports the real figures.
 
 Findings that shaped the design:
 
@@ -71,20 +72,24 @@ Findings that shaped the design:
 
 ## 3. Decisions
 
-1. **Archives mirror the data root.** Each archive extracts into one folder of
-   `$STUNT_DATA_ROOT` with members at their real paths, so `corpus_root()`, `capture_root()`,
+1. **Archives mirror the data root.** Each archive holds one folder of `$STUNT_DATA_ROOT`
+   (its `into`), with members relative to it, so `corpus_root()`, `capture_root()`,
    `--game corpus/stuntisl` and `--sidata` resolve unchanged. A cloud data root is a sparse
-   copy of the primary machine's.
-2. **Two archives.**
-   - `corpus-stuntisl` (the stock game set; a community-films corpus would get its own name), extracted into `$STUNT_DATA_ROOT/corpus/`:
-     - `stuntisl/**`, except the music files `RES/MUSIC1.*` and `RES/MUSIC2.*`;
-     - `siarchive/Developer/FreeFlight/SIDATA/**`;
-     - `stisldem/VAULT/{CTRY,INTRO}.{ALL,FLM}`: the pinned archives, each beside its film,
-       because `resolve_all` accepts a pinned `.ALL` only beside a copy of the film
-       (`_corpus_copy` in `all_archive.py`).
-   - `captures`, extracted into `$STUNT_DATA_ROOT/captures/`: each capture's `frames/` and
-     `archives/` (ADR 0028), without `*.lock` files. Video captures stay out: nothing scores
-     them in the cloud, and they would dominate the size.
+   copy of the primary machine's. No two archives share a folder, so each can be fetched,
+   skipped or replaced on its own, and a later archive (the community films) takes its own
+   folder and name.
+2. **Four archives, one per game tree plus the captures.**
+
+   | Archive | `into` | Holds |
+   |---|---|---|
+   | `corpus-stuntisl` | `corpus/stuntisl` | everything except the music files `RES/MUSIC1.*` and `RES/MUSIC2.*` |
+   | `corpus-stisldem` | `corpus/stisldem` | everything: the demo, with the pinned `VAULT/CTRY.ALL` and `INTRO.ALL` beside their films, which `resolve_all` requires (`_corpus_copy` in `all_archive.py`) |
+   | `corpus-freeflight` | `corpus/siarchive/Developer/FreeFlight` | everything: `SIDATA` (scenery, map, anchors), `src`, `Play.exe` |
+   | `captures` | `captures` | each capture's `frames/` and `archives/` (ADR 0028), without `*.lock`. Video captures stay out: nothing scores them in the cloud, and they would dominate the size |
+
+   A future archive of the rest of `siarchive/` must take a folder that does not contain
+   `Developer/FreeFlight` (for example `corpus/siarchive/Films`), or it will be skipped as
+   present once `corpus-freeflight` is fetched.
 3. **Bucket keys: `v<N>/<archive>-<sha256[:16]>.tar.zst`.** `v<N>` changes only when what an
    archive is *meant* to hold changes (a new folder, the music back in). The suffix is the
    first 16 hex digits of the `.tar.zst`'s sha256, so it changes whenever the bytes do (a
@@ -93,6 +98,8 @@ Findings that shaped the design:
    ```
    stunt-reel-internal-assets/
      v1/corpus-stuntisl-<sha16>.tar.zst
+     v1/corpus-stisldem-<sha16>.tar.zst
+     v1/corpus-freeflight-<sha16>.tar.zst
      v1/captures-<sha16>.tar.zst
    ```
 4. **The repo pins the archives.** `manifests/cloud-assets.toml` holds the version, each archive's
@@ -114,7 +121,7 @@ Findings that shaped the design:
      key pair and the account id are environment variables of the Claude Code cloud
      environment (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`), never in the
      repo. Anything in the session, the agent included, can read them; the scope limits a leak
-     to reading about 6.4 MB of game data. Rotate on any sighting in a log or transcript.
+     to reading about 6.8 MB of game data. Rotate on any sighting in a log or transcript.
    - Uploads: from the primary machine through `wrangler` with the owner's `wrangler login`, at
      a pinned version (`npx wrangler@<version> r2 object put ... --remote`); no long-lived
      write key exists.
@@ -150,11 +157,26 @@ bucket = "stunt-reel-internal-assets"
 version = "v1"
 
 [corpus-stuntisl]
-into = "corpus"
-include = ["stuntisl/**", "siarchive/Developer/FreeFlight/SIDATA/**",
-           "stisldem/VAULT/CTRY.*", "stisldem/VAULT/INTRO.*"]
-exclude = ["stuntisl/RES/MUSIC1.*", "stuntisl/RES/MUSIC2.*"]
+into = "corpus/stuntisl"
+include = ["**"]
+exclude = ["RES/MUSIC1.*", "RES/MUSIC2.*"]
 key = "v1/corpus-stuntisl-<sha16>.tar.zst"
+sha256 = "<64 hex>"
+bytes = 0
+
+[corpus-stisldem]
+into = "corpus/stisldem"
+include = ["**"]
+exclude = []
+key = "v1/corpus-stisldem-<sha16>.tar.zst"
+sha256 = "<64 hex>"
+bytes = 0
+
+[corpus-freeflight]
+into = "corpus/siarchive/Developer/FreeFlight"
+include = ["**"]
+exclude = []
+key = "v1/corpus-freeflight-<sha16>.tar.zst"
 sha256 = "<64 hex>"
 bytes = 0
 
@@ -173,7 +195,7 @@ Globs match case-insensitively (`[I8]`).
 
 ### 4.2 `python/stunt_reel/cloud_assets.py` and `mise run cloud-assets`
 
-- `pack [ARCHIVE...]`: builds each archive from the local data root into `target/assets/`
+- `pack [ARCHIVE...]`: builds each archive from its `into` folder of the local data root into `target/cloud-assets/`
   (decision 5, zstd level 19), and rewrites its `key`, `sha256`, `bytes` (and for `captures`,
   `references`) in `cloud-assets.toml`. Prints the size and how it changed.
 - `upload [ARCHIVE...]`: runs the pinned `wrangler r2 object put <bucket>/<key> --file <path>
