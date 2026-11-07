@@ -7,11 +7,15 @@ the gate until the whole task was stopped by hand.
 
 from __future__ import annotations
 
+import os
+import re
+import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
 
-lazy import pytest
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = ROOT / "python" / "scripts"
@@ -20,6 +24,9 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import gate  # noqa: E402
 import gate_record  # noqa: E402
+
+# The process-tree kill differs by platform, so the Windows job runs this module too.
+pytestmark = pytest.mark.windows
 
 
 def test_the_uv_pin_is_read_from_mise_toml() -> None:
@@ -56,15 +63,58 @@ def test_a_hung_command_is_killed_with_its_children() -> None:
     # would leave the pipes open and the read would block, the way the hung test-rust did.
     script = (
         "import subprocess, sys, time;"
-        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']);"
-        "print('started', flush=True); time.sleep(60)"
+        "p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']);"
+        "print('started', p.pid, flush=True); time.sleep(60)"
     )
     started = time.monotonic()
     code, output = gate.run_bounded([sys.executable, "-c", script], env=None, timeout=2.0)
     assert time.monotonic() - started < 30
     assert code == gate.TIMEOUT_EXIT
-    assert "started" in output
     assert "timed out after 2s" in output
+    match = re.search(r"started (\d+)", output)
+    assert match is not None, output
+    grandchild = int(match.group(1))
+    try:
+        deadline = time.monotonic() + 10
+        while _alive(grandchild) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert not _alive(grandchild), "the grandchild outlived the kill"
+    finally:
+        if _alive(grandchild):
+            _kill(grandchild)
+
+
+def _alive(pid: int) -> bool:
+    """Whether process *pid* still runs."""
+    if sys.platform == "win32":
+        listing = subprocess.run(  # noqa: S603 - a pid this test read
+            ["tasklist", "/FI", f"PID eq {pid}", "/NH"],  # noqa: S607 - tasklist from PATH
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        alive = str(pid) in listing.stdout
+    else:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        # A killed child of a dead parent may linger as a zombie until init reaps it.
+        status = Path(f"/proc/{pid}/stat")
+        alive = not (status.is_file() and ") Z " in status.read_text(encoding="utf-8"))
+    return alive
+
+
+def _kill(pid: int) -> None:
+    """Kill process *pid*, a test's leftover."""
+    if sys.platform == "win32":
+        subprocess.run(  # noqa: S603 - a pid this test read
+            ["taskkill", "/F", "/PID", str(pid)],  # noqa: S607 - taskkill from PATH
+            capture_output=True,
+            check=False,
+        )
+    else:
+        os.kill(pid, signal.SIGKILL)
 
 
 def test_a_finished_command_keeps_its_exit_code_and_output() -> None:
