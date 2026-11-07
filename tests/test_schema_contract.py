@@ -90,6 +90,57 @@ def test_discovery_compiles_memory_schemas_without_sweeping_them(
         )
 
 
+@pytest.mark.parametrize(
+    ("name", "extension"),
+    [("font.ksy", "bin"), ("table.ksy", "dat")],
+)
+def test_discovery_refuses_suffix_selection_of_a_shared_suffix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, extension: str
+) -> None:
+    """A `.BIN` schema matched by suffix parsed every SOD model and sprite as a font."""
+    verifier = _verifier()
+    (tmp_path / name).write_text(
+        f"meta:\n  id: {name.split('.', maxsplit=1)[0]}\n  file-extension: {extension}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(verifier, "SCHEMA_ROOT", tmp_path)
+    with pytest.raises(SystemExit, match="hold several formats"):
+        verifier.discover_schemas()
+
+
+def test_discovery_refuses_two_schemas_selecting_one_suffix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Outside `.bin` and `.dat`, a suffix two schemas declare is shared too."""
+    verifier = _verifier()
+    for name in ("alpha", "beta"):
+        (tmp_path / f"{name}.ksy").write_text(
+            f"meta:\n  id: {name}\n  file-extension: xyz\n", encoding="utf-8"
+        )
+    monkeypatch.setattr(verifier, "SCHEMA_ROOT", tmp_path)
+    with pytest.raises(SystemExit, match="hold several formats"):
+        verifier.discover_schemas()
+
+
+def test_discovery_selects_a_shared_suffix_by_filename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Naming the schema for its file (`font.bin.ksy`) sweeps that one filename."""
+    verifier = _verifier()
+    schemas, corpus = tmp_path / "schemas", tmp_path / "corpus"
+    schemas.mkdir()
+    (corpus / "sub").mkdir(parents=True)
+    (schemas / "font.bin.ksy").write_text(
+        "meta:\n  id: font\n  file-extension: bin\n", encoding="utf-8"
+    )
+    (corpus / "sub" / "FONT.BIN").write_bytes(b"\0")
+    (corpus / "SPRITE.BIN").write_bytes(b"\0")
+    monkeypatch.setattr(verifier, "SCHEMA_ROOT", schemas)
+    (spec,) = verifier.discover_schemas()
+    assert spec.filename == "FONT.BIN"
+    assert verifier._corpus_files(spec, corpus) == [corpus / "sub" / "FONT.BIN"]
+
+
 @pytest.mark.skipif(
     ksc_command() is None and not REQUIRE_KSC,
     reason="Kaitai compiler not on PATH (export STUNT_REQUIRE_KSC=1 to require it)",

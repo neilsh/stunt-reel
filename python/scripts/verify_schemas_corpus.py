@@ -63,6 +63,10 @@ _EXT_PATTERN = re.compile(
     r"^[ \t]*file-extension:[ \t]*['\"]?([A-Za-z0-9_]+)['\"]?[ \t]*$", re.MULTILINE
 )
 
+# Suffixes the corpus gives several unrelated formats (fonts, SOD models, terrain, sprites).
+# A schema for one of them selects by filename (`map.bin.ksy`) or by a CORPUS_SELECTORS entry.
+SHARED_SUFFIXES = frozenset({"bin", "dat"})
+
 
 @dataclass
 class SchemaSpec:
@@ -120,7 +124,24 @@ def discover_schemas() -> list[SchemaSpec]:
                 filename,
             )
         )
+    _check_suffix_selection(specs)
     return specs
+
+
+def _check_suffix_selection(specs: list[SchemaSpec]) -> None:
+    """Refuse a schema that would sweep files of another format by suffix alone."""
+    declared = [spec.extension.lower() for spec in specs if spec.extension is not None]
+    for spec in specs:
+        if spec.extension is None or spec.filename is not None:
+            continue
+        if spec.schema_id in CORPUS_SELECTORS:
+            continue
+        suffix = spec.extension.lower()
+        if suffix in SHARED_SUFFIXES or declared.count(suffix) > 1:
+            raise SystemExit(
+                f"{spec.path}: .{suffix} files hold several formats; name the schema "
+                f"for its file (NAME.{suffix}.ksy) or add a CORPUS_SELECTORS entry"
+            )
 
 
 def _is_compiled_sod(path: Path) -> bool:

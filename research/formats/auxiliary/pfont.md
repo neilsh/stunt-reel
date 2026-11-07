@@ -15,7 +15,7 @@
 
 ## 2. Header & Memory Layout
 
-The byte layout is [`pfont.ksy`](pfont.ksy): a 128-byte width table, then 128 glyphs of 8 one-byte rows, both indexed by character code. `[Established]`: the file is 1,152 bytes in every copy, and drawing a string by this layout reproduces the captured `INTRO.FLM` title cards pixel for pixel (section 3.2).
+The byte layout is [`pfont.bin.ksy`](pfont.bin.ksy): a 128-byte width table, then 128 glyphs of 8 one-byte rows, both indexed by character code. `[Established]`: the file is 1,152 bytes in every copy, and drawing a string by this layout reproduces the captured `INTRO.FLM` title cards pixel for pixel (section 3.2).
 
 `PLAYONE` reads the width table at `DS:0x4F02` (`0x58D0` indexes `[bx + 0x4F02]` by character code), so the file is loaded whole into `DGROUP`; where the glyph rows land is `[Unknown]`.
 
