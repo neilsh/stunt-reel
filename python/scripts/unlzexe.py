@@ -7,11 +7,12 @@ Writes the unpacked load image (no MZ header) to ``out`` and ``out.json`` holdin
 registers, image size and relocation linear offsets. Reads a proprietary executable from the
 local, gitignored ``corpus/stuntisl/``; nothing it produces is committed (see ``AGENTS.md``).
 
-Usage: ``python python/scripts/unlzexe.py corpus/stuntisl/PLAYONE.EXE build/re/playone.img``
+Usage: ``mise run unlzexe -- [<exe> <out>] [--mz]``. With no paths it unpacks the data root's
+``corpus/stuntisl/PLAYONE.EXE`` to the data root's ``build/re/playone.img``.
 
 With ``--mz`` the output is instead a complete unpacked MZ executable (header plus image), for
 tools such as Ghidra that load MZ files:
-``python python/scripts/unlzexe.py --mz corpus/stuntisl/PLAYONE.EXE build/re/playone_unpacked.exe``
+``mise run unlzexe -- --mz`` writes ``build/re/playone_unpacked.exe`` in the data root.
 
 An executable whose entry point was moved off the loader, as by the resident stub appended to
 ``corpus/stuntisl/STUNT.EXE``, unpacks to the program under it. The stub is dropped and its
@@ -26,7 +27,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from stunt_reel.dataroot import read_data_file_or_report
+from stunt_reel.dataroot import corpus_root, data_root, read_data_file_or_report
 
 # The 0.91 loader's code at CS:000E (push es; push cs; pop ds; mov cx,[000C]; mov si,cx; ...).
 LOADER_CODE = bytes.fromhex("060e1f8b0e0c008bf14e89f78cdb031e0a008ec3fdf3a4")
@@ -173,9 +174,21 @@ def to_mz(image: bytes | bytearray, meta: dict[str, object]) -> bytes:
     return bytes(hdr) + bytes(image)
 
 
+def default_exe() -> Path:
+    """The data root's ``PLAYONE.EXE``, unpacked when no paths are given."""
+    return corpus_root() / "stuntisl" / "PLAYONE.EXE"
+
+
+def default_output(mz: bool) -> Path:
+    """The data root's ``build/re/playone.img``, or ``playone_unpacked.exe`` with ``--mz``."""
+    return data_root() / "build" / "re" / ("playone_unpacked.exe" if mz else "playone.img")
+
+
 def main(argv: list[str]) -> int:
     mz = "--mz" in argv
     argv = [a for a in argv if a != "--mz"]
+    if len(argv) == 1:
+        argv = [argv[0], str(default_exe()), str(default_output(mz))]
     if len(argv) != 3:
         print(__doc__)
         return 2
@@ -185,7 +198,9 @@ def main(argv: list[str]) -> int:
         return 2
     image, meta = unpack(data)
     out = Path(argv[2])
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(to_mz(image, meta) if mz else image)
+    print(f"wrote {out}")
     Path(f"{out}.json").write_text(json.dumps(meta), encoding="utf-8")
     print(len(image), meta["entry"])
     if "stub" in meta:
