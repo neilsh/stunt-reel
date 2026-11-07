@@ -33,10 +33,26 @@ unsafe_code = "deny"
 # reports the package dependencies it does not use. Use `cargo machete` or `cargo udeps` instead.
 unused_crate_dependencies = "allow"
 missing_docs = "warn"
+# Picks from the 2026-11-07 survey (#161), none with a hit when enabled.
+trivial_numeric_casts = "warn" # `trivial_casts` above covers only non-numeric casts
+unit_bindings = "warn"
+redundant_lifetimes = "warn"
+single_use_lifetimes = "warn"
+unused_macro_rules = "warn"
+meta_variable_misuse = "warn"
+unnameable_types = "warn"
+unused_import_braces = "warn"
+non_ascii_idents = "warn"
+
+[workspace.lints.rustdoc]
+unescaped_backticks = "warn"
+missing_crate_level_docs = "warn"
+private_doc_tests = "warn" # a doctest on a private item never runs
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
 # Restriction picks: panic-safety for code that reads untrusted game bytes. Tests are exempt
 # through clippy.toml.
 unwrap_used = "warn"
@@ -58,12 +74,41 @@ assertions_on_result_states = "warn" # `assert!(r.is_ok())` hides the error `unw
 float_cmp_const = "warn"
 unwrap_in_result = "warn"
 panic_in_result_fn = "warn"
-# Cheap nursery picks (#161).
+# Restriction picks from the 2026-11-07 survey (#161), none with a hit when enabled.
+host_endian_bytes = "warn" # game files are little-endian on every host
+unused_result_ok = "warn" # `.ok();` drops the error as quietly as `let _ =`
+try_err = "warn"
+get_unwrap = "warn"
+mem_forget = "warn"
+lossy_float_literal = "warn"
+precedence_bits = "warn"
+suspicious_xor_used_as_pow = "warn"
+mixed_read_write_in_expression = "warn"
+unnecessary_safety_comment = "warn" # the other half of `undocumented_unsafe_blocks`
+unnecessary_safety_doc = "warn"
+cfg_not_test = "warn"
+infinite_loop = "warn"
+exit = "warn" # `process::exit` skips destructors; return an `ExitCode` instead
+verbose_file_reads = "warn"
+rest_pat_in_fully_bound_structs = "warn"
+self_named_module_files = "warn" # modules with children use `mod.rs`
+# Cheap nursery picks (#161). The group stays off: its lints are unfinished, and a stable
+# group (`all`, `pedantic`) takes each one over once it is done.
 redundant_clone = "warn"
 or_fun_call = "warn"
 use_self = "warn"
 needless_collect = "warn"
 derive_partial_eq_without_eq = "warn"
+# Bug-shaped nursery picks from the 2026-11-07 survey, none with a hit when enabled.
+fallible_impl_from = "warn"
+trailing_empty_array = "warn" # a `#[repr(C)]` layout ending in `[T; 0]`
+transmute_undefined_repr = "warn"
+read_zero_byte_vec = "warn"
+path_buf_push_overwrite = "warn"
+collection_is_never_read = "warn"
+debug_assert_with_mut_call = "warn"
+unused_peekable = "warn"
+while_float = "warn"
 # Style picks outside the groups above.
 match_wildcard_for_single_variants = "warn"
 uninlined_format_args = "warn"
@@ -76,6 +121,7 @@ too_many_lines = "allow" # opcode dispatch and table-driven decoders are long ma
 assert_is_empty = "allow" # its `assert_eq!(x, [])` rewrite needs a type annotation for empty arrays
 pub_underscore_fields = "allow" # `_pad` fields keep `#[repr(C)]` GPU and Pod layouts explicit
 cast_precision_loss = "allow" # integer to f32 in pixel and coordinate maths is intended
+multiple_crate_versions = "allow" # its 3 duplicates come in through dependencies' dependencies
 
 # Considered in the 2026-11-03 survey (#161) and left off, so nobody re-litigates them:
 #   suboptimal_flops        its `mul_add` rewrite changes float rounding, so the render drifts
@@ -88,6 +134,19 @@ cast_precision_loss = "allow" # integer to f32 in pixel and coordinate maths is 
 #   implicit_return, question_mark_used, min_ident_chars, shadow_*, str_to_string,
 #   missing_const_for_fn, exhaustive_structs, exhaustive_enums, std_instead_of_core,
 #   tests_outside_test_module   style rules that fight idiomatic Rust or this layout
+# Checked 2026-11-07 (#161) and also left off; counts are hits at the time:
+#   unseparated_literal_suffix  599; the code writes `1.0f32`
+#   redundant_pub_crate     139; conflicts with `unreachable_pub` (nursery)
+#   redundant_test_prefix   133; renames every `test_*` function for no bug class
+#   field_scoped_visibility_modifiers  83
+#   integer_division        51; byte-format code divides integers on purpose
+#   tuple_array_conversions 14 (nursery)
+#   option_if_let_else      7; `map_or_else` reads worse than the `if let` (nursery)
+#   mod_module_files        5; the opposite of this layout (`self_named_module_files` is on)
+#   impl_trait_in_params    4
+#   needless_pass_by_ref_mut, significant_drop_in_scrutinee, suspicious_operation_groupings
+#                           nursery lints known for false positives
+#   big_endian_bytes        no hits, but a big-endian field would be read on purpose
 
 # Rejected (#162): `clippy::arithmetic_side_effects` stays off in stunt-cli, stunt-render,
 # stunt-parity and stunt-gltf. Their 250-odd hits are bounded maths (the ZMBV video decoder,

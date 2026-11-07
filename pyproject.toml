@@ -104,6 +104,8 @@ select = [
     "ASYNC",  # flake8-async
     "SLOT",   # flake8-slots: `__slots__` on str, tuple and namedtuple subclasses
     "TD",     # flake8-todos: a TODO names its author and links its issue
+    "PLR",    # pylint refactor: the logic rules only; size limits and magic values are ignored below
+    "NPY",    # NumPy-specific rules, NumPy 2 removals included
 ]
 # Deliberately NOT selected (checked 2026-10-29; counts are violations at the time):
 #   D       pydocstyle: ~370 hits (248 undocumented public functions, 98 imperative-mood);
@@ -111,8 +113,8 @@ select = [
 #   ANN     annotations: ANN401 flags 60 `Any`s at JSON/Kaitai boundaries; mypy strict
 #           already requires every annotation.
 #   EM/TRY003  exception-message style: ~240 hits, no bug class behind them.
-#   PLR     magic values and size limits (PLR2004 ~196, branches/arguments ~35): noisy
-#           for byte-format code where the numbers are the spec.
+#   PLR09*, PLR2004  magic values and size limits (PLR2004 ~196, branches/arguments ~35):
+#           noisy for byte-format code where the numbers are the spec. The rest of PLR is on.
 #   COM812  conflicts with `ruff format`.
 #   INP001  scripts are not packages.
 #   SLF001  tests and tools reach into private members on purpose.
@@ -120,9 +122,13 @@ select = [
 #   FBT     boolean positional arguments: 21 hits, mostly test helpers and CLI flags.
 #   C90     McCabe complexity: 26 hits in byte-format dispatch that reads best as one match.
 #   FIX     forbids TODO outright; TD keeps them but makes each one traceable.
+# Checked 2026-11-07 (#161): FBT is now 50 hits and C90 36, still off. Preview stays off: of
+# its rules, RUF027 hit only `{placeholder}` templates and RUF069 only deliberate `== 0.0` guards.
 ignore = [
     "E501",  # line length violations handled by ruff format
     "TRY003", # long exception messages: ~240 hits, see EM above
+    "PLR09",   # size limits (arguments, branches, locals, returns, statements): see above
+    "PLR2004", # magic values: in byte-format code the numbers are the spec
 ]
 # A typing-only import is written `lazy from x import y` (PEP 810), the fix ruff offers at
 # py315, so `mise run fix` applies it instead of the gate failing on it. Ruff marks the fix
@@ -178,7 +184,15 @@ enable_error_code = [
     "mutable-override",
     "exhaustive-match",
     "deprecated",
+    "redundant-self",
+    "unused-awaitable",
+    "unimported-reveal",
 ]
+# Clean when enabled (2026-11-07, #161). `strict_bytes` stops `bytearray` and `memoryview`
+# passing where a parser asks for `bytes`.
+strict_bytes = true
+local_partial_types = true
+disallow_any_unimported = true
 mypy_path = "python"
 files = ["python", "tests"]
 exclude = ["corpus"]
