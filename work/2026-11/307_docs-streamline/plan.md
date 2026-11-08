@@ -432,8 +432,18 @@ The distillations also fix these contradictions, found in review, within or betw
 
 Then split `research/playone-exe/memory-map.md` by segment with `move-docs` for any new files, keeping every `[MEM-*]` anchor registered in `doc_anchors.py`.
 
+**Agreed with the user (2026-11-08):**
+- Each of the four distillations is a session card the user starts.
+- The seven contradictions are one separate session and PR, with its journal entry in this folder. Only one of them touches a note being distilled, and each needs a ruling on the evidence.
+- The memory-map split card goes up once that PR merges, since both touch `memory-map.md`.
+- Task 15 and Task 17 step 1 are one build PR, made after the stack merges. lychee also joins `.claude/cloud-setup.sh`'s install line.
+
 ### Task 17: Schedule the gardening routine
 
 - [ ] **Step 1:** Add `lychee` to `mise.toml` `[tools]` (current release, `aqua:lycheeverse/lychee`), commit.
-- [ ] **Step 2:** With the user, create the weekly cloud routine through `/schedule`, its prompt "Follow `.agents/skills/distilling-notes/routine.md`".
-- [ ] **Step 3:** After its first run, check its draft PR against the skill, then close #307 with the outcome and set the README `outcome`.
+- [ ] **Step 2:** With the user, create the routine through `/schedule`, with the prompt "Follow `.agents/skills/distilling-notes/routine.md`". Settled 2026-11-08:
+  - it runs daily at 06:00 Pacific, as a cloud scheduled task on Opus, on the repo's cloud environment;
+  - it exits when an open PR's title starts with `docs(distill):`;
+  - it uses `gh api` REST only, since the cloud proxy refuses GraphQL `gh pr` commands;
+  - it pushes `claude/distill-<stem>`.
+- [ ] **Step 3:** The user presses "Run now" once. Check that run's draft PR and log against the skill before the daily trigger stands. Then close #307 with the outcome and set the README `outcome`.

@@ -5,7 +5,7 @@ description: "Use when asked to distill a research note or `docs/` page into cur
 
 # Distilling notes
 
-A distillation rewrites an evergreen note as what is true now and moves its dated narrative, verbatim, into a work folder, where `git log -S` still finds it. One file per PR; the weekly [gardening routine](routine.md) runs this skill.
+A distillation rewrites an evergreen note as what is true now and moves its dated narrative, verbatim, into a work folder, where `git log -S` still finds it. One file per PR; the daily [gardening routine](routine.md) runs this skill.
 
 ## Steps
 
@@ -14,6 +14,6 @@ A distillation rewrites an evergreen note as what is true now and moves its date
 3. **Move the narrative.** Cut each dated round, session log and superseded result from the note into the folder's `journal.md`, unchanged apart from relative link paths: one `## YYYY-MM-DD: <title>` entry per round, dated as its text is, ending with **Lives in** and the note. Link the work folder the text came from, if any; frozen folders are not appended to. Done when doc-health flags no heading in the note and every removed paragraph is in `journal.md`.
 4. **Rewrite as current truth.** State what the moved text established, by subject. Each finding ends with an inline `_Source:` link to its entry's heading, and each rejected hypothesis is one line under `## Ruled out` with its journal link. Keep each claim no broader than its evidence: `only`, `all`, `noise`, `within` and `equivalent` stay literally true, and each tier tag stays on the claim it qualifies. Done when the note reads as current truth, every finding has a provenance line, and its `summary:` still holds.
 5. **Move how-to out.** Commands, flags and troubleshooting for running our tools go to `docs/howto/<task>.md`, one task per file, linked from the note and any skill that repeated them. Done when the note holds only reference and explanation.
-6. **Review and land.** Run `mise run fix` and `mise run check`; fix each broken heading link it reports. A fresh reviewer subagent reads the diff and the notes it cites and reports every claim broader than its evidence (AGENTS.md, Committing rule 7); fix or restore each one. Write the folder README's `outcome` if there is one, commit on branch `docs/distill-<stem>`, and open the PR. Done when the reviewer reports nothing broader, the check passes, and the note is under 20 KB or the PR says why not.
+6. **Review and land.** Run `mise run fix` and `mise run check`; fix each broken heading link it reports. A fresh reviewer subagent reads the diff and the notes it cites and reports every claim broader than its evidence (AGENTS.md, Committing rule 7); fix or restore each one. Write the folder README's `outcome` if there is one, commit, and open a PR titled `docs(distill): <path>`. Done when the reviewer reports nothing broader, the check passes, and the note is under 20 KB or the PR says why not.
 
 An offset registry (`research/playone-exe/memory-map.md`) is split by segment, not distilled.
