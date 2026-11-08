@@ -57,9 +57,17 @@ _SLUG_NAME = re.compile(_SLUG)
 _ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _REQUIRED = ("title", "started", "outcome")
 _KEYS = frozenset((*_REQUIRED, "issue", "status"))
-_ISSUE_LIST = ("gh", "issue", "list", "--state", "all", "--limit", "2000", "--json")
-_ISSUE_FIELDS = "number,state,stateReason"
-_GIVEN_UP = frozenset(("NOT_PLANNED", "DUPLICATE"))
+# REST, not `gh issue list`: a cloud session's proxy refuses the GraphQL that `gh issue` uses.
+# gh fills {owner}/{repo} from the repository it targets; --jq prints one object a line.
+_ISSUE_LIST = (
+    "gh",
+    "api",
+    "--paginate",
+    "repos/{owner}/{repo}/issues?state=all&per_page=100",
+    "--jq",
+    ".[] | {number, state, state_reason, pull_request}",
+)
+_GIVEN_UP = frozenset(("not_planned", "duplicate"))
 
 
 class WorkFolderError(ValueError):
@@ -176,20 +184,22 @@ def scan(root: Path = WORK_ROOT) -> list[WorkFolder]:
 
 
 def issue_statuses(numbers: Iterable[int], run: Runner) -> dict[int, IssueStatus] | None:
-    """The status of each of *numbers*' issues, read with one `gh issue list` through *run*.
+    """The status of each of *numbers*' issues, read with one `gh api` call through *run*.
 
     An open issue is `active`; a closed one is `abandoned` when closed as not planned or as a
-    duplicate, else `landed`. A number gh does not list is left out. None when gh cannot run,
-    fails or answers with anything but a list of issues with the fields asked for; no call,
-    and `{}`, for no numbers.
+    duplicate, else `landed`. A number gh does not list, or that is a pull request, is left
+    out. None when gh cannot run, fails or answers with anything but lines of issues with the
+    fields asked for; no call, and `{}`, for no numbers.
     """
     wanted = set(numbers)
     if not wanted:
         return {}
     try:
-        issues = json.loads(run([*_ISSUE_LIST, _ISSUE_FIELDS]))
+        issues = [json.loads(line) for line in run(list(_ISSUE_LIST)).splitlines() if line]
         return {
-            issue["number"]: _issue_status(issue) for issue in issues if issue["number"] in wanted
+            issue["number"]: _issue_status(issue)
+            for issue in issues
+            if issue["number"] in wanted and issue["pull_request"] is None
         }
     # ValueError is malformed JSON; KeyError and TypeError are JSON of another shape.
     except OSError, subprocess.CalledProcessError, ValueError, KeyError, TypeError:
@@ -221,9 +231,9 @@ def _quoted(value: str) -> str:
 
 
 def _issue_status(issue: dict[str, Any]) -> IssueStatus:
-    if issue["state"] == "OPEN":
+    if issue["state"] == "open":
         return "active"
-    return "abandoned" if issue["stateReason"] in _GIVEN_UP else "landed"
+    return "abandoned" if issue["state_reason"] in _GIVEN_UP else "landed"
 
 
 def _parse(path: Path) -> WorkFolder:

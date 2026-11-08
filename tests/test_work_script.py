@@ -16,12 +16,15 @@ from stunt_reel.work_items import parse_folder, scan
 SCRIPTS = Path(__file__).resolve().parent.parent / "python" / "scripts"
 TODAY = date(2026, 11, 7)
 ISSUE_TITLE = "Streamline docs into evergreen notes and dated work folders"
-ISSUES = json.dumps(
-    [
-        {"number": 307, "state": "OPEN", "stateReason": ""},
-        {"number": 300, "state": "CLOSED", "stateReason": "COMPLETED"},
-        {"number": 301, "state": "CLOSED", "stateReason": "NOT_PLANNED"},
-    ]
+#: Issues as `gh api --jq` prints them, one JSON object a line.
+ISSUES = "".join(
+    json.dumps({"number": number, "state": state, "state_reason": reason, "pull_request": None})
+    + "\n"
+    for number, state, reason in (
+        (307, "open", None),
+        (300, "closed", "completed"),
+        (301, "closed", "not_planned"),
+    )
 )
 
 
@@ -234,7 +237,7 @@ def test_list_maps_issue_states(tmp_path: Path, capsys: pytest.CaptureFixture[st
     _issue_folder(tmp_path, "2026-11", 301, "dropped")
     _issue_folder(tmp_path, "2026-11", 302, "unlisted")
     _issue_less_folder(tmp_path, "2026-10", "parity-log")
-    run = FakeRunner({"gh issue list": ISSUES})
+    run = FakeRunner({"gh api --paginate": ISSUES})
     assert _main(tmp_path, "list", run=run) == 0
     out, err = capsys.readouterr()
     assert _columns(out) == [
@@ -289,7 +292,8 @@ def test_list_filters_by_status(
     _issue_less_folder(tmp_path, "2026-10", "parity-log")
     _issue_less_folder(tmp_path, "2026-11", "old-idea", abandoned=True)
     assert (
-        _main(tmp_path, "list", "--status", status, run=FakeRunner({"gh issue list": ISSUES})) == 0
+        _main(tmp_path, "list", "--status", status, run=FakeRunner({"gh api --paginate": ISSUES}))
+        == 0
     )
     assert [columns[1] for columns in _columns(capsys.readouterr().out)] == names
 

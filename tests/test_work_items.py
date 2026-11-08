@@ -8,6 +8,7 @@ import subprocess
 import sys
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -317,45 +318,68 @@ def test_folder_paths_lists_directories_in_month_directories_only(tmp_path: Path
 
 ISSUE_LIST = [
     "gh",
-    "issue",
-    "list",
-    "--state",
-    "all",
-    "--limit",
-    "2000",
-    "--json",
-    "number,state,stateReason",
+    "api",
+    "--paginate",
+    "repos/{owner}/{repo}/issues?state=all&per_page=100",
+    "--jq",
+    ".[] | {number, state, state_reason, pull_request}",
 ]
+PULL = {"url": "https://api.github.com/repos/neilsh/stunt-reel/pulls/303"}
 
 
-def test_issue_statuses_reads_every_issue_in_one_gh_call() -> None:
-    issues = [
-        {"number": 307, "state": "OPEN", "stateReason": ""},
-        {"number": 306, "state": "OPEN", "stateReason": "REOPENED"},
-        {"number": 300, "state": "CLOSED", "stateReason": "COMPLETED"},
-        {"number": 301, "state": "CLOSED", "stateReason": "NOT_PLANNED"},
-        {"number": 302, "state": "CLOSED", "stateReason": "DUPLICATE"},
-        {"number": 5, "state": "OPEN", "stateReason": ""},
-    ]
+def _rest(*issues: dict[str, Any]) -> str:
+    """*issues* as `gh api --jq` prints them: one compact JSON object per line."""
+    return "".join(json.dumps(issue, separators=(",", ":")) + "\n" for issue in issues)
+
+
+def _issue(number: int, state: str, reason: str | None = None, pull: Any = None) -> dict[str, Any]:
+    return {"number": number, "state": state, "state_reason": reason, "pull_request": pull}
+
+
+def test_issue_statuses_reads_every_issue_in_one_gh_api_call() -> None:
+    answer = _rest(
+        _issue(307, "open"),
+        _issue(306, "open", "reopened"),
+        _issue(300, "closed", "completed"),
+        _issue(301, "closed", "not_planned"),
+        _issue(302, "closed", "duplicate"),
+        _issue(304, "closed"),
+        _issue(5, "open"),
+    )
     calls: list[list[str]] = []
 
     def run(args: list[str]) -> str:
         calls.append(args)
-        return json.dumps(issues)
+        return answer
 
-    assert issue_statuses([307, 306, 300, 301, 302, 999], run) == {
+    assert issue_statuses([307, 306, 300, 301, 302, 304, 999], run) == {
         307: "active",
         306: "active",
         300: "landed",
         301: "abandoned",
         302: "abandoned",
+        304: "landed",
     }
     assert calls == [ISSUE_LIST]
 
 
+def test_issue_statuses_leaves_out_a_pull_request() -> None:
+    answer = _rest(_issue(303, "closed", pull=PULL), _issue(307, "open"))
+    assert issue_statuses([303, 307], lambda _args: answer) == {307: "active"}
+
+
+def test_issue_statuses_of_an_empty_repository_is_empty() -> None:
+    assert issue_statuses([307], lambda _args: "") == {}
+
+
 @pytest.mark.parametrize(
     "error",
-    [FileNotFoundError(2, "No such file", "gh"), subprocess.CalledProcessError(4, ISSUE_LIST)],
+    [
+        FileNotFoundError(2, "No such file", "gh"),
+        subprocess.CalledProcessError(4, ISSUE_LIST),
+        subprocess.CalledProcessError(1, ISSUE_LIST, "", "gh: Not Found (HTTP 404)\n"),
+    ],
+    ids=["missing", "signed-out", "no-such-repo"],
 )
 def test_issue_statuses_is_none_when_gh_cannot_answer(error: Exception) -> None:
     def run(_args: list[str]) -> str:
@@ -368,12 +392,13 @@ def test_issue_statuses_is_none_when_gh_cannot_answer(error: Exception) -> None:
     "answer",
     [
         "gh: not JSON",
-        '{"number": 307}',
-        '[{"number": 307, "state": "OPEN"}, {"number": 300, "state": "CLOSED"}]',
-        '[{"state": "OPEN", "stateReason": ""}]',
-        "[307]",
+        '[{"number": 307, "state": "open", "state_reason": null, "pull_request": null}]',
+        '{"number": 300, "state": "closed", "pull_request": null}\n',
+        '{"state": "open", "state_reason": null, "pull_request": null}\n',
+        '{"number": 307, "state": "open", "state_reason": null}\n',
+        "307\n",
     ],
-    ids=["not-json", "not-a-list", "no-state-reason", "no-number", "not-objects"],
+    ids=["not-json", "a-list", "no-state-reason", "no-number", "no-pull-request", "not-objects"],
 )
 def test_issue_statuses_is_none_when_gh_answers_unexpected_json(answer: str) -> None:
     assert issue_statuses([307, 300], lambda _args: answer) is None
