@@ -284,13 +284,15 @@ hide = true
 # set only once Claude Code starts. --replace-unmarked: a cloud data root's archive folders hold
 # what fetch wrote, from before its pin files too, and what a session added, which replacing
 # deletes (ADR 0042). It always exits 0 and prints one line: a hook's stdout
-# reaches Claude only on success, and Claude must know when the archives are missing.
+# reaches Claude only on success, and Claude must know when the archives are missing. Each run
+# appends under a dated header, so a rerun keeps the startup run's lines.
 env = { MISE_LOCKED = "1" }
 run = '''
 [ "${CLAUDE_CODE_REMOTE:-}" = true ] || exit 0
 log=/tmp/cloud-session-start.log
+echo "== $(date -u +%FT%TZ) $(git rev-parse --short HEAD 2>/dev/null) ==" >>"$log"
 if { bash .claude/cloud-setup.sh --cloud &&
-     mise run cloud-assets -- fetch --replace-unmarked && mise run superset-all; } >"$log" 2>&1; then
+     mise run cloud-assets -- fetch --replace-unmarked && mise run superset-all; } >>"$log" 2>&1; then
   echo "cloud-session-start: tools, game archives and SUPERSET.ALL ready (log: $log)"
 else
   echo "cloud-session-start FAILED: tools, game archives or SUPERSET.ALL may be missing; see $log and mise run cloud-assets -- status"
