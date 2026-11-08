@@ -1,0 +1,97 @@
+# Rebuilds BOMB.ALL from the game's RES tree with `stuntreel link build` (ADR 0032).
+film = "BOMB.FLM"
+flm_sha256 = "c989bd084741532204ad8989f3b7ef8195f8853dc1ecfc389b23bb59aad67ad7"
+game_root = "corpus/stuntisl"
+makeone_sha256 = "2963e0889851287f4d4bfe3fbfb96542e61058ff4511b9783f4d289913e0fc9f"
+all_bytes = 192318
+all_sha256 = "282553d404f2bbf8cb125933b99e900d8cdcfe8c77d5ef90201e1188205c6683"
+
+[[source]]
+file = "RES/GAME.RES"
+index = 1
+sha256 = "6bb16fdce8ff82fc5563fcdfb3bfb21eac1c111c73a58b5445ac373b1fc6c361"
+items = [5, 6, 14, 15]
+
+[[source]]
+file = "RES/SCENERY1.RES"
+index = 2
+sha256 = "f5b588f40411619060e0966d817df2af992d2b14cf04e8fb4c249a51a6cef859"
+items = [17, 21, 30, 31, 33, 34, 36, 37, 151, 152, 153, 154, 155, 156, 157, 158, 159, 171, 172, 173, 174, 175, 176, 177, 178, 179, 252, 253, 254]
+
+[[source]]
+file = "RES/SCENERY2.RES"
+index = 3
+sha256 = "d319d03e1fbc2d63ffcd375fcd5a73525761bedab481a0716f3f4d9c64e86036"
+items = [13, 15, 17, 19, 21, 208, 212, 228, 229, 230, 232, 248, 250, 251, 252, 254]
+
+[[source]]
+file = "RES/SCENERY3.RES"
+index = 4
+sha256 = "5e018beb5413fdb4b95bf5bdd1ee728dd95c37ff35e976c08af292c83387dbfb"
+items = [1, 2, 3, 4, 5, 6, 7, 8, 161, 164, 166, 168, 169, 170, 171, 172, 173]
+
+[[source]]
+file = "RES/SCENERY4.RES"
+index = 5
+sha256 = "8402fa11c47f672efa458d0022b87d3b35e1c542cb439f8955641a6f262a6dc4"
+items = [11, 12, 13, 14, 15, 16, 17, 18, 19, 107, 111, 112, 113, 121, 150, 151, 153, 154, 155, 156, 157, 158]
+
+[[source]]
+file = "RES/SCENERY5.RES"
+index = 6
+sha256 = "2133515b6b1ab3d2e100af57a98b1dd56155e62cab83a4e7daf68a773aef102f"
+items = [59, 101, 105, 106, 107, 110, 111, 112, 114, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 183, 184, 201, 211, 213, 214, 215, 217, 218, 219, 220, 221, 222, 223]
+
+[[source]]
+file = "RES/SCENERY6.RES"
+index = 7
+sha256 = "2a3164f4d72b7a41f5bf1d9cb0f478bc32b2f4424db6fddc6a66f99b5539fff0"
+items = [82, 83, 84, 85, 86, 87, 88, 89, 90]
+
+[[source]]
+file = "RES/FASTSPR.RES"
+index = 31
+sha256 = "b21e107d8360a6c64bb0c9fff2bbcd0ef2cd6e58b17a0bc092afafa556bb6267"
+items = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+[[source]]
+file = "RES/VEHICLES.RES"
+index = 65
+sha256 = "1d1a08fd4526b6b03b7c8cd871f173091104e7784fb1c4a4b343aac48a4ce4de"
+items = [42, 66, 95]
+
+[[source]]
+file = "RES/PLANES.RES"
+index = 127
+sha256 = "e51dd4440da3723129e76602a65e5eb6c8d612007e18a4a83c1b452e60e843d2"
+items = [14]
+
+[[source]]
+file = "RES/SPRITES.RES"
+index = 128
+sha256 = "95d3e3c4b32eb77b197640caad0b983864d27830aa38add1b10d9f3c21e9a96a"
+items = [30, 66]
+
+[[source]]
+file = "RES/MUSIC1.XMA"
+index = 192
+sha256 = "4def4b17c75c437df326ad834a5f7c68d6fb653b17f368bcca1b0cb43a1fddbd"
+items = [15]
+
+[[source]]
+file = "RES/MUSIC2.XMA"
+index = 193
+sha256 = "70e60163196cde3d866c7400b1bcc37c730e83a73bbb0a0a71029430794e6407"
+items = [5, 6, 13]
+
+[[source]]
+file = "RES/COMMNSND.SMP"
+index = 195
+sha256 = "a3192e465badc13fd8421fbbbd118036e4d64528d1d296566f91e6f71699a01f"
+items = [7, 25, 30]
+
+[[source]]
+file = "RES/SNDFX2.SMP"
+index = 197
+sha256 = "3c8e9d32cc6f0932ec1a31718b3e482a27a488948116df574ca4273b69b84429"
+items = [72, 79]
