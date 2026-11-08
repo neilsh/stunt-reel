@@ -464,6 +464,10 @@ run = "git diff --cached --check"
 description = "Staged text files whose working copy has CRLF line endings (python/scripts/check_crlf.py); a pre-commit hook"
 run = "uv run python python/scripts/check_crlf.py"
 
+[tasks.check-work-frozen]
+description = "Staged files added to a frozen work folder, or a staged change to its README outcome (python/scripts/check_work_frozen.py, work/README.md Lifecycle); a pre-commit hook. `-- --branch` checks the branch since the gate's base"
+run = "uv run python python/scripts/check_work_frozen.py"
+
 [tasks.commit-msg-check]
 description = "A commit message's Conventional Commit subject and gate line (python/scripts/check_commit_msg.py, AGENTS.md, Committing); the commit-msg hook"
 run = "uv run python python/scripts/check_commit_msg.py"

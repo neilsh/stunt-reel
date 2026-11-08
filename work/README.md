@@ -50,7 +50,7 @@ Dated and session-style headings belong in `work/` only.
 
 ## Lifecycle
 
-Anything goes while the issue is open. The PR that finishes the work lifts durable facts into research notes, ADRs or `docs/`, writes the README `outcome`, and closes the issue (by hand for a [stacked PR](../docs/agents/issue-tracker.md#conventions)). After that the folder changes only for link fixes.
+Anything goes while the issue is open. The PR that finishes the work lifts durable facts into research notes, ADRs or `docs/`, writes the README `outcome`, and closes the issue (by hand for a [stacked PR](../docs/agents/issue-tracker.md#conventions)). After that the folder changes only for link fixes. `mise run check-work-frozen` (a pre-commit hook) and the gate refuse a file added to a folder whose README has an `outcome`, and any change to that `outcome` line; an edit to an existing file passes, and review holds it to a link fix.
 
 A frozen entry later found wrong is not edited. The correction is a new entry in a new work item, and the evergreen note records it under `Ruled out`.
 

@@ -59,6 +59,14 @@ language = "system"
 always_run = true
 pass_filenames = false
 
+[[repos.hooks]]
+id = "check-work-frozen"
+name = "Staged files added to a frozen work folder, or its outcome changed (work/README.md)"
+entry = "mise run check-work-frozen"
+language = "system"
+always_run = true
+pass_filenames = false
+
 [[repos]]
 repo = "builtin"
 

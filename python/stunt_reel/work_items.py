@@ -6,11 +6,15 @@ folder's name), and no other key. An issue folder's status is its issue's, read 
 by `issue_statuses`. A folder with no issue is a landed record, migrated history or a
 distillation, unless its frontmatter carries `status: abandoned`, the one status a folder may
 carry, for dropped work.
+
+A folder whose README has a non-empty `outcome` is frozen (work/README.md, Lifecycle):
+`frozen_violations` names each file added to one and each change to its `outcome` line.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -25,6 +29,7 @@ from stunt_reel.frontmatter import FrontmatterError, read_frontmatter
 __all__ = [
     "MONTH_PATTERN",
     "WORK_ROOT",
+    "FrozenViolation",
     "IssueStatus",
     "Runner",
     "Status",
@@ -32,6 +37,7 @@ __all__ = [
     "WorkFolderError",
     "folder_name",
     "folder_paths",
+    "frozen_violations",
     "is_dated",
     "issue_statuses",
     "parse_folder",
@@ -68,6 +74,10 @@ _ISSUE_LIST = (
     ".[] | {number, state, state_reason, pull_request}",
 )
 _GIVEN_UP = frozenset(("not_planned", "duplicate"))
+# Left set by a hook or a shell, these could point git at another checkout than *repo*.
+_GIT_LOCATION = frozenset(("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"))
+_ADDED = "adds a file to a frozen work folder"
+_OUTCOME_CHANGED = "changes the outcome of a frozen work folder"
 
 
 class WorkFolderError(ValueError):
@@ -183,6 +193,50 @@ def scan(root: Path = WORK_ROOT) -> list[WorkFolder]:
     return sorted(folders, key=lambda f: (f.month, f.issue is None, f.issue or 0, f.slug))
 
 
+@dataclass(frozen=True)
+class FrozenViolation:
+    """One change a frozen work folder refuses: the repo-relative POSIX *path* and the *rule*."""
+
+    path: str
+    rule: str
+
+
+def frozen_violations(
+    revision: str, paths: Iterable[str], *, staged: bool = False, repo: Path = REPO_ROOT
+) -> list[FrozenViolation]:
+    """The changes in *paths* that break a work folder frozen at *revision*, sorted by path.
+
+    A folder is frozen when its README.md at *revision* has a non-empty `outcome`. A path in
+    one that *revision* lacks but the new side has is added; a README.md whose `outcome` line
+    differs on the new side, or is gone, changes the outcome. Edits to other existing files,
+    and deletions, pass. The new side is the index when *staged*, else *repo*'s working tree.
+    Raises OSError when git cannot run, subprocess.CalledProcessError when *revision* is not
+    a commit.
+    """
+    _git_text(repo, "rev-parse", "--verify", "--quiet", f"{revision}^{{commit}}", check=True)
+    by_folder: dict[str, list[str]] = {}
+    for path in paths:
+        parts = path.split("/")
+        if len(parts) >= 4 and is_dated(path):
+            by_folder.setdefault("/".join(parts[:3]), []).append(path)
+    violations: list[FrozenViolation] = []
+    for folder, changed in by_folder.items():
+        readme = f"{folder}/README.md"
+        old = _git_text(repo, "cat-file", "blob", f"{revision}:{readme}")
+        if old is None or not _frozen(old):
+            continue
+        for path in changed:
+            new = _new_text(repo, path, staged=staged)
+            if path == readme:
+                if new is None or _outcome_line(new) != _outcome_line(old):
+                    violations.append(FrozenViolation(path, _OUTCOME_CHANGED))
+                continue
+            existed = _git_text(repo, "cat-file", "-e", f"{revision}:{path}") is not None
+            if new is not None and not existed:
+                violations.append(FrozenViolation(path, _ADDED))
+    return sorted(violations, key=lambda v: v.path)
+
+
 def issue_statuses(numbers: Iterable[int], run: Runner) -> dict[int, IssueStatus] | None:
     """The status of each of *numbers*' issues, read with one `gh api` call through *run*.
 
@@ -222,6 +276,52 @@ def run_command(args: list[str]) -> str:
         check=True,
     )
     return done.stdout
+
+
+def _git_text(repo: Path, *args: str, check: bool = False) -> str | None:
+    """``git *args``' stdout in *repo* as UTF-8, or None when it exits non-zero and not *check*."""
+    env = {key: value for key, value in os.environ.items() if key not in _GIT_LOCATION}
+    done = subprocess.run(  # noqa: S603 - fixed git arguments
+        ["git", *args],  # noqa: S607 - git from PATH, as every task
+        cwd=repo,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        check=check,
+    )
+    if done.returncode != 0:
+        return None
+    return done.stdout.decode("utf-8", errors="replace")
+
+
+def _new_text(repo: Path, path: str, *, staged: bool) -> str | None:
+    """*path*'s text in the index when *staged*, else in *repo*'s working tree; None if absent."""
+    if staged:
+        return _git_text(repo, "cat-file", "blob", f":{path}")
+    file = repo / path
+    return file.read_bytes().decode("utf-8", errors="replace") if file.is_file() else None
+
+
+def _frozen(readme: str) -> bool:
+    """Whether README text *readme* has a frontmatter `outcome` that is not empty."""
+    try:
+        fields, _ = read_frontmatter(readme)
+    except FrontmatterError:
+        return False
+    return str(fields.get("outcome", "")).strip() != ""
+
+
+def _outcome_line(readme: str) -> str | None:
+    """The `outcome:` line of README text *readme*'s frontmatter, or None without one."""
+    lines = readme.splitlines()
+    if not lines or lines[0] != "---":
+        return None
+    for line in lines[1:]:
+        if line == "---":
+            return None
+        if line.startswith("outcome:"):
+            return line
+    return None
 
 
 def _quoted(value: str) -> str:
