@@ -328,7 +328,7 @@ def test_dry_run_changes_nothing(tmp_path): ...
 
 - [ ] **Step 1: Write `plan_moves.py`** to emit `moves.toml`:
   * Each `docs/process/plans/*.md`: topic = filename minus `-implementation` and the date suffix; date = filename date, else `git log --diff-filter=A --format=%cs -1`; a spec and plan with one topic and date share a folder as `spec.md` and `plan.md`; a file without an implementation partner becomes `spec.md` if it has no `## Task` headings, else `plan.md`; files that are neither (`TEAM_SHEET.md`, `retro-*.md`, notes) keep their basename.
-  * `architecture-deepening/` moves whole to `work/2026-10/architecture-deepening/`; `docs/process/research/windows-sandbox-integrity-label-2026-11-01.md` to `work/2026-11/windows-sandbox-integrity-label/`; `TEAM_SHEET.md` to `work/<first-commit month>/team-sheet/`.
+  * `architecture-deepening/` moves file by file to `work/2026-10/architecture-deepening/`: its `README.md`, which has no frontmatter, becomes `overview.md`, and a `[[folder]]` entry writes a README with frontmatter there (a work folder's README must carry frontmatter, a 100% rename cannot add it, and the file-level entries map the links to the old README explicitly); `docs/process/research/windows-sandbox-integrity-label-2026-11-01.md` to `work/2026-11/windows-sandbox-integrity-label/`; `TEAM_SHEET.md` to `work/<first-commit month>/team-sheet/`.
   * `research/images/2026-11-07-72028d1/` to `work/2026-11/lavapipe-nan-shade/images/`; `research/parity/aircraft/` to the aircraft-render folder's `images/`; `research/images/README.md` is deleted (its rules are in `work/README.md`).
   * `research/parity/log.md` to `work/2026-10/parity-log/log.md`, folder `status = "landed"`, started 2026-10-21, title "Parity results log, 2026-10-21 to 2026-11-07", outcome "Retired for journal entries and expected scores in references.toml (#307)".
   * State: `landed` when the Status line matches `implemented|landed|closed|done|complete`, `in-flight` for the five the spec names (the user may mark any `landed` or `abandoned`; `capture-store-deepening` is cited by two ADRs), else `unknown`; `outcome` is the Status line's first sentence, at most 200 characters.
@@ -340,12 +340,26 @@ def test_dry_run_changes_nothing(tmp_path): ...
 
 **Files:**
 - Moves: everything in `moves.toml`
-- Modify: `tests/test_doc_invariants.py` (`LINK_SOURCES_SKIPPED = ("work/",)`; delete `test_sources_of_truth_do_not_link_into_process_docs`, `PROCESS_DIR`, `PROCESS_FREE`, `PROCESS_POINTERS`; fill `WORK_POINTERS` with the six rewritten pointers; add `test_no_docs_process_directory`)
-- Modify: `NOTICE.md` (where comparison images go), `.gitattributes` (delete the `merge=union` line and its comment), plus every file `move_docs.py` rewrites
+- Modify: `tests/test_doc_invariants.py` (`LINK_SOURCES_SKIPPED = ("work/",)`; delete `test_sources_of_truth_do_not_link_into_process_docs`, `PROCESS_DIR`, `PROCESS_FREE`, `PROCESS_POINTERS`; fill `WORK_POINTERS` with the pairs below; drop `"process/TEAM_SHEET.md"` from `test_core_docs_exist`, a path relative to `docs/` that `move_docs.py` cannot see, naming what is now a dated record; add `test_no_docs_process_directory`)
+- Modify: `NOTICE.md` (where comparison images go), `.gitattributes` (delete the `merge=union` line and its comment), `.coderabbit.yaml`, `crates/stunt-core/src/flm/player.rs`, `AGENTS.md`, `research/README.md`, `docs/harness-setup.md`, plus every file `move_docs.py` rewrites
 
-- [ ] **Step 1: Run `mise run move-docs -- apply work/2026-11/307_docs-streamline/moves.toml --phase move --dry-run`** and read the rewrite list; then run it without `--dry-run`.
+`WORK_POINTERS` holds the (source, target) pairs that still fail the work/ link rule after the move, 28 pairs and 50 links when simulated at the end of PR 1; each target is written at the path `moves.toml` gives it. `research/MAP.md`'s link to the log is not one: `mise run fix` regenerates the map without it.
+
+* `research/parity/log.md` (now `work/2026-10/parity-log/log.md`), from `.agents/skills/improving-render-parity/SKILL.md`, `AGENTS.md`, `README.md`, `docs/development.md`, `research/README.md`, `research/formats/auxiliary/anchorpt.md`, `research/formats/concepts/coordinates-and-units.md`, `research/formats/sod-opcodes.md`, `research/parity/attribution.md`, `research/parity/film-segments.md`, `research/parity/framing-and-actors.md`, `research/parity/lavapipe.md`, `research/parity/method.md`, `research/parity/probes.md`, `research/parity/render-model.md`, `research/playone-exe/capture-dosbox-automation.md`, `research/playone-exe/dosbox-x-legacy.md`, `research/playone-exe/lod.md` and `research/playone-exe/sod-vm.md`.
+* `docs/process/TEAM_SHEET.md`, from `AGENTS.md`, `docs/SPEC.md` and `research/parity/method.md`.
+* `docs/process/plans/architecture-deepening/README.md` (now its `overview.md`), from `docs/ARCHITECTURE.md`.
+* `docs/process/plans/retro-hardening-2026-10-25.md` and `docs/process/research/windows-sandbox-integrity-label-2026-11-01.md`, from `docs/harness.md`.
+* `docs/process/plans/make-all-2026-10-29.md` from `research/makeone-exe/driving.md`; `docs/process/plans/batch-parity-2026-10-30.md` from `research/parity/batch.md`; `docs/process/plans/dosbox-automation-switch-2026-10-30.md` from `research/playone-exe/dosbox-x-legacy.md`.
+
+Hand edits, which `move_docs.py` does not make:
+* `AGENTS.md` links the `docs/process/` directory, which leaves no single folder behind: point that link at `work/README.md` (evergreen, so not a pointer).
+* `crates/stunt-core/src/flm/player.rs` is binary to git (a raw NUL in a byte literal), so the rewrite skips it: repoint its comment naming `research/parity/log.md`.
+* Links to `research/images/README.md`, which the move deletes, are rewritten to `work/README.md#images`, not pointered: `NOTICE.md:47`, `research/README.md:17` (the same row links the `images/` directory, which empties: the row now says comparison images live in the citing work folder's `images/`) and `docs/harness-setup.md:258`.
+* `.coderabbit.yaml`: the rewrite turns `!research/parity/log.md` into a path `!work/**` already covers; delete that line and the comment's parity-log clause, so its count reads three.
+
+- [ ] **Step 1: Run `mise run move-docs -- apply work/2026-11/307_docs-streamline/moves.toml --phase move --dry-run`** and read the rewrite list; then run it without `--dry-run`. Stage the rewritten files and the new READMEs by name.
 - [ ] **Step 2: Verify renames**: `git diff --cached -M100% --name-status | grep -c '^R100'` equals the number of moved files.
-- [ ] **Step 3: Edit `tests/test_doc_invariants.py`** as listed; edit the `NOTICE.md` sentences naming `research/images/` to name `work/<month>/<folder>/images/`.
+- [ ] **Step 3: Edit `tests/test_doc_invariants.py`** as listed and make the hand edits; edit the `NOTICE.md` sentences naming `research/images/` to name `work/<month>/<folder>/images/`. `test_evergreen_files_link_into_work_only_where_allowed` names any pair missing from `WORK_POINTERS` or listed but gone.
 - [ ] **Step 4: Run `mise run fix` and `mise run check`**; expected: PASS (`MAP.md` drops `parity/log.md`).
 - [ ] **Step 5: Fresh-reviewer read** of the diff for `NOTICE.md` and `research/` (rule 7).
 - [ ] **Step 6: Commit** `docs: move docs/process and image sets into work/ (#307)` with the old-to-new table in the PR body; `gh stack` adds the branch.
@@ -354,7 +368,7 @@ def test_dry_run_changes_nothing(tmp_path): ...
 
 ### Task 11: Relink and drop the skip
 
-- [ ] **Step 1: Run `mise run move-docs -- apply work/2026-11/307_docs-streamline/moves.toml --phase inside`.**
+- [ ] **Step 1: Run `mise run move-docs -- apply work/2026-11/307_docs-streamline/moves.toml --phase inside`** once only: a second run is refused.
 - [ ] **Step 2: Set `LINK_SOURCES_SKIPPED = ()`**, delete the constant if nothing else reads it.
 - [ ] **Step 3: Run `mise run check`**; expected: PASS.
 - [ ] **Step 4: Commit** `docs(work): rewrite links inside the moved records (#307)`.
@@ -367,10 +381,12 @@ def test_dry_run_changes_nothing(tmp_path): ...
 - Modify: `AGENTS.md`, `research/README.md`, `GLOSSARY.md`, `docs/SPEC.md` (its `research/parity/` row: "method, residuals"; no results log), `docs/development.md` § Docstrings and doc comments (code cites a document by anchor token or path, never a heading), `docs/harness.md` (delete the paragraph on appending to the log), `research/parity/method.md` step 7 and section 5 (a journal entry instead of a row; section 5 points at the moved log as history), `python/scripts/parity_probe.py` docstring and `mise.toml` `parity-probe` description ("the rows the parity log needs" becomes "the scores a journal entry quotes")
 - Create: `docs/adr/0041-dated-records-live-in-work-folders.md` (next free number at the time)
 
-- [ ] **Step 1: Edit AGENTS.md** per spec section 5.5, keeping the file at or under 8192 bytes: directive 4 states the one rule; the section 2 table gains three rows and the `docs/process/` paragraph becomes the `work/` sentence; working rules 4 and 6 change; one new line on `mise run work -- new`, superpowers output and searching `work/`. Shorten wording elsewhere in the same file to pay for it.
+A line rewritten here or in Task 13 that `WORK_POINTERS` lists loses its entry in the same commit; the set only shrinks.
+
+- [ ] **Step 1: Edit AGENTS.md** per spec section 5.5, keeping the file at or under 8192 bytes: directive 4 states the one rule; the section 2 table gains three rows (the work items row links `work/README.md`) and the `docs/process/` paragraph becomes the `work/` sentence; working rules 4 and 6 change; one new line on `mise run work -- new`, superpowers output and searching `work/`. Shorten wording elsewhere in the same file to pay for it.
 - [ ] **Step 2: Edit `research/README.md`** per spec section 4.5 and section 4.1 (rules 3 to 5, the how-to test, the Size section's pointer to `mise run doc-health`, the `summary:` requirement in Note shape).
 - [ ] **Step 3: Add glossary entries** for work item, work folder, journal entry, evergreen note, each two sentences at most, in `GLOSSARY.md`'s existing format.
-- [ ] **Step 4: Write the ADR** in the repo's ADR format (status accepted 2026-11-07, citing `spec.md`): context (section 1), decision (sections 3 and 4.4), consequences (frozen folders, issue status, `.ignore`).
+- [ ] **Step 4: Write the ADR** in the repo's ADR format (status accepted 2026-11-07, citing `spec.md`): context (section 1), decision (sections 3 and 4.4, and the work/ link rule as built, which sections 4.2 and 4.3 state more narrowly and keep as written), consequences (frozen folders, issue status, `.ignore`). The rule as built: from an evergreen file, a link into a dated record is allowed in a provenance span (`_` or `*`, then `Source:` or `Found `, at the line's start or after whitespace, running to the end of the line), in the section under a Ruled out heading (an optional section number, any case), from an ADR, or into any dated folder's `images/`; every other one fails unless `WORK_POINTERS` lists it, and that list only shrinks; `work/README.md` is evergreen, so links to and from it are ordinary.
 - [ ] **Step 5: Make the parity wording edits** listed under Files.
 - [ ] **Step 6: Run `mise run check`**; expected: PASS, including `test_agents_md_fits_its_budget`.
 - [ ] **Step 7: Commit** `docs: route dated records to work folders in AGENTS.md and research/README.md (#307)`.
@@ -381,19 +397,18 @@ def test_dry_run_changes_nothing(tmp_path): ...
 - Modify: `.agents/skills/recording-findings/SKILL.md`, `.agents/skills/improving-render-parity/SKILL.md`
 - Create: `.agents/skills/distilling-notes/SKILL.md`, `.agents/skills/distilling-notes/routine.md`
 
-- [ ] **Step 1: `recording-findings`.** Step 1 says a journal entry in the work folder instead of a log row; step 5 adds "add or update `summary:`"; quick reference gains `research/MAP.md` and `mise run work`. Stay under 500 words by tightening existing lines.
+- [ ] **Step 1: `recording-findings`.** Step 1 says a journal entry in the work folder instead of a log row; step 5 adds "add or update `summary:`"; quick reference gains `research/MAP.md` and `mise run work`. Step 5 and the closing done-when line (lines 16 and 19) name `## Ruled out` and `## Open questions` headings, not bold lines, since the link check finds a Ruled out section by its heading. The skill shows the provenance link written inline, `_Source: [entry](<path>/journal.md#<heading>)._`: a reference-style link on a `_Source:` line is judged by its definition's line, so it is rejected. Stay under 500 words by tightening existing lines.
 - [ ] **Step 2: `improving-render-parity`.** "What was already tried" reads the residual's **Ruled out** then `rg <term> work/`; checklist item 2 likewise; "Finishing an item" says a journal entry, and that adopting a change updates the expected scores in `references.toml`.
 - [ ] **Step 3: `distilling-notes/SKILL.md`** (frontmatter `name`, `description` triggering on "distill", "note over budget", doc-health findings): the procedure of spec section 5.4 as numbered steps with a done-when line each; under 500 words.
 - [ ] **Step 4: `distilling-notes/routine.md`**: the weekly routine's prompt, as spec section 5.4 describes it (doc-health JSON, top offender, fresh reviewer, `lychee --no-progress --exclude-path work .` for external links, a draft PR listing dead links and stale folders, never merge).
 - [ ] **Step 5: Run `mise run check`**; expected: PASS (`test_skills_fit_their_budget`).
 - [ ] **Step 6: Commit** `docs(skills): journal entries, distilling notes and the gardening routine (#307)`.
 
-### Task 14: Summaries on every research note
+### Task 14: Review and submit the stack
 
-- [ ] **Step 1: Dispatch subagents** (one per research folder; cheaper model) each with: the note paths, the 200-character limit, "one sentence saying what the note establishes, present tense, no dates", and output as `path<TAB>summary` lines.
-- [ ] **Step 2: Review the drafts** for claims broader than the note, then insert each as a frontmatter block at the top of its note.
-- [ ] **Step 3: Run `mise run fix`** (regenerates `research/MAP.md`) and `mise run check`; expected: PASS; `mise run doc-health` reports no missing summary.
-- [ ] **Step 4: Fresh-reviewer read** of the summaries (rule 7), then commit `docs(research): a one-line summary on every note and the generated map (#307)`, and `gh stack submit --auto`.
+- [ ] **Step 1: Fresh-reviewer read** of PR 4's diff (rule 7: it changes `research/`).
+- [ ] **Step 2: Run `gh stack submit --auto`.**
+- [ ] **Step 3: Hold the stack** until the expected-scores PR merges, then merge it.
 
 ---
 
@@ -410,7 +425,11 @@ def test_dry_run_changes_nothing(tmp_path): ...
 
 ### Task 16: Distill the four worst files (independent PRs off `main`, one session each)
 
-For each of `research/playone-exe/capture-dosbox-automation.md`, `research/parity/method.md` (its section 1 loop to `docs/howto/parity-loop.md`), `research/parity/framing-and-actors.md`, and `docs/development.md` (Workflows to `docs/howto/`): follow `distilling-notes`; verify with `mise run doc-health` that the file is under 20 KB and `git log -S '<a moved sentence>'` finds the journal; fresh-reviewer read; PR. Then split `research/playone-exe/memory-map.md` by segment with `move-docs` for any new files, keeping every `[MEM-*]` anchor registered in `doc_anchors.py`.
+For each of `research/playone-exe/capture-dosbox-automation.md`, `research/parity/method.md` (its section 1 loop to `docs/howto/parity-loop.md`), `research/parity/framing-and-actors.md`, and `docs/development.md` (Workflows to `docs/howto/`): follow `distilling-notes`; verify with `mise run doc-health` that the file is under 20 KB and `git log -S '<a moved sentence>'` finds the journal; fresh-reviewer read; PR. A distillation that rewrites a line `WORK_POINTERS` lists drops its entry.
+
+The distillations also fix these contradictions, found in review, within or between notes: `research/parity/framing-and-actors.md` calls the GVPOLY16 colour rule undecoded, while `research/playone-exe/terrain-shade.md` section 5 decodes op `0x02BE`; `research/formats/palette-and-shading.md` section 4 `[BK-PAL-03]` contradicts its section 3.2 on `OP_SHADES` lighting; `research/formats/res.md` section 3.3, the `GAME.RES` string table, contradicts its section 3.1 threshold rule; `research/playone-exe/lod.md` section 3 bullet 2 is tagged `[Established]` but rests on an inferred failure path; `research/playone-exe/memory-map.md` opens by claiming to own every `[MEM-*]` anchor, though it defines most, not all; `research/playone-exe/sod-vm.md` gives the dispatch table 108 slots in one place and 107 entries in another; `research/playone-exe/capture.md` section 4 and `research/playone-exe/dosbox-x-legacy.md` section 5 give different causes for the one-tick lag.
+
+Then split `research/playone-exe/memory-map.md` by segment with `move-docs` for any new files, keeping every `[MEM-*]` anchor registered in `doc_anchors.py`.
 
 ### Task 17: Schedule the gardening routine
 
