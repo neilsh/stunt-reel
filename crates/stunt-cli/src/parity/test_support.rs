@@ -176,6 +176,7 @@ pub(super) fn write_render_store(dir: &Path, ticks: &[(u32, u16, Picture)]) {
         ticks: entries,
         palette_count: table.palette_count,
         chunks: table.chunks,
+        adapter: None,
     };
     write_render_record(dir, &record).unwrap();
 }

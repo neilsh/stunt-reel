@@ -127,6 +127,25 @@ pub struct TickSlot {
     pub position: usize,
 }
 
+/// What kind of adapter drew a render.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AdapterClass {
+    /// A GPU: any adapter that is not a CPU implementation.
+    Hardware,
+    /// A CPU implementation, such as lavapipe or WARP.
+    Cpu,
+}
+
+/// The graphics adapter a render was drawn on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RenderAdapter {
+    /// Adapter name as its driver reports it.
+    pub name: String,
+    /// Whether the adapter is a GPU or a CPU implementation.
+    pub class: AdapterClass,
+}
+
 /// Document written beside a render directory's plane files, last.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RenderRecord {
@@ -142,6 +161,9 @@ pub struct RenderRecord {
     pub palette_count: u32,
     /// One entry per film second that holds a tick, ascending.
     pub chunks: Vec<RenderChunk>,
+    /// Adapter the frames were drawn on; absent in renders written before it was recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<RenderAdapter>,
 }
 
 impl RenderRecord {
@@ -325,6 +347,7 @@ mod tests {
             ticks: ticks.into_iter().map(tick).collect(),
             palette_count: 1,
             chunks,
+            adapter: None,
         }
     }
 
@@ -453,6 +476,35 @@ mod tests {
             })
         );
         assert_eq!(record.locate(8), None);
+    }
+
+    #[test]
+    fn a_render_without_an_adapter_parses() {
+        let text = r#"{"schema_version": 3, "film": {}, "geometry": {"width": 320, "height": 200},
+            "ticks": [], "palette_count": 0, "chunks": []}"#;
+        let record: RenderRecord = serde_json::from_str(text).expect("a render without adapter");
+        assert_eq!(record.adapter, None);
+        record.validate().expect("valid");
+    }
+
+    #[test]
+    fn the_adapter_round_trips() {
+        let mut drawn = record(vec![0]);
+        drawn.adapter = Some(RenderAdapter {
+            name: "llvmpipe (LLVM 19.1.7, 256 bits)".to_string(),
+            class: AdapterClass::Cpu,
+        });
+        let value = serde_json::to_value(&drawn).expect("serialize");
+        assert_eq!(value["adapter"]["class"], "cpu");
+        let back: RenderRecord = serde_json::from_value(value).expect("deserialize");
+        assert_eq!(back, drawn);
+        assert!(
+            serde_json::to_value(record(vec![0]))
+                .expect("serialize")
+                .get("adapter")
+                .is_none(),
+            "an unknown adapter is left out"
+        );
     }
 
     #[test]

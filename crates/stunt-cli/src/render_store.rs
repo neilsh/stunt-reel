@@ -687,6 +687,7 @@ mod tests {
             ticks: entries,
             palette_count: table.palette_count,
             chunks: table.chunks,
+            adapter: None,
         };
         parity_artifacts::write_render_record(dir, &record).expect("write record");
         ticks

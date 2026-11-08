@@ -16,10 +16,11 @@ use stunt_core::scene::ViewCamera;
 #[cfg(test)]
 use stunt_parity::SCHEMA_VERSION;
 use stunt_parity::{
-    ArtifactError as SchemaError, CameraPose, CaptureSet, FilmId, Geometry, RENDER_SCHEMA_VERSION,
-    RenderPalette, RenderRecord, RenderTick, Report, VideoCapture,
+    AdapterClass, ArtifactError as SchemaError, CameraPose, CaptureSet, FilmId, Geometry,
+    RENDER_SCHEMA_VERSION, RenderAdapter, RenderPalette, RenderRecord, RenderTick, Report,
+    VideoCapture,
 };
-use stunt_render::RenderedPage;
+use stunt_render::{AdapterIdentity, RenderedPage};
 
 use crate::render_store::{StoreError, StoreWriter, check_derivable};
 
@@ -149,6 +150,19 @@ fn camera_pose(camera: ViewCamera) -> CameraPose {
     }
 }
 
+/// The `render.json` entry for the adapter *identity* names: class `Cpu` for a CPU
+/// implementation, `Hardware` otherwise.
+pub(crate) fn render_adapter(identity: &AdapterIdentity) -> RenderAdapter {
+    RenderAdapter {
+        name: identity.name.clone(),
+        class: if identity.is_cpu {
+            AdapterClass::Cpu
+        } else {
+            AdapterClass::Hardware
+        },
+    }
+}
+
 /// Collects one render directory: its planes through the store, and its document, written last.
 pub(crate) struct RenderJournal {
     dir: PathBuf,
@@ -217,9 +231,9 @@ impl RenderJournal {
         Ok(())
     }
 
-    /// Closes the store and writes `render.json` last; neither is written when no whole-tick
-    /// frame was stored.
-    pub(crate) fn finish(self) -> Result<(), StoreError> {
+    /// Closes the store and writes `render.json` last, naming *adapter* as the one that drew the
+    /// frames; neither is written when no whole-tick frame was stored.
+    pub(crate) fn finish(self, adapter: RenderAdapter) -> Result<(), StoreError> {
         let Some(table) = self.store.finish()? else {
             return Ok(());
         };
@@ -230,6 +244,7 @@ impl RenderJournal {
             ticks: self.ticks,
             palette_count: table.palette_count,
             chunks: table.chunks,
+            adapter: Some(adapter),
         };
         write_render_record(&self.dir, &record).map_err(StoreError::Record)
     }
@@ -471,6 +486,7 @@ mod conformance {
             ticks,
             palette_count: table.palette_count,
             chunks: table.chunks,
+            adapter: None,
         };
         write_render_record(&dir, &record).expect("write record");
     }
@@ -713,6 +729,13 @@ mod tests {
         }
     }
 
+    fn test_gpu() -> RenderAdapter {
+        RenderAdapter {
+            name: "Test GPU".to_string(),
+            class: AdapterClass::Hardware,
+        }
+    }
+
     fn page(controls: PaletteControls, tamper: bool) -> RenderedPage {
         let palette = controls.film_palette();
         let plane: Vec<u32> = (0..320 * 200)
@@ -749,7 +772,7 @@ mod tests {
             !dir.join(RENDER_DOCUMENT).exists(),
             "the record is written last"
         );
-        journal.finish().expect("finish");
+        journal.finish(test_gpu()).expect("finish");
 
         let record = read_render_record(&dir).expect("read");
         assert_eq!(record.geometry, geometry());
@@ -764,6 +787,48 @@ mod tests {
         let stored = store.frame(7).expect("frame");
         assert_eq!(stored.palette, frame.palette.film_palette());
         assert_eq!(stored.layers[0], 16);
+    }
+
+    #[test]
+    fn a_finished_journal_records_the_adapter_it_was_drawn_on() {
+        let dir = temp_dir("adapter");
+        let mut journal = RenderJournal::begin(&dir, FilmId::default(), geometry()).expect("begin");
+        let frame = frame();
+        journal
+            .write(
+                7,
+                frame.palette,
+                frame.view,
+                false,
+                &page(frame.palette, false),
+            )
+            .expect("write");
+        journal.finish(test_gpu()).expect("finish");
+
+        let document = read_json(&dir.join(RENDER_DOCUMENT)).expect("read render.json");
+        assert_eq!(
+            document["adapter"],
+            json!({"name": "Test GPU", "class": "hardware"})
+        );
+        assert_eq!(
+            read_render_record(&dir).expect("read").adapter,
+            Some(test_gpu())
+        );
+    }
+
+    #[test]
+    fn a_cpu_adapter_is_recorded_as_cpu_and_any_other_as_hardware() {
+        let identity = |is_cpu| AdapterIdentity {
+            name: "llvmpipe (LLVM 19.1.7, 256 bits)".to_string(),
+            is_cpu,
+        };
+        let cpu = render_adapter(&identity(true));
+        assert_eq!(cpu.name, "llvmpipe (LLVM 19.1.7, 256 bits)");
+        assert_eq!(cpu.class, AdapterClass::Cpu);
+        assert_eq!(
+            render_adapter(&identity(false)).class,
+            AdapterClass::Hardware
+        );
     }
 
     #[test]
@@ -798,7 +863,7 @@ mod tests {
                 &page(frame.palette, false),
             )
             .expect("write");
-        first.finish().expect("finish");
+        first.finish(test_gpu()).expect("finish");
         assert!(dir.join(RENDER_DOCUMENT).exists());
 
         let second = RenderJournal::begin(&dir, FilmId::default(), geometry()).expect("begin");
@@ -806,7 +871,7 @@ mod tests {
             !dir.join(RENDER_DOCUMENT).exists(),
             "a reader must not take the previous render for this run's"
         );
-        second.finish().expect("finish");
+        second.finish(test_gpu()).expect("finish");
         read_render_record(&dir).unwrap_err();
     }
 
@@ -815,7 +880,7 @@ mod tests {
         let dir = temp_dir("empty");
         RenderJournal::begin(&dir, FilmId::default(), geometry())
             .expect("begin")
-            .finish()
+            .finish(test_gpu())
             .expect("finish");
         assert!(!dir.join(RENDER_DOCUMENT).exists());
         assert!(!dir.join(crate::render_store::INDEX_FILE).exists());

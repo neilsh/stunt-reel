@@ -3,6 +3,7 @@
 use std::fs;
 
 use serde_json::json;
+use stunt_parity::{AdapterClass, RenderAdapter};
 
 use super::loss::LOSS_CLASSES;
 use super::score::FrameMetrics;
@@ -10,6 +11,7 @@ use super::test_support::{
     TempDir, read_report, run_parity, write_reference, write_reference_faded, write_render,
     write_render_with_brightness, write_version_1_render,
 };
+use crate::parity_artifacts::{read_render_record, write_render_record};
 
 #[test]
 fn a_render_from_before_the_store_is_an_error_that_says_to_re_render() {
@@ -82,6 +84,35 @@ fn no_scored_frame_reports_null_scored_means() {
         json!({ "initial": false, "sign_off": false })
     );
     assert_eq!(report["per_frame"][0]["scored"], false);
+}
+
+#[test]
+fn the_report_names_the_adapter_its_render_was_drawn_on() {
+    let tmp = TempDir::new("adapter");
+    write_reference(&tmp.join("ref"), &[7], true);
+    let drawn = tmp.join("drawn");
+    write_render(&drawn, &[7]);
+    let mut record = read_render_record(&drawn).unwrap();
+    record.adapter = Some(RenderAdapter {
+        name: "Test GPU".to_string(),
+        class: AdapterClass::Hardware,
+    });
+    write_render_record(&drawn, &record).unwrap();
+
+    run_parity(&tmp.join("ref"), &drawn, &tmp.join("out")).expect("parity runs");
+    let report = read_report(&tmp.join("out"));
+    assert_eq!(report["scored_frames"], 1);
+    assert_eq!(
+        report["adapter"],
+        json!({"name": "Test GPU", "class": "hardware"})
+    );
+
+    let unnamed = tmp.join("unnamed");
+    write_render(&unnamed, &[7]);
+    run_parity(&tmp.join("ref"), &unnamed, &tmp.join("plain")).expect("parity runs");
+    let report = read_report(&tmp.join("plain"));
+    assert_eq!(report["scored_frames"], 1);
+    assert_eq!(report.get("adapter"), Some(&serde_json::Value::Null));
 }
 
 #[test]
@@ -198,7 +229,7 @@ fn assert_loss_split(loss: &std::collections::BTreeMap<String, f32>, total: f32)
 #[test]
 fn build_report_over_all_scored_frames_has_equal_overall_and_scored_means() {
     let rows = [row(1, 0.9, 0.8, true), row(2, 0.7, 0.6, true)];
-    let report = super::build_report(5, &rows, 3, 0.25);
+    let report = super::build_report(5, &rows, 3, 0.25, None);
 
     assert_eq!(report.reference_frames, 5);
     assert_eq!(report.frames, 2);
@@ -227,7 +258,7 @@ fn build_report_excludes_frames_below_the_fade_floor_from_scored_means() {
         row(2, 0.7, 0.6, true),
         row(3, 0.1, 0.2, false),
     ];
-    let report = super::build_report(3, &rows, 0, 0.25);
+    let report = super::build_report(3, &rows, 0, 0.25, None);
 
     assert_eq!(report.frames, 3);
     assert_eq!(report.scored_frames, 2);
@@ -253,7 +284,7 @@ fn the_report_counts_frames_whose_credits_the_render_did_not_draw() {
     let mut missing = row(2, 0.7, 0.6, true);
     missing.credits_missing = true;
     let rows = [row(1, 0.9, 0.8, true), missing];
-    let report = super::build_report(2, &rows, 0, 0.25);
+    let report = super::build_report(2, &rows, 0, 0.25, None);
     assert_eq!(report.credits_missing_frames, 1);
     report.validate().expect("a consistent report");
 }
@@ -261,7 +292,7 @@ fn the_report_counts_frames_whose_credits_the_render_did_not_draw() {
 #[test]
 fn build_report_with_no_scored_frame_has_no_scored_means() {
     let rows = [row(1, 0.4, 0.5, false), row(2, 0.2, 0.3, false)];
-    let report = super::build_report(2, &rows, 0, 0.25);
+    let report = super::build_report(2, &rows, 0, 0.25, None);
 
     assert_eq!(report.scored_frames, 0);
     assert_eq!(report.excluded_frames, 2);
@@ -282,7 +313,7 @@ fn build_report_gate_follows_the_scored_mean_not_the_overall_mean() {
         row(2, 0.90, 0.9, true),
         row(3, 0.10, 0.1, false),
     ];
-    let report = super::build_report(3, &rows, 0, 0.25);
+    let report = super::build_report(3, &rows, 0, 0.25, None);
     assert!(report.mean_ssim < 0.88);
     assert_close(report.mean_ssim_scored, 0.91);
     assert_eq!(report.i6_gate, super::i6_gate(report.mean_ssim_scored));
@@ -290,11 +321,11 @@ fn build_report_gate_follows_the_scored_mean_not_the_overall_mean() {
 
     // A scored mean of 0.89 reaches only the initial threshold.
     let rows = [row(1, 0.89, 0.9, true), row(2, 0.1, 0.1, false)];
-    let gate = super::build_report(2, &rows, 0, 0.25).i6_gate;
+    let gate = super::build_report(2, &rows, 0, 0.25, None).i6_gate;
     assert!(gate.initial && !gate.sign_off);
 
     // No scored frame fails both.
-    let gate = super::build_report(1, &[row(1, 0.99, 0.9, false)], 0, 0.25).i6_gate;
+    let gate = super::build_report(1, &[row(1, 0.99, 0.9, false)], 0, 0.25, None).i6_gate;
     assert!(!gate.initial && !gate.sign_off);
 }
 
