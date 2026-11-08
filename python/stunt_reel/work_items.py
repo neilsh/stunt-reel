@@ -29,6 +29,7 @@ __all__ = [
     "WorkFolder",
     "WorkFolderError",
     "folder_name",
+    "folder_paths",
     "issue_statuses",
     "parse_folder",
     "run_command",
@@ -101,18 +102,26 @@ def parse_folder(path: Path) -> WorkFolder:
         raise WorkFolderError(f"{path.parent.name}/{path.name}: {error}") from error
 
 
-def scan(root: Path = WORK_ROOT) -> list[WorkFolder]:
-    """The folders in *root*'s `YYYY-MM` directories, by month, then issue, then issue-less by slug.
+def folder_paths(root: Path = WORK_ROOT) -> list[Path]:
+    """The directories in *root*'s `YYYY-MM` directories, sorted: every work folder, valid or not.
 
     Other entries in *root* and files in month directories are skipped. A missing *root* has
-    none. Raises one WorkFolderError naming every bad folder, a line each.
+    none.
     """
     if not root.is_dir():
         return []
+    months = [d for d in root.iterdir() if d.is_dir() and MONTH_PATTERN.fullmatch(d.name)]
+    return sorted(path for month in months for path in month.iterdir() if path.is_dir())
+
+
+def scan(root: Path = WORK_ROOT) -> list[WorkFolder]:
+    """The `folder_paths` of *root*, parsed, by month, then issue, then issue-less by slug.
+
+    Raises one WorkFolderError naming every bad folder, a line each.
+    """
     folders: list[WorkFolder] = []
     problems: list[str] = []
-    months = [d for d in root.iterdir() if d.is_dir() and MONTH_PATTERN.fullmatch(d.name)]
-    for path in (p for month in months for p in month.iterdir() if p.is_dir()):
+    for path in folder_paths(root):
         try:
             folders.append(parse_folder(path))
         except WorkFolderError as error:

@@ -9,15 +9,16 @@ A report, never a gate. It finds:
 * ``summary``: a research note (``stunt_reel.research_notes``) without a ``summary:``;
 * ``heading``: a heading in an evergreen file, outside fenced code, that contains an ISO date
   or an ordinal round ("Second round"), or whose words after any section number start with
-  Update, Follow-up, Handoff or Session;
+  Update, Follow-up, Handoff or Session, or its plural;
 * ``stale-issue``: a work folder whose issue is open and whose last commit is 14 or more days
   old (a folder never committed is not stale);
 * ``missing-outcome``: a work folder whose issue is closed and whose ``outcome`` is empty;
 * ``folder``: a work folder that breaks the layout (``stunt_reel.work_items``).
 
 A size finding weighs its byte count, every other finding 1; findings print heaviest first.
-The two issue checks read status through one ``gh`` call; when ``gh`` is missing or fails they
-are skipped and one note on stderr says so, as it does when ``git log`` fails.
+The two issue checks read status through one ``gh`` call; when ``gh`` is missing, fails or
+answers with no usable issue list they are skipped and one note on stderr says so, as it does
+when ``git log`` fails.
 
 Usage: ``mise run doc-health`` for a table, or ``mise run doc-health -- --json`` for a JSON
 list of ``{path, kind, detail, weight}``; either takes ``--root DIR`` for a checkout other than
@@ -41,10 +42,10 @@ from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.markdown_links import prose
 from stunt_reel.research_notes import note_paths, note_summary
 from stunt_reel.work_items import (
-    MONTH_PATTERN,
     Runner,
     WorkFolder,
     WorkFolderError,
+    folder_paths,
     issue_statuses,
     parse_folder,
     run_command,
@@ -71,7 +72,7 @@ _ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 _ORDINAL_ROUND = re.compile(
     r"\b(first|second|third|fourth|fifth|\d+(st|nd|rd|th))\s+round\b", re.IGNORECASE
 )
-_SESSION_START = re.compile(r"(update|follow-up|handoff|session)\b", re.IGNORECASE)
+_SESSION_START = re.compile(r"(update|follow-up|handoff|session)s?\b", re.IGNORECASE)
 _SECTION_NUMBER = re.compile(r"\d+(?:\.\d+)*\.?\s+")
 
 
@@ -178,7 +179,7 @@ def _work_findings(repo_root: Path, run: Runner, today: date) -> list[Finding]:
     """The stale-issue, missing-outcome and folder findings for *repo_root*'s ``work/``."""
     findings: list[Finding] = []
     folders: list[WorkFolder] = []
-    for path in _work_folder_paths(repo_root / "work"):
+    for path in folder_paths(repo_root / "work"):
         try:
             folders.append(parse_folder(path))
         except WorkFolderError as error:
@@ -190,7 +191,7 @@ def _work_findings(repo_root: Path, run: Runner, today: date) -> list[Finding]:
     statuses = issue_statuses((issue for issue, _folder in issues), run)
     if statuses is None:
         print(
-            "doc-health: gh unavailable or signed out, so the stale-issue and missing-outcome "
+            "doc-health: gh gave no usable issue list, so the stale-issue and missing-outcome "
             "checks were skipped",
             file=sys.stderr,
         )
@@ -216,14 +217,6 @@ def _work_findings(repo_root: Path, run: Runner, today: date) -> list[Finding]:
             detail = f"issue #{issue} is closed ({status}) and outcome is empty"
             findings.append(Finding(relative, "missing-outcome", detail, 1))
     return findings
-
-
-def _work_folder_paths(work_root: Path) -> list[Path]:
-    """The directories in *work_root*'s ``YYYY-MM`` directories, sorted."""
-    if not work_root.is_dir():
-        return []
-    months = [d for d in work_root.iterdir() if d.is_dir() and MONTH_PATTERN.fullmatch(d.name)]
-    return sorted(path for month in months for path in month.iterdir() if path.is_dir())
 
 
 def _last_commit(repo_root: Path, folder: str, run: Runner) -> date | None:

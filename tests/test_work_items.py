@@ -15,6 +15,7 @@ from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.work_items import (
     WorkFolderError,
     folder_name,
+    folder_paths,
     issue_statuses,
     parse_folder,
     run_command,
@@ -196,6 +197,19 @@ def test_scan_names_every_bad_folder_in_one_error(tmp_path: Path) -> None:
 
 def test_scan_of_a_missing_root_is_empty(tmp_path: Path) -> None:
     assert scan(tmp_path / "work") == []
+
+
+def test_folder_paths_lists_directories_in_month_directories_only(tmp_path: Path) -> None:
+    root = tmp_path / "work"
+    later = _folder(root, "2026-11", "b", None)
+    first = _folder(root, "2026-11", "a", None)
+    earlier = _folder(root, "2026-10", "z", None)
+    _folder(root, "notes", "x", None)
+    _folder(root, "2026-13", "x", None)
+    (root / "README.md").write_text("# Work\n", encoding="utf-8")
+    (root / "2026-11" / "stray.md").write_text("# Stray\n", encoding="utf-8")
+    assert folder_paths(root) == [earlier, first, later]
+    assert folder_paths(tmp_path / "absent") == []
 
 
 ISSUE_LIST = [

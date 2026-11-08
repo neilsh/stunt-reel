@@ -140,6 +140,7 @@ def test_flags_a_research_note_without_summary(tmp_path: Path) -> None:
         ("## 4.1 Second Round: Seven Questions", True),
         ("## 2026-11-06 sweep", True),
         ("### Update: lavapipe", True),
+        ("## Updates to the capture", True),
         ("## 4. Follow-up Measurements", True),
         ("## Handoff to the next session", True),
         ("## Session notes", True),
@@ -226,7 +227,7 @@ def test_without_gh_skips_issue_checks_with_a_note(
     assert doc_health.main(["--root", str(tmp_path)], run, TODAY) == 0
     out, err = capsys.readouterr()
     assert err == (
-        "doc-health: gh unavailable or signed out, so the stale-issue and missing-outcome "
+        "doc-health: gh gave no usable issue list, so the stale-issue and missing-outcome "
         "checks were skipped\n"
     )
     assert [line.split()[0] for line in out.splitlines()] == ["size", "summary", "heading"]
