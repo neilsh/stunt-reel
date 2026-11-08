@@ -252,8 +252,9 @@ the key pair or the network secret cannot read the bucket.
 ### What a cloud session cannot do
 
 - **Attach a picture to a pull request.** The image's `gh` is older than the 2.103 that `--attach`
-  needs, and a cloud session has no `gh` login: GitHub goes through the session's own tools,
-  which upload no files. PR pictures are attached, not committed ([`NOTICE.md`](../NOTICE.md)),
+  needs, and its `gh` reaches GitHub only through REST: `gh api` lists, opens and reads pull
+  requests (the 2026-11-08 gardening run opened #319 that way), but the proxy refuses the
+  GraphQL that `gh pr` and `gh issue` use. The session's own GitHub tools upload no files. PR pictures are attached, not committed ([`NOTICE.md`](../NOTICE.md)),
   and the PNG stays on the session's own machine, which no one else can reach. Describe each one
   in the PR body with the revision it renders and the `mise run frame` command (film, ticks, crop,
   never `--no-build`, so the recipient's binary is rebuilt for that revision); a before-and-after
