@@ -4,7 +4,7 @@ Status: design agreed in conversation 2026-11-07, section by section, then revis
 
 ## 1. Why
 
-Markdown in the repo totals about 2.2 MB. The 2026-10-23 reorganization split the 102 KB `parity-findings.md` and set a 20 KB note guideline, yet two weeks later ten research notes exceed it again (`capture-dosbox-automation.md` 64 KB, `parity/method.md` 57 KB, `framing-and-actors.md` 43 KB, `world-scene.md` 40 KB, `memory-map.md` 37 KB). The cause is how notes are written: investigations append dated "rounds" to the subject note, and nothing makes a writer replace superseded text. Moving files again would only reset the clock, so this design changes where dated material goes and adds a standing report and a routine that keep notes distilled.
+Markdown in the repo totals about 2.2 MB. The 2026-10-23 reorganization split the 102 KB `parity-findings.md` and set a 20 KB note guideline, yet two weeks later fifteen research notes exceed it again, led by (`capture-dosbox-automation.md` 64 KB, `parity/method.md` 57 KB, `framing-and-actors.md` 43 KB, `world-scene.md` 40 KB, `memory-map.md` 37 KB). The cause is how notes are written: investigations append dated "rounds" to the subject note, and nothing makes a writer replace superseded text. Moving files again would only reset the clock, so this design changes where dated material goes and adds a standing report and a routine that keep notes distilled.
 
 Other costs found while surveying:
 
@@ -42,17 +42,17 @@ work/
 
 * **Path.** `work/<YYYY-MM>/<issue>_<slug>/`: the month the work started, the issue number zero-padded to four digits (so folders sort by number, roughly creation order), and a lowercase kebab-case slug. A folder never moves. There is no committed index: the month directories are the index, and `mise run work -- list [--status active]` prints a table with each issue's status.
 * **README frontmatter.** `title`, `started` (ISO date), `issue` (number), `outcome` (one line; empty until the work lands). There is no hand-written status field.
-* **Folders without an issue.** Migrated plans and the gardening routine's distillations have no issue. They are named `work/<YYYY-MM>/<slug>/` (letters sort after the numbered folders) and carry a fixed `status: landed` instead of `issue`. The frontmatter check accepts exactly one of `issue` and `status`, and `status` only with the value `landed`.
+* **Folders without an issue.** Landed migrated plans and the gardening routine's distillations have no issue. They are named `work/<YYYY-MM>/<slug>/` (letters sort after the numbered folders) and carry a fixed `status: landed` instead of `issue`. The frontmatter check accepts exactly one of `issue` and `status`, and `status` only with the value `landed`.
 * **File names.** `spec.md` and `plan.md` for superpowers output (`spec-<topic>.md` when a folder needs a second); `journal.md` for entries; `images/` for pictures. Migrated files that are neither spec nor plan keep their basename.
 * **Journal entries.** A `##` heading `YYYY-MM-DD: <title>`, then **Question**, **Method**, **Result** (scores stated in the text), **Verdict** (adopted, rejected or control) and **Lives in** (the evergreen note or ADR that now holds the fact). Dated and session-style headings are allowed in `work/` only.
-* **Lifecycle.** Anything goes while the issue is open. The PR that finishes the work lifts durable facts into research notes, ADRs or `docs/`, writes the README `outcome`, and closes the issue (by `Fixes #N`, or by hand for a stacked PR as `docs/agents/issue-tracker.md` says). Afterwards the folder changes only for link fixes.
+* **Lifecycle.** Anything goes while the issue is open. The PR that finishes the work lifts durable facts into research notes, ADRs or `docs/`, writes the README `outcome`, and closes the issue (by `Fixes #N`, or by hand for a stacked PR as `docs/agents/issue-tracker.md` says). Afterwards the folder changes only for link fixes. A frozen entry later found wrong is not edited: the correction is a new entry in a new work item, and the evergreen note's **Ruled out** records it.
 * **Images.** `NOTICE.md`'s limits on comparison images apply unchanged; `research/images/README.md`'s naming rules move to `work/README.md`.
 * **Search.** A root `.ignore` containing `/work/` keeps the folder out of default ripgrep and Grep tool searches. Tested 2026-11-07: a search from the root skips it; `path: work/` or `rg <term> work/` searches it; `rg --no-ignore-dot` searches everything; `git grep` and the Glob tool ignore `.ignore`.
 * **License.** `work/README.md` licenses the folder CC BY 4.0, as `research/README.md` does for `research/`.
 
 ### 3.2 What moves into `work/`
 
-* Every file under `docs/process/plans/`, including `architecture-deepening/` (one folder), `docs/process/research/`, and `docs/process/TEAM_SHEET.md` (frozen history). These have no issues, so they become issue-less folders dated by the filename date, else the file's first commit. A spec and its implementation plan with the same date and topic share a folder. `docs/process/` is then removed.
+* Every file under `docs/process/plans/`, including `architecture-deepening/` (one folder), `docs/process/research/`, and `docs/process/TEAM_SHEET.md` (frozen history), each dated by its filename date, else its first commit. A spec and its implementation plan with the same date and topic share a folder. A landed plan becomes an issue-less folder. A plan still in flight (today `vault-parity-films`, `retro-2026-11-07`, `capture-store-deepening`, `debugger-breakpoints`, `scoring-failures`) becomes an issue folder: the issue it names (`vault-parity-films` names #242), else one filed during the migration. Many implementation plans have no Status line, so the migration script prints every plan's inferred state (from its Status line, else "unknown") as a table in the PR body for a person to confirm before merge. `docs/process/` is then removed.
 * The image sets `research/images/<date>-<commit>/` and `research/parity/aircraft/`, each into the folder of the investigation that produced it (for example `parity/aircraft/` into the aircraft-render folder), or a new issue-less folder when none exists.
 * `research/parity/log.md`, moved verbatim (section 4.4).
 * **Stays:** `research/parity/error-examples/` (current reference data indexed by `error-categories.toml`), every ADR, `docs/` guides, `research/` notes, schemas and TOML files.
@@ -76,10 +76,10 @@ Procedures for running our tools are *how-to* and go to `docs/howto/<task>.md`, 
 
 `tests/test_doc_invariants.py` keeps doing the checking; no new link checker is adopted for internal links. Code cites documents 202 times by path (75 files) and 287 times by anchor token, which lychee cannot see. lat.md was compared and not adopted: it requires a `lat.md/` vault, its wiki links render as raw text on GitHub, and its heading-path section ids break on every heading rename, which distillation does often.
 
-* **Into `work/`.** An evergreen file links into `work/` only from a provenance line or a **Ruled out** item, with the anchor checked (frozen headings never change). Any other link from an evergreen file into `work/` fails, so a fact is never stated only in a dated record. This replaces `test_sources_of_truth_do_not_link_into_process_docs` and its `PROCESS_POINTERS`.
-* **Out of `work/`.** Links from `work/` into evergreen files are checked for the file only, not the heading, so distilling a note does not break dozens of frozen records.
-* **From code.** Code cites a document by a registered anchor token (`[MEM-*]`, `[FMT-*]`, `[I*]`) or by its path, never by a heading fragment, so distillation never breaks a citation in code. No code citation uses a fragment today; the rule goes in AGENTS.md's docstring guidance and the existing path check.
-* **Default locations.** `check` fails if `docs/process/` or `docs/superpowers/` exists, so a spec written to a skill's default location is caught.
+* **Into `work/`.** `work/` is not a source of truth, so an evergreen file links into it only from a provenance line or a **Ruled out** item, with the anchor checked (frozen headings never change). Any other link from an evergreen file into `work/` fails, so a fact is never stated only in a dated record. Two exceptions: ADRs cite the spec and plan they came from freely, and `PROCESS_POINTERS` carries over as `WORK_POINTERS`, the existing pointer links (the architecture-deepening README, `TEAM_SHEET.md`, three plans) rewritten to their new paths, a list that may only shrink. This replaces `test_sources_of_truth_do_not_link_into_process_docs`.
+* **Out of `work/`.** Links from `work/` into evergreen files are checked for the file only, not the heading, so distilling a note does not break dozens of frozen records. Links within `work/` are checked in full.
+* **From code.** Code cites a document by a registered anchor token (`[MEM-*]`, `[FMT-*]`, `[I*]`) or by its path, never by a heading fragment, so distillation never breaks a citation in code. Paths into `work/` are allowed (17 code citations point at plans today). No code citation uses a fragment today; the rule goes in AGENTS.md's docstring guidance and the existing path check.
+* **Default locations.** `check` fails if `docs/superpowers/` exists, and, once the moves land, if `docs/process/` does, so a spec written to a skill's default location is caught.
 
 ### 4.4 Retiring the parity log
 
@@ -93,8 +93,8 @@ How agents used `log.md`, and where each use goes:
 | The current baseline | Expected scores in `references.toml`, checked by `mise run parity` |
 | Appending a row per attempt | A journal entry in the attempt's own work folder; no shared file |
 
-* **Expected scores.** Each film table in `research/parity/references.toml` gains `[<film>.expected]` keyed by renderer class, `gpu` or `lavapipe`, each `{ ssim, iou, commit }` (headline `mean_ssim_scored` and its IoU). The classes stay separate because lavapipe still differs from a GPU by 0.0003 to 0.0008 after its NaN guard (`research/parity/lavapipe.md`), beyond the 0.0003 noise floor. The render records its class (hardware or CPU adapter, as `renderer.rs` already distinguishes) in its report; the work adds the field if the report lacks it.
-* **The check.** `mise run parity` prints each film's score beside the expected one for its class. When nothing under `crates/` changed since that class's expected `commit`, a difference beyond the noise rule `stuntreel parity --noise-sigma` applies is flagged as drift; otherwise it prints the delta and notes the expected score is from an older commit.
+* **Expected scores.** Each film table in `research/parity/references.toml` gains `[<film>.expected]` keyed by renderer class, `gpu` or `lavapipe`, each `{ ssim, iou, commit, adapter }` (headline `mean_ssim_scored`, its IoU, and the adapter name it was measured on). The classes stay separate because lavapipe still differs from a GPU by 0.0003 to 0.0008 after its NaN guard (`research/parity/lavapipe.md`), beyond the 0.0003 noise floor. The parity report gains the adapter's name and class (hardware or CPU, as `renderer.rs` already distinguishes), versioned as ADR 0011 requires for the parity artifacts.
+* **The check.** `mise run parity` prints each film's score beside the expected one for its class. It flags drift, a difference beyond the noise rule `stuntreel parity --noise-sigma` applies, only when the adapter name matches and nothing under `crates/` and no reference pin in `references.toml` changed since the expected `commit`; otherwise it prints the delta and says why it is not comparable (older commit, other adapter).
 * **Adopting a change** updates the expected line for the class the PR measured; the other class keeps its older commit until someone measures it. The diff shows before and after; two PRs that both adopt conflict on that line, correctly, because the second must re-measure. `git log -p research/parity/references.toml` is the history of adopted scores.
 * **The legacy log.** `log.md` moves verbatim with `git mv` to `work/2026-10/parity-log/log.md` (an issue-less folder, `status: landed`), a 100% rename that keeps every row's history. Its provenance lines and code comments are repointed at the moved file; the rows are not converted. The `.gitattributes` `merge=union` line and `docs/harness.md`'s paragraph on the file go.
 
@@ -109,7 +109,7 @@ How agents used `log.md`, and where each use goes:
 
 ### 5.1 The knowledge map
 
-`research/MAP.md` lists every research note by folder: its path as a link, then its summary. It is generated by `mise run fix` from the notes' `summary:` keys, and `mise run check` fails when it is stale, as it does for unformatted code. It is committed so outside readers have it; it changes only when a summary or note changes. It is a file of its own because the roughly 55 entries would push `research/README.md` from 11 KB past its own budget.
+`research/MAP.md` lists every research note by folder: its path as a link, then its summary. It is generated by `mise run fix` from the notes' `summary:` keys (a note without one is listed as "no summary yet", and doc-health warns), and `mise run check` fails when it is stale, as it does for unformatted code. It is committed so outside readers have it; it changes only when a summary or note changes. It is a file of its own because the roughly 55 entries would push `research/README.md` from 11 KB past its own budget.
 
 ### 5.2 `mise run work`
 
@@ -128,13 +128,13 @@ A report, not part of `check`, ranked worst first, with `--json` for the routine
 
 ### 5.4 The `distilling-notes` skill and the gardening routine
 
-A new skill, `.agents/skills/distilling-notes/SKILL.md`, holds the procedure both the post-migration distillations and the routine follow: move narrative verbatim into the journal of the work folder that produced it, or into an issue-less `work/<month>/distill-<note>/journal.md` when none did; rewrite the note as current truth with provenance lines; move how-to text to `docs/howto/`; keep every claim no broader than its evidence. Moving text verbatim keeps it findable with `git log -S`.
+A new skill, `.agents/skills/distilling-notes/SKILL.md`, holds the procedure both the post-migration distillations and the routine follow: move narrative verbatim into an issue-less `work/<month>/distill-<note>/journal.md` (suffixed `-2` for a second distillation of the same note in a month), each entry linking the work folder that produced it when there is one, since frozen folders are not appended to; rewrite the note as current truth with provenance lines; move how-to text to `docs/howto/`; keep every claim no broader than its evidence. Moving text verbatim keeps it findable with `git log -S`.
 
 A weekly scheduled cloud agent runs `mise run doc-health -- --json`, distills the top offender (one file per run), has a fresh reviewer subagent check the diff for broadened claims (AGENTS.md working rule 7), runs `lychee` over the repository's external URLs, and opens a draft PR whose body lists dead external links and stale work folders. A routine PR never auto-merges; a person reviews and merges it.
 
 ### 5.5 Agent instructions
 
-* **AGENTS.md.** Directive 4 states the one rule. The section 2 table gains "Knowledge map" (`research/MAP.md`), "Work items" (GitHub issues and `work/`) and "How-to guides" (`docs/howto/`) rows, and loses the `docs/process/` paragraph. Working rule 4 becomes "write the handoff into the work folder's README, or on the issue". Rule 6's log row becomes a journal entry. New lines: superpowers brainstorming and writing-plans write `spec.md` and `plan.md` into the work item's folder, overriding the skill default; the finishing PR writes the README `outcome`; search `work/` with `path: work/` or `--no-ignore-dot`. `test_agents_md_fits_its_budget` still passes.
+* **AGENTS.md.** Directive 4 states the one rule. The section 2 table gains "Knowledge map" (`research/MAP.md`), "Work items" (GitHub issues and `work/`) and "How-to guides" (`docs/howto/`) rows, and its `docs/process/` paragraph becomes "`work/` is not a source of truth: never cite it for a fact about the system". Working rule 4 becomes "write the handoff into the work folder's README, or on the issue". Rule 6's log row becomes a journal entry. New lines: before superpowers brainstorming or writing-plans writes a file, run `mise run work -- new`, and write `spec.md` and `plan.md` into that folder, overriding the skill default; the finishing PR writes the README `outcome`; search `work/` with `path: work/` or `--no-ignore-dot`. `test_agents_md_fits_its_budget` still passes.
 * **`recording-findings` skill.** A journal entry and provenance line replace the log row; adds the `summary:` and knowledge-map steps.
 * **`improving-render-parity` skill.** "Read `log.md`" becomes "read the residual's **Ruled out**, then `rg <term> work/`"; "add a row" becomes "write a journal entry; adopting updates the expected scores in `references.toml`"; procedures it repeats move to `docs/howto/` and are linked.
 
@@ -142,24 +142,24 @@ A weekly scheduled cloud agent runs `mise run doc-health -- --json`, distills th
 
 Expected scores ship first as their own PR off `main`, in parallel with the stack: the `references.toml` schema, the renderer-class field, the `mise run parity` comparison, and seeding by a GPU run on the primary machine and a lavapipe run in a cloud session, both on `main`.
 
-The rest is a `gh stack`; each PR passes `mise run check` at its own head, and the stack squash-merges as one commit per PR.
+The rest is a `gh stack` of five PRs; each passes `mise run check` at its own head, and the stack squash-merges as one commit per PR. Before pushing a PR that changes `research/` or `NOTICE.md` (moves, parity log, rules), a fresh reviewer reads its diff (AGENTS.md working rule 7).
 
-1. **Tooling.** `.ignore`, `work/README.md`, `mise run work`, the frontmatter reader, the knowledge-map generator wired into `fix` and `check`, `mise run doc-health`, the link rules of section 4.3, and the guard on default locations (which this stack's own folder satisfies, since it is under `work/`).
-2. **2a. Moves.** A script runs `git mv` for everything in section 3.2 except the parity log, and rewrites links in files that did not move: ADR citations, code comments, `tests/test_skill_eval.py`, `.coderabbit.yaml`, `manifests/cloud-assets.toml`, `docs/harness.md`, `docs/ARCHITECTURE.md`, skills. The link check skips sources under `work/` for this PR only. Every moved file is a 100% rename; each migrated folder's README is a new file whose `outcome` comes from the plan's Status line. The PR body carries the old-to-new path map.
-3. **2b. Links inside moved files.** Rewrites the relative links inside the moved files and removes the skip.
+1. **Tooling.** `.ignore`, `work/README.md`, `mise run work`, the frontmatter reader, the knowledge-map generator wired into `fix` and `check`, `mise run doc-health`, the link rules of section 4.3, and the `docs/superpowers/` guard.
+2. **Moves.** A script runs `git mv` for everything in section 3.2 except the parity log, and rewrites links in files that did not move: ADR citations, code comments, `tests/test_skill_eval.py`, `.coderabbit.yaml`, `manifests/cloud-assets.toml`, `docs/harness.md`, `docs/ARCHITECTURE.md`, `docs/SPEC.md`, skills, and `NOTICE.md`'s note of where comparison images go. It adds the `docs/process/` guard and `WORK_POINTERS`. The link check skips sources under `work/` for this PR only. Every moved file is a 100% rename; each migrated folder's README is a new file. The PR body carries the old-to-new path map and the table of inferred plan states (section 3.2).
+3. **Links inside moved files.** Rewrites the relative links inside the moved files and removes the skip.
 4. **Parity log.** The verbatim move of section 4.4, merged after the expected-scores PR.
-5. **Rules.** AGENTS.md, `research/README.md`, the two skills, the new `distilling-notes` skill, and `summary:` on all research notes (drafted by subagents, reviewed before commit). The knowledge map is generated for the first time.
+5. **Rules.** AGENTS.md, `research/README.md`, the two skills, the new `distilling-notes` skill, `GLOSSARY.md` terms (work item, work folder, journal entry, evergreen note), an ADR (the next free number, 0041 today) recording the one rule and the work-item layout, and `summary:` on all research notes (drafted by subagents, reviewed before commit). The knowledge map is generated for the first time.
 
 **After the stack:**
 
-* A one-line PR adds the squashed 2a, 2b and parity-log commits to `.git-blame-ignore-revs`, and `mise run init` sets `blame.ignoreRevsFile`.
+* A one-line PR adds the squashed moves, links and parity-log commits to `.git-blame-ignore-revs`, and `mise run init` sets `blame.ignoreRevsFile`.
 * Independent distillation PRs off `main`, one per file, worst first, each following `distilling-notes`: `capture-dosbox-automation.md`, `parity/method.md` (its loop to `docs/howto/`), `framing-and-actors.md`, and `docs/development.md` (setup and conventions stay; Workflows go to `docs/howto/`). `memory-map.md` is split by segment, not distilled, since it is an offset registry.
 * The weekly gardening routine is scheduled last and takes the remaining files over budget.
 
 ## 7. Out of scope
 
 * Slimming the prose cells of `docs/ARCHITECTURE.md`'s routing table, beyond what doc-health later flags.
-* ADR content, `.ksy` schemas, `GLOSSARY.md`.
+* The content of existing ADRs, `.ksy` schemas, and glossary terms other than the four section 6 adds.
 * Links from docs to code symbols, and other lat.md features.
 * Raw session transcripts in work folders.
 
@@ -168,6 +168,7 @@ The rest is a `gh stack`; each PR passes `mise run check` at its own head, and t
 * A Grep tool search from the root returns nothing under `work/`, and `docs/process/` and `research/parity/log.md` no longer exist.
 * `mise run check` passes with the link rules of section 4.3 in force and the guard on default locations.
 * Every research note has `summary:`, and `research/MAP.md` lists them all.
+* An ADR records the one rule, and every plan that was in flight at the migration has an open issue and an issue folder.
 * `mise run parity` prints each film's expected score for its renderer class and flags drift.
 * `git log --follow` on a migrated spec and on the legacy parity log reaches their commits from before the move.
 * After the four post-stack distillations, `mise run doc-health` lists no evergreen file over 40 KB, and the gardening routine is scheduled.
