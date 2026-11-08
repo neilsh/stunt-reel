@@ -17,5 +17,6 @@
   - `vault-balloon` (`BALLOON.FLM`): SSIM 0.7991, IoU 0.6351, index agreement 0.463, 107 of 108 scored; 108 frames over ticks 12 to 1190, archive `86628c5…` ([`vault-balloon.toml`](../../../manifests/all/vault-balloon.toml)).
   - `vault-traintnl` (`TRAINTNL.FLM`): SSIM 0.8514, IoU 0.9656, index agreement 0.849, 112 of 112 scored; 112 frames over ticks 12 to 1233, archive `076750b…` ([`vault-traintnl.toml`](../../../manifests/all/vault-traintnl.toml)).
   - `vault-bomb` (`BOMB.FLM`): SSIM 0.7991, IoU 0.9067, index agreement 0.743, 316 of 339 scored; 339 frames over ticks 13 to 3730, archive `282553d…` ([`vault-bomb.toml`](../../../manifests/all/vault-bomb.toml)).
+  - `vault-location` (`LOCATION.FLM`): SSIM 0.7907, IoU 0.9788, index agreement 0.764, 732 of 745 scored; 745 frames over ticks 12 to 8262, archive `4a427bd…` ([`vault-location.toml`](../../../manifests/all/vault-location.toml)).
 - **Verdict**: control (baselines).
 - **Lives in**: [`references.toml`](../../../research/parity/references.toml), each film's row and its `expected.gpu` table.
