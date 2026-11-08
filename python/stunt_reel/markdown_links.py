@@ -1,10 +1,16 @@
-"""Reading Markdown's prose: the text outside fenced code blocks and inline code."""
+"""Reading Markdown's prose: the text outside fenced code blocks and inline code, and its links."""
 
 from __future__ import annotations
 
 import re
 
-__all__ = ["prose"]
+__all__ = ["LINK_DEFINITION_REGEX", "MARKDOWN_LINK_REGEX", "prose"]
+
+#: An inline or image link, ``[text](target "title")``; group 1 is the target, without ``<>``.
+MARKDOWN_LINK_REGEX = re.compile(r"!?\[[^\]\n]*\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)")
+#: A reference-style link definition, ``[label]: target``, which the inline regex does not see;
+#: group 1 is the target. A footnote, ``[^1]: text``, is not one.
+LINK_DEFINITION_REGEX = re.compile(r"^ {0,3}\[(?!\^)[^\]\n]+\]:\s*<?([^\s>]+)>?", re.MULTILINE)
 
 _FENCE = "```"
 _INLINE_CODE = re.compile(r"`[^`\n]*`")

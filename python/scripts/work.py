@@ -38,6 +38,7 @@ from stunt_reel.work_items import (
     WorkFolderError,
     folder_name,
     issue_statuses,
+    readme_text,
     run_command,
     scan,
 )
@@ -60,16 +61,10 @@ def create_folder(slug: str, issue: int, title: str, today: date, root: Path) ->
     non-blank line, and FileExistsError when *issue* has a folder in any month.
     """
     name = folder_name(issue, slug)
-    if title.splitlines() != [title] or not title.strip():
-        raise WorkFolderError(f"title {title!r} is not one non-blank line")
+    readme = readme_text(title, today, "", issue=issue)
     _refuse_a_second_folder(root, issue)
     path = root / today.strftime("%Y-%m") / name
     path.mkdir(parents=True)
-    quoted = title.replace('"', '\\"')
-    readme = (
-        f'---\ntitle: "{quoted}"\nstarted: {today.isoformat()}\nissue: {issue}\noutcome: ""\n'
-        f"---\n\n# {title}\n"
-    )
     (path / "README.md").write_text(readme, encoding="utf-8", newline="\n")
     return path
 

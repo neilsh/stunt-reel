@@ -32,6 +32,7 @@ __all__ = [
     "folder_paths",
     "issue_statuses",
     "parse_folder",
+    "readme_text",
     "run_command",
     "scan",
 ]
@@ -89,6 +90,36 @@ def folder_name(issue: int | None, slug: str) -> str:
     if issue < 1:
         raise WorkFolderError(f"issue {issue} is not a GitHub issue number")
     return f"{issue}_{slug}"
+
+
+def readme_text(
+    title: str, started: date, outcome: str, *, issue: int | None = None, status: str | None = None
+) -> str:
+    """A work folder's whole README.md: its frontmatter, then a `# <title>` heading line.
+
+    *title* and *outcome* are written quoted, so `parse_folder` reads them back unchanged.
+    Raises WorkFolderError for a title that is not one non-blank line, an outcome of more than
+    one line, or anything but exactly one of an *issue* of 1 or more and a *status* of
+    `landed` or `abandoned`.
+    """
+    if title.splitlines() != [title] or not title.strip():
+        raise WorkFolderError(f"title {title!r} is not one non-blank line")
+    if outcome.splitlines() not in ([], [outcome]):
+        raise WorkFolderError(f"outcome {outcome!r} is not one line")
+    if (issue is None) == (status is None):
+        raise WorkFolderError("a work folder needs exactly one of issue and status")
+    if issue is not None:
+        if issue < 1:
+            raise WorkFolderError(f"issue {issue} is not a GitHub issue number")
+        record = f"issue: {issue}"
+    else:
+        if status not in _STATUSES:
+            raise WorkFolderError(f"status {status!r} is not landed or abandoned")
+        record = f"status: {status}"
+    return (
+        f"---\ntitle: {_quoted(title)}\nstarted: {started.isoformat()}\n{record}\n"
+        f"outcome: {_quoted(outcome)}\n---\n\n# {title}\n"
+    )
 
 
 def parse_folder(path: Path) -> WorkFolder:
@@ -169,6 +200,12 @@ def run_command(args: list[str]) -> str:
         check=True,
     )
     return done.stdout
+
+
+def _quoted(value: str) -> str:
+    """*value* as a double-quoted frontmatter scalar, which `read_frontmatter` unquotes."""
+    escaped = value.replace('"', '\\"')
+    return f'"{escaped}"'
 
 
 def _issue_status(issue: dict[str, Any]) -> IssueStatus:

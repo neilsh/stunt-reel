@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from stunt_reel.doc_anchors import ANCHORS, BY_ID, CITATION_REGEX
-from stunt_reel.markdown_links import prose
+from stunt_reel.markdown_links import LINK_DEFINITION_REGEX, MARKDOWN_LINK_REGEX, prose
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -46,15 +46,13 @@ def _walk(root: Path, skipped: frozenset[str]) -> Iterator[Path]:
 
 
 def _heading_texts(path: Path) -> set[str]:
-    """Heading texts of a Markdown file, without the leading ``#`` marks."""
-    texts: set[str] = set()
-    in_code_block = False
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip().startswith("```"):
-            in_code_block = not in_code_block
-        elif not in_code_block and line.startswith("#"):
-            texts.add(line.lstrip("#").strip())
-    return texts
+    """Heading texts of a Markdown file outside fenced code, without the leading ``#`` marks."""
+    text = path.read_text(encoding="utf-8")
+    return {
+        line.lstrip("#").strip()
+        for blanked, line in zip(prose(text).splitlines(), text.splitlines(), strict=True)
+        if blanked.startswith("#")
+    }
 
 
 def _citation_files() -> list[Path]:
@@ -110,9 +108,6 @@ def test_cited_anchors_are_registered() -> None:
 
 # .superpowers is agent scratch, not docs.
 LINK_SKIPPED_DIRS = SKIPPED_DIRS | {".git", "corpus", "worktrees", ".superpowers"}
-MARKDOWN_LINK_REGEX = re.compile(r"!?\[[^\]\n]*\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)")
-#: A reference-style link definition, ``[label]: target``, which the inline regex does not see.
-LINK_DEFINITION_REGEX = re.compile(r"^ {0,3}\[[^\]\n]+\]:\s*<?([^\s>]+)>?", re.MULTILINE)
 URL_SCHEME_REGEX = re.compile(r"[a-z][a-z0-9+.-]*:")
 HTML_ID_REGEX = re.compile(r"<a\s+(?:name|id)=\"([^\"]+)\"")
 HEADING_REGEX = re.compile(r"^(#{1,6})\s+(.+?)\s*$")

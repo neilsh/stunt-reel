@@ -24,8 +24,9 @@ pytestmark = pytest.mark.windows
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "python" / "scripts"
 
-#: The doc checker matches ``corpus/`` in the text of other pages; it reads no corpus file.
-_NOT_READERS = frozenset({"verify_formats_docs.py"})
+#: The doc checker matches ``corpus/`` in the text of other pages, and move-docs skips the
+#: tracked ``corpus/`` files; neither reads a corpus file.
+_NOT_READERS = frozenset({"verify_formats_docs.py", "move_docs.py"})
 #: Calls whose arguments are read against the data root rather than the working directory.
 _RESOLVERS = frozenset({"resolve_data_path", "data_path_arg", "corpus_root", "corpus_of"})
 

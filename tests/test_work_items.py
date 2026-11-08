@@ -18,6 +18,7 @@ from stunt_reel.work_items import (
     folder_paths,
     issue_statuses,
     parse_folder,
+    readme_text,
     run_command,
     scan,
 )
@@ -163,6 +164,51 @@ def test_invalid_folders_raise(tmp_path: Path, problem: str) -> None:
     month, name, frontmatter, reason = INVALID[problem]
     with pytest.raises(WorkFolderError, match=rf"^{month}/{name}: .*{re.escape(reason)}"):
         parse_folder(_folder(tmp_path, month, name, frontmatter))
+
+
+def test_readme_text_is_frontmatter_then_the_title_heading() -> None:
+    assert readme_text("Docs", date(2026, 11, 7), "", issue=307) == (
+        '---\ntitle: "Docs"\nstarted: 2026-11-07\nissue: 307\noutcome: ""\n---\n\n# Docs\n'
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "issue", "status"), [("307_docs", 307, None), ("docs", None, "abandoned")]
+)
+@pytest.mark.parametrize("title", ["1942", 'Say "hi": C:\\dir\\', " padded "])
+def test_readme_text_parses_back(
+    tmp_path: Path, name: str, issue: int | None, status: str | None, title: str
+) -> None:
+    path = _folder(tmp_path, "2026-11", name, None)
+    text = readme_text(title, date(2026, 11, 7), 'Kept "1942"', issue=issue, status=status)
+    (path / "README.md").write_text(text, encoding="utf-8")
+    folder = parse_folder(path)
+    assert (folder.title, folder.started, folder.outcome) == (
+        title,
+        date(2026, 11, 7),
+        'Kept "1942"',
+    )
+    assert (folder.issue, folder.status) == (issue, status)
+
+
+@pytest.mark.parametrize(
+    ("title", "outcome", "issue", "status"),
+    [
+        ("two\nlines", "", 5, None),
+        ("   ", "", 5, None),
+        ("T", "two\nlines", 5, None),
+        ("T", "", 5, "landed"),
+        ("T", "", None, None),
+        ("T", "", None, "done"),
+        ("T", "", 0, None),
+    ],
+    ids=["title-lines", "title-blank", "outcome-lines", "both", "neither", "status", "issue"],
+)
+def test_readme_text_refuses_what_parse_folder_would(
+    title: str, outcome: str, issue: int | None, status: str | None
+) -> None:
+    with pytest.raises(WorkFolderError):
+        readme_text(title, date(2026, 11, 7), outcome, issue=issue, status=status)
 
 
 def test_scan_sorts_by_month_then_issue_with_issue_less_last(tmp_path: Path) -> None:
