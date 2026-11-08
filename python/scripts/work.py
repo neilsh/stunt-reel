@@ -6,9 +6,10 @@ month the work started, and the README's frontmatter is the folder's record
 (``stunt_reel.work_items`` holds the rules).
 
 ``new <slug> --issue N`` makes this month's folder for issue N, its README titled as the issue
-is. Without ``--issue`` it files the issue first, titled with the slug and labelled
-``needs-triage``, into the repository ``gh`` targets, and only when that is the one the
-``origin`` remote names: in a fork ``gh`` can target the upstream parent
+is; when ``gh`` cannot give the title, the README takes the slug and one note on stderr says
+so. Without ``--issue`` it needs ``gh`` to file the issue first, titled with the slug and
+labelled ``needs-triage``, into the repository ``gh`` targets, and only when that is the one
+the ``origin`` remote names: in a fork ``gh`` can target the upstream parent
 (``docs/agents/issue-tracker.md``). It refuses an issue that already has a folder, in any month.
 
 ``list`` prints one line per folder: month, folder, status, title, outcome. An issue folder's
@@ -109,14 +110,32 @@ def _new(slug: str, issue: int | None, root: Path, run: Runner, today: date) -> 
             title = slug
         else:
             _refuse_a_second_folder(root, issue)
-            answer = _output(run, ["gh", "issue", "view", str(issue), "--json", "title"])
-            title = str(json.loads(answer)["title"])
+            title = _issue_title(issue, slug, run)
         path = create_folder(slug, issue, title, today, root)
     except (WorkFolderError, FileExistsError, _RefusedError) as error:
         print(f"work: {error}", file=sys.stderr)
         return 1
     print(f"created {path / 'README.md'}")
     return 0
+
+
+def _issue_title(issue: int, slug: str, run: Runner) -> str:
+    """Issue *issue*'s title as gh gives it; else *slug*, with one line on stderr saying why."""
+    try:
+        answer = _output(run, ["gh", "issue", "view", str(issue), "--json", "title"])
+        title = json.loads(answer)["title"]
+    except _RefusedError as error:
+        reason = str(error)
+    # ValueError is malformed JSON; KeyError and TypeError are JSON of another shape.
+    except ValueError, KeyError, TypeError:
+        reason = "`gh issue view` answered without a title"
+    else:
+        if isinstance(title, str):
+            return title
+        reason = "`gh issue view` answered without a title"
+    reason = " ".join(reason.split())
+    print(f"work: {reason}; titled the README with the slug, {slug!r}: retitle it", file=sys.stderr)
+    return slug
 
 
 def _file_issue(slug: str, run: Runner) -> int:

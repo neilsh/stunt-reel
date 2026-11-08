@@ -163,12 +163,41 @@ def test_new_checks_slug_and_issue_before_calling_gh(tmp_path: Path, argv: list[
     assert list(tmp_path.iterdir()) == []
 
 
-@GH_FAILURES
-@pytest.mark.parametrize("argv", [["--issue", "307"], []], ids=["issue", "no-issue"])
-def test_new_without_gh_fails_cleanly(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], run: Any, argv: list[str]
+@pytest.mark.parametrize(
+    "run",
+    [
+        _no_gh,
+        _gh_signed_out,
+        FakeRunner(
+            {
+                "gh issue view": subprocess.CalledProcessError(
+                    1, ["gh"], "", "GraphQL: Could not resolve to an issue\n(repository.issue)\n"
+                )
+            }
+        ),
+        FakeRunner({"gh issue view": "not json"}),
+        FakeRunner({"gh issue view": json.dumps({"number": 307})}),
+    ],
+    ids=["missing", "signed-out", "two-line-error", "garbled", "no-title"],
+)
+def test_new_with_issue_but_no_title_from_gh_titles_it_with_the_slug(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], run: Any
 ) -> None:
-    assert _main(tmp_path, "new", "docs-streamline", *argv, run=run) == 1
+    assert _main(tmp_path, "new", "docs-streamline", "--issue", "307", run=run) == 0
+    folder = parse_folder(tmp_path / "2026-11" / "307_docs-streamline")
+    assert (folder.issue, folder.title, folder.outcome) == (307, "docs-streamline", "")
+    out, err = capsys.readouterr()
+    assert out.startswith("created ")
+    assert len(err.splitlines()) == 1
+    assert "gh" in err
+    assert "Traceback" not in err
+
+
+@GH_FAILURES
+def test_new_without_issue_or_gh_fails_cleanly(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], run: Any
+) -> None:
+    assert _main(tmp_path, "new", "docs-streamline", run=run) == 1
     assert list(tmp_path.iterdir()) == []
     err = capsys.readouterr().err
     assert "gh" in err
