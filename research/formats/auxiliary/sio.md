@@ -1,3 +1,6 @@
+---
+summary: "`.SIO` SLICE modeller format ([FMT-SIO-RECORDS]): `Sds` magic, grid byte, 0x12 vertex and 0x06 midpoint records, `FF FF 00 00` trailer; the tool compiling `.SIO` to `.SOD` is unidentified."
+---
 # Specification: .SIO Slice Mesh Format
 
 ## 1. Overview & File Identification

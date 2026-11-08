@@ -1,3 +1,6 @@
+---
+summary: "Mesa lavapipe turns near ground polygons to palette index 0, inferred from a 0/0 clipper weight on `noperspective` varyings; a non-finite shade guard in `fragment_index` brings scores near the GPU's."
+---
 # Parity: Rendering on Lavapipe
 
 * **Scope**: how Mesa's software Vulkan driver, lavapipe, renders our frames differently from a GPU, and what the renderer does about it. Cloud sessions ([ADR 0039](../../docs/adr/0039-cloud-sessions-fetch-pinned-game-archives.md)) and CI ([ADR 0006](../../docs/adr/0006-ci-renders-on-lavapipe.md)) both render on it.

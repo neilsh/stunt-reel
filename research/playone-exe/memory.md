@@ -1,3 +1,6 @@
+---
+summary: "Evidence behind the memory map: `DS` per emulator, the [MEM-FLM-TICK] counters (film clock equals `0x22B8` until it holds), the unverified `0C5E` trap, [MEM-UNPACK-LOCKOUT] and image relocation."
+---
 # `PLAYONE.EXE`: Memory Architecture & Data Segment Layout
 
 This document is the **evidence narrative** for `PLAYONE.EXE`'s real-mode memory: how offsets were found, what was observed live, and what is still unverified. It holds no offset tables. Every `DGROUP` offset, struct layout and `# [MEM-*]` anchor lives in [`research/playone-exe/memory-map.md`](memory-map.md); this file links to the rows it supports.

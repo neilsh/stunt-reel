@@ -1,3 +1,6 @@
+---
+summary: "`GVPOLY`/`GVPOLY16` shade as a Gouraud ramp on the palette index (`SHADES` term, `idx = base + (s >> 9)`, screen-space fill), lit by the world light the var-13 handler writes; the ground does not."
+---
 # `PLAYONE.EXE`: Terrain Shading (Gouraud in Palette-Index Space)
 
 * **Binary**: `PLAYONE.EXE` (LZEXE 0.91), unpacked with [`unlzexe.py`](../../python/scripts/unlzexe.py) to the 200,524-byte load image (`build/re/playone.img`)

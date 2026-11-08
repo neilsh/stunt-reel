@@ -1,3 +1,6 @@
+---
+summary: "How the `PLAYONE.EXE` LOAD FILM dialog works: a `VAULT\` listbox with single-letter prefix jumps, `.FLM`/`.ALL` pairing, and harness key injection through the BIOS keyboard ring buffer."
+---
 # `PLAYONE.EXE`: UI Navigation, File Selection & Input Mechanics
 
 This document details the graphical interface navigation, file selection dialog architecture, keyboard input routing, film file format dependencies, and low-level BIOS input mechanics used to control `PLAYONE.EXE`.

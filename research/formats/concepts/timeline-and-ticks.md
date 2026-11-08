@@ -1,3 +1,6 @@
+---
+summary: "[I4] playback timing: 50 Hz PIT divisor 0x5D38, slice ticks as cumulative `tick_duration`, lerp and slerp sub-tick interpolation, shorter-arc roll, cut suppression, and 0x9C audio cues."
+---
 # Stunt Island Technical Reference: Timeline Mechanics, Simulation Ticks & Kinematic Interpolation
 
 **Document Identifier:** `research/formats/concepts/timeline-and-ticks.md`  

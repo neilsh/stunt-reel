@@ -1,3 +1,6 @@
+---
+summary: "[I3] palette model: three 6-to-8-bit DAC scalings, palettes 0x8042 and 0x801E, colour groups and 32-level ramps, CTRY capture evidence against a sun-derived shade, sky bands 227-238, 256x32 LUT."
+---
 # Stunt Island Technical Reference: Palette Architecture, Shading Ramps & VGA Color Management
 
 **Document Identifier:** `research/formats/concepts/palette-and-shading.md`  

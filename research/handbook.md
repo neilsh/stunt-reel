@@ -1,3 +1,6 @@
+---
+summary: "Source card for the retail handbook and its OCR text: how to cite it, why it is reliable for structure but not for numbers or units, its [Hypothesis] ceiling, and where each finding went."
+---
 # The Stunt Island Handbook: A Source Card
 
 **Subject:** the retail documentation as a *source*, not as a subject of its own. Findings drawn from it live in the note for their subject ([routing rule](README.md#routing-rule)); this card records what the document is, how far it can be trusted, and where each of its findings went.

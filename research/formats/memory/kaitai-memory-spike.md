@@ -1,3 +1,6 @@
+---
+summary: "Whether runtime memory records fit `.ksy`: `actor_record.ksy` for [MEM-ACTOR-TABLE] compiles and parses, so `.ksy` serves as layout source and verification tool, not as a runtime parser."
+---
 # Kaitai for runtime memory structs: spike findings (2026-10-23)
 
 Question: can runtime DOS memory records be described by `.ksy` schemas like the file formats? Probe: the 64-byte actor entry (`# [MEM-ACTOR-TABLE]`, Layout A, `[Hypothesis]`), schema [`actor_record.ksy`](actor_record.ksy).

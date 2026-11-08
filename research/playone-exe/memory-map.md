@@ -1,3 +1,6 @@
+---
+summary: "Offset tables for `PLAYONE.EXE` `DGROUP` and the SOD VM work segment on the unpatched and Patch #3 builds, defining the [MEM-*] anchors such as [MEM-FLM-TICK], [MEM-SOD-VM] and [MEM-PALETTE]."
+---
 # Runtime Memory Map & Real-Mode Offsets
 
 **This file owns every `DGROUP` / work-segment offset table and every `# [MEM-*]` anchor.** The evidence behind a row (disassembly, live samples, provenance) lives in [`research/playone-exe/`](./) and is linked from the row; it is not restated here. Tier names come from the enum owned by [`python/scripts/verify_formats_docs.py`](../../python/scripts/verify_formats_docs.py) (`EVIDENTIARY_TIERS`) and defined in [`SPEC.md` § 2.4](../../docs/SPEC.md#24-evidentiary-tiers--contract-anchor-system).

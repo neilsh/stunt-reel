@@ -1,3 +1,6 @@
+---
+summary: "Historical DOSBox-X debugger capture harness: link framing, crash constraints, BDA key injection, the `film_tick` tagging protocol, the one-tick page lag and an inferred 185-row 3D viewport."
+---
 # `PLAYONE.EXE`: Debugger Capture Harness (DOSBox-X)
 
 > [!NOTE]

@@ -1,3 +1,6 @@
+---
+summary: "`STUNT.EXE` evidence on `.SET`: no sibling executable names it, its display templates give the IF/AND/THEN vocabulary with operand widths; also the install's crack stub and TYPESET as dump oracle."
+---
 # STUNT.EXE: The Set Engine and Its Event Vocabulary
 
 **Scope:** what the authoring executable does with `.SET` files, read from its unpacked image. Byte layouts stay in [`formats/auxiliary/set.md`](../formats/auxiliary/set.md); this note records the code-side evidence that governs them.

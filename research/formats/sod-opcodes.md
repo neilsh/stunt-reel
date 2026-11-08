@@ -1,3 +1,6 @@
+---
+summary: "The 107-opcode `.SOD` table ([FMT-SOD-OPCODES]) dispatched as multiples of 9, the `OP_TAP`, `OP_ANIMATE` and `IFVIS`/`BVIS` facing-flag semantics, and si-tools readings kept as hypotheses."
+---
 # `.SOD` Opcode Reference
 
 This is the opcode-level companion to [`sod.md`](sod.md): the 107-opcode table, the semantics established for individual opcodes, and the community readings of opcodes not yet traced in the binary. The general VM model (registers, accumulator, transform stack, dispatch) is lab-notebook evidence in [`playone-exe/sod-vm.md`](../playone-exe/sod-vm.md); the implementation queue for unhandled opcodes is [`sod-opcode-coverage.md`](sod-opcode-coverage.md). Byte layouts of the container are in [`sod.ksy`](sod.ksy).

@@ -1,3 +1,6 @@
+---
+summary: "Dated table of `stuntreel parity` scores against captured PLAYONE.EXE frames, rows appended newest last: per row the commit, matched or scored frames, mean SSIM and IoU, and why the score moved."
+---
 # Parity Results Log
 
 Dated results of `stuntreel parity` for `CTRY.FLM` against captured `PLAYONE.EXE` frames, newest last. From 2026-10-22 the headline figure covers only frames above the fade floor ([`method.md` section 5](method.md#5-reading-the-results-log)); rows above that are over all frames. The loop that produces each row is in [`method.md`](method.md); reports and renders live under `build/parity/` (gitignored), so only the figures are recorded here.

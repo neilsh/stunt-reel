@@ -1,3 +1,6 @@
+---
+summary: "`OP_ANIMATE` (`0x01F8`) carries a variable-length resource-ID table and blits the selected raster resource in screen space, not a joint rotation; how `.FLM` `animate` reaches it is unknown."
+---
 # `PLAYONE.EXE`: `OP_ANIMATE` Resource-Draw Semantics
 
 * **Binary**: `PLAYONE.EXE` (LZEXE 0.91, DOSBox-X runtime image)

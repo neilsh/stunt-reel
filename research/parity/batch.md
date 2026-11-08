@@ -1,3 +1,6 @@
+---
+summary: "Runs `mise run batch-parity` over distinct corpus films in four stages: the score spread of the 79 of 529 scored when the survey stopped, stage costs, capture failures and later rescores."
+---
 # Batch Parity Survey: Every Distinct Corpus Film
 
 `[Bounded Observation]`, 2026-10-30. The survey was stopped on purpose after **79 of 529** distinct films were scored (about 15%): enough to characterise the failure modes and the score spread, and the remaining films would cost tens of hours at 200 s per capture. The numbers below are the ledger at that point (`--summary` regenerates them); resuming is just `mise run batch-parity`. The plan is [`docs/process/plans/batch-parity-2026-10-30.md`](../../docs/process/plans/batch-parity-2026-10-30.md).

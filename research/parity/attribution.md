@@ -1,3 +1,6 @@
+---
+summary: "Splits the CTRY.FLM and INTRO.FLM SSIM loss by render layer: props are the largest class once ground tiles are decals, and on CTRY most window loss sits at edges rather than flat colour."
+---
 # Parity Attribution: Where Our Render's Loss Sits
 
 `[Bounded Observation]`: one capture set per film, 114 scored `CTRY.FLM` frames and 209 scored `INTRO.FLM` frames. This note says which parts of the frame carry the SSIM loss. The measuring loop is in [`method.md`](method.md); every figure has a row in [`log.md`](log.md). The framing and hero-aircraft residual is in [`framing-and-actors.md`](framing-and-actors.md); how the player shades the ground is in [`../playone-exe/terrain-shade.md`](../playone-exe/terrain-shade.md).

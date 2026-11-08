@@ -1,3 +1,6 @@
+---
+summary: "The `SP_1NODE` distance gate at image `0x2121` scales by `DS:0x22A4`, the `GAME.VAR` detail word times the view camera's lens; captures run at full detail, and our field of view follows the lens."
+---
 # `PLAYONE.EXE`: Level-of-Detail Distance Gate and the `GAME.VAR` Detail Word
 
 * **Binary**: `PLAYONE.EXE` (LZEXE 0.91), unpacked with [`unlzexe.py`](../../python/scripts/unlzexe.py) to the load image `build/re/playone.img`

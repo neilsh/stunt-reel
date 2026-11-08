@@ -1,3 +1,6 @@
+---
+summary: "`PLAYONE` draws the ground flat from `MAP.BIN`-coloured leaves of a BSP scenery tree in its own image and, in live CTRY runs, paints `SCENERY2/3.RES` tiles over it, licensing our ground-decal pass."
+---
 # `PLAYONE.EXE`: How the Ground Is Drawn and Where Its Colours Come From
 
 * **Binary**: `PLAYONE.EXE`, unpacked load image, unpatched and Patch #3 builds; film `CTRY.FLM` (and `INTRO.FLM` for the renderer check)
