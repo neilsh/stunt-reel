@@ -59,7 +59,7 @@ GATE_NAME = re.compile(r"mise run check(?:-[a-z]+)?|\bcheck-[a-z]+")
 OUTCOME = re.compile(r" (?:passes|not run)\b")
 
 
-def _is_gate_line(line: str) -> bool:
+def is_gate_line(line: str) -> bool:
     """Whether *line* names the gate and gives every gate name on it an outcome."""
     names = list(GATE_NAME.finditer(line))
     return GATE in line and all(OUTCOME.match(line, name.end()) for name in names)
@@ -89,7 +89,7 @@ def problems(message: str) -> list[str]:
             f"with a type of {', '.join(TYPES)}"
         )
     body = [line for line in lines[lines.index(subject) + 1 :] if line] if subject else []
-    if any(not TRAILER.match(line) for line in body) and not any(map(_is_gate_line, body)):
+    if any(not TRAILER.match(line) for line in body) and not any(map(is_gate_line, body)):
         found.append(
             f"the body has no gate line: end it with '{GATE} passes.', or name the part of "
             f"the gate that did not run (AGENTS.md, Committing)"
@@ -109,7 +109,7 @@ def unproven(message: str) -> list[str]:
     if GIT_SUBJECT.match(subject):
         return []
     claimed: list[str] = []
-    for line in filter(_is_gate_line, lines):
+    for line in filter(is_gate_line, lines):
         for match in GATE_NAME.finditer(line):
             name = match.group().removeprefix("mise run ")
             if line.startswith(" passes", match.end()) and name in gate_record.RECORDED:

@@ -307,7 +307,7 @@ def test_ci_requested(env: dict[str, str], expected: bool) -> None:
 )
 def test_gate_line(halves: tuple[str, ...], line: str) -> None:
     assert gate.gate_line(halves) == line
-    assert check_commit_msg._is_gate_line(line)
+    assert check_commit_msg.is_gate_line(line)
 
 
 def test_a_docs_failure_names_the_docs_rerun() -> None:
