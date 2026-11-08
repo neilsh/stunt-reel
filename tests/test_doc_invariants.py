@@ -126,10 +126,11 @@ WORK_DIR = REPO_ROOT / "work"
 LINK_SOURCES_SKIPPED: tuple[str, ...] = ()
 #: A link from an evergreen file to a dated record is allowed after a provenance marker on its
 #: line (``_Source:`` or a legacy ``_Found <date>``, italic with ``_`` or ``*``, at the line's
-#: start or after whitespace), or under a heading with exactly this text, until the next heading
-#: of the same or higher level.
+#: start or after whitespace), or under a Ruled out heading, until the next heading of the same
+#: or higher level.
 PROVENANCE_REGEX = re.compile(r"(?<!\S)[_*](?:Source:|Found )")
-RULED_OUT_HEADING = "Ruled out"
+#: A Ruled out heading's whole text: any case, after an optional section number (``5.``, ``4.1``).
+RULED_OUT_HEADING_REGEX = re.compile(r"(?:\d+(?:\.\d+)*\.?\s+)?ruled out", re.IGNORECASE)
 #: A dated folder's pictures, which an evergreen file may cite anywhere.
 IMAGES_DIR_NAME = "images"
 #: ADRs cite the spec and plan they came from freely.
@@ -170,6 +171,11 @@ def _anchors(path: Path) -> set[str]:
     return anchors
 
 
+def _is_ruled_out_heading(text: str) -> bool:
+    """Whether *text*, a heading without its ``#`` marks, opens a Ruled out section."""
+    return RULED_OUT_HEADING_REGEX.fullmatch(text) is not None
+
+
 def _links(path: Path) -> Iterator[tuple[str, bool]]:
     """(target, allowed) for each inline or reference-style link in *path*'s prose.
 
@@ -186,7 +192,7 @@ def _links(path: Path) -> Iterator[tuple[str, bool]]:
             level = len(heading.group(1))
             if level <= ruled_out_level:
                 ruled_out_level = 0
-            if not ruled_out_level and heading.group(2) == RULED_OUT_HEADING:
+            if not ruled_out_level and _is_ruled_out_heading(heading.group(2)):
                 ruled_out_level = level
         marker = PROVENANCE_REGEX.search(line)
         line_starts.append(offset)
@@ -501,6 +507,45 @@ def test_image_citations_into_work_are_allowed_anywhere(tmp_path: Path) -> None:
         (source, f"{FIXTURE_FOLDER}/images/embed.png", True),
         (source, f"{FIXTURE_FOLDER}/images/link.png", True),
         (source, f"{FIXTURE_FOLDER}/outside.png", False),
+    }
+
+
+@pytest.mark.parametrize(
+    ("heading", "opens"),
+    [
+        ("Ruled out", True),
+        ("Ruled Out", True),
+        ("RULED OUT", True),
+        ("5. Ruled Out", True),
+        ("4.1 Ruled out", True),
+        ("4.1. Ruled out", True),
+        ("Ruled out hypotheses", False),
+        ("Not ruled out", False),
+        ("Ruled out: framing", False),
+        ("5.Ruled out", False),
+        ("v2 Ruled out", False),
+    ],
+)
+def test_ruled_out_heading_text(heading: str, opens: bool) -> None:
+    """Ruled out in any case, after an optional section number; nothing else around it."""
+    assert _is_ruled_out_heading(heading) is opens
+
+
+def test_a_numbered_ruled_out_heading_opens_a_section(tmp_path: Path) -> None:
+    """A note's numbered ``4.1 Ruled out`` allows work/ links until the next heading at its level."""
+    note = _write(
+        tmp_path / "research" / "n.md",
+        "# Note\n\n"
+        "## 4. Open Questions & Analysis Backlog\n\n"
+        "### 4.1 Ruled out\n\n"
+        "- [ruled](../work/2026-11/x/ruled.md)\n\n"
+        "### 4.2 Open questions\n\n"
+        "- [after](../work/2026-11/x/after.md)\n",
+    )
+    source = note.relative_to(tmp_path).as_posix()
+    assert _work_links(tmp_path) == {
+        (source, f"{FIXTURE_FOLDER}/ruled.md", True),
+        (source, f"{FIXTURE_FOLDER}/after.md", False),
     }
 
 
