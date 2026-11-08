@@ -173,8 +173,8 @@ works only from the top branch of the stack, so run it in the worktree that hold
 Observed 2026-11-08.
 
 * **The user turns on Auto-fix for a PR `gh stack submit` opened.** `mcp__ccd_pr__set_monitor`
-  attaches only to a PR the app is sure this session opened, and refused all five of #309–#313;
-  ask the user rather than retry.
+  attaches only to a PR the app is sure this session opened, and refused it for each of #309,
+  #310, #312 and #313; ask the user rather than retry.
 * **Brief an isolated subagent to branch from `origin/main`.** Worktree isolation cuts its branch
   from the session's current `HEAD`, so a brief for work off `main` opens with
   `git fetch origin && git switch -c <branch> origin/main`. Its worktree and `worktree-agent-*`
