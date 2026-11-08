@@ -32,9 +32,8 @@ commands.
    (AGENTS.md, Committing rule 7). Fix or restore each claim it reports before you
    commit.
 
-5. Run `lychee --no-progress --exclude-path work .` and list each dead external link
-   (http or https) with the file that holds it. If lychee is not installed, say so
-   instead of listing.
+5. Run `mise run links` and list each dead external link with the file that holds it.
+   If it cannot run, say why instead of listing.
 
 6. From the doc-health output, list the stale work folders: each stale-issue and
    missing-outcome finding. If doc-health printed that gh was unavailable, say the

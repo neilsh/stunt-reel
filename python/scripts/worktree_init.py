@@ -2,7 +2,8 @@
 
 A worktree needs no provisioning (ADR 0036): code reads the data root directly, mise
 names the shared caches by absolute path, and ``ensure``, a dependency of every task
-that builds Rust, seeds an empty ``target/`` and sets ``core.hooksPath`` under a lock.
+that builds Rust, seeds an empty ``target/`` and sets ``core.hooksPath`` and
+``blame.ignoreRevsFile`` under a lock.
 ``mise run init`` does the same eagerly with a full report, runs ``uv sync``, and names
 any link an older ``init`` left, which ``reap`` unlinks.  ``mise run
 clean`` reports the per-worktree build outputs and
@@ -163,6 +164,31 @@ def ensure_hooks_path(repo: Path) -> list[Line]:
                 Line("!", f"{hook} no longer runs: core.hooksPath replaces the hooks there")
             )
     return lines
+
+
+#: The committed list of revisions ``git blame`` skips, relative to the worktree.
+BLAME_IGNORE_FILE = ".git-blame-ignore-revs"
+
+
+def ensure_blame_ignore(repo: Path) -> list[Line]:
+    """Point *repo*'s ``blame.ignoreRevsFile`` at the committed list; the lines ``init`` prints.
+
+    Shared like ``core.hooksPath``. Set only when this checkout has the file, since
+    ``git blame`` fails outright on a missing one; a different value is left alone and reported.
+    """
+    if not (repo / BLAME_IGNORE_FILE).is_file():
+        return []
+    current = _git(repo, "config", "--get", "blame.ignoreRevsFile").stdout.strip()
+    if current == BLAME_IGNORE_FILE:
+        return [Line("=", f"blame.ignoreRevsFile {BLAME_IGNORE_FILE}")]
+    if current:
+        return [Line("!", f"blame.ignoreRevsFile is {current!r}; left alone")]
+    result = _git(repo, "config", "blame.ignoreRevsFile", BLAME_IGNORE_FILE)
+    if result.returncode != 0:
+        return [
+            Line("!", f"could not set blame.ignoreRevsFile: {result.stderr.strip()}", news=True)
+        ]
+    return [Line("+", f"blame.ignoreRevsFile -> {BLAME_IGNORE_FILE}", news=True)]
 
 
 #: The checkout paths the old layout linked (ADR 0008, ADR 0013, ADR 0019); init reports them.
@@ -350,7 +376,7 @@ def _tag_cache(target: Path) -> None:
 
 
 def _hooks(target: Path, *, report: bool) -> list[Line]:
-    """``ensure_hooks_path``'s lines worth printing; none outside a git checkout.
+    """``ensure_hooks_path`` and ``ensure_blame_ignore``'s lines worth printing; none outside git.
 
     The shared setting rarely changes, so a quiet run checks it once per *target*: the stamp
     :data:`HOOKS_CHECKED` there skips git until target/ goes. A failed check leaves no stamp.
@@ -359,7 +385,7 @@ def _hooks(target: Path, *, report: bool) -> list[Line]:
     if (not report and stamp.exists()) or primary_checkout() is None:
         return []
     try:
-        hooks = ensure_hooks_path(REPO_ROOT)
+        hooks = ensure_hooks_path(REPO_ROOT) + ensure_blame_ignore(REPO_ROOT)
     except (SharedDataError, OSError) as err:
         return [Line("!", f"hooks: {err}", news=True)]
     if not any(line.news and line.mark == "!" for line in hooks):

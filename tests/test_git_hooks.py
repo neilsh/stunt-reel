@@ -111,6 +111,41 @@ def test_init_leaves_a_hooks_path_someone_chose(tmp_path: Path) -> None:
 
 
 @needs_git
+def test_init_points_blame_at_the_ignore_file_once(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    (repo / ".git-blame-ignore-revs").write_text("# none yet\n", encoding="utf-8")
+    assert list(map(str, worktree_init.ensure_blame_ignore(repo))) == [
+        "  + blame.ignoreRevsFile -> .git-blame-ignore-revs"
+    ]
+    assert (
+        _git(repo, "config", "--get", "blame.ignoreRevsFile").stdout.strip()
+        == ".git-blame-ignore-revs"
+    )
+    assert list(map(str, worktree_init.ensure_blame_ignore(repo))) == [
+        "  = blame.ignoreRevsFile .git-blame-ignore-revs"
+    ]
+
+
+@needs_git
+def test_init_sets_no_blame_ignore_file_the_checkout_lacks(tmp_path: Path) -> None:
+    # git blame fails outright when the configured file is missing.
+    repo = _repo(tmp_path)
+    assert worktree_init.ensure_blame_ignore(repo) == []
+    assert _git(repo, "config", "--get", "blame.ignoreRevsFile").stdout == ""
+
+
+@needs_git
+def test_init_leaves_a_blame_ignore_file_someone_chose(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    (repo / ".git-blame-ignore-revs").write_text("# none yet\n", encoding="utf-8")
+    _git(repo, "config", "blame.ignoreRevsFile", "my-revs")
+    lines = list(map(str, worktree_init.ensure_blame_ignore(repo)))
+    assert len(lines) == 1
+    assert lines[0].startswith("  ! blame.ignoreRevsFile is 'my-revs'")
+    assert _git(repo, "config", "--get", "blame.ignoreRevsFile").stdout.strip() == "my-revs"
+
+
+@needs_git
 def test_init_names_local_hooks_the_setting_turns_off(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     (repo / ".githooks").mkdir()

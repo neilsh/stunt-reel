@@ -192,7 +192,7 @@ def test_nothing_auto_merges() -> None:
 
 #: The tools the cloud setup (`.claude/cloud-setup.sh`) installs from `mise.lock`. Rust is
 #: absent: rustup installs it from static.rust-lang.org, so its entry carries no URL.
-_CLOUD_DOWNLOADS = ("python", "uv", "prek", "github:kaitai-io/kaitai_struct_compiler")
+_CLOUD_DOWNLOADS = ("python", "uv", "prek", "lychee", "github:kaitai-io/kaitai_struct_compiler")
 
 
 def test_the_cloud_setup_installs_the_checked_tools() -> None:
