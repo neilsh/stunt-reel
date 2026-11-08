@@ -667,13 +667,15 @@ WORK_POINTERS: frozenset[tuple[str, str]] = frozenset()
 
 
 def test_evergreen_files_link_into_work_only_where_allowed() -> None:
-    """Outside ADRs, an evergreen link to a dated record sits on a provenance line or under Ruled out."""
+    """An evergreen link to a dated record follows a provenance marker on its line, sits under
+    Ruled out, comes from an ADR or points into a folder's images/."""
     disallowed = {(source, target) for source, target, allowed in _work_links() if not allowed}
     new = sorted(disallowed - WORK_POINTERS)
     assert not new, (
-        "An evergreen file links to a dated record under work/ outside a provenance line or a "
-        "Ruled out section; "
-        "state the fact in the evergreen file and cite the record from its _Source: line:\n"
+        "An evergreen file links to a dated record under work/<YYYY-MM>/ where only a link after "
+        "a _Source: (or legacy _Found ) marker on its line, under a Ruled out heading, from an "
+        "ADR or into a folder's images/ may; state the fact in the evergreen file and cite the "
+        "record after _Source: on that line, by convention a journal entry's heading:\n"
         + "\n".join(f"{source} -> {target}" for source, target in new)
     )
     stale = sorted(WORK_POINTERS - disallowed)

@@ -84,7 +84,7 @@ def test_flags_an_oversized_note_and_ranks_it_first(tmp_path: Path) -> None:
     _write(tmp_path, f"{DOCS}/howto/run.md", _sized(22000))
     _write(tmp_path, f"{DOCS}/SPEC.md", _sized(20480))
     _write(tmp_path, f"{DOCS}/process/plan.md", _sized(40000))
-    _write(tmp_path, "AGENTS.md", _sized(40000))
+    _write(tmp_path, "README.md", _sized(40000))
     _write(tmp_path, f"{RESEARCH}/unsummarised.md", "# Note\n")
     findings = doc_health.collect(tmp_path, _unused, TODAY)
     assert [(f.kind, f.path, f.weight) for f in findings[:4]] == [
@@ -103,6 +103,13 @@ def test_size_is_bytes_on_disk(tmp_path: Path) -> None:
     assert _found(doc_health.collect(tmp_path, _unused, TODAY), "size") == [
         (f"{DOCS}/crlf.md", "21000 bytes, over the 20480-byte budget")
     ]
+
+
+def test_agents_md_is_evergreen(tmp_path: Path) -> None:
+    _write(tmp_path, "AGENTS.md", "# Agents\n\n## Handoff to the next session\n" + "x" * 21000)
+    findings = doc_health.collect(tmp_path, _unused, TODAY)
+    assert [(f.kind, f.path) for f in findings] == [("size", "AGENTS.md"), ("heading", "AGENTS.md")]
+    assert findings[1].detail == "line 3: ## Handoff to the next session"
 
 
 def test_exempts_generated_tables_and_adrs(tmp_path: Path) -> None:

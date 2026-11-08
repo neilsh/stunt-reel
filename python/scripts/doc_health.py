@@ -4,8 +4,8 @@
 A report, never a gate. It finds:
 
 * ``size``: an evergreen file (``research/**/*.md``, ``docs/*.md``, ``docs/agents/*.md``,
-  ``docs/howto/*.md``, but not ``research/MAP.md``, ``research/formats/sod-opcode-coverage.md``
-  or ``docs/adr/**``) over 20480 bytes on disk;
+  ``docs/howto/*.md``, ``AGENTS.md``, but not ``research/MAP.md``,
+  ``research/formats/sod-opcode-coverage.md`` or ``docs/adr/**``) over 20480 bytes on disk;
 * ``summary``: a research note (``stunt_reel.research_notes``) without a ``summary:``;
 * ``heading``: a heading in an evergreen file, outside fenced code, that contains an ISO date
   or an ordinal round ("Second round"), or whose words after any section number start with
@@ -55,7 +55,7 @@ type Kind = Literal["size", "summary", "heading", "stale-issue", "missing-outcom
 
 SIZE_BUDGET = 20480
 STALE_DAYS = 14
-EVERGREEN = ("research/**/*.md", "docs/*.md", "docs/agents/*.md", "docs/howto/*.md")
+EVERGREEN = ("research/**/*.md", "docs/*.md", "docs/agents/*.md", "docs/howto/*.md", "AGENTS.md")
 EXEMPT = ("research/MAP.md", "research/formats/sod-opcode-coverage.md", "docs/adr/**")
 #: Ties in weight print in this order of kind.
 KINDS: tuple[Kind, ...] = (

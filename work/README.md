@@ -54,12 +54,12 @@ A frozen entry later found wrong is not edited. The correction is a new entry in
 
 ## Links
 
-`mise run check` enforces these:
+`mise run check` enforces these on Markdown links:
 
-- **Into `work/`** from an evergreen file: only from a provenance line, a line or sentence starting `_Source:` that links a journal entry's heading, or from a section under a `Ruled out` heading. The fragment must name a heading. ADRs may cite their spec and plan anywhere, and any file may show a picture from a folder's `images/`. Any other new link into `work/` fails.
-- **Out of `work/`** into an evergreen file: checked for the file only, so renaming a heading in a note never breaks a frozen record.
-- **Within `work/`**: checked in full, fragments included.
-- **From code**: a path into `work/` is allowed; a heading fragment never is.
+- **Into a dated record** (`work/<YYYY-MM>/`) from an evergreen file, a link must follow a provenance marker on its line (`_Source:` or a legacy `_Found `, italic, at the line's start or after whitespace), sit under a `Ruled out` heading (numbered or not, any case), come from an ADR, or point into a folder's `images/`. Any other fails unless `WORK_POINTERS` lists it, a list that only shrinks. Its fragment must name a heading. By convention, a `_Source:` line links a journal entry's heading.
+- **From a dated record** into an evergreen file: checked for the file only, so renaming a heading in a note never breaks a frozen record. Between dated records: checked in full.
+
+In code outside dated records, each `.md` path under `research/`, `docs/` or `work/` written from the repository root must exist and carry no heading fragment.
 
 ## Search
 

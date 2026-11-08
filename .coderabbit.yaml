@@ -6,10 +6,11 @@
 # default; the entries below exist only where a default cannot say it.
 
 reviews:
-  # The five paths where a review comment cannot be useful: two lockfiles, the synthetic
-  # fixture bytes, the parity log, whose rows are append-only and union-merged
-  # (.gitattributes), so a note about their shape is guaranteed to be ignored, and work/,
-  # whose dated records are frozen once their work lands (work/README.md).
+  # Four paths where a review comment cannot be useful: two lockfiles, the synthetic fixture
+  # bytes, and the parity log, whose rows are append-only and union-merged (.gitattributes), so
+  # a note about their shape is guaranteed to be ignored. And work/, whose dated records
+  # (work/README.md) a person reviews in the pull request that adds them, with the fresh reviewer
+  # of AGENTS.md working rule 7 when that pull request also changes research/ or NOTICE.md.
   path_filters:
     - "!Cargo.lock"
     - "!uv.lock"
