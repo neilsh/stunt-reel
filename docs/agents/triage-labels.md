@@ -12,6 +12,8 @@ The skills speak in terms of canonical triage roles. This file maps those roles 
 | `ready-for-human`          | `ready-for-human`    | Requires human implementation            |
 | `wontfix`                  | `wontfix`            | Will not be actioned                     |
 
+An agent can run DOSBox and DOSBox-X captures and breakpoint sessions, so needing one does not make an issue `ready-for-human`. Use `ready-for-human` for a design or visual judgment call, or a step the agent cannot do on this machine (admin rights, an asset not in the data root); the brief names which.
+
 Every open issue without sub-issues carries exactly one state label. A parent needs none, and any it carries is ignored ([issue-tracker.md § Organizing issues](issue-tracker.md#organizing-issues)); a `wayfinder:*` map or ticket carries none, as `/wayfinder` requires. Blocking is a native issue dependency ([issue-tracker.md](issue-tracker.md)), never a label.
 
 ## Category roles
