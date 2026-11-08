@@ -21,6 +21,7 @@ from stunt_reel.parity_artifacts import (
     ArtifactError,
     FilmId,
     Geometry,
+    RenderAdapter,
     RenderRecord,
     open_render,
     read_render,
@@ -66,6 +67,37 @@ def test_a_document_written_by_the_rust_side_loads_and_extra_keys_are_ignored(
     extra = raw_record()
     extra["future_top"] = {"kept": True}
     assert read_render(write_json(tmp_path / "extra.json", extra)) == record
+
+
+def test_a_render_records_its_adapter(tmp_path: Path) -> None:
+    fixture = Path(__file__).resolve().parent / "fixtures" / "parity" / "v3" / "render"
+    record = read_render(fixture / "render.json")
+    assert record.adapter == RenderAdapter("Test GPU", "hardware")
+    path = tmp_path / "render.json"
+    write_render(path, record)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert document["adapter"] == {"name": "Test GPU", "class": "hardware"}
+
+
+def test_a_render_without_an_adapter_reads_none(tmp_path: Path) -> None:
+    raw = raw_record()
+    assert "adapter" not in raw
+    record = read_render(write_json(tmp_path / "absent.json", raw))
+    assert record.adapter is None
+    raw["adapter"] = None
+    assert read_render(write_json(tmp_path / "null.json", raw)) == record
+    path = tmp_path / "render.json"
+    write_render(path, record)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert "adapter" not in document, "render.json leaves an unknown adapter out"
+
+
+def test_an_unknown_adapter_class_is_refused(tmp_path: Path) -> None:
+    raw = raw_record()
+    raw["adapter"] = {"name": "Test GPU", "class": "quantum"}
+    with pytest.raises(ArtifactError, match=r"adapter\.class") as refusal:
+        read_render(write_json(tmp_path / "render.json", raw))
+    assert refusal.value.kind == "wrong_type"
 
 
 def test_a_tick_without_its_credits_flag_is_refused(tmp_path: Path) -> None:

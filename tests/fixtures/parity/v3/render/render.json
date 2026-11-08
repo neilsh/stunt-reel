@@ -157,5 +157,9 @@
         "length": 28
       }
     }
-  ]
+  ],
+  "adapter": {
+    "name": "Test GPU",
+    "class": "hardware"
+  }
 }

@@ -79,6 +79,7 @@ def test_render_fixture_round_trips_through_the_adapter(tmp_path: Path) -> None:
     assert back.geometry == record.geometry
     assert back.palette_count == record.palette_count
     assert back.chunks == record.chunks
+    assert back.adapter == record.adapter
     assert len(back.ticks) == len(record.ticks)
     for back_tick, tick in zip(back.ticks, record.ticks, strict=True):
         assert back_tick.tick == tick.tick
@@ -157,6 +158,7 @@ def test_report_fixture_round_trips_through_the_adapter(tmp_path: Path) -> None:
     assert back.i6_gate == report.i6_gate
     assert back.scored_frames == report.scored_frames
     assert back.excluded_frames == report.excluded_frames
+    assert back.adapter == report.adapter
     _assert_close(back.mean_ssim, report.mean_ssim)
     _assert_close(back.min_ssim, report.min_ssim)
     _assert_close(back.mean_iou, report.mean_iou)

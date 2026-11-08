@@ -402,6 +402,14 @@ mod conformance {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/parity/v3/render")
     }
 
+    /// The adapter the v3 render and the v1 report name.
+    fn fixture_adapter() -> RenderAdapter {
+        RenderAdapter {
+            name: "Test GPU".to_string(),
+            class: AdapterClass::Hardware,
+        }
+    }
+
     /// Tick 7: sky over two actor pixels, with a layer-16 row below the 2-row viewport.
     const TICK_7_ROWS: [([u8; 4], [u16; 4]); 3] = [
         ([180, 180, 180, 180], [0, 0, 0, 0]),
@@ -486,7 +494,7 @@ mod conformance {
             ticks,
             palette_count: table.palette_count,
             chunks: table.chunks,
-            adapter: None,
+            adapter: Some(fixture_adapter()),
         };
         write_render_record(&dir, &record).expect("write record");
     }
@@ -525,6 +533,7 @@ mod conformance {
             .map(|t| t.tick)
             .collect();
         assert_eq!(credits, vec![V3_CREDITS_TICK]);
+        assert_eq!(record.adapter, Some(fixture_adapter()));
     }
 
     #[test]
@@ -620,6 +629,7 @@ mod conformance {
         assert_eq!(report.excluded_frames, 1);
         assert_eq!(report.unmatched, 1);
         assert_eq!(report.sky_indices, [228, 238]);
+        assert_eq!(report.adapter, Some(fixture_adapter()));
 
         let text = serde_json::to_string(&report).expect("re-serialise report");
         let back: Report = serde_json::from_str(&text).expect("re-read report");
@@ -631,6 +641,7 @@ mod conformance {
         assert_eq!(back.i6_gate, report.i6_gate);
         assert_eq!(back.scored_frames, report.scored_frames);
         assert_eq!(back.excluded_frames, report.excluded_frames);
+        assert_eq!(back.adapter, report.adapter);
         assert_close(back.mean_ssim, report.mean_ssim, "mean_ssim");
         assert_close(back.min_ssim, report.min_ssim, "min_ssim");
         assert_close(back.mean_iou, report.mean_iou, "mean_iou");
