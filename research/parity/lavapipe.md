@@ -1,5 +1,5 @@
 ---
-summary: "Mesa lavapipe turns near ground polygons to palette index 0, inferred from a 0/0 clipper weight on `noperspective` varyings; a non-finite shade guard in `fragment_index` brings scores near the GPU's."
+summary: "On lavapipe, large near-eye ground polygons can draw palette index 0, inferred to come from a 0/0 clipper weight on `noperspective` varyings; a non-finite shade guard brings scores near the GPU's."
 ---
 # Parity: Rendering on Lavapipe
 

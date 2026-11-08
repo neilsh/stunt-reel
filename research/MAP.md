@@ -5,10 +5,10 @@
 ## formats
 
 - [`formats/INDEX.md`](formats/INDEX.md): Router to the format specs, concept notes and `.ksy` schemas: catalog of each format's magic, role, tier, spec and schema, the runtime asset graph, and community provenance.
-- [`formats/all.md`](formats/all.md): `.ALL` scene bundle from `MAKEONE.EXE` (`[FMT-ALL-CHUNKS]`): u16 count, id table and u32 offsets with EOF sentinel, resource-id ranges, palettes 0x8042 and 0x801E, chunks copied from `.RES` items.
+- [`formats/all.md`](formats/all.md): `.ALL` bundle from `MAKEONE.EXE` ([FMT-ALL-CHUNKS]): u16 count, id table, u32 offsets with EOF sentinel, id ranges, palettes 0x8042 and 0x801E; shipped-game chunks are unchanged `.RES`/`.SMP` items.
 - [`formats/flm.md`](formats/flm.md): `.FLM` film stream ([FMT-FLM-OPCODES]): FILM magic, 3-byte slice header (back-pointer, 50 Hz `tick_duration`), end-of-film epilogue, and opcodes create, interp, var_set, view_obj, credits, sound.
 - [`formats/res.md`](formats/res.md): `.RES` archive ([FMT-RES-HEADER]): RS magic, `res_index` and `item_count` bytes, u32 offset table; prop archives carry a name table, scenery archives do not; compound keys and the index catalog.
-- [`formats/sod-opcode-coverage.md`](formats/sod-opcode-coverage.md): Census work queue for unhandled `.SOD` opcodes: Partial SOD shapes, their blocking opcode (`OP_ANIMATE` in 28, two-vertex `POLYZ`/`GVPOLY` in 7), the films placing them, and regeneration.
+- [`formats/sod-opcode-coverage.md`](formats/sod-opcode-coverage.md): Census work queue for Partial SOD shapes: `OP_ANIMATE` blocks 28, a two-vertex `POLYZ`/`GVPOLY` (a line or a walk desync, open) stops 7, the films placing them, and regeneration.
 - [`formats/sod-opcodes.md`](formats/sod-opcodes.md): The 107-opcode `.SOD` table ([FMT-SOD-OPCODES]) dispatched as multiples of 9, the `OP_TAP`, `OP_ANIMATE` and `IFVIS`/`BVIS` facing-flag semantics, and si-tools readings kept as hypotheses.
 - [`formats/sod.md`](formats/sod.md): `.SOD` model bytecode ([FMT-SOD-HEADER]): 0x000C magic, 10-byte header, power-of-two scale table (indices 18 and 19 seen in corpus), VM overview, coplanar decal rule, `OP_IFVIS` as a facing gate.
 
@@ -24,27 +24,27 @@
 
 ## formats/concepts
 
-- [`formats/concepts/compression.md`](formats/concepts/compression.md): DOS storage tiers: LZEXE 0.91 packing of `PLAYONE.EXE` and its LZSS bitstream, uncompressed `.RES` and `.ALL` payloads, PCX RLE in sprite sources, and the [I8] uppercase 8.3 path rules.
+- [`formats/concepts/compression.md`](formats/concepts/compression.md): DOS storage tiers: LZEXE 0.91 packing of `PLAYONE.EXE` and its LZSS bitstream, uncompressed retail `.RES` and `.ALL` payloads, PCX RLE in sprite sources, and the [I8] uppercase 8.3 path rules.
 - [`formats/concepts/coordinates-and-units.md`](formats/concepts/coordinates-and-units.md): [I1] coordinate frames from model to screen: right-handed metric basis, 16.16 fixed point, BAM angles, `sod_scale_table`, editor units to metres, focal length and FOV, attribute-keyed vertex welding.
 - [`formats/concepts/palette-and-shading.md`](formats/concepts/palette-and-shading.md): [I3] palette model: three 6-to-8-bit DAC scalings, palettes 0x8042 and 0x801E, colour groups and 32-level ramps, CTRY capture evidence against a sun-derived shade, sky bands 227-238, 256x32 LUT.
 - [`formats/concepts/timeline-and-ticks.md`](formats/concepts/timeline-and-ticks.md): [I4] playback timing: 50 Hz PIT divisor 0x5D38, slice ticks as cumulative `tick_duration`, lerp and slerp sub-tick interpolation, shorter-arc roll, cut suppression, and 0x9C audio cues.
 
 ## formats/memory
 
-- [`formats/memory/kaitai-memory-spike.md`](formats/memory/kaitai-memory-spike.md): Whether runtime memory records fit `.ksy`: `actor_record.ksy` for [MEM-ACTOR-TABLE] compiles and parses, so `.ksy` serves as layout source and verification tool, not as a runtime parser.
+- [`formats/memory/kaitai-memory-spike.md`](formats/memory/kaitai-memory-spike.md): Whether runtime memory records fit `.ksy`: `actor_record.ksy`, for the hypothesised [MEM-ACTOR-TABLE] layout, compiles and parses; `.ksy` is advised as layout source and check, not runtime parser.
 
 ## makeone-exe
 
-- [`makeone-exe/driving.md`](makeone-exe/driving.md): How the harness drives `MAKEONE.EXE` under emulation to make a film's `.ALL`: keys, text-mode return as completion signal, minimal mount, output checks, run time per CPU profile and hang policy.
+- [`makeone-exe/driving.md`](makeone-exe/driving.md): How the harness drives `MAKEONE.EXE` under emulation to make a film's `.ALL`: keys, text-mode return as completion signal, a working mount, output checks, run time per CPU profile and hang policy.
 - [`makeone-exe/linking.md`](makeone-exe/linking.md): A `.ALL` copies `RES\` items unchanged, id-ordered by `(res_index << 8) | (segment + 1)`, per film and sound setting; a stock-shape superset renders CTRY, INTRO and BALLOON like their own archives.
 
 ## parity
 
-- [`parity/attribution.md`](parity/attribution.md): Splits the CTRY.FLM and INTRO.FLM SSIM loss by render layer: props are the largest class once ground tiles are decals, and on CTRY most window loss sits at edges rather than flat colour.
-- [`parity/batch.md`](parity/batch.md): Runs `mise run batch-parity` over distinct corpus films in four stages: the score spread of the 79 of 529 scored when the survey stopped, stage costs, capture failures and later rescores.
+- [`parity/attribution.md`](parity/attribution.md): Splits the CTRY.FLM and INTRO.FLM SSIM loss by render layer: props are the largest class once ground tiles are decals, and a pre-decal CTRY window study puts most loss at edges, not flat colour.
+- [`parity/batch.md`](parity/batch.md): Survey of corpus films through `mise run batch-parity`'s archive, capture, render and score stages: the score spread of the 79 of 529 scored when it stopped, stage costs, capture failures, rescores.
 - [`parity/film-segments.md`](parity/film-segments.md): Covers COL3-2.FLM and INTRO.FLM segments where PLAYONE shows a scene we do not: the unresolved COL3-2 studio, INTRO sand shots as SCENERY tiles, the montage clock, and black title cards.
 - [`parity/framing-and-actors.md`](parity/framing-and-actors.md): Records camera, projection and hero-aircraft corrections tried against the capture: square 256 px projection, actor ground offset, `OP_VECTORS` orientation, flattened shadow, open `0x7F37` residual.
-- [`parity/lavapipe.md`](parity/lavapipe.md): Mesa lavapipe turns near ground polygons to palette index 0, inferred from a 0/0 clipper weight on `noperspective` varyings; a non-finite shade guard in `fragment_index` brings scores near the GPU's.
+- [`parity/lavapipe.md`](parity/lavapipe.md): On lavapipe, large near-eye ground polygons can draw palette index 0, inferred to come from a 0/0 clipper weight on `noperspective` varyings; a non-finite shade guard brings scores near the GPU's.
 - [`parity/log.md`](parity/log.md): Dated table of `stuntreel parity` scores against captured PLAYONE.EXE frames, rows appended newest last: per row the commit, matched or scored frames, mean SSIM and IoU, and why the score moved.
 - [`parity/method.md`](parity/method.md): Defines the parity loop that judges a render change against PLAYONE.EXE: capture, render, SSIM and IoU scoring with the fade floor, compare verdicts, `report.json` fields and the metric bench.
 - [`parity/probes.md`](parity/probes.md): Procedures for diagnosing one parity discrepancy: `parity_probe.py` crop, shift, iou and retime, `DBG_` switch sweeps via `mise run sweep`, capture-side experiments, and environment pitfalls.
@@ -53,13 +53,13 @@
 ## playone-exe
 
 - [`playone-exe/capture-dosbox-automation.md`](playone-exe/capture-dosbox-automation.md): dosbox-automation 0.85.1 as capture emulator: frame-locked capture reading `film_tick` per frame at `DS = 0x0F46`, bit-identical `CTRY.FLM` runs, torn pages, DAC lag and the Lua instruction budget.
-- [`playone-exe/capture-speed.md`](playone-exe/capture-speed.md): Historical DOSBox-X capture tests on `vault-balloon`: no tried setting, `turbo` or frame sampling cuts the 0.25 s frame cost, `nosound` freezes the film clock, and sampled tags run 7 to 10 ticks late.
+- [`playone-exe/capture-speed.md`](playone-exe/capture-speed.md): Historical DOSBox-X tests on `vault-balloon`: no tried setting, `turbo` or sampling cuts the 0.25 s frame cost, `nosound` freezes the clock, sampled tags lag 7 to 10 ticks; and where a capture ends.
 - [`playone-exe/capture.md`](playone-exe/capture.md): Historical DOSBox-X debugger capture harness: link framing, crash constraints, BDA key injection, the `film_tick` tagging protocol, the one-tick page lag and an inferred 185-row 3D viewport.
 - [`playone-exe/debugger-plans.md`](playone-exe/debugger-plans.md): How `mise run debug-x` breakpoint plans run on DOSBox-X: boot and key entry, image offset to live `CS:IP` mapping on both builds, the `BPM` watch filter that names a writer, and the hit loop.
 - [`playone-exe/dosbox-x-legacy.md`](playone-exe/dosbox-x-legacy.md): What the retired DOSBox-X harness established, for reading old captures: link framing, debugger verbs and quirks, crash constraints, `DS = 0x1575`, late wall-paced tags and `dacexpand` rounding.
-- [`playone-exe/lod.md`](playone-exe/lod.md): The `SP_1NODE` distance gate at image `0x2121` scales by `DS:0x22A4`, the `GAME.VAR` detail word times the view camera's lens; captures run at full detail, and our field of view follows the lens.
-- [`playone-exe/memory-map.md`](playone-exe/memory-map.md): Offset tables for `PLAYONE.EXE` `DGROUP` and the SOD VM work segment on the unpatched and Patch #3 builds, defining the [MEM-*] anchors such as [MEM-FLM-TICK], [MEM-SOD-VM] and [MEM-PALETTE].
-- [`playone-exe/memory.md`](playone-exe/memory.md): Evidence behind the memory map: `DS` per emulator, the [MEM-FLM-TICK] counters (film clock equals `0x22B8` until it holds), the unverified `0C5E` trap, [MEM-UNPACK-LOCKOUT] and image relocation.
+- [`playone-exe/lod.md`](playone-exe/lod.md): The `SP_1NODE` distance gate at `0x2121` scales by `DS:0x22A4`, the `GAME.VAR` detail word times the view camera's lens; captures likely run at full detail, and our field of view follows the lens.
+- [`playone-exe/memory-map.md`](playone-exe/memory-map.md): Offset tables for `PLAYONE.EXE` `DGROUP` and the SOD VM work segment on the unpatched and Patch #3 builds, defining most [MEM-*] anchors, such as [MEM-FLM-TICK], [MEM-SOD-VM] and [MEM-PALETTE].
+- [`playone-exe/memory.md`](playone-exe/memory.md): Evidence for the memory map: `DS` per emulator, the [MEM-FLM-TICK] counters (film clock read equal to `0x22B8` until it holds), the unverified `0C5E` trap, [MEM-UNPACK-LOCKOUT] and image relocation.
 - [`playone-exe/navigation.md`](playone-exe/navigation.md): How the `PLAYONE.EXE` LOAD FILM dialog works: a `VAULT\` listbox with single-letter prefix jumps, `.FLM`/`.ALL` pairing, and harness key injection through the BIOS keyboard ring buffer.
 - [`playone-exe/palette-fade.md`](playone-exe/palette-fade.md): Film variables 13-15, keyed by `var_set` and interpolated per frame, drive the palette build at `0x0FD2` (night, brightness, saturation), so the end-of-film fade is authored in the film.
 - [`playone-exe/patch3.md`](playone-exe/patch3.md): What Patch #3 changes, the patched `PLAYONE.EXE` offsets mapped by function pairing (one dispatch slot fewer, inferred statically), and which build each tested film needs to play and capture.
@@ -80,4 +80,4 @@
 
 ## stunt-exe
 
-- [`stunt-exe/sets.md`](stunt-exe/sets.md): `STUNT.EXE` evidence on `.SET`: no sibling executable names it, its display templates give the IF/AND/THEN vocabulary with operand widths; also the install's crack stub and TYPESET as dump oracle.
+- [`stunt-exe/sets.md`](stunt-exe/sets.md): `STUNT.EXE` evidence on `.SET`: neither `MAKEONE` nor `PLAYONE` names it, its display templates give the IF/AND/THEN vocabulary with operand widths; also the crack stub and TYPESET as dump oracle.

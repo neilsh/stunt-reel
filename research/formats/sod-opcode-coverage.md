@@ -1,5 +1,5 @@
 ---
-summary: "Census work queue for unhandled `.SOD` opcodes: Partial SOD shapes, their blocking opcode (`OP_ANIMATE` in 28, two-vertex `POLYZ`/`GVPOLY` in 7), the films placing them, and regeneration."
+summary: "Census work queue for Partial SOD shapes: `OP_ANIMATE` blocks 28, a two-vertex `POLYZ`/`GVPOLY` (a line or a walk desync, open) stops 7, the films placing them, and regeneration."
 ---
 # `.SOD` Opcode Coverage: Blocking-Opcode Work Queue
 

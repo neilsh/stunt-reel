@@ -1,5 +1,5 @@
 ---
-summary: "`.ALL` scene bundle from `MAKEONE.EXE` (`[FMT-ALL-CHUNKS]`): u16 count, id table and u32 offsets with EOF sentinel, resource-id ranges, palettes 0x8042 and 0x801E, chunks copied from `.RES` items."
+summary: "`.ALL` bundle from `MAKEONE.EXE` ([FMT-ALL-CHUNKS]): u16 count, id table, u32 offsets with EOF sentinel, id ranges, palettes 0x8042 and 0x801E; shipped-game chunks are unchanged `.RES`/`.SMP` items."
 ---
 # Technical Reference Specification: Stunt Island `.ALL` Full-Scene Bundle Format
 

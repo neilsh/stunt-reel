@@ -130,7 +130,8 @@ LINK_SOURCES_SKIPPED: tuple[str, ...] = ()
 #: or higher level.
 PROVENANCE_REGEX = re.compile(r"(?<!\S)[_*](?:Source:|Found )")
 #: A Ruled out heading's whole text: any case, after an optional section number (``5.``, ``4.1``).
-RULED_OUT_HEADING_REGEX = re.compile(r"(?:\d+(?:\.\d+)*\.?\s+)?ruled out", re.IGNORECASE)
+#: The section number has the shape of ``_SECTION_NUMBER`` in ``python/scripts/doc_health.py``.
+RULED_OUT_HEADING_REGEX = re.compile(r"\A(?:\d+(?:\.\d+)*\.?\s+)?ruled out\Z", re.IGNORECASE)
 #: A dated folder's pictures, which an evergreen file may cite anywhere.
 IMAGES_DIR_NAME = "images"
 #: ADRs cite the spec and plan they came from freely.
@@ -173,7 +174,7 @@ def _anchors(path: Path) -> set[str]:
 
 def _is_ruled_out_heading(text: str) -> bool:
     """Whether *text*, a heading without its ``#`` marks, opens a Ruled out section."""
-    return RULED_OUT_HEADING_REGEX.fullmatch(text) is not None
+    return RULED_OUT_HEADING_REGEX.match(text) is not None
 
 
 def _links(path: Path) -> Iterator[tuple[str, bool]]:

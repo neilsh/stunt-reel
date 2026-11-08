@@ -1,5 +1,5 @@
 ---
-summary: "Offset tables for `PLAYONE.EXE` `DGROUP` and the SOD VM work segment on the unpatched and Patch #3 builds, defining the [MEM-*] anchors such as [MEM-FLM-TICK], [MEM-SOD-VM] and [MEM-PALETTE]."
+summary: "Offset tables for `PLAYONE.EXE` `DGROUP` and the SOD VM work segment on the unpatched and Patch #3 builds, defining most [MEM-*] anchors, such as [MEM-FLM-TICK], [MEM-SOD-VM] and [MEM-PALETTE]."
 ---
 # Runtime Memory Map & Real-Mode Offsets
 

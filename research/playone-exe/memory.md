@@ -1,5 +1,5 @@
 ---
-summary: "Evidence behind the memory map: `DS` per emulator, the [MEM-FLM-TICK] counters (film clock equals `0x22B8` until it holds), the unverified `0C5E` trap, [MEM-UNPACK-LOCKOUT] and image relocation."
+summary: "Evidence for the memory map: `DS` per emulator, the [MEM-FLM-TICK] counters (film clock read equal to `0x22B8` until it holds), the unverified `0C5E` trap, [MEM-UNPACK-LOCKOUT] and image relocation."
 ---
 # `PLAYONE.EXE`: Memory Architecture & Data Segment Layout
 

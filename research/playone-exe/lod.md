@@ -1,5 +1,5 @@
 ---
-summary: "The `SP_1NODE` distance gate at image `0x2121` scales by `DS:0x22A4`, the `GAME.VAR` detail word times the view camera's lens; captures run at full detail, and our field of view follows the lens."
+summary: "The `SP_1NODE` distance gate at `0x2121` scales by `DS:0x22A4`, the `GAME.VAR` detail word times the view camera's lens; captures likely run at full detail, and our field of view follows the lens."
 ---
 # `PLAYONE.EXE`: Level-of-Detail Distance Gate and the `GAME.VAR` Detail Word
 

@@ -1,5 +1,5 @@
 ---
-summary: "`STUNT.EXE` evidence on `.SET`: no sibling executable names it, its display templates give the IF/AND/THEN vocabulary with operand widths; also the install's crack stub and TYPESET as dump oracle."
+summary: "`STUNT.EXE` evidence on `.SET`: neither `MAKEONE` nor `PLAYONE` names it, its display templates give the IF/AND/THEN vocabulary with operand widths; also the crack stub and TYPESET as dump oracle."
 ---
 # STUNT.EXE: The Set Engine and Its Event Vocabulary
 

@@ -1,5 +1,5 @@
 ---
-summary: "Whether runtime memory records fit `.ksy`: `actor_record.ksy` for [MEM-ACTOR-TABLE] compiles and parses, so `.ksy` serves as layout source and verification tool, not as a runtime parser."
+summary: "Whether runtime memory records fit `.ksy`: `actor_record.ksy`, for the hypothesised [MEM-ACTOR-TABLE] layout, compiles and parses; `.ksy` is advised as layout source and check, not runtime parser."
 ---
 # Kaitai for runtime memory structs: spike findings (2026-10-23)
 

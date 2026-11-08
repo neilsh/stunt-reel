@@ -1,5 +1,5 @@
 ---
-summary: "Runs `mise run batch-parity` over distinct corpus films in four stages: the score spread of the 79 of 529 scored when the survey stopped, stage costs, capture failures and later rescores."
+summary: "Survey of corpus films through `mise run batch-parity`'s archive, capture, render and score stages: the score spread of the 79 of 529 scored when it stopped, stage costs, capture failures, rescores."
 ---
 # Batch Parity Survey: Every Distinct Corpus Film
 

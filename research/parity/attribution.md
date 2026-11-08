@@ -1,5 +1,5 @@
 ---
-summary: "Splits the CTRY.FLM and INTRO.FLM SSIM loss by render layer: props are the largest class once ground tiles are decals, and on CTRY most window loss sits at edges rather than flat colour."
+summary: "Splits the CTRY.FLM and INTRO.FLM SSIM loss by render layer: props are the largest class once ground tiles are decals, and a pre-decal CTRY window study puts most loss at edges, not flat colour."
 ---
 # Parity Attribution: Where Our Render's Loss Sits
 

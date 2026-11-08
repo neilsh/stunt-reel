@@ -1,5 +1,5 @@
 ---
-summary: "How the harness drives `MAKEONE.EXE` under emulation to make a film's `.ALL`: keys, text-mode return as completion signal, minimal mount, output checks, run time per CPU profile and hang policy."
+summary: "How the harness drives `MAKEONE.EXE` under emulation to make a film's `.ALL`: keys, text-mode return as completion signal, a working mount, output checks, run time per CPU profile and hang policy."
 ---
 # `MAKEONE.EXE`: Driving the Film Linker Under DOSBox-X
 
