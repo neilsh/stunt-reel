@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.x, pytest, ruff, mypy, `mise run` tasks. No Rust change.
 
-**Spec:** [captures-layout-2026-10-29.md](captures-layout-2026-10-29.md)
+**Spec:** [captures-layout-2026-10-29.md](spec.md)
 
 ## Global Constraints
 

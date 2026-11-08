@@ -14,7 +14,7 @@ building task, seeds `target/` and sets `core.hooksPath`. Old linked worktrees k
 **Tech Stack:** Python 3 stdlib (`dataroot.py`, `worktree_init.py`, `target_seed.py`), mise tasks
 and Tera templates, pytest, one Rust integration test.
 
-**Spec:** [`worktree-config-2026-11-04.md`](worktree-config-2026-11-04.md). Read it first; this plan
+**Spec:** [`worktree-config-2026-11-04.md`](spec.md). Read it first; this plan
 argues from its sections 3 and 4.
 
 ## Global Constraints
@@ -427,7 +427,7 @@ def test_init_creates_no_links(tmp_path, monkeypatch):
 ## Changes after review
 
 Three review passes and CodeRabbit changed the design after these tasks; the code and
-[ADR 0036](../../adr/0036-worktrees-reach-shared-state-by-configuration.md) hold the result.
+[ADR 0036](../../../docs/adr/0036-worktrees-reach-shared-state-by-configuration.md) hold the result.
 
 - **No game files is an error.** `dataroot.require_corpus()` refuses a corpus that is missing or
   has no folder holding a file; `require_corpus_or_report(program)` prints why, and every script

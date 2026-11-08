@@ -74,7 +74,7 @@ Oldest first, on top of `main` (`60922b7`):
 - `mise run ...` repairs its Rust toolchain under `%LOCALAPPDATA%\mise` on every invocation.
   Under `workspace-write` that write is denied and every task stops before its first step;
   `MISE_DISABLE_TOOLS=rust` with the installed toolchain's `bin` on `PATH` lets the gate run
-  without escalation ([`docs/harness.md`](../../harness.md) records both routes).
+  without escalation ([`docs/harness.md`](../../../docs/harness.md) records both routes).
 - **Corrected 2026-10-25 (retro-hardening `T16`):** the freshly created worktree's
   first `pytest` run now passes. With the current toolchain, `pytest` creates
   `.pytest_cache` itself before using the basetemp configured in `tests/conftest.py`, so

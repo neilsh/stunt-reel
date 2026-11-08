@@ -1,7 +1,7 @@
 # Breakpoints on DOSBox-X for the Ground and Light Questions (2026-11-04)
 
 Status: **approved 2026-11-04; sections 3.2 to 3.4 revised with the plan review**.
-Implementation plan: [`debugger-breakpoints-implementation-2026-11-04.md`](debugger-breakpoints-implementation-2026-11-04.md). Issues:
+Implementation plan: [`debugger-breakpoints-implementation-2026-11-04.md`](plan.md). Issues:
 [#65](https://github.com/neilsh/stunt-reel/issues/65) (where `PLAYONE` draws its ground polygons
 and their colours from) and [#66](https://github.com/neilsh/stunt-reel/issues/66) (what sets its
 per-shot terrain light), both blocking [#69](https://github.com/neilsh/stunt-reel/issues/69).
@@ -22,7 +22,7 @@ Answer #65 and #66 on both `PLAYONE.EXE` builds with a committed tool a subagent
 Both are findings. The renderer change is #69's.
 
 Not in scope: per-frame capture on DOSBox-X (capture stays on dosbox-automation,
-[ADR 0025](../../adr/0025-capture-runs-are-plans-not-sessions.md)); the MCP server
+[ADR 0025](../../../docs/adr/0025-capture-runs-are-plans-not-sessions.md)); the MCP server
 `dosbox-x-mcp-server`; INTRO.FLM beyond one stream dump (section 5, step 6).
 
 ## 2. Why DOSBox-X, and what the spike showed
@@ -68,7 +68,7 @@ per boot. Nothing holds a session across commands.
 
 | Module | Does | Depends on |
 |---|---|---|
-| `link.py` | TCP listener on port 0 ([ADR 0021](../../adr/0021-capture-chooses-its-control-port.md)); `req(cmd)` with exact id match and a per-request timeout; `dump(addr, len)` as `MEMDUMPBIN` to a run-scoped scratch file read back; `regs()` parsing `EV CS IP SS SP DS ES AX BX CX DX SI DI BP` | stdlib only |
+| `link.py` | TCP listener on port 0 ([ADR 0021](../../../docs/adr/0021-capture-chooses-its-control-port.md)); `req(cmd)` with exact id match and a per-request timeout; `dump(addr, len)` as `MEMDUMPBIN` to a run-scoped scratch file read back; `regs()` parsing `EV CS IP SS SP DS ES AX BX CX DX SI DI BP` | stdlib only |
 | `boot.py` | stages the build's tree with one film under the data root's `stage/` through `staging.py`'s film-tree staging; writes its own `dosbox-x-<port>.conf`; launches DOSBox-X; waits for the six-index dialog by `A000` dumps; sends the film's keys through the BIOS keyboard buffer (`0040:001A..003D`); finds the load paragraph | `link`, `staging.py` where it fits, `game_builds` |
 | `plan.py` | parses and validates a plan; `for_patch3` rewrites its offsets for the patched build | `addr` |
 | `run.py` | arms the probes; runs the hit loop; writes the JSONL | `link`, `addr`, `watch` |
@@ -225,7 +225,7 @@ Live runs stay outside the gate (`mise run debug-x`).
 Write-up: `terrain-shade.md` § 4 gains the caller, its inputs and the writers at image offsets on
 both builds, at `[Bounded Observation]` or better, and says whether a renderer can reproduce `L`
 from variable 13 alone; open question 1 closes. `memory-map.md` gains a `DS:0x49EC` row if it has
-none. A row in [`log.md`](../../../research/parity/log.md).
+none. A row in [`log.md`](../../2026-10/parity-log/log.md).
 
 ## 5. #65: who produces the ground records
 
@@ -282,7 +282,7 @@ entries for what the runs exclude. A row in the parity log.
 3. Each PR passes `mise run check`; commit bodies follow `AGENTS.md`.
 4. A is written in the main session. The live runs and decodes of B and C can go to cheaper
    subagents, each briefed with the plan file, the command and the expected JSONL shape; reviews
-   use the strongest model ([`docs/harness.md`](../../harness.md)).
+   use the strongest model ([`docs/harness.md`](../../../docs/harness.md)).
 5. The tool's mechanics measured in the spike (the link, boot, addresses, the watch filter)
    are recorded in `debugger-plans.md` with PR A. Only the spike's answers to #65 and #66
    (section 2) wait until B and C reproduce them with the committed tool.
@@ -303,7 +303,7 @@ entries for what the runs exclude. A row in the parity log.
 - DOSBox-X's debugger over a code-hook probe on dosbox-automation (section 2).
 - The built-in TCP link over the MCP server: scriptable, pre-approved through `mise run`, the same
   in every harness.
-- One-shot plans, not a held session, as [ADR 0025](../../adr/0025-capture-runs-are-plans-not-sessions.md) chose for capture.
+- One-shot plans, not a held session, as [ADR 0025](../../../docs/adr/0025-capture-runs-are-plans-not-sessions.md) chose for capture.
 - iced-x86 over Capstone, for this work and for #78's pairing.
 - Both builds; patched offsets from #78's pairing, not a hand table.
 - Spec and plan under `docs/process/plans/`, the repo's convention.

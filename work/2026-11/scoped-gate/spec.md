@@ -1,11 +1,11 @@
 # The local gate runs what a change touches, faster (2026-11-06)
 
 Status: **implemented 2026-11-06**. Branch `claude/run-gate-performance-796b53`.
-Tasks: [`scoped-gate-implementation-2026-11-06.md`](scoped-gate-implementation-2026-11-06.md). Source: a
+Tasks: [`scoped-gate-implementation-2026-11-06.md`](plan.md). Source: a
 session of 2026-11-06 that started from "can the gate take less time, or check only what a change
 touches, or can prek help", measured the gate, and settled the design below. The scoping decision
-is [ADR 0038](../../adr/0038-the-local-gate-runs-what-a-change-touches.md) (0037 was taken); the worker-count change
-amends [ADR 0040](../../adr/0040-the-gate-runs-pytest-across-every-core.md) (numbered 0031 until 2026-11-07). This note owns the
+is [ADR 0038](../../../docs/adr/0038-the-local-gate-runs-what-a-change-touches.md) (0037 was taken); the worker-count change
+amends [ADR 0040](../../../docs/adr/0040-the-gate-runs-pytest-across-every-core.md) (numbered 0031 until 2026-11-07). This note owns the
 design and the delivery.
 
 ## 1. Goal
@@ -155,7 +155,7 @@ and `os.cpu_count()` otherwise (`xdist/plugin.py`, read 2026-11-06). Nothing els
 gate still sets `-n auto` through `PYTEST_ADDOPTS`. ADR 0031
 is amended in place with the measurements in section 2, since its decision, pytest across every
 core, stands with "core" now meaning a physical one. The amendment also clears `psutil` against
-[ADR 0010](../../adr/0010-python-scripts-may-take-well-established-dependencies.md), as ADR 0031 did
+[ADR 0010](../../../docs/adr/0010-python-scripts-may-take-well-established-dependencies.md), as ADR 0031 did
 for xdist.
 
 GitHub's 4-vCPU Linux runner may report 2 physical cores. The pull request compares its `quality`
@@ -165,7 +165,7 @@ and `test-py-docs` steps pass `-n logical` when `CI` is set, keeping CI on its l
 ### 3.7 The reap tests
 
 `tests/test_worktree_reap.py` keeps its real-git end-to-end tests only where they guard removal,
-the data-loss path of [ADR 0018](../../adr/0018-reaping-unlinks-the-data-root-links-first.md):
+the data-loss path of [ADR 0018](../../../docs/adr/0018-reaping-unlinks-the-data-root-links-first.md):
 
 - **free-space policy** (`test_reap_with_plenty_of_space_removes_nothing` through
   `test_prune_with_plenty_of_space_prunes_nothing`, seven tests): `_candidates` and `_reap_one`
@@ -198,7 +198,7 @@ smaller runners.
   backstop, the category table, and the options below.
 - **ADR 0031**, amended: physical cores, the new measurements, `psutil` against ADR 0010.
 - **AGENTS.md**, directive 2 and Committing step 2, and
-  [`docs/development.md`](../../development.md): a scoped `mise run check` that passes is enough
+  [`docs/development.md`](../../../docs/development.md): a scoped `mise run check` that passes is enough
   before committing, and the verdict's gate line is the one to write.
 - `tests/test_gate_plan.py` covers the categories, the union, the forced-full triggers and the
   verdict lines. Its `test_halves_are_subsets_of_the_whole_plan` changes: the docs half's one step

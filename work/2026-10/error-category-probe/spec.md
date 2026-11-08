@@ -4,7 +4,7 @@ Status: done 2026-10-31; result in `research/parity/method.md` § 2.3, categorie
 `research/parity/error-categories.toml`. Haiku grades. The run added a second discovery pass on
 `INTRO.FLM` (ticks from 1000, 15 categories in all) and graded both films; detection compares each
 matching category rather than the highest grade. Follows the metric bench
-([`parity-scoring-2026-10-31.md`](parity-scoring-2026-10-31.md), result in `research/parity/method.md`
+([`parity-scoring-2026-10-31.md`](../parity-scoring/spec.md), result in `research/parity/method.md`
 § 2.2), where no numeric metric passed and the Haiku forced-choice judge failed its control.
 
 ## Question

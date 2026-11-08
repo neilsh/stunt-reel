@@ -1,8 +1,8 @@
 # Capture store deepening
 
 Status: agreed in conversation 2026-11-01, from an architecture review of the last 80 commits; not
-started. Decisions: [ADR 0028](../../adr/0028-a-film-has-one-capture-of-each-kind.md) (one capture of
-each kind) and [ADR 0029](../../adr/0029-references-name-each-films-builds-and-reference.md)
+started. Decisions: [ADR 0028](../../../docs/adr/0028-a-film-has-one-capture-of-each-kind.md) (one capture of
+each kind) and [ADR 0029](../../../docs/adr/0029-references-name-each-films-builds-and-reference.md)
 (`references.toml` names each film's builds and reference capture).
 
 ## Intent
@@ -74,7 +74,7 @@ more expensive:
    the fallback suggests.
 7. **Reference recapture**: recapture `ctry` and `intro` on patch3 with patch3 archives, repin
    their digests, re-measure `noise_sigma`, and log the shift in
-   [`log.md`](../../../research/parity/log.md).
+   [`log.md`](../../2026-10/parity-log/log.md).
 
 ## Not doing
 

@@ -10,7 +10,7 @@
 
 **Tech Stack:** Python 3.12, `urllib` REST with a bearer token, Lua on the emulation thread, ffmpeg only for the optional AVI check.
 
-**Spec:** this plan is the design. Background: [ADR 0021](../../adr/0021-capture-chooses-its-control-port.md) (superseded by Task 7), [ADR 0022](../../adr/0022-captures-are-add-only-beside-a-read-only-corpus.md), [ADR 0024](../../adr/0024-captures-are-filed-by-film-then-kind.md).
+**Spec:** this plan is the design. Background: [ADR 0021](../../../docs/adr/0021-capture-chooses-its-control-port.md) (superseded by Task 7), [ADR 0022](../../../docs/adr/0022-captures-are-add-only-beside-a-read-only-corpus.md), [ADR 0024](../../../docs/adr/0024-captures-are-filed-by-film-then-kind.md).
 
 ## Global Constraints
 
@@ -127,7 +127,7 @@ Rulings made while executing (cost if wrong in brackets):
 - Every script parks the mouse cursor bottom-left after the dialog keys, over the button bar, so it no longer sits in the 3D view of captured pages. [captures before 2026-10-31 differ by the cursor]
 - Capture and `play` run the dynamic core at 45,000 cycles, not the normal core at 7,000 (the dynamic core costs 0.23 of a host core against 0.39 at the same rate): the render rate saturates there (99% of emulated frames draw a new page against 46%). 7,000 only matched DOSBox-X's loop count. [captures no longer match the DOSBox-X references' pacing; they are being replaced]
 - Dump passes run up to eight at once, split evenly, each launch with its own `dosbox-<port>.conf`: one pass at a time put `INTRO.FLM` past the batch's 900 s timeout. [four emulators' memory and CPU during a capture]
-- The tear rule and fade model are applied in `pick` by skipping (2026-10-31, [`stack-review-and-tear-palette-2026-10-31.md`](stack-review-and-tear-palette-2026-10-31.md)); the video rule was replaced by a test against the game's two composed pages. [a film that does not double-buffer through `DS:0x22CA`/`0x22CC` reads as never torn]
+- The tear rule and fade model are applied in `pick` by skipping (2026-10-31, [`stack-review-and-tear-palette-2026-10-31.md`](../stack-review-and-tear-palette/plan.md)); the video rule was replaced by a test against the game's two composed pages. [a film that does not double-buffer through `DS:0x22CA`/`0x22CC` reads as never torn]
 - `tools/dosbox/dosbox-utils.conf` stays as a by-hand profile, unverified on dosbox-automation; `capture.md` and `capture-speed.md` carry a historical banner rather than a rewrite.
 - `KNOWN_CAPTURE_STALLS` is unchanged pending a re-survey.
 

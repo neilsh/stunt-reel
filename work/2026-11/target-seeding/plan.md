@@ -14,8 +14,8 @@ calls it from `init` and from a new `seed` command.
 **Tech Stack:** Python 3.12 standard library (`ctypes`, `msvcrt` on Windows), `robocopy`, mise
 `[vars]` with `exec` and `dirname` (checked on mise 2026.10.12), pytest.
 
-**Spec:** [`target-seeding-2026-11-02.md`](target-seeding-2026-11-02.md);
-decision in [ADR 0030](../../adr/0030-new-worktrees-seed-target-by-block-clone.md).
+**Spec:** [`target-seeding-2026-11-02.md`](spec.md);
+decision in [ADR 0030](../../../docs/adr/0030-new-worktrees-seed-target-by-block-clone.md).
 
 ## Global Constraints
 

@@ -1,6 +1,6 @@
 # Retro hardening plan (2026-10-25)
 
-Status: implementation complete on branch `wt-202610252029-retro-hardening` (based on `c6fabf5`), since merged into `main` (`016442c`). Source: the retrospective of the architecture-deepening session, grilled and agreed on 2026-10-25. Work items are `T16`-`T20` in [TEAM_SHEET.md](../TEAM_SHEET.md); this note is the decision record and landing log.
+Status: implementation complete on branch `wt-202610252029-retro-hardening` (based on `c6fabf5`), since merged into `main` (`016442c`). Source: the retrospective of the architecture-deepening session, grilled and agreed on 2026-10-25. Work items are `T16`-`T20` in [TEAM_SHEET.md](../team-sheet/TEAM_SHEET.md); this note is the decision record and landing log.
 
 ## 1. Decisions
 
@@ -8,17 +8,17 @@ Status: implementation complete on branch `wt-202610252029-retro-hardening` (bas
 - **build-at.** `mise run build-at -- <rev> <out>` builds a detached worktree for one revision with an isolated `target/build-at` directory, copies the `stuntreel` binary to `<out>`, and removes the worktree on both success and failure. Revision only: no dirty-tree snapshot, because that was the stash/`Cargo.lock` conflict the task removes. Release profile; `<out>` is a binary path.
 - **Commit references.** Durable documents cite commit **subjects and dates**, not hashes; exact hashes remain in commit messages and in the salvage note's historical mapping. The history was rewritten to the noreply identity on 2026-10-25, so pre-rewrite hashes no longer resolve on `main`.
 - **Roles.** Add a `tooling-worker` persona for repository tooling and harness policy; `sentinel` keeps the process and routing-doc edits.
-- **Record place.** This plan note owns the decisions; no ADR (the writer policy is environment policy, cheap to revise, and [harness.md](../../harness.md) is its natural owner) and no GLOSSARY change (agent-process terms are not Stunt Island domain language).
+- **Record place.** This plan note owns the decisions; no ADR (the writer policy is environment policy, cheap to revise, and [harness.md](../../../docs/harness.md) is its natural owner) and no GLOSSARY change (agent-process terms are not Stunt Island domain language).
 
 ## 2. Tickets
 
 | Ticket | Title | Owner | Status | Evidence |
 |---|---|---|---|---|
-| `T16` | Verify the fresh-worktree `pytest` cache assumption | `tooling-worker` | **Done (no change needed)** | reproduction on 2026-10-25 passed in a fresh worktree; [salvage note](review-dsh-friction-salvage.md) corrected |
+| `T16` | Verify the fresh-worktree `pytest` cache assumption | `tooling-worker` | **Done (no change needed)** | reproduction on 2026-10-25 passed in a fresh worktree; [salvage note](../review-dsh-friction-salvage/review-dsh-friction-salvage.md) corrected |
 | `T17` | Tier checker ignores nested bracket expressions | `tooling-worker` | **Done** | [`verify_formats_docs.py`](../../../python/scripts/verify_formats_docs.py), [`test_formats_catalog.py`](../../../tests/test_formats_catalog.py) |
-| `T18` | Writer policy for Agent Teams | `tooling-worker` | **Done** | [harness.md](../../harness.md), [AGENTS.md](../../../AGENTS.md#worktrees) |
+| `T18` | Writer policy for Agent Teams | `tooling-worker` | **Done** | [harness.md](../../../docs/harness.md), [AGENTS.md](../../../AGENTS.md#worktrees) |
 | `T19` | `mise run build-at` for a previous revision | `tooling-worker` | **Done** | [build_at.py](../../../python/scripts/build_at.py), [mise.toml](../../../mise.toml) |
-| `T20` | Commit-reference convention and programme pointer | `sentinel` | **Done** | [architecture-deepening README](architecture-deepening/README.md), [ARCHITECTURE.md](../../ARCHITECTURE.md) |
+| `T20` | Commit-reference convention and programme pointer | `sentinel` | **Done** | [architecture-deepening README](../architecture-deepening/overview.md), [ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) |
 
 `T16` closed without code: a fresh worktree's first `pytest` run passed, and `pytest` created `.pytest_cache` itself before using the configured basetemp. The salvage note's environment bullet is corrected rather than adding an unnecessary `mkdir`.
 
@@ -30,7 +30,7 @@ The full gate passes 9/9. On this host the link step returns `LNK1104` when `TMP
 
 ## 4. Deferred and rejected
 
-- **Deferred:** a scoped `check-docs` task (the format-catalog verification already runs inside `test-py`) and the shell/commit-message notes for [harness.md](../../harness.md) (documentation-only convenience).
+- **Deferred:** a scoped `check-docs` task (the format-catalog verification already runs inside `test-py`) and the shell/commit-message notes for [harness.md](../../../docs/harness.md) (documentation-only convenience).
 - **Rejected:** a CI author-identity check. The repository config and the user's noreply rule already cover the maintainer path; a PR check would reject legitimate forked commits from other addresses.
 
 ## 5. Landing log

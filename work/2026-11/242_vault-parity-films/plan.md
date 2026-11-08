@@ -18,7 +18,7 @@
 **Tech Stack:** Rust (wgpu 30, `stunt-render`), Python 3.15 (`uv` through `mise`, pytest),
 `concurrent.futures`.
 
-**Spec:** [`vault-parity-films-2026-11-06.md`](vault-parity-films-2026-11-06.md). Executors read
+**Spec:** [`vault-parity-films-2026-11-06.md`](spec.md). Executors read
 both; the plan cites the spec's decisions as D1 to D9.
 
 ## Global Constraints

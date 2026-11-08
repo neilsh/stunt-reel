@@ -1,7 +1,7 @@
 # Worktrees reach shared state by configuration, not links (2026-11-04)
 
 Status: **implemented 2026-11-04 (results in section 6); design agreed 2026-11-04 and corrected the same day while planning (sections 3, 4.1, 4.3); on branch `claude/worktreeinclude-brainstorm-b409c5` as ADR 0036; ADRs 0032 to 0035 were taken by other decisions**.
-Tasks: [`worktree-config-implementation-2026-11-04.md`](worktree-config-implementation-2026-11-04.md). Source: a session of
+Tasks: [`worktree-config-implementation-2026-11-04.md`](plan.md). Source: a session of
 2026-11-04 that started from "should we use a `.worktreeinclude` for Claude", surveyed the 32
 worktrees under `.claude/worktrees/` (16 never provisioned, including the session's own) and
 settled on removing the per-worktree links rather than automating their creation. The decision
@@ -49,7 +49,7 @@ holds and no code reads.
 | Data root | Code resolves `corpus/` and `captures/` through `data_root()` instead of junctions; a relative `corpus/...` argument on the command line resolves the same way. | `data_root()` honours `STUNT_DATA_ROOT`, then the `<primary>.data` default. Only `corpus_root()` falls back, to the primary checkout's `corpus/`, and only when `STUNT_DATA_ROOT` is unset, the data root has no `corpus/` and that `corpus/` holds a folder of game files, so a clone that keeps its corpus in the checkout still reads it. A reader that finds no game files exits 2 naming where it looked. |
 | Tool cache | `UV_CACHE_DIR` is an absolute path under the primary checkout's `.cache`, derived from `git rev-parse --git-common-dir` like `vars.cargo_home`. No `.cache` link. | One cache per machine, no link to make or break. |
 | Python environment | uv's default per-checkout `.venv`. | On the same volume uv hardlinks out of the shared cache; editors find `.venv`; removing a worktree removes its environment, so no orphan sweep. Orca worktrees on `C:` copy (about 68 MB, 3 s), accepted. |
-| Temporary files | The `TMP`/`TEMP` override in `[env]` goes; tasks use the OS temp directory. | It existed only for DSH's sandbox ([harness.md](../../harness.md#temporary-directories)). The Windows `mkdir` mode shim in `tests/conftest.py` and `scratch.py` stays. |
+| Temporary files | The `TMP`/`TEMP` override in `[env]` goes; tasks use the OS temp directory. | It existed only for DSH's sandbox ([harness.md](../../../docs/harness.md#temporary-directories)). The Windows `mkdir` mode shim in `tests/conftest.py` and `scratch.py` stays. |
 | Seeding | A hidden `ensure` task, a `depends` of every cargo task, seeds an empty `target/` and sets `core.hooksPath` when unset; otherwise it costs a Python start and a few stats. `mise run init` stays as the explicit form of both. | Cargo tasks are the only ones that need a step; uv builds `.venv` itself on the first `uv run`. |
 | Removal | Claude Code may remove the worktrees it creates. | A new worktree holds no links, and Claude Code documents deleting only the link where one exists. |
 | Existing worktrees | No migration. | Their links keep working and nothing reads through them. `reap` keeps its unlink-and-prove step, because `git worktree remove` on a linked worktree deleted the link targets on git 2.47.1 and left the links behind on 2.55.0, the version installed now (ADR 0018). `.cache/venvs/` stays while any linked worktree points into it. |
@@ -86,7 +86,7 @@ holds and no code reads.
 
 - [`mise.toml`](../../../mise.toml) gains `vars.primary` (the primary checkout, same git fallback);
   `cargo_home` and `UV_CACHE_DIR` name `{{vars.primary}}/.cache/...`.
-- `TMP` and `TEMP` leave `[env]`; [harness.md](../../harness.md) keeps the DSH symptom and the
+- `TMP` and `TEMP` leave `[env]`; [harness.md](../../../docs/harness.md) keeps the DSH symptom and the
   one-line workaround for a DSH session.
 - `dataroot.py` loses `ensure_cache_link` and `ensure_venv_link`, and `worktree_init.py` loses
   the `uv venv` seed and `init`'s orphan sweep. `env_target` and the sweep stay behind
@@ -108,7 +108,7 @@ holds and no code reads.
 
 ### 4.4 Documentation
 
-- [docs/harness-setup.md](../../harness-setup.md): harness-neutral steps first (install, trust,
+- [docs/harness-setup.md](../../../docs/harness-setup.md): harness-neutral steps first (install, trust,
   data root, the first `mise run` seeds), then a Claude Code section, then short DSH and Orca
   sections. The DSH section says its sessions need `danger-full-access` for `mise run` tasks.
 - [AGENTS.md](../../../AGENTS.md) SOP 6: drop "`mise run init` once per worktree"; removal is

@@ -48,12 +48,12 @@ Each brief settles, and is only accepted when it settles:
 
 ## 6. References
 
-- [AGENTS.md](../../../../AGENTS.md): standards, SOPs and the quality gate.
-- [docs/SPEC.md](../../../SPEC.md): invariants and the master verification matrix.
-- [docs/ARCHITECTURE.md](../../../ARCHITECTURE.md): code path to governing documents.
-- [GLOSSARY.md](../../../../GLOSSARY.md): canonical domain vocabulary.
-- [ADR 0004](../../../adr/0004-i6-gate-is-reported-not-enforced.md), [ADR 0005](../../../adr/0005-parity-requires-the-render-sidecar.md), [ADR 0007](../../../adr/0007-evidence-backed-parity-changes-adopt-on-correctness.md), [ADR 0010](../../../adr/0010-python-scripts-may-take-well-established-dependencies.md).
-- [TEAM_SHEET.md](../../TEAM_SHEET.md): ticket status.
+- [AGENTS.md](../../../AGENTS.md): standards, SOPs and the quality gate.
+- [docs/SPEC.md](../../../docs/SPEC.md): invariants and the master verification matrix.
+- [docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md): code path to governing documents.
+- [GLOSSARY.md](../../../GLOSSARY.md): canonical domain vocabulary.
+- [ADR 0004](../../../docs/adr/0004-i6-gate-is-reported-not-enforced.md), [ADR 0005](../../../docs/adr/0005-parity-requires-the-render-sidecar.md), [ADR 0007](../../../docs/adr/0007-evidence-backed-parity-changes-adopt-on-correctness.md), [ADR 0010](../../../docs/adr/0010-python-scripts-may-take-well-established-dependencies.md).
+- [TEAM_SHEET.md](../team-sheet/TEAM_SHEET.md): ticket status.
 
 ## 7. Implementation handoff
 
@@ -70,7 +70,7 @@ All four briefs are agreed; implementation has not started. Land one PR per chec
 
 All four units merged on 2026-10-25: A in four landings (`refactor(parity): add the artifact port and dual-write the render record`; `fix(parity): require the render record and drop the measured-fade fallback`; `feat(parity): add the stdlib Python adapter for the artifact port`; `refactor(parity): stop writing the legacy render sidecar`), B and C stages 1-2 together (`feat(core,render): decode one shape, draw through one renderer`), D (`feat(tac): give the capture harness one session and an operations transport`) and C's deletion stage (`refactor(render): hide the GPU plumbing behind Renderer`), with the landing documentation in `docs: record the decoded-shape, renderer and capture-session landings`.
 
-Commit subjects and dates are cited instead of hashes because the history was rewritten to the noreply identity on 2026-10-25; pre-rewrite hashes remain in the [salvage note](../review-dsh-friction-salvage.md).
+Commit subjects and dates are cited instead of hashes because the history was rewritten to the noreply identity on 2026-10-25; pre-rewrite hashes remain in the [salvage note](../review-dsh-friction-salvage/review-dsh-friction-salvage.md).
 
 Verified at the integrated tree: `mise run check` green (260 Python tests after the shim removal, Rust workspace and doc tests); `cargo doc` with `-D warnings` clean; clippy clean; release build OK; a three-tick render is byte-identical in PNG, `.idx` and `.layer` and now writes only `render.json`; parity reports on the regenerated CTRY and INTRO directories and on a legacy-only directory are semantically identical to the pre-change binary's, so units B and C did not move the baseline.
 

@@ -2,7 +2,7 @@
 
 Status: working notes, 2026-10-31. The scorer they examine is not merged; it is kept on branch
 `feat/video-parity-scorer`. Follows part 3 of
-[`video-parity-2026-10-31.md`](video-parity-2026-10-31.md), recorded in
+[`video-parity-2026-10-31.md`](../video-parity/spec.md), recorded in
 [`research/parity/method.md`](../../../research/parity/method.md) § 4.4. Two read-only investigations ran
 on `CTRY.FLM` only, each with its own Python reimplementation of the scorer: 11x11 windows, stride 8,
 Rec. 601 luma, rows stretched from 200 to 240, the bar overlay masked, and the constants of

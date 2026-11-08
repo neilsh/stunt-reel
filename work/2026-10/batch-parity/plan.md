@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.12, pytest, `uv` through `mise`, DOSBox-X through the existing `tac` package.
 
-**Spec:** none; this plan is the design. Background: [ADR 0023](../../adr/0023-make-all-generates-archives-with-makeone.md), [ADR 0024](../../adr/0024-captures-are-filed-by-film-then-kind.md), [`research/parity/method.md`](../../../research/parity/method.md) section 1.2.
+**Spec:** none; this plan is the design. Background: [ADR 0023](../../../docs/adr/0023-make-all-generates-archives-with-makeone.md), [ADR 0024](../../../docs/adr/0024-captures-are-filed-by-film-then-kind.md), [`research/parity/method.md`](../../../research/parity/method.md) section 1.2.
 
 ## Global Constraints
 

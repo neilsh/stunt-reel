@@ -8,7 +8,7 @@
 
 **Tech Stack:** prek 0.5.5 (mise-pinned), Python 3.12 `tomllib`, pytest, GitHub Actions.
 
-**Spec:** [ADR 0026](../../adr/0026-commit-hooks-run-the-gates-own-tasks.md). This file replaces the plan for the earlier opt-in design.
+**Spec:** [ADR 0026](../../../docs/adr/0026-commit-hooks-run-the-gates-own-tasks.md). This file replaces the plan for the earlier opt-in design.
 
 ## Handoff (2026-10-31)
 

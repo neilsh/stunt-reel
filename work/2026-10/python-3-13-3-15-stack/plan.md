@@ -8,7 +8,7 @@
 
 **Tech Stack:** mise 2026.10, uv 0.13.1, ruff 0.17.1, mypy 2.4.0, pytest 9.1.1, `gh stack`.
 
-**Spec:** [`python-3.13-3.15-stack-2026-10-31.md`](python-3.13-3.15-stack-2026-10-31.md). Read its Rules and Decisions sections before Task 1.
+**Spec:** [`python-3.13-3.15-stack-2026-10-31.md`](spec.md). Read its Rules and Decisions sections before Task 1.
 
 ## Global Constraints
 

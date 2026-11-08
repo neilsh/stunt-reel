@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.13 scripts under `python/scripts/`, pytest, mise tasks, Markdown, Claude Code CLI (`claude -p`).
 
-**Spec:** [`agents-md-split-2026-11-05.md`](agents-md-split-2026-11-05.md). It runs the spec's section 6 evaluation through a `mise run skill-eval` task rather than a bare shell command: the evaluation repeats 24 runs, and a command needed twice earns a task (AGENTS.md SOP 5.5), which is also what makes it pre-approved.
+**Spec:** [`agents-md-split-2026-11-05.md`](spec.md). It runs the spec's section 6 evaluation through a `mise run skill-eval` task rather than a bare shell command: the evaluation repeats 24 runs, and a command needed twice earns a task (AGENTS.md SOP 5.5), which is also what makes it pre-approved.
 
 ## Global Constraints
 

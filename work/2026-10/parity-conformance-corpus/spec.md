@@ -8,7 +8,7 @@ Owner: unassigned. One writer per file; the corpus is shared, read-only data.
 
 ## 1. Why
 
-- [ADR 0011](../../adr/0011-parity-artifacts-are-a-versioned-port.md) makes
+- [ADR 0011](../../../docs/adr/0011-parity-artifacts-are-a-versioned-port.md) makes
   [`crates/stunt-parity`](../../../crates/stunt-parity/) the single definition of the parity
   documents and says shared fixtures pin both adapters. No such fixture exists:
   `tests/fixtures/` holds only the palette, DOS-math and trajectory goldens, and
@@ -240,7 +240,7 @@ Commit subjects: `test(parity): pin both artifact adapters with a shared corpus`
 
 ## 10. References
 
-- [A brief §7](architecture-deepening/A-render-artifact.md) — the unlanded fixture list.
-- [ADR 0011](../../adr/0011-parity-artifacts-are-a-versioned-port.md) — the port and its adapters.
-- [ADR 0005](../../adr/0005-parity-requires-the-render-sidecar.md) — the legacy sidecar window.
+- [A brief §7](../architecture-deepening/A-render-artifact.md) — the unlanded fixture list.
+- [ADR 0011](../../../docs/adr/0011-parity-artifacts-are-a-versioned-port.md) — the port and its adapters.
+- [ADR 0005](../../../docs/adr/0005-parity-requires-the-render-sidecar.md) — the legacy sidecar window.
 - [test fixtures README](../../../tests/fixtures/README.md) — inventory and conventions.
