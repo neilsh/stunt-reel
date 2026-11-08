@@ -175,9 +175,11 @@ Observed 2026-11-08.
 * **The user turns on Auto-fix for a PR `gh stack submit` opened.** `mcp__ccd_pr__set_monitor`
   attaches only to a PR the app is sure this session opened, and refused it for each of #309,
   #310, #312 and #313; ask the user rather than retry.
-* **Brief an isolated subagent to branch from `origin/main`.** Worktree isolation cuts its branch
-  from the session's current `HEAD`, so a brief for work off `main` opens with `git fetch origin`,
-  then, once the fetch succeeds, `git switch -c <branch> origin/main`, and the subagent reports
+* **Brief an isolated subagent to branch from `origin/main`** when its work stands apart from the
+  session's; a worktree-per-writer task keeps the Lead's `HEAD`, as the Policy says. Worktree
+  isolation cuts its branch from the session's current `HEAD`, so such a brief opens with
+  `git fetch origin`, then, once the fetch succeeds, `git switch -c <branch> origin/main`, and the
+  subagent reports
   `<branch>` as the one holding its work: the `worktree-agent-*` branch stays at the old tip. That
   worktree and branch outlive it and go as
   [`managing-worktrees`](../.agents/skills/managing-worktrees/SKILL.md) step 5 says.
