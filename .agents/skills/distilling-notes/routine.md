@@ -32,8 +32,11 @@ commands.
    (AGENTS.md, Committing rule 7). Fix or restore each claim it reports before you
    commit.
 
-5. Run `mise run links` and list each dead external link with the file that holds it.
-   If it cannot run, say why instead of listing.
+5. Run `mise run links` and list each dead external link (a 404 or 410, or a host that
+   does not resolve) with the file that holds it. This session's network admits only a
+   trusted list of hosts, so list a link its proxy refused (a 403 from the proxy, or a
+   refused connection) separately as unchecked, never as dead. If it cannot run, say why
+   instead of listing.
 
 6. From the doc-health output, list the stale work folders: each stale-issue and
    missing-outcome finding. If doc-health printed that gh was unavailable, say the

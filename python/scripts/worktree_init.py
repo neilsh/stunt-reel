@@ -186,7 +186,8 @@ def git_marks_paths_optional(repo: Path) -> bool:
         "--get",
         "stunt-reel.probe",
     )
-    return probe.returncode != 0 and not probe.stdout.strip()
+    # 1 is `--get` finding no value; an older git that rejects `--type=path` exits otherwise.
+    return probe.returncode == 1 and not probe.stdout.strip()
 
 
 def ensure_blame_ignore(repo: Path) -> list[Line]:
