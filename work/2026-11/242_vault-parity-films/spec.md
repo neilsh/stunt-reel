@@ -19,8 +19,8 @@ the smallest cost in scoring logic and sweep time.
 |---|---|---|
 | D1 | What the new films are for | Fidelity targets, not just a regression guard: a gain on any film counts. |
 | D2 | Adoption rule | The rule stays per film, with no aggregate across films. **Evidence-backed:** adopt when no film falls by more than 0.002 and at least one rises. **Heuristic:** adopt when no film falls by 0.002 or more, and either every film gains more than 0.002 or at least one gains more than 0.004. For two films this is today's rule restated, boundaries included: the evidence track tolerates a fall of exactly 0.002, the heuristic track does not. With four films, "every film gains more than 0.002" rarely holds, so in practice a heuristic change needs one film above 0.004 and none falling by 0.002. |
-| D3 | Which films, in what order | Two at a time. Phase 1 is `vault-splanes` and `vault-land`. Phase 2 (`vault-balloon`, `vault-traintnl`) begins when two rounds in a row aimed at a phase-1 film's errors end as negatives in `log.md`, or on request. It needs only new reference rows, no code. |
-| D4 | Films left out | `vault-tod` waits for a fade floor that works on night films (§ 7). `vault-bomb` and `vault-location` mostly repeat the aircraft errors CTRY already shows, and they are the two longest films. |
+| D3 | Which films, in what order | All in one step (revised 2026-11-07): `vault-land`, `vault-balloon`, `vault-traintnl`, `vault-bomb` and `vault-location` join together, on the unpatched builds CTRY and INTRO use, so every reference film shares one build. It needs only new reference rows, no code. Measuring each film's recapture noise, and moving every film to Patch 3, are later PRs under #242. |
+| D4 | Films left out | `vault-splanes`: in the cloud corpus the first copy of its bytes by sorted path has another name, so a cloud session would slug it `vault-planes` and `check_render` refuses the name mismatch; its sea-band error is partly covered by `vault-traintnl`. `vault-tod`: not valuable enough for now (revised 2026-11-07). |
 | D5 | Engine build of the new references | `playone = "unpatched"`, as for CTRY and INTRO. `makeone = "unpatched"` too: the film plays an archive made with `mise run make-all` on the unpatched `MAKEONE`, committed as a manifest (ADR 0032) and pinned by D9, because the archives shipped under `siarchive/` have no known build (§ 4.1). A film that stalls on an unpatched executable takes that executable's `patch3` build, with the cause written in `reason`. |
 | D6 | Parallel scoring | `--jobs N` on `mise run parity` and `mise run sweep` runs (variant, film) render-and-score pairs at once. The default is `min(8, os.cpu_count() or 1, pairs)`. There is no live RAM or VRAM probe; the cost per job (§ 3.1) is documented instead. |
 | D7 | Output under parallelism | Results on stdout print in the same fixed (variant, film) order as a sequential run, so the table, the winner line and the film summary lines are unchanged. Progress lines on stderr (`[parity] rendering …`, `[i/n] …`) may interleave. |
@@ -90,7 +90,7 @@ physical cores, 31 GiB of RAM and an RTX 4070 Laptop GPU with 8 GiB. The scripts
 
 ## 4. Components
 
-### 4.1 Reference rows (phase 1: `vault-splanes`, `vault-land`)
+### 4.1 Reference rows
 
 Data only. `--films` already defaults to every row `references.toml` pins
 ([`cli.py`](../../../python/scripts/cli.py) `parity_options`), so once a row lands, `parity` and
@@ -298,7 +298,7 @@ identically ([`method.md`](../../../research/parity/method.md) § 3).
 
 ## 8. Tickets
 
-Filed 2026-11-06. One parent and five tickets. T5 is labelled `research` and has no parent,
+Filed 2026-11-06, one parent and five tickets; T6 and T7 added 2026-11-07. T5 is labelled `research` and has no parent,
 because `vault-tod` is out of this note's scope. Each ticket is one PR. Blocking is a native issue
 dependency ([`docs/agents/issue-tracker.md`](../../../docs/agents/issue-tracker.md)). A ticket's body
 copies its part of this note; when the note changes, the body is updated to match.
@@ -309,10 +309,12 @@ copies its part of this note; when the note changes, the body is updated to matc
 | T1 [#243](https://github.com/neilsh/stunt-reel/issues/243) | Headless renders spend a second enumerating graphics backends they never use | `ready-for-agent` | D8, step 0 | — |
 | T2 [#244](https://github.com/neilsh/stunt-reel/issues/244) | `parity` and `sweep` render one film at a time | `ready-for-agent` | D6, D7, § 4.2 to § 4.4, steps 1 and 2 | — |
 | T3 [#245](https://github.com/neilsh/stunt-reel/issues/245) | Parity renders don't play the archive their reference capture recorded | `ready-for-agent` | D9, step 3 | — |
-| T4 [#246](https://github.com/neilsh/stunt-reel/issues/246) | `SPLANES.FLM` and `LAND.FLM` are not parity references | `ready-for-human` (DOSBox, `MAKEONE`) | D3, D5, step 4 | T3 |
+| T4 [#246](https://github.com/neilsh/stunt-reel/issues/246) | Five VAULT films are not parity references | `ready-for-agent` | D3, D5, step 4 | T3 |
 | T5 [#247](https://github.com/neilsh/stunt-reel/issues/247) | The fade floor drops most frames of a night film | `needs-triage`, `research` | § 7, a prerequisite for `vault-tod` | — |
+| T6 [#299](https://github.com/neilsh/stunt-reel/issues/299) | Reference films have no measured recapture noise beyond CTRY | `ready-for-agent` | § 7 (`noise_sigma`), added 2026-11-07 | T4 |
+| T7 [#300](https://github.com/neilsh/stunt-reel/issues/300) | Reference films are captured on the unpatched builds, not Patch 3 | `ready-for-agent` | D3, ADR 0029, added 2026-11-07 | T6 |
 
+[#301](https://github.com/neilsh/stunt-reel/issues/301) (`research`, no parent) asks whether a superset with the `SPRITES.RES` palette items plays in `PLAYONE` like a film's own archive ([`linking.md`](../../../research/makeone-exe/linking.md) § 7.2).
 T3 also fits under the existing parent #87 (films archived and captured reliably on both builds).
-Phase 2 (`vault-balloon`, `vault-traintnl`) gets its own ticket when D3's trigger fires, not now.
 Drawing only the captured ticks (§ 7) stays a note here until a sweep's render time is the
 bottleneck again.

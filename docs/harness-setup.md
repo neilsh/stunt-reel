@@ -202,10 +202,13 @@ Claude nothing. A failed setup script should also keep that environment out of t
 
 The repo's SessionStart hook (`.claude/settings.json`) runs `mise run cloud-session-start` on
 every session start and resume. Outside a cloud session (`CLAUDE_CODE_REMOTE` unset) it does
-nothing; in one it runs the cloud setup again, then `mise run cloud-assets -- fetch` and
+nothing; in one it runs the cloud setup again, then
+`mise run cloud-assets -- fetch --replace-unmarked` and
 `mise run superset-all`, with the environment variables set. The setup script's cache outlives
-a pin change, so the rerun is what brings a new pin; work already done costs nothing. The cache
-holds no archives, so each new session fetches the pins of the commit it starts from. The hook
+a pin change, so the rerun is what brings a new pin; work already done costs nothing. A new
+session can find an earlier session's archive folders already in its data root (seen
+2026-11-08, mechanism unknown), so fetch replaces each one that holds another pin
+([ADR 0042](adr/0042-fetch-replaces-a-folder-it-wrote-when-the-pin-changes.md)). The hook
 prints one line to the session, `ready` or `FAILED`, and logs the rest to
 `/tmp/cloud-session-start.log`.
 
@@ -227,10 +230,13 @@ way yet.
 
 ### Fetching
 
-`fetch` skips an archive whose folder already exists, so a resumed session downloads nothing
-and keeps the pins it fetched first. To take a newer pin there, delete that folder under
-`$STUNT_DATA_ROOT` and fetch again.
-`mise run cloud-assets -- status` shows each pin and folder, reading nothing remote. From
+Fetch writes `.cloud-assets-pin`, the archive's key, into each folder it unpacks. It skips a
+folder whose pin file names the pinned key and replaces one naming another, so a session takes a
+newer pin at its next start or resume. It never touches a folder without a pin file, such as the
+primary machine's corpus, unless given `--replace-unmarked`, which the SessionStart hook alone
+passes ([ADR 0042](adr/0042-fetch-replaces-a-folder-it-wrote-when-the-pin-changes.md)).
+`mise run cloud-assets -- status` shows each pin and what its folder holds, reading nothing
+remote. From
 `fetch`, exit 2 means `R2_ACCOUNT_ID`, or one half of the key pair, is unset, and a 403 means
 the key pair or the network secret cannot read the bucket.
 

@@ -121,6 +121,23 @@ The full game ships its `VAULT` films with no archive. `corpus/stuntisl/VAULT/BA
 
 Cost on this machine (4 cores, lavapipe): a one-tick render starts in 0.44 to 0.51 s, against 0.08 to 0.12 s with the archive. Whole films take about twice as long: CTRY 3.4 s to 5.3 s (one run each), INTRO 14.7 to 14.9 s to 28.4 to 28.9 s (two runs each). The spike measured about 6% on INTRO on a GPU. All 2,516 shapes are uploaded to the device, against 127 or 250, which is a likely cause of the per-frame cost on lavapipe but is untested.
 
+### 7.2 `PLAYONE` on a Superset
+
+`[Bounded Observation]`, `TOD.FLM` (`corpus/stuntisl/VAULT`), run 2026-11-07 at `b05da8e`.
+
+`PLAYONE.EXE` played the superset of section 7 in place of `TOD.FLM`'s own archive. With the film staged beside it, `mise run capture-ref -- --out` ran to film tick 1409 and kept 129 frames on both the unpatched and the Patch 3 `PLAYONE`. The palette is wrong: the ground draws in purple and green. The superset leaves out every `RES\` file with `res_index` of `0x80` or more, and the film's own archive holds two items of `SPRITES.RES` (index 128): `0x801E` (48 bytes) and `0x8042` (720 bytes), the two palettes of section 1. Their absence is the likely cause of the palette (`[Hypothesis]`, one film); no capture with them added has been run.
+
+On the unpatched `PLAYONE`, the colour index pages differ more than one recapture of the film's own archive did. Pages are paired by `film_tick` from each capture's `meta.json`:
+
+| Pair | Identical pages | Median pixels differing | 90th percentile |
+|---|---|---|---|
+| Own archive, two captures (unpatched) | 84 of 119 | 0 | 589 |
+| Own archive against superset (unpatched) | 43 of 110 | 3 | 634 |
+
+The comparison does not separate the missing palette items from the extra props the superset places (section 7), so the cause of the extra differences is open.
+
+_Source: [2026-11-07: TOD on a superset archive](../../work/2026-11/242_vault-parity-films/journal.md#2026-11-07-tod-on-a-superset-archive)._
+
 ---
 
 ## Ruled out
@@ -139,5 +156,6 @@ Cost on this machine (4 cores, lavapipe): a one-tick render starts in 0.44 to 0.
 5. Does `PLAYONE` play an archive padded with unused chunks, and up to what size?
 6. Do the 205 archives with add-on chunks rebuild once their add-on `.RES` files are found?
 7. Does `--game` cost less if the scene keeps only the shapes a film draws? Its startup decodes all 2,516 shapes, and its renders take about twice as long on lavapipe (section 7.1). After `build_world`, only the actors' shape ids are still needed, so dropping the rest before the device upload would test the cause. Decoding only the ids a film references is harder, since the scenery walk decides its props from the whole set.
+8. With `SPRITES.RES` items `0x801E` and `0x8042` from the matching build added, does `PLAYONE`'s capture of a superset match a capture of the film's own archive within recapture noise (section 7.2)?
 
 _Found 2026-11-03; see the [parity log](../../work/2026-10/parity-log/log.md)._

@@ -57,7 +57,8 @@ def test_an_unknown_film_is_refused_with_one_message() -> None:
         with pytest.raises(UsageError) as refusal:
             _options(module, ["--films", "ctry,nope"])
         messages.append(str(refusal.value))
-    assert messages[0] == messages[1] == "--films must be from ctry, intro, got 'ctry,nope'"
+    expected = f"--films must be from {', '.join(FILMS)}, got 'ctry,nope'"
+    assert messages[0] == messages[1] == expected
 
 
 def test_the_shared_flags_are_defined_once() -> None:

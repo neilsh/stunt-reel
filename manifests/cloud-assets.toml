@@ -1,15 +1,15 @@
 # Game data for cloud sessions, in the private R2 bucket (work/2026-11/cloud-assets/spec.md, ADR 0039).
 # `mise run cloud-assets -- pack` rewrites the key, sha256, bytes and references lines.
 bucket = "stunt-reel-internal-assets"
-version = "v1"
+version = "v2"
 
 [corpus-stuntisl]
 into = "corpus/stuntisl"
 include = ["**"]
-exclude = ["RES/MUSIC1.*", "RES/MUSIC2.*"]
-key = "v1/corpus-stuntisl-de6637716407214e.tar.zst"
-sha256 = "de6637716407214eb20b3fbddcf91507f1c78dc2a1be0b7699d934293cb90c01"
-bytes = 5263795
+exclude = ["RES/MUSIC?.ESS", "RES/MUSIC?.XMI", "RES/MUSIC?.XMM", "RES/MUSIC?.XMP"]
+key = "v2/corpus-stuntisl-5af881be852308ae.tar.zst"
+sha256 = "5af881be852308aec91fa42f88732f4360b6d4f200ae1fba57ea2e5a948f396a"
+bytes = 5295151
 
 [corpus-stisldem]
 into = "corpus/stisldem"
@@ -31,7 +31,7 @@ bytes = 548332
 into = "captures"
 include = ["*/frames/**", "*/archives/**"]
 exclude = ["**/*.lock"]
-key = "v1/captures-d6addc5166766286.tar.zst"
-sha256 = "d6addc5166766286883f1b7e6d801f9d114fd53e7141975b412721ca3b6279fd"
-bytes = 632316
-references = { ctry = "9869444de53c653214144b83c2bdbce4a686a16f5189a1f5a94f6eb19605ed49", intro = "ac93c3babb74c5380a0f1263d38a546b43979c8d4200fb0d2dfb58db482c0215" }
+key = "v1/captures-a2aa644082b03f30.tar.zst"
+sha256 = "a2aa644082b03f30910e4846e89e0019a95e06d6c2d311603c34363699e01761"
+bytes = 3286125
+references = { balloon = "beccea9f25e002cfb78a52154b3264388c62795d5e45aac398d3077db457f45f", bomb = "fde7759721380d8386b4f8ee8f8ce405b48bf57bfde8de07517072e59fd722f9", ctry = "9869444de53c653214144b83c2bdbce4a686a16f5189a1f5a94f6eb19605ed49", intro = "ac93c3babb74c5380a0f1263d38a546b43979c8d4200fb0d2dfb58db482c0215", land = "7c0187f2944cd3cc98bb0b8e3285daeb7ba39ffd61bd9099bac68ff39bca64f1", location = "5456e92098a564b3041184836cd55065b408634ff64a4da995ef7fa24a81566f", traintnl = "dd41ee03e45f03915843617962ce85ee6341c5f5502d5ffd8ad6e8518f737a26" }

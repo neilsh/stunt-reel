@@ -7,8 +7,9 @@ chunk is an unchanged copy of an item of a `RES\\` file, with id `(res_index << 
 every `RES\\` file whose `res_index` is below `0x80` (the shape ids) serves any film whose
 shapes all come from the stock game. Pass it as ``stuntreel --all``. Renders of `CTRY.FLM` and
 `INTRO.FLM` from it score within the noise floor of renders from their own archives
-(``linking.md`` section 7). Films with community add-on shapes still need their own archive,
-and `PLAYONE.EXE` still needs the real one: this archive is for our renderer only.
+(``linking.md`` section 7). Films with community add-on shapes still need their own archive.
+`PLAYONE.EXE` played `TOD.FLM` from it with a wrong palette (``linking.md`` section 7.2): it is
+for our renderer only.
 
 It also keeps a small, complete shape set for machines without the game tree. The archive is
 4.2 MB, about 1.3 MB with zstd.

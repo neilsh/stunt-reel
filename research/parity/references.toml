@@ -44,3 +44,73 @@ ssim = 0.8336824
 iou = 0.9856165
 commit = "d01a3c4f6153b6f1c947432360a5e9546e0101d5"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
+
+[land]
+film = "vault-land"
+sha256 = "7c0187f2944cd3cc98bb0b8e3285daeb7ba39ffd61bd9099bac68ff39bca64f1"
+all_sha256 = "342003624122671573d562fb814c9bf6d1bf75e3ff8727f26fedabcda45b4218"
+makeone = "unpatched"
+playone = "unpatched"
+reason = "captured 2026-11-07 on the unpatched builds, the builds CTRY and INTRO use, so every reference film shares one; the move to patch3 is #300"
+
+[land.expected.gpu]
+ssim = 0.8666116
+iou = 0.98567444
+commit = "4170cc3134a154eda276131d7c3251717baf6420"
+adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
+
+[balloon]
+film = "vault-balloon"
+sha256 = "beccea9f25e002cfb78a52154b3264388c62795d5e45aac398d3077db457f45f"
+all_sha256 = "86628c55cb0126f3c9bc0f5f2ec5fe28351ba5e30caca9fe465dca6b99c1874d"
+makeone = "unpatched"
+playone = "unpatched"
+reason = "captured 2026-11-07 on the unpatched builds, the builds CTRY and INTRO use, so every reference film shares one; the move to patch3 is #300"
+
+[balloon.expected.gpu]
+ssim = 0.7990838
+iou = 0.63509184
+commit = "4170cc3134a154eda276131d7c3251717baf6420"
+adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
+
+[traintnl]
+film = "vault-traintnl"
+sha256 = "dd41ee03e45f03915843617962ce85ee6341c5f5502d5ffd8ad6e8518f737a26"
+all_sha256 = "076750bacd04dad5eece4923fc6de436b674f59300c669b39c1cb347ca5b64fb"
+makeone = "unpatched"
+playone = "unpatched"
+reason = "captured 2026-11-07 on the unpatched builds, the builds CTRY and INTRO use, so every reference film shares one; the move to patch3 is #300"
+
+[traintnl.expected.gpu]
+ssim = 0.8513718
+iou = 0.965586
+commit = "4170cc3134a154eda276131d7c3251717baf6420"
+adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
+
+[bomb]
+film = "vault-bomb"
+sha256 = "fde7759721380d8386b4f8ee8f8ce405b48bf57bfde8de07517072e59fd722f9"
+all_sha256 = "282553d404f2bbf8cb125933b99e900d8cdcfe8c77d5ef90201e1188205c6683"
+makeone = "unpatched"
+playone = "unpatched"
+reason = "captured 2026-11-07 on the unpatched builds, the builds CTRY and INTRO use, so every reference film shares one; the move to patch3 is #300"
+
+[bomb.expected.gpu]
+ssim = 0.7991337
+iou = 0.90669
+commit = "4170cc3134a154eda276131d7c3251717baf6420"
+adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
+
+[location]
+film = "vault-location"
+sha256 = "5456e92098a564b3041184836cd55065b408634ff64a4da995ef7fa24a81566f"
+all_sha256 = "4a427bdda8f019acfc4dea7269745699dae50b006c971486cc7de5fe2b298d63"
+makeone = "unpatched"
+playone = "unpatched"
+reason = "captured 2026-11-07 on the unpatched builds, the builds CTRY and INTRO use, so every reference film shares one; the move to patch3 is #300"
+
+[location.expected.gpu]
+ssim = 0.7907437
+iou = 0.9788352
+commit = "4170cc3134a154eda276131d7c3251717baf6420"
+adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"

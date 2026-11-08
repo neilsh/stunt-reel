@@ -34,6 +34,7 @@ __all__ = [
     "CURL_ARGV",
     "KEY_PAIR_ENV",
     "MANIFEST_PATH",
+    "PIN_FILE",
     "REQUIRED_ENV",
     "REST_HOST",
     "WRANGLER_VERSION",
@@ -43,6 +44,7 @@ __all__ = [
     "Manifest",
     "MissingCredentials",
     "archive_named",
+    "check_manifest_sources",
     "check_references",
     "curl_config",
     "fetch",
@@ -71,6 +73,9 @@ KEY_PAIR_ENV = ("R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
 
 #: Cloudflare's REST API host, which serves R2 objects to an Admin Read token.
 REST_HOST = "api.cloudflare.com"
+
+#: The file in each folder fetch unpacked that names the key it came from (ADR 0042).
+PIN_FILE = ".cloud-assets-pin"
 
 #: curl reads the whole request, the key pair included, from the config on standard input.
 CURL_ARGV = ("curl", "--silent", "--show-error", "--fail", "--config", "-")
@@ -224,6 +229,8 @@ def select_files(base: Path, archive: Archive) -> list[str]:
     used = [False] * len(archive.include)
     chosen = []
     for path in found:
+        if path.lower() == PIN_FILE:
+            continue  # fetch's record of a cloud tree (ADR 0042), not game data
         included = _matches(path, archive.include)
         used = [a or b for a, b in zip(used, included, strict=True)]
         if any(included) and not any(_matches(path, archive.exclude)):
@@ -339,6 +346,40 @@ def check_references(manifest: Manifest, repo: Path = REPO_ROOT) -> list[str]:
     return messages
 
 
+def _folder_key(folder: str) -> str:
+    """*folder* as one comparable spelling: forward slashes, no ``./`` or trailing ``/``, lower case."""
+    return PurePosixPath(folder.replace("\\", "/")).as_posix().lower()
+
+
+def check_manifest_sources(manifest: Manifest, repo: Path = REPO_ROOT) -> list[str]:
+    """One message per file a reference film's ``.ALL`` manifest reads that no archive holds.
+
+    A cloud session rebuilds a film's archive from its committed manifest (ADR 0032), so each
+    ``[[source]]`` file must be one the archive whose ``into`` is the manifest's ``game_root``
+    selects.
+    """
+    by_folder = {_folder_key(a.into): a for a in manifest.archives.values()}
+    messages = []
+    for film in references.reference_films(repo):
+        relative = parity_layout.manifest_path(references.read_reference(repo, film).slug)
+        path = repo / relative
+        if not path.is_file():
+            continue
+        record = tomllib.loads(path.read_text(encoding="utf-8"))
+        game = str(record["game_root"])
+        archive = by_folder.get(_folder_key(game))
+        if archive is None:
+            messages.append(f"{film}: no archive holds {game}, the game tree {relative} reads")
+            continue
+        for source in record.get("source", []):
+            name = source["file"]
+            if not any(_matches(name, archive.include)) or any(_matches(name, archive.exclude)):
+                messages.append(
+                    f"{film}: {relative.as_posix()} reads {name}, which {archive.name} leaves out"
+                )
+    return messages
+
+
 class MissingCredentials(CloudAssetsError):  # noqa: N818 - names what is unset, as the CLI says
     """:data:`REQUIRED_ENV` or half of :data:`KEY_PAIR_ENV` is unset; the command line exits 2."""
 
@@ -446,19 +487,62 @@ def _download(
     return data
 
 
-def _extract(archive: Archive, data: bytes, into: Path) -> None:
-    """Unpacks *data* into ``<into>.new/`` and renames that to *into*, which is absent."""
+def _held_pin(into: Path) -> str | None:
+    """The key *into*'s :data:`PIN_FILE` records, or ``None`` when fetch did not write *into*."""
+    try:
+        held = (into / PIN_FILE).read_text(encoding="utf-8").strip()
+    except FileNotFoundError, NotADirectoryError:
+        return None
+    except OSError as err:
+        raise CloudAssetsError(f"cannot read {into / PIN_FILE}: {err}") from err
+    return held or None
+
+
+def _delete_pin_last(folder: Path) -> None:
+    """Deletes *folder*, its :data:`PIN_FILE` last, so a delete that stops keeps the pin."""
+    if folder.is_symlink() or folder.is_junction():
+        raise OSError(f"{folder} is a link")
+    for child in folder.iterdir():
+        if child.name.lower() == PIN_FILE:
+            continue
+        if child.is_dir() and not (child.is_symlink() or child.is_junction()):
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+    shutil.rmtree(folder)
+
+
+def _extract(archive: Archive, data: bytes, into: Path, *, replace_unmarked: bool) -> None:
+    """Unpacks *data* and its :data:`PIN_FILE` into ``<into>.new/``, then moves that to *into*.
+
+    An existing *into* is deleted just before the rename, its pin file last (ADR 0042): a
+    delete that stops partway leaves the old pin for the next fetch to replace, and a failed
+    rename leaves *into* absent for the next fetch to fill. A leftover ``<into>.new/`` is
+    deleted only when it holds a pin file, or with *replace_unmarked*.
+    """
     new = into.with_name(f"{into.name}.new")
     if new.exists():
+        if _held_pin(new) is None and not replace_unmarked:
+            raise CloudAssetsError(
+                f"{archive.name}: {new} exists without {PIN_FILE}, so fetch did not make it; "
+                "move it away and fetch again"
+            )
         shutil.rmtree(new)  # left by an interrupted earlier fetch
     new.mkdir(parents=True)
+    step = f"unpack {archive.key}"
     try:
+        # Written first, so a .new this fetch leaves behind is known as its own.
+        (new / PIN_FILE).write_text(f"{archive.key}\n", encoding="utf-8", newline="\n")
         with tarfile.open(fileobj=io.BytesIO(compression.zstd.decompress(data))) as tar:
             tar.extractall(new, filter="data")
+        if into.exists():
+            step = f"delete {into} to replace it"
+            _delete_pin_last(into)
+        step = f"rename {new} to {into}"
         new.rename(into)
     except (tarfile.TarError, compression.zstd.ZstdError, OSError) as err:
         shutil.rmtree(new, ignore_errors=True)
-        raise CloudAssetsError(f"{archive.name}: cannot unpack {archive.key}: {err}") from err
+        raise CloudAssetsError(f"{archive.name}: cannot {step}: {err}") from err
 
 
 def fetch(
@@ -468,11 +552,14 @@ def fetch(
     env: Mapping[str, str],
     *,
     run: CurlRunner = _curl,
+    replace_unmarked: bool = False,
 ) -> list[str]:
-    """Downloads and unpacks each archive of *names* (all when empty) whose folder is absent.
+    """Puts each archive of *names* (all when empty) in its folder unless the folder holds it.
 
-    Returns one line per archive, ``fetched <name> -> <folder>`` or
-    ``skipped <name>: <folder> exists``. An existing folder is never touched (ADR 0039).
+    A folder whose :data:`PIN_FILE` names the pinned key is kept, and one naming another key is
+    replaced (ADR 0042). A folder without one is never touched, since fetch did not write it,
+    unless *replace_unmarked*, for a data root that fetch alone filled (a cloud session's).
+    Returns one line per archive: ``fetched``, ``replaced`` or ``skipped``.
 
     Raises:
         MissingCredentials: a download is needed and :data:`REQUIRED_ENV` or half of
@@ -484,8 +571,13 @@ def fetch(
     for name in names or list(manifest.archives):
         archive = archive_named(manifest, name)
         into = data_root / archive.into
-        if into.exists():
-            lines.append(f"skipped {name}: {into} exists")
+        held = _held_pin(into)
+        existed = into.exists()
+        if existed and held == archive.key:
+            lines.append(f"skipped {name}: {into} holds its pin")
+            continue
+        if existed and held is None and not replace_unmarked:
+            lines.append(f"skipped {name}: {into} exists without {PIN_FILE}, so fetch leaves it")
             continue
         if archive.key is None or archive.sha256 is None or archive.bytes is None:
             raise CloudAssetsError(
@@ -493,8 +585,11 @@ def fetch(
                 "on the primary machine and commit it"
             )
         data = _download(manifest, archive, archive.key, data_root, env, run)
-        _extract(archive, data, into)
-        lines.append(f"fetched {name} -> {into}")
+        _extract(archive, data, into, replace_unmarked=replace_unmarked)
+        if existed:
+            lines.append(f"replaced {name}: {into} held {held or f'no {PIN_FILE}'}")
+        else:
+            lines.append(f"fetched {name} -> {into}")
     return lines
 
 
@@ -548,11 +643,19 @@ def upload(
 
 
 def status(manifest: Manifest, data_root: Path, out_dir: Path) -> list[str]:
-    """One line per archive: its pinned key, whether its folder exists, and its packed file."""
+    """One line per archive: its pinned key, what its folder holds, and its packed file."""
     lines = []
     for archive in manifest.archives.values():
         into = data_root / archive.into
-        folder = f"{into} {'present' if into.exists() else 'absent'}"
+        held = _held_pin(into)
+        if not into.exists():
+            folder = f"{into} absent"
+        elif held is None:
+            folder = f"{into} present without {PIN_FILE}"
+        elif held == archive.key:
+            folder = f"{into} holds the pin"
+        else:
+            folder = f"{into} holds {held}, not the pin"
         if archive.key is None:
             lines.append(f"{archive.name}: not packed; {folder}")
             continue

@@ -241,6 +241,10 @@ _Avoid_: recording (the game's own word for filming a take), recapture (for over
 The capture that parity scores a film against, chosen by an explicit promotion that the repository records.
 _Avoid_: golden frames, the reference (unqualified)
 
+**Reference film**:
+A film the parity loop scores against its reference capture; each one counts in the adoption rule, so a change that lowers any reference film by more than the adoption rule allows is not adopted.
+_Avoid_: fidelity target, parity target, pinned film
+
 **Captured frame**:
 One distinct rendered page taken from `PLAYONE.EXE` during a capture, numbered by capture order and tagged with the film clock read when it was taken.
 _Avoid_: tick (for the capture ordinal)

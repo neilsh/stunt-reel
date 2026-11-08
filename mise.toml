@@ -281,14 +281,16 @@ hide = true
 # machine never reaches the cloud setup's apt or mise install. It reruns .claude/cloud-setup.sh
 # because the setup script's cache outlives a pin change; work already done costs nothing. It
 # fetches here, not in the setup script, because the environment's R2_* and STUNT_DATA_ROOT are
-# set only once Claude Code starts. It always exits 0 and prints one line: a hook's stdout
+# set only once Claude Code starts. --replace-unmarked: a cloud data root's archive folders hold
+# what fetch wrote, from before its pin files too, and what a session added, which replacing
+# deletes (ADR 0042). It always exits 0 and prints one line: a hook's stdout
 # reaches Claude only on success, and Claude must know when the archives are missing.
 env = { MISE_LOCKED = "1" }
 run = '''
 [ "${CLAUDE_CODE_REMOTE:-}" = true ] || exit 0
 log=/tmp/cloud-session-start.log
 if { bash .claude/cloud-setup.sh --cloud &&
-     mise run cloud-assets -- fetch && mise run superset-all; } >"$log" 2>&1; then
+     mise run cloud-assets -- fetch --replace-unmarked && mise run superset-all; } >"$log" 2>&1; then
   echo "cloud-session-start: tools, game archives and SUPERSET.ALL ready (log: $log)"
 else
   echo "cloud-session-start FAILED: tools, game archives or SUPERSET.ALL may be missing; see $log and mise run cloud-assets -- status"
