@@ -439,11 +439,50 @@ def test_changed_paths_without_main_raises(tmp_path: Path) -> None:
         gate.changed_paths(repo)
 
 
+def _stale_main_clone(tmp_path: Path) -> Path:
+    """A clone whose local ``main`` is one commit behind ``origin/main``, on ``feat`` cut from it."""
+    upstream = _feature_repo(tmp_path / "upstream")
+    _git(upstream, "switch", "-q", "main")
+    clone = tmp_path / "clone"
+    _git(tmp_path, "clone", "-q", str(upstream), str(clone))
+    _write(upstream, "landed.md")
+    _git(upstream, "add", "landed.md")
+    _git(upstream, "commit", "-qm", "landed upstream")
+    _git(clone, "fetch", "-q", "origin")
+    _git(clone, "switch", "-q", "-c", "feat", "origin/main")
+    _write(clone, "ours.md")
+    _git(clone, "add", "ours.md")
+    _git(clone, "commit", "-qm", "ours")
+    return clone
+
+
+def test_changed_paths_counts_from_origin_main_past_a_stale_local_main(tmp_path: Path) -> None:
+    clone = _stale_main_clone(tmp_path)
+
+    assert gate.default_base(clone) == "origin/main"
+    assert gate.changed_paths(clone) == ["ours.md"]
+
+
+def test_an_explicit_base_overrides_origin_main(tmp_path: Path) -> None:
+    clone = _stale_main_clone(tmp_path)
+
+    assert gate.changed_paths(clone, "main") == ["landed.md", "ours.md"]
+
+
+def test_without_origin_main_the_base_falls_back_to_main(tmp_path: Path) -> None:
+    repo = _feature_repo(tmp_path)
+    _write(repo, "ours.md")
+
+    assert gate.default_base(repo) == "main"
+    assert gate.changed_paths(repo) == ["ours.md"]
+
+
 def _run_main(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     paths: list[str] | Exception,
     *args: str,
+    expected_base: str = "origin/main",
 ) -> tuple[list[str], str]:
     """Run ``gate.main`` with every step passing; return the steps it ran and what it printed."""
     ran: list[str] = []
@@ -452,8 +491,8 @@ def _run_main(
         ran.append(task)
         return 0, "", 0.0
 
-    def changed(_repo: Path, base: str = "main") -> list[str]:
-        assert base == "main"
+    def changed(_repo: Path, base: str | None = None) -> list[str]:
+        assert base == expected_base
         if isinstance(paths, Exception):
             raise paths
         return paths
@@ -464,6 +503,7 @@ def _run_main(
     monkeypatch.setattr(gate, "_check_uv", lambda: None)
     monkeypatch.setattr(gate, "_step", step)
     monkeypatch.setattr(gate, "changed_paths", changed)
+    monkeypatch.setattr(gate, "default_base", lambda _repo: "origin/main")
     assert gate.main(["all", *args]) == 0
     return ran, (tmp_path / "check.log").read_text(encoding="utf-8")
 
@@ -492,6 +532,22 @@ def test_unknown_changed_paths_run_the_full_gate(
     assert sorted(ran) == sorted(gate._plan("all"))
     assert "[gate] scope: full (changed paths unknown: no main)" in out
     assert out.rstrip().endswith("[gate] gate line: mise run check passes.")
+
+
+def test_an_explicit_base_reaches_changed_paths_and_the_reason(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _run_main(monkeypatch, tmp_path, [], "--base", "main", expected_base="main")
+
+    assert "[gate] scope: full (no changes against main)" in capsys.readouterr().out
+
+
+def test_no_changes_names_the_default_base(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _run_main(monkeypatch, tmp_path, [])
+
+    assert "[gate] scope: full (no changes against origin/main)" in capsys.readouterr().out
 
 
 def test_full_flag_runs_the_full_gate(
