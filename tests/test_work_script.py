@@ -16,6 +16,10 @@ from stunt_reel.work_items import parse_folder, scan
 SCRIPTS = Path(__file__).resolve().parent.parent / "python" / "scripts"
 TODAY = date(2026, 11, 7)
 ISSUE_TITLE = "Streamline docs into evergreen notes and dated work folders"
+#: The commands `new` runs, by the first three words FakeRunner keys them on.
+TITLE = "gh api repos/{owner}/{repo}/issues/307"
+TARGET = "gh api repos/{owner}/{repo}"
+CREATE = "gh api repos/neilsh/stunt-reel/issues"
 #: Issues as `gh api --jq` prints them, one JSON object a line.
 ISSUES = "".join(
     json.dumps({"number": number, "state": state, "state_reason": reason, "pull_request": None})
@@ -56,6 +60,11 @@ class FakeRunner:
 
     def called(self, command: str) -> list[list[str]]:
         return [args for args in self.calls if " ".join(args).startswith(command)]
+
+
+def _issue(title: str, pull_request: dict[str, str] | None = None) -> str:
+    """The issue as `gh api --jq '{title, pull_request}'` prints it."""
+    return json.dumps({"title": title, "pull_request": pull_request}) + "\n"
 
 
 def _no_gh(args: list[str]) -> str:
@@ -102,31 +111,36 @@ def _columns(out: str) -> list[list[str]]:
 
 
 def test_new_with_issue_makes_this_months_folder(tmp_path: Path) -> None:
-    run = FakeRunner({"gh issue view": json.dumps({"title": ISSUE_TITLE})})
+    run = FakeRunner({TITLE: _issue(ISSUE_TITLE)})
     assert _main(tmp_path, "new", "docs-streamline", "--issue", "307", run=run) == 0
     path = tmp_path / "2026-11" / "307_docs-streamline"
     assert (path / "README.md").is_file()
     folder = parse_folder(path)
     assert (folder.issue, folder.slug, folder.title) == (307, "docs-streamline", ISSUE_TITLE)
     assert (folder.started, folder.outcome, folder.status) == (TODAY, "", None)
-    assert run.calls == [["gh", "issue", "view", "307", "--json", "title"]]
+    assert run.calls == [
+        ["gh", "api", "repos/{owner}/{repo}/issues/307", "--jq", "{title, pull_request}"]
+    ]
 
 
 def test_new_without_issue_files_one_after_checking_the_repo(tmp_path: Path) -> None:
     run = FakeRunner(
         {
-            "gh repo view": "neilsh/stunt-reel\n",
+            TARGET: "neilsh/stunt-reel\n",
             "git remote get-url": "https://github.com/neilsh/stunt-reel.git\n",
-            "gh issue create": "https://github.com/neilsh/stunt-reel/issues/412\n",
+            CREATE: "https://github.com/neilsh/stunt-reel/issues/412\n",
         }
     )
     assert _main(tmp_path, "new", "docs-streamline", run=run) == 0
     folder = parse_folder(tmp_path / "2026-11" / "412_docs-streamline")
     assert (folder.issue, folder.title) == (412, "docs-streamline")
-    [create] = run.called("gh issue create")
-    assert create[create.index("--title") + 1] == "docs-streamline"
-    assert create[create.index("--repo") + 1] == "neilsh/stunt-reel"
-    assert run.calls.index(create) > run.calls.index(run.called("gh repo view")[0])
+    [create] = run.called(CREATE)
+    assert create[:5] == ["gh", "api", "repos/neilsh/stunt-reel/issues", "-X", "POST"]
+    fields = [create[i + 1] for i, flag in enumerate(create) if flag == "-f"]
+    assert fields[0] == "title=docs-streamline"
+    assert fields[1].startswith("body=Filed by `mise run work -- new docs-streamline`")
+    assert fields[2:] == ["labels[]=needs-triage"]
+    assert run.calls.index(create) > run.calls.index(run.called(TARGET)[0])
 
 
 @pytest.mark.parametrize(
@@ -135,9 +149,9 @@ def test_new_without_issue_files_one_after_checking_the_repo(tmp_path: Path) -> 
 def test_new_without_issue_refuses_a_repo_other_than_origin(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], origin: str
 ) -> None:
-    run = FakeRunner({"gh repo view": "neilsh/stunt-reel\n", "git remote get-url": origin})
+    run = FakeRunner({TARGET: "neilsh/stunt-reel\n", "git remote get-url": origin})
     assert _main(tmp_path, "new", "docs-streamline", run=run) == 1
-    assert run.called("gh issue create") == []
+    assert run.called(CREATE) == []
     assert list(tmp_path.iterdir()) == []
     err = capsys.readouterr().err
     assert "neilsh/stunt-reel" in err
@@ -174,15 +188,16 @@ def test_new_checks_slug_and_issue_before_calling_gh(tmp_path: Path, argv: list[
         _gh_signed_out,
         FakeRunner(
             {
-                "gh issue view": subprocess.CalledProcessError(
-                    1, ["gh"], "", "GraphQL: Could not resolve to an issue\n(repository.issue)\n"
+                TITLE: subprocess.CalledProcessError(
+                    1, ["gh"], "", 'gh: Not Found (HTTP 404)\n{"message": "Not Found"}\n'
                 )
             }
         ),
-        FakeRunner({"gh issue view": "not json"}),
-        FakeRunner({"gh issue view": json.dumps({"number": 307})}),
+        FakeRunner({TITLE: "not json"}),
+        FakeRunner({TITLE: json.dumps({"pull_request": None})}),
+        FakeRunner({TITLE: _issue("A pull request", pull_request={"url": "u"})}),
     ],
-    ids=["missing", "signed-out", "two-line-error", "garbled", "no-title"],
+    ids=["missing", "signed-out", "two-line-error", "garbled", "no-title", "pull-request"],
 )
 def test_new_with_issue_but_no_title_from_gh_titles_it_with_the_slug(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], run: Any
@@ -217,7 +232,7 @@ def test_new_without_issue_or_gh_fails_cleanly(
     "title", ["1942", "Why: the colon stays", 'Say "hi"', 'C:\\dir\\ "quoted\\"', " padded "]
 )
 def test_new_writes_a_title_that_parses_back(tmp_path: Path, title: str) -> None:
-    run = FakeRunner({"gh issue view": json.dumps({"title": title})})
+    run = FakeRunner({"gh api repos/{owner}/{repo}/issues/5": _issue(title)})
     assert _main(tmp_path, "new", "x", "--issue", "5", run=run) == 0
     assert parse_folder(tmp_path / "2026-11" / "5_x").title == title
 
@@ -226,7 +241,7 @@ def test_new_writes_a_title_that_parses_back(tmp_path: Path, title: str) -> None
 def test_new_refuses_a_title_that_cannot_be_one_frontmatter_line(
     tmp_path: Path, title: str
 ) -> None:
-    run = FakeRunner({"gh issue view": json.dumps({"title": title})})
+    run = FakeRunner({"gh api repos/{owner}/{repo}/issues/5": _issue(title)})
     assert _main(tmp_path, "new", "x", "--issue", "5", run=run) == 1
     assert list(tmp_path.iterdir()) == []
 
