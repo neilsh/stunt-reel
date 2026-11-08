@@ -177,9 +177,10 @@ Observed 2026-11-08.
   #310, #312 and #313; ask the user rather than retry.
 * **Brief an isolated subagent to branch from `origin/main`.** Worktree isolation cuts its branch
   from the session's current `HEAD`, so a brief for work off `main` opens with `git fetch origin`,
-  then `git switch -c <branch> origin/main`, and the subagent reports `<branch>` as the one holding
-  its work: the `worktree-agent-*` branch stays at the old tip. That worktree and branch outlive it
-  and go as [`managing-worktrees`](../.agents/skills/managing-worktrees/SKILL.md) step 5 says.
+  then, once the fetch succeeds, `git switch -c <branch> origin/main`, and the subagent reports
+  `<branch>` as the one holding its work: the `worktree-agent-*` branch stays at the old tip. That
+  worktree and branch outlive it and go as
+  [`managing-worktrees`](../.agents/skills/managing-worktrees/SKILL.md) step 5 says.
 
 ### A low-integrity virtualenv
 
