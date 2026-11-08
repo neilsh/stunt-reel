@@ -75,19 +75,19 @@ class Repo:
 
     def git(self, *args: str, stdin: str | None = None, env: dict[str, str] | None = None) -> str:
         """The stripped output of ``git <args>``; raise ``RegateError`` when it fails."""
+        # Bytes, not text: a text pipe on Windows would write each message with CRLF.
         done = subprocess.run(  # noqa: S603 - fixed git arguments
             ["git", *args],  # noqa: S607 - git from PATH
             cwd=self.path,
-            input=stdin,
+            input=None if stdin is None else stdin.encode("utf-8"),
             capture_output=True,
-            text=True,
-            encoding="utf-8",
             check=False,
             env={**self.env, **(env or {})},
         )
         if done.returncode != 0:
-            raise RegateError(f"git {' '.join(args)}: {done.stderr.strip() or done.returncode}")
-        return done.stdout.strip()
+            problem = done.stderr.decode("utf-8", "replace").strip() or done.returncode
+            raise RegateError(f"git {' '.join(args)}: {problem}")
+        return done.stdout.decode("utf-8").strip()
 
 
 def with_gate_line(message: str, line: str) -> str:

@@ -151,6 +151,10 @@ def test_all_passing_rewrites_each_gate_line_and_nothing_else(
         assert {k: v for k, v in old.items() if k != "body"} == {
             k: v for k, v in new.items() if k != "body"
         }
+    raw = subprocess.run(  # noqa: S603 - fixed test arguments
+        [GIT, "cat-file", "commit", "topic"], cwd=repo, capture_output=True, check=True
+    ).stdout
+    assert b"\r" not in raw
     assert after[0]["body"] == (
         "feat: one\n\nWhy one.\n\nmise run check-py passes; check-rust not run.\n\n" + TRAILER
     )
