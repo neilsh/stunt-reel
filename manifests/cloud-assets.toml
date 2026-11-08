@@ -1,15 +1,15 @@
 # Game data for cloud sessions, in the private R2 bucket (work/2026-11/cloud-assets/spec.md, ADR 0039).
 # `mise run cloud-assets -- pack` rewrites the key, sha256, bytes and references lines.
 bucket = "stunt-reel-internal-assets"
-version = "v1"
+version = "v2"
 
 [corpus-stuntisl]
 into = "corpus/stuntisl"
 include = ["**"]
-exclude = ["RES/MUSIC1.*", "RES/MUSIC2.*"]
-key = "v1/corpus-stuntisl-de6637716407214e.tar.zst"
-sha256 = "de6637716407214eb20b3fbddcf91507f1c78dc2a1be0b7699d934293cb90c01"
-bytes = 5263795
+exclude = ["RES/MUSIC?.ESS", "RES/MUSIC?.XMI", "RES/MUSIC?.XMM", "RES/MUSIC?.XMP"]
+key = "v2/corpus-stuntisl-5af881be852308ae.tar.zst"
+sha256 = "5af881be852308aec91fa42f88732f4360b6d4f200ae1fba57ea2e5a948f396a"
+bytes = 5295151
 
 [corpus-stisldem]
 into = "corpus/stisldem"

@@ -339,6 +339,35 @@ def check_references(manifest: Manifest, repo: Path = REPO_ROOT) -> list[str]:
     return messages
 
 
+def check_manifest_sources(manifest: Manifest, repo: Path = REPO_ROOT) -> list[str]:
+    """One message per file a reference film's ``.ALL`` manifest reads that no archive holds.
+
+    A cloud session rebuilds a film's archive from its committed manifest (ADR 0032), so each
+    ``[[source]]`` file must be one the archive whose ``into`` is the manifest's ``game_root``
+    selects.
+    """
+    by_folder = {a.into.lower(): a for a in manifest.archives.values()}
+    messages = []
+    for film in references.reference_films(repo):
+        relative = parity_layout.manifest_path(references.read_reference(repo, film).slug)
+        path = repo / relative
+        if not path.is_file():
+            continue
+        record = tomllib.loads(path.read_text(encoding="utf-8"))
+        game = str(record["game_root"])
+        archive = by_folder.get(game.lower())
+        if archive is None:
+            messages.append(f"{film}: no archive holds {game}, the game tree {relative} reads")
+            continue
+        for source in record.get("source", []):
+            name = source["file"]
+            if not any(_matches(name, archive.include)) or any(_matches(name, archive.exclude)):
+                messages.append(
+                    f"{film}: {relative.as_posix()} reads {name}, which {archive.name} leaves out"
+                )
+    return messages
+
+
 class MissingCredentials(CloudAssetsError):  # noqa: N818 - names what is unset, as the CLI says
     """:data:`REQUIRED_ENV` or half of :data:`KEY_PAIR_ENV` is unset; the command line exits 2."""
 

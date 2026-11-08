@@ -11,8 +11,8 @@ accepted 2026-11-06 ([spec](../../work/2026-11/cloud-assets/spec.md) decisions 3
 A Claude Code cloud session starts from a clone of the repo, which holds no game files (`[I7]`),
 and has no data root ([ADR 0036](0036-worktrees-reach-shared-state-by-configuration.md)). To
 render films and run parity it needs part of the primary machine's data root: the full game
-without its music, the demo with the archives `references.toml` pins, FreeFlight's scenery, and
-the reference captures. Game data must not become public, so the store is a private Cloudflare
+without its music (bar the two `.XMA` files film archives link), the demo with the archives
+`references.toml` pins, FreeFlight's scenery, and the reference captures. Game data must not become public, so the store is a private Cloudflare
 R2 bucket, `stunt-reel-internal-assets`, and a session can hold only a credential that anything
 in it, the agent included, can read.
 

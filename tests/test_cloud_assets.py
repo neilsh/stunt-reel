@@ -26,6 +26,7 @@ from stunt_reel.cloud_assets import (
     CloudAssetsError,
     Manifest,
     MissingCredentials,
+    check_manifest_sources,
     check_references,
     curl_config,
     fetch,
@@ -122,7 +123,7 @@ def test_committed_manifest_names_the_spec_archives() -> None:
     m = read_manifest()
     assert (m.bucket, m.version, sorted(m.archives)) == (
         "stunt-reel-internal-assets",
-        "v1",
+        "v2",
         ["captures", "corpus-freeflight", "corpus-stisldem", "corpus-stuntisl"],
     )
     assert m.archives["corpus-freeflight"].into == "corpus/siarchive/Developer/FreeFlight"
@@ -177,7 +178,7 @@ def test_pack_names_the_key_after_the_compressed_hash(tmp_path: Path) -> None:
     assert a.key is not None
     data = (out / PurePosixPath(a.key).name).read_bytes()
     assert a.sha256 == hashlib.sha256(data).hexdigest()
-    assert a.key == f"v1/corpus-stuntisl-{a.sha256[:16]}.tar.zst"
+    assert a.key == f"{m.version}/corpus-stuntisl-{a.sha256[:16]}.tar.zst"
     assert a.bytes == len(data)
     base = data_root / "corpus" / "stuntisl"
     stuntisl = m.archives["corpus-stuntisl"]
@@ -233,6 +234,44 @@ def test_check_references_reports_a_reference_the_archive_lacks(tmp_path: Path) 
     )
     [message] = check_references(with_archive(m, captures), repo)
     assert "ctry" in message
+
+
+def _manifest_repo(tmp_path: Path, game_root: str, source: str) -> Path:
+    repo = tmp_path / "repo"
+    _write(
+        repo,
+        {
+            "research/parity/references.toml": (
+                f'[land]\nfilm = "vault-land"\nsha256 = "{"1" * 64}"\n'
+            ).encode(),
+            "manifests/all/vault-land.toml": (
+                f'game_root = "{game_root}"\n\n[[source]]\nfile = "{source}"\n'
+            ).encode(),
+        },
+    )
+    return repo
+
+
+def test_check_manifest_sources_reports_a_source_the_archive_excludes(tmp_path: Path) -> None:
+    repo = _manifest_repo(tmp_path, "corpus/stuntisl", "RES/MUSIC1.ESS")
+    [message] = check_manifest_sources(read_manifest(), repo)
+    assert "RES/MUSIC1.ESS" in message
+    assert "corpus-stuntisl" in message
+
+
+def test_check_manifest_sources_accepts_a_selected_source(tmp_path: Path) -> None:
+    repo = _manifest_repo(tmp_path, "corpus/stuntisl", "RES/MUSIC1.XMA")
+    assert check_manifest_sources(read_manifest(), repo) == []
+
+
+def test_check_manifest_sources_reports_a_game_tree_no_archive_holds(tmp_path: Path) -> None:
+    repo = _manifest_repo(tmp_path, "builds/patch3", "RES/GAME.RES")
+    [message] = check_manifest_sources(read_manifest(), repo)
+    assert "builds/patch3" in message
+
+
+def test_committed_manifest_holds_every_reference_films_sources() -> None:
+    assert check_manifest_sources(read_manifest()) == []
 
 
 def test_committed_manifest_agrees_with_references_toml() -> None:
