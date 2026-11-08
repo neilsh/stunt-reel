@@ -3,13 +3,14 @@
 ``pack`` builds each archive from the data root into ``target/cloud-assets/`` and rewrites its
 pin in ``manifests/cloud-assets.toml``; commit that file. ``upload`` puts the packed archives
 in the bucket with the owner's ``wrangler login``. ``fetch`` downloads and unpacks each archive
-whose folder is absent, with the R2 key pair from ``R2_ACCOUNT_ID``, ``R2_ACCESS_KEY_ID`` and
+its folder does not hold yet (ADR 0042), with the R2 key pair from ``R2_ACCOUNT_ID``, ``R2_ACCESS_KEY_ID`` and
 ``R2_SECRET_ACCESS_KEY``. ``status`` shows each pin, folder and packed file. Each takes archive
 names, all by default.
 
 Exit status: 0 done, 1 an archive could not be handled, 2 the R2 variables are unset.
 
-Usage: ``mise run cloud-assets -- [--data-root DIR] pack|upload|fetch|status [ARCHIVE...]``
+Usage: ``mise run cloud-assets -- [--data-root DIR] pack|upload|fetch|status [ARCHIVE...]
+[--replace-unmarked]``
 """
 
 from __future__ import annotations
@@ -50,6 +51,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--data-root", type=Path, help="data root [STUNT_DATA_ROOT]")
     parser.add_argument("command", choices=("pack", "upload", "fetch", "status"))
     parser.add_argument("archives", nargs="*", help="archive names [all]")
+    parser.add_argument(
+        "--replace-unmarked",
+        action="store_true",
+        help="fetch: also replace folders fetch did not write; a cloud session's data root only",
+    )
     args = parser.parse_args(argv)
     try:
         root = data_root_flag(args.data_root)
@@ -62,7 +68,13 @@ def main(argv: list[str] | None = None) -> int:
             case "upload":
                 lines = cloud_assets.upload(manifest, args.archives, OUT_DIR)
             case "fetch":
-                lines = cloud_assets.fetch(manifest, args.archives, root, os.environ)
+                lines = cloud_assets.fetch(
+                    manifest,
+                    args.archives,
+                    root,
+                    os.environ,
+                    replace_unmarked=args.replace_unmarked,
+                )
             case _:
                 lines = cloud_assets.status(manifest, root, OUT_DIR)
     except cloud_assets.MissingCredentials as exc:

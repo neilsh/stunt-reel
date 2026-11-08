@@ -5,6 +5,7 @@
 accepted 2026-11-06 ([spec](../../work/2026-11/cloud-assets/spec.md) decisions 3, 4, 6 and 7,
 [plan](../../work/2026-11/cloud-assets/plan.md)). Amends
 [ADR 0022](0022-captures-are-add-only-beside-a-read-only-corpus.md) for provisioning only.
+Amended 2026-11-08 by [ADR 0042](0042-fetch-replaces-a-folder-it-wrote-when-the-pin-changes.md): fetch replaces a folder it wrote when the pin changes.
 
 ## Context
 
