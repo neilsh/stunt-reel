@@ -19,4 +19,6 @@ Two tracks, because what backs a change decides what the score is allowed to say
 
 Anything else is recorded as a negative and the change is reverted.
 
+An adopted change updates the expected table in [`references.toml`](../../../research/parity/references.toml) for the renderer class it measured (`ssim`, `iou`, `commit`, `adapter` from that run); the other class keeps its older commit until someone measures it.
+
 0.002 is a policy bound derived from build-level noise ([`method.md`](../../../research/parity/method.md) section 3). A margin under 0.002 is unattributable; the sweep marks it on the winner line.

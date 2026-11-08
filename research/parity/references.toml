@@ -23,6 +23,12 @@ reason = "captured 2026-10-31 on the demo's unpatched PLAYONE with its shipped .
 # is conservative.
 noise_sigma = 0.000303
 
+[ctry.expected.gpu]
+ssim = 0.8986135
+iou = 0.9896689
+commit = "d01a3c4f6153b6f1c947432360a5e9546e0101d5"
+adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
+
 [intro]
 film = "vault-intro"
 sha256 = "ac93c3babb74c5380a0f1263d38a546b43979c8d4200fb0d2dfb58db482c0215"
@@ -30,3 +36,9 @@ all_sha256 = "27935a3638950d4ec75fc1f84f4ac15aa7308f0975b2a9d2e0c5f8a0c843035d"
 makeone = "unpatched"
 playone = "unpatched"
 reason = "captured 2026-10-31 on the demo's unpatched PLAYONE with its shipped .ALL; recapture on patch3 is a later step (ADR 0029 Consequences)"
+
+[intro.expected.gpu]
+ssim = 0.8336824
+iou = 0.9856165
+commit = "d01a3c4f6153b6f1c947432360a5e9546e0101d5"
+adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
