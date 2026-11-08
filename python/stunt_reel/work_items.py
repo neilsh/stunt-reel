@@ -23,6 +23,7 @@ from stunt_reel.frontmatter import FrontmatterError, read_frontmatter
 __all__ = [
     "MONTH_PATTERN",
     "WORK_ROOT",
+    "IssueStatus",
     "Runner",
     "Status",
     "WorkFolder",
@@ -39,6 +40,8 @@ WORK_ROOT = REPO_ROOT / "work"
 MONTH_PATTERN = re.compile(r"[0-9]{4}-(0[1-9]|1[0-2])")
 
 type Status = Literal["landed", "abandoned"]
+#: A work item's status as its GitHub issue gives it.
+type IssueStatus = Literal["active", "landed", "abandoned"]
 #: Runs a command and returns its stdout; raises OSError (FileNotFoundError for a missing
 #: program) or subprocess.CalledProcessError. `run_command` is the real one.
 type Runner = Callable[[list[str]], str]
@@ -120,31 +123,36 @@ def scan(root: Path = WORK_ROOT) -> list[WorkFolder]:
     return sorted(folders, key=lambda f: (f.month, f.issue is None, f.issue or 0, f.slug))
 
 
-def issue_statuses(numbers: Iterable[int], run: Runner) -> dict[int, str] | None:
+def issue_statuses(numbers: Iterable[int], run: Runner) -> dict[int, IssueStatus] | None:
     """The status of each of *numbers*' issues, read with one `gh issue list` through *run*.
 
     An open issue is `active`; a closed one is `abandoned` when closed as not planned or as a
-    duplicate, else `landed`. A number gh does not list is left out. None when gh cannot run
-    or fails; no call, and `{}`, for no numbers.
+    duplicate, else `landed`. A number gh does not list is left out. None when gh cannot run,
+    fails or answers with anything but a list of issues with the fields asked for; no call,
+    and `{}`, for no numbers.
     """
     wanted = set(numbers)
     if not wanted:
         return {}
     try:
         issues = json.loads(run([*_ISSUE_LIST, _ISSUE_FIELDS]))
-    except OSError, subprocess.CalledProcessError:
+        return {
+            issue["number"]: _issue_status(issue) for issue in issues if issue["number"] in wanted
+        }
+    # ValueError is malformed JSON; KeyError and TypeError are JSON of another shape.
+    except OSError, subprocess.CalledProcessError, ValueError, KeyError, TypeError:
         return None
-    return {issue["number"]: _issue_status(issue) for issue in issues if issue["number"] in wanted}
 
 
 def run_command(args: list[str]) -> str:
-    """The stdout of *args*, run with no stdin and decoded as UTF-8: the default Runner.
+    """The default Runner: *args*' stdout, run in the repository root with no stdin, as UTF-8.
 
     Raises OSError when the program cannot start (FileNotFoundError when it is missing) and
     subprocess.CalledProcessError, carrying stderr, when it exits non-zero.
     """
     done = subprocess.run(  # noqa: S603 - callers pass fixed gh and git commands
         args,
+        cwd=REPO_ROOT,
         stdin=subprocess.DEVNULL,
         capture_output=True,
         encoding="utf-8",
@@ -154,7 +162,7 @@ def run_command(args: list[str]) -> str:
     return done.stdout
 
 
-def _issue_status(issue: dict[str, Any]) -> str:
+def _issue_status(issue: dict[str, Any]) -> IssueStatus:
     if issue["state"] == "OPEN":
         return "active"
     return "abandoned" if issue["stateReason"] in _GIVEN_UP else "landed"

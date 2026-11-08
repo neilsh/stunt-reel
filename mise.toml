@@ -119,6 +119,10 @@ run = "uv run python python/scripts/work.py"
 description = "Rewrite research/MAP.md, every research note listed by folder with its summary: frontmatter, or exit 1 naming it when it is stale (mise run knowledge-map -- --write | --check [--root DIR]); mise run fix runs --write"
 run = "uv run python python/scripts/knowledge_map.py"
 
+[tasks.doc-health]
+description = "Report, worst first and never failing: evergreen docs over 20 KB, research notes without a summary:, session-style headings, work folders that break the layout, and work folders whose issue is open with no commit in 14 days or closed with no outcome (gh needed for those two; mise run doc-health [-- --json] [--root DIR])"
+run = "uv run python python/scripts/doc_health.py"
+
 [tasks.build-at]
 depends = ["ensure"]
 description = "Build stunt-cli from a git revision with an isolated target dir (mise run build-at -- <rev> <out>)"

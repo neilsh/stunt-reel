@@ -7,10 +7,11 @@ import re
 import subprocess
 import sys
 from datetime import date
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
+from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.work_items import (
     WorkFolderError,
     folder_name,
@@ -19,9 +20,6 @@ from stunt_reel.work_items import (
     run_command,
     scan,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 ISSUE_README = 'title: Docs streamline\nstarted: 2026-11-07\nissue: 307\noutcome: ""\n'
 LANDED_README = 'title: T\nstarted: 2026-11-07\nstatus: landed\noutcome: ""\n'
@@ -249,6 +247,21 @@ def test_issue_statuses_is_none_when_gh_cannot_answer(error: Exception) -> None:
     assert issue_statuses([307], run) is None
 
 
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "gh: not JSON",
+        '{"number": 307}',
+        '[{"number": 307, "state": "OPEN"}, {"number": 300, "state": "CLOSED"}]',
+        '[{"state": "OPEN", "stateReason": ""}]',
+        "[307]",
+    ],
+    ids=["not-json", "not-a-list", "no-state-reason", "no-number", "not-objects"],
+)
+def test_issue_statuses_is_none_when_gh_answers_unexpected_json(answer: str) -> None:
+    assert issue_statuses([307, 300], lambda _args: answer) is None
+
+
 def test_issue_statuses_of_no_issues_calls_nothing() -> None:
     def run(args: list[str]) -> str:
         raise AssertionError(args)
@@ -264,3 +277,9 @@ def test_run_command_returns_stdout_or_raises() -> None:
     assert "no auth" in failed.value.stderr
     with pytest.raises(FileNotFoundError):
         run_command(["stunt-reel-no-such-command"])
+
+
+def test_run_command_runs_in_the_repository_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(REPO_ROOT / "python")
+    where = run_command([sys.executable, "-c", "import os; print(os.getcwd())"])
+    assert Path(where.strip()).resolve() == REPO_ROOT.resolve()

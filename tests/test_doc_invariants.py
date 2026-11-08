@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from stunt_reel.doc_anchors import ANCHORS, BY_ID, CITATION_REGEX
+from stunt_reel.markdown_links import prose
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -170,30 +171,18 @@ def _anchors(path: Path) -> set[str]:
     return anchors
 
 
-def _prose(path: Path) -> str:
-    """Markdown text with fenced blocks and inline code removed."""
-    lines: list[str] = []
-    in_code_block = False
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip().startswith("```"):
-            in_code_block = not in_code_block
-        elif not in_code_block:
-            lines.append(re.sub(r"`[^`\n]*`", "", line))
-    return "\n".join(lines)
-
-
 def _links(path: Path) -> Iterator[tuple[str, bool]]:
     """(target, allowed) for each inline or reference-style link in *path*'s prose.
 
     Allowed means the link follows a provenance marker on its line, or sits in a ``Ruled out``
     section.
     """
-    prose = _prose(path)
+    text = prose(path.read_text(encoding="utf-8"))
     line_starts: list[int] = []
     allowed_from: list[int] = []  # per line, the prose offset where allowed links begin
     offset = 0
     ruled_out_level = 0  # the open Ruled out heading's level; 0 when none is open
-    for line in prose.split("\n"):
+    for line in text.split("\n"):
         if heading := HEADING_REGEX.match(line):
             level = len(heading.group(1))
             if level <= ruled_out_level:
@@ -207,10 +196,10 @@ def _links(path: Path) -> Iterator[tuple[str, bool]]:
         elif marker:
             allowed_from.append(offset + marker.start())
         else:
-            allowed_from.append(len(prose) + 1)
+            allowed_from.append(len(text) + 1)
         offset += len(line) + 1
     for regex in (MARKDOWN_LINK_REGEX, LINK_DEFINITION_REGEX):
-        for match in regex.finditer(prose):
+        for match in regex.finditer(text):
             index = bisect.bisect_right(line_starts, match.start()) - 1
             yield match.group(1), match.start() >= allowed_from[index]
 
@@ -344,9 +333,9 @@ def _process_links() -> set[tuple[str, str]]:
     for path in sources:
         if path.suffix != ".md":
             continue
-        prose = _prose(path)
-        targets = [m.group(1) for m in MARKDOWN_LINK_REGEX.finditer(prose)]
-        targets += [m.group(1) for m in LINK_DEFINITION_REGEX.finditer(prose)]
+        text = prose(path.read_text(encoding="utf-8"))
+        targets = [m.group(1) for m in MARKDOWN_LINK_REGEX.finditer(text)]
+        targets += [m.group(1) for m in LINK_DEFINITION_REGEX.finditer(text)]
         for target in targets:
             file_part = target.partition("#")[0]
             if not file_part or re.match(r"[a-z][a-z0-9+.-]*:", file_part):
