@@ -3,7 +3,7 @@ summary: "What the retired DOSBox-X harness established, for reading old capture
 ---
 # `PLAYONE.EXE`: The Retired DOSBox-X Capture Harness
 
-Capture moved to dosbox-automation ([`capture-dosbox-automation.md`](capture-dosbox-automation.md), plan [`dosbox-automation-switch-2026-10-30.md`](../../work/2026-10/dosbox-automation-switch/plan.md)). This note keeps what is specific to DOSBox-X `2026.10.01` and `dosbox-x-mcp-server` `0.1.2`, so a reader of an old log row, a `references.toml` pin or a capture made before the switch can interpret it. The harness code (`transport.py`, `session.py`, `vsync.py`, `client.py`, `ensure_dosbox.py`, the `mcp` and `ensure-dosbox` tasks) exists through commit `81724a6`; the removal commit deletes it, and `git show 81724a6:python/stunt_reel/tac/transport.py` recovers it.
+Capture moved to dosbox-automation ([`capture-dosbox-automation.md`](capture-dosbox-automation.md), plan [`work/2026-10/dosbox-automation-switch/plan.md`](../../work/2026-10/dosbox-automation-switch/plan.md)). This note keeps what is specific to DOSBox-X `2026.10.01` and `dosbox-x-mcp-server` `0.1.2`, so a reader of an old log row, a `references.toml` pin or a capture made before the switch can interpret it. The harness code (`transport.py`, `session.py`, `vsync.py`, `client.py`, `ensure_dosbox.py`, the `mcp` and `ensure-dosbox` tasks) exists through commit `81724a6`; the removal commit deletes it, and `git show 81724a6:python/stunt_reel/tac/transport.py` recovers it.
 
 DOSBox-X is back for one job: breakpoint plans (`mise run debug-x`), whose mechanics and costs are in [`debugger-plans.md`](debugger-plans.md).
 

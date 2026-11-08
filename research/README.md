@@ -14,7 +14,7 @@
 | [`sd-exe/`](sd-exe/) | `SITools/SD.EXE`, the developers' scenery designer: image layout, segments, routine offsets. What its files mean stays in their format notes | [`image.md`](sd-exe/image.md) |
 | [`stunt-exe/`](stunt-exe/) | Behaviour of `STUNT.EXE`, the authoring executable: sets, events, and the editor's file handling | [`sets.md`](stunt-exe/sets.md) |
 | [`parity/`](parity/) | How our render differs from the original's, and how we measure it | [`method.md`](parity/method.md), [`log.md`](../work/2026-10/parity-log/log.md) |
-| Images | Comparison images the notes cite live in `images/` in the work folder of the investigation that produced them | [`work/README.md`](../work/README.md#images) |
+| [`parity/error-examples/`](parity/error-examples/) | The only images kept here: error-category example sheets, indexed by [`parity/error-categories.toml`](parity/error-categories.toml). Every other comparison image a note cites lives in `images/` in the work folder of the investigation that produced it | [`work/README.md`](../work/README.md#images) |
 
 A source card records a *document* rather than a subject; these live beside this file, e.g. [`handbook.md`](handbook.md) for the retail handbook.
 
