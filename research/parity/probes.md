@@ -53,7 +53,7 @@ For a hypothesis with a few dozen variants (axis permutations, Euler order and s
 * wgpu's maximum buffer is 256 MiB. An 80-face sphere (700 MB on CTRY) and the 20-face INTRO world (312 MB) both exceeded it; spheres are 20-face and sub-pixel props are culled (see [`log.md`](../../work/2026-10/parity-log/log.md)).
 * Capture indices are named by ordinal and renders by film tick; match them through `report.json`'s `per_frame` entries, not by number.
 * **Depth effects in `mode13h.wgsl`.** Use the affine view depth `(view_proj * world_pos).w`, never `length(world_pos - camera_pos)`. Euclidean distance is not affine in world space, so perspective-correct interpolation across a kilometre-sized terrain triangle is invalid; the first depth cue built on it read about 4 km for every terrain fragment (`[Bounded Observation]`).
-* **Render determinism.** Two separate processes rendering ticks 589 and 590 wrote byte-identical `.idx` planes, but three separately built binaries scored 0.7706, 0.7708 and 0.7718; treat differences under about 0.002 between builds as floating-point noise ([`method.md`](method.md) section 3).
+* **Render determinism.** Two separate processes rendering ticks 589 and 590 wrote byte-identical `.idx` planes, and in 2026-10 three separately built binaries scored 0.7706, 0.7708 and 0.7718 on `CTRY.FLM`; on 2026-11-07, three builds of `740c608` rendered byte-identically on an RTX 4070 ([`method.md`](method.md) section 3).
 * **The release binary is shared.** Another session's build or benchmark holds `target/release/stuntreel.exe`, and `cargo build` then fails with "Access is denied". `--no-build` uses the binary as it stands; the preflight names the lock before any render starts.
 
 ## 6. Timing hypotheses (post-hoc retime)

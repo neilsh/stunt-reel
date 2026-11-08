@@ -279,8 +279,9 @@ identically ([`method.md`](../../../research/parity/method.md) § 3).
 * **Drawing only the captured ticks.** Parity renders draw every tick in the capture's range.
   Drawing only the scored ones (`--at-ticks`) would make each render cheaper, but retime needs the
   neighbouring ticks, so it would have to be optional.
-* **`noise_sigma` for each new film.** Optional in `references.toml` (INTRO has none), and the
-  adoption floor of 0.002 is a build-level bound, not this sigma.
+* **`noise_sigma` for each new film.** Measured 2026-11-07 for the five `VAULT` films (#299;
+  [`method.md`](../../../research/parity/method.md) § 2.2.1); only `vault-location` gets one, the
+  other four being heavy-tailed (#305). CTRY and INTRO wait for #300.
 * **One process rendering several jobs.** It would share one GPU instance and device, so it would
   save the per-process start-up (about 0.7 s once D8 lands) and most of the roughly 180 MiB of RAM
   per job. Rejected for now:
@@ -311,7 +312,7 @@ copies its part of this note; when the note changes, the body is updated to matc
 | T3 [#245](https://github.com/neilsh/stunt-reel/issues/245) | Parity renders don't play the archive their reference capture recorded | `ready-for-agent` | D9, step 3 | — |
 | T4 [#246](https://github.com/neilsh/stunt-reel/issues/246) | Five VAULT films are not parity references | `ready-for-agent` | D3, D5, step 4 | T3 |
 | T5 [#247](https://github.com/neilsh/stunt-reel/issues/247) | The fade floor drops most frames of a night film | `needs-triage`, `research` | § 7, a prerequisite for `vault-tod` | — |
-| T6 [#299](https://github.com/neilsh/stunt-reel/issues/299) | Reference films have no measured recapture noise beyond CTRY | `ready-for-agent` | § 7 (`noise_sigma`), added 2026-11-07 | T4 |
+| T6 [#299](https://github.com/neilsh/stunt-reel/issues/299) | The five `VAULT` reference films have no measured recapture noise | `ready-for-agent` | § 7 (`noise_sigma`), added 2026-11-07 | T4 |
 | T7 [#300](https://github.com/neilsh/stunt-reel/issues/300) | Reference films are captured on the unpatched builds, not Patch 3 | `ready-for-agent` | D3, ADR 0029, added 2026-11-07 | T6 |
 
 [#301](https://github.com/neilsh/stunt-reel/issues/301) (`research`, no parent) asks whether a superset with the `SPRITES.RES` palette items plays in `PLAYONE` like a film's own archive ([`linking.md`](../../../research/makeone-exe/linking.md) § 7.2).
