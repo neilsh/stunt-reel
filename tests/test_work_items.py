@@ -191,10 +191,18 @@ def test_readme_text_is_frontmatter_then_the_title_heading() -> None:
     )
 
 
+def test_readme_text_escapes_backslashes_before_quotes() -> None:
+    text = readme_text('C:\\dir "q\\"', date(2026, 11, 7), "\\", status="landed")
+    assert 'title: "C:\\\\dir \\"q\\\\\\""\n' in text
+    assert 'outcome: "\\\\"\n' in text
+
+
 @pytest.mark.parametrize(
     ("name", "issue", "status"), [("307_docs", 307, None), ("docs", None, "abandoned")]
 )
-@pytest.mark.parametrize("title", ["1942", 'Say "hi": C:\\dir\\', " padded "])
+@pytest.mark.parametrize(
+    "title", ["1942", 'Say "hi": C:\\dir\\', " padded ", 'a\\"b\\\\', "`RES\\` items"]
+)
 def test_readme_text_parses_back(
     tmp_path: Path, name: str, issue: int | None, status: str | None, title: str
 ) -> None:

@@ -1,10 +1,12 @@
-"""`stunt_reel.markdown_links`: Markdown prose with code blanked, and the link regexes."""
+"""`stunt_reel.markdown_links`: Markdown prose with code blanked, the link and heading regexes."""
 
 from __future__ import annotations
 
 from stunt_reel.markdown_links import (
+    HEADING_REGEX,
     LINK_DEFINITION_REGEX,
     MARKDOWN_LINK_REGEX,
+    SECTION_NUMBER_REGEX,
     URL_SCHEME_REGEX,
     prose,
 )
@@ -50,4 +52,30 @@ def test_a_url_scheme_starts_a_target_that_is_not_a_repo_path() -> None:
         True,
         False,
         False,
+    ]
+
+
+def test_a_heading_is_one_to_six_marks_then_a_space() -> None:
+    lines = ("# T", "###### T", "####### T", "#32 then wrapped", "#", " # T")
+    assert [bool(HEADING_REGEX.match(line)) for line in lines] == [
+        True,
+        True,
+        False,
+        False,
+        False,
+        False,
+    ]
+    match = HEADING_REGEX.match("## 4.1 Ruled out  ")
+    assert match is not None
+    assert match.groups() == ("##", "4.1 Ruled out")
+
+
+def test_a_section_number_is_digits_and_dots_then_a_space() -> None:
+    texts = ("5. Ruled out", "4.1 Ruled out", "4.1. Ruled out", "5.Ruled out", "v2 Ruled out")
+    assert [m[0] if (m := SECTION_NUMBER_REGEX.match(t)) else None for t in texts] == [
+        "5. ",
+        "4.1 ",
+        "4.1. ",
+        None,
+        None,
     ]

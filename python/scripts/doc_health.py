@@ -39,7 +39,7 @@ from typing import Literal
 lazy from collections.abc import Iterator, Sequence
 
 from stunt_reel.dataroot import REPO_ROOT
-from stunt_reel.markdown_links import prose
+from stunt_reel.markdown_links import HEADING_REGEX, SECTION_NUMBER_REGEX, prose
 from stunt_reel.research_notes import note_paths, note_summary
 from stunt_reel.work_items import (
     Runner,
@@ -67,13 +67,11 @@ KINDS: tuple[Kind, ...] = (
     "folder",
 )
 
-_HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 _ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 _ORDINAL_ROUND = re.compile(
     r"\b(first|second|third|fourth|fifth|\d+(st|nd|rd|th))\s+round\b", re.IGNORECASE
 )
 _SESSION_START = re.compile(r"(update|follow-up|handoff|session)s?\b", re.IGNORECASE)
-_SECTION_NUMBER = re.compile(r"\d+(?:\.\d+)*\.?\s+")
 
 
 @dataclass(frozen=True)
@@ -162,14 +160,14 @@ def _session_headings(text: str) -> Iterator[str]:
     lines = enumerate(zip(prose(text).split("\n"), text.split("\n"), strict=True), start=1)
     for number, (blanked, line) in lines:
         # The blanked line says whether it is a heading; the line keeps its inline code.
-        heading = _HEADING.match(line) if _HEADING.match(blanked) else None
+        heading = HEADING_REGEX.match(line) if HEADING_REGEX.match(blanked) else None
         if heading and _is_session_style(heading[2]):
             yield f"line {number}: {line.strip()}"
 
 
 def _is_session_style(heading: str) -> bool:
     """Whether *heading*, a heading's text without its ``#`` marks, reads as a dated record."""
-    words = heading[number.end() :] if (number := _SECTION_NUMBER.match(heading)) else heading
+    words = heading[number.end() :] if (number := SECTION_NUMBER_REGEX.match(heading)) else heading
     return bool(
         _ISO_DATE.search(heading) or _ORDINAL_ROUND.search(heading) or _SESSION_START.match(words)
     )

@@ -18,8 +18,10 @@ import pytest
 
 from stunt_reel.doc_anchors import ANCHORS, BY_ID, CITATION_REGEX
 from stunt_reel.markdown_links import (
+    HEADING_REGEX,
     LINK_DEFINITION_REGEX,
     MARKDOWN_LINK_REGEX,
+    SECTION_NUMBER_REGEX,
     URL_SCHEME_REGEX,
     prose,
 )
@@ -56,9 +58,10 @@ def _heading_texts(path: Path) -> set[str]:
     """Heading texts of a Markdown file outside fenced code, without the leading ``#`` marks."""
     text = path.read_text(encoding="utf-8")
     return {
-        line.lstrip("#").strip()
+        heading[2]
         for blanked, line in zip(prose(text).splitlines(), text.splitlines(), strict=True)
-        if blanked.startswith("#")
+        # The blanked line says whether it is a heading; the line keeps its inline code.
+        if HEADING_REGEX.match(blanked) and (heading := HEADING_REGEX.match(line))
     }
 
 
@@ -116,7 +119,6 @@ def test_cited_anchors_are_registered() -> None:
 # .superpowers is agent scratch, not docs.
 LINK_SKIPPED_DIRS = SKIPPED_DIRS | {".git", "corpus", "worktrees", ".superpowers"}
 HTML_ID_REGEX = re.compile(r"<a\s+(?:name|id)=\"([^\"]+)\"")
-HEADING_REGEX = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 CODE_DOC_PATH_REGEX = re.compile(r"(?<![\w./-])((?:research|docs|work)/[\w./-]+?\.md)\b")
 CODE_SUFFIXES = frozenset({".rs", ".py", ".wgsl", ".toml"})
 
@@ -132,8 +134,9 @@ LINK_SOURCES_SKIPPED: tuple[str, ...] = ()
 #: or higher level.
 PROVENANCE_REGEX = re.compile(r"(?<!\S)[_*](?:Source:|Found )")
 #: A Ruled out heading's whole text: any case, after an optional section number (``5.``, ``4.1``).
-#: The section number has the shape of ``_SECTION_NUMBER`` in ``python/scripts/doc_health.py``.
-RULED_OUT_HEADING_REGEX = re.compile(r"\A(?:\d+(?:\.\d+)*\.?\s+)?ruled out\Z", re.IGNORECASE)
+RULED_OUT_HEADING_REGEX = re.compile(
+    rf"\A(?:{SECTION_NUMBER_REGEX.pattern})?ruled out\Z", re.IGNORECASE
+)
 #: A dated folder's pictures, which an evergreen file may cite anywhere.
 IMAGES_DIR_NAME = "images"
 #: ADRs cite the spec and plan they came from freely.
@@ -537,6 +540,16 @@ def test_image_citations_into_work_are_allowed_anywhere(tmp_path: Path) -> None:
 def test_ruled_out_heading_text(heading: str, opens: bool) -> None:
     """Ruled out in any case, after an optional section number; nothing else around it."""
     assert _is_ruled_out_heading(heading) is opens
+
+
+def test_heading_texts_are_the_headings_github_renders(tmp_path: Path) -> None:
+    """A line opening with an issue number, ``#32 then``, is prose, as it is on GitHub."""
+    note = _write(
+        tmp_path / "n.md",
+        "# Note `x`\n\nText wrapped at an issue reference,\n#32 then more text.\n\n"
+        "```sh\n# a comment\n```\n\n## 4.1 Ruled out  \n",
+    )
+    assert _heading_texts(note) == {"Note `x`", "4.1 Ruled out"}
 
 
 def test_a_numbered_ruled_out_heading_opens_a_section(tmp_path: Path) -> None:

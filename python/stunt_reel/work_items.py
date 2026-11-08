@@ -211,7 +211,7 @@ def run_command(args: list[str]) -> str:
 
 def _quoted(value: str) -> str:
     """*value* as a double-quoted frontmatter scalar, which `read_frontmatter` unquotes."""
-    escaped = value.replace('"', '\\"')
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
 
 

@@ -36,7 +36,7 @@
 ## makeone-exe
 
 - [`makeone-exe/driving.md`](makeone-exe/driving.md): How the harness drives `MAKEONE.EXE` under emulation to make a film's `.ALL`: keys, text-mode return as completion signal, a working mount, output checks, run time per CPU profile and hang policy.
-- [`makeone-exe/linking.md`](makeone-exe/linking.md): A `.ALL` copies `RES\` items unchanged, id-ordered by `(res_index << 8) | (segment + 1)`, per film and sound setting; a stock-shape superset renders CTRY, INTRO and BALLOON like their own archives.
+- [`makeone-exe/linking.md`](makeone-exe/linking.md): A `.ALL` copies `.RES` items unchanged, id-ordered by `(res_index << 8) | (segment + 1)`, per film and sound setting; a stock-shape superset renders CTRY, INTRO and BALLOON like their own archives.
 
 ## parity
 
@@ -60,7 +60,7 @@
 - [`playone-exe/lod.md`](playone-exe/lod.md): The `SP_1NODE` distance gate at `0x2121` scales by `DS:0x22A4`, the `GAME.VAR` detail word times the view camera's lens; captures likely run at full detail, and our field of view follows the lens.
 - [`playone-exe/memory-map.md`](playone-exe/memory-map.md): Offset tables for `PLAYONE.EXE` `DGROUP` and the SOD VM work segment on the unpatched and Patch #3 builds, defining most [MEM-*] anchors, such as [MEM-FLM-TICK], [MEM-SOD-VM] and [MEM-PALETTE].
 - [`playone-exe/memory.md`](playone-exe/memory.md): Evidence for the memory map: `DS` per emulator, the [MEM-FLM-TICK] counters (film clock read equal to `0x22B8` until it holds), the unverified `0C5E` trap, [MEM-UNPACK-LOCKOUT] and image relocation.
-- [`playone-exe/navigation.md`](playone-exe/navigation.md): How the `PLAYONE.EXE` LOAD FILM dialog works: a `VAULT\` listbox with single-letter prefix jumps, `.FLM`/`.ALL` pairing, and harness key injection through the BIOS keyboard ring buffer.
+- [`playone-exe/navigation.md`](playone-exe/navigation.md): How the `PLAYONE.EXE` LOAD FILM dialog works: a `VAULT` directory listbox with single-letter prefix jumps, `.FLM`/`.ALL` pairing, and harness key injection through the BIOS keyboard ring buffer.
 - [`playone-exe/palette-fade.md`](playone-exe/palette-fade.md): Film variables 13-15, keyed by `var_set` and interpolated per frame, drive the palette build at `0x0FD2` (night, brightness, saturation), so the end-of-film fade is authored in the film.
 - [`playone-exe/patch3.md`](playone-exe/patch3.md): What Patch #3 changes, the patched `PLAYONE.EXE` offsets mapped by function pairing (one dispatch slot fewer, inferred statically), and which build each tested film needs to play and capture.
 - [`playone-exe/sod-animate.md`](playone-exe/sod-animate.md): `OP_ANIMATE` (`0x01F8`) carries a variable-length resource-ID table and blits the selected raster resource in screen space, not a joint rotation; how `.FLM` `animate` reaches it is unknown.

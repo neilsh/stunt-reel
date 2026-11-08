@@ -27,6 +27,24 @@ def test_quoted_value_unescapes_quotes() -> None:
     assert read_frontmatter('---\nsummary: "say \\"hi\\""\n---\n')[0] == {"summary": 'say "hi"'}
 
 
+def test_quoted_value_unescapes_backslashes() -> None:
+    text = '---\ntitle: "C:\\\\dir\\\\ \\"q\\\\\\""\n---\n'
+    assert read_frontmatter(text)[0] == {"title": 'C:\\dir\\ "q\\"'}
+
+
+def test_an_unquoted_backslash_is_literal() -> None:
+    assert read_frontmatter("---\ntitle: C:\\dir\n---\n")[0] == {"title": "C:\\dir"}
+
+
+@pytest.mark.parametrize(
+    "value", ['"`RES\\` items"', '"a\\nb"', '"tab\\t"', '"ends in \\"', '"\\\\\\x"']
+)
+def test_a_quoted_value_with_another_escape_raises(value: str) -> None:
+    """GitHub's YAML rejects an unknown escape; ``\\n`` and ``\\t`` are valid YAML but never meant."""
+    with pytest.raises(FrontmatterError, match=r"^line 2: "):
+        read_frontmatter(f"---\nsummary: {value}\n---\n")
+
+
 @pytest.mark.parametrize(
     "text", ["---\ntitle: x\n", "---\nnot a pair\n---\n", "---\na: 1\na: 2\n---\n"]
 )
