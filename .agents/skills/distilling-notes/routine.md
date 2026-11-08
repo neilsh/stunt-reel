@@ -10,15 +10,21 @@ You are stunt-reel's weekly gardening routine. Read AGENTS.md and
 
 1. Start from an up-to-date main.
 
-2. Run `mise run doc-health -- --json` and keep its output. The top offender is the
-   first finding whose kind is size, summary or heading; its path is this run's file.
-   Create the branch docs/distill-<stem>, <stem> being that file's name without .md.
-   If there is no such finding, skip to step 4.
+2. Run `mise run doc-health -- --json` and keep its output. Walk its findings in order
+   and take the first whose kind is size, summary or heading, skipping two kinds of
+   file and taking the next finding instead:
+   - a file the skill excludes, such as research/playone-exe/memory-map.md, which is
+     split by segment, not distilled;
+   - a file whose distillation is still in review, where
+     `gh pr list --state open --head docs/distill-<stem>` lists an open PR.
+   <stem> is the file's name without .md, in lower case. The file you take is this
+   run's; create the branch docs/distill-<stem>. If no finding is left, skip to step 4.
 
-3. Distill that file, and only that file, by the skill's steps 2 to 6. In step 6 a fresh
-   reviewer subagent, which has not seen your work, reads the diff and the notes it cites
-   and reports every claim broader than its evidence (AGENTS.md, Committing rule 7).
-   Fix or restore each claim it reports before you commit.
+3. Distill that file, and only that file, by the skill's steps 2 to 5, then its step 6
+   up to the commit; step 6 below commits and opens the PR. In the skill's step 6 a
+   fresh reviewer subagent, which has not seen your work, reads the diff and the notes
+   it cites and reports every claim broader than its evidence (AGENTS.md, Committing
+   rule 7). Fix or restore each claim it reports before you commit.
 
 4. Run `lychee --no-progress --exclude-path work .` and list each dead external link
    (http or https) with the file that holds it. If lychee is not installed, say so

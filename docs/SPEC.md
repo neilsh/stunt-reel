@@ -24,7 +24,7 @@ Our engineering methodology rests on three principles:
 
 ### 1.2 Phased Delivery Architecture
 
-Delivery is sequential. This section records what each phase is for and whether it has shipped; open work and its status are [GitHub issues](https://github.com/neilsh/stunt-reel/issues). _Source: the milestone sign-offs in the frozen [`TEAM_SHEET.md`](../work/2026-10/team-sheet/TEAM_SHEET.md)._
+Delivery is sequential. This section records what each phase is for and whether it has shipped; open work and its status are [GitHub issues](https://github.com/neilsh/stunt-reel/issues). _Source: the Milestone 1 and 2 sign-offs (Phases 0–2) in the frozen [`TEAM_SHEET.md`](../work/2026-10/team-sheet/TEAM_SHEET.md)._
 
 1. **Phase 0: Foundation & Static Analysis *(Status: Complete)***
    * Cargo workspace (`stunt-core`, `stunt-render`, `stunt-cli`) and Python package (`stunt_reel`), managed reproducibly via `mise`.

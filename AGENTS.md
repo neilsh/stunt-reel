@@ -31,14 +31,14 @@ Cite these; never restate them:
 | **Binary Disassembly** | [`research/playone-exe/`](research/playone-exe/) | Evidence for `PLAYONE.EXE`. |
 | **Format Specs & Byte Layouts** | [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog; byte layouts live only in `.ksy` schemas. |
 | **Parity** | [`research/parity/`](research/parity/) | Method, attribution and render-model notes. |
-| **Work Items** | GitHub issues, [`work/README.md`](work/README.md) | Status on the issue; folders, journal entries. |
+| **Work Items** | GitHub issues, [`work/README.md`](work/README.md) | Issue status; folder layout. |
 | **How-to Guides** | `docs/howto/` | One task per file. |
 | **Issues & skill configuration** | [`docs/agents/`](docs/agents/) | GitHub Issues via `gh`, triage labels, domain docs, review threads (`mise run pr-threads`). |
 | **Decisions (ADRs)** | [`docs/adr/`](docs/adr/) | Accepted design decisions. |
 | **Coding & Format Rules** | [`Cargo.toml`](Cargo.toml), [`pyproject.toml`](pyproject.toml), [`.editorconfig`](.editorconfig) | Clippy, Ruff and Mypy settings; LF, 4-space indent. |
 | **Agents & Harnesses** | [`docs/harness.md`](docs/harness.md), [`docs/harness-setup.md`](docs/harness-setup.md) | Agent policy, per-harness notes, machine setup and the data root. |
 
-`work/` is **not** a source of truth: never cite it for a fact about the system. Run `mise run work -- new` before `superpowers:brainstorming` or `writing-plans` writes a file, and write into the folder it makes. Search `work/` with `path: work/` or `rg --no-ignore-dot`.
+Dated records (`work/<YYYY-MM>/`) are **not** a source of truth: never cite one for a fact about the system. Run `mise run work -- new` before `superpowers:brainstorming` or `writing-plans` writes a file, and write into the folder it makes. Search `work/` with `path: work/` or `rg --no-ignore-dot`.
 
 ---
 
@@ -58,7 +58,7 @@ Cite these; never restate them:
 
 ### Working economically
 
-Each turn re-sends the conversation: cost is about turns times context size.
+Each turn re-sends the conversation, so cost is roughly turns times context size.
 
 1. **Fewer, fuller turns.** Batch independent reads and commands into one turn. Find the file through [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) before grepping, and read line ranges of files over about 20 KB.
 2. **Scoped checks while iterating.** Python: `mise run fix`, `lint-py`, `typecheck`, then `test-py -- <test file>`. Rust: `mise run check-rust`. Run `mise run check` once before you commit, hand off or call the task done, and re-run only the half it names as failed.

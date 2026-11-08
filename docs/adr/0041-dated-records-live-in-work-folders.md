@@ -21,9 +21,9 @@ Other costs found in the same survey:
 - `docs/process/plans/` was 790 KB in 45 files, a third of all docs, mostly landed spec and plan
   pairs, and every search from the root returned them.
 - `research/parity/log.md` (72 KB, 126 rows) had become a general lab journal. Its Notes cells held
-  paragraphs, notes in `playone-exe/` and `makeone-exe/` cited it for findings with no score, about 35 provenance
-  lines linked the whole file rather than a row, and its `merge=union` attribute does not apply to
-  merges on GitHub, so parallel PRs conflicted on it.
+  paragraphs, notes in `playone-exe/` and `makeone-exe/` cited it for findings with no score,
+  about 35 provenance lines linked the whole file rather than a row, and its `merge=union`
+  attribute does not apply to merges on GitHub, so parallel PRs conflicted on it.
 - No index said what `research/` knew, so an agent guessed a file or searched 970 KB.
 
 ## Decision
@@ -64,6 +64,7 @@ Each use of it has a new home:
 | Use | New home |
 | --- | --- |
 | "Was this already tried?" before a parity attempt | The residual's Ruled out section, then `rg <term> work/` |
+| Grep for a term | Journal entries |
 | Provenance | A provenance line linking a journal entry's heading |
 | The current baseline | Each film's expected tables in `research/parity/references.toml`, which `mise run parity` reads ([#308](https://github.com/neilsh/stunt-reel/pull/308)) |
 | Appending a row per attempt | A journal entry in the attempt's own work folder; no shared file |

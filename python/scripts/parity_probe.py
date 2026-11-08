@@ -392,7 +392,7 @@ def cmd_iou(args: argparse.Namespace) -> None:
 
 
 def summary(report_path: Path, *, worst: int = 5) -> list[str]:
-    """Summarise one ``report.json``: headline, class loss, worst frames and a log row."""
+    """Summarise one ``report.json``: headline, class loss, worst frames and the journal scores."""
     report = read_report(report_path)
     ssim, iou = report.headline()
     matched = f"{report.scored_frames}/{report.frames}"
@@ -411,8 +411,7 @@ def summary(report_path: Path, *, worst: int = 5) -> list[str]:
         listed = ", ".join(f"tick {frame.film_tick} {frame.ssim:.3f}" for frame in lowest)
         lines.append(f"[summary] worst scored frames: {listed}")
     lines.append(
-        f"[summary] log row: | <date> | `<commit>` | {matched} | {ssim:.3f} | {iou:.3f} "
-        f"| <what moved and why> |"
+        f"[summary] journal entry: ssim {ssim:.3f}  iou {iou:.3f}  scored {matched} at `<commit>`"
     )
     return lines
 
