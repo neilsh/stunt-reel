@@ -16,7 +16,13 @@ from typing import TYPE_CHECKING
 import pytest
 
 from stunt_reel.doc_anchors import ANCHORS, BY_ID, CITATION_REGEX
-from stunt_reel.markdown_links import LINK_DEFINITION_REGEX, MARKDOWN_LINK_REGEX, prose
+from stunt_reel.markdown_links import (
+    LINK_DEFINITION_REGEX,
+    MARKDOWN_LINK_REGEX,
+    URL_SCHEME_REGEX,
+    prose,
+)
+from stunt_reel.work_items import is_dated
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -108,7 +114,6 @@ def test_cited_anchors_are_registered() -> None:
 
 # .superpowers is agent scratch, not docs.
 LINK_SKIPPED_DIRS = SKIPPED_DIRS | {".git", "corpus", "worktrees", ".superpowers"}
-URL_SCHEME_REGEX = re.compile(r"[a-z][a-z0-9+.-]*:")
 HTML_ID_REGEX = re.compile(r"<a\s+(?:name|id)=\"([^\"]+)\"")
 HEADING_REGEX = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 CODE_DOC_PATH_REGEX = re.compile(r"(?<![\w./-])((?:research|docs|work)/[\w./-]+?\.md)\b")
@@ -117,7 +122,6 @@ CODE_SUFFIXES = frozenset({".rs", ".py", ".wgsl", ".toml"})
 #: Work folders. Only its month directories (``work/<YYYY-MM>/``) hold dated records, frozen once
 #: their work lands and not a source of truth; the README beside them is evergreen.
 WORK_DIR = REPO_ROOT / "work"
-DATED_MONTH_REGEX = re.compile(r"\d{4}-\d{2}")
 #: Repo-relative path prefixes whose own links go unchecked while a move is half done.
 LINK_SOURCES_SKIPPED: tuple[str, ...] = ()
 #: A link from an evergreen file to a dated record is allowed after a provenance marker on its
@@ -200,11 +204,10 @@ def _links(path: Path) -> Iterator[tuple[str, bool]]:
 
 
 def _is_dated(path: Path, work: Path) -> bool:
-    """Whether *path* is a dated record: in a month directory of *work*. Both are resolved."""
-    if not path.is_relative_to(work):
-        return False
-    parts = path.relative_to(work).parts
-    return bool(parts) and DATED_MONTH_REGEX.fullmatch(parts[0]) is not None
+    """Whether *path* is a dated record: in a month directory of *work*, the ``work/`` directory
+    of a checkout. Both are resolved."""
+    root = work.parent
+    return path.is_relative_to(root) and is_dated(path.relative_to(root).as_posix())
 
 
 def _is_dated_image(path: Path, work: Path) -> bool:

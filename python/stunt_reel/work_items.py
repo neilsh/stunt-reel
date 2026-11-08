@@ -30,6 +30,7 @@ __all__ = [
     "WorkFolderError",
     "folder_name",
     "folder_paths",
+    "is_dated",
     "issue_statuses",
     "parse_folder",
     "readme_text",
@@ -90,6 +91,12 @@ def folder_name(issue: int | None, slug: str) -> str:
     if issue < 1:
         raise WorkFolderError(f"issue {issue} is not a GitHub issue number")
     return f"{issue}_{slug}"
+
+
+def is_dated(path: str) -> bool:
+    """Whether repo-relative POSIX *path* is a dated record: a month directory of `work/` or in one."""
+    parts = path.split("/")
+    return len(parts) >= 2 and parts[0] == "work" and MONTH_PATTERN.fullmatch(parts[1]) is not None
 
 
 def readme_text(

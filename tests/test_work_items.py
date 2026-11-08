@@ -16,6 +16,7 @@ from stunt_reel.work_items import (
     WorkFolderError,
     folder_name,
     folder_paths,
+    is_dated,
     issue_statuses,
     parse_folder,
     readme_text,
@@ -164,6 +165,24 @@ def test_invalid_folders_raise(tmp_path: Path, problem: str) -> None:
     month, name, frontmatter, reason = INVALID[problem]
     with pytest.raises(WorkFolderError, match=rf"^{month}/{name}: .*{re.escape(reason)}"):
         parse_folder(_folder(tmp_path, month, name, frontmatter))
+
+
+@pytest.mark.parametrize(
+    ("path", "dated"),
+    [
+        ("work/2026-11/307_docs/journal.txt", True),
+        ("work/2026-11/x/images/a.png", True),
+        ("work/2026-11", True),
+        ("work/notes.txt", False),
+        ("work", False),
+        ("work/2026-13/x/a.txt", False),
+        ("work/drafts/a.txt", False),
+        ("research/2026-11/a.txt", False),
+        ("docs/work/2026-11/a.txt", False),
+    ],
+)
+def test_is_dated_means_inside_a_month_directory_of_work(path: str, dated: bool) -> None:
+    assert is_dated(path) is dated
 
 
 def test_readme_text_is_frontmatter_then_the_title_heading() -> None:

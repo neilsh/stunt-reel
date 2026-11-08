@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import re
 
-__all__ = ["LINK_DEFINITION_REGEX", "MARKDOWN_LINK_REGEX", "prose"]
+__all__ = ["LINK_DEFINITION_REGEX", "MARKDOWN_LINK_REGEX", "URL_SCHEME_REGEX", "prose"]
 
 #: An inline or image link, ``[text](target "title")``; group 1 is the target, without ``<>``.
 MARKDOWN_LINK_REGEX = re.compile(r"!?\[[^\]\n]*\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)")
 #: A reference-style link definition, ``[label]: target``, which the inline regex does not see;
 #: group 1 is the target. A footnote, ``[^1]: text``, is not one.
 LINK_DEFINITION_REGEX = re.compile(r"^ {0,3}\[(?!\^)[^\]\n]+\]:\s*<?([^\s>]+)>?", re.MULTILINE)
+#: The scheme that starts a link target which is a URL (``https:``, ``mailto:``), not a repo path.
+URL_SCHEME_REGEX = re.compile(r"[a-z][a-z0-9+.-]*:")
 
 _FENCE = "```"
 _INLINE_CODE = re.compile(r"`[^`\n]*`")

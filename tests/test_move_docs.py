@@ -43,8 +43,8 @@ def _md(stem: str) -> str:
     return f"{stem}.md"
 
 
-A = _md("docs/process/plans/a-2026-11-01")
-B = _md("docs/process/plans/b-2026-11-01")
+A = _md("docs/drafts/a-2026-11-01")
+B = _md("docs/drafts/b-2026-11-01")
 SPEC = _md("work/2026-11/a/spec")
 PLAN = _md("work/2026-11/a/plan")
 README = _md("work/2026-11/a/README")
@@ -54,8 +54,8 @@ RECORD = _md("work/2026-11/9_move/plan")
 MAPPING = {
     A: SPEC,
     B: PLAN,
-    "research/parity/aircraft": "work/2026-11/a/images",
-    "research/parity/aircraft/x.png": "work/2026-11/a/images/x.png",
+    "research/parity/hangar": "work/2026-11/a/images",
+    "research/parity/hangar/x.png": "work/2026-11/a/images/x.png",
 }
 MOVES = f"""\
 [[move]]
@@ -67,7 +67,7 @@ from = "{B}"
 to = "{PLAN}"
 
 [[move]]
-from = "research/parity/aircraft/"
+from = "research/parity/hangar/"
 to = "work/2026-11/a/images"
 
 [[folder]]
@@ -85,23 +85,23 @@ PNG = b"\x89PNG\r\n\x1a\n\x00\x00"
 TREE: dict[str, str | bytes] = {
     "AGENTS.md": f"See [`{A}`]({A}).\n",
     ADR: (
-        "Accepted ([spec](../process/plans/a-2026-11-01.md#decisions)).\n\n"
-        "[p]: ../process/plans/b-2026-11-01.md\n"
+        "Accepted ([spec](../drafts/a-2026-11-01.md#decisions)).\n\n"
+        "[p]: ../drafts/b-2026-11-01.md\n"
     ),
     A: (
-        "# A\n\n[plan](b-2026-11-01.md#task-1), [ADR](../../adr/0001-x.md), "
-        "[aircraft](../../../research/parity/aircraft/).\n"
+        "# A\n\n[plan](b-2026-11-01.md#task-1), [ADR](../adr/0001-x.md), "
+        "[hangar](../../research/parity/hangar/).\n"
     ),
     B: "# B\n\n[spec](a-2026-11-01.md)\n",
-    "research/parity/aircraft/x.png": PNG,
-    "research/parity/aircraft/sub/y.png": PNG + b"y",
-    "research/README.md": "[aircraft/](parity/aircraft/) ![x](parity/aircraft/x.png)\n",
+    "research/parity/hangar/x.png": PNG,
+    "research/parity/hangar/sub/y.png": PNG + b"y",
+    "research/README.md": "[hangar/](parity/hangar/) ![x](parity/hangar/x.png)\n",
     "python/tool.py": f'"""Plan: {A}."""\n',
     "corpus/notes.md": f"{A}\n",
     "latin1.txt": A.encode() + b" \xe9\n",
     "zero-byte.txt": A.encode() + b"\x00\n",
     MOVES_PATH: MOVES,
-    RECORD: f"Move `{A}`; see [a](../../../docs/process/plans/a-2026-11-01.md).\n",
+    RECORD: f"Move `{A}`; see [a](../../../docs/drafts/a-2026-11-01.md).\n",
 }
 #: The files that did not move, as the move phase leaves them.
 AFTER_MOVE: dict[str, str | bytes] = {
@@ -111,7 +111,7 @@ AFTER_MOVE: dict[str, str | bytes] = {
         "[p]: ../../work/2026-11/a/plan.md\n"
     ),
     "research/README.md": (
-        "[aircraft/](../work/2026-11/a/images/) ![x](../work/2026-11/a/images/x.png)\n"
+        "[hangar/](../work/2026-11/a/images/) ![x](../work/2026-11/a/images/x.png)\n"
     ),
     "python/tool.py": f'"""Plan: {SPEC}."""\n',
     RECORD: f"Move `{A}`; see [a](../a/spec.md).\n",
@@ -119,8 +119,8 @@ AFTER_MOVE: dict[str, str | bytes] = {
 MOVED = {
     A: SPEC,
     B: PLAN,
-    "research/parity/aircraft/x.png": "work/2026-11/a/images/x.png",
-    "research/parity/aircraft/sub/y.png": "work/2026-11/a/images/sub/y.png",
+    "research/parity/hangar/x.png": "work/2026-11/a/images/x.png",
+    "research/parity/hangar/sub/y.png": "work/2026-11/a/images/sub/y.png",
 }
 
 
@@ -182,15 +182,15 @@ def _rewrite(
 
 
 def test_inline_link_from_unmoved_file_follows_the_move() -> None:
-    text = "See [the plan](../process/plans/a-2026-11-01.md).\n"
+    text = "See [the plan](../drafts/a-2026-11-01.md).\n"
     assert _rewrite(text, ADR) == "See [the plan](../../work/2026-11/a/spec.md).\n"
 
 
 def test_reference_style_definition_follows_the_move() -> None:
     text = (
         "See [the plan][p] and [the other][q].\n\n"
-        "[p]: ../process/plans/a-2026-11-01.md\n"
-        '  [q]: <../process/plans/b-2026-11-01.md> "Plan B"\n'
+        "[p]: ../drafts/a-2026-11-01.md\n"
+        '  [q]: <../drafts/b-2026-11-01.md> "Plan B"\n'
     )
     assert _rewrite(text, ADR) == (
         "See [the plan][p] and [the other][q].\n\n"
@@ -200,9 +200,7 @@ def test_reference_style_definition_follows_the_move() -> None:
 
 
 def test_fragment_is_kept() -> None:
-    text = (
-        "[s](../process/plans/a-2026-11-01.md#decisions) [t](../process/plans/b-2026-11-01.md?x#y)"
-    )
+    text = "[s](../drafts/a-2026-11-01.md#decisions) [t](../drafts/b-2026-11-01.md?x#y)"
     assert _rewrite(text, ADR) == (
         "[s](../../work/2026-11/a/spec.md#decisions) [t](../../work/2026-11/a/plan.md?x#y)"
     )
@@ -210,33 +208,31 @@ def test_fragment_is_kept() -> None:
 
 def test_link_to_a_moved_directory_follows_it() -> None:
     text = (
-        "[aircraft/](parity/aircraft/), [aircraft](parity/aircraft), "
-        "![x](parity/aircraft/x.png), [later](parity/aircraft/later.png)\n"
+        "[hangar/](parity/hangar/), [hangar](parity/hangar), "
+        "![x](parity/hangar/x.png), [later](parity/hangar/later.png)\n"
     )
     assert _rewrite(text, "research/README.md") == (
-        "[aircraft/](../work/2026-11/a/images/), [aircraft](../work/2026-11/a/images), "
+        "[hangar/](../work/2026-11/a/images/), [hangar](../work/2026-11/a/images), "
         "![x](../work/2026-11/a/images/x.png), [later](../work/2026-11/a/images/later.png)\n"
     )
 
 
 def test_a_rooted_link_changes_only_when_its_target_moves() -> None:
-    text = "[top](/), [log](/research/parity/aircraft/x.png#a), [same](/README.md)"
+    text = "[top](/), [log](/research/parity/hangar/x.png#a), [same](/README.md)"
     assert _rewrite(text, A, MAPPING[A]) == (
         "[top](/), [log](/work/2026-11/a/images/x.png#a), [same](/README.md)"
     )
 
 
 def test_links_of_a_moved_file_are_re_expressed_from_its_new_place() -> None:
-    text = (
-        "[plan](b-2026-11-01.md#task-1), [ADR](../../adr/0001-x.md), [self](#a), [top](/README.md)"
-    )
+    text = "[plan](b-2026-11-01.md#task-1), [ADR](../adr/0001-x.md), [self](#a), [top](/README.md)"
     assert _rewrite(text, A, MAPPING[A]) == (
         "[plan](plan.md#task-1), [ADR](../../../docs/adr/0001-x.md), [self](#a), [top](/README.md)"
     )
 
 
 def test_root_relative_path_in_code_comment_is_replaced() -> None:
-    text = f"# See {A} and research/parity/aircraft/x.png, or research/parity/aircraft/.\n"
+    text = f"# See {A} and research/parity/hangar/x.png, or research/parity/hangar/.\n"
     assert _rewrite(text, "python/tool.py", markdown=False) == (
         f"# See {SPEC} and work/2026-11/a/images/x.png, or work/2026-11/a/images/.\n"
     )
@@ -251,8 +247,8 @@ def test_root_relative_path_in_code_comment_is_replaced() -> None:
         f"other/{A}",
         f"../{A}",
         f"https://example.com/{A}",
-        "research/parity/aircraft-old/x.png",
-        "docs/process/plans/",
+        "research/parity/hangar-old/x.png",
+        "docs/drafts/",
         "research/parity",
     ],
 )
@@ -274,10 +270,10 @@ def test_a_link_from_the_root_and_its_text_are_each_rewritten_once() -> None:
 
 def test_links_inside_code_spans_and_fences_are_left_alone() -> None:
     text = (
-        "`[p](../process/plans/a-2026-11-01.md)`\n"
+        "`[p](../drafts/a-2026-11-01.md)`\n"
         "```md\n"
-        "[p](../process/plans/a-2026-11-01.md)\n"
-        "[q]: ../process/plans/b-2026-11-01.md\n"
+        "[p](../drafts/a-2026-11-01.md)\n"
+        "[q]: ../drafts/b-2026-11-01.md\n"
         "```\n"
     )
     assert _rewrite(text, ADR) == text
@@ -285,14 +281,14 @@ def test_links_inside_code_spans_and_fences_are_left_alone() -> None:
 
 def test_urls_and_links_to_what_did_not_move_are_left_alone() -> None:
     text = (
-        "[u](https://example.com/docs/process/plans/a-2026-11-01.md) [m](mailto:a@b.c) "
-        "[f](#a-2026-11-01) [o](../process/plans/other.md) [up](../../../outside.md)\n"
+        "[u](https://example.com/docs/drafts/a-2026-11-01.md) [m](mailto:a@b.c) "
+        "[f](#a-2026-11-01) [o](../drafts/other.md) [up](../../../outside.md)\n"
     )
     assert _rewrite(text, ADR) == text
 
 
 def test_a_dated_record_takes_link_fixes_only() -> None:
-    text = f"Move `{A}` ({A}); see [a](../../../docs/process/plans/a-2026-11-01.md).\n"
+    text = f"Move `{A}` ({A}); see [a](../../../docs/drafts/a-2026-11-01.md).\n"
     assert _rewrite(text, RECORD) == (f"Move `{A}` ({A}); see [a](../a/spec.md).\n")
     assert _rewrite(f'"{A}"', "work/2026-11/9_move/plan.py", markdown=False) == f'"{A}"'
 
@@ -303,19 +299,19 @@ def test_a_dated_record_takes_link_fixes_only() -> None:
 def test_load_moves_expands_a_directory_and_path_map_covers_it(tmp_path: Path) -> None:
     moves_file = tmp_path / "moves.toml"
     moves_file.write_text(MOVES, encoding="utf-8")
-    tracked = [A, B, "research/parity/aircraft/x.png", "research/parity/aircraft/sub/y.png"]
+    tracked = [A, B, "research/parity/hangar/x.png", "research/parity/hangar/sub/y.png"]
     moves = move_docs.load_moves(moves_file, tracked)
     assert moves == [
         (A, MOVED[A]),
         (B, MOVED[B]),
-        ("research/parity/aircraft/", "work/2026-11/a/images/"),
-        ("research/parity/aircraft/sub/y.png", "work/2026-11/a/images/sub/y.png"),
-        ("research/parity/aircraft/x.png", "work/2026-11/a/images/x.png"),
+        ("research/parity/hangar/", "work/2026-11/a/images/"),
+        ("research/parity/hangar/sub/y.png", "work/2026-11/a/images/sub/y.png"),
+        ("research/parity/hangar/x.png", "work/2026-11/a/images/x.png"),
     ]
     assert move_docs.path_map(moves) == {
         **MOVED,
-        "research/parity/aircraft": "work/2026-11/a/images",
-        "research/parity/aircraft/sub": "work/2026-11/a/images/sub",
+        "research/parity/hangar": "work/2026-11/a/images",
+        "research/parity/hangar/sub": "work/2026-11/a/images/sub",
     }
 
 
@@ -394,7 +390,7 @@ def test_link_between_two_moved_files_resolves_in_inside_phase(tmp_path: Path) -
     after_move = _snapshot(root)
     assert _apply(root, "inside") == 0
     assert (root / MOVED[A]).read_text(encoding="utf-8") == (
-        "# A\n\n[plan](plan.md#task-1), [ADR](../../../docs/adr/0001-x.md), [aircraft](images/).\n"
+        "# A\n\n[plan](plan.md#task-1), [ADR](../../../docs/adr/0001-x.md), [hangar](images/).\n"
     )
     assert (root / MOVED[B]).read_text(encoding="utf-8") == "# B\n\n[spec](spec.md)\n"
     changed = {name for name, data in _snapshot(root).items() if after_move.get(name) != data}
@@ -405,7 +401,7 @@ def test_link_between_two_moved_files_resolves_in_inside_phase(tmp_path: Path) -
 def test_line_endings_are_preserved(tmp_path: Path) -> None:
     tree = {
         **TREE,
-        _md("docs/crlf"): "One\r\n[p](process/plans/a-2026-11-01.md)\r\nTwo\r\n",
+        _md("docs/crlf"): "One\r\n[p](drafts/a-2026-11-01.md)\r\nTwo\r\n",
         "python/crlf.py": f"# {A}\r\n# {A}\n",
     }
     root = _repo(tmp_path, tree)
@@ -487,3 +483,46 @@ def test_inside_phase_before_the_move_fails(
     assert _apply(root, "inside") == 1
     assert _snapshot(root) == before
     assert "--phase move" in capsys.readouterr().err
+
+
+@needs_git
+def test_inside_phase_refuses_a_second_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A second run would resolve the rewritten links from the old place again and break them."""
+    root = _repo(tmp_path, TREE)
+    assert _apply(root, "move") == 0
+    assert _apply(root, "inside") == 0
+    before = _snapshot(root)
+    capsys.readouterr()
+    assert _apply(root, "inside") == 1
+    assert _snapshot(root) == before
+    err = capsys.readouterr().err
+    assert f"{SPEC}: link plan.md#task-1 already resolves from its new place" in err
+    assert "Traceback" not in err
+
+
+@needs_git
+def test_move_phase_refuses_a_directory_move_onto_an_existing_directory(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The inside phase finds a moved directory's files under `to`, so `to` must hold only them."""
+    root = _repo(tmp_path, {**TREE, "work/2026-11/a/images/old.png": PNG})
+    before = _snapshot(root)
+    assert _apply(root, "move") == 1
+    assert _snapshot(root) == before
+    assert "work/2026-11/a/images already exists" in capsys.readouterr().err
+
+
+@needs_git
+def test_move_phase_refuses_a_folder_inside_a_moved_directory(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Its README would sit under the directory's `to`, read back as a moved file."""
+    moves = MOVES.replace('to = "work/2026-11/a/images"', 'to = "work/2026-11/hangar"')
+    moves = moves.replace('path = "work/2026-11/a"', 'path = "work/2026-11/hangar"')
+    root = _repo(tmp_path, {**TREE, MOVES_PATH: moves})
+    before = _snapshot(root)
+    assert _apply(root, "move") == 1
+    assert _snapshot(root) == before
+    assert "inside the moved directory work/2026-11/hangar" in capsys.readouterr().err

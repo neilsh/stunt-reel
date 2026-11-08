@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from stunt_reel.markdown_links import LINK_DEFINITION_REGEX, MARKDOWN_LINK_REGEX, prose
+from stunt_reel.markdown_links import (
+    LINK_DEFINITION_REGEX,
+    MARKDOWN_LINK_REGEX,
+    URL_SCHEME_REGEX,
+    prose,
+)
 
 
 def _blank(line: str) -> str:
@@ -34,3 +39,15 @@ def test_reference_definitions_skip_footnotes() -> None:
 def test_inline_links_take_the_target_without_brackets_or_title() -> None:
     text = 'See [a](a.md#x), ![b](<b.png> "B") and [c][p].'
     assert [m.group(1) for m in MARKDOWN_LINK_REGEX.finditer(text)] == ["a.md#x", "b.png"]
+
+
+def test_a_url_scheme_starts_a_target_that_is_not_a_repo_path() -> None:
+    assert [
+        bool(URL_SCHEME_REGEX.match(t))
+        for t in ("https://x", "mailto:a@b.c", "../a.md", "a.md#x:y")
+    ] == [
+        True,
+        True,
+        False,
+        False,
+    ]
