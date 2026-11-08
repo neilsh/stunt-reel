@@ -1,3 +1,6 @@
+---
+summary: "A film's `.ALL` copies stock items verbatim, id-ordered by `(res_index << 8) | (segment + 1)`, music and common sounds by sound setting; stock shapes draw CTRY, INTRO and BALLOON like their archives."
+---
 # `MAKEONE.EXE`: What the Film Linker Puts in a `.ALL`
 
 `MAKEONE.EXE` writes the `.ALL` archive that `PLAYONE.EXE` plays ([`driving.md`](driving.md), container layout in [`../formats/all.ksy`](../formats/all.ksy)). This note records where each chunk of that archive comes from, judged from the archives alone: which source file, which id, in what order, and which items a film gets. It is the evidence for an archive writer of our own ([ADR 0023](../../docs/adr/0023-make-all-generates-archives-with-makeone.md) deferred one until the packaging was understood).

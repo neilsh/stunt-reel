@@ -1,3 +1,6 @@
+---
+summary: "Which static tool answers which `PLAYONE.EXE` question (`mise run disasm`/`xref`/`vm-handler`, Ghidra, rea), what Ghidra cannot see in the VM handlers, and the address coordinate conversions."
+---
 # `PLAYONE.EXE`: Static-Analysis Tooling (iced-x86, Ghidra, rea)
 
 * **Binary**: `PLAYONE.EXE` (LZEXE 0.91), unpacked by `mise run unlzexe` ([`unlzexe.py`](../../python/scripts/unlzexe.py)) from the data root's `corpus/stuntisl/PLAYONE.EXE` to the data root's load image `build/re/playone.img`, or with `--mz` to the full MZ file `build/re/playone_unpacked.exe` (201,548 bytes, SHA-256 `4e68d100…ef83f`); explicit paths override both

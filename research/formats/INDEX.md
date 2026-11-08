@@ -1,3 +1,6 @@
+---
+summary: "Router to the format specs, concept notes and `.ksy` schemas: catalog of each format's magic, role, tier, spec and schema, the runtime asset graph, and community provenance."
+---
 # Stunt Island Format Index
 
 Router to the format specifications, shared concept notes and Kaitai schemas for *Stunt Island* (1992). Byte layouts live only in the `.ksy` schemas; the specifications give meaning, evidence and parser policy. Invariants `[I1]`-`[I8]` are defined in [`docs/SPEC.md`](../../docs/SPEC.md#2-system-architectural-invariants--guardrails); [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) routes code paths to documents; fixtures are described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).

@@ -1,3 +1,6 @@
+---
+summary: "`ANCHORPT.DAT` ([FMT-MAP-ANCHORPT]): 1,024 28-byte anchor records saved by `SD.EXE`, elevation stored negated; the game images hold the 231 authored records, and the eleven words are inferred cache."
+---
 # Specification: `ANCHORPT.DAT` Anchor Point Table
 
 ## 1. Overview & File Identification

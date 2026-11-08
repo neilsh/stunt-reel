@@ -1,3 +1,6 @@
+---
+summary: "`PLAYONE.EXE` startup: LZEXE 0.91 packing, a command tail that honours only `?` (runs `install.exe`), the `game.cfg`, memory and disk checks, asset paths, and how to reproduce the static analysis."
+---
 # `PLAYONE.EXE`: Startup, Initialization & Argument Parsing
 
 This document details the executable structure, command-line argument evaluation, memory requirements, and initialization sequence of `PLAYONE.EXE` (the standalone film reel playback utility from the *Stunt Island* demo / `stisldem`), discovered through binary disassembly and static/runtime analysis.

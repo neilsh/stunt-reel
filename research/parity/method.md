@@ -1,3 +1,6 @@
+---
+summary: "Defines the parity loop that judges a render change against PLAYONE.EXE: capture, render, SSIM and IoU scoring with the fade floor, compare verdicts, `report.json` fields and the metric bench."
+---
 # Parity Method: the Fidelity Loop
 
 How a rendering change is judged against `PLAYONE.EXE`. Terms are those of [`GLOSSARY.md`](../../GLOSSARY.md) (parity, captured frame, film clock); capture mechanics are in [`../playone-exe/capture.md`](../playone-exe/capture.md); results are in [`log.md`](log.md).

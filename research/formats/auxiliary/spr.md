@@ -1,3 +1,6 @@
+---
+summary: "`.SPR` sprite ([FMT-SPR-HEADER]): u16 width and height, row-major palette indices with colour 0 transparent, zero trailer word (size W*H+6), and the `MAKESPR` `.SOD` billboard wrapper."
+---
 # Specification: .SPR Sprite Bitmap Format
 
 ## 1. Overview & File Identification

@@ -1,3 +1,6 @@
+---
+summary: "`SCENERY.scn` ([FMT-MAP-SCENERY]) is `PLAYONE.EXE`'s stack-segment scenery tree widened to 32-bit words; node types `SP_POS` to `SP_POSXZ`, the `SP_1NODE` level-of-detail rule, and prop placement."
+---
 # Specification: `SCENERY.scn` Scenery Tree
 
 ## 1. Overview & File Identification

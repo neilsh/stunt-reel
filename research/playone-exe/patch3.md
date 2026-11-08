@@ -1,3 +1,6 @@
+---
+summary: "What Patch #3 changes, the patched `PLAYONE.EXE` offsets mapped by function pairing (one dispatch slot fewer, inferred statically), and which build each tested film needs to play and capture."
+---
 # Patch #3: The Patched Build of `PLAYONE.EXE` and `MAKEONE.EXE`
 
 Disney's "Sound Blaster Update" for Stunt Island (`corpus/patches`, Patch #3, archives dated 1993-09-06, wrapper 1994-03-18) replaces every executable the game ships. This note records what it changes, where the patched `PLAYONE.EXE` keeps what the capture harness reads, and which build each tested film needs. `mise run game-builds` ([`game_builds.py`](../../python/scripts/game_builds.py), [`stunt_reel/game_builds.py`](../../python/stunt_reel/game_builds.py)) builds both trees under `<data root>/builds/` and writes `builds/patch3-manifest.json`; `capture-ref`, `play` and `make-all` take `--game-root <data root>/builds/patch3` to run the patched programs.

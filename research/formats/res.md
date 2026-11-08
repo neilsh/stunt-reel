@@ -1,3 +1,6 @@
+---
+summary: "`.RES` archive ([FMT-RES-HEADER]): RS magic, `res_index` and `item_count` bytes, u32 offset table; prop archives carry a name table, scenery archives do not; compound keys and the index catalog."
+---
 # Technical Reference Specification: Stunt Island `.RES` Container Format
 
 ## 1. Overview & File Identification

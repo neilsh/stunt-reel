@@ -1,3 +1,6 @@
+---
+summary: "`PFONT.BIN`: 1,152-byte font of a 128-byte width table and 128 8x8 one-bit glyphs, and the `PLAYONE.EXE` credits rule (centring, ink 255, shadow) that reproduces the `INTRO.FLM` title cards."
+---
 # Specification: `PFONT.BIN` Proportional Bitmap Font
 
 ## 1. Overview & File Identification

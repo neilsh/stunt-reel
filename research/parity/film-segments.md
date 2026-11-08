@@ -1,3 +1,6 @@
+---
+summary: "Covers COL3-2.FLM and INTRO.FLM segments where PLAYONE shows a scene we do not: the unresolved COL3-2 studio, INTRO sand shots as SCENERY tiles, the montage clock, and black title cards."
+---
 # Film Segments Where the Original Shows a Scene We Do Not
 
 `[Bounded Observation]` unless a claim says otherwise. This note covers the segments of `COL3-2.FLM` and `INTRO.FLM` where `PLAYONE.EXE` draws a scene (a news studio, held sand-field shots, a montage) that `stuntreel` does not. The scoring procedure is in [`method.md`](method.md); dated results are in [`log.md`](log.md). The static frame composition (UI bar, credits text) is in [`../playone-exe/sod-vm.md`](../playone-exe/sod-vm.md).

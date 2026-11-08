@@ -1,3 +1,6 @@
+---
+summary: "How the harness drives `MAKEONE.EXE` under emulation to make a film's `.ALL`: keys, text-mode return as completion signal, a working mount, output checks, run time per CPU profile and hang policy."
+---
 # `MAKEONE.EXE`: Driving the Film Linker Under DOSBox-X
 
 `MAKEONE.EXE` is the retail film linker: it turns a film's `.FLM` into the `.ALL` archive that `PLAYONE.EXE` plays ([`all.md`](../formats/all.md)). The retail manual describes it as a DOS program that opens a Load File requester, prepares the chosen film and returns to DOS. This note records what it does when the capture harness drives it, so a film without an `.ALL` can be given one. The harness itself is in [`capture.md`](../playone-exe/capture.md); the design is in [`docs/process/plans/make-all-2026-10-29.md`](../../docs/process/plans/make-all-2026-10-29.md) and [ADR 0023](../../docs/adr/0023-make-all-generates-archives-with-makeone.md).

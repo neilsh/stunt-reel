@@ -1,3 +1,6 @@
+---
+summary: "The SOD display-list VM: self-patching dispatch slots, `OP_TAP` encoding and anchor loading [FMT-SOD-TAP], the execution model, the per-frame draw with credits, and a candidate actor shadow path."
+---
 # `PLAYONE.EXE`: SOD Display-List VM & `OP_TAP` Semantics
 
 * **Binary**: `PLAYONE.EXE` (LZEXE 0.91; unpacked EXE 201,548 bytes, i.e. the 200,524-byte load image plus its 1,024-byte MZ header)

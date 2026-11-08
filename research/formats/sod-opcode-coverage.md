@@ -1,3 +1,6 @@
+---
+summary: "Census work queue for Partial SOD shapes: `OP_ANIMATE` blocks 28, a two-vertex `POLYZ`/`GVPOLY` (a line or a walk desync, open) stops 7, the films placing them, and regeneration."
+---
 # `.SOD` Opcode Coverage: Blocking-Opcode Work Queue
 
 * **Evidence**: corpus census of every compiled `.SOD` model in `corpus/` (`.ALL` and `.RES` archive entries and loose `.BIN` files), walked by the census mode of the evaluator in [`crates/stunt-core/src/sod/vm.rs`](../../crates/stunt-core/src/sod/vm.rs) (`walk_sod`), and joined to the films that place each shape.

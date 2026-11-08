@@ -1,3 +1,6 @@
+---
+summary: "Compares PLAYONE's back-to-front software painter with our depth-buffer renderer stage by stage, naming each known divergence and the `[I5]` and ground-decal rules that imitate its tie order."
+---
 # Render Model: PLAYONE's Painter Against Our Depth Buffer
 
 * **Scope**: stage by stage, what `PLAYONE.EXE` does to put a frame on screen, what our renderer does in its place, and where the two are known to differ. It routes to the notes that own each fact rather than restating them.

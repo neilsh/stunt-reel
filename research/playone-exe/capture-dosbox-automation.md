@@ -1,3 +1,6 @@
+---
+summary: "dosbox-automation 0.85.1 as capture emulator: frame-locked capture reading `film_tick` per frame at `DS = 0x0F46`, bit-identical `CTRY.FLM` runs, torn pages, DAC lag and the Lua instruction budget."
+---
 # `PLAYONE.EXE`: Capture with dosbox-automation (Frame-Locked Video)
 
 The DOSBox-X debugger harness is in [`capture.md`](capture.md) and its speed and repeatability limits are in [`capture-speed.md`](capture-speed.md). This note evaluates a different capture tool: [dosbox-automation](https://github.com/dosbox-automation/dosbox-automation/) 0.85.1 (a DOSBox Staging fork with a REST and Lua API, GPL-2.0-or-later) recording lossless video of `CTRY.FLM`, with a per-frame film clock read from guest memory.
@@ -243,7 +246,7 @@ A cell that matches none of these (a fade, a black frame, the dialog) means the 
 
 ---
 
-**Ruled out**
+## Ruled out
 
 * **A wall-clock start for dosbox-automation.** Capture start and keys by REST delays: one run in three started a frame late and sampled different instants; use frame-locked starts (§ 2).
 * **Frame-for-frame match with DOSBox-X video.** Different guest speed at equal cycles (§ 3); at 7,000 cycles the loop counts agree (370 against 369) but no timer-aligned pair is byte-identical (§ 4.1).
@@ -256,7 +259,7 @@ A cell that matches none of these (a fade, a black frame, the dialog) means the 
 * **The engine files or the archive alone as the cause of the `TOD.FLM` and `INTRO.FLM` failures.** `NewPLAY`'s engine files play both films with the unpatched executable, and the retail archives play on the unpatched build; only the patched executable with the retail archive fails (§ 4.7, second round).
 * **`LOCATION.FLM`'s archive or build as its cause.** It plays under the batch's own configuration; it is too long for one trace script (§ 4.7, second round).
 
-**Open questions**
+## Open questions
 
 1. What leaves 653, 489 and 1,082 pixels at DOSBox-X ticks 220, 495 and 660 with no exact dosbox-automation page (§ 4.3)? Is it a sub-tick state, a tear, or DOSBox-X variance? Capture two DOSBox-X runs of the same film to measure its own variance first.
 2. Does a breakpoint at image `0x7417` (end of the `A000` diff-copy) give a whole page? It was read from the listing, not tried (§ 4.3).

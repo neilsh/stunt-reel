@@ -1,3 +1,6 @@
+---
+summary: "Film variables 13-15, keyed by `var_set` and interpolated per frame, drive the palette build at `0x0FD2` (night, brightness, saturation), so the end-of-film fade is authored in the film."
+---
 # `PLAYONE.EXE`: Film Brightness and the End-of-Film Fade
 
 * **Binary**: `PLAYONE.EXE` (LZEXE 0.91), statically unpacked

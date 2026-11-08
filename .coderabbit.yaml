@@ -6,14 +6,17 @@
 # default; the entries below exist only where a default cannot say it.
 
 reviews:
-  # The four paths where a review comment cannot be useful: two lockfiles, the synthetic
-  # fixture bytes, and the parity log, whose rows are append-only and union-merged
-  # (.gitattributes), so a note about their shape is guaranteed to be ignored.
+  # Four paths where a review comment cannot be useful: two lockfiles, the synthetic fixture
+  # bytes, and the parity log, whose rows are append-only and union-merged (.gitattributes), so
+  # a note about their shape is guaranteed to be ignored. And work/, whose dated records
+  # (work/README.md) a person reviews in the pull request that adds them, with the fresh reviewer
+  # of AGENTS.md working rule 7 when that pull request also changes research/ or NOTICE.md.
   path_filters:
     - "!Cargo.lock"
     - "!uv.lock"
     - "!tests/fixtures/**"
     - "!research/parity/log.md"
+    - "!work/**"
 
   # The docstring-coverage pre-merge check counts test functions, and this repository names a
   # test for what it checks instead of giving it a docstring (223 of 1114 have one), so the

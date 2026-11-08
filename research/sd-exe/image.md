@@ -1,3 +1,6 @@
+---
+summary: "Reading the `SD.EXE` scenery designer image: MZ header and load-image offset rule, segments and DGROUP, string offsets, and routines for `ANCHORPT.DAT`, `MAP.BIN` and the `REGIONS.BIN` block tree."
+---
 # SD.EXE: Image Layout and Routines
 
 **Scope:** `SITools/SD.EXE`, the developers' scenery designer: how to read its image, and where its routines and strings sit. What its files mean stays in the format notes: [`map.md`](../formats/auxiliary/map.md) for `MAP.BIN`, `REGIONS.BIN` and the tree build, [`anchorpt.md`](../formats/auxiliary/anchorpt.md) for `ANCHORPT.DAT`, and [`scenery.md`](../formats/auxiliary/scenery.md) for the tree.

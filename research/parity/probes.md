@@ -1,3 +1,6 @@
+---
+summary: "Procedures for diagnosing one parity discrepancy: `parity_probe.py` crop, shift, iou and retime, `DBG_` switch sweeps via `mise run sweep`, capture-side experiments, and environment pitfalls."
+---
 # Parity Probes: Diagnosing One Discrepancy
 
 Procedures for finding out *what* is wrong once [`method.md`](method.md) says *where* the loss is. Terms are those of [`GLOSSARY.md`](../../GLOSSARY.md). Dated outcomes are in [`log.md`](log.md) and the notes it links; the helpers are [`python/scripts/parity_probe.py`](../../python/scripts/parity_probe.py) and [`parity_sweep.py`](../../python/scripts/parity_sweep.py).

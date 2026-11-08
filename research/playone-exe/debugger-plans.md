@@ -1,3 +1,6 @@
+---
+summary: "How `mise run debug-x` breakpoint plans run on DOSBox-X: boot and key entry, image offset to live `CS:IP` mapping on both builds, the `BPM` watch filter that names a writer, and the hit loop."
+---
 # `PLAYONE.EXE`: Breakpoint Plans on DOSBox-X's Debugger
 
 * **Tool**: `mise run debug-x -- --plan <toml> [--film F] [--build unpatched|patch3]`

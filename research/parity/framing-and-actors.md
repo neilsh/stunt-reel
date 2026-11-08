@@ -1,3 +1,6 @@
+---
+summary: "Records camera, projection and hero-aircraft corrections tried against the capture: square 256 px projection, actor ground offset, `OP_VECTORS` orientation, flattened shadow, open `0x7F37` residual."
+---
 # Parity: Framing, Camera and the Hero Aircraft Residual
 
 `[Bounded Observation]`: `CTRY.FLM` (114 scored frames) and `INTRO.FLM` (209), `mean_ssim_scored`. Covers every camera, placement and actor-tick correction tried against the capture, and the one open residual they point at: the `CTRY.FLM` hero aircraft (shape `0x7F37`) and its ground shadow. Method: [`method.md`](method.md); score history: [`log.md`](log.md); where the rest of the loss sits: [`attribution.md`](attribution.md).

@@ -1,3 +1,6 @@
+---
+summary: "What the retired DOSBox-X harness established, for reading old captures: link framing, debugger verbs and quirks, crash constraints, `DS = 0x1575`, late wall-paced tags and `dacexpand` rounding."
+---
 # `PLAYONE.EXE`: The Retired DOSBox-X Capture Harness
 
 Capture moved to dosbox-automation ([`capture-dosbox-automation.md`](capture-dosbox-automation.md), plan [`dosbox-automation-switch-2026-10-30.md`](../../docs/process/plans/dosbox-automation-switch-2026-10-30.md)). This note keeps what is specific to DOSBox-X `2026.10.01` and `dosbox-x-mcp-server` `0.1.2`, so a reader of an old log row, a `references.toml` pin or a capture made before the switch can interpret it. The harness code (`transport.py`, `session.py`, `vsync.py`, `client.py`, `ensure_dosbox.py`, the `mcp` and `ensure-dosbox` tasks) exists through commit `81724a6`; the removal commit deletes it, and `git show 81724a6:python/stunt_reel/tac/transport.py` recovers it.
