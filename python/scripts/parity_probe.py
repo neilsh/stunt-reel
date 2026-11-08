@@ -13,9 +13,9 @@ through the same adapter:
 * ``retime`` - relabel an existing render by N ticks (negative allowed),
   rewriting its store and ``render.json``, so a timing hypothesis costs no
   rebuild.
-* ``summary`` - the scored headline, the loss by class, the worst scored
-  frames and the ``work/2026-10/parity-log/log.md`` row for one report, so the numbers
-  are never retyped by hand.
+* ``summary`` - the scored headline, the loss by class and the worst scored
+  frames of one report: the scores a journal entry quotes, so the numbers are
+  never retyped by hand.
 
 Object pixels are capture pixels that are not sky, ground ramp, button bar or
 cursor; the index ranges default to ``CTRY.FLM`` and are per film.
@@ -392,7 +392,7 @@ def cmd_iou(args: argparse.Namespace) -> None:
 
 
 def summary(report_path: Path, *, worst: int = 5) -> list[str]:
-    """Summarise one ``report.json``: headline, class loss, worst frames and a log row."""
+    """Summarise one ``report.json``: headline, class loss, worst frames and the journal scores."""
     report = read_report(report_path)
     ssim, iou = report.headline()
     matched = f"{report.scored_frames}/{report.frames}"
@@ -411,8 +411,7 @@ def summary(report_path: Path, *, worst: int = 5) -> list[str]:
         listed = ", ".join(f"tick {frame.film_tick} {frame.ssim:.3f}" for frame in lowest)
         lines.append(f"[summary] worst scored frames: {listed}")
     lines.append(
-        f"[summary] log row: | <date> | `<commit>` | {matched} | {ssim:.3f} | {iou:.3f} "
-        f"| <what moved and why> |"
+        f"[summary] journal entry: ssim {ssim:.4f}  iou {iou:.4f}  scored {matched} at `<commit>`"
     )
     return lines
 

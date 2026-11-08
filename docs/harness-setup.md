@@ -254,7 +254,7 @@ the key pair or the network secret cannot read the bucket.
   made with a `DBG_*` switch gives the base and head revisions and a command for each, since the
   switch is not committed. Someone with GitHub access and the data root regenerates it and
   attaches it. Only a picture that a
-  research note cites as evidence for a finding is committed, under
+  research note or a journal entry cites as evidence for a finding is committed, under
   `work/<YYYY-MM>/<folder>/images/` ([`work/README.md`](../work/README.md#images)); the PR body
   may then link it at its commit
   (`https://github.com/<owner>/<repo>/blob/<commit>/<path>?raw=true`), as #264 did.

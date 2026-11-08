@@ -3,7 +3,7 @@ summary: "Dated table of `stuntreel parity` scores against captured PLAYONE.EXE 
 ---
 # Parity Results Log
 
-Dated results of `stuntreel parity` for `CTRY.FLM` against captured `PLAYONE.EXE` frames, newest last. From 2026-10-22 the headline figure covers only frames above the fade floor ([`method.md` section 5](../../../research/parity/method.md#5-reading-the-results-log)); rows above that are over all frames. The loop that produces each row is in [`method.md`](../../../research/parity/method.md); reports and renders live under `build/parity/` (gitignored), so only the figures are recorded here.
+Dated results of `stuntreel parity` for `CTRY.FLM` against captured `PLAYONE.EXE` frames, newest last. From 2026-10-22 the headline figure covers only frames above the fade floor ([`method.md` section 5](../../../research/parity/method.md#5-reading-the-legacy-parity-log)); rows above that are over all frames. The loop that produces each row is in [`method.md`](../../../research/parity/method.md); reports and renders live under `build/parity/` (gitignored), so only the figures are recorded here.
 
 The file is append-only: add a row at the end of the table and never edit an earlier one. `.gitattributes` merges it with `merge=union`, so rows added on two branches both survive the merge.
 

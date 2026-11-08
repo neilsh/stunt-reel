@@ -593,7 +593,6 @@ def test_code_citation_walks_skip_dated_records(tmp_path: Path) -> None:
 
 
 _PARITY_LOG = "work/2026-10/parity-log/log.md"
-_TEAM_SHEET = "work/2026-10/team-sheet/TEAM_SHEET.md"
 _SANDBOX_NOTE = (
     "work/2026-11/windows-sandbox-integrity-label/windows-sandbox-integrity-label-2026-11-01.md"
 )
@@ -606,11 +605,6 @@ WORK_POINTERS: frozenset[tuple[str, str]] = frozenset(
         *(
             (source, _PARITY_LOG)
             for source in (
-                ".agents/skills/improving-render-parity/SKILL.md",
-                "AGENTS.md",
-                "README.md",
-                "docs/development.md",
-                "research/README.md",
                 "research/formats/auxiliary/anchorpt.md",
                 "research/formats/concepts/coordinates-and-units.md",
                 "research/formats/sod-opcodes.md",
@@ -621,15 +615,8 @@ WORK_POINTERS: frozenset[tuple[str, str]] = frozenset(
                 "research/parity/method.md",
                 "research/parity/probes.md",
                 "research/parity/render-model.md",
-                "research/playone-exe/capture-dosbox-automation.md",
-                "research/playone-exe/dosbox-x-legacy.md",
-                "research/playone-exe/lod.md",
                 "research/playone-exe/sod-vm.md",
             )
-        ),
-        *(
-            (source, _TEAM_SHEET)
-            for source in ("AGENTS.md", "docs/SPEC.md", "research/parity/method.md")
         ),
         ("docs/ARCHITECTURE.md", "work/2026-10/architecture-deepening/overview.md"),
         ("docs/harness.md", "work/2026-10/retro-hardening/retro-hardening-2026-10-25.md"),

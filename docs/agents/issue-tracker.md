@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
+Issues for this repo live as GitHub issues; an issue's spec and plan live in its work folder as `spec.md` and `plan.md` ([`work/README.md`](../../work/README.md)). Use the `gh` CLI for all issue operations.
 
 ## Conventions
 

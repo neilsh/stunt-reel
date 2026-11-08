@@ -3,7 +3,7 @@ summary: "Splits the CTRY.FLM and INTRO.FLM SSIM loss by render layer: props are
 ---
 # Parity Attribution: Where Our Render's Loss Sits
 
-`[Bounded Observation]`: one capture set per film, 114 scored `CTRY.FLM` frames and 209 scored `INTRO.FLM` frames. This note says which parts of the frame carry the SSIM loss. The measuring loop is in [`method.md`](method.md); every figure has a row in [`log.md`](../../work/2026-10/parity-log/log.md). The framing and hero-aircraft residual is in [`framing-and-actors.md`](framing-and-actors.md); how the player shades the ground is in [`../playone-exe/terrain-shade.md`](../playone-exe/terrain-shade.md).
+`[Bounded Observation]`: one capture set per film, 114 scored `CTRY.FLM` frames and 209 scored `INTRO.FLM` frames. This note says which parts of the frame carry the SSIM loss. The measuring loop is in [`method.md`](method.md); every figure has a dated record, a journal entry or, for earlier figures, a row of the [parity log](../../work/2026-10/parity-log/log.md). The framing and hero-aircraft residual is in [`framing-and-actors.md`](framing-and-actors.md); how the player shades the ground is in [`../playone-exe/terrain-shade.md`](../playone-exe/terrain-shade.md).
 
 ## 1. Method: loss by render layer
 
