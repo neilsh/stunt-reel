@@ -8,6 +8,11 @@
 # and `mean_iou_scored`, `commit` the commit measured and `adapter` the adapter's name; drift is
 # judged only against a render on an adapter of that name. A PR that adopts a change updates the
 # table of the class it measured.
+#
+# `noise_sigma` is a film's recapture noise of the whole-frame SSIM, from the metric bench
+# (research/parity/method.md sections 2.2 and 2.2.1). INTRO has none. LAND, BALLOON, TRAINTNL and
+# BOMB have none either: their sigma would call deltas below about 0.01 to 0.017 noise, which
+# their identical pages argue against (#305).
 
 [ctry]
 film = "vault-ctry"
@@ -108,6 +113,7 @@ all_sha256 = "4a427bdda8f019acfc4dea7269745699dae50b006c971486cc7de5fe2b298d63"
 makeone = "unpatched"
 playone = "unpatched"
 reason = "captured 2026-11-07 on the unpatched builds, the builds CTRY and INTRO use, so every reference film shares one; the move to patch3 is #300"
+noise_sigma = 0.00038
 
 [location.expected.gpu]
 ssim = 0.7907437
