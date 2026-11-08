@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Start a work item's folder under ``work/``, or list every work folder with its status.
 
 A work item is a GitHub issue. Its folder is ``work/<YYYY-MM>/<issue>_<slug>/``, named for the

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Report, worst first, the evergreen docs and work items that need gardening.
 
 A report, never a gate. It finds:

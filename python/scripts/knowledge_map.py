@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Write ``research/MAP.md``, the list of every research note with its one-line summary.
 
 A note is any ``.md`` file under ``research/`` except a ``README.md`` (at any depth) and the

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Move docs with ``git mv`` as a moves file lists them, and rewrite every link and path to them.
 
 A moves file is TOML. Each ``[[move]]`` table has ``from`` and ``to``, repo-relative POSIX
