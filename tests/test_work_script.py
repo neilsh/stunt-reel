@@ -189,7 +189,12 @@ def test_new_with_issue_but_no_title_from_gh_titles_it_with_the_slug(
     out, err = capsys.readouterr()
     assert out.startswith("created ")
     assert len(err.splitlines()) == 1
-    assert "gh" in err
+    assert err.startswith("work: `gh ")
+    assert err.endswith(
+        "; titled the README with the slug, 'docs-streamline': retitle it. Issue 307 may not "
+        "exist: if its number is mistyped, delete the new folder and make it again with the "
+        "right number.\n"
+    )
     assert "Traceback" not in err
 
 

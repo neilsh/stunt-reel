@@ -7,10 +7,11 @@ month the work started, and the README's frontmatter is the folder's record
 
 ``new <slug> --issue N`` makes this month's folder for issue N, its README titled as the issue
 is; when ``gh`` cannot give the title, the README takes the slug and one note on stderr says
-so. Without ``--issue`` it needs ``gh`` to file the issue first, titled with the slug and
-labelled ``needs-triage``, into the repository ``gh`` targets, and only when that is the one
-the ``origin`` remote names: in a fork ``gh`` can target the upstream parent
-(``docs/agents/issue-tracker.md``). It refuses an issue that already has a folder, in any month.
+so, and that the issue may not exist. Without ``--issue`` it needs ``gh`` to file the issue
+first, titled with the slug and labelled ``needs-triage``, into the repository ``gh`` targets,
+and only when that is the one the ``origin`` remote names: in a fork ``gh`` can target the
+upstream parent (``docs/agents/issue-tracker.md``). It refuses an issue that already has a
+folder, in any month.
 
 ``list`` prints one line per folder: month, folder, status, title, outcome. An issue folder's
 status is its issue's, read in one ``gh`` call; when ``gh`` is missing or fails, it is
@@ -134,7 +135,12 @@ def _issue_title(issue: int, slug: str, run: Runner) -> str:
             return title
         reason = "`gh issue view` answered without a title"
     reason = " ".join(reason.split())
-    print(f"work: {reason}; titled the README with the slug, {slug!r}: retitle it", file=sys.stderr)
+    print(
+        f"work: {reason}; titled the README with the slug, {slug!r}: retitle it. Issue {issue} "
+        "may not exist: if its number is mistyped, delete the new folder and make it again with "
+        "the right number.",
+        file=sys.stderr,
+    )
     return slug
 
 

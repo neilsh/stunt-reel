@@ -353,8 +353,8 @@ def test_dry_run_changes_nothing(tmp_path): ...
 
 Hand edits, which `move_docs.py` does not make:
 * `AGENTS.md` links the `docs/process/` directory, which leaves no single folder behind: point that link at `work/README.md` (evergreen, so not a pointer).
-* `crates/stunt-core/src/flm/player.rs` is binary to git (a raw NUL in a byte literal), so the rewrite skips it: repoint its comment naming `research/parity/log.md`.
-* Links to `research/images/README.md`, which the move deletes, are rewritten to `work/README.md#images`, not pointered: `NOTICE.md:47`, `research/README.md:17` (the same row links the `images/` directory, which empties: the row now says comparison images live in the citing work folder's `images/`) and `docs/harness-setup.md:258`.
+* `crates/stunt-core/src/flm/player.rs` holds a NUL byte (in a byte literal), so `move_docs.py` leaves it alone: repoint its comment naming `research/parity/log.md` by hand.
+* Links to `research/images/README.md`, which the move deletes, are rewritten to `work/README.md#images`, not pointered: `NOTICE.md:47`, `research/README.md:17` (the same row links the `images/` directory, which empties: make the row say comparison images live in the citing work folder's `images/`) and `docs/harness-setup.md:258`.
 * `.coderabbit.yaml`: the rewrite turns `!research/parity/log.md` into a path `!work/**` already covers; delete that line and the comment's parity-log clause, so its count reads three.
 
 - [ ] **Step 1: Run `mise run move-docs -- apply work/2026-11/307_docs-streamline/moves.toml --phase move --dry-run`** and read the rewrite list; then run it without `--dry-run`. Stage the rewritten files and the new READMEs by name.
@@ -408,7 +408,7 @@ A line rewritten here or in Task 13 that `WORK_POINTERS` lists loses its entry i
 
 - [ ] **Step 1: Fresh-reviewer read** of PR 4's diff (rule 7: it changes `research/`).
 - [ ] **Step 2: Run `gh stack submit --auto`.**
-- [ ] **Step 3: Hold the stack** until the expected-scores PR merges, then merge it.
+- [ ] **Step 3: Hold the stack** until the expected-scores PR merges, then `gh stack merge` once the user approves.
 
 ---
 
@@ -427,7 +427,7 @@ A line rewritten here or in Task 13 that `WORK_POINTERS` lists loses its entry i
 
 For each of `research/playone-exe/capture-dosbox-automation.md`, `research/parity/method.md` (its section 1 loop to `docs/howto/parity-loop.md`), `research/parity/framing-and-actors.md`, and `docs/development.md` (Workflows to `docs/howto/`): follow `distilling-notes`; verify with `mise run doc-health` that the file is under 20 KB and `git log -S '<a moved sentence>'` finds the journal; fresh-reviewer read; PR. A distillation that rewrites a line `WORK_POINTERS` lists drops its entry.
 
-The distillations also fix these contradictions, found in review, within or between notes: `research/parity/framing-and-actors.md` calls the GVPOLY16 colour rule undecoded, while `research/playone-exe/terrain-shade.md` section 5 decodes op `0x02BE`; `research/formats/palette-and-shading.md` section 4 `[BK-PAL-03]` contradicts its section 3.2 on `OP_SHADES` lighting; `research/formats/res.md` section 3.3, the `GAME.RES` string table, contradicts its section 3.1 threshold rule; `research/playone-exe/lod.md` section 3 bullet 2 is tagged `[Established]` but rests on an inferred failure path; `research/playone-exe/memory-map.md` opens by claiming to own every `[MEM-*]` anchor, though it defines most, not all; `research/playone-exe/sod-vm.md` gives the dispatch table 108 slots in one place and 107 entries in another; `research/playone-exe/capture.md` section 4 and `research/playone-exe/dosbox-x-legacy.md` section 5 give different causes for the one-tick lag.
+The distillations also fix these contradictions, found in review, within or between notes: `research/parity/framing-and-actors.md` calls the GVPOLY16 colour rule undecoded, while `research/playone-exe/terrain-shade.md` section 5 decodes op `0x02BE`; `research/formats/concepts/palette-and-shading.md` section 4 `[BK-PAL-03]` contradicts its section 3.2 on `OP_SHADES` lighting; `research/formats/res.md` section 3.3, the `GAME.RES` string table, contradicts its section 3.1 threshold rule; `research/playone-exe/lod.md` section 3 bullet 2 is tagged `[Established]` but rests on an inferred failure path; `research/playone-exe/memory-map.md` opens by claiming to own every `[MEM-*]` anchor, though it defines most, not all; `research/playone-exe/sod-vm.md` gives the dispatch table 108 slots in one place and 107 entries in another; `research/playone-exe/capture.md` section 4 and `research/playone-exe/dosbox-x-legacy.md` section 5 give different causes for the one-tick lag.
 
 Then split `research/playone-exe/memory-map.md` by segment with `move-docs` for any new files, keeping every `[MEM-*]` anchor registered in `doc_anchors.py`.
 

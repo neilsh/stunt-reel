@@ -56,10 +56,10 @@ A frozen entry later found wrong is not edited. The correction is a new entry in
 
 `mise run check` enforces these on Markdown links:
 
-- **Into a dated record** (`work/<YYYY-MM>/`) from an evergreen file, a link must follow a provenance marker on its line (`_Source:` or a legacy `_Found `, italic, at the line's start or after whitespace), sit under a `Ruled out` heading (numbered or not, any case), come from an ADR, or point into a folder's `images/`. Any other fails unless `WORK_POINTERS` lists it, a list that only shrinks. Its fragment must name a heading. By convention, a `_Source:` line links a journal entry's heading.
+- **Into a dated record** (`work/<YYYY-MM>/`) from an evergreen file, a link must follow a provenance marker on its line (`_Source:` or a legacy `_Found `, italic, at the line's start or after whitespace), sit under a `Ruled out` heading (numbered or not, any case), come from an ADR, or point into a folder's `images/`. Any other fails unless `WORK_POINTERS` lists it; that list is meant only to shrink, and an entry whose link is gone fails. Its fragment must name a heading. By convention, a `_Source:` line links a journal entry's heading.
 - **From a dated record** into an evergreen file: checked for the file only, so renaming a heading in a note never breaks a frozen record. Between dated records: checked in full.
 
-In code outside dated records, each `.md` path under `research/`, `docs/` or `work/` written from the repository root must exist and carry no heading fragment.
+In `.rs`, `.py`, `.wgsl` and `.toml` files outside dated records, each `.md` path under `research/`, `docs/` or `work/` written from the repository root must exist and carry no heading fragment.
 
 ## Search
 
