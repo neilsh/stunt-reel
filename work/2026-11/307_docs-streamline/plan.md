@@ -4,11 +4,13 @@
 
 **Goal:** Split the docs into evergreen notes (`research/`, `docs/`) and dated work folders (`work/YYYY-MM/<issue>_<slug>/`), move `docs/process/` and the parity log into `work/` with history intact, and add the tooling that keeps notes distilled.
 
-**Architecture:** Four stacked PRs. (1) Tooling: a stdlib frontmatter reader, a work-folder model, `mise run work`, the knowledge-map generator, `mise run doc-health`, the new link rules in `tests/test_doc_invariants.py`, and a reusable `move_docs.py`. (2) Moves: `move_docs.py` runs `git mv` from a reviewed `moves.toml` (`docs/process/`, the image sets and the parity log) and rewrites links in files that did not move. (3) Relink: the same tool rewrites links inside the moved files. Keeping the log's own link rewrite out of the PR that moves it keeps it a 100% rename after the squash; its many linked rows could otherwise fall under git's 50% similarity threshold. (4) Rules: AGENTS.md, skills, glossary, ADR, summaries. Distillations and the gardening routine follow as separate PRs.
+**Architecture:** Four stacked PRs. (1) Tooling: a stdlib frontmatter reader, a work-folder model, `mise run work`, the knowledge-map generator, `mise run doc-health`, the new link rules in `tests/test_doc_invariants.py`, and a reusable `move_docs.py`. (2) Moves: `move_docs.py` runs `git mv` from a reviewed `moves.toml` (`docs/process/`, the image sets and the parity log) and rewrites links in files that did not move. (3) Relink: the same tool rewrites links inside the moved files. Keeping the log's own link rewrite out of the PR that moves it keeps it a 100% rename after the squash; its many linked rows could otherwise fall under git's 50% similarity threshold. (4) Rules: AGENTS.md, skills, glossary, ADR. Summaries on every note land in PR 1, so the map is useful from the first merge. Distillations and the gardening routine follow as separate PRs.
 
 **Tech Stack:** Python 3.13+ stdlib only (no YAML library: `dependencies = []`), pytest with the `docs` marker, mise tasks, `gh` and `gh stack`, git.
 
-**Spec:** [`spec.md`](spec.md) (issue [#307](https://github.com/neilsh/stunt-reel/issues/307)). The expected-scores PR (spec section 6, first paragraph) touches the Rust render pipeline and the parity report schema, so it gets its own plan, `plan-expected-scores.md`, written next. PR 4 here, which tells agents to update expected scores instead of appending log rows, merges after it.
+**Spec:** [`spec.md`](spec.md) (issue [#307](https://github.com/neilsh/stunt-reel/issues/307)). The expected-scores PR (spec section 6, first paragraph) touches the Rust render pipeline and the parity report schema, so it gets its own plan, `plan-expected-scores.md`, written and carried out in a separate session (fresh, its own worktree and PR off `main`). PR 4 here tells agents to update expected scores instead of appending log rows, so the whole stack is held and merged together after that PR lands.
+
+**Execution (agreed 2026-11-07):** subagent-driven, Opus for every subagent (implementers, per-task reviewers, the final whole-branch review, summary drafting, PR bodies). Task 9 stops for the user. Stack branches: `docs/307-tooling` (this branch, renamed, carrying the spec commits), `docs/307-moves`, `docs/307-relink`, `docs/307-rules`.
 
 ## Global Constraints
 
@@ -16,8 +18,8 @@
 * `AGENTS.md` stays at or under 8192 bytes (`AGENTS_MD_MAX_BYTES`; 8073 today, so every AGENTS.md edit is roughly net zero). Each `SKILL.md` stays under 500 words (`SKILL_MAX_WORDS`; `recording-findings` is at 495).
 * No new runtime or dev dependency for parsing: frontmatter is a `---` block of `key: value` scalars read with the stdlib.
 * Work folder path: `work/<YYYY-MM>/<issue>_<slug>/` with the bare issue number (`307_docs-streamline`); issue-less folders are `work/<YYYY-MM>/<slug>/`. Slugs match `^[a-z0-9]+(-[a-z0-9]+)*$`.
-* README frontmatter: `title`, `started` (ISO date), `outcome` (string, may be empty), and exactly one of `issue` (int) or `status` (only `landed`).
-* Research note frontmatter: `summary`, one sentence, at most 200 characters.
+* README frontmatter: `title`, `started` (ISO date), `outcome` (string, may be empty), and exactly one of `issue` (int) or `status` (`landed` or `abandoned`).
+* Research note frontmatter: `summary`, one sentence, at most 200 characters. A note's rejected hypotheses sit under a heading whose text is exactly `Ruled out`.
 * Size budget: 20 KB (20480 bytes) for evergreen markdown.
 * Python files follow the repo pattern: module docstring with a `Usage:` line, `from __future__ import annotations`, scripts in `python/scripts/` loaded by tests through `importlib.util.spec_from_file_location` (as `tests/test_superset_all_script.py` does), library code in `python/stunt_reel/`. Docs tests set `pytestmark = pytest.mark.docs`.
 * Files are LF (`.editorconfig`); `move_docs.py` preserves each file's bytes apart from rewritten paths.
@@ -28,7 +30,7 @@
 1. **Reference-style link definitions** (`[label]: ../process/plans/x.md`) pointing at a moved file must be rewritten like inline links; a reader expects every link form to survive the move. Test in Task 7.
 2. **Links between two moved files**, and links to a moved *directory* (`[aircraft/](../parity/aircraft/)`), must resolve after both ends move. Test in Task 7.
 3. **`gh` missing or not signed in** (cloud sessions, CI) must leave `work list` and `doc-health` working, with status shown as unknown and one note on stderr, not a traceback. Test in Tasks 3 and 6.
-4. **A "Ruled out" section written as a bold lead-in** (`**Ruled out:**`, the form `research/README.md` § Note shape shows) rather than a heading must still count as an allowed context for links into `work/`. Test in Task 5.
+4. **Lines inside fenced code blocks** (a shell comment such as `# 2026-11-06 sweep`, a `## Ruled out` inside a quoted Markdown sample) must not count as headings: not flagged as session-style, not opening a Ruled out section. Test in Tasks 5 and 6.
 5. **Fragments in links from `work/`** into a note whose heading was later renamed must not fail the check (file-level only), while a fragment in a link *into* `work/` that names no heading must fail. Test in Task 5.
 
 ---
@@ -79,7 +81,7 @@ def test_malformed_blocks_raise(text):
 - Consumes: `read_frontmatter`, `FrontmatterError` (Task 1).
 - Produces:
   - `WORK_ROOT = REPO_ROOT / "work"`
-  - `@dataclass(frozen=True) class WorkFolder: path: Path; month: str; issue: int | None; slug: str; title: str; started: date; outcome: str; status: Literal["landed"] | None`
+  - `@dataclass(frozen=True) class WorkFolder: path: Path; month: str; issue: int | None; slug: str; title: str; started: date; outcome: str; status: Literal["landed", "abandoned"] | None`
   - `class WorkFolderError(ValueError)`
   - `folder_name(issue: int | None, slug: str) -> str`
   - `parse_folder(path: Path) -> WorkFolder` (raises `WorkFolderError`)
@@ -95,7 +97,8 @@ def test_folder_name_is_bare_issue_then_slug():
 def test_parses_an_issue_folder(tmp_path): ...      # work/2026-11/307_docs-streamline/README.md with title, started 2026-11-07, issue 307
     # assert folder.issue == 307 and folder.status is None and folder.month == "2026-11"
 
-def test_parses_an_issue_less_landed_folder(tmp_path): ...   # status: landed, no issue -> issue None, status "landed"
+@pytest.mark.parametrize("status", ["landed", "abandoned"])
+def test_parses_an_issue_less_folder(tmp_path, status): ...   # no issue -> issue None, status as given
 
 @pytest.mark.parametrize("problem", [
     "both issue and status", "neither issue nor status", "status: active",
@@ -107,7 +110,7 @@ def test_invalid_folders_raise(tmp_path, problem): ...
 
 - [ ] **Step 2: Write the docs test** in `tests/test_work_folders.py`: `pytestmark = pytest.mark.docs`; `test_every_work_folder_is_valid` calls `scan()` and asserts no `WorkFolderError`, listing each bad folder and its reason; `test_month_directories_hold_only_work_folders` asserts every entry under `work/<YYYY-MM>/` is a directory and every top-level entry of `work/` is `README.md` or a `YYYY-MM` directory.
 - [ ] **Step 3: Run both test files**; expected: FAIL.
-- [ ] **Step 4: Implement `work_items.py`.** A folder is the directory under `work/<YYYY-MM>/`; its name matches `^(\d+)_([a-z0-9-]+)$` (issue) or `^([a-z0-9-]+)$` (issue-less, `status: landed` required).
+- [ ] **Step 4: Implement `work_items.py`.** A folder is the directory under `work/<YYYY-MM>/`; its name matches `^(\d+)_([a-z0-9-]+)$` (issue) or `^([a-z0-9-]+)$` (issue-less, `status: landed` or `status: abandoned` required).
 - [ ] **Step 5: Run the tests**; expected: PASS (the repo's only folder, `work/2026-11/307_docs-streamline/`, is valid).
 - [ ] **Step 6: Commit** `feat(tooling): model work folders and check every one under work/`.
 
@@ -140,7 +143,7 @@ def test_new_without_issue_files_one_after_checking_the_repo(tmp_path): ...
 def test_new_refuses_an_existing_folder(tmp_path): ...
 
 def test_list_maps_issue_states(tmp_path, capsys): ...
-    # OPEN -> active, CLOSED/COMPLETED -> landed, CLOSED/NOT_PLANNED -> abandoned, issue-less -> landed
+    # OPEN -> active, CLOSED/COMPLETED -> landed, CLOSED/NOT_PLANNED -> abandoned, issue-less -> its own status
 
 def test_list_without_gh_shows_unknown_and_one_note(tmp_path, capsys): ...
     # runner raises FileNotFoundError; status column "unknown"; stderr has exactly one "gh unavailable" line; exit 0
@@ -184,7 +187,7 @@ and a docs-marked `test_research_map_is_current` asserting `render_map(REPO_ROOT
 
 - [ ] **Step 2: Run them**; expected: FAIL.
 - [ ] **Step 3: Implement `render_map`.** Header line: `<!-- Generated by mise run fix from each note's summary; do not edit. -->`, then `# Research map`, then one `##` section per folder (top-level notes such as `handbook.md` under `## research`), notes sorted by path. A note whose frontmatter raises `FrontmatterError` is listed as `no summary yet` too; doc-health reports it.
-- [ ] **Step 4: Run `mise run knowledge-map -- --write`**, then the tests; expected: PASS. Every note reads "no summary yet" until PR 5.
+- [ ] **Step 4: Run `mise run knowledge-map -- --write`**, then the tests; expected: PASS. Notes read "no summary yet" until Task 8 adds them.
 - [ ] **Step 5: Commit** `feat(tooling): generate research/MAP.md from note summaries`.
 
 ### Task 5: Link rules
@@ -204,8 +207,8 @@ and a docs-marked `test_research_map_is_current` asserting `render_map(REPO_ROOT
 
 ```python
 def test_provenance_and_ruled_out_links_into_work_are_allowed(tmp_path): ...
-    # a note with "_Source: [e](../../work/2026-11/x/journal.md#e)._" and a link under "## Ruled out"
-    # and a link after a "**Ruled out:**" lead-in -> all allowed
+    # a note with "_Source: [e](../../work/2026-11/x/journal.md#e)._" and a link under "## Ruled out" -> both allowed;
+    # a "## Ruled out" quoted inside a fenced block opens no section (Review Focus 4)
 
 def test_other_links_from_evergreen_files_into_work_fail(tmp_path): ...   # a link in a body paragraph -> not allowed
 
@@ -222,7 +225,7 @@ def test_no_docs_superpowers_directory():                      # (REPO_ROOT / "d
 ```
 
 - [ ] **Step 2: Run `mise run test-docs`**; expected: FAIL.
-- [ ] **Step 3: Implement.** Refactor `test_markdown_links_resolve` around one helper `_check_link(source, target) -> str | None` so the `work/` rules live in one place. A link is in an allowed context when its line, stripped, starts with `_Source:` or `*Source:`, or when it sits under a heading whose text is `Ruled out` (until the next heading of the same or higher level), or in the list or paragraph that follows a `**Ruled out:**` lead-in (until the next blank line followed by a non-list line, or the next heading). `CODE_DOC_PATH_REGEX` widens to `(?:research|docs|work)/`. Keep `test_sources_of_truth_do_not_link_into_process_docs` and `PROCESS_POINTERS` unchanged in this PR: `docs/process/` still exists until PR 2.
+- [ ] **Step 3: Implement.** Refactor `test_markdown_links_resolve` around one helper `_check_link(source, target) -> str | None` so the `work/` rules live in one place. A link is in an allowed context when its line, stripped, starts with `_Source:` or `*Source:`, or when it sits under a heading whose text is `Ruled out` (until the next heading of the same or higher level); headings are read from `prose()`, so fenced blocks are skipped. `CODE_DOC_PATH_REGEX` widens to `(?:research|docs|work)/`. Keep `test_sources_of_truth_do_not_link_into_process_docs` and `PROCESS_POINTERS` unchanged in this PR: `docs/process/` still exists until PR 2.
 - [ ] **Step 4: Run `mise run test-docs`**; expected: PASS.
 - [ ] **Step 5: Commit** `test(docs): links into work/ only from provenance and Ruled out; .ignore hides work/`.
 
@@ -248,6 +251,7 @@ def test_flags_a_research_note_without_summary(tmp_path): ...
     ("## 4.1 Second Round: Seven Questions", True), ("## 2026-11-06 sweep", True),
     ("### Update: lavapipe", True), ("### Dependency updates", False), ("## Ruled out", False)])
 def test_session_style_headings(tmp_path, heading, flagged): ...
+def test_lines_in_fenced_blocks_are_not_headings(tmp_path): ...   # Review Focus 4
 def test_flags_an_open_issue_untouched_for_14_days(tmp_path): ...     # last commit date from `git log -1 --format=%cs -- <folder>`
 def test_flags_a_closed_issue_with_empty_outcome(tmp_path): ...
 def test_without_gh_skips_issue_checks_with_a_note(tmp_path, capsys): ...
@@ -293,14 +297,24 @@ def test_dry_run_changes_nothing(tmp_path): ...
 - [ ] **Step 4: Run the tests and `mise run test-docs`**; expected: PASS.
 - [ ] **Step 5: Commit** `feat(tooling): move docs and rewrite every link to them with mise run move-docs`.
 
-### Task 8: `work/README.md` and PR 1 wrap-up
+### Task 8: Summaries on every research note
+
+- [ ] **Step 1: Dispatch Opus subagents** (one per research folder) each with: the note paths, the 200-character limit, "one sentence saying what the note establishes, present tense, no dates", and output as `path<TAB>summary` lines.
+- [ ] **Step 2: Review the drafts** for claims broader than the note, then insert each as a frontmatter block at the top of its note. Convert the bold "Ruled out" lead-ins that open a section (`rg -n '^\*\*Ruled out\*\*$|^- \*\*Ruled out' research`) to `## Ruled out` headings.
+- [ ] **Step 3: Run `mise run fix`** (regenerates `research/MAP.md`) and `mise run check`; expected: PASS; `mise run doc-health` reports no missing summary.
+- [ ] **Step 4: Commit** `docs(research): a one-line summary on every note and the generated map (#307)`.
+
+### Task 8b: `work/README.md` and PR 1 wrap-up
 
 **Files:**
 - Create: `work/README.md`
+- Modify: `.coderabbit.yaml` (`path_filters` gains `!work/**`)
 
 - [ ] **Step 1: Write `work/README.md`** under 6 KB: the one rule (spec section 3), the layout and naming (section 3.1), frontmatter fields, the lifecycle and correction rule, journal entry fields, search (`path: work/`, `--no-ignore-dot`), the image rules copied from `research/images/README.md` (paths become `work/<month>/<folder>/images/<film>-<tick>-<topic>.png`), and the CC BY 4.0 license line as `research/README.md` words it.
-- [ ] **Step 2: Run `mise run check`**; expected: PASS. Run `mise run doc-health` and keep its output for the PR body.
-- [ ] **Step 3: Commit** `docs(work): describe work folders`, then `gh stack init claude/docs-reorganization-agent-85ba65` and open the PR "Docs streamline 1/5: tooling (#307)".
+- [ ] **Step 2: Add `!work/**`** to `.coderabbit.yaml` `path_filters`.
+- [ ] **Step 3: Run `mise run check`**; expected: PASS. Run `mise run doc-health` and keep its output for the PR body.
+- [ ] **Step 4: Fresh-reviewer read** of the PR's `research/` changes (the summaries; rule 7).
+- [ ] **Step 5: Commit** `docs(work): describe work folders`, then `git branch -m docs/307-tooling`, `gh stack init docs/307-tooling`, and open the PR "Docs streamline 1/4: tooling (#307)".
 
 ---
 
@@ -317,9 +331,9 @@ def test_dry_run_changes_nothing(tmp_path): ...
   * `architecture-deepening/` moves whole to `work/2026-10/architecture-deepening/`; `docs/process/research/windows-sandbox-integrity-label-2026-11-01.md` to `work/2026-11/windows-sandbox-integrity-label/`; `TEAM_SHEET.md` to `work/<first-commit month>/team-sheet/`.
   * `research/images/2026-11-07-72028d1/` to `work/2026-11/lavapipe-nan-shade/images/`; `research/parity/aircraft/` to the aircraft-render folder's `images/`; `research/images/README.md` is deleted (its rules are in `work/README.md`).
   * `research/parity/log.md` to `work/2026-10/parity-log/log.md`, folder `status = "landed"`, started 2026-10-21, title "Parity results log, 2026-10-21 to 2026-11-07", outcome "Retired for journal entries and expected scores in references.toml (#307)".
-  * State: `landed` when the Status line matches `implemented|landed|closed|done|complete`, `in-flight` for the five the spec names, else `unknown`; `outcome` is the Status line's first sentence, at most 200 characters.
+  * State: `landed` when the Status line matches `implemented|landed|closed|done|complete`, `in-flight` for the five the spec names (the user may mark any `landed` or `abandoned`; `capture-store-deepening` is cited by two ADRs), else `unknown`; `outcome` is the Status line's first sentence, at most 200 characters.
 - [ ] **Step 2: Run it** (`mise exec -- uv run python work/2026-11/307_docs-streamline/plan_moves.py`) and print the state table.
-- [ ] **Step 3: Checkpoint with the user.** Show the table; the user sets each `unknown`, and approves filing an issue for each in-flight plan without one (`vault-parity-films` uses #242). Record the issue numbers in `moves.toml` (`issue = N`, folder `<N>_<slug>`).
+- [ ] **Step 3: Checkpoint with the user.** Show the table; the user sets each `unknown` to `landed`, `abandoned` or in flight, and approves filing an issue for each in-flight plan without one (`vault-parity-films` uses #242). Record the issue numbers in `moves.toml` (`issue = N`, folder `<N>_<slug>`).
 - [ ] **Step 4: Commit** `docs(work): plan the docs/process moves (#307)`.
 
 ### Task 10: Apply the moves
