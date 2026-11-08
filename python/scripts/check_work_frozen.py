@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Reject a file added to a frozen work folder, or a change to its README's ``outcome`` line.
 
 A work folder is frozen once the PR that finishes its work writes the README ``outcome``; after
