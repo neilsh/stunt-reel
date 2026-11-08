@@ -115,6 +115,10 @@ run = "uv run python python/scripts/pr_threads.py"
 description = "Start a work item's folder, work/<YYYY-MM>/<issue>_<slug>/, filing its GitHub issue first unless --issue names one; or list every work folder with its issue's status (mise run work -- new <slug> [--issue N] | list [--status active|landed|abandoned])"
 run = "uv run python python/scripts/work.py"
 
+[tasks.knowledge-map]
+description = "Rewrite research/MAP.md, every research note listed by folder with its summary: frontmatter, or exit 1 naming it when it is stale (mise run knowledge-map -- --write | --check [--root DIR]); mise run fix runs --write"
+run = "uv run python python/scripts/knowledge_map.py"
+
 [tasks.build-at]
 depends = ["ensure"]
 description = "Build stunt-cli from a git revision with an isolated target dir (mise run build-at -- <rev> <out>)"
@@ -330,13 +334,15 @@ depends = ["fmt-check-rust", "fmt-check-py"]
 # `fmt-check-py` and `lint-py` failures (gate.py FIXABLE_STEPS) name this task. It reuses fmt-rust
 # and fmt-py and runs ruff over the same `.` as lint-py, so it fixes exactly what the gate checks.
 # Ruff's lint fixes run before `ruff format` because they can change layout. `--exit-zero` keeps
-# an unfixable finding from stopping the format; the next `check-py` still reports it.
+# an unfixable finding from stopping the format; the next `check-py` still reports it. Last, it
+# regenerates research/MAP.md, which the docs test test_research_map_is_current checks.
 [tasks.fix]
-description = "Apply every automatic fix the gate's lint and format steps can (ruff check --fix, ruff format, cargo fmt)"
+description = "Apply every automatic fix the gate's lint and format steps can (ruff check --fix, ruff format, cargo fmt) and regenerate research/MAP.md"
 run = [
   { task = "fmt-rust" },
   "uv run ruff check --fix --exit-zero .",
   { task = "fmt-py" },
+  "uv run python python/scripts/knowledge_map.py --write",
 ]
 
 [tasks.typecheck]
