@@ -72,3 +72,17 @@ ssim = 0.7990838
 iou = 0.63509184
 commit = "4170cc3134a154eda276131d7c3251717baf6420"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
+
+[traintnl]
+film = "vault-traintnl"
+sha256 = "dd41ee03e45f03915843617962ce85ee6341c5f5502d5ffd8ad6e8518f737a26"
+all_sha256 = "076750bacd04dad5eece4923fc6de436b674f59300c669b39c1cb347ca5b64fb"
+makeone = "unpatched"
+playone = "unpatched"
+reason = "captured 2026-11-07 on the unpatched builds, the builds CTRY and INTRO use, so every reference film shares one; the move to patch3 is #300"
+
+[traintnl.expected.gpu]
+ssim = 0.8513718
+iou = 0.965586
+commit = "4170cc3134a154eda276131d7c3251717baf6420"
+adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
