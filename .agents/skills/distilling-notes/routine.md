@@ -1,6 +1,6 @@
 # Gardening routine
 
-Part of the [`distilling-notes`](SKILL.md) skill. The gardening routine is a cloud scheduled task, run daily at 06:00 Pacific on the repo's cloud environment, whose prompt is the block below. Change the prompt here first, then in the routine, so the two agree.
+Part of the [`distilling-notes`](SKILL.md) skill. The gardening routine is a cloud scheduled task, run daily at 06:00 Pacific on the repo's cloud environment, whose prompt tells it to carry out the block below. A change to the block reaches the next run once it is on `main`.
 
 ## Prompt
 
@@ -32,8 +32,10 @@ commands.
    (AGENTS.md, Committing rule 7). Fix or restore each claim it reports before you
    commit.
 
-5. Run `lychee --no-progress --exclude-path work .` and list each dead external link
-   (http or https) with the file that holds it. If lychee is not installed, say so
+5. Run `mise run links` and list each dead external link (a 404 or 410, or a host that
+   does not resolve) with the file that holds it. This session's network admits only a
+   trusted list of hosts, so list a link its proxy refused (a 403 from the proxy, or a
+   refused connection) separately as unchecked, never as dead. If it cannot run, say why
    instead of listing.
 
 6. From the doc-health output, list the stale work folders: each stale-issue and

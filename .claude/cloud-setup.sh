@@ -43,7 +43,7 @@ fi
 
 # The pinned binary, not whichever mise comes first on PATH.
 "$MISE_BIN" trust
-"$MISE_BIN" install rust python uv prek github:kaitai-io/kaitai_struct_compiler
+"$MISE_BIN" install rust python uv prek lychee github:kaitai-io/kaitai_struct_compiler
 "$MISE_BIN" exec -- uv sync --locked --all-groups
 
 # Lavapipe, as CI renders (ADR 0006). Inside the hook stdin is the hook's JSON, so apt reads

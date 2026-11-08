@@ -28,6 +28,9 @@ uv = "0.13.1"
 # Runs the commit hooks (`mise run pre-commit`); they call mise tasks, never their own tools (ADR 0026).
 prek = "0.5.5"
 
+# Checks the docs' external links; the gardening routine runs it (ADR 0041).
+lychee = "0.24.2"
+
 # JVM + Kaitai Struct Compiler for executing research/formats/**/*.ksy during verification.
 # Java is required only to compile .ksy schemas; generated parsers run on the
 # pure-Python kaitaistruct runtime.
@@ -88,7 +91,7 @@ run = "python python/scripts/worktree_init.py init"
 env = { PYTHONPATH = "{{config_root}}/python", STUNT_CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.ensure]
-description = "Seed an empty target/ and set core.hooksPath, under a lock; every task that builds Rust runs it first (ADR 0036)"
+description = "Seed an empty target/ and set core.hooksPath and blame.ignoreRevsFile, under a lock; every task that builds Rust runs it first (ADR 0036)"
 hide = true
 quiet = true
 run = "python python/scripts/worktree_init.py ensure"
@@ -122,6 +125,10 @@ run = "uv run python python/scripts/knowledge_map.py"
 [tasks.doc-health]
 description = "Report, worst first and never failing: evergreen docs over 20 KB, research notes without a summary:, session-style headings, work folders that break the layout, and work folders whose issue is open with no commit in 14 days or closed with no outcome (gh needed for those two; mise run doc-health [-- --json] [--root DIR])"
 run = "uv run python python/scripts/doc_health.py"
+
+[tasks.links]
+description = "Check every external (http or https) link in the docs with lychee, listing the dead ones; work/ is skipped through .ignore; needs the network (mise run links)"
+run = "lychee --no-progress --scheme http --scheme https ."
 
 [tasks.move-docs]
 description = "Apply a moves file: --phase move runs git mv for each [[move]], writes each [[folder]] README and rewrites every link and repo path to the moved files in the files that stay; --phase inside then rewrites the moved files' own links; both print the old-to-new table for the PR body (mise run move-docs -- apply <moves.toml> --phase move|inside [--dry-run] [--root DIR])"
