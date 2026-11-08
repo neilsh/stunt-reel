@@ -574,3 +574,23 @@ def test_game_arg_records_a_dotted_path_inside_the_checkout_relative(
 ) -> None:
     dotted = dataroot.REPO_ROOT / "corpus" / ".." / "corpus" / "stuntisl"
     assert script.game_arg(dotted) == "corpus/stuntisl"
+
+
+def test_the_binary_extracts_where_the_recorded_game_root_resolves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`builds/...` and `corpus/...` live in the data root, which a worktree has no link to."""
+    module = _load()
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    dataroot.data_root.cache_clear()
+    (tmp_path / "builds" / "unpatched").mkdir(parents=True)
+    cwds: list[Path] = []
+    monkeypatch.setattr(module.link, "ensure_binary", lambda: None)
+
+    def extract(*_args: object, cwd: Path) -> None:
+        cwds.append(cwd)
+
+    monkeypatch.setattr(module.link, "extract_manifest", extract)
+    for game in ("builds/unpatched", "tests/fixtures"):
+        module.extract_with_binary(tmp_path / "A.ALL", tmp_path / "A.FLM", game, "0" * 64, tmp_path)
+    assert cwds == [tmp_path.resolve(), module.dataroot.REPO_ROOT]

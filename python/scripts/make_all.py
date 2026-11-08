@@ -46,9 +46,14 @@ Extract = Callable[[Path, Path, str, str, Path], None]
 def extract_with_binary(
     archive: Path, flm: Path, game: str, makeone_sha256: str, out: Path
 ) -> None:
-    """The default :data:`Extract`: ``stuntreel link extract``, run in the checkout."""
+    """The default :data:`Extract`: ``stuntreel link extract``, run where *game* resolves.
+
+    That is the data root when *game* names a directory there, else the checkout.
+    """
     link.ensure_binary()
-    link.extract_manifest(archive, flm, game, makeone_sha256, out, cwd=dataroot.REPO_ROOT)
+    root = dataroot.data_root()
+    cwd = root if (root / game).is_dir() else dataroot.REPO_ROOT
+    link.extract_manifest(archive, flm, game, makeone_sha256, out, cwd=cwd)
 
 
 def parse_args() -> argparse.Namespace:
