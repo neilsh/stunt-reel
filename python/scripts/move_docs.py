@@ -32,6 +32,7 @@ command, ``2`` for bad arguments.
 from __future__ import annotations
 
 import argparse
+import os
 import posixpath
 import re
 import shutil
@@ -526,12 +527,18 @@ def _tracked(root: Path) -> list[str]:
     return [name for name in _git(root, "ls-files", "-z").split("\0") if name]
 
 
+#: Variables a hook or a shell may leave set that point git at another repository or index.
+_GIT_LOCATION = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"})
+
+
 def _git(root: Path, *args: str) -> str:
+    """``git args`` on *root*'s own repository and index."""
     git = shutil.which("git")
     if git is None:
         raise MovesError("git is not on PATH")
+    env = {key: value for key, value in os.environ.items() if key not in _GIT_LOCATION}
     done = subprocess.run(  # noqa: S603 - fixed git arguments
-        [git, *args], cwd=root, capture_output=True, encoding="utf-8", check=True
+        [git, *args], cwd=root, env=env, capture_output=True, encoding="utf-8", check=True
     )
     return done.stdout
 

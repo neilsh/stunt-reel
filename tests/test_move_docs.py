@@ -361,6 +361,31 @@ def test_move_phase_leaves_moved_files_bytes_identical(tmp_path: Path) -> None:
 
 
 @needs_git
+@pytest.mark.parametrize("variable", _GIT_LOCATION_ENV)
+def test_git_variables_naming_another_repository_are_ignored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, variable: str
+) -> None:
+    (tmp_path / "root").mkdir()
+    (tmp_path / "other").mkdir()
+    root = _repo(tmp_path / "root", TREE)
+    other = _repo(tmp_path / "other", {"x.md": "# X\n"})
+    elsewhere = {
+        "GIT_DIR": other / ".git",
+        "GIT_WORK_TREE": other,
+        "GIT_INDEX_FILE": other / ".git" / "index",
+        "GIT_COMMON_DIR": other / ".git",
+    }
+    monkeypatch.setenv(variable, str(elsewhere[variable]))
+    assert _apply(root, "move") == 0
+    monkeypatch.delenv(variable)
+    renames = _git(root, "diff", "--cached", "-M100%", "--name-status", "HEAD").splitlines()
+    assert sorted(line for line in renames if line.startswith("R")) == sorted(
+        f"R100\t{old}\t{new}" for old, new in MOVED.items()
+    )
+    assert _git(other, "status", "--porcelain") == ""
+
+
+@needs_git
 def test_move_phase_rewrites_every_tracked_text_file_that_did_not_move(tmp_path: Path) -> None:
     root = _repo(tmp_path, TREE)
     assert _apply(root, "move") == 0
