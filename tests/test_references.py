@@ -148,8 +148,9 @@ def _row(root: Path, *fields: str) -> None:
 
 def test_the_committed_rows_name_valid_builds() -> None:
     for film in references.reference_films(REPO_ROOT):
-        builds = references.read_reference(REPO_ROOT, film).builds
-        assert {builds.makeone, builds.playone} <= set(references.BUILD_NAMES)
+        reference = references.read_reference(REPO_ROOT, film)
+        assert {reference.builds.makeone, reference.builds.playone} <= set(references.BUILD_NAMES)
+        assert set(reference.expected) <= set(references.RENDERER_CLASSES)
 
 
 def test_an_omitted_build_is_patch3(tmp_path: Path) -> None:
@@ -306,3 +307,77 @@ def test_read_pin_finds_the_row_by_slug(tmp_path: Path) -> None:
     _row(tmp_path, PATCH3, f'all_sha256 = "{PIN}"')
     assert references.read_pin(tmp_path, "vault-ctry") == PIN
     assert references.read_pin(tmp_path, "vault-land") is None
+
+
+def _expected(renderer: str = "gpu", **changes: str | None) -> list[str]:
+    """A ``[ctry.expected.<renderer>]`` table with *changes* to its fields; ``None`` drops one."""
+    fields = {
+        "ssim": "0.8725",
+        "iou": "0.9897",
+        "commit": '"740c608"',
+        "adapter": '"NVIDIA GeForce RTX 4070"',
+    } | changes
+    lines = (f"{key} = {value}" for key, value in fields.items() if value is not None)
+    return [f"[ctry.expected.{renderer}]", *lines]
+
+
+def test_a_row_reads_its_expected_scores_and_noise_sigma(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3, "noise_sigma = 0.000303", *_expected())
+    reference = references.read_reference(tmp_path, "ctry")
+    assert dict(reference.expected) == {
+        "gpu": references.Expected(0.8725, 0.9897, "740c608", "NVIDIA GeForce RTX 4070")
+    }
+    assert "lavapipe" not in reference.expected
+    assert reference.noise_sigma == 0.000303
+
+
+def test_a_row_without_expected_scores_reads_empty(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3)
+    reference = references.read_reference(tmp_path, "ctry")
+    assert dict(reference.expected) == {}
+    assert reference.noise_sigma is None
+
+
+def test_the_expected_scores_are_read_only(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3, *_expected())
+    expected = references.read_reference(tmp_path, "ctry").expected
+    with pytest.raises(TypeError):
+        expected["lavapipe"] = expected["gpu"]  # type: ignore[index]
+
+
+def test_an_integer_score_reads_as_a_float(tmp_path: Path) -> None:
+    """TOML writes a whole number without a point; ``1`` is a score as ``1.0`` is, a bool is not."""
+    _row(tmp_path, PATCH3, "noise_sigma = 1", *_expected(ssim="1", iou="0"))
+    reference = references.read_reference(tmp_path, "ctry")
+    scores = reference.expected["gpu"]
+    assert (scores.ssim, scores.iou, reference.noise_sigma) == (1.0, 0.0, 1.0)
+    assert all(type(value) is float for value in (scores.ssim, scores.iou, reference.noise_sigma))
+
+
+@pytest.mark.parametrize(
+    ("lines", "field"),
+    [
+        (_expected("warp"), "expected.warp"),
+        (_expected(ssim=None), "expected.gpu.ssim"),
+        (_expected(ssim='"0.8725"'), "expected.gpu.ssim"),
+        (_expected(ssim="1.5"), "expected.gpu.ssim"),
+        (_expected(ssim="true"), "expected.gpu.ssim"),
+        (_expected(iou="-0.1"), "expected.gpu.iou"),
+        (_expected(commit='"xyz"'), "expected.gpu.commit"),
+        (_expected(commit='"740C608"'), "expected.gpu.commit"),
+        (_expected(adapter='""'), "expected.gpu.adapter"),
+        (_expected(noise_sigma="0.1"), "expected.gpu.noise_sigma"),
+        (["[ctry.expected]", 'gpu = "x"'], "expected.gpu"),
+        (["expected = 3"], "expected"),
+        (["noise_sigma = 0"], "noise_sigma"),
+        (["noise_sigma = -1"], "noise_sigma"),
+    ],
+)
+def test_a_malformed_expected_entry_is_named(tmp_path: Path, lines: list[str], field: str) -> None:
+    _row(tmp_path, PATCH3, *lines)
+    with pytest.raises(references.ReferenceCaptureError) as refused:
+        references.read_reference(tmp_path, "ctry")
+    message = str(refused.value)
+    assert str(tmp_path / parity_layout.REFERENCES_FILE) in message
+    assert "[ctry]" in message
+    assert field in message

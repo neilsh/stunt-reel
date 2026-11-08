@@ -1,6 +1,11 @@
 # The capture parity scores each film against (ADR 0028, ADR 0029): the film's one frame capture,
 # pinned by the hash of its content; promoting a new reference is an edit of this file in a
 # reviewed commit.
+#
+# A row's `[<film>.expected.<class>]` table holds the scores the film is expected to reach on one
+# renderer class, `gpu` (a hardware adapter) or `lavapipe` (a CPU one): `ssim` and `iou`, a
+# report's `mean_ssim_scored` and `mean_iou_scored`, the `commit` measured and the `adapter` name
+# it rendered on. A PR that adopts a change updates the table of the class it measured.
 
 [ctry]
 film = "vault-ctry"
