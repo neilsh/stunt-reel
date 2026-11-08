@@ -50,8 +50,10 @@ def _work_folder(root: Path, issue: int = 307, outcome: str = '""') -> None:
     _write(root, f"work/2026-11/{issue}_docs-streamline/README.md", readme)
 
 
-def _gh(state: str, reason: str = "") -> str:
-    return json.dumps([{"number": 307, "state": state, "stateReason": reason}])
+def _gh(state: str, reason: str | None = None, numbers: tuple[int, ...] = (307,)) -> str:
+    """Issues *numbers* as `gh api --jq` prints them, one JSON object a line."""
+    issue = {"state": state, "state_reason": reason, "pull_request": None}
+    return "".join(json.dumps({"number": number, **issue}) + "\n" for number in numbers)
 
 
 class FakeRunner:
@@ -182,7 +184,7 @@ def test_flags_an_open_issue_untouched_for_14_days(
     tmp_path: Path, last_commit: str, flagged: bool
 ) -> None:
     _work_folder(tmp_path)
-    run = FakeRunner(_gh("OPEN"), f"{last_commit}\n")
+    run = FakeRunner(_gh("open"), f"{last_commit}\n")
     expected = (
         [
             (
@@ -201,23 +203,23 @@ def test_flags_an_open_issue_untouched_for_14_days(
 
 def test_an_open_issue_whose_folder_was_never_committed_is_not_stale(tmp_path: Path) -> None:
     _work_folder(tmp_path)
-    assert doc_health.collect(tmp_path, FakeRunner(_gh("OPEN"), ""), TODAY) == []
+    assert doc_health.collect(tmp_path, FakeRunner(_gh("open"), ""), TODAY) == []
 
 
 @pytest.mark.parametrize(
     ("reason", "outcome", "flagged"),
     [
-        ("COMPLETED", '""', True),
-        ("NOT_PLANNED", '"  "', True),
-        ("COMPLETED", "Landed in #310.", False),
+        ("completed", '""', True),
+        ("not_planned", '"  "', True),
+        ("completed", "Landed in #310.", False),
     ],
 )
 def test_flags_a_closed_issue_with_empty_outcome(
     tmp_path: Path, reason: str, outcome: str, flagged: bool
 ) -> None:
     _work_folder(tmp_path, outcome=outcome)
-    run = FakeRunner(_gh("CLOSED", reason), AssertionError("a closed issue needs no git log"))
-    status = "abandoned" if reason == "NOT_PLANNED" else "landed"
+    run = FakeRunner(_gh("closed", reason), AssertionError("a closed issue needs no git log"))
+    status = "abandoned" if reason == "not_planned" else "landed"
     expected = [(WORK_FOLDER, f"issue #307 is closed ({status}) and outcome is empty")]
     assert _found(doc_health.collect(tmp_path, run, TODAY), "missing-outcome") == (
         expected if flagged else []
@@ -246,8 +248,7 @@ def test_a_failing_git_log_skips_the_stale_check_with_a_note(
 ) -> None:
     _work_folder(tmp_path)
     _work_folder(tmp_path, issue=308)
-    gh = json.dumps([{"number": n, "state": "OPEN", "stateReason": ""} for n in (307, 308)])
-    run = FakeRunner(gh, subprocess.CalledProcessError(128, ["git"]))
+    run = FakeRunner(_gh("open", numbers=(307, 308)), subprocess.CalledProcessError(128, ["git"]))
     assert doc_health.collect(tmp_path, run, TODAY) == []
     assert capsys.readouterr().err == (
         "doc-health: git log failed, so the stale-issue check was skipped\n"
