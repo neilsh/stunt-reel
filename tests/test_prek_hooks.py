@@ -32,18 +32,12 @@ GIT = shutil.which("git")
 #: `_run` kills a timed-out process tree differently on Windows.
 pytestmark = pytest.mark.windows
 
-#: Variables that point git at another repository. Git sets them while it runs a hook, so a
-#: suite started from one would otherwise configure and commit in the outer repository.
-_GIT_LOCATION_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")
-
 #: A prek configuration of one built-in that parses the staged file.
 _CONFIG = '[[repos]]\nrepo = "builtin"\n\n[[repos.hooks]]\nid = "check-toml"\n'
 
 
 @pytest.fixture(autouse=True)
-def _isolate_git(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in _GIT_LOCATION_ENV:
-        monkeypatch.delenv(name, raising=False)
+def _no_inherited_skip(monkeypatch: pytest.MonkeyPatch) -> None:
     # A suite run from inside a prek hook inherits its SKIP list.
     monkeypatch.delenv("SKIP", raising=False)
 

@@ -20,7 +20,7 @@ from stunt_reel.work_items import parse_folder
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "python" / "scripts"
 GIT = shutil.which("git")
-#: Variables that point git at another repository; a suite started from a hook has them set.
+#: Variables that point git at another repository, which the move phase must ignore.
 _GIT_LOCATION_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")
 
 needs_git = pytest.mark.skipif(GIT is None, reason="git is not on PATH")
@@ -121,12 +121,6 @@ MOVED = {
     "research/parity/hangar/x.png": "work/2026-11/a/images/x.png",
     "research/parity/hangar/sub/y.png": "work/2026-11/a/images/sub/y.png",
 }
-
-
-@pytest.fixture(autouse=True)
-def _isolate_git(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in _GIT_LOCATION_ENV:
-        monkeypatch.delenv(name, raising=False)
 
 
 def _git(repo: Path, *args: str) -> str:
