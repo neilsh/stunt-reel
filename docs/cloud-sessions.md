@@ -15,7 +15,7 @@ standard input, never on argv).
 
 ## The cloud environment
 
-In claude.ai, the cloud environment for this repo:
+In claude.ai, the cloud environment for this repo is `stunt-reel-cloud`:
 
 - **Environment variables:** `R2_ACCOUNT_ID`, not a secret; `R2_ACCESS_KEY_ID` and
   `R2_SECRET_ACCESS_KEY`, the token's key pair; and `STUNT_DATA_ROOT`, an absolute path
