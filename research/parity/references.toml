@@ -6,8 +6,8 @@
 # commit, filed under its renderer class: `gpu` (any adapter wgpu does not report as a CPU) or
 # `lavapipe` (any CPU adapter, WARP included). `ssim` and `iou` are a report's `mean_ssim_scored`
 # and `mean_iou_scored`, `commit` the commit measured and `adapter` the adapter's name; drift is
-# judged only against a render on that same adapter. A PR that adopts a change updates the table
-# of the class it measured.
+# judged only against a render on an adapter of that name. A PR that adopts a change updates the
+# table of the class it measured.
 
 [ctry]
 film = "vault-ctry"
