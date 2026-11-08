@@ -14,5 +14,6 @@
 - **Method**: Each film captured on the unpatched `PLAYONE` from the unpatched `make-all` archive its manifest rebuilds, then `mise run parity` on the RTX 4070 at `740c608` and again at `4170cc3` for the `expected.gpu` tables, with the same scores. Not a renderer change; each film is scored only against its own capture, so its figures do not compare with another film's.
 - **Result**:
   - `vault-land` (`LAND.FLM`): SSIM 0.8666, IoU 0.9857, index agreement 0.723, 97 of 103 frames scored; 103 frames over film ticks 12 to 1134, archive `3420036…` ([`vault-land.toml`](../../../manifests/all/vault-land.toml)).
+  - `vault-balloon` (`BALLOON.FLM`): SSIM 0.7991, IoU 0.6351, index agreement 0.463, 107 of 108 scored; 108 frames over ticks 12 to 1190, archive `86628c5…` ([`vault-balloon.toml`](../../../manifests/all/vault-balloon.toml)).
 - **Verdict**: control (baselines).
 - **Lives in**: [`references.toml`](../../../research/parity/references.toml), each film's row and its `expected.gpu` table.

@@ -58,3 +58,17 @@ ssim = 0.8666116
 iou = 0.98567444
 commit = "4170cc3134a154eda276131d7c3251717baf6420"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
+
+[balloon]
+film = "vault-balloon"
+sha256 = "beccea9f25e002cfb78a52154b3264388c62795d5e45aac398d3077db457f45f"
+all_sha256 = "86628c55cb0126f3c9bc0f5f2ec5fe28351ba5e30caca9fe465dca6b99c1874d"
+makeone = "unpatched"
+playone = "unpatched"
+reason = "captured 2026-11-07 on the unpatched builds, the builds CTRY and INTRO use, so every reference film shares one; the move to patch3 is #300"
+
+[balloon.expected.gpu]
+ssim = 0.7990838
+iou = 0.63509184
+commit = "4170cc3134a154eda276131d7c3251717baf6420"
+adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
