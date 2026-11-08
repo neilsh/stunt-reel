@@ -12,6 +12,7 @@ commit.  Nothing here prints or chooses an exit status.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tomllib
 from typing import TYPE_CHECKING
@@ -34,12 +35,17 @@ CLASS_KEYS: Mapping[str, str] = {"hardware": "gpu", "cpu": "lavapipe"}
 #: Every comparison line is indented under its film's summary line.
 _INDENT = " " * 6
 
+#: Variables a hook or a shell may leave set that point git at another repository or index.
+_GIT_LOCATION = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"})
+
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[bytes] | None:
-    """``git -C repo args``, or ``None`` when git cannot be started."""
+    """``git -C repo args`` on *repo*'s own repository and index; ``None`` if git cannot start."""
+    env = {key: value for key, value in os.environ.items() if key not in _GIT_LOCATION}
     try:
         return subprocess.run(  # noqa: S603 - fixed git arguments
             ["git", "-C", str(repo), *args],  # noqa: S607 - git from PATH, as every task
+            env=env,
             capture_output=True,
             check=False,
         )
@@ -65,19 +71,22 @@ def _pins_at(repo: Path, commit: str, film: str) -> tuple[object, object] | None
 def changed_since(commit: str, reference: Reference, *, repo: Path = REPO_ROOT) -> str | None:
     """Why *reference*'s film may score differently in *repo* than at *commit*; ``None`` if not.
 
-    The reasons: *commit* is not in this clone (any git failure reads so); a file under
-    ``crates/`` differs from *commit*, tracked or untracked and not ignored; or the film's row
-    at *commit* is missing or pins another ``sha256`` or ``all_sha256``.
+    The reasons: *commit* is not in this clone, with the fetch that restores it (also the
+    reading when git cannot start or cannot compare ``crates/``); a file under ``crates/``
+    differs from *commit*, tracked or untracked and not ignored; or the film's row at *commit*
+    cannot be read (``git show`` fails, or the file or row is missing) or pins another
+    ``sha256`` or ``all_sha256``.
     """
     short = commit[:7]
+    absent = f"commit {short} is not in this clone: git fetch origin {commit}"
     resolved = _git(repo, "rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}")
     if resolved is None or resolved.returncode != 0:
-        return f"commit {short} is not in this clone"
+        return absent
     full = resolved.stdout.decode("ascii").strip()
     tracked = _git(repo, "diff", "--quiet", full, "--", "crates/")
     untracked = _git(repo, "ls-files", "--others", "--exclude-standard", "--", "crates/")
     if tracked is None or untracked is None or tracked.returncode > 1 or untracked.returncode:
-        return f"commit {short} is not in this clone"
+        return absent
     if tracked.returncode == 1 or untracked.stdout.strip():
         return f"crates/ changed since {short}"
     if _pins_at(repo, full, reference.film) != (reference.sha256, reference.all_sha256):
@@ -104,11 +113,11 @@ def comparison_line(
     expected = reference.expected.get(renderer)
     if expected is None:
         return f"{_INDENT}no expected score for {renderer} yet: add it"
-    scores = f"{_INDENT}{renderer} expected ssim {expected.ssim:.6f}  iou {expected.iou:.6f}"
+    scores = f"{_INDENT}{renderer} expected ssim {expected.ssim:.7f}  iou {expected.iou:.7f}"
     if report.mean_ssim_scored is None:
         return f"{scores}  delta n/a  not comparable: no frame scored"
     delta = report.mean_ssim_scored - expected.ssim
-    head = f"{scores}  delta {delta:+.6f}"
+    head = f"{scores}  delta {delta:+.7f}"
     if report.adapter.name != expected.adapter:
         reason: str | None = f"other adapter (expected on {expected.adapter})"
     elif rescored is not None:
@@ -121,7 +130,7 @@ def comparison_line(
         return f"{head}  drift not judged: {reference.film} has no noise_sigma"
     if abs(delta) > reference.noise_sigma:
         return (
-            f"{head}  DRIFT: |delta| {abs(delta):.6f} > noise_sigma "
-            f"{reference.noise_sigma:.6f} on {report.adapter.name}"
+            f"{head}  DRIFT: |delta| {abs(delta):.7f} > noise_sigma "
+            f"{reference.noise_sigma:.7f} on {report.adapter.name}"
         )
     return f"{head}  no drift"

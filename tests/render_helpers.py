@@ -16,6 +16,7 @@ from stunt_reel.parity_artifacts import (
     CameraPose,
     FilmId,
     Geometry,
+    RenderAdapter,
     RenderPalette,
     RenderRecord,
     RenderStore,
@@ -60,6 +61,7 @@ def write_store(
     *,
     geometry: Geometry = TINY,
     film: FilmId | None = None,
+    adapter: RenderAdapter | None = None,
 ) -> RenderRecord:
     """Write a render store holding *ticks*; with none, an empty ``render.json`` only."""
     directory.mkdir(parents=True, exist_ok=True)
@@ -73,11 +75,12 @@ def write_store(
             ticks=(),
             palette_count=0,
             chunks=(),
+            adapter=adapter,
         )
         write_render(directory / "render.json", record)
         return record
     frames = ((tick_entry(tick), frame_for(tick, geometry)) for tick in ticks)
-    return write_render_store(directory, film, geometry, frames)
+    return write_render_store(directory, film, geometry, frames, adapter=adapter)
 
 
 def rewrite_store(

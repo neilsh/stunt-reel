@@ -28,9 +28,19 @@ LAVAPIPE = RenderAdapter("llvmpipe (LLVM 19.1.7, 256 bits)", "cpu")
 COMMIT = "740c6080aaaabbbbccccddddeeeeffff00001111"
 #: The expected CTRY score on the GPU: every comparison line below reads against it.
 ON_GPU = Expected(ssim=0.8986, iou=0.9897, commit=COMMIT, adapter=GPU.name)
-HEAD = "      gpu expected ssim 0.898600  iou 0.989700"
+HEAD = "      gpu expected ssim 0.8986000  iou 0.9897000"
 #: The tail of a drift verdict against :data:`ON_GPU` with CTRY's noise.
-SIGMA_ON_GPU = "noise_sigma 0.000303 on NVIDIA GeForce RTX 4070"
+SIGMA_ON_GPU = "noise_sigma 0.0003030 on NVIDIA GeForce RTX 4070"
+
+#: Variables that point git at another repository. Git sets them while it runs a hook, so a
+#: suite started from one would otherwise commit in the outer repository.
+_GIT_LOCATION_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in _GIT_LOCATION_ENV:
+        monkeypatch.delenv(name, raising=False)
 
 
 def _reference(
@@ -97,7 +107,9 @@ def test_a_cpu_report_reads_the_lavapipe_entry() -> None:
         _report(0.75, adapter=LAVAPIPE),
         changed=_unchanged,
     )
-    assert line == "      lavapipe expected ssim 0.750000  iou 0.500000  delta +0.000000  no drift"
+    assert line == (
+        "      lavapipe expected ssim 0.7500000  iou 0.5000000  delta +0.0000000  no drift"
+    )
 
 
 def test_a_report_that_scored_no_frame_is_not_compared() -> None:
@@ -111,7 +123,7 @@ def test_another_adapter_of_the_same_class_is_not_compared() -> None:
     other = RenderAdapter("AMD Radeon(TM) Graphics", "hardware")
     assert (
         comparison_line(_reference(), _report(0.8987, adapter=other), changed=_never)
-        == f"{HEAD}  delta +0.000100  not comparable: other adapter "
+        == f"{HEAD}  delta +0.0001000  not comparable: other adapter "
         "(expected on NVIDIA GeForce RTX 4070)"
     )
 
@@ -120,7 +132,7 @@ def test_another_adapter_of_the_same_class_is_not_compared() -> None:
 def test_a_rescored_tree_is_not_compared(flag: str) -> None:
     assert (
         comparison_line(_reference(), _report(0.8987), rescored=flag, changed=_never)
-        == f"{HEAD}  delta +0.000100  not comparable: scored with {flag}"
+        == f"{HEAD}  delta +0.0001000  not comparable: scored with {flag}"
     )
 
 
@@ -134,7 +146,7 @@ def test_a_change_since_the_measured_commit_is_not_compared() -> None:
     reference = _reference()
     assert (
         comparison_line(reference, _report(0.8987), changed=changed)
-        == f"{HEAD}  delta +0.000100  not comparable: crates/ changed since 740c608"
+        == f"{HEAD}  delta +0.0001000  not comparable: crates/ changed since 740c608"
     )
     assert asked == [(COMMIT, reference)]
 
@@ -161,16 +173,18 @@ def test_a_film_without_noise_sigma_prints_its_delta_unjudged() -> None:
     line = comparison_line(
         _reference(film="intro", noise_sigma=None), _report(0.8987), changed=lambda *_a: None
     )
-    assert line == f"{HEAD}  delta +0.000100  drift not judged: intro has no noise_sigma"
+    assert line == f"{HEAD}  delta +0.0001000  drift not judged: intro has no noise_sigma"
 
 
 @pytest.mark.parametrize(
     ("ssim", "line"),
     [
-        (0.8980, f"{HEAD}  delta -0.000600  DRIFT: |delta| 0.000600 > {SIGMA_ON_GPU}"),
-        (0.8991, f"{HEAD}  delta +0.000500  DRIFT: |delta| 0.000500 > {SIGMA_ON_GPU}"),
-        (0.8987, f"{HEAD}  delta +0.000100  no drift"),
-        (0.8984, f"{HEAD}  delta -0.000200  no drift"),
+        (0.8980, f"{HEAD}  delta -0.0006000  DRIFT: |delta| 0.0006000 > {SIGMA_ON_GPU}"),
+        (0.8991, f"{HEAD}  delta +0.0005000  DRIFT: |delta| 0.0005000 > {SIGMA_ON_GPU}"),
+        # At six decimals this read |delta| 0.000303 > noise_sigma 0.000303.
+        (0.8989031, f"{HEAD}  delta +0.0003031  DRIFT: |delta| 0.0003031 > {SIGMA_ON_GPU}"),
+        (0.8987, f"{HEAD}  delta +0.0001000  no drift"),
+        (0.8984, f"{HEAD}  delta -0.0002000  no drift"),
     ],
 )
 def test_drift_is_a_delta_beyond_noise_sigma(ssim: float, line: str) -> None:
@@ -182,7 +196,7 @@ def test_a_delta_of_exactly_noise_sigma_is_no_drift() -> None:
     line = comparison_line(
         _reference({"gpu": expected}, noise_sigma=0.25), _report(0.75), changed=_unchanged
     )
-    assert line == "      gpu expected ssim 0.500000  iou 0.500000  delta +0.250000  no drift"
+    assert line == "      gpu expected ssim 0.5000000  iou 0.5000000  delta +0.2500000  no drift"
 
 
 # changed_since, against a throwaway repository.
@@ -303,17 +317,21 @@ def test_a_references_file_the_commit_lacks_is_a_pin_change(repo: Repo) -> None:
     assert repo.changed(before) == f"reference pin changed since {before[:7]}"
 
 
-def test_a_commit_this_clone_lacks_is_named(repo: Repo) -> None:
-    assert repo.changed("deadbee") == "commit deadbee is not in this clone"
-    assert repo.changed("0123456789" * 4) == "commit 0123456 is not in this clone"
+#: The reason for :data:`COMMIT` when git cannot resolve it.
+ABSENT = f"commit 740c608 is not in this clone: git fetch origin {COMMIT}"
+
+
+def test_a_commit_this_clone_lacks_is_named_with_the_fetch_that_restores_it(repo: Repo) -> None:
+    assert (
+        repo.changed("deadbee") == "commit deadbee is not in this clone: git fetch origin deadbee"
+    )
+    full = "0123456789" * 4
+    assert repo.changed(full) == f"commit 0123456 is not in this clone: git fetch origin {full}"
 
 
 def test_a_failing_git_reads_as_a_commit_this_clone_lacks(tmp_path: Path) -> None:
     # A directory that does not exist: an existing one under tmp_path may sit inside a checkout.
-    missing = tmp_path / "missing"
-    assert (
-        changed_since(COMMIT, _reference(), repo=missing) == "commit 740c608 is not in this clone"
-    )
+    assert changed_since(COMMIT, _reference(), repo=tmp_path / "missing") == ABSENT
 
 
 def test_a_missing_git_reads_as_a_commit_this_clone_lacks(
@@ -323,6 +341,24 @@ def test_a_missing_git_reads_as_a_commit_this_clone_lacks(
         raise FileNotFoundError("git")
 
     monkeypatch.setattr("stunt_reel.expected_scores.subprocess.run", no_git)
-    assert (
-        changed_since(COMMIT, _reference(), repo=tmp_path) == "commit 740c608 is not in this clone"
+    assert changed_since(COMMIT, _reference(), repo=tmp_path) == ABSENT
+
+
+@pytest.mark.parametrize("variable", _GIT_LOCATION_ENV)
+def test_git_variables_naming_another_repository_are_ignored(
+    repo: Repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, variable: str
+) -> None:
+    other = tmp_path / "other"  # a repository without the measured commit, its files or index
+    subprocess.run(  # noqa: S603 - fixed git arguments
+        ["git", "init", "-q", str(other)],  # noqa: S607 - git from PATH
+        capture_output=True,
+        check=True,
     )
+    elsewhere = {
+        "GIT_DIR": other / ".git",
+        "GIT_WORK_TREE": other,
+        "GIT_INDEX_FILE": other / ".git" / "index",
+        "GIT_COMMON_DIR": other / ".git",
+    }
+    monkeypatch.setenv(variable, str(elsewhere[variable]))
+    assert repo.changed() is None

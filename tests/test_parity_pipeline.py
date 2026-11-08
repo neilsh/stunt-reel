@@ -27,6 +27,7 @@ from stunt_reel.batch_films import BatchFilm
 from stunt_reel.parity_artifacts import (
     FilmId,
     Geometry,
+    RenderAdapter,
     RenderStore,
     read_render,
 )
@@ -275,6 +276,14 @@ def test_retime_copies_planes_and_records_under_target_ticks(tmp_path: Path) -> 
     assert record.film == FilmId(name="CTRY.FLM", flm_bytes=100)
     assert record.ticks[0].palette == source.record.ticks[0].palette
     assert record.ticks[0].camera == source.record.ticks[0].camera
+
+
+def test_retime_keeps_the_adapter_the_source_was_drawn_on(tmp_path: Path) -> None:
+    reference = _capture(tmp_path / "ref", [10, 11])
+    adapter = RenderAdapter("NVIDIA GeForce RTX 4070", "hardware")
+    write_store(tmp_path / "ours", [10, 11], geometry=_geometry(), adapter=adapter)
+    parity_pipeline.retime_render(tmp_path / "ours", reference, tmp_path / "retimed", 0)
+    assert read_render(tmp_path / "retimed" / parity_artifacts.RENDER_DOCUMENT).adapter == adapter
 
 
 def test_retime_positive_offset_takes_the_next_ticks_frames(tmp_path: Path) -> None:
