@@ -82,8 +82,9 @@ a pin change, so the rerun is what brings a new pin; work already done costs not
 session can find an earlier session's archive folders already in its data root (seen
 2026-11-08, mechanism unknown), so fetch replaces each one that holds another pin
 ([ADR 0042](adr/0042-fetch-replaces-a-folder-it-wrote-when-the-pin-changes.md)). The hook
-prints one line to the session, `ready` or `FAILED`, and logs the rest to
-`/tmp/cloud-session-start.log`.
+prints one line to the session, `ready` or `FAILED`, and appends the rest to
+`/tmp/cloud-session-start.log` under a `== <UTC time> <commit> ==` line per run, so a rerun keeps
+the startup run's output.
 
 The hook does not run where Claude Code loads no repo settings: a cloud session with several
 repositories, or a cloud thread of a project. Nothing is fetched there and no line is printed;
@@ -140,7 +141,19 @@ the key pair or the network secret cannot read the bucket.
   (`https://github.com/<owner>/<repo>/blob/<commit>/<path>?raw=true`), as #264 did.
 - **Measure the GPU.** The renderer runs on lavapipe, whose scores are not yet shown to equal a
   GPU's ([`research/parity/lavapipe.md`](../research/parity/lavapipe.md)). An adoption decision
-  still needs a GPU run.
+  still needs a GPU run. It is also slower: `mise run parity` on the seven reference films took
+  177 s on 2026-11-08, its release build included.
+- **Use GitHub's GraphQL API.** The proxy answers every GraphQL request with 403, whatever the
+  client (`gh api graphql` included), and names the REST routes it offers in its place, among them
+  `/repos/{owner}/{repo}/pulls/{n}/ccr/review_threads` and `.../ccr/auto_merge` (2026-11-08).
+- **Merge a stacked pull request.** GitHub's REST merge endpoint answers a stacked PR with 403
+  (`Merging stacked PRs via this endpoint is not supported`), it refuses auto-merge on one, and
+  `gh stack` needs GraphQL. The owner runs `gh stack merge` (2026-11-08, #302 and #303).
+- **Install a newer `gh`.** The image's `gh` is 2.89.0; Ubuntu's apt package is 2.45.0, older,
+  and the proxy refuses `cli.github.com` and GitHub's release downloads (2026-11-08). A newer
+  `gh` would still meet the GraphQL refusal above.
+- **Silence uv's `UV_NATIVE_TLS` warning.** The harness's `/etc/profile.d` script sets the
+  deprecated variable, so every `uv` call warns ([#320](https://github.com/neilsh/stunt-reel/issues/320)).
 
 ## Rotating the token
 
