@@ -169,26 +169,47 @@ def ensure_hooks_path(repo: Path) -> list[Line]:
 #: The committed list of revisions ``git blame`` skips, relative to the worktree.
 BLAME_IGNORE_FILE = ".git-blame-ignore-revs"
 
+#: ``blame.ignoreRevsFile``'s value. The setting is shared by every worktree, and ``git blame``
+#: fails outright on a missing file unless it is marked optional, as in one checked out at a
+#: commit older than the file.
+BLAME_IGNORE_VALUE = f":(optional){BLAME_IGNORE_FILE}"
+
+
+def git_marks_paths_optional(repo: Path) -> bool:
+    """Whether *repo*'s git skips a missing config path marked ``:(optional)``."""
+    probe = _git(
+        repo,
+        "-c",
+        "stunt-reel.probe=:(optional)no-such-file",
+        "config",
+        "--type=path",
+        "--get",
+        "stunt-reel.probe",
+    )
+    return probe.returncode != 0 and not probe.stdout.strip()
+
 
 def ensure_blame_ignore(repo: Path) -> list[Line]:
     """Point *repo*'s ``blame.ignoreRevsFile`` at the committed list; the lines ``init`` prints.
 
-    Shared like ``core.hooksPath``. Set only when this checkout has the file, since
-    ``git blame`` fails outright on a missing one; a different value is left alone and reported.
+    Shared like ``core.hooksPath``, so set only when this checkout has the file and this git can
+    mark it optional. The plain file name is made optional; another value is left alone.
     """
     if not (repo / BLAME_IGNORE_FILE).is_file():
         return []
     current = _git(repo, "config", "--get", "blame.ignoreRevsFile").stdout.strip()
-    if current == BLAME_IGNORE_FILE:
-        return [Line("=", f"blame.ignoreRevsFile {BLAME_IGNORE_FILE}")]
-    if current:
+    if current == BLAME_IGNORE_VALUE:
+        return [Line("=", f"blame.ignoreRevsFile {BLAME_IGNORE_VALUE}")]
+    if current not in ("", BLAME_IGNORE_FILE):
         return [Line("!", f"blame.ignoreRevsFile is {current!r}; left alone")]
-    result = _git(repo, "config", "blame.ignoreRevsFile", BLAME_IGNORE_FILE)
+    if not git_marks_paths_optional(repo):
+        return [Line("!", "this git cannot mark a path :(optional); blame.ignoreRevsFile not set")]
+    result = _git(repo, "config", "blame.ignoreRevsFile", BLAME_IGNORE_VALUE)
     if result.returncode != 0:
         return [
             Line("!", f"could not set blame.ignoreRevsFile: {result.stderr.strip()}", news=True)
         ]
-    return [Line("+", f"blame.ignoreRevsFile -> {BLAME_IGNORE_FILE}", news=True)]
+    return [Line("+", f"blame.ignoreRevsFile -> {BLAME_IGNORE_VALUE}", news=True)]
 
 
 #: The checkout paths the old layout linked (ADR 0008, ADR 0013, ADR 0019); init reports them.
@@ -318,9 +339,11 @@ def _seed_target() -> list[Line]:
 #: copies it.
 ENSURE_LOCK = ".ensure.lock"
 
-#: The file under target/ saying ``ensure`` has checked ``core.hooksPath`` for this target/, so a
-#: later run costs a few stats and no git; ``cargo clean`` or ``clean`` removes it with target/.
-HOOKS_CHECKED = ".hooks-checked"
+#: The file under target/ saying ``ensure`` has checked ``core.hooksPath`` and
+#: ``blame.ignoreRevsFile`` for this target/, so a later run costs a few stats and no git;
+#: ``cargo clean`` or ``clean`` removes it with target/. Renamed when a check is added, so a
+#: target/ stamped before it runs the new one.
+HOOKS_CHECKED = ".git-config-checked"
 
 #: The tag that tells backup and indexing tools a directory is a cache (bford.info/cachedir).
 #: Cargo writes it only into a target/ it creates, and ``ensure`` creates target/ first, so

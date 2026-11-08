@@ -127,8 +127,8 @@ description = "Report, worst first and never failing: evergreen docs over 20 KB,
 run = "uv run python python/scripts/doc_health.py"
 
 [tasks.links]
-description = "Check every external (http or https) link in the docs outside work/ with lychee, listing the dead ones; needs the network (mise run links)"
-run = "lychee --no-progress --exclude-path work --scheme http --scheme https ."
+description = "Check every external (http or https) link in the docs with lychee, listing the dead ones; work/ is skipped through .ignore; needs the network (mise run links)"
+run = "lychee --no-progress --scheme http --scheme https ."
 
 [tasks.move-docs]
 description = "Apply a moves file: --phase move runs git mv for each [[move]], writes each [[folder]] README and rewrites every link and repo path to the moved files in the files that stay; --phase inside then rewrites the moved files' own links; both print the old-to-new table for the PR body (mise run move-docs -- apply <moves.toml> --phase move|inside [--dry-run] [--root DIR])"
