@@ -7,7 +7,7 @@ in the same second took the name), prints a summary of at most 40 lines and exit
 run ended normally (spent, stop_tick or timeout), 1 when a build's `PLAYONE.EXE`, the emulator
 or the link failed, 2 when the plan, the patched mapping or a probe site was refused. Plan offsets are unpatched
 image and DS offsets; `--build patch3` maps them through #78's pairing
-(`docs/process/plans/debugger-breakpoints-2026-11-04.md`).
+(`work/2026-11/debugger-breakpoints/spec.md`).
 """
 
 from __future__ import annotations

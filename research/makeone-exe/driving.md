@@ -3,7 +3,7 @@ summary: "How the harness drives `MAKEONE.EXE` under emulation to make a film's 
 ---
 # `MAKEONE.EXE`: Driving the Film Linker Under DOSBox-X
 
-`MAKEONE.EXE` is the retail film linker: it turns a film's `.FLM` into the `.ALL` archive that `PLAYONE.EXE` plays ([`all.md`](../formats/all.md)). The retail manual describes it as a DOS program that opens a Load File requester, prepares the chosen film and returns to DOS. This note records what it does when the capture harness drives it, so a film without an `.ALL` can be given one. The harness itself is in [`capture.md`](../playone-exe/capture.md); the design is in [`docs/process/plans/make-all-2026-10-29.md`](../../docs/process/plans/make-all-2026-10-29.md) and [ADR 0023](../../docs/adr/0023-make-all-generates-archives-with-makeone.md).
+`MAKEONE.EXE` is the retail film linker: it turns a film's `.FLM` into the `.ALL` archive that `PLAYONE.EXE` plays ([`all.md`](../formats/all.md)). The retail manual describes it as a DOS program that opens a Load File requester, prepares the chosen film and returns to DOS. This note records what it does when the capture harness drives it, so a film without an `.ALL` can be given one. The harness itself is in [`capture.md`](../playone-exe/capture.md); the design is in [`work/2026-10/make-all/spec.md`](../../work/2026-10/make-all/spec.md) and [ADR 0023](../../docs/adr/0023-make-all-generates-archives-with-makeone.md).
 
 Every observation below is `[Bounded Observation]`: `BALLOON.FLM` from the full game in a spike on 2026-10-29 (and `TRAINTNL.FLM` in section 7), `dosbox-x-v2026.10.01`, the parity profile (`core = normal`, `output = surface`). The tier of a statement is repeated in its section's first line.
 
@@ -115,4 +115,4 @@ Both match the DOSBox-X archive `captures/flmonly-747land/archives/001` byte for
 8. Patch #3's `MAKEONE.EXE` writes the same `.ALL` as the unpatched one for `COUNT`, `EXIT` and `EXIT2`, and a different one for `BIGMAN` (1,429,089 bytes against 1,425,743), which only the patched `PLAYONE` plays ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3). Which other films differ is open.
 9. `MAKEONE` sometimes writes the archive and never leaves graphics mode (`COUNT` on both builds, `EXIT` and `EXIT2` on the patched one), so `make-all` timed out on a good archive. A **MAKEONE hang** is now handled by policy: when the timeout passes and the `.ALL` is non-empty and its size and mtime have stayed unchanged for 60 s, `make-all` accepts it on either build, kills MAKEONE, logs a warning, runs `check_archive` and records `returned_to_dos: false` in `meta.json`; an archive still changing, or empty, is refused. What MAKEONE waits for is still unknown ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3). ([#76](https://github.com/neilsh/stunt-reel/issues/76))
 
-_Found 2026-10-29; see the [parity log](../parity/log.md)._
+_Found 2026-10-29; see the [parity log](../../work/2026-10/parity-log/log.md)._

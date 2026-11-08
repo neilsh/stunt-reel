@@ -140,4 +140,4 @@ Cost on this machine (4 cores, lavapipe): a one-tick render starts in 0.44 to 0.
 6. Do the 205 archives with add-on chunks rebuild once their add-on `.RES` files are found?
 7. Does `--game` cost less if the scene keeps only the shapes a film draws? Its startup decodes all 2,516 shapes, and its renders take about twice as long on lavapipe (section 7.1). After `build_world`, only the actors' shape ids are still needed, so dropping the rest before the device upload would test the cause. Decoding only the ids a film references is harder, since the scenery walk decides its props from the whole set.
 
-_Found 2026-11-03; see the [parity log](../parity/log.md)._
+_Found 2026-11-03; see the [parity log](../../work/2026-10/parity-log/log.md)._

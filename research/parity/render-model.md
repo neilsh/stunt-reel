@@ -5,7 +5,7 @@ summary: "Compares PLAYONE's back-to-front software painter with our depth-buffe
 
 * **Scope**: stage by stage, what `PLAYONE.EXE` does to put a frame on screen, what our renderer does in its place, and where the two are known to differ. It routes to the notes that own each fact rather than restating them.
 * **Sources**: the `playone-exe/` and `formats/` notes linked in each row, [`docs/SPEC.md`](../../docs/SPEC.md) section 2.1, the ADRs named below, and the code paths cited.
-* **Evidence tier**: each row carries the tier of the note it cites. A divergence marked *measured* has a row in [`log.md`](log.md); *unmeasured* means we know the mechanisms differ but have not scored the gap.
+* **Evidence tier**: each row carries the tier of the note it cites. A divergence marked *measured* has a row in [`log.md`](../../work/2026-10/parity-log/log.md); *unmeasured* means we know the mechanisms differ but have not scored the gap.
 
 ## 1. The two models
 

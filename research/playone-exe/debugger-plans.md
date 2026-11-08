@@ -119,4 +119,4 @@ bytes. A run ends `spent`, `stop_tick`, `timeout` (no counted stop in 120 s), `l
    either; the first `int` probe run (#65's file reads) settles it.
 2. The cost of large captures. Two 64 KB `lin:` dumps at one hit took a whole 14 s run (`terrain-tree`); 300 hits with a 40-byte capture take about 3 minutes, most of it the 50 ms stop polls and `MEMDUMPBIN` round trips. Whether a hit's cost grows with capture size beyond that is unmeasured.
 
-_Found 2026-11-04 with `tools/dosbox-x/plans/smoke.toml`; see the [parity log](../parity/log.md)._
+_Found 2026-11-04 with `tools/dosbox-x/plans/smoke.toml`; see the [parity log](../../work/2026-10/parity-log/log.md)._

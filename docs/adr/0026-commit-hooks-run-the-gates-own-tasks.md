@@ -7,7 +7,7 @@ the `staged` plan that
 [#32](https://github.com/neilsh/stunt-reel/pull/32) added to
 [`gate.py`](../../python/scripts/gate.py); keeps that change's committed `.githooks/` and its
 installation by `mise run init`. Reverses the deletion of `.pre-commit-config.yaml` recorded in
-[`review-dsh-friction-salvage.md`](../process/plans/review-dsh-friction-salvage.md) on the
+[`review-dsh-friction-salvage.md`](../../work/2026-10/review-dsh-friction-salvage/review-dsh-friction-salvage.md) on the
 condition that removed it: the hooks hold no copy of the gate.
 
 ## Context

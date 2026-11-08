@@ -21,7 +21,7 @@ Parity requires the sidecar. A render directory without it is an error, and `aut
 
 ## Consequences
 
-Renders made before the sidecar existed can no longer be scored. Re-rendering is the fix, and the error should say so. At the time of acceptance the fallback was still live: `score.rs` had the `unwrap_or(fade)` fallback, `render.json` was not written or read, and `parity_probe.py` hard-coded 320, 185 and 16. The work was tickets `T13` and `T14` in [`TEAM_SHEET.md`](../process/TEAM_SHEET.md); `T13` is complete and `T14` remains.
+Renders made before the sidecar existed can no longer be scored. Re-rendering is the fix, and the error should say so. At the time of acceptance the fallback was still live: `score.rs` had the `unwrap_or(fade)` fallback, `render.json` was not written or read, and `parity_probe.py` hard-coded 320, 185 and 16. The work was tickets `T13` and `T14` in [`TEAM_SHEET.md`](../../work/2026-10/team-sheet/TEAM_SHEET.md); `T13` is complete and `T14` remains.
 
 ## Implementation note
 

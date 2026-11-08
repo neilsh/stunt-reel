@@ -14,7 +14,7 @@ through the same adapter:
   rewriting its store and ``render.json``, so a timing hypothesis costs no
   rebuild.
 * ``summary`` - the scored headline, the loss by class, the worst scored
-  frames and the ``research/parity/log.md`` row for one report, so the numbers
+  frames and the ``work/2026-10/parity-log/log.md`` row for one report, so the numbers
   are never retyped by hand.
 
 Object pixels are capture pixels that are not sky, ground ramp, button bar or

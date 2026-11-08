@@ -106,7 +106,7 @@ During standalone playback in `PLAYONE.EXE` (and modern reconstruction in `stunt
 
 The ground scene that `PLAYONE.EXE` draws is stored in the `.ALL` archive, not in the `.FLM` film or the player image. In `CTRY.ALL` the SOD-VM ground opcode `0x0168` has records starting at offset `0x13FC` (`68 01 ...`) and opcode `0x02BE` at `0xEFE4` (`BE 02 ...`); `CTRY.FLM` contains none. A ground record is `w0 = (colour << 8) | (vertex_count & 0x0F)`, then `count` indices into the per-vertex shade array, then the next code address (layout and handlers: [`world-scene.md`](../playone-exe/world-scene.md)). The archive also carries packed `(byte << 8) | count` words (`0x2BE` records end `03 E0`) and a 110-word scene colour table at `0x79`/`0x7B`/`0x7D` and `0xEF`-`0x9A0`. The 110-word table at `0x79` once read as a ramp directory (`193`/3, `194`/3, `195`/3, ...), but it is the archive's chunk-id table at `0x7A` read one byte off: id `0x03C1` read from `0x79` gives `0xC103` ([`world-scene.md`](../playone-exe/world-scene.md) section 2.1). No ground colour in `0xC0`-`0xCD` has been found by byte scan, and the records are not yet decoded, so whether these are the per-polygon colours the player draws (the captures draw 193, 194 and 196 where `MAP.BIN` says 195) is open; decoding them needs no emulator. Because the retail player never opens `MAP.BIN`, this archive, not the map file, is the ground's source for standalone playback ([`terrain-shade.md`](../playone-exe/terrain-shade.md)).
 
-_Found 2026-10-23 at `6ae7b31`; see the [parity log](../parity/log.md)._
+_Found 2026-10-23 at `6ae7b31`; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
 ### 3.7 Chunk Provenance (`[Bounded Observation]`)
 

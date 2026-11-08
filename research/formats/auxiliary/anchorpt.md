@@ -50,7 +50,7 @@ The image's own table holds 29 anchors with `y = -32768`, so the sentinel is aut
 | Item ID | Topic | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- |
 | `[BK-MAP-01]` | `f[11]` | The eleven words are cache, not authored data (section 2.1). How `PLAYONE` fills them per frame is in [`sod-vm.md`](../../playone-exe/sod-vm.md); nothing reads them from the file. | `[Supported Inference]` |
-| `[BK-MAP-08]` | Sentinel anchors in FreeFlight's copy | Anchors 19, 22, 51, 68 and 71 have `y = 0` in all four game images and in `SITools/ANCHORPT.DAT`, but `y = -32768` in FreeFlight's copy, so only that save carries them. Closed as not land at sea level: drawing patches 52, 62, 64, 65 and 131 at `y = 0` left `CTRY.FLM` flat (0.7733 to 0.7732) and lowered `INTRO.FLM` from 0.6856 to 0.6822, past the 0.003 bound (2026-10-23 at `911211a`, [parity log](../../parity/log.md)). No instruction in `PLAYONE`'s code segment stores the immediate `0x8000` into an anchor record. | `[Bounded Observation]` |
+| `[BK-MAP-08]` | Sentinel anchors in FreeFlight's copy | Anchors 19, 22, 51, 68 and 71 have `y = 0` in all four game images and in `SITools/ANCHORPT.DAT`, but `y = -32768` in FreeFlight's copy, so only that save carries them. Closed as not land at sea level: drawing patches 52, 62, 64, 65 and 131 at `y = 0` left `CTRY.FLM` flat (0.7733 to 0.7732) and lowered `INTRO.FLM` from 0.6856 to 0.6822, past the 0.003 bound (2026-10-23 at `911211a`, [parity log](../../../work/2026-10/parity-log/log.md)). No instruction in `PLAYONE`'s code segment stores the immediate `0x8000` into an anchor record. | `[Bounded Observation]` |
 
 ### 4.1 Ruled out
 

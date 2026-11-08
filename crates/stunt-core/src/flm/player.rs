@@ -600,7 +600,7 @@ impl<'a> FlmPlayer<'a> {
             // The slot's SIF create flags, not a SOD visibility state: PLAYONE's `OP_IFVIS`
             // tests a facing flag (`0x9BCC`), so no decoded gate reads this mask. Swept as
             // 1, all-ones and these flags on 2026-11-05 with identical scores on both films
-            // (research/parity/log.md); kept because the flags carry `SIF_SHADOW`.
+            // (work/2026-10/parity-log/log.md); kept because the flags carry `SIF_SHADOW`.
             let state_mask = if slot.type_flags != 0 {
                 u16::from(slot.type_flags)
             } else {

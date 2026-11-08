@@ -2,7 +2,7 @@
 
 Offsets in a plan are unpatched image offsets and unpatched DS offsets; `for_patch3` rewrites a
 plan for the Patch #3 build through #78's pairing. The format is spec section 3.2 of
-`docs/process/plans/debugger-breakpoints-2026-11-04.md`.
+`work/2026-11/debugger-breakpoints/spec.md`.
 """
 
 from __future__ import annotations

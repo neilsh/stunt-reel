@@ -9,7 +9,7 @@ The research notes own the procedure. This skill says which note to read and how
 
 - **Where the loss is** (capture, render, score, compare): [`research/parity/method.md`](../../../research/parity/method.md) section 1.
 - **What is wrong** (crop, shift, actor IoU, candidate sweeps, timing retime, environment pitfalls): [`research/parity/probes.md`](../../../research/parity/probes.md).
-- **What was already tried**, dead ends included: read [`research/parity/log.md`](../../../research/parity/log.md) (one row per attempt, linking to the note that holds the finding), then the note for the residual: [`attribution.md`](../../../research/parity/attribution.md), [`framing-and-actors.md`](../../../research/parity/framing-and-actors.md) or [`film-segments.md`](../../../research/parity/film-segments.md). Do this before starting a hypothesis.
+- **What was already tried**, dead ends included: read [`work/2026-10/parity-log/log.md`](../../../work/2026-10/parity-log/log.md) (one row per attempt, linking to the note that holds the finding), then the note for the residual: [`attribution.md`](../../../research/parity/attribution.md), [`framing-and-actors.md`](../../../research/parity/framing-and-actors.md) or [`film-segments.md`](../../../research/parity/film-segments.md). Do this before starting a hypothesis.
 
 ## Workflow
 
@@ -38,4 +38,4 @@ Read each when its step comes up:
 
 ## Finishing an item
 
-Add a row to `research/parity/log.md` for every attempt, adopted or not, and put the finding in the note that owns the residual. End the session after the handoff note; start the next hypothesis in a fresh session.
+Add a row to `work/2026-10/parity-log/log.md` for every attempt, adopted or not, and put the finding in the note that owns the residual. End the session after the handoff note; start the next hypothesis in a fresh session.

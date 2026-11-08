@@ -2,8 +2,8 @@
 
 ## Status
 
-accepted 2026-11-06 ([spec](../process/plans/vault-parity-films-2026-11-06.md) D9,
-[plan](../process/plans/vault-parity-films-implementation-2026-11-06.md) Task 6–8). Amends
+accepted 2026-11-06 ([spec](../../work/2026-11/242_vault-parity-films/spec.md) D9,
+[plan](../../work/2026-11/242_vault-parity-films/plan.md) Task 6–8). Amends
 [ADR 0029](0029-references-name-each-films-builds-and-reference.md). Closes
 [#245](https://github.com/neilsh/stunt-reel/issues/245).
 

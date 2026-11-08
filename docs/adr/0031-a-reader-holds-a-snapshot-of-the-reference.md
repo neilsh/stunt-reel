@@ -60,7 +60,7 @@ published file is never changed in place: a writer only swaps whole directories.
   reader's open file makes fail. It would also hash the capture twice per run.
 - **Accepting the race and documenting it.** Rejected: the shared data root makes the race a normal
   use, a capture-ref in one worktree and the parity loop in another, and the failure is a silent
-  wrong score in [`log.md`](../../research/parity/log.md).
+  wrong score in [`log.md`](../../work/2026-10/parity-log/log.md).
 
 ## Consequences
 

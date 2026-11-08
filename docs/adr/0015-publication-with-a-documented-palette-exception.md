@@ -70,7 +70,7 @@ and MSRV job need fixing before a "green in private" gate is meaningful (separat
   addresses private* and *Block command line pushes that expose my email*; commit identity is a
   local setting, so CI cannot enforce it, and [`CONTRIBUTING.md`](../../CONTRIBUTING.md) tells
   contributors that their commit email is published. The steps and their verification are in
-  [`docs/process/plans/public-release-2026-10-28.md`](../process/plans/public-release-2026-10-28.md).
+  [`work/2026-10/public-release/spec.md`](../../work/2026-10/public-release/spec.md).
 - **§5, wording (2026-10-28).** The README says reverse engineering, because that is what the
   project does: format analysis of a 1992 program for interoperability and preservation.
   Avoiding the term made the description vaguer without changing the legal footing. The

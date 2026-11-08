@@ -3,7 +3,7 @@ summary: "Splits the CTRY.FLM and INTRO.FLM SSIM loss by render layer: props are
 ---
 # Parity Attribution: Where Our Render's Loss Sits
 
-`[Bounded Observation]`: one capture set per film, 114 scored `CTRY.FLM` frames and 209 scored `INTRO.FLM` frames. This note says which parts of the frame carry the SSIM loss. The measuring loop is in [`method.md`](method.md); every figure has a row in [`log.md`](log.md). The framing and hero-aircraft residual is in [`framing-and-actors.md`](framing-and-actors.md); how the player shades the ground is in [`../playone-exe/terrain-shade.md`](../playone-exe/terrain-shade.md).
+`[Bounded Observation]`: one capture set per film, 114 scored `CTRY.FLM` frames and 209 scored `INTRO.FLM` frames. This note says which parts of the frame carry the SSIM loss. The measuring loop is in [`method.md`](method.md); every figure has a row in [`log.md`](../../work/2026-10/parity-log/log.md). The framing and hero-aircraft residual is in [`framing-and-actors.md`](framing-and-actors.md); how the player shades the ground is in [`../playone-exe/terrain-shade.md`](../playone-exe/terrain-shade.md).
 
 ## 1. Method: loss by render layer
 
@@ -13,15 +13,15 @@ summary: "Splits the CTRY.FLM and INTRO.FLM SSIM loss by render layer: props are
 * The index plane is unlit, so the split says where loss is, not that a palette index is wrong.
 * Coverage is largely right (CTRY mask IoU 0.978 after the decal and page-timing changes); the loss is how covered ground and props are shaded, textured and bounded.
 
-_Found 2026-10-22; see the [loss attribution row](log.md)._
+_Found 2026-10-22; see the [loss attribution row](../../work/2026-10/parity-log/log.md)._
 
 ## 2. Current breakdown
 
 Loss by class, most recent run per film (2026-11-04, the ground decals of [ADR 0035](../../docs/adr/0035-ground-lying-props-are-terrain-decals.md) for [#69](https://github.com/neilsh/stunt-reel/issues/69), against `8b36b79` just before them): CTRY 0.8298 -> **0.8645** over 114 scored frames (index agreement 0.587 -> 0.884, IoU 0.9897): terrain 0.0772 -> **0.0186**, props 0.0553 -> **0.0793**, sky 0.0158, actors 0.0133, reference-only 0.0078 -> 0.0076, ocean 0.0008 -> 0.0007. INTRO 0.7745 -> **0.7973** over 209 (0.663 -> 0.812, IoU 0.9856): terrain 0.0941 -> **0.0439**, props 0.0530 -> **0.0808**, actors 0.0441 -> 0.0439, sky 0.0199, reference-only 0.0072, ocean 0.0068, props_and_actors_render_only 0.0004. Terrain falls from 45% of the loss to 14% on CTRY and from 42% to 22% on INTRO, and props are now the largest class on both. The props class rises because the airfield and sand tiles that the terrain hid are now drawn, so their remaining error is attributed to props (section 1); the total loss still falls. The tile pixels were most of section 4's off-ramp ground.
 
-The `IFVIS` facing gate of [#74](https://github.com/neilsh/stunt-reel/issues/74) (2026-11-05, [log row](log.md)) leaves the props class where the breakdown above has it, CTRY 0.0793 -> 0.0793 and INTRO 0.0808 -> 0.0806; its INTRO gain is on the aircraft (actors 0.0439 -> 0.0431). Props loss is therefore not the in-shape `IFVIS` branch.
+The `IFVIS` facing gate of [#74](https://github.com/neilsh/stunt-reel/issues/74) (2026-11-05, [log row](../../work/2026-10/parity-log/log.md)) leaves the props class where the breakdown above has it, CTRY 0.0793 -> 0.0793 and INTRO 0.0808 -> 0.0806; its INTRO gain is on the aircraft (actors 0.0439 -> 0.0431). Props loss is therefore not the in-shape `IFVIS` branch.
 
-The world light and per-vertex `GVPOLY` interpolation of [#221](https://github.com/neilsh/stunt-reel/issues/221) (2026-11-05, [log rows](log.md)) move props CTRY 0.0793 -> 0.0794 and INTRO 0.0806 -> 0.0770, actors 0.0133 -> 0.0135 and 0.0431 -> 0.0308. Shading scenery alone with the world light scores the same as the old stand-in to four decimals, so the INTRO props drop is most likely SSIM windows shared with the aircraft (`[Supported Inference]`). Props loss is therefore not the `SHADES` light either.
+The world light and per-vertex `GVPOLY` interpolation of [#221](https://github.com/neilsh/stunt-reel/issues/221) (2026-11-05, [log rows](../../work/2026-10/parity-log/log.md)) move props CTRY 0.0793 -> 0.0794 and INTRO 0.0806 -> 0.0770, actors 0.0133 -> 0.0135 and 0.0431 -> 0.0308. Shading scenery alone with the world light scores the same as the old stand-in to four decimals, so the INTRO props drop is most likely SSIM windows shared with the aircraft (`[Supported Inference]`). Props loss is therefore not the `SHADES` light either.
 
 The run before that (2026-11-02, `main` at `793895e`: the whole-body, upright aircraft of [#47](https://github.com/neilsh/stunt-reel/pull/47), the `GVPOLY` ramp colour of [#48](https://github.com/neilsh/stunt-reel/pull/48) and the square-pixel, 256 px projection of [#132](https://github.com/neilsh/stunt-reel/pull/132)): CTRY 0.8291 over 114 scored frames (index agreement 0.587, IoU 0.9897): terrain 0.0783, props 0.0568, sky 0.0158, actors 0.0114, reference-only 0.0078, ocean 0.0008. INTRO 0.7154 over 209 (0.622, 0.9712): terrain 0.1281, props 0.0654, actors 0.0363, sky 0.0260, reference-only 0.0121, ocean 0.0109, props_and_actors_render_only 0.0058. Terrain is 46% of the loss on CTRY and 45% on INTRO. Against the 2026-10-24 breakdown below, with the same measure at `794daa5` (after #47 and #48, before #132) between them:
 
@@ -54,13 +54,13 @@ Earlier breakdowns, superseded: CTRY on 2026-10-24 (`main`, after back-face cull
 * `INTRO.FLM` uses the partial SOD `0x7F09` (opcode `0x02FD`, `[Unknown]`) and CTRY the partial `0x0107` (`OP_ANIMATE`, `0x01F8`); their cost is not isolated by this split.
 * Worst terrain frames in the early CTRY run: ordinals 52, 55 and 35 (ticks 568, 601, 382), 0.22 to 0.25 each; not inspected.
 
-_Found 2026-10-22 and 2026-10-23 at `d90a047`; re-measured 2026-11-02 at `794daa5` and again after #132 at `793895e` ([#98](https://github.com/neilsh/stunt-reel/issues/98)); see the [parity log](log.md)._
+_Found 2026-10-22 and 2026-10-23 at `d90a047`; re-measured 2026-11-02 at `794daa5` and again after #132 at `793895e` ([#98](https://github.com/neilsh/stunt-reel/issues/98)); see the [parity log](../../work/2026-10/parity-log/log.md)._
 
 ## 3. The loss is structural: edges, not flat colour
 
 Recomputing the comparator's 11x11/stride-8 windows in Python over the 93 CTRY frames above the fade that still use the full palette: 70% of the total window loss sits in windows whose capture luminance standard deviation is above 10, 17% in flat windows (sd < 2) and 12% in between. Terrain-major windows (80% or more terrain pixels) are 55% of all windows and carry 39% of the loss, 75% of that at edges. Windows touching an actor carry 13%. A uniform colour error explains little; the horizon, hills, prop silhouettes, coastline, shadow and aircraft account for nearly all of it. (Absolute SSIM differs from `report.json` because this run uses the index plane and the static palette; read the shares.)
 
-_Found 2026-10-23 at `d90a047`; see the [parity log](log.md)._
+_Found 2026-10-23 at `d90a047`; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
 ## 4. Flat ground owns most of the loss
 
@@ -79,7 +79,7 @@ Reading: the two large levers are the per-shot, depth-cued ground shade (+0.0105
 
 Answered 2026-11-04: the green-ramp shade and much of the off-ramp ground are scenery tiles (`SCENERY2.RES` #144-159 and others) that `PLAYONE` paints over its flat ground leaves and that our depth test hid under the terrain. `PLAYONE` puts no shade law on the ground ([`world-scene.md`](../playone-exe/world-scene.md) sections 2, 3). Drawing them as terrain decals cut the terrain class to 0.0186 (CTRY) and 0.0439 (INTRO), section 2.
 
-_Found 2026-10-23; see the [parity log](log.md)._
+_Found 2026-10-23; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
 ## 5. Coastline and sea
 
@@ -87,7 +87,7 @@ _Found 2026-10-23; see the [parity log](log.md)._
 * **Ocean colour is right; the sea is wrong by coverage.** Under our ocean pixels 544,029 of 655,011 INTRO capture pixels are index 208, the colour we draw; only 4,533 CTRY pixels are ocean at all. The ocean-class loss on ticks 2790/2800 (0.209) is structural: 50,615 of those pixels are capture sand (91) where we draw sea.
 * **The land/sea boundary is nearly right.** The capture draws ocean where we draw land on 3,699 CTRY pixels (0.05%) and 41,233 INTRO pixels (0.33%); we draw airfield green where the capture is ocean on 1,997 and 8,388. A distance cull of terrain patches would move very few pixels and was not attempted.
 
-_Found 2026-10-23 at `d90a047`; see the [parity log](log.md)._
+_Found 2026-10-23 at `d90a047`; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
 ## 6. Back faces
 

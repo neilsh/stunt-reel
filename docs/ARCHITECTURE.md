@@ -57,4 +57,4 @@ The one sanctioned second decoder is deliberate: the Kaitai `.ksy` schemas under
 
 ## Direction and History
 
-The 2026-10-25 architecture deepening programme (parity artifact port, decoded shape seam, renderer entry point, capture session) is closed; its decisions, closure note and residual risk are in [process/plans/architecture-deepening/README.md](process/plans/architecture-deepening/README.md).
+The 2026-10-25 architecture deepening programme (parity artifact port, decoded shape seam, renderer entry point, capture session) is closed; its decisions, closure note and residual risk are in [work/2026-10/architecture-deepening/overview.md](../work/2026-10/architecture-deepening/overview.md).

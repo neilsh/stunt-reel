@@ -2,8 +2,8 @@
 
 ## Status
 
-accepted 2026-11-06 ([spec](../process/plans/cloud-assets-2026-11-06.md) decisions 3, 4, 6 and 7,
-[plan](../process/plans/cloud-assets-implementation-2026-11-06.md)). Amends
+accepted 2026-11-06 ([spec](../../work/2026-11/cloud-assets/spec.md) decisions 3, 4, 6 and 7,
+[plan](../../work/2026-11/cloud-assets/plan.md)). Amends
 [ADR 0022](0022-captures-are-add-only-beside-a-read-only-corpus.md) for provisioning only.
 
 ## Context

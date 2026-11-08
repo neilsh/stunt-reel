@@ -3,7 +3,7 @@
 ## Status
 
 accepted 2026-11-01. `stunt_reel.capture_run` (step 3 of
-[the capture store plan](../process/plans/capture-store-deepening-2026-11-01.md)) implements the
+[the capture store plan](../../work/2026-11/capture-store-deepening/spec.md)) implements the
 build choice and the single-executable fallback; the pair retry ("if the unpatched `PLAYONE` then
 fails on a patch3 archive, both move") is not yet implemented. The parity loop's film list is
 step 4. Answers the
@@ -67,6 +67,6 @@ so a surveyed film has no route into the loop.
 - Demo and `stuntisl` films move from the unpatched build to patch3.
 - The `ctry` and `intro` references stay pinned as they are. Recapturing them on patch3, repinning
   them and re-measuring `noise_sigma` is a step of its own after the refactor, logged in
-  [`research/parity/log.md`](../../research/parity/log.md).
+  [`work/2026-10/parity-log/log.md`](../../work/2026-10/parity-log/log.md).
 - Films whose patch3 `MAKEONE` writes a complete archive but never returns to DOS depend on
   [#76](https://github.com/neilsh/stunt-reel/issues/76) being fixed first.

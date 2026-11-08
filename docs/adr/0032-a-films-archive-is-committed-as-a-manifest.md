@@ -3,8 +3,8 @@
 ## Status
 
 accepted 2026-11-03. Implemented on branch `feat/all-manifests`
-([spec](../process/plans/all-manifests-2026-11-03.md),
-[plan](../process/plans/all-manifests-implementation-2026-11-03.md)). Amends the resolve order of
+([spec](../../work/2026-11/all-manifests/spec.md),
+[plan](../../work/2026-11/all-manifests/plan.md)). Amends the resolve order of
 [ADR 0023](0023-make-all-generates-archives-with-makeone.md): a committed manifest comes between
 the sibling `.ALL` and the stored archive. The stored archive of
 [ADR 0028](0028-a-film-has-one-capture-of-each-kind.md) stays, as the fallback and as the source a

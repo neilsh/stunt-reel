@@ -4,7 +4,7 @@
 
 accepted 2026-11-01. The layout, the reader, the swap and the migration are implemented
 ([#139](https://github.com/neilsh/stunt-reel/issues/139)); the rest of the order of work is in
-[the capture store plan](../process/plans/capture-store-deepening-2026-11-01.md). Supersedes the
+[the capture store plan](../../work/2026-11/capture-store-deepening/spec.md). Supersedes the
 add-only rule of [ADR 0022](0022-captures-are-add-only-beside-a-read-only-corpus.md) and the numbered
 runs of [ADR 0023](0023-make-all-generates-archives-with-makeone.md) and
 [ADR 0024](0024-captures-are-filed-by-film-then-kind.md). The read-only corpus, filing by film and

@@ -379,6 +379,7 @@ Hand edits, which `move_docs.py` does not make:
 
 **Files:**
 - Modify: `AGENTS.md`, `research/README.md`, `GLOSSARY.md`, `docs/SPEC.md` (its `research/parity/` row: "method, residuals"; no results log), `docs/development.md` § Docstrings and doc comments (code cites a document by anchor token or path, never a heading), `docs/harness.md` (delete the paragraph on appending to the log), `research/parity/method.md` step 7 and section 5 (a journal entry instead of a row; section 5 points at the moved log as history), `python/scripts/parity_probe.py` docstring and `mise.toml` `parity-probe` description ("the rows the parity log needs" becomes "the scores a journal entry quotes")
+- Modify, parity-log wording the PR 2 review found: `README.md:22` (the Parity loop row's "Its log is"), `docs/development.md:98` ("a dated results table"), `research/playone-exe/capture-dosbox-automation.md`, `research/playone-exe/lod.md` and `research/playone-exe/dosbox-x-legacy.md:86`; and `docs/SPEC.md:6`, `:27` and `:43`, which still treat `TEAM_SHEET.md` as live per-ticket status
 - Create: `docs/adr/0041-dated-records-live-in-work-folders.md` (next free number at the time)
 
 A line rewritten here or in Task 13 that `WORK_POINTERS` lists loses its entry in the same commit; the set only shrinks.

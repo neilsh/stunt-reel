@@ -3,7 +3,7 @@
 ## Status
 
 accepted and implemented 2026-10-29: the landing steps and log are in
-[the data-root split plan](../process/plans/data-root-split-2026-10-29.md). Supersedes
+[the data-root split plan](../../work/2026-10/data-root-split/spec.md). Supersedes
 the write guard of [ADR 0008](0008-worktrees-share-one-read-only-data-root.md); one
 data root per machine, linked into every worktree, stays. The
 `captures\<film>\<capture id>\` layout is superseded by

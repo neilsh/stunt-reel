@@ -19,7 +19,7 @@ The ``docs`` half runs only the documentation tests (``test-py-docs``, ``pytest 
 change that touches no Python still runs them, since a Rust or Markdown change can break a cited
 path. ``classify`` sorts a changed path into a category, and ``scope_for`` turns the categories into
 the halves a run needs, or the full gate with a reason. See the scoped-gate plan,
-``docs/process/plans/scoped-gate-2026-11-06.md``.
+``work/2026-11/scoped-gate/spec.md``.
 
 ``STEP_ENV`` holds the environment a step runs with only inside the gate. The Python test step
 sets ``STUNT_REQUIRE_KSC=1``, so a missing Kaitai compiler fails the gate instead of skipping the

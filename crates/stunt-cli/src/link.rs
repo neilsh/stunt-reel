@@ -2,7 +2,7 @@
 //!
 //! `extract` reads an archive `MAKEONE` wrote and records which item of which game file each
 //! chunk copies; `build` writes the archive back from that record and the game's `RES\`
-//! (`research/makeone-exe/linking.md`, `docs/process/plans/all-manifests-2026-11-03.md`). The
+//! (`research/makeone-exe/linking.md`, `work/2026-11/all-manifests/spec.md`). The
 //! linking itself is [`stunt_core::link`]; this module reads files, hashes them, reads and
 //! writes the TOML, and writes the output atomically.
 //!

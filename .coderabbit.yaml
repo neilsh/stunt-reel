@@ -6,16 +6,14 @@
 # default; the entries below exist only where a default cannot say it.
 
 reviews:
-  # Four paths where a review comment cannot be useful: two lockfiles, the synthetic fixture
-  # bytes, and the parity log, whose rows are append-only and union-merged (.gitattributes), so
-  # a note about their shape is guaranteed to be ignored. And work/, whose dated records
-  # (work/README.md) a person reviews in the pull request that adds them, with the fresh reviewer
-  # of AGENTS.md working rule 7 when that pull request also changes research/ or NOTICE.md.
+  # Three paths where a review comment cannot be useful: two lockfiles and the synthetic fixture
+  # bytes. And work/, whose dated records (work/README.md) a person reviews in the pull request
+  # that adds them, with the fresh reviewer of AGENTS.md working rule 7 when that pull request
+  # also changes research/ or NOTICE.md.
   path_filters:
     - "!Cargo.lock"
     - "!uv.lock"
     - "!tests/fixtures/**"
-    - "!research/parity/log.md"
     - "!work/**"
 
   # The docstring-coverage pre-merge check counts test functions, and this repository names a
@@ -29,7 +27,7 @@ reviews:
   # Generated unit tests landed as a commit on the pull request's branch (#264, 2026-11-07),
   # failed clippy and the commit-message check, and could be fixed only by rewriting the
   # branch. Tests come from whoever owns the pull request
-  # (docs/process/plans/retro-2026-11-07.md). Off.
+  # (work/2026-11/retro/retro-2026-11-07.md). Off.
   finishing_touches:
     unit_tests:
       enabled: false
