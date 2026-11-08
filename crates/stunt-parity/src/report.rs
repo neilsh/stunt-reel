@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ArtifactError;
+use crate::render::RenderAdapter;
 
 /// Whether the scored mean SSIM reaches each I6 threshold.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,6 +97,9 @@ pub struct Report {
     /// (no font, or a drawing fault); their captured ink is still scored.
     #[serde(default)]
     pub credits_missing_frames: usize,
+    /// Adapter the render was drawn on, from its `render.json`; null when it does not say.
+    #[serde(default)]
+    pub adapter: Option<RenderAdapter>,
     /// Per-frame measurements, in capture order.
     pub per_frame: Vec<FrameReport>,
 }
@@ -183,6 +187,7 @@ mod tests {
             scored_frames: 2,
             excluded_frames: 0,
             credits_missing_frames: 0,
+            adapter: None,
             per_frame: vec![frame(), frame()],
         }
     }
@@ -233,5 +238,6 @@ mod tests {
         let report: Report = serde_json::from_str(text).expect("legacy report");
         assert_eq!(report.per_frame.len(), 1);
         assert_eq!(report.per_frame[0].scored, None);
+        assert_eq!(report.adapter, None);
     }
 }

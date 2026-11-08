@@ -25,6 +25,11 @@ from stunt_reel.parity_artifacts._fields import (
     _write_json,
     _wrong_type,
 )
+from stunt_reel.parity_artifacts.render import (
+    RenderAdapter,
+    _adapter_document,
+    _adapter_object,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -74,6 +79,8 @@ class Report:
     scored_frames: int = 0
     excluded_frames: int = 0
     credits_missing_frames: int = 0
+    #: Adapter the render was drawn on, from its ``render.json``; ``None`` when it does not say.
+    adapter: RenderAdapter | None = None
 
     def headline(self) -> tuple[float, float]:
         """Headline SSIM and mask IoU: the scored means, else every matched frame."""
@@ -193,6 +200,7 @@ def _report_object(document: Any, path: Path | None) -> Report:
         credits_missing_frames=_as_int(
             raw.get("credits_missing_frames", 0), path, "credits_missing_frames"
         ),
+        adapter=_adapter_object(raw.get("adapter"), path),
     )
 
 
@@ -227,6 +235,7 @@ def _report_document(report: Report) -> dict[str, Any]:
         "scored_frames": report.scored_frames,
         "excluded_frames": report.excluded_frames,
         "credits_missing_frames": report.credits_missing_frames,
+        "adapter": None if report.adapter is None else _adapter_document(report.adapter),
         "per_frame": [frame_document(frame) for frame in report.per_frame],
     }
 

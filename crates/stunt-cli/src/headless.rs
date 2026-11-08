@@ -10,13 +10,13 @@ use stunt_core::credits::CreditLines;
 use stunt_core::contracts::PaletteControls;
 use stunt_core::flm::CAMERA_FORWARD;
 use stunt_core::scene::{FilmScene, SceneFrame, ViewCamera};
-use stunt_parity::Geometry;
+use stunt_parity::{Geometry, RenderAdapter};
 use stunt_render::{
     FfmpegVideoWriter, Offscreen, PageSink, RenderOptions, RenderedPage, Renderer, SinkError,
 };
 
 use crate::config::CliConfig;
-use crate::parity_artifacts::{RenderJournal, film_identity};
+use crate::parity_artifacts::{RenderJournal, film_identity, render_adapter};
 use crate::playback::{Playback, SampleKey, capture_tick};
 
 /// File name written under --out-dir for an evenly spaced sample; whole ticks go to the
@@ -99,10 +99,10 @@ impl SampleSink {
         Ok(())
     }
 
-    /// Closes the render store and writes its document, if the run has one.
-    fn finish_journal(&mut self) -> Result<(), String> {
+    /// Closes the render store and writes its document, naming *adapter*, if the run has one.
+    fn finish_journal(&mut self, adapter: RenderAdapter) -> Result<(), String> {
         if let Some(journal) = self.journal.take() {
-            journal.finish().map_err(|e| e.to_string())?;
+            journal.finish(adapter).map_err(|e| e.to_string())?;
         }
         Ok(())
     }
@@ -246,9 +246,10 @@ pub(crate) fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), 
             .draw(&frame, None)
             .map_err(|e| format!("render {key}: {e}"))?;
     }
+    let adapter = render_adapter(renderer.adapter());
     drop(renderer);
 
-    sink.borrow_mut().finish_journal()?;
+    sink.borrow_mut().finish_journal(adapter)?;
     if let Some(out_dir) = &config.out_dir {
         let written_frames = sink.borrow().written_frames;
         println!(

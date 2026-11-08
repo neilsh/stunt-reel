@@ -194,10 +194,10 @@ def retime_render(
     """Writes ``out`` as the render in ``ours`` re-labelled by ``by`` ticks.
 
     Target ``t`` gets the planes, palette and tick record of source ``t + by``, written
-    as a new render store re-cut by the target seconds, ``render.json`` last; ticks are
-    read one chunk at a time, never the whole render. Ticks whose source is absent are
-    reported and, with ``allow_missing``, skipped; otherwise they are an error. A
-    non-empty ``out`` is refused unless ``force``.
+    as a new render store re-cut by the target seconds, ``render.json`` last, which keeps the
+    source's adapter; ticks are read one chunk at a time, never the whole render. Ticks whose
+    source is absent are reported and, with ``allow_missing``, skipped; otherwise they are an
+    error. A non-empty ``out`` is refused unless ``force``.
     """
     capture = read_capture(reference)
     pairs = plan_retime((frame.film_tick for frame in capture.frames), by)
@@ -220,6 +220,7 @@ def retime_render(
             source.record.film,
             source.record.geometry,
             ((replace(rows[tick], tick=target), source.frame(tick)) for target, tick in kept),
+            adapter=source.record.adapter,
         )
     return RetimeResult(copied=len(kept), missing=missing)
 

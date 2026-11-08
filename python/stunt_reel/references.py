@@ -14,30 +14,39 @@ A row also names the game builds its reference was made with, ``makeone`` and ``
 ``"unpatched"`` or ``"patch3"``, and a ``reason`` whenever either is unpatched (ADR 0029).
 :func:`require_builds` is the one check that a run's build pair is the pair its film's row
 names; ``play`` and the capture scripts call it before they launch the emulator.
+
+A row may also record the film's recapture noise, ``noise_sigma``, and in
+``[<film>.expected.<class>]`` the scores the film is expected to reach on each renderer class;
+:func:`read_reference` checks both.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
+import math
 import re
 import tomllib
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from stunt_reel import capture_store, parity_layout
 from stunt_reel.dataroot import REPO_ROOT, corpus_root
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
     from pathlib import Path
 
 __all__ = [
     "BUILD_NAMES",
     "MAKEONE_BUILDS",
+    "RENDERER_CLASSES",
     "UNKNOWN_BUILD",
     "Builds",
+    "Expected",
     "Reference",
     "ReferenceCaptureError",
     "archive_makeone_build",
@@ -65,6 +74,16 @@ MAKEONE_BUILDS: dict[str, str] = {
 #: A pinned archive hash: SHA-256 as ``file_sha256`` writes it.
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
+#: The renderer classes a row keys its expected scores by: ``gpu`` for a hardware adapter,
+#: ``lavapipe`` for a CPU one.
+RENDERER_CLASSES: tuple[str, ...] = ("gpu", "lavapipe")
+
+#: A measured commit as an expected score names it: 7 to 40 lowercase hex digits.
+_COMMIT = re.compile(r"[0-9a-f]{7,40}")
+
+#: The fields of one ``[<film>.expected.<class>]`` table.
+_EXPECTED_FIELDS = ("ssim", "iou", "commit", "adapter")
+
 
 class ReferenceCaptureError(RuntimeError):
     """A film's reference capture cannot be used; the message names the film."""
@@ -80,11 +99,27 @@ class Builds:
 
 
 @dataclass(frozen=True)
+class Expected:
+    """The scores a film is expected to reach on one renderer class, and where they were measured.
+
+    ``ssim`` and ``iou`` are a report's ``mean_ssim_scored`` and ``mean_iou_scored``; ``commit``
+    is the commit measured and ``adapter`` the name of the adapter it rendered on.
+    """
+
+    ssim: float
+    iou: float
+    commit: str
+    adapter: str
+
+
+@dataclass(frozen=True)
 class Reference:
     """One ``references.toml`` entry: the film's slug, the hash its capture must have, builds.
 
     ``all_sha256`` pins the archive the film plays, when the row names one (ADR 0037): parity
-    renders and captures with the archive of exactly those bytes.
+    renders and captures with the archive of exactly those bytes. ``expected`` holds the row's
+    expected scores by renderer class, read-only and empty without any; ``noise_sigma`` is the
+    recapture noise of the whole-frame SSIM, when the row names it.
     """
 
     film: str
@@ -92,6 +127,11 @@ class Reference:
     sha256: str
     builds: Builds
     all_sha256: str | None = None
+    # A mapping proxy is not hashable, so the hash leaves it out; equality still compares it.
+    expected: Mapping[str, Expected] = dataclasses.field(
+        default_factory=lambda: MappingProxyType({}), hash=False
+    )
+    noise_sigma: float | None = None
 
 
 # Not cached: a capture is replaced in place (ADR 0028), so a digest keyed by path goes stale.
@@ -176,7 +216,13 @@ def read_reference(root: Path, film: str) -> Reference:
             f"{path}: the film entry of {name} is not a slug: {err}"
         ) from err
     return Reference(
-        name, slug, entry["sha256"], _builds(path, name, entry), _pin(path, name, entry)
+        name,
+        slug,
+        entry["sha256"],
+        _builds(path, name, entry),
+        _pin(path, name, entry),
+        expected=_expected(path, name, entry),
+        noise_sigma=_noise_sigma(path, name, entry),
     )
 
 
@@ -191,6 +237,78 @@ def _pin(path: Path, name: str, entry: dict[str, object]) -> str | None:
             "(64 lowercase hex digits)"
         )
     return value
+
+
+def _invalid(path: Path, name: str, key: str, value: object, wanted: str) -> ReferenceCaptureError:
+    """The error for row *name* of *path* whose *key* is *value* (``None``: absent), not *wanted*."""
+    if value is None:
+        return ReferenceCaptureError(f"{path}: the row [{name}] has no {key}; it must be {wanted}")
+    return ReferenceCaptureError(
+        f"{path}: the row [{name}] names {key} {value!r}, which is not {wanted}"
+    )
+
+
+def _number(value: object) -> float | None:
+    """*value* as a float when it is a TOML number (an integer counts, a boolean does not)."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
+
+
+def _noise_sigma(path: Path, name: str, entry: dict[str, object]) -> float | None:
+    """The recapture noise row *name* of *path* names: a finite positive number, or ``None``."""
+    value = entry.get("noise_sigma")
+    if value is None:
+        return None
+    number = _number(value)
+    if number is None or not 0 < number < math.inf:
+        raise _invalid(path, name, "noise_sigma", value, "a finite positive number")
+    return number
+
+
+def _expected(path: Path, name: str, entry: dict[str, object]) -> Mapping[str, Expected]:
+    """The expected scores row *name* of *path* names, by renderer class; empty without any."""
+    tables = entry.get("expected", {})
+    if not isinstance(tables, dict):
+        raise _invalid(path, name, "expected", tables, "a table of renderer classes")
+    found: dict[str, Expected] = {}
+    for renderer, table in tables.items():
+        key = f"expected.{renderer}"
+        if renderer not in RENDERER_CLASSES:
+            raise ReferenceCaptureError(
+                f"{path}: the row [{name}] names {key}, but the renderer classes are "
+                f"{', '.join(RENDERER_CLASSES)}"
+            )
+        if not isinstance(table, dict):
+            raise _invalid(path, name, key, table, f"a table of {', '.join(_EXPECTED_FIELDS)}")
+        found[renderer] = _expected_entry(path, name, key, table)
+    return MappingProxyType(found)
+
+
+def _expected_entry(path: Path, name: str, key: str, table: dict[str, object]) -> Expected:
+    """The ``[<film>.expected.<class>]`` table *key* of row *name* of *path*, checked."""
+    unknown = sorted(table.keys() - set(_EXPECTED_FIELDS))
+    if unknown:
+        raise ReferenceCaptureError(
+            f"{path}: the row [{name}] names {key}.{unknown[0]}, but an expected score has only "
+            f"{', '.join(_EXPECTED_FIELDS)}"
+        )
+    scores: dict[str, float] = {}
+    for score, low in (("ssim", -1.0), ("iou", 0.0)):  # SSIM runs from -1, IoU from 0
+        value = table.get(score)
+        number = _number(value)
+        if number is None or not low <= number <= 1:
+            raise _invalid(path, name, f"{key}.{score}", value, f"a number from {low:g} to 1")
+        scores[score] = number
+    commit = table.get("commit")
+    if not isinstance(commit, str) or _COMMIT.fullmatch(commit) is None:
+        raise _invalid(
+            path, name, f"{key}.commit", commit, "a commit (7 to 40 lowercase hex digits)"
+        )
+    adapter = table.get("adapter")
+    if not isinstance(adapter, str) or not adapter.strip():
+        raise _invalid(path, name, f"{key}.adapter", adapter, "an adapter name")
+    return Expected(scores["ssim"], scores["iou"], commit, adapter)
 
 
 def read_pin(root: Path, slug: str) -> str | None:

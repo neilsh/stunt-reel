@@ -14,6 +14,8 @@
 //! capture's ordinals, file names and 320x200 geometry are defaulted here rather
 //! than in either adapter. Reports stay readable across versions through
 //! `serde(default)` optional fields; making a field required is a schema bump.
+//! The adapter a render was drawn on is optional in both `render.json` and
+//! `report.json`, so recording it moved no version.
 
 pub mod capture;
 pub mod error;
@@ -26,8 +28,8 @@ pub use capture::{CaptureSet, CapturedFrame};
 pub use error::ArtifactError;
 pub use film::FilmId;
 pub use render::{
-    CameraPose, Geometry, PALETTE_BYTES, RENDER_CHUNK_TICKS, RenderChunk, RenderPalette,
-    RenderRecord, RenderTick, StoreSpan, TickSlot,
+    AdapterClass, CameraPose, Geometry, PALETTE_BYTES, RENDER_CHUNK_TICKS, RenderAdapter,
+    RenderChunk, RenderPalette, RenderRecord, RenderTick, StoreSpan, TickSlot,
 };
 pub use report::{FrameReport, I6Gate, Report};
 pub use video::{CaptureEnd, PaletteChange, PaletteLog, TickLog, VIDEO_FILE, VideoCapture};

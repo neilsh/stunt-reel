@@ -365,8 +365,29 @@ pub enum RenderError {
     Sink(#[from] SinkError),
 }
 
+/// The adapter a renderer draws on.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AdapterIdentity {
+    /// Adapter name as its driver reports it.
+    pub name: String,
+    /// The adapter is a CPU implementation (lavapipe, WARP), not a GPU.
+    pub is_cpu: bool,
+}
+
+impl AdapterIdentity {
+    /// The identity *adapter*'s driver reports.
+    fn of(adapter: &wgpu::Adapter) -> Self {
+        let info = adapter.get_info();
+        Self {
+            is_cpu: is_cpu_adapter(&info),
+            name: info.name,
+        }
+    }
+}
+
 /// A renderer bound to one destination and one `FilmScene`.
 pub struct Renderer {
+    adapter: AdapterIdentity,
     device: wgpu::Device,
     queue: wgpu::Queue,
     pipelines: RenderPipelines,
@@ -406,7 +427,8 @@ impl Renderer {
         sink: Box<dyn PageSink>,
         options: RenderOptions,
     ) -> Result<Self, RenderError> {
-        let (device, queue) = open_device(&offscreen_adapter(options)?)?;
+        let adapter = offscreen_adapter(options)?;
+        let (device, queue) = open_device(&adapter)?;
         let camera_resources = CameraGpuResources::new(&device);
         let palette_lut = PaletteLut::new(&device, &queue);
         let pipelines = RenderPipelines::new_with_plane(
@@ -420,6 +442,7 @@ impl Renderer {
         let destination =
             Destination::Offscreen(Box::new(OffscreenTarget::new(&device, target, sink)));
         Ok(Self {
+            adapter: AdapterIdentity::of(&adapter),
             device,
             queue,
             pipelines,
@@ -470,6 +493,7 @@ impl Renderer {
         );
         let scene_pass = SceneRenderer::new(&device, &queue, &pipelines, scene);
         Ok(Self {
+            adapter: AdapterIdentity::of(&adapter),
             device,
             queue,
             pipelines,
@@ -481,6 +505,12 @@ impl Renderer {
             // Credits are drawn on offscreen pages only; the window shows the scene alone.
             font: None,
         })
+    }
+
+    /// The adapter this renderer draws on, chosen at open.
+    #[must_use]
+    pub fn adapter(&self) -> &AdapterIdentity {
+        &self.adapter
     }
 
     /// Draws the frame, exactly once, to the destination fixed at open.
@@ -521,6 +551,7 @@ impl Renderer {
         camera: Option<&CameraController>,
     ) -> Result<(), RenderError> {
         let Self {
+            adapter: _,
             device,
             queue,
             pipelines,
@@ -581,6 +612,7 @@ impl Renderer {
 
     fn draw_surface(&mut self, frame: &SceneFrame, camera: Option<&CameraController>) {
         let Self {
+            adapter: _,
             device,
             queue,
             pipelines,
@@ -1028,7 +1060,12 @@ fn first_adapter<A>(
 /// Whether *adapter* is the kind the offscreen path asked for: any adapter when the caller
 /// asked for software, else one that is not a CPU implementation.
 fn preferred_adapter(adapter: &wgpu::Adapter, options: RenderOptions) -> bool {
-    options.software_only || adapter.get_info().device_type != wgpu::DeviceType::Cpu
+    options.software_only || !is_cpu_adapter(&adapter.get_info())
+}
+
+/// Whether *info* describes a CPU implementation rather than a GPU.
+fn is_cpu_adapter(info: &wgpu::AdapterInfo) -> bool {
+    info.device_type == wgpu::DeviceType::Cpu
 }
 
 /// The offscreen adapter of the acquisition policy, chosen once per process.

@@ -17,6 +17,7 @@ from artifact_helpers import (
 from stunt_reel.parity_artifacts import (
     FilmId,
     Geometry,
+    RenderAdapter,
     load_video_capture,
     read_capture,
     read_render,
@@ -58,6 +59,7 @@ def _unset_optional_fields(value: object) -> set[str]:
 
 
 _FULL_FILM = FilmId(name="CTRY.FLM", flm_bytes=100, flm_sha256="abc", all_sha256="def")
+_CPU_ADAPTER = RenderAdapter("llvmpipe (LLVM 19.1.7, 256 bits)", "cpu")
 
 
 def _round_trip_capture(directory: Path, capture: Any) -> Any:
@@ -96,8 +98,12 @@ def _round_trip_report(directory: Path, report: Any) -> Any:
             ),
             set(),
         ),
-        (_round_trip_render, lambda: replace(sample_record(), film=_FULL_FILM), set()),
-        (_round_trip_report, sample_report, set()),
+        (
+            _round_trip_render,
+            lambda: replace(sample_record(), film=_FULL_FILM, adapter=_CPU_ADAPTER),
+            set(),
+        ),
+        (_round_trip_report, lambda: replace(sample_report(), adapter=_CPU_ADAPTER), set()),
     ],
     ids=["capture", "video", "render", "report"],
 )

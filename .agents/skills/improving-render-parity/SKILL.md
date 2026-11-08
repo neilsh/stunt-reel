@@ -16,7 +16,7 @@ The research notes own the procedure. This skill says which note to read and how
 Read [`loop-rules.md`](loop-rules.md) first: one goal, at most four rounds, and the adoption rule step 5 applies. Copy this checklist into your task list and tick items off:
 
 ```
-- [ ] 1. Baseline: mise run parity (one line per film)
+- [ ] 1. Baseline: mise run parity (per film, its score line and its expected line)
 - [ ] 2. Check log.md and the residual notes for prior attempts at this hypothesis
 - [ ] 3. If no renderer-only lever fits, read the PLAYONE rule this round tests and write it into its playone-exe note
 - [ ] 4. One hypothesis class: all variants in one sweep, or retime for timing

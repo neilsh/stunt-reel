@@ -1,7 +1,8 @@
 """One-command parity baseline: render every reference film and print the headline scores.
 
 Runs the release binary over every captured tick of each film, scores the render against its
-capture with ``stuntreel parity``, and prints one line per film plus the adoption noise note.
+capture with ``stuntreel parity``, and prints each film's line, the film's expected score under
+it, and the adoption noise note.
 The latest render and report are the ``_current`` trees that ``stunt_reel.parity_layout``
 names. Before a render replaces the tree, it is renamed to that film's previous render (one
 per film, by rename, so no bytes are copied), and the re-score command is printed: any render
@@ -16,7 +17,9 @@ Usage::
 ``_current`` render tree; ``--reuse DIR`` scores ``DIR/<film>`` instead; ``--retime N``
 relabels that tree by N ticks (see ``parity_probe.py retime``) and scores the copy, writing a
 ``_retime<N>`` report so the baseline report is not overwritten. Progress goes to stderr;
-stdout carries only the summary lines and the noise note.
+stdout carries only each film's summary line, under it the comparison with the film's expected
+score for the renderer class it rendered on (``stunt_reel.expected_scores``: the delta, and
+drift only when the scores compare), and the noise note.
 """
 
 from __future__ import annotations
@@ -29,6 +32,8 @@ from pathlib import Path
 from cli import ParityOptions, UsageError, add_parity_options, parity_options, resolve_jobs
 
 from stunt_reel import parity_layout
+from stunt_reel.expected_scores import comparison_line
+from stunt_reel.parity_artifacts import read_report
 from stunt_reel.parity_pipeline import (
     REPO_ROOT,
     FilmFailure,
@@ -43,6 +48,7 @@ from stunt_reel.parity_pipeline import (
     run_matrix,
     score_film,
 )
+from stunt_reel.references import read_reference
 
 #: Adoption floor; a margin under it is not attributable to a change (probes.md section 6).
 NOISE_NOTE = "noise floor +/-0.002 SSIM; margin below 0.002 is not an adoption"
@@ -80,6 +86,15 @@ def prepare_source(job: FilmJob, options: ParityOptions, *, no_render: bool) -> 
         )
     shutil.move(str(scratch), str(current))
     return current
+
+
+def rescored_with(options: ParityOptions) -> str | None:
+    """The flag that made the run score a tree other than this checkout's render, else ``None``."""
+    if options.retime is not None:
+        return "--retime"
+    if options.reuse is not None:
+        return "--reuse"
+    return None
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -145,6 +160,9 @@ def main(argv: list[str] | None = None) -> int:
             )
         else:
             print(format_summary(attempt.film, attempt.report), flush=True)
+            reference = read_reference(root, attempt.film)
+            document = read_report(attempt.report / "report.json")
+            print(comparison_line(reference, document, rescored=rescored_with(options)), flush=True)
     print(NOISE_NOTE)
     return 0 if failures == 0 else 1
 

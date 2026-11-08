@@ -9,7 +9,7 @@ from __future__ import annotations
 import bisect
 from dataclasses import dataclass
 from itertools import accumulate
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from stunt_reel.parity_artifacts._fields import (
     ArtifactError,
@@ -17,6 +17,7 @@ from stunt_reel.parity_artifacts._fields import (
     _as_bool,
     _as_float,
     _as_object,
+    _as_string,
     _as_unsigned,
     _error,
     _optional_int,
@@ -24,6 +25,7 @@ from stunt_reel.parity_artifacts._fields import (
     _read_json,
     _vector3,
     _write_json,
+    _wrong_type,
 )
 
 if TYPE_CHECKING:
@@ -41,6 +43,10 @@ RENDER_CHUNK_TICKS = 50
 _MAX_OFFSET = 2**64 - 1
 #: First layer id an actor draw writes (mirrors ``stunt_render::LAYER_FIRST_ACTOR``).
 LAYER_FIRST_ACTOR = 16
+
+#: What kind of adapter drew a render: a GPU, or a CPU implementation such as lavapipe or WARP.
+AdapterClass = Literal["hardware", "cpu"]
+_ADAPTER_CLASSES: tuple[AdapterClass, ...] = ("hardware", "cpu")
 
 
 @dataclass(frozen=True)
@@ -158,6 +164,16 @@ class RenderChunk:
 
 
 @dataclass(frozen=True)
+class RenderAdapter:
+    """The graphics adapter a render was drawn on."""
+
+    #: Adapter name as its driver reports it.
+    name: str
+    #: Whether the adapter is a GPU or a CPU implementation; the document's ``class``.
+    adapter_class: AdapterClass
+
+
+@dataclass(frozen=True)
 class RenderRecord:
     """Document written beside a render directory's plane files, last."""
 
@@ -167,6 +183,8 @@ class RenderRecord:
     ticks: tuple[RenderTick, ...]
     palette_count: int
     chunks: tuple[RenderChunk, ...]
+    #: Adapter the frames were drawn on; ``None`` in renders written before it was recorded.
+    adapter: RenderAdapter | None = None
 
     def validate(self, path: Path | None = None) -> None:
         """Check the version, geometry, tick ordering, palette indices and chunk table."""
@@ -333,6 +351,22 @@ def _tick_object(value: Any, path: Path | None, field_name: str) -> RenderTick:
     )
 
 
+def _adapter_object(value: Any, path: Path | None) -> RenderAdapter | None:
+    """The top-level ``adapter`` of a ``render.json`` or ``report.json``; absent or null is None."""
+    if value is None:
+        return None
+    raw = _as_object(value, path, "adapter")
+    name = _as_string(raw.get("name"), path, "adapter.name")
+    for adapter_class in _ADAPTER_CLASSES:
+        if raw.get("class") == adapter_class:
+            return RenderAdapter(name=name, adapter_class=adapter_class)
+    raise _wrong_type(path, "adapter.class", '"hardware" or "cpu"')
+
+
+def _adapter_document(adapter: RenderAdapter) -> dict[str, Any]:
+    return {"name": adapter.name, "class": adapter.adapter_class}
+
+
 def _render_record(document: Any, path: Path | None) -> RenderRecord:
     raw = _as_object(document, path, "the render record")
     ticks = _as_array(raw.get("ticks"), path, "ticks")
@@ -349,6 +383,7 @@ def _render_record(document: Any, path: Path | None) -> RenderRecord:
             _chunk_object(entry, path, f"chunks[{index}]")
             for index, entry in enumerate(_as_array(raw.get("chunks"), path, "chunks"))
         ),
+        adapter=_adapter_object(raw.get("adapter"), path),
     )
 
 
@@ -392,7 +427,7 @@ def _render_document(record: RenderRecord) -> dict[str, Any]:
         }
         for chunk in record.chunks
     ]
-    return {
+    document: dict[str, Any] = {
         "schema_version": record.schema_version,
         "film": film,
         "geometry": _geometry_document(record.geometry),
@@ -400,6 +435,9 @@ def _render_document(record: RenderRecord) -> dict[str, Any]:
         "palette_count": record.palette_count,
         "chunks": chunks,
     }
+    if record.adapter is not None:
+        document["adapter"] = _adapter_document(record.adapter)
+    return document
 
 
 def _store_span(value: Any, path: Path | None, field_name: str) -> StoreSpan:

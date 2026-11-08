@@ -41,8 +41,8 @@ pub use pipeline::{
     LAYER_FIRST_ACTOR, LAYER_NONE, LAYER_OCEAN, LAYER_OVERLAY, LAYER_PROP, LAYER_TERRAIN,
 };
 pub use renderer::{
-    ASPECT_CORRECTED_HEIGHT, DEFAULT_CLEAR_PALETTE_INDEX, DEFAULT_PAGE_HEIGHT, DEFAULT_PAGE_WIDTH,
-    MODE13H_HEIGHT, MODE13H_WIDTH, Offscreen, PageSink, PageSize, RenderError, RenderOptions,
-    RenderedPage, Renderer, SinkError,
+    ASPECT_CORRECTED_HEIGHT, AdapterIdentity, DEFAULT_CLEAR_PALETTE_INDEX, DEFAULT_PAGE_HEIGHT,
+    DEFAULT_PAGE_WIDTH, MODE13H_HEIGHT, MODE13H_WIDTH, Offscreen, PageSink, PageSize, RenderError,
+    RenderOptions, RenderedPage, Renderer, SinkError,
 };
 pub use video::{FfmpegVideoWriter, VideoExportError};

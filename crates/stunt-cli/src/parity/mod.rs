@@ -62,7 +62,7 @@ use mask::{CAPTURE_SKY_INDICES, overlay_drawn};
 use report::{FrameReport, I6Gate, Report};
 use score::{FrameMetrics, ReferenceFrame, RenderFrame, ScorePolicy, score_frame};
 use sheets::write_contact_sheet;
-use stunt_parity::FilmId;
+use stunt_parity::{FilmId, RenderAdapter};
 
 use crate::parity_artifacts;
 use crate::render_store::RenderStore;
@@ -136,7 +136,8 @@ struct FrameRow {
     credits_missing: bool,
 }
 
-/// Aggregates the matched frames into the `report.json` document.
+/// Aggregates the matched frames into the `report.json` document, naming *adapter* as the one
+/// the render was drawn on.
 ///
 /// `scores` must not be empty: the means over every matched frame divide by its length.
 /// The `*_scored` means cover only the frames that reached the fade floor and are `None`
@@ -146,6 +147,7 @@ fn build_report(
     scores: &[FrameRow],
     unmatched: usize,
     min_fade_level: f32,
+    adapter: Option<RenderAdapter>,
 ) -> Report {
     let matched = scores.len() as f32;
     let mean_ssim = scores.iter().map(|s| s.metrics.ssim).sum::<f32>() / matched;
@@ -195,6 +197,7 @@ fn build_report(
         scored_frames: scored_frames.len(),
         excluded_frames,
         credits_missing_frames: scores.iter().filter(|s| s.credits_missing).count(),
+        adapter,
         per_frame: scores
             .iter()
             .map(|s| FrameReport {
@@ -324,7 +327,13 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         ));
     }
 
-    let report = build_report(frames.len(), &scores, unmatched, args.min_fade_level);
+    let report = build_report(
+        frames.len(),
+        &scores,
+        unmatched,
+        args.min_fade_level,
+        store.record().adapter.clone(),
+    );
     if let Some(tick) = first_missing_credits {
         eprintln!(
             "[parity warning] {} frame(s) expect credits the render did not draw, first at tick {tick} (no PFONT.BIN?); their ink is scored",

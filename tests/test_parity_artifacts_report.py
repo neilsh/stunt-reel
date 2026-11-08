@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -15,6 +16,7 @@ from stunt_reel.parity_artifacts import (
     ArtifactError,
     FrameReport,
     I6Gate,
+    RenderAdapter,
     Report,
     read_report,
     write_report,
@@ -43,6 +45,36 @@ def test_an_old_report_without_optional_fields_still_loads(tmp_path: Path) -> No
     assert report.credits_missing_frames == 0
     assert report.i6_gate == I6Gate()
     assert report.headline() == (0.0, 0.0)
+
+
+def test_a_report_records_its_adapter(tmp_path: Path) -> None:
+    fixture = Path(__file__).resolve().parent / "fixtures" / "parity" / "v1" / "report.json"
+    report = read_report(fixture)
+    assert report.adapter == RenderAdapter("Test GPU", "hardware")
+    path = tmp_path / "report.json"
+    write_report(path, report)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert document["adapter"] == {"name": "Test GPU", "class": "hardware"}
+
+
+@pytest.mark.parametrize("adapter", [{}, {"adapter": None}], ids=["absent", "null"])
+def test_a_report_without_an_adapter_reads_none(tmp_path: Path, adapter: dict[str, Any]) -> None:
+    path = write_json(tmp_path / "report.json", {"per_frame": [], **adapter})
+    report = read_report(path)
+    assert report.adapter is None
+    write_report(path, report)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert document["adapter"] is None, "report.json writes an unknown adapter as null"
+
+
+def test_an_unknown_adapter_class_is_refused(tmp_path: Path) -> None:
+    path = write_json(
+        tmp_path / "report.json",
+        {"per_frame": [], "adapter": {"name": "Test GPU", "class": "quantum"}},
+    )
+    with pytest.raises(ArtifactError, match=r"adapter\.class") as refusal:
+        read_report(path)
+    assert refusal.value.kind == "wrong_type"
 
 
 def test_headline_prefers_the_scored_means() -> None:

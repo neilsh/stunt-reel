@@ -24,6 +24,7 @@ from archive_helpers import build_all  # noqa: E402
 from render_helpers import reference_tree  # noqa: E402
 from stunt_reel import dataroot, parity_layout, parity_pipeline, references  # noqa: E402
 from stunt_reel.all_archive import ArchiveMeta, publish_archive  # noqa: E402
+from stunt_reel.parity_artifacts import Report, write_report  # noqa: E402
 from stunt_reel.parity_pipeline import REPO_ROOT  # noqa: E402
 
 #: The films of the committed references.toml, which is what the parity loop covers.
@@ -170,6 +171,8 @@ def test_parity_run_rotates_trees_the_same_at_any_jobs(
     def fake_score(
         job: parity_pipeline.FilmJob, render: Path, report: Path, **_k: object
     ) -> parity_pipeline.FilmScore:
+        report.mkdir(parents=True, exist_ok=True)
+        write_report(report / "report.json", Report(per_frame=()))  # no adapter recorded
         return parity_pipeline.FilmScore(job.name, render, report, parity_pipeline.Score(0.5, 0.5))
 
     monkeypatch.setattr(parity_run, "REPO_ROOT", repo)
@@ -181,10 +184,24 @@ def test_parity_run_rotates_trees_the_same_at_any_jobs(
     argv = ["--no-build", "--data-root", str(root), "--jobs", jobs]
     assert parity_run.main(argv) == 0
     assert parity_run.main(argv) == 0
-    lines = [line for line in capsys.readouterr().out.splitlines() if line.endswith("scored")]
-    assert lines == ["ctry scored", "intro scored"] * 2
+    compare = "      no adapter in the report: re-render to compare"
+    film_lines = ["ctry scored", compare, "intro scored", compare, parity_run.NOISE_NOTE]
+    assert capsys.readouterr().out.splitlines() == film_lines * 2
     for film in ("ctry", "intro"):
         current = repo / parity_layout.render_dir(film) / "marker"
         previous = repo / parity_layout.previous_dir(film) / "marker"
         assert current.read_text(encoding="utf-8") == "2"
         assert previous.read_text(encoding="utf-8") == "1"
+
+
+@pytest.mark.parametrize(
+    ("argv", "flag"),
+    [
+        ([], None),
+        (["--reuse", "elsewhere"], "--reuse"),
+        (["--retime", "-2"], "--retime"),
+        (["--reuse", "elsewhere", "--retime", "1"], "--retime"),
+    ],
+)
+def test_a_run_that_scores_another_tree_names_its_flag(argv: list[str], flag: str | None) -> None:
+    assert parity_run.rescored_with(_options(parity_run, argv)) == flag

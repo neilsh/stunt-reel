@@ -352,6 +352,9 @@ fn software_only_opens_the_fallback_adapter() {
         let Some(mut test) = common::gpu_or_skip_software(&scene) else {
             return;
         };
+        let adapter = test.renderer.adapter();
+        assert!(adapter.is_cpu, "{} is a fallback adapter", adapter.name);
+        assert!(!adapter.name.is_empty());
         let page = test.draw(&scene.frame(0.0));
         assert_eq!(page.size(), PageSize::default());
         assert_eq!(page.indices().len(), 320 * 240);
