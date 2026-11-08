@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
+import json
 import re
+import subprocess
+import sys
 from datetime import date
 from typing import TYPE_CHECKING
 
 import pytest
 
-from stunt_reel.work_items import WorkFolderError, folder_name, parse_folder, scan
+from stunt_reel.work_items import (
+    WorkFolderError,
+    folder_name,
+    issue_statuses,
+    parse_folder,
+    run_command,
+    scan,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -188,3 +198,69 @@ def test_scan_names_every_bad_folder_in_one_error(tmp_path: Path) -> None:
 
 def test_scan_of_a_missing_root_is_empty(tmp_path: Path) -> None:
     assert scan(tmp_path / "work") == []
+
+
+ISSUE_LIST = [
+    "gh",
+    "issue",
+    "list",
+    "--state",
+    "all",
+    "--limit",
+    "2000",
+    "--json",
+    "number,state,stateReason",
+]
+
+
+def test_issue_statuses_reads_every_issue_in_one_gh_call() -> None:
+    issues = [
+        {"number": 307, "state": "OPEN", "stateReason": ""},
+        {"number": 306, "state": "OPEN", "stateReason": "REOPENED"},
+        {"number": 300, "state": "CLOSED", "stateReason": "COMPLETED"},
+        {"number": 301, "state": "CLOSED", "stateReason": "NOT_PLANNED"},
+        {"number": 302, "state": "CLOSED", "stateReason": "DUPLICATE"},
+        {"number": 5, "state": "OPEN", "stateReason": ""},
+    ]
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        calls.append(args)
+        return json.dumps(issues)
+
+    assert issue_statuses([307, 306, 300, 301, 302, 999], run) == {
+        307: "active",
+        306: "active",
+        300: "landed",
+        301: "abandoned",
+        302: "abandoned",
+    }
+    assert calls == [ISSUE_LIST]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [FileNotFoundError(2, "No such file", "gh"), subprocess.CalledProcessError(4, ISSUE_LIST)],
+)
+def test_issue_statuses_is_none_when_gh_cannot_answer(error: Exception) -> None:
+    def run(_args: list[str]) -> str:
+        raise error
+
+    assert issue_statuses([307], run) is None
+
+
+def test_issue_statuses_of_no_issues_calls_nothing() -> None:
+    def run(args: list[str]) -> str:
+        raise AssertionError(args)
+
+    assert issue_statuses([], run) == {}
+
+
+def test_run_command_returns_stdout_or_raises() -> None:
+    utf8 = r"import sys; sys.stdout.buffer.write('\u00e9'.encode())"
+    assert run_command([sys.executable, "-c", utf8]) == "\u00e9"
+    with pytest.raises(subprocess.CalledProcessError) as failed:
+        run_command([sys.executable, "-c", "import sys; sys.exit('no auth')"])
+    assert "no auth" in failed.value.stderr
+    with pytest.raises(FileNotFoundError):
+        run_command(["stunt-reel-no-such-command"])

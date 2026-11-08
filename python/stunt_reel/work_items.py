@@ -2,30 +2,35 @@
 
 A folder's README frontmatter carries `title`, `started` (ISO date, in the folder's month),
 `outcome` (empty until the work lands) and exactly one of `issue` (the number in the folder's
-name) or `status` (`landed` or `abandoned`, for a folder with no issue), and no other key.
+name) or `status` (`landed` or `abandoned`, for a folder with no issue), and no other key. An
+issue folder's status is its issue's, read through `gh` by `issue_statuses`.
 """
 
 from __future__ import annotations
 
+import json
 import re
+import subprocess
 from dataclasses import dataclass
 from datetime import date
-from typing import TYPE_CHECKING, Literal
+from typing import Any, Literal
+lazy from collections.abc import Callable, Iterable
+lazy from pathlib import Path
 
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.frontmatter import FrontmatterError, read_frontmatter
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 __all__ = [
     "MONTH_PATTERN",
     "WORK_ROOT",
+    "Runner",
     "Status",
     "WorkFolder",
     "WorkFolderError",
     "folder_name",
+    "issue_statuses",
     "parse_folder",
+    "run_command",
     "scan",
 ]
 
@@ -34,6 +39,9 @@ WORK_ROOT = REPO_ROOT / "work"
 MONTH_PATTERN = re.compile(r"[0-9]{4}-(0[1-9]|1[0-2])")
 
 type Status = Literal["landed", "abandoned"]
+#: Runs a command and returns its stdout; raises OSError (FileNotFoundError for a missing
+#: program) or subprocess.CalledProcessError. `run_command` is the real one.
+type Runner = Callable[[list[str]], str]
 
 _SLUG = r"[a-z0-9]+(?:-[a-z0-9]+)*"
 _ISSUE_NAME = re.compile(rf"([1-9][0-9]*)_({_SLUG})")
@@ -42,6 +50,9 @@ _ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _STATUSES: dict[str | int, Status] = {"landed": "landed", "abandoned": "abandoned"}
 _REQUIRED = ("title", "started", "outcome")
 _KEYS = frozenset((*_REQUIRED, "issue", "status"))
+_ISSUE_LIST = ("gh", "issue", "list", "--state", "all", "--limit", "2000", "--json")
+_ISSUE_FIELDS = "number,state,stateReason"
+_GIVEN_UP = frozenset(("NOT_PLANNED", "DUPLICATE"))
 
 
 class WorkFolderError(ValueError):
@@ -107,6 +118,46 @@ def scan(root: Path = WORK_ROOT) -> list[WorkFolder]:
         lines = "\n".join(f"  {problem}" for problem in sorted(problems))
         raise WorkFolderError(f"{len(problems)} work folder(s) invalid:\n{lines}")
     return sorted(folders, key=lambda f: (f.month, f.issue is None, f.issue or 0, f.slug))
+
+
+def issue_statuses(numbers: Iterable[int], run: Runner) -> dict[int, str] | None:
+    """The status of each of *numbers*' issues, read with one `gh issue list` through *run*.
+
+    An open issue is `active`; a closed one is `abandoned` when closed as not planned or as a
+    duplicate, else `landed`. A number gh does not list is left out. None when gh cannot run
+    or fails; no call, and `{}`, for no numbers.
+    """
+    wanted = set(numbers)
+    if not wanted:
+        return {}
+    try:
+        issues = json.loads(run([*_ISSUE_LIST, _ISSUE_FIELDS]))
+    except OSError, subprocess.CalledProcessError:
+        return None
+    return {issue["number"]: _issue_status(issue) for issue in issues if issue["number"] in wanted}
+
+
+def run_command(args: list[str]) -> str:
+    """The stdout of *args*, run with no stdin and decoded as UTF-8: the default Runner.
+
+    Raises OSError when the program cannot start (FileNotFoundError when it is missing) and
+    subprocess.CalledProcessError, carrying stderr, when it exits non-zero.
+    """
+    done = subprocess.run(  # noqa: S603 - callers pass fixed gh and git commands
+        args,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+    )
+    return done.stdout
+
+
+def _issue_status(issue: dict[str, Any]) -> str:
+    if issue["state"] == "OPEN":
+        return "active"
+    return "abandoned" if issue["stateReason"] in _GIVEN_UP else "landed"
 
 
 def _parse(path: Path) -> WorkFolder:
