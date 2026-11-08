@@ -10,6 +10,7 @@ import bisect
 import functools
 import os
 import re
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -122,7 +123,8 @@ CODE_SUFFIXES = frozenset({".rs", ".py", ".wgsl", ".toml"})
 #: Work folders. Only its month directories (``work/<YYYY-MM>/``) hold dated records, frozen once
 #: their work lands and not a source of truth; the README beside them is evergreen.
 WORK_DIR = REPO_ROOT / "work"
-#: Repo-relative path prefixes whose own links go unchecked while a move is half done.
+#: Repo-relative path prefixes whose own links ``test_markdown_links_resolve`` leaves unchecked
+#: while a move is half done; the rule on links into dated records still reads them.
 LINK_SOURCES_SKIPPED: tuple[str, ...] = ()
 #: A link from an evergreen file to a dated record is allowed after a provenance marker on its
 #: line (``_Source:`` or a legacy ``_Found <date>``, italic with ``_`` or ``*``, at the line's
@@ -138,17 +140,21 @@ IMAGES_DIR_NAME = "images"
 ADR_PREFIX = "docs/adr/"
 
 
-def _repo_files(suffixes: frozenset[str]) -> list[Path]:
-    return [path for path in _walk(REPO_ROOT, LINK_SKIPPED_DIRS) if path.suffix in suffixes]
-
-
-def _link_sources(root: Path) -> list[Path]:
-    """Markdown files under *root* whose links are checked."""
+def _code_files(root: Path = REPO_ROOT) -> list[Path]:
+    """Code files under *root* whose document citations are checked; dated records are not."""
     return [
         path
         for path in _walk(root, LINK_SKIPPED_DIRS)
-        if path.suffix == ".md"
-        and not path.relative_to(root).as_posix().startswith(LINK_SOURCES_SKIPPED)
+        if path.suffix in CODE_SUFFIXES and not is_dated(path.relative_to(root).as_posix())
+    ]
+
+
+def _link_sources(root: Path, skipped: tuple[str, ...] = ()) -> list[Path]:
+    """Markdown files under *root* whose links are checked, less those under a *skipped* prefix."""
+    return [
+        path
+        for path in _walk(root, LINK_SKIPPED_DIRS)
+        if path.suffix == ".md" and not path.relative_to(root).as_posix().startswith(skipped)
     ]
 
 
@@ -246,7 +252,8 @@ def _check_link(source: Path, target: str, work_dir: Path) -> str | None:
 def _work_links(root: Path = REPO_ROOT) -> set[tuple[str, str, bool]]:
     """(source, target, allowed) for every link from an evergreen Markdown file to a dated record.
 
-    Evergreen is every checked file that is not a dated record; paths are relative to *root*.
+    Evergreen is every Markdown file under *root* that is not a dated record, including one
+    ``LINK_SOURCES_SKIPPED`` names; paths are relative to *root*.
     Allowed means a provenance span, a ``Ruled out`` section, an ADR, or a picture in a dated
     folder's ``images/``.
     """
@@ -281,11 +288,11 @@ def test_markdown_links_resolve() -> None:
     """Every relative Markdown link points at an existing file and, for .md targets, heading.
 
     A link from a dated record (``work/<YYYY-MM>/``) to an evergreen file is checked for the file
-    only (``_check_link``).
+    only (``_check_link``). Files under ``LINK_SOURCES_SKIPPED`` are not sources here alone.
     """
     broken = [
         f"{path.relative_to(REPO_ROOT).as_posix()}: {target} ({problem})"
-        for path in _link_sources(REPO_ROOT)
+        for path in _link_sources(REPO_ROOT, LINK_SOURCES_SKIPPED)
         for target, _ in _links(path)
         if (problem := _check_link(path, target, WORK_DIR))
     ]
@@ -293,9 +300,9 @@ def test_markdown_links_resolve() -> None:
 
 
 def test_code_cited_docs_exist() -> None:
-    """Every docs/, research/ or work/ Markdown path named in code exists."""
+    """Every docs/, research/ or work/ Markdown path named in code outside dated records exists."""
     missing: list[str] = []
-    for path in _repo_files(CODE_SUFFIXES):
+    for path in _code_files():
         text = path.read_text(encoding="utf-8", errors="replace")
         for match in CODE_DOC_PATH_REGEX.finditer(text):
             if not (REPO_ROOT / match.group(1)).exists():
@@ -612,6 +619,34 @@ def test_work_readme_is_evergreen(tmp_path: Path) -> None:
     assert _check_link(journal, "../../README.md#gone", work) is None
 
 
+def test_the_work_link_rule_ignores_the_move_skip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A half-done move pauses the resolve check only; work/'s README still may not cite a record."""
+    monkeypatch.setattr(sys.modules[__name__], "LINK_SOURCES_SKIPPED", ("work/",))
+    _write(tmp_path / "work" / "2026-11" / "x" / "journal.md", "# J\n")
+    readme = _write(tmp_path / "work" / "README.md", "# Work\n\nSee [j](./2026-11/x/journal.md).\n")
+    assert _work_links(tmp_path) == {
+        (readme.relative_to(tmp_path).as_posix(), f"{FIXTURE_FOLDER}/journal.md", False)
+    }
+    assert readme not in _link_sources(tmp_path, LINK_SOURCES_SKIPPED)
+
+
+def test_code_citation_walks_skip_dated_records(tmp_path: Path) -> None:
+    """A dated record's script or moves file names paths as they were then, so it is not checked."""
+    for relative in (
+        "python/a.py",
+        "work/tool.py",
+        f"{FIXTURE_FOLDER}/plan_moves.py",
+        f"{FIXTURE_FOLDER}/moves.toml",
+    ):
+        _write(tmp_path / relative, "")
+    assert sorted(path.relative_to(tmp_path).as_posix() for path in _code_files(tmp_path)) == [
+        "python/a.py",
+        "work/tool.py",
+    ]
+
+
 #: Links from evergreen files to dated records that point at where work was tracked rather than cite a
 #: fact through it. This list may only shrink: a new link fails, and so does an entry that no
 #: longer exists.
@@ -645,7 +680,7 @@ def test_code_citations_name_no_heading() -> None:
     """Code cites a document by path or anchor token, never by heading, so distilling breaks none."""
     found = [
         f"{path.relative_to(REPO_ROOT).as_posix()}: {citation}"
-        for path in _repo_files(CODE_SUFFIXES)
+        for path in _code_files()
         for citation in _heading_citations(path.read_text(encoding="utf-8", errors="replace"))
     ]
     assert not found, (
