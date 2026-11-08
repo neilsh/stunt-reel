@@ -76,7 +76,7 @@ MAX_SKEW_TICKS: int = 2
 #: ticks near tick 9,000, live 2026-11-01), which only moves the frame a window dumps.
 MAX_WINDOW_SKEW_TICKS: int = WINDOW_SPAN
 #: Dump passes run at once. Sixteen parallel runs were measured bit-identical on 16 logical
-#: cores (capture-dosbox-automation.md § 4.1), and one pass on the capture profile costs about
+#: cores (capture-dosbox-automation.md § 2), and one pass on the capture profile costs about
 #: 0.23 of a core (§ 4.4), so eight use about two cores and leave room for other work.
 DEFAULT_PARALLEL_PASSES: int = 8
 #: Default seconds one pass may take; a full-length film runs for minutes.
