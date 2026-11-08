@@ -14,8 +14,8 @@ torn or whose DAC still lags the working palette; dump passes refuse a page that
 
 **Spec:**
 - Review findings: the Standards and Spec reports of 2026-10-31, restated as the table below (the source of truth here).
-- 6.1/6.2: [`tear-palette-investigation-2026-10-31.md`](tear-palette-investigation-2026-10-31.md) §§ 1.3 and 2.4.
-- Plan items 6.1/6.2 in [`dosbox-automation-switch-2026-10-30.md`](dosbox-automation-switch-2026-10-30.md).
+- 6.1/6.2: [`tear-palette-investigation-2026-10-31.md`](../tear-palette-investigation/tear-palette-investigation-2026-10-31.md) §§ 1.3 and 2.4.
+- Plan items 6.1/6.2 in [`dosbox-automation-switch-2026-10-30.md`](../dosbox-automation-switch/plan.md).
 
 | # | Layer | Finding | Disposition |
 |---|---|---|---|

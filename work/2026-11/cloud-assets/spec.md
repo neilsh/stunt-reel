@@ -1,13 +1,13 @@
 # Cloud assets: game data for Claude Code cloud sessions from a private R2 bucket (2026-11-06)
 
-Status: **implemented**; accepted as [ADR 0039](../../adr/0039-cloud-sessions-fetch-pinned-game-archives.md). The owner's publish and the first cloud run (plan Task 7) remain. Source: a brainstorming session that followed the superset
+Status: **implemented**; accepted as [ADR 0039](../../../docs/adr/0039-cloud-sessions-fetch-pinned-game-archives.md). The owner's publish and the first cloud run (plan Task 7) remain. Source: a brainstorming session that followed the superset
 probe ([`research/makeone-exe/linking.md`](../../../research/makeone-exe/linking.md) § 7) and
 `mise run superset-all` (#256). Builds on
-[ADR 0006](../../adr/0006-ci-renders-on-lavapipe.md) (rendering on lavapipe),
-[ADR 0022](../../adr/0022-captures-are-add-only-beside-a-read-only-corpus.md) (a read-only
-corpus), [ADR 0032](../../adr/0032-a-films-archive-is-committed-as-a-manifest.md) (archive
-manifests), [ADR 0036](../../adr/0036-worktrees-reach-shared-state-by-configuration.md) (the
-data root) and [ADR 0037](../../adr/0037-a-reference-pins-its-archive.md) (each reference pins
+[ADR 0006](../../../docs/adr/0006-ci-renders-on-lavapipe.md) (rendering on lavapipe),
+[ADR 0022](../../../docs/adr/0022-captures-are-add-only-beside-a-read-only-corpus.md) (a read-only
+corpus), [ADR 0032](../../../docs/adr/0032-a-films-archive-is-committed-as-a-manifest.md) (archive
+manifests), [ADR 0036](../../../docs/adr/0036-worktrees-reach-shared-state-by-configuration.md) (the
+data root) and [ADR 0037](../../../docs/adr/0037-a-reference-pins-its-archive.md) (each reference pins
 its archive).
 
 ## 1. Goal
@@ -227,7 +227,7 @@ The task needs no `ensure` dependency: it builds no binary.
   4. install `mesa-vulkan-drivers` (lavapipe, as CI does);
   5. `mise run cloud-assets -- fetch && mise run superset-all`.
 
-  The script lives in [`docs/harness-setup.md`](../../harness-setup.md), from which the owner
+  The script lives in [`docs/harness-setup.md`](../../../docs/harness-setup.md), from which the owner
   pastes it into the environment; no shell script is committed, as the repo has none.
 
 ## 5. Error handling
@@ -269,7 +269,7 @@ and runs parity on CTRY and INTRO.
 4. Owner: create the read-only token, `wrangler login`, `mise run cloud-assets -- pack`, commit the
    pins, `mise run cloud-assets -- upload`, configure the cloud environment.
 5. Verify in a cloud session (section 6, manual), and record the lavapipe parity scores in
-   [`research/parity/log.md`](../../../research/parity/log.md).
+   [`research/parity/log.md`](../../2026-10/parity-log/log.md).
 
 ## 8. Out of scope
 

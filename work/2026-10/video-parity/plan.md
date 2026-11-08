@@ -14,7 +14,7 @@ sample, fits one film offset and writes a per-second report. Document types live
 dependency `flate2 = "1.1"`, already in `Cargo.lock` at 1.1.10); dosbox-automation (pinned in
 `mise.toml`); ffmpeg only to make one committed fixture and for a one-off check.
 
-**Spec:** [`video-parity-2026-10-31.md`](video-parity-2026-10-31.md). Parts 4 (switch) and 5
+**Spec:** [`video-parity-2026-10-31.md`](spec.md). Parts 4 (switch) and 5
 (retirement) get their own plan after Task 11 decides whether to switch.
 
 ## Global Constraints
@@ -532,9 +532,9 @@ Rules the tests pin:
 Needs the emulator, the corpus and release renders; results go to the research log, not the gate.
 
 **Files:**
-- Modify: [`research/parity/log.md`](../../../research/parity/log.md) (rows at the end),
+- Modify: [`research/parity/log.md`](../parity-log/log.md) (rows at the end),
   [`research/parity/method.md`](../../../research/parity/method.md) (a "per-second scoring" section)
-- Modify: [`video-parity-2026-10-31.md`](video-parity-2026-10-31.md) (answer the open questions)
+- Modify: [`video-parity-2026-10-31.md`](spec.md) (answer the open questions)
 
 - [ ] **Step 1: Score.** Render `CTRY.FLM` and `INTRO.FLM` with the release build (`mise run
   parity` renders as today), then `stuntreel parity --reference <video capture> --test <render>

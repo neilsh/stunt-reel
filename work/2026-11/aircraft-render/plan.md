@@ -14,7 +14,7 @@ change from that track's `diagnosis.md`, and this plan fixes everything around i
 **Tech Stack:** Rust (`stunt-core`, `stunt-render`, `stunt-cli`), Python bench and probe scripts,
 `mise` tasks, Claude subagents (Agent tool, `model` override).
 
-**Spec:** [`aircraft-render-2026-11-01.md`](aircraft-render-2026-11-01.md)
+**Spec:** [`aircraft-render-2026-11-01.md`](spec.md)
 
 ## Global Constraints
 

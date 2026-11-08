@@ -1,10 +1,10 @@
 # Error readout: Haiku grades each render's errors per film
 
 Status: spec, approved 2026-11-01 after self-review; implemented in [#42](https://github.com/neilsh/stunt-reel/pull/42). Follows the error-category
-probe ([`error-category-probe-2026-10-31.md`](error-category-probe-2026-10-31.md); results in
+probe ([`error-category-probe-2026-10-31.md`](../../2026-10/error-category-probe/spec.md); results in
 `research/parity/method.md` § 2.3), which showed that Haiku grades the categories in
 `research/parity/error-categories.toml` as well as Sonnet does. This is the parity-scoring spec's stage 4,
-fault readouts ([`parity-scoring-2026-10-31.md`](parity-scoring-2026-10-31.md)), by another route.
+fault readouts ([`parity-scoring-2026-10-31.md`](../../2026-10/parity-scoring/spec.md)), by another route.
 
 ## Intent
 

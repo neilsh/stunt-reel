@@ -1,6 +1,6 @@
 # AGENTS.md split into project skills (2026-11-05)
 
-Status: **implemented 2026-11-05**. Tasks: [`agents-md-split-implementation-2026-11-05.md`](agents-md-split-implementation-2026-11-05.md), on branch
+Status: **implemented 2026-11-05**. Tasks: [`agents-md-split-implementation-2026-11-05.md`](plan.md), on branch
 `claude/agents-md-refactor-72199a`. Source: a brainstorming session of 2026-11-05 that started
 from "AGENTS.md and the other agent files are getting unwieldy; suggest splitting into project
 skills"; the same session added a disk-space gate on `mise run reap` (D7, 4.6). This note owns
@@ -22,10 +22,10 @@ Cut the guidance every turn pays for without hiding a rule every task needs:
   5k tokens. SOP 1 (contracts), SOP 2 and SOP 4 (binary findings and tier promotion) and most of
   SOP 6 (data root, captures, reaping) each serve one kind of task.
 - It caches material that lives elsewhere: the `[I1]`–`[I8]` bullets restate
-  [`docs/SPEC.md` § 2](../../SPEC.md); the "Binary Disassembly" and "Parity" rows of its table
+  [`docs/SPEC.md` § 2](../../../docs/SPEC.md); the "Binary Disassembly" and "Parity" rows of its table
   index files that [`research/README.md`](../../../research/README.md) and the
   `improving-render-parity` skill already route to; the gate details restate ADRs 0014 and 0016.
-- [`docs/harness.md`](../../harness.md) Policy restates SOP 5.5 and SOP 6 (one writer per
+- [`docs/harness.md`](../../../docs/harness.md) Policy restates SOP 5.5 and SOP 6 (one writer per
   checkout), so the two drift.
 - `.claude/skills/improving-render-parity/SKILL.md` copies the real skill's description by hand
   and nothing checks the copy.
@@ -118,8 +118,8 @@ Each skill's steps and the condition that ends them:
 - **`managing-worktrees`:** where worktrees go and the Orca exception; that a new worktree needs
   no setup (ADR 0036); the data root and its captures, the SOP 6.3 paragraph (ADRs 0022, 0024,
   0028, `references.toml` pins); reaping and its flags. It links to
-  [`docs/harness-setup.md`](../../harness-setup.md) for the junction and robocopy details and
-  to [`docs/harness.md`](../../harness.md) for writer modes, without copying either.
+  [`docs/harness-setup.md`](../../../docs/harness-setup.md) for the junction and robocopy details and
+  to [`docs/harness.md`](../../../docs/harness.md) for writer modes, without copying either.
 
 ### 4.3 Removing the remaining repeats
 

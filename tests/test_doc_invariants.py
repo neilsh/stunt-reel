@@ -127,7 +127,7 @@ CODE_SUFFIXES = frozenset({".rs", ".py", ".wgsl", ".toml"})
 WORK_DIR = REPO_ROOT / "work"
 #: Repo-relative path prefixes whose own links ``test_markdown_links_resolve`` leaves unchecked
 #: while a move is half done; the rule on links into dated records still reads them.
-LINK_SOURCES_SKIPPED: tuple[str, ...] = ("work/",)
+LINK_SOURCES_SKIPPED: tuple[str, ...] = ()
 #: A link from an evergreen file to a dated record is allowed after a provenance marker on its
 #: line (``_Source:`` or a legacy ``_Found <date>``, italic with ``_`` or ``*``, at the line's
 #: start or after whitespace), or under a Ruled out heading, until the next heading of the same

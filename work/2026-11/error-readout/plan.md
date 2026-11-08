@@ -14,8 +14,8 @@ plus `make_run` / `score_run` that the script calls. `python/scripts/parity_benc
 
 **Tech Stack:** Python 3.15 with `tomllib` (stdlib), numpy and Pillow (already in the dev group).
 
-**Spec:** [`error-readout-2026-11-01.md`](error-readout-2026-11-01.md). The probe it follows is
-[`error-category-probe-2026-10-31.md`](error-category-probe-2026-10-31.md); its results are
+**Spec:** [`error-readout-2026-11-01.md`](spec.md). The probe it follows is
+[`error-category-probe-2026-10-31.md`](../../2026-10/error-category-probe/spec.md); its results are
 `research/parity/method.md` § 2.3.
 
 ## Global Constraints

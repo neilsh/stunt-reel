@@ -2,7 +2,7 @@
 
 Status: **landed** (steps 1–6; step 7, the local cutover, is per machine and not tracked here). Source: the `/grill-with-docs` interview of 2026-10-28 (two rounds),
 then a fact re-check against `origin/main` (`f87ea6e`) and the GitHub repository. This note owns the decisions and the landing log; the durable
-decision is the amendments section of [ADR 0015](../../adr/0015-publication-with-a-documented-palette-exception.md).
+decision is the amendments section of [ADR 0015](../../../docs/adr/0015-publication-with-a-documented-palette-exception.md).
 
 Placeholders: `<parent>` is the folder holding the primary checkout, `<personal address>` is the maintainer's non-noreply email, `<noreply>` is
 `49814+neilsh@users.noreply.github.com`, `<user>` is the Windows account name. Never write the

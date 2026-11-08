@@ -9,7 +9,7 @@ and on the readout (`INTRO` aircraft absent 9 -> 0 of 12, `CTRY` shape broken 10
 `GVPOLY16` colour path (the fuselage is drawn blue, not white) and the `SHADE` light vector.
 
 Follows the error readout
-([`error-readout-2026-11-01.md`](error-readout-2026-11-01.md); results in
+([`error-readout-2026-11-01.md`](../error-readout/spec.md); results in
 `research/parity/log.md` 2026-11-01 and `research/parity/batch.md` § 4), which named the aircraft as
 the render's most common error.
 

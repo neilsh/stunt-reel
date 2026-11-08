@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust (`stunt-core`, `stunt-cli`, `clap`, new `toml` and `sha2` in `stunt-cli`), Python ≥ 3.15 (`tomllib`, pytest), mise.
 
-**Spec:** [`all-manifests-2026-11-03.md`](all-manifests-2026-11-03.md). Evidence: [`research/makeone-exe/linking.md`](../../../research/makeone-exe/linking.md).
+**Spec:** [`all-manifests-2026-11-03.md`](spec.md). Evidence: [`research/makeone-exe/linking.md`](../../../research/makeone-exe/linking.md).
 
 **Branch:** create `feat/all-manifests` from `docs/all-manifests` (which holds the spec) and commit every task there.
 

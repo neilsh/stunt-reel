@@ -2,9 +2,9 @@
 
 Status: **all steps landed 2026-10-29**. Source: the `/grill-with-docs` interview of
 2026-10-29 (four rounds), starting from "why do we have `STUNT_DATA_WRITE`?". The durable
-decision is [ADR 0022](../../adr/0022-captures-are-add-only-beside-a-read-only-corpus.md);
+decision is [ADR 0022](../../../docs/adr/0022-captures-are-add-only-beside-a-read-only-corpus.md);
 this note owns the landing steps and the log. It lands on its own branch and PR, before
-the remaining steps of the [public release plan](public-release-2026-10-28.md), so the
+the remaining steps of the [public release plan](../public-release/spec.md), so the
 release does not document a variable this removes.
 
 ## 1. Decisions
@@ -32,7 +32,7 @@ release does not document a variable this removes.
 4. `corpus/README.md` and `corpus/siarchive.md` are tracked, so each corpus folder stays
    its own link; `corpus/` cannot be one.
 5. A capture session clears its `--out` before sampling
-   ([ADR 0021](../../adr/0021-capture-chooses-its-control-port.md), Consequences); an
+   ([ADR 0021](../../../docs/adr/0021-capture-chooses-its-control-port.md), Consequences); an
    add-only id makes that clear a no-op on a fresh directory, and D5's refusal replaces it.
 
 ## 3. Steps

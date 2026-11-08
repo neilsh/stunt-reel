@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3 with pytest, `uv` through `mise`, DOSBox-X through the existing `tac` package. No Rust change.
 
-**Spec:** [`make-all-2026-10-29.md`](make-all-2026-10-29.md). Read it first: its section 2 holds the spike evidence and section 3 decisions D1 to D10 (cited below as D#).
+**Spec:** [`make-all-2026-10-29.md`](spec.md). Read it first: its section 2 holds the spike evidence and section 3 decisions D1 to D10 (cited below as D#).
 
 ## Global Constraints
 
@@ -216,7 +216,7 @@ Routing follows [`research/README.md`](../../../research/README.md): a fact goes
 
 - [ ] **Step 1: Write `research/makeone-exe/driving.md`** in the shape of [`playone-exe/startup.md`](../../../research/playone-exe/startup.md): the spec's section 2 table as the body (screens, keys, completion signal, minimal mount, timings), the exact `VGA MODE` reply line, a Mermaid flowchart of the run (caching box, requester, `b` Enter, film plays, text mode), the evidentiary tier in each section's first line (`[Bounded Observation]`, one film, 2026-10-29), headings without tier tags, and the closing **Ruled out** (running without `RES\`, relying on `.TKE`, `autotype` at boot as the primary route) and **Open questions** (spec Q1 to Q6). The note stays under about 20 KB.
 - [ ] **Step 2: Update `research/formats/all.md`**: under the packaging-origin row, state that `MAKEONE` writes `<film>.ALL` into the mount's `VAULT\` next to the `.FLM`, that five runs on `BALLOON.FLM` produced identical bytes (46,702 bytes, 62 ids, header 378 bytes, md5 `1db59e1edd4d3debaca5e6188ead38df`), and that this matches [`all.ksy`](../../../research/formats/all.ksy); note on Q-ALL-05 only what the runs add (none yet), and link `makeone-exe/driving.md`. Add the `makeone-exe/` row to `research/README.md` and the `AGENTS.md` documentation table.
-- [ ] **Step 3: Edit** the remaining documents. Write **ADR 0023** in the form of [ADR 0022](../../adr/0022-captures-are-add-only-beside-a-read-only-corpus.md): Status, Context (no `.ALL` for most films), Decision (D1 to D9 in one page), What will enforce this (the tests named by file), Considered Options (the spec's section 7), Consequences (90 s and more per film, scoring deferred per D10); it links the research note for the evidence instead of repeating it.
+- [ ] **Step 3: Edit** the remaining documents. Write **ADR 0023** in the form of [ADR 0022](../../../docs/adr/0022-captures-are-add-only-beside-a-read-only-corpus.md): Status, Context (no `.ALL` for most films), Decision (D1 to D9 in one page), What will enforce this (the tests named by file), Considered Options (the spec's section 7), Consequences (90 s and more per film, scoring deferred per D10); it links the research note for the evidence instead of repeating it.
 - [ ] **Step 4: Run** `mise run check`. Expected: PASS, including the doc-anchor, link and research-note checks (`python/scripts/verify_formats_docs.py` for evidentiary tiers); fix whatever they flag.
 - [ ] **Step 5: Commit** `docs: record make-all and the MAKEONE findings` after `mise run check`.
 

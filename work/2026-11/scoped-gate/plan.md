@@ -12,7 +12,7 @@ tests replace per-test repositories with stubs or one shared module repository.
 
 **Tech Stack:** Python 3.15 (stdlib only in `gate.py`), pytest + pytest-xdist 3.8, mise, git.
 
-**Spec:** [`scoped-gate-2026-11-06.md`](scoped-gate-2026-11-06.md). Read it first; this plan
+**Spec:** [`scoped-gate-2026-11-06.md`](spec.md). Read it first; this plan
 cites its sections as "spec 3.x".
 
 ## Global Constraints

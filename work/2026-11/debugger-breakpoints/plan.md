@@ -16,7 +16,7 @@ notes.
 **Tech Stack:** Python 3.15, DOSBox-X v2026.10.01 (`mcp_server` link), iced-x86 1.22.0, stdlib
 `socket`/`tomllib`, pytest, mypy strict, ruff.
 
-**Spec:** [`debugger-breakpoints-2026-11-04.md`](debugger-breakpoints-2026-11-04.md). Read it
+**Spec:** [`debugger-breakpoints-2026-11-04.md`](spec.md). Read it
 first: section numbers below (S3.2 and so on) point into it.
 
 ## Global Constraints

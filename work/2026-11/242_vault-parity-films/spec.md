@@ -1,6 +1,6 @@
 # VAULT Films in the Parity Corpus (design note)
 
-Status: design under review; tickets filed (#242, § 8); implementation plan in [`vault-parity-films-implementation-2026-11-06.md`](vault-parity-films-implementation-2026-11-06.md); no code yet. Owner: unassigned.
+Status: design under review; tickets filed (#242, § 8); implementation plan in [`vault-parity-films-implementation-2026-11-06.md`](plan.md); no code yet. Owner: unassigned.
 
 ## 1. Why
 
@@ -74,7 +74,7 @@ physical cores, 31 GiB of RAM and an RTX 4070 Laptop GPU with 8 GiB. The scripts
 * **A GL-only instance** starts in 0.26 s but picks the AMD integrated GPU, so it is not a
   candidate.
 * **CI already renders through Vulkan** (lavapipe,
-  [ADR 0006](../../adr/0006-ci-renders-on-lavapipe.md)). The GPU tests' software path
+  [ADR 0006](../../../docs/adr/0006-ci-renders-on-lavapipe.md)). The GPU tests' software path
   (`software_only`, `force_fallback_adapter`) finds no Vulkan software adapter on Windows. There
   it takes the fallback to all backends and gets WARP, as it does today.
 * **Effect under parallel load** (render and score, CTRY and INTRO):
@@ -300,7 +300,7 @@ identically ([`method.md`](../../../research/parity/method.md) § 3).
 
 Filed 2026-11-06. One parent and five tickets. T5 is labelled `research` and has no parent,
 because `vault-tod` is out of this note's scope. Each ticket is one PR. Blocking is a native issue
-dependency ([`docs/agents/issue-tracker.md`](../../agents/issue-tracker.md)). A ticket's body
+dependency ([`docs/agents/issue-tracker.md`](../../../docs/agents/issue-tracker.md)). A ticket's body
 copies its part of this note; when the note changes, the body is updated to match.
 
 | # | Title | Labels | Covers | Blocked by |

@@ -1,7 +1,7 @@
 # Parity scoring: a metric bench, a regression verdict, a sign-off scale and fault readouts
 
 Status: implemented in [#42](https://github.com/neilsh/stunt-reel/pull/42). Sections 1 to 4 agreed in conversation 2026-10-31; revised after self-review
-the same day. Follows [`scoring-failures-2026-10-31.md`](scoring-failures-2026-10-31.md), which explains
+the same day. Follows [`scoring-failures-2026-10-31.md`](../scoring-failures/scoring-failures-2026-10-31.md), which explains
 why the current score cannot carry the work below.
 
 ## Intent
@@ -86,7 +86,7 @@ magnitude** for a fault is the smallest magnitude detected. A metric **passes** 
 fault, the wrong tick and the grey frame included, with no `n/a`. A metric with an `n/a` or a miss can
 still enter section 3 as part of a mix. Output `bench.json` and a printed table; the result is recorded in
 [`research/parity/method.md`](../../../research/parity/method.md) and a
-[`log.md`](../../../research/parity/log.md) row.
+[`log.md`](../parity-log/log.md) row.
 
 **Build floor.** A second build of the same revision (`mise run build-at`) renders the film once; the
 bench reports how many `.idx` pixels per frame differ between the two builds. Section 2 uses it.

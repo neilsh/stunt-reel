@@ -1,10 +1,10 @@
 # Seeding a new worktree's `target/` (2026-11-02)
 
 Status: **implemented on branch `claude/stunt-reel-target-size-b4b954`; measurement gate run 2026-11-02, two rows missed (section 5) and accepted as measured; ADR 0030 accepted 2026-11-02**. Tasks:
-[`target-seeding-implementation-2026-11-02.md`](target-seeding-implementation-2026-11-02.md). Source: a session of 2026-11-02 that started
+[`target-seeding-implementation-2026-11-02.md`](plan.md). Source: a session of 2026-11-02 that started
 from "why is `target/` so large across the root and worktrees", measured kache 2.0.0, and settled
 on cloning a donor's build output. The evidence and the decision are in
-[ADR 0030](../../adr/0030-new-worktrees-seed-target-by-block-clone.md) (accepted); this note owns
+[ADR 0030](../../../docs/adr/0030-new-worktrees-seed-target-by-block-clone.md) (accepted); this note owns
 the design, the steps and the measurement gate.
 
 ## 1. Goal
@@ -160,8 +160,8 @@ the five workspace crates and no dependency (`cargo test --no-run`, 9 s).
 2. `target_seed.py`, its tests, the init call and `mise run seed`.
 3. The measurement gate (section 5), recorded here.
 4. On a pass: ADR 0030 to accepted; ADR 0013's and ADR 0017's status lines point at it;
-   [`docs/harness-setup.md`](../../harness-setup.md) and
-   [`docs/development.md`](../../development.md) say that init seeds.
+   [`docs/harness-setup.md`](../../../docs/harness-setup.md) and
+   [`docs/development.md`](../../../docs/development.md) say that init seeds.
 
 ## 7. Follow-ups, separate from this plan
 

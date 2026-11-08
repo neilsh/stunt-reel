@@ -4,9 +4,9 @@ Status: **implemented on branch `feat/make-all`; live runs on `BALLOON` and `TRA
 from "make it easier to have DOSBox plus `PLAYONE.EXE` capture films other than `INTRO.FLM`
 and `CTRY.FLM`", and a feasibility spike (section 2). The code is on the branch named above. The durable
 decision, once accepted, is a new ADR (step 7); this note owns the steps and the log. It
-builds on [ADR 0021](../../adr/0021-capture-chooses-its-control-port.md) and
-[ADR 0022](../../adr/0022-captures-are-add-only-beside-a-read-only-corpus.md), so it lands
-after the [data-root split](data-root-split-2026-10-29.md).
+builds on [ADR 0021](../../../docs/adr/0021-capture-chooses-its-control-port.md) and
+[ADR 0022](../../../docs/adr/0022-captures-are-add-only-beside-a-read-only-corpus.md), so it lands
+after the [data-root split](../data-root-split/spec.md).
 
 ## 1. Goal and what blocks it
 
@@ -121,7 +121,7 @@ Offline, with `MockTransport` and synthetic fixtures ([`tests/tac_mock.py`](../.
 - D5: sibling first, then stored by hash, then the error text; a hash mismatch does not match;
 - `capture-ref` still captures `CTRY` with its sibling `.ALL` unchanged.
 
-The live run is manual and recorded in [`research/parity/log.md`](../../../research/parity/log.md):
+The live run is manual and recorded in [`research/parity/log.md`](../parity-log/log.md):
 `make-all` on `BALLOON`, then `capture-ref` on it (step 8).
 
 ## 6. Steps
@@ -134,7 +134,7 @@ Each step leaves `mise run check` green.
 4. **Transport and session profile.** `video_mode()` on all three transports, then the profile parameter on `run_session` with `PLAYONE` as the default (D1, D6); then the `MAKEONE` profile in `tac/makeone.py`.
 5. **`make-all` script, mise task, ids and refusal** (D4, D8); `mise tasks` lists it.
 6. **Resolver in `capture-ref`:** a stored archive is found without `--film` sibling files, and the missing-archive error names `make-all`.
-7. **Docs and research.** ADR 0023 (the decision, D1 to D9), a new subject note `research/makeone-exe/driving.md` (section 2 of this note, with tiers, **Ruled out** and **Open questions**), the `.ALL` production facts in [`formats/all.md`](../../../research/formats/all.md), a pointer in [`capture.md`](../../../research/playone-exe/capture.md), a row in `research/README.md`, the commands in [`development.md`](../../development.md), full-game films in [`corpus/README.md`](../../../corpus/README.md), a glossary entry for the generated archive, and SOP 6 item 3 updated to name `captures/all/`.
+7. **Docs and research.** ADR 0023 (the decision, D1 to D9), a new subject note `research/makeone-exe/driving.md` (section 2 of this note, with tiers, **Ruled out** and **Open questions**), the `.ALL` production facts in [`formats/all.md`](../../../research/formats/all.md), a pointer in [`capture.md`](../../../research/playone-exe/capture.md), a row in `research/README.md`, the commands in [`development.md`](../../../docs/development.md), full-game films in [`corpus/README.md`](../../../corpus/README.md), a glossary entry for the generated archive, and SOP 6 item 3 updated to name `captures/all/`.
 8. **Live verification.** `make-all` and `capture-ref` on `BALLOON.FLM`, and on one longer film to measure run time; log the rows.
 
 ## 7. Ruled out

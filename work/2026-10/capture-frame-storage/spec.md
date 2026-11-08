@@ -1,6 +1,6 @@
 # Capture and render frame storage: per-second zstd chunks
 
-Status: capture half replaced by [`video-parity-2026-10-31.md`](video-parity-2026-10-31.md), which
+Status: capture half replaced by [`video-parity-2026-10-31.md`](../video-parity/spec.md), which
 records each film as one AVI instead of frame dumps. The render half (per-second zstd chunks for index
 and layer planes, per-second preview PNGs, no PNG per tick) stands as a separate project, to follow that
 spec's rollout; its revised section 2 (render half) and section 3 were approved on 2026-11-01. The render half landed in [#44](https://github.com/neilsh/stunt-reel/pull/44).
@@ -241,7 +241,7 @@ missing tick names the tick and the render. An invalid document names the field.
 - A chunk per tick or per 10 ticks: renders are read in order, and per-second chunks match the
   previews and the per-second video scorer.
 - `ruzstd` (pure Rust): its encoder offers fewer levels and is younger than libzstd. [I7]'s pure-Rust
-  clause ([ADR 0002](../../adr/0002-stunt-core-may-take-small-dependencies.md)) covers `stunt-core`
+  clause ([ADR 0002](../../../docs/adr/0002-stunt-core-may-take-small-dependencies.md)) covers `stunt-core`
   only, so `stunt-cli` takes the C library without amending it.
 
 ### Section 3: rollout (approved 2026-11-01)
@@ -294,5 +294,5 @@ the repo opens a store once and walks its ticks, so this does not show in the sc
 ## Open questions
 
 - Settled: an AVI-based capture replaces the capture half
-  ([`video-parity-2026-10-31.md`](video-parity-2026-10-31.md)); only the render store remains here.
+  ([`video-parity-2026-10-31.md`](../video-parity/spec.md)); only the render store remains here.
 - Full-rate frame-dump capture is out of scope there; the video capture records every emulated frame.

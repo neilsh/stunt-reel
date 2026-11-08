@@ -1,14 +1,14 @@
 # `.ALL` manifests: rebuild a film's archive from a committed id list (2026-11-03)
 
 Status: **implemented on branch `feat/all-manifests`
-([plan](all-manifests-implementation-2026-11-03.md)); ADR 0032 accepted 2026-11-03**. Section 5
+([plan](plan.md)); ADR 0032 accepted 2026-11-03**. Section 5
 names the components as built. Source:
 a brainstorming session that started from "how difficult would a Rust version of
 `MAKEONE.EXE` be", and the probe recorded in
 [`research/makeone-exe/linking.md`](../../../research/makeone-exe/linking.md). The durable
 decision, once accepted, is ADR 0032 (step 1). Builds on
-[ADR 0023](../../adr/0023-make-all-generates-archives-with-makeone.md) and
-[ADR 0028](../../adr/0028-a-film-has-one-capture-of-each-kind.md).
+[ADR 0023](../../../docs/adr/0023-make-all-generates-archives-with-makeone.md) and
+[ADR 0028](../../../docs/adr/0028-a-film-has-one-capture-of-each-kind.md).
 
 ## 1. Goal
 
@@ -235,8 +235,8 @@ Rules, checked by both `extract` and `build`:
    survey's films) and commit them; run the outside-the-gate check of section 7. Done
    2026-11-03 for the one film with a stored archive on the machine that ran it, `BALLOON`;
    `747LAND` and the rest wait for their archives to be made.
-7. Update [`docs/ARCHITECTURE.md`](../../ARCHITECTURE.md),
-   [`docs/development.md`](../../development.md) (the `manifests/` directory), and
+7. Update [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md),
+   [`docs/development.md`](../../../docs/development.md) (the `manifests/` directory), and
    [`linking.md`](../../../research/makeone-exe/linking.md)'s open question 3.
 
 ## 9. Out of scope

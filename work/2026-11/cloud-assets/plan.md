@@ -16,7 +16,7 @@ provisioning exception to ADR 0022.
 **Tech Stack:** Python ≥ 3.15 (`tarfile`, `compression.zstd`, `tomllib`, pytest), curl ≥ 7.75,
 `npx wrangler`, mise.
 
-**Spec:** [`cloud-assets-2026-11-06.md`](cloud-assets-2026-11-06.md).
+**Spec:** [`cloud-assets-2026-11-06.md`](spec.md).
 
 **Branch:** `claude/reverent-goldwasser-abe249` (holds the spec); commit every task there.
 
@@ -56,7 +56,7 @@ provisioning exception to ADR 0022.
 - Modify: `docs/process/plans/cloud-assets-2026-11-06.md` (status line names the ADR)
 - Take the next free number at commit time if another branch has claimed 0039 (`docs/adr/` has no index file)
 
-- [ ] **Step 1: Write the ADR** in the format of [`0037`](../../adr/0037-a-reference-pins-its-archive.md): context (cloud sessions have no data root; the bucket is private), decision (spec decisions 3, 4, 6 and 7: keys, committed pins, scoped read token through curl and owner uploads through wrangler, fetch writes only an absent folder as the one exception to ADR 0022), consequences (the open questions of spec § 9).
+- [ ] **Step 1: Write the ADR** in the format of [`0037`](../../../docs/adr/0037-a-reference-pins-its-archive.md): context (cloud sessions have no data root; the bucket is private), decision (spec decisions 3, 4, 6 and 7: keys, committed pins, scoped read token through curl and owner uploads through wrangler, fetch writes only an absent folder as the one exception to ADR 0022), consequences (the open questions of spec § 9).
 - [ ] **Step 2: Run** `mise run check` (docs scope). Expected: PASS.
 - [ ] **Step 3: Commit** `docs(adr): cloud sessions fetch pinned game archives from R2`.
 

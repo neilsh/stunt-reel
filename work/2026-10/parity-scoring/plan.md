@@ -14,7 +14,7 @@ synthetic fixture with golden values pins the numpy and Rust implementations to 
 
 **Tech Stack:** Python 3.15, numpy 2.5, Pillow 13 (dev group); Rust (`stunt-cli`, `stunt-render`).
 
-**Spec:** [`parity-scoring-2026-10-31.md`](parity-scoring-2026-10-31.md). Parts 3 (sign-off scale) and 4
+**Spec:** [`parity-scoring-2026-10-31.md`](spec.md). Parts 3 (sign-off scale) and 4
 (fault readouts) get their own plan once part 1's result is recorded: part 3's metric choice and gate
 values are decided on that result (spec § 3 and Stop conditions).
 
