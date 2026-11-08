@@ -9,7 +9,7 @@ The research notes own the procedure. This skill says which note to read and how
 
 - **Where the loss is** (capture, render, score, compare): [`research/parity/method.md`](../../../research/parity/method.md) section 1.
 - **What is wrong** (crop, shift, actor IoU, candidate sweeps, timing retime, environment pitfalls): [`research/parity/probes.md`](../../../research/parity/probes.md).
-- **What was already tried**, dead ends included: read [`work/2026-10/parity-log/log.md`](../../../work/2026-10/parity-log/log.md) (one row per attempt, linking to the note that holds the finding), then the note for the residual: [`attribution.md`](../../../research/parity/attribution.md), [`framing-and-actors.md`](../../../research/parity/framing-and-actors.md) or [`film-segments.md`](../../../research/parity/film-segments.md). Do this before starting a hypothesis.
+- **What was already tried**, dead ends included: read the **Ruled out** section of the note for the residual ([`attribution.md`](../../../research/parity/attribution.md), [`framing-and-actors.md`](../../../research/parity/framing-and-actors.md) or [`film-segments.md`](../../../research/parity/film-segments.md)), then search the journal entries with `rg <term> work/`. Do this before starting a hypothesis.
 
 ## Workflow
 
@@ -17,7 +17,7 @@ Read [`loop-rules.md`](loop-rules.md) first: one goal, at most four rounds, and 
 
 ```
 - [ ] 1. Baseline: mise run parity (per film, its score line and its expected line)
-- [ ] 2. Check log.md and the residual notes for prior attempts at this hypothesis
+- [ ] 2. Read the residual note's Ruled out, then rg <term> work/, for prior attempts at this hypothesis
 - [ ] 3. If no renderer-only lever fits, read the PLAYONE rule this round tests and write it into its playone-exe note
 - [ ] 4. One hypothesis class: all variants in one sweep, or retime for timing
 - [ ] 5. Apply the adoption rule to the result
@@ -38,4 +38,4 @@ Read each when its step comes up:
 
 ## Finishing an item
 
-Add a row to `work/2026-10/parity-log/log.md` for every attempt, adopted or not, and put the finding in the note that owns the residual. End the session after the handoff note; start the next hypothesis in a fresh session.
+Write a [journal entry](../../../work/README.md#journal-entries) in the work item's folder for every attempt, adopted or not, and put the finding in the note that owns the residual. Adopting a change also updates its film's expected scores in `research/parity/references.toml` ([`loop-rules.md`](loop-rules.md)). End the session after the handoff; start the next hypothesis in a fresh session.

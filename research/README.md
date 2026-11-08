@@ -48,4 +48,4 @@ Headings carry no evidentiary tier tag, so links survive a tier promotion; state
 
 ## Size
 
-Keep each note under about 20 KB so one read covers it; `mise run doc-health` lists the notes over it. When a note grows past that, split it by subject (for example `sod.md` / `sod-opcodes.md`), not by date. Generated tables (`formats/sod-opcode-coverage.md`) are exempt.
+Keep each note under about 20 KB so one read covers it; `mise run doc-health` lists the notes over it. When a note grows past that, distill it with the [`distilling-notes`](../.agents/skills/distilling-notes/SKILL.md) skill, and if it is still over, split it by subject (for example `sod.md` / `sod-opcodes.md`), not by date. Generated tables (`formats/sod-opcode-coverage.md`) are exempt.

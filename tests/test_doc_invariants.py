@@ -606,7 +606,6 @@ WORK_POINTERS: frozenset[tuple[str, str]] = frozenset(
         *(
             (source, _PARITY_LOG)
             for source in (
-                ".agents/skills/improving-render-parity/SKILL.md",
                 "research/formats/auxiliary/anchorpt.md",
                 "research/formats/concepts/coordinates-and-units.md",
                 "research/formats/sod-opcodes.md",
