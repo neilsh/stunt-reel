@@ -124,12 +124,13 @@ WORK_DIR = REPO_ROOT / "work"
 DATED_MONTH_REGEX = re.compile(r"\d{4}-\d{2}")
 #: Repo-relative path prefixes whose own links go unchecked while a move is half done.
 LINK_SOURCES_SKIPPED: tuple[str, ...] = ()
-#: A link from an evergreen file to a dated record is allowed on a provenance line (``_Source:``,
-#: or a legacy ``_Found <date>``, italic with ``_`` or ``*``), or under a heading with exactly
-#: this text, until the next heading of the same or higher level.
-PROVENANCE_REGEX = re.compile(r"[_*](?:Source:|Found )")
+#: A link from an evergreen file to a dated record is allowed after a provenance marker on its
+#: line (``_Source:`` or a legacy ``_Found <date>``, italic with ``_`` or ``*``, at the line's
+#: start or after whitespace), or under a heading with exactly this text, until the next heading
+#: of the same or higher level.
+PROVENANCE_REGEX = re.compile(r"(?<!\S)[_*](?:Source:|Found )")
 RULED_OUT_HEADING = "Ruled out"
-#: A dated folder's pictures, which an evergreen file may embed anywhere.
+#: A dated folder's pictures, which an evergreen file may cite anywhere.
 IMAGES_DIR_NAME = "images"
 #: ADRs cite the spec and plan they came from freely.
 ADR_PREFIX = "docs/adr/"
@@ -181,32 +182,37 @@ def _prose(path: Path) -> str:
     return "\n".join(lines)
 
 
-def _links(path: Path) -> Iterator[tuple[str, bool, bool]]:
-    """(target, allowed, embed) for each inline or reference-style link in *path*'s prose.
+def _links(path: Path) -> Iterator[tuple[str, bool]]:
+    """(target, allowed) for each inline or reference-style link in *path*'s prose.
 
-    Allowed means the link is on a provenance line or in a ``Ruled out`` section; embed means
-    an inline image, ``![alt](target)``.
+    Allowed means the link follows a provenance marker on its line, or sits in a ``Ruled out``
+    section.
     """
     prose = _prose(path)
-    lines = prose.split("\n")
-    allowed: list[bool] = []
     line_starts: list[int] = []
+    allowed_from: list[int] = []  # per line, the prose offset where allowed links begin
     offset = 0
     ruled_out_level = 0  # the open Ruled out heading's level; 0 when none is open
-    for line in lines:
+    for line in prose.split("\n"):
         if heading := HEADING_REGEX.match(line):
             level = len(heading.group(1))
             if level <= ruled_out_level:
                 ruled_out_level = 0
             if not ruled_out_level and heading.group(2) == RULED_OUT_HEADING:
                 ruled_out_level = level
-        allowed.append(bool(ruled_out_level) or PROVENANCE_REGEX.match(line.strip()) is not None)
+        marker = PROVENANCE_REGEX.search(line)
         line_starts.append(offset)
+        if ruled_out_level:
+            allowed_from.append(offset)
+        elif marker:
+            allowed_from.append(offset + marker.start())
+        else:
+            allowed_from.append(len(prose) + 1)
         offset += len(line) + 1
     for regex in (MARKDOWN_LINK_REGEX, LINK_DEFINITION_REGEX):
         for match in regex.finditer(prose):
-            line_allowed = allowed[bisect.bisect_right(line_starts, match.start()) - 1]
-            yield match.group(1), line_allowed, match.group().startswith("!")
+            index = bisect.bisect_right(line_starts, match.start()) - 1
+            yield match.group(1), match.start() >= allowed_from[index]
 
 
 def _is_dated(path: Path, work: Path) -> bool:
@@ -247,8 +253,8 @@ def _work_links(root: Path = REPO_ROOT) -> set[tuple[str, str, bool]]:
     """(source, target, allowed) for every link from an evergreen Markdown file to a dated record.
 
     Evergreen is every checked file that is not a dated record; paths are relative to *root*.
-    Allowed means a provenance line, a ``Ruled out`` section, an ADR, or an image embedded from
-    a dated folder's ``images/``.
+    Allowed means a provenance span, a ``Ruled out`` section, an ADR, or a picture in a dated
+    folder's ``images/``.
     """
     work = (root / WORK_DIR.name).resolve()
     found: set[tuple[str, str, bool]] = set()
@@ -256,15 +262,15 @@ def _work_links(root: Path = REPO_ROOT) -> set[tuple[str, str, bool]]:
         if _is_dated(path.resolve(), work):
             continue
         source = path.relative_to(root).as_posix()
-        for target, allowed, embed in _links(path):
+        for target, allowed in _links(path):
             file_part = target.partition("#")[0]
             if not file_part or URL_SCHEME_REGEX.match(file_part):
                 continue
             resolved = (path.parent / file_part).resolve()
             if _is_dated(resolved, work):
                 relative = resolved.relative_to(root.resolve()).as_posix()
-                shown = embed and _is_dated_image(resolved, work)
-                found.add((source, relative, allowed or shown or source.startswith(ADR_PREFIX)))
+                exempt = source.startswith(ADR_PREFIX) or _is_dated_image(resolved, work)
+                found.add((source, relative, allowed or exempt))
     return found
 
 
@@ -286,7 +292,7 @@ def test_markdown_links_resolve() -> None:
     broken = [
         f"{path.relative_to(REPO_ROOT).as_posix()}: {target} ({problem})"
         for path in _link_sources(REPO_ROOT)
-        for target, _, _ in _links(path)
+        for target, _ in _links(path)
         if (problem := _check_link(path, target, WORK_DIR))
     ]
     assert not broken, "Broken Markdown links:\n" + "\n".join(sorted(broken))
@@ -456,8 +462,46 @@ def test_legacy_found_lines_may_cite_work(tmp_path: Path) -> None:
     }
 
 
-def test_image_embeds_may_show_work_images(tmp_path: Path) -> None:
-    """An embed from a work folder's images/ is allowed anywhere; a plain link to one is not."""
+def test_a_provenance_span_runs_from_its_marker_to_the_line_end(tmp_path: Path) -> None:
+    """A paragraph ending in a ``_Found`` sentence cites from there on; earlier links are body."""
+    note = _write(
+        tmp_path / "research" / "n.md",
+        "# Note\n\n"
+        "A fact, measured with [the probe](../work/2026-11/x/body.md). "
+        "_Found 2026-11-02; see the [parity log](../work/2026-11/x/log.md)._\n",
+    )
+    source = note.relative_to(tmp_path).as_posix()
+    assert _work_links(tmp_path) == {
+        (source, f"{FIXTURE_FOLDER}/body.md", False),
+        (source, f"{FIXTURE_FOLDER}/log.md", True),
+    }
+
+
+def test_a_source_link_with_underscores_in_its_path_is_provenance(tmp_path: Path) -> None:
+    """Underscores in a work folder's name do not end the span."""
+    note = _write(
+        tmp_path / "research" / "n.md",
+        "# Note\n\n_Source: [e](../work/2026-11/307_docs-streamline/journal.md#e)._\n",
+    )
+    folder = "work/2026-11/307_docs-streamline"
+    assert _work_links(tmp_path) == {
+        (note.relative_to(tmp_path).as_posix(), f"{folder}/journal.md", True)
+    }
+
+
+def test_a_marker_inside_a_word_opens_no_span(tmp_path: Path) -> None:
+    """A marker counts at the start of a line or after whitespace, not inside a word."""
+    note = _write(
+        tmp_path / "research" / "n.md",
+        "# Note\n\nThe x_Found flag is set; see [the run](../work/2026-11/x/mid.md).\n",
+    )
+    assert _work_links(tmp_path) == {
+        (note.relative_to(tmp_path).as_posix(), f"{FIXTURE_FOLDER}/mid.md", False)
+    }
+
+
+def test_image_citations_into_work_are_allowed_anywhere(tmp_path: Path) -> None:
+    """A link or embed into a work folder's images/ is allowed anywhere; other dated files are not."""
     note = _write(
         tmp_path / "research" / "n.md",
         "# Note\n\n"
@@ -468,7 +512,7 @@ def test_image_embeds_may_show_work_images(tmp_path: Path) -> None:
     source = note.relative_to(tmp_path).as_posix()
     assert _work_links(tmp_path) == {
         (source, f"{FIXTURE_FOLDER}/images/embed.png", True),
-        (source, f"{FIXTURE_FOLDER}/images/link.png", False),
+        (source, f"{FIXTURE_FOLDER}/images/link.png", True),
         (source, f"{FIXTURE_FOLDER}/outside.png", False),
     }
 
