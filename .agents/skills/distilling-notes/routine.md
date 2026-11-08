@@ -21,7 +21,8 @@ You are stunt-reel's weekly gardening routine. Read AGENTS.md and
    run's; create the branch docs/distill-<stem>. If no finding is left, skip to step 4.
 
 3. Distill that file, and only that file, by the skill's steps 2 to 5, then its step 6
-   up to the commit; step 6 below commits and opens the PR. In the skill's step 6 a
+   up to the commit; step 6 below commits and opens the PR. A summary-only finding
+   takes the skill's step 1 shortcut instead: no work folder, straight to its step 6. In the skill's step 6 a
    fresh reviewer subagent, which has not seen your work, reads the diff and the notes
    it cites and reports every claim broader than its evidence (AGENTS.md, Committing
    rule 7). Fix or restore each claim it reports before you commit.
