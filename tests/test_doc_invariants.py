@@ -107,7 +107,8 @@ def test_cited_anchors_are_registered() -> None:
     )
 
 
-LINK_SKIPPED_DIRS = SKIPPED_DIRS | {".git", "corpus", "worktrees"}
+# .superpowers is git-ignored agent scratch, not docs.
+LINK_SKIPPED_DIRS = SKIPPED_DIRS | {".git", "corpus", "worktrees", ".superpowers"}
 MARKDOWN_LINK_REGEX = re.compile(r"!?\[[^\]\n]*\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)")
 #: A reference-style link definition, ``[label]: target``, which the inline regex does not see.
 LINK_DEFINITION_REGEX = re.compile(r"^ {0,3}\[[^\]\n]+\]:\s*<?([^\s>]+)>?", re.MULTILINE)
@@ -117,11 +118,13 @@ HEADING_REGEX = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 CODE_DOC_PATH_REGEX = re.compile(r"(?<![\w./-])((?:research|docs|work)/[\w./-]+?\.md)\b")
 CODE_SUFFIXES = frozenset({".rs", ".py", ".wgsl", ".toml"})
 
-#: Dated records, frozen once their work lands; not a source of truth.
+#: Work folders. Only its month directories (``work/<YYYY-MM>/``) hold dated records, frozen once
+#: their work lands and not a source of truth; the README beside them is evergreen.
 WORK_DIR = REPO_ROOT / "work"
+DATED_MONTH_REGEX = re.compile(r"\d{4}-\d{2}")
 #: Repo-relative path prefixes whose own links go unchecked while a move is half done.
 LINK_SOURCES_SKIPPED: tuple[str, ...] = ()
-#: A link into work/ from an evergreen file is allowed on a line starting with one of these, or
+#: A link from an evergreen file to a dated record is allowed on a line starting with one of these, or
 #: under a heading with exactly this text, until the next heading of the same or higher level.
 PROVENANCE_PREFIXES = ("_Source:", "*Source:")
 RULED_OUT_HEADING = "Ruled out"
@@ -201,12 +204,20 @@ def _links(path: Path) -> Iterator[tuple[str, bool]]:
             yield match.group(1), allowed[bisect.bisect_right(line_starts, match.start()) - 1]
 
 
+def _is_dated(path: Path, work: Path) -> bool:
+    """Whether *path* is a dated record: in a month directory of *work*. Both are resolved."""
+    if not path.is_relative_to(work):
+        return False
+    parts = path.relative_to(work).parts
+    return bool(parts) and DATED_MONTH_REGEX.fullmatch(parts[0]) is not None
+
+
 def _check_link(source: Path, target: str, work_dir: Path) -> str | None:
     """Why *target*, linked from *source*, does not resolve; None when it does or is a URL.
 
-    A link from *work_dir* to a file outside it is checked for the file only, so renaming a
-    heading in a note never breaks a frozen record; every other ``.md`` fragment must name a
-    heading.
+    A link from a dated record under *work_dir* to an evergreen file is checked for the file
+    only, so renaming a heading in a note never breaks a frozen record; every other ``.md``
+    fragment must name a heading.
     """
     if URL_SCHEME_REGEX.match(target):
         return None
@@ -217,29 +228,29 @@ def _check_link(source: Path, target: str, work_dir: Path) -> str | None:
     if not fragment or resolved.suffix != ".md":
         return None
     work = work_dir.resolve()
-    if source.resolve().is_relative_to(work) and not resolved.is_relative_to(work):
+    if _is_dated(source.resolve(), work) and not _is_dated(resolved, work):
         return None
     return None if fragment in _anchors(resolved) else "no such heading"
 
 
 def _work_links(root: Path = REPO_ROOT) -> set[tuple[str, str, bool]]:
-    """(source, target, allowed) for every link from an evergreen Markdown file into work/.
+    """(source, target, allowed) for every link from an evergreen Markdown file to a dated record.
 
-    Evergreen is every checked file outside work/; paths are relative to *root*. Allowed means
-    a provenance line, a ``Ruled out`` section, or an ADR.
+    Evergreen is every checked file that is not a dated record; paths are relative to *root*.
+    Allowed means a provenance line, a ``Ruled out`` section, or an ADR.
     """
     work = (root / WORK_DIR.name).resolve()
     found: set[tuple[str, str, bool]] = set()
     for path in _link_sources(root):
-        source = path.relative_to(root).as_posix()
-        if source.startswith(f"{WORK_DIR.name}/"):
+        if _is_dated(path.resolve(), work):
             continue
+        source = path.relative_to(root).as_posix()
         for target, allowed in _links(path):
             file_part = target.partition("#")[0]
             if not file_part or URL_SCHEME_REGEX.match(file_part):
                 continue
             resolved = (path.parent / file_part).resolve()
-            if resolved.is_relative_to(work):
+            if _is_dated(resolved, work):
                 relative = resolved.relative_to(root.resolve()).as_posix()
                 found.add((source, relative, allowed or source.startswith(ADR_PREFIX)))
     return found
@@ -416,13 +427,13 @@ def test_adrs_may_cite_work_freely(tmp_path: Path) -> None:
 
 
 def test_links_from_work_check_the_file_not_the_heading(tmp_path: Path) -> None:
-    """A frozen record survives a heading rename in the note it links; within work/ is checked in full."""
+    """A dated record survives a heading rename in the note it links; between records, full check."""
     work = tmp_path / "work"
     _write(tmp_path / "research" / "n.md", "# N\n")
-    _write(work / "x" / "other.md", "# Other\n")
-    journal = _write(work / "x" / "journal.md", "# J\n")
-    assert _check_link(journal, "../../research/n.md#gone", work) is None
-    assert _check_link(journal, "../../research/missing.md", work) == "no such file"
+    _write(work / "2026-11" / "x" / "other.md", "# Other\n")
+    journal = _write(work / "2026-11" / "x" / "journal.md", "# J\n")
+    assert _check_link(journal, "../../../research/n.md#gone", work) is None
+    assert _check_link(journal, "../../../research/missing.md", work) == "no such file"
     assert _check_link(journal, "other.md#other", work) is None
     assert _check_link(journal, "other.md#gone", work) == "no such heading"
 
@@ -430,24 +441,47 @@ def test_links_from_work_check_the_file_not_the_heading(tmp_path: Path) -> None:
 def test_links_into_work_check_the_heading(tmp_path: Path) -> None:
     """Frozen headings never change, so a fragment into work/ must name one."""
     work = tmp_path / "work"
-    _write(work / "x" / "journal.md", "# J\n\n## e\n")
+    _write(work / "2026-11" / "x" / "journal.md", "# J\n\n## e\n")
     note = _write(tmp_path / "research" / "n.md", "# N\n")
-    assert _check_link(note, "../work/x/journal.md#e", work) is None
-    assert _check_link(note, "../work/x/journal.md#missing", work) == "no such heading"
+    assert _check_link(note, "../work/2026-11/x/journal.md#e", work) is None
+    assert _check_link(note, "../work/2026-11/x/journal.md#missing", work) == "no such heading"
 
 
-#: Links from evergreen files into work/ that point at where work was tracked rather than cite a
+def test_work_readme_is_evergreen(tmp_path: Path) -> None:
+    """Only work/<YYYY-MM>/ is dated: work/'s README links and is linked like any evergreen file."""
+    work = tmp_path / "work"
+    journal = _write(work / "2026-11" / "x" / "journal.md", "# J\n")
+    readme = _write(
+        work / "README.md",
+        "# Work\n\n## Layout\n\nSee [j](./2026-11/x/journal.md) and [n](../research/n.md#gone).\n",
+    )
+    note = _write(
+        tmp_path / "research" / "n.md",
+        "# N\n\nRead [the layout](../work/README.md#layout), then [j](../work/2026-11/x/journal.md).\n",
+    )
+    assert _work_links(tmp_path) == {
+        (note.relative_to(tmp_path).as_posix(), f"{FIXTURE_FOLDER}/journal.md", False),
+        (readme.relative_to(tmp_path).as_posix(), f"{FIXTURE_FOLDER}/journal.md", False),
+    }
+    assert _check_link(note, "../work/README.md#layout", work) is None
+    assert _check_link(note, "../work/README.md#gone", work) == "no such heading"
+    assert _check_link(readme, "../research/n.md#gone", work) == "no such heading"
+    assert _check_link(journal, "../../README.md#gone", work) is None
+
+
+#: Links from evergreen files to dated records that point at where work was tracked rather than cite a
 #: fact through it. This list may only shrink: a new link fails, and so does an entry that no
 #: longer exists.
 WORK_POINTERS: frozenset[tuple[str, str]] = frozenset()
 
 
 def test_evergreen_files_link_into_work_only_where_allowed() -> None:
-    """Outside work/ and ADRs, a link into work/ sits on a provenance line or under Ruled out."""
+    """Outside ADRs, an evergreen link to a dated record sits on a provenance line or under Ruled out."""
     disallowed = {(source, target) for source, target, allowed in _work_links() if not allowed}
     new = sorted(disallowed - WORK_POINTERS)
     assert not new, (
-        "An evergreen file links into work/ outside a provenance line or a Ruled out section; "
+        "An evergreen file links to a dated record under work/ outside a provenance line or a "
+        "Ruled out section; "
         "state the fact in the evergreen file and cite the record from its _Source: line:\n"
         + "\n".join(f"{source} -> {target}" for source, target in new)
     )
