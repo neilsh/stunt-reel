@@ -107,7 +107,7 @@ def test_cited_anchors_are_registered() -> None:
     )
 
 
-# .superpowers is git-ignored agent scratch, not docs.
+# .superpowers is agent scratch, not docs.
 LINK_SKIPPED_DIRS = SKIPPED_DIRS | {".git", "corpus", "worktrees", ".superpowers"}
 MARKDOWN_LINK_REGEX = re.compile(r"!?\[[^\]\n]*\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)")
 #: A reference-style link definition, ``[label]: target``, which the inline regex does not see.
@@ -124,10 +124,13 @@ WORK_DIR = REPO_ROOT / "work"
 DATED_MONTH_REGEX = re.compile(r"\d{4}-\d{2}")
 #: Repo-relative path prefixes whose own links go unchecked while a move is half done.
 LINK_SOURCES_SKIPPED: tuple[str, ...] = ()
-#: A link from an evergreen file to a dated record is allowed on a line starting with one of these, or
-#: under a heading with exactly this text, until the next heading of the same or higher level.
-PROVENANCE_PREFIXES = ("_Source:", "*Source:")
+#: A link from an evergreen file to a dated record is allowed on a provenance line (``_Source:``,
+#: or a legacy ``_Found <date>``, italic with ``_`` or ``*``), or under a heading with exactly
+#: this text, until the next heading of the same or higher level.
+PROVENANCE_REGEX = re.compile(r"[_*](?:Source:|Found )")
 RULED_OUT_HEADING = "Ruled out"
+#: A dated folder's pictures, which an evergreen file may embed anywhere.
+IMAGES_DIR_NAME = "images"
 #: ADRs cite the spec and plan they came from freely.
 ADR_PREFIX = "docs/adr/"
 
@@ -178,10 +181,11 @@ def _prose(path: Path) -> str:
     return "\n".join(lines)
 
 
-def _links(path: Path) -> Iterator[tuple[str, bool]]:
-    """(target, allowed) for each inline or reference-style link in *path*'s prose.
+def _links(path: Path) -> Iterator[tuple[str, bool, bool]]:
+    """(target, allowed, embed) for each inline or reference-style link in *path*'s prose.
 
-    Allowed means the link is on a provenance line or in a ``Ruled out`` section.
+    Allowed means the link is on a provenance line or in a ``Ruled out`` section; embed means
+    an inline image, ``![alt](target)``.
     """
     prose = _prose(path)
     lines = prose.split("\n")
@@ -194,14 +198,15 @@ def _links(path: Path) -> Iterator[tuple[str, bool]]:
             level = len(heading.group(1))
             if level <= ruled_out_level:
                 ruled_out_level = 0
-            if heading.group(2) == RULED_OUT_HEADING:
+            if not ruled_out_level and heading.group(2) == RULED_OUT_HEADING:
                 ruled_out_level = level
-        allowed.append(bool(ruled_out_level) or line.strip().startswith(PROVENANCE_PREFIXES))
+        allowed.append(bool(ruled_out_level) or PROVENANCE_REGEX.match(line.strip()) is not None)
         line_starts.append(offset)
         offset += len(line) + 1
     for regex in (MARKDOWN_LINK_REGEX, LINK_DEFINITION_REGEX):
         for match in regex.finditer(prose):
-            yield match.group(1), allowed[bisect.bisect_right(line_starts, match.start()) - 1]
+            line_allowed = allowed[bisect.bisect_right(line_starts, match.start()) - 1]
+            yield match.group(1), line_allowed, match.group().startswith("!")
 
 
 def _is_dated(path: Path, work: Path) -> bool:
@@ -210,6 +215,11 @@ def _is_dated(path: Path, work: Path) -> bool:
         return False
     parts = path.relative_to(work).parts
     return bool(parts) and DATED_MONTH_REGEX.fullmatch(parts[0]) is not None
+
+
+def _is_dated_image(path: Path, work: Path) -> bool:
+    """Whether *path* is in a dated folder's pictures, ``<YYYY-MM>/<folder>/images/``, under *work*."""
+    return _is_dated(path, work) and path.relative_to(work).parts[2:3] == (IMAGES_DIR_NAME,)
 
 
 def _check_link(source: Path, target: str, work_dir: Path) -> str | None:
@@ -237,7 +247,8 @@ def _work_links(root: Path = REPO_ROOT) -> set[tuple[str, str, bool]]:
     """(source, target, allowed) for every link from an evergreen Markdown file to a dated record.
 
     Evergreen is every checked file that is not a dated record; paths are relative to *root*.
-    Allowed means a provenance line, a ``Ruled out`` section, or an ADR.
+    Allowed means a provenance line, a ``Ruled out`` section, an ADR, or an image embedded from
+    a dated folder's ``images/``.
     """
     work = (root / WORK_DIR.name).resolve()
     found: set[tuple[str, str, bool]] = set()
@@ -245,14 +256,15 @@ def _work_links(root: Path = REPO_ROOT) -> set[tuple[str, str, bool]]:
         if _is_dated(path.resolve(), work):
             continue
         source = path.relative_to(root).as_posix()
-        for target, allowed in _links(path):
+        for target, allowed, embed in _links(path):
             file_part = target.partition("#")[0]
             if not file_part or URL_SCHEME_REGEX.match(file_part):
                 continue
             resolved = (path.parent / file_part).resolve()
             if _is_dated(resolved, work):
                 relative = resolved.relative_to(root.resolve()).as_posix()
-                found.add((source, relative, allowed or source.startswith(ADR_PREFIX)))
+                shown = embed and _is_dated_image(resolved, work)
+                found.add((source, relative, allowed or shown or source.startswith(ADR_PREFIX)))
     return found
 
 
@@ -268,12 +280,13 @@ def _heading_citations(text: str) -> list[str]:
 def test_markdown_links_resolve() -> None:
     """Every relative Markdown link points at an existing file and, for .md targets, heading.
 
-    A link from work/ to a file outside it is checked for the file only (``_check_link``).
+    A link from a dated record (``work/<YYYY-MM>/``) to an evergreen file is checked for the file
+    only (``_check_link``).
     """
     broken = [
         f"{path.relative_to(REPO_ROOT).as_posix()}: {target} ({problem})"
         for path in _link_sources(REPO_ROOT)
-        for target, _ in _links(path)
+        for target, _, _ in _links(path)
         if (problem := _check_link(path, target, WORK_DIR))
     ]
     assert not broken, "Broken Markdown links:\n" + "\n".join(sorted(broken))
@@ -423,6 +436,59 @@ def test_adrs_may_cite_work_freely(tmp_path: Path) -> None:
     )
     assert _work_links(tmp_path) == {
         (adr.relative_to(tmp_path).as_posix(), f"{FIXTURE_FOLDER}/spec.md", True)
+    }
+
+
+def test_legacy_found_lines_may_cite_work(tmp_path: Path) -> None:
+    """A ``_Found <date>`` line is provenance, as ``_Source:`` is; a body paragraph is not."""
+    note = _write(
+        tmp_path / "research" / "n.md",
+        "# Note\n\n"
+        "_Found 2026-11-02; see the [parity log](../work/2026-11/x/log.md)._\n"
+        "*Found 2026-11-03; see the [parity log](../work/2026-11/x/star.md).*\n\n"
+        "The rows are in the [parity log](../work/2026-11/x/body.md).\n",
+    )
+    source = note.relative_to(tmp_path).as_posix()
+    assert _work_links(tmp_path) == {
+        (source, f"{FIXTURE_FOLDER}/log.md", True),
+        (source, f"{FIXTURE_FOLDER}/star.md", True),
+        (source, f"{FIXTURE_FOLDER}/body.md", False),
+    }
+
+
+def test_image_embeds_may_show_work_images(tmp_path: Path) -> None:
+    """An embed from a work folder's images/ is allowed anywhere; a plain link to one is not."""
+    note = _write(
+        tmp_path / "research" / "n.md",
+        "# Note\n\n"
+        "![shot](../work/2026-11/x/images/embed.png)\n\n"
+        "See [the shot](../work/2026-11/x/images/link.png).\n\n"
+        "![not an image set](../work/2026-11/x/outside.png)\n",
+    )
+    source = note.relative_to(tmp_path).as_posix()
+    assert _work_links(tmp_path) == {
+        (source, f"{FIXTURE_FOLDER}/images/embed.png", True),
+        (source, f"{FIXTURE_FOLDER}/images/link.png", False),
+        (source, f"{FIXTURE_FOLDER}/outside.png", False),
+    }
+
+
+def test_a_nested_ruled_out_heading_keeps_the_outer_section_open(tmp_path: Path) -> None:
+    """A Ruled out heading inside an open section opens nothing, so its sibling does not close it."""
+    note = _write(
+        tmp_path / "research" / "n.md",
+        "# Note\n\n"
+        "## Ruled out\n\n"
+        "### Ruled out\n\n"
+        "### Other\n\n"
+        "- [still](../work/2026-11/x/still.md)\n\n"
+        "## Open questions\n\n"
+        "- [after](../work/2026-11/x/after.md)\n",
+    )
+    source = note.relative_to(tmp_path).as_posix()
+    assert _work_links(tmp_path) == {
+        (source, f"{FIXTURE_FOLDER}/still.md", True),
+        (source, f"{FIXTURE_FOLDER}/after.md", False),
     }
 
 
