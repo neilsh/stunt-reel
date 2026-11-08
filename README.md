@@ -19,7 +19,7 @@ No game assets or executables are distributed. You need your own lawfully obtain
 | `.SOD` display-list VM and film timeline | Implemented; a few opcodes and timing details are still open. |
 | Native renderer (`stuntreel`) | Plays the demo films `CTRY.FLM` and `INTRO.FLM` at 50 Hz with a free camera. Terrain colours, some actor placement and level of detail do not yet match the original. |
 | glTF export | Shapes and single film frames. |
-| Parity loop | Scores rendered frames against frames captured from the original player. Its log is [`research/parity/log.md`](research/parity/log.md). |
+| Parity loop | Scores rendered frames against frames captured from the original player. Its log is [`work/2026-10/parity-log/log.md`](work/2026-10/parity-log/log.md). |
 | Platforms | The build and test gate runs on Linux, macOS and Windows. Capture and parity need Windows, dosbox-automation and your own copy of the demo. |
 | Not planned | The interactive flight simulator and authoring tools (`STUNT.EXE`); audio output is deferred. See [`docs/SPEC.md`](docs/SPEC.md#21-explicit-scope-boundaries--non-goals). |
 

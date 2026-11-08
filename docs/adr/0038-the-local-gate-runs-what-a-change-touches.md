@@ -3,7 +3,7 @@
 ## Status
 
 accepted 2026-11-06. Designed in the
-[scoped-gate plan](../process/plans/scoped-gate-2026-11-06.md); narrows the plan of
+[scoped-gate plan](../../work/2026-11/scoped-gate/spec.md); narrows the plan of
 [ADR 0014](0014-the-gate-is-one-ordered-script.md) per run, keeps the lanes of
 [ADR 0016](0016-the-gate-runs-independent-lanes.md).
 

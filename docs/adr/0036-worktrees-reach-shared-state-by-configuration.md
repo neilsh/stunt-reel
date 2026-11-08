@@ -2,8 +2,8 @@
 
 ## Status
 
-accepted 2026-11-04 ([spec](../process/plans/worktree-config-2026-11-04.md),
-[plan](../process/plans/worktree-config-implementation-2026-11-04.md)). Supersedes
+accepted 2026-11-04 ([spec](../../work/2026-11/worktree-config/spec.md),
+[plan](../../work/2026-11/worktree-config/plan.md)). Supersedes
 [ADR 0019](0019-a-worktrees-virtualenv-lives-in-the-shared-cache.md) and amends
 [ADR 0008](0008-worktrees-share-one-read-only-data-root.md),
 [ADR 0013](0013-worktrees-share-one-writable-tool-cache.md),

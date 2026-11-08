@@ -86,7 +86,7 @@ MANIFEST_PATH: Path = REPO_ROOT / "manifests" / "cloud-assets.toml"
 
 _HEADER = (
     "# Game data for cloud sessions, in the private R2 bucket "
-    "(docs/process/plans/cloud-assets-2026-11-06.md, ADR 0039).\n"
+    "(work/2026-11/cloud-assets/spec.md, ADR 0039).\n"
     "# `mise run cloud-assets -- pack` rewrites the key, sha256, bytes and references lines.\n"
 )
 

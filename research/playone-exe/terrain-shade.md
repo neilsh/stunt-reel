@@ -96,7 +96,7 @@ So every object set up through `0x9100` without a rotation is lit by the world l
 
 Variable 13 never leaves `0x002D` at any entry, and the light on entry (what the previous entry stored) never leaves `(99, 32766, -17)`. The entries are not evenly spaced (usually 3 to 6 ticks apart; the largest gaps are 224 ticks unpatched (51 to 275) and 243 patched (53 to 296)). The data does not distinguish whether the handler was not entered during a gap or the breakpoint missed an entry. That does not matter if `0x196C` is the only writer: it stores a function of `AX` unconditionally, so the light is `f(0x2D)` from the first entry to the end of the film. That conclusion holds only under the premise that `0x196C` is the only writer, which has the tier of the premise (`[Bounded Observation]`, above); the residual risk is another writer whose change is undone before the next entry. Within `CTRY.FLM` the only per-frame differences in `work:0x8072` (section 8) would then be the rotated copies of rotated objects.
 
-_Found 2026-11-04; the whole-film series added 2026-11-05; see the [parity log](../parity/log.md)._
+_Found 2026-11-04; the whole-film series added 2026-11-05; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
 ## 5. Index composition
 
@@ -163,7 +163,7 @@ Edge entries are prepared at `0xC65A` and clipped by the Cohen-Sutherland clippe
 
 The index composition adds a non-negative offset (`G = 0`) to a per-polygon base byte, so **a polygon can never be drawn darker than its own base colour**. The captures draw the airfield at 193, 194, 195 and 196, values on both sides of `MAP.BIN`'s 195, which one base cannot produce. The answer is not a base per ground polygon: the airfield is patch 4 at 195 with tiles of 193, 194 and 196 on top ([`world-scene.md`](world-scene.md) section 3). This is why no per-frame light fit ever worked.
 
-_Found 2026-10-23 at `b44c6bc`; see the [parity log](../parity/log.md)._
+_Found 2026-10-23 at `b44c6bc`; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
 ## 9. What the captures show on the flat airfield
 
@@ -191,7 +191,7 @@ _Found 2026-10-23 at `b44c6bc`; see the [parity log](../parity/log.md)._
 * **Pooled by depth** (all frames): below 10 m the capture draws 196 on 89% of flat pixels, 20-30 m 194 on 81%, 30-40 m 194 on 77%, 60-400 m mostly 196 (61-73%). No fixed depth law reconciles near and far bins across frames.
 * **Size of the lever.** One ramp step shifts about 40% of terrain pixels by one palette index, and terrain carries about 45% of the loss on both films.
 
-_Found 2026-10-23 at `42cb36f`; see the [parity log](../parity/log.md)._
+_Found 2026-10-23 at `42cb36f`; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
 ## Ruled out
 

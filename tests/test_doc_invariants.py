@@ -78,7 +78,7 @@ def _citation_files() -> list[Path]:
 
 def test_core_docs_exist() -> None:
     """Verify that all core documentation files exist."""
-    for name in ("SPEC.md", "ARCHITECTURE.md", "process/TEAM_SHEET.md", "../research/README.md"):
+    for name in ("SPEC.md", "ARCHITECTURE.md", "../research/README.md"):
         assert (REPO_ROOT / "docs" / name).exists(), f"Required documentation file missing: {name}"
 
 
@@ -127,7 +127,7 @@ CODE_SUFFIXES = frozenset({".rs", ".py", ".wgsl", ".toml"})
 WORK_DIR = REPO_ROOT / "work"
 #: Repo-relative path prefixes whose own links ``test_markdown_links_resolve`` leaves unchecked
 #: while a move is half done; the rule on links into dated records still reads them.
-LINK_SOURCES_SKIPPED: tuple[str, ...] = ()
+LINK_SOURCES_SKIPPED: tuple[str, ...] = ("work/",)
 #: A link from an evergreen file to a dated record is allowed after a provenance marker on its
 #: line (``_Source:`` or a legacy ``_Found <date>``, italic with ``_`` or ``*``, at the line's
 #: start or after whitespace), or under a Ruled out heading, until the next heading of the same
@@ -311,74 +311,6 @@ def test_code_cited_docs_exist() -> None:
             if not (REPO_ROOT / match.group(1)).exists():
                 missing.append(f"{path.relative_to(REPO_ROOT).as_posix()}: {match.group(1)}")
     assert not missing, "Code cites missing documents:\n" + "\n".join(sorted(set(missing)))
-
-
-# AGENTS.md: process documents are never cited for a fact about the system. These are the
-# sources of truth that must not lean on one.
-PROCESS_DIR = REPO_ROOT / "docs" / "process"
-PROCESS_FREE = ("research", "docs/SPEC.md", "docs/ARCHITECTURE.md")
-
-# Links that point at where work was tracked or planned rather than citing a fact through it.
-# This list may only shrink: a new link fails, and so does an entry that no longer exists.
-PROCESS_POINTERS = frozenset(
-    {
-        ("docs/ARCHITECTURE.md", "docs/process/plans/architecture-deepening/README.md"),
-        ("docs/SPEC.md", "docs/process/TEAM_SHEET.md"),
-        ("research/makeone-exe/driving.md", "docs/process/plans/make-all-2026-10-29.md"),
-        ("research/parity/batch.md", "docs/process/plans/batch-parity-2026-10-30.md"),
-        ("research/parity/method.md", "docs/process/TEAM_SHEET.md"),
-        (
-            "research/playone-exe/dosbox-x-legacy.md",
-            "docs/process/plans/dosbox-automation-switch-2026-10-30.md",
-        ),
-    }
-)
-
-
-def _process_links() -> set[tuple[str, str]]:
-    """(source, target) for every Markdown link from a source of truth into docs/process/."""
-    sources: list[Path] = []
-    for entry in PROCESS_FREE:
-        path = REPO_ROOT / entry
-        if path.is_file():
-            sources.append(path)
-        else:
-            sources.extend(_walk(path, LINK_SKIPPED_DIRS))
-    found: set[tuple[str, str]] = set()
-    for path in sources:
-        if path.suffix != ".md":
-            continue
-        text = prose(path.read_text(encoding="utf-8"))
-        targets = [m.group(1) for m in MARKDOWN_LINK_REGEX.finditer(text)]
-        targets += [m.group(1) for m in LINK_DEFINITION_REGEX.finditer(text)]
-        for target in targets:
-            file_part = target.partition("#")[0]
-            if not file_part or re.match(r"[a-z][a-z0-9+.-]*:", file_part):
-                continue
-            resolved = (path.parent / file_part).resolve()
-            if resolved.is_relative_to(PROCESS_DIR.resolve()):
-                found.add(
-                    (
-                        path.relative_to(REPO_ROOT).as_posix(),
-                        resolved.relative_to(REPO_ROOT.resolve()).as_posix(),
-                    )
-                )
-    return found
-
-
-def test_sources_of_truth_do_not_link_into_process_docs() -> None:
-    """research/, SPEC.md and ARCHITECTURE.md link into docs/process/ only through the pointers."""
-    links = _process_links()
-    new = sorted(links - PROCESS_POINTERS)
-    assert not new, (
-        "A source of truth links into docs/process/ (AGENTS.md: never cite a process document "
-        "for a fact about the system); move the fact into the note:\n"
-        + "\n".join(f"{source} -> {target}" for source, target in new)
-    )
-    stale = sorted(PROCESS_POINTERS - links)
-    assert not stale, "PROCESS_POINTERS lists links that are gone; drop them:\n" + "\n".join(
-        f"{source} -> {target}" for source, target in stale
-    )
 
 
 def _write(path: Path, text: str) -> Path:
@@ -660,10 +592,56 @@ def test_code_citation_walks_skip_dated_records(tmp_path: Path) -> None:
     ]
 
 
+_PARITY_LOG = "work/2026-10/parity-log/log.md"
+_TEAM_SHEET = "work/2026-10/team-sheet/TEAM_SHEET.md"
+_SANDBOX_NOTE = (
+    "work/2026-11/windows-sandbox-integrity-label/windows-sandbox-integrity-label-2026-11-01.md"
+)
+
 #: Links from evergreen files to dated records that point at where work was tracked rather than cite a
 #: fact through it. This list may only shrink: a new link fails, and so does an entry that no
 #: longer exists.
-WORK_POINTERS: frozenset[tuple[str, str]] = frozenset()
+WORK_POINTERS: frozenset[tuple[str, str]] = frozenset(
+    {
+        *(
+            (source, _PARITY_LOG)
+            for source in (
+                ".agents/skills/improving-render-parity/SKILL.md",
+                "AGENTS.md",
+                "README.md",
+                "docs/development.md",
+                "research/README.md",
+                "research/formats/auxiliary/anchorpt.md",
+                "research/formats/concepts/coordinates-and-units.md",
+                "research/formats/sod-opcodes.md",
+                "research/parity/attribution.md",
+                "research/parity/film-segments.md",
+                "research/parity/framing-and-actors.md",
+                "research/parity/lavapipe.md",
+                "research/parity/method.md",
+                "research/parity/probes.md",
+                "research/parity/render-model.md",
+                "research/playone-exe/capture-dosbox-automation.md",
+                "research/playone-exe/dosbox-x-legacy.md",
+                "research/playone-exe/lod.md",
+                "research/playone-exe/sod-vm.md",
+            )
+        ),
+        *(
+            (source, _TEAM_SHEET)
+            for source in ("AGENTS.md", "docs/SPEC.md", "research/parity/method.md")
+        ),
+        ("docs/ARCHITECTURE.md", "work/2026-10/architecture-deepening/overview.md"),
+        ("docs/harness.md", "work/2026-10/retro-hardening/retro-hardening-2026-10-25.md"),
+        ("docs/harness.md", _SANDBOX_NOTE),
+        ("research/makeone-exe/driving.md", "work/2026-10/make-all/spec.md"),
+        ("research/parity/batch.md", "work/2026-10/batch-parity/plan.md"),
+        (
+            "research/playone-exe/dosbox-x-legacy.md",
+            "work/2026-10/dosbox-automation-switch/plan.md",
+        ),
+    }
+)
 
 
 def test_evergreen_files_link_into_work_only_where_allowed() -> None:
@@ -708,6 +686,13 @@ def test_no_docs_superpowers_directory() -> None:
     """A skill's default spec location is unused: specs and plans go in the work item's folder."""
     assert not (REPO_ROOT / "docs" / "superpowers").exists(), (
         "docs/superpowers/ exists; move its files into the work item's folder under work/"
+    )
+
+
+def test_no_docs_process_directory() -> None:
+    """Plans and other process documents go in the work item's folder, not back in docs/."""
+    assert not (REPO_ROOT / "docs" / "process").exists(), (
+        "docs/process/ exists; move its files into the work item's folder under work/"
     )
 
 

@@ -85,7 +85,7 @@ The camera rig and actor table are deliberately **not** read during the loop: th
 * **The captured page lags the film clock by one tick (`[Bounded Observation]`).** The capture reads the film clock and the displayed page at the same post-retrace trap, but `PLAYONE` advances the clock at the start of a frame, so the page captured for clock `t` shows the state at `t - 1`. Copying every rendered file one tick back (`tick_t` to `tick_{t-1}`, official scorer) raised `mean_ssim_scored` CTRY 0.7713 to **0.7732** and INTRO 0.6775 to **0.6793**; a two-tick shift gives 0.7723 and 0.6773, so one tick is the match, not a monotone blur. The gain concentrates on the fast-cut montage: +0.0126 over the 19 frames at ticks 1290 to 1500, +0.0027 over the 28 at 2600 to 2900, +0.0009 over the other 161. `headless.rs` now samples the scene at `tick - 1` while keeping the requested file name, so parity frames and the palette sidecar describe the page the original displays. Fresh release renders: CTRY **0.7732** (IoU 0.978 to 0.9783), INTRO **0.6799** (IoU 0.9194 to 0.9205, index agreement 0.503 to 0.535).
 * **The page phase is a whole tick (`[Bounded Observation]`).** Shifting the sampled scene by fractions of a tick around that offset (`mean_ssim_scored`, CTRY / INTRO): -0.5 0.7718 / 0.6774, -0.25 0.7731 / 0.6776, 0 0.7732 / **0.6799**, +0.25 0.7723 / 0.6762, +0.5 0.7711 / 0.6778. Zero peaks on both films, so the page corresponds to the state at an integer `t - 1`.
 
-_Found 2026-10-22; see the [parity log](../parity/log.md)._
+_Found 2026-10-22; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
 ---
 

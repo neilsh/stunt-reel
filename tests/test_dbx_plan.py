@@ -12,9 +12,7 @@ import dbx_stubs
 
 pytestmark = pytest.mark.docs
 
-SPEC = (
-    Path(__file__).resolve().parent.parent / "docs/process/plans/debugger-breakpoints-2026-11-04.md"
-)
+SPEC = Path(__file__).resolve().parent.parent / "work/2026-11/debugger-breakpoints/spec.md"
 
 
 def spec_example() -> str:

@@ -134,7 +134,7 @@ A search for `26 C7 44 FE` finds 108 consecutive 9-byte slots at image `0x8240..
 
 The `26 C7 44 FE imm16` tail seen after a slot's jump is a per-op module-A thunk (`0x1072`, `0x18B4`, `0x231D`), not a handler IP. Coordinates matter: IPs quoted in notebook `CS = 0x0F17` terms (`0x2551`, `0x2A2C`, `0x146C`, `0x147E`, `0x15D4`) differ from the VM's `CS = 0x824` terms by `0x1310` (notebook = image - `0x6F30`, VM = image - `0x8240`). Ghidra (12.1.4 via `rea` 6.7.0) recovers 222 functions, none in image `0x9100..0xB85C` where the handlers live, since every handler is reached through a slot; it reports no xrefs to the handlers, slots, the light-setup entry `0x9100`, `OP_IPG` or `OP_FRACTAL`, and cannot follow `jmp ax`. Its `search-bytes` is what exposed the slot run.
 
-_Found 2026-10-23 at `6ae7b31`; see the [parity log](../parity/log.md)._
+_Found 2026-10-23 at `6ae7b31`; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
 ### 4.1 The Gouraud records (ops `0x0168`, `0x02BE`)
 
@@ -206,7 +206,7 @@ The renderer tests (`crates/stunt-render/tests/gpu/renderer.rs`) draw flat terra
 
 `INTRO` tick 1086 loses 0.0056 with the prototype and with the sink alike. Its terrain loss falls (0.0425 to 0.0378) and its props loss rises (0.1259 to 0.1358): a tile now covers pixels that a base prop used to win. Which prop was not identified (open question 4).
 
-_Found 2026-11-04; see the [parity log](../parity/log.md)._
+_Found 2026-11-04; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
 ## Tools
 

@@ -13,8 +13,8 @@
 | [`makeone-exe/`](makeone-exe/) | Behaviour of `MAKEONE.EXE`, the film linker, as driven under an emulator (DOSBox-X at the time, see [`playone-exe/dosbox-x-legacy.md`](playone-exe/dosbox-x-legacy.md)) to produce a film's `.ALL`, and what that archive holds | [`driving.md`](makeone-exe/driving.md), [`linking.md`](makeone-exe/linking.md) |
 | [`sd-exe/`](sd-exe/) | `SITools/SD.EXE`, the developers' scenery designer: image layout, segments, routine offsets. What its files mean stays in their format notes | [`image.md`](sd-exe/image.md) |
 | [`stunt-exe/`](stunt-exe/) | Behaviour of `STUNT.EXE`, the authoring executable: sets, events, and the editor's file handling | [`sets.md`](stunt-exe/sets.md) |
-| [`parity/`](parity/) | How our render differs from the original's, and how we measure it | [`method.md`](parity/method.md), [`log.md`](parity/log.md) |
-| [`images/`](images/) | Comparison images the notes cite, one folder per render date and commit | [`README.md`](images/README.md) |
+| [`parity/`](parity/) | How our render differs from the original's, and how we measure it | [`method.md`](parity/method.md), [`log.md`](../work/2026-10/parity-log/log.md) |
+| Images | Comparison images the notes cite live in `images/` in the work folder of the investigation that produced them | [`work/README.md`](../work/README.md#images) |
 
 A source card records a *document* rather than a subject; these live beside this file, e.g. [`handbook.md`](handbook.md) for the retail handbook.
 
@@ -24,7 +24,7 @@ To find a note rather than place a finding, read [`MAP.md`](MAP.md): every note 
 
 1. **A fact about the original goes to the note for its subject.** "The player Gouraud-shades a `GVPOLY` polygon's index" belongs in `playone-exe/terrain-shade.md`; "a `.ALL` chunk is a copy of a `RES` item" belongs in `formats/all.md`. It does not stay in the log of the experiment that found it.
 2. **A fact about our render's residual goes to `parity/`,** in the note for that residual (where the loss sits, framing and actors, mismatched film segments).
-3. **Every experiment leaves one row in [`parity/log.md`](parity/log.md):** date, commit, score, adopted or not, and a link to where its finding now lives. The finding carries a provenance line pointing back at the row.
+3. **Every experiment leaves one row in [`parity/log.md`](../work/2026-10/parity-log/log.md):** date, commit, score, adopted or not, and a link to where its finding now lives. The finding carries a provenance line pointing back at the row.
 4. **Tooling lives with what it studies.** A tool or tool evaluation for `PLAYONE.EXE` goes in `playone-exe/static-tooling.md`.
 5. **A handoff is not a file.** Open questions and next steps go under "Open questions" in the note that owns the work.
 6. **Superseded content is replaced, not kept beside the new result.** Its history is the log row and git.
@@ -42,4 +42,4 @@ Headings carry no evidentiary tier tag, so links survive a tier promotion; state
 
 ## Size
 
-Keep each note under about 20 KB so one read covers it. When a note grows past that, split it by subject (for example `sod.md` / `sod-opcodes.md`), not by date. Generated tables (`formats/sod-opcode-coverage.md`) and the append-only [`parity/log.md`](parity/log.md) are exempt.
+Keep each note under about 20 KB so one read covers it. When a note grows past that, split it by subject (for example `sod.md` / `sod-opcodes.md`), not by date. Generated tables (`formats/sod-opcode-coverage.md`) and the append-only [`parity/log.md`](../work/2026-10/parity-log/log.md) are exempt.

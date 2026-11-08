@@ -80,4 +80,4 @@ So both surveys' scored sets cover the same fade-excluded span and nearly the sa
 
 None. These questions concerned the DOSBox-X debugger harness and are moot since capture moved to dosbox-automation ([#28](https://github.com/neilsh/stunt-reel/pull/28)), where runs are bit-identical ([#83](https://github.com/neilsh/stunt-reel/issues/83)).
 
-_Found 2026-10-30; see the [parity log](../parity/log.md)._
+_Found 2026-10-30; see the [parity log](../../work/2026-10/parity-log/log.md)._

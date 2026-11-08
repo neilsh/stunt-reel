@@ -89,7 +89,7 @@ dev group now carries `psutil`, so `-n auto` starts 8. The decision stands with 
 physical one; the gate still passes `-n auto` through `PYTEST_ADDOPTS`.
 
 pytest alone, warm, on the 8-physical, 16-logical-core workstation
-([scoped-gate plan](../process/plans/scoped-gate-2026-11-06.md), section 2):
+([scoped-gate plan](../../work/2026-11/scoped-gate/spec.md), section 2):
 
 | workers | wall |
 | --- | --- |

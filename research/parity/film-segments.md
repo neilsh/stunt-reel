@@ -3,13 +3,13 @@ summary: "Covers COL3-2.FLM and INTRO.FLM segments where PLAYONE shows a scene w
 ---
 # Film Segments Where the Original Shows a Scene We Do Not
 
-`[Bounded Observation]` unless a claim says otherwise. This note covers the segments of `COL3-2.FLM` and `INTRO.FLM` where `PLAYONE.EXE` draws a scene (a news studio, held sand-field shots, a montage) that `stuntreel` does not. The scoring procedure is in [`method.md`](method.md); dated results are in [`log.md`](log.md). The static frame composition (UI bar, credits text) is in [`../playone-exe/sod-vm.md`](../playone-exe/sod-vm.md).
+`[Bounded Observation]` unless a claim says otherwise. This note covers the segments of `COL3-2.FLM` and `INTRO.FLM` where `PLAYONE.EXE` draws a scene (a news studio, held sand-field shots, a montage) that `stuntreel` does not. The scoring procedure is in [`method.md`](method.md); dated results are in [`log.md`](../../work/2026-10/parity-log/log.md). The static frame composition (UI bar, credits text) is in [`../playone-exe/sod-vm.md`](../playone-exe/sod-vm.md).
 
 ## 1. `COL3-2.FLM`: the studio interior
 
 Scored against the 30 night frames of [`palette-fade.md` § 5.1](../playone-exe/palette-fade.md#51-night-capture-col3-2flm), where the modelled palette is already exact: mean SSIM 0.666, minimum 0.479, mean IoU 0.651. The four black frames (ticks 168-201) score 0.925-0.931. Every frame from tick 458 scores 0.62-0.66 with a constant IoU of 0.751. This is far below the `[I6]` gate, and the cause is not colour.
 
-_Found 2026-10-22; see the [parity log](log.md)._
+_Found 2026-10-22; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
 ### 1.1 What the reference shows
 
@@ -64,7 +64,7 @@ The 2026-10-22 figures above come from a render without `--sidata`. The `--sidat
 
 Both rows use the render's sidecar for the authored fade, so 26 frames are scored, not the single one counted in section 1; they are not comparable with section 1's figures. The silhouette now largely agrees (IoU 0.83), but index agreement stays at 0.127 against 0.475 and 0.481 for the day films, so most pixels still differ in colour. `[Unknown]`: whether that is the studio gap, the night palette, or both; pixels have not been inspected. The `INTRO.FLM` sub-pixel cull is not enough to explain it.
 
-_Found 2026-10-23; see the [parity log](log.md)._
+_Found 2026-10-23; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
 ## 2. `INTRO.FLM`: segments that do not match
 
@@ -97,7 +97,7 @@ The montage cuts `view_obj` almost every slice; the 2026-10-22 reading that its 
 
 The capture shows four large aircraft resting on a sand flat (one red biplane, grey and dark-airframe models in the foreground). Our scene at tick 1352 holds twelve actors of 8-97 triangles placed 16-90 m away, and the render covers only 58 actor pixels, so the large parked aircraft are not where our slot data puts them. `[Unknown]`: whether the montage places those actors through a path we do not model (the captured page is not an earlier scene: its best-matching render tick lies within 7 ticks, below).
 
-_Found 2026-10-22; see the [parity log](log.md)._
+_Found 2026-10-22; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
 **The parked aircraft now draw where the capture does; re-creating an absent slot does not explain the position miss.** `[Bounded Observation]`, 2026-11-04, on `3ee5e34`. At captured ticks 1350 and 1383 (`mise run frame -- --film intro --ticks 1350,1361,1383`) the parked aircraft (slots 7, 10 and 12-14, about 70 m out at z 2488-2490) and the hero biplane (slot 0, shape `0x7F19`, 16 m from the eye) land within a few pixels of the capture's; the 2026-10-22 miss predates the actor fixes in [`framing-and-actors.md`](framing-and-actors.md) § 1. The 19 scored frames at ticks 1290-1500 now average SSIM 0.7662 (0.5769 when this section was written), and the worst three, 1350, 1361 and 1372 (0.561, 0.574, 0.584), lose to the ground: the capture's sand flat is green airfield in ours, the missing backdrop of section 2.2. (Drawn since the ground-decal change: on `48f5d49` these frames lose 0.000 to terrain, § 2.1.)
 

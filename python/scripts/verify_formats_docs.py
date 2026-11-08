@@ -166,7 +166,6 @@ LINK_SCAN_FILES: list[str] = [
     "docs/ARCHITECTURE.md",
     "docs/SPEC.md",
     "research/playone-exe/memory-map.md",
-    "docs/process/TEAM_SHEET.md",
     "GLOSSARY.md",
     "tests/fixtures/README.md",
     "corpus/README.md",

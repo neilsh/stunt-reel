@@ -14,7 +14,7 @@ Nothing here is a fact about Stunt Island.
   disjoint files, separately verifiable, no shared file. Each writer branches from the Lead's
   current `HEAD`, commits only on its own branch, and at most two writers plus the Lead work
   at once; the Lead integrates in the same session, in dependency order, with the full gate at
-  the tip. The contract is [the retro-hardening plan](process/plans/retro-hardening-2026-10-25.md).
+  the tip. The contract is [the retro-hardening plan](../work/2026-10/retro-hardening/retro-hardening-2026-10-25.md).
 * **Subagents take Haiku for simple work and Opus for everything else.** Haiku only where the
   brief fully specifies the work and the result is easy to check: surveys, mapping tables,
   mechanical edits, grading against a calibrated rubric. Diagnosis, design, implementation and
@@ -174,7 +174,7 @@ Seen once (2026-11-01): every `mise run` Python task failed with a bare `Permiss
 (`WinError 5` on `mkdir`) while PowerShell wrote the same paths. The checkout root carried an
 inheritable `Mandatory Label\Low`, which `.venv` inherited; `icacls .venv` shows it. The machine's
 owner removes it with `icacls <checkout> /setintegritylevel (OI)(CI)M` and recreates `.venv`.
-Evidence and sources: [the research note](process/research/windows-sandbox-integrity-label-2026-11-01.md).
+Evidence and sources: [the research note](../work/2026-11/windows-sandbox-integrity-label/windows-sandbox-integrity-label-2026-11-01.md).
 
 ## Windows PowerShell 5.1
 
@@ -187,7 +187,7 @@ under DeepSeek Harness (2026-10-25) and Claude Code (2026-10-31).
   also write CRLF. Write UTF-8 without a BOM and with LF through
   `[IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding($false)))`, with
   `` "`n" `` as the only line break in `$text`, and read one file back before running such a
-  write over many. `research/parity/log.md` is LF and append-only: add a row with
+  write over many. `work/2026-10/parity-log/log.md` is LF and append-only: add a row with
   `[IO.File]::AppendAllText($path, $row, (New-Object System.Text.UTF8Encoding($false)))`, never
   `WriteAllText`, which replaces the file.
 * **Commit messages from a file.** A here-string piped to `git commit -F -` does not reach git.

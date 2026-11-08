@@ -3,7 +3,7 @@
 ## Status
 
 accepted 2026-10-29. The design and the ruled-out alternatives are in
-[the captures layout note](../process/plans/captures-layout-2026-10-29.md). Supersedes the
+[the captures layout note](../../work/2026-10/captures-layout/spec.md). Supersedes the
 layout parts of [ADR 0022](0022-captures-are-add-only-beside-a-read-only-corpus.md)
 (`captures/<film>/<capture id>/`) and [ADR 0023](0023-make-all-generates-archives-with-makeone.md)
 (`captures/all/<film>/<id>/`); add-only captures and the read-only corpus stay.

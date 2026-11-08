@@ -35,7 +35,7 @@ Cite these; never restate them:
 | **Coding & Format Rules** | [`Cargo.toml`](Cargo.toml), [`pyproject.toml`](pyproject.toml), [`.editorconfig`](.editorconfig) | Clippy, Ruff and Mypy settings; LF, 4-space indent. |
 | **Agents & Harnesses** | [`docs/harness.md`](docs/harness.md), [`docs/harness-setup.md`](docs/harness-setup.md) | Agent policy, per-harness notes, machine setup and the data root. |
 
-[`docs/process/`](docs/process/) (plans, [`TEAM_SHEET.md`](docs/process/TEAM_SHEET.md)) is **not** a source of truth: never cite it for a fact about the system.
+[`docs/process/`](work/README.md) (plans, [`TEAM_SHEET.md`](work/2026-10/team-sheet/TEAM_SHEET.md)) is **not** a source of truth: never cite it for a fact about the system.
 
 ---
 
@@ -46,7 +46,7 @@ Cite these; never restate them:
 1. Run `git status` before staging: stage the paths you changed by name, never `git add -A` or `git commit -a`, and never any file from `corpus/`. If the index holds another session's work, stop and ask.
 2. Run `mise run check`; it must pass with no warnings.
 3. Commit with a Conventional Commit subject and, when a reviewer would ask "why this way?", a body that says why, closing with the gate line `mise run check` prints last: [Commit messages](docs/development.md#commit-messages). The commit-msg hook checks both.
-4. Write the handoff into the plan or `research/` note that owns the work item, never only in agent memory. Shared append-only files such as [`research/parity/log.md`](research/parity/log.md) take rows at the end only.
+4. Write the handoff into the plan or `research/` note that owns the work item, never only in agent memory. Shared append-only files such as [`work/2026-10/parity-log/log.md`](work/2026-10/parity-log/log.md) take rows at the end only.
 5. A PR that changes rendered output carries a capture-beside-render picture, before and after: [Evidence for a rendering PR](.agents/skills/improving-render-parity/pr-evidence.md).
 6. A finding that needs a code fix is recorded on the fix's branch, cut from `main`, after checking the open PRs that touch the same note; a verification branch keeps only its log row, stacked on the fix branch when it links a note the fix adds.
 7. Before a push that changes `research/` or `NOTICE.md`, a fresh reviewer (a subagent in an agent session, another person otherwise) reads the diff and the notes it cites and reports any claim broader than its evidence (`only`, `all`, `noise`, `within`, `equivalent`).

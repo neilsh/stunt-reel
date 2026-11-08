@@ -7,7 +7,7 @@ checkout's own crates always rebuild, because the seed drops their fingerprints
 (``drop_member_fingerprints``). On ReFS the copy clones blocks instead of writing them, so a
 seeded ``target/`` costs little disk. See
 [ADR 0030](../../docs/adr/0030-new-worktrees-seed-target-by-block-clone.md) and the plan
-``docs/process/plans/target-seeding-2026-11-02.md``.
+``work/2026-11/target-seeding/spec.md``.
 """
 
 from __future__ import annotations

@@ -6,7 +6,7 @@ accepted. Moves `render.json` to schema version 2 on its own: a capture's `meta.
 version 1 under [ADR 0011](0011-parity-artifacts-are-a-versioned-port.md). Ends the legacy
 `palette_controls.json` fallback that ADR 0011 kept scorable, since a render that carries only that
 sidecar has no store. Design and measurements: the render half of
-[`capture-frame-storage-2026-10-31.md`](../process/plans/capture-frame-storage-2026-10-31.md).
+[`capture-frame-storage-2026-10-31.md`](../../work/2026-10/capture-frame-storage/spec.md).
 
 ## Context
 

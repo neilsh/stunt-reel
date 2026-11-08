@@ -255,7 +255,8 @@ the key pair or the network secret cannot read the bucket.
   switch is not committed. Someone with GitHub access and the data root regenerates it and
   attaches it. Only a picture that a
   research note cites as evidence for a finding is committed, under
-  [`research/images/`](../research/images/README.md); the PR body may then link it at its commit
+  `work/<YYYY-MM>/<folder>/images/` ([`work/README.md`](../work/README.md#images)); the PR body
+  may then link it at its commit
   (`https://github.com/<owner>/<repo>/blob/<commit>/<path>?raw=true`), as #264 did.
 - **Measure the GPU.** The renderer runs on lavapipe, whose scores are not yet shown to equal a
   GPU's ([`research/parity/lavapipe.md`](../research/parity/lavapipe.md)). An adoption decision
