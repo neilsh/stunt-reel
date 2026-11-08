@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The cloud setup: the tools a Claude Code cloud session needs, run by the cloud environment's
-# setup script and again by the SessionStart hook (docs/harness-setup.md, Cloud sessions).
+# setup script and again by the SessionStart hook (docs/cloud-sessions.md).
 # Every step skips work already done, so a rerun is cheap and needs root only to change mise or
 # apt packages. It fetches no game archives: the setup script runs before the R2_* variables are
 # set, so the hook fetches them.
