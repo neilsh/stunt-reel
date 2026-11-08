@@ -64,7 +64,7 @@ ZSTD_LEVEL = 19
 #: The archive whose `references` table pins the reference captures it holds.
 CAPTURES = "captures"
 
-#: The cloud environment variable a download needs (docs/harness-setup.md, "Cloud sessions").
+#: The cloud environment variable a download needs (docs/cloud-sessions.md).
 REQUIRED_ENV = ("R2_ACCOUNT_ID",)
 
 #: The R2 key pair: both set, curl signs S3 requests; neither, fetch reads R2's REST API at
@@ -435,7 +435,7 @@ def _credentials(env: Mapping[str, str]) -> tuple[str, tuple[str, str] | None]:
     if missing:
         raise MissingCredentials(
             f"{', '.join(missing)} not set; set them in the cloud environment "
-            '(docs/harness-setup.md, "Cloud sessions")'
+            "(docs/cloud-sessions.md)"
         )
     key_id, secret = (env.get(name, "") for name in KEY_PAIR_ENV)
     return env[REQUIRED_ENV[0]], ((key_id, secret) if pair else None)
@@ -455,7 +455,7 @@ def _download(
     part.parent.mkdir(parents=True, exist_ok=True)
     if key_pair is None:
         # The proxy signs no SigV4 for a host outside amazonaws.com, so this mode reads R2's
-        # REST API, whose Bearer token the proxy attaches (docs/harness-setup.md).
+        # REST API, whose Bearer token the proxy attaches (docs/cloud-sessions.md).
         url = f"https://{REST_HOST}/client/v4/accounts/{account}/r2/buckets/{manifest.bucket}/"
         url += f"objects/{key}"
     else:

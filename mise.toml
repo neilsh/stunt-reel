@@ -1,6 +1,6 @@
 [settings]
 # Pin each tool's download URL and checksum per platform in mise.lock, so an install reads no
-# GitHub API: cloud sessions share an IP whose anonymous API quota runs out (docs/harness-setup.md).
+# GitHub API: cloud sessions share an IP whose anonymous API quota runs out (docs/cloud-sessions.md).
 # After changing a pin, delete mise.lock and regenerate it with a token, since `mise lock` drops,
 # with only a warning, any entry the API refuses:
 #   GITHUB_TOKEN=$(gh auth token) mise lock --platform linux-x64,windows-x64
