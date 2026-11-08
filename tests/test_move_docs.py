@@ -74,7 +74,6 @@ to = "work/2026-11/a/images"
 path = "work/2026-11/a"
 title = 'A "quoted" plan'
 started = 2026-11-01
-status = "landed"
 outcome = "Landed in #12"
 state_source = "Status line"
 """
@@ -375,12 +374,18 @@ def test_move_phase_rewrites_every_tracked_text_file_that_did_not_move(tmp_path:
 
 
 @needs_git
-def test_move_phase_writes_each_folder_readme(tmp_path: Path) -> None:
-    root = _repo(tmp_path, TREE)
+@pytest.mark.parametrize(
+    ("line", "status"),
+    [("", "landed"), ('status = "abandoned"\n', "abandoned")],
+    ids=["no-status", "abandoned"],
+)
+def test_move_phase_writes_each_folder_readme(tmp_path: Path, line: str, status: str) -> None:
+    moves = MOVES.replace("started = 2026-11-01\n", f"started = 2026-11-01\n{line}")
+    root = _repo(tmp_path, {**TREE, MOVES_PATH: moves})
     assert _apply(root, "move") == 0
     folder = parse_folder(root / "work/2026-11/a")
     assert (folder.title, folder.started) == ('A "quoted" plan', date(2026, 11, 1))
-    assert (folder.status, folder.issue, folder.outcome) == ("landed", None, "Landed in #12")
+    assert (folder.status, folder.issue, folder.outcome) == (status, None, "Landed in #12")
 
 
 @needs_git
@@ -466,12 +471,27 @@ def test_move_phase_refuses_a_target_that_exists_and_changes_nothing(
 def test_a_folder_that_breaks_the_layout_is_refused(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    moves = MOVES.replace('status = "landed"', "issue = 12")
+    moves = MOVES.replace("started = 2026-11-01\n", "started = 2026-11-01\nissue = 12\n")
     root = _repo(tmp_path, {**TREE, MOVES_PATH: moves})
     before = _snapshot(root)
     assert _apply(root, "move") == 1
     assert _snapshot(root) == before
     assert "no issue number" in capsys.readouterr().err
+
+
+@needs_git
+def test_a_folder_marked_landed_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    moves = MOVES.replace("started = 2026-11-01\n", 'started = 2026-11-01\nstatus = "landed"\n')
+    root = _repo(tmp_path, {**TREE, MOVES_PATH: moves})
+    before, status = _snapshot(root), _git(root, "status", "--porcelain")
+    assert _apply(root, "move") == 1
+    assert _snapshot(root) == before
+    assert _git(root, "status", "--porcelain") == status
+    err = capsys.readouterr().err
+    assert "[[folder]] work/2026-11/a: " in err
+    assert "omit status for a landed record" in err
 
 
 @needs_git

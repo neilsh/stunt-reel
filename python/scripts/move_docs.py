@@ -3,9 +3,10 @@
 
 A moves file is TOML. Each ``[[move]]`` table has ``from`` and ``to``, repo-relative POSIX
 paths; a directory moves as a whole, its files keeping their layout under ``to``. Each optional
-``[[folder]]`` table describes a new work folder (``path``, ``title``, ``started``, ``issue`` or
-``status``, ``outcome``) whose README ``apply`` writes; its ``state_source``, how a plan's state
-was inferred, stays in the moves file as a record.
+``[[folder]]`` table describes a new work folder (``path``, ``title``, ``started``,
+``outcome``, and ``issue`` or, for dropped work, ``status = "abandoned"``; a folder with neither
+is landed) whose README ``apply`` writes; its ``state_source``, how a plan's state was
+inferred, stays in the moves file as a record.
 
 ``apply --phase move`` runs ``git mv`` for every moved file, writes the folder READMEs (left
 unstaged) and rewrites every tracked text file that did not move, so each moved file keeps its
@@ -399,7 +400,7 @@ def _print_tables(files: list[tuple[str, str]], folders: list[dict[str, Any]]) -
     if folders:
         print("\n| Folder | Issue or status | State source |\n| --- | --- | --- |")
         for table in folders:
-            record = f"#{table['issue']}" if "issue" in table else table.get("status", "")
+            record = f"#{table['issue']}" if "issue" in table else table.get("status", "landed")
             print(f"| `{table['path']}` | {record} | {table.get('state_source', '')} |")
     print()
 

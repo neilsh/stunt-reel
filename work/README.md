@@ -26,7 +26,7 @@ work/
 
 - **Path.** `work/<YYYY-MM>/<issue>_<slug>/`: the month the work started, the bare issue number, and a lowercase kebab-case slug (`^[a-z0-9]+(-[a-z0-9]+)*$`). A folder with no issue is `work/<YYYY-MM>/<slug>/`. A folder never moves. The month directories are the only index.
 - **Files.** `spec.md` and `plan.md` (`spec-<topic>.md` for a second spec), `journal.md` and `images/`. Other files keep their basename.
-- **README frontmatter.** A `---` block of `key: value` lines: `title`, `started` (ISO date, in the folder's month), `outcome` (one line, `""` until the work lands), and exactly one of `issue` (the number in the folder's name) or `status` (`landed` or `abandoned`, for a folder with no issue). No other key: an issue folder's status is its issue's.
+- **README frontmatter.** A `---` block of `key: value` lines: `title`, `started` (ISO date, in the folder's month), `outcome` (one line, `""` until the work lands), and, in an issue folder, `issue` (the number in its name), whose status is its issue's. A folder with no issue is a landed record unless it carries `status: abandoned`, for dropped work. No other key or `status` value is allowed.
 
 ## Tools
 

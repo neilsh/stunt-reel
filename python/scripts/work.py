@@ -15,7 +15,9 @@ folder, in any month.
 
 ``list`` prints one line per folder: month, folder, status, title, outcome. An issue folder's
 status is its issue's, read in one ``gh`` call; when ``gh`` is missing or fails, it is
-``unknown`` and one note on stderr says so. ``--status`` keeps the folders with that status.
+``unknown`` and one note on stderr says so. A folder with no issue is ``landed``, or
+``abandoned`` when its README says ``status: abandoned``. ``--status`` keeps the folders with
+that status.
 
 Usage: ``mise run work -- new <slug> [--issue N]`` or ``mise run work -- list [--status
 active|landed|abandoned]``; either takes ``--root DIR`` for a work root other than ``work/``.

@@ -1,9 +1,11 @@
 """The work folders that hold dated records: `work/<YYYY-MM>/<issue>_<slug>/` or `<slug>/`.
 
 A folder's README frontmatter carries `title`, `started` (ISO date, in the folder's month),
-`outcome` (empty until the work lands) and exactly one of `issue` (the number in the folder's
-name) or `status` (`landed` or `abandoned`, for a folder with no issue), and no other key. An
-issue folder's status is its issue's, read through `gh` by `issue_statuses`.
+`outcome` (empty until the work lands) and, in an issue folder, `issue` (the number in the
+folder's name), and no other key. An issue folder's status is its issue's, read through `gh`
+by `issue_statuses`. A folder with no issue is a landed record, migrated history or a
+distillation, unless its frontmatter carries `status: abandoned`, the one status a folder may
+carry, for dropped work.
 """
 
 from __future__ import annotations
@@ -53,7 +55,6 @@ _SLUG = r"[a-z0-9]+(?:-[a-z0-9]+)*"
 _ISSUE_NAME = re.compile(rf"([1-9][0-9]*)_({_SLUG})")
 _SLUG_NAME = re.compile(_SLUG)
 _ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
-_STATUSES: dict[str | int, Status] = {"landed": "landed", "abandoned": "abandoned"}
 _REQUIRED = ("title", "started", "outcome")
 _KEYS = frozenset((*_REQUIRED, "issue", "status"))
 _ISSUE_LIST = ("gh", "issue", "list", "--state", "all", "--limit", "2000", "--json")
@@ -67,7 +68,11 @@ class WorkFolderError(ValueError):
 
 @dataclass(frozen=True)
 class WorkFolder:
-    """One parsed work folder; exactly one of `issue` and `status` is set."""
+    """One parsed work folder; exactly one of `issue` and `status` is set.
+
+    `status` is derived: `abandoned` when the README says so, else `landed`, for a folder with
+    no issue.
+    """
 
     path: Path
     month: str
@@ -105,26 +110,26 @@ def readme_text(
     """A work folder's whole README.md: its frontmatter, then a `# <title>` heading line.
 
     *title* and *outcome* are written quoted, so `parse_folder` reads them back unchanged.
-    Raises WorkFolderError for a title that is not one non-blank line, an outcome of more than
-    one line, or anything but exactly one of an *issue* of 1 or more and a *status* of
-    `landed` or `abandoned`.
+    With neither *issue* nor *status*, the README is a landed record's. Raises WorkFolderError
+    for a title that is not one non-blank line, an outcome of more than one line, an *issue*
+    below 1, a *status* other than `abandoned`, or both an *issue* and a *status*.
     """
     if title.splitlines() != [title] or not title.strip():
         raise WorkFolderError(f"title {title!r} is not one non-blank line")
     if outcome.splitlines() not in ([], [outcome]):
         raise WorkFolderError(f"outcome {outcome!r} is not one line")
-    if (issue is None) == (status is None):
-        raise WorkFolderError("a work folder needs exactly one of issue and status")
+    record = ""
+    if status is not None:
+        _check_status(status)
+        if issue is not None:
+            raise WorkFolderError("a work folder with an issue takes its status from the issue")
+        record = f"status: {status}\n"
     if issue is not None:
         if issue < 1:
             raise WorkFolderError(f"issue {issue} is not a GitHub issue number")
-        record = f"issue: {issue}"
-    else:
-        if status not in _STATUSES:
-            raise WorkFolderError(f"status {status!r} is not landed or abandoned")
-        record = f"status: {status}"
+        record = f"issue: {issue}\n"
     return (
-        f"---\ntitle: {_quoted(title)}\nstarted: {started.isoformat()}\n{record}\n"
+        f"---\ntitle: {_quoted(title)}\nstarted: {started.isoformat()}\n{record}"
         f"outcome: {_quoted(outcome)}\n---\n\n# {title}\n"
     )
 
@@ -274,18 +279,32 @@ def _started(value: str | int, month: str) -> date:
     return started
 
 
+def _check_status(value: object) -> None:
+    """Raise WorkFolderError unless *value* is `abandoned`, the one status a folder may carry."""
+    if value == "landed":
+        raise WorkFolderError("status landed is implied: omit status for a landed record")
+    if value != "abandoned":
+        raise WorkFolderError(
+            f"status {value!r} is not abandoned, the one status a folder may carry"
+        )
+
+
 def _issue_or_status(
     fields: dict[str, str | int], name_issue: int | None
 ) -> tuple[int | None, Status | None]:
-    if ("issue" in fields) == ("status" in fields):
-        raise WorkFolderError("frontmatter needs exactly one of issue and status")
+    if "issue" in fields and "status" in fields:
+        raise WorkFolderError(
+            "frontmatter has both issue and status; an issue folder's status is its issue's"
+        )
     if "status" in fields:
-        status = _STATUSES.get(fields["status"])
-        if status is None:
-            raise WorkFolderError(f"status {fields['status']!r} is not landed or abandoned")
         if name_issue is not None:
             raise WorkFolderError(f"name carries issue {name_issue} but frontmatter has status")
-        return None, status
+        _check_status(fields["status"])
+        return None, "abandoned"
+    if "issue" not in fields:
+        if name_issue is not None:
+            raise WorkFolderError(f"name carries issue {name_issue} but frontmatter has no issue")
+        return None, "landed"
     issue = fields["issue"]
     if not isinstance(issue, int):
         raise WorkFolderError(f"issue {issue!r} is not an unquoted number")

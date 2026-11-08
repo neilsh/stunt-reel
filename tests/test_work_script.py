@@ -87,8 +87,9 @@ def _issue_folder(root: Path, month: str, issue: int, slug: str, outcome: str = 
     return _folder(root, month, f"{issue}_{slug}", fields)
 
 
-def _issue_less_folder(root: Path, month: str, slug: str, status: str) -> Path:
-    fields = f"title: Item {slug}\nstarted: {month}-01\nstatus: {status}\noutcome: Moved\n"
+def _issue_less_folder(root: Path, month: str, slug: str, *, abandoned: bool = False) -> Path:
+    status = "status: abandoned\n" if abandoned else ""
+    fields = f"title: Item {slug}\nstarted: {month}-01\n{status}outcome: Moved\n"
     return _folder(root, month, slug, fields)
 
 
@@ -232,7 +233,7 @@ def test_list_maps_issue_states(tmp_path: Path, capsys: pytest.CaptureFixture[st
     _issue_folder(tmp_path, "2026-11", 300, "shipped", outcome="Merged as #310")
     _issue_folder(tmp_path, "2026-11", 301, "dropped")
     _issue_folder(tmp_path, "2026-11", 302, "unlisted")
-    _issue_less_folder(tmp_path, "2026-10", "parity-log", "landed")
+    _issue_less_folder(tmp_path, "2026-10", "parity-log")
     run = FakeRunner({"gh issue list": ISSUES})
     assert _main(tmp_path, "list", run=run) == 0
     out, err = capsys.readouterr()
@@ -259,7 +260,7 @@ def test_list_without_gh_shows_unknown_and_one_note(
 ) -> None:
     _issue_folder(tmp_path, "2026-11", 307, "docs-streamline")
     _issue_folder(tmp_path, "2026-11", 300, "shipped")
-    _issue_less_folder(tmp_path, "2026-10", "parity-log", "landed")
+    _issue_less_folder(tmp_path, "2026-10", "parity-log")
     assert _main(tmp_path, "list", run=run) == 0
     out, err = capsys.readouterr()
     assert _columns(out) == [
@@ -285,8 +286,8 @@ def test_list_filters_by_status(
     _issue_folder(tmp_path, "2026-11", 307, "docs-streamline")
     _issue_folder(tmp_path, "2026-11", 300, "shipped")
     _issue_folder(tmp_path, "2026-11", 301, "dropped")
-    _issue_less_folder(tmp_path, "2026-10", "parity-log", "landed")
-    _issue_less_folder(tmp_path, "2026-11", "old-idea", "abandoned")
+    _issue_less_folder(tmp_path, "2026-10", "parity-log")
+    _issue_less_folder(tmp_path, "2026-11", "old-idea", abandoned=True)
     assert (
         _main(tmp_path, "list", "--status", status, run=FakeRunner({"gh issue list": ISSUES})) == 0
     )
@@ -309,7 +310,7 @@ def test_list_reports_a_bad_folder_and_fails(
 def test_list_of_issue_less_folders_needs_no_gh(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _issue_less_folder(tmp_path, "2026-10", "parity-log", "landed")
+    _issue_less_folder(tmp_path, "2026-10", "parity-log")
     assert _main(tmp_path, "list", run=_no_gh) == 0
     out, err = capsys.readouterr()
     assert _columns(out) == [["2026-10", "parity-log", "landed"]]

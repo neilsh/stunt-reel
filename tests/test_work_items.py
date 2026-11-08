@@ -25,7 +25,7 @@ from stunt_reel.work_items import (
 )
 
 ISSUE_README = 'title: Docs streamline\nstarted: 2026-11-07\nissue: 307\noutcome: ""\n'
-LANDED_README = 'title: T\nstarted: 2026-11-07\nstatus: landed\noutcome: ""\n'
+LANDED_README = 'title: T\nstarted: 2026-11-07\noutcome: ""\n'
 
 
 def _folder(root: Path, month: str, name: str, frontmatter: str | None) -> Path:
@@ -60,9 +60,13 @@ def test_parses_an_issue_folder(tmp_path: Path) -> None:
     assert folder.status is None
 
 
-@pytest.mark.parametrize("status", ["landed", "abandoned"])
-def test_parses_an_issue_less_folder(tmp_path: Path, status: str) -> None:
-    frontmatter = f"title: Parity log\nstarted: 2026-10-01\nstatus: {status}\noutcome: Moved\n"
+@pytest.mark.parametrize(
+    ("line", "status"),
+    [("", "landed"), ("status: abandoned\n", "abandoned")],
+    ids=["no-status", "abandoned"],
+)
+def test_parses_an_issue_less_folder(tmp_path: Path, line: str, status: str) -> None:
+    frontmatter = f"title: Parity log\nstarted: 2026-10-01\n{line}outcome: Moved\n"
     folder = parse_folder(_folder(tmp_path, "2026-10", "parity-log", frontmatter))
     assert folder.issue is None
     assert folder.status == status
@@ -75,26 +79,32 @@ INVALID: dict[str, tuple[str, str, str | None, str]] = {
     "both issue and status": (
         "2026-11",
         "307_x",
-        ISSUE_README + "status: landed\n",
-        "exactly one of issue and status",
+        ISSUE_README + "status: abandoned\n",
+        "has both issue and status",
     ),
-    "neither issue nor status": (
+    "status: landed": (
         "2026-11",
         "x",
-        'title: T\nstarted: 2026-11-07\noutcome: ""\n',
-        "exactly one of issue and status",
+        LANDED_README + "status: landed\n",
+        "omit status for a landed record",
     ),
     "status: active": (
         "2026-11",
         "x",
-        LANDED_README.replace("landed", "active"),
-        "not landed or abandoned",
+        LANDED_README + "status: active\n",
+        "status 'active' is not abandoned",
     ),
     "issue in name but not frontmatter": (
         "2026-11",
         "307_x",
         LANDED_README,
-        "name carries issue 307",
+        "name carries issue 307 but frontmatter has no issue",
+    ),
+    "issue in name and status in frontmatter": (
+        "2026-11",
+        "307_x",
+        LANDED_README + "status: abandoned\n",
+        "name carries issue 307 but frontmatter has status",
     ),
     "issue in frontmatter but not name": (
         "2026-11",
@@ -192,19 +202,29 @@ def test_readme_text_is_frontmatter_then_the_title_heading() -> None:
 
 
 def test_readme_text_escapes_backslashes_before_quotes() -> None:
-    text = readme_text('C:\\dir "q\\"', date(2026, 11, 7), "\\", status="landed")
+    text = readme_text('C:\\dir "q\\"', date(2026, 11, 7), "\\")
     assert 'title: "C:\\\\dir \\"q\\\\\\""\n' in text
     assert 'outcome: "\\\\"\n' in text
 
 
 @pytest.mark.parametrize(
-    ("name", "issue", "status"), [("307_docs", 307, None), ("docs", None, "abandoned")]
+    ("name", "issue", "status", "parsed"),
+    [
+        ("307_docs", 307, None, None),
+        ("docs", None, None, "landed"),
+        ("docs", None, "abandoned", "abandoned"),
+    ],
 )
 @pytest.mark.parametrize(
     "title", ["1942", 'Say "hi": C:\\dir\\', " padded ", 'a\\"b\\\\', "`RES\\` items"]
 )
 def test_readme_text_parses_back(
-    tmp_path: Path, name: str, issue: int | None, status: str | None, title: str
+    tmp_path: Path,
+    name: str,
+    issue: int | None,
+    status: str | None,
+    parsed: str | None,
+    title: str,
 ) -> None:
     path = _folder(tmp_path, "2026-11", name, None)
     text = readme_text(title, date(2026, 11, 7), 'Kept "1942"', issue=issue, status=status)
@@ -215,7 +235,13 @@ def test_readme_text_parses_back(
         date(2026, 11, 7),
         'Kept "1942"',
     )
-    assert (folder.issue, folder.status) == (issue, status)
+    assert (folder.issue, folder.status) == (issue, parsed)
+
+
+def test_readme_text_of_a_landed_record_has_no_status() -> None:
+    assert readme_text("Log", date(2026, 10, 21), "Moved") == (
+        '---\ntitle: "Log"\nstarted: 2026-10-21\noutcome: "Moved"\n---\n\n# Log\n'
+    )
 
 
 @pytest.mark.parametrize(
@@ -224,12 +250,11 @@ def test_readme_text_parses_back(
         ("two\nlines", "", 5, None),
         ("   ", "", 5, None),
         ("T", "two\nlines", 5, None),
-        ("T", "", 5, "landed"),
-        ("T", "", None, None),
+        ("T", "", 5, "abandoned"),
         ("T", "", None, "done"),
         ("T", "", 0, None),
     ],
-    ids=["title-lines", "title-blank", "outcome-lines", "both", "neither", "status", "issue"],
+    ids=["title-lines", "title-blank", "outcome-lines", "both", "status", "issue"],
 )
 def test_readme_text_refuses_what_parse_folder_would(
     title: str, outcome: str, issue: int | None, status: str | None
@@ -238,9 +263,14 @@ def test_readme_text_refuses_what_parse_folder_would(
         readme_text(title, date(2026, 11, 7), outcome, issue=issue, status=status)
 
 
+def test_readme_text_refuses_status_landed() -> None:
+    with pytest.raises(WorkFolderError, match="omit status for a landed record"):
+        readme_text("T", date(2026, 11, 7), "", status="landed")
+
+
 def test_scan_sorts_by_month_then_issue_with_issue_less_last(tmp_path: Path) -> None:
     def readme(month: str, issue: int | None) -> str:
-        tail = f"issue: {issue}\n" if issue is not None else "status: landed\n"
+        tail = f"issue: {issue}\n" if issue is not None else ""
         return f'title: T\nstarted: {month}-01\noutcome: ""\n{tail}'
 
     for month, issue, slug in [

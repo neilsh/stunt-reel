@@ -18,7 +18,7 @@
 * `AGENTS.md` stays at or under 8192 bytes (`AGENTS_MD_MAX_BYTES`; 8073 today, so every AGENTS.md edit is roughly net zero). Each `SKILL.md` stays under 500 words (`SKILL_MAX_WORDS`; `recording-findings` is at 495).
 * No new runtime or dev dependency for parsing: frontmatter is a `---` block of `key: value` scalars read with the stdlib.
 * Work folder path: `work/<YYYY-MM>/<issue>_<slug>/` with the bare issue number (`307_docs-streamline`); issue-less folders are `work/<YYYY-MM>/<slug>/`. Slugs match `^[a-z0-9]+(-[a-z0-9]+)*$`.
-* README frontmatter: `title`, `started` (ISO date), `outcome` (string, may be empty), and exactly one of `issue` (int) or `status` (`landed` or `abandoned`).
+* README frontmatter: `title`, `started` (ISO date), `outcome` (string, may be empty), and `issue` (int) in an issue folder. An issue-less folder has no `issue` and is landed unless it carries `status: abandoned`, the only `status` value; `status: landed` is an error saying to omit the field, and an issue folder carries no `status`.
 * Research note frontmatter: `summary`, one sentence, at most 200 characters. A note's rejected hypotheses sit under a heading whose text is exactly `Ruled out`.
 * Size budget: 20 KB (20480 bytes) for evergreen markdown.
 * Python files follow the repo pattern: module docstring with a `Usage:` line, `from __future__ import annotations`, scripts in `python/scripts/` loaded by tests through `importlib.util.spec_from_file_location` (as `tests/test_superset_all_script.py` does), library code in `python/stunt_reel/`. Docs tests set `pytestmark = pytest.mark.docs`.
@@ -81,7 +81,7 @@ def test_malformed_blocks_raise(text):
 - Consumes: `read_frontmatter`, `FrontmatterError` (Task 1).
 - Produces:
   - `WORK_ROOT = REPO_ROOT / "work"`
-  - `@dataclass(frozen=True) class WorkFolder: path: Path; month: str; issue: int | None; slug: str; title: str; started: date; outcome: str; status: Literal["landed", "abandoned"] | None`
+  - `@dataclass(frozen=True) class WorkFolder: path: Path; month: str; issue: int | None; slug: str; title: str; started: date; outcome: str; status: Literal["landed", "abandoned"] | None`, `status` derived: `"landed"` for an issue-less folder with no `status`, `"abandoned"` for `status: abandoned`, None for an issue folder
   - `class WorkFolderError(ValueError)`
   - `folder_name(issue: int | None, slug: str) -> str`
   - `parse_folder(path: Path) -> WorkFolder` (raises `WorkFolderError`)
@@ -97,11 +97,11 @@ def test_folder_name_is_bare_issue_then_slug():
 def test_parses_an_issue_folder(tmp_path): ...      # work/2026-11/307_docs-streamline/README.md with title, started 2026-11-07, issue 307
     # assert folder.issue == 307 and folder.status is None and folder.month == "2026-11"
 
-@pytest.mark.parametrize("status", ["landed", "abandoned"])
-def test_parses_an_issue_less_folder(tmp_path, status): ...   # no issue -> issue None, status as given
+@pytest.mark.parametrize(("line", "status"), [("", "landed"), ("status: abandoned\n", "abandoned")])
+def test_parses_an_issue_less_folder(tmp_path, line, status): ...   # no issue -> issue None; no status line -> landed
 
 @pytest.mark.parametrize("problem", [
-    "both issue and status", "neither issue nor status", "status: active",
+    "both issue and status", "status: landed", "status: active",
     "issue in name but not frontmatter", "frontmatter issue differs from name",
     "started month differs from parent month", "slug with capitals", "missing README.md", "missing title",
 ])
@@ -110,7 +110,7 @@ def test_invalid_folders_raise(tmp_path, problem): ...
 
 - [ ] **Step 2: Write the docs test** in `tests/test_work_folders.py`: `pytestmark = pytest.mark.docs`; `test_every_work_folder_is_valid` calls `scan()` and asserts no `WorkFolderError`, listing each bad folder and its reason; `test_month_directories_hold_only_work_folders` asserts every entry under `work/<YYYY-MM>/` is a directory and every top-level entry of `work/` is `README.md` or a `YYYY-MM` directory.
 - [ ] **Step 3: Run both test files**; expected: FAIL.
-- [ ] **Step 4: Implement `work_items.py`.** A folder is the directory under `work/<YYYY-MM>/`; its name matches `^(\d+)_([a-z0-9-]+)$` (issue) or `^([a-z0-9-]+)$` (issue-less, `status: landed` or `status: abandoned` required).
+- [ ] **Step 4: Implement `work_items.py`.** A folder is the directory under `work/<YYYY-MM>/`; its name matches `^(\d+)_([a-z0-9-]+)$` (issue) or `^([a-z0-9-]+)$` (issue-less: landed with no `status`, abandoned with `status: abandoned`; `status: landed` is refused with a message to omit it).
 - [ ] **Step 5: Run the tests**; expected: PASS (the repo's only folder, `work/2026-11/307_docs-streamline/`, is valid).
 - [ ] **Step 6: Commit** `feat(tooling): model work folders and check every one under work/`.
 
@@ -143,7 +143,7 @@ def test_new_without_issue_files_one_after_checking_the_repo(tmp_path): ...
 def test_new_refuses_an_existing_folder(tmp_path): ...
 
 def test_list_maps_issue_states(tmp_path, capsys): ...
-    # OPEN -> active, CLOSED/COMPLETED -> landed, CLOSED/NOT_PLANNED -> abandoned, issue-less -> its own status
+    # OPEN -> active, CLOSED/COMPLETED -> landed, CLOSED/NOT_PLANNED -> abandoned, issue-less -> landed, or abandoned when marked
 
 def test_list_without_gh_shows_unknown_and_one_note(tmp_path, capsys): ...
     # runner raises FileNotFoundError; status column "unknown"; stderr has exactly one "gh unavailable" line; exit 0
@@ -272,7 +272,7 @@ def test_json_output_lists_findings(tmp_path, capsys): ...
 
 **Interfaces:**
 - Produces:
-  - `moves.toml` schema: `[[move]]` tables with `from` and `to` (repo-relative; a directory moves as a whole), plus optional `[[folder]]` tables (`path`, `title`, `started`, `issue` or `status`, `outcome`, `state_source`) that `apply` writes as README files for new work folders.
+  - `moves.toml` schema: `[[move]]` tables with `from` and `to` (repo-relative; a directory moves as a whole), plus optional `[[folder]]` tables (`path`, `title`, `started`, `outcome`, `state_source`, and `issue` or `status = "abandoned"`, neither for a landed folder; `status = "landed"` is refused before any write) that `apply` writes as README files for new work folders.
   - `load_moves(path: Path) -> list[tuple[str, str]]` expanded to file level, and `path_map(moves) -> dict[str, str]` covering files and directories.
   - `rewrite_text(text: str, source_old: str, source_new: str, mapping: dict[str, str], *, markdown: bool) -> str`: for Markdown, inline links, image links and reference-style definitions whose resolved target is in `mapping` (or whose source moved) get a new relative path with the fragment kept; for any text file, exact repo-root-relative path strings in `mapping` are replaced.
   - `main(argv) -> int` with `apply <moves.toml> --phase move|inside [--dry-run]`. `move`: `git mv` each entry, write `[[folder]]` READMEs, rewrite every tracked text file that did not move. `inside`: rewrite the moved files only. Prints the old-to-new table as Markdown for the PR body.
@@ -330,8 +330,8 @@ def test_dry_run_changes_nothing(tmp_path): ...
   * Each `docs/process/plans/*.md`: topic = filename minus `-implementation` and the date suffix; date = filename date, else `git log --diff-filter=A --format=%cs -1`; a spec and plan with one topic and date share a folder as `spec.md` and `plan.md`; a file without an implementation partner becomes `spec.md` if it has no `## Task` headings, else `plan.md`; files that are neither (`TEAM_SHEET.md`, `retro-*.md`, notes) keep their basename.
   * `architecture-deepening/` moves file by file to `work/2026-10/architecture-deepening/`: its `README.md`, which has no frontmatter, becomes `overview.md`, and a `[[folder]]` entry writes a README with frontmatter there (a work folder's README must carry frontmatter, a 100% rename cannot add it, and the file-level entries map the links to the old README explicitly); `docs/process/research/windows-sandbox-integrity-label-2026-11-01.md` to `work/2026-11/windows-sandbox-integrity-label/`; `TEAM_SHEET.md` to `work/<first-commit month>/team-sheet/`.
   * `research/images/2026-11-07-72028d1/` to `work/2026-11/lavapipe-nan-shade/images/`; `research/parity/aircraft/` to the aircraft-render folder's `images/`; `research/images/README.md` is deleted (its rules are in `work/README.md`).
-  * `research/parity/log.md` to `work/2026-10/parity-log/log.md`, folder `status = "landed"`, started 2026-10-21, title "Parity results log, 2026-10-21 to 2026-11-07", outcome "Retired for journal entries and expected scores in references.toml (#307)".
-  * State: `landed` when the Status line matches `implemented|landed|closed|done|complete`, `in-flight` for the five the spec names (the user may mark any `landed` or `abandoned`; `capture-store-deepening` is cited by two ADRs), else `unknown`; `outcome` is the Status line's first sentence, at most 200 characters.
+  * `research/parity/log.md` to `work/2026-10/parity-log/log.md`, a folder with no `status` (landed), started 2026-10-21, title "Parity results log, 2026-10-21 to 2026-11-07", outcome "Retired for journal entries and expected scores in references.toml (#307)".
+  * State: `landed` when the Status line matches `implemented|landed|closed|done|complete`, `in-flight` for the five the spec names (the user may mark any `landed` or `abandoned`; `capture-store-deepening` is cited by two ADRs), else `unknown`; a landed folder's `[[folder]]` omits `status` and an abandoned one has `status = "abandoned"`; `outcome` is the Status line's first sentence, at most 200 characters.
 - [ ] **Step 2: Run it** (`mise exec -- uv run python work/2026-11/307_docs-streamline/plan_moves.py`) and print the state table.
 - [ ] **Step 3: Checkpoint with the user.** Show the table; the user sets each `unknown` to `landed`, `abandoned` or in flight, and approves filing an issue for each in-flight plan without one (`vault-parity-films` uses #242). Record the issue numbers in `moves.toml` (`issue = N`, folder `<N>_<slug>`).
 - [ ] **Step 4: Commit** `docs(work): plan the docs/process moves (#307)`.
