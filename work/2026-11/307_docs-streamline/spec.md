@@ -32,7 +32,7 @@ A **work item** is a GitHub issue. Its status is the issue's: open is active, cl
 work/
   README.md                       license, layout, lifecycle (this section, condensed)
   2026-11/
-    0307_docs-streamline/
+    307_docs-streamline/
       README.md                   frontmatter + question, outcome, links to what it changed
       spec.md, plan.md            superpowers output
       journal.md                  dated entries
@@ -40,7 +40,7 @@ work/
     distill-method/               a folder with no issue (section 3.2)
 ```
 
-* **Path.** `work/<YYYY-MM>/<issue>_<slug>/`: the month the work started, the issue number zero-padded to four digits (so folders sort by number, roughly creation order), and a lowercase kebab-case slug. A folder never moves. There is no committed index: the month directories are the index, and `mise run work -- list [--status active]` prints a table with each issue's status.
+* **Path.** `work/<YYYY-MM>/<issue>_<slug>/`: the month the work started, the issue number as GitHub shows it, unpadded, and a lowercase kebab-case slug. A folder never moves. There is no committed index: the month directories are the index, and `mise run work -- list [--status active]` prints a table with each issue's status.
 * **README frontmatter.** `title`, `started` (ISO date), `issue` (number), `outcome` (one line; empty until the work lands). There is no hand-written status field.
 * **Folders without an issue.** Landed migrated plans and the gardening routine's distillations have no issue. They are named `work/<YYYY-MM>/<slug>/` (letters sort after the numbered folders) and carry a fixed `status: landed` instead of `issue`. The frontmatter check accepts exactly one of `issue` and `status`, and `status` only with the value `landed`.
 * **File names.** `spec.md` and `plan.md` for superpowers output (`spec-<topic>.md` when a folder needs a second); `journal.md` for entries; `images/` for pictures. Migrated files that are neither spec nor plan keep their basename.
@@ -142,17 +142,16 @@ A weekly scheduled cloud agent runs `mise run doc-health -- --json`, distills th
 
 Expected scores ship first as their own PR off `main`, in parallel with the stack: the `references.toml` schema, the renderer-class field, the `mise run parity` comparison, and seeding by a GPU run on the primary machine and a lavapipe run in a cloud session, both on `main`.
 
-The rest is a `gh stack` of five PRs; each passes `mise run check` at its own head, and the stack squash-merges as one commit per PR. Before pushing a PR that changes `research/` or `NOTICE.md` (moves, parity log, rules), a fresh reviewer reads its diff (AGENTS.md working rule 7).
+The rest is a `gh stack` of four PRs (the plan folds the parity log into the moves and relink PRs, so its own link rewrite never shares a squashed commit with its move); each passes `mise run check` at its own head, and the stack squash-merges as one commit per PR. Before pushing a PR that changes `research/` or `NOTICE.md` (moves, rules), a fresh reviewer reads its diff (AGENTS.md working rule 7).
 
-1. **Tooling.** `.ignore`, `work/README.md`, `mise run work`, the frontmatter reader, the knowledge-map generator wired into `fix` and `check`, `mise run doc-health`, the link rules of section 4.3, and the `docs/superpowers/` guard.
-2. **Moves.** A script runs `git mv` for everything in section 3.2 except the parity log, and rewrites links in files that did not move: ADR citations, code comments, `tests/test_skill_eval.py`, `.coderabbit.yaml`, `manifests/cloud-assets.toml`, `docs/harness.md`, `docs/ARCHITECTURE.md`, `docs/SPEC.md`, skills, and `NOTICE.md`'s note of where comparison images go. It adds the `docs/process/` guard and `WORK_POINTERS`. The link check skips sources under `work/` for this PR only. Every moved file is a 100% rename; each migrated folder's README is a new file. The PR body carries the old-to-new path map and the table of inferred plan states (section 3.2).
+1. **Tooling.** `.ignore`, `work/README.md`, `mise run work`, the frontmatter reader, the knowledge-map generator wired into `fix` and `check`, `mise run doc-health`, the link rules of section 4.3, the `docs/superpowers/` guard, and `mise run move-docs`, the reusable tool the next two layers run.
+2. **Moves.** A script runs `git mv` for everything in section 3.2, the parity log included, and rewrites links in files that did not move: ADR citations, code comments, `tests/test_skill_eval.py`, `.coderabbit.yaml`, `manifests/cloud-assets.toml`, `docs/harness.md`, `docs/ARCHITECTURE.md`, `docs/SPEC.md`, skills, and `NOTICE.md`'s note of where comparison images go. It adds the `docs/process/` guard and `WORK_POINTERS`. The link check skips sources under `work/` for this PR only. Every moved file is a 100% rename; each migrated folder's README is a new file. The PR body carries the old-to-new path map and the table of inferred plan states (section 3.2).
 3. **Links inside moved files.** Rewrites the relative links inside the moved files and removes the skip.
-4. **Parity log.** The verbatim move of section 4.4, merged after the expected-scores PR.
-5. **Rules.** AGENTS.md, `research/README.md`, the two skills, the new `distilling-notes` skill, `GLOSSARY.md` terms (work item, work folder, journal entry, evergreen note), an ADR (the next free number, 0041 today) recording the one rule and the work-item layout, and `summary:` on all research notes (drafted by subagents, reviewed before commit). The knowledge map is generated for the first time.
+4. **Rules**, merged after the expected-scores PR, since it tells agents to update expected scores instead of appending log rows. AGENTS.md, `research/README.md`, the two skills, the new `distilling-notes` skill, `GLOSSARY.md` terms (work item, work folder, journal entry, evergreen note), an ADR (the next free number, 0041 today) recording the one rule and the work-item layout, the parity wording that named the log, and `summary:` on all research notes (drafted by subagents, reviewed before commit), which fills in the knowledge map that layer 1 generates with every summary missing.
 
 **After the stack:**
 
-* A one-line PR adds the squashed moves, links and parity-log commits to `.git-blame-ignore-revs`, and `mise run init` sets `blame.ignoreRevsFile`.
+* A one-line PR adds the squashed moves and links commits to `.git-blame-ignore-revs`, and `mise run init` sets `blame.ignoreRevsFile`.
 * Independent distillation PRs off `main`, one per file, worst first, each following `distilling-notes`: `capture-dosbox-automation.md`, `parity/method.md` (its loop to `docs/howto/`), `framing-and-actors.md`, and `docs/development.md` (setup and conventions stay; Workflows go to `docs/howto/`). `memory-map.md` is split by segment, not distilled, since it is an offset registry.
 * The weekly gardening routine is scheduled last and takes the remaining files over budget.
 
