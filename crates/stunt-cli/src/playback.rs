@@ -194,17 +194,17 @@ impl SamplePlan {
 
     /// The samples this plan renders over `range`, in playing order.
     fn samples(&self, range: TickRange) -> Vec<(SampleKey, f32)> {
-        match *self {
-            Self::List(ref ticks) => ticks
+        match self {
+            Self::List(ticks) => ticks
                 .iter()
                 .filter(|&&tick| tick < range.end_hold())
                 .map(|&tick| (SampleKey::Tick(tick), tick as f32))
                 .collect(),
             Self::Ticks { step } => (range.start()..range.end_hold())
-                .step_by(step)
+                .step_by(*step)
                 .map(|tick| (SampleKey::Tick(tick), tick as f32))
                 .collect(),
-            Self::Even { count } => even_sample_ticks(range.start(), range.video_span(), count)
+            Self::Even { count } => even_sample_ticks(range.start(), range.video_span(), *count)
                 .into_iter()
                 .enumerate()
                 .map(|(index, tick)| (SampleKey::Index(index + 1), tick))

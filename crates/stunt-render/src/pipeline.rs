@@ -86,8 +86,11 @@ impl RenderPipelines {
     /// Returns the vertex buffer layout for zero-copy upload of `SodVertex`.
     pub(crate) fn vertex_buffer_layout() -> wgpu::VertexBufferLayout<'static> {
         // Assert compile-time layout compatibility with Invariant [I2] / Seam 3
-        const _: () = assert!(size_of::<SodVertex>() == 28);
-        const _: () = assert!(align_of::<SodVertex>() == 4);
+        const _: () = assert!(
+            size_of::<SodVertex>() == 28,
+            "SodVertex is a 28-byte vertex"
+        );
+        const _: () = assert!(align_of::<SodVertex>() == 4, "SodVertex is 4-byte aligned");
 
         const ATTRIBUTES: [wgpu::VertexAttribute; 3] = [
             // Location 0: position [x, y, z] in metric meters (12 bytes)

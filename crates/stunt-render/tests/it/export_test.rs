@@ -101,6 +101,6 @@ fn test_video_export_error_display_and_traits() {
         std::io::ErrorKind::BrokenPipe,
         "broken pipe",
     ));
-    use std::error::Error;
+    use std::error::Error as _;
     assert!(io_err.source().is_some());
 }

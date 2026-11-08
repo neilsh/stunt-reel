@@ -1,7 +1,7 @@
 //! Execute the production palette-index function with exact IEEE 754 inputs.
 
 use crate::common;
-use wgpu::util::DeviceExt;
+use wgpu::util::DeviceExt as _;
 
 /// Runs the actual WGSL function; storage inputs prevent constant folding of NaNs.
 fn check_indices(cases: &[(u32, u32, u32)]) {
@@ -25,7 +25,7 @@ fn check_indices(cases: &[(u32, u32, u32)]) {
     let source = format!(
         "{}\n{}",
         include_str!("../../src/shaders/mode13h.wgsl"),
-        r"
+        "
 @group(3) @binding(0) var<storage, read> inputs: array<vec2<u32>>;
 @group(3) @binding(1) var<storage, read_write> results: array<u32>;
 
@@ -114,7 +114,7 @@ fn test_fragment_index(@builtin(global_invocation_id) id: vec3<u32>) {
     receiver.recv().unwrap().unwrap();
     let mapped = readback.slice(..).get_mapped_range().unwrap();
     let actual: &[u32] = bytemuck::cast_slice(&mapped);
-    assert_eq!(actual.len(), cases.len());
+    assert_eq!(actual.len(), cases.len(), "one result per case");
     for (&(bits, fallback, expected), &actual) in cases.iter().zip(actual) {
         assert_eq!(
             actual, expected,

@@ -4,7 +4,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use clap::error::ErrorKind;
-use clap::{CommandFactory, FromArgMatches, Parser};
+use clap::{CommandFactory as _, FromArgMatches as _, Parser};
 
 use crate::{export, link, parity, shape_views, sod_census, sod_trace};
 

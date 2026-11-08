@@ -20,10 +20,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use clap::{CommandFactory, Parser, ValueEnum};
+use clap::{CommandFactory as _, Parser, ValueEnum};
 use glam::Vec3;
 use serde::Serialize;
-use sha2::{Digest, Sha256};
+use sha2::{Digest as _, Sha256};
 use stunt_core::anchor::parse_anchor_table;
 use stunt_core::contracts::{PaletteControls, ShapeExtent, SodModelIr};
 use stunt_core::flm::FilmTimeline;

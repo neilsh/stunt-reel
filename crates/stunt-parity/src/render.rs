@@ -17,7 +17,7 @@ pub const RENDER_CHUNK_TICKS: u32 = 50;
 pub const PALETTE_BYTES: usize = 768;
 
 /// Raster geometry an artifact describes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Geometry {
     /// Width in pixels.
     pub width: u32,
@@ -80,7 +80,7 @@ pub struct CameraPose {
 }
 
 /// One rendered tick: its film clock, how it was drawn, and which stored palette it shows.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct RenderTick {
     /// Film clock of the frame (0-based 50 Hz tick).
     pub tick: u32,
@@ -464,7 +464,7 @@ mod tests {
         };
         geometry.validate().expect("full-target render");
         assert_eq!(geometry.pixel_count(), 76_800);
-        let value = serde_json::to_value(&geometry).expect("serialize");
+        let value = serde_json::to_value(geometry).expect("serialize");
         assert!(value.get("viewport_rows").is_none());
     }
 }

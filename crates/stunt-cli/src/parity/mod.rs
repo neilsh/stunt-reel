@@ -222,7 +222,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         parity_artifacts::load_capture(&args.reference).map_err(|error| error.to_string())?;
     let mut store = RenderStore::open(&args.test).map_err(|error| error.to_string())?;
     warn_on_film_mismatch(&capture.film, &store.record().film);
-    let geometry = store.record().geometry.clone();
+    let geometry = store.record().geometry;
     if geometry.width != capture.geometry.width || geometry.height != capture.geometry.height {
         return Err(format!(
             "render geometry {}x{} differs from the capture's {}x{}; re-render \

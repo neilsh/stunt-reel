@@ -140,8 +140,8 @@ struct MissingFilmTick {
 }
 
 impl fmt::Display for MissingFilmTick {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "frame {} has no film_tick", self.ordinal)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "frame {} has no film_tick", self.ordinal)
     }
 }
 

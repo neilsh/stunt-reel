@@ -83,7 +83,8 @@ fn find_in_dir(dir: &Path, filename: &str) -> Option<PathBuf> {
 
 /// Reads a scenery file located by [`find_scenery_file`], if present and readable.
 fn read_scenery_file(sidata: Option<&Path>, base: &Path, filename: &str) -> Option<Vec<u8>> {
-    find_scenery_file(sidata, base, filename).and_then(|p| fs::read(p).ok())
+    let p = find_scenery_file(sidata, base, filename)?;
+    fs::read(p).ok()
 }
 
 /// Which files to build a scene from, as chosen on the command line.

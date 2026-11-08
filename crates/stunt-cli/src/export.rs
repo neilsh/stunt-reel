@@ -7,7 +7,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use clap::{ArgGroup, CommandFactory, Parser};
+use clap::{ArgGroup, CommandFactory as _, Parser};
 use stunt_core::anchor::parse_anchor_table;
 use stunt_core::scene::decode_archive_shapes;
 use stunt_core::sod::ShadeLight;

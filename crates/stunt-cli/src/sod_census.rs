@@ -17,7 +17,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use clap::{CommandFactory, Parser, ValueEnum};
+use clap::{CommandFactory as _, Parser, ValueEnum};
 use stunt_core::flm::FilmTimeline;
 use stunt_core::sod::{DecodeMode, DecodeRecord, OP_TAP, SodStopReason, census_skip, decode_sod};
 use stunt_core::vfs::detect_and_parse;

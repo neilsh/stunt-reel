@@ -197,9 +197,10 @@ impl std::fmt::Display for ScnStopReason {
     }
 }
 
-/// Where and why a `SCENERY.scn` walk stopped early, modelled on the shape decode record's
-/// `SodStop`. A stop that ends the walk (cycle, budget) is the one reported; otherwise the
-/// first skipped subtree or malformed node (depth, malformed) is.
+/// Where and why a `SCENERY.scn` walk stopped early.
+///
+/// Modelled on the shape decode record's `SodStop`. A stop that ends the walk (cycle, budget) is
+/// the one reported; otherwise the first skipped subtree or malformed node (depth, malformed) is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScnStop {
     /// Byte offset in `SCENERY.scn` of the node the stop is charged to: the one whose visit was
@@ -996,9 +997,10 @@ const GROUND_FLAT_TOLERANCE: f32 = 0.05;
 /// 8 mm, an apron at 3 cm); the nearest flat prop that hovers is 22 cm off.
 const GROUND_LIE_TOLERANCE: f32 = 0.1;
 
-/// The terrain as a set of triangles (each `MAP.BIN` patch fanned from its first corner, as
-/// `push_terrain` draws it), answering how high the ground is at a point. The default has
-/// no triangles, so no point is over terrain.
+/// The terrain as a set of triangles, answering how high the ground is at a point.
+///
+/// Each `MAP.BIN` patch is fanned from its first corner, as `push_terrain` draws it. The default
+/// has no triangles, so no point is over terrain.
 #[derive(Clone, Debug, Default)]
 pub struct TerrainSurface {
     triangles: Vec<[[f32; 3]; 3]>,
@@ -1932,7 +1934,7 @@ mod tests {
         let plane = GroundPlane::through([0.0, 0.0, 0.0], [10.0, 1.0, 0.0], [0.0, 2.0, 10.0])
             .expect("a sloped plane");
         let m = plane.flatten_matrix(0.5);
-        let [x, y, z] = [3.0_f32, 40.0, 4.0];
+        let [x, y, z] = [3.0f32, 40.0, 4.0];
         let col = |c: usize| m.get(c * 4..c * 4 + 4).expect("4x4");
         let out: Vec<f32> = (0..3)
             .map(|r| col(0)[r] * x + col(1)[r] * y + col(2)[r] * z + col(3)[r])

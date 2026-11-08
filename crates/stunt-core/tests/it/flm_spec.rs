@@ -212,10 +212,10 @@ fn assert_valid_euclidean_transform(mat: &[f32; 16], pos: [f32; 3]) {
     );
 
     // 5. Affine bottom row must be [0, 0, 0, 1]
-    assert_eq!(mat[3], 0.0);
-    assert_eq!(mat[7], 0.0);
-    assert_eq!(mat[11], 0.0);
-    assert_eq!(mat[15], 1.0);
+    assert_eq!(mat[3], 0.0, "bottom row, column 0");
+    assert_eq!(mat[7], 0.0, "bottom row, column 1");
+    assert_eq!(mat[11], 0.0, "bottom row, column 2");
+    assert_eq!(mat[15], 1.0, "bottom row, column 3");
 }
 
 // ----------------------------------------------------------------------------
