@@ -55,9 +55,10 @@ def _git(repo: Path, *args: str, env: dict[str, str] | None = None) -> str:
         capture_output=True,
         text=True,
         encoding="utf-8",
-        check=True,
+        check=False,
         env=env,
     )
+    assert done.returncode == 0, f"git {' '.join(args)}: {done.stderr}"
     return done.stdout.strip()
 
 
