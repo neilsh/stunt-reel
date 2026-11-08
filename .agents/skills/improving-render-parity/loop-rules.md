@@ -6,7 +6,7 @@ Part of the [`improving-render-parity`](SKILL.md) skill.
 
 One goal, four rounds at most:
 
-> Raise the reference films' `mean_ssim_scored` with changes observable in the renderer. A round may begin by reading one `PLAYONE.EXE` rule (static disassembly or the capture harness) when no renderer-only lever fits; that rule lands in the note under `research/playone-exe/` with its image offset before the round's sweep runs. Record every attempt, including negatives, as a journal entry in its work folder, with the finding in the note that owns it. Scope: `CTRY` and `INTRO` only (`COL3-2` excluded). Stop after 4 rounds, after two consecutive rounds with no adoption, or when the round's hypothesis would need evidence the session cannot obtain, and write the handoff.
+> Raise the reference films' `mean_ssim_scored` with changes observable in the renderer. A round may begin by reading one `PLAYONE.EXE` rule (static disassembly or the capture harness) when no renderer-only lever fits; that rule lands in the note under `research/playone-exe/` with its image offset before the round's sweep runs. Record every attempt, including negatives, as a journal entry in its work folder, with the finding in the note that owns it. Scope: every film `research/parity/references.toml` pins (`COL3-2` excluded). Stop after 4 rounds, after two consecutive rounds with no adoption, or when the round's hypothesis would need evidence the session cannot obtain, and write the handoff.
 
 One hypothesis class per round; all variants batched in one command; the round ends at the sweep result.
 
