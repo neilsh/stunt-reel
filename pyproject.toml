@@ -57,6 +57,7 @@ exclude = [
     "dist",
     "corpus",
     "target",
+    "work",
 ]
 
 [tool.ruff.lint]
