@@ -1,6 +1,6 @@
 # Work folders
 
-`work/` holds dated records of work: specs, plans, journals and the images they cite. It is not a source of truth: never cite it for a fact about the system.
+`work/` holds dated records of work: specs, plans, journals and the images they cite. The dated records under `work/<YYYY-MM>/` are not a source of truth: state a fact about the system in `research/` or `docs/`, and cite a record only as its source.
 
 **Provenance and licensing.** These records are original writing by Stunt Reel contributors and are licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) (see [`README.md` § License](../README.md#license)). Quoted third-party material and cited community research remain under their own terms and are not relicensed by this project. Game-derived constants and captured frames recorded here are not relicensed either. No game assets are distributed; see [`NOTICE.md`](../NOTICE.md).
 
@@ -36,13 +36,15 @@ work/
 
 ## Journal entries
 
-Each entry in `journal.md` is a `##` heading `YYYY-MM-DD: <title>`, then:
+Each new entry in `journal.md` is a `##` heading `YYYY-MM-DD: <title>`, then:
 
 - **Question**: what the entry set out to learn.
 - **Method**: what was run, on which commit.
 - **Result**: what came out, with scores stated in the text.
 - **Verdict**: adopted, rejected or control.
 - **Lives in**: the evergreen note or ADR that now holds the fact.
+
+An entry a distillation writes keeps the moved text verbatim under its dated heading, then **Lives in**.
 
 Dated and session-style headings belong in `work/` only.
 

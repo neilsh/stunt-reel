@@ -593,7 +593,6 @@ def test_code_citation_walks_skip_dated_records(tmp_path: Path) -> None:
 
 
 _PARITY_LOG = "work/2026-10/parity-log/log.md"
-_TEAM_SHEET = "work/2026-10/team-sheet/TEAM_SHEET.md"
 _SANDBOX_NOTE = (
     "work/2026-11/windows-sandbox-integrity-label/windows-sandbox-integrity-label-2026-11-01.md"
 )
@@ -619,7 +618,6 @@ WORK_POINTERS: frozenset[tuple[str, str]] = frozenset(
                 "research/playone-exe/sod-vm.md",
             )
         ),
-        ("research/parity/method.md", _TEAM_SHEET),
         ("docs/ARCHITECTURE.md", "work/2026-10/architecture-deepening/overview.md"),
         ("docs/harness.md", "work/2026-10/retro-hardening/retro-hardening-2026-10-25.md"),
         ("docs/harness.md", _SANDBOX_NOTE),

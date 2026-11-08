@@ -80,12 +80,12 @@ a link into a dated record (`work/<YYYY-MM>/`) is allowed:
 - from an ADR;
 - into any dated folder's `images/`.
 
-Every other such link fails unless `WORK_POINTERS` lists it, and that list only shrinks: a listed
-link that is gone fails too. A fragment in a link into a dated record must name a heading, since
-frozen headings never change. A link from a dated record into an evergreen file is checked for the
-file only, so distilling a note breaks no frozen record; links between dated records are checked
-in full. `work/README.md` is evergreen, so links to and from it are ordinary links. Code cites a
-document by its path or a registered anchor token, never by a heading.
+Every other such link fails unless `WORK_POINTERS` lists it; that list is meant only to shrink, and
+a listed link that is gone fails the check. A fragment in a link into a dated record must name a
+heading, since frozen headings never change. A link from a dated record into an evergreen file is
+checked for the file only, so distilling a note breaks no frozen record; links between dated records
+are checked in full. `work/README.md` is evergreen, so links to and from it are ordinary links. Code
+cites a document by its path or a registered anchor token, never by a heading.
 
 ## Considered Options
 
@@ -115,3 +115,5 @@ document by its path or a registered anchor token, never by a heading.
   return them.
 - **No shared append-only file.** Parity attempts in parallel PRs write journal entries in their
   own work folders rather than rows of one log.
+- **The track moves to the journal entry.** ADR 0007's rule that every log row states its track
+  now falls on journal entries, as the adoption rule in `loop-rules.md` says.

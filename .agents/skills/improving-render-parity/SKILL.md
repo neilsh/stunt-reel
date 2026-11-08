@@ -5,7 +5,7 @@ description: Runs stunt-reel's render-vs-PLAYONE parity loop (capture, render, s
 
 # Improving render parity
 
-The research notes own the procedure. This skill says which note to read and how to run the loop cheaply. Read only the section you need:
+The procedures this skill routes to live in `method.md` section 1 and `probes.md` until they move to `docs/howto/`. This skill says which to read and how to run the loop cheaply. Read only the section you need:
 
 - **Where the loss is** (capture, render, score, compare): [`research/parity/method.md`](../../../research/parity/method.md) section 1.
 - **What is wrong** (crop, shift, actor IoU, candidate sweeps, timing retime, environment pitfalls): [`research/parity/probes.md`](../../../research/parity/probes.md).
@@ -38,4 +38,4 @@ Read each when its step comes up:
 
 ## Finishing an item
 
-Write a [journal entry](../../../work/README.md#journal-entries) in the work item's folder for every attempt, adopted or not, and put the finding in the note that owns the residual. Adopting a change also updates its film's expected scores in `research/parity/references.toml` ([`loop-rules.md`](loop-rules.md)). End the session after the handoff; start the next hypothesis in a fresh session.
+Write a [journal entry](../../../work/README.md#journal-entries) for every attempt, adopted or not, in the item's work folder (`mise run work -- new <slug> --issue N`, or its existing folder), and put the finding in the note that owns the residual. Adopting a change updates each reference film's expected table in `research/parity/references.toml` for the class it measured ([`loop-rules.md`](loop-rules.md)). End the session after the handoff; start the next hypothesis in a fresh session.

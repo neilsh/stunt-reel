@@ -411,7 +411,7 @@ def summary(report_path: Path, *, worst: int = 5) -> list[str]:
         listed = ", ".join(f"tick {frame.film_tick} {frame.ssim:.3f}" for frame in lowest)
         lines.append(f"[summary] worst scored frames: {listed}")
     lines.append(
-        f"[summary] journal entry: ssim {ssim:.3f}  iou {iou:.3f}  scored {matched} at `<commit>`"
+        f"[summary] journal entry: ssim {ssim:.4f}  iou {iou:.4f}  scored {matched} at `<commit>`"
     )
     return lines
 

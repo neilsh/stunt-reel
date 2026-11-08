@@ -29,16 +29,16 @@ Cite these; never restate them:
 | **Reference Corpus** | [`corpus/README.md`](corpus/README.md) | Demo archive and community packages. |
 | **Knowledge Map** | [`research/MAP.md`](research/MAP.md) | Each research note's summary. |
 | **Binary Disassembly** | [`research/playone-exe/`](research/playone-exe/) | Evidence for `PLAYONE.EXE`. |
-| **Format Specs & Byte Layouts** | [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog; byte layouts live only in `.ksy` schemas. |
+| **Format Specs & Byte Layouts** | [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog; byte layouts only in `.ksy` schemas. |
 | **Parity** | [`research/parity/`](research/parity/) | Method, attribution and render-model notes. |
 | **Work Items** | GitHub issues, [`work/README.md`](work/README.md) | Issue status; folder layout. |
 | **How-to Guides** | `docs/howto/` | One task per file. |
 | **Issues & skill configuration** | [`docs/agents/`](docs/agents/) | GitHub Issues via `gh`, triage labels, domain docs, review threads (`mise run pr-threads`). |
 | **Decisions (ADRs)** | [`docs/adr/`](docs/adr/) | Accepted design decisions. |
-| **Coding & Format Rules** | [`Cargo.toml`](Cargo.toml), [`pyproject.toml`](pyproject.toml), [`.editorconfig`](.editorconfig) | Clippy, Ruff and Mypy settings; LF, 4-space indent. |
-| **Agents & Harnesses** | [`docs/harness.md`](docs/harness.md), [`docs/harness-setup.md`](docs/harness-setup.md) | Agent policy, per-harness notes, machine setup and the data root. |
+| **Coding & Format Rules** | [`Cargo.toml`](Cargo.toml), [`pyproject.toml`](pyproject.toml), [`.editorconfig`](.editorconfig) | Clippy, Ruff, Mypy settings; LF, 4-space indent. |
+| **Agents & Harnesses** | [`docs/harness.md`](docs/harness.md), [`docs/harness-setup.md`](docs/harness-setup.md) | Agent policy, harness notes, machine setup, data root. |
 
-Dated records (`work/<YYYY-MM>/`) are **not** a source of truth: never cite one for a fact about the system. Run `mise run work -- new` before `superpowers:brainstorming` or `writing-plans` writes a file, and write into the folder it makes. Search `work/` with `path: work/` or `rg --no-ignore-dot`.
+Dated records (`work/<YYYY-MM>/`) are **not** a source of truth: state a fact in `research/` or `docs/`, citing a record only as a source. Run `mise run work -- new` before `superpowers:brainstorming` or `writing-plans` writes a file, and write in its folder. Search `work/` with `path: work/` or `rg --no-ignore-dot`.
 
 ---
 

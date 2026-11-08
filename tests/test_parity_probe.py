@@ -55,7 +55,7 @@ def test_summary_prints_the_headline_the_worst_frames_and_the_journal_scores(
     assert "iou 0.9250" in out
     assert "loss by class: props 0.0200  terrain 0.0100" in out
     assert "worst scored frames: tick 10 0.500" in out
-    assert "journal entry: ssim 0.700  iou 0.925  scored 2/3 at `<commit>`" in out
+    assert "journal entry: ssim 0.7000  iou 0.9250  scored 2/3 at `<commit>`" in out
     assert "log row" not in out
 
 
