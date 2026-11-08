@@ -1,8 +1,7 @@
 ---
 title: Docs streamline
-status: active
 started: 2026-11-07
-links: []
+issue: 307
 outcome: ""
 ---
 
@@ -10,4 +9,4 @@ outcome: ""
 
 **Question.** How should `docs/` and `research/` be reorganized so that agents read and write them cheaply, and so that `research/` stays a useful reference on how Stunt Island works for agents and outside readers alike?
 
-**Status.** Design agreed in conversation on 2026-11-07; the [spec](spec.md) is under review. This is the first work folder under the layout the spec defines.
+**Status.** Tracked in [#307](https://github.com/neilsh/stunt-reel/issues/307). Design agreed in conversation on 2026-11-07 and revised after four rounds of review questions; the [spec](spec.md) awaits review. This is the first work folder under the layout the spec defines.
